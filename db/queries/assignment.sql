@@ -1,4 +1,4 @@
--- name: GetAssignmentWallClockTime :one
+-- name: GetPostgresTime :one
 SELECT clock_timestamp()::timestamptz;
 
 -- name: ListActiveLeaseSigningKeyIDs :many
@@ -8,7 +8,7 @@ WHERE revoked_at IS NULL
   AND expires_at > clock_timestamp()
 ORDER BY signing_key_id;
 
--- name: LockWorkerForAssignment :one
+-- name: LockWorkerAuthority :one
 SELECT id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
 FROM workers
 WHERE id = sqlc.arg(worker_id)
@@ -26,6 +26,7 @@ SELECT
     l.signing_key_id,
     l.token_digest,
     l.issued_at,
+    l.token_claim_expires_at,
     l.expires_at
 FROM attempts AS a
 JOIN attempt_leases AS l ON l.attempt_id = a.id
@@ -137,6 +138,7 @@ INSERT INTO attempt_leases (
     token_digest,
     signing_key_id,
     issued_at,
+    renewal_protocol_version,
     expires_at
 ) VALUES (
     sqlc.arg(id),
@@ -152,6 +154,7 @@ INSERT INTO attempt_leases (
     sqlc.arg(token_digest),
     sqlc.arg(signing_key_id),
     sqlc.arg(issued_at),
+    2,
     sqlc.arg(expires_at)
 );
 

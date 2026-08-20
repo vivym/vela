@@ -192,6 +192,7 @@ components:
         - job_id
         - project_id
         - state
+        - attempts_started
         - pricing
         - job_expires_at
         - created_at
@@ -204,6 +205,26 @@ components:
           format: uuid
         state:
           $ref: '#/components/schemas/JobState'
+        phase:
+          $ref: '#/components/schemas/ExecutionPhase'
+        phase_progress:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          exclusiveMaximum: true
+        attempts_started:
+          type: integer
+          minimum: 0
+        next_retry_at:
+          type: string
+          format: date-time
+        estimated_finish_at:
+          type: string
+          format: date-time
+        progress_updated_at:
+          type: string
+          format: date-time
         pricing:
           $ref: '#/components/schemas/PricingSnapshot'
         job_expires_at:
@@ -224,6 +245,14 @@ components:
         - SUCCEEDED
         - FAILED
         - CANCELED
+    ExecutionPhase:
+      type: string
+      enum:
+        - QUEUED
+        - PREPARING
+        - GENERATING
+        - FINALIZING
+        - RETRY_WAIT
     PricingSnapshot:
       type: object
       additionalProperties: false

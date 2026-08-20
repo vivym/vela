@@ -229,12 +229,13 @@ func submitBadRequest(message string) api.SubmitJob400JSONResponse {
 }
 
 func toAPIJob(job admission.Job) api.Job {
-	return api.Job{
-		CreatedAt:    job.CreatedAt,
-		JobExpiresAt: job.JobExpiresAt,
-		JobId:        job.ID,
-		ProjectId:    job.ProjectID,
-		State:        api.JobState(job.State),
+	view := api.Job{
+		AttemptsStarted: int(job.AttemptsStarted),
+		CreatedAt:       job.CreatedAt,
+		JobExpiresAt:    job.JobExpiresAt,
+		JobId:           job.ID,
+		ProjectId:       job.ProjectID,
+		State:           api.JobState(job.State),
 		Pricing: api.PricingSnapshot{
 			RateCardRevisionId: job.PricingSnapshot.RateCardRevisionID,
 			RateLineId:         job.PricingSnapshot.RateLineID,
@@ -244,6 +245,15 @@ func toAPIJob(job admission.Job) api.Job {
 			Currency:           job.PricingSnapshot.Currency,
 		},
 	}
+	if job.Phase != nil {
+		phase := api.ExecutionPhase(*job.Phase)
+		view.Phase = &phase
+	}
+	view.PhaseProgress = job.PhaseProgress
+	view.NextRetryAt = job.NextRetryAt
+	view.EstimatedFinishAt = job.EstimatedFinishAt
+	view.ProgressUpdatedAt = job.ProgressUpdatedAt
+	return view
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

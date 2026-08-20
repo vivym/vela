@@ -194,23 +194,29 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 				('organization_credit_accounts', 'SELECT'),
 				('jobs', 'SELECT'),
 				('credit_reservations', 'SELECT'),
-				('retry_runtime_states', 'SELECT'),
 				('idempotency_results', 'SELECT'),
 				('outbox_events', 'SELECT'),
+				('vela_request_execution_lease_renewal_protocol', 'SELECT'),
+				('vela_request_job_runtime', 'SELECT'),
+				('vela_request_job_progress', 'SELECT'),
 				('jobs', 'INSERT'),
 				('credit_reservations', 'INSERT'),
 				('retry_runtime_states', 'INSERT'),
 				('idempotency_results', 'INSERT'),
 				('outbox_events', 'INSERT')
+			UNION ALL
+			SELECT 'retry_runtime_states', 'SELECT'
+			FROM vela_request_execution_lease_renewal_protocol
+			WHERE NOT enabled
 		),
-		expected_column_updates (relation_name, column_name) AS (
+		expected_column_privileges (relation_name, column_name, privilege) AS (
 			VALUES
-				('worker_pools', 'queued_count'),
-				('projects', 'queued_count'),
-				('projects', 'running_count'),
-				('organization_credit_accounts', 'reserved_minor'),
-				('organization_credit_accounts', 'version'),
-				('organization_credit_accounts', 'updated_at')
+				('worker_pools', 'queued_count', 'UPDATE'),
+				('projects', 'queued_count', 'UPDATE'),
+				('projects', 'running_count', 'UPDATE'),
+				('organization_credit_accounts', 'reserved_minor', 'UPDATE'),
+				('organization_credit_accounts', 'version', 'UPDATE'),
+				('organization_credit_accounts', 'updated_at', 'UPDATE')
 		),
 		expected_functions (function_oid) AS (
 			VALUES
@@ -227,10 +233,13 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			FROM pg_catalog.pg_class AS relation
 			JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
 			WHERE namespace.nspname = 'public'
-			  AND relation.relkind IN ('r', 'p')
+			  AND relation.relkind IN ('r', 'p', 'v', 'm')
 		),
-		table_privilege_names (privilege) AS (
-			VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')
+			table_privilege_names (privilege) AS (
+				VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')
+			),
+			column_privilege_names (privilege) AS (
+				VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('REFERENCES')
 		)
 		SELECT
 			NOT has_schema_privilege(current_user, 'public', 'USAGE')
@@ -278,20 +287,28 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 				  ON attribute.attrelid = relation.oid
 				 AND attribute.attnum > 0
 				 AND NOT attribute.attisdropped
-				LEFT JOIN expected_column_updates AS expected
+				CROSS JOIN column_privilege_names AS candidate
+				LEFT JOIN expected_column_privileges AS expected
 				  ON expected.relation_name = relation.relname
 				 AND expected.column_name = attribute.attname
-				WHERE has_column_privilege(current_user, relation.oid, attribute.attnum, 'UPDATE')
+				 AND expected.privilege = candidate.privilege
+				WHERE has_column_privilege(
+					current_user,
+					relation.oid,
+					attribute.attnum,
+					candidate.privilege
+				)
+				  AND NOT has_table_privilege(current_user, relation.oid, candidate.privilege)
 				  AND expected.relation_name IS NULL
 			)
 			OR EXISTS (
 				SELECT 1
-				FROM expected_column_updates AS expected
+				FROM expected_column_privileges AS expected
 				WHERE NOT has_column_privilege(
 					current_user,
 					format('public.%I', expected.relation_name),
 					expected.column_name,
-					'UPDATE'
+					expected.privilege
 				)
 			)
 			OR EXISTS (

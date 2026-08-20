@@ -16,7 +16,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/execution"
 	"github.com/vivym/vela/internal/identity"
 	store "github.com/vivym/vela/internal/store/sqlc"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -62,12 +64,18 @@ const (
 )
 
 type Job struct {
-	ID              uuid.UUID
-	ProjectID       uuid.UUID
-	State           JobState
-	PricingSnapshot PricingSnapshot
-	JobExpiresAt    time.Time
-	CreatedAt       time.Time
+	ID                uuid.UUID
+	ProjectID         uuid.UUID
+	State             JobState
+	Phase             *execution.Phase
+	PhaseProgress     *float64
+	AttemptsStarted   int32
+	NextRetryAt       *time.Time
+	EstimatedFinishAt *time.Time
+	ProgressUpdatedAt *time.Time
+	PricingSnapshot   PricingSnapshot
+	JobExpiresAt      time.Time
+	CreatedAt         time.Time
 }
 
 type FailureCode string
@@ -584,9 +592,15 @@ func jobFromGetRow(row store.GetJobRow) (Job, error) {
 		return Job{}, errors.New("Job record has invalid timestamps")
 	}
 	return Job{
-		ID:        row.ID,
-		ProjectID: row.ProjectID,
-		State:     JobState(row.State),
+		ID:                row.ID,
+		ProjectID:         row.ProjectID,
+		State:             JobState(row.State),
+		Phase:             row.ExecutionPhase,
+		PhaseProgress:     row.PhaseProgress,
+		AttemptsStarted:   row.AttemptsStarted,
+		NextRetryAt:       nullableTime(row.NextRetryAt),
+		EstimatedFinishAt: nullableTime(row.EstimatedFinishAt),
+		ProgressUpdatedAt: nullableTime(row.ProgressUpdatedAt),
 		PricingSnapshot: PricingSnapshot{
 			RateCardRevisionID: row.PricingRateCardRevisionID,
 			RateLineID:         row.PricingRateLineID,
@@ -598,6 +612,14 @@ func jobFromGetRow(row store.GetJobRow) (Job, error) {
 		JobExpiresAt: row.JobExpiresAt.Time,
 		CreatedAt:    row.CreatedAt.Time,
 	}, nil
+}
+
+func nullableTime(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	instant := value.Time
+	return &instant
 }
 
 func failure(code FailureCode, message string, retryAfter int) *Failure {

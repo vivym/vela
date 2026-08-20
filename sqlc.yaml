@@ -23,3 +23,13 @@ sql:
             go_type:
               import: github.com/google/uuid
               type: NullUUID
+          - db_type: execution_phase
+            go_type:
+              import: github.com/vivym/vela/internal/execution
+              type: Phase
+          - db_type: execution_phase
+            nullable: true
+            go_type:
+              import: github.com/vivym/vela/internal/execution
+              type: Phase
+              pointer: true

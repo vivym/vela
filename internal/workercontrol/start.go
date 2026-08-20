@@ -71,7 +71,7 @@ func (s *Service) Start(
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := store.New(tx)
 
-	workerRow, err := queries.LockWorkerForAssignment(ctx, worker.ID)
+	workerRow, err := queries.LockWorkerAuthority(ctx, worker.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return stopped(StopInvalidAuthority), nil
 	}
@@ -103,7 +103,7 @@ func (s *Service) Start(
 		return stopped(StopInvalidAuthority), nil
 	}
 
-	now, err := assignmentWallClock(ctx, queries)
+	now, err := postgresTime(ctx, queries)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -122,7 +122,7 @@ func (s *Service) Start(
 			return stopped(StopNotStartable), nil
 		}
 		result := grantedStart(authority, worker.ID, credentials, authority.AttemptStartedAt.Time)
-		commitTime, clockErr := assignmentWallClock(ctx, queries)
+		commitTime, clockErr := postgresTime(ctx, queries)
 		if clockErr != nil {
 			return StartResult{}, clockErr
 		}
@@ -203,7 +203,7 @@ func (s *Service) Start(
 		return StartResult{}, fmt.Errorf("insert job.started Outbox event: %w", err)
 	}
 
-	commitTime, err := assignmentWallClock(ctx, queries)
+	commitTime, err := postgresTime(ctx, queries)
 	if err != nil {
 		return StartResult{}, err
 	}

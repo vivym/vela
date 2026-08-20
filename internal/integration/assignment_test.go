@@ -25,6 +25,7 @@ const testWorkerID = "00000000-0000-0000-0000-000000000020"
 func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
+	setLeaseRenewalProtocolGate(t, database.Admin, true, "integration fixture switch")
 	seedAdmissionFixture(t, database.Admin)
 	server := admissionServerForDatabase(t, database)
 	accepted := submitJob(t, server.URL, "assignment-replay", []byte(`{
@@ -101,7 +102,7 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 	if len(assignments) != 2 {
 		t.Fatalf("Assignment results = %d, want 2", len(assignments))
 	}
-	if assignments[0] != assignments[1] {
+	if !sameAssignmentAuthority(assignments[0], assignments[1]) {
 		t.Fatalf("concurrent Assignment replay differs: first=%#v second=%#v", assignments[0], assignments[1])
 	}
 	first := assignments[0]
@@ -110,6 +111,9 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 	}
 	if first.WorkerEpoch != 7 || first.AttemptNumber != 1 || first.LeaseFence != 1 || first.LeaseToken == "" {
 		t.Fatalf("Assignment authority = %#v", first)
+	}
+	if first.LeaseValidFor <= 0 || first.LeaseValidFor > 2*time.Minute {
+		t.Fatalf("Assignment lease_valid_for = %s, want (0, 2m]", first.LeaseValidFor)
 	}
 	malformedCandidate := &workercontrol.AssignmentCandidate{}
 	replayedBeforeCandidateValidation, err := service.Acquire(
@@ -121,7 +125,7 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire replay before malformed candidate validation: %v", err)
 	}
-	if replayedBeforeCandidateValidation != first {
+	if !sameAssignmentAuthority(replayedBeforeCandidateValidation, first) {
 		t.Fatalf("malformed-candidate replay = %#v, want %#v", replayedBeforeCandidateValidation, first)
 	}
 	_, err = service.Acquire(context.Background(), identity, 8, nil)
@@ -135,8 +139,11 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire replay without candidate: %v", err)
 	}
-	if replayed != first {
+	if !sameAssignmentAuthority(replayed, first) {
 		t.Fatalf("lost-response replay = %#v, want %#v", replayed, first)
+	}
+	if replayed.LeaseValidFor <= 0 || replayed.LeaseValidFor > first.LeaseValidFor {
+		t.Fatalf("replayed lease_valid_for = %s, want (0, %s]", replayed.LeaseValidFor, first.LeaseValidFor)
 	}
 
 	var (
@@ -221,7 +228,7 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire after Lease revocation rollback: %v", err)
 	}
-	if replayedAfterRollback != first {
+	if !sameAssignmentAuthority(replayedAfterRollback, first) {
 		t.Fatalf("post-rollback replay = %#v, want %#v", replayedAfterRollback, first)
 	}
 
@@ -233,7 +240,7 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire after coordinator restart: %v", err)
 	}
-	if replayedAfterRestart != first {
+	if !sameAssignmentAuthority(replayedAfterRestart, first) {
 		t.Fatalf("post-restart replay = %#v, want %#v", replayedAfterRestart, first)
 	}
 
@@ -491,10 +498,10 @@ func TestAcquireNeverReplaysReconcilerFinalizationLease(t *testing.T) {
 		t.Fatalf("finalize Attempt fixture: %v", err)
 	}
 	if _, err := fixture.database.Admin.Exec(`
-		INSERT INTO attempt_leases (
-			id, organization_id, project_id, attempt_id, worker_id, worker_epoch,
-			phase, owner_kind, owner_id, fence, token_digest, signing_key_id,
-			issued_at, expires_at
+			INSERT INTO attempt_leases (
+				id, organization_id, project_id, attempt_id, worker_id, worker_epoch,
+				phase, owner_kind, owner_id, fence, token_digest, signing_key_id,
+				issued_at, expires_at
 		)
 		SELECT
 			'00000000-0000-0000-0000-000000000122', organization_id, project_id,
@@ -767,7 +774,7 @@ func TestWorkerCoordinatorRequiresKeysForEveryActiveLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay v1 Assignment after rotating active key: %v", err)
 	}
-	if replayed != original {
+	if !sameAssignmentAuthority(replayed, original) {
 		t.Fatalf("rotated-key replay = %#v, want %#v", replayed, original)
 	}
 }
@@ -1095,7 +1102,7 @@ func TestOneWorkerCannotClaimTwoConcurrentJobs(t *testing.T) {
 	for assignment := range results {
 		assignments = append(assignments, assignment)
 	}
-	if len(assignments) != 2 || assignments[0] != assignments[1] {
+	if len(assignments) != 2 || !sameAssignmentAuthority(assignments[0], assignments[1]) {
 		t.Fatalf("competing Job Assignments = %#v, want one exact replay", assignments)
 	}
 	var attempts, leases, assignedJobs, queuedJobs, busyWorkers int
@@ -1255,11 +1262,12 @@ func TestAttemptAndLeaseActiveAuthorityIsUnique(t *testing.T) {
 		INSERT INTO attempt_leases (
 			id, organization_id, project_id, attempt_id, worker_id, worker_epoch,
 			phase, owner_kind, owner_id, fence, token_digest, signing_key_id,
-			issued_at, expires_at
+			renewal_protocol_version, issued_at, expires_at
 		) VALUES (
 			'00000000-0000-0000-0000-000000000129', $1, $2, $3, $4, 7,
 			'EXECUTION', 'WORKER', 'spiffe://vela.internal/worker/h3-primary-fixture', 1,
 			decode(repeat('cd', 32), 'hex'), 'lease-key-v1',
+			2,
 			clock_timestamp(), clock_timestamp() + interval '2 minutes'
 		)
 	`, testOrganizationID, testProjectID, secondAttemptID, fixture.worker.ID)
@@ -1388,6 +1396,7 @@ func newAssignmentFixture(t *testing.T, key string, epoch int64) assignmentFixtu
 	t.Helper()
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
+	setLeaseRenewalProtocolGate(t, database.Admin, true, "integration fixture switch")
 	seedAdmissionFixture(t, database.Admin)
 	server := admissionServerForDatabase(t, database)
 	accepted := submitJob(t, server.URL, key, []byte(`{
@@ -1440,6 +1449,21 @@ func newWorkerControlService(pool *pgxpool.Pool) (*workercontrol.Service, error)
 			"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
 		},
 	})
+}
+
+func setLeaseRenewalProtocolGate(t *testing.T, db *sql.DB, enabled bool, receipt string) {
+	t.Helper()
+	result, err := db.Exec(
+		"SELECT vela_transition_execution_lease_renewal_protocol($1, $2)",
+		enabled,
+		receipt,
+	)
+	if err != nil {
+		t.Fatalf("set execution Lease renewal protocol gate to %t: %v", enabled, err)
+	}
+	if rows, err := result.RowsAffected(); err != nil || rows != 1 {
+		t.Fatalf("protocol gate update rows = %d error=%v, want 1", rows, err)
+	}
 }
 
 type assignmentState struct {
@@ -1523,6 +1547,12 @@ func waitForDatabaseTimeAfter(t *testing.T, db *sql.DB, instant time.Time) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("PostgreSQL clock did not pass %s", instant)
+}
+
+func sameAssignmentAuthority(left, right workercontrol.Assignment) bool {
+	left.LeaseValidFor = 0
+	right.LeaseValidFor = 0
+	return left == right
 }
 
 func requirePostgresConstraint(t *testing.T, err error, constraint string) {

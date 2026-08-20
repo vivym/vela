@@ -98,6 +98,12 @@ func TestServicePrincipalCanSubmitAndGetAcceptedJob(t *testing.T) {
 	if submitted.ProjectID != testProjectID || submitted.State != "QUEUED" {
 		t.Fatalf("submitted Job identity/state = %#v", submitted)
 	}
+	if submitted.Phase == nil || *submitted.Phase != "QUEUED" ||
+		submitted.AttemptsStarted != 0 || submitted.PhaseProgress != nil ||
+		submitted.NextRetryAt != nil || submitted.EstimatedFinishAt != nil ||
+		submitted.ProgressUpdatedAt != nil {
+		t.Fatalf("submitted Job execution view = %#v", submitted)
+	}
 	if submitted.Pricing.QuotedAmountMinor != 2500 || submitted.Pricing.Currency != "CNY" {
 		t.Fatalf("submitted pricing = %#v, want 2500 CNY", submitted.Pricing)
 	}
@@ -123,7 +129,8 @@ func TestServicePrincipalCanSubmitAndGetAcceptedJob(t *testing.T) {
 	if err := json.NewDecoder(getResponse.Body).Decode(&fetched); err != nil {
 		t.Fatalf("decode get response: %v", err)
 	}
-	if fetched.JobID != submitted.JobID || fetched.Pricing.QuotedAmountMinor != 2500 {
+	if fetched.JobID != submitted.JobID || fetched.Pricing.QuotedAmountMinor != 2500 ||
+		fetched.Phase == nil || *fetched.Phase != "QUEUED" || fetched.AttemptsStarted != 0 {
 		t.Fatalf("fetched Job = %#v, want submitted Job", fetched)
 	}
 	var runtimeStates, reservations, events int
@@ -1473,12 +1480,18 @@ func TestCredentialLookupScopeAndRevocationFailClosed(t *testing.T) {
 }
 
 type jobResponse struct {
-	JobID        string    `json:"job_id"`
-	ProjectID    string    `json:"project_id"`
-	State        string    `json:"state"`
-	JobExpiresAt time.Time `json:"job_expires_at"`
-	CreatedAt    time.Time `json:"created_at"`
-	Pricing      struct {
+	JobID             string     `json:"job_id"`
+	ProjectID         string     `json:"project_id"`
+	State             string     `json:"state"`
+	Phase             *string    `json:"phase"`
+	PhaseProgress     *float64   `json:"phase_progress"`
+	AttemptsStarted   int        `json:"attempts_started"`
+	NextRetryAt       *time.Time `json:"next_retry_at"`
+	EstimatedFinishAt *time.Time `json:"estimated_finish_at"`
+	ProgressUpdatedAt *time.Time `json:"progress_updated_at"`
+	JobExpiresAt      time.Time  `json:"job_expires_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	Pricing           struct {
 		QuotedAmountMinor int64  `json:"quoted_amount_minor"`
 		Currency          string `json:"currency"`
 	} `json:"pricing"`

@@ -1,0 +1,62 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/workercontrol"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("VELA_INTERNAL_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer pool.Close()
+	service, err := workercontrol.NewService(ctx, pool, workercontrol.Config{
+		LeaseTTL:         2 * time.Minute,
+		ActiveLeaseKeyID: "lease-key-v1",
+		LeaseKeys: map[string][]byte{
+			"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
+		},
+	})
+	if err != nil {
+		fatal(err)
+	}
+	worker := workercontrol.AuthenticatedWorker{ID: uuid.MustParse(os.Getenv("VELA_WORKER_ID"))}
+	candidate := workercontrol.AssignmentCandidate{
+		JobID:                      uuid.MustParse(os.Getenv("VELA_JOB_ID")),
+		ExpectedJobVersion:         1,
+		ExecutionProfileRevisionID: uuid.MustParse(os.Getenv("VELA_PROFILE_REVISION_ID")),
+	}
+	assigned, err := service.Acquire(ctx, worker, 7, &candidate)
+	if err != nil {
+		fatal(err)
+	}
+	replayed, err := service.Acquire(ctx, worker, 7, nil)
+	if err != nil {
+		fatal(err)
+	}
+	if assigned.AttemptID != replayed.AttemptID ||
+		assigned.LeaseToken != replayed.LeaseToken ||
+		!assigned.LeaseExpiresAt.Equal(replayed.LeaseExpiresAt) {
+		fatal(fmt.Errorf("N-1 replay changed durable Assignment: assigned=%#v replayed=%#v", assigned, replayed))
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(struct {
+		AttemptID uuid.UUID `json:"attempt_id"`
+	}{AttemptID: assigned.AttemptID}); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}

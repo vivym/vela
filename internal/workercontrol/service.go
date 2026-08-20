@@ -59,6 +59,7 @@ type Assignment struct {
 	LeaseToken                 string
 	LeaseFence                 int64
 	LeaseExpiresAt             time.Time
+	LeaseValidFor              time.Duration
 }
 
 type Config struct {
@@ -134,7 +135,7 @@ func (s *Service) Acquire(
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := store.New(tx)
 
-	workerRow, err := queries.LockWorkerForAssignment(ctx, worker.ID)
+	workerRow, err := queries.LockWorkerAuthority(ctx, worker.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Assignment{}, failure(FailureWorkerNotFound, "authenticated Worker is not registered")
 	}
@@ -150,7 +151,7 @@ func (s *Service) Acquire(
 		OwnerID:     workerRow.SpiffeID,
 	})
 	if err == nil {
-		now, clockErr := assignmentWallClock(ctx, queries)
+		now, clockErr := postgresTime(ctx, queries)
 		if clockErr != nil {
 			return Assignment{}, clockErr
 		}
@@ -161,13 +162,14 @@ func (s *Service) Acquire(
 		if replayErr != nil {
 			return Assignment{}, replayErr
 		}
-		commitTime, clockErr := assignmentWallClock(ctx, queries)
+		commitTime, clockErr := postgresTime(ctx, queries)
 		if clockErr != nil {
 			return Assignment{}, clockErr
 		}
 		if !existing.ExpiresAt.Time.After(commitTime) {
 			return Assignment{}, failure(FailureLeaseExpired, "active Assignment Lease expired before replay commit")
 		}
+		assignment.LeaseValidFor = existing.ExpiresAt.Time.Sub(commitTime)
 		if err := tx.Commit(ctx); err != nil {
 			return Assignment{}, fmt.Errorf("commit Assignment replay: %w", err)
 		}
@@ -230,7 +232,7 @@ func (s *Service) Acquire(
 	} else if err != nil {
 		return Assignment{}, fmt.Errorf("validate Assignment profile: %w", err)
 	}
-	now, err := assignmentWallClock(ctx, queries)
+	now, err := postgresTime(ctx, queries)
 	if err != nil {
 		return Assignment{}, err
 	}
@@ -363,7 +365,7 @@ func (s *Service) Acquire(
 	}); err != nil {
 		return Assignment{}, fmt.Errorf("insert job.assigned Outbox event: %w", err)
 	}
-	commitTime, err := assignmentWallClock(ctx, queries)
+	commitTime, err := postgresTime(ctx, queries)
 	if err != nil {
 		return Assignment{}, err
 	}
@@ -373,6 +375,7 @@ func (s *Service) Acquire(
 			"candidate Job or EXECUTION Lease expired before Assignment commit",
 		)
 	}
+	leaseValidFor := expiresAt.Sub(commitTime)
 	if err := tx.Commit(ctx); err != nil {
 		return Assignment{}, fmt.Errorf("commit Assignment: %w", err)
 	}
@@ -386,11 +389,12 @@ func (s *Service) Acquire(
 		LeaseToken:                 leaseToken,
 		LeaseFence:                 fence,
 		LeaseExpiresAt:             expiresAt,
+		LeaseValidFor:              leaseValidFor,
 	}, nil
 }
 
 func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow) (Assignment, error) {
-	if !row.IssuedAt.Valid || !row.ExpiresAt.Valid {
+	if !row.IssuedAt.Valid || !row.TokenClaimExpiresAt.Valid || !row.ExpiresAt.Valid {
 		return Assignment{}, errors.New("stored Lease timestamps are null")
 	}
 	token, digest, err := s.issueLeaseToken(leaseTokenClaims{
@@ -399,7 +403,7 @@ func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow)
 		Epoch:     row.WorkerEpoch,
 		Fence:     row.Fence,
 		IssuedAt:  row.IssuedAt.Time,
-		ExpiresAt: row.ExpiresAt.Time,
+		ExpiresAt: row.TokenClaimExpiresAt.Time,
 	}, row.SigningKeyID)
 	if err != nil {
 		return Assignment{}, err
@@ -420,13 +424,13 @@ func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow)
 	}, nil
 }
 
-func assignmentWallClock(ctx context.Context, queries *store.Queries) (time.Time, error) {
-	wallClock, err := queries.GetAssignmentWallClockTime(ctx)
+func postgresTime(ctx context.Context, queries *store.Queries) (time.Time, error) {
+	wallClock, err := queries.GetPostgresTime(ctx)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("read Assignment wall clock: %w", err)
+		return time.Time{}, fmt.Errorf("read PostgreSQL time: %w", err)
 	}
 	if !wallClock.Valid {
-		return time.Time{}, errors.New("Assignment wall clock is null")
+		return time.Time{}, errors.New("PostgreSQL time is null")
 	}
 	return wallClock.Time, nil
 }

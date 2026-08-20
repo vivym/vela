@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/vivym/vela/internal/execution"
 )
 
 type AttemptState string
@@ -148,6 +149,51 @@ func (ns NullCreditReservationState) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.CreditReservationState), nil
+}
+
+type ExecutionPhase string
+
+const (
+	ExecutionPhaseQUEUED     ExecutionPhase = "QUEUED"
+	ExecutionPhasePREPARING  ExecutionPhase = "PREPARING"
+	ExecutionPhaseGENERATING ExecutionPhase = "GENERATING"
+	ExecutionPhaseFINALIZING ExecutionPhase = "FINALIZING"
+	ExecutionPhaseRETRYWAIT  ExecutionPhase = "RETRY_WAIT"
+)
+
+func (e *ExecutionPhase) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ExecutionPhase(s)
+	case string:
+		*e = ExecutionPhase(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ExecutionPhase: %T", src)
+	}
+	return nil
+}
+
+type NullExecutionPhase struct {
+	ExecutionPhase ExecutionPhase `json:"execution_phase"`
+	Valid          bool           `json:"valid"` // Valid is true if ExecutionPhase is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullExecutionPhase) Scan(value interface{}) error {
+	if value == nil {
+		ns.ExecutionPhase, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ExecutionPhase.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullExecutionPhase) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ExecutionPhase), nil
 }
 
 type JobState string
@@ -437,23 +483,50 @@ type Attempt struct {
 }
 
 type AttemptLease struct {
-	ID             uuid.UUID          `db:"id" json:"id"`
-	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
-	AttemptID      uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID       uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch    int64              `db:"worker_epoch" json:"worker_epoch"`
-	Phase          LeasePhase         `db:"phase" json:"phase"`
-	OwnerKind      LeaseOwnerKind     `db:"owner_kind" json:"owner_kind"`
-	OwnerID        string             `db:"owner_id" json:"owner_id"`
-	Fence          int64              `db:"fence" json:"fence"`
-	TokenDigest    []byte             `db:"token_digest" json:"token_digest"`
-	SigningKeyID   string             `db:"signing_key_id" json:"signing_key_id"`
-	IssuedAt       pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
-	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	RevokedAt      pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
-	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                     uuid.UUID          `db:"id" json:"id"`
+	OrganizationID         uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID              uuid.UUID          `db:"project_id" json:"project_id"`
+	AttemptID              uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	WorkerID               uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch            int64              `db:"worker_epoch" json:"worker_epoch"`
+	Phase                  LeasePhase         `db:"phase" json:"phase"`
+	OwnerKind              LeaseOwnerKind     `db:"owner_kind" json:"owner_kind"`
+	OwnerID                string             `db:"owner_id" json:"owner_id"`
+	Fence                  int64              `db:"fence" json:"fence"`
+	TokenDigest            []byte             `db:"token_digest" json:"token_digest"`
+	SigningKeyID           string             `db:"signing_key_id" json:"signing_key_id"`
+	IssuedAt               pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	ExpiresAt              pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	RevokedAt              pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	TokenClaimExpiresAt    pgtype.Timestamptz `db:"token_claim_expires_at" json:"token_claim_expires_at"`
+	RenewalProtocolVersion int16              `db:"renewal_protocol_version" json:"renewal_protocol_version"`
+}
+
+type AttemptProgress struct {
+	AttemptID                 uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	OrganizationID            uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                 uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                     uuid.UUID          `db:"job_id" json:"job_id"`
+	WorkerID                  uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch               int64              `db:"worker_epoch" json:"worker_epoch"`
+	Fence                     int64              `db:"fence" json:"fence"`
+	HeartbeatSequence         int64              `db:"heartbeat_sequence" json:"heartbeat_sequence"`
+	RequestHash               []byte             `db:"request_hash" json:"request_hash"`
+	BackendStage              string             `db:"backend_stage" json:"backend_stage"`
+	ExecutionPhase            execution.Phase    `db:"execution_phase" json:"execution_phase"`
+	PhaseProgress             *float64           `db:"phase_progress" json:"phase_progress"`
+	EstimatedRemainingSeconds *int64             `db:"estimated_remaining_seconds" json:"estimated_remaining_seconds"`
+	EstimatedFinishAt         pgtype.Timestamptz `db:"estimated_finish_at" json:"estimated_finish_at"`
+	GpuHealthSummary          []byte             `db:"gpu_health_summary" json:"gpu_health_summary"`
+	LocalArtifactState        []byte             `db:"local_artifact_state" json:"local_artifact_state"`
+	ScratchFreeBytes          int64              `db:"scratch_free_bytes" json:"scratch_free_bytes"`
+	ArtifactStoreReachable    bool               `db:"artifact_store_reachable" json:"artifact_store_reachable"`
+	ProgressUpdatedAt         pgtype.Timestamptz `db:"progress_updated_at" json:"progress_updated_at"`
+	ProgressValidUntil        pgtype.Timestamptz `db:"progress_valid_until" json:"progress_valid_until"`
+	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type Credential struct {
@@ -486,6 +559,13 @@ type CustomerOrganization struct {
 	DisplayName string             `db:"display_name" json:"display_name"`
 	Status      string             `db:"status" json:"status"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ExecutionLeaseRenewalProtocol struct {
+	Singleton         bool               `db:"singleton" json:"singleton"`
+	Enabled           bool               `db:"enabled" json:"enabled"`
+	TransitionReceipt string             `db:"transition_receipt" json:"transition_receipt"`
+	TransitionedAt    pgtype.Timestamptz `db:"transitioned_at" json:"transitioned_at"`
 }
 
 type ExecutionProfileRevision struct {
@@ -561,6 +641,7 @@ type Job struct {
 	UpdatedAt                                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
 	BillableStartedAt                         pgtype.Timestamptz `db:"billable_started_at" json:"billable_started_at"`
+	ExecutionPhase                            *execution.Phase   `db:"execution_phase" json:"execution_phase"`
 }
 
 type ModelRevision struct {
@@ -720,6 +801,23 @@ type VelaPrivateRequestContext struct {
 	EstablishedAt  pgtype.Timestamptz `db:"established_at" json:"established_at"`
 }
 
+type VelaRequestExecutionLeaseRenewalProtocol struct {
+	Enabled bool `db:"enabled" json:"enabled"`
+}
+
+type VelaRequestJobProgress struct {
+	JobID             uuid.UUID          `db:"job_id" json:"job_id"`
+	PhaseProgress     float64            `db:"phase_progress" json:"phase_progress"`
+	EstimatedFinishAt pgtype.Timestamptz `db:"estimated_finish_at" json:"estimated_finish_at"`
+	ProgressUpdatedAt pgtype.Timestamptz `db:"progress_updated_at" json:"progress_updated_at"`
+}
+
+type VelaRequestJobRuntime struct {
+	JobID           uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptsStarted int32              `db:"attempts_started" json:"attempts_started"`
+	NextRetryAt     pgtype.Timestamptz `db:"next_retry_at" json:"next_retry_at"`
+}
+
 type Worker struct {
 	ID                    uuid.UUID                   `db:"id" json:"id"`
 	WorkerPoolID          uuid.UUID                   `db:"worker_pool_id" json:"worker_pool_id"`
@@ -729,6 +827,7 @@ type Worker struct {
 	ReachabilityCondition WorkerReachabilityCondition `db:"reachability_condition" json:"reachability_condition"`
 	CreatedAt             pgtype.Timestamptz          `db:"created_at" json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
+	LastHeartbeatAt       pgtype.Timestamptz          `db:"last_heartbeat_at" json:"last_heartbeat_at"`
 }
 
 type WorkerEpoch struct {

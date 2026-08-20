@@ -234,18 +234,26 @@ INSERT INTO outbox_events (
 
 -- name: GetJob :one
 SELECT
-    id,
-    project_id,
-    state,
-    pricing_rate_card_revision_id,
-    pricing_rate_line_id,
-    pricing_unit_amount_minor,
-    pricing_quantity,
-    pricing_quoted_amount_minor,
-    pricing_currency,
-    job_expires_at,
-    created_at
-FROM jobs
-WHERE organization_id = sqlc.arg(organization_id)
-  AND project_id = sqlc.arg(project_id)
-  AND id = sqlc.arg(job_id);
+    j.id,
+    j.project_id,
+    j.state,
+    j.execution_phase,
+    j.pricing_rate_card_revision_id,
+    j.pricing_rate_line_id,
+    j.pricing_unit_amount_minor,
+    j.pricing_quantity,
+    j.pricing_quoted_amount_minor,
+    j.pricing_currency,
+    rts.attempts_started,
+    rts.next_retry_at,
+    ap.phase_progress,
+    ap.estimated_finish_at,
+    ap.progress_updated_at,
+    j.job_expires_at,
+    j.created_at
+FROM jobs AS j
+JOIN vela_request_job_runtime AS rts ON rts.job_id = j.id
+LEFT JOIN vela_request_job_progress AS ap ON ap.job_id = j.id
+WHERE j.organization_id = sqlc.arg(organization_id)
+  AND j.project_id = sqlc.arg(project_id)
+  AND j.id = sqlc.arg(job_id);

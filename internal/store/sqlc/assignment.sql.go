@@ -39,6 +39,7 @@ SELECT
     l.signing_key_id,
     l.token_digest,
     l.issued_at,
+    l.token_claim_expires_at,
     l.expires_at
 FROM attempts AS a
 JOIN attempt_leases AS l ON l.attempt_id = a.id
@@ -71,6 +72,7 @@ type GetActiveWorkerAssignmentRow struct {
 	SigningKeyID               string             `db:"signing_key_id" json:"signing_key_id"`
 	TokenDigest                []byte             `db:"token_digest" json:"token_digest"`
 	IssuedAt                   pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	TokenClaimExpiresAt        pgtype.Timestamptz `db:"token_claim_expires_at" json:"token_claim_expires_at"`
 	ExpiresAt                  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
@@ -88,17 +90,18 @@ func (q *Queries) GetActiveWorkerAssignment(ctx context.Context, arg GetActiveWo
 		&i.SigningKeyID,
 		&i.TokenDigest,
 		&i.IssuedAt,
+		&i.TokenClaimExpiresAt,
 		&i.ExpiresAt,
 	)
 	return i, err
 }
 
-const getAssignmentWallClockTime = `-- name: GetAssignmentWallClockTime :one
+const getPostgresTime = `-- name: GetPostgresTime :one
 SELECT clock_timestamp()::timestamptz
 `
 
-func (q *Queries) GetAssignmentWallClockTime(ctx context.Context) (pgtype.Timestamptz, error) {
-	row := q.db.QueryRow(ctx, getAssignmentWallClockTime)
+func (q *Queries) GetPostgresTime(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getPostgresTime)
 	var column_1 pgtype.Timestamptz
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -260,6 +263,7 @@ INSERT INTO attempt_leases (
     token_digest,
     signing_key_id,
     issued_at,
+    renewal_protocol_version,
     expires_at
 ) VALUES (
     $1,
@@ -275,6 +279,7 @@ INSERT INTO attempt_leases (
     $9,
     $10,
     $11,
+    2,
     $12
 )
 `
@@ -445,14 +450,14 @@ func (q *Queries) LockProjectForAssignment(ctx context.Context, arg LockProjectF
 	return i, err
 }
 
-const lockWorkerForAssignment = `-- name: LockWorkerForAssignment :one
+const lockWorkerAuthority = `-- name: LockWorkerAuthority :one
 SELECT id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
 FROM workers
 WHERE id = $1
 FOR UPDATE
 `
 
-type LockWorkerForAssignmentRow struct {
+type LockWorkerAuthorityRow struct {
 	ID                    uuid.UUID                   `db:"id" json:"id"`
 	WorkerPoolID          uuid.UUID                   `db:"worker_pool_id" json:"worker_pool_id"`
 	SpiffeID              string                      `db:"spiffe_id" json:"spiffe_id"`
@@ -461,9 +466,9 @@ type LockWorkerForAssignmentRow struct {
 	ReachabilityCondition WorkerReachabilityCondition `db:"reachability_condition" json:"reachability_condition"`
 }
 
-func (q *Queries) LockWorkerForAssignment(ctx context.Context, workerID uuid.UUID) (LockWorkerForAssignmentRow, error) {
-	row := q.db.QueryRow(ctx, lockWorkerForAssignment, workerID)
-	var i LockWorkerForAssignmentRow
+func (q *Queries) LockWorkerAuthority(ctx context.Context, workerID uuid.UUID) (LockWorkerAuthorityRow, error) {
+	row := q.db.QueryRow(ctx, lockWorkerAuthority, workerID)
+	var i LockWorkerAuthorityRow
 	err := row.Scan(
 		&i.ID,
 		&i.WorkerPoolID,

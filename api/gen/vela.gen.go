@@ -22,39 +22,66 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ExecutionPhase.
+const (
+	ExecutionPhaseFINALIZING ExecutionPhase = "FINALIZING"
+	ExecutionPhaseGENERATING ExecutionPhase = "GENERATING"
+	ExecutionPhasePREPARING  ExecutionPhase = "PREPARING"
+	ExecutionPhaseQUEUED     ExecutionPhase = "QUEUED"
+	ExecutionPhaseRETRYWAIT  ExecutionPhase = "RETRY_WAIT"
+)
+
+// Valid indicates whether the value is a known member of the ExecutionPhase enum.
+func (e ExecutionPhase) Valid() bool {
+	switch e {
+	case ExecutionPhaseFINALIZING:
+		return true
+	case ExecutionPhaseGENERATING:
+		return true
+	case ExecutionPhasePREPARING:
+		return true
+	case ExecutionPhaseQUEUED:
+		return true
+	case ExecutionPhaseRETRYWAIT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for JobState.
 const (
-	ASSIGNED   JobState = "ASSIGNED"
-	CANCELED   JobState = "CANCELED"
-	CANCELING  JobState = "CANCELING"
-	FAILED     JobState = "FAILED"
-	FINALIZING JobState = "FINALIZING"
-	QUEUED     JobState = "QUEUED"
-	RETRYWAIT  JobState = "RETRY_WAIT"
-	RUNNING    JobState = "RUNNING"
-	SUCCEEDED  JobState = "SUCCEEDED"
+	JobStateASSIGNED   JobState = "ASSIGNED"
+	JobStateCANCELED   JobState = "CANCELED"
+	JobStateCANCELING  JobState = "CANCELING"
+	JobStateFAILED     JobState = "FAILED"
+	JobStateFINALIZING JobState = "FINALIZING"
+	JobStateQUEUED     JobState = "QUEUED"
+	JobStateRETRYWAIT  JobState = "RETRY_WAIT"
+	JobStateRUNNING    JobState = "RUNNING"
+	JobStateSUCCEEDED  JobState = "SUCCEEDED"
 )
 
 // Valid indicates whether the value is a known member of the JobState enum.
 func (e JobState) Valid() bool {
 	switch e {
-	case ASSIGNED:
+	case JobStateASSIGNED:
 		return true
-	case CANCELED:
+	case JobStateCANCELED:
 		return true
-	case CANCELING:
+	case JobStateCANCELING:
 		return true
-	case FAILED:
+	case JobStateFAILED:
 		return true
-	case FINALIZING:
+	case JobStateFINALIZING:
 		return true
-	case QUEUED:
+	case JobStateQUEUED:
 		return true
-	case RETRYWAIT:
+	case JobStateRETRYWAIT:
 		return true
-	case RUNNING:
+	case JobStateRUNNING:
 		return true
-	case SUCCEEDED:
+	case JobStateSUCCEEDED:
 		return true
 	default:
 		return false
@@ -104,14 +131,23 @@ type Error struct {
 	RequestId *string `json:"request_id,omitempty"`
 }
 
+// ExecutionPhase defines model for ExecutionPhase.
+type ExecutionPhase string
+
 // Job defines model for Job.
 type Job struct {
-	CreatedAt    time.Time          `json:"created_at"`
-	JobExpiresAt time.Time          `json:"job_expires_at"`
-	JobId        openapi_types.UUID `json:"job_id"`
-	Pricing      PricingSnapshot    `json:"pricing"`
-	ProjectId    openapi_types.UUID `json:"project_id"`
-	State        JobState           `json:"state"`
+	AttemptsStarted   int                `json:"attempts_started"`
+	CreatedAt         time.Time          `json:"created_at"`
+	EstimatedFinishAt *time.Time         `json:"estimated_finish_at,omitempty"`
+	JobExpiresAt      time.Time          `json:"job_expires_at"`
+	JobId             openapi_types.UUID `json:"job_id"`
+	NextRetryAt       *time.Time         `json:"next_retry_at,omitempty"`
+	Phase             *ExecutionPhase    `json:"phase,omitempty"`
+	PhaseProgress     *float64           `json:"phase_progress,omitempty"`
+	Pricing           PricingSnapshot    `json:"pricing"`
+	ProgressUpdatedAt *time.Time         `json:"progress_updated_at,omitempty"`
+	ProjectId         openapi_types.UUID `json:"project_id"`
+	State             JobState           `json:"state"`
 }
 
 // JobState defines model for JobState.
@@ -745,30 +781,32 @@ func (sh *strictHandler) GetJob(w http.ResponseWriter, r *http.Request, projectI
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"vFhfU9s4EP8qGl3fziEBep1r3lIamHAcw5FyN1eGy8jWhojakpHWlJTxd79ZyYmdxDTQlj7FjrXa3+7+",
-	"9o/0wBOT5UaDRsf7D3wGQoL1j+eAdj6YIlh6k+ASq3JURvM+H0NitHQshqmxwHAGLEkVaGRuZopUMkvC",
-	"bCAz5ZwyeodH3CUzyATtlSmtsiLj/d2I4zwH3udKI1yD5WVZRjwXVmSAFY6RhCw3CDqZ/wFz+kcRhICU",
-	"R1yLjHZoLOvQuohbuC2UBcn7aAtYASDuT0Bf44z3d/d+jwjQ8p3UI4IlHf9dDjofRedLr/N2Z9LvXP36",
-	"ii8RO7RKX3PCe2zikVwCywXOalg3Jp4o+VU0U2MzgbzPi8Kv3FRwZs0NJPiokjx8/15FJQm73GgH3vPv",
-	"hDyH2wIc0ltiNIL2jyLPU5UIIkP3xhEjHhpqXlmY8j7/pVtTqxu+uu7QWlNFeZVRlSJ2J1Il/c5sKlQK",
-	"kpcRPzQ2VlKCfnkcZ1bpROUiZalIPjlP7YVHWRUH5hKTAwG70KLAmbHqC8iXx3ZgQYJGJVKmHBOxo4Qz",
-	"lintveapUm1COsI+BEVKRVuI9MyaHCwqiu9UpA4i4s7yLzJAAv2uUSPiGTgnrtu/2RA7ot/m57LJyMug",
-	"oN7uaslCE5NreUin56K2IBDkROAKzaVA6KDKYJPrkU9MuM+VBfdsuWDolnQikCqhxy3xPgvLxlrkbmYw",
-	"SC4T+imKHAqEbWqOTTz269ZDsixRK2Uk7FkbseGxqOn2R+I4XgADTfX+kv91MbwYvucRH4zHo6NT/3h+",
-	"cXo6Oj3iET8cnQ5ORh/Dy/nww/m/k38Gow884geD04PhSfgwvjg4GA7fe9nDwejEP4QFw/cNJLV/1j38",
-	"THYV1lJboee13nD1sF++aovIbSE0Kpxva3e00ngfZqbQOMmUDjm7jLnS+OY1j+pdem27WIEwSYSVEwt3",
-	"ilruU7njJVOl4akChVb4fXDX+NeOfQ1Zm96Gm9v9GNWxayPouIgzhccmbnS55/DCTzyTDFBIgeJx6dCH",
-	"V9VH/L5zbTrVn9Qgds7F5z+rslhG/Bo0WN8+JgmZVM0tFZPeRFto1RDPLTjAZhbeFiINXotFKnQC5N+p",
-	"cNiaPZmRkK6PTb3e+ti0IWcKzAucuBySb5DOrclyXBPc6/WeIOrA3qkEJkkqnGva7VBoKaxsMXONk8Hm",
-	"Njeub79qZ0vclqZsUtBjTQqrcD6mKh14FYOwYAcFmbd4O1zk19+QinoOWIzVtGlYWGfsDDEPU4TSU7M5",
-	"w1fDTMcPM5IJN9fJzBptCscGI1bbwQZnIxrgUWEKFQT6j0f8DqwLu+3u9HZ6Puo5aJEr3uf7O72dfe7n",
-	"6Zk3rHu32616jOs+1N2m7N6Y2K/ITchCyh2vm0beOk/56tngsr3h1Uu69eBcRlsXrx00yqvlZPPOyPkP",
-	"G+82qk65Sj6qFuuT+F5v74fpJz+2DJfHJmYiSSBHkEwWVsTpnOL5utd7bMclxG7jpOBFdreLrIzOXmjv",
-	"J0zQRqMVCTJKIYXsRGUKaZhW2hXTqUqoogc0+9tNqI8lXuLty+NvUJR9gjn7LFwdtM8KZ0yq6RQsHQwW",
-	"SAjb3tufcXIKh6PbAgpg6cKzcD8ThUPfYtZvFzrL64U2jdXqbuMiwqv9LcTmpZmS5QJVnAJLRC4ShXOy",
-	"ptDiTqhUxCn8IHuoBxRZJux8WemYYJSNU2OrRIT6JsU3ja8X0u5DmOhLAnINLQX1CF6+moZLkVBEVypZ",
-	"76Ur2YGf+dD7MJxivr0mPb8KvH55bpJhyjFtkNG8TPxQmuFMucUNBV+l1REgqyxDgeoOljcZDR81pxHP",
-	"huYccnlFkaTJZ8GVwqa8z7u8vCr/DwAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
