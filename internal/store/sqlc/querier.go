@@ -8,29 +8,45 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
 	ClaimOutboxEvents(ctx context.Context, arg ClaimOutboxEventsParams) ([]ClaimOutboxEventsRow, error)
+	DecrementPoolQueuedForAssignment(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
+	GetActiveWorkerAssignment(ctx context.Context, arg GetActiveWorkerAssignmentParams) (GetActiveWorkerAssignmentRow, error)
+	GetAssignmentWallClockTime(ctx context.Context) (pgtype.Timestamptz, error)
 	GetIdempotencyResult(ctx context.Context, arg GetIdempotencyResultParams) (GetIdempotencyResultRow, error)
 	GetJob(ctx context.Context, arg GetJobParams) (GetJobRow, error)
+	IncrementAttemptsStarted(ctx context.Context, arg IncrementAttemptsStartedParams) (int64, error)
 	IncrementPoolQueued(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
 	IncrementProjectQueued(ctx context.Context, arg IncrementProjectQueuedParams) (int64, error)
+	InsertAssignmentOutboxEvent(ctx context.Context, arg InsertAssignmentOutboxEventParams) error
+	InsertAttempt(ctx context.Context, arg InsertAttemptParams) error
 	InsertCreditReservation(ctx context.Context, arg InsertCreditReservationParams) error
+	InsertExecutionLease(ctx context.Context, arg InsertExecutionLeaseParams) error
 	InsertIdempotencyResult(ctx context.Context, arg InsertIdempotencyResultParams) error
 	InsertJob(ctx context.Context, arg InsertJobParams) error
 	InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error
 	InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRuntimeStateParams) error
+	ListActiveLeaseSigningKeyIDs(ctx context.Context) ([]string, error)
 	LockCompatiblePool(ctx context.Context, arg LockCompatiblePoolParams) (LockCompatiblePoolRow, error)
 	LockCreditAccount(ctx context.Context, organizationID uuid.UUID) (LockCreditAccountRow, error)
 	LockIdempotencyKey(ctx context.Context, arg LockIdempotencyKeyParams) (interface{}, error)
+	LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (LockJobForAssignmentRow, error)
 	LockProjectForAdmission(ctx context.Context, arg LockProjectForAdmissionParams) (LockProjectForAdmissionRow, error)
+	LockProjectForAssignment(ctx context.Context, arg LockProjectForAssignmentParams) (LockProjectForAssignmentRow, error)
+	LockWorkerForAssignment(ctx context.Context, workerID uuid.UUID) (LockWorkerForAssignmentRow, error)
+	MarkJobAssigned(ctx context.Context, arg MarkJobAssignedParams) (int64, error)
 	MarkOutboxFailed(ctx context.Context, arg MarkOutboxFailedParams) (int64, error)
 	MarkOutboxPublished(ctx context.Context, arg MarkOutboxPublishedParams) (int64, error)
+	MarkWorkerBusy(ctx context.Context, arg MarkWorkerBusyParams) (int64, error)
+	MoveProjectCountersToRunning(ctx context.Context, arg MoveProjectCountersToRunningParams) (int64, error)
 	RecordInboxReceipt(ctx context.Context, arg RecordInboxReceiptParams) (uuid.UUID, error)
 	ReserveOrganizationCredit(ctx context.Context, arg ReserveOrganizationCreditParams) (int64, error)
 	ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUParams) (ResolveActiveSKURow, error)
 	SetRequestContext(ctx context.Context, arg SetRequestContextParams) (SetRequestContextRow, error)
+	ValidateProfileForAssignment(ctx context.Context, arg ValidateProfileForAssignmentParams) (uuid.UUID, error)
 }
 
 var _ Querier = (*Queries)(nil)

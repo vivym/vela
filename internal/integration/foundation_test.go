@@ -273,6 +273,7 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 		t.Fatalf("migrate up: %v", err)
 	}
 	assertTableExists(t, db, "retry_runtime_states")
+	assertTableExists(t, db, "attempts")
 
 	if err := goose.Down(db, migrations); err != nil {
 		t.Fatalf("migrate down: %v", err)
@@ -280,11 +281,13 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 	assertRoleExists(t, db, "vela_request")
 	assertRoleExists(t, db, "vela_auth")
 	assertRoleExists(t, db, "vela_internal")
+	assertTableDoesNotExist(t, db, "attempts")
 
 	if err := goose.Up(db, migrations); err != nil {
 		t.Fatalf("second migrate up: %v", err)
 	}
 	assertTableExists(t, db, "retry_runtime_states")
+	assertTableExists(t, db, "attempts")
 }
 
 type testDatabase struct {
@@ -356,6 +359,20 @@ func assertTableExists(t *testing.T, db *sql.DB, table string) {
 	}
 	if !exists {
 		t.Errorf("expected table %s to exist", table)
+	}
+}
+
+func assertTableDoesNotExist(t *testing.T, db *sql.DB, table string) {
+	t.Helper()
+	var exists bool
+	if err := db.QueryRow(
+		"SELECT to_regclass('public.' || $1) IS NOT NULL",
+		table,
+	).Scan(&exists); err != nil {
+		t.Fatalf("check table %s absence: %v", table, err)
+	}
+	if exists {
+		t.Errorf("expected table %s not to exist", table)
 	}
 }
 

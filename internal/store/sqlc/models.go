@@ -12,6 +12,53 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AttemptState string
+
+const (
+	AttemptStateASSIGNED   AttemptState = "ASSIGNED"
+	AttemptStateRUNNING    AttemptState = "RUNNING"
+	AttemptStateFINALIZING AttemptState = "FINALIZING"
+	AttemptStateSUCCEEDED  AttemptState = "SUCCEEDED"
+	AttemptStateFAILED     AttemptState = "FAILED"
+	AttemptStateLOST       AttemptState = "LOST"
+	AttemptStateCANCELED   AttemptState = "CANCELED"
+)
+
+func (e *AttemptState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = AttemptState(s)
+	case string:
+		*e = AttemptState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for AttemptState: %T", src)
+	}
+	return nil
+}
+
+type NullAttemptState struct {
+	AttemptState AttemptState `json:"attempt_state"`
+	Valid        bool         `json:"valid"` // Valid is true if AttemptState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullAttemptState) Scan(value interface{}) error {
+	if value == nil {
+		ns.AttemptState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.AttemptState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullAttemptState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.AttemptState), nil
+}
+
 type CatalogState string
 
 const (
@@ -152,6 +199,90 @@ func (ns NullJobState) Value() (driver.Value, error) {
 	return string(ns.JobState), nil
 }
 
+type LeaseOwnerKind string
+
+const (
+	LeaseOwnerKindWORKER     LeaseOwnerKind = "WORKER"
+	LeaseOwnerKindRECONCILER LeaseOwnerKind = "RECONCILER"
+)
+
+func (e *LeaseOwnerKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeaseOwnerKind(s)
+	case string:
+		*e = LeaseOwnerKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeaseOwnerKind: %T", src)
+	}
+	return nil
+}
+
+type NullLeaseOwnerKind struct {
+	LeaseOwnerKind LeaseOwnerKind `json:"lease_owner_kind"`
+	Valid          bool           `json:"valid"` // Valid is true if LeaseOwnerKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeaseOwnerKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeaseOwnerKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeaseOwnerKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeaseOwnerKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeaseOwnerKind), nil
+}
+
+type LeasePhase string
+
+const (
+	LeasePhaseEXECUTION    LeasePhase = "EXECUTION"
+	LeasePhaseFINALIZATION LeasePhase = "FINALIZATION"
+)
+
+func (e *LeasePhase) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LeasePhase(s)
+	case string:
+		*e = LeasePhase(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LeasePhase: %T", src)
+	}
+	return nil
+}
+
+type NullLeasePhase struct {
+	LeasePhase LeasePhase `json:"lease_phase"`
+	Valid      bool       `json:"valid"` // Valid is true if LeasePhase is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLeasePhase) Scan(value interface{}) error {
+	if value == nil {
+		ns.LeasePhase, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LeasePhase.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLeasePhase) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LeasePhase), nil
+}
+
 type PrincipalKind string
 
 const (
@@ -192,6 +323,137 @@ func (ns NullPrincipalKind) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.PrincipalKind), nil
+}
+
+type WorkerLifecycleState string
+
+const (
+	WorkerLifecycleStateREGISTERING WorkerLifecycleState = "REGISTERING"
+	WorkerLifecycleStateWARMING     WorkerLifecycleState = "WARMING"
+	WorkerLifecycleStateREADY       WorkerLifecycleState = "READY"
+	WorkerLifecycleStateBUSY        WorkerLifecycleState = "BUSY"
+	WorkerLifecycleStateDRAINING    WorkerLifecycleState = "DRAINING"
+	WorkerLifecycleStateRECOVERING  WorkerLifecycleState = "RECOVERING"
+	WorkerLifecycleStateQUARANTINED WorkerLifecycleState = "QUARANTINED"
+)
+
+func (e *WorkerLifecycleState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WorkerLifecycleState(s)
+	case string:
+		*e = WorkerLifecycleState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WorkerLifecycleState: %T", src)
+	}
+	return nil
+}
+
+type NullWorkerLifecycleState struct {
+	WorkerLifecycleState WorkerLifecycleState `json:"worker_lifecycle_state"`
+	Valid                bool                 `json:"valid"` // Valid is true if WorkerLifecycleState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWorkerLifecycleState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WorkerLifecycleState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WorkerLifecycleState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWorkerLifecycleState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WorkerLifecycleState), nil
+}
+
+type WorkerReachabilityCondition string
+
+const (
+	WorkerReachabilityConditionHEALTHY WorkerReachabilityCondition = "HEALTHY"
+	WorkerReachabilityConditionSUSPECT WorkerReachabilityCondition = "SUSPECT"
+	WorkerReachabilityConditionOFFLINE WorkerReachabilityCondition = "OFFLINE"
+)
+
+func (e *WorkerReachabilityCondition) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WorkerReachabilityCondition(s)
+	case string:
+		*e = WorkerReachabilityCondition(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WorkerReachabilityCondition: %T", src)
+	}
+	return nil
+}
+
+type NullWorkerReachabilityCondition struct {
+	WorkerReachabilityCondition WorkerReachabilityCondition `json:"worker_reachability_condition"`
+	Valid                       bool                        `json:"valid"` // Valid is true if WorkerReachabilityCondition is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWorkerReachabilityCondition) Scan(value interface{}) error {
+	if value == nil {
+		ns.WorkerReachabilityCondition, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WorkerReachabilityCondition.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWorkerReachabilityCondition) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WorkerReachabilityCondition), nil
+}
+
+type Attempt struct {
+	ID                         uuid.UUID          `db:"id" json:"id"`
+	OrganizationID             uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                  uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                      uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptNumber              int32              `db:"attempt_number" json:"attempt_number"`
+	ExecutionProfileRevisionID uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	WorkerPoolID               uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerID                   uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                int64              `db:"worker_epoch" json:"worker_epoch"`
+	State                      AttemptState       `db:"state" json:"state"`
+	Fence                      int64              `db:"fence" json:"fence"`
+	AssignedAt                 pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
+	StartedAt                  pgtype.Timestamptz `db:"started_at" json:"started_at"`
+	FinalizationStartedAt      pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
+	FinalizationDeadlineAt     pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	EndedAt                    pgtype.Timestamptz `db:"ended_at" json:"ended_at"`
+	CreatedAt                  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type AttemptLease struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
+	AttemptID      uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	WorkerID       uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch    int64              `db:"worker_epoch" json:"worker_epoch"`
+	Phase          LeasePhase         `db:"phase" json:"phase"`
+	OwnerKind      LeaseOwnerKind     `db:"owner_kind" json:"owner_kind"`
+	OwnerID        string             `db:"owner_id" json:"owner_id"`
+	Fence          int64              `db:"fence" json:"fence"`
+	TokenDigest    []byte             `db:"token_digest" json:"token_digest"`
+	SigningKeyID   string             `db:"signing_key_id" json:"signing_key_id"`
+	IssuedAt       pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	RevokedAt      pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type Credential struct {
@@ -297,6 +559,7 @@ type Job struct {
 	JobExpiresAt                              pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
 	CreatedAt                                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
 }
 
 type ModelRevision struct {
@@ -454,6 +717,23 @@ type VelaPrivateRequestContext struct {
 	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
 	PrincipalID    uuid.UUID          `db:"principal_id" json:"principal_id"`
 	EstablishedAt  pgtype.Timestamptz `db:"established_at" json:"established_at"`
+}
+
+type Worker struct {
+	ID                    uuid.UUID                   `db:"id" json:"id"`
+	WorkerPoolID          uuid.UUID                   `db:"worker_pool_id" json:"worker_pool_id"`
+	SpiffeID              string                      `db:"spiffe_id" json:"spiffe_id"`
+	Epoch                 int64                       `db:"epoch" json:"epoch"`
+	LifecycleState        WorkerLifecycleState        `db:"lifecycle_state" json:"lifecycle_state"`
+	ReachabilityCondition WorkerReachabilityCondition `db:"reachability_condition" json:"reachability_condition"`
+	CreatedAt             pgtype.Timestamptz          `db:"created_at" json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
+}
+
+type WorkerEpoch struct {
+	WorkerID     uuid.UUID          `db:"worker_id" json:"worker_id"`
+	Epoch        int64              `db:"epoch" json:"epoch"`
+	RegisteredAt pgtype.Timestamptz `db:"registered_at" json:"registered_at"`
 }
 
 type WorkerPool struct {

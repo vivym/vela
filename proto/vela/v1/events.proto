@@ -16,6 +16,7 @@ message EventEnvelope {
   google.protobuf.Timestamp occurred_at = 7;
   oneof payload {
     JobReady job_ready = 20;
+    JobAssigned job_assigned = 21;
   }
 }
 
@@ -27,4 +28,17 @@ message JobReady {
   string generation_preset_revision_id = 5;
   string service_class_revision_id = 6;
   string output_spec_id = 7;
+}
+
+message JobAssigned {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string attempt_id = 4;
+  uint32 attempt_number = 5;
+  string worker_id = 6;
+  uint64 worker_epoch = 7;
+  string execution_profile_revision_id = 8;
+  uint64 lease_fence = 9;
+  google.protobuf.Timestamp lease_expires_at = 10;
 }
