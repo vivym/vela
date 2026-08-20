@@ -128,6 +128,10 @@ H3 Worker Pod ----------------+-----------------------> Job Coordinator
             |
      Artifact Validator / Reconciler -----------------> Job Coordinator
 
+PostgreSQL Outbox ----> Outbox Dispatcher ----> NATS JetStream
+                                                   |
+                                                   +-- wake Scheduler / Billing / Fleet / Reconciler
+
 Fleet Controller ------> Kubernetes Worker Pool ------> H3 Worker Pod
 
 Node Health Controller
@@ -146,7 +150,7 @@ vela-node-agent (host systemd)
 
 负责认证、租户识别、限流、请求大小限制和外部协议适配。API Gateway 不代理视频上传或下载，也不保存 Job 状态。
 
-第一版客户端接口：
+外部 Interface 固定为 REST / JSON，并由 OpenAPI 描述；Envoy Gateway 负责 TLS termination、基础限流和路由，`vela-control` 负责租户认证、幂等和领域校验。第一版客户端接口：
 
 ```text
 POST   /v1/jobs
@@ -180,7 +184,9 @@ complete(lease_credentials, artifact_set_candidate) -> Accepted
 fail(lease_credentials, failure)                -> RetryDecision
 ```
 
-具体使用 gRPC、HTTP 或消息协议属于 transport adapter 的选择，不改变上述语义。
+MVP 的 Worker transport adapter 固定为 Protobuf / gRPC 双向流。Worker 主动建立 mTLS 连接，只在本地 capacity 可用时调用 `acquire()`；服务端从 mTLS 身份解析 `worker_id`，请求显式携带持久化到本进程状态的 `worker_epoch`。Coordinator 通过同一流或 heartbeat 响应返回 `Continue`、`Stop`、`Drain` 和 Lease 更新。`acquire()` 是 read-or-create 操作：同一 `(worker_id, worker_epoch)` 已有未终结 Assignment 时，必须先重放原 `attempt_id`、Lease token、fence 和原始 `expires_at`，不能创建第二个 Attempt 或因重放延长 Lease。Assignment 一旦在 PostgreSQL 提交即可确认传输事件，40 到 50 分钟的执行所有权由 Lease / fence 保证，不能依赖一条长期 unacked 的 NATS 消息。
+
+Job Coordinator 对内暴露上述小 Interface，生产使用 gRPC adapter，状态机测试使用 in-memory adapter。HTTP、gRPC 和 NATS transport 都不能绕过 Job Coordinator 直接修改持久状态。
 
 ### 6.3 Scheduler
 
@@ -206,7 +212,9 @@ Worker 重启后必须递增 `worker_epoch`。旧 epoch 签发的 Lease 不能�
 
 ### 6.5 Inference Worker
 
-Inference Worker 是长期运行并已预热的进程。H3 第一版中，一个 Pod 独占整台 8-GPU 节点，SGLang fork 在 Pod 内协调 Encoder、DiT 和 VAE 进程。
+Inference Worker 是长期运行并已预热的进程。H3 第一版中，一个 Pod 独占整台 8-GPU 节点，并拆成两个职责明确的进程：Go `vela-worker-agent` 管理 Assignment、Lease、heartbeat、ArtifactUpload 和 finalization；Python H3 runner 封装 SGLang fork，并协调 Encoder、DiT 和 VAE 进程。
+
+二者通过 Pod 内 Unix domain socket 上的 Protobuf / gRPC Interface 通信，最小方法为 `prepare()`、`start()`、`cancel()`、`status()` 和 `collect_outputs()`。未来的 LLM runner 是该 Interface 的另一个 adapter，不把 backend-specific tensor 或进程细节暴露给 Worker Agent。
 
 Worker 负责：
 
@@ -216,6 +224,8 @@ Worker 负责：
 - 将生成结果写入本地 NVMe scratch。
 - 上传全部必需 Artifact 并提交 ArtifactSetCandidate。
 - 在 Lease 被拒绝或收到 Stop 后终止执行并清理临时资源。
+
+Coordinator 的 Assignment / heartbeat 响应除持久化的 `expires_at` 外，还必须携带按 PostgreSQL 当前时间计算的 `lease_valid_for`。Worker 在发出对应请求前记录 monotonic timestamp，并以 `request_started_monotonic + lease_valid_for` 作为本地 fail-closed deadline；网络往返时间因此会缩短而不会延长可执行窗口。Worker 不使用本地 wall clock 比较 `expires_at`，收不到续租响应时必须在本地 monotonic deadline 前停止推进和提交。
 
 ### 6.6 Node Health Controller 与 vela-node-agent
 
@@ -245,11 +255,35 @@ Model Catalog 管理 ModelRevision、InferenceBackendRevision、ExecutionProfile
 
 Fleet Controller 将 Catalog 中的 ExecutionProfileRevision 实现为 Kubernetes Worker pool，并负责 warm-up、canary、planned drain、rollout 和 retirement。它只能通过 Job Coordinator 请求 drain/fence，不能直接终止仍拥有有效 Lease 的 Worker。
 
+由于 Fleet Controller / Node Health Controller 与 `vela-control` 是不同进程，`vela-control` 提供仅供其 service identity 调用的 mTLS gRPC maintenance Interface：
+
+```text
+request_drain(operation_id, worker_id, expected_epoch, reason, deadline) -> DrainOperation
+get_drain(operation_id)                                                  -> DrainStatus
+request_fence(operation_id, worker_id, expected_epoch, reason)          -> FenceResult
+```
+
+`operation_id` 是幂等键；Job Coordinator 在 PostgreSQL 事务中完成 Lifecycle State 转换、停止新 Assignment 和 Lease fencing。Controller 只有得到持久化的完成状态后才能要求 Kubernetes 删除 Pod 或要求 Node Agent 执行恢复动作，不能直写 Job / Worker 表。
+
 ### 6.11 Artifact Validator / Reconciler
 
 Artifact Validator 验证对象身份、checksum、媒体规格和完整结果集。Artifact Reconciler 修复 Worker 在 multipart upload 完成后、ArtifactSet commit 前失联留下的中间状态，并清理无法恢复的 upload session 和孤儿对象。二者通过 Artifact Store interface 工作，不直接依赖具体对象存储产品。
 
 Artifact Reconciler 不持有 Worker 的执行凭据。Job Coordinator 只能在原 Attempt 尚未被替代、ArtifactUpload 可恢复且 finalization budget 未耗尽时，为它签发同一 fence 的 FINALIZATION Lease。该 Lease 只能上传、验证和提交既有结果，不能重新运行推理。
+
+### 6.12 实现与部署单元
+
+逻辑 Module 不等于独立网络进程。MVP 使用同一个 Go module / repository，并只在权限、生命周期或真实远程依赖不同处拆部署单元：
+
+| 部署单元 | 语言 | 包含的 Module | 拆分原因 |
+| --- | --- | --- | --- |
+| `vela-control` | Go | HTTP adapter、Job Coordinator、Scheduler、Worker Registry、Model Catalog、Billing Ledger、Artifact Validator / Reconciler、outbox dispatcher | 共享 PostgreSQL 事务和领域不变量，保持模块化单体 |
+| `vela-fleet-controller` | Go | Fleet Controller、Node Health Controller | 独立 Kubernetes RBAC 与 rollout 生命周期 |
+| `vela-worker-agent` | Go | Worker protocol、Lease client、Artifact upload / validation client | 与推理 runner 分离，保持长连接和恢复语义稳定 |
+| H3 runner | Python | SGLang fork、GPU role binding、模型执行 | 保留 Python / CUDA 推理生态 |
+| `vela-node-agent` | Go | allowlisted remediation executor | host systemd 高权限进程，不依赖 Kubernetes 或 container runtime |
+
+`vela-control` 可以运行多个相同 replica；后台循环使用 row claim、advisory lock 或唯一约束竞争，不为同进程内的 Scheduler、Catalog 和 Billing 增加网络 Interface。对象存储、支付、Kubernetes、Worker、Inference Backend，以及跨进程的 Fleet / Node Health maintenance command 这些真实变化点定义 adapter seam。
 
 ## 7. 领域模型
 
@@ -336,15 +370,29 @@ PostgreSQL 是以下数据的权威事实源：
 - PricingSnapshot、BillingAuthorization、ExecutionPolicySnapshot、UsageRecord 和 Charge 状态。
 - Outbox 事件和恢复审计记录。
 
-第一版可以使用数据库行锁和 `SELECT ... FOR UPDATE SKIP LOCKED` 实现 Job claim。规模或吞吐增长后可以增加专用队列，但不能改变 PostgreSQL 的权威地位。
+第一版使用数据库行锁和 `SELECT ... FOR UPDATE SKIP LOCKED` 实现 Job claim。控制面所有 Lease expiry、deadline 和重试时间比较以 PostgreSQL 时间为准，不能依赖各 Pod 的 wall clock。Worker 只使用服务端返回的 `lease_valid_for` 和本地 monotonic clock 做保守的 fail-closed 倒计时，不能自行延长 Lease。生产 PostgreSQL 必须启用同步提交、跨故障域同步副本、自动 failover、PITR 和定期恢复演练；数据库不可用时系统停止创建新 Assignment。
 
 ### 8.2 队列语义
 
-Redis Streams、NATS JetStream 或 Kafka 可作为唤醒和事件传输设施，具体产品待选。队列消息只携带 `job_id`、事件类型和版本，不携带唯一状态。
+MVP 的可靠事件设施固定为 3-replica NATS JetStream。JetStream 使用 file storage、跨节点 anti-affinity、durable consumer 和 explicit ack；它承载 Job ready、状态变化、Billing、Fleet 和 reconciliation wakeup，但不保存唯一业务状态。消息只携带 `event_id`、aggregate type / id、aggregate version、event type 和 schema version。
 
-所有关键状态变更与 outbox event 必须在同一数据库事务中提交。后台 dispatcher 发布成功后标记 outbox row，重复发布由消费者幂等处理。
+所有关键状态变更与 outbox event 必须在同一 PostgreSQL 事务中提交。Dispatcher 以 `event_id` 作为 `Nats-Msg-Id` 发布，并且只有收到目标 replicated stream 的 quorum-committed `PubAck` 后，才能在独立 PostgreSQL 事务中标记 outbox row 为 published，同时记录 stream 和 sequence receipt。publish timeout、negative ack 或连接中断都视为未发布，以同一 `Nats-Msg-Id` 重试；JetStream duplicate window 必须覆盖 dispatcher 的最大重试间隔，但 broker 去重只用于减少重复，正确性仍由消费者幂等保证。若在 `PubAck` 成功、标记前崩溃，会产生重复消息而不是丢消息。消费者必须先读取 PostgreSQL 当前状态，再以 `event_id`、aggregate version、唯一约束或 compare-and-swap 幂等处理，并且只在本地事务提交后 ack。
 
-Scheduler 必须有周期性 reconciliation scan，即使队列事件丢失也能重新发现可调度 Job、过期 Lease 和待处理计费事件。
+Scheduler 和其他关键 consumer 必须有周期性 reconciliation scan，即使 JetStream 整体不可用、消息过期或 consumer state 丢失，也能从 PostgreSQL 重新发现可调度 Job、过期 Lease、待完成 ArtifactSet 和待处理 Billing event。JetStream 恢复后，outbox dispatcher 继续发布积压事件。
+
+JetStream 只缩短发现延迟并隔离 consumer，不取代持久 Job 队列。Assignment 落库后即 ack 对应 wakeup；Worker 通过 gRPC pull 获取 Assignment，长时间执行由 Lease 续租，不在 Broker 中保留 40 到 50 分钟的 pending delivery。
+
+### 8.3 事件故障语义
+
+| 故障点 | 结果与恢复 |
+| --- | --- |
+| Outbox 事务提交后 dispatcher 崩溃 | row 仍为未发布，恢复后重发 |
+| publish timeout、negative ack 或 `PubAck` 丢失 | row 保持未发布，以相同 `Nats-Msg-Id` 重试；可能重复但不能丢失 |
+| `PubAck` 成功、outbox 标记前崩溃 | JetStream 可能收到重复 event，consumer 幂等处理 |
+| consumer 提交本地事务、ack 前崩溃 | event 重投，aggregate version / CAS 拒绝重复转换 |
+| JetStream 集群不可用 | outbox 积压，PostgreSQL reconciliation 维持最终恢复 |
+| Scheduler 收到事件后崩溃 | durable consumer 重投或 reconciliation 重新 claim |
+| PostgreSQL 不可用 | 停止新 Assignment；不能退化为仅凭 JetStream 消息推进状态 |
 
 ## 9. Job 与 Attempt 状态机
 
@@ -429,7 +477,8 @@ HEALTHY <-> SUSPECT <-> OFFLINE
 3. Billing Ledger 确认 BillingAuthorization 能覆盖预计完成时间和安全余量；不足时先续期或重新授权，未成功前不得创建 Attempt。
 4. Job Coordinator 在一个事务中锁定 Job 和 Worker，并重新检查 Job version / QUEUED 状态、BillingAuthorization version / expiry、Worker epoch / READY capacity 和 ProfileCertification 有效性；全部满足时才创建 Attempt、占用 Worker capacity 并签发 Lease。唯一约束保证一个 H3 Worker 同时最多有一个 active Assignment，校验失败则不产生 Attempt 并重新调度或续期授权。
 5. EXECUTION Lease 至少包含 `attempt_id`、`worker_id`、`worker_epoch`、不可伪造的 `lease_token`、对该 Job 单调递增的 `fence` 和 `expires_at`。
-6. Worker 接受 Assignment 后开始执行并续租。
+6. `acquire()` 在同一事务中先按 mTLS `worker_id` 和请求 `worker_epoch` 查找未终结 Assignment；存在时返回原 Assignment，不重新 claim Job。只有不存在时才执行步骤 4 的创建逻辑。响应丢失后，同一 Worker epoch 重连会得到完全相同的 `attempt_id`、Lease token、fence 和原始 `expires_at`；返回动作本身不续租。
+7. Worker 接受 Assignment 后开始执行并通过 heartbeat 续租。
 
 同一 Job 在逻辑上只有一个有效执行权。网络分区时可能有多个物理计算，但只有当前 `fence` 和 Lease token 能推进 Job 和提交 Artifact。后创建 Attempt 的 fence 必须严格大于此前所有 Attempt。
 
@@ -905,7 +954,9 @@ detect fault
 
 ### 16.2 Kubernetes 与 driver
 
-早期由主机镜像、PXE 或 Ansible 管理固定 kernel、driver、firmware 和 container toolkit。若使用 NVIDIA GPU Operator，建议先关闭其 driver 和 toolkit 生命周期管理，只使用经验证的 device plugin、DCGM 和 metrics 能力。
+已有符合要求的 Kubernetes 集群可以直接复用。裸金属 greenfield baseline 使用 Ubuntu LTS、RKE2 和 containerd：至少 3 台非 GPU control-plane 节点承载 etcd / Kubernetes control plane，PostgreSQL、NATS 和对象存储运行在独立 CPU / storage fault domain，不能与不稳定 GPU Worker 共用生命周期。
+
+GPU Worker 由主机镜像、PXE 或 Ansible 管理固定 kernel、driver、firmware 和 container toolkit。若使用 NVIDIA GPU Operator，关闭其 driver 和 toolkit 生命周期管理，只启用经验证的 NVIDIA Device Plugin、DCGM Exporter 和必要的 metrics 能力。
 
 H3 MVP 可请求：
 
@@ -932,6 +983,12 @@ Kubernetes 将 `vela.ai/h3-worker` 与 `nvidia.com/gpu` 视为独立资源；仅
 
 H3 MVP 采用第二种方案，不实现 `vela.ai/h3-worker` 扩展资源。
 
+Fleet Controller 为每个 ACTIVE / CANARY ExecutionProfileRevision 管理带专用 node selector 的 Worker pool。H3 baseline 使用 `OnDelete` DaemonSet，但 `OnDelete` 本身不是安全边界。Live WorkerPool / DaemonSet / Worker Pod 由 Fleet Controller 独占管理，Argo CD 只交付 controller、CRD 和版本化期望配置，不 prune 或直接 patch live pool resource。Kubernetes RBAC 与 validating admission webhook / policy 拒绝其他 service account 删除 Worker Pod / pool、修改 DaemonSet selector / image 或移除保护 finalizer；Fleet Controller 只有携带 Job Coordinator 已完成的 `DrainOperation` 引用才能解除 finalizer并执行这些动作。节点突然失效仍由 Lease / fence 恢复，不能由 Kubernetes guard 保证。
+
+Fleet Controller 只有在 Job Coordinator 确认 Worker 已 DRAINING、Lease 已结束或 fenced 后才删除 Pod；不能依赖默认滚动更新自动终止长任务。PodDisruptionBudget、较长 `terminationGracePeriodSeconds` 和 preStop drain 只能作为额外保护，不能代替 Vela Lease 语义。
+
+每个 GPU 节点提供独立 NVMe scratch，使用 XFS project quota 或等价硬配额，并挂载到 H3 Worker Pod。Worker Agent 为每个 Attempt 创建独立目录；配额、high / low / critical watermark 和终态清理由 Vela 管理，不能把 Kubernetes ephemeral-storage eviction 当作 Artifact 恢复机制。
+
 ## 17. 一致性与高可用
 
 ### 17.1 Scheduler 高可用
@@ -941,7 +998,7 @@ H3 MVP 采用第二种方案，不实现 `vela.ai/h3-worker` 扩展资源。
 Scheduler 崩溃后：
 
 - 未提交事务不会产生 Assignment。
-- 已提交但未送达的 Assignment 由 outbox 重发或 reconciliation 发现。
+- Assignment 已提交但 gRPC acquire 响应未送达时，同一 mTLS `worker_id` 和 `worker_epoch` 重试 `acquire()` 会先读到并重放同一 active Assignment；该路径不创建新 Attempt、不签发新 fence，也不延长 `expires_at`。若 Worker 始终没有取得响应或续租，则 Lease 过期后由 reconciliation 结束 Attempt。新进程必须使用递增的 epoch，不能继承旧 Lease。Outbox 只重发状态事件，不传递执行所有权。
 - Worker 未续租时 Lease 最终过期，Job 进入重试判断。
 
 ### 17.2 网络分区
@@ -953,25 +1010,30 @@ Worker 与控制面失联时，旧 Worker 可能仍继续计算。控制面可�
 - PostgreSQL 不可用时停止新 Assignment，Worker 可以在有限 Lease 内继续当前 Attempt。
 - 对象存储不可用时已完成推理停留在 FINALIZING，并保留本地 Artifact 后恢复上传；Artifact Store circuit 阻止受影响 pool 的新 Assignment，scratch high watermark 只阻止对应 Worker 或 pool 的新 Assignment。
 - Billing adapter 不可用时使用 outbox 重试 capture，不重新执行 Job。
-- 队列不可用时依靠 PostgreSQL reconciliation 保证最终恢复。
+- JetStream 不可用时 outbox 保留事件，并依靠 PostgreSQL reconciliation 保证最终恢复。
 
 ## 18. 安全
 
 - Client、Worker、Scheduler、Node Agent 和 storage credential 使用独立身份。
-- 内部控制协议使用 mTLS 或等价的双向身份认证。
+- Envoy Gateway 使用 cert-manager 管理外部 TLS；Kubernetes workload 的内部 gRPC 使用 cert-manager 签发和轮换 mTLS certificate。host systemd `vela-node-agent` 使用 OS provisioning、Vault PKI 或等价私有 CA 签发的独立 host certificate。所有证书身份必须映射到 Worker / Controller / Node 注册身份。
+- NATS listener 和 monitoring endpoint 只暴露在内部网络；客户端连接必须使用 TLS。NATS 使用 operator / account JWT 模式，为 outbox dispatcher、Scheduler、Billing、Fleet 和 Reconciler 分别签发可轮换的 NKey workload credential，并按 event subject 配置最小 publish / subscribe ACL；禁止共享全权 token，禁止业务 workload 使用 system account。
+- 长期 secret 存放在 cloud KMS / Secret Manager 或 Vault，通过 External Secrets 注入；对象存储上传和下载使用短期凭据，BMC / payment credential 不写入普通 ConfigMap 或日志。
 - Node Agent 具有高权限，其命令接口必须最小化并限制到已登记设备和动作。
 - Node Agent 不接受任意 shell command，不把 PCI sysfs path 直接暴露给远端调用者。
 - Worker 只能上传当前 Artifact 的确切 object key，不能覆盖、删除或列举其他对象。
+- Artifact Validator 将媒体视为不可信输入；`ffprobe` 在无网络、非特权且有 CPU、内存、文件大小和超时限制的 sandbox 中运行。
 - signed URL 具有短 TTL，并绑定 method、object key 和 content constraints。
 - 日志禁止记录 prompt 正文、对象凭据、signed URL 和支付凭据。
 - 所有管理动作、Artifact 访问、计费变更和节点恢复均需审计。
 
 ## 19. 可观测性
 
+所有 Go / Python 进程使用 OpenTelemetry SDK，将 trace、metric 和结构化日志发送到 OpenTelemetry Collector。MVP backend 使用 Prometheus + Alertmanager、Grafana、Loki 和 Tempo；GPU 指标来自 DCGM Exporter。生产告警必须覆盖 PostgreSQL replication / failover、JetStream replica / consumer lag、outbox age、reconciliation backlog 和 object-store circuit。
+
 ### 19.1 Job 指标
 
 - 接纳率、队列长度和 queue wait time。
-- 按 ModelRevision、GenerationPresetRevision、分辨率和租户统计运行时间分布。
+- 按 ModelRevision、GenerationPresetRevision、分辨率和受控 tenant tier 统计运行时间分布；单个 `tenant_id` 不作为常规 metric label。
 - Job success、failure、cancel 和 retry rate。
 - 每个 Job 的 Attempt 数量和累计 compute seconds。
 - Artifact upload latency、失败率和 orphan bytes。
@@ -987,7 +1049,7 @@ Worker 与控制面失联时，旧 Worker 可能仍继续计算。控制面可�
 
 ### 19.3 追踪标识
 
-所有日志、指标和 trace 事件至少关联：
+所有结构化日志和 trace span 至少关联：
 
 ```text
 tenant_id
@@ -1000,18 +1062,75 @@ generation_preset_revision
 execution_profile_revision
 ```
 
+Prometheus metric 只使用数量受控的 label，例如 ModelRevision、GenerationPresetRevision、ExecutionProfileRevision、failure class、stage 和 status。`tenant_id`、`job_id`、`attempt_id` 等高基数标识不能成为常规 label；需要从指标跳转到单次执行时使用 trace exemplar 或审计查询。
+
 ## 20. 技术选型
 
-| 方案 | 决策 |
+### 20.1 语言与 Interface
+
+| 领域 | 选择 | 约束 |
+| --- | --- | --- |
+| 控制面、Worker Agent、Node Agent | Go | 使用同一 Go module；并发状态机、gRPC、Kubernetes controller 和静态 host binary 共用工具链 |
+| Inference Backend | Python + SGLang fork | Python 只拥有模型和 GPU 执行，通过 runner Interface 与 Go Worker Agent 隔离 |
+| 外部请求 | REST / JSON + OpenAPI | Envoy Gateway 路由；Go 使用 `oapi-codegen` 生成类型，不手写漂移的 request struct |
+| 内部协议和事件 schema | Protobuf | gRPC 和 JetStream event 共用版本化 schema，使用 `buf` lint / breaking check |
+| PostgreSQL access | `pgx` + `sqlc` | 保留显式 SQL、row lock、CAS 和数据库约束，不使用隐藏事务语义的重型 ORM |
+| Schema migration | `goose` | migration 随 release 版本化，生产执行前备份并验证向前兼容 |
+| Python environment | `uv` + lockfile | runner 依赖、CUDA / SGLang fork revision 和镜像 digest 一起固定 |
+
+所有具体版本在实现 bootstrap 时锁定到当期稳定版本，并通过镜像 digest、Go/Python lockfile 和 SBOM 进入 release receipt；架构文档不跟随每次 patch version 更新。
+
+### 20.2 数据与可靠事件
+
+| 领域 | 选择 | 生产基线 |
+| --- | --- | --- |
+| 事实源 | PostgreSQL HA | 优先使用托管 PostgreSQL；裸金属使用 CloudNativePG 部署在专用 CPU 节点，跨故障域同步副本、自动 failover、PITR |
+| 事件设施 | NATS JetStream | 3 replicas、PVC-backed file storage、durable consumer、explicit ack、anti-affinity |
+| 一致性 | Transactional outbox + idempotent consumer + reconciliation | 不做 PostgreSQL / NATS 双写，不依赖 Broker exactly-once 宣称 |
+| Catalog 配置 | YAML authoring + JSON Schema + canonical JSON | 接纳时校验，入库保存 canonical JSON、schema revision 和 content hash，不执行任意模板代码 |
+| Billing | PostgreSQL internal credit ledger 优先 | 外部 payment provider 通过注入 adapter 接入；测试使用 mock adapter |
+| 金额 | integer minor unit 或 Decimal | 禁止 binary floating point；PricingSnapshot 创建后不可变 |
+| 时间 | PostgreSQL clock | Lease、deadline、retry 和 authorization expiry 不以 Pod 本地时钟为准 |
+
+### 20.3 平台与存储
+
+| 领域 | 选择 | 生产基线 |
+| --- | --- | --- |
+| 集群 | Kubernetes + Vela Scheduler | Kubernetes 管 Worker 生命周期，Vela 管 Job placement；裸金属 baseline 为 Ubuntu LTS + RKE2 / containerd |
+| GPU | NVIDIA Device Plugin + DCGM Exporter | H3 请求 `nvidia.com/gpu: 8`；host driver / toolkit 版本锁定，不由 Operator 自动升级 |
+| Worker rollout | Fleet Controller + `OnDelete` DaemonSet | planned drain / fence 后才删除 Pod；profile 用 node label 和 pool 表达 |
+| Artifact | 同地域 managed / existing S3-compatible store | private bucket、versioning、conditional write、固定 object version；不把新建分布式存储系统塞进 Vela MVP |
+| 开发对象存储 | MinIO 或 local adapter | 只用于本地和 conformance test，生产选择必须单独通过 durability / restore 验证 |
+| Scratch | 本地 NVMe + XFS project quota | per-Attempt 目录、watermark 背压、明确终态后清理 |
+| 镜像与模型 | OCI registry + S3 | 镜像固定 digest；模型权重固定 checksum，Catalog 只保存 revision 和位置 metadata |
+| 媒体探测 | FFmpeg `ffprobe` | 固定版本和探测参数，输出解析为结构化 metadata 后再执行 output-spec validation |
+
+### 20.4 安全、可观测性与交付
+
+| 领域 | 选择 |
 | --- | --- |
-| Kubernetes + Vela Scheduler | 推荐，分别承担 Worker 生命周期和 Job 调度 |
-| K8s + Ray Serve | 第一版不采用，避免重复的资源和 replica 调度层 |
+| Gateway | Kubernetes Gateway API + Envoy Gateway |
+| 外部身份 | scope 化 API key 用于机器客户端，OIDC 用于管理端；凭据只保存 hash / provider subject，支持轮换和吊销 |
+| TLS / mTLS | cert-manager；外部 TLS 和内部 workload certificate 分开签发与轮换；NATS 使用 TLS + operator/account JWT + per-workload NKey / subject ACL |
+| Secret | cloud KMS / Secret Manager 或 Vault + External Secrets |
+| Telemetry | OpenTelemetry SDK / Collector + Prometheus / Alertmanager + Grafana + Loki + Tempo |
+| GPU telemetry | DCGM Exporter + NVML / PCIe AER host probe |
+| Deployment | Helm + Argo CD；GPU host image / driver 使用 Ansible 或 PXE 管理 |
+| 本地集成测试 | `testcontainers-go` 启动 PostgreSQL、NATS、S3 fixture；fake Worker / payment adapter；Python runner 使用 `pytest` |
+| 硬件验收 | 独立 H3 staging pool 执行 process kill、网络分区、GPU fault、reboot 和对象存储故障注入 |
+
+### 20.5 明确不采用
+
+| 方案 | MVP 决策 |
+| --- | --- |
+| Temporal | 不采用；无法替代 Vela placement、Lease fencing 和 PostgreSQL Artifact / Billing CAS，引入后会形成第二状态权威。团队已有成熟 Temporal 平台时才重新评估 |
+| Kafka | 不采用；当前不需要长期事件历史和超高吞吐 replay，JetStream 运维面更小 |
+| Redis Streams | 不承担关键事件或状态；只有出现有测量依据的缓存需求时再引入 Redis |
+| K8s + Ray Serve | 不采用，避免 Kubernetes、Ray、Vela 和 SGLang 四层重复调度 |
+| Kubernetes Job per inference | 不采用，避免每个请求重新调度、启动和加载 8-GPU 模型 |
 | Slurm | 不作为互联网在线 serving 主框架 |
-| 纯 systemd + 自研调度 | 仅适合很小规模，集群增长后运维成本高 |
-| Nomad | 可行，但当前没有足够收益替换 K8s 生态 |
-| PostgreSQL | Job、Lease、Retry、Catalog、Artifact metadata 和 Billing 的事实源 |
-| S3-compatible object storage | 视频和 checkpoint 的持久存储 |
-| Redis Streams / NATS / Kafka | 可选事件设施，具体产品待压测和运维评估 |
+| 纯 systemd + 自研集群管理 | 仅适合很小规模，不能替代 Kubernetes rollout、service discovery 和 declarative lifecycle |
+| Nomad | 可行，但当前没有足够收益替换 Kubernetes 生态 |
 
 ## 21. MVP 范围
 
@@ -1019,9 +1138,11 @@ execution_profile_revision
 
 - 单地域、单 Kubernetes 集群。
 - MiniMax H3 单 Model / Workload 和 SGLang fork 单 Inference Backend。
+- Go `vela-control` / Fleet Controller / Worker Agent / Node Agent 与 Python H3 runner。
 - 一台 8-GPU 节点对应一个长期运行的 Worker Pod。
-- PostgreSQL 事实源和 transactional outbox。
-- 异步 submit/get/cancel 接口和 Idempotency-Key。
+- PostgreSQL HA 事实源、transactional outbox、3-replica NATS JetStream 和周期性 reconciliation。
+- REST / OpenAPI 异步 submit/get/cancel Interface 和 Idempotency-Key。
+- Worker 发起的 mTLS gRPC pull / heartbeat stream，不向 BUSY Worker 预派任务。
 - Job、Attempt、Lease、ExecutionPolicySnapshot、RetryRuntimeState 和 fencing token。
 - 中央队列、hard admission、基于公平性与预计工作量的 Scheduler。
 - Worker heartbeat、阶段进度和自动重试。
@@ -1032,7 +1153,7 @@ execution_profile_revision
 - Artifact Store circuit 和 scratch high / low watermark 背压。
 - 可覆盖长任务的 BillingAuthorization、续期 reconciliation、成功 capture、失败 release 和内部 UsageRecord。
 - host systemd `vela-node-agent`，先实现安全的 process restart、drain、quarantine 和人工审批的高等级恢复。
-- 基础 dashboard、审计和故障注入测试。
+- OpenTelemetry、Prometheus / Alertmanager、Grafana、Loki、Tempo、审计和故障注入测试。
 
 MVP 明确不包含：
 
@@ -1063,26 +1184,53 @@ MVP 明确不包含：
 16. ExecutionProfileRevision 质量回归后，其 ProfileCertification 失效且不能接收新 Job；旧 revision 在引用归零前不会删除。
 17. Artifact Store 故障会停止受影响 pool 的新 Assignment；单个 Worker 或 pool 的 scratch 达到 high watermark 时只停止对应 Worker 或 pool，恢复到 low watermark 且存储探测通过后重新接纳。
 18. H3 Worker 请求 `nvidia.com/gpu: 8` 并受专用 taint/label 约束，不与其他 GPU workload 重复分配。
-19. GPU remediation 和 planned rollout 前 Worker 完成摘流量和 Lease fencing。
+19. GPU remediation 和 planned rollout 前 Worker 完成摘流量和 Lease fencing；绕过 Fleet Controller 的 Pod / pool delete、selector / image patch 或 Argo prune 被 RBAC + admission / finalizer 拒绝。
 20. 失败或未获胜 Attempt、过期 checkpoint 和本地 scratch 按策略自动清理。
-21. 队列短暂不可用后，reconciliation 能从 PostgreSQL 恢复待调度 Job。
+21. JetStream 短暂或整体不可用后，outbox 保留待发布事件，reconciliation 能从 PostgreSQL 恢复待调度 Job。
 22. Billing adapter 短暂不可用不会导致重复推理或重复 Charge。
 23. `generation_count > 1` 或包含缩略图时，缺少任一必需输出都不能发布部分 ArtifactSet 或触发 Charge。
 24. `begin_finalization()` 在事务提交前后崩溃，重放仍只得到一组 Artifact / ArtifactUpload，并保留原 `finalization_deadline_at`。
 25. 长任务的 payment hold 临近过期时能幂等续期；续期失败的 QUEUED Job 不会开始执行，已开始的 Job 不会重复计算且在 `CAPTURED` 前不可下载。
 26. OFFLINE Worker 恢复后必须经过 SUSPECT、设备 / Inference Backend 检查和 canary，达到 HEALTHY + READY 才重新接收 Assignment。
+27. Outbox dispatcher 只有收到 3-replica stream 的 quorum `PubAck` 才标记 published；在 `PubAck` 前失败会保留未发布 row，在 `PubAck` 后、标记前崩溃会以同一 `Nats-Msg-Id` 重试并产生可安全消费的重复 event，不会丢失状态变化。
+28. Consumer 在 PostgreSQL 事务提交、JetStream ack 前崩溃时，重投 event 由 aggregate version / CAS 幂等拒绝。
+29. Assignment wakeup 被 ack 后 Worker 执行 40 到 50 分钟，JetStream consumer 不保留长期 pending delivery，Lease / fence 仍能处理 Worker 丢失。
+30. PostgreSQL 自动 failover 后，已接纳 Job、Outbox、Lease fence 和 Charge 幂等状态保持一致；数据库不可用窗口不创建新 Assignment。
+31. Assignment 已提交但 gRPC response 丢失时，同一 `worker_id` 和 `worker_epoch` 重连会得到原 Assignment，不产生第二个 Attempt、fence 或 Lease 延期；超过原 `expires_at` 后按 Lease expiry 正常恢复。
+32. PostgreSQL 或控制面失联时，Worker 依据上一次服务端 `lease_valid_for` 和请求起点的 monotonic deadline fail closed；修改本地 wall clock 不能延长执行权。
+33. 使用无权限或其他 workload 的 NATS credential publish / subscribe 受限 subject 时被拒绝，credential 轮换不丢 outbox event。
 
-## 23. 待决问题
+## 23. 已决事项、上线门槛与 Future Work
 
-- 第一版事件设施选择 PostgreSQL polling、Redis Streams、NATS JetStream 还是 Kafka。
-- Worker acquisition 使用 pull、push 还是混合协议。
-- heartbeat、Lease TTL、grace period 和每类 Job retry budget 的标定值。
-- 各 GenerationPresetRevision 的 benchmark corpus、质量阈值和性能 SLO 标定值。
-- 用户取消运行中 Job 的收费规则。
-- 正式视频、checkpoint 和 debug Artifact 的默认保留期。
-- H3 DiT latent checkpoint 是否具备正收益。
-- 各 GPU 型号支持的 reset / FLR 能力和安全拓扑约束。
-- 未来 LLM 多节点 Worker 的 Lease 和 gang placement 模型。
+### 23.1 MVP 已决事项
+
+- 事件正常路径使用 3-replica NATS JetStream；PostgreSQL transactional outbox 保证不丢发布意图，reconciliation 保证最终恢复。
+- Worker 使用 mTLS gRPC pull acquisition，只在 capacity 可用时请求 Assignment；控制命令通过同一 stream / heartbeat 返回。
+- PostgreSQL 是唯一事实源，JetStream、Kubernetes 和 Worker 本地状态都不能单独推进 Job。
+- 控制面使用 Go 模块化单体；Python 只保留在 Inference Backend runner；MVP 不引入 Temporal、Kafka、Redis 或 Ray 调度层。
+- H3 使用 `nvidia.com/gpu: 8`、专用节点池和 Fleet Controller 管理的 `OnDelete` DaemonSet，不实现自定义扩展资源。
+- Artifact 使用同地域 S3-compatible store；生产对象存储不作为 Vela 自建子项目。
+
+### 23.2 生产上线门槛
+
+以下项目不能在架构讨论中伪造固定答案，但必须有 owner、验证环境、receipt 和通过标准后才能上线：
+
+| Gate | 必需产物 | 未通过时行为 |
+| --- | --- | --- |
+| heartbeat / Lease / Worker Lost / retry budget | 基于网络分区、进程 kill、节点重启和长任务故障注入的参数报告；staging 初始值可从 5 秒 heartbeat、15 秒 SUSPECT、60 秒 Lease / Lost 开始验证 | 保持人工配置，不宣称生产 SLA；重试受保守预算限制 |
+| 事件与 Assignment 可靠交付 | 可复现的 fault-injection receipt：覆盖 outbox commit 后崩溃、publish timeout / `PubAck` 丢失、`PubAck` 后标记前崩溃、consumer commit 后 ack 前崩溃、Assignment commit 后 gRPC response 丢失；证明事件不丢、consumer 幂等且同一 Worker epoch 不产生第二个 Attempt / fence | 不进入生产流量；保留 reconciliation 并限制在 staging 测试租户 |
+| GenerationPresetRevision certification | 版本化 benchmark corpus、基准 profile、质量阈值、p50 / p95 runtime、成功率、成本和统计置信 receipt | Preset / ProfileCertification 不得进入 ACTIVE |
+| 用户取消计费 | 产品、财务和法务确认的 PENDING_AUTH / QUEUED / RUNNING / FINALIZING 逐状态规则及账单示例 | 公网接口不得承诺未定义的 refund；默认只在测试租户开放运行中取消 |
+| Artifact retention | 正式结果、失败对象、checkpoint、debug dump 和本地 scratch 的默认期限、租户覆盖规则与删除审计 | 使用最短保守期限；debug dump 默认关闭 |
+| GPU remediation capability | 按 GPU SKU、PCIe topology、kernel、driver、firmware 建立 reset / FLR / driver reload 认证矩阵和恢复 receipt | 未认证动作 fail closed，只允许 quarantine、reboot 或人工审批 |
+| 基础设施灾备 | PostgreSQL failover / PITR、JetStream 节点丢失、对象存储不可用和 secret rotation 演练 | 不进入生产流量 |
+
+### 23.3 Future Work
+
+- H3 DiT latent checkpoint：只有故障阶段分布证明预期节省的重算时间和成本显著高于写入、存储和恢复成本时才启用。
+- 多节点 LLM ExecutionProfileRevision：单独设计 gang placement、跨节点 Lease、拓扑和部分节点失效语义，不扩大 H3 MVP Interface。
+- 严格单 Job deadline：先实现持久 CapacityReservation 和 admission 证明，再销售严格期限 GenerationPresetRevision。
+- 自动跨地域 failover、复杂运行时间预测和跨地域 Artifact policy。
 
 ## 24. 参考资料
 
@@ -1098,3 +1246,15 @@ MVP 明确不包含：
 - [Amazon S3 Versioning](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Versioning.html)
 - [Amazon S3 Conditional Writes](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html)
 - [Amazon S3 Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html)
+- [NATS JetStream](https://docs.nats.io/nats-concepts/jetstream)
+- [PostgreSQL Synchronous Replication](https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION)
+- [CloudNativePG Documentation](https://cloudnative-pg.io/documentation/current/)
+- [gRPC Documentation](https://grpc.io/docs/)
+- [RKE2 Documentation](https://docs.rke2.io/)
+- [Envoy Gateway](https://gateway.envoyproxy.io/)
+- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
+- [Argo CD Documentation](https://argo-cd.readthedocs.io/en/stable/)
+- [cert-manager Documentation](https://cert-manager.io/docs/)
+- [External Secrets Operator](https://external-secrets.io/latest/)
+- [FFprobe Documentation](https://ffmpeg.org/ffprobe.html)
+- [Testcontainers for Go](https://golang.testcontainers.org/)
