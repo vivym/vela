@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate contracts and data access
+        run: make generate
+
+      - name: Verify generated sources are committed
+        run: |
+          git diff --exit-code -- api/gen internal/store/sqlc proto/gen
+          test -z "$(git status --porcelain --untracked-files=all -- api/gen internal/store/sqlc proto/gen)"
+
+      - name: Lint and unit test
+        run: |
+          make lint
+          make test
+
+      - name: PostgreSQL and JetStream integration test
+        run: make test-integration
+
+      - name: Check contract compatibility
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          contract_base="${RUNNER_TEMP}/vela-contract-base"
+          mkdir -p "${contract_base}"
+          if git cat-file -e "${BASE_SHA}:buf.yaml"; then
+            git archive "${BASE_SHA}" buf.yaml proto | tar -x -C "${contract_base}"
+            go run github.com/bufbuild/buf/cmd/buf@v1.72.0 breaking . --against "${contract_base}"
+          fi
+          if git cat-file -e "${BASE_SHA}:api/openapi/vela.yaml"; then
+            git show "${BASE_SHA}:api/openapi/vela.yaml" > "${contract_base}/vela.yaml"
+            go run github.com/oasdiff/oasdiff@v1.29.1 breaking \
+              "${contract_base}/vela.yaml" api/openapi/vela.yaml
+          fi

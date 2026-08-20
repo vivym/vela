@@ -1,0 +1,251 @@
+-- name: SetRequestContext :one
+SELECT
+    context.organization_id::uuid AS organization_id,
+    context.project_id::uuid AS project_id,
+    context.principal_id::uuid AS principal_id,
+    context.transaction_time::timestamptz AS transaction_time
+FROM vela_set_request_context(
+    sqlc.arg(credential_id)::uuid,
+    sqlc.arg(credential_proof)::bytea,
+    sqlc.arg(required_scope)::text
+) AS context;
+
+-- name: LockIdempotencyKey :one
+SELECT pg_advisory_xact_lock(
+    hashtext(sqlc.arg(project_id)::text),
+    hashtext(sqlc.arg(idempotency_key)::text)
+) AS acquired;
+
+-- name: ResolveActiveSKU :one
+SELECT
+	resolved.model_revision_id::uuid AS model_revision_id,
+	resolved.generation_preset_revision_id::uuid AS generation_preset_revision_id,
+	resolved.certified_p95_compute_seconds::integer AS certified_p95_compute_seconds,
+	resolved.service_class_revision_id::uuid AS service_class_revision_id,
+	resolved.queue_retry_allowance_seconds::integer AS queue_retry_allowance_seconds,
+	resolved.max_attempts::integer AS max_attempts,
+	resolved.max_total_compute_multiplier_milli::integer AS max_total_compute_multiplier_milli,
+	resolved.max_finalization_seconds_per_attempt::integer AS max_finalization_seconds_per_attempt,
+	resolved.retry_backoff_policy::jsonb AS retry_backoff_policy,
+	resolved.retryable_failure_classes::text[] AS retryable_failure_classes,
+	resolved.circuit_breaker_policy::jsonb AS circuit_breaker_policy,
+	resolved.output_spec_id::uuid AS output_spec_id,
+	resolved.rate_card_revision_id::uuid AS rate_card_revision_id,
+	resolved.rate_line_id::uuid AS rate_line_id,
+	resolved.unit_amount_minor::bigint AS unit_amount_minor,
+	resolved.currency::text AS currency
+FROM vela_resolve_active_sku(
+	sqlc.arg(model),
+	sqlc.arg(generation_preset),
+	sqlc.arg(service_class),
+	sqlc.arg(output_spec)
+) AS resolved(
+	model_revision_id,
+	generation_preset_revision_id,
+	certified_p95_compute_seconds,
+	service_class_revision_id,
+	queue_retry_allowance_seconds,
+	max_attempts,
+	max_total_compute_multiplier_milli,
+	max_finalization_seconds_per_attempt,
+	retry_backoff_policy,
+	retryable_failure_classes,
+	circuit_breaker_policy,
+	output_spec_id,
+	rate_card_revision_id,
+	rate_line_id,
+	unit_amount_minor,
+	currency
+);
+
+-- name: LockCompatiblePool :one
+SELECT
+	pool.id::uuid AS id,
+	pool.admission_open::boolean AS admission_open,
+	pool.queued_count::integer AS queued_count,
+	pool.queued_limit::integer AS queued_limit,
+	pool.retry_after_seconds::integer AS retry_after_seconds
+FROM vela_lock_compatible_pool(
+	sqlc.arg(model_revision_id),
+	sqlc.arg(generation_preset_revision_id),
+	sqlc.arg(output_spec_id)
+) AS pool(id, admission_open, queued_count, queued_limit, retry_after_seconds);
+
+-- name: GetIdempotencyResult :one
+SELECT request_hash, job_id
+FROM idempotency_results
+WHERE organization_id = sqlc.arg(organization_id)
+  AND project_id = sqlc.arg(project_id)
+  AND idempotency_key = sqlc.arg(idempotency_key);
+
+-- name: LockProjectForAdmission :one
+SELECT
+    p.queued_count,
+    p.queued_limit,
+    p.retry_after_seconds,
+    p.running_count,
+    p.running_limit,
+    o.status AS organization_status
+FROM projects AS p
+JOIN customer_organizations AS o ON o.id = p.organization_id
+WHERE p.organization_id = sqlc.arg(organization_id)
+  AND p.id = sqlc.arg(project_id)
+FOR UPDATE OF p;
+
+-- name: LockCreditAccount :one
+SELECT
+    currency,
+    contract_credit_limit_minor,
+    reserved_minor,
+    unsettled_posted_minor
+FROM organization_credit_accounts
+WHERE organization_id = sqlc.arg(organization_id)
+FOR UPDATE;
+
+-- name: IncrementProjectQueued :execrows
+UPDATE projects
+SET queued_count = queued_count + 1
+WHERE organization_id = sqlc.arg(organization_id)
+  AND id = sqlc.arg(project_id)
+  AND queued_count < queued_limit;
+
+-- name: IncrementPoolQueued :execrows
+UPDATE worker_pools
+SET queued_count = queued_count + 1
+WHERE id = sqlc.arg(worker_pool_id)
+  AND admission_open
+  AND queued_count < queued_limit;
+
+-- name: ReserveOrganizationCredit :execrows
+UPDATE organization_credit_accounts
+SET reserved_minor = reserved_minor + sqlc.arg(amount_minor),
+    version = version + 1,
+    updated_at = clock_timestamp()
+WHERE organization_id = sqlc.arg(organization_id)
+  AND currency = sqlc.arg(currency)
+  AND contract_credit_limit_minor - unsettled_posted_minor - reserved_minor >= sqlc.arg(amount_minor);
+
+-- name: InsertJob :exec
+INSERT INTO jobs (
+    id,
+    organization_id,
+    project_id,
+    created_by_principal_id,
+    model_revision_id,
+    generation_preset_revision_id,
+    service_class_revision_id,
+    output_spec_id,
+    worker_pool_id,
+    request_hash,
+    request_content,
+    request_content_expires_at,
+    pricing_rate_card_revision_id,
+    pricing_rate_line_id,
+    pricing_unit_amount_minor,
+    pricing_quantity,
+    pricing_quoted_amount_minor,
+    pricing_currency,
+    execution_max_attempts,
+    execution_max_total_compute_seconds,
+    execution_max_finalization_seconds_per_attempt,
+    execution_retry_backoff_policy,
+    execution_retryable_failure_classes,
+    execution_circuit_breaker_policy,
+    job_expires_at
+) VALUES (
+    sqlc.arg(id),
+    sqlc.arg(organization_id),
+    sqlc.arg(project_id),
+    sqlc.arg(created_by_principal_id),
+    sqlc.arg(model_revision_id),
+    sqlc.arg(generation_preset_revision_id),
+    sqlc.arg(service_class_revision_id),
+    sqlc.arg(output_spec_id),
+    sqlc.arg(worker_pool_id),
+    sqlc.arg(request_hash),
+    sqlc.arg(request_content),
+    transaction_timestamp() + interval '30 days',
+    sqlc.arg(pricing_rate_card_revision_id),
+    sqlc.arg(pricing_rate_line_id),
+    sqlc.arg(pricing_unit_amount_minor),
+    sqlc.arg(pricing_quantity),
+    sqlc.arg(pricing_quoted_amount_minor),
+    sqlc.arg(pricing_currency),
+    sqlc.arg(execution_max_attempts),
+    sqlc.arg(execution_max_total_compute_seconds),
+    sqlc.arg(execution_max_finalization_seconds_per_attempt),
+    sqlc.arg(execution_retry_backoff_policy),
+    sqlc.arg(execution_retryable_failure_classes),
+    sqlc.arg(execution_circuit_breaker_policy),
+	transaction_timestamp() + sqlc.arg(job_lifetime_seconds)::bigint * interval '1 second'
+);
+
+-- name: InsertRetryRuntimeState :exec
+INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
+VALUES (sqlc.arg(job_id), sqlc.arg(organization_id), sqlc.arg(project_id));
+
+-- name: InsertCreditReservation :exec
+INSERT INTO credit_reservations (
+    id, organization_id, project_id, job_id, amount_minor, currency
+) VALUES (
+    sqlc.arg(id),
+    sqlc.arg(organization_id),
+    sqlc.arg(project_id),
+    sqlc.arg(job_id),
+    sqlc.arg(amount_minor),
+    sqlc.arg(currency)
+);
+
+-- name: InsertIdempotencyResult :exec
+INSERT INTO idempotency_results (
+    organization_id, project_id, idempotency_key, request_hash, job_id
+) VALUES (
+    sqlc.arg(organization_id),
+    sqlc.arg(project_id),
+    sqlc.arg(idempotency_key),
+    sqlc.arg(request_hash),
+    sqlc.arg(job_id)
+);
+
+-- name: InsertOutboxEvent :exec
+INSERT INTO outbox_events (
+    event_id,
+    organization_id,
+    project_id,
+    aggregate_type,
+    aggregate_id,
+    aggregate_version,
+    event_type,
+    schema_version,
+    payload,
+    occurred_at
+) VALUES (
+    sqlc.arg(event_id),
+    sqlc.arg(organization_id),
+    sqlc.arg(project_id),
+    'Job',
+    sqlc.arg(job_id),
+    1,
+    'job.ready',
+    1,
+    sqlc.arg(payload),
+    sqlc.arg(occurred_at)
+);
+
+-- name: GetJob :one
+SELECT
+    id,
+    project_id,
+    state,
+    pricing_rate_card_revision_id,
+    pricing_rate_line_id,
+    pricing_unit_amount_minor,
+    pricing_quantity,
+    pricing_quoted_amount_minor,
+    pricing_currency,
+    job_expires_at,
+    created_at
+FROM jobs
+WHERE organization_id = sqlc.arg(organization_id)
+  AND project_id = sqlc.arg(project_id)
+  AND id = sqlc.arg(job_id);

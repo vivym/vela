@@ -148,25 +148,31 @@ components:
       type: object
       additionalProperties: false
       required:
-        - model_revision_id
-        - generation_preset_revision_id
-        - service_class_revision_id
-        - output_spec_id
+        - model
+        - generation_preset
+        - service_class
+        - output_spec
         - generation_count
         - prompt
       properties:
-        model_revision_id:
+        model:
           type: string
-          format: uuid
-        generation_preset_revision_id:
+          minLength: 1
+          maxLength: 100
+        generation_preset:
           type: string
-          format: uuid
-        service_class_revision_id:
+          enum:
+            - quality
+            - balanced
+            - fast
+        service_class:
           type: string
-          format: uuid
-        output_spec_id:
+          enum:
+            - standard
+        output_spec:
           type: string
-          format: uuid
+          minLength: 1
+          maxLength: 100
         generation_count:
           type: integer
           minimum: 1
@@ -178,6 +184,7 @@ components:
         client_metadata:
           type: object
           additionalProperties: true
+          x-go-type: json.RawMessage
     Job:
       type: object
       additionalProperties: false

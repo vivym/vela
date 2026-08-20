@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Approved for implementation |
+| Status | Implemented |
 | Architecture baseline | `48efd6c` |
 | Primary seam | Project-scoped Job REST API |
 | Persistence seam | PostgreSQL schema, transaction and RLS contract |
@@ -74,30 +74,41 @@ The transaction must:
 5. lock and recheck the compatible Worker pool admission counter;
 6. lock the Customer Organization credit account and recheck available credit;
 7. increment counters and reserved credit;
-8. create PricingSnapshot and ExecutionPolicySnapshot;
-9. create the QUEUED Job and RESERVED CreditReservation;
+8. create typed PricingSnapshot and ExecutionPolicySnapshot fields;
+9. create the QUEUED Job, empty RetryRuntimeState and RESERVED CreditReservation;
 10. persist the successful idempotency result;
 11. create a versioned `job.ready` Outbox event;
 12. commit before returning `202`.
 
 Any error before commit leaves all twelve effects absent.
 
+`job_expires_at` uses PostgreSQL transaction time plus the immutable lifecycle budget:
+
+```text
+queue_retry_allowance_seconds
+  + max_total_compute_seconds
+  + max_attempts * max_finalization_seconds_per_attempt
+```
+
+The queue-and-retry allowance comes from ServiceClassRevision; the compute budget is derived from the selected GenerationPresetRevision's certified p95 and the Retry Budget multiplier.
+
 ## Database Invariants
 
 - Every organization-owned row carries `organization_id`; every Project-owned row also carries `project_id`.
 - Composite foreign keys prevent a Project-owned row from referencing another Organization.
-- Request transactions set immutable local Organization, Project and Principal context and run under the restricted request role.
+- Every Job is attributed to the authenticated Service Principal: RLS requires the current Principal on insert, and a composite foreign key requires that Principal to belong to the same Organization and Project.
+- Request transactions establish immutable Organization, Project, Principal and required-scope context through a credential-bound `SECURITY DEFINER` function and run under the restricted request role; RLS helpers do not trust caller-controlled GUCs, and read scope cannot exercise Admission mutations.
 - RLS is enabled and forced on every organization-owned table.
 - `reserved_minor + unsettled_posted_minor <= contract_credit_limit_minor` is enforced under the locked credit row.
 - Project and pool queued counters cannot be negative or exceed their configured hard bound.
-- A Job has exactly one PricingSnapshot, one ExecutionPolicySnapshot and one CreditReservation.
+- A Job has exactly one PricingSnapshot, one ExecutionPolicySnapshot, one RetryRuntimeState and one CreditReservation.
 - A successful `(project_id, idempotency_key)` identifies exactly one request hash and Job.
 - Money uses integer minor units with one currency per organization credit account and resolved Rate Card line.
 - Outbox `event_id` is stable across publish retries and becomes published only after an acknowledged broker receipt.
 
 ## Authentication Contract
 
-Service Principal credentials use a public credential identifier plus a high-entropy secret. PostgreSQL stores only a keyed digest, scopes, expiry, creator and revocation state. Overlapping active credentials are allowed for rotation. Authentication resolves Organization, Project and Principal before opening the request transaction; the authentication database role can execute only the narrow credential lookup function and cannot read organization tables directly.
+Service Principal credentials use a public credential identifier plus a high-entropy secret. PostgreSQL stores only a keyed digest, scopes, expiry, creator and revocation state. Overlapping active credentials are allowed for rotation. Authentication resolves Organization, Project and Principal before opening the request transaction; the authentication database role can execute only the narrow credential lookup function and cannot read organization tables directly. The request transaction presents the authenticated credential identifier, an opaque proof and the endpoint's required scope to a narrow database function, which rechecks scope, revocation and expiry, resolves identity from `credentials`, and stores context in a private backend-and-transaction-bound row that request and auth roles cannot read or mutate. RLS uses that bound scope for subsequent statements, and successful context establishment removes records whose PostgreSQL backend no longer exists.
 
 The submit endpoint requires `jobs:submit`; the get endpoint requires `jobs:read`.
 
@@ -117,6 +128,9 @@ Required evidence:
 - concurrent Project submissions cannot exceed the Project or pool bound;
 - concurrent Projects in one Organization cannot exceed Contract Credit Limit;
 - Organization A cannot read or reference Organization B data under the request role;
+- caller-controlled GUCs, an incorrect credential proof, an inactive credential, or a second identity in the same transaction cannot establish or replace request context;
+- scope removal between authentication and transaction start fails closed, `jobs:read` context cannot mutate Admission state, scope cannot change within a transaction, and terminated backend context rows are reclaimed;
+- request-role and BYPASSRLS attempts to attribute a Job to another Project's Service Principal are rejected by RLS and the composite foreign key respectively;
 - a committed Job always has both snapshots, one reservation and one Outbox event;
 - publishing failure leaves the Outbox row retryable;
 - publish acknowledgement followed by a local crash may republish the same event id but cannot create a second aggregate transition;
