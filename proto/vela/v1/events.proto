@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package vela.v1;
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+import "google/protobuf/timestamp.proto";
+
+message EventEnvelope {
+  string event_id = 1;
+  string aggregate_type = 2;
+  string aggregate_id = 3;
+  uint64 aggregate_version = 4;
+  string event_type = 5;
+  uint32 schema_version = 6;
+  google.protobuf.Timestamp occurred_at = 7;
+  oneof payload {
+    JobReady job_ready = 20;
+  }
+}
+
+message JobReady {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string model_revision_id = 4;
+  string generation_preset_revision_id = 5;
+  string service_class_revision_id = 6;
+  string output_spec_id = 7;
+}

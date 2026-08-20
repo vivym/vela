@@ -1,0 +1,263 @@
+openapi: 3.0.3
+info:
+  title: Vela API
+  version: 1.0.0
+  description: Project-scoped asynchronous AI generation API.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /v1/projects/{project_id}/jobs:
+    post:
+      operationId: submitJob
+      summary: Submit a Job for durable Admission
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitJobRequest'
+      responses:
+        '202':
+          description: Job accepted durably
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '402':
+          description: Contract Credit Limit is insufficient
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Idempotency key was accepted with different content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Project queue limit is exhausted
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Compatible capacity is unavailable
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/jobs/{job_id}:
+    get:
+      operationId: getJob
+      summary: Get authoritative Project Job state
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Current Job state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Job is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: VelaCredential
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._:-]+$'
+  headers:
+    RetryAfter:
+      schema:
+        type: integer
+        minimum: 1
+      description: Seconds before the client should retry Admission.
+  responses:
+    BadRequest:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Credential is absent or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Principal lacks the required Project scope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    SubmitJobRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - model_revision_id
+        - generation_preset_revision_id
+        - service_class_revision_id
+        - output_spec_id
+        - generation_count
+        - prompt
+      properties:
+        model_revision_id:
+          type: string
+          format: uuid
+        generation_preset_revision_id:
+          type: string
+          format: uuid
+        service_class_revision_id:
+          type: string
+          format: uuid
+        output_spec_id:
+          type: string
+          format: uuid
+        generation_count:
+          type: integer
+          minimum: 1
+          maximum: 16
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        client_metadata:
+          type: object
+          additionalProperties: true
+    Job:
+      type: object
+      additionalProperties: false
+      required:
+        - job_id
+        - project_id
+        - state
+        - pricing
+        - job_expires_at
+        - created_at
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/JobState'
+        pricing:
+          $ref: '#/components/schemas/PricingSnapshot'
+        job_expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    JobState:
+      type: string
+      enum:
+        - QUEUED
+        - ASSIGNED
+        - RUNNING
+        - FINALIZING
+        - RETRY_WAIT
+        - CANCELING
+        - SUCCEEDED
+        - FAILED
+        - CANCELED
+    PricingSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - rate_card_revision_id
+        - rate_line_id
+        - unit_amount_minor
+        - quantity
+        - quoted_amount_minor
+        - currency
+      properties:
+        rate_card_revision_id:
+          type: string
+          format: uuid
+        rate_line_id:
+          type: string
+          format: uuid
+        unit_amount_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        quantity:
+          type: integer
+          minimum: 1
+        quoted_amount_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
