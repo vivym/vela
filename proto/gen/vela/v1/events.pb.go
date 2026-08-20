@@ -35,6 +35,7 @@ type EventEnvelope struct {
 	//
 	//	*EventEnvelope_JobReady
 	//	*EventEnvelope_JobAssigned
+	//	*EventEnvelope_JobStarted
 	Payload       isEventEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -144,6 +145,15 @@ func (x *EventEnvelope) GetJobAssigned() *JobAssigned {
 	return nil
 }
 
+func (x *EventEnvelope) GetJobStarted() *JobStarted {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_JobStarted); ok {
+			return x.JobStarted
+		}
+	}
+	return nil
+}
+
 type isEventEnvelope_Payload interface {
 	isEventEnvelope_Payload()
 }
@@ -156,9 +166,15 @@ type EventEnvelope_JobAssigned struct {
 	JobAssigned *JobAssigned `protobuf:"bytes,21,opt,name=job_assigned,json=jobAssigned,proto3,oneof"`
 }
 
+type EventEnvelope_JobStarted struct {
+	JobStarted *JobStarted `protobuf:"bytes,22,opt,name=job_started,json=jobStarted,proto3,oneof"`
+}
+
 func (*EventEnvelope_JobReady) isEventEnvelope_Payload() {}
 
 func (*EventEnvelope_JobAssigned) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_JobStarted) isEventEnvelope_Payload() {}
 
 type JobReady struct {
 	state                      protoimpl.MessageState `protogen:"open.v1"`
@@ -368,11 +384,119 @@ func (x *JobAssigned) GetLeaseExpiresAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type JobStarted struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId          string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AttemptId      string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	AttemptNumber  uint32                 `protobuf:"varint,5,opt,name=attempt_number,json=attemptNumber,proto3" json:"attempt_number,omitempty"`
+	WorkerId       string                 `protobuf:"bytes,6,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerEpoch    uint64                 `protobuf:"varint,7,opt,name=worker_epoch,json=workerEpoch,proto3" json:"worker_epoch,omitempty"`
+	LeaseFence     uint64                 `protobuf:"varint,8,opt,name=lease_fence,json=leaseFence,proto3" json:"lease_fence,omitempty"`
+	StartedAt      *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *JobStarted) Reset() {
+	*x = JobStarted{}
+	mi := &file_vela_v1_events_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobStarted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobStarted) ProtoMessage() {}
+
+func (x *JobStarted) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobStarted.ProtoReflect.Descriptor instead.
+func (*JobStarted) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *JobStarted) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *JobStarted) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *JobStarted) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobStarted) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *JobStarted) GetAttemptNumber() uint32 {
+	if x != nil {
+		return x.AttemptNumber
+	}
+	return 0
+}
+
+func (x *JobStarted) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *JobStarted) GetWorkerEpoch() uint64 {
+	if x != nil {
+		return x.WorkerEpoch
+	}
+	return 0
+}
+
+func (x *JobStarted) GetLeaseFence() uint64 {
+	if x != nil {
+		return x.LeaseFence
+	}
+	return 0
+}
+
+func (x *JobStarted) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
 var File_vela_v1_events_proto protoreflect.FileDescriptor
 
 const file_vela_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x14vela/v1/events.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9c\x03\n" +
+	"\x14vela/v1/events.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd4\x03\n" +
 	"\rEventEnvelope\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12%\n" +
 	"\x0eaggregate_type\x18\x02 \x01(\tR\raggregateType\x12!\n" +
@@ -384,7 +508,9 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\voccurred_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"occurredAt\x120\n" +
 	"\tjob_ready\x18\x14 \x01(\v2\x11.vela.v1.JobReadyH\x00R\bjobReady\x129\n" +
-	"\fjob_assigned\x18\x15 \x01(\v2\x14.vela.v1.JobAssignedH\x00R\vjobAssignedB\t\n" +
+	"\fjob_assigned\x18\x15 \x01(\v2\x14.vela.v1.JobAssignedH\x00R\vjobAssigned\x126\n" +
+	"\vjob_started\x18\x16 \x01(\v2\x13.vela.v1.JobStartedH\x00R\n" +
+	"jobStartedB\t\n" +
 	"\apayload\"\xb9\x02\n" +
 	"\bJobReady\x12'\n" +
 	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
@@ -409,7 +535,22 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\vlease_fence\x18\t \x01(\x04R\n" +
 	"leaseFence\x12D\n" +
 	"\x10lease_expires_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\x0eleaseExpiresAtB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
+	" \x01(\v2\x1a.google.protobuf.TimestampR\x0eleaseExpiresAt\"\xcd\x02\n" +
+	"\n" +
+	"JobStarted\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x04 \x01(\tR\tattemptId\x12%\n" +
+	"\x0eattempt_number\x18\x05 \x01(\rR\rattemptNumber\x12\x1b\n" +
+	"\tworker_id\x18\x06 \x01(\tR\bworkerId\x12!\n" +
+	"\fworker_epoch\x18\a \x01(\x04R\vworkerEpoch\x12\x1f\n" +
+	"\vlease_fence\x18\b \x01(\x04R\n" +
+	"leaseFence\x129\n" +
+	"\n" +
+	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAtB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
 
 var (
 	file_vela_v1_events_proto_rawDescOnce sync.Once
@@ -423,23 +564,26 @@ func file_vela_v1_events_proto_rawDescGZIP() []byte {
 	return file_vela_v1_events_proto_rawDescData
 }
 
-var file_vela_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_vela_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_vela_v1_events_proto_goTypes = []any{
 	(*EventEnvelope)(nil),         // 0: vela.v1.EventEnvelope
 	(*JobReady)(nil),              // 1: vela.v1.JobReady
 	(*JobAssigned)(nil),           // 2: vela.v1.JobAssigned
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*JobStarted)(nil),            // 3: vela.v1.JobStarted
+	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 }
 var file_vela_v1_events_proto_depIdxs = []int32{
-	3, // 0: vela.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	4, // 0: vela.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
 	1, // 1: vela.v1.EventEnvelope.job_ready:type_name -> vela.v1.JobReady
 	2, // 2: vela.v1.EventEnvelope.job_assigned:type_name -> vela.v1.JobAssigned
-	3, // 3: vela.v1.JobAssigned.lease_expires_at:type_name -> google.protobuf.Timestamp
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	3, // 3: vela.v1.EventEnvelope.job_started:type_name -> vela.v1.JobStarted
+	4, // 4: vela.v1.JobAssigned.lease_expires_at:type_name -> google.protobuf.Timestamp
+	4, // 5: vela.v1.JobStarted.started_at:type_name -> google.protobuf.Timestamp
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_events_proto_init() }
@@ -450,6 +594,7 @@ func file_vela_v1_events_proto_init() {
 	file_vela_v1_events_proto_msgTypes[0].OneofWrappers = []any{
 		(*EventEnvelope_JobReady)(nil),
 		(*EventEnvelope_JobAssigned)(nil),
+		(*EventEnvelope_JobStarted)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -457,7 +602,7 @@ func file_vela_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_events_proto_rawDesc), len(file_vela_v1_events_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

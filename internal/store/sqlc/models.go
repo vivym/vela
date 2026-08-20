@@ -560,6 +560,7 @@ type Job struct {
 	CreatedAt                                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
+	BillableStartedAt                         pgtype.Timestamptz `db:"billable_started_at" json:"billable_started_at"`
 }
 
 type ModelRevision struct {

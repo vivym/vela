@@ -17,6 +17,7 @@ message EventEnvelope {
   oneof payload {
     JobReady job_ready = 20;
     JobAssigned job_assigned = 21;
+    JobStarted job_started = 22;
   }
 }
 
@@ -41,4 +42,16 @@ message JobAssigned {
   string execution_profile_revision_id = 8;
   uint64 lease_fence = 9;
   google.protobuf.Timestamp lease_expires_at = 10;
+}
+
+message JobStarted {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string attempt_id = 4;
+  uint32 attempt_number = 5;
+  string worker_id = 6;
+  uint64 worker_epoch = 7;
+  uint64 lease_fence = 8;
+  google.protobuf.Timestamp started_at = 9;
 }

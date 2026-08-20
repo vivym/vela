@@ -479,7 +479,7 @@ func TestAcquireNeverReplaysReconcilerFinalizationLease(t *testing.T) {
 		t.Fatalf("revoke Worker EXECUTION Lease: %v", err)
 	}
 	if _, err := fixture.database.Admin.Exec(
-		"UPDATE attempts SET state = 'RUNNING' WHERE id = $1",
+		"UPDATE attempts SET state = 'RUNNING', started_at = clock_timestamp() WHERE id = $1",
 		assignment.AttemptID,
 	); err != nil {
 		t.Fatalf("start Attempt fixture: %v", err)

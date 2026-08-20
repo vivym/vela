@@ -29,6 +29,7 @@ type Querier interface {
 	InsertJob(ctx context.Context, arg InsertJobParams) error
 	InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error
 	InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRuntimeStateParams) error
+	InsertStartOutboxEvent(ctx context.Context, arg InsertStartOutboxEventParams) error
 	ListActiveLeaseSigningKeyIDs(ctx context.Context) ([]string, error)
 	LockCompatiblePool(ctx context.Context, arg LockCompatiblePoolParams) (LockCompatiblePoolRow, error)
 	LockCreditAccount(ctx context.Context, organizationID uuid.UUID) (LockCreditAccountRow, error)
@@ -36,8 +37,11 @@ type Querier interface {
 	LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (LockJobForAssignmentRow, error)
 	LockProjectForAdmission(ctx context.Context, arg LockProjectForAdmissionParams) (LockProjectForAdmissionRow, error)
 	LockProjectForAssignment(ctx context.Context, arg LockProjectForAssignmentParams) (LockProjectForAssignmentRow, error)
+	LockStartAuthority(ctx context.Context, arg LockStartAuthorityParams) (LockStartAuthorityRow, error)
 	LockWorkerForAssignment(ctx context.Context, workerID uuid.UUID) (LockWorkerForAssignmentRow, error)
+	MarkAttemptRunning(ctx context.Context, arg MarkAttemptRunningParams) (int64, error)
 	MarkJobAssigned(ctx context.Context, arg MarkJobAssignedParams) (int64, error)
+	MarkJobRunning(ctx context.Context, arg MarkJobRunningParams) (MarkJobRunningRow, error)
 	MarkOutboxFailed(ctx context.Context, arg MarkOutboxFailedParams) (int64, error)
 	MarkOutboxPublished(ctx context.Context, arg MarkOutboxPublishedParams) (int64, error)
 	MarkWorkerBusy(ctx context.Context, arg MarkWorkerBusyParams) (int64, error)

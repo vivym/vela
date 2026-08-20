@@ -275,8 +275,8 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 	assertTableExists(t, db, "retry_runtime_states")
 	assertTableExists(t, db, "attempts")
 
-	if err := goose.Down(db, migrations); err != nil {
-		t.Fatalf("migrate down: %v", err)
+	if err := goose.DownTo(db, migrations, 0); err != nil {
+		t.Fatalf("migrate down to zero: %v", err)
 	}
 	assertRoleExists(t, db, "vela_request")
 	assertRoleExists(t, db, "vela_auth")
