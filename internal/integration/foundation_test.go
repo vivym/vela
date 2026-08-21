@@ -5,9 +5,12 @@ package integration_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -20,6 +23,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	postgrescontainer "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/identity"
 )
 
 func TestServicePrincipalRejectsHumanPrincipal(t *testing.T) {
@@ -295,6 +300,178 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 	assertTableExists(t, db, "attempts")
 	assertTableExists(t, db, "execution_failure_decisions")
 	assertTableExists(t, db, "execution_retry_evidence")
+}
+
+func TestReleasedFoundationMigrationRemainsByteIdentical(t *testing.T) {
+	repositoryRoot := repositoryRoot(t)
+	current, err := os.ReadFile(filepath.Join(repositoryRoot, "db", "migrations", "00001_foundation.sql"))
+	if err != nil {
+		t.Fatalf("read current foundation migration: %v", err)
+	}
+	command := exec.Command("git", "show", nMinusOneCancellationCommit+":db/migrations/00001_foundation.sql")
+	command.Dir = repositoryRoot
+	released, err := command.Output()
+	if err != nil {
+		t.Fatalf("read released foundation migration: %v", err)
+	}
+	if string(current) != string(released) {
+		t.Fatal("released migration 00001 changed after publication")
+	}
+}
+
+func TestCustomerCancellationUpgradesExactV5AuthorizationSemantics(t *testing.T) {
+	database := newPostgres(t)
+	repositoryRoot := repositoryRoot(t)
+	bootstrapSQL, err := os.ReadFile(filepath.Join(repositoryRoot, "db", "bootstrap", "roles.sql"))
+	if err != nil {
+		t.Fatalf("read role bootstrap: %v", err)
+	}
+	if _, err := database.Admin.Exec(string(bootstrapSQL)); err != nil {
+		t.Fatalf("apply role bootstrap: %v", err)
+	}
+
+	migrations := exactV5PlusCurrentCancellationMigrations(t)
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatalf("set goose dialect: %v", err)
+	}
+	if err := goose.UpTo(database.Admin, migrations, 5); err != nil {
+		t.Fatalf("apply exact v5 migrations: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
+		CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
+		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
+		CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
+	`); err != nil {
+		t.Fatalf("create application login roles: %v", err)
+	}
+	seedAdmissionFixture(t, database.Admin)
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatalf("upgrade exact v5 schema through cancellation migration: %v", err)
+	}
+
+	server := admissionServerForDatabase(t, database)
+	for _, test := range []struct {
+		name       string
+		requestKey string
+		mutation   string
+		wantStatus int
+	}{
+		{name: "scope removed", requestKey: "scope-removed", mutation: "scopes = ARRAY['jobs:submit', 'jobs:read']", wantStatus: http.StatusForbidden},
+		{name: "scope removed with null entry", requestKey: "scope-removed-null", mutation: "scopes = ARRAY['jobs:submit', NULL]::text[]", wantStatus: http.StatusForbidden},
+		{name: "credential revoked", requestKey: "credential-revoked", mutation: "revoked_at = clock_timestamp()", wantStatus: http.StatusUnauthorized},
+		{name: "credential expired", requestKey: "credential-expired", mutation: "expires_at = clock_timestamp() - interval '1 second'", wantStatus: http.StatusUnauthorized},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := database.Admin.Exec(`
+				UPDATE credentials
+				SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel'],
+					revoked_at = NULL,
+					expires_at = clock_timestamp() + interval '1 day'
+				WHERE id = $1
+			`, testCredentialID); err != nil {
+				t.Fatalf("restore cancellation credential: %v", err)
+			}
+			accepted := submitJob(t, server.URL, "exact-v5-cancellation-auth-"+test.requestKey, []byte(`{
+				"model":"minimax-h3",
+				"generation_preset":"balanced",
+				"service_class":"standard",
+				"output_spec":"video-1080p-5s-24fps",
+				"generation_count":1,
+				"prompt":"prove authorization after an exact v5 database upgrade"
+			}`))
+			if accepted.StatusCode != http.StatusAccepted {
+				t.Fatalf("submit upgrade fixture status = %d; body=%s", accepted.StatusCode, accepted.Body)
+			}
+			var job jobResponse
+			if err := json.Unmarshal(accepted.Body, &job); err != nil {
+				t.Fatalf("decode upgrade fixture Job: %v", err)
+			}
+			principal, err := identity.NewAuthenticator(
+				newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password"),
+				testCredentialPepper,
+			).Authenticate(context.Background(), testBearerCredential())
+			if err != nil {
+				t.Fatalf("authenticate before post-auth mutation: %v", err)
+			}
+			if _, err := database.Admin.Exec(
+				"UPDATE credentials SET "+test.mutation+" WHERE id = $1",
+				testCredentialID,
+			); err != nil {
+				t.Fatalf("mutate authenticated credential: %v", err)
+			}
+			_, err = cancellation.NewService(
+				newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password"),
+				newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password"),
+			).Cancel(
+				context.Background(),
+				principal,
+				uuid.MustParse(testProjectID),
+				uuid.MustParse(job.JobID),
+			)
+			var failure *cancellation.Failure
+			if !errors.As(err, &failure) {
+				t.Fatalf("post-auth cancellation error = %v, want typed failure", err)
+			}
+			wantCode := cancellation.FailureUnauthorized
+			if test.wantStatus == http.StatusForbidden {
+				wantCode = cancellation.FailureForbidden
+			}
+			if failure.Code != wantCode {
+				t.Fatalf("post-auth cancellation failure = %s, want %s", failure.Code, wantCode)
+			}
+		})
+	}
+
+	if err := goose.DownTo(database.Admin, migrations, 5); err != nil {
+		t.Fatalf("contract cancellation migration after exact-v5 upgrade: %v", err)
+	}
+	var cancellationContextExists bool
+	if err := database.Admin.QueryRow(`
+		SELECT to_regprocedure('vela_set_cancellation_request_context(uuid,bytea)') IS NOT NULL
+	`).Scan(&cancellationContextExists); err != nil {
+		t.Fatalf("inspect cancellation context function after Down: %v", err)
+	}
+	if cancellationContextExists {
+		t.Fatal("cancellation-specific request context survived migration Down")
+	}
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatalf("re-expand cancellation migration after exact-v5 upgrade: %v", err)
+	}
+}
+
+func exactV5PlusCurrentCancellationMigrations(t *testing.T) string {
+	t.Helper()
+	repositoryRoot := repositoryRoot(t)
+	directory := t.TempDir()
+	for version := 1; version <= 5; version++ {
+		name := fmt.Sprintf("%05d", version)
+		matches, err := filepath.Glob(filepath.Join(repositoryRoot, "db", "migrations", name+"_*.sql"))
+		if err != nil || len(matches) != 1 {
+			t.Fatalf("locate migration %s: matches=%v error=%v", name, matches, err)
+		}
+		base := filepath.Base(matches[0])
+		command := exec.Command(
+			"git", "show", nMinusOneCancellationCommit+":db/migrations/"+base,
+		)
+		command.Dir = repositoryRoot
+		contents, err := command.Output()
+		if err != nil {
+			t.Fatalf("read exact v5 migration %s: %v", base, err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, base), contents, 0o600); err != nil {
+			t.Fatalf("write exact v5 migration %s: %v", base, err)
+		}
+	}
+	cancellationMigration := filepath.Join(repositoryRoot, "db", "migrations", "00006_customer_cancellation.sql")
+	contents, err := os.ReadFile(cancellationMigration)
+	if err != nil {
+		t.Fatalf("read current cancellation migration: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, filepath.Base(cancellationMigration)), contents, 0o600); err != nil {
+		t.Fatalf("write current cancellation migration: %v", err)
+	}
+	return directory
 }
 
 func TestExecutionFailureMigrationDownUpPreservesProtectedEvidence(t *testing.T) {
@@ -702,6 +879,292 @@ func TestExecutionFailureMigrationDoesNotTrustLegacyRequestEvidence(t *testing.T
 			publicEvidenceCleared,
 			protectedEvidenceEmpty,
 		)
+	}
+}
+
+func TestCustomerCancellationMigrationDownUpPreservesImmutableEvidence(t *testing.T) {
+	fixture := newStartFixture(t, "migration-cancellation-evidence", 7)
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant cancellation scope: %v", err)
+	}
+	_, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil {
+		t.Fatalf("start migration cancellation fixture: %v", err)
+	}
+	server := admissionServerForDatabase(t, fixture.database)
+	canceled := cancelJob(
+		t,
+		server.URL,
+		testProjectID,
+		fixture.assignment.JobID.String(),
+		testBearerCredential(),
+	)
+	if canceled.StatusCode != http.StatusOK {
+		t.Fatalf("cancel migration fixture status = %d; body=%s", canceled.StatusCode, canceled.Body)
+	}
+	var cancellationResult cancelResponse
+	if err := json.Unmarshal(canceled.Body, &cancellationResult); err != nil {
+		t.Fatalf("decode migration cancellation response: %v", err)
+	}
+	coordinator := cancellation.NewService(
+		newRolePool(t, fixture.database.DSN, "vela_cancel_login", "vela-cancel-password"),
+		newRolePool(t, fixture.database.DSN, "vela_internal_login", "vela-internal-password"),
+	)
+	if _, err := coordinator.AcknowledgeCancellationStop(
+		context.Background(),
+		fixture.worker,
+		fixture.credentials,
+		uuid.MustParse(cancellationResult.CancellationID),
+	); err != nil {
+		t.Fatalf("acknowledge migration cancellation stop: %v", err)
+	}
+
+	var decisionSnapshot, chargeSnapshot, receiptSnapshot string
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			to_jsonb(cancellation_row)::text,
+			to_jsonb(charge)::text,
+			to_jsonb(receipt)::text
+		FROM job_cancellation_decisions AS cancellation_row
+		JOIN charges AS charge ON charge.cancellation_id = cancellation_row.id
+		JOIN cancellation_stop_receipts AS receipt ON receipt.cancellation_id = cancellation_row.id
+		WHERE cancellation_row.job_id = $1
+	`, fixture.assignment.JobID).Scan(
+		&decisionSnapshot,
+		&chargeSnapshot,
+		&receiptSnapshot,
+	); err != nil {
+		t.Fatalf("snapshot immutable cancellation evidence: %v", err)
+	}
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(fixture.database.Admin, migrations, 5); err != nil {
+		t.Fatalf("migrate customer cancellation down with immutable evidence: %v", err)
+	}
+	assertTableDoesNotExist(t, fixture.database.Admin, "job_cancellation_decisions")
+	assertTableDoesNotExist(t, fixture.database.Admin, "charges")
+	assertTableDoesNotExist(t, fixture.database.Admin, "cancellation_stop_receipts")
+
+	var (
+		decisionPreserved, chargePreserved, receiptPreserved bool
+		requestDenied, cancelDenied                          bool
+	)
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			(
+				SELECT count(*) = 1 AND bool_and(decision = $1::jsonb)
+				FROM vela_private.job_cancellation_decisions_rollback
+			),
+			(
+				SELECT count(*) = 1 AND bool_and(charge = $2::jsonb)
+				FROM vela_private.charges_rollback
+			),
+			(
+				SELECT count(*) = 1 AND bool_and(receipt = $3::jsonb)
+				FROM vela_private.cancellation_stop_receipts_rollback
+			),
+			NOT has_table_privilege(
+				'vela_request',
+				'vela_private.job_cancellation_decisions_rollback',
+				'SELECT'
+			),
+			NOT has_table_privilege(
+				'vela_cancel',
+				'vela_private.charges_rollback',
+				'SELECT'
+			)
+	`,
+		decisionSnapshot,
+		chargeSnapshot,
+		receiptSnapshot,
+	).Scan(
+		&decisionPreserved,
+		&chargePreserved,
+		&receiptPreserved,
+		&requestDenied,
+		&cancelDenied,
+	); err != nil {
+		t.Fatalf("read private cancellation evidence after migration down: %v", err)
+	}
+	if !decisionPreserved || !chargePreserved || !receiptPreserved || !requestDenied || !cancelDenied {
+		t.Fatalf(
+			"migration down evidence = decision %t charge %t receipt %t request denied %t cancel denied %t",
+			decisionPreserved,
+			chargePreserved,
+			receiptPreserved,
+			requestDenied,
+			cancelDenied,
+		)
+	}
+
+	if err := goose.Up(fixture.database.Admin, migrations); err != nil {
+		t.Fatalf("migrate customer cancellation up after evidence-preserving down: %v", err)
+	}
+	var decisionRestored, chargeRestored, receiptRestored bool
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			to_jsonb(cancellation_row) = $1::jsonb,
+			to_jsonb(charge) = $2::jsonb,
+			to_jsonb(receipt) = $3::jsonb
+		FROM job_cancellation_decisions AS cancellation_row
+		JOIN charges AS charge ON charge.cancellation_id = cancellation_row.id
+		JOIN cancellation_stop_receipts AS receipt ON receipt.cancellation_id = cancellation_row.id
+		WHERE cancellation_row.job_id = $4
+	`,
+		decisionSnapshot,
+		chargeSnapshot,
+		receiptSnapshot,
+		fixture.assignment.JobID,
+	).Scan(&decisionRestored, &chargeRestored, &receiptRestored); err != nil {
+		t.Fatalf("read restored cancellation evidence: %v", err)
+	}
+	if !decisionRestored || !chargeRestored || !receiptRestored {
+		t.Fatalf(
+			"migration re-up evidence = decision %t charge %t receipt %t",
+			decisionRestored,
+			chargeRestored,
+			receiptRestored,
+		)
+	}
+}
+
+func TestCustomerCancellationMigrationDownRefusesCancelingJob(t *testing.T) {
+	fixture, _, _ := newCancelingTestFixture(t, "migration-active-canceling", false)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err := goose.DownTo(fixture.database.Admin, migrations, 5)
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
+		postgresError.ConstraintName != "customer_cancellation_contract_requires_drained_canceling" {
+		t.Fatalf("migration down with active CANCELING Job error = %v, want fail-closed SQLSTATE 55000", err)
+	}
+	version, versionErr := goose.GetDBVersion(fixture.database.Admin)
+	if versionErr != nil {
+		t.Fatalf("read migration version after refused cancellation down: %v", versionErr)
+	}
+	if version != 6 {
+		t.Fatalf("migration version after refused cancellation down = %d, want 6", version)
+	}
+	assertTableExists(t, fixture.database.Admin, "job_cancellation_decisions")
+	assertTableExists(t, fixture.database.Admin, "charges")
+	assertTableExists(t, fixture.database.Admin, "cancellation_stop_receipts")
+}
+
+func TestCustomerCancellationMigrationDownSerializesWithConcurrentCancellation(t *testing.T) {
+	fixture := newStartFixture(t, "migration-concurrent-cancellation", 7)
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant cancellation scope: %v", err)
+	}
+	if _, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	); err != nil {
+		t.Fatalf("start concurrent cancellation migration fixture: %v", err)
+	}
+	const advisoryLockKey int64 = 580006
+	if _, err := fixture.database.Admin.Exec(`
+		CREATE FUNCTION vela_test_pause_cancellation_charge_insert() RETURNS trigger
+		LANGUAGE plpgsql AS $$
+		BEGIN
+			PERFORM pg_advisory_xact_lock(580006);
+			RETURN NEW;
+		END
+		$$;
+		CREATE TRIGGER vela_test_pause_cancellation_charge_insert
+		BEFORE INSERT ON charges
+		FOR EACH ROW EXECUTE FUNCTION vela_test_pause_cancellation_charge_insert();
+	`); err != nil {
+		t.Fatalf("install concurrent cancellation migration pause trigger: %v", err)
+	}
+	blocker, err := fixture.database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin cancellation migration advisory-lock blocker: %v", err)
+	}
+	defer func() { _ = blocker.Rollback() }()
+	if _, err := blocker.Exec("SELECT pg_advisory_lock($1)", advisoryLockKey); err != nil {
+		t.Fatalf("acquire cancellation migration advisory-lock blocker: %v", err)
+	}
+
+	server := admissionServerForDatabase(t, fixture.database)
+	type cancelCall struct {
+		result httpResult
+		err    error
+	}
+	cancelResult := make(chan cancelCall, 1)
+	go func() {
+		result, cancelErr := doCancelJob(
+			server.URL,
+			testProjectID,
+			fixture.assignment.JobID.String(),
+			testBearerCredential(),
+		)
+		cancelResult <- cancelCall{result: result, err: cancelErr}
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "vela_cancel_login")
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	downErrors := make(chan error, 1)
+	go func() {
+		downErrors <- goose.DownTo(fixture.database.Admin, migrations, 5)
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "postgres")
+	var unlocked bool
+	if err := blocker.QueryRow("SELECT pg_advisory_unlock($1)", advisoryLockKey).Scan(&unlocked); err != nil {
+		t.Fatalf("release cancellation migration advisory-lock blocker: %v", err)
+	}
+	if !unlocked {
+		t.Fatal("cancellation migration advisory-lock blocker was not held")
+	}
+	if err := blocker.Commit(); err != nil {
+		t.Fatalf("commit cancellation migration advisory-lock blocker: %v", err)
+	}
+
+	select {
+	case canceled := <-cancelResult:
+		if canceled.err != nil || canceled.result.StatusCode != http.StatusOK {
+			t.Fatalf(
+				"concurrent migration cancellation = status %d body=%s error=%v",
+				canceled.result.StatusCode,
+				canceled.result.Body,
+				canceled.err,
+			)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent migration cancellation did not finish")
+	}
+	select {
+	case err := <-downErrors:
+		var postgresError *pgconn.PgError
+		if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
+			postgresError.ConstraintName != "customer_cancellation_contract_requires_drained_canceling" {
+			t.Fatalf("concurrent cancellation migration Down error = %v, want CANCELING refusal", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent cancellation migration Down did not finish")
+	}
+
+	var jobState string
+	var decisions, charges int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			job.state,
+			(SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
+			(SELECT count(*) FROM charges WHERE job_id = job.id)
+		FROM jobs AS job
+		WHERE job.id = $1
+	`, fixture.assignment.JobID).Scan(&jobState, &decisions, &charges); err != nil {
+		t.Fatalf("read concurrent cancellation migration result: %v", err)
+	}
+	if jobState != "CANCELING" || decisions != 1 || charges != 1 {
+		t.Fatalf("concurrent cancellation migration result = state %s decisions %d charges %d", jobState, decisions, charges)
 	}
 }
 

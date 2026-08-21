@@ -20,6 +20,11 @@ message EventEnvelope {
     JobStarted job_started = 22;
     JobRetryWait job_retry_wait = 23;
     JobFailed job_failed = 24;
+    JobCanceled job_canceled = 25;
+    JobCancelRequested job_cancel_requested = 26;
+    JobCanceling job_canceling = 27;
+    ChargePosted charge_posted = 28;
+    InvoiceExportRequested invoice_export_requested = 29;
   }
 }
 
@@ -92,4 +97,63 @@ message JobFailed {
   uint64 attempt_compute_seconds = 12;
   uint64 total_compute_seconds = 13;
   google.protobuf.Timestamp decided_at = 14;
+}
+
+message JobCanceled {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string cancellation_id = 4;
+  uint64 job_fence = 5;
+  bool billable = 6;
+  string charge_id = 7;
+  google.protobuf.Timestamp decided_at = 8;
+}
+
+message JobCancelRequested {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string cancellation_id = 4;
+  string attempt_id = 5;
+  string worker_id = 6;
+  uint64 worker_epoch = 7;
+  uint64 attempt_fence = 8;
+  uint64 cancellation_fence = 9;
+  google.protobuf.Timestamp decided_at = 10;
+  string authority_lease_id = 11;
+  string authority_lease_phase = 12;
+  string authority_lease_owner_kind = 13;
+  string authority_lease_owner_id = 14;
+  google.protobuf.Timestamp authority_lease_expires_at = 15;
+}
+
+message JobCanceling {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string cancellation_id = 4;
+  uint64 cancellation_fence = 5;
+  string charge_id = 6;
+  google.protobuf.Timestamp decided_at = 7;
+}
+
+message ChargePosted {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string charge_id = 4;
+  string cancellation_id = 5;
+  uint64 amount_minor = 6;
+  string currency = 7;
+  string reason = 8;
+  google.protobuf.Timestamp posted_at = 9;
+}
+
+message InvoiceExportRequested {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string charge_id = 4;
+  google.protobuf.Timestamp requested_at = 5;
 }

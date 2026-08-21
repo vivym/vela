@@ -60,6 +60,92 @@ func (ns NullAttemptState) Value() (driver.Value, error) {
 	return string(ns.AttemptState), nil
 }
 
+type CancellationDecision string
+
+const (
+	CancellationDecisionCANCELED         CancellationDecision = "CANCELED"
+	CancellationDecisionCANCELING        CancellationDecision = "CANCELING"
+	CancellationDecisionALREADYSUCCEEDED CancellationDecision = "ALREADY_SUCCEEDED"
+	CancellationDecisionALREADYFAILED    CancellationDecision = "ALREADY_FAILED"
+)
+
+func (e *CancellationDecision) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CancellationDecision(s)
+	case string:
+		*e = CancellationDecision(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CancellationDecision: %T", src)
+	}
+	return nil
+}
+
+type NullCancellationDecision struct {
+	CancellationDecision CancellationDecision `json:"cancellation_decision"`
+	Valid                bool                 `json:"valid"` // Valid is true if CancellationDecision is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCancellationDecision) Scan(value interface{}) error {
+	if value == nil {
+		ns.CancellationDecision, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CancellationDecision.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCancellationDecision) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CancellationDecision), nil
+}
+
+type CancellationStopSource string
+
+const (
+	CancellationStopSourceACKNOWLEDGED               CancellationStopSource = "ACKNOWLEDGED"
+	CancellationStopSourceLEASEEXPIREDRECONCILIATION CancellationStopSource = "LEASE_EXPIRED_RECONCILIATION"
+)
+
+func (e *CancellationStopSource) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CancellationStopSource(s)
+	case string:
+		*e = CancellationStopSource(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CancellationStopSource: %T", src)
+	}
+	return nil
+}
+
+type NullCancellationStopSource struct {
+	CancellationStopSource CancellationStopSource `json:"cancellation_stop_source"`
+	Valid                  bool                   `json:"valid"` // Valid is true if CancellationStopSource is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCancellationStopSource) Scan(value interface{}) error {
+	if value == nil {
+		ns.CancellationStopSource, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CancellationStopSource.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCancellationStopSource) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CancellationStopSource), nil
+}
+
 type CatalogState string
 
 const (
@@ -106,6 +192,48 @@ func (ns NullCatalogState) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.CatalogState), nil
+}
+
+type ChargeReason string
+
+const (
+	ChargeReasonVISIBLECOMPLETION    ChargeReason = "VISIBLE_COMPLETION"
+	ChargeReasonCUSTOMERCANCELLATION ChargeReason = "CUSTOMER_CANCELLATION"
+)
+
+func (e *ChargeReason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ChargeReason(s)
+	case string:
+		*e = ChargeReason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ChargeReason: %T", src)
+	}
+	return nil
+}
+
+type NullChargeReason struct {
+	ChargeReason ChargeReason `json:"charge_reason"`
+	Valid        bool         `json:"valid"` // Valid is true if ChargeReason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullChargeReason) Scan(value interface{}) error {
+	if value == nil {
+		ns.ChargeReason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ChargeReason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullChargeReason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ChargeReason), nil
 }
 
 type CreditReservationState string
@@ -614,6 +742,38 @@ type AttemptProgress struct {
 	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type CancellationStopReceipt struct {
+	ID                 uuid.UUID              `db:"id" json:"id"`
+	OrganizationID     uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ProjectID          uuid.UUID              `db:"project_id" json:"project_id"`
+	JobID              uuid.UUID              `db:"job_id" json:"job_id"`
+	CancellationID     uuid.UUID              `db:"cancellation_id" json:"cancellation_id"`
+	AttemptID          uuid.UUID              `db:"attempt_id" json:"attempt_id"`
+	WorkerID           uuid.UUID              `db:"worker_id" json:"worker_id"`
+	WorkerEpoch        int64                  `db:"worker_epoch" json:"worker_epoch"`
+	AttemptFence       int64                  `db:"attempt_fence" json:"attempt_fence"`
+	CancellationFence  int64                  `db:"cancellation_fence" json:"cancellation_fence"`
+	Source             CancellationStopSource `db:"source" json:"source"`
+	TerminalJobVersion int64                  `db:"terminal_job_version" json:"terminal_job_version"`
+	StoppedAt          pgtype.Timestamptz     `db:"stopped_at" json:"stopped_at"`
+	CreatedAt          pgtype.Timestamptz     `db:"created_at" json:"created_at"`
+}
+
+type Charge struct {
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	OrganizationID      uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID           uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID               uuid.UUID          `db:"job_id" json:"job_id"`
+	CreditReservationID uuid.UUID          `db:"credit_reservation_id" json:"credit_reservation_id"`
+	CancellationID      uuid.NullUUID      `db:"cancellation_id" json:"cancellation_id"`
+	Reason              ChargeReason       `db:"reason" json:"reason"`
+	AmountMinor         int64              `db:"amount_minor" json:"amount_minor"`
+	Currency            string             `db:"currency" json:"currency"`
+	State               string             `db:"state" json:"state"`
+	PostedAt            pgtype.Timestamptz `db:"posted_at" json:"posted_at"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Credential struct {
 	ID                   uuid.UUID          `db:"id" json:"id"`
 	OrganizationID       uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -766,6 +926,30 @@ type Job struct {
 	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
 	BillableStartedAt                         pgtype.Timestamptz `db:"billable_started_at" json:"billable_started_at"`
 	ExecutionPhase                            *execution.Phase   `db:"execution_phase" json:"execution_phase"`
+}
+
+type JobCancellationDecision struct {
+	ID                      uuid.UUID            `db:"id" json:"id"`
+	OrganizationID          uuid.UUID            `db:"organization_id" json:"organization_id"`
+	ProjectID               uuid.UUID            `db:"project_id" json:"project_id"`
+	JobID                   uuid.UUID            `db:"job_id" json:"job_id"`
+	RequestedByPrincipalID  uuid.UUID            `db:"requested_by_principal_id" json:"requested_by_principal_id"`
+	PreviousJobState        JobState             `db:"previous_job_state" json:"previous_job_state"`
+	Decision                CancellationDecision `db:"decision" json:"decision"`
+	Billable                bool                 `db:"billable" json:"billable"`
+	AttemptID               uuid.NullUUID        `db:"attempt_id" json:"attempt_id"`
+	WorkerID                uuid.NullUUID        `db:"worker_id" json:"worker_id"`
+	WorkerEpoch             *int64               `db:"worker_epoch" json:"worker_epoch"`
+	AttemptFence            *int64               `db:"attempt_fence" json:"attempt_fence"`
+	AuthorityLeaseID        uuid.NullUUID        `db:"authority_lease_id" json:"authority_lease_id"`
+	AuthorityLeasePhase     *LeasePhase          `db:"authority_lease_phase" json:"authority_lease_phase"`
+	AuthorityLeaseOwnerKind *LeaseOwnerKind      `db:"authority_lease_owner_kind" json:"authority_lease_owner_kind"`
+	AuthorityLeaseOwnerID   *string              `db:"authority_lease_owner_id" json:"authority_lease_owner_id"`
+	AuthorityLeaseExpiresAt pgtype.Timestamptz   `db:"authority_lease_expires_at" json:"authority_lease_expires_at"`
+	CancellationFence       int64                `db:"cancellation_fence" json:"cancellation_fence"`
+	JobVersion              int64                `db:"job_version" json:"job_version"`
+	DecidedAt               pgtype.Timestamptz   `db:"decided_at" json:"decided_at"`
+	CreatedAt               pgtype.Timestamptz   `db:"created_at" json:"created_at"`
 }
 
 type ModelRevision struct {

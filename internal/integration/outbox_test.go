@@ -19,6 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/inbox"
@@ -31,10 +32,12 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 	seedAdmissionFixture(t, database.Admin)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
 		Admission:     admission.NewService(requestPool),
+		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)

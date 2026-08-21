@@ -1,0 +1,81 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/outbox"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
+)
+
+type publishResult struct {
+	Subject      string `json:"subject"`
+	MessageID    string `json:"message_id"`
+	Payload      []byte `json:"payload"`
+	KnownPayload bool   `json:"known_payload"`
+	UnknownBytes int    `json:"unknown_bytes"`
+}
+
+type captureBroker struct {
+	result publishResult
+}
+
+func (b *captureBroker) Publish(
+	_ context.Context,
+	subject string,
+	messageID string,
+	payload []byte,
+) (outbox.Receipt, error) {
+	var envelope velav1.EventEnvelope
+	if err := proto.Unmarshal(payload, &envelope); err != nil {
+		return outbox.Receipt{}, fmt.Errorf("decode event with N-1 descriptor: %w", err)
+	}
+	b.result = publishResult{
+		Subject:      subject,
+		MessageID:    messageID,
+		Payload:      append([]byte(nil), payload...),
+		KnownPayload: envelope.GetPayload() != nil,
+		UnknownBytes: len(envelope.ProtoReflect().GetUnknown()),
+	}
+	return outbox.Receipt{Stream: "N_MINUS_ONE_PROBE", Sequence: 1}, nil
+}
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("VELA_INTERNAL_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer pool.Close()
+	broker := &captureBroker{}
+	publisher, err := outbox.NewPublisher(pool, broker, outbox.Config{
+		InstanceID: "n-minus-one-outbox-probe",
+		BatchSize:  1,
+		ClaimTTL:   30 * time.Second,
+		RetryDelay: 0,
+	})
+	if err != nil {
+		fatal(err)
+	}
+	published, err := publisher.PublishBatch(ctx)
+	if err != nil {
+		fatal(err)
+	}
+	if published != 1 {
+		fatal(fmt.Errorf("published %d events, want 1", published))
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(broker.result); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}

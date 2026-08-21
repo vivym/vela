@@ -25,6 +25,7 @@ var ErrInvalidCredential = errors.New("invalid service principal credential")
 const (
 	ScopeJobsSubmit = "jobs:submit"
 	ScopeJobsRead   = "jobs:read"
+	ScopeJobsCancel = "jobs:cancel"
 )
 
 type Principal struct {

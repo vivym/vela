@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/cancellation"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
@@ -24,15 +25,17 @@ import (
 )
 
 const (
-	defaultHTTPAddress    = ":8080"
-	defaultPublisherBatch = 100
-	defaultPublisherTick  = 500 * time.Millisecond
+	defaultHTTPAddress                    = ":8080"
+	defaultPublisherBatch                 = 100
+	defaultPublisherTick                  = 500 * time.Millisecond
+	defaultCancellationReconciliationTick = 500 * time.Millisecond
 )
 
 type config struct {
 	httpAddress         string
 	authDatabaseURL     string
 	requestDatabaseURL  string
+	cancelDatabaseURL   string
 	internalDatabaseURL string
 	credentialPepper    []byte
 	natsURL             string
@@ -42,6 +45,11 @@ type config struct {
 	natsClientKey       string
 	publisherBatchSize  int32
 	publisherTick       time.Duration
+	cancellationTick    time.Duration
+}
+
+type cancellationStopReconciler interface {
+	ReconcileNextCancellationStop(context.Context) (cancellation.StopResult, error)
 }
 
 func main() {
@@ -69,6 +77,11 @@ func run() error {
 		return fmt.Errorf("open request database pool: %w", err)
 	}
 	defer requestPool.Close()
+	cancelPool, err := openPool(ctx, configuration.cancelDatabaseURL, 10, veladb.RoleCancel)
+	if err != nil {
+		return fmt.Errorf("open cancellation database pool: %w", err)
+	}
+	defer cancelPool.Close()
 	internalPool, err := openPool(ctx, configuration.internalDatabaseURL, 5, veladb.RoleInternal)
 	if err != nil {
 		return fmt.Errorf("open internal database pool: %w", err)
@@ -94,9 +107,11 @@ func run() error {
 		return err
 	}
 
+	cancellationService := cancellation.NewService(cancelPool, internalPool)
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, configuration.credentialPepper),
 		Admission:     admission.NewService(requestPool),
+		Cancellation:  cancellationService,
 	})
 	if err != nil {
 		return err
@@ -105,7 +120,7 @@ func run() error {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mux.HandleFunc("GET /readyz", readinessHandler(authPool, requestPool, internalPool))
+	mux.HandleFunc("GET /readyz", readinessHandler(authPool, requestPool, cancelPool, internalPool))
 	mux.Handle("/", apiHandler)
 	httpServer := &http.Server{
 		Addr:              configuration.httpAddress,
@@ -120,6 +135,11 @@ func run() error {
 	go func() {
 		defer close(publisherDone)
 		runPublisher(ctx, publisher, configuration.publisherTick)
+	}()
+	reconcilerDone := make(chan struct{})
+	go func() {
+		defer close(reconcilerDone)
+		runCancellationStopReconciler(ctx, cancellationService, configuration.cancellationTick)
 	}()
 	serverErrors := make(chan error, 1)
 	go func() {
@@ -146,6 +166,11 @@ func run() error {
 	case <-shutdownContext.Done():
 		return errors.New("outbox Publisher did not stop before shutdown deadline")
 	}
+	select {
+	case <-reconcilerDone:
+	case <-shutdownContext.Done():
+		return errors.New("cancellation stop reconciler did not stop before shutdown deadline")
+	}
 	if err := natsConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 		return fmt.Errorf("drain NATS connection: %w", err)
 	}
@@ -157,6 +182,7 @@ func loadConfig() (config, error) {
 		httpAddress:         envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
 		authDatabaseURL:     os.Getenv("VELA_AUTH_DATABASE_URL"),
 		requestDatabaseURL:  os.Getenv("VELA_REQUEST_DATABASE_URL"),
+		cancelDatabaseURL:   os.Getenv("VELA_CANCEL_DATABASE_URL"),
 		internalDatabaseURL: os.Getenv("VELA_INTERNAL_DATABASE_URL"),
 		natsURL:             os.Getenv("VELA_NATS_URL"),
 		natsCredentials:     os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
@@ -165,10 +191,12 @@ func loadConfig() (config, error) {
 		natsClientKey:       os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
 		publisherBatchSize:  defaultPublisherBatch,
 		publisherTick:       defaultPublisherTick,
+		cancellationTick:    defaultCancellationReconciliationTick,
 	}
 	for name, value := range map[string]string{
 		"VELA_AUTH_DATABASE_URL":     configuration.authDatabaseURL,
 		"VELA_REQUEST_DATABASE_URL":  configuration.requestDatabaseURL,
+		"VELA_CANCEL_DATABASE_URL":   configuration.cancelDatabaseURL,
 		"VELA_INTERNAL_DATABASE_URL": configuration.internalDatabaseURL,
 		"VELA_NATS_URL":              configuration.natsURL,
 		"VELA_NATS_CREDENTIALS_FILE": configuration.natsCredentials,
@@ -278,6 +306,39 @@ func runPublisher(ctx context.Context, publisher *outbox.Publisher, interval tim
 		published, err := publisher.PublishBatch(ctx)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("Outbox publish batch incomplete", "published", published, "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runCancellationStopReconciler(
+	ctx context.Context,
+	reconciler cancellationStopReconciler,
+	interval time.Duration,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		result, err := reconciler.ReconcileNextCancellationStop(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("Cancellation stop reconciliation incomplete", "error", err)
+		} else if err == nil && result.Decision != cancellation.StopNoWork {
+			slog.Info(
+				"Cancellation stop reconciled",
+				"decision", result.Decision,
+				"cancellation_id", result.CancellationID,
+				"job_id", result.JobID,
+				"receipt_id", result.ReceiptID,
+			)
 		}
 		select {
 		case <-ctx.Done():

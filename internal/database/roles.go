@@ -14,6 +14,7 @@ const (
 	RoleAuth     Role = "vela_auth"
 	RoleRequest  Role = "vela_request"
 	RoleInternal Role = "vela_internal"
+	RoleCancel   Role = "vela_cancel"
 )
 
 type rowQuerier interface {
@@ -24,7 +25,7 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 	if database == nil {
 		return errors.New("database connection is required for role verification")
 	}
-	if expected != RoleAuth && expected != RoleRequest && expected != RoleInternal {
+	if expected != RoleAuth && expected != RoleRequest && expected != RoleInternal && expected != RoleCancel {
 		return fmt.Errorf("unsupported database role %q", expected)
 	}
 
@@ -38,6 +39,7 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 		memberAuth           bool
 		memberRequest        bool
 		memberInternal       bool
+		memberCancel         bool
 		unexpectedMembership bool
 	)
 	err := database.QueryRow(ctx, `
@@ -50,7 +52,8 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
             role.rolbypassrls,
             pg_has_role(current_user, 'vela_auth', 'MEMBER'),
             pg_has_role(current_user, 'vela_request', 'MEMBER'),
-            pg_has_role(current_user, 'vela_internal', 'MEMBER'),
+			pg_has_role(current_user, 'vela_internal', 'MEMBER'),
+			pg_has_role(current_user, 'vela_cancel', 'MEMBER'),
             EXISTS (
                 SELECT 1
                 FROM pg_catalog.pg_roles AS inherited
@@ -70,6 +73,7 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 		&memberAuth,
 		&memberRequest,
 		&memberInternal,
+		&memberCancel,
 		&unexpectedMembership,
 	)
 	if err != nil {
@@ -81,6 +85,7 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 
 	memberships := map[Role]bool{
 		RoleAuth: memberAuth, RoleRequest: memberRequest, RoleInternal: memberInternal,
+		RoleCancel: memberCancel,
 	}
 	if !memberships[expected] {
 		return fmt.Errorf("database login %q is not a member of required role %q", currentUser, expected)
@@ -105,6 +110,63 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 		if err := verifyRequestPrivileges(ctx, database, currentUser); err != nil {
 			return err
 		}
+	}
+	if expected == RoleCancel {
+		if err := verifyCancelPrivileges(ctx, database, currentUser); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyCancelPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	var boundaryViolation bool
+	err := database.QueryRow(ctx, `
+		WITH expected_functions (function_oid) AS (
+			VALUES
+				('vela_set_cancellation_request_context(uuid,bytea)'::regprocedure::oid),
+				('vela_cancel_job(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid)'::regprocedure::oid)
+		)
+		SELECT
+			NOT has_schema_privilege(current_user, 'public', 'USAGE')
+			OR has_schema_privilege(current_user, 'public', 'CREATE')
+			OR has_schema_privilege(current_user, 'vela_private', 'USAGE')
+			OR has_schema_privilege(current_user, 'vela_private', 'CREATE')
+			OR EXISTS (
+				SELECT 1
+				FROM pg_catalog.pg_class AS relation
+				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+				WHERE namespace.nspname IN ('public', 'vela_private')
+				  AND relation.relkind IN ('r', 'p', 'v', 'm')
+				  AND (
+					has_table_privilege(current_user, relation.oid, 'SELECT')
+					OR has_table_privilege(current_user, relation.oid, 'INSERT')
+					OR has_table_privilege(current_user, relation.oid, 'UPDATE')
+					OR has_table_privilege(current_user, relation.oid, 'DELETE')
+					OR has_table_privilege(current_user, relation.oid, 'TRUNCATE')
+					OR has_table_privilege(current_user, relation.oid, 'REFERENCES')
+					OR has_table_privilege(current_user, relation.oid, 'TRIGGER')
+				  )
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM pg_catalog.pg_proc AS function
+				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
+				LEFT JOIN expected_functions AS expected ON expected.function_oid = function.oid
+				WHERE namespace.nspname = 'public'
+				  AND has_function_privilege(current_user, function.oid, 'EXECUTE')
+				  AND expected.function_oid IS NULL
+			)
+			OR EXISTS (
+				SELECT 1 FROM expected_functions AS expected
+				WHERE NOT has_function_privilege(current_user, expected.function_oid, 'EXECUTE')
+			)
+	`).Scan(&boundaryViolation)
+	if err != nil {
+		return fmt.Errorf("inspect cancel database privileges: %w", err)
+	}
+	if boundaryViolation {
+		return fmt.Errorf("database login %q exceeds the cancellation command privilege boundary", currentUser)
 	}
 	return nil
 }

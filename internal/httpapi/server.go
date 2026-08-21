@@ -13,6 +13,7 @@ import (
 	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
 	api "github.com/vivym/vela/api/gen"
 	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
 )
 
@@ -21,11 +22,13 @@ const maxRequestBodyBytes = 1 << 20
 type Config struct {
 	Authenticator *identity.Authenticator
 	Admission     *admission.Service
+	Cancellation  *cancellation.Service
 }
 
 type server struct {
 	authenticator *identity.Authenticator
 	admission     *admission.Service
+	cancellation  *cancellation.Service
 }
 
 type principalContextKey struct{}
@@ -37,6 +40,9 @@ func NewHandler(config Config) (http.Handler, error) {
 	if config.Admission == nil {
 		return nil, errors.New("missing HTTP API Admission service")
 	}
+	if config.Cancellation == nil {
+		return nil, errors.New("missing HTTP API cancellation service")
+	}
 	openAPI, err := api.GetSpec()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded OpenAPI contract: %w", err)
@@ -47,6 +53,7 @@ func NewHandler(config Config) (http.Handler, error) {
 	implementation := &server{
 		authenticator: config.Authenticator,
 		admission:     config.Admission,
+		cancellation:  config.Cancellation,
 	}
 	strict := api.NewStrictHandlerWithOptions(implementation, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
@@ -152,6 +159,53 @@ func (s *server) GetJob(
 	return api.GetJob200JSONResponse(toAPIJob(job)), nil
 }
 
+func (s *server) CancelJob(
+	ctx context.Context,
+	request api.CancelJobRequestObject,
+) (api.CancelJobResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.CancelJob401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: "valid Service Principal credential is required",
+			},
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeJobsCancel) {
+		return api.CancelJob403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "credential does not have jobs:cancel scope",
+			},
+		}, nil
+	}
+	result, err := s.cancellation.Cancel(ctx, principal, request.ProjectId, request.JobId)
+	if err != nil {
+		var failure *cancellation.Failure
+		if errors.As(err, &failure) {
+			switch failure.Code {
+			case cancellation.FailureUnauthorized:
+				return api.CancelJob401JSONResponse{
+					UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+						Code: string(failure.Code), Message: failure.Message,
+					},
+				}, nil
+			case cancellation.FailureForbidden:
+				return api.CancelJob403JSONResponse{
+					ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+						Code: string(failure.Code), Message: failure.Message,
+					},
+				}, nil
+			case cancellation.FailureNotFound:
+				return api.CancelJob404JSONResponse{
+					Code: string(failure.Code), Message: failure.Message,
+				}, nil
+			}
+		}
+		return nil, err
+	}
+	return api.CancelJob200JSONResponse(toAPICancelResult(result)), nil
+}
+
 func (s *server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Fields(r.Header.Get("Authorization"))
@@ -254,6 +308,28 @@ func toAPIJob(job admission.Job) api.Job {
 	view.EstimatedFinishAt = job.EstimatedFinishAt
 	view.ProgressUpdatedAt = job.ProgressUpdatedAt
 	return view
+}
+
+func toAPICancelResult(result cancellation.Result) api.CancelResult {
+	response := api.CancelResult{
+		Billable:       result.Billable,
+		CancellationId: result.CancellationID,
+		DecidedAt:      result.DecidedAt,
+		Decision:       api.CancelDecision(result.Decision),
+		JobId:          result.JobID,
+		JobVersion:     result.JobVersion,
+		State:          api.JobState(result.State),
+	}
+	if result.Charge != nil {
+		response.Charge = &api.Charge{
+			AmountMinor: result.Charge.AmountMinor,
+			ChargeId:    result.Charge.ID,
+			Currency:    result.Charge.Currency,
+			PostedAt:    result.Charge.PostedAt,
+			Reason:      api.ChargeReason(result.Charge.Reason),
+		}
+	}
+	return response
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

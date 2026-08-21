@@ -17,6 +17,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	applyFoundation(t, database.Admin)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 
 	for _, test := range []struct {
@@ -26,6 +27,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}{
 		{name: "auth", pool: authPool, role: veladb.RoleAuth},
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
+		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -53,6 +55,9 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request as internal", pool: requestPool, role: veladb.RoleInternal},
 		{name: "internal as request", pool: internalPool, role: veladb.RoleRequest},
 		{name: "auth as request", pool: authPool, role: veladb.RoleRequest},
+		{name: "cancel as request", pool: cancelPool, role: veladb.RoleRequest},
+		{name: "request as cancel", pool: requestPool, role: veladb.RoleCancel},
+		{name: "internal as cancel", pool: internalPool, role: veladb.RoleCancel},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if err := veladb.VerifyRole(context.Background(), test.pool, test.role); err == nil {
@@ -127,5 +132,54 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}
 	if err := veladb.VerifyRole(context.Background(), authPool, veladb.RoleAuth); err == nil {
 		t.Fatal("auth login with private request-context access was accepted")
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+	} {
+		for _, relation := range []string{
+			"job_cancellation_decisions",
+			"charges",
+			"cancellation_stop_receipts",
+		} {
+			var count int64
+			err := pool.pool.QueryRow(
+				context.Background(), "SELECT count(*) FROM "+relation,
+			).Scan(&count)
+			var permissionError *pgconn.PgError
+			if !errors.As(err, &permissionError) || permissionError.Code != "42501" {
+				t.Fatalf("%s direct %s read error = %v, want SQLSTATE 42501", pool.name, relation, err)
+			}
+		}
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+	} {
+		_, err := pool.pool.Exec(
+			context.Background(),
+			"SELECT * FROM vela_cancel_job($1, $2, $3, $4, $5, $6, $7, $8)",
+			"00000000-0000-0000-0000-000000000001",
+			"00000000-0000-0000-0000-000000000002",
+			"00000000-0000-0000-0000-000000000003",
+			"00000000-0000-0000-0000-000000000004",
+			"00000000-0000-0000-0000-000000000005",
+			"00000000-0000-0000-0000-000000000006",
+			"00000000-0000-0000-0000-000000000007",
+			"00000000-0000-0000-0000-000000000008",
+		)
+		var permissionError *pgconn.PgError
+		if !errors.As(err, &permissionError) || permissionError.Code != "42501" {
+			t.Fatalf("%s cancellation function error = %v, want SQLSTATE 42501", pool.name, err)
+		}
 	}
 }

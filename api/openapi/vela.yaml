@@ -88,6 +88,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/jobs/{job_id}/cancel:
+    post:
+      operationId: cancelJob
+      summary: Commit a Customer Cancellation decision
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Cancellation committed or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Job is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
     bearerAuth:
@@ -245,6 +269,74 @@ components:
         - SUCCEEDED
         - FAILED
         - CANCELED
+    CancelResult:
+      type: object
+      additionalProperties: false
+      required:
+        - cancellation_id
+        - job_id
+        - decision
+        - state
+        - job_version
+        - billable
+        - decided_at
+      properties:
+        cancellation_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        decision:
+          $ref: '#/components/schemas/CancelDecision'
+        state:
+          $ref: '#/components/schemas/JobState'
+        job_version:
+          type: integer
+          format: int64
+          minimum: 1
+        billable:
+          type: boolean
+        charge:
+          $ref: '#/components/schemas/Charge'
+        decided_at:
+          type: string
+          format: date-time
+    CancelDecision:
+      type: string
+      enum:
+        - CANCELED
+        - CANCELING
+        - ALREADY_SUCCEEDED
+        - ALREADY_FAILED
+    Charge:
+      type: object
+      additionalProperties: false
+      required:
+        - charge_id
+        - amount_minor
+        - currency
+        - reason
+        - posted_at
+      properties:
+        charge_id:
+          type: string
+          format: uuid
+        amount_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        reason:
+          type: string
+          enum:
+            - VISIBLE_COMPLETION
+            - CUSTOMER_CANCELLATION
+        posted_at:
+          type: string
+          format: date-time
     ExecutionPhase:
       type: string
       enum:

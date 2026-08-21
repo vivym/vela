@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"archive/tar"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
@@ -21,11 +22,14 @@ import (
 	"github.com/google/uuid"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/workercontrol"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
 	nMinusOneRenewalControlCommit = "450dd5c379ed7d26588e2a76140f0b3281acfbb2"
 	nMinusOneFailureControlCommit = "9cb1a522e20490ef41bab535fde206a947118d11"
+	nMinusOneCancellationCommit   = "d0a8c0105a09b7f538e79400a7affd2a6c700744"
 )
 
 func TestNMinusOneControlStartupAcrossRenewalProtocolTransition(t *testing.T) {
@@ -159,6 +163,157 @@ func TestNMinusOneControlStartsAndWritesAfterExecutionFailureExpansion(t *testin
 			"N-1 failure-expansion state = job %s attempt %s decisions %d",
 			jobState, attemptState, decisionCount,
 		)
+	}
+}
+
+func TestNMinusOneControlStartsAndWritesAfterCustomerCancellationExpansion(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, nMinusOneCancellationCommit)
+
+	assertNMinusOneDatabaseStartupPassed(t, runNMinusOneControl(t, nMinusOne.Control, database.DSN))
+	seedAdmissionFixture(t, database.Admin)
+	jobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	if _, err := database.Admin.Exec(`
+		INSERT INTO workers (
+			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
+		) VALUES (
+			$1, '00000000-0000-0000-0000-000000000005',
+			'spiffe://vela.internal/worker/n-minus-one-cancellation-probe', 7, 'READY', 'HEALTHY'
+		)
+	`, testWorkerID); err != nil {
+		t.Fatalf("seed N-1 cancellation-expansion Worker: %v", err)
+	}
+	attemptID := runNMinusOneAssignmentProbe(
+		t, nMinusOne.AssignmentProbe, database.DSN, jobID, testWorkerID, 7, 1,
+	)
+
+	var jobState, attemptState string
+	var cancellationDecisions, charges, stopReceipts int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			job.state,
+			attempt.state,
+			(SELECT count(*) FROM job_cancellation_decisions),
+			(SELECT count(*) FROM charges),
+			(SELECT count(*) FROM cancellation_stop_receipts)
+		FROM jobs AS job
+		JOIN attempts AS attempt ON attempt.job_id = job.id
+		WHERE job.id = $1 AND attempt.id = $2
+	`, jobID, attemptID).Scan(
+		&jobState,
+		&attemptState,
+		&cancellationDecisions,
+		&charges,
+		&stopReceipts,
+	); err != nil {
+		t.Fatalf("read N-1 cancellation-expansion writes: %v", err)
+	}
+	if jobState != "ASSIGNED" || attemptState != "ASSIGNED" ||
+		cancellationDecisions != 0 || charges != 0 || stopReceipts != 0 {
+		t.Fatalf(
+			"N-1 cancellation-expansion state = job %s attempt %s decisions/charges/receipts %d/%d/%d",
+			jobState,
+			attemptState,
+			cancellationDecisions,
+			charges,
+			stopReceipts,
+		)
+	}
+}
+
+func TestNMinusOneOutboxPublisherForwardsUnknownCancellationPayloadBytes(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, nMinusOneCancellationCommit)
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, "n-minus-one-unknown-cancellation-event", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"old publisher must preserve the new cancellation event bytes"
+	}`))
+	if accepted.StatusCode != 202 {
+		t.Fatalf("submit N-1 Outbox probe Job status = %d; body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode N-1 Outbox probe Job: %v", err)
+	}
+	jobID := uuid.MustParse(job.JobID)
+	eventID := uuid.New()
+	cancellationID := uuid.New()
+	chargeID := uuid.New()
+	payload, err := proto.Marshal(&velav1.EventEnvelope{
+		EventId:          eventID.String(),
+		AggregateType:    "Job",
+		AggregateId:      jobID.String(),
+		AggregateVersion: 2,
+		EventType:        "job.canceling",
+		SchemaVersion:    1,
+		Payload: &velav1.EventEnvelope_JobCanceling{JobCanceling: &velav1.JobCanceling{
+			OrganizationId:    testOrganizationID,
+			ProjectId:         testProjectID,
+			JobId:             jobID.String(),
+			CancellationId:    cancellationID.String(),
+			CancellationFence: 8,
+			ChargeId:          chargeID.String(),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal unknown-to-N-1 cancellation event: %v", err)
+	}
+	if _, err := database.Admin.Exec("DELETE FROM outbox_events WHERE aggregate_id = $1", jobID); err != nil {
+		t.Fatalf("remove Admission event before N-1 Outbox probe: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO outbox_events (
+			event_id,
+			organization_id,
+			project_id,
+			aggregate_type,
+			aggregate_id,
+			aggregate_version,
+			event_type,
+			schema_version,
+			payload,
+			occurred_at
+		) VALUES ($1, $2, $3, 'Job', $4, 2, 'job.canceling', 1, $5, clock_timestamp())
+	`, eventID, testOrganizationID, testProjectID, jobID, payload); err != nil {
+		t.Fatalf("insert unknown-to-N-1 cancellation event: %v", err)
+	}
+
+	forwarded := runNMinusOneOutboxProbe(t, nMinusOne.OutboxProbe, database.DSN)
+	if forwarded.Subject != "vela.events.job.canceling" || forwarded.MessageID != eventID.String() {
+		t.Fatalf("N-1 publisher metadata = %q/%q", forwarded.Subject, forwarded.MessageID)
+	}
+	if forwarded.KnownPayload || forwarded.UnknownBytes == 0 {
+		t.Fatalf(
+			"N-1 descriptor classified cancellation payload as known=%t unknown_bytes=%d",
+			forwarded.KnownPayload,
+			forwarded.UnknownBytes,
+		)
+	}
+	if !bytes.Equal(forwarded.Payload, payload) {
+		t.Fatalf("N-1 publisher changed unknown cancellation payload bytes: got %x want %x", forwarded.Payload, payload)
+	}
+
+	var published bool
+	var stream string
+	var sequence int64
+	var attempts int
+	if err := database.Admin.QueryRow(`
+		SELECT published_at IS NOT NULL, broker_stream, broker_sequence, publish_attempts
+		FROM outbox_events
+		WHERE event_id = $1
+	`, eventID).Scan(&published, &stream, &sequence, &attempts); err != nil {
+		t.Fatalf("read N-1 Outbox publish receipt: %v", err)
+	}
+	if !published || stream != "N_MINUS_ONE_PROBE" || sequence != 1 || attempts != 1 {
+		t.Fatalf("N-1 Outbox receipt = published %t stream %s sequence %d attempts %d", published, stream, sequence, attempts)
 	}
 }
 
@@ -387,6 +542,15 @@ type nMinusOneBinaries struct {
 	Control         string
 	AdmissionProbe  string
 	AssignmentProbe string
+	OutboxProbe     string
+}
+
+type nMinusOneOutboxProbeResult struct {
+	Subject      string `json:"subject"`
+	MessageID    string `json:"message_id"`
+	Payload      []byte `json:"payload"`
+	KnownPayload bool   `json:"known_payload"`
+	UnknownBytes int    `json:"unknown_bytes"`
 }
 
 func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
@@ -465,12 +629,26 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if err := os.WriteFile(filepath.Join(admissionProbeDirectory, "main.go"), admissionProbeSource, 0o600); err != nil {
 		t.Fatalf("write N-1 Admission probe: %v", err)
 	}
+	outboxProbeSource, err := os.ReadFile(filepath.Join(
+		repositoryRoot(t), "internal", "integration", "testdata", "nminusone_outbox_probe.go.txt",
+	))
+	if err != nil {
+		t.Fatalf("read N-1 Outbox probe: %v", err)
+	}
+	outboxProbeDirectory := filepath.Join(sourceRoot, "cmd", "vela-nminusone-outbox-probe")
+	if err := os.MkdirAll(outboxProbeDirectory, 0o755); err != nil {
+		t.Fatalf("create N-1 Outbox probe directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outboxProbeDirectory, "main.go"), outboxProbeSource, 0o600); err != nil {
+		t.Fatalf("write N-1 Outbox probe: %v", err)
+	}
 
 	binaryDirectory := t.TempDir()
 	binaries := nMinusOneBinaries{
 		Control:         filepath.Join(binaryDirectory, "vela-control-n-minus-one"),
 		AdmissionProbe:  filepath.Join(binaryDirectory, "vela-admission-probe-n-minus-one"),
 		AssignmentProbe: filepath.Join(binaryDirectory, "vela-assignment-probe-n-minus-one"),
+		OutboxProbe:     filepath.Join(binaryDirectory, "vela-outbox-probe-n-minus-one"),
 	}
 	build := exec.Command(
 		"go", "build",
@@ -498,6 +676,15 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build N-1 Assignment probe: %v\n%s", err, output)
+	}
+	build = exec.Command(
+		"go", "build",
+		"-o", binaries.OutboxProbe, "./cmd/vela-nminusone-outbox-probe",
+	)
+	build.Dir = sourceRoot
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build N-1 Outbox probe: %v\n%s", err, output)
 	}
 	return binaries
 }
@@ -582,6 +769,28 @@ func runNMinusOneAssignmentProbeProcess(
 		"VELA_PROFILE_REVISION_ID":  "00000000-0000-0000-0000-000000000014",
 	})
 	return command.CombinedOutput()
+}
+
+func runNMinusOneOutboxProbe(
+	t *testing.T,
+	binary, adminDSN string,
+) nMinusOneOutboxProbeResult {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_internal_login", "vela-internal-password",
+		),
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Outbox publisher probe: %v\n%s", err, output)
+	}
+	var result nMinusOneOutboxProbeResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Outbox probe output: %v\n%s", err, output)
+	}
+	return result
 }
 
 func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {

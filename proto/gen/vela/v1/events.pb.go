@@ -38,6 +38,11 @@ type EventEnvelope struct {
 	//	*EventEnvelope_JobStarted
 	//	*EventEnvelope_JobRetryWait
 	//	*EventEnvelope_JobFailed
+	//	*EventEnvelope_JobCanceled
+	//	*EventEnvelope_JobCancelRequested
+	//	*EventEnvelope_JobCanceling
+	//	*EventEnvelope_ChargePosted
+	//	*EventEnvelope_InvoiceExportRequested
 	Payload       isEventEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -174,6 +179,51 @@ func (x *EventEnvelope) GetJobFailed() *JobFailed {
 	return nil
 }
 
+func (x *EventEnvelope) GetJobCanceled() *JobCanceled {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_JobCanceled); ok {
+			return x.JobCanceled
+		}
+	}
+	return nil
+}
+
+func (x *EventEnvelope) GetJobCancelRequested() *JobCancelRequested {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_JobCancelRequested); ok {
+			return x.JobCancelRequested
+		}
+	}
+	return nil
+}
+
+func (x *EventEnvelope) GetJobCanceling() *JobCanceling {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_JobCanceling); ok {
+			return x.JobCanceling
+		}
+	}
+	return nil
+}
+
+func (x *EventEnvelope) GetChargePosted() *ChargePosted {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_ChargePosted); ok {
+			return x.ChargePosted
+		}
+	}
+	return nil
+}
+
+func (x *EventEnvelope) GetInvoiceExportRequested() *InvoiceExportRequested {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_InvoiceExportRequested); ok {
+			return x.InvoiceExportRequested
+		}
+	}
+	return nil
+}
+
 type isEventEnvelope_Payload interface {
 	isEventEnvelope_Payload()
 }
@@ -198,6 +248,26 @@ type EventEnvelope_JobFailed struct {
 	JobFailed *JobFailed `protobuf:"bytes,24,opt,name=job_failed,json=jobFailed,proto3,oneof"`
 }
 
+type EventEnvelope_JobCanceled struct {
+	JobCanceled *JobCanceled `protobuf:"bytes,25,opt,name=job_canceled,json=jobCanceled,proto3,oneof"`
+}
+
+type EventEnvelope_JobCancelRequested struct {
+	JobCancelRequested *JobCancelRequested `protobuf:"bytes,26,opt,name=job_cancel_requested,json=jobCancelRequested,proto3,oneof"`
+}
+
+type EventEnvelope_JobCanceling struct {
+	JobCanceling *JobCanceling `protobuf:"bytes,27,opt,name=job_canceling,json=jobCanceling,proto3,oneof"`
+}
+
+type EventEnvelope_ChargePosted struct {
+	ChargePosted *ChargePosted `protobuf:"bytes,28,opt,name=charge_posted,json=chargePosted,proto3,oneof"`
+}
+
+type EventEnvelope_InvoiceExportRequested struct {
+	InvoiceExportRequested *InvoiceExportRequested `protobuf:"bytes,29,opt,name=invoice_export_requested,json=invoiceExportRequested,proto3,oneof"`
+}
+
 func (*EventEnvelope_JobReady) isEventEnvelope_Payload() {}
 
 func (*EventEnvelope_JobAssigned) isEventEnvelope_Payload() {}
@@ -207,6 +277,16 @@ func (*EventEnvelope_JobStarted) isEventEnvelope_Payload() {}
 func (*EventEnvelope_JobRetryWait) isEventEnvelope_Payload() {}
 
 func (*EventEnvelope_JobFailed) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_JobCanceled) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_JobCancelRequested) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_JobCanceling) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_ChargePosted) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_InvoiceExportRequested) isEventEnvelope_Payload() {}
 
 type JobReady struct {
 	state                      protoimpl.MessageState `protogen:"open.v1"`
@@ -788,11 +868,543 @@ func (x *JobFailed) GetDecidedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type JobCanceled struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId          string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	CancellationId string                 `protobuf:"bytes,4,opt,name=cancellation_id,json=cancellationId,proto3" json:"cancellation_id,omitempty"`
+	JobFence       uint64                 `protobuf:"varint,5,opt,name=job_fence,json=jobFence,proto3" json:"job_fence,omitempty"`
+	Billable       bool                   `protobuf:"varint,6,opt,name=billable,proto3" json:"billable,omitempty"`
+	ChargeId       string                 `protobuf:"bytes,7,opt,name=charge_id,json=chargeId,proto3" json:"charge_id,omitempty"`
+	DecidedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *JobCanceled) Reset() {
+	*x = JobCanceled{}
+	mi := &file_vela_v1_events_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobCanceled) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobCanceled) ProtoMessage() {}
+
+func (x *JobCanceled) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobCanceled.ProtoReflect.Descriptor instead.
+func (*JobCanceled) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *JobCanceled) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *JobCanceled) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *JobCanceled) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobCanceled) GetCancellationId() string {
+	if x != nil {
+		return x.CancellationId
+	}
+	return ""
+}
+
+func (x *JobCanceled) GetJobFence() uint64 {
+	if x != nil {
+		return x.JobFence
+	}
+	return 0
+}
+
+func (x *JobCanceled) GetBillable() bool {
+	if x != nil {
+		return x.Billable
+	}
+	return false
+}
+
+func (x *JobCanceled) GetChargeId() string {
+	if x != nil {
+		return x.ChargeId
+	}
+	return ""
+}
+
+func (x *JobCanceled) GetDecidedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return nil
+}
+
+type JobCancelRequested struct {
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId          string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId               string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId                   string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	CancellationId          string                 `protobuf:"bytes,4,opt,name=cancellation_id,json=cancellationId,proto3" json:"cancellation_id,omitempty"`
+	AttemptId               string                 `protobuf:"bytes,5,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	WorkerId                string                 `protobuf:"bytes,6,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerEpoch             uint64                 `protobuf:"varint,7,opt,name=worker_epoch,json=workerEpoch,proto3" json:"worker_epoch,omitempty"`
+	AttemptFence            uint64                 `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
+	CancellationFence       uint64                 `protobuf:"varint,9,opt,name=cancellation_fence,json=cancellationFence,proto3" json:"cancellation_fence,omitempty"`
+	DecidedAt               *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	AuthorityLeaseId        string                 `protobuf:"bytes,11,opt,name=authority_lease_id,json=authorityLeaseId,proto3" json:"authority_lease_id,omitempty"`
+	AuthorityLeasePhase     string                 `protobuf:"bytes,12,opt,name=authority_lease_phase,json=authorityLeasePhase,proto3" json:"authority_lease_phase,omitempty"`
+	AuthorityLeaseOwnerKind string                 `protobuf:"bytes,13,opt,name=authority_lease_owner_kind,json=authorityLeaseOwnerKind,proto3" json:"authority_lease_owner_kind,omitempty"`
+	AuthorityLeaseOwnerId   string                 `protobuf:"bytes,14,opt,name=authority_lease_owner_id,json=authorityLeaseOwnerId,proto3" json:"authority_lease_owner_id,omitempty"`
+	AuthorityLeaseExpiresAt *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=authority_lease_expires_at,json=authorityLeaseExpiresAt,proto3" json:"authority_lease_expires_at,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *JobCancelRequested) Reset() {
+	*x = JobCancelRequested{}
+	mi := &file_vela_v1_events_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobCancelRequested) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobCancelRequested) ProtoMessage() {}
+
+func (x *JobCancelRequested) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobCancelRequested.ProtoReflect.Descriptor instead.
+func (*JobCancelRequested) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *JobCancelRequested) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetCancellationId() string {
+	if x != nil {
+		return x.CancellationId
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetWorkerEpoch() uint64 {
+	if x != nil {
+		return x.WorkerEpoch
+	}
+	return 0
+}
+
+func (x *JobCancelRequested) GetAttemptFence() uint64 {
+	if x != nil {
+		return x.AttemptFence
+	}
+	return 0
+}
+
+func (x *JobCancelRequested) GetCancellationFence() uint64 {
+	if x != nil {
+		return x.CancellationFence
+	}
+	return 0
+}
+
+func (x *JobCancelRequested) GetDecidedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return nil
+}
+
+func (x *JobCancelRequested) GetAuthorityLeaseId() string {
+	if x != nil {
+		return x.AuthorityLeaseId
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetAuthorityLeasePhase() string {
+	if x != nil {
+		return x.AuthorityLeasePhase
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetAuthorityLeaseOwnerKind() string {
+	if x != nil {
+		return x.AuthorityLeaseOwnerKind
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetAuthorityLeaseOwnerId() string {
+	if x != nil {
+		return x.AuthorityLeaseOwnerId
+	}
+	return ""
+}
+
+func (x *JobCancelRequested) GetAuthorityLeaseExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AuthorityLeaseExpiresAt
+	}
+	return nil
+}
+
+type JobCanceling struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId    string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId         string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId             string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	CancellationId    string                 `protobuf:"bytes,4,opt,name=cancellation_id,json=cancellationId,proto3" json:"cancellation_id,omitempty"`
+	CancellationFence uint64                 `protobuf:"varint,5,opt,name=cancellation_fence,json=cancellationFence,proto3" json:"cancellation_fence,omitempty"`
+	ChargeId          string                 `protobuf:"bytes,6,opt,name=charge_id,json=chargeId,proto3" json:"charge_id,omitempty"`
+	DecidedAt         *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *JobCanceling) Reset() {
+	*x = JobCanceling{}
+	mi := &file_vela_v1_events_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobCanceling) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobCanceling) ProtoMessage() {}
+
+func (x *JobCanceling) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobCanceling.ProtoReflect.Descriptor instead.
+func (*JobCanceling) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *JobCanceling) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *JobCanceling) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *JobCanceling) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobCanceling) GetCancellationId() string {
+	if x != nil {
+		return x.CancellationId
+	}
+	return ""
+}
+
+func (x *JobCanceling) GetCancellationFence() uint64 {
+	if x != nil {
+		return x.CancellationFence
+	}
+	return 0
+}
+
+func (x *JobCanceling) GetChargeId() string {
+	if x != nil {
+		return x.ChargeId
+	}
+	return ""
+}
+
+func (x *JobCanceling) GetDecidedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return nil
+}
+
+type ChargePosted struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId          string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	ChargeId       string                 `protobuf:"bytes,4,opt,name=charge_id,json=chargeId,proto3" json:"charge_id,omitempty"`
+	CancellationId string                 `protobuf:"bytes,5,opt,name=cancellation_id,json=cancellationId,proto3" json:"cancellation_id,omitempty"`
+	AmountMinor    uint64                 `protobuf:"varint,6,opt,name=amount_minor,json=amountMinor,proto3" json:"amount_minor,omitempty"`
+	Currency       string                 `protobuf:"bytes,7,opt,name=currency,proto3" json:"currency,omitempty"`
+	Reason         string                 `protobuf:"bytes,8,opt,name=reason,proto3" json:"reason,omitempty"`
+	PostedAt       *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=posted_at,json=postedAt,proto3" json:"posted_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ChargePosted) Reset() {
+	*x = ChargePosted{}
+	mi := &file_vela_v1_events_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChargePosted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChargePosted) ProtoMessage() {}
+
+func (x *ChargePosted) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChargePosted.ProtoReflect.Descriptor instead.
+func (*ChargePosted) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ChargePosted) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *ChargePosted) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ChargePosted) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *ChargePosted) GetChargeId() string {
+	if x != nil {
+		return x.ChargeId
+	}
+	return ""
+}
+
+func (x *ChargePosted) GetCancellationId() string {
+	if x != nil {
+		return x.CancellationId
+	}
+	return ""
+}
+
+func (x *ChargePosted) GetAmountMinor() uint64 {
+	if x != nil {
+		return x.AmountMinor
+	}
+	return 0
+}
+
+func (x *ChargePosted) GetCurrency() string {
+	if x != nil {
+		return x.Currency
+	}
+	return ""
+}
+
+func (x *ChargePosted) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *ChargePosted) GetPostedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PostedAt
+	}
+	return nil
+}
+
+type InvoiceExportRequested struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId          string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	ChargeId       string                 `protobuf:"bytes,4,opt,name=charge_id,json=chargeId,proto3" json:"charge_id,omitempty"`
+	RequestedAt    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=requested_at,json=requestedAt,proto3" json:"requested_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *InvoiceExportRequested) Reset() {
+	*x = InvoiceExportRequested{}
+	mi := &file_vela_v1_events_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvoiceExportRequested) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvoiceExportRequested) ProtoMessage() {}
+
+func (x *InvoiceExportRequested) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvoiceExportRequested.ProtoReflect.Descriptor instead.
+func (*InvoiceExportRequested) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *InvoiceExportRequested) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *InvoiceExportRequested) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *InvoiceExportRequested) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *InvoiceExportRequested) GetChargeId() string {
+	if x != nil {
+		return x.ChargeId
+	}
+	return ""
+}
+
+func (x *InvoiceExportRequested) GetRequestedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RequestedAt
+	}
+	return nil
+}
+
 var File_vela_v1_events_proto protoreflect.FileDescriptor
 
 const file_vela_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x14vela/v1/events.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc8\x04\n" +
+	"\x14vela/v1/events.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xad\a\n" +
 	"\rEventEnvelope\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12%\n" +
 	"\x0eaggregate_type\x18\x02 \x01(\tR\raggregateType\x12!\n" +
@@ -809,7 +1421,12 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"jobStarted\x12=\n" +
 	"\x0ejob_retry_wait\x18\x17 \x01(\v2\x15.vela.v1.JobRetryWaitH\x00R\fjobRetryWait\x123\n" +
 	"\n" +
-	"job_failed\x18\x18 \x01(\v2\x12.vela.v1.JobFailedH\x00R\tjobFailedB\t\n" +
+	"job_failed\x18\x18 \x01(\v2\x12.vela.v1.JobFailedH\x00R\tjobFailed\x129\n" +
+	"\fjob_canceled\x18\x19 \x01(\v2\x14.vela.v1.JobCanceledH\x00R\vjobCanceled\x12O\n" +
+	"\x14job_cancel_requested\x18\x1a \x01(\v2\x1b.vela.v1.JobCancelRequestedH\x00R\x12jobCancelRequested\x12<\n" +
+	"\rjob_canceling\x18\x1b \x01(\v2\x15.vela.v1.JobCancelingH\x00R\fjobCanceling\x12<\n" +
+	"\rcharge_posted\x18\x1c \x01(\v2\x15.vela.v1.ChargePostedH\x00R\fchargePosted\x12[\n" +
+	"\x18invoice_export_requested\x18\x1d \x01(\v2\x1f.vela.v1.InvoiceExportRequestedH\x00R\x16invoiceExportRequestedB\t\n" +
 	"\apayload\"\xb9\x02\n" +
 	"\bJobReady\x12'\n" +
 	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
@@ -883,7 +1500,66 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\x17attempt_compute_seconds\x18\f \x01(\x04R\x15attemptComputeSeconds\x122\n" +
 	"\x15total_compute_seconds\x18\r \x01(\x04R\x13totalComputeSeconds\x129\n" +
 	"\n" +
-	"decided_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAtJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\tworker_idR\fworker_epochB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
+	"decided_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAtJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\tworker_idR\fworker_epoch\"\xa6\x02\n" +
+	"\vJobCanceled\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12'\n" +
+	"\x0fcancellation_id\x18\x04 \x01(\tR\x0ecancellationId\x12\x1b\n" +
+	"\tjob_fence\x18\x05 \x01(\x04R\bjobFence\x12\x1a\n" +
+	"\bbillable\x18\x06 \x01(\bR\bbillable\x12\x1b\n" +
+	"\tcharge_id\x18\a \x01(\tR\bchargeId\x129\n" +
+	"\n" +
+	"decided_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\"\xbb\x05\n" +
+	"\x12JobCancelRequested\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12'\n" +
+	"\x0fcancellation_id\x18\x04 \x01(\tR\x0ecancellationId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x05 \x01(\tR\tattemptId\x12\x1b\n" +
+	"\tworker_id\x18\x06 \x01(\tR\bworkerId\x12!\n" +
+	"\fworker_epoch\x18\a \x01(\x04R\vworkerEpoch\x12#\n" +
+	"\rattempt_fence\x18\b \x01(\x04R\fattemptFence\x12-\n" +
+	"\x12cancellation_fence\x18\t \x01(\x04R\x11cancellationFence\x129\n" +
+	"\n" +
+	"decided_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\x12,\n" +
+	"\x12authority_lease_id\x18\v \x01(\tR\x10authorityLeaseId\x122\n" +
+	"\x15authority_lease_phase\x18\f \x01(\tR\x13authorityLeasePhase\x12;\n" +
+	"\x1aauthority_lease_owner_kind\x18\r \x01(\tR\x17authorityLeaseOwnerKind\x127\n" +
+	"\x18authority_lease_owner_id\x18\x0e \x01(\tR\x15authorityLeaseOwnerId\x12W\n" +
+	"\x1aauthority_lease_expires_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\x17authorityLeaseExpiresAt\"\x9d\x02\n" +
+	"\fJobCanceling\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12'\n" +
+	"\x0fcancellation_id\x18\x04 \x01(\tR\x0ecancellationId\x12-\n" +
+	"\x12cancellation_fence\x18\x05 \x01(\x04R\x11cancellationFence\x12\x1b\n" +
+	"\tcharge_id\x18\x06 \x01(\tR\bchargeId\x129\n" +
+	"\n" +
+	"decided_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\"\xc3\x02\n" +
+	"\fChargePosted\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x1b\n" +
+	"\tcharge_id\x18\x04 \x01(\tR\bchargeId\x12'\n" +
+	"\x0fcancellation_id\x18\x05 \x01(\tR\x0ecancellationId\x12!\n" +
+	"\famount_minor\x18\x06 \x01(\x04R\vamountMinor\x12\x1a\n" +
+	"\bcurrency\x18\a \x01(\tR\bcurrency\x12\x16\n" +
+	"\x06reason\x18\b \x01(\tR\x06reason\x127\n" +
+	"\tposted_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\bpostedAt\"\xd3\x01\n" +
+	"\x16InvoiceExportRequested\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x1b\n" +
+	"\tcharge_id\x18\x04 \x01(\tR\bchargeId\x12=\n" +
+	"\frequested_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAtB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
 
 var (
 	file_vela_v1_events_proto_rawDescOnce sync.Once
@@ -897,33 +1573,49 @@ func file_vela_v1_events_proto_rawDescGZIP() []byte {
 	return file_vela_v1_events_proto_rawDescData
 }
 
-var file_vela_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_vela_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_vela_v1_events_proto_goTypes = []any{
-	(*EventEnvelope)(nil),         // 0: vela.v1.EventEnvelope
-	(*JobReady)(nil),              // 1: vela.v1.JobReady
-	(*JobAssigned)(nil),           // 2: vela.v1.JobAssigned
-	(*JobStarted)(nil),            // 3: vela.v1.JobStarted
-	(*JobRetryWait)(nil),          // 4: vela.v1.JobRetryWait
-	(*JobFailed)(nil),             // 5: vela.v1.JobFailed
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*EventEnvelope)(nil),          // 0: vela.v1.EventEnvelope
+	(*JobReady)(nil),               // 1: vela.v1.JobReady
+	(*JobAssigned)(nil),            // 2: vela.v1.JobAssigned
+	(*JobStarted)(nil),             // 3: vela.v1.JobStarted
+	(*JobRetryWait)(nil),           // 4: vela.v1.JobRetryWait
+	(*JobFailed)(nil),              // 5: vela.v1.JobFailed
+	(*JobCanceled)(nil),            // 6: vela.v1.JobCanceled
+	(*JobCancelRequested)(nil),     // 7: vela.v1.JobCancelRequested
+	(*JobCanceling)(nil),           // 8: vela.v1.JobCanceling
+	(*ChargePosted)(nil),           // 9: vela.v1.ChargePosted
+	(*InvoiceExportRequested)(nil), // 10: vela.v1.InvoiceExportRequested
+	(*timestamppb.Timestamp)(nil),  // 11: google.protobuf.Timestamp
 }
 var file_vela_v1_events_proto_depIdxs = []int32{
-	6,  // 0: vela.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	11, // 0: vela.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: vela.v1.EventEnvelope.job_ready:type_name -> vela.v1.JobReady
 	2,  // 2: vela.v1.EventEnvelope.job_assigned:type_name -> vela.v1.JobAssigned
 	3,  // 3: vela.v1.EventEnvelope.job_started:type_name -> vela.v1.JobStarted
 	4,  // 4: vela.v1.EventEnvelope.job_retry_wait:type_name -> vela.v1.JobRetryWait
 	5,  // 5: vela.v1.EventEnvelope.job_failed:type_name -> vela.v1.JobFailed
-	6,  // 6: vela.v1.JobAssigned.lease_expires_at:type_name -> google.protobuf.Timestamp
-	6,  // 7: vela.v1.JobStarted.started_at:type_name -> google.protobuf.Timestamp
-	6,  // 8: vela.v1.JobRetryWait.next_retry_at:type_name -> google.protobuf.Timestamp
-	6,  // 9: vela.v1.JobRetryWait.decided_at:type_name -> google.protobuf.Timestamp
-	6,  // 10: vela.v1.JobFailed.decided_at:type_name -> google.protobuf.Timestamp
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	6,  // 6: vela.v1.EventEnvelope.job_canceled:type_name -> vela.v1.JobCanceled
+	7,  // 7: vela.v1.EventEnvelope.job_cancel_requested:type_name -> vela.v1.JobCancelRequested
+	8,  // 8: vela.v1.EventEnvelope.job_canceling:type_name -> vela.v1.JobCanceling
+	9,  // 9: vela.v1.EventEnvelope.charge_posted:type_name -> vela.v1.ChargePosted
+	10, // 10: vela.v1.EventEnvelope.invoice_export_requested:type_name -> vela.v1.InvoiceExportRequested
+	11, // 11: vela.v1.JobAssigned.lease_expires_at:type_name -> google.protobuf.Timestamp
+	11, // 12: vela.v1.JobStarted.started_at:type_name -> google.protobuf.Timestamp
+	11, // 13: vela.v1.JobRetryWait.next_retry_at:type_name -> google.protobuf.Timestamp
+	11, // 14: vela.v1.JobRetryWait.decided_at:type_name -> google.protobuf.Timestamp
+	11, // 15: vela.v1.JobFailed.decided_at:type_name -> google.protobuf.Timestamp
+	11, // 16: vela.v1.JobCanceled.decided_at:type_name -> google.protobuf.Timestamp
+	11, // 17: vela.v1.JobCancelRequested.decided_at:type_name -> google.protobuf.Timestamp
+	11, // 18: vela.v1.JobCancelRequested.authority_lease_expires_at:type_name -> google.protobuf.Timestamp
+	11, // 19: vela.v1.JobCanceling.decided_at:type_name -> google.protobuf.Timestamp
+	11, // 20: vela.v1.ChargePosted.posted_at:type_name -> google.protobuf.Timestamp
+	11, // 21: vela.v1.InvoiceExportRequested.requested_at:type_name -> google.protobuf.Timestamp
+	22, // [22:22] is the sub-list for method output_type
+	22, // [22:22] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_events_proto_init() }
@@ -937,6 +1629,11 @@ func file_vela_v1_events_proto_init() {
 		(*EventEnvelope_JobStarted)(nil),
 		(*EventEnvelope_JobRetryWait)(nil),
 		(*EventEnvelope_JobFailed)(nil),
+		(*EventEnvelope_JobCanceled)(nil),
+		(*EventEnvelope_JobCancelRequested)(nil),
+		(*EventEnvelope_JobCanceling)(nil),
+		(*EventEnvelope_ChargePosted)(nil),
+		(*EventEnvelope_InvoiceExportRequested)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -944,7 +1641,7 @@ func file_vela_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_events_proto_rawDesc), len(file_vela_v1_events_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

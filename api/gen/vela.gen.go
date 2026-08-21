@@ -22,6 +22,48 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for CancelDecision.
+const (
+	CancelDecisionALREADYFAILED    CancelDecision = "ALREADY_FAILED"
+	CancelDecisionALREADYSUCCEEDED CancelDecision = "ALREADY_SUCCEEDED"
+	CancelDecisionCANCELED         CancelDecision = "CANCELED"
+	CancelDecisionCANCELING        CancelDecision = "CANCELING"
+)
+
+// Valid indicates whether the value is a known member of the CancelDecision enum.
+func (e CancelDecision) Valid() bool {
+	switch e {
+	case CancelDecisionALREADYFAILED:
+		return true
+	case CancelDecisionALREADYSUCCEEDED:
+		return true
+	case CancelDecisionCANCELED:
+		return true
+	case CancelDecisionCANCELING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChargeReason.
+const (
+	CUSTOMERCANCELLATION ChargeReason = "CUSTOMER_CANCELLATION"
+	VISIBLECOMPLETION    ChargeReason = "VISIBLE_COMPLETION"
+)
+
+// Valid indicates whether the value is a known member of the ChargeReason enum.
+func (e ChargeReason) Valid() bool {
+	switch e {
+	case CUSTOMERCANCELLATION:
+		return true
+	case VISIBLECOMPLETION:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExecutionPhase.
 const (
 	ExecutionPhaseFINALIZING ExecutionPhase = "FINALIZING"
@@ -124,6 +166,33 @@ func (e SubmitJobRequestServiceClass) Valid() bool {
 	}
 }
 
+// CancelDecision defines model for CancelDecision.
+type CancelDecision string
+
+// CancelResult defines model for CancelResult.
+type CancelResult struct {
+	Billable       bool               `json:"billable"`
+	CancellationId openapi_types.UUID `json:"cancellation_id"`
+	Charge         *Charge            `json:"charge,omitempty"`
+	DecidedAt      time.Time          `json:"decided_at"`
+	Decision       CancelDecision     `json:"decision"`
+	JobId          openapi_types.UUID `json:"job_id"`
+	JobVersion     int64              `json:"job_version"`
+	State          JobState           `json:"state"`
+}
+
+// Charge defines model for Charge.
+type Charge struct {
+	AmountMinor int64              `json:"amount_minor"`
+	ChargeId    openapi_types.UUID `json:"charge_id"`
+	Currency    string             `json:"currency"`
+	PostedAt    time.Time          `json:"posted_at"`
+	Reason      ChargeReason       `json:"reason"`
+}
+
+// ChargeReason defines model for Charge.Reason.
+type ChargeReason string
+
 // Error defines model for Error.
 type Error struct {
 	Code      string  `json:"code"`
@@ -214,6 +283,9 @@ type ServerInterface interface {
 	// GetJob Get authoritative Project Job state
 	// (GET /v1/projects/{project_id}/jobs/{job_id})
 	GetJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId)
+	// CancelJob Commit a Customer Cancellation decision
+	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
+	CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -229,6 +301,12 @@ func (_ Unimplemented) SubmitJob(w http.ResponseWriter, r *http.Request, project
 // GetJob Get authoritative Project Job state
 // (GET /v1/projects/{project_id}/jobs/{job_id})
 func (_ Unimplemented) GetJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CancelJob Commit a Customer Cancellation decision
+// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
+func (_ Unimplemented) CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -321,6 +399,41 @@ func (siw *ServerInterfaceWrapper) GetJob(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetJob(w, r, projectId, jobId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelJob operation middleware
+func (siw *ServerInterfaceWrapper) CancelJob(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job_id" -------------
+	var jobId JobId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job_id", chi.URLParam(r, "job_id"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelJob(w, r, projectId, jobId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -448,6 +561,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}", wrapper.GetJob)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/cancel", wrapper.CancelJob)
 	})
 
 	return r
@@ -666,6 +782,71 @@ func (response GetJob404JSONResponse) VisitGetJobResponse(w http.ResponseWriter)
 	return err
 }
 
+type CancelJobRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	JobId     JobId     `json:"job_id"`
+}
+
+type CancelJobResponseObject interface {
+	VisitCancelJobResponse(w http.ResponseWriter) error
+}
+
+type CancelJob200JSONResponse CancelResult
+
+func (response CancelJob200JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelJob401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CancelJob401JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelJob403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CancelJob403JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelJob404JSONResponse Error
+
+func (response CancelJob404JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// SubmitJob Submit a Job for durable Admission
@@ -674,6 +855,9 @@ type StrictServerInterface interface {
 	// GetJob Get authoritative Project Job state
 	// (GET /v1/projects/{project_id}/jobs/{job_id})
 	GetJob(ctx context.Context, request GetJobRequestObject) (GetJobResponseObject, error)
+	// CancelJob Commit a Customer Cancellation decision
+	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
+	CancelJob(ctx context.Context, request CancelJobRequestObject) (CancelJobResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -776,37 +960,68 @@ func (sh *strictHandler) GetJob(w http.ResponseWriter, r *http.Request, projectI
 	}
 }
 
+// CancelJob operation middleware
+func (sh *strictHandler) CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
+	var request CancelJobRequestObject
+
+	request.ProjectId = projectId
+	request.JobId = jobId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelJob(ctx, request.(CancelJobRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelJob")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelJobResponseObject); ok {
+		if err := validResponse.VisitCancelJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
