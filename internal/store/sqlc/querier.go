@@ -14,48 +14,80 @@ import (
 type Querier interface {
 	ClaimOutboxEvents(ctx context.Context, arg ClaimOutboxEventsParams) ([]ClaimOutboxEventsRow, error)
 	DecrementPoolQueuedForAssignment(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
+	DecrementPoolWaitingForFailure(ctx context.Context, arg DecrementPoolWaitingForFailureParams) (int64, error)
+	DecrementProjectRunningForFailure(ctx context.Context, arg DecrementProjectRunningForFailureParams) (int64, error)
+	DecrementProjectWaitingForFailure(ctx context.Context, arg DecrementProjectWaitingForFailureParams) (int64, error)
+	FindExpiredExecutionLeaseCandidate(ctx context.Context, workerLostGraceSeconds int64) (FindExpiredExecutionLeaseCandidateRow, error)
+	FindExpiredJobFailureCandidate(ctx context.Context) (FindExpiredJobFailureCandidateRow, error)
 	GetActiveWorkerAssignment(ctx context.Context, arg GetActiveWorkerAssignmentParams) (GetActiveWorkerAssignmentRow, error)
 	GetAttemptProgressForHeartbeat(ctx context.Context, attemptID uuid.UUID) (GetAttemptProgressForHeartbeatRow, error)
+	GetExecutionFailureDecision(ctx context.Context, attemptID uuid.NullUUID) (GetExecutionFailureDecisionRow, error)
 	GetIdempotencyResult(ctx context.Context, arg GetIdempotencyResultParams) (GetIdempotencyResultRow, error)
 	GetJob(ctx context.Context, arg GetJobParams) (GetJobRow, error)
 	GetPostgresTime(ctx context.Context) (pgtype.Timestamptz, error)
 	IncrementAttemptsStarted(ctx context.Context, arg IncrementAttemptsStartedParams) (int64, error)
 	IncrementPoolQueued(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
+	IncrementPoolRetryWait(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
 	IncrementProjectQueued(ctx context.Context, arg IncrementProjectQueuedParams) (int64, error)
 	InsertAssignmentOutboxEvent(ctx context.Context, arg InsertAssignmentOutboxEventParams) error
 	InsertAttempt(ctx context.Context, arg InsertAttemptParams) error
 	InsertCreditReservation(ctx context.Context, arg InsertCreditReservationParams) error
+	InsertExecutionFailureDecision(ctx context.Context, arg InsertExecutionFailureDecisionParams) error
 	InsertExecutionLease(ctx context.Context, arg InsertExecutionLeaseParams) error
 	InsertIdempotencyResult(ctx context.Context, arg InsertIdempotencyResultParams) error
 	InsertJob(ctx context.Context, arg InsertJobParams) error
+	InsertJobFailedOutboxEvent(ctx context.Context, arg InsertJobFailedOutboxEventParams) error
 	InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error
 	InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRuntimeStateParams) error
+	InsertRetryWaitOutboxEvent(ctx context.Context, arg InsertRetryWaitOutboxEventParams) error
 	InsertStartOutboxEvent(ctx context.Context, arg InsertStartOutboxEventParams) error
 	ListActiveLeaseSigningKeyIDs(ctx context.Context) ([]string, error)
 	LockCompatiblePool(ctx context.Context, arg LockCompatiblePoolParams) (LockCompatiblePoolRow, error)
 	LockCreditAccount(ctx context.Context, organizationID uuid.UUID) (LockCreditAccountRow, error)
 	LockExecutionLeaseRenewalProtocol(ctx context.Context) (bool, error)
 	LockExecutionLeaseWrites(ctx context.Context) error
+	LockFailureAuthority(ctx context.Context, attemptID uuid.UUID) (LockFailureAuthorityRow, error)
+	LockFailureCreditReservation(ctx context.Context, jobID uuid.UUID) (LockFailureCreditReservationRow, error)
+	LockFailureOrganizationCredit(ctx context.Context, organizationID uuid.UUID) (LockFailureOrganizationCreditRow, error)
+	LockFailurePoolCounters(ctx context.Context, workerPoolID uuid.UUID) (LockFailurePoolCountersRow, error)
+	LockFailureProjectCounters(ctx context.Context, arg LockFailureProjectCountersParams) (LockFailureProjectCountersRow, error)
 	LockHeartbeatAuthority(ctx context.Context, arg LockHeartbeatAuthorityParams) (LockHeartbeatAuthorityRow, error)
 	LockIdempotencyKey(ctx context.Context, arg LockIdempotencyKeyParams) (interface{}, error)
+	LockJobExpiryWithoutAttempt(ctx context.Context, jobID uuid.UUID) (LockJobExpiryWithoutAttemptRow, error)
 	LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (LockJobForAssignmentRow, error)
 	LockProjectForAdmission(ctx context.Context, arg LockProjectForAdmissionParams) (LockProjectForAdmissionRow, error)
 	LockProjectForAssignment(ctx context.Context, arg LockProjectForAssignmentParams) (LockProjectForAssignmentRow, error)
 	LockStartAuthority(ctx context.Context, arg LockStartAuthorityParams) (LockStartAuthorityRow, error)
 	LockWorkerAuthority(ctx context.Context, workerID uuid.UUID) (LockWorkerAuthorityRow, error)
+	MarkAttemptFailed(ctx context.Context, arg MarkAttemptFailedParams) (int64, error)
+	MarkAttemptLost(ctx context.Context, arg MarkAttemptLostParams) (int64, error)
 	MarkAttemptRunning(ctx context.Context, arg MarkAttemptRunningParams) (int64, error)
 	MarkJobAssigned(ctx context.Context, arg MarkJobAssignedParams) (int64, error)
+	MarkJobFailedFromActive(ctx context.Context, arg MarkJobFailedFromActiveParams) (int64, error)
+	MarkJobFailedWithoutAttempt(ctx context.Context, arg MarkJobFailedWithoutAttemptParams) (int64, error)
+	MarkJobRetryWait(ctx context.Context, arg MarkJobRetryWaitParams) (int64, error)
 	MarkJobRunning(ctx context.Context, arg MarkJobRunningParams) (MarkJobRunningRow, error)
 	MarkOutboxFailed(ctx context.Context, arg MarkOutboxFailedParams) (int64, error)
 	MarkOutboxPublished(ctx context.Context, arg MarkOutboxPublishedParams) (int64, error)
 	MarkWorkerBusy(ctx context.Context, arg MarkWorkerBusyParams) (int64, error)
+	MarkWorkerDrainingAfterFailure(ctx context.Context, arg MarkWorkerDrainingAfterFailureParams) (int64, error)
 	MarkWorkerHeartbeat(ctx context.Context, arg MarkWorkerHeartbeatParams) (int64, error)
+	MarkWorkerLostAfterFailure(ctx context.Context, arg MarkWorkerLostAfterFailureParams) (int64, error)
+	MarkWorkerReusableAfterFailure(ctx context.Context, arg MarkWorkerReusableAfterFailureParams) (int64, error)
 	MoveProjectCountersToRunning(ctx context.Context, arg MoveProjectCountersToRunningParams) (int64, error)
+	MoveProjectRunningToRetryWait(ctx context.Context, arg MoveProjectRunningToRetryWaitParams) (int64, error)
 	RecordInboxReceipt(ctx context.Context, arg RecordInboxReceiptParams) (uuid.UUID, error)
+	ReleaseFailureCreditReservation(ctx context.Context, arg ReleaseFailureCreditReservationParams) (int64, error)
+	ReleaseOrganizationCreditForFailure(ctx context.Context, arg ReleaseOrganizationCreditForFailureParams) (int64, error)
 	RenewExecutionLease(ctx context.Context, arg RenewExecutionLeaseParams) (int64, error)
 	ReserveOrganizationCredit(ctx context.Context, arg ReserveOrganizationCreditParams) (int64, error)
 	ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUParams) (ResolveActiveSKURow, error)
+	RevokeExecutionLeaseForFailure(ctx context.Context, arg RevokeExecutionLeaseForFailureParams) (int64, error)
 	SetRequestContext(ctx context.Context, arg SetRequestContextParams) (SetRequestContextRow, error)
+	UpdateExecutionRetryEvidence(ctx context.Context, arg UpdateExecutionRetryEvidenceParams) (int64, error)
+	UpdateExecutionRetryEvidenceForJobExpiry(ctx context.Context, arg UpdateExecutionRetryEvidenceForJobExpiryParams) (int64, error)
+	UpdateRetryRuntimeForFailure(ctx context.Context, arg UpdateRetryRuntimeForFailureParams) (int64, error)
+	UpdateRetryRuntimeForJobExpiry(ctx context.Context, arg UpdateRetryRuntimeForJobExpiryParams) (int64, error)
 	UpsertAttemptProgress(ctx context.Context, arg UpsertAttemptProgressParams) (int64, error)
 	ValidateProfileForAssignment(ctx context.Context, arg ValidateProfileForAssignmentParams) (uuid.UUID, error)
 }

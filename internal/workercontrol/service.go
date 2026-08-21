@@ -64,6 +64,7 @@ type Assignment struct {
 
 type Config struct {
 	LeaseTTL         time.Duration
+	WorkerLostGrace  time.Duration
 	ActiveLeaseKeyID string
 	LeaseKeys        map[string][]byte
 }
@@ -71,6 +72,7 @@ type Config struct {
 type Service struct {
 	pool             *pgxpool.Pool
 	leaseTTL         time.Duration
+	workerLostGrace  time.Duration
 	activeLeaseKeyID string
 	leaseKeys        map[string][]byte
 }
@@ -84,6 +86,13 @@ func NewService(ctx context.Context, pool *pgxpool.Pool, config Config) (*Servic
 	}
 	if config.LeaseTTL < time.Second || config.LeaseTTL%time.Second != 0 {
 		return nil, errors.New("execution Lease TTL must be a positive whole number of seconds")
+	}
+	workerLostGrace := config.WorkerLostGrace
+	if workerLostGrace == 0 {
+		workerLostGrace = 30 * time.Second
+	}
+	if workerLostGrace < time.Second || workerLostGrace%time.Second != 0 {
+		return nil, errors.New("worker lost grace must be a positive whole number of seconds")
 	}
 	if config.ActiveLeaseKeyID == "" {
 		return nil, errors.New("active Lease signing-key id is required")
@@ -110,6 +119,7 @@ func NewService(ctx context.Context, pool *pgxpool.Pool, config Config) (*Servic
 	return &Service{
 		pool:             pool,
 		leaseTTL:         config.LeaseTTL,
+		workerLostGrace:  workerLostGrace,
 		activeLeaseKeyID: config.ActiveLeaseKeyID,
 		leaseKeys:        keys,
 	}, nil
@@ -210,6 +220,17 @@ func (s *Service) Acquire(
 		job.ComputeSecondsConsumed >= job.ExecutionMaxTotalComputeSeconds {
 		return Assignment{}, failure(FailureCandidateUnavailable, "candidate Job has exhausted Retry Budget")
 	}
+	now, err := postgresTime(ctx, queries)
+	if err != nil {
+		return Assignment{}, err
+	}
+	excluded, err := workerExcludedForJob(job.ExcludedWorkers, worker.ID, now)
+	if err != nil {
+		return Assignment{}, err
+	}
+	if excluded {
+		return Assignment{}, failure(FailureCandidateUnavailable, "Worker is excluded by the Job RetryRuntimeState")
+	}
 
 	project, err := queries.LockProjectForAssignment(ctx, store.LockProjectForAssignmentParams{
 		OrganizationID: job.OrganizationID,
@@ -218,7 +239,9 @@ func (s *Service) Acquire(
 	if err != nil {
 		return Assignment{}, fmt.Errorf("lock Project Assignment counters: %w", err)
 	}
-	if project.QueuedCount <= 0 || project.RunningCount >= project.RunningLimit {
+	if project.RunningCount >= project.RunningLimit ||
+		(job.State == store.JobStateQUEUED && project.QueuedCount-project.RetryWaitCount <= 0) ||
+		(job.State == store.JobStateRETRYWAIT && project.RetryWaitCount <= 0) {
 		return Assignment{}, failure(FailureCandidateUnavailable, "Project Assignment capacity is unavailable")
 	}
 	if _, err := queries.ValidateProfileForAssignment(ctx, store.ValidateProfileForAssignmentParams{
@@ -231,10 +254,6 @@ func (s *Service) Acquire(
 		return Assignment{}, failure(FailureCandidateUnavailable, "Execution Profile is not actively certified for the Job")
 	} else if err != nil {
 		return Assignment{}, fmt.Errorf("validate Assignment profile: %w", err)
-	}
-	now, err := postgresTime(ctx, queries)
-	if err != nil {
-		return Assignment{}, err
 	}
 	if !job.JobExpiresAt.Time.After(now) ||
 		(job.State == store.JobStateRETRYWAIT && (!job.NextRetryAt.Valid || job.NextRetryAt.Time.After(now))) {
@@ -316,7 +335,10 @@ func (s *Service) Acquire(
 	}); err != nil || rows != 1 {
 		return Assignment{}, changedRowsError("move Project counters to running", rows, err)
 	}
-	if rows, err := queries.DecrementPoolQueuedForAssignment(ctx, workerRow.WorkerPoolID); err != nil || rows != 1 {
+	if rows, err := queries.DecrementPoolQueuedForAssignment(
+		ctx,
+		workerRow.WorkerPoolID,
+	); err != nil || rows != 1 {
 		return Assignment{}, changedRowsError("decrement Worker pool queued counter", rows, err)
 	}
 	if rows, err := queries.IncrementAttemptsStarted(ctx, store.IncrementAttemptsStartedParams{

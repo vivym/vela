@@ -80,7 +80,7 @@ WHERE organization_id = sqlc.arg(organization_id)
 
 -- name: LockProjectForAdmission :one
 SELECT
-    p.queued_count,
+    p.queued_count - p.retry_wait_count AS queued_count,
     p.queued_limit,
     p.retry_after_seconds,
     p.running_count,
@@ -107,14 +107,14 @@ UPDATE projects
 SET queued_count = queued_count + 1
 WHERE organization_id = sqlc.arg(organization_id)
   AND id = sqlc.arg(project_id)
-  AND queued_count < queued_limit;
+  AND queued_count - retry_wait_count < queued_limit;
 
 -- name: IncrementPoolQueued :execrows
 UPDATE worker_pools
 SET queued_count = queued_count + 1
 WHERE id = sqlc.arg(worker_pool_id)
   AND admission_open
-  AND queued_count < queued_limit;
+  AND queued_count - retry_wait_count < queued_limit;
 
 -- name: ReserveOrganizationCredit :execrows
 UPDATE organization_credit_accounts

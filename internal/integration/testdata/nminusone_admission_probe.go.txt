@@ -1,0 +1,67 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/identity"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	authPool, err := pgxpool.New(ctx, os.Getenv("VELA_AUTH_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer authPool.Close()
+	requestPool, err := pgxpool.New(ctx, os.Getenv("VELA_REQUEST_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer requestPool.Close()
+	pepper, err := base64.StdEncoding.DecodeString(os.Getenv("VELA_CREDENTIAL_PEPPER_BASE64"))
+	if err != nil {
+		fatal(err)
+	}
+	principal, err := identity.NewAuthenticator(authPool, pepper).Authenticate(
+		ctx, os.Getenv("VELA_BEARER_CREDENTIAL"),
+	)
+	if err != nil {
+		fatal(err)
+	}
+	job, err := admission.NewService(requestPool).Submit(
+		ctx,
+		principal,
+		uuid.MustParse(os.Getenv("VELA_PROJECT_ID")),
+		"n-minus-one-failure-expansion",
+		admission.Request{
+			Model:            "minimax-h3",
+			GenerationPreset: "balanced",
+			ServiceClass:     "standard",
+			OutputSpec:       "video-1080p-5s-24fps",
+			GenerationCount:  1,
+			Prompt:           "prove the exact N-1 request writer against the expanded schema",
+		},
+	)
+	if err != nil {
+		fatal(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(struct {
+		JobID uuid.UUID `json:"job_id"`
+	}{JobID: job.ID}); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}

@@ -122,7 +122,7 @@ UPDATE worker_pools
 SET queued_count = queued_count + 1
 WHERE id = $1
   AND admission_open
-  AND queued_count < queued_limit
+  AND queued_count - retry_wait_count < queued_limit
 `
 
 func (q *Queries) IncrementPoolQueued(ctx context.Context, workerPoolID uuid.UUID) (int64, error) {
@@ -138,7 +138,7 @@ UPDATE projects
 SET queued_count = queued_count + 1
 WHERE organization_id = $1
   AND id = $2
-  AND queued_count < queued_limit
+  AND queued_count - retry_wait_count < queued_limit
 `
 
 type IncrementProjectQueuedParams struct {
@@ -487,7 +487,7 @@ func (q *Queries) LockIdempotencyKey(ctx context.Context, arg LockIdempotencyKey
 
 const lockProjectForAdmission = `-- name: LockProjectForAdmission :one
 SELECT
-    p.queued_count,
+    p.queued_count - p.retry_wait_count AS queued_count,
     p.queued_limit,
     p.retry_after_seconds,
     p.running_count,

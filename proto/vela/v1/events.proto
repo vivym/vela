@@ -18,6 +18,8 @@ message EventEnvelope {
     JobReady job_ready = 20;
     JobAssigned job_assigned = 21;
     JobStarted job_started = 22;
+    JobRetryWait job_retry_wait = 23;
+    JobFailed job_failed = 24;
   }
 }
 
@@ -54,4 +56,40 @@ message JobStarted {
   uint64 worker_epoch = 7;
   uint64 lease_fence = 8;
   google.protobuf.Timestamp started_at = 9;
+}
+
+message JobRetryWait {
+  reserved 6, 7;
+  reserved "worker_id", "worker_epoch";
+
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string attempt_id = 4;
+  uint32 attempt_number = 5;
+  uint64 attempt_fence = 8;
+  uint64 job_fence = 9;
+  string failure_class = 10;
+  uint64 attempt_compute_seconds = 11;
+  uint64 total_compute_seconds = 12;
+  google.protobuf.Timestamp next_retry_at = 13;
+  google.protobuf.Timestamp decided_at = 14;
+}
+
+message JobFailed {
+  reserved 6, 7;
+  reserved "worker_id", "worker_epoch";
+
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string attempt_id = 4;
+  uint32 attempt_number = 5;
+  uint64 attempt_fence = 8;
+  uint64 job_fence = 9;
+  string failure_class = 10;
+  string attempt_state = 11;
+  uint64 attempt_compute_seconds = 12;
+  uint64 total_compute_seconds = 13;
+  google.protobuf.Timestamp decided_at = 14;
 }

@@ -701,13 +701,16 @@ func TestBillableStartSurvivesLaterRetry(t *testing.T) {
 		},
 		{
 			query: `UPDATE projects
-				SET queued_count = queued_count + 1, running_count = running_count - 1
+				SET queued_count = queued_count + 1,
+					retry_wait_count = retry_wait_count + 1,
+					running_count = running_count - 1
 				WHERE id = $1`,
 			args: []any{testProjectID},
 		},
 		{
 			query: `UPDATE worker_pools
-				SET queued_count = queued_count + 1
+				SET queued_count = queued_count + 1,
+					retry_wait_count = retry_wait_count + 1
 				WHERE id = '00000000-0000-0000-0000-000000000005'`,
 		},
 		{

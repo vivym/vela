@@ -1347,8 +1347,8 @@ func TestJobViewMapsLifecyclePhasesAndRetryProgressResets(t *testing.T) {
 		{query: `UPDATE attempts SET state = 'FAILED', ended_at = clock_timestamp(), updated_at = clock_timestamp() WHERE id = $1`, args: []any{assignment.AttemptID}},
 		{query: `UPDATE jobs SET state = 'RETRY_WAIT', version = version + 1, updated_at = clock_timestamp() WHERE id = $1`, args: []any{assignment.JobID}},
 		{query: `UPDATE workers SET lifecycle_state = 'READY', updated_at = clock_timestamp() WHERE id = $1`, args: []any{fixture.worker.ID}},
-		{query: `UPDATE projects SET queued_count = queued_count + 1, running_count = running_count - 1 WHERE id = $1`, args: []any{testProjectID}},
-		{query: `UPDATE worker_pools SET queued_count = queued_count + 1 WHERE id = '00000000-0000-0000-0000-000000000005'`},
+		{query: `UPDATE projects SET queued_count = queued_count + 1, retry_wait_count = retry_wait_count + 1, running_count = running_count - 1 WHERE id = $1`, args: []any{testProjectID}},
+		{query: `UPDATE worker_pools SET queued_count = queued_count + 1, retry_wait_count = retry_wait_count + 1 WHERE id = '00000000-0000-0000-0000-000000000005'`},
 		{query: `UPDATE retry_runtime_states SET next_retry_at = clock_timestamp() + interval '30 seconds', version = version + 1, updated_at = clock_timestamp() WHERE job_id = $1`, args: []any{assignment.JobID}},
 	}
 	for _, statement := range retryStatements {

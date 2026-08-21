@@ -151,6 +151,49 @@ func (ns NullCreditReservationState) Value() (driver.Value, error) {
 	return string(ns.CreditReservationState), nil
 }
 
+type ExecutionFailureSource string
+
+const (
+	ExecutionFailureSourceWORKERREPORTED        ExecutionFailureSource = "WORKER_REPORTED"
+	ExecutionFailureSourceEXECUTIONLEASEEXPIRED ExecutionFailureSource = "EXECUTION_LEASE_EXPIRED"
+	ExecutionFailureSourceJOBEXPIRED            ExecutionFailureSource = "JOB_EXPIRED"
+)
+
+func (e *ExecutionFailureSource) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ExecutionFailureSource(s)
+	case string:
+		*e = ExecutionFailureSource(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ExecutionFailureSource: %T", src)
+	}
+	return nil
+}
+
+type NullExecutionFailureSource struct {
+	ExecutionFailureSource ExecutionFailureSource `json:"execution_failure_source"`
+	Valid                  bool                   `json:"valid"` // Valid is true if ExecutionFailureSource is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullExecutionFailureSource) Scan(value interface{}) error {
+	if value == nil {
+		ns.ExecutionFailureSource, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ExecutionFailureSource.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullExecutionFailureSource) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ExecutionFailureSource), nil
+}
+
 type ExecutionPhase string
 
 const (
@@ -371,6 +414,48 @@ func (ns NullPrincipalKind) Value() (driver.Value, error) {
 	return string(ns.PrincipalKind), nil
 }
 
+type RetryDisposition string
+
+const (
+	RetryDispositionRETRYWAIT RetryDisposition = "RETRY_WAIT"
+	RetryDispositionFAILED    RetryDisposition = "FAILED"
+)
+
+func (e *RetryDisposition) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RetryDisposition(s)
+	case string:
+		*e = RetryDisposition(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RetryDisposition: %T", src)
+	}
+	return nil
+}
+
+type NullRetryDisposition struct {
+	RetryDisposition RetryDisposition `json:"retry_disposition"`
+	Valid            bool             `json:"valid"` // Valid is true if RetryDisposition is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRetryDisposition) Scan(value interface{}) error {
+	if value == nil {
+		ns.RetryDisposition, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RetryDisposition.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRetryDisposition) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RetryDisposition), nil
+}
+
 type WorkerLifecycleState string
 
 const (
@@ -561,6 +646,36 @@ type CustomerOrganization struct {
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type ExecutionFailureDecision struct {
+	ID                       uuid.UUID              `db:"id" json:"id"`
+	OrganizationID           uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID              `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID              `db:"job_id" json:"job_id"`
+	AttemptID                uuid.NullUUID          `db:"attempt_id" json:"attempt_id"`
+	WorkerID                 uuid.NullUUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch              *int64                 `db:"worker_epoch" json:"worker_epoch"`
+	AttemptFence             *int64                 `db:"attempt_fence" json:"attempt_fence"`
+	Source                   ExecutionFailureSource `db:"source" json:"source"`
+	Disposition              RetryDisposition       `db:"disposition" json:"disposition"`
+	AttemptState             *AttemptState          `db:"attempt_state" json:"attempt_state"`
+	FailureClass             string                 `db:"failure_class" json:"failure_class"`
+	FailureFingerprint       string                 `db:"failure_fingerprint" json:"failure_fingerprint"`
+	RequestHash              []byte                 `db:"request_hash" json:"request_hash"`
+	ErrorSummary             string                 `db:"error_summary" json:"error_summary"`
+	BackendStage             string                 `db:"backend_stage" json:"backend_stage"`
+	GpuUuids                 []byte                 `db:"gpu_uuids" json:"gpu_uuids"`
+	InferenceBackendRevision string                 `db:"inference_backend_revision" json:"inference_backend_revision"`
+	RetryRecommended         bool                   `db:"retry_recommended" json:"retry_recommended"`
+	WorkerReusable           bool                   `db:"worker_reusable" json:"worker_reusable"`
+	AttemptComputeSeconds    int64                  `db:"attempt_compute_seconds" json:"attempt_compute_seconds"`
+	TotalComputeSeconds      int64                  `db:"total_compute_seconds" json:"total_compute_seconds"`
+	NextRetryAt              pgtype.Timestamptz     `db:"next_retry_at" json:"next_retry_at"`
+	JobFence                 int64                  `db:"job_fence" json:"job_fence"`
+	JobVersion               int64                  `db:"job_version" json:"job_version"`
+	DecidedAt                pgtype.Timestamptz     `db:"decided_at" json:"decided_at"`
+	CreatedAt                pgtype.Timestamptz     `db:"created_at" json:"created_at"`
+}
+
 type ExecutionLeaseRenewalProtocol struct {
 	Singleton         bool               `db:"singleton" json:"singleton"`
 	Enabled           bool               `db:"enabled" json:"enabled"`
@@ -576,6 +691,15 @@ type ExecutionProfileRevision struct {
 	Revision        int32              `db:"revision" json:"revision"`
 	State           CatalogState       `db:"state" json:"state"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ExecutionRetryEvidence struct {
+	JobID               uuid.UUID          `db:"job_id" json:"job_id"`
+	OrganizationID      uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID           uuid.UUID          `db:"project_id" json:"project_id"`
+	ExcludedWorkers     []byte             `db:"excluded_workers" json:"excluded_workers"`
+	FailureFingerprints []byte             `db:"failure_fingerprints" json:"failure_fingerprints"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type GenerationPresetRevision struct {
@@ -728,6 +852,7 @@ type Project struct {
 	RunningCount      int32              `db:"running_count" json:"running_count"`
 	RetryAfterSeconds int32              `db:"retry_after_seconds" json:"retry_after_seconds"`
 	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	RetryWaitCount    int32              `db:"retry_wait_count" json:"retry_wait_count"`
 }
 
 type RateCardLine struct {
@@ -844,4 +969,5 @@ type WorkerPool struct {
 	QueuedCount       int32              `db:"queued_count" json:"queued_count"`
 	RetryAfterSeconds int32              `db:"retry_after_seconds" json:"retry_after_seconds"`
 	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	RetryWaitCount    int32              `db:"retry_wait_count" json:"retry_wait_count"`
 }

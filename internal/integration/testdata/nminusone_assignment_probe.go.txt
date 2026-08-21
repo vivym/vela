@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,17 +31,31 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	workerEpoch := int64(7)
+	if raw := os.Getenv("VELA_WORKER_EPOCH"); raw != "" {
+		workerEpoch, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			fatal(err)
+		}
+	}
+	expectedJobVersion := int64(1)
+	if raw := os.Getenv("VELA_EXPECTED_JOB_VERSION"); raw != "" {
+		expectedJobVersion, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			fatal(err)
+		}
+	}
 	worker := workercontrol.AuthenticatedWorker{ID: uuid.MustParse(os.Getenv("VELA_WORKER_ID"))}
 	candidate := workercontrol.AssignmentCandidate{
 		JobID:                      uuid.MustParse(os.Getenv("VELA_JOB_ID")),
-		ExpectedJobVersion:         1,
+		ExpectedJobVersion:         expectedJobVersion,
 		ExecutionProfileRevisionID: uuid.MustParse(os.Getenv("VELA_PROFILE_REVISION_ID")),
 	}
-	assigned, err := service.Acquire(ctx, worker, 7, &candidate)
+	assigned, err := service.Acquire(ctx, worker, workerEpoch, &candidate)
 	if err != nil {
 		fatal(err)
 	}
-	replayed, err := service.Acquire(ctx, worker, 7, nil)
+	replayed, err := service.Acquire(ctx, worker, workerEpoch, nil)
 	if err != nil {
 		fatal(err)
 	}

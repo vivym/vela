@@ -36,6 +36,8 @@ type EventEnvelope struct {
 	//	*EventEnvelope_JobReady
 	//	*EventEnvelope_JobAssigned
 	//	*EventEnvelope_JobStarted
+	//	*EventEnvelope_JobRetryWait
+	//	*EventEnvelope_JobFailed
 	Payload       isEventEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -154,6 +156,24 @@ func (x *EventEnvelope) GetJobStarted() *JobStarted {
 	return nil
 }
 
+func (x *EventEnvelope) GetJobRetryWait() *JobRetryWait {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_JobRetryWait); ok {
+			return x.JobRetryWait
+		}
+	}
+	return nil
+}
+
+func (x *EventEnvelope) GetJobFailed() *JobFailed {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_JobFailed); ok {
+			return x.JobFailed
+		}
+	}
+	return nil
+}
+
 type isEventEnvelope_Payload interface {
 	isEventEnvelope_Payload()
 }
@@ -170,11 +190,23 @@ type EventEnvelope_JobStarted struct {
 	JobStarted *JobStarted `protobuf:"bytes,22,opt,name=job_started,json=jobStarted,proto3,oneof"`
 }
 
+type EventEnvelope_JobRetryWait struct {
+	JobRetryWait *JobRetryWait `protobuf:"bytes,23,opt,name=job_retry_wait,json=jobRetryWait,proto3,oneof"`
+}
+
+type EventEnvelope_JobFailed struct {
+	JobFailed *JobFailed `protobuf:"bytes,24,opt,name=job_failed,json=jobFailed,proto3,oneof"`
+}
+
 func (*EventEnvelope_JobReady) isEventEnvelope_Payload() {}
 
 func (*EventEnvelope_JobAssigned) isEventEnvelope_Payload() {}
 
 func (*EventEnvelope_JobStarted) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_JobRetryWait) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_JobFailed) isEventEnvelope_Payload() {}
 
 type JobReady struct {
 	state                      protoimpl.MessageState `protogen:"open.v1"`
@@ -492,11 +524,275 @@ func (x *JobStarted) GetStartedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type JobRetryWait struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId        string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId             string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId                 string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AttemptId             string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	AttemptNumber         uint32                 `protobuf:"varint,5,opt,name=attempt_number,json=attemptNumber,proto3" json:"attempt_number,omitempty"`
+	AttemptFence          uint64                 `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
+	JobFence              uint64                 `protobuf:"varint,9,opt,name=job_fence,json=jobFence,proto3" json:"job_fence,omitempty"`
+	FailureClass          string                 `protobuf:"bytes,10,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
+	AttemptComputeSeconds uint64                 `protobuf:"varint,11,opt,name=attempt_compute_seconds,json=attemptComputeSeconds,proto3" json:"attempt_compute_seconds,omitempty"`
+	TotalComputeSeconds   uint64                 `protobuf:"varint,12,opt,name=total_compute_seconds,json=totalComputeSeconds,proto3" json:"total_compute_seconds,omitempty"`
+	NextRetryAt           *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=next_retry_at,json=nextRetryAt,proto3" json:"next_retry_at,omitempty"`
+	DecidedAt             *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *JobRetryWait) Reset() {
+	*x = JobRetryWait{}
+	mi := &file_vela_v1_events_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobRetryWait) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobRetryWait) ProtoMessage() {}
+
+func (x *JobRetryWait) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobRetryWait.ProtoReflect.Descriptor instead.
+func (*JobRetryWait) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *JobRetryWait) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *JobRetryWait) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *JobRetryWait) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobRetryWait) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *JobRetryWait) GetAttemptNumber() uint32 {
+	if x != nil {
+		return x.AttemptNumber
+	}
+	return 0
+}
+
+func (x *JobRetryWait) GetAttemptFence() uint64 {
+	if x != nil {
+		return x.AttemptFence
+	}
+	return 0
+}
+
+func (x *JobRetryWait) GetJobFence() uint64 {
+	if x != nil {
+		return x.JobFence
+	}
+	return 0
+}
+
+func (x *JobRetryWait) GetFailureClass() string {
+	if x != nil {
+		return x.FailureClass
+	}
+	return ""
+}
+
+func (x *JobRetryWait) GetAttemptComputeSeconds() uint64 {
+	if x != nil {
+		return x.AttemptComputeSeconds
+	}
+	return 0
+}
+
+func (x *JobRetryWait) GetTotalComputeSeconds() uint64 {
+	if x != nil {
+		return x.TotalComputeSeconds
+	}
+	return 0
+}
+
+func (x *JobRetryWait) GetNextRetryAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NextRetryAt
+	}
+	return nil
+}
+
+func (x *JobRetryWait) GetDecidedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return nil
+}
+
+type JobFailed struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId        string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId             string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId                 string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AttemptId             string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	AttemptNumber         uint32                 `protobuf:"varint,5,opt,name=attempt_number,json=attemptNumber,proto3" json:"attempt_number,omitempty"`
+	AttemptFence          uint64                 `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
+	JobFence              uint64                 `protobuf:"varint,9,opt,name=job_fence,json=jobFence,proto3" json:"job_fence,omitempty"`
+	FailureClass          string                 `protobuf:"bytes,10,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
+	AttemptState          string                 `protobuf:"bytes,11,opt,name=attempt_state,json=attemptState,proto3" json:"attempt_state,omitempty"`
+	AttemptComputeSeconds uint64                 `protobuf:"varint,12,opt,name=attempt_compute_seconds,json=attemptComputeSeconds,proto3" json:"attempt_compute_seconds,omitempty"`
+	TotalComputeSeconds   uint64                 `protobuf:"varint,13,opt,name=total_compute_seconds,json=totalComputeSeconds,proto3" json:"total_compute_seconds,omitempty"`
+	DecidedAt             *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *JobFailed) Reset() {
+	*x = JobFailed{}
+	mi := &file_vela_v1_events_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobFailed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobFailed) ProtoMessage() {}
+
+func (x *JobFailed) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobFailed.ProtoReflect.Descriptor instead.
+func (*JobFailed) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *JobFailed) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *JobFailed) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *JobFailed) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobFailed) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *JobFailed) GetAttemptNumber() uint32 {
+	if x != nil {
+		return x.AttemptNumber
+	}
+	return 0
+}
+
+func (x *JobFailed) GetAttemptFence() uint64 {
+	if x != nil {
+		return x.AttemptFence
+	}
+	return 0
+}
+
+func (x *JobFailed) GetJobFence() uint64 {
+	if x != nil {
+		return x.JobFence
+	}
+	return 0
+}
+
+func (x *JobFailed) GetFailureClass() string {
+	if x != nil {
+		return x.FailureClass
+	}
+	return ""
+}
+
+func (x *JobFailed) GetAttemptState() string {
+	if x != nil {
+		return x.AttemptState
+	}
+	return ""
+}
+
+func (x *JobFailed) GetAttemptComputeSeconds() uint64 {
+	if x != nil {
+		return x.AttemptComputeSeconds
+	}
+	return 0
+}
+
+func (x *JobFailed) GetTotalComputeSeconds() uint64 {
+	if x != nil {
+		return x.TotalComputeSeconds
+	}
+	return 0
+}
+
+func (x *JobFailed) GetDecidedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DecidedAt
+	}
+	return nil
+}
+
 var File_vela_v1_events_proto protoreflect.FileDescriptor
 
 const file_vela_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x14vela/v1/events.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd4\x03\n" +
+	"\x14vela/v1/events.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc8\x04\n" +
 	"\rEventEnvelope\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12%\n" +
 	"\x0eaggregate_type\x18\x02 \x01(\tR\raggregateType\x12!\n" +
@@ -510,7 +806,10 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\tjob_ready\x18\x14 \x01(\v2\x11.vela.v1.JobReadyH\x00R\bjobReady\x129\n" +
 	"\fjob_assigned\x18\x15 \x01(\v2\x14.vela.v1.JobAssignedH\x00R\vjobAssigned\x126\n" +
 	"\vjob_started\x18\x16 \x01(\v2\x13.vela.v1.JobStartedH\x00R\n" +
-	"jobStartedB\t\n" +
+	"jobStarted\x12=\n" +
+	"\x0ejob_retry_wait\x18\x17 \x01(\v2\x15.vela.v1.JobRetryWaitH\x00R\fjobRetryWait\x123\n" +
+	"\n" +
+	"job_failed\x18\x18 \x01(\v2\x12.vela.v1.JobFailedH\x00R\tjobFailedB\t\n" +
 	"\apayload\"\xb9\x02\n" +
 	"\bJobReady\x12'\n" +
 	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
@@ -550,7 +849,41 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\vlease_fence\x18\b \x01(\x04R\n" +
 	"leaseFence\x129\n" +
 	"\n" +
-	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAtB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
+	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\xa6\x04\n" +
+	"\fJobRetryWait\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x04 \x01(\tR\tattemptId\x12%\n" +
+	"\x0eattempt_number\x18\x05 \x01(\rR\rattemptNumber\x12#\n" +
+	"\rattempt_fence\x18\b \x01(\x04R\fattemptFence\x12\x1b\n" +
+	"\tjob_fence\x18\t \x01(\x04R\bjobFence\x12#\n" +
+	"\rfailure_class\x18\n" +
+	" \x01(\tR\ffailureClass\x126\n" +
+	"\x17attempt_compute_seconds\x18\v \x01(\x04R\x15attemptComputeSeconds\x122\n" +
+	"\x15total_compute_seconds\x18\f \x01(\x04R\x13totalComputeSeconds\x12>\n" +
+	"\rnext_retry_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vnextRetryAt\x129\n" +
+	"\n" +
+	"decided_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAtJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\tworker_idR\fworker_epoch\"\x88\x04\n" +
+	"\tJobFailed\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x04 \x01(\tR\tattemptId\x12%\n" +
+	"\x0eattempt_number\x18\x05 \x01(\rR\rattemptNumber\x12#\n" +
+	"\rattempt_fence\x18\b \x01(\x04R\fattemptFence\x12\x1b\n" +
+	"\tjob_fence\x18\t \x01(\x04R\bjobFence\x12#\n" +
+	"\rfailure_class\x18\n" +
+	" \x01(\tR\ffailureClass\x12#\n" +
+	"\rattempt_state\x18\v \x01(\tR\fattemptState\x126\n" +
+	"\x17attempt_compute_seconds\x18\f \x01(\x04R\x15attemptComputeSeconds\x122\n" +
+	"\x15total_compute_seconds\x18\r \x01(\x04R\x13totalComputeSeconds\x129\n" +
+	"\n" +
+	"decided_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAtJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\tworker_idR\fworker_epochB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
 
 var (
 	file_vela_v1_events_proto_rawDescOnce sync.Once
@@ -564,26 +897,33 @@ func file_vela_v1_events_proto_rawDescGZIP() []byte {
 	return file_vela_v1_events_proto_rawDescData
 }
 
-var file_vela_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_vela_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_vela_v1_events_proto_goTypes = []any{
 	(*EventEnvelope)(nil),         // 0: vela.v1.EventEnvelope
 	(*JobReady)(nil),              // 1: vela.v1.JobReady
 	(*JobAssigned)(nil),           // 2: vela.v1.JobAssigned
 	(*JobStarted)(nil),            // 3: vela.v1.JobStarted
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(*JobRetryWait)(nil),          // 4: vela.v1.JobRetryWait
+	(*JobFailed)(nil),             // 5: vela.v1.JobFailed
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_vela_v1_events_proto_depIdxs = []int32{
-	4, // 0: vela.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
-	1, // 1: vela.v1.EventEnvelope.job_ready:type_name -> vela.v1.JobReady
-	2, // 2: vela.v1.EventEnvelope.job_assigned:type_name -> vela.v1.JobAssigned
-	3, // 3: vela.v1.EventEnvelope.job_started:type_name -> vela.v1.JobStarted
-	4, // 4: vela.v1.JobAssigned.lease_expires_at:type_name -> google.protobuf.Timestamp
-	4, // 5: vela.v1.JobStarted.started_at:type_name -> google.protobuf.Timestamp
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	6,  // 0: vela.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	1,  // 1: vela.v1.EventEnvelope.job_ready:type_name -> vela.v1.JobReady
+	2,  // 2: vela.v1.EventEnvelope.job_assigned:type_name -> vela.v1.JobAssigned
+	3,  // 3: vela.v1.EventEnvelope.job_started:type_name -> vela.v1.JobStarted
+	4,  // 4: vela.v1.EventEnvelope.job_retry_wait:type_name -> vela.v1.JobRetryWait
+	5,  // 5: vela.v1.EventEnvelope.job_failed:type_name -> vela.v1.JobFailed
+	6,  // 6: vela.v1.JobAssigned.lease_expires_at:type_name -> google.protobuf.Timestamp
+	6,  // 7: vela.v1.JobStarted.started_at:type_name -> google.protobuf.Timestamp
+	6,  // 8: vela.v1.JobRetryWait.next_retry_at:type_name -> google.protobuf.Timestamp
+	6,  // 9: vela.v1.JobRetryWait.decided_at:type_name -> google.protobuf.Timestamp
+	6,  // 10: vela.v1.JobFailed.decided_at:type_name -> google.protobuf.Timestamp
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_events_proto_init() }
@@ -595,6 +935,8 @@ func file_vela_v1_events_proto_init() {
 		(*EventEnvelope_JobReady)(nil),
 		(*EventEnvelope_JobAssigned)(nil),
 		(*EventEnvelope_JobStarted)(nil),
+		(*EventEnvelope_JobRetryWait)(nil),
+		(*EventEnvelope_JobFailed)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -602,7 +944,7 @@ func file_vela_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_events_proto_rawDesc), len(file_vela_v1_events_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

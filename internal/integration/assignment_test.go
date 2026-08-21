@@ -380,16 +380,18 @@ func TestAcquireNeverReplaysExpiredLease(t *testing.T) {
 		t.Fatalf("expired Lease replay error = %v, want lease_expired", err)
 	}
 	var attempts int
-	var expiresAt time.Time
+	var leaseExpired bool
 	if err := database.Admin.QueryRow(`
         SELECT
             (SELECT count(*) FROM attempts WHERE job_id = $1),
-            (SELECT expires_at FROM attempt_leases WHERE attempt_id = $2)
-    `, assignment.JobID, assignment.AttemptID).Scan(&attempts, &expiresAt); err != nil {
+			(SELECT expires_at < clock_timestamp()
+			 FROM attempt_leases
+			 WHERE attempt_id = $2)
+	`, assignment.JobID, assignment.AttemptID).Scan(&attempts, &leaseExpired); err != nil {
 		t.Fatalf("read expired Assignment: %v", err)
 	}
-	if attempts != 1 || !expiresAt.Before(time.Now()) {
-		t.Fatalf("expired Assignment mutated: attempts=%d expires_at=%s", attempts, expiresAt)
+	if attempts != 1 || !leaseExpired {
+		t.Fatalf("expired Assignment mutated: attempts=%d lease_expired=%t", attempts, leaseExpired)
 	}
 }
 

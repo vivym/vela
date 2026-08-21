@@ -61,17 +61,19 @@ SELECT
     rts.attempts_started,
     rts.compute_seconds_consumed,
     rts.next_retry_at,
+	ere.excluded_workers,
     rts.version AS retry_runtime_version
 FROM jobs AS j
 JOIN credit_reservations AS cr ON cr.job_id = j.id
 JOIN retry_runtime_states AS rts ON rts.job_id = j.id
+JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 JOIN service_class_revisions AS scr ON scr.id = j.service_class_revision_id
 WHERE j.id = sqlc.arg(job_id)
-FOR UPDATE OF j, cr, rts
+FOR UPDATE OF j, cr, rts, ere
 FOR SHARE OF scr;
 
 -- name: LockProjectForAssignment :one
-SELECT queued_count, running_count, running_limit
+SELECT queued_count, retry_wait_count, running_count, running_limit
 FROM projects
 WHERE organization_id = sqlc.arg(organization_id)
   AND id = sqlc.arg(project_id)

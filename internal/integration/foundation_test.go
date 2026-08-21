@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -274,6 +275,8 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 	}
 	assertTableExists(t, db, "retry_runtime_states")
 	assertTableExists(t, db, "attempts")
+	assertTableExists(t, db, "execution_failure_decisions")
+	assertTableExists(t, db, "execution_retry_evidence")
 
 	if err := goose.DownTo(db, migrations, 0); err != nil {
 		t.Fatalf("migrate down to zero: %v", err)
@@ -282,12 +285,424 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 	assertRoleExists(t, db, "vela_auth")
 	assertRoleExists(t, db, "vela_internal")
 	assertTableDoesNotExist(t, db, "attempts")
+	assertTableDoesNotExist(t, db, "execution_failure_decisions")
+	assertTableDoesNotExist(t, db, "execution_retry_evidence")
 
 	if err := goose.Up(db, migrations); err != nil {
 		t.Fatalf("second migrate up: %v", err)
 	}
 	assertTableExists(t, db, "retry_runtime_states")
 	assertTableExists(t, db, "attempts")
+	assertTableExists(t, db, "execution_failure_decisions")
+	assertTableExists(t, db, "execution_retry_evidence")
+}
+
+func TestExecutionFailureMigrationDownUpPreservesProtectedEvidence(t *testing.T) {
+	fixture := newAssignmentFixture(t, "migration-protected-evidence", 7)
+	assignment, err := fixture.service.Acquire(
+		context.Background(), fixture.worker, 7, &fixture.candidate,
+	)
+	if err != nil {
+		t.Fatalf("create terminal migration Assignment: %v", err)
+	}
+	observation := validFailureObservation()
+	observation.FailureClass = "FATAL_BACKEND"
+	observation.FailureFingerprint = "migration.worker.lost"
+	observation.RetryRecommended = false
+	if _, err := fixture.service.Fail(
+		context.Background(), fixture.worker, leaseCredentials(assignment), observation,
+	); err != nil {
+		t.Fatalf("create terminal migration decision: %v", err)
+	}
+	jobID := assignment.JobID.String()
+	var decisionSnapshot string
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT to_jsonb(decision)::text
+		FROM execution_failure_decisions AS decision
+		WHERE job_id = $1
+	`, jobID).Scan(&decisionSnapshot); err != nil {
+		t.Fatalf("read terminal decision snapshot: %v", err)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE execution_retry_evidence
+		SET excluded_workers = '[{
+			"worker_id":"00000000-0000-0000-0000-000000000090",
+			"worker_epoch":7,
+			"reason":"WORKER_LOST",
+			"expires_at":"2099-01-01T00:00:00Z"
+		}]'::jsonb
+		WHERE job_id = $1
+	`, jobID); err != nil {
+		t.Fatalf("seed protected migration evidence: %v", err)
+	}
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(fixture.database.Admin, migrations, 4); err != nil {
+		t.Fatalf("migrate execution failure down with durable evidence: %v", err)
+	}
+	assertTableDoesNotExist(t, fixture.database.Admin, "execution_retry_evidence")
+	var downPublicEvidenceCleared, privateEvidencePreserved bool
+	var evidenceRequestRoleDenied, decisionPreserved, decisionRequestRoleDenied bool
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			(
+				SELECT excluded_workers = '[]'::jsonb AND failure_fingerprints = '[]'::jsonb
+				FROM retry_runtime_states
+				WHERE job_id = $1
+			),
+			(
+				SELECT
+					excluded_workers @> '[{
+						"worker_id":"00000000-0000-0000-0000-000000000090"
+					}]'::jsonb
+					AND failure_fingerprints @> '[{
+						"fingerprint":"migration.worker.lost"
+					}]'::jsonb
+				FROM vela_private.execution_retry_evidence_rollback
+				WHERE job_id = $1
+			),
+			NOT has_table_privilege(
+				'vela_request',
+				'vela_private.execution_retry_evidence_rollback',
+				'SELECT'
+			),
+			(
+				SELECT decision = $2::jsonb
+				FROM vela_private.execution_failure_decisions_rollback
+				WHERE decision ->> 'job_id' = $1::text
+			),
+			NOT has_table_privilege(
+				'vela_request',
+				'vela_private.execution_failure_decisions_rollback',
+				'SELECT'
+			)
+	`, jobID, decisionSnapshot).Scan(
+		&downPublicEvidenceCleared,
+		&privateEvidencePreserved,
+		&evidenceRequestRoleDenied,
+		&decisionPreserved,
+		&decisionRequestRoleDenied,
+	); err != nil {
+		t.Fatalf("read evidence after migration down: %v", err)
+	}
+	if !downPublicEvidenceCleared || !privateEvidencePreserved || !evidenceRequestRoleDenied ||
+		!decisionPreserved || !decisionRequestRoleDenied {
+		t.Fatalf(
+			"migration down = public evidence cleared %t private evidence preserved %t evidence denied %t decision preserved %t decision denied %t",
+			downPublicEvidenceCleared,
+			privateEvidencePreserved,
+			evidenceRequestRoleDenied,
+			decisionPreserved,
+			decisionRequestRoleDenied,
+		)
+	}
+
+	if err := goose.Up(fixture.database.Admin, migrations); err != nil {
+		t.Fatalf("migrate execution failure up after data-preserving down: %v", err)
+	}
+	var publicEvidenceCleared, protectedEvidenceRestored, decisionRestored bool
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			runtime.excluded_workers = '[]'::jsonb
+				AND runtime.failure_fingerprints = '[]'::jsonb,
+			evidence.excluded_workers @> '[{
+				"worker_id":"00000000-0000-0000-0000-000000000090"
+			}]'::jsonb
+				AND evidence.failure_fingerprints @> '[{
+					"fingerprint":"migration.worker.lost"
+				}]'::jsonb,
+			(
+				SELECT to_jsonb(decision) = $2::jsonb
+				FROM execution_failure_decisions AS decision
+				WHERE decision.job_id = $1
+			)
+		FROM retry_runtime_states AS runtime
+		JOIN execution_retry_evidence AS evidence USING (job_id)
+		WHERE runtime.job_id = $1
+	`, jobID, decisionSnapshot).Scan(
+		&publicEvidenceCleared,
+		&protectedEvidenceRestored,
+		&decisionRestored,
+	); err != nil {
+		t.Fatalf("read evidence after migration re-up: %v", err)
+	}
+	if !publicEvidenceCleared || !protectedEvidenceRestored || !decisionRestored {
+		t.Fatalf(
+			"migration re-up = public evidence cleared %t protected evidence restored %t decision restored %t",
+			publicEvidenceCleared,
+			protectedEvidenceRestored,
+			decisionRestored,
+		)
+	}
+}
+
+func TestExecutionFailureMigrationDownRefusesActiveRetryWait(t *testing.T) {
+	fixture := newAssignmentFixture(t, "migration-active-retry", 7)
+	assignment, err := fixture.service.Acquire(
+		context.Background(), fixture.worker, 7, &fixture.candidate,
+	)
+	if err != nil {
+		t.Fatalf("create migration Retry Assignment: %v", err)
+	}
+	if _, err := fixture.service.Start(
+		context.Background(), fixture.worker, leaseCredentials(assignment),
+	); err != nil {
+		t.Fatalf("start migration Retry Assignment: %v", err)
+	}
+	if _, err := fixture.service.Fail(
+		context.Background(),
+		fixture.worker,
+		leaseCredentials(assignment),
+		validFailureObservation(),
+	); err != nil {
+		t.Fatalf("create active RETRY_WAIT migration state: %v", err)
+	}
+	server := admissionServerForDatabase(t, fixture.database)
+	for index := range 10 {
+		accepted := submitJob(t, server.URL, "migration-active-retry-"+string(rune('a'+index)), []byte(`{
+			"model":"minimax-h3",
+			"generation_preset":"balanced",
+			"service_class":"standard",
+			"output_spec":"video-1080p-5s-24fps",
+			"generation_count":1,
+			"prompt":"fill the normal queue beside an active Retry"
+		}`))
+		if accepted.StatusCode != http.StatusAccepted {
+			t.Fatalf("submit queued Job %d status = %d; body=%s", index, accepted.StatusCode, accepted.Body)
+		}
+	}
+	var projectQueued, projectRetry, projectLimit int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT queued_count, retry_wait_count, queued_limit
+		FROM projects
+		WHERE id = $1
+	`, testProjectID).Scan(&projectQueued, &projectRetry, &projectLimit); err != nil {
+		t.Fatalf("read full normal queue plus Retry counters: %v", err)
+	}
+	if projectQueued != projectLimit+1 || projectRetry != 1 {
+		t.Fatalf(
+			"full normal queue plus Retry counters = total %d retry %d limit %d",
+			projectQueued,
+			projectRetry,
+			projectLimit,
+		)
+	}
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err = goose.DownTo(fixture.database.Admin, migrations, 4)
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
+		postgresError.ConstraintName != "execution_failure_contract_requires_drained_retry_wait" {
+		t.Fatalf("migration down with active Retry error = %v, want fail-closed SQLSTATE 55000", err)
+	}
+	version, versionErr := goose.GetDBVersion(fixture.database.Admin)
+	if versionErr != nil {
+		t.Fatalf("read migration version after refused down: %v", versionErr)
+	}
+	if version != 5 {
+		t.Fatalf("migration version after refused down = %d, want 5", version)
+	}
+	assertTableExists(t, fixture.database.Admin, "execution_retry_evidence")
+}
+
+func TestExecutionFailureMigrationDownSerializesWithConcurrentFail(t *testing.T) {
+	fixture := newAssignmentFixture(t, "migration-concurrent-fail", 7)
+	assignment, err := fixture.service.Acquire(
+		context.Background(), fixture.worker, 7, &fixture.candidate,
+	)
+	if err != nil {
+		t.Fatalf("create concurrent migration Assignment: %v", err)
+	}
+	const advisoryLockKey int64 = 580005
+	if _, err := fixture.database.Admin.Exec(`
+		CREATE FUNCTION vela_test_pause_retry_evidence_update() RETURNS trigger
+		LANGUAGE plpgsql AS $$
+		BEGIN
+			PERFORM pg_advisory_xact_lock(580005);
+			RETURN NEW;
+		END
+		$$;
+		CREATE TRIGGER vela_test_pause_retry_evidence_update
+		BEFORE UPDATE ON execution_retry_evidence
+		FOR EACH ROW EXECUTE FUNCTION vela_test_pause_retry_evidence_update();
+	`); err != nil {
+		t.Fatalf("install concurrent migration pause trigger: %v", err)
+	}
+	blocker, err := fixture.database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin advisory-lock blocker: %v", err)
+	}
+	defer func() { _ = blocker.Rollback() }()
+	if _, err := blocker.Exec("SELECT pg_advisory_lock($1)", advisoryLockKey); err != nil {
+		t.Fatalf("acquire advisory-lock blocker: %v", err)
+	}
+
+	failErrors := make(chan error, 1)
+	go func() {
+		_, failErr := fixture.service.Fail(
+			context.Background(),
+			fixture.worker,
+			leaseCredentials(assignment),
+			validFailureObservation(),
+		)
+		failErrors <- failErr
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "vela_internal_login")
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	downErrors := make(chan error, 1)
+	go func() {
+		downErrors <- goose.DownTo(fixture.database.Admin, migrations, 4)
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "postgres")
+	var unlocked bool
+	if err := blocker.QueryRow("SELECT pg_advisory_unlock($1)", advisoryLockKey).Scan(&unlocked); err != nil {
+		t.Fatalf("release advisory-lock blocker: %v", err)
+	}
+	if !unlocked {
+		t.Fatal("advisory-lock blocker was not held")
+	}
+	if err := blocker.Commit(); err != nil {
+		t.Fatalf("commit advisory-lock blocker: %v", err)
+	}
+	select {
+	case err := <-failErrors:
+		if err != nil {
+			t.Fatalf("concurrent Fail: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent Fail did not finish")
+	}
+	select {
+	case err := <-downErrors:
+		var postgresError *pgconn.PgError
+		if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
+			postgresError.ConstraintName != "execution_failure_contract_requires_drained_retry_wait" {
+			t.Fatalf("concurrent migration Down error = %v, want drained-Retry refusal", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent migration Down did not finish")
+	}
+	var jobState string
+	var decisions, protectedFingerprints int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			job.state::text,
+			(SELECT count(*) FROM execution_failure_decisions WHERE job_id = job.id),
+			jsonb_array_length(evidence.failure_fingerprints)
+		FROM jobs AS job
+		JOIN execution_retry_evidence AS evidence ON evidence.job_id = job.id
+		WHERE job.id = $1
+	`, assignment.JobID).Scan(&jobState, &decisions, &protectedFingerprints); err != nil {
+		t.Fatalf("read concurrent Fail/migration result: %v", err)
+	}
+	if jobState != "RETRY_WAIT" || decisions != 1 || protectedFingerprints != 1 {
+		t.Fatalf(
+			"concurrent Fail/migration result = state %s decisions %d fingerprints %d",
+			jobState,
+			decisions,
+			protectedFingerprints,
+		)
+	}
+}
+
+func TestExecutionFailureMigrationDoesNotTrustLegacyRequestEvidence(t *testing.T) {
+	database := newPostgres(t)
+	repositoryRoot := repositoryRoot(t)
+	bootstrapSQL, err := os.ReadFile(filepath.Join(repositoryRoot, "db", "bootstrap", "roles.sql"))
+	if err != nil {
+		t.Fatalf("read role bootstrap: %v", err)
+	}
+	if _, err := database.Admin.Exec(string(bootstrapSQL)); err != nil {
+		t.Fatalf("apply role bootstrap: %v", err)
+	}
+	migrations := filepath.Join(repositoryRoot, "db", "migrations")
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatalf("set goose dialect: %v", err)
+	}
+	if err := goose.UpTo(database.Admin, migrations, 4); err != nil {
+		t.Fatalf("migrate to N-1 schema: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
+		CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
+		CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
+	`); err != nil {
+		t.Fatalf("create N-1 application login roles: %v", err)
+	}
+	seedAdmissionFixture(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, nMinusOneFailureControlCommit)
+	templateJobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+
+	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	requestTx, err := requestPool.Begin(context.Background())
+	if err != nil {
+		t.Fatalf("begin legacy poison transaction: %v", err)
+	}
+	defer func() { _ = requestTx.Rollback(context.Background()) }()
+	if _, err := requestTx.Exec(
+		context.Background(),
+		"SELECT * FROM vela_set_request_context($1, $2, $3)",
+		testCredentialID,
+		credentialDigest([]byte(testCredentialSecret)),
+		"jobs:submit",
+	); err != nil {
+		t.Fatalf("establish legacy jobs:submit context: %v", err)
+	}
+	poisonedJobID := uuid.New()
+	if err := cloneRequestRoleJob(
+		context.Background(), requestTx, poisonedJobID, templateJobID,
+	); err != nil {
+		t.Fatalf("clone legacy request-role Job: %v", err)
+	}
+	if err := cloneRequestRoleCreditReservation(
+		context.Background(), requestTx, uuid.New(), poisonedJobID, templateJobID,
+	); err != nil {
+		t.Fatalf("clone legacy request-role CreditReservation: %v", err)
+	}
+	if _, err := requestTx.Exec(context.Background(), `
+		INSERT INTO retry_runtime_states (
+			job_id, organization_id, project_id, excluded_workers, failure_fingerprints
+		) VALUES (
+			$1, $2, $3,
+			'[{
+				"worker_id":"00000000-0000-0000-0000-000000000998",
+				"worker_epoch":98,
+				"reason":"legacy-forged",
+				"expires_at":"2099-01-01T00:00:00Z"
+			}]'::jsonb,
+			'["legacy.forged.fingerprint"]'::jsonb
+		)
+	`, poisonedJobID, testOrganizationID, testProjectID); err != nil {
+		t.Fatalf("insert legacy request-controlled retry evidence: %v", err)
+	}
+	if err := requestTx.Commit(context.Background()); err != nil {
+		t.Fatalf("commit legacy request-controlled retry evidence: %v", err)
+	}
+
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatalf("migrate poisoned N-1 row to execution failure schema: %v", err)
+	}
+	var publicEvidenceCleared, protectedEvidenceEmpty bool
+	if err := database.Admin.QueryRow(`
+		SELECT
+			runtime.excluded_workers = '[]'::jsonb
+				AND runtime.failure_fingerprints = '[]'::jsonb,
+			evidence.excluded_workers = '[]'::jsonb
+				AND evidence.failure_fingerprints = '[]'::jsonb
+		FROM retry_runtime_states AS runtime
+		JOIN execution_retry_evidence AS evidence USING (job_id)
+		WHERE runtime.job_id = $1
+	`, poisonedJobID).Scan(&publicEvidenceCleared, &protectedEvidenceEmpty); err != nil {
+		t.Fatalf("read migrated legacy poison state: %v", err)
+	}
+	if !publicEvidenceCleared || !protectedEvidenceEmpty {
+		t.Fatalf(
+			"migrated legacy poison = public cleared %t protected empty %t",
+			publicEvidenceCleared,
+			protectedEvidenceEmpty,
+		)
+	}
 }
 
 type testDatabase struct {

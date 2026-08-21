@@ -365,13 +365,15 @@ SELECT
     rts.attempts_started,
     rts.compute_seconds_consumed,
     rts.next_retry_at,
+	ere.excluded_workers,
     rts.version AS retry_runtime_version
 FROM jobs AS j
 JOIN credit_reservations AS cr ON cr.job_id = j.id
 JOIN retry_runtime_states AS rts ON rts.job_id = j.id
+JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 JOIN service_class_revisions AS scr ON scr.id = j.service_class_revision_id
 WHERE j.id = $1
-FOR UPDATE OF j, cr, rts
+FOR UPDATE OF j, cr, rts, ere
 FOR SHARE OF scr
 `
 
@@ -394,6 +396,7 @@ type LockJobForAssignmentRow struct {
 	AttemptsStarted                 int32                  `db:"attempts_started" json:"attempts_started"`
 	ComputeSecondsConsumed          int64                  `db:"compute_seconds_consumed" json:"compute_seconds_consumed"`
 	NextRetryAt                     pgtype.Timestamptz     `db:"next_retry_at" json:"next_retry_at"`
+	ExcludedWorkers                 []byte                 `db:"excluded_workers" json:"excluded_workers"`
 	RetryRuntimeVersion             int64                  `db:"retry_runtime_version" json:"retry_runtime_version"`
 }
 
@@ -419,13 +422,14 @@ func (q *Queries) LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (Lo
 		&i.AttemptsStarted,
 		&i.ComputeSecondsConsumed,
 		&i.NextRetryAt,
+		&i.ExcludedWorkers,
 		&i.RetryRuntimeVersion,
 	)
 	return i, err
 }
 
 const lockProjectForAssignment = `-- name: LockProjectForAssignment :one
-SELECT queued_count, running_count, running_limit
+SELECT queued_count, retry_wait_count, running_count, running_limit
 FROM projects
 WHERE organization_id = $1
   AND id = $2
@@ -438,15 +442,21 @@ type LockProjectForAssignmentParams struct {
 }
 
 type LockProjectForAssignmentRow struct {
-	QueuedCount  int32 `db:"queued_count" json:"queued_count"`
-	RunningCount int32 `db:"running_count" json:"running_count"`
-	RunningLimit int32 `db:"running_limit" json:"running_limit"`
+	QueuedCount    int32 `db:"queued_count" json:"queued_count"`
+	RetryWaitCount int32 `db:"retry_wait_count" json:"retry_wait_count"`
+	RunningCount   int32 `db:"running_count" json:"running_count"`
+	RunningLimit   int32 `db:"running_limit" json:"running_limit"`
 }
 
 func (q *Queries) LockProjectForAssignment(ctx context.Context, arg LockProjectForAssignmentParams) (LockProjectForAssignmentRow, error) {
 	row := q.db.QueryRow(ctx, lockProjectForAssignment, arg.OrganizationID, arg.ProjectID)
 	var i LockProjectForAssignmentRow
-	err := row.Scan(&i.QueuedCount, &i.RunningCount, &i.RunningLimit)
+	err := row.Scan(
+		&i.QueuedCount,
+		&i.RetryWaitCount,
+		&i.RunningCount,
+		&i.RunningLimit,
+	)
 	return i, err
 }
 

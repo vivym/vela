@@ -5,6 +5,7 @@ package integration_test
 import (
 	"archive/tar"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -19,14 +20,18 @@ import (
 
 	"github.com/google/uuid"
 	veladb "github.com/vivym/vela/internal/database"
+	"github.com/vivym/vela/internal/workercontrol"
 )
 
-const nMinusOneControlCommit = "450dd5c379ed7d26588e2a76140f0b3281acfbb2"
+const (
+	nMinusOneRenewalControlCommit = "450dd5c379ed7d26588e2a76140f0b3281acfbb2"
+	nMinusOneFailureControlCommit = "9cb1a522e20490ef41bab535fde206a947118d11"
+)
 
 func TestNMinusOneControlStartupAcrossRenewalProtocolTransition(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
-	nMinusOne := buildNMinusOneBinaries(t)
+	nMinusOne := buildNMinusOneBinaries(t, nMinusOneRenewalControlCommit)
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 
 	assertNMinusOneDatabaseStartupPassed(t, runNMinusOneControl(t, nMinusOne.Control, database.DSN))
@@ -60,7 +65,9 @@ func TestNMinusOneControlStartupAcrossRenewalProtocolTransition(t *testing.T) {
 	`, testWorkerID); err != nil {
 		t.Fatalf("seed N-1 probe Worker: %v", err)
 	}
-	attemptID := runNMinusOneAssignmentProbe(t, nMinusOne.AssignmentProbe, database.DSN, job.JobID)
+	attemptID := runNMinusOneAssignmentProbe(
+		t, nMinusOne.AssignmentProbe, database.DSN, job.JobID, testWorkerID, 7, 1,
+	)
 	var protocolVersion int16
 	var claimMatchesExpiry bool
 	if err := database.Admin.QueryRow(`
@@ -115,15 +122,277 @@ func TestNMinusOneControlStartupAcrossRenewalProtocolTransition(t *testing.T) {
 	}
 }
 
+func TestNMinusOneControlStartsAndWritesAfterExecutionFailureExpansion(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, nMinusOneFailureControlCommit)
+
+	assertNMinusOneDatabaseStartupPassed(t, runNMinusOneControl(t, nMinusOne.Control, database.DSN))
+	seedAdmissionFixture(t, database.Admin)
+	jobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	if _, err := database.Admin.Exec(`
+		INSERT INTO workers (
+			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
+		) VALUES (
+			$1, '00000000-0000-0000-0000-000000000005',
+			'spiffe://vela.internal/worker/n-minus-one-failure-probe', 7, 'READY', 'HEALTHY'
+		)
+	`, testWorkerID); err != nil {
+		t.Fatalf("seed N-1 failure-expansion Worker: %v", err)
+	}
+	attemptID := runNMinusOneAssignmentProbe(
+		t, nMinusOne.AssignmentProbe, database.DSN, jobID, testWorkerID, 7, 1,
+	)
+
+	var jobState, attemptState string
+	var decisionCount int
+	if err := database.Admin.QueryRow(`
+		SELECT j.state, a.state, (SELECT count(*) FROM execution_failure_decisions)
+		FROM jobs AS j
+		JOIN attempts AS a ON a.job_id = j.id
+		WHERE j.id = $1 AND a.id = $2
+	`, jobID, attemptID).Scan(&jobState, &attemptState, &decisionCount); err != nil {
+		t.Fatalf("read N-1 failure-expansion writes: %v", err)
+	}
+	if jobState != "ASSIGNED" || attemptState != "ASSIGNED" || decisionCount != 0 {
+		t.Fatalf(
+			"N-1 failure-expansion state = job %s attempt %s decisions %d",
+			jobState, attemptState, decisionCount,
+		)
+	}
+}
+
+func TestNMinusOneAssignmentConsumesRetryWaitCreatedByNewControl(t *testing.T) {
+	fixture := newAssignmentFixture(t, "n-minus-one-consumes-new-retry", 7)
+	nMinusOne := buildNMinusOneBinaries(t, nMinusOneFailureControlCommit)
+	first, err := fixture.service.Acquire(
+		context.Background(), fixture.worker, 7, &fixture.candidate,
+	)
+	if err != nil {
+		t.Fatalf("create first Assignment: %v", err)
+	}
+	started, err := fixture.service.Start(
+		context.Background(), fixture.worker, leaseCredentials(first),
+	)
+	if err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("start first Assignment = %#v error=%v", started, err)
+	}
+	forceJobPolicySnapshot(
+		t,
+		fixture.database.Admin,
+		first.JobID,
+		`execution_retry_backoff_policy = '{"kind":"exponential","initial_seconds":1,"max_seconds":1}'::jsonb`,
+	)
+	decision, err := fixture.service.Fail(
+		context.Background(),
+		fixture.worker,
+		leaseCredentials(first),
+		validFailureObservation(),
+	)
+	if err != nil || decision.Disposition != workercontrol.RetryDispositionRetryWait ||
+		decision.NextRetryAt == nil {
+		t.Fatalf("new control RetryDecision = %#v error=%v", decision, err)
+	}
+	assertWaitingCompatibilityCounters(t, fixture.database.Admin, first.JobID, 1, 1, 1, 1)
+	waitForDatabaseTimeAfter(t, fixture.database.Admin, *decision.NextRetryAt)
+
+	output, probeErr := runNMinusOneAssignmentProbeProcess(
+		t,
+		nMinusOne.AssignmentProbe,
+		fixture.database.DSN,
+		first.JobID.String(),
+		first.WorkerID.String(),
+		7,
+		decision.JobVersion,
+	)
+	if probeErr == nil || !strings.Contains(string(output), "Worker is excluded by protected Job retry evidence") {
+		t.Fatalf("N-1 excluded Worker probe error=%v\n%s", probeErr, output)
+	}
+	assertWaitingCompatibilityCounters(t, fixture.database.Admin, first.JobID, 1, 1, 1, 1)
+	server := admissionServerForDatabase(t, fixture.database)
+	for index := range 10 {
+		accepted := submitJob(t, server.URL, fmt.Sprintf("n-minus-one-full-normal-queue-%d", index), []byte(`{
+			"model":"minimax-h3",
+			"generation_preset":"balanced",
+			"service_class":"standard",
+			"output_spec":"video-1080p-5s-24fps",
+			"generation_count":1,
+			"prompt":"fill the real normal queue while an N-created Retry waits"
+		}`))
+		if accepted.StatusCode != 202 {
+			t.Fatalf("submit normal queued Job %d status = %d; body=%s", index, accepted.StatusCode, accepted.Body)
+		}
+	}
+	var normalQueuedJobs int
+	if err := fixture.database.Admin.QueryRow(
+		"SELECT count(*) FROM jobs WHERE state = 'QUEUED'",
+	).Scan(&normalQueuedJobs); err != nil {
+		t.Fatalf("count real normal queued Jobs: %v", err)
+	}
+	if normalQueuedJobs != 10 {
+		t.Fatalf("normal queued Jobs = %d, want 10", normalQueuedJobs)
+	}
+	assertWaitingCompatibilityCounters(t, fixture.database.Admin, first.JobID, 11, 1, 11, 1)
+
+	const replacementWorkerID = "00000000-0000-0000-0000-000000000291"
+	if _, err := fixture.database.Admin.Exec(`
+		INSERT INTO workers (
+			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
+		) VALUES (
+			$1, '00000000-0000-0000-0000-000000000005',
+			'spiffe://vela.internal/worker/n-minus-one-retry-replacement',
+			7, 'READY', 'HEALTHY'
+		)
+	`, replacementWorkerID); err != nil {
+		t.Fatalf("seed N-1 replacement Worker: %v", err)
+	}
+	replacementAttemptID := runNMinusOneAssignmentProbe(
+		t,
+		nMinusOne.AssignmentProbe,
+		fixture.database.DSN,
+		first.JobID.String(),
+		replacementWorkerID,
+		7,
+		decision.JobVersion,
+	)
+
+	var (
+		jobState                string
+		replacementWorker       string
+		replacementFence        int64
+		attemptsStarted         int
+		projectQueued           int
+		projectQueuedLimit      int
+		projectRetryWait        int
+		projectRunning          int
+		poolQueued              int
+		poolQueuedLimit         int
+		poolRetryWait           int
+		billableStartPreserved  bool
+		visibleProgressRowCount int
+	)
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			j.state,
+			a.worker_id::text,
+			a.fence,
+			runtime.attempts_started,
+			project.queued_count,
+			project.queued_limit,
+			project.retry_wait_count,
+			project.running_count,
+			pool.queued_count,
+			pool.queued_limit,
+			pool.retry_wait_count,
+			j.billable_started_at = $3,
+			(
+				SELECT count(*)
+				FROM attempt_progress AS progress
+				WHERE progress.job_id = j.id
+				  AND progress.fence = j.current_fence
+			)
+		FROM jobs AS j
+		JOIN attempts AS a ON a.id = $2
+		JOIN retry_runtime_states AS runtime ON runtime.job_id = j.id
+		JOIN projects AS project ON project.id = j.project_id
+		JOIN worker_pools AS pool ON pool.id = j.worker_pool_id
+		WHERE j.id = $1
+	`, first.JobID, replacementAttemptID, started.StartedAt).Scan(
+		&jobState,
+		&replacementWorker,
+		&replacementFence,
+		&attemptsStarted,
+		&projectQueued,
+		&projectQueuedLimit,
+		&projectRetryWait,
+		&projectRunning,
+		&poolQueued,
+		&poolQueuedLimit,
+		&poolRetryWait,
+		&billableStartPreserved,
+		&visibleProgressRowCount,
+	); err != nil {
+		t.Fatalf("read N-1 retry replacement state: %v", err)
+	}
+	if jobState != "ASSIGNED" || replacementWorker != replacementWorkerID ||
+		replacementFence <= decision.JobFence || attemptsStarted != 2 ||
+		projectQueued != projectQueuedLimit || projectRetryWait != 0 || projectRunning != 1 ||
+		poolQueued != poolQueuedLimit || poolRetryWait != 0 || !billableStartPreserved ||
+		visibleProgressRowCount != 0 {
+		t.Fatalf(
+			"N-1 retry replacement = state %s worker %s fence %d attempts %d project %d(limit %d)/%d/%d pool %d(limit %d)/%d billable %t progress %d",
+			jobState,
+			replacementWorker,
+			replacementFence,
+			attemptsStarted,
+			projectQueued,
+			projectQueuedLimit,
+			projectRetryWait,
+			projectRunning,
+			poolQueued,
+			poolQueuedLimit,
+			poolRetryWait,
+			billableStartPreserved,
+			visibleProgressRowCount,
+		)
+	}
+}
+
+func assertWaitingCompatibilityCounters(
+	t *testing.T,
+	database *sql.DB,
+	jobID uuid.UUID,
+	projectQueued int,
+	projectRetryWait int,
+	poolQueued int,
+	poolRetryWait int,
+) {
+	t.Helper()
+	var actualProjectQueued, actualProjectRetryWait, actualPoolQueued, actualPoolRetryWait int
+	if err := database.QueryRow(`
+		SELECT
+			project.queued_count,
+			project.retry_wait_count,
+			pool.queued_count,
+			pool.retry_wait_count
+		FROM jobs AS job
+		JOIN projects AS project ON project.id = job.project_id
+		JOIN worker_pools AS pool ON pool.id = job.worker_pool_id
+		WHERE job.id = $1
+	`, jobID).Scan(
+		&actualProjectQueued,
+		&actualProjectRetryWait,
+		&actualPoolQueued,
+		&actualPoolRetryWait,
+	); err != nil {
+		t.Fatalf("read waiting compatibility counters: %v", err)
+	}
+	if actualProjectQueued != projectQueued || actualProjectRetryWait != projectRetryWait ||
+		actualPoolQueued != poolQueued || actualPoolRetryWait != poolRetryWait {
+		t.Fatalf(
+			"waiting compatibility counters = project %d/%d pool %d/%d, want project %d/%d pool %d/%d",
+			actualProjectQueued,
+			actualProjectRetryWait,
+			actualPoolQueued,
+			actualPoolRetryWait,
+			projectQueued,
+			projectRetryWait,
+			poolQueued,
+			poolRetryWait,
+		)
+	}
+}
+
 type nMinusOneBinaries struct {
 	Control         string
+	AdmissionProbe  string
 	AssignmentProbe string
 }
 
-func buildNMinusOneBinaries(t *testing.T) nMinusOneBinaries {
+func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	t.Helper()
 	sourceRoot := t.TempDir()
-	archive := exec.Command("git", "archive", "--format=tar", nMinusOneControlCommit)
+	archive := exec.Command("git", "archive", "--format=tar", commit)
 	archive.Dir = repositoryRoot(t)
 	stdout, err := archive.StdoutPipe()
 	if err != nil {
@@ -170,7 +439,7 @@ func buildNMinusOneBinaries(t *testing.T) nMinusOneBinaries {
 		t.Fatalf("archive N-1 source: %v", err)
 	}
 
-	probeSource, err := os.ReadFile(filepath.Join(
+	assignmentProbeSource, err := os.ReadFile(filepath.Join(
 		repositoryRoot(t), "internal", "integration", "testdata", "nminusone_assignment_probe.go.txt",
 	))
 	if err != nil {
@@ -180,13 +449,27 @@ func buildNMinusOneBinaries(t *testing.T) nMinusOneBinaries {
 	if err := os.MkdirAll(probeDirectory, 0o755); err != nil {
 		t.Fatalf("create N-1 Assignment probe directory: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(probeDirectory, "main.go"), probeSource, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(probeDirectory, "main.go"), assignmentProbeSource, 0o600); err != nil {
 		t.Fatalf("write N-1 Assignment probe: %v", err)
+	}
+	admissionProbeSource, err := os.ReadFile(filepath.Join(
+		repositoryRoot(t), "internal", "integration", "testdata", "nminusone_admission_probe.go.txt",
+	))
+	if err != nil {
+		t.Fatalf("read N-1 Admission probe: %v", err)
+	}
+	admissionProbeDirectory := filepath.Join(sourceRoot, "cmd", "vela-nminusone-admission-probe")
+	if err := os.MkdirAll(admissionProbeDirectory, 0o755); err != nil {
+		t.Fatalf("create N-1 Admission probe directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(admissionProbeDirectory, "main.go"), admissionProbeSource, 0o600); err != nil {
+		t.Fatalf("write N-1 Admission probe: %v", err)
 	}
 
 	binaryDirectory := t.TempDir()
 	binaries := nMinusOneBinaries{
 		Control:         filepath.Join(binaryDirectory, "vela-control-n-minus-one"),
+		AdmissionProbe:  filepath.Join(binaryDirectory, "vela-admission-probe-n-minus-one"),
 		AssignmentProbe: filepath.Join(binaryDirectory, "vela-assignment-probe-n-minus-one"),
 	}
 	build := exec.Command(
@@ -200,6 +483,15 @@ func buildNMinusOneBinaries(t *testing.T) nMinusOneBinaries {
 	}
 	build = exec.Command(
 		"go", "build",
+		"-o", binaries.AdmissionProbe, "./cmd/vela-nminusone-admission-probe",
+	)
+	build.Dir = sourceRoot
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build N-1 Admission probe: %v\n%s", err, output)
+	}
+	build = exec.Command(
+		"go", "build",
 		"-o", binaries.AssignmentProbe, "./cmd/vela-nminusone-assignment-probe",
 	)
 	build.Dir = sourceRoot
@@ -210,23 +502,49 @@ func buildNMinusOneBinaries(t *testing.T) nMinusOneBinaries {
 	return binaries
 }
 
+func runNMinusOneAdmissionProbe(t *testing.T, binary, adminDSN string) string {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_auth_login", "vela-auth-password",
+		),
+		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_request_login", "vela-request-password",
+		),
+		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
+		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
+		"VELA_PROJECT_ID":               testProjectID,
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Admission writer probe: %v\n%s", err, output)
+	}
+	var result struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Admission probe output: %v\n%s", err, output)
+	}
+	if _, err := uuid.Parse(result.JobID); err != nil {
+		t.Fatalf("N-1 Admission probe returned invalid Job id %q", result.JobID)
+	}
+	return result.JobID
+}
+
 func runNMinusOneAssignmentProbe(
 	t *testing.T,
 	binary string,
 	adminDSN string,
 	jobID string,
+	workerID string,
+	workerEpoch int64,
+	expectedJobVersion int64,
 ) string {
 	t.Helper()
-	command := exec.Command(binary)
-	command.Env = environmentWith(map[string]string{
-		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
-			t, adminDSN, "vela_internal_login", "vela-internal-password",
-		),
-		"VELA_WORKER_ID":           testWorkerID,
-		"VELA_JOB_ID":              jobID,
-		"VELA_PROFILE_REVISION_ID": "00000000-0000-0000-0000-000000000014",
-	})
-	output, err := command.CombinedOutput()
+	output, err := runNMinusOneAssignmentProbeProcess(
+		t, binary, adminDSN, jobID, workerID, workerEpoch, expectedJobVersion,
+	)
 	if err != nil {
 		t.Fatalf("run N-1 Assignment writer/replay probe: %v\n%s", err, output)
 	}
@@ -240,6 +558,30 @@ func runNMinusOneAssignmentProbe(
 		t.Fatalf("N-1 Assignment probe returned invalid Attempt id %q", result.AttemptID)
 	}
 	return result.AttemptID
+}
+
+func runNMinusOneAssignmentProbeProcess(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	jobID string,
+	workerID string,
+	workerEpoch int64,
+	expectedJobVersion int64,
+) ([]byte, error) {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_internal_login", "vela-internal-password",
+		),
+		"VELA_WORKER_ID":            workerID,
+		"VELA_WORKER_EPOCH":         fmt.Sprintf("%d", workerEpoch),
+		"VELA_EXPECTED_JOB_VERSION": fmt.Sprintf("%d", expectedJobVersion),
+		"VELA_JOB_ID":               jobID,
+		"VELA_PROFILE_REVISION_ID":  "00000000-0000-0000-0000-000000000014",
+	})
+	return command.CombinedOutput()
 }
 
 func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
