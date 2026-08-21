@@ -63,18 +63,20 @@ type Assignment struct {
 }
 
 type Config struct {
-	LeaseTTL         time.Duration
-	WorkerLostGrace  time.Duration
-	ActiveLeaseKeyID string
-	LeaseKeys        map[string][]byte
+	LeaseTTL          time.Duration
+	WorkerLostGrace   time.Duration
+	ActiveLeaseKeyID  string
+	LeaseKeys         map[string][]byte
+	ArtifactInspector ArtifactInspector
 }
 
 type Service struct {
-	pool             *pgxpool.Pool
-	leaseTTL         time.Duration
-	workerLostGrace  time.Duration
-	activeLeaseKeyID string
-	leaseKeys        map[string][]byte
+	pool              *pgxpool.Pool
+	leaseTTL          time.Duration
+	workerLostGrace   time.Duration
+	activeLeaseKeyID  string
+	leaseKeys         map[string][]byte
+	artifactInspector ArtifactInspector
 }
 
 func NewService(ctx context.Context, pool *pgxpool.Pool, config Config) (*Service, error) {
@@ -117,11 +119,12 @@ func NewService(ctx context.Context, pool *pgxpool.Pool, config Config) (*Servic
 		}
 	}
 	return &Service{
-		pool:             pool,
-		leaseTTL:         config.LeaseTTL,
-		workerLostGrace:  workerLostGrace,
-		activeLeaseKeyID: config.ActiveLeaseKeyID,
-		leaseKeys:        keys,
+		pool:              pool,
+		leaseTTL:          config.LeaseTTL,
+		workerLostGrace:   workerLostGrace,
+		activeLeaseKeyID:  config.ActiveLeaseKeyID,
+		leaseKeys:         keys,
+		artifactInspector: config.ArtifactInspector,
 	}, nil
 }
 

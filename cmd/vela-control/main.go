@@ -1,15 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,40 +22,106 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/artifactaccess"
+	"github.com/vivym/vela/internal/artifactcleanup"
+	"github.com/vivym/vela/internal/artifactstore"
+	"github.com/vivym/vela/internal/artifactvalidator"
 	"github.com/vivym/vela/internal/cancellation"
 	veladb "github.com/vivym/vela/internal/database"
+	"github.com/vivym/vela/internal/finalizationreconciler"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/outbox"
+	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/workertransport"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
 )
 
 const (
-	defaultHTTPAddress                    = ":8080"
-	defaultPublisherBatch                 = 100
-	defaultPublisherTick                  = 500 * time.Millisecond
-	defaultCancellationReconciliationTick = 500 * time.Millisecond
+	defaultHTTPAddress                          = ":8080"
+	defaultWorkerGRPCAddress                    = ":8443"
+	defaultPublisherBatch                       = 100
+	defaultPublisherTick                        = 500 * time.Millisecond
+	defaultCancellationReconciliationTick       = 500 * time.Millisecond
+	defaultFinalizationReconciliationTick       = 500 * time.Millisecond
+	defaultFailureReconciliationTick            = 500 * time.Millisecond
+	defaultArtifactCleanupTick                  = time.Minute
+	defaultExecutionLeaseTTL                    = 2 * time.Minute
+	defaultWorkerLostGrace                      = 30 * time.Second
+	defaultArtifactInspectionTimeout            = 30 * time.Second
+	defaultArtifactOrphanMinimumAge             = 10 * time.Minute
+	defaultArtifactMaxInputBytes          int64 = 100 * 1024 * 1024 * 1024
+	defaultArtifactMaxProbeBytes          int64 = 1024 * 1024
+	defaultArtifactMaxStderrBytes         int64 = 64 * 1024
+	defaultArtifactCleanupBatch                 = 100
 )
 
 type config struct {
-	httpAddress         string
-	authDatabaseURL     string
-	requestDatabaseURL  string
-	cancelDatabaseURL   string
-	internalDatabaseURL string
-	credentialPepper    []byte
-	natsURL             string
-	natsCredentials     string
-	natsRootCA          string
-	natsClientCert      string
-	natsClientKey       string
-	publisherBatchSize  int32
-	publisherTick       time.Duration
-	cancellationTick    time.Duration
+	httpAddress                string
+	workerGRPCAddress          string
+	workerGRPCTLSCertFile      string
+	workerGRPCTLSKeyFile       string
+	workerGRPCClientCAFile     string
+	authDatabaseURL            string
+	requestDatabaseURL         string
+	artifactRequestDatabaseURL string
+	cancelDatabaseURL          string
+	internalDatabaseURL        string
+	credentialPepper           []byte
+	natsURL                    string
+	natsCredentials            string
+	natsRootCA                 string
+	natsClientCert             string
+	natsClientKey              string
+	publisherBatchSize         int32
+	publisherTick              time.Duration
+	cancellationTick           time.Duration
+	finalizationTick           time.Duration
+	failureTick                time.Duration
+	artifactCleanupTick        time.Duration
+	artifactS3Endpoint         string
+	artifactS3Region           string
+	artifactS3Bucket           string
+	artifactS3AccessKeyFile    string
+	artifactS3SecretKeyFile    string
+	artifactS3PathStyle        bool
+	leaseActiveKeyID           string
+	leaseKeyringFile           string
+	executionLeaseTTL          time.Duration
+	workerLostGrace            time.Duration
+	artifactValidatorHelper    string
+	artifactFFprobePath        string
+	artifactSandboxRoot        string
+	artifactSpoolDirectory     string
+	artifactFFprobeVersion     string
+	artifactValidatorRevision  string
+	artifactInspectionTimeout  time.Duration
+	artifactMaxInputBytes      int64
+	artifactMaxProbeBytes      int64
+	artifactMaxStderrBytes     int64
+	artifactReconcilerID       string
+	artifactOrphanMinimumAge   time.Duration
+	artifactCleanupBatch       int
 }
 
 type cancellationStopReconciler interface {
 	ReconcileNextCancellationStop(context.Context) (cancellation.StopResult, error)
 }
+
+type artifactFinalizationReconciler interface {
+	ReconcileNext(context.Context) (finalizationreconciler.Result, error)
+}
+
+type executionFailureReconciler interface {
+	ReconcileNextExecutionFailure(context.Context) (workercontrol.ReconciliationResult, error)
+}
+
+type artifactMultipartCleaner interface {
+	Reconcile(context.Context) (artifactcleanup.Result, error)
+}
+
+var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
 
 func main() {
 	if err := run(); err != nil {
@@ -77,6 +148,16 @@ func run() error {
 		return fmt.Errorf("open request database pool: %w", err)
 	}
 	defer requestPool.Close()
+	artifactRequestPool, err := openPool(
+		ctx,
+		configuration.artifactRequestDatabaseURL,
+		20,
+		veladb.RoleArtifactRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open Artifact request database pool: %w", err)
+	}
+	defer artifactRequestPool.Close()
 	cancelPool, err := openPool(ctx, configuration.cancelDatabaseURL, 10, veladb.RoleCancel)
 	if err != nil {
 		return fmt.Errorf("open cancellation database pool: %w", err)
@@ -87,6 +168,74 @@ func run() error {
 		return fmt.Errorf("open internal database pool: %w", err)
 	}
 	defer internalPool.Close()
+	artifactStore, err := openArtifactStore(ctx, configuration)
+	if err != nil {
+		return err
+	}
+	workerCoordinator, err := openWorkerCoordinator(
+		ctx,
+		internalPool,
+		artifactStore,
+		configuration,
+	)
+	if err != nil {
+		return err
+	}
+	workerIdentityResolver, err := workertransport.NewPostgresIdentityResolver(internalPool)
+	if err != nil {
+		return err
+	}
+	workerControlAdapter, err := workertransport.NewServer(
+		workerIdentityResolver,
+		workerCoordinator,
+		artifactStore,
+	)
+	if err != nil {
+		return err
+	}
+	workerTransportCredentials, err := workertransport.NewServerTLSCredentials(
+		configuration.workerGRPCTLSCertFile,
+		configuration.workerGRPCTLSKeyFile,
+		configuration.workerGRPCClientCAFile,
+	)
+	if err != nil {
+		return err
+	}
+	workerGRPCServer := grpc.NewServer(
+		grpc.Creds(workerTransportCredentials),
+		grpc.MaxRecvMsgSize(1<<20),
+		grpc.MaxSendMsgSize(4<<20),
+	)
+	velav1.RegisterWorkerControlServiceServer(workerGRPCServer, workerControlAdapter)
+	workerListener, err := net.Listen("tcp", configuration.workerGRPCAddress)
+	if err != nil {
+		return fmt.Errorf("listen for Worker gRPC: %w", err)
+	}
+	defer func() { _ = workerListener.Close() }()
+	artifactReconciler, err := finalizationreconciler.New(
+		workerCoordinator,
+		artifactStore,
+		workercontrol.AuthenticatedReconciler{ID: configuration.artifactReconcilerID},
+	)
+	if err != nil {
+		return err
+	}
+	multipartRegistry, err := artifactcleanup.NewPostgresRegistry(internalPool)
+	if err != nil {
+		return err
+	}
+	multipartCleaner, err := artifactcleanup.New(
+		artifactStore,
+		multipartRegistry,
+		artifactcleanup.Config{
+			ObjectPrefix: "artifacts/",
+			MinimumAge:   configuration.artifactOrphanMinimumAge,
+			MaxAborts:    configuration.artifactCleanupBatch,
+		},
+	)
+	if err != nil {
+		return err
+	}
 
 	natsConnection, err := connectNATS(configuration)
 	if err != nil {
@@ -112,6 +261,7 @@ func run() error {
 		Authenticator: identity.NewAuthenticator(authPool, configuration.credentialPepper),
 		Admission:     admission.NewService(requestPool),
 		Cancellation:  cancellationService,
+		Artifacts:     artifactaccess.NewService(artifactRequestPool, artifactStore),
 	})
 	if err != nil {
 		return err
@@ -120,7 +270,17 @@ func run() error {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mux.HandleFunc("GET /readyz", readinessHandler(authPool, requestPool, cancelPool, internalPool))
+	mux.HandleFunc(
+		"GET /readyz",
+		readinessHandler(
+			artifactStore,
+			authPool,
+			requestPool,
+			artifactRequestPool,
+			cancelPool,
+			internalPool,
+		),
+	)
 	mux.Handle("/", apiHandler)
 	httpServer := &http.Server{
 		Addr:              configuration.httpAddress,
@@ -141,24 +301,69 @@ func run() error {
 		defer close(reconcilerDone)
 		runCancellationStopReconciler(ctx, cancellationService, configuration.cancellationTick)
 	}()
-	serverErrors := make(chan error, 1)
+	finalizationDone := make(chan struct{})
+	go func() {
+		defer close(finalizationDone)
+		runArtifactFinalizationReconciler(
+			ctx,
+			artifactReconciler,
+			configuration.finalizationTick,
+		)
+	}()
+	failureDone := make(chan struct{})
+	go func() {
+		defer close(failureDone)
+		runExecutionFailureReconciler(ctx, workerCoordinator, configuration.failureTick)
+	}()
+	cleanupDone := make(chan struct{})
+	go func() {
+		defer close(cleanupDone)
+		runArtifactMultipartCleaner(ctx, multipartCleaner, configuration.artifactCleanupTick)
+	}()
+	httpServerErrors := make(chan error, 1)
 	go func() {
 		slog.Info("vela-control HTTP server started", "address", configuration.httpAddress)
-		serverErrors <- httpServer.ListenAndServe()
+		httpServerErrors <- httpServer.ListenAndServe()
+	}()
+	workerServerErrors := make(chan error, 1)
+	go func() {
+		slog.Info(
+			"vela-control Worker gRPC server started",
+			"address",
+			configuration.workerGRPCAddress,
+		)
+		workerServerErrors <- workerGRPCServer.Serve(workerListener)
 	}()
 
+	var serveErr error
 	select {
 	case <-ctx.Done():
-	case err := <-serverErrors:
+	case err := <-httpServerErrors:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			stop()
-			return fmt.Errorf("serve HTTP: %w", err)
+			serveErr = fmt.Errorf("serve HTTP: %w", err)
+		}
+	case err := <-workerServerErrors:
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			stop()
+			serveErr = fmt.Errorf("serve Worker gRPC: %w", err)
 		}
 	}
 	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelShutdown()
 	if err := httpServer.Shutdown(shutdownContext); err != nil {
 		return fmt.Errorf("shut down HTTP server: %w", err)
+	}
+	workerServerDone := make(chan struct{})
+	go func() {
+		defer close(workerServerDone)
+		workerGRPCServer.GracefulStop()
+	}()
+	select {
+	case <-workerServerDone:
+	case <-shutdownContext.Done():
+		workerGRPCServer.Stop()
+		return errors.New("worker gRPC server did not stop before shutdown deadline")
 	}
 	stop()
 	select {
@@ -171,36 +376,102 @@ func run() error {
 	case <-shutdownContext.Done():
 		return errors.New("cancellation stop reconciler did not stop before shutdown deadline")
 	}
+	select {
+	case <-finalizationDone:
+	case <-shutdownContext.Done():
+		return errors.New("artifact finalization reconciler did not stop before shutdown deadline")
+	}
+	select {
+	case <-failureDone:
+	case <-shutdownContext.Done():
+		return errors.New("execution failure reconciler did not stop before shutdown deadline")
+	}
+	select {
+	case <-cleanupDone:
+	case <-shutdownContext.Done():
+		return errors.New("artifact multipart cleaner did not stop before shutdown deadline")
+	}
 	if err := natsConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 		return fmt.Errorf("drain NATS connection: %w", err)
+	}
+	if serveErr != nil {
+		return serveErr
 	}
 	return nil
 }
 
 func loadConfig() (config, error) {
 	configuration := config{
-		httpAddress:         envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
-		authDatabaseURL:     os.Getenv("VELA_AUTH_DATABASE_URL"),
-		requestDatabaseURL:  os.Getenv("VELA_REQUEST_DATABASE_URL"),
-		cancelDatabaseURL:   os.Getenv("VELA_CANCEL_DATABASE_URL"),
-		internalDatabaseURL: os.Getenv("VELA_INTERNAL_DATABASE_URL"),
-		natsURL:             os.Getenv("VELA_NATS_URL"),
-		natsCredentials:     os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
-		natsRootCA:          os.Getenv("VELA_NATS_ROOT_CA_FILE"),
-		natsClientCert:      os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
-		natsClientKey:       os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
-		publisherBatchSize:  defaultPublisherBatch,
-		publisherTick:       defaultPublisherTick,
-		cancellationTick:    defaultCancellationReconciliationTick,
+		httpAddress:                envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
+		workerGRPCAddress:          envOrDefault("VELA_WORKER_GRPC_ADDRESS", defaultWorkerGRPCAddress),
+		workerGRPCTLSCertFile:      os.Getenv("VELA_WORKER_GRPC_TLS_CERT_FILE"),
+		workerGRPCTLSKeyFile:       os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
+		workerGRPCClientCAFile:     os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
+		authDatabaseURL:            os.Getenv("VELA_AUTH_DATABASE_URL"),
+		requestDatabaseURL:         os.Getenv("VELA_REQUEST_DATABASE_URL"),
+		artifactRequestDatabaseURL: os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
+		cancelDatabaseURL:          os.Getenv("VELA_CANCEL_DATABASE_URL"),
+		internalDatabaseURL:        os.Getenv("VELA_INTERNAL_DATABASE_URL"),
+		natsURL:                    os.Getenv("VELA_NATS_URL"),
+		natsCredentials:            os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
+		natsRootCA:                 os.Getenv("VELA_NATS_ROOT_CA_FILE"),
+		natsClientCert:             os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
+		natsClientKey:              os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
+		artifactS3Endpoint:         os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
+		artifactS3Region:           os.Getenv("VELA_ARTIFACT_S3_REGION"),
+		artifactS3Bucket:           os.Getenv("VELA_ARTIFACT_S3_BUCKET"),
+		artifactS3AccessKeyFile:    os.Getenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"),
+		artifactS3SecretKeyFile:    os.Getenv("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE"),
+		publisherBatchSize:         defaultPublisherBatch,
+		publisherTick:              defaultPublisherTick,
+		cancellationTick:           defaultCancellationReconciliationTick,
+		finalizationTick:           defaultFinalizationReconciliationTick,
+		failureTick:                defaultFailureReconciliationTick,
+		artifactCleanupTick:        defaultArtifactCleanupTick,
+		leaseActiveKeyID:           os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
+		leaseKeyringFile:           os.Getenv("VELA_LEASE_KEYRING_FILE"),
+		executionLeaseTTL:          defaultExecutionLeaseTTL,
+		workerLostGrace:            defaultWorkerLostGrace,
+		artifactValidatorHelper:    os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
+		artifactFFprobePath:        os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
+		artifactSandboxRoot:        os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
+		artifactSpoolDirectory:     os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
+		artifactFFprobeVersion:     os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
+		artifactValidatorRevision:  os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
+		artifactInspectionTimeout:  defaultArtifactInspectionTimeout,
+		artifactMaxInputBytes:      defaultArtifactMaxInputBytes,
+		artifactMaxProbeBytes:      defaultArtifactMaxProbeBytes,
+		artifactMaxStderrBytes:     defaultArtifactMaxStderrBytes,
+		artifactReconcilerID:       os.Getenv("VELA_ARTIFACT_RECONCILER_ID"),
+		artifactOrphanMinimumAge:   defaultArtifactOrphanMinimumAge,
+		artifactCleanupBatch:       defaultArtifactCleanupBatch,
 	}
 	for name, value := range map[string]string{
-		"VELA_AUTH_DATABASE_URL":     configuration.authDatabaseURL,
-		"VELA_REQUEST_DATABASE_URL":  configuration.requestDatabaseURL,
-		"VELA_CANCEL_DATABASE_URL":   configuration.cancelDatabaseURL,
-		"VELA_INTERNAL_DATABASE_URL": configuration.internalDatabaseURL,
-		"VELA_NATS_URL":              configuration.natsURL,
-		"VELA_NATS_CREDENTIALS_FILE": configuration.natsCredentials,
-		"VELA_NATS_ROOT_CA_FILE":     configuration.natsRootCA,
+		"VELA_AUTH_DATABASE_URL":                  configuration.authDatabaseURL,
+		"VELA_REQUEST_DATABASE_URL":               configuration.requestDatabaseURL,
+		"VELA_ARTIFACT_REQUEST_DATABASE_URL":      configuration.artifactRequestDatabaseURL,
+		"VELA_CANCEL_DATABASE_URL":                configuration.cancelDatabaseURL,
+		"VELA_INTERNAL_DATABASE_URL":              configuration.internalDatabaseURL,
+		"VELA_NATS_URL":                           configuration.natsURL,
+		"VELA_NATS_CREDENTIALS_FILE":              configuration.natsCredentials,
+		"VELA_NATS_ROOT_CA_FILE":                  configuration.natsRootCA,
+		"VELA_ARTIFACT_S3_ENDPOINT":               configuration.artifactS3Endpoint,
+		"VELA_ARTIFACT_S3_REGION":                 configuration.artifactS3Region,
+		"VELA_ARTIFACT_S3_BUCKET":                 configuration.artifactS3Bucket,
+		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":     configuration.artifactS3AccessKeyFile,
+		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE": configuration.artifactS3SecretKeyFile,
+		"VELA_LEASE_ACTIVE_KEY_ID":                configuration.leaseActiveKeyID,
+		"VELA_LEASE_KEYRING_FILE":                 configuration.leaseKeyringFile,
+		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":     configuration.artifactValidatorHelper,
+		"VELA_ARTIFACT_FFPROBE_PATH":              configuration.artifactFFprobePath,
+		"VELA_ARTIFACT_SANDBOX_ROOT":              configuration.artifactSandboxRoot,
+		"VELA_ARTIFACT_SPOOL_DIRECTORY":           configuration.artifactSpoolDirectory,
+		"VELA_ARTIFACT_FFPROBE_VERSION":           configuration.artifactFFprobeVersion,
+		"VELA_ARTIFACT_VALIDATOR_REVISION":        configuration.artifactValidatorRevision,
+		"VELA_ARTIFACT_RECONCILER_ID":             configuration.artifactReconcilerID,
+		"VELA_WORKER_GRPC_TLS_CERT_FILE":          configuration.workerGRPCTLSCertFile,
+		"VELA_WORKER_GRPC_TLS_KEY_FILE":           configuration.workerGRPCTLSKeyFile,
+		"VELA_WORKER_GRPC_CLIENT_CA_FILE":         configuration.workerGRPCClientCAFile,
 	} {
 		if value == "" {
 			return config{}, fmt.Errorf("%s is required", name)
@@ -212,6 +483,13 @@ func loadConfig() (config, error) {
 		return config{}, errors.New("environment variable VELA_CREDENTIAL_PEPPER_BASE64 must encode at least 32 random bytes")
 	}
 	configuration.credentialPepper = pepper
+	if value := os.Getenv("VELA_ARTIFACT_S3_PATH_STYLE"); value != "" {
+		pathStyle, err := strconv.ParseBool(value)
+		if err != nil {
+			return config{}, errors.New("environment variable VELA_ARTIFACT_S3_PATH_STYLE must be true or false")
+		}
+		configuration.artifactS3PathStyle = pathStyle
+	}
 	if value := os.Getenv("VELA_OUTBOX_BATCH_SIZE"); value != "" {
 		batchSize, err := strconv.ParseInt(value, 10, 32)
 		if err != nil || batchSize < 1 || batchSize > 1000 {
@@ -285,7 +563,191 @@ func connectNATS(configuration config) (*nats.Conn, error) {
 	return connection, nil
 }
 
-func readinessHandler(pools ...*pgxpool.Pool) http.HandlerFunc {
+func openArtifactStore(ctx context.Context, configuration config) (*artifactstore.S3, error) {
+	accessKeyID, err := readSecretFile(
+		configuration.artifactS3AccessKeyFile,
+		"Artifact S3 access key ID",
+		1024,
+	)
+	if err != nil {
+		return nil, err
+	}
+	secretAccessKey, err := readSecretFile(
+		configuration.artifactS3SecretKeyFile,
+		"Artifact S3 secret access key",
+		4096,
+	)
+	if err != nil {
+		return nil, err
+	}
+	store, err := artifactstore.NewS3(artifactstore.S3Config{
+		Endpoint:        configuration.artifactS3Endpoint,
+		Region:          configuration.artifactS3Region,
+		Bucket:          configuration.artifactS3Bucket,
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		UsePathStyle:    configuration.artifactS3PathStyle,
+		SignedGETTTL:    artifactstore.MaxSignedGETTTL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure Artifact Store: %w", err)
+	}
+	if err := store.ValidateBucket(ctx); err != nil {
+		return nil, fmt.Errorf("validate Artifact Store bucket: %w", err)
+	}
+	return store, nil
+}
+
+func openWorkerCoordinator(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	artifactStore *artifactstore.S3,
+	configuration config,
+) (*workercontrol.Service, error) {
+	sandbox, err := newProductionArtifactSandbox(artifactvalidator.SandboxConfig{
+		HelperPath:     configuration.artifactValidatorHelper,
+		FFprobePath:    configuration.artifactFFprobePath,
+		RootDirectory:  configuration.artifactSandboxRoot,
+		MaxOutputBytes: configuration.artifactMaxProbeBytes,
+		MaxStderrBytes: configuration.artifactMaxStderrBytes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure production Artifact sandbox: %w", err)
+	}
+	inspector, err := artifactvalidator.NewInspector(
+		artifactStore,
+		sandbox,
+		artifactvalidator.Config{
+			MaxInputBytes:          configuration.artifactMaxInputBytes,
+			MaxProbeOutputBytes:    configuration.artifactMaxProbeBytes,
+			Timeout:                configuration.artifactInspectionTimeout,
+			ExpectedFFprobeVersion: configuration.artifactFFprobeVersion,
+			ValidatorRevision:      configuration.artifactValidatorRevision,
+			SpoolDirectory:         configuration.artifactSpoolDirectory,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("configure production Artifact inspector: %w", err)
+	}
+	keyring, err := readLeaseKeyring(configuration.leaseKeyringFile)
+	if err != nil {
+		return nil, err
+	}
+	defer clearLeaseKeyring(keyring)
+	coordinator, err := workercontrol.NewService(ctx, pool, workercontrol.Config{
+		LeaseTTL:          configuration.executionLeaseTTL,
+		WorkerLostGrace:   configuration.workerLostGrace,
+		ActiveLeaseKeyID:  configuration.leaseActiveKeyID,
+		LeaseKeys:         keyring,
+		ArtifactInspector: inspector,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure Worker coordinator: %w", err)
+	}
+	return coordinator, nil
+}
+
+func readSecretFile(path string, description string, maxBytes int64) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open %s file: %w", description, err)
+	}
+	defer func() { _ = file.Close() }()
+	content, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("read %s file: %w", description, err)
+	}
+	secret := strings.TrimSpace(string(content))
+	clear(content)
+	if secret == "" || int64(len(secret)) > maxBytes || strings.ContainsRune(secret, '\x00') {
+		return "", fmt.Errorf("%s file is empty or invalid", description)
+	}
+	return secret, nil
+}
+
+func readLeaseKeyring(path string) (map[string][]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open Lease keyring file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, errors.New("lease keyring must be a regular file")
+	}
+	content, err := io.ReadAll(io.LimitReader(file, 64*1024+1))
+	if err != nil {
+		return nil, fmt.Errorf("read Lease keyring file: %w", err)
+	}
+	defer clear(content)
+	if len(content) == 0 || len(content) > 64*1024 {
+		return nil, errors.New("lease keyring file is empty or exceeds configured bounds")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	opening, err := decoder.Token()
+	if err != nil || opening != json.Delim('{') {
+		return nil, errors.New("lease keyring must be one JSON object")
+	}
+	keyring := make(map[string][]byte)
+	for decoder.More() {
+		keyToken, tokenErr := decoder.Token()
+		keyID, ok := keyToken.(string)
+		if tokenErr != nil || !ok || keyID == "" || len(keyID) > 200 ||
+			strings.TrimSpace(keyID) != keyID || strings.ContainsAny(keyID, "\x00\r\n\t ") {
+			clearLeaseKeyring(keyring)
+			return nil, errors.New("lease keyring contains an invalid key id")
+		}
+		if _, duplicate := keyring[keyID]; duplicate {
+			clearLeaseKeyring(keyring)
+			return nil, errors.New("lease keyring contains a duplicate key id")
+		}
+		var encoded string
+		if err := decoder.Decode(&encoded); err != nil {
+			clearLeaseKeyring(keyring)
+			return nil, errors.New("lease keyring values must be base64 strings")
+		}
+		key, decodeErr := base64.StdEncoding.Strict().DecodeString(encoded)
+		if decodeErr != nil || len(key) < 32 || len(key) > 4096 {
+			clear(key)
+			clearLeaseKeyring(keyring)
+			return nil, errors.New("lease keyring values must encode 32 to 4096 bytes")
+		}
+		keyring[keyID] = key
+		if len(keyring) > 32 {
+			clearLeaseKeyring(keyring)
+			return nil, errors.New("lease keyring contains too many keys")
+		}
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim('}') {
+		clearLeaseKeyring(keyring)
+		return nil, errors.New("lease keyring JSON object is incomplete")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		clearLeaseKeyring(keyring)
+		return nil, errors.New("lease keyring must contain one JSON document")
+	}
+	if len(keyring) == 0 {
+		return nil, errors.New("lease keyring contains no keys")
+	}
+	return keyring, nil
+}
+
+func clearLeaseKeyring(keyring map[string][]byte) {
+	for keyID, key := range keyring {
+		clear(key)
+		delete(keyring, keyID)
+	}
+}
+
+type artifactBucketValidator interface {
+	ValidateBucket(context.Context) error
+}
+
+func readinessHandler(
+	artifactStore artifactBucketValidator,
+	pools ...*pgxpool.Pool,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
@@ -294,6 +756,10 @@ func readinessHandler(pools ...*pgxpool.Pool) http.HandlerFunc {
 				http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 				return
 			}
+		}
+		if artifactStore == nil || artifactStore.ValidateBucket(ctx) != nil {
+			http.Error(w, "Artifact Store unavailable", http.StatusServiceUnavailable)
+			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -338,6 +804,106 @@ func runCancellationStopReconciler(
 				"cancellation_id", result.CancellationID,
 				"job_id", result.JobID,
 				"receipt_id", result.ReceiptID,
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runArtifactFinalizationReconciler(
+	ctx context.Context,
+	reconciler artifactFinalizationReconciler,
+	interval time.Duration,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		result, err := reconciler.ReconcileNext(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("Artifact finalization reconciliation incomplete", "error", err)
+		} else if err == nil && result.Takeover != workercontrol.FinalizationTakeoverNoWork {
+			slog.Info(
+				"Artifact finalization reconciled",
+				"takeover", result.Takeover,
+				"attempt_id", result.AttemptID,
+				"job_id", result.JobID,
+				"verified_artifacts", result.Verified,
+				"completion", result.Completion.Decision,
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runExecutionFailureReconciler(
+	ctx context.Context,
+	reconciler executionFailureReconciler,
+	interval time.Duration,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		result, err := reconciler.ReconcileNextExecutionFailure(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("Execution failure reconciliation incomplete", "error", err)
+		} else if err == nil && result.Processed {
+			slog.Info(
+				"Execution failure reconciled",
+				"source", result.Source,
+				"job_id", result.Decision.JobID,
+				"attempt_id", result.Decision.AttemptID,
+				"disposition", result.Decision.Disposition,
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runArtifactMultipartCleaner(
+	ctx context.Context,
+	cleaner artifactMultipartCleaner,
+	interval time.Duration,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		result, err := cleaner.Reconcile(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("Artifact multipart cleanup incomplete", "error", err)
+		} else if err == nil && result.Aborted > 0 {
+			slog.Info(
+				"Artifact multipart orphans cleaned",
+				"listed", result.Listed,
+				"eligible", result.Eligible,
+				"recorded", result.Recorded,
+				"aborted", result.Aborted,
 			)
 		}
 		select {

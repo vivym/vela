@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
 	api "github.com/vivym/vela/api/gen"
 	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
 )
@@ -23,12 +25,14 @@ type Config struct {
 	Authenticator *identity.Authenticator
 	Admission     *admission.Service
 	Cancellation  *cancellation.Service
+	Artifacts     *artifactaccess.Service
 }
 
 type server struct {
 	authenticator *identity.Authenticator
 	admission     *admission.Service
 	cancellation  *cancellation.Service
+	artifacts     *artifactaccess.Service
 }
 
 type principalContextKey struct{}
@@ -43,6 +47,9 @@ func NewHandler(config Config) (http.Handler, error) {
 	if config.Cancellation == nil {
 		return nil, errors.New("missing HTTP API cancellation service")
 	}
+	if config.Artifacts == nil {
+		return nil, errors.New("missing HTTP API Artifact access service")
+	}
 	openAPI, err := api.GetSpec()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded OpenAPI contract: %w", err)
@@ -54,6 +61,7 @@ func NewHandler(config Config) (http.Handler, error) {
 		authenticator: config.Authenticator,
 		admission:     config.Admission,
 		cancellation:  config.Cancellation,
+		artifacts:     config.Artifacts,
 	}
 	strict := api.NewStrictHandlerWithOptions(implementation, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
@@ -206,6 +214,53 @@ func (s *server) CancelJob(
 	return api.CancelJob200JSONResponse(toAPICancelResult(result)), nil
 }
 
+func (s *server) GetJobArtifacts(
+	ctx context.Context,
+	request api.GetJobArtifactsRequestObject,
+) (api.GetJobArtifactsResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.GetJobArtifacts401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: "valid Service Principal credential is required",
+			},
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeArtifactsRead) {
+		return api.GetJobArtifacts403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "credential does not have artifacts:read scope",
+			},
+		}, nil
+	}
+	artifactSet, err := s.artifacts.Get(ctx, principal, request.ProjectId, request.JobId)
+	if err != nil {
+		var failure *artifactaccess.Failure
+		if errors.As(err, &failure) {
+			switch failure.Code {
+			case artifactaccess.FailureUnauthorized:
+				return api.GetJobArtifacts401JSONResponse{
+					UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+						Code: string(failure.Code), Message: failure.Message,
+					},
+				}, nil
+			case artifactaccess.FailureForbidden:
+				return api.GetJobArtifacts403JSONResponse{
+					ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+						Code: string(failure.Code), Message: failure.Message,
+					},
+				}, nil
+			case artifactaccess.FailureNotFound:
+				return api.GetJobArtifacts404JSONResponse{
+					Code: string(failure.Code), Message: failure.Message,
+				}, nil
+			}
+		}
+		return nil, err
+	}
+	return api.GetJobArtifacts200JSONResponse(toAPIArtifactSet(artifactSet)), nil
+}
+
 func (s *server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Fields(r.Header.Get("Authorization"))
@@ -330,6 +385,30 @@ func toAPICancelResult(result cancellation.Result) api.CancelResult {
 		}
 	}
 	return response
+}
+
+func toAPIArtifactSet(artifactSet artifactaccess.ArtifactSet) api.ArtifactSet {
+	artifacts := make([]api.ArtifactDownload, len(artifactSet.Artifacts))
+	for index, artifact := range artifactSet.Artifacts {
+		artifacts[index] = api.ArtifactDownload{
+			ArtifactId:           artifact.ID,
+			ContentType:          artifact.ContentType,
+			DownloadUrl:          artifact.DownloadURL,
+			DownloadUrlExpiresAt: artifact.DownloadURLExpiresAt,
+			Kind:                 api.ArtifactDownloadKind(artifact.Kind),
+			ObjectVersionId:      artifact.ObjectVersionID,
+			Ordinal:              artifact.Ordinal,
+			Sha256:               hex.EncodeToString(artifact.SHA256[:]),
+			SizeBytes:            artifact.SizeBytes,
+		}
+	}
+	return api.ArtifactSet{
+		ArtifactSetId:      artifactSet.ID,
+		Artifacts:          artifacts,
+		CommittedAt:        artifactSet.CommittedAt,
+		JobId:              artifactSet.JobID,
+		RetentionExpiresAt: artifactSet.RetentionExpiresAt,
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {

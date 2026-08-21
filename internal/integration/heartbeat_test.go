@@ -645,17 +645,6 @@ func TestHeartbeatRejectsInvalidAuthorityWithoutSideEffects(t *testing.T) {
 			},
 		},
 		{
-			name: "FINALIZATION Lease",
-			mutate: func(t *testing.T, fixture *assignmentFixture, _ *workercontrol.AuthenticatedWorker, _ *workercontrol.LeaseCredentials, assignment workercontrol.Assignment) {
-				t.Helper()
-				if _, err := fixture.database.Admin.Exec(`
-					UPDATE attempt_leases SET phase = 'FINALIZATION' WHERE attempt_id = $1
-				`, assignment.AttemptID); err != nil {
-					t.Fatalf("change Lease phase: %v", err)
-				}
-			},
-		},
-		{
 			name: "Reconciler-owned Lease",
 			mutate: func(t *testing.T, fixture *assignmentFixture, _ *workercontrol.AuthenticatedWorker, _ *workercontrol.LeaseCredentials, assignment workercontrol.Assignment) {
 				t.Helper()
@@ -877,6 +866,17 @@ func TestHeartbeatStopsWhenAssignmentIsNotHeartbeatable(t *testing.T) {
 					WHERE job_id = $1
 				`, assignment.JobID); err != nil {
 					t.Fatalf("release Credit Reservation fixture: %v", err)
+				}
+			},
+		},
+		{
+			name: "Lease is FINALIZATION before state transition",
+			mutate: func(t *testing.T, fixture *assignmentFixture, assignment workercontrol.Assignment) {
+				t.Helper()
+				if _, err := fixture.database.Admin.Exec(`
+					UPDATE attempt_leases SET phase = 'FINALIZATION' WHERE attempt_id = $1
+				`, assignment.AttemptID); err != nil {
+					t.Fatalf("change Lease phase: %v", err)
 				}
 			},
 		},

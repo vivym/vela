@@ -355,6 +355,93 @@ func (q *Queries) InsertCancellationStoppedOutboxEvent(ctx context.Context, arg 
 	return err
 }
 
+const listSucceededArtifactSetForCancellation = `-- name: ListSucceededArtifactSetForCancellation :many
+SELECT
+    artifact_set.id::uuid AS artifact_set_id,
+    artifact_set.manifest_sha256::bytea AS manifest_sha256,
+    artifact_set.retention_expires_at::timestamptz AS retention_expires_at,
+    completion.completed_at::timestamptz AS completed_at,
+    completion.charge_id::uuid AS charge_id,
+    item.artifact_id::uuid AS artifact_id,
+    item.kind::text AS kind,
+    item.ordinal::integer AS ordinal,
+    item.object_key::text AS object_key,
+    item.object_version_id::text AS object_version_id,
+    item.size_bytes::bigint AS size_bytes,
+    item.sha256::bytea AS sha256,
+    item.content_type::text AS content_type
+FROM jobs AS job
+JOIN artifact_sets AS artifact_set
+  ON artifact_set.id = job.result_artifact_set_id
+ AND artifact_set.job_id = job.id
+JOIN visible_completions AS completion
+  ON completion.artifact_set_id = artifact_set.id
+ AND completion.job_id = job.id
+JOIN artifact_set_items AS item
+  ON item.artifact_set_id = artifact_set.id
+WHERE job.id = $1::uuid
+  AND job.organization_id = $2::uuid
+  AND job.project_id = $3::uuid
+  AND job.state = 'SUCCEEDED'
+ORDER BY CASE item.kind WHEN 'VIDEO' THEN 0 ELSE 1 END, item.ordinal
+`
+
+type ListSucceededArtifactSetForCancellationParams struct {
+	JobID          uuid.UUID `db:"job_id" json:"job_id"`
+	OrganizationID uuid.UUID `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.UUID `db:"project_id" json:"project_id"`
+}
+
+type ListSucceededArtifactSetForCancellationRow struct {
+	ArtifactSetID      uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	ManifestSha256     []byte             `db:"manifest_sha256" json:"manifest_sha256"`
+	RetentionExpiresAt pgtype.Timestamptz `db:"retention_expires_at" json:"retention_expires_at"`
+	CompletedAt        pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	ChargeID           uuid.UUID          `db:"charge_id" json:"charge_id"`
+	ArtifactID         uuid.UUID          `db:"artifact_id" json:"artifact_id"`
+	Kind               string             `db:"kind" json:"kind"`
+	Ordinal            int32              `db:"ordinal" json:"ordinal"`
+	ObjectKey          string             `db:"object_key" json:"object_key"`
+	ObjectVersionID    string             `db:"object_version_id" json:"object_version_id"`
+	SizeBytes          int64              `db:"size_bytes" json:"size_bytes"`
+	Sha256             []byte             `db:"sha256" json:"sha256"`
+	ContentType        string             `db:"content_type" json:"content_type"`
+}
+
+func (q *Queries) ListSucceededArtifactSetForCancellation(ctx context.Context, arg ListSucceededArtifactSetForCancellationParams) ([]ListSucceededArtifactSetForCancellationRow, error) {
+	rows, err := q.db.Query(ctx, listSucceededArtifactSetForCancellation, arg.JobID, arg.OrganizationID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSucceededArtifactSetForCancellationRow{}
+	for rows.Next() {
+		var i ListSucceededArtifactSetForCancellationRow
+		if err := rows.Scan(
+			&i.ArtifactSetID,
+			&i.ManifestSha256,
+			&i.RetentionExpiresAt,
+			&i.CompletedAt,
+			&i.ChargeID,
+			&i.ArtifactID,
+			&i.Kind,
+			&i.Ordinal,
+			&i.ObjectKey,
+			&i.ObjectVersionID,
+			&i.SizeBytes,
+			&i.Sha256,
+			&i.ContentType,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockCancellationAttempt = `-- name: LockCancellationAttempt :one
 SELECT
     id,

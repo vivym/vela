@@ -1685,12 +1685,13 @@ func forceLeaseExpiry(t *testing.T, db *sql.DB, attemptID uuid.UUID, age time.Du
 	}
 	if result, err := tx.Exec(`
 		UPDATE attempt_leases
-		SET issued_at = clock_timestamp()
-				- ($2::bigint * interval '1 microsecond')
-				- interval '10 seconds',
-			expires_at = clock_timestamp() - $2::bigint * interval '1 microsecond'
-		WHERE attempt_id = $1
-	`, attemptID, age.Microseconds()); err != nil {
+			SET issued_at = clock_timestamp()
+					- ($2::bigint * interval '1 microsecond')
+					- interval '10 seconds',
+				expires_at = clock_timestamp() - $2::bigint * interval '1 microsecond'
+			WHERE attempt_id = $1
+			  AND revoked_at IS NULL
+		`, attemptID, age.Microseconds()); err != nil {
 		t.Fatalf("set Lease expiry fault fixture: %v", err)
 	} else if rows, rowsErr := result.RowsAffected(); rowsErr != nil || rows != 1 {
 		t.Fatalf("Lease expiry fault fixture rows = %d error=%v", rows, rowsErr)

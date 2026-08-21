@@ -38,6 +38,26 @@ type Charge struct {
 	PostedAt    time.Time
 }
 
+type Artifact struct {
+	ID              uuid.UUID
+	Kind            string
+	Ordinal         int32
+	ObjectKey       string
+	ObjectVersionID string
+	SizeBytes       int64
+	SHA256          [sha256.Size]byte
+	ContentType     string
+}
+
+type ArtifactSet struct {
+	ID                 uuid.UUID
+	ManifestSHA256     [sha256.Size]byte
+	ChargeID           uuid.UUID
+	RetentionExpiresAt time.Time
+	CompletedAt        time.Time
+	Artifacts          []Artifact
+}
+
 type Result struct {
 	CancellationID uuid.UUID
 	JobID          uuid.UUID
@@ -46,6 +66,7 @@ type Result struct {
 	JobVersion     int64
 	Billable       bool
 	Charge         *Charge
+	ArtifactSet    *ArtifactSet
 	DecidedAt      time.Time
 }
 
@@ -181,6 +202,75 @@ func (s *Service) cancelOnce(
 	result := resultFromRow(row)
 	if err := tx.Commit(ctx); err != nil {
 		return Result{}, fmt.Errorf("commit cancellation: %w", err)
+	}
+	if result.Decision == DecisionAlreadySucceeded {
+		if s.internalPool == nil {
+			return Result{}, errors.New("cancellation ArtifactSet reader is not configured")
+		}
+		artifacts, listErr := store.New(s.internalPool).ListSucceededArtifactSetForCancellation(
+			ctx,
+			store.ListSucceededArtifactSetForCancellationParams{
+				JobID:          row.JobID,
+				OrganizationID: principal.OrganizationID,
+				ProjectID:      projectID,
+			},
+		)
+		if listErr != nil {
+			return Result{}, fmt.Errorf("read winning ArtifactSet after cancellation loss: %w", listErr)
+		}
+		artifactSet, buildErr := cancellationArtifactSet(artifacts)
+		if buildErr != nil {
+			return Result{}, buildErr
+		}
+		result.ArtifactSet = &artifactSet
+	}
+	return result, nil
+}
+
+func cancellationArtifactSet(
+	rows []store.ListSucceededArtifactSetForCancellationRow,
+) (ArtifactSet, error) {
+	if len(rows) == 0 {
+		return ArtifactSet{}, errors.New("winning ArtifactSet has no items")
+	}
+	first := rows[0]
+	if first.ArtifactSetID == uuid.Nil || first.ChargeID == uuid.Nil ||
+		len(first.ManifestSha256) != sha256.Size || !first.RetentionExpiresAt.Valid ||
+		!first.CompletedAt.Valid {
+		return ArtifactSet{}, errors.New("winning ArtifactSet identity is incomplete")
+	}
+	var manifest [sha256.Size]byte
+	copy(manifest[:], first.ManifestSha256)
+	result := ArtifactSet{
+		ID:                 first.ArtifactSetID,
+		ManifestSHA256:     manifest,
+		ChargeID:           first.ChargeID,
+		RetentionExpiresAt: first.RetentionExpiresAt.Time,
+		CompletedAt:        first.CompletedAt.Time,
+		Artifacts:          make([]Artifact, 0, len(rows)),
+	}
+	for _, row := range rows {
+		if row.ArtifactSetID != result.ID || row.ChargeID != result.ChargeID ||
+			!hmac.Equal(row.ManifestSha256, result.ManifestSHA256[:]) ||
+			!row.RetentionExpiresAt.Valid ||
+			!row.RetentionExpiresAt.Time.Equal(result.RetentionExpiresAt) ||
+			!row.CompletedAt.Valid || !row.CompletedAt.Time.Equal(result.CompletedAt) ||
+			row.ArtifactID == uuid.Nil || row.ObjectKey == "" || row.ObjectVersionID == "" ||
+			row.SizeBytes <= 0 || len(row.Sha256) != sha256.Size || row.ContentType == "" {
+			return ArtifactSet{}, errors.New("winning ArtifactSet item is inconsistent")
+		}
+		var digest [sha256.Size]byte
+		copy(digest[:], row.Sha256)
+		result.Artifacts = append(result.Artifacts, Artifact{
+			ID:              row.ArtifactID,
+			Kind:            row.Kind,
+			Ordinal:         row.Ordinal,
+			ObjectKey:       row.ObjectKey,
+			ObjectVersionID: row.ObjectVersionID,
+			SizeBytes:       row.SizeBytes,
+			SHA256:          digest,
+			ContentType:     row.ContentType,
+		})
 	}
 	return result, nil
 }

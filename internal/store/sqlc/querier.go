@@ -13,26 +13,38 @@ import (
 
 type Querier interface {
 	CancelJob(ctx context.Context, arg CancelJobParams) (CancelJobRow, error)
+	ClaimArtifactUpload(ctx context.Context, arg ClaimArtifactUploadParams) (ClaimArtifactUploadRow, error)
+	ClaimArtifactVerification(ctx context.Context, arg ClaimArtifactVerificationParams) (ClaimArtifactVerificationRow, error)
 	ClaimOutboxEvents(ctx context.Context, arg ClaimOutboxEventsParams) ([]ClaimOutboxEventsRow, error)
 	CompleteCancelingJob(ctx context.Context, arg CompleteCancelingJobParams) (int64, error)
+	ConsumeVisibleCompletionCreditReservation(ctx context.Context, arg ConsumeVisibleCompletionCreditReservationParams) (int64, error)
 	DecrementPoolQueuedForAssignment(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
 	DecrementPoolWaitingForFailure(ctx context.Context, arg DecrementPoolWaitingForFailureParams) (int64, error)
 	DecrementProjectRunningForFailure(ctx context.Context, arg DecrementProjectRunningForFailureParams) (int64, error)
+	DecrementProjectRunningForVisibleCompletion(ctx context.Context, arg DecrementProjectRunningForVisibleCompletionParams) (int64, error)
 	DecrementProjectWaitingForFailure(ctx context.Context, arg DecrementProjectWaitingForFailureParams) (int64, error)
+	FindActiveReconcilerFinalizationCandidate(ctx context.Context, ownerID string) (FindActiveReconcilerFinalizationCandidateRow, error)
 	FindExpiredExecutionLeaseCandidate(ctx context.Context, workerLostGraceSeconds int64) (FindExpiredExecutionLeaseCandidateRow, error)
+	FindExpiredFinalizationDeadlineCandidate(ctx context.Context) (FindExpiredFinalizationDeadlineCandidateRow, error)
 	FindExpiredJobFailureCandidate(ctx context.Context) (FindExpiredJobFailureCandidateRow, error)
 	FindNextCancellationStopCandidate(ctx context.Context) (FindNextCancellationStopCandidateRow, error)
+	FindRecoverableExpiredFinalizationCandidate(ctx context.Context) (FindRecoverableExpiredFinalizationCandidateRow, error)
 	GetActiveWorkerAssignment(ctx context.Context, arg GetActiveWorkerAssignmentParams) (GetActiveWorkerAssignmentRow, error)
+	GetArtifactUploadStatus(ctx context.Context, arg GetArtifactUploadStatusParams) (GetArtifactUploadStatusRow, error)
 	GetAttemptProgressForHeartbeat(ctx context.Context, attemptID uuid.UUID) (GetAttemptProgressForHeartbeatRow, error)
 	GetCancellationStopLeaseID(ctx context.Context, arg GetCancellationStopLeaseIDParams) (uuid.UUID, error)
 	GetExecutionFailureDecision(ctx context.Context, attemptID uuid.NullUUID) (GetExecutionFailureDecisionRow, error)
 	GetIdempotencyResult(ctx context.Context, arg GetIdempotencyResultParams) (GetIdempotencyResultRow, error)
 	GetJob(ctx context.Context, arg GetJobParams) (GetJobRow, error)
 	GetPostgresTime(ctx context.Context) (pgtype.Timestamptz, error)
+	GetRecordedArtifactVerification(ctx context.Context, arg GetRecordedArtifactVerificationParams) (GetRecordedArtifactVerificationRow, error)
 	IncrementAttemptsStarted(ctx context.Context, arg IncrementAttemptsStartedParams) (int64, error)
 	IncrementPoolQueued(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
 	IncrementPoolRetryWait(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
 	IncrementProjectQueued(ctx context.Context, arg IncrementProjectQueuedParams) (int64, error)
+	InsertArtifactAccessGrant(ctx context.Context, arg InsertArtifactAccessGrantParams) error
+	InsertArtifactSet(ctx context.Context, arg InsertArtifactSetParams) error
+	InsertArtifactSetItem(ctx context.Context, arg InsertArtifactSetItemParams) error
 	InsertAssignmentOutboxEvent(ctx context.Context, arg InsertAssignmentOutboxEventParams) error
 	InsertAttempt(ctx context.Context, arg InsertAttemptParams) error
 	InsertCancellationStopReceipt(ctx context.Context, arg InsertCancellationStopReceiptParams) error
@@ -44,10 +56,22 @@ type Querier interface {
 	InsertJob(ctx context.Context, arg InsertJobParams) error
 	InsertJobFailedOutboxEvent(ctx context.Context, arg InsertJobFailedOutboxEventParams) error
 	InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error
+	InsertPlannedArtifact(ctx context.Context, arg InsertPlannedArtifactParams) error
+	InsertPlannedArtifactUpload(ctx context.Context, arg InsertPlannedArtifactUploadParams) error
+	InsertReconcilerFinalizationLease(ctx context.Context, arg InsertReconcilerFinalizationLeaseParams) error
 	InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRuntimeStateParams) error
 	InsertRetryWaitOutboxEvent(ctx context.Context, arg InsertRetryWaitOutboxEventParams) error
 	InsertStartOutboxEvent(ctx context.Context, arg InsertStartOutboxEventParams) error
+	InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error
+	InsertVisibleCompletionCharge(ctx context.Context, arg InsertVisibleCompletionChargeParams) error
+	InsertVisibleCompletionOutboxEvent(ctx context.Context, arg InsertVisibleCompletionOutboxEventParams) error
+	IsArtifactMultipartUploadRecorded(ctx context.Context, arg IsArtifactMultipartUploadRecordedParams) (bool, error)
 	ListActiveLeaseSigningKeyIDs(ctx context.Context) ([]string, error)
+	ListCommittedArtifactSetItems(ctx context.Context, artifactSetID uuid.UUID) ([]ListCommittedArtifactSetItemsRow, error)
+	ListCompletionArtifactsForUpdate(ctx context.Context, arg ListCompletionArtifactsForUpdateParams) ([]ListCompletionArtifactsForUpdateRow, error)
+	ListFinalizationArtifacts(ctx context.Context, arg ListFinalizationArtifactsParams) ([]ListFinalizationArtifactsRow, error)
+	ListReadableArtifactSet(ctx context.Context, arg ListReadableArtifactSetParams) ([]ListReadableArtifactSetRow, error)
+	ListSucceededArtifactSetForCancellation(ctx context.Context, arg ListSucceededArtifactSetForCancellationParams) ([]ListSucceededArtifactSetForCancellationRow, error)
 	LockCancellationAttempt(ctx context.Context, attemptID uuid.UUID) (LockCancellationAttemptRow, error)
 	LockCancellationLease(ctx context.Context, arg LockCancellationLeaseParams) (LockCancellationLeaseRow, error)
 	LockCancellationStopAuthority(ctx context.Context, cancellationID uuid.UUID) (LockCancellationStopAuthorityRow, error)
@@ -60,6 +84,7 @@ type Querier interface {
 	LockFailureOrganizationCredit(ctx context.Context, organizationID uuid.UUID) (LockFailureOrganizationCreditRow, error)
 	LockFailurePoolCounters(ctx context.Context, workerPoolID uuid.UUID) (LockFailurePoolCountersRow, error)
 	LockFailureProjectCounters(ctx context.Context, arg LockFailureProjectCountersParams) (LockFailureProjectCountersRow, error)
+	LockFinalizationAuthority(ctx context.Context, arg LockFinalizationAuthorityParams) (LockFinalizationAuthorityRow, error)
 	LockHeartbeatAuthority(ctx context.Context, arg LockHeartbeatAuthorityParams) (LockHeartbeatAuthorityRow, error)
 	LockIdempotencyKey(ctx context.Context, arg LockIdempotencyKeyParams) (interface{}, error)
 	LockJobExpiryWithoutAttempt(ctx context.Context, jobID uuid.UUID) (LockJobExpiryWithoutAttemptRow, error)
@@ -67,15 +92,26 @@ type Querier interface {
 	LockProjectForAdmission(ctx context.Context, arg LockProjectForAdmissionParams) (LockProjectForAdmissionRow, error)
 	LockProjectForAssignment(ctx context.Context, arg LockProjectForAssignmentParams) (LockProjectForAssignmentRow, error)
 	LockStartAuthority(ctx context.Context, arg LockStartAuthorityParams) (LockStartAuthorityRow, error)
+	LockVisibleCompletionAuthority(ctx context.Context, arg LockVisibleCompletionAuthorityParams) (LockVisibleCompletionAuthorityRow, error)
+	LockVisibleCompletionCreditReservation(ctx context.Context, arg LockVisibleCompletionCreditReservationParams) (LockVisibleCompletionCreditReservationRow, error)
+	LockVisibleCompletionOrganizationCredit(ctx context.Context, organizationID uuid.UUID) (LockVisibleCompletionOrganizationCreditRow, error)
+	LockVisibleCompletionPool(ctx context.Context, workerPoolID uuid.UUID) (uuid.UUID, error)
+	LockVisibleCompletionProject(ctx context.Context, arg LockVisibleCompletionProjectParams) (int32, error)
 	LockWorkerAuthority(ctx context.Context, workerID uuid.UUID) (LockWorkerAuthorityRow, error)
+	MarkArtifactCommitted(ctx context.Context, arg MarkArtifactCommittedParams) (int64, error)
 	MarkAttemptFailed(ctx context.Context, arg MarkAttemptFailedParams) (int64, error)
+	MarkAttemptFinalizing(ctx context.Context, arg MarkAttemptFinalizingParams) (int64, error)
 	MarkAttemptLost(ctx context.Context, arg MarkAttemptLostParams) (int64, error)
 	MarkAttemptRunning(ctx context.Context, arg MarkAttemptRunningParams) (int64, error)
+	MarkCompletionAttemptSucceeded(ctx context.Context, arg MarkCompletionAttemptSucceededParams) (int64, error)
 	MarkJobAssigned(ctx context.Context, arg MarkJobAssignedParams) (int64, error)
 	MarkJobFailedFromActive(ctx context.Context, arg MarkJobFailedFromActiveParams) (int64, error)
 	MarkJobFailedWithoutAttempt(ctx context.Context, arg MarkJobFailedWithoutAttemptParams) (int64, error)
+	MarkJobFinalizing(ctx context.Context, arg MarkJobFinalizingParams) (int64, error)
 	MarkJobRetryWait(ctx context.Context, arg MarkJobRetryWaitParams) (int64, error)
 	MarkJobRunning(ctx context.Context, arg MarkJobRunningParams) (MarkJobRunningRow, error)
+	MarkJobSucceeded(ctx context.Context, arg MarkJobSucceededParams) (int64, error)
+	MarkLeaseFinalizing(ctx context.Context, arg MarkLeaseFinalizingParams) (int64, error)
 	MarkOutboxFailed(ctx context.Context, arg MarkOutboxFailedParams) (int64, error)
 	MarkOutboxPublished(ctx context.Context, arg MarkOutboxPublishedParams) (int64, error)
 	MarkWorkerBusy(ctx context.Context, arg MarkWorkerBusyParams) (int64, error)
@@ -85,14 +121,25 @@ type Querier interface {
 	MarkWorkerReusableAfterFailure(ctx context.Context, arg MarkWorkerReusableAfterFailureParams) (int64, error)
 	MoveProjectCountersToRunning(ctx context.Context, arg MoveProjectCountersToRunningParams) (int64, error)
 	MoveProjectRunningToRetryWait(ctx context.Context, arg MoveProjectRunningToRetryWaitParams) (int64, error)
+	PostVisibleCompletionOrganizationCredit(ctx context.Context, arg PostVisibleCompletionOrganizationCreditParams) (int64, error)
+	RecordArtifactCompletionIntent(ctx context.Context, arg RecordArtifactCompletionIntentParams) (RecordArtifactCompletionIntentRow, error)
+	RecordArtifactMultipartSession(ctx context.Context, arg RecordArtifactMultipartSessionParams) (RecordArtifactMultipartSessionRow, error)
+	RecordArtifactUploaded(ctx context.Context, arg RecordArtifactUploadedParams) (RecordArtifactUploadedRow, error)
+	RecordArtifactVerified(ctx context.Context, arg RecordArtifactVerifiedParams) (RecordArtifactVerifiedRow, error)
 	RecordInboxReceipt(ctx context.Context, arg RecordInboxReceiptParams) (uuid.UUID, error)
+	ReleaseArtifactVerificationClaim(ctx context.Context, arg ReleaseArtifactVerificationClaimParams) (int64, error)
 	ReleaseFailureCreditReservation(ctx context.Context, arg ReleaseFailureCreditReservationParams) (int64, error)
 	ReleaseOrganizationCreditForFailure(ctx context.Context, arg ReleaseOrganizationCreditForFailureParams) (int64, error)
 	ReleaseWorkerAfterCancellationStop(ctx context.Context, arg ReleaseWorkerAfterCancellationStopParams) (int64, error)
+	ReleaseWorkerAfterVisibleCompletion(ctx context.Context, arg ReleaseWorkerAfterVisibleCompletionParams) (int64, error)
 	RenewExecutionLease(ctx context.Context, arg RenewExecutionLeaseParams) (int64, error)
 	ReserveOrganizationCredit(ctx context.Context, arg ReserveOrganizationCreditParams) (int64, error)
 	ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUParams) (ResolveActiveSKURow, error)
+	ResolveWorkerBySPIFFEID(ctx context.Context, spiffeID string) (uuid.UUID, error)
+	RevokeCompletionLease(ctx context.Context, arg RevokeCompletionLeaseParams) (int64, error)
 	RevokeExecutionLeaseForFailure(ctx context.Context, arg RevokeExecutionLeaseForFailureParams) (int64, error)
+	RevokeExpiredFinalizationLeaseForTakeover(ctx context.Context, arg RevokeExpiredFinalizationLeaseForTakeoverParams) (int64, error)
+	SetArtifactRequestContext(ctx context.Context, arg SetArtifactRequestContextParams) (SetArtifactRequestContextRow, error)
 	SetCancellationRequestContext(ctx context.Context, arg SetCancellationRequestContextParams) (SetCancellationRequestContextRow, error)
 	SetRequestContext(ctx context.Context, arg SetRequestContextParams) (SetRequestContextRow, error)
 	UpdateExecutionRetryEvidence(ctx context.Context, arg UpdateExecutionRetryEvidenceParams) (int64, error)

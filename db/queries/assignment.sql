@@ -8,6 +8,11 @@ WHERE revoked_at IS NULL
   AND expires_at > clock_timestamp()
 ORDER BY signing_key_id;
 
+-- name: ResolveWorkerBySPIFFEID :one
+SELECT id
+FROM workers
+WHERE spiffe_id = sqlc.arg(spiffe_id);
+
 -- name: LockWorkerAuthority :one
 SELECT id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
 FROM workers

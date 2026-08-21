@@ -64,6 +64,36 @@ FROM vela_cancel_job(
     sqlc.arg(invoice_export_event_id)::uuid
 ) AS result;
 
+-- name: ListSucceededArtifactSetForCancellation :many
+SELECT
+    artifact_set.id::uuid AS artifact_set_id,
+    artifact_set.manifest_sha256::bytea AS manifest_sha256,
+    artifact_set.retention_expires_at::timestamptz AS retention_expires_at,
+    completion.completed_at::timestamptz AS completed_at,
+    completion.charge_id::uuid AS charge_id,
+    item.artifact_id::uuid AS artifact_id,
+    item.kind::text AS kind,
+    item.ordinal::integer AS ordinal,
+    item.object_key::text AS object_key,
+    item.object_version_id::text AS object_version_id,
+    item.size_bytes::bigint AS size_bytes,
+    item.sha256::bytea AS sha256,
+    item.content_type::text AS content_type
+FROM jobs AS job
+JOIN artifact_sets AS artifact_set
+  ON artifact_set.id = job.result_artifact_set_id
+ AND artifact_set.job_id = job.id
+JOIN visible_completions AS completion
+  ON completion.artifact_set_id = artifact_set.id
+ AND completion.job_id = job.id
+JOIN artifact_set_items AS item
+  ON item.artifact_set_id = artifact_set.id
+WHERE job.id = sqlc.arg(job_id)::uuid
+  AND job.organization_id = sqlc.arg(organization_id)::uuid
+  AND job.project_id = sqlc.arg(project_id)::uuid
+  AND job.state = 'SUCCEEDED'
+ORDER BY CASE item.kind WHEN 'VIDEO' THEN 0 ELSE 1 END, item.ordinal;
+
 -- name: LockCancellationLease :one
 SELECT
     id,

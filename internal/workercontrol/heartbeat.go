@@ -43,6 +43,7 @@ type ExecutionPhase = execution.Phase
 const (
 	ExecutionPhasePreparing  = execution.PhasePreparing
 	ExecutionPhaseGenerating = execution.PhaseGenerating
+	ExecutionPhaseFinalizing = execution.PhaseFinalizing
 )
 
 type HeartbeatObservation struct {
@@ -148,11 +149,16 @@ func (s *Service) Heartbeat(
 		return heartbeatStopped(StopJobExpired), nil
 	}
 	phase, heartbeatable := heartbeatPhase(
+		authority.LeasePhase,
 		authority.AttemptState,
 		authority.JobState,
 		authority.JobExecutionPhase,
 	)
 	if !heartbeatable || authority.CreditReservationState != store.CreditReservationStateRESERVED {
+		return heartbeatStopped(StopNotHeartbeatable), nil
+	}
+	if phase == ExecutionPhaseFinalizing &&
+		(!authority.FinalizationDeadlineAt.Valid || !authority.FinalizationDeadlineAt.Time.After(now)) {
 		return heartbeatStopped(StopNotHeartbeatable), nil
 	}
 	renewalEnabled, err := queries.LockExecutionLeaseRenewalProtocol(ctx)
@@ -188,6 +194,11 @@ func (s *Service) Heartbeat(
 	if authority.LeaseExpiresAt.Time.After(renewedExpiry) {
 		renewedExpiry = authority.LeaseExpiresAt.Time
 	}
+	if phase == ExecutionPhaseFinalizing {
+		if authority.FinalizationDeadlineAt.Time.Before(renewedExpiry) {
+			renewedExpiry = authority.FinalizationDeadlineAt.Time
+		}
+	}
 	if authority.JobExpiresAt.Time.Before(renewedExpiry) {
 		renewedExpiry = authority.JobExpiresAt.Time
 	}
@@ -212,6 +223,7 @@ func (s *Service) Heartbeat(
 		WorkerID:          worker.ID,
 		WorkerEpoch:       credentials.WorkerEpoch,
 		Fence:             credentials.Fence,
+		LeasePhase:        authority.LeasePhase,
 		PreviousExpiresAt: authority.LeaseExpiresAt,
 	}); updateErr != nil || rows != 1 {
 		return HeartbeatResult{}, changedRowsError("renew EXECUTION Lease", rows, updateErr)
@@ -313,16 +325,24 @@ func (s *Service) replayHeartbeat(
 }
 
 func heartbeatPhase(
+	leasePhase store.LeasePhase,
 	attemptState store.AttemptState,
 	jobState store.JobState,
 	jobExecutionPhase *execution.Phase,
 ) (ExecutionPhase, bool) {
-	if string(attemptState) != string(jobState) ||
-		(attemptState != store.AttemptStateASSIGNED && attemptState != store.AttemptStateRUNNING) ||
-		jobExecutionPhase == nil {
+	if string(attemptState) != string(jobState) || jobExecutionPhase == nil {
 		return "", false
 	}
-	return *jobExecutionPhase, true
+	switch {
+	case leasePhase == store.LeasePhaseEXECUTION &&
+		(attemptState == store.AttemptStateASSIGNED || attemptState == store.AttemptStateRUNNING):
+		return *jobExecutionPhase, true
+	case leasePhase == store.LeasePhaseFINALIZATION &&
+		attemptState == store.AttemptStateFINALIZING:
+		return *jobExecutionPhase, true
+	default:
+		return "", false
+	}
 }
 
 func normalizeHeartbeatObservation(

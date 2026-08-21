@@ -2543,71 +2543,28 @@ func TestSucceededJobCancellationReturnsAlreadySucceededWithoutSecondCharge(t *t
 	if err != nil || started.Decision != workercontrol.StartGranted {
 		t.Fatalf("Start = %#v error=%v", started, err)
 	}
-	tx, err := fixture.database.Admin.Begin()
-	if err != nil {
-		t.Fatalf("begin SUCCEEDED fixture: %v", err)
+	completionService := visibleCompletionService(t, fixture.database.DSN)
+	plan, err := completionService.BeginFinalization(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("BeginFinalization = %#v error=%v", plan, err)
 	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(
-		"UPDATE attempts SET state = 'FINALIZING', updated_at = clock_timestamp() WHERE id = $1",
-		fixture.assignment.AttemptID,
-	); err != nil {
-		t.Fatalf("move Attempt to FINALIZING for SUCCEEDED fixture: %v", err)
-	}
-	if _, err := tx.Exec(
-		"UPDATE jobs SET state = 'FINALIZING', version = version + 1, updated_at = clock_timestamp() WHERE id = $1",
-		fixture.assignment.JobID,
-	); err != nil {
-		t.Fatalf("move Job to FINALIZING for SUCCEEDED fixture: %v", err)
-	}
-	if _, err := tx.Exec(`
-		UPDATE attempts
-		SET state = 'SUCCEEDED', ended_at = clock_timestamp(), updated_at = clock_timestamp()
-		WHERE id = $1
-	`, fixture.assignment.AttemptID); err != nil {
-		t.Fatalf("complete Attempt for SUCCEEDED fixture: %v", err)
-	}
-	if _, err := tx.Exec(
-		"UPDATE jobs SET state = 'SUCCEEDED', version = version + 1, updated_at = clock_timestamp() WHERE id = $1",
-		fixture.assignment.JobID,
-	); err != nil {
-		t.Fatalf("complete Job for SUCCEEDED fixture: %v", err)
-	}
-	if _, err := tx.Exec(
-		"UPDATE credit_reservations SET state = 'CONSUMED', updated_at = clock_timestamp() WHERE job_id = $1",
-		fixture.assignment.JobID,
-	); err != nil {
-		t.Fatalf("consume reservation for SUCCEEDED fixture: %v", err)
-	}
-	if _, err := tx.Exec(`
-		UPDATE organization_credit_accounts
-		SET reserved_minor = reserved_minor - 1250,
-			unsettled_posted_minor = unsettled_posted_minor + 1250,
-			version = version + 1,
-			updated_at = clock_timestamp()
-		WHERE organization_id = $1
-	`, testOrganizationID); err != nil {
-		t.Fatalf("post credit for SUCCEEDED fixture: %v", err)
-	}
-	if _, err := tx.Exec(`
-		INSERT INTO charges (
-			id, organization_id, project_id, job_id, credit_reservation_id,
-			reason, amount_minor, currency, posted_at
-		)
-		SELECT
-			$1, j.organization_id, j.project_id, j.id, cr.id,
-			'VISIBLE_COMPLETION', cr.amount_minor, cr.currency, clock_timestamp()
-		FROM jobs AS j
-		JOIN credit_reservations AS cr ON cr.job_id = j.id
-		WHERE j.id = $2
-	`,
-		uuid.New(),
-		fixture.assignment.JobID,
-	); err != nil {
-		t.Fatalf("create SUCCEEDED Visible Completion fixture: %v", err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("commit SUCCEEDED fixture: %v", err)
+	artifactIDs := uploadAndVerifyFinalizationPlan(
+		t, completionService, fixture.worker, fixture.credentials, plan,
+	)
+	completed, err := completionService.CompleteVisibleCompletion(
+		context.Background(),
+		fixture.worker,
+		fixture.credentials,
+		workercontrol.VisibleCompletionCandidate{
+			CompletionID:       uuid.New(),
+			ExpectedJobVersion: plan.JobVersion,
+			ArtifactIDs:        artifactIDs,
+		},
+	)
+	if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
+		t.Fatalf("CompleteVisibleCompletion = %#v error=%v", completed, err)
 	}
 	server := admissionServerForDatabase(t, fixture.database)
 

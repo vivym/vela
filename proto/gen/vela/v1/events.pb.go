@@ -43,6 +43,7 @@ type EventEnvelope struct {
 	//	*EventEnvelope_JobCanceling
 	//	*EventEnvelope_ChargePosted
 	//	*EventEnvelope_InvoiceExportRequested
+	//	*EventEnvelope_JobSucceeded
 	Payload       isEventEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -224,6 +225,15 @@ func (x *EventEnvelope) GetInvoiceExportRequested() *InvoiceExportRequested {
 	return nil
 }
 
+func (x *EventEnvelope) GetJobSucceeded() *JobSucceeded {
+	if x != nil {
+		if x, ok := x.Payload.(*EventEnvelope_JobSucceeded); ok {
+			return x.JobSucceeded
+		}
+	}
+	return nil
+}
+
 type isEventEnvelope_Payload interface {
 	isEventEnvelope_Payload()
 }
@@ -268,6 +278,10 @@ type EventEnvelope_InvoiceExportRequested struct {
 	InvoiceExportRequested *InvoiceExportRequested `protobuf:"bytes,29,opt,name=invoice_export_requested,json=invoiceExportRequested,proto3,oneof"`
 }
 
+type EventEnvelope_JobSucceeded struct {
+	JobSucceeded *JobSucceeded `protobuf:"bytes,30,opt,name=job_succeeded,json=jobSucceeded,proto3,oneof"`
+}
+
 func (*EventEnvelope_JobReady) isEventEnvelope_Payload() {}
 
 func (*EventEnvelope_JobAssigned) isEventEnvelope_Payload() {}
@@ -287,6 +301,8 @@ func (*EventEnvelope_JobCanceling) isEventEnvelope_Payload() {}
 func (*EventEnvelope_ChargePosted) isEventEnvelope_Payload() {}
 
 func (*EventEnvelope_InvoiceExportRequested) isEventEnvelope_Payload() {}
+
+func (*EventEnvelope_JobSucceeded) isEventEnvelope_Payload() {}
 
 type JobReady struct {
 	state                      protoimpl.MessageState `protogen:"open.v1"`
@@ -605,21 +621,23 @@ func (x *JobStarted) GetStartedAt() *timestamppb.Timestamp {
 }
 
 type JobRetryWait struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationId        string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
-	ProjectId             string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	JobId                 string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	AttemptId             string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
-	AttemptNumber         uint32                 `protobuf:"varint,5,opt,name=attempt_number,json=attemptNumber,proto3" json:"attempt_number,omitempty"`
-	AttemptFence          uint64                 `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
-	JobFence              uint64                 `protobuf:"varint,9,opt,name=job_fence,json=jobFence,proto3" json:"job_fence,omitempty"`
-	FailureClass          string                 `protobuf:"bytes,10,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
-	AttemptComputeSeconds uint64                 `protobuf:"varint,11,opt,name=attempt_compute_seconds,json=attemptComputeSeconds,proto3" json:"attempt_compute_seconds,omitempty"`
-	TotalComputeSeconds   uint64                 `protobuf:"varint,12,opt,name=total_compute_seconds,json=totalComputeSeconds,proto3" json:"total_compute_seconds,omitempty"`
-	NextRetryAt           *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=next_retry_at,json=nextRetryAt,proto3" json:"next_retry_at,omitempty"`
-	DecidedAt             *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId             string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId                  string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId                      string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AttemptId                  string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	AttemptNumber              uint32                 `protobuf:"varint,5,opt,name=attempt_number,json=attemptNumber,proto3" json:"attempt_number,omitempty"`
+	AttemptFence               uint64                 `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
+	JobFence                   uint64                 `protobuf:"varint,9,opt,name=job_fence,json=jobFence,proto3" json:"job_fence,omitempty"`
+	FailureClass               string                 `protobuf:"bytes,10,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
+	AttemptComputeSeconds      uint64                 `protobuf:"varint,11,opt,name=attempt_compute_seconds,json=attemptComputeSeconds,proto3" json:"attempt_compute_seconds,omitempty"`
+	TotalComputeSeconds        uint64                 `protobuf:"varint,12,opt,name=total_compute_seconds,json=totalComputeSeconds,proto3" json:"total_compute_seconds,omitempty"`
+	NextRetryAt                *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=next_retry_at,json=nextRetryAt,proto3" json:"next_retry_at,omitempty"`
+	DecidedAt                  *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	AttemptFinalizationSeconds uint64                 `protobuf:"varint,15,opt,name=attempt_finalization_seconds,json=attemptFinalizationSeconds,proto3" json:"attempt_finalization_seconds,omitempty"`
+	TotalFinalizationSeconds   uint64                 `protobuf:"varint,16,opt,name=total_finalization_seconds,json=totalFinalizationSeconds,proto3" json:"total_finalization_seconds,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *JobRetryWait) Reset() {
@@ -736,22 +754,38 @@ func (x *JobRetryWait) GetDecidedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *JobRetryWait) GetAttemptFinalizationSeconds() uint64 {
+	if x != nil {
+		return x.AttemptFinalizationSeconds
+	}
+	return 0
+}
+
+func (x *JobRetryWait) GetTotalFinalizationSeconds() uint64 {
+	if x != nil {
+		return x.TotalFinalizationSeconds
+	}
+	return 0
+}
+
 type JobFailed struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	OrganizationId        string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
-	ProjectId             string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	JobId                 string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	AttemptId             string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
-	AttemptNumber         uint32                 `protobuf:"varint,5,opt,name=attempt_number,json=attemptNumber,proto3" json:"attempt_number,omitempty"`
-	AttemptFence          uint64                 `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
-	JobFence              uint64                 `protobuf:"varint,9,opt,name=job_fence,json=jobFence,proto3" json:"job_fence,omitempty"`
-	FailureClass          string                 `protobuf:"bytes,10,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
-	AttemptState          string                 `protobuf:"bytes,11,opt,name=attempt_state,json=attemptState,proto3" json:"attempt_state,omitempty"`
-	AttemptComputeSeconds uint64                 `protobuf:"varint,12,opt,name=attempt_compute_seconds,json=attemptComputeSeconds,proto3" json:"attempt_compute_seconds,omitempty"`
-	TotalComputeSeconds   uint64                 `protobuf:"varint,13,opt,name=total_compute_seconds,json=totalComputeSeconds,proto3" json:"total_compute_seconds,omitempty"`
-	DecidedAt             *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId             string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId                  string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId                      string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AttemptId                  string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	AttemptNumber              uint32                 `protobuf:"varint,5,opt,name=attempt_number,json=attemptNumber,proto3" json:"attempt_number,omitempty"`
+	AttemptFence               uint64                 `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
+	JobFence                   uint64                 `protobuf:"varint,9,opt,name=job_fence,json=jobFence,proto3" json:"job_fence,omitempty"`
+	FailureClass               string                 `protobuf:"bytes,10,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
+	AttemptState               string                 `protobuf:"bytes,11,opt,name=attempt_state,json=attemptState,proto3" json:"attempt_state,omitempty"`
+	AttemptComputeSeconds      uint64                 `protobuf:"varint,12,opt,name=attempt_compute_seconds,json=attemptComputeSeconds,proto3" json:"attempt_compute_seconds,omitempty"`
+	TotalComputeSeconds        uint64                 `protobuf:"varint,13,opt,name=total_compute_seconds,json=totalComputeSeconds,proto3" json:"total_compute_seconds,omitempty"`
+	DecidedAt                  *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=decided_at,json=decidedAt,proto3" json:"decided_at,omitempty"`
+	AttemptFinalizationSeconds uint64                 `protobuf:"varint,15,opt,name=attempt_finalization_seconds,json=attemptFinalizationSeconds,proto3" json:"attempt_finalization_seconds,omitempty"`
+	TotalFinalizationSeconds   uint64                 `protobuf:"varint,16,opt,name=total_finalization_seconds,json=totalFinalizationSeconds,proto3" json:"total_finalization_seconds,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *JobFailed) Reset() {
@@ -866,6 +900,20 @@ func (x *JobFailed) GetDecidedAt() *timestamppb.Timestamp {
 		return x.DecidedAt
 	}
 	return nil
+}
+
+func (x *JobFailed) GetAttemptFinalizationSeconds() uint64 {
+	if x != nil {
+		return x.AttemptFinalizationSeconds
+	}
+	return 0
+}
+
+func (x *JobFailed) GetTotalFinalizationSeconds() uint64 {
+	if x != nil {
+		return x.TotalFinalizationSeconds
+	}
+	return 0
 }
 
 type JobCanceled struct {
@@ -1400,11 +1448,227 @@ func (x *InvoiceExportRequested) GetRequestedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type ArtifactSnapshot struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ArtifactId      string                 `protobuf:"bytes,1,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	Kind            string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	Ordinal         uint32                 `protobuf:"varint,3,opt,name=ordinal,proto3" json:"ordinal,omitempty"`
+	ObjectKey       string                 `protobuf:"bytes,4,opt,name=object_key,json=objectKey,proto3" json:"object_key,omitempty"`
+	ObjectVersionId string                 `protobuf:"bytes,5,opt,name=object_version_id,json=objectVersionId,proto3" json:"object_version_id,omitempty"`
+	SizeBytes       uint64                 `protobuf:"varint,6,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	Sha256          []byte                 `protobuf:"bytes,7,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	ContentType     string                 `protobuf:"bytes,8,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ArtifactSnapshot) Reset() {
+	*x = ArtifactSnapshot{}
+	mi := &file_vela_v1_events_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArtifactSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArtifactSnapshot) ProtoMessage() {}
+
+func (x *ArtifactSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArtifactSnapshot.ProtoReflect.Descriptor instead.
+func (*ArtifactSnapshot) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ArtifactSnapshot) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+func (x *ArtifactSnapshot) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ArtifactSnapshot) GetOrdinal() uint32 {
+	if x != nil {
+		return x.Ordinal
+	}
+	return 0
+}
+
+func (x *ArtifactSnapshot) GetObjectKey() string {
+	if x != nil {
+		return x.ObjectKey
+	}
+	return ""
+}
+
+func (x *ArtifactSnapshot) GetObjectVersionId() string {
+	if x != nil {
+		return x.ObjectVersionId
+	}
+	return ""
+}
+
+func (x *ArtifactSnapshot) GetSizeBytes() uint64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *ArtifactSnapshot) GetSha256() []byte {
+	if x != nil {
+		return x.Sha256
+	}
+	return nil
+}
+
+func (x *ArtifactSnapshot) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
+type JobSucceeded struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	OrganizationId string                 `protobuf:"bytes,1,opt,name=organization_id,json=organizationId,proto3" json:"organization_id,omitempty"`
+	ProjectId      string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	JobId          string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AttemptId      string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	AttemptFence   uint64                 `protobuf:"varint,5,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
+	ArtifactSetId  string                 `protobuf:"bytes,6,opt,name=artifact_set_id,json=artifactSetId,proto3" json:"artifact_set_id,omitempty"`
+	ManifestSha256 []byte                 `protobuf:"bytes,7,opt,name=manifest_sha256,json=manifestSha256,proto3" json:"manifest_sha256,omitempty"`
+	ChargeId       string                 `protobuf:"bytes,8,opt,name=charge_id,json=chargeId,proto3" json:"charge_id,omitempty"`
+	Artifacts      []*ArtifactSnapshot    `protobuf:"bytes,9,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
+	CompletedAt    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *JobSucceeded) Reset() {
+	*x = JobSucceeded{}
+	mi := &file_vela_v1_events_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobSucceeded) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobSucceeded) ProtoMessage() {}
+
+func (x *JobSucceeded) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_events_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobSucceeded.ProtoReflect.Descriptor instead.
+func (*JobSucceeded) Descriptor() ([]byte, []int) {
+	return file_vela_v1_events_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *JobSucceeded) GetOrganizationId() string {
+	if x != nil {
+		return x.OrganizationId
+	}
+	return ""
+}
+
+func (x *JobSucceeded) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *JobSucceeded) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobSucceeded) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *JobSucceeded) GetAttemptFence() uint64 {
+	if x != nil {
+		return x.AttemptFence
+	}
+	return 0
+}
+
+func (x *JobSucceeded) GetArtifactSetId() string {
+	if x != nil {
+		return x.ArtifactSetId
+	}
+	return ""
+}
+
+func (x *JobSucceeded) GetManifestSha256() []byte {
+	if x != nil {
+		return x.ManifestSha256
+	}
+	return nil
+}
+
+func (x *JobSucceeded) GetChargeId() string {
+	if x != nil {
+		return x.ChargeId
+	}
+	return ""
+}
+
+func (x *JobSucceeded) GetArtifacts() []*ArtifactSnapshot {
+	if x != nil {
+		return x.Artifacts
+	}
+	return nil
+}
+
+func (x *JobSucceeded) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
 var File_vela_v1_events_proto protoreflect.FileDescriptor
 
 const file_vela_v1_events_proto_rawDesc = "" +
 	"\n" +
-	"\x14vela/v1/events.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xad\a\n" +
+	"\x14vela/v1/events.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xeb\a\n" +
 	"\rEventEnvelope\x12\x19\n" +
 	"\bevent_id\x18\x01 \x01(\tR\aeventId\x12%\n" +
 	"\x0eaggregate_type\x18\x02 \x01(\tR\raggregateType\x12!\n" +
@@ -1426,7 +1690,8 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\x14job_cancel_requested\x18\x1a \x01(\v2\x1b.vela.v1.JobCancelRequestedH\x00R\x12jobCancelRequested\x12<\n" +
 	"\rjob_canceling\x18\x1b \x01(\v2\x15.vela.v1.JobCancelingH\x00R\fjobCanceling\x12<\n" +
 	"\rcharge_posted\x18\x1c \x01(\v2\x15.vela.v1.ChargePostedH\x00R\fchargePosted\x12[\n" +
-	"\x18invoice_export_requested\x18\x1d \x01(\v2\x1f.vela.v1.InvoiceExportRequestedH\x00R\x16invoiceExportRequestedB\t\n" +
+	"\x18invoice_export_requested\x18\x1d \x01(\v2\x1f.vela.v1.InvoiceExportRequestedH\x00R\x16invoiceExportRequested\x12<\n" +
+	"\rjob_succeeded\x18\x1e \x01(\v2\x15.vela.v1.JobSucceededH\x00R\fjobSucceededB\t\n" +
 	"\apayload\"\xb9\x02\n" +
 	"\bJobReady\x12'\n" +
 	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
@@ -1466,7 +1731,7 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\vlease_fence\x18\b \x01(\x04R\n" +
 	"leaseFence\x129\n" +
 	"\n" +
-	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\xa6\x04\n" +
+	"started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\xa6\x05\n" +
 	"\fJobRetryWait\x12'\n" +
 	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
 	"\n" +
@@ -1483,7 +1748,9 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\x15total_compute_seconds\x18\f \x01(\x04R\x13totalComputeSeconds\x12>\n" +
 	"\rnext_retry_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\vnextRetryAt\x129\n" +
 	"\n" +
-	"decided_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAtJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\tworker_idR\fworker_epoch\"\x88\x04\n" +
+	"decided_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\x12@\n" +
+	"\x1cattempt_finalization_seconds\x18\x0f \x01(\x04R\x1aattemptFinalizationSeconds\x12<\n" +
+	"\x1atotal_finalization_seconds\x18\x10 \x01(\x04R\x18totalFinalizationSecondsJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\tworker_idR\fworker_epoch\"\x88\x05\n" +
 	"\tJobFailed\x12'\n" +
 	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
 	"\n" +
@@ -1500,7 +1767,9 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"\x17attempt_compute_seconds\x18\f \x01(\x04R\x15attemptComputeSeconds\x122\n" +
 	"\x15total_compute_seconds\x18\r \x01(\x04R\x13totalComputeSeconds\x129\n" +
 	"\n" +
-	"decided_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAtJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\tworker_idR\fworker_epoch\"\xa6\x02\n" +
+	"decided_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdecidedAt\x12@\n" +
+	"\x1cattempt_finalization_seconds\x18\x0f \x01(\x04R\x1aattemptFinalizationSeconds\x12<\n" +
+	"\x1atotal_finalization_seconds\x18\x10 \x01(\x04R\x18totalFinalizationSecondsJ\x04\b\x06\x10\aJ\x04\b\a\x10\bR\tworker_idR\fworker_epoch\"\xa6\x02\n" +
 	"\vJobCanceled\x12'\n" +
 	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
 	"\n" +
@@ -1559,7 +1828,33 @@ const file_vela_v1_events_proto_rawDesc = "" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
 	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x1b\n" +
 	"\tcharge_id\x18\x04 \x01(\tR\bchargeId\x12=\n" +
-	"\frequested_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAtB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
+	"\frequested_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAt\"\x86\x02\n" +
+	"\x10ArtifactSnapshot\x12\x1f\n" +
+	"\vartifact_id\x18\x01 \x01(\tR\n" +
+	"artifactId\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x18\n" +
+	"\aordinal\x18\x03 \x01(\rR\aordinal\x12\x1d\n" +
+	"\n" +
+	"object_key\x18\x04 \x01(\tR\tobjectKey\x12*\n" +
+	"\x11object_version_id\x18\x05 \x01(\tR\x0fobjectVersionId\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x06 \x01(\x04R\tsizeBytes\x12\x16\n" +
+	"\x06sha256\x18\a \x01(\fR\x06sha256\x12!\n" +
+	"\fcontent_type\x18\b \x01(\tR\vcontentType\"\x97\x03\n" +
+	"\fJobSucceeded\x12'\n" +
+	"\x0forganization_id\x18\x01 \x01(\tR\x0eorganizationId\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x04 \x01(\tR\tattemptId\x12#\n" +
+	"\rattempt_fence\x18\x05 \x01(\x04R\fattemptFence\x12&\n" +
+	"\x0fartifact_set_id\x18\x06 \x01(\tR\rartifactSetId\x12'\n" +
+	"\x0fmanifest_sha256\x18\a \x01(\fR\x0emanifestSha256\x12\x1b\n" +
+	"\tcharge_id\x18\b \x01(\tR\bchargeId\x127\n" +
+	"\tartifacts\x18\t \x03(\v2\x19.vela.v1.ArtifactSnapshotR\tartifacts\x12=\n" +
+	"\fcompleted_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAtB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
 
 var (
 	file_vela_v1_events_proto_rawDescOnce sync.Once
@@ -1573,7 +1868,7 @@ func file_vela_v1_events_proto_rawDescGZIP() []byte {
 	return file_vela_v1_events_proto_rawDescData
 }
 
-var file_vela_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_vela_v1_events_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_vela_v1_events_proto_goTypes = []any{
 	(*EventEnvelope)(nil),          // 0: vela.v1.EventEnvelope
 	(*JobReady)(nil),               // 1: vela.v1.JobReady
@@ -1586,10 +1881,12 @@ var file_vela_v1_events_proto_goTypes = []any{
 	(*JobCanceling)(nil),           // 8: vela.v1.JobCanceling
 	(*ChargePosted)(nil),           // 9: vela.v1.ChargePosted
 	(*InvoiceExportRequested)(nil), // 10: vela.v1.InvoiceExportRequested
-	(*timestamppb.Timestamp)(nil),  // 11: google.protobuf.Timestamp
+	(*ArtifactSnapshot)(nil),       // 11: vela.v1.ArtifactSnapshot
+	(*JobSucceeded)(nil),           // 12: vela.v1.JobSucceeded
+	(*timestamppb.Timestamp)(nil),  // 13: google.protobuf.Timestamp
 }
 var file_vela_v1_events_proto_depIdxs = []int32{
-	11, // 0: vela.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
+	13, // 0: vela.v1.EventEnvelope.occurred_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: vela.v1.EventEnvelope.job_ready:type_name -> vela.v1.JobReady
 	2,  // 2: vela.v1.EventEnvelope.job_assigned:type_name -> vela.v1.JobAssigned
 	3,  // 3: vela.v1.EventEnvelope.job_started:type_name -> vela.v1.JobStarted
@@ -1600,22 +1897,25 @@ var file_vela_v1_events_proto_depIdxs = []int32{
 	8,  // 8: vela.v1.EventEnvelope.job_canceling:type_name -> vela.v1.JobCanceling
 	9,  // 9: vela.v1.EventEnvelope.charge_posted:type_name -> vela.v1.ChargePosted
 	10, // 10: vela.v1.EventEnvelope.invoice_export_requested:type_name -> vela.v1.InvoiceExportRequested
-	11, // 11: vela.v1.JobAssigned.lease_expires_at:type_name -> google.protobuf.Timestamp
-	11, // 12: vela.v1.JobStarted.started_at:type_name -> google.protobuf.Timestamp
-	11, // 13: vela.v1.JobRetryWait.next_retry_at:type_name -> google.protobuf.Timestamp
-	11, // 14: vela.v1.JobRetryWait.decided_at:type_name -> google.protobuf.Timestamp
-	11, // 15: vela.v1.JobFailed.decided_at:type_name -> google.protobuf.Timestamp
-	11, // 16: vela.v1.JobCanceled.decided_at:type_name -> google.protobuf.Timestamp
-	11, // 17: vela.v1.JobCancelRequested.decided_at:type_name -> google.protobuf.Timestamp
-	11, // 18: vela.v1.JobCancelRequested.authority_lease_expires_at:type_name -> google.protobuf.Timestamp
-	11, // 19: vela.v1.JobCanceling.decided_at:type_name -> google.protobuf.Timestamp
-	11, // 20: vela.v1.ChargePosted.posted_at:type_name -> google.protobuf.Timestamp
-	11, // 21: vela.v1.InvoiceExportRequested.requested_at:type_name -> google.protobuf.Timestamp
-	22, // [22:22] is the sub-list for method output_type
-	22, // [22:22] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	12, // 11: vela.v1.EventEnvelope.job_succeeded:type_name -> vela.v1.JobSucceeded
+	13, // 12: vela.v1.JobAssigned.lease_expires_at:type_name -> google.protobuf.Timestamp
+	13, // 13: vela.v1.JobStarted.started_at:type_name -> google.protobuf.Timestamp
+	13, // 14: vela.v1.JobRetryWait.next_retry_at:type_name -> google.protobuf.Timestamp
+	13, // 15: vela.v1.JobRetryWait.decided_at:type_name -> google.protobuf.Timestamp
+	13, // 16: vela.v1.JobFailed.decided_at:type_name -> google.protobuf.Timestamp
+	13, // 17: vela.v1.JobCanceled.decided_at:type_name -> google.protobuf.Timestamp
+	13, // 18: vela.v1.JobCancelRequested.decided_at:type_name -> google.protobuf.Timestamp
+	13, // 19: vela.v1.JobCancelRequested.authority_lease_expires_at:type_name -> google.protobuf.Timestamp
+	13, // 20: vela.v1.JobCanceling.decided_at:type_name -> google.protobuf.Timestamp
+	13, // 21: vela.v1.ChargePosted.posted_at:type_name -> google.protobuf.Timestamp
+	13, // 22: vela.v1.InvoiceExportRequested.requested_at:type_name -> google.protobuf.Timestamp
+	11, // 23: vela.v1.JobSucceeded.artifacts:type_name -> vela.v1.ArtifactSnapshot
+	13, // 24: vela.v1.JobSucceeded.completed_at:type_name -> google.protobuf.Timestamp
+	25, // [25:25] is the sub-list for method output_type
+	25, // [25:25] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_events_proto_init() }
@@ -1634,6 +1934,7 @@ func file_vela_v1_events_proto_init() {
 		(*EventEnvelope_JobCanceling)(nil),
 		(*EventEnvelope_ChargePosted)(nil),
 		(*EventEnvelope_InvoiceExportRequested)(nil),
+		(*EventEnvelope_JobSucceeded)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1641,7 +1942,7 @@ func file_vela_v1_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_events_proto_rawDesc), len(file_vela_v1_events_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

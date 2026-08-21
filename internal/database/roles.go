@@ -11,10 +11,11 @@ import (
 type Role string
 
 const (
-	RoleAuth     Role = "vela_auth"
-	RoleRequest  Role = "vela_request"
-	RoleInternal Role = "vela_internal"
-	RoleCancel   Role = "vela_cancel"
+	RoleAuth            Role = "vela_auth"
+	RoleRequest         Role = "vela_request"
+	RoleInternal        Role = "vela_internal"
+	RoleCancel          Role = "vela_cancel"
+	RoleArtifactRequest Role = "vela_artifact_request"
 )
 
 type rowQuerier interface {
@@ -25,22 +26,24 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 	if database == nil {
 		return errors.New("database connection is required for role verification")
 	}
-	if expected != RoleAuth && expected != RoleRequest && expected != RoleInternal && expected != RoleCancel {
+	if expected != RoleAuth && expected != RoleRequest && expected != RoleInternal &&
+		expected != RoleCancel && expected != RoleArtifactRequest {
 		return fmt.Errorf("unsupported database role %q", expected)
 	}
 
 	var (
-		currentUser          string
-		superuser            bool
-		createDatabase       bool
-		createRole           bool
-		replication          bool
-		bypassRLS            bool
-		memberAuth           bool
-		memberRequest        bool
-		memberInternal       bool
-		memberCancel         bool
-		unexpectedMembership bool
+		currentUser           string
+		superuser             bool
+		createDatabase        bool
+		createRole            bool
+		replication           bool
+		bypassRLS             bool
+		memberAuth            bool
+		memberRequest         bool
+		memberInternal        bool
+		memberCancel          bool
+		memberArtifactRequest bool
+		unexpectedMembership  bool
 	)
 	err := database.QueryRow(ctx, `
         SELECT
@@ -54,6 +57,7 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
             pg_has_role(current_user, 'vela_request', 'MEMBER'),
 			pg_has_role(current_user, 'vela_internal', 'MEMBER'),
 			pg_has_role(current_user, 'vela_cancel', 'MEMBER'),
+			pg_has_role(current_user, 'vela_artifact_request', 'MEMBER'),
             EXISTS (
                 SELECT 1
                 FROM pg_catalog.pg_roles AS inherited
@@ -74,6 +78,7 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 		&memberRequest,
 		&memberInternal,
 		&memberCancel,
+		&memberArtifactRequest,
 		&unexpectedMembership,
 	)
 	if err != nil {
@@ -85,7 +90,7 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 
 	memberships := map[Role]bool{
 		RoleAuth: memberAuth, RoleRequest: memberRequest, RoleInternal: memberInternal,
-		RoleCancel: memberCancel,
+		RoleCancel: memberCancel, RoleArtifactRequest: memberArtifactRequest,
 	}
 	if !memberships[expected] {
 		return fmt.Errorf("database login %q is not a member of required role %q", currentUser, expected)
@@ -115,6 +120,120 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 		if err := verifyCancelPrivileges(ctx, database, currentUser); err != nil {
 			return err
 		}
+	}
+	if expected == RoleArtifactRequest {
+		if err := verifyArtifactRequestPrivileges(ctx, database, currentUser); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func verifyArtifactRequestPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	var boundaryViolation bool
+	err := database.QueryRow(ctx, `
+		WITH expected_table_privileges (relation_name, privilege) AS (
+			VALUES
+				('jobs', 'SELECT'),
+				('artifact_sets', 'SELECT'),
+				('artifact_set_items', 'SELECT'),
+				('artifact_access_grants', 'SELECT')
+		),
+		expected_functions (function_oid) AS (
+			VALUES
+				('vela_current_organization_id()'::regprocedure::oid),
+				('vela_current_project_id()'::regprocedure::oid),
+				('vela_current_principal_id()'::regprocedure::oid),
+				('vela_current_request_scope()'::regprocedure::oid),
+				('vela_set_artifact_request_context(uuid,bytea)'::regprocedure::oid)
+		),
+		public_relations AS (
+			SELECT relation.oid, relation.relname
+			FROM pg_catalog.pg_class AS relation
+			JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+			WHERE namespace.nspname = 'public'
+			  AND relation.relkind IN ('r', 'p', 'v', 'm')
+		),
+		table_privilege_names (privilege) AS (
+			VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')
+		),
+		column_privilege_names (privilege) AS (
+			VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('REFERENCES')
+		)
+		SELECT
+			NOT has_schema_privilege(current_user, 'public', 'USAGE')
+			OR has_schema_privilege(current_user, 'public', 'CREATE')
+			OR has_schema_privilege(current_user, 'vela_private', 'USAGE')
+			OR has_schema_privilege(current_user, 'vela_private', 'CREATE')
+			OR EXISTS (
+				SELECT 1
+				FROM pg_catalog.pg_class AS relation
+				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+				CROSS JOIN table_privilege_names AS candidate
+				WHERE namespace.nspname = 'vela_private'
+				  AND has_table_privilege(current_user, relation.oid, candidate.privilege)
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM pg_catalog.pg_proc AS function
+				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
+				WHERE namespace.nspname = 'vela_private'
+				  AND has_function_privilege(current_user, function.oid, 'EXECUTE')
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM public_relations AS relation
+				CROSS JOIN table_privilege_names AS candidate
+				LEFT JOIN expected_table_privileges AS expected
+				  ON expected.relation_name = relation.relname
+				 AND expected.privilege = candidate.privilege
+				WHERE has_table_privilege(current_user, relation.oid, candidate.privilege)
+				  AND expected.relation_name IS NULL
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM expected_table_privileges AS expected
+				WHERE NOT has_table_privilege(
+					current_user,
+					format('public.%I', expected.relation_name),
+					expected.privilege
+				)
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM public_relations AS relation
+				JOIN pg_catalog.pg_attribute AS attribute
+				  ON attribute.attrelid = relation.oid
+				 AND attribute.attnum > 0
+				 AND NOT attribute.attisdropped
+				CROSS JOIN column_privilege_names AS candidate
+				WHERE has_column_privilege(
+					current_user,
+					relation.oid,
+					attribute.attnum,
+					candidate.privilege
+				)
+				  AND NOT has_table_privilege(current_user, relation.oid, candidate.privilege)
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM pg_catalog.pg_proc AS function
+				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
+				LEFT JOIN expected_functions AS expected ON expected.function_oid = function.oid
+				WHERE namespace.nspname = 'public'
+				  AND has_function_privilege(current_user, function.oid, 'EXECUTE')
+				  AND expected.function_oid IS NULL
+			)
+			OR EXISTS (
+				SELECT 1 FROM expected_functions AS expected
+				WHERE NOT has_function_privilege(current_user, expected.function_oid, 'EXECUTE')
+			)
+	`).Scan(&boundaryViolation)
+	if err != nil {
+		return fmt.Errorf("inspect Artifact request database privileges: %w", err)
+	}
+	if boundaryViolation {
+		return fmt.Errorf("database login %q exceeds the Artifact read transaction privilege boundary", currentUser)
 	}
 	return nil
 }

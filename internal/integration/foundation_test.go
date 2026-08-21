@@ -25,6 +25,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/workercontrol"
 )
 
 func TestServicePrincipalRejectsHumanPrincipal(t *testing.T) {
@@ -319,6 +320,196 @@ func TestReleasedFoundationMigrationRemainsByteIdentical(t *testing.T) {
 	}
 }
 
+func TestReleasedMigrationsThroughV6RemainByteIdenticalToFinalizationFixedPoint(t *testing.T) {
+	repositoryRoot := repositoryRoot(t)
+	for version := 1; version <= 6; version++ {
+		name := fmt.Sprintf("%05d", version)
+		matches, err := filepath.Glob(filepath.Join(repositoryRoot, "db", "migrations", name+"_*.sql"))
+		if err != nil || len(matches) != 1 {
+			t.Fatalf("locate released migration %s: matches=%v error=%v", name, matches, err)
+		}
+		current, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatalf("read current migration %s: %v", name, err)
+		}
+		command := exec.Command(
+			"git",
+			"show",
+			finalizationFixedPointCommit+":db/migrations/"+filepath.Base(matches[0]),
+		)
+		command.Dir = repositoryRoot
+		released, err := command.Output()
+		if err != nil {
+			t.Fatalf("read released migration %s: %v", name, err)
+		}
+		if string(current) != string(released) {
+			t.Fatalf("released migration %s changed after publication", name)
+		}
+	}
+}
+
+func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 6); err != nil {
+		t.Fatalf("contract empty Artifact finalization migration: %v", err)
+	}
+	assertTableDoesNotExist(t, database.Admin, "artifacts")
+	assertTableDoesNotExist(t, database.Admin, "artifact_uploads")
+	assertTableDoesNotExist(t, database.Admin, "artifact_sets")
+	assertTableDoesNotExist(t, database.Admin, "visible_completions")
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatalf("re-expand empty Artifact finalization migration: %v", err)
+	}
+	assertTableExists(t, database.Admin, "artifacts")
+	assertTableExists(t, database.Admin, "artifact_uploads")
+	assertTableExists(t, database.Admin, "artifact_sets")
+	assertTableExists(t, database.Admin, "visible_completions")
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 7 {
+		t.Fatalf("migration version after empty Down/Up = %d error=%v", version, err)
+	}
+}
+
+func TestArtifactFinalizationMigrationDownRefusesDurableEvidence(t *testing.T) {
+	fixture := newStartFixture(t, "migration-artifact-finalization-evidence", 7)
+	if started, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("Start = %#v error=%v", started, err)
+	}
+	plan, err := fixture.service.BeginFinalization(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("BeginFinalization = %#v error=%v", plan, err)
+	}
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err = goose.DownTo(fixture.database.Admin, migrations, 6)
+	assertArtifactFinalizationMigrationRefused(t, fixture.database.Admin, err)
+
+	var jobState string
+	var artifacts, uploads int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			state,
+			(SELECT count(*) FROM artifacts WHERE job_id = jobs.id),
+			(SELECT count(*) FROM artifact_uploads WHERE job_id = jobs.id)
+		FROM jobs
+		WHERE id = $1
+	`, plan.JobID).Scan(&jobState, &artifacts, &uploads); err != nil {
+		t.Fatalf("read preserved finalization evidence: %v", err)
+	}
+	if jobState != "FINALIZING" || artifacts != len(plan.Artifacts) || uploads != len(plan.Artifacts) {
+		t.Fatalf("preserved finalization evidence = state %s artifacts/uploads %d/%d", jobState, artifacts, uploads)
+	}
+}
+
+func TestArtifactFinalizationMigrationDownSerializesWithConcurrentBegin(t *testing.T) {
+	fixture := newStartFixture(t, "migration-concurrent-artifact-finalization", 7)
+	if started, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("Start = %#v error=%v", started, err)
+	}
+	const advisoryLockKey int64 = 580007
+	if _, err := fixture.database.Admin.Exec(`
+		CREATE FUNCTION vela_test_pause_artifact_insert() RETURNS trigger
+		LANGUAGE plpgsql AS $$
+		BEGIN
+			PERFORM pg_advisory_xact_lock(580007);
+			RETURN NEW;
+		END
+		$$;
+		CREATE TRIGGER vela_test_pause_artifact_insert
+		BEFORE INSERT ON artifacts
+		FOR EACH ROW EXECUTE FUNCTION vela_test_pause_artifact_insert();
+	`); err != nil {
+		t.Fatalf("install concurrent finalization migration pause trigger: %v", err)
+	}
+	blocker, err := fixture.database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin finalization migration advisory-lock blocker: %v", err)
+	}
+	defer func() { _ = blocker.Rollback() }()
+	if _, err := blocker.Exec("SELECT pg_advisory_lock($1)", advisoryLockKey); err != nil {
+		t.Fatalf("acquire finalization migration advisory-lock blocker: %v", err)
+	}
+
+	type finalizationCall struct {
+		plan workercontrol.FinalizationPlan
+		err  error
+	}
+	finalizationResult := make(chan finalizationCall, 1)
+	go func() {
+		plan, beginErr := fixture.service.BeginFinalization(
+			context.Background(), fixture.worker, fixture.credentials,
+		)
+		finalizationResult <- finalizationCall{plan: plan, err: beginErr}
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "vela_internal_login")
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	downErrors := make(chan error, 1)
+	go func() {
+		downErrors <- goose.DownTo(fixture.database.Admin, migrations, 6)
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "postgres")
+	var unlocked bool
+	if err := blocker.QueryRow("SELECT pg_advisory_unlock($1)", advisoryLockKey).Scan(&unlocked); err != nil {
+		t.Fatalf("release finalization migration advisory-lock blocker: %v", err)
+	}
+	if !unlocked {
+		t.Fatal("finalization migration advisory-lock blocker was not held")
+	}
+	if err := blocker.Commit(); err != nil {
+		t.Fatalf("commit finalization migration advisory-lock blocker: %v", err)
+	}
+
+	var plan workercontrol.FinalizationPlan
+	select {
+	case finalized := <-finalizationResult:
+		if finalized.err != nil || finalized.plan.Decision != workercontrol.FinalizationGranted {
+			t.Fatalf("concurrent BeginFinalization = %#v error=%v", finalized.plan, finalized.err)
+		}
+		plan = finalized.plan
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent BeginFinalization did not finish")
+	}
+	select {
+	case err := <-downErrors:
+		assertArtifactFinalizationMigrationRefused(t, fixture.database.Admin, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent Artifact finalization migration Down did not finish")
+	}
+	var artifacts int
+	if err := fixture.database.Admin.QueryRow(
+		"SELECT count(*) FROM artifacts WHERE job_id = $1",
+		plan.JobID,
+	).Scan(&artifacts); err != nil {
+		t.Fatalf("read concurrent finalization migration evidence: %v", err)
+	}
+	if artifacts != len(plan.Artifacts) {
+		t.Fatalf("concurrent finalization migration preserved %d Artifacts, want %d", artifacts, len(plan.Artifacts))
+	}
+}
+
+func assertArtifactFinalizationMigrationRefused(t *testing.T, database *sql.DB, err error) {
+	t.Helper()
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
+		postgresError.ConstraintName != "artifact_finalization_contract_requires_empty_evidence" {
+		t.Fatalf("Artifact finalization migration Down error = %v, want fail-closed SQLSTATE 55000", err)
+	}
+	version, versionErr := goose.GetDBVersion(database)
+	if versionErr != nil || version != 7 {
+		t.Fatalf("migration version after refused Artifact Down = %d error=%v", version, versionErr)
+	}
+	assertTableExists(t, database, "artifacts")
+	assertTableExists(t, database, "artifact_sets")
+}
+
 func TestCustomerCancellationUpgradesExactV5AuthorizationSemantics(t *testing.T) {
 	database := newPostgres(t)
 	repositoryRoot := repositoryRoot(t)
@@ -341,6 +532,7 @@ func TestCustomerCancellationUpgradesExactV5AuthorizationSemantics(t *testing.T)
 		CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
 		CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
+		CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
 		CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
 	`); err != nil {
 		t.Fatalf("create application login roles: %v", err)
@@ -494,7 +686,14 @@ func TestExecutionFailureMigrationDownUpPreservesProtectedEvidence(t *testing.T)
 	jobID := assignment.JobID.String()
 	var decisionSnapshot string
 	if err := fixture.database.Admin.QueryRow(`
-		SELECT to_jsonb(decision)::text
+			SELECT (
+				to_jsonb(decision)
+				- 'artifact_id'
+				- 'artifact_upload_id'
+				- 'finalization_failure_code'
+				- 'attempt_finalization_seconds'
+				- 'total_finalization_seconds'
+		)::text
 		FROM execution_failure_decisions AS decision
 		WHERE job_id = $1
 	`, jobID).Scan(&decisionSnapshot); err != nil {
@@ -589,7 +788,14 @@ func TestExecutionFailureMigrationDownUpPreservesProtectedEvidence(t *testing.T)
 					"fingerprint":"migration.worker.lost"
 				}]'::jsonb,
 			(
-				SELECT to_jsonb(decision) = $2::jsonb
+						SELECT (
+							to_jsonb(decision)
+							- 'artifact_id'
+							- 'artifact_upload_id'
+							- 'finalization_failure_code'
+							- 'attempt_finalization_seconds'
+							- 'total_finalization_seconds'
+					) = $2::jsonb
 				FROM execution_failure_decisions AS decision
 				WHERE decision.job_id = $1
 			)
@@ -929,7 +1135,7 @@ func TestCustomerCancellationMigrationDownUpPreservesImmutableEvidence(t *testin
 	if err := fixture.database.Admin.QueryRow(`
 		SELECT
 			to_jsonb(cancellation_row)::text,
-			to_jsonb(charge)::text,
+			(to_jsonb(charge) - 'artifact_set_id')::text,
 			to_jsonb(receipt)::text
 		FROM job_cancellation_decisions AS cancellation_row
 		JOIN charges AS charge ON charge.cancellation_id = cancellation_row.id
@@ -1010,7 +1216,7 @@ func TestCustomerCancellationMigrationDownUpPreservesImmutableEvidence(t *testin
 	if err := fixture.database.Admin.QueryRow(`
 		SELECT
 			to_jsonb(cancellation_row) = $1::jsonb,
-			to_jsonb(charge) = $2::jsonb,
+			(to_jsonb(charge) - 'artifact_set_id') = $2::jsonb,
 			to_jsonb(receipt) = $3::jsonb
 		FROM job_cancellation_decisions AS cancellation_row
 		JOIN charges AS charge ON charge.cancellation_id = cancellation_row.id

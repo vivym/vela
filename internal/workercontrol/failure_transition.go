@@ -21,10 +21,13 @@ const (
 )
 
 type attemptFailureTransition struct {
-	Source           store.ExecutionFailureSource
-	AttemptState     store.AttemptState
-	AllowRetry       bool
-	WorkerTransition workerFailureTransition
+	Source                  store.ExecutionFailureSource
+	AttemptState            store.AttemptState
+	AllowRetry              bool
+	WorkerTransition        workerFailureTransition
+	ArtifactID              uuid.NullUUID
+	ArtifactUploadID        uuid.NullUUID
+	FinalizationFailureCode *string
 }
 
 func (s *Service) applyAttemptFailure(
@@ -67,6 +70,14 @@ func (s *Service) applyAttemptFailure(
 		return RetryDecision{}, errors.New("retry budget compute accounting overflows seconds")
 	}
 	totalCompute := authority.ComputeSecondsConsumed + attemptCompute
+	attemptFinalization, err := attemptFinalizationSeconds(authority, decidedAt)
+	if err != nil {
+		return RetryDecision{}, err
+	}
+	if attemptFinalization > math.MaxInt64-authority.FinalizationSecondsConsumed {
+		return RetryDecision{}, errors.New("retry budget finalization accounting overflows seconds")
+	}
+	totalFinalization := authority.FinalizationSecondsConsumed + attemptFinalization
 	nextRetryAt, retry := retryTime(authority, normalized, totalCompute, decidedAt)
 	retry = retry && transition.AllowRetry
 	if !retry {
@@ -117,7 +128,7 @@ func (s *Service) applyAttemptFailure(
 		WorkerEpoch: authority.WorkerEpoch,
 		Fence:       authority.AttemptFence,
 	}); updateErr != nil || rows != 1 {
-		return RetryDecision{}, changedRowsError("revoke EXECUTION Lease for failure", rows, updateErr)
+		return RetryDecision{}, changedRowsError("revoke active Lease for failure", rows, updateErr)
 	}
 	if err := updateWorkerForFailureTransition(
 		ctx,
@@ -161,13 +172,16 @@ func (s *Service) applyAttemptFailure(
 	}
 	failureClass := normalized.FailureClass
 	if rows, updateErr := queries.UpdateRetryRuntimeForFailure(ctx, store.UpdateRetryRuntimeForFailureParams{
-		TotalComputeSeconds:    totalCompute,
-		NextRetryAt:            nextRetryValue,
-		FailureClass:           &failureClass,
-		DecidedAt:              decidedAtValue,
-		JobID:                  authority.JobID,
-		ExpectedVersion:        authority.RetryRuntimeVersion,
-		PreviousComputeSeconds: authority.ComputeSecondsConsumed,
+		TotalComputeSeconds:         totalCompute,
+		TotalFinalizationSeconds:    totalFinalization,
+		FinalizationRetryIncrement:  finalizationRetryIncrement(authority, retry),
+		NextRetryAt:                 nextRetryValue,
+		FailureClass:                &failureClass,
+		DecidedAt:                   decidedAtValue,
+		JobID:                       authority.JobID,
+		ExpectedVersion:             authority.RetryRuntimeVersion,
+		PreviousComputeSeconds:      authority.ComputeSecondsConsumed,
+		PreviousFinalizationSeconds: authority.FinalizationSecondsConsumed,
 	}); updateErr != nil || rows != 1 {
 		return RetryDecision{}, changedRowsError("update RetryRuntimeState for failure", rows, updateErr)
 	}
@@ -228,32 +242,37 @@ func (s *Service) applyAttemptFailure(
 		disposition = store.RetryDispositionRETRYWAIT
 	}
 	if err := queries.InsertExecutionFailureDecision(ctx, store.InsertExecutionFailureDecisionParams{
-		ID:                       uuid.New(),
-		OrganizationID:           authority.OrganizationID,
-		ProjectID:                authority.ProjectID,
-		JobID:                    authority.JobID,
-		AttemptID:                uuid.NullUUID{UUID: authority.AttemptID, Valid: true},
-		WorkerID:                 uuid.NullUUID{UUID: authority.WorkerID, Valid: true},
-		WorkerEpoch:              &authority.WorkerEpoch,
-		AttemptFence:             &authority.AttemptFence,
-		Source:                   transition.Source,
-		Disposition:              disposition,
-		AttemptState:             &transition.AttemptState,
-		FailureClass:             normalized.FailureClass,
-		FailureFingerprint:       normalized.FailureFingerprint,
-		RequestHash:              requestHash[:],
-		ErrorSummary:             normalized.ErrorSummary,
-		BackendStage:             normalized.BackendStage,
-		GpuUuids:                 mustMarshalJSON(normalized.GPUUUIDs),
-		InferenceBackendRevision: normalized.InferenceBackendRevision,
-		RetryRecommended:         normalized.RetryRecommended,
-		WorkerReusable:           normalized.WorkerReusable,
-		AttemptComputeSeconds:    attemptCompute,
-		TotalComputeSeconds:      totalCompute,
-		NextRetryAt:              nextRetryValue,
-		JobFence:                 jobFence,
-		JobVersion:               jobVersion,
-		DecidedAt:                decidedAtValue,
+		ID:                         uuid.New(),
+		OrganizationID:             authority.OrganizationID,
+		ProjectID:                  authority.ProjectID,
+		JobID:                      authority.JobID,
+		AttemptID:                  uuid.NullUUID{UUID: authority.AttemptID, Valid: true},
+		WorkerID:                   uuid.NullUUID{UUID: authority.WorkerID, Valid: true},
+		WorkerEpoch:                &authority.WorkerEpoch,
+		AttemptFence:               &authority.AttemptFence,
+		Source:                     transition.Source,
+		Disposition:                disposition,
+		AttemptState:               &transition.AttemptState,
+		FailureClass:               normalized.FailureClass,
+		FailureFingerprint:         normalized.FailureFingerprint,
+		RequestHash:                requestHash[:],
+		ErrorSummary:               normalized.ErrorSummary,
+		BackendStage:               normalized.BackendStage,
+		GpuUuids:                   mustMarshalJSON(normalized.GPUUUIDs),
+		InferenceBackendRevision:   normalized.InferenceBackendRevision,
+		RetryRecommended:           normalized.RetryRecommended,
+		WorkerReusable:             normalized.WorkerReusable,
+		AttemptComputeSeconds:      attemptCompute,
+		TotalComputeSeconds:        totalCompute,
+		AttemptFinalizationSeconds: attemptFinalization,
+		TotalFinalizationSeconds:   totalFinalization,
+		ArtifactID:                 transition.ArtifactID,
+		ArtifactUploadID:           transition.ArtifactUploadID,
+		FinalizationFailureCode:    transition.FinalizationFailureCode,
+		NextRetryAt:                nextRetryValue,
+		JobFence:                   jobFence,
+		JobVersion:                 jobVersion,
+		DecidedAt:                  decidedAtValue,
 	}); err != nil {
 		return RetryDecision{}, fmt.Errorf("insert durable RetryDecision: %w", err)
 	}
@@ -265,6 +284,8 @@ func (s *Service) applyAttemptFailure(
 			normalized,
 			attemptCompute,
 			totalCompute,
+			attemptFinalization,
+			totalFinalization,
 			jobFence,
 			jobVersion,
 			*nextRetryAt,
@@ -280,6 +301,8 @@ func (s *Service) applyAttemptFailure(
 		transition.AttemptState,
 		attemptCompute,
 		totalCompute,
+		attemptFinalization,
+		totalFinalization,
 		jobFence,
 		jobVersion,
 		decidedAt,
@@ -292,18 +315,27 @@ func (s *Service) applyAttemptFailure(
 		decisionDisposition = RetryDispositionRetryWait
 	}
 	return RetryDecision{
-		Disposition:           decisionDisposition,
-		FailureClass:          normalized.FailureClass,
-		AttemptID:             authority.AttemptID,
-		JobID:                 authority.JobID,
-		AttemptState:          AttemptTerminalState(transition.AttemptState),
-		AttemptComputeSeconds: attemptCompute,
-		TotalComputeSeconds:   totalCompute,
-		NextRetryAt:           nextRetryAt,
-		JobFence:              jobFence,
-		JobVersion:            jobVersion,
-		DecidedAt:             decidedAt,
+		Disposition:                decisionDisposition,
+		FailureClass:               normalized.FailureClass,
+		AttemptID:                  authority.AttemptID,
+		JobID:                      authority.JobID,
+		AttemptState:               AttemptTerminalState(transition.AttemptState),
+		AttemptComputeSeconds:      attemptCompute,
+		TotalComputeSeconds:        totalCompute,
+		AttemptFinalizationSeconds: attemptFinalization,
+		TotalFinalizationSeconds:   totalFinalization,
+		NextRetryAt:                nextRetryAt,
+		JobFence:                   jobFence,
+		JobVersion:                 jobVersion,
+		DecidedAt:                  decidedAt,
 	}, nil
+}
+
+func finalizationRetryIncrement(authority store.LockFailureAuthorityRow, retry bool) int32 {
+	if authority.AttemptState == store.AttemptStateFINALIZING && retry {
+		return 1
+	}
+	return 0
 }
 
 const sha256Size = 32

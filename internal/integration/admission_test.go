@@ -868,12 +868,16 @@ func TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys(t *testing.
 	seedOtherOrganization(t, database.Admin)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	artifactPool := newRolePool(
+		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
+	)
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
 		Admission:     admission.NewService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
+		Artifacts:     testArtifactAccessService(artifactPool),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1432,6 +1436,9 @@ func TestCredentialLookupScopeAndRevocationFailClosed(t *testing.T) {
 	seedAdmissionFixture(t, database.Admin)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	artifactPool := newRolePool(
+		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
+	)
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 
@@ -1446,6 +1453,7 @@ func TestCredentialLookupScopeAndRevocationFailClosed(t *testing.T) {
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
 		Admission:     admission.NewService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
+		Artifacts:     testArtifactAccessService(artifactPool),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1522,12 +1530,16 @@ func admissionServerForDatabase(t *testing.T, database testDatabase) *httptest.S
 	t.Helper()
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	artifactPool := newRolePool(
+		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
+	)
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
 		Admission:     admission.NewService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
+		Artifacts:     testArtifactAccessService(artifactPool),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1661,9 +1673,10 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 
 	if _, err := db.Exec(`
         CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
-        CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
-        CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
-        CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
+		CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
+		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
+		CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
+		CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
     `); err != nil {
 		t.Fatalf("create application login roles: %v", err)
 	}

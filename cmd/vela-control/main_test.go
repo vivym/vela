@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -19,6 +21,24 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 	}{
 		{name: "workload credentials", missingEnv: "VELA_NATS_CREDENTIALS_FILE"},
 		{name: "root CA", missingEnv: "VELA_NATS_ROOT_CA_FILE"},
+		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
+		{name: "Artifact S3 endpoint", missingEnv: "VELA_ARTIFACT_S3_ENDPOINT"},
+		{name: "Artifact S3 region", missingEnv: "VELA_ARTIFACT_S3_REGION"},
+		{name: "Artifact S3 bucket", missingEnv: "VELA_ARTIFACT_S3_BUCKET"},
+		{name: "Artifact S3 access key", missingEnv: "VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"},
+		{name: "Artifact S3 secret key", missingEnv: "VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE"},
+		{name: "Lease active key", missingEnv: "VELA_LEASE_ACTIVE_KEY_ID"},
+		{name: "Lease keyring", missingEnv: "VELA_LEASE_KEYRING_FILE"},
+		{name: "Artifact validator helper", missingEnv: "VELA_ARTIFACT_VALIDATOR_HELPER_PATH"},
+		{name: "ffprobe", missingEnv: "VELA_ARTIFACT_FFPROBE_PATH"},
+		{name: "Artifact sandbox root", missingEnv: "VELA_ARTIFACT_SANDBOX_ROOT"},
+		{name: "Artifact spool", missingEnv: "VELA_ARTIFACT_SPOOL_DIRECTORY"},
+		{name: "ffprobe version", missingEnv: "VELA_ARTIFACT_FFPROBE_VERSION"},
+		{name: "Artifact validator revision", missingEnv: "VELA_ARTIFACT_VALIDATOR_REVISION"},
+		{name: "Artifact Reconciler identity", missingEnv: "VELA_ARTIFACT_RECONCILER_ID"},
+		{name: "Worker gRPC server certificate", missingEnv: "VELA_WORKER_GRPC_TLS_CERT_FILE"},
+		{name: "Worker gRPC server key", missingEnv: "VELA_WORKER_GRPC_TLS_KEY_FILE"},
+		{name: "Worker gRPC client CA", missingEnv: "VELA_WORKER_GRPC_CLIENT_CA_FILE"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -37,11 +57,33 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("VELA_AUTH_DATABASE_URL", "postgres://auth.example/vela")
 	t.Setenv("VELA_REQUEST_DATABASE_URL", "postgres://request.example/vela")
+	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")
 	t.Setenv("VELA_CANCEL_DATABASE_URL", "postgres://cancel.example/vela")
 	t.Setenv("VELA_INTERNAL_DATABASE_URL", "postgres://internal.example/vela")
 	t.Setenv("VELA_NATS_URL", "nats://nats.example:4222")
 	t.Setenv("VELA_NATS_CREDENTIALS_FILE", "/run/secrets/vela-control.creds")
 	t.Setenv("VELA_NATS_ROOT_CA_FILE", "/run/secrets/nats-root-ca.pem")
+	t.Setenv("VELA_ARTIFACT_S3_ENDPOINT", "https://s3.example")
+	t.Setenv("VELA_ARTIFACT_S3_REGION", "us-east-1")
+	t.Setenv("VELA_ARTIFACT_S3_BUCKET", "vela-artifacts")
+	t.Setenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE", "/run/secrets/s3-access-key-id")
+	t.Setenv("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE", "/run/secrets/s3-secret-access-key")
+	t.Setenv("VELA_ARTIFACT_S3_PATH_STYLE", "false")
+	t.Setenv("VELA_LEASE_ACTIVE_KEY_ID", "lease-key-v2")
+	t.Setenv("VELA_LEASE_KEYRING_FILE", "/run/secrets/lease-keyring.json")
+	t.Setenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH", "/usr/local/bin/vela-artifact-validator")
+	t.Setenv("VELA_ARTIFACT_FFPROBE_PATH", "/usr/local/libexec/ffprobe-static")
+	t.Setenv("VELA_ARTIFACT_SANDBOX_ROOT", "/var/lib/vela/sandbox")
+	t.Setenv("VELA_ARTIFACT_SPOOL_DIRECTORY", "/var/lib/vela/spool")
+	t.Setenv("VELA_ARTIFACT_FFPROBE_VERSION", "8.0.1")
+	t.Setenv("VELA_ARTIFACT_VALIDATOR_REVISION", "ffprobe-8.0.1-sandbox-v1")
+	t.Setenv(
+		"VELA_ARTIFACT_RECONCILER_ID",
+		"spiffe://vela.internal/reconciler/artifact-finalization",
+	)
+	t.Setenv("VELA_WORKER_GRPC_TLS_CERT_FILE", "/run/tls/worker-control/tls.crt")
+	t.Setenv("VELA_WORKER_GRPC_TLS_KEY_FILE", "/run/tls/worker-control/tls.key")
+	t.Setenv("VELA_WORKER_GRPC_CLIENT_CA_FILE", "/run/tls/worker-control/client-ca.crt")
 	t.Setenv(
 		"VELA_CREDENTIAL_PEPPER_BASE64",
 		base64.StdEncoding.EncodeToString(make([]byte, 32)),
@@ -49,6 +91,38 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_NATS_CLIENT_CERT_FILE", "")
 	t.Setenv("VELA_NATS_CLIENT_KEY_FILE", "")
 	t.Setenv("VELA_OUTBOX_BATCH_SIZE", "")
+}
+
+func TestReadLeaseKeyringRequiresOneStrictStrongKeyMap(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lease-keyring.json")
+	strongKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	if err := os.WriteFile(
+		path,
+		[]byte(`{"lease-key-v2":"`+strongKey+`"}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write Lease keyring: %v", err)
+	}
+	keyring, err := readLeaseKeyring(path)
+	if err != nil {
+		t.Fatalf("readLeaseKeyring: %v", err)
+	}
+	if string(keyring["lease-key-v2"]) != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("decoded Lease keyring = %#v", keyring)
+	}
+
+	for _, document := range []string{
+		`{"lease-key-v2":"` + base64.StdEncoding.EncodeToString([]byte("too-short")) + `"}`,
+		`{"lease-key-v2":"` + strongKey + `"} {}`,
+		`{"":"` + strongKey + `"}`,
+	} {
+		if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+			t.Fatalf("write invalid Lease keyring: %v", err)
+		}
+		if _, err := readLeaseKeyring(path); err == nil {
+			t.Fatalf("readLeaseKeyring accepted %q", document)
+		}
+	}
 }
 
 func TestCancellationStopReconcilerRetriesAndStopsWithContext(t *testing.T) {

@@ -4,6 +4,7 @@ OAPI_CODEGEN_VERSION := v2.8.0
 SQLC_VERSION := v1.31.1
 BUF_VERSION := v1.72.0
 PROTOC_GEN_GO_VERSION := v1.36.11
+PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
 GOLANGCI_LINT_VERSION := v2.13.1
 TOOLS_BIN := $(CURDIR)/bin
 
@@ -17,6 +18,7 @@ generate-openapi:
 generate-proto:
 	mkdir -p $(TOOLS_BIN)
 	GOBIN=$(TOOLS_BIN) go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+	GOBIN=$(TOOLS_BIN) go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
 	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) lint
 	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) generate
 

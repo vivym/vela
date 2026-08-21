@@ -22,6 +22,24 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ArtifactDownloadKind.
+const (
+	THUMBNAIL ArtifactDownloadKind = "THUMBNAIL"
+	VIDEO     ArtifactDownloadKind = "VIDEO"
+)
+
+// Valid indicates whether the value is a known member of the ArtifactDownloadKind enum.
+func (e ArtifactDownloadKind) Valid() bool {
+	switch e {
+	case THUMBNAIL:
+		return true
+	case VIDEO:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CancelDecision.
 const (
 	CancelDecisionALREADYFAILED    CancelDecision = "ALREADY_FAILED"
@@ -166,6 +184,31 @@ func (e SubmitJobRequestServiceClass) Valid() bool {
 	}
 }
 
+// ArtifactDownload defines model for ArtifactDownload.
+type ArtifactDownload struct {
+	ArtifactId           openapi_types.UUID   `json:"artifact_id"`
+	ContentType          string               `json:"content_type"`
+	DownloadUrl          string               `json:"download_url"`
+	DownloadUrlExpiresAt time.Time            `json:"download_url_expires_at"`
+	Kind                 ArtifactDownloadKind `json:"kind"`
+	ObjectVersionId      string               `json:"object_version_id"`
+	Ordinal              int32                `json:"ordinal"`
+	Sha256               string               `json:"sha256"`
+	SizeBytes            int64                `json:"size_bytes"`
+}
+
+// ArtifactDownloadKind defines model for ArtifactDownload.Kind.
+type ArtifactDownloadKind string
+
+// ArtifactSet defines model for ArtifactSet.
+type ArtifactSet struct {
+	ArtifactSetId      openapi_types.UUID `json:"artifact_set_id"`
+	Artifacts          []ArtifactDownload `json:"artifacts"`
+	CommittedAt        time.Time          `json:"committed_at"`
+	JobId              openapi_types.UUID `json:"job_id"`
+	RetentionExpiresAt time.Time          `json:"retention_expires_at"`
+}
+
 // CancelDecision defines model for CancelDecision.
 type CancelDecision string
 
@@ -283,6 +326,9 @@ type ServerInterface interface {
 	// GetJob Get authoritative Project Job state
 	// (GET /v1/projects/{project_id}/jobs/{job_id})
 	GetJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId)
+	// GetJobArtifacts Get the committed ArtifactSet with short-lived exact-version URLs
+	// (GET /v1/projects/{project_id}/jobs/{job_id}/artifacts)
+	GetJobArtifacts(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId)
 	// CancelJob Commit a Customer Cancellation decision
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 	CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId)
@@ -301,6 +347,12 @@ func (_ Unimplemented) SubmitJob(w http.ResponseWriter, r *http.Request, project
 // GetJob Get authoritative Project Job state
 // (GET /v1/projects/{project_id}/jobs/{job_id})
 func (_ Unimplemented) GetJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetJobArtifacts Get the committed ArtifactSet with short-lived exact-version URLs
+// (GET /v1/projects/{project_id}/jobs/{job_id}/artifacts)
+func (_ Unimplemented) GetJobArtifacts(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -399,6 +451,41 @@ func (siw *ServerInterfaceWrapper) GetJob(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetJob(w, r, projectId, jobId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetJobArtifacts operation middleware
+func (siw *ServerInterfaceWrapper) GetJobArtifacts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job_id" -------------
+	var jobId JobId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job_id", chi.URLParam(r, "job_id"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetJobArtifacts(w, r, projectId, jobId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -564,6 +651,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/cancel", wrapper.CancelJob)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/artifacts", wrapper.GetJobArtifacts)
 	})
 
 	return r
@@ -782,6 +872,71 @@ func (response GetJob404JSONResponse) VisitGetJobResponse(w http.ResponseWriter)
 	return err
 }
 
+type GetJobArtifactsRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	JobId     JobId     `json:"job_id"`
+}
+
+type GetJobArtifactsResponseObject interface {
+	VisitGetJobArtifactsResponse(w http.ResponseWriter) error
+}
+
+type GetJobArtifacts200JSONResponse ArtifactSet
+
+func (response GetJobArtifacts200JSONResponse) VisitGetJobArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobArtifacts401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetJobArtifacts401JSONResponse) VisitGetJobArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobArtifacts403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetJobArtifacts403JSONResponse) VisitGetJobArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetJobArtifacts404JSONResponse Error
+
+func (response GetJobArtifacts404JSONResponse) VisitGetJobArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CancelJobRequestObject struct {
 	ProjectId ProjectId `json:"project_id"`
 	JobId     JobId     `json:"job_id"`
@@ -855,6 +1010,9 @@ type StrictServerInterface interface {
 	// GetJob Get authoritative Project Job state
 	// (GET /v1/projects/{project_id}/jobs/{job_id})
 	GetJob(ctx context.Context, request GetJobRequestObject) (GetJobResponseObject, error)
+	// GetJobArtifacts Get the committed ArtifactSet with short-lived exact-version URLs
+	// (GET /v1/projects/{project_id}/jobs/{job_id}/artifacts)
+	GetJobArtifacts(ctx context.Context, request GetJobArtifactsRequestObject) (GetJobArtifactsResponseObject, error)
 	// CancelJob Commit a Customer Cancellation decision
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 	CancelJob(ctx context.Context, request CancelJobRequestObject) (CancelJobResponseObject, error)
@@ -960,6 +1118,33 @@ func (sh *strictHandler) GetJob(w http.ResponseWriter, r *http.Request, projectI
 	}
 }
 
+// GetJobArtifacts operation middleware
+func (sh *strictHandler) GetJobArtifacts(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
+	var request GetJobArtifactsRequestObject
+
+	request.ProjectId = projectId
+	request.JobId = jobId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetJobArtifacts(ctx, request.(GetJobArtifactsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetJobArtifacts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetJobArtifactsResponseObject); ok {
+		if err := validResponse.VisitGetJobArtifactsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CancelJob operation middleware
 func (sh *strictHandler) CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
 	var request CancelJobRequestObject
@@ -992,36 +1177,41 @@ func (sh *strictHandler) CancelJob(w http.ResponseWriter, r *http.Request, proje
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

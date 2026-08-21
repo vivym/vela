@@ -114,6 +114,35 @@ func (q *Queries) FindExpiredExecutionLeaseCandidate(ctx context.Context, worker
 	return i, err
 }
 
+const findExpiredFinalizationDeadlineCandidate = `-- name: FindExpiredFinalizationDeadlineCandidate :one
+SELECT a.job_id, a.id AS attempt_id, a.worker_id
+FROM attempt_leases AS l
+JOIN attempts AS a ON a.id = l.attempt_id
+JOIN jobs AS j ON j.id = a.job_id
+WHERE l.phase = 'FINALIZATION'
+  AND l.owner_kind IN ('WORKER', 'RECONCILER')
+  AND l.revoked_at IS NULL
+  AND a.state = 'FINALIZING'
+  AND j.state = 'FINALIZING'
+  AND j.job_expires_at > clock_timestamp()
+  AND a.finalization_deadline_at <= clock_timestamp()
+ORDER BY a.finalization_deadline_at, a.id
+LIMIT 1
+`
+
+type FindExpiredFinalizationDeadlineCandidateRow struct {
+	JobID     uuid.UUID `db:"job_id" json:"job_id"`
+	AttemptID uuid.UUID `db:"attempt_id" json:"attempt_id"`
+	WorkerID  uuid.UUID `db:"worker_id" json:"worker_id"`
+}
+
+func (q *Queries) FindExpiredFinalizationDeadlineCandidate(ctx context.Context) (FindExpiredFinalizationDeadlineCandidateRow, error) {
+	row := q.db.QueryRow(ctx, findExpiredFinalizationDeadlineCandidate)
+	var i FindExpiredFinalizationDeadlineCandidateRow
+	err := row.Scan(&i.JobID, &i.AttemptID, &i.WorkerID)
+	return i, err
+}
+
 const findExpiredJobFailureCandidate = `-- name: FindExpiredJobFailureCandidate :one
 SELECT
     j.id AS job_id,
@@ -124,10 +153,10 @@ LEFT JOIN LATERAL (
     SELECT a.id, a.worker_id
     FROM attempts AS a
     WHERE a.job_id = j.id
-      AND a.state IN ('ASSIGNED', 'RUNNING')
+      AND a.state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
     LIMIT 1
 ) AS active_attempt ON true
-WHERE j.state IN ('QUEUED', 'RETRY_WAIT', 'ASSIGNED', 'RUNNING')
+WHERE j.state IN ('QUEUED', 'RETRY_WAIT', 'ASSIGNED', 'RUNNING', 'FINALIZING')
   AND j.job_expires_at <= clock_timestamp()
 ORDER BY j.job_expires_at, j.id
 LIMIT 1
@@ -150,6 +179,7 @@ const getExecutionFailureDecision = `-- name: GetExecutionFailureDecision :one
 SELECT
     id,
     request_hash,
+	 source,
     disposition,
     failure_class,
     attempt_id,
@@ -157,28 +187,39 @@ SELECT
     attempt_state,
     attempt_compute_seconds,
     total_compute_seconds,
+	 attempt_finalization_seconds,
+	 total_finalization_seconds,
     next_retry_at,
     job_fence,
     job_version,
     decided_at
+    , artifact_id
+    , artifact_upload_id
+    , finalization_failure_code
 FROM execution_failure_decisions
 WHERE attempt_id = $1
 `
 
 type GetExecutionFailureDecisionRow struct {
-	ID                    uuid.UUID          `db:"id" json:"id"`
-	RequestHash           []byte             `db:"request_hash" json:"request_hash"`
-	Disposition           RetryDisposition   `db:"disposition" json:"disposition"`
-	FailureClass          string             `db:"failure_class" json:"failure_class"`
-	AttemptID             uuid.NullUUID      `db:"attempt_id" json:"attempt_id"`
-	JobID                 uuid.UUID          `db:"job_id" json:"job_id"`
-	AttemptState          *AttemptState      `db:"attempt_state" json:"attempt_state"`
-	AttemptComputeSeconds int64              `db:"attempt_compute_seconds" json:"attempt_compute_seconds"`
-	TotalComputeSeconds   int64              `db:"total_compute_seconds" json:"total_compute_seconds"`
-	NextRetryAt           pgtype.Timestamptz `db:"next_retry_at" json:"next_retry_at"`
-	JobFence              int64              `db:"job_fence" json:"job_fence"`
-	JobVersion            int64              `db:"job_version" json:"job_version"`
-	DecidedAt             pgtype.Timestamptz `db:"decided_at" json:"decided_at"`
+	ID                         uuid.UUID              `db:"id" json:"id"`
+	RequestHash                []byte                 `db:"request_hash" json:"request_hash"`
+	Source                     ExecutionFailureSource `db:"source" json:"source"`
+	Disposition                RetryDisposition       `db:"disposition" json:"disposition"`
+	FailureClass               string                 `db:"failure_class" json:"failure_class"`
+	AttemptID                  uuid.NullUUID          `db:"attempt_id" json:"attempt_id"`
+	JobID                      uuid.UUID              `db:"job_id" json:"job_id"`
+	AttemptState               *AttemptState          `db:"attempt_state" json:"attempt_state"`
+	AttemptComputeSeconds      int64                  `db:"attempt_compute_seconds" json:"attempt_compute_seconds"`
+	TotalComputeSeconds        int64                  `db:"total_compute_seconds" json:"total_compute_seconds"`
+	AttemptFinalizationSeconds int64                  `db:"attempt_finalization_seconds" json:"attempt_finalization_seconds"`
+	TotalFinalizationSeconds   int64                  `db:"total_finalization_seconds" json:"total_finalization_seconds"`
+	NextRetryAt                pgtype.Timestamptz     `db:"next_retry_at" json:"next_retry_at"`
+	JobFence                   int64                  `db:"job_fence" json:"job_fence"`
+	JobVersion                 int64                  `db:"job_version" json:"job_version"`
+	DecidedAt                  pgtype.Timestamptz     `db:"decided_at" json:"decided_at"`
+	ArtifactID                 uuid.NullUUID          `db:"artifact_id" json:"artifact_id"`
+	ArtifactUploadID           uuid.NullUUID          `db:"artifact_upload_id" json:"artifact_upload_id"`
+	FinalizationFailureCode    *string                `db:"finalization_failure_code" json:"finalization_failure_code"`
 }
 
 func (q *Queries) GetExecutionFailureDecision(ctx context.Context, attemptID uuid.NullUUID) (GetExecutionFailureDecisionRow, error) {
@@ -187,6 +228,7 @@ func (q *Queries) GetExecutionFailureDecision(ctx context.Context, attemptID uui
 	err := row.Scan(
 		&i.ID,
 		&i.RequestHash,
+		&i.Source,
 		&i.Disposition,
 		&i.FailureClass,
 		&i.AttemptID,
@@ -194,10 +236,15 @@ func (q *Queries) GetExecutionFailureDecision(ctx context.Context, attemptID uui
 		&i.AttemptState,
 		&i.AttemptComputeSeconds,
 		&i.TotalComputeSeconds,
+		&i.AttemptFinalizationSeconds,
+		&i.TotalFinalizationSeconds,
 		&i.NextRetryAt,
 		&i.JobFence,
 		&i.JobVersion,
 		&i.DecidedAt,
+		&i.ArtifactID,
+		&i.ArtifactUploadID,
+		&i.FinalizationFailureCode,
 	)
 	return i, err
 }
@@ -241,6 +288,11 @@ INSERT INTO execution_failure_decisions (
     worker_reusable,
     attempt_compute_seconds,
     total_compute_seconds,
+	 attempt_finalization_seconds,
+    total_finalization_seconds,
+	 artifact_id,
+	 artifact_upload_id,
+	 finalization_failure_code,
     next_retry_at,
     job_fence,
     job_version,
@@ -268,40 +320,50 @@ INSERT INTO execution_failure_decisions (
     $20,
     $21,
     $22,
-    $23,
-    $24,
-    $25,
-    $26
+	 $23,
+	 $24,
+	 $25,
+	 $26,
+	 $27,
+    $28,
+    $29,
+    $30,
+    $31
 )
 `
 
 type InsertExecutionFailureDecisionParams struct {
-	ID                       uuid.UUID              `db:"id" json:"id"`
-	OrganizationID           uuid.UUID              `db:"organization_id" json:"organization_id"`
-	ProjectID                uuid.UUID              `db:"project_id" json:"project_id"`
-	JobID                    uuid.UUID              `db:"job_id" json:"job_id"`
-	AttemptID                uuid.NullUUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID                 uuid.NullUUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch              *int64                 `db:"worker_epoch" json:"worker_epoch"`
-	AttemptFence             *int64                 `db:"attempt_fence" json:"attempt_fence"`
-	Source                   ExecutionFailureSource `db:"source" json:"source"`
-	Disposition              RetryDisposition       `db:"disposition" json:"disposition"`
-	AttemptState             *AttemptState          `db:"attempt_state" json:"attempt_state"`
-	FailureClass             string                 `db:"failure_class" json:"failure_class"`
-	FailureFingerprint       string                 `db:"failure_fingerprint" json:"failure_fingerprint"`
-	RequestHash              []byte                 `db:"request_hash" json:"request_hash"`
-	ErrorSummary             string                 `db:"error_summary" json:"error_summary"`
-	BackendStage             string                 `db:"backend_stage" json:"backend_stage"`
-	GpuUuids                 []byte                 `db:"gpu_uuids" json:"gpu_uuids"`
-	InferenceBackendRevision string                 `db:"inference_backend_revision" json:"inference_backend_revision"`
-	RetryRecommended         bool                   `db:"retry_recommended" json:"retry_recommended"`
-	WorkerReusable           bool                   `db:"worker_reusable" json:"worker_reusable"`
-	AttemptComputeSeconds    int64                  `db:"attempt_compute_seconds" json:"attempt_compute_seconds"`
-	TotalComputeSeconds      int64                  `db:"total_compute_seconds" json:"total_compute_seconds"`
-	NextRetryAt              pgtype.Timestamptz     `db:"next_retry_at" json:"next_retry_at"`
-	JobFence                 int64                  `db:"job_fence" json:"job_fence"`
-	JobVersion               int64                  `db:"job_version" json:"job_version"`
-	DecidedAt                pgtype.Timestamptz     `db:"decided_at" json:"decided_at"`
+	ID                         uuid.UUID              `db:"id" json:"id"`
+	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ProjectID                  uuid.UUID              `db:"project_id" json:"project_id"`
+	JobID                      uuid.UUID              `db:"job_id" json:"job_id"`
+	AttemptID                  uuid.NullUUID          `db:"attempt_id" json:"attempt_id"`
+	WorkerID                   uuid.NullUUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                *int64                 `db:"worker_epoch" json:"worker_epoch"`
+	AttemptFence               *int64                 `db:"attempt_fence" json:"attempt_fence"`
+	Source                     ExecutionFailureSource `db:"source" json:"source"`
+	Disposition                RetryDisposition       `db:"disposition" json:"disposition"`
+	AttemptState               *AttemptState          `db:"attempt_state" json:"attempt_state"`
+	FailureClass               string                 `db:"failure_class" json:"failure_class"`
+	FailureFingerprint         string                 `db:"failure_fingerprint" json:"failure_fingerprint"`
+	RequestHash                []byte                 `db:"request_hash" json:"request_hash"`
+	ErrorSummary               string                 `db:"error_summary" json:"error_summary"`
+	BackendStage               string                 `db:"backend_stage" json:"backend_stage"`
+	GpuUuids                   []byte                 `db:"gpu_uuids" json:"gpu_uuids"`
+	InferenceBackendRevision   string                 `db:"inference_backend_revision" json:"inference_backend_revision"`
+	RetryRecommended           bool                   `db:"retry_recommended" json:"retry_recommended"`
+	WorkerReusable             bool                   `db:"worker_reusable" json:"worker_reusable"`
+	AttemptComputeSeconds      int64                  `db:"attempt_compute_seconds" json:"attempt_compute_seconds"`
+	TotalComputeSeconds        int64                  `db:"total_compute_seconds" json:"total_compute_seconds"`
+	AttemptFinalizationSeconds int64                  `db:"attempt_finalization_seconds" json:"attempt_finalization_seconds"`
+	TotalFinalizationSeconds   int64                  `db:"total_finalization_seconds" json:"total_finalization_seconds"`
+	ArtifactID                 uuid.NullUUID          `db:"artifact_id" json:"artifact_id"`
+	ArtifactUploadID           uuid.NullUUID          `db:"artifact_upload_id" json:"artifact_upload_id"`
+	FinalizationFailureCode    *string                `db:"finalization_failure_code" json:"finalization_failure_code"`
+	NextRetryAt                pgtype.Timestamptz     `db:"next_retry_at" json:"next_retry_at"`
+	JobFence                   int64                  `db:"job_fence" json:"job_fence"`
+	JobVersion                 int64                  `db:"job_version" json:"job_version"`
+	DecidedAt                  pgtype.Timestamptz     `db:"decided_at" json:"decided_at"`
 }
 
 func (q *Queries) InsertExecutionFailureDecision(ctx context.Context, arg InsertExecutionFailureDecisionParams) error {
@@ -328,6 +390,11 @@ func (q *Queries) InsertExecutionFailureDecision(ctx context.Context, arg Insert
 		arg.WorkerReusable,
 		arg.AttemptComputeSeconds,
 		arg.TotalComputeSeconds,
+		arg.AttemptFinalizationSeconds,
+		arg.TotalFinalizationSeconds,
+		arg.ArtifactID,
+		arg.ArtifactUploadID,
+		arg.FinalizationFailureCode,
 		arg.NextRetryAt,
 		arg.JobFence,
 		arg.JobVersion,
@@ -448,6 +515,8 @@ SELECT
     a.attempt_number,
     a.state AS attempt_state,
     a.started_at AS attempt_started_at,
+	 a.finalization_started_at,
+	 a.finalization_deadline_at,
     a.worker_id,
     a.worker_epoch,
     a.fence AS attempt_fence,
@@ -459,11 +528,14 @@ SELECT
     j.current_fence,
     j.execution_max_attempts,
     j.execution_max_total_compute_seconds,
+	 j.execution_max_finalization_seconds_per_attempt,
     j.execution_retry_backoff_policy,
     j.execution_retryable_failure_classes,
     j.job_expires_at,
     rts.attempts_started,
     rts.compute_seconds_consumed,
+	 rts.finalization_seconds_consumed,
+	 rts.finalization_retry_count,
     ere.excluded_workers,
     ere.failure_fingerprints,
     rts.version AS retry_runtime_version
@@ -473,42 +545,48 @@ JOIN jobs AS j ON j.id = a.job_id
 JOIN retry_runtime_states AS rts ON rts.job_id = j.id
 JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 WHERE l.attempt_id = $1
+ORDER BY (l.revoked_at IS NULL) DESC, l.issued_at DESC, l.id DESC
 LIMIT 1
 FOR UPDATE OF l, a, j, rts, ere
 `
 
 type LockFailureAuthorityRow struct {
-	LeaseID                          uuid.UUID          `db:"lease_id" json:"lease_id"`
-	TokenDigest                      []byte             `db:"token_digest" json:"token_digest"`
-	LeaseExpiresAt                   pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
-	LeaseRevokedAt                   pgtype.Timestamptz `db:"lease_revoked_at" json:"lease_revoked_at"`
-	LeasePhase                       LeasePhase         `db:"lease_phase" json:"lease_phase"`
-	LeaseOwnerKind                   LeaseOwnerKind     `db:"lease_owner_kind" json:"lease_owner_kind"`
-	LeaseOwnerID                     string             `db:"lease_owner_id" json:"lease_owner_id"`
-	AttemptID                        uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	JobID                            uuid.UUID          `db:"job_id" json:"job_id"`
-	AttemptNumber                    int32              `db:"attempt_number" json:"attempt_number"`
-	AttemptState                     AttemptState       `db:"attempt_state" json:"attempt_state"`
-	AttemptStartedAt                 pgtype.Timestamptz `db:"attempt_started_at" json:"attempt_started_at"`
-	WorkerID                         uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                      int64              `db:"worker_epoch" json:"worker_epoch"`
-	AttemptFence                     int64              `db:"attempt_fence" json:"attempt_fence"`
-	OrganizationID                   uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID                        uuid.UUID          `db:"project_id" json:"project_id"`
-	WorkerPoolID                     uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
-	JobState                         JobState           `db:"job_state" json:"job_state"`
-	JobVersion                       int64              `db:"job_version" json:"job_version"`
-	CurrentFence                     int64              `db:"current_fence" json:"current_fence"`
-	ExecutionMaxAttempts             int32              `db:"execution_max_attempts" json:"execution_max_attempts"`
-	ExecutionMaxTotalComputeSeconds  int64              `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
-	ExecutionRetryBackoffPolicy      []byte             `db:"execution_retry_backoff_policy" json:"execution_retry_backoff_policy"`
-	ExecutionRetryableFailureClasses []string           `db:"execution_retryable_failure_classes" json:"execution_retryable_failure_classes"`
-	JobExpiresAt                     pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
-	AttemptsStarted                  int32              `db:"attempts_started" json:"attempts_started"`
-	ComputeSecondsConsumed           int64              `db:"compute_seconds_consumed" json:"compute_seconds_consumed"`
-	ExcludedWorkers                  []byte             `db:"excluded_workers" json:"excluded_workers"`
-	FailureFingerprints              []byte             `db:"failure_fingerprints" json:"failure_fingerprints"`
-	RetryRuntimeVersion              int64              `db:"retry_runtime_version" json:"retry_runtime_version"`
+	LeaseID                                   uuid.UUID          `db:"lease_id" json:"lease_id"`
+	TokenDigest                               []byte             `db:"token_digest" json:"token_digest"`
+	LeaseExpiresAt                            pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
+	LeaseRevokedAt                            pgtype.Timestamptz `db:"lease_revoked_at" json:"lease_revoked_at"`
+	LeasePhase                                LeasePhase         `db:"lease_phase" json:"lease_phase"`
+	LeaseOwnerKind                            LeaseOwnerKind     `db:"lease_owner_kind" json:"lease_owner_kind"`
+	LeaseOwnerID                              string             `db:"lease_owner_id" json:"lease_owner_id"`
+	AttemptID                                 uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	JobID                                     uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptNumber                             int32              `db:"attempt_number" json:"attempt_number"`
+	AttemptState                              AttemptState       `db:"attempt_state" json:"attempt_state"`
+	AttemptStartedAt                          pgtype.Timestamptz `db:"attempt_started_at" json:"attempt_started_at"`
+	FinalizationStartedAt                     pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
+	FinalizationDeadlineAt                    pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	WorkerID                                  uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                               int64              `db:"worker_epoch" json:"worker_epoch"`
+	AttemptFence                              int64              `db:"attempt_fence" json:"attempt_fence"`
+	OrganizationID                            uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                                 uuid.UUID          `db:"project_id" json:"project_id"`
+	WorkerPoolID                              uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	JobState                                  JobState           `db:"job_state" json:"job_state"`
+	JobVersion                                int64              `db:"job_version" json:"job_version"`
+	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
+	ExecutionMaxAttempts                      int32              `db:"execution_max_attempts" json:"execution_max_attempts"`
+	ExecutionMaxTotalComputeSeconds           int64              `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
+	ExecutionMaxFinalizationSecondsPerAttempt int32              `db:"execution_max_finalization_seconds_per_attempt" json:"execution_max_finalization_seconds_per_attempt"`
+	ExecutionRetryBackoffPolicy               []byte             `db:"execution_retry_backoff_policy" json:"execution_retry_backoff_policy"`
+	ExecutionRetryableFailureClasses          []string           `db:"execution_retryable_failure_classes" json:"execution_retryable_failure_classes"`
+	JobExpiresAt                              pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
+	AttemptsStarted                           int32              `db:"attempts_started" json:"attempts_started"`
+	ComputeSecondsConsumed                    int64              `db:"compute_seconds_consumed" json:"compute_seconds_consumed"`
+	FinalizationSecondsConsumed               int64              `db:"finalization_seconds_consumed" json:"finalization_seconds_consumed"`
+	FinalizationRetryCount                    int32              `db:"finalization_retry_count" json:"finalization_retry_count"`
+	ExcludedWorkers                           []byte             `db:"excluded_workers" json:"excluded_workers"`
+	FailureFingerprints                       []byte             `db:"failure_fingerprints" json:"failure_fingerprints"`
+	RetryRuntimeVersion                       int64              `db:"retry_runtime_version" json:"retry_runtime_version"`
 }
 
 func (q *Queries) LockFailureAuthority(ctx context.Context, attemptID uuid.UUID) (LockFailureAuthorityRow, error) {
@@ -527,6 +605,8 @@ func (q *Queries) LockFailureAuthority(ctx context.Context, attemptID uuid.UUID)
 		&i.AttemptNumber,
 		&i.AttemptState,
 		&i.AttemptStartedAt,
+		&i.FinalizationStartedAt,
+		&i.FinalizationDeadlineAt,
 		&i.WorkerID,
 		&i.WorkerEpoch,
 		&i.AttemptFence,
@@ -538,11 +618,14 @@ func (q *Queries) LockFailureAuthority(ctx context.Context, attemptID uuid.UUID)
 		&i.CurrentFence,
 		&i.ExecutionMaxAttempts,
 		&i.ExecutionMaxTotalComputeSeconds,
+		&i.ExecutionMaxFinalizationSecondsPerAttempt,
 		&i.ExecutionRetryBackoffPolicy,
 		&i.ExecutionRetryableFailureClasses,
 		&i.JobExpiresAt,
 		&i.AttemptsStarted,
 		&i.ComputeSecondsConsumed,
+		&i.FinalizationSecondsConsumed,
+		&i.FinalizationRetryCount,
 		&i.ExcludedWorkers,
 		&i.FailureFingerprints,
 		&i.RetryRuntimeVersion,
@@ -660,6 +743,7 @@ SELECT
     j.current_fence,
     j.job_expires_at,
     rts.compute_seconds_consumed,
+	 rts.finalization_seconds_consumed,
     ere.failure_fingerprints,
     rts.version AS retry_runtime_version
 FROM jobs AS j
@@ -678,16 +762,17 @@ FOR UPDATE OF j, rts, ere
 `
 
 type LockJobExpiryWithoutAttemptRow struct {
-	OrganizationID         uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID              uuid.UUID          `db:"project_id" json:"project_id"`
-	WorkerPoolID           uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
-	JobState               JobState           `db:"job_state" json:"job_state"`
-	JobVersion             int64              `db:"job_version" json:"job_version"`
-	CurrentFence           int64              `db:"current_fence" json:"current_fence"`
-	JobExpiresAt           pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
-	ComputeSecondsConsumed int64              `db:"compute_seconds_consumed" json:"compute_seconds_consumed"`
-	FailureFingerprints    []byte             `db:"failure_fingerprints" json:"failure_fingerprints"`
-	RetryRuntimeVersion    int64              `db:"retry_runtime_version" json:"retry_runtime_version"`
+	OrganizationID              uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                   uuid.UUID          `db:"project_id" json:"project_id"`
+	WorkerPoolID                uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	JobState                    JobState           `db:"job_state" json:"job_state"`
+	JobVersion                  int64              `db:"job_version" json:"job_version"`
+	CurrentFence                int64              `db:"current_fence" json:"current_fence"`
+	JobExpiresAt                pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
+	ComputeSecondsConsumed      int64              `db:"compute_seconds_consumed" json:"compute_seconds_consumed"`
+	FinalizationSecondsConsumed int64              `db:"finalization_seconds_consumed" json:"finalization_seconds_consumed"`
+	FailureFingerprints         []byte             `db:"failure_fingerprints" json:"failure_fingerprints"`
+	RetryRuntimeVersion         int64              `db:"retry_runtime_version" json:"retry_runtime_version"`
 }
 
 func (q *Queries) LockJobExpiryWithoutAttempt(ctx context.Context, jobID uuid.UUID) (LockJobExpiryWithoutAttemptRow, error) {
@@ -702,6 +787,7 @@ func (q *Queries) LockJobExpiryWithoutAttempt(ctx context.Context, jobID uuid.UU
 		&i.CurrentFence,
 		&i.JobExpiresAt,
 		&i.ComputeSecondsConsumed,
+		&i.FinalizationSecondsConsumed,
 		&i.FailureFingerprints,
 		&i.RetryRuntimeVersion,
 	)
@@ -717,7 +803,7 @@ WHERE id = $2
   AND worker_id = $3
   AND worker_epoch = $4
   AND fence = $5
-  AND state IN ('ASSIGNED', 'RUNNING')
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
   AND ended_at IS NULL
 `
 
@@ -787,7 +873,7 @@ SET state = 'FAILED',
 WHERE id = $3
   AND version = $4
   AND current_fence = $5
-  AND state IN ('ASSIGNED', 'RUNNING')
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
 RETURNING version
 `
 
@@ -858,7 +944,7 @@ SET state = 'RETRY_WAIT',
 WHERE id = $3
   AND version = $4
   AND current_fence = $5
-  AND state IN ('ASSIGNED', 'RUNNING')
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
 RETURNING version
 `
 
@@ -1045,8 +1131,10 @@ WHERE id = $2
   AND worker_id = $4
   AND worker_epoch = $5
   AND fence = $6
-  AND phase = 'EXECUTION'
-  AND owner_kind = 'WORKER'
+  AND (
+      (phase = 'EXECUTION' AND owner_kind = 'WORKER')
+      OR (phase = 'FINALIZATION' AND owner_kind IN ('WORKER', 'RECONCILER'))
+  )
   AND revoked_at IS NULL
 `
 
@@ -1126,34 +1214,44 @@ func (q *Queries) UpdateExecutionRetryEvidenceForJobExpiry(ctx context.Context, 
 const updateRetryRuntimeForFailure = `-- name: UpdateRetryRuntimeForFailure :execrows
 UPDATE retry_runtime_states
 SET compute_seconds_consumed = $1,
-    next_retry_at = $2,
-    last_failure_class = $3,
+	 finalization_seconds_consumed = $2,
+	 finalization_retry_count = finalization_retry_count
+	     + $3::integer,
+    next_retry_at = $4,
+    last_failure_class = $5,
     version = version + 1,
-    updated_at = $4
-WHERE job_id = $5
-  AND version = $6
-  AND compute_seconds_consumed = $7
+    updated_at = $6
+WHERE job_id = $7
+  AND version = $8
+  AND compute_seconds_consumed = $9
+  AND finalization_seconds_consumed = $10
 `
 
 type UpdateRetryRuntimeForFailureParams struct {
-	TotalComputeSeconds    int64              `db:"total_compute_seconds" json:"total_compute_seconds"`
-	NextRetryAt            pgtype.Timestamptz `db:"next_retry_at" json:"next_retry_at"`
-	FailureClass           *string            `db:"failure_class" json:"failure_class"`
-	DecidedAt              pgtype.Timestamptz `db:"decided_at" json:"decided_at"`
-	JobID                  uuid.UUID          `db:"job_id" json:"job_id"`
-	ExpectedVersion        int64              `db:"expected_version" json:"expected_version"`
-	PreviousComputeSeconds int64              `db:"previous_compute_seconds" json:"previous_compute_seconds"`
+	TotalComputeSeconds         int64              `db:"total_compute_seconds" json:"total_compute_seconds"`
+	TotalFinalizationSeconds    int64              `db:"total_finalization_seconds" json:"total_finalization_seconds"`
+	FinalizationRetryIncrement  int32              `db:"finalization_retry_increment" json:"finalization_retry_increment"`
+	NextRetryAt                 pgtype.Timestamptz `db:"next_retry_at" json:"next_retry_at"`
+	FailureClass                *string            `db:"failure_class" json:"failure_class"`
+	DecidedAt                   pgtype.Timestamptz `db:"decided_at" json:"decided_at"`
+	JobID                       uuid.UUID          `db:"job_id" json:"job_id"`
+	ExpectedVersion             int64              `db:"expected_version" json:"expected_version"`
+	PreviousComputeSeconds      int64              `db:"previous_compute_seconds" json:"previous_compute_seconds"`
+	PreviousFinalizationSeconds int64              `db:"previous_finalization_seconds" json:"previous_finalization_seconds"`
 }
 
 func (q *Queries) UpdateRetryRuntimeForFailure(ctx context.Context, arg UpdateRetryRuntimeForFailureParams) (int64, error) {
 	result, err := q.db.Exec(ctx, updateRetryRuntimeForFailure,
 		arg.TotalComputeSeconds,
+		arg.TotalFinalizationSeconds,
+		arg.FinalizationRetryIncrement,
 		arg.NextRetryAt,
 		arg.FailureClass,
 		arg.DecidedAt,
 		arg.JobID,
 		arg.ExpectedVersion,
 		arg.PreviousComputeSeconds,
+		arg.PreviousFinalizationSeconds,
 	)
 	if err != nil {
 		return 0, err

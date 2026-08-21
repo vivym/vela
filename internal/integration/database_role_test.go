@@ -18,6 +18,9 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
+	artifactPool := newRolePool(
+		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
+	)
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 
 	for _, test := range []struct {
@@ -28,6 +31,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "auth", pool: authPool, role: veladb.RoleAuth},
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
+		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -58,6 +62,9 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "cancel as request", pool: cancelPool, role: veladb.RoleRequest},
 		{name: "request as cancel", pool: requestPool, role: veladb.RoleCancel},
 		{name: "internal as cancel", pool: internalPool, role: veladb.RoleCancel},
+		{name: "request as Artifact request", pool: requestPool, role: veladb.RoleArtifactRequest},
+		{name: "Artifact request as request", pool: artifactPool, role: veladb.RoleRequest},
+		{name: "internal as Artifact request", pool: internalPool, role: veladb.RoleArtifactRequest},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if err := veladb.VerifyRole(context.Background(), test.pool, test.role); err == nil {
@@ -114,6 +121,16 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		t.Fatalf("revoke unexpected request Job deletion privilege: %v", err)
 	}
 
+	if _, err := database.Admin.Exec("GRANT SELECT ON artifacts TO vela_artifact_request_login"); err != nil {
+		t.Fatalf("grant unexpected Artifact staging privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(context.Background(), artifactPool, veladb.RoleArtifactRequest); err == nil {
+		t.Fatal("Artifact request login with staging Artifact access was accepted")
+	}
+	if _, err := database.Admin.Exec("REVOKE SELECT ON artifacts FROM vela_artifact_request_login"); err != nil {
+		t.Fatalf("revoke unexpected Artifact staging privilege: %v", err)
+	}
+
 	if _, err := database.Admin.Exec(`
 		GRANT USAGE ON SCHEMA vela_private TO vela_request_login;
 		GRANT SELECT ON vela_private.request_contexts TO vela_request_login;
@@ -141,6 +158,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "cancel", pool: cancelPool},
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
 	} {
 		for _, relation := range []string{
 			"job_cancellation_decisions",
@@ -164,6 +182,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}{
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
 	} {
 		_, err := pool.pool.Exec(
 			context.Background(),

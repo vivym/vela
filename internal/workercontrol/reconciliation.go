@@ -19,9 +19,10 @@ import (
 type FailureSource string
 
 const (
-	FailureSourceWorkerReported        FailureSource = "WORKER_REPORTED"
-	FailureSourceExecutionLeaseExpired FailureSource = "EXECUTION_LEASE_EXPIRED"
-	FailureSourceJobExpired            FailureSource = "JOB_EXPIRED"
+	FailureSourceWorkerReported              FailureSource = "WORKER_REPORTED"
+	FailureSourceExecutionLeaseExpired       FailureSource = "EXECUTION_LEASE_EXPIRED"
+	FailureSourceFinalizationDeadlineExpired FailureSource = "FINALIZATION_DEADLINE_EXPIRED"
+	FailureSourceJobExpired                  FailureSource = "JOB_EXPIRED"
 )
 
 type ReconciliationResult struct {
@@ -50,6 +51,19 @@ func (s *Service) ReconcileNextExecutionFailure(ctx context.Context) (Reconcilia
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return ReconciliationResult{}, fmt.Errorf("find expired Job failure candidate: %w", err)
+	}
+	finalizationDeadline, err := queries.FindExpiredFinalizationDeadlineCandidate(ctx)
+	if err == nil {
+		return s.reconcileAttemptFailure(
+			ctx,
+			finalizationDeadline.JobID,
+			finalizationDeadline.AttemptID,
+			finalizationDeadline.WorkerID,
+			FailureSourceFinalizationDeadlineExpired,
+		)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return ReconciliationResult{}, fmt.Errorf("find expired finalization deadline candidate: %w", err)
 	}
 
 	expiredLease, err := queries.FindExpiredExecutionLeaseCandidate(
@@ -103,12 +117,9 @@ func (s *Service) reconcileAttemptFailure(
 		return ReconciliationResult{}, fmt.Errorf("lock reconciled failure authority: %w", err)
 	}
 	if authority.JobID != jobID || authority.WorkerID != workerID ||
-		authority.LeasePhase != store.LeasePhaseEXECUTION ||
-		authority.LeaseOwnerKind != store.LeaseOwnerKindWORKER ||
 		authority.LeaseRevokedAt.Valid || authority.CurrentFence != authority.AttemptFence ||
-		(authority.AttemptState != store.AttemptStateASSIGNED && authority.AttemptState != store.AttemptStateRUNNING) ||
-		(authority.JobState != store.JobStateASSIGNED && authority.JobState != store.JobStateRUNNING) ||
-		!authority.LeaseExpiresAt.Valid || !authority.JobExpiresAt.Valid {
+		!authority.LeaseExpiresAt.Valid || !authority.JobExpiresAt.Valid ||
+		!failureAuthorityMatchesSource(authority, source) {
 		return ReconciliationResult{}, nil
 	}
 
@@ -140,6 +151,13 @@ func (s *Service) reconcileAttemptFailure(
 		transition.AttemptState = store.AttemptStateLOST
 		transition.AllowRetry = true
 		transition.WorkerTransition = workerFailureLost
+	case FailureSourceFinalizationDeadlineExpired:
+		if !authority.JobExpiresAt.Time.After(decidedAt) ||
+			!authority.FinalizationDeadlineAt.Valid ||
+			authority.FinalizationDeadlineAt.Time.After(decidedAt) {
+			return ReconciliationResult{}, nil
+		}
+		transition.AllowRetry = true
 	default:
 		return ReconciliationResult{}, fmt.Errorf("unsupported reconciliation source %q", source)
 	}
@@ -161,13 +179,48 @@ func (s *Service) reconcileAttemptFailure(
 	if err != nil {
 		return ReconciliationResult{}, err
 	}
-	if source == FailureSourceExecutionLeaseExpired && !authority.JobExpiresAt.Time.After(commitTime) {
+	if source != FailureSourceJobExpired && !authority.JobExpiresAt.Time.After(commitTime) {
 		return ReconciliationResult{}, nil
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ReconciliationResult{}, fmt.Errorf("commit failure reconciliation: %w", err)
 	}
 	return ReconciliationResult{Processed: true, Source: source, Decision: decision}, nil
+}
+
+func failureAuthorityMatchesSource(authority store.LockFailureAuthorityRow, source FailureSource) bool {
+	switch source {
+	case FailureSourceExecutionLeaseExpired:
+		return authority.LeasePhase == store.LeasePhaseEXECUTION &&
+			authority.LeaseOwnerKind == store.LeaseOwnerKindWORKER &&
+			(authority.AttemptState == store.AttemptStateASSIGNED ||
+				authority.AttemptState == store.AttemptStateRUNNING) &&
+			(authority.JobState == store.JobStateASSIGNED ||
+				authority.JobState == store.JobStateRUNNING)
+	case FailureSourceFinalizationDeadlineExpired:
+		return authority.LeasePhase == store.LeasePhaseFINALIZATION &&
+			(authority.LeaseOwnerKind == store.LeaseOwnerKindWORKER ||
+				authority.LeaseOwnerKind == store.LeaseOwnerKindRECONCILER) &&
+			authority.AttemptState == store.AttemptStateFINALIZING &&
+			authority.JobState == store.JobStateFINALIZING
+	case FailureSourceJobExpired:
+		if authority.AttemptState == store.AttemptStateFINALIZING ||
+			authority.JobState == store.JobStateFINALIZING {
+			return authority.AttemptState == store.AttemptStateFINALIZING &&
+				authority.JobState == store.JobStateFINALIZING &&
+				authority.LeasePhase == store.LeasePhaseFINALIZATION &&
+				(authority.LeaseOwnerKind == store.LeaseOwnerKindWORKER ||
+					authority.LeaseOwnerKind == store.LeaseOwnerKindRECONCILER)
+		}
+		return authority.LeasePhase == store.LeasePhaseEXECUTION &&
+			authority.LeaseOwnerKind == store.LeaseOwnerKindWORKER &&
+			(authority.AttemptState == store.AttemptStateASSIGNED ||
+				authority.AttemptState == store.AttemptStateRUNNING) &&
+			(authority.JobState == store.JobStateASSIGNED ||
+				authority.JobState == store.JobStateRUNNING)
+	default:
+		return false
+	}
 }
 
 func (s *Service) reconcileJobExpiryWithoutAttempt(
@@ -313,13 +366,14 @@ func (s *Service) reconcileJobExpiryWithoutAttempt(
 		return ReconciliationResult{}, fmt.Errorf("commit Job Expiry without Attempt: %w", err)
 	}
 	decision := RetryDecision{
-		Disposition:         RetryDispositionFailed,
-		FailureClass:        normalized.FailureClass,
-		JobID:               jobID,
-		TotalComputeSeconds: authority.ComputeSecondsConsumed,
-		JobFence:            jobFence,
-		JobVersion:          jobVersion,
-		DecidedAt:           decidedAt,
+		Disposition:              RetryDispositionFailed,
+		FailureClass:             normalized.FailureClass,
+		JobID:                    jobID,
+		TotalComputeSeconds:      authority.ComputeSecondsConsumed,
+		TotalFinalizationSeconds: authority.FinalizationSecondsConsumed,
+		JobFence:                 jobFence,
+		JobVersion:               jobVersion,
+		DecidedAt:                decidedAt,
 	}
 	return ReconciliationResult{
 		Processed: true,
@@ -336,6 +390,17 @@ func systemFailureObservation(source FailureSource) FailureObservation {
 			FailureFingerprint:       "execution.lease.expired",
 			ErrorSummary:             "EXECUTION Lease expired beyond the Worker Lost grace period",
 			BackendStage:             "coordinator",
+			GPUUUIDs:                 []string{},
+			InferenceBackendRevision: "vela-control/v1",
+			RetryRecommended:         true,
+			WorkerReusable:           false,
+		}
+	case FailureSourceFinalizationDeadlineExpired:
+		return FailureObservation{
+			FailureClass:             "FINALIZATION_TIMEOUT",
+			FailureFingerprint:       "artifact.finalization.deadline.expired",
+			ErrorSummary:             "finalization deadline elapsed before Visible Completion",
+			BackendStage:             "finalization",
 			GPUUUIDs:                 []string{},
 			InferenceBackendRevision: "vela-control/v1",
 			RetryRecommended:         true,
@@ -368,29 +433,31 @@ func insertJobExpiryDecisionWithoutAttempt(
 ) error {
 	decidedAtValue := pgtype.Timestamptz{Time: decidedAt, Valid: true}
 	if err := queries.InsertExecutionFailureDecision(ctx, store.InsertExecutionFailureDecisionParams{
-		ID:                       uuid.New(),
-		OrganizationID:           authority.OrganizationID,
-		ProjectID:                authority.ProjectID,
-		JobID:                    jobID,
-		AttemptID:                uuid.NullUUID{},
-		WorkerID:                 uuid.NullUUID{},
-		Source:                   store.ExecutionFailureSourceJOBEXPIRED,
-		Disposition:              store.RetryDispositionFAILED,
-		FailureClass:             normalized.FailureClass,
-		FailureFingerprint:       normalized.FailureFingerprint,
-		RequestHash:              requestHash[:],
-		ErrorSummary:             normalized.ErrorSummary,
-		BackendStage:             normalized.BackendStage,
-		GpuUuids:                 mustMarshalJSON(normalized.GPUUUIDs),
-		InferenceBackendRevision: normalized.InferenceBackendRevision,
-		RetryRecommended:         false,
-		WorkerReusable:           false,
-		AttemptComputeSeconds:    0,
-		TotalComputeSeconds:      authority.ComputeSecondsConsumed,
-		NextRetryAt:              pgtype.Timestamptz{},
-		JobFence:                 jobFence,
-		JobVersion:               jobVersion,
-		DecidedAt:                decidedAtValue,
+		ID:                         uuid.New(),
+		OrganizationID:             authority.OrganizationID,
+		ProjectID:                  authority.ProjectID,
+		JobID:                      jobID,
+		AttemptID:                  uuid.NullUUID{},
+		WorkerID:                   uuid.NullUUID{},
+		Source:                     store.ExecutionFailureSourceJOBEXPIRED,
+		Disposition:                store.RetryDispositionFAILED,
+		FailureClass:               normalized.FailureClass,
+		FailureFingerprint:         normalized.FailureFingerprint,
+		RequestHash:                requestHash[:],
+		ErrorSummary:               normalized.ErrorSummary,
+		BackendStage:               normalized.BackendStage,
+		GpuUuids:                   mustMarshalJSON(normalized.GPUUUIDs),
+		InferenceBackendRevision:   normalized.InferenceBackendRevision,
+		RetryRecommended:           false,
+		WorkerReusable:             false,
+		AttemptComputeSeconds:      0,
+		TotalComputeSeconds:        authority.ComputeSecondsConsumed,
+		AttemptFinalizationSeconds: 0,
+		TotalFinalizationSeconds:   authority.FinalizationSecondsConsumed,
+		NextRetryAt:                pgtype.Timestamptz{},
+		JobFence:                   jobFence,
+		JobVersion:                 jobVersion,
+		DecidedAt:                  decidedAtValue,
 	}); err != nil {
 		return fmt.Errorf("insert Job Expiry decision without Attempt: %w", err)
 	}
@@ -402,6 +469,7 @@ func insertJobExpiryDecisionWithoutAttempt(
 		jobFence,
 		jobVersion,
 		authority.ComputeSecondsConsumed,
+		authority.FinalizationSecondsConsumed,
 		decidedAt,
 	)
 }
@@ -414,6 +482,7 @@ func insertJobFailedWithoutAttemptEvent(
 	jobFence int64,
 	jobVersion int64,
 	totalComputeSeconds int64,
+	totalFinalizationSeconds int64,
 	decidedAt time.Time,
 ) error {
 	eventID := uuid.New()
@@ -426,13 +495,14 @@ func insertJobFailedWithoutAttemptEvent(
 		SchemaVersion:    1,
 		OccurredAt:       timestamppb.New(decidedAt),
 		Payload: &velav1.EventEnvelope_JobFailed{JobFailed: &velav1.JobFailed{
-			OrganizationId:      authority.OrganizationID.String(),
-			ProjectId:           authority.ProjectID.String(),
-			JobId:               jobID.String(),
-			JobFence:            uint64(jobFence),
-			FailureClass:        "JOB_EXPIRED",
-			TotalComputeSeconds: uint64(totalComputeSeconds),
-			DecidedAt:           timestamppb.New(decidedAt),
+			OrganizationId:           authority.OrganizationID.String(),
+			ProjectId:                authority.ProjectID.String(),
+			JobId:                    jobID.String(),
+			JobFence:                 uint64(jobFence),
+			FailureClass:             "JOB_EXPIRED",
+			TotalComputeSeconds:      uint64(totalComputeSeconds),
+			TotalFinalizationSeconds: uint64(totalFinalizationSeconds),
+			DecidedAt:                timestamppb.New(decidedAt),
 		}},
 	}
 	payload, err := proto.Marshal(event)

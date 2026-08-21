@@ -13,6 +13,140 @@ import (
 	"github.com/vivym/vela/internal/execution"
 )
 
+type ArtifactKind string
+
+const (
+	ArtifactKindVIDEO     ArtifactKind = "VIDEO"
+	ArtifactKindTHUMBNAIL ArtifactKind = "THUMBNAIL"
+)
+
+func (e *ArtifactKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ArtifactKind(s)
+	case string:
+		*e = ArtifactKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ArtifactKind: %T", src)
+	}
+	return nil
+}
+
+type NullArtifactKind struct {
+	ArtifactKind ArtifactKind `json:"artifact_kind"`
+	Valid        bool         `json:"valid"` // Valid is true if ArtifactKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullArtifactKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.ArtifactKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ArtifactKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullArtifactKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ArtifactKind), nil
+}
+
+type ArtifactState string
+
+const (
+	ArtifactStateSTAGING   ArtifactState = "STAGING"
+	ArtifactStateUPLOADED  ArtifactState = "UPLOADED"
+	ArtifactStateVERIFIED  ArtifactState = "VERIFIED"
+	ArtifactStateCOMMITTED ArtifactState = "COMMITTED"
+	ArtifactStateEXPIRED   ArtifactState = "EXPIRED"
+	ArtifactStateDELETED   ArtifactState = "DELETED"
+)
+
+func (e *ArtifactState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ArtifactState(s)
+	case string:
+		*e = ArtifactState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ArtifactState: %T", src)
+	}
+	return nil
+}
+
+type NullArtifactState struct {
+	ArtifactState ArtifactState `json:"artifact_state"`
+	Valid         bool          `json:"valid"` // Valid is true if ArtifactState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullArtifactState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ArtifactState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ArtifactState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullArtifactState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ArtifactState), nil
+}
+
+type ArtifactUploadState string
+
+const (
+	ArtifactUploadStateINITIATED ArtifactUploadState = "INITIATED"
+	ArtifactUploadStateUPLOADING ArtifactUploadState = "UPLOADING"
+	ArtifactUploadStateUPLOADED  ArtifactUploadState = "UPLOADED"
+	ArtifactUploadStateVERIFIED  ArtifactUploadState = "VERIFIED"
+	ArtifactUploadStateABORTED   ArtifactUploadState = "ABORTED"
+	ArtifactUploadStateEXPIRED   ArtifactUploadState = "EXPIRED"
+)
+
+func (e *ArtifactUploadState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ArtifactUploadState(s)
+	case string:
+		*e = ArtifactUploadState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ArtifactUploadState: %T", src)
+	}
+	return nil
+}
+
+type NullArtifactUploadState struct {
+	ArtifactUploadState ArtifactUploadState `json:"artifact_upload_state"`
+	Valid               bool                `json:"valid"` // Valid is true if ArtifactUploadState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullArtifactUploadState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ArtifactUploadState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ArtifactUploadState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullArtifactUploadState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ArtifactUploadState), nil
+}
+
 type AttemptState string
 
 const (
@@ -282,9 +416,11 @@ func (ns NullCreditReservationState) Value() (driver.Value, error) {
 type ExecutionFailureSource string
 
 const (
-	ExecutionFailureSourceWORKERREPORTED        ExecutionFailureSource = "WORKER_REPORTED"
-	ExecutionFailureSourceEXECUTIONLEASEEXPIRED ExecutionFailureSource = "EXECUTION_LEASE_EXPIRED"
-	ExecutionFailureSourceJOBEXPIRED            ExecutionFailureSource = "JOB_EXPIRED"
+	ExecutionFailureSourceWORKERREPORTED                ExecutionFailureSource = "WORKER_REPORTED"
+	ExecutionFailureSourceEXECUTIONLEASEEXPIRED         ExecutionFailureSource = "EXECUTION_LEASE_EXPIRED"
+	ExecutionFailureSourceJOBEXPIRED                    ExecutionFailureSource = "JOB_EXPIRED"
+	ExecutionFailureSourceFINALIZATIONDEADLINEEXPIRED   ExecutionFailureSource = "FINALIZATION_DEADLINE_EXPIRED"
+	ExecutionFailureSourceARTIFACTRECOVERYUNRECOVERABLE ExecutionFailureSource = "ARTIFACT_RECOVERY_UNRECOVERABLE"
 )
 
 func (e *ExecutionFailureSource) Scan(src interface{}) error {
@@ -674,6 +810,112 @@ func (ns NullWorkerReachabilityCondition) Value() (driver.Value, error) {
 	return string(ns.WorkerReachabilityCondition), nil
 }
 
+type Artifact struct {
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	OrganizationID          uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID               uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                   uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID               uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence            int64              `db:"attempt_fence" json:"attempt_fence"`
+	Kind                    ArtifactKind       `db:"kind" json:"kind"`
+	Ordinal                 int32              `db:"ordinal" json:"ordinal"`
+	ObjectKey               string             `db:"object_key" json:"object_key"`
+	ExpectedContentType     string             `db:"expected_content_type" json:"expected_content_type"`
+	ObjectVersionID         *string            `db:"object_version_id" json:"object_version_id"`
+	SizeBytes               *int64             `db:"size_bytes" json:"size_bytes"`
+	Sha256                  []byte             `db:"sha256" json:"sha256"`
+	ContentType             *string            `db:"content_type" json:"content_type"`
+	UploadedAt              pgtype.Timestamptz `db:"uploaded_at" json:"uploaded_at"`
+	VerificationID          uuid.NullUUID      `db:"verification_id" json:"verification_id"`
+	VerificationRequestHash []byte             `db:"verification_request_hash" json:"verification_request_hash"`
+	ValidationReceipt       []byte             `db:"validation_receipt" json:"validation_receipt"`
+	VerifiedAt              pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	RetentionExpiresAt      pgtype.Timestamptz `db:"retention_expires_at" json:"retention_expires_at"`
+	State                   ArtifactState      `db:"state" json:"state"`
+	ExpiresAt               pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ArtifactAccessGrant struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	OrganizationID     uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID          uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID              uuid.UUID          `db:"job_id" json:"job_id"`
+	ArtifactSetID      uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	EligibleAt         pgtype.Timestamptz `db:"eligible_at" json:"eligible_at"`
+	RetentionExpiresAt pgtype.Timestamptz `db:"retention_expires_at" json:"retention_expires_at"`
+	RevokedAt          pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ArtifactSet struct {
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	OrganizationID          uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID               uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                   uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID               uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence            int64              `db:"attempt_fence" json:"attempt_fence"`
+	ManifestSha256          []byte             `db:"manifest_sha256" json:"manifest_sha256"`
+	RetentionPolicyRevision string             `db:"retention_policy_revision" json:"retention_policy_revision"`
+	RetentionExpiresAt      pgtype.Timestamptz `db:"retention_expires_at" json:"retention_expires_at"`
+	CommittedAt             pgtype.Timestamptz `db:"committed_at" json:"committed_at"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ArtifactSetItem struct {
+	OrganizationID    uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID             uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID         uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence      int64              `db:"attempt_fence" json:"attempt_fence"`
+	ArtifactSetID     uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	ArtifactID        uuid.UUID          `db:"artifact_id" json:"artifact_id"`
+	Kind              ArtifactKind       `db:"kind" json:"kind"`
+	Ordinal           int32              `db:"ordinal" json:"ordinal"`
+	ObjectKey         string             `db:"object_key" json:"object_key"`
+	ObjectVersionID   string             `db:"object_version_id" json:"object_version_id"`
+	SizeBytes         int64              `db:"size_bytes" json:"size_bytes"`
+	Sha256            []byte             `db:"sha256" json:"sha256"`
+	ContentType       string             `db:"content_type" json:"content_type"`
+	ValidationReceipt []byte             `db:"validation_receipt" json:"validation_receipt"`
+	VerifiedAt        pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ArtifactUpload struct {
+	ID                      uuid.UUID           `db:"id" json:"id"`
+	OrganizationID          uuid.UUID           `db:"organization_id" json:"organization_id"`
+	ProjectID               uuid.UUID           `db:"project_id" json:"project_id"`
+	JobID                   uuid.UUID           `db:"job_id" json:"job_id"`
+	AttemptID               uuid.UUID           `db:"attempt_id" json:"attempt_id"`
+	AttemptFence            int64               `db:"attempt_fence" json:"attempt_fence"`
+	ArtifactID              uuid.UUID           `db:"artifact_id" json:"artifact_id"`
+	State                   ArtifactUploadState `db:"state" json:"state"`
+	MultipartUploadID       *string             `db:"multipart_upload_id" json:"multipart_upload_id"`
+	CompletedParts          []byte              `db:"completed_parts" json:"completed_parts"`
+	ObjectVersionID         *string             `db:"object_version_id" json:"object_version_id"`
+	SizeBytes               *int64              `db:"size_bytes" json:"size_bytes"`
+	Sha256                  []byte              `db:"sha256" json:"sha256"`
+	ContentType             *string             `db:"content_type" json:"content_type"`
+	CompletionRequestHash   []byte              `db:"completion_request_hash" json:"completion_request_hash"`
+	UploadedAt              pgtype.Timestamptz  `db:"uploaded_at" json:"uploaded_at"`
+	VerificationID          uuid.NullUUID       `db:"verification_id" json:"verification_id"`
+	VerificationRequestHash []byte              `db:"verification_request_hash" json:"verification_request_hash"`
+	ValidationReceipt       []byte              `db:"validation_receipt" json:"validation_receipt"`
+	VerifiedAt              pgtype.Timestamptz  `db:"verified_at" json:"verified_at"`
+	RetryCount              int32               `db:"retry_count" json:"retry_count"`
+	NextRetryAt             pgtype.Timestamptz  `db:"next_retry_at" json:"next_retry_at"`
+	ClaimID                 uuid.NullUUID       `db:"claim_id" json:"claim_id"`
+	ClaimOwnerKind          *LeaseOwnerKind     `db:"claim_owner_kind" json:"claim_owner_kind"`
+	ClaimOwnerID            *string             `db:"claim_owner_id" json:"claim_owner_id"`
+	ClaimExpiresAt          pgtype.Timestamptz  `db:"claim_expires_at" json:"claim_expires_at"`
+	ExpiresAt               pgtype.Timestamptz  `db:"expires_at" json:"expires_at"`
+	Version                 int64               `db:"version" json:"version"`
+	CreatedAt               pgtype.Timestamptz  `db:"created_at" json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz  `db:"updated_at" json:"updated_at"`
+}
+
 type Attempt struct {
 	ID                         uuid.UUID          `db:"id" json:"id"`
 	OrganizationID             uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -772,6 +1014,7 @@ type Charge struct {
 	State               string             `db:"state" json:"state"`
 	PostedAt            pgtype.Timestamptz `db:"posted_at" json:"posted_at"`
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ArtifactSetID       uuid.NullUUID      `db:"artifact_set_id" json:"artifact_set_id"`
 }
 
 type Credential struct {
@@ -807,33 +1050,38 @@ type CustomerOrganization struct {
 }
 
 type ExecutionFailureDecision struct {
-	ID                       uuid.UUID              `db:"id" json:"id"`
-	OrganizationID           uuid.UUID              `db:"organization_id" json:"organization_id"`
-	ProjectID                uuid.UUID              `db:"project_id" json:"project_id"`
-	JobID                    uuid.UUID              `db:"job_id" json:"job_id"`
-	AttemptID                uuid.NullUUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID                 uuid.NullUUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch              *int64                 `db:"worker_epoch" json:"worker_epoch"`
-	AttemptFence             *int64                 `db:"attempt_fence" json:"attempt_fence"`
-	Source                   ExecutionFailureSource `db:"source" json:"source"`
-	Disposition              RetryDisposition       `db:"disposition" json:"disposition"`
-	AttemptState             *AttemptState          `db:"attempt_state" json:"attempt_state"`
-	FailureClass             string                 `db:"failure_class" json:"failure_class"`
-	FailureFingerprint       string                 `db:"failure_fingerprint" json:"failure_fingerprint"`
-	RequestHash              []byte                 `db:"request_hash" json:"request_hash"`
-	ErrorSummary             string                 `db:"error_summary" json:"error_summary"`
-	BackendStage             string                 `db:"backend_stage" json:"backend_stage"`
-	GpuUuids                 []byte                 `db:"gpu_uuids" json:"gpu_uuids"`
-	InferenceBackendRevision string                 `db:"inference_backend_revision" json:"inference_backend_revision"`
-	RetryRecommended         bool                   `db:"retry_recommended" json:"retry_recommended"`
-	WorkerReusable           bool                   `db:"worker_reusable" json:"worker_reusable"`
-	AttemptComputeSeconds    int64                  `db:"attempt_compute_seconds" json:"attempt_compute_seconds"`
-	TotalComputeSeconds      int64                  `db:"total_compute_seconds" json:"total_compute_seconds"`
-	NextRetryAt              pgtype.Timestamptz     `db:"next_retry_at" json:"next_retry_at"`
-	JobFence                 int64                  `db:"job_fence" json:"job_fence"`
-	JobVersion               int64                  `db:"job_version" json:"job_version"`
-	DecidedAt                pgtype.Timestamptz     `db:"decided_at" json:"decided_at"`
-	CreatedAt                pgtype.Timestamptz     `db:"created_at" json:"created_at"`
+	ID                         uuid.UUID              `db:"id" json:"id"`
+	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ProjectID                  uuid.UUID              `db:"project_id" json:"project_id"`
+	JobID                      uuid.UUID              `db:"job_id" json:"job_id"`
+	AttemptID                  uuid.NullUUID          `db:"attempt_id" json:"attempt_id"`
+	WorkerID                   uuid.NullUUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                *int64                 `db:"worker_epoch" json:"worker_epoch"`
+	AttemptFence               *int64                 `db:"attempt_fence" json:"attempt_fence"`
+	Source                     ExecutionFailureSource `db:"source" json:"source"`
+	Disposition                RetryDisposition       `db:"disposition" json:"disposition"`
+	AttemptState               *AttemptState          `db:"attempt_state" json:"attempt_state"`
+	FailureClass               string                 `db:"failure_class" json:"failure_class"`
+	FailureFingerprint         string                 `db:"failure_fingerprint" json:"failure_fingerprint"`
+	RequestHash                []byte                 `db:"request_hash" json:"request_hash"`
+	ErrorSummary               string                 `db:"error_summary" json:"error_summary"`
+	BackendStage               string                 `db:"backend_stage" json:"backend_stage"`
+	GpuUuids                   []byte                 `db:"gpu_uuids" json:"gpu_uuids"`
+	InferenceBackendRevision   string                 `db:"inference_backend_revision" json:"inference_backend_revision"`
+	RetryRecommended           bool                   `db:"retry_recommended" json:"retry_recommended"`
+	WorkerReusable             bool                   `db:"worker_reusable" json:"worker_reusable"`
+	AttemptComputeSeconds      int64                  `db:"attempt_compute_seconds" json:"attempt_compute_seconds"`
+	TotalComputeSeconds        int64                  `db:"total_compute_seconds" json:"total_compute_seconds"`
+	NextRetryAt                pgtype.Timestamptz     `db:"next_retry_at" json:"next_retry_at"`
+	JobFence                   int64                  `db:"job_fence" json:"job_fence"`
+	JobVersion                 int64                  `db:"job_version" json:"job_version"`
+	DecidedAt                  pgtype.Timestamptz     `db:"decided_at" json:"decided_at"`
+	CreatedAt                  pgtype.Timestamptz     `db:"created_at" json:"created_at"`
+	AttemptFinalizationSeconds int64                  `db:"attempt_finalization_seconds" json:"attempt_finalization_seconds"`
+	TotalFinalizationSeconds   int64                  `db:"total_finalization_seconds" json:"total_finalization_seconds"`
+	ArtifactID                 uuid.NullUUID          `db:"artifact_id" json:"artifact_id"`
+	ArtifactUploadID           uuid.NullUUID          `db:"artifact_upload_id" json:"artifact_upload_id"`
+	FinalizationFailureCode    *string                `db:"finalization_failure_code" json:"finalization_failure_code"`
 }
 
 type ExecutionLeaseRenewalProtocol struct {
@@ -926,6 +1174,7 @@ type Job struct {
 	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
 	BillableStartedAt                         pgtype.Timestamptz `db:"billable_started_at" json:"billable_started_at"`
 	ExecutionPhase                            *execution.Phase   `db:"execution_phase" json:"execution_phase"`
+	ResultArtifactSetID                       uuid.NullUUID      `db:"result_artifact_set_id" json:"result_artifact_set_id"`
 }
 
 type JobCancellationDecision struct {
@@ -1004,6 +1253,8 @@ type OutputSpec struct {
 	FrameRateMilli       int32              `db:"frame_rate_milli" json:"frame_rate_milli"`
 	Codec                string             `db:"codec" json:"codec"`
 	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	Container            string             `db:"container" json:"container"`
+	ThumbnailRequired    bool               `db:"thumbnail_required" json:"thumbnail_required"`
 }
 
 type Principal struct {
@@ -1125,6 +1376,22 @@ type VelaRequestJobRuntime struct {
 	JobID           uuid.UUID          `db:"job_id" json:"job_id"`
 	AttemptsStarted int32              `db:"attempts_started" json:"attempts_started"`
 	NextRetryAt     pgtype.Timestamptz `db:"next_retry_at" json:"next_retry_at"`
+}
+
+type VisibleCompletion struct {
+	ID               uuid.UUID          `db:"id" json:"id"`
+	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID        uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID            uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID        uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence     int64              `db:"attempt_fence" json:"attempt_fence"`
+	AuthorityLeaseID uuid.UUID          `db:"authority_lease_id" json:"authority_lease_id"`
+	ArtifactSetID    uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	ChargeID         uuid.UUID          `db:"charge_id" json:"charge_id"`
+	CandidateSha256  []byte             `db:"candidate_sha256" json:"candidate_sha256"`
+	JobVersion       int64              `db:"job_version" json:"job_version"`
+	CompletedAt      pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type Worker struct {

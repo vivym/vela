@@ -567,6 +567,19 @@ func (q *Queries) MoveProjectCountersToRunning(ctx context.Context, arg MoveProj
 	return result.RowsAffected(), nil
 }
 
+const resolveWorkerBySPIFFEID = `-- name: ResolveWorkerBySPIFFEID :one
+SELECT id
+FROM workers
+WHERE spiffe_id = $1
+`
+
+func (q *Queries) ResolveWorkerBySPIFFEID(ctx context.Context, spiffeID string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, resolveWorkerBySPIFFEID, spiffeID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const validateProfileForAssignment = `-- name: ValidateProfileForAssignment :one
 SELECT epr.id
 FROM execution_profile_revisions AS epr

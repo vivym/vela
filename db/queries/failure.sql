@@ -12,6 +12,8 @@ SELECT
     a.attempt_number,
     a.state AS attempt_state,
     a.started_at AS attempt_started_at,
+	 a.finalization_started_at,
+	 a.finalization_deadline_at,
     a.worker_id,
     a.worker_epoch,
     a.fence AS attempt_fence,
@@ -23,11 +25,14 @@ SELECT
     j.current_fence,
     j.execution_max_attempts,
     j.execution_max_total_compute_seconds,
+	 j.execution_max_finalization_seconds_per_attempt,
     j.execution_retry_backoff_policy,
     j.execution_retryable_failure_classes,
     j.job_expires_at,
     rts.attempts_started,
     rts.compute_seconds_consumed,
+	 rts.finalization_seconds_consumed,
+	 rts.finalization_retry_count,
     ere.excluded_workers,
     ere.failure_fingerprints,
     rts.version AS retry_runtime_version
@@ -37,6 +42,7 @@ JOIN jobs AS j ON j.id = a.job_id
 JOIN retry_runtime_states AS rts ON rts.job_id = j.id
 JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 WHERE l.attempt_id = sqlc.arg(attempt_id)
+ORDER BY (l.revoked_at IS NULL) DESC, l.issued_at DESC, l.id DESC
 LIMIT 1
 FOR UPDATE OF l, a, j, rts, ere;
 
@@ -50,12 +56,27 @@ LEFT JOIN LATERAL (
     SELECT a.id, a.worker_id
     FROM attempts AS a
     WHERE a.job_id = j.id
-      AND a.state IN ('ASSIGNED', 'RUNNING')
+      AND a.state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
     LIMIT 1
 ) AS active_attempt ON true
-WHERE j.state IN ('QUEUED', 'RETRY_WAIT', 'ASSIGNED', 'RUNNING')
+WHERE j.state IN ('QUEUED', 'RETRY_WAIT', 'ASSIGNED', 'RUNNING', 'FINALIZING')
   AND j.job_expires_at <= clock_timestamp()
 ORDER BY j.job_expires_at, j.id
+LIMIT 1;
+
+-- name: FindExpiredFinalizationDeadlineCandidate :one
+SELECT a.job_id, a.id AS attempt_id, a.worker_id
+FROM attempt_leases AS l
+JOIN attempts AS a ON a.id = l.attempt_id
+JOIN jobs AS j ON j.id = a.job_id
+WHERE l.phase = 'FINALIZATION'
+  AND l.owner_kind IN ('WORKER', 'RECONCILER')
+  AND l.revoked_at IS NULL
+  AND a.state = 'FINALIZING'
+  AND j.state = 'FINALIZING'
+  AND j.job_expires_at > clock_timestamp()
+  AND a.finalization_deadline_at <= clock_timestamp()
+ORDER BY a.finalization_deadline_at, a.id
 LIMIT 1;
 
 -- name: FindExpiredExecutionLeaseCandidate :one
@@ -85,6 +106,7 @@ SELECT
     j.current_fence,
     j.job_expires_at,
     rts.compute_seconds_consumed,
+	 rts.finalization_seconds_consumed,
     ere.failure_fingerprints,
     rts.version AS retry_runtime_version
 FROM jobs AS j
@@ -105,6 +127,7 @@ FOR UPDATE OF j, rts, ere;
 SELECT
     id,
     request_hash,
+	 source,
     disposition,
     failure_class,
     attempt_id,
@@ -112,10 +135,15 @@ SELECT
     attempt_state,
     attempt_compute_seconds,
     total_compute_seconds,
+	 attempt_finalization_seconds,
+	 total_finalization_seconds,
     next_retry_at,
     job_fence,
     job_version,
     decided_at
+    , artifact_id
+    , artifact_upload_id
+    , finalization_failure_code
 FROM execution_failure_decisions
 WHERE attempt_id = sqlc.arg(attempt_id);
 
@@ -153,7 +181,7 @@ WHERE id = sqlc.arg(attempt_id)
   AND worker_id = sqlc.arg(worker_id)
   AND worker_epoch = sqlc.arg(worker_epoch)
   AND fence = sqlc.arg(fence)
-  AND state IN ('ASSIGNED', 'RUNNING')
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
   AND ended_at IS NULL;
 
 -- name: MarkAttemptLost :execrows
@@ -177,8 +205,10 @@ WHERE id = sqlc.arg(lease_id)
   AND worker_id = sqlc.arg(worker_id)
   AND worker_epoch = sqlc.arg(worker_epoch)
   AND fence = sqlc.arg(fence)
-  AND phase = 'EXECUTION'
-  AND owner_kind = 'WORKER'
+  AND (
+      (phase = 'EXECUTION' AND owner_kind = 'WORKER')
+      OR (phase = 'FINALIZATION' AND owner_kind IN ('WORKER', 'RECONCILER'))
+  )
   AND revoked_at IS NULL;
 
 -- name: MarkWorkerReusableAfterFailure :execrows
@@ -216,13 +246,17 @@ WHERE id = sqlc.arg(worker_id)
 -- name: UpdateRetryRuntimeForFailure :execrows
 UPDATE retry_runtime_states
 SET compute_seconds_consumed = sqlc.arg(total_compute_seconds),
+	 finalization_seconds_consumed = sqlc.arg(total_finalization_seconds),
+	 finalization_retry_count = finalization_retry_count
+	     + sqlc.arg(finalization_retry_increment)::integer,
     next_retry_at = sqlc.narg(next_retry_at),
     last_failure_class = sqlc.arg(failure_class),
     version = version + 1,
     updated_at = sqlc.arg(decided_at)
 WHERE job_id = sqlc.arg(job_id)
   AND version = sqlc.arg(expected_version)
-  AND compute_seconds_consumed = sqlc.arg(previous_compute_seconds);
+  AND compute_seconds_consumed = sqlc.arg(previous_compute_seconds)
+  AND finalization_seconds_consumed = sqlc.arg(previous_finalization_seconds);
 
 -- name: UpdateExecutionRetryEvidence :execrows
 UPDATE execution_retry_evidence
@@ -283,7 +317,7 @@ SET state = 'RETRY_WAIT',
 WHERE id = sqlc.arg(job_id)
   AND version = sqlc.arg(expected_version)
   AND current_fence = sqlc.arg(previous_fence)
-  AND state IN ('ASSIGNED', 'RUNNING')
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
 RETURNING version;
 
 -- name: MarkJobFailedFromActive :one
@@ -295,7 +329,7 @@ SET state = 'FAILED',
 WHERE id = sqlc.arg(job_id)
   AND version = sqlc.arg(expected_version)
   AND current_fence = sqlc.arg(previous_fence)
-  AND state IN ('ASSIGNED', 'RUNNING')
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
 RETURNING version;
 
 -- name: MarkJobFailedWithoutAttempt :one
@@ -367,6 +401,11 @@ INSERT INTO execution_failure_decisions (
     worker_reusable,
     attempt_compute_seconds,
     total_compute_seconds,
+	 attempt_finalization_seconds,
+    total_finalization_seconds,
+	 artifact_id,
+	 artifact_upload_id,
+	 finalization_failure_code,
     next_retry_at,
     job_fence,
     job_version,
@@ -394,6 +433,11 @@ INSERT INTO execution_failure_decisions (
     sqlc.arg(worker_reusable),
     sqlc.arg(attempt_compute_seconds),
     sqlc.arg(total_compute_seconds),
+	 sqlc.arg(attempt_finalization_seconds),
+	 sqlc.arg(total_finalization_seconds),
+	 sqlc.narg(artifact_id),
+	 sqlc.narg(artifact_upload_id),
+	 sqlc.narg(finalization_failure_code),
     sqlc.narg(next_retry_at),
     sqlc.arg(job_fence),
     sqlc.arg(job_version),

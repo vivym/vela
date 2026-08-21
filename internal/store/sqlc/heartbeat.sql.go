@@ -66,6 +66,7 @@ func (q *Queries) LockExecutionLeaseWrites(ctx context.Context) error {
 const lockHeartbeatAuthority = `-- name: LockHeartbeatAuthority :one
 SELECT
     l.id AS lease_id,
+    l.phase AS lease_phase,
     l.token_digest,
     l.expires_at AS lease_expires_at,
     l.revoked_at AS lease_revoked_at,
@@ -82,6 +83,7 @@ SELECT
     j.version AS job_version,
     j.current_fence,
     j.job_expires_at,
+    a.finalization_deadline_at,
     cr.state AS credit_reservation_state
 FROM attempt_leases AS l
 JOIN attempts AS a ON a.id = l.attempt_id
@@ -91,7 +93,7 @@ WHERE l.attempt_id = $1
   AND l.worker_id = $2
   AND l.worker_epoch = $3
   AND l.fence = $4
-  AND l.phase = 'EXECUTION'
+  AND l.phase IN ('EXECUTION', 'FINALIZATION')
   AND l.owner_kind = 'WORKER'
   AND l.owner_id = $5
   AND l.revoked_at IS NULL
@@ -112,6 +114,7 @@ type LockHeartbeatAuthorityParams struct {
 
 type LockHeartbeatAuthorityRow struct {
 	LeaseID                uuid.UUID              `db:"lease_id" json:"lease_id"`
+	LeasePhase             LeasePhase             `db:"lease_phase" json:"lease_phase"`
 	TokenDigest            []byte                 `db:"token_digest" json:"token_digest"`
 	LeaseExpiresAt         pgtype.Timestamptz     `db:"lease_expires_at" json:"lease_expires_at"`
 	LeaseRevokedAt         pgtype.Timestamptz     `db:"lease_revoked_at" json:"lease_revoked_at"`
@@ -128,6 +131,7 @@ type LockHeartbeatAuthorityRow struct {
 	JobVersion             int64                  `db:"job_version" json:"job_version"`
 	CurrentFence           int64                  `db:"current_fence" json:"current_fence"`
 	JobExpiresAt           pgtype.Timestamptz     `db:"job_expires_at" json:"job_expires_at"`
+	FinalizationDeadlineAt pgtype.Timestamptz     `db:"finalization_deadline_at" json:"finalization_deadline_at"`
 	CreditReservationState CreditReservationState `db:"credit_reservation_state" json:"credit_reservation_state"`
 }
 
@@ -142,6 +146,7 @@ func (q *Queries) LockHeartbeatAuthority(ctx context.Context, arg LockHeartbeatA
 	var i LockHeartbeatAuthorityRow
 	err := row.Scan(
 		&i.LeaseID,
+		&i.LeasePhase,
 		&i.TokenDigest,
 		&i.LeaseExpiresAt,
 		&i.LeaseRevokedAt,
@@ -158,6 +163,7 @@ func (q *Queries) LockHeartbeatAuthority(ctx context.Context, arg LockHeartbeatA
 		&i.JobVersion,
 		&i.CurrentFence,
 		&i.JobExpiresAt,
+		&i.FinalizationDeadlineAt,
 		&i.CreditReservationState,
 	)
 	return i, err
@@ -194,10 +200,10 @@ WHERE id = $3
   AND worker_id = $5
   AND worker_epoch = $6
   AND fence = $7
-  AND phase = 'EXECUTION'
+  AND phase = $8
   AND owner_kind = 'WORKER'
   AND revoked_at IS NULL
-  AND expires_at = $8
+  AND expires_at = $9
 `
 
 type RenewExecutionLeaseParams struct {
@@ -208,6 +214,7 @@ type RenewExecutionLeaseParams struct {
 	WorkerID          uuid.UUID          `db:"worker_id" json:"worker_id"`
 	WorkerEpoch       int64              `db:"worker_epoch" json:"worker_epoch"`
 	Fence             int64              `db:"fence" json:"fence"`
+	LeasePhase        LeasePhase         `db:"lease_phase" json:"lease_phase"`
 	PreviousExpiresAt pgtype.Timestamptz `db:"previous_expires_at" json:"previous_expires_at"`
 }
 
@@ -220,6 +227,7 @@ func (q *Queries) RenewExecutionLease(ctx context.Context, arg RenewExecutionLea
 		arg.WorkerID,
 		arg.WorkerEpoch,
 		arg.Fence,
+		arg.LeasePhase,
 		arg.PreviousExpiresAt,
 	)
 	if err != nil {

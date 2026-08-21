@@ -1,0 +1,215 @@
+syntax = "proto3";
+
+package vela.v1;
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+import "google/protobuf/timestamp.proto";
+
+service WorkerControlService {
+  rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
+}
+
+message ConnectRequest {
+  string request_id = 1;
+  oneof operation {
+    BeginFinalizationRequest begin_finalization = 20;
+    ClaimArtifactUploadRequest claim_artifact_upload = 21;
+    RecordArtifactMultipartSessionRequest record_artifact_multipart_session = 22;
+    RecordArtifactUploadedRequest record_artifact_uploaded = 23;
+    VerifyArtifactRequest verify_artifact = 24;
+    CompleteVisibleCompletionRequest complete_visible_completion = 25;
+    CompleteArtifactMultipartUploadRequest complete_artifact_multipart_upload = 26;
+  }
+}
+
+message ConnectResponse {
+  string request_id = 1;
+  oneof result {
+    FinalizationPlan finalization_plan = 20;
+    ArtifactUploadClaim artifact_upload_claim = 21;
+    ArtifactMultipartSession artifact_multipart_session = 22;
+    ArtifactUploadResult artifact_upload_result = 23;
+    ArtifactVerificationResult artifact_verification_result = 24;
+    VisibleCompletionResult visible_completion_result = 25;
+    WorkerOperationError operation_error = 99;
+  }
+}
+
+message WorkerOperationError {
+  string code = 1;
+  string message = 2;
+}
+
+message WorkerLeaseCredentials {
+  string attempt_id = 1;
+  int64 worker_epoch = 2;
+  int64 fence = 3;
+  string token = 4;
+}
+
+message BeginFinalizationRequest {
+  WorkerLeaseCredentials lease = 1;
+}
+
+message ClaimArtifactUploadRequest {
+  WorkerLeaseCredentials lease = 1;
+  string upload_id = 2;
+  string claim_id = 3;
+  ArtifactUploadPartIntent part = 4;
+}
+
+message ArtifactUploadPartIntent {
+  int32 number = 1;
+  int64 size_bytes = 2;
+  bytes sha256 = 3;
+}
+
+message RecordArtifactMultipartSessionRequest {
+  WorkerLeaseCredentials lease = 1;
+  string upload_id = 2;
+  string claim_id = 3;
+  string multipart_upload_id = 4;
+}
+
+message ArtifactUploadPartReport {
+  int32 number = 1;
+  string etag = 2;
+  int64 size_bytes = 3;
+  bytes checksum_sha256 = 4;
+}
+
+message ArtifactUploadReport {
+  string object_version_id = 1;
+  int64 size_bytes = 2;
+  bytes sha256 = 3;
+  string content_type = 4;
+  repeated ArtifactUploadPartReport completed_parts = 5;
+}
+
+message RecordArtifactUploadedRequest {
+  WorkerLeaseCredentials lease = 1;
+  string upload_id = 2;
+  ArtifactUploadReport report = 3;
+}
+
+message CompleteArtifactMultipartUploadRequest {
+  WorkerLeaseCredentials lease = 1;
+  string upload_id = 2;
+  string claim_id = 3;
+  int64 size_bytes = 4;
+  bytes sha256 = 5;
+  string content_type = 6;
+  repeated ArtifactUploadPartReport completed_parts = 7;
+}
+
+message VerifyArtifactRequest {
+  WorkerLeaseCredentials lease = 1;
+  string upload_id = 2;
+  string verification_id = 3;
+}
+
+message VisibleCompletionCandidate {
+  string completion_id = 1;
+  int64 expected_job_version = 2;
+  repeated string artifact_ids = 3;
+}
+
+message CompleteVisibleCompletionRequest {
+  WorkerLeaseCredentials lease = 1;
+  VisibleCompletionCandidate candidate = 2;
+}
+
+message PlannedArtifact {
+  string artifact_id = 1;
+  string upload_id = 2;
+  string kind = 3;
+  int32 ordinal = 4;
+  string object_key = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message FinalizationPlan {
+  string decision = 1;
+  string attempt_id = 2;
+  string job_id = 3;
+  int64 job_version = 4;
+  google.protobuf.Timestamp finalization_started_at = 5;
+  google.protobuf.Timestamp finalization_deadline_at = 6;
+  repeated PlannedArtifact artifacts = 7;
+}
+
+message ArtifactUploadClaim {
+  string decision = 1;
+  string claim_id = 2;
+  string upload_id = 3;
+  string artifact_id = 4;
+  string object_key = 5;
+  string expected_content_type = 6;
+  google.protobuf.Timestamp claim_expires_at = 7;
+  int64 version = 8;
+  string multipart_upload_id = 9;
+  repeated ArtifactUploadPartReport completed_parts = 10;
+  SignedArtifactUploadPart upload_part = 11;
+  google.protobuf.Timestamp upload_expires_at = 12;
+  bool part_already_uploaded = 13;
+}
+
+message SignedArtifactUploadPart {
+  int32 number = 1;
+  int64 size_bytes = 2;
+  bytes sha256 = 3;
+  string url = 4;
+  map<string, string> required_headers = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message ArtifactMultipartSession {
+  string decision = 1;
+  string upload_id = 2;
+  string artifact_id = 3;
+  string multipart_upload_id = 4;
+  int64 version = 5;
+}
+
+message ArtifactUploadResult {
+  string decision = 1;
+  string upload_id = 2;
+  string artifact_id = 3;
+  string object_version_id = 4;
+  int64 version = 5;
+}
+
+message ArtifactVerificationResult {
+  string decision = 1;
+  string verification_id = 2;
+  string upload_id = 3;
+  string artifact_id = 4;
+  string object_version_id = 5;
+  int64 version = 6;
+  google.protobuf.Timestamp verified_at = 7;
+}
+
+message WorkerCommittedArtifact {
+  string artifact_id = 1;
+  string kind = 2;
+  int32 ordinal = 3;
+  string object_key = 4;
+  string object_version_id = 5;
+  int64 size_bytes = 6;
+  bytes sha256 = 7;
+  string content_type = 8;
+}
+
+message VisibleCompletionResult {
+  string decision = 1;
+  string completion_id = 2;
+  string job_id = 3;
+  string attempt_id = 4;
+  string artifact_set_id = 5;
+  string charge_id = 6;
+  int64 job_version = 7;
+  bytes manifest_sha256 = 8;
+  repeated WorkerCommittedArtifact artifacts = 9;
+  google.protobuf.Timestamp completed_at = 10;
+}

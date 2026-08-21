@@ -7,6 +7,7 @@ LOCK TABLE attempt_leases IN ROW EXCLUSIVE MODE;
 -- name: LockHeartbeatAuthority :one
 SELECT
     l.id AS lease_id,
+    l.phase AS lease_phase,
     l.token_digest,
     l.expires_at AS lease_expires_at,
     l.revoked_at AS lease_revoked_at,
@@ -23,6 +24,7 @@ SELECT
     j.version AS job_version,
     j.current_fence,
     j.job_expires_at,
+    a.finalization_deadline_at,
     cr.state AS credit_reservation_state
 FROM attempt_leases AS l
 JOIN attempts AS a ON a.id = l.attempt_id
@@ -32,7 +34,7 @@ WHERE l.attempt_id = sqlc.arg(attempt_id)
   AND l.worker_id = sqlc.arg(worker_id)
   AND l.worker_epoch = sqlc.arg(worker_epoch)
   AND l.fence = sqlc.arg(fence)
-  AND l.phase = 'EXECUTION'
+  AND l.phase IN ('EXECUTION', 'FINALIZATION')
   AND l.owner_kind = 'WORKER'
   AND l.owner_id = sqlc.arg(owner_id)
   AND l.revoked_at IS NULL
@@ -61,7 +63,7 @@ WHERE id = sqlc.arg(lease_id)
   AND worker_id = sqlc.arg(worker_id)
   AND worker_epoch = sqlc.arg(worker_epoch)
   AND fence = sqlc.arg(fence)
-  AND phase = 'EXECUTION'
+  AND phase = sqlc.arg(lease_phase)
   AND owner_kind = 'WORKER'
   AND revoked_at IS NULL
   AND expires_at = sqlc.arg(previous_expires_at);

@@ -30,6 +30,7 @@ const (
 	nMinusOneRenewalControlCommit = "450dd5c379ed7d26588e2a76140f0b3281acfbb2"
 	nMinusOneFailureControlCommit = "9cb1a522e20490ef41bab535fde206a947118d11"
 	nMinusOneCancellationCommit   = "d0a8c0105a09b7f538e79400a7affd2a6c700744"
+	finalizationFixedPointCommit  = "c94e140c8e841e88bdfcc41725bd7aa5ea7ac068"
 )
 
 func TestNMinusOneControlStartupAcrossRenewalProtocolTransition(t *testing.T) {
@@ -222,6 +223,129 @@ func TestNMinusOneControlStartsAndWritesAfterCustomerCancellationExpansion(t *te
 	}
 }
 
+func TestExactFinalizationFixedPointStartsWritesAndForwardsUnknownSuccess(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, finalizationFixedPointCommit)
+
+	assertNMinusOneDatabaseStartupPassed(t, runNMinusOneControl(t, nMinusOne.Control, database.DSN))
+	seedAdmissionFixture(t, database.Admin)
+	jobIDText := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	if _, err := database.Admin.Exec(`
+		INSERT INTO workers (
+			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
+		) VALUES (
+			$1, '00000000-0000-0000-0000-000000000005',
+			'spiffe://vela.internal/worker/n-minus-one-finalization-probe', 7, 'READY', 'HEALTHY'
+		)
+	`, testWorkerID); err != nil {
+		t.Fatalf("seed exact fixed-point Worker: %v", err)
+	}
+	attemptID := runNMinusOneAssignmentProbe(
+		t,
+		nMinusOne.AssignmentProbe,
+		database.DSN,
+		jobIDText,
+		testWorkerID,
+		7,
+		1,
+	)
+	jobID := uuid.MustParse(jobIDText)
+	var jobState, attemptState string
+	var artifacts, artifactSets int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			job.state,
+			attempt.state,
+			(SELECT count(*) FROM artifacts),
+			(SELECT count(*) FROM artifact_sets)
+		FROM jobs AS job
+		JOIN attempts AS attempt ON attempt.job_id = job.id
+		WHERE job.id = $1 AND attempt.id = $2
+	`, jobID, attemptID).Scan(&jobState, &attemptState, &artifacts, &artifactSets); err != nil {
+		t.Fatalf("read exact fixed-point expansion writes: %v", err)
+	}
+	if jobState != "ASSIGNED" || attemptState != "ASSIGNED" || artifacts != 0 || artifactSets != 0 {
+		t.Fatalf(
+			"exact fixed-point expansion state = %s/%s artifacts/sets %d/%d",
+			jobState,
+			attemptState,
+			artifacts,
+			artifactSets,
+		)
+	}
+
+	eventID := uuid.New()
+	successPayload, err := proto.Marshal(&velav1.EventEnvelope{
+		EventId:          eventID.String(),
+		AggregateType:    "Job",
+		AggregateId:      jobID.String(),
+		AggregateVersion: 3,
+		EventType:        "job.succeeded",
+		SchemaVersion:    1,
+		Payload: &velav1.EventEnvelope_JobSucceeded{JobSucceeded: &velav1.JobSucceeded{
+			OrganizationId: testOrganizationID,
+			ProjectId:      testProjectID,
+			JobId:          jobID.String(),
+			AttemptId:      attemptID,
+			AttemptFence:   1,
+			ArtifactSetId:  uuid.NewString(),
+			ManifestSha256: bytes.Repeat([]byte{0x2a}, 32),
+			ChargeId:       uuid.NewString(),
+			Artifacts: []*velav1.ArtifactSnapshot{{
+				ArtifactId:      uuid.NewString(),
+				Kind:            "VIDEO",
+				Ordinal:         0,
+				ObjectKey:       "artifacts/org/project/job/attempt/artifact/video.mp4",
+				ObjectVersionId: "version-0001",
+				SizeBytes:       1024,
+				Sha256:          bytes.Repeat([]byte{0x7b}, 32),
+				ContentType:     "video/mp4",
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal fixed-point unknown success event: %v", err)
+	}
+	if _, err := database.Admin.Exec("DELETE FROM outbox_events WHERE aggregate_id = $1", jobID); err != nil {
+		t.Fatalf("remove fixed-point Admission event: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO outbox_events (
+			event_id, organization_id, project_id, aggregate_type, aggregate_id,
+			aggregate_version, event_type, schema_version, payload, occurred_at
+		) VALUES ($1, $2, $3, 'Job', $4, 3, 'job.succeeded', 1, $5, clock_timestamp())
+	`, eventID, testOrganizationID, testProjectID, jobID, successPayload); err != nil {
+		t.Fatalf("insert fixed-point unknown success event: %v", err)
+	}
+	forwarded := runNMinusOneOutboxProbe(t, nMinusOne.OutboxProbe, database.DSN)
+	if forwarded.Subject != "vela.events.job.succeeded" ||
+		forwarded.MessageID != eventID.String() || forwarded.KnownPayload ||
+		forwarded.UnknownBytes == 0 || !bytes.Equal(forwarded.Payload, successPayload) {
+		t.Fatalf("fixed-point success forwarding = %#v", forwarded)
+	}
+	var published bool
+	var stream string
+	var sequence int64
+	var attempts int
+	if err := database.Admin.QueryRow(`
+		SELECT published_at IS NOT NULL, broker_stream, broker_sequence, publish_attempts
+		FROM outbox_events
+		WHERE event_id = $1
+	`, eventID).Scan(&published, &stream, &sequence, &attempts); err != nil {
+		t.Fatalf("read fixed-point success PubAck receipt: %v", err)
+	}
+	if !published || stream != "N_MINUS_ONE_PROBE" || sequence != 1 || attempts != 1 {
+		t.Fatalf(
+			"fixed-point success PubAck = published %t stream %s sequence %d attempts %d",
+			published,
+			stream,
+			sequence,
+			attempts,
+		)
+	}
+}
+
 func TestNMinusOneOutboxPublisherForwardsUnknownCancellationPayloadBytes(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -314,6 +438,94 @@ func TestNMinusOneOutboxPublisherForwardsUnknownCancellationPayloadBytes(t *test
 	}
 	if !published || stream != "N_MINUS_ONE_PROBE" || sequence != 1 || attempts != 1 {
 		t.Fatalf("N-1 Outbox receipt = published %t stream %s sequence %d attempts %d", published, stream, sequence, attempts)
+	}
+
+	successEventID := uuid.New()
+	artifactSetID := uuid.New()
+	successChargeID := uuid.New()
+	artifactID := uuid.New()
+	successPayload, err := proto.Marshal(&velav1.EventEnvelope{
+		EventId:          successEventID.String(),
+		AggregateType:    "Job",
+		AggregateId:      jobID.String(),
+		AggregateVersion: 3,
+		EventType:        "job.succeeded",
+		SchemaVersion:    1,
+		Payload: &velav1.EventEnvelope_JobSucceeded{JobSucceeded: &velav1.JobSucceeded{
+			OrganizationId: testOrganizationID,
+			ProjectId:      testProjectID,
+			JobId:          jobID.String(),
+			AttemptId:      uuid.NewString(),
+			AttemptFence:   8,
+			ArtifactSetId:  artifactSetID.String(),
+			ManifestSha256: bytes.Repeat([]byte{0x2a}, 32),
+			ChargeId:       successChargeID.String(),
+			Artifacts: []*velav1.ArtifactSnapshot{{
+				ArtifactId:      artifactID.String(),
+				Kind:            "VIDEO",
+				Ordinal:         0,
+				ObjectKey:       "artifacts/org/project/job/attempt/artifact/video.mp4",
+				ObjectVersionId: "version-0001",
+				SizeBytes:       1024,
+				Sha256:          bytes.Repeat([]byte{0x7b}, 32),
+				ContentType:     "video/mp4",
+			}},
+		},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal unknown-to-N-1 success event: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO outbox_events (
+			event_id,
+			organization_id,
+			project_id,
+			aggregate_type,
+			aggregate_id,
+			aggregate_version,
+			event_type,
+			schema_version,
+			payload,
+			occurred_at
+		) VALUES ($1, $2, $3, 'Job', $4, 3, 'job.succeeded', 1, $5, clock_timestamp())
+	`, successEventID, testOrganizationID, testProjectID, jobID, successPayload); err != nil {
+		t.Fatalf("insert unknown-to-N-1 success event: %v", err)
+	}
+	forwarded = runNMinusOneOutboxProbe(t, nMinusOne.OutboxProbe, database.DSN)
+	if forwarded.Subject != "vela.events.job.succeeded" ||
+		forwarded.MessageID != successEventID.String() {
+		t.Fatalf("N-1 success publisher metadata = %q/%q", forwarded.Subject, forwarded.MessageID)
+	}
+	if forwarded.KnownPayload || forwarded.UnknownBytes == 0 {
+		t.Fatalf(
+			"N-1 descriptor classified success payload as known=%t unknown_bytes=%d",
+			forwarded.KnownPayload,
+			forwarded.UnknownBytes,
+		)
+	}
+	if !bytes.Equal(forwarded.Payload, successPayload) {
+		t.Fatalf(
+			"N-1 publisher changed unknown success payload bytes: got %x want %x",
+			forwarded.Payload,
+			successPayload,
+		)
+	}
+	if err := database.Admin.QueryRow(`
+		SELECT published_at IS NOT NULL, broker_stream, broker_sequence, publish_attempts
+		FROM outbox_events
+		WHERE event_id = $1
+	`, successEventID).Scan(&published, &stream, &sequence, &attempts); err != nil {
+		t.Fatalf("read N-1 success Outbox publish receipt: %v", err)
+	}
+	if !published || stream != "N_MINUS_ONE_PROBE" || sequence != 1 || attempts != 1 {
+		t.Fatalf(
+			"N-1 success Outbox receipt = published %t stream %s sequence %d attempts %d",
+			published,
+			stream,
+			sequence,
+			attempts,
+		)
 	}
 }
 
@@ -812,6 +1024,7 @@ func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
 		"VELA_HTTP_ADDRESS":          "127.0.0.1:0",
 		"VELA_AUTH_DATABASE_URL":     roleDatabaseURL(t, adminDSN, "vela_auth_login", "vela-auth-password"),
 		"VELA_REQUEST_DATABASE_URL":  roleDatabaseURL(t, adminDSN, "vela_request_login", "vela-request-password"),
+		"VELA_CANCEL_DATABASE_URL":   roleDatabaseURL(t, adminDSN, "vela_cancel_login", "vela-cancel-password"),
 		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(t, adminDSN, "vela_internal_login", "vela-internal-password"),
 		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(
 			[]byte("0123456789abcdef0123456789abcdef"),

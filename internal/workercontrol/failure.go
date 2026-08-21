@@ -56,17 +56,19 @@ type FailureObservation struct {
 }
 
 type RetryDecision struct {
-	Disposition           RetryDisposition
-	FailureClass          string
-	AttemptID             uuid.UUID
-	JobID                 uuid.UUID
-	AttemptState          AttemptTerminalState
-	AttemptComputeSeconds int64
-	TotalComputeSeconds   int64
-	NextRetryAt           *time.Time
-	JobFence              int64
-	JobVersion            int64
-	DecidedAt             time.Time
+	Disposition                RetryDisposition
+	FailureClass               string
+	AttemptID                  uuid.UUID
+	JobID                      uuid.UUID
+	AttemptState               AttemptTerminalState
+	AttemptComputeSeconds      int64
+	TotalComputeSeconds        int64
+	AttemptFinalizationSeconds int64
+	TotalFinalizationSeconds   int64
+	NextRetryAt                *time.Time
+	JobFence                   int64
+	JobVersion                 int64
+	DecidedAt                  time.Time
 }
 
 type normalizedFailureObservation struct {
@@ -335,29 +337,69 @@ func attemptComputeSeconds(authority store.LockFailureAuthorityRow, decidedAt ti
 		}
 		return 0, nil
 	}
-	if authority.AttemptState != store.AttemptStateRUNNING || !authority.AttemptStartedAt.Valid {
+	if authority.AttemptState != store.AttemptStateRUNNING &&
+		authority.AttemptState != store.AttemptStateFINALIZING {
+		return 0, errors.New("active Attempt state is inconsistent with its start time")
+	}
+	if !authority.AttemptStartedAt.Valid {
 		return 0, errors.New("active Attempt state is inconsistent with its start time")
 	}
 	endedAt := decidedAt
-	if authority.LeaseExpiresAt.Time.Before(endedAt) {
+	if authority.AttemptState == store.AttemptStateFINALIZING {
+		if !authority.FinalizationStartedAt.Valid || !authority.FinalizationDeadlineAt.Valid {
+			return 0, errors.New("FINALIZING Attempt has incomplete finalization timestamps")
+		}
+		endedAt = authority.FinalizationStartedAt.Time
+	} else if authority.LeaseExpiresAt.Time.Before(endedAt) {
 		endedAt = authority.LeaseExpiresAt.Time
 	}
 	if authority.JobExpiresAt.Time.Before(endedAt) {
 		endedAt = authority.JobExpiresAt.Time
 	}
-	startedAt := authority.AttemptStartedAt.Time
+	return conservativeElapsedSeconds(
+		authority.AttemptStartedAt.Time,
+		endedAt,
+		"attempt compute interval",
+	)
+}
+
+func attemptFinalizationSeconds(authority store.LockFailureAuthorityRow, decidedAt time.Time) (int64, error) {
+	if authority.AttemptState != store.AttemptStateFINALIZING {
+		if authority.FinalizationStartedAt.Valid || authority.FinalizationDeadlineAt.Valid {
+			return 0, errors.New("pre-finalization Attempt has finalization timestamps")
+		}
+		return 0, nil
+	}
+	if !authority.FinalizationStartedAt.Valid || !authority.FinalizationDeadlineAt.Valid {
+		return 0, errors.New("FINALIZING Attempt has incomplete finalization timestamps")
+	}
+	endedAt := decidedAt
+	if authority.FinalizationDeadlineAt.Time.Before(endedAt) {
+		endedAt = authority.FinalizationDeadlineAt.Time
+	}
+	if authority.JobExpiresAt.Time.Before(endedAt) {
+		endedAt = authority.JobExpiresAt.Time
+	}
+	return conservativeElapsedSeconds(
+		authority.FinalizationStartedAt.Time,
+		endedAt,
+		"attempt finalization interval",
+	)
+}
+
+func conservativeElapsedSeconds(startedAt time.Time, endedAt time.Time, intervalName string) (int64, error) {
 	if endedAt.Before(startedAt) {
-		return 0, errors.New("attempt compute interval has inconsistent timestamps")
+		return 0, fmt.Errorf("%s has inconsistent timestamps", intervalName)
 	}
 	endSeconds := endedAt.Unix()
 	startSeconds := startedAt.Unix()
 	if startSeconds < 0 && endSeconds > math.MaxInt64+startSeconds {
-		return 0, errors.New("attempt compute interval overflows seconds")
+		return 0, fmt.Errorf("%s overflows seconds", intervalName)
 	}
 	seconds := endSeconds - startSeconds
 	if endedAt.Nanosecond() > startedAt.Nanosecond() {
 		if seconds == math.MaxInt64 {
-			return 0, errors.New("attempt compute interval overflows seconds")
+			return 0, fmt.Errorf("%s overflows seconds", intervalName)
 		}
 		seconds++
 	}
@@ -447,6 +489,8 @@ func insertRetryWaitEvent(
 	observation normalizedFailureObservation,
 	attemptComputeSeconds int64,
 	totalComputeSeconds int64,
+	attemptFinalizationSeconds int64,
+	totalFinalizationSeconds int64,
 	jobFence int64,
 	jobVersion int64,
 	nextRetryAt time.Time,
@@ -462,18 +506,20 @@ func insertRetryWaitEvent(
 		SchemaVersion:    1,
 		OccurredAt:       timestamppb.New(decidedAt),
 		Payload: &velav1.EventEnvelope_JobRetryWait{JobRetryWait: &velav1.JobRetryWait{
-			OrganizationId:        authority.OrganizationID.String(),
-			ProjectId:             authority.ProjectID.String(),
-			JobId:                 authority.JobID.String(),
-			AttemptId:             authority.AttemptID.String(),
-			AttemptNumber:         uint32(authority.AttemptNumber),
-			AttemptFence:          uint64(authority.AttemptFence),
-			JobFence:              uint64(jobFence),
-			FailureClass:          observation.FailureClass,
-			AttemptComputeSeconds: uint64(attemptComputeSeconds),
-			TotalComputeSeconds:   uint64(totalComputeSeconds),
-			NextRetryAt:           timestamppb.New(nextRetryAt),
-			DecidedAt:             timestamppb.New(decidedAt),
+			OrganizationId:             authority.OrganizationID.String(),
+			ProjectId:                  authority.ProjectID.String(),
+			JobId:                      authority.JobID.String(),
+			AttemptId:                  authority.AttemptID.String(),
+			AttemptNumber:              uint32(authority.AttemptNumber),
+			AttemptFence:               uint64(authority.AttemptFence),
+			JobFence:                   uint64(jobFence),
+			FailureClass:               observation.FailureClass,
+			AttemptComputeSeconds:      uint64(attemptComputeSeconds),
+			TotalComputeSeconds:        uint64(totalComputeSeconds),
+			AttemptFinalizationSeconds: uint64(attemptFinalizationSeconds),
+			TotalFinalizationSeconds:   uint64(totalFinalizationSeconds),
+			NextRetryAt:                timestamppb.New(nextRetryAt),
+			DecidedAt:                  timestamppb.New(decidedAt),
 		}},
 	}
 	payload, err := proto.Marshal(event)
@@ -502,6 +548,8 @@ func insertJobFailedEvent(
 	attemptState store.AttemptState,
 	attemptComputeSeconds int64,
 	totalComputeSeconds int64,
+	attemptFinalizationSeconds int64,
+	totalFinalizationSeconds int64,
 	jobFence int64,
 	jobVersion int64,
 	decidedAt time.Time,
@@ -516,18 +564,20 @@ func insertJobFailedEvent(
 		SchemaVersion:    1,
 		OccurredAt:       timestamppb.New(decidedAt),
 		Payload: &velav1.EventEnvelope_JobFailed{JobFailed: &velav1.JobFailed{
-			OrganizationId:        authority.OrganizationID.String(),
-			ProjectId:             authority.ProjectID.String(),
-			JobId:                 authority.JobID.String(),
-			AttemptId:             authority.AttemptID.String(),
-			AttemptNumber:         uint32(authority.AttemptNumber),
-			AttemptFence:          uint64(authority.AttemptFence),
-			JobFence:              uint64(jobFence),
-			FailureClass:          failureClass,
-			AttemptState:          string(attemptState),
-			AttemptComputeSeconds: uint64(attemptComputeSeconds),
-			TotalComputeSeconds:   uint64(totalComputeSeconds),
-			DecidedAt:             timestamppb.New(decidedAt),
+			OrganizationId:             authority.OrganizationID.String(),
+			ProjectId:                  authority.ProjectID.String(),
+			JobId:                      authority.JobID.String(),
+			AttemptId:                  authority.AttemptID.String(),
+			AttemptNumber:              uint32(authority.AttemptNumber),
+			AttemptFence:               uint64(authority.AttemptFence),
+			JobFence:                   uint64(jobFence),
+			FailureClass:               failureClass,
+			AttemptState:               string(attemptState),
+			AttemptComputeSeconds:      uint64(attemptComputeSeconds),
+			TotalComputeSeconds:        uint64(totalComputeSeconds),
+			AttemptFinalizationSeconds: uint64(attemptFinalizationSeconds),
+			TotalFinalizationSeconds:   uint64(totalFinalizationSeconds),
+			DecidedAt:                  timestamppb.New(decidedAt),
 		}},
 	}
 	payload, err := proto.Marshal(event)
@@ -566,17 +616,19 @@ func retryDecisionFromStored(row store.GetExecutionFailureDecisionRow) (RetryDec
 		nextRetryAt = &value
 	}
 	return RetryDecision{
-		Disposition:           disposition,
-		FailureClass:          row.FailureClass,
-		AttemptID:             row.AttemptID.UUID,
-		JobID:                 row.JobID,
-		AttemptState:          attemptState,
-		AttemptComputeSeconds: row.AttemptComputeSeconds,
-		TotalComputeSeconds:   row.TotalComputeSeconds,
-		NextRetryAt:           nextRetryAt,
-		JobFence:              row.JobFence,
-		JobVersion:            row.JobVersion,
-		DecidedAt:             row.DecidedAt.Time,
+		Disposition:                disposition,
+		FailureClass:               row.FailureClass,
+		AttemptID:                  row.AttemptID.UUID,
+		JobID:                      row.JobID,
+		AttemptState:               attemptState,
+		AttemptComputeSeconds:      row.AttemptComputeSeconds,
+		TotalComputeSeconds:        row.TotalComputeSeconds,
+		AttemptFinalizationSeconds: row.AttemptFinalizationSeconds,
+		TotalFinalizationSeconds:   row.TotalFinalizationSeconds,
+		NextRetryAt:                nextRetryAt,
+		JobFence:                   row.JobFence,
+		JobVersion:                 row.JobVersion,
+		DecidedAt:                  row.DecidedAt.Time,
 	}, nil
 }
 

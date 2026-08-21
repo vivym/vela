@@ -25,6 +25,7 @@ message EventEnvelope {
     JobCanceling job_canceling = 27;
     ChargePosted charge_posted = 28;
     InvoiceExportRequested invoice_export_requested = 29;
+    JobSucceeded job_succeeded = 30;
   }
 }
 
@@ -79,6 +80,8 @@ message JobRetryWait {
   uint64 total_compute_seconds = 12;
   google.protobuf.Timestamp next_retry_at = 13;
   google.protobuf.Timestamp decided_at = 14;
+  uint64 attempt_finalization_seconds = 15;
+  uint64 total_finalization_seconds = 16;
 }
 
 message JobFailed {
@@ -97,6 +100,8 @@ message JobFailed {
   uint64 attempt_compute_seconds = 12;
   uint64 total_compute_seconds = 13;
   google.protobuf.Timestamp decided_at = 14;
+  uint64 attempt_finalization_seconds = 15;
+  uint64 total_finalization_seconds = 16;
 }
 
 message JobCanceled {
@@ -156,4 +161,28 @@ message InvoiceExportRequested {
   string job_id = 3;
   string charge_id = 4;
   google.protobuf.Timestamp requested_at = 5;
+}
+
+message ArtifactSnapshot {
+  string artifact_id = 1;
+  string kind = 2;
+  uint32 ordinal = 3;
+  string object_key = 4;
+  string object_version_id = 5;
+  uint64 size_bytes = 6;
+  bytes sha256 = 7;
+  string content_type = 8;
+}
+
+message JobSucceeded {
+  string organization_id = 1;
+  string project_id = 2;
+  string job_id = 3;
+  string attempt_id = 4;
+  uint64 attempt_fence = 5;
+  string artifact_set_id = 6;
+  bytes manifest_sha256 = 7;
+  string charge_id = 8;
+  repeated ArtifactSnapshot artifacts = 9;
+  google.protobuf.Timestamp completed_at = 10;
 }

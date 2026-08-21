@@ -45,6 +45,12 @@ Keep a current Worker-owned EXECUTION Lease alive only while the same authentica
 
 The deferred Worker adapter must record its local monotonic time before each request and use `request_started_monotonic + lease_valid_for` as its fail-closed deadline. It must never compare the server `expires_at` with Worker wall time.
 
+The later Artifact Finalization slice extends this contract to a current
+Worker-owned FINALIZATION Lease while Job and Attempt are both FINALIZING. That
+extension preserves the same token, epoch, fence, replay, and monotonic-deadline
+rules, caps renewal by both Job Expiry and the immutable finalization deadline,
+and does not change the EXECUTION Lease migration protocol defined here.
+
 ## Heartbeat Contract
 
 The trusted transport passes:
@@ -69,7 +75,12 @@ HeartbeatObservation {
 }
 ```
 
-`worker_id` comes from verified mTLS identity. Credentials must identify the same current Worker-owned EXECUTION Lease. `sequence` is positive and strictly increases within an Attempt. The first received sequence need not be one because an earlier request may be lost before reaching the coordinator.
+`worker_id` comes from verified mTLS identity. Credentials must identify the same
+current Worker-owned Lease. EXECUTION is valid only while Job and Attempt are both
+ASSIGNED or both RUNNING; FINALIZATION is valid only while both are FINALIZING.
+`sequence` is positive and strictly increases within an Attempt. The first received
+sequence need not be one because an earlier request may be lost before reaching the
+coordinator.
 
 `backend_stage` is an internal diagnostic label of 1 to 100 printable characters. Both JSON summaries must be valid objects no larger than 16 KiB. `backend_stage_progress`, when present, is in `[0, 1)`; the value `1` is reserved for Visible Completion and is never accepted from heartbeat. `estimated_remaining_seconds`, when present, is an integer in `[0, 9223372036]`, so its server-derived timestamp is representable without duration overflow. `scratch_free_bytes` is non-negative.
 
@@ -94,10 +105,12 @@ Continue {
 
 Expected Stop reasons are bounded:
 
-- `INVALID_AUTHORITY`: malformed or mismatched Worker, epoch, Attempt, fence, or token; revoked Lease; or non-EXECUTION/non-Worker Lease.
-- `LEASE_EXPIRED`: the presented EXECUTION Lease has already expired by PostgreSQL time.
+- `INVALID_AUTHORITY`: malformed or mismatched Worker, epoch, Attempt, fence, or token; revoked Lease; unsupported Lease phase; or non-Worker Lease.
+- `LEASE_EXPIRED`: the presented Lease has already expired by PostgreSQL time.
 - `JOB_EXPIRED`: immutable Job Expiry has arrived by PostgreSQL time.
-- `NOT_HEARTBEATABLE`: Job and Attempt are not both ASSIGNED or both RUNNING, or CreditReservation is not RESERVED.
+- `NOT_HEARTBEATABLE`: Lease phase does not match the Job/Attempt lifecycle, the
+  matched lifecycle is not ASSIGNED, RUNNING, or FINALIZING, the FINALIZATION
+  deadline is missing/expired, or CreditReservation is not RESERVED.
 - `STALE_HEARTBEAT`: sequence is lower than the latest committed sequence, or repeats that sequence with different canonical content.
 - `INVALID_PROGRESS`: observation fields violate the bounded public contract.
 - `PROTOCOL_MIGRATION_REQUIRED`: authority is valid, but the database-wide renewable-Lease protocol gate has not been switched on.
@@ -143,16 +156,20 @@ The transaction must:
 
 1. lock the authenticated Worker and require the exact Worker epoch;
 2. acquire the EXECUTION Lease write relation lock used by every renewal-protocol participant;
-3. lock the matching Attempt, Worker-owned EXECUTION Lease, Job, and CreditReservation;
+3. lock the matching Attempt, Worker-owned EXECUTION or FINALIZATION Lease, Job, and CreditReservation;
 4. hash the presented opaque token and compare it in constant time with the stored digest;
 5. require matching Worker, epoch, fence, current Job fence, and an unrevoked Lease;
 6. read PostgreSQL `clock_timestamp()` after locking and require current Lease expiry and Job Expiry in the future;
-7. require Job and Attempt to be ASSIGNED together or RUNNING together and CreditReservation to be RESERVED;
+7. require the Lease phase to match Job and Attempt in ASSIGNED, RUNNING, or
+   FINALIZING, require FINALIZING authority to remain before its immutable deadline,
+   and require CreditReservation to be RESERVED;
 8. lock and require the database-wide renewable-Lease protocol gate, returning `PROTOCOL_MIGRATION_REQUIRED` while it is disabled;
 9. validate and canonicalize the observation only after authority and protocol eligibility are established;
 10. lock the current Attempt progress row, if any, and apply the sequence/hash replay rules;
-11. map ASSIGNED to PREPARING and RUNNING to GENERATING without exposing `backend_stage`;
-12. compute the capped, non-shortening renewed Lease expiry;
+11. map ASSIGNED to PREPARING, RUNNING to GENERATING, and FINALIZING to FINALIZING
+    without exposing `backend_stage`;
+12. compute the capped, non-shortening renewed Lease expiry, with FINALIZATION also
+    capped by its immutable finalization deadline;
 13. atomically renew the Lease, upsert the complete Attempt progress record, and record the Worker's server-observed heartbeat time;
 14. leave Job state/version, Attempt state, RetryRuntimeState, CreditReservation, credit amounts, and Outbox unchanged;
 15. re-read PostgreSQL time, require the renewed Lease and Job Expiry still in the future, and calculate positive `lease_valid_for`;
@@ -220,8 +237,12 @@ Required evidence:
 - concurrent duplicate heartbeat creates one renewal/progress update and returns the same durable expiry and observation time;
 - replay after coordinator restart preserves expiry and progress while returning a smaller current `lease_valid_for`;
 - a lower sequence or equal sequence with different content is rejected without mutation, while a higher sequence replaces progress;
-- wrong Worker, epoch, Attempt, fence, token, Lease phase/owner, revoked Lease, or stale Job fence is rejected;
-- ASSIGNED/PREPARING and RUNNING/GENERATING heartbeat succeed; stale or terminal state and non-RESERVED credit reject without mutation;
+- wrong Worker, epoch, Attempt, fence, token, Lease owner, revoked Lease, unsupported
+  Lease phase, or stale Job fence is rejected;
+- ASSIGNED/PREPARING, RUNNING/GENERATING, and matching
+  FINALIZING/FINALIZATION heartbeat succeed; phase/lifecycle mismatch, stale or
+  terminal state, expired finalization deadline, and non-RESERVED credit reject
+  without mutation;
 - Lease or Job expiry discovered after a row-lock wait or during a delayed progress write causes complete rollback;
 - renewal never crosses Job Expiry and never shortens an unexpired Lease after an adjacent TTL change;
 - routine DRAINING does not block heartbeat;
