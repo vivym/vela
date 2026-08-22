@@ -1,0 +1,71 @@
+package main
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"log"
+	"os"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/identity"
+)
+
+func main() {
+	ctx := context.Background()
+	authPool, err := pgxpool.New(ctx, os.Getenv("VELA_AUTH_DATABASE_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer authPool.Close()
+	cancelPool, err := pgxpool.New(ctx, os.Getenv("VELA_CANCEL_DATABASE_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cancelPool.Close()
+	internalPool, err := pgxpool.New(ctx, os.Getenv("VELA_INTERNAL_DATABASE_URL"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer internalPool.Close()
+	pepper, err := base64.StdEncoding.DecodeString(os.Getenv("VELA_CREDENTIAL_PEPPER_BASE64"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	principal, err := identity.NewAuthenticator(authPool, pepper).Authenticate(
+		ctx,
+		os.Getenv("VELA_BEARER_CREDENTIAL"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	projectID, err := uuid.Parse(os.Getenv("VELA_PROJECT_ID"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	jobID, err := uuid.Parse(os.Getenv("VELA_JOB_ID"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	result, err := cancellation.NewService(cancelPool, internalPool).Cancel(
+		ctx,
+		principal,
+		projectID,
+		jobID,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	response := struct {
+		Decision string `json:"decision"`
+		ChargeID string `json:"charge_id"`
+	}{Decision: string(result.Decision)}
+	if result.Charge != nil {
+		response.ChargeID = result.Charge.ID.String()
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
+		log.Fatal(err)
+	}
+}

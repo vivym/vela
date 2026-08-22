@@ -32,7 +32,62 @@ const (
 	nMinusOneCancellationCommit          = "d0a8c0105a09b7f538e79400a7affd2a6c700744"
 	finalizationFixedPointCommit         = "c94e140c8e841e88bdfcc41725bd7aa5ea7ac068"
 	hierarchicalSchedulerNMinusOneCommit = "8d4fd9199348d5ccdca48c40ef3b4a19ee5c5284"
+	invoiceExportNMinusOneCommit         = "96760832c3b652827a9c5ce1732fbfa773ed0759"
 )
+
+func TestExactInvoiceExportNMinusOneWriterCreatesExportAuthority(t *testing.T) {
+	fixture := newStartFixture(t, "invoice-export-n-minus-one-writer", 7)
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant cancellation scope for Invoice N-1 writer: %v", err)
+	}
+	started, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("start Invoice N-1 writer fixture = %#v error=%v", started, err)
+	}
+	nMinusOne := buildNMinusOneBinaries(t, invoiceExportNMinusOneCommit)
+	result := runNMinusOneInvoiceChargeProbe(
+		t,
+		nMinusOne.InvoiceChargeProbe,
+		fixture.database.DSN,
+		fixture.assignment.JobID,
+	)
+	if result.Decision != "CANCELING" || result.ChargeID == "" {
+		t.Fatalf("Invoice N-1 Charge result = %#v", result)
+	}
+	chargeID, err := uuid.Parse(result.ChargeID)
+	if err != nil {
+		t.Fatalf("parse Invoice N-1 Charge id: %v", err)
+	}
+	var state string
+	var attempts, exports, invoiceEvents int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			export.state,
+			export.attempts,
+			(SELECT count(*) FROM invoice_exports WHERE charge_id = export.charge_id),
+			(SELECT count(*) FROM outbox_events
+			 WHERE aggregate_id = export.job_id AND event_type = 'invoice.export_requested')
+		FROM invoice_exports AS export
+		WHERE export.charge_id = $1
+	`, chargeID).Scan(&state, &attempts, &exports, &invoiceEvents); err != nil {
+		t.Fatalf("read Invoice N-1 export authority: %v", err)
+	}
+	if state != "PENDING" || attempts != 0 || exports != 1 || invoiceEvents != 1 {
+		t.Fatalf(
+			"Invoice N-1 authority = state %s attempts %d exports/events %d/%d",
+			state,
+			attempts,
+			exports,
+			invoiceEvents,
+		)
+	}
+}
 
 func TestNMinusOneControlStartupAcrossRenewalProtocolTransition(t *testing.T) {
 	database := newPostgres(t)
@@ -846,10 +901,16 @@ func assertWaitingCompatibilityCounters(
 }
 
 type nMinusOneBinaries struct {
-	Control         string
-	AdmissionProbe  string
-	AssignmentProbe string
-	OutboxProbe     string
+	Control            string
+	AdmissionProbe     string
+	AssignmentProbe    string
+	OutboxProbe        string
+	InvoiceChargeProbe string
+}
+
+type nMinusOneInvoiceChargeResult struct {
+	Decision string `json:"decision"`
+	ChargeID string `json:"charge_id"`
 }
 
 type nMinusOneOutboxProbeResult struct {
@@ -949,6 +1010,30 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if err := os.WriteFile(filepath.Join(outboxProbeDirectory, "main.go"), outboxProbeSource, 0o600); err != nil {
 		t.Fatalf("write N-1 Outbox probe: %v", err)
 	}
+	var invoiceChargeProbeDirectory string
+	if commit == invoiceExportNMinusOneCommit {
+		invoiceChargeProbeSource, err := os.ReadFile(filepath.Join(
+			repositoryRoot(t),
+			"internal",
+			"integration",
+			"testdata",
+			"nminusone_invoice_charge_probe.go.txt",
+		))
+		if err != nil {
+			t.Fatalf("read N-1 Invoice Charge probe: %v", err)
+		}
+		invoiceChargeProbeDirectory = filepath.Join(sourceRoot, "cmd", "vela-nminusone-invoice-charge-probe")
+		if err := os.MkdirAll(invoiceChargeProbeDirectory, 0o755); err != nil {
+			t.Fatalf("create N-1 Invoice Charge probe directory: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(invoiceChargeProbeDirectory, "main.go"),
+			invoiceChargeProbeSource,
+			0o600,
+		); err != nil {
+			t.Fatalf("write N-1 Invoice Charge probe: %v", err)
+		}
+	}
 
 	binaryDirectory := t.TempDir()
 	binaries := nMinusOneBinaries{
@@ -956,6 +1041,12 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		AdmissionProbe:  filepath.Join(binaryDirectory, "vela-admission-probe-n-minus-one"),
 		AssignmentProbe: filepath.Join(binaryDirectory, "vela-assignment-probe-n-minus-one"),
 		OutboxProbe:     filepath.Join(binaryDirectory, "vela-outbox-probe-n-minus-one"),
+	}
+	if commit == invoiceExportNMinusOneCommit {
+		binaries.InvoiceChargeProbe = filepath.Join(
+			binaryDirectory,
+			"vela-invoice-charge-probe-n-minus-one",
+		)
 	}
 	build := exec.Command(
 		"go", "build",
@@ -966,34 +1057,84 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build N-1 vela-control: %v\n%s", err, output)
 	}
-	build = exec.Command(
-		"go", "build",
-		"-o", binaries.AdmissionProbe, "./cmd/vela-nminusone-admission-probe",
-	)
-	build.Dir = sourceRoot
-	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build N-1 Admission probe: %v\n%s", err, output)
+	if commit != invoiceExportNMinusOneCommit {
+		build = exec.Command(
+			"go", "build",
+			"-o", binaries.AdmissionProbe, "./cmd/vela-nminusone-admission-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 Admission probe: %v\n%s", err, output)
+		}
+		build = exec.Command(
+			"go", "build",
+			"-o", binaries.AssignmentProbe, "./cmd/vela-nminusone-assignment-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 Assignment probe: %v\n%s", err, output)
+		}
+		build = exec.Command(
+			"go", "build",
+			"-o", binaries.OutboxProbe, "./cmd/vela-nminusone-outbox-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 Outbox probe: %v\n%s", err, output)
+		}
 	}
-	build = exec.Command(
-		"go", "build",
-		"-o", binaries.AssignmentProbe, "./cmd/vela-nminusone-assignment-probe",
-	)
-	build.Dir = sourceRoot
-	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build N-1 Assignment probe: %v\n%s", err, output)
-	}
-	build = exec.Command(
-		"go", "build",
-		"-o", binaries.OutboxProbe, "./cmd/vela-nminusone-outbox-probe",
-	)
-	build.Dir = sourceRoot
-	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build N-1 Outbox probe: %v\n%s", err, output)
+	if commit == invoiceExportNMinusOneCommit {
+		build = exec.Command(
+			"go",
+			"build",
+			"-o",
+			binaries.InvoiceChargeProbe,
+			"./cmd/vela-nminusone-invoice-charge-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 Invoice Charge probe: %v\n%s", err, output)
+		}
 	}
 	return binaries
+}
+
+func runNMinusOneInvoiceChargeProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	jobID uuid.UUID,
+) nMinusOneInvoiceChargeResult {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_auth_login", "vela-auth-password",
+		),
+		"VELA_CANCEL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_cancel_login", "vela-cancel-password",
+		),
+		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_internal_login", "vela-internal-password",
+		),
+		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
+		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
+		"VELA_PROJECT_ID":               testProjectID,
+		"VELA_JOB_ID":                   jobID.String(),
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Invoice Charge writer probe: %v\n%s", err, output)
+	}
+	var result nMinusOneInvoiceChargeResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Invoice Charge result: %v\n%s", err, output)
+	}
+	return result
 }
 
 func runNMinusOneAdmissionProbe(t *testing.T, binary, adminDSN string) string {

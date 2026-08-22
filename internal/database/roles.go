@@ -18,6 +18,7 @@ const (
 	RoleCancel          Role = "vela_cancel"
 	RoleArtifactRequest Role = "vela_artifact_request"
 	RoleScheduler       Role = "vela_scheduler"
+	RoleBilling         Role = "vela_billing"
 )
 
 type rowQuerier interface {
@@ -36,6 +37,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleCancel:          {verifyPrivileges: verifyCancelPrivileges},
 	RoleArtifactRequest: {verifyPrivileges: verifyArtifactRequestPrivileges},
 	RoleScheduler:       {verifyPrivileges: verifySchedulerPrivileges},
+	RoleBilling:         {verifyPrivileges: verifyBillingPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -158,6 +160,18 @@ func verifySchedulerPrivileges(ctx context.Context, database rowQuerier, current
 			"vela_reconcile_expired_scheduler_dispatches()",
 			"vela_predict_admission_capacity(uuid,uuid,uuid,uuid,uuid,integer)",
 			"vela_predict_job_dynamic_eta(uuid)",
+		},
+	})
+}
+
+func verifyBillingPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "billing",
+		failureLabel:    "Invoice export transaction",
+		functions: []string{
+			"vela_claim_invoice_exports(text,uuid,integer,integer)",
+			"vela_mark_invoice_exported(uuid,uuid,uuid,text,text)",
+			"vela_mark_invoice_export_failed(uuid,uuid,integer,text)",
 		},
 	})
 }

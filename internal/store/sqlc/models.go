@@ -503,6 +503,49 @@ func (ns NullExecutionPhase) Value() (driver.Value, error) {
 	return string(ns.ExecutionPhase), nil
 }
 
+type InvoiceExportState string
+
+const (
+	InvoiceExportStatePENDING  InvoiceExportState = "PENDING"
+	InvoiceExportStateCLAIMED  InvoiceExportState = "CLAIMED"
+	InvoiceExportStateEXPORTED InvoiceExportState = "EXPORTED"
+)
+
+func (e *InvoiceExportState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = InvoiceExportState(s)
+	case string:
+		*e = InvoiceExportState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for InvoiceExportState: %T", src)
+	}
+	return nil
+}
+
+type NullInvoiceExportState struct {
+	InvoiceExportState InvoiceExportState `json:"invoice_export_state"`
+	Valid              bool               `json:"valid"` // Valid is true if InvoiceExportState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullInvoiceExportState) Scan(value interface{}) error {
+	if value == nil {
+		ns.InvoiceExportState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.InvoiceExportState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullInvoiceExportState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.InvoiceExportState), nil
+}
+
 type JobState string
 
 const (
@@ -1268,6 +1311,35 @@ type InboxReceipt struct {
 	AggregateVersion int64              `db:"aggregate_version" json:"aggregate_version"`
 	EventType        string             `db:"event_type" json:"event_type"`
 	ConsumedAt       pgtype.Timestamptz `db:"consumed_at" json:"consumed_at"`
+}
+
+type InvoiceExport struct {
+	ChargeID         uuid.UUID          `db:"charge_id" json:"charge_id"`
+	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID        uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID            uuid.UUID          `db:"job_id" json:"job_id"`
+	RequestedEventID uuid.UUID          `db:"requested_event_id" json:"requested_event_id"`
+	State            InvoiceExportState `db:"state" json:"state"`
+	Attempts         int32              `db:"attempts" json:"attempts"`
+	AvailableAt      pgtype.Timestamptz `db:"available_at" json:"available_at"`
+	ClaimedBy        *string            `db:"claimed_by" json:"claimed_by"`
+	ClaimToken       uuid.NullUUID      `db:"claim_token" json:"claim_token"`
+	ClaimExpiresAt   pgtype.Timestamptz `db:"claim_expires_at" json:"claim_expires_at"`
+	LastError        *string            `db:"last_error" json:"last_error"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type InvoiceExportReceipt struct {
+	ID                       uuid.UUID          `db:"id" json:"id"`
+	OrganizationID           uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID          `db:"job_id" json:"job_id"`
+	ChargeID                 uuid.UUID          `db:"charge_id" json:"charge_id"`
+	ExternalInvoiceReference string             `db:"external_invoice_reference" json:"external_invoice_reference"`
+	ExternalLineReference    string             `db:"external_line_reference" json:"external_line_reference"`
+	ExportedAt               pgtype.Timestamptz `db:"exported_at" json:"exported_at"`
+	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type Job struct {

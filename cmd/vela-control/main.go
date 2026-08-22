@@ -26,6 +26,7 @@ import (
 	"github.com/vivym/vela/internal/artifactcleanup"
 	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/artifactvalidator"
+	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/cancellation"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/finalizationreconciler"
@@ -51,6 +52,11 @@ const (
 	defaultSchedulerClaimTTL                    = 30 * time.Second
 	defaultSchedulerCandidateAttempts           = 5
 	defaultArtifactCleanupTick                  = time.Minute
+	defaultInvoiceExportTick                    = 500 * time.Millisecond
+	defaultInvoiceExportClaimTTL                = 30 * time.Second
+	defaultInvoiceExportRetryDelay              = 5 * time.Second
+	defaultInvoiceExportHTTPTimeout             = 15 * time.Second
+	defaultInvoiceExportBatchSize         int32 = 100
 	defaultExecutionLeaseTTL                    = 2 * time.Minute
 	defaultWorkerLostGrace                      = 30 * time.Second
 	defaultArtifactInspectionTimeout            = 30 * time.Second
@@ -77,6 +83,15 @@ type config struct {
 	schedulerTick              time.Duration
 	schedulerClaimTTL          time.Duration
 	schedulerCandidateAttempts int
+	billingDatabaseURL         string
+	invoiceExporterID          string
+	invoiceExportEndpoint      string
+	invoiceExportTokenFile     string
+	invoiceExportTick          time.Duration
+	invoiceExportClaimTTL      time.Duration
+	invoiceExportRetryDelay    time.Duration
+	invoiceExportHTTPTimeout   time.Duration
+	invoiceExportBatchSize     int32
 	credentialPepper           []byte
 	natsURL                    string
 	natsCredentials            string
@@ -135,6 +150,10 @@ type hierarchicalScheduler interface {
 	RunCycle(context.Context) ([]scheduler.Dispatch, error)
 }
 
+type invoiceExporter interface {
+	ExportBatch(context.Context) (billingexport.BatchResult, error)
+}
+
 var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
 
 func main() {
@@ -187,6 +206,42 @@ func run() error {
 		return fmt.Errorf("open Scheduler database pool: %w", err)
 	}
 	defer schedulerPool.Close()
+	billingPool, err := openPool(ctx, configuration.billingDatabaseURL, 5, veladb.RoleBilling)
+	if err != nil {
+		return fmt.Errorf("open billing database pool: %w", err)
+	}
+	defer billingPool.Close()
+	invoiceBearerToken, err := readSecretFile(
+		configuration.invoiceExportTokenFile,
+		"Invoice export bearer token",
+		8192,
+	)
+	if err != nil {
+		return err
+	}
+	invoiceAdapter, err := billingexport.NewHTTPAdapter(
+		&http.Client{Timeout: configuration.invoiceExportHTTPTimeout},
+		billingexport.HTTPConfig{
+			Endpoint:    configuration.invoiceExportEndpoint,
+			BearerToken: invoiceBearerToken,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure Invoice export adapter: %w", err)
+	}
+	invoiceService, err := billingexport.NewService(
+		billingPool,
+		invoiceAdapter,
+		billingexport.Config{
+			ExporterID: configuration.invoiceExporterID,
+			BatchSize:  configuration.invoiceExportBatchSize,
+			ClaimTTL:   configuration.invoiceExportClaimTTL,
+			RetryDelay: configuration.invoiceExportRetryDelay,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure Invoice exporter: %w", err)
+	}
 	artifactStore, err := openArtifactStore(ctx, configuration)
 	if err != nil {
 		return err
@@ -311,6 +366,7 @@ func run() error {
 			cancelPool,
 			internalPool,
 			schedulerPool,
+			billingPool,
 		),
 	)
 	mux.Handle("/", apiHandler)
@@ -356,6 +412,11 @@ func run() error {
 	go func() {
 		defer close(cleanupDone)
 		runArtifactMultipartCleaner(ctx, multipartCleaner, configuration.artifactCleanupTick)
+	}()
+	invoiceDone := make(chan struct{})
+	go func() {
+		defer close(invoiceDone)
+		runInvoiceExporter(ctx, invoiceService, configuration.invoiceExportTick)
 	}()
 	httpServerErrors := make(chan error, 1)
 	go func() {
@@ -433,6 +494,11 @@ func run() error {
 	case <-shutdownContext.Done():
 		return errors.New("artifact multipart cleaner did not stop before shutdown deadline")
 	}
+	select {
+	case <-invoiceDone:
+	case <-shutdownContext.Done():
+		return errors.New("invoice exporter did not stop before shutdown deadline")
+	}
 	if err := natsConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 		return fmt.Errorf("drain NATS connection: %w", err)
 	}
@@ -459,6 +525,15 @@ func loadConfig() (config, error) {
 		schedulerTick:              defaultSchedulerTick,
 		schedulerClaimTTL:          defaultSchedulerClaimTTL,
 		schedulerCandidateAttempts: defaultSchedulerCandidateAttempts,
+		billingDatabaseURL:         os.Getenv("VELA_BILLING_DATABASE_URL"),
+		invoiceExporterID:          os.Getenv("VELA_INVOICE_EXPORTER_ID"),
+		invoiceExportEndpoint:      os.Getenv("VELA_INVOICE_EXPORT_ENDPOINT"),
+		invoiceExportTokenFile:     os.Getenv("VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE"),
+		invoiceExportTick:          defaultInvoiceExportTick,
+		invoiceExportClaimTTL:      defaultInvoiceExportClaimTTL,
+		invoiceExportRetryDelay:    defaultInvoiceExportRetryDelay,
+		invoiceExportHTTPTimeout:   defaultInvoiceExportHTTPTimeout,
+		invoiceExportBatchSize:     defaultInvoiceExportBatchSize,
 		natsURL:                    os.Getenv("VELA_NATS_URL"),
 		natsCredentials:            os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
 		natsRootCA:                 os.Getenv("VELA_NATS_ROOT_CA_FILE"),
@@ -501,6 +576,10 @@ func loadConfig() (config, error) {
 		"VELA_INTERNAL_DATABASE_URL":              configuration.internalDatabaseURL,
 		"VELA_SCHEDULER_DATABASE_URL":             configuration.schedulerDatabaseURL,
 		"VELA_SCHEDULER_ID":                       configuration.schedulerID,
+		"VELA_BILLING_DATABASE_URL":               configuration.billingDatabaseURL,
+		"VELA_INVOICE_EXPORTER_ID":                configuration.invoiceExporterID,
+		"VELA_INVOICE_EXPORT_ENDPOINT":            configuration.invoiceExportEndpoint,
+		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":   configuration.invoiceExportTokenFile,
 		"VELA_NATS_URL":                           configuration.natsURL,
 		"VELA_NATS_CREDENTIALS_FILE":              configuration.natsCredentials,
 		"VELA_NATS_ROOT_CA_FILE":                  configuration.natsRootCA,
@@ -566,6 +645,41 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_SCHEDULER_CANDIDATE_ATTEMPTS must be in 1..20")
 		}
 		configuration.schedulerCandidateAttempts = candidateAttempts
+	}
+	if value := os.Getenv("VELA_INVOICE_EXPORT_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_INVOICE_EXPORT_TICK must be in (0, 1m]")
+		}
+		configuration.invoiceExportTick = tick
+	}
+	if value := os.Getenv("VELA_INVOICE_EXPORT_CLAIM_TTL"); value != "" {
+		claimTTL, err := time.ParseDuration(value)
+		if err != nil || claimTTL <= 0 || claimTTL > 5*time.Minute {
+			return config{}, errors.New("environment variable VELA_INVOICE_EXPORT_CLAIM_TTL must be in (0, 5m]")
+		}
+		configuration.invoiceExportClaimTTL = claimTTL
+	}
+	if value := os.Getenv("VELA_INVOICE_EXPORT_RETRY_DELAY"); value != "" {
+		retryDelay, err := time.ParseDuration(value)
+		if err != nil || retryDelay < 0 || retryDelay > time.Hour {
+			return config{}, errors.New("environment variable VELA_INVOICE_EXPORT_RETRY_DELAY must be in [0, 1h]")
+		}
+		configuration.invoiceExportRetryDelay = retryDelay
+	}
+	if value := os.Getenv("VELA_INVOICE_EXPORT_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.ParseInt(value, 10, 32)
+		if err != nil || batchSize < 1 || batchSize > 1000 {
+			return config{}, errors.New("environment variable VELA_INVOICE_EXPORT_BATCH_SIZE must be between 1 and 1000")
+		}
+		configuration.invoiceExportBatchSize = int32(batchSize)
+	}
+	if value := os.Getenv("VELA_INVOICE_EXPORT_HTTP_TIMEOUT"); value != "" {
+		timeout, err := time.ParseDuration(value)
+		if err != nil || timeout <= 0 || timeout > time.Minute {
+			return config{}, errors.New("environment variable VELA_INVOICE_EXPORT_HTTP_TIMEOUT must be in (0, 1m]")
+		}
+		configuration.invoiceExportHTTPTimeout = timeout
 	}
 	return configuration, nil
 }
@@ -874,6 +988,34 @@ func runScheduler(ctx context.Context, scheduling hierarchicalScheduler, interva
 			slog.Warn("Scheduler cycle incomplete", "error", err)
 		} else if err == nil && len(dispatches) > 0 {
 			slog.Info("Scheduler cycle dispatched Assignments", "dispatches", len(dispatches))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runInvoiceExporter(ctx context.Context, exporter invoiceExporter, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		result, err := exporter.ExportBatch(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn(
+				"Invoice export batch incomplete",
+				"claimed", result.Claimed,
+				"exported", result.Exported,
+				"error", err,
+			)
+		} else if err == nil && result.Exported > 0 {
+			slog.Info("Invoice lines exported", "exported", result.Exported)
 		}
 		select {
 		case <-ctx.Done():

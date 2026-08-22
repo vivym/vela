@@ -22,7 +22,20 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
 	)
 	schedulerPool := newRolePool(t, database.DSN, "vela_scheduler_login", "vela-scheduler-password")
+	billingPool := newRolePool(t, database.DSN, "vela_billing_login", "vela-billing-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+	for _, login := range []string{"vela_internal_login", "vela_billing_login"} {
+		var inheritsBillingOwner bool
+		if err := database.Admin.QueryRow(
+			"SELECT pg_has_role($1, 'vela_billing_owner', 'MEMBER')",
+			login,
+		).Scan(&inheritsBillingOwner); err != nil {
+			t.Fatalf("inspect %s billing-owner membership: %v", login, err)
+		}
+		if inheritsBillingOwner {
+			t.Fatalf("runtime login %s inherits vela_billing_owner", login)
+		}
+	}
 
 	for _, test := range []struct {
 		name string
@@ -34,6 +47,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
 		{name: "Scheduler", pool: schedulerPool, role: veladb.RoleScheduler},
+		{name: "billing", pool: billingPool, role: veladb.RoleBilling},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -71,6 +85,9 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "Scheduler as internal", pool: schedulerPool, role: veladb.RoleInternal},
 		{name: "internal as Scheduler", pool: internalPool, role: veladb.RoleScheduler},
 		{name: "request as Scheduler", pool: requestPool, role: veladb.RoleScheduler},
+		{name: "billing as internal", pool: billingPool, role: veladb.RoleInternal},
+		{name: "internal as billing", pool: internalPool, role: veladb.RoleBilling},
+		{name: "request as billing", pool: requestPool, role: veladb.RoleBilling},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if err := veladb.VerifyRole(context.Background(), test.pool, test.role); err == nil {
@@ -146,6 +163,15 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	if _, err := database.Admin.Exec("REVOKE SELECT ON jobs FROM vela_scheduler_login"); err != nil {
 		t.Fatalf("revoke unexpected Scheduler table privilege: %v", err)
 	}
+	if _, err := database.Admin.Exec("GRANT SELECT ON charges TO vela_billing_login"); err != nil {
+		t.Fatalf("grant unexpected billing Charge privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(context.Background(), billingPool, veladb.RoleBilling); err == nil {
+		t.Fatal("billing login with direct Charge access was accepted")
+	}
+	if _, err := database.Admin.Exec("REVOKE SELECT ON charges FROM vela_billing_login"); err != nil {
+		t.Fatalf("revoke unexpected billing Charge privilege: %v", err)
+	}
 	if _, err := database.Admin.Exec(`
 		GRANT EXECUTE ON FUNCTION vela_transition_scheduler_dispatch_protocol(boolean, text)
 		TO vela_scheduler_login
@@ -213,6 +239,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
 		{name: "Artifact request", pool: artifactPool},
+		{name: "billing", pool: billingPool},
 	} {
 		for _, relation := range []string{
 			"job_cancellation_decisions",
@@ -239,6 +266,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
 		{name: "Artifact request", pool: artifactPool},
+		{name: "billing", pool: billingPool},
 	} {
 		for _, relation := range []string{
 			"organization_capacity_shares",
@@ -265,6 +293,58 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 					err,
 				)
 			}
+		}
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "Scheduler", pool: schedulerPool},
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
+		{name: "billing", pool: billingPool},
+		{name: "internal", pool: internalPool},
+	} {
+		for _, relation := range []string{"invoice_exports", "invoice_export_receipts"} {
+			var count int64
+			err := pool.pool.QueryRow(
+				context.Background(), "SELECT count(*) FROM "+relation,
+			).Scan(&count)
+			if !isPermissionDenied(err) {
+				t.Fatalf(
+					"%s direct %s read error = %v, want permission denied",
+					pool.name,
+					relation,
+					err,
+				)
+			}
+		}
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "Scheduler", pool: schedulerPool},
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
+		{name: "internal", pool: internalPool},
+	} {
+		_, err := pool.pool.Exec(
+			context.Background(),
+			"SELECT * FROM vela_claim_invoice_exports($1, $2, $3, $4)",
+			"unauthorized-runtime",
+			"00000000-0000-0000-0000-000000000001",
+			30,
+			1,
+		)
+		if !isPermissionDenied(err) {
+			t.Fatalf("%s Invoice export claim error = %v, want permission denied", pool.name, err)
 		}
 	}
 

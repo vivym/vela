@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/scheduler"
 )
@@ -25,6 +26,10 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
 		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
 		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
+		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
+		{name: "Invoice exporter identity", missingEnv: "VELA_INVOICE_EXPORTER_ID"},
+		{name: "Invoice endpoint", missingEnv: "VELA_INVOICE_EXPORT_ENDPOINT"},
+		{name: "Invoice bearer token", missingEnv: "VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE"},
 		{name: "Artifact S3 endpoint", missingEnv: "VELA_ARTIFACT_S3_ENDPOINT"},
 		{name: "Artifact S3 region", missingEnv: "VELA_ARTIFACT_S3_REGION"},
 		{name: "Artifact S3 bucket", missingEnv: "VELA_ARTIFACT_S3_BUCKET"},
@@ -65,6 +70,10 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_INTERNAL_DATABASE_URL", "postgres://internal.example/vela")
 	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
 	t.Setenv("VELA_SCHEDULER_ID", "vela-control-scheduler-1")
+	t.Setenv("VELA_BILLING_DATABASE_URL", "postgres://billing.example/vela")
+	t.Setenv("VELA_INVOICE_EXPORTER_ID", "vela-control-invoice-exporter-1")
+	t.Setenv("VELA_INVOICE_EXPORT_ENDPOINT", "https://finance.example/v1/invoice-lines")
+	t.Setenv("VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE", "/run/secrets/invoice-bearer-token")
 	t.Setenv("VELA_NATS_URL", "nats://nats.example:4222")
 	t.Setenv("VELA_NATS_CREDENTIALS_FILE", "/run/secrets/vela-control.creds")
 	t.Setenv("VELA_NATS_ROOT_CA_FILE", "/run/secrets/nats-root-ca.pem")
@@ -99,6 +108,74 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_SCHEDULER_TICK", "")
 	t.Setenv("VELA_SCHEDULER_CLAIM_TTL", "")
 	t.Setenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS", "")
+	t.Setenv("VELA_INVOICE_EXPORT_TICK", "")
+	t.Setenv("VELA_INVOICE_EXPORT_CLAIM_TTL", "")
+	t.Setenv("VELA_INVOICE_EXPORT_RETRY_DELAY", "")
+	t.Setenv("VELA_INVOICE_EXPORT_BATCH_SIZE", "")
+	t.Setenv("VELA_INVOICE_EXPORT_HTTP_TIMEOUT", "")
+}
+
+func TestLoadConfigParsesBoundedInvoiceExportControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load default Invoice export config: %v", err)
+	}
+	if configuration.invoiceExportTick != 500*time.Millisecond ||
+		configuration.invoiceExportClaimTTL != 30*time.Second ||
+		configuration.invoiceExportRetryDelay != 5*time.Second ||
+		configuration.invoiceExportBatchSize != 100 ||
+		configuration.invoiceExportHTTPTimeout != 15*time.Second {
+		t.Fatalf(
+			"default Invoice controls = tick %s claim %s retry %s batch %d HTTP %s",
+			configuration.invoiceExportTick,
+			configuration.invoiceExportClaimTTL,
+			configuration.invoiceExportRetryDelay,
+			configuration.invoiceExportBatchSize,
+			configuration.invoiceExportHTTPTimeout,
+		)
+	}
+
+	t.Setenv("VELA_INVOICE_EXPORT_TICK", "250ms")
+	t.Setenv("VELA_INVOICE_EXPORT_CLAIM_TTL", "45s")
+	t.Setenv("VELA_INVOICE_EXPORT_RETRY_DELAY", "10s")
+	t.Setenv("VELA_INVOICE_EXPORT_BATCH_SIZE", "25")
+	t.Setenv("VELA_INVOICE_EXPORT_HTTP_TIMEOUT", "20s")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit Invoice export config: %v", err)
+	}
+	if configuration.invoiceExportTick != 250*time.Millisecond ||
+		configuration.invoiceExportClaimTTL != 45*time.Second ||
+		configuration.invoiceExportRetryDelay != 10*time.Second ||
+		configuration.invoiceExportBatchSize != 25 ||
+		configuration.invoiceExportHTTPTimeout != 20*time.Second {
+		t.Fatalf("explicit Invoice controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_INVOICE_EXPORT_TICK", value: "0s"},
+		{env: "VELA_INVOICE_EXPORT_TICK", value: "1m1s"},
+		{env: "VELA_INVOICE_EXPORT_CLAIM_TTL", value: "0s"},
+		{env: "VELA_INVOICE_EXPORT_CLAIM_TTL", value: "5m1s"},
+		{env: "VELA_INVOICE_EXPORT_RETRY_DELAY", value: "-1s"},
+		{env: "VELA_INVOICE_EXPORT_RETRY_DELAY", value: "1h1s"},
+		{env: "VELA_INVOICE_EXPORT_BATCH_SIZE", value: "0"},
+		{env: "VELA_INVOICE_EXPORT_BATCH_SIZE", value: "1001"},
+		{env: "VELA_INVOICE_EXPORT_HTTP_TIMEOUT", value: "0s"},
+		{env: "VELA_INVOICE_EXPORT_HTTP_TIMEOUT", value: "1m1s"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil || !strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
 }
 
 func TestLoadConfigParsesBoundedSchedulerControls(t *testing.T) {
@@ -246,10 +323,48 @@ func TestSchedulerRetriesTransientFailureAndStopsWithContext(t *testing.T) {
 	}
 }
 
+func TestInvoiceExporterRetriesTransientFailureAndStopsWithContext(t *testing.T) {
+	exporter := &testInvoiceExporter{calls: make(chan struct{}, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runInvoiceExporter(ctx, exporter, time.Millisecond)
+	}()
+
+	for range 2 {
+		select {
+		case <-exporter.calls:
+		case <-time.After(time.Second):
+			t.Fatal("Invoice exporter did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Invoice exporter did not stop with context")
+	}
+}
+
 type testHierarchicalScheduler struct {
 	invocations atomic.Int32
 	calls       chan struct{}
 	reconciles  chan struct{}
+}
+
+type testInvoiceExporter struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+}
+
+func (e *testInvoiceExporter) ExportBatch(context.Context) (billingexport.BatchResult, error) {
+	invocation := e.invocations.Add(1)
+	e.calls <- struct{}{}
+	if invocation == 1 {
+		return billingexport.BatchResult{Claimed: 1}, errors.New("transient Invoice failure")
+	}
+	return billingexport.BatchResult{}, nil
 }
 
 func (s *testHierarchicalScheduler) ReconcileExpired(context.Context) (int64, error) {

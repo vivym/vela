@@ -5,3 +5,12 @@ Vela will launch as a production B2B service for invited Customer Organizations.
 ## Consequences
 
 Artifact access depends on Vela committing the Charge, not on external payment settlement. Credit-limit changes, overdue-account suspension, invoice generation, collection, refunds, and credit notes remain outside the Job execution transaction.
+
+## Implementation Status
+
+Partial. Admission reserves contract credit; billable cancellation and Visible
+Completion post one immutable Charge; migration 00009 creates a
+PostgreSQL-authoritative export authority and the production exporter records one
+idempotent external receipt by `charge_id`. Idempotent settlement and
+credit-adjustment reconciliation records remain unimplemented, and Production
+Gate Launch Receipts remain separate.

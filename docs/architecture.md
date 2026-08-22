@@ -936,7 +936,7 @@ Visible Completion 在同一 PostgreSQL 事务中提交获胜 ArtifactSet、SUCC
 
 ### 14.5 月度结算
 
-Invoice 不属于 Vela Job 生命周期。Billing exporter 通过 Outbox 将 POSTED Charge 交给外部财务流程，按 Customer Organization 月度汇总；以 `charge_id` 作为幂等键并保存外部 Invoice reference，导出失败可重试但不能产生重复 line、阻塞 Job、Artifact access 或修改 Charge。外部财务流程在收款、credit note 或合同额度变更后，通过幂等 reconciliation 写入独立的 settlement / credit-adjustment record，只改变可用信用计算，不改写 Charge 金额、Job 或 Artifact 历史。
+Invoice 不属于 Vela Job 生命周期。POSTED Charge 与同事务的 `invoice.export_requested` 建立 PostgreSQL-authoritative export authority；Billing exporter 周期扫描 PostgreSQL，Outbox / JetStream 只提供可选 wakeup，不是待导出 line 的唯一事实源。外部财务流程按 Customer Organization 月度汇总，以 `charge_id` 作为幂等键；Vela 保存不可变外部 Invoice / line receipt。导出失败可重试但不能产生重复 line、阻塞 Job、Artifact access 或修改 Charge。外部财务流程在收款、credit note 或合同额度变更后，通过幂等 reconciliation 写入独立的 settlement / credit-adjustment record，只改变可用信用计算，不改写 Charge 金额、Job 或 Artifact 历史。
 
 Contract Credit Limit 只能由服务方财务根据有效合同变更并完整审计。BillingAdmin 可查看信用使用、Charge 与 Invoice reference，并维护结算联系人，但不能自行提高额度，默认也不能读取 Prompt 或 Artifact。
 
@@ -1086,7 +1086,7 @@ Worker 与控制面失联时，旧 Worker 可能仍继续计算。控制面可�
 
 - PostgreSQL 不可用时停止新 Assignment，Worker 可以在有限 Lease 内继续当前 Attempt。
 - 对象存储不可用时已完成推理停留在 FINALIZING，并保留本地 Artifact 后恢复上传；Artifact Store circuit 阻止受影响 pool 的新 Assignment，scratch high watermark 只阻止对应 Worker 或 pool 的新 Assignment。
-- Invoice export 不可用时 Outbox 保留 POSTED Charge 并重试导出，不阻塞 Visible Completion、Artifact access，也不重新执行 Job。
+- Invoice export 不可用时 PostgreSQL 保留由 POSTED Charge 和 canonical Outbox intent 建立的 export authority；周期 reconciliation 以同一 `charge_id` 重试，不阻塞 Visible Completion、Artifact access，也不重新执行 Job。
 - JetStream 不可用时 outbox 保留事件，并依靠 PostgreSQL reconciliation 保证最终恢复。
 
 Vela 不持有硬空闲故障 Worker。故障后立即收紧风险修正 Admission、保护 retry lane，并让所有 READY 且兼容的 Worker 保持 work-conserving；由此产生的排队延迟必须计入 Preset SLO 和 error budget。

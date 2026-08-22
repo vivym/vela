@@ -291,6 +291,8 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 	assertRoleExists(t, db, "vela_request")
 	assertRoleExists(t, db, "vela_auth")
 	assertRoleExists(t, db, "vela_internal")
+	assertRoleExists(t, db, "vela_billing")
+	assertRoleExists(t, db, "vela_billing_owner")
 	assertTableDoesNotExist(t, db, "attempts")
 	assertTableDoesNotExist(t, db, "execution_failure_decisions")
 	assertTableDoesNotExist(t, db, "execution_retry_evidence")
@@ -371,6 +373,28 @@ func TestReleasedV7MigrationRemainsByteIdenticalToSchedulerNMinusOne(t *testing.
 	}
 }
 
+func TestReleasedV8MigrationRemainsByteIdenticalToInvoiceExportNMinusOne(t *testing.T) {
+	repositoryRoot := repositoryRoot(t)
+	path := filepath.Join(repositoryRoot, "db", "migrations", "00008_hierarchical_scheduler.sql")
+	current, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read current migration 00008: %v", err)
+	}
+	command := exec.Command(
+		"git",
+		"show",
+		invoiceExportNMinusOneCommit+":db/migrations/00008_hierarchical_scheduler.sql",
+	)
+	command.Dir = repositoryRoot
+	released, err := command.Output()
+	if err != nil {
+		t.Fatalf("read released migration 00008: %v", err)
+	}
+	if string(current) != string(released) {
+		t.Fatal("released migration 00008 changed after publication")
+	}
+}
+
 func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -429,7 +453,7 @@ func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) 
 		t.Fatalf("re-expanded request queue projection = %q", expandedQueueProjection)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 8 {
+	if err != nil || version != 9 {
 		t.Fatalf("migration version after empty Scheduler Down/Up = %d error=%v", version, err)
 	}
 }
@@ -533,7 +557,7 @@ func TestHierarchicalSchedulerMigrationDefaultPolicyCatalogDownUpRestoresSurface
 	}
 	assertTableExists(t, database.Admin, "scheduler_dispatch_intents")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 8 {
+	if err != nil || version != 9 {
 		t.Fatalf("migration version after default-policy Down/Up = %d error=%v", version, err)
 	}
 }
@@ -901,7 +925,7 @@ func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	assertTableExists(t, database.Admin, "artifact_sets")
 	assertTableExists(t, database.Admin, "visible_completions")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 8 {
+	if err != nil || version != 9 {
 		t.Fatalf("migration version after empty Down/Up = %d error=%v", version, err)
 	}
 }
