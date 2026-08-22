@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-08-22
+Date: 2026-08-23
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -19,6 +19,7 @@ tests alone do not satisfy a gate.
 | Execution Failure, Retry, And Job Expiry | `d0a8c01` | `docs/specs/0005-execution-failure-retry-and-job-expiry.md` |
 | Customer Cancellation And Charge | `9fdf955` | `docs/specs/0006-customer-cancellation-and-charge.md` |
 | Artifact Finalization And Visible Completion | `82d5752` | `docs/specs/0007-artifact-finalization-and-visible-completion.md` |
+| Hierarchical Scheduler | `a606c48` | `docs/specs/0008-hierarchical-scheduler.md` |
 
 ## ADR Evidence Matrix
 
@@ -33,21 +34,21 @@ tests alone do not satisfy a gate.
 | 0007 Organization Isolation | Partial | Forced RLS, composite foreign keys, request/auth/internal/Artifact roles, private staging, exact-version access grants, and cross-Project/Organization negative tests. | Human roles, billing, webhook, administration, NATS, and deployment isolation evidence. |
 | 0008 No Customer Content reuse | Partial | Prompt has an expiry; staging Artifacts are private and committed exact-version reads require a short-lived Project grant. | Access audit, support authorization, no-reuse policy enforcement, and deletion across storage/backups. |
 | 0009 Statistical SLOs | Partial | API exposes no Hard Deadline; Job Expiry and Dynamic ETA are distinguished. | SLO measurement, eligibility envelopes, dashboards, and certification receipts. |
-| 0010 Bounded admission and queues | Partial | Admission and compatibility queue counters are transactionally bounded. | Hierarchical Scheduler lanes, prediction, and fault-responsive Admission. |
+| 0010 Bounded admission and queues | Implemented for current control plane | Transactional queue counters, pool-scoped bounded projection, risk-aware Admission prediction, Dynamic ETA, hierarchical lanes, and fail-closed counter-drift detection are integrated. | Deployment calibration and Production Gate receipts remain separate. |
 | 0011 No failed-Job Charge | Implemented for current lifecycle | Execution, finalization-deadline, validation, and unrecoverable Artifact failure release credit and create no Charge; only Visible Completion or post-Billable-Start Customer Cancellation posts one. | Future failure sources must use the same terminal authority. |
 | 0012 Single-region DR | Not started | PostgreSQL/Outbox recovery semantics are designed. | Cluster manifests, WAL/archive, restore, JetStream rebuild, Artifact backup, and drills. |
-| 0013 Non-interrupting releases | Partial | Seven additive migrations, exact N/N-1 database/control compatibility, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
+| 0013 Non-interrupting releases | Partial | Eight additive migrations, exact N/N-1 database/control compatibility, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
 | 0014 Project webhooks | Not started | Transactional Outbox publisher exists. | Subscriptions, HMAC rotation, delivery/retry/dead-letter/manual replay. |
 | 0015 Class-specific retention | Partial | Request content has a retention timestamp; expired staging uploads and multipart sessions have bounded cleanup paths. | Successful Artifact, scratch, debug, metadata, and financial retention plus Content Deletion. |
-| 0016 Preset versus Service Class | Implemented for Admission/Retry | Both immutable revisions are resolved and retained separately. | Scheduler and SLO reporting must continue to keep them separate. |
+| 0016 Preset versus Service Class | Implemented for current control plane | Admission, Retry, and Scheduler retain both immutable revisions separately; Scheduler reads ServiceClassRevision policy and never derives priority from Preset or price. | SLO reporting must preserve the same boundary. |
 | 0017 Three presets | Partial | Catalog restricts stable IDs to `quality`, `balanced`, and `fast`. | Independent certification and ACTIVE promotion receipts for every saleable SKU. |
 | 0018 Certified output SKUs | Implemented for Admission/finalization | ACTIVE certification and RateCard resolve an immutable quote; finalization enforces the certified media facts and fixed complete ArtifactSet. | Certification lifecycle, invalidation, and saleable-SKU receipts. |
 | 0019 Attempt-scoped progress | Implemented | Current Attempt progress covers QUEUED through FINALIZING, with staleness, replay, and retry reset. | Production telemetry calibration and SLO receipts. |
 | 0020 Job Expiry | Implemented for current lifecycle | Queue, retry, assignment, running, and finalization expiry are fenced by PostgreSQL time; recovery cannot extend the immutable deadline. | Scheduler and deployment receipts must preserve the ceiling. |
 | 0021 Bounded retry | Partial | Attempt, cumulative compute, finalization recovery budgets, retry backoff, and Job Expiry are enforced. | Cross-Job fingerprint circuit and certified runtime values. |
-| 0022 Hierarchical fairness | Not started | Assignment accepts a Scheduler-selected candidate only. | Organization/Service Class/Project/Job fairness, aging, Protected Lane, retry lane. |
+| 0022 Hierarchical fairness | Implemented | PostgreSQL-authoritative Organization/Service Class/Project weighted-deficit selection, bounded Job score, per-Job retry risk, aging, Protected Lane, retry lane, durable claims, and multi-replica recovery are integrated. | Production fairness/SLO measurement remains a separate gate receipt. |
 | 0023 Certified remediation | Not started | Worker can be drained/offlined after failure. | Identity-bound L0-L6 operations, receipts, quarantine, validation, and node agent. |
-| 0024 Work-conserving capacity | Partial | READY Workers are not reserved and retry returns to shared capacity. | Bounded retry lane, risk Admission, cross-profile placement, and measured SLO effect. |
+| 0024 Work-conserving capacity | Implemented for current control plane | Every compatible READY Worker/profile remains available to ordinary work; bounded retry lane, risk Admission, worker scoring, and physical-slot queue projection hold no hard idle reserve. | Fleet deployment and measured SLO effect remain separate gate evidence. |
 | 0025 Three control/storage nodes | Not started | Components are compatible with PostgreSQL and JetStream. | RKE2/CNPG/JetStream/S3 deployment, anti-affinity, disks, backup, and failover evidence. |
 | 0026 Reserve credit at Admission | Implemented for current lifecycle | Admission reserves atomically; cancellation, execution/finalization failure, and Visible Completion consume or release exactly once with counters and Outbox. | Future terminal paths must close the same reservation authority. |
 | 0027 Charge when cancel wins | Implemented | Visible Completion and Customer Cancellation serialize through one Job authority; the winner owns the only Charge and late completion returns the winning ArtifactSet. | Production fault-injection receipt remains a separate gate. |
@@ -59,12 +60,13 @@ tests alone do not satisfy a gate.
 The 30 scenarios in `docs/architecture.md` remain the completion authority. The
 implemented slices provide direct repository evidence for Admission (1-3),
 Customer Cancellation and its Visible Completion race (4-5), no-Charge failure
-(6), stale execution and bounded retry (8), Attempt progress (9), Artifact
+(6), Scheduler crash/fairness/pool isolation (7), stale execution and bounded
+retry (8), Attempt progress (9), Artifact
 recovery/immutability and whole-set validation (11-12), begin-finalization replay
 (21), Assignment replay (24), and PostgreSQL-time Lease behavior (25). Current
-evidence is partial for Scheduler crash recovery without fairness (7), multipart
-resume plus whole-Job recompute (10), competing completion authorities without a
-two-Attempt Artifact race (13), immutable pricing/profile behavior (14),
+evidence is partial for multipart resume plus whole-Job recompute (10),
+competing completion authorities without a two-Attempt Artifact race (13),
+immutable pricing/profile behavior (14),
 Outbox/Invoice intent without the external exporter (20), Organization database
 and Artifact isolation (27), and N/N-1 database/control/Worker compatibility
 without a deployed rollout receipt (30). Every other scenario remains unproven
