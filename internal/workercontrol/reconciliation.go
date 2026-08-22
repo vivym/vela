@@ -243,6 +243,13 @@ func (s *Service) reconcileJobExpiryWithoutAttempt(
 	if err != nil {
 		return ReconciliationResult{}, fmt.Errorf("lock Job Expiry authority without Attempt: %w", err)
 	}
+	if err := queries.LockExecutionFailureDecisionWrites(ctx); err != nil {
+		return ReconciliationResult{}, fmt.Errorf("lock Job Expiry failure decision writes: %w", err)
+	}
+	protocol, err := queries.LockProfileCircuitProtocol(ctx)
+	if err != nil {
+		return ReconciliationResult{}, fmt.Errorf("lock Job Expiry ProfileCertification circuit protocol: %w", err)
+	}
 	decidedAt, err := postgresTime(ctx, queries)
 	if err != nil {
 		return ReconciliationResult{}, err
@@ -359,6 +366,7 @@ func (s *Service) reconcileJobExpiryWithoutAttempt(
 		jobFence,
 		jobVersion,
 		decidedAt,
+		protocol.CircuitProtocolVersion,
 	); err != nil {
 		return ReconciliationResult{}, err
 	}
@@ -430,6 +438,7 @@ func insertJobExpiryDecisionWithoutAttempt(
 	jobFence int64,
 	jobVersion int64,
 	decidedAt time.Time,
+	circuitProtocolVersion int16,
 ) error {
 	decidedAtValue := pgtype.Timestamptz{Time: decidedAt, Valid: true}
 	if err := queries.InsertExecutionFailureDecision(ctx, store.InsertExecutionFailureDecisionParams{
@@ -450,6 +459,8 @@ func insertJobExpiryDecisionWithoutAttempt(
 		InferenceBackendRevision:   normalized.InferenceBackendRevision,
 		RetryRecommended:           false,
 		WorkerReusable:             false,
+		CircuitProtocolVersion:     circuitProtocolVersion,
+		WorkerWasHealthy:           false,
 		AttemptComputeSeconds:      0,
 		TotalComputeSeconds:        authority.ComputeSecondsConsumed,
 		AttemptFinalizationSeconds: 0,

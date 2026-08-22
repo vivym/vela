@@ -245,6 +245,8 @@ INSERT INTO jobs (
     execution_retry_backoff_policy,
     execution_retryable_failure_classes,
     execution_circuit_breaker_policy,
+	execution_circuit_fingerprint_window_seconds,
+	execution_circuit_min_distinct_healthy_workers,
     job_expires_at
 ) VALUES (
     $1,
@@ -271,7 +273,9 @@ INSERT INTO jobs (
     $21,
     $22,
     $23,
-	transaction_timestamp() + $24::bigint * interval '1 second'
+	$24,
+	$25,
+	transaction_timestamp() + $26::bigint * interval '1 second'
 )
 `
 
@@ -299,6 +303,8 @@ type InsertJobParams struct {
 	ExecutionRetryBackoffPolicy               []byte    `db:"execution_retry_backoff_policy" json:"execution_retry_backoff_policy"`
 	ExecutionRetryableFailureClasses          []string  `db:"execution_retryable_failure_classes" json:"execution_retryable_failure_classes"`
 	ExecutionCircuitBreakerPolicy             []byte    `db:"execution_circuit_breaker_policy" json:"execution_circuit_breaker_policy"`
+	ExecutionCircuitFingerprintWindowSeconds  int32     `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
+	ExecutionCircuitMinDistinctHealthyWorkers int32     `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
 	JobLifetimeSeconds                        int64     `db:"job_lifetime_seconds" json:"job_lifetime_seconds"`
 }
 
@@ -327,6 +333,8 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.ExecutionRetryBackoffPolicy,
 		arg.ExecutionRetryableFailureClasses,
 		arg.ExecutionCircuitBreakerPolicy,
+		arg.ExecutionCircuitFingerprintWindowSeconds,
+		arg.ExecutionCircuitMinDistinctHealthyWorkers,
 		arg.JobLifetimeSeconds,
 	)
 	return err
@@ -569,7 +577,9 @@ SELECT
 	resolved.rate_card_revision_id::uuid AS rate_card_revision_id,
 	resolved.rate_line_id::uuid AS rate_line_id,
 	resolved.unit_amount_minor::bigint AS unit_amount_minor,
-	resolved.currency::text AS currency
+	resolved.currency::text AS currency,
+	resolved.circuit_fingerprint_window_seconds::integer AS circuit_fingerprint_window_seconds,
+	resolved.circuit_min_distinct_healthy_workers::integer AS circuit_min_distinct_healthy_workers
 FROM vela_resolve_active_sku(
 	$1,
 	$2,
@@ -591,7 +601,9 @@ FROM vela_resolve_active_sku(
 	rate_card_revision_id,
 	rate_line_id,
 	unit_amount_minor,
-	currency
+	currency,
+	circuit_fingerprint_window_seconds,
+	circuit_min_distinct_healthy_workers
 )
 `
 
@@ -619,6 +631,8 @@ type ResolveActiveSKURow struct {
 	RateLineID                       uuid.UUID `db:"rate_line_id" json:"rate_line_id"`
 	UnitAmountMinor                  int64     `db:"unit_amount_minor" json:"unit_amount_minor"`
 	Currency                         string    `db:"currency" json:"currency"`
+	CircuitFingerprintWindowSeconds  int32     `db:"circuit_fingerprint_window_seconds" json:"circuit_fingerprint_window_seconds"`
+	CircuitMinDistinctHealthyWorkers int32     `db:"circuit_min_distinct_healthy_workers" json:"circuit_min_distinct_healthy_workers"`
 }
 
 func (q *Queries) ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUParams) (ResolveActiveSKURow, error) {
@@ -646,6 +660,8 @@ func (q *Queries) ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUPara
 		&i.RateLineID,
 		&i.UnitAmountMinor,
 		&i.Currency,
+		&i.CircuitFingerprintWindowSeconds,
+		&i.CircuitMinDistinctHealthyWorkers,
 	)
 	return i, err
 }

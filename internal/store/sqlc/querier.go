@@ -22,6 +22,7 @@ type Querier interface {
 	ConsumeVisibleCompletionCreditReservation(ctx context.Context, arg ConsumeVisibleCompletionCreditReservationParams) (int64, error)
 	CountActiveOrganizationAssignments(ctx context.Context, arg CountActiveOrganizationAssignmentsParams) (int64, error)
 	CountActiveRetryAssignments(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
+	CountProfileCircuitHealthyWorkers(ctx context.Context, arg CountProfileCircuitHealthyWorkersParams) (int64, error)
 	DecrementPoolQueuedForAssignment(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
 	DecrementPoolWaitingForFailure(ctx context.Context, arg DecrementPoolWaitingForFailureParams) (int64, error)
 	DecrementProjectRunningForFailure(ctx context.Context, arg DecrementProjectRunningForFailureParams) (int64, error)
@@ -42,6 +43,7 @@ type Querier interface {
 	GetJob(ctx context.Context, arg GetJobParams) (GetJobRow, error)
 	GetPostgresTime(ctx context.Context) (pgtype.Timestamptz, error)
 	GetRecordedArtifactVerification(ctx context.Context, arg GetRecordedArtifactVerificationParams) (GetRecordedArtifactVerificationRow, error)
+	HasAlternateActiveProfileCertification(ctx context.Context, arg HasAlternateActiveProfileCertificationParams) (bool, error)
 	IncrementAttemptsStarted(ctx context.Context, arg IncrementAttemptsStartedParams) (int64, error)
 	IncrementPoolQueued(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
 	IncrementPoolRetryWait(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
@@ -62,6 +64,7 @@ type Querier interface {
 	InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error
 	InsertPlannedArtifact(ctx context.Context, arg InsertPlannedArtifactParams) error
 	InsertPlannedArtifactUpload(ctx context.Context, arg InsertPlannedArtifactUploadParams) error
+	InsertProfileCertificationCircuitOpening(ctx context.Context, arg InsertProfileCertificationCircuitOpeningParams) error
 	InsertReconcilerFinalizationLease(ctx context.Context, arg InsertReconcilerFinalizationLeaseParams) error
 	InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRuntimeStateParams) error
 	InsertRetryWaitOutboxEvent(ctx context.Context, arg InsertRetryWaitOutboxEventParams) error
@@ -69,6 +72,7 @@ type Querier interface {
 	InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error
 	InsertVisibleCompletionCharge(ctx context.Context, arg InsertVisibleCompletionChargeParams) error
 	InsertVisibleCompletionOutboxEvent(ctx context.Context, arg InsertVisibleCompletionOutboxEventParams) error
+	InvalidateProfileCertificationForCircuit(ctx context.Context, arg InvalidateProfileCertificationForCircuitParams) (int64, error)
 	IsArtifactMultipartUploadRecorded(ctx context.Context, arg IsArtifactMultipartUploadRecordedParams) (bool, error)
 	ListActiveLeaseSigningKeyIDs(ctx context.Context) ([]string, error)
 	ListCommittedArtifactSetItems(ctx context.Context, artifactSetID uuid.UUID) ([]ListCommittedArtifactSetItemsRow, error)
@@ -77,11 +81,13 @@ type Querier interface {
 	ListReadableArtifactSet(ctx context.Context, arg ListReadableArtifactSetParams) ([]ListReadableArtifactSetRow, error)
 	ListSchedulableWorkerPools(ctx context.Context) ([]uuid.UUID, error)
 	ListSucceededArtifactSetForCancellation(ctx context.Context, arg ListSucceededArtifactSetForCancellationParams) ([]ListSucceededArtifactSetForCancellationRow, error)
+	LockAssignmentPoolCapacity(ctx context.Context, workerPoolID uuid.UUID) (int32, error)
 	LockCancellationAttempt(ctx context.Context, attemptID uuid.UUID) (LockCancellationAttemptRow, error)
 	LockCancellationLease(ctx context.Context, arg LockCancellationLeaseParams) (LockCancellationLeaseRow, error)
 	LockCancellationStopAuthority(ctx context.Context, cancellationID uuid.UUID) (LockCancellationStopAuthorityRow, error)
 	LockCompatiblePool(ctx context.Context, arg LockCompatiblePoolParams) (LockCompatiblePoolRow, error)
 	LockCreditAccount(ctx context.Context, organizationID uuid.UUID) (LockCreditAccountRow, error)
+	LockExecutionFailureDecisionWrites(ctx context.Context) error
 	LockExecutionLeaseRenewalProtocol(ctx context.Context) (bool, error)
 	LockExecutionLeaseWrites(ctx context.Context) error
 	LockFailureAuthority(ctx context.Context, attemptID uuid.UUID) (LockFailureAuthorityRow, error)
@@ -95,9 +101,10 @@ type Querier interface {
 	LockJobExpiryWithoutAttempt(ctx context.Context, jobID uuid.UUID) (LockJobExpiryWithoutAttemptRow, error)
 	LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (LockJobForAssignmentRow, error)
 	LockOrganizationCapacityForAssignment(ctx context.Context, arg LockOrganizationCapacityForAssignmentParams) (int32, error)
+	LockProfileCertificationForFailure(ctx context.Context, arg LockProfileCertificationForFailureParams) (LockProfileCertificationForFailureRow, error)
+	LockProfileCircuitProtocol(ctx context.Context) (LockProfileCircuitProtocolRow, error)
 	LockProjectForAdmission(ctx context.Context, arg LockProjectForAdmissionParams) (LockProjectForAdmissionRow, error)
 	LockProjectForAssignment(ctx context.Context, arg LockProjectForAssignmentParams) (LockProjectForAssignmentRow, error)
-	LockRetryCapacityForAssignment(ctx context.Context, workerPoolID uuid.UUID) (int32, error)
 	LockSchedulerDispatchForAssignment(ctx context.Context, intentID uuid.UUID) (LockSchedulerDispatchForAssignmentRow, error)
 	LockStartAuthority(ctx context.Context, arg LockStartAuthorityParams) (LockStartAuthorityRow, error)
 	LockVisibleCompletionAuthority(ctx context.Context, arg LockVisibleCompletionAuthorityParams) (LockVisibleCompletionAuthorityRow, error)

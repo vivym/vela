@@ -277,6 +277,19 @@ func (s *Service) Acquire(
 	if guardErr := schedulerGuard.validateCapacity(ctx, queries, authority, job); guardErr != nil {
 		return Assignment{}, guardErr
 	}
+	retryRunningLimit, err := queries.LockAssignmentPoolCapacity(ctx, workerRow.WorkerPoolID)
+	if err != nil {
+		return Assignment{}, fmt.Errorf("lock Worker pool Assignment capacity: %w", err)
+	}
+	if guardErr := schedulerGuard.validateRetryCapacity(
+		ctx,
+		queries,
+		authority,
+		job,
+		retryRunningLimit,
+	); guardErr != nil {
+		return Assignment{}, guardErr
+	}
 	if _, err := queries.ValidateProfileForAssignment(ctx, store.ValidateProfileForAssignmentParams{
 		ExecutionProfileRevisionID: candidate.ExecutionProfileRevisionID,
 		ModelRevisionID:            job.ModelRevisionID,
@@ -589,28 +602,6 @@ func (guard *scheduledAssignmentGuard) validateCapacity(
 			"Customer Organization Assignment capacity is unavailable",
 		)
 	}
-	if job.State == store.JobStateRETRYWAIT {
-		retryRunningLimit, retryErr := queries.LockRetryCapacityForAssignment(
-			ctx,
-			authority.workerRow.WorkerPoolID,
-		)
-		if retryErr != nil {
-			return fmt.Errorf("lock retry lane capacity: %w", retryErr)
-		}
-		retryRunningCount, countErr := queries.CountActiveRetryAssignments(
-			ctx,
-			authority.workerRow.WorkerPoolID,
-		)
-		if countErr != nil {
-			return fmt.Errorf("count active retry Assignments: %w", countErr)
-		}
-		if retryRunningCount >= int64(retryRunningLimit) {
-			return failure(
-				FailureCandidateUnavailable,
-				"Worker pool retry lane capacity is unavailable",
-			)
-		}
-	}
 	if _, err := queries.ValidateScheduledWorkerProfile(
 		ctx,
 		store.ValidateScheduledWorkerProfileParams{
@@ -625,6 +616,32 @@ func (guard *scheduledAssignmentGuard) validateCapacity(
 		)
 	} else if err != nil {
 		return fmt.Errorf("validate scheduled Worker profile readiness: %w", err)
+	}
+	return nil
+}
+
+func (guard *scheduledAssignmentGuard) validateRetryCapacity(
+	ctx context.Context,
+	queries *store.Queries,
+	authority scheduledAssignmentAuthority,
+	job store.LockJobForAssignmentRow,
+	retryRunningLimit int32,
+) error {
+	if guard.dispatch == nil || job.State != store.JobStateRETRYWAIT {
+		return nil
+	}
+	retryRunningCount, err := queries.CountActiveRetryAssignments(
+		ctx,
+		authority.workerRow.WorkerPoolID,
+	)
+	if err != nil {
+		return fmt.Errorf("count active retry Assignments: %w", err)
+	}
+	if retryRunningCount >= int64(retryRunningLimit) {
+		return failure(
+			FailureCandidateUnavailable,
+			"Worker pool retry lane capacity is unavailable",
+		)
 	}
 	return nil
 }

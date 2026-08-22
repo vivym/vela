@@ -395,6 +395,8 @@ func (s *Service) Submit(
 		ExecutionRetryBackoffPolicy:               sku.RetryBackoffPolicy,
 		ExecutionRetryableFailureClasses:          sku.RetryableFailureClasses,
 		ExecutionCircuitBreakerPolicy:             sku.CircuitBreakerPolicy,
+		ExecutionCircuitFingerprintWindowSeconds:  sku.CircuitFingerprintWindowSeconds,
+		ExecutionCircuitMinDistinctHealthyWorkers: sku.CircuitMinDistinctHealthyWorkers,
 		JobLifetimeSeconds:                        jobLifetimeSeconds,
 	})
 	if err != nil {

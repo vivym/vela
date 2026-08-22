@@ -40,6 +40,13 @@ func (s *Service) applyAttemptFailure(
 	decidedAt time.Time,
 	transition attemptFailureTransition,
 ) (RetryDecision, error) {
+	if err := queries.LockExecutionFailureDecisionWrites(ctx); err != nil {
+		return RetryDecision{}, fmt.Errorf("lock failure decision writes: %w", err)
+	}
+	protocol, err := queries.LockProfileCircuitProtocol(ctx)
+	if err != nil {
+		return RetryDecision{}, fmt.Errorf("lock ProfileCertification circuit protocol: %w", err)
+	}
 	project, err := queries.LockFailureProjectCounters(ctx, store.LockFailureProjectCountersParams{
 		OrganizationID: authority.OrganizationID,
 		ProjectID:      authority.ProjectID,
@@ -53,6 +60,73 @@ func (s *Service) applyAttemptFailure(
 	if _, err := queries.LockFailurePoolCounters(ctx, authority.WorkerPoolID); err != nil {
 		return RetryDecision{}, fmt.Errorf("lock Worker pool failure counters: %w", err)
 	}
+	workerWasHealthy := protocol.RequireCircuitAggregation &&
+		transition.Source == store.ExecutionFailureSourceWORKERREPORTED &&
+		workerRow.ReachabilityCondition == store.WorkerReachabilityConditionHEALTHY
+	circuitState := authority.CircuitBreakerState
+	circuitOpen := false
+	openedByDecision := false
+	observedHealthyWorkers := int64(0)
+	evidenceWindowStartedAt := decidedAt.Add(
+		-time.Duration(authority.ExecutionCircuitFingerprintWindowSeconds) * time.Second,
+	)
+	if protocol.RequireCircuitAggregation {
+		certification, lockErr := queries.LockProfileCertificationForFailure(
+			ctx,
+			store.LockProfileCertificationForFailureParams{
+				ProfileCertificationID:     authority.ProfileCertificationID,
+				ExecutionProfileRevisionID: authority.ExecutionProfileRevisionID,
+				ModelRevisionID:            authority.ModelRevisionID,
+				GenerationPresetRevisionID: authority.GenerationPresetRevisionID,
+				OutputSpecID:               authority.OutputSpecID,
+			},
+		)
+		if lockErr != nil {
+			return RetryDecision{}, fmt.Errorf("lock ProfileCertification for failure: %w", lockErr)
+		}
+		circuitOpen = certification.State == store.CatalogStateINVALID && certification.InvalidatedAt.Valid
+		if certification.State == store.CatalogStateACTIVE && !certification.InvalidatedAt.Valid && workerWasHealthy {
+			observedHealthyWorkers, err = queries.CountProfileCircuitHealthyWorkers(
+				ctx,
+				store.CountProfileCircuitHealthyWorkersParams{
+					ProfileCertificationID: authority.ProfileCertificationID,
+					FailureFingerprint:     normalized.FailureFingerprint,
+					EvidenceWindowStartedAt: pgtype.Timestamptz{
+						Time:  evidenceWindowStartedAt,
+						Valid: true,
+					},
+					DecidedAt:               pgtype.Timestamptz{Time: decidedAt, Valid: true},
+					CurrentWorkerID:         authority.WorkerID,
+					CurrentWorkerWasHealthy: true,
+				},
+			)
+			if err != nil {
+				return RetryDecision{}, fmt.Errorf("count ProfileCertification circuit evidence: %w", err)
+			}
+			if observedHealthyWorkers >= int64(authority.ExecutionCircuitMinDistinctHealthyWorkers) {
+				rows, invalidateErr := queries.InvalidateProfileCertificationForCircuit(
+					ctx,
+					store.InvalidateProfileCertificationForCircuitParams{
+						OpenedAt:               pgtype.Timestamptz{Time: decidedAt, Valid: true},
+						ProfileCertificationID: authority.ProfileCertificationID,
+					},
+				)
+				if invalidateErr != nil || rows != 1 {
+					return RetryDecision{}, changedRowsError(
+						"invalidate ProfileCertification for circuit",
+						rows,
+						invalidateErr,
+					)
+				}
+				circuitOpen = true
+				openedByDecision = true
+			}
+		}
+		if circuitOpen {
+			circuitState = []byte(`{"state":"OPEN"}`)
+		}
+	}
+
 	credit, err := queries.LockFailureCreditReservation(ctx, authority.JobID)
 	if err != nil {
 		return RetryDecision{}, fmt.Errorf("lock CreditReservation for failure: %w", err)
@@ -80,6 +154,22 @@ func (s *Service) applyAttemptFailure(
 	totalFinalization := authority.FinalizationSecondsConsumed + attemptFinalization
 	nextRetryAt, retry := retryTime(authority, normalized, totalCompute, decidedAt)
 	retry = retry && transition.AllowRetry
+	if retry && circuitOpen {
+		retry, err = queries.HasAlternateActiveProfileCertification(
+			ctx,
+			store.HasAlternateActiveProfileCertificationParams{
+				ModelRevisionID:            authority.ModelRevisionID,
+				GenerationPresetRevisionID: authority.GenerationPresetRevisionID,
+				OutputSpecID:               authority.OutputSpecID,
+				ProfileCertificationID:     authority.ProfileCertificationID,
+				ExecutionProfileRevisionID: authority.ExecutionProfileRevisionID,
+				WorkerPoolID:               authority.WorkerPoolID,
+			},
+		)
+		if err != nil {
+			return RetryDecision{}, fmt.Errorf("check alternate active ProfileCertification: %w", err)
+		}
+	}
 	if !retry {
 		nextRetryAt = nil
 		organizationCredit, lockErr := queries.LockFailureOrganizationCredit(ctx, authority.OrganizationID)
@@ -176,6 +266,7 @@ func (s *Service) applyAttemptFailure(
 		TotalFinalizationSeconds:    totalFinalization,
 		FinalizationRetryIncrement:  finalizationRetryIncrement(authority, retry),
 		NextRetryAt:                 nextRetryValue,
+		CircuitBreakerState:         circuitState,
 		FailureClass:                &failureClass,
 		DecidedAt:                   decidedAtValue,
 		JobID:                       authority.JobID,
@@ -241,8 +332,9 @@ func (s *Service) applyAttemptFailure(
 	if retry {
 		disposition = store.RetryDispositionRETRYWAIT
 	}
+	decisionID := uuid.New()
 	if err := queries.InsertExecutionFailureDecision(ctx, store.InsertExecutionFailureDecisionParams{
-		ID:                         uuid.New(),
+		ID:                         decisionID,
 		OrganizationID:             authority.OrganizationID,
 		ProjectID:                  authority.ProjectID,
 		JobID:                      authority.JobID,
@@ -262,6 +354,8 @@ func (s *Service) applyAttemptFailure(
 		InferenceBackendRevision:   normalized.InferenceBackendRevision,
 		RetryRecommended:           normalized.RetryRecommended,
 		WorkerReusable:             normalized.WorkerReusable,
+		CircuitProtocolVersion:     protocol.CircuitProtocolVersion,
+		WorkerWasHealthy:           workerWasHealthy,
 		AttemptComputeSeconds:      attemptCompute,
 		TotalComputeSeconds:        totalCompute,
 		AttemptFinalizationSeconds: attemptFinalization,
@@ -275,6 +369,37 @@ func (s *Service) applyAttemptFailure(
 		DecidedAt:                  decidedAtValue,
 	}); err != nil {
 		return RetryDecision{}, fmt.Errorf("insert durable RetryDecision: %w", err)
+	}
+	if openedByDecision {
+		if err := queries.InsertProfileCertificationCircuitOpening(
+			ctx,
+			store.InsertProfileCertificationCircuitOpeningParams{
+				ID:                                   uuid.New(),
+				OrganizationID:                       authority.OrganizationID,
+				ProjectID:                            authority.ProjectID,
+				ProfileCertificationID:               authority.ProfileCertificationID,
+				ExecutionProfileRevisionID:           authority.ExecutionProfileRevisionID,
+				TriggeringExecutionFailureDecisionID: decisionID,
+				TriggeringJobID:                      authority.JobID,
+				TriggeringAttemptID:                  authority.AttemptID,
+				TriggeringWorkerID:                   authority.WorkerID,
+				TriggeringWorkerEpoch:                authority.WorkerEpoch,
+				TriggeringAttemptFence:               authority.AttemptFence,
+				FailureClass:                         normalized.FailureClass,
+				FailureFingerprint:                   normalized.FailureFingerprint,
+				InferenceBackendRevision:             normalized.InferenceBackendRevision,
+				PolicyFingerprintWindowSeconds:       authority.ExecutionCircuitFingerprintWindowSeconds,
+				PolicyMinDistinctHealthyWorkers:      authority.ExecutionCircuitMinDistinctHealthyWorkers,
+				ObservedDistinctHealthyWorkers:       int32(observedHealthyWorkers),
+				EvidenceWindowStartedAt: pgtype.Timestamptz{
+					Time:  evidenceWindowStartedAt,
+					Valid: true,
+				},
+				OpenedAt: decidedAtValue,
+			},
+		); err != nil {
+			return RetryDecision{}, fmt.Errorf("insert ProfileCertification circuit opening: %w", err)
+		}
 	}
 	if retry {
 		if err := insertRetryWaitEvent(

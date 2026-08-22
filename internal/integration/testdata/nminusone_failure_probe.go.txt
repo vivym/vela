@@ -1,0 +1,79 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/workercontrol"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("VELA_INTERNAL_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer pool.Close()
+	service, err := workercontrol.NewService(ctx, pool, workercontrol.Config{
+		LeaseTTL:         2 * time.Minute,
+		ActiveLeaseKeyID: "lease-key-v1",
+		LeaseKeys: map[string][]byte{
+			"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
+		},
+	})
+	if err != nil {
+		fatal(err)
+	}
+	worker := workercontrol.AuthenticatedWorker{ID: uuid.MustParse(os.Getenv("VELA_WORKER_ID"))}
+	assignment, err := service.Acquire(ctx, worker, 7, &workercontrol.AssignmentCandidate{
+		JobID:                      uuid.MustParse(os.Getenv("VELA_JOB_ID")),
+		ExpectedJobVersion:         1,
+		ExecutionProfileRevisionID: uuid.MustParse("00000000-0000-0000-0000-000000000014"),
+	})
+	if err != nil {
+		fatal(err)
+	}
+	credentials := workercontrol.LeaseCredentials{
+		AttemptID:   assignment.AttemptID,
+		WorkerEpoch: assignment.WorkerEpoch,
+		Fence:       assignment.LeaseFence,
+		Token:       assignment.LeaseToken,
+	}
+	started, err := service.Start(ctx, worker, credentials)
+	if err != nil || started.Decision != workercontrol.StartGranted {
+		fatal(fmt.Errorf("start N-1 failure probe = %#v error=%v", started, err))
+	}
+	decision, err := service.Fail(ctx, worker, credentials, workercontrol.FailureObservation{
+		FailureClass:             "TRANSIENT_BACKEND",
+		FailureFingerprint:       "sglang.process.exit.137",
+		ErrorSummary:             "N-1 backend process exited before completing the Attempt",
+		BackendStage:             "generation",
+		GPUUUIDs:                 []string{"GPU-00000000-0000-0000-0000-000000000001"},
+		InferenceBackendRevision: "sglang-vela@e1c5054",
+		RetryRecommended:         true,
+		WorkerReusable:           true,
+	})
+	if err != nil {
+		fatal(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(struct {
+		Disposition string `json:"disposition"`
+		AttemptID   string `json:"attempt_id"`
+	}{
+		Disposition: string(decision.Disposition),
+		AttemptID:   decision.AttemptID.String(),
+	}); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}

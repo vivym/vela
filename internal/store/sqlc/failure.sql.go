@@ -12,6 +12,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countProfileCircuitHealthyWorkers = `-- name: CountProfileCircuitHealthyWorkers :one
+SELECT count(DISTINCT evidence.worker_id)::bigint
+FROM (
+    SELECT decision.worker_id
+    FROM execution_failure_decisions AS decision
+    JOIN attempts AS attempt ON attempt.id = decision.attempt_id
+    WHERE attempt.profile_certification_id = $1
+      AND decision.source = 'WORKER_REPORTED'
+      AND decision.circuit_protocol_version = 2
+      AND decision.worker_was_healthy
+      AND decision.failure_fingerprint = $2
+      AND decision.decided_at >= $3
+      AND decision.decided_at <= $4
+    UNION ALL
+    SELECT $5::uuid
+    WHERE $6::boolean
+) AS evidence
+`
+
+type CountProfileCircuitHealthyWorkersParams struct {
+	ProfileCertificationID  uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+	FailureFingerprint      string             `db:"failure_fingerprint" json:"failure_fingerprint"`
+	EvidenceWindowStartedAt pgtype.Timestamptz `db:"evidence_window_started_at" json:"evidence_window_started_at"`
+	DecidedAt               pgtype.Timestamptz `db:"decided_at" json:"decided_at"`
+	CurrentWorkerID         uuid.UUID          `db:"current_worker_id" json:"current_worker_id"`
+	CurrentWorkerWasHealthy bool               `db:"current_worker_was_healthy" json:"current_worker_was_healthy"`
+}
+
+func (q *Queries) CountProfileCircuitHealthyWorkers(ctx context.Context, arg CountProfileCircuitHealthyWorkersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countProfileCircuitHealthyWorkers,
+		arg.ProfileCertificationID,
+		arg.FailureFingerprint,
+		arg.EvidenceWindowStartedAt,
+		arg.DecidedAt,
+		arg.CurrentWorkerID,
+		arg.CurrentWorkerWasHealthy,
+	)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const decrementPoolWaitingForFailure = `-- name: DecrementPoolWaitingForFailure :execrows
 UPDATE worker_pools
 SET queued_count = queued_count - 1,
@@ -249,6 +291,48 @@ func (q *Queries) GetExecutionFailureDecision(ctx context.Context, attemptID uui
 	return i, err
 }
 
+const hasAlternateActiveProfileCertification = `-- name: HasAlternateActiveProfileCertification :one
+SELECT EXISTS (
+    SELECT 1
+    FROM profile_certifications AS certification
+    JOIN execution_profile_revisions AS profile
+      ON profile.id = certification.execution_profile_revision_id
+    WHERE certification.model_revision_id = $1
+      AND certification.generation_preset_revision_id = $2
+      AND certification.output_spec_id = $3
+      AND certification.id <> $4
+      AND certification.execution_profile_revision_id <>
+          $5
+      AND certification.state = 'ACTIVE'
+      AND certification.invalidated_at IS NULL
+      AND profile.worker_pool_id = $6
+      AND profile.state = 'ACTIVE'
+)
+`
+
+type HasAlternateActiveProfileCertificationParams struct {
+	ModelRevisionID            uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID uuid.UUID `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	OutputSpecID               uuid.UUID `db:"output_spec_id" json:"output_spec_id"`
+	ProfileCertificationID     uuid.UUID `db:"profile_certification_id" json:"profile_certification_id"`
+	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	WorkerPoolID               uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
+}
+
+func (q *Queries) HasAlternateActiveProfileCertification(ctx context.Context, arg HasAlternateActiveProfileCertificationParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasAlternateActiveProfileCertification,
+		arg.ModelRevisionID,
+		arg.GenerationPresetRevisionID,
+		arg.OutputSpecID,
+		arg.ProfileCertificationID,
+		arg.ExecutionProfileRevisionID,
+		arg.WorkerPoolID,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const incrementPoolRetryWait = `-- name: IncrementPoolRetryWait :execrows
 UPDATE worker_pools
 SET queued_count = queued_count + 1,
@@ -286,6 +370,8 @@ INSERT INTO execution_failure_decisions (
     inference_backend_revision,
     retry_recommended,
     worker_reusable,
+    circuit_protocol_version,
+    worker_was_healthy,
     attempt_compute_seconds,
     total_compute_seconds,
 	 attempt_finalization_seconds,
@@ -320,15 +406,17 @@ INSERT INTO execution_failure_decisions (
     $20,
     $21,
     $22,
-	 $23,
-	 $24,
+    $23,
+    $24,
 	 $25,
 	 $26,
 	 $27,
-    $28,
-    $29,
+	 $28,
+	 $29,
     $30,
-    $31
+    $31,
+    $32,
+    $33
 )
 `
 
@@ -353,6 +441,8 @@ type InsertExecutionFailureDecisionParams struct {
 	InferenceBackendRevision   string                 `db:"inference_backend_revision" json:"inference_backend_revision"`
 	RetryRecommended           bool                   `db:"retry_recommended" json:"retry_recommended"`
 	WorkerReusable             bool                   `db:"worker_reusable" json:"worker_reusable"`
+	CircuitProtocolVersion     int16                  `db:"circuit_protocol_version" json:"circuit_protocol_version"`
+	WorkerWasHealthy           bool                   `db:"worker_was_healthy" json:"worker_was_healthy"`
 	AttemptComputeSeconds      int64                  `db:"attempt_compute_seconds" json:"attempt_compute_seconds"`
 	TotalComputeSeconds        int64                  `db:"total_compute_seconds" json:"total_compute_seconds"`
 	AttemptFinalizationSeconds int64                  `db:"attempt_finalization_seconds" json:"attempt_finalization_seconds"`
@@ -388,6 +478,8 @@ func (q *Queries) InsertExecutionFailureDecision(ctx context.Context, arg Insert
 		arg.InferenceBackendRevision,
 		arg.RetryRecommended,
 		arg.WorkerReusable,
+		arg.CircuitProtocolVersion,
+		arg.WorkerWasHealthy,
 		arg.AttemptComputeSeconds,
 		arg.TotalComputeSeconds,
 		arg.AttemptFinalizationSeconds,
@@ -452,6 +544,97 @@ func (q *Queries) InsertJobFailedOutboxEvent(ctx context.Context, arg InsertJobF
 	return err
 }
 
+const insertProfileCertificationCircuitOpening = `-- name: InsertProfileCertificationCircuitOpening :exec
+INSERT INTO profile_certification_circuit_openings (
+    id,
+    organization_id,
+    project_id,
+    profile_certification_id,
+    execution_profile_revision_id,
+    triggering_execution_failure_decision_id,
+    triggering_job_id,
+    triggering_attempt_id,
+    triggering_worker_id,
+    triggering_worker_epoch,
+    triggering_attempt_fence,
+    failure_class,
+    failure_fingerprint,
+    inference_backend_revision,
+    policy_fingerprint_window_seconds,
+    policy_min_distinct_healthy_workers,
+    observed_distinct_healthy_workers,
+    evidence_window_started_at,
+    opened_at
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12,
+    $13,
+    $14,
+    $15,
+    $16,
+    $17,
+    $18,
+    $19
+)
+`
+
+type InsertProfileCertificationCircuitOpeningParams struct {
+	ID                                   uuid.UUID          `db:"id" json:"id"`
+	OrganizationID                       uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                            uuid.UUID          `db:"project_id" json:"project_id"`
+	ProfileCertificationID               uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+	ExecutionProfileRevisionID           uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	TriggeringExecutionFailureDecisionID uuid.UUID          `db:"triggering_execution_failure_decision_id" json:"triggering_execution_failure_decision_id"`
+	TriggeringJobID                      uuid.UUID          `db:"triggering_job_id" json:"triggering_job_id"`
+	TriggeringAttemptID                  uuid.UUID          `db:"triggering_attempt_id" json:"triggering_attempt_id"`
+	TriggeringWorkerID                   uuid.UUID          `db:"triggering_worker_id" json:"triggering_worker_id"`
+	TriggeringWorkerEpoch                int64              `db:"triggering_worker_epoch" json:"triggering_worker_epoch"`
+	TriggeringAttemptFence               int64              `db:"triggering_attempt_fence" json:"triggering_attempt_fence"`
+	FailureClass                         string             `db:"failure_class" json:"failure_class"`
+	FailureFingerprint                   string             `db:"failure_fingerprint" json:"failure_fingerprint"`
+	InferenceBackendRevision             string             `db:"inference_backend_revision" json:"inference_backend_revision"`
+	PolicyFingerprintWindowSeconds       int32              `db:"policy_fingerprint_window_seconds" json:"policy_fingerprint_window_seconds"`
+	PolicyMinDistinctHealthyWorkers      int32              `db:"policy_min_distinct_healthy_workers" json:"policy_min_distinct_healthy_workers"`
+	ObservedDistinctHealthyWorkers       int32              `db:"observed_distinct_healthy_workers" json:"observed_distinct_healthy_workers"`
+	EvidenceWindowStartedAt              pgtype.Timestamptz `db:"evidence_window_started_at" json:"evidence_window_started_at"`
+	OpenedAt                             pgtype.Timestamptz `db:"opened_at" json:"opened_at"`
+}
+
+func (q *Queries) InsertProfileCertificationCircuitOpening(ctx context.Context, arg InsertProfileCertificationCircuitOpeningParams) error {
+	_, err := q.db.Exec(ctx, insertProfileCertificationCircuitOpening,
+		arg.ID,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.ProfileCertificationID,
+		arg.ExecutionProfileRevisionID,
+		arg.TriggeringExecutionFailureDecisionID,
+		arg.TriggeringJobID,
+		arg.TriggeringAttemptID,
+		arg.TriggeringWorkerID,
+		arg.TriggeringWorkerEpoch,
+		arg.TriggeringAttemptFence,
+		arg.FailureClass,
+		arg.FailureFingerprint,
+		arg.InferenceBackendRevision,
+		arg.PolicyFingerprintWindowSeconds,
+		arg.PolicyMinDistinctHealthyWorkers,
+		arg.ObservedDistinctHealthyWorkers,
+		arg.EvidenceWindowStartedAt,
+		arg.OpenedAt,
+	)
+	return err
+}
+
 const insertRetryWaitOutboxEvent = `-- name: InsertRetryWaitOutboxEvent :exec
 INSERT INTO outbox_events (
     event_id,
@@ -501,6 +684,36 @@ func (q *Queries) InsertRetryWaitOutboxEvent(ctx context.Context, arg InsertRetr
 	return err
 }
 
+const invalidateProfileCertificationForCircuit = `-- name: InvalidateProfileCertificationForCircuit :execrows
+UPDATE profile_certifications
+SET state = 'INVALID', invalidated_at = $1
+WHERE id = $2
+  AND state = 'ACTIVE'
+  AND invalidated_at IS NULL
+`
+
+type InvalidateProfileCertificationForCircuitParams struct {
+	OpenedAt               pgtype.Timestamptz `db:"opened_at" json:"opened_at"`
+	ProfileCertificationID uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+}
+
+func (q *Queries) InvalidateProfileCertificationForCircuit(ctx context.Context, arg InvalidateProfileCertificationForCircuitParams) (int64, error) {
+	result, err := q.db.Exec(ctx, invalidateProfileCertificationForCircuit, arg.OpenedAt, arg.ProfileCertificationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const lockExecutionFailureDecisionWrites = `-- name: LockExecutionFailureDecisionWrites :exec
+LOCK TABLE execution_failure_decisions IN ROW EXCLUSIVE MODE
+`
+
+func (q *Queries) LockExecutionFailureDecisionWrites(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, lockExecutionFailureDecisionWrites)
+	return err
+}
+
 const lockFailureAuthority = `-- name: LockFailureAuthority :one
 SELECT
     l.id AS lease_id,
@@ -513,6 +726,8 @@ SELECT
     a.id AS attempt_id,
     a.job_id,
     a.attempt_number,
+    a.execution_profile_revision_id,
+    a.profile_certification_id,
     a.state AS attempt_state,
     a.started_at AS attempt_started_at,
 	 a.finalization_started_at,
@@ -526,16 +741,22 @@ SELECT
     j.state AS job_state,
     j.version AS job_version,
     j.current_fence,
+    j.model_revision_id,
+    j.generation_preset_revision_id,
+    j.output_spec_id,
     j.execution_max_attempts,
     j.execution_max_total_compute_seconds,
 	 j.execution_max_finalization_seconds_per_attempt,
     j.execution_retry_backoff_policy,
     j.execution_retryable_failure_classes,
+    j.execution_circuit_fingerprint_window_seconds,
+    j.execution_circuit_min_distinct_healthy_workers,
     j.job_expires_at,
     rts.attempts_started,
     rts.compute_seconds_consumed,
 	 rts.finalization_seconds_consumed,
 	 rts.finalization_retry_count,
+    rts.circuit_breaker_state,
     ere.excluded_workers,
     ere.failure_fingerprints,
     rts.version AS retry_runtime_version
@@ -561,6 +782,8 @@ type LockFailureAuthorityRow struct {
 	AttemptID                                 uuid.UUID          `db:"attempt_id" json:"attempt_id"`
 	JobID                                     uuid.UUID          `db:"job_id" json:"job_id"`
 	AttemptNumber                             int32              `db:"attempt_number" json:"attempt_number"`
+	ExecutionProfileRevisionID                uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ProfileCertificationID                    uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
 	AttemptState                              AttemptState       `db:"attempt_state" json:"attempt_state"`
 	AttemptStartedAt                          pgtype.Timestamptz `db:"attempt_started_at" json:"attempt_started_at"`
 	FinalizationStartedAt                     pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
@@ -574,16 +797,22 @@ type LockFailureAuthorityRow struct {
 	JobState                                  JobState           `db:"job_state" json:"job_state"`
 	JobVersion                                int64              `db:"job_version" json:"job_version"`
 	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
+	ModelRevisionID                           uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID                uuid.UUID          `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	OutputSpecID                              uuid.UUID          `db:"output_spec_id" json:"output_spec_id"`
 	ExecutionMaxAttempts                      int32              `db:"execution_max_attempts" json:"execution_max_attempts"`
 	ExecutionMaxTotalComputeSeconds           int64              `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
 	ExecutionMaxFinalizationSecondsPerAttempt int32              `db:"execution_max_finalization_seconds_per_attempt" json:"execution_max_finalization_seconds_per_attempt"`
 	ExecutionRetryBackoffPolicy               []byte             `db:"execution_retry_backoff_policy" json:"execution_retry_backoff_policy"`
 	ExecutionRetryableFailureClasses          []string           `db:"execution_retryable_failure_classes" json:"execution_retryable_failure_classes"`
+	ExecutionCircuitFingerprintWindowSeconds  int32              `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
+	ExecutionCircuitMinDistinctHealthyWorkers int32              `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
 	JobExpiresAt                              pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
 	AttemptsStarted                           int32              `db:"attempts_started" json:"attempts_started"`
 	ComputeSecondsConsumed                    int64              `db:"compute_seconds_consumed" json:"compute_seconds_consumed"`
 	FinalizationSecondsConsumed               int64              `db:"finalization_seconds_consumed" json:"finalization_seconds_consumed"`
 	FinalizationRetryCount                    int32              `db:"finalization_retry_count" json:"finalization_retry_count"`
+	CircuitBreakerState                       []byte             `db:"circuit_breaker_state" json:"circuit_breaker_state"`
 	ExcludedWorkers                           []byte             `db:"excluded_workers" json:"excluded_workers"`
 	FailureFingerprints                       []byte             `db:"failure_fingerprints" json:"failure_fingerprints"`
 	RetryRuntimeVersion                       int64              `db:"retry_runtime_version" json:"retry_runtime_version"`
@@ -603,6 +832,8 @@ func (q *Queries) LockFailureAuthority(ctx context.Context, attemptID uuid.UUID)
 		&i.AttemptID,
 		&i.JobID,
 		&i.AttemptNumber,
+		&i.ExecutionProfileRevisionID,
+		&i.ProfileCertificationID,
 		&i.AttemptState,
 		&i.AttemptStartedAt,
 		&i.FinalizationStartedAt,
@@ -616,16 +847,22 @@ func (q *Queries) LockFailureAuthority(ctx context.Context, attemptID uuid.UUID)
 		&i.JobState,
 		&i.JobVersion,
 		&i.CurrentFence,
+		&i.ModelRevisionID,
+		&i.GenerationPresetRevisionID,
+		&i.OutputSpecID,
 		&i.ExecutionMaxAttempts,
 		&i.ExecutionMaxTotalComputeSeconds,
 		&i.ExecutionMaxFinalizationSecondsPerAttempt,
 		&i.ExecutionRetryBackoffPolicy,
 		&i.ExecutionRetryableFailureClasses,
+		&i.ExecutionCircuitFingerprintWindowSeconds,
+		&i.ExecutionCircuitMinDistinctHealthyWorkers,
 		&i.JobExpiresAt,
 		&i.AttemptsStarted,
 		&i.ComputeSecondsConsumed,
 		&i.FinalizationSecondsConsumed,
 		&i.FinalizationRetryCount,
+		&i.CircuitBreakerState,
 		&i.ExcludedWorkers,
 		&i.FailureFingerprints,
 		&i.RetryRuntimeVersion,
@@ -791,6 +1028,69 @@ func (q *Queries) LockJobExpiryWithoutAttempt(ctx context.Context, jobID uuid.UU
 		&i.FailureFingerprints,
 		&i.RetryRuntimeVersion,
 	)
+	return i, err
+}
+
+const lockProfileCertificationForFailure = `-- name: LockProfileCertificationForFailure :one
+SELECT id, state, invalidated_at
+FROM profile_certifications
+WHERE id = $1
+  AND execution_profile_revision_id = $2
+  AND model_revision_id = $3
+  AND generation_preset_revision_id = $4
+  AND output_spec_id = $5
+FOR UPDATE
+`
+
+type LockProfileCertificationForFailureParams struct {
+	ProfileCertificationID     uuid.UUID `db:"profile_certification_id" json:"profile_certification_id"`
+	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ModelRevisionID            uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID uuid.UUID `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	OutputSpecID               uuid.UUID `db:"output_spec_id" json:"output_spec_id"`
+}
+
+type LockProfileCertificationForFailureRow struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	State         CatalogState       `db:"state" json:"state"`
+	InvalidatedAt pgtype.Timestamptz `db:"invalidated_at" json:"invalidated_at"`
+}
+
+func (q *Queries) LockProfileCertificationForFailure(ctx context.Context, arg LockProfileCertificationForFailureParams) (LockProfileCertificationForFailureRow, error) {
+	row := q.db.QueryRow(ctx, lockProfileCertificationForFailure,
+		arg.ProfileCertificationID,
+		arg.ExecutionProfileRevisionID,
+		arg.ModelRevisionID,
+		arg.GenerationPresetRevisionID,
+		arg.OutputSpecID,
+	)
+	var i LockProfileCertificationForFailureRow
+	err := row.Scan(&i.ID, &i.State, &i.InvalidatedAt)
+	return i, err
+}
+
+const lockProfileCircuitProtocol = `-- name: LockProfileCircuitProtocol :one
+SELECT
+    protocol.require_circuit_aggregation::boolean AS require_circuit_aggregation,
+    CASE
+        WHEN protocol.require_circuit_aggregation THEN 2::smallint
+        ELSE 1::smallint
+    END AS circuit_protocol_version
+FROM vela_lock_profile_circuit_protocol() AS protocol(
+    require_circuit_aggregation,
+    protocol_version
+)
+`
+
+type LockProfileCircuitProtocolRow struct {
+	RequireCircuitAggregation bool  `db:"require_circuit_aggregation" json:"require_circuit_aggregation"`
+	CircuitProtocolVersion    int16 `db:"circuit_protocol_version" json:"circuit_protocol_version"`
+}
+
+func (q *Queries) LockProfileCircuitProtocol(ctx context.Context) (LockProfileCircuitProtocolRow, error) {
+	row := q.db.QueryRow(ctx, lockProfileCircuitProtocol)
+	var i LockProfileCircuitProtocolRow
+	err := row.Scan(&i.RequireCircuitAggregation, &i.CircuitProtocolVersion)
 	return i, err
 }
 
@@ -1218,13 +1518,14 @@ SET compute_seconds_consumed = $1,
 	 finalization_retry_count = finalization_retry_count
 	     + $3::integer,
     next_retry_at = $4,
-    last_failure_class = $5,
+    circuit_breaker_state = $5,
+    last_failure_class = $6,
     version = version + 1,
-    updated_at = $6
-WHERE job_id = $7
-  AND version = $8
-  AND compute_seconds_consumed = $9
-  AND finalization_seconds_consumed = $10
+    updated_at = $7
+WHERE job_id = $8
+  AND version = $9
+  AND compute_seconds_consumed = $10
+  AND finalization_seconds_consumed = $11
 `
 
 type UpdateRetryRuntimeForFailureParams struct {
@@ -1232,6 +1533,7 @@ type UpdateRetryRuntimeForFailureParams struct {
 	TotalFinalizationSeconds    int64              `db:"total_finalization_seconds" json:"total_finalization_seconds"`
 	FinalizationRetryIncrement  int32              `db:"finalization_retry_increment" json:"finalization_retry_increment"`
 	NextRetryAt                 pgtype.Timestamptz `db:"next_retry_at" json:"next_retry_at"`
+	CircuitBreakerState         []byte             `db:"circuit_breaker_state" json:"circuit_breaker_state"`
 	FailureClass                *string            `db:"failure_class" json:"failure_class"`
 	DecidedAt                   pgtype.Timestamptz `db:"decided_at" json:"decided_at"`
 	JobID                       uuid.UUID          `db:"job_id" json:"job_id"`
@@ -1246,6 +1548,7 @@ func (q *Queries) UpdateRetryRuntimeForFailure(ctx context.Context, arg UpdateRe
 		arg.TotalFinalizationSeconds,
 		arg.FinalizationRetryIncrement,
 		arg.NextRetryAt,
+		arg.CircuitBreakerState,
 		arg.FailureClass,
 		arg.DecidedAt,
 		arg.JobID,

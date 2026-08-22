@@ -119,7 +119,7 @@ WHERE worker_pool_id = sqlc.arg(worker_pool_id)
   AND organization_id = sqlc.arg(organization_id)
   AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING');
 
--- name: LockRetryCapacityForAssignment :one
+-- name: LockAssignmentPoolCapacity :one
 SELECT pool.retry_running_limit
 FROM worker_pools AS pool
 WHERE pool.id = sqlc.arg(worker_pool_id)

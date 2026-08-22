@@ -33,7 +33,200 @@ const (
 	finalizationFixedPointCommit         = "c94e140c8e841e88bdfcc41725bd7aa5ea7ac068"
 	hierarchicalSchedulerNMinusOneCommit = "8d4fd9199348d5ccdca48c40ef3b4a19ee5c5284"
 	invoiceExportNMinusOneCommit         = "96760832c3b652827a9c5ce1732fbfa773ed0759"
+	profileCircuitNMinusOneCommit        = "e1c50543d854cbad0cc5a98fdaac51e78e2c837c"
 )
+
+func TestExactProfileCircuitNMinusOneWriterAcrossProtocolGate(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, profileCircuitNMinusOneCommit)
+	assertProfileCircuitNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	seedAdmissionFixture(t, database.Admin)
+
+	gateOffWorkerID := uuid.New()
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, gateOffWorkerID, "gate-off")
+	gateOffJobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	gateOff, err := runNMinusOneFailureProbeProcess(
+		t,
+		nMinusOne.FailureProbe,
+		database.DSN,
+		gateOffJobID,
+		gateOffWorkerID.String(),
+	)
+	if err != nil {
+		t.Fatalf("run gate-off Profile circuit N-1 writer: %v\n%s", err, gateOff)
+	}
+	var gateOffResult nMinusOneFailureProbeResult
+	if err := json.Unmarshal(gateOff, &gateOffResult); err != nil {
+		t.Fatalf("decode gate-off Profile circuit N-1 result: %v\n%s", err, gateOff)
+	}
+	if gateOffResult.Disposition != "RETRY_WAIT" || gateOffResult.AttemptID == "" {
+		t.Fatalf("gate-off Profile circuit N-1 result = %#v", gateOffResult)
+	}
+	var protocol int
+	var workerWasHealthy bool
+	var certificationState string
+	var openingCount int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			decision.circuit_protocol_version,
+			decision.worker_was_healthy,
+			certification.state::text,
+			(SELECT count(*) FROM profile_certification_circuit_openings)
+		FROM execution_failure_decisions AS decision
+		JOIN attempts AS attempt ON attempt.id = decision.attempt_id
+		JOIN profile_certifications AS certification
+		  ON certification.id = attempt.profile_certification_id
+		WHERE decision.attempt_id = $1
+	`, gateOffResult.AttemptID).Scan(
+		&protocol,
+		&workerWasHealthy,
+		&certificationState,
+		&openingCount,
+	); err != nil {
+		t.Fatalf("read gate-off Profile circuit N-1 decision: %v", err)
+	}
+	if protocol != 1 || workerWasHealthy || certificationState != "ACTIVE" || openingCount != 0 {
+		t.Fatalf(
+			"gate-off N-1 decision = protocol %d healthy %t certification %s openings %d",
+			protocol,
+			workerWasHealthy,
+			certificationState,
+			openingCount,
+		)
+	}
+
+	setProfileCircuitProtocolGate(
+		t,
+		database.Admin,
+		true,
+		"exact e1c5054 failure writers drained",
+	)
+	assertProfileCircuitNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	gateOnWorkerID := uuid.New()
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, gateOnWorkerID, "gate-on")
+	gateOnJobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	gateOn, gateOnErr := runNMinusOneFailureProbeProcess(
+		t,
+		nMinusOne.FailureProbe,
+		database.DSN,
+		gateOnJobID,
+		gateOnWorkerID.String(),
+	)
+	if gateOnErr == nil ||
+		!strings.Contains(string(gateOn), "failure decision writer does not match the active Profile circuit protocol") ||
+		!strings.Contains(string(gateOn), "SQLSTATE 55000") {
+		t.Fatalf("gate-on Profile circuit N-1 writer error=%v\n%s", gateOnErr, gateOn)
+	}
+
+	var (
+		jobState          string
+		attemptState      string
+		leaseRevoked      bool
+		workerState       string
+		decisionCount     int
+		jobOpeningCount   int
+		circuitState      string
+		projectRunning    int
+		creditReservation string
+	)
+	if err := database.Admin.QueryRow(`
+		SELECT
+			job.state::text,
+			attempt.state::text,
+			lease.revoked_at IS NOT NULL,
+			worker.lifecycle_state::text,
+			(SELECT count(*) FROM execution_failure_decisions WHERE job_id = job.id),
+			(SELECT count(*) FROM profile_certification_circuit_openings
+			 WHERE triggering_job_id = job.id),
+			runtime.circuit_breaker_state::text,
+			project.running_count,
+			reservation.state::text
+		FROM jobs AS job
+		JOIN attempts AS attempt ON attempt.job_id = job.id
+		JOIN attempt_leases AS lease ON lease.attempt_id = attempt.id
+		JOIN workers AS worker ON worker.id = attempt.worker_id
+		JOIN retry_runtime_states AS runtime ON runtime.job_id = job.id
+		JOIN projects AS project ON project.id = job.project_id
+		JOIN credit_reservations AS reservation ON reservation.job_id = job.id
+		WHERE job.id = $1
+	`, gateOnJobID).Scan(
+		&jobState,
+		&attemptState,
+		&leaseRevoked,
+		&workerState,
+		&decisionCount,
+		&jobOpeningCount,
+		&circuitState,
+		&projectRunning,
+		&creditReservation,
+	); err != nil {
+		t.Fatalf("read rejected gate-on Profile circuit N-1 state: %v", err)
+	}
+	if jobState != "RUNNING" || attemptState != "RUNNING" || leaseRevoked ||
+		workerState != "BUSY" || decisionCount != 0 || jobOpeningCount != 0 ||
+		circuitState != "{}" || projectRunning != 1 || creditReservation != "RESERVED" {
+		t.Fatalf(
+			"rejected gate-on N-1 state = job %s attempt %s revoked %t worker %s decisions/openings %d/%d circuit %s running %d reservation %s",
+			jobState,
+			attemptState,
+			leaseRevoked,
+			workerState,
+			decisionCount,
+			jobOpeningCount,
+			circuitState,
+			projectRunning,
+			creditReservation,
+		)
+	}
+}
+
+func assertProfileCircuitNMinusOneDatabaseStartupPassed(t *testing.T, output string) {
+	t.Helper()
+	if strings.Contains(output, "open auth database pool") ||
+		strings.Contains(output, "open request database pool") ||
+		strings.Contains(output, "open Artifact request database pool") ||
+		strings.Contains(output, "open cancellation database pool") ||
+		strings.Contains(output, "open internal database pool") ||
+		strings.Contains(output, "open Scheduler database pool") ||
+		strings.Contains(output, "open billing database pool") ||
+		!strings.Contains(output, "open Invoice export bearer token file") {
+		t.Fatalf("Profile circuit N-1 startup did not reach Invoice token sentinel:\n%s", output)
+	}
+}
+
+func seedNMinusOneProfileCircuitWorker(t *testing.T, database *sql.DB, workerID uuid.UUID, label string) {
+	t.Helper()
+	if _, err := database.Exec(`
+		INSERT INTO workers (
+			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
+		) VALUES (
+			$1,
+			'00000000-0000-0000-0000-000000000005',
+			$2,
+			7,
+			'READY',
+			'HEALTHY'
+		)
+	`, workerID, "spiffe://vela.internal/worker/profile-circuit-n-minus-one-"+label); err != nil {
+		t.Fatalf("seed %s Profile circuit N-1 Worker: %v", label, err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO worker_profile_readiness (
+			worker_id, worker_epoch, execution_profile_revision_id, readiness
+		) VALUES (
+			$1, 7, '00000000-0000-0000-0000-000000000014', 'WARM'
+		)
+	`, workerID); err != nil {
+		t.Fatalf("seed %s Profile circuit N-1 Worker readiness: %v", label, err)
+	}
+}
 
 func TestExactInvoiceExportNMinusOneWriterCreatesExportAuthority(t *testing.T) {
 	fixture := newStartFixture(t, "invoice-export-n-minus-one-writer", 7)
@@ -906,6 +1099,12 @@ type nMinusOneBinaries struct {
 	AssignmentProbe    string
 	OutboxProbe        string
 	InvoiceChargeProbe string
+	FailureProbe       string
+}
+
+type nMinusOneFailureProbeResult struct {
+	Disposition string `json:"disposition"`
+	AttemptID   string `json:"attempt_id"`
 }
 
 type nMinusOneInvoiceChargeResult struct {
@@ -984,8 +1183,12 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if err := os.WriteFile(filepath.Join(probeDirectory, "main.go"), assignmentProbeSource, 0o600); err != nil {
 		t.Fatalf("write N-1 Assignment probe: %v", err)
 	}
+	admissionProbeSourceName := "nminusone_admission_probe.go.txt"
+	if commit == profileCircuitNMinusOneCommit {
+		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
+	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
-		repositoryRoot(t), "internal", "integration", "testdata", "nminusone_admission_probe.go.txt",
+		repositoryRoot(t), "internal", "integration", "testdata", admissionProbeSourceName,
 	))
 	if err != nil {
 		t.Fatalf("read N-1 Admission probe: %v", err)
@@ -1034,6 +1237,30 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("write N-1 Invoice Charge probe: %v", err)
 		}
 	}
+	var failureProbeDirectory string
+	if commit == profileCircuitNMinusOneCommit {
+		failureProbeSource, err := os.ReadFile(filepath.Join(
+			repositoryRoot(t),
+			"internal",
+			"integration",
+			"testdata",
+			"nminusone_failure_probe.go.txt",
+		))
+		if err != nil {
+			t.Fatalf("read N-1 failure probe: %v", err)
+		}
+		failureProbeDirectory = filepath.Join(sourceRoot, "cmd", "vela-nminusone-failure-probe")
+		if err := os.MkdirAll(failureProbeDirectory, 0o755); err != nil {
+			t.Fatalf("create N-1 failure probe directory: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(failureProbeDirectory, "main.go"),
+			failureProbeSource,
+			0o600,
+		); err != nil {
+			t.Fatalf("write N-1 failure probe: %v", err)
+		}
+	}
 
 	binaryDirectory := t.TempDir()
 	binaries := nMinusOneBinaries{
@@ -1047,6 +1274,9 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			binaryDirectory,
 			"vela-invoice-charge-probe-n-minus-one",
 		)
+	}
+	if commit == profileCircuitNMinusOneCommit {
+		binaries.FailureProbe = filepath.Join(binaryDirectory, "vela-failure-probe-n-minus-one")
 	}
 	build := exec.Command(
 		"go", "build",
@@ -1100,7 +1330,43 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 Invoice Charge probe: %v\n%s", err, output)
 		}
 	}
+	if commit == profileCircuitNMinusOneCommit {
+		build = exec.Command(
+			"go",
+			"build",
+			"-o",
+			binaries.FailureProbe,
+			"./cmd/vela-nminusone-failure-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 failure probe: %v\n%s", err, output)
+		}
+	}
 	return binaries
+}
+
+func runNMinusOneFailureProbeProcess(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	jobID string,
+	workerID string,
+) ([]byte, error) {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_internal_login",
+			"vela-internal-password",
+		),
+		"VELA_JOB_ID":    jobID,
+		"VELA_WORKER_ID": workerID,
+	})
+	return command.CombinedOutput()
 }
 
 func runNMinusOneInvoiceChargeProbe(
@@ -1146,6 +1412,9 @@ func runNMinusOneAdmissionProbe(t *testing.T, binary, adminDSN string) string {
 		),
 		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_request_login", "vela-request-password",
+		),
+		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
 		),
 		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
 		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
@@ -1301,8 +1570,16 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_internal_login", "vela-internal-password",
 		),
-		"VELA_SCHEDULER_DATABASE_URL":             "",
-		"VELA_SCHEDULER_ID":                       "",
+		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
+		),
+		"VELA_SCHEDULER_ID": "n-minus-one-startup-probe",
+		"VELA_BILLING_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_billing_login", "vela-billing-password",
+		),
+		"VELA_INVOICE_EXPORTER_ID":                "n-minus-one-startup-probe",
+		"VELA_INVOICE_EXPORT_ENDPOINT":            "https://127.0.0.1:1/invoices",
+		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":   "/missing/invoice-export-token",
 		"VELA_CREDENTIAL_PEPPER_BASE64":           base64.StdEncoding.EncodeToString(make([]byte, 32)),
 		"VELA_NATS_URL":                           "nats://127.0.0.1:1",
 		"VELA_NATS_CREDENTIALS_FILE":              "/missing/nats.creds",

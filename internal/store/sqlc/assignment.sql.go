@@ -387,6 +387,20 @@ func (q *Queries) ListActiveLeaseSigningKeyIDs(ctx context.Context) ([]string, e
 	return items, nil
 }
 
+const lockAssignmentPoolCapacity = `-- name: LockAssignmentPoolCapacity :one
+SELECT pool.retry_running_limit
+FROM worker_pools AS pool
+WHERE pool.id = $1
+FOR UPDATE
+`
+
+func (q *Queries) LockAssignmentPoolCapacity(ctx context.Context, workerPoolID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, lockAssignmentPoolCapacity, workerPoolID)
+	var retry_running_limit int32
+	err := row.Scan(&retry_running_limit)
+	return retry_running_limit, err
+}
+
 const lockJobForAssignment = `-- name: LockJobForAssignment :one
 SELECT
     j.id,
@@ -523,20 +537,6 @@ func (q *Queries) LockProjectForAssignment(ctx context.Context, arg LockProjectF
 		&i.RunningLimit,
 	)
 	return i, err
-}
-
-const lockRetryCapacityForAssignment = `-- name: LockRetryCapacityForAssignment :one
-SELECT pool.retry_running_limit
-FROM worker_pools AS pool
-WHERE pool.id = $1
-FOR UPDATE
-`
-
-func (q *Queries) LockRetryCapacityForAssignment(ctx context.Context, workerPoolID uuid.UUID) (int32, error) {
-	row := q.db.QueryRow(ctx, lockRetryCapacityForAssignment, workerPoolID)
-	var retry_running_limit int32
-	err := row.Scan(&retry_running_limit)
-	return retry_running_limit, err
 }
 
 const lockSchedulerDispatchForAssignment = `-- name: LockSchedulerDispatchForAssignment :one

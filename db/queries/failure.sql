@@ -10,6 +10,8 @@ SELECT
     a.id AS attempt_id,
     a.job_id,
     a.attempt_number,
+    a.execution_profile_revision_id,
+    a.profile_certification_id,
     a.state AS attempt_state,
     a.started_at AS attempt_started_at,
 	 a.finalization_started_at,
@@ -23,16 +25,22 @@ SELECT
     j.state AS job_state,
     j.version AS job_version,
     j.current_fence,
+    j.model_revision_id,
+    j.generation_preset_revision_id,
+    j.output_spec_id,
     j.execution_max_attempts,
     j.execution_max_total_compute_seconds,
 	 j.execution_max_finalization_seconds_per_attempt,
     j.execution_retry_backoff_policy,
     j.execution_retryable_failure_classes,
+    j.execution_circuit_fingerprint_window_seconds,
+    j.execution_circuit_min_distinct_healthy_workers,
     j.job_expires_at,
     rts.attempts_started,
     rts.compute_seconds_consumed,
 	 rts.finalization_seconds_consumed,
 	 rts.finalization_retry_count,
+    rts.circuit_breaker_state,
     ere.excluded_workers,
     ere.failure_fingerprints,
     rts.version AS retry_runtime_version
@@ -45,6 +53,74 @@ WHERE l.attempt_id = sqlc.arg(attempt_id)
 ORDER BY (l.revoked_at IS NULL) DESC, l.issued_at DESC, l.id DESC
 LIMIT 1
 FOR UPDATE OF l, a, j, rts, ere;
+
+-- name: LockExecutionFailureDecisionWrites :exec
+LOCK TABLE execution_failure_decisions IN ROW EXCLUSIVE MODE;
+
+-- name: LockProfileCircuitProtocol :one
+SELECT
+    protocol.require_circuit_aggregation::boolean AS require_circuit_aggregation,
+    CASE
+        WHEN protocol.require_circuit_aggregation THEN 2::smallint
+        ELSE 1::smallint
+    END AS circuit_protocol_version
+FROM vela_lock_profile_circuit_protocol() AS protocol(
+    require_circuit_aggregation,
+    protocol_version
+);
+
+-- name: LockProfileCertificationForFailure :one
+SELECT id, state, invalidated_at
+FROM profile_certifications
+WHERE id = sqlc.arg(profile_certification_id)
+  AND execution_profile_revision_id = sqlc.arg(execution_profile_revision_id)
+  AND model_revision_id = sqlc.arg(model_revision_id)
+  AND generation_preset_revision_id = sqlc.arg(generation_preset_revision_id)
+  AND output_spec_id = sqlc.arg(output_spec_id)
+FOR UPDATE;
+
+-- name: CountProfileCircuitHealthyWorkers :one
+SELECT count(DISTINCT evidence.worker_id)::bigint
+FROM (
+    SELECT decision.worker_id
+    FROM execution_failure_decisions AS decision
+    JOIN attempts AS attempt ON attempt.id = decision.attempt_id
+    WHERE attempt.profile_certification_id = sqlc.arg(profile_certification_id)
+      AND decision.source = 'WORKER_REPORTED'
+      AND decision.circuit_protocol_version = 2
+      AND decision.worker_was_healthy
+      AND decision.failure_fingerprint = sqlc.arg(failure_fingerprint)
+      AND decision.decided_at >= sqlc.arg(evidence_window_started_at)
+      AND decision.decided_at <= sqlc.arg(decided_at)
+    UNION ALL
+    SELECT sqlc.arg(current_worker_id)::uuid
+    WHERE sqlc.arg(current_worker_was_healthy)::boolean
+) AS evidence;
+
+-- name: HasAlternateActiveProfileCertification :one
+SELECT EXISTS (
+    SELECT 1
+    FROM profile_certifications AS certification
+    JOIN execution_profile_revisions AS profile
+      ON profile.id = certification.execution_profile_revision_id
+    WHERE certification.model_revision_id = sqlc.arg(model_revision_id)
+      AND certification.generation_preset_revision_id = sqlc.arg(generation_preset_revision_id)
+      AND certification.output_spec_id = sqlc.arg(output_spec_id)
+      AND certification.id <> sqlc.arg(profile_certification_id)
+      AND certification.execution_profile_revision_id <>
+          sqlc.arg(execution_profile_revision_id)
+      AND certification.state = 'ACTIVE'
+      AND certification.invalidated_at IS NULL
+      AND profile.worker_pool_id = sqlc.arg(worker_pool_id)
+      AND profile.state = 'ACTIVE'
+);
+
+-- name: InvalidateProfileCertificationForCircuit :execrows
+UPDATE profile_certifications
+SET state = 'INVALID', invalidated_at = sqlc.arg(opened_at)
+WHERE id = sqlc.arg(profile_certification_id)
+  AND state = 'ACTIVE'
+  AND invalidated_at IS NULL;
 
 -- name: FindExpiredJobFailureCandidate :one
 SELECT
@@ -250,6 +326,7 @@ SET compute_seconds_consumed = sqlc.arg(total_compute_seconds),
 	 finalization_retry_count = finalization_retry_count
 	     + sqlc.arg(finalization_retry_increment)::integer,
     next_retry_at = sqlc.narg(next_retry_at),
+    circuit_breaker_state = sqlc.arg(circuit_breaker_state),
     last_failure_class = sqlc.arg(failure_class),
     version = version + 1,
     updated_at = sqlc.arg(decided_at)
@@ -399,6 +476,8 @@ INSERT INTO execution_failure_decisions (
     inference_backend_revision,
     retry_recommended,
     worker_reusable,
+    circuit_protocol_version,
+    worker_was_healthy,
     attempt_compute_seconds,
     total_compute_seconds,
 	 attempt_finalization_seconds,
@@ -431,6 +510,8 @@ INSERT INTO execution_failure_decisions (
     sqlc.arg(inference_backend_revision),
     sqlc.arg(retry_recommended),
     sqlc.arg(worker_reusable),
+    sqlc.arg(circuit_protocol_version),
+    sqlc.arg(worker_was_healthy),
     sqlc.arg(attempt_compute_seconds),
     sqlc.arg(total_compute_seconds),
 	 sqlc.arg(attempt_finalization_seconds),
@@ -442,6 +523,49 @@ INSERT INTO execution_failure_decisions (
     sqlc.arg(job_fence),
     sqlc.arg(job_version),
     sqlc.arg(decided_at)
+);
+
+-- name: InsertProfileCertificationCircuitOpening :exec
+INSERT INTO profile_certification_circuit_openings (
+    id,
+    organization_id,
+    project_id,
+    profile_certification_id,
+    execution_profile_revision_id,
+    triggering_execution_failure_decision_id,
+    triggering_job_id,
+    triggering_attempt_id,
+    triggering_worker_id,
+    triggering_worker_epoch,
+    triggering_attempt_fence,
+    failure_class,
+    failure_fingerprint,
+    inference_backend_revision,
+    policy_fingerprint_window_seconds,
+    policy_min_distinct_healthy_workers,
+    observed_distinct_healthy_workers,
+    evidence_window_started_at,
+    opened_at
+) VALUES (
+    sqlc.arg(id),
+    sqlc.arg(organization_id),
+    sqlc.arg(project_id),
+    sqlc.arg(profile_certification_id),
+    sqlc.arg(execution_profile_revision_id),
+    sqlc.arg(triggering_execution_failure_decision_id),
+    sqlc.arg(triggering_job_id),
+    sqlc.arg(triggering_attempt_id),
+    sqlc.arg(triggering_worker_id),
+    sqlc.arg(triggering_worker_epoch),
+    sqlc.arg(triggering_attempt_fence),
+    sqlc.arg(failure_class),
+    sqlc.arg(failure_fingerprint),
+    sqlc.arg(inference_backend_revision),
+    sqlc.arg(policy_fingerprint_window_seconds),
+    sqlc.arg(policy_min_distinct_healthy_workers),
+    sqlc.arg(observed_distinct_healthy_workers),
+    sqlc.arg(evidence_window_started_at),
+    sqlc.arg(opened_at)
 );
 
 -- name: InsertRetryWaitOutboxEvent :exec

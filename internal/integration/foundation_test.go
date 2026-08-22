@@ -453,7 +453,7 @@ func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) 
 		t.Fatalf("re-expanded request queue projection = %q", expandedQueueProjection)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 9 {
+	if err != nil || version != 10 {
 		t.Fatalf("migration version after empty Scheduler Down/Up = %d error=%v", version, err)
 	}
 }
@@ -557,7 +557,7 @@ func TestHierarchicalSchedulerMigrationDefaultPolicyCatalogDownUpRestoresSurface
 	}
 	assertTableExists(t, database.Admin, "scheduler_dispatch_intents")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 9 {
+	if err != nil || version != 10 {
 		t.Fatalf("migration version after default-policy Down/Up = %d error=%v", version, err)
 	}
 }
@@ -925,7 +925,7 @@ func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	assertTableExists(t, database.Admin, "artifact_sets")
 	assertTableExists(t, database.Admin, "visible_completions")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 9 {
+	if err != nil || version != 10 {
 		t.Fatalf("migration version after empty Down/Up = %d error=%v", version, err)
 	}
 }
@@ -1221,6 +1221,26 @@ func exactV5PlusCurrentCancellationMigrations(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(directory, filepath.Base(cancellationMigration)), contents, 0o600); err != nil {
 		t.Fatalf("write current cancellation migration: %v", err)
 	}
+	for version := 7; version <= 10; version++ {
+		name := fmt.Sprintf("%05d", version)
+		matches, globErr := filepath.Glob(
+			filepath.Join(repositoryRoot, "db", "migrations", name+"_*.sql"),
+		)
+		if globErr != nil || len(matches) != 1 {
+			t.Fatalf("locate current migration %s: matches=%v error=%v", name, matches, globErr)
+		}
+		current, readErr := os.ReadFile(matches[0])
+		if readErr != nil {
+			t.Fatalf("read current migration %s: %v", name, readErr)
+		}
+		if writeErr := os.WriteFile(
+			filepath.Join(directory, filepath.Base(matches[0])),
+			current,
+			0o600,
+		); writeErr != nil {
+			t.Fatalf("write current migration %s: %v", name, writeErr)
+		}
+	}
 	return directory
 }
 
@@ -1251,6 +1271,8 @@ func TestExecutionFailureMigrationDownUpPreservesProtectedEvidence(t *testing.T)
 				- 'finalization_failure_code'
 				- 'attempt_finalization_seconds'
 				- 'total_finalization_seconds'
+				- 'circuit_protocol_version'
+				- 'worker_was_healthy'
 		)::text
 		FROM execution_failure_decisions AS decision
 		WHERE job_id = $1
@@ -1353,6 +1375,8 @@ func TestExecutionFailureMigrationDownUpPreservesProtectedEvidence(t *testing.T)
 							- 'finalization_failure_code'
 							- 'attempt_finalization_seconds'
 							- 'total_finalization_seconds'
+							- 'circuit_protocol_version'
+							- 'worker_was_healthy'
 					) = $2::jsonb
 				FROM execution_failure_decisions AS decision
 				WHERE decision.job_id = $1

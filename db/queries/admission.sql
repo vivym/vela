@@ -33,7 +33,9 @@ SELECT
 	resolved.rate_card_revision_id::uuid AS rate_card_revision_id,
 	resolved.rate_line_id::uuid AS rate_line_id,
 	resolved.unit_amount_minor::bigint AS unit_amount_minor,
-	resolved.currency::text AS currency
+	resolved.currency::text AS currency,
+	resolved.circuit_fingerprint_window_seconds::integer AS circuit_fingerprint_window_seconds,
+	resolved.circuit_min_distinct_healthy_workers::integer AS circuit_min_distinct_healthy_workers
 FROM vela_resolve_active_sku(
 	sqlc.arg(model),
 	sqlc.arg(generation_preset),
@@ -55,7 +57,9 @@ FROM vela_resolve_active_sku(
 	rate_card_revision_id,
 	rate_line_id,
 	unit_amount_minor,
-	currency
+	currency,
+	circuit_fingerprint_window_seconds,
+	circuit_min_distinct_healthy_workers
 );
 
 -- name: LockCompatiblePool :one
@@ -151,6 +155,8 @@ INSERT INTO jobs (
     execution_retry_backoff_policy,
     execution_retryable_failure_classes,
     execution_circuit_breaker_policy,
+	execution_circuit_fingerprint_window_seconds,
+	execution_circuit_min_distinct_healthy_workers,
     job_expires_at
 ) VALUES (
     sqlc.arg(id),
@@ -177,6 +183,8 @@ INSERT INTO jobs (
     sqlc.arg(execution_retry_backoff_policy),
     sqlc.arg(execution_retryable_failure_classes),
     sqlc.arg(execution_circuit_breaker_policy),
+	sqlc.arg(execution_circuit_fingerprint_window_seconds),
+	sqlc.arg(execution_circuit_min_distinct_healthy_workers),
 	transaction_timestamp() + sqlc.arg(job_lifetime_seconds)::bigint * interval '1 second'
 );
 

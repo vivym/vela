@@ -1107,6 +1107,7 @@ type Attempt struct {
 	CreatedAt                  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	SchedulerDispatchIntentID  uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
+	ProfileCertificationID     uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
 }
 
 type AttemptLease struct {
@@ -1254,6 +1255,8 @@ type ExecutionFailureDecision struct {
 	ArtifactID                 uuid.NullUUID          `db:"artifact_id" json:"artifact_id"`
 	ArtifactUploadID           uuid.NullUUID          `db:"artifact_upload_id" json:"artifact_upload_id"`
 	FinalizationFailureCode    *string                `db:"finalization_failure_code" json:"finalization_failure_code"`
+	CircuitProtocolVersion     int16                  `db:"circuit_protocol_version" json:"circuit_protocol_version"`
+	WorkerWasHealthy           bool                   `db:"worker_was_healthy" json:"worker_was_healthy"`
 }
 
 type ExecutionLeaseRenewalProtocol struct {
@@ -1376,6 +1379,8 @@ type Job struct {
 	BillableStartedAt                         pgtype.Timestamptz `db:"billable_started_at" json:"billable_started_at"`
 	ExecutionPhase                            *execution.Phase   `db:"execution_phase" json:"execution_phase"`
 	ResultArtifactSetID                       uuid.NullUUID      `db:"result_artifact_set_id" json:"result_artifact_set_id"`
+	ExecutionCircuitFingerprintWindowSeconds  int32              `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
+	ExecutionCircuitMinDistinctHealthyWorkers int32              `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
 }
 
 type JobCancellationDecision struct {
@@ -1496,6 +1501,43 @@ type ProfileCertification struct {
 	EvidenceDigest             string             `db:"evidence_digest" json:"evidence_digest"`
 	CertifiedAt                pgtype.Timestamptz `db:"certified_at" json:"certified_at"`
 	InvalidatedAt              pgtype.Timestamptz `db:"invalidated_at" json:"invalidated_at"`
+}
+
+type ProfileCertificationCircuitOpening struct {
+	ID                                   uuid.UUID          `db:"id" json:"id"`
+	OrganizationID                       uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                            uuid.UUID          `db:"project_id" json:"project_id"`
+	ProfileCertificationID               uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+	ExecutionProfileRevisionID           uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	TriggeringExecutionFailureDecisionID uuid.UUID          `db:"triggering_execution_failure_decision_id" json:"triggering_execution_failure_decision_id"`
+	TriggeringJobID                      uuid.UUID          `db:"triggering_job_id" json:"triggering_job_id"`
+	TriggeringAttemptID                  uuid.UUID          `db:"triggering_attempt_id" json:"triggering_attempt_id"`
+	TriggeringWorkerID                   uuid.UUID          `db:"triggering_worker_id" json:"triggering_worker_id"`
+	TriggeringWorkerEpoch                int64              `db:"triggering_worker_epoch" json:"triggering_worker_epoch"`
+	TriggeringAttemptFence               int64              `db:"triggering_attempt_fence" json:"triggering_attempt_fence"`
+	FailureClass                         string             `db:"failure_class" json:"failure_class"`
+	FailureFingerprint                   string             `db:"failure_fingerprint" json:"failure_fingerprint"`
+	InferenceBackendRevision             string             `db:"inference_backend_revision" json:"inference_backend_revision"`
+	PolicyFingerprintWindowSeconds       int32              `db:"policy_fingerprint_window_seconds" json:"policy_fingerprint_window_seconds"`
+	PolicyMinDistinctHealthyWorkers      int32              `db:"policy_min_distinct_healthy_workers" json:"policy_min_distinct_healthy_workers"`
+	ObservedDistinctHealthyWorkers       int32              `db:"observed_distinct_healthy_workers" json:"observed_distinct_healthy_workers"`
+	EvidenceWindowStartedAt              pgtype.Timestamptz `db:"evidence_window_started_at" json:"evidence_window_started_at"`
+	OpenedAt                             pgtype.Timestamptz `db:"opened_at" json:"opened_at"`
+}
+
+type ProfileCircuitProtocolState struct {
+	Singleton                 bool               `db:"singleton" json:"singleton"`
+	RequireCircuitAggregation bool               `db:"require_circuit_aggregation" json:"require_circuit_aggregation"`
+	ProtocolVersion           int32              `db:"protocol_version" json:"protocol_version"`
+	TransitionReceipt         *string            `db:"transition_receipt" json:"transition_receipt"`
+	TransitionedAt            pgtype.Timestamptz `db:"transitioned_at" json:"transitioned_at"`
+}
+
+type ProfileCircuitProtocolTransition struct {
+	ProtocolVersion           int32              `db:"protocol_version" json:"protocol_version"`
+	RequireCircuitAggregation bool               `db:"require_circuit_aggregation" json:"require_circuit_aggregation"`
+	TransitionReceipt         string             `db:"transition_receipt" json:"transition_receipt"`
+	TransitionedAt            pgtype.Timestamptz `db:"transitioned_at" json:"transitioned_at"`
 }
 
 type Project struct {
@@ -1647,6 +1689,8 @@ type ServiceClassRevision struct {
 	MaxAgingCreditSeconds               int32              `db:"max_aging_credit_seconds" json:"max_aging_credit_seconds"`
 	MaxExpiryUrgencyCreditSeconds       int32              `db:"max_expiry_urgency_credit_seconds" json:"max_expiry_urgency_credit_seconds"`
 	MaxRetryRiskPenaltySeconds          int32              `db:"max_retry_risk_penalty_seconds" json:"max_retry_risk_penalty_seconds"`
+	CircuitFingerprintWindowSeconds     int32              `db:"circuit_fingerprint_window_seconds" json:"circuit_fingerprint_window_seconds"`
+	CircuitMinDistinctHealthyWorkers    int32              `db:"circuit_min_distinct_healthy_workers" json:"circuit_min_distinct_healthy_workers"`
 }
 
 type ServicePrincipal struct {
