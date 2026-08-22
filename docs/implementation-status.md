@@ -20,24 +20,25 @@ tests alone do not satisfy a gate.
 | Customer Cancellation And Charge | `9fdf955` | `docs/specs/0006-customer-cancellation-and-charge.md` |
 | Artifact Finalization And Visible Completion | `82d5752` | `docs/specs/0007-artifact-finalization-and-visible-completion.md` |
 | Hierarchical Scheduler | `a606c48` | `docs/specs/0008-hierarchical-scheduler.md` |
+| Invoice Export And Receipt | `bcb5594` | `docs/specs/0009-invoice-export-and-receipt.md` |
 
 ## ADR Evidence Matrix
 
 | ADR | Status | Current evidence | Remaining production behavior |
 | --- | --- | --- | --- |
-| 0001 Contract credit billing | Partial | Admission reserves contract credit; billable cancellation and Visible Completion atomically consume it into an immutable Charge and durable Invoice export intent. | Settlement records and an idempotent external Invoice exporter. |
+| 0001 Contract credit billing | Partial | Admission reserves contract credit; billable cancellation and Visible Completion atomically consume it into an immutable Charge, and the PostgreSQL-authoritative exporter reconciles it to one external Invoice line plus immutable receipt. | Settlement and credit-adjustment reconciliation records. |
 | 0002 Full quote after RUNNING | Implemented for current lifecycle | Cancellation after Billable Start and successful Visible Completion use the immutable full quote; platform/finalization failure releases credit without a partial Charge. | Later terminal paths and settlement integrations must preserve the same boundary. |
 | 0003 Atomic Visible Completion | Implemented | Validated VIDEO plus THUMBNAIL, ArtifactSet, Charge, credit, access, Job/Attempt success, and canonical Outbox events commit in one transaction and replay exactly. | Deployment-level fault receipts remain part of the separate Production Gates. |
 | 0004 Organization and Project | Implemented for current API | Composite ownership and Project-scoped Admission/Get/Cancel plus committed Artifact reads. | Administrative and billing interfaces must retain the same boundary. |
 | 0005 Human and Service Principals | Partial | Project Service Principals, rotating credentials, scope and audit attribution. | OIDC Human Principals and administrative credential lifecycle APIs. |
 | 0006 Fixed launch roles | Not started | Domain vocabulary only. | Fixed Human RBAC and audited Break-glass Access. |
-| 0007 Organization Isolation | Partial | Forced RLS, composite foreign keys, request/auth/internal/Artifact roles, private staging, exact-version access grants, and cross-Project/Organization negative tests. | Human roles, billing, webhook, administration, NATS, and deployment isolation evidence. |
+| 0007 Organization Isolation | Partial | Forced RLS, composite foreign keys, request/auth/internal/Artifact/billing roles, private staging, exact-version access grants, and cross-Project/Organization negative tests. | Human roles, webhook, administration, NATS, and deployment isolation evidence. |
 | 0008 No Customer Content reuse | Partial | Prompt has an expiry; staging Artifacts are private and committed exact-version reads require a short-lived Project grant. | Access audit, support authorization, no-reuse policy enforcement, and deletion across storage/backups. |
 | 0009 Statistical SLOs | Partial | API exposes no Hard Deadline; Job Expiry and Dynamic ETA are distinguished. | SLO measurement, eligibility envelopes, dashboards, and certification receipts. |
 | 0010 Bounded admission and queues | Implemented for current control plane | Transactional queue counters, pool-scoped bounded projection, risk-aware Admission prediction, Dynamic ETA, hierarchical lanes, and fail-closed counter-drift detection are integrated. | Deployment calibration and Production Gate receipts remain separate. |
 | 0011 No failed-Job Charge | Implemented for current lifecycle | Execution, finalization-deadline, validation, and unrecoverable Artifact failure release credit and create no Charge; only Visible Completion or post-Billable-Start Customer Cancellation posts one. | Future failure sources must use the same terminal authority. |
 | 0012 Single-region DR | Not started | PostgreSQL/Outbox recovery semantics are designed. | Cluster manifests, WAL/archive, restore, JetStream rebuild, Artifact backup, and drills. |
-| 0013 Non-interrupting releases | Partial | Eight additive migrations, exact N/N-1 database/control compatibility, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
+| 0013 Non-interrupting releases | Partial | Nine additive migrations, exact N/N-1 database/control compatibility, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
 | 0014 Project webhooks | Not started | Transactional Outbox publisher exists. | Subscriptions, HMAC rotation, delivery/retry/dead-letter/manual replay. |
 | 0015 Class-specific retention | Partial | Request content has a retention timestamp; expired staging uploads and multipart sessions have bounded cleanup paths. | Successful Artifact, scratch, debug, metadata, and financial retention plus Content Deletion. |
 | 0016 Preset versus Service Class | Implemented for current control plane | Admission, Retry, and Scheduler retain both immutable revisions separately; Scheduler reads ServiceClassRevision policy and never derives priority from Preset or price. | SLO reporting must preserve the same boundary. |
@@ -62,14 +63,15 @@ implemented slices provide direct repository evidence for Admission (1-3),
 Customer Cancellation and its Visible Completion race (4-5), no-Charge failure
 (6), Scheduler crash/fairness/pool isolation (7), stale execution and bounded
 retry (8), Attempt progress (9), Artifact
-recovery/immutability and whole-set validation (11-12), begin-finalization replay
-(21), Assignment replay (24), and PostgreSQL-time Lease behavior (25). Current
+recovery/immutability and whole-set validation (11-12), JetStream/Invoice outage
+recovery with idempotent export (20), begin-finalization replay (21), Assignment
+replay (24), and PostgreSQL-time Lease behavior (25). Current
 evidence is partial for multipart resume plus whole-Job recompute (10),
 competing completion authorities without a two-Attempt Artifact race (13),
 immutable pricing/profile behavior (14),
-Outbox/Invoice intent without the external exporter (20), Organization database
-and Artifact isolation (27), and N/N-1 database/control/Worker compatibility
-without a deployed rollout receipt (30). Every other scenario remains unproven
+Organization database and Artifact isolation (27), and N/N-1
+database/control/Worker compatibility without a deployed rollout receipt (30).
+Every other scenario remains unproven
 until a later slice records its exact evidence.
 
 ## Production Gates
