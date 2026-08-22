@@ -47,6 +47,12 @@ type AssignmentCandidate struct {
 	JobID                      uuid.UUID
 	ExpectedJobVersion         int64
 	ExecutionProfileRevisionID uuid.UUID
+	SchedulerClaim             *SchedulerClaim
+}
+
+type SchedulerClaim struct {
+	IntentID     uuid.UUID
+	WorkerPoolID uuid.UUID
 }
 
 type Assignment struct {
@@ -55,6 +61,7 @@ type Assignment struct {
 	WorkerID                   uuid.UUID
 	WorkerEpoch                int64
 	ExecutionProfileRevisionID uuid.UUID
+	SchedulerDispatchIntentID  uuid.UUID
 	AttemptNumber              int32
 	LeaseToken                 string
 	LeaseFence                 int64
@@ -147,6 +154,10 @@ func (s *Service) Acquire(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := store.New(tx)
+	schedulerGuard, guardErr := newScheduledAssignmentGuard(candidate)
+	if guardErr != nil {
+		return Assignment{}, guardErr
+	}
 
 	workerRow, err := queries.LockWorkerAuthority(ctx, worker.ID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -164,6 +175,9 @@ func (s *Service) Acquire(
 		OwnerID:     workerRow.SpiffeID,
 	})
 	if err == nil {
+		if replayErr := schedulerGuard.validateReplay(existing, candidate); replayErr != nil {
+			return Assignment{}, replayErr
+		}
 		now, clockErr := postgresTime(ctx, queries)
 		if clockErr != nil {
 			return Assignment{}, clockErr
@@ -204,6 +218,16 @@ func (s *Service) Acquire(
 		return Assignment{}, failure(FailureWorkerUnavailable, "Worker is not READY and HEALTHY")
 	}
 
+	authority := scheduledAssignmentAuthority{
+		workerRow:   workerRow,
+		worker:      worker,
+		workerEpoch: workerEpoch,
+		candidate:   candidate,
+	}
+	if guardErr := schedulerGuard.lockDispatch(ctx, queries, authority); guardErr != nil {
+		return Assignment{}, guardErr
+	}
+
 	job, err := queries.LockJobForAssignment(ctx, candidate.JobID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Assignment{}, failure(FailureCandidateUnavailable, "candidate Job is unavailable")
@@ -222,6 +246,9 @@ func (s *Service) Acquire(
 	if job.AttemptsStarted >= job.ExecutionMaxAttempts ||
 		job.ComputeSecondsConsumed >= job.ExecutionMaxTotalComputeSeconds {
 		return Assignment{}, failure(FailureCandidateUnavailable, "candidate Job has exhausted Retry Budget")
+	}
+	if guardErr := schedulerGuard.validateJob(job); guardErr != nil {
+		return Assignment{}, guardErr
 	}
 	now, err := postgresTime(ctx, queries)
 	if err != nil {
@@ -246,6 +273,9 @@ func (s *Service) Acquire(
 		(job.State == store.JobStateQUEUED && project.QueuedCount-project.RetryWaitCount <= 0) ||
 		(job.State == store.JobStateRETRYWAIT && project.RetryWaitCount <= 0) {
 		return Assignment{}, failure(FailureCandidateUnavailable, "Project Assignment capacity is unavailable")
+	}
+	if guardErr := schedulerGuard.validateCapacity(ctx, queries, authority, job); guardErr != nil {
+		return Assignment{}, guardErr
 	}
 	if _, err := queries.ValidateProfileForAssignment(ctx, store.ValidateProfileForAssignmentParams{
 		ExecutionProfileRevisionID: candidate.ExecutionProfileRevisionID,
@@ -295,6 +325,7 @@ func (s *Service) Acquire(
 		WorkerPoolID:               workerRow.WorkerPoolID,
 		WorkerID:                   worker.ID,
 		WorkerEpoch:                workerEpoch,
+		SchedulerDispatchIntentID:  schedulerGuard.nullableIntentID(),
 		Fence:                      fence,
 		AssignedAt:                 assignedAt,
 	}); err != nil {
@@ -410,12 +441,203 @@ func (s *Service) Acquire(
 		WorkerID:                   worker.ID,
 		WorkerEpoch:                workerEpoch,
 		ExecutionProfileRevisionID: candidate.ExecutionProfileRevisionID,
+		SchedulerDispatchIntentID:  schedulerGuard.intentID(),
 		AttemptNumber:              attemptNumber,
 		LeaseToken:                 leaseToken,
 		LeaseFence:                 fence,
 		LeaseExpiresAt:             expiresAt,
 		LeaseValidFor:              leaseValidFor,
 	}, nil
+}
+
+type scheduledAssignmentGuard struct {
+	claim    *SchedulerClaim
+	dispatch *store.LockSchedulerDispatchForAssignmentRow
+}
+
+type scheduledAssignmentAuthority struct {
+	workerRow   store.LockWorkerAuthorityRow
+	worker      AuthenticatedWorker
+	workerEpoch int64
+	candidate   *AssignmentCandidate
+}
+
+func newScheduledAssignmentGuard(candidate *AssignmentCandidate) (*scheduledAssignmentGuard, error) {
+	guard := &scheduledAssignmentGuard{}
+	if candidate == nil || candidate.SchedulerClaim == nil {
+		return guard, nil
+	}
+	if candidate.SchedulerClaim.IntentID == uuid.Nil || candidate.SchedulerClaim.WorkerPoolID == uuid.Nil {
+		return nil, failure(
+			FailureCandidateUnavailable,
+			"scheduled Assignment candidate has an invalid Scheduler claim",
+		)
+	}
+	guard.claim = candidate.SchedulerClaim
+	return guard, nil
+}
+
+func (guard *scheduledAssignmentGuard) validateReplay(
+	existing store.GetActiveWorkerAssignmentRow,
+	candidate *AssignmentCandidate,
+) error {
+	if guard.claim == nil {
+		return nil
+	}
+	if !existing.SchedulerDispatchIntentID.Valid ||
+		existing.SchedulerDispatchIntentID.UUID != guard.claim.IntentID ||
+		existing.JobID != candidate.JobID ||
+		existing.ExecutionProfileRevisionID != candidate.ExecutionProfileRevisionID {
+		return failure(
+			FailureCandidateUnavailable,
+			"active Assignment does not match the Scheduler dispatch claim",
+		)
+	}
+	return nil
+}
+
+func (guard *scheduledAssignmentGuard) lockDispatch(
+	ctx context.Context,
+	queries *store.Queries,
+	authority scheduledAssignmentAuthority,
+) error {
+	if guard.claim == nil {
+		return nil
+	}
+	dispatch, err := queries.LockSchedulerDispatchForAssignment(ctx, guard.claim.IntentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return failure(FailureCandidateUnavailable, "Scheduler dispatch claim is unavailable")
+	}
+	if err != nil {
+		return fmt.Errorf("lock Scheduler dispatch claim: %w", err)
+	}
+	dispatchNow, err := postgresTime(ctx, queries)
+	if err != nil {
+		return err
+	}
+	if dispatch.State != store.SchedulerDispatchStateCLAIMED ||
+		!dispatch.ClaimExpiresAt.Valid || !dispatch.ClaimExpiresAt.Time.After(dispatchNow) ||
+		dispatch.WorkerID != authority.worker.ID || dispatch.WorkerEpoch != authority.workerEpoch ||
+		dispatch.WorkerPoolID != authority.workerRow.WorkerPoolID ||
+		dispatch.WorkerPoolID != guard.claim.WorkerPoolID ||
+		dispatch.JobID != authority.candidate.JobID ||
+		dispatch.ExpectedJobVersion != authority.candidate.ExpectedJobVersion ||
+		dispatch.ExecutionProfileRevisionID != authority.candidate.ExecutionProfileRevisionID {
+		return failure(
+			FailureCandidateUnavailable,
+			"Assignment candidate does not match a live Scheduler dispatch claim",
+		)
+	}
+	guard.dispatch = &dispatch
+	return nil
+}
+
+func (guard *scheduledAssignmentGuard) validateJob(job store.LockJobForAssignmentRow) error {
+	if guard.dispatch == nil {
+		return nil
+	}
+	if guard.dispatch.OrganizationID != job.OrganizationID ||
+		guard.dispatch.ServiceClassRevisionID != job.ServiceClassRevisionID ||
+		guard.dispatch.ProjectID != job.ProjectID ||
+		(guard.dispatch.Lane == store.SchedulerLaneRETRY) != (job.State == store.JobStateRETRYWAIT) {
+		return failure(
+			FailureCandidateUnavailable,
+			"Scheduler dispatch hierarchy or lane no longer matches the Job",
+		)
+	}
+	return nil
+}
+
+func (guard *scheduledAssignmentGuard) validateCapacity(
+	ctx context.Context,
+	queries *store.Queries,
+	authority scheduledAssignmentAuthority,
+	job store.LockJobForAssignmentRow,
+) error {
+	if guard.dispatch == nil {
+		return nil
+	}
+	organizationRunningLimit, err := queries.LockOrganizationCapacityForAssignment(
+		ctx,
+		store.LockOrganizationCapacityForAssignmentParams{
+			WorkerPoolID:   authority.workerRow.WorkerPoolID,
+			OrganizationID: job.OrganizationID,
+		},
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return failure(
+			FailureCandidateUnavailable,
+			"Customer Organization Assignment capacity is unavailable",
+		)
+	}
+	if err != nil {
+		return fmt.Errorf("lock Customer Organization Capacity Share: %w", err)
+	}
+	organizationRunningCount, err := queries.CountActiveOrganizationAssignments(
+		ctx,
+		store.CountActiveOrganizationAssignmentsParams{
+			WorkerPoolID:   authority.workerRow.WorkerPoolID,
+			OrganizationID: job.OrganizationID,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("count active Customer Organization Assignments: %w", err)
+	}
+	if organizationRunningCount >= int64(organizationRunningLimit) {
+		return failure(
+			FailureCandidateUnavailable,
+			"Customer Organization Assignment capacity is unavailable",
+		)
+	}
+	if job.State == store.JobStateRETRYWAIT {
+		retryRunningLimit, retryErr := queries.LockRetryCapacityForAssignment(
+			ctx,
+			authority.workerRow.WorkerPoolID,
+		)
+		if retryErr != nil {
+			return fmt.Errorf("lock retry lane capacity: %w", retryErr)
+		}
+		retryRunningCount, countErr := queries.CountActiveRetryAssignments(
+			ctx,
+			authority.workerRow.WorkerPoolID,
+		)
+		if countErr != nil {
+			return fmt.Errorf("count active retry Assignments: %w", countErr)
+		}
+		if retryRunningCount >= int64(retryRunningLimit) {
+			return failure(
+				FailureCandidateUnavailable,
+				"Worker pool retry lane capacity is unavailable",
+			)
+		}
+	}
+	if _, err := queries.ValidateScheduledWorkerProfile(
+		ctx,
+		store.ValidateScheduledWorkerProfileParams{
+			WorkerID:                   authority.worker.ID,
+			WorkerEpoch:                authority.workerEpoch,
+			ExecutionProfileRevisionID: authority.candidate.ExecutionProfileRevisionID,
+		},
+	); errors.Is(err, pgx.ErrNoRows) {
+		return failure(
+			FailureCandidateUnavailable,
+			"Worker is not ready for the scheduled Execution Profile",
+		)
+	} else if err != nil {
+		return fmt.Errorf("validate scheduled Worker profile readiness: %w", err)
+	}
+	return nil
+}
+
+func (guard *scheduledAssignmentGuard) nullableIntentID() uuid.NullUUID {
+	return uuid.NullUUID{UUID: guard.intentID(), Valid: guard.claim != nil}
+}
+
+func (guard *scheduledAssignmentGuard) intentID() uuid.UUID {
+	if guard.claim == nil {
+		return uuid.Nil
+	}
+	return guard.claim.IntentID
 }
 
 func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow) (Assignment, error) {
@@ -442,11 +664,19 @@ func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow)
 		WorkerID:                   row.WorkerID,
 		WorkerEpoch:                row.WorkerEpoch,
 		ExecutionProfileRevisionID: row.ExecutionProfileRevisionID,
+		SchedulerDispatchIntentID:  nullUUIDValue(row.SchedulerDispatchIntentID),
 		AttemptNumber:              row.AttemptNumber,
 		LeaseToken:                 token,
 		LeaseFence:                 row.Fence,
 		LeaseExpiresAt:             row.ExpiresAt.Time,
 	}, nil
+}
+
+func nullUUIDValue(value uuid.NullUUID) uuid.UUID {
+	if !value.Valid {
+		return uuid.Nil
+	}
+	return value.UUID
 }
 
 func postgresTime(ctx context.Context, queries *store.Queries) (time.Time, error) {

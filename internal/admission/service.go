@@ -102,12 +102,37 @@ func (e *Failure) Error() string {
 	return string(e.Code) + ": " + e.Message
 }
 
-type Service struct {
-	pool *pgxpool.Pool
+type CapacityPredictionRequest struct {
+	WorkerPoolID               uuid.UUID
+	ModelRevisionID            uuid.UUID
+	GenerationPresetRevisionID uuid.UUID
+	ServiceClassRevisionID     uuid.UUID
+	OutputSpecID               uuid.UUID
+	GenerationCount            int32
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool}
+type CapacityPrediction struct {
+	QueueWait         time.Duration
+	EstimatedFinishAt time.Time
+}
+
+type CapacityPredictor interface {
+	PredictCapacity(context.Context, CapacityPredictionRequest) (CapacityPrediction, error)
+	PredictJobDynamicETA(context.Context, uuid.UUID) (time.Time, error)
+}
+
+type Service struct {
+	pool                         *pgxpool.Pool
+	capacityPredictor            CapacityPredictor
+	allowLegacyWithoutPrediction bool
+}
+
+func NewService(pool *pgxpool.Pool, capacityPredictor CapacityPredictor) *Service {
+	return &Service{pool: pool, capacityPredictor: capacityPredictor}
+}
+
+func NewLegacyService(pool *pgxpool.Pool) *Service {
+	return &Service{pool: pool, allowLegacyWithoutPrediction: true}
 }
 
 func (s *Service) Submit(
@@ -119,6 +144,9 @@ func (s *Service) Submit(
 ) (Job, error) {
 	if s == nil || s.pool == nil {
 		return Job{}, errors.New("admission service is not configured")
+	}
+	if s.capacityPredictor == nil && !s.allowLegacyWithoutPrediction {
+		return Job{}, errors.New("admission capacity predictor is not configured")
 	}
 	if principal.ProjectID != projectID {
 		return Job{}, failure(FailureCodeForbidden, "credential is not authorized for this Project", 0)
@@ -176,6 +204,9 @@ func (s *Service) Submit(
 		job, mapErr := jobFromGetRow(row)
 		if mapErr != nil {
 			return Job{}, mapErr
+		}
+		if enrichErr := s.enrichDynamicETA(ctx, &job); enrichErr != nil {
+			return Job{}, enrichErr
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return Job{}, fmt.Errorf("commit idempotent Admission replay: %w", err)
@@ -241,6 +272,39 @@ func (s *Service) Submit(
 			"compatible Worker pool Admission is closed or bounded",
 			int(pool.RetryAfterSeconds),
 		)
+	}
+	var capacityPrediction *CapacityPrediction
+	if s.capacityPredictor != nil {
+		prediction, predictErr := s.capacityPredictor.PredictCapacity(
+			ctx,
+			CapacityPredictionRequest{
+				WorkerPoolID:               pool.ID,
+				ModelRevisionID:            sku.ModelRevisionID,
+				GenerationPresetRevisionID: sku.GenerationPresetRevisionID,
+				ServiceClassRevisionID:     sku.ServiceClassRevisionID,
+				OutputSpecID:               sku.OutputSpecID,
+				GenerationCount:            request.GenerationCount,
+			},
+		)
+		if errors.Is(predictErr, pgx.ErrNoRows) {
+			return Job{}, failure(
+				FailureCodeCapacityUnavailable,
+				"no compatible projected Worker capacity is available",
+				int(pool.RetryAfterSeconds),
+			)
+		}
+		if predictErr != nil {
+			return Job{}, fmt.Errorf("predict Worker pool capacity: %w", predictErr)
+		}
+		admissionBudget := time.Duration(sku.QueueRetryAllowanceSeconds) * time.Second
+		if prediction.QueueWait > admissionBudget {
+			return Job{}, failure(
+				FailureCodeCapacityUnavailable,
+				"predicted queue wait exceeds the Service Class Admission budget",
+				int(pool.RetryAfterSeconds),
+			)
+		}
+		capacityPrediction = &prediction
 	}
 
 	quotedAmount, ok := checkedMultiply(sku.UnitAmountMinor, int64(request.GenerationCount))
@@ -409,6 +473,10 @@ func (s *Service) Submit(
 	if err != nil {
 		return Job{}, err
 	}
+	if capacityPrediction != nil {
+		predictedFinish := capacityPrediction.EstimatedFinishAt
+		job.EstimatedFinishAt = &predictedFinish
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Job{}, fmt.Errorf("commit Admission: %w", err)
 	}
@@ -452,10 +520,30 @@ func (s *Service) Get(
 	if err != nil {
 		return Job{}, err
 	}
+	if err := s.enrichDynamicETA(ctx, &job); err != nil {
+		return Job{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Job{}, fmt.Errorf("commit Job read: %w", err)
 	}
 	return job, nil
+}
+
+func (s *Service) enrichDynamicETA(ctx context.Context, job *Job) error {
+	if s.capacityPredictor == nil || job == nil ||
+		(job.State != JobStateQueued && job.State != JobStateRetryWait) {
+		return nil
+	}
+	predictedFinish, err := s.capacityPredictor.PredictJobDynamicETA(ctx, job.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		job.EstimatedFinishAt = nil
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("predict Job Dynamic ETA: %w", err)
+	}
+	job.EstimatedFinishAt = &predictedFinish
+	return nil
 }
 
 func establishRequestContext(

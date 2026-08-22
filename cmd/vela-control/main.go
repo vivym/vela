@@ -32,6 +32,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/outbox"
+	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/workercontrol"
 	"github.com/vivym/vela/internal/workertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -46,6 +47,9 @@ const (
 	defaultCancellationReconciliationTick       = 500 * time.Millisecond
 	defaultFinalizationReconciliationTick       = 500 * time.Millisecond
 	defaultFailureReconciliationTick            = 500 * time.Millisecond
+	defaultSchedulerTick                        = 500 * time.Millisecond
+	defaultSchedulerClaimTTL                    = 30 * time.Second
+	defaultSchedulerCandidateAttempts           = 5
 	defaultArtifactCleanupTick                  = time.Minute
 	defaultExecutionLeaseTTL                    = 2 * time.Minute
 	defaultWorkerLostGrace                      = 30 * time.Second
@@ -68,6 +72,11 @@ type config struct {
 	artifactRequestDatabaseURL string
 	cancelDatabaseURL          string
 	internalDatabaseURL        string
+	schedulerDatabaseURL       string
+	schedulerID                string
+	schedulerTick              time.Duration
+	schedulerClaimTTL          time.Duration
+	schedulerCandidateAttempts int
 	credentialPepper           []byte
 	natsURL                    string
 	natsCredentials            string
@@ -121,6 +130,11 @@ type artifactMultipartCleaner interface {
 	Reconcile(context.Context) (artifactcleanup.Result, error)
 }
 
+type hierarchicalScheduler interface {
+	ReconcileExpired(context.Context) (int64, error)
+	RunCycle(context.Context) ([]scheduler.Dispatch, error)
+}
+
 var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
 
 func main() {
@@ -168,6 +182,11 @@ func run() error {
 		return fmt.Errorf("open internal database pool: %w", err)
 	}
 	defer internalPool.Close()
+	schedulerPool, err := openPool(ctx, configuration.schedulerDatabaseURL, 5, veladb.RoleScheduler)
+	if err != nil {
+		return fmt.Errorf("open Scheduler database pool: %w", err)
+	}
+	defer schedulerPool.Close()
 	artifactStore, err := openArtifactStore(ctx, configuration)
 	if err != nil {
 		return err
@@ -180,6 +199,18 @@ func run() error {
 	)
 	if err != nil {
 		return err
+	}
+	scheduling, err := scheduler.NewService(schedulerPool, workerCoordinator, scheduler.Config{
+		SchedulerID:       configuration.schedulerID,
+		ClaimTTL:          configuration.schedulerClaimTTL,
+		CandidateAttempts: configuration.schedulerCandidateAttempts,
+	})
+	if err != nil {
+		return fmt.Errorf("configure Scheduler: %w", err)
+	}
+	capacityPredictor, err := scheduler.NewCapacityPredictor(schedulerPool)
+	if err != nil {
+		return fmt.Errorf("configure Scheduler capacity predictor: %w", err)
 	}
 	workerIdentityResolver, err := workertransport.NewPostgresIdentityResolver(internalPool)
 	if err != nil {
@@ -259,7 +290,7 @@ func run() error {
 	cancellationService := cancellation.NewService(cancelPool, internalPool)
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, configuration.credentialPepper),
-		Admission:     admission.NewService(requestPool),
+		Admission:     admission.NewService(requestPool, capacityPredictor),
 		Cancellation:  cancellationService,
 		Artifacts:     artifactaccess.NewService(artifactRequestPool, artifactStore),
 	})
@@ -279,6 +310,7 @@ func run() error {
 			artifactRequestPool,
 			cancelPool,
 			internalPool,
+			schedulerPool,
 		),
 	)
 	mux.Handle("/", apiHandler)
@@ -291,6 +323,11 @@ func run() error {
 		IdleTimeout:       2 * time.Minute,
 	}
 
+	schedulerDone := make(chan struct{})
+	go func() {
+		defer close(schedulerDone)
+		runScheduler(ctx, scheduling, configuration.schedulerTick)
+	}()
 	publisherDone := make(chan struct{})
 	go func() {
 		defer close(publisherDone)
@@ -367,6 +404,11 @@ func run() error {
 	}
 	stop()
 	select {
+	case <-schedulerDone:
+	case <-shutdownContext.Done():
+		return errors.New("scheduler did not stop before shutdown deadline")
+	}
+	select {
 	case <-publisherDone:
 	case <-shutdownContext.Done():
 		return errors.New("outbox Publisher did not stop before shutdown deadline")
@@ -412,6 +454,11 @@ func loadConfig() (config, error) {
 		artifactRequestDatabaseURL: os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
 		cancelDatabaseURL:          os.Getenv("VELA_CANCEL_DATABASE_URL"),
 		internalDatabaseURL:        os.Getenv("VELA_INTERNAL_DATABASE_URL"),
+		schedulerDatabaseURL:       os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
+		schedulerID:                os.Getenv("VELA_SCHEDULER_ID"),
+		schedulerTick:              defaultSchedulerTick,
+		schedulerClaimTTL:          defaultSchedulerClaimTTL,
+		schedulerCandidateAttempts: defaultSchedulerCandidateAttempts,
 		natsURL:                    os.Getenv("VELA_NATS_URL"),
 		natsCredentials:            os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
 		natsRootCA:                 os.Getenv("VELA_NATS_ROOT_CA_FILE"),
@@ -452,6 +499,8 @@ func loadConfig() (config, error) {
 		"VELA_ARTIFACT_REQUEST_DATABASE_URL":      configuration.artifactRequestDatabaseURL,
 		"VELA_CANCEL_DATABASE_URL":                configuration.cancelDatabaseURL,
 		"VELA_INTERNAL_DATABASE_URL":              configuration.internalDatabaseURL,
+		"VELA_SCHEDULER_DATABASE_URL":             configuration.schedulerDatabaseURL,
+		"VELA_SCHEDULER_ID":                       configuration.schedulerID,
 		"VELA_NATS_URL":                           configuration.natsURL,
 		"VELA_NATS_CREDENTIALS_FILE":              configuration.natsCredentials,
 		"VELA_NATS_ROOT_CA_FILE":                  configuration.natsRootCA,
@@ -496,6 +545,27 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_OUTBOX_BATCH_SIZE must be between 1 and 1000")
 		}
 		configuration.publisherBatchSize = int32(batchSize)
+	}
+	if value := os.Getenv("VELA_SCHEDULER_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_SCHEDULER_TICK must be in (0, 1m]")
+		}
+		configuration.schedulerTick = tick
+	}
+	if value := os.Getenv("VELA_SCHEDULER_CLAIM_TTL"); value != "" {
+		claimTTL, err := time.ParseDuration(value)
+		if err != nil || claimTTL <= 0 || claimTTL > 5*time.Minute {
+			return config{}, errors.New("environment variable VELA_SCHEDULER_CLAIM_TTL must be in (0, 5m]")
+		}
+		configuration.schedulerClaimTTL = claimTTL
+	}
+	if value := os.Getenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS"); value != "" {
+		candidateAttempts, err := strconv.Atoi(value)
+		if err != nil || candidateAttempts < 1 || candidateAttempts > 20 {
+			return config{}, errors.New("environment variable VELA_SCHEDULER_CANDIDATE_ATTEMPTS must be in 1..20")
+		}
+		configuration.schedulerCandidateAttempts = candidateAttempts
 	}
 	return configuration, nil
 }
@@ -772,6 +842,38 @@ func runPublisher(ctx context.Context, publisher *outbox.Publisher, interval tim
 		published, err := publisher.PublishBatch(ctx)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("Outbox publish batch incomplete", "published", published, "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runScheduler(ctx context.Context, scheduling hierarchicalScheduler, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		reconciled, err := scheduling.ReconcileExpired(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("Scheduler claim reconciliation incomplete", "error", err)
+		} else if err == nil && reconciled > 0 {
+			slog.Info("Scheduler expired claims reconciled", "claims", reconciled)
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		dispatches, err := scheduling.RunCycle(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("Scheduler cycle incomplete", "error", err)
+		} else if err == nil && len(dispatches) > 0 {
+			slog.Info("Scheduler cycle dispatched Assignments", "dispatches", len(dispatches))
 		}
 		select {
 		case <-ctx.Done():

@@ -28,6 +28,7 @@ SELECT
     a.worker_id,
     a.worker_epoch,
     a.fence,
+    a.scheduler_dispatch_intent_id,
     l.signing_key_id,
     l.token_digest,
     l.issued_at,
@@ -55,6 +56,7 @@ SELECT
     j.version,
     j.model_revision_id,
     j.generation_preset_revision_id,
+	j.service_class_revision_id,
     scr.state AS service_class_revision_state,
     j.output_spec_id,
     j.worker_pool_id,
@@ -84,6 +86,62 @@ WHERE organization_id = sqlc.arg(organization_id)
   AND id = sqlc.arg(project_id)
 FOR UPDATE;
 
+-- name: LockSchedulerDispatchForAssignment :one
+SELECT
+    id,
+    worker_pool_id,
+    organization_id,
+	service_class_revision_id,
+    project_id,
+    job_id,
+    expected_job_version,
+    execution_profile_revision_id,
+    worker_id,
+    worker_epoch,
+    lane,
+    state,
+    claim_expires_at
+FROM scheduler_dispatch_intents
+WHERE id = sqlc.arg(intent_id)
+FOR UPDATE;
+
+-- name: LockOrganizationCapacityForAssignment :one
+SELECT capacity.running_limit
+FROM organization_capacity_shares AS capacity
+WHERE capacity.worker_pool_id = sqlc.arg(worker_pool_id)
+  AND capacity.organization_id = sqlc.arg(organization_id)
+FOR UPDATE;
+
+-- name: CountActiveOrganizationAssignments :one
+SELECT count(*)::bigint
+FROM attempts
+WHERE worker_pool_id = sqlc.arg(worker_pool_id)
+  AND organization_id = sqlc.arg(organization_id)
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING');
+
+-- name: LockRetryCapacityForAssignment :one
+SELECT pool.retry_running_limit
+FROM worker_pools AS pool
+WHERE pool.id = sqlc.arg(worker_pool_id)
+FOR UPDATE;
+
+-- name: CountActiveRetryAssignments :one
+SELECT count(*)::bigint
+FROM attempts
+WHERE worker_pool_id = sqlc.arg(worker_pool_id)
+  AND attempt_number > 1
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING');
+
+-- name: ValidateScheduledWorkerProfile :one
+SELECT readiness.worker_id
+FROM worker_profile_readiness AS readiness
+WHERE readiness.worker_id = sqlc.arg(worker_id)
+  AND readiness.worker_epoch = sqlc.arg(worker_epoch)
+  AND readiness.execution_profile_revision_id = sqlc.arg(execution_profile_revision_id)
+  AND readiness.readiness IN ('WARM', 'PREWARM_ALLOWED')
+LIMIT 1
+FOR SHARE;
+
 -- name: ValidateProfileForAssignment :one
 SELECT epr.id
 FROM execution_profile_revisions AS epr
@@ -112,6 +170,7 @@ INSERT INTO attempts (
     worker_pool_id,
     worker_id,
     worker_epoch,
+    scheduler_dispatch_intent_id,
     state,
     fence,
     assigned_at
@@ -125,6 +184,7 @@ INSERT INTO attempts (
     sqlc.arg(worker_pool_id),
     sqlc.arg(worker_id),
     sqlc.arg(worker_epoch),
+    sqlc.narg(scheduler_dispatch_intent_id),
     'ASSIGNED',
     sqlc.arg(fence),
     sqlc.arg(assigned_at)

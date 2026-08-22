@@ -720,6 +720,92 @@ func (ns NullRetryDisposition) Value() (driver.Value, error) {
 	return string(ns.RetryDisposition), nil
 }
 
+type SchedulerDispatchState string
+
+const (
+	SchedulerDispatchStateCLAIMED   SchedulerDispatchState = "CLAIMED"
+	SchedulerDispatchStateCOMMITTED SchedulerDispatchState = "COMMITTED"
+	SchedulerDispatchStateABANDONED SchedulerDispatchState = "ABANDONED"
+)
+
+func (e *SchedulerDispatchState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SchedulerDispatchState(s)
+	case string:
+		*e = SchedulerDispatchState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SchedulerDispatchState: %T", src)
+	}
+	return nil
+}
+
+type NullSchedulerDispatchState struct {
+	SchedulerDispatchState SchedulerDispatchState `json:"scheduler_dispatch_state"`
+	Valid                  bool                   `json:"valid"` // Valid is true if SchedulerDispatchState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSchedulerDispatchState) Scan(value interface{}) error {
+	if value == nil {
+		ns.SchedulerDispatchState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SchedulerDispatchState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSchedulerDispatchState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SchedulerDispatchState), nil
+}
+
+type SchedulerLane string
+
+const (
+	SchedulerLaneRETRY     SchedulerLane = "RETRY"
+	SchedulerLanePROTECTED SchedulerLane = "PROTECTED"
+	SchedulerLaneNORMAL    SchedulerLane = "NORMAL"
+)
+
+func (e *SchedulerLane) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SchedulerLane(s)
+	case string:
+		*e = SchedulerLane(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SchedulerLane: %T", src)
+	}
+	return nil
+}
+
+type NullSchedulerLane struct {
+	SchedulerLane SchedulerLane `json:"scheduler_lane"`
+	Valid         bool          `json:"valid"` // Valid is true if SchedulerLane is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSchedulerLane) Scan(value interface{}) error {
+	if value == nil {
+		ns.SchedulerLane, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SchedulerLane.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSchedulerLane) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SchedulerLane), nil
+}
+
 type WorkerLifecycleState string
 
 const (
@@ -765,6 +851,48 @@ func (ns NullWorkerLifecycleState) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.WorkerLifecycleState), nil
+}
+
+type WorkerProfileReadinessState string
+
+const (
+	WorkerProfileReadinessStateWARM           WorkerProfileReadinessState = "WARM"
+	WorkerProfileReadinessStatePREWARMALLOWED WorkerProfileReadinessState = "PREWARM_ALLOWED"
+)
+
+func (e *WorkerProfileReadinessState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WorkerProfileReadinessState(s)
+	case string:
+		*e = WorkerProfileReadinessState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WorkerProfileReadinessState: %T", src)
+	}
+	return nil
+}
+
+type NullWorkerProfileReadinessState struct {
+	WorkerProfileReadinessState WorkerProfileReadinessState `json:"worker_profile_readiness_state"`
+	Valid                       bool                        `json:"valid"` // Valid is true if WorkerProfileReadinessState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWorkerProfileReadinessState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WorkerProfileReadinessState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WorkerProfileReadinessState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWorkerProfileReadinessState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WorkerProfileReadinessState), nil
 }
 
 type WorkerReachabilityCondition string
@@ -935,6 +1063,7 @@ type Attempt struct {
 	EndedAt                    pgtype.Timestamptz `db:"ended_at" json:"ended_at"`
 	CreatedAt                  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	SchedulerDispatchIntentID  uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
 }
 
 type AttemptLease struct {
@@ -1201,6 +1330,17 @@ type JobCancellationDecision struct {
 	CreatedAt               pgtype.Timestamptz   `db:"created_at" json:"created_at"`
 }
 
+type JobRuntimePrediction struct {
+	JobID                   uuid.UUID          `db:"job_id" json:"job_id"`
+	OrganizationID          uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID               uuid.UUID          `db:"project_id" json:"project_id"`
+	PredictedRuntimeSeconds int64              `db:"predicted_runtime_seconds" json:"predicted_runtime_seconds"`
+	RetryRiskPenaltySeconds int32              `db:"retry_risk_penalty_seconds" json:"retry_risk_penalty_seconds"`
+	Source                  string             `db:"source" json:"source"`
+	SourceRevision          string             `db:"source_revision" json:"source_revision"`
+	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type ModelRevision struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	StableID    string             `db:"stable_id" json:"stable_id"`
@@ -1208,6 +1348,15 @@ type ModelRevision struct {
 	State       CatalogState       `db:"state" json:"state"`
 	ContentHash string             `db:"content_hash" json:"content_hash"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type OrganizationCapacityShare struct {
+	WorkerPoolID   uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	Weight         int32              `db:"weight" json:"weight"`
+	RunningLimit   int32              `db:"running_limit" json:"running_limit"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type OrganizationCreditAccount struct {
@@ -1290,6 +1439,15 @@ type Project struct {
 	RetryWaitCount    int32              `db:"retry_wait_count" json:"retry_wait_count"`
 }
 
+type ProjectCapacityShare struct {
+	WorkerPoolID   uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
+	Weight         int32              `db:"weight" json:"weight"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type RateCardLine struct {
 	ID                         uuid.UUID `db:"id" json:"id"`
 	RateCardRevisionID         uuid.UUID `db:"rate_card_revision_id" json:"rate_card_revision_id"`
@@ -1327,19 +1485,96 @@ type RetryRuntimeState struct {
 	UpdatedAt                   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type SchedulerDispatchIntent struct {
+	ID                         uuid.UUID              `db:"id" json:"id"`
+	SchedulerID                string                 `db:"scheduler_id" json:"scheduler_id"`
+	WorkerPoolID               uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ServiceClassRevisionID     uuid.UUID              `db:"service_class_revision_id" json:"service_class_revision_id"`
+	ProjectID                  uuid.UUID              `db:"project_id" json:"project_id"`
+	JobID                      uuid.UUID              `db:"job_id" json:"job_id"`
+	ExpectedJobVersion         int64                  `db:"expected_job_version" json:"expected_job_version"`
+	ExecutionProfileRevisionID uuid.UUID              `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	WorkerID                   uuid.UUID              `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                int64                  `db:"worker_epoch" json:"worker_epoch"`
+	Lane                       SchedulerLane          `db:"lane" json:"lane"`
+	PredictedRuntimeSeconds    int64                  `db:"predicted_runtime_seconds" json:"predicted_runtime_seconds"`
+	PredictedStartAt           pgtype.Timestamptz     `db:"predicted_start_at" json:"predicted_start_at"`
+	PredictedFinishAt          pgtype.Timestamptz     `db:"predicted_finish_at" json:"predicted_finish_at"`
+	JobOrderScore              int64                  `db:"job_order_score" json:"job_order_score"`
+	WorkerScore                int64                  `db:"worker_score" json:"worker_score"`
+	State                      SchedulerDispatchState `db:"state" json:"state"`
+	ClaimedAt                  pgtype.Timestamptz     `db:"claimed_at" json:"claimed_at"`
+	ClaimExpiresAt             pgtype.Timestamptz     `db:"claim_expires_at" json:"claim_expires_at"`
+	CommittedAt                pgtype.Timestamptz     `db:"committed_at" json:"committed_at"`
+	AbandonedAt                pgtype.Timestamptz     `db:"abandoned_at" json:"abandoned_at"`
+	AbandonReason              *string                `db:"abandon_reason" json:"abandon_reason"`
+	CreatedAt                  pgtype.Timestamptz     `db:"created_at" json:"created_at"`
+}
+
+type SchedulerDispatchProtocolState struct {
+	Singleton             bool               `db:"singleton" json:"singleton"`
+	RequireDispatchIntent bool               `db:"require_dispatch_intent" json:"require_dispatch_intent"`
+	ProtocolVersion       int32              `db:"protocol_version" json:"protocol_version"`
+	TransitionReceipt     *string            `db:"transition_receipt" json:"transition_receipt"`
+	TransitionedAt        pgtype.Timestamptz `db:"transitioned_at" json:"transitioned_at"`
+}
+
+type SchedulerDispatchProtocolTransition struct {
+	ProtocolVersion       int32              `db:"protocol_version" json:"protocol_version"`
+	RequireDispatchIntent bool               `db:"require_dispatch_intent" json:"require_dispatch_intent"`
+	TransitionReceipt     string             `db:"transition_receipt" json:"transition_receipt"`
+	TransitionedAt        pgtype.Timestamptz `db:"transitioned_at" json:"transitioned_at"`
+}
+
+type SchedulerOrganizationDeficit struct {
+	WorkerPoolID   uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	DeficitSeconds pgtype.Numeric     `db:"deficit_seconds" json:"deficit_seconds"`
+	Version        int64              `db:"version" json:"version"`
+	LastSelectedAt pgtype.Timestamptz `db:"last_selected_at" json:"last_selected_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type SchedulerProjectDeficit struct {
+	WorkerPoolID           uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID         uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ServiceClassRevisionID uuid.UUID          `db:"service_class_revision_id" json:"service_class_revision_id"`
+	ProjectID              uuid.UUID          `db:"project_id" json:"project_id"`
+	DeficitSeconds         pgtype.Numeric     `db:"deficit_seconds" json:"deficit_seconds"`
+	Version                int64              `db:"version" json:"version"`
+	LastSelectedAt         pgtype.Timestamptz `db:"last_selected_at" json:"last_selected_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type SchedulerServiceClassDeficit struct {
+	WorkerPoolID           uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID         uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ServiceClassRevisionID uuid.UUID          `db:"service_class_revision_id" json:"service_class_revision_id"`
+	DeficitSeconds         pgtype.Numeric     `db:"deficit_seconds" json:"deficit_seconds"`
+	Version                int64              `db:"version" json:"version"`
+	LastSelectedAt         pgtype.Timestamptz `db:"last_selected_at" json:"last_selected_at"`
+	UpdatedAt              pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type ServiceClassRevision struct {
-	ID                               uuid.UUID          `db:"id" json:"id"`
-	StableID                         string             `db:"stable_id" json:"stable_id"`
-	Revision                         int32              `db:"revision" json:"revision"`
-	State                            CatalogState       `db:"state" json:"state"`
-	QueueRetryAllowanceSeconds       int32              `db:"queue_retry_allowance_seconds" json:"queue_retry_allowance_seconds"`
-	MaxAttempts                      int32              `db:"max_attempts" json:"max_attempts"`
-	MaxTotalComputeMultiplierMilli   int32              `db:"max_total_compute_multiplier_milli" json:"max_total_compute_multiplier_milli"`
-	MaxFinalizationSecondsPerAttempt int32              `db:"max_finalization_seconds_per_attempt" json:"max_finalization_seconds_per_attempt"`
-	RetryBackoffPolicy               []byte             `db:"retry_backoff_policy" json:"retry_backoff_policy"`
-	RetryableFailureClasses          []string           `db:"retryable_failure_classes" json:"retryable_failure_classes"`
-	CircuitBreakerPolicy             []byte             `db:"circuit_breaker_policy" json:"circuit_breaker_policy"`
-	CreatedAt                        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ID                                  uuid.UUID          `db:"id" json:"id"`
+	StableID                            string             `db:"stable_id" json:"stable_id"`
+	Revision                            int32              `db:"revision" json:"revision"`
+	State                               CatalogState       `db:"state" json:"state"`
+	QueueRetryAllowanceSeconds          int32              `db:"queue_retry_allowance_seconds" json:"queue_retry_allowance_seconds"`
+	MaxAttempts                         int32              `db:"max_attempts" json:"max_attempts"`
+	MaxTotalComputeMultiplierMilli      int32              `db:"max_total_compute_multiplier_milli" json:"max_total_compute_multiplier_milli"`
+	MaxFinalizationSecondsPerAttempt    int32              `db:"max_finalization_seconds_per_attempt" json:"max_finalization_seconds_per_attempt"`
+	RetryBackoffPolicy                  []byte             `db:"retry_backoff_policy" json:"retry_backoff_policy"`
+	RetryableFailureClasses             []string           `db:"retryable_failure_classes" json:"retryable_failure_classes"`
+	CircuitBreakerPolicy                []byte             `db:"circuit_breaker_policy" json:"circuit_breaker_policy"`
+	CreatedAt                           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	QueueWeight                         int32              `db:"queue_weight" json:"queue_weight"`
+	MaxQueueWaitBeforeProtectionSeconds int32              `db:"max_queue_wait_before_protection_seconds" json:"max_queue_wait_before_protection_seconds"`
+	MaxAgingCreditSeconds               int32              `db:"max_aging_credit_seconds" json:"max_aging_credit_seconds"`
+	MaxExpiryUrgencyCreditSeconds       int32              `db:"max_expiry_urgency_credit_seconds" json:"max_expiry_urgency_credit_seconds"`
+	MaxRetryRiskPenaltySeconds          int32              `db:"max_retry_risk_penalty_seconds" json:"max_retry_risk_penalty_seconds"`
 }
 
 type ServicePrincipal struct {
@@ -1413,12 +1648,26 @@ type WorkerEpoch struct {
 }
 
 type WorkerPool struct {
-	ID                uuid.UUID          `db:"id" json:"id"`
-	StableID          string             `db:"stable_id" json:"stable_id"`
-	AdmissionOpen     bool               `db:"admission_open" json:"admission_open"`
-	QueuedLimit       int32              `db:"queued_limit" json:"queued_limit"`
-	QueuedCount       int32              `db:"queued_count" json:"queued_count"`
-	RetryAfterSeconds int32              `db:"retry_after_seconds" json:"retry_after_seconds"`
-	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	RetryWaitCount    int32              `db:"retry_wait_count" json:"retry_wait_count"`
+	ID                         uuid.UUID          `db:"id" json:"id"`
+	StableID                   string             `db:"stable_id" json:"stable_id"`
+	AdmissionOpen              bool               `db:"admission_open" json:"admission_open"`
+	QueuedLimit                int32              `db:"queued_limit" json:"queued_limit"`
+	QueuedCount                int32              `db:"queued_count" json:"queued_count"`
+	RetryAfterSeconds          int32              `db:"retry_after_seconds" json:"retry_after_seconds"`
+	CreatedAt                  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	RetryWaitCount             int32              `db:"retry_wait_count" json:"retry_wait_count"`
+	SchedulerQuantumSeconds    int32              `db:"scheduler_quantum_seconds" json:"scheduler_quantum_seconds"`
+	SchedulerMaxDeficitSeconds int64              `db:"scheduler_max_deficit_seconds" json:"scheduler_max_deficit_seconds"`
+	RetryRunningLimit          int32              `db:"retry_running_limit" json:"retry_running_limit"`
+}
+
+type WorkerProfileReadiness struct {
+	WorkerID                     uuid.UUID                   `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                  int64                       `db:"worker_epoch" json:"worker_epoch"`
+	ExecutionProfileRevisionID   uuid.UUID                   `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	Readiness                    WorkerProfileReadinessState `db:"readiness" json:"readiness"`
+	ModelColdStartPenaltySeconds int32                       `db:"model_cold_start_penalty_seconds" json:"model_cold_start_penalty_seconds"`
+	LocalityPenaltySeconds       int32                       `db:"locality_penalty_seconds" json:"locality_penalty_seconds"`
+	HealthRiskPenaltySeconds     int32                       `db:"health_risk_penalty_seconds" json:"health_risk_penalty_seconds"`
+	UpdatedAt                    pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
 }

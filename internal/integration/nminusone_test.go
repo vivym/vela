@@ -27,10 +27,11 @@ import (
 )
 
 const (
-	nMinusOneRenewalControlCommit = "450dd5c379ed7d26588e2a76140f0b3281acfbb2"
-	nMinusOneFailureControlCommit = "9cb1a522e20490ef41bab535fde206a947118d11"
-	nMinusOneCancellationCommit   = "d0a8c0105a09b7f538e79400a7affd2a6c700744"
-	finalizationFixedPointCommit  = "c94e140c8e841e88bdfcc41725bd7aa5ea7ac068"
+	nMinusOneRenewalControlCommit        = "450dd5c379ed7d26588e2a76140f0b3281acfbb2"
+	nMinusOneFailureControlCommit        = "9cb1a522e20490ef41bab535fde206a947118d11"
+	nMinusOneCancellationCommit          = "d0a8c0105a09b7f538e79400a7affd2a6c700744"
+	finalizationFixedPointCommit         = "c94e140c8e841e88bdfcc41725bd7aa5ea7ac068"
+	hierarchicalSchedulerNMinusOneCommit = "8d4fd9199348d5ccdca48c40ef3b4a19ee5c5284"
 )
 
 func TestNMinusOneControlStartupAcrossRenewalProtocolTransition(t *testing.T) {
@@ -343,6 +344,100 @@ func TestExactFinalizationFixedPointStartsWritesAndForwardsUnknownSuccess(t *tes
 			sequence,
 			attempts,
 		)
+	}
+}
+
+func TestExactSchedulerNMinusOneAssignmentWriterAcrossProtocolGate(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, hierarchicalSchedulerNMinusOneCommit)
+	startupOutput := runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN)
+	if strings.Contains(startupOutput, "VELA_SCHEDULER_") ||
+		strings.Contains(startupOutput, "open auth database pool") ||
+		strings.Contains(startupOutput, "open request database pool") ||
+		strings.Contains(startupOutput, "open Artifact request database pool") ||
+		strings.Contains(startupOutput, "open cancellation database pool") ||
+		strings.Contains(startupOutput, "open internal database pool") ||
+		!strings.Contains(startupOutput, "open Artifact S3 access key ID file") {
+		t.Fatalf("exact Scheduler N-1 startup did not reach Artifact sentinel:\n%s", startupOutput)
+	}
+	seedAdmissionFixture(t, database.Admin)
+	server := admissionServerForDatabase(t, database)
+	firstJob := submitSchedulerJob(
+		t,
+		server.URL,
+		testProjectID,
+		testBearerCredential(),
+		"scheduler-n-minus-one-gate-off",
+	)
+	secondJob := submitSchedulerJob(
+		t,
+		server.URL,
+		testProjectID,
+		testBearerCredential(),
+		"scheduler-n-minus-one-gate-on",
+	)
+	firstWorker := uuid.MustParse("00000000-0000-0000-0000-000000000430")
+	secondWorker := uuid.MustParse("00000000-0000-0000-0000-000000000431")
+	for index, workerID := range []uuid.UUID{firstWorker, secondWorker} {
+		if _, err := database.Admin.Exec(`
+			INSERT INTO workers (
+				id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
+			) VALUES (
+				$1, '00000000-0000-0000-0000-000000000005', $2, 7, 'READY', 'HEALTHY'
+			)
+		`, workerID, fmt.Sprintf("spiffe://vela.internal/worker/scheduler-n-minus-one-%d", index)); err != nil {
+			t.Fatalf("seed Scheduler N-1 Worker %d: %v", index, err)
+		}
+	}
+
+	firstAttemptID := runNMinusOneAssignmentProbe(
+		t,
+		nMinusOne.AssignmentProbe,
+		database.DSN,
+		firstJob.String(),
+		firstWorker.String(),
+		7,
+		1,
+	)
+	var hasDispatchIntent bool
+	if err := database.Admin.QueryRow(`
+		SELECT scheduler_dispatch_intent_id IS NOT NULL
+		FROM attempts WHERE id = $1
+	`, firstAttemptID).Scan(&hasDispatchIntent); err != nil {
+		t.Fatalf("read gate-off N-1 Attempt: %v", err)
+	}
+	if hasDispatchIntent {
+		t.Fatal("gate-off N-1 Attempt unexpectedly has a Scheduler dispatch intent")
+	}
+
+	if _, err := database.Admin.Exec(`
+		SELECT vela_transition_scheduler_dispatch_protocol(
+			true,
+			'exact 8d4fd91 writer drained before Scheduler protocol switch'
+		)
+	`); err != nil {
+		t.Fatalf("enable Scheduler dispatch protocol: %v", err)
+	}
+	before := readAssignmentState(t, database.Admin, secondJob, secondWorker)
+	output, probeErr := runNMinusOneAssignmentProbeProcess(
+		t,
+		nMinusOne.AssignmentProbe,
+		database.DSN,
+		secondJob.String(),
+		secondWorker.String(),
+		7,
+		1,
+	)
+	if probeErr == nil || !strings.Contains(
+		string(output),
+		"Assignment requires a live Scheduler dispatch claim",
+	) {
+		t.Fatalf("gate-on Scheduler N-1 writer error=%v\n%s", probeErr, output)
+	}
+	after := readAssignmentState(t, database.Admin, secondJob, secondWorker)
+	if after != before {
+		t.Fatalf("rejected Scheduler N-1 writer changed state: before=%+v after=%+v", before, after)
 	}
 }
 
@@ -1039,6 +1134,62 @@ func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
 	}
 	if err == nil {
 		t.Fatalf("N-1 vela-control unexpectedly passed the deliberate NATS sentinel")
+	}
+	return string(output)
+}
+
+func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_HTTP_ADDRESS": "127.0.0.1:0",
+		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_auth_login", "vela-auth-password",
+		),
+		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_request_login", "vela-request-password",
+		),
+		"VELA_ARTIFACT_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_artifact_request_login", "vela-artifact-request-password",
+		),
+		"VELA_CANCEL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_cancel_login", "vela-cancel-password",
+		),
+		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_internal_login", "vela-internal-password",
+		),
+		"VELA_SCHEDULER_DATABASE_URL":             "",
+		"VELA_SCHEDULER_ID":                       "",
+		"VELA_CREDENTIAL_PEPPER_BASE64":           base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"VELA_NATS_URL":                           "nats://127.0.0.1:1",
+		"VELA_NATS_CREDENTIALS_FILE":              "/missing/nats.creds",
+		"VELA_NATS_ROOT_CA_FILE":                  "/missing/nats-ca.pem",
+		"VELA_ARTIFACT_S3_ENDPOINT":               "http://127.0.0.1:1",
+		"VELA_ARTIFACT_S3_REGION":                 "us-east-1",
+		"VELA_ARTIFACT_S3_BUCKET":                 "vela-artifacts",
+		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":     "/missing/s3-access-key-id",
+		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE": "/missing/s3-secret-access-key",
+		"VELA_LEASE_ACTIVE_KEY_ID":                "lease-key-v1",
+		"VELA_LEASE_KEYRING_FILE":                 "/missing/lease-keyring.json",
+		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":     "/missing/vela-artifact-validator",
+		"VELA_ARTIFACT_FFPROBE_PATH":              "/missing/ffprobe",
+		"VELA_ARTIFACT_SANDBOX_ROOT":              "/missing/sandbox",
+		"VELA_ARTIFACT_SPOOL_DIRECTORY":           "/missing/spool",
+		"VELA_ARTIFACT_FFPROBE_VERSION":           "8.0.1",
+		"VELA_ARTIFACT_VALIDATOR_REVISION":        "ffprobe-8.0.1-sandbox-v1",
+		"VELA_ARTIFACT_RECONCILER_ID":             "spiffe://vela.internal/reconciler/artifact-finalization",
+		"VELA_WORKER_GRPC_TLS_CERT_FILE":          "/missing/worker-control.crt",
+		"VELA_WORKER_GRPC_TLS_KEY_FILE":           "/missing/worker-control.key",
+		"VELA_WORKER_GRPC_CLIENT_CA_FILE":         "/missing/worker-client-ca.crt",
+	})
+	output, err := command.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("exact Scheduler N-1 startup timed out: %v\n%s", ctx.Err(), output)
+	}
+	if err == nil {
+		t.Fatalf("exact Scheduler N-1 startup unexpectedly passed the Artifact sentinel")
 	}
 	return string(output)
 }

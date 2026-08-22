@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -348,6 +349,539 @@ func TestReleasedMigrationsThroughV6RemainByteIdenticalToFinalizationFixedPoint(
 	}
 }
 
+func TestReleasedV7MigrationRemainsByteIdenticalToSchedulerNMinusOne(t *testing.T) {
+	repositoryRoot := repositoryRoot(t)
+	path := filepath.Join(repositoryRoot, "db", "migrations", "00007_artifact_finalization.sql")
+	current, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read current migration 00007: %v", err)
+	}
+	command := exec.Command(
+		"git",
+		"show",
+		hierarchicalSchedulerNMinusOneCommit+":db/migrations/00007_artifact_finalization.sql",
+	)
+	command.Dir = repositoryRoot
+	released, err := command.Output()
+	if err != nil {
+		t.Fatalf("read released migration 00007: %v", err)
+	}
+	if string(current) != string(released) {
+		t.Fatal("released migration 00007 changed after publication")
+	}
+}
+
+func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 7); err != nil {
+		t.Fatalf("contract empty Hierarchical Scheduler migration: %v", err)
+	}
+	assertTableDoesNotExist(t, database.Admin, "organization_capacity_shares")
+	assertTableDoesNotExist(t, database.Admin, "worker_profile_readiness")
+	assertTableDoesNotExist(t, database.Admin, "scheduler_dispatch_intents")
+	assertTableDoesNotExist(t, database.Admin, "scheduler_dispatch_protocol_state")
+	var contractedProgressView string
+	if err := database.Admin.QueryRow(`
+		SELECT pg_get_viewdef('vela_request_job_progress'::regclass, true)
+	`).Scan(&contractedProgressView); err != nil {
+		t.Fatalf("read contracted customer progress view: %v", err)
+	}
+	if strings.Contains(contractedProgressView, "vela_scheduler_queue_projection") {
+		t.Fatalf("contracted customer progress view retained Scheduler dependency: %s", contractedProgressView)
+	}
+	var contractedQueueProjection sql.NullString
+	if err := database.Admin.QueryRow(`
+		SELECT to_regprocedure('vela_scheduler_queue_projection()')::text
+	`).Scan(&contractedQueueProjection); err != nil {
+		t.Fatalf("inspect contracted request queue projection: %v", err)
+	}
+	if contractedQueueProjection.Valid {
+		t.Fatalf("contracted request queue projection still exists: %s", contractedQueueProjection.String)
+	}
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatalf("re-expand empty Hierarchical Scheduler migration: %v", err)
+	}
+	assertTableExists(t, database.Admin, "organization_capacity_shares")
+	assertTableExists(t, database.Admin, "worker_profile_readiness")
+	assertTableExists(t, database.Admin, "scheduler_dispatch_intents")
+	assertTableExists(t, database.Admin, "scheduler_dispatch_protocol_state")
+	var expandedProgressView string
+	if err := database.Admin.QueryRow(`
+		SELECT pg_get_viewdef('vela_request_job_progress'::regclass, true)
+	`).Scan(&expandedProgressView); err != nil {
+		t.Fatalf("read re-expanded customer progress view: %v", err)
+	}
+	if expandedProgressView != contractedProgressView {
+		t.Fatalf(
+			"re-expanded customer progress view changed the released request-role surface:\n%s",
+			expandedProgressView,
+		)
+	}
+	var expandedQueueProjection string
+	if err := database.Admin.QueryRow(`
+		SELECT to_regprocedure('vela_scheduler_queue_projection()')::text
+	`).Scan(&expandedQueueProjection); err != nil {
+		t.Fatalf("inspect re-expanded request queue projection: %v", err)
+	}
+	if expandedQueueProjection != "vela_scheduler_queue_projection()" {
+		t.Fatalf("re-expanded request queue projection = %q", expandedQueueProjection)
+	}
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 8 {
+		t.Fatalf("migration version after empty Scheduler Down/Up = %d error=%v", version, err)
+	}
+}
+
+func TestHierarchicalSchedulerMigrationActiveAttemptIndexesRoundTrip(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+
+	assertIndex := func(name string, wantColumns []string, predicateParts ...string) {
+		t.Helper()
+		var (
+			columns   string
+			predicate string
+		)
+		if err := database.Admin.QueryRow(`
+			SELECT
+				array_to_string(ARRAY(
+					SELECT attribute.attname
+					FROM unnest(index.indkey) WITH ORDINALITY AS key(attribute_number, position)
+					JOIN pg_attribute AS attribute
+					  ON attribute.attrelid = index.indrelid
+					 AND attribute.attnum = key.attribute_number
+					ORDER BY key.position
+				), ','),
+				pg_get_expr(index.indpred, index.indrelid)
+			FROM pg_index AS index
+			JOIN pg_class AS relation ON relation.oid = index.indrelid
+			JOIN pg_class AS index_relation ON index_relation.oid = index.indexrelid
+			JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+			WHERE namespace.nspname = 'public'
+			  AND relation.relname = 'attempts'
+			  AND index_relation.relname = $1
+		`, name).Scan(&columns, &predicate); err != nil {
+			t.Fatalf("read active Attempt index %s: %v", name, err)
+		}
+		if columns != strings.Join(wantColumns, ",") {
+			t.Fatalf("active Attempt index %s columns = %v, want %v", name, columns, wantColumns)
+		}
+		for _, part := range predicateParts {
+			if !strings.Contains(predicate, part) {
+				t.Fatalf("active Attempt index %s predicate = %q, want %q", name, predicate, part)
+			}
+		}
+	}
+	assertIndexes := func() {
+		t.Helper()
+		assertIndex(
+			"attempts_active_pool_organization_idx",
+			[]string{"worker_pool_id", "organization_id"},
+			"ASSIGNED",
+			"RUNNING",
+			"FINALIZING",
+		)
+		assertIndex(
+			"attempts_active_retry_pool_idx",
+			[]string{"worker_pool_id"},
+			"attempt_number > 1",
+			"ASSIGNED",
+			"RUNNING",
+			"FINALIZING",
+		)
+	}
+	assertIndexes()
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 7); err != nil {
+		t.Fatalf("contract Scheduler migration with active Attempt indexes: %v", err)
+	}
+	for _, name := range []string{
+		"attempts_active_pool_organization_idx",
+		"attempts_active_retry_pool_idx",
+	} {
+		var exists bool
+		if err := database.Admin.QueryRow(
+			"SELECT to_regclass('public.' || $1) IS NOT NULL",
+			name,
+		).Scan(&exists); err != nil {
+			t.Fatalf("inspect contracted index %s: %v", name, err)
+		}
+		if exists {
+			t.Fatalf("active Attempt index %s survived Scheduler migration Down", name)
+		}
+	}
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatalf("re-expand Scheduler active Attempt indexes: %v", err)
+	}
+	assertIndexes()
+}
+
+func TestHierarchicalSchedulerMigrationDefaultPolicyCatalogDownUpRestoresSurface(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 7); err != nil {
+		t.Fatalf("contract default-policy Hierarchical Scheduler migration: %v", err)
+	}
+	assertTableDoesNotExist(t, database.Admin, "scheduler_dispatch_intents")
+	if err := goose.Up(database.Admin, migrations); err != nil {
+		t.Fatalf("re-expand default-policy Hierarchical Scheduler migration: %v", err)
+	}
+	assertTableExists(t, database.Admin, "scheduler_dispatch_intents")
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 8 {
+		t.Fatalf("migration version after default-policy Down/Up = %d error=%v", version, err)
+	}
+}
+
+func TestHierarchicalSchedulerProtocolRollbackRetainsReceiptAndBlocksDown(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+
+	assertProtocolState := func(
+		wantRequired bool,
+		wantVersion int64,
+		wantReceipt sql.NullString,
+		wantTransitioned bool,
+	) {
+		t.Helper()
+		var (
+			required     bool
+			version      int64
+			receipt      sql.NullString
+			transitioned sql.NullTime
+		)
+		if err := database.Admin.QueryRow(`
+			SELECT require_dispatch_intent, protocol_version,
+				transition_receipt, transitioned_at
+			FROM scheduler_dispatch_protocol_state
+			WHERE singleton
+		`).Scan(&required, &version, &receipt, &transitioned); err != nil {
+			t.Fatalf("read Scheduler protocol state: %v", err)
+		}
+		if required != wantRequired || version != wantVersion ||
+			receipt != wantReceipt || transitioned.Valid != wantTransitioned {
+			t.Fatalf(
+				"Scheduler protocol state = required %t version %d receipt %#v transitioned %t",
+				required,
+				version,
+				receipt,
+				transitioned.Valid,
+			)
+		}
+	}
+
+	assertProtocolState(false, 1, sql.NullString{}, false)
+	_, err := database.Admin.Exec(`
+		SELECT vela_transition_scheduler_dispatch_protocol(false, '   ')
+	`)
+	var receiptError *pgconn.PgError
+	if !errors.As(err, &receiptError) || receiptError.Code != "22023" {
+		t.Fatalf("blank Scheduler rollback receipt error = %v", err)
+	}
+	assertProtocolState(false, 1, sql.NullString{}, false)
+
+	if _, err := database.Admin.Exec(`
+		SELECT vela_transition_scheduler_dispatch_protocol(
+			true,
+			'N-1 writers drained before Scheduler protocol enable'
+		)
+	`); err != nil {
+		t.Fatalf("enable Scheduler protocol: %v", err)
+	}
+	_, err = database.Admin.Exec(`
+		SELECT vela_transition_scheduler_dispatch_protocol(false, NULL)
+	`)
+	if !errors.As(err, &receiptError) || receiptError.Code != "22023" {
+		t.Fatalf("missing Scheduler rollback receipt error = %v", err)
+	}
+	assertProtocolState(
+		true,
+		2,
+		sql.NullString{String: "N-1 writers drained before Scheduler protocol enable", Valid: true},
+		true,
+	)
+
+	if _, err := database.Admin.Exec(`
+		SELECT vela_transition_scheduler_dispatch_protocol(
+			false,
+			'operator verified binary rollback before protocol disable'
+		)
+	`); err != nil {
+		t.Fatalf("disable Scheduler protocol with rollback receipt: %v", err)
+	}
+	assertProtocolState(
+		false,
+		3,
+		sql.NullString{String: "operator verified binary rollback before protocol disable", Valid: true},
+		true,
+	)
+	var (
+		enableRequired   bool
+		enableReceipt    string
+		enableTime       time.Time
+		rollbackRequired bool
+		rollbackReceipt  string
+		rollbackTime     time.Time
+	)
+	if err := database.Admin.QueryRow(`
+		SELECT require_dispatch_intent, transition_receipt, transitioned_at
+		FROM scheduler_dispatch_protocol_transitions
+		WHERE protocol_version = 2
+	`).Scan(&enableRequired, &enableReceipt, &enableTime); err != nil {
+		t.Fatalf("read Scheduler protocol enable history: %v", err)
+	}
+	if err := database.Admin.QueryRow(`
+		SELECT require_dispatch_intent, transition_receipt, transitioned_at
+		FROM scheduler_dispatch_protocol_transitions
+		WHERE protocol_version = 3
+	`).Scan(&rollbackRequired, &rollbackReceipt, &rollbackTime); err != nil {
+		t.Fatalf("read Scheduler protocol rollback history: %v", err)
+	}
+	if !enableRequired ||
+		enableReceipt != "N-1 writers drained before Scheduler protocol enable" ||
+		rollbackRequired ||
+		rollbackReceipt != "operator verified binary rollback before protocol disable" ||
+		rollbackTime.Before(enableTime) {
+		t.Fatalf(
+			"Scheduler protocol history = enable %t %q %s rollback %t %q %s",
+			enableRequired,
+			enableReceipt,
+			enableTime,
+			rollbackRequired,
+			rollbackReceipt,
+			rollbackTime,
+		)
+	}
+	for label, statement := range map[string]string{
+		"update":   "UPDATE scheduler_dispatch_protocol_transitions SET transition_receipt = 'rewritten'",
+		"delete":   "DELETE FROM scheduler_dispatch_protocol_transitions",
+		"truncate": "TRUNCATE scheduler_dispatch_protocol_transitions",
+	} {
+		_, mutationErr := database.Admin.Exec(statement)
+		var postgresError *pgconn.PgError
+		if !errors.As(mutationErr, &postgresError) ||
+			postgresError.Code != "55000" ||
+			postgresError.ConstraintName != "scheduler_dispatch_protocol_history_immutable" {
+			t.Fatalf("Scheduler protocol history %s error = %v", label, mutationErr)
+		}
+	}
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err = goose.DownTo(database.Admin, migrations, 7)
+	assertHierarchicalSchedulerMigrationRefused(t, database.Admin, err)
+}
+
+func TestHierarchicalSchedulerMigrationDownRefusesDurableEvidence(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	if _, err := database.Admin.Exec(`
+		INSERT INTO organization_capacity_shares (
+			worker_pool_id, organization_id, weight, running_limit
+		) VALUES (
+			'00000000-0000-0000-0000-000000000005', $1, 1, 1
+		)
+	`, testOrganizationID); err != nil {
+		t.Fatalf("seed durable Scheduler evidence: %v", err)
+	}
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err := goose.DownTo(database.Admin, migrations, 7)
+	assertHierarchicalSchedulerMigrationRefused(t, database.Admin, err)
+
+	var shares int
+	if err := database.Admin.QueryRow(
+		"SELECT count(*) FROM organization_capacity_shares",
+	).Scan(&shares); err != nil {
+		t.Fatalf("read preserved Scheduler evidence: %v", err)
+	}
+	if shares != 1 {
+		t.Fatalf("preserved Scheduler Capacity Shares = %d, want 1", shares)
+	}
+}
+
+func TestHierarchicalSchedulerMigrationDownRefusesCustomizedPolicy(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		update string
+	}{
+		{
+			name: "Worker pool policy",
+			update: `UPDATE worker_pools
+				SET scheduler_quantum_seconds = scheduler_quantum_seconds + 1`,
+		},
+		{
+			name: "Service Class policy",
+			update: `
+				INSERT INTO service_class_revisions (
+					id, stable_id, revision, state, queue_retry_allowance_seconds,
+					max_attempts, max_total_compute_multiplier_milli,
+					max_finalization_seconds_per_attempt, retry_backoff_policy,
+					retryable_failure_classes, circuit_breaker_policy, queue_weight,
+					max_queue_wait_before_protection_seconds, max_aging_credit_seconds,
+					max_expiry_urgency_credit_seconds, max_retry_risk_penalty_seconds
+				)
+				SELECT
+					'00000000-0000-0000-0000-000000000498', 'migration-policy-test', 1,
+					state, queue_retry_allowance_seconds, max_attempts,
+					max_total_compute_multiplier_milli,
+					max_finalization_seconds_per_attempt, retry_backoff_policy,
+					retryable_failure_classes, circuit_breaker_policy, queue_weight,
+					max_queue_wait_before_protection_seconds, max_aging_credit_seconds + 1,
+					max_expiry_urgency_credit_seconds, max_retry_risk_penalty_seconds
+				FROM service_class_revisions
+				WHERE id = '00000000-0000-0000-0000-000000000012'`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			database := newPostgres(t)
+			applyFoundation(t, database.Admin)
+			seedAdmissionFixture(t, database.Admin)
+			result, err := database.Admin.Exec(test.update)
+			if err != nil {
+				t.Fatalf("customize %s: %v", test.name, err)
+			}
+			if rows, rowsErr := result.RowsAffected(); rowsErr != nil || rows == 0 {
+				t.Fatalf("customize %s rows = %d error=%v", test.name, rows, rowsErr)
+			}
+			migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+			err = goose.DownTo(database.Admin, migrations, 7)
+			assertHierarchicalSchedulerMigrationRefused(t, database.Admin, err)
+		})
+	}
+}
+
+func TestHierarchicalSchedulerMigrationDownSerializesWithConcurrentClaim(t *testing.T) {
+	fixture := newAssignmentFixture(t, "migration-concurrent-scheduler-claim", 7)
+	poolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
+	if _, err := fixture.database.Admin.Exec(`
+		INSERT INTO organization_capacity_shares (
+			worker_pool_id, organization_id, weight, running_limit
+		) VALUES ($1, $2, 1, 1)
+	`, poolID, testOrganizationID); err != nil {
+		t.Fatalf("seed concurrent claim Organization Capacity Share: %v", err)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		INSERT INTO project_capacity_shares (
+			worker_pool_id, organization_id, project_id, weight
+		) VALUES ($1, $2, $3, 1)
+	`, poolID, testOrganizationID, testProjectID); err != nil {
+		t.Fatalf("seed concurrent claim Project Capacity Share: %v", err)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		INSERT INTO worker_profile_readiness (
+			worker_id, worker_epoch, execution_profile_revision_id, readiness
+		) VALUES ($1, 7, $2, 'WARM')
+	`, fixture.worker.ID, fixture.candidate.ExecutionProfileRevisionID); err != nil {
+		t.Fatalf("seed concurrent claim Worker readiness: %v", err)
+	}
+	const advisoryLockKey int64 = 580008
+	if _, err := fixture.database.Admin.Exec(`
+		CREATE FUNCTION vela_test_pause_scheduler_claim() RETURNS trigger
+		LANGUAGE plpgsql AS $$
+		BEGIN
+			PERFORM pg_advisory_xact_lock(580008);
+			RETURN NEW;
+		END
+		$$;
+		CREATE TRIGGER vela_test_pause_scheduler_claim
+		BEFORE INSERT ON scheduler_dispatch_intents
+		FOR EACH ROW EXECUTE FUNCTION vela_test_pause_scheduler_claim();
+	`); err != nil {
+		t.Fatalf("install concurrent Scheduler claim pause trigger: %v", err)
+	}
+	blocker, err := fixture.database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin Scheduler migration advisory-lock blocker: %v", err)
+	}
+	defer func() { _ = blocker.Rollback() }()
+	if _, err := blocker.Exec("SELECT pg_advisory_lock($1)", advisoryLockKey); err != nil {
+		t.Fatalf("acquire Scheduler migration advisory-lock blocker: %v", err)
+	}
+
+	schedulerPool := newRolePool(
+		t,
+		fixture.database.DSN,
+		"vela_scheduler_login",
+		"vela-scheduler-password",
+	)
+	type claimResult struct {
+		intentID uuid.UUID
+		err      error
+	}
+	claimResults := make(chan claimResult, 1)
+	go func() {
+		var intentID uuid.UUID
+		claimErr := schedulerPool.QueryRow(context.Background(), `
+			SELECT intent_id
+			FROM vela_claim_scheduler_dispatch($1, 'migration-concurrent-claim', 30)
+		`, poolID).Scan(&intentID)
+		claimResults <- claimResult{intentID: intentID, err: claimErr}
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "vela_scheduler_login")
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	downErrors := make(chan error, 1)
+	go func() {
+		downErrors <- goose.DownTo(fixture.database.Admin, migrations, 7)
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "postgres")
+	var unlocked bool
+	if err := blocker.QueryRow("SELECT pg_advisory_unlock($1)", advisoryLockKey).Scan(&unlocked); err != nil {
+		t.Fatalf("release Scheduler migration advisory-lock blocker: %v", err)
+	}
+	if !unlocked {
+		t.Fatal("Scheduler migration advisory-lock blocker was not held")
+	}
+	if err := blocker.Commit(); err != nil {
+		t.Fatalf("commit Scheduler migration advisory-lock blocker: %v", err)
+	}
+
+	var intentID uuid.UUID
+	select {
+	case claimed := <-claimResults:
+		if claimed.err != nil || claimed.intentID == uuid.Nil {
+			t.Fatalf("concurrent Scheduler claim = %s error=%v", claimed.intentID, claimed.err)
+		}
+		intentID = claimed.intentID
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent Scheduler claim did not finish")
+	}
+	select {
+	case err := <-downErrors:
+		assertHierarchicalSchedulerMigrationRefused(t, fixture.database.Admin, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent Hierarchical Scheduler migration Down did not finish")
+	}
+	var state string
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT state::text FROM scheduler_dispatch_intents WHERE id = $1
+	`, intentID).Scan(&state); err != nil {
+		t.Fatalf("read concurrent Scheduler claim evidence: %v", err)
+	}
+	if state != "CLAIMED" {
+		t.Fatalf("concurrent Scheduler claim state = %s, want CLAIMED", state)
+	}
+}
+
+func assertHierarchicalSchedulerMigrationRefused(t *testing.T, database *sql.DB, err error) {
+	t.Helper()
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
+		postgresError.ConstraintName != "hierarchical_scheduler_contract_requires_empty_evidence" {
+		t.Fatalf("Hierarchical Scheduler migration Down error = %v, want named fail-closed SQLSTATE 55000", err)
+	}
+	version, versionErr := goose.GetDBVersion(database)
+	if versionErr != nil || version != 8 {
+		t.Fatalf("migration version after refused Scheduler Down = %d error=%v", version, versionErr)
+	}
+	assertTableExists(t, database, "scheduler_dispatch_intents")
+}
+
 func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -367,7 +901,7 @@ func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	assertTableExists(t, database.Admin, "artifact_sets")
 	assertTableExists(t, database.Admin, "visible_completions")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 7 {
+	if err != nil || version != 8 {
 		t.Fatalf("migration version after empty Down/Up = %d error=%v", version, err)
 	}
 }

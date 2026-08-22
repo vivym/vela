@@ -12,6 +12,41 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveOrganizationAssignments = `-- name: CountActiveOrganizationAssignments :one
+SELECT count(*)::bigint
+FROM attempts
+WHERE worker_pool_id = $1
+  AND organization_id = $2
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
+`
+
+type CountActiveOrganizationAssignmentsParams struct {
+	WorkerPoolID   uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID uuid.UUID `db:"organization_id" json:"organization_id"`
+}
+
+func (q *Queries) CountActiveOrganizationAssignments(ctx context.Context, arg CountActiveOrganizationAssignmentsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveOrganizationAssignments, arg.WorkerPoolID, arg.OrganizationID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const countActiveRetryAssignments = `-- name: CountActiveRetryAssignments :one
+SELECT count(*)::bigint
+FROM attempts
+WHERE worker_pool_id = $1
+  AND attempt_number > 1
+  AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
+`
+
+func (q *Queries) CountActiveRetryAssignments(ctx context.Context, workerPoolID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveRetryAssignments, workerPoolID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const decrementPoolQueuedForAssignment = `-- name: DecrementPoolQueuedForAssignment :execrows
 UPDATE worker_pools
 SET queued_count = queued_count - 1
@@ -36,6 +71,7 @@ SELECT
     a.worker_id,
     a.worker_epoch,
     a.fence,
+    a.scheduler_dispatch_intent_id,
     l.signing_key_id,
     l.token_digest,
     l.issued_at,
@@ -69,6 +105,7 @@ type GetActiveWorkerAssignmentRow struct {
 	WorkerID                   uuid.UUID          `db:"worker_id" json:"worker_id"`
 	WorkerEpoch                int64              `db:"worker_epoch" json:"worker_epoch"`
 	Fence                      int64              `db:"fence" json:"fence"`
+	SchedulerDispatchIntentID  uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
 	SigningKeyID               string             `db:"signing_key_id" json:"signing_key_id"`
 	TokenDigest                []byte             `db:"token_digest" json:"token_digest"`
 	IssuedAt                   pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
@@ -87,6 +124,7 @@ func (q *Queries) GetActiveWorkerAssignment(ctx context.Context, arg GetActiveWo
 		&i.WorkerID,
 		&i.WorkerEpoch,
 		&i.Fence,
+		&i.SchedulerDispatchIntentID,
 		&i.SigningKeyID,
 		&i.TokenDigest,
 		&i.IssuedAt,
@@ -198,6 +236,7 @@ INSERT INTO attempts (
     worker_pool_id,
     worker_id,
     worker_epoch,
+    scheduler_dispatch_intent_id,
     state,
     fence,
     assigned_at
@@ -211,9 +250,10 @@ INSERT INTO attempts (
     $7,
     $8,
     $9,
-    'ASSIGNED',
     $10,
-    $11
+    'ASSIGNED',
+    $11,
+    $12
 )
 `
 
@@ -227,6 +267,7 @@ type InsertAttemptParams struct {
 	WorkerPoolID               uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
 	WorkerID                   uuid.UUID          `db:"worker_id" json:"worker_id"`
 	WorkerEpoch                int64              `db:"worker_epoch" json:"worker_epoch"`
+	SchedulerDispatchIntentID  uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
 	Fence                      int64              `db:"fence" json:"fence"`
 	AssignedAt                 pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
 }
@@ -242,6 +283,7 @@ func (q *Queries) InsertAttempt(ctx context.Context, arg InsertAttemptParams) er
 		arg.WorkerPoolID,
 		arg.WorkerID,
 		arg.WorkerEpoch,
+		arg.SchedulerDispatchIntentID,
 		arg.Fence,
 		arg.AssignedAt,
 	)
@@ -354,6 +396,7 @@ SELECT
     j.version,
     j.model_revision_id,
     j.generation_preset_revision_id,
+	j.service_class_revision_id,
     scr.state AS service_class_revision_state,
     j.output_spec_id,
     j.worker_pool_id,
@@ -385,6 +428,7 @@ type LockJobForAssignmentRow struct {
 	Version                         int64                  `db:"version" json:"version"`
 	ModelRevisionID                 uuid.UUID              `db:"model_revision_id" json:"model_revision_id"`
 	GenerationPresetRevisionID      uuid.UUID              `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	ServiceClassRevisionID          uuid.UUID              `db:"service_class_revision_id" json:"service_class_revision_id"`
 	ServiceClassRevisionState       CatalogState           `db:"service_class_revision_state" json:"service_class_revision_state"`
 	OutputSpecID                    uuid.UUID              `db:"output_spec_id" json:"output_spec_id"`
 	WorkerPoolID                    uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
@@ -411,6 +455,7 @@ func (q *Queries) LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (Lo
 		&i.Version,
 		&i.ModelRevisionID,
 		&i.GenerationPresetRevisionID,
+		&i.ServiceClassRevisionID,
 		&i.ServiceClassRevisionState,
 		&i.OutputSpecID,
 		&i.WorkerPoolID,
@@ -426,6 +471,26 @@ func (q *Queries) LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (Lo
 		&i.RetryRuntimeVersion,
 	)
 	return i, err
+}
+
+const lockOrganizationCapacityForAssignment = `-- name: LockOrganizationCapacityForAssignment :one
+SELECT capacity.running_limit
+FROM organization_capacity_shares AS capacity
+WHERE capacity.worker_pool_id = $1
+  AND capacity.organization_id = $2
+FOR UPDATE
+`
+
+type LockOrganizationCapacityForAssignmentParams struct {
+	WorkerPoolID   uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID uuid.UUID `db:"organization_id" json:"organization_id"`
+}
+
+func (q *Queries) LockOrganizationCapacityForAssignment(ctx context.Context, arg LockOrganizationCapacityForAssignmentParams) (int32, error) {
+	row := q.db.QueryRow(ctx, lockOrganizationCapacityForAssignment, arg.WorkerPoolID, arg.OrganizationID)
+	var running_limit int32
+	err := row.Scan(&running_limit)
+	return running_limit, err
 }
 
 const lockProjectForAssignment = `-- name: LockProjectForAssignment :one
@@ -456,6 +521,77 @@ func (q *Queries) LockProjectForAssignment(ctx context.Context, arg LockProjectF
 		&i.RetryWaitCount,
 		&i.RunningCount,
 		&i.RunningLimit,
+	)
+	return i, err
+}
+
+const lockRetryCapacityForAssignment = `-- name: LockRetryCapacityForAssignment :one
+SELECT pool.retry_running_limit
+FROM worker_pools AS pool
+WHERE pool.id = $1
+FOR UPDATE
+`
+
+func (q *Queries) LockRetryCapacityForAssignment(ctx context.Context, workerPoolID uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, lockRetryCapacityForAssignment, workerPoolID)
+	var retry_running_limit int32
+	err := row.Scan(&retry_running_limit)
+	return retry_running_limit, err
+}
+
+const lockSchedulerDispatchForAssignment = `-- name: LockSchedulerDispatchForAssignment :one
+SELECT
+    id,
+    worker_pool_id,
+    organization_id,
+	service_class_revision_id,
+    project_id,
+    job_id,
+    expected_job_version,
+    execution_profile_revision_id,
+    worker_id,
+    worker_epoch,
+    lane,
+    state,
+    claim_expires_at
+FROM scheduler_dispatch_intents
+WHERE id = $1
+FOR UPDATE
+`
+
+type LockSchedulerDispatchForAssignmentRow struct {
+	ID                         uuid.UUID              `db:"id" json:"id"`
+	WorkerPoolID               uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ServiceClassRevisionID     uuid.UUID              `db:"service_class_revision_id" json:"service_class_revision_id"`
+	ProjectID                  uuid.UUID              `db:"project_id" json:"project_id"`
+	JobID                      uuid.UUID              `db:"job_id" json:"job_id"`
+	ExpectedJobVersion         int64                  `db:"expected_job_version" json:"expected_job_version"`
+	ExecutionProfileRevisionID uuid.UUID              `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	WorkerID                   uuid.UUID              `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                int64                  `db:"worker_epoch" json:"worker_epoch"`
+	Lane                       SchedulerLane          `db:"lane" json:"lane"`
+	State                      SchedulerDispatchState `db:"state" json:"state"`
+	ClaimExpiresAt             pgtype.Timestamptz     `db:"claim_expires_at" json:"claim_expires_at"`
+}
+
+func (q *Queries) LockSchedulerDispatchForAssignment(ctx context.Context, intentID uuid.UUID) (LockSchedulerDispatchForAssignmentRow, error) {
+	row := q.db.QueryRow(ctx, lockSchedulerDispatchForAssignment, intentID)
+	var i LockSchedulerDispatchForAssignmentRow
+	err := row.Scan(
+		&i.ID,
+		&i.WorkerPoolID,
+		&i.OrganizationID,
+		&i.ServiceClassRevisionID,
+		&i.ProjectID,
+		&i.JobID,
+		&i.ExpectedJobVersion,
+		&i.ExecutionProfileRevisionID,
+		&i.WorkerID,
+		&i.WorkerEpoch,
+		&i.Lane,
+		&i.State,
+		&i.ClaimExpiresAt,
 	)
 	return i, err
 }
@@ -617,4 +753,28 @@ func (q *Queries) ValidateProfileForAssignment(ctx context.Context, arg Validate
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const validateScheduledWorkerProfile = `-- name: ValidateScheduledWorkerProfile :one
+SELECT readiness.worker_id
+FROM worker_profile_readiness AS readiness
+WHERE readiness.worker_id = $1
+  AND readiness.worker_epoch = $2
+  AND readiness.execution_profile_revision_id = $3
+  AND readiness.readiness IN ('WARM', 'PREWARM_ALLOWED')
+LIMIT 1
+FOR SHARE
+`
+
+type ValidateScheduledWorkerProfileParams struct {
+	WorkerID                   uuid.UUID `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                int64     `db:"worker_epoch" json:"worker_epoch"`
+	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+}
+
+func (q *Queries) ValidateScheduledWorkerProfile(ctx context.Context, arg ValidateScheduledWorkerProfileParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, validateScheduledWorkerProfile, arg.WorkerID, arg.WorkerEpoch, arg.ExecutionProfileRevisionID)
+	var worker_id uuid.UUID
+	err := row.Scan(&worker_id)
+	return worker_id, err
 }

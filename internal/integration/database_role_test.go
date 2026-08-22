@@ -21,6 +21,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	artifactPool := newRolePool(
 		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
 	)
+	schedulerPool := newRolePool(t, database.DSN, "vela_scheduler_login", "vela-scheduler-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 
 	for _, test := range []struct {
@@ -32,6 +33,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
+		{name: "Scheduler", pool: schedulerPool, role: veladb.RoleScheduler},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -65,6 +67,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request as Artifact request", pool: requestPool, role: veladb.RoleArtifactRequest},
 		{name: "Artifact request as request", pool: artifactPool, role: veladb.RoleRequest},
 		{name: "internal as Artifact request", pool: internalPool, role: veladb.RoleArtifactRequest},
+		{name: "Scheduler as request", pool: schedulerPool, role: veladb.RoleRequest},
+		{name: "Scheduler as internal", pool: schedulerPool, role: veladb.RoleInternal},
+		{name: "internal as Scheduler", pool: internalPool, role: veladb.RoleScheduler},
+		{name: "request as Scheduler", pool: requestPool, role: veladb.RoleScheduler},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if err := veladb.VerifyRole(context.Background(), test.pool, test.role); err == nil {
@@ -131,6 +137,54 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		t.Fatalf("revoke unexpected Artifact staging privilege: %v", err)
 	}
 
+	if _, err := database.Admin.Exec("GRANT SELECT ON jobs TO vela_scheduler_login"); err != nil {
+		t.Fatalf("grant unexpected Scheduler table privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(context.Background(), schedulerPool, veladb.RoleScheduler); err == nil {
+		t.Fatal("Scheduler login with direct Job access was accepted")
+	}
+	if _, err := database.Admin.Exec("REVOKE SELECT ON jobs FROM vela_scheduler_login"); err != nil {
+		t.Fatalf("revoke unexpected Scheduler table privilege: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		GRANT EXECUTE ON FUNCTION vela_transition_scheduler_dispatch_protocol(boolean, text)
+		TO vela_scheduler_login
+	`); err != nil {
+		t.Fatalf("grant unexpected Scheduler protocol-transition privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(context.Background(), schedulerPool, veladb.RoleScheduler); err == nil {
+		t.Fatal("Scheduler login with protocol-transition privilege was accepted")
+	}
+	if _, err := internalPool.Exec(context.Background(), `
+		SELECT require_dispatch_intent
+		FROM scheduler_dispatch_protocol_state
+		WHERE singleton
+	`); !isPermissionDenied(err) {
+		t.Fatalf("internal runtime Scheduler protocol read error = %v, want permission denied", err)
+	}
+	if _, err := internalPool.Exec(context.Background(), `
+		SELECT protocol_version
+		FROM scheduler_dispatch_protocol_transitions
+		LIMIT 1
+	`); !isPermissionDenied(err) {
+		t.Fatalf("internal runtime Scheduler protocol history read error = %v, want permission denied", err)
+	}
+	if _, err := internalPool.Exec(context.Background(), `
+		UPDATE scheduler_dispatch_protocol_state
+		SET require_dispatch_intent = false
+		WHERE singleton
+	`); !isPermissionDenied(err) {
+		t.Fatalf("internal runtime direct Scheduler protocol update error = %v, want permission denied", err)
+	}
+	if _, err := internalPool.Exec(context.Background(), `
+		SELECT vela_transition_scheduler_dispatch_protocol(
+			true,
+			'internal runtime must not own the operator switch'
+		)
+	`); !isPermissionDenied(err) {
+		t.Fatalf("internal runtime Scheduler protocol transition error = %v, want permission denied", err)
+	}
+
 	if _, err := database.Admin.Exec(`
 		GRANT USAGE ON SCHEMA vela_private TO vela_request_login;
 		GRANT SELECT ON vela_private.request_contexts TO vela_request_login;
@@ -180,6 +234,60 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		name string
 		pool *pgxpool.Pool
 	}{
+		{name: "Scheduler", pool: schedulerPool},
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
+	} {
+		for _, relation := range []string{
+			"organization_capacity_shares",
+			"project_capacity_shares",
+			"worker_profile_readiness",
+			"job_runtime_predictions",
+			"scheduler_organization_deficits",
+			"scheduler_service_class_deficits",
+			"scheduler_project_deficits",
+			"scheduler_dispatch_intents",
+			"scheduler_dispatch_protocol_state",
+			"scheduler_dispatch_protocol_transitions",
+		} {
+			var count int64
+			err := pool.pool.QueryRow(
+				context.Background(), "SELECT count(*) FROM "+relation,
+			).Scan(&count)
+			var permissionError *pgconn.PgError
+			if !errors.As(err, &permissionError) || permissionError.Code != "42501" {
+				t.Fatalf(
+					"%s direct %s read error = %v, want SQLSTATE 42501",
+					pool.name,
+					relation,
+					err,
+				)
+			}
+		}
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
+	} {
+		_, err := pool.pool.Exec(context.Background(), "SELECT * FROM vela_list_schedulable_worker_pools()")
+		var permissionError *pgconn.PgError
+		if !errors.As(err, &permissionError) || permissionError.Code != "42501" {
+			t.Fatalf("%s Scheduler discovery error = %v, want SQLSTATE 42501", pool.name, err)
+		}
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
 		{name: "Artifact request", pool: artifactPool},
@@ -201,4 +309,9 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			t.Fatalf("%s cancellation function error = %v, want SQLSTATE 42501", pool.name, err)
 		}
 	}
+}
+
+func isPermissionDenied(err error) bool {
+	var permissionError *pgconn.PgError
+	return errors.As(err, &permissionError) && permissionError.Code == "42501"
 }

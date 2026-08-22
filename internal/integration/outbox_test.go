@@ -39,7 +39,7 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewService(requestPool),
+		Admission:     admission.NewLegacyService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
 	})

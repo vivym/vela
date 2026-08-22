@@ -2421,7 +2421,7 @@ func TestProjectArtifactHTTPReturnsCommittedExactVersionsWithShortLivedURLs(t *t
 	)
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewService(requestPool),
+		Admission:     admission.NewLegacyService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     artifactaccess.NewService(artifactPool, signer),
 	})
@@ -2518,7 +2518,7 @@ func TestArtifactHTTPHidesStagingRevokedAndExpiredContent(t *testing.T) {
 			newRolePool(t, fixture.database.DSN, "vela_auth_login", "vela-auth-password"),
 			testCredentialPepper,
 		),
-		Admission: admission.NewService(
+		Admission: admission.NewLegacyService(
 			newRolePool(t, fixture.database.DSN, "vela_request_login", "vela-request-password"),
 		),
 		Cancellation: cancellation.NewService(

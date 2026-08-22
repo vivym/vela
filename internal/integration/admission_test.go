@@ -33,6 +33,7 @@ import (
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/scheduler"
 )
 
 const (
@@ -425,6 +426,151 @@ func TestAdmissionRejectionsHaveNoDurableEffects(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAdmissionPredictionRejectsExcessQueueWaitWithoutDurableEffects(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	predictor := &capacityPredictorStub{wait: 7201 * time.Second}
+
+	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
+	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	artifactPool := newRolePool(
+		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
+	)
+	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
+	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+	handler, err := httpapi.NewHandler(httpapi.Config{
+		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
+		Admission:     admission.NewService(requestPool, predictor),
+		Cancellation:  cancellation.NewService(cancelPool, internalPool),
+		Artifacts:     testArtifactAccessService(artifactPool),
+	})
+	if err != nil {
+		t.Fatalf("create predicted Admission HTTP handler: %v", err)
+	}
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	requestBody := []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"prediction rejection must be side-effect free"
+	}`)
+	result := submitJob(t, server.URL, "predicted-capacity-rejection", requestBody)
+	if result.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("predicted Admission status = %d, want 503; body=%s", result.StatusCode, result.Body)
+	}
+	var responseError struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(result.Body, &responseError); err != nil {
+		t.Fatalf("decode predicted Admission rejection: %v", err)
+	}
+	if responseError.Code != "capacity_unavailable" || result.Header.Get("Retry-After") == "" {
+		t.Fatalf(
+			"predicted Admission response code=%q Retry-After=%q",
+			responseError.Code,
+			result.Header.Get("Retry-After"),
+		)
+	}
+	if predictor.calls != 1 {
+		t.Fatalf("capacity predictor calls = %d, want 1", predictor.calls)
+	}
+	assertNoAdmissionEffects(t, database.Admin)
+
+	predictor.wait = 0
+	accepted := submitJob(t, server.URL, "predicted-capacity-rejection", requestBody)
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("recovered predicted Admission status = %d, want 202; body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var acceptedJob jobResponse
+	if err := json.Unmarshal(accepted.Body, &acceptedJob); err != nil {
+		t.Fatalf("decode recovered predicted Admission: %v", err)
+	}
+	if predictor.calls != 2 {
+		t.Fatalf("capacity predictor calls after recovery = %d, want 2", predictor.calls)
+	}
+
+	predictor.wait = 7201 * time.Second
+	replayed := submitJob(t, server.URL, "predicted-capacity-rejection", requestBody)
+	if replayed.StatusCode != http.StatusAccepted {
+		t.Fatalf("idempotent predicted Admission replay status = %d, want 202; body=%s", replayed.StatusCode, replayed.Body)
+	}
+	var replayedJob jobResponse
+	if err := json.Unmarshal(replayed.Body, &replayedJob); err != nil {
+		t.Fatalf("decode idempotent predicted Admission replay: %v", err)
+	}
+	if replayedJob.JobID != acceptedJob.JobID || predictor.calls != 2 {
+		t.Fatalf(
+			"idempotent predicted Admission replay Job=%s calls=%d, want Job=%s calls=2",
+			replayedJob.JobID,
+			predictor.calls,
+			acceptedJob.JobID,
+		)
+	}
+}
+
+func TestAdmissionProductionConstructorRequiresCapacityPredictor(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+
+	_, err := admission.NewService(requestPool, nil).Submit(
+		context.Background(),
+		identity.Principal{},
+		uuid.Nil,
+		"missing-capacity-predictor",
+		admission.Request{},
+	)
+	if err == nil || err.Error() != "admission capacity predictor is not configured" {
+		t.Fatalf("missing production Capacity Predictor error = %v", err)
+	}
+	assertNoAdmissionEffects(t, database.Admin)
+}
+
+type capacityPredictorStub struct {
+	wait      time.Duration
+	finishAt  time.Time
+	err       error
+	jobFinish time.Time
+	jobErr    error
+	calls     int
+	jobCalls  int
+}
+
+func (predictor *capacityPredictorStub) PredictCapacity(
+	_ context.Context,
+	_ admission.CapacityPredictionRequest,
+) (admission.CapacityPrediction, error) {
+	predictor.calls++
+	finishAt := predictor.finishAt
+	if finishAt.IsZero() {
+		finishAt = time.Now().UTC().Add(predictor.wait + 20*time.Minute)
+	}
+	return admission.CapacityPrediction{
+		QueueWait:         predictor.wait,
+		EstimatedFinishAt: finishAt,
+	}, predictor.err
+}
+
+func (predictor *capacityPredictorStub) PredictJobDynamicETA(
+	_ context.Context,
+	_ uuid.UUID,
+) (time.Time, error) {
+	predictor.jobCalls++
+	if predictor.jobErr != nil {
+		return time.Time{}, predictor.jobErr
+	}
+	if predictor.jobFinish.IsZero() {
+		return time.Time{}, pgx.ErrNoRows
+	}
+	return predictor.jobFinish, nil
 }
 
 func TestOpenAPIValidationReturnsContractErrorJSON(t *testing.T) {
@@ -875,7 +1021,7 @@ func TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys(t *testing.
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewService(requestPool),
+		Admission:     admission.NewLegacyService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
 	})
@@ -1265,7 +1411,7 @@ func TestScopeRemovalAfterAuthenticationFailsClosedAtRequestTransaction(t *testi
 		t.Fatalf("remove jobs:submit scope: %v", err)
 	}
 
-	_, err = admission.NewService(requestPool).Submit(
+	_, err = admission.NewLegacyService(requestPool).Submit(
 		context.Background(),
 		principal,
 		uuid.MustParse(testProjectID),
@@ -1451,7 +1597,7 @@ func TestCredentialLookupScopeAndRevocationFailClosed(t *testing.T) {
 
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewService(requestPool),
+		Admission:     admission.NewLegacyService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
 	})
@@ -1527,6 +1673,26 @@ func newAdmissionServer(t *testing.T) (*httptest.Server, *sql.DB) {
 }
 
 func admissionServerForDatabase(t *testing.T, database testDatabase) *httptest.Server {
+	return admissionServerForDatabaseWithPredictor(t, database, nil)
+}
+
+func schedulerAdmissionServerForDatabase(t *testing.T, database testDatabase) *httptest.Server {
+	t.Helper()
+	schedulerPool := newRolePool(
+		t, database.DSN, "vela_scheduler_login", "vela-scheduler-password",
+	)
+	predictor, err := scheduler.NewCapacityPredictor(schedulerPool)
+	if err != nil {
+		t.Fatalf("create Scheduler-aware Admission predictor: %v", err)
+	}
+	return admissionServerForDatabaseWithPredictor(t, database, predictor)
+}
+
+func admissionServerForDatabaseWithPredictor(
+	t *testing.T,
+	database testDatabase,
+	predictor admission.CapacityPredictor,
+) *httptest.Server {
 	t.Helper()
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
@@ -1535,9 +1701,13 @@ func admissionServerForDatabase(t *testing.T, database testDatabase) *httptest.S
 	)
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+	admissionService := admission.NewLegacyService(requestPool)
+	if predictor != nil {
+		admissionService = admission.NewService(requestPool, predictor)
+	}
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewService(requestPool),
+		Admission:     admissionService,
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
 	})
@@ -1675,8 +1845,9 @@ func applyFoundation(t *testing.T, db *sql.DB) {
         CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
 		CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
-		CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
-		CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
+			CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
+			CREATE ROLE vela_scheduler_login LOGIN PASSWORD 'vela-scheduler-password' IN ROLE vela_scheduler;
+			CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
     `); err != nil {
 		t.Fatalf("create application login roles: %v", err)
 	}

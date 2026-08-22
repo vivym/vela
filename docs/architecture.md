@@ -428,7 +428,7 @@ PostgreSQL 是以下数据的权威事实源：
 - Contract Credit Limit、CreditReservation、PricingSnapshot、ExecutionPolicySnapshot、UsageRecord、Charge、Invoice export receipt 和 settlement / credit-adjustment reference。
 - WebhookSubscription、WebhookDelivery、Outbox 事件、Retention / deletion 和恢复审计记录。
 
-首发使用数据库行锁和 `SELECT ... FOR UPDATE SKIP LOCKED` 实现 Job claim。每个业务 row 显式带 `organization_id`；Project-owned row 同时带 `project_id`，composite foreign key 禁止跨 Organization 关联。客户请求使用受限数据库 role、transaction-local identity context 和 `FORCE ROW LEVEL SECURITY`，Scheduler / Reconciler 使用独立内部 role 和连接池，客户请求路径不得借用该 privileged pool。
+首发 Scheduler Job claim 使用按 Worker pool scoped 的 PostgreSQL advisory transaction lock 串行化短暂的公平性决策，并从一个有硬上限的 point-in-time candidate snapshot 创建 durable dispatch intent；partial unique index 禁止同一 Job 或 Worker 同时存在多个 live claim。Scheduler 不把该锁延伸到 Assignment，`Acquire` 在独立事务中锁定并重新检查 dispatch intent、Job、Worker epoch、认证、额度和重试 authority。每个业务 row 显式带 `organization_id`；Project-owned row 同时带 `project_id`，composite foreign key 禁止跨 Organization 关联。客户请求使用受限数据库 role、transaction-local identity context 和 `FORCE ROW LEVEL SECURITY`，Scheduler / Reconciler 使用独立内部 role 和连接池，客户请求路径不得借用该 privileged pool。
 
 控制面所有 Lease expiry、Job Expiry 和重试时间比较以 PostgreSQL 时间为准，不能依赖各 Pod 的 wall clock。Worker 只使用服务端返回的 `lease_valid_for` 和本地 monotonic clock 做保守的 fail-closed 倒计时，不能自行延长 Lease。CloudNativePG 在三个 Control/Storage Node 上使用同步提交、跨节点副本、自动 failover、PITR 和集群外 WAL 归档；数据库不可用时系统停止 Admission 和新 Assignment。
 
@@ -602,12 +602,12 @@ H3 首发不向 BUSY Worker 预派任务，也不维护 per-Worker queue。选�
 ```text
 job_order_score =
     predicted_runtime_seconds
-  + retry_risk_penalty
+  + bounded_retry_risk_penalty
   - bounded_expiry_urgency_credit
   - bounded_aging_credit
 ```
 
-`job_order_score` 越小越先运行。各 credit 必须有上限；Job Expiry 越近，`bounded_expiry_urgency_credit` 越大，避免把高风险 Job 反向排到后面。Organization / Project 公平性在前置层级执行，不依赖把所有因素压进一个全局分数。
+`job_order_score` 越小越先运行。`bounded_retry_risk_penalty` 是带 source revision 的 per-Job 调度预测，并受 ServiceClassRevision 的不可变上限约束；缺失预测时为 0。各 credit 必须有上限；Job Expiry 越近，`bounded_expiry_urgency_credit` 越大，避免把高风险 Job 反向排到后面。Organization / Project 公平性在前置层级执行，不依赖把所有因素压进一个全局分数。
 
 为保证 aging 真正防止饥饿，等待超过 `max_queue_wait_before_protection` 的 Job 进入 Protected Lane 并按 Job Expiry / FIFO 排序，不再与持续到来的短 Job 竞争上述分数；Protected Lane 仍受 Organization / Project 并发配额约束。Retry 保留原 Job 等待年龄，但进入有独立并发上限的 retry lane，防止 retry storm。
 
@@ -1062,6 +1062,8 @@ Fleet Controller 只有在 Job Coordinator 确认 Worker 已 DRAINING、Lease �
 ### 17.1 Scheduler 高可用
 
 可以运行多个 Scheduler replica，但 Assignment 必须通过数据库事务竞争。Scheduler 进程本身不持有不可恢复内存状态。
+
+一个 Worker pool 的 claim、counter drift 或 Assignment 错误只结束该 pool 当前调度 tick，并携带 pool identity 返回告警；它不能阻止同一 cycle 中其他健康 pool 继续调度。共享 context 被取消或超时才停止整个 cycle。
 
 Scheduler 崩溃后：
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/scheduler"
 )
 
 func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
@@ -22,6 +23,8 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "workload credentials", missingEnv: "VELA_NATS_CREDENTIALS_FILE"},
 		{name: "root CA", missingEnv: "VELA_NATS_ROOT_CA_FILE"},
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
+		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
+		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
 		{name: "Artifact S3 endpoint", missingEnv: "VELA_ARTIFACT_S3_ENDPOINT"},
 		{name: "Artifact S3 region", missingEnv: "VELA_ARTIFACT_S3_REGION"},
 		{name: "Artifact S3 bucket", missingEnv: "VELA_ARTIFACT_S3_BUCKET"},
@@ -60,6 +63,8 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")
 	t.Setenv("VELA_CANCEL_DATABASE_URL", "postgres://cancel.example/vela")
 	t.Setenv("VELA_INTERNAL_DATABASE_URL", "postgres://internal.example/vela")
+	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
+	t.Setenv("VELA_SCHEDULER_ID", "vela-control-scheduler-1")
 	t.Setenv("VELA_NATS_URL", "nats://nats.example:4222")
 	t.Setenv("VELA_NATS_CREDENTIALS_FILE", "/run/secrets/vela-control.creds")
 	t.Setenv("VELA_NATS_ROOT_CA_FILE", "/run/secrets/nats-root-ca.pem")
@@ -91,6 +96,66 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_NATS_CLIENT_CERT_FILE", "")
 	t.Setenv("VELA_NATS_CLIENT_KEY_FILE", "")
 	t.Setenv("VELA_OUTBOX_BATCH_SIZE", "")
+	t.Setenv("VELA_SCHEDULER_TICK", "")
+	t.Setenv("VELA_SCHEDULER_CLAIM_TTL", "")
+	t.Setenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS", "")
+}
+
+func TestLoadConfigParsesBoundedSchedulerControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load default Scheduler config: %v", err)
+	}
+	if configuration.schedulerTick != 500*time.Millisecond ||
+		configuration.schedulerClaimTTL != 30*time.Second ||
+		configuration.schedulerCandidateAttempts != 5 {
+		t.Fatalf(
+			"default Scheduler controls = tick %s claim TTL %s attempts %d",
+			configuration.schedulerTick,
+			configuration.schedulerClaimTTL,
+			configuration.schedulerCandidateAttempts,
+		)
+	}
+
+	t.Setenv("VELA_SCHEDULER_TICK", "125ms")
+	t.Setenv("VELA_SCHEDULER_CLAIM_TTL", "45s")
+	t.Setenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS", "7")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit Scheduler config: %v", err)
+	}
+	if configuration.schedulerTick != 125*time.Millisecond ||
+		configuration.schedulerClaimTTL != 45*time.Second ||
+		configuration.schedulerCandidateAttempts != 7 {
+		t.Fatalf(
+			"explicit Scheduler controls = tick %s claim TTL %s attempts %d",
+			configuration.schedulerTick,
+			configuration.schedulerClaimTTL,
+			configuration.schedulerCandidateAttempts,
+		)
+	}
+
+	for _, test := range []struct {
+		name  string
+		env   string
+		value string
+	}{
+		{name: "zero tick", env: "VELA_SCHEDULER_TICK", value: "0s"},
+		{name: "oversized tick", env: "VELA_SCHEDULER_TICK", value: "1m1s"},
+		{name: "invalid claim TTL", env: "VELA_SCHEDULER_CLAIM_TTL", value: "invalid"},
+		{name: "oversized claim TTL", env: "VELA_SCHEDULER_CLAIM_TTL", value: "5m1s"},
+		{name: "zero attempts", env: "VELA_SCHEDULER_CANDIDATE_ATTEMPTS", value: "0"},
+		{name: "too many attempts", env: "VELA_SCHEDULER_CANDIDATE_ATTEMPTS", value: "21"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil || !strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
 }
 
 func TestReadLeaseKeyringRequiresOneStrictStrongKeyMap(t *testing.T) {
@@ -147,6 +212,58 @@ func TestCancellationStopReconcilerRetriesAndStopsWithContext(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("cancellation stop reconciler did not stop with context")
 	}
+}
+
+func TestSchedulerRetriesTransientFailureAndStopsWithContext(t *testing.T) {
+	scheduling := &testHierarchicalScheduler{
+		calls:      make(chan struct{}, 2),
+		reconciles: make(chan struct{}, 2),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runScheduler(ctx, scheduling, time.Millisecond)
+	}()
+
+	for range 2 {
+		select {
+		case <-scheduling.reconciles:
+		case <-time.After(time.Second):
+			t.Fatal("Scheduler did not reconcile expired claims")
+		}
+		select {
+		case <-scheduling.calls:
+		case <-time.After(time.Second):
+			t.Fatal("Scheduler did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Scheduler did not stop with context")
+	}
+}
+
+type testHierarchicalScheduler struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+	reconciles  chan struct{}
+}
+
+func (s *testHierarchicalScheduler) ReconcileExpired(context.Context) (int64, error) {
+	s.reconciles <- struct{}{}
+	return 1, nil
+}
+
+func (s *testHierarchicalScheduler) RunCycle(context.Context) ([]scheduler.Dispatch, error) {
+	invocation := s.invocations.Add(1)
+	s.calls <- struct{}{}
+	if invocation == 1 {
+		return nil, errors.New("transient Scheduler failure")
+	}
+	return nil, nil
 }
 
 type testCancellationStopReconciler struct {

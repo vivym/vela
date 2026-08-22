@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -16,69 +17,80 @@ const (
 	RoleInternal        Role = "vela_internal"
 	RoleCancel          Role = "vela_cancel"
 	RoleArtifactRequest Role = "vela_artifact_request"
+	RoleScheduler       Role = "vela_scheduler"
 )
 
 type rowQuerier interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
+type roleDescriptor struct {
+	requiresBypassRLS bool
+	verifyPrivileges  func(context.Context, rowQuerier, string) error
+}
+
+var roleDescriptors = map[Role]roleDescriptor{
+	RoleAuth:            {verifyPrivileges: verifyAuthPrivileges},
+	RoleRequest:         {verifyPrivileges: verifyRequestPrivileges},
+	RoleInternal:        {requiresBypassRLS: true},
+	RoleCancel:          {verifyPrivileges: verifyCancelPrivileges},
+	RoleArtifactRequest: {verifyPrivileges: verifyArtifactRequestPrivileges},
+	RoleScheduler:       {verifyPrivileges: verifySchedulerPrivileges},
+}
+
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 	if database == nil {
 		return errors.New("database connection is required for role verification")
 	}
-	if expected != RoleAuth && expected != RoleRequest && expected != RoleInternal &&
-		expected != RoleCancel && expected != RoleArtifactRequest {
+	descriptor, supported := roleDescriptors[expected]
+	if !supported {
 		return fmt.Errorf("unsupported database role %q", expected)
 	}
 
 	var (
-		currentUser           string
-		superuser             bool
-		createDatabase        bool
-		createRole            bool
-		replication           bool
-		bypassRLS             bool
-		memberAuth            bool
-		memberRequest         bool
-		memberInternal        bool
-		memberCancel          bool
-		memberArtifactRequest bool
-		unexpectedMembership  bool
+		currentUser          string
+		superuser            bool
+		createDatabase       bool
+		createRole           bool
+		replication          bool
+		bypassRLS            bool
+		membershipJSON       string
+		unexpectedMembership bool
 	)
+	roleNames := make([]string, 0, len(roleDescriptors))
+	for role := range roleDescriptors {
+		roleNames = append(roleNames, string(role))
+	}
 	err := database.QueryRow(ctx, `
-        SELECT
+	        SELECT
             current_user,
             role.rolsuper,
             role.rolcreatedb,
             role.rolcreaterole,
             role.rolreplication,
             role.rolbypassrls,
-            pg_has_role(current_user, 'vela_auth', 'MEMBER'),
-            pg_has_role(current_user, 'vela_request', 'MEMBER'),
-			pg_has_role(current_user, 'vela_internal', 'MEMBER'),
-			pg_has_role(current_user, 'vela_cancel', 'MEMBER'),
-			pg_has_role(current_user, 'vela_artifact_request', 'MEMBER'),
-            EXISTS (
-                SELECT 1
-                FROM pg_catalog.pg_roles AS inherited
-                WHERE inherited.rolname <> current_user
-                  AND inherited.rolname <> $1
-                  AND pg_has_role(current_user, inherited.oid, 'SET')
+			COALESCE((
+				SELECT jsonb_agg(candidate.role_name ORDER BY candidate.role_name)::text
+				FROM unnest($1::text[]) AS candidate(role_name)
+				WHERE pg_has_role(current_user, candidate.role_name, 'MEMBER')
+			), '[]'),
+	            EXISTS (
+	                SELECT 1
+	                FROM pg_catalog.pg_roles AS inherited
+	                WHERE inherited.rolname <> current_user
+	                  AND inherited.rolname <> ALL($1::text[])
+	                  AND pg_has_role(current_user, inherited.oid, 'SET')
             )
         FROM pg_catalog.pg_roles AS role
         WHERE role.rolname = current_user
-    `, string(expected)).Scan(
+	    `, roleNames).Scan(
 		&currentUser,
 		&superuser,
 		&createDatabase,
 		&createRole,
 		&replication,
 		&bypassRLS,
-		&memberAuth,
-		&memberRequest,
-		&memberInternal,
-		&memberCancel,
-		&memberArtifactRequest,
+		&membershipJSON,
 		&unexpectedMembership,
 	)
 	if err != nil {
@@ -88,9 +100,13 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 		return fmt.Errorf("database login %q has forbidden cluster privileges or role inheritance", currentUser)
 	}
 
-	memberships := map[Role]bool{
-		RoleAuth: memberAuth, RoleRequest: memberRequest, RoleInternal: memberInternal,
-		RoleCancel: memberCancel, RoleArtifactRequest: memberArtifactRequest,
+	var inheritedRoles []Role
+	if err := json.Unmarshal([]byte(membershipJSON), &inheritedRoles); err != nil {
+		return fmt.Errorf("decode effective database role memberships: %w", err)
+	}
+	memberships := make(map[Role]bool, len(inheritedRoles))
+	for _, role := range inheritedRoles {
+		memberships[role] = true
 	}
 	if !memberships[expected] {
 		return fmt.Errorf("database login %q is not a member of required role %q", currentUser, expected)
@@ -100,65 +116,139 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 			return fmt.Errorf("database login %q also belongs to forbidden role %q", currentUser, role)
 		}
 	}
-	if expected == RoleInternal && !bypassRLS {
-		return fmt.Errorf("internal database login %q must have BYPASSRLS", currentUser)
-	}
-	if expected != RoleInternal && bypassRLS {
+	if descriptor.requiresBypassRLS != bypassRLS {
+		if descriptor.requiresBypassRLS {
+			return fmt.Errorf("database login %q must have BYPASSRLS for role %q", currentUser, expected)
+		}
 		return fmt.Errorf("database login %q must not have BYPASSRLS for role %q", currentUser, expected)
 	}
-	if expected == RoleAuth {
-		if err := verifyAuthPrivileges(ctx, database, currentUser); err != nil {
-			return err
-		}
-	}
-	if expected == RoleRequest {
-		if err := verifyRequestPrivileges(ctx, database, currentUser); err != nil {
-			return err
-		}
-	}
-	if expected == RoleCancel {
-		if err := verifyCancelPrivileges(ctx, database, currentUser); err != nil {
-			return err
-		}
-	}
-	if expected == RoleArtifactRequest {
-		if err := verifyArtifactRequestPrivileges(ctx, database, currentUser); err != nil {
-			return err
-		}
+	if descriptor.verifyPrivileges != nil {
+		return descriptor.verifyPrivileges(ctx, database, currentUser)
 	}
 	return nil
 }
 
+type relationPrivilege struct {
+	Relation  string
+	Privilege string
+}
+
+type columnPrivilege struct {
+	Relation  string
+	Column    string
+	Privilege string
+}
+
+type exactPrivilegeBoundary struct {
+	inspectionLabel string
+	failureLabel    string
+	tables          []relationPrivilege
+	columns         []columnPrivilege
+	functions       []string
+}
+
+func verifySchedulerPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Scheduler",
+		failureLabel:    "Scheduler transaction",
+		functions: []string{
+			"vela_list_schedulable_worker_pools()",
+			"vela_claim_scheduler_dispatch(uuid,text,integer)",
+			"vela_abandon_scheduler_dispatch(uuid,text,text)",
+			"vela_reconcile_expired_scheduler_dispatches()",
+			"vela_predict_admission_capacity(uuid,uuid,uuid,uuid,uuid,integer)",
+			"vela_predict_job_dynamic_eta(uuid)",
+		},
+	})
+}
+
 func verifyArtifactRequestPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Artifact request",
+		failureLabel:    "Artifact read transaction",
+		tables: []relationPrivilege{
+			{Relation: "jobs", Privilege: "SELECT"},
+			{Relation: "artifact_sets", Privilege: "SELECT"},
+			{Relation: "artifact_set_items", Privilege: "SELECT"},
+			{Relation: "artifact_access_grants", Privilege: "SELECT"},
+		},
+		functions: []string{
+			"vela_current_organization_id()",
+			"vela_current_project_id()",
+			"vela_current_principal_id()",
+			"vela_current_request_scope()",
+			"vela_set_artifact_request_context(uuid,bytea)",
+		},
+	})
+}
+
+func verifyCancelPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "cancel",
+		failureLabel:    "cancellation command",
+		functions: []string{
+			"vela_set_cancellation_request_context(uuid,bytea)",
+			"vela_cancel_job(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid)",
+		},
+	})
+}
+
+func verifyAuthPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "auth",
+		failureLabel:    "credential lookup",
+		functions:       []string{"vela_authenticate_service_credential(uuid)"},
+	})
+}
+
+func verifyExactPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+	boundary exactPrivilegeBoundary,
+) error {
+	tableRelations := make([]string, len(boundary.tables))
+	tablePrivileges := make([]string, len(boundary.tables))
+	for index, privilege := range boundary.tables {
+		tableRelations[index] = privilege.Relation
+		tablePrivileges[index] = privilege.Privilege
+	}
+	columnRelations := make([]string, len(boundary.columns))
+	columnNames := make([]string, len(boundary.columns))
+	columnPrivileges := make([]string, len(boundary.columns))
+	for index, privilege := range boundary.columns {
+		columnRelations[index] = privilege.Relation
+		columnNames[index] = privilege.Column
+		columnPrivileges[index] = privilege.Privilege
+	}
+
 	var boundaryViolation bool
 	err := database.QueryRow(ctx, `
 		WITH expected_table_privileges (relation_name, privilege) AS (
-			VALUES
-				('jobs', 'SELECT'),
-				('artifact_sets', 'SELECT'),
-				('artifact_set_items', 'SELECT'),
-				('artifact_access_grants', 'SELECT')
+			SELECT * FROM unnest($1::text[], $2::text[])
+		),
+		expected_column_privileges (relation_name, column_name, privilege) AS (
+			SELECT * FROM unnest($3::text[], $4::text[], $5::text[])
 		),
 		expected_functions (function_oid) AS (
-			VALUES
-				('vela_current_organization_id()'::regprocedure::oid),
-				('vela_current_project_id()'::regprocedure::oid),
-				('vela_current_principal_id()'::regprocedure::oid),
-				('vela_current_request_scope()'::regprocedure::oid),
-				('vela_set_artifact_request_context(uuid,bytea)'::regprocedure::oid)
+			SELECT to_regprocedure(signature)::oid
+			FROM unnest($6::text[]) AS signature
 		),
 		public_relations AS (
 			SELECT relation.oid, relation.relname
 			FROM pg_catalog.pg_class AS relation
 			JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
 			WHERE namespace.nspname = 'public'
-			  AND relation.relkind IN ('r', 'p', 'v', 'm')
+			  AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
 		),
 		table_privilege_names (privilege) AS (
 			VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')
 		),
 		column_privilege_names (privilege) AS (
 			VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('REFERENCES')
+		),
+		sequence_privilege_names (privilege) AS (
+			VALUES ('SELECT'), ('UPDATE'), ('USAGE')
 		)
 		SELECT
 			NOT has_schema_privilege(current_user, 'public', 'USAGE')
@@ -171,269 +261,17 @@ func verifyArtifactRequestPrivileges(ctx context.Context, database rowQuerier, c
 				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
 				CROSS JOIN table_privilege_names AS candidate
 				WHERE namespace.nspname = 'vela_private'
+				  AND relation.relkind IN ('r', 'p', 'v', 'm', 'f')
 				  AND has_table_privilege(current_user, relation.oid, candidate.privilege)
 			)
 			OR EXISTS (
 				SELECT 1
-				FROM pg_catalog.pg_proc AS function
-				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
-				WHERE namespace.nspname = 'vela_private'
-				  AND has_function_privilege(current_user, function.oid, 'EXECUTE')
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM public_relations AS relation
-				CROSS JOIN table_privilege_names AS candidate
-				LEFT JOIN expected_table_privileges AS expected
-				  ON expected.relation_name = relation.relname
-				 AND expected.privilege = candidate.privilege
-				WHERE has_table_privilege(current_user, relation.oid, candidate.privilege)
-				  AND expected.relation_name IS NULL
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM expected_table_privileges AS expected
-				WHERE NOT has_table_privilege(
-					current_user,
-					format('public.%I', expected.relation_name),
-					expected.privilege
-				)
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM public_relations AS relation
-				JOIN pg_catalog.pg_attribute AS attribute
-				  ON attribute.attrelid = relation.oid
-				 AND attribute.attnum > 0
-				 AND NOT attribute.attisdropped
-				CROSS JOIN column_privilege_names AS candidate
-				WHERE has_column_privilege(
-					current_user,
-					relation.oid,
-					attribute.attnum,
-					candidate.privilege
-				)
-				  AND NOT has_table_privilege(current_user, relation.oid, candidate.privilege)
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM pg_catalog.pg_proc AS function
-				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
-				LEFT JOIN expected_functions AS expected ON expected.function_oid = function.oid
-				WHERE namespace.nspname = 'public'
-				  AND has_function_privilege(current_user, function.oid, 'EXECUTE')
-				  AND expected.function_oid IS NULL
-			)
-			OR EXISTS (
-				SELECT 1 FROM expected_functions AS expected
-				WHERE NOT has_function_privilege(current_user, expected.function_oid, 'EXECUTE')
-			)
-	`).Scan(&boundaryViolation)
-	if err != nil {
-		return fmt.Errorf("inspect Artifact request database privileges: %w", err)
-	}
-	if boundaryViolation {
-		return fmt.Errorf("database login %q exceeds the Artifact read transaction privilege boundary", currentUser)
-	}
-	return nil
-}
-
-func verifyCancelPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
-	var boundaryViolation bool
-	err := database.QueryRow(ctx, `
-		WITH expected_functions (function_oid) AS (
-			VALUES
-				('vela_set_cancellation_request_context(uuid,bytea)'::regprocedure::oid),
-				('vela_cancel_job(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid)'::regprocedure::oid)
-		)
-		SELECT
-			NOT has_schema_privilege(current_user, 'public', 'USAGE')
-			OR has_schema_privilege(current_user, 'public', 'CREATE')
-			OR has_schema_privilege(current_user, 'vela_private', 'USAGE')
-			OR has_schema_privilege(current_user, 'vela_private', 'CREATE')
-			OR EXISTS (
-				SELECT 1
 				FROM pg_catalog.pg_class AS relation
 				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-				WHERE namespace.nspname IN ('public', 'vela_private')
-				  AND relation.relkind IN ('r', 'p', 'v', 'm')
-				  AND (
-					has_table_privilege(current_user, relation.oid, 'SELECT')
-					OR has_table_privilege(current_user, relation.oid, 'INSERT')
-					OR has_table_privilege(current_user, relation.oid, 'UPDATE')
-					OR has_table_privilege(current_user, relation.oid, 'DELETE')
-					OR has_table_privilege(current_user, relation.oid, 'TRUNCATE')
-					OR has_table_privilege(current_user, relation.oid, 'REFERENCES')
-					OR has_table_privilege(current_user, relation.oid, 'TRIGGER')
-				  )
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM pg_catalog.pg_proc AS function
-				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
-				LEFT JOIN expected_functions AS expected ON expected.function_oid = function.oid
-				WHERE namespace.nspname = 'public'
-				  AND has_function_privilege(current_user, function.oid, 'EXECUTE')
-				  AND expected.function_oid IS NULL
-			)
-			OR EXISTS (
-				SELECT 1 FROM expected_functions AS expected
-				WHERE NOT has_function_privilege(current_user, expected.function_oid, 'EXECUTE')
-			)
-	`).Scan(&boundaryViolation)
-	if err != nil {
-		return fmt.Errorf("inspect cancel database privileges: %w", err)
-	}
-	if boundaryViolation {
-		return fmt.Errorf("database login %q exceeds the cancellation command privilege boundary", currentUser)
-	}
-	return nil
-}
-
-func verifyAuthPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
-	var missingSchemaUsage, hasSchemaCreate, hasTablePrivilege, hasCredentialLookup, hasUnexpectedFunction bool
-	var hasPrivateSchemaPrivilege, hasPrivateObjectPrivilege bool
-	err := database.QueryRow(ctx, `
-        SELECT
-			NOT has_schema_privilege(current_user, 'public', 'USAGE'),
-			has_schema_privilege(current_user, 'public', 'CREATE'),
-            EXISTS (
-                SELECT 1
-                FROM pg_catalog.pg_class AS relation
-                JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-                WHERE namespace.nspname = 'public'
-                  AND relation.relkind IN ('r', 'p')
-                  AND (
-                      has_table_privilege(current_user, relation.oid, 'SELECT')
-                      OR has_table_privilege(current_user, relation.oid, 'INSERT')
-                      OR has_table_privilege(current_user, relation.oid, 'UPDATE')
-                      OR has_table_privilege(current_user, relation.oid, 'DELETE')
-                      OR has_table_privilege(current_user, relation.oid, 'TRUNCATE')
-                      OR has_table_privilege(current_user, relation.oid, 'REFERENCES')
-                      OR has_table_privilege(current_user, relation.oid, 'TRIGGER')
-                  )
-            ),
-            has_function_privilege(
-                current_user,
-                'vela_authenticate_service_credential(uuid)'::regprocedure,
-                'EXECUTE'
-            ),
-            EXISTS (
-                SELECT 1
-                FROM pg_catalog.pg_proc AS function
-                JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
-                WHERE namespace.nspname = 'public'
-                  AND function.oid <> 'vela_authenticate_service_credential(uuid)'::regprocedure
-                  AND has_function_privilege(current_user, function.oid, 'EXECUTE')
-			),
-			has_schema_privilege(current_user, 'vela_private', 'USAGE')
-				OR has_schema_privilege(current_user, 'vela_private', 'CREATE'),
-			EXISTS (
-				SELECT 1
-				FROM pg_catalog.pg_class AS relation
-				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+				CROSS JOIN sequence_privilege_names AS candidate
 				WHERE namespace.nspname = 'vela_private'
-				  AND (
-					has_table_privilege(current_user, relation.oid, 'SELECT')
-					OR has_table_privilege(current_user, relation.oid, 'INSERT')
-					OR has_table_privilege(current_user, relation.oid, 'UPDATE')
-					OR has_table_privilege(current_user, relation.oid, 'DELETE')
-					OR has_table_privilege(current_user, relation.oid, 'TRUNCATE')
-					OR has_table_privilege(current_user, relation.oid, 'REFERENCES')
-					OR has_table_privilege(current_user, relation.oid, 'TRIGGER')
-				  )
-			)
-	`).Scan(
-		&missingSchemaUsage,
-		&hasSchemaCreate,
-		&hasTablePrivilege,
-		&hasCredentialLookup,
-		&hasUnexpectedFunction,
-		&hasPrivateSchemaPrivilege,
-		&hasPrivateObjectPrivilege,
-	)
-	if err != nil {
-		return fmt.Errorf("inspect auth database privileges: %w", err)
-	}
-	if missingSchemaUsage || hasSchemaCreate || hasTablePrivilege || !hasCredentialLookup || hasUnexpectedFunction ||
-		hasPrivateSchemaPrivilege || hasPrivateObjectPrivilege {
-		return fmt.Errorf("database login %q exceeds the credential lookup privilege boundary", currentUser)
-	}
-	return nil
-}
-
-func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
-	var boundaryViolation bool
-	err := database.QueryRow(ctx, `
-		WITH expected_table_privileges (relation_name, privilege) AS (
-			VALUES
-				('worker_pools', 'SELECT'),
-				('customer_organizations', 'SELECT'),
-				('projects', 'SELECT'),
-				('principals', 'SELECT'),
-				('service_principals', 'SELECT'),
-				('organization_credit_accounts', 'SELECT'),
-				('jobs', 'SELECT'),
-				('credit_reservations', 'SELECT'),
-				('idempotency_results', 'SELECT'),
-				('outbox_events', 'SELECT'),
-				('vela_request_execution_lease_renewal_protocol', 'SELECT'),
-				('vela_request_job_runtime', 'SELECT'),
-				('vela_request_job_progress', 'SELECT'),
-				('jobs', 'INSERT'),
-				('credit_reservations', 'INSERT'),
-				('retry_runtime_states', 'INSERT'),
-				('idempotency_results', 'INSERT'),
-				('outbox_events', 'INSERT')
-			UNION ALL
-			SELECT 'retry_runtime_states', 'SELECT'
-			FROM vela_request_execution_lease_renewal_protocol
-			WHERE NOT enabled
-		),
-		expected_column_privileges (relation_name, column_name, privilege) AS (
-			VALUES
-				('worker_pools', 'queued_count', 'UPDATE'),
-				('projects', 'queued_count', 'UPDATE'),
-				('projects', 'running_count', 'UPDATE'),
-				('organization_credit_accounts', 'reserved_minor', 'UPDATE'),
-				('organization_credit_accounts', 'version', 'UPDATE'),
-				('organization_credit_accounts', 'updated_at', 'UPDATE')
-		),
-		expected_functions (function_oid) AS (
-			VALUES
-				('vela_current_organization_id()'::regprocedure::oid),
-				('vela_current_project_id()'::regprocedure::oid),
-				('vela_current_principal_id()'::regprocedure::oid),
-				('vela_current_request_scope()'::regprocedure::oid),
-				('vela_set_request_context(uuid,bytea,text)'::regprocedure::oid),
-				('vela_resolve_active_sku(text,text,text,text)'::regprocedure::oid),
-				('vela_lock_compatible_pool(uuid,uuid,uuid)'::regprocedure::oid)
-		),
-		public_relations AS (
-			SELECT relation.oid, relation.relname
-			FROM pg_catalog.pg_class AS relation
-			JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-			WHERE namespace.nspname = 'public'
-			  AND relation.relkind IN ('r', 'p', 'v', 'm')
-		),
-			table_privilege_names (privilege) AS (
-				VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER')
-			),
-			column_privilege_names (privilege) AS (
-				VALUES ('SELECT'), ('INSERT'), ('UPDATE'), ('REFERENCES')
-		)
-		SELECT
-			NOT has_schema_privilege(current_user, 'public', 'USAGE')
-			OR has_schema_privilege(current_user, 'public', 'CREATE')
-			OR has_schema_privilege(current_user, 'vela_private', 'USAGE')
-			OR has_schema_privilege(current_user, 'vela_private', 'CREATE')
-			OR EXISTS (
-				SELECT 1
-				FROM pg_catalog.pg_class AS relation
-				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-				CROSS JOIN table_privilege_names AS candidate
-				WHERE namespace.nspname = 'vela_private'
-				  AND has_table_privilege(current_user, relation.oid, candidate.privilege)
+				  AND relation.relkind = 'S'
+				  AND has_sequence_privilege(current_user, relation.oid, candidate.privilege)
 			)
 			OR EXISTS (
 				SELECT 1
@@ -494,6 +332,15 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			)
 			OR EXISTS (
 				SELECT 1
+				FROM pg_catalog.pg_class AS sequence
+				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+				CROSS JOIN sequence_privilege_names AS candidate
+				WHERE namespace.nspname = 'public'
+				  AND sequence.relkind = 'S'
+				  AND has_sequence_privilege(current_user, sequence.oid, candidate.privilege)
+			)
+			OR EXISTS (
+				SELECT 1
 				FROM pg_catalog.pg_proc AS function
 				JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = function.pronamespace
 				LEFT JOIN expected_functions AS expected ON expected.function_oid = function.oid
@@ -504,14 +351,76 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			OR EXISTS (
 				SELECT 1
 				FROM expected_functions AS expected
-				WHERE NOT has_function_privilege(current_user, expected.function_oid, 'EXECUTE')
+				WHERE expected.function_oid IS NULL
+				   OR NOT has_function_privilege(current_user, expected.function_oid, 'EXECUTE')
 			)
-	`).Scan(&boundaryViolation)
+	`, tableRelations, tablePrivileges, columnRelations, columnNames, columnPrivileges, boundary.functions).
+		Scan(&boundaryViolation)
 	if err != nil {
-		return fmt.Errorf("inspect request database privileges: %w", err)
+		return fmt.Errorf("inspect %s database privileges: %w", boundary.inspectionLabel, err)
 	}
 	if boundaryViolation {
-		return fmt.Errorf("database login %q exceeds the request transaction privilege boundary", currentUser)
+		return fmt.Errorf(
+			"database login %q exceeds the %s privilege boundary",
+			currentUser,
+			boundary.failureLabel,
+		)
 	}
 	return nil
+}
+func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	boundary := exactPrivilegeBoundary{
+		inspectionLabel: "request",
+		failureLabel:    "request transaction",
+		tables: []relationPrivilege{
+			{Relation: "worker_pools", Privilege: "SELECT"},
+			{Relation: "customer_organizations", Privilege: "SELECT"},
+			{Relation: "projects", Privilege: "SELECT"},
+			{Relation: "principals", Privilege: "SELECT"},
+			{Relation: "service_principals", Privilege: "SELECT"},
+			{Relation: "organization_credit_accounts", Privilege: "SELECT"},
+			{Relation: "jobs", Privilege: "SELECT"},
+			{Relation: "credit_reservations", Privilege: "SELECT"},
+			{Relation: "idempotency_results", Privilege: "SELECT"},
+			{Relation: "outbox_events", Privilege: "SELECT"},
+			{Relation: "vela_request_execution_lease_renewal_protocol", Privilege: "SELECT"},
+			{Relation: "vela_request_job_runtime", Privilege: "SELECT"},
+			{Relation: "vela_request_job_progress", Privilege: "SELECT"},
+			{Relation: "jobs", Privilege: "INSERT"},
+			{Relation: "credit_reservations", Privilege: "INSERT"},
+			{Relation: "retry_runtime_states", Privilege: "INSERT"},
+			{Relation: "idempotency_results", Privilege: "INSERT"},
+			{Relation: "outbox_events", Privilege: "INSERT"},
+		},
+		columns: []columnPrivilege{
+			{Relation: "worker_pools", Column: "queued_count", Privilege: "UPDATE"},
+			{Relation: "projects", Column: "queued_count", Privilege: "UPDATE"},
+			{Relation: "projects", Column: "running_count", Privilege: "UPDATE"},
+			{Relation: "organization_credit_accounts", Column: "reserved_minor", Privilege: "UPDATE"},
+			{Relation: "organization_credit_accounts", Column: "version", Privilege: "UPDATE"},
+			{Relation: "organization_credit_accounts", Column: "updated_at", Privilege: "UPDATE"},
+		},
+		functions: []string{
+			"vela_current_organization_id()",
+			"vela_current_project_id()",
+			"vela_current_principal_id()",
+			"vela_current_request_scope()",
+			"vela_set_request_context(uuid,bytea,text)",
+			"vela_resolve_active_sku(text,text,text,text)",
+			"vela_lock_compatible_pool(uuid,uuid,uuid)",
+		},
+	}
+	var leaseRenewalProtocolEnabled bool
+	if err := database.QueryRow(ctx, `
+		SELECT enabled FROM vela_request_execution_lease_renewal_protocol
+	`).Scan(&leaseRenewalProtocolEnabled); err != nil {
+		return fmt.Errorf("inspect request execution Lease renewal protocol: %w", err)
+	}
+	if !leaseRenewalProtocolEnabled {
+		boundary.tables = append(boundary.tables, relationPrivilege{
+			Relation:  "retry_runtime_states",
+			Privilege: "SELECT",
+		})
+	}
+	return verifyExactPrivileges(ctx, database, currentUser, boundary)
 }
