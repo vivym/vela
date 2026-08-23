@@ -1,6 +1,6 @@
 # Human OIDC And Fixed RBAC
 
-Status: In progress
+Status: Implemented
 
 Date: 2026-08-23
 

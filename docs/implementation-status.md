@@ -23,6 +23,7 @@ tests alone do not satisfy a gate.
 | Invoice Export And Receipt | `bcb5594` | `docs/specs/0009-invoice-export-and-receipt.md` |
 | Cross-Job Profile Certification Circuit | `6863bd0` | `docs/specs/0010-cross-job-profile-certification-circuit.md` |
 | Project Webhook Delivery | `f5fc532` | `docs/specs/0011-project-webhook-delivery.md` |
+| Human OIDC And Fixed RBAC | `7884865` | `docs/specs/0012-human-oidc-and-fixed-rbac.md` |
 
 ## ADR Evidence Matrix
 
@@ -32,15 +33,15 @@ tests alone do not satisfy a gate.
 | 0002 Full quote after RUNNING | Implemented for current lifecycle | Cancellation after Billable Start and successful Visible Completion use the immutable full quote; platform/finalization failure releases credit without a partial Charge. | Later terminal paths and settlement integrations must preserve the same boundary. |
 | 0003 Atomic Visible Completion | Implemented | Validated VIDEO plus THUMBNAIL, ArtifactSet, Charge, credit, access, Job/Attempt success, and canonical Outbox events commit in one transaction and replay exactly. | Deployment-level fault receipts remain part of the separate Production Gates. |
 | 0004 Organization and Project | Implemented for current API | Composite ownership and Project-scoped Admission/Get/Cancel plus committed Artifact reads. | Administrative and billing interfaces must retain the same boundary. |
-| 0005 Human and Service Principals | Partial | Project Service Principals, rotating credentials, scope and audit attribution. | OIDC Human Principals and administrative credential lifecycle APIs. |
-| 0006 Fixed launch roles | Not started | Domain vocabulary only. | Fixed Human RBAC and audited Break-glass Access. |
-| 0007 Organization Isolation | Partial | Forced RLS, composite foreign keys, request/auth/internal/Artifact/billing/Webhook roles, private staging, exact-version access grants, and cross-Project/Organization negative tests. | Human roles, administration, NATS, and deployment isolation evidence. |
+| 0005 Human and Service Principals | Partial | Project Service Principals with rotating credentials, scope, and audit attribution; immutable enterprise OIDC Human bindings and short proof-only Human sessions. | Administrative Human membership and Service Principal credential lifecycle APIs. |
+| 0006 Fixed launch roles | Partial | The six fixed Human roles are database-constrained; their existing Project API permissions union inside one Project, while Organization roles grant no Customer Content access. | Audited role-assignment administration and Platform Operator Break-glass Access. |
+| 0007 Organization Isolation | Partial | Forced RLS, composite foreign keys, transaction-revalidated Human roles and sessions, separate request/auth/internal/Artifact/billing/Webhook roles, private staging, exact-version access grants, and cross-Project/Organization negative tests. | Administration, NATS, and deployment isolation evidence. |
 | 0008 No Customer Content reuse | Partial | Prompt has an expiry; staging Artifacts are private, committed exact-version reads require a short-lived Project grant, and Webhook payloads are constructed only from safe terminal columns. | Access audit, support authorization, no-reuse policy enforcement, and deletion across storage/backups. |
 | 0009 Statistical SLOs | Partial | API exposes no Hard Deadline; Job Expiry and Dynamic ETA are distinguished. | SLO measurement, eligibility envelopes, dashboards, and certification receipts. |
 | 0010 Bounded admission and queues | Implemented for current control plane | Transactional queue counters, pool-scoped bounded projection, risk-aware Admission prediction, Dynamic ETA, hierarchical lanes, and fail-closed counter-drift detection are integrated. | Deployment calibration and Production Gate receipts remain separate. |
 | 0011 No failed-Job Charge | Implemented for current lifecycle | Execution, finalization-deadline, validation, and unrecoverable Artifact failure release credit and create no Charge; only Visible Completion or post-Billable-Start Customer Cancellation posts one. | Future failure sources must use the same terminal authority. |
 | 0012 Single-region DR | Not started | PostgreSQL/Outbox recovery semantics are designed. | Cluster manifests, WAL/archive, restore, JetStream rebuild, Artifact backup, and drills. |
-| 0013 Non-interrupting releases | Partial | Eleven additive migrations, exact N/N-1 database/control compatibility, an operator-receipted circuit protocol transition, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
+| 0013 Non-interrupting releases | Partial | Twelve additive migrations, exact N/N-1 database/control compatibility, an operator-receipted circuit protocol transition, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
 | 0014 Project webhooks | Implemented | Project-scoped subscriptions, safe terminal-event fanout, overlapping HMAC secret rotation, durable at-least-once retry, dead letter, crash recovery, visibility, and manual replay are integrated. | Public-DNS deployment validation and a real endpoint Launch Receipt remain separate Production Gate evidence. |
 | 0015 Class-specific retention | Partial | Request content has a retention timestamp; expired staging uploads and multipart sessions have bounded cleanup paths. | Successful Artifact, scratch, debug, metadata, and financial retention plus Content Deletion. |
 | 0016 Preset versus Service Class | Implemented for current control plane | Admission, Retry, and Scheduler retain both immutable revisions separately; Scheduler reads ServiceClassRevision policy and never derives priority from Preset or price. | SLO reporting must preserve the same boundary. |
@@ -74,8 +75,9 @@ behavior (28).
 Current
 evidence is partial for multipart resume plus whole-Job recompute (10),
 competing completion authorities without a two-Attempt Artifact race (13),
-Organization database, Artifact, and Webhook isolation without NATS credential
-evidence (27), and N/N-1
+Organization database, Human role, Artifact, and Webhook isolation without NATS
+credential evidence (27), credential rotation/revocation attribution and
+non-content Human roles without audited Break-glass expiry (29), and N/N-1
 database/control/Worker/event compatibility without a deployed rollout, drain,
 rollback, and retained-backlog receipt (30).
 Every other scenario remains unproven
