@@ -19,6 +19,8 @@ const (
 	RoleHumanMembershipRequest     Role = "vela_human_membership_request"
 	RoleOrganizationBillingRequest Role = "vela_organization_billing_request"
 	RoleOrganizationAuditRequest   Role = "vela_organization_audit_request"
+	RoleRetentionRequest           Role = "vela_retention_request"
+	RoleRetention                  Role = "vela_retention"
 	RoleRequest                    Role = "vela_request"
 	RoleInternal                   Role = "vela_internal"
 	RoleCancel                     Role = "vela_cancel"
@@ -46,6 +48,8 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleHumanMembershipRequest:     {verifyPrivileges: verifyHumanMembershipRequestPrivileges},
 	RoleOrganizationBillingRequest: {verifyPrivileges: verifyOrganizationBillingRequestPrivileges},
 	RoleOrganizationAuditRequest:   {verifyPrivileges: verifyOrganizationAuditRequestPrivileges},
+	RoleRetentionRequest:           {verifyPrivileges: verifyRetentionRequestPrivileges},
+	RoleRetention:                  {verifyPrivileges: verifyRetentionPrivileges},
 	RoleRequest:                    {verifyPrivileges: verifyRequestPrivileges},
 	RoleInternal:                   {requiresBypassRLS: true},
 	RoleCancel:                     {verifyPrivileges: verifyCancelPrivileges},
@@ -217,6 +221,37 @@ func verifyWebhookRequestPrivileges(ctx context.Context, database rowQuerier, cu
 			"vela_replay_webhook_delivery(uuid,uuid,uuid,uuid)",
 			"vela_list_webhook_subscriptions(uuid,integer)",
 			"vela_list_webhook_deliveries(uuid,uuid,integer)",
+		},
+	})
+}
+
+func verifyRetentionRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "retention request",
+		failureLabel:    "Retention Policy and Content Deletion request transaction",
+		functions: []string{
+			"vela_set_request_context(uuid,bytea,text)",
+			"vela_get_project_retention_policy(uuid)",
+			"vela_set_project_retention_policy(uuid,integer,uuid)",
+			"vela_get_content_deletion_request(uuid,uuid)",
+			"vela_accept_content_deletion_request(uuid,uuid,uuid,text,bytea,uuid,uuid,uuid,uuid,uuid,uuid,uuid)",
+		},
+	})
+}
+
+func verifyRetentionPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "retention",
+		failureLabel:    "Content Deletion reconciliation transaction",
+		functions: []string{
+			"vela_claim_content_deletion_target(text,uuid,integer)",
+			"vela_complete_content_deletion_target(uuid,uuid,uuid,text,text)",
+			"vela_retry_content_deletion_target(uuid,uuid,integer,text)",
+			"vela_enqueue_expired_content_deletions(integer)",
 		},
 	})
 }

@@ -39,6 +39,8 @@ const (
 	ScopeOrganizationAuditRead             = "organization_audit:read"
 	ScopeProjectMembersManage              = "project_members:manage"
 	ScopeProjectMembersRead                = "project_members:read"
+	ScopeContentDeletionManage             = "content_deletion:manage"
+	ScopeRetentionPolicyManage             = "retention_policy:manage"
 	ScopeServicePrincipalsManage           = "service_principals:manage"
 	ScopeServicePrincipalsRead             = "service_principals:read"
 	ScopeWebhooksManage                    = "webhooks:manage"

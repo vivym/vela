@@ -12,6 +12,7 @@ import (
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -20,6 +21,7 @@ func TestAuthenticationFailurePreservesServiceContractAndSupportsHumanLanguage(t
 		Authenticator:          identity.NewAuthenticator(nil, []byte("test-credential-pepper")),
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              &admission.Service{},
 		Cancellation:           &cancellation.Service{},
 		Artifacts:              &artifactaccess.Service{},

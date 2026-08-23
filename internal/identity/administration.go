@@ -1015,7 +1015,8 @@ func scanCredential(row credentialScanner) (Credential, error) {
 func validateServiceCredentialScopes(scopes []string) ([]string, error) {
 	allowed := map[string]struct{}{
 		ScopeJobsSubmit: {}, ScopeJobsRead: {}, ScopeJobsCancel: {},
-		ScopeArtifactsRead: {}, ScopeWebhooksManage: {}, ScopeWebhooksRead: {},
+		ScopeArtifactsRead: {}, ScopeContentDeletionManage: {},
+		ScopeWebhooksManage: {}, ScopeWebhooksRead: {},
 	}
 	if len(scopes) == 0 || len(scopes) > len(allowed) {
 		return nil, &AdministrationFailure{

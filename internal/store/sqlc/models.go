@@ -370,6 +370,180 @@ func (ns NullChargeReason) Value() (driver.Value, error) {
 	return string(ns.ChargeReason), nil
 }
 
+type ContentDeletionSource string
+
+const (
+	ContentDeletionSourceCUSTOMER                ContentDeletionSource = "CUSTOMER"
+	ContentDeletionSourceRETENTIONREQUESTCONTENT ContentDeletionSource = "RETENTION_REQUEST_CONTENT"
+	ContentDeletionSourceRETENTIONARTIFACT       ContentDeletionSource = "RETENTION_ARTIFACT"
+)
+
+func (e *ContentDeletionSource) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ContentDeletionSource(s)
+	case string:
+		*e = ContentDeletionSource(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ContentDeletionSource: %T", src)
+	}
+	return nil
+}
+
+type NullContentDeletionSource struct {
+	ContentDeletionSource ContentDeletionSource `json:"content_deletion_source"`
+	Valid                 bool                  `json:"valid"` // Valid is true if ContentDeletionSource is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullContentDeletionSource) Scan(value interface{}) error {
+	if value == nil {
+		ns.ContentDeletionSource, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ContentDeletionSource.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullContentDeletionSource) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ContentDeletionSource), nil
+}
+
+type ContentDeletionState string
+
+const (
+	ContentDeletionStatePENDING    ContentDeletionState = "PENDING"
+	ContentDeletionStateINPROGRESS ContentDeletionState = "IN_PROGRESS"
+	ContentDeletionStateRETRYWAIT  ContentDeletionState = "RETRY_WAIT"
+	ContentDeletionStateCOMPLETED  ContentDeletionState = "COMPLETED"
+)
+
+func (e *ContentDeletionState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ContentDeletionState(s)
+	case string:
+		*e = ContentDeletionState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ContentDeletionState: %T", src)
+	}
+	return nil
+}
+
+type NullContentDeletionState struct {
+	ContentDeletionState ContentDeletionState `json:"content_deletion_state"`
+	Valid                bool                 `json:"valid"` // Valid is true if ContentDeletionState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullContentDeletionState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ContentDeletionState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ContentDeletionState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullContentDeletionState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ContentDeletionState), nil
+}
+
+type ContentDeletionTargetAction string
+
+const (
+	ContentDeletionTargetActionOBJECTVERSION   ContentDeletionTargetAction = "OBJECT_VERSION"
+	ContentDeletionTargetActionOBJECTDISCOVERY ContentDeletionTargetAction = "OBJECT_DISCOVERY"
+	ContentDeletionTargetActionMULTIPARTPREFIX ContentDeletionTargetAction = "MULTIPART_PREFIX"
+)
+
+func (e *ContentDeletionTargetAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ContentDeletionTargetAction(s)
+	case string:
+		*e = ContentDeletionTargetAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ContentDeletionTargetAction: %T", src)
+	}
+	return nil
+}
+
+type NullContentDeletionTargetAction struct {
+	ContentDeletionTargetAction ContentDeletionTargetAction `json:"content_deletion_target_action"`
+	Valid                       bool                        `json:"valid"` // Valid is true if ContentDeletionTargetAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullContentDeletionTargetAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.ContentDeletionTargetAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ContentDeletionTargetAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullContentDeletionTargetAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ContentDeletionTargetAction), nil
+}
+
+type ContentDeletionTargetState string
+
+const (
+	ContentDeletionTargetStatePENDING    ContentDeletionTargetState = "PENDING"
+	ContentDeletionTargetStateINPROGRESS ContentDeletionTargetState = "IN_PROGRESS"
+	ContentDeletionTargetStateRETRYWAIT  ContentDeletionTargetState = "RETRY_WAIT"
+	ContentDeletionTargetStateCOMPLETED  ContentDeletionTargetState = "COMPLETED"
+)
+
+func (e *ContentDeletionTargetState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ContentDeletionTargetState(s)
+	case string:
+		*e = ContentDeletionTargetState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ContentDeletionTargetState: %T", src)
+	}
+	return nil
+}
+
+type NullContentDeletionTargetState struct {
+	ContentDeletionTargetState ContentDeletionTargetState `json:"content_deletion_target_state"`
+	Valid                      bool                       `json:"valid"` // Valid is true if ContentDeletionTargetState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullContentDeletionTargetState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ContentDeletionTargetState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ContentDeletionTargetState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullContentDeletionTargetState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ContentDeletionTargetState), nil
+}
+
 type CreditReservationState string
 
 const (
@@ -1623,6 +1797,85 @@ type Charge struct {
 	ArtifactSetID       uuid.NullUUID      `db:"artifact_set_id" json:"artifact_set_id"`
 }
 
+type ContentDeletionReceipt struct {
+	ID                   uuid.UUID          `db:"id" json:"id"`
+	OrganizationID       uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID            uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                uuid.UUID          `db:"job_id" json:"job_id"`
+	RequestID            uuid.UUID          `db:"request_id" json:"request_id"`
+	TargetCount          int32              `db:"target_count" json:"target_count"`
+	CompletedTargetCount int32              `db:"completed_target_count" json:"completed_target_count"`
+	TotalAttemptCount    int64              `db:"total_attempt_count" json:"total_attempt_count"`
+	CompletedAt          pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ContentDeletionReceiptTarget struct {
+	ReceiptID         uuid.UUID                   `db:"receipt_id" json:"receipt_id"`
+	TargetID          uuid.UUID                   `db:"target_id" json:"target_id"`
+	OrganizationID    uuid.UUID                   `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.UUID                   `db:"project_id" json:"project_id"`
+	JobID             uuid.UUID                   `db:"job_id" json:"job_id"`
+	RequestID         uuid.UUID                   `db:"request_id" json:"request_id"`
+	Action            ContentDeletionTargetAction `db:"action" json:"action"`
+	AttemptCount      int32                       `db:"attempt_count" json:"attempt_count"`
+	TargetCompletedAt pgtype.Timestamptz          `db:"target_completed_at" json:"target_completed_at"`
+	StorageOutcome    string                      `db:"storage_outcome" json:"storage_outcome"`
+	CreatedAt         pgtype.Timestamptz          `db:"created_at" json:"created_at"`
+}
+
+type ContentDeletionRequest struct {
+	ID                uuid.UUID             `db:"id" json:"id"`
+	OrganizationID    uuid.UUID             `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.UUID             `db:"project_id" json:"project_id"`
+	JobID             uuid.UUID             `db:"job_id" json:"job_id"`
+	Source            ContentDeletionSource `db:"source" json:"source"`
+	IdempotencyKey    *string               `db:"idempotency_key" json:"idempotency_key"`
+	RequestHash       []byte                `db:"request_hash" json:"request_hash"`
+	ActorKind         *PrincipalKind        `db:"actor_kind" json:"actor_kind"`
+	ActorPrincipalID  uuid.NullUUID         `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorCredentialID uuid.NullUUID         `db:"actor_credential_id" json:"actor_credential_id"`
+	State             ContentDeletionState  `db:"state" json:"state"`
+	RequestedAt       pgtype.Timestamptz    `db:"requested_at" json:"requested_at"`
+	DeadlineAt        pgtype.Timestamptz    `db:"deadline_at" json:"deadline_at"`
+	CompletedAt       pgtype.Timestamptz    `db:"completed_at" json:"completed_at"`
+	NextRetryAt       pgtype.Timestamptz    `db:"next_retry_at" json:"next_retry_at"`
+	LastErrorCode     *string               `db:"last_error_code" json:"last_error_code"`
+	LastErrorMessage  *string               `db:"last_error_message" json:"last_error_message"`
+	ClaimID           uuid.NullUUID         `db:"claim_id" json:"claim_id"`
+	ClaimOwnerID      *string               `db:"claim_owner_id" json:"claim_owner_id"`
+	ClaimExpiresAt    pgtype.Timestamptz    `db:"claim_expires_at" json:"claim_expires_at"`
+	Version           int64                 `db:"version" json:"version"`
+	CreatedAt         pgtype.Timestamptz    `db:"created_at" json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz    `db:"updated_at" json:"updated_at"`
+}
+
+type ContentDeletionTarget struct {
+	ID                        uuid.UUID                   `db:"id" json:"id"`
+	OrganizationID            uuid.UUID                   `db:"organization_id" json:"organization_id"`
+	ProjectID                 uuid.UUID                   `db:"project_id" json:"project_id"`
+	JobID                     uuid.UUID                   `db:"job_id" json:"job_id"`
+	RequestID                 uuid.UUID                   `db:"request_id" json:"request_id"`
+	Action                    ContentDeletionTargetAction `db:"action" json:"action"`
+	ArtifactID                uuid.NullUUID               `db:"artifact_id" json:"artifact_id"`
+	ObjectKey                 string                      `db:"object_key" json:"object_key"`
+	ObjectVersionID           *string                     `db:"object_version_id" json:"object_version_id"`
+	DiscoveredObjectVersionID *string                     `db:"discovered_object_version_id" json:"discovered_object_version_id"`
+	State                     ContentDeletionTargetState  `db:"state" json:"state"`
+	AttemptCount              int32                       `db:"attempt_count" json:"attempt_count"`
+	NextRetryAt               pgtype.Timestamptz          `db:"next_retry_at" json:"next_retry_at"`
+	LastErrorCode             *string                     `db:"last_error_code" json:"last_error_code"`
+	LastErrorMessage          *string                     `db:"last_error_message" json:"last_error_message"`
+	StorageOutcome            *string                     `db:"storage_outcome" json:"storage_outcome"`
+	CompletedAt               pgtype.Timestamptz          `db:"completed_at" json:"completed_at"`
+	ClaimID                   uuid.NullUUID               `db:"claim_id" json:"claim_id"`
+	ClaimOwnerID              *string                     `db:"claim_owner_id" json:"claim_owner_id"`
+	ClaimExpiresAt            pgtype.Timestamptz          `db:"claim_expires_at" json:"claim_expires_at"`
+	Version                   int64                       `db:"version" json:"version"`
+	CreatedAt                 pgtype.Timestamptz          `db:"created_at" json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
+}
+
 type Credential struct {
 	ID                   uuid.UUID          `db:"id" json:"id"`
 	OrganizationID       uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -1867,6 +2120,15 @@ type Job struct {
 	ResultArtifactSetID                       uuid.NullUUID      `db:"result_artifact_set_id" json:"result_artifact_set_id"`
 	ExecutionCircuitFingerprintWindowSeconds  int32              `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
 	ExecutionCircuitMinDistinctHealthyWorkers int32              `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
+	RetentionPolicyRevisionID                 uuid.UUID          `db:"retention_policy_revision_id" json:"retention_policy_revision_id"`
+	RetentionArtifactDays                     int32              `db:"retention_artifact_days" json:"retention_artifact_days"`
+	RetentionRequestContentDays               int32              `db:"retention_request_content_days" json:"retention_request_content_days"`
+	RetentionIncompleteContentHours           int32              `db:"retention_incomplete_content_hours" json:"retention_incomplete_content_hours"`
+	RetentionScratchHours                     int32              `db:"retention_scratch_hours" json:"retention_scratch_hours"`
+	RetentionDebugHours                       int32              `db:"retention_debug_hours" json:"retention_debug_hours"`
+	RetentionMetadataDays                     int32              `db:"retention_metadata_days" json:"retention_metadata_days"`
+	RetentionFinancialDays                    int32              `db:"retention_financial_days" json:"retention_financial_days"`
+	RequestContentDeletedAt                   pgtype.Timestamptz `db:"request_content_deleted_at" json:"request_content_deleted_at"`
 }
 
 type JobCancellationDecision struct {
@@ -2056,16 +2318,24 @@ type ProfileCircuitProtocolTransition struct {
 }
 
 type Project struct {
-	ID                uuid.UUID          `db:"id" json:"id"`
-	OrganizationID    uuid.UUID          `db:"organization_id" json:"organization_id"`
-	DisplayName       string             `db:"display_name" json:"display_name"`
-	QueuedLimit       int32              `db:"queued_limit" json:"queued_limit"`
-	QueuedCount       int32              `db:"queued_count" json:"queued_count"`
-	RunningLimit      int32              `db:"running_limit" json:"running_limit"`
-	RunningCount      int32              `db:"running_count" json:"running_count"`
-	RetryAfterSeconds int32              `db:"retry_after_seconds" json:"retry_after_seconds"`
-	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	RetryWaitCount    int32              `db:"retry_wait_count" json:"retry_wait_count"`
+	ID                              uuid.UUID          `db:"id" json:"id"`
+	OrganizationID                  uuid.UUID          `db:"organization_id" json:"organization_id"`
+	DisplayName                     string             `db:"display_name" json:"display_name"`
+	QueuedLimit                     int32              `db:"queued_limit" json:"queued_limit"`
+	QueuedCount                     int32              `db:"queued_count" json:"queued_count"`
+	RunningLimit                    int32              `db:"running_limit" json:"running_limit"`
+	RunningCount                    int32              `db:"running_count" json:"running_count"`
+	RetryAfterSeconds               int32              `db:"retry_after_seconds" json:"retry_after_seconds"`
+	CreatedAt                       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	RetryWaitCount                  int32              `db:"retry_wait_count" json:"retry_wait_count"`
+	RetentionPolicyRevisionID       uuid.UUID          `db:"retention_policy_revision_id" json:"retention_policy_revision_id"`
+	RetentionArtifactDays           int32              `db:"retention_artifact_days" json:"retention_artifact_days"`
+	RetentionRequestContentDays     int32              `db:"retention_request_content_days" json:"retention_request_content_days"`
+	RetentionIncompleteContentHours int32              `db:"retention_incomplete_content_hours" json:"retention_incomplete_content_hours"`
+	RetentionScratchHours           int32              `db:"retention_scratch_hours" json:"retention_scratch_hours"`
+	RetentionDebugHours             int32              `db:"retention_debug_hours" json:"retention_debug_hours"`
+	RetentionMetadataDays           int32              `db:"retention_metadata_days" json:"retention_metadata_days"`
+	RetentionFinancialDays          int32              `db:"retention_financial_days" json:"retention_financial_days"`
 }
 
 type ProjectActorSessionAttribution struct {
@@ -2107,6 +2377,19 @@ type ProjectPrincipalAttribution struct {
 	FirstAttributedAt pgtype.Timestamptz `db:"first_attributed_at" json:"first_attributed_at"`
 }
 
+type ProjectRetentionPolicyEvent struct {
+	ID                       uuid.UUID          `db:"id" json:"id"`
+	OrganizationID           uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID          `db:"project_id" json:"project_id"`
+	PreviousPolicyRevisionID uuid.UUID          `db:"previous_policy_revision_id" json:"previous_policy_revision_id"`
+	SelectedPolicyRevisionID uuid.UUID          `db:"selected_policy_revision_id" json:"selected_policy_revision_id"`
+	ActorKind                PrincipalKind      `db:"actor_kind" json:"actor_kind"`
+	ActorPrincipalID         uuid.UUID          `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorSessionID           uuid.UUID          `db:"actor_session_id" json:"actor_session_id"`
+	OccurredAt               pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type ProjectRoleBinding struct {
 	OrganizationID        uuid.UUID          `db:"organization_id" json:"organization_id"`
 	ProjectID             uuid.UUID          `db:"project_id" json:"project_id"`
@@ -2134,6 +2417,20 @@ type RateCardRevision struct {
 	EffectiveAt pgtype.Timestamptz `db:"effective_at" json:"effective_at"`
 	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type RetentionPolicyRevision struct {
+	ID                              uuid.UUID          `db:"id" json:"id"`
+	StableID                        string             `db:"stable_id" json:"stable_id"`
+	ArtifactRetentionDays           int32              `db:"artifact_retention_days" json:"artifact_retention_days"`
+	RequestContentRetentionDays     int32              `db:"request_content_retention_days" json:"request_content_retention_days"`
+	IncompleteContentRetentionHours int32              `db:"incomplete_content_retention_hours" json:"incomplete_content_retention_hours"`
+	ScratchRetentionHours           int32              `db:"scratch_retention_hours" json:"scratch_retention_hours"`
+	DebugRetentionHours             int32              `db:"debug_retention_hours" json:"debug_retention_hours"`
+	MetadataRetentionDays           int32              `db:"metadata_retention_days" json:"metadata_retention_days"`
+	FinancialRetentionDays          int32              `db:"financial_retention_days" json:"financial_retention_days"`
+	State                           string             `db:"state" json:"state"`
+	CreatedAt                       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type RetryRuntimeState struct {

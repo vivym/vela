@@ -50,6 +50,18 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_organization_audit_request_login",
 		"vela-organization-audit-request-password",
 	)
+	retentionRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_retention_request_login",
+		"vela-retention-request-password",
+	)
+	retentionPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_retention_login",
+		"vela-retention-password",
+	)
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	artifactPool := newRolePool(
@@ -71,10 +83,13 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_human_membership_request_login",
 		"vela_organization_billing_request_login",
 		"vela_organization_audit_request_login",
+		"vela_retention_request_login",
+		"vela_retention_login",
 	} {
 		for _, ownerRole := range []string{
 			"vela_billing_owner",
 			"vela_organization_reporting_owner",
+			"vela_retention_owner",
 		} {
 			var inheritsOwner bool
 			if err := database.Admin.QueryRow(
@@ -112,6 +127,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			name: "Organization audit request", pool: organizationAuditRequestPool,
 			role: veladb.RoleOrganizationAuditRequest,
 		},
+		{name: "retention request", pool: retentionRequestPool, role: veladb.RoleRetentionRequest},
+		{name: "retention", pool: retentionPool, role: veladb.RoleRetention},
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
@@ -213,6 +230,37 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	); !isPermissionDenied(err) {
 		t.Fatalf("Organization audit request Charge call error = %v, want permission denied", err)
 	}
+	for _, relation := range []string{
+		"projects",
+		"jobs",
+		"retention_policy_revisions",
+		"project_retention_policy_events",
+	} {
+		var count int64
+		err := retentionRequestPool.QueryRow(
+			context.Background(), "SELECT count(*) FROM "+relation,
+		).Scan(&count)
+		if !isPermissionDenied(err) {
+			t.Fatalf("retention request direct %s read error = %v, want permission denied", relation, err)
+		}
+	}
+	for _, relation := range []string{
+		"jobs",
+		"artifacts",
+		"artifact_uploads",
+		"content_deletion_requests",
+		"content_deletion_targets",
+		"content_deletion_receipts",
+		"content_deletion_receipt_targets",
+	} {
+		var count int64
+		err := retentionPool.QueryRow(
+			context.Background(), "SELECT count(*) FROM "+relation,
+		).Scan(&count)
+		if !isPermissionDenied(err) {
+			t.Fatalf("retention runtime direct %s read error = %v, want permission denied", relation, err)
+		}
+	}
 
 	for _, test := range []struct {
 		name string
@@ -257,6 +305,20 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{
 			name: "request as Organization audit request",
 			pool: requestPool, role: veladb.RoleOrganizationAuditRequest,
+		},
+		{name: "request as retention request", pool: requestPool, role: veladb.RoleRetentionRequest},
+		{name: "retention request as request", pool: retentionRequestPool, role: veladb.RoleRequest},
+		{name: "internal as retention request", pool: internalPool, role: veladb.RoleRetentionRequest},
+		{name: "request as retention", pool: requestPool, role: veladb.RoleRetention},
+		{name: "retention as request", pool: retentionPool, role: veladb.RoleRequest},
+		{name: "internal as retention", pool: internalPool, role: veladb.RoleRetention},
+		{
+			name: "retention request as retention",
+			pool: retentionRequestPool, role: veladb.RoleRetention,
+		},
+		{
+			name: "retention as retention request",
+			pool: retentionPool, role: veladb.RoleRetentionRequest,
 		},
 		{name: "cancel as request", pool: cancelPool, role: veladb.RoleRequest},
 		{name: "request as cancel", pool: requestPool, role: veladb.RoleCancel},

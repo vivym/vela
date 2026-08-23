@@ -25,6 +25,7 @@ import (
 	"github.com/vivym/vela/internal/inbox"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/outbox"
+	"github.com/vivym/vela/internal/retention"
 )
 
 func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *testing.T) {
@@ -45,6 +46,7 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),

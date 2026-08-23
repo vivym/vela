@@ -384,39 +384,32 @@ func (store *S3) ListIncompleteMultipartUploads(
 	if err := validateObjectPrefix(objectPrefix); err != nil {
 		return nil, err
 	}
-	paginator := s3.NewListMultipartUploadsPaginator(
-		store.client,
+	uploads, err := store.listIncompleteMultipartUploads(
+		ctx,
 		&s3.ListMultipartUploadsInput{
 			Bucket: aws.String(store.bucket),
+			Prefix: aws.String(objectPrefix),
 		},
+		objectPrefix,
+		false,
 	)
-	uploads := make([]IncompleteMultipartUpload, 0)
-	listed := 0
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(uploads) == 0 {
+		// Some S3-compatible stores only honor a complete object key as Prefix for
+		// multipart listings. KeyMarker preserves a bounded lexical range fallback.
+		uploads, err = store.listIncompleteMultipartUploads(
+			ctx,
+			&s3.ListMultipartUploadsInput{
+				Bucket:    aws.String(store.bucket),
+				KeyMarker: aws.String(objectPrefix),
+			},
+			objectPrefix,
+			true,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("list incomplete S3 multipart uploads: %w", err)
-		}
-		for _, upload := range page.Uploads {
-			listed++
-			if listed > maxIncompleteMultipartUploads {
-				return nil, errors.New("too many incomplete S3 multipart uploads")
-			}
-			if upload.Key == nil || upload.UploadId == nil || upload.Initiated == nil ||
-				*upload.Key == "" || *upload.UploadId == "" {
-				return nil, errors.New("incomplete S3 multipart upload identity is incomplete")
-			}
-			if err := validateObjectKey(*upload.Key); err != nil {
-				return nil, fmt.Errorf("validate incomplete S3 multipart upload key: %w", err)
-			}
-			if !strings.HasPrefix(*upload.Key, objectPrefix) {
-				continue
-			}
-			uploads = append(uploads, IncompleteMultipartUpload{
-				ObjectKey:   *upload.Key,
-				UploadID:    *upload.UploadId,
-				InitiatedAt: *upload.Initiated,
-			})
+			return nil, err
 		}
 	}
 	sort.Slice(uploads, func(left, right int) bool {
@@ -428,6 +421,46 @@ func (store *S3) ListIncompleteMultipartUploads(
 		}
 		return uploads[left].InitiatedAt.Before(uploads[right].InitiatedAt)
 	})
+	return uploads, nil
+}
+
+func (store *S3) listIncompleteMultipartUploads(
+	ctx context.Context,
+	input *s3.ListMultipartUploadsInput,
+	objectPrefix string,
+	stopAfterPrefix bool,
+) ([]IncompleteMultipartUpload, error) {
+	paginator := s3.NewListMultipartUploadsPaginator(store.client, input)
+	uploads := make([]IncompleteMultipartUpload, 0)
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list incomplete S3 multipart uploads: %w", err)
+		}
+		for _, upload := range page.Uploads {
+			if upload.Key == nil || upload.UploadId == nil || upload.Initiated == nil ||
+				*upload.Key == "" || *upload.UploadId == "" {
+				return nil, errors.New("incomplete S3 multipart upload identity is incomplete")
+			}
+			if err := validateObjectKey(*upload.Key); err != nil {
+				return nil, fmt.Errorf("validate incomplete S3 multipart upload key: %w", err)
+			}
+			if !strings.HasPrefix(*upload.Key, objectPrefix) {
+				if stopAfterPrefix {
+					return uploads, nil
+				}
+				continue
+			}
+			if len(uploads) >= maxIncompleteMultipartUploads {
+				return nil, errors.New("too many incomplete S3 multipart uploads")
+			}
+			uploads = append(uploads, IncompleteMultipartUpload{
+				ObjectKey:   *upload.Key,
+				UploadID:    *upload.UploadId,
+				InitiatedAt: *upload.Initiated,
+			})
+		}
+	}
 	return uploads, nil
 }
 
@@ -555,6 +588,48 @@ func (store *S3) ReadExactVersion(
 			ChecksumSHA256: aws.ToString(output.ChecksumSHA256),
 		},
 	}, nil
+}
+
+func (store *S3) DeleteExactVersion(
+	ctx context.Context,
+	objectKey string,
+	versionID string,
+) error {
+	if store == nil || store.client == nil || store.bucket == "" {
+		return errors.New("S3 Artifact Store is not configured")
+	}
+	if err := validateExactVersion(objectKey, versionID); err != nil {
+		return err
+	}
+	_, err := store.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket:    aws.String(store.bucket),
+		Key:       aws.String(objectKey),
+		VersionId: aws.String(versionID),
+	})
+	if err != nil {
+		if isAPIErrorCode(err, "NoSuchKey", "NoSuchVersion") {
+			return nil
+		}
+		return fmt.Errorf("delete exact S3 object version: %w", err)
+	}
+	return nil
+}
+
+func (store *S3) ResolveCurrentVersion(
+	ctx context.Context,
+	objectKey string,
+) (ObjectVersion, bool, error) {
+	if store == nil || store.client == nil || store.bucket == "" {
+		return ObjectVersion{}, false, errors.New("S3 Artifact Store is not configured")
+	}
+	version, err := store.HeadCurrentVersion(ctx, objectKey)
+	if err != nil {
+		if isAPIErrorCode(err, "NoSuchKey", "NotFound", "404") {
+			return ObjectVersion{}, false, nil
+		}
+		return ObjectVersion{}, false, err
+	}
+	return version, true, nil
 }
 
 func (store *S3) HeadCurrentVersion(

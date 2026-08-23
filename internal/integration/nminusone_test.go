@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pressly/goose/v3"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -39,7 +40,170 @@ const (
 	identityAdministrationNMinusOneCommit = "395887177ec9fb5f703eac055b04c02f2086fa8b"
 	humanMembershipNMinusOneCommit        = "d8537d96cc8aeb7b7d4980e5059cf48efa713d6f"
 	organizationReportingNMinusOneCommit  = "1ce496ce06c4ba33038be91a5fd5f7be502bee85"
+	retentionNMinusOneCommit              = "87d1f27be568c96a31dcbda9d9c74ce7d2ed3f96"
 )
+
+func TestExactRetentionNMinusOneControlAdmissionAndVisibleCompletionRemainCompatible(
+	t *testing.T,
+) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	setLeaseRenewalProtocolGate(t, database.Admin, true, "retention N-1 compatibility")
+	seedAdmissionFixture(t, database.Admin)
+	workerID := uuid.New()
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, workerID, "retention")
+	nMinusOne := buildNMinusOneBinaries(t, retentionNMinusOneCommit)
+	assertProfileCircuitNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	jobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t, nMinusOne.AdmissionProbe, database.DSN,
+	))
+
+	internalPool := newRolePool(
+		t, database.DSN, "vela_internal_login", "vela-internal-password",
+	)
+	service, err := workercontrol.NewService(
+		context.Background(),
+		internalPool,
+		workercontrol.Config{
+			LeaseTTL:         2 * time.Minute,
+			ActiveLeaseKeyID: "lease-key-v1",
+			LeaseKeys: map[string][]byte{
+				"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
+			},
+			ArtifactInspector: artifactInspectorFunc(func(
+				_ context.Context,
+				request workercontrol.ArtifactInspectionRequest,
+			) (workercontrol.ArtifactInspection, error) {
+				return validInspectionForRequest(request), nil
+			}),
+		},
+	)
+	if err != nil {
+		t.Fatalf("create retention N-1 fixture coordinator: %v", err)
+	}
+	worker := workercontrol.AuthenticatedWorker{ID: workerID}
+	assignment, err := service.Acquire(
+		context.Background(),
+		worker,
+		7,
+		&workercontrol.AssignmentCandidate{
+			JobID:                      jobID,
+			ExpectedJobVersion:         1,
+			ExecutionProfileRevisionID: uuid.MustParse("00000000-0000-0000-0000-000000000014"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("assign retention N-1 Job: %v", err)
+	}
+	credentials := leaseCredentials(assignment)
+	if started, startErr := service.Start(
+		context.Background(), worker, credentials,
+	); startErr != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("start retention N-1 Job = %#v error=%v", started, startErr)
+	}
+	plan, err := service.BeginFinalization(context.Background(), worker, credentials)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("begin retention N-1 finalization = %#v error=%v", plan, err)
+	}
+	artifactIDs := uploadAndVerifyFinalizationPlan(t, service, worker, credentials, plan)
+	completed := runNMinusOneVisibleCompletionProbe(
+		t,
+		nMinusOne.VisibleCompletionProbe,
+		database.DSN,
+		worker,
+		credentials,
+		plan.JobVersion,
+		artifactIDs,
+	)
+	if completed.Decision != string(workercontrol.VisibleCompletionCommitted) ||
+		completed.ArtifactSetID == uuid.Nil || completed.ChargeID == uuid.Nil ||
+		completed.CompletedAt.IsZero() {
+		t.Fatalf("retention N-1 Visible Completion = %#v", completed)
+	}
+
+	var (
+		policyID, policyRevision                string
+		artifactDays, requestDays               int
+		requestContentExpiresAt, admissionAt    time.Time
+		artifactSetExpiresAt, artifactMinExpiry time.Time
+	)
+	if err := database.Admin.QueryRow(`
+		SELECT
+			job.retention_policy_revision_id::text,
+			job.retention_artifact_days,
+			job.retention_request_content_days,
+			job.request_content_expires_at,
+			ready.occurred_at,
+			artifact_set.retention_policy_revision,
+			artifact_set.retention_expires_at,
+			min(artifact.retention_expires_at)
+		FROM jobs AS job
+		JOIN outbox_events AS ready
+		  ON ready.aggregate_id = job.id
+		 AND ready.aggregate_version = 1
+		 AND ready.event_type = 'job.ready'
+		JOIN artifact_sets AS artifact_set ON artifact_set.job_id = job.id
+		JOIN artifacts AS artifact ON artifact.job_id = job.id
+		WHERE job.id = $1
+		GROUP BY job.id, artifact_set.id, ready.event_id
+	`, jobID).Scan(
+		&policyID,
+		&artifactDays,
+		&requestDays,
+		&requestContentExpiresAt,
+		&admissionAt,
+		&policyRevision,
+		&artifactSetExpiresAt,
+		&artifactMinExpiry,
+	); err != nil {
+		t.Fatalf("read retention N-1 default snapshots: %v", err)
+	}
+	if policyID != "00000000-0000-0000-0000-000000001630" ||
+		artifactDays != 30 || requestDays != 30 ||
+		!requestContentExpiresAt.Equal(admissionAt.Add(30*24*time.Hour)) ||
+		policyRevision != "artifact-success-30d-v1" ||
+		!artifactSetExpiresAt.Equal(completed.CompletedAt.Add(30*24*time.Hour)) ||
+		!artifactMinExpiry.Equal(artifactSetExpiresAt) {
+		t.Fatalf(
+			"retention N-1 snapshots = policy %s days %d/%d request %s Admission %s Artifact %s expiry %s/%s",
+			policyID,
+			artifactDays,
+			requestDays,
+			requestContentExpiresAt,
+			admissionAt,
+			policyRevision,
+			artifactSetExpiresAt,
+			artifactMinExpiry,
+		)
+	}
+}
+
+func TestCurrentRetentionControlFailsClosedAgainstSchema15(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 15); err != nil {
+		t.Fatalf("contract retention schema before current-control probe: %v", err)
+	}
+	binary := filepath.Join(t.TempDir(), "vela-control-current-retention")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/vela-control")
+	build.Dir = repositoryRoot(t)
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build current retention control: %v\n%s", err, output)
+	}
+	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	if !strings.Contains(output, "open retention request database pool") ||
+		!strings.Contains(
+			output,
+			"Retention Policy and Content Deletion request transaction privilege boundary",
+		) {
+		t.Fatalf("current retention control did not fail closed against schema 15:\n%s", output)
+	}
+}
 
 func TestExactOrganizationReportingNMinusOneControlServiceAndHumanRequestsRemainCompatible(t *testing.T) {
 	database := newPostgres(t)
@@ -1372,13 +1536,21 @@ func assertWaitingCompatibilityCounters(
 }
 
 type nMinusOneBinaries struct {
-	Control             string
-	AdmissionProbe      string
-	HumanAdmissionProbe string
-	AssignmentProbe     string
-	OutboxProbe         string
-	InvoiceChargeProbe  string
-	FailureProbe        string
+	Control                string
+	AdmissionProbe         string
+	HumanAdmissionProbe    string
+	AssignmentProbe        string
+	OutboxProbe            string
+	InvoiceChargeProbe     string
+	FailureProbe           string
+	VisibleCompletionProbe string
+}
+
+type nMinusOneVisibleCompletionResult struct {
+	Decision      string    `json:"decision"`
+	ArtifactSetID uuid.UUID `json:"artifact_set_id"`
+	ChargeID      uuid.UUID `json:"charge_id"`
+	CompletedAt   time.Time `json:"completed_at"`
 }
 
 type nMinusOneFailureProbeResult struct {
@@ -1467,7 +1639,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == humanOIDCNMinusOneCommit ||
 		commit == identityAdministrationNMinusOneCommit ||
 		commit == humanMembershipNMinusOneCommit ||
-		commit == organizationReportingNMinusOneCommit {
+		commit == organizationReportingNMinusOneCommit ||
+		commit == retentionNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -1570,6 +1743,32 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("write N-1 failure probe: %v", err)
 		}
 	}
+	var visibleCompletionProbeDirectory string
+	if commit == retentionNMinusOneCommit {
+		visibleCompletionProbeSource, err := os.ReadFile(filepath.Join(
+			repositoryRoot(t),
+			"internal",
+			"integration",
+			"testdata",
+			"nminusone_visible_completion_probe.go.txt",
+		))
+		if err != nil {
+			t.Fatalf("read N-1 Visible Completion probe: %v", err)
+		}
+		visibleCompletionProbeDirectory = filepath.Join(
+			sourceRoot, "cmd", "vela-nminusone-visible-completion-probe",
+		)
+		if err := os.MkdirAll(visibleCompletionProbeDirectory, 0o755); err != nil {
+			t.Fatalf("create N-1 Visible Completion probe directory: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(visibleCompletionProbeDirectory, "main.go"),
+			visibleCompletionProbeSource,
+			0o600,
+		); err != nil {
+			t.Fatalf("write N-1 Visible Completion probe: %v", err)
+		}
+	}
 
 	binaryDirectory := t.TempDir()
 	binaries := nMinusOneBinaries{
@@ -1591,6 +1790,11 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	}
 	if commit == profileCircuitNMinusOneCommit {
 		binaries.FailureProbe = filepath.Join(binaryDirectory, "vela-failure-probe-n-minus-one")
+	}
+	if commit == retentionNMinusOneCommit {
+		binaries.VisibleCompletionProbe = filepath.Join(
+			binaryDirectory, "vela-visible-completion-probe-n-minus-one",
+		)
 	}
 	build := exec.Command(
 		"go", "build",
@@ -1669,7 +1873,59 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 failure probe: %v\n%s", err, output)
 		}
 	}
+	if commit == retentionNMinusOneCommit {
+		build = exec.Command(
+			"go",
+			"build",
+			"-o",
+			binaries.VisibleCompletionProbe,
+			"./cmd/vela-nminusone-visible-completion-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 Visible Completion probe: %v\n%s", err, output)
+		}
+	}
 	return binaries
+}
+
+func runNMinusOneVisibleCompletionProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	worker workercontrol.AuthenticatedWorker,
+	credentials workercontrol.LeaseCredentials,
+	expectedJobVersion int64,
+	artifactIDs []uuid.UUID,
+) nMinusOneVisibleCompletionResult {
+	t.Helper()
+	encodedArtifactIDs := make([]string, len(artifactIDs))
+	for index, artifactID := range artifactIDs {
+		encodedArtifactIDs[index] = artifactID.String()
+	}
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_internal_login", "vela-internal-password",
+		),
+		"VELA_WORKER_ID":            worker.ID.String(),
+		"VELA_ATTEMPT_ID":           credentials.AttemptID.String(),
+		"VELA_WORKER_EPOCH":         fmt.Sprint(credentials.WorkerEpoch),
+		"VELA_LEASE_FENCE":          fmt.Sprint(credentials.Fence),
+		"VELA_LEASE_TOKEN":          credentials.Token,
+		"VELA_EXPECTED_JOB_VERSION": fmt.Sprint(expectedJobVersion),
+		"VELA_ARTIFACT_IDS":         strings.Join(encodedArtifactIDs, ","),
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Visible Completion probe: %v\n%s", err, output)
+	}
+	var result nMinusOneVisibleCompletionResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Visible Completion probe: %v\n%s", err, output)
+	}
+	return result
 }
 
 func runNMinusOneFailureProbeProcess(
@@ -1958,9 +2214,31 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			"vela_human_membership_request_login",
 			"vela-human-membership-request-password",
 		),
-		"VELA_OIDC_ISSUER":   "https://identity.example.com",
-		"VELA_OIDC_AUDIENCE": "vela-control",
-		"VELA_OIDC_JWKS_URL": "https://identity.example.com/.well-known/jwks.json",
+		"VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_organization_billing_request_login",
+			"vela-organization-billing-request-password",
+		),
+		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_organization_audit_request_login",
+			"vela-organization-audit-request-password",
+		),
+		"VELA_RETENTION_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_retention_request_login",
+			"vela-retention-request-password",
+		),
+		"VELA_RETENTION_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_retention_login", "vela-retention-password",
+		),
+		"VELA_RETENTION_RECONCILER_ID": "current-retention-startup-probe",
+		"VELA_OIDC_ISSUER":             "https://identity.example.com",
+		"VELA_OIDC_AUDIENCE":           "vela-control",
+		"VELA_OIDC_JWKS_URL":           "https://identity.example.com/.well-known/jwks.json",
 		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_request_login", "vela-request-password",
 		),

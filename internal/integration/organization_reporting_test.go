@@ -29,6 +29,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
 	"github.com/vivym/vela/internal/workercontrol"
 )
@@ -1133,7 +1134,7 @@ func TestOrganizationReportingMigrationAllowsEmptyDownUp(t *testing.T) {
 		t.Fatalf("re-expand Organization reporting migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
-	if err != nil || version != 15 {
+	if err != nil || version != 16 {
 		t.Fatalf("Organization reporting migration version after Down/Up = %d error=%v", version, err)
 	}
 	for _, runtime := range []struct {
@@ -1986,6 +1987,7 @@ func TestOrganizationReportingProductionHTTPPath(t *testing.T) {
 		Authenticator:          authenticator,
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  reporting,
+		Retention:              &retention.Service{},
 		Admission:              &admission.Service{},
 		Cancellation:           &cancellation.Service{},
 		Artifacts:              &artifactaccess.Service{},

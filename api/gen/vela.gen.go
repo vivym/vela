@@ -83,6 +83,54 @@ func (e ChargeReason) Valid() bool {
 	}
 }
 
+// Defines values for ContentDeletionRequestState.
+const (
+	ContentDeletionRequestStateCOMPLETED  ContentDeletionRequestState = "COMPLETED"
+	ContentDeletionRequestStateINPROGRESS ContentDeletionRequestState = "IN_PROGRESS"
+	ContentDeletionRequestStatePENDING    ContentDeletionRequestState = "PENDING"
+	ContentDeletionRequestStateRETRYWAIT  ContentDeletionRequestState = "RETRY_WAIT"
+)
+
+// Valid indicates whether the value is a known member of the ContentDeletionRequestState enum.
+func (e ContentDeletionRequestState) Valid() bool {
+	switch e {
+	case ContentDeletionRequestStateCOMPLETED:
+		return true
+	case ContentDeletionRequestStateINPROGRESS:
+		return true
+	case ContentDeletionRequestStatePENDING:
+		return true
+	case ContentDeletionRequestStateRETRYWAIT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ContentDeletionRequestStatusState.
+const (
+	ContentDeletionRequestStatusStateCOMPLETED  ContentDeletionRequestStatusState = "COMPLETED"
+	ContentDeletionRequestStatusStateINPROGRESS ContentDeletionRequestStatusState = "IN_PROGRESS"
+	ContentDeletionRequestStatusStatePENDING    ContentDeletionRequestStatusState = "PENDING"
+	ContentDeletionRequestStatusStateRETRYWAIT  ContentDeletionRequestStatusState = "RETRY_WAIT"
+)
+
+// Valid indicates whether the value is a known member of the ContentDeletionRequestStatusState enum.
+func (e ContentDeletionRequestStatusState) Valid() bool {
+	switch e {
+	case ContentDeletionRequestStatusStateCOMPLETED:
+		return true
+	case ContentDeletionRequestStatusStateINPROGRESS:
+		return true
+	case ContentDeletionRequestStatusStatePENDING:
+		return true
+	case ContentDeletionRequestStatusStateRETRYWAIT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExecutionPhase.
 const (
 	ExecutionPhaseFINALIZING ExecutionPhase = "FINALIZING"
@@ -263,6 +311,27 @@ func (e OrganizationRole) Valid() bool {
 	}
 }
 
+// Defines values for ProjectRetentionPolicyArtifactRetentionDays.
+const (
+	ProjectRetentionPolicyArtifactRetentionDaysN30 ProjectRetentionPolicyArtifactRetentionDays = 30
+	ProjectRetentionPolicyArtifactRetentionDaysN7  ProjectRetentionPolicyArtifactRetentionDays = 7
+	ProjectRetentionPolicyArtifactRetentionDaysN90 ProjectRetentionPolicyArtifactRetentionDays = 90
+)
+
+// Valid indicates whether the value is a known member of the ProjectRetentionPolicyArtifactRetentionDays enum.
+func (e ProjectRetentionPolicyArtifactRetentionDays) Valid() bool {
+	switch e {
+	case ProjectRetentionPolicyArtifactRetentionDaysN30:
+		return true
+	case ProjectRetentionPolicyArtifactRetentionDaysN7:
+		return true
+	case ProjectRetentionPolicyArtifactRetentionDaysN90:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProjectRole.
 const (
 	Developer     ProjectRole = "Developer"
@@ -286,18 +355,21 @@ func (e ProjectRole) Valid() bool {
 
 // Defines values for ServiceCredentialScope.
 const (
-	ArtifactsRead  ServiceCredentialScope = "artifacts:read"
-	JobsCancel     ServiceCredentialScope = "jobs:cancel"
-	JobsRead       ServiceCredentialScope = "jobs:read"
-	JobsSubmit     ServiceCredentialScope = "jobs:submit"
-	WebhooksManage ServiceCredentialScope = "webhooks:manage"
-	WebhooksRead   ServiceCredentialScope = "webhooks:read"
+	ArtifactsRead         ServiceCredentialScope = "artifacts:read"
+	ContentDeletionManage ServiceCredentialScope = "content_deletion:manage"
+	JobsCancel            ServiceCredentialScope = "jobs:cancel"
+	JobsRead              ServiceCredentialScope = "jobs:read"
+	JobsSubmit            ServiceCredentialScope = "jobs:submit"
+	WebhooksManage        ServiceCredentialScope = "webhooks:manage"
+	WebhooksRead          ServiceCredentialScope = "webhooks:read"
 )
 
 // Valid indicates whether the value is a known member of the ServiceCredentialScope enum.
 func (e ServiceCredentialScope) Valid() bool {
 	switch e {
 	case ArtifactsRead:
+		return true
+	case ContentDeletionManage:
 		return true
 	case JobsCancel:
 		return true
@@ -308,6 +380,27 @@ func (e ServiceCredentialScope) Valid() bool {
 	case WebhooksManage:
 		return true
 	case WebhooksRead:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SetProjectRetentionPolicyRequestArtifactRetentionDays.
+const (
+	SetProjectRetentionPolicyRequestArtifactRetentionDaysN30 SetProjectRetentionPolicyRequestArtifactRetentionDays = 30
+	SetProjectRetentionPolicyRequestArtifactRetentionDaysN7  SetProjectRetentionPolicyRequestArtifactRetentionDays = 7
+	SetProjectRetentionPolicyRequestArtifactRetentionDaysN90 SetProjectRetentionPolicyRequestArtifactRetentionDays = 90
+)
+
+// Valid indicates whether the value is a known member of the SetProjectRetentionPolicyRequestArtifactRetentionDays enum.
+func (e SetProjectRetentionPolicyRequestArtifactRetentionDays) Valid() bool {
+	switch e {
+	case SetProjectRetentionPolicyRequestArtifactRetentionDaysN30:
+		return true
+	case SetProjectRetentionPolicyRequestArtifactRetentionDaysN7:
+		return true
+	case SetProjectRetentionPolicyRequestArtifactRetentionDaysN90:
 		return true
 	default:
 		return false
@@ -352,22 +445,22 @@ func (e SubmitJobRequestServiceClass) Valid() bool {
 
 // Defines values for WebhookDeliveryState.
 const (
-	DEADLETTER WebhookDeliveryState = "DEAD_LETTER"
-	DELIVERED  WebhookDeliveryState = "DELIVERED"
-	INFLIGHT   WebhookDeliveryState = "IN_FLIGHT"
-	PENDING    WebhookDeliveryState = "PENDING"
+	WebhookDeliveryStateDEADLETTER WebhookDeliveryState = "DEAD_LETTER"
+	WebhookDeliveryStateDELIVERED  WebhookDeliveryState = "DELIVERED"
+	WebhookDeliveryStateINFLIGHT   WebhookDeliveryState = "IN_FLIGHT"
+	WebhookDeliveryStatePENDING    WebhookDeliveryState = "PENDING"
 )
 
 // Valid indicates whether the value is a known member of the WebhookDeliveryState enum.
 func (e WebhookDeliveryState) Valid() bool {
 	switch e {
-	case DEADLETTER:
+	case WebhookDeliveryStateDEADLETTER:
 		return true
-	case DELIVERED:
+	case WebhookDeliveryStateDELIVERED:
 		return true
-	case INFLIGHT:
+	case WebhookDeliveryStateINFLIGHT:
 		return true
-	case PENDING:
+	case WebhookDeliveryStatePENDING:
 		return true
 	default:
 		return false
@@ -474,6 +567,41 @@ type Charge struct {
 
 // ChargeReason defines model for ChargeReason.
 type ChargeReason string
+
+// ContentDeletionRequest defines model for ContentDeletionRequest.
+type ContentDeletionRequest struct {
+	CompletedAt *time.Time                  `json:"completed_at"`
+	DeadlineAt  time.Time                   `json:"deadline_at"`
+	JobId       openapi_types.UUID          `json:"job_id"`
+	Overdue     bool                        `json:"overdue"`
+	ProjectId   openapi_types.UUID          `json:"project_id"`
+	RequestId   openapi_types.UUID          `json:"request_id"`
+	RequestedAt time.Time                   `json:"requested_at"`
+	State       ContentDeletionRequestState `json:"state"`
+}
+
+// ContentDeletionRequestState defines model for ContentDeletionRequest.State.
+type ContentDeletionRequestState string
+
+// ContentDeletionRequestStatus defines model for ContentDeletionRequestStatus.
+type ContentDeletionRequestStatus struct {
+	CompletedAt          *time.Time                        `json:"completed_at"`
+	CompletedTargetCount int64                             `json:"completed_target_count"`
+	DeadlineAt           time.Time                         `json:"deadline_at"`
+	JobId                openapi_types.UUID                `json:"job_id"`
+	LastErrorCode        *string                           `json:"last_error_code"`
+	LastErrorMessage     *string                           `json:"last_error_message"`
+	Overdue              bool                              `json:"overdue"`
+	ProjectId            openapi_types.UUID                `json:"project_id"`
+	RequestId            openapi_types.UUID                `json:"request_id"`
+	RequestedAt          time.Time                         `json:"requested_at"`
+	RetryingTargetCount  int64                             `json:"retrying_target_count"`
+	State                ContentDeletionRequestStatusState `json:"state"`
+	TargetCount          int64                             `json:"target_count"`
+}
+
+// ContentDeletionRequestStatusState defines model for ContentDeletionRequestStatus.State.
+type ContentDeletionRequestStatusState string
 
 // CreateHumanMemberRequest defines model for CreateHumanMemberRequest.
 type CreateHumanMemberRequest struct {
@@ -693,6 +821,24 @@ type ProjectMemberList struct {
 	Members []ProjectMember `json:"members"`
 }
 
+// ProjectRetentionPolicy defines model for ProjectRetentionPolicy.
+type ProjectRetentionPolicy struct {
+	ArtifactRetentionDays           ProjectRetentionPolicyArtifactRetentionDays `json:"artifact_retention_days"`
+	DebugRetentionHours             int32                                       `json:"debug_retention_hours"`
+	FinancialRetentionDays          int32                                       `json:"financial_retention_days"`
+	IncompleteContentRetentionHours int32                                       `json:"incomplete_content_retention_hours"`
+	MetadataRetentionDays           int32                                       `json:"metadata_retention_days"`
+	PolicyRevisionId                openapi_types.UUID                          `json:"policy_revision_id"`
+	ProjectId                       openapi_types.UUID                          `json:"project_id"`
+	RequestContentRetentionDays     int32                                       `json:"request_content_retention_days"`
+	ScratchRetentionHours           int32                                       `json:"scratch_retention_hours"`
+	SelectedAt                      time.Time                                   `json:"selected_at"`
+	StableId                        string                                      `json:"stable_id"`
+}
+
+// ProjectRetentionPolicyArtifactRetentionDays defines model for ProjectRetentionPolicy.ArtifactRetentionDays.
+type ProjectRetentionPolicyArtifactRetentionDays int32
+
 // ProjectRole defines model for ProjectRole.
 type ProjectRole string
 
@@ -758,6 +904,14 @@ type ServicePrincipal struct {
 type ServicePrincipalList struct {
 	ServicePrincipals []ServicePrincipal `json:"service_principals"`
 }
+
+// SetProjectRetentionPolicyRequest defines model for SetProjectRetentionPolicyRequest.
+type SetProjectRetentionPolicyRequest struct {
+	ArtifactRetentionDays SetProjectRetentionPolicyRequestArtifactRetentionDays `json:"artifact_retention_days"`
+}
+
+// SetProjectRetentionPolicyRequestArtifactRetentionDays defines model for SetProjectRetentionPolicyRequest.ArtifactRetentionDays.
+type SetProjectRetentionPolicyRequestArtifactRetentionDays int32
 
 // SettlementContact defines model for SettlementContact.
 type SettlementContact struct {
@@ -862,6 +1016,9 @@ type WebhookSubscriptionState string
 // ContactId defines model for ContactId.
 type ContactId = openapi_types.UUID
 
+// ContentDeletionRequestId defines model for ContentDeletionRequestId.
+type ContentDeletionRequestId = openapi_types.UUID
+
 // CredentialId defines model for CredentialId.
 type CredentialId = openapi_types.UUID
 
@@ -944,6 +1101,11 @@ type SubmitJobParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// AcceptContentDeletionRequestParams defines parameters for AcceptContentDeletionRequest.
+type AcceptContentDeletionRequestParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // ListProjectMembersParams defines parameters for ListProjectMembers.
 type ListProjectMembersParams struct {
 	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
@@ -983,6 +1145,9 @@ type SubmitJobJSONRequestBody = SubmitJobRequest
 
 // AssignProjectRoleJSONRequestBody defines body for AssignProjectRole for application/json ContentType.
 type AssignProjectRoleJSONRequestBody = AssignProjectRoleRequest
+
+// SetProjectRetentionPolicyJSONRequestBody defines body for SetProjectRetentionPolicy for application/json ContentType.
+type SetProjectRetentionPolicyJSONRequestBody = SetProjectRetentionPolicyRequest
 
 // CreateServicePrincipalJSONRequestBody defines body for CreateServicePrincipal for application/json ContentType.
 type CreateServicePrincipalJSONRequestBody = CreateServicePrincipalRequest
@@ -1031,6 +1196,9 @@ type ServerInterface interface {
 	// GetOrganizationUsage Read bounded non-content Organization usage
 	// (GET /v1/organizations/{organization_id}/usage)
 	GetOrganizationUsage(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params GetOrganizationUsageParams)
+	// GetContentDeletionRequest Get safe aggregate status for a Content Deletion request
+	// (GET /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id})
+	GetContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, contentDeletionRequestId ContentDeletionRequestId)
 	// SubmitJob Submit a Job for durable Admission
 	// (POST /v1/projects/{project_id}/jobs)
 	SubmitJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, params SubmitJobParams)
@@ -1043,6 +1211,9 @@ type ServerInterface interface {
 	// CancelJob Commit a Customer Cancellation decision
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 	CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId)
+	// AcceptContentDeletionRequest Accept an idempotent Content Deletion request for a Project Job
+	// (POST /v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests)
+	AcceptContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, params AcceptContentDeletionRequestParams)
 	// ListProjectMembers List Human members assigned to a Project
 	// (GET /v1/projects/{project_id}/members)
 	ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListProjectMembersParams)
@@ -1052,6 +1223,12 @@ type ServerInterface interface {
 	// RevokeProjectRole Revoke a fixed Project role from a Human member
 	// (POST /v1/projects/{project_id}/members/{principal_id}/roles/{role}/revoke)
 	RevokeProjectRole(w http.ResponseWriter, r *http.Request, projectId ProjectId, principalId PrincipalId, role ProjectRoleName)
+	// GetProjectRetentionPolicy Get the current Project Retention Policy revision
+	// (GET /v1/projects/{project_id}/retention-policy)
+	GetProjectRetentionPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// SetProjectRetentionPolicy Select the Retention Policy for later Project Admissions
+	// (PUT /v1/projects/{project_id}/retention-policy)
+	SetProjectRetentionPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId)
 	// ListServicePrincipals List safe Project Service Principal projections
 	// (GET /v1/projects/{project_id}/service-principals)
 	ListServicePrincipals(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListServicePrincipalsParams)
@@ -1166,6 +1343,12 @@ func (_ Unimplemented) GetOrganizationUsage(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetContentDeletionRequest Get safe aggregate status for a Content Deletion request
+// (GET /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id})
+func (_ Unimplemented) GetContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, contentDeletionRequestId ContentDeletionRequestId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // SubmitJob Submit a Job for durable Admission
 // (POST /v1/projects/{project_id}/jobs)
 func (_ Unimplemented) SubmitJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, params SubmitJobParams) {
@@ -1190,6 +1373,12 @@ func (_ Unimplemented) CancelJob(w http.ResponseWriter, r *http.Request, project
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// AcceptContentDeletionRequest Accept an idempotent Content Deletion request for a Project Job
+// (POST /v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests)
+func (_ Unimplemented) AcceptContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, params AcceptContentDeletionRequestParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListProjectMembers List Human members assigned to a Project
 // (GET /v1/projects/{project_id}/members)
 func (_ Unimplemented) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListProjectMembersParams) {
@@ -1205,6 +1394,18 @@ func (_ Unimplemented) AssignProjectRole(w http.ResponseWriter, r *http.Request,
 // RevokeProjectRole Revoke a fixed Project role from a Human member
 // (POST /v1/projects/{project_id}/members/{principal_id}/roles/{role}/revoke)
 func (_ Unimplemented) RevokeProjectRole(w http.ResponseWriter, r *http.Request, projectId ProjectId, principalId PrincipalId, role ProjectRoleName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetProjectRetentionPolicy Get the current Project Retention Policy revision
+// (GET /v1/projects/{project_id}/retention-policy)
+func (_ Unimplemented) GetProjectRetentionPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// SetProjectRetentionPolicy Select the Retention Policy for later Project Admissions
+// (PUT /v1/projects/{project_id}/retention-policy)
+func (_ Unimplemented) SetProjectRetentionPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1739,6 +1940,41 @@ func (siw *ServerInterfaceWrapper) GetOrganizationUsage(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetContentDeletionRequest operation middleware
+func (siw *ServerInterfaceWrapper) GetContentDeletionRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "content_deletion_request_id" -------------
+	var contentDeletionRequestId ContentDeletionRequestId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "content_deletion_request_id", chi.URLParam(r, "content_deletion_request_id"), &contentDeletionRequestId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "content_deletion_request_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetContentDeletionRequest(w, r, projectId, contentDeletionRequestId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SubmitJob operation middleware
 func (siw *ServerInterfaceWrapper) SubmitJob(w http.ResponseWriter, r *http.Request) {
 
@@ -1898,6 +2134,69 @@ func (siw *ServerInterfaceWrapper) CancelJob(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// AcceptContentDeletionRequest operation middleware
+func (siw *ServerInterfaceWrapper) AcceptContentDeletionRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job_id" -------------
+	var jobId JobId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job_id", chi.URLParam(r, "job_id"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AcceptContentDeletionRequestParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptContentDeletionRequest(w, r, projectId, jobId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProjectMembers operation middleware
 func (siw *ServerInterfaceWrapper) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -2010,6 +2309,58 @@ func (siw *ServerInterfaceWrapper) RevokeProjectRole(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RevokeProjectRole(w, r, projectId, principalId, role)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProjectRetentionPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetProjectRetentionPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProjectRetentionPolicy(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetProjectRetentionPolicy operation middleware
+func (siw *ServerInterfaceWrapper) SetProjectRetentionPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetProjectRetentionPolicy(w, r, projectId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2642,6 +2993,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/projects/{project_id}/members/{principal_id}/roles/{role}/revoke", wrapper.RevokeProjectRole)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/retention-policy", wrapper.GetProjectRetentionPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v1/projects/{project_id}/retention-policy", wrapper.SetProjectRetentionPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests", wrapper.AcceptContentDeletionRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id}", wrapper.GetContentDeletionRequest)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/projects/{project_id}/jobs", wrapper.SubmitJob)
@@ -3594,6 +3957,85 @@ func (response GetOrganizationUsage403JSONResponse) VisitGetOrganizationUsageRes
 	return err
 }
 
+type GetContentDeletionRequestRequestObject struct {
+	ProjectId                ProjectId                `json:"project_id"`
+	ContentDeletionRequestId ContentDeletionRequestId `json:"content_deletion_request_id"`
+}
+
+type GetContentDeletionRequestResponseObject interface {
+	VisitGetContentDeletionRequestResponse(w http.ResponseWriter) error
+}
+
+type GetContentDeletionRequest200JSONResponse ContentDeletionRequestStatus
+
+func (response GetContentDeletionRequest200JSONResponse) VisitGetContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContentDeletionRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetContentDeletionRequest400JSONResponse) VisitGetContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContentDeletionRequest401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetContentDeletionRequest401JSONResponse) VisitGetContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContentDeletionRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetContentDeletionRequest403JSONResponse) VisitGetContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetContentDeletionRequest404JSONResponse Error
+
+func (response GetContentDeletionRequest404JSONResponse) VisitGetContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SubmitJobRequestObject struct {
 	ProjectId ProjectId `json:"project_id"`
 	Params    SubmitJobParams
@@ -3931,6 +4373,100 @@ func (response CancelJob404JSONResponse) VisitCancelJobResponse(w http.ResponseW
 	return err
 }
 
+type AcceptContentDeletionRequestRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	JobId     JobId     `json:"job_id"`
+	Params    AcceptContentDeletionRequestParams
+}
+
+type AcceptContentDeletionRequestResponseObject interface {
+	VisitAcceptContentDeletionRequestResponse(w http.ResponseWriter) error
+}
+
+type AcceptContentDeletionRequest202JSONResponse ContentDeletionRequest
+
+func (response AcceptContentDeletionRequest202JSONResponse) VisitAcceptContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptContentDeletionRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AcceptContentDeletionRequest400JSONResponse) VisitAcceptContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptContentDeletionRequest401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response AcceptContentDeletionRequest401JSONResponse) VisitAcceptContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptContentDeletionRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response AcceptContentDeletionRequest403JSONResponse) VisitAcceptContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptContentDeletionRequest404JSONResponse Error
+
+func (response AcceptContentDeletionRequest404JSONResponse) VisitAcceptContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptContentDeletionRequest409JSONResponse Error
+
+func (response AcceptContentDeletionRequest409JSONResponse) VisitAcceptContentDeletionRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProjectMembersRequestObject struct {
 	ProjectId ProjectId `json:"project_id"`
 	Params    ListProjectMembersParams
@@ -4159,6 +4695,149 @@ func (response RevokeProjectRole403JSONResponse) VisitRevokeProjectRoleResponse(
 type RevokeProjectRole404JSONResponse Error
 
 func (response RevokeProjectRole404JSONResponse) VisitRevokeProjectRoleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectRetentionPolicyRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+}
+
+type GetProjectRetentionPolicyResponseObject interface {
+	VisitGetProjectRetentionPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetProjectRetentionPolicy200JSONResponse ProjectRetentionPolicy
+
+func (response GetProjectRetentionPolicy200JSONResponse) VisitGetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectRetentionPolicy401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetProjectRetentionPolicy401JSONResponse) VisitGetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectRetentionPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetProjectRetentionPolicy403JSONResponse) VisitGetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetProjectRetentionPolicy404JSONResponse Error
+
+func (response GetProjectRetentionPolicy404JSONResponse) VisitGetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectRetentionPolicyRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	Body      *SetProjectRetentionPolicyJSONRequestBody
+}
+
+type SetProjectRetentionPolicyResponseObject interface {
+	VisitSetProjectRetentionPolicyResponse(w http.ResponseWriter) error
+}
+
+type SetProjectRetentionPolicy200JSONResponse ProjectRetentionPolicy
+
+func (response SetProjectRetentionPolicy200JSONResponse) VisitSetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectRetentionPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response SetProjectRetentionPolicy400JSONResponse) VisitSetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectRetentionPolicy401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SetProjectRetentionPolicy401JSONResponse) VisitSetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectRetentionPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SetProjectRetentionPolicy403JSONResponse) VisitSetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetProjectRetentionPolicy404JSONResponse Error
+
+func (response SetProjectRetentionPolicy404JSONResponse) VisitSetProjectRetentionPolicyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -5147,6 +5826,9 @@ type StrictServerInterface interface {
 	// GetOrganizationUsage Read bounded non-content Organization usage
 	// (GET /v1/organizations/{organization_id}/usage)
 	GetOrganizationUsage(ctx context.Context, request GetOrganizationUsageRequestObject) (GetOrganizationUsageResponseObject, error)
+	// GetContentDeletionRequest Get safe aggregate status for a Content Deletion request
+	// (GET /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id})
+	GetContentDeletionRequest(ctx context.Context, request GetContentDeletionRequestRequestObject) (GetContentDeletionRequestResponseObject, error)
 	// SubmitJob Submit a Job for durable Admission
 	// (POST /v1/projects/{project_id}/jobs)
 	SubmitJob(ctx context.Context, request SubmitJobRequestObject) (SubmitJobResponseObject, error)
@@ -5159,6 +5841,9 @@ type StrictServerInterface interface {
 	// CancelJob Commit a Customer Cancellation decision
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 	CancelJob(ctx context.Context, request CancelJobRequestObject) (CancelJobResponseObject, error)
+	// AcceptContentDeletionRequest Accept an idempotent Content Deletion request for a Project Job
+	// (POST /v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests)
+	AcceptContentDeletionRequest(ctx context.Context, request AcceptContentDeletionRequestRequestObject) (AcceptContentDeletionRequestResponseObject, error)
 	// ListProjectMembers List Human members assigned to a Project
 	// (GET /v1/projects/{project_id}/members)
 	ListProjectMembers(ctx context.Context, request ListProjectMembersRequestObject) (ListProjectMembersResponseObject, error)
@@ -5168,6 +5853,12 @@ type StrictServerInterface interface {
 	// RevokeProjectRole Revoke a fixed Project role from a Human member
 	// (POST /v1/projects/{project_id}/members/{principal_id}/roles/{role}/revoke)
 	RevokeProjectRole(ctx context.Context, request RevokeProjectRoleRequestObject) (RevokeProjectRoleResponseObject, error)
+	// GetProjectRetentionPolicy Get the current Project Retention Policy revision
+	// (GET /v1/projects/{project_id}/retention-policy)
+	GetProjectRetentionPolicy(ctx context.Context, request GetProjectRetentionPolicyRequestObject) (GetProjectRetentionPolicyResponseObject, error)
+	// SetProjectRetentionPolicy Select the Retention Policy for later Project Admissions
+	// (PUT /v1/projects/{project_id}/retention-policy)
+	SetProjectRetentionPolicy(ctx context.Context, request SetProjectRetentionPolicyRequestObject) (SetProjectRetentionPolicyResponseObject, error)
 	// ListServicePrincipals List safe Project Service Principal projections
 	// (GET /v1/projects/{project_id}/service-principals)
 	ListServicePrincipals(ctx context.Context, request ListServicePrincipalsRequestObject) (ListServicePrincipalsResponseObject, error)
@@ -5588,6 +6279,33 @@ func (sh *strictHandler) GetOrganizationUsage(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// GetContentDeletionRequest operation middleware
+func (sh *strictHandler) GetContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, contentDeletionRequestId ContentDeletionRequestId) {
+	var request GetContentDeletionRequestRequestObject
+
+	request.ProjectId = projectId
+	request.ContentDeletionRequestId = contentDeletionRequestId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetContentDeletionRequest(ctx, request.(GetContentDeletionRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetContentDeletionRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetContentDeletionRequestResponseObject); ok {
+		if err := validResponse.VisitGetContentDeletionRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SubmitJob operation middleware
 func (sh *strictHandler) SubmitJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, params SubmitJobParams) {
 	var request SubmitJobRequestObject
@@ -5703,6 +6421,34 @@ func (sh *strictHandler) CancelJob(w http.ResponseWriter, r *http.Request, proje
 	}
 }
 
+// AcceptContentDeletionRequest operation middleware
+func (sh *strictHandler) AcceptContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, params AcceptContentDeletionRequestParams) {
+	var request AcceptContentDeletionRequestRequestObject
+
+	request.ProjectId = projectId
+	request.JobId = jobId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptContentDeletionRequest(ctx, request.(AcceptContentDeletionRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptContentDeletionRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptContentDeletionRequestResponseObject); ok {
+		if err := validResponse.VisitAcceptContentDeletionRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListProjectMembers operation middleware
 func (sh *strictHandler) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListProjectMembersParams) {
 	var request ListProjectMembersRequestObject
@@ -5785,6 +6531,65 @@ func (sh *strictHandler) RevokeProjectRole(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RevokeProjectRoleResponseObject); ok {
 		if err := validResponse.VisitRevokeProjectRoleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetProjectRetentionPolicy operation middleware
+func (sh *strictHandler) GetProjectRetentionPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId) {
+	var request GetProjectRetentionPolicyRequestObject
+
+	request.ProjectId = projectId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetProjectRetentionPolicy(ctx, request.(GetProjectRetentionPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetProjectRetentionPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetProjectRetentionPolicyResponseObject); ok {
+		if err := validResponse.VisitGetProjectRetentionPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetProjectRetentionPolicy operation middleware
+func (sh *strictHandler) SetProjectRetentionPolicy(w http.ResponseWriter, r *http.Request, projectId ProjectId) {
+	var request SetProjectRetentionPolicyRequestObject
+
+	request.ProjectId = projectId
+
+	var body SetProjectRetentionPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetProjectRetentionPolicy(ctx, request.(SetProjectRetentionPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetProjectRetentionPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetProjectRetentionPolicyResponseObject); ok {
+		if err := validResponse.VisitSetProjectRetentionPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -6144,102 +6949,113 @@ func (sh *strictHandler) RotateWebhookSubscriptionSecret(w http.ResponseWriter, 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"AP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

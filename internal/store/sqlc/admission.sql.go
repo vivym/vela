@@ -233,6 +233,14 @@ INSERT INTO jobs (
     request_hash,
     request_content,
     request_content_expires_at,
+    retention_policy_revision_id,
+    retention_artifact_days,
+    retention_request_content_days,
+    retention_incomplete_content_hours,
+    retention_scratch_hours,
+    retention_debug_hours,
+    retention_metadata_days,
+    retention_financial_days,
     pricing_rate_card_revision_id,
     pricing_rate_line_id,
     pricing_unit_amount_minor,
@@ -260,10 +268,11 @@ INSERT INTO jobs (
     $9,
     $10,
     $11,
-    transaction_timestamp() + interval '30 days',
-    $12,
+    transaction_timestamp()
+        + $12::bigint * interval '1 day',
     $13,
     $14,
+    $12,
     $15,
     $16,
     $17,
@@ -273,9 +282,17 @@ INSERT INTO jobs (
     $21,
     $22,
     $23,
-	$24,
-	$25,
-	transaction_timestamp() + $26::bigint * interval '1 second'
+    $24,
+    $25,
+    $26,
+    $27,
+    $28,
+    $29,
+    $30,
+    $31,
+	$32,
+	$33,
+	transaction_timestamp() + $34::bigint * interval '1 second'
 )
 `
 
@@ -291,6 +308,14 @@ type InsertJobParams struct {
 	WorkerPoolID                              uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
 	RequestHash                               []byte    `db:"request_hash" json:"request_hash"`
 	RequestContent                            []byte    `db:"request_content" json:"request_content"`
+	RetentionRequestContentDays               int32     `db:"retention_request_content_days" json:"retention_request_content_days"`
+	RetentionPolicyRevisionID                 uuid.UUID `db:"retention_policy_revision_id" json:"retention_policy_revision_id"`
+	RetentionArtifactDays                     int32     `db:"retention_artifact_days" json:"retention_artifact_days"`
+	RetentionIncompleteContentHours           int32     `db:"retention_incomplete_content_hours" json:"retention_incomplete_content_hours"`
+	RetentionScratchHours                     int32     `db:"retention_scratch_hours" json:"retention_scratch_hours"`
+	RetentionDebugHours                       int32     `db:"retention_debug_hours" json:"retention_debug_hours"`
+	RetentionMetadataDays                     int32     `db:"retention_metadata_days" json:"retention_metadata_days"`
+	RetentionFinancialDays                    int32     `db:"retention_financial_days" json:"retention_financial_days"`
 	PricingRateCardRevisionID                 uuid.UUID `db:"pricing_rate_card_revision_id" json:"pricing_rate_card_revision_id"`
 	PricingRateLineID                         uuid.UUID `db:"pricing_rate_line_id" json:"pricing_rate_line_id"`
 	PricingUnitAmountMinor                    int64     `db:"pricing_unit_amount_minor" json:"pricing_unit_amount_minor"`
@@ -321,6 +346,14 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.WorkerPoolID,
 		arg.RequestHash,
 		arg.RequestContent,
+		arg.RetentionRequestContentDays,
+		arg.RetentionPolicyRevisionID,
+		arg.RetentionArtifactDays,
+		arg.RetentionIncompleteContentHours,
+		arg.RetentionScratchHours,
+		arg.RetentionDebugHours,
+		arg.RetentionMetadataDays,
+		arg.RetentionFinancialDays,
 		arg.PricingRateCardRevisionID,
 		arg.PricingRateLineID,
 		arg.PricingUnitAmountMinor,
@@ -500,7 +533,15 @@ SELECT
     p.retry_after_seconds,
     p.running_count,
     p.running_limit,
-    o.status AS organization_status
+    o.status AS organization_status,
+    p.retention_policy_revision_id,
+    p.retention_artifact_days AS artifact_retention_days,
+    p.retention_request_content_days AS request_content_retention_days,
+    p.retention_incomplete_content_hours AS incomplete_content_retention_hours,
+    p.retention_scratch_hours AS scratch_retention_hours,
+    p.retention_debug_hours AS debug_retention_hours,
+    p.retention_metadata_days AS metadata_retention_days,
+    p.retention_financial_days AS financial_retention_days
 FROM projects AS p
 JOIN customer_organizations AS o ON o.id = p.organization_id
 WHERE p.organization_id = $1
@@ -514,12 +555,20 @@ type LockProjectForAdmissionParams struct {
 }
 
 type LockProjectForAdmissionRow struct {
-	QueuedCount        int32  `db:"queued_count" json:"queued_count"`
-	QueuedLimit        int32  `db:"queued_limit" json:"queued_limit"`
-	RetryAfterSeconds  int32  `db:"retry_after_seconds" json:"retry_after_seconds"`
-	RunningCount       int32  `db:"running_count" json:"running_count"`
-	RunningLimit       int32  `db:"running_limit" json:"running_limit"`
-	OrganizationStatus string `db:"organization_status" json:"organization_status"`
+	QueuedCount                     int32     `db:"queued_count" json:"queued_count"`
+	QueuedLimit                     int32     `db:"queued_limit" json:"queued_limit"`
+	RetryAfterSeconds               int32     `db:"retry_after_seconds" json:"retry_after_seconds"`
+	RunningCount                    int32     `db:"running_count" json:"running_count"`
+	RunningLimit                    int32     `db:"running_limit" json:"running_limit"`
+	OrganizationStatus              string    `db:"organization_status" json:"organization_status"`
+	RetentionPolicyRevisionID       uuid.UUID `db:"retention_policy_revision_id" json:"retention_policy_revision_id"`
+	ArtifactRetentionDays           int32     `db:"artifact_retention_days" json:"artifact_retention_days"`
+	RequestContentRetentionDays     int32     `db:"request_content_retention_days" json:"request_content_retention_days"`
+	IncompleteContentRetentionHours int32     `db:"incomplete_content_retention_hours" json:"incomplete_content_retention_hours"`
+	ScratchRetentionHours           int32     `db:"scratch_retention_hours" json:"scratch_retention_hours"`
+	DebugRetentionHours             int32     `db:"debug_retention_hours" json:"debug_retention_hours"`
+	MetadataRetentionDays           int32     `db:"metadata_retention_days" json:"metadata_retention_days"`
+	FinancialRetentionDays          int32     `db:"financial_retention_days" json:"financial_retention_days"`
 }
 
 func (q *Queries) LockProjectForAdmission(ctx context.Context, arg LockProjectForAdmissionParams) (LockProjectForAdmissionRow, error) {
@@ -532,6 +581,14 @@ func (q *Queries) LockProjectForAdmission(ctx context.Context, arg LockProjectFo
 		&i.RunningCount,
 		&i.RunningLimit,
 		&i.OrganizationStatus,
+		&i.RetentionPolicyRevisionID,
+		&i.ArtifactRetentionDays,
+		&i.RequestContentRetentionDays,
+		&i.IncompleteContentRetentionHours,
+		&i.ScratchRetentionHours,
+		&i.DebugRetentionHours,
+		&i.MetadataRetentionDays,
+		&i.FinancialRetentionDays,
 	)
 	return i, err
 }

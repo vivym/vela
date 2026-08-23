@@ -396,6 +396,118 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/retention-policy:
+    get:
+      operationId: getProjectRetentionPolicy
+      summary: Get the current Project Retention Policy revision
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      responses:
+        '200':
+          description: Current immutable Project Retention Policy revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectRetentionPolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Project is not visible in this Customer Organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      operationId: setProjectRetentionPolicy
+      summary: Select the Retention Policy for later Project Admissions
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetProjectRetentionPolicyRequest'
+      responses:
+        '200':
+          description: Project Retention Policy selection committed or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectRetentionPolicy'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Project is not visible in this Customer Organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests:
+    post:
+      operationId: acceptContentDeletionRequest
+      summary: Accept an idempotent Content Deletion request for a Project Job
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Content Deletion request durably accepted or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentDeletionRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Project or Job is not visible to the Principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Idempotency-Key conflicts with another Content Deletion target
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id}:
+    get:
+      operationId: getContentDeletionRequest
+      summary: Get safe aggregate status for a Content Deletion request
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ContentDeletionRequestId'
+      responses:
+        '200':
+          description: Safe aggregate Content Deletion status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentDeletionRequestStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Content Deletion request is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/projects/{project_id}/jobs:
     post:
       operationId: submitJob
@@ -898,6 +1010,13 @@ components:
       schema:
         type: string
         format: uuid
+    ContentDeletionRequestId:
+      name: content_deletion_request_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     SubscriptionId:
       name: subscription_id
       in: path
@@ -1368,6 +1487,188 @@ components:
         assigned_at:
           type: string
           format: date-time
+    SetProjectRetentionPolicyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - artifact_retention_days
+      properties:
+        artifact_retention_days:
+          type: integer
+          format: int32
+          enum:
+            - 7
+            - 30
+            - 90
+    ProjectRetentionPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - project_id
+        - policy_revision_id
+        - stable_id
+        - artifact_retention_days
+        - request_content_retention_days
+        - incomplete_content_retention_hours
+        - scratch_retention_hours
+        - debug_retention_hours
+        - metadata_retention_days
+        - financial_retention_days
+        - selected_at
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        policy_revision_id:
+          type: string
+          format: uuid
+        stable_id:
+          type: string
+          minLength: 1
+          maxLength: 100
+        artifact_retention_days:
+          type: integer
+          format: int32
+          enum:
+            - 7
+            - 30
+            - 90
+        request_content_retention_days:
+          type: integer
+          format: int32
+          minimum: 1
+        incomplete_content_retention_hours:
+          type: integer
+          format: int32
+          minimum: 1
+        scratch_retention_hours:
+          type: integer
+          format: int32
+          minimum: 1
+        debug_retention_hours:
+          type: integer
+          format: int32
+          minimum: 1
+        metadata_retention_days:
+          type: integer
+          format: int32
+          minimum: 1
+        financial_retention_days:
+          type: integer
+          format: int32
+          minimum: 1
+        selected_at:
+          type: string
+          format: date-time
+    ContentDeletionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - project_id
+        - job_id
+        - state
+        - requested_at
+        - deadline_at
+        - completed_at
+        - overdue
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+            - PENDING
+            - IN_PROGRESS
+            - RETRY_WAIT
+            - COMPLETED
+        requested_at:
+          type: string
+          format: date-time
+        deadline_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        overdue:
+          type: boolean
+    ContentDeletionRequestStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - project_id
+        - job_id
+        - state
+        - requested_at
+        - deadline_at
+        - completed_at
+        - overdue
+        - target_count
+        - completed_target_count
+        - retrying_target_count
+        - last_error_code
+        - last_error_message
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+            - PENDING
+            - IN_PROGRESS
+            - RETRY_WAIT
+            - COMPLETED
+        requested_at:
+          type: string
+          format: date-time
+        deadline_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        overdue:
+          type: boolean
+        target_count:
+          type: integer
+          format: int64
+          minimum: 0
+        completed_target_count:
+          type: integer
+          format: int64
+          minimum: 0
+        retrying_target_count:
+          type: integer
+          format: int64
+          minimum: 0
+        last_error_code:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 100
+        last_error_message:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 500
     ProjectMember:
       type: object
       additionalProperties: false
@@ -1845,6 +2146,7 @@ components:
         - jobs:read
         - jobs:cancel
         - artifacts:read
+        - content_deletion:manage
         - webhooks:manage
         - webhooks:read
     IssueServiceCredentialRequest:
@@ -1857,7 +2159,7 @@ components:
         scopes:
           type: array
           minItems: 1
-          maxItems: 6
+          maxItems: 7
           uniqueItems: true
           items:
             $ref: '#/components/schemas/ServiceCredentialScope'

@@ -327,6 +327,10 @@ func (s *Service) Submit(
 	if !ok {
 		return Job{}, errors.New("resolved Job Expiry policy overflows seconds")
 	}
+	requestContentRetentionSeconds := int64(project.RequestContentRetentionDays) * 24 * 60 * 60
+	if requestContentRetentionSeconds <= jobLifetimeSeconds {
+		return Job{}, errors.New("retention policy expires request content before Job Expiry")
+	}
 
 	credit, err := queries.LockCreditAccount(ctx, principal.OrganizationID)
 	if err != nil {
@@ -372,25 +376,33 @@ func (s *Service) Submit(
 
 	jobID := uuid.New()
 	err = queries.InsertJob(ctx, store.InsertJobParams{
-		ID:                              jobID,
-		OrganizationID:                  principal.OrganizationID,
-		ProjectID:                       projectID,
-		CreatedByPrincipalID:            principal.PrincipalID,
-		ModelRevisionID:                 sku.ModelRevisionID,
-		GenerationPresetRevisionID:      sku.GenerationPresetRevisionID,
-		ServiceClassRevisionID:          sku.ServiceClassRevisionID,
-		OutputSpecID:                    sku.OutputSpecID,
-		WorkerPoolID:                    pool.ID,
-		RequestHash:                     requestHash[:],
-		RequestContent:                  requestContent,
-		PricingRateCardRevisionID:       sku.RateCardRevisionID,
-		PricingRateLineID:               sku.RateLineID,
-		PricingUnitAmountMinor:          sku.UnitAmountMinor,
-		PricingQuantity:                 request.GenerationCount,
-		PricingQuotedAmountMinor:        quotedAmount,
-		PricingCurrency:                 sku.Currency,
-		ExecutionMaxAttempts:            sku.MaxAttempts,
-		ExecutionMaxTotalComputeSeconds: maxTotalComputeSeconds,
+		ID:                                        jobID,
+		OrganizationID:                            principal.OrganizationID,
+		ProjectID:                                 projectID,
+		CreatedByPrincipalID:                      principal.PrincipalID,
+		ModelRevisionID:                           sku.ModelRevisionID,
+		GenerationPresetRevisionID:                sku.GenerationPresetRevisionID,
+		ServiceClassRevisionID:                    sku.ServiceClassRevisionID,
+		OutputSpecID:                              sku.OutputSpecID,
+		WorkerPoolID:                              pool.ID,
+		RequestHash:                               requestHash[:],
+		RequestContent:                            requestContent,
+		RetentionPolicyRevisionID:                 project.RetentionPolicyRevisionID,
+		RetentionArtifactDays:                     project.ArtifactRetentionDays,
+		RetentionRequestContentDays:               project.RequestContentRetentionDays,
+		RetentionIncompleteContentHours:           project.IncompleteContentRetentionHours,
+		RetentionScratchHours:                     project.ScratchRetentionHours,
+		RetentionDebugHours:                       project.DebugRetentionHours,
+		RetentionMetadataDays:                     project.MetadataRetentionDays,
+		RetentionFinancialDays:                    project.FinancialRetentionDays,
+		PricingRateCardRevisionID:                 sku.RateCardRevisionID,
+		PricingRateLineID:                         sku.RateLineID,
+		PricingUnitAmountMinor:                    sku.UnitAmountMinor,
+		PricingQuantity:                           request.GenerationCount,
+		PricingQuotedAmountMinor:                  quotedAmount,
+		PricingCurrency:                           sku.Currency,
+		ExecutionMaxAttempts:                      sku.MaxAttempts,
+		ExecutionMaxTotalComputeSeconds:           maxTotalComputeSeconds,
 		ExecutionMaxFinalizationSecondsPerAttempt: sku.MaxFinalizationSecondsPerAttempt,
 		ExecutionRetryBackoffPolicy:               sku.RetryBackoffPolicy,
 		ExecutionRetryableFailureClasses:          sku.RetryableFailureClasses,

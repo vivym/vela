@@ -454,7 +454,7 @@ func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) 
 		t.Fatalf("re-expanded request queue projection = %q", expandedQueueProjection)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 15 {
+	if err != nil || version != 16 {
 		t.Fatalf("migration version after empty Scheduler Down/Up = %d error=%v", version, err)
 	}
 }
@@ -558,7 +558,7 @@ func TestHierarchicalSchedulerMigrationDefaultPolicyCatalogDownUpRestoresSurface
 	}
 	assertTableExists(t, database.Admin, "scheduler_dispatch_intents")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 15 {
+	if err != nil || version != 16 {
 		t.Fatalf("migration version after default-policy Down/Up = %d error=%v", version, err)
 	}
 }
@@ -926,7 +926,7 @@ func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	assertTableExists(t, database.Admin, "artifact_sets")
 	assertTableExists(t, database.Admin, "visible_completions")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 15 {
+	if err != nil || version != 16 {
 		t.Fatalf("migration version after empty Down/Up = %d error=%v", version, err)
 	}
 }
@@ -1111,8 +1111,8 @@ func TestCustomerCancellationUpgradesExactV5AuthorizationSemantics(t *testing.T)
 	}{
 		{name: "scope removed", requestKey: "scope-removed", mutation: "scopes = ARRAY['jobs:submit', 'jobs:read']", wantStatus: http.StatusForbidden},
 		{name: "scope removed with null entry", requestKey: "scope-removed-null", mutation: "scopes = ARRAY['jobs:submit', NULL]::text[]", wantStatus: http.StatusForbidden},
-		{name: "credential revoked", requestKey: "credential-revoked", mutation: "revoked_at = clock_timestamp()", wantStatus: http.StatusUnauthorized},
 		{name: "credential expired", requestKey: "credential-expired", mutation: "expires_at = clock_timestamp() - interval '1 second'", wantStatus: http.StatusUnauthorized},
+		{name: "credential revoked", requestKey: "credential-revoked", mutation: "revoked_at = clock_timestamp()", wantStatus: http.StatusUnauthorized},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := database.Admin.Exec(`
@@ -1223,7 +1223,7 @@ func exactV5PlusCurrentCancellationMigrations(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(directory, filepath.Base(cancellationMigration)), contents, 0o600); err != nil {
 		t.Fatalf("write current cancellation migration: %v", err)
 	}
-	for version := 7; version <= 11; version++ {
+	for version := 7; version <= 16; version++ {
 		name := fmt.Sprintf("%05d", version)
 		matches, globErr := filepath.Glob(
 			filepath.Join(repositoryRoot, "db", "migrations", name+"_*.sql"),

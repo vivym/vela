@@ -34,6 +34,7 @@ import (
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/outbox"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/webhook"
 	"github.com/vivym/vela/internal/workercontrol"
@@ -64,6 +65,10 @@ const (
 	defaultWebhookHTTPTimeout                   = 15 * time.Second
 	defaultOIDCJWKSHTTPTimeout                  = 15 * time.Second
 	defaultWebhookBatchSize               int32 = 100
+	defaultRetentionTick                        = time.Minute
+	defaultRetentionClaimTTL                    = time.Minute
+	defaultRetentionRetryDelay                  = 5 * time.Minute
+	defaultRetentionBatchSize                   = 100
 	defaultExecutionLeaseTTL                    = 2 * time.Minute
 	defaultWorkerLostGrace                      = 30 * time.Second
 	defaultArtifactInspectionTimeout            = 30 * time.Second
@@ -87,6 +92,13 @@ type config struct {
 	humanMembershipRequestDatabaseURL string
 	organizationBillingDatabaseURL    string
 	organizationAuditDatabaseURL      string
+	retentionRequestDatabaseURL       string
+	retentionDatabaseURL              string
+	retentionReconcilerID             string
+	retentionTick                     time.Duration
+	retentionClaimTTL                 time.Duration
+	retentionRetryDelay               time.Duration
+	retentionBatchSize                int
 	requestDatabaseURL                string
 	artifactRequestDatabaseURL        string
 	cancelDatabaseURL                 string
@@ -183,6 +195,10 @@ type webhookDispatcher interface {
 	DispatchBatch(context.Context) (webhook.BatchResult, error)
 }
 
+type contentRetentionReconciler interface {
+	ReconcileBatch(context.Context) (retention.ReconcileResult, error)
+}
+
 var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
 
 func main() {
@@ -274,6 +290,26 @@ func run() error {
 		return fmt.Errorf("open Organization audit request database pool: %w", err)
 	}
 	defer organizationAuditPool.Close()
+	retentionRequestPool, err := openPool(
+		ctx,
+		configuration.retentionRequestDatabaseURL,
+		10,
+		veladb.RoleRetentionRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open retention request database pool: %w", err)
+	}
+	defer retentionRequestPool.Close()
+	retentionPool, err := openPool(
+		ctx,
+		configuration.retentionDatabaseURL,
+		5,
+		veladb.RoleRetention,
+	)
+	if err != nil {
+		return fmt.Errorf("open retention database pool: %w", err)
+	}
+	defer retentionPool.Close()
 	requestPool, err := openPool(ctx, configuration.requestDatabaseURL, 20, veladb.RoleRequest)
 	if err != nil {
 		return fmt.Errorf("open request database pool: %w", err)
@@ -401,6 +437,19 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	retentionReconciler, err := retention.NewReconciler(
+		retentionPool,
+		artifactStore,
+		retention.ReconcilerConfig{
+			InstanceID: configuration.retentionReconcilerID,
+			BatchSize:  configuration.retentionBatchSize,
+			ClaimTTL:   configuration.retentionClaimTTL,
+			RetryDelay: configuration.retentionRetryDelay,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure retention Reconciler: %w", err)
+	}
 	workerCoordinator, err := openWorkerCoordinator(
 		ctx,
 		internalPool,
@@ -514,6 +563,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Organization reporting service: %w", err)
 	}
+	retentionService, err := retention.NewService(retentionRequestPool)
+	if err != nil {
+		return fmt.Errorf("configure retention service: %w", err)
+	}
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticatorWithHumanMembershipOIDC(
 			authPool,
@@ -524,6 +577,7 @@ func run() error {
 		),
 		IdentityAdministration: identityAdministration,
 		OrganizationReporting:  organizationReporting,
+		Retention:              retentionService,
 		Admission:              admission.NewService(requestPool, capacityPredictor),
 		Cancellation:           cancellationService,
 		Artifacts:              artifactaccess.NewService(artifactRequestPool, artifactStore),
@@ -547,6 +601,8 @@ func run() error {
 			humanMembershipRequestPool,
 			organizationBillingPool,
 			organizationAuditPool,
+			retentionRequestPool,
+			retentionPool,
 			requestPool,
 			artifactRequestPool,
 			cancelPool,
@@ -610,6 +666,11 @@ func run() error {
 	go func() {
 		defer close(webhookDone)
 		runWebhookDispatcher(ctx, webhookDeliveryDispatcher, configuration.webhookTick)
+	}()
+	retentionDone := make(chan struct{})
+	go func() {
+		defer close(retentionDone)
+		runRetentionReconciler(ctx, retentionReconciler, configuration.retentionTick)
 	}()
 	httpServerErrors := make(chan error, 1)
 	go func() {
@@ -697,6 +758,11 @@ func run() error {
 	case <-shutdownContext.Done():
 		return errors.New("webhook Dispatcher did not stop before shutdown deadline")
 	}
+	select {
+	case <-retentionDone:
+	case <-shutdownContext.Done():
+		return errors.New("retention Reconciler did not stop before shutdown deadline")
+	}
 	if err := natsConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 		return fmt.Errorf("drain NATS connection: %w", err)
 	}
@@ -720,6 +786,13 @@ func loadConfig() (config, error) {
 		humanMembershipRequestDatabaseURL: os.Getenv("VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL"),
 		organizationBillingDatabaseURL:    os.Getenv("VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL"),
 		organizationAuditDatabaseURL:      os.Getenv("VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL"),
+		retentionRequestDatabaseURL:       os.Getenv("VELA_RETENTION_REQUEST_DATABASE_URL"),
+		retentionDatabaseURL:              os.Getenv("VELA_RETENTION_DATABASE_URL"),
+		retentionReconcilerID:             os.Getenv("VELA_RETENTION_RECONCILER_ID"),
+		retentionTick:                     defaultRetentionTick,
+		retentionClaimTTL:                 defaultRetentionClaimTTL,
+		retentionRetryDelay:               defaultRetentionRetryDelay,
+		retentionBatchSize:                defaultRetentionBatchSize,
 		requestDatabaseURL:                os.Getenv("VELA_REQUEST_DATABASE_URL"),
 		artifactRequestDatabaseURL:        os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
 		oidcIssuer:                        os.Getenv("VELA_OIDC_ISSUER"),
@@ -792,6 +865,9 @@ func loadConfig() (config, error) {
 		"VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL":     configuration.humanMembershipRequestDatabaseURL,
 		"VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL": configuration.organizationBillingDatabaseURL,
 		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL":   configuration.organizationAuditDatabaseURL,
+		"VELA_RETENTION_REQUEST_DATABASE_URL":            configuration.retentionRequestDatabaseURL,
+		"VELA_RETENTION_DATABASE_URL":                    configuration.retentionDatabaseURL,
+		"VELA_RETENTION_RECONCILER_ID":                   configuration.retentionReconcilerID,
 		"VELA_REQUEST_DATABASE_URL":                      configuration.requestDatabaseURL,
 		"VELA_ARTIFACT_REQUEST_DATABASE_URL":             configuration.artifactRequestDatabaseURL,
 		"VELA_OIDC_ISSUER":                               configuration.oidcIssuer,
@@ -854,6 +930,36 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_OUTBOX_BATCH_SIZE must be between 1 and 1000")
 		}
 		configuration.publisherBatchSize = int32(batchSize)
+	}
+	if value := os.Getenv("VELA_RETENTION_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_RETENTION_TICK must be in (0, 1m]")
+		}
+		configuration.retentionTick = tick
+	}
+	if value := os.Getenv("VELA_RETENTION_CLAIM_TTL"); value != "" {
+		claimTTL, err := time.ParseDuration(value)
+		if err != nil || claimTTL < time.Second || claimTTL > time.Hour ||
+			claimTTL%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_RETENTION_CLAIM_TTL must be in [1s, 1h]")
+		}
+		configuration.retentionClaimTTL = claimTTL
+	}
+	if value := os.Getenv("VELA_RETENTION_RETRY_DELAY"); value != "" {
+		retryDelay, err := time.ParseDuration(value)
+		if err != nil || retryDelay < time.Second || retryDelay > 24*time.Hour ||
+			retryDelay%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_RETENTION_RETRY_DELAY must be in [1s, 24h]")
+		}
+		configuration.retentionRetryDelay = retryDelay
+	}
+	if value := os.Getenv("VELA_RETENTION_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.Atoi(value)
+		if err != nil || batchSize < 1 || batchSize > 1000 {
+			return config{}, errors.New("environment variable VELA_RETENTION_BATCH_SIZE must be in 1..1000")
+		}
+		configuration.retentionBatchSize = batchSize
 	}
 	if value := os.Getenv("VELA_SCHEDULER_TICK"); value != "" {
 		tick, err := time.ParseDuration(value)
@@ -1456,6 +1562,41 @@ func runArtifactMultipartCleaner(
 				"eligible", result.Eligible,
 				"recorded", result.Recorded,
 				"aborted", result.Aborted,
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runRetentionReconciler(
+	ctx context.Context,
+	reconciler contentRetentionReconciler,
+	interval time.Duration,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		result, err := reconciler.ReconcileBatch(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("retention reconciliation incomplete", "error", err)
+		} else if err == nil && (result.RequestContentExpired > 0 ||
+			result.ArtifactRequestsCreated > 0 || result.Claimed > 0) {
+			slog.Info(
+				"retention reconciled",
+				"request_content_expired", result.RequestContentExpired,
+				"artifact_requests_created", result.ArtifactRequestsCreated,
+				"claimed", result.Claimed,
+				"completed", result.Completed,
+				"failed", result.Failed,
 			)
 		}
 		select {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/webhook"
 )
@@ -30,6 +31,9 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Human membership request database", missingEnv: "VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL"},
 		{name: "Organization billing request database", missingEnv: "VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL"},
 		{name: "Organization audit request database", missingEnv: "VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL"},
+		{name: "retention request database", missingEnv: "VELA_RETENTION_REQUEST_DATABASE_URL"},
+		{name: "retention database", missingEnv: "VELA_RETENTION_DATABASE_URL"},
+		{name: "retention Reconciler identity", missingEnv: "VELA_RETENTION_RECONCILER_ID"},
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
 		{name: "OIDC issuer", missingEnv: "VELA_OIDC_ISSUER"},
 		{name: "OIDC audience", missingEnv: "VELA_OIDC_AUDIENCE"},
@@ -97,6 +101,9 @@ func setValidConfigEnvironment(t *testing.T) {
 		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL",
 		"postgres://organization-audit-request.example/vela",
 	)
+	t.Setenv("VELA_RETENTION_REQUEST_DATABASE_URL", "postgres://retention-request.example/vela")
+	t.Setenv("VELA_RETENTION_DATABASE_URL", "postgres://retention.example/vela")
+	t.Setenv("VELA_RETENTION_RECONCILER_ID", "vela-control-retention-reconciler-1")
 	t.Setenv("VELA_REQUEST_DATABASE_URL", "postgres://request.example/vela")
 	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")
 	t.Setenv("VELA_OIDC_ISSUER", "https://identity.example.com")
@@ -232,6 +239,59 @@ func TestLoadConfigParsesBoundedWebhookControls(t *testing.T) {
 		{env: "VELA_WEBHOOK_BATCH_SIZE", value: "1001"},
 		{env: "VELA_WEBHOOK_HTTP_TIMEOUT", value: "0s"},
 		{env: "VELA_WEBHOOK_HTTP_TIMEOUT", value: "1m1s"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil || !strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
+}
+
+func TestLoadConfigParsesBoundedRetentionControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load default retention config: %v", err)
+	}
+	if configuration.retentionTick != time.Minute ||
+		configuration.retentionClaimTTL != time.Minute ||
+		configuration.retentionRetryDelay != 5*time.Minute ||
+		configuration.retentionBatchSize != 100 {
+		t.Fatalf("default retention controls = %#v", configuration)
+	}
+
+	t.Setenv("VELA_RETENTION_TICK", "15s")
+	t.Setenv("VELA_RETENTION_CLAIM_TTL", "45s")
+	t.Setenv("VELA_RETENTION_RETRY_DELAY", "10m")
+	t.Setenv("VELA_RETENTION_BATCH_SIZE", "25")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit retention config: %v", err)
+	}
+	if configuration.retentionTick != 15*time.Second ||
+		configuration.retentionClaimTTL != 45*time.Second ||
+		configuration.retentionRetryDelay != 10*time.Minute ||
+		configuration.retentionBatchSize != 25 {
+		t.Fatalf("explicit retention controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_RETENTION_TICK", value: "0s"},
+		{env: "VELA_RETENTION_TICK", value: "1m1s"},
+		{env: "VELA_RETENTION_CLAIM_TTL", value: "0s"},
+		{env: "VELA_RETENTION_CLAIM_TTL", value: "1500ms"},
+		{env: "VELA_RETENTION_CLAIM_TTL", value: "1h1s"},
+		{env: "VELA_RETENTION_RETRY_DELAY", value: "0s"},
+		{env: "VELA_RETENTION_RETRY_DELAY", value: "1500ms"},
+		{env: "VELA_RETENTION_RETRY_DELAY", value: "24h1s"},
+		{env: "VELA_RETENTION_BATCH_SIZE", value: "0"},
+		{env: "VELA_RETENTION_BATCH_SIZE", value: "1001"},
 	} {
 		t.Run(test.env+"="+test.value, func(t *testing.T) {
 			setValidConfigEnvironment(t)
@@ -528,6 +588,30 @@ func TestWebhookDispatcherRetriesTransientFailureAndStopsWithContext(t *testing.
 	}
 }
 
+func TestRetentionReconcilerRetriesTransientFailureAndStopsWithContext(t *testing.T) {
+	reconciler := &testRetentionReconciler{calls: make(chan struct{}, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runRetentionReconciler(ctx, reconciler, time.Millisecond)
+	}()
+
+	for range 2 {
+		select {
+		case <-reconciler.calls:
+		case <-time.After(time.Second):
+			t.Fatal("retention Reconciler did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("retention Reconciler did not stop with context")
+	}
+}
+
 type testHierarchicalScheduler struct {
 	invocations atomic.Int32
 	calls       chan struct{}
@@ -542,6 +626,20 @@ type testInvoiceExporter struct {
 type testWebhookDispatcher struct {
 	invocations atomic.Int32
 	calls       chan struct{}
+}
+
+type testRetentionReconciler struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+}
+
+func (r *testRetentionReconciler) ReconcileBatch(context.Context) (retention.ReconcileResult, error) {
+	invocation := r.invocations.Add(1)
+	r.calls <- struct{}{}
+	if invocation == 1 {
+		return retention.ReconcileResult{Claimed: 1, Failed: 1}, errors.New("transient retention failure")
+	}
+	return retention.ReconcileResult{}, nil
 }
 
 func (d *testWebhookDispatcher) DispatchBatch(context.Context) (webhook.BatchResult, error) {

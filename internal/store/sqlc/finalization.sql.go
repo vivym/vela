@@ -1329,6 +1329,9 @@ SELECT
     job.version AS job_version,
     job.current_fence,
     job.job_expires_at,
+    job.request_content_deleted_at,
+    job.retention_artifact_days,
+    retention_policy.stable_id AS retention_policy_revision,
     job.pricing_quantity AS generation_count,
     reservation.id AS credit_reservation_id,
     reservation.state AS credit_reservation_state,
@@ -1346,6 +1349,8 @@ SELECT
 FROM attempt_leases AS lease
 JOIN attempts AS attempt ON attempt.id = lease.attempt_id
 JOIN jobs AS job ON job.id = attempt.job_id
+JOIN retention_policy_revisions AS retention_policy
+  ON retention_policy.id = job.retention_policy_revision_id
 JOIN credit_reservations AS reservation ON reservation.job_id = job.id
 LEFT JOIN visible_completions AS completion ON completion.job_id = job.id
 LEFT JOIN artifact_sets AS artifact_set ON artifact_set.id = completion.artifact_set_id
@@ -1396,6 +1401,9 @@ type LockVisibleCompletionAuthorityRow struct {
 	JobVersion                 int64                  `db:"job_version" json:"job_version"`
 	CurrentFence               int64                  `db:"current_fence" json:"current_fence"`
 	JobExpiresAt               pgtype.Timestamptz     `db:"job_expires_at" json:"job_expires_at"`
+	RequestContentDeletedAt    pgtype.Timestamptz     `db:"request_content_deleted_at" json:"request_content_deleted_at"`
+	RetentionArtifactDays      int32                  `db:"retention_artifact_days" json:"retention_artifact_days"`
+	RetentionPolicyRevision    string                 `db:"retention_policy_revision" json:"retention_policy_revision"`
 	GenerationCount            int32                  `db:"generation_count" json:"generation_count"`
 	CreditReservationID        uuid.UUID              `db:"credit_reservation_id" json:"credit_reservation_id"`
 	CreditReservationState     CreditReservationState `db:"credit_reservation_state" json:"credit_reservation_state"`
@@ -1446,6 +1454,9 @@ func (q *Queries) LockVisibleCompletionAuthority(ctx context.Context, arg LockVi
 		&i.JobVersion,
 		&i.CurrentFence,
 		&i.JobExpiresAt,
+		&i.RequestContentDeletedAt,
+		&i.RetentionArtifactDays,
+		&i.RetentionPolicyRevision,
 		&i.GenerationCount,
 		&i.CreditReservationID,
 		&i.CreditReservationState,

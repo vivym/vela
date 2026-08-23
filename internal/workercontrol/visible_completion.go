@@ -20,11 +20,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const (
-	visibleCompletionRetentionPolicy = "artifact-success-30d-v1"
-	visibleCompletionRetention       = 30 * 24 * time.Hour
-)
-
 type VisibleCompletionDecision string
 
 const (
@@ -233,7 +228,8 @@ func (s *Service) completeVisibleCompletion(
 		return result, nil
 	}
 	if authority.JobState == store.JobStateCANCELING ||
-		authority.JobState == store.JobStateCANCELED {
+		authority.JobState == store.JobStateCANCELED ||
+		authority.RequestContentDeletedAt.Valid {
 		return VisibleCompletionResult{Decision: VisibleCompletionCancellationWon}, nil
 	}
 	if authority.JobState == store.JobStateFAILED {
@@ -320,8 +316,14 @@ func (s *Service) completeVisibleCompletion(
 	chargeID := uuid.New()
 	accessGrantID := uuid.New()
 	completedAt := pgtype.Timestamptz{Time: now, Valid: true}
+	if authority.RetentionArtifactDays != 7 && authority.RetentionArtifactDays != 30 &&
+		authority.RetentionArtifactDays != 90 || authority.RetentionPolicyRevision == "" {
+		return VisibleCompletionResult{}, errors.New("job Retention Policy snapshot is invalid")
+	}
 	retentionExpiresAt := pgtype.Timestamptz{
-		Time:  now.Add(visibleCompletionRetention),
+		Time: now.Add(
+			time.Duration(authority.RetentionArtifactDays) * 24 * time.Hour,
+		),
 		Valid: true,
 	}
 	nextJobVersion := authority.JobVersion + 1
@@ -333,7 +335,7 @@ func (s *Service) completeVisibleCompletion(
 		AttemptID:               authority.AttemptID,
 		AttemptFence:            authority.AttemptFence,
 		ManifestSha256:          manifestHash[:],
-		RetentionPolicyRevision: visibleCompletionRetentionPolicy,
+		RetentionPolicyRevision: authority.RetentionPolicyRevision,
 		RetentionExpiresAt:      retentionExpiresAt,
 		CommittedAt:             completedAt,
 	}); err != nil {

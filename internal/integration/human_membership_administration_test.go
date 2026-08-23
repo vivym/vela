@@ -24,6 +24,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -741,6 +742,7 @@ func TestOrganizationOwnerManagesHumanMembershipThroughProductionHTTPPath(t *tes
 		Authenticator:          authenticator,
 		IdentityAdministration: administration,
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              &admission.Service{},
 		Cancellation:           &cancellation.Service{},
 		Artifacts:              &artifactaccess.Service{},
@@ -1994,7 +1996,7 @@ func TestHumanMembershipAdministrationMigrationAllowsEmptyDownUp(t *testing.T) {
 		t.Fatalf("re-expand Human membership administration migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
-	if err != nil || version != 15 {
+	if err != nil || version != 16 {
 		t.Fatalf("migration version after Human membership Down/Up = %d error=%v", version, err)
 	}
 	if err := database.Admin.QueryRow(`

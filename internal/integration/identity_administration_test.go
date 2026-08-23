@@ -25,6 +25,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -67,6 +68,7 @@ func TestProjectAdminCreatesServicePrincipalThroughProductionHTTPPath(t *testing
 		Authenticator:          authenticator,
 		IdentityAdministration: administration,
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              &admission.Service{},
 		Cancellation:           &cancellation.Service{},
 		Artifacts:              &artifactaccess.Service{},
@@ -130,7 +132,7 @@ func TestProjectAdminCreatesServicePrincipalThroughProductionHTTPPath(t *testing
 	basePath := "/v1/projects/" + testProjectID + "/service-principals/" +
 		created.ServicePrincipalID
 	issueBody, err := json.Marshal(map[string]any{
-		"scopes":     []string{identity.ScopeJobsRead},
+		"scopes":     []string{identity.ScopeContentDeletionManage},
 		"expires_at": time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339Nano),
 	})
 	if err != nil {
@@ -153,7 +155,7 @@ func TestProjectAdminCreatesServicePrincipalThroughProductionHTTPPath(t *testing
 	issueResponse.Body.Close()
 	if _, err := uuid.Parse(issued.CredentialID); err != nil ||
 		!strings.HasPrefix(issued.BearerCredential, "vla_"+issued.CredentialID+".") ||
-		len(issued.Scopes) != 1 || issued.Scopes[0] != identity.ScopeJobsRead {
+		len(issued.Scopes) != 1 || issued.Scopes[0] != identity.ScopeContentDeletionManage {
 		t.Fatalf("issued Credential response = %#v; id error=%v", issued, err)
 	}
 
@@ -856,6 +858,7 @@ func TestCredentialValidationAndIdentityAuditKeepBearerMaterialOutOfStorage(t *t
 		{name: "duplicate scopes", scopes: []string{identity.ScopeJobsRead, identity.ScopeJobsRead}, expires: time.Now().UTC().Add(time.Hour)},
 		{name: "unknown scope", scopes: []string{"jobs:delete"}, expires: time.Now().UTC().Add(time.Hour)},
 		{name: "administrative scope", scopes: []string{identity.ScopeServicePrincipalsManage}, expires: time.Now().UTC().Add(time.Hour)},
+		{name: "retention policy scope", scopes: []string{identity.ScopeRetentionPolicyManage}, expires: time.Now().UTC().Add(time.Hour)},
 		{name: "expired", scopes: []string{identity.ScopeJobsRead}, expires: time.Now().UTC().Add(-time.Second)},
 		{name: "beyond maximum", scopes: []string{identity.ScopeJobsRead}, expires: time.Now().UTC().Add(367 * 24 * time.Hour)},
 	} {
@@ -901,7 +904,11 @@ func TestCredentialValidationAndIdentityAuditKeepBearerMaterialOutOfStorage(t *t
 		projectID,
 		target.ID,
 		identity.IssueCredentialRequest{
-			Scopes:    []string{identity.ScopeJobsSubmit, identity.ScopeJobsRead},
+			Scopes: []string{
+				identity.ScopeContentDeletionManage,
+				identity.ScopeJobsSubmit,
+				identity.ScopeJobsRead,
+			},
 			ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
 		},
 	)
@@ -931,8 +938,8 @@ func TestCredentialValidationAndIdentityAuditKeepBearerMaterialOutOfStorage(t *t
 		t.Fatalf("decode stored Credential scopes: %v", err)
 	}
 	if len(storedDigest) != 32 || bytes.Equal(storedDigest, rawSecret) ||
-		len(storedScopes) != 2 || storedScopes[0] != identity.ScopeJobsRead ||
-		storedScopes[1] != identity.ScopeJobsSubmit {
+		len(storedScopes) != 3 || storedScopes[0] != identity.ScopeContentDeletionManage ||
+		storedScopes[1] != identity.ScopeJobsRead || storedScopes[2] != identity.ScopeJobsSubmit {
 		t.Fatalf("stored Credential evidence = digest bytes %d scopes %v", len(storedDigest), storedScopes)
 	}
 
@@ -1052,7 +1059,7 @@ func TestServicePrincipalAdministrationMigrationAllowsLegacyRowsAndEmptyDownUp(t
 		t.Fatalf("re-expand unused Service Principal administration migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
-	if err != nil || version != 15 {
+	if err != nil || version != 16 {
 		t.Fatalf("migration version after Service Principal administration Down/Up = %d error=%v", version, err)
 	}
 	if err := database.Admin.QueryRow(`

@@ -23,6 +23,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/workercontrol"
 )
 
@@ -272,6 +273,7 @@ func TestHumanDeveloperCanSubmitJobThroughProductionHTTPPath(t *testing.T) {
 		Authenticator:          authenticator,
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
@@ -396,6 +398,7 @@ func TestHumanProjectAdminCanManageWebhooksThroughProductionHTTPPath(t *testing.
 		Authenticator:          authenticator,
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission: admission.NewLegacyService(
 			newRolePool(t, database.DSN, "vela_request_login", "vela-request-password"),
 		),
@@ -728,6 +731,7 @@ func TestHumanProjectViewerCanReadCommittedArtifactsThroughProductionHTTPPath(t 
 		Authenticator:          authenticator,
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission: admission.NewLegacyService(
 			newRolePool(t, fixture.database.DSN, "vela_request_login", "vela-request-password"),
 		),

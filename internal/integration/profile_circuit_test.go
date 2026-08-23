@@ -2048,7 +2048,7 @@ func TestProfileCircuitMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) 
 		t.Fatalf("re-expanded Job circuit snapshot = window %d threshold %d", window, threshold)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 15 {
+	if err != nil || version != 16 {
 		t.Fatalf("Profile circuit migration version after Down/Up = %d error=%v", version, err)
 	}
 }

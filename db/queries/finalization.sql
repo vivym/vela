@@ -635,6 +635,9 @@ SELECT
     job.version AS job_version,
     job.current_fence,
     job.job_expires_at,
+    job.request_content_deleted_at,
+    job.retention_artifact_days,
+    retention_policy.stable_id AS retention_policy_revision,
     job.pricing_quantity AS generation_count,
     reservation.id AS credit_reservation_id,
     reservation.state AS credit_reservation_state,
@@ -652,6 +655,8 @@ SELECT
 FROM attempt_leases AS lease
 JOIN attempts AS attempt ON attempt.id = lease.attempt_id
 JOIN jobs AS job ON job.id = attempt.job_id
+JOIN retention_policy_revisions AS retention_policy
+  ON retention_policy.id = job.retention_policy_revision_id
 JOIN credit_reservations AS reservation ON reservation.job_id = job.id
 LEFT JOIN visible_completions AS completion ON completion.job_id = job.id
 LEFT JOIN artifact_sets AS artifact_set ON artifact_set.id = completion.artifact_set_id

@@ -19,6 +19,7 @@ import (
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -32,6 +33,7 @@ type Config struct {
 	Authenticator          *identity.Authenticator
 	IdentityAdministration *identity.AdministrationService
 	OrganizationReporting  *organizationreporting.Service
+	Retention              *retention.Service
 	Admission              *admission.Service
 	Cancellation           *cancellation.Service
 	Artifacts              *artifactaccess.Service
@@ -42,6 +44,7 @@ type server struct {
 	authenticator          *identity.Authenticator
 	identityAdministration *identity.AdministrationService
 	organizationReporting  *organizationreporting.Service
+	retention              *retention.Service
 	admission              *admission.Service
 	cancellation           *cancellation.Service
 	artifacts              *artifactaccess.Service
@@ -59,6 +62,9 @@ func NewHandler(config Config) (http.Handler, error) {
 	}
 	if config.OrganizationReporting == nil {
 		return nil, errors.New("missing HTTP API Organization reporting service")
+	}
+	if config.Retention == nil {
+		return nil, errors.New("missing HTTP API retention service")
 	}
 	if config.Admission == nil {
 		return nil, errors.New("missing HTTP API Admission service")
@@ -83,6 +89,7 @@ func NewHandler(config Config) (http.Handler, error) {
 		authenticator:          config.Authenticator,
 		identityAdministration: config.IdentityAdministration,
 		organizationReporting:  config.OrganizationReporting,
+		retention:              config.Retention,
 		admission:              config.Admission,
 		cancellation:           config.Cancellation,
 		artifacts:              config.Artifacts,
@@ -107,6 +114,163 @@ func NewHandler(config Config) (http.Handler, error) {
 		},
 	}))
 	return api.HandlerFromMux(strict, router), nil
+}
+
+func (s *server) GetProjectRetentionPolicy(
+	ctx context.Context,
+	request api.GetProjectRetentionPolicyRequestObject,
+) (api.GetProjectRetentionPolicyResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeRetentionPolicyManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.GetProjectRetentionPolicy401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.GetProjectRetentionPolicy403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.GetProjectRetentionPolicy404JSONResponse{
+			Code: "not_found", Message: "Project is not visible",
+		}, nil
+	}
+	policy, err := s.retention.GetProjectPolicy(ctx, principal, request.ProjectId)
+	if err != nil {
+		return getProjectRetentionPolicyFailure(err)
+	}
+	return api.GetProjectRetentionPolicy200JSONResponse(toAPIProjectRetentionPolicy(policy)), nil
+}
+
+func (s *server) SetProjectRetentionPolicy(
+	ctx context.Context,
+	request api.SetProjectRetentionPolicyRequestObject,
+) (api.SetProjectRetentionPolicyResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeRetentionPolicyManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.SetProjectRetentionPolicy401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.SetProjectRetentionPolicy403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.SetProjectRetentionPolicy404JSONResponse{
+			Code: "not_found", Message: "Project is not visible",
+		}, nil
+	}
+	if request.Body == nil {
+		return api.SetProjectRetentionPolicy400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "request body is required",
+			},
+		}, nil
+	}
+	policy, err := s.retention.SetProjectPolicy(
+		ctx,
+		principal,
+		request.ProjectId,
+		int32(request.Body.ArtifactRetentionDays),
+	)
+	if err != nil {
+		return setProjectRetentionPolicyFailure(err)
+	}
+	return api.SetProjectRetentionPolicy200JSONResponse(toAPIProjectRetentionPolicy(policy)), nil
+}
+
+func (s *server) AcceptContentDeletionRequest(
+	ctx context.Context,
+	request api.AcceptContentDeletionRequestRequestObject,
+) (api.AcceptContentDeletionRequestResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.AcceptContentDeletionRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized {
+		return api.AcceptContentDeletionRequest404JSONResponse{
+			Code: "not_found", Message: "Project or Job is not visible",
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeContentDeletionManage) {
+		return api.AcceptContentDeletionRequest403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Content Deletion authority is required",
+			},
+		}, nil
+	}
+	deletion, err := s.retention.AcceptContentDeletion(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.Params.IdempotencyKey,
+	)
+	if err != nil {
+		return acceptContentDeletionRequestFailure(err)
+	}
+	return api.AcceptContentDeletionRequest202JSONResponse(
+		toAPIContentDeletionRequest(deletion),
+	), nil
+}
+
+func (s *server) GetContentDeletionRequest(
+	ctx context.Context,
+	request api.GetContentDeletionRequestRequestObject,
+) (api.GetContentDeletionRequestResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.GetContentDeletionRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized {
+		return api.GetContentDeletionRequest404JSONResponse{
+			Code: "not_found", Message: "Content Deletion request is not visible",
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeContentDeletionManage) {
+		return api.GetContentDeletionRequest403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Content Deletion authority is required",
+			},
+		}, nil
+	}
+	deletion, err := s.retention.GetContentDeletion(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.ContentDeletionRequestId,
+	)
+	if err != nil {
+		return getContentDeletionRequestFailure(err)
+	}
+	return api.GetContentDeletionRequest200JSONResponse(
+		toAPIContentDeletionRequestStatus(deletion),
+	), nil
 }
 
 func (s *server) SubmitJob(
@@ -1472,6 +1636,25 @@ func identityAdministrationPrincipal(
 	return principal, http.StatusOK
 }
 
+func retentionPolicyAdministrationPrincipal(
+	ctx context.Context,
+	projectID uuid.UUID,
+	requiredScope string,
+) (identity.Principal, int) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return identity.Principal{}, http.StatusUnauthorized
+	}
+	principal, ok = principal.ForProject(projectID)
+	if !ok {
+		return identity.Principal{}, http.StatusNotFound
+	}
+	if principal.Kind != identity.PrincipalKindHuman || !principal.HasScope(requiredScope) {
+		return identity.Principal{}, http.StatusForbidden
+	}
+	return principal, http.StatusOK
+}
+
 func organizationIdentityAdministrationPrincipal(
 	ctx context.Context,
 	organizationID uuid.UUID,
@@ -1943,6 +2126,120 @@ func identityAdministrationFailureResponse(
 	return failure, api.Error{Code: string(failure.Code), Message: failure.Message}, true
 }
 
+func getProjectRetentionPolicyFailure(
+	err error,
+) (api.GetProjectRetentionPolicyResponseObject, error) {
+	failure, response, ok := retentionFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case retention.FailureUnauthorized:
+		return api.GetProjectRetentionPolicy401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case retention.FailureForbidden:
+		return api.GetProjectRetentionPolicy403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case retention.FailureNotFound:
+		return api.GetProjectRetentionPolicy404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func setProjectRetentionPolicyFailure(
+	err error,
+) (api.SetProjectRetentionPolicyResponseObject, error) {
+	failure, response, ok := retentionFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case retention.FailureUnauthorized:
+		return api.SetProjectRetentionPolicy401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case retention.FailureForbidden:
+		return api.SetProjectRetentionPolicy403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case retention.FailureInvalid:
+		return api.SetProjectRetentionPolicy400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case retention.FailureNotFound:
+		return api.SetProjectRetentionPolicy404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func retentionFailureResponse(err error) (*retention.Failure, api.Error, bool) {
+	var failure *retention.Failure
+	if !errors.As(err, &failure) {
+		return nil, api.Error{}, false
+	}
+	return failure, api.Error{Code: string(failure.Code), Message: failure.Message}, true
+}
+
+func acceptContentDeletionRequestFailure(
+	err error,
+) (api.AcceptContentDeletionRequestResponseObject, error) {
+	failure, response, ok := retentionFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case retention.FailureUnauthorized:
+		return api.AcceptContentDeletionRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case retention.FailureForbidden:
+		return api.AcceptContentDeletionRequest403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case retention.FailureInvalid:
+		return api.AcceptContentDeletionRequest400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case retention.FailureNotFound:
+		return api.AcceptContentDeletionRequest404JSONResponse(response), nil
+	case retention.FailureConflict:
+		return api.AcceptContentDeletionRequest409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func getContentDeletionRequestFailure(
+	err error,
+) (api.GetContentDeletionRequestResponseObject, error) {
+	failure, response, ok := retentionFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case retention.FailureUnauthorized:
+		return api.GetContentDeletionRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case retention.FailureForbidden:
+		return api.GetContentDeletionRequest403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case retention.FailureInvalid:
+		return api.GetContentDeletionRequest400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case retention.FailureNotFound:
+		return api.GetContentDeletionRequest404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
 func organizationReportingFailureResponse(
 	err error,
 ) (*organizationreporting.Failure, api.Error, bool) {
@@ -2228,6 +2525,57 @@ func toAPIOrganizationAuditEvent(
 		Source:           api.OrganizationAuditEventSource(event.Source),
 		TargetId:         event.TargetID,
 		TargetKind:       api.OrganizationAuditEventTargetKind(event.TargetKind),
+	}
+}
+
+func toAPIProjectRetentionPolicy(policy retention.Policy) api.ProjectRetentionPolicy {
+	return api.ProjectRetentionPolicy{
+		ProjectId:                       policy.ProjectID,
+		PolicyRevisionId:                policy.PolicyRevisionID,
+		StableId:                        policy.StableID,
+		ArtifactRetentionDays:           api.ProjectRetentionPolicyArtifactRetentionDays(policy.ArtifactRetentionDays),
+		RequestContentRetentionDays:     policy.RequestContentRetentionDays,
+		IncompleteContentRetentionHours: policy.IncompleteContentRetentionHours,
+		ScratchRetentionHours:           policy.ScratchRetentionHours,
+		DebugRetentionHours:             policy.DebugRetentionHours,
+		MetadataRetentionDays:           policy.MetadataRetentionDays,
+		FinancialRetentionDays:          policy.FinancialRetentionDays,
+		SelectedAt:                      policy.SelectedAt,
+	}
+}
+
+func toAPIContentDeletionRequest(
+	deletion retention.DeletionRequest,
+) api.ContentDeletionRequest {
+	return api.ContentDeletionRequest{
+		CompletedAt: deletion.CompletedAt,
+		DeadlineAt:  deletion.DeadlineAt,
+		JobId:       deletion.JobID,
+		Overdue:     deletion.Overdue,
+		ProjectId:   deletion.ProjectID,
+		RequestId:   deletion.RequestID,
+		RequestedAt: deletion.RequestedAt,
+		State:       api.ContentDeletionRequestState(deletion.State),
+	}
+}
+
+func toAPIContentDeletionRequestStatus(
+	deletion retention.DeletionRequest,
+) api.ContentDeletionRequestStatus {
+	return api.ContentDeletionRequestStatus{
+		CompletedAt:          deletion.CompletedAt,
+		CompletedTargetCount: deletion.CompletedTargetCount,
+		DeadlineAt:           deletion.DeadlineAt,
+		JobId:                deletion.JobID,
+		LastErrorCode:        deletion.LastErrorCode,
+		LastErrorMessage:     deletion.LastErrorMessage,
+		Overdue:              deletion.Overdue,
+		ProjectId:            deletion.ProjectID,
+		RequestId:            deletion.RequestID,
+		RequestedAt:          deletion.RequestedAt,
+		RetryingTargetCount:  deletion.RetryingTargetCount,
+		State:                api.ContentDeletionRequestStatusState(deletion.State),
+		TargetCount:          deletion.TargetCount,
 	}
 }
 

@@ -1,0 +1,93 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/workercontrol"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("VELA_INTERNAL_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer pool.Close()
+	service, err := workercontrol.NewService(ctx, pool, workercontrol.Config{
+		LeaseTTL:         2 * time.Minute,
+		ActiveLeaseKeyID: "lease-key-v1",
+		LeaseKeys: map[string][]byte{
+			"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
+		},
+	})
+	if err != nil {
+		fatal(err)
+	}
+	workerEpoch, err := strconv.ParseInt(os.Getenv("VELA_WORKER_EPOCH"), 10, 64)
+	if err != nil {
+		fatal(err)
+	}
+	leaseFence, err := strconv.ParseInt(os.Getenv("VELA_LEASE_FENCE"), 10, 64)
+	if err != nil {
+		fatal(err)
+	}
+	expectedJobVersion, err := strconv.ParseInt(
+		os.Getenv("VELA_EXPECTED_JOB_VERSION"), 10, 64,
+	)
+	if err != nil {
+		fatal(err)
+	}
+	encodedArtifactIDs := strings.Split(os.Getenv("VELA_ARTIFACT_IDS"), ",")
+	artifactIDs := make([]uuid.UUID, len(encodedArtifactIDs))
+	for index, encoded := range encodedArtifactIDs {
+		artifactIDs[index], err = uuid.Parse(encoded)
+		if err != nil {
+			fatal(err)
+		}
+	}
+	result, err := service.CompleteVisibleCompletion(
+		ctx,
+		workercontrol.AuthenticatedWorker{ID: uuid.MustParse(os.Getenv("VELA_WORKER_ID"))},
+		workercontrol.LeaseCredentials{
+			AttemptID:   uuid.MustParse(os.Getenv("VELA_ATTEMPT_ID")),
+			WorkerEpoch: workerEpoch,
+			Fence:       leaseFence,
+			Token:       os.Getenv("VELA_LEASE_TOKEN"),
+		},
+		workercontrol.VisibleCompletionCandidate{
+			CompletionID:       uuid.New(),
+			ExpectedJobVersion: expectedJobVersion,
+			ArtifactIDs:        artifactIDs,
+		},
+	)
+	if err != nil {
+		fatal(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(struct {
+		Decision      workercontrol.VisibleCompletionDecision `json:"decision"`
+		ArtifactSetID uuid.UUID                               `json:"artifact_set_id"`
+		ChargeID      uuid.UUID                               `json:"charge_id"`
+		CompletedAt   time.Time                               `json:"completed_at"`
+	}{
+		Decision:      result.Decision,
+		ArtifactSetID: result.ArtifactSetID,
+		ChargeID:      result.ChargeID,
+		CompletedAt:   result.CompletedAt,
+	}); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}

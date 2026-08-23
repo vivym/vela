@@ -34,6 +34,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
 )
 
@@ -446,6 +447,7 @@ func TestAdmissionPredictionRejectsExcessQueueWaitWithoutDurableEffects(t *testi
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              admission.NewService(requestPool, predictor),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
@@ -1027,6 +1029,7 @@ func TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys(t *testing.
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
@@ -1620,6 +1623,7 @@ func TestCredentialLookupScopeAndRevocationFailClosed(t *testing.T) {
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
@@ -1733,6 +1737,7 @@ func admissionServerForDatabaseWithPredictor(
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
 		Admission:              admissionService,
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
@@ -1876,6 +1881,8 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 			CREATE ROLE vela_human_membership_request_login LOGIN PASSWORD 'vela-human-membership-request-password' IN ROLE vela_human_membership_request;
 			CREATE ROLE vela_organization_billing_request_login LOGIN PASSWORD 'vela-organization-billing-request-password' IN ROLE vela_organization_billing_request;
 			CREATE ROLE vela_organization_audit_request_login LOGIN PASSWORD 'vela-organization-audit-request-password' IN ROLE vela_organization_audit_request;
+			CREATE ROLE vela_retention_request_login LOGIN PASSWORD 'vela-retention-request-password' IN ROLE vela_retention_request;
+			CREATE ROLE vela_retention_login LOGIN PASSWORD 'vela-retention-password' IN ROLE vela_retention;
 			CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
 			CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
