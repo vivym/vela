@@ -12,19 +12,21 @@ import (
 type Role string
 
 const (
-	RoleAuth                   Role = "vela_auth"
-	RoleHumanAuth              Role = "vela_human_auth"
-	RoleHumanMembershipAuth    Role = "vela_human_membership_auth"
-	RoleIdentityRequest        Role = "vela_identity_request"
-	RoleHumanMembershipRequest Role = "vela_human_membership_request"
-	RoleRequest                Role = "vela_request"
-	RoleInternal               Role = "vela_internal"
-	RoleCancel                 Role = "vela_cancel"
-	RoleArtifactRequest        Role = "vela_artifact_request"
-	RoleScheduler              Role = "vela_scheduler"
-	RoleBilling                Role = "vela_billing"
-	RoleWebhookRequest         Role = "vela_webhook_request"
-	RoleWebhook                Role = "vela_webhook"
+	RoleAuth                       Role = "vela_auth"
+	RoleHumanAuth                  Role = "vela_human_auth"
+	RoleHumanMembershipAuth        Role = "vela_human_membership_auth"
+	RoleIdentityRequest            Role = "vela_identity_request"
+	RoleHumanMembershipRequest     Role = "vela_human_membership_request"
+	RoleOrganizationBillingRequest Role = "vela_organization_billing_request"
+	RoleOrganizationAuditRequest   Role = "vela_organization_audit_request"
+	RoleRequest                    Role = "vela_request"
+	RoleInternal                   Role = "vela_internal"
+	RoleCancel                     Role = "vela_cancel"
+	RoleArtifactRequest            Role = "vela_artifact_request"
+	RoleScheduler                  Role = "vela_scheduler"
+	RoleBilling                    Role = "vela_billing"
+	RoleWebhookRequest             Role = "vela_webhook_request"
+	RoleWebhook                    Role = "vela_webhook"
 )
 
 type rowQuerier interface {
@@ -37,19 +39,21 @@ type roleDescriptor struct {
 }
 
 var roleDescriptors = map[Role]roleDescriptor{
-	RoleAuth:                   {verifyPrivileges: verifyAuthPrivileges},
-	RoleHumanAuth:              {verifyPrivileges: verifyHumanAuthPrivileges},
-	RoleHumanMembershipAuth:    {verifyPrivileges: verifyHumanMembershipAuthPrivileges},
-	RoleIdentityRequest:        {verifyPrivileges: verifyIdentityRequestPrivileges},
-	RoleHumanMembershipRequest: {verifyPrivileges: verifyHumanMembershipRequestPrivileges},
-	RoleRequest:                {verifyPrivileges: verifyRequestPrivileges},
-	RoleInternal:               {requiresBypassRLS: true},
-	RoleCancel:                 {verifyPrivileges: verifyCancelPrivileges},
-	RoleArtifactRequest:        {verifyPrivileges: verifyArtifactRequestPrivileges},
-	RoleScheduler:              {verifyPrivileges: verifySchedulerPrivileges},
-	RoleBilling:                {verifyPrivileges: verifyBillingPrivileges},
-	RoleWebhookRequest:         {verifyPrivileges: verifyWebhookRequestPrivileges},
-	RoleWebhook:                {verifyPrivileges: verifyWebhookPrivileges},
+	RoleAuth:                       {verifyPrivileges: verifyAuthPrivileges},
+	RoleHumanAuth:                  {verifyPrivileges: verifyHumanAuthPrivileges},
+	RoleHumanMembershipAuth:        {verifyPrivileges: verifyHumanMembershipAuthPrivileges},
+	RoleIdentityRequest:            {verifyPrivileges: verifyIdentityRequestPrivileges},
+	RoleHumanMembershipRequest:     {verifyPrivileges: verifyHumanMembershipRequestPrivileges},
+	RoleOrganizationBillingRequest: {verifyPrivileges: verifyOrganizationBillingRequestPrivileges},
+	RoleOrganizationAuditRequest:   {verifyPrivileges: verifyOrganizationAuditRequestPrivileges},
+	RoleRequest:                    {verifyPrivileges: verifyRequestPrivileges},
+	RoleInternal:                   {requiresBypassRLS: true},
+	RoleCancel:                     {verifyPrivileges: verifyCancelPrivileges},
+	RoleArtifactRequest:            {verifyPrivileges: verifyArtifactRequestPrivileges},
+	RoleScheduler:                  {verifyPrivileges: verifySchedulerPrivileges},
+	RoleBilling:                    {verifyPrivileges: verifyBillingPrivileges},
+	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
+	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -313,6 +317,42 @@ func verifyHumanMembershipRequestPrivileges(
 			"vela_revoke_organization_role(uuid,uuid,organization_role)",
 			"vela_assign_project_role(uuid,uuid,project_role)",
 			"vela_revoke_project_role(uuid,uuid,project_role)",
+		},
+	})
+}
+
+func verifyOrganizationBillingRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Organization billing request",
+		failureLabel:    "Organization billing reporting transaction",
+		functions: []string{
+			"vela_set_organization_identity_admin_context(uuid,bytea,text)",
+			"vela_get_organization_credit_summary(uuid)",
+			"vela_list_organization_charges(uuid,integer)",
+			"vela_create_settlement_contact(uuid,uuid,text,text)",
+			"vela_list_settlement_contacts(uuid,integer)",
+			"vela_disable_settlement_contact(uuid,uuid)",
+			"vela_get_organization_usage(uuid,timestamp with time zone,timestamp with time zone)",
+		},
+	})
+}
+
+func verifyOrganizationAuditRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Organization audit request",
+		failureLabel:    "Organization audit reporting transaction",
+		functions: []string{
+			"vela_set_organization_identity_admin_context(uuid,bytea,text)",
+			"vela_get_organization_usage(uuid,timestamp with time zone,timestamp with time zone)",
+			"vela_list_organization_audit_events(uuid,integer)",
 		},
 	})
 }

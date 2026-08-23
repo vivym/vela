@@ -1067,6 +1067,48 @@ func (ns NullSchedulerLane) Value() (driver.Value, error) {
 	return string(ns.SchedulerLane), nil
 }
 
+type SettlementContactAction string
+
+const (
+	SettlementContactActionSETTLEMENTCONTACTCREATED  SettlementContactAction = "SETTLEMENT_CONTACT_CREATED"
+	SettlementContactActionSETTLEMENTCONTACTDISABLED SettlementContactAction = "SETTLEMENT_CONTACT_DISABLED"
+)
+
+func (e *SettlementContactAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SettlementContactAction(s)
+	case string:
+		*e = SettlementContactAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SettlementContactAction: %T", src)
+	}
+	return nil
+}
+
+type NullSettlementContactAction struct {
+	SettlementContactAction SettlementContactAction `json:"settlement_contact_action"`
+	Valid                   bool                    `json:"valid"` // Valid is true if SettlementContactAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSettlementContactAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.SettlementContactAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SettlementContactAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSettlementContactAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SettlementContactAction), nil
+}
+
 type WebhookDeliveryAttemptState string
 
 const (
@@ -1896,6 +1938,27 @@ type OrganizationRoleBinding struct {
 	Role                  OrganizationRole   `db:"role" json:"role"`
 	AssignedByPrincipalID uuid.UUID          `db:"assigned_by_principal_id" json:"assigned_by_principal_id"`
 	AssignedAt            pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
+}
+
+type OrganizationSettlementContact struct {
+	ID                    uuid.UUID          `db:"id" json:"id"`
+	OrganizationID        uuid.UUID          `db:"organization_id" json:"organization_id"`
+	DisplayName           string             `db:"display_name" json:"display_name"`
+	NormalizedEmail       string             `db:"normalized_email" json:"normalized_email"`
+	CreatedByPrincipalID  uuid.UUID          `db:"created_by_principal_id" json:"created_by_principal_id"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DisabledAt            pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	DisabledByPrincipalID uuid.NullUUID      `db:"disabled_by_principal_id" json:"disabled_by_principal_id"`
+}
+
+type OrganizationSettlementContactEvent struct {
+	ID               uuid.UUID               `db:"id" json:"id"`
+	OrganizationID   uuid.UUID               `db:"organization_id" json:"organization_id"`
+	ActorPrincipalID uuid.UUID               `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorSessionID   uuid.UUID               `db:"actor_session_id" json:"actor_session_id"`
+	Action           SettlementContactAction `db:"action" json:"action"`
+	ContactID        uuid.UUID               `db:"contact_id" json:"contact_id"`
+	CreatedAt        pgtype.Timestamptz      `db:"created_at" json:"created_at"`
 }
 
 type OutboxEvent struct {

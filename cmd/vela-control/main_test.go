@@ -28,6 +28,8 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Human membership auth database", missingEnv: "VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"},
 		{name: "identity request database", missingEnv: "VELA_IDENTITY_REQUEST_DATABASE_URL"},
 		{name: "Human membership request database", missingEnv: "VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL"},
+		{name: "Organization billing request database", missingEnv: "VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL"},
+		{name: "Organization audit request database", missingEnv: "VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL"},
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
 		{name: "OIDC issuer", missingEnv: "VELA_OIDC_ISSUER"},
 		{name: "OIDC audience", missingEnv: "VELA_OIDC_AUDIENCE"},
@@ -86,6 +88,14 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv(
 		"VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL",
 		"postgres://human-membership-request.example/vela",
+	)
+	t.Setenv(
+		"VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL",
+		"postgres://organization-billing-request.example/vela",
+	)
+	t.Setenv(
+		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL",
+		"postgres://organization-audit-request.example/vela",
 	)
 	t.Setenv("VELA_REQUEST_DATABASE_URL", "postgres://request.example/vela")
 	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")

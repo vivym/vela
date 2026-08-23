@@ -32,6 +32,7 @@ import (
 	"github.com/vivym/vela/internal/finalizationreconciler"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/outbox"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/webhook"
@@ -84,6 +85,8 @@ type config struct {
 	humanMembershipAuthDatabaseURL    string
 	identityRequestDatabaseURL        string
 	humanMembershipRequestDatabaseURL string
+	organizationBillingDatabaseURL    string
+	organizationAuditDatabaseURL      string
 	requestDatabaseURL                string
 	artifactRequestDatabaseURL        string
 	cancelDatabaseURL                 string
@@ -251,6 +254,26 @@ func run() error {
 		return fmt.Errorf("open Human membership request database pool: %w", err)
 	}
 	defer humanMembershipRequestPool.Close()
+	organizationBillingPool, err := openPool(
+		ctx,
+		configuration.organizationBillingDatabaseURL,
+		10,
+		veladb.RoleOrganizationBillingRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open Organization billing request database pool: %w", err)
+	}
+	defer organizationBillingPool.Close()
+	organizationAuditPool, err := openPool(
+		ctx,
+		configuration.organizationAuditDatabaseURL,
+		10,
+		veladb.RoleOrganizationAuditRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open Organization audit request database pool: %w", err)
+	}
+	defer organizationAuditPool.Close()
 	requestPool, err := openPool(ctx, configuration.requestDatabaseURL, 20, veladb.RoleRequest)
 	if err != nil {
 		return fmt.Errorf("open request database pool: %w", err)
@@ -484,6 +507,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure identity Administration service: %w", err)
 	}
+	organizationReporting, err := organizationreporting.NewService(
+		organizationBillingPool,
+		organizationAuditPool,
+	)
+	if err != nil {
+		return fmt.Errorf("configure Organization reporting service: %w", err)
+	}
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticatorWithHumanMembershipOIDC(
 			authPool,
@@ -493,6 +523,7 @@ func run() error {
 			oidcVerifier,
 		),
 		IdentityAdministration: identityAdministration,
+		OrganizationReporting:  organizationReporting,
 		Admission:              admission.NewService(requestPool, capacityPredictor),
 		Cancellation:           cancellationService,
 		Artifacts:              artifactaccess.NewService(artifactRequestPool, artifactStore),
@@ -514,6 +545,8 @@ func run() error {
 			humanMembershipAuthPool,
 			identityRequestPool,
 			humanMembershipRequestPool,
+			organizationBillingPool,
+			organizationAuditPool,
 			requestPool,
 			artifactRequestPool,
 			cancelPool,
@@ -685,6 +718,8 @@ func loadConfig() (config, error) {
 		humanMembershipAuthDatabaseURL:    os.Getenv("VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"),
 		identityRequestDatabaseURL:        os.Getenv("VELA_IDENTITY_REQUEST_DATABASE_URL"),
 		humanMembershipRequestDatabaseURL: os.Getenv("VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL"),
+		organizationBillingDatabaseURL:    os.Getenv("VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL"),
+		organizationAuditDatabaseURL:      os.Getenv("VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL"),
 		requestDatabaseURL:                os.Getenv("VELA_REQUEST_DATABASE_URL"),
 		artifactRequestDatabaseURL:        os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
 		oidcIssuer:                        os.Getenv("VELA_OIDC_ISSUER"),
@@ -750,49 +785,51 @@ func loadConfig() (config, error) {
 		artifactCleanupBatch:              defaultArtifactCleanupBatch,
 	}
 	for name, value := range map[string]string{
-		"VELA_AUTH_DATABASE_URL":                     configuration.authDatabaseURL,
-		"VELA_HUMAN_AUTH_DATABASE_URL":               configuration.humanAuthDatabaseURL,
-		"VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL":    configuration.humanMembershipAuthDatabaseURL,
-		"VELA_IDENTITY_REQUEST_DATABASE_URL":         configuration.identityRequestDatabaseURL,
-		"VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL": configuration.humanMembershipRequestDatabaseURL,
-		"VELA_REQUEST_DATABASE_URL":                  configuration.requestDatabaseURL,
-		"VELA_ARTIFACT_REQUEST_DATABASE_URL":         configuration.artifactRequestDatabaseURL,
-		"VELA_OIDC_ISSUER":                           configuration.oidcIssuer,
-		"VELA_OIDC_AUDIENCE":                         configuration.oidcAudience,
-		"VELA_OIDC_JWKS_URL":                         configuration.oidcJWKSURL,
-		"VELA_CANCEL_DATABASE_URL":                   configuration.cancelDatabaseURL,
-		"VELA_INTERNAL_DATABASE_URL":                 configuration.internalDatabaseURL,
-		"VELA_SCHEDULER_DATABASE_URL":                configuration.schedulerDatabaseURL,
-		"VELA_SCHEDULER_ID":                          configuration.schedulerID,
-		"VELA_BILLING_DATABASE_URL":                  configuration.billingDatabaseURL,
-		"VELA_WEBHOOK_REQUEST_DATABASE_URL":          configuration.webhookRequestDatabaseURL,
-		"VELA_WEBHOOK_DATABASE_URL":                  configuration.webhookDatabaseURL,
-		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":      configuration.webhookEncryptionActiveKeyID,
-		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":       configuration.webhookEncryptionKeyringFile,
-		"VELA_WEBHOOK_DISPATCHER_ID":                 configuration.webhookDispatcherID,
-		"VELA_INVOICE_EXPORTER_ID":                   configuration.invoiceExporterID,
-		"VELA_INVOICE_EXPORT_ENDPOINT":               configuration.invoiceExportEndpoint,
-		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":      configuration.invoiceExportTokenFile,
-		"VELA_NATS_URL":                              configuration.natsURL,
-		"VELA_NATS_CREDENTIALS_FILE":                 configuration.natsCredentials,
-		"VELA_NATS_ROOT_CA_FILE":                     configuration.natsRootCA,
-		"VELA_ARTIFACT_S3_ENDPOINT":                  configuration.artifactS3Endpoint,
-		"VELA_ARTIFACT_S3_REGION":                    configuration.artifactS3Region,
-		"VELA_ARTIFACT_S3_BUCKET":                    configuration.artifactS3Bucket,
-		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":        configuration.artifactS3AccessKeyFile,
-		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":    configuration.artifactS3SecretKeyFile,
-		"VELA_LEASE_ACTIVE_KEY_ID":                   configuration.leaseActiveKeyID,
-		"VELA_LEASE_KEYRING_FILE":                    configuration.leaseKeyringFile,
-		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":        configuration.artifactValidatorHelper,
-		"VELA_ARTIFACT_FFPROBE_PATH":                 configuration.artifactFFprobePath,
-		"VELA_ARTIFACT_SANDBOX_ROOT":                 configuration.artifactSandboxRoot,
-		"VELA_ARTIFACT_SPOOL_DIRECTORY":              configuration.artifactSpoolDirectory,
-		"VELA_ARTIFACT_FFPROBE_VERSION":              configuration.artifactFFprobeVersion,
-		"VELA_ARTIFACT_VALIDATOR_REVISION":           configuration.artifactValidatorRevision,
-		"VELA_ARTIFACT_RECONCILER_ID":                configuration.artifactReconcilerID,
-		"VELA_WORKER_GRPC_TLS_CERT_FILE":             configuration.workerGRPCTLSCertFile,
-		"VELA_WORKER_GRPC_TLS_KEY_FILE":              configuration.workerGRPCTLSKeyFile,
-		"VELA_WORKER_GRPC_CLIENT_CA_FILE":            configuration.workerGRPCClientCAFile,
+		"VELA_AUTH_DATABASE_URL":                         configuration.authDatabaseURL,
+		"VELA_HUMAN_AUTH_DATABASE_URL":                   configuration.humanAuthDatabaseURL,
+		"VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL":        configuration.humanMembershipAuthDatabaseURL,
+		"VELA_IDENTITY_REQUEST_DATABASE_URL":             configuration.identityRequestDatabaseURL,
+		"VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL":     configuration.humanMembershipRequestDatabaseURL,
+		"VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL": configuration.organizationBillingDatabaseURL,
+		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL":   configuration.organizationAuditDatabaseURL,
+		"VELA_REQUEST_DATABASE_URL":                      configuration.requestDatabaseURL,
+		"VELA_ARTIFACT_REQUEST_DATABASE_URL":             configuration.artifactRequestDatabaseURL,
+		"VELA_OIDC_ISSUER":                               configuration.oidcIssuer,
+		"VELA_OIDC_AUDIENCE":                             configuration.oidcAudience,
+		"VELA_OIDC_JWKS_URL":                             configuration.oidcJWKSURL,
+		"VELA_CANCEL_DATABASE_URL":                       configuration.cancelDatabaseURL,
+		"VELA_INTERNAL_DATABASE_URL":                     configuration.internalDatabaseURL,
+		"VELA_SCHEDULER_DATABASE_URL":                    configuration.schedulerDatabaseURL,
+		"VELA_SCHEDULER_ID":                              configuration.schedulerID,
+		"VELA_BILLING_DATABASE_URL":                      configuration.billingDatabaseURL,
+		"VELA_WEBHOOK_REQUEST_DATABASE_URL":              configuration.webhookRequestDatabaseURL,
+		"VELA_WEBHOOK_DATABASE_URL":                      configuration.webhookDatabaseURL,
+		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":          configuration.webhookEncryptionActiveKeyID,
+		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":           configuration.webhookEncryptionKeyringFile,
+		"VELA_WEBHOOK_DISPATCHER_ID":                     configuration.webhookDispatcherID,
+		"VELA_INVOICE_EXPORTER_ID":                       configuration.invoiceExporterID,
+		"VELA_INVOICE_EXPORT_ENDPOINT":                   configuration.invoiceExportEndpoint,
+		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":          configuration.invoiceExportTokenFile,
+		"VELA_NATS_URL":                                  configuration.natsURL,
+		"VELA_NATS_CREDENTIALS_FILE":                     configuration.natsCredentials,
+		"VELA_NATS_ROOT_CA_FILE":                         configuration.natsRootCA,
+		"VELA_ARTIFACT_S3_ENDPOINT":                      configuration.artifactS3Endpoint,
+		"VELA_ARTIFACT_S3_REGION":                        configuration.artifactS3Region,
+		"VELA_ARTIFACT_S3_BUCKET":                        configuration.artifactS3Bucket,
+		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":            configuration.artifactS3AccessKeyFile,
+		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":        configuration.artifactS3SecretKeyFile,
+		"VELA_LEASE_ACTIVE_KEY_ID":                       configuration.leaseActiveKeyID,
+		"VELA_LEASE_KEYRING_FILE":                        configuration.leaseKeyringFile,
+		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":            configuration.artifactValidatorHelper,
+		"VELA_ARTIFACT_FFPROBE_PATH":                     configuration.artifactFFprobePath,
+		"VELA_ARTIFACT_SANDBOX_ROOT":                     configuration.artifactSandboxRoot,
+		"VELA_ARTIFACT_SPOOL_DIRECTORY":                  configuration.artifactSpoolDirectory,
+		"VELA_ARTIFACT_FFPROBE_VERSION":                  configuration.artifactFFprobeVersion,
+		"VELA_ARTIFACT_VALIDATOR_REVISION":               configuration.artifactValidatorRevision,
+		"VELA_ARTIFACT_RECONCILER_ID":                    configuration.artifactReconcilerID,
+		"VELA_WORKER_GRPC_TLS_CERT_FILE":                 configuration.workerGRPCTLSCertFile,
+		"VELA_WORKER_GRPC_TLS_KEY_FILE":                  configuration.workerGRPCTLSKeyFile,
+		"VELA_WORKER_GRPC_CLIENT_CA_FILE":                configuration.workerGRPCClientCAFile,
 	} {
 		if value == "" {
 			return config{}, fmt.Errorf("%s is required", name)

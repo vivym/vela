@@ -24,6 +24,7 @@ import (
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -65,6 +66,7 @@ func TestProjectAdminCreatesServicePrincipalThroughProductionHTTPPath(t *testing
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator:          authenticator,
 		IdentityAdministration: administration,
+		OrganizationReporting:  &organizationreporting.Service{},
 		Admission:              &admission.Service{},
 		Cancellation:           &cancellation.Service{},
 		Artifacts:              &artifactaccess.Service{},
@@ -1050,7 +1052,7 @@ func TestServicePrincipalAdministrationMigrationAllowsLegacyRowsAndEmptyDownUp(t
 		t.Fatalf("re-expand unused Service Principal administration migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
-	if err != nil || version != 14 {
+	if err != nil || version != 15 {
 		t.Fatalf("migration version after Service Principal administration Down/Up = %d error=%v", version, err)
 	}
 	if err := database.Admin.QueryRow(`

@@ -38,6 +38,18 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_human_membership_request_login",
 		"vela-human-membership-request-password",
 	)
+	organizationBillingRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_organization_billing_request_login",
+		"vela-organization-billing-request-password",
+	)
+	organizationAuditRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_organization_audit_request_login",
+		"vela-organization-audit-request-password",
+	)
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	artifactPool := newRolePool(
@@ -57,16 +69,22 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_webhook_login",
 		"vela_identity_request_login",
 		"vela_human_membership_request_login",
+		"vela_organization_billing_request_login",
+		"vela_organization_audit_request_login",
 	} {
-		var inheritsBillingOwner bool
-		if err := database.Admin.QueryRow(
-			"SELECT pg_has_role($1, 'vela_billing_owner', 'MEMBER')",
-			login,
-		).Scan(&inheritsBillingOwner); err != nil {
-			t.Fatalf("inspect %s billing-owner membership: %v", login, err)
-		}
-		if inheritsBillingOwner {
-			t.Fatalf("runtime login %s inherits vela_billing_owner", login)
+		for _, ownerRole := range []string{
+			"vela_billing_owner",
+			"vela_organization_reporting_owner",
+		} {
+			var inheritsOwner bool
+			if err := database.Admin.QueryRow(
+				"SELECT pg_has_role($1, $2, 'MEMBER')", login, ownerRole,
+			).Scan(&inheritsOwner); err != nil {
+				t.Fatalf("inspect %s %s membership: %v", login, ownerRole, err)
+			}
+			if inheritsOwner {
+				t.Fatalf("runtime login %s inherits %s", login, ownerRole)
+			}
 		}
 	}
 
@@ -85,6 +103,14 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{
 			name: "Human membership request", pool: humanMembershipRequestPool,
 			role: veladb.RoleHumanMembershipRequest,
+		},
+		{
+			name: "Organization billing request", pool: organizationBillingRequestPool,
+			role: veladb.RoleOrganizationBillingRequest,
+		},
+		{
+			name: "Organization audit request", pool: organizationAuditRequestPool,
+			role: veladb.RoleOrganizationAuditRequest,
 		},
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
@@ -111,6 +137,82 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	if !errors.As(err, &postgresError) || postgresError.Code != "42501" {
 		t.Fatalf("request login private context read error = %v, want SQLSTATE 42501", err)
 	}
+	for _, runtime := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "Organization billing request", pool: organizationBillingRequestPool},
+		{name: "Organization audit request", pool: organizationAuditRequestPool},
+	} {
+		for _, relation := range []string{
+			"jobs",
+			"credit_reservations",
+			"charges",
+			"invoice_exports",
+			"invoice_export_receipts",
+			"organization_credit_accounts",
+			"organization_settlement_contacts",
+			"organization_settlement_contact_events",
+			"human_oidc_bindings",
+			"human_organization_auth_sessions",
+			"human_auth_sessions",
+			"organization_role_bindings",
+			"project_role_bindings",
+			"credentials",
+			"human_identity_events",
+			"project_identity_events",
+			"vela_private.human_administration_contexts",
+		} {
+			var count int64
+			err := runtime.pool.QueryRow(
+				context.Background(), "SELECT count(*) FROM "+relation,
+			).Scan(&count)
+			if !isPermissionDenied(err) {
+				t.Fatalf(
+					"%s direct %s read error = %v, want permission denied",
+					runtime.name,
+					relation,
+					err,
+				)
+			}
+		}
+		for mutation, statement := range map[string]string{
+			"credit":                 "UPDATE organization_credit_accounts SET reserved_minor = reserved_minor",
+			"Job":                    "UPDATE jobs SET updated_at = updated_at",
+			"Charge":                 "UPDATE charges SET amount_minor = amount_minor",
+			"Invoice export":         "UPDATE invoice_exports SET state = state",
+			"Invoice receipt":        "UPDATE invoice_export_receipts SET exported_at = exported_at",
+			"settlement contact":     "UPDATE organization_settlement_contacts SET display_name = display_name",
+			"contact evidence":       "UPDATE organization_settlement_contact_events SET created_at = created_at",
+			"Human audit evidence":   "UPDATE human_identity_events SET created_at = created_at",
+			"Project audit evidence": "UPDATE project_identity_events SET created_at = created_at",
+		} {
+			if _, err := runtime.pool.Exec(
+				context.Background(), statement,
+			); !isPermissionDenied(err) {
+				t.Fatalf(
+					"%s direct %s mutation error = %v, want permission denied",
+					runtime.name,
+					mutation,
+					err,
+				)
+			}
+		}
+	}
+	if _, err := organizationBillingRequestPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_list_organization_audit_events($1, 100)",
+		uuid.MustParse(testOrganizationID),
+	); !isPermissionDenied(err) {
+		t.Fatalf("Organization billing request audit call error = %v, want permission denied", err)
+	}
+	if _, err := organizationAuditRequestPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_list_organization_charges($1, 100)",
+		uuid.MustParse(testOrganizationID),
+	); !isPermissionDenied(err) {
+		t.Fatalf("Organization audit request Charge call error = %v, want permission denied", err)
+	}
 
 	for _, test := range []struct {
 		name string
@@ -136,6 +238,26 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "internal as identity request", pool: internalPool, role: veladb.RoleIdentityRequest},
 		{name: "request as identity request", pool: requestPool, role: veladb.RoleIdentityRequest},
 		{name: "identity request as request", pool: identityRequestPool, role: veladb.RoleRequest},
+		{
+			name: "Organization billing request as audit request",
+			pool: organizationBillingRequestPool, role: veladb.RoleOrganizationAuditRequest,
+		},
+		{
+			name: "Organization audit request as billing request",
+			pool: organizationAuditRequestPool, role: veladb.RoleOrganizationBillingRequest,
+		},
+		{
+			name: "Human membership request as Organization billing request",
+			pool: humanMembershipRequestPool, role: veladb.RoleOrganizationBillingRequest,
+		},
+		{
+			name: "Organization billing request as Human membership request",
+			pool: organizationBillingRequestPool, role: veladb.RoleHumanMembershipRequest,
+		},
+		{
+			name: "request as Organization audit request",
+			pool: requestPool, role: veladb.RoleOrganizationAuditRequest,
+		},
 		{name: "cancel as request", pool: cancelPool, role: veladb.RoleRequest},
 		{name: "request as cancel", pool: requestPool, role: veladb.RoleCancel},
 		{name: "internal as cancel", pool: internalPool, role: veladb.RoleCancel},
@@ -192,6 +314,40 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"REVOKE SELECT ON project_identity_events FROM vela_identity_request_login",
 	); err != nil {
 		t.Fatalf("revoke unexpected identity request table privilege: %v", err)
+	}
+	if _, err := database.Admin.Exec(
+		"GRANT SELECT ON charges TO vela_organization_billing_request_login",
+	); err != nil {
+		t.Fatalf("grant unexpected Organization billing Charge privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(
+		context.Background(),
+		organizationBillingRequestPool,
+		veladb.RoleOrganizationBillingRequest,
+	); err == nil {
+		t.Fatal("Organization billing request login with direct Charge access was accepted")
+	}
+	if _, err := database.Admin.Exec(
+		"REVOKE SELECT ON charges FROM vela_organization_billing_request_login",
+	); err != nil {
+		t.Fatalf("revoke unexpected Organization billing Charge privilege: %v", err)
+	}
+	if _, err := database.Admin.Exec(
+		"GRANT SELECT ON human_identity_events TO vela_organization_audit_request_login",
+	); err != nil {
+		t.Fatalf("grant unexpected Organization audit event privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(
+		context.Background(),
+		organizationAuditRequestPool,
+		veladb.RoleOrganizationAuditRequest,
+	); err == nil {
+		t.Fatal("Organization audit request login with direct identity-event access was accepted")
+	}
+	if _, err := database.Admin.Exec(
+		"REVOKE SELECT ON human_identity_events FROM vela_organization_audit_request_login",
+	); err != nil {
+		t.Fatalf("revoke unexpected Organization audit event privilege: %v", err)
 	}
 
 	if _, err := database.Admin.Exec(`

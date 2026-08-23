@@ -149,6 +149,99 @@ func (e JobState) Valid() bool {
 	}
 }
 
+// Defines values for OrganizationAuditEventAction.
+const (
+	CREDENTIALISSUED          OrganizationAuditEventAction = "CREDENTIAL_ISSUED"
+	CREDENTIALREVOKED         OrganizationAuditEventAction = "CREDENTIAL_REVOKED"
+	HUMANMEMBERCREATED        OrganizationAuditEventAction = "HUMAN_MEMBER_CREATED"
+	HUMANMEMBERDISABLED       OrganizationAuditEventAction = "HUMAN_MEMBER_DISABLED"
+	ORGANIZATIONROLEASSIGNED  OrganizationAuditEventAction = "ORGANIZATION_ROLE_ASSIGNED"
+	ORGANIZATIONROLEREVOKED   OrganizationAuditEventAction = "ORGANIZATION_ROLE_REVOKED"
+	PROJECTROLEASSIGNED       OrganizationAuditEventAction = "PROJECT_ROLE_ASSIGNED"
+	PROJECTROLEREVOKED        OrganizationAuditEventAction = "PROJECT_ROLE_REVOKED"
+	SERVICEPRINCIPALCREATED   OrganizationAuditEventAction = "SERVICE_PRINCIPAL_CREATED"
+	SERVICEPRINCIPALDISABLED  OrganizationAuditEventAction = "SERVICE_PRINCIPAL_DISABLED"
+	SETTLEMENTCONTACTCREATED  OrganizationAuditEventAction = "SETTLEMENT_CONTACT_CREATED"
+	SETTLEMENTCONTACTDISABLED OrganizationAuditEventAction = "SETTLEMENT_CONTACT_DISABLED"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationAuditEventAction enum.
+func (e OrganizationAuditEventAction) Valid() bool {
+	switch e {
+	case CREDENTIALISSUED:
+		return true
+	case CREDENTIALREVOKED:
+		return true
+	case HUMANMEMBERCREATED:
+		return true
+	case HUMANMEMBERDISABLED:
+		return true
+	case ORGANIZATIONROLEASSIGNED:
+		return true
+	case ORGANIZATIONROLEREVOKED:
+		return true
+	case PROJECTROLEASSIGNED:
+		return true
+	case PROJECTROLEREVOKED:
+		return true
+	case SERVICEPRINCIPALCREATED:
+		return true
+	case SERVICEPRINCIPALDISABLED:
+		return true
+	case SETTLEMENTCONTACTCREATED:
+		return true
+	case SETTLEMENTCONTACTDISABLED:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrganizationAuditEventSource.
+const (
+	OrganizationAuditEventSourceHUMANIDENTITY     OrganizationAuditEventSource = "HUMAN_IDENTITY"
+	OrganizationAuditEventSourcePROJECTIDENTITY   OrganizationAuditEventSource = "PROJECT_IDENTITY"
+	OrganizationAuditEventSourceSETTLEMENTCONTACT OrganizationAuditEventSource = "SETTLEMENT_CONTACT"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationAuditEventSource enum.
+func (e OrganizationAuditEventSource) Valid() bool {
+	switch e {
+	case OrganizationAuditEventSourceHUMANIDENTITY:
+		return true
+	case OrganizationAuditEventSourcePROJECTIDENTITY:
+		return true
+	case OrganizationAuditEventSourceSETTLEMENTCONTACT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrganizationAuditEventTargetKind.
+const (
+	OrganizationAuditEventTargetKindCREDENTIAL        OrganizationAuditEventTargetKind = "CREDENTIAL"
+	OrganizationAuditEventTargetKindHUMANPRINCIPAL    OrganizationAuditEventTargetKind = "HUMAN_PRINCIPAL"
+	OrganizationAuditEventTargetKindSERVICEPRINCIPAL  OrganizationAuditEventTargetKind = "SERVICE_PRINCIPAL"
+	OrganizationAuditEventTargetKindSETTLEMENTCONTACT OrganizationAuditEventTargetKind = "SETTLEMENT_CONTACT"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationAuditEventTargetKind enum.
+func (e OrganizationAuditEventTargetKind) Valid() bool {
+	switch e {
+	case OrganizationAuditEventTargetKindCREDENTIAL:
+		return true
+	case OrganizationAuditEventTargetKindHUMANPRINCIPAL:
+		return true
+	case OrganizationAuditEventTargetKindSERVICEPRINCIPAL:
+		return true
+	case OrganizationAuditEventTargetKindSETTLEMENTCONTACT:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrganizationRole.
 const (
 	BillingAdmin        OrganizationRole = "BillingAdmin"
@@ -379,7 +472,7 @@ type Charge struct {
 	Reason      ChargeReason       `json:"reason"`
 }
 
-// ChargeReason defines model for Charge.Reason.
+// ChargeReason defines model for ChargeReason.
 type ChargeReason string
 
 // CreateHumanMemberRequest defines model for CreateHumanMemberRequest.
@@ -393,6 +486,12 @@ type CreateHumanMemberRequest struct {
 // CreateServicePrincipalRequest defines model for CreateServicePrincipalRequest.
 type CreateServicePrincipalRequest struct {
 	DisplayName string `json:"display_name"`
+}
+
+// CreateSettlementContactRequest defines model for CreateSettlementContactRequest.
+type CreateSettlementContactRequest struct {
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 }
 
 // CreateWebhookSubscriptionRequest defines model for CreateWebhookSubscriptionRequest.
@@ -476,6 +575,64 @@ type Job struct {
 // JobState defines model for JobState.
 type JobState string
 
+// OrganizationAuditEvent defines model for OrganizationAuditEvent.
+type OrganizationAuditEvent struct {
+	Action           OrganizationAuditEventAction     `json:"action"`
+	ActorPrincipalId openapi_types.UUID               `json:"actor_principal_id"`
+	ActorSessionId   openapi_types.UUID               `json:"actor_session_id"`
+	CreatedAt        time.Time                        `json:"created_at"`
+	EventId          openapi_types.UUID               `json:"event_id"`
+	ProjectId        *openapi_types.UUID              `json:"project_id,omitempty"`
+	Source           OrganizationAuditEventSource     `json:"source"`
+	TargetId         openapi_types.UUID               `json:"target_id"`
+	TargetKind       OrganizationAuditEventTargetKind `json:"target_kind"`
+}
+
+// OrganizationAuditEventAction defines model for OrganizationAuditEvent.Action.
+type OrganizationAuditEventAction string
+
+// OrganizationAuditEventSource defines model for OrganizationAuditEvent.Source.
+type OrganizationAuditEventSource string
+
+// OrganizationAuditEventTargetKind defines model for OrganizationAuditEvent.TargetKind.
+type OrganizationAuditEventTargetKind string
+
+// OrganizationAuditEventList defines model for OrganizationAuditEventList.
+type OrganizationAuditEventList struct {
+	Events []OrganizationAuditEvent `json:"events"`
+}
+
+// OrganizationCharge defines model for OrganizationCharge.
+type OrganizationCharge struct {
+	AmountMinor      int64              `json:"amount_minor"`
+	ChargeId         openapi_types.UUID `json:"charge_id"`
+	Currency         string             `json:"currency"`
+	ExportedAt       *time.Time         `json:"exported_at,omitempty"`
+	InvoiceReference *string            `json:"invoice_reference,omitempty"`
+	JobId            openapi_types.UUID `json:"job_id"`
+	LineReference    *string            `json:"line_reference,omitempty"`
+	PostedAt         time.Time          `json:"posted_at"`
+	ProjectId        openapi_types.UUID `json:"project_id"`
+	Reason           ChargeReason       `json:"reason"`
+}
+
+// OrganizationChargeList defines model for OrganizationChargeList.
+type OrganizationChargeList struct {
+	Charges []OrganizationCharge `json:"charges"`
+}
+
+// OrganizationCreditSummary defines model for OrganizationCreditSummary.
+type OrganizationCreditSummary struct {
+	AvailableMinor           int64              `json:"available_minor"`
+	ContractCreditLimitMinor int64              `json:"contract_credit_limit_minor"`
+	Currency                 string             `json:"currency"`
+	LedgerVersion            int64              `json:"ledger_version"`
+	OrganizationId           openapi_types.UUID `json:"organization_id"`
+	ReservedMinor            int64              `json:"reserved_minor"`
+	UnsettledPostedMinor     int64              `json:"unsettled_posted_minor"`
+	UpdatedAt                time.Time          `json:"updated_at"`
+}
+
 // OrganizationMember defines model for OrganizationMember.
 type OrganizationMember struct {
 	CreatedAt         time.Time          `json:"created_at"`
@@ -499,6 +656,16 @@ type OrganizationRoleAssignment struct {
 	OrganizationId        openapi_types.UUID  `json:"organization_id"`
 	PrincipalId           openapi_types.UUID  `json:"principal_id"`
 	Role                  OrganizationRole    `json:"role"`
+}
+
+// OrganizationUsage defines model for OrganizationUsage.
+type OrganizationUsage struct {
+	Currency       string             `json:"currency"`
+	From           time.Time          `json:"from"`
+	OrganizationId openapi_types.UUID `json:"organization_id"`
+	Projects       []ProjectUsage     `json:"projects"`
+	To             time.Time          `json:"to"`
+	Total          UsageAggregate     `json:"total"`
 }
 
 // PricingSnapshot defines model for PricingSnapshot.
@@ -538,6 +705,12 @@ type ProjectRoleAssignment struct {
 	PrincipalId           openapi_types.UUID  `json:"principal_id"`
 	ProjectId             openapi_types.UUID  `json:"project_id"`
 	Role                  ProjectRole         `json:"role"`
+}
+
+// ProjectUsage defines model for ProjectUsage.
+type ProjectUsage struct {
+	ProjectId openapi_types.UUID `json:"project_id"`
+	Usage     UsageAggregate     `json:"usage"`
 }
 
 // RotatedWebhookSubscription defines model for RotatedWebhookSubscription.
@@ -586,6 +759,23 @@ type ServicePrincipalList struct {
 	ServicePrincipals []ServicePrincipal `json:"service_principals"`
 }
 
+// SettlementContact defines model for SettlementContact.
+type SettlementContact struct {
+	ContactId             openapi_types.UUID  `json:"contact_id"`
+	CreatedAt             time.Time           `json:"created_at"`
+	CreatedByPrincipalId  openapi_types.UUID  `json:"created_by_principal_id"`
+	DisabledAt            *time.Time          `json:"disabled_at,omitempty"`
+	DisabledByPrincipalId *openapi_types.UUID `json:"disabled_by_principal_id,omitempty"`
+	DisplayName           string              `json:"display_name"`
+	Email                 string              `json:"email"`
+	OrganizationId        openapi_types.UUID  `json:"organization_id"`
+}
+
+// SettlementContactList defines model for SettlementContactList.
+type SettlementContactList struct {
+	Contacts []SettlementContact `json:"contacts"`
+}
+
 // SubmitJobRequest defines model for SubmitJobRequest.
 type SubmitJobRequest struct {
 	ClientMetadata   *json.RawMessage                 `json:"client_metadata,omitempty"`
@@ -602,6 +792,22 @@ type SubmitJobRequestGenerationPreset string
 
 // SubmitJobRequestServiceClass defines model for SubmitJobRequest.ServiceClass.
 type SubmitJobRequestServiceClass string
+
+// UsageAggregate defines model for UsageAggregate.
+type UsageAggregate struct {
+	AssignedJobs            int64 `json:"assigned_jobs"`
+	CanceledJobs            int64 `json:"canceled_jobs"`
+	CancelingJobs           int64 `json:"canceling_jobs"`
+	FailedJobs              int64 `json:"failed_jobs"`
+	FinalizingJobs          int64 `json:"finalizing_jobs"`
+	PostedChargeAmountMinor int64 `json:"posted_charge_amount_minor"`
+	QueuedJobs              int64 `json:"queued_jobs"`
+	QuotedAmountMinor       int64 `json:"quoted_amount_minor"`
+	RetryWaitJobs           int64 `json:"retry_wait_jobs"`
+	RunningJobs             int64 `json:"running_jobs"`
+	SucceededJobs           int64 `json:"succeeded_jobs"`
+	TotalJobs               int64 `json:"total_jobs"`
+}
 
 // WebhookDelivery defines model for WebhookDelivery.
 type WebhookDelivery struct {
@@ -653,6 +859,9 @@ type WebhookSubscriptionList struct {
 // WebhookSubscriptionState defines model for WebhookSubscriptionState.
 type WebhookSubscriptionState string
 
+// ContactId defines model for ContactId.
+type ContactId = openapi_types.UUID
+
 // CredentialId defines model for CredentialId.
 type CredentialId = openapi_types.UUID
 
@@ -689,6 +898,12 @@ type ServicePrincipalId = openapi_types.UUID
 // SubscriptionId defines model for SubscriptionId.
 type SubscriptionId = openapi_types.UUID
 
+// UsageFrom defines model for UsageFrom.
+type UsageFrom = time.Time
+
+// UsageTo defines model for UsageTo.
+type UsageTo = time.Time
+
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
 
@@ -698,9 +913,30 @@ type Forbidden = Error
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
+// ListOrganizationAuditEventsParams defines parameters for ListOrganizationAuditEvents.
+type ListOrganizationAuditEventsParams struct {
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListOrganizationChargesParams defines parameters for ListOrganizationCharges.
+type ListOrganizationChargesParams struct {
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListSettlementContactsParams defines parameters for ListSettlementContacts.
+type ListSettlementContactsParams struct {
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListHumanMembersParams defines parameters for ListHumanMembers.
 type ListHumanMembersParams struct {
 	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetOrganizationUsageParams defines parameters for GetOrganizationUsage.
+type GetOrganizationUsageParams struct {
+	From UsageFrom `form:"from" json:"from"`
+	To   UsageTo   `form:"to" json:"to"`
 }
 
 // SubmitJobParams defines parameters for SubmitJob.
@@ -733,6 +969,9 @@ type ListWebhookDeliveriesParams struct {
 	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// CreateSettlementContactJSONRequestBody defines body for CreateSettlementContact for application/json ContentType.
+type CreateSettlementContactJSONRequestBody = CreateSettlementContactRequest
+
 // CreateHumanMemberJSONRequestBody defines body for CreateHumanMember for application/json ContentType.
 type CreateHumanMemberJSONRequestBody = CreateHumanMemberRequest
 
@@ -756,6 +995,24 @@ type CreateWebhookSubscriptionJSONRequestBody = CreateWebhookSubscriptionRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListOrganizationAuditEvents List safe immutable Organization administration evidence
+	// (GET /v1/organizations/{organization_id}/audit-events)
+	ListOrganizationAuditEvents(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListOrganizationAuditEventsParams)
+	// ListOrganizationCharges List immutable Charges and available Invoice references
+	// (GET /v1/organizations/{organization_id}/billing/charges)
+	ListOrganizationCharges(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListOrganizationChargesParams)
+	// GetOrganizationCreditSummary Read the Customer Organization credit summary
+	// (GET /v1/organizations/{organization_id}/billing/credit)
+	GetOrganizationCreditSummary(w http.ResponseWriter, r *http.Request, organizationId OrganizationId)
+	// ListSettlementContacts List Organization settlement contacts
+	// (GET /v1/organizations/{organization_id}/billing/settlement-contacts)
+	ListSettlementContacts(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListSettlementContactsParams)
+	// CreateSettlementContact Create or replay an Organization settlement contact
+	// (POST /v1/organizations/{organization_id}/billing/settlement-contacts)
+	CreateSettlementContact(w http.ResponseWriter, r *http.Request, organizationId OrganizationId)
+	// DisableSettlementContact Permanently disable an Organization settlement contact
+	// (POST /v1/organizations/{organization_id}/billing/settlement-contacts/{contact_id}/disable)
+	DisableSettlementContact(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, contactId ContactId)
 	// ListHumanMembers List Human members in a Customer Organization
 	// (GET /v1/organizations/{organization_id}/members)
 	ListHumanMembers(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListHumanMembersParams)
@@ -771,6 +1028,9 @@ type ServerInterface interface {
 	// RevokeOrganizationRole Revoke a fixed Organization role from a Human member
 	// (POST /v1/organizations/{organization_id}/members/{principal_id}/roles/{role}/revoke)
 	RevokeOrganizationRole(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, principalId PrincipalId, role OrganizationRoleName)
+	// GetOrganizationUsage Read bounded non-content Organization usage
+	// (GET /v1/organizations/{organization_id}/usage)
+	GetOrganizationUsage(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params GetOrganizationUsageParams)
 	// SubmitJob Submit a Job for durable Admission
 	// (POST /v1/projects/{project_id}/jobs)
 	SubmitJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, params SubmitJobParams)
@@ -834,6 +1094,42 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// ListOrganizationAuditEvents List safe immutable Organization administration evidence
+// (GET /v1/organizations/{organization_id}/audit-events)
+func (_ Unimplemented) ListOrganizationAuditEvents(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListOrganizationAuditEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListOrganizationCharges List immutable Charges and available Invoice references
+// (GET /v1/organizations/{organization_id}/billing/charges)
+func (_ Unimplemented) ListOrganizationCharges(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListOrganizationChargesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetOrganizationCreditSummary Read the Customer Organization credit summary
+// (GET /v1/organizations/{organization_id}/billing/credit)
+func (_ Unimplemented) GetOrganizationCreditSummary(w http.ResponseWriter, r *http.Request, organizationId OrganizationId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListSettlementContacts List Organization settlement contacts
+// (GET /v1/organizations/{organization_id}/billing/settlement-contacts)
+func (_ Unimplemented) ListSettlementContacts(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListSettlementContactsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateSettlementContact Create or replay an Organization settlement contact
+// (POST /v1/organizations/{organization_id}/billing/settlement-contacts)
+func (_ Unimplemented) CreateSettlementContact(w http.ResponseWriter, r *http.Request, organizationId OrganizationId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DisableSettlementContact Permanently disable an Organization settlement contact
+// (POST /v1/organizations/{organization_id}/billing/settlement-contacts/{contact_id}/disable)
+func (_ Unimplemented) DisableSettlementContact(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, contactId ContactId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListHumanMembers List Human members in a Customer Organization
 // (GET /v1/organizations/{organization_id}/members)
 func (_ Unimplemented) ListHumanMembers(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListHumanMembersParams) {
@@ -861,6 +1157,12 @@ func (_ Unimplemented) AssignOrganizationRole(w http.ResponseWriter, r *http.Req
 // RevokeOrganizationRole Revoke a fixed Organization role from a Human member
 // (POST /v1/organizations/{organization_id}/members/{principal_id}/roles/{role}/revoke)
 func (_ Unimplemented) RevokeOrganizationRole(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, principalId PrincipalId, role OrganizationRoleName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetOrganizationUsage Read bounded non-content Organization usage
+// (GET /v1/organizations/{organization_id}/usage)
+func (_ Unimplemented) GetOrganizationUsage(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params GetOrganizationUsageParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -986,6 +1288,219 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListOrganizationAuditEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizationAuditEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOrganizationAuditEventsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizationAuditEvents(w, r, organizationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrganizationCharges operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizationCharges(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOrganizationChargesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizationCharges(w, r, organizationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganizationCreditSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationCreditSummary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationCreditSummary(w, r, organizationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSettlementContacts operation middleware
+func (siw *ServerInterfaceWrapper) ListSettlementContacts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSettlementContactsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSettlementContacts(w, r, organizationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSettlementContact operation middleware
+func (siw *ServerInterfaceWrapper) CreateSettlementContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSettlementContact(w, r, organizationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableSettlementContact operation middleware
+func (siw *ServerInterfaceWrapper) DisableSettlementContact(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "contact_id" -------------
+	var contactId ContactId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "contact_id", chi.URLParam(r, "contact_id"), &contactId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "contact_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableSettlementContact(w, r, organizationId, contactId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListHumanMembers operation middleware
 func (siw *ServerInterfaceWrapper) ListHumanMembers(w http.ResponseWriter, r *http.Request) {
@@ -1160,6 +1675,61 @@ func (siw *ServerInterfaceWrapper) RevokeOrganizationRole(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RevokeOrganizationRole(w, r, organizationId, principalId, role)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganizationUsage operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganizationUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "organization_id" -------------
+	var organizationId OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "organization_id", chi.URLParam(r, "organization_id"), &organizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetOrganizationUsageParams
+
+	// ------------- Required query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganizationUsage(w, r, organizationId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2044,6 +2614,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/v1/organizations/{organization_id}/members/{principal_id}/roles/{role}/revoke", wrapper.RevokeOrganizationRole)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/organizations/{organization_id}/billing/credit", wrapper.GetOrganizationCreditSummary)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/organizations/{organization_id}/billing/charges", wrapper.ListOrganizationCharges)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/organizations/{organization_id}/billing/settlement-contacts", wrapper.ListSettlementContacts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/organizations/{organization_id}/billing/settlement-contacts", wrapper.CreateSettlementContact)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/organizations/{organization_id}/billing/settlement-contacts/{contact_id}/disable", wrapper.DisableSettlementContact)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/organizations/{organization_id}/usage", wrapper.GetOrganizationUsage)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/organizations/{organization_id}/audit-events", wrapper.ListOrganizationAuditEvents)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/members", wrapper.ListProjectMembers)
 	})
 	r.Group(func(r chi.Router) {
@@ -2109,6 +2700,423 @@ type BadRequestJSONResponse Error
 type ForbiddenJSONResponse Error
 
 type UnauthorizedJSONResponse Error
+
+type ListOrganizationAuditEventsRequestObject struct {
+	OrganizationId OrganizationId `json:"organization_id"`
+	Params         ListOrganizationAuditEventsParams
+}
+
+type ListOrganizationAuditEventsResponseObject interface {
+	VisitListOrganizationAuditEventsResponse(w http.ResponseWriter) error
+}
+
+type ListOrganizationAuditEvents200JSONResponse OrganizationAuditEventList
+
+func (response ListOrganizationAuditEvents200JSONResponse) VisitListOrganizationAuditEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizationAuditEvents400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListOrganizationAuditEvents400JSONResponse) VisitListOrganizationAuditEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizationAuditEvents401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListOrganizationAuditEvents401JSONResponse) VisitListOrganizationAuditEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizationAuditEvents403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListOrganizationAuditEvents403JSONResponse) VisitListOrganizationAuditEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizationChargesRequestObject struct {
+	OrganizationId OrganizationId `json:"organization_id"`
+	Params         ListOrganizationChargesParams
+}
+
+type ListOrganizationChargesResponseObject interface {
+	VisitListOrganizationChargesResponse(w http.ResponseWriter) error
+}
+
+type ListOrganizationCharges200JSONResponse OrganizationChargeList
+
+func (response ListOrganizationCharges200JSONResponse) VisitListOrganizationChargesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizationCharges400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListOrganizationCharges400JSONResponse) VisitListOrganizationChargesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizationCharges401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListOrganizationCharges401JSONResponse) VisitListOrganizationChargesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrganizationCharges403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListOrganizationCharges403JSONResponse) VisitListOrganizationChargesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationCreditSummaryRequestObject struct {
+	OrganizationId OrganizationId `json:"organization_id"`
+}
+
+type GetOrganizationCreditSummaryResponseObject interface {
+	VisitGetOrganizationCreditSummaryResponse(w http.ResponseWriter) error
+}
+
+type GetOrganizationCreditSummary200JSONResponse OrganizationCreditSummary
+
+func (response GetOrganizationCreditSummary200JSONResponse) VisitGetOrganizationCreditSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationCreditSummary400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetOrganizationCreditSummary400JSONResponse) VisitGetOrganizationCreditSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationCreditSummary401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetOrganizationCreditSummary401JSONResponse) VisitGetOrganizationCreditSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationCreditSummary403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetOrganizationCreditSummary403JSONResponse) VisitGetOrganizationCreditSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationCreditSummary404JSONResponse Error
+
+func (response GetOrganizationCreditSummary404JSONResponse) VisitGetOrganizationCreditSummaryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSettlementContactsRequestObject struct {
+	OrganizationId OrganizationId `json:"organization_id"`
+	Params         ListSettlementContactsParams
+}
+
+type ListSettlementContactsResponseObject interface {
+	VisitListSettlementContactsResponse(w http.ResponseWriter) error
+}
+
+type ListSettlementContacts200JSONResponse SettlementContactList
+
+func (response ListSettlementContacts200JSONResponse) VisitListSettlementContactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSettlementContacts400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListSettlementContacts400JSONResponse) VisitListSettlementContactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSettlementContacts401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListSettlementContacts401JSONResponse) VisitListSettlementContactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSettlementContacts403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListSettlementContacts403JSONResponse) VisitListSettlementContactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSettlementContactRequestObject struct {
+	OrganizationId OrganizationId `json:"organization_id"`
+	Body           *CreateSettlementContactJSONRequestBody
+}
+
+type CreateSettlementContactResponseObject interface {
+	VisitCreateSettlementContactResponse(w http.ResponseWriter) error
+}
+
+type CreateSettlementContact201JSONResponse SettlementContact
+
+func (response CreateSettlementContact201JSONResponse) VisitCreateSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSettlementContact400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateSettlementContact400JSONResponse) VisitCreateSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSettlementContact401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateSettlementContact401JSONResponse) VisitCreateSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSettlementContact403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateSettlementContact403JSONResponse) VisitCreateSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableSettlementContactRequestObject struct {
+	OrganizationId OrganizationId `json:"organization_id"`
+	ContactId      ContactId      `json:"contact_id"`
+}
+
+type DisableSettlementContactResponseObject interface {
+	VisitDisableSettlementContactResponse(w http.ResponseWriter) error
+}
+
+type DisableSettlementContact200JSONResponse SettlementContact
+
+func (response DisableSettlementContact200JSONResponse) VisitDisableSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableSettlementContact400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DisableSettlementContact400JSONResponse) VisitDisableSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableSettlementContact401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DisableSettlementContact401JSONResponse) VisitDisableSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableSettlementContact403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DisableSettlementContact403JSONResponse) VisitDisableSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableSettlementContact404JSONResponse Error
+
+func (response DisableSettlementContact404JSONResponse) VisitDisableSettlementContactResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListHumanMembersRequestObject struct {
 	OrganizationId OrganizationId `json:"organization_id"`
@@ -2517,6 +3525,71 @@ func (response RevokeOrganizationRole409JSONResponse) VisitRevokeOrganizationRol
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationUsageRequestObject struct {
+	OrganizationId OrganizationId `json:"organization_id"`
+	Params         GetOrganizationUsageParams
+}
+
+type GetOrganizationUsageResponseObject interface {
+	VisitGetOrganizationUsageResponse(w http.ResponseWriter) error
+}
+
+type GetOrganizationUsage200JSONResponse OrganizationUsage
+
+func (response GetOrganizationUsage200JSONResponse) VisitGetOrganizationUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationUsage400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetOrganizationUsage400JSONResponse) VisitGetOrganizationUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationUsage401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetOrganizationUsage401JSONResponse) VisitGetOrganizationUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrganizationUsage403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetOrganizationUsage403JSONResponse) VisitGetOrganizationUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4038,6 +5111,24 @@ func (response RotateWebhookSubscriptionSecret409JSONResponse) VisitRotateWebhoo
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListOrganizationAuditEvents List safe immutable Organization administration evidence
+	// (GET /v1/organizations/{organization_id}/audit-events)
+	ListOrganizationAuditEvents(ctx context.Context, request ListOrganizationAuditEventsRequestObject) (ListOrganizationAuditEventsResponseObject, error)
+	// ListOrganizationCharges List immutable Charges and available Invoice references
+	// (GET /v1/organizations/{organization_id}/billing/charges)
+	ListOrganizationCharges(ctx context.Context, request ListOrganizationChargesRequestObject) (ListOrganizationChargesResponseObject, error)
+	// GetOrganizationCreditSummary Read the Customer Organization credit summary
+	// (GET /v1/organizations/{organization_id}/billing/credit)
+	GetOrganizationCreditSummary(ctx context.Context, request GetOrganizationCreditSummaryRequestObject) (GetOrganizationCreditSummaryResponseObject, error)
+	// ListSettlementContacts List Organization settlement contacts
+	// (GET /v1/organizations/{organization_id}/billing/settlement-contacts)
+	ListSettlementContacts(ctx context.Context, request ListSettlementContactsRequestObject) (ListSettlementContactsResponseObject, error)
+	// CreateSettlementContact Create or replay an Organization settlement contact
+	// (POST /v1/organizations/{organization_id}/billing/settlement-contacts)
+	CreateSettlementContact(ctx context.Context, request CreateSettlementContactRequestObject) (CreateSettlementContactResponseObject, error)
+	// DisableSettlementContact Permanently disable an Organization settlement contact
+	// (POST /v1/organizations/{organization_id}/billing/settlement-contacts/{contact_id}/disable)
+	DisableSettlementContact(ctx context.Context, request DisableSettlementContactRequestObject) (DisableSettlementContactResponseObject, error)
 	// ListHumanMembers List Human members in a Customer Organization
 	// (GET /v1/organizations/{organization_id}/members)
 	ListHumanMembers(ctx context.Context, request ListHumanMembersRequestObject) (ListHumanMembersResponseObject, error)
@@ -4053,6 +5144,9 @@ type StrictServerInterface interface {
 	// RevokeOrganizationRole Revoke a fixed Organization role from a Human member
 	// (POST /v1/organizations/{organization_id}/members/{principal_id}/roles/{role}/revoke)
 	RevokeOrganizationRole(ctx context.Context, request RevokeOrganizationRoleRequestObject) (RevokeOrganizationRoleResponseObject, error)
+	// GetOrganizationUsage Read bounded non-content Organization usage
+	// (GET /v1/organizations/{organization_id}/usage)
+	GetOrganizationUsage(ctx context.Context, request GetOrganizationUsageRequestObject) (GetOrganizationUsageResponseObject, error)
 	// SubmitJob Submit a Job for durable Admission
 	// (POST /v1/projects/{project_id}/jobs)
 	SubmitJob(ctx context.Context, request SubmitJobRequestObject) (SubmitJobResponseObject, error)
@@ -4149,6 +5243,173 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListOrganizationAuditEvents operation middleware
+func (sh *strictHandler) ListOrganizationAuditEvents(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListOrganizationAuditEventsParams) {
+	var request ListOrganizationAuditEventsRequestObject
+
+	request.OrganizationId = organizationId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrganizationAuditEvents(ctx, request.(ListOrganizationAuditEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrganizationAuditEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrganizationAuditEventsResponseObject); ok {
+		if err := validResponse.VisitListOrganizationAuditEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListOrganizationCharges operation middleware
+func (sh *strictHandler) ListOrganizationCharges(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListOrganizationChargesParams) {
+	var request ListOrganizationChargesRequestObject
+
+	request.OrganizationId = organizationId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListOrganizationCharges(ctx, request.(ListOrganizationChargesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListOrganizationCharges")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListOrganizationChargesResponseObject); ok {
+		if err := validResponse.VisitListOrganizationChargesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrganizationCreditSummary operation middleware
+func (sh *strictHandler) GetOrganizationCreditSummary(w http.ResponseWriter, r *http.Request, organizationId OrganizationId) {
+	var request GetOrganizationCreditSummaryRequestObject
+
+	request.OrganizationId = organizationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrganizationCreditSummary(ctx, request.(GetOrganizationCreditSummaryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrganizationCreditSummary")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrganizationCreditSummaryResponseObject); ok {
+		if err := validResponse.VisitGetOrganizationCreditSummaryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSettlementContacts operation middleware
+func (sh *strictHandler) ListSettlementContacts(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params ListSettlementContactsParams) {
+	var request ListSettlementContactsRequestObject
+
+	request.OrganizationId = organizationId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSettlementContacts(ctx, request.(ListSettlementContactsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSettlementContacts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSettlementContactsResponseObject); ok {
+		if err := validResponse.VisitListSettlementContactsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSettlementContact operation middleware
+func (sh *strictHandler) CreateSettlementContact(w http.ResponseWriter, r *http.Request, organizationId OrganizationId) {
+	var request CreateSettlementContactRequestObject
+
+	request.OrganizationId = organizationId
+
+	var body CreateSettlementContactJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSettlementContact(ctx, request.(CreateSettlementContactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSettlementContact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSettlementContactResponseObject); ok {
+		if err := validResponse.VisitCreateSettlementContactResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DisableSettlementContact operation middleware
+func (sh *strictHandler) DisableSettlementContact(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, contactId ContactId) {
+	var request DisableSettlementContactRequestObject
+
+	request.OrganizationId = organizationId
+	request.ContactId = contactId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DisableSettlementContact(ctx, request.(DisableSettlementContactRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DisableSettlementContact")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DisableSettlementContactResponseObject); ok {
+		if err := validResponse.VisitDisableSettlementContactResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListHumanMembers operation middleware
@@ -4293,6 +5554,33 @@ func (sh *strictHandler) RevokeOrganizationRole(w http.ResponseWriter, r *http.R
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RevokeOrganizationRoleResponseObject); ok {
 		if err := validResponse.VisitRevokeOrganizationRoleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrganizationUsage operation middleware
+func (sh *strictHandler) GetOrganizationUsage(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params GetOrganizationUsageParams) {
+	var request GetOrganizationUsageRequestObject
+
+	request.OrganizationId = organizationId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrganizationUsage(ctx, request.(GetOrganizationUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrganizationUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrganizationUsageResponseObject); ok {
+		if err := validResponse.VisitGetOrganizationUsageResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4856,83 +6144,102 @@ func (sh *strictHandler) RotateWebhookSubscriptionSecret(w http.ResponseWriter, 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"7F1bc9u2tv4rHJ6+HcpyLs007pNiK6lSx/aW7expu3M0EAlJaEhCAUDHqkf//QwuJAESFC+6JM72U2IR",
+	"IICFb92BxQfXx9ESxzBm1D15cBcQBJCI/44hI6vBjEHC/wog9QlaMoRj98S9hj6OA+pM4QwT6LAFdPwQ",
+	"wZg5dIGTMHAI7+wMgghRinB85Hou9RcwAvxdEYpRlETuyTPPZasldE9cFDM4h8Rdr9eeuwQERJCpeZzi",
+	"mAGfjQL+B+KjLwFbuJ4bg4h39eXzCQpczyXwS4IIDNwTRhKoDzrDJALMPXGTRLRUA1NGUDx3+bCnBAYw",
+	"ZgiE1WNlTbYf7gyG6A6SVeVggWqw/VCjAEZLzGDsr36Hq2w4udn5gFqzHm+3adAI3J/DeM4W7smz5794",
+	"fE+zv/kOMgYJH+P//hr0/gS9f457r48mJ71P//uTdYbv8bSSDn/j6fYkOEeUnaMIsWyQLwkkq3yUUDzU",
+	"XxrAGUhC5p48Oz728iFQzF48dz1OAYVi/ngjpj33ksxBjP4BnH8qF4q1RtuvWB9yjEN4IQaxDkxwCDeO",
+	"9hOBM/fE/Z9+Li368intF8cRg18RFPtouYGVlmmL7Vd6RfDfcIOEWMrnOxton9TUhhBDXkNyh3xYT08q",
+	"G052SNfrZJoJ/epxtUbbD3lLwRy+JTiqYtMZf9ZojAAw2GMogtUD3eCqYRjefpA1fwNd4phCocjegGAM",
+	"vySQChnE1RaMxX/BchkiXzBQ/2/KFexDQ7QMCcFKaZoKWg3k3IEQBeLNzgygEAbu2nPfYjJFQQDj/c8j",
+	"w60TAv8zFZZCSlZHYd2hPl5CPrHbGCRsgQn6Bwb7n1uu7x1EHTCl3H7BxEGxoJqAiXoJH2NAGJoBn53h",
+	"r3GIgZggCALE3wbCK4KXkDDEt3oGQgo9Lnaynx5coLpzHqlnBS9d+0Q+MBTuc6VwNIVb6h6oWU4SEprj",
+	"EeTWtJ/A+yUikE4Aawp2z/2MYrEwGHMt+Jf7cXQ2vHQ99+a32w9vLgajc/eTpReeCsl8BwlV8qNgWxw3",
+	"WCsmAYqBucxMS6d6+bislz2XLsDzn1/xjrrFctx7DXqzTw+vXq5/si2Von/gZLpicmP1IV+9dGtNgVyq",
+	"/GWAQpEwX46NOsbg2fwLaCnsfvXm5jsiR+KLS2F+DVlXhFPYGOVpH/ECxGBE69i5xIZrQfGR7JuTHBAC",
+	"VpKRoggxBoNWcFZGZ5M1EMhJzzeoPd9U4UGR0NONX8sohdXp9LTuLaVoHhcNNk0ptdhtYeV0MQ319YqX",
+	"VM9UM4b2N8mixdVofqcg9mF4Bn1EkVRGqdw7HVycDs+HZ66n/ju6eOd67uB8PByc/TG5vj09HQ7PxPP0",
+	"t7eDEe9gk49ynDGkwhFptfYpCkMwletX751iHEIQC64QLw4zX6ORSloAMq+l56lsJdStj4KWfBdoJN04",
+	"irkB7TiWN1VCtbUE91zKAKulwns8vRbtipAqEl5j8Wzt6RjmTL18Sw3aWvGZbVUbAR7hJGaTCMWYbKaL",
+	"VZlKeDQGU0IIjP1VUfkOen9+enhhV7xLTNvKcQIBbYAmMfWxbFvasWxdnkkibRHZQPokqzdmnM0qN5eu",
+	"R2/Oh5PTyw9X58Ob0eUFFyC31zeXH4bjiZQk5wPxu1VOEAgY/C2JQPwBRlNIusnLANFlCFaTWHm3LY1O",
+	"jAJ/QhO52FLQ8HIJviTQuRydnTqq0a/CIeCuKyTODN1D6SH4OJ6hecJ9BERpAokD4sCB8QwTH1IHOD8f",
+	"H/e4DeSIqM2RjMakM/u5dqaFDTambd00Qd2iK/4NSFyYuPGuTRNnLIQRjJmKpX4TcMAIoLDQ78Vzs9+L",
+	"VitO31m98n/D6QLjz3ogo9vaYRwsMYqZxZUyyPDyl3o63KWGenOjV61jyLverKSzHIF7ZfS+2GQBe24S",
+	"oy8JVI8ZSWCRqNnizMlVkzWw0LUlQX35olayfMMmfI9U9vTAYxOVSKFPIJsQeIdsponpz9pNEzSPUTyf",
+	"yDfVMekr2xyaGDeW7VfGjleKBzYK++loLAcUjfhtBVhzk6lIRU/HWolENpDLiFFLPONAt7RzgkaQUjC3",
+	"PyNSFikybSaLGCB/nXXe99BP+HyvFoBC3br41+3wVrgcV+Ph1WAsXZJ3w4vheHAj/3g7uhicj/6Uf4yH",
+	"N+M/Jv8ejG6sxoZmZhyA6wNEuc3butPWhow0PZoIm6Ld08oY8Up5nyaywgjzt+axQpKgnHjSCVBYn1dU",
+	"wtqm2lCpoeUctVa8kejYXIbrIQcF0XUxJlQgRjqEbfIjTgJl+OXx4o42RIeoqgiNN199aabXaWg912Ov",
+	"trQW1JQ8tyaQKEgXlGbUNooBAYFk4hv9Nf56bbLXL8dG8vkuBBMVzu19enjxav2f/xzlCelJ79PDywpX",
+	"s4ukMk8HNOHiLpBoaVQQeIc/t1zI94A6z57RbC3qikc2KvKkho1hg3jBjCjj0sYD7/G0bQyGMRgtGZ1Q",
+	"BgiTabCasEsXS5oyFIleMxQjumgdGu8C3BYBuhjecwuOkVU71kjtno35QNNKSrtNlgTPCaRKVPthQtEd",
+	"/JAe8pAZ4HwaOJFxuPwUiDU8FiepCloS5PNp1kajRbPrGCzpAjPF8GJik2QZtN7pti7IVrHNLJJpcpMy",
+	"zEvQzolSAlWtVZHNwWblDq6vR+8uxH/HtxcXmy1cM06vx+dVXN7LY/o2a1i3OAZJgJjwH9uyvc8KeYTf",
+	"bj8MLiYfhh/eDMeT0/FwcCOmYvx8NroevJFTvBy/G1yM/hQRwsn48nw40YhQfjgefrz8XXkEl++Hpzel",
+	"PsbvefPr4fjj6HQ4uRqPLk5HV4NzbW7lZ9oET8fDs+HFzWhwPhldX98Wf9NHuLk5H34YXtxMTi8vbgan",
+	"N8YQpYfZGLbNAT7DpK0GSbtRSGmb9EgXQSxc2MY2fztexgnxYRlTI0Hzmz+0TdZ+KlPYSlgGyLx5mle1",
+	"Lp4RkPPJ4GKDkIGSptMrxrdSImc08VKGsyLEsv/mEvTl10oqu3zo4AqJZXTzhDS5VOcNqVHqVvJjJpjg",
+	"/RKTtjyM4jvMLUoCZ5CPCDuEAFrYRiGKtxurQxattc+x06SbYU1oByJUwq06J7c5FVeGcwemlPPsxpV5",
+	"pnwjR6ZD1K6BwACx6ySKAFm15cw7gERquTtz4pgR4DPhEiE2EZm57m/rwLwhDOaQbJHY7xKHI1BkL4PO",
+	"K01iKtJzwUShtfOLWnsHxTRoKQqosdKm7S1RoXJVXglopW0zFlIH+acg9DcNQht9CA47ykF59KphRu17",
+	"DHtbKVGH3bE6m5Yaw/qzy6+xmMEbFIYong+CCHHOKJl0mNS6pHwYeZou6uaW3lWcIAPipS1ZIus0XbX3",
+	"yg6QJ/F2c66xjKzitQx5R0TRtw4qt2kGsY2U66BBZ+riRbO97LYdwpRrLifU6UxJgXX5dC/DzSfMMJP5",
+	"g00DipEG8zmBc1uIq7yz6kaKuDGiKUw5mLZi2yYXo3373+IvCYgZYqu6e5i8JRbibTufjQAGJz4gQZaQ",
+	"b8yIvKdwdhp2SGLEtptu8fSvde6FmdnG1chsp6OGFDssBGY6WTffxFI5hGBu6YOmzduZJcZh8C0TpbXW",
+	"huHXFqwLc/q1IDlAZt0E5TZJdZ3ImgGkfk6NnTN4B0M+YTfr8RHBr9Bu8mjvfLJ29sZU296nqOGB1kaS",
+	"YR202+yWK0/SIbawHYy1JpXHuMaYPZ2xbHHGEt4hnFB1oG8i7m5OkpihcH9Z0jYHNZ8/HdTcxUHNzTtt",
+	"46Ntjx49HQF6OgJUfQSoEeK6JBSyzltQvz6noI3SaCVyPzVr7W88pSc0mcqqKeIvAkGQ/l9ec9NvpKaP",
+	"v0qZRE8iEHMVqP0iWtisu+LVmx804ttaDe2CO5pwQ7sTv8Xd6sAFpUm1ZoYcK3W8YBnLvqrCLarWNwSy",
+	"OlX7Ok2S9unibnTFu+zUccTD3yfr4leVbmJoBcfKHo31ilr13jTgpgLuuigV2bMNExXBXqtR0iGsaxB6",
+	"4j2edjs5L2vLTSLIQAAYqO4tT2maw3vufW+Oe+rHvymOj8bg6wd1j2btuXMYQyI30MdJnFrjKjT6qi5r",
+	"rHVfEkilNZ9qyS8JCGUYcApCrhJFxBhQZlVzEQ5gWK6AUh9/S9gyYRO6hH6H3kuCo6XFB2nQNRWdfgjU",
+	"wVm1bspAHAAS1B/Okmu2kbH4enOdln3LlmKDYME3bxkZSgM53LbpcpxBWEPb9ufeUMcXyOJPnXujGITo",
+	"ny3GV6cA1KmeLXMKXxKYdF/MjvIa4nD6V4BY13mQJI63oChNfB/CoDsdRIKqW+cCC2tvMjfHKzBOYdFl",
+	"YJXpWsJ+aeUmuIu8VpV/2QBIm/RQgZS0ZmfHSx0dKlR1cl0gCCYhZAyS1j3F+rr1WjUOebQ59JzHjrqE",
+	"FnMd0eE29cEqyoSAsokCSSvKi44LxpYTygBLKgCW2jI/v36tz+R4g2DjEBIZzlYxoxYhyZSTsnDk1sfX",
+	"zHK52plvDUHa8VGzsk4ak9Twkl9YcW1UKUQraw6tFVbdwYRXy0PtY+2Z0DKicfr22y16bcQGSyrdxrka",
+	"XpzJOzWji8nb89G7325czz0bno8+DsfiMsfZcHA2OR/e3AzHVnO4xNBm+OkoUwRyO49UhUv5R6oGNr35",
+	"wLmVTi72U9GLndTjeryZkA28p6+mS5BN694aMAbvtJQs5sANF1gSMIPTm9HHIZcj1TfAJMASgtjqms9f",
+	"v1Q+SLhbm/71Nt3xjzAEWiRd1YAVxwFEwxwNXPHKwrIonuFywSuVne6JXELgALqK/QXBMU6oMxg5ua5x",
+	"BlejI/5exEKopsB/cz03MyrcZ0fHR8fC21/CGCyRe+K+ODo+euGKG+8LsbD+3bO+HpGi/YdCgGrdB0mA",
+	"WC+/TDSXEQsOjKw8uSiXbr9ARF2zQP9fdrTkTfqF2udrr7ZHXqx9/alQRPn58fHOKgNvuJllKRd8G6MZ",
+	"goFDwQw6GhEdxesCy2vPfSlnaBs4W0lfqwUtujyr72IURxadXtR3yks9C1ZI74aI/ZUrQVGUMK6WHJ0c",
+	"Dgi40KVMARTeoUBcN+KvaYKyqTy53NfuxzQC2qlq/0OCTLtlZAHYNd8OYxNk+8cLsBxbaltFHb/sCogz",
+	"kjfnnOw2G22PL3EdpRJe7yCrviK1LcYOBhtj1hbkDO+Bz5wrTNmcwOt/nffURjLA0B10JI2cdHO+Ywjx",
+	"Hi8PUPk9oQxHkJjchqgTY+ZwG2yqzq7leB5DEIjalPa+RRK3RDHN0i09PVVTKTFL6ZkfSGDa8102eZk1",
+	"dFKiOSj2wyRA8dxZQhIB/mZHuV2iIU1t/scjRA2c0fKa0/B6GSkV1T93I/cEWd7gYLWzja8pVro2vQjl",
+	"bRZg+Gx/MGwGQUd5bg4mDoHLEKxSHDwCvMkdyKfugLgOfrsQdf2HPKW+7it2FWd0rbA+kw12j+t6EZh/",
+	"i+ywInAz9lJCGpIu+zDAY0HigXS/hWU3Kv6rVI+Eq5S+u2QL7RZGpbbXKij+QHq+WBeyyiMS7RxJJ+E/",
+	"GKQnOHzEDpK+Nm68OMBuX9bpeL0i63et3S0V6g+s13VSWSBnoi0IHpf8fL1/+amX7xeF+kPEDe+viC24",
+	"XIT3iDJuf0tCIhFGZasC+AdB4ACTsxmuBn87Wdp/0A/YNTcodslE9VJW/6LfoeRsLeCfDIh6BjAIZpoO",
+	"XIKzBaLVQvwgLHqm7eJX9TneCN/J7/SKIzeOvFPnlGtONDB+DL7dljmz67l21rR/seqbsOfuVeLmz3E1",
+	"0ov7CTgWbtHatEDJBgNZ+yfJsXvJYWpPQWoHiC/m2OxhoUt3zqX9B/7Pui+vk1Xz7Fg8/9Y867UaIPuk",
+	"78GC+l14jFPeVwHnJx57pNp5nG/idspZ8tkGMTAjOOoqCLL77k3SavL+/f4ZPP86dNPGN/hwHK1qFNUw",
+	"MogDZwlJL/34sSC0A9KLCY8ngCEyYlOcxNxHjnHcUwQ1gZgookjUpcWQuH5JD0it++kZdLs6ye4OtQZY",
+	"/l34BnAZBTBaYgZjf/U7XO3N5ivdhGpk5j3f2ficjhaIvsdTB/g+XHKNEiQETMMDJ4qfHyDtq2pYOjKh",
+	"7oggJ1cSKKbJbIZ8pAokf6ehFw2izme4cr4Cmm+aCMAEaCZOUsg4dLqa568P8aF3Kc7E9Q/5WUZOWXi/",
+	"AAmVxf4XEAQq1D2GjKx6gxmT5a1sI6rWfdFUthTD/iz3Zt9IiZaACaPBB0vgI7biq0ni7OzKjtZjSFQp",
+	"GxzgcG6cYaIYETqDIEKU6qGwakHaf5BH3NeblPfepel7PN13XKtCkp2KwmpM0FDL9v84Fi5fWIVhq7ao",
+	"oKjfQeaYB4JSZtVo1BxXfeOb7RsQNsjaPXao6d/Et0sL5YtpDeUna++Bz3rqDK+Tfoaf/miQ1JddgCYm",
+	"4k9Z7pCFK6GwqC3RymEqP/5ro6ZQb3SBCeuF6A4WSXs7PqetQKzqk1RanfL74j+CnDQ+IW9Dr/ZB8k1h",
+	"hf9iCSoZXM9PGUTLvtu+GYBNUv1GkcU9C84D5fnLdSqrMv2pWtJy/SK00XtMSf4DYTil1RZhZMsJhPS6",
+	"towg68xQC+tOiR29VuResX64dI62pG+UybGXQt2Aoaf8TYfYMiaOnQc3J2sMmlfnadqzWrvszLdhPK/p",
+	"uw+TjunGKE9JmP0wSiGdYdB8UybDziqqdFDPLCC34UKFWTTuxzC9rIX4NuBbtXc0Mjy+C42ViylakJsv",
+	"TRSKCG4Bhz1flzAn+s1uSxSLLtpOXhc3RN2VeDpVaaONebQyO1eZnqjUAnelCxygmglai83+g61A6Lpf",
+	"qFNbJ1lPteZ7Fa1FJH6PArlQILgRHjQCCkTghDmyIIETAQYJAiFXtQGaQ8qePGQbCVvFfHKFsmkvmumU",
+	"EaUJLBdpPjgf7EkT2Zf3jTSRmExgqYhtiXzm2yi++Rb8WuIoRB0CWUJibuOL+gdPfFXFV+rYEibVHHYg",
+	"baptbCc1KjDkgNjBd5CEYLnkPTaJgX1o1f6DUbe+qWf/HYiZBvcos9nt/yplO0GgvpXw5NBXS0pDic4w",
+	"kTxutzTtVwlI6uofhKeaXyjenc+3hX4+UCygmWhPS9Y98cMubUv7tZquPpv6fEavVM6t0iezVFf7MQJe",
+	"VXXxNsS8VBfHIEbmYamPEDmyQt9jDofZ1tkmImYr+/e9BsUsc/1G3oicj/Vbbjaxou+NCo79Kg7FmDh8",
+	"VG7J5gCVDZZd5F3/oVCEc903K+bWCcOzvPV+9b42ze9Rdholii0YTTcsp1cmLJdgJY63eam49LjZ4IcA",
+	"RQ7Dn+HTwQ2Nfgavd4xMFfZiZcrzHTNR/0GrsM29UW4NbvJG+fNiCervjLXSee3b+C5V4rZc2k73MBPs",
+	"DDuqhraqruDMCKQLR9Qid76iOMBfnxjKLTFBHTMd6ha+MZ+YQRKhGIRe5lMJ6QhCAkGwUs5VVrM4Y/YP",
+	"IE5AGK6yilxO+qIS9++K4xu6yzs2CNuz94EdiVqDzeYrOyi9s8PSC1VPqqzOEd6jTUjEt5V7+Wd3K5SX",
+	"aGYrQp59jPbHwPmGb01bwx7C+5BEDFKtlN4BTb/Pq6ibBs+fVFQ3RjmQmho45nYJpRRjtoAkS55wz5MR",
+	"EFOUzlx9k71wgkvgooKBCy6snEpam1/wkF6V/69PHPYUkruUwxISuidu311/Wv9/AAAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

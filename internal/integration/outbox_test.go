@@ -23,6 +23,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/inbox"
+	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/outbox"
 )
 
@@ -43,6 +44,7 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),

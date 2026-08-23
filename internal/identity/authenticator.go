@@ -26,18 +26,23 @@ const (
 var ErrInvalidCredential = errors.New("invalid bearer credential")
 
 const (
-	ScopeJobsSubmit                = "jobs:submit"
-	ScopeJobsRead                  = "jobs:read"
-	ScopeJobsCancel                = "jobs:cancel"
-	ScopeArtifactsRead             = "artifacts:read"
-	ScopeOrganizationMembersManage = "organization_members:manage"
-	ScopeOrganizationMembersRead   = "organization_members:read"
-	ScopeProjectMembersManage      = "project_members:manage"
-	ScopeProjectMembersRead        = "project_members:read"
-	ScopeServicePrincipalsManage   = "service_principals:manage"
-	ScopeServicePrincipalsRead     = "service_principals:read"
-	ScopeWebhooksManage            = "webhooks:manage"
-	ScopeWebhooksRead              = "webhooks:read"
+	ScopeJobsSubmit                        = "jobs:submit"
+	ScopeJobsRead                          = "jobs:read"
+	ScopeJobsCancel                        = "jobs:cancel"
+	ScopeArtifactsRead                     = "artifacts:read"
+	ScopeOrganizationMembersManage         = "organization_members:manage"
+	ScopeOrganizationMembersRead           = "organization_members:read"
+	ScopeOrganizationBillingRead           = "organization_billing:read"
+	ScopeOrganizationBillingContactsManage = "organization_billing_contacts:manage"
+	ScopeOrganizationBillingContactsRead   = "organization_billing_contacts:read"
+	ScopeOrganizationUsageRead             = "organization_usage:read"
+	ScopeOrganizationAuditRead             = "organization_audit:read"
+	ScopeProjectMembersManage              = "project_members:manage"
+	ScopeProjectMembersRead                = "project_members:read"
+	ScopeServicePrincipalsManage           = "service_principals:manage"
+	ScopeServicePrincipalsRead             = "service_principals:read"
+	ScopeWebhooksManage                    = "webhooks:manage"
+	ScopeWebhooksRead                      = "webhooks:read"
 )
 
 type Principal struct {

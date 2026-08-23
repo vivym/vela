@@ -29,6 +29,7 @@ import (
 	"github.com/vivym/vela/internal/finalizationreconciler"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
@@ -2450,6 +2451,7 @@ func TestProjectArtifactHTTPReturnsCommittedExactVersionsWithShortLivedURLs(t *t
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              artifactaccess.NewService(artifactPool, signer),
@@ -2549,6 +2551,7 @@ func TestArtifactHTTPHidesStagingRevokedAndExpiredContent(t *testing.T) {
 			testCredentialPepper,
 		),
 		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
 		Admission: admission.NewLegacyService(
 			newRolePool(t, fixture.database.DSN, "vela_request_login", "vela-request-password"),
 		),

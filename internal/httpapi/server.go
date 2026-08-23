@@ -18,6 +18,7 @@ import (
 	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -30,6 +31,7 @@ const (
 type Config struct {
 	Authenticator          *identity.Authenticator
 	IdentityAdministration *identity.AdministrationService
+	OrganizationReporting  *organizationreporting.Service
 	Admission              *admission.Service
 	Cancellation           *cancellation.Service
 	Artifacts              *artifactaccess.Service
@@ -39,6 +41,7 @@ type Config struct {
 type server struct {
 	authenticator          *identity.Authenticator
 	identityAdministration *identity.AdministrationService
+	organizationReporting  *organizationreporting.Service
 	admission              *admission.Service
 	cancellation           *cancellation.Service
 	artifacts              *artifactaccess.Service
@@ -53,6 +56,9 @@ func NewHandler(config Config) (http.Handler, error) {
 	}
 	if config.IdentityAdministration == nil {
 		return nil, errors.New("missing HTTP API identity Administration service")
+	}
+	if config.OrganizationReporting == nil {
+		return nil, errors.New("missing HTTP API Organization reporting service")
 	}
 	if config.Admission == nil {
 		return nil, errors.New("missing HTTP API Admission service")
@@ -76,6 +82,7 @@ func NewHandler(config Config) (http.Handler, error) {
 	implementation := &server{
 		authenticator:          config.Authenticator,
 		identityAdministration: config.IdentityAdministration,
+		organizationReporting:  config.OrganizationReporting,
 		admission:              config.Admission,
 		cancellation:           config.Cancellation,
 		artifacts:              config.Artifacts,
@@ -281,6 +288,394 @@ func (s *server) GetJobArtifacts(
 		return nil, err
 	}
 	return api.GetJobArtifacts200JSONResponse(toAPIArtifactSet(artifactSet)), nil
+}
+
+func (s *server) GetOrganizationCreditSummary(
+	ctx context.Context,
+	request api.GetOrganizationCreditSummaryRequestObject,
+) (api.GetOrganizationCreditSummaryResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationBillingRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.GetOrganizationCreditSummary401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.GetOrganizationCreditSummary403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human Organization billing authorization is required",
+			},
+		}, nil
+	}
+	summary, err := s.organizationReporting.GetCreditSummary(
+		ctx, principal, request.OrganizationId,
+	)
+	if err != nil {
+		failure, response, ok := organizationReportingFailureResponse(err)
+		if !ok {
+			return nil, err
+		}
+		switch failure.Code {
+		case organizationreporting.FailureUnauthorized:
+			return api.GetOrganizationCreditSummary401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureForbidden:
+			return api.GetOrganizationCreditSummary403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureInvalid:
+			return api.GetOrganizationCreditSummary400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureNotFound:
+			return api.GetOrganizationCreditSummary404JSONResponse(response), nil
+		default:
+			return nil, err
+		}
+	}
+	return api.GetOrganizationCreditSummary200JSONResponse(
+		toAPIOrganizationCreditSummary(summary),
+	), nil
+}
+
+func (s *server) ListOrganizationCharges(
+	ctx context.Context,
+	request api.ListOrganizationChargesRequestObject,
+) (api.ListOrganizationChargesResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationBillingRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListOrganizationCharges401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListOrganizationCharges403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human Organization billing authorization is required",
+			},
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	charges, err := s.organizationReporting.ListCharges(
+		ctx, principal, request.OrganizationId, limit,
+	)
+	if err != nil {
+		failure, response, ok := organizationReportingFailureResponse(err)
+		if !ok {
+			return nil, err
+		}
+		switch failure.Code {
+		case organizationreporting.FailureUnauthorized:
+			return api.ListOrganizationCharges401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureForbidden:
+			return api.ListOrganizationCharges403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureInvalid:
+			return api.ListOrganizationCharges400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+			}, nil
+		default:
+			return nil, err
+		}
+	}
+	response := api.OrganizationChargeList{Charges: make([]api.OrganizationCharge, len(charges))}
+	for index, charge := range charges {
+		response.Charges[index] = toAPIOrganizationCharge(charge)
+	}
+	return api.ListOrganizationCharges200JSONResponse(response), nil
+}
+
+func (s *server) CreateSettlementContact(
+	ctx context.Context,
+	request api.CreateSettlementContactRequestObject,
+) (api.CreateSettlementContactResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationBillingContactsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.CreateSettlementContact401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.CreateSettlementContact403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human settlement-contact authorization is required",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateSettlementContact400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "request body is required",
+			},
+		}, nil
+	}
+	contact, err := s.organizationReporting.CreateSettlementContact(
+		ctx,
+		principal,
+		request.OrganizationId,
+		organizationreporting.CreateSettlementContactRequest{
+			DisplayName: request.Body.DisplayName,
+			Email:       request.Body.Email,
+		},
+	)
+	if err != nil {
+		failure, response, ok := organizationReportingFailureResponse(err)
+		if !ok {
+			return nil, err
+		}
+		switch failure.Code {
+		case organizationreporting.FailureUnauthorized:
+			return api.CreateSettlementContact401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureForbidden:
+			return api.CreateSettlementContact403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureInvalid:
+			return api.CreateSettlementContact400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+			}, nil
+		default:
+			return nil, err
+		}
+	}
+	return api.CreateSettlementContact201JSONResponse(toAPISettlementContact(contact)), nil
+}
+
+func (s *server) ListSettlementContacts(
+	ctx context.Context,
+	request api.ListSettlementContactsRequestObject,
+) (api.ListSettlementContactsResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationBillingContactsRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListSettlementContacts401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListSettlementContacts403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human settlement-contact authorization is required",
+			},
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	contacts, err := s.organizationReporting.ListSettlementContacts(
+		ctx, principal, request.OrganizationId, limit,
+	)
+	if err != nil {
+		failure, response, ok := organizationReportingFailureResponse(err)
+		if !ok {
+			return nil, err
+		}
+		switch failure.Code {
+		case organizationreporting.FailureUnauthorized:
+			return api.ListSettlementContacts401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureForbidden:
+			return api.ListSettlementContacts403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureInvalid:
+			return api.ListSettlementContacts400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+			}, nil
+		default:
+			return nil, err
+		}
+	}
+	response := api.SettlementContactList{Contacts: make([]api.SettlementContact, len(contacts))}
+	for index, contact := range contacts {
+		response.Contacts[index] = toAPISettlementContact(contact)
+	}
+	return api.ListSettlementContacts200JSONResponse(response), nil
+}
+
+func (s *server) DisableSettlementContact(
+	ctx context.Context,
+	request api.DisableSettlementContactRequestObject,
+) (api.DisableSettlementContactResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationBillingContactsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.DisableSettlementContact401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.DisableSettlementContact403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human settlement-contact authorization is required",
+			},
+		}, nil
+	}
+	contact, err := s.organizationReporting.DisableSettlementContact(
+		ctx, principal, request.OrganizationId, request.ContactId,
+	)
+	if err != nil {
+		failure, response, ok := organizationReportingFailureResponse(err)
+		if !ok {
+			return nil, err
+		}
+		switch failure.Code {
+		case organizationreporting.FailureUnauthorized:
+			return api.DisableSettlementContact401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureForbidden:
+			return api.DisableSettlementContact403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureInvalid:
+			return api.DisableSettlementContact400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureNotFound:
+			return api.DisableSettlementContact404JSONResponse(response), nil
+		default:
+			return nil, err
+		}
+	}
+	return api.DisableSettlementContact200JSONResponse(toAPISettlementContact(contact)), nil
+}
+
+func (s *server) GetOrganizationUsage(
+	ctx context.Context,
+	request api.GetOrganizationUsageRequestObject,
+) (api.GetOrganizationUsageResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationUsageRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.GetOrganizationUsage401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.GetOrganizationUsage403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human Organization usage authorization is required",
+			},
+		}, nil
+	}
+	usage, err := s.organizationReporting.GetUsage(
+		ctx, principal, request.OrganizationId, request.Params.From, request.Params.To,
+	)
+	if err != nil {
+		failure, response, ok := organizationReportingFailureResponse(err)
+		if !ok {
+			return nil, err
+		}
+		switch failure.Code {
+		case organizationreporting.FailureUnauthorized:
+			return api.GetOrganizationUsage401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureForbidden:
+			return api.GetOrganizationUsage403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureInvalid:
+			return api.GetOrganizationUsage400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+			}, nil
+		default:
+			return nil, err
+		}
+	}
+	return api.GetOrganizationUsage200JSONResponse(toAPIOrganizationUsage(usage)), nil
+}
+
+func (s *server) ListOrganizationAuditEvents(
+	ctx context.Context,
+	request api.ListOrganizationAuditEventsRequestObject,
+) (api.ListOrganizationAuditEventsResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationAuditRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListOrganizationAuditEvents401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListOrganizationAuditEvents403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human Organization audit authorization is required",
+			},
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	events, err := s.organizationReporting.ListAuditEvents(
+		ctx, principal, request.OrganizationId, limit,
+	)
+	if err != nil {
+		failure, response, ok := organizationReportingFailureResponse(err)
+		if !ok {
+			return nil, err
+		}
+		switch failure.Code {
+		case organizationreporting.FailureUnauthorized:
+			return api.ListOrganizationAuditEvents401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureForbidden:
+			return api.ListOrganizationAuditEvents403JSONResponse{
+				ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+			}, nil
+		case organizationreporting.FailureInvalid:
+			return api.ListOrganizationAuditEvents400JSONResponse{
+				BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+			}, nil
+		default:
+			return nil, err
+		}
+	}
+	response := api.OrganizationAuditEventList{
+		Events: make([]api.OrganizationAuditEvent, len(events)),
+	}
+	for index, event := range events {
+		response.Events[index] = toAPIOrganizationAuditEvent(event)
+	}
+	return api.ListOrganizationAuditEvents200JSONResponse(response), nil
 }
 
 func (s *server) CreateHumanMember(
@@ -1548,6 +1943,16 @@ func identityAdministrationFailureResponse(
 	return failure, api.Error{Code: string(failure.Code), Message: failure.Message}, true
 }
 
+func organizationReportingFailureResponse(
+	err error,
+) (*organizationreporting.Failure, api.Error, bool) {
+	var failure *organizationreporting.Failure
+	if !errors.As(err, &failure) {
+		return nil, api.Error{}, false
+	}
+	return failure, api.Error{Code: string(failure.Code), Message: failure.Message}, true
+}
+
 func webhookCreateFailure(err error) (api.CreateWebhookSubscriptionResponseObject, error) {
 	var failure *webhook.Failure
 	if !errors.As(err, &failure) {
@@ -1727,6 +2132,102 @@ func webhookManageForbiddenResponse() api.ForbiddenJSONResponse {
 func webhookReadForbiddenResponse() api.ForbiddenJSONResponse {
 	return api.ForbiddenJSONResponse{
 		Code: "forbidden", Message: "credential does not have webhooks:read scope",
+	}
+}
+
+func toAPIOrganizationCreditSummary(
+	summary organizationreporting.CreditSummary,
+) api.OrganizationCreditSummary {
+	return api.OrganizationCreditSummary{
+		AvailableMinor:           summary.AvailableMinor,
+		ContractCreditLimitMinor: summary.ContractCreditLimitMinor,
+		Currency:                 summary.Currency,
+		LedgerVersion:            summary.Version,
+		OrganizationId:           summary.OrganizationID,
+		ReservedMinor:            summary.ReservedMinor,
+		UnsettledPostedMinor:     summary.UnsettledPostedMinor,
+		UpdatedAt:                summary.UpdatedAt,
+	}
+}
+
+func toAPIOrganizationCharge(charge organizationreporting.Charge) api.OrganizationCharge {
+	return api.OrganizationCharge{
+		AmountMinor:      charge.AmountMinor,
+		ChargeId:         charge.ChargeID,
+		Currency:         charge.Currency,
+		ExportedAt:       charge.ExportedAt,
+		InvoiceReference: charge.InvoiceReference,
+		JobId:            charge.JobID,
+		LineReference:    charge.LineReference,
+		PostedAt:         charge.PostedAt,
+		ProjectId:        charge.ProjectID,
+		Reason:           api.ChargeReason(charge.Reason),
+	}
+}
+
+func toAPISettlementContact(
+	contact organizationreporting.SettlementContact,
+) api.SettlementContact {
+	return api.SettlementContact{
+		ContactId:             contact.ID,
+		CreatedAt:             contact.CreatedAt,
+		CreatedByPrincipalId:  contact.CreatedByPrincipalID,
+		DisabledAt:            contact.DisabledAt,
+		DisabledByPrincipalId: contact.DisabledByPrincipalID,
+		DisplayName:           contact.DisplayName,
+		Email:                 contact.Email,
+		OrganizationId:        contact.OrganizationID,
+	}
+}
+
+func toAPIUsageAggregate(usage organizationreporting.UsageAggregate) api.UsageAggregate {
+	return api.UsageAggregate{
+		AssignedJobs:            usage.AssignedJobs,
+		CanceledJobs:            usage.CanceledJobs,
+		CancelingJobs:           usage.CancelingJobs,
+		FailedJobs:              usage.FailedJobs,
+		FinalizingJobs:          usage.FinalizingJobs,
+		PostedChargeAmountMinor: usage.PostedChargeAmountMinor,
+		QueuedJobs:              usage.QueuedJobs,
+		QuotedAmountMinor:       usage.QuotedAmountMinor,
+		RetryWaitJobs:           usage.RetryWaitJobs,
+		RunningJobs:             usage.RunningJobs,
+		SucceededJobs:           usage.SucceededJobs,
+		TotalJobs:               usage.TotalJobs,
+	}
+}
+
+func toAPIOrganizationUsage(usage organizationreporting.UsageSummary) api.OrganizationUsage {
+	projects := make([]api.ProjectUsage, len(usage.Projects))
+	for index, project := range usage.Projects {
+		projects[index] = api.ProjectUsage{
+			ProjectId: project.ProjectID,
+			Usage:     toAPIUsageAggregate(project.UsageAggregate),
+		}
+	}
+	return api.OrganizationUsage{
+		Currency:       usage.Currency,
+		From:           usage.From,
+		OrganizationId: usage.OrganizationID,
+		Projects:       projects,
+		To:             usage.To,
+		Total:          toAPIUsageAggregate(usage.Total),
+	}
+}
+
+func toAPIOrganizationAuditEvent(
+	event organizationreporting.AuditEvent,
+) api.OrganizationAuditEvent {
+	return api.OrganizationAuditEvent{
+		Action:           api.OrganizationAuditEventAction(event.Action),
+		ActorPrincipalId: event.ActorPrincipalID,
+		ActorSessionId:   event.ActorSessionID,
+		CreatedAt:        event.CreatedAt,
+		EventId:          event.EventID,
+		ProjectId:        event.ProjectID,
+		Source:           api.OrganizationAuditEventSource(event.Source),
+		TargetId:         event.TargetID,
+		TargetKind:       api.OrganizationAuditEventTargetKind(event.TargetKind),
 	}
 }
 

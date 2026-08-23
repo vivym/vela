@@ -38,7 +38,70 @@ const (
 	humanOIDCNMinusOneCommit              = "cedd0e8031d013a9a12327259b75fdc9749053ee"
 	identityAdministrationNMinusOneCommit = "395887177ec9fb5f703eac055b04c02f2086fa8b"
 	humanMembershipNMinusOneCommit        = "d8537d96cc8aeb7b7d4980e5059cf48efa713d6f"
+	organizationReportingNMinusOneCommit  = "1ce496ce06c4ba33038be91a5fd5f7be502bee85"
 )
+
+func TestExactOrganizationReportingNMinusOneControlServiceAndHumanRequestsRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, organizationReportingNMinusOneCommit)
+	assertWebhookNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "organization-reporting")
+	developerID := uuid.New()
+	seedHumanRoleFixture(
+		t,
+		database.Admin,
+		developerID,
+		"n-minus-one-organization-reporting-developer",
+		nil,
+		map[string][]string{testProjectID: {"Developer"}},
+	)
+	serviceJobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	humanJobID, humanPrincipalID := runNMinusOneHumanAdmissionProbe(
+		t,
+		nMinusOne.HumanAdmissionProbe,
+		database.DSN,
+		"n-minus-one-organization-reporting-developer",
+	)
+	if humanPrincipalID != developerID {
+		t.Fatalf("Organization reporting N-1 Human Principal = %s, want %s", humanPrincipalID, developerID)
+	}
+
+	for label, expected := range map[string]struct {
+		jobID       string
+		principalID uuid.UUID
+		kind        string
+	}{
+		"Service": {jobID: serviceJobID, principalID: uuid.MustParse(testPrincipalID), kind: "SERVICE"},
+		"Human":   {jobID: humanJobID, principalID: developerID, kind: "HUMAN"},
+	} {
+		var createdBy uuid.UUID
+		var actorKind string
+		if err := database.Admin.QueryRow(`
+			SELECT job.created_by_principal_id, attribution.principal_kind::text
+			FROM jobs AS job
+			JOIN project_principal_attributions AS attribution
+			  ON attribution.organization_id = job.organization_id
+			 AND attribution.project_id = job.project_id
+			 AND attribution.principal_id = job.created_by_principal_id
+			WHERE job.id = $1
+		`, expected.jobID).Scan(&createdBy, &actorKind); err != nil {
+			t.Fatalf("read %s Organization reporting N-1 Job attribution: %v", label, err)
+		}
+		if createdBy != expected.principalID || actorKind != expected.kind {
+			t.Fatalf(
+				"%s Organization reporting N-1 Job attribution = principal %s kind %s",
+				label,
+				createdBy,
+				actorKind,
+			)
+		}
+	}
+}
 
 func TestExactHumanMembershipNMinusOneControlServiceAndHumanRequestsRemainCompatible(t *testing.T) {
 	database := newPostgres(t)
@@ -1403,7 +1466,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if commit == profileCircuitNMinusOneCommit || commit == webhookNMinusOneCommit ||
 		commit == humanOIDCNMinusOneCommit ||
 		commit == identityAdministrationNMinusOneCommit ||
-		commit == humanMembershipNMinusOneCommit {
+		commit == humanMembershipNMinusOneCommit ||
+		commit == organizationReportingNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -1420,7 +1484,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		t.Fatalf("write N-1 Admission probe: %v", err)
 	}
 	var humanAdmissionProbeDirectory string
-	if commit == humanMembershipNMinusOneCommit {
+	if commit == humanMembershipNMinusOneCommit || commit == organizationReportingNMinusOneCommit {
 		humanAdmissionProbeSource, err := os.ReadFile(filepath.Join(
 			repositoryRoot(t),
 			"internal",
@@ -1514,7 +1578,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		AssignmentProbe: filepath.Join(binaryDirectory, "vela-assignment-probe-n-minus-one"),
 		OutboxProbe:     filepath.Join(binaryDirectory, "vela-outbox-probe-n-minus-one"),
 	}
-	if commit == humanMembershipNMinusOneCommit {
+	if commit == humanMembershipNMinusOneCommit || commit == organizationReportingNMinusOneCommit {
 		binaries.HumanAdmissionProbe = filepath.Join(
 			binaryDirectory, "vela-human-admission-probe-n-minus-one",
 		)
@@ -1547,7 +1611,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		if output, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build N-1 Admission probe: %v\n%s", err, output)
 		}
-		if commit == humanMembershipNMinusOneCommit {
+		if commit == humanMembershipNMinusOneCommit || commit == organizationReportingNMinusOneCommit {
 			build = exec.Command(
 				"go", "build",
 				"-o", binaries.HumanAdmissionProbe, "./cmd/vela-nminusone-human-admission-probe",
@@ -1879,8 +1943,20 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_HUMAN_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_human_auth_login", "vela-human-auth-password",
 		),
+		"VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_human_membership_auth_login",
+			"vela-human-membership-auth-password",
+		),
 		"VELA_IDENTITY_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_identity_request_login", "vela-identity-request-password",
+		),
+		"VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_human_membership_request_login",
+			"vela-human-membership-request-password",
 		),
 		"VELA_OIDC_ISSUER":   "https://identity.example.com",
 		"VELA_OIDC_AUDIENCE": "vela-control",

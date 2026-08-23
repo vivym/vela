@@ -27,6 +27,7 @@ import (
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -2583,7 +2584,7 @@ func TestWebhookMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) {
 		t.Fatalf("create Subscription after migration re-expansion = %#v error=%v", created, err)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 14 {
+	if err != nil || version != 15 {
 		t.Fatalf("webhook migration version after Down/Up = %d error=%v", version, err)
 	}
 }
@@ -3019,6 +3020,7 @@ func newWebhookHTTPServerWithResolver(
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),

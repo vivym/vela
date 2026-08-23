@@ -22,6 +22,7 @@ import (
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/workercontrol"
 )
 
@@ -270,6 +271,7 @@ func TestHumanDeveloperCanSubmitJobThroughProductionHTTPPath(t *testing.T) {
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator:          authenticator,
 		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
@@ -393,6 +395,7 @@ func TestHumanProjectAdminCanManageWebhooksThroughProductionHTTPPath(t *testing.
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator:          authenticator,
 		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
 		Admission: admission.NewLegacyService(
 			newRolePool(t, database.DSN, "vela_request_login", "vela-request-password"),
 		),
@@ -724,6 +727,7 @@ func TestHumanProjectViewerCanReadCommittedArtifactsThroughProductionHTTPPath(t 
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator:          authenticator,
 		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
 		Admission: admission.NewLegacyService(
 			newRolePool(t, fixture.database.DSN, "vela_request_login", "vela-request-password"),
 		),

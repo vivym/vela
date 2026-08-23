@@ -155,6 +155,162 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/organizations/{organization_id}/billing/credit:
+    get:
+      operationId: getOrganizationCreditSummary
+      summary: Read the Customer Organization credit summary
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Exact PostgreSQL-authoritative credit summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationCreditSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Customer Organization is not visible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/organizations/{organization_id}/billing/charges:
+    get:
+      operationId: listOrganizationCharges
+      summary: List immutable Charges and available Invoice references
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ListLimit'
+      responses:
+        '200':
+          description: Safe Organization Charge projections
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationChargeList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/organizations/{organization_id}/billing/settlement-contacts:
+    post:
+      operationId: createSettlementContact
+      summary: Create or replay an Organization settlement contact
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSettlementContactRequest'
+      responses:
+        '201':
+          description: Settlement contact created or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementContact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      operationId: listSettlementContacts
+      summary: List Organization settlement contacts
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ListLimit'
+      responses:
+        '200':
+          description: Settlement contacts including permanent disablement state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementContactList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/organizations/{organization_id}/billing/settlement-contacts/{contact_id}/disable:
+    post:
+      operationId: disableSettlementContact
+      summary: Permanently disable an Organization settlement contact
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ContactId'
+      responses:
+        '200':
+          description: Settlement-contact disablement committed or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementContact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Settlement contact is not visible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/organizations/{organization_id}/usage:
+    get:
+      operationId: getOrganizationUsage
+      summary: Read bounded non-content Organization usage
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/UsageFrom'
+        - $ref: '#/components/parameters/UsageTo'
+      responses:
+        '200':
+          description: Organization and per-Project usage aggregates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationUsage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/organizations/{organization_id}/audit-events:
+    get:
+      operationId: listOrganizationAuditEvents
+      summary: List safe immutable Organization administration evidence
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+        - $ref: '#/components/parameters/ListLimit'
+      responses:
+        '200':
+          description: Unified safe audit-event projections
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationAuditEventList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v1/projects/{project_id}/members:
     get:
       operationId: listProjectMembers
@@ -770,6 +926,27 @@ components:
       schema:
         type: string
         format: uuid
+    ContactId:
+      name: contact_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UsageFrom:
+      name: from
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+    UsageTo:
+      name: to
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
     ListLimit:
       name: limit
       in: query
@@ -956,6 +1133,11 @@ components:
         - CANCELING
         - ALREADY_SUCCEEDED
         - ALREADY_FAILED
+    ChargeReason:
+      type: string
+      enum:
+        - VISIBLE_COMPLETION
+        - CUSTOMER_CANCELLATION
     Charge:
       type: object
       additionalProperties: false
@@ -977,10 +1159,7 @@ components:
           type: string
           pattern: '^[A-Z]{3}$'
         reason:
-          type: string
-          enum:
-            - VISIBLE_COMPLETION
-            - CUSTOMER_CANCELLATION
+          $ref: '#/components/schemas/ChargeReason'
         posted_at:
           type: string
           format: date-time
@@ -1281,6 +1460,339 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OrganizationMember'
+    OrganizationCreditSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - organization_id
+        - currency
+        - contract_credit_limit_minor
+        - reserved_minor
+        - unsettled_posted_minor
+        - available_minor
+        - ledger_version
+        - updated_at
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        contract_credit_limit_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        reserved_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        unsettled_posted_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        available_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        ledger_version:
+          type: integer
+          format: int64
+          minimum: 1
+        updated_at:
+          type: string
+          format: date-time
+    OrganizationCharge:
+      type: object
+      additionalProperties: false
+      required:
+        - charge_id
+        - project_id
+        - job_id
+        - reason
+        - amount_minor
+        - currency
+        - posted_at
+      properties:
+        charge_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        reason:
+          $ref: '#/components/schemas/ChargeReason'
+        amount_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        posted_at:
+          type: string
+          format: date-time
+        invoice_reference:
+          type: string
+          minLength: 1
+          maxLength: 500
+        line_reference:
+          type: string
+          minLength: 1
+          maxLength: 500
+        exported_at:
+          type: string
+          format: date-time
+    OrganizationChargeList:
+      type: object
+      additionalProperties: false
+      required:
+        - charges
+      properties:
+        charges:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationCharge'
+    CreateSettlementContactRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - display_name
+        - email
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          minLength: 3
+          maxLength: 320
+    SettlementContact:
+      type: object
+      additionalProperties: false
+      required:
+        - contact_id
+        - organization_id
+        - display_name
+        - email
+        - created_by_principal_id
+        - created_at
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          minLength: 3
+          maxLength: 320
+        created_by_principal_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        disabled_at:
+          type: string
+          format: date-time
+        disabled_by_principal_id:
+          type: string
+          format: uuid
+    SettlementContactList:
+      type: object
+      additionalProperties: false
+      required:
+        - contacts
+      properties:
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SettlementContact'
+    UsageAggregate:
+      type: object
+      additionalProperties: false
+      required:
+        - total_jobs
+        - queued_jobs
+        - assigned_jobs
+        - running_jobs
+        - finalizing_jobs
+        - retry_wait_jobs
+        - canceling_jobs
+        - succeeded_jobs
+        - failed_jobs
+        - canceled_jobs
+        - quoted_amount_minor
+        - posted_charge_amount_minor
+      properties:
+        total_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        queued_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        assigned_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        running_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        finalizing_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        retry_wait_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        canceling_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        succeeded_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        failed_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        canceled_jobs:
+          type: integer
+          format: int64
+          minimum: 0
+        quoted_amount_minor:
+          type: integer
+          format: int64
+          minimum: 0
+        posted_charge_amount_minor:
+          type: integer
+          format: int64
+          minimum: 0
+    ProjectUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - project_id
+        - usage
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        usage:
+          $ref: '#/components/schemas/UsageAggregate'
+    OrganizationUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - organization_id
+        - from
+        - to
+        - currency
+        - total
+        - projects
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        total:
+          $ref: '#/components/schemas/UsageAggregate'
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectUsage'
+    OrganizationAuditEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - event_id
+        - source
+        - action
+        - actor_principal_id
+        - actor_session_id
+        - target_kind
+        - target_id
+        - created_at
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum:
+            - HUMAN_IDENTITY
+            - PROJECT_IDENTITY
+            - SETTLEMENT_CONTACT
+        action:
+          type: string
+          enum:
+            - HUMAN_MEMBER_CREATED
+            - HUMAN_MEMBER_DISABLED
+            - ORGANIZATION_ROLE_ASSIGNED
+            - ORGANIZATION_ROLE_REVOKED
+            - PROJECT_ROLE_ASSIGNED
+            - PROJECT_ROLE_REVOKED
+            - SERVICE_PRINCIPAL_CREATED
+            - SERVICE_PRINCIPAL_DISABLED
+            - CREDENTIAL_ISSUED
+            - CREDENTIAL_REVOKED
+            - SETTLEMENT_CONTACT_CREATED
+            - SETTLEMENT_CONTACT_DISABLED
+        project_id:
+          type: string
+          format: uuid
+        actor_principal_id:
+          type: string
+          format: uuid
+        actor_session_id:
+          type: string
+          format: uuid
+        target_kind:
+          type: string
+          enum:
+            - HUMAN_PRINCIPAL
+            - SERVICE_PRINCIPAL
+            - CREDENTIAL
+            - SETTLEMENT_CONTACT
+        target_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    OrganizationAuditEventList:
+      type: object
+      additionalProperties: false
+      required:
+        - events
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationAuditEvent'
     CreateServicePrincipalRequest:
       type: object
       additionalProperties: false
