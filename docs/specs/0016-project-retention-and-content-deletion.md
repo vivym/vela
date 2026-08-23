@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 
-Status: Implementation target for Slice 16. This specification defines
+Status: Implemented. This specification defines
 repository-verifiable control-plane and Artifact Store behavior. It does not by
 itself satisfy a Production Gate or prove deletion from Worker disks, debug
 paths, or off-cluster backups.
