@@ -25,6 +25,7 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "workload credentials", missingEnv: "VELA_NATS_CREDENTIALS_FILE"},
 		{name: "root CA", missingEnv: "VELA_NATS_ROOT_CA_FILE"},
 		{name: "Human auth database", missingEnv: "VELA_HUMAN_AUTH_DATABASE_URL"},
+		{name: "identity request database", missingEnv: "VELA_IDENTITY_REQUEST_DATABASE_URL"},
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
 		{name: "OIDC issuer", missingEnv: "VELA_OIDC_ISSUER"},
 		{name: "OIDC audience", missingEnv: "VELA_OIDC_AUDIENCE"},
@@ -75,6 +76,7 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("VELA_AUTH_DATABASE_URL", "postgres://auth.example/vela")
 	t.Setenv("VELA_HUMAN_AUTH_DATABASE_URL", "postgres://human-auth.example/vela")
+	t.Setenv("VELA_IDENTITY_REQUEST_DATABASE_URL", "postgres://identity-request.example/vela")
 	t.Setenv("VELA_REQUEST_DATABASE_URL", "postgres://request.example/vela")
 	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")
 	t.Setenv("VELA_OIDC_ISSUER", "https://identity.example.com")

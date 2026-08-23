@@ -26,12 +26,14 @@ const (
 var ErrInvalidCredential = errors.New("invalid bearer credential")
 
 const (
-	ScopeJobsSubmit     = "jobs:submit"
-	ScopeJobsRead       = "jobs:read"
-	ScopeJobsCancel     = "jobs:cancel"
-	ScopeArtifactsRead  = "artifacts:read"
-	ScopeWebhooksManage = "webhooks:manage"
-	ScopeWebhooksRead   = "webhooks:read"
+	ScopeJobsSubmit              = "jobs:submit"
+	ScopeJobsRead                = "jobs:read"
+	ScopeJobsCancel              = "jobs:cancel"
+	ScopeArtifactsRead           = "artifacts:read"
+	ScopeServicePrincipalsManage = "service_principals:manage"
+	ScopeServicePrincipalsRead   = "service_principals:read"
+	ScopeWebhooksManage          = "webhooks:manage"
+	ScopeWebhooksRead            = "webhooks:read"
 )
 
 type Principal struct {

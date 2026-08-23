@@ -136,6 +136,173 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/service-principals:
+    post:
+      operationId: createServicePrincipal
+      summary: Create a Project Service Principal
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServicePrincipalRequest'
+      responses:
+        '201':
+          description: Service Principal created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicePrincipal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Service Principal conflicts with existing identity state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      operationId: listServicePrincipals
+      summary: List safe Project Service Principal projections
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ListLimit'
+      responses:
+        '200':
+          description: Project Service Principals
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicePrincipalList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/projects/{project_id}/service-principals/{service_principal_id}/disable:
+    post:
+      operationId: disableServicePrincipal
+      summary: Permanently disable a Project Service Principal
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ServicePrincipalId'
+      responses:
+        '200':
+          description: Service Principal disabled or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicePrincipal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Service Principal is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials:
+    post:
+      operationId: issueServiceCredential
+      summary: Issue an overlapping Service Principal Credential
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ServicePrincipalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IssueServiceCredentialRequest'
+      responses:
+        '201':
+          description: Credential issued; bearer material is returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssuedServiceCredential'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Service Principal is not active or visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Credential conflicts with existing identity state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      operationId: listServiceCredentials
+      summary: List safe Service Principal Credential projections
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ServicePrincipalId'
+        - $ref: '#/components/parameters/ListLimit'
+      responses:
+        '200':
+          description: Service Principal Credentials without bearer material or digests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceCredentialList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Service Principal is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials/{credential_id}/revoke:
+    post:
+      operationId: revokeServiceCredential
+      summary: Permanently revoke a Service Principal Credential
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ServicePrincipalId'
+        - $ref: '#/components/parameters/CredentialId'
+      responses:
+        '200':
+          description: Credential revoked or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceCredential'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Credential is not visible for this Service Principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/projects/{project_id}/webhook-subscriptions:
     post:
       operationId: createWebhookSubscription
@@ -326,6 +493,20 @@ components:
         format: uuid
     DeliveryId:
       name: delivery_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ServicePrincipalId:
+      name: service_principal_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CredentialId:
+      name: credential_id
       in: path
       required: true
       schema:
@@ -619,6 +800,165 @@ components:
         download_url_expires_at:
           type: string
           format: date-time
+    CreateServicePrincipalRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - display_name
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+    ServicePrincipal:
+      type: object
+      additionalProperties: false
+      required:
+        - service_principal_id
+        - project_id
+        - display_name
+        - created_at
+      properties:
+        service_principal_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        created_at:
+          type: string
+          format: date-time
+        disabled_at:
+          type: string
+          format: date-time
+    ServicePrincipalList:
+      type: object
+      additionalProperties: false
+      required:
+        - service_principals
+      properties:
+        service_principals:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServicePrincipal'
+    ServiceCredentialScope:
+      type: string
+      enum:
+        - jobs:submit
+        - jobs:read
+        - jobs:cancel
+        - artifacts:read
+        - webhooks:manage
+        - webhooks:read
+    IssueServiceCredentialRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - scopes
+        - expires_at
+      properties:
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ServiceCredentialScope'
+        expires_at:
+          type: string
+          format: date-time
+    ServiceCredential:
+      type: object
+      additionalProperties: false
+      required:
+        - credential_id
+        - service_principal_id
+        - project_id
+        - scopes
+        - expires_at
+        - created_at
+      properties:
+        credential_id:
+          type: string
+          format: uuid
+        service_principal_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ServiceCredentialScope'
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+    IssuedServiceCredential:
+      type: object
+      additionalProperties: false
+      required:
+        - credential_id
+        - service_principal_id
+        - project_id
+        - scopes
+        - expires_at
+        - created_at
+        - bearer_credential
+      properties:
+        credential_id:
+          type: string
+          format: uuid
+        service_principal_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 6
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ServiceCredentialScope'
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        bearer_credential:
+          type: string
+          minLength: 80
+          maxLength: 90
+          pattern: '^vla_[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}$'
+    ServiceCredentialList:
+      type: object
+      additionalProperties: false
+      required:
+        - credentials
+      properties:
+        credentials:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceCredential'
     ExecutionPhase:
       type: string
       enum:

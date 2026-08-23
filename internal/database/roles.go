@@ -14,6 +14,7 @@ type Role string
 const (
 	RoleAuth            Role = "vela_auth"
 	RoleHumanAuth       Role = "vela_human_auth"
+	RoleIdentityRequest Role = "vela_identity_request"
 	RoleRequest         Role = "vela_request"
 	RoleInternal        Role = "vela_internal"
 	RoleCancel          Role = "vela_cancel"
@@ -36,6 +37,7 @@ type roleDescriptor struct {
 var roleDescriptors = map[Role]roleDescriptor{
 	RoleAuth:            {verifyPrivileges: verifyAuthPrivileges},
 	RoleHumanAuth:       {verifyPrivileges: verifyHumanAuthPrivileges},
+	RoleIdentityRequest: {verifyPrivileges: verifyIdentityRequestPrivileges},
 	RoleRequest:         {verifyPrivileges: verifyRequestPrivileges},
 	RoleInternal:        {requiresBypassRLS: true},
 	RoleCancel:          {verifyPrivileges: verifyCancelPrivileges},
@@ -256,6 +258,22 @@ func verifyHumanAuthPrivileges(ctx context.Context, database rowQuerier, current
 		failureLabel:    "Human OIDC authorization",
 		functions: []string{
 			"vela_authenticate_human_oidc(text,text,bytea,timestamptz)",
+		},
+	})
+}
+
+func verifyIdentityRequestPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "identity request",
+		failureLabel:    "Service Principal administration transaction",
+		functions: []string{
+			"vela_set_identity_admin_context(uuid,bytea,text)",
+			"vela_create_service_principal(uuid,uuid,text)",
+			"vela_list_service_principals(uuid,integer)",
+			"vela_issue_service_credential(uuid,uuid,uuid,bytea,text[],timestamp with time zone)",
+			"vela_list_service_credentials(uuid,uuid,integer)",
+			"vela_revoke_service_credential(uuid,uuid,uuid)",
+			"vela_disable_service_principal(uuid,uuid)",
 		},
 	})
 }

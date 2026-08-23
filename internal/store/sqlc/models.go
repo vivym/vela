@@ -503,6 +503,50 @@ func (ns NullExecutionPhase) Value() (driver.Value, error) {
 	return string(ns.ExecutionPhase), nil
 }
 
+type IdentityAdminAction string
+
+const (
+	IdentityAdminActionSERVICEPRINCIPALCREATED  IdentityAdminAction = "SERVICE_PRINCIPAL_CREATED"
+	IdentityAdminActionSERVICEPRINCIPALDISABLED IdentityAdminAction = "SERVICE_PRINCIPAL_DISABLED"
+	IdentityAdminActionCREDENTIALISSUED         IdentityAdminAction = "CREDENTIAL_ISSUED"
+	IdentityAdminActionCREDENTIALREVOKED        IdentityAdminAction = "CREDENTIAL_REVOKED"
+)
+
+func (e *IdentityAdminAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = IdentityAdminAction(s)
+	case string:
+		*e = IdentityAdminAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for IdentityAdminAction: %T", src)
+	}
+	return nil
+}
+
+type NullIdentityAdminAction struct {
+	IdentityAdminAction IdentityAdminAction `json:"identity_admin_action"`
+	Valid               bool                `json:"valid"` // Valid is true if IdentityAdminAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullIdentityAdminAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.IdentityAdminAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.IdentityAdminAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullIdentityAdminAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.IdentityAdminAction), nil
+}
+
 type InvoiceExportState string
 
 const (
@@ -1859,6 +1903,19 @@ type ProjectCapacityShare struct {
 	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type ProjectIdentityEvent struct {
+	ID                uuid.UUID           `db:"id" json:"id"`
+	OrganizationID    uuid.UUID           `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.UUID           `db:"project_id" json:"project_id"`
+	ActorPrincipalID  uuid.UUID           `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorSessionID    uuid.UUID           `db:"actor_session_id" json:"actor_session_id"`
+	Action            IdentityAdminAction `db:"action" json:"action"`
+	TargetPrincipalID uuid.UUID           `db:"target_principal_id" json:"target_principal_id"`
+	CredentialID      uuid.NullUUID       `db:"credential_id" json:"credential_id"`
+	Details           []byte              `db:"details" json:"details"`
+	CreatedAt         pgtype.Timestamptz  `db:"created_at" json:"created_at"`
+}
+
 type ProjectPrincipalAttribution struct {
 	OrganizationID    uuid.UUID          `db:"organization_id" json:"organization_id"`
 	ProjectID         uuid.UUID          `db:"project_id" json:"project_id"`
@@ -2013,6 +2070,7 @@ type ServicePrincipal struct {
 	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
 	PrincipalKind  PrincipalKind      `db:"principal_kind" json:"principal_kind"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
 }
 
 type VelaPrivateRequestContext struct {

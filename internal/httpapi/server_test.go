@@ -16,11 +16,12 @@ import (
 
 func TestAuthenticationFailurePreservesServiceContractAndSupportsHumanLanguage(t *testing.T) {
 	handler, err := NewHandler(Config{
-		Authenticator: identity.NewAuthenticator(nil, []byte("test-credential-pepper")),
-		Admission:     &admission.Service{},
-		Cancellation:  &cancellation.Service{},
-		Artifacts:     &artifactaccess.Service{},
-		Webhooks:      &webhook.Service{},
+		Authenticator:          identity.NewAuthenticator(nil, []byte("test-credential-pepper")),
+		IdentityAdministration: &identity.AdministrationService{},
+		Admission:              &admission.Service{},
+		Cancellation:           &cancellation.Service{},
+		Artifacts:              &artifactaccess.Service{},
+		Webhooks:               &webhook.Service{},
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)

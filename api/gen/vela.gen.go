@@ -149,6 +149,36 @@ func (e JobState) Valid() bool {
 	}
 }
 
+// Defines values for ServiceCredentialScope.
+const (
+	ArtifactsRead  ServiceCredentialScope = "artifacts:read"
+	JobsCancel     ServiceCredentialScope = "jobs:cancel"
+	JobsRead       ServiceCredentialScope = "jobs:read"
+	JobsSubmit     ServiceCredentialScope = "jobs:submit"
+	WebhooksManage ServiceCredentialScope = "webhooks:manage"
+	WebhooksRead   ServiceCredentialScope = "webhooks:read"
+)
+
+// Valid indicates whether the value is a known member of the ServiceCredentialScope enum.
+func (e ServiceCredentialScope) Valid() bool {
+	switch e {
+	case ArtifactsRead:
+		return true
+	case JobsCancel:
+		return true
+	case JobsRead:
+		return true
+	case JobsSubmit:
+		return true
+	case WebhooksManage:
+		return true
+	case WebhooksRead:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubmitJobRequestGenerationPreset.
 const (
 	Balanced SubmitJobRequestGenerationPreset = "balanced"
@@ -300,6 +330,11 @@ type Charge struct {
 // ChargeReason defines model for Charge.Reason.
 type ChargeReason string
 
+// CreateServicePrincipalRequest defines model for CreateServicePrincipalRequest.
+type CreateServicePrincipalRequest struct {
+	DisplayName string `json:"display_name"`
+}
+
 // CreateWebhookSubscriptionRequest defines model for CreateWebhookSubscriptionRequest.
 type CreateWebhookSubscriptionRequest struct {
 	Endpoint   string             `json:"endpoint"`
@@ -327,6 +362,24 @@ type Error struct {
 
 // ExecutionPhase defines model for ExecutionPhase.
 type ExecutionPhase string
+
+// IssueServiceCredentialRequest defines model for IssueServiceCredentialRequest.
+type IssueServiceCredentialRequest struct {
+	ExpiresAt time.Time                `json:"expires_at"`
+	Scopes    []ServiceCredentialScope `json:"scopes"`
+}
+
+// IssuedServiceCredential defines model for IssuedServiceCredential.
+type IssuedServiceCredential struct {
+	BearerCredential   string                   `json:"bearer_credential"`
+	CreatedAt          time.Time                `json:"created_at"`
+	CredentialId       openapi_types.UUID       `json:"credential_id"`
+	ExpiresAt          time.Time                `json:"expires_at"`
+	ProjectId          openapi_types.UUID       `json:"project_id"`
+	RevokedAt          *time.Time               `json:"revoked_at,omitempty"`
+	Scopes             []ServiceCredentialScope `json:"scopes"`
+	ServicePrincipalId openapi_types.UUID       `json:"service_principal_id"`
+}
 
 // Job defines model for Job.
 type Job struct {
@@ -368,6 +421,39 @@ type RotatedWebhookSubscription struct {
 	SigningSecret            string                   `json:"signing_secret"`
 	State                    WebhookSubscriptionState `json:"state"`
 	SubscriptionId           openapi_types.UUID       `json:"subscription_id"`
+}
+
+// ServiceCredential defines model for ServiceCredential.
+type ServiceCredential struct {
+	CreatedAt          time.Time                `json:"created_at"`
+	CredentialId       openapi_types.UUID       `json:"credential_id"`
+	ExpiresAt          time.Time                `json:"expires_at"`
+	ProjectId          openapi_types.UUID       `json:"project_id"`
+	RevokedAt          *time.Time               `json:"revoked_at,omitempty"`
+	Scopes             []ServiceCredentialScope `json:"scopes"`
+	ServicePrincipalId openapi_types.UUID       `json:"service_principal_id"`
+}
+
+// ServiceCredentialList defines model for ServiceCredentialList.
+type ServiceCredentialList struct {
+	Credentials []ServiceCredential `json:"credentials"`
+}
+
+// ServiceCredentialScope defines model for ServiceCredentialScope.
+type ServiceCredentialScope string
+
+// ServicePrincipal defines model for ServicePrincipal.
+type ServicePrincipal struct {
+	CreatedAt          time.Time          `json:"created_at"`
+	DisabledAt         *time.Time         `json:"disabled_at,omitempty"`
+	DisplayName        string             `json:"display_name"`
+	ProjectId          openapi_types.UUID `json:"project_id"`
+	ServicePrincipalId openapi_types.UUID `json:"service_principal_id"`
+}
+
+// ServicePrincipalList defines model for ServicePrincipalList.
+type ServicePrincipalList struct {
+	ServicePrincipals []ServicePrincipal `json:"service_principals"`
 }
 
 // SubmitJobRequest defines model for SubmitJobRequest.
@@ -437,6 +523,9 @@ type WebhookSubscriptionList struct {
 // WebhookSubscriptionState defines model for WebhookSubscriptionState.
 type WebhookSubscriptionState string
 
+// CredentialId defines model for CredentialId.
+type CredentialId = openapi_types.UUID
+
 // DeliveryId defines model for DeliveryId.
 type DeliveryId = openapi_types.UUID
 
@@ -451,6 +540,9 @@ type ListLimit = int32
 
 // ProjectId defines model for ProjectId.
 type ProjectId = openapi_types.UUID
+
+// ServicePrincipalId defines model for ServicePrincipalId.
+type ServicePrincipalId = openapi_types.UUID
 
 // SubscriptionId defines model for SubscriptionId.
 type SubscriptionId = openapi_types.UUID
@@ -469,6 +561,16 @@ type SubmitJobParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// ListServicePrincipalsParams defines parameters for ListServicePrincipals.
+type ListServicePrincipalsParams struct {
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListServiceCredentialsParams defines parameters for ListServiceCredentials.
+type ListServiceCredentialsParams struct {
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListWebhookSubscriptionsParams defines parameters for ListWebhookSubscriptions.
 type ListWebhookSubscriptionsParams struct {
 	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
@@ -481,6 +583,12 @@ type ListWebhookDeliveriesParams struct {
 
 // SubmitJobJSONRequestBody defines body for SubmitJob for application/json ContentType.
 type SubmitJobJSONRequestBody = SubmitJobRequest
+
+// CreateServicePrincipalJSONRequestBody defines body for CreateServicePrincipal for application/json ContentType.
+type CreateServicePrincipalJSONRequestBody = CreateServicePrincipalRequest
+
+// IssueServiceCredentialJSONRequestBody defines body for IssueServiceCredential for application/json ContentType.
+type IssueServiceCredentialJSONRequestBody = IssueServiceCredentialRequest
 
 // CreateWebhookSubscriptionJSONRequestBody defines body for CreateWebhookSubscription for application/json ContentType.
 type CreateWebhookSubscriptionJSONRequestBody = CreateWebhookSubscriptionRequest
@@ -499,6 +607,24 @@ type ServerInterface interface {
 	// CancelJob Commit a Customer Cancellation decision
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 	CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId)
+	// ListServicePrincipals List safe Project Service Principal projections
+	// (GET /v1/projects/{project_id}/service-principals)
+	ListServicePrincipals(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListServicePrincipalsParams)
+	// CreateServicePrincipal Create a Project Service Principal
+	// (POST /v1/projects/{project_id}/service-principals)
+	CreateServicePrincipal(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListServiceCredentials List safe Service Principal Credential projections
+	// (GET /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials)
+	ListServiceCredentials(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId, params ListServiceCredentialsParams)
+	// IssueServiceCredential Issue an overlapping Service Principal Credential
+	// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials)
+	IssueServiceCredential(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId)
+	// RevokeServiceCredential Permanently revoke a Service Principal Credential
+	// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials/{credential_id}/revoke)
+	RevokeServiceCredential(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId, credentialId CredentialId)
+	// DisableServicePrincipal Permanently disable a Project Service Principal
+	// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/disable)
+	DisableServicePrincipal(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId)
 	// ListWebhookSubscriptions List safe Project Webhook Subscription projections
 	// (GET /v1/projects/{project_id}/webhook-subscriptions)
 	ListWebhookSubscriptions(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListWebhookSubscriptionsParams)
@@ -544,6 +670,42 @@ func (_ Unimplemented) GetJobArtifacts(w http.ResponseWriter, r *http.Request, p
 // CancelJob Commit a Customer Cancellation decision
 // (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 func (_ Unimplemented) CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListServicePrincipals List safe Project Service Principal projections
+// (GET /v1/projects/{project_id}/service-principals)
+func (_ Unimplemented) ListServicePrincipals(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListServicePrincipalsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateServicePrincipal Create a Project Service Principal
+// (POST /v1/projects/{project_id}/service-principals)
+func (_ Unimplemented) CreateServicePrincipal(w http.ResponseWriter, r *http.Request, projectId ProjectId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListServiceCredentials List safe Service Principal Credential projections
+// (GET /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials)
+func (_ Unimplemented) ListServiceCredentials(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId, params ListServiceCredentialsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// IssueServiceCredential Issue an overlapping Service Principal Credential
+// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials)
+func (_ Unimplemented) IssueServiceCredential(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeServiceCredential Permanently revoke a Service Principal Credential
+// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials/{credential_id}/revoke)
+func (_ Unimplemented) RevokeServiceCredential(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId, credentialId CredentialId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DisableServicePrincipal Permanently disable a Project Service Principal
+// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/disable)
+func (_ Unimplemented) DisableServicePrincipal(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -742,6 +904,239 @@ func (siw *ServerInterfaceWrapper) CancelJob(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CancelJob(w, r, projectId, jobId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListServicePrincipals operation middleware
+func (siw *ServerInterfaceWrapper) ListServicePrincipals(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListServicePrincipalsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListServicePrincipals(w, r, projectId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateServicePrincipal operation middleware
+func (siw *ServerInterfaceWrapper) CreateServicePrincipal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateServicePrincipal(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListServiceCredentials operation middleware
+func (siw *ServerInterfaceWrapper) ListServiceCredentials(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "service_principal_id" -------------
+	var servicePrincipalId ServicePrincipalId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "service_principal_id", chi.URLParam(r, "service_principal_id"), &servicePrincipalId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service_principal_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListServiceCredentialsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListServiceCredentials(w, r, projectId, servicePrincipalId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssueServiceCredential operation middleware
+func (siw *ServerInterfaceWrapper) IssueServiceCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "service_principal_id" -------------
+	var servicePrincipalId ServicePrincipalId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "service_principal_id", chi.URLParam(r, "service_principal_id"), &servicePrincipalId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service_principal_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueServiceCredential(w, r, projectId, servicePrincipalId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeServiceCredential operation middleware
+func (siw *ServerInterfaceWrapper) RevokeServiceCredential(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "service_principal_id" -------------
+	var servicePrincipalId ServicePrincipalId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "service_principal_id", chi.URLParam(r, "service_principal_id"), &servicePrincipalId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service_principal_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "credential_id" -------------
+	var credentialId CredentialId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "credential_id", chi.URLParam(r, "credential_id"), &credentialId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "credential_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeServiceCredential(w, r, projectId, servicePrincipalId, credentialId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableServicePrincipal operation middleware
+func (siw *ServerInterfaceWrapper) DisableServicePrincipal(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "service_principal_id" -------------
+	var servicePrincipalId ServicePrincipalId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "service_principal_id", chi.URLParam(r, "service_principal_id"), &servicePrincipalId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service_principal_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableServicePrincipal(w, r, projectId, servicePrincipalId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1110,6 +1505,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/artifacts", wrapper.GetJobArtifacts)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/service-principals", wrapper.ListServicePrincipals)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/service-principals", wrapper.CreateServicePrincipal)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/service-principals/{service_principal_id}/disable", wrapper.DisableServicePrincipal)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/service-principals/{service_principal_id}/credentials", wrapper.ListServiceCredentials)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/service-principals/{service_principal_id}/credentials", wrapper.IssueServiceCredential)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/service-principals/{service_principal_id}/credentials/{credential_id}/revoke", wrapper.RevokeServiceCredential)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/webhook-subscriptions", wrapper.ListWebhookSubscriptions)
 	})
 	r.Group(func(r chi.Router) {
@@ -1463,6 +1876,483 @@ func (response CancelJob403JSONResponse) VisitCancelJobResponse(w http.ResponseW
 type CancelJob404JSONResponse Error
 
 func (response CancelJob404JSONResponse) VisitCancelJobResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServicePrincipalsRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	Params    ListServicePrincipalsParams
+}
+
+type ListServicePrincipalsResponseObject interface {
+	VisitListServicePrincipalsResponse(w http.ResponseWriter) error
+}
+
+type ListServicePrincipals200JSONResponse ServicePrincipalList
+
+func (response ListServicePrincipals200JSONResponse) VisitListServicePrincipalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServicePrincipals400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListServicePrincipals400JSONResponse) VisitListServicePrincipalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServicePrincipals401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListServicePrincipals401JSONResponse) VisitListServicePrincipalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServicePrincipals403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListServicePrincipals403JSONResponse) VisitListServicePrincipalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateServicePrincipalRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	Body      *CreateServicePrincipalJSONRequestBody
+}
+
+type CreateServicePrincipalResponseObject interface {
+	VisitCreateServicePrincipalResponse(w http.ResponseWriter) error
+}
+
+type CreateServicePrincipal201JSONResponse ServicePrincipal
+
+func (response CreateServicePrincipal201JSONResponse) VisitCreateServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateServicePrincipal400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateServicePrincipal400JSONResponse) VisitCreateServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateServicePrincipal401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateServicePrincipal401JSONResponse) VisitCreateServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateServicePrincipal403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateServicePrincipal403JSONResponse) VisitCreateServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateServicePrincipal409JSONResponse Error
+
+func (response CreateServicePrincipal409JSONResponse) VisitCreateServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServiceCredentialsRequestObject struct {
+	ProjectId          ProjectId          `json:"project_id"`
+	ServicePrincipalId ServicePrincipalId `json:"service_principal_id"`
+	Params             ListServiceCredentialsParams
+}
+
+type ListServiceCredentialsResponseObject interface {
+	VisitListServiceCredentialsResponse(w http.ResponseWriter) error
+}
+
+type ListServiceCredentials200JSONResponse ServiceCredentialList
+
+func (response ListServiceCredentials200JSONResponse) VisitListServiceCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServiceCredentials400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListServiceCredentials400JSONResponse) VisitListServiceCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServiceCredentials401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListServiceCredentials401JSONResponse) VisitListServiceCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServiceCredentials403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListServiceCredentials403JSONResponse) VisitListServiceCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListServiceCredentials404JSONResponse Error
+
+func (response ListServiceCredentials404JSONResponse) VisitListServiceCredentialsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueServiceCredentialRequestObject struct {
+	ProjectId          ProjectId          `json:"project_id"`
+	ServicePrincipalId ServicePrincipalId `json:"service_principal_id"`
+	Body               *IssueServiceCredentialJSONRequestBody
+}
+
+type IssueServiceCredentialResponseObject interface {
+	VisitIssueServiceCredentialResponse(w http.ResponseWriter) error
+}
+
+type IssueServiceCredential201JSONResponse IssuedServiceCredential
+
+func (response IssueServiceCredential201JSONResponse) VisitIssueServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueServiceCredential400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response IssueServiceCredential400JSONResponse) VisitIssueServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueServiceCredential401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response IssueServiceCredential401JSONResponse) VisitIssueServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueServiceCredential403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response IssueServiceCredential403JSONResponse) VisitIssueServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueServiceCredential404JSONResponse Error
+
+func (response IssueServiceCredential404JSONResponse) VisitIssueServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueServiceCredential409JSONResponse Error
+
+func (response IssueServiceCredential409JSONResponse) VisitIssueServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeServiceCredentialRequestObject struct {
+	ProjectId          ProjectId          `json:"project_id"`
+	ServicePrincipalId ServicePrincipalId `json:"service_principal_id"`
+	CredentialId       CredentialId       `json:"credential_id"`
+}
+
+type RevokeServiceCredentialResponseObject interface {
+	VisitRevokeServiceCredentialResponse(w http.ResponseWriter) error
+}
+
+type RevokeServiceCredential200JSONResponse ServiceCredential
+
+func (response RevokeServiceCredential200JSONResponse) VisitRevokeServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeServiceCredential400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevokeServiceCredential400JSONResponse) VisitRevokeServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeServiceCredential401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RevokeServiceCredential401JSONResponse) VisitRevokeServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeServiceCredential403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeServiceCredential403JSONResponse) VisitRevokeServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeServiceCredential404JSONResponse Error
+
+func (response RevokeServiceCredential404JSONResponse) VisitRevokeServiceCredentialResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableServicePrincipalRequestObject struct {
+	ProjectId          ProjectId          `json:"project_id"`
+	ServicePrincipalId ServicePrincipalId `json:"service_principal_id"`
+}
+
+type DisableServicePrincipalResponseObject interface {
+	VisitDisableServicePrincipalResponse(w http.ResponseWriter) error
+}
+
+type DisableServicePrincipal200JSONResponse ServicePrincipal
+
+func (response DisableServicePrincipal200JSONResponse) VisitDisableServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableServicePrincipal400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DisableServicePrincipal400JSONResponse) VisitDisableServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableServicePrincipal401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DisableServicePrincipal401JSONResponse) VisitDisableServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableServicePrincipal403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DisableServicePrincipal403JSONResponse) VisitDisableServicePrincipalResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableServicePrincipal404JSONResponse Error
+
+func (response DisableServicePrincipal404JSONResponse) VisitDisableServicePrincipalResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -1950,6 +2840,24 @@ type StrictServerInterface interface {
 	// CancelJob Commit a Customer Cancellation decision
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 	CancelJob(ctx context.Context, request CancelJobRequestObject) (CancelJobResponseObject, error)
+	// ListServicePrincipals List safe Project Service Principal projections
+	// (GET /v1/projects/{project_id}/service-principals)
+	ListServicePrincipals(ctx context.Context, request ListServicePrincipalsRequestObject) (ListServicePrincipalsResponseObject, error)
+	// CreateServicePrincipal Create a Project Service Principal
+	// (POST /v1/projects/{project_id}/service-principals)
+	CreateServicePrincipal(ctx context.Context, request CreateServicePrincipalRequestObject) (CreateServicePrincipalResponseObject, error)
+	// ListServiceCredentials List safe Service Principal Credential projections
+	// (GET /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials)
+	ListServiceCredentials(ctx context.Context, request ListServiceCredentialsRequestObject) (ListServiceCredentialsResponseObject, error)
+	// IssueServiceCredential Issue an overlapping Service Principal Credential
+	// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials)
+	IssueServiceCredential(ctx context.Context, request IssueServiceCredentialRequestObject) (IssueServiceCredentialResponseObject, error)
+	// RevokeServiceCredential Permanently revoke a Service Principal Credential
+	// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/credentials/{credential_id}/revoke)
+	RevokeServiceCredential(ctx context.Context, request RevokeServiceCredentialRequestObject) (RevokeServiceCredentialResponseObject, error)
+	// DisableServicePrincipal Permanently disable a Project Service Principal
+	// (POST /v1/projects/{project_id}/service-principals/{service_principal_id}/disable)
+	DisableServicePrincipal(ctx context.Context, request DisableServicePrincipalRequestObject) (DisableServicePrincipalResponseObject, error)
 	// ListWebhookSubscriptions List safe Project Webhook Subscription projections
 	// (GET /v1/projects/{project_id}/webhook-subscriptions)
 	ListWebhookSubscriptions(ctx context.Context, request ListWebhookSubscriptionsRequestObject) (ListWebhookSubscriptionsResponseObject, error)
@@ -2117,6 +3025,183 @@ func (sh *strictHandler) CancelJob(w http.ResponseWriter, r *http.Request, proje
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CancelJobResponseObject); ok {
 		if err := validResponse.VisitCancelJobResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListServicePrincipals operation middleware
+func (sh *strictHandler) ListServicePrincipals(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListServicePrincipalsParams) {
+	var request ListServicePrincipalsRequestObject
+
+	request.ProjectId = projectId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListServicePrincipals(ctx, request.(ListServicePrincipalsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListServicePrincipals")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListServicePrincipalsResponseObject); ok {
+		if err := validResponse.VisitListServicePrincipalsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateServicePrincipal operation middleware
+func (sh *strictHandler) CreateServicePrincipal(w http.ResponseWriter, r *http.Request, projectId ProjectId) {
+	var request CreateServicePrincipalRequestObject
+
+	request.ProjectId = projectId
+
+	var body CreateServicePrincipalJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateServicePrincipal(ctx, request.(CreateServicePrincipalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateServicePrincipal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateServicePrincipalResponseObject); ok {
+		if err := validResponse.VisitCreateServicePrincipalResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListServiceCredentials operation middleware
+func (sh *strictHandler) ListServiceCredentials(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId, params ListServiceCredentialsParams) {
+	var request ListServiceCredentialsRequestObject
+
+	request.ProjectId = projectId
+	request.ServicePrincipalId = servicePrincipalId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListServiceCredentials(ctx, request.(ListServiceCredentialsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListServiceCredentials")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListServiceCredentialsResponseObject); ok {
+		if err := validResponse.VisitListServiceCredentialsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// IssueServiceCredential operation middleware
+func (sh *strictHandler) IssueServiceCredential(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId) {
+	var request IssueServiceCredentialRequestObject
+
+	request.ProjectId = projectId
+	request.ServicePrincipalId = servicePrincipalId
+
+	var body IssueServiceCredentialJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.IssueServiceCredential(ctx, request.(IssueServiceCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "IssueServiceCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(IssueServiceCredentialResponseObject); ok {
+		if err := validResponse.VisitIssueServiceCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeServiceCredential operation middleware
+func (sh *strictHandler) RevokeServiceCredential(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId, credentialId CredentialId) {
+	var request RevokeServiceCredentialRequestObject
+
+	request.ProjectId = projectId
+	request.ServicePrincipalId = servicePrincipalId
+	request.CredentialId = credentialId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeServiceCredential(ctx, request.(RevokeServiceCredentialRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeServiceCredential")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeServiceCredentialResponseObject); ok {
+		if err := validResponse.VisitRevokeServiceCredentialResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DisableServicePrincipal operation middleware
+func (sh *strictHandler) DisableServicePrincipal(w http.ResponseWriter, r *http.Request, projectId ProjectId, servicePrincipalId ServicePrincipalId) {
+	var request DisableServicePrincipalRequestObject
+
+	request.ProjectId = projectId
+	request.ServicePrincipalId = servicePrincipalId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DisableServicePrincipal(ctx, request.(DisableServicePrincipalRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DisableServicePrincipal")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DisableServicePrincipalResponseObject); ok {
+		if err := validResponse.VisitDisableServicePrincipalResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2299,58 +3384,69 @@ func (sh *strictHandler) RotateWebhookSubscriptionSecret(w http.ResponseWriter, 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"AvhNLmH6f5Dwut7savbfAAAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

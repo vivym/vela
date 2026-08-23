@@ -6,6 +6,7 @@ BUF_VERSION := v1.72.0
 PROTOC_GEN_GO_VERSION := v1.36.11
 PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
 GOLANGCI_LINT_VERSION := v2.13.1
+INTEGRATION_TEST_TIMEOUT ?= 20m
 TOOLS_BIN := $(CURDIR)/bin
 
 .PHONY: generate generate-openapi generate-proto generate-sql verify-generated lint test test-integration verify
@@ -33,7 +34,7 @@ test:
 	go test ./...
 
 test-integration:
-	go test -tags=integration ./internal/integration/...
+	go test -tags=integration ./internal/integration/... -timeout=$(INTEGRATION_TEST_TIMEOUT)
 
 verify-generated: generate
 	git diff --exit-code -- api/gen internal/store/sqlc proto/gen

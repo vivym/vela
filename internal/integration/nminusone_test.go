@@ -27,16 +27,59 @@ import (
 )
 
 const (
-	nMinusOneRenewalControlCommit        = "450dd5c379ed7d26588e2a76140f0b3281acfbb2"
-	nMinusOneFailureControlCommit        = "9cb1a522e20490ef41bab535fde206a947118d11"
-	nMinusOneCancellationCommit          = "d0a8c0105a09b7f538e79400a7affd2a6c700744"
-	finalizationFixedPointCommit         = "c94e140c8e841e88bdfcc41725bd7aa5ea7ac068"
-	hierarchicalSchedulerNMinusOneCommit = "8d4fd9199348d5ccdca48c40ef3b4a19ee5c5284"
-	invoiceExportNMinusOneCommit         = "96760832c3b652827a9c5ce1732fbfa773ed0759"
-	profileCircuitNMinusOneCommit        = "e1c50543d854cbad0cc5a98fdaac51e78e2c837c"
-	webhookNMinusOneCommit               = "53f5d650adc30bacdcf9478786d71c1dcf6c1def"
-	humanOIDCNMinusOneCommit             = "cedd0e8031d013a9a12327259b75fdc9749053ee"
+	nMinusOneRenewalControlCommit         = "450dd5c379ed7d26588e2a76140f0b3281acfbb2"
+	nMinusOneFailureControlCommit         = "9cb1a522e20490ef41bab535fde206a947118d11"
+	nMinusOneCancellationCommit           = "d0a8c0105a09b7f538e79400a7affd2a6c700744"
+	finalizationFixedPointCommit          = "c94e140c8e841e88bdfcc41725bd7aa5ea7ac068"
+	hierarchicalSchedulerNMinusOneCommit  = "8d4fd9199348d5ccdca48c40ef3b4a19ee5c5284"
+	invoiceExportNMinusOneCommit          = "96760832c3b652827a9c5ce1732fbfa773ed0759"
+	profileCircuitNMinusOneCommit         = "e1c50543d854cbad0cc5a98fdaac51e78e2c837c"
+	webhookNMinusOneCommit                = "53f5d650adc30bacdcf9478786d71c1dcf6c1def"
+	humanOIDCNMinusOneCommit              = "cedd0e8031d013a9a12327259b75fdc9749053ee"
+	identityAdministrationNMinusOneCommit = "395887177ec9fb5f703eac055b04c02f2086fa8b"
 )
+
+func TestExactIdentityAdministrationNMinusOneControlAndServiceRequestRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, identityAdministrationNMinusOneCommit)
+	assertWebhookNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "identity-administration")
+	jobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+
+	var createdByPrincipalID, actorKind string
+	if err := database.Admin.QueryRow(`
+		SELECT job.created_by_principal_id::text, attribution.principal_kind::text
+		FROM jobs AS job
+		JOIN project_principal_attributions AS attribution
+		  ON attribution.organization_id = job.organization_id
+		 AND attribution.project_id = job.project_id
+		 AND attribution.principal_id = job.created_by_principal_id
+		WHERE job.id = $1
+	`, jobID).Scan(&createdByPrincipalID, &actorKind); err != nil {
+		t.Fatalf("read identity-administration N-1 Service Job: %v", err)
+	}
+	if createdByPrincipalID != testPrincipalID || actorKind != "SERVICE" {
+		t.Fatalf(
+			"identity-administration N-1 Job attribution = principal %s kind %s",
+			createdByPrincipalID,
+			actorKind,
+		)
+	}
+	var identityEvents int
+	if err := database.Admin.QueryRow(`SELECT count(*) FROM project_identity_events`).Scan(
+		&identityEvents,
+	); err != nil {
+		t.Fatalf("count N-1 identity administration events: %v", err)
+	}
+	if identityEvents != 0 {
+		t.Fatalf("N-1 Service request created %d identity administration events", identityEvents)
+	}
+}
 
 func TestExactHumanOIDCNMinusOneControlAndServiceRequestRemainCompatible(t *testing.T) {
 	database := newPostgres(t)
@@ -1296,7 +1339,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	}
 	admissionProbeSourceName := "nminusone_admission_probe.go.txt"
 	if commit == profileCircuitNMinusOneCommit || commit == webhookNMinusOneCommit ||
-		commit == humanOIDCNMinusOneCommit {
+		commit == humanOIDCNMinusOneCommit ||
+		commit == identityAdministrationNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -1681,6 +1725,12 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_auth_login", "vela-auth-password",
 		),
+		"VELA_HUMAN_AUTH_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_human_auth_login", "vela-human-auth-password",
+		),
+		"VELA_OIDC_ISSUER":   "https://identity.example.com",
+		"VELA_OIDC_AUDIENCE": "vela-control",
+		"VELA_OIDC_JWKS_URL": "https://identity.example.com/.well-known/jwks.json",
 		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_request_login", "vela-request-password",
 		),

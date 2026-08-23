@@ -442,11 +442,12 @@ func TestAdmissionPredictionRejectsExcessQueueWaitWithoutDurableEffects(t *testi
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewService(requestPool, predictor),
-		Cancellation:  cancellation.NewService(cancelPool, internalPool),
-		Artifacts:     testArtifactAccessService(artifactPool),
-		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
+		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
+		IdentityAdministration: &identity.AdministrationService{},
+		Admission:              admission.NewService(requestPool, predictor),
+		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		Artifacts:              testArtifactAccessService(artifactPool),
+		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create predicted Admission HTTP handler: %v", err)
@@ -1021,11 +1022,12 @@ func TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys(t *testing.
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewLegacyService(requestPool),
-		Cancellation:  cancellation.NewService(cancelPool, internalPool),
-		Artifacts:     testArtifactAccessService(artifactPool),
-		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
+		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
+		IdentityAdministration: &identity.AdministrationService{},
+		Admission:              admission.NewLegacyService(requestPool),
+		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		Artifacts:              testArtifactAccessService(artifactPool),
+		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1363,11 +1365,6 @@ func TestRequestContextCannotChangeScopeWithinTransaction(t *testing.T) {
 }
 
 func TestRequestContextRejectsInactiveCredentials(t *testing.T) {
-	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
-	seedAdmissionFixture(t, database.Admin)
-	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
-
 	for _, test := range []struct {
 		name     string
 		mutation string
@@ -1376,6 +1373,15 @@ func TestRequestContextRejectsInactiveCredentials(t *testing.T) {
 		{name: "expired", mutation: "revoked_at = NULL, expires_at = clock_timestamp() - interval '1 second'"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			database := newPostgres(t)
+			applyFoundation(t, database.Admin)
+			seedAdmissionFixture(t, database.Admin)
+			requestPool := newRolePool(
+				t,
+				database.DSN,
+				"vela_request_login",
+				"vela-request-password",
+			)
 			if _, err := database.Admin.Exec(
 				"UPDATE credentials SET "+test.mutation+" WHERE id = $1",
 				testCredentialID,
@@ -1608,11 +1614,12 @@ func TestCredentialLookupScopeAndRevocationFailClosed(t *testing.T) {
 	}
 
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewLegacyService(requestPool),
-		Cancellation:  cancellation.NewService(cancelPool, internalPool),
-		Artifacts:     testArtifactAccessService(artifactPool),
-		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
+		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
+		IdentityAdministration: &identity.AdministrationService{},
+		Admission:              admission.NewLegacyService(requestPool),
+		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		Artifacts:              testArtifactAccessService(artifactPool),
+		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1719,11 +1726,12 @@ func admissionServerForDatabaseWithPredictor(
 		admissionService = admission.NewService(requestPool, predictor)
 	}
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admissionService,
-		Cancellation:  cancellation.NewService(cancelPool, internalPool),
-		Artifacts:     testArtifactAccessService(artifactPool),
-		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
+		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
+		IdentityAdministration: &identity.AdministrationService{},
+		Admission:              admissionService,
+		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		Artifacts:              testArtifactAccessService(artifactPool),
+		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1856,9 +1864,10 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 	}
 
 	if _, err := db.Exec(`
-        CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
-		CREATE ROLE vela_human_auth_login LOGIN PASSWORD 'vela-human-auth-password' IN ROLE vela_human_auth;
-		CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
+	        CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
+			CREATE ROLE vela_human_auth_login LOGIN PASSWORD 'vela-human-auth-password' IN ROLE vela_human_auth;
+			CREATE ROLE vela_identity_request_login LOGIN PASSWORD 'vela-identity-request-password' IN ROLE vela_identity_request;
+			CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
 			CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
 			CREATE ROLE vela_scheduler_login LOGIN PASSWORD 'vela-scheduler-password' IN ROLE vela_scheduler;

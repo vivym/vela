@@ -28,19 +28,21 @@ const (
 )
 
 type Config struct {
-	Authenticator *identity.Authenticator
-	Admission     *admission.Service
-	Cancellation  *cancellation.Service
-	Artifacts     *artifactaccess.Service
-	Webhooks      *webhook.Service
+	Authenticator          *identity.Authenticator
+	IdentityAdministration *identity.AdministrationService
+	Admission              *admission.Service
+	Cancellation           *cancellation.Service
+	Artifacts              *artifactaccess.Service
+	Webhooks               *webhook.Service
 }
 
 type server struct {
-	authenticator *identity.Authenticator
-	admission     *admission.Service
-	cancellation  *cancellation.Service
-	artifacts     *artifactaccess.Service
-	webhooks      *webhook.Service
+	authenticator          *identity.Authenticator
+	identityAdministration *identity.AdministrationService
+	admission              *admission.Service
+	cancellation           *cancellation.Service
+	artifacts              *artifactaccess.Service
+	webhooks               *webhook.Service
 }
 
 type principalContextKey struct{}
@@ -48,6 +50,9 @@ type principalContextKey struct{}
 func NewHandler(config Config) (http.Handler, error) {
 	if config.Authenticator == nil {
 		return nil, errors.New("missing HTTP API authenticator")
+	}
+	if config.IdentityAdministration == nil {
+		return nil, errors.New("missing HTTP API identity Administration service")
 	}
 	if config.Admission == nil {
 		return nil, errors.New("missing HTTP API Admission service")
@@ -69,11 +74,12 @@ func NewHandler(config Config) (http.Handler, error) {
 	openAPI.Security = nil
 
 	implementation := &server{
-		authenticator: config.Authenticator,
-		admission:     config.Admission,
-		cancellation:  config.Cancellation,
-		artifacts:     config.Artifacts,
-		webhooks:      config.Webhooks,
+		authenticator:          config.Authenticator,
+		identityAdministration: config.IdentityAdministration,
+		admission:              config.Admission,
+		cancellation:           config.Cancellation,
+		artifacts:              config.Artifacts,
+		webhooks:               config.Webhooks,
 	}
 	strict := api.NewStrictHandlerWithOptions(implementation, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
@@ -275,6 +281,235 @@ func (s *server) GetJobArtifacts(
 		return nil, err
 	}
 	return api.GetJobArtifacts200JSONResponse(toAPIArtifactSet(artifactSet)), nil
+}
+
+func (s *server) CreateServicePrincipal(
+	ctx context.Context,
+	request api.CreateServicePrincipalRequestObject,
+) (api.CreateServicePrincipalResponseObject, error) {
+	principal, status := identityAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeServicePrincipalsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.CreateServicePrincipal401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.CreateServicePrincipal403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateServicePrincipal400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "request body is required",
+			},
+		}, nil
+	}
+	created, err := s.identityAdministration.CreateServicePrincipal(
+		ctx,
+		principal,
+		request.ProjectId,
+		identity.CreateServicePrincipalRequest{DisplayName: request.Body.DisplayName},
+	)
+	if err != nil {
+		return createServicePrincipalFailure(err)
+	}
+	return api.CreateServicePrincipal201JSONResponse(toAPIServicePrincipal(created)), nil
+}
+
+func (s *server) ListServicePrincipals(
+	ctx context.Context,
+	request api.ListServicePrincipalsRequestObject,
+) (api.ListServicePrincipalsResponseObject, error) {
+	principal, status := identityAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeServicePrincipalsRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListServicePrincipals401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListServicePrincipals403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	principals, err := s.identityAdministration.ListServicePrincipals(
+		ctx, principal, request.ProjectId, limit,
+	)
+	if err != nil {
+		return listServicePrincipalsFailure(err)
+	}
+	response := api.ServicePrincipalList{
+		ServicePrincipals: make([]api.ServicePrincipal, len(principals)),
+	}
+	for index, servicePrincipal := range principals {
+		response.ServicePrincipals[index] = toAPIServicePrincipal(servicePrincipal)
+	}
+	return api.ListServicePrincipals200JSONResponse(response), nil
+}
+
+func (s *server) DisableServicePrincipal(
+	ctx context.Context,
+	request api.DisableServicePrincipalRequestObject,
+) (api.DisableServicePrincipalResponseObject, error) {
+	principal, status := identityAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeServicePrincipalsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.DisableServicePrincipal401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.DisableServicePrincipal403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	disabled, err := s.identityAdministration.DisableServicePrincipal(
+		ctx, principal, request.ProjectId, request.ServicePrincipalId,
+	)
+	if err != nil {
+		return disableServicePrincipalFailure(err)
+	}
+	return api.DisableServicePrincipal200JSONResponse(toAPIServicePrincipal(disabled)), nil
+}
+
+func (s *server) IssueServiceCredential(
+	ctx context.Context,
+	request api.IssueServiceCredentialRequestObject,
+) (api.IssueServiceCredentialResponseObject, error) {
+	principal, status := identityAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeServicePrincipalsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.IssueServiceCredential401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.IssueServiceCredential403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.IssueServiceCredential400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "request body is required",
+			},
+		}, nil
+	}
+	scopes := make([]string, len(request.Body.Scopes))
+	for index, scope := range request.Body.Scopes {
+		scopes[index] = string(scope)
+	}
+	issued, err := s.identityAdministration.IssueCredential(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.ServicePrincipalId,
+		identity.IssueCredentialRequest{Scopes: scopes, ExpiresAt: request.Body.ExpiresAt},
+	)
+	if err != nil {
+		return issueServiceCredentialFailure(err)
+	}
+	return api.IssueServiceCredential201JSONResponse(toAPIIssuedServiceCredential(issued)), nil
+}
+
+func (s *server) ListServiceCredentials(
+	ctx context.Context,
+	request api.ListServiceCredentialsRequestObject,
+) (api.ListServiceCredentialsResponseObject, error) {
+	principal, status := identityAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeServicePrincipalsRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListServiceCredentials401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListServiceCredentials403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	credentials, err := s.identityAdministration.ListCredentials(
+		ctx, principal, request.ProjectId, request.ServicePrincipalId, limit,
+	)
+	if err != nil {
+		return listServiceCredentialsFailure(err)
+	}
+	response := api.ServiceCredentialList{
+		Credentials: make([]api.ServiceCredential, len(credentials)),
+	}
+	for index, credential := range credentials {
+		response.Credentials[index] = toAPIServiceCredential(credential)
+	}
+	return api.ListServiceCredentials200JSONResponse(response), nil
+}
+
+func (s *server) RevokeServiceCredential(
+	ctx context.Context,
+	request api.RevokeServiceCredentialRequestObject,
+) (api.RevokeServiceCredentialResponseObject, error) {
+	principal, status := identityAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeServicePrincipalsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.RevokeServiceCredential401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.RevokeServiceCredential403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	revoked, err := s.identityAdministration.RevokeCredential(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.ServicePrincipalId,
+		request.CredentialId,
+	)
+	if err != nil {
+		return revokeServiceCredentialFailure(err)
+	}
+	return api.RevokeServiceCredential200JSONResponse(toAPIServiceCredential(revoked)), nil
 }
 
 func (s *server) CreateWebhookSubscription(
@@ -516,6 +751,22 @@ func principalForProjectRequest(
 	return principal.ForProject(projectID)
 }
 
+func identityAdministrationPrincipal(
+	ctx context.Context,
+	projectID uuid.UUID,
+	requiredScope string,
+) (identity.Principal, int) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return identity.Principal{}, http.StatusUnauthorized
+	}
+	principal, ok = principalForProjectRequest(principal, projectID)
+	if !ok || principal.Kind != identity.PrincipalKindHuman || !principal.HasScope(requiredScope) {
+		return identity.Principal{}, http.StatusForbidden
+	}
+	return principal, http.StatusOK
+}
+
 func submitFailure(err error) (api.SubmitJobResponseObject, error) {
 	var failure *admission.Failure
 	if !errors.As(err, &failure) {
@@ -556,6 +807,178 @@ func submitBadRequest(message string) api.SubmitJob400JSONResponse {
 			Code: "invalid_request", Message: message,
 		},
 	}
+}
+
+func createServicePrincipalFailure(
+	err error,
+) (api.CreateServicePrincipalResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.CreateServicePrincipal401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.CreateServicePrincipal403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.CreateServicePrincipal400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureConflict:
+		return api.CreateServicePrincipal409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func listServicePrincipalsFailure(
+	err error,
+) (api.ListServicePrincipalsResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.ListServicePrincipals401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.ListServicePrincipals403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.ListServicePrincipals400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func disableServicePrincipalFailure(
+	err error,
+) (api.DisableServicePrincipalResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.DisableServicePrincipal401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.DisableServicePrincipal403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.DisableServicePrincipal400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.DisableServicePrincipal404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func issueServiceCredentialFailure(
+	err error,
+) (api.IssueServiceCredentialResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.IssueServiceCredential401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.IssueServiceCredential403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.IssueServiceCredential400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.IssueServiceCredential404JSONResponse(response), nil
+	case identity.AdministrationFailureConflict:
+		return api.IssueServiceCredential409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func listServiceCredentialsFailure(
+	err error,
+) (api.ListServiceCredentialsResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.ListServiceCredentials401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.ListServiceCredentials403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.ListServiceCredentials400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.ListServiceCredentials404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func revokeServiceCredentialFailure(
+	err error,
+) (api.RevokeServiceCredentialResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.RevokeServiceCredential401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.RevokeServiceCredential403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.RevokeServiceCredential400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.RevokeServiceCredential404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func identityAdministrationFailureResponse(
+	err error,
+) (*identity.AdministrationFailure, api.Error, bool) {
+	var failure *identity.AdministrationFailure
+	if !errors.As(err, &failure) {
+		return nil, api.Error{}, false
+	}
+	return failure, api.Error{Code: string(failure.Code), Message: failure.Message}, true
 }
 
 func webhookCreateFailure(err error) (api.CreateWebhookSubscriptionResponseObject, error) {
@@ -811,6 +1234,46 @@ func toAPIArtifactSet(artifactSet artifactaccess.ArtifactSet) api.ArtifactSet {
 		CommittedAt:        artifactSet.CommittedAt,
 		JobId:              artifactSet.JobID,
 		RetentionExpiresAt: artifactSet.RetentionExpiresAt,
+	}
+}
+
+func toAPIServicePrincipal(principal identity.ServicePrincipal) api.ServicePrincipal {
+	return api.ServicePrincipal{
+		CreatedAt:          principal.CreatedAt,
+		DisabledAt:         principal.DisabledAt,
+		DisplayName:        principal.DisplayName,
+		ProjectId:          principal.ProjectID,
+		ServicePrincipalId: principal.ID,
+	}
+}
+
+func toAPIServiceCredential(credential identity.Credential) api.ServiceCredential {
+	scopes := make([]api.ServiceCredentialScope, len(credential.Scopes))
+	for index, scope := range credential.Scopes {
+		scopes[index] = api.ServiceCredentialScope(scope)
+	}
+	return api.ServiceCredential{
+		CreatedAt:          credential.CreatedAt,
+		CredentialId:       credential.ID,
+		ExpiresAt:          credential.ExpiresAt,
+		ProjectId:          credential.ProjectID,
+		RevokedAt:          credential.RevokedAt,
+		Scopes:             scopes,
+		ServicePrincipalId: credential.ServicePrincipalID,
+	}
+}
+
+func toAPIIssuedServiceCredential(issued identity.IssuedCredential) api.IssuedServiceCredential {
+	credential := toAPIServiceCredential(issued.Credential)
+	return api.IssuedServiceCredential{
+		BearerCredential:   issued.BearerCredential,
+		CreatedAt:          credential.CreatedAt,
+		CredentialId:       credential.CredentialId,
+		ExpiresAt:          credential.ExpiresAt,
+		ProjectId:          credential.ProjectId,
+		RevokedAt:          credential.RevokedAt,
+		Scopes:             credential.Scopes,
+		ServicePrincipalId: credential.ServicePrincipalId,
 	}
 }
 

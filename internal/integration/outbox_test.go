@@ -41,11 +41,12 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewLegacyService(requestPool),
-		Cancellation:  cancellation.NewService(cancelPool, internalPool),
-		Artifacts:     testArtifactAccessService(artifactPool),
-		Webhooks:      testWebhookService(t, webhookRequestPool),
+		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
+		IdentityAdministration: &identity.AdministrationService{},
+		Admission:              admission.NewLegacyService(requestPool),
+		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		Artifacts:              testArtifactAccessService(artifactPool),
+		Webhooks:               testWebhookService(t, webhookRequestPool),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)

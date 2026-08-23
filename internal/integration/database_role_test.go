@@ -20,6 +20,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	humanAuthPool := newRolePool(
 		t, database.DSN, "vela_human_auth_login", "vela-human-auth-password",
 	)
+	identityRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_identity_request_login",
+		"vela-identity-request-password",
+	)
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	artifactPool := newRolePool(
@@ -37,6 +43,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_billing_login",
 		"vela_webhook_request_login",
 		"vela_webhook_login",
+		"vela_identity_request_login",
 	} {
 		var inheritsBillingOwner bool
 		if err := database.Admin.QueryRow(
@@ -57,6 +64,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}{
 		{name: "auth", pool: authPool, role: veladb.RoleAuth},
 		{name: "Human auth", pool: humanAuthPool, role: veladb.RoleHumanAuth},
+		{name: "identity request", pool: identityRequestPool, role: veladb.RoleIdentityRequest},
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
@@ -95,6 +103,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request as Human auth", pool: requestPool, role: veladb.RoleHumanAuth},
 		{name: "auth as Human auth", pool: authPool, role: veladb.RoleHumanAuth},
 		{name: "Human auth as auth", pool: humanAuthPool, role: veladb.RoleAuth},
+		{name: "identity request as internal", pool: identityRequestPool, role: veladb.RoleInternal},
+		{name: "internal as identity request", pool: internalPool, role: veladb.RoleIdentityRequest},
+		{name: "request as identity request", pool: requestPool, role: veladb.RoleIdentityRequest},
+		{name: "identity request as request", pool: identityRequestPool, role: veladb.RoleRequest},
 		{name: "cancel as request", pool: cancelPool, role: veladb.RoleRequest},
 		{name: "request as cancel", pool: requestPool, role: veladb.RoleCancel},
 		{name: "internal as cancel", pool: internalPool, role: veladb.RoleCancel},
@@ -136,6 +148,21 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}
 	if _, err := database.Admin.Exec("REVOKE SELECT ON jobs FROM vela_auth_login"); err != nil {
 		t.Fatalf("revoke unexpected auth table privilege: %v", err)
+	}
+	if _, err := database.Admin.Exec(
+		"GRANT SELECT ON project_identity_events TO vela_identity_request_login",
+	); err != nil {
+		t.Fatalf("grant unexpected identity request table privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(
+		context.Background(), identityRequestPool, veladb.RoleIdentityRequest,
+	); err == nil {
+		t.Fatal("identity request login with direct audit access was accepted")
+	}
+	if _, err := database.Admin.Exec(
+		"REVOKE SELECT ON project_identity_events FROM vela_identity_request_login",
+	); err != nil {
+		t.Fatalf("revoke unexpected identity request table privilege: %v", err)
 	}
 
 	if _, err := database.Admin.Exec(`
@@ -580,6 +607,15 @@ func TestHumanIdentityEvidenceIsNotDirectlyReadableByRuntimeRoles(t *testing.T) 
 			),
 		},
 		{
+			name: "identity request",
+			pool: newRolePool(
+				t,
+				database.DSN,
+				"vela_identity_request_login",
+				"vela-identity-request-password",
+			),
+		},
+		{
 			name: "request",
 			pool: newRolePool(t, database.DSN, "vela_request_login", "vela-request-password"),
 		},
@@ -608,6 +644,7 @@ func TestHumanIdentityEvidenceIsNotDirectlyReadableByRuntimeRoles(t *testing.T) 
 			"public.human_auth_sessions",
 			"public.project_principal_attributions",
 			"public.project_actor_session_attributions",
+			"public.project_identity_events",
 			"vela_private.request_contexts",
 		} {
 			var count int64
@@ -637,6 +674,7 @@ func TestHumanIdentityTablesForceRowLevelSecurity(t *testing.T) {
 		"human_auth_sessions",
 		"project_principal_attributions",
 		"project_actor_session_attributions",
+		"project_identity_events",
 	} {
 		var enabled, forced bool
 		if err := database.Admin.QueryRow(`

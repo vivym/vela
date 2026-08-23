@@ -268,11 +268,12 @@ func TestHumanDeveloperCanSubmitJobThroughProductionHTTPPath(t *testing.T) {
 		t, database.DSN, "vela_internal_login", "vela-internal-password",
 	)
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: authenticator,
-		Admission:     admission.NewLegacyService(requestPool),
-		Cancellation:  cancellation.NewService(cancelPool, internalPool),
-		Artifacts:     testArtifactAccessService(artifactPool),
-		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
+		Authenticator:          authenticator,
+		IdentityAdministration: &identity.AdministrationService{},
+		Admission:              admission.NewLegacyService(requestPool),
+		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		Artifacts:              testArtifactAccessService(artifactPool),
+		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create Human HTTP handler: %v", err)
@@ -390,7 +391,8 @@ func TestHumanProjectAdminCanManageWebhooksThroughProductionHTTPPath(t *testing.
 		}},
 	)
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: authenticator,
+		Authenticator:          authenticator,
+		IdentityAdministration: &identity.AdministrationService{},
 		Admission: admission.NewLegacyService(
 			newRolePool(t, database.DSN, "vela_request_login", "vela-request-password"),
 		),
@@ -720,7 +722,8 @@ func TestHumanProjectViewerCanReadCommittedArtifactsThroughProductionHTTPPath(t 
 	)
 	signer := &recordingArtifactSigner{}
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: authenticator,
+		Authenticator:          authenticator,
+		IdentityAdministration: &identity.AdministrationService{},
 		Admission: admission.NewLegacyService(
 			newRolePool(t, fixture.database.DSN, "vela_request_login", "vela-request-password"),
 		),

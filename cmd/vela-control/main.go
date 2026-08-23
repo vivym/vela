@@ -81,6 +81,7 @@ type config struct {
 	workerGRPCClientCAFile       string
 	authDatabaseURL              string
 	humanAuthDatabaseURL         string
+	identityRequestDatabaseURL   string
 	requestDatabaseURL           string
 	artifactRequestDatabaseURL   string
 	cancelDatabaseURL            string
@@ -218,6 +219,16 @@ func run() error {
 		return fmt.Errorf("open Human auth database pool: %w", err)
 	}
 	defer humanAuthPool.Close()
+	identityRequestPool, err := openPool(
+		ctx,
+		configuration.identityRequestDatabaseURL,
+		10,
+		veladb.RoleIdentityRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open identity request database pool: %w", err)
+	}
+	defer identityRequestPool.Close()
 	requestPool, err := openPool(ctx, configuration.requestDatabaseURL, 20, veladb.RoleRequest)
 	if err != nil {
 		return fmt.Errorf("open request database pool: %w", err)
@@ -442,6 +453,13 @@ func run() error {
 	}
 
 	cancellationService := cancellation.NewService(cancelPool, internalPool)
+	identityAdministration, err := identity.NewAdministrationService(
+		identityRequestPool,
+		configuration.credentialPepper,
+	)
+	if err != nil {
+		return fmt.Errorf("configure identity Administration service: %w", err)
+	}
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticatorWithOIDC(
 			authPool,
@@ -449,10 +467,11 @@ func run() error {
 			configuration.credentialPepper,
 			oidcVerifier,
 		),
-		Admission:    admission.NewService(requestPool, capacityPredictor),
-		Cancellation: cancellationService,
-		Artifacts:    artifactaccess.NewService(artifactRequestPool, artifactStore),
-		Webhooks:     webhookService,
+		IdentityAdministration: identityAdministration,
+		Admission:              admission.NewService(requestPool, capacityPredictor),
+		Cancellation:           cancellationService,
+		Artifacts:              artifactaccess.NewService(artifactRequestPool, artifactStore),
+		Webhooks:               webhookService,
 	})
 	if err != nil {
 		return err
@@ -467,6 +486,7 @@ func run() error {
 			artifactStore,
 			authPool,
 			humanAuthPool,
+			identityRequestPool,
 			requestPool,
 			artifactRequestPool,
 			cancelPool,
@@ -635,6 +655,7 @@ func loadConfig() (config, error) {
 		workerGRPCClientCAFile:       os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
 		authDatabaseURL:              os.Getenv("VELA_AUTH_DATABASE_URL"),
 		humanAuthDatabaseURL:         os.Getenv("VELA_HUMAN_AUTH_DATABASE_URL"),
+		identityRequestDatabaseURL:   os.Getenv("VELA_IDENTITY_REQUEST_DATABASE_URL"),
 		requestDatabaseURL:           os.Getenv("VELA_REQUEST_DATABASE_URL"),
 		artifactRequestDatabaseURL:   os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
 		oidcIssuer:                   os.Getenv("VELA_OIDC_ISSUER"),
@@ -702,6 +723,7 @@ func loadConfig() (config, error) {
 	for name, value := range map[string]string{
 		"VELA_AUTH_DATABASE_URL":                  configuration.authDatabaseURL,
 		"VELA_HUMAN_AUTH_DATABASE_URL":            configuration.humanAuthDatabaseURL,
+		"VELA_IDENTITY_REQUEST_DATABASE_URL":      configuration.identityRequestDatabaseURL,
 		"VELA_REQUEST_DATABASE_URL":               configuration.requestDatabaseURL,
 		"VELA_ARTIFACT_REQUEST_DATABASE_URL":      configuration.artifactRequestDatabaseURL,
 		"VELA_OIDC_ISSUER":                        configuration.oidcIssuer,

@@ -1533,13 +1533,14 @@ func TestWebhookStaleClaimReceiptsCannotMutateReplacementClaim(t *testing.T) {
 
 func TestWebhookDispatcherDeadLettersAfterSeventyTwoHours(t *testing.T) {
 	fixture := newWebhookDispatchFixture(t, webhook.EventJobFailed, "https://hooks.example.com/dead-letter")
+	retryWindowStartedAt := time.Now().UTC().Add(-73 * time.Hour).Truncate(time.Microsecond)
 	if _, err := fixture.database.Admin.Exec(`
 		UPDATE webhook_deliveries
-		SET retry_window_started_at = clock_timestamp() - interval '73 hours',
-			retry_deadline_at = clock_timestamp() - interval '1 hour',
-			available_at = clock_timestamp() - interval '2 hours'
+		SET retry_window_started_at = $2::timestamptz,
+			retry_deadline_at = $2::timestamptz + interval '72 hours',
+			available_at = $2::timestamptz + interval '71 hours'
 		WHERE event_id = $1
-	`, fixture.eventID); err != nil {
+	`, fixture.eventID, retryWindowStartedAt); err != nil {
 		t.Fatalf("expire webhook automatic retry window: %v", err)
 	}
 	webhookPool := newRolePool(
@@ -2582,7 +2583,7 @@ func TestWebhookMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) {
 		t.Fatalf("create Subscription after migration re-expansion = %#v error=%v", created, err)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 12 {
+	if err != nil || version != 13 {
 		t.Fatalf("webhook migration version after Down/Up = %d error=%v", version, err)
 	}
 }
@@ -3016,11 +3017,12 @@ func newWebhookHTTPServerWithResolver(
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: identity.NewAuthenticator(authPool, testCredentialPepper),
-		Admission:     admission.NewLegacyService(requestPool),
-		Cancellation:  cancellation.NewService(cancelPool, internalPool),
-		Artifacts:     testArtifactAccessService(artifactPool),
-		Webhooks:      testWebhookService(t, webhookRequestPool, resolver),
+		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
+		IdentityAdministration: &identity.AdministrationService{},
+		Admission:              admission.NewLegacyService(requestPool),
+		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		Artifacts:              testArtifactAccessService(artifactPool),
+		Webhooks:               testWebhookService(t, webhookRequestPool, resolver),
 	})
 	if err != nil {
 		t.Fatalf("create webhook HTTP handler: %v", err)

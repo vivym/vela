@@ -51,7 +51,12 @@ func TestHumanFixedRoleMatrixKeepsProjectPermissionsExplicit(t *testing.T) {
 			name: "ProjectAdmin", subject: "project-admin-matrix",
 			projectRoles: map[string][]string{testProjectID: {"ProjectAdmin"}},
 			expectedScope: map[string][]string{
-				testProjectID: {identity.ScopeWebhooksManage, identity.ScopeWebhooksRead},
+				testProjectID: {
+					identity.ScopeServicePrincipalsManage,
+					identity.ScopeServicePrincipalsRead,
+					identity.ScopeWebhooksManage,
+					identity.ScopeWebhooksRead,
+				},
 			},
 		},
 		{
@@ -83,6 +88,8 @@ func TestHumanFixedRoleMatrixKeepsProjectPermissionsExplicit(t *testing.T) {
 				testProjectID: {
 					identity.ScopeArtifactsRead,
 					identity.ScopeJobsRead,
+					identity.ScopeServicePrincipalsManage,
+					identity.ScopeServicePrincipalsRead,
 					identity.ScopeWebhooksManage,
 					identity.ScopeWebhooksRead,
 				},
