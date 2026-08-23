@@ -17,6 +17,7 @@ import (
 	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/webhook"
 )
 
 const maxRequestBodyBytes = 1 << 20
@@ -26,6 +27,7 @@ type Config struct {
 	Admission     *admission.Service
 	Cancellation  *cancellation.Service
 	Artifacts     *artifactaccess.Service
+	Webhooks      *webhook.Service
 }
 
 type server struct {
@@ -33,6 +35,7 @@ type server struct {
 	admission     *admission.Service
 	cancellation  *cancellation.Service
 	artifacts     *artifactaccess.Service
+	webhooks      *webhook.Service
 }
 
 type principalContextKey struct{}
@@ -50,6 +53,9 @@ func NewHandler(config Config) (http.Handler, error) {
 	if config.Artifacts == nil {
 		return nil, errors.New("missing HTTP API Artifact access service")
 	}
+	if config.Webhooks == nil {
+		return nil, errors.New("missing HTTP API webhook service")
+	}
 	openAPI, err := api.GetSpec()
 	if err != nil {
 		return nil, fmt.Errorf("load embedded OpenAPI contract: %w", err)
@@ -62,6 +68,7 @@ func NewHandler(config Config) (http.Handler, error) {
 		admission:     config.Admission,
 		cancellation:  config.Cancellation,
 		artifacts:     config.Artifacts,
+		webhooks:      config.Webhooks,
 	}
 	strict := api.NewStrictHandlerWithOptions(implementation, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
@@ -261,6 +268,190 @@ func (s *server) GetJobArtifacts(
 	return api.GetJobArtifacts200JSONResponse(toAPIArtifactSet(artifactSet)), nil
 }
 
+func (s *server) CreateWebhookSubscription(
+	ctx context.Context,
+	request api.CreateWebhookSubscriptionRequestObject,
+) (api.CreateWebhookSubscriptionResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.CreateWebhookSubscription401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: "valid Service Principal credential is required",
+			},
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeWebhooksManage) {
+		return api.CreateWebhookSubscription403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "credential does not have webhooks:manage scope",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return webhookCreateBadRequest("request body is required"), nil
+	}
+	eventTypes := make([]webhook.EventType, len(request.Body.EventTypes))
+	for index, eventType := range request.Body.EventTypes {
+		eventTypes[index] = webhook.EventType(eventType)
+	}
+	created, err := s.webhooks.Create(ctx, principal, request.ProjectId, webhook.CreateRequest{
+		Endpoint: request.Body.Endpoint, EventTypes: eventTypes,
+	})
+	if err != nil {
+		return webhookCreateFailure(err)
+	}
+	response := toAPICreatedWebhookSubscription(created)
+	return api.CreateWebhookSubscription201JSONResponse(response), nil
+}
+
+func (s *server) ListWebhookSubscriptions(
+	ctx context.Context,
+	request api.ListWebhookSubscriptionsRequestObject,
+) (api.ListWebhookSubscriptionsResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.ListWebhookSubscriptions401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: "valid Service Principal credential is required",
+			},
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeWebhooksRead) {
+		return api.ListWebhookSubscriptions403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "credential does not have webhooks:read scope",
+			},
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	subscriptions, err := s.webhooks.List(ctx, principal, request.ProjectId, limit)
+	if err != nil {
+		return webhookListFailure(err)
+	}
+	response := api.WebhookSubscriptionList{
+		Subscriptions: make([]api.WebhookSubscription, len(subscriptions)),
+	}
+	for index, subscription := range subscriptions {
+		response.Subscriptions[index] = toAPIWebhookSubscription(subscription)
+	}
+	return api.ListWebhookSubscriptions200JSONResponse(response), nil
+}
+
+func (s *server) RotateWebhookSubscriptionSecret(
+	ctx context.Context,
+	request api.RotateWebhookSubscriptionSecretRequestObject,
+) (api.RotateWebhookSubscriptionSecretResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.RotateWebhookSubscriptionSecret401JSONResponse{
+			UnauthorizedJSONResponse: webhookUnauthorizedResponse(),
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeWebhooksManage) {
+		return api.RotateWebhookSubscriptionSecret403JSONResponse{
+			ForbiddenJSONResponse: webhookManageForbiddenResponse(),
+		}, nil
+	}
+	rotated, err := s.webhooks.RotateSecret(ctx, principal, request.ProjectId, request.SubscriptionId)
+	if err != nil {
+		return webhookRotateFailure(err)
+	}
+	return api.RotateWebhookSubscriptionSecret200JSONResponse(
+		toAPIRotatedWebhookSubscription(rotated),
+	), nil
+}
+
+func (s *server) DisableWebhookSubscription(
+	ctx context.Context,
+	request api.DisableWebhookSubscriptionRequestObject,
+) (api.DisableWebhookSubscriptionResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.DisableWebhookSubscription401JSONResponse{
+			UnauthorizedJSONResponse: webhookUnauthorizedResponse(),
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeWebhooksManage) {
+		return api.DisableWebhookSubscription403JSONResponse{
+			ForbiddenJSONResponse: webhookManageForbiddenResponse(),
+		}, nil
+	}
+	subscription, err := s.webhooks.Disable(ctx, principal, request.ProjectId, request.SubscriptionId)
+	if err != nil {
+		return webhookDisableFailure(err)
+	}
+	return api.DisableWebhookSubscription200JSONResponse(
+		toAPIWebhookSubscription(subscription),
+	), nil
+}
+
+func (s *server) ListWebhookDeliveries(
+	ctx context.Context,
+	request api.ListWebhookDeliveriesRequestObject,
+) (api.ListWebhookDeliveriesResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.ListWebhookDeliveries401JSONResponse{
+			UnauthorizedJSONResponse: webhookUnauthorizedResponse(),
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeWebhooksRead) {
+		return api.ListWebhookDeliveries403JSONResponse{
+			ForbiddenJSONResponse: webhookReadForbiddenResponse(),
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	deliveries, err := s.webhooks.ListDeliveries(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.SubscriptionId,
+		limit,
+	)
+	if err != nil {
+		return webhookDeliveryListFailure(err)
+	}
+	response := api.WebhookDeliveryList{Deliveries: make([]api.WebhookDelivery, len(deliveries))}
+	for index, delivery := range deliveries {
+		response.Deliveries[index] = toAPIWebhookDelivery(delivery)
+	}
+	return api.ListWebhookDeliveries200JSONResponse(response), nil
+}
+
+func (s *server) ReplayWebhookDelivery(
+	ctx context.Context,
+	request api.ReplayWebhookDeliveryRequestObject,
+) (api.ReplayWebhookDeliveryResponseObject, error) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return api.ReplayWebhookDelivery401JSONResponse{
+			UnauthorizedJSONResponse: webhookUnauthorizedResponse(),
+		}, nil
+	}
+	if !principal.HasScope(identity.ScopeWebhooksManage) {
+		return api.ReplayWebhookDelivery403JSONResponse{
+			ForbiddenJSONResponse: webhookManageForbiddenResponse(),
+		}, nil
+	}
+	delivery, err := s.webhooks.Replay(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.SubscriptionId,
+		request.DeliveryId,
+	)
+	if err != nil {
+		return webhookReplayFailure(err)
+	}
+	return api.ReplayWebhookDelivery200JSONResponse(toAPIWebhookDelivery(delivery)), nil
+}
+
 func (s *server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Fields(r.Header.Get("Authorization"))
@@ -337,6 +528,188 @@ func submitBadRequest(message string) api.SubmitJob400JSONResponse {
 	}
 }
 
+func webhookCreateFailure(err error) (api.CreateWebhookSubscriptionResponseObject, error) {
+	var failure *webhook.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case webhook.FailureUnauthorized:
+		return api.CreateWebhookSubscription401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case webhook.FailureForbidden:
+		return api.CreateWebhookSubscription403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case webhook.FailureInvalidRequest:
+		return api.CreateWebhookSubscription400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func webhookCreateBadRequest(message string) api.CreateWebhookSubscription400JSONResponse {
+	return api.CreateWebhookSubscription400JSONResponse{
+		BadRequestJSONResponse: api.BadRequestJSONResponse{
+			Code: "invalid_request", Message: message,
+		},
+	}
+}
+
+func webhookListFailure(err error) (api.ListWebhookSubscriptionsResponseObject, error) {
+	var failure *webhook.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case webhook.FailureUnauthorized:
+		return api.ListWebhookSubscriptions401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case webhook.FailureForbidden:
+		return api.ListWebhookSubscriptions403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case webhook.FailureInvalidRequest:
+		return api.ListWebhookSubscriptions400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func webhookRotateFailure(err error) (api.RotateWebhookSubscriptionSecretResponseObject, error) {
+	failure, response, ok := webhookFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case webhook.FailureUnauthorized:
+		return api.RotateWebhookSubscriptionSecret401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case webhook.FailureForbidden:
+		return api.RotateWebhookSubscriptionSecret403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case webhook.FailureInvalidRequest:
+		return api.RotateWebhookSubscriptionSecret400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case webhook.FailureNotFound:
+		return api.RotateWebhookSubscriptionSecret404JSONResponse(response), nil
+	case webhook.FailureConflict:
+		return api.RotateWebhookSubscriptionSecret409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func webhookDisableFailure(err error) (api.DisableWebhookSubscriptionResponseObject, error) {
+	failure, response, ok := webhookFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case webhook.FailureUnauthorized:
+		return api.DisableWebhookSubscription401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case webhook.FailureForbidden:
+		return api.DisableWebhookSubscription403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case webhook.FailureNotFound:
+		return api.DisableWebhookSubscription404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func webhookDeliveryListFailure(err error) (api.ListWebhookDeliveriesResponseObject, error) {
+	failure, response, ok := webhookFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case webhook.FailureUnauthorized:
+		return api.ListWebhookDeliveries401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case webhook.FailureForbidden:
+		return api.ListWebhookDeliveries403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case webhook.FailureInvalidRequest:
+		return api.ListWebhookDeliveries400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case webhook.FailureNotFound:
+		return api.ListWebhookDeliveries404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func webhookReplayFailure(err error) (api.ReplayWebhookDeliveryResponseObject, error) {
+	failure, response, ok := webhookFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case webhook.FailureUnauthorized:
+		return api.ReplayWebhookDelivery401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case webhook.FailureForbidden:
+		return api.ReplayWebhookDelivery403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case webhook.FailureInvalidRequest:
+		return api.ReplayWebhookDelivery400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case webhook.FailureNotFound:
+		return api.ReplayWebhookDelivery404JSONResponse(response), nil
+	case webhook.FailureConflict:
+		return api.ReplayWebhookDelivery409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func webhookFailureResponse(err error) (*webhook.Failure, api.Error, bool) {
+	var failure *webhook.Failure
+	if !errors.As(err, &failure) {
+		return nil, api.Error{}, false
+	}
+	return failure, api.Error{Code: string(failure.Code), Message: failure.Message}, true
+}
+
+func webhookUnauthorizedResponse() api.UnauthorizedJSONResponse {
+	return api.UnauthorizedJSONResponse{
+		Code: "unauthorized", Message: "valid Service Principal credential is required",
+	}
+}
+
+func webhookManageForbiddenResponse() api.ForbiddenJSONResponse {
+	return api.ForbiddenJSONResponse{
+		Code: "forbidden", Message: "credential does not have webhooks:manage scope",
+	}
+}
+
+func webhookReadForbiddenResponse() api.ForbiddenJSONResponse {
+	return api.ForbiddenJSONResponse{
+		Code: "forbidden", Message: "credential does not have webhooks:read scope",
+	}
+}
+
 func toAPIJob(job admission.Job) api.Job {
 	view := api.Job{
 		AttemptsStarted: int(job.AttemptsStarted),
@@ -408,6 +781,72 @@ func toAPIArtifactSet(artifactSet artifactaccess.ArtifactSet) api.ArtifactSet {
 		CommittedAt:        artifactSet.CommittedAt,
 		JobId:              artifactSet.JobID,
 		RetentionExpiresAt: artifactSet.RetentionExpiresAt,
+	}
+}
+
+func toAPIWebhookSubscription(subscription webhook.Subscription) api.WebhookSubscription {
+	eventTypes := make([]api.WebhookEventType, len(subscription.EventTypes))
+	for index, eventType := range subscription.EventTypes {
+		eventTypes[index] = api.WebhookEventType(eventType)
+	}
+	return api.WebhookSubscription{
+		CreatedAt:      subscription.CreatedAt,
+		DisabledAt:     subscription.DisabledAt,
+		Endpoint:       subscription.Endpoint,
+		EventTypes:     eventTypes,
+		ProjectId:      subscription.ProjectID,
+		SecretRevision: subscription.SecretRevision,
+		State:          api.WebhookSubscriptionState(subscription.State),
+		SubscriptionId: subscription.ID,
+	}
+}
+
+func toAPICreatedWebhookSubscription(created webhook.CreatedSubscription) api.CreatedWebhookSubscription {
+	subscription := toAPIWebhookSubscription(created.Subscription)
+	return api.CreatedWebhookSubscription{
+		CreatedAt:      subscription.CreatedAt,
+		Endpoint:       subscription.Endpoint,
+		EventTypes:     subscription.EventTypes,
+		ProjectId:      subscription.ProjectId,
+		SecretRevision: subscription.SecretRevision,
+		SigningSecret:  created.SigningSecret,
+		State:          subscription.State,
+		SubscriptionId: subscription.SubscriptionId,
+	}
+}
+
+func toAPIRotatedWebhookSubscription(rotated webhook.RotatedSubscription) api.RotatedWebhookSubscription {
+	subscription := toAPIWebhookSubscription(rotated.Subscription)
+	return api.RotatedWebhookSubscription{
+		CreatedAt:                subscription.CreatedAt,
+		Endpoint:                 subscription.Endpoint,
+		EventTypes:               subscription.EventTypes,
+		PreviousSecretValidUntil: rotated.PreviousSecretValidUntil,
+		ProjectId:                subscription.ProjectId,
+		SecretRevision:           subscription.SecretRevision,
+		SigningSecret:            rotated.SigningSecret,
+		State:                    subscription.State,
+		SubscriptionId:           subscription.SubscriptionId,
+	}
+}
+
+func toAPIWebhookDelivery(delivery webhook.Delivery) api.WebhookDelivery {
+	return api.WebhookDelivery{
+		Attempts:        delivery.Attempts,
+		CreatedAt:       delivery.CreatedAt,
+		DeadLetteredAt:  delivery.DeadLetteredAt,
+		DeliveredAt:     delivery.DeliveredAt,
+		DeliveryId:      delivery.ID,
+		EventId:         delivery.EventID,
+		EventType:       api.WebhookEventType(delivery.EventType),
+		Generation:      delivery.Generation,
+		JobId:           delivery.JobID,
+		JobVersion:      delivery.JobVersion,
+		LastAttemptAt:   delivery.LastAttemptAt,
+		LastHttpStatus:  delivery.LastHTTPStatus,
+		RetryDeadlineAt: delivery.RetryDeadlineAt,
+		State:           api.WebhookDeliveryState(delivery.State),
+		UpdatedAt:       delivery.UpdatedAt,
 	}
 }
 

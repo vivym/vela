@@ -34,6 +34,7 @@ import (
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/outbox"
 	"github.com/vivym/vela/internal/scheduler"
+	"github.com/vivym/vela/internal/webhook"
 	"github.com/vivym/vela/internal/workercontrol"
 	"github.com/vivym/vela/internal/workertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -57,6 +58,10 @@ const (
 	defaultInvoiceExportRetryDelay              = 5 * time.Second
 	defaultInvoiceExportHTTPTimeout             = 15 * time.Second
 	defaultInvoiceExportBatchSize         int32 = 100
+	defaultWebhookTick                          = 500 * time.Millisecond
+	defaultWebhookClaimTTL                      = 30 * time.Second
+	defaultWebhookHTTPTimeout                   = 15 * time.Second
+	defaultWebhookBatchSize               int32 = 100
 	defaultExecutionLeaseTTL                    = 2 * time.Minute
 	defaultWorkerLostGrace                      = 30 * time.Second
 	defaultArtifactInspectionTimeout            = 30 * time.Second
@@ -68,65 +73,74 @@ const (
 )
 
 type config struct {
-	httpAddress                string
-	workerGRPCAddress          string
-	workerGRPCTLSCertFile      string
-	workerGRPCTLSKeyFile       string
-	workerGRPCClientCAFile     string
-	authDatabaseURL            string
-	requestDatabaseURL         string
-	artifactRequestDatabaseURL string
-	cancelDatabaseURL          string
-	internalDatabaseURL        string
-	schedulerDatabaseURL       string
-	schedulerID                string
-	schedulerTick              time.Duration
-	schedulerClaimTTL          time.Duration
-	schedulerCandidateAttempts int
-	billingDatabaseURL         string
-	invoiceExporterID          string
-	invoiceExportEndpoint      string
-	invoiceExportTokenFile     string
-	invoiceExportTick          time.Duration
-	invoiceExportClaimTTL      time.Duration
-	invoiceExportRetryDelay    time.Duration
-	invoiceExportHTTPTimeout   time.Duration
-	invoiceExportBatchSize     int32
-	credentialPepper           []byte
-	natsURL                    string
-	natsCredentials            string
-	natsRootCA                 string
-	natsClientCert             string
-	natsClientKey              string
-	publisherBatchSize         int32
-	publisherTick              time.Duration
-	cancellationTick           time.Duration
-	finalizationTick           time.Duration
-	failureTick                time.Duration
-	artifactCleanupTick        time.Duration
-	artifactS3Endpoint         string
-	artifactS3Region           string
-	artifactS3Bucket           string
-	artifactS3AccessKeyFile    string
-	artifactS3SecretKeyFile    string
-	artifactS3PathStyle        bool
-	leaseActiveKeyID           string
-	leaseKeyringFile           string
-	executionLeaseTTL          time.Duration
-	workerLostGrace            time.Duration
-	artifactValidatorHelper    string
-	artifactFFprobePath        string
-	artifactSandboxRoot        string
-	artifactSpoolDirectory     string
-	artifactFFprobeVersion     string
-	artifactValidatorRevision  string
-	artifactInspectionTimeout  time.Duration
-	artifactMaxInputBytes      int64
-	artifactMaxProbeBytes      int64
-	artifactMaxStderrBytes     int64
-	artifactReconcilerID       string
-	artifactOrphanMinimumAge   time.Duration
-	artifactCleanupBatch       int
+	httpAddress                  string
+	workerGRPCAddress            string
+	workerGRPCTLSCertFile        string
+	workerGRPCTLSKeyFile         string
+	workerGRPCClientCAFile       string
+	authDatabaseURL              string
+	requestDatabaseURL           string
+	artifactRequestDatabaseURL   string
+	cancelDatabaseURL            string
+	internalDatabaseURL          string
+	schedulerDatabaseURL         string
+	schedulerID                  string
+	schedulerTick                time.Duration
+	schedulerClaimTTL            time.Duration
+	schedulerCandidateAttempts   int
+	billingDatabaseURL           string
+	webhookRequestDatabaseURL    string
+	webhookDatabaseURL           string
+	webhookEncryptionActiveKeyID string
+	webhookEncryptionKeyringFile string
+	webhookDispatcherID          string
+	webhookTick                  time.Duration
+	webhookClaimTTL              time.Duration
+	webhookHTTPTimeout           time.Duration
+	webhookBatchSize             int32
+	invoiceExporterID            string
+	invoiceExportEndpoint        string
+	invoiceExportTokenFile       string
+	invoiceExportTick            time.Duration
+	invoiceExportClaimTTL        time.Duration
+	invoiceExportRetryDelay      time.Duration
+	invoiceExportHTTPTimeout     time.Duration
+	invoiceExportBatchSize       int32
+	credentialPepper             []byte
+	natsURL                      string
+	natsCredentials              string
+	natsRootCA                   string
+	natsClientCert               string
+	natsClientKey                string
+	publisherBatchSize           int32
+	publisherTick                time.Duration
+	cancellationTick             time.Duration
+	finalizationTick             time.Duration
+	failureTick                  time.Duration
+	artifactCleanupTick          time.Duration
+	artifactS3Endpoint           string
+	artifactS3Region             string
+	artifactS3Bucket             string
+	artifactS3AccessKeyFile      string
+	artifactS3SecretKeyFile      string
+	artifactS3PathStyle          bool
+	leaseActiveKeyID             string
+	leaseKeyringFile             string
+	executionLeaseTTL            time.Duration
+	workerLostGrace              time.Duration
+	artifactValidatorHelper      string
+	artifactFFprobePath          string
+	artifactSandboxRoot          string
+	artifactSpoolDirectory       string
+	artifactFFprobeVersion       string
+	artifactValidatorRevision    string
+	artifactInspectionTimeout    time.Duration
+	artifactMaxInputBytes        int64
+	artifactMaxProbeBytes        int64
+	artifactMaxStderrBytes       int64
+	artifactReconcilerID         string
+	artifactOrphanMinimumAge     time.Duration
+	artifactCleanupBatch         int
 }
 
 type cancellationStopReconciler interface {
@@ -152,6 +166,10 @@ type hierarchicalScheduler interface {
 
 type invoiceExporter interface {
 	ExportBatch(context.Context) (billingexport.BatchResult, error)
+}
+
+type webhookDispatcher interface {
+	DispatchBatch(context.Context) (webhook.BatchResult, error)
 }
 
 var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
@@ -211,6 +229,63 @@ func run() error {
 		return fmt.Errorf("open billing database pool: %w", err)
 	}
 	defer billingPool.Close()
+	webhookRequestPool, err := openPool(
+		ctx,
+		configuration.webhookRequestDatabaseURL,
+		20,
+		veladb.RoleWebhookRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open webhook request database pool: %w", err)
+	}
+	defer webhookRequestPool.Close()
+	webhookPool, err := openPool(ctx, configuration.webhookDatabaseURL, 10, veladb.RoleWebhook)
+	if err != nil {
+		return fmt.Errorf("open webhook database pool: %w", err)
+	}
+	defer webhookPool.Close()
+	webhookKeyring, err := readWebhookKeyring(configuration.webhookEncryptionKeyringFile)
+	if err != nil {
+		return err
+	}
+	webhookSealer, err := webhook.NewAESGCMSealer(
+		configuration.webhookEncryptionActiveKeyID,
+		webhookKeyring,
+	)
+	clearKeyring(webhookKeyring)
+	if err != nil {
+		return fmt.Errorf("configure webhook secret encryption: %w", err)
+	}
+	webhookHTTPClient, err := webhook.NewProductionHTTPClient(configuration.webhookHTTPTimeout)
+	if err != nil {
+		return fmt.Errorf("configure webhook HTTP client: %w", err)
+	}
+	webhookAdapter, err := webhook.NewHTTPAdapter(webhookHTTPClient)
+	if err != nil {
+		return fmt.Errorf("configure webhook HTTP adapter: %w", err)
+	}
+	webhookDeliveryDispatcher, err := webhook.NewDispatcher(
+		webhookPool,
+		webhookSealer,
+		webhookAdapter,
+		webhook.DispatcherConfig{
+			InstanceID:      configuration.webhookDispatcherID,
+			BatchSize:       configuration.webhookBatchSize,
+			ClaimTTL:        configuration.webhookClaimTTL,
+			DeliveryTimeout: configuration.webhookHTTPTimeout,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure webhook Dispatcher: %w", err)
+	}
+	webhookService, err := webhook.NewService(
+		webhookRequestPool,
+		webhookSealer,
+		net.DefaultResolver,
+	)
+	if err != nil {
+		return fmt.Errorf("configure webhook service: %w", err)
+	}
 	invoiceBearerToken, err := readSecretFile(
 		configuration.invoiceExportTokenFile,
 		"Invoice export bearer token",
@@ -348,6 +423,7 @@ func run() error {
 		Admission:     admission.NewService(requestPool, capacityPredictor),
 		Cancellation:  cancellationService,
 		Artifacts:     artifactaccess.NewService(artifactRequestPool, artifactStore),
+		Webhooks:      webhookService,
 	})
 	if err != nil {
 		return err
@@ -367,6 +443,8 @@ func run() error {
 			internalPool,
 			schedulerPool,
 			billingPool,
+			webhookRequestPool,
+			webhookPool,
 		),
 	)
 	mux.Handle("/", apiHandler)
@@ -417,6 +495,11 @@ func run() error {
 	go func() {
 		defer close(invoiceDone)
 		runInvoiceExporter(ctx, invoiceService, configuration.invoiceExportTick)
+	}()
+	webhookDone := make(chan struct{})
+	go func() {
+		defer close(webhookDone)
+		runWebhookDispatcher(ctx, webhookDeliveryDispatcher, configuration.webhookTick)
 	}()
 	httpServerErrors := make(chan error, 1)
 	go func() {
@@ -499,6 +582,11 @@ func run() error {
 	case <-shutdownContext.Done():
 		return errors.New("invoice exporter did not stop before shutdown deadline")
 	}
+	select {
+	case <-webhookDone:
+	case <-shutdownContext.Done():
+		return errors.New("webhook Dispatcher did not stop before shutdown deadline")
+	}
 	if err := natsConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 		return fmt.Errorf("drain NATS connection: %w", err)
 	}
@@ -510,63 +598,72 @@ func run() error {
 
 func loadConfig() (config, error) {
 	configuration := config{
-		httpAddress:                envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
-		workerGRPCAddress:          envOrDefault("VELA_WORKER_GRPC_ADDRESS", defaultWorkerGRPCAddress),
-		workerGRPCTLSCertFile:      os.Getenv("VELA_WORKER_GRPC_TLS_CERT_FILE"),
-		workerGRPCTLSKeyFile:       os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
-		workerGRPCClientCAFile:     os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
-		authDatabaseURL:            os.Getenv("VELA_AUTH_DATABASE_URL"),
-		requestDatabaseURL:         os.Getenv("VELA_REQUEST_DATABASE_URL"),
-		artifactRequestDatabaseURL: os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
-		cancelDatabaseURL:          os.Getenv("VELA_CANCEL_DATABASE_URL"),
-		internalDatabaseURL:        os.Getenv("VELA_INTERNAL_DATABASE_URL"),
-		schedulerDatabaseURL:       os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
-		schedulerID:                os.Getenv("VELA_SCHEDULER_ID"),
-		schedulerTick:              defaultSchedulerTick,
-		schedulerClaimTTL:          defaultSchedulerClaimTTL,
-		schedulerCandidateAttempts: defaultSchedulerCandidateAttempts,
-		billingDatabaseURL:         os.Getenv("VELA_BILLING_DATABASE_URL"),
-		invoiceExporterID:          os.Getenv("VELA_INVOICE_EXPORTER_ID"),
-		invoiceExportEndpoint:      os.Getenv("VELA_INVOICE_EXPORT_ENDPOINT"),
-		invoiceExportTokenFile:     os.Getenv("VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE"),
-		invoiceExportTick:          defaultInvoiceExportTick,
-		invoiceExportClaimTTL:      defaultInvoiceExportClaimTTL,
-		invoiceExportRetryDelay:    defaultInvoiceExportRetryDelay,
-		invoiceExportHTTPTimeout:   defaultInvoiceExportHTTPTimeout,
-		invoiceExportBatchSize:     defaultInvoiceExportBatchSize,
-		natsURL:                    os.Getenv("VELA_NATS_URL"),
-		natsCredentials:            os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
-		natsRootCA:                 os.Getenv("VELA_NATS_ROOT_CA_FILE"),
-		natsClientCert:             os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
-		natsClientKey:              os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
-		artifactS3Endpoint:         os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
-		artifactS3Region:           os.Getenv("VELA_ARTIFACT_S3_REGION"),
-		artifactS3Bucket:           os.Getenv("VELA_ARTIFACT_S3_BUCKET"),
-		artifactS3AccessKeyFile:    os.Getenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"),
-		artifactS3SecretKeyFile:    os.Getenv("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE"),
-		publisherBatchSize:         defaultPublisherBatch,
-		publisherTick:              defaultPublisherTick,
-		cancellationTick:           defaultCancellationReconciliationTick,
-		finalizationTick:           defaultFinalizationReconciliationTick,
-		failureTick:                defaultFailureReconciliationTick,
-		artifactCleanupTick:        defaultArtifactCleanupTick,
-		leaseActiveKeyID:           os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
-		leaseKeyringFile:           os.Getenv("VELA_LEASE_KEYRING_FILE"),
-		executionLeaseTTL:          defaultExecutionLeaseTTL,
-		workerLostGrace:            defaultWorkerLostGrace,
-		artifactValidatorHelper:    os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
-		artifactFFprobePath:        os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
-		artifactSandboxRoot:        os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
-		artifactSpoolDirectory:     os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
-		artifactFFprobeVersion:     os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
-		artifactValidatorRevision:  os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
-		artifactInspectionTimeout:  defaultArtifactInspectionTimeout,
-		artifactMaxInputBytes:      defaultArtifactMaxInputBytes,
-		artifactMaxProbeBytes:      defaultArtifactMaxProbeBytes,
-		artifactMaxStderrBytes:     defaultArtifactMaxStderrBytes,
-		artifactReconcilerID:       os.Getenv("VELA_ARTIFACT_RECONCILER_ID"),
-		artifactOrphanMinimumAge:   defaultArtifactOrphanMinimumAge,
-		artifactCleanupBatch:       defaultArtifactCleanupBatch,
+		httpAddress:                  envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
+		workerGRPCAddress:            envOrDefault("VELA_WORKER_GRPC_ADDRESS", defaultWorkerGRPCAddress),
+		workerGRPCTLSCertFile:        os.Getenv("VELA_WORKER_GRPC_TLS_CERT_FILE"),
+		workerGRPCTLSKeyFile:         os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
+		workerGRPCClientCAFile:       os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
+		authDatabaseURL:              os.Getenv("VELA_AUTH_DATABASE_URL"),
+		requestDatabaseURL:           os.Getenv("VELA_REQUEST_DATABASE_URL"),
+		artifactRequestDatabaseURL:   os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
+		cancelDatabaseURL:            os.Getenv("VELA_CANCEL_DATABASE_URL"),
+		internalDatabaseURL:          os.Getenv("VELA_INTERNAL_DATABASE_URL"),
+		schedulerDatabaseURL:         os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
+		schedulerID:                  os.Getenv("VELA_SCHEDULER_ID"),
+		schedulerTick:                defaultSchedulerTick,
+		schedulerClaimTTL:            defaultSchedulerClaimTTL,
+		schedulerCandidateAttempts:   defaultSchedulerCandidateAttempts,
+		billingDatabaseURL:           os.Getenv("VELA_BILLING_DATABASE_URL"),
+		webhookRequestDatabaseURL:    os.Getenv("VELA_WEBHOOK_REQUEST_DATABASE_URL"),
+		webhookDatabaseURL:           os.Getenv("VELA_WEBHOOK_DATABASE_URL"),
+		webhookEncryptionActiveKeyID: os.Getenv("VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID"),
+		webhookEncryptionKeyringFile: os.Getenv("VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE"),
+		webhookDispatcherID:          os.Getenv("VELA_WEBHOOK_DISPATCHER_ID"),
+		webhookTick:                  defaultWebhookTick,
+		webhookClaimTTL:              defaultWebhookClaimTTL,
+		webhookHTTPTimeout:           defaultWebhookHTTPTimeout,
+		webhookBatchSize:             defaultWebhookBatchSize,
+		invoiceExporterID:            os.Getenv("VELA_INVOICE_EXPORTER_ID"),
+		invoiceExportEndpoint:        os.Getenv("VELA_INVOICE_EXPORT_ENDPOINT"),
+		invoiceExportTokenFile:       os.Getenv("VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE"),
+		invoiceExportTick:            defaultInvoiceExportTick,
+		invoiceExportClaimTTL:        defaultInvoiceExportClaimTTL,
+		invoiceExportRetryDelay:      defaultInvoiceExportRetryDelay,
+		invoiceExportHTTPTimeout:     defaultInvoiceExportHTTPTimeout,
+		invoiceExportBatchSize:       defaultInvoiceExportBatchSize,
+		natsURL:                      os.Getenv("VELA_NATS_URL"),
+		natsCredentials:              os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
+		natsRootCA:                   os.Getenv("VELA_NATS_ROOT_CA_FILE"),
+		natsClientCert:               os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
+		natsClientKey:                os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
+		artifactS3Endpoint:           os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
+		artifactS3Region:             os.Getenv("VELA_ARTIFACT_S3_REGION"),
+		artifactS3Bucket:             os.Getenv("VELA_ARTIFACT_S3_BUCKET"),
+		artifactS3AccessKeyFile:      os.Getenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"),
+		artifactS3SecretKeyFile:      os.Getenv("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE"),
+		publisherBatchSize:           defaultPublisherBatch,
+		publisherTick:                defaultPublisherTick,
+		cancellationTick:             defaultCancellationReconciliationTick,
+		finalizationTick:             defaultFinalizationReconciliationTick,
+		failureTick:                  defaultFailureReconciliationTick,
+		artifactCleanupTick:          defaultArtifactCleanupTick,
+		leaseActiveKeyID:             os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
+		leaseKeyringFile:             os.Getenv("VELA_LEASE_KEYRING_FILE"),
+		executionLeaseTTL:            defaultExecutionLeaseTTL,
+		workerLostGrace:              defaultWorkerLostGrace,
+		artifactValidatorHelper:      os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
+		artifactFFprobePath:          os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
+		artifactSandboxRoot:          os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
+		artifactSpoolDirectory:       os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
+		artifactFFprobeVersion:       os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
+		artifactValidatorRevision:    os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
+		artifactInspectionTimeout:    defaultArtifactInspectionTimeout,
+		artifactMaxInputBytes:        defaultArtifactMaxInputBytes,
+		artifactMaxProbeBytes:        defaultArtifactMaxProbeBytes,
+		artifactMaxStderrBytes:       defaultArtifactMaxStderrBytes,
+		artifactReconcilerID:         os.Getenv("VELA_ARTIFACT_RECONCILER_ID"),
+		artifactOrphanMinimumAge:     defaultArtifactOrphanMinimumAge,
+		artifactCleanupBatch:         defaultArtifactCleanupBatch,
 	}
 	for name, value := range map[string]string{
 		"VELA_AUTH_DATABASE_URL":                  configuration.authDatabaseURL,
@@ -577,6 +674,11 @@ func loadConfig() (config, error) {
 		"VELA_SCHEDULER_DATABASE_URL":             configuration.schedulerDatabaseURL,
 		"VELA_SCHEDULER_ID":                       configuration.schedulerID,
 		"VELA_BILLING_DATABASE_URL":               configuration.billingDatabaseURL,
+		"VELA_WEBHOOK_REQUEST_DATABASE_URL":       configuration.webhookRequestDatabaseURL,
+		"VELA_WEBHOOK_DATABASE_URL":               configuration.webhookDatabaseURL,
+		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":   configuration.webhookEncryptionActiveKeyID,
+		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":    configuration.webhookEncryptionKeyringFile,
+		"VELA_WEBHOOK_DISPATCHER_ID":              configuration.webhookDispatcherID,
 		"VELA_INVOICE_EXPORTER_ID":                configuration.invoiceExporterID,
 		"VELA_INVOICE_EXPORT_ENDPOINT":            configuration.invoiceExportEndpoint,
 		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":   configuration.invoiceExportTokenFile,
@@ -680,6 +782,34 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_INVOICE_EXPORT_HTTP_TIMEOUT must be in (0, 1m]")
 		}
 		configuration.invoiceExportHTTPTimeout = timeout
+	}
+	if value := os.Getenv("VELA_WEBHOOK_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_WEBHOOK_TICK must be in (0, 1m]")
+		}
+		configuration.webhookTick = tick
+	}
+	if value := os.Getenv("VELA_WEBHOOK_CLAIM_TTL"); value != "" {
+		claimTTL, err := time.ParseDuration(value)
+		if err != nil || claimTTL <= 0 || claimTTL > time.Hour {
+			return config{}, errors.New("environment variable VELA_WEBHOOK_CLAIM_TTL must be in (0, 1h]")
+		}
+		configuration.webhookClaimTTL = claimTTL
+	}
+	if value := os.Getenv("VELA_WEBHOOK_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.ParseInt(value, 10, 32)
+		if err != nil || batchSize < 1 || batchSize > 1000 {
+			return config{}, errors.New("environment variable VELA_WEBHOOK_BATCH_SIZE must be between 1 and 1000")
+		}
+		configuration.webhookBatchSize = int32(batchSize)
+	}
+	if value := os.Getenv("VELA_WEBHOOK_HTTP_TIMEOUT"); value != "" {
+		timeout, err := time.ParseDuration(value)
+		if err != nil || timeout <= 0 || timeout > time.Minute {
+			return config{}, errors.New("environment variable VELA_WEBHOOK_HTTP_TIMEOUT must be in (0, 1m]")
+		}
+		configuration.webhookHTTPTimeout = timeout
 	}
 	return configuration, nil
 }
@@ -850,27 +980,35 @@ func readSecretFile(path string, description string, maxBytes int64) (string, er
 }
 
 func readLeaseKeyring(path string) (map[string][]byte, error) {
+	return readKeyring(path, "Lease", 32, 4096)
+}
+
+func readWebhookKeyring(path string) (map[string][]byte, error) {
+	return readKeyring(path, "webhook encryption", 32, 32)
+}
+
+func readKeyring(path, description string, minimumKeyBytes, maximumKeyBytes int) (map[string][]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("open Lease keyring file: %w", err)
+		return nil, fmt.Errorf("open %s keyring file: %w", description, err)
 	}
 	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
-		return nil, errors.New("lease keyring must be a regular file")
+		return nil, fmt.Errorf("%s keyring must be a regular file", description)
 	}
 	content, err := io.ReadAll(io.LimitReader(file, 64*1024+1))
 	if err != nil {
-		return nil, fmt.Errorf("read Lease keyring file: %w", err)
+		return nil, fmt.Errorf("read %s keyring file: %w", description, err)
 	}
 	defer clear(content)
 	if len(content) == 0 || len(content) > 64*1024 {
-		return nil, errors.New("lease keyring file is empty or exceeds configured bounds")
+		return nil, fmt.Errorf("%s keyring file is empty or exceeds configured bounds", description)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	opening, err := decoder.Token()
 	if err != nil || opening != json.Delim('{') {
-		return nil, errors.New("lease keyring must be one JSON object")
+		return nil, fmt.Errorf("%s keyring must be one JSON object", description)
 	}
 	keyring := make(map[string][]byte)
 	for decoder.More() {
@@ -878,46 +1016,55 @@ func readLeaseKeyring(path string) (map[string][]byte, error) {
 		keyID, ok := keyToken.(string)
 		if tokenErr != nil || !ok || keyID == "" || len(keyID) > 200 ||
 			strings.TrimSpace(keyID) != keyID || strings.ContainsAny(keyID, "\x00\r\n\t ") {
-			clearLeaseKeyring(keyring)
-			return nil, errors.New("lease keyring contains an invalid key id")
+			clearKeyring(keyring)
+			return nil, fmt.Errorf("%s keyring contains an invalid key id", description)
 		}
 		if _, duplicate := keyring[keyID]; duplicate {
-			clearLeaseKeyring(keyring)
-			return nil, errors.New("lease keyring contains a duplicate key id")
+			clearKeyring(keyring)
+			return nil, fmt.Errorf("%s keyring contains a duplicate key id", description)
 		}
 		var encoded string
 		if err := decoder.Decode(&encoded); err != nil {
-			clearLeaseKeyring(keyring)
-			return nil, errors.New("lease keyring values must be base64 strings")
+			clearKeyring(keyring)
+			return nil, fmt.Errorf("%s keyring values must be base64 strings", description)
 		}
 		key, decodeErr := base64.StdEncoding.Strict().DecodeString(encoded)
-		if decodeErr != nil || len(key) < 32 || len(key) > 4096 {
+		if decodeErr != nil || len(key) < minimumKeyBytes || len(key) > maximumKeyBytes {
 			clear(key)
-			clearLeaseKeyring(keyring)
-			return nil, errors.New("lease keyring values must encode 32 to 4096 bytes")
+			clearKeyring(keyring)
+			return nil, fmt.Errorf(
+				"%s keyring values must encode %d to %d bytes",
+				description,
+				minimumKeyBytes,
+				maximumKeyBytes,
+			)
 		}
 		keyring[keyID] = key
 		if len(keyring) > 32 {
-			clearLeaseKeyring(keyring)
-			return nil, errors.New("lease keyring contains too many keys")
+			clearKeyring(keyring)
+			return nil, fmt.Errorf("%s keyring contains too many keys", description)
 		}
 	}
 	closing, err := decoder.Token()
 	if err != nil || closing != json.Delim('}') {
-		clearLeaseKeyring(keyring)
-		return nil, errors.New("lease keyring JSON object is incomplete")
+		clearKeyring(keyring)
+		return nil, fmt.Errorf("%s keyring JSON object is incomplete", description)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		clearLeaseKeyring(keyring)
-		return nil, errors.New("lease keyring must contain one JSON document")
+		clearKeyring(keyring)
+		return nil, fmt.Errorf("%s keyring must contain one JSON document", description)
 	}
 	if len(keyring) == 0 {
-		return nil, errors.New("lease keyring contains no keys")
+		return nil, fmt.Errorf("%s keyring contains no keys", description)
 	}
 	return keyring, nil
 }
 
 func clearLeaseKeyring(keyring map[string][]byte) {
+	clearKeyring(keyring)
+}
+
+func clearKeyring(keyring map[string][]byte) {
 	for keyID, key := range keyring {
 		clear(key)
 		delete(keyring, keyID)
@@ -1016,6 +1163,39 @@ func runInvoiceExporter(ctx context.Context, exporter invoiceExporter, interval 
 			)
 		} else if err == nil && result.Exported > 0 {
 			slog.Info("Invoice lines exported", "exported", result.Exported)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runWebhookDispatcher(ctx context.Context, dispatcher webhookDispatcher, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		result, err := dispatcher.DispatchBatch(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn(
+				"Webhook Delivery batch incomplete",
+				"claimed", result.Claimed,
+				"delivered", result.Delivered,
+				"failed", result.Failed,
+				"error", err,
+			)
+		} else if err == nil && result.Delivered > 0 {
+			slog.Info(
+				"Webhook Deliveries completed",
+				"delivered", result.Delivered,
+				"failed", result.Failed,
+			)
 		}
 		select {
 		case <-ctx.Done():

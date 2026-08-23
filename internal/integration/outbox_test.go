@@ -32,6 +32,9 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 	seedAdmissionFixture(t, database.Admin)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	webhookRequestPool := newRolePool(
+		t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
+	)
 	artifactPool := newRolePool(
 		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
 	)
@@ -42,6 +45,7 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 		Admission:     admission.NewLegacyService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
+		Webhooks:      testWebhookService(t, webhookRequestPool),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)

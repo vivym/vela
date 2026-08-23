@@ -849,6 +849,179 @@ func (ns NullSchedulerLane) Value() (driver.Value, error) {
 	return string(ns.SchedulerLane), nil
 }
 
+type WebhookDeliveryAttemptState string
+
+const (
+	WebhookDeliveryAttemptStateSTARTED   WebhookDeliveryAttemptState = "STARTED"
+	WebhookDeliveryAttemptStateSUCCEEDED WebhookDeliveryAttemptState = "SUCCEEDED"
+	WebhookDeliveryAttemptStateFAILED    WebhookDeliveryAttemptState = "FAILED"
+	WebhookDeliveryAttemptStateABANDONED WebhookDeliveryAttemptState = "ABANDONED"
+)
+
+func (e *WebhookDeliveryAttemptState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WebhookDeliveryAttemptState(s)
+	case string:
+		*e = WebhookDeliveryAttemptState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WebhookDeliveryAttemptState: %T", src)
+	}
+	return nil
+}
+
+type NullWebhookDeliveryAttemptState struct {
+	WebhookDeliveryAttemptState WebhookDeliveryAttemptState `json:"webhook_delivery_attempt_state"`
+	Valid                       bool                        `json:"valid"` // Valid is true if WebhookDeliveryAttemptState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWebhookDeliveryAttemptState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WebhookDeliveryAttemptState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WebhookDeliveryAttemptState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWebhookDeliveryAttemptState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WebhookDeliveryAttemptState), nil
+}
+
+type WebhookDeliveryState string
+
+const (
+	WebhookDeliveryStatePENDING    WebhookDeliveryState = "PENDING"
+	WebhookDeliveryStateINFLIGHT   WebhookDeliveryState = "IN_FLIGHT"
+	WebhookDeliveryStateDELIVERED  WebhookDeliveryState = "DELIVERED"
+	WebhookDeliveryStateDEADLETTER WebhookDeliveryState = "DEAD_LETTER"
+)
+
+func (e *WebhookDeliveryState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WebhookDeliveryState(s)
+	case string:
+		*e = WebhookDeliveryState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WebhookDeliveryState: %T", src)
+	}
+	return nil
+}
+
+type NullWebhookDeliveryState struct {
+	WebhookDeliveryState WebhookDeliveryState `json:"webhook_delivery_state"`
+	Valid                bool                 `json:"valid"` // Valid is true if WebhookDeliveryState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWebhookDeliveryState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WebhookDeliveryState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WebhookDeliveryState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWebhookDeliveryState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WebhookDeliveryState), nil
+}
+
+type WebhookEventType string
+
+const (
+	WebhookEventTypeJobsucceeded WebhookEventType = "job.succeeded"
+	WebhookEventTypeJobfailed    WebhookEventType = "job.failed"
+	WebhookEventTypeJobcanceled  WebhookEventType = "job.canceled"
+)
+
+func (e *WebhookEventType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WebhookEventType(s)
+	case string:
+		*e = WebhookEventType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WebhookEventType: %T", src)
+	}
+	return nil
+}
+
+type NullWebhookEventType struct {
+	WebhookEventType WebhookEventType `json:"webhook_event_type"`
+	Valid            bool             `json:"valid"` // Valid is true if WebhookEventType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWebhookEventType) Scan(value interface{}) error {
+	if value == nil {
+		ns.WebhookEventType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WebhookEventType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWebhookEventType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WebhookEventType), nil
+}
+
+type WebhookSubscriptionState string
+
+const (
+	WebhookSubscriptionStateACTIVE   WebhookSubscriptionState = "ACTIVE"
+	WebhookSubscriptionStateDISABLED WebhookSubscriptionState = "DISABLED"
+)
+
+func (e *WebhookSubscriptionState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WebhookSubscriptionState(s)
+	case string:
+		*e = WebhookSubscriptionState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WebhookSubscriptionState: %T", src)
+	}
+	return nil
+}
+
+type NullWebhookSubscriptionState struct {
+	WebhookSubscriptionState WebhookSubscriptionState `json:"webhook_subscription_state"`
+	Valid                    bool                     `json:"valid"` // Valid is true if WebhookSubscriptionState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWebhookSubscriptionState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WebhookSubscriptionState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WebhookSubscriptionState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWebhookSubscriptionState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WebhookSubscriptionState), nil
+}
+
 type WorkerLifecycleState string
 
 const (
@@ -1743,6 +1916,99 @@ type VisibleCompletion struct {
 	JobVersion       int64              `db:"job_version" json:"job_version"`
 	CompletedAt      pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
 	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type WebhookDelivery struct {
+	ID                   uuid.UUID            `db:"id" json:"id"`
+	OrganizationID       uuid.UUID            `db:"organization_id" json:"organization_id"`
+	ProjectID            uuid.UUID            `db:"project_id" json:"project_id"`
+	SubscriptionID       uuid.UUID            `db:"subscription_id" json:"subscription_id"`
+	EventID              uuid.UUID            `db:"event_id" json:"event_id"`
+	AggregateType        string               `db:"aggregate_type" json:"aggregate_type"`
+	EventType            string               `db:"event_type" json:"event_type"`
+	JobID                uuid.UUID            `db:"job_id" json:"job_id"`
+	JobVersion           int64                `db:"job_version" json:"job_version"`
+	EventOccurredAt      pgtype.Timestamptz   `db:"event_occurred_at" json:"event_occurred_at"`
+	Payload              []byte               `db:"payload" json:"payload"`
+	State                WebhookDeliveryState `db:"state" json:"state"`
+	Generation           int32                `db:"generation" json:"generation"`
+	Attempts             int32                `db:"attempts" json:"attempts"`
+	AvailableAt          pgtype.Timestamptz   `db:"available_at" json:"available_at"`
+	RetryWindowStartedAt pgtype.Timestamptz   `db:"retry_window_started_at" json:"retry_window_started_at"`
+	RetryDeadlineAt      pgtype.Timestamptz   `db:"retry_deadline_at" json:"retry_deadline_at"`
+	ClaimedBy            *string              `db:"claimed_by" json:"claimed_by"`
+	ClaimToken           uuid.NullUUID        `db:"claim_token" json:"claim_token"`
+	ClaimExpiresAt       pgtype.Timestamptz   `db:"claim_expires_at" json:"claim_expires_at"`
+	LastAttemptAt        pgtype.Timestamptz   `db:"last_attempt_at" json:"last_attempt_at"`
+	DeliveredAt          pgtype.Timestamptz   `db:"delivered_at" json:"delivered_at"`
+	DeadLetteredAt       pgtype.Timestamptz   `db:"dead_lettered_at" json:"dead_lettered_at"`
+	LastHttpStatus       *int32               `db:"last_http_status" json:"last_http_status"`
+	LastError            *string              `db:"last_error" json:"last_error"`
+	CreatedAt            pgtype.Timestamptz   `db:"created_at" json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz   `db:"updated_at" json:"updated_at"`
+}
+
+type WebhookDeliveryAttempt struct {
+	ID                       uuid.UUID                   `db:"id" json:"id"`
+	OrganizationID           uuid.UUID                   `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID                   `db:"project_id" json:"project_id"`
+	SubscriptionID           uuid.UUID                   `db:"subscription_id" json:"subscription_id"`
+	DeliveryID               uuid.UUID                   `db:"delivery_id" json:"delivery_id"`
+	Generation               int32                       `db:"generation" json:"generation"`
+	AttemptNumber            int32                       `db:"attempt_number" json:"attempt_number"`
+	ClaimToken               uuid.UUID                   `db:"claim_token" json:"claim_token"`
+	ClaimedBy                string                      `db:"claimed_by" json:"claimed_by"`
+	ClaimedAt                pgtype.Timestamptz          `db:"claimed_at" json:"claimed_at"`
+	SignatureSecretRevisions []int32                     `db:"signature_secret_revisions" json:"signature_secret_revisions"`
+	State                    WebhookDeliveryAttemptState `db:"state" json:"state"`
+	CompletedAt              pgtype.Timestamptz          `db:"completed_at" json:"completed_at"`
+	HttpStatus               *int32                      `db:"http_status" json:"http_status"`
+	Error                    *string                     `db:"error" json:"error"`
+	CreatedAt                pgtype.Timestamptz          `db:"created_at" json:"created_at"`
+}
+
+type WebhookDeliveryReplay struct {
+	ID                      uuid.UUID            `db:"id" json:"id"`
+	OrganizationID          uuid.UUID            `db:"organization_id" json:"organization_id"`
+	ProjectID               uuid.UUID            `db:"project_id" json:"project_id"`
+	SubscriptionID          uuid.UUID            `db:"subscription_id" json:"subscription_id"`
+	DeliveryID              uuid.UUID            `db:"delivery_id" json:"delivery_id"`
+	FromState               WebhookDeliveryState `db:"from_state" json:"from_state"`
+	FromGeneration          int32                `db:"from_generation" json:"from_generation"`
+	ToGeneration            int32                `db:"to_generation" json:"to_generation"`
+	RequestedByPrincipalID  uuid.UUID            `db:"requested_by_principal_id" json:"requested_by_principal_id"`
+	RequestedByCredentialID uuid.UUID            `db:"requested_by_credential_id" json:"requested_by_credential_id"`
+	RequestedAt             pgtype.Timestamptz   `db:"requested_at" json:"requested_at"`
+}
+
+type WebhookSubscription struct {
+	ID                    uuid.UUID                `db:"id" json:"id"`
+	OrganizationID        uuid.UUID                `db:"organization_id" json:"organization_id"`
+	ProjectID             uuid.UUID                `db:"project_id" json:"project_id"`
+	EndpointUrl           string                   `db:"endpoint_url" json:"endpoint_url"`
+	EventTypes            []WebhookEventType       `db:"event_types" json:"event_types"`
+	State                 WebhookSubscriptionState `db:"state" json:"state"`
+	SecretOverlapSeconds  int32                    `db:"secret_overlap_seconds" json:"secret_overlap_seconds"`
+	CreatedByPrincipalID  uuid.UUID                `db:"created_by_principal_id" json:"created_by_principal_id"`
+	CreatedByCredentialID uuid.UUID                `db:"created_by_credential_id" json:"created_by_credential_id"`
+	CreatedAt             pgtype.Timestamptz       `db:"created_at" json:"created_at"`
+	DisabledAt            pgtype.Timestamptz       `db:"disabled_at" json:"disabled_at"`
+}
+
+type WebhookSubscriptionSecret struct {
+	ID                    uuid.UUID          `db:"id" json:"id"`
+	OrganizationID        uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID             uuid.UUID          `db:"project_id" json:"project_id"`
+	SubscriptionID        uuid.UUID          `db:"subscription_id" json:"subscription_id"`
+	Revision              int32              `db:"revision" json:"revision"`
+	EncryptionKeyID       string             `db:"encryption_key_id" json:"encryption_key_id"`
+	EncryptionNonce       []byte             `db:"encryption_nonce" json:"encryption_nonce"`
+	EncryptedSecret       []byte             `db:"encrypted_secret" json:"encrypted_secret"`
+	ValidFrom             pgtype.Timestamptz `db:"valid_from" json:"valid_from"`
+	ValidUntil            pgtype.Timestamptz `db:"valid_until" json:"valid_until"`
+	CreatedByPrincipalID  uuid.UUID          `db:"created_by_principal_id" json:"created_by_principal_id"`
+	CreatedByCredentialID uuid.UUID          `db:"created_by_credential_id" json:"created_by_credential_id"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type Worker struct {

@@ -14,6 +14,7 @@ import (
 	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/scheduler"
+	"github.com/vivym/vela/internal/webhook"
 )
 
 func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
@@ -27,6 +28,11 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
 		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
 		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
+		{name: "webhook request database", missingEnv: "VELA_WEBHOOK_REQUEST_DATABASE_URL"},
+		{name: "webhook database", missingEnv: "VELA_WEBHOOK_DATABASE_URL"},
+		{name: "webhook encryption active key", missingEnv: "VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID"},
+		{name: "webhook encryption keyring", missingEnv: "VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE"},
+		{name: "webhook Dispatcher identity", missingEnv: "VELA_WEBHOOK_DISPATCHER_ID"},
 		{name: "Invoice exporter identity", missingEnv: "VELA_INVOICE_EXPORTER_ID"},
 		{name: "Invoice endpoint", missingEnv: "VELA_INVOICE_EXPORT_ENDPOINT"},
 		{name: "Invoice bearer token", missingEnv: "VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE"},
@@ -71,6 +77,11 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
 	t.Setenv("VELA_SCHEDULER_ID", "vela-control-scheduler-1")
 	t.Setenv("VELA_BILLING_DATABASE_URL", "postgres://billing.example/vela")
+	t.Setenv("VELA_WEBHOOK_REQUEST_DATABASE_URL", "postgres://webhook-request.example/vela")
+	t.Setenv("VELA_WEBHOOK_DATABASE_URL", "postgres://webhook.example/vela")
+	t.Setenv("VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID", "webhook-key-v1")
+	t.Setenv("VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE", "/run/secrets/webhook-keyring.json")
+	t.Setenv("VELA_WEBHOOK_DISPATCHER_ID", "vela-control-webhook-dispatcher-1")
 	t.Setenv("VELA_INVOICE_EXPORTER_ID", "vela-control-invoice-exporter-1")
 	t.Setenv("VELA_INVOICE_EXPORT_ENDPOINT", "https://finance.example/v1/invoice-lines")
 	t.Setenv("VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE", "/run/secrets/invoice-bearer-token")
@@ -113,6 +124,90 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_INVOICE_EXPORT_RETRY_DELAY", "")
 	t.Setenv("VELA_INVOICE_EXPORT_BATCH_SIZE", "")
 	t.Setenv("VELA_INVOICE_EXPORT_HTTP_TIMEOUT", "")
+	t.Setenv("VELA_WEBHOOK_TICK", "")
+	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "")
+	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "")
+	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "")
+}
+
+func TestLoadConfigParsesBoundedWebhookControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load default webhook config: %v", err)
+	}
+	if configuration.webhookTick != 500*time.Millisecond ||
+		configuration.webhookClaimTTL != 30*time.Second ||
+		configuration.webhookBatchSize != 100 ||
+		configuration.webhookHTTPTimeout != 15*time.Second {
+		t.Fatalf("default webhook controls = %#v", configuration)
+	}
+
+	t.Setenv("VELA_WEBHOOK_TICK", "125ms")
+	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "45s")
+	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "25")
+	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "20s")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit webhook config: %v", err)
+	}
+	if configuration.webhookTick != 125*time.Millisecond ||
+		configuration.webhookClaimTTL != 45*time.Second ||
+		configuration.webhookBatchSize != 25 ||
+		configuration.webhookHTTPTimeout != 20*time.Second {
+		t.Fatalf("explicit webhook controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_WEBHOOK_TICK", value: "0s"},
+		{env: "VELA_WEBHOOK_TICK", value: "1m1s"},
+		{env: "VELA_WEBHOOK_CLAIM_TTL", value: "0s"},
+		{env: "VELA_WEBHOOK_CLAIM_TTL", value: "1h1s"},
+		{env: "VELA_WEBHOOK_BATCH_SIZE", value: "0"},
+		{env: "VELA_WEBHOOK_BATCH_SIZE", value: "1001"},
+		{env: "VELA_WEBHOOK_HTTP_TIMEOUT", value: "0s"},
+		{env: "VELA_WEBHOOK_HTTP_TIMEOUT", value: "1m1s"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil || !strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
+}
+
+func TestReadWebhookKeyringRequiresExactAES256Keys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "webhook-keyring.json")
+	strongKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	if err := os.WriteFile(path, []byte(`{"webhook-key-v1":"`+strongKey+`"}`), 0o600); err != nil {
+		t.Fatalf("write webhook keyring: %v", err)
+	}
+	keyring, err := readWebhookKeyring(path)
+	if err != nil {
+		t.Fatalf("readWebhookKeyring: %v", err)
+	}
+	if string(keyring["webhook-key-v1"]) != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("decoded webhook keyring = %#v", keyring)
+	}
+
+	for _, document := range []string{
+		`{"webhook-key-v1":"` + base64.StdEncoding.EncodeToString([]byte("too-short")) + `"}`,
+		`{"webhook-key-v1":"` + base64.StdEncoding.EncodeToString(make([]byte, 33)) + `"}`,
+		`{"webhook-key-v1":"` + strongKey + `"} {}`,
+		`{"":"` + strongKey + `"}`,
+	} {
+		if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+			t.Fatalf("write invalid webhook keyring: %v", err)
+		}
+		if _, err := readWebhookKeyring(path); err == nil {
+			t.Fatalf("readWebhookKeyring accepted %q", document)
+		}
+	}
 }
 
 func TestLoadConfigParsesBoundedInvoiceExportControls(t *testing.T) {
@@ -347,6 +442,30 @@ func TestInvoiceExporterRetriesTransientFailureAndStopsWithContext(t *testing.T)
 	}
 }
 
+func TestWebhookDispatcherRetriesTransientFailureAndStopsWithContext(t *testing.T) {
+	dispatcher := &testWebhookDispatcher{calls: make(chan struct{}, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runWebhookDispatcher(ctx, dispatcher, time.Millisecond)
+	}()
+
+	for range 2 {
+		select {
+		case <-dispatcher.calls:
+		case <-time.After(time.Second):
+			t.Fatal("webhook Dispatcher did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("webhook Dispatcher did not stop with context")
+	}
+}
+
 type testHierarchicalScheduler struct {
 	invocations atomic.Int32
 	calls       chan struct{}
@@ -356,6 +475,20 @@ type testHierarchicalScheduler struct {
 type testInvoiceExporter struct {
 	invocations atomic.Int32
 	calls       chan struct{}
+}
+
+type testWebhookDispatcher struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+}
+
+func (d *testWebhookDispatcher) DispatchBatch(context.Context) (webhook.BatchResult, error) {
+	invocation := d.invocations.Add(1)
+	d.calls <- struct{}{}
+	if invocation == 1 {
+		return webhook.BatchResult{Claimed: 1, Failed: 1}, errors.New("transient webhook failure")
+	}
+	return webhook.BatchResult{}, nil
 }
 
 func (e *testInvoiceExporter) ExportBatch(context.Context) (billingexport.BatchResult, error) {

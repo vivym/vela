@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -184,6 +185,69 @@ func (e SubmitJobRequestServiceClass) Valid() bool {
 	}
 }
 
+// Defines values for WebhookDeliveryState.
+const (
+	DEADLETTER WebhookDeliveryState = "DEAD_LETTER"
+	DELIVERED  WebhookDeliveryState = "DELIVERED"
+	INFLIGHT   WebhookDeliveryState = "IN_FLIGHT"
+	PENDING    WebhookDeliveryState = "PENDING"
+)
+
+// Valid indicates whether the value is a known member of the WebhookDeliveryState enum.
+func (e WebhookDeliveryState) Valid() bool {
+	switch e {
+	case DEADLETTER:
+		return true
+	case DELIVERED:
+		return true
+	case INFLIGHT:
+		return true
+	case PENDING:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebhookEventType.
+const (
+	JobCanceled  WebhookEventType = "job.canceled"
+	JobFailed    WebhookEventType = "job.failed"
+	JobSucceeded WebhookEventType = "job.succeeded"
+)
+
+// Valid indicates whether the value is a known member of the WebhookEventType enum.
+func (e WebhookEventType) Valid() bool {
+	switch e {
+	case JobCanceled:
+		return true
+	case JobFailed:
+		return true
+	case JobSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WebhookSubscriptionState.
+const (
+	ACTIVE   WebhookSubscriptionState = "ACTIVE"
+	DISABLED WebhookSubscriptionState = "DISABLED"
+)
+
+// Valid indicates whether the value is a known member of the WebhookSubscriptionState enum.
+func (e WebhookSubscriptionState) Valid() bool {
+	switch e {
+	case ACTIVE:
+		return true
+	case DISABLED:
+		return true
+	default:
+		return false
+	}
+}
+
 // ArtifactDownload defines model for ArtifactDownload.
 type ArtifactDownload struct {
 	ArtifactId           openapi_types.UUID   `json:"artifact_id"`
@@ -236,6 +300,24 @@ type Charge struct {
 // ChargeReason defines model for Charge.Reason.
 type ChargeReason string
 
+// CreateWebhookSubscriptionRequest defines model for CreateWebhookSubscriptionRequest.
+type CreateWebhookSubscriptionRequest struct {
+	Endpoint   string             `json:"endpoint"`
+	EventTypes []WebhookEventType `json:"event_types"`
+}
+
+// CreatedWebhookSubscription defines model for CreatedWebhookSubscription.
+type CreatedWebhookSubscription struct {
+	CreatedAt      time.Time                `json:"created_at"`
+	Endpoint       string                   `json:"endpoint"`
+	EventTypes     []WebhookEventType       `json:"event_types"`
+	ProjectId      openapi_types.UUID       `json:"project_id"`
+	SecretRevision int32                    `json:"secret_revision"`
+	SigningSecret  string                   `json:"signing_secret"`
+	State          WebhookSubscriptionState `json:"state"`
+	SubscriptionId openapi_types.UUID       `json:"subscription_id"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code      string  `json:"code"`
@@ -275,6 +357,19 @@ type PricingSnapshot struct {
 	UnitAmountMinor    int64              `json:"unit_amount_minor"`
 }
 
+// RotatedWebhookSubscription defines model for RotatedWebhookSubscription.
+type RotatedWebhookSubscription struct {
+	CreatedAt                time.Time                `json:"created_at"`
+	Endpoint                 string                   `json:"endpoint"`
+	EventTypes               []WebhookEventType       `json:"event_types"`
+	PreviousSecretValidUntil time.Time                `json:"previous_secret_valid_until"`
+	ProjectId                openapi_types.UUID       `json:"project_id"`
+	SecretRevision           int32                    `json:"secret_revision"`
+	SigningSecret            string                   `json:"signing_secret"`
+	State                    WebhookSubscriptionState `json:"state"`
+	SubscriptionId           openapi_types.UUID       `json:"subscription_id"`
+}
+
 // SubmitJobRequest defines model for SubmitJobRequest.
 type SubmitJobRequest struct {
 	ClientMetadata   *json.RawMessage                 `json:"client_metadata,omitempty"`
@@ -292,14 +387,73 @@ type SubmitJobRequestGenerationPreset string
 // SubmitJobRequestServiceClass defines model for SubmitJobRequest.ServiceClass.
 type SubmitJobRequestServiceClass string
 
+// WebhookDelivery defines model for WebhookDelivery.
+type WebhookDelivery struct {
+	Attempts        int32                `json:"attempts"`
+	CreatedAt       time.Time            `json:"created_at"`
+	DeadLetteredAt  *time.Time           `json:"dead_lettered_at,omitempty"`
+	DeliveredAt     *time.Time           `json:"delivered_at,omitempty"`
+	DeliveryId      openapi_types.UUID   `json:"delivery_id"`
+	EventId         openapi_types.UUID   `json:"event_id"`
+	EventType       WebhookEventType     `json:"event_type"`
+	Generation      int32                `json:"generation"`
+	JobId           openapi_types.UUID   `json:"job_id"`
+	JobVersion      int64                `json:"job_version"`
+	LastAttemptAt   *time.Time           `json:"last_attempt_at,omitempty"`
+	LastHttpStatus  *int32               `json:"last_http_status,omitempty"`
+	RetryDeadlineAt time.Time            `json:"retry_deadline_at"`
+	State           WebhookDeliveryState `json:"state"`
+	UpdatedAt       time.Time            `json:"updated_at"`
+}
+
+// WebhookDeliveryList defines model for WebhookDeliveryList.
+type WebhookDeliveryList struct {
+	Deliveries []WebhookDelivery `json:"deliveries"`
+}
+
+// WebhookDeliveryState defines model for WebhookDeliveryState.
+type WebhookDeliveryState string
+
+// WebhookEventType defines model for WebhookEventType.
+type WebhookEventType string
+
+// WebhookSubscription defines model for WebhookSubscription.
+type WebhookSubscription struct {
+	CreatedAt      time.Time                `json:"created_at"`
+	DisabledAt     *time.Time               `json:"disabled_at,omitempty"`
+	Endpoint       string                   `json:"endpoint"`
+	EventTypes     []WebhookEventType       `json:"event_types"`
+	ProjectId      openapi_types.UUID       `json:"project_id"`
+	SecretRevision int32                    `json:"secret_revision"`
+	State          WebhookSubscriptionState `json:"state"`
+	SubscriptionId openapi_types.UUID       `json:"subscription_id"`
+}
+
+// WebhookSubscriptionList defines model for WebhookSubscriptionList.
+type WebhookSubscriptionList struct {
+	Subscriptions []WebhookSubscription `json:"subscriptions"`
+}
+
+// WebhookSubscriptionState defines model for WebhookSubscriptionState.
+type WebhookSubscriptionState string
+
+// DeliveryId defines model for DeliveryId.
+type DeliveryId = openapi_types.UUID
+
 // IdempotencyKey defines model for IdempotencyKey.
 type IdempotencyKey = string
 
 // JobId defines model for JobId.
 type JobId = openapi_types.UUID
 
+// ListLimit defines model for ListLimit.
+type ListLimit = int32
+
 // ProjectId defines model for ProjectId.
 type ProjectId = openapi_types.UUID
+
+// SubscriptionId defines model for SubscriptionId.
+type SubscriptionId = openapi_types.UUID
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
@@ -315,8 +469,21 @@ type SubmitJobParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// ListWebhookSubscriptionsParams defines parameters for ListWebhookSubscriptions.
+type ListWebhookSubscriptionsParams struct {
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListWebhookDeliveriesParams defines parameters for ListWebhookDeliveries.
+type ListWebhookDeliveriesParams struct {
+	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // SubmitJobJSONRequestBody defines body for SubmitJob for application/json ContentType.
 type SubmitJobJSONRequestBody = SubmitJobRequest
+
+// CreateWebhookSubscriptionJSONRequestBody defines body for CreateWebhookSubscription for application/json ContentType.
+type CreateWebhookSubscriptionJSONRequestBody = CreateWebhookSubscriptionRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -332,6 +499,24 @@ type ServerInterface interface {
 	// CancelJob Commit a Customer Cancellation decision
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 	CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId)
+	// ListWebhookSubscriptions List safe Project Webhook Subscription projections
+	// (GET /v1/projects/{project_id}/webhook-subscriptions)
+	ListWebhookSubscriptions(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListWebhookSubscriptionsParams)
+	// CreateWebhookSubscription Create a Project Webhook Subscription
+	// (POST /v1/projects/{project_id}/webhook-subscriptions)
+	CreateWebhookSubscription(w http.ResponseWriter, r *http.Request, projectId ProjectId)
+	// ListWebhookDeliveries List safe Webhook Delivery projections
+	// (GET /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries)
+	ListWebhookDeliveries(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId, params ListWebhookDeliveriesParams)
+	// ReplayWebhookDelivery Manually replay a terminal Webhook Delivery
+	// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries/{delivery_id}/replay)
+	ReplayWebhookDelivery(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId, deliveryId DeliveryId)
+	// DisableWebhookSubscription Permanently disable a Webhook Subscription
+	// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/disable)
+	DisableWebhookSubscription(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId)
+	// RotateWebhookSubscriptionSecret Rotate a Webhook Subscription signing secret
+	// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/rotate-secret)
+	RotateWebhookSubscriptionSecret(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -359,6 +544,42 @@ func (_ Unimplemented) GetJobArtifacts(w http.ResponseWriter, r *http.Request, p
 // CancelJob Commit a Customer Cancellation decision
 // (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 func (_ Unimplemented) CancelJob(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListWebhookSubscriptions List safe Project Webhook Subscription projections
+// (GET /v1/projects/{project_id}/webhook-subscriptions)
+func (_ Unimplemented) ListWebhookSubscriptions(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListWebhookSubscriptionsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateWebhookSubscription Create a Project Webhook Subscription
+// (POST /v1/projects/{project_id}/webhook-subscriptions)
+func (_ Unimplemented) CreateWebhookSubscription(w http.ResponseWriter, r *http.Request, projectId ProjectId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListWebhookDeliveries List safe Webhook Delivery projections
+// (GET /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries)
+func (_ Unimplemented) ListWebhookDeliveries(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId, params ListWebhookDeliveriesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReplayWebhookDelivery Manually replay a terminal Webhook Delivery
+// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries/{delivery_id}/replay)
+func (_ Unimplemented) ReplayWebhookDelivery(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId, deliveryId DeliveryId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DisableWebhookSubscription Permanently disable a Webhook Subscription
+// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/disable)
+func (_ Unimplemented) DisableWebhookSubscription(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RotateWebhookSubscriptionSecret Rotate a Webhook Subscription signing secret
+// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/rotate-secret)
+func (_ Unimplemented) RotateWebhookSubscriptionSecret(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -530,6 +751,239 @@ func (siw *ServerInterfaceWrapper) CancelJob(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListWebhookSubscriptions operation middleware
+func (siw *ServerInterfaceWrapper) ListWebhookSubscriptions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWebhookSubscriptionsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWebhookSubscriptions(w, r, projectId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateWebhookSubscription operation middleware
+func (siw *ServerInterfaceWrapper) CreateWebhookSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWebhookSubscription(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWebhookDeliveries operation middleware
+func (siw *ServerInterfaceWrapper) ListWebhookDeliveries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "subscription_id" -------------
+	var subscriptionId SubscriptionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscription_id", chi.URLParam(r, "subscription_id"), &subscriptionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subscription_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWebhookDeliveriesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWebhookDeliveries(w, r, projectId, subscriptionId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReplayWebhookDelivery operation middleware
+func (siw *ServerInterfaceWrapper) ReplayWebhookDelivery(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "subscription_id" -------------
+	var subscriptionId SubscriptionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscription_id", chi.URLParam(r, "subscription_id"), &subscriptionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subscription_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "delivery_id" -------------
+	var deliveryId DeliveryId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "delivery_id", chi.URLParam(r, "delivery_id"), &deliveryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "delivery_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReplayWebhookDelivery(w, r, projectId, subscriptionId, deliveryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DisableWebhookSubscription operation middleware
+func (siw *ServerInterfaceWrapper) DisableWebhookSubscription(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "subscription_id" -------------
+	var subscriptionId SubscriptionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscription_id", chi.URLParam(r, "subscription_id"), &subscriptionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subscription_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DisableWebhookSubscription(w, r, projectId, subscriptionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RotateWebhookSubscriptionSecret operation middleware
+func (siw *ServerInterfaceWrapper) RotateWebhookSubscriptionSecret(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "subscription_id" -------------
+	var subscriptionId SubscriptionId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "subscription_id", chi.URLParam(r, "subscription_id"), &subscriptionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "subscription_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RotateWebhookSubscriptionSecret(w, r, projectId, subscriptionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -654,6 +1108,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/artifacts", wrapper.GetJobArtifacts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/webhook-subscriptions", wrapper.ListWebhookSubscriptions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/webhook-subscriptions", wrapper.CreateWebhookSubscription)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/rotate-secret", wrapper.RotateWebhookSubscriptionSecret)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/disable", wrapper.DisableWebhookSubscription)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries", wrapper.ListWebhookDeliveries)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries/{delivery_id}/replay", wrapper.ReplayWebhookDelivery)
 	})
 
 	return r
@@ -1002,6 +1474,468 @@ func (response CancelJob404JSONResponse) VisitCancelJobResponse(w http.ResponseW
 	return err
 }
 
+type ListWebhookSubscriptionsRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	Params    ListWebhookSubscriptionsParams
+}
+
+type ListWebhookSubscriptionsResponseObject interface {
+	VisitListWebhookSubscriptionsResponse(w http.ResponseWriter) error
+}
+
+type ListWebhookSubscriptions200JSONResponse WebhookSubscriptionList
+
+func (response ListWebhookSubscriptions200JSONResponse) VisitListWebhookSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWebhookSubscriptions400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListWebhookSubscriptions400JSONResponse) VisitListWebhookSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWebhookSubscriptions401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListWebhookSubscriptions401JSONResponse) VisitListWebhookSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWebhookSubscriptions403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListWebhookSubscriptions403JSONResponse) VisitListWebhookSubscriptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWebhookSubscriptionRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	Body      *CreateWebhookSubscriptionJSONRequestBody
+}
+
+type CreateWebhookSubscriptionResponseObject interface {
+	VisitCreateWebhookSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type CreateWebhookSubscription201JSONResponse CreatedWebhookSubscription
+
+func (response CreateWebhookSubscription201JSONResponse) VisitCreateWebhookSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWebhookSubscription400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateWebhookSubscription400JSONResponse) VisitCreateWebhookSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWebhookSubscription401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateWebhookSubscription401JSONResponse) VisitCreateWebhookSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWebhookSubscription403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateWebhookSubscription403JSONResponse) VisitCreateWebhookSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWebhookDeliveriesRequestObject struct {
+	ProjectId      ProjectId      `json:"project_id"`
+	SubscriptionId SubscriptionId `json:"subscription_id"`
+	Params         ListWebhookDeliveriesParams
+}
+
+type ListWebhookDeliveriesResponseObject interface {
+	VisitListWebhookDeliveriesResponse(w http.ResponseWriter) error
+}
+
+type ListWebhookDeliveries200JSONResponse WebhookDeliveryList
+
+func (response ListWebhookDeliveries200JSONResponse) VisitListWebhookDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWebhookDeliveries400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListWebhookDeliveries400JSONResponse) VisitListWebhookDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWebhookDeliveries401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListWebhookDeliveries401JSONResponse) VisitListWebhookDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWebhookDeliveries403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListWebhookDeliveries403JSONResponse) VisitListWebhookDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWebhookDeliveries404JSONResponse Error
+
+func (response ListWebhookDeliveries404JSONResponse) VisitListWebhookDeliveriesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplayWebhookDeliveryRequestObject struct {
+	ProjectId      ProjectId      `json:"project_id"`
+	SubscriptionId SubscriptionId `json:"subscription_id"`
+	DeliveryId     DeliveryId     `json:"delivery_id"`
+}
+
+type ReplayWebhookDeliveryResponseObject interface {
+	VisitReplayWebhookDeliveryResponse(w http.ResponseWriter) error
+}
+
+type ReplayWebhookDelivery200JSONResponse WebhookDelivery
+
+func (response ReplayWebhookDelivery200JSONResponse) VisitReplayWebhookDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplayWebhookDelivery400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReplayWebhookDelivery400JSONResponse) VisitReplayWebhookDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplayWebhookDelivery401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ReplayWebhookDelivery401JSONResponse) VisitReplayWebhookDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplayWebhookDelivery403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReplayWebhookDelivery403JSONResponse) VisitReplayWebhookDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplayWebhookDelivery404JSONResponse Error
+
+func (response ReplayWebhookDelivery404JSONResponse) VisitReplayWebhookDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReplayWebhookDelivery409JSONResponse Error
+
+func (response ReplayWebhookDelivery409JSONResponse) VisitReplayWebhookDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableWebhookSubscriptionRequestObject struct {
+	ProjectId      ProjectId      `json:"project_id"`
+	SubscriptionId SubscriptionId `json:"subscription_id"`
+}
+
+type DisableWebhookSubscriptionResponseObject interface {
+	VisitDisableWebhookSubscriptionResponse(w http.ResponseWriter) error
+}
+
+type DisableWebhookSubscription200JSONResponse WebhookSubscription
+
+func (response DisableWebhookSubscription200JSONResponse) VisitDisableWebhookSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableWebhookSubscription401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DisableWebhookSubscription401JSONResponse) VisitDisableWebhookSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableWebhookSubscription403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DisableWebhookSubscription403JSONResponse) VisitDisableWebhookSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DisableWebhookSubscription404JSONResponse Error
+
+func (response DisableWebhookSubscription404JSONResponse) VisitDisableWebhookSubscriptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateWebhookSubscriptionSecretRequestObject struct {
+	ProjectId      ProjectId      `json:"project_id"`
+	SubscriptionId SubscriptionId `json:"subscription_id"`
+}
+
+type RotateWebhookSubscriptionSecretResponseObject interface {
+	VisitRotateWebhookSubscriptionSecretResponse(w http.ResponseWriter) error
+}
+
+type RotateWebhookSubscriptionSecret200JSONResponse RotatedWebhookSubscription
+
+func (response RotateWebhookSubscriptionSecret200JSONResponse) VisitRotateWebhookSubscriptionSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateWebhookSubscriptionSecret400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RotateWebhookSubscriptionSecret400JSONResponse) VisitRotateWebhookSubscriptionSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateWebhookSubscriptionSecret401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RotateWebhookSubscriptionSecret401JSONResponse) VisitRotateWebhookSubscriptionSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateWebhookSubscriptionSecret403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RotateWebhookSubscriptionSecret403JSONResponse) VisitRotateWebhookSubscriptionSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateWebhookSubscriptionSecret404JSONResponse Error
+
+func (response RotateWebhookSubscriptionSecret404JSONResponse) VisitRotateWebhookSubscriptionSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateWebhookSubscriptionSecret409JSONResponse Error
+
+func (response RotateWebhookSubscriptionSecret409JSONResponse) VisitRotateWebhookSubscriptionSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// SubmitJob Submit a Job for durable Admission
@@ -1016,6 +1950,24 @@ type StrictServerInterface interface {
 	// CancelJob Commit a Customer Cancellation decision
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/cancel)
 	CancelJob(ctx context.Context, request CancelJobRequestObject) (CancelJobResponseObject, error)
+	// ListWebhookSubscriptions List safe Project Webhook Subscription projections
+	// (GET /v1/projects/{project_id}/webhook-subscriptions)
+	ListWebhookSubscriptions(ctx context.Context, request ListWebhookSubscriptionsRequestObject) (ListWebhookSubscriptionsResponseObject, error)
+	// CreateWebhookSubscription Create a Project Webhook Subscription
+	// (POST /v1/projects/{project_id}/webhook-subscriptions)
+	CreateWebhookSubscription(ctx context.Context, request CreateWebhookSubscriptionRequestObject) (CreateWebhookSubscriptionResponseObject, error)
+	// ListWebhookDeliveries List safe Webhook Delivery projections
+	// (GET /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries)
+	ListWebhookDeliveries(ctx context.Context, request ListWebhookDeliveriesRequestObject) (ListWebhookDeliveriesResponseObject, error)
+	// ReplayWebhookDelivery Manually replay a terminal Webhook Delivery
+	// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries/{delivery_id}/replay)
+	ReplayWebhookDelivery(ctx context.Context, request ReplayWebhookDeliveryRequestObject) (ReplayWebhookDeliveryResponseObject, error)
+	// DisableWebhookSubscription Permanently disable a Webhook Subscription
+	// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/disable)
+	DisableWebhookSubscription(ctx context.Context, request DisableWebhookSubscriptionRequestObject) (DisableWebhookSubscriptionResponseObject, error)
+	// RotateWebhookSubscriptionSecret Rotate a Webhook Subscription signing secret
+	// (POST /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/rotate-secret)
+	RotateWebhookSubscriptionSecret(ctx context.Context, request RotateWebhookSubscriptionSecretRequestObject) (RotateWebhookSubscriptionSecretResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1172,46 +2124,233 @@ func (sh *strictHandler) CancelJob(w http.ResponseWriter, r *http.Request, proje
 	}
 }
 
+// ListWebhookSubscriptions operation middleware
+func (sh *strictHandler) ListWebhookSubscriptions(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListWebhookSubscriptionsParams) {
+	var request ListWebhookSubscriptionsRequestObject
+
+	request.ProjectId = projectId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWebhookSubscriptions(ctx, request.(ListWebhookSubscriptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWebhookSubscriptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWebhookSubscriptionsResponseObject); ok {
+		if err := validResponse.VisitListWebhookSubscriptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateWebhookSubscription operation middleware
+func (sh *strictHandler) CreateWebhookSubscription(w http.ResponseWriter, r *http.Request, projectId ProjectId) {
+	var request CreateWebhookSubscriptionRequestObject
+
+	request.ProjectId = projectId
+
+	var body CreateWebhookSubscriptionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWebhookSubscription(ctx, request.(CreateWebhookSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWebhookSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWebhookSubscriptionResponseObject); ok {
+		if err := validResponse.VisitCreateWebhookSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWebhookDeliveries operation middleware
+func (sh *strictHandler) ListWebhookDeliveries(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId, params ListWebhookDeliveriesParams) {
+	var request ListWebhookDeliveriesRequestObject
+
+	request.ProjectId = projectId
+	request.SubscriptionId = subscriptionId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWebhookDeliveries(ctx, request.(ListWebhookDeliveriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWebhookDeliveries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWebhookDeliveriesResponseObject); ok {
+		if err := validResponse.VisitListWebhookDeliveriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReplayWebhookDelivery operation middleware
+func (sh *strictHandler) ReplayWebhookDelivery(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId, deliveryId DeliveryId) {
+	var request ReplayWebhookDeliveryRequestObject
+
+	request.ProjectId = projectId
+	request.SubscriptionId = subscriptionId
+	request.DeliveryId = deliveryId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReplayWebhookDelivery(ctx, request.(ReplayWebhookDeliveryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReplayWebhookDelivery")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReplayWebhookDeliveryResponseObject); ok {
+		if err := validResponse.VisitReplayWebhookDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DisableWebhookSubscription operation middleware
+func (sh *strictHandler) DisableWebhookSubscription(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId) {
+	var request DisableWebhookSubscriptionRequestObject
+
+	request.ProjectId = projectId
+	request.SubscriptionId = subscriptionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DisableWebhookSubscription(ctx, request.(DisableWebhookSubscriptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DisableWebhookSubscription")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DisableWebhookSubscriptionResponseObject); ok {
+		if err := validResponse.VisitDisableWebhookSubscriptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RotateWebhookSubscriptionSecret operation middleware
+func (sh *strictHandler) RotateWebhookSubscriptionSecret(w http.ResponseWriter, r *http.Request, projectId ProjectId, subscriptionId SubscriptionId) {
+	var request RotateWebhookSubscriptionSecretRequestObject
+
+	request.ProjectId = projectId
+	request.SubscriptionId = subscriptionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RotateWebhookSubscriptionSecret(ctx, request.(RotateWebhookSubscriptionSecretRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RotateWebhookSubscriptionSecret")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RotateWebhookSubscriptionSecretResponseObject); ok {
+		if err := validResponse.VisitRotateWebhookSubscriptionSecretResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"5FpfU9s6Fv8qGm3f1iGB9na2eXND2k03pWwC3bntsB7ZPiGitmSkY0rK5LvvSLJjOzEE03Jn9t4nYltH",
-	"59/v/NERdzSSaSYFCNR0eEeXwGJQ9ucMUK38BYIyTzHoSPEMuRR0SOcQSRFrEsJCKiC4BBIlHAQSvZR5",
-	"EhNliIkfp1xrLsUB9aiOlpAys1fKBU/zlA4PPYqrDOiQcoFwCYqu12uPZkyxFLCQYxJDmkkEEa3+BSvz",
-	"hhsRnKTUo4KlZofasp5Z51EF1zlXENMhqhwaArDbKYhLXNLh4dE/PCPQ5tmwRwRlePz3q9/7wno/Br03",
-	"B8Gwd/H3F3QjsUbFxSU18n6Q4STeCJYxXFZiXckw4PGD0iykShnSIc1zu3KXwamSVxDhvUwy9/1nGa0N",
-	"sc6k0GAt/5bFM7jOQaN5iqRAEPYny7KER8yAoX+lDSLuamxeKFjQIf1bv4JW333V/bFSsvByE1EFI3LD",
-	"Eh7bncmC8QRiuvboO6lCHscgnl+OU8VFxDOWkIRF37SFdmlRUviB6EhmYAQ7FyzHpVT8B8TPL9tIQQwC",
-	"OUsI14SF2gScVIQLazULlWITw8NXyBcswmP5XSSSWQFZHHOzG0tOlcxAITeuXrBEg2dgtHl1R1lBblC1",
-	"HzxeqXvgPjSC7Ggw2A6yHfK4kDLIVdLkpzjdsz6A24wr0AHDBmnMEHrIU2jb4BsXVjEQJhV9pZ8nx+NP",
-	"1KNn/zz/+PbEn0zpRQuVDG2k3YAyea2wTT2fDB6hq1QxF6ypJhf48oh6VXIc7CZHj+olO/rttSGsZ6lB",
-	"7w3rLS7uXr9av2hTVfMfEIQrdI6ts3z9qs6yLR/XE8rXBigKE1bqtFmnwXwj/xZatrx/v3MrjzhORrkS",
-	"5nPApyJcw6NRXtLYDThCqveF804Yrq3FJ462MjlTiq1cIKUpR4S4E5yLQvMYHRQY0xsHdY+b+/BQmNCr",
-	"F7wWLlva1e3Z5tsRExEkxxBxzV0KLaN15J+MxtPxMfWKn5OT99Sj/nQ29o9/D+bno9F4fGy/l+/e+RND",
-	"0BbVjs8MdJ50BVHIk4SFiU15xb6hlAkwYX1pN05sGXh0Il0ydQn7YDVyq2yRiHjcES1xzaQPcmk6oBvO",
-	"zNIiFXTOOx7VyHCvFT7IcG7XbQNz2/A1YG50L3k0JfUqlzZs24rPjau6pJ1U5gKDlAupHrZLawlw8Hg0",
-	"mHKlTE+8XTL83peLu5ft5SKTumv2UcB0M0A/T+aTt9NxMPr08XQ6Ppt8OjGhej4/+/RxPAtczE59+/5i",
-	"X5apVPaa1qvpt5GhLn+bz1x71c1lkYzrAV7pnYLW7LL9m3ItbeGpPRoaBtV2rXLfQpQbeU+XTEPd1P8+",
-	"H5/bTHc6G5/6M5cJ349PxjP/zD28m5z408kX9zAbn81+D/7jT85ac+EHGXYFNCKkGepAI1PoOuE9GFbA",
-	"ukIMNPLUUi244HrZuTo+pUnskO0E3GJgz72dOGSlNx88EjR9X5IFmZKXCrT1AtxGSa75DXxkt8707vxX",
-	"iSFzl9TScsFha64ReRo6N2WKR0bMPdKdumVzwTK9lOgonWBBnsWdPV07zj7G8D9XKDZloXGILgvDDrQr",
-	"o+yAqgHrtgjeyNAWu/58Pnl/Yn/Ozk9OHo7bZtNTb3aKJserGqS2GN/2WMds+ISacp0zgRxX++Y/ZqW0",
-	"Nvy5KqkYQhAxFQcKbrju0H5ZyoSLR5fYXHD8OXG3INku+5ZkbXxrZm63Y61etgF0nocpxw8yrI19uuDC",
-	"jgCDFJDFDNn91C4xNdl79LZ3KXvFyystxcGMff9YFMS1Ry9BgHL9XGRUKg7eBZJe72sna+SZAu0Oi2UU",
-	"XucscVYLWWI6R2PfBdPYGj2pjCHZPffvP/bnmOUY6AyiJ1BnSqYZ7k5WHkGqQd3wCIIoYUWtKPTWyETM",
-	"VLy/BXM6t5lxe/umni1+26iyC0Era5Qrjqu5SdzFEQuYAuXnRr3y6V0ZX58hYdVgrJwz22OYXVhF7BIx",
-	"c2M1LhZyd6hdTPd6droXE6ZXIloqKWSuiT8hlR7EP50cmH05mnOfFcG8ox7dHHfo4cHgYGC9noFgGadD",
-	"+vJgcPCS2gHz0irWvznsF2VH9++qArTuX8nQrjCtrPlrYsfynsR0WMUpbQ7Lv7bXwGpJv5okr729i7cm",
-	"7+uLTU/7VsarXzbv3Mk66yb4TLbYHk0fDY5+GX9jx5Zp6wcZEhZFkCHEJM4VCxM7nnk1GNy340bEfm10",
-	"bkkO95M0ZsmW6OgPGClLgYpFSEwIcSRTnnIkXBMudL5Y8MhkdCfNy/0qVHN6S/Hm+eWvQZR8gxX5znTl",
-	"tO8clyTmiwUoEEhKSYxsR2/+iKsEd1twnUMOJCktC7dLlmvXS25ft/U2921tHIvV/drNnGX7m/PNcyMl",
-	"zRjyMAESsYxFHFdGm1ywG8bLccmv0MfUgDxNmVptMh1hxETjQqoiEKG6WrRF4+FE2r9zTf7aCHIJLQn1",
-	"PTx/NnW3hC6JNjLZ4Lkz2cj2fGht6A42T89J3bPAq+fHplGMayIkEtMvG3xwQXDJdXllR5uweg9ICs2Q",
-	"Ib+BzdVezUaPx1W/cSvwAML8zbr/d6jVb13as4Wb8pPaQsJETOCWRdgr+iRSXvToPxsk62pvQVMq++hO",
-	"YpisbMHS9lsLTO3/VrRa05Y3vZQKewm/gW3Tns+muhOI3cj8/q7T3QX8GfJk47qnDb21y4Oa8aUiCrKE",
-	"rUrk/YUzqAtwwsgo1yhTUKRhtM0dy7p+prNYqZ/mvl4YP5vzY4kke/tP+3R9sf5fAAAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

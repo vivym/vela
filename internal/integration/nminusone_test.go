@@ -34,7 +34,85 @@ const (
 	hierarchicalSchedulerNMinusOneCommit = "8d4fd9199348d5ccdca48c40ef3b4a19ee5c5284"
 	invoiceExportNMinusOneCommit         = "96760832c3b652827a9c5ce1732fbfa773ed0759"
 	profileCircuitNMinusOneCommit        = "e1c50543d854cbad0cc5a98fdaac51e78e2c837c"
+	webhookNMinusOneCommit               = "53f5d650adc30bacdcf9478786d71c1dcf6c1def"
 )
+
+func TestExactWebhookNMinusOneControlAndTerminalWriterRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, webhookNMinusOneCommit)
+	assertWebhookNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "webhook")
+	if _, err := database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant cancellation scope for webhook N-1 writer: %v", err)
+	}
+	subscriptionID := uuid.New()
+	if _, err := database.Admin.Exec(`
+		INSERT INTO webhook_subscriptions (
+			id, organization_id, project_id, endpoint_url, event_types,
+			created_by_principal_id, created_by_credential_id
+		) VALUES (
+			$1, $2, $3, 'https://hooks.example.com/n-minus-one',
+			ARRAY['job.canceled']::webhook_event_type[], $4, $5
+		)
+	`, subscriptionID, testOrganizationID, testProjectID, testPrincipalID, testCredentialID); err != nil {
+		t.Fatalf("seed webhook N-1 Subscription: %v", err)
+	}
+
+	jobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	result := runNMinusOneInvoiceChargeProbe(
+		t,
+		nMinusOne.InvoiceChargeProbe,
+		database.DSN,
+		uuid.MustParse(jobID),
+	)
+	if result.Decision != "CANCELED" || result.ChargeID != "" {
+		t.Fatalf("webhook N-1 cancellation result = %#v", result)
+	}
+
+	var eventType, deliveryState, deliveryJobID string
+	var deliveryCount int
+	if err := database.Admin.QueryRow(`
+		SELECT count(*), min(delivery.event_type), min(delivery.state::text),
+			min(delivery.job_id::text)
+		FROM webhook_deliveries AS delivery
+		WHERE delivery.subscription_id = $1
+	`, subscriptionID).Scan(&deliveryCount, &eventType, &deliveryState, &deliveryJobID); err != nil {
+		t.Fatalf("read webhook N-1 Delivery: %v", err)
+	}
+	if deliveryCount != 1 || eventType != "job.canceled" || deliveryState != "PENDING" ||
+		deliveryJobID != jobID {
+		t.Fatalf(
+			"webhook N-1 Delivery count=%d type=%s state=%s job=%s",
+			deliveryCount,
+			eventType,
+			deliveryState,
+			deliveryJobID,
+		)
+	}
+}
+
+func assertWebhookNMinusOneDatabaseStartupPassed(t *testing.T, output string) {
+	t.Helper()
+	if strings.Contains(output, "open auth database pool") ||
+		strings.Contains(output, "open request database pool") ||
+		strings.Contains(output, "open Artifact request database pool") ||
+		strings.Contains(output, "open cancellation database pool") ||
+		strings.Contains(output, "open internal database pool") ||
+		strings.Contains(output, "open Scheduler database pool") ||
+		strings.Contains(output, "open billing database pool") ||
+		!strings.Contains(output, "open Invoice export bearer token file") {
+		t.Fatalf("webhook N-1 startup did not reach Invoice token sentinel:\n%s", output)
+	}
+}
 
 func TestExactProfileCircuitNMinusOneWriterAcrossProtocolGate(t *testing.T) {
 	database := newPostgres(t)
@@ -1184,7 +1262,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		t.Fatalf("write N-1 Assignment probe: %v", err)
 	}
 	admissionProbeSourceName := "nminusone_admission_probe.go.txt"
-	if commit == profileCircuitNMinusOneCommit {
+	if commit == profileCircuitNMinusOneCommit || commit == webhookNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -1214,7 +1292,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		t.Fatalf("write N-1 Outbox probe: %v", err)
 	}
 	var invoiceChargeProbeDirectory string
-	if commit == invoiceExportNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
 		invoiceChargeProbeSource, err := os.ReadFile(filepath.Join(
 			repositoryRoot(t),
 			"internal",
@@ -1269,7 +1347,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		AssignmentProbe: filepath.Join(binaryDirectory, "vela-assignment-probe-n-minus-one"),
 		OutboxProbe:     filepath.Join(binaryDirectory, "vela-outbox-probe-n-minus-one"),
 	}
-	if commit == invoiceExportNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
 		binaries.InvoiceChargeProbe = filepath.Join(
 			binaryDirectory,
 			"vela-invoice-charge-probe-n-minus-one",
@@ -1316,7 +1394,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 Outbox probe: %v\n%s", err, output)
 		}
 	}
-	if commit == invoiceExportNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
 		build = exec.Command(
 			"go",
 			"build",

@@ -453,7 +453,7 @@ func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) 
 		t.Fatalf("re-expanded request queue projection = %q", expandedQueueProjection)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 10 {
+	if err != nil || version != 11 {
 		t.Fatalf("migration version after empty Scheduler Down/Up = %d error=%v", version, err)
 	}
 }
@@ -557,7 +557,7 @@ func TestHierarchicalSchedulerMigrationDefaultPolicyCatalogDownUpRestoresSurface
 	}
 	assertTableExists(t, database.Admin, "scheduler_dispatch_intents")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 10 {
+	if err != nil || version != 11 {
 		t.Fatalf("migration version after default-policy Down/Up = %d error=%v", version, err)
 	}
 }
@@ -925,7 +925,7 @@ func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	assertTableExists(t, database.Admin, "artifact_sets")
 	assertTableExists(t, database.Admin, "visible_completions")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 10 {
+	if err != nil || version != 11 {
 		t.Fatalf("migration version after empty Down/Up = %d error=%v", version, err)
 	}
 }
@@ -1091,6 +1091,7 @@ func TestCustomerCancellationUpgradesExactV5AuthorizationSemantics(t *testing.T)
 		CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
 		CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
+		CREATE ROLE vela_webhook_request_login LOGIN PASSWORD 'vela-webhook-request-password' IN ROLE vela_webhook_request;
 		CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
 	`); err != nil {
 		t.Fatalf("create application login roles: %v", err)
@@ -1221,7 +1222,7 @@ func exactV5PlusCurrentCancellationMigrations(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(directory, filepath.Base(cancellationMigration)), contents, 0o600); err != nil {
 		t.Fatalf("write current cancellation migration: %v", err)
 	}
-	for version := 7; version <= 10; version++ {
+	for version := 7; version <= 11; version++ {
 		name := fmt.Sprintf("%05d", version)
 		matches, globErr := filepath.Glob(
 			filepath.Join(repositoryRoot, "db", "migrations", name+"_*.sql"),
@@ -1543,7 +1544,12 @@ func TestExecutionFailureMigrationDownSerializesWithConcurrentFail(t *testing.T)
 		var postgresError *pgconn.PgError
 		if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
 			postgresError.ConstraintName != "execution_failure_contract_requires_drained_retry_wait" {
-			t.Fatalf("concurrent migration Down error = %v, want drained-Retry refusal", err)
+			t.Fatalf(
+				"concurrent migration Down error = %v detail=%q where=%q, want drained-Retry refusal",
+				err,
+				postgresError.Detail,
+				postgresError.Where,
+			)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("concurrent migration Down did not finish")
@@ -1933,7 +1939,12 @@ func TestCustomerCancellationMigrationDownSerializesWithConcurrentCancellation(t
 		var postgresError *pgconn.PgError
 		if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
 			postgresError.ConstraintName != "customer_cancellation_contract_requires_drained_canceling" {
-			t.Fatalf("concurrent cancellation migration Down error = %v, want CANCELING refusal", err)
+			t.Fatalf(
+				"concurrent cancellation migration Down error = %v detail=%q where=%q, want CANCELING refusal",
+				err,
+				postgresError.Detail,
+				postgresError.Where,
+			)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("concurrent cancellation migration Down did not finish")

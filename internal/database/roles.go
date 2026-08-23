@@ -19,6 +19,8 @@ const (
 	RoleArtifactRequest Role = "vela_artifact_request"
 	RoleScheduler       Role = "vela_scheduler"
 	RoleBilling         Role = "vela_billing"
+	RoleWebhookRequest  Role = "vela_webhook_request"
+	RoleWebhook         Role = "vela_webhook"
 )
 
 type rowQuerier interface {
@@ -38,6 +40,8 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleArtifactRequest: {verifyPrivileges: verifyArtifactRequestPrivileges},
 	RoleScheduler:       {verifyPrivileges: verifySchedulerPrivileges},
 	RoleBilling:         {verifyPrivileges: verifyBillingPrivileges},
+	RoleWebhookRequest:  {verifyPrivileges: verifyWebhookRequestPrivileges},
+	RoleWebhook:         {verifyPrivileges: verifyWebhookPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -172,6 +176,35 @@ func verifyBillingPrivileges(ctx context.Context, database rowQuerier, currentUs
 			"vela_claim_invoice_exports(text,uuid,integer,integer)",
 			"vela_mark_invoice_exported(uuid,uuid,uuid,text,text)",
 			"vela_mark_invoice_export_failed(uuid,uuid,integer,text)",
+		},
+	})
+}
+
+func verifyWebhookPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "webhook",
+		failureLabel:    "Webhook Delivery transaction",
+		functions: []string{
+			"vela_claim_webhook_deliveries(text,integer,integer)",
+			"vela_mark_webhook_delivered(uuid,uuid,integer)",
+			"vela_mark_webhook_failed(uuid,uuid,integer,text)",
+		},
+	})
+}
+
+func verifyWebhookRequestPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "webhook request",
+		failureLabel:    "Webhook management transaction",
+		functions: []string{
+			"vela_set_request_context(uuid,bytea,text)",
+			"vela_create_webhook_subscription(uuid,uuid,text,webhook_event_type[],uuid,text,bytea,bytea)",
+			"vela_lock_webhook_secret_rotation(uuid,uuid)",
+			"vela_rotate_webhook_secret(uuid,uuid,uuid,integer,text,bytea,bytea)",
+			"vela_disable_webhook_subscription(uuid,uuid)",
+			"vela_replay_webhook_delivery(uuid,uuid,uuid,uuid)",
+			"vela_list_webhook_subscriptions(uuid,integer)",
+			"vela_list_webhook_deliveries(uuid,uuid,integer)",
 		},
 	})
 }

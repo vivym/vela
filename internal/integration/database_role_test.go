@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	veladb "github.com/vivym/vela/internal/database"
@@ -23,8 +24,17 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	)
 	schedulerPool := newRolePool(t, database.DSN, "vela_scheduler_login", "vela-scheduler-password")
 	billingPool := newRolePool(t, database.DSN, "vela_billing_login", "vela-billing-password")
+	webhookRequestPool := newRolePool(
+		t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
+	)
+	webhookPool := newRolePool(t, database.DSN, "vela_webhook_login", "vela-webhook-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
-	for _, login := range []string{"vela_internal_login", "vela_billing_login"} {
+	for _, login := range []string{
+		"vela_internal_login",
+		"vela_billing_login",
+		"vela_webhook_request_login",
+		"vela_webhook_login",
+	} {
 		var inheritsBillingOwner bool
 		if err := database.Admin.QueryRow(
 			"SELECT pg_has_role($1, 'vela_billing_owner', 'MEMBER')",
@@ -48,6 +58,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
 		{name: "Scheduler", pool: schedulerPool, role: veladb.RoleScheduler},
 		{name: "billing", pool: billingPool, role: veladb.RoleBilling},
+		{name: "webhook request", pool: webhookRequestPool, role: veladb.RoleWebhookRequest},
+		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -88,6 +100,18 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "billing as internal", pool: billingPool, role: veladb.RoleInternal},
 		{name: "internal as billing", pool: internalPool, role: veladb.RoleBilling},
 		{name: "request as billing", pool: requestPool, role: veladb.RoleBilling},
+		{name: "webhook request as internal", pool: webhookRequestPool, role: veladb.RoleInternal},
+		{name: "internal as webhook request", pool: internalPool, role: veladb.RoleWebhookRequest},
+		{name: "request as webhook request", pool: requestPool, role: veladb.RoleWebhookRequest},
+		{name: "webhook request as request", pool: webhookRequestPool, role: veladb.RoleRequest},
+		{name: "webhook as webhook request", pool: webhookPool, role: veladb.RoleWebhookRequest},
+		{name: "webhook request as webhook", pool: webhookRequestPool, role: veladb.RoleWebhook},
+		{name: "webhook as internal", pool: webhookPool, role: veladb.RoleInternal},
+		{name: "internal as webhook", pool: internalPool, role: veladb.RoleWebhook},
+		{name: "request as webhook", pool: requestPool, role: veladb.RoleWebhook},
+		{name: "webhook as request", pool: webhookPool, role: veladb.RoleRequest},
+		{name: "billing as webhook", pool: billingPool, role: veladb.RoleWebhook},
+		{name: "webhook as billing", pool: webhookPool, role: veladb.RoleBilling},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if err := veladb.VerifyRole(context.Background(), test.pool, test.role); err == nil {
@@ -172,6 +196,30 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	if _, err := database.Admin.Exec("REVOKE SELECT ON charges FROM vela_billing_login"); err != nil {
 		t.Fatalf("revoke unexpected billing Charge privilege: %v", err)
 	}
+	if _, err := database.Admin.Exec("GRANT SELECT ON webhook_deliveries TO vela_webhook_login"); err != nil {
+		t.Fatalf("grant unexpected webhook Delivery privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(context.Background(), webhookPool, veladb.RoleWebhook); err == nil {
+		t.Fatal("webhook login with direct Delivery access was accepted")
+	}
+	if _, err := database.Admin.Exec("REVOKE SELECT ON webhook_deliveries FROM vela_webhook_login"); err != nil {
+		t.Fatalf("revoke unexpected webhook Delivery privilege: %v", err)
+	}
+	if _, err := database.Admin.Exec(
+		"GRANT SELECT ON webhook_subscriptions TO vela_webhook_request_login",
+	); err != nil {
+		t.Fatalf("grant unexpected webhook request Subscription privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(
+		context.Background(), webhookRequestPool, veladb.RoleWebhookRequest,
+	); err == nil {
+		t.Fatal("webhook request login with direct Subscription access was accepted")
+	}
+	if _, err := database.Admin.Exec(
+		"REVOKE SELECT ON webhook_subscriptions FROM vela_webhook_request_login",
+	); err != nil {
+		t.Fatalf("revoke unexpected webhook request Subscription privilege: %v", err)
+	}
 	if _, err := database.Admin.Exec(`
 		GRANT EXECUTE ON FUNCTION vela_transition_scheduler_dispatch_protocol(boolean, text)
 		TO vela_scheduler_login
@@ -240,6 +288,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "auth", pool: authPool},
 		{name: "Artifact request", pool: artifactPool},
 		{name: "billing", pool: billingPool},
+		{name: "webhook request", pool: webhookRequestPool},
+		{name: "webhook", pool: webhookPool},
 	} {
 		for _, relation := range []string{
 			"job_cancellation_decisions",
@@ -254,6 +304,118 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			if !errors.As(err, &permissionError) || permissionError.Code != "42501" {
 				t.Fatalf("%s direct %s read error = %v, want SQLSTATE 42501", pool.name, relation, err)
 			}
+		}
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "Scheduler", pool: schedulerPool},
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
+		{name: "billing", pool: billingPool},
+		{name: "webhook request", pool: webhookRequestPool},
+		{name: "webhook", pool: webhookPool},
+	} {
+		for _, relation := range []string{
+			"webhook_subscriptions",
+			"webhook_subscription_secrets",
+			"webhook_deliveries",
+			"webhook_delivery_attempts",
+			"webhook_delivery_replays",
+		} {
+			var count int64
+			err := pool.pool.QueryRow(
+				context.Background(), "SELECT count(*) FROM "+relation,
+			).Scan(&count)
+			if !isPermissionDenied(err) {
+				t.Fatalf(
+					"%s direct %s read error = %v, want permission denied",
+					pool.name,
+					relation,
+					err,
+				)
+			}
+		}
+	}
+	var internalCredentialContext *uuid.UUID
+	if err := internalPool.QueryRow(
+		context.Background(), "SELECT vela_current_credential_id()",
+	).Scan(&internalCredentialContext); err != nil {
+		t.Fatalf("read empty internal webhook credential context: %v", err)
+	}
+	if internalCredentialContext != nil {
+		t.Fatalf("internal backend exposed webhook credential context %s", *internalCredentialContext)
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "Scheduler", pool: schedulerPool},
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
+		{name: "billing", pool: billingPool},
+		{name: "webhook", pool: webhookPool},
+		{name: "internal", pool: internalPool},
+	} {
+		_, err := pool.pool.Exec(
+			context.Background(),
+			"SELECT * FROM vela_list_webhook_subscriptions($1, 1)",
+			"00000000-0000-0000-0000-000000000002",
+		)
+		if !isPermissionDenied(err) {
+			t.Fatalf("%s webhook list error = %v, want permission denied", pool.name, err)
+		}
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "Scheduler", pool: schedulerPool},
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
+		{name: "billing", pool: billingPool},
+		{name: "webhook request", pool: webhookRequestPool},
+		{name: "internal", pool: internalPool},
+	} {
+		_, err := pool.pool.Exec(
+			context.Background(),
+			"SELECT * FROM vela_claim_webhook_deliveries('unauthorized-runtime', 30, 1)",
+		)
+		if !isPermissionDenied(err) {
+			t.Fatalf("%s webhook claim error = %v, want permission denied", pool.name, err)
+		}
+	}
+
+	for _, pool := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "Scheduler", pool: schedulerPool},
+		{name: "cancel", pool: cancelPool},
+		{name: "request", pool: requestPool},
+		{name: "auth", pool: authPool},
+		{name: "Artifact request", pool: artifactPool},
+		{name: "billing", pool: billingPool},
+		{name: "webhook request", pool: webhookRequestPool},
+		{name: "webhook", pool: webhookPool},
+	} {
+		_, err := pool.pool.Exec(context.Background(), "SELECT vela_current_credential_id()")
+		if !isPermissionDenied(err) {
+			t.Fatalf(
+				"%s webhook credential-context error = %v, want permission denied",
+				pool.name,
+				err,
+			)
 		}
 	}
 

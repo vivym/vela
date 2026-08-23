@@ -768,6 +768,9 @@ func TestReconcilerReclaimsExpiredReconcilerLeaseWithoutResettingDeadline(t *tes
 
 func TestReconcilerRecordsUnrecoverableArtifactFinalizationExactlyOnce(t *testing.T) {
 	fixture := newStartFixture(t, "reconciler-unrecoverable-artifact", 7)
+	webhookSubscriptionID := createTerminalWebhookSubscription(
+		t, fixture.database, "job.failed",
+	)
 	service := visibleCompletionService(t, fixture.database.DSN)
 	if started, err := fixture.service.Start(
 		context.Background(), fixture.worker, fixture.credentials,
@@ -893,6 +896,14 @@ func TestReconcilerRecordsUnrecoverableArtifactFinalizationExactlyOnce(t *testin
 			uploadID,
 		)
 	}
+	assertTerminalWebhookDelivery(
+		t,
+		fixture.database,
+		webhookSubscriptionID,
+		plan.JobID,
+		"job.failed",
+		"FAILED",
+	)
 }
 
 func TestProductionArtifactReconcilerPublishesMixedDurableArtifactSet(t *testing.T) {
@@ -2043,6 +2054,9 @@ func TestArtifactValidationFailureKeepsUploadUnverifiedAndReleasesClaim(t *testi
 
 func TestCompleteVisibleCompletionAtomicallyPublishesAndReplays(t *testing.T) {
 	fixture := newStartFixture(t, "visible-completion-atomic-publication", 7)
+	webhookSubscriptionID := createTerminalWebhookSubscription(
+		t, fixture.database, "job.succeeded",
+	)
 	started, err := fixture.service.Start(
 		context.Background(), fixture.worker, fixture.credentials,
 	)
@@ -2221,6 +2235,14 @@ func TestCompleteVisibleCompletionAtomicallyPublishesAndReplays(t *testing.T) {
 		)
 	}
 	assertVisibleCompletionEvents(t, fixture.database.Admin, first, quoteMinor)
+	assertTerminalWebhookDelivery(
+		t,
+		fixture.database,
+		webhookSubscriptionID,
+		fixture.assignment.JobID,
+		"job.succeeded",
+		"SUCCEEDED",
+	)
 
 	replayed, err := verificationService.CompleteVisibleCompletion(
 		context.Background(),
@@ -2407,6 +2429,12 @@ func TestProjectArtifactHTTPReturnsCommittedExactVersionsWithShortLivedURLs(t *t
 	requestPool := newRolePool(
 		t, fixture.database.DSN, "vela_request_login", "vela-request-password",
 	)
+	webhookRequestPool := newRolePool(
+		t,
+		fixture.database.DSN,
+		"vela_webhook_request_login",
+		"vela-webhook-request-password",
+	)
 	artifactPool := newRolePool(
 		t,
 		fixture.database.DSN,
@@ -2424,6 +2452,7 @@ func TestProjectArtifactHTTPReturnsCommittedExactVersionsWithShortLivedURLs(t *t
 		Admission:     admission.NewLegacyService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     artifactaccess.NewService(artifactPool, signer),
+		Webhooks:      testWebhookService(t, webhookRequestPool),
 	})
 	if err != nil {
 		t.Fatalf("create Artifact HTTP handler: %v", err)
@@ -2533,6 +2562,15 @@ func TestArtifactHTTPHidesStagingRevokedAndExpiredContent(t *testing.T) {
 				"vela-artifact-request-password",
 			),
 			signer,
+		),
+		Webhooks: testWebhookService(
+			t,
+			newRolePool(
+				t,
+				fixture.database.DSN,
+				"vela_webhook_request_login",
+				"vela-webhook-request-password",
+			),
 		),
 	})
 	if err != nil {

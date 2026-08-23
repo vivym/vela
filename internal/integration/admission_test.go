@@ -446,6 +446,7 @@ func TestAdmissionPredictionRejectsExcessQueueWaitWithoutDurableEffects(t *testi
 		Admission:     admission.NewService(requestPool, predictor),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
+		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create predicted Admission HTTP handler: %v", err)
@@ -1024,6 +1025,7 @@ func TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys(t *testing.
 		Admission:     admission.NewLegacyService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
+		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1600,6 +1602,7 @@ func TestCredentialLookupScopeAndRevocationFailClosed(t *testing.T) {
 		Admission:     admission.NewLegacyService(requestPool),
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
+		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1710,6 +1713,7 @@ func admissionServerForDatabaseWithPredictor(
 		Admission:     admissionService,
 		Cancellation:  cancellation.NewService(cancelPool, internalPool),
 		Artifacts:     testArtifactAccessService(artifactPool),
+		Webhooks:      testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})
 	if err != nil {
 		t.Fatalf("create HTTP handler: %v", err)
@@ -1848,6 +1852,8 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 			CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
 			CREATE ROLE vela_scheduler_login LOGIN PASSWORD 'vela-scheduler-password' IN ROLE vela_scheduler;
 			CREATE ROLE vela_billing_login LOGIN PASSWORD 'vela-billing-password' IN ROLE vela_billing;
+			CREATE ROLE vela_webhook_request_login LOGIN PASSWORD 'vela-webhook-request-password' IN ROLE vela_webhook_request;
+			CREATE ROLE vela_webhook_login LOGIN PASSWORD 'vela-webhook-password' IN ROLE vela_webhook;
 			CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
     `); err != nil {
 		t.Fatalf("create application login roles: %v", err)

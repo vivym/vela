@@ -136,6 +136,166 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/webhook-subscriptions:
+    post:
+      operationId: createWebhookSubscription
+      summary: Create a Project Webhook Subscription
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookSubscriptionRequest'
+      responses:
+        '201':
+          description: Subscription created; the signing secret is returned once
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedWebhookSubscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      operationId: listWebhookSubscriptions
+      summary: List safe Project Webhook Subscription projections
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ListLimit'
+      responses:
+        '200':
+          description: Project Webhook Subscriptions without signing secrets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscriptionList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/rotate-secret:
+    post:
+      operationId: rotateWebhookSubscriptionSecret
+      summary: Rotate a Webhook Subscription signing secret
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Secret rotated with a bounded previous-secret overlap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RotatedWebhookSubscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Webhook Subscription is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A secret overlap or another conflicting transition is active
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/disable:
+    post:
+      operationId: disableWebhookSubscription
+      summary: Permanently disable a Webhook Subscription
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SubscriptionId'
+      responses:
+        '200':
+          description: Subscription disabled or replayed idempotently
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Webhook Subscription is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      summary: List safe Webhook Delivery projections
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/ListLimit'
+      responses:
+        '200':
+          description: Webhook Deliveries without payloads, secrets, or claim tokens
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Webhook Subscription is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/webhook-subscriptions/{subscription_id}/deliveries/{delivery_id}/replay:
+    post:
+      operationId: replayWebhookDelivery
+      summary: Manually replay a terminal Webhook Delivery
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SubscriptionId'
+        - $ref: '#/components/parameters/DeliveryId'
+      responses:
+        '200':
+          description: Delivery returned to PENDING with a fresh retry window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDelivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Webhook Delivery is not visible in this Project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Delivery is nonterminal, disabled, or already replaying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
     bearerAuth:
@@ -157,6 +317,30 @@ components:
       schema:
         type: string
         format: uuid
+    SubscriptionId:
+      name: subscription_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DeliveryId:
+      name: delivery_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ListLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 100
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -474,6 +658,257 @@ components:
         currency:
           type: string
           pattern: '^[A-Z]{3}$'
+    WebhookEventType:
+      type: string
+      enum:
+        - job.succeeded
+        - job.failed
+        - job.canceled
+    WebhookSubscriptionState:
+      type: string
+      enum:
+        - ACTIVE
+        - DISABLED
+    CreateWebhookSubscriptionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - endpoint
+        - event_types
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 2048
+        event_types:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+    WebhookSubscription:
+      type: object
+      additionalProperties: false
+      required:
+        - subscription_id
+        - project_id
+        - endpoint
+        - event_types
+        - state
+        - secret_revision
+        - created_at
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        endpoint:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+        state:
+          $ref: '#/components/schemas/WebhookSubscriptionState'
+        secret_revision:
+          type: integer
+          format: int32
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        disabled_at:
+          type: string
+          format: date-time
+    CreatedWebhookSubscription:
+      type: object
+      additionalProperties: false
+      required:
+        - subscription_id
+        - project_id
+        - endpoint
+        - event_types
+        - state
+        - secret_revision
+        - created_at
+        - signing_secret
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        endpoint:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+        state:
+          $ref: '#/components/schemas/WebhookSubscriptionState'
+        secret_revision:
+          type: integer
+          format: int32
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        signing_secret:
+          type: string
+          minLength: 16
+          maxLength: 200
+    RotatedWebhookSubscription:
+      type: object
+      additionalProperties: false
+      required:
+        - subscription_id
+        - project_id
+        - endpoint
+        - event_types
+        - state
+        - secret_revision
+        - created_at
+        - signing_secret
+        - previous_secret_valid_until
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        endpoint:
+          type: string
+          format: uri
+        event_types:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+        state:
+          $ref: '#/components/schemas/WebhookSubscriptionState'
+        secret_revision:
+          type: integer
+          format: int32
+          minimum: 2
+        created_at:
+          type: string
+          format: date-time
+        signing_secret:
+          type: string
+          minLength: 16
+          maxLength: 200
+        previous_secret_valid_until:
+          type: string
+          format: date-time
+    WebhookSubscriptionList:
+      type: object
+      additionalProperties: false
+      required:
+        - subscriptions
+      properties:
+        subscriptions:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/WebhookSubscription'
+    WebhookDeliveryState:
+      type: string
+      enum:
+        - PENDING
+        - IN_FLIGHT
+        - DELIVERED
+        - DEAD_LETTER
+    WebhookDelivery:
+      type: object
+      additionalProperties: false
+      required:
+        - delivery_id
+        - event_id
+        - event_type
+        - job_id
+        - job_version
+        - state
+        - generation
+        - attempts
+        - retry_deadline_at
+        - created_at
+        - updated_at
+      properties:
+        delivery_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          $ref: '#/components/schemas/WebhookEventType'
+        job_id:
+          type: string
+          format: uuid
+        job_version:
+          type: integer
+          format: int64
+          minimum: 1
+        state:
+          $ref: '#/components/schemas/WebhookDeliveryState'
+        generation:
+          type: integer
+          format: int32
+          minimum: 1
+        attempts:
+          type: integer
+          format: int32
+          minimum: 0
+        retry_deadline_at:
+          type: string
+          format: date-time
+        last_attempt_at:
+          type: string
+          format: date-time
+        delivered_at:
+          type: string
+          format: date-time
+        dead_lettered_at:
+          type: string
+          format: date-time
+        last_http_status:
+          type: integer
+          format: int32
+          minimum: 100
+          maximum: 599
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WebhookDeliveryList:
+      type: object
+      additionalProperties: false
+      required:
+        - deliveries
+      properties:
+        deliveries:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/WebhookDelivery'
     Error:
       type: object
       additionalProperties: false
