@@ -1866,7 +1866,9 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 	if _, err := db.Exec(`
 	        CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
 			CREATE ROLE vela_human_auth_login LOGIN PASSWORD 'vela-human-auth-password' IN ROLE vela_human_auth;
+			CREATE ROLE vela_human_membership_auth_login LOGIN PASSWORD 'vela-human-membership-auth-password' IN ROLE vela_human_membership_auth;
 			CREATE ROLE vela_identity_request_login LOGIN PASSWORD 'vela-identity-request-password' IN ROLE vela_identity_request;
+			CREATE ROLE vela_human_membership_request_login LOGIN PASSWORD 'vela-human-membership-request-password' IN ROLE vela_human_membership_request;
 			CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
 			CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;

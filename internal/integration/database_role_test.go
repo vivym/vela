@@ -20,11 +20,23 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	humanAuthPool := newRolePool(
 		t, database.DSN, "vela_human_auth_login", "vela-human-auth-password",
 	)
+	humanMembershipAuthPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_human_membership_auth_login",
+		"vela-human-membership-auth-password",
+	)
 	identityRequestPool := newRolePool(
 		t,
 		database.DSN,
 		"vela_identity_request_login",
 		"vela-identity-request-password",
+	)
+	humanMembershipRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_human_membership_request_login",
+		"vela-human-membership-request-password",
 	)
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
@@ -44,6 +56,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_webhook_request_login",
 		"vela_webhook_login",
 		"vela_identity_request_login",
+		"vela_human_membership_request_login",
 	} {
 		var inheritsBillingOwner bool
 		if err := database.Admin.QueryRow(
@@ -64,7 +77,15 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}{
 		{name: "auth", pool: authPool, role: veladb.RoleAuth},
 		{name: "Human auth", pool: humanAuthPool, role: veladb.RoleHumanAuth},
+		{
+			name: "Human membership auth", pool: humanMembershipAuthPool,
+			role: veladb.RoleHumanMembershipAuth,
+		},
 		{name: "identity request", pool: identityRequestPool, role: veladb.RoleIdentityRequest},
+		{
+			name: "Human membership request", pool: humanMembershipRequestPool,
+			role: veladb.RoleHumanMembershipRequest,
+		},
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
@@ -100,10 +121,18 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "internal as request", pool: internalPool, role: veladb.RoleRequest},
 		{name: "auth as request", pool: authPool, role: veladb.RoleRequest},
 		{name: "Human auth as request", pool: humanAuthPool, role: veladb.RoleRequest},
+		{
+			name: "Human membership auth as Human auth", pool: humanMembershipAuthPool,
+			role: veladb.RoleHumanAuth,
+		},
 		{name: "request as Human auth", pool: requestPool, role: veladb.RoleHumanAuth},
 		{name: "auth as Human auth", pool: authPool, role: veladb.RoleHumanAuth},
 		{name: "Human auth as auth", pool: humanAuthPool, role: veladb.RoleAuth},
 		{name: "identity request as internal", pool: identityRequestPool, role: veladb.RoleInternal},
+		{
+			name: "Human membership request as identity request", pool: humanMembershipRequestPool,
+			role: veladb.RoleIdentityRequest,
+		},
 		{name: "internal as identity request", pool: internalPool, role: veladb.RoleIdentityRequest},
 		{name: "request as identity request", pool: requestPool, role: veladb.RoleIdentityRequest},
 		{name: "identity request as request", pool: identityRequestPool, role: veladb.RoleRequest},
@@ -607,12 +636,30 @@ func TestHumanIdentityEvidenceIsNotDirectlyReadableByRuntimeRoles(t *testing.T) 
 			),
 		},
 		{
+			name: "Human membership auth",
+			pool: newRolePool(
+				t,
+				database.DSN,
+				"vela_human_membership_auth_login",
+				"vela-human-membership-auth-password",
+			),
+		},
+		{
 			name: "identity request",
 			pool: newRolePool(
 				t,
 				database.DSN,
 				"vela_identity_request_login",
 				"vela-identity-request-password",
+			),
+		},
+		{
+			name: "Human membership request",
+			pool: newRolePool(
+				t,
+				database.DSN,
+				"vela_human_membership_request_login",
+				"vela-human-membership-request-password",
 			),
 		},
 		{
@@ -642,10 +689,14 @@ func TestHumanIdentityEvidenceIsNotDirectlyReadableByRuntimeRoles(t *testing.T) 
 			"public.organization_role_bindings",
 			"public.project_role_bindings",
 			"public.human_auth_sessions",
+			"public.human_organization_auth_sessions",
+			"public.human_administration_actor_attributions",
+			"public.human_identity_events",
 			"public.project_principal_attributions",
 			"public.project_actor_session_attributions",
 			"public.project_identity_events",
 			"vela_private.request_contexts",
+			"vela_private.human_administration_contexts",
 		} {
 			var count int64
 			err := runtime.pool.QueryRow(
@@ -672,6 +723,9 @@ func TestHumanIdentityTablesForceRowLevelSecurity(t *testing.T) {
 		"organization_role_bindings",
 		"project_role_bindings",
 		"human_auth_sessions",
+		"human_organization_auth_sessions",
+		"human_administration_actor_attributions",
+		"human_identity_events",
 		"project_principal_attributions",
 		"project_actor_session_attributions",
 		"project_identity_events",

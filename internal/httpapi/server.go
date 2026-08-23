@@ -283,6 +283,316 @@ func (s *server) GetJobArtifacts(
 	return api.GetJobArtifacts200JSONResponse(toAPIArtifactSet(artifactSet)), nil
 }
 
+func (s *server) CreateHumanMember(
+	ctx context.Context,
+	request api.CreateHumanMemberRequestObject,
+) (api.CreateHumanMemberResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationMembersManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.CreateHumanMember401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.CreateHumanMember403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human OrganizationOwner authorization is required",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateHumanMember400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "request body is required",
+			},
+		}, nil
+	}
+	displayName := ""
+	if request.Body.DisplayName != nil {
+		displayName = *request.Body.DisplayName
+	}
+	member, err := s.identityAdministration.CreateHumanMember(
+		ctx,
+		principal,
+		request.OrganizationId,
+		identity.CreateHumanMemberRequest{
+			OIDCSubject: request.Body.OidcSubject,
+			DisplayName: displayName,
+		},
+	)
+	if err != nil {
+		return createHumanMemberFailure(err)
+	}
+	return api.CreateHumanMember201JSONResponse(toAPIHumanMember(member)), nil
+}
+
+func (s *server) ListHumanMembers(
+	ctx context.Context,
+	request api.ListHumanMembersRequestObject,
+) (api.ListHumanMembersResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationMembersRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListHumanMembers401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListHumanMembers403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human OrganizationOwner authorization is required",
+			},
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	members, err := s.identityAdministration.ListHumanMembers(
+		ctx, principal, request.OrganizationId, limit,
+	)
+	if err != nil {
+		return listHumanMembersFailure(err)
+	}
+	response := api.HumanMemberList{Members: make([]api.OrganizationMember, len(members))}
+	for index, member := range members {
+		response.Members[index] = toAPIOrganizationMember(member)
+	}
+	return api.ListHumanMembers200JSONResponse(response), nil
+}
+
+func (s *server) DisableHumanMember(
+	ctx context.Context,
+	request api.DisableHumanMemberRequestObject,
+) (api.DisableHumanMemberResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationMembersManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.DisableHumanMember401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.DisableHumanMember403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human OrganizationOwner authorization is required",
+			},
+		}, nil
+	}
+	member, err := s.identityAdministration.DisableHumanMember(
+		ctx, principal, request.OrganizationId, request.PrincipalId,
+	)
+	if err != nil {
+		return disableHumanMemberFailure(err)
+	}
+	return api.DisableHumanMember200JSONResponse(toAPIHumanMember(member)), nil
+}
+
+func (s *server) AssignOrganizationRole(
+	ctx context.Context,
+	request api.AssignOrganizationRoleRequestObject,
+) (api.AssignOrganizationRoleResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationMembersManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.AssignOrganizationRole401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.AssignOrganizationRole403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human OrganizationOwner authorization is required",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.AssignOrganizationRole400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "request body is required",
+			},
+		}, nil
+	}
+	assignment, err := s.identityAdministration.AssignOrganizationRole(
+		ctx,
+		principal,
+		request.OrganizationId,
+		request.PrincipalId,
+		identity.OrganizationRole(request.Body.Role),
+	)
+	if err != nil {
+		return assignOrganizationRoleFailure(err)
+	}
+	return api.AssignOrganizationRole200JSONResponse(
+		toAPIOrganizationRoleAssignment(assignment),
+	), nil
+}
+
+func (s *server) RevokeOrganizationRole(
+	ctx context.Context,
+	request api.RevokeOrganizationRoleRequestObject,
+) (api.RevokeOrganizationRoleResponseObject, error) {
+	principal, status := organizationIdentityAdministrationPrincipal(
+		ctx, request.OrganizationId, identity.ScopeOrganizationMembersManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.RevokeOrganizationRole401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.RevokeOrganizationRole403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human OrganizationOwner authorization is required",
+			},
+		}, nil
+	}
+	assignment, err := s.identityAdministration.RevokeOrganizationRole(
+		ctx,
+		principal,
+		request.OrganizationId,
+		request.PrincipalId,
+		identity.OrganizationRole(request.Role),
+	)
+	if err != nil {
+		return revokeOrganizationRoleFailure(err)
+	}
+	return api.RevokeOrganizationRole200JSONResponse(
+		toAPIOrganizationRoleAssignment(assignment),
+	), nil
+}
+
+func (s *server) ListProjectMembers(
+	ctx context.Context,
+	request api.ListProjectMembersRequestObject,
+) (api.ListProjectMembersResponseObject, error) {
+	principal, status := projectMembershipAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeProjectMembersRead,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListProjectMembers401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListProjectMembers403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code:    "forbidden",
+				Message: "Human OrganizationOwner or ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	limit := int32(100)
+	if request.Params.Limit != nil {
+		limit = *request.Params.Limit
+	}
+	members, err := s.identityAdministration.ListProjectMembers(
+		ctx, principal, request.ProjectId, limit,
+	)
+	if err != nil {
+		return listProjectMembersFailure(err)
+	}
+	response := api.ProjectMemberList{Members: make([]api.ProjectMember, len(members))}
+	for index, member := range members {
+		response.Members[index] = toAPIProjectMember(member)
+	}
+	return api.ListProjectMembers200JSONResponse(response), nil
+}
+
+func (s *server) AssignProjectRole(
+	ctx context.Context,
+	request api.AssignProjectRoleRequestObject,
+) (api.AssignProjectRoleResponseObject, error) {
+	principal, status := projectMembershipAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeProjectMembersManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.AssignProjectRole401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.AssignProjectRole403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code:    "forbidden",
+				Message: "Human OrganizationOwner or ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.AssignProjectRole400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "request body is required",
+			},
+		}, nil
+	}
+	assignment, err := s.identityAdministration.AssignProjectRole(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.PrincipalId,
+		identity.ProjectRole(request.Body.Role),
+	)
+	if err != nil {
+		return assignProjectRoleFailure(err)
+	}
+	return api.AssignProjectRole200JSONResponse(toAPIProjectRoleAssignment(assignment)), nil
+}
+
+func (s *server) RevokeProjectRole(
+	ctx context.Context,
+	request api.RevokeProjectRoleRequestObject,
+) (api.RevokeProjectRoleResponseObject, error) {
+	principal, status := projectMembershipAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeProjectMembersManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.RevokeProjectRole401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.RevokeProjectRole403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code:    "forbidden",
+				Message: "Human OrganizationOwner or ProjectAdmin authorization is required",
+			},
+		}, nil
+	}
+	assignment, err := s.identityAdministration.RevokeProjectRole(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.PrincipalId,
+		identity.ProjectRole(request.Role),
+	)
+	if err != nil {
+		return revokeProjectRoleFailure(err)
+	}
+	return api.RevokeProjectRole200JSONResponse(toAPIProjectRoleAssignment(assignment)), nil
+}
+
 func (s *server) CreateServicePrincipal(
 	ctx context.Context,
 	request api.CreateServicePrincipalRequestObject,
@@ -767,6 +1077,45 @@ func identityAdministrationPrincipal(
 	return principal, http.StatusOK
 }
 
+func organizationIdentityAdministrationPrincipal(
+	ctx context.Context,
+	organizationID uuid.UUID,
+	requiredScope string,
+) (identity.Principal, int) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return identity.Principal{}, http.StatusUnauthorized
+	}
+	principal, ok = principal.ForOrganization(organizationID)
+	if !ok || principal.Kind != identity.PrincipalKindHuman || !principal.HasScope(requiredScope) {
+		return identity.Principal{}, http.StatusForbidden
+	}
+	return principal, http.StatusOK
+}
+
+func projectMembershipAdministrationPrincipal(
+	ctx context.Context,
+	projectID uuid.UUID,
+	requiredScope string,
+) (identity.Principal, int) {
+	principal, ok := principalFromContext(ctx)
+	if !ok {
+		return identity.Principal{}, http.StatusUnauthorized
+	}
+	if principal.Kind != identity.PrincipalKindHuman {
+		return identity.Principal{}, http.StatusForbidden
+	}
+	if projectPrincipal, selected := principal.ForProject(projectID); selected &&
+		projectPrincipal.HasScope(requiredScope) {
+		return projectPrincipal, http.StatusOK
+	}
+	if organizationPrincipal, selected := principal.ForOrganization(principal.OrganizationID); selected &&
+		organizationPrincipal.HasScope(requiredScope) {
+		return organizationPrincipal, http.StatusOK
+	}
+	return identity.Principal{}, http.StatusForbidden
+}
+
 func submitFailure(err error) (api.SubmitJobResponseObject, error) {
 	var failure *admission.Failure
 	if !errors.As(err, &failure) {
@@ -831,6 +1180,224 @@ func createServicePrincipalFailure(
 		}, nil
 	case identity.AdministrationFailureConflict:
 		return api.CreateServicePrincipal409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func createHumanMemberFailure(
+	err error,
+) (api.CreateHumanMemberResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.CreateHumanMember401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.CreateHumanMember403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.CreateHumanMember400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureConflict:
+		return api.CreateHumanMember409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func listHumanMembersFailure(
+	err error,
+) (api.ListHumanMembersResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.ListHumanMembers401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.ListHumanMembers403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.ListHumanMembers400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func disableHumanMemberFailure(
+	err error,
+) (api.DisableHumanMemberResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.DisableHumanMember401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.DisableHumanMember403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.DisableHumanMember400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.DisableHumanMember404JSONResponse(response), nil
+	case identity.AdministrationFailureConflict:
+		return api.DisableHumanMember409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func assignOrganizationRoleFailure(
+	err error,
+) (api.AssignOrganizationRoleResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.AssignOrganizationRole401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.AssignOrganizationRole403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.AssignOrganizationRole400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.AssignOrganizationRole404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func revokeOrganizationRoleFailure(
+	err error,
+) (api.RevokeOrganizationRoleResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.RevokeOrganizationRole401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.RevokeOrganizationRole403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.RevokeOrganizationRole400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.RevokeOrganizationRole404JSONResponse(response), nil
+	case identity.AdministrationFailureConflict:
+		return api.RevokeOrganizationRole409JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func listProjectMembersFailure(
+	err error,
+) (api.ListProjectMembersResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.ListProjectMembers401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.ListProjectMembers403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.ListProjectMembers400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.ListProjectMembers404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func assignProjectRoleFailure(
+	err error,
+) (api.AssignProjectRoleResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.AssignProjectRole401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.AssignProjectRole403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.AssignProjectRole400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.AssignProjectRole404JSONResponse(response), nil
+	default:
+		return nil, err
+	}
+}
+
+func revokeProjectRoleFailure(
+	err error,
+) (api.RevokeProjectRoleResponseObject, error) {
+	failure, response, ok := identityAdministrationFailureResponse(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.Code {
+	case identity.AdministrationFailureUnauthorized:
+		return api.RevokeProjectRole401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureForbidden:
+		return api.RevokeProjectRole403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureInvalidRequest:
+		return api.RevokeProjectRole400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case identity.AdministrationFailureNotFound:
+		return api.RevokeProjectRole404JSONResponse(response), nil
 	default:
 		return nil, err
 	}
@@ -1244,6 +1811,87 @@ func toAPIServicePrincipal(principal identity.ServicePrincipal) api.ServicePrinc
 		DisplayName:        principal.DisplayName,
 		ProjectId:          principal.ProjectID,
 		ServicePrincipalId: principal.ID,
+	}
+}
+
+func toAPIHumanMember(member identity.HumanMember) api.HumanMember {
+	return api.HumanMember{
+		CreatedAt:      member.CreatedAt,
+		DisabledAt:     member.DisabledAt,
+		DisplayName:    member.DisplayName,
+		OidcIssuer:     member.OIDCIssuer,
+		OidcSubject:    member.OIDCSubject,
+		OrganizationId: member.OrganizationID,
+		PrincipalId:    member.ID,
+	}
+}
+
+func toAPIOrganizationMember(member identity.OrganizationMember) api.OrganizationMember {
+	roles := make([]api.OrganizationRole, len(member.Roles))
+	for index, role := range member.Roles {
+		roles[index] = api.OrganizationRole(role)
+	}
+	return api.OrganizationMember{
+		CreatedAt:         member.CreatedAt,
+		DisabledAt:        member.DisabledAt,
+		DisplayName:       member.DisplayName,
+		OidcIssuer:        member.OIDCIssuer,
+		OidcSubject:       member.OIDCSubject,
+		OrganizationId:    member.OrganizationID,
+		OrganizationRoles: roles,
+		PrincipalId:       member.ID,
+	}
+}
+
+func toAPIOrganizationRoleAssignment(
+	assignment identity.OrganizationRoleAssignment,
+) api.OrganizationRoleAssignment {
+	var assignedByPrincipalID *uuid.UUID
+	if assignment.AssignedByPrincipalID != uuid.Nil {
+		value := assignment.AssignedByPrincipalID
+		assignedByPrincipalID = &value
+	}
+	return api.OrganizationRoleAssignment{
+		Active:                assignment.Active,
+		AssignedAt:            assignment.AssignedAt,
+		AssignedByPrincipalId: assignedByPrincipalID,
+		OrganizationId:        assignment.OrganizationID,
+		PrincipalId:           assignment.PrincipalID,
+		Role:                  api.OrganizationRole(assignment.Role),
+	}
+}
+
+func toAPIProjectMember(member identity.ProjectMember) api.ProjectMember {
+	roles := make([]api.ProjectRole, len(member.Roles))
+	for index, role := range member.Roles {
+		roles[index] = api.ProjectRole(role)
+	}
+	return api.ProjectMember{
+		DisabledAt:     member.DisabledAt,
+		DisplayName:    member.DisplayName,
+		OrganizationId: member.OrganizationID,
+		PrincipalId:    member.ID,
+		ProjectId:      member.ProjectID,
+		ProjectRoles:   roles,
+	}
+}
+
+func toAPIProjectRoleAssignment(
+	assignment identity.ProjectRoleAssignment,
+) api.ProjectRoleAssignment {
+	var assignedByPrincipalID *uuid.UUID
+	if assignment.AssignedByPrincipalID != uuid.Nil {
+		value := assignment.AssignedByPrincipalID
+		assignedByPrincipalID = &value
+	}
+	return api.ProjectRoleAssignment{
+		Active:                assignment.Active,
+		AssignedAt:            assignment.AssignedAt,
+		AssignedByPrincipalId: assignedByPrincipalID,
+		OrganizationId:        assignment.OrganizationID,
+		PrincipalId:           assignment.PrincipalID,
+		ProjectId:             assignment.ProjectID,
+		Role:                  api.ProjectRole(assignment.Role),
 	}
 }
 

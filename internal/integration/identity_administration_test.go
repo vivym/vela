@@ -1050,7 +1050,7 @@ func TestServicePrincipalAdministrationMigrationAllowsLegacyRowsAndEmptyDownUp(t
 		t.Fatalf("re-expand unused Service Principal administration migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
-	if err != nil || version != 13 {
+	if err != nil || version != 14 {
 		t.Fatalf("migration version after Service Principal administration Down/Up = %d error=%v", version, err)
 	}
 	if err := database.Admin.QueryRow(`
@@ -1441,7 +1441,10 @@ func waitForIdentityAdministrationLockWaiters(t *testing.T, database *sql.DB, wa
 		if err := database.QueryRow(`
 			SELECT count(*)
 			FROM pg_stat_activity
-			WHERE usename = 'vela_identity_request_login'
+			WHERE usename IN (
+				'vela_identity_request_login',
+				'vela_human_membership_request_login'
+			)
 			  AND state = 'active'
 			  AND wait_event_type = 'Lock'
 		`).Scan(&waiters); err != nil {

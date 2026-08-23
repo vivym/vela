@@ -74,79 +74,81 @@ const (
 )
 
 type config struct {
-	httpAddress                  string
-	workerGRPCAddress            string
-	workerGRPCTLSCertFile        string
-	workerGRPCTLSKeyFile         string
-	workerGRPCClientCAFile       string
-	authDatabaseURL              string
-	humanAuthDatabaseURL         string
-	identityRequestDatabaseURL   string
-	requestDatabaseURL           string
-	artifactRequestDatabaseURL   string
-	cancelDatabaseURL            string
-	internalDatabaseURL          string
-	schedulerDatabaseURL         string
-	schedulerID                  string
-	schedulerTick                time.Duration
-	schedulerClaimTTL            time.Duration
-	schedulerCandidateAttempts   int
-	billingDatabaseURL           string
-	webhookRequestDatabaseURL    string
-	webhookDatabaseURL           string
-	webhookEncryptionActiveKeyID string
-	webhookEncryptionKeyringFile string
-	webhookDispatcherID          string
-	webhookTick                  time.Duration
-	webhookClaimTTL              time.Duration
-	webhookHTTPTimeout           time.Duration
-	webhookBatchSize             int32
-	invoiceExporterID            string
-	invoiceExportEndpoint        string
-	invoiceExportTokenFile       string
-	invoiceExportTick            time.Duration
-	invoiceExportClaimTTL        time.Duration
-	invoiceExportRetryDelay      time.Duration
-	invoiceExportHTTPTimeout     time.Duration
-	invoiceExportBatchSize       int32
-	credentialPepper             []byte
-	oidcIssuer                   string
-	oidcAudience                 string
-	oidcJWKSURL                  string
-	natsURL                      string
-	natsCredentials              string
-	natsRootCA                   string
-	natsClientCert               string
-	natsClientKey                string
-	publisherBatchSize           int32
-	publisherTick                time.Duration
-	cancellationTick             time.Duration
-	finalizationTick             time.Duration
-	failureTick                  time.Duration
-	artifactCleanupTick          time.Duration
-	artifactS3Endpoint           string
-	artifactS3Region             string
-	artifactS3Bucket             string
-	artifactS3AccessKeyFile      string
-	artifactS3SecretKeyFile      string
-	artifactS3PathStyle          bool
-	leaseActiveKeyID             string
-	leaseKeyringFile             string
-	executionLeaseTTL            time.Duration
-	workerLostGrace              time.Duration
-	artifactValidatorHelper      string
-	artifactFFprobePath          string
-	artifactSandboxRoot          string
-	artifactSpoolDirectory       string
-	artifactFFprobeVersion       string
-	artifactValidatorRevision    string
-	artifactInspectionTimeout    time.Duration
-	artifactMaxInputBytes        int64
-	artifactMaxProbeBytes        int64
-	artifactMaxStderrBytes       int64
-	artifactReconcilerID         string
-	artifactOrphanMinimumAge     time.Duration
-	artifactCleanupBatch         int
+	httpAddress                       string
+	workerGRPCAddress                 string
+	workerGRPCTLSCertFile             string
+	workerGRPCTLSKeyFile              string
+	workerGRPCClientCAFile            string
+	authDatabaseURL                   string
+	humanAuthDatabaseURL              string
+	humanMembershipAuthDatabaseURL    string
+	identityRequestDatabaseURL        string
+	humanMembershipRequestDatabaseURL string
+	requestDatabaseURL                string
+	artifactRequestDatabaseURL        string
+	cancelDatabaseURL                 string
+	internalDatabaseURL               string
+	schedulerDatabaseURL              string
+	schedulerID                       string
+	schedulerTick                     time.Duration
+	schedulerClaimTTL                 time.Duration
+	schedulerCandidateAttempts        int
+	billingDatabaseURL                string
+	webhookRequestDatabaseURL         string
+	webhookDatabaseURL                string
+	webhookEncryptionActiveKeyID      string
+	webhookEncryptionKeyringFile      string
+	webhookDispatcherID               string
+	webhookTick                       time.Duration
+	webhookClaimTTL                   time.Duration
+	webhookHTTPTimeout                time.Duration
+	webhookBatchSize                  int32
+	invoiceExporterID                 string
+	invoiceExportEndpoint             string
+	invoiceExportTokenFile            string
+	invoiceExportTick                 time.Duration
+	invoiceExportClaimTTL             time.Duration
+	invoiceExportRetryDelay           time.Duration
+	invoiceExportHTTPTimeout          time.Duration
+	invoiceExportBatchSize            int32
+	credentialPepper                  []byte
+	oidcIssuer                        string
+	oidcAudience                      string
+	oidcJWKSURL                       string
+	natsURL                           string
+	natsCredentials                   string
+	natsRootCA                        string
+	natsClientCert                    string
+	natsClientKey                     string
+	publisherBatchSize                int32
+	publisherTick                     time.Duration
+	cancellationTick                  time.Duration
+	finalizationTick                  time.Duration
+	failureTick                       time.Duration
+	artifactCleanupTick               time.Duration
+	artifactS3Endpoint                string
+	artifactS3Region                  string
+	artifactS3Bucket                  string
+	artifactS3AccessKeyFile           string
+	artifactS3SecretKeyFile           string
+	artifactS3PathStyle               bool
+	leaseActiveKeyID                  string
+	leaseKeyringFile                  string
+	executionLeaseTTL                 time.Duration
+	workerLostGrace                   time.Duration
+	artifactValidatorHelper           string
+	artifactFFprobePath               string
+	artifactSandboxRoot               string
+	artifactSpoolDirectory            string
+	artifactFFprobeVersion            string
+	artifactValidatorRevision         string
+	artifactInspectionTimeout         time.Duration
+	artifactMaxInputBytes             int64
+	artifactMaxProbeBytes             int64
+	artifactMaxStderrBytes            int64
+	artifactReconcilerID              string
+	artifactOrphanMinimumAge          time.Duration
+	artifactCleanupBatch              int
 }
 
 type cancellationStopReconciler interface {
@@ -219,6 +221,16 @@ func run() error {
 		return fmt.Errorf("open Human auth database pool: %w", err)
 	}
 	defer humanAuthPool.Close()
+	humanMembershipAuthPool, err := openPool(
+		ctx,
+		configuration.humanMembershipAuthDatabaseURL,
+		5,
+		veladb.RoleHumanMembershipAuth,
+	)
+	if err != nil {
+		return fmt.Errorf("open Human membership auth database pool: %w", err)
+	}
+	defer humanMembershipAuthPool.Close()
 	identityRequestPool, err := openPool(
 		ctx,
 		configuration.identityRequestDatabaseURL,
@@ -229,6 +241,16 @@ func run() error {
 		return fmt.Errorf("open identity request database pool: %w", err)
 	}
 	defer identityRequestPool.Close()
+	humanMembershipRequestPool, err := openPool(
+		ctx,
+		configuration.humanMembershipRequestDatabaseURL,
+		10,
+		veladb.RoleHumanMembershipRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open Human membership request database pool: %w", err)
+	}
+	defer humanMembershipRequestPool.Close()
 	requestPool, err := openPool(ctx, configuration.requestDatabaseURL, 20, veladb.RoleRequest)
 	if err != nil {
 		return fmt.Errorf("open request database pool: %w", err)
@@ -453,17 +475,20 @@ func run() error {
 	}
 
 	cancellationService := cancellation.NewService(cancelPool, internalPool)
-	identityAdministration, err := identity.NewAdministrationService(
+	identityAdministration, err := identity.NewAdministrationServiceWithHumanMembership(
 		identityRequestPool,
+		humanMembershipRequestPool,
 		configuration.credentialPepper,
+		configuration.oidcIssuer,
 	)
 	if err != nil {
 		return fmt.Errorf("configure identity Administration service: %w", err)
 	}
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: identity.NewAuthenticatorWithOIDC(
+		Authenticator: identity.NewAuthenticatorWithHumanMembershipOIDC(
 			authPool,
 			humanAuthPool,
+			humanMembershipAuthPool,
 			configuration.credentialPepper,
 			oidcVerifier,
 		),
@@ -486,7 +511,9 @@ func run() error {
 			artifactStore,
 			authPool,
 			humanAuthPool,
+			humanMembershipAuthPool,
 			identityRequestPool,
+			humanMembershipRequestPool,
 			requestPool,
 			artifactRequestPool,
 			cancelPool,
@@ -648,120 +675,124 @@ func run() error {
 
 func loadConfig() (config, error) {
 	configuration := config{
-		httpAddress:                  envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
-		workerGRPCAddress:            envOrDefault("VELA_WORKER_GRPC_ADDRESS", defaultWorkerGRPCAddress),
-		workerGRPCTLSCertFile:        os.Getenv("VELA_WORKER_GRPC_TLS_CERT_FILE"),
-		workerGRPCTLSKeyFile:         os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
-		workerGRPCClientCAFile:       os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
-		authDatabaseURL:              os.Getenv("VELA_AUTH_DATABASE_URL"),
-		humanAuthDatabaseURL:         os.Getenv("VELA_HUMAN_AUTH_DATABASE_URL"),
-		identityRequestDatabaseURL:   os.Getenv("VELA_IDENTITY_REQUEST_DATABASE_URL"),
-		requestDatabaseURL:           os.Getenv("VELA_REQUEST_DATABASE_URL"),
-		artifactRequestDatabaseURL:   os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
-		oidcIssuer:                   os.Getenv("VELA_OIDC_ISSUER"),
-		oidcAudience:                 os.Getenv("VELA_OIDC_AUDIENCE"),
-		oidcJWKSURL:                  os.Getenv("VELA_OIDC_JWKS_URL"),
-		cancelDatabaseURL:            os.Getenv("VELA_CANCEL_DATABASE_URL"),
-		internalDatabaseURL:          os.Getenv("VELA_INTERNAL_DATABASE_URL"),
-		schedulerDatabaseURL:         os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
-		schedulerID:                  os.Getenv("VELA_SCHEDULER_ID"),
-		schedulerTick:                defaultSchedulerTick,
-		schedulerClaimTTL:            defaultSchedulerClaimTTL,
-		schedulerCandidateAttempts:   defaultSchedulerCandidateAttempts,
-		billingDatabaseURL:           os.Getenv("VELA_BILLING_DATABASE_URL"),
-		webhookRequestDatabaseURL:    os.Getenv("VELA_WEBHOOK_REQUEST_DATABASE_URL"),
-		webhookDatabaseURL:           os.Getenv("VELA_WEBHOOK_DATABASE_URL"),
-		webhookEncryptionActiveKeyID: os.Getenv("VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID"),
-		webhookEncryptionKeyringFile: os.Getenv("VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE"),
-		webhookDispatcherID:          os.Getenv("VELA_WEBHOOK_DISPATCHER_ID"),
-		webhookTick:                  defaultWebhookTick,
-		webhookClaimTTL:              defaultWebhookClaimTTL,
-		webhookHTTPTimeout:           defaultWebhookHTTPTimeout,
-		webhookBatchSize:             defaultWebhookBatchSize,
-		invoiceExporterID:            os.Getenv("VELA_INVOICE_EXPORTER_ID"),
-		invoiceExportEndpoint:        os.Getenv("VELA_INVOICE_EXPORT_ENDPOINT"),
-		invoiceExportTokenFile:       os.Getenv("VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE"),
-		invoiceExportTick:            defaultInvoiceExportTick,
-		invoiceExportClaimTTL:        defaultInvoiceExportClaimTTL,
-		invoiceExportRetryDelay:      defaultInvoiceExportRetryDelay,
-		invoiceExportHTTPTimeout:     defaultInvoiceExportHTTPTimeout,
-		invoiceExportBatchSize:       defaultInvoiceExportBatchSize,
-		natsURL:                      os.Getenv("VELA_NATS_URL"),
-		natsCredentials:              os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
-		natsRootCA:                   os.Getenv("VELA_NATS_ROOT_CA_FILE"),
-		natsClientCert:               os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
-		natsClientKey:                os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
-		artifactS3Endpoint:           os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
-		artifactS3Region:             os.Getenv("VELA_ARTIFACT_S3_REGION"),
-		artifactS3Bucket:             os.Getenv("VELA_ARTIFACT_S3_BUCKET"),
-		artifactS3AccessKeyFile:      os.Getenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"),
-		artifactS3SecretKeyFile:      os.Getenv("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE"),
-		publisherBatchSize:           defaultPublisherBatch,
-		publisherTick:                defaultPublisherTick,
-		cancellationTick:             defaultCancellationReconciliationTick,
-		finalizationTick:             defaultFinalizationReconciliationTick,
-		failureTick:                  defaultFailureReconciliationTick,
-		artifactCleanupTick:          defaultArtifactCleanupTick,
-		leaseActiveKeyID:             os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
-		leaseKeyringFile:             os.Getenv("VELA_LEASE_KEYRING_FILE"),
-		executionLeaseTTL:            defaultExecutionLeaseTTL,
-		workerLostGrace:              defaultWorkerLostGrace,
-		artifactValidatorHelper:      os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
-		artifactFFprobePath:          os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
-		artifactSandboxRoot:          os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
-		artifactSpoolDirectory:       os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
-		artifactFFprobeVersion:       os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
-		artifactValidatorRevision:    os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
-		artifactInspectionTimeout:    defaultArtifactInspectionTimeout,
-		artifactMaxInputBytes:        defaultArtifactMaxInputBytes,
-		artifactMaxProbeBytes:        defaultArtifactMaxProbeBytes,
-		artifactMaxStderrBytes:       defaultArtifactMaxStderrBytes,
-		artifactReconcilerID:         os.Getenv("VELA_ARTIFACT_RECONCILER_ID"),
-		artifactOrphanMinimumAge:     defaultArtifactOrphanMinimumAge,
-		artifactCleanupBatch:         defaultArtifactCleanupBatch,
+		httpAddress:                       envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
+		workerGRPCAddress:                 envOrDefault("VELA_WORKER_GRPC_ADDRESS", defaultWorkerGRPCAddress),
+		workerGRPCTLSCertFile:             os.Getenv("VELA_WORKER_GRPC_TLS_CERT_FILE"),
+		workerGRPCTLSKeyFile:              os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
+		workerGRPCClientCAFile:            os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
+		authDatabaseURL:                   os.Getenv("VELA_AUTH_DATABASE_URL"),
+		humanAuthDatabaseURL:              os.Getenv("VELA_HUMAN_AUTH_DATABASE_URL"),
+		humanMembershipAuthDatabaseURL:    os.Getenv("VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"),
+		identityRequestDatabaseURL:        os.Getenv("VELA_IDENTITY_REQUEST_DATABASE_URL"),
+		humanMembershipRequestDatabaseURL: os.Getenv("VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL"),
+		requestDatabaseURL:                os.Getenv("VELA_REQUEST_DATABASE_URL"),
+		artifactRequestDatabaseURL:        os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
+		oidcIssuer:                        os.Getenv("VELA_OIDC_ISSUER"),
+		oidcAudience:                      os.Getenv("VELA_OIDC_AUDIENCE"),
+		oidcJWKSURL:                       os.Getenv("VELA_OIDC_JWKS_URL"),
+		cancelDatabaseURL:                 os.Getenv("VELA_CANCEL_DATABASE_URL"),
+		internalDatabaseURL:               os.Getenv("VELA_INTERNAL_DATABASE_URL"),
+		schedulerDatabaseURL:              os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
+		schedulerID:                       os.Getenv("VELA_SCHEDULER_ID"),
+		schedulerTick:                     defaultSchedulerTick,
+		schedulerClaimTTL:                 defaultSchedulerClaimTTL,
+		schedulerCandidateAttempts:        defaultSchedulerCandidateAttempts,
+		billingDatabaseURL:                os.Getenv("VELA_BILLING_DATABASE_URL"),
+		webhookRequestDatabaseURL:         os.Getenv("VELA_WEBHOOK_REQUEST_DATABASE_URL"),
+		webhookDatabaseURL:                os.Getenv("VELA_WEBHOOK_DATABASE_URL"),
+		webhookEncryptionActiveKeyID:      os.Getenv("VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID"),
+		webhookEncryptionKeyringFile:      os.Getenv("VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE"),
+		webhookDispatcherID:               os.Getenv("VELA_WEBHOOK_DISPATCHER_ID"),
+		webhookTick:                       defaultWebhookTick,
+		webhookClaimTTL:                   defaultWebhookClaimTTL,
+		webhookHTTPTimeout:                defaultWebhookHTTPTimeout,
+		webhookBatchSize:                  defaultWebhookBatchSize,
+		invoiceExporterID:                 os.Getenv("VELA_INVOICE_EXPORTER_ID"),
+		invoiceExportEndpoint:             os.Getenv("VELA_INVOICE_EXPORT_ENDPOINT"),
+		invoiceExportTokenFile:            os.Getenv("VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE"),
+		invoiceExportTick:                 defaultInvoiceExportTick,
+		invoiceExportClaimTTL:             defaultInvoiceExportClaimTTL,
+		invoiceExportRetryDelay:           defaultInvoiceExportRetryDelay,
+		invoiceExportHTTPTimeout:          defaultInvoiceExportHTTPTimeout,
+		invoiceExportBatchSize:            defaultInvoiceExportBatchSize,
+		natsURL:                           os.Getenv("VELA_NATS_URL"),
+		natsCredentials:                   os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
+		natsRootCA:                        os.Getenv("VELA_NATS_ROOT_CA_FILE"),
+		natsClientCert:                    os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
+		natsClientKey:                     os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
+		artifactS3Endpoint:                os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
+		artifactS3Region:                  os.Getenv("VELA_ARTIFACT_S3_REGION"),
+		artifactS3Bucket:                  os.Getenv("VELA_ARTIFACT_S3_BUCKET"),
+		artifactS3AccessKeyFile:           os.Getenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"),
+		artifactS3SecretKeyFile:           os.Getenv("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE"),
+		publisherBatchSize:                defaultPublisherBatch,
+		publisherTick:                     defaultPublisherTick,
+		cancellationTick:                  defaultCancellationReconciliationTick,
+		finalizationTick:                  defaultFinalizationReconciliationTick,
+		failureTick:                       defaultFailureReconciliationTick,
+		artifactCleanupTick:               defaultArtifactCleanupTick,
+		leaseActiveKeyID:                  os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
+		leaseKeyringFile:                  os.Getenv("VELA_LEASE_KEYRING_FILE"),
+		executionLeaseTTL:                 defaultExecutionLeaseTTL,
+		workerLostGrace:                   defaultWorkerLostGrace,
+		artifactValidatorHelper:           os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
+		artifactFFprobePath:               os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
+		artifactSandboxRoot:               os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
+		artifactSpoolDirectory:            os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
+		artifactFFprobeVersion:            os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
+		artifactValidatorRevision:         os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
+		artifactInspectionTimeout:         defaultArtifactInspectionTimeout,
+		artifactMaxInputBytes:             defaultArtifactMaxInputBytes,
+		artifactMaxProbeBytes:             defaultArtifactMaxProbeBytes,
+		artifactMaxStderrBytes:            defaultArtifactMaxStderrBytes,
+		artifactReconcilerID:              os.Getenv("VELA_ARTIFACT_RECONCILER_ID"),
+		artifactOrphanMinimumAge:          defaultArtifactOrphanMinimumAge,
+		artifactCleanupBatch:              defaultArtifactCleanupBatch,
 	}
 	for name, value := range map[string]string{
-		"VELA_AUTH_DATABASE_URL":                  configuration.authDatabaseURL,
-		"VELA_HUMAN_AUTH_DATABASE_URL":            configuration.humanAuthDatabaseURL,
-		"VELA_IDENTITY_REQUEST_DATABASE_URL":      configuration.identityRequestDatabaseURL,
-		"VELA_REQUEST_DATABASE_URL":               configuration.requestDatabaseURL,
-		"VELA_ARTIFACT_REQUEST_DATABASE_URL":      configuration.artifactRequestDatabaseURL,
-		"VELA_OIDC_ISSUER":                        configuration.oidcIssuer,
-		"VELA_OIDC_AUDIENCE":                      configuration.oidcAudience,
-		"VELA_OIDC_JWKS_URL":                      configuration.oidcJWKSURL,
-		"VELA_CANCEL_DATABASE_URL":                configuration.cancelDatabaseURL,
-		"VELA_INTERNAL_DATABASE_URL":              configuration.internalDatabaseURL,
-		"VELA_SCHEDULER_DATABASE_URL":             configuration.schedulerDatabaseURL,
-		"VELA_SCHEDULER_ID":                       configuration.schedulerID,
-		"VELA_BILLING_DATABASE_URL":               configuration.billingDatabaseURL,
-		"VELA_WEBHOOK_REQUEST_DATABASE_URL":       configuration.webhookRequestDatabaseURL,
-		"VELA_WEBHOOK_DATABASE_URL":               configuration.webhookDatabaseURL,
-		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":   configuration.webhookEncryptionActiveKeyID,
-		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":    configuration.webhookEncryptionKeyringFile,
-		"VELA_WEBHOOK_DISPATCHER_ID":              configuration.webhookDispatcherID,
-		"VELA_INVOICE_EXPORTER_ID":                configuration.invoiceExporterID,
-		"VELA_INVOICE_EXPORT_ENDPOINT":            configuration.invoiceExportEndpoint,
-		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":   configuration.invoiceExportTokenFile,
-		"VELA_NATS_URL":                           configuration.natsURL,
-		"VELA_NATS_CREDENTIALS_FILE":              configuration.natsCredentials,
-		"VELA_NATS_ROOT_CA_FILE":                  configuration.natsRootCA,
-		"VELA_ARTIFACT_S3_ENDPOINT":               configuration.artifactS3Endpoint,
-		"VELA_ARTIFACT_S3_REGION":                 configuration.artifactS3Region,
-		"VELA_ARTIFACT_S3_BUCKET":                 configuration.artifactS3Bucket,
-		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":     configuration.artifactS3AccessKeyFile,
-		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE": configuration.artifactS3SecretKeyFile,
-		"VELA_LEASE_ACTIVE_KEY_ID":                configuration.leaseActiveKeyID,
-		"VELA_LEASE_KEYRING_FILE":                 configuration.leaseKeyringFile,
-		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":     configuration.artifactValidatorHelper,
-		"VELA_ARTIFACT_FFPROBE_PATH":              configuration.artifactFFprobePath,
-		"VELA_ARTIFACT_SANDBOX_ROOT":              configuration.artifactSandboxRoot,
-		"VELA_ARTIFACT_SPOOL_DIRECTORY":           configuration.artifactSpoolDirectory,
-		"VELA_ARTIFACT_FFPROBE_VERSION":           configuration.artifactFFprobeVersion,
-		"VELA_ARTIFACT_VALIDATOR_REVISION":        configuration.artifactValidatorRevision,
-		"VELA_ARTIFACT_RECONCILER_ID":             configuration.artifactReconcilerID,
-		"VELA_WORKER_GRPC_TLS_CERT_FILE":          configuration.workerGRPCTLSCertFile,
-		"VELA_WORKER_GRPC_TLS_KEY_FILE":           configuration.workerGRPCTLSKeyFile,
-		"VELA_WORKER_GRPC_CLIENT_CA_FILE":         configuration.workerGRPCClientCAFile,
+		"VELA_AUTH_DATABASE_URL":                     configuration.authDatabaseURL,
+		"VELA_HUMAN_AUTH_DATABASE_URL":               configuration.humanAuthDatabaseURL,
+		"VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL":    configuration.humanMembershipAuthDatabaseURL,
+		"VELA_IDENTITY_REQUEST_DATABASE_URL":         configuration.identityRequestDatabaseURL,
+		"VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL": configuration.humanMembershipRequestDatabaseURL,
+		"VELA_REQUEST_DATABASE_URL":                  configuration.requestDatabaseURL,
+		"VELA_ARTIFACT_REQUEST_DATABASE_URL":         configuration.artifactRequestDatabaseURL,
+		"VELA_OIDC_ISSUER":                           configuration.oidcIssuer,
+		"VELA_OIDC_AUDIENCE":                         configuration.oidcAudience,
+		"VELA_OIDC_JWKS_URL":                         configuration.oidcJWKSURL,
+		"VELA_CANCEL_DATABASE_URL":                   configuration.cancelDatabaseURL,
+		"VELA_INTERNAL_DATABASE_URL":                 configuration.internalDatabaseURL,
+		"VELA_SCHEDULER_DATABASE_URL":                configuration.schedulerDatabaseURL,
+		"VELA_SCHEDULER_ID":                          configuration.schedulerID,
+		"VELA_BILLING_DATABASE_URL":                  configuration.billingDatabaseURL,
+		"VELA_WEBHOOK_REQUEST_DATABASE_URL":          configuration.webhookRequestDatabaseURL,
+		"VELA_WEBHOOK_DATABASE_URL":                  configuration.webhookDatabaseURL,
+		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":      configuration.webhookEncryptionActiveKeyID,
+		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":       configuration.webhookEncryptionKeyringFile,
+		"VELA_WEBHOOK_DISPATCHER_ID":                 configuration.webhookDispatcherID,
+		"VELA_INVOICE_EXPORTER_ID":                   configuration.invoiceExporterID,
+		"VELA_INVOICE_EXPORT_ENDPOINT":               configuration.invoiceExportEndpoint,
+		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":      configuration.invoiceExportTokenFile,
+		"VELA_NATS_URL":                              configuration.natsURL,
+		"VELA_NATS_CREDENTIALS_FILE":                 configuration.natsCredentials,
+		"VELA_NATS_ROOT_CA_FILE":                     configuration.natsRootCA,
+		"VELA_ARTIFACT_S3_ENDPOINT":                  configuration.artifactS3Endpoint,
+		"VELA_ARTIFACT_S3_REGION":                    configuration.artifactS3Region,
+		"VELA_ARTIFACT_S3_BUCKET":                    configuration.artifactS3Bucket,
+		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":        configuration.artifactS3AccessKeyFile,
+		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":    configuration.artifactS3SecretKeyFile,
+		"VELA_LEASE_ACTIVE_KEY_ID":                   configuration.leaseActiveKeyID,
+		"VELA_LEASE_KEYRING_FILE":                    configuration.leaseKeyringFile,
+		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":        configuration.artifactValidatorHelper,
+		"VELA_ARTIFACT_FFPROBE_PATH":                 configuration.artifactFFprobePath,
+		"VELA_ARTIFACT_SANDBOX_ROOT":                 configuration.artifactSandboxRoot,
+		"VELA_ARTIFACT_SPOOL_DIRECTORY":              configuration.artifactSpoolDirectory,
+		"VELA_ARTIFACT_FFPROBE_VERSION":              configuration.artifactFFprobeVersion,
+		"VELA_ARTIFACT_VALIDATOR_REVISION":           configuration.artifactValidatorRevision,
+		"VELA_ARTIFACT_RECONCILER_ID":                configuration.artifactReconcilerID,
+		"VELA_WORKER_GRPC_TLS_CERT_FILE":             configuration.workerGRPCTLSCertFile,
+		"VELA_WORKER_GRPC_TLS_KEY_FILE":              configuration.workerGRPCTLSKeyFile,
+		"VELA_WORKER_GRPC_CLIENT_CA_FILE":            configuration.workerGRPCClientCAFile,
 	} {
 		if value == "" {
 			return config{}, fmt.Errorf("%s is required", name)

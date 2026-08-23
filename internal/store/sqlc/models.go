@@ -503,6 +503,94 @@ func (ns NullExecutionPhase) Value() (driver.Value, error) {
 	return string(ns.ExecutionPhase), nil
 }
 
+type HumanAdministrationContextKind string
+
+const (
+	HumanAdministrationContextKindORGANIZATION HumanAdministrationContextKind = "ORGANIZATION"
+	HumanAdministrationContextKindPROJECT      HumanAdministrationContextKind = "PROJECT"
+)
+
+func (e *HumanAdministrationContextKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = HumanAdministrationContextKind(s)
+	case string:
+		*e = HumanAdministrationContextKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for HumanAdministrationContextKind: %T", src)
+	}
+	return nil
+}
+
+type NullHumanAdministrationContextKind struct {
+	HumanAdministrationContextKind HumanAdministrationContextKind `json:"human_administration_context_kind"`
+	Valid                          bool                           `json:"valid"` // Valid is true if HumanAdministrationContextKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullHumanAdministrationContextKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.HumanAdministrationContextKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.HumanAdministrationContextKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullHumanAdministrationContextKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.HumanAdministrationContextKind), nil
+}
+
+type HumanIdentityAdminAction string
+
+const (
+	HumanIdentityAdminActionHUMANMEMBERCREATED       HumanIdentityAdminAction = "HUMAN_MEMBER_CREATED"
+	HumanIdentityAdminActionHUMANMEMBERDISABLED      HumanIdentityAdminAction = "HUMAN_MEMBER_DISABLED"
+	HumanIdentityAdminActionORGANIZATIONROLEASSIGNED HumanIdentityAdminAction = "ORGANIZATION_ROLE_ASSIGNED"
+	HumanIdentityAdminActionORGANIZATIONROLEREVOKED  HumanIdentityAdminAction = "ORGANIZATION_ROLE_REVOKED"
+	HumanIdentityAdminActionPROJECTROLEASSIGNED      HumanIdentityAdminAction = "PROJECT_ROLE_ASSIGNED"
+	HumanIdentityAdminActionPROJECTROLEREVOKED       HumanIdentityAdminAction = "PROJECT_ROLE_REVOKED"
+)
+
+func (e *HumanIdentityAdminAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = HumanIdentityAdminAction(s)
+	case string:
+		*e = HumanIdentityAdminAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for HumanIdentityAdminAction: %T", src)
+	}
+	return nil
+}
+
+type NullHumanIdentityAdminAction struct {
+	HumanIdentityAdminAction HumanIdentityAdminAction `json:"human_identity_admin_action"`
+	Valid                    bool                     `json:"valid"` // Valid is true if HumanIdentityAdminAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullHumanIdentityAdminAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.HumanIdentityAdminAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.HumanIdentityAdminAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullHumanIdentityAdminAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.HumanIdentityAdminAction), nil
+}
+
 type IdentityAdminAction string
 
 const (
@@ -1598,6 +1686,15 @@ type GenerationPresetRevision struct {
 	CreatedAt                  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type HumanAdministrationActorAttribution struct {
+	OrganizationID    uuid.UUID                      `db:"organization_id" json:"organization_id"`
+	ActorSessionID    uuid.UUID                      `db:"actor_session_id" json:"actor_session_id"`
+	ActorPrincipalID  uuid.UUID                      `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorContextKind  HumanAdministrationContextKind `db:"actor_context_kind" json:"actor_context_kind"`
+	ProjectID         uuid.NullUUID                  `db:"project_id" json:"project_id"`
+	FirstAttributedAt pgtype.Timestamptz             `db:"first_attributed_at" json:"first_attributed_at"`
+}
+
 type HumanAuthSession struct {
 	ID             uuid.UUID          `db:"id" json:"id"`
 	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -1608,6 +1705,20 @@ type HumanAuthSession struct {
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type HumanIdentityEvent struct {
+	ID                uuid.UUID                `db:"id" json:"id"`
+	OrganizationID    uuid.UUID                `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.NullUUID            `db:"project_id" json:"project_id"`
+	ActorPrincipalID  uuid.UUID                `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorSessionID    uuid.UUID                `db:"actor_session_id" json:"actor_session_id"`
+	Action            HumanIdentityAdminAction `db:"action" json:"action"`
+	TargetPrincipalID uuid.UUID                `db:"target_principal_id" json:"target_principal_id"`
+	OrganizationRole  *OrganizationRole        `db:"organization_role" json:"organization_role"`
+	ProjectRole       *ProjectRole             `db:"project_role" json:"project_role"`
+	Details           []byte                   `db:"details" json:"details"`
+	CreatedAt         pgtype.Timestamptz       `db:"created_at" json:"created_at"`
+}
+
 type HumanOidcBinding struct {
 	PrincipalID    uuid.UUID          `db:"principal_id" json:"principal_id"`
 	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -1616,6 +1727,15 @@ type HumanOidcBinding struct {
 	Subject        string             `db:"subject" json:"subject"`
 	DisplayName    *string            `db:"display_name" json:"display_name"`
 	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type HumanOrganizationAuthSession struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	PrincipalID    uuid.UUID          `db:"principal_id" json:"principal_id"`
+	TokenProof     []byte             `db:"token_proof" json:"token_proof"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
@@ -2071,6 +2191,18 @@ type ServicePrincipal struct {
 	PrincipalKind  PrincipalKind      `db:"principal_kind" json:"principal_kind"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+}
+
+type VelaPrivateHumanAdministrationContext struct {
+	BackendPid       int32                          `db:"backend_pid" json:"backend_pid"`
+	TransactionID    pgtype.Uint64                  `db:"transaction_id" json:"transaction_id"`
+	ActorSessionID   uuid.UUID                      `db:"actor_session_id" json:"actor_session_id"`
+	ActorContextKind HumanAdministrationContextKind `db:"actor_context_kind" json:"actor_context_kind"`
+	RequiredScope    string                         `db:"required_scope" json:"required_scope"`
+	OrganizationID   uuid.UUID                      `db:"organization_id" json:"organization_id"`
+	ProjectID        uuid.NullUUID                  `db:"project_id" json:"project_id"`
+	PrincipalID      uuid.UUID                      `db:"principal_id" json:"principal_id"`
+	EstablishedAt    pgtype.Timestamptz             `db:"established_at" json:"established_at"`
 }
 
 type VelaPrivateRequestContext struct {

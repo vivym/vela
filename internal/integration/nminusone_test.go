@@ -37,7 +37,68 @@ const (
 	webhookNMinusOneCommit                = "53f5d650adc30bacdcf9478786d71c1dcf6c1def"
 	humanOIDCNMinusOneCommit              = "cedd0e8031d013a9a12327259b75fdc9749053ee"
 	identityAdministrationNMinusOneCommit = "395887177ec9fb5f703eac055b04c02f2086fa8b"
+	humanMembershipNMinusOneCommit        = "d8537d96cc8aeb7b7d4980e5059cf48efa713d6f"
 )
+
+func TestExactHumanMembershipNMinusOneControlServiceAndHumanRequestsRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, humanMembershipNMinusOneCommit)
+	assertWebhookNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "human-membership")
+	developerID := uuid.New()
+	seedHumanRoleFixture(
+		t,
+		database.Admin,
+		developerID,
+		"n-minus-one-membership-developer",
+		nil,
+		map[string][]string{testProjectID: {"Developer"}},
+	)
+	serviceJobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	humanJobID, humanPrincipalID := runNMinusOneHumanAdmissionProbe(
+		t,
+		nMinusOne.HumanAdmissionProbe,
+		database.DSN,
+		"n-minus-one-membership-developer",
+	)
+	if humanPrincipalID != developerID {
+		t.Fatalf("N-1 Human probe Principal = %s, want %s", humanPrincipalID, developerID)
+	}
+
+	for label, expected := range map[string]struct {
+		jobID       string
+		principalID uuid.UUID
+		kind        string
+	}{
+		"Service": {jobID: serviceJobID, principalID: uuid.MustParse(testPrincipalID), kind: "SERVICE"},
+		"Human":   {jobID: humanJobID, principalID: developerID, kind: "HUMAN"},
+	} {
+		var createdBy uuid.UUID
+		var actorKind string
+		if err := database.Admin.QueryRow(`
+			SELECT job.created_by_principal_id, attribution.principal_kind::text
+			FROM jobs AS job
+			JOIN project_principal_attributions AS attribution
+			  ON attribution.organization_id = job.organization_id
+			 AND attribution.project_id = job.project_id
+			 AND attribution.principal_id = job.created_by_principal_id
+			WHERE job.id = $1
+		`, expected.jobID).Scan(&createdBy, &actorKind); err != nil {
+			t.Fatalf("read %s N-1 Job attribution: %v", label, err)
+		}
+		if createdBy != expected.principalID || actorKind != expected.kind {
+			t.Fatalf(
+				"%s N-1 Job attribution = principal %s kind %s",
+				label, createdBy, actorKind,
+			)
+		}
+	}
+}
 
 func TestExactIdentityAdministrationNMinusOneControlAndServiceRequestRemainCompatible(t *testing.T) {
 	database := newPostgres(t)
@@ -1248,12 +1309,13 @@ func assertWaitingCompatibilityCounters(
 }
 
 type nMinusOneBinaries struct {
-	Control            string
-	AdmissionProbe     string
-	AssignmentProbe    string
-	OutboxProbe        string
-	InvoiceChargeProbe string
-	FailureProbe       string
+	Control             string
+	AdmissionProbe      string
+	HumanAdmissionProbe string
+	AssignmentProbe     string
+	OutboxProbe         string
+	InvoiceChargeProbe  string
+	FailureProbe        string
 }
 
 type nMinusOneFailureProbeResult struct {
@@ -1340,7 +1402,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	admissionProbeSourceName := "nminusone_admission_probe.go.txt"
 	if commit == profileCircuitNMinusOneCommit || commit == webhookNMinusOneCommit ||
 		commit == humanOIDCNMinusOneCommit ||
-		commit == identityAdministrationNMinusOneCommit {
+		commit == identityAdministrationNMinusOneCommit ||
+		commit == humanMembershipNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -1355,6 +1418,32 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	}
 	if err := os.WriteFile(filepath.Join(admissionProbeDirectory, "main.go"), admissionProbeSource, 0o600); err != nil {
 		t.Fatalf("write N-1 Admission probe: %v", err)
+	}
+	var humanAdmissionProbeDirectory string
+	if commit == humanMembershipNMinusOneCommit {
+		humanAdmissionProbeSource, err := os.ReadFile(filepath.Join(
+			repositoryRoot(t),
+			"internal",
+			"integration",
+			"testdata",
+			"nminusone_human_admission_probe.go.txt",
+		))
+		if err != nil {
+			t.Fatalf("read N-1 Human Admission probe: %v", err)
+		}
+		humanAdmissionProbeDirectory = filepath.Join(
+			sourceRoot, "cmd", "vela-nminusone-human-admission-probe",
+		)
+		if err := os.MkdirAll(humanAdmissionProbeDirectory, 0o755); err != nil {
+			t.Fatalf("create N-1 Human Admission probe directory: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(humanAdmissionProbeDirectory, "main.go"),
+			humanAdmissionProbeSource,
+			0o600,
+		); err != nil {
+			t.Fatalf("write N-1 Human Admission probe: %v", err)
+		}
 	}
 	outboxProbeSource, err := os.ReadFile(filepath.Join(
 		repositoryRoot(t), "internal", "integration", "testdata", "nminusone_outbox_probe.go.txt",
@@ -1425,6 +1514,11 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		AssignmentProbe: filepath.Join(binaryDirectory, "vela-assignment-probe-n-minus-one"),
 		OutboxProbe:     filepath.Join(binaryDirectory, "vela-outbox-probe-n-minus-one"),
 	}
+	if commit == humanMembershipNMinusOneCommit {
+		binaries.HumanAdmissionProbe = filepath.Join(
+			binaryDirectory, "vela-human-admission-probe-n-minus-one",
+		)
+	}
 	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
 		binaries.InvoiceChargeProbe = filepath.Join(
 			binaryDirectory,
@@ -1452,6 +1546,17 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
 		if output, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build N-1 Admission probe: %v\n%s", err, output)
+		}
+		if commit == humanMembershipNMinusOneCommit {
+			build = exec.Command(
+				"go", "build",
+				"-o", binaries.HumanAdmissionProbe, "./cmd/vela-nminusone-human-admission-probe",
+			)
+			build.Dir = sourceRoot
+			build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+			if output, err := build.CombinedOutput(); err != nil {
+				t.Fatalf("build N-1 Human Admission probe: %v\n%s", err, output)
+			}
 		}
 		build = exec.Command(
 			"go", "build",
@@ -1592,6 +1697,52 @@ func runNMinusOneAdmissionProbe(t *testing.T, binary, adminDSN string) string {
 	return result.JobID
 }
 
+func runNMinusOneHumanAdmissionProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	subject string,
+) (string, uuid.UUID) {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_auth_login", "vela-auth-password",
+		),
+		"VELA_HUMAN_AUTH_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_human_auth_login", "vela-human-auth-password",
+		),
+		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_request_login", "vela-request-password",
+		),
+		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
+		),
+		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
+		"VELA_OIDC_ISSUER":              "https://identity.example.com",
+		"VELA_OIDC_SUBJECT":             subject,
+		"VELA_PROJECT_ID":               testProjectID,
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Human Admission probe: %v\n%s", err, output)
+	}
+	var result struct {
+		JobID       string    `json:"job_id"`
+		PrincipalID uuid.UUID `json:"principal_id"`
+	}
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Human Admission output: %v\n%s", err, output)
+	}
+	if _, err := uuid.Parse(result.JobID); err != nil || result.PrincipalID == uuid.Nil {
+		t.Fatalf(
+			"N-1 Human Admission returned Job %q Principal %s error=%v",
+			result.JobID, result.PrincipalID, err,
+		)
+	}
+	return result.JobID, result.PrincipalID
+}
+
 func runNMinusOneAssignmentProbe(
 	t *testing.T,
 	binary string,
@@ -1727,6 +1878,9 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		),
 		"VELA_HUMAN_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_human_auth_login", "vela-human-auth-password",
+		),
+		"VELA_IDENTITY_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_identity_request_login", "vela-identity-request-password",
 		),
 		"VELA_OIDC_ISSUER":   "https://identity.example.com",
 		"VELA_OIDC_AUDIENCE": "vela-control",

@@ -26,25 +26,30 @@ const (
 var ErrInvalidCredential = errors.New("invalid bearer credential")
 
 const (
-	ScopeJobsSubmit              = "jobs:submit"
-	ScopeJobsRead                = "jobs:read"
-	ScopeJobsCancel              = "jobs:cancel"
-	ScopeArtifactsRead           = "artifacts:read"
-	ScopeServicePrincipalsManage = "service_principals:manage"
-	ScopeServicePrincipalsRead   = "service_principals:read"
-	ScopeWebhooksManage          = "webhooks:manage"
-	ScopeWebhooksRead            = "webhooks:read"
+	ScopeJobsSubmit                = "jobs:submit"
+	ScopeJobsRead                  = "jobs:read"
+	ScopeJobsCancel                = "jobs:cancel"
+	ScopeArtifactsRead             = "artifacts:read"
+	ScopeOrganizationMembersManage = "organization_members:manage"
+	ScopeOrganizationMembersRead   = "organization_members:read"
+	ScopeProjectMembersManage      = "project_members:manage"
+	ScopeProjectMembersRead        = "project_members:read"
+	ScopeServicePrincipalsManage   = "service_principals:manage"
+	ScopeServicePrincipalsRead     = "service_principals:read"
+	ScopeWebhooksManage            = "webhooks:manage"
+	ScopeWebhooksRead              = "webhooks:read"
 )
 
 type Principal struct {
-	Kind            PrincipalKind
-	CredentialID    uuid.UUID
-	OrganizationID  uuid.UUID
-	ProjectID       uuid.UUID
-	PrincipalID     uuid.UUID
-	Scopes          []string
-	credentialProof [sha256.Size]byte
-	humanProjects   map[uuid.UUID]humanProjectAuthorization
+	Kind              PrincipalKind
+	CredentialID      uuid.UUID
+	OrganizationID    uuid.UUID
+	ProjectID         uuid.UUID
+	PrincipalID       uuid.UUID
+	Scopes            []string
+	credentialProof   [sha256.Size]byte
+	humanOrganization *humanOrganizationAuthorization
+	humanProjects     map[uuid.UUID]humanProjectAuthorization
 }
 
 type PrincipalKind string
@@ -55,6 +60,12 @@ const (
 )
 
 type humanProjectAuthorization struct {
+	sessionID uuid.UUID
+	scopes    []string
+	proof     [sha256.Size]byte
+}
+
+type humanOrganizationAuthorization struct {
 	sessionID uuid.UUID
 	scopes    []string
 	proof     [sha256.Size]byte
@@ -88,6 +99,23 @@ func (p Principal) ForProject(projectID uuid.UUID) (Principal, bool) {
 	contextual.ProjectID = projectID
 	contextual.Scopes = append([]string(nil), authorization.scopes...)
 	contextual.credentialProof = authorization.proof
+	contextual.humanOrganization = nil
+	contextual.humanProjects = nil
+	return contextual, true
+}
+
+func (p Principal) ForOrganization(organizationID uuid.UUID) (Principal, bool) {
+	if organizationID == uuid.Nil || p.Kind != PrincipalKindHuman ||
+		p.OrganizationID != organizationID || p.humanOrganization == nil ||
+		p.humanOrganization.sessionID == uuid.Nil {
+		return Principal{}, false
+	}
+	contextual := p
+	contextual.CredentialID = p.humanOrganization.sessionID
+	contextual.ProjectID = uuid.Nil
+	contextual.Scopes = append([]string(nil), p.humanOrganization.scopes...)
+	contextual.credentialProof = p.humanOrganization.proof
+	contextual.humanOrganization = nil
 	contextual.humanProjects = nil
 	return contextual, true
 }
@@ -99,10 +127,11 @@ func (p Principal) RequestContextProof() []byte {
 }
 
 type Authenticator struct {
-	servicePool  *pgxpool.Pool
-	humanPool    *pgxpool.Pool
-	pepper       []byte
-	oidcVerifier OIDCTokenVerifier
+	servicePool         *pgxpool.Pool
+	humanPool           *pgxpool.Pool
+	humanMembershipPool *pgxpool.Pool
+	pepper              []byte
+	oidcVerifier        OIDCTokenVerifier
 }
 
 func NewAuthenticator(pool *pgxpool.Pool, pepper []byte) *Authenticator {
@@ -123,6 +152,22 @@ func NewAuthenticatorWithOIDC(
 		humanPool:    humanPool,
 		pepper:       append([]byte(nil), pepper...),
 		oidcVerifier: verifier,
+	}
+}
+
+func NewAuthenticatorWithHumanMembershipOIDC(
+	servicePool *pgxpool.Pool,
+	humanPool *pgxpool.Pool,
+	humanMembershipPool *pgxpool.Pool,
+	pepper []byte,
+	verifier OIDCTokenVerifier,
+) *Authenticator {
+	return &Authenticator{
+		servicePool:         servicePool,
+		humanPool:           humanPool,
+		humanMembershipPool: humanMembershipPool,
+		pepper:              append([]byte(nil), pepper...),
+		oidcVerifier:        verifier,
 	}
 }
 
@@ -253,8 +298,45 @@ func (a *Authenticator) authenticateHumanOIDC(
 	if err := rows.Err(); err != nil {
 		return Principal{}, humanAuthenticationFailure(err)
 	}
+	rows.Close()
 	if !found || principal.OrganizationID == uuid.Nil || principal.PrincipalID == uuid.Nil {
 		return Principal{}, ErrInvalidCredential
+	}
+	if a.humanMembershipPool == nil {
+		return principal, nil
+	}
+
+	var organizationID, principalID uuid.UUID
+	var organizationSessionID uuid.NullUUID
+	var organizationScopes []string
+	err = a.humanMembershipPool.QueryRow(ctx, `
+		SELECT organization_id, principal_id, session_id, scopes
+		FROM vela_authenticate_human_organization_oidc($1, $2, $3, $4)
+	`, verified.Issuer, verified.Subject, proof, verified.ExpiresAt).Scan(
+		&organizationID,
+		&principalID,
+		&organizationSessionID,
+		&organizationScopes,
+	)
+	if err != nil {
+		return Principal{}, humanAuthenticationFailure(err)
+	}
+	if organizationID != principal.OrganizationID || principalID != principal.PrincipalID {
+		return Principal{}, errors.New("human Organization authorization returned inconsistent identity")
+	}
+	if organizationSessionID.Valid {
+		if organizationSessionID.UUID == uuid.Nil || len(organizationScopes) == 0 {
+			return Principal{}, errors.New("human Organization authorization returned invalid session")
+		}
+		var sessionProof [sha256.Size]byte
+		copy(sessionProof[:], proof)
+		principal.humanOrganization = &humanOrganizationAuthorization{
+			sessionID: organizationSessionID.UUID,
+			scopes:    append([]string(nil), organizationScopes...),
+			proof:     sessionProof,
+		}
+	} else if len(organizationScopes) != 0 {
+		return Principal{}, errors.New("human Organization authorization returned scopes without a session")
 	}
 	return principal, nil
 }
