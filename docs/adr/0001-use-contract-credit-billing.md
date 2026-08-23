@@ -11,6 +11,8 @@ Artifact access depends on Vela committing the Charge, not on external payment s
 Partial. Admission reserves contract credit; billable cancellation and Visible
 Completion post one immutable Charge; migration 00009 creates a
 PostgreSQL-authoritative export authority and the production exporter records one
-idempotent external receipt by `charge_id`. Idempotent settlement and
+idempotent external receipt by `charge_id`. Organization billing reporting exposes
+the exact credit account, immutable Charge and Invoice references, and audited
+settlement contacts without granting ledger mutation. Idempotent settlement and
 credit-adjustment reconciliation records remain unimplemented, and Production
 Gate Launch Receipts remain separate.
