@@ -35,7 +35,40 @@ const (
 	invoiceExportNMinusOneCommit         = "96760832c3b652827a9c5ce1732fbfa773ed0759"
 	profileCircuitNMinusOneCommit        = "e1c50543d854cbad0cc5a98fdaac51e78e2c837c"
 	webhookNMinusOneCommit               = "53f5d650adc30bacdcf9478786d71c1dcf6c1def"
+	humanOIDCNMinusOneCommit             = "cedd0e8031d013a9a12327259b75fdc9749053ee"
 )
+
+func TestExactHumanOIDCNMinusOneControlAndServiceRequestRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, humanOIDCNMinusOneCommit)
+	assertWebhookNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "human-oidc")
+	jobID := runNMinusOneAdmissionProbe(t, nMinusOne.AdmissionProbe, database.DSN)
+	var createdByPrincipalID, actorKind string
+	if err := database.Admin.QueryRow(`
+		SELECT job.created_by_principal_id::text, attribution.principal_kind::text
+		FROM jobs AS job
+		JOIN project_principal_attributions AS attribution
+		  ON attribution.organization_id = job.organization_id
+		 AND attribution.project_id = job.project_id
+		 AND attribution.principal_id = job.created_by_principal_id
+		WHERE job.id = $1
+	`, jobID).Scan(&createdByPrincipalID, &actorKind); err != nil {
+		t.Fatalf("read Human-slice N-1 Service Job: %v", err)
+	}
+	if createdByPrincipalID != testPrincipalID || actorKind != "SERVICE" {
+		t.Fatalf(
+			"Human-slice N-1 Job attribution = principal %s kind %s",
+			createdByPrincipalID,
+			actorKind,
+		)
+	}
+}
 
 func TestExactWebhookNMinusOneControlAndTerminalWriterRemainCompatible(t *testing.T) {
 	database := newPostgres(t)
@@ -1262,7 +1295,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		t.Fatalf("write N-1 Assignment probe: %v", err)
 	}
 	admissionProbeSourceName := "nminusone_admission_probe.go.txt"
-	if commit == profileCircuitNMinusOneCommit || commit == webhookNMinusOneCommit {
+	if commit == profileCircuitNMinusOneCommit || commit == webhookNMinusOneCommit ||
+		commit == humanOIDCNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -1628,6 +1662,17 @@ func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
 
 func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) string {
 	t.Helper()
+	webhookKeyringFile := filepath.Join(t.TempDir(), "webhook-keyring.json")
+	webhookKey := base64.StdEncoding.EncodeToString(
+		[]byte("0123456789abcdef0123456789abcdef"),
+	)
+	if err := os.WriteFile(
+		webhookKeyringFile,
+		[]byte(`{"webhook-key-v1":"`+webhookKey+`"}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write N-1 Webhook keyring: %v", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, binary)
@@ -1655,6 +1700,15 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_BILLING_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_billing_login", "vela-billing-password",
 		),
+		"VELA_WEBHOOK_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_webhook_request_login", "vela-webhook-request-password",
+		),
+		"VELA_WEBHOOK_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_webhook_login", "vela-webhook-password",
+		),
+		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":   "webhook-key-v1",
+		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":    webhookKeyringFile,
+		"VELA_WEBHOOK_DISPATCHER_ID":              "n-minus-one-startup-probe",
 		"VELA_INVOICE_EXPORTER_ID":                "n-minus-one-startup-probe",
 		"VELA_INVOICE_EXPORT_ENDPOINT":            "https://127.0.0.1:1/invoices",
 		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":   "/missing/invoice-export-token",

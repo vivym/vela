@@ -1073,8 +1073,18 @@ func TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys(t *testing.
 		t.Fatalf("cross-Organization GET: %v", err)
 	}
 	defer getResponse.Body.Close()
-	if getResponse.StatusCode != http.StatusNotFound {
-		t.Fatalf("cross-Organization GET status = %d, want 404", getResponse.StatusCode)
+	getBody, err := io.ReadAll(getResponse.Body)
+	if err != nil {
+		t.Fatalf("read cross-Organization GET response: %v", err)
+	}
+	wantGetBody := "{\"code\":\"not_found\",\"message\":\"Job is not visible in this Project\"}\n"
+	if getResponse.StatusCode != http.StatusNotFound || string(getBody) != wantGetBody {
+		t.Fatalf(
+			"cross-Organization GET = status %d body %q, want 404/%q",
+			getResponse.StatusCode,
+			getBody,
+			wantGetBody,
+		)
 	}
 
 	tx, err := requestPool.Begin(context.Background())
@@ -1847,6 +1857,7 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 
 	if _, err := db.Exec(`
         CREATE ROLE vela_auth_login LOGIN PASSWORD 'vela-auth-password' IN ROLE vela_auth;
+		CREATE ROLE vela_human_auth_login LOGIN PASSWORD 'vela-human-auth-password' IN ROLE vela_human_auth;
 		CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
 			CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;

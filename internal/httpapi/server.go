@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	oapimiddleware "github.com/oapi-codegen/nethttp-middleware"
 	api "github.com/vivym/vela/api/gen"
 	"github.com/vivym/vela/internal/admission"
@@ -20,7 +21,11 @@ import (
 	"github.com/vivym/vela/internal/webhook"
 )
 
-const maxRequestBodyBytes = 1 << 20
+const (
+	maxRequestBodyBytes                 = 1 << 20
+	authenticationFailureMessage        = "valid bearer credential is required"
+	serviceAuthenticationFailureMessage = "valid Service Principal credential is required"
+)
 
 type Config struct {
 	Authenticator *identity.Authenticator
@@ -99,11 +104,12 @@ func (s *server) SubmitJob(
 	if !ok {
 		return api.SubmitJob401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: "valid Service Principal credential is required",
+				Code: "unauthorized", Message: authenticationFailureMessage,
 			},
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeJobsSubmit) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeJobsSubmit) {
 		return api.SubmitJob403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
 				Code: "forbidden", Message: "credential does not have jobs:submit scope",
@@ -141,11 +147,12 @@ func (s *server) GetJob(
 	if !ok {
 		return api.GetJob401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: "valid Service Principal credential is required",
+				Code: "unauthorized", Message: authenticationFailureMessage,
 			},
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeJobsRead) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeJobsRead) {
 		return api.GetJob403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
 				Code: "forbidden", Message: "credential does not have jobs:read scope",
@@ -182,11 +189,12 @@ func (s *server) CancelJob(
 	if !ok {
 		return api.CancelJob401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: "valid Service Principal credential is required",
+				Code: "unauthorized", Message: authenticationFailureMessage,
 			},
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeJobsCancel) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeJobsCancel) {
 		return api.CancelJob403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
 				Code: "forbidden", Message: "credential does not have jobs:cancel scope",
@@ -229,11 +237,12 @@ func (s *server) GetJobArtifacts(
 	if !ok {
 		return api.GetJobArtifacts401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: "valid Service Principal credential is required",
+				Code: "unauthorized", Message: authenticationFailureMessage,
 			},
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeArtifactsRead) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeArtifactsRead) {
 		return api.GetJobArtifacts403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
 				Code: "forbidden", Message: "credential does not have artifacts:read scope",
@@ -276,11 +285,12 @@ func (s *server) CreateWebhookSubscription(
 	if !ok {
 		return api.CreateWebhookSubscription401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: "valid Service Principal credential is required",
+				Code: "unauthorized", Message: authenticationFailureMessage,
 			},
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeWebhooksManage) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeWebhooksManage) {
 		return api.CreateWebhookSubscription403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
 				Code: "forbidden", Message: "credential does not have webhooks:manage scope",
@@ -312,11 +322,12 @@ func (s *server) ListWebhookSubscriptions(
 	if !ok {
 		return api.ListWebhookSubscriptions401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: "valid Service Principal credential is required",
+				Code: "unauthorized", Message: authenticationFailureMessage,
 			},
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeWebhooksRead) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeWebhooksRead) {
 		return api.ListWebhookSubscriptions403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
 				Code: "forbidden", Message: "credential does not have webhooks:read scope",
@@ -350,7 +361,8 @@ func (s *server) RotateWebhookSubscriptionSecret(
 			UnauthorizedJSONResponse: webhookUnauthorizedResponse(),
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeWebhooksManage) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeWebhooksManage) {
 		return api.RotateWebhookSubscriptionSecret403JSONResponse{
 			ForbiddenJSONResponse: webhookManageForbiddenResponse(),
 		}, nil
@@ -374,7 +386,8 @@ func (s *server) DisableWebhookSubscription(
 			UnauthorizedJSONResponse: webhookUnauthorizedResponse(),
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeWebhooksManage) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeWebhooksManage) {
 		return api.DisableWebhookSubscription403JSONResponse{
 			ForbiddenJSONResponse: webhookManageForbiddenResponse(),
 		}, nil
@@ -398,7 +411,8 @@ func (s *server) ListWebhookDeliveries(
 			UnauthorizedJSONResponse: webhookUnauthorizedResponse(),
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeWebhooksRead) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeWebhooksRead) {
 		return api.ListWebhookDeliveries403JSONResponse{
 			ForbiddenJSONResponse: webhookReadForbiddenResponse(),
 		}, nil
@@ -434,7 +448,8 @@ func (s *server) ReplayWebhookDelivery(
 			UnauthorizedJSONResponse: webhookUnauthorizedResponse(),
 		}, nil
 	}
-	if !principal.HasScope(identity.ScopeWebhooksManage) {
+	principal, projectAuthorized := principalForProjectRequest(principal, request.ProjectId)
+	if !projectAuthorized || !principal.HasScope(identity.ScopeWebhooksManage) {
 		return api.ReplayWebhookDelivery403JSONResponse{
 			ForbiddenJSONResponse: webhookManageForbiddenResponse(),
 		}, nil
@@ -456,12 +471,16 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Fields(r.Header.Get("Authorization"))
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "valid Service Principal credential is required")
+			writeError(w, http.StatusUnauthorized, "unauthorized", authenticationFailureMessage)
 			return
 		}
 		principal, err := s.authenticator.Authenticate(r.Context(), parts[1])
 		if errors.Is(err, identity.ErrInvalidCredential) {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "valid Service Principal credential is required")
+			message := authenticationFailureMessage
+			if strings.HasPrefix(parts[1], "vla_") {
+				message = serviceAuthenticationFailureMessage
+			}
+			writeError(w, http.StatusUnauthorized, "unauthorized", message)
 			return
 		}
 		if err != nil {
@@ -484,6 +503,17 @@ func (s *server) limitRequestBody(next http.Handler) http.Handler {
 func principalFromContext(ctx context.Context) (identity.Principal, bool) {
 	principal, ok := ctx.Value(principalContextKey{}).(identity.Principal)
 	return principal, ok
+}
+
+func principalForProjectRequest(
+	principal identity.Principal,
+	projectID uuid.UUID,
+) (identity.Principal, bool) {
+	// Released Service APIs leave Project mismatch handling to each domain service.
+	if principal.Kind == identity.PrincipalKindService {
+		return principal, true
+	}
+	return principal.ForProject(projectID)
 }
 
 func submitFailure(err error) (api.SubmitJobResponseObject, error) {
@@ -694,7 +724,7 @@ func webhookFailureResponse(err error) (*webhook.Failure, api.Error, bool) {
 
 func webhookUnauthorizedResponse() api.UnauthorizedJSONResponse {
 	return api.UnauthorizedJSONResponse{
-		Code: "unauthorized", Message: "valid Service Principal credential is required",
+		Code: "unauthorized", Message: authenticationFailureMessage,
 	}
 }
 

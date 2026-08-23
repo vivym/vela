@@ -24,7 +24,11 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 	}{
 		{name: "workload credentials", missingEnv: "VELA_NATS_CREDENTIALS_FILE"},
 		{name: "root CA", missingEnv: "VELA_NATS_ROOT_CA_FILE"},
+		{name: "Human auth database", missingEnv: "VELA_HUMAN_AUTH_DATABASE_URL"},
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
+		{name: "OIDC issuer", missingEnv: "VELA_OIDC_ISSUER"},
+		{name: "OIDC audience", missingEnv: "VELA_OIDC_AUDIENCE"},
+		{name: "OIDC JWKS URL", missingEnv: "VELA_OIDC_JWKS_URL"},
 		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
 		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
 		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
@@ -70,8 +74,12 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 func setValidConfigEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("VELA_AUTH_DATABASE_URL", "postgres://auth.example/vela")
+	t.Setenv("VELA_HUMAN_AUTH_DATABASE_URL", "postgres://human-auth.example/vela")
 	t.Setenv("VELA_REQUEST_DATABASE_URL", "postgres://request.example/vela")
 	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")
+	t.Setenv("VELA_OIDC_ISSUER", "https://identity.example.com")
+	t.Setenv("VELA_OIDC_AUDIENCE", "vela-control")
+	t.Setenv("VELA_OIDC_JWKS_URL", "https://identity.example.com/.well-known/jwks.json")
 	t.Setenv("VELA_CANCEL_DATABASE_URL", "postgres://cancel.example/vela")
 	t.Setenv("VELA_INTERNAL_DATABASE_URL", "postgres://internal.example/vela")
 	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
@@ -128,6 +136,38 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "")
 	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "")
 	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "")
+}
+
+func TestLoadConfigPreservesExplicitHumanOIDCConfiguration(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load Human OIDC configuration: %v", err)
+	}
+	if configuration.oidcIssuer != "https://identity.example.com" ||
+		configuration.oidcAudience != "vela-control" ||
+		configuration.oidcJWKSURL != "https://identity.example.com/.well-known/jwks.json" {
+		t.Fatalf(
+			"Human OIDC configuration = issuer %q audience %q JWKS %q",
+			configuration.oidcIssuer,
+			configuration.oidcAudience,
+			configuration.oidcJWKSURL,
+		)
+	}
+}
+
+func TestRunRejectsInsecureHumanOIDCConfigurationBeforeDatabaseStartup(t *testing.T) {
+	setValidConfigEnvironment(t)
+	t.Setenv("VELA_OIDC_ISSUER", "http://identity.example.com")
+
+	err := run()
+	if err == nil || !strings.Contains(err.Error(), "configure Human OIDC verifier") ||
+		!strings.Contains(err.Error(), "absolute HTTPS URL") {
+		t.Fatalf("run with insecure Human OIDC issuer error = %v", err)
+	}
+	if strings.Contains(err.Error(), "database") {
+		t.Fatalf("insecure Human OIDC configuration reached database startup: %v", err)
+	}
 }
 
 func TestLoadConfigParsesBoundedWebhookControls(t *testing.T) {

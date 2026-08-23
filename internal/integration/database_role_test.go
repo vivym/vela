@@ -17,6 +17,9 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
+	humanAuthPool := newRolePool(
+		t, database.DSN, "vela_human_auth_login", "vela-human-auth-password",
+	)
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	artifactPool := newRolePool(
@@ -53,6 +56,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		role veladb.Role
 	}{
 		{name: "auth", pool: authPool, role: veladb.RoleAuth},
+		{name: "Human auth", pool: humanAuthPool, role: veladb.RoleHumanAuth},
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
@@ -87,6 +91,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request as internal", pool: requestPool, role: veladb.RoleInternal},
 		{name: "internal as request", pool: internalPool, role: veladb.RoleRequest},
 		{name: "auth as request", pool: authPool, role: veladb.RoleRequest},
+		{name: "Human auth as request", pool: humanAuthPool, role: veladb.RoleRequest},
+		{name: "request as Human auth", pool: requestPool, role: veladb.RoleHumanAuth},
+		{name: "auth as Human auth", pool: authPool, role: veladb.RoleHumanAuth},
+		{name: "Human auth as auth", pool: humanAuthPool, role: veladb.RoleAuth},
 		{name: "cancel as request", pool: cancelPool, role: veladb.RoleRequest},
 		{name: "request as cancel", pool: requestPool, role: veladb.RoleCancel},
 		{name: "internal as cancel", pool: internalPool, role: veladb.RoleCancel},
@@ -549,6 +557,97 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		var permissionError *pgconn.PgError
 		if !errors.As(err, &permissionError) || permissionError.Code != "42501" {
 			t.Fatalf("%s cancellation function error = %v, want SQLSTATE 42501", pool.name, err)
+		}
+	}
+}
+
+func TestHumanIdentityEvidenceIsNotDirectlyReadableByRuntimeRoles(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+
+	for _, runtime := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{
+			name: "auth",
+			pool: newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password"),
+		},
+		{
+			name: "Human auth",
+			pool: newRolePool(
+				t, database.DSN, "vela_human_auth_login", "vela-human-auth-password",
+			),
+		},
+		{
+			name: "request",
+			pool: newRolePool(t, database.DSN, "vela_request_login", "vela-request-password"),
+		},
+		{
+			name: "Artifact request",
+			pool: newRolePool(
+				t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
+			),
+		},
+		{
+			name: "cancel",
+			pool: newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password"),
+		},
+		{
+			name: "webhook request",
+			pool: newRolePool(
+				t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
+			),
+		},
+	} {
+		for _, relation := range []string{
+			"public.credentials",
+			"public.human_oidc_bindings",
+			"public.organization_role_bindings",
+			"public.project_role_bindings",
+			"public.human_auth_sessions",
+			"public.project_principal_attributions",
+			"public.project_actor_session_attributions",
+			"vela_private.request_contexts",
+		} {
+			var count int64
+			err := runtime.pool.QueryRow(
+				context.Background(), "SELECT count(*) FROM "+relation,
+			).Scan(&count)
+			if !isPermissionDenied(err) {
+				t.Fatalf(
+					"%s direct %s read error = %v, want permission denied",
+					runtime.name,
+					relation,
+					err,
+				)
+			}
+		}
+	}
+}
+
+func TestHumanIdentityTablesForceRowLevelSecurity(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+
+	for _, relation := range []string{
+		"human_oidc_bindings",
+		"organization_role_bindings",
+		"project_role_bindings",
+		"human_auth_sessions",
+		"project_principal_attributions",
+		"project_actor_session_attributions",
+	} {
+		var enabled, forced bool
+		if err := database.Admin.QueryRow(`
+			SELECT relrowsecurity, relforcerowsecurity
+			FROM pg_catalog.pg_class
+			WHERE oid = $1::regclass
+		`, relation).Scan(&enabled, &forced); err != nil {
+			t.Fatalf("read %s RLS flags: %v", relation, err)
+		}
+		if !enabled || !forced {
+			t.Fatalf("%s RLS = enabled %t forced %t, want both true", relation, enabled, forced)
 		}
 	}
 }

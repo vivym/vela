@@ -453,7 +453,7 @@ func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) 
 		t.Fatalf("re-expanded request queue projection = %q", expandedQueueProjection)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 11 {
+	if err != nil || version != 12 {
 		t.Fatalf("migration version after empty Scheduler Down/Up = %d error=%v", version, err)
 	}
 }
@@ -557,7 +557,7 @@ func TestHierarchicalSchedulerMigrationDefaultPolicyCatalogDownUpRestoresSurface
 	}
 	assertTableExists(t, database.Admin, "scheduler_dispatch_intents")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 11 {
+	if err != nil || version != 12 {
 		t.Fatalf("migration version after default-policy Down/Up = %d error=%v", version, err)
 	}
 }
@@ -925,7 +925,7 @@ func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	assertTableExists(t, database.Admin, "artifact_sets")
 	assertTableExists(t, database.Admin, "visible_completions")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 11 {
+	if err != nil || version != 12 {
 		t.Fatalf("migration version after empty Down/Up = %d error=%v", version, err)
 	}
 }

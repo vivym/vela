@@ -61,6 +61,7 @@ const (
 	defaultWebhookTick                          = 500 * time.Millisecond
 	defaultWebhookClaimTTL                      = 30 * time.Second
 	defaultWebhookHTTPTimeout                   = 15 * time.Second
+	defaultOIDCJWKSHTTPTimeout                  = 15 * time.Second
 	defaultWebhookBatchSize               int32 = 100
 	defaultExecutionLeaseTTL                    = 2 * time.Minute
 	defaultWorkerLostGrace                      = 30 * time.Second
@@ -79,6 +80,7 @@ type config struct {
 	workerGRPCTLSKeyFile         string
 	workerGRPCClientCAFile       string
 	authDatabaseURL              string
+	humanAuthDatabaseURL         string
 	requestDatabaseURL           string
 	artifactRequestDatabaseURL   string
 	cancelDatabaseURL            string
@@ -107,6 +109,9 @@ type config struct {
 	invoiceExportHTTPTimeout     time.Duration
 	invoiceExportBatchSize       int32
 	credentialPepper             []byte
+	oidcIssuer                   string
+	oidcAudience                 string
+	oidcJWKSURL                  string
 	natsURL                      string
 	natsCredentials              string
 	natsRootCA                   string
@@ -186,6 +191,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	oidcVerifier, err := identity.NewRemoteOIDCTokenVerifier(identity.OIDCVerifierConfig{
+		Issuer:     configuration.oidcIssuer,
+		Audience:   configuration.oidcAudience,
+		JWKSURL:    configuration.oidcJWKSURL,
+		HTTPClient: &http.Client{Timeout: defaultOIDCJWKSHTTPTimeout},
+	})
+	if err != nil {
+		return fmt.Errorf("configure Human OIDC verifier: %w", err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -194,6 +208,16 @@ func run() error {
 		return fmt.Errorf("open auth database pool: %w", err)
 	}
 	defer authPool.Close()
+	humanAuthPool, err := openPool(
+		ctx,
+		configuration.humanAuthDatabaseURL,
+		5,
+		veladb.RoleHumanAuth,
+	)
+	if err != nil {
+		return fmt.Errorf("open Human auth database pool: %w", err)
+	}
+	defer humanAuthPool.Close()
 	requestPool, err := openPool(ctx, configuration.requestDatabaseURL, 20, veladb.RoleRequest)
 	if err != nil {
 		return fmt.Errorf("open request database pool: %w", err)
@@ -419,11 +443,16 @@ func run() error {
 
 	cancellationService := cancellation.NewService(cancelPool, internalPool)
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator: identity.NewAuthenticator(authPool, configuration.credentialPepper),
-		Admission:     admission.NewService(requestPool, capacityPredictor),
-		Cancellation:  cancellationService,
-		Artifacts:     artifactaccess.NewService(artifactRequestPool, artifactStore),
-		Webhooks:      webhookService,
+		Authenticator: identity.NewAuthenticatorWithOIDC(
+			authPool,
+			humanAuthPool,
+			configuration.credentialPepper,
+			oidcVerifier,
+		),
+		Admission:    admission.NewService(requestPool, capacityPredictor),
+		Cancellation: cancellationService,
+		Artifacts:    artifactaccess.NewService(artifactRequestPool, artifactStore),
+		Webhooks:     webhookService,
 	})
 	if err != nil {
 		return err
@@ -437,6 +466,7 @@ func run() error {
 		readinessHandler(
 			artifactStore,
 			authPool,
+			humanAuthPool,
 			requestPool,
 			artifactRequestPool,
 			cancelPool,
@@ -604,8 +634,12 @@ func loadConfig() (config, error) {
 		workerGRPCTLSKeyFile:         os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
 		workerGRPCClientCAFile:       os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
 		authDatabaseURL:              os.Getenv("VELA_AUTH_DATABASE_URL"),
+		humanAuthDatabaseURL:         os.Getenv("VELA_HUMAN_AUTH_DATABASE_URL"),
 		requestDatabaseURL:           os.Getenv("VELA_REQUEST_DATABASE_URL"),
 		artifactRequestDatabaseURL:   os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
+		oidcIssuer:                   os.Getenv("VELA_OIDC_ISSUER"),
+		oidcAudience:                 os.Getenv("VELA_OIDC_AUDIENCE"),
+		oidcJWKSURL:                  os.Getenv("VELA_OIDC_JWKS_URL"),
 		cancelDatabaseURL:            os.Getenv("VELA_CANCEL_DATABASE_URL"),
 		internalDatabaseURL:          os.Getenv("VELA_INTERNAL_DATABASE_URL"),
 		schedulerDatabaseURL:         os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
@@ -667,8 +701,12 @@ func loadConfig() (config, error) {
 	}
 	for name, value := range map[string]string{
 		"VELA_AUTH_DATABASE_URL":                  configuration.authDatabaseURL,
+		"VELA_HUMAN_AUTH_DATABASE_URL":            configuration.humanAuthDatabaseURL,
 		"VELA_REQUEST_DATABASE_URL":               configuration.requestDatabaseURL,
 		"VELA_ARTIFACT_REQUEST_DATABASE_URL":      configuration.artifactRequestDatabaseURL,
+		"VELA_OIDC_ISSUER":                        configuration.oidcIssuer,
+		"VELA_OIDC_AUDIENCE":                      configuration.oidcAudience,
+		"VELA_OIDC_JWKS_URL":                      configuration.oidcJWKSURL,
 		"VELA_CANCEL_DATABASE_URL":                configuration.cancelDatabaseURL,
 		"VELA_INTERNAL_DATABASE_URL":              configuration.internalDatabaseURL,
 		"VELA_SCHEDULER_DATABASE_URL":             configuration.schedulerDatabaseURL,

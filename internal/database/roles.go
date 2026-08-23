@@ -13,6 +13,7 @@ type Role string
 
 const (
 	RoleAuth            Role = "vela_auth"
+	RoleHumanAuth       Role = "vela_human_auth"
 	RoleRequest         Role = "vela_request"
 	RoleInternal        Role = "vela_internal"
 	RoleCancel          Role = "vela_cancel"
@@ -34,6 +35,7 @@ type roleDescriptor struct {
 
 var roleDescriptors = map[Role]roleDescriptor{
 	RoleAuth:            {verifyPrivileges: verifyAuthPrivileges},
+	RoleHumanAuth:       {verifyPrivileges: verifyHumanAuthPrivileges},
 	RoleRequest:         {verifyPrivileges: verifyRequestPrivileges},
 	RoleInternal:        {requiresBypassRLS: true},
 	RoleCancel:          {verifyPrivileges: verifyCancelPrivileges},
@@ -245,6 +247,16 @@ func verifyAuthPrivileges(ctx context.Context, database rowQuerier, currentUser 
 		inspectionLabel: "auth",
 		failureLabel:    "credential lookup",
 		functions:       []string{"vela_authenticate_service_credential(uuid)"},
+	})
+}
+
+func verifyHumanAuthPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Human auth",
+		failureLabel:    "Human OIDC authorization",
+		functions: []string{
+			"vela_authenticate_human_oidc(text,text,bytea,timestamptz)",
+		},
 	})
 }
 

@@ -679,6 +679,49 @@ func (ns NullLeasePhase) Value() (driver.Value, error) {
 	return string(ns.LeasePhase), nil
 }
 
+type OrganizationRole string
+
+const (
+	OrganizationRoleOrganizationOwner   OrganizationRole = "OrganizationOwner"
+	OrganizationRoleBillingAdmin        OrganizationRole = "BillingAdmin"
+	OrganizationRoleOrganizationAuditor OrganizationRole = "OrganizationAuditor"
+)
+
+func (e *OrganizationRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = OrganizationRole(s)
+	case string:
+		*e = OrganizationRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for OrganizationRole: %T", src)
+	}
+	return nil
+}
+
+type NullOrganizationRole struct {
+	OrganizationRole OrganizationRole `json:"organization_role"`
+	Valid            bool             `json:"valid"` // Valid is true if OrganizationRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullOrganizationRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.OrganizationRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.OrganizationRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullOrganizationRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.OrganizationRole), nil
+}
+
 type PrincipalKind string
 
 const (
@@ -719,6 +762,49 @@ func (ns NullPrincipalKind) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.PrincipalKind), nil
+}
+
+type ProjectRole string
+
+const (
+	ProjectRoleProjectAdmin  ProjectRole = "ProjectAdmin"
+	ProjectRoleDeveloper     ProjectRole = "Developer"
+	ProjectRoleProjectViewer ProjectRole = "ProjectViewer"
+)
+
+func (e *ProjectRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ProjectRole(s)
+	case string:
+		*e = ProjectRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ProjectRole: %T", src)
+	}
+	return nil
+}
+
+type NullProjectRole struct {
+	ProjectRole ProjectRole `json:"project_role"`
+	Valid       bool        `json:"valid"` // Valid is true if ProjectRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullProjectRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.ProjectRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ProjectRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullProjectRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ProjectRole), nil
 }
 
 type RetryDisposition string
@@ -1468,6 +1554,27 @@ type GenerationPresetRevision struct {
 	CreatedAt                  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type HumanAuthSession struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
+	PrincipalID    uuid.UUID          `db:"principal_id" json:"principal_id"`
+	TokenProof     []byte             `db:"token_proof" json:"token_proof"`
+	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type HumanOidcBinding struct {
+	PrincipalID    uuid.UUID          `db:"principal_id" json:"principal_id"`
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	PrincipalKind  PrincipalKind      `db:"principal_kind" json:"principal_kind"`
+	Issuer         string             `db:"issuer" json:"issuer"`
+	Subject        string             `db:"subject" json:"subject"`
+	DisplayName    *string            `db:"display_name" json:"display_name"`
+	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type IdempotencyResult struct {
 	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
 	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
@@ -1619,6 +1726,14 @@ type OrganizationCreditAccount struct {
 	UpdatedAt                pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type OrganizationRoleBinding struct {
+	OrganizationID        uuid.UUID          `db:"organization_id" json:"organization_id"`
+	PrincipalID           uuid.UUID          `db:"principal_id" json:"principal_id"`
+	Role                  OrganizationRole   `db:"role" json:"role"`
+	AssignedByPrincipalID uuid.UUID          `db:"assigned_by_principal_id" json:"assigned_by_principal_id"`
+	AssignedAt            pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
+}
+
 type OutboxEvent struct {
 	EventID          uuid.UUID          `db:"event_id" json:"event_id"`
 	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -1726,6 +1841,15 @@ type Project struct {
 	RetryWaitCount    int32              `db:"retry_wait_count" json:"retry_wait_count"`
 }
 
+type ProjectActorSessionAttribution struct {
+	OrganizationID    uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.UUID          `db:"project_id" json:"project_id"`
+	ActorSessionID    uuid.UUID          `db:"actor_session_id" json:"actor_session_id"`
+	PrincipalID       uuid.UUID          `db:"principal_id" json:"principal_id"`
+	ActorKind         PrincipalKind      `db:"actor_kind" json:"actor_kind"`
+	FirstAttributedAt pgtype.Timestamptz `db:"first_attributed_at" json:"first_attributed_at"`
+}
+
 type ProjectCapacityShare struct {
 	WorkerPoolID   uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
 	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -1733,6 +1857,23 @@ type ProjectCapacityShare struct {
 	Weight         int32              `db:"weight" json:"weight"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type ProjectPrincipalAttribution struct {
+	OrganizationID    uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.UUID          `db:"project_id" json:"project_id"`
+	PrincipalID       uuid.UUID          `db:"principal_id" json:"principal_id"`
+	PrincipalKind     PrincipalKind      `db:"principal_kind" json:"principal_kind"`
+	FirstAttributedAt pgtype.Timestamptz `db:"first_attributed_at" json:"first_attributed_at"`
+}
+
+type ProjectRoleBinding struct {
+	OrganizationID        uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID             uuid.UUID          `db:"project_id" json:"project_id"`
+	PrincipalID           uuid.UUID          `db:"principal_id" json:"principal_id"`
+	Role                  ProjectRole        `db:"role" json:"role"`
+	AssignedByPrincipalID uuid.UUID          `db:"assigned_by_principal_id" json:"assigned_by_principal_id"`
+	AssignedAt            pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
 }
 
 type RateCardLine struct {
@@ -1883,6 +2024,7 @@ type VelaPrivateRequestContext struct {
 	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
 	PrincipalID    uuid.UUID          `db:"principal_id" json:"principal_id"`
 	EstablishedAt  pgtype.Timestamptz `db:"established_at" json:"established_at"`
+	ActorKind      PrincipalKind      `db:"actor_kind" json:"actor_kind"`
 }
 
 type VelaRequestExecutionLeaseRenewalProtocol struct {

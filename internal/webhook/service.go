@@ -19,7 +19,10 @@ import (
 	store "github.com/vivym/vela/internal/store/sqlc"
 )
 
-const signingSecretBytes = 32
+const (
+	signingSecretBytes           = 32
+	authenticationFailureMessage = "valid bearer credential is required"
+)
 
 type EventType string
 
@@ -141,7 +144,7 @@ func (s *Service) Create(
 	request CreateRequest,
 ) (CreatedSubscription, error) {
 	if principal.CredentialID == uuid.Nil {
-		return CreatedSubscription{}, failure(FailureUnauthorized, "valid Service Principal credential is required")
+		return CreatedSubscription{}, failure(FailureUnauthorized, authenticationFailureMessage)
 	}
 	if !principal.HasScope(identity.ScopeWebhooksManage) || principal.ProjectID != projectID {
 		return CreatedSubscription{}, failure(FailureForbidden, "credential cannot manage webhooks for this Project")
@@ -244,7 +247,7 @@ func (s *Service) RotateSecret(
 	projectID, subscriptionID uuid.UUID,
 ) (RotatedSubscription, error) {
 	if principal.CredentialID == uuid.Nil {
-		return RotatedSubscription{}, failure(FailureUnauthorized, "valid Service Principal credential is required")
+		return RotatedSubscription{}, failure(FailureUnauthorized, authenticationFailureMessage)
 	}
 	if !principal.HasScope(identity.ScopeWebhooksManage) || principal.ProjectID != projectID {
 		return RotatedSubscription{}, failure(FailureForbidden, "credential cannot manage webhooks for this Project")
@@ -349,7 +352,7 @@ func (s *Service) Replay(
 	projectID, subscriptionID, deliveryID uuid.UUID,
 ) (Delivery, error) {
 	if principal.CredentialID == uuid.Nil {
-		return Delivery{}, failure(FailureUnauthorized, "valid Service Principal credential is required")
+		return Delivery{}, failure(FailureUnauthorized, authenticationFailureMessage)
 	}
 	if !principal.HasScope(identity.ScopeWebhooksManage) || principal.ProjectID != projectID {
 		return Delivery{}, failure(FailureForbidden, "credential cannot manage webhooks for this Project")
@@ -413,7 +416,7 @@ func (s *Service) Disable(
 	projectID, subscriptionID uuid.UUID,
 ) (Subscription, error) {
 	if principal.CredentialID == uuid.Nil {
-		return Subscription{}, failure(FailureUnauthorized, "valid Service Principal credential is required")
+		return Subscription{}, failure(FailureUnauthorized, authenticationFailureMessage)
 	}
 	if !principal.HasScope(identity.ScopeWebhooksManage) || principal.ProjectID != projectID {
 		return Subscription{}, failure(FailureForbidden, "credential cannot manage webhooks for this Project")
@@ -485,7 +488,7 @@ func (s *Service) List(
 	limit int32,
 ) ([]Subscription, error) {
 	if principal.CredentialID == uuid.Nil {
-		return nil, failure(FailureUnauthorized, "valid Service Principal credential is required")
+		return nil, failure(FailureUnauthorized, authenticationFailureMessage)
 	}
 	if !principal.HasScope(identity.ScopeWebhooksRead) || principal.ProjectID != projectID {
 		return nil, failure(FailureForbidden, "credential cannot read webhooks for this Project")
@@ -568,7 +571,7 @@ func (s *Service) ListDeliveries(
 	limit int32,
 ) ([]Delivery, error) {
 	if principal.CredentialID == uuid.Nil {
-		return nil, failure(FailureUnauthorized, "valid Service Principal credential is required")
+		return nil, failure(FailureUnauthorized, authenticationFailureMessage)
 	}
 	if !principal.HasScope(identity.ScopeWebhooksRead) || principal.ProjectID != projectID {
 		return nil, failure(FailureForbidden, "credential cannot read webhooks for this Project")

@@ -2582,7 +2582,7 @@ func TestWebhookMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) {
 		t.Fatalf("create Subscription after migration re-expansion = %#v error=%v", created, err)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 11 {
+	if err != nil || version != 12 {
 		t.Fatalf("webhook migration version after Down/Up = %d error=%v", version, err)
 	}
 }
