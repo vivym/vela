@@ -45,12 +45,14 @@ Tests exercise behavior only at these public boundaries:
 
 1. Require the Outbox connector to use `tls://` endpoints, a configured root CA,
    a decorated NATS user credential file, an expected workload-account public
-   key, and one or two expected Outbox user public keys. Two keys form the
-   bounded overlap window for NKey rotation. URL userinfo and non-TLS server
-   entries are rejected before dialing.
+   key, one or two expected account-signer public keys, and one or two expected
+   Outbox user public keys. Two keys form the bounded overlap window for account
+   signer or user NKey rotation. URL userinfo and non-TLS server entries are
+   rejected before dialing.
 2. Decode and cryptographically verify the user JWT before every initial or
    reconnect authentication. It must be:
-   - issued through the exact expected workload account;
+   - signed by an explicitly trusted signer for the exact expected workload
+     account;
    - bound to the exact expected Outbox user NKey;
    - named `vela-outbox-dispatcher`;
    - time-valid and explicitly expiring;
@@ -96,6 +98,7 @@ VELA_NATS_URL=tls://nats.internal:4222
 VELA_NATS_CREDENTIALS_FILE=/run/secrets/nats/outbox.creds
 VELA_NATS_ROOT_CA_FILE=/run/tls/nats/ca.crt
 VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY=<account NKey public key>
+VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS=<current[,overlap] account signer NKey public keys>
 VELA_NATS_OUTBOX_USER_PUBLIC_KEYS=<current[,overlap] user NKey public keys>
 ```
 
@@ -135,8 +138,9 @@ non-secret routing metadata, but they must not contain credential material.
 ## Required Evidence
 
 - unit tests reject insecure/userinfo URLs, missing expected identity, unsafe or
-  oversized credential files, malformed/unverifiable JWTs, wrong account/user,
-  wrong workload name, expired/perpetual claims, and permission drift;
+  oversized credential files, malformed/unverifiable JWTs, wrong account,
+  untrusted account signer, wrong user, wrong workload name, expired/perpetual
+  claims, and permission drift;
 - a TLS operator/account JWT integration fixture proves anonymous, revoked,
   cross-account, cross-workload, publish, subscribe, JetStream API, and system
   subject denials at the real server boundary;

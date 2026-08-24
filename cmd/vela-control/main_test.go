@@ -26,6 +26,7 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "workload credentials", missingEnv: "VELA_NATS_CREDENTIALS_FILE"},
 		{name: "root CA", missingEnv: "VELA_NATS_ROOT_CA_FILE"},
 		{name: "Outbox workload account", missingEnv: "VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY"},
+		{name: "Outbox workload account signers", missingEnv: "VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS"},
 		{name: "Outbox workload users", missingEnv: "VELA_NATS_OUTBOX_USER_PUBLIC_KEYS"},
 		{name: "Human auth database", missingEnv: "VELA_HUMAN_AUTH_DATABASE_URL"},
 		{name: "Human membership auth database", missingEnv: "VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"},
@@ -153,6 +154,10 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_NATS_ROOT_CA_FILE", "/run/secrets/nats-root-ca.pem")
 	t.Setenv(
 		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY",
+		"AB46MZ7D6VS7MGXZLQYRYSBZB63GEI2CIKAZSGGFKUPZLDQN5V65QIYB",
+	)
+	t.Setenv(
+		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS",
 		"AB46MZ7D6VS7MGXZLQYRYSBZB63GEI2CIKAZSGGFKUPZLDQN5V65QIYB",
 	)
 	t.Setenv(

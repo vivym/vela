@@ -142,6 +142,7 @@ type config struct {
 	natsCredentials                   string
 	natsRootCA                        string
 	natsOutboxAccountPublicKey        string
+	natsOutboxAccountSignerPublicKeys string
 	natsOutboxUserPublicKeys          string
 	natsClientCert                    string
 	natsClientKey                     string
@@ -901,6 +902,7 @@ func loadConfig() (config, error) {
 		natsCredentials:                   os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
 		natsRootCA:                        os.Getenv("VELA_NATS_ROOT_CA_FILE"),
 		natsOutboxAccountPublicKey:        os.Getenv("VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY"),
+		natsOutboxAccountSignerPublicKeys: os.Getenv("VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS"),
 		natsOutboxUserPublicKeys:          os.Getenv("VELA_NATS_OUTBOX_USER_PUBLIC_KEYS"),
 		natsClientCert:                    os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
 		natsClientKey:                     os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
@@ -972,6 +974,7 @@ func loadConfig() (config, error) {
 		"VELA_NATS_CREDENTIALS_FILE":                     configuration.natsCredentials,
 		"VELA_NATS_ROOT_CA_FILE":                         configuration.natsRootCA,
 		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":            configuration.natsOutboxAccountPublicKey,
+		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS":    configuration.natsOutboxAccountSignerPublicKeys,
 		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":              configuration.natsOutboxUserPublicKeys,
 		"VELA_ARTIFACT_S3_ENDPOINT":                      configuration.artifactS3Endpoint,
 		"VELA_ARTIFACT_S3_REGION":                        configuration.artifactS3Region,
@@ -1168,9 +1171,12 @@ func connectNATS(configuration config) (*nats.Conn, error) {
 			CredentialsFile:          configuration.natsCredentials,
 			RootCAFile:               configuration.natsRootCA,
 			ExpectedAccountPublicKey: configuration.natsOutboxAccountPublicKey,
-			ExpectedUserPublicKeys:   splitCommaSeparated(configuration.natsOutboxUserPublicKeys),
-			ClientCertificateFile:    configuration.natsClientCert,
-			ClientKeyFile:            configuration.natsClientKey,
+			ExpectedAccountSignerPublicKeys: splitCommaSeparated(
+				configuration.natsOutboxAccountSignerPublicKeys,
+			),
+			ExpectedUserPublicKeys: splitCommaSeparated(configuration.natsOutboxUserPublicKeys),
+			ClientCertificateFile:  configuration.natsClientCert,
+			ClientKeyFile:          configuration.natsClientKey,
 		},
 		natsauth.Handlers{
 			Disconnect: func(err error) {

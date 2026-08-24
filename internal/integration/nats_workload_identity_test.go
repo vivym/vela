@@ -37,32 +37,16 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 		t.Fatal("operator/account JWT server accepted an anonymous connection")
 	}
 
-	revokedClosed := make(chan error, 1)
 	revokedConnection, err := natsauth.ConnectOutbox(
 		fixture.outboxConfig(fixture.revokedOutboxCredential, fixture.revokedOutboxUser),
-		natsauth.Handlers{Closed: func(err error) { revokedClosed <- err }},
+		natsauth.Handlers{},
 	)
-	if err != nil {
-		if !errors.Is(err, natsauth.ErrOutboxConnection) {
-			t.Fatalf("revoked Outbox credential error = %v, want transport rejection", err)
-		}
-	} else {
-		defer revokedConnection.Close()
-		select {
-		case closedErr := <-revokedClosed:
-			if !errors.Is(closedErr, nats.ErrAuthRevoked) &&
-				!errors.Is(closedErr, nats.ErrAuthorization) {
-				t.Fatalf("revoked Outbox closed error = %v", closedErr)
-			}
-		case <-time.After(3 * time.Second):
-			t.Fatalf(
-				"account-revoked Outbox credential state = %s, want closed authentication rejection",
-				revokedConnection.Status(),
-			)
-		}
-		if revokedConnection.IsConnected() {
-			t.Fatal("account-revoked Outbox credential reached connected state")
-		}
+	if revokedConnection != nil {
+		revokedConnection.Close()
+		t.Fatal("account-revoked Outbox credential returned a connection")
+	}
+	if !errors.Is(err, natsauth.ErrOutboxConnection) {
+		t.Fatalf("revoked Outbox credential error = %v, want startup authentication rejection", err)
 	}
 
 	systemConnection, err := natsauth.ConnectOutbox(
@@ -76,6 +60,24 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 	if !errors.Is(err, natsauth.ErrInvalidOutboxCredential) {
 		t.Fatalf("system-account Outbox credential error = %v, want identity rejection", err)
 	}
+	systemBoundaryConnection, systemBoundaryErrors := fixture.connectCredential(
+		t,
+		fixture.systemCredential,
+		true,
+	)
+	defer systemBoundaryConnection.Close()
+	expectPublishPermissionViolation(
+		t,
+		systemBoundaryConnection,
+		systemBoundaryErrors,
+		"vela.events.job.ready",
+	)
+	expectSubscribePermissionViolation(
+		t,
+		systemBoundaryConnection,
+		systemBoundaryErrors,
+		"vela.events.>",
+	)
 
 	bootstrap, bootstrapErrors := fixture.connectCredential(t, fixture.bootstrapCredential, true)
 	defer bootstrap.Close()
@@ -263,6 +265,7 @@ type authenticatedNATSFixture struct {
 	url                     string
 	rootCAFile              string
 	workloadAccount         string
+	workloadAccountSigner   string
 	outboxUser              string
 	revokedOutboxUser       string
 	outboxCredential        string
@@ -440,6 +443,7 @@ tls {
 		url:                     "tls://" + endpoint,
 		rootCAFile:              rootCAFile,
 		workloadAccount:         workloadAccountPublic,
+		workloadAccountSigner:   workloadSignerPublic,
 		outboxUser:              outboxUser.publicKey,
 		revokedOutboxUser:       revokedOutbox.publicKey,
 		outboxCredential:        outboxUser.path,
@@ -555,11 +559,12 @@ func (f authenticatedNATSFixture) outboxConfig(
 	expectedUsers ...string,
 ) natsauth.OutboxConfig {
 	return natsauth.OutboxConfig{
-		URL:                      f.url,
-		CredentialsFile:          credentialFile,
-		RootCAFile:               f.rootCAFile,
-		ExpectedAccountPublicKey: f.workloadAccount,
-		ExpectedUserPublicKeys:   expectedUsers,
+		URL:                             f.url,
+		CredentialsFile:                 credentialFile,
+		RootCAFile:                      f.rootCAFile,
+		ExpectedAccountPublicKey:        f.workloadAccount,
+		ExpectedAccountSignerPublicKeys: []string{f.workloadAccountSigner},
+		ExpectedUserPublicKeys:          expectedUsers,
 	}
 }
 

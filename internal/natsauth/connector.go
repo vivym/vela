@@ -30,13 +30,14 @@ var (
 )
 
 type OutboxConfig struct {
-	URL                      string
-	CredentialsFile          string
-	RootCAFile               string
-	ExpectedAccountPublicKey string
-	ExpectedUserPublicKeys   []string
-	ClientCertificateFile    string
-	ClientKeyFile            string
+	URL                             string
+	CredentialsFile                 string
+	RootCAFile                      string
+	ExpectedAccountPublicKey        string
+	ExpectedAccountSignerPublicKeys []string
+	ExpectedUserPublicKeys          []string
+	ClientCertificateFile           string
+	ClientKeyFile                   string
 }
 
 type Handlers struct {
@@ -50,6 +51,11 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
+	config.ExpectedAccountSignerPublicKeys = append(
+		[]string(nil),
+		config.ExpectedAccountSignerPublicKeys...,
+	)
+	config.ExpectedUserPublicKeys = append([]string(nil), config.ExpectedUserPublicKeys...)
 	credential, err := loadCredential(config)
 	if err != nil {
 		return nil, err
@@ -81,8 +87,8 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 				return current.userKey.Sign(nonce)
 			},
 		),
-		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
+		nats.IgnoreAuthErrorAbort(),
 		nats.ReconnectWait(time.Second),
 		nats.Timeout(5 * time.Second),
 	}
@@ -111,6 +117,10 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 		}))
 	}
 	connection, err := nats.Connect(config.URL, options...)
+	if errors.Is(err, nats.ErrNoServers) {
+		options = append(options, nats.RetryOnFailedConnect(true))
+		connection, err = nats.Connect(config.URL, options...)
+	}
 	if err != nil {
 		return nil, ErrOutboxConnection
 	}
@@ -120,6 +130,7 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 func validateConfig(config OutboxConfig) error {
 	if config.URL == "" || config.CredentialsFile == "" || config.RootCAFile == "" ||
 		!nkeys.IsValidPublicAccountKey(config.ExpectedAccountPublicKey) ||
+		!validExpectedAccountSigners(config.ExpectedAccountSignerPublicKeys) ||
 		!validExpectedUsers(config.ExpectedUserPublicKeys) {
 		return ErrInvalidOutboxConfig
 	}
@@ -187,9 +198,11 @@ func loadCredential(config OutboxConfig) (*loadedCredential, error) {
 func validOutboxClaims(claims *jwt.UserClaims, config OutboxConfig, now time.Time) bool {
 	if claims == nil || !contains(config.ExpectedUserPublicKeys, claims.Subject) ||
 		claims.IssuerAccount != config.ExpectedAccountPublicKey ||
+		!contains(config.ExpectedAccountSignerPublicKeys, claims.Issuer) ||
 		claims.Name != outboxWorkloadName || claims.BearerToken || claims.ProxyRequired ||
 		claims.Expires == 0 || now.Unix() >= claims.Expires ||
-		claims.NotBefore > now.Unix() || claims.IssuedAt > now.Add(time.Minute).Unix() ||
+		claims.NotBefore > now.Unix() || claims.IssuedAt == 0 ||
+		claims.IssuedAt > now.Add(time.Minute).Unix() ||
 		claims.Resp != nil {
 		return false
 	}
@@ -198,6 +211,23 @@ func validOutboxClaims(claims *jwt.UserClaims, config OutboxConfig, now time.Tim
 		!exactSubjects(claims.Sub.Allow, outboxSubscribeSubject) ||
 		len(claims.Pub.Deny) != 0 || len(claims.Sub.Deny) != 0 {
 		return false
+	}
+	return true
+}
+
+func validExpectedAccountSigners(publicKeys []string) bool {
+	if len(publicKeys) < 1 || len(publicKeys) > 2 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(publicKeys))
+	for _, publicKey := range publicKeys {
+		if !nkeys.IsValidPublicAccountKey(publicKey) {
+			return false
+		}
+		if _, duplicate := seen[publicKey]; duplicate {
+			return false
+		}
+		seen[publicKey] = struct{}{}
 	}
 	return true
 }

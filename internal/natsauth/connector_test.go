@@ -56,6 +56,34 @@ func TestConnectOutboxRejectsInvalidConfigurationBeforeDial(t *testing.T) {
 			},
 		},
 		{
+			name: "missing account signer identity",
+			mutate: func(config *natsauth.OutboxConfig) {
+				config.ExpectedAccountSignerPublicKeys = nil
+			},
+		},
+		{
+			name: "duplicate overlap account signer",
+			mutate: func(config *natsauth.OutboxConfig) {
+				config.ExpectedAccountSignerPublicKeys = append(
+					config.ExpectedAccountSignerPublicKeys,
+					config.ExpectedAccountSignerPublicKeys[0],
+				)
+			},
+		},
+		{
+			name: "more than two overlap account signers",
+			mutate: func(config *natsauth.OutboxConfig) {
+				for range 2 {
+					key := createAccountKey(t)
+					defer key.Wipe()
+					config.ExpectedAccountSignerPublicKeys = append(
+						config.ExpectedAccountSignerPublicKeys,
+						publicKey(t, key),
+					)
+				}
+			},
+		},
+		{
 			name: "missing user identity",
 			mutate: func(config *natsauth.OutboxConfig) {
 				config.ExpectedUserPublicKeys = nil
@@ -133,6 +161,14 @@ func TestConnectOutboxRejectsCredentialDriftWithoutLeakingSecrets(t *testing.T) 
 				key := createAccountKey(t)
 				defer key.Wipe()
 				credential.expectedAccount = publicKey(t, key)
+			},
+		},
+		{
+			name: "untrusted account signer",
+			mutateCredential: func(credential *testCredential) {
+				key := createAccountKey(t)
+				defer key.Wipe()
+				credential.expectedSigners = []string{publicKey(t, key)}
 			},
 		},
 		{
@@ -249,6 +285,7 @@ type testCredential struct {
 	jwt             string
 	seed            string
 	expectedAccount string
+	expectedSigners []string
 	expectedUsers   []string
 }
 
@@ -259,6 +296,7 @@ func issueOutboxCredential(t *testing.T, mutate func(*jwt.UserClaims)) testCrede
 	accountPublicKey := publicKey(t, account)
 	signer := createAccountKey(t)
 	defer signer.Wipe()
+	signerPublicKey := publicKey(t, signer)
 	user := createUserKey(t)
 	defer user.Wipe()
 	userPublicKey := publicKey(t, user)
@@ -296,17 +334,19 @@ func issueOutboxCredential(t *testing.T, mutate func(*jwt.UserClaims)) testCrede
 		jwt:             userJWT,
 		seed:            string(seed),
 		expectedAccount: accountPublicKey,
+		expectedSigners: []string{signerPublicKey},
 		expectedUsers:   []string{userPublicKey},
 	}
 }
 
 func validOutboxConfig(credential testCredential) natsauth.OutboxConfig {
 	return natsauth.OutboxConfig{
-		URL:                      "tls://127.0.0.1:1",
-		CredentialsFile:          credential.path,
-		RootCAFile:               "/run/tls/nats-root-ca.pem",
-		ExpectedAccountPublicKey: credential.expectedAccount,
-		ExpectedUserPublicKeys:   credential.expectedUsers,
+		URL:                             "tls://127.0.0.1:1",
+		CredentialsFile:                 credential.path,
+		RootCAFile:                      "/run/tls/nats-root-ca.pem",
+		ExpectedAccountPublicKey:        credential.expectedAccount,
+		ExpectedAccountSignerPublicKeys: credential.expectedSigners,
+		ExpectedUserPublicKeys:          credential.expectedUsers,
 	}
 }
 
@@ -347,6 +387,7 @@ func assertNoCredentialMaterial(t *testing.T, err error, credential testCredenti
 		credential.jwt,
 		credential.seed,
 		credential.expectedAccount,
+		strings.Join(credential.expectedSigners, ","),
 		strings.Join(credential.expectedUsers, ","),
 		"SENSITIVE-SENTINEL",
 	} {
