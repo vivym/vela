@@ -4,15 +4,19 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 type recordingCommandRunner struct {
+	plan Plan
 	path string
 	args []string
 	err  error
 }
 
-func (r *recordingCommandRunner) Run(_ context.Context, path string, args []string) ([]byte, error) {
+func (r *recordingCommandRunner) Run(_ context.Context, plan Plan, path string, args []string) ([]byte, error) {
+	r.plan = plan
 	r.path = path
 	r.args = append([]string(nil), args...)
 	if r.err != nil {
@@ -32,7 +36,10 @@ func TestAllowlistedExecutorRunsOnlyRegisteredAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create allowlisted Remediation executor: %v", err)
 	}
+	operationID := uuid.New()
+	workerID := uuid.New()
 	result, err := executor.Execute(context.Background(), Plan{
+		OperationID: operationID, WorkerID: workerID,
 		ActionLevel:           ActionL0ProcessRestart,
 		NodeIdentity:          "node-1",
 		DeviceIdentity:        "gpu-0",
@@ -42,7 +49,8 @@ func TestAllowlistedExecutorRunsOnlyRegisteredAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execute allowlisted Remediation: %v", err)
 	}
-	if runner.path != "/usr/local/bin/vela-process-restart" || len(runner.args) != 2 ||
+	if runner.plan.OperationID != operationID || runner.plan.WorkerID != workerID ||
+		runner.plan.DeviceIdentity != "gpu-0" || runner.path != "/usr/local/bin/vela-process-restart" || len(runner.args) != 2 ||
 		result.Detail == "" {
 		t.Fatalf("allowlisted execution = runner %#v result %#v", runner, result)
 	}

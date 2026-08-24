@@ -36,7 +36,7 @@ type ExecutionResult struct {
 }
 
 type CommandRunner interface {
-	Run(context.Context, string, []string) ([]byte, error)
+	Run(context.Context, Plan, string, []string) ([]byte, error)
 }
 
 type command struct {
@@ -87,7 +87,7 @@ func (e *AllowlistedExecutor) Execute(ctx context.Context, plan Plan) (Execution
 	if !ok {
 		return ExecutionResult{}, &Failure{Code: FailureUncertified, Message: ErrUncertifiedAction.Error()}
 	}
-	output, err := e.runner.Run(ctx, selected.path, append([]string(nil), selected.args...))
+	output, err := e.runner.Run(ctx, plan, selected.path, append([]string(nil), selected.args...))
 	if err != nil {
 		return ExecutionResult{}, &Failure{Code: FailureExecution, Message: err.Error()}
 	}
