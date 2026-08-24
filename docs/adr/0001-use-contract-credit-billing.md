@@ -13,6 +13,9 @@ Completion post one immutable Charge; migration 00009 creates a
 PostgreSQL-authoritative export authority and the production exporter records one
 idempotent external receipt by `charge_id`. Organization billing reporting exposes
 the exact credit account, immutable Charge and Invoice references, and audited
-settlement contacts without granting ledger mutation. Idempotent settlement and
-credit-adjustment reconciliation records remain unimplemented, and Production
-Gate Launch Receipts remain separate.
+settlement contacts without granting ledger mutation. Slice 19 adds the
+dedicated Finance Principal, immutable settlement/credit-adjustment/credit-limit
+reconciliation records, contiguous source sequencing, exact replay and conflict
+handling, atomic ledger effects, and the isolated mTLS finance write listener;
+its repository evidence is committed in `2d27630`. Production Gate Launch
+Receipts remain separate.
