@@ -14,15 +14,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/vivym/vela/internal/admission"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/inbox"
+	"github.com/vivym/vela/internal/natsauth"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/outbox"
 	"github.com/vivym/vela/internal/retention"
@@ -134,36 +132,12 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 
 func TestJetStreamBrokerUsesEventIDForDeduplication(t *testing.T) {
 	ctx := context.Background()
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "nats:2.12-alpine",
-			ExposedPorts: []string{"4222/tcp"},
-			Cmd:          []string{"-js", "-sd", "/data"},
-			WaitingFor: wait.ForLog("Server is ready").
-				WithStartupTimeout(60 * time.Second),
-		},
-		Started: true,
-	})
+	fixture := startAuthenticatedNATS(t)
+	bootstrap, bootstrapErrors := fixture.connectCredential(t, fixture.bootstrapCredential, true)
+	t.Cleanup(bootstrap.Close)
+	js, err := jetstream.New(bootstrap)
 	if err != nil {
-		t.Fatalf("start NATS JetStream: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := container.Terminate(context.Background()); err != nil {
-			t.Errorf("terminate NATS JetStream: %v", err)
-		}
-	})
-	endpoint, err := container.Endpoint(ctx, "")
-	if err != nil {
-		t.Fatalf("NATS endpoint: %v", err)
-	}
-	connection, err := nats.Connect("nats://" + endpoint)
-	if err != nil {
-		t.Fatalf("connect NATS: %v", err)
-	}
-	t.Cleanup(connection.Close)
-	js, err := jetstream.New(connection)
-	if err != nil {
-		t.Fatalf("create JetStream client: %v", err)
+		t.Fatalf("create authenticated bootstrap JetStream client: %v", err)
 	}
 	stream, err := js.CreateStream(ctx, jetstream.StreamConfig{
 		Name:       "VELA_EVENTS",
@@ -172,8 +146,17 @@ func TestJetStreamBrokerUsesEventIDForDeduplication(t *testing.T) {
 		Duplicates: time.Minute,
 	})
 	if err != nil {
-		t.Fatalf("create VELA_EVENTS stream: %v", err)
+		t.Fatalf("create authenticated VELA_EVENTS stream: %v", err)
 	}
+	assertNoUnexpectedNATSError(t, bootstrapErrors)
+	connection, err := natsauth.ConnectOutbox(
+		fixture.outboxConfig(fixture.outboxCredential, fixture.outboxUser),
+		natsauth.Handlers{},
+	)
+	if err != nil {
+		t.Fatalf("connect authenticated Outbox workload: %v", err)
+	}
+	t.Cleanup(connection.Close)
 
 	broker, err := outbox.NewJetStreamBroker(connection)
 	if err != nil {

@@ -33,6 +33,7 @@ import (
 	"github.com/vivym/vela/internal/finalizationreconciler"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/natsauth"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/outbox"
 	"github.com/vivym/vela/internal/retention"
@@ -140,6 +141,8 @@ type config struct {
 	natsURL                           string
 	natsCredentials                   string
 	natsRootCA                        string
+	natsOutboxAccountPublicKey        string
+	natsOutboxUserPublicKeys          string
 	natsClientCert                    string
 	natsClientKey                     string
 	publisherBatchSize                int32
@@ -897,6 +900,8 @@ func loadConfig() (config, error) {
 		natsURL:                           os.Getenv("VELA_NATS_URL"),
 		natsCredentials:                   os.Getenv("VELA_NATS_CREDENTIALS_FILE"),
 		natsRootCA:                        os.Getenv("VELA_NATS_ROOT_CA_FILE"),
+		natsOutboxAccountPublicKey:        os.Getenv("VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY"),
+		natsOutboxUserPublicKeys:          os.Getenv("VELA_NATS_OUTBOX_USER_PUBLIC_KEYS"),
 		natsClientCert:                    os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
 		natsClientKey:                     os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
 		artifactS3Endpoint:                os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
@@ -966,6 +971,8 @@ func loadConfig() (config, error) {
 		"VELA_NATS_URL":                                  configuration.natsURL,
 		"VELA_NATS_CREDENTIALS_FILE":                     configuration.natsCredentials,
 		"VELA_NATS_ROOT_CA_FILE":                         configuration.natsRootCA,
+		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":            configuration.natsOutboxAccountPublicKey,
+		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":              configuration.natsOutboxUserPublicKeys,
 		"VELA_ARTIFACT_S3_ENDPOINT":                      configuration.artifactS3Endpoint,
 		"VELA_ARTIFACT_S3_REGION":                        configuration.artifactS3Region,
 		"VELA_ARTIFACT_S3_BUCKET":                        configuration.artifactS3Bucket,
@@ -1155,37 +1162,50 @@ func openPool(
 }
 
 func connectNATS(configuration config) (*nats.Conn, error) {
-	options := []nats.Option{
-		nats.Name("vela-control-outbox"),
-		nats.RetryOnFailedConnect(true),
-		nats.MaxReconnects(-1),
-		nats.ReconnectWait(time.Second),
-		nats.Timeout(5 * time.Second),
-		nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
-			if err != nil {
-				slog.Warn("NATS disconnected; Outbox will remain durable", "error", err)
-			}
-		}),
-		nats.ReconnectHandler(func(connection *nats.Conn) {
-			slog.Info("NATS reconnected", "url", connection.ConnectedUrl())
-		}),
-	}
-	options = append(
-		options,
-		nats.UserCredentials(configuration.natsCredentials),
-		nats.RootCAs(configuration.natsRootCA),
+	connection, err := natsauth.ConnectOutbox(
+		natsauth.OutboxConfig{
+			URL:                      configuration.natsURL,
+			CredentialsFile:          configuration.natsCredentials,
+			RootCAFile:               configuration.natsRootCA,
+			ExpectedAccountPublicKey: configuration.natsOutboxAccountPublicKey,
+			ExpectedUserPublicKeys:   splitCommaSeparated(configuration.natsOutboxUserPublicKeys),
+			ClientCertificateFile:    configuration.natsClientCert,
+			ClientKeyFile:            configuration.natsClientKey,
+		},
+		natsauth.Handlers{
+			Disconnect: func(err error) {
+				if err != nil {
+					slog.Warn("NATS disconnected; Outbox will remain durable", "error", err)
+				}
+			},
+			Reconnect: func(connectedURL string) {
+				slog.Info("NATS reconnected", "url", connectedURL)
+			},
+			AsyncError: func(err error) {
+				if err != nil {
+					slog.Warn("NATS asynchronous error", "error", err)
+				}
+			},
+			Closed: func(err error) {
+				if err != nil {
+					slog.Error("NATS connection closed", "error", err)
+				}
+			},
+		},
 	)
-	if configuration.natsClientCert != "" || configuration.natsClientKey != "" {
-		if configuration.natsClientCert == "" || configuration.natsClientKey == "" {
-			return nil, errors.New("both VELA_NATS_CLIENT_CERT_FILE and VELA_NATS_CLIENT_KEY_FILE are required")
-		}
-		options = append(options, nats.ClientCert(configuration.natsClientCert, configuration.natsClientKey))
-	}
-	connection, err := nats.Connect(configuration.natsURL, options...)
 	if err != nil {
-		return nil, fmt.Errorf("connect NATS: %w", err)
+		return nil, fmt.Errorf("connect NATS Outbox workload: %w", err)
 	}
 	return connection, nil
+}
+
+func splitCommaSeparated(value string) []string {
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		values = append(values, strings.TrimSpace(part))
+	}
+	return values
 }
 
 func openArtifactStore(ctx context.Context, configuration config) (*artifactstore.S3, error) {

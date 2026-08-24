@@ -25,6 +25,8 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 	}{
 		{name: "workload credentials", missingEnv: "VELA_NATS_CREDENTIALS_FILE"},
 		{name: "root CA", missingEnv: "VELA_NATS_ROOT_CA_FILE"},
+		{name: "Outbox workload account", missingEnv: "VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY"},
+		{name: "Outbox workload users", missingEnv: "VELA_NATS_OUTBOX_USER_PUBLIC_KEYS"},
 		{name: "Human auth database", missingEnv: "VELA_HUMAN_AUTH_DATABASE_URL"},
 		{name: "Human membership auth database", missingEnv: "VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"},
 		{name: "identity request database", missingEnv: "VELA_IDENTITY_REQUEST_DATABASE_URL"},
@@ -146,9 +148,17 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_INVOICE_EXPORTER_ID", "vela-control-invoice-exporter-1")
 	t.Setenv("VELA_INVOICE_EXPORT_ENDPOINT", "https://finance.example/v1/invoice-lines")
 	t.Setenv("VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE", "/run/secrets/invoice-bearer-token")
-	t.Setenv("VELA_NATS_URL", "nats://nats.example:4222")
+	t.Setenv("VELA_NATS_URL", "tls://nats.example:4222")
 	t.Setenv("VELA_NATS_CREDENTIALS_FILE", "/run/secrets/vela-control.creds")
 	t.Setenv("VELA_NATS_ROOT_CA_FILE", "/run/secrets/nats-root-ca.pem")
+	t.Setenv(
+		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY",
+		"AB46MZ7D6VS7MGXZLQYRYSBZB63GEI2CIKAZSGGFKUPZLDQN5V65QIYB",
+	)
+	t.Setenv(
+		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS",
+		"UD6QZ5NLFZEZLTEQDDBY5RKG6YCEY7QUET2HJHJ3MSQB5JEIOYXRUHDS",
+	)
 	t.Setenv("VELA_ARTIFACT_S3_ENDPOINT", "https://s3.example")
 	t.Setenv("VELA_ARTIFACT_S3_REGION", "us-east-1")
 	t.Setenv("VELA_ARTIFACT_S3_BUCKET", "vela-artifacts")

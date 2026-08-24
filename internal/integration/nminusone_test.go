@@ -2334,6 +2334,8 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_NATS_URL":                           "nats://127.0.0.1:1",
 		"VELA_NATS_CREDENTIALS_FILE":              "/missing/nats.creds",
 		"VELA_NATS_ROOT_CA_FILE":                  "/missing/nats-ca.pem",
+		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":     "schema-probe-account",
+		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":       "schema-probe-user",
 		"VELA_ARTIFACT_S3_ENDPOINT":               "http://127.0.0.1:1",
 		"VELA_ARTIFACT_S3_REGION":                 "us-east-1",
 		"VELA_ARTIFACT_S3_BUCKET":                 "vela-artifacts",
