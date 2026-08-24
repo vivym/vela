@@ -98,6 +98,18 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 		t.Fatalf("mixed endpoint connection server pool = %v", configuredServers)
 	}
 	mixedReadyConnection.Close()
+	dnsUnavailableURL := "tls://nats-unavailable.invalid:4222"
+	dnsMixedConfig := fixture.outboxConfig(fixture.outboxCredential, fixture.outboxUser)
+	dnsMixedConfig.URL = dnsUnavailableURL + "," + fixture.url
+	dnsMixedConnection, err := natsauth.ConnectOutbox(dnsMixedConfig, natsauth.Handlers{})
+	if err != nil {
+		t.Fatalf("connect authenticated endpoint with DNS-unavailable peer: %v", err)
+	}
+	if !dnsMixedConnection.IsConnected() {
+		dnsMixedConnection.Close()
+		t.Fatal("DNS-unavailable peer prevented authenticated endpoint connection")
+	}
+	dnsMixedConnection.Close()
 
 	systemConnection, err := natsauth.ConnectOutbox(
 		fixture.outboxConfig(fixture.systemCredential, fixture.outboxUser),
@@ -290,6 +302,24 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 	expectSubscribePermissionViolation(t, outboxConnection.Conn, outboxErrors, "vela.events.>")
 	expectPublishPermissionViolation(t, outboxConnection.Conn, outboxErrors, "$SYS.REQ.SERVER.PING")
 	expectPublishPermissionViolation(t, outboxConnection.Conn, outboxErrors, "$JS.API.INFO")
+
+	dnsUnavailableConfig := fixture.outboxConfig(fixture.outboxCredential, fixture.outboxUser)
+	dnsUnavailableConfig.URL = dnsUnavailableURL
+	dnsUnavailableConnection, err := natsauth.ConnectOutbox(
+		dnsUnavailableConfig,
+		natsauth.Handlers{},
+	)
+	if err != nil {
+		t.Fatalf("start dormant Outbox connector during DNS outage: %v", err)
+	}
+	if dnsUnavailableConnection.IsConnected() || dnsUnavailableConnection.IsClosed() {
+		dnsUnavailableConnection.Close()
+		t.Fatalf(
+			"DNS-outage connection status = %s, want dormant reconnecting",
+			dnsUnavailableConnection.Status(),
+		)
+	}
+	dnsUnavailableConnection.Close()
 
 	proxyAddress, proxyURL := reserveNATSProxyAddress(t)
 	degradedConfig := fixture.outboxConfig(fixture.outboxCredential, fixture.outboxUser)

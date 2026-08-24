@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -175,7 +176,7 @@ func connectInitialOutbox(serverList string, options []nats.Option) (*nats.Conn,
 			}
 			continue
 		}
-		if !errors.Is(err, nats.ErrNoServers) {
+		if !isEndpointUnavailable(err) {
 			if authenticated != nil {
 				authenticated.Close()
 			}
@@ -198,6 +199,14 @@ func connectInitialOutbox(serverList string, options []nats.Option) (*nats.Conn,
 		return nil, err
 	}
 	return authenticated, nil
+}
+
+func isEndpointUnavailable(err error) bool {
+	if errors.Is(err, nats.ErrNoServers) {
+		return true
+	}
+	var networkError *net.OpError
+	return errors.As(err, &networkError) && networkError.Op == "dial"
 }
 
 func splitServerList(serverList string) []string {
