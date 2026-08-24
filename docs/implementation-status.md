@@ -33,6 +33,7 @@ tests alone do not satisfy a gate.
 | Settlement And Credit-adjustment Reconciliation | `2d27630` | `docs/specs/0019-settlement-and-credit-adjustment-reconciliation.md` |
 | Certified Remediation Control Plane | `37849d0` | `docs/specs/0020-certified-remediation.md` |
 | Worker Local Recovery State | `ea1053a` | `docs/specs/0021-worker-local-recovery-state.md` |
+| Production Gate Receipt Validation | `436558e` | `docs/launch-receipts/README.md` |
 
 ## ADR Evidence Matrix
 
@@ -66,7 +67,7 @@ tests alone do not satisfy a gate.
 | 0026 Reserve credit at Admission | Implemented for current lifecycle | Admission reserves atomically; cancellation, execution/finalization failure, and Visible Completion consume or release exactly once with counters and Outbox. | Future terminal paths must close the same reservation authority. |
 | 0027 Charge when cancel wins | Implemented | Visible Completion and Customer Cancellation serialize through one Job authority; the winner owns the only Charge and late completion returns the winning ArtifactSet. | Production fault-injection receipt remains a separate gate. |
 | 0028 Recompute after Worker loss | Partial | LOST execution creates a higher-fence whole-Job retry; a circuit-opening failure can select a different actively certified profile without changing product snapshots; finalization loss is recovered on the same Attempt/fence by a Reconciler without resetting its deadline; Slice 21 adds same-Worker/epoch/fence local state, per-Attempt quotas, watermarks, atomic writes, and terminal cleanup. | Worker Agent integration, quota-aware NVMe/XFS deployment certification, node/NVMe-loss exercise, and Launch Receipt. |
-| 0029 Evidenced Production Gates | Not started | Gate definitions exist in `docs/architecture.md`. | Nine versioned Launch Receipts; current result is `0/9`. |
+| 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings; missing, malformed, duplicate, or failed receipts cannot evaluate as PASS. | Nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
 
 ## Acceptance Coverage
 
