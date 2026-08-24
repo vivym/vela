@@ -26,11 +26,15 @@ orphaned operation into quarantine. A failed post-check, active Attempt/Lease,
 identity mismatch, or expired operation leaves the Worker quarantined. Node
 identity changes and quarantine reuse require a Worker epoch advance.
 
-The production Node Agent deployment and persistent receipt ledger, authoritative
-operation/epoch/Lease fencing, actor binding, hardware capability matrix, device
-checks, runner checks, model warm-up, canary, rate limiting, host fencing, and
-production Launch Receipts remain required before this ADR can be marked fully
-implemented. The transport direction and peer identity contract must also be
-fixed when the controller-to-agent deployment is wired.
+The repository now has adapters for authoritative operation authorization and
+completion persistence, but production process wiring and a deployed persistent
+receipt path are still absent. The production Node Agent deployment, actor
+binding, hardware capability matrix, device checks, runner checks, model
+warm-up, canary, rate limiting, host fencing, and production Launch Receipts
+remain required before this ADR can be marked fully implemented. The transport
+direction and peer identity contract must also be fixed when the
+controller-to-agent deployment is wired. The runner contract now receives the
+full immutable execution Plan, but no production host runner has yet certified
+that plan against local device and capability state.
 
 Repository evidence: `docs/specs/0020-certified-remediation.md`.

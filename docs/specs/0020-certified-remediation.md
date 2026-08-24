@@ -49,14 +49,16 @@ The production-facing repository seams are:
 5. `nodeagent.Server` and `nodeagent.Client` for an identity-bound transport
    whose `Authorizer` must bind the request to authoritative operation state.
 
-The transport is a contract seam only. Its tests use an in-memory ledger and an
-allow authorizer; no production service registration, persistent ledger, or
-control-plane adapter is claimed by this spec.
+The transport includes `ControlPlaneAuthorizer` and `ControlPlaneLedger`
+adapters over `remediation.Service`; their tests use in-memory fakes. No
+production service registration, process wiring, or live cluster receipt
+evidence is claimed by this spec.
 
 The executor seam accepts only absolute allowlisted command paths, rejects NUL
-arguments, requires a non-empty certified identity, and refuses L6/L7 direct
-execution. Real host commands are intentionally injected by a future Node
-Agent rather than embedded in the control plane.
+arguments, requires a non-empty certified identity, passes the full immutable
+execution `Plan` to the runner for device/epoch/capability checks, and refuses
+L6/L7 direct execution. Real host commands are intentionally injected by a
+future Node Agent rather than embedded in the control plane.
 
 ## Operation State And Identity
 
@@ -135,7 +137,7 @@ confusion.
 
 This repository slice does not implement or claim real `nvidia-smi`, CUDA
 cleanup, GPU reset, PCIe FLR, driver reload, node reboot, BMC power cycle,
-production Node Agent registration or persistent receipt storage, device/model
+production Node Agent registration or deployed receipt storage, device/model
 warm-up, canary execution, rate limiting, hardware topology certification, or
 production rollback. The transport contract intentionally fails closed without
 an authoritative `Authorizer` and a verified post-check. Those actions require
