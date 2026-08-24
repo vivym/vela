@@ -27,13 +27,13 @@ const (
 
 var (
 	ErrInvalidIdentity       = errors.New("invalid Worker local recovery identity")
-	ErrStateNotFound         = errors.New("Worker local recovery state was not found")
-	ErrStateIdentityMismatch = errors.New("Worker local recovery state identity does not match")
-	ErrStateTerminal         = errors.New("Worker local recovery state is terminal")
-	ErrUnsafeName            = errors.New("Worker local recovery state name is unsafe")
-	ErrQuotaExceeded         = errors.New("Worker local recovery state quota exceeded")
-	ErrCriticalWatermark     = errors.New("Worker local recovery storage is at the critical watermark")
-	ErrInvalidStateDirectory = errors.New("Worker local recovery state directory is unsafe")
+	ErrStateNotFound         = errors.New("worker local recovery state was not found")
+	ErrStateIdentityMismatch = errors.New("worker local recovery state identity does not match")
+	ErrStateTerminal         = errors.New("worker local recovery state is terminal")
+	ErrUnsafeName            = errors.New("worker local recovery state name is unsafe")
+	ErrQuotaExceeded         = errors.New("worker local recovery state quota exceeded")
+	ErrCriticalWatermark     = errors.New("worker local recovery storage is at the critical watermark")
+	ErrInvalidStateDirectory = errors.New("worker local recovery state directory is unsafe")
 )
 
 // Stage identifies the owning stage of a local recovery file. It is not a
@@ -166,24 +166,24 @@ func New(config Config) (*Manager, error) {
 	cleanRoot := filepath.Clean(config.Root)
 	if !filepath.IsAbs(cleanRoot) || cleanRoot == string(filepath.Separator) ||
 		len(cleanRoot) > maxRootPathLength || strings.ContainsRune(cleanRoot, '\x00') {
-		return nil, errors.New("Worker local recovery root must be a bounded absolute non-root path")
+		return nil, errors.New("worker local recovery root must be a bounded absolute non-root path")
 	}
 	if config.WorkerID == uuid.Nil || config.WorkerEpoch <= 0 {
 		return nil, ErrInvalidIdentity
 	}
 	if config.AttemptQuotaBytes <= 0 || config.MaxEntryBytes <= 0 ||
 		config.MaxEntryBytes > config.AttemptQuotaBytes {
-		return nil, errors.New("Worker local recovery quotas are invalid")
+		return nil, errors.New("worker local recovery quotas are invalid")
 	}
 	if config.MaxEntries <= 0 || config.MaxEntries > maxEntriesLimit {
-		return nil, errors.New("Worker local recovery entry limit is invalid")
+		return nil, errors.New("worker local recovery entry limit is invalid")
 	}
 	if config.LowWatermarkBytes < 0 || config.HighWatermarkBytes <= config.LowWatermarkBytes ||
 		config.CriticalFreeBytes < 0 {
-		return nil, errors.New("Worker local recovery watermarks are invalid")
+		return nil, errors.New("worker local recovery watermarks are invalid")
 	}
 	if config.TerminalRetention < time.Second || config.TerminalRetention > 24*time.Hour {
-		return nil, errors.New("Worker local recovery terminal retention must be between one second and 24 hours")
+		return nil, errors.New("worker local recovery terminal retention must be between one second and 24 hours")
 	}
 	spaceProbe := config.SpaceProbe
 	if spaceProbe == nil {
@@ -257,7 +257,7 @@ func (manager *Manager) bindRoot() error {
 // output from becoming a checkpoint for a replacement Attempt authority.
 func (manager *Manager) Open(ctx context.Context, identity Identity) (*Handle, error) {
 	if manager == nil {
-		return nil, errors.New("Worker local recovery manager is not configured")
+		return nil, errors.New("worker local recovery manager is not configured")
 	}
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -312,7 +312,7 @@ func (handle *Handle) Write(
 	source io.Reader,
 ) (Entry, error) {
 	if handle == nil || handle.manager == nil {
-		return Entry{}, errors.New("Worker local recovery handle is not configured")
+		return Entry{}, errors.New("worker local recovery handle is not configured")
 	}
 	if err := requireContext(ctx); err != nil {
 		return Entry{}, err
@@ -405,7 +405,7 @@ func (handle *Handle) Write(
 
 func (handle *Handle) Read(ctx context.Context, stage Stage, name string) ([]byte, error) {
 	if handle == nil || handle.manager == nil {
-		return nil, errors.New("Worker local recovery handle is not configured")
+		return nil, errors.New("worker local recovery handle is not configured")
 	}
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -440,7 +440,7 @@ func (handle *Handle) Read(ctx context.Context, stage Stage, name string) ([]byt
 
 func (handle *Handle) List(ctx context.Context) ([]Entry, error) {
 	if handle == nil || handle.manager == nil {
-		return nil, errors.New("Worker local recovery handle is not configured")
+		return nil, errors.New("worker local recovery handle is not configured")
 	}
 	if err := requireContext(ctx); err != nil {
 		return nil, err
@@ -463,7 +463,7 @@ func (handle *Handle) List(ctx context.Context) ([]Entry, error) {
 // deletion. If a process dies during removal, Reconcile can safely finish it.
 func (handle *Handle) MarkTerminal(ctx context.Context) error {
 	if handle == nil || handle.manager == nil {
-		return errors.New("Worker local recovery handle is not configured")
+		return errors.New("worker local recovery handle is not configured")
 	}
 	if err := requireContext(ctx); err != nil {
 		return err
@@ -492,7 +492,7 @@ func (handle *Handle) MarkTerminal(ctx context.Context) error {
 
 func (manager *Manager) Watermark(ctx context.Context) (Watermark, error) {
 	if manager == nil {
-		return Watermark{}, errors.New("Worker local recovery manager is not configured")
+		return Watermark{}, errors.New("worker local recovery manager is not configured")
 	}
 	if err := requireContext(ctx); err != nil {
 		return Watermark{}, err
@@ -504,7 +504,7 @@ func (manager *Manager) Watermark(ctx context.Context) (Watermark, error) {
 		return Watermark{}, fmt.Errorf("observe Worker local recovery capacity: %w", err)
 	}
 	if space.TotalBytes <= 0 || space.FreeBytes < 0 || space.FreeBytes > space.TotalBytes {
-		return Watermark{}, errors.New("Worker local recovery capacity observation is invalid")
+		return Watermark{}, errors.New("worker local recovery capacity observation is invalid")
 	}
 	used := space.TotalBytes - space.FreeBytes
 	state := WatermarkNormal
@@ -526,7 +526,7 @@ func (manager *Manager) Watermark(ctx context.Context) (Watermark, error) {
 // mount or an unexpected file cannot cause broad deletion of customer data.
 func (manager *Manager) Reconcile(ctx context.Context) (ReconcileResult, error) {
 	if manager == nil {
-		return ReconcileResult{}, errors.New("Worker local recovery manager is not configured")
+		return ReconcileResult{}, errors.New("worker local recovery manager is not configured")
 	}
 	if err := requireContext(ctx); err != nil {
 		return ReconcileResult{}, err
@@ -611,7 +611,7 @@ func (manager *Manager) requireWritableSpace(additionalBytes int64) error {
 		return fmt.Errorf("observe Worker local recovery capacity: %w", err)
 	}
 	if space.TotalBytes <= 0 || space.FreeBytes < 0 || space.FreeBytes > space.TotalBytes {
-		return errors.New("Worker local recovery capacity observation is invalid")
+		return errors.New("worker local recovery capacity observation is invalid")
 	}
 	if space.FreeBytes <= manager.criticalFree || additionalBytes > space.FreeBytes-manager.criticalFree {
 		return ErrCriticalWatermark
@@ -691,7 +691,8 @@ func validStateName(name string) bool {
 		return false
 	}
 	for _, char := range name {
-		if char > unicode.MaxASCII || !(unicode.IsLetter(char) || unicode.IsDigit(char) || char == '.' || char == '_' || char == '-') {
+		if char > unicode.MaxASCII ||
+			(!unicode.IsLetter(char) && !unicode.IsDigit(char) && char != '.' && char != '_' && char != '-') {
 			return false
 		}
 	}
@@ -875,7 +876,7 @@ func multiplyUint64(left, right uint64) (uint64, bool) {
 
 func requireContext(ctx context.Context) error {
 	if ctx == nil {
-		return errors.New("Worker local recovery context is required")
+		return errors.New("worker local recovery context is required")
 	}
 	select {
 	case <-ctx.Done():
