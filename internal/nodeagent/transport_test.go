@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -43,7 +44,7 @@ func TestNodeAgentServerBindsControllerIdentityAndLocalTarget(t *testing.T) {
 	if !response.GetSuccess() || response.GetResultCode() != "POSTCHECK_OK" || len(response.GetPostcheckSha256()) != sha256.Size {
 		t.Fatalf("Node Agent response = %#v", response)
 	}
-	if executor.plan.OperationID != uuid.MustParse(request.GetOperationId()) || executor.plan.ExecutionClaimID != uuid.MustParse(request.GetExecutionClaimId()) || executor.plan.WorkerID != workerID || executor.plan.WorkerEpoch != 1 || executor.plan.DeadlineAt != request.GetDeadlineAt().AsTime() || !bytes.Equal(executor.plan.FailureEvidenceDigest, evidence[:]) {
+	if executor.plan.OperationID != uuid.MustParse(request.GetOperationId()) || executor.plan.ExecutionClaimID != uuid.MustParse(request.GetExecutionClaimId()) || executor.plan.WorkerID != workerID || executor.plan.WorkerEpoch != 1 || executor.plan.FailureClass != request.GetFailureClass() || executor.plan.DeadlineAt != request.GetDeadlineAt().AsTime() || !bytes.Equal(executor.plan.FailureEvidenceDigest, evidence[:]) {
 		t.Fatalf("executor plan = %#v", executor.plan)
 	}
 }
@@ -105,6 +106,11 @@ func TestNodeAgentServerReplaysAndRejectsConflictingReceipts(t *testing.T) {
 	conflicting.DeviceIdentity = "gpu-1"
 	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), conflicting); status.Code(err) != 6 {
 		t.Fatalf("conflicting replay error = %v, want AlreadyExists", err)
+	}
+	conflicting = proto.Clone(request).(*velav1.ExecuteRemediationRequest)
+	conflicting.FailureClass = "different_failure"
+	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), conflicting); status.Code(err) != 6 {
+		t.Fatalf("conflicting failure class replay error = %v, want AlreadyExists", err)
 	}
 	conflicting = validAgentRequest(workerID, now)
 	conflicting.OperationId = request.GetOperationId()
@@ -236,7 +242,7 @@ func (ledger *memoryLedger) Begin(_ context.Context, intent ExecutionIntent) (Ex
 
 func validAgentRequest(workerID uuid.UUID, now time.Time) *velav1.ExecuteRemediationRequest {
 	evidence := sha256.Sum256([]byte("failure"))
-	return &velav1.ExecuteRemediationRequest{OperationId: uuid.NewString(), WorkerId: workerID.String(), WorkerEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: "gpu-0", ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1", FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)), ExecutionClaimId: uuid.NewString()}
+	return &velav1.ExecuteRemediationRequest{OperationId: uuid.NewString(), WorkerId: workerID.String(), WorkerEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure", ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1", FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)), ExecutionClaimId: uuid.NewString()}
 }
 
 func mustControllerResolver(t *testing.T) *StaticControllerIdentityResolver {

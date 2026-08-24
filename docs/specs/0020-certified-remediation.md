@@ -75,6 +75,10 @@ the Agent publishes a non-replaceable execution intent. An intent without a
 terminal receipt after restart yields `EXECUTION_OUTCOME_UNKNOWN` and quarantine
 rather than repeating an action whose outcome cannot be proven.
 
+The Plan, RPC request hash, helper arguments, and helper evidence also bind the
+authoritative failure class; a host action cannot be replayed against a
+different failure classification with the same operation identity.
+
 The endpoint registry binds Node identity, Worker UUID, DNS server name, and a
 canonical Node Agent SPIFFE URI. The Agent verifies the URI against its local
 Node/Worker identity at startup. Controller certificates and actors use the

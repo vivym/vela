@@ -43,6 +43,7 @@ func TestAllowlistedExecutorRunsOnlyRegisteredAction(t *testing.T) {
 		ActionLevel:           ActionL0ProcessRestart,
 		NodeIdentity:          "node-1",
 		DeviceIdentity:        "gpu-0",
+		FailureClass:          "process_failure",
 		WorkerEpoch:           3,
 		CertificationRevision: "matrix-v1",
 	})
@@ -59,6 +60,7 @@ func TestAllowlistedExecutorRunsOnlyRegisteredAction(t *testing.T) {
 		ActionLevel:           ActionL5NodeReboot,
 		NodeIdentity:          "node-1",
 		DeviceIdentity:        "gpu-0",
+		FailureClass:          "process_failure",
 		WorkerEpoch:           3,
 		CertificationRevision: "matrix-v1",
 	})

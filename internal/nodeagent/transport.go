@@ -75,6 +75,14 @@ type ExecutionIntent struct {
 type ExecutionIntentResult struct {
 	Acquired  bool
 	StartedAt time.Time
+	release   func() error
+}
+
+func (result ExecutionIntentResult) releaseExecution() error {
+	if result.release == nil {
+		return nil
+	}
+	return result.release()
 }
 
 type HostLedger interface {
@@ -89,6 +97,7 @@ type Request struct {
 	WorkerEpoch           int64
 	NodeIdentity          string
 	DeviceIdentity        string
+	FailureClass          string
 	ActionLevel           remediation.ActionLevel
 	CertificationRevision string
 	FailureEvidenceDigest []byte
@@ -189,8 +198,21 @@ func (server *Server) ExecuteRemediation(
 	if err != nil || intent.StartedAt.IsZero() {
 		return nil, status.Error(codes.Internal, "node Agent execution intent write failed")
 	}
+	defer func() { _ = intent.releaseExecution() }()
 	startedAt = intent.StartedAt
 	if !intent.Acquired {
+		// A different Agent process can publish the receipt between the initial
+		// lookup and acquisition of the durable execution lock.
+		prior, found, loadErr := server.ledger.Load(ctx, parsed.OperationID)
+		if loadErr != nil {
+			return nil, status.Error(codes.Internal, "node Agent receipt recheck failed")
+		}
+		if found {
+			if prior.RequestHash != requestHash || prior.ActorIdentity != controller.ActorIdentity {
+				return nil, status.Error(codes.AlreadyExists, "node Agent operation id was reused with different input")
+			}
+			return responseFromResult(prior.Result), nil
+		}
 		result := Result{
 			OperationID: parsed.OperationID, Success: false,
 			ResultCode:   "EXECUTION_OUTCOME_UNKNOWN",
@@ -211,6 +233,7 @@ func (server *Server) ExecuteRemediation(
 		ActionLevel:           parsed.ActionLevel,
 		NodeIdentity:          parsed.NodeIdentity,
 		DeviceIdentity:        parsed.DeviceIdentity,
+		FailureClass:          parsed.FailureClass,
 		WorkerEpoch:           parsed.WorkerEpoch,
 		DeadlineAt:            parsed.DeadlineAt,
 		CertificationRevision: parsed.CertificationRevision,
@@ -298,7 +321,8 @@ func (client *Client) Execute(ctx context.Context, request Request) (Result, err
 	response, err := client.client.ExecuteRemediation(ctx, &velav1.ExecuteRemediationRequest{
 		OperationId: request.OperationID.String(), WorkerId: request.WorkerID.String(),
 		WorkerEpoch: request.WorkerEpoch, NodeIdentity: request.NodeIdentity,
-		DeviceIdentity: request.DeviceIdentity, ActionLevel: string(request.ActionLevel),
+		DeviceIdentity: request.DeviceIdentity, FailureClass: request.FailureClass,
+		ActionLevel:           string(request.ActionLevel),
 		CertificationRevision: request.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), request.FailureEvidenceDigest...),
 		DeadlineAt:            timestamppb.New(request.DeadlineAt),
@@ -336,6 +360,7 @@ func parseRequest(
 	parsed := Request{
 		OperationID: operationID, ExecutionClaimID: claimID, WorkerID: workerID, WorkerEpoch: request.GetWorkerEpoch(),
 		NodeIdentity: request.GetNodeIdentity(), DeviceIdentity: request.GetDeviceIdentity(),
+		FailureClass:          request.GetFailureClass(),
 		ActionLevel:           remediation.ActionLevel(request.GetActionLevel()),
 		CertificationRevision: request.GetCertificationRevision(),
 		FailureEvidenceDigest: append([]byte(nil), request.GetFailureEvidenceDigest()...),
@@ -381,6 +406,7 @@ func parseResponse(response *velav1.ExecuteRemediationResponse, operationID uuid
 func validateRequest(request Request) error {
 	if request.OperationID == uuid.Nil || request.ExecutionClaimID == uuid.Nil || request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 ||
 		!validText(request.NodeIdentity, maxIdentityText) || !validText(request.DeviceIdentity, maxIdentityText) ||
+		!validText(request.FailureClass, 200) ||
 		!remediation.IsActionLevel(request.ActionLevel) ||
 		(request.ActionLevel != remediation.ActionL7Quarantine && !validText(request.CertificationRevision, 200)) ||
 		len(request.FailureEvidenceDigest) != sha256.Size ||
@@ -413,6 +439,7 @@ func hashRequest(request Request) [sha256.Size]byte {
 		WorkerEpoch           int64  `json:"worker_epoch"`
 		NodeIdentity          string `json:"node_identity"`
 		DeviceIdentity        string `json:"device_identity"`
+		FailureClass          string `json:"failure_class"`
 		ActionLevel           string `json:"action_level"`
 		CertificationRevision string `json:"certification_revision"`
 		FailureEvidenceDigest []byte `json:"failure_evidence_digest"`
@@ -424,6 +451,7 @@ func hashRequest(request Request) [sha256.Size]byte {
 		WorkerEpoch:           request.WorkerEpoch,
 		NodeIdentity:          request.NodeIdentity,
 		DeviceIdentity:        request.DeviceIdentity,
+		FailureClass:          request.FailureClass,
 		ActionLevel:           string(request.ActionLevel),
 		CertificationRevision: request.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), request.FailureEvidenceDigest...),

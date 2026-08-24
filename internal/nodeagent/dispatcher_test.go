@@ -17,7 +17,7 @@ func TestExecutionDispatcherClaimsExecutesAndCompletes(t *testing.T) {
 	now := time.Now().UTC()
 	operation := remediation.Operation{
 		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 3,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0",
+		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v1",
 		ActionLevel: remediation.ActionL0ProcessRestart, State: remediation.StateExecuting,
 		RequestedAt: now.Add(-time.Second), DeadlineAt: now.Add(time.Minute),
@@ -45,7 +45,7 @@ func TestExecutionDispatcherReusesClaimAfterLostRPCResponse(t *testing.T) {
 	now := time.Now().UTC()
 	operation := remediation.Operation{
 		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 4,
-		NodeIdentity: "node-2", DeviceIdentity: "gpu-1",
+		NodeIdentity: "node-2", DeviceIdentity: "gpu-1", FailureClass: "gpu_fault",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v2",
 		ActionLevel: remediation.ActionL2GPUReset, State: remediation.StateExecuting,
 		RequestedAt: now.Add(-time.Second), DeadlineAt: now.Add(time.Minute),

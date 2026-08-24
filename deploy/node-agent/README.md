@@ -39,6 +39,7 @@ fixed configured argument vector:
 --vela-worker-epoch=<positive integer>
 --vela-node-identity=<registered identity>
 --vela-device-identity=<registered identity>
+--vela-failure-class=<authoritative failure class>
 --vela-action-level=<L0...L5 enum>
 --vela-certification-revision=<revision>
 --vela-failure-evidence-sha256=<lowercase hex>

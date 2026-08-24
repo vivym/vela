@@ -77,7 +77,8 @@ func (executor *RemoteExecutor) Execute(ctx context.Context, plan remediation.Pl
 		OperationID: plan.OperationID, ExecutionClaimID: plan.ExecutionClaimID,
 		WorkerID: plan.WorkerID, WorkerEpoch: plan.WorkerEpoch,
 		NodeIdentity: plan.NodeIdentity, DeviceIdentity: plan.DeviceIdentity,
-		ActionLevel: plan.ActionLevel, CertificationRevision: plan.CertificationRevision,
+		FailureClass: plan.FailureClass,
+		ActionLevel:  plan.ActionLevel, CertificationRevision: plan.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), plan.FailureEvidenceDigest...),
 		DeadlineAt:            plan.DeadlineAt,
 	}
@@ -145,6 +146,7 @@ func (authorizer *ControlPlaneAuthorizer) Authorize(ctx context.Context, request
 	if operation.ID != request.OperationID || operation.WorkerID != request.WorkerID ||
 		operation.WorkerEpoch != request.WorkerEpoch || operation.NodeIdentity != request.NodeIdentity ||
 		operation.DeviceIdentity != request.DeviceIdentity || operation.ActionLevel != request.ActionLevel ||
+		operation.FailureClass != request.FailureClass ||
 		operation.CertificationRevision != request.CertificationRevision ||
 		!equalDigest(operation.EvidenceDigest, request.FailureEvidenceDigest) {
 		return errors.New("node Agent request does not match the authoritative remediation operation")
@@ -281,6 +283,7 @@ func requestFromOperation(operation remediation.Operation, actorIdentity string)
 		WorkerEpoch:           operation.WorkerEpoch,
 		NodeIdentity:          operation.NodeIdentity,
 		DeviceIdentity:        operation.DeviceIdentity,
+		FailureClass:          operation.FailureClass,
 		ActionLevel:           operation.ActionLevel,
 		CertificationRevision: operation.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), operation.EvidenceDigest...),

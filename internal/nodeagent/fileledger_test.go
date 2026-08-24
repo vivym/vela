@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"os"
 	"sync"
 	"testing"
@@ -91,5 +92,91 @@ func TestFileLedgerRejectsWritableReceiptDirectory(t *testing.T) {
 	}
 	if _, err := NewFileLedger(directory); err == nil {
 		t.Fatal("group/world-writable receipt directory was accepted")
+	}
+}
+
+func TestFileLedgerExecutionIntentIsLockedAcrossAgentProcesses(t *testing.T) {
+	directory := t.TempDir()
+	first, err := NewFileLedger(directory)
+	if err != nil {
+		t.Fatalf("NewFileLedger first: %v", err)
+	}
+	second, err := NewFileLedger(directory)
+	if err != nil {
+		t.Fatalf("NewFileLedger second: %v", err)
+	}
+	operationID := uuid.New()
+	intent := ExecutionIntent{
+		OperationID: operationID, RequestHash: sha256.Sum256([]byte("request")),
+		ActorIdentity: "controller/control-1", StartedAt: time.Unix(10, 0).UTC(),
+	}
+	acquired, err := first.Begin(context.Background(), intent)
+	if err != nil || !acquired.Acquired {
+		t.Fatalf("first Begin = %#v error=%v", acquired, err)
+	}
+	if _, err := second.Begin(context.Background(), intent); !errors.Is(err, errExecutionInProgress) {
+		t.Fatalf("concurrent Begin error = %v, want execution in progress", err)
+	}
+	receipt := Receipt{
+		RequestHash: intent.RequestHash, ActorIdentity: intent.ActorIdentity,
+		Result: Result{OperationID: operationID, ResultCode: "FAILED", ResultDetail: "known failure", StartedAt: intent.StartedAt, FinishedAt: intent.StartedAt.Add(time.Second)},
+	}
+	if err := first.Save(context.Background(), receipt); err != nil {
+		t.Fatalf("Save terminal receipt: %v", err)
+	}
+	loaded, found, err := second.Load(context.Background(), operationID)
+	if err != nil || !found || !equalResult(loaded.Result, receipt.Result) {
+		t.Fatalf("Load after lock release = %#v found=%v error=%v", loaded, found, err)
+	}
+}
+
+func TestFileLedgerInterruptedIntentRequiresReleasedProcessLock(t *testing.T) {
+	directory := t.TempDir()
+	first, err := NewFileLedger(directory)
+	if err != nil {
+		t.Fatalf("NewFileLedger first: %v", err)
+	}
+	operationID := uuid.New()
+	intent := ExecutionIntent{
+		OperationID: operationID, RequestHash: sha256.Sum256([]byte("request")),
+		ActorIdentity: "controller/control-1", StartedAt: time.Unix(10, 0).UTC(),
+	}
+	if acquired, err := first.Begin(context.Background(), intent); err != nil || !acquired.Acquired {
+		t.Fatalf("first Begin = %#v error=%v", acquired, err)
+	}
+	if err := first.releaseExecutionLock(operationID); err != nil {
+		t.Fatalf("simulate process exit: %v", err)
+	}
+	restarted, err := NewFileLedger(directory)
+	if err != nil {
+		t.Fatalf("NewFileLedger restarted: %v", err)
+	}
+	interrupted, err := restarted.Begin(context.Background(), intent)
+	if err != nil || interrupted.Acquired || interrupted.StartedAt != intent.StartedAt {
+		t.Fatalf("restarted Begin = %#v error=%v", interrupted, err)
+	}
+	receipt := Receipt{
+		RequestHash: intent.RequestHash, ActorIdentity: intent.ActorIdentity,
+		Result: Result{OperationID: operationID, ResultCode: "EXECUTION_OUTCOME_UNKNOWN", ResultDetail: "interrupted", StartedAt: intent.StartedAt, FinishedAt: intent.StartedAt.Add(time.Second)},
+	}
+	if err := restarted.Save(context.Background(), receipt); err != nil {
+		t.Fatalf("Save interrupted receipt: %v", err)
+	}
+}
+
+func TestFileLedgerDoesNotHideDirectorySyncFailure(t *testing.T) {
+	ledger, err := NewFileLedger(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFileLedger: %v", err)
+	}
+	syncErr := errors.New("injected directory sync failure")
+	ledger.syncDirectory = func() error { return syncErr }
+	operationID := uuid.New()
+	receipt := Receipt{
+		RequestHash: sha256.Sum256([]byte("request")), ActorIdentity: "controller/control-1",
+		Result: Result{OperationID: operationID, ResultCode: "FAILED", ResultDetail: "known failure", StartedAt: time.Unix(1, 0).UTC(), FinishedAt: time.Unix(2, 0).UTC()},
+	}
+	if err := ledger.Save(context.Background(), receipt); !errors.Is(err, syncErr) {
+		t.Fatalf("Save error = %v, want directory sync failure", err)
 	}
 }

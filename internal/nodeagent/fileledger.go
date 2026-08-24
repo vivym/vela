@@ -7,21 +7,28 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/securefile"
 )
 
 const maxLedgerRecordBytes = 64 * 1024
+
+var errExecutionInProgress = errors.New("node Agent execution is already in progress")
 
 // FileLedger is the host-local durable receipt authority. It stores only
 // operation metadata and result digests, never command output or Customer
 // Content. The control plane remains the authoritative business ledger.
 type FileLedger struct {
-	directory string
+	directory      string
+	mu             sync.Mutex
+	executionLocks map[uuid.UUID]*os.File
+	syncDirectory  func() error
 }
 
 func NewFileLedger(directory string) (*FileLedger, error) {
@@ -31,11 +38,12 @@ func NewFileLedger(directory string) (*FileLedger, error) {
 	if err := os.MkdirAll(directory, 0o750); err != nil {
 		return nil, fmt.Errorf("create node Agent receipt directory: %w", err)
 	}
-	info, err := os.Lstat(directory)
-	if err != nil || !info.IsDir() || info.Mode().Perm()&0o022 != 0 {
+	if err := securefile.ValidateDirectory(directory); err != nil {
 		return nil, errors.New("node Agent receipt directory does not satisfy the security contract")
 	}
-	return &FileLedger{directory: directory}, nil
+	ledger := &FileLedger{directory: directory, executionLocks: make(map[uuid.UUID]*os.File)}
+	ledger.syncDirectory = func() error { return syncDirectory(directory) }
+	return ledger, nil
 }
 
 type fileReceipt struct {
@@ -62,6 +70,15 @@ func (ledger *FileLedger) Begin(ctx context.Context, intent ExecutionIntent) (Ex
 	if err := contextError(ctx); err != nil {
 		return ExecutionIntentResult{}, err
 	}
+	if err := ledger.acquireExecutionLock(intent.OperationID); err != nil {
+		return ExecutionIntentResult{}, err
+	}
+	keepLock := false
+	defer func() {
+		if !keepLock {
+			_ = ledger.releaseExecutionLock(intent.OperationID)
+		}
+	}()
 	path := ledger.intentPath(intent.OperationID)
 	if prior, found, err := ledger.loadIntent(ctx, intent.OperationID); err != nil {
 		return ExecutionIntentResult{}, err
@@ -69,7 +86,10 @@ func (ledger *FileLedger) Begin(ctx context.Context, intent ExecutionIntent) (Ex
 		if prior.RequestHash != intent.RequestHash || prior.ActorIdentity != intent.ActorIdentity {
 			return ExecutionIntentResult{}, errors.New("node Agent execution intent conflicts with an existing operation")
 		}
-		return ExecutionIntentResult{StartedAt: prior.StartedAt}, nil
+		keepLock = true
+		return ExecutionIntentResult{StartedAt: prior.StartedAt, release: func() error {
+			return ledger.releaseExecutionLock(intent.OperationID)
+		}}, nil
 	}
 	encoded, err := json.Marshal(fileExecutionIntent{
 		OperationID: intent.OperationID, RequestHash: hex.EncodeToString(intent.RequestHash[:]),
@@ -79,13 +99,22 @@ func (ledger *FileLedger) Begin(ctx context.Context, intent ExecutionIntent) (Ex
 		return ExecutionIntentResult{}, fmt.Errorf("encode node Agent execution intent: %w", err)
 	}
 	if err := ledger.publish(path, ".intent-*.tmp", encoded); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return ExecutionIntentResult{}, fmt.Errorf("publish node Agent execution intent: %w", err)
+		}
 		if prior, found, loadErr := ledger.loadIntent(ctx, intent.OperationID); loadErr == nil && found &&
 			prior.RequestHash == intent.RequestHash && prior.ActorIdentity == intent.ActorIdentity {
-			return ExecutionIntentResult{StartedAt: prior.StartedAt}, nil
+			keepLock = true
+			return ExecutionIntentResult{StartedAt: prior.StartedAt, release: func() error {
+				return ledger.releaseExecutionLock(intent.OperationID)
+			}}, nil
 		}
 		return ExecutionIntentResult{}, fmt.Errorf("publish node Agent execution intent: %w", err)
 	}
-	return ExecutionIntentResult{Acquired: true, StartedAt: intent.StartedAt}, nil
+	keepLock = true
+	return ExecutionIntentResult{Acquired: true, StartedAt: intent.StartedAt, release: func() error {
+		return ledger.releaseExecutionLock(intent.OperationID)
+	}}, nil
 }
 
 func (ledger *FileLedger) loadIntent(ctx context.Context, operationID uuid.UUID) (ExecutionIntent, bool, error) {
@@ -153,6 +182,7 @@ func (ledger *FileLedger) Save(ctx context.Context, receipt Receipt) error {
 	if ledger == nil || ledger.directory == "" {
 		return errors.New("node Agent file ledger is not configured")
 	}
+	defer func() { _ = ledger.releaseExecutionLock(receipt.Result.OperationID) }()
 	if !validReceipt(receipt) {
 		return errors.New("node Agent receipt is invalid")
 	}
@@ -178,6 +208,9 @@ func (ledger *FileLedger) Save(ctx context.Context, receipt Receipt) error {
 		return fmt.Errorf("encode node Agent receipt: %w", err)
 	}
 	if err := ledger.publish(path, ".receipt-*.tmp", encoded); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("publish node Agent receipt: %w", err)
+		}
 		if prior, found, loadErr := ledger.Load(ctx, receipt.Result.OperationID); loadErr == nil && found &&
 			prior.RequestHash == receipt.RequestHash && prior.ActorIdentity == receipt.ActorIdentity && equalResult(prior.Result, receipt.Result) {
 			return nil
@@ -188,21 +221,7 @@ func (ledger *FileLedger) Save(ctx context.Context, receipt Receipt) error {
 }
 
 func readLedgerRecord(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 ||
-		info.Size() <= 0 || info.Size() > maxLedgerRecordBytes {
-		return nil, errors.New("node Agent ledger record does not satisfy the security contract")
-	}
-	content, err := io.ReadAll(io.LimitReader(file, maxLedgerRecordBytes+1))
-	if err != nil || len(content) == 0 || len(content) > maxLedgerRecordBytes {
-		return nil, errors.New("node Agent ledger record exceeds its bound")
-	}
-	return content, nil
+	return securefile.Read(path, maxLedgerRecordBytes, true)
 }
 
 func validReceipt(receipt Receipt) bool {
@@ -242,7 +261,14 @@ func (ledger *FileLedger) publish(path, pattern string, encoded []byte) error {
 	if err := os.Link(temporaryPath, path); err != nil {
 		return err
 	}
-	directory, err := os.Open(ledger.directory)
+	if ledger.syncDirectory == nil {
+		return errors.New("node Agent ledger directory sync is not configured")
+	}
+	return ledger.syncDirectory()
+}
+
+func syncDirectory(path string) error {
+	directory, err := os.Open(path)
 	if err != nil {
 		return err
 	}
@@ -276,6 +302,45 @@ func (ledger *FileLedger) path(operationID uuid.UUID) string {
 
 func (ledger *FileLedger) intentPath(operationID uuid.UUID) string {
 	return filepath.Join(ledger.directory, operationID.String()+".intent.json")
+}
+
+func (ledger *FileLedger) lockPath(operationID uuid.UUID) string {
+	return filepath.Join(ledger.directory, operationID.String()+".execution.lock")
+}
+
+func (ledger *FileLedger) acquireExecutionLock(operationID uuid.UUID) error {
+	ledger.mu.Lock()
+	defer ledger.mu.Unlock()
+	if _, held := ledger.executionLocks[operationID]; held {
+		return errExecutionInProgress
+	}
+	lock, err := securefile.OpenPrivateState(ledger.lockPath(operationID))
+	if err != nil {
+		return fmt.Errorf("open node Agent execution lock: %w", err)
+	}
+	closeOnError := func() { _ = lock.Close() }
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		closeOnError()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return errExecutionInProgress
+		}
+		return fmt.Errorf("lock node Agent execution intent: %w", err)
+	}
+	ledger.executionLocks[operationID] = lock
+	return nil
+}
+
+func (ledger *FileLedger) releaseExecutionLock(operationID uuid.UUID) error {
+	ledger.mu.Lock()
+	lock := ledger.executionLocks[operationID]
+	delete(ledger.executionLocks, operationID)
+	ledger.mu.Unlock()
+	if lock == nil {
+		return nil
+	}
+	unlockErr := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	closeErr := lock.Close()
+	return errors.Join(unlockErr, closeErr)
 }
 
 func contextError(ctx context.Context) error {

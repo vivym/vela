@@ -19,7 +19,7 @@ func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
 	evidence := digestForTest("failure")
 	operation := remediation.Operation{
 		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 4,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0",
+		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "gpu_fault",
 		EvidenceDigest: evidence, CertificationRevision: "matrix-v2",
 		ActionLevel: remediation.ActionL2GPUReset, State: remediation.StateExecuting,
 		DeadlineAt: now.Add(time.Minute),
@@ -44,6 +44,11 @@ func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
 		t.Fatal("device mismatch was accepted")
 	}
 	request = requestFromOperation(operation, "controller/node-1")
+	request.FailureClass = "different_failure"
+	if err := authorizer.Authorize(context.Background(), request); err == nil {
+		t.Fatal("failure class mismatch was accepted")
+	}
+	request = requestFromOperation(operation, "controller/node-1")
 	request.DeadlineAt = operation.DeadlineAt.Add(time.Second)
 	if err := authorizer.Authorize(context.Background(), request); err == nil {
 		t.Fatal("deadline extension was accepted")
@@ -58,7 +63,7 @@ func TestControlPlaneLedgerCompletesAndReplaysAuthoritativeOperation(t *testing.
 	now := time.Unix(9000, 0).UTC()
 	operation := remediation.Operation{
 		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 8,
-		NodeIdentity: "node-2", DeviceIdentity: "gpu-1",
+		NodeIdentity: "node-2", DeviceIdentity: "gpu-1", FailureClass: "process_failure",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v3",
 		ActionLevel: remediation.ActionL0ProcessRestart, State: remediation.StateExecuting,
 		RequestedAt: now.Add(-time.Second), StartedAt: timePtr(now.Add(-500 * time.Millisecond)),
@@ -96,7 +101,7 @@ func TestControlPlaneLedgerCompletesAndReplaysAuthoritativeOperation(t *testing.
 func TestControlPlaneLedgerRejectsWrongRequestHash(t *testing.T) {
 	operation := remediation.Operation{
 		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 2,
-		NodeIdentity: "node-3", DeviceIdentity: "gpu-0",
+		NodeIdentity: "node-3", DeviceIdentity: "gpu-0", FailureClass: "cuda_fault",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v1",
 		ActionLevel: remediation.ActionL1CUDACleanup, State: remediation.StateExecuting,
 		RequestedAt: time.Unix(10000, 0).UTC(), DeadlineAt: time.Unix(10060, 0).UTC(),
@@ -119,7 +124,7 @@ func TestRemoteExecutorAuthorizesCallsAgentAndCompletesControlPlane(t *testing.T
 	now := time.Now().UTC()
 	operation := remediation.Operation{
 		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 8,
-		NodeIdentity: "node-2", DeviceIdentity: "gpu-1",
+		NodeIdentity: "node-2", DeviceIdentity: "gpu-1", FailureClass: "process_failure",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v3",
 		ActionLevel: remediation.ActionL0ProcessRestart, State: remediation.StateExecuting,
 		RequestedAt: now.Add(-time.Second), StartedAt: timePtr(now.Add(-500 * time.Millisecond)),
@@ -154,7 +159,8 @@ func TestRemoteExecutorAuthorizesCallsAgentAndCompletesControlPlane(t *testing.T
 		WorkerID:         operation.WorkerID,
 		WorkerEpoch:      operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
 		NodeIdentity: operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
-		ActionLevel: operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
+		FailureClass: operation.FailureClass,
+		ActionLevel:  operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
 		FailureEvidenceDigest: operation.EvidenceDigest,
 	})
 	if err != nil || !result.PostcheckVerified || len(store.completions) != 1 || len(claimer.claims) != 1 {

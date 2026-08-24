@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/vivym/vela/internal/securefile"
 )
 
 const maxRateLimitStateBytes = 64 * 1024
@@ -31,8 +33,7 @@ func NewFileRateLimiter(directory string, config RateLimit) (*FileRateLimiter, e
 	if !filepath.IsAbs(cleaned) || cleaned != directory {
 		return nil, errors.New("node Agent rate-limit directory must be an absolute clean path")
 	}
-	info, err := os.Lstat(cleaned)
-	if err != nil || !info.IsDir() || info.Mode().Perm()&0o022 != 0 {
+	if err := securefile.ValidateDirectory(cleaned); err != nil {
 		return nil, errors.New("node Agent rate-limit directory does not satisfy the security contract")
 	}
 	return &FileRateLimiter{directory: cleaned, config: config}, nil
@@ -43,14 +44,11 @@ func (limiter *FileRateLimiter) Allow(now time.Time) error {
 		return errors.New("node Agent file rate limiter is not configured")
 	}
 	lockPath := filepath.Join(limiter.directory, ".remediation-rate-limit.lock")
-	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	lock, err := securefile.OpenPrivateState(lockPath)
 	if err != nil {
 		return fmt.Errorf("open node Agent rate-limit lock: %w", err)
 	}
 	defer func() { _ = lock.Close() }()
-	if info, statErr := lock.Stat(); statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-		return errors.New("node Agent rate-limit lock does not satisfy the security contract")
-	}
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
 		return fmt.Errorf("lock node Agent rate-limit state: %w", err)
 	}
@@ -70,22 +68,12 @@ func (limiter *FileRateLimiter) Allow(now time.Time) error {
 
 func (limiter *FileRateLimiter) load() (fileRateLimitState, error) {
 	path := filepath.Join(limiter.directory, ".remediation-rate-limit.json")
-	file, err := os.Open(path)
+	content, err := securefile.Read(path, maxRateLimitStateBytes, true)
 	if errors.Is(err, os.ErrNotExist) {
 		return fileRateLimitState{}, nil
 	}
 	if err != nil {
 		return fileRateLimitState{}, fmt.Errorf("read node Agent rate-limit state: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 ||
-		info.Size() <= 0 || info.Size() > maxRateLimitStateBytes {
-		return fileRateLimitState{}, errors.New("node Agent rate-limit state does not satisfy the security contract")
-	}
-	content, err := io.ReadAll(io.LimitReader(file, maxRateLimitStateBytes+1))
-	if err != nil || len(content) == 0 || len(content) > maxRateLimitStateBytes {
-		return fileRateLimitState{}, errors.New("node Agent rate-limit state exceeds its bound")
 	}
 	var state fileRateLimitState
 	decoder := json.NewDecoder(bytes.NewReader(content))

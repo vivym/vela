@@ -33,7 +33,7 @@ func (runner *fakeCommandRunner) Run(_ context.Context, _ remediation.Plan, path
 func TestCertifiedExecutorRequiresCapabilityFenceRateAndPostcheck(t *testing.T) {
 	plan := remediation.Plan{
 		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", ActionLevel: remediation.ActionL0ProcessRestart,
+		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure", ActionLevel: remediation.ActionL0ProcessRestart,
 		CertificationRevision: "matrix-v1", FailureEvidenceDigest: digestForTest("failure"),
 		DeadlineAt: time.Now().Add(time.Minute).UTC(),
 	}
@@ -96,7 +96,7 @@ func TestCertifiedExecutorFailsClosedOnPolicyFenceAndPostcheck(t *testing.T) {
 	blocked, _ := NewCertifiedExecutor(allowlisted, policy, CallbackFence(func(context.Context, remediation.Plan) error { return errors.New("active lease") }), postcheck, limiter)
 	plan := remediation.Plan{
 		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", ActionLevel: remediation.ActionL0ProcessRestart,
+		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure", ActionLevel: remediation.ActionL0ProcessRestart,
 		CertificationRevision: "matrix-v1", FailureEvidenceDigest: digestForTest("failure"),
 		DeadlineAt: time.Now().Add(time.Minute).UTC(),
 	}
@@ -142,7 +142,7 @@ func TestExecCommandRunnerPassesImmutablePlanAsBoundedArguments(t *testing.T) {
 		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000000001"),
 		ExecutionClaimID: uuid.MustParse("20000000-0000-0000-0000-000000000002"),
 		WorkerID:         uuid.MustParse("30000000-0000-0000-0000-000000000003"),
-		WorkerEpoch:      7, NodeIdentity: "node-7", DeviceIdentity: "GPU-7",
+		WorkerEpoch:      7, NodeIdentity: "node-7", DeviceIdentity: "GPU-7", FailureClass: "gpu_fault",
 		ActionLevel: remediation.ActionL2GPUReset, CertificationRevision: "matrix-v7",
 		FailureEvidenceDigest: evidence, DeadlineAt: time.Unix(20_000, 123).UTC(),
 	}
@@ -154,7 +154,7 @@ func TestExecCommandRunnerPassesImmutablePlanAsBoundedArguments(t *testing.T) {
 		"fixed", "--vela-operation-id=10000000-0000-0000-0000-000000000001",
 		"--vela-execution-claim-id=20000000-0000-0000-0000-000000000002",
 		"--vela-worker-id=30000000-0000-0000-0000-000000000003", "--vela-worker-epoch=7",
-		"--vela-node-identity=node-7", "--vela-device-identity=GPU-7", "--vela-action-level=L2_GPU_RESET",
+		"--vela-node-identity=node-7", "--vela-device-identity=GPU-7", "--vela-failure-class=gpu_fault", "--vela-action-level=L2_GPU_RESET",
 		"--vela-certification-revision=matrix-v7", "--vela-failure-evidence-sha256=" + hex.EncodeToString(evidence),
 		"--vela-deadline-at=1970-01-01T05:33:20.000000123Z",
 	} {
@@ -167,7 +167,7 @@ func TestExecCommandRunnerPassesImmutablePlanAsBoundedArguments(t *testing.T) {
 func TestFenceAndPostcheckRejectMismatchedStructuredEvidence(t *testing.T) {
 	plan := remediation.Plan{
 		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 2,
-		NodeIdentity: "node-2", DeviceIdentity: "gpu-2", ActionLevel: remediation.ActionL1CUDACleanup,
+		NodeIdentity: "node-2", DeviceIdentity: "gpu-2", FailureClass: "cuda_fault", ActionLevel: remediation.ActionL1CUDACleanup,
 		CertificationRevision: "matrix-v2", FailureEvidenceDigest: digestForTest("failure"),
 		DeadlineAt: time.Now().Add(time.Minute).UTC(),
 	}
@@ -242,6 +242,7 @@ func marshalHostEvidenceForTest(t *testing.T, plan remediation.Plan, fields map[
 	fields["worker_epoch"] = plan.WorkerEpoch
 	fields["node_identity"] = plan.NodeIdentity
 	fields["device_identity"] = plan.DeviceIdentity
+	fields["failure_class"] = plan.FailureClass
 	fields["action_level"] = string(plan.ActionLevel)
 	fields["certification_revision"] = plan.CertificationRevision
 	fields["failure_evidence_sha256"] = hex.EncodeToString(plan.FailureEvidenceDigest)

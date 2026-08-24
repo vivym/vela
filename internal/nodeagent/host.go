@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/remediation"
+	"github.com/vivym/vela/internal/securefile"
 )
 
 const maxCommandOutputBytes = 64 * 1024
@@ -28,6 +29,7 @@ type hostEvidenceIdentity struct {
 	WorkerEpoch           int64  `json:"worker_epoch"`
 	NodeIdentity          string `json:"node_identity"`
 	DeviceIdentity        string `json:"device_identity"`
+	FailureClass          string `json:"failure_class"`
 	ActionLevel           string `json:"action_level"`
 	CertificationRevision string `json:"certification_revision"`
 	FailureEvidenceSHA256 string `json:"failure_evidence_sha256"`
@@ -58,6 +60,9 @@ func (ExecCommandRunner) Run(ctx context.Context, plan remediation.Plan, path st
 	if !filepath.IsAbs(cleaned) || cleaned != path {
 		return nil, errors.New("host command path must be an absolute clean path")
 	}
+	if err := securefile.ValidateExecutable(cleaned); err != nil {
+		return nil, fmt.Errorf("host command executable is not trusted: %w", err)
+	}
 	for _, arg := range args {
 		if strings.ContainsRune(arg, '\x00') {
 			return nil, errors.New("host command arguments cannot contain NUL")
@@ -84,7 +89,8 @@ func (ExecCommandRunner) Run(ctx context.Context, plan remediation.Plan, path st
 func planArguments(plan remediation.Plan) ([]string, error) {
 	if plan.OperationID == uuid.Nil || plan.ExecutionClaimID == uuid.Nil || plan.WorkerID == uuid.Nil ||
 		plan.WorkerEpoch <= 0 || !validText(plan.NodeIdentity, maxIdentityText) ||
-		!validText(plan.DeviceIdentity, maxIdentityText) || !remediation.IsActionLevel(plan.ActionLevel) ||
+		!validText(plan.DeviceIdentity, maxIdentityText) || !validText(plan.FailureClass, 200) ||
+		!remediation.IsActionLevel(plan.ActionLevel) ||
 		!validText(plan.CertificationRevision, maxDetailText) ||
 		len(plan.FailureEvidenceDigest) != sha256.Size || plan.DeadlineAt.IsZero() {
 		return nil, errors.New("host command execution plan is invalid")
@@ -96,6 +102,7 @@ func planArguments(plan remediation.Plan) ([]string, error) {
 		fmt.Sprintf("--vela-worker-epoch=%d", plan.WorkerEpoch),
 		"--vela-node-identity=" + plan.NodeIdentity,
 		"--vela-device-identity=" + plan.DeviceIdentity,
+		"--vela-failure-class=" + plan.FailureClass,
 		"--vela-action-level=" + string(plan.ActionLevel),
 		"--vela-certification-revision=" + plan.CertificationRevision,
 		"--vela-failure-evidence-sha256=" + hex.EncodeToString(plan.FailureEvidenceDigest),
@@ -244,6 +251,7 @@ func (identity hostEvidenceIdentity) matches(plan remediation.Plan) bool {
 		identity.ExecutionClaimID == plan.ExecutionClaimID.String() &&
 		identity.WorkerID == plan.WorkerID.String() && identity.WorkerEpoch == plan.WorkerEpoch &&
 		identity.NodeIdentity == plan.NodeIdentity && identity.DeviceIdentity == plan.DeviceIdentity &&
+		identity.FailureClass == plan.FailureClass &&
 		identity.ActionLevel == string(plan.ActionLevel) &&
 		identity.CertificationRevision == plan.CertificationRevision &&
 		identity.FailureEvidenceSHA256 == hex.EncodeToString(plan.FailureEvidenceDigest)

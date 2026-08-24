@@ -5,11 +5,9 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io"
 	"net/url"
-	"os"
-	"path/filepath"
 
+	"github.com/vivym/vela/internal/securefile"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -126,28 +124,5 @@ func certificateHasControllerIdentity(certificate *x509.Certificate, expected st
 }
 
 func readTLSFile(path string, maxBytes int64, private bool) ([]byte, error) {
-	cleaned := filepath.Clean(path)
-	if !filepath.IsAbs(cleaned) || maxBytes <= 0 {
-		return nil, errors.New("TLS file path must be absolute")
-	}
-	file, err := os.Open(cleaned)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxBytes {
-		return nil, errors.New("TLS file must be a non-empty bounded regular file")
-	}
-	if info.Mode().Perm()&0o022 != 0 || private && info.Mode().Perm()&0o077 != 0 {
-		return nil, errors.New("TLS file permissions do not satisfy the Node Agent security contract")
-	}
-	content, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(content) == 0 || int64(len(content)) > maxBytes {
-		return nil, errors.New("TLS file exceeds configured bounds")
-	}
-	return content, nil
+	return securefile.Read(path, maxBytes, private)
 }

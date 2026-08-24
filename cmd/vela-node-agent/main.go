@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/remediation"
+	"github.com/vivym/vela/internal/securefile"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
@@ -322,17 +324,11 @@ func readJSONFile(path string, target any) error {
 	if !filepath.IsAbs(cleaned) {
 		return errors.New("JSON file path must be absolute")
 	}
-	file, err := os.Open(cleaned)
+	content, err := securefile.Read(cleaned, maxConfigFileBytes, false)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 ||
-		info.Size() <= 0 || info.Size() > maxConfigFileBytes {
-		return errors.New("JSON file must be a bounded regular file")
-	}
-	decoder := json.NewDecoder(io.LimitReader(file, maxConfigFileBytes+1))
+	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return err

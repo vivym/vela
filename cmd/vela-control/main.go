@@ -43,6 +43,7 @@ import (
 	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
+	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/webhook"
 	"github.com/vivym/vela/internal/workercontrol"
 	"github.com/vivym/vela/internal/workertransport"
@@ -1429,18 +1430,12 @@ func readNodeAgentEndpoints(path string) (map[string]nodeagent.AgentEndpoint, er
 	if !filepath.IsAbs(cleaned) {
 		return nil, errors.New("node Agent endpoint file path must be absolute")
 	}
-	file, err := os.Open(cleaned)
+	content, err := securefile.Read(cleaned, 1<<20, false)
 	if err != nil {
 		return nil, fmt.Errorf("open Node Agent endpoint file: %w", err)
 	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 ||
-		info.Size() <= 0 || info.Size() > 1<<20 {
-		return nil, errors.New("node Agent endpoint file must be a bounded regular file")
-	}
 	var endpoints map[string]nodeagent.AgentEndpoint
-	decoder := json.NewDecoder(io.LimitReader(file, (1<<20)+1))
+	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&endpoints); err != nil {
 		return nil, fmt.Errorf("decode Node Agent endpoint file: %w", err)

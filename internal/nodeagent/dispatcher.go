@@ -200,7 +200,8 @@ func (dispatcher *ExecutionDispatcher) RunOnce(ctx context.Context) (DispatchRes
 			WorkerID:         operation.WorkerID,
 			WorkerEpoch:      operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
 			NodeIdentity: operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
-			ActionLevel: operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
+			FailureClass: operation.FailureClass,
+			ActionLevel:  operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
 			FailureEvidenceDigest: append([]byte(nil), operation.EvidenceDigest...),
 		})
 		if executeErr != nil {

@@ -126,6 +126,93 @@ func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 	assertRemediationFailure(t, err, remediation.FailureConflict)
 }
 
+func TestRemediationExecutionClaimSerializesConcurrentProcesses(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	workerID := seedRemediationWorker(t, database)
+	firstService, err := remediation.NewService(newRolePool(
+		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
+	))
+	if err != nil {
+		t.Fatalf("create first Remediation service: %v", err)
+	}
+	secondService, err := remediation.NewService(newRolePool(
+		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
+	))
+	if err != nil {
+		t.Fatalf("create second Remediation service: %v", err)
+	}
+	evidence := sha256.Sum256([]byte("concurrent execution claim"))
+	request := remediation.Request{
+		OperationID: uuid.New(), WorkerID: workerID, WorkerEpoch: 1,
+		NodeIdentity: "node-remediation-1", DeviceIdentity: "GPU-REM-0",
+		FailureClass: "GPU_FAULT", EvidenceDigest: evidence[:], CertificationRevision: "matrix-v1",
+		ActionLevel: remediation.ActionL2GPUReset, IdempotencyKey: "concurrent-execution-claim",
+		RequestedBy: "controller/setup",
+	}
+	if _, err := firstService.Request(context.Background(), request); err != nil {
+		t.Fatalf("request concurrent-claim Remediation: %v", err)
+	}
+	if _, err := firstService.Start(context.Background(), request.OperationID, workerID, 1, "controller/setup"); err != nil {
+		t.Fatalf("start concurrent-claim Remediation: %v", err)
+	}
+	type claimCall struct {
+		service *remediation.Service
+		claimID uuid.UUID
+		actor   string
+	}
+	type claimOutcome struct {
+		call   claimCall
+		result remediation.ClaimResult
+		err    error
+	}
+	calls := []claimCall{
+		{service: firstService, claimID: uuid.New(), actor: "controller/first"},
+		{service: secondService, claimID: uuid.New(), actor: "controller/second"},
+	}
+	start := make(chan struct{})
+	outcomes := make(chan claimOutcome, len(calls))
+	var callers sync.WaitGroup
+	for _, call := range calls {
+		call := call
+		callers.Add(1)
+		go func() {
+			defer callers.Done()
+			<-start
+			result, callErr := call.service.ClaimExecution(
+				context.Background(), request.OperationID, workerID, 1, call.claimID, call.actor,
+			)
+			outcomes <- claimOutcome{call: call, result: result, err: callErr}
+		}()
+	}
+	close(start)
+	callers.Wait()
+	close(outcomes)
+	var winner *claimOutcome
+	conflicts := 0
+	for outcome := range outcomes {
+		if outcome.err == nil {
+			copyOfOutcome := outcome
+			winner = &copyOfOutcome
+			continue
+		}
+		var failure *remediation.Failure
+		if !errors.As(outcome.err, &failure) || failure.Code != remediation.FailureConflict {
+			t.Fatalf("concurrent claim error = %v, want FailureConflict", outcome.err)
+		}
+		conflicts++
+	}
+	if winner == nil || conflicts != 1 || winner.result.Replayed || winner.result.ClaimID != winner.call.claimID {
+		t.Fatalf("concurrent claim winner=%#v conflicts=%d", winner, conflicts)
+	}
+	replayed, err := winner.call.service.ClaimExecution(
+		context.Background(), request.OperationID, workerID, 1, winner.call.claimID, winner.call.actor,
+	)
+	if err != nil || !replayed.Replayed || replayed.ClaimID != winner.call.claimID {
+		t.Fatalf("replay winning concurrent claim = %#v error=%v", replayed, err)
+	}
+}
+
 func TestRemediationL6RequiresTwoApproversAndQuarantinesOnFailure(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)

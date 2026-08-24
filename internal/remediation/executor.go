@@ -21,6 +21,7 @@ type Plan struct {
 	ActionLevel           ActionLevel
 	NodeIdentity          string
 	DeviceIdentity        string
+	FailureClass          string
 	WorkerEpoch           int64
 	DeadlineAt            time.Time
 	CertificationRevision string
@@ -83,7 +84,8 @@ func (e *AllowlistedExecutor) Execute(ctx context.Context, plan Plan) (Execution
 		return ExecutionResult{}, errors.New("remediation executor is not configured")
 	}
 	if plan.WorkerEpoch <= 0 || !validText(plan.NodeIdentity, 500) ||
-		!validText(plan.DeviceIdentity, 500) || !validText(plan.CertificationRevision, 200) {
+		!validText(plan.DeviceIdentity, 500) || !validText(plan.FailureClass, 200) ||
+		!validText(plan.CertificationRevision, 200) {
 		return ExecutionResult{}, &Failure{Code: FailureInvalid, Message: "Remediation execution identity is invalid"}
 	}
 	selected, ok := e.commands[plan.ActionLevel]
