@@ -106,6 +106,11 @@ func TestNodeAgentServerReplaysAndRejectsConflictingReceipts(t *testing.T) {
 	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), conflicting); status.Code(err) != 6 {
 		t.Fatalf("conflicting replay error = %v, want AlreadyExists", err)
 	}
+	conflicting = validAgentRequest(workerID, now)
+	conflicting.OperationId = request.GetOperationId()
+	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), conflicting); status.Code(err) != 6 {
+		t.Fatalf("conflicting claim replay error = %v, want AlreadyExists", err)
+	}
 }
 
 func TestNodeAgentServerFailsClosedOnExecutorAndPostcheck(t *testing.T) {
@@ -131,6 +136,40 @@ func TestNodeAgentServerFailsClosedOnExecutorAndPostcheck(t *testing.T) {
 	}
 }
 
+func TestNodeAgentServerDoesNotRepeatActionAfterInterruptedIntent(t *testing.T) {
+	workerID := uuid.New()
+	now := time.Unix(4500, 0).UTC()
+	executor := &recordingExecutor{}
+	ledger := &memoryLedger{}
+	server, err := NewServer(
+		NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID},
+		mustControllerResolver(t), executor, ledger,
+	)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	server.clock = func() time.Time { return now }
+	request := validAgentRequest(workerID, now)
+	parsed, _, err := parseRequest(request, now)
+	if err != nil {
+		t.Fatalf("parse interrupted request: %v", err)
+	}
+	intent, err := ledger.Begin(context.Background(), ExecutionIntent{
+		OperationID: parsed.OperationID, RequestHash: hashRequest(parsed),
+		ActorIdentity: "controller/control-1", StartedAt: now.Add(-time.Second),
+	})
+	if err != nil || !intent.Acquired {
+		t.Fatalf("seed interrupted intent = %#v error=%v", intent, err)
+	}
+	response, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), request)
+	if err != nil || response.GetSuccess() || response.GetResultCode() != "EXECUTION_OUTCOME_UNKNOWN" {
+		t.Fatalf("interrupted execution response = %#v error=%v", response, err)
+	}
+	if executor.calls != 0 {
+		t.Fatalf("interrupted execution repeated privileged action %d times", executor.calls)
+	}
+}
+
 type recordingExecutor struct {
 	plan   remediation.Plan
 	err    error
@@ -153,6 +192,7 @@ func (executor *recordingExecutor) Execute(_ context.Context, plan remediation.P
 type memoryLedger struct {
 	mu       sync.Mutex
 	receipts map[uuid.UUID]Receipt
+	intents  map[uuid.UUID]ExecutionIntent
 }
 
 func (ledger *memoryLedger) Load(_ context.Context, operationID uuid.UUID) (Receipt, bool, error) {
@@ -176,6 +216,22 @@ func (ledger *memoryLedger) Save(_ context.Context, receipt Receipt) error {
 	}
 	ledger.receipts[receipt.Result.OperationID] = receipt
 	return nil
+}
+
+func (ledger *memoryLedger) Begin(_ context.Context, intent ExecutionIntent) (ExecutionIntentResult, error) {
+	ledger.mu.Lock()
+	defer ledger.mu.Unlock()
+	if ledger.intents == nil {
+		ledger.intents = make(map[uuid.UUID]ExecutionIntent)
+	}
+	if prior, found := ledger.intents[intent.OperationID]; found {
+		if prior.RequestHash != intent.RequestHash || prior.ActorIdentity != intent.ActorIdentity {
+			return ExecutionIntentResult{}, errors.New("execution intent already exists")
+		}
+		return ExecutionIntentResult{StartedAt: prior.StartedAt}, nil
+	}
+	ledger.intents[intent.OperationID] = intent
+	return ExecutionIntentResult{Acquired: true, StartedAt: intent.StartedAt}, nil
 }
 
 func validAgentRequest(workerID uuid.UUID, now time.Time) *velav1.ExecuteRemediationRequest {

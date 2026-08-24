@@ -104,7 +104,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure health post-check: %w", err)
 	}
-	limiter, err := nodeagent.NewRateLimiter(nodeagent.RateLimit{
+	limiter, err := nodeagent.NewFileRateLimiter(configuration.receiptDirectory, nodeagent.RateLimit{
 		MinimumInterval: configuration.rateMinimumInterval,
 		Window:          configuration.rateWindow,
 		MaxExecutions:   configuration.rateMax,
@@ -129,6 +129,7 @@ func run() error {
 	}
 	credentials, err := nodeagent.NewServerTLSCredentials(
 		configuration.serverCertificate, configuration.serverPrivateKey, configuration.controllerCA,
+		nodeagent.NodeAgentIdentity{NodeIdentity: configuration.nodeIdentity, WorkerID: configuration.workerID},
 	)
 	if err != nil {
 		return err
@@ -327,10 +328,12 @@ func readJSONFile(path string, target any) error {
 	}
 	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxConfigFileBytes {
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 ||
+		info.Size() <= 0 || info.Size() > maxConfigFileBytes {
 		return errors.New("JSON file must be a bounded regular file")
 	}
 	decoder := json.NewDecoder(io.LimitReader(file, maxConfigFileBytes+1))
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}

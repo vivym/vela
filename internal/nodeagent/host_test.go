@@ -2,7 +2,11 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,18 +16,30 @@ import (
 )
 
 type fakeCommandRunner struct {
-	output []byte
-	err    error
-	paths  []string
+	output  []byte
+	outputs map[string][]byte
+	err     error
+	paths   []string
 }
 
 func (runner *fakeCommandRunner) Run(_ context.Context, _ remediation.Plan, path string, _ []string) ([]byte, error) {
 	runner.paths = append(runner.paths, path)
+	if output, ok := runner.outputs[path]; ok {
+		return append([]byte(nil), output...), runner.err
+	}
 	return append([]byte(nil), runner.output...), runner.err
 }
 
 func TestCertifiedExecutorRequiresCapabilityFenceRateAndPostcheck(t *testing.T) {
-	runner := &fakeCommandRunner{output: []byte("command-output")}
+	plan := remediation.Plan{
+		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
+		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", ActionLevel: remediation.ActionL0ProcessRestart,
+		CertificationRevision: "matrix-v1", FailureEvidenceDigest: digestForTest("failure"),
+		DeadlineAt: time.Now().Add(time.Minute).UTC(),
+	}
+	runner := &fakeCommandRunner{output: []byte("command-output"), outputs: map[string][]byte{
+		"/usr/local/bin/health": postcheckEvidenceForTest(t, plan),
+	}}
 	allowlisted, err := remediation.NewAllowlistedExecutor(runner, map[remediation.ActionLevel]struct {
 		Path string
 		Args []string
@@ -51,7 +67,6 @@ func TestCertifiedExecutorRequiresCapabilityFenceRateAndPostcheck(t *testing.T) 
 	if err != nil {
 		t.Fatalf("NewCertifiedExecutor: %v", err)
 	}
-	plan := remediation.Plan{OperationID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: "gpu-0", ActionLevel: remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1"}
 	result, err := executor.Execute(context.Background(), plan)
 	if err != nil || !result.PostcheckVerified || result.ResultCode != "POSTCHECK_OK" || fenceCalls != 1 || len(runner.paths) != 2 {
 		t.Fatalf("certified execution = %#v err=%v fence=%d paths=%v", result, err, fenceCalls, runner.paths)
@@ -79,7 +94,12 @@ func TestCertifiedExecutorFailsClosedOnPolicyFenceAndPostcheck(t *testing.T) {
 	limiter, _ := NewRateLimiter(RateLimit{MinimumInterval: time.Second, Window: time.Minute, MaxExecutions: 1})
 	postcheck, _ := NewCommandPostcheck(runner, "/usr/local/bin/health", nil)
 	blocked, _ := NewCertifiedExecutor(allowlisted, policy, CallbackFence(func(context.Context, remediation.Plan) error { return errors.New("active lease") }), postcheck, limiter)
-	plan := remediation.Plan{OperationID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: "gpu-0", ActionLevel: remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1"}
+	plan := remediation.Plan{
+		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
+		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", ActionLevel: remediation.ActionL0ProcessRestart,
+		CertificationRevision: "matrix-v1", FailureEvidenceDigest: digestForTest("failure"),
+		DeadlineAt: time.Now().Add(time.Minute).UTC(),
+	}
 	if _, err := blocked.Execute(context.Background(), plan); err == nil || !strings.Contains(err.Error(), "fence") {
 		t.Fatalf("fence rejection = %v", err)
 	}
@@ -106,4 +126,128 @@ func TestExecCommandRunnerRejectsUnsafePathAndNUL(t *testing.T) {
 	if _, err := runner.Run(context.Background(), remediation.Plan{}, "/bin/echo", []string{"bad\x00arg"}); err == nil {
 		t.Fatal("NUL argument was accepted")
 	}
+}
+
+func TestExecCommandRunnerPassesImmutablePlanAsBoundedArguments(t *testing.T) {
+	path, err := exec.LookPath("echo")
+	if err != nil {
+		t.Fatalf("find echo helper: %v", err)
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		t.Fatalf("absolute echo helper path: %v", err)
+	}
+	evidence := digestForTest("failure")
+	plan := remediation.Plan{
+		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000000001"),
+		ExecutionClaimID: uuid.MustParse("20000000-0000-0000-0000-000000000002"),
+		WorkerID:         uuid.MustParse("30000000-0000-0000-0000-000000000003"),
+		WorkerEpoch:      7, NodeIdentity: "node-7", DeviceIdentity: "GPU-7",
+		ActionLevel: remediation.ActionL2GPUReset, CertificationRevision: "matrix-v7",
+		FailureEvidenceDigest: evidence, DeadlineAt: time.Unix(20_000, 123).UTC(),
+	}
+	output, err := (ExecCommandRunner{}).Run(context.Background(), plan, path, []string{"fixed"})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, expected := range []string{
+		"fixed", "--vela-operation-id=10000000-0000-0000-0000-000000000001",
+		"--vela-execution-claim-id=20000000-0000-0000-0000-000000000002",
+		"--vela-worker-id=30000000-0000-0000-0000-000000000003", "--vela-worker-epoch=7",
+		"--vela-node-identity=node-7", "--vela-device-identity=GPU-7", "--vela-action-level=L2_GPU_RESET",
+		"--vela-certification-revision=matrix-v7", "--vela-failure-evidence-sha256=" + hex.EncodeToString(evidence),
+		"--vela-deadline-at=1970-01-01T05:33:20.000000123Z",
+	} {
+		if !strings.Contains(string(output), expected) {
+			t.Fatalf("host helper output %q lacks %q", output, expected)
+		}
+	}
+}
+
+func TestFenceAndPostcheckRejectMismatchedStructuredEvidence(t *testing.T) {
+	plan := remediation.Plan{
+		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 2,
+		NodeIdentity: "node-2", DeviceIdentity: "gpu-2", ActionLevel: remediation.ActionL1CUDACleanup,
+		CertificationRevision: "matrix-v2", FailureEvidenceDigest: digestForTest("failure"),
+		DeadlineAt: time.Now().Add(time.Minute).UTC(),
+	}
+	wrongPlan := plan
+	wrongPlan.DeviceIdentity = "gpu-other"
+	fenceRunner := &fakeCommandRunner{output: fenceEvidenceForTest(t, wrongPlan)}
+	fence, err := NewCommandFence(fenceRunner, "/usr/local/bin/fence", nil)
+	if err != nil {
+		t.Fatalf("NewCommandFence: %v", err)
+	}
+	if err := fence.Check(context.Background(), plan); err == nil || !strings.Contains(err.Error(), "identity") {
+		t.Fatalf("mismatched fence evidence error = %v", err)
+	}
+	postcheckRunner := &fakeCommandRunner{output: postcheckEvidenceForTest(t, wrongPlan)}
+	postcheck, err := NewCommandPostcheck(postcheckRunner, "/usr/local/bin/health", nil)
+	if err != nil {
+		t.Fatalf("NewCommandPostcheck: %v", err)
+	}
+	if _, err := postcheck.Verify(context.Background(), plan); err == nil || !strings.Contains(err.Error(), "identity") {
+		t.Fatalf("mismatched post-check evidence error = %v", err)
+	}
+}
+
+func TestFileRateLimiterSurvivesAgentRestart(t *testing.T) {
+	directory := t.TempDir()
+	configuration := RateLimit{MinimumInterval: time.Minute, Window: time.Hour, MaxExecutions: 2}
+	limiter, err := NewFileRateLimiter(directory, configuration)
+	if err != nil {
+		t.Fatalf("NewFileRateLimiter: %v", err)
+	}
+	now := time.Unix(30_000, 0).UTC()
+	if err := limiter.Allow(now); err != nil {
+		t.Fatalf("first Allow: %v", err)
+	}
+	restarted, err := NewFileRateLimiter(directory, configuration)
+	if err != nil {
+		t.Fatalf("reopen FileRateLimiter: %v", err)
+	}
+	if err := restarted.Allow(now.Add(30 * time.Second)); err == nil || !strings.Contains(err.Error(), "minimum interval") {
+		t.Fatalf("post-restart Allow error = %v, want minimum interval", err)
+	}
+	if err := restarted.Allow(now.Add(time.Minute)); err != nil {
+		t.Fatalf("Allow after minimum interval: %v", err)
+	}
+	if err := restarted.Allow(now.Add(2 * time.Minute)); err == nil || !strings.Contains(err.Error(), "rate limit") {
+		t.Fatalf("window limit error = %v, want rate limit", err)
+	}
+}
+
+func fenceEvidenceForTest(t *testing.T, plan remediation.Plan) []byte {
+	t.Helper()
+	return marshalHostEvidenceForTest(t, plan, map[string]any{
+		"new_assignments_stopped":  true,
+		"target_processes_stopped": true,
+	})
+}
+
+func postcheckEvidenceForTest(t *testing.T, plan remediation.Plan) []byte {
+	t.Helper()
+	return marshalHostEvidenceForTest(t, plan, map[string]any{
+		"device_healthy":            true,
+		"inference_backend_healthy": true,
+		"detail":                    "device and inference backend health verified",
+	})
+}
+
+func marshalHostEvidenceForTest(t *testing.T, plan remediation.Plan, fields map[string]any) []byte {
+	t.Helper()
+	fields["operation_id"] = plan.OperationID.String()
+	fields["execution_claim_id"] = plan.ExecutionClaimID.String()
+	fields["worker_id"] = plan.WorkerID.String()
+	fields["worker_epoch"] = plan.WorkerEpoch
+	fields["node_identity"] = plan.NodeIdentity
+	fields["device_identity"] = plan.DeviceIdentity
+	fields["action_level"] = string(plan.ActionLevel)
+	fields["certification_revision"] = plan.CertificationRevision
+	fields["failure_evidence_sha256"] = hex.EncodeToString(plan.FailureEvidenceDigest)
+	encoded, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatalf("marshal host evidence: %v", err)
+	}
+	return encoded
 }

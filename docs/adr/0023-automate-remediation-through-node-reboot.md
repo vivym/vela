@@ -7,14 +7,17 @@ launch. Ambiguous identity, uncertified topology, repeated recovery failure, or
 failed validation automatically quarantines the Worker.
 
 The repository implements the verifiable control-plane portion of this decision
-in migration `00019`/`00020` and `internal/remediation`, plus a guarded
+in migrations `00019`-`00022` and `internal/remediation`, plus a guarded
 controller-to-host Node Agent gRPC runtime in `internal/nodeagent` and
 `cmd/vela-node-agent`. The control-plane `RemoteExecutor` authorizes and claims
 the authoritative operation before the RPC; the host Agent authenticates an
 explicit `spiffe://vela.internal/controller/...` identity, checks its local
 Node/Worker target, replays durable local receipts, and fails closed unless the
 executor declares a verified post-check. This is a deployable runtime contract,
-not a claim that any GPU/topology tuple has a production Launch Receipt.
+not a claim that any GPU/topology tuple has a production Launch Receipt. Stable
+claim identity lets controller restart or a lost response retrieve a durable
+host receipt. A durable pre-action intent prevents repeating a privileged action
+when its prior outcome cannot be proven.
 
 ## Consequences
 
@@ -36,7 +39,10 @@ actual Node Agent deployment, certificate provisioning, hardware capability
 matrix certification, device and runner checks, model warm-up, canary, live
 claim/receipt monitoring, and versioned Launch Receipts before this ADR can be
 marked fully implemented. Migration `00020` adds a database-backed execution
-claim so only one process may execute an operation before its terminal receipt
-is committed.
+claim, `00021` adds bounded dispatch discovery, and `00022` permits only an
+exact claim replay while preserving conflict rejection. Host helpers receive
+the immutable Plan as bounded arguments and must return identity-bound JSON
+evidence. Rate-limit history, execution intents, and terminal receipts are
+locked or atomically published and fsynced on host-local storage.
 
 Repository evidence: `docs/specs/0020-certified-remediation.md`.

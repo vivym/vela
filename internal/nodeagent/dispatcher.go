@@ -24,8 +24,10 @@ type ExecutionSource interface {
 }
 
 type AgentEndpoint struct {
-	Address    string
-	ServerName string
+	Address        string    `json:"address"`
+	ServerName     string    `json:"server_name"`
+	WorkerID       uuid.UUID `json:"worker_id"`
+	SPIFFEIdentity string    `json:"spiffe_identity"`
 }
 
 type ClientTLSConfig struct {
@@ -44,7 +46,7 @@ type StaticAgentResolver struct {
 }
 
 type AgentResolver interface {
-	Resolve(context.Context, string) (*Client, error)
+	Resolve(context.Context, NodeAgentIdentity) (*Client, error)
 }
 
 func NewStaticAgentResolver(endpoints map[string]AgentEndpoint, tlsConfig ClientTLSConfig, actorIdentity string) (*StaticAgentResolver, error) {
@@ -59,7 +61,7 @@ func NewStaticAgentResolver(endpoints map[string]AgentEndpoint, tlsConfig Client
 	}
 	validated := make(map[string]AgentEndpoint, len(endpoints))
 	for nodeIdentity, endpoint := range endpoints {
-		if !validText(nodeIdentity, maxIdentityText) || !validAgentEndpoint(endpoint) {
+		if !validText(nodeIdentity, maxIdentityText) || !validAgentEndpoint(nodeIdentity, endpoint) {
 			return nil, errors.New("node Agent endpoint is invalid")
 		}
 		validated[nodeIdentity] = endpoint
@@ -70,40 +72,43 @@ func NewStaticAgentResolver(endpoints map[string]AgentEndpoint, tlsConfig Client
 	}, nil
 }
 
-func (resolver *StaticAgentResolver) Resolve(ctx context.Context, nodeIdentity string) (*Client, error) {
+func (resolver *StaticAgentResolver) Resolve(ctx context.Context, identity NodeAgentIdentity) (*Client, error) {
 	if resolver == nil {
 		return nil, errors.New("node Agent resolver is not configured")
 	}
 	if ctx == nil {
 		return nil, errors.New("node Agent resolver context is required")
 	}
-	endpoint, ok := resolver.endpoints[nodeIdentity]
-	if !ok {
-		return nil, fmt.Errorf("node Agent endpoint for %q is not registered", nodeIdentity)
+	if !validIdentity(identity) {
+		return nil, errors.New("node Agent resolver target identity is invalid")
+	}
+	endpoint, ok := resolver.endpoints[identity.NodeIdentity]
+	if !ok || endpoint.WorkerID != identity.WorkerID {
+		return nil, fmt.Errorf("node Agent endpoint for %q is not registered", identity.NodeIdentity)
 	}
 	resolver.mu.Lock()
 	defer resolver.mu.Unlock()
-	if client := resolver.clients[nodeIdentity]; client != nil {
+	if client := resolver.clients[identity.NodeIdentity]; client != nil {
 		return client, nil
 	}
 	transportCredentials, err := NewClientTLSCredentials(
 		resolver.tls.CertificatePath, resolver.tls.PrivateKeyPath,
-		resolver.tls.RootCAPath, endpoint.ServerName,
+		resolver.tls.RootCAPath, endpoint.ServerName, endpoint.SPIFFEIdentity, resolver.actor,
 	)
 	if err != nil {
 		return nil, err
 	}
 	connection, err := grpc.NewClient(endpoint.Address, grpc.WithTransportCredentials(transportCredentials))
 	if err != nil {
-		return nil, fmt.Errorf("dial Node Agent %q: %w", nodeIdentity, err)
+		return nil, fmt.Errorf("dial Node Agent %q: %w", identity.NodeIdentity, err)
 	}
 	client, err := NewClient(velav1.NewNodeAgentServiceClient(connection), resolver.actor)
 	if err != nil {
 		_ = connection.Close()
 		return nil, err
 	}
-	resolver.connections[nodeIdentity] = connection
-	resolver.clients[nodeIdentity] = client
+	resolver.connections[identity.NodeIdentity] = connection
+	resolver.clients[identity.NodeIdentity] = client
 	return client, nil
 }
 
@@ -138,6 +143,8 @@ type ExecutionDispatcher struct {
 	batchSize     int
 	clock         func() time.Time
 }
+
+var executionClaimNamespace = uuid.MustParse("6429aa4f-e3e4-45d8-bae8-b573438da85f")
 
 func NewExecutionDispatcher(source ExecutionSource, agents AgentResolver, actorIdentity string, batchSize int) (*ExecutionDispatcher, error) {
 	if source == nil || agents == nil {
@@ -175,7 +182,10 @@ func (dispatcher *ExecutionDispatcher) RunOnce(ctx context.Context) (DispatchRes
 			result.Recovered++
 			continue
 		}
-		client, resolveErr := dispatcher.agents.Resolve(ctx, operation.NodeIdentity)
+		client, resolveErr := dispatcher.agents.Resolve(ctx, NodeAgentIdentity{
+			NodeIdentity: operation.NodeIdentity,
+			WorkerID:     operation.WorkerID,
+		})
 		if resolveErr != nil {
 			result.Deferred++
 			continue
@@ -185,8 +195,10 @@ func (dispatcher *ExecutionDispatcher) RunOnce(ctx context.Context) (DispatchRes
 			return result, remoteErr
 		}
 		_, executeErr := remote.Execute(ctx, remediation.Plan{
-			OperationID: operation.ID, ExecutionClaimID: uuid.New(), WorkerID: operation.WorkerID,
-			WorkerEpoch: operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
+			OperationID:      operation.ID,
+			ExecutionClaimID: stableExecutionClaimID(operation.ID, dispatcher.actorIdentity),
+			WorkerID:         operation.WorkerID,
+			WorkerEpoch:      operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
 			NodeIdentity: operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
 			ActionLevel: operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
 			FailureEvidenceDigest: append([]byte(nil), operation.EvidenceDigest...),
@@ -198,6 +210,10 @@ func (dispatcher *ExecutionDispatcher) RunOnce(ctx context.Context) (DispatchRes
 		result.Dispatched++
 	}
 	return result, nil
+}
+
+func stableExecutionClaimID(operationID uuid.UUID, actorIdentity string) uuid.UUID {
+	return uuid.NewSHA1(executionClaimNamespace, []byte(operationID.String()+"/"+actorIdentity))
 }
 
 func (dispatcher *ExecutionDispatcher) Run(ctx context.Context, tick time.Duration, report func(DispatchResult, error)) {
@@ -219,8 +235,12 @@ func (dispatcher *ExecutionDispatcher) Run(ctx context.Context, tick time.Durati
 	}
 }
 
-func validAgentEndpoint(endpoint AgentEndpoint) bool {
+func validAgentEndpoint(nodeIdentity string, endpoint AgentEndpoint) bool {
 	if !validText(endpoint.ServerName, maxIdentityText) {
+		return false
+	}
+	identity := NodeAgentIdentity{NodeIdentity: nodeIdentity, WorkerID: endpoint.WorkerID}
+	if !validIdentity(identity) || endpoint.SPIFFEIdentity != NodeAgentSPIFFEIdentity(identity) {
 		return false
 	}
 	host, port, err := net.SplitHostPort(endpoint.Address)

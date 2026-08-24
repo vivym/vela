@@ -31,7 +31,7 @@ func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
 		t.Fatalf("NewControlPlaneAuthorizer: %v", err)
 	}
 	authorizer.clock = func() time.Time { return now }
-	request := requestFromOperation(operation)
+	request := requestFromOperation(operation, "controller/node-1")
 	if err := authorizer.Authorize(context.Background(), request); err != nil {
 		t.Fatalf("Authorize: %v", err)
 	}
@@ -43,13 +43,13 @@ func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
 	if err := authorizer.Authorize(context.Background(), request); err == nil {
 		t.Fatal("device mismatch was accepted")
 	}
-	request = requestFromOperation(operation)
+	request = requestFromOperation(operation, "controller/node-1")
 	request.DeadlineAt = operation.DeadlineAt.Add(time.Second)
 	if err := authorizer.Authorize(context.Background(), request); err == nil {
 		t.Fatal("deadline extension was accepted")
 	}
 	reader.operation.State = remediation.StateRequested
-	if err := authorizer.Authorize(context.Background(), requestFromOperation(reader.operation)); err == nil {
+	if err := authorizer.Authorize(context.Background(), requestFromOperation(reader.operation, "controller/node-1")); err == nil {
 		t.Fatal("non-executing operation was accepted")
 	}
 }
@@ -74,7 +74,7 @@ func TestControlPlaneLedgerCompletesAndReplaysAuthoritativeOperation(t *testing.
 		ResultDetail: "verified", PostcheckHash: digestForTest("postcheck"),
 		StartedAt: *operation.StartedAt, FinishedAt: now,
 	}
-	if err := ledger.Save(context.Background(), Receipt{RequestHash: hashRequest(requestFromOperation(operation)), Result: result}); err != nil {
+	if err := ledger.Save(context.Background(), Receipt{RequestHash: hashRequest(requestFromOperation(operation, "controller/node-2")), Result: result}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	if len(store.completions) != 1 || !store.completions[0].Success ||
@@ -149,8 +149,10 @@ func TestRemoteExecutorAuthorizesCallsAgentAndCompletesControlPlane(t *testing.T
 		t.Fatalf("NewRemoteExecutor: %v", err)
 	}
 	result, err := executor.Execute(context.Background(), remediation.Plan{
-		OperationID: operation.ID, ExecutionClaimID: uuid.New(), WorkerID: operation.WorkerID,
-		WorkerEpoch: operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
+		OperationID:      operation.ID,
+		ExecutionClaimID: stableExecutionClaimID(operation.ID, "controller/control-1"),
+		WorkerID:         operation.WorkerID,
+		WorkerEpoch:      operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
 		NodeIdentity: operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
 		ActionLevel: operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
 		FailureEvidenceDigest: operation.EvidenceDigest,

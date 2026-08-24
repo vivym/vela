@@ -1435,11 +1435,13 @@ func readNodeAgentEndpoints(path string) (map[string]nodeagent.AgentEndpoint, er
 	}
 	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<20 {
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 ||
+		info.Size() <= 0 || info.Size() > 1<<20 {
 		return nil, errors.New("node Agent endpoint file must be a bounded regular file")
 	}
 	var endpoints map[string]nodeagent.AgentEndpoint
 	decoder := json.NewDecoder(io.LimitReader(file, (1<<20)+1))
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&endpoints); err != nil {
 		return nil, fmt.Errorf("decode Node Agent endpoint file: %w", err)
 	}

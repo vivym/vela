@@ -2,9 +2,9 @@
 
 Date: 2026-08-24
 
-Status: Partial. The repository-verifiable control-plane slice and a guarded
-Node Agent transport contract are implemented; host execution and production
-deployment evidence remain outside this slice.
+Status: Partial. The repository-verifiable control-plane slice and guarded
+Node Agent runtime contract are implemented; certified host hardware actions
+and production deployment evidence remain outside this slice.
 
 Predecessors:
 
@@ -50,14 +50,16 @@ The production-facing repository seams are:
    controller-to-agent direction. The controller-side `Authorizer` binds the
    request to authoritative operation state before the RPC; the host-side
    `nodeagent.Server` authenticates the controller actor and its local target.
-6. `vela_claim_remediation_execution` for a single persistent execution claim
-   per `EXECUTING` operation before any host action starts.
+6. `vela_claim_remediation_execution` for one exact-replayable persistent
+   execution claim per `EXECUTING` operation before any host action starts.
 
 The transport includes `ControlPlaneAuthorizer` and `ControlPlaneLedger`
 adapters over `remediation.Service`, a durable host-local `FileLedger`, and the
 `cmd/vela-node-agent` systemd entrypoint. Unit tests use in-memory fakes; no
 live cluster receipt evidence or hardware certification is claimed by this
-spec.
+spec. The claim ID is stable for `(operation_id, actor_identity)`, so a lost RPC
+response or controller restart can retrieve the durable host receipt without
+creating a second execution authority.
 
 The executor seam accepts only absolute allowlisted command paths, rejects NUL
 arguments, requires a non-empty certified identity, passes the full immutable
@@ -65,6 +67,18 @@ execution `Plan` to the runner for device/epoch/capability checks, runs a host
 fence and bounded rate limit, and refuses L6/L7 direct execution. Real command
 paths, capability matrices, fence checks, and post-check commands are injected
 by the host Node Agent deployment rather than embedded in the control plane.
+Every helper receives the immutable Plan as bounded non-shell arguments. Fence
+and post-check helpers must return exact identity-bound JSON evidence; exit zero
+or arbitrary non-empty output is insufficient. The production entrypoint uses
+a host-local locked and fsynced rate-limit ledger. Before a privileged action,
+the Agent publishes a non-replaceable execution intent. An intent without a
+terminal receipt after restart yields `EXECUTION_OUTCOME_UNKNOWN` and quarantine
+rather than repeating an action whose outcome cannot be proven.
+
+The endpoint registry binds Node identity, Worker UUID, DNS server name, and a
+canonical Node Agent SPIFFE URI. The Agent verifies the URI against its local
+Node/Worker identity at startup. Controller certificates and actors use the
+canonical `spiffe://vela.internal/controller/<id>` to `controller/<id>` mapping.
 
 ## Operation State And Identity
 
@@ -111,6 +125,12 @@ Migration `00019_certified_remediation.sql` adds:
   Worker identity/epoch fencing;
 - exact runtime grants and independent owner grants.
 
+Migration `00020_remediation_execution_claim.sql` adds the durable execution
+claim, migration `00021_remediation_execution_dispatch.sql` adds bounded
+`EXECUTING` operation discovery, and migration
+`00022_remediation_execution_claim_replay.sql` makes only the exact claim tuple
+replayable while preserving conflicting cross-process rejection.
+
 The runtime role has no table, sequence, private-schema, or owner inheritance.
 The owner is `NOLOGIN BYPASSRLS`; it has only the table privileges needed by the
 security-definer functions (`workers` SELECT/UPDATE, `worker_epochs` and
@@ -134,8 +154,11 @@ confusion.
   durable receipt replay, conflicting operation rejection, authoritative
   controller-side claim, deadline receipt, and fail-closed unverified-post-check
   behavior;
-- single execution-claim insertion and conflicting cross-process claim
-  rejection, with migration 00020 down/up evidence;
+- single execution-claim insertion, exact replay after a lost response,
+  conflicting cross-process rejection, interrupted-intent quarantine, durable
+  per-node rate limiting, and migrations 00020-00022 down/up evidence;
+- helper Plan-argument and structured fence/post-check identity binding, plus
+  Node/Worker/server-certificate and controller actor/certificate binding;
 - runtime role exact privileges and security-definer owner/search-path checks;
 - concurrent remediation request/start/complete lock-order evidence;
 - migration 00019 upgrade, empty down/up, and concurrent scheduler migration
@@ -156,7 +179,7 @@ isolation, live hardware evidence, and a versioned Launch Receipt.
 
 The repository-verifiable Certified Remediation control plane and guarded
 transport contract are complete when the implementation commits, this spec, role
-evidence, migration down/up, narrow and full verification, and standards/spec
-review are recorded. ADR 0023 remains partial until host hardware evidence and
+evidence, migrations 00019-00022 down/up, narrow and full verification, and
+standards/spec review are recorded. ADR 0023 remains partial until host hardware evidence and
 Launch Receipt evidence exist; this slice does not change Production Gates from
 `0/9 PASS`.

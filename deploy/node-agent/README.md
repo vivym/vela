@@ -17,13 +17,64 @@ mode:
 - the device/certification capability matrix JSON; and
 - the receipt directory, owned by the service and mode `0750`.
 
+The Agent rejects group/world-writable configuration, TLS material, endpoint
+registries, and state directories. Private keys must not be group or world
+accessible. JSON decoders reject unknown fields.
+
 The action allowlist contains absolute executable paths and fixed argument
 vectors. It must not contain shell commands, interpolated values, PCI sysfs
 paths, or credentials. The fence command must prove that new work is stopped
 and the target Worker is safe to modify. The post-check command must return
-non-empty health evidence only after device and inference-backend validation.
+structured health evidence only after device and inference-backend validation.
 An absent or invalid capability, fence, rate-limit, or post-check configuration
 causes startup failure or a fail-closed operation result.
+
+Every action, fence, and post-check helper receives these arguments after its
+fixed configured argument vector:
+
+```text
+--vela-operation-id=<uuid>
+--vela-execution-claim-id=<uuid>
+--vela-worker-id=<uuid>
+--vela-worker-epoch=<positive integer>
+--vela-node-identity=<registered identity>
+--vela-device-identity=<registered identity>
+--vela-action-level=<L0...L5 enum>
+--vela-certification-revision=<revision>
+--vela-failure-evidence-sha256=<lowercase hex>
+--vela-deadline-at=<RFC3339Nano UTC>
+```
+
+Fence output is exactly one JSON object containing those identity fields plus
+`new_assignments_stopped=true` and `target_processes_stopped=true`. Post-check
+output is exactly one JSON object containing the identity fields plus
+`device_healthy=true`, `inference_backend_healthy=true`, and a bounded `detail`.
+Unknown, missing, mismatched, false, empty, or oversized evidence fails closed.
+
+The Node Agent certificate URI SAN is canonical:
+
+```text
+spiffe://vela.internal/node-agent/<base64url(node_identity)>/<worker_uuid>
+```
+
+Controller URI SAN and actor mappings are canonical as
+`spiffe://vela.internal/controller/<id>` and `controller/<id>`. The control-plane
+endpoint registry is keyed by Node identity and has this shape:
+
+```json
+{
+  "node-1": {
+    "address": "10.0.0.10:9443",
+    "server_name": "node-1.vela.internal",
+    "worker_id": "10000000-0000-0000-0000-000000000001",
+    "spiffe_identity": "spiffe://vela.internal/node-agent/bm9kZS0x/10000000-0000-0000-0000-000000000001"
+  }
+}
+```
+
+Rate-limit history survives Agent restarts. A durable execution intent is
+published before the action; if the Agent restarts before a terminal receipt is
+published, it returns `EXECUTION_OUTCOME_UNKNOWN` and does not repeat the action.
 
 Required environment variables are documented by `cmd/vela-node-agent`:
 

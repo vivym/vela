@@ -11,6 +11,11 @@ func TestStaticControllerIdentityResolverRequiresExplicitControllerSPIFFE(t *tes
 	}); err == nil {
 		t.Fatal("node SPIFFE identity was accepted as a controller")
 	}
+	if _, err := NewStaticControllerIdentityResolver(map[string]string{
+		"spiffe://vela.internal/controller/control-1": "controller/control-other",
+	}); err == nil {
+		t.Fatal("controller SPIFFE identity was accepted with a different actor identity")
+	}
 	resolver, err := NewStaticControllerIdentityResolver(map[string]string{
 		"spiffe://vela.internal/controller/control-1": "controller/control-1",
 	})

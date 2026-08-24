@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,16 +15,42 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/remediation"
 )
 
 const maxCommandOutputBytes = 64 * 1024
 
+type hostEvidenceIdentity struct {
+	OperationID           string `json:"operation_id"`
+	ExecutionClaimID      string `json:"execution_claim_id"`
+	WorkerID              string `json:"worker_id"`
+	WorkerEpoch           int64  `json:"worker_epoch"`
+	NodeIdentity          string `json:"node_identity"`
+	DeviceIdentity        string `json:"device_identity"`
+	ActionLevel           string `json:"action_level"`
+	CertificationRevision string `json:"certification_revision"`
+	FailureEvidenceSHA256 string `json:"failure_evidence_sha256"`
+}
+
+type fenceEvidence struct {
+	hostEvidenceIdentity
+	NewAssignmentsStopped  bool `json:"new_assignments_stopped"`
+	TargetProcessesStopped bool `json:"target_processes_stopped"`
+}
+
+type postcheckEvidence struct {
+	hostEvidenceIdentity
+	DeviceHealthy           bool   `json:"device_healthy"`
+	InferenceBackendHealthy bool   `json:"inference_backend_healthy"`
+	Detail                  string `json:"detail"`
+}
+
 // ExecCommandRunner executes only the already allowlisted binary and argument
 // vector. It never invokes a shell and bounds the captured output.
 type ExecCommandRunner struct{}
 
-func (ExecCommandRunner) Run(ctx context.Context, _ remediation.Plan, path string, args []string) ([]byte, error) {
+func (ExecCommandRunner) Run(ctx context.Context, plan remediation.Plan, path string, args []string) ([]byte, error) {
 	if ctx == nil {
 		return nil, errors.New("host command context is required")
 	}
@@ -35,7 +63,12 @@ func (ExecCommandRunner) Run(ctx context.Context, _ remediation.Plan, path strin
 			return nil, errors.New("host command arguments cannot contain NUL")
 		}
 	}
-	command := exec.CommandContext(ctx, path, args...)
+	boundArgs, err := planArguments(plan)
+	if err != nil {
+		return nil, err
+	}
+	commandArgs := append(append([]string(nil), args...), boundArgs...)
+	command := exec.CommandContext(ctx, path, commandArgs...)
 	output := &boundedBuffer{limit: maxCommandOutputBytes}
 	command.Stdout = output
 	command.Stderr = output
@@ -46,6 +79,28 @@ func (ExecCommandRunner) Run(ctx context.Context, _ remediation.Plan, path strin
 		return nil, err
 	}
 	return output.Bytes(), nil
+}
+
+func planArguments(plan remediation.Plan) ([]string, error) {
+	if plan.OperationID == uuid.Nil || plan.ExecutionClaimID == uuid.Nil || plan.WorkerID == uuid.Nil ||
+		plan.WorkerEpoch <= 0 || !validText(plan.NodeIdentity, maxIdentityText) ||
+		!validText(plan.DeviceIdentity, maxIdentityText) || !remediation.IsActionLevel(plan.ActionLevel) ||
+		!validText(plan.CertificationRevision, maxDetailText) ||
+		len(plan.FailureEvidenceDigest) != sha256.Size || plan.DeadlineAt.IsZero() {
+		return nil, errors.New("host command execution plan is invalid")
+	}
+	return []string{
+		"--vela-operation-id=" + plan.OperationID.String(),
+		"--vela-execution-claim-id=" + plan.ExecutionClaimID.String(),
+		"--vela-worker-id=" + plan.WorkerID.String(),
+		fmt.Sprintf("--vela-worker-epoch=%d", plan.WorkerEpoch),
+		"--vela-node-identity=" + plan.NodeIdentity,
+		"--vela-device-identity=" + plan.DeviceIdentity,
+		"--vela-action-level=" + string(plan.ActionLevel),
+		"--vela-certification-revision=" + plan.CertificationRevision,
+		"--vela-failure-evidence-sha256=" + hex.EncodeToString(plan.FailureEvidenceDigest),
+		"--vela-deadline-at=" + plan.DeadlineAt.UTC().Format(time.RFC3339Nano),
+	}, nil
 }
 
 type boundedBuffer struct {
@@ -107,8 +162,19 @@ func (fence *CommandFence) Check(ctx context.Context, plan remediation.Plan) err
 	if fence == nil || fence.runner == nil {
 		return errors.New("node Agent host fence is not configured")
 	}
-	if _, err := fence.runner.Run(ctx, plan, fence.path, append([]string(nil), fence.args...)); err != nil {
+	output, err := fence.runner.Run(ctx, plan, fence.path, append([]string(nil), fence.args...))
+	if err != nil {
 		return fmt.Errorf("run host fence precondition: %w", err)
+	}
+	var evidence fenceEvidence
+	if err := decodeHostEvidence(output, &evidence); err != nil {
+		return fmt.Errorf("decode host fence evidence: %w", err)
+	}
+	if !evidence.matches(plan) {
+		return errors.New("host fence evidence identity does not match execution plan")
+	}
+	if !evidence.NewAssignmentsStopped || !evidence.TargetProcessesStopped {
+		return errors.New("host fence evidence does not prove the target is stopped")
 	}
 	return nil
 }
@@ -139,10 +205,48 @@ func (postcheck *CommandPostcheck) Verify(ctx context.Context, plan remediation.
 	if len(output) == 0 {
 		return PostcheckResult{}, errors.New("health post-check returned no evidence")
 	}
+	var evidence postcheckEvidence
+	if err := decodeHostEvidence(output, &evidence); err != nil {
+		return PostcheckResult{}, fmt.Errorf("decode health post-check evidence: %w", err)
+	}
+	if !evidence.matches(plan) {
+		return PostcheckResult{}, errors.New("health post-check evidence identity does not match execution plan")
+	}
+	if !evidence.DeviceHealthy || !evidence.InferenceBackendHealthy {
+		return PostcheckResult{}, errors.New("health post-check did not verify device and inference backend health")
+	}
+	if !validText(evidence.Detail, maxDetailText) {
+		return PostcheckResult{}, errors.New("health post-check evidence detail is invalid")
+	}
 	return PostcheckResult{
 		Digest: sha256.Sum256(output),
-		Detail: "device and inference backend health post-check verified",
+		Detail: evidence.Detail,
 	}, nil
+}
+
+func decodeHostEvidence(output []byte, target any) error {
+	if len(output) == 0 || len(output) > maxCommandOutputBytes {
+		return errors.New("host helper evidence is empty or exceeds its bound")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(output))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("host helper evidence must contain exactly one JSON document")
+	}
+	return nil
+}
+
+func (identity hostEvidenceIdentity) matches(plan remediation.Plan) bool {
+	return identity.OperationID == plan.OperationID.String() &&
+		identity.ExecutionClaimID == plan.ExecutionClaimID.String() &&
+		identity.WorkerID == plan.WorkerID.String() && identity.WorkerEpoch == plan.WorkerEpoch &&
+		identity.NodeIdentity == plan.NodeIdentity && identity.DeviceIdentity == plan.DeviceIdentity &&
+		identity.ActionLevel == string(plan.ActionLevel) &&
+		identity.CertificationRevision == plan.CertificationRevision &&
+		identity.FailureEvidenceSHA256 == hex.EncodeToString(plan.FailureEvidenceDigest)
 }
 
 type CapabilityPolicy interface {
@@ -215,11 +319,37 @@ type RateLimiter struct {
 	history []time.Time
 }
 
+type ExecutionRateLimiter interface {
+	Allow(time.Time) error
+}
+
 func NewRateLimiter(config RateLimit) (*RateLimiter, error) {
-	if config.MinimumInterval <= 0 || config.Window <= 0 || config.MaxExecutions <= 0 || config.MinimumInterval > config.Window {
+	if !validRateLimit(config) {
 		return nil, errors.New("node Agent rate limit is invalid")
 	}
 	return &RateLimiter{config: config}, nil
+}
+
+func validRateLimit(config RateLimit) bool {
+	return config.MinimumInterval > 0 && config.Window > 0 && config.MaxExecutions > 0 &&
+		config.MinimumInterval <= config.Window
+}
+
+func allowedHistory(config RateLimit, history []time.Time, now time.Time) ([]time.Time, error) {
+	cutoff := now.Add(-config.Window)
+	kept := make([]time.Time, 0, len(history)+1)
+	for _, timestamp := range history {
+		if timestamp.After(cutoff) {
+			kept = append(kept, timestamp)
+		}
+	}
+	if len(kept) >= config.MaxExecutions {
+		return nil, errors.New("node Agent remediation rate limit exceeded")
+	}
+	if len(kept) > 0 && now.Sub(kept[len(kept)-1]) < config.MinimumInterval {
+		return nil, errors.New("node Agent remediation minimum interval has not elapsed")
+	}
+	return append(kept, now), nil
 }
 
 func (limiter *RateLimiter) Allow(now time.Time) error {
@@ -228,21 +358,11 @@ func (limiter *RateLimiter) Allow(now time.Time) error {
 	}
 	limiter.mu.Lock()
 	defer limiter.mu.Unlock()
-	cutoff := now.Add(-limiter.config.Window)
-	kept := limiter.history[:0]
-	for _, timestamp := range limiter.history {
-		if timestamp.After(cutoff) {
-			kept = append(kept, timestamp)
-		}
+	history, err := allowedHistory(limiter.config, limiter.history, now)
+	if err != nil {
+		return err
 	}
-	limiter.history = kept
-	if len(limiter.history) >= limiter.config.MaxExecutions {
-		return errors.New("node Agent remediation rate limit exceeded")
-	}
-	if len(limiter.history) > 0 && now.Sub(limiter.history[len(limiter.history)-1]) < limiter.config.MinimumInterval {
-		return errors.New("node Agent remediation minimum interval has not elapsed")
-	}
-	limiter.history = append(limiter.history, now)
+	limiter.history = history
 	return nil
 }
 
@@ -251,7 +371,7 @@ type CertifiedExecutor struct {
 	policy      CapabilityPolicy
 	fence       HostFence
 	postcheck   Postcheck
-	limiter     *RateLimiter
+	limiter     ExecutionRateLimiter
 	clock       func() time.Time
 }
 
@@ -260,7 +380,7 @@ func NewCertifiedExecutor(
 	policy CapabilityPolicy,
 	fence HostFence,
 	postcheck Postcheck,
-	limiter *RateLimiter,
+	limiter ExecutionRateLimiter,
 ) (*CertifiedExecutor, error) {
 	if allowlisted == nil || policy == nil || fence == nil || postcheck == nil || limiter == nil {
 		return nil, errors.New("node Agent certified executor dependencies are required")
@@ -299,4 +419,5 @@ var _ Postcheck = (*CommandPostcheck)(nil)
 var _ HostFence = (*CommandFence)(nil)
 var _ CapabilityPolicy = (*StaticCapabilityPolicy)(nil)
 var _ HostFence = CallbackFence(nil)
+var _ ExecutionRateLimiter = (*RateLimiter)(nil)
 var _ Executor = (*CertifiedExecutor)(nil)

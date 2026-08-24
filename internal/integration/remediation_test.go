@@ -67,6 +67,12 @@ func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 	if err != nil || claim.Replayed || claim.ClaimID != claimID {
 		t.Fatalf("claim Remediation execution = %#v error=%v", claim, err)
 	}
+	replayedClaim, err := service.ClaimExecution(
+		context.Background(), request.OperationID, workerID, 1, claimID, "node-agent-1",
+	)
+	if err != nil || !replayedClaim.Replayed || replayedClaim.ClaimID != claimID {
+		t.Fatalf("replay Remediation execution = %#v error=%v", replayedClaim, err)
+	}
 	_, err = service.ClaimExecution(
 		context.Background(), request.OperationID, workerID, 1, uuid.New(), "node-agent-2",
 	)
@@ -545,7 +551,7 @@ func TestRemediationMigrationDownAndUpPreservesRoles(t *testing.T) {
 	}
 	assertRoleExists(t, database.Admin, "vela_remediation")
 	assertRoleExists(t, database.Admin, "vela_remediation_owner")
-	if err := goose.UpTo(database.Admin, migrations, 21); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 22); err != nil {
 		t.Fatalf("Remediation migration up: %v", err)
 	}
 	assertTableExists(t, database.Admin, "remediation_operations")

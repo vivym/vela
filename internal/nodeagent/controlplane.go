@@ -152,6 +152,9 @@ func (authorizer *ControlPlaneAuthorizer) Authorize(ctx context.Context, request
 	if operation.State != remediation.StateExecuting {
 		return errors.New("remediation operation is not executing")
 	}
+	if request.ExecutionClaimID != stableExecutionClaimID(operation.ID, authorizer.actorIdentity) {
+		return errors.New("node Agent execution claim identity is not stable for the authoritative operation")
+	}
 	if operation.DeadlineAt.IsZero() || !request.DeadlineAt.Equal(operation.DeadlineAt) {
 		return errors.New("node Agent deadline does not match the authoritative remediation operation")
 	}
@@ -209,7 +212,7 @@ func (ledger *ControlPlaneLedger) Load(ctx context.Context, operationID uuid.UUI
 		operation.FinishedAt == nil {
 		return Receipt{}, false, nil
 	}
-	request := requestFromOperation(operation)
+	request := requestFromOperation(operation, ledger.actorIdentity)
 	resultCode := operation.ResultCode
 	if resultCode == "" {
 		resultCode = "REMEDIATION_QUARANTINED"
@@ -244,7 +247,7 @@ func (ledger *ControlPlaneLedger) Save(ctx context.Context, receipt Receipt) err
 	if err != nil {
 		return err
 	}
-	expectedHash := hashRequest(requestFromOperation(operation))
+	expectedHash := hashRequest(requestFromOperation(operation, ledger.actorIdentity))
 	if receipt.RequestHash != expectedHash {
 		return errors.New("node Agent receipt request hash does not match the authoritative operation")
 	}
@@ -270,9 +273,10 @@ func (ledger *ControlPlaneLedger) Save(ctx context.Context, receipt Receipt) err
 	return err
 }
 
-func requestFromOperation(operation remediation.Operation) Request {
+func requestFromOperation(operation remediation.Operation, actorIdentity string) Request {
 	return Request{
 		OperationID:           operation.ID,
+		ExecutionClaimID:      stableExecutionClaimID(operation.ID, actorIdentity),
 		WorkerID:              operation.WorkerID,
 		WorkerEpoch:           operation.WorkerEpoch,
 		NodeIdentity:          operation.NodeIdentity,

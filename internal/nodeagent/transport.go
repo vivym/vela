@@ -65,6 +65,23 @@ type Ledger interface {
 	Save(context.Context, Receipt) error
 }
 
+type ExecutionIntent struct {
+	OperationID   uuid.UUID
+	RequestHash   [sha256.Size]byte
+	ActorIdentity string
+	StartedAt     time.Time
+}
+
+type ExecutionIntentResult struct {
+	Acquired  bool
+	StartedAt time.Time
+}
+
+type HostLedger interface {
+	Ledger
+	Begin(context.Context, ExecutionIntent) (ExecutionIntentResult, error)
+}
+
 type Request struct {
 	OperationID           uuid.UUID
 	ExecutionClaimID      uuid.UUID
@@ -93,7 +110,7 @@ type Server struct {
 	localIdentity      NodeAgentIdentity
 	controllerResolver ControllerIdentityResolver
 	executor           Executor
-	ledger             Ledger
+	ledger             HostLedger
 	clock              func() time.Time
 	mu                 sync.Mutex
 }
@@ -102,7 +119,7 @@ func NewServer(
 	localIdentity NodeAgentIdentity,
 	controllerResolver ControllerIdentityResolver,
 	executor Executor,
-	ledger Ledger,
+	ledger HostLedger,
 ) (*Server, error) {
 	if !validIdentity(localIdentity) {
 		return nil, errors.New("node Agent local identity is invalid")
@@ -165,6 +182,26 @@ func (server *Server) ExecuteRemediation(
 		return responseFromResult(prior.Result), nil
 	}
 	startedAt := server.clock().UTC()
+	intent, err := server.ledger.Begin(ctx, ExecutionIntent{
+		OperationID: parsed.OperationID, RequestHash: requestHash,
+		ActorIdentity: controller.ActorIdentity, StartedAt: startedAt,
+	})
+	if err != nil || intent.StartedAt.IsZero() {
+		return nil, status.Error(codes.Internal, "node Agent execution intent write failed")
+	}
+	startedAt = intent.StartedAt
+	if !intent.Acquired {
+		result := Result{
+			OperationID: parsed.OperationID, Success: false,
+			ResultCode:   "EXECUTION_OUTCOME_UNKNOWN",
+			ResultDetail: "durable execution intent exists without a terminal receipt",
+			StartedAt:    startedAt, FinishedAt: server.clock().UTC(),
+		}
+		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
+			return nil, status.Error(codes.Internal, "node Agent interrupted execution receipt write failed")
+		}
+		return responseFromResult(result), nil
+	}
 	executionContext, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	executionResult, executionErr := server.executor.Execute(executionContext, remediation.Plan{
@@ -371,6 +408,7 @@ func validateClientRequest(request Request) error {
 func hashRequest(request Request) [sha256.Size]byte {
 	canonical := struct {
 		OperationID           string `json:"operation_id"`
+		ExecutionClaimID      string `json:"execution_claim_id"`
 		WorkerID              string `json:"worker_id"`
 		WorkerEpoch           int64  `json:"worker_epoch"`
 		NodeIdentity          string `json:"node_identity"`
@@ -381,6 +419,7 @@ func hashRequest(request Request) [sha256.Size]byte {
 		DeadlineUnixNano      int64  `json:"deadline_unix_nano"`
 	}{
 		OperationID:           request.OperationID.String(),
+		ExecutionClaimID:      request.ExecutionClaimID.String(),
 		WorkerID:              request.WorkerID.String(),
 		WorkerEpoch:           request.WorkerEpoch,
 		NodeIdentity:          request.NodeIdentity,

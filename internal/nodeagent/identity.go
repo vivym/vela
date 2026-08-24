@@ -2,11 +2,28 @@ package nodeagent
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 )
+
+func NodeAgentSPIFFEIdentity(identity NodeAgentIdentity) string {
+	if !validIdentity(identity) {
+		return ""
+	}
+	nodeIdentity := base64.RawURLEncoding.EncodeToString([]byte(identity.NodeIdentity))
+	return "spiffe://vela.internal/node-agent/" + nodeIdentity + "/" + identity.WorkerID.String()
+}
+
+func ControllerSPIFFEIdentity(actorIdentity string) string {
+	if !validText(actorIdentity, maxIdentityText) || !strings.HasPrefix(actorIdentity, "controller/") ||
+		strings.TrimPrefix(actorIdentity, "controller/") == "" {
+		return ""
+	}
+	return "spiffe://vela.internal/" + actorIdentity
+}
 
 // StaticControllerIdentityResolver is the deployment-time identity map for a
 // Node Agent. The map is intentionally explicit; a certificate being signed by
@@ -25,7 +42,7 @@ func NewStaticControllerIdentityResolver(identities map[string]string) (*StaticC
 		if err != nil || !validSPIFFEID(parsed) || !isControllerSPIFFEID(parsed) {
 			return nil, fmt.Errorf("controller SPIFFE identity %q is invalid", spiffeID)
 		}
-		if !validText(actorIdentity, maxIdentityText) {
+		if !validText(actorIdentity, maxIdentityText) || spiffeID != ControllerSPIFFEIdentity(actorIdentity) {
 			return nil, fmt.Errorf("controller actor identity for %q is invalid", spiffeID)
 		}
 		if _, duplicate := resolved[spiffeID]; duplicate {
@@ -54,6 +71,13 @@ func isControllerSPIFFEID(identity *url.URL) bool {
 	return identity != nil && identity.Host == "vela.internal" &&
 		strings.HasPrefix(identity.Path, "/controller/") &&
 		strings.TrimPrefix(identity.Path, "/controller/") != ""
+}
+
+func isNodeAgentSPIFFEID(identity *url.URL) bool {
+	return identity != nil && identity.Scheme == "spiffe" && identity.Host == "vela.internal" &&
+		strings.HasPrefix(identity.Path, "/node-agent/") &&
+		strings.TrimPrefix(identity.Path, "/node-agent/") != "" &&
+		identity.User == nil && identity.RawQuery == "" && identity.Fragment == ""
 }
 
 var _ ControllerIdentityResolver = (*StaticControllerIdentityResolver)(nil)
