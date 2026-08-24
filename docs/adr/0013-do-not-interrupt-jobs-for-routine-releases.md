@@ -10,7 +10,7 @@ An adjacent version change that cannot preserve both old and new execution autho
 
 ## Implementation Status
 
-Partial. Eighteen additive migrations, exact N/N-1 database/control
+Partial. Twenty-two additive migrations, exact N/N-1 database/control
 compatibility, an operator-receipted protocol transition, migration round trips,
 and Protobuf/OpenAPI breaking checks are repository-proven. A deployed mixed
 control/Worker/event rollout, long-Job drain, rollback, and retained-backlog
