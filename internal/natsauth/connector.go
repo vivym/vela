@@ -66,7 +66,7 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	options := []nats.Option{
+	baseOptions := []nats.Option{
 		nats.Name(outboxWorkloadName),
 		nats.Secure(tlsConfiguration),
 		nats.UserJWT(
@@ -92,6 +92,11 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 		nats.ReconnectWait(time.Second),
 		nats.Timeout(5 * time.Second),
 	}
+	authenticated, err := probeInitialAuthentication(config.URL, baseOptions)
+	if err != nil {
+		return nil, ErrOutboxConnection
+	}
+	options := append([]nats.Option(nil), baseOptions...)
 	if handlers.Disconnect != nil {
 		options = append(options, nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
 			handlers.Disconnect(err)
@@ -116,8 +121,11 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 			handlers.Closed(connection.LastError())
 		}))
 	}
+	if !authenticated {
+		options = append(options, nats.RetryOnFailedConnect(true))
+	}
 	connection, err := nats.Connect(config.URL, options...)
-	if errors.Is(err, nats.ErrNoServers) {
+	if authenticated && errors.Is(err, nats.ErrNoServers) {
 		options = append(options, nats.RetryOnFailedConnect(true))
 		connection, err = nats.Connect(config.URL, options...)
 	}
@@ -125,6 +133,22 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 		return nil, ErrOutboxConnection
 	}
 	return connection, nil
+}
+
+func probeInitialAuthentication(serverList string, options []nats.Option) (bool, error) {
+	authenticated := false
+	for _, serverURL := range strings.Split(serverList, ",") {
+		connection, err := nats.Connect(strings.TrimSpace(serverURL), options...)
+		if err == nil {
+			authenticated = true
+			connection.Close()
+			continue
+		}
+		if !errors.Is(err, nats.ErrNoServers) {
+			return false, err
+		}
+	}
+	return authenticated, nil
 }
 
 func validateConfig(config OutboxConfig) error {
@@ -216,29 +240,20 @@ func validOutboxClaims(claims *jwt.UserClaims, config OutboxConfig, now time.Tim
 }
 
 func validExpectedAccountSigners(publicKeys []string) bool {
-	if len(publicKeys) < 1 || len(publicKeys) > 2 {
-		return false
-	}
-	seen := make(map[string]struct{}, len(publicKeys))
-	for _, publicKey := range publicKeys {
-		if !nkeys.IsValidPublicAccountKey(publicKey) {
-			return false
-		}
-		if _, duplicate := seen[publicKey]; duplicate {
-			return false
-		}
-		seen[publicKey] = struct{}{}
-	}
-	return true
+	return validExpectedRotationKeys(publicKeys, nkeys.IsValidPublicAccountKey)
 }
 
 func validExpectedUsers(publicKeys []string) bool {
+	return validExpectedRotationKeys(publicKeys, nkeys.IsValidPublicUserKey)
+}
+
+func validExpectedRotationKeys(publicKeys []string, validPublicKey func(string) bool) bool {
 	if len(publicKeys) < 1 || len(publicKeys) > 2 {
 		return false
 	}
 	seen := make(map[string]struct{}, len(publicKeys))
 	for _, publicKey := range publicKeys {
-		if !nkeys.IsValidPublicUserKey(publicKey) {
+		if !validPublicKey(publicKey) {
 			return false
 		}
 		if _, duplicate := seen[publicKey]; duplicate {

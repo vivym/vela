@@ -231,6 +231,12 @@ func TestConnectOutboxRejectsCredentialDriftWithoutLeakingSecrets(t *testing.T) 
 			},
 		},
 		{
+			name: "unverifiable JWT signature",
+			mutateCredential: func(credential *testCredential) {
+				corruptJWTSignature(t, credential)
+			},
+		},
+		{
 			name:               "malformed credential",
 			credentialContents: []byte("not-a-nats-credential\nSENSITIVE-SENTINEL\n"),
 		},
@@ -348,6 +354,27 @@ func validOutboxConfig(credential testCredential) natsauth.OutboxConfig {
 		ExpectedAccountSignerPublicKeys: credential.expectedSigners,
 		ExpectedUserPublicKeys:          credential.expectedUsers,
 	}
+}
+
+func corruptJWTSignature(t *testing.T, credential *testCredential) {
+	t.Helper()
+	chunks := strings.Split(credential.jwt, ".")
+	if len(chunks) != 3 || chunks[2] == "" {
+		t.Fatal("issued test credential does not contain a JWT signature")
+	}
+	corruptedSignature := []byte(chunks[2])
+	if corruptedSignature[0] == 'A' {
+		corruptedSignature[0] = 'B'
+	} else {
+		corruptedSignature[0] = 'A'
+	}
+	corruptedJWT := strings.Join([]string{chunks[0], chunks[1], string(corruptedSignature)}, ".")
+	corruptedContents := strings.Replace(string(credential.contents), credential.jwt, corruptedJWT, 1)
+	if corruptedContents == string(credential.contents) {
+		t.Fatal("issued test credential does not contain its JWT")
+	}
+	credential.jwt = corruptedJWT
+	credential.contents = []byte(corruptedContents)
 }
 
 func createAccountKey(t *testing.T) nkeys.KeyPair {

@@ -48,6 +48,30 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 	if !errors.Is(err, natsauth.ErrOutboxConnection) {
 		t.Fatalf("revoked Outbox credential error = %v, want startup authentication rejection", err)
 	}
+	for _, serverList := range []string{
+		fixture.url + ",tls://127.0.0.1:1",
+		"tls://127.0.0.1:1," + fixture.url,
+	} {
+		mixedEndpointConfig := fixture.outboxConfig(
+			fixture.revokedOutboxCredential,
+			fixture.revokedOutboxUser,
+		)
+		mixedEndpointConfig.URL = serverList
+		mixedEndpointConnection, mixedEndpointErr := natsauth.ConnectOutbox(
+			mixedEndpointConfig,
+			natsauth.Handlers{},
+		)
+		if mixedEndpointConnection != nil {
+			mixedEndpointConnection.Close()
+			t.Fatal("mixed auth-rejected/offline endpoint pool returned a connection")
+		}
+		if !errors.Is(mixedEndpointErr, natsauth.ErrOutboxConnection) {
+			t.Fatalf(
+				"mixed auth-rejected/offline endpoint pool error = %v, want startup rejection",
+				mixedEndpointErr,
+			)
+		}
+	}
 
 	systemConnection, err := natsauth.ConnectOutbox(
 		fixture.outboxConfig(fixture.systemCredential, fixture.outboxUser),
