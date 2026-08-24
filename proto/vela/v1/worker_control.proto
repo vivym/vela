@@ -10,6 +10,11 @@ service WorkerControlService {
   rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
 }
 
+service NodeAgentService {
+  rpc ExecuteRemediation(ExecuteRemediationRequest)
+      returns (ExecuteRemediationResponse);
+}
+
 message ConnectRequest {
   string request_id = 1;
   oneof operation {
@@ -39,6 +44,28 @@ message ConnectResponse {
 message WorkerOperationError {
   string code = 1;
   string message = 2;
+}
+
+message ExecuteRemediationRequest {
+  string operation_id = 1;
+  string worker_id = 2;
+  int64 worker_epoch = 3;
+  string node_identity = 4;
+  string device_identity = 5;
+  string action_level = 6;
+  string certification_revision = 7;
+  bytes failure_evidence_digest = 8;
+  google.protobuf.Timestamp deadline_at = 9;
+}
+
+message ExecuteRemediationResponse {
+  string operation_id = 1;
+  bool success = 2;
+  string result_code = 3;
+  string result_detail = 4;
+  bytes postcheck_sha256 = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp finished_at = 7;
 }
 
 message WorkerLeaseCredentials {

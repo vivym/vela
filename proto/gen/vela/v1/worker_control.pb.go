@@ -414,6 +414,206 @@ func (x *WorkerOperationError) GetMessage() string {
 	return ""
 }
 
+type ExecuteRemediationRequest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	OperationId           string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	WorkerId              string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerEpoch           int64                  `protobuf:"varint,3,opt,name=worker_epoch,json=workerEpoch,proto3" json:"worker_epoch,omitempty"`
+	NodeIdentity          string                 `protobuf:"bytes,4,opt,name=node_identity,json=nodeIdentity,proto3" json:"node_identity,omitempty"`
+	DeviceIdentity        string                 `protobuf:"bytes,5,opt,name=device_identity,json=deviceIdentity,proto3" json:"device_identity,omitempty"`
+	ActionLevel           string                 `protobuf:"bytes,6,opt,name=action_level,json=actionLevel,proto3" json:"action_level,omitempty"`
+	CertificationRevision string                 `protobuf:"bytes,7,opt,name=certification_revision,json=certificationRevision,proto3" json:"certification_revision,omitempty"`
+	FailureEvidenceDigest []byte                 `protobuf:"bytes,8,opt,name=failure_evidence_digest,json=failureEvidenceDigest,proto3" json:"failure_evidence_digest,omitempty"`
+	DeadlineAt            *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=deadline_at,json=deadlineAt,proto3" json:"deadline_at,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *ExecuteRemediationRequest) Reset() {
+	*x = ExecuteRemediationRequest{}
+	mi := &file_vela_v1_worker_control_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecuteRemediationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecuteRemediationRequest) ProtoMessage() {}
+
+func (x *ExecuteRemediationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_worker_control_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecuteRemediationRequest.ProtoReflect.Descriptor instead.
+func (*ExecuteRemediationRequest) Descriptor() ([]byte, []int) {
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ExecuteRemediationRequest) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationRequest) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationRequest) GetWorkerEpoch() int64 {
+	if x != nil {
+		return x.WorkerEpoch
+	}
+	return 0
+}
+
+func (x *ExecuteRemediationRequest) GetNodeIdentity() string {
+	if x != nil {
+		return x.NodeIdentity
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationRequest) GetDeviceIdentity() string {
+	if x != nil {
+		return x.DeviceIdentity
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationRequest) GetActionLevel() string {
+	if x != nil {
+		return x.ActionLevel
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationRequest) GetCertificationRevision() string {
+	if x != nil {
+		return x.CertificationRevision
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationRequest) GetFailureEvidenceDigest() []byte {
+	if x != nil {
+		return x.FailureEvidenceDigest
+	}
+	return nil
+}
+
+func (x *ExecuteRemediationRequest) GetDeadlineAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DeadlineAt
+	}
+	return nil
+}
+
+type ExecuteRemediationResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	OperationId     string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
+	Success         bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
+	ResultCode      string                 `protobuf:"bytes,3,opt,name=result_code,json=resultCode,proto3" json:"result_code,omitempty"`
+	ResultDetail    string                 `protobuf:"bytes,4,opt,name=result_detail,json=resultDetail,proto3" json:"result_detail,omitempty"`
+	PostcheckSha256 []byte                 `protobuf:"bytes,5,opt,name=postcheck_sha256,json=postcheckSha256,proto3" json:"postcheck_sha256,omitempty"`
+	StartedAt       *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	FinishedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ExecuteRemediationResponse) Reset() {
+	*x = ExecuteRemediationResponse{}
+	mi := &file_vela_v1_worker_control_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExecuteRemediationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExecuteRemediationResponse) ProtoMessage() {}
+
+func (x *ExecuteRemediationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_worker_control_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExecuteRemediationResponse.ProtoReflect.Descriptor instead.
+func (*ExecuteRemediationResponse) Descriptor() ([]byte, []int) {
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ExecuteRemediationResponse) GetOperationId() string {
+	if x != nil {
+		return x.OperationId
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ExecuteRemediationResponse) GetResultCode() string {
+	if x != nil {
+		return x.ResultCode
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationResponse) GetResultDetail() string {
+	if x != nil {
+		return x.ResultDetail
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationResponse) GetPostcheckSha256() []byte {
+	if x != nil {
+		return x.PostcheckSha256
+	}
+	return nil
+}
+
+func (x *ExecuteRemediationResponse) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *ExecuteRemediationResponse) GetFinishedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FinishedAt
+	}
+	return nil
+}
+
 type WorkerLeaseCredentials struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AttemptId     string                 `protobuf:"bytes,1,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
@@ -426,7 +626,7 @@ type WorkerLeaseCredentials struct {
 
 func (x *WorkerLeaseCredentials) Reset() {
 	*x = WorkerLeaseCredentials{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[3]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -438,7 +638,7 @@ func (x *WorkerLeaseCredentials) String() string {
 func (*WorkerLeaseCredentials) ProtoMessage() {}
 
 func (x *WorkerLeaseCredentials) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[3]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -451,7 +651,7 @@ func (x *WorkerLeaseCredentials) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerLeaseCredentials.ProtoReflect.Descriptor instead.
 func (*WorkerLeaseCredentials) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{3}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *WorkerLeaseCredentials) GetAttemptId() string {
@@ -491,7 +691,7 @@ type BeginFinalizationRequest struct {
 
 func (x *BeginFinalizationRequest) Reset() {
 	*x = BeginFinalizationRequest{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[4]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -503,7 +703,7 @@ func (x *BeginFinalizationRequest) String() string {
 func (*BeginFinalizationRequest) ProtoMessage() {}
 
 func (x *BeginFinalizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[4]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -516,7 +716,7 @@ func (x *BeginFinalizationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginFinalizationRequest.ProtoReflect.Descriptor instead.
 func (*BeginFinalizationRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{4}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *BeginFinalizationRequest) GetLease() *WorkerLeaseCredentials {
@@ -538,7 +738,7 @@ type ClaimArtifactUploadRequest struct {
 
 func (x *ClaimArtifactUploadRequest) Reset() {
 	*x = ClaimArtifactUploadRequest{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[5]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -550,7 +750,7 @@ func (x *ClaimArtifactUploadRequest) String() string {
 func (*ClaimArtifactUploadRequest) ProtoMessage() {}
 
 func (x *ClaimArtifactUploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[5]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -563,7 +763,7 @@ func (x *ClaimArtifactUploadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClaimArtifactUploadRequest.ProtoReflect.Descriptor instead.
 func (*ClaimArtifactUploadRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{5}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ClaimArtifactUploadRequest) GetLease() *WorkerLeaseCredentials {
@@ -605,7 +805,7 @@ type ArtifactUploadPartIntent struct {
 
 func (x *ArtifactUploadPartIntent) Reset() {
 	*x = ArtifactUploadPartIntent{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[6]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -617,7 +817,7 @@ func (x *ArtifactUploadPartIntent) String() string {
 func (*ArtifactUploadPartIntent) ProtoMessage() {}
 
 func (x *ArtifactUploadPartIntent) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[6]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -630,7 +830,7 @@ func (x *ArtifactUploadPartIntent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactUploadPartIntent.ProtoReflect.Descriptor instead.
 func (*ArtifactUploadPartIntent) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{6}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ArtifactUploadPartIntent) GetNumber() int32 {
@@ -666,7 +866,7 @@ type RecordArtifactMultipartSessionRequest struct {
 
 func (x *RecordArtifactMultipartSessionRequest) Reset() {
 	*x = RecordArtifactMultipartSessionRequest{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[7]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -678,7 +878,7 @@ func (x *RecordArtifactMultipartSessionRequest) String() string {
 func (*RecordArtifactMultipartSessionRequest) ProtoMessage() {}
 
 func (x *RecordArtifactMultipartSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[7]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -691,7 +891,7 @@ func (x *RecordArtifactMultipartSessionRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use RecordArtifactMultipartSessionRequest.ProtoReflect.Descriptor instead.
 func (*RecordArtifactMultipartSessionRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{7}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RecordArtifactMultipartSessionRequest) GetLease() *WorkerLeaseCredentials {
@@ -734,7 +934,7 @@ type ArtifactUploadPartReport struct {
 
 func (x *ArtifactUploadPartReport) Reset() {
 	*x = ArtifactUploadPartReport{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[8]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -746,7 +946,7 @@ func (x *ArtifactUploadPartReport) String() string {
 func (*ArtifactUploadPartReport) ProtoMessage() {}
 
 func (x *ArtifactUploadPartReport) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[8]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -759,7 +959,7 @@ func (x *ArtifactUploadPartReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactUploadPartReport.ProtoReflect.Descriptor instead.
 func (*ArtifactUploadPartReport) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{8}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ArtifactUploadPartReport) GetNumber() int32 {
@@ -803,7 +1003,7 @@ type ArtifactUploadReport struct {
 
 func (x *ArtifactUploadReport) Reset() {
 	*x = ArtifactUploadReport{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[9]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -815,7 +1015,7 @@ func (x *ArtifactUploadReport) String() string {
 func (*ArtifactUploadReport) ProtoMessage() {}
 
 func (x *ArtifactUploadReport) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[9]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -828,7 +1028,7 @@ func (x *ArtifactUploadReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactUploadReport.ProtoReflect.Descriptor instead.
 func (*ArtifactUploadReport) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{9}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ArtifactUploadReport) GetObjectVersionId() string {
@@ -877,7 +1077,7 @@ type RecordArtifactUploadedRequest struct {
 
 func (x *RecordArtifactUploadedRequest) Reset() {
 	*x = RecordArtifactUploadedRequest{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[10]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -889,7 +1089,7 @@ func (x *RecordArtifactUploadedRequest) String() string {
 func (*RecordArtifactUploadedRequest) ProtoMessage() {}
 
 func (x *RecordArtifactUploadedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[10]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -902,7 +1102,7 @@ func (x *RecordArtifactUploadedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordArtifactUploadedRequest.ProtoReflect.Descriptor instead.
 func (*RecordArtifactUploadedRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{10}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RecordArtifactUploadedRequest) GetLease() *WorkerLeaseCredentials {
@@ -941,7 +1141,7 @@ type CompleteArtifactMultipartUploadRequest struct {
 
 func (x *CompleteArtifactMultipartUploadRequest) Reset() {
 	*x = CompleteArtifactMultipartUploadRequest{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[11]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -953,7 +1153,7 @@ func (x *CompleteArtifactMultipartUploadRequest) String() string {
 func (*CompleteArtifactMultipartUploadRequest) ProtoMessage() {}
 
 func (x *CompleteArtifactMultipartUploadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[11]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -966,7 +1166,7 @@ func (x *CompleteArtifactMultipartUploadRequest) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use CompleteArtifactMultipartUploadRequest.ProtoReflect.Descriptor instead.
 func (*CompleteArtifactMultipartUploadRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{11}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CompleteArtifactMultipartUploadRequest) GetLease() *WorkerLeaseCredentials {
@@ -1029,7 +1229,7 @@ type VerifyArtifactRequest struct {
 
 func (x *VerifyArtifactRequest) Reset() {
 	*x = VerifyArtifactRequest{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[12]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1041,7 +1241,7 @@ func (x *VerifyArtifactRequest) String() string {
 func (*VerifyArtifactRequest) ProtoMessage() {}
 
 func (x *VerifyArtifactRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[12]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1054,7 +1254,7 @@ func (x *VerifyArtifactRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VerifyArtifactRequest.ProtoReflect.Descriptor instead.
 func (*VerifyArtifactRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{12}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *VerifyArtifactRequest) GetLease() *WorkerLeaseCredentials {
@@ -1089,7 +1289,7 @@ type VisibleCompletionCandidate struct {
 
 func (x *VisibleCompletionCandidate) Reset() {
 	*x = VisibleCompletionCandidate{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[13]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1101,7 +1301,7 @@ func (x *VisibleCompletionCandidate) String() string {
 func (*VisibleCompletionCandidate) ProtoMessage() {}
 
 func (x *VisibleCompletionCandidate) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[13]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1114,7 +1314,7 @@ func (x *VisibleCompletionCandidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VisibleCompletionCandidate.ProtoReflect.Descriptor instead.
 func (*VisibleCompletionCandidate) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{13}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *VisibleCompletionCandidate) GetCompletionId() string {
@@ -1148,7 +1348,7 @@ type CompleteVisibleCompletionRequest struct {
 
 func (x *CompleteVisibleCompletionRequest) Reset() {
 	*x = CompleteVisibleCompletionRequest{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[14]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1160,7 +1360,7 @@ func (x *CompleteVisibleCompletionRequest) String() string {
 func (*CompleteVisibleCompletionRequest) ProtoMessage() {}
 
 func (x *CompleteVisibleCompletionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[14]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1173,7 +1373,7 @@ func (x *CompleteVisibleCompletionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteVisibleCompletionRequest.ProtoReflect.Descriptor instead.
 func (*CompleteVisibleCompletionRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{14}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CompleteVisibleCompletionRequest) GetLease() *WorkerLeaseCredentials {
@@ -1204,7 +1404,7 @@ type PlannedArtifact struct {
 
 func (x *PlannedArtifact) Reset() {
 	*x = PlannedArtifact{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[15]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1216,7 +1416,7 @@ func (x *PlannedArtifact) String() string {
 func (*PlannedArtifact) ProtoMessage() {}
 
 func (x *PlannedArtifact) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[15]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1229,7 +1429,7 @@ func (x *PlannedArtifact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlannedArtifact.ProtoReflect.Descriptor instead.
 func (*PlannedArtifact) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{15}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PlannedArtifact) GetArtifactId() string {
@@ -1289,7 +1489,7 @@ type FinalizationPlan struct {
 
 func (x *FinalizationPlan) Reset() {
 	*x = FinalizationPlan{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[16]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1301,7 +1501,7 @@ func (x *FinalizationPlan) String() string {
 func (*FinalizationPlan) ProtoMessage() {}
 
 func (x *FinalizationPlan) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[16]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1314,7 +1514,7 @@ func (x *FinalizationPlan) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FinalizationPlan.ProtoReflect.Descriptor instead.
 func (*FinalizationPlan) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{16}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *FinalizationPlan) GetDecision() string {
@@ -1387,7 +1587,7 @@ type ArtifactUploadClaim struct {
 
 func (x *ArtifactUploadClaim) Reset() {
 	*x = ArtifactUploadClaim{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[17]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1399,7 +1599,7 @@ func (x *ArtifactUploadClaim) String() string {
 func (*ArtifactUploadClaim) ProtoMessage() {}
 
 func (x *ArtifactUploadClaim) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[17]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1412,7 +1612,7 @@ func (x *ArtifactUploadClaim) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactUploadClaim.ProtoReflect.Descriptor instead.
 func (*ArtifactUploadClaim) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{17}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ArtifactUploadClaim) GetDecision() string {
@@ -1520,7 +1720,7 @@ type SignedArtifactUploadPart struct {
 
 func (x *SignedArtifactUploadPart) Reset() {
 	*x = SignedArtifactUploadPart{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[18]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1532,7 +1732,7 @@ func (x *SignedArtifactUploadPart) String() string {
 func (*SignedArtifactUploadPart) ProtoMessage() {}
 
 func (x *SignedArtifactUploadPart) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[18]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1545,7 +1745,7 @@ func (x *SignedArtifactUploadPart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignedArtifactUploadPart.ProtoReflect.Descriptor instead.
 func (*SignedArtifactUploadPart) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{18}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SignedArtifactUploadPart) GetNumber() int32 {
@@ -1603,7 +1803,7 @@ type ArtifactMultipartSession struct {
 
 func (x *ArtifactMultipartSession) Reset() {
 	*x = ArtifactMultipartSession{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[19]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1615,7 +1815,7 @@ func (x *ArtifactMultipartSession) String() string {
 func (*ArtifactMultipartSession) ProtoMessage() {}
 
 func (x *ArtifactMultipartSession) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[19]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1628,7 +1828,7 @@ func (x *ArtifactMultipartSession) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactMultipartSession.ProtoReflect.Descriptor instead.
 func (*ArtifactMultipartSession) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{19}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ArtifactMultipartSession) GetDecision() string {
@@ -1679,7 +1879,7 @@ type ArtifactUploadResult struct {
 
 func (x *ArtifactUploadResult) Reset() {
 	*x = ArtifactUploadResult{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[20]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1691,7 +1891,7 @@ func (x *ArtifactUploadResult) String() string {
 func (*ArtifactUploadResult) ProtoMessage() {}
 
 func (x *ArtifactUploadResult) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[20]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1704,7 +1904,7 @@ func (x *ArtifactUploadResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactUploadResult.ProtoReflect.Descriptor instead.
 func (*ArtifactUploadResult) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{20}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ArtifactUploadResult) GetDecision() string {
@@ -1757,7 +1957,7 @@ type ArtifactVerificationResult struct {
 
 func (x *ArtifactVerificationResult) Reset() {
 	*x = ArtifactVerificationResult{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[21]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1769,7 +1969,7 @@ func (x *ArtifactVerificationResult) String() string {
 func (*ArtifactVerificationResult) ProtoMessage() {}
 
 func (x *ArtifactVerificationResult) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[21]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1782,7 +1982,7 @@ func (x *ArtifactVerificationResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArtifactVerificationResult.ProtoReflect.Descriptor instead.
 func (*ArtifactVerificationResult) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{21}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ArtifactVerificationResult) GetDecision() string {
@@ -1850,7 +2050,7 @@ type WorkerCommittedArtifact struct {
 
 func (x *WorkerCommittedArtifact) Reset() {
 	*x = WorkerCommittedArtifact{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[22]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1862,7 +2062,7 @@ func (x *WorkerCommittedArtifact) String() string {
 func (*WorkerCommittedArtifact) ProtoMessage() {}
 
 func (x *WorkerCommittedArtifact) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[22]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1875,7 +2075,7 @@ func (x *WorkerCommittedArtifact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerCommittedArtifact.ProtoReflect.Descriptor instead.
 func (*WorkerCommittedArtifact) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{22}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *WorkerCommittedArtifact) GetArtifactId() string {
@@ -1952,7 +2152,7 @@ type VisibleCompletionResult struct {
 
 func (x *VisibleCompletionResult) Reset() {
 	*x = VisibleCompletionResult{}
-	mi := &file_vela_v1_worker_control_proto_msgTypes[23]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1964,7 +2164,7 @@ func (x *VisibleCompletionResult) String() string {
 func (*VisibleCompletionResult) ProtoMessage() {}
 
 func (x *VisibleCompletionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_worker_control_proto_msgTypes[23]
+	mi := &file_vela_v1_worker_control_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1977,7 +2177,7 @@ func (x *VisibleCompletionResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VisibleCompletionResult.ProtoReflect.Descriptor instead.
 func (*VisibleCompletionResult) Descriptor() ([]byte, []int) {
-	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{23}
+	return file_vela_v1_worker_control_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *VisibleCompletionResult) GetDecision() string {
@@ -2079,7 +2279,29 @@ const file_vela_v1_worker_control_proto_rawDesc = "" +
 	"\x06result\"D\n" +
 	"\x14WorkerOperationError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x86\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x9b\x03\n" +
+	"\x19ExecuteRemediationRequest\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1b\n" +
+	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12!\n" +
+	"\fworker_epoch\x18\x03 \x01(\x03R\vworkerEpoch\x12#\n" +
+	"\rnode_identity\x18\x04 \x01(\tR\fnodeIdentity\x12'\n" +
+	"\x0fdevice_identity\x18\x05 \x01(\tR\x0edeviceIdentity\x12!\n" +
+	"\faction_level\x18\x06 \x01(\tR\vactionLevel\x125\n" +
+	"\x16certification_revision\x18\a \x01(\tR\x15certificationRevision\x126\n" +
+	"\x17failure_evidence_digest\x18\b \x01(\fR\x15failureEvidenceDigest\x12;\n" +
+	"\vdeadline_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"deadlineAt\"\xc2\x02\n" +
+	"\x1aExecuteRemediationResponse\x12!\n" +
+	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x18\n" +
+	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x1f\n" +
+	"\vresult_code\x18\x03 \x01(\tR\n" +
+	"resultCode\x12#\n" +
+	"\rresult_detail\x18\x04 \x01(\tR\fresultDetail\x12)\n" +
+	"\x10postcheck_sha256\x18\x05 \x01(\fR\x0fpostcheckSha256\x129\n" +
+	"\n" +
+	"started_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
+	"\vfinished_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"finishedAt\"\x86\x01\n" +
 	"\x16WorkerLeaseCredentials\x12\x1d\n" +
 	"\n" +
 	"attempt_id\x18\x01 \x01(\tR\tattemptId\x12!\n" +
@@ -2241,7 +2463,9 @@ const file_vela_v1_worker_control_proto_rawDesc = "" +
 	"\fcompleted_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt2X\n" +
 	"\x14WorkerControlService\x12@\n" +
-	"\aConnect\x12\x17.vela.v1.ConnectRequest\x1a\x18.vela.v1.ConnectResponse(\x010\x01B0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
+	"\aConnect\x12\x17.vela.v1.ConnectRequest\x1a\x18.vela.v1.ConnectResponse(\x010\x012q\n" +
+	"\x10NodeAgentService\x12]\n" +
+	"\x12ExecuteRemediation\x12\".vela.v1.ExecuteRemediationRequest\x1a#.vela.v1.ExecuteRemediationResponseB0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
 
 var (
 	file_vela_v1_worker_control_proto_rawDescOnce sync.Once
@@ -2255,82 +2479,89 @@ func file_vela_v1_worker_control_proto_rawDescGZIP() []byte {
 	return file_vela_v1_worker_control_proto_rawDescData
 }
 
-var file_vela_v1_worker_control_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_vela_v1_worker_control_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_vela_v1_worker_control_proto_goTypes = []any{
 	(*ConnectRequest)(nil),                         // 0: vela.v1.ConnectRequest
 	(*ConnectResponse)(nil),                        // 1: vela.v1.ConnectResponse
 	(*WorkerOperationError)(nil),                   // 2: vela.v1.WorkerOperationError
-	(*WorkerLeaseCredentials)(nil),                 // 3: vela.v1.WorkerLeaseCredentials
-	(*BeginFinalizationRequest)(nil),               // 4: vela.v1.BeginFinalizationRequest
-	(*ClaimArtifactUploadRequest)(nil),             // 5: vela.v1.ClaimArtifactUploadRequest
-	(*ArtifactUploadPartIntent)(nil),               // 6: vela.v1.ArtifactUploadPartIntent
-	(*RecordArtifactMultipartSessionRequest)(nil),  // 7: vela.v1.RecordArtifactMultipartSessionRequest
-	(*ArtifactUploadPartReport)(nil),               // 8: vela.v1.ArtifactUploadPartReport
-	(*ArtifactUploadReport)(nil),                   // 9: vela.v1.ArtifactUploadReport
-	(*RecordArtifactUploadedRequest)(nil),          // 10: vela.v1.RecordArtifactUploadedRequest
-	(*CompleteArtifactMultipartUploadRequest)(nil), // 11: vela.v1.CompleteArtifactMultipartUploadRequest
-	(*VerifyArtifactRequest)(nil),                  // 12: vela.v1.VerifyArtifactRequest
-	(*VisibleCompletionCandidate)(nil),             // 13: vela.v1.VisibleCompletionCandidate
-	(*CompleteVisibleCompletionRequest)(nil),       // 14: vela.v1.CompleteVisibleCompletionRequest
-	(*PlannedArtifact)(nil),                        // 15: vela.v1.PlannedArtifact
-	(*FinalizationPlan)(nil),                       // 16: vela.v1.FinalizationPlan
-	(*ArtifactUploadClaim)(nil),                    // 17: vela.v1.ArtifactUploadClaim
-	(*SignedArtifactUploadPart)(nil),               // 18: vela.v1.SignedArtifactUploadPart
-	(*ArtifactMultipartSession)(nil),               // 19: vela.v1.ArtifactMultipartSession
-	(*ArtifactUploadResult)(nil),                   // 20: vela.v1.ArtifactUploadResult
-	(*ArtifactVerificationResult)(nil),             // 21: vela.v1.ArtifactVerificationResult
-	(*WorkerCommittedArtifact)(nil),                // 22: vela.v1.WorkerCommittedArtifact
-	(*VisibleCompletionResult)(nil),                // 23: vela.v1.VisibleCompletionResult
-	nil,                                            // 24: vela.v1.SignedArtifactUploadPart.RequiredHeadersEntry
-	(*timestamppb.Timestamp)(nil),                  // 25: google.protobuf.Timestamp
+	(*ExecuteRemediationRequest)(nil),              // 3: vela.v1.ExecuteRemediationRequest
+	(*ExecuteRemediationResponse)(nil),             // 4: vela.v1.ExecuteRemediationResponse
+	(*WorkerLeaseCredentials)(nil),                 // 5: vela.v1.WorkerLeaseCredentials
+	(*BeginFinalizationRequest)(nil),               // 6: vela.v1.BeginFinalizationRequest
+	(*ClaimArtifactUploadRequest)(nil),             // 7: vela.v1.ClaimArtifactUploadRequest
+	(*ArtifactUploadPartIntent)(nil),               // 8: vela.v1.ArtifactUploadPartIntent
+	(*RecordArtifactMultipartSessionRequest)(nil),  // 9: vela.v1.RecordArtifactMultipartSessionRequest
+	(*ArtifactUploadPartReport)(nil),               // 10: vela.v1.ArtifactUploadPartReport
+	(*ArtifactUploadReport)(nil),                   // 11: vela.v1.ArtifactUploadReport
+	(*RecordArtifactUploadedRequest)(nil),          // 12: vela.v1.RecordArtifactUploadedRequest
+	(*CompleteArtifactMultipartUploadRequest)(nil), // 13: vela.v1.CompleteArtifactMultipartUploadRequest
+	(*VerifyArtifactRequest)(nil),                  // 14: vela.v1.VerifyArtifactRequest
+	(*VisibleCompletionCandidate)(nil),             // 15: vela.v1.VisibleCompletionCandidate
+	(*CompleteVisibleCompletionRequest)(nil),       // 16: vela.v1.CompleteVisibleCompletionRequest
+	(*PlannedArtifact)(nil),                        // 17: vela.v1.PlannedArtifact
+	(*FinalizationPlan)(nil),                       // 18: vela.v1.FinalizationPlan
+	(*ArtifactUploadClaim)(nil),                    // 19: vela.v1.ArtifactUploadClaim
+	(*SignedArtifactUploadPart)(nil),               // 20: vela.v1.SignedArtifactUploadPart
+	(*ArtifactMultipartSession)(nil),               // 21: vela.v1.ArtifactMultipartSession
+	(*ArtifactUploadResult)(nil),                   // 22: vela.v1.ArtifactUploadResult
+	(*ArtifactVerificationResult)(nil),             // 23: vela.v1.ArtifactVerificationResult
+	(*WorkerCommittedArtifact)(nil),                // 24: vela.v1.WorkerCommittedArtifact
+	(*VisibleCompletionResult)(nil),                // 25: vela.v1.VisibleCompletionResult
+	nil,                                            // 26: vela.v1.SignedArtifactUploadPart.RequiredHeadersEntry
+	(*timestamppb.Timestamp)(nil),                  // 27: google.protobuf.Timestamp
 }
 var file_vela_v1_worker_control_proto_depIdxs = []int32{
-	4,  // 0: vela.v1.ConnectRequest.begin_finalization:type_name -> vela.v1.BeginFinalizationRequest
-	5,  // 1: vela.v1.ConnectRequest.claim_artifact_upload:type_name -> vela.v1.ClaimArtifactUploadRequest
-	7,  // 2: vela.v1.ConnectRequest.record_artifact_multipart_session:type_name -> vela.v1.RecordArtifactMultipartSessionRequest
-	10, // 3: vela.v1.ConnectRequest.record_artifact_uploaded:type_name -> vela.v1.RecordArtifactUploadedRequest
-	12, // 4: vela.v1.ConnectRequest.verify_artifact:type_name -> vela.v1.VerifyArtifactRequest
-	14, // 5: vela.v1.ConnectRequest.complete_visible_completion:type_name -> vela.v1.CompleteVisibleCompletionRequest
-	11, // 6: vela.v1.ConnectRequest.complete_artifact_multipart_upload:type_name -> vela.v1.CompleteArtifactMultipartUploadRequest
-	16, // 7: vela.v1.ConnectResponse.finalization_plan:type_name -> vela.v1.FinalizationPlan
-	17, // 8: vela.v1.ConnectResponse.artifact_upload_claim:type_name -> vela.v1.ArtifactUploadClaim
-	19, // 9: vela.v1.ConnectResponse.artifact_multipart_session:type_name -> vela.v1.ArtifactMultipartSession
-	20, // 10: vela.v1.ConnectResponse.artifact_upload_result:type_name -> vela.v1.ArtifactUploadResult
-	21, // 11: vela.v1.ConnectResponse.artifact_verification_result:type_name -> vela.v1.ArtifactVerificationResult
-	23, // 12: vela.v1.ConnectResponse.visible_completion_result:type_name -> vela.v1.VisibleCompletionResult
+	6,  // 0: vela.v1.ConnectRequest.begin_finalization:type_name -> vela.v1.BeginFinalizationRequest
+	7,  // 1: vela.v1.ConnectRequest.claim_artifact_upload:type_name -> vela.v1.ClaimArtifactUploadRequest
+	9,  // 2: vela.v1.ConnectRequest.record_artifact_multipart_session:type_name -> vela.v1.RecordArtifactMultipartSessionRequest
+	12, // 3: vela.v1.ConnectRequest.record_artifact_uploaded:type_name -> vela.v1.RecordArtifactUploadedRequest
+	14, // 4: vela.v1.ConnectRequest.verify_artifact:type_name -> vela.v1.VerifyArtifactRequest
+	16, // 5: vela.v1.ConnectRequest.complete_visible_completion:type_name -> vela.v1.CompleteVisibleCompletionRequest
+	13, // 6: vela.v1.ConnectRequest.complete_artifact_multipart_upload:type_name -> vela.v1.CompleteArtifactMultipartUploadRequest
+	18, // 7: vela.v1.ConnectResponse.finalization_plan:type_name -> vela.v1.FinalizationPlan
+	19, // 8: vela.v1.ConnectResponse.artifact_upload_claim:type_name -> vela.v1.ArtifactUploadClaim
+	21, // 9: vela.v1.ConnectResponse.artifact_multipart_session:type_name -> vela.v1.ArtifactMultipartSession
+	22, // 10: vela.v1.ConnectResponse.artifact_upload_result:type_name -> vela.v1.ArtifactUploadResult
+	23, // 11: vela.v1.ConnectResponse.artifact_verification_result:type_name -> vela.v1.ArtifactVerificationResult
+	25, // 12: vela.v1.ConnectResponse.visible_completion_result:type_name -> vela.v1.VisibleCompletionResult
 	2,  // 13: vela.v1.ConnectResponse.operation_error:type_name -> vela.v1.WorkerOperationError
-	3,  // 14: vela.v1.BeginFinalizationRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
-	3,  // 15: vela.v1.ClaimArtifactUploadRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
-	6,  // 16: vela.v1.ClaimArtifactUploadRequest.part:type_name -> vela.v1.ArtifactUploadPartIntent
-	3,  // 17: vela.v1.RecordArtifactMultipartSessionRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
-	8,  // 18: vela.v1.ArtifactUploadReport.completed_parts:type_name -> vela.v1.ArtifactUploadPartReport
-	3,  // 19: vela.v1.RecordArtifactUploadedRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
-	9,  // 20: vela.v1.RecordArtifactUploadedRequest.report:type_name -> vela.v1.ArtifactUploadReport
-	3,  // 21: vela.v1.CompleteArtifactMultipartUploadRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
-	8,  // 22: vela.v1.CompleteArtifactMultipartUploadRequest.completed_parts:type_name -> vela.v1.ArtifactUploadPartReport
-	3,  // 23: vela.v1.VerifyArtifactRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
-	3,  // 24: vela.v1.CompleteVisibleCompletionRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
-	13, // 25: vela.v1.CompleteVisibleCompletionRequest.candidate:type_name -> vela.v1.VisibleCompletionCandidate
-	25, // 26: vela.v1.PlannedArtifact.expires_at:type_name -> google.protobuf.Timestamp
-	25, // 27: vela.v1.FinalizationPlan.finalization_started_at:type_name -> google.protobuf.Timestamp
-	25, // 28: vela.v1.FinalizationPlan.finalization_deadline_at:type_name -> google.protobuf.Timestamp
-	15, // 29: vela.v1.FinalizationPlan.artifacts:type_name -> vela.v1.PlannedArtifact
-	25, // 30: vela.v1.ArtifactUploadClaim.claim_expires_at:type_name -> google.protobuf.Timestamp
-	8,  // 31: vela.v1.ArtifactUploadClaim.completed_parts:type_name -> vela.v1.ArtifactUploadPartReport
-	18, // 32: vela.v1.ArtifactUploadClaim.upload_part:type_name -> vela.v1.SignedArtifactUploadPart
-	25, // 33: vela.v1.ArtifactUploadClaim.upload_expires_at:type_name -> google.protobuf.Timestamp
-	24, // 34: vela.v1.SignedArtifactUploadPart.required_headers:type_name -> vela.v1.SignedArtifactUploadPart.RequiredHeadersEntry
-	25, // 35: vela.v1.SignedArtifactUploadPart.expires_at:type_name -> google.protobuf.Timestamp
-	25, // 36: vela.v1.ArtifactVerificationResult.verified_at:type_name -> google.protobuf.Timestamp
-	22, // 37: vela.v1.VisibleCompletionResult.artifacts:type_name -> vela.v1.WorkerCommittedArtifact
-	25, // 38: vela.v1.VisibleCompletionResult.completed_at:type_name -> google.protobuf.Timestamp
-	0,  // 39: vela.v1.WorkerControlService.Connect:input_type -> vela.v1.ConnectRequest
-	1,  // 40: vela.v1.WorkerControlService.Connect:output_type -> vela.v1.ConnectResponse
-	40, // [40:41] is the sub-list for method output_type
-	39, // [39:40] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	27, // 14: vela.v1.ExecuteRemediationRequest.deadline_at:type_name -> google.protobuf.Timestamp
+	27, // 15: vela.v1.ExecuteRemediationResponse.started_at:type_name -> google.protobuf.Timestamp
+	27, // 16: vela.v1.ExecuteRemediationResponse.finished_at:type_name -> google.protobuf.Timestamp
+	5,  // 17: vela.v1.BeginFinalizationRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
+	5,  // 18: vela.v1.ClaimArtifactUploadRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
+	8,  // 19: vela.v1.ClaimArtifactUploadRequest.part:type_name -> vela.v1.ArtifactUploadPartIntent
+	5,  // 20: vela.v1.RecordArtifactMultipartSessionRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
+	10, // 21: vela.v1.ArtifactUploadReport.completed_parts:type_name -> vela.v1.ArtifactUploadPartReport
+	5,  // 22: vela.v1.RecordArtifactUploadedRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
+	11, // 23: vela.v1.RecordArtifactUploadedRequest.report:type_name -> vela.v1.ArtifactUploadReport
+	5,  // 24: vela.v1.CompleteArtifactMultipartUploadRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
+	10, // 25: vela.v1.CompleteArtifactMultipartUploadRequest.completed_parts:type_name -> vela.v1.ArtifactUploadPartReport
+	5,  // 26: vela.v1.VerifyArtifactRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
+	5,  // 27: vela.v1.CompleteVisibleCompletionRequest.lease:type_name -> vela.v1.WorkerLeaseCredentials
+	15, // 28: vela.v1.CompleteVisibleCompletionRequest.candidate:type_name -> vela.v1.VisibleCompletionCandidate
+	27, // 29: vela.v1.PlannedArtifact.expires_at:type_name -> google.protobuf.Timestamp
+	27, // 30: vela.v1.FinalizationPlan.finalization_started_at:type_name -> google.protobuf.Timestamp
+	27, // 31: vela.v1.FinalizationPlan.finalization_deadline_at:type_name -> google.protobuf.Timestamp
+	17, // 32: vela.v1.FinalizationPlan.artifacts:type_name -> vela.v1.PlannedArtifact
+	27, // 33: vela.v1.ArtifactUploadClaim.claim_expires_at:type_name -> google.protobuf.Timestamp
+	10, // 34: vela.v1.ArtifactUploadClaim.completed_parts:type_name -> vela.v1.ArtifactUploadPartReport
+	20, // 35: vela.v1.ArtifactUploadClaim.upload_part:type_name -> vela.v1.SignedArtifactUploadPart
+	27, // 36: vela.v1.ArtifactUploadClaim.upload_expires_at:type_name -> google.protobuf.Timestamp
+	26, // 37: vela.v1.SignedArtifactUploadPart.required_headers:type_name -> vela.v1.SignedArtifactUploadPart.RequiredHeadersEntry
+	27, // 38: vela.v1.SignedArtifactUploadPart.expires_at:type_name -> google.protobuf.Timestamp
+	27, // 39: vela.v1.ArtifactVerificationResult.verified_at:type_name -> google.protobuf.Timestamp
+	24, // 40: vela.v1.VisibleCompletionResult.artifacts:type_name -> vela.v1.WorkerCommittedArtifact
+	27, // 41: vela.v1.VisibleCompletionResult.completed_at:type_name -> google.protobuf.Timestamp
+	0,  // 42: vela.v1.WorkerControlService.Connect:input_type -> vela.v1.ConnectRequest
+	3,  // 43: vela.v1.NodeAgentService.ExecuteRemediation:input_type -> vela.v1.ExecuteRemediationRequest
+	1,  // 44: vela.v1.WorkerControlService.Connect:output_type -> vela.v1.ConnectResponse
+	4,  // 45: vela.v1.NodeAgentService.ExecuteRemediation:output_type -> vela.v1.ExecuteRemediationResponse
+	44, // [44:46] is the sub-list for method output_type
+	42, // [42:44] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_worker_control_proto_init() }
@@ -2362,9 +2593,9 @@ func file_vela_v1_worker_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_worker_control_proto_rawDesc), len(file_vela_v1_worker_control_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   27,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_vela_v1_worker_control_proto_goTypes,
 		DependencyIndexes: file_vela_v1_worker_control_proto_depIdxs,

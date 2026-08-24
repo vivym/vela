@@ -7,21 +7,32 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 var ErrUncertifiedAction = errors.New("remediation action is not certified")
 
 type Plan struct {
+	OperationID           uuid.UUID
+	WorkerID              uuid.UUID
 	ActionLevel           ActionLevel
 	NodeIdentity          string
 	DeviceIdentity        string
 	WorkerEpoch           int64
 	CertificationRevision string
+	FailureEvidenceDigest []byte
+}
+
+func IsActionLevel(action ActionLevel) bool {
+	return validAction(action)
 }
 
 type ExecutionResult struct {
-	PostcheckDigest [sha256.Size]byte
-	Detail          string
+	PostcheckDigest   [sha256.Size]byte
+	PostcheckVerified bool
+	Detail            string
+	ResultCode        string
 }
 
 type CommandRunner interface {
@@ -81,5 +92,10 @@ func (e *AllowlistedExecutor) Execute(ctx context.Context, plan Plan) (Execution
 		return ExecutionResult{}, &Failure{Code: FailureExecution, Message: err.Error()}
 	}
 	digest := sha256.Sum256(output)
-	return ExecutionResult{PostcheckDigest: digest, Detail: "allowlisted remediation command completed"}, nil
+	return ExecutionResult{
+		PostcheckDigest:   digest,
+		Detail:            "allowlisted remediation command completed; health post-check is not certified",
+		ResultCode:        "EXECUTION_OUTPUT_ONLY",
+		PostcheckVerified: false,
+	}, nil
 }
