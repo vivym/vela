@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 )
@@ -90,6 +89,6 @@ func validReceipt(gate Gate, startedAt time.Time) Receipt {
 }
 
 func digest(value string) string {
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s", value)))
+	hash := sha256.Sum256([]byte(value))
 	return "sha256:" + hex.EncodeToString(hash[:])
 }

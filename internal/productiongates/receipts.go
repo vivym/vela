@@ -42,7 +42,7 @@ const (
 
 var (
 	ErrInvalidReceipt = errors.New("invalid Production Gate receipt")
-	ErrMissingGates   = errors.New("Production Gate receipts are incomplete")
+	ErrMissingGates   = errors.New("production Gate receipts are incomplete")
 )
 
 // Receipt is the immutable evidence index for one gate and one release.
