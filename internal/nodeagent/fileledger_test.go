@@ -165,7 +165,8 @@ func TestFileLedgerInterruptedIntentRequiresReleasedProcessLock(t *testing.T) {
 }
 
 func TestFileLedgerDoesNotHideDirectorySyncFailure(t *testing.T) {
-	ledger, err := NewFileLedger(t.TempDir())
+	directory := t.TempDir()
+	ledger, err := NewFileLedger(directory)
 	if err != nil {
 		t.Fatalf("NewFileLedger: %v", err)
 	}
@@ -178,5 +179,59 @@ func TestFileLedgerDoesNotHideDirectorySyncFailure(t *testing.T) {
 	}
 	if err := ledger.Save(context.Background(), receipt); !errors.Is(err, syncErr) {
 		t.Fatalf("Save error = %v, want directory sync failure", err)
+	}
+	if _, found, err := ledger.Load(context.Background(), operationID); !errors.Is(err, syncErr) || found {
+		t.Fatalf("Load before durability confirmation found=%v error=%v, want directory sync failure", found, err)
+	}
+
+	reopened, err := NewFileLedger(directory)
+	if err != nil {
+		t.Fatalf("reopen ledger: %v", err)
+	}
+	reopened.syncDirectory = func() error { return syncErr }
+	if _, found, err := reopened.Load(context.Background(), operationID); !errors.Is(err, syncErr) || found {
+		t.Fatalf("reopened Load before durability confirmation found=%v error=%v, want directory sync failure", found, err)
+	}
+	reopened.syncDirectory = func() error { return syncDirectory(directory) }
+	loaded, found, err := reopened.Load(context.Background(), operationID)
+	if err != nil || !found || loaded.ActorIdentity != receipt.ActorIdentity || !equalResult(loaded.Result, receipt.Result) {
+		t.Fatalf("Load after durability confirmation = %#v found=%v error=%v", loaded, found, err)
+	}
+}
+
+func TestFileLedgerDoesNotReplayIntentBeforeDirectorySyncSucceeds(t *testing.T) {
+	directory := t.TempDir()
+	ledger, err := NewFileLedger(directory)
+	if err != nil {
+		t.Fatalf("NewFileLedger: %v", err)
+	}
+	syncErr := errors.New("injected directory sync failure")
+	ledger.syncDirectory = func() error { return syncErr }
+	intent := ExecutionIntent{
+		OperationID: uuid.New(), RequestHash: sha256.Sum256([]byte("request")),
+		ActorIdentity: "controller/control-1", StartedAt: time.Unix(10, 0).UTC(),
+	}
+	if _, err := ledger.Begin(context.Background(), intent); !errors.Is(err, syncErr) {
+		t.Fatalf("initial Begin error = %v, want directory sync failure", err)
+	}
+	if replayed, err := ledger.Begin(context.Background(), intent); !errors.Is(err, syncErr) || replayed.Acquired {
+		t.Fatalf("Begin before durability confirmation = %#v error=%v, want directory sync failure", replayed, err)
+	}
+
+	reopened, err := NewFileLedger(directory)
+	if err != nil {
+		t.Fatalf("reopen ledger: %v", err)
+	}
+	reopened.syncDirectory = func() error { return syncErr }
+	if replayed, err := reopened.Begin(context.Background(), intent); !errors.Is(err, syncErr) || replayed.Acquired {
+		t.Fatalf("reopened Begin before durability confirmation = %#v error=%v, want directory sync failure", replayed, err)
+	}
+	reopened.syncDirectory = func() error { return syncDirectory(directory) }
+	replayed, err := reopened.Begin(context.Background(), intent)
+	if err != nil || replayed.Acquired || replayed.StartedAt != intent.StartedAt {
+		t.Fatalf("Begin after durability confirmation = %#v error=%v", replayed, err)
+	}
+	if err := replayed.releaseExecution(); err != nil {
+		t.Fatalf("release confirmed intent lock: %v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package securefile
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -84,5 +85,52 @@ func TestValidateExecutableRejectsWritableOrLinkedBinary(t *testing.T) {
 	}
 	if err := ValidateExecutable(link); err == nil {
 		t.Fatal("helper symlink was accepted")
+	}
+}
+
+func TestOpenExecutableKeepsValidatedInodeAfterPathReplacement(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "helper")
+	if err := os.WriteFile(path, []byte("original helper"), 0o700); err != nil {
+		t.Fatalf("write original helper: %v", err)
+	}
+	opened, err := OpenExecutable(path)
+	if err != nil {
+		t.Fatalf("OpenExecutable: %v", err)
+	}
+	defer func() { _ = opened.Close() }()
+	if err := os.Rename(path, path+".replaced"); err != nil {
+		t.Fatalf("move original helper: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("replacement helper"), 0o700); err != nil {
+		t.Fatalf("write replacement helper: %v", err)
+	}
+	if _, err := opened.Seek(0, io.SeekStart); err != nil {
+		t.Fatalf("rewind opened helper: %v", err)
+	}
+	content, err := io.ReadAll(opened)
+	if err != nil {
+		t.Fatalf("read opened helper: %v", err)
+	}
+	if string(content) != "original helper" {
+		t.Fatalf("opened executable content = %q, want original inode", content)
+	}
+}
+
+func TestOpenExecutableRejectsWritableAncestorDirectory(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "writable")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatalf("create helper directory: %v", err)
+	}
+	if err := os.Chmod(directory, 0o777); err != nil {
+		t.Fatalf("relax helper directory permissions: %v", err)
+	}
+	path := filepath.Join(directory, "helper")
+	if err := os.WriteFile(path, []byte("helper"), 0o700); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+	if opened, err := OpenExecutable(path); err == nil {
+		_ = opened.Close()
+		t.Fatal("executable beneath a writable ancestor directory was accepted")
 	}
 }

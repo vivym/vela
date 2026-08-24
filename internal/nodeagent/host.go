@@ -9,10 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,9 +63,11 @@ func (ExecCommandRunner) Run(ctx context.Context, plan remediation.Plan, path st
 	if !filepath.IsAbs(cleaned) || cleaned != path {
 		return nil, errors.New("host command path must be an absolute clean path")
 	}
-	if err := securefile.ValidateExecutable(cleaned); err != nil {
+	executable, err := securefile.OpenExecutable(cleaned)
+	if err != nil {
 		return nil, fmt.Errorf("host command executable is not trusted: %w", err)
 	}
+	defer func() { _ = executable.Close() }()
 	for _, arg := range args {
 		if strings.ContainsRune(arg, '\x00') {
 			return nil, errors.New("host command arguments cannot contain NUL")
@@ -73,17 +78,95 @@ func (ExecCommandRunner) Run(ctx context.Context, plan remediation.Plan, path st
 		return nil, err
 	}
 	commandArgs := append(append([]string(nil), args...), boundArgs...)
-	command := exec.CommandContext(ctx, path, commandArgs...)
+	executablePath, cleanup, err := prepareExecutablePath(executable, runtime.GOOS)
+	if err != nil {
+		return nil, err
+	}
+	command := exec.CommandContext(ctx, executablePath, commandArgs...)
+	command.Args[0] = cleaned
+	command.ExtraFiles = []*os.File{executable}
 	output := &boundedBuffer{limit: maxCommandOutputBytes}
 	command.Stdout = output
 	command.Stderr = output
-	if err := command.Run(); err != nil {
+	runErr := command.Run()
+	cleanupErr := cleanup()
+	if runErr != nil {
 		if output.err != nil {
-			return nil, output.err
+			return nil, errors.Join(output.err, cleanupErr)
 		}
-		return nil, err
+		return nil, errors.Join(runErr, cleanupErr)
+	}
+	if cleanupErr != nil {
+		return nil, cleanupErr
 	}
 	return output.Bytes(), nil
+}
+
+func prepareExecutablePath(executable *os.File, goos string) (string, func() error, error) {
+	switch goos {
+	case "linux":
+		return "/proc/self/fd/3", func() error { return nil }, nil
+	case "darwin":
+		return stageDarwinExecutable(executable)
+	default:
+		return "", nil, fmt.Errorf("held executable execution is unsupported on %s", goos)
+	}
+}
+
+func stageDarwinExecutable(executable *os.File) (string, func() error, error) {
+	if executable == nil {
+		return "", nil, errors.New("held executable is required")
+	}
+	info, err := executable.Stat()
+	if err != nil {
+		return "", nil, fmt.Errorf("stat held executable: %w", err)
+	}
+	directory, err := os.MkdirTemp("", ".vela-held-executable-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("create held executable staging directory: %w", err)
+	}
+	path := filepath.Join(directory, "helper")
+	cleanup := func() error {
+		return errors.Join(os.Remove(path), os.Remove(directory))
+	}
+	fail := func(err error) (string, func() error, error) {
+		_ = cleanup()
+		return "", nil, err
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		return fail(fmt.Errorf("restrict held executable staging directory: %w", err))
+	}
+	staged, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o500)
+	if err != nil {
+		return fail(fmt.Errorf("create held executable staging file: %w", err))
+	}
+	closeStaged := func() { _ = staged.Close() }
+	section := io.NewSectionReader(executable, 0, info.Size())
+	written, copyErr := io.Copy(staged, section)
+	if copyErr == nil && written != info.Size() {
+		copyErr = io.ErrUnexpectedEOF
+	}
+	if copyErr != nil {
+		closeStaged()
+		return fail(fmt.Errorf("copy held executable to staging file: wrote %d of %d bytes: %w", written, info.Size(), copyErr))
+	}
+	if err := staged.Sync(); err != nil {
+		closeStaged()
+		return fail(fmt.Errorf("sync held executable staging file: %w", err))
+	}
+	if err := staged.Close(); err != nil {
+		return fail(fmt.Errorf("close held executable staging file: %w", err))
+	}
+	stagingDirectory, err := os.Open(directory)
+	if err != nil {
+		return fail(fmt.Errorf("open held executable staging directory: %w", err))
+	}
+	directorySyncErr := stagingDirectory.Sync()
+	directoryCloseErr := stagingDirectory.Close()
+	if err := errors.Join(directorySyncErr, directoryCloseErr); err != nil {
+		return fail(fmt.Errorf("sync held executable staging directory: %w", err))
+	}
+	return path, cleanup, nil
 }
 
 func planArguments(plan remediation.Plan) ([]string, error) {

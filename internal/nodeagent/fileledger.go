@@ -128,6 +128,9 @@ func (ledger *FileLedger) loadIntent(ctx context.Context, operationID uuid.UUID)
 	if err != nil {
 		return ExecutionIntent{}, false, fmt.Errorf("read node Agent execution intent: %w", err)
 	}
+	if err := ledger.confirmDirectoryDurability(); err != nil {
+		return ExecutionIntent{}, false, err
+	}
 	var stored fileExecutionIntent
 	if err := json.Unmarshal(content, &stored); err != nil {
 		return ExecutionIntent{}, false, fmt.Errorf("decode node Agent execution intent: %w", err)
@@ -160,6 +163,9 @@ func (ledger *FileLedger) Load(ctx context.Context, operationID uuid.UUID) (Rece
 	if err != nil {
 		return Receipt{}, false, fmt.Errorf("read node Agent receipt: %w", err)
 	}
+	if err := ledger.confirmDirectoryDurability(); err != nil {
+		return Receipt{}, false, err
+	}
 	var stored fileReceipt
 	if err := json.Unmarshal(content, &stored); err != nil {
 		return Receipt{}, false, fmt.Errorf("decode node Agent receipt: %w", err)
@@ -176,6 +182,16 @@ func (ledger *FileLedger) Load(ctx context.Context, operationID uuid.UUID) (Rece
 		return Receipt{}, false, errors.New("node Agent receipt is invalid")
 	}
 	return receipt, true, nil
+}
+
+func (ledger *FileLedger) confirmDirectoryDurability() error {
+	if ledger.syncDirectory == nil {
+		return errors.New("node Agent ledger directory sync is not configured")
+	}
+	if err := ledger.syncDirectory(); err != nil {
+		return fmt.Errorf("confirm node Agent ledger directory durability: %w", err)
+	}
+	return nil
 }
 
 func (ledger *FileLedger) Save(ctx context.Context, receipt Receipt) error {

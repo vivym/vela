@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"os/exec"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,14 +129,7 @@ func TestExecCommandRunnerRejectsUnsafePathAndNUL(t *testing.T) {
 }
 
 func TestExecCommandRunnerPassesImmutablePlanAsBoundedArguments(t *testing.T) {
-	path, err := exec.LookPath("echo")
-	if err != nil {
-		t.Fatalf("find echo helper: %v", err)
-	}
-	path, err = filepath.Abs(path)
-	if err != nil {
-		t.Fatalf("absolute echo helper path: %v", err)
-	}
+	path := writeHostHelper(t, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
 	evidence := digestForTest("failure")
 	plan := remediation.Plan{
 		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000000001"),
@@ -162,6 +155,33 @@ func TestExecCommandRunnerPassesImmutablePlanAsBoundedArguments(t *testing.T) {
 			t.Fatalf("host helper output %q lacks %q", output, expected)
 		}
 	}
+}
+
+func TestExecCommandRunnerPassesHeldExecutableFileDescriptor(t *testing.T) {
+	path := writeHostHelper(t, "#!/bin/sh\ntest -r /dev/fd/3 || exit 42\nprintf held-executable-fd\n")
+	plan := remediation.Plan{
+		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
+		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure",
+		ActionLevel: remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1",
+		FailureEvidenceDigest: digestForTest("failure"), DeadlineAt: time.Now().Add(time.Minute).UTC(),
+	}
+	output, err := (ExecCommandRunner{}).Run(context.Background(), plan, path, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if string(output) != "held-executable-fd" {
+		t.Fatalf("host helper output = %q, want held executable fd proof", output)
+	}
+}
+
+func writeHostHelper(t *testing.T, content string) string {
+	t.Helper()
+	directory := t.TempDir()
+	path := filepath.Join(directory, "helper")
+	if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
+		t.Fatalf("write host helper: %v", err)
+	}
+	return path
 }
 
 func TestFenceAndPostcheckRejectMismatchedStructuredEvidence(t *testing.T) {
