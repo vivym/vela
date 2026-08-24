@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nats-io/jwt/v2"
@@ -19,6 +20,7 @@ const (
 	outboxWorkloadName     = "vela-outbox-dispatcher"
 	outboxPublishSubject   = "vela.events.>"
 	outboxSubscribeSubject = "_INBOX.>"
+	degradedBootstrapURL   = "tls://127.0.0.1:0"
 	maxCredentialBytes     = 64 * 1024
 	maxRootCABytes         = 1024 * 1024
 )
@@ -47,7 +49,33 @@ type Handlers struct {
 	Closed     func(error)
 }
 
-func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
+// OutboxConnection defers real endpoint retries only when startup found every endpoint offline.
+type OutboxConnection struct {
+	*nats.Conn
+	pendingServers []string
+	activateOnce   sync.Once
+	activateErr    error
+}
+
+// Activate installs the configured endpoint pool after the caller starts the Outbox Publisher.
+func (c *OutboxConnection) Activate() error {
+	if c == nil || c.Conn == nil {
+		return ErrOutboxConnection
+	}
+	c.activateOnce.Do(func() {
+		if len(c.pendingServers) == 0 {
+			return
+		}
+		if err := c.SetServerPool(c.pendingServers); err != nil {
+			c.activateErr = ErrOutboxConnection
+			return
+		}
+		c.pendingServers = nil
+	})
+	return c.activateErr
+}
+
+func ConnectOutbox(config OutboxConfig, handlers Handlers) (*OutboxConnection, error) {
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
@@ -93,16 +121,18 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 		nats.Timeout(5 * time.Second),
 	}
 	connection, err := connectInitialOutbox(config.URL, baseOptions)
+	var pendingServers []string
 	if errors.Is(err, nats.ErrNoServers) {
 		options := append([]nats.Option(nil), baseOptions...)
 		options = append(options, nats.RetryOnFailedConnect(true))
-		connection, err = nats.Connect(config.URL, options...)
+		connection, err = nats.Connect(degradedBootstrapURL, options...)
+		pendingServers = splitServerList(config.URL)
 	}
 	if err != nil {
 		return nil, ErrOutboxConnection
 	}
 	setOutboxHandlers(connection, handlers)
-	return connection, nil
+	return &OutboxConnection{Conn: connection, pendingServers: pendingServers}, nil
 }
 
 func setOutboxHandlers(connection *nats.Conn, handlers Handlers) {
@@ -133,11 +163,10 @@ func setOutboxHandlers(connection *nats.Conn, handlers Handlers) {
 }
 
 func connectInitialOutbox(serverList string, options []nats.Option) (*nats.Conn, error) {
-	servers := strings.Split(serverList, ",")
+	servers := splitServerList(serverList)
 	var authenticated *nats.Conn
-	for index, serverURL := range servers {
-		servers[index] = strings.TrimSpace(serverURL)
-		connection, err := nats.Connect(servers[index], options...)
+	for _, serverURL := range servers {
+		connection, err := nats.Connect(serverURL, options...)
 		if err == nil {
 			if authenticated == nil {
 				authenticated = connection
@@ -171,6 +200,14 @@ func connectInitialOutbox(serverList string, options []nats.Option) (*nats.Conn,
 	return authenticated, nil
 }
 
+func splitServerList(serverList string) []string {
+	servers := strings.Split(serverList, ",")
+	for index := range servers {
+		servers[index] = strings.TrimSpace(servers[index])
+	}
+	return servers
+}
+
 func validateConfig(config OutboxConfig) error {
 	if config.URL == "" || config.CredentialsFile == "" || config.RootCAFile == "" ||
 		!nkeys.IsValidPublicAccountKey(config.ExpectedAccountPublicKey) ||
@@ -181,8 +218,8 @@ func validateConfig(config OutboxConfig) error {
 	if (config.ClientCertificateFile == "") != (config.ClientKeyFile == "") {
 		return ErrInvalidOutboxConfig
 	}
-	for _, serverURL := range strings.Split(config.URL, ",") {
-		parsed, err := url.Parse(strings.TrimSpace(serverURL))
+	for _, serverURL := range splitServerList(config.URL) {
+		parsed, err := url.Parse(serverURL)
 		if err != nil || parsed.Scheme != "tls" || parsed.Host == "" || parsed.User != nil ||
 			parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 			return ErrInvalidOutboxConfig

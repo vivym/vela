@@ -588,7 +588,7 @@ func run() error {
 		return err
 	}
 	defer natsConnection.Close()
-	broker, err := outbox.NewJetStreamBroker(natsConnection)
+	broker, err := outbox.NewJetStreamBroker(natsConnection.Conn)
 	if err != nil {
 		return err
 	}
@@ -692,15 +692,23 @@ func run() error {
 		IdleTimeout:       2 * time.Minute,
 	}
 
+	publisherStarted := make(chan struct{})
+	publisherDone := make(chan struct{})
+	go func() {
+		defer close(publisherDone)
+		close(publisherStarted)
+		runPublisher(ctx, publisher, configuration.publisherTick)
+	}()
+	<-publisherStarted
+	if err := natsConnection.Activate(); err != nil {
+		stop()
+		<-publisherDone
+		return err
+	}
 	schedulerDone := make(chan struct{})
 	go func() {
 		defer close(schedulerDone)
 		runScheduler(ctx, scheduling, configuration.schedulerTick)
-	}()
-	publisherDone := make(chan struct{})
-	go func() {
-		defer close(publisherDone)
-		runPublisher(ctx, publisher, configuration.publisherTick)
 	}()
 	reconcilerDone := make(chan struct{})
 	go func() {
@@ -1164,7 +1172,7 @@ func openPool(
 	return pool, nil
 }
 
-func connectNATS(configuration config) (*nats.Conn, error) {
+func connectNATS(configuration config) (*natsauth.OutboxConnection, error) {
 	connection, err := natsauth.ConnectOutbox(
 		natsauth.OutboxConfig{
 			URL:                      configuration.natsURL,

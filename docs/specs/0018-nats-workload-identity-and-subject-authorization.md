@@ -67,7 +67,11 @@ Tests exercise behavior only at these public boundaries:
    Revalidation applies to every reload. A locally valid credential may enter
    degraded reconnect when the transport is unavailable so PostgreSQL Outbox
    remains authoritative; server authentication rejection must never produce a
-   connected state or PubAck.
+   connected state or PubAck. When every configured endpoint is unavailable,
+   the connector returns a dormant reconnect handle with no real endpoint in
+   its server pool. The caller starts the Publisher before explicitly activating
+   the configured pool, so no real authentication attempt is hidden between the
+   outage decision and Publisher startup.
 5. Bound credential-file size, require a regular file without group/world
    permissions, wipe temporary credential bytes and NKey material where the
    library permits, and never include a credential path, JWT, seed, or public key
@@ -111,6 +115,14 @@ Client-certificate authentication remains optional and additive. When enabled,
 both `VELA_NATS_CLIENT_CERT_FILE` and `VELA_NATS_CLIENT_KEY_FILE` are required;
 the NKey user JWT remains mandatory.
 
+`ConnectOutbox` synchronously authenticates every reachable configured endpoint
+and returns one of those exact authenticated connections. Any authentication or
+TLS rejection fails the whole startup, even if another endpoint is offline or
+accepts the credential. Only an all-endpoint transport outage returns a dormant
+connection. `OutboxConnection.Activate` is idempotent and installs the real
+endpoint pool after the Publisher has started; later authentication rejection is
+a runtime degraded state and still cannot produce a connected state or PubAck.
+
 ## Subject Contract
 
 `vela.events.<event_type>` remains the canonical Outbox subject. Event types are
@@ -126,11 +138,13 @@ exact subject policy before its connection is implemented.
 
 ## Error And Secret Handling
 
-Configuration and authentication fail before the Outbox publisher starts.
-Caller-visible errors identify only the failed class: invalid NATS Outbox
-configuration, invalid NATS Outbox workload credential, or failed authenticated
-transport. They never echo environment values, filesystem paths, JWT claims,
-NKeys, seeds, nonces, or credential-file contents.
+Configuration, local credential validation, and every authentication result from
+a reachable startup endpoint fail before the Outbox Publisher starts. The sole
+degraded exception is an explicit all-endpoint transport-outage decision followed
+by post-start activation. Caller-visible errors identify only the failed class:
+invalid NATS Outbox configuration, invalid NATS Outbox workload credential, or
+failed authenticated transport. They never echo environment values, filesystem
+paths, JWT claims, NKeys, seeds, nonces, or credential-file contents.
 
 Asynchronous permission errors may name the denied subject because subjects are
 non-secret routing metadata, but they must not contain credential material.
@@ -146,6 +160,9 @@ non-secret routing metadata, but they must not contain credential material.
   subject denials at the real server boundary;
 - the production Outbox connector plus `JetStreamBroker` obtains a durable
   PubAck with the replacement credential;
+- all-offline startup exposes no real endpoint until explicit post-Publisher
+  activation; a later valid credential reconnects while a revoked credential
+  remains fail-closed and never reaches connected state;
 - error assertions prove credential paths and contents are absent;
 - existing Outbox retry/deduplication, N/N-1, unit, race, and full integration
   suites remain clean;

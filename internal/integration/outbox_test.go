@@ -158,7 +158,7 @@ func TestJetStreamBrokerUsesEventIDForDeduplication(t *testing.T) {
 	}
 	t.Cleanup(connection.Close)
 
-	broker, err := outbox.NewJetStreamBroker(connection)
+	broker, err := outbox.NewJetStreamBroker(connection.Conn)
 	if err != nil {
 		t.Fatalf("create JetStream Broker: %v", err)
 	}

@@ -9,6 +9,9 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,6 +80,10 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 	mixedReadyConnection, err := natsauth.ConnectOutbox(mixedReadyConfig, natsauth.Handlers{})
 	if err != nil {
 		t.Fatalf("connect authenticated endpoint from mixed pool: %v", err)
+	}
+	if err := mixedReadyConnection.Activate(); err != nil {
+		mixedReadyConnection.Close()
+		t.Fatalf("activate already-authenticated endpoint pool: %v", err)
 	}
 	if !mixedReadyConnection.IsConnected() {
 		mixedReadyConnection.Close()
@@ -159,7 +166,7 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 		t.Fatalf("flush Scheduler job.ready subscription: %v", err)
 	}
 
-	broker, err := outbox.NewJetStreamBroker(outboxConnection)
+	broker, err := outbox.NewJetStreamBroker(outboxConnection.Conn)
 	if err != nil {
 		t.Fatalf("create authenticated Outbox JetStream broker: %v", err)
 	}
@@ -259,7 +266,7 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 			asyncErr,
 		)
 	}
-	rotatingBroker, err := outbox.NewJetStreamBroker(rotatingConnection)
+	rotatingBroker, err := outbox.NewJetStreamBroker(rotatingConnection.Conn)
 	if err != nil {
 		t.Fatalf("create rotated Outbox broker: %v", err)
 	}
@@ -280,16 +287,15 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 	expectPublishPermissionViolation(t, scheduler, schedulerErrors, "vela.events.job.ready")
 	expectPublishPermissionViolation(t, scheduler, schedulerErrors, "$SYS.REQ.SERVER.PING")
 
-	expectSubscribePermissionViolation(t, outboxConnection, outboxErrors, "vela.events.>")
-	expectPublishPermissionViolation(t, outboxConnection, outboxErrors, "$SYS.REQ.SERVER.PING")
-	expectPublishPermissionViolation(t, outboxConnection, outboxErrors, "$JS.API.INFO")
+	expectSubscribePermissionViolation(t, outboxConnection.Conn, outboxErrors, "vela.events.>")
+	expectPublishPermissionViolation(t, outboxConnection.Conn, outboxErrors, "$SYS.REQ.SERVER.PING")
+	expectPublishPermissionViolation(t, outboxConnection.Conn, outboxErrors, "$JS.API.INFO")
 
-	stopTimeout := 5 * time.Second
-	if err := fixture.container.Stop(context.Background(), &stopTimeout); err != nil {
-		t.Fatalf("stop NATS for degraded startup evidence: %v", err)
-	}
+	proxyAddress, proxyURL := reserveNATSProxyAddress(t)
+	degradedConfig := fixture.outboxConfig(fixture.outboxCredential, fixture.outboxUser)
+	degradedConfig.URL = proxyURL
 	degradedConnection, err := natsauth.ConnectOutbox(
-		fixture.outboxConfig(fixture.outboxCredential, fixture.outboxUser),
+		degradedConfig,
 		natsauth.Handlers{},
 	)
 	if err != nil {
@@ -302,6 +308,121 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 			degradedConnection.Status(),
 		)
 	}
+	if strings.Contains(strings.Join(degradedConnection.Servers(), ","), proxyURL) {
+		t.Fatal("dormant degraded connection exposed real endpoints before activation")
+	}
+	degradedRevokedConfig := fixture.outboxConfig(
+		fixture.revokedOutboxCredential,
+		fixture.revokedOutboxUser,
+	)
+	degradedRevokedConfig.URL = proxyURL
+	degradedRevokedConnection, err := natsauth.ConnectOutbox(
+		degradedRevokedConfig,
+		natsauth.Handlers{},
+	)
+	if err != nil {
+		t.Fatalf("prepare revoked Outbox credential during transport outage: %v", err)
+	}
+	defer degradedRevokedConnection.Close()
+	degradedConnected := degradedConnection.StatusChanged(nats.CONNECTED)
+	revokedConnected := degradedRevokedConnection.StatusChanged(nats.CONNECTED)
+	if err := degradedConnection.Activate(); err != nil {
+		t.Fatalf("activate degraded Outbox endpoint pool: %v", err)
+	}
+	if err := degradedRevokedConnection.Activate(); err != nil {
+		t.Fatalf("activate degraded revoked endpoint pool: %v", err)
+	}
+	if !strings.Contains(strings.Join(degradedConnection.Servers(), ","), proxyURL) {
+		t.Fatal("activated degraded connection did not install the configured endpoint pool")
+	}
+	startNATSTCPProxy(t, proxyAddress, fixture.url)
+	select {
+	case <-degradedConnected:
+		if connectedURL := degradedConnection.ConnectedUrl(); connectedURL != proxyURL {
+			t.Fatalf("degraded Outbox connected to %q, want %q", connectedURL, proxyURL)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatalf(
+			"degraded Outbox did not connect; status=%s last_error=%v servers=%v",
+			degradedConnection.Status(),
+			degradedConnection.LastError(),
+			degradedConnection.Servers(),
+		)
+	}
+	select {
+	case <-revokedConnected:
+		t.Fatal("degraded revoked Outbox credential reached connected state")
+	case <-time.After(3 * time.Second):
+	}
+	if degradedRevokedConnection.IsConnected() || degradedRevokedConnection.IsClosed() {
+		t.Fatalf(
+			"degraded revoked Outbox state = %s, want fail-closed reconnecting",
+			degradedRevokedConnection.Status(),
+		)
+	}
+}
+
+func reserveNATSProxyAddress(t *testing.T) (string, string) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve degraded NATS proxy address: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("release degraded NATS proxy address: %v", err)
+	}
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		t.Fatalf("parse degraded NATS proxy address: %v", err)
+	}
+	return address, "tls://localhost:" + port
+}
+
+func startNATSTCPProxy(t *testing.T, listenAddress, targetURL string) {
+	t.Helper()
+	parsedTarget, err := url.Parse(targetURL)
+	if err != nil || parsedTarget.Host == "" {
+		t.Fatalf("parse authenticated NATS proxy target: %v", err)
+	}
+	listener, err := net.Listen("tcp", listenAddress)
+	if err != nil {
+		t.Fatalf("start degraded NATS proxy: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("close degraded NATS proxy: %v", err)
+		}
+	})
+	go func() {
+		for {
+			client, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			upstream, dialErr := net.DialTimeout("tcp", parsedTarget.Host, 2*time.Second)
+			if dialErr != nil {
+				_ = client.Close()
+				continue
+			}
+			go proxyNATSConnection(client, upstream)
+		}
+	}()
+}
+
+func proxyNATSConnection(client, upstream net.Conn) {
+	defer client.Close()
+	defer upstream.Close()
+	done := make(chan struct{}, 2)
+	go func() {
+		_, _ = io.Copy(upstream, client)
+		done <- struct{}{}
+	}()
+	go func() {
+		_, _ = io.Copy(client, upstream)
+		done <- struct{}{}
+	}()
+	<-done
 }
 
 type authenticatedNATSFixture struct {
