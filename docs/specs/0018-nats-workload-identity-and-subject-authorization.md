@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 
-Status: In progress. This specification defines repository-verifiable NATS
+Status: Implemented. This specification defines repository-verifiable NATS
 identity, TLS, and subject-authorization behavior for the current Outbox
 Dispatcher connection. It does not by itself prove production network isolation,
 three-replica placement, credential distribution, or a Production Gate.

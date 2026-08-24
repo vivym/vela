@@ -12,5 +12,9 @@ Partial. Forced RLS, composite target keys, transaction-revalidated Customer and
 Platform Operator sessions, dedicated runtime and NOLOGIN owner roles, exact
 object versions, and cross-Organization/Project/role negative tests cover the
 implemented APIs. Break-glass grants bind one exact Organization/Project/Job
-tuple and cannot be reached through Customer roles or credentials. NATS workload
-identity and deployment isolation evidence remain unimplemented.
+tuple and cannot be reached through Customer roles or credentials. The Outbox
+Dispatcher now authenticates over TLS with an exact signer- and user-bound NATS
+workload credential, reloads and revalidates it across bounded rotation, and is
+server-denied from cross-workload, business-subscription, JetStream
+administration, and system subjects. Deployment isolation evidence remains
+unimplemented.

@@ -29,6 +29,7 @@ tests alone do not satisfy a gate.
 | Organization Billing, Audit, And Settlement Contacts | `2a6a5d5` | `docs/specs/0015-organization-billing-audit-and-settlement-contacts.md` |
 | Project Retention And Content Deletion | `e0e9cfc` | `docs/specs/0016-project-retention-and-content-deletion.md` |
 | Platform Operator Break-glass Access | `183f3f4` | `docs/specs/0017-platform-operator-break-glass-access.md` |
+| NATS Workload Identity And Subject Authorization | `00805ab` | `docs/specs/0018-nats-workload-identity-and-subject-authorization.md` |
 
 ## ADR Evidence Matrix
 
@@ -40,7 +41,7 @@ tests alone do not satisfy a gate.
 | 0004 Organization and Project | Implemented for current API | Composite ownership and Project-scoped Admission/Get/Cancel/Artifact access, Retention Policy, and Content Deletion plus Organization-scoped Human membership, role administration, billing, usage, audit, and settlement-contact interfaces preserve both boundaries. | Project/Organization lifecycle and future policy interfaces must retain the same boundary. |
 | 0005 Human and Service Principals | Implemented for current API | Enterprise OIDC Human bindings have short proof-only sessions, permanent disablement, audited membership and fixed-role administration; Project-owned Service Principals have audited create/disable and overlapping digest-only Credential issue/revoke; Platform Operators use a separate issuer, audience, binding, session, proof, authentication role, and HTTP context outside all Customer Principal tables. Every implemented administrative mutation retains exact Principal/session attribution. | Production Human and Platform Operator IdP receipts; future identity surfaces must preserve the same separation. |
 | 0006 Fixed launch roles | Implemented for current API | All six fixed Human roles are database-constrained and auditably assignable/revocable; BillingAdmin and OrganizationAuditor have independently testable non-content Organization reporting scopes; no customer role grants support access. Exact-scope Break-glass Access requires two distinct Platform Operators, expires in at most one hour, and is revocable and fully audited. | Future permissions and production identity/deployment receipts must preserve these fixed boundaries. |
-| 0007 Organization Isolation | Partial | Forced RLS, composite foreign keys, transaction-revalidated Human and Platform Operator sessions, separate request/auth/Human-membership/identity-administration/Organization-reporting/Break-glass/internal/Artifact/billing/Webhook/retention roles, NOLOGIN mutation owners, exact target tuples, private staging, exact-version grants, and cross-Project/Organization administrative/content/Break-glass negative tests. | NATS workload identity and deployment isolation evidence. |
+| 0007 Organization Isolation | Partial | Forced RLS, composite foreign keys, transaction-revalidated Human and Platform Operator sessions, separate request/auth/Human-membership/identity-administration/Organization-reporting/Break-glass/internal/Artifact/billing/Webhook/retention roles, NOLOGIN mutation owners, exact target tuples, private staging, exact-version grants, cross-Project/Organization administrative/content/Break-glass negative tests, and TLS NATS workload identity with exact signer/user rotation and server-side subject authorization. | Deployment isolation evidence. |
 | 0008 No Customer Content reuse | Partial | Prompt expiry and irreversible deletion tombstones remain authoritative; staging Artifacts are private; ordinary and dual-controlled Break-glass reads use short-lived exact-version URLs; support access is purpose/scope/target bound and writes immutable safe audit evidence; deletion removes exact versions and multipart sessions. | No-reuse policy enforcement outside implemented services, Worker scratch and Local Recovery State, debug paths, and off-cluster backups. |
 | 0009 Statistical SLOs | Partial | API exposes no Hard Deadline; Job Expiry and Dynamic ETA are distinguished. | SLO measurement, eligibility envelopes, dashboards, and certification receipts. |
 | 0010 Bounded admission and queues | Implemented for current control plane | Transactional queue counters, pool-scoped bounded projection, risk-aware Admission prediction, Dynamic ETA, hierarchical lanes, and fail-closed counter-drift detection are integrated. | Deployment calibration and Production Gate receipts remain separate. |
@@ -76,17 +77,15 @@ recovery with idempotent export (20), begin-finalization replay (21), Assignment
 replay (24), PostgreSQL-time Lease behavior (25), immutable pricing/profile
 retry behavior (14), immediate ProfileCertification invalidation (15), and
 Webhook timeout/non-2xx/crash retry, signature, dead-letter, and authority
-behavior (28), plus Credential rotation/revocation and Break-glass expiry with
+behavior (28), NATS cross-workload/subject denial plus Organization/Project data
+isolation (27), and Credential rotation/revocation and Break-glass expiry with
 immutable Principal/session attribution and BillingAdmin/OrganizationAuditor
 content isolation (29).
 Current
 evidence is partial for multipart resume plus whole-Job recompute (10),
 competing completion authorities without a two-Attempt Artifact race (13),
 class-specific request/Artifact retention and Content Deletion without Worker
-scratch, debug, backup, or production lifecycle evidence (19),
-Organization database, Human membership/role administration, reporting,
-Artifact, Webhook, and Break-glass isolation without NATS credential evidence
-(27), and N/N-1
+scratch, debug, backup, or production lifecycle evidence (19), and N/N-1
 database/control/Worker/event compatibility without a deployed rollout, drain,
 rollback, and retained-backlog receipt (30).
 Every other scenario remains unproven
