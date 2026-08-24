@@ -9,7 +9,7 @@ GOLANGCI_LINT_VERSION := v2.13.1
 INTEGRATION_TEST_TIMEOUT ?= 20m
 TOOLS_BIN := $(CURDIR)/bin
 
-.PHONY: generate generate-openapi generate-proto generate-sql verify-generated lint test test-integration verify
+.PHONY: generate generate-openapi generate-proto generate-sql verify-generated lint test test-integration validate-deployment verify
 
 generate: generate-openapi generate-proto generate-sql
 
@@ -35,6 +35,9 @@ test:
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -timeout=$(INTEGRATION_TEST_TIMEOUT)
+
+validate-deployment:
+	kubectl kustomize deploy/control-storage >/dev/null
 
 verify-generated: generate
 	git diff --exit-code -- api/gen internal/store/sqlc proto/gen

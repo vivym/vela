@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-recovery-contract
+  labels:
+    app.kubernetes.io/part-of: vela
+data:
+  single_node_metadata_rpo: "0"
+  single_node_control_plane_rto: "5m"
+  site_metadata_rpo: "15m"
+  site_metadata_rto: "4h"
+  restore_order: "postgresql,artifact-store,jetstream,outbox-replay,reconciler"
+  jetstream_is_authoritative: "false"
+  artifact_backup_required: "true"
+  quarterly_restore_drill_required: "true"
+  production_image_digest_required: "true"
