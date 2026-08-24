@@ -41,6 +41,7 @@ func TestNodeAgentServerBindsVerifiedSPIFFEIdentityAndDeadline(t *testing.T) {
 		NodeIdentity: nodeIdentity, DeviceIdentity: "gpu-0",
 		ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1",
 		FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)),
+		ExecutionClaimId: uuid.NewString(),
 	}
 	response, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), request)
 	if err != nil {
@@ -323,6 +324,7 @@ func validAgentRequest(workerID uuid.UUID, now time.Time) *velav1.ExecuteRemedia
 		NodeIdentity: "node-1", DeviceIdentity: "gpu-0",
 		ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1",
 		FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)),
+		ExecutionClaimId: uuid.NewString(),
 	}
 }
 

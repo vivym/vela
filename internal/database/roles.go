@@ -241,6 +241,7 @@ func verifyRemediationPrivileges(ctx context.Context, database rowQuerier, curre
 			"vela_request_remediation(uuid,uuid,bigint,text,text,text,bytea,text,remediation_action_level,text,text)",
 			"vela_approve_remediation(uuid,text)",
 			"vela_start_remediation(uuid,uuid,bigint,text)",
+			"vela_claim_remediation_execution(uuid,uuid,bigint,uuid,text)",
 			"vela_complete_remediation(uuid,uuid,bigint,boolean,text,text,bytea,text)",
 			"vela_recover_remediation(uuid,text)",
 			"vela_get_remediation_operation(uuid)",

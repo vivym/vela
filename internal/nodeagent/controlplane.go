@@ -23,22 +23,40 @@ type CompletionWriter interface {
 	Complete(context.Context, remediation.Completion) (remediation.Result, error)
 }
 
+type ExecutionClaimer interface {
+	ClaimExecution(context.Context, uuid.UUID, uuid.UUID, int64, uuid.UUID, string) (remediation.ClaimResult, error)
+}
+
 // ControlPlaneAuthorizer rejects host execution unless the request matches the
 // currently EXECUTING operation and its immutable Worker/deadline contract.
 type ControlPlaneAuthorizer struct {
-	reader OperationReader
-	clock  func() time.Time
+	reader        OperationReader
+	claimer       ExecutionClaimer
+	actorIdentity string
+	clock         func() time.Time
 }
 
-func NewControlPlaneAuthorizer(reader OperationReader) (*ControlPlaneAuthorizer, error) {
+func NewControlPlaneAuthorizer(
+	reader OperationReader,
+	claimer ExecutionClaimer,
+	actorIdentity string,
+) (*ControlPlaneAuthorizer, error) {
 	if reader == nil {
 		return nil, errors.New("node Agent operation reader is required")
 	}
-	return &ControlPlaneAuthorizer{reader: reader, clock: time.Now}, nil
+	if claimer == nil {
+		return nil, errors.New("node Agent execution claimer is required")
+	}
+	if !validText(actorIdentity, maxIdentityText) {
+		return nil, errors.New("node Agent authorization actor identity is invalid")
+	}
+	return &ControlPlaneAuthorizer{
+		reader: reader, claimer: claimer, actorIdentity: actorIdentity, clock: time.Now,
+	}, nil
 }
 
 func (authorizer *ControlPlaneAuthorizer) Authorize(ctx context.Context, request Request) error {
-	if authorizer == nil || authorizer.reader == nil {
+	if authorizer == nil || authorizer.reader == nil || authorizer.claimer == nil {
 		return errors.New("node Agent control-plane authorizer is not configured")
 	}
 	operation, err := authorizer.reader.Get(ctx, request.OperationID)
@@ -60,6 +78,12 @@ func (authorizer *ControlPlaneAuthorizer) Authorize(ctx context.Context, request
 	}
 	if !authorizer.clock().Before(operation.DeadlineAt) {
 		return errors.New("remediation operation deadline has expired")
+	}
+	if _, err := authorizer.claimer.ClaimExecution(
+		ctx, operation.ID, operation.WorkerID, operation.WorkerEpoch,
+		request.ExecutionClaimID, authorizer.actorIdentity,
+	); err != nil {
+		return fmt.Errorf("claim remediation execution: %w", err)
 	}
 	return nil
 }
@@ -192,3 +216,4 @@ var _ Authorizer = (*ControlPlaneAuthorizer)(nil)
 var _ Ledger = (*ControlPlaneLedger)(nil)
 var _ OperationReader = (*remediation.Service)(nil)
 var _ CompletionWriter = (*remediation.Service)(nil)
+var _ ExecutionClaimer = (*remediation.Service)(nil)

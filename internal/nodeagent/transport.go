@@ -61,6 +61,7 @@ type Ledger interface {
 
 type Request struct {
 	OperationID           uuid.UUID
+	ExecutionClaimID      uuid.UUID
 	WorkerID              uuid.UUID
 	WorkerEpoch           int64
 	NodeIdentity          string
@@ -245,6 +246,7 @@ func (client *Client) Execute(ctx context.Context, request Request) (Result, err
 		CertificationRevision: request.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), request.FailureEvidenceDigest...),
 		DeadlineAt:            timestamppb.New(request.DeadlineAt),
+		ExecutionClaimId:      request.ExecutionClaimID.String(),
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("execute remediation through node Agent: %w", err)
@@ -263,6 +265,10 @@ func parseRequest(
 	if err != nil || operationID == uuid.Nil {
 		return Request{}, time.Time{}, errors.New("node Agent operation id is invalid")
 	}
+	claimID, err := uuid.Parse(request.GetExecutionClaimId())
+	if err != nil || claimID == uuid.Nil {
+		return Request{}, time.Time{}, errors.New("node Agent execution claim id is invalid")
+	}
 	workerID, err := uuid.Parse(request.GetWorkerId())
 	if err != nil || workerID == uuid.Nil {
 		return Request{}, time.Time{}, errors.New("node Agent Worker id is invalid")
@@ -272,7 +278,7 @@ func parseRequest(
 		return Request{}, time.Time{}, err
 	}
 	parsed := Request{
-		OperationID: operationID, WorkerID: workerID, WorkerEpoch: request.GetWorkerEpoch(),
+		OperationID: operationID, ExecutionClaimID: claimID, WorkerID: workerID, WorkerEpoch: request.GetWorkerEpoch(),
 		NodeIdentity: request.GetNodeIdentity(), DeviceIdentity: request.GetDeviceIdentity(),
 		ActionLevel:           remediation.ActionLevel(request.GetActionLevel()),
 		CertificationRevision: request.GetCertificationRevision(),
@@ -317,7 +323,7 @@ func parseResponse(response *velav1.ExecuteRemediationResponse, operationID uuid
 }
 
 func validateRequest(request Request) error {
-	if request.OperationID == uuid.Nil || request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 ||
+	if request.OperationID == uuid.Nil || request.ExecutionClaimID == uuid.Nil || request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 ||
 		!validText(request.NodeIdentity, maxIdentityText) || !validText(request.DeviceIdentity, maxIdentityText) ||
 		!remediation.IsActionLevel(request.ActionLevel) ||
 		(request.ActionLevel != remediation.ActionL7Quarantine && !validText(request.CertificationRevision, 200)) ||

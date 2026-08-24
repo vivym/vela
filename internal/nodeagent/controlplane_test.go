@@ -22,7 +22,8 @@ func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
 		DeadlineAt: now.Add(time.Minute),
 	}
 	reader := &recordingOperationReader{operation: operation}
-	authorizer, err := NewControlPlaneAuthorizer(reader)
+	claimer := &recordingExecutionClaimer{}
+	authorizer, err := NewControlPlaneAuthorizer(reader, claimer, "controller/node-1")
 	if err != nil {
 		t.Fatalf("NewControlPlaneAuthorizer: %v", err)
 	}
@@ -30,6 +31,9 @@ func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
 	request := requestFromOperation(operation)
 	if err := authorizer.Authorize(context.Background(), request); err != nil {
 		t.Fatalf("Authorize: %v", err)
+	}
+	if len(claimer.claims) != 1 || claimer.claims[0].ClaimID != request.ExecutionClaimID {
+		t.Fatalf("execution claims = %#v", claimer.claims)
 	}
 
 	request.DeviceIdentity = "gpu-1"
@@ -111,6 +115,32 @@ func TestControlPlaneLedgerRejectsWrongRequestHash(t *testing.T) {
 type recordingOperationReader struct {
 	operation remediation.Operation
 	err       error
+}
+
+type recordedExecutionClaim struct {
+	OperationID uuid.UUID
+	WorkerID    uuid.UUID
+	WorkerEpoch int64
+	ClaimID     uuid.UUID
+	Actor       string
+}
+
+type recordingExecutionClaimer struct {
+	claims []recordedExecutionClaim
+}
+
+func (claimer *recordingExecutionClaimer) ClaimExecution(
+	_ context.Context,
+	operationID, workerID uuid.UUID,
+	workerEpoch int64,
+	claimID uuid.UUID,
+	actor string,
+) (remediation.ClaimResult, error) {
+	claimer.claims = append(claimer.claims, recordedExecutionClaim{
+		OperationID: operationID, WorkerID: workerID, WorkerEpoch: workerEpoch,
+		ClaimID: claimID, Actor: actor,
+	})
+	return remediation.ClaimResult{OperationID: operationID, ClaimID: claimID}, nil
 }
 
 func (reader *recordingOperationReader) Get(_ context.Context, operationID uuid.UUID) (remediation.Operation, error) {

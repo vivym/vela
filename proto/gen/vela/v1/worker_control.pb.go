@@ -425,6 +425,7 @@ type ExecuteRemediationRequest struct {
 	CertificationRevision string                 `protobuf:"bytes,7,opt,name=certification_revision,json=certificationRevision,proto3" json:"certification_revision,omitempty"`
 	FailureEvidenceDigest []byte                 `protobuf:"bytes,8,opt,name=failure_evidence_digest,json=failureEvidenceDigest,proto3" json:"failure_evidence_digest,omitempty"`
 	DeadlineAt            *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=deadline_at,json=deadlineAt,proto3" json:"deadline_at,omitempty"`
+	ExecutionClaimId      string                 `protobuf:"bytes,10,opt,name=execution_claim_id,json=executionClaimId,proto3" json:"execution_claim_id,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -520,6 +521,13 @@ func (x *ExecuteRemediationRequest) GetDeadlineAt() *timestamppb.Timestamp {
 		return x.DeadlineAt
 	}
 	return nil
+}
+
+func (x *ExecuteRemediationRequest) GetExecutionClaimId() string {
+	if x != nil {
+		return x.ExecutionClaimId
+	}
+	return ""
 }
 
 type ExecuteRemediationResponse struct {
@@ -2279,7 +2287,7 @@ const file_vela_v1_worker_control_proto_rawDesc = "" +
 	"\x06result\"D\n" +
 	"\x14WorkerOperationError\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x9b\x03\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xc9\x03\n" +
 	"\x19ExecuteRemediationRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12!\n" +
@@ -2290,7 +2298,9 @@ const file_vela_v1_worker_control_proto_rawDesc = "" +
 	"\x16certification_revision\x18\a \x01(\tR\x15certificationRevision\x126\n" +
 	"\x17failure_evidence_digest\x18\b \x01(\fR\x15failureEvidenceDigest\x12;\n" +
 	"\vdeadline_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"deadlineAt\"\xc2\x02\n" +
+	"deadlineAt\x12,\n" +
+	"\x12execution_claim_id\x18\n" +
+	" \x01(\tR\x10executionClaimId\"\xc2\x02\n" +
 	"\x1aExecuteRemediationResponse\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x1f\n" +

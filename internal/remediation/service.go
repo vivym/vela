@@ -95,6 +95,13 @@ type ApprovalResult struct {
 	RequiresApproval bool
 }
 
+type ClaimResult struct {
+	OperationID uuid.UUID
+	ClaimID     uuid.UUID
+	Replayed    bool
+	DeadlineAt  time.Time
+}
+
 type Completion struct {
 	OperationID   uuid.UUID
 	WorkerID      uuid.UUID
@@ -212,6 +219,33 @@ func (s *Service) Start(ctx context.Context, operationID, workerID uuid.UUID, wo
 	)
 	if err != nil {
 		return Result{}, mapDatabaseError("start Remediation", err)
+	}
+	return result, nil
+}
+
+func (s *Service) ClaimExecution(
+	ctx context.Context,
+	operationID, workerID uuid.UUID,
+	workerEpoch int64,
+	claimID uuid.UUID,
+	actorIdentity string,
+) (ClaimResult, error) {
+	if s == nil || s.pool == nil {
+		return ClaimResult{}, errors.New("remediation service is not configured")
+	}
+	if operationID == uuid.Nil || workerID == uuid.Nil || workerEpoch <= 0 ||
+		claimID == uuid.Nil || !validText(actorIdentity, 500) {
+		return ClaimResult{}, &Failure{Code: FailureInvalid, Message: "Remediation execution claim identity is invalid"}
+	}
+	var result ClaimResult
+	err := s.pool.QueryRow(ctx, `
+		SELECT operation_id, claim_id, replayed, deadline_at
+		FROM vela_claim_remediation_execution($1, $2, $3, $4, $5)
+	`, operationID, workerID, workerEpoch, claimID, actorIdentity).Scan(
+		&result.OperationID, &result.ClaimID, &result.Replayed, &result.DeadlineAt,
+	)
+	if err != nil {
+		return ClaimResult{}, mapDatabaseError("claim Remediation execution", err)
 	}
 	return result, nil
 }
