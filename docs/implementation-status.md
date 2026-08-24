@@ -31,7 +31,7 @@ tests alone do not satisfy a gate.
 | Platform Operator Break-glass Access | `183f3f4` | `docs/specs/0017-platform-operator-break-glass-access.md` |
 | NATS Workload Identity And Subject Authorization | `00805ab` | `docs/specs/0018-nats-workload-identity-and-subject-authorization.md` |
 | Settlement And Credit-adjustment Reconciliation | `2d27630` | `docs/specs/0019-settlement-and-credit-adjustment-reconciliation.md` |
-| Certified Remediation Control Plane | pending | `docs/specs/0020-certified-remediation.md` |
+| Certified Remediation Control Plane | `37849d0` | `docs/specs/0020-certified-remediation.md` |
 
 ## ADR Evidence Matrix
 
