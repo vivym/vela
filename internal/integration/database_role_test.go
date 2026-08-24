@@ -97,6 +97,9 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
 	)
 	webhookPool := newRolePool(t, database.DSN, "vela_webhook_login", "vela-webhook-password")
+	remediationPool := newRolePool(
+		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
+	)
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	for _, login := range []string{
 		"vela_internal_login",
@@ -104,6 +107,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_finance_reconciliation_login",
 		"vela_webhook_request_login",
 		"vela_webhook_login",
+		"vela_remediation_login",
 		"vela_identity_request_login",
 		"vela_human_membership_request_login",
 		"vela_organization_billing_request_login",
@@ -182,6 +186,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		},
 		{name: "webhook request", pool: webhookRequestPool, role: veladb.RoleWebhookRequest},
 		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
+		{name: "remediation", pool: remediationPool, role: veladb.RoleRemediation},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -200,6 +205,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_break_glass_owner", bypassRLS: true},
 		{name: "vela_finance_reconciliation"},
 		{name: "vela_finance_reconciliation_owner", bypassRLS: true},
+		{name: "vela_remediation", bypassRLS: false},
+		{name: "vela_remediation_owner", bypassRLS: true},
 	} {
 		var canLogin, bypassRLS, superuser bool
 		if err := database.Admin.QueryRow(`
@@ -309,6 +316,41 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			signature: "vela_list_organization_audit_events_v2(uuid,integer)",
 			owner:     "vela_internal",
 			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_remediation_event(uuid,integer,remediation_operation_state,remediation_operation_state,text,text)",
+			owner:     "vela_remediation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_request_remediation(uuid,uuid,bigint,text,text,text,bytea,text,remediation_action_level,text,text)",
+			owner:     "vela_remediation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_approve_remediation(uuid,text)",
+			owner:     "vela_remediation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_start_remediation(uuid,uuid,bigint,text)",
+			owner:     "vela_remediation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_complete_remediation(uuid,uuid,bigint,boolean,text,text,bytea,text)",
+			owner:     "vela_remediation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_recover_remediation(uuid,text)",
+			owner:     "vela_remediation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_get_remediation_operation(uuid)",
+			owner:     "vela_remediation_owner",
+			proconfig: "search_path=pg_catalog, public",
 		},
 	} {
 		var owner string
@@ -672,6 +714,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "webhook as request", pool: webhookPool, role: veladb.RoleRequest},
 		{name: "billing as webhook", pool: billingPool, role: veladb.RoleWebhook},
 		{name: "webhook as billing", pool: webhookPool, role: veladb.RoleBilling},
+		{name: "remediation as request", pool: remediationPool, role: veladb.RoleRequest},
+		{name: "request as remediation", pool: requestPool, role: veladb.RoleRemediation},
+		{name: "remediation as internal", pool: remediationPool, role: veladb.RoleInternal},
+		{name: "internal as remediation", pool: internalPool, role: veladb.RoleRemediation},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if err := veladb.VerifyRole(context.Background(), test.pool, test.role); err == nil {
@@ -828,6 +874,21 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"REVOKE SELECT ON webhook_subscriptions FROM vela_webhook_request_login",
 	); err != nil {
 		t.Fatalf("revoke unexpected webhook request Subscription privilege: %v", err)
+	}
+	if _, err := database.Admin.Exec(
+		"GRANT SELECT ON remediation_operations TO vela_remediation_login",
+	); err != nil {
+		t.Fatalf("grant unexpected remediation operation privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(
+		context.Background(), remediationPool, veladb.RoleRemediation,
+	); err == nil {
+		t.Fatal("remediation login with direct operation access was accepted")
+	}
+	if _, err := database.Admin.Exec(
+		"REVOKE SELECT ON remediation_operations FROM vela_remediation_login",
+	); err != nil {
+		t.Fatalf("revoke unexpected remediation operation privilege: %v", err)
 	}
 	if _, err := database.Admin.Exec(`
 		GRANT EXECUTE ON FUNCTION vela_transition_scheduler_dispatch_protocol(boolean, text)

@@ -1894,6 +1894,7 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 			CREATE ROLE vela_finance_reconciliation_login LOGIN PASSWORD 'vela-finance-reconciliation-password' IN ROLE vela_finance_reconciliation;
 			CREATE ROLE vela_webhook_request_login LOGIN PASSWORD 'vela-webhook-request-password' IN ROLE vela_webhook_request;
 			CREATE ROLE vela_webhook_login LOGIN PASSWORD 'vela-webhook-password' IN ROLE vela_webhook;
+			CREATE ROLE vela_remediation_login LOGIN PASSWORD 'vela-remediation-password' IN ROLE vela_remediation;
 			CREATE ROLE vela_internal_login LOGIN PASSWORD 'vela-internal-password' BYPASSRLS IN ROLE vela_internal;
     `); err != nil {
 		t.Fatalf("create application login roles: %v", err)

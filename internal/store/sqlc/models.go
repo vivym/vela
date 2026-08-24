@@ -1345,6 +1345,99 @@ func (ns NullProjectRole) Value() (driver.Value, error) {
 	return string(ns.ProjectRole), nil
 }
 
+type RemediationActionLevel string
+
+const (
+	RemediationActionLevelL0PROCESSRESTART RemediationActionLevel = "L0_PROCESS_RESTART"
+	RemediationActionLevelL1CUDACLEANUP    RemediationActionLevel = "L1_CUDA_CLEANUP"
+	RemediationActionLevelL2GPURESET       RemediationActionLevel = "L2_GPU_RESET"
+	RemediationActionLevelL3PCIEFLR        RemediationActionLevel = "L3_PCIE_FLR"
+	RemediationActionLevelL4DRIVERRELOAD   RemediationActionLevel = "L4_DRIVER_RELOAD"
+	RemediationActionLevelL5NODEREBOOT     RemediationActionLevel = "L5_NODE_REBOOT"
+	RemediationActionLevelL6BMCPOWERCYCLE  RemediationActionLevel = "L6_BMC_POWER_CYCLE"
+	RemediationActionLevelL7QUARANTINE     RemediationActionLevel = "L7_QUARANTINE"
+)
+
+func (e *RemediationActionLevel) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RemediationActionLevel(s)
+	case string:
+		*e = RemediationActionLevel(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RemediationActionLevel: %T", src)
+	}
+	return nil
+}
+
+type NullRemediationActionLevel struct {
+	RemediationActionLevel RemediationActionLevel `json:"remediation_action_level"`
+	Valid                  bool                   `json:"valid"` // Valid is true if RemediationActionLevel is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRemediationActionLevel) Scan(value interface{}) error {
+	if value == nil {
+		ns.RemediationActionLevel, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RemediationActionLevel.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRemediationActionLevel) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RemediationActionLevel), nil
+}
+
+type RemediationOperationState string
+
+const (
+	RemediationOperationStateREQUESTED        RemediationOperationState = "REQUESTED"
+	RemediationOperationStateAPPROVALREQUIRED RemediationOperationState = "APPROVAL_REQUIRED"
+	RemediationOperationStateEXECUTING        RemediationOperationState = "EXECUTING"
+	RemediationOperationStateSUCCEEDED        RemediationOperationState = "SUCCEEDED"
+	RemediationOperationStateQUARANTINED      RemediationOperationState = "QUARANTINED"
+)
+
+func (e *RemediationOperationState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RemediationOperationState(s)
+	case string:
+		*e = RemediationOperationState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RemediationOperationState: %T", src)
+	}
+	return nil
+}
+
+type NullRemediationOperationState struct {
+	RemediationOperationState RemediationOperationState `json:"remediation_operation_state"`
+	Valid                     bool                      `json:"valid"` // Valid is true if RemediationOperationState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRemediationOperationState) Scan(value interface{}) error {
+	if value == nil {
+		ns.RemediationOperationState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RemediationOperationState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRemediationOperationState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RemediationOperationState), nil
+}
+
 type RetryDisposition string
 
 const (
@@ -2771,6 +2864,41 @@ type RateCardRevision struct {
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type RemediationOperation struct {
+	ID                    uuid.UUID                 `db:"id" json:"id"`
+	WorkerID              uuid.UUID                 `db:"worker_id" json:"worker_id"`
+	WorkerEpoch           int64                     `db:"worker_epoch" json:"worker_epoch"`
+	NodeIdentity          string                    `db:"node_identity" json:"node_identity"`
+	DeviceIdentity        string                    `db:"device_identity" json:"device_identity"`
+	FailureClass          string                    `db:"failure_class" json:"failure_class"`
+	EvidenceDigest        []byte                    `db:"evidence_digest" json:"evidence_digest"`
+	CertificationRevision string                    `db:"certification_revision" json:"certification_revision"`
+	ActionLevel           RemediationActionLevel    `db:"action_level" json:"action_level"`
+	IdempotencyKey        string                    `db:"idempotency_key" json:"idempotency_key"`
+	RequestedBy           string                    `db:"requested_by" json:"requested_by"`
+	State                 RemediationOperationState `db:"state" json:"state"`
+	RequestedAt           pgtype.Timestamptz        `db:"requested_at" json:"requested_at"`
+	DeadlineAt            pgtype.Timestamptz        `db:"deadline_at" json:"deadline_at"`
+	StartedAt             pgtype.Timestamptz        `db:"started_at" json:"started_at"`
+	FinishedAt            pgtype.Timestamptz        `db:"finished_at" json:"finished_at"`
+	ResultCode            *string                   `db:"result_code" json:"result_code"`
+	ResultDetail          *string                   `db:"result_detail" json:"result_detail"`
+	PostcheckDigest       []byte                    `db:"postcheck_digest" json:"postcheck_digest"`
+	FirstApprover         *string                   `db:"first_approver" json:"first_approver"`
+	SecondApprover        *string                   `db:"second_approver" json:"second_approver"`
+	ApprovedAt            pgtype.Timestamptz        `db:"approved_at" json:"approved_at"`
+}
+
+type RemediationOperationEvent struct {
+	OperationID   uuid.UUID                  `db:"operation_id" json:"operation_id"`
+	Sequence      int32                      `db:"sequence" json:"sequence"`
+	FromState     *RemediationOperationState `db:"from_state" json:"from_state"`
+	ToState       RemediationOperationState  `db:"to_state" json:"to_state"`
+	ActorIdentity string                     `db:"actor_identity" json:"actor_identity"`
+	ResultCode    *string                    `db:"result_code" json:"result_code"`
+	ObservedAt    pgtype.Timestamptz         `db:"observed_at" json:"observed_at"`
+}
+
 type RetentionPolicyRevision struct {
 	ID                              uuid.UUID          `db:"id" json:"id"`
 	StableID                        string             `db:"stable_id" json:"stable_id"`
@@ -3073,6 +3201,7 @@ type Worker struct {
 	CreatedAt             pgtype.Timestamptz          `db:"created_at" json:"created_at"`
 	UpdatedAt             pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
 	LastHeartbeatAt       pgtype.Timestamptz          `db:"last_heartbeat_at" json:"last_heartbeat_at"`
+	NodeIdentity          string                      `db:"node_identity" json:"node_identity"`
 }
 
 type WorkerEpoch struct {

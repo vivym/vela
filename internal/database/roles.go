@@ -33,6 +33,7 @@ const (
 	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
+	RoleRemediation                Role = "vela_remediation"
 )
 
 type rowQuerier interface {
@@ -66,6 +67,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
+	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -227,6 +229,21 @@ func verifyWebhookPrivileges(ctx context.Context, database rowQuerier, currentUs
 			"vela_claim_webhook_deliveries(text,integer,integer)",
 			"vela_mark_webhook_delivered(uuid,uuid,integer)",
 			"vela_mark_webhook_failed(uuid,uuid,integer,text)",
+		},
+	})
+}
+
+func verifyRemediationPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Remediation",
+		failureLabel:    "Remediation transaction",
+		functions: []string{
+			"vela_request_remediation(uuid,uuid,bigint,text,text,text,bytea,text,remediation_action_level,text,text)",
+			"vela_approve_remediation(uuid,text)",
+			"vela_start_remediation(uuid,uuid,bigint,text)",
+			"vela_complete_remediation(uuid,uuid,bigint,boolean,text,text,bytea,text)",
+			"vela_recover_remediation(uuid,text)",
+			"vela_get_remediation_operation(uuid)",
 		},
 	})
 }
