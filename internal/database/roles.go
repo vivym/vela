@@ -19,8 +19,11 @@ const (
 	RoleHumanMembershipRequest     Role = "vela_human_membership_request"
 	RoleOrganizationBillingRequest Role = "vela_organization_billing_request"
 	RoleOrganizationAuditRequest   Role = "vela_organization_audit_request"
+	RoleBreakGlassAuditRequest     Role = "vela_break_glass_audit_request"
 	RoleRetentionRequest           Role = "vela_retention_request"
 	RoleRetention                  Role = "vela_retention"
+	RolePlatformOperatorAuth       Role = "vela_platform_operator_auth"
+	RoleBreakGlassRequest          Role = "vela_break_glass_request"
 	RoleRequest                    Role = "vela_request"
 	RoleInternal                   Role = "vela_internal"
 	RoleCancel                     Role = "vela_cancel"
@@ -48,8 +51,11 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleHumanMembershipRequest:     {verifyPrivileges: verifyHumanMembershipRequestPrivileges},
 	RoleOrganizationBillingRequest: {verifyPrivileges: verifyOrganizationBillingRequestPrivileges},
 	RoleOrganizationAuditRequest:   {verifyPrivileges: verifyOrganizationAuditRequestPrivileges},
+	RoleBreakGlassAuditRequest:     {verifyPrivileges: verifyBreakGlassAuditRequestPrivileges},
 	RoleRetentionRequest:           {verifyPrivileges: verifyRetentionRequestPrivileges},
 	RoleRetention:                  {verifyPrivileges: verifyRetentionPrivileges},
+	RolePlatformOperatorAuth:       {verifyPrivileges: verifyPlatformOperatorAuthPrivileges},
+	RoleBreakGlassRequest:          {verifyPrivileges: verifyBreakGlassRequestPrivileges},
 	RoleRequest:                    {verifyPrivileges: verifyRequestPrivileges},
 	RoleInternal:                   {requiresBypassRLS: true},
 	RoleCancel:                     {verifyPrivileges: verifyCancelPrivileges},
@@ -388,6 +394,57 @@ func verifyOrganizationAuditRequestPrivileges(
 			"vela_set_organization_identity_admin_context(uuid,bytea,text)",
 			"vela_get_organization_usage(uuid,timestamp with time zone,timestamp with time zone)",
 			"vela_list_organization_audit_events(uuid,integer)",
+		},
+	})
+}
+
+func verifyBreakGlassAuditRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Break-glass audit request",
+		failureLabel:    "Break-glass audit projection transaction",
+		functions: []string{
+			"vela_set_organization_identity_admin_context(uuid,bytea,text)",
+			"vela_list_organization_audit_events_v2(uuid,integer)",
+		},
+	})
+}
+
+func verifyPlatformOperatorAuthPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Platform Operator auth",
+		failureLabel:    "Platform Operator authentication transaction",
+		functions: []string{
+			"vela_authenticate_platform_operator_oidc(text,text,bytea,timestamp with time zone)",
+		},
+	})
+}
+
+func verifyBreakGlassRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Break-glass request",
+		failureLabel:    "Break-glass request transaction",
+		functions: []string{
+			"vela_set_break_glass_request_context(uuid,bytea)",
+			"vela_create_break_glass_request(uuid,text,bytea,uuid,uuid,uuid,break_glass_scope[],break_glass_reason_code,text,integer)",
+			"vela_approve_break_glass_request(uuid,uuid)",
+			"vela_revoke_break_glass_grant(uuid)",
+			"vela_get_break_glass_request(uuid)",
+			"vela_get_break_glass_grant(uuid)",
+			"vela_authorize_break_glass_request_content(uuid)",
+			"vela_authorize_break_glass_artifacts(uuid)",
+			"vela_record_break_glass_artifact_delivery(uuid,boolean)",
 		},
 	})
 }

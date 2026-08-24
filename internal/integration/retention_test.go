@@ -2984,7 +2984,7 @@ func TestRetentionMigrationAllowsEmptyDownUpAndRestoresNMinusOneSurface(t *testi
 		t.Fatalf("verify N-1 request role after retention Down: %v", err)
 	}
 
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 16); err != nil {
 		t.Fatalf("re-expand retention migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)

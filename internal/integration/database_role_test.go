@@ -50,6 +50,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_organization_audit_request_login",
 		"vela-organization-audit-request-password",
 	)
+	breakGlassAuditRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_break_glass_audit_request_login",
+		"vela-break-glass-audit-request-password",
+	)
 	retentionRequestPool := newRolePool(
 		t,
 		database.DSN,
@@ -61,6 +67,18 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		database.DSN,
 		"vela_retention_login",
 		"vela-retention-password",
+	)
+	platformOperatorAuthPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_platform_operator_auth_login",
+		"vela-platform-operator-auth-password",
+	)
+	breakGlassRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_break_glass_request_login",
+		"vela-break-glass-request-password",
 	)
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
@@ -83,13 +101,17 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_human_membership_request_login",
 		"vela_organization_billing_request_login",
 		"vela_organization_audit_request_login",
+		"vela_break_glass_audit_request_login",
 		"vela_retention_request_login",
 		"vela_retention_login",
+		"vela_platform_operator_auth_login",
+		"vela_break_glass_request_login",
 	} {
 		for _, ownerRole := range []string{
 			"vela_billing_owner",
 			"vela_organization_reporting_owner",
 			"vela_retention_owner",
+			"vela_break_glass_owner",
 		} {
 			var inheritsOwner bool
 			if err := database.Admin.QueryRow(
@@ -127,8 +149,20 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			name: "Organization audit request", pool: organizationAuditRequestPool,
 			role: veladb.RoleOrganizationAuditRequest,
 		},
+		{
+			name: "Break-glass audit request", pool: breakGlassAuditRequestPool,
+			role: veladb.RoleBreakGlassAuditRequest,
+		},
 		{name: "retention request", pool: retentionRequestPool, role: veladb.RoleRetentionRequest},
 		{name: "retention", pool: retentionPool, role: veladb.RoleRetention},
+		{
+			name: "Platform Operator auth", pool: platformOperatorAuthPool,
+			role: veladb.RolePlatformOperatorAuth,
+		},
+		{
+			name: "Break-glass request", pool: breakGlassRequestPool,
+			role: veladb.RoleBreakGlassRequest,
+		},
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
@@ -143,6 +177,139 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 				t.Fatalf("verify correct %s role: %v", test.name, err)
 			}
 		})
+	}
+	for _, role := range []struct {
+		name      string
+		bypassRLS bool
+	}{
+		{name: "vela_platform_operator_auth"},
+		{name: "vela_break_glass_request"},
+		{name: "vela_break_glass_audit_request"},
+		{name: "vela_break_glass_owner", bypassRLS: true},
+	} {
+		var canLogin, bypassRLS, superuser bool
+		if err := database.Admin.QueryRow(`
+			SELECT rolcanlogin, rolbypassrls, rolsuper
+			FROM pg_catalog.pg_roles
+			WHERE rolname = $1
+		`, role.name).Scan(&canLogin, &bypassRLS, &superuser); err != nil {
+			t.Fatalf("inspect %s attributes: %v", role.name, err)
+		}
+		if canLogin || superuser || bypassRLS != role.bypassRLS {
+			t.Fatalf(
+				"%s attributes = canLogin %t bypassRLS %t superuser %t",
+				role.name,
+				canLogin,
+				bypassRLS,
+				superuser,
+			)
+		}
+	}
+
+	for _, function := range []struct {
+		signature string
+		owner     string
+		proconfig string
+	}{
+		{
+			signature: "vela_authenticate_platform_operator_oidc(text,text,bytea,timestamp with time zone)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_set_break_glass_request_context(uuid,bytea)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_private.current_break_glass_request_context()",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_create_break_glass_request(uuid,text,bytea,uuid,uuid,uuid,break_glass_scope[],break_glass_reason_code,text,integer)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_approve_break_glass_request(uuid,uuid)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_revoke_break_glass_grant(uuid)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_get_break_glass_request(uuid)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_get_break_glass_grant(uuid)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_authorize_break_glass_request_content(uuid)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_authorize_break_glass_artifacts(uuid)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_record_break_glass_artifact_delivery(uuid,boolean)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_list_organization_audit_events_v2(uuid,integer)",
+			owner:     "vela_internal",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+	} {
+		var owner string
+		var securityDefiner, configurationMatches, publicExecute bool
+		if err := database.Admin.QueryRow(`
+			SELECT owner.rolname,
+				procedure.prosecdef,
+				procedure.proconfig = ARRAY[$2]::text[],
+				EXISTS (
+					SELECT 1
+					FROM pg_catalog.aclexplode(
+						COALESCE(
+							procedure.proacl,
+							pg_catalog.acldefault('f', procedure.proowner)
+						)
+					) AS privilege
+					WHERE privilege.grantee = 0
+					  AND privilege.privilege_type = 'EXECUTE'
+				)
+			FROM pg_catalog.pg_proc AS procedure
+			JOIN pg_catalog.pg_roles AS owner ON owner.oid = procedure.proowner
+			WHERE procedure.oid = $1::regprocedure
+		`, function.signature, function.proconfig).Scan(
+			&owner,
+			&securityDefiner,
+			&configurationMatches,
+			&publicExecute,
+		); err != nil {
+			t.Fatalf("inspect %s security boundary: %v", function.signature, err)
+		}
+		if owner != function.owner || !securityDefiner || !configurationMatches || publicExecute {
+			t.Fatalf(
+				"%s boundary = owner %s security definer %t public execute %t config match %t",
+				function.signature,
+				owner,
+				securityDefiner,
+				publicExecute,
+				configurationMatches,
+			)
+		}
 	}
 
 	var privateContextCount int
@@ -160,6 +327,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}{
 		{name: "Organization billing request", pool: organizationBillingRequestPool},
 		{name: "Organization audit request", pool: organizationAuditRequestPool},
+		{name: "Break-glass audit request", pool: breakGlassAuditRequestPool},
 	} {
 		for _, relation := range []string{
 			"jobs",
@@ -225,6 +393,20 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}
 	if _, err := organizationAuditRequestPool.Exec(
 		context.Background(),
+		"SELECT * FROM vela_list_organization_audit_events_v2($1, 100)",
+		uuid.MustParse(testOrganizationID),
+	); !isPermissionDenied(err) {
+		t.Fatalf("legacy Organization audit request v2 call error = %v, want permission denied", err)
+	}
+	if _, err := breakGlassAuditRequestPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_list_organization_audit_events($1, 100)",
+		uuid.MustParse(testOrganizationID),
+	); !isPermissionDenied(err) {
+		t.Fatalf("Break-glass audit request legacy call error = %v, want permission denied", err)
+	}
+	if _, err := organizationAuditRequestPool.Exec(
+		context.Background(),
 		"SELECT * FROM vela_list_organization_charges($1, 100)",
 		uuid.MustParse(testOrganizationID),
 	); !isPermissionDenied(err) {
@@ -243,6 +425,52 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		if !isPermissionDenied(err) {
 			t.Fatalf("retention request direct %s read error = %v, want permission denied", relation, err)
 		}
+	}
+	for _, runtime := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "Platform Operator auth", pool: platformOperatorAuthPool},
+		{name: "Break-glass request", pool: breakGlassRequestPool},
+	} {
+		for _, relation := range []string{
+			"platform_operator_oidc_bindings",
+			"platform_operator_auth_sessions",
+			"break_glass_requests",
+			"break_glass_grants",
+			"break_glass_events",
+			"jobs",
+			"artifacts",
+			"credentials",
+			"human_oidc_bindings",
+			"vela_private.break_glass_request_contexts",
+		} {
+			var count int64
+			err := runtime.pool.QueryRow(
+				context.Background(), "SELECT count(*) FROM "+relation,
+			).Scan(&count)
+			if !isPermissionDenied(err) {
+				t.Fatalf(
+					"%s direct %s read error = %v, want permission denied",
+					runtime.name,
+					relation,
+					err,
+				)
+			}
+		}
+	}
+	if _, err := authPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_authenticate_platform_operator_oidc('', '', decode(repeat('00', 32), 'hex'), clock_timestamp())",
+	); !isPermissionDenied(err) {
+		t.Fatalf("customer auth role Platform Operator authentication error = %v, want permission denied", err)
+	}
+	if _, err := requestPool.Exec(
+		context.Background(),
+		"SELECT vela_set_break_glass_request_context($1, decode(repeat('00', 32), 'hex'))",
+		uuid.New(),
+	); !isPermissionDenied(err) {
+		t.Fatalf("customer request role Break-glass context error = %v, want permission denied", err)
 	}
 	for _, relation := range []string{
 		"jobs",
@@ -295,6 +523,14 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			pool: organizationAuditRequestPool, role: veladb.RoleOrganizationBillingRequest,
 		},
 		{
+			name: "Organization audit request as Break-glass audit request",
+			pool: organizationAuditRequestPool, role: veladb.RoleBreakGlassAuditRequest,
+		},
+		{
+			name: "Break-glass audit request as Organization audit request",
+			pool: breakGlassAuditRequestPool, role: veladb.RoleOrganizationAuditRequest,
+		},
+		{
 			name: "Human membership request as Organization billing request",
 			pool: humanMembershipRequestPool, role: veladb.RoleOrganizationBillingRequest,
 		},
@@ -312,6 +548,34 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request as retention", pool: requestPool, role: veladb.RoleRetention},
 		{name: "retention as request", pool: retentionPool, role: veladb.RoleRequest},
 		{name: "internal as retention", pool: internalPool, role: veladb.RoleRetention},
+		{
+			name: "request as Platform Operator auth", pool: requestPool,
+			role: veladb.RolePlatformOperatorAuth,
+		},
+		{
+			name: "Platform Operator auth as request", pool: platformOperatorAuthPool,
+			role: veladb.RoleRequest,
+		},
+		{
+			name: "Break-glass request as Platform Operator auth", pool: breakGlassRequestPool,
+			role: veladb.RolePlatformOperatorAuth,
+		},
+		{
+			name: "Platform Operator auth as Break-glass request", pool: platformOperatorAuthPool,
+			role: veladb.RoleBreakGlassRequest,
+		},
+		{
+			name: "request as Break-glass request", pool: requestPool,
+			role: veladb.RoleBreakGlassRequest,
+		},
+		{
+			name: "Break-glass request as request", pool: breakGlassRequestPool,
+			role: veladb.RoleRequest,
+		},
+		{
+			name: "internal as Break-glass request", pool: internalPool,
+			role: veladb.RoleBreakGlassRequest,
+		},
 		{
 			name: "retention request as retention",
 			pool: retentionRequestPool, role: veladb.RoleRetention,

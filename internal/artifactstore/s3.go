@@ -666,10 +666,41 @@ func (store *S3) PresignExactVersion(
 	objectKey string,
 	versionID string,
 ) (SignedRead, error) {
+	return store.presignExactVersion(ctx, objectKey, versionID, time.Time{})
+}
+
+func (store *S3) PresignExactVersionUntil(
+	ctx context.Context,
+	objectKey string,
+	versionID string,
+	notAfter time.Time,
+) (SignedRead, error) {
+	if notAfter.IsZero() {
+		return SignedRead{}, errors.New("signed S3 Artifact expiry is required")
+	}
+	return store.presignExactVersion(ctx, objectKey, versionID, notAfter)
+}
+
+func (store *S3) presignExactVersion(
+	ctx context.Context,
+	objectKey string,
+	versionID string,
+	notAfter time.Time,
+) (SignedRead, error) {
+	if store == nil || store.presign == nil || store.now == nil {
+		return SignedRead{}, errors.New("S3 Artifact Store is not configured")
+	}
 	if err := validateExactVersion(objectKey, versionID); err != nil {
 		return SignedRead{}, err
 	}
 	issuedAt := store.now().UTC()
+	expiresAt := issuedAt.Add(store.signedGETTTL)
+	if !notAfter.IsZero() && notAfter.Before(expiresAt) {
+		expiresAt = notAfter.UTC()
+	}
+	if !expiresAt.After(issuedAt) {
+		return SignedRead{}, errors.New("signed S3 Artifact expiry has elapsed")
+	}
 	output, err := store.presign.PresignGetObject(
 		ctx,
 		&s3.GetObjectInput{
@@ -677,7 +708,7 @@ func (store *S3) PresignExactVersion(
 			Key:       aws.String(objectKey),
 			VersionId: aws.String(versionID),
 		},
-		s3.WithPresignExpires(store.signedGETTTL),
+		s3.WithPresignExpires(expiresAt.Sub(issuedAt)),
 	)
 	if err != nil {
 		return SignedRead{}, fmt.Errorf("presign exact S3 Artifact version: %w", err)
@@ -688,7 +719,7 @@ func (store *S3) PresignExactVersion(
 	return SignedRead{
 		URL:       output.URL,
 		IssuedAt:  issuedAt,
-		ExpiresAt: issuedAt.Add(store.signedGETTTL),
+		ExpiresAt: expiresAt,
 	}, nil
 }
 

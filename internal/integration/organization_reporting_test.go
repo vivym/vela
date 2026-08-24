@@ -34,6 +34,33 @@ import (
 	"github.com/vivym/vela/internal/workercontrol"
 )
 
+func newOrganizationReportingService(
+	t *testing.T,
+	databaseDSN string,
+) (*organizationreporting.Service, error) {
+	t.Helper()
+	return organizationreporting.NewService(
+		newRolePool(
+			t,
+			databaseDSN,
+			"vela_organization_billing_request_login",
+			"vela-organization-billing-request-password",
+		),
+		newRolePool(
+			t,
+			databaseDSN,
+			"vela_organization_audit_request_login",
+			"vela-organization-audit-request-password",
+		),
+		newRolePool(
+			t,
+			databaseDSN,
+			"vela_break_glass_audit_request_login",
+			"vela-break-glass-audit-request-password",
+		),
+	)
+}
+
 func TestBillingAdminReadsExactOrganizationCreditSummary(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -92,20 +119,7 @@ func TestBillingAdminReadsExactOrganizationCreditSummary(t *testing.T) {
 		t.Fatalf("BillingAdmin received audit/content scope: %v", actor.Scopes)
 	}
 
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, database.DSN)
 	if err != nil {
 		t.Fatalf("create Organization reporting service: %v", err)
 	}
@@ -195,20 +209,7 @@ func TestBillingAdminListsChargeWithAvailableInvoiceReference(t *testing.T) {
 	if !ok {
 		t.Fatal("BillingAdmin lacks Organization reporting authorization")
 	}
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, fixture.database.DSN)
 	if err != nil {
 		t.Fatalf("create Organization reporting service: %v", err)
 	}
@@ -286,20 +287,7 @@ func TestBillingAdminManagesSettlementContactLifecycle(t *testing.T) {
 	if !ok {
 		t.Fatal("BillingAdmin lacks Organization reporting authorization")
 	}
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, database.DSN)
 	if err != nil {
 		t.Fatalf("create Organization reporting service: %v", err)
 	}
@@ -412,20 +400,7 @@ func TestSettlementContactValidationAndConcurrentReplayAreDeterministic(t *testi
 	if !ok {
 		t.Fatal("concurrent contact BillingAdmin lacks Organization authorization")
 	}
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, database.DSN)
 	if err != nil {
 		t.Fatalf("create concurrent contact reporting service: %v", err)
 	}
@@ -627,20 +602,7 @@ func TestOrganizationReportingRequiresCurrentExactHumanAuthorization(t *testing.
 		}
 		return actor
 	}
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, database.DSN)
 	if err != nil {
 		t.Fatalf("create exact-authorization reporting service: %v", err)
 	}
@@ -863,20 +825,7 @@ func TestSettlementContactIdentityAndEvidenceAreImmutable(t *testing.T) {
 	if !ok {
 		t.Fatal("immutable contact BillingAdmin lacks Organization authorization")
 	}
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, database.DSN)
 	if err != nil {
 		t.Fatalf("create immutable contact reporting service: %v", err)
 	}
@@ -1130,11 +1079,11 @@ func TestOrganizationReportingMigrationAllowsEmptyDownUp(t *testing.T) {
 		t.Fatalf("verify preserved Human membership role after Organization reporting Down: %v", err)
 	}
 
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 15); err != nil {
 		t.Fatalf("re-expand Organization reporting migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
-	if err != nil || version != 16 {
+	if err != nil || version != 15 {
 		t.Fatalf("Organization reporting migration version after Down/Up = %d error=%v", version, err)
 	}
 	for _, runtime := range []struct {
@@ -1205,20 +1154,7 @@ func TestOrganizationReportingMigrationDownRefusesDurableEvidence(t *testing.T) 
 	if !ok {
 		t.Fatal("migration evidence BillingAdmin lacks Organization authorization")
 	}
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, database.DSN)
 	if err != nil {
 		t.Fatalf("create migration evidence reporting service: %v", err)
 	}
@@ -1391,20 +1327,7 @@ func TestOrganizationAuditorReadsBoundedNonContentUsageByProject(t *testing.T) {
 		actor.HasScope(identity.ScopeOrganizationBillingRead) {
 		t.Fatalf("OrganizationAuditor scopes = %v", actor.Scopes)
 	}
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, fixture.database.DSN)
 	if err != nil {
 		t.Fatalf("create Organization reporting service: %v", err)
 	}
@@ -1631,20 +1554,7 @@ func TestOrganizationUsageCountsEveryExplicitJobState(t *testing.T) {
 	if !ok {
 		t.Fatal("all-state OrganizationAuditor lacks Organization authorization")
 	}
-	service, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	service, err := newOrganizationReportingService(t, fixture.database.DSN)
 	if err != nil {
 		t.Fatalf("create all-state usage reporting service: %v", err)
 	}
@@ -1783,20 +1693,7 @@ func TestOrganizationAuditorReadsUnifiedSafeIdentityAndContactAuditStream(t *tes
 	if err != nil {
 		t.Fatalf("issue audited Service Credential: %v", err)
 	}
-	reportingService, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	reportingService, err := newOrganizationReportingService(t, database.DSN)
 	if err != nil {
 		t.Fatalf("create Organization reporting service: %v", err)
 	}
@@ -1966,20 +1863,7 @@ func TestOrganizationReportingProductionHTTPPath(t *testing.T) {
 			ExpiresAt: time.Now().UTC().Add(time.Hour),
 		}},
 	)
-	reporting, err := organizationreporting.NewService(
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_organization_billing_request_login",
-			"vela-organization-billing-request-password",
-		),
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_organization_audit_request_login",
-			"vela-organization-audit-request-password",
-		),
-	)
+	reporting, err := newOrganizationReportingService(t, fixture.database.DSN)
 	if err != nil {
 		t.Fatalf("create HTTP Organization reporting service: %v", err)
 	}

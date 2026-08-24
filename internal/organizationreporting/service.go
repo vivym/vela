@@ -108,6 +108,8 @@ type AuditEvent struct {
 	EventID          uuid.UUID
 	Source           string
 	Action           string
+	Scope            *string
+	OutcomeCode      *string
 	ProjectID        *uuid.UUID
 	ActorPrincipalID uuid.UUID
 	ActorSessionID   uuid.UUID
@@ -117,18 +119,28 @@ type AuditEvent struct {
 }
 
 type Service struct {
-	billingPool *pgxpool.Pool
-	auditPool   *pgxpool.Pool
+	billingPool         *pgxpool.Pool
+	auditPool           *pgxpool.Pool
+	breakGlassAuditPool *pgxpool.Pool
 }
 
-func NewService(billingPool, auditPool *pgxpool.Pool) (*Service, error) {
+func NewService(
+	billingPool, auditPool, breakGlassAuditPool *pgxpool.Pool,
+) (*Service, error) {
 	if billingPool == nil {
 		return nil, errors.New("organization billing request database pool is required")
 	}
 	if auditPool == nil {
 		return nil, errors.New("organization audit request database pool is required")
 	}
-	return &Service{billingPool: billingPool, auditPool: auditPool}, nil
+	if breakGlassAuditPool == nil {
+		return nil, errors.New("break-glass audit request database pool is required")
+	}
+	return &Service{
+		billingPool:         billingPool,
+		auditPool:           auditPool,
+		breakGlassAuditPool: breakGlassAuditPool,
+	}, nil
 }
 
 func (s *Service) GetCreditSummary(
@@ -513,10 +525,13 @@ func (s *Service) ListAuditEvents(
 			Message: "audit event list limit must be between 1 and 100",
 		}
 	}
-	if s == nil || s.auditPool == nil {
+	if s == nil || s.breakGlassAuditPool == nil {
 		return nil, errors.New("organization audit reporting is not configured")
 	}
-	tx, err := s.auditPool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	tx, err := s.breakGlassAuditPool.BeginTx(
+		ctx,
+		pgx.TxOptions{IsoLevel: pgx.ReadCommitted},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("begin Organization audit event list: %w", err)
 	}
@@ -528,8 +543,8 @@ func (s *Service) ListAuditEvents(
 	}
 	rows, err := tx.Query(ctx, `
 		SELECT event_id, source, action, project_id, actor_principal_id,
-			actor_session_id, target_kind, target_id, created_at
-		FROM vela_list_organization_audit_events($1, $2)
+			actor_session_id, target_kind, target_id, created_at, scope, outcome_code
+		FROM vela_list_organization_audit_events_v2($1, $2)
 	`, organizationID, limit)
 	if err != nil {
 		return nil, mapDatabaseFailure(err)
@@ -539,6 +554,7 @@ func (s *Service) ListAuditEvents(
 	for rows.Next() {
 		var event AuditEvent
 		var projectID pgtype.UUID
+		var scope, outcomeCode pgtype.Text
 		if err := rows.Scan(
 			&event.EventID,
 			&event.Source,
@@ -549,12 +565,22 @@ func (s *Service) ListAuditEvents(
 			&event.TargetKind,
 			&event.TargetID,
 			&event.CreatedAt,
+			&scope,
+			&outcomeCode,
 		); err != nil {
 			return nil, fmt.Errorf("read Organization audit event list: %w", err)
 		}
 		if projectID.Valid {
 			value := uuid.UUID(projectID.Bytes)
 			event.ProjectID = &value
+		}
+		if scope.Valid {
+			value := scope.String
+			event.Scope = &value
+		}
+		if outcomeCode.Valid {
+			value := outcomeCode.String
+			event.OutcomeCode = &value
 		}
 		events = append(events, event)
 	}

@@ -2532,7 +2532,7 @@ func TestWebhookMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) {
 	} {
 		assertTableDoesNotExist(t, database.Admin, table)
 	}
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 11); err != nil {
 		t.Fatalf("re-expand empty webhook migration: %v", err)
 	}
 	for _, table := range []string{
@@ -2585,7 +2585,7 @@ func TestWebhookMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) {
 		t.Fatalf("create Subscription after migration re-expansion = %#v error=%v", created, err)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 16 {
+	if err != nil || version != 11 {
 		t.Fatalf("webhook migration version after Down/Up = %d error=%v", version, err)
 	}
 }

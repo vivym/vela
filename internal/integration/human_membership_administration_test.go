@@ -1992,11 +1992,11 @@ func TestHumanMembershipAdministrationMigrationAllowsEmptyDownUp(t *testing.T) {
 	}
 	rows.Close()
 
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 14); err != nil {
 		t.Fatalf("re-expand Human membership administration migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
-	if err != nil || version != 16 {
+	if err != nil || version != 14 {
 		t.Fatalf("migration version after Human membership Down/Up = %d error=%v", version, err)
 	}
 	if err := database.Admin.QueryRow(`

@@ -1883,6 +1883,9 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 			CREATE ROLE vela_organization_audit_request_login LOGIN PASSWORD 'vela-organization-audit-request-password' IN ROLE vela_organization_audit_request;
 			CREATE ROLE vela_retention_request_login LOGIN PASSWORD 'vela-retention-request-password' IN ROLE vela_retention_request;
 			CREATE ROLE vela_retention_login LOGIN PASSWORD 'vela-retention-password' IN ROLE vela_retention;
+			CREATE ROLE vela_platform_operator_auth_login LOGIN PASSWORD 'vela-platform-operator-auth-password' IN ROLE vela_platform_operator_auth;
+			CREATE ROLE vela_break_glass_request_login LOGIN PASSWORD 'vela-break-glass-request-password' IN ROLE vela_break_glass_request;
+			CREATE ROLE vela_break_glass_audit_request_login LOGIN PASSWORD 'vela-break-glass-audit-request-password' IN ROLE vela_break_glass_audit_request;
 			CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
 			CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;

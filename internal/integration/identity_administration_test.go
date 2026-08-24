@@ -1055,11 +1055,11 @@ func TestServicePrincipalAdministrationMigrationAllowsLegacyRowsAndEmptyDownUp(t
 		t.Fatalf("authenticate legacy Service Credential after migration Down: %v", err)
 	}
 
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 13); err != nil {
 		t.Fatalf("re-expand unused Service Principal administration migration: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
-	if err != nil || version != 16 {
+	if err != nil || version != 13 {
 		t.Fatalf("migration version after Service Principal administration Down/Up = %d error=%v", version, err)
 	}
 	if err := database.Admin.QueryRow(`

@@ -194,6 +194,195 @@ func (ns NullAttemptState) Value() (driver.Value, error) {
 	return string(ns.AttemptState), nil
 }
 
+type BreakGlassEventAction string
+
+const (
+	BreakGlassEventActionREQUESTCREATED           BreakGlassEventAction = "REQUEST_CREATED"
+	BreakGlassEventActionGRANTAPPROVED            BreakGlassEventAction = "GRANT_APPROVED"
+	BreakGlassEventActionGRANTREVOKED             BreakGlassEventAction = "GRANT_REVOKED"
+	BreakGlassEventActionREQUESTCONTENTAUTHORIZED BreakGlassEventAction = "REQUEST_CONTENT_AUTHORIZED"
+	BreakGlassEventActionREQUESTCONTENTDENIED     BreakGlassEventAction = "REQUEST_CONTENT_DENIED"
+	BreakGlassEventActionARTIFACTAUTHORIZED       BreakGlassEventAction = "ARTIFACT_AUTHORIZED"
+	BreakGlassEventActionARTIFACTDELIVERED        BreakGlassEventAction = "ARTIFACT_DELIVERED"
+	BreakGlassEventActionARTIFACTDELIVERYFAILED   BreakGlassEventAction = "ARTIFACT_DELIVERY_FAILED"
+	BreakGlassEventActionARTIFACTDENIED           BreakGlassEventAction = "ARTIFACT_DENIED"
+)
+
+func (e *BreakGlassEventAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BreakGlassEventAction(s)
+	case string:
+		*e = BreakGlassEventAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BreakGlassEventAction: %T", src)
+	}
+	return nil
+}
+
+type NullBreakGlassEventAction struct {
+	BreakGlassEventAction BreakGlassEventAction `json:"break_glass_event_action"`
+	Valid                 bool                  `json:"valid"` // Valid is true if BreakGlassEventAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBreakGlassEventAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.BreakGlassEventAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BreakGlassEventAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBreakGlassEventAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BreakGlassEventAction), nil
+}
+
+type BreakGlassOutcomeCode string
+
+const (
+	BreakGlassOutcomeCodeCREATED            BreakGlassOutcomeCode = "CREATED"
+	BreakGlassOutcomeCodeAPPROVED           BreakGlassOutcomeCode = "APPROVED"
+	BreakGlassOutcomeCodeREVOKED            BreakGlassOutcomeCode = "REVOKED"
+	BreakGlassOutcomeCodeALLOWED            BreakGlassOutcomeCode = "ALLOWED"
+	BreakGlassOutcomeCodeSCOPEDENIED        BreakGlassOutcomeCode = "SCOPE_DENIED"
+	BreakGlassOutcomeCodeGRANTREVOKED       BreakGlassOutcomeCode = "GRANT_REVOKED"
+	BreakGlassOutcomeCodeGRANTEXPIRED       BreakGlassOutcomeCode = "GRANT_EXPIRED"
+	BreakGlassOutcomeCodeTARGETNOTFOUND     BreakGlassOutcomeCode = "TARGET_NOT_FOUND"
+	BreakGlassOutcomeCodeCONTENTDELETED     BreakGlassOutcomeCode = "CONTENT_DELETED"
+	BreakGlassOutcomeCodeCONTENTEXPIRED     BreakGlassOutcomeCode = "CONTENT_EXPIRED"
+	BreakGlassOutcomeCodeCONTENTUNAVAILABLE BreakGlassOutcomeCode = "CONTENT_UNAVAILABLE"
+	BreakGlassOutcomeCodeDELIVERED          BreakGlassOutcomeCode = "DELIVERED"
+	BreakGlassOutcomeCodeSIGNINGFAILED      BreakGlassOutcomeCode = "SIGNING_FAILED"
+	BreakGlassOutcomeCodeGRANTINACTIVE      BreakGlassOutcomeCode = "GRANT_INACTIVE"
+)
+
+func (e *BreakGlassOutcomeCode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BreakGlassOutcomeCode(s)
+	case string:
+		*e = BreakGlassOutcomeCode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BreakGlassOutcomeCode: %T", src)
+	}
+	return nil
+}
+
+type NullBreakGlassOutcomeCode struct {
+	BreakGlassOutcomeCode BreakGlassOutcomeCode `json:"break_glass_outcome_code"`
+	Valid                 bool                  `json:"valid"` // Valid is true if BreakGlassOutcomeCode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBreakGlassOutcomeCode) Scan(value interface{}) error {
+	if value == nil {
+		ns.BreakGlassOutcomeCode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BreakGlassOutcomeCode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBreakGlassOutcomeCode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BreakGlassOutcomeCode), nil
+}
+
+type BreakGlassReasonCode string
+
+const (
+	BreakGlassReasonCodeCUSTOMERSUPPORT       BreakGlassReasonCode = "CUSTOMER_SUPPORT"
+	BreakGlassReasonCodeSECURITYINVESTIGATION BreakGlassReasonCode = "SECURITY_INVESTIGATION"
+	BreakGlassReasonCodeSERVICERECOVERY       BreakGlassReasonCode = "SERVICE_RECOVERY"
+	BreakGlassReasonCodeLEGALRESPONSE         BreakGlassReasonCode = "LEGAL_RESPONSE"
+)
+
+func (e *BreakGlassReasonCode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BreakGlassReasonCode(s)
+	case string:
+		*e = BreakGlassReasonCode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BreakGlassReasonCode: %T", src)
+	}
+	return nil
+}
+
+type NullBreakGlassReasonCode struct {
+	BreakGlassReasonCode BreakGlassReasonCode `json:"break_glass_reason_code"`
+	Valid                bool                 `json:"valid"` // Valid is true if BreakGlassReasonCode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBreakGlassReasonCode) Scan(value interface{}) error {
+	if value == nil {
+		ns.BreakGlassReasonCode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BreakGlassReasonCode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBreakGlassReasonCode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BreakGlassReasonCode), nil
+}
+
+type BreakGlassScope string
+
+const (
+	BreakGlassScopeREQUESTCONTENTREAD BreakGlassScope = "REQUEST_CONTENT_READ"
+	BreakGlassScopeARTIFACTREAD       BreakGlassScope = "ARTIFACT_READ"
+)
+
+func (e *BreakGlassScope) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = BreakGlassScope(s)
+	case string:
+		*e = BreakGlassScope(s)
+	default:
+		return fmt.Errorf("unsupported scan type for BreakGlassScope: %T", src)
+	}
+	return nil
+}
+
+type NullBreakGlassScope struct {
+	BreakGlassScope BreakGlassScope `json:"break_glass_scope"`
+	Valid           bool            `json:"valid"` // Valid is true if BreakGlassScope is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullBreakGlassScope) Scan(value interface{}) error {
+	if value == nil {
+		ns.BreakGlassScope, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.BreakGlassScope.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullBreakGlassScope) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.BreakGlassScope), nil
+}
+
 type CancellationDecision string
 
 const (
@@ -1764,6 +1953,53 @@ type AttemptProgress struct {
 	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type BreakGlassEvent struct {
+	ID                uuid.UUID             `db:"id" json:"id"`
+	OrganizationID    uuid.UUID             `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.UUID             `db:"project_id" json:"project_id"`
+	JobID             uuid.UUID             `db:"job_id" json:"job_id"`
+	RequestID         uuid.UUID             `db:"request_id" json:"request_id"`
+	GrantID           uuid.NullUUID         `db:"grant_id" json:"grant_id"`
+	OperatorID        uuid.UUID             `db:"operator_id" json:"operator_id"`
+	OperatorSessionID uuid.UUID             `db:"operator_session_id" json:"operator_session_id"`
+	Action            BreakGlassEventAction `db:"action" json:"action"`
+	Scope             *BreakGlassScope      `db:"scope" json:"scope"`
+	OutcomeCode       BreakGlassOutcomeCode `db:"outcome_code" json:"outcome_code"`
+	CreatedAt         pgtype.Timestamptz    `db:"created_at" json:"created_at"`
+}
+
+type BreakGlassGrant struct {
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	RequestID           uuid.UUID          `db:"request_id" json:"request_id"`
+	OrganizationID      uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID           uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID               uuid.UUID          `db:"job_id" json:"job_id"`
+	ApproverOperatorID  uuid.UUID          `db:"approver_operator_id" json:"approver_operator_id"`
+	ApproverSessionID   uuid.UUID          `db:"approver_session_id" json:"approver_session_id"`
+	ApprovedAt          pgtype.Timestamptz `db:"approved_at" json:"approved_at"`
+	ExpiresAt           pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	RevokedAt           pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	RevokedByOperatorID uuid.NullUUID      `db:"revoked_by_operator_id" json:"revoked_by_operator_id"`
+	RevokedBySessionID  uuid.NullUUID      `db:"revoked_by_session_id" json:"revoked_by_session_id"`
+}
+
+type BreakGlassRequest struct {
+	ID                       uuid.UUID            `db:"id" json:"id"`
+	OrganizationID           uuid.UUID            `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID            `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID            `db:"job_id" json:"job_id"`
+	Scopes                   []BreakGlassScope    `db:"scopes" json:"scopes"`
+	ReasonCode               BreakGlassReasonCode `db:"reason_code" json:"reason_code"`
+	TicketReference          string               `db:"ticket_reference" json:"ticket_reference"`
+	RequestedDurationSeconds int32                `db:"requested_duration_seconds" json:"requested_duration_seconds"`
+	RequesterOperatorID      uuid.UUID            `db:"requester_operator_id" json:"requester_operator_id"`
+	RequesterSessionID       uuid.UUID            `db:"requester_session_id" json:"requester_session_id"`
+	IdempotencyKey           string               `db:"idempotency_key" json:"idempotency_key"`
+	RequestHash              []byte               `db:"request_hash" json:"request_hash"`
+	RequestedAt              pgtype.Timestamptz   `db:"requested_at" json:"requested_at"`
+	ApprovalDeadlineAt       pgtype.Timestamptz   `db:"approval_deadline_at" json:"approval_deadline_at"`
+}
+
 type CancellationStopReceipt struct {
 	ID                 uuid.UUID              `db:"id" json:"id"`
 	OrganizationID     uuid.UUID              `db:"organization_id" json:"organization_id"`
@@ -2260,6 +2496,23 @@ type OutputSpec struct {
 	ThumbnailRequired    bool               `db:"thumbnail_required" json:"thumbnail_required"`
 }
 
+type PlatformOperatorAuthSession struct {
+	ID         uuid.UUID          `db:"id" json:"id"`
+	OperatorID uuid.UUID          `db:"operator_id" json:"operator_id"`
+	TokenProof []byte             `db:"token_proof" json:"token_proof"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+type PlatformOperatorOidcBinding struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	Issuer      string             `db:"issuer" json:"issuer"`
+	Subject     string             `db:"subject" json:"subject"`
+	DisplayName string             `db:"display_name" json:"display_name"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	DisabledAt  pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+}
+
 type Principal struct {
 	ID             uuid.UUID          `db:"id" json:"id"`
 	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -2551,6 +2804,14 @@ type ServicePrincipal struct {
 	PrincipalKind  PrincipalKind      `db:"principal_kind" json:"principal_kind"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+}
+
+type VelaPrivateBreakGlassRequestContext struct {
+	BackendPid        int32              `db:"backend_pid" json:"backend_pid"`
+	TransactionID     pgtype.Uint64      `db:"transaction_id" json:"transaction_id"`
+	OperatorID        uuid.UUID          `db:"operator_id" json:"operator_id"`
+	OperatorSessionID uuid.UUID          `db:"operator_session_id" json:"operator_session_id"`
+	EstablishedAt     pgtype.Timestamptz `db:"established_at" json:"established_at"`
 }
 
 type VelaPrivateHumanAdministrationContext struct {

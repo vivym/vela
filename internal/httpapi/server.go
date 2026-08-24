@@ -16,6 +16,7 @@ import (
 	api "github.com/vivym/vela/api/gen"
 	"github.com/vivym/vela/internal/admission"
 	"github.com/vivym/vela/internal/artifactaccess"
+	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
@@ -24,13 +25,18 @@ import (
 )
 
 const (
-	maxRequestBodyBytes                 = 1 << 20
-	authenticationFailureMessage        = "valid bearer credential is required"
-	serviceAuthenticationFailureMessage = "valid Service Principal credential is required"
+	maxRequestBodyBytes                  = 1 << 20
+	authenticationFailureMessage         = "valid bearer credential is required"
+	serviceAuthenticationFailureMessage  = "valid Service Principal credential is required"
+	platformAuthenticationFailureMessage = "valid Platform Operator credential is required"
+	breakGlassServiceUnavailableMessage  = "Break-glass dependency is unavailable"
+	platformBreakGlassPathPrefix         = "/v1/platform/break-glass/"
 )
 
 type Config struct {
 	Authenticator          *identity.Authenticator
+	PlatformAuthenticator  *breakglass.Authenticator
+	BreakGlass             *breakglass.Service
 	IdentityAdministration *identity.AdministrationService
 	OrganizationReporting  *organizationreporting.Service
 	Retention              *retention.Service
@@ -42,6 +48,8 @@ type Config struct {
 
 type server struct {
 	authenticator          *identity.Authenticator
+	platformAuthenticator  *breakglass.Authenticator
+	breakGlass             *breakglass.Service
 	identityAdministration *identity.AdministrationService
 	organizationReporting  *organizationreporting.Service
 	retention              *retention.Service
@@ -52,6 +60,7 @@ type server struct {
 }
 
 type principalContextKey struct{}
+type platformOperatorContextKey struct{}
 
 func NewHandler(config Config) (http.Handler, error) {
 	if config.Authenticator == nil {
@@ -87,6 +96,8 @@ func NewHandler(config Config) (http.Handler, error) {
 
 	implementation := &server{
 		authenticator:          config.Authenticator,
+		platformAuthenticator:  config.PlatformAuthenticator,
+		breakGlass:             config.BreakGlass,
 		identityAdministration: config.IdentityAdministration,
 		organizationReporting:  config.OrganizationReporting,
 		retention:              config.Retention,
@@ -114,6 +125,213 @@ func NewHandler(config Config) (http.Handler, error) {
 		},
 	}))
 	return api.HandlerFromMux(strict, router), nil
+}
+
+func (s *server) CreateBreakGlassRequest(
+	ctx context.Context,
+	request api.CreateBreakGlassRequestRequestObject,
+) (api.CreateBreakGlassRequestResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.CreateBreakGlassRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateBreakGlassRequest400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "request body is required",
+			},
+		}, nil
+	}
+	if s.breakGlass == nil {
+		return nil, errors.New("service for Break-glass Access is not configured")
+	}
+	scopes := make([]breakglass.Scope, len(request.Body.Scopes))
+	for index, scope := range request.Body.Scopes {
+		scopes[index] = breakglass.Scope(scope)
+	}
+	created, replayed, err := s.breakGlass.Request(
+		ctx,
+		operator,
+		string(request.Params.IdempotencyKey),
+		breakglass.RequestInput{
+			OrganizationID:           request.Body.OrganizationId,
+			ProjectID:                request.Body.ProjectId,
+			JobID:                    request.Body.JobId,
+			Scopes:                   scopes,
+			ReasonCode:               breakglass.ReasonCode(request.Body.ReasonCode),
+			TicketReference:          request.Body.TicketReference,
+			RequestedDurationSeconds: request.Body.RequestedDurationSeconds,
+		},
+	)
+	if err != nil {
+		return createBreakGlassRequestFailure(err)
+	}
+	response := toAPIBreakGlassRequest(created)
+	if replayed {
+		return api.CreateBreakGlassRequest200JSONResponse(response), nil
+	}
+	return api.CreateBreakGlassRequest201JSONResponse(response), nil
+}
+
+func (s *server) GetBreakGlassRequest(
+	ctx context.Context,
+	request api.GetBreakGlassRequestRequestObject,
+) (api.GetBreakGlassRequestResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.GetBreakGlassRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.breakGlass == nil {
+		return nil, errors.New("service for Break-glass Access is not configured")
+	}
+	result, err := s.breakGlass.GetRequest(ctx, operator, request.BreakGlassRequestId)
+	if err != nil {
+		var failure *breakglass.Failure
+		if !errors.As(err, &failure) {
+			return nil, err
+		}
+		switch failure.Code {
+		case breakglass.FailureUnauthorized:
+			return api.GetBreakGlassRequest401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+					Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+				},
+			}, nil
+		case breakglass.FailureNotFound:
+			return api.GetBreakGlassRequest404JSONResponse{
+				Code: "not_found", Message: failure.Message,
+			}, nil
+		case breakglass.FailureUnavailable:
+			return api.GetBreakGlassRequest503JSONResponse{
+				ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+			}, nil
+		default:
+			return nil, err
+		}
+	}
+	return api.GetBreakGlassRequest200JSONResponse(toAPIBreakGlassRequest(result)), nil
+}
+
+func (s *server) ApproveBreakGlassRequest(
+	ctx context.Context,
+	request api.ApproveBreakGlassRequestRequestObject,
+) (api.ApproveBreakGlassRequestResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.ApproveBreakGlassRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.breakGlass == nil {
+		return nil, errors.New("service for Break-glass Access is not configured")
+	}
+	result, err := s.breakGlass.Approve(ctx, operator, request.BreakGlassRequestId)
+	if err != nil {
+		return approveBreakGlassRequestFailure(err)
+	}
+	return api.ApproveBreakGlassRequest200JSONResponse(toAPIBreakGlassRequest(result)), nil
+}
+
+func (s *server) RevokeBreakGlassGrant(
+	ctx context.Context,
+	request api.RevokeBreakGlassGrantRequestObject,
+) (api.RevokeBreakGlassGrantResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.RevokeBreakGlassGrant401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.breakGlass == nil {
+		return nil, errors.New("service for Break-glass Access is not configured")
+	}
+	result, err := s.breakGlass.Revoke(ctx, operator, request.BreakGlassGrantId)
+	if err != nil {
+		var failure *breakglass.Failure
+		if !errors.As(err, &failure) {
+			return nil, err
+		}
+		switch failure.Code {
+		case breakglass.FailureUnauthorized:
+			return api.RevokeBreakGlassGrant401JSONResponse{
+				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+					Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+				},
+			}, nil
+		case breakglass.FailureNotFound:
+			return api.RevokeBreakGlassGrant404JSONResponse{
+				Code: "not_found", Message: failure.Message,
+			}, nil
+		case breakglass.FailureUnavailable:
+			return api.RevokeBreakGlassGrant503JSONResponse{
+				ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+			}, nil
+		default:
+			return nil, err
+		}
+	}
+	return api.RevokeBreakGlassGrant200JSONResponse(toAPIBreakGlassRequest(result)), nil
+}
+
+func (s *server) GetBreakGlassRequestContent(
+	ctx context.Context,
+	request api.GetBreakGlassRequestContentRequestObject,
+) (api.GetBreakGlassRequestContentResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.GetBreakGlassRequestContent401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.breakGlass == nil {
+		return nil, errors.New("service for Break-glass Access is not configured")
+	}
+	content, err := s.breakGlass.ReadRequestContent(ctx, operator, request.BreakGlassGrantId)
+	if err != nil {
+		return getBreakGlassRequestContentFailure(err)
+	}
+	return api.GetBreakGlassRequestContent200JSONResponse{
+		OrganizationId: content.OrganizationID,
+		ProjectId:      content.ProjectID,
+		JobId:          content.JobID,
+		RequestContent: content.RequestContent,
+	}, nil
+}
+
+func (s *server) GetBreakGlassArtifacts(
+	ctx context.Context,
+	request api.GetBreakGlassArtifactsRequestObject,
+) (api.GetBreakGlassArtifactsResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.GetBreakGlassArtifacts401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.breakGlass == nil {
+		return nil, errors.New("service for Break-glass Access is not configured")
+	}
+	artifacts, err := s.breakGlass.GetArtifacts(ctx, operator, request.BreakGlassGrantId)
+	if err != nil {
+		return getBreakGlassArtifactsFailure(err)
+	}
+	return api.GetBreakGlassArtifacts200JSONResponse(toAPIBreakGlassArtifactSet(artifacts)), nil
 }
 
 func (s *server) GetProjectRetentionPolicy(
@@ -1578,6 +1796,44 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized", authenticationFailureMessage)
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, platformBreakGlassPathPrefix) {
+			if s.platformAuthenticator == nil {
+				writeError(
+					w,
+					http.StatusServiceUnavailable,
+					"identity_unavailable",
+					"Platform Operator verification is unavailable",
+				)
+				return
+			}
+			operator, err := s.platformAuthenticator.Authenticate(r.Context(), parts[1])
+			if errors.Is(err, breakglass.ErrInvalidOperatorCredential) {
+				writeError(
+					w,
+					http.StatusUnauthorized,
+					"unauthorized",
+					platformAuthenticationFailureMessage,
+				)
+				return
+			}
+			if err != nil {
+				writeError(
+					w,
+					http.StatusServiceUnavailable,
+					"identity_unavailable",
+					"Platform Operator verification is unavailable",
+				)
+				return
+			}
+			next.ServeHTTP(
+				w,
+				r.WithContext(context.WithValue(
+					r.Context(), platformOperatorContextKey{}, operator,
+				)),
+			)
+			return
+		}
+
 		principal, err := s.authenticator.Authenticate(r.Context(), parts[1])
 		if errors.Is(err, identity.ErrInvalidCredential) {
 			message := authenticationFailureMessage
@@ -1607,6 +1863,11 @@ func (s *server) limitRequestBody(next http.Handler) http.Handler {
 func principalFromContext(ctx context.Context) (identity.Principal, bool) {
 	principal, ok := ctx.Value(principalContextKey{}).(identity.Principal)
 	return principal, ok
+}
+
+func platformOperatorFromContext(ctx context.Context) (breakglass.Operator, bool) {
+	operator, ok := ctx.Value(platformOperatorContextKey{}).(breakglass.Operator)
+	return operator, ok
 }
 
 func principalForProjectRequest(
@@ -1692,6 +1953,152 @@ func projectMembershipAdministrationPrincipal(
 		return organizationPrincipal, http.StatusOK
 	}
 	return identity.Principal{}, http.StatusForbidden
+}
+
+func createBreakGlassRequestFailure(
+	err error,
+) (api.CreateBreakGlassRequestResponseObject, error) {
+	var failure *breakglass.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	switch failure.Code {
+	case breakglass.FailureInvalid:
+		return api.CreateBreakGlassRequest400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: failure.Message,
+			},
+		}, nil
+	case breakglass.FailureUnauthorized:
+		return api.CreateBreakGlassRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	case breakglass.FailureNotFound:
+		return api.CreateBreakGlassRequest404JSONResponse{
+			Code: "not_found", Message: failure.Message,
+		}, nil
+	case breakglass.FailureConflict:
+		return api.CreateBreakGlassRequest409JSONResponse{
+			Code: "conflict", Message: failure.Message,
+		}, nil
+	case breakglass.FailureUnavailable:
+		return api.CreateBreakGlassRequest503JSONResponse{
+			ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func approveBreakGlassRequestFailure(
+	err error,
+) (api.ApproveBreakGlassRequestResponseObject, error) {
+	var failure *breakglass.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	switch failure.Code {
+	case breakglass.FailureUnauthorized:
+		return api.ApproveBreakGlassRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	case breakglass.FailureForbidden:
+		return api.ApproveBreakGlassRequest403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: failure.Message,
+			},
+		}, nil
+	case breakglass.FailureNotFound:
+		return api.ApproveBreakGlassRequest404JSONResponse{
+			Code: "not_found", Message: failure.Message,
+		}, nil
+	case breakglass.FailureConflict:
+		return api.ApproveBreakGlassRequest409JSONResponse{
+			Code: "conflict", Message: failure.Message,
+		}, nil
+	case breakglass.FailureUnavailable:
+		return api.ApproveBreakGlassRequest503JSONResponse{
+			ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func getBreakGlassRequestContentFailure(
+	err error,
+) (api.GetBreakGlassRequestContentResponseObject, error) {
+	var failure *breakglass.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	switch failure.Code {
+	case breakglass.FailureUnauthorized:
+		return api.GetBreakGlassRequestContent401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	case breakglass.FailureForbidden:
+		return api.GetBreakGlassRequestContent403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: failure.Message,
+			},
+		}, nil
+	case breakglass.FailureNotFound:
+		return api.GetBreakGlassRequestContent404JSONResponse{
+			Code: "not_found", Message: failure.Message,
+		}, nil
+	case breakglass.FailureUnavailable:
+		return api.GetBreakGlassRequestContent503JSONResponse{
+			ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func getBreakGlassArtifactsFailure(
+	err error,
+) (api.GetBreakGlassArtifactsResponseObject, error) {
+	var failure *breakglass.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	switch failure.Code {
+	case breakglass.FailureUnauthorized:
+		return api.GetBreakGlassArtifacts401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	case breakglass.FailureForbidden:
+		return api.GetBreakGlassArtifacts403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: failure.Message,
+			},
+		}, nil
+	case breakglass.FailureNotFound:
+		return api.GetBreakGlassArtifacts404JSONResponse{
+			Code: "not_found", Message: failure.Message,
+		}, nil
+	case breakglass.FailureUnavailable:
+		return api.GetBreakGlassArtifacts503JSONResponse{
+			ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func breakGlassUnavailableResponse() api.ServiceUnavailableJSONResponse {
+	return api.ServiceUnavailableJSONResponse{
+		Code: "service_unavailable", Message: breakGlassServiceUnavailableMessage,
+	}
 }
 
 func submitFailure(err error) (api.SubmitJobResponseObject, error) {
@@ -2515,16 +2922,80 @@ func toAPIOrganizationUsage(usage organizationreporting.UsageSummary) api.Organi
 func toAPIOrganizationAuditEvent(
 	event organizationreporting.AuditEvent,
 ) api.OrganizationAuditEvent {
+	var scope *api.BreakGlassScope
+	if event.Scope != nil {
+		value := api.BreakGlassScope(*event.Scope)
+		scope = &value
+	}
+	var outcomeCode *api.BreakGlassAuditOutcomeCode
+	if event.OutcomeCode != nil {
+		value := api.BreakGlassAuditOutcomeCode(*event.OutcomeCode)
+		outcomeCode = &value
+	}
 	return api.OrganizationAuditEvent{
 		Action:           api.OrganizationAuditEventAction(event.Action),
 		ActorPrincipalId: event.ActorPrincipalID,
 		ActorSessionId:   event.ActorSessionID,
 		CreatedAt:        event.CreatedAt,
 		EventId:          event.EventID,
+		OutcomeCode:      outcomeCode,
 		ProjectId:        event.ProjectID,
+		Scope:            scope,
 		Source:           api.OrganizationAuditEventSource(event.Source),
 		TargetId:         event.TargetID,
 		TargetKind:       api.OrganizationAuditEventTargetKind(event.TargetKind),
+	}
+}
+
+func toAPIBreakGlassRequest(request breakglass.Request) api.BreakGlassRequest {
+	scopes := make([]api.BreakGlassScope, len(request.Scopes))
+	for index, scope := range request.Scopes {
+		scopes[index] = api.BreakGlassScope(scope)
+	}
+	return api.BreakGlassRequest{
+		ApprovalDeadlineAt:       request.ApprovalDeadlineAt,
+		ApprovedAt:               request.ApprovedAt,
+		ApproverOperatorId:       request.ApproverOperatorID,
+		ExpiresAt:                request.ExpiresAt,
+		GrantId:                  request.GrantID,
+		JobId:                    request.JobID,
+		OrganizationId:           request.OrganizationID,
+		ProjectId:                request.ProjectID,
+		ReasonCode:               api.BreakGlassReasonCode(request.ReasonCode),
+		RequestId:                request.ID,
+		RequestedAt:              request.RequestedAt,
+		RequestedDurationSeconds: request.RequestedDurationSeconds,
+		RequesterOperatorId:      request.RequesterOperatorID,
+		RevokedAt:                request.RevokedAt,
+		RevokedByOperatorId:      request.RevokedByOperatorID,
+		Scopes:                   scopes,
+		State:                    api.BreakGlassState(request.State),
+		TicketReference:          request.TicketReference,
+	}
+}
+
+func toAPIBreakGlassArtifactSet(artifactSet breakglass.ArtifactSet) api.BreakGlassArtifactSet {
+	artifacts := make([]api.BreakGlassArtifact, len(artifactSet.Artifacts))
+	for index, artifact := range artifactSet.Artifacts {
+		artifacts[index] = api.BreakGlassArtifact{
+			ArtifactId:           artifact.ID,
+			ContentType:          artifact.ContentType,
+			DownloadUrl:          artifact.DownloadURL,
+			DownloadUrlExpiresAt: artifact.DownloadURLExpiresAt,
+			Kind:                 api.BreakGlassArtifactKind(artifact.Kind),
+			Ordinal:              artifact.Ordinal,
+			Sha256:               hex.EncodeToString(artifact.SHA256[:]),
+			SizeBytes:            artifact.SizeBytes,
+		}
+	}
+	return api.BreakGlassArtifactSet{
+		ArtifactSetId:      artifactSet.ID,
+		Artifacts:          artifacts,
+		CommittedAt:        artifactSet.CommittedAt,
+		JobId:              artifactSet.JobID,
+		OrganizationId:     artifactSet.OrganizationID,
+		ProjectId:          artifactSet.ProjectID,
+		RetentionExpiresAt: artifactSet.RetentionExpiresAt,
 	}
 }
 

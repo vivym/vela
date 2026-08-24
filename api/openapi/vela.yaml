@@ -311,6 +311,176 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v1/platform/break-glass/requests:
+    post:
+      operationId: createBreakGlassRequest
+      summary: Request dual-control Platform Operator access to one Job
+      parameters:
+        - $ref: '#/components/parameters/BreakGlassIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBreakGlassRequest'
+      responses:
+        '201':
+          description: Break-glass request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassRequest'
+        '200':
+          description: Exact Break-glass request replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Exact Organization, Project, and Job target does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Idempotency-Key conflicts with another request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/break-glass/requests/{break_glass_request_id}:
+    get:
+      operationId: getBreakGlassRequest
+      summary: Get safe Break-glass request and grant status
+      parameters:
+        - $ref: '#/components/parameters/BreakGlassRequestId'
+      responses:
+        '200':
+          description: Safe Break-glass request and grant projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Break-glass request does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/break-glass/requests/{break_glass_request_id}/approval:
+    post:
+      operationId: approveBreakGlassRequest
+      summary: Approve a pending request as a distinct Platform Operator
+      parameters:
+        - $ref: '#/components/parameters/BreakGlassRequestId'
+      responses:
+        '200':
+          description: Break-glass grant activated or approval replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Break-glass request does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Approval window expired or another approver already won
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/break-glass/grants/{break_glass_grant_id}/revocation:
+    post:
+      operationId: revokeBreakGlassGrant
+      summary: Permanently revoke an active Break-glass grant
+      parameters:
+        - $ref: '#/components/parameters/BreakGlassGrantId'
+      responses:
+        '200':
+          description: Break-glass grant revoked or revocation replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Break-glass grant does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/break-glass/grants/{break_glass_grant_id}/request-content:
+    get:
+      operationId: getBreakGlassRequestContent
+      summary: Read one authorized Job request snapshot
+      parameters:
+        - $ref: '#/components/parameters/BreakGlassGrantId'
+      responses:
+        '200':
+          description: Exact authorized Job request snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassRequestContent'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Break-glass grant or target content does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/break-glass/grants/{break_glass_grant_id}/artifacts:
+    get:
+      operationId: getBreakGlassArtifacts
+      summary: Read one authorized committed ArtifactSet
+      parameters:
+        - $ref: '#/components/parameters/BreakGlassGrantId'
+      responses:
+        '200':
+          description: Safe Artifact metadata and grant-bounded exact-version URLs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakGlassArtifactSet'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Break-glass grant or committed ArtifactSet does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/projects/{project_id}/members:
     get:
       operationId: listProjectMembers
@@ -1017,6 +1187,20 @@ components:
       schema:
         type: string
         format: uuid
+    BreakGlassRequestId:
+      name: break_glass_request_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BreakGlassGrantId:
+      name: break_glass_grant_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     SubscriptionId:
       name: subscription_id
       in: path
@@ -1085,6 +1269,15 @@ components:
         minLength: 1
         maxLength: 128
         pattern: '^[A-Za-z0-9._:-]+$'
+    BreakGlassIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+        pattern: '^[A-Za-z0-9._:-]+$'
   headers:
     RetryAfter:
       schema:
@@ -1110,7 +1303,247 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    ServiceUnavailable:
+      description: A required identity, database, or signing dependency is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
+    BreakGlassScope:
+      type: string
+      enum:
+        - REQUEST_CONTENT_READ
+        - ARTIFACT_READ
+    BreakGlassReasonCode:
+      type: string
+      enum:
+        - CUSTOMER_SUPPORT
+        - SECURITY_INVESTIGATION
+        - SERVICE_RECOVERY
+        - LEGAL_RESPONSE
+    BreakGlassState:
+      type: string
+      enum:
+        - PENDING
+        - ACTIVE
+        - REVOKED
+        - EXPIRED
+    CreateBreakGlassRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - organization_id
+        - project_id
+        - job_id
+        - scopes
+        - reason_code
+        - ticket_reference
+        - requested_duration_seconds
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/BreakGlassScope'
+        reason_code:
+          $ref: '#/components/schemas/BreakGlassReasonCode'
+        ticket_reference:
+          type: string
+          minLength: 3
+          maxLength: 100
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:/-]{2,99}$'
+        requested_duration_seconds:
+          type: integer
+          format: int32
+          minimum: 60
+          maximum: 3600
+    BreakGlassRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - request_id
+        - organization_id
+        - project_id
+        - job_id
+        - scopes
+        - reason_code
+        - ticket_reference
+        - requested_duration_seconds
+        - requester_operator_id
+        - requested_at
+        - approval_deadline_at
+        - state
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/BreakGlassScope'
+        reason_code:
+          $ref: '#/components/schemas/BreakGlassReasonCode'
+        ticket_reference:
+          type: string
+          minLength: 3
+          maxLength: 100
+        requested_duration_seconds:
+          type: integer
+          format: int32
+          minimum: 60
+          maximum: 3600
+        requester_operator_id:
+          type: string
+          format: uuid
+        requested_at:
+          type: string
+          format: date-time
+        approval_deadline_at:
+          type: string
+          format: date-time
+        grant_id:
+          type: string
+          format: uuid
+        approver_operator_id:
+          type: string
+          format: uuid
+        approved_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+        revoked_by_operator_id:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/BreakGlassState'
+    BreakGlassRequestContent:
+      type: object
+      additionalProperties: false
+      required:
+        - organization_id
+        - project_id
+        - job_id
+        - request_content
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        request_content:
+          type: object
+          additionalProperties: true
+          x-go-type: json.RawMessage
+    BreakGlassArtifactSet:
+      type: object
+      additionalProperties: false
+      required:
+        - artifact_set_id
+        - organization_id
+        - project_id
+        - job_id
+        - retention_expires_at
+        - committed_at
+        - artifacts
+      properties:
+        artifact_set_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        retention_expires_at:
+          type: string
+          format: date-time
+        committed_at:
+          type: string
+          format: date-time
+        artifacts:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/BreakGlassArtifact'
+    BreakGlassArtifact:
+      type: object
+      additionalProperties: false
+      required:
+        - artifact_id
+        - kind
+        - ordinal
+        - size_bytes
+        - sha256
+        - content_type
+        - download_url
+        - download_url_expires_at
+      properties:
+        artifact_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - VIDEO
+            - THUMBNAIL
+        ordinal:
+          type: integer
+          format: int32
+          minimum: 0
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        content_type:
+          type: string
+          minLength: 1
+          maxLength: 200
+        download_url:
+          type: string
+          format: uri
+        download_url_expires_at:
+          type: string
+          format: date-time
     SubmitJobRequest:
       type: object
       additionalProperties: false
@@ -2047,6 +2480,7 @@ components:
             - HUMAN_IDENTITY
             - PROJECT_IDENTITY
             - SETTLEMENT_CONTACT
+            - BREAK_GLASS
         action:
           type: string
           enum:
@@ -2062,6 +2496,19 @@ components:
             - CREDENTIAL_REVOKED
             - SETTLEMENT_CONTACT_CREATED
             - SETTLEMENT_CONTACT_DISABLED
+            - REQUEST_CREATED
+            - GRANT_APPROVED
+            - GRANT_REVOKED
+            - REQUEST_CONTENT_AUTHORIZED
+            - REQUEST_CONTENT_DENIED
+            - ARTIFACT_AUTHORIZED
+            - ARTIFACT_DELIVERED
+            - ARTIFACT_DELIVERY_FAILED
+            - ARTIFACT_DENIED
+        scope:
+          $ref: '#/components/schemas/BreakGlassScope'
+        outcome_code:
+          $ref: '#/components/schemas/BreakGlassAuditOutcomeCode'
         project_id:
           type: string
           format: uuid
@@ -2078,6 +2525,7 @@ components:
             - SERVICE_PRINCIPAL
             - CREDENTIAL
             - SETTLEMENT_CONTACT
+            - JOB
         target_id:
           type: string
           format: uuid
@@ -2094,6 +2542,23 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OrganizationAuditEvent'
+    BreakGlassAuditOutcomeCode:
+      type: string
+      enum:
+        - CREATED
+        - APPROVED
+        - REVOKED
+        - ALLOWED
+        - SCOPE_DENIED
+        - GRANT_REVOKED
+        - GRANT_EXPIRED
+        - TARGET_NOT_FOUND
+        - CONTENT_DELETED
+        - CONTENT_EXPIRED
+        - CONTENT_UNAVAILABLE
+        - DELIVERED
+        - SIGNING_FAILED
+        - GRANT_INACTIVE
     CreateServicePrincipalRequest:
       type: object
       additionalProperties: false

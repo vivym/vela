@@ -334,6 +334,42 @@ func TestPresignedUploadPartBindsExactSessionSizeAndChecksum(t *testing.T) {
 	}
 }
 
+func TestPresignExactVersionUntilDoesNotOutliveGrant(t *testing.T) {
+	store, err := NewS3(S3Config{
+		Endpoint:        "https://s3.example.com",
+		Region:          "us-test-1",
+		Bucket:          "vela-artifacts",
+		AccessKeyID:     "test-access-key",
+		SecretAccessKey: "test-secret-key",
+		UsePathStyle:    true,
+		SignedGETTTL:    15 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("NewS3: %v", err)
+	}
+	now := time.Date(2026, time.August, 24, 8, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	signed, err := store.PresignExactVersionUntil(
+		context.Background(),
+		"artifacts/org/project/job/attempt/artifact/video.mp4",
+		"exact-version-id",
+		now.Add(5*time.Minute),
+	)
+	if err != nil {
+		t.Fatalf("PresignExactVersionUntil: %v", err)
+	}
+	parsed, err := url.Parse(signed.URL)
+	if err != nil {
+		t.Fatalf("parse signed Artifact URL: %v", err)
+	}
+	if !signed.IssuedAt.Equal(now) || !signed.ExpiresAt.Equal(now.Add(5*time.Minute)) ||
+		parsed.Path != "/vela-artifacts/artifacts/org/project/job/attempt/artifact/video.mp4" ||
+		parsed.Query().Get("versionId") != "exact-version-id" ||
+		parsed.Query().Get("X-Amz-Expires") != "300" {
+		t.Fatalf("grant-bounded signed Artifact read = %#v URL=%s", signed, parsed)
+	}
+}
+
 func TestBucketPrivacyPreflightRejectsAllowWithNotPrincipal(t *testing.T) {
 	policy := []byte(`{
 		"Version":"2012-10-17",

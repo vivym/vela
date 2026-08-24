@@ -425,7 +425,7 @@ func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) 
 	if contractedQueueProjection.Valid {
 		t.Fatalf("contracted request queue projection still exists: %s", contractedQueueProjection.String)
 	}
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 8); err != nil {
 		t.Fatalf("re-expand empty Hierarchical Scheduler migration: %v", err)
 	}
 	assertTableExists(t, database.Admin, "organization_capacity_shares")
@@ -454,7 +454,7 @@ func TestHierarchicalSchedulerMigrationEmptyDownUpRestoresSurface(t *testing.T) 
 		t.Fatalf("re-expanded request queue projection = %q", expandedQueueProjection)
 	}
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 16 {
+	if err != nil || version != 8 {
 		t.Fatalf("migration version after empty Scheduler Down/Up = %d error=%v", version, err)
 	}
 }
@@ -538,7 +538,7 @@ func TestHierarchicalSchedulerMigrationActiveAttemptIndexesRoundTrip(t *testing.
 			t.Fatalf("active Attempt index %s survived Scheduler migration Down", name)
 		}
 	}
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 8); err != nil {
 		t.Fatalf("re-expand Scheduler active Attempt indexes: %v", err)
 	}
 	assertIndexes()
@@ -553,12 +553,12 @@ func TestHierarchicalSchedulerMigrationDefaultPolicyCatalogDownUpRestoresSurface
 		t.Fatalf("contract default-policy Hierarchical Scheduler migration: %v", err)
 	}
 	assertTableDoesNotExist(t, database.Admin, "scheduler_dispatch_intents")
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 8); err != nil {
 		t.Fatalf("re-expand default-policy Hierarchical Scheduler migration: %v", err)
 	}
 	assertTableExists(t, database.Admin, "scheduler_dispatch_intents")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 16 {
+	if err != nil || version != 8 {
 		t.Fatalf("migration version after default-policy Down/Up = %d error=%v", version, err)
 	}
 }
@@ -918,7 +918,7 @@ func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	assertTableDoesNotExist(t, database.Admin, "artifact_uploads")
 	assertTableDoesNotExist(t, database.Admin, "artifact_sets")
 	assertTableDoesNotExist(t, database.Admin, "visible_completions")
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 7); err != nil {
 		t.Fatalf("re-expand empty Artifact finalization migration: %v", err)
 	}
 	assertTableExists(t, database.Admin, "artifacts")
@@ -926,7 +926,7 @@ func TestArtifactFinalizationMigrationEmptyDownUpRestoresSurface(t *testing.T) {
 	assertTableExists(t, database.Admin, "artifact_sets")
 	assertTableExists(t, database.Admin, "visible_completions")
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 16 {
+	if err != nil || version != 7 {
 		t.Fatalf("migration version after empty Down/Up = %d error=%v", version, err)
 	}
 }

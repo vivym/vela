@@ -25,16 +25,154 @@ import (
 
 // Defines values for ArtifactDownloadKind.
 const (
-	THUMBNAIL ArtifactDownloadKind = "THUMBNAIL"
-	VIDEO     ArtifactDownloadKind = "VIDEO"
+	ArtifactDownloadKindTHUMBNAIL ArtifactDownloadKind = "THUMBNAIL"
+	ArtifactDownloadKindVIDEO     ArtifactDownloadKind = "VIDEO"
 )
 
 // Valid indicates whether the value is a known member of the ArtifactDownloadKind enum.
 func (e ArtifactDownloadKind) Valid() bool {
 	switch e {
-	case THUMBNAIL:
+	case ArtifactDownloadKindTHUMBNAIL:
 		return true
-	case VIDEO:
+	case ArtifactDownloadKindVIDEO:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BreakGlassArtifactKind.
+const (
+	BreakGlassArtifactKindTHUMBNAIL BreakGlassArtifactKind = "THUMBNAIL"
+	BreakGlassArtifactKindVIDEO     BreakGlassArtifactKind = "VIDEO"
+)
+
+// Valid indicates whether the value is a known member of the BreakGlassArtifactKind enum.
+func (e BreakGlassArtifactKind) Valid() bool {
+	switch e {
+	case BreakGlassArtifactKindTHUMBNAIL:
+		return true
+	case BreakGlassArtifactKindVIDEO:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BreakGlassAuditOutcomeCode.
+const (
+	BreakGlassAuditOutcomeCodeALLOWED            BreakGlassAuditOutcomeCode = "ALLOWED"
+	BreakGlassAuditOutcomeCodeAPPROVED           BreakGlassAuditOutcomeCode = "APPROVED"
+	BreakGlassAuditOutcomeCodeCONTENTDELETED     BreakGlassAuditOutcomeCode = "CONTENT_DELETED"
+	BreakGlassAuditOutcomeCodeCONTENTEXPIRED     BreakGlassAuditOutcomeCode = "CONTENT_EXPIRED"
+	BreakGlassAuditOutcomeCodeCONTENTUNAVAILABLE BreakGlassAuditOutcomeCode = "CONTENT_UNAVAILABLE"
+	BreakGlassAuditOutcomeCodeCREATED            BreakGlassAuditOutcomeCode = "CREATED"
+	BreakGlassAuditOutcomeCodeDELIVERED          BreakGlassAuditOutcomeCode = "DELIVERED"
+	BreakGlassAuditOutcomeCodeGRANTEXPIRED       BreakGlassAuditOutcomeCode = "GRANT_EXPIRED"
+	BreakGlassAuditOutcomeCodeGRANTINACTIVE      BreakGlassAuditOutcomeCode = "GRANT_INACTIVE"
+	BreakGlassAuditOutcomeCodeGRANTREVOKED       BreakGlassAuditOutcomeCode = "GRANT_REVOKED"
+	BreakGlassAuditOutcomeCodeREVOKED            BreakGlassAuditOutcomeCode = "REVOKED"
+	BreakGlassAuditOutcomeCodeSCOPEDENIED        BreakGlassAuditOutcomeCode = "SCOPE_DENIED"
+	BreakGlassAuditOutcomeCodeSIGNINGFAILED      BreakGlassAuditOutcomeCode = "SIGNING_FAILED"
+	BreakGlassAuditOutcomeCodeTARGETNOTFOUND     BreakGlassAuditOutcomeCode = "TARGET_NOT_FOUND"
+)
+
+// Valid indicates whether the value is a known member of the BreakGlassAuditOutcomeCode enum.
+func (e BreakGlassAuditOutcomeCode) Valid() bool {
+	switch e {
+	case BreakGlassAuditOutcomeCodeALLOWED:
+		return true
+	case BreakGlassAuditOutcomeCodeAPPROVED:
+		return true
+	case BreakGlassAuditOutcomeCodeCONTENTDELETED:
+		return true
+	case BreakGlassAuditOutcomeCodeCONTENTEXPIRED:
+		return true
+	case BreakGlassAuditOutcomeCodeCONTENTUNAVAILABLE:
+		return true
+	case BreakGlassAuditOutcomeCodeCREATED:
+		return true
+	case BreakGlassAuditOutcomeCodeDELIVERED:
+		return true
+	case BreakGlassAuditOutcomeCodeGRANTEXPIRED:
+		return true
+	case BreakGlassAuditOutcomeCodeGRANTINACTIVE:
+		return true
+	case BreakGlassAuditOutcomeCodeGRANTREVOKED:
+		return true
+	case BreakGlassAuditOutcomeCodeREVOKED:
+		return true
+	case BreakGlassAuditOutcomeCodeSCOPEDENIED:
+		return true
+	case BreakGlassAuditOutcomeCodeSIGNINGFAILED:
+		return true
+	case BreakGlassAuditOutcomeCodeTARGETNOTFOUND:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BreakGlassReasonCode.
+const (
+	CUSTOMERSUPPORT       BreakGlassReasonCode = "CUSTOMER_SUPPORT"
+	LEGALRESPONSE         BreakGlassReasonCode = "LEGAL_RESPONSE"
+	SECURITYINVESTIGATION BreakGlassReasonCode = "SECURITY_INVESTIGATION"
+	SERVICERECOVERY       BreakGlassReasonCode = "SERVICE_RECOVERY"
+)
+
+// Valid indicates whether the value is a known member of the BreakGlassReasonCode enum.
+func (e BreakGlassReasonCode) Valid() bool {
+	switch e {
+	case CUSTOMERSUPPORT:
+		return true
+	case LEGALRESPONSE:
+		return true
+	case SECURITYINVESTIGATION:
+		return true
+	case SERVICERECOVERY:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BreakGlassScope.
+const (
+	ARTIFACTREAD       BreakGlassScope = "ARTIFACT_READ"
+	REQUESTCONTENTREAD BreakGlassScope = "REQUEST_CONTENT_READ"
+)
+
+// Valid indicates whether the value is a known member of the BreakGlassScope enum.
+func (e BreakGlassScope) Valid() bool {
+	switch e {
+	case ARTIFACTREAD:
+		return true
+	case REQUESTCONTENTREAD:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BreakGlassState.
+const (
+	BreakGlassStateACTIVE  BreakGlassState = "ACTIVE"
+	BreakGlassStateEXPIRED BreakGlassState = "EXPIRED"
+	BreakGlassStatePENDING BreakGlassState = "PENDING"
+	BreakGlassStateREVOKED BreakGlassState = "REVOKED"
+)
+
+// Valid indicates whether the value is a known member of the BreakGlassState enum.
+func (e BreakGlassState) Valid() bool {
+	switch e {
+	case BreakGlassStateACTIVE:
+		return true
+	case BreakGlassStateEXPIRED:
+		return true
+	case BreakGlassStatePENDING:
+		return true
+	case BreakGlassStateREVOKED:
 		return true
 	default:
 		return false
@@ -199,46 +337,73 @@ func (e JobState) Valid() bool {
 
 // Defines values for OrganizationAuditEventAction.
 const (
-	CREDENTIALISSUED          OrganizationAuditEventAction = "CREDENTIAL_ISSUED"
-	CREDENTIALREVOKED         OrganizationAuditEventAction = "CREDENTIAL_REVOKED"
-	HUMANMEMBERCREATED        OrganizationAuditEventAction = "HUMAN_MEMBER_CREATED"
-	HUMANMEMBERDISABLED       OrganizationAuditEventAction = "HUMAN_MEMBER_DISABLED"
-	ORGANIZATIONROLEASSIGNED  OrganizationAuditEventAction = "ORGANIZATION_ROLE_ASSIGNED"
-	ORGANIZATIONROLEREVOKED   OrganizationAuditEventAction = "ORGANIZATION_ROLE_REVOKED"
-	PROJECTROLEASSIGNED       OrganizationAuditEventAction = "PROJECT_ROLE_ASSIGNED"
-	PROJECTROLEREVOKED        OrganizationAuditEventAction = "PROJECT_ROLE_REVOKED"
-	SERVICEPRINCIPALCREATED   OrganizationAuditEventAction = "SERVICE_PRINCIPAL_CREATED"
-	SERVICEPRINCIPALDISABLED  OrganizationAuditEventAction = "SERVICE_PRINCIPAL_DISABLED"
-	SETTLEMENTCONTACTCREATED  OrganizationAuditEventAction = "SETTLEMENT_CONTACT_CREATED"
-	SETTLEMENTCONTACTDISABLED OrganizationAuditEventAction = "SETTLEMENT_CONTACT_DISABLED"
+	OrganizationAuditEventActionARTIFACTAUTHORIZED        OrganizationAuditEventAction = "ARTIFACT_AUTHORIZED"
+	OrganizationAuditEventActionARTIFACTDELIVERED         OrganizationAuditEventAction = "ARTIFACT_DELIVERED"
+	OrganizationAuditEventActionARTIFACTDELIVERYFAILED    OrganizationAuditEventAction = "ARTIFACT_DELIVERY_FAILED"
+	OrganizationAuditEventActionARTIFACTDENIED            OrganizationAuditEventAction = "ARTIFACT_DENIED"
+	OrganizationAuditEventActionCREDENTIALISSUED          OrganizationAuditEventAction = "CREDENTIAL_ISSUED"
+	OrganizationAuditEventActionCREDENTIALREVOKED         OrganizationAuditEventAction = "CREDENTIAL_REVOKED"
+	OrganizationAuditEventActionGRANTAPPROVED             OrganizationAuditEventAction = "GRANT_APPROVED"
+	OrganizationAuditEventActionGRANTREVOKED              OrganizationAuditEventAction = "GRANT_REVOKED"
+	OrganizationAuditEventActionHUMANMEMBERCREATED        OrganizationAuditEventAction = "HUMAN_MEMBER_CREATED"
+	OrganizationAuditEventActionHUMANMEMBERDISABLED       OrganizationAuditEventAction = "HUMAN_MEMBER_DISABLED"
+	OrganizationAuditEventActionORGANIZATIONROLEASSIGNED  OrganizationAuditEventAction = "ORGANIZATION_ROLE_ASSIGNED"
+	OrganizationAuditEventActionORGANIZATIONROLEREVOKED   OrganizationAuditEventAction = "ORGANIZATION_ROLE_REVOKED"
+	OrganizationAuditEventActionPROJECTROLEASSIGNED       OrganizationAuditEventAction = "PROJECT_ROLE_ASSIGNED"
+	OrganizationAuditEventActionPROJECTROLEREVOKED        OrganizationAuditEventAction = "PROJECT_ROLE_REVOKED"
+	OrganizationAuditEventActionREQUESTCONTENTAUTHORIZED  OrganizationAuditEventAction = "REQUEST_CONTENT_AUTHORIZED"
+	OrganizationAuditEventActionREQUESTCONTENTDENIED      OrganizationAuditEventAction = "REQUEST_CONTENT_DENIED"
+	OrganizationAuditEventActionREQUESTCREATED            OrganizationAuditEventAction = "REQUEST_CREATED"
+	OrganizationAuditEventActionSERVICEPRINCIPALCREATED   OrganizationAuditEventAction = "SERVICE_PRINCIPAL_CREATED"
+	OrganizationAuditEventActionSERVICEPRINCIPALDISABLED  OrganizationAuditEventAction = "SERVICE_PRINCIPAL_DISABLED"
+	OrganizationAuditEventActionSETTLEMENTCONTACTCREATED  OrganizationAuditEventAction = "SETTLEMENT_CONTACT_CREATED"
+	OrganizationAuditEventActionSETTLEMENTCONTACTDISABLED OrganizationAuditEventAction = "SETTLEMENT_CONTACT_DISABLED"
 )
 
 // Valid indicates whether the value is a known member of the OrganizationAuditEventAction enum.
 func (e OrganizationAuditEventAction) Valid() bool {
 	switch e {
-	case CREDENTIALISSUED:
+	case OrganizationAuditEventActionARTIFACTAUTHORIZED:
 		return true
-	case CREDENTIALREVOKED:
+	case OrganizationAuditEventActionARTIFACTDELIVERED:
 		return true
-	case HUMANMEMBERCREATED:
+	case OrganizationAuditEventActionARTIFACTDELIVERYFAILED:
 		return true
-	case HUMANMEMBERDISABLED:
+	case OrganizationAuditEventActionARTIFACTDENIED:
 		return true
-	case ORGANIZATIONROLEASSIGNED:
+	case OrganizationAuditEventActionCREDENTIALISSUED:
 		return true
-	case ORGANIZATIONROLEREVOKED:
+	case OrganizationAuditEventActionCREDENTIALREVOKED:
 		return true
-	case PROJECTROLEASSIGNED:
+	case OrganizationAuditEventActionGRANTAPPROVED:
 		return true
-	case PROJECTROLEREVOKED:
+	case OrganizationAuditEventActionGRANTREVOKED:
 		return true
-	case SERVICEPRINCIPALCREATED:
+	case OrganizationAuditEventActionHUMANMEMBERCREATED:
 		return true
-	case SERVICEPRINCIPALDISABLED:
+	case OrganizationAuditEventActionHUMANMEMBERDISABLED:
 		return true
-	case SETTLEMENTCONTACTCREATED:
+	case OrganizationAuditEventActionORGANIZATIONROLEASSIGNED:
 		return true
-	case SETTLEMENTCONTACTDISABLED:
+	case OrganizationAuditEventActionORGANIZATIONROLEREVOKED:
+		return true
+	case OrganizationAuditEventActionPROJECTROLEASSIGNED:
+		return true
+	case OrganizationAuditEventActionPROJECTROLEREVOKED:
+		return true
+	case OrganizationAuditEventActionREQUESTCONTENTAUTHORIZED:
+		return true
+	case OrganizationAuditEventActionREQUESTCONTENTDENIED:
+		return true
+	case OrganizationAuditEventActionREQUESTCREATED:
+		return true
+	case OrganizationAuditEventActionSERVICEPRINCIPALCREATED:
+		return true
+	case OrganizationAuditEventActionSERVICEPRINCIPALDISABLED:
+		return true
+	case OrganizationAuditEventActionSETTLEMENTCONTACTCREATED:
+		return true
+	case OrganizationAuditEventActionSETTLEMENTCONTACTDISABLED:
 		return true
 	default:
 		return false
@@ -247,6 +412,7 @@ func (e OrganizationAuditEventAction) Valid() bool {
 
 // Defines values for OrganizationAuditEventSource.
 const (
+	OrganizationAuditEventSourceBREAKGLASS        OrganizationAuditEventSource = "BREAK_GLASS"
 	OrganizationAuditEventSourceHUMANIDENTITY     OrganizationAuditEventSource = "HUMAN_IDENTITY"
 	OrganizationAuditEventSourcePROJECTIDENTITY   OrganizationAuditEventSource = "PROJECT_IDENTITY"
 	OrganizationAuditEventSourceSETTLEMENTCONTACT OrganizationAuditEventSource = "SETTLEMENT_CONTACT"
@@ -255,6 +421,8 @@ const (
 // Valid indicates whether the value is a known member of the OrganizationAuditEventSource enum.
 func (e OrganizationAuditEventSource) Valid() bool {
 	switch e {
+	case OrganizationAuditEventSourceBREAKGLASS:
+		return true
 	case OrganizationAuditEventSourceHUMANIDENTITY:
 		return true
 	case OrganizationAuditEventSourcePROJECTIDENTITY:
@@ -270,6 +438,7 @@ func (e OrganizationAuditEventSource) Valid() bool {
 const (
 	OrganizationAuditEventTargetKindCREDENTIAL        OrganizationAuditEventTargetKind = "CREDENTIAL"
 	OrganizationAuditEventTargetKindHUMANPRINCIPAL    OrganizationAuditEventTargetKind = "HUMAN_PRINCIPAL"
+	OrganizationAuditEventTargetKindJOB               OrganizationAuditEventTargetKind = "JOB"
 	OrganizationAuditEventTargetKindSERVICEPRINCIPAL  OrganizationAuditEventTargetKind = "SERVICE_PRINCIPAL"
 	OrganizationAuditEventTargetKindSETTLEMENTCONTACT OrganizationAuditEventTargetKind = "SETTLEMENT_CONTACT"
 )
@@ -280,6 +449,8 @@ func (e OrganizationAuditEventTargetKind) Valid() bool {
 	case OrganizationAuditEventTargetKindCREDENTIAL:
 		return true
 	case OrganizationAuditEventTargetKindHUMANPRINCIPAL:
+		return true
+	case OrganizationAuditEventTargetKindJOB:
 		return true
 	case OrganizationAuditEventTargetKindSERVICEPRINCIPAL:
 		return true
@@ -490,16 +661,16 @@ func (e WebhookEventType) Valid() bool {
 
 // Defines values for WebhookSubscriptionState.
 const (
-	ACTIVE   WebhookSubscriptionState = "ACTIVE"
-	DISABLED WebhookSubscriptionState = "DISABLED"
+	WebhookSubscriptionStateACTIVE   WebhookSubscriptionState = "ACTIVE"
+	WebhookSubscriptionStateDISABLED WebhookSubscriptionState = "DISABLED"
 )
 
 // Valid indicates whether the value is a known member of the WebhookSubscriptionState enum.
 func (e WebhookSubscriptionState) Valid() bool {
 	switch e {
-	case ACTIVE:
+	case WebhookSubscriptionStateACTIVE:
 		return true
-	case DISABLED:
+	case WebhookSubscriptionStateDISABLED:
 		return true
 	default:
 		return false
@@ -540,6 +711,74 @@ type AssignOrganizationRoleRequest struct {
 type AssignProjectRoleRequest struct {
 	Role ProjectRole `json:"role"`
 }
+
+// BreakGlassArtifact defines model for BreakGlassArtifact.
+type BreakGlassArtifact struct {
+	ArtifactId           openapi_types.UUID     `json:"artifact_id"`
+	ContentType          string                 `json:"content_type"`
+	DownloadUrl          string                 `json:"download_url"`
+	DownloadUrlExpiresAt time.Time              `json:"download_url_expires_at"`
+	Kind                 BreakGlassArtifactKind `json:"kind"`
+	Ordinal              int32                  `json:"ordinal"`
+	Sha256               string                 `json:"sha256"`
+	SizeBytes            int64                  `json:"size_bytes"`
+}
+
+// BreakGlassArtifactKind defines model for BreakGlassArtifact.Kind.
+type BreakGlassArtifactKind string
+
+// BreakGlassArtifactSet defines model for BreakGlassArtifactSet.
+type BreakGlassArtifactSet struct {
+	ArtifactSetId      openapi_types.UUID   `json:"artifact_set_id"`
+	Artifacts          []BreakGlassArtifact `json:"artifacts"`
+	CommittedAt        time.Time            `json:"committed_at"`
+	JobId              openapi_types.UUID   `json:"job_id"`
+	OrganizationId     openapi_types.UUID   `json:"organization_id"`
+	ProjectId          openapi_types.UUID   `json:"project_id"`
+	RetentionExpiresAt time.Time            `json:"retention_expires_at"`
+}
+
+// BreakGlassAuditOutcomeCode defines model for BreakGlassAuditOutcomeCode.
+type BreakGlassAuditOutcomeCode string
+
+// BreakGlassReasonCode defines model for BreakGlassReasonCode.
+type BreakGlassReasonCode string
+
+// BreakGlassRequest defines model for BreakGlassRequest.
+type BreakGlassRequest struct {
+	ApprovalDeadlineAt       time.Time            `json:"approval_deadline_at"`
+	ApprovedAt               *time.Time           `json:"approved_at,omitempty"`
+	ApproverOperatorId       *openapi_types.UUID  `json:"approver_operator_id,omitempty"`
+	ExpiresAt                *time.Time           `json:"expires_at,omitempty"`
+	GrantId                  *openapi_types.UUID  `json:"grant_id,omitempty"`
+	JobId                    openapi_types.UUID   `json:"job_id"`
+	OrganizationId           openapi_types.UUID   `json:"organization_id"`
+	ProjectId                openapi_types.UUID   `json:"project_id"`
+	ReasonCode               BreakGlassReasonCode `json:"reason_code"`
+	RequestId                openapi_types.UUID   `json:"request_id"`
+	RequestedAt              time.Time            `json:"requested_at"`
+	RequestedDurationSeconds int32                `json:"requested_duration_seconds"`
+	RequesterOperatorId      openapi_types.UUID   `json:"requester_operator_id"`
+	RevokedAt                *time.Time           `json:"revoked_at,omitempty"`
+	RevokedByOperatorId      *openapi_types.UUID  `json:"revoked_by_operator_id,omitempty"`
+	Scopes                   []BreakGlassScope    `json:"scopes"`
+	State                    BreakGlassState      `json:"state"`
+	TicketReference          string               `json:"ticket_reference"`
+}
+
+// BreakGlassRequestContent defines model for BreakGlassRequestContent.
+type BreakGlassRequestContent struct {
+	JobId          openapi_types.UUID `json:"job_id"`
+	OrganizationId openapi_types.UUID `json:"organization_id"`
+	ProjectId      openapi_types.UUID `json:"project_id"`
+	RequestContent json.RawMessage    `json:"request_content"`
+}
+
+// BreakGlassScope defines model for BreakGlassScope.
+type BreakGlassScope string
+
+// BreakGlassState defines model for BreakGlassState.
+type BreakGlassState string
 
 // CancelDecision defines model for CancelDecision.
 type CancelDecision string
@@ -602,6 +841,17 @@ type ContentDeletionRequestStatus struct {
 
 // ContentDeletionRequestStatusState defines model for ContentDeletionRequestStatus.State.
 type ContentDeletionRequestStatusState string
+
+// CreateBreakGlassRequest defines model for CreateBreakGlassRequest.
+type CreateBreakGlassRequest struct {
+	JobId                    openapi_types.UUID   `json:"job_id"`
+	OrganizationId           openapi_types.UUID   `json:"organization_id"`
+	ProjectId                openapi_types.UUID   `json:"project_id"`
+	ReasonCode               BreakGlassReasonCode `json:"reason_code"`
+	RequestedDurationSeconds int32                `json:"requested_duration_seconds"`
+	Scopes                   []BreakGlassScope    `json:"scopes"`
+	TicketReference          string               `json:"ticket_reference"`
+}
 
 // CreateHumanMemberRequest defines model for CreateHumanMemberRequest.
 type CreateHumanMemberRequest struct {
@@ -710,7 +960,9 @@ type OrganizationAuditEvent struct {
 	ActorSessionId   openapi_types.UUID               `json:"actor_session_id"`
 	CreatedAt        time.Time                        `json:"created_at"`
 	EventId          openapi_types.UUID               `json:"event_id"`
+	OutcomeCode      *BreakGlassAuditOutcomeCode      `json:"outcome_code,omitempty"`
 	ProjectId        *openapi_types.UUID              `json:"project_id,omitempty"`
+	Scope            *BreakGlassScope                 `json:"scope,omitempty"`
 	Source           OrganizationAuditEventSource     `json:"source"`
 	TargetId         openapi_types.UUID               `json:"target_id"`
 	TargetKind       OrganizationAuditEventTargetKind `json:"target_kind"`
@@ -1013,6 +1265,15 @@ type WebhookSubscriptionList struct {
 // WebhookSubscriptionState defines model for WebhookSubscriptionState.
 type WebhookSubscriptionState string
 
+// BreakGlassGrantId defines model for BreakGlassGrantId.
+type BreakGlassGrantId = openapi_types.UUID
+
+// BreakGlassIdempotencyKey defines model for BreakGlassIdempotencyKey.
+type BreakGlassIdempotencyKey = string
+
+// BreakGlassRequestId defines model for BreakGlassRequestId.
+type BreakGlassRequestId = openapi_types.UUID
+
 // ContactId defines model for ContactId.
 type ContactId = openapi_types.UUID
 
@@ -1067,6 +1328,9 @@ type BadRequest = Error
 // Forbidden defines model for Forbidden.
 type Forbidden = Error
 
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = Error
+
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = Error
 
@@ -1094,6 +1358,11 @@ type ListHumanMembersParams struct {
 type GetOrganizationUsageParams struct {
 	From UsageFrom `form:"from" json:"from"`
 	To   UsageTo   `form:"to" json:"to"`
+}
+
+// CreateBreakGlassRequestParams defines parameters for CreateBreakGlassRequest.
+type CreateBreakGlassRequestParams struct {
+	IdempotencyKey BreakGlassIdempotencyKey `json:"Idempotency-Key"`
 }
 
 // SubmitJobParams defines parameters for SubmitJob.
@@ -1139,6 +1408,9 @@ type CreateHumanMemberJSONRequestBody = CreateHumanMemberRequest
 
 // AssignOrganizationRoleJSONRequestBody defines body for AssignOrganizationRole for application/json ContentType.
 type AssignOrganizationRoleJSONRequestBody = AssignOrganizationRoleRequest
+
+// CreateBreakGlassRequestJSONRequestBody defines body for CreateBreakGlassRequest for application/json ContentType.
+type CreateBreakGlassRequestJSONRequestBody = CreateBreakGlassRequest
 
 // SubmitJobJSONRequestBody defines body for SubmitJob for application/json ContentType.
 type SubmitJobJSONRequestBody = SubmitJobRequest
@@ -1196,6 +1468,24 @@ type ServerInterface interface {
 	// GetOrganizationUsage Read bounded non-content Organization usage
 	// (GET /v1/organizations/{organization_id}/usage)
 	GetOrganizationUsage(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params GetOrganizationUsageParams)
+	// GetBreakGlassArtifacts Read one authorized committed ArtifactSet
+	// (GET /v1/platform/break-glass/grants/{break_glass_grant_id}/artifacts)
+	GetBreakGlassArtifacts(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId)
+	// GetBreakGlassRequestContent Read one authorized Job request snapshot
+	// (GET /v1/platform/break-glass/grants/{break_glass_grant_id}/request-content)
+	GetBreakGlassRequestContent(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId)
+	// RevokeBreakGlassGrant Permanently revoke an active Break-glass grant
+	// (POST /v1/platform/break-glass/grants/{break_glass_grant_id}/revocation)
+	RevokeBreakGlassGrant(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId)
+	// CreateBreakGlassRequest Request dual-control Platform Operator access to one Job
+	// (POST /v1/platform/break-glass/requests)
+	CreateBreakGlassRequest(w http.ResponseWriter, r *http.Request, params CreateBreakGlassRequestParams)
+	// GetBreakGlassRequest Get safe Break-glass request and grant status
+	// (GET /v1/platform/break-glass/requests/{break_glass_request_id})
+	GetBreakGlassRequest(w http.ResponseWriter, r *http.Request, breakGlassRequestId BreakGlassRequestId)
+	// ApproveBreakGlassRequest Approve a pending request as a distinct Platform Operator
+	// (POST /v1/platform/break-glass/requests/{break_glass_request_id}/approval)
+	ApproveBreakGlassRequest(w http.ResponseWriter, r *http.Request, breakGlassRequestId BreakGlassRequestId)
 	// GetContentDeletionRequest Get safe aggregate status for a Content Deletion request
 	// (GET /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id})
 	GetContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, contentDeletionRequestId ContentDeletionRequestId)
@@ -1340,6 +1630,42 @@ func (_ Unimplemented) RevokeOrganizationRole(w http.ResponseWriter, r *http.Req
 // GetOrganizationUsage Read bounded non-content Organization usage
 // (GET /v1/organizations/{organization_id}/usage)
 func (_ Unimplemented) GetOrganizationUsage(w http.ResponseWriter, r *http.Request, organizationId OrganizationId, params GetOrganizationUsageParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetBreakGlassArtifacts Read one authorized committed ArtifactSet
+// (GET /v1/platform/break-glass/grants/{break_glass_grant_id}/artifacts)
+func (_ Unimplemented) GetBreakGlassArtifacts(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetBreakGlassRequestContent Read one authorized Job request snapshot
+// (GET /v1/platform/break-glass/grants/{break_glass_grant_id}/request-content)
+func (_ Unimplemented) GetBreakGlassRequestContent(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeBreakGlassGrant Permanently revoke an active Break-glass grant
+// (POST /v1/platform/break-glass/grants/{break_glass_grant_id}/revocation)
+func (_ Unimplemented) RevokeBreakGlassGrant(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateBreakGlassRequest Request dual-control Platform Operator access to one Job
+// (POST /v1/platform/break-glass/requests)
+func (_ Unimplemented) CreateBreakGlassRequest(w http.ResponseWriter, r *http.Request, params CreateBreakGlassRequestParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetBreakGlassRequest Get safe Break-glass request and grant status
+// (GET /v1/platform/break-glass/requests/{break_glass_request_id})
+func (_ Unimplemented) GetBreakGlassRequest(w http.ResponseWriter, r *http.Request, breakGlassRequestId BreakGlassRequestId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ApproveBreakGlassRequest Approve a pending request as a distinct Platform Operator
+// (POST /v1/platform/break-glass/requests/{break_glass_request_id}/approval)
+func (_ Unimplemented) ApproveBreakGlassRequest(w http.ResponseWriter, r *http.Request, breakGlassRequestId BreakGlassRequestId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1931,6 +2257,181 @@ func (siw *ServerInterfaceWrapper) GetOrganizationUsage(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetOrganizationUsage(w, r, organizationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBreakGlassArtifacts operation middleware
+func (siw *ServerInterfaceWrapper) GetBreakGlassArtifacts(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "break_glass_grant_id" -------------
+	var breakGlassGrantId BreakGlassGrantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "break_glass_grant_id", chi.URLParam(r, "break_glass_grant_id"), &breakGlassGrantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "break_glass_grant_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBreakGlassArtifacts(w, r, breakGlassGrantId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBreakGlassRequestContent operation middleware
+func (siw *ServerInterfaceWrapper) GetBreakGlassRequestContent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "break_glass_grant_id" -------------
+	var breakGlassGrantId BreakGlassGrantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "break_glass_grant_id", chi.URLParam(r, "break_glass_grant_id"), &breakGlassGrantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "break_glass_grant_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBreakGlassRequestContent(w, r, breakGlassGrantId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeBreakGlassGrant operation middleware
+func (siw *ServerInterfaceWrapper) RevokeBreakGlassGrant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "break_glass_grant_id" -------------
+	var breakGlassGrantId BreakGlassGrantId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "break_glass_grant_id", chi.URLParam(r, "break_glass_grant_id"), &breakGlassGrantId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "break_glass_grant_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeBreakGlassGrant(w, r, breakGlassGrantId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateBreakGlassRequest operation middleware
+func (siw *ServerInterfaceWrapper) CreateBreakGlassRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateBreakGlassRequestParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey BreakGlassIdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBreakGlassRequest(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBreakGlassRequest operation middleware
+func (siw *ServerInterfaceWrapper) GetBreakGlassRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "break_glass_request_id" -------------
+	var breakGlassRequestId BreakGlassRequestId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "break_glass_request_id", chi.URLParam(r, "break_glass_request_id"), &breakGlassRequestId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "break_glass_request_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBreakGlassRequest(w, r, breakGlassRequestId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApproveBreakGlassRequest operation middleware
+func (siw *ServerInterfaceWrapper) ApproveBreakGlassRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "break_glass_request_id" -------------
+	var breakGlassRequestId BreakGlassRequestId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "break_glass_request_id", chi.URLParam(r, "break_glass_request_id"), &breakGlassRequestId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "break_glass_request_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveBreakGlassRequest(w, r, breakGlassRequestId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2986,6 +3487,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/v1/organizations/{organization_id}/audit-events", wrapper.ListOrganizationAuditEvents)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/platform/break-glass/requests", wrapper.CreateBreakGlassRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/platform/break-glass/requests/{break_glass_request_id}", wrapper.GetBreakGlassRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/platform/break-glass/requests/{break_glass_request_id}/approval", wrapper.ApproveBreakGlassRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/platform/break-glass/grants/{break_glass_grant_id}/revocation", wrapper.RevokeBreakGlassGrant)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/platform/break-glass/grants/{break_glass_grant_id}/request-content", wrapper.GetBreakGlassRequestContent)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/platform/break-glass/grants/{break_glass_grant_id}/artifacts", wrapper.GetBreakGlassArtifacts)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/members", wrapper.ListProjectMembers)
 	})
 	r.Group(func(r chi.Router) {
@@ -3061,6 +3580,8 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 type BadRequestJSONResponse Error
 
 type ForbiddenJSONResponse Error
+
+type ServiceUnavailableJSONResponse Error
 
 type UnauthorizedJSONResponse Error
 
@@ -3953,6 +4474,489 @@ func (response GetOrganizationUsage403JSONResponse) VisitGetOrganizationUsageRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassArtifactsRequestObject struct {
+	BreakGlassGrantId BreakGlassGrantId `json:"break_glass_grant_id"`
+}
+
+type GetBreakGlassArtifactsResponseObject interface {
+	VisitGetBreakGlassArtifactsResponse(w http.ResponseWriter) error
+}
+
+type GetBreakGlassArtifacts200JSONResponse BreakGlassArtifactSet
+
+func (response GetBreakGlassArtifacts200JSONResponse) VisitGetBreakGlassArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassArtifacts401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetBreakGlassArtifacts401JSONResponse) VisitGetBreakGlassArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassArtifacts403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetBreakGlassArtifacts403JSONResponse) VisitGetBreakGlassArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassArtifacts404JSONResponse Error
+
+func (response GetBreakGlassArtifacts404JSONResponse) VisitGetBreakGlassArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassArtifacts503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetBreakGlassArtifacts503JSONResponse) VisitGetBreakGlassArtifactsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequestContentRequestObject struct {
+	BreakGlassGrantId BreakGlassGrantId `json:"break_glass_grant_id"`
+}
+
+type GetBreakGlassRequestContentResponseObject interface {
+	VisitGetBreakGlassRequestContentResponse(w http.ResponseWriter) error
+}
+
+type GetBreakGlassRequestContent200JSONResponse BreakGlassRequestContent
+
+func (response GetBreakGlassRequestContent200JSONResponse) VisitGetBreakGlassRequestContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequestContent401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetBreakGlassRequestContent401JSONResponse) VisitGetBreakGlassRequestContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequestContent403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetBreakGlassRequestContent403JSONResponse) VisitGetBreakGlassRequestContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequestContent404JSONResponse Error
+
+func (response GetBreakGlassRequestContent404JSONResponse) VisitGetBreakGlassRequestContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequestContent503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetBreakGlassRequestContent503JSONResponse) VisitGetBreakGlassRequestContentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeBreakGlassGrantRequestObject struct {
+	BreakGlassGrantId BreakGlassGrantId `json:"break_glass_grant_id"`
+}
+
+type RevokeBreakGlassGrantResponseObject interface {
+	VisitRevokeBreakGlassGrantResponse(w http.ResponseWriter) error
+}
+
+type RevokeBreakGlassGrant200JSONResponse BreakGlassRequest
+
+func (response RevokeBreakGlassGrant200JSONResponse) VisitRevokeBreakGlassGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeBreakGlassGrant401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RevokeBreakGlassGrant401JSONResponse) VisitRevokeBreakGlassGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeBreakGlassGrant404JSONResponse Error
+
+func (response RevokeBreakGlassGrant404JSONResponse) VisitRevokeBreakGlassGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeBreakGlassGrant503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeBreakGlassGrant503JSONResponse) VisitRevokeBreakGlassGrantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBreakGlassRequestRequestObject struct {
+	Params CreateBreakGlassRequestParams
+	Body   *CreateBreakGlassRequestJSONRequestBody
+}
+
+type CreateBreakGlassRequestResponseObject interface {
+	VisitCreateBreakGlassRequestResponse(w http.ResponseWriter) error
+}
+
+type CreateBreakGlassRequest200JSONResponse BreakGlassRequest
+
+func (response CreateBreakGlassRequest200JSONResponse) VisitCreateBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBreakGlassRequest201JSONResponse BreakGlassRequest
+
+func (response CreateBreakGlassRequest201JSONResponse) VisitCreateBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBreakGlassRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateBreakGlassRequest400JSONResponse) VisitCreateBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBreakGlassRequest401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateBreakGlassRequest401JSONResponse) VisitCreateBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBreakGlassRequest404JSONResponse Error
+
+func (response CreateBreakGlassRequest404JSONResponse) VisitCreateBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBreakGlassRequest409JSONResponse Error
+
+func (response CreateBreakGlassRequest409JSONResponse) VisitCreateBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBreakGlassRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateBreakGlassRequest503JSONResponse) VisitCreateBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequestRequestObject struct {
+	BreakGlassRequestId BreakGlassRequestId `json:"break_glass_request_id"`
+}
+
+type GetBreakGlassRequestResponseObject interface {
+	VisitGetBreakGlassRequestResponse(w http.ResponseWriter) error
+}
+
+type GetBreakGlassRequest200JSONResponse BreakGlassRequest
+
+func (response GetBreakGlassRequest200JSONResponse) VisitGetBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequest401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetBreakGlassRequest401JSONResponse) VisitGetBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequest404JSONResponse Error
+
+func (response GetBreakGlassRequest404JSONResponse) VisitGetBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBreakGlassRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetBreakGlassRequest503JSONResponse) VisitGetBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBreakGlassRequestRequestObject struct {
+	BreakGlassRequestId BreakGlassRequestId `json:"break_glass_request_id"`
+}
+
+type ApproveBreakGlassRequestResponseObject interface {
+	VisitApproveBreakGlassRequestResponse(w http.ResponseWriter) error
+}
+
+type ApproveBreakGlassRequest200JSONResponse BreakGlassRequest
+
+func (response ApproveBreakGlassRequest200JSONResponse) VisitApproveBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBreakGlassRequest401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ApproveBreakGlassRequest401JSONResponse) VisitApproveBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBreakGlassRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ApproveBreakGlassRequest403JSONResponse) VisitApproveBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBreakGlassRequest404JSONResponse Error
+
+func (response ApproveBreakGlassRequest404JSONResponse) VisitApproveBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBreakGlassRequest409JSONResponse Error
+
+func (response ApproveBreakGlassRequest409JSONResponse) VisitApproveBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveBreakGlassRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApproveBreakGlassRequest503JSONResponse) VisitApproveBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -5826,6 +6830,24 @@ type StrictServerInterface interface {
 	// GetOrganizationUsage Read bounded non-content Organization usage
 	// (GET /v1/organizations/{organization_id}/usage)
 	GetOrganizationUsage(ctx context.Context, request GetOrganizationUsageRequestObject) (GetOrganizationUsageResponseObject, error)
+	// GetBreakGlassArtifacts Read one authorized committed ArtifactSet
+	// (GET /v1/platform/break-glass/grants/{break_glass_grant_id}/artifacts)
+	GetBreakGlassArtifacts(ctx context.Context, request GetBreakGlassArtifactsRequestObject) (GetBreakGlassArtifactsResponseObject, error)
+	// GetBreakGlassRequestContent Read one authorized Job request snapshot
+	// (GET /v1/platform/break-glass/grants/{break_glass_grant_id}/request-content)
+	GetBreakGlassRequestContent(ctx context.Context, request GetBreakGlassRequestContentRequestObject) (GetBreakGlassRequestContentResponseObject, error)
+	// RevokeBreakGlassGrant Permanently revoke an active Break-glass grant
+	// (POST /v1/platform/break-glass/grants/{break_glass_grant_id}/revocation)
+	RevokeBreakGlassGrant(ctx context.Context, request RevokeBreakGlassGrantRequestObject) (RevokeBreakGlassGrantResponseObject, error)
+	// CreateBreakGlassRequest Request dual-control Platform Operator access to one Job
+	// (POST /v1/platform/break-glass/requests)
+	CreateBreakGlassRequest(ctx context.Context, request CreateBreakGlassRequestRequestObject) (CreateBreakGlassRequestResponseObject, error)
+	// GetBreakGlassRequest Get safe Break-glass request and grant status
+	// (GET /v1/platform/break-glass/requests/{break_glass_request_id})
+	GetBreakGlassRequest(ctx context.Context, request GetBreakGlassRequestRequestObject) (GetBreakGlassRequestResponseObject, error)
+	// ApproveBreakGlassRequest Approve a pending request as a distinct Platform Operator
+	// (POST /v1/platform/break-glass/requests/{break_glass_request_id}/approval)
+	ApproveBreakGlassRequest(ctx context.Context, request ApproveBreakGlassRequestRequestObject) (ApproveBreakGlassRequestResponseObject, error)
 	// GetContentDeletionRequest Get safe aggregate status for a Content Deletion request
 	// (GET /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id})
 	GetContentDeletionRequest(ctx context.Context, request GetContentDeletionRequestRequestObject) (GetContentDeletionRequestResponseObject, error)
@@ -6272,6 +7294,169 @@ func (sh *strictHandler) GetOrganizationUsage(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetOrganizationUsageResponseObject); ok {
 		if err := validResponse.VisitGetOrganizationUsageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBreakGlassArtifacts operation middleware
+func (sh *strictHandler) GetBreakGlassArtifacts(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId) {
+	var request GetBreakGlassArtifactsRequestObject
+
+	request.BreakGlassGrantId = breakGlassGrantId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBreakGlassArtifacts(ctx, request.(GetBreakGlassArtifactsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBreakGlassArtifacts")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBreakGlassArtifactsResponseObject); ok {
+		if err := validResponse.VisitGetBreakGlassArtifactsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBreakGlassRequestContent operation middleware
+func (sh *strictHandler) GetBreakGlassRequestContent(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId) {
+	var request GetBreakGlassRequestContentRequestObject
+
+	request.BreakGlassGrantId = breakGlassGrantId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBreakGlassRequestContent(ctx, request.(GetBreakGlassRequestContentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBreakGlassRequestContent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBreakGlassRequestContentResponseObject); ok {
+		if err := validResponse.VisitGetBreakGlassRequestContentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeBreakGlassGrant operation middleware
+func (sh *strictHandler) RevokeBreakGlassGrant(w http.ResponseWriter, r *http.Request, breakGlassGrantId BreakGlassGrantId) {
+	var request RevokeBreakGlassGrantRequestObject
+
+	request.BreakGlassGrantId = breakGlassGrantId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeBreakGlassGrant(ctx, request.(RevokeBreakGlassGrantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeBreakGlassGrant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeBreakGlassGrantResponseObject); ok {
+		if err := validResponse.VisitRevokeBreakGlassGrantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateBreakGlassRequest operation middleware
+func (sh *strictHandler) CreateBreakGlassRequest(w http.ResponseWriter, r *http.Request, params CreateBreakGlassRequestParams) {
+	var request CreateBreakGlassRequestRequestObject
+
+	request.Params = params
+
+	var body CreateBreakGlassRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBreakGlassRequest(ctx, request.(CreateBreakGlassRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBreakGlassRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBreakGlassRequestResponseObject); ok {
+		if err := validResponse.VisitCreateBreakGlassRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBreakGlassRequest operation middleware
+func (sh *strictHandler) GetBreakGlassRequest(w http.ResponseWriter, r *http.Request, breakGlassRequestId BreakGlassRequestId) {
+	var request GetBreakGlassRequestRequestObject
+
+	request.BreakGlassRequestId = breakGlassRequestId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBreakGlassRequest(ctx, request.(GetBreakGlassRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBreakGlassRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBreakGlassRequestResponseObject); ok {
+		if err := validResponse.VisitGetBreakGlassRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApproveBreakGlassRequest operation middleware
+func (sh *strictHandler) ApproveBreakGlassRequest(w http.ResponseWriter, r *http.Request, breakGlassRequestId BreakGlassRequestId) {
+	var request ApproveBreakGlassRequestRequestObject
+
+	request.BreakGlassRequestId = breakGlassRequestId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApproveBreakGlassRequest(ctx, request.(ApproveBreakGlassRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApproveBreakGlassRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApproveBreakGlassRequestResponseObject); ok {
+		if err := validResponse.VisitApproveBreakGlassRequestResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -6949,113 +8134,131 @@ func (sh *strictHandler) RotateWebhookSubscriptionSecret(w http.ResponseWriter, 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"AP//",
+	"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",
+	"ds++/3r/PwEAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

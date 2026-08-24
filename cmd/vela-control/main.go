@@ -27,6 +27,7 @@ import (
 	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/artifactvalidator"
 	"github.com/vivym/vela/internal/billingexport"
+	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/finalizationreconciler"
@@ -94,6 +95,9 @@ type config struct {
 	organizationAuditDatabaseURL      string
 	retentionRequestDatabaseURL       string
 	retentionDatabaseURL              string
+	platformOperatorAuthDatabaseURL   string
+	breakGlassRequestDatabaseURL      string
+	breakGlassAuditDatabaseURL        string
 	retentionReconcilerID             string
 	retentionTick                     time.Duration
 	retentionClaimTTL                 time.Duration
@@ -130,6 +134,9 @@ type config struct {
 	oidcIssuer                        string
 	oidcAudience                      string
 	oidcJWKSURL                       string
+	platformOIDCIssuer                string
+	platformOIDCAudience              string
+	platformOIDCJWKSURL               string
 	natsURL                           string
 	natsCredentials                   string
 	natsRootCA                        string
@@ -222,6 +229,19 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Human OIDC verifier: %w", err)
 	}
+	platformOIDCVerifier, err := identity.NewRemoteOIDCTokenVerifier(identity.OIDCVerifierConfig{
+		Issuer:     configuration.platformOIDCIssuer,
+		Audience:   configuration.platformOIDCAudience,
+		JWKSURL:    configuration.platformOIDCJWKSURL,
+		HTTPClient: &http.Client{Timeout: defaultOIDCJWKSHTTPTimeout},
+	})
+	if err != nil {
+		return fmt.Errorf("configure Platform Operator OIDC verifier: %w", err)
+	}
+	if configuration.platformOIDCIssuer == configuration.oidcIssuer &&
+		configuration.platformOIDCAudience == configuration.oidcAudience {
+		return errors.New("trust domains for Platform Operator and Customer Human OIDC must differ")
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -300,6 +320,36 @@ func run() error {
 		return fmt.Errorf("open retention request database pool: %w", err)
 	}
 	defer retentionRequestPool.Close()
+	platformOperatorAuthPool, err := openPool(
+		ctx,
+		configuration.platformOperatorAuthDatabaseURL,
+		5,
+		veladb.RolePlatformOperatorAuth,
+	)
+	if err != nil {
+		return fmt.Errorf("open Platform Operator auth database pool: %w", err)
+	}
+	defer platformOperatorAuthPool.Close()
+	breakGlassRequestPool, err := openPool(
+		ctx,
+		configuration.breakGlassRequestDatabaseURL,
+		10,
+		veladb.RoleBreakGlassRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open Break-glass request database pool: %w", err)
+	}
+	defer breakGlassRequestPool.Close()
+	breakGlassAuditPool, err := openPool(
+		ctx,
+		configuration.breakGlassAuditDatabaseURL,
+		10,
+		veladb.RoleBreakGlassAuditRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open Break-glass audit request database pool: %w", err)
+	}
+	defer breakGlassAuditPool.Close()
 	retentionPool, err := openPool(
 		ctx,
 		configuration.retentionDatabaseURL,
@@ -559,6 +609,7 @@ func run() error {
 	organizationReporting, err := organizationreporting.NewService(
 		organizationBillingPool,
 		organizationAuditPool,
+		breakGlassAuditPool,
 	)
 	if err != nil {
 		return fmt.Errorf("configure Organization reporting service: %w", err)
@@ -566,6 +617,10 @@ func run() error {
 	retentionService, err := retention.NewService(retentionRequestPool)
 	if err != nil {
 		return fmt.Errorf("configure retention service: %w", err)
+	}
+	breakGlassService, err := breakglass.NewService(breakGlassRequestPool, artifactStore)
+	if err != nil {
+		return fmt.Errorf("configure Break-glass service: %w", err)
 	}
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator: identity.NewAuthenticatorWithHumanMembershipOIDC(
@@ -575,6 +630,11 @@ func run() error {
 			configuration.credentialPepper,
 			oidcVerifier,
 		),
+		PlatformAuthenticator: breakglass.NewAuthenticator(
+			platformOperatorAuthPool,
+			platformOIDCVerifier,
+		),
+		BreakGlass:             breakGlassService,
 		IdentityAdministration: identityAdministration,
 		OrganizationReporting:  organizationReporting,
 		Retention:              retentionService,
@@ -602,6 +662,9 @@ func run() error {
 			organizationBillingPool,
 			organizationAuditPool,
 			retentionRequestPool,
+			platformOperatorAuthPool,
+			breakGlassRequestPool,
+			breakGlassAuditPool,
 			retentionPool,
 			requestPool,
 			artifactRequestPool,
@@ -788,6 +851,9 @@ func loadConfig() (config, error) {
 		organizationAuditDatabaseURL:      os.Getenv("VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL"),
 		retentionRequestDatabaseURL:       os.Getenv("VELA_RETENTION_REQUEST_DATABASE_URL"),
 		retentionDatabaseURL:              os.Getenv("VELA_RETENTION_DATABASE_URL"),
+		platformOperatorAuthDatabaseURL:   os.Getenv("VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"),
+		breakGlassRequestDatabaseURL:      os.Getenv("VELA_BREAK_GLASS_REQUEST_DATABASE_URL"),
+		breakGlassAuditDatabaseURL:        os.Getenv("VELA_BREAK_GLASS_AUDIT_DATABASE_URL"),
 		retentionReconcilerID:             os.Getenv("VELA_RETENTION_RECONCILER_ID"),
 		retentionTick:                     defaultRetentionTick,
 		retentionClaimTTL:                 defaultRetentionClaimTTL,
@@ -798,6 +864,9 @@ func loadConfig() (config, error) {
 		oidcIssuer:                        os.Getenv("VELA_OIDC_ISSUER"),
 		oidcAudience:                      os.Getenv("VELA_OIDC_AUDIENCE"),
 		oidcJWKSURL:                       os.Getenv("VELA_OIDC_JWKS_URL"),
+		platformOIDCIssuer:                os.Getenv("VELA_PLATFORM_OIDC_ISSUER"),
+		platformOIDCAudience:              os.Getenv("VELA_PLATFORM_OIDC_AUDIENCE"),
+		platformOIDCJWKSURL:               os.Getenv("VELA_PLATFORM_OIDC_JWKS_URL"),
 		cancelDatabaseURL:                 os.Getenv("VELA_CANCEL_DATABASE_URL"),
 		internalDatabaseURL:               os.Getenv("VELA_INTERNAL_DATABASE_URL"),
 		schedulerDatabaseURL:              os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
@@ -867,12 +936,18 @@ func loadConfig() (config, error) {
 		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL":   configuration.organizationAuditDatabaseURL,
 		"VELA_RETENTION_REQUEST_DATABASE_URL":            configuration.retentionRequestDatabaseURL,
 		"VELA_RETENTION_DATABASE_URL":                    configuration.retentionDatabaseURL,
+		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL":       configuration.platformOperatorAuthDatabaseURL,
+		"VELA_BREAK_GLASS_REQUEST_DATABASE_URL":          configuration.breakGlassRequestDatabaseURL,
+		"VELA_BREAK_GLASS_AUDIT_DATABASE_URL":            configuration.breakGlassAuditDatabaseURL,
 		"VELA_RETENTION_RECONCILER_ID":                   configuration.retentionReconcilerID,
 		"VELA_REQUEST_DATABASE_URL":                      configuration.requestDatabaseURL,
 		"VELA_ARTIFACT_REQUEST_DATABASE_URL":             configuration.artifactRequestDatabaseURL,
 		"VELA_OIDC_ISSUER":                               configuration.oidcIssuer,
 		"VELA_OIDC_AUDIENCE":                             configuration.oidcAudience,
 		"VELA_OIDC_JWKS_URL":                             configuration.oidcJWKSURL,
+		"VELA_PLATFORM_OIDC_ISSUER":                      configuration.platformOIDCIssuer,
+		"VELA_PLATFORM_OIDC_AUDIENCE":                    configuration.platformOIDCAudience,
+		"VELA_PLATFORM_OIDC_JWKS_URL":                    configuration.platformOIDCJWKSURL,
 		"VELA_CANCEL_DATABASE_URL":                       configuration.cancelDatabaseURL,
 		"VELA_INTERNAL_DATABASE_URL":                     configuration.internalDatabaseURL,
 		"VELA_SCHEDULER_DATABASE_URL":                    configuration.schedulerDatabaseURL,

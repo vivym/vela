@@ -33,11 +33,17 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Organization audit request database", missingEnv: "VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL"},
 		{name: "retention request database", missingEnv: "VELA_RETENTION_REQUEST_DATABASE_URL"},
 		{name: "retention database", missingEnv: "VELA_RETENTION_DATABASE_URL"},
+		{name: "Platform Operator auth database", missingEnv: "VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"},
+		{name: "Break-glass request database", missingEnv: "VELA_BREAK_GLASS_REQUEST_DATABASE_URL"},
+		{name: "Break-glass audit database", missingEnv: "VELA_BREAK_GLASS_AUDIT_DATABASE_URL"},
 		{name: "retention Reconciler identity", missingEnv: "VELA_RETENTION_RECONCILER_ID"},
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
 		{name: "OIDC issuer", missingEnv: "VELA_OIDC_ISSUER"},
 		{name: "OIDC audience", missingEnv: "VELA_OIDC_AUDIENCE"},
 		{name: "OIDC JWKS URL", missingEnv: "VELA_OIDC_JWKS_URL"},
+		{name: "Platform OIDC issuer", missingEnv: "VELA_PLATFORM_OIDC_ISSUER"},
+		{name: "Platform OIDC audience", missingEnv: "VELA_PLATFORM_OIDC_AUDIENCE"},
+		{name: "Platform OIDC JWKS URL", missingEnv: "VELA_PLATFORM_OIDC_JWKS_URL"},
 		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
 		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
 		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
@@ -103,12 +109,30 @@ func setValidConfigEnvironment(t *testing.T) {
 	)
 	t.Setenv("VELA_RETENTION_REQUEST_DATABASE_URL", "postgres://retention-request.example/vela")
 	t.Setenv("VELA_RETENTION_DATABASE_URL", "postgres://retention.example/vela")
+	t.Setenv(
+		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL",
+		"postgres://platform-operator-auth.example/vela",
+	)
+	t.Setenv(
+		"VELA_BREAK_GLASS_REQUEST_DATABASE_URL",
+		"postgres://break-glass-request.example/vela",
+	)
+	t.Setenv(
+		"VELA_BREAK_GLASS_AUDIT_DATABASE_URL",
+		"postgres://break-glass-audit.example/vela",
+	)
 	t.Setenv("VELA_RETENTION_RECONCILER_ID", "vela-control-retention-reconciler-1")
 	t.Setenv("VELA_REQUEST_DATABASE_URL", "postgres://request.example/vela")
 	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")
 	t.Setenv("VELA_OIDC_ISSUER", "https://identity.example.com")
 	t.Setenv("VELA_OIDC_AUDIENCE", "vela-control")
 	t.Setenv("VELA_OIDC_JWKS_URL", "https://identity.example.com/.well-known/jwks.json")
+	t.Setenv("VELA_PLATFORM_OIDC_ISSUER", "https://platform-identity.example.com")
+	t.Setenv("VELA_PLATFORM_OIDC_AUDIENCE", "vela-platform-control")
+	t.Setenv(
+		"VELA_PLATFORM_OIDC_JWKS_URL",
+		"https://platform-identity.example.com/.well-known/jwks.json",
+	)
 	t.Setenv("VELA_CANCEL_DATABASE_URL", "postgres://cancel.example/vela")
 	t.Setenv("VELA_INTERNAL_DATABASE_URL", "postgres://internal.example/vela")
 	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
@@ -185,6 +209,24 @@ func TestLoadConfigPreservesExplicitHumanOIDCConfiguration(t *testing.T) {
 	}
 }
 
+func TestLoadConfigPreservesIndependentPlatformOIDCConfiguration(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load Platform Operator OIDC configuration: %v", err)
+	}
+	if configuration.platformOIDCIssuer != "https://platform-identity.example.com" ||
+		configuration.platformOIDCAudience != "vela-platform-control" ||
+		configuration.platformOIDCJWKSURL != "https://platform-identity.example.com/.well-known/jwks.json" {
+		t.Fatalf(
+			"Platform Operator OIDC configuration = issuer %q audience %q JWKS %q",
+			configuration.platformOIDCIssuer,
+			configuration.platformOIDCAudience,
+			configuration.platformOIDCJWKSURL,
+		)
+	}
+}
+
 func TestRunRejectsInsecureHumanOIDCConfigurationBeforeDatabaseStartup(t *testing.T) {
 	setValidConfigEnvironment(t)
 	t.Setenv("VELA_OIDC_ISSUER", "http://identity.example.com")
@@ -196,6 +238,37 @@ func TestRunRejectsInsecureHumanOIDCConfigurationBeforeDatabaseStartup(t *testin
 	}
 	if strings.Contains(err.Error(), "database") {
 		t.Fatalf("insecure Human OIDC configuration reached database startup: %v", err)
+	}
+}
+
+func TestRunRejectsSharedCustomerAndPlatformOIDCTrustDomainBeforeDatabaseStartup(t *testing.T) {
+	setValidConfigEnvironment(t)
+	t.Setenv("VELA_PLATFORM_OIDC_ISSUER", "https://identity.example.com")
+	t.Setenv("VELA_PLATFORM_OIDC_AUDIENCE", "vela-control")
+
+	err := run()
+	if err == nil || !strings.Contains(
+		err.Error(),
+		"trust domains for Platform Operator and Customer Human OIDC must differ",
+	) {
+		t.Fatalf("run with shared OIDC trust domain error = %v", err)
+	}
+	if strings.Contains(err.Error(), "database") {
+		t.Fatalf("shared OIDC trust domain reached database startup: %v", err)
+	}
+}
+
+func TestRunRejectsInsecurePlatformOIDCConfigurationBeforeDatabaseStartup(t *testing.T) {
+	setValidConfigEnvironment(t)
+	t.Setenv("VELA_PLATFORM_OIDC_JWKS_URL", "http://platform-identity.example.com/jwks.json")
+
+	err := run()
+	if err == nil || !strings.Contains(err.Error(), "configure Platform Operator OIDC verifier") ||
+		!strings.Contains(err.Error(), "absolute HTTPS URL") {
+		t.Fatalf("run with insecure Platform Operator OIDC JWKS URL error = %v", err)
+	}
+	if strings.Contains(err.Error(), "database") {
+		t.Fatalf("insecure Platform Operator OIDC configuration reached database startup: %v", err)
 	}
 }
 

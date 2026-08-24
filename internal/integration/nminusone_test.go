@@ -41,7 +41,55 @@ const (
 	humanMembershipNMinusOneCommit        = "d8537d96cc8aeb7b7d4980e5059cf48efa713d6f"
 	organizationReportingNMinusOneCommit  = "1ce496ce06c4ba33038be91a5fd5f7be502bee85"
 	retentionNMinusOneCommit              = "87d1f27be568c96a31dcbda9d9c74ce7d2ed3f96"
+	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
 )
+
+func TestExactBreakGlassNMinusOneControlAndCustomerRequestRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, breakGlassNMinusOneCommit)
+	assertProfileCircuitNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "break-glass")
+	jobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+	))
+	var persistedJobID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT id FROM jobs WHERE id = $1
+	`, jobID).Scan(&persistedJobID); err != nil {
+		t.Fatalf("read Break-glass N-1 Admission Job: %v", err)
+	}
+	if persistedJobID != jobID {
+		t.Fatalf("Break-glass N-1 Admission Job = %s, want %s", persistedJobID, jobID)
+	}
+}
+
+func TestCurrentBreakGlassControlFailsClosedAgainstSchema16(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 16); err != nil {
+		t.Fatalf("contract Break-glass schema before current-control probe: %v", err)
+	}
+	binary := filepath.Join(t.TempDir(), "vela-control-current-break-glass")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/vela-control")
+	build.Dir = repositoryRoot(t)
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build current Break-glass control: %v\n%s", err, output)
+	}
+	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	if !strings.Contains(output, "open Platform Operator auth database pool") ||
+		!strings.Contains(output, "Platform Operator authentication transaction privilege boundary") {
+		t.Fatalf("current Break-glass control did not fail closed against schema 16:\n%s", output)
+	}
+}
 
 func TestExactRetentionNMinusOneControlAdmissionAndVisibleCompletionRemainCompatible(
 	t *testing.T,
@@ -1640,7 +1688,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == identityAdministrationNMinusOneCommit ||
 		commit == humanMembershipNMinusOneCommit ||
 		commit == organizationReportingNMinusOneCommit ||
-		commit == retentionNMinusOneCommit {
+		commit == retentionNMinusOneCommit || commit == breakGlassNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -2236,9 +2284,21 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			t, adminDSN, "vela_retention_login", "vela-retention-password",
 		),
 		"VELA_RETENTION_RECONCILER_ID": "current-retention-startup-probe",
-		"VELA_OIDC_ISSUER":             "https://identity.example.com",
-		"VELA_OIDC_AUDIENCE":           "vela-control",
-		"VELA_OIDC_JWKS_URL":           "https://identity.example.com/.well-known/jwks.json",
+		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_platform_operator_auth_login", "vela-platform-operator-auth-password",
+		),
+		"VELA_BREAK_GLASS_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_break_glass_request_login", "vela-break-glass-request-password",
+		),
+		"VELA_BREAK_GLASS_AUDIT_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_break_glass_audit_request_login", "vela-break-glass-audit-request-password",
+		),
+		"VELA_OIDC_ISSUER":            "https://identity.example.com",
+		"VELA_OIDC_AUDIENCE":          "vela-control",
+		"VELA_OIDC_JWKS_URL":          "https://identity.example.com/.well-known/jwks.json",
+		"VELA_PLATFORM_OIDC_ISSUER":   "https://platform-identity.example.com",
+		"VELA_PLATFORM_OIDC_AUDIENCE": "vela-platform-control",
+		"VELA_PLATFORM_OIDC_JWKS_URL": "https://platform-identity.example.com/.well-known/jwks.json",
 		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_request_login", "vela-request-password",
 		),
