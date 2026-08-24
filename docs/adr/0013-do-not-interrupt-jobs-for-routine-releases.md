@@ -7,3 +7,11 @@ Routine releases must not interrupt Accepted Jobs. Database changes follow expan
 Destructive schema contraction cannot ship with the expansion that replaces it, and normal rollout duration may exceed the longest Job runtime. Quality, failure-rate, or latency regression stops rollout and restores the prior desired version; only an emergency security action may fence active work, and affected Jobs create no Charge.
 
 An adjacent version change that cannot preserve both old and new execution authority is not eligible for ordinary mixed-version rollout. It requires an explicit, fail-closed migration operation: expand in a disabled compatibility state, drain active authority, prove N-1 control and Worker references are zero, atomically switch with an auditable receipt, reject legacy writers after switch, and drain again before rollback. A schema backfill or a new binary's compatibility shim is not by itself evidence that the actual N-1 binary can safely coexist.
+
+## Implementation Status
+
+Partial. Seventeen additive migrations, exact N/N-1 database/control
+compatibility, an operator-receipted protocol transition, migration round trips,
+and Protobuf/OpenAPI breaking checks are repository-proven. A deployed mixed
+control/Worker/event rollout, long-Job drain, rollback, and retained-backlog
+receipt remain unimplemented.

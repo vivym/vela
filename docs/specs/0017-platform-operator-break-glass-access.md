@@ -2,7 +2,7 @@
 
 Date: 2026-08-24
 
-Status: Proposed. This specification defines repository-verifiable identity,
+Status: Implemented. This specification defines repository-verifiable identity,
 approval, authorization, content-delivery, and audit behavior. It does not by
 itself satisfy a Production Gate or prove production IdP, object-store, network,
 or deployment isolation.
