@@ -92,61 +92,81 @@ func ConnectOutbox(config OutboxConfig, handlers Handlers) (*nats.Conn, error) {
 		nats.ReconnectWait(time.Second),
 		nats.Timeout(5 * time.Second),
 	}
-	authenticated, err := probeInitialAuthentication(config.URL, baseOptions)
-	if err != nil {
-		return nil, ErrOutboxConnection
-	}
-	options := append([]nats.Option(nil), baseOptions...)
-	if handlers.Disconnect != nil {
-		options = append(options, nats.DisconnectErrHandler(func(_ *nats.Conn, err error) {
-			handlers.Disconnect(err)
-		}))
-	}
-	if handlers.Reconnect != nil {
-		options = append(options, nats.ReconnectHandler(func(connection *nats.Conn) {
-			handlers.Reconnect(connection.ConnectedUrl())
-		}))
-	}
-	if handlers.AsyncError != nil {
-		options = append(options, nats.ErrorHandler(func(
-			_ *nats.Conn,
-			_ *nats.Subscription,
-			err error,
-		) {
-			handlers.AsyncError(err)
-		}))
-	}
-	if handlers.Closed != nil {
-		options = append(options, nats.ClosedHandler(func(connection *nats.Conn) {
-			handlers.Closed(connection.LastError())
-		}))
-	}
-	if !authenticated {
-		options = append(options, nats.RetryOnFailedConnect(true))
-	}
-	connection, err := nats.Connect(config.URL, options...)
-	if authenticated && errors.Is(err, nats.ErrNoServers) {
+	connection, err := connectInitialOutbox(config.URL, baseOptions)
+	if errors.Is(err, nats.ErrNoServers) {
+		options := append([]nats.Option(nil), baseOptions...)
 		options = append(options, nats.RetryOnFailedConnect(true))
 		connection, err = nats.Connect(config.URL, options...)
 	}
 	if err != nil {
 		return nil, ErrOutboxConnection
 	}
+	setOutboxHandlers(connection, handlers)
 	return connection, nil
 }
 
-func probeInitialAuthentication(serverList string, options []nats.Option) (bool, error) {
-	authenticated := false
-	for _, serverURL := range strings.Split(serverList, ",") {
-		connection, err := nats.Connect(strings.TrimSpace(serverURL), options...)
+func setOutboxHandlers(connection *nats.Conn, handlers Handlers) {
+	if handlers.Disconnect != nil {
+		connection.SetDisconnectErrHandler(func(_ *nats.Conn, err error) {
+			handlers.Disconnect(err)
+		})
+	}
+	if handlers.Reconnect != nil {
+		connection.SetReconnectHandler(func(connection *nats.Conn) {
+			handlers.Reconnect(connection.ConnectedUrl())
+		})
+	}
+	if handlers.AsyncError != nil {
+		connection.SetErrorHandler(func(
+			_ *nats.Conn,
+			_ *nats.Subscription,
+			err error,
+		) {
+			handlers.AsyncError(err)
+		})
+	}
+	if handlers.Closed != nil {
+		connection.SetClosedHandler(func(connection *nats.Conn) {
+			handlers.Closed(connection.LastError())
+		})
+	}
+}
+
+func connectInitialOutbox(serverList string, options []nats.Option) (*nats.Conn, error) {
+	servers := strings.Split(serverList, ",")
+	var authenticated *nats.Conn
+	for index, serverURL := range servers {
+		servers[index] = strings.TrimSpace(serverURL)
+		connection, err := nats.Connect(servers[index], options...)
 		if err == nil {
-			authenticated = true
-			connection.Close()
+			if authenticated == nil {
+				authenticated = connection
+			} else {
+				connection.Close()
+			}
 			continue
 		}
 		if !errors.Is(err, nats.ErrNoServers) {
-			return false, err
+			if authenticated != nil {
+				authenticated.Close()
+			}
+			return nil, err
 		}
+	}
+	if authenticated == nil {
+		return nil, nats.ErrNoServers
+	}
+	if err := authenticated.SetServerPool(servers); err != nil {
+		authenticated.Close()
+		return nil, err
+	}
+	if !authenticated.IsConnected() {
+		authenticated.Close()
+		return nil, nats.ErrDisconnected
+	}
+	if err := authenticated.FlushTimeout(5 * time.Second); err != nil {
+		authenticated.Close()
+		return nil, err
 	}
 	return authenticated, nil
 }

@@ -72,6 +72,25 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 			)
 		}
 	}
+	mixedReadyConfig := fixture.outboxConfig(fixture.outboxCredential, fixture.outboxUser)
+	mixedReadyConfig.URL = "tls://127.0.0.1:1," + fixture.url
+	mixedReadyConnection, err := natsauth.ConnectOutbox(mixedReadyConfig, natsauth.Handlers{})
+	if err != nil {
+		t.Fatalf("connect authenticated endpoint from mixed pool: %v", err)
+	}
+	if !mixedReadyConnection.IsConnected() {
+		mixedReadyConnection.Close()
+		t.Fatal("mixed endpoint pool did not return its authenticated connection")
+	}
+	configuredServers := mixedReadyConnection.Servers()
+	configuredServerList := strings.Join(configuredServers, ",")
+	if len(configuredServers) != 2 ||
+		!strings.Contains(configuredServerList, fixture.url) ||
+		!strings.Contains(configuredServerList, "tls://127.0.0.1:1") {
+		mixedReadyConnection.Close()
+		t.Fatalf("mixed endpoint connection server pool = %v", configuredServers)
+	}
+	mixedReadyConnection.Close()
 
 	systemConnection, err := natsauth.ConnectOutbox(
 		fixture.outboxConfig(fixture.systemCredential, fixture.outboxUser),
