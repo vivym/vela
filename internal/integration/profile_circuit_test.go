@@ -1985,7 +1985,7 @@ func TestProfileCircuitMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) 
 			t.Fatalf("contracted Profile circuit column remains: %s.%s", column.table, column.name)
 		}
 	}
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 17); err != nil {
 		t.Fatalf("re-expand empty Profile circuit migration: %v", err)
 	}
 	for _, table := range []string{

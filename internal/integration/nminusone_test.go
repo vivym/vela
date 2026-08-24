@@ -42,7 +42,54 @@ const (
 	organizationReportingNMinusOneCommit  = "1ce496ce06c4ba33038be91a5fd5f7be502bee85"
 	retentionNMinusOneCommit              = "87d1f27be568c96a31dcbda9d9c74ce7d2ed3f96"
 	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
+	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
 )
+
+func TestExactFinanceReconciliationNMinusOneControlAndRequestRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, financeReconciliationNMinusOneCommit)
+	assertProfileCircuitNMinusOneDatabaseStartupPassed(
+		t,
+		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+	)
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "finance-reconciliation")
+	jobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+	))
+	var persistedJobID uuid.UUID
+	if err := database.Admin.QueryRow(`SELECT id FROM jobs WHERE id = $1`, jobID).
+		Scan(&persistedJobID); err != nil {
+		t.Fatalf("read Finance Reconciliation N-1 Admission Job: %v", err)
+	}
+	if persistedJobID != jobID {
+		t.Fatalf("Finance Reconciliation N-1 Admission Job = %s, want %s", persistedJobID, jobID)
+	}
+}
+
+func TestCurrentFinanceReconciliationControlFailsClosedAgainstSchema17(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 17); err != nil {
+		t.Fatalf("contract Finance Reconciliation schema before current-control probe: %v", err)
+	}
+	binary := filepath.Join(t.TempDir(), "vela-control-current-finance-reconciliation")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/vela-control")
+	build.Dir = repositoryRoot(t)
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build current Finance Reconciliation control: %v\n%s", err, output)
+	}
+	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	if !strings.Contains(output, "open Finance Reconciliation database pool") ||
+		!strings.Contains(output, "Finance Reconciliation transaction privilege boundary") {
+		t.Fatalf("current Finance Reconciliation control did not fail closed against schema 17:\n%s", output)
+	}
+}
 
 func TestExactBreakGlassNMinusOneControlAndCustomerRequestRemainCompatible(t *testing.T) {
 	database := newPostgres(t)
@@ -1683,7 +1730,9 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		t.Fatalf("write N-1 Assignment probe: %v", err)
 	}
 	admissionProbeSourceName := "nminusone_admission_probe.go.txt"
-	if commit == profileCircuitNMinusOneCommit || commit == webhookNMinusOneCommit ||
+	if commit == financeReconciliationNMinusOneCommit {
+		admissionProbeSourceName = "nminusone_finance_reconciliation_admission_probe.go.txt"
+	} else if commit == profileCircuitNMinusOneCommit || commit == webhookNMinusOneCommit ||
 		commit == humanOIDCNMinusOneCommit ||
 		commit == identityAdministrationNMinusOneCommit ||
 		commit == humanMembershipNMinusOneCommit ||
@@ -2318,6 +2367,16 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_BILLING_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_billing_login", "vela-billing-password",
 		),
+		"VELA_FINANCE_RECONCILIATION_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_finance_reconciliation_login",
+			"vela-finance-reconciliation-password",
+		),
+		"VELA_FINANCE_RECONCILIATION_ADDR":             "127.0.0.1:9444",
+		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE": "/missing/finance-reconciliation.crt",
+		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":  "/missing/finance-reconciliation.key",
+		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":   "/missing/finance-reconciliation-client-ca.crt",
 		"VELA_WEBHOOK_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_webhook_request_login", "vela-webhook-request-password",
 		),

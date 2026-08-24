@@ -30,6 +30,7 @@ const (
 	RoleArtifactRequest            Role = "vela_artifact_request"
 	RoleScheduler                  Role = "vela_scheduler"
 	RoleBilling                    Role = "vela_billing"
+	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
 )
@@ -62,6 +63,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleArtifactRequest:            {verifyPrivileges: verifyArtifactRequestPrivileges},
 	RoleScheduler:                  {verifyPrivileges: verifySchedulerPrivileges},
 	RoleBilling:                    {verifyPrivileges: verifyBillingPrivileges},
+	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 }
@@ -198,6 +200,21 @@ func verifyBillingPrivileges(ctx context.Context, database rowQuerier, currentUs
 			"vela_claim_invoice_exports(text,uuid,integer,integer)",
 			"vela_mark_invoice_exported(uuid,uuid,uuid,text,text)",
 			"vela_mark_invoice_export_failed(uuid,uuid,integer,text)",
+		},
+	})
+}
+
+func verifyFinanceReconciliationPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Finance Reconciliation",
+		failureLabel:    "Finance Reconciliation transaction",
+		functions: []string{
+			"vela_get_finance_reconciliation_identity()",
+			"vela_apply_finance_reconciliation(uuid,text,bigint,uuid,finance_reconciliation_kind,text,bigint,bigint,bigint,text,timestamp with time zone)",
 		},
 	})
 }

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strconv"
@@ -31,6 +32,7 @@ import (
 	"github.com/vivym/vela/internal/cancellation"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/finalizationreconciler"
+	"github.com/vivym/vela/internal/financereconciliation"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/natsauth"
@@ -114,6 +116,11 @@ type config struct {
 	schedulerClaimTTL                 time.Duration
 	schedulerCandidateAttempts        int
 	billingDatabaseURL                string
+	financeReconciliationDatabaseURL  string
+	financeReconciliationAddress      string
+	financeReconciliationTLSCertFile  string
+	financeReconciliationTLSKeyFile   string
+	financeReconciliationClientCAFile string
 	webhookRequestDatabaseURL         string
 	webhookDatabaseURL                string
 	webhookEncryptionActiveKeyID      string
@@ -401,6 +408,45 @@ func run() error {
 		return fmt.Errorf("open billing database pool: %w", err)
 	}
 	defer billingPool.Close()
+	financeReconciliationPool, err := openPool(
+		ctx,
+		configuration.financeReconciliationDatabaseURL,
+		5,
+		veladb.RoleFinanceReconciliation,
+	)
+	if err != nil {
+		return fmt.Errorf("open Finance Reconciliation database pool: %w", err)
+	}
+	defer financeReconciliationPool.Close()
+	financeReconciliationService, err := financereconciliation.NewService(
+		ctx,
+		financeReconciliationPool,
+	)
+	if err != nil {
+		return fmt.Errorf("configure Finance Reconciliation service: %w", err)
+	}
+	financeReconciliationHandler, err := financereconciliation.NewHTTPHandler(
+		financeReconciliationService,
+	)
+	if err != nil {
+		return fmt.Errorf("configure Finance Reconciliation HTTP handler: %w", err)
+	}
+	financeReconciliationTLS, err := financereconciliation.NewServerTLSConfig(
+		configuration.financeReconciliationTLSCertFile,
+		configuration.financeReconciliationTLSKeyFile,
+		configuration.financeReconciliationClientCAFile,
+	)
+	if err != nil {
+		return err
+	}
+	financeReconciliationRawListener, err := net.Listen(
+		"tcp",
+		configuration.financeReconciliationAddress,
+	)
+	if err != nil {
+		return fmt.Errorf("listen for Finance Reconciliation HTTPS: %w", err)
+	}
+	defer func() { _ = financeReconciliationRawListener.Close() }()
 	webhookRequestPool, err := openPool(
 		ctx,
 		configuration.webhookRequestDatabaseURL,
@@ -678,6 +724,7 @@ func run() error {
 			internalPool,
 			schedulerPool,
 			billingPool,
+			financeReconciliationPool,
 			webhookRequestPool,
 			webhookPool,
 		),
@@ -690,6 +737,15 @@ func run() error {
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+	}
+	financeReconciliationServer := &http.Server{
+		Handler:           financeReconciliationHandler,
+		TLSConfig:         financeReconciliationTLS,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		MaxHeaderBytes:    16 * 1024,
 	}
 
 	publisherStarted := make(chan struct{})
@@ -763,6 +819,19 @@ func run() error {
 		)
 		workerServerErrors <- workerGRPCServer.Serve(workerListener)
 	}()
+	financeReconciliationServerErrors := make(chan error, 1)
+	go func() {
+		slog.Info(
+			"vela-control Finance Reconciliation HTTPS server started",
+			"address",
+			configuration.financeReconciliationAddress,
+		)
+		financeReconciliationServerErrors <- financeReconciliationServer.ServeTLS(
+			financeReconciliationRawListener,
+			"",
+			"",
+		)
+	}()
 
 	var serveErr error
 	select {
@@ -777,9 +846,17 @@ func run() error {
 			stop()
 			serveErr = fmt.Errorf("serve Worker gRPC: %w", err)
 		}
+	case err := <-financeReconciliationServerErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			stop()
+			serveErr = fmt.Errorf("serve Finance Reconciliation HTTPS: %w", err)
+		}
 	}
 	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelShutdown()
+	if err := financeReconciliationServer.Shutdown(shutdownContext); err != nil {
+		return fmt.Errorf("shut down Finance Reconciliation HTTPS server: %w", err)
+	}
 	if err := httpServer.Shutdown(shutdownContext); err != nil {
 		return fmt.Errorf("shut down HTTP server: %w", err)
 	}
@@ -889,6 +966,11 @@ func loadConfig() (config, error) {
 		schedulerClaimTTL:                 defaultSchedulerClaimTTL,
 		schedulerCandidateAttempts:        defaultSchedulerCandidateAttempts,
 		billingDatabaseURL:                os.Getenv("VELA_BILLING_DATABASE_URL"),
+		financeReconciliationDatabaseURL:  os.Getenv("VELA_FINANCE_RECONCILIATION_DATABASE_URL"),
+		financeReconciliationAddress:      os.Getenv("VELA_FINANCE_RECONCILIATION_ADDR"),
+		financeReconciliationTLSCertFile:  os.Getenv("VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE"),
+		financeReconciliationTLSKeyFile:   os.Getenv("VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE"),
+		financeReconciliationClientCAFile: os.Getenv("VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE"),
 		webhookRequestDatabaseURL:         os.Getenv("VELA_WEBHOOK_REQUEST_DATABASE_URL"),
 		webhookDatabaseURL:                os.Getenv("VELA_WEBHOOK_DATABASE_URL"),
 		webhookEncryptionActiveKeyID:      os.Getenv("VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID"),
@@ -970,6 +1052,11 @@ func loadConfig() (config, error) {
 		"VELA_SCHEDULER_DATABASE_URL":                    configuration.schedulerDatabaseURL,
 		"VELA_SCHEDULER_ID":                              configuration.schedulerID,
 		"VELA_BILLING_DATABASE_URL":                      configuration.billingDatabaseURL,
+		"VELA_FINANCE_RECONCILIATION_DATABASE_URL":       configuration.financeReconciliationDatabaseURL,
+		"VELA_FINANCE_RECONCILIATION_ADDR":               configuration.financeReconciliationAddress,
+		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE":   configuration.financeReconciliationTLSCertFile,
+		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":    configuration.financeReconciliationTLSKeyFile,
+		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":     configuration.financeReconciliationClientCAFile,
 		"VELA_WEBHOOK_REQUEST_DATABASE_URL":              configuration.webhookRequestDatabaseURL,
 		"VELA_WEBHOOK_DATABASE_URL":                      configuration.webhookDatabaseURL,
 		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":          configuration.webhookEncryptionActiveKeyID,
@@ -1018,6 +1105,17 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_ARTIFACT_S3_PATH_STYLE must be true or false")
 		}
 		configuration.artifactS3PathStyle = pathStyle
+	}
+	financeHost, financePortText, err := net.SplitHostPort(configuration.financeReconciliationAddress)
+	if err != nil || financeHost == "" {
+		return config{}, errors.New("environment variable VELA_FINANCE_RECONCILIATION_ADDR must contain a concrete host and port")
+	}
+	if address, parseErr := netip.ParseAddr(financeHost); parseErr == nil && address.IsUnspecified() {
+		return config{}, errors.New("environment variable VELA_FINANCE_RECONCILIATION_ADDR must contain a concrete host and port")
+	}
+	financePort, err := strconv.Atoi(financePortText)
+	if err != nil || financePort < 1 || financePort > 65535 {
+		return config{}, errors.New("environment variable VELA_FINANCE_RECONCILIATION_ADDR must contain a concrete host and port")
 	}
 	if value := os.Getenv("VELA_OUTBOX_BATCH_SIZE"); value != "" {
 		batchSize, err := strconv.ParseInt(value, 10, 32)

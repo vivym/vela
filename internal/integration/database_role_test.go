@@ -87,6 +87,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	)
 	schedulerPool := newRolePool(t, database.DSN, "vela_scheduler_login", "vela-scheduler-password")
 	billingPool := newRolePool(t, database.DSN, "vela_billing_login", "vela-billing-password")
+	financeReconciliationPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_finance_reconciliation_login",
+		"vela-finance-reconciliation-password",
+	)
 	webhookRequestPool := newRolePool(
 		t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
 	)
@@ -95,6 +101,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	for _, login := range []string{
 		"vela_internal_login",
 		"vela_billing_login",
+		"vela_finance_reconciliation_login",
 		"vela_webhook_request_login",
 		"vela_webhook_login",
 		"vela_identity_request_login",
@@ -109,6 +116,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	} {
 		for _, ownerRole := range []string{
 			"vela_billing_owner",
+			"vela_finance_reconciliation_owner",
 			"vela_organization_reporting_owner",
 			"vela_retention_owner",
 			"vela_break_glass_owner",
@@ -168,6 +176,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
 		{name: "Scheduler", pool: schedulerPool, role: veladb.RoleScheduler},
 		{name: "billing", pool: billingPool, role: veladb.RoleBilling},
+		{
+			name: "Finance Reconciliation", pool: financeReconciliationPool,
+			role: veladb.RoleFinanceReconciliation,
+		},
 		{name: "webhook request", pool: webhookRequestPool, role: veladb.RoleWebhookRequest},
 		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
@@ -186,6 +198,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_break_glass_request"},
 		{name: "vela_break_glass_audit_request"},
 		{name: "vela_break_glass_owner", bypassRLS: true},
+		{name: "vela_finance_reconciliation"},
+		{name: "vela_finance_reconciliation_owner", bypassRLS: true},
 	} {
 		var canLogin, bypassRLS, superuser bool
 		if err := database.Admin.QueryRow(`
@@ -211,6 +225,21 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		owner     string
 		proconfig string
 	}{
+		{
+			signature: "vela_private.require_finance_reconciliation_identity()",
+			owner:     "vela_finance_reconciliation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_get_finance_reconciliation_identity()",
+			owner:     "vela_finance_reconciliation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_apply_finance_reconciliation(uuid,text,bigint,uuid,finance_reconciliation_kind,text,bigint,bigint,bigint,text,timestamp with time zone)",
+			owner:     "vela_finance_reconciliation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
 		{
 			signature: "vela_authenticate_platform_operator_oidc(text,text,bytea,timestamp with time zone)",
 			owner:     "vela_break_glass_owner",

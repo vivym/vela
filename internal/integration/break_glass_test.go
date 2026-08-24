@@ -2853,7 +2853,7 @@ func TestBreakGlassMigrationRoundTripRestoresOrganizationAuditProjection(t *test
 		t.Fatal("Break-glass Down retained schema 17 tables or functions")
 	}
 
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 17); err != nil {
 		t.Fatalf("restore Break-glass schema 17: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)
@@ -2897,7 +2897,7 @@ func TestBreakGlassMigrationRoundTripRestoresOrganizationAuditProjection(t *test
 	if repeatedSchema16Definition != schema16Definition {
 		t.Fatal("Break-glass Down did not restore the exact prior Organization audit projection")
 	}
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 17); err != nil {
 		t.Fatalf("repeat Break-glass Up to schema 17: %v", err)
 	}
 	version, err = goose.GetDBVersion(database.Admin)

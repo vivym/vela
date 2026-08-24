@@ -866,6 +866,49 @@ func (ns NullExecutionPhase) Value() (driver.Value, error) {
 	return string(ns.ExecutionPhase), nil
 }
 
+type FinanceReconciliationKind string
+
+const (
+	FinanceReconciliationKindSETTLEMENTPOSTED           FinanceReconciliationKind = "SETTLEMENT_POSTED"
+	FinanceReconciliationKindCREDITADJUSTMENTPOSTED     FinanceReconciliationKind = "CREDIT_ADJUSTMENT_POSTED"
+	FinanceReconciliationKindCONTRACTCREDITLIMITCHANGED FinanceReconciliationKind = "CONTRACT_CREDIT_LIMIT_CHANGED"
+)
+
+func (e *FinanceReconciliationKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FinanceReconciliationKind(s)
+	case string:
+		*e = FinanceReconciliationKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FinanceReconciliationKind: %T", src)
+	}
+	return nil
+}
+
+type NullFinanceReconciliationKind struct {
+	FinanceReconciliationKind FinanceReconciliationKind `json:"finance_reconciliation_kind"`
+	Valid                     bool                      `json:"valid"` // Valid is true if FinanceReconciliationKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFinanceReconciliationKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.FinanceReconciliationKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FinanceReconciliationKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFinanceReconciliationKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FinanceReconciliationKind), nil
+}
+
 type HumanAdministrationContextKind string
 
 const (
@@ -2216,6 +2259,51 @@ type ExecutionRetryEvidence struct {
 	ExcludedWorkers     []byte             `db:"excluded_workers" json:"excluded_workers"`
 	FailureFingerprints []byte             `db:"failure_fingerprints" json:"failure_fingerprints"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type FinanceReconciliationCursor struct {
+	PrincipalID  uuid.UUID          `db:"principal_id" json:"principal_id"`
+	LastSequence int64              `db:"last_sequence" json:"last_sequence"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type FinanceReconciliationDatabaseBinding struct {
+	DatabaseRole string             `db:"database_role" json:"database_role"`
+	PrincipalID  uuid.UUID          `db:"principal_id" json:"principal_id"`
+	DisabledAt   pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type FinanceReconciliationPrincipal struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	StableID       string             `db:"stable_id" json:"stable_id"`
+	TlsUriIdentity string             `db:"tls_uri_identity" json:"tls_uri_identity"`
+	Status         string             `db:"status" json:"status"`
+	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type FinanceReconciliationRecord struct {
+	ID                             uuid.UUID                 `db:"id" json:"id"`
+	PrincipalID                    uuid.UUID                 `db:"principal_id" json:"principal_id"`
+	IdempotencyKey                 string                    `db:"idempotency_key" json:"idempotency_key"`
+	SourceSequence                 int64                     `db:"source_sequence" json:"source_sequence"`
+	OrganizationID                 uuid.UUID                 `db:"organization_id" json:"organization_id"`
+	Kind                           FinanceReconciliationKind `db:"kind" json:"kind"`
+	Currency                       string                    `db:"currency" json:"currency"`
+	SettlementMinor                *int64                    `db:"settlement_minor" json:"settlement_minor"`
+	CreditAdjustmentMinor          *int64                    `db:"credit_adjustment_minor" json:"credit_adjustment_minor"`
+	ContractCreditLimitMinor       *int64                    `db:"contract_credit_limit_minor" json:"contract_credit_limit_minor"`
+	ExternalReference              string                    `db:"external_reference" json:"external_reference"`
+	EffectiveAt                    pgtype.Timestamptz        `db:"effective_at" json:"effective_at"`
+	ContractCreditLimitMinorBefore int64                     `db:"contract_credit_limit_minor_before" json:"contract_credit_limit_minor_before"`
+	ContractCreditLimitMinorAfter  int64                     `db:"contract_credit_limit_minor_after" json:"contract_credit_limit_minor_after"`
+	ReservedMinorAtPosting         int64                     `db:"reserved_minor_at_posting" json:"reserved_minor_at_posting"`
+	UnsettledPostedMinorBefore     int64                     `db:"unsettled_posted_minor_before" json:"unsettled_posted_minor_before"`
+	UnsettledPostedMinorAfter      int64                     `db:"unsettled_posted_minor_after" json:"unsettled_posted_minor_after"`
+	AccountVersionBefore           int64                     `db:"account_version_before" json:"account_version_before"`
+	AccountVersionAfter            int64                     `db:"account_version_after" json:"account_version_after"`
+	PostedAt                       pgtype.Timestamptz        `db:"posted_at" json:"posted_at"`
 }
 
 type GenerationPresetRevision struct {

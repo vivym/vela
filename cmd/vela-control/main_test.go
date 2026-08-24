@@ -50,6 +50,11 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
 		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
 		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
+		{name: "Finance Reconciliation database", missingEnv: "VELA_FINANCE_RECONCILIATION_DATABASE_URL"},
+		{name: "Finance Reconciliation address", missingEnv: "VELA_FINANCE_RECONCILIATION_ADDR"},
+		{name: "Finance Reconciliation server certificate", missingEnv: "VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE"},
+		{name: "Finance Reconciliation server key", missingEnv: "VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE"},
+		{name: "Finance Reconciliation client CA", missingEnv: "VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE"},
 		{name: "webhook request database", missingEnv: "VELA_WEBHOOK_REQUEST_DATABASE_URL"},
 		{name: "webhook database", missingEnv: "VELA_WEBHOOK_DATABASE_URL"},
 		{name: "webhook encryption active key", missingEnv: "VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID"},
@@ -141,6 +146,23 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
 	t.Setenv("VELA_SCHEDULER_ID", "vela-control-scheduler-1")
 	t.Setenv("VELA_BILLING_DATABASE_URL", "postgres://billing.example/vela")
+	t.Setenv(
+		"VELA_FINANCE_RECONCILIATION_DATABASE_URL",
+		"postgres://finance-reconciliation.example/vela",
+	)
+	t.Setenv("VELA_FINANCE_RECONCILIATION_ADDR", "127.0.0.1:9444")
+	t.Setenv(
+		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE",
+		"/run/tls/finance-reconciliation/tls.crt",
+	)
+	t.Setenv(
+		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE",
+		"/run/tls/finance-reconciliation/tls.key",
+	)
+	t.Setenv(
+		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE",
+		"/run/tls/finance-reconciliation/client-ca.crt",
+	)
 	t.Setenv("VELA_WEBHOOK_REQUEST_DATABASE_URL", "postgres://webhook-request.example/vela")
 	t.Setenv("VELA_WEBHOOK_DATABASE_URL", "postgres://webhook.example/vela")
 	t.Setenv("VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID", "webhook-key-v1")
@@ -204,6 +226,36 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "")
 	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "")
 	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "")
+}
+
+func TestLoadConfigPreservesFinanceReconciliationBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load Finance Reconciliation configuration: %v", err)
+	}
+	if configuration.financeReconciliationDatabaseURL !=
+		"postgres://finance-reconciliation.example/vela" ||
+		configuration.financeReconciliationAddress != "127.0.0.1:9444" ||
+		configuration.financeReconciliationTLSCertFile !=
+			"/run/tls/finance-reconciliation/tls.crt" ||
+		configuration.financeReconciliationTLSKeyFile !=
+			"/run/tls/finance-reconciliation/tls.key" ||
+		configuration.financeReconciliationClientCAFile !=
+			"/run/tls/finance-reconciliation/client-ca.crt" {
+		t.Fatalf("Finance Reconciliation configuration = %#v", configuration)
+	}
+
+	for _, address := range []string{"", ":9444", "127.0.0.1", "127.0.0.1:0", "0.0.0.0:9444", "[::]:9444"} {
+		t.Run("address="+address, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv("VELA_FINANCE_RECONCILIATION_ADDR", address)
+			_, err := loadConfig()
+			if err == nil || !strings.Contains(err.Error(), "VELA_FINANCE_RECONCILIATION_ADDR") {
+				t.Fatalf("Finance Reconciliation address %q error = %v", address, err)
+			}
+		})
+	}
 }
 
 func TestLoadConfigPreservesExplicitHumanOIDCConfiguration(t *testing.T) {

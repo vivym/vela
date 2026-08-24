@@ -45,6 +45,14 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_billing_owner') THEN
         CREATE ROLE vela_billing_owner NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_finance_reconciliation') THEN
+        CREATE ROLE vela_finance_reconciliation NOLOGIN;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'vela_finance_reconciliation_owner'
+    ) THEN
+        CREATE ROLE vela_finance_reconciliation_owner NOLOGIN BYPASSRLS;
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles WHERE rolname = 'vela_organization_reporting_owner'
     ) THEN
@@ -96,6 +104,10 @@ ALTER ROLE vela_artifact_request NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOR
 ALTER ROLE vela_scheduler NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_billing NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_billing_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_finance_reconciliation
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_finance_reconciliation_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_organization_reporting_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_retention_request
