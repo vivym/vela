@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -171,6 +172,27 @@ func TestExecCommandRunnerPassesHeldExecutableFileDescriptor(t *testing.T) {
 	}
 	if string(output) != "held-executable-fd" {
 		t.Fatalf("host helper output = %q, want held executable fd proof", output)
+	}
+}
+
+func TestExecCommandRunnerRejectsUnsafeDarwinTemporaryParent(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Darwin uses a private staging copy instead of direct fd execution")
+	}
+	path := writeHostHelper(t, "#!/bin/sh\nprintf should-not-run\n")
+	unsafeTemporaryParent := t.TempDir()
+	if err := os.Chmod(unsafeTemporaryParent, 0o777); err != nil {
+		t.Fatalf("relax temporary parent permissions: %v", err)
+	}
+	t.Setenv("TMPDIR", unsafeTemporaryParent)
+	plan := remediation.Plan{
+		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
+		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure",
+		ActionLevel: remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1",
+		FailureEvidenceDigest: digestForTest("failure"), DeadlineAt: time.Now().Add(time.Minute).UTC(),
+	}
+	if _, err := (ExecCommandRunner{}).Run(context.Background(), plan, path, nil); err == nil || !strings.Contains(err.Error(), "staging parent") {
+		t.Fatalf("Run error = %v, want untrusted staging parent rejection", err)
 	}
 }
 

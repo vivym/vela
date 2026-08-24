@@ -64,6 +64,27 @@ func ValidateDirectory(path string) error {
 	return nil
 }
 
+// ResolveTrustedDirectory returns a canonical directory path after validating
+// every ancestor against the executable-path trust contract.
+func ResolveTrustedDirectory(path string) (string, error) {
+	cleaned := filepath.Clean(path)
+	if !filepath.IsAbs(cleaned) || cleaned != path {
+		return "", errors.New("secure directory path is invalid")
+	}
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		return "", err
+	}
+	directory, err := openTrustedDirectory(resolved)
+	if err != nil {
+		return "", err
+	}
+	if err := directory.Close(); err != nil {
+		return "", fmt.Errorf("close secure directory: %w", err)
+	}
+	return resolved, nil
+}
+
 func ValidateExecutable(path string) error {
 	file, err := OpenExecutable(path)
 	if err != nil {

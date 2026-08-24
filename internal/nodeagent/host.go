@@ -121,7 +121,11 @@ func stageDarwinExecutable(executable *os.File) (string, func() error, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("stat held executable: %w", err)
 	}
-	directory, err := os.MkdirTemp("", ".vela-held-executable-*")
+	temporaryParent, err := securefile.ResolveTrustedDirectory(filepath.Clean(os.TempDir()))
+	if err != nil {
+		return "", nil, fmt.Errorf("validate held executable staging parent: %w", err)
+	}
+	directory, err := os.MkdirTemp(temporaryParent, ".vela-held-executable-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("create held executable staging directory: %w", err)
 	}
