@@ -2,8 +2,9 @@
 
 Date: 2026-08-24
 
-Status: Partial. The repository-verifiable control-plane slice is implemented;
-host execution and production deployment evidence remain outside this slice.
+Status: Partial. The repository-verifiable control-plane slice and a guarded
+Node Agent transport contract are implemented; host execution and production
+deployment evidence remain outside this slice.
 
 Predecessors:
 
@@ -45,6 +46,12 @@ The production-facing repository seams are:
    immutable operation/event ledger;
 4. the dedicated `vela_remediation` runtime role and
    `vela_remediation_owner` owner boundary.
+5. `nodeagent.Server` and `nodeagent.Client` for an identity-bound transport
+   whose `Authorizer` must bind the request to authoritative operation state.
+
+The transport is a contract seam only. Its tests use an in-memory ledger and an
+allow authorizer; no production service registration, persistent ledger, or
+control-plane adapter is claimed by this spec.
 
 The executor seam accepts only absolute allowlisted command paths, rejects NUL
 arguments, requires a non-empty certified identity, and refuses L6/L7 direct
@@ -115,6 +122,9 @@ confusion.
 - immutable operation/event update and delete rejection;
 - operation/event audit sequence and worker lifecycle/reachability transitions;
 - executor allowlist, unsafe-path, NUL-argument, and privileged-action refusal;
+- Node Agent verified mTLS identity, exact receipt replay, conflicting operation
+  rejection, control-plane authorization refusal, deadline receipt, and
+  fail-closed unverified-post-check behavior;
 - runtime role exact privileges and security-definer owner/search-path checks;
 - concurrent remediation request/start/complete lock-order evidence;
 - migration 00019 upgrade, empty down/up, and concurrent scheduler migration
@@ -125,15 +135,19 @@ confusion.
 
 This repository slice does not implement or claim real `nvidia-smi`, CUDA
 cleanup, GPU reset, PCIe FLR, driver reload, node reboot, BMC power cycle,
-Node Agent transport, device/model warm-up, canary execution, rate limiting,
-hardware topology certification, or production rollback. Those actions require
-an authenticated Node Agent, host-specific capability policy, post-check and
-canary receipts, deployment isolation, and a versioned Launch Receipt.
+production Node Agent registration or persistent receipt storage, device/model
+warm-up, canary execution, rate limiting, hardware topology certification, or
+production rollback. The transport contract intentionally fails closed without
+an authoritative `Authorizer` and a verified post-check. Those actions require
+an authenticated controller/agent identity contract, host-specific capability
+policy, post-check and canary receipts, deployment isolation, and a versioned
+Launch Receipt.
 
 ## Completion Boundary
 
-The repository-verifiable Certified Remediation control plane is complete when
-the implementation commit, this spec, role evidence, migration down/up, narrow
-and full verification, and standards/spec review are recorded. ADR 0023 remains
-partial until the deferred Node Agent and production Launch Receipt evidence
-exists; this slice does not change Production Gates from `0/9 PASS`.
+The repository-verifiable Certified Remediation control plane and guarded
+transport contract are complete when the implementation commits, this spec, role
+evidence, migration down/up, narrow and full verification, and standards/spec
+review are recorded. ADR 0023 remains partial until production Node Agent
+wiring, host evidence, and Launch Receipt evidence exist; this slice does not
+change Production Gates from `0/9 PASS`.

@@ -6,9 +6,13 @@ reboot. BMC power cycle requires human approval or two-person confirmation at
 launch. Ambiguous identity, uncertified topology, repeated recovery failure, or
 failed validation automatically quarantines the Worker.
 
-The repository currently implements the verifiable control-plane portion of this
-decision in migration `00019` and `internal/remediation`. It does not claim that
-the host actions themselves are available in the current binary.
+The repository implements the verifiable control-plane portion of this decision
+in migration `00019` and `internal/remediation`, plus a guarded Node Agent gRPC
+transport contract in `internal/nodeagent`. The transport requires an injected
+control-plane authorizer, binds requests to verified mTLS identity, replays exact
+receipt matches, rejects conflicting operation IDs, and fails closed unless the
+executor declares a verified post-check. It does not claim that host actions or
+their production wiring are available in the current binary.
 
 ## Consequences
 
@@ -22,8 +26,11 @@ orphaned operation into quarantine. A failed post-check, active Attempt/Lease,
 identity mismatch, or expired operation leaves the Worker quarantined. Node
 identity changes and quarantine reuse require a Worker epoch advance.
 
-The host-side Node Agent, hardware capability matrix, device checks, runner
-checks, model warm-up, canary, rate limiting, host fencing, and production
-Launch Receipts remain required before this ADR can be marked fully implemented.
+The production Node Agent deployment and persistent receipt ledger, authoritative
+operation/epoch/Lease fencing, actor binding, hardware capability matrix, device
+checks, runner checks, model warm-up, canary, rate limiting, host fencing, and
+production Launch Receipts remain required before this ADR can be marked fully
+implemented. The transport direction and peer identity contract must also be
+fixed when the controller-to-agent deployment is wired.
 
 Repository evidence: `docs/specs/0020-certified-remediation.md`.
