@@ -35,6 +35,8 @@ remain required before this ADR can be marked fully implemented. The transport
 direction and peer identity contract must also be fixed when the
 controller-to-agent deployment is wired. The runner contract now receives the
 full immutable execution Plan, but no production host runner has yet certified
-that plan against local device and capability state.
+that plan against local device and capability state. Migration `00020` adds a
+database-backed execution claim so only one process may execute an operation
+before its terminal receipt is committed.
 
 Repository evidence: `docs/specs/0020-certified-remediation.md`.

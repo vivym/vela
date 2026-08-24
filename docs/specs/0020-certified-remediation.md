@@ -48,6 +48,8 @@ The production-facing repository seams are:
    `vela_remediation_owner` owner boundary.
 5. `nodeagent.Server` and `nodeagent.Client` for an identity-bound transport
    whose `Authorizer` must bind the request to authoritative operation state.
+6. `vela_claim_remediation_execution` for a single persistent execution claim
+   per `EXECUTING` operation before any host action starts.
 
 The transport includes `ControlPlaneAuthorizer` and `ControlPlaneLedger`
 adapters over `remediation.Service`; their tests use in-memory fakes. No
@@ -127,6 +129,8 @@ confusion.
 - Node Agent verified mTLS identity, exact receipt replay, conflicting operation
   rejection, control-plane authorization refusal, deadline receipt, and
   fail-closed unverified-post-check behavior;
+- single execution-claim insertion and conflicting cross-process claim
+  rejection, with migration 00020 down/up evidence;
 - runtime role exact privileges and security-definer owner/search-path checks;
 - concurrent remediation request/start/complete lock-order evidence;
 - migration 00019 upgrade, empty down/up, and concurrent scheduler migration
@@ -137,9 +141,9 @@ confusion.
 
 This repository slice does not implement or claim real `nvidia-smi`, CUDA
 cleanup, GPU reset, PCIe FLR, driver reload, node reboot, BMC power cycle,
-production Node Agent registration or deployed receipt storage, device/model
-warm-up, canary execution, rate limiting, hardware topology certification, or
-production rollback. The transport contract intentionally fails closed without
+production Node Agent registration, deployed receipt/claim monitoring, or
+device/model warm-up, canary execution, rate limiting, hardware topology
+certification, or production rollback. The transport contract intentionally fails closed without
 an authoritative `Authorizer` and a verified post-check. Those actions require
 an authenticated controller/agent identity contract, host-specific capability
 policy, post-check and canary receipts, deployment isolation, and a versioned
