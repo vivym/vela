@@ -68,10 +68,14 @@ func IsFailure(err error, code FailureCode) bool {
 	return errors.As(err, &failure) && failure.Code == code
 }
 
+type Target struct {
+	OrganizationID uuid.UUID
+	ProjectID      uuid.UUID
+	JobID          uuid.UUID
+}
+
 type RequestInput struct {
-	OrganizationID           uuid.UUID
-	ProjectID                uuid.UUID
-	JobID                    uuid.UUID
+	Target
 	Scopes                   []Scope
 	ReasonCode               ReasonCode
 	TicketReference          string
@@ -79,10 +83,8 @@ type RequestInput struct {
 }
 
 type Request struct {
-	ID                       uuid.UUID
-	OrganizationID           uuid.UUID
-	ProjectID                uuid.UUID
-	JobID                    uuid.UUID
+	ID uuid.UUID
+	Target
 	Scopes                   []Scope
 	ReasonCode               ReasonCode
 	TicketReference          string
@@ -100,17 +102,13 @@ type Request struct {
 }
 
 type RequestContent struct {
-	OrganizationID uuid.UUID
-	ProjectID      uuid.UUID
-	JobID          uuid.UUID
+	Target
 	RequestContent json.RawMessage
 }
 
 type ArtifactSet struct {
-	ID                 uuid.UUID
-	OrganizationID     uuid.UUID
-	ProjectID          uuid.UUID
-	JobID              uuid.UUID
+	ID uuid.UUID
+	Target
 	RetentionExpiresAt time.Time
 	CommittedAt        time.Time
 	Artifacts          []Artifact
@@ -205,7 +203,7 @@ func (service *Service) Request(
 	).Scan(&requestID, &replayed); err != nil {
 		return Request{}, false, mapDatabaseFailure(err)
 	}
-	result, err := getRequest(ctx, tx, requestID, false)
+	result, err := getRequestByID(ctx, tx, requestID)
 	if err != nil {
 		return Request{}, false, err
 	}
@@ -237,7 +235,7 @@ func (service *Service) Approve(
 	`, requestID, uuid.New()).Scan(&grantID, &expiresAt, &replayed); err != nil {
 		return Request{}, mapDatabaseFailure(err)
 	}
-	result, err := getRequest(ctx, tx, requestID, false)
+	result, err := getRequestByID(ctx, tx, requestID)
 	if err != nil {
 		return Request{}, err
 	}
@@ -268,7 +266,7 @@ func (service *Service) Revoke(
 	`, grantID).Scan(&revokedAt, &replayed); err != nil {
 		return Request{}, mapDatabaseFailure(err)
 	}
-	result, err := getRequest(ctx, tx, grantID, true)
+	result, err := getRequestByGrantID(ctx, tx, grantID)
 	if err != nil {
 		return Request{}, err
 	}
@@ -291,7 +289,7 @@ func (service *Service) GetRequest(
 		return Request{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	result, err := getRequest(ctx, tx, requestID, false)
+	result, err := getRequestByID(ctx, tx, requestID)
 	if err != nil {
 		return Request{}, err
 	}
@@ -351,9 +349,11 @@ func (service *Service) ReadRequestContent(
 		return RequestContent{}, unavailableFailure("Break-glass database is unavailable")
 	}
 	return RequestContent{
-		OrganizationID: uuid.UUID(organizationID.Bytes),
-		ProjectID:      uuid.UUID(projectID.Bytes),
-		JobID:          uuid.UUID(jobID.Bytes),
+		Target: Target{
+			OrganizationID: uuid.UUID(organizationID.Bytes),
+			ProjectID:      uuid.UUID(projectID.Bytes),
+			JobID:          uuid.UUID(jobID.Bytes),
+		},
 		RequestContent: append(json.RawMessage(nil), requestContent...),
 	}, nil
 }
@@ -439,10 +439,12 @@ func (service *Service) GetArtifacts(
 		}
 		if result.ID == uuid.Nil {
 			result = ArtifactSet{
-				ID:                 uuid.UUID(artifactSetID.Bytes),
-				OrganizationID:     uuid.UUID(organizationID.Bytes),
-				ProjectID:          uuid.UUID(projectID.Bytes),
-				JobID:              uuid.UUID(jobID.Bytes),
+				ID: uuid.UUID(artifactSetID.Bytes),
+				Target: Target{
+					OrganizationID: uuid.UUID(organizationID.Bytes),
+					ProjectID:      uuid.UUID(projectID.Bytes),
+					JobID:          uuid.UUID(jobID.Bytes),
+				},
 				RetentionExpiresAt: retentionExpiresAt.Time,
 				CommittedAt:        committedAt.Time,
 			}
@@ -585,16 +587,27 @@ func (service *Service) begin(
 	return tx, nil
 }
 
-func getRequest(
-	ctx context.Context,
-	tx pgx.Tx,
-	id uuid.UUID,
-	byGrant bool,
-) (Request, error) {
-	function := "vela_get_break_glass_request"
-	if byGrant {
-		function = "vela_get_break_glass_grant"
-	}
+const breakGlassRequestProjection = `request_id, organization_id, project_id, job_id, scopes,
+	reason_code, ticket_reference, requested_duration_seconds,
+	requester_operator_id, requested_at, approval_deadline_at,
+	grant_id, approver_operator_id, approved_at, expires_at,
+	revoked_at, revoked_by_operator_id, state, transaction_time`
+
+func getRequestByID(ctx context.Context, tx pgx.Tx, requestID uuid.UUID) (Request, error) {
+	return scanRequest(tx.QueryRow(ctx, `
+		SELECT `+breakGlassRequestProjection+`
+		FROM vela_get_break_glass_request($1)
+	`, requestID))
+}
+
+func getRequestByGrantID(ctx context.Context, tx pgx.Tx, grantID uuid.UUID) (Request, error) {
+	return scanRequest(tx.QueryRow(ctx, `
+		SELECT `+breakGlassRequestProjection+`
+		FROM vela_get_break_glass_grant($1)
+	`, grantID))
+}
+
+func scanRequest(row pgx.Row) (Request, error) {
 	var (
 		result                                            Request
 		scopes                                            []string
@@ -602,14 +615,7 @@ func getRequest(
 		grantID, approverID, revokedByID                  pgtype.UUID
 		approvedAt, expiresAt, revokedAt, transactionTime pgtype.Timestamptz
 	)
-	err := tx.QueryRow(ctx, fmt.Sprintf(`
-		SELECT request_id, organization_id, project_id, job_id, scopes,
-			reason_code, ticket_reference, requested_duration_seconds,
-			requester_operator_id, requested_at, approval_deadline_at,
-			grant_id, approver_operator_id, approved_at, expires_at,
-			revoked_at, revoked_by_operator_id, state, transaction_time
-		FROM %s($1)
-	`, function), id).Scan(
+	err := row.Scan(
 		&result.ID,
 		&result.OrganizationID,
 		&result.ProjectID,
@@ -738,7 +744,12 @@ func mapDatabaseFailure(err error) error {
 		return &Failure{Code: FailureForbidden, Message: "Break-glass action is forbidden"}
 	case "02000":
 		return &Failure{Code: FailureNotFound, Message: "Break-glass target is not found"}
-	case "23505", "55000":
+	case "55000":
+		if postgresError.ConstraintName == "break_glass_grant_inactive" {
+			return &Failure{Code: FailureForbidden, Message: "Break-glass grant is no longer active"}
+		}
+		return &Failure{Code: FailureConflict, Message: "Break-glass request conflicts with existing state"}
+	case "23505":
 		return &Failure{Code: FailureConflict, Message: "Break-glass request conflicts with existing state"}
 	default:
 		return unavailableFailure("Break-glass database is unavailable")

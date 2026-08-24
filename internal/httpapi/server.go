@@ -158,9 +158,11 @@ func (s *server) CreateBreakGlassRequest(
 		operator,
 		string(request.Params.IdempotencyKey),
 		breakglass.RequestInput{
-			OrganizationID:           request.Body.OrganizationId,
-			ProjectID:                request.Body.ProjectId,
-			JobID:                    request.Body.JobId,
+			Target: breakglass.Target{
+				OrganizationID: request.Body.OrganizationId,
+				ProjectID:      request.Body.ProjectId,
+				JobID:          request.Body.JobId,
+			},
 			Scopes:                   scopes,
 			ReasonCode:               breakglass.ReasonCode(request.Body.ReasonCode),
 			TicketReference:          request.Body.TicketReference,
@@ -194,28 +196,7 @@ func (s *server) GetBreakGlassRequest(
 	}
 	result, err := s.breakGlass.GetRequest(ctx, operator, request.BreakGlassRequestId)
 	if err != nil {
-		var failure *breakglass.Failure
-		if !errors.As(err, &failure) {
-			return nil, err
-		}
-		switch failure.Code {
-		case breakglass.FailureUnauthorized:
-			return api.GetBreakGlassRequest401JSONResponse{
-				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-					Code: "unauthorized", Message: platformAuthenticationFailureMessage,
-				},
-			}, nil
-		case breakglass.FailureNotFound:
-			return api.GetBreakGlassRequest404JSONResponse{
-				Code: "not_found", Message: failure.Message,
-			}, nil
-		case breakglass.FailureUnavailable:
-			return api.GetBreakGlassRequest503JSONResponse{
-				ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
-			}, nil
-		default:
-			return nil, err
-		}
+		return getBreakGlassRequestFailure(err)
 	}
 	return api.GetBreakGlassRequest200JSONResponse(toAPIBreakGlassRequest(result)), nil
 }
@@ -259,28 +240,7 @@ func (s *server) RevokeBreakGlassGrant(
 	}
 	result, err := s.breakGlass.Revoke(ctx, operator, request.BreakGlassGrantId)
 	if err != nil {
-		var failure *breakglass.Failure
-		if !errors.As(err, &failure) {
-			return nil, err
-		}
-		switch failure.Code {
-		case breakglass.FailureUnauthorized:
-			return api.RevokeBreakGlassGrant401JSONResponse{
-				UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-					Code: "unauthorized", Message: platformAuthenticationFailureMessage,
-				},
-			}, nil
-		case breakglass.FailureNotFound:
-			return api.RevokeBreakGlassGrant404JSONResponse{
-				Code: "not_found", Message: failure.Message,
-			}, nil
-		case breakglass.FailureUnavailable:
-			return api.RevokeBreakGlassGrant503JSONResponse{
-				ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
-			}, nil
-		default:
-			return nil, err
-		}
+		return revokeBreakGlassGrantFailure(err)
 	}
 	return api.RevokeBreakGlassGrant200JSONResponse(toAPIBreakGlassRequest(result)), nil
 }
@@ -1955,37 +1915,111 @@ func projectMembershipAdministrationPrincipal(
 	return identity.Principal{}, http.StatusForbidden
 }
 
-func createBreakGlassRequestFailure(
-	err error,
-) (api.CreateBreakGlassRequestResponseObject, error) {
+type breakGlassHTTPFailure struct {
+	status  int
+	code    string
+	message string
+}
+
+func classifyBreakGlassFailure(err error) (breakGlassHTTPFailure, bool) {
 	var failure *breakglass.Failure
 	if !errors.As(err, &failure) {
-		return nil, err
+		return breakGlassHTTPFailure{}, false
 	}
 	switch failure.Code {
 	case breakglass.FailureInvalid:
+		return breakGlassHTTPFailure{
+			status: http.StatusBadRequest, code: "invalid_request", message: failure.Message,
+		}, true
+	case breakglass.FailureUnauthorized:
+		return breakGlassHTTPFailure{
+			status: http.StatusUnauthorized, code: "unauthorized",
+			message: platformAuthenticationFailureMessage,
+		}, true
+	case breakglass.FailureForbidden:
+		return breakGlassHTTPFailure{
+			status: http.StatusForbidden, code: "forbidden", message: failure.Message,
+		}, true
+	case breakglass.FailureNotFound:
+		return breakGlassHTTPFailure{
+			status: http.StatusNotFound, code: "not_found", message: failure.Message,
+		}, true
+	case breakglass.FailureConflict:
+		return breakGlassHTTPFailure{
+			status: http.StatusConflict, code: "conflict", message: failure.Message,
+		}, true
+	case breakglass.FailureUnavailable:
+		return breakGlassHTTPFailure{
+			status: http.StatusServiceUnavailable, code: "service_unavailable",
+			message: breakGlassServiceUnavailableMessage,
+		}, true
+	default:
+		return breakGlassHTTPFailure{}, false
+	}
+}
+
+func createBreakGlassRequestFailure(
+	err error,
+) (api.CreateBreakGlassRequestResponseObject, error) {
+	failure, ok := classifyBreakGlassFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusBadRequest:
 		return api.CreateBreakGlassRequest400JSONResponse{
 			BadRequestJSONResponse: api.BadRequestJSONResponse{
-				Code: "invalid_request", Message: failure.Message,
+				Code: failure.code, Message: failure.message,
 			},
 		}, nil
-	case breakglass.FailureUnauthorized:
+	case http.StatusUnauthorized:
 		return api.CreateBreakGlassRequest401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+				Code: failure.code, Message: failure.message,
 			},
 		}, nil
-	case breakglass.FailureNotFound:
+	case http.StatusNotFound:
 		return api.CreateBreakGlassRequest404JSONResponse{
-			Code: "not_found", Message: failure.Message,
+			Code: failure.code, Message: failure.message,
 		}, nil
-	case breakglass.FailureConflict:
+	case http.StatusConflict:
 		return api.CreateBreakGlassRequest409JSONResponse{
-			Code: "conflict", Message: failure.Message,
+			Code: failure.code, Message: failure.message,
 		}, nil
-	case breakglass.FailureUnavailable:
+	case http.StatusServiceUnavailable:
 		return api.CreateBreakGlassRequest503JSONResponse{
-			ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func getBreakGlassRequestFailure(
+	err error,
+) (api.GetBreakGlassRequestResponseObject, error) {
+	failure, ok := classifyBreakGlassFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusUnauthorized:
+		return api.GetBreakGlassRequest401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
+		}, nil
+	case http.StatusNotFound:
+		return api.GetBreakGlassRequest404JSONResponse{
+			Code: failure.code, Message: failure.message,
+		}, nil
+	case http.StatusServiceUnavailable:
+		return api.GetBreakGlassRequest503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
 		}, nil
 	default:
 		return nil, err
@@ -1995,34 +2029,71 @@ func createBreakGlassRequestFailure(
 func approveBreakGlassRequestFailure(
 	err error,
 ) (api.ApproveBreakGlassRequestResponseObject, error) {
-	var failure *breakglass.Failure
-	if !errors.As(err, &failure) {
+	failure, ok := classifyBreakGlassFailure(err)
+	if !ok {
 		return nil, err
 	}
-	switch failure.Code {
-	case breakglass.FailureUnauthorized:
+	switch failure.status {
+	case http.StatusUnauthorized:
 		return api.ApproveBreakGlassRequest401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+				Code: failure.code, Message: failure.message,
 			},
 		}, nil
-	case breakglass.FailureForbidden:
+	case http.StatusForbidden:
 		return api.ApproveBreakGlassRequest403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
-				Code: "forbidden", Message: failure.Message,
+				Code: failure.code, Message: failure.message,
 			},
 		}, nil
-	case breakglass.FailureNotFound:
+	case http.StatusNotFound:
 		return api.ApproveBreakGlassRequest404JSONResponse{
-			Code: "not_found", Message: failure.Message,
+			Code: failure.code, Message: failure.message,
 		}, nil
-	case breakglass.FailureConflict:
+	case http.StatusConflict:
 		return api.ApproveBreakGlassRequest409JSONResponse{
-			Code: "conflict", Message: failure.Message,
+			Code: failure.code, Message: failure.message,
 		}, nil
-	case breakglass.FailureUnavailable:
+	case http.StatusServiceUnavailable:
 		return api.ApproveBreakGlassRequest503JSONResponse{
-			ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func revokeBreakGlassGrantFailure(
+	err error,
+) (api.RevokeBreakGlassGrantResponseObject, error) {
+	failure, ok := classifyBreakGlassFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusUnauthorized:
+		return api.RevokeBreakGlassGrant401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
+		}, nil
+	case http.StatusForbidden:
+		return api.RevokeBreakGlassGrant403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
+		}, nil
+	case http.StatusNotFound:
+		return api.RevokeBreakGlassGrant404JSONResponse{
+			Code: failure.code, Message: failure.message,
+		}, nil
+	case http.StatusServiceUnavailable:
+		return api.RevokeBreakGlassGrant503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
 		}, nil
 	default:
 		return nil, err
@@ -2032,30 +2103,32 @@ func approveBreakGlassRequestFailure(
 func getBreakGlassRequestContentFailure(
 	err error,
 ) (api.GetBreakGlassRequestContentResponseObject, error) {
-	var failure *breakglass.Failure
-	if !errors.As(err, &failure) {
+	failure, ok := classifyBreakGlassFailure(err)
+	if !ok {
 		return nil, err
 	}
-	switch failure.Code {
-	case breakglass.FailureUnauthorized:
+	switch failure.status {
+	case http.StatusUnauthorized:
 		return api.GetBreakGlassRequestContent401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+				Code: failure.code, Message: failure.message,
 			},
 		}, nil
-	case breakglass.FailureForbidden:
+	case http.StatusForbidden:
 		return api.GetBreakGlassRequestContent403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
-				Code: "forbidden", Message: failure.Message,
+				Code: failure.code, Message: failure.message,
 			},
 		}, nil
-	case breakglass.FailureNotFound:
+	case http.StatusNotFound:
 		return api.GetBreakGlassRequestContent404JSONResponse{
-			Code: "not_found", Message: failure.Message,
+			Code: failure.code, Message: failure.message,
 		}, nil
-	case breakglass.FailureUnavailable:
+	case http.StatusServiceUnavailable:
 		return api.GetBreakGlassRequestContent503JSONResponse{
-			ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
 		}, nil
 	default:
 		return nil, err
@@ -2065,39 +2138,35 @@ func getBreakGlassRequestContentFailure(
 func getBreakGlassArtifactsFailure(
 	err error,
 ) (api.GetBreakGlassArtifactsResponseObject, error) {
-	var failure *breakglass.Failure
-	if !errors.As(err, &failure) {
+	failure, ok := classifyBreakGlassFailure(err)
+	if !ok {
 		return nil, err
 	}
-	switch failure.Code {
-	case breakglass.FailureUnauthorized:
+	switch failure.status {
+	case http.StatusUnauthorized:
 		return api.GetBreakGlassArtifacts401JSONResponse{
 			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
-				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+				Code: failure.code, Message: failure.message,
 			},
 		}, nil
-	case breakglass.FailureForbidden:
+	case http.StatusForbidden:
 		return api.GetBreakGlassArtifacts403JSONResponse{
 			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
-				Code: "forbidden", Message: failure.Message,
+				Code: failure.code, Message: failure.message,
 			},
 		}, nil
-	case breakglass.FailureNotFound:
+	case http.StatusNotFound:
 		return api.GetBreakGlassArtifacts404JSONResponse{
-			Code: "not_found", Message: failure.Message,
+			Code: failure.code, Message: failure.message,
 		}, nil
-	case breakglass.FailureUnavailable:
+	case http.StatusServiceUnavailable:
 		return api.GetBreakGlassArtifacts503JSONResponse{
-			ServiceUnavailableJSONResponse: breakGlassUnavailableResponse(),
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: failure.code, Message: failure.message,
+			},
 		}, nil
 	default:
 		return nil, err
-	}
-}
-
-func breakGlassUnavailableResponse() api.ServiceUnavailableJSONResponse {
-	return api.ServiceUnavailableJSONResponse{
-		Code: "service_unavailable", Message: breakGlassServiceUnavailableMessage,
 	}
 }
 

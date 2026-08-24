@@ -7,14 +7,40 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivym/vela/api/gen"
 	"github.com/vivym/vela/internal/admission"
 	"github.com/vivym/vela/internal/artifactaccess"
+	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
 )
+
+func TestExpiredBreakGlassRevocationMapsToForbidden(t *testing.T) {
+	response, err := revokeBreakGlassGrantFailure(&breakglass.Failure{
+		Code: breakglass.FailureForbidden, Message: "Break-glass grant is no longer active",
+	})
+	if err != nil {
+		t.Fatalf("map expired Break-glass revocation: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	if err := response.VisitRevokeBreakGlassGrantResponse(recorder); err != nil {
+		t.Fatalf("write expired Break-glass revocation response: %v", err)
+	}
+	if recorder.Code != http.StatusForbidden ||
+		!strings.Contains(recorder.Body.String(), `"code":"forbidden"`) {
+		t.Fatalf(
+			"expired Break-glass revocation response = %d body=%s",
+			recorder.Code,
+			recorder.Body.String(),
+		)
+	}
+	if _, ok := response.(api.RevokeBreakGlassGrant403JSONResponse); !ok {
+		t.Fatalf("expired Break-glass revocation response type = %T", response)
+	}
+}
 
 func TestAuthenticationFailurePreservesServiceContractAndSupportsHumanLanguage(t *testing.T) {
 	handler, err := NewHandler(Config{

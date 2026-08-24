@@ -252,6 +252,16 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			proconfig: "search_path=pg_catalog, public, vela_private",
 		},
 		{
+			signature: "vela_private.authorize_break_glass_scope(uuid,break_glass_scope)",
+			owner:     "vela_break_glass_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_private.available_break_glass_artifact_set(uuid,uuid,uuid,timestamp with time zone)",
+			owner:     "vela_internal",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
 			signature: "vela_authorize_break_glass_request_content(uuid)",
 			owner:     "vela_break_glass_owner",
 			proconfig: "search_path=pg_catalog, public, vela_private",
@@ -310,6 +320,29 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 				configurationMatches,
 			)
 		}
+	}
+	var breakGlassOwnerCanLock, breakGlassRuntimeCanLock bool
+	if err := database.Admin.QueryRow(`
+		SELECT
+			pg_catalog.has_function_privilege(
+				'vela_break_glass_owner',
+				'vela_private.available_break_glass_artifact_set(uuid,uuid,uuid,timestamp with time zone)',
+				'EXECUTE'
+			),
+			pg_catalog.has_function_privilege(
+				'vela_break_glass_request',
+				'vela_private.available_break_glass_artifact_set(uuid,uuid,uuid,timestamp with time zone)',
+				'EXECUTE'
+			)
+	`).Scan(&breakGlassOwnerCanLock, &breakGlassRuntimeCanLock); err != nil {
+		t.Fatalf("inspect Break-glass lifecycle lock execution boundary: %v", err)
+	}
+	if !breakGlassOwnerCanLock || breakGlassRuntimeCanLock {
+		t.Fatalf(
+			"Break-glass lifecycle lock execution = owner %t runtime %t",
+			breakGlassOwnerCanLock,
+			breakGlassRuntimeCanLock,
+		)
 	}
 
 	var privateContextCount int
@@ -439,6 +472,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"break_glass_requests",
 			"break_glass_grants",
 			"break_glass_events",
+			"break_glass_denial_events",
 			"jobs",
 			"artifacts",
 			"credentials",

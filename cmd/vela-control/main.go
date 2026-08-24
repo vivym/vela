@@ -238,9 +238,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Platform Operator OIDC verifier: %w", err)
 	}
-	if configuration.platformOIDCIssuer == configuration.oidcIssuer &&
+	if configuration.platformOIDCIssuer == configuration.oidcIssuer ||
 		configuration.platformOIDCAudience == configuration.oidcAudience {
-		return errors.New("trust domains for Platform Operator and Customer Human OIDC must differ")
+		return errors.New(
+			"OIDC issuers and audiences for Platform Operator and Customer Human trust domains must each differ",
+		)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -423,6 +423,8 @@ paths:
                 $ref: '#/components/schemas/BreakGlassRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           description: Break-glass grant does not exist
           content:
@@ -1315,6 +1317,9 @@ components:
       enum:
         - REQUEST_CONTENT_READ
         - ARTIFACT_READ
+      x-enum-varnames:
+        - REQUESTCONTENTREAD
+        - ARTIFACTREAD
     BreakGlassReasonCode:
       type: string
       enum:
@@ -1322,6 +1327,11 @@ components:
         - SECURITY_INVESTIGATION
         - SERVICE_RECOVERY
         - LEGAL_RESPONSE
+      x-enum-varnames:
+        - CUSTOMERSUPPORT
+        - SECURITYINVESTIGATION
+        - SERVICERECOVERY
+        - LEGALRESPONSE
     BreakGlassState:
       type: string
       enum:
@@ -1329,6 +1339,11 @@ components:
         - ACTIVE
         - REVOKED
         - EXPIRED
+      x-enum-varnames:
+        - BreakGlassStatePENDING
+        - BreakGlassStateACTIVE
+        - BreakGlassStateREVOKED
+        - BreakGlassStateEXPIRED
     CreateBreakGlassRequest:
       type: object
       additionalProperties: false
@@ -1523,6 +1538,9 @@ components:
           enum:
             - VIDEO
             - THUMBNAIL
+          x-enum-varnames:
+            - BreakGlassArtifactKindVIDEO
+            - BreakGlassArtifactKindTHUMBNAIL
         ordinal:
           type: integer
           format: int32
@@ -1762,6 +1780,9 @@ components:
         kind:
           type: string
           enum:
+            - VIDEO
+            - THUMBNAIL
+          x-enum-varnames:
             - VIDEO
             - THUMBNAIL
         ordinal:
@@ -2505,6 +2526,28 @@ components:
             - ARTIFACT_DELIVERED
             - ARTIFACT_DELIVERY_FAILED
             - ARTIFACT_DENIED
+          x-enum-varnames:
+            - HUMANMEMBERCREATED
+            - HUMANMEMBERDISABLED
+            - ORGANIZATIONROLEASSIGNED
+            - ORGANIZATIONROLEREVOKED
+            - PROJECTROLEASSIGNED
+            - PROJECTROLEREVOKED
+            - SERVICEPRINCIPALCREATED
+            - SERVICEPRINCIPALDISABLED
+            - CREDENTIALISSUED
+            - CREDENTIALREVOKED
+            - SETTLEMENTCONTACTCREATED
+            - SETTLEMENTCONTACTDISABLED
+            - OrganizationAuditEventActionREQUESTCREATED
+            - OrganizationAuditEventActionGRANTAPPROVED
+            - OrganizationAuditEventActionGRANTREVOKED
+            - OrganizationAuditEventActionREQUESTCONTENTAUTHORIZED
+            - OrganizationAuditEventActionREQUESTCONTENTDENIED
+            - OrganizationAuditEventActionARTIFACTAUTHORIZED
+            - OrganizationAuditEventActionARTIFACTDELIVERED
+            - OrganizationAuditEventActionARTIFACTDELIVERYFAILED
+            - OrganizationAuditEventActionARTIFACTDENIED
         scope:
           $ref: '#/components/schemas/BreakGlassScope'
         outcome_code:
@@ -2559,6 +2602,21 @@ components:
         - DELIVERED
         - SIGNING_FAILED
         - GRANT_INACTIVE
+      x-enum-varnames:
+        - BreakGlassAuditOutcomeCodeCREATED
+        - BreakGlassAuditOutcomeCodeAPPROVED
+        - BreakGlassAuditOutcomeCodeREVOKED
+        - BreakGlassAuditOutcomeCodeALLOWED
+        - BreakGlassAuditOutcomeCodeSCOPEDENIED
+        - BreakGlassAuditOutcomeCodeGRANTREVOKED
+        - BreakGlassAuditOutcomeCodeGRANTEXPIRED
+        - BreakGlassAuditOutcomeCodeTARGETNOTFOUND
+        - BreakGlassAuditOutcomeCodeCONTENTDELETED
+        - BreakGlassAuditOutcomeCodeCONTENTEXPIRED
+        - BreakGlassAuditOutcomeCodeCONTENTUNAVAILABLE
+        - BreakGlassAuditOutcomeCodeDELIVERED
+        - BreakGlassAuditOutcomeCodeSIGNINGFAILED
+        - BreakGlassAuditOutcomeCodeGRANTINACTIVE
     CreateServicePrincipalRequest:
       type: object
       additionalProperties: false
@@ -2767,6 +2825,9 @@ components:
     WebhookSubscriptionState:
       type: string
       enum:
+        - ACTIVE
+        - DISABLED
+      x-enum-varnames:
         - ACTIVE
         - DISABLED
     CreateWebhookSubscriptionRequest:

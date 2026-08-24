@@ -1953,6 +1953,17 @@ type AttemptProgress struct {
 	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type BreakGlassDenialEvent struct {
+	ID                uuid.UUID             `db:"id" json:"id"`
+	AttemptedGrantID  uuid.UUID             `db:"attempted_grant_id" json:"attempted_grant_id"`
+	OperatorID        uuid.UUID             `db:"operator_id" json:"operator_id"`
+	OperatorSessionID uuid.UUID             `db:"operator_session_id" json:"operator_session_id"`
+	Action            BreakGlassEventAction `db:"action" json:"action"`
+	Scope             BreakGlassScope       `db:"scope" json:"scope"`
+	OutcomeCode       BreakGlassOutcomeCode `db:"outcome_code" json:"outcome_code"`
+	CreatedAt         pgtype.Timestamptz    `db:"created_at" json:"created_at"`
+}
+
 type BreakGlassEvent struct {
 	ID                uuid.UUID             `db:"id" json:"id"`
 	OrganizationID    uuid.UUID             `db:"organization_id" json:"organization_id"`
@@ -1963,7 +1974,7 @@ type BreakGlassEvent struct {
 	OperatorID        uuid.UUID             `db:"operator_id" json:"operator_id"`
 	OperatorSessionID uuid.UUID             `db:"operator_session_id" json:"operator_session_id"`
 	Action            BreakGlassEventAction `db:"action" json:"action"`
-	Scope             *BreakGlassScope      `db:"scope" json:"scope"`
+	Scope             BreakGlassScope       `db:"scope" json:"scope"`
 	OutcomeCode       BreakGlassOutcomeCode `db:"outcome_code" json:"outcome_code"`
 	CreatedAt         pgtype.Timestamptz    `db:"created_at" json:"created_at"`
 }

@@ -184,7 +184,7 @@ CREATE TABLE break_glass_events (
     operator_id uuid NOT NULL,
     operator_session_id uuid NOT NULL,
     action break_glass_event_action NOT NULL,
-    scope break_glass_scope,
+    scope break_glass_scope NOT NULL,
     outcome_code break_glass_outcome_code NOT NULL,
     created_at timestamptz NOT NULL,
     FOREIGN KEY (request_id, organization_id, project_id, job_id)
@@ -194,10 +194,8 @@ CREATE TABLE break_glass_events (
     FOREIGN KEY (operator_session_id, operator_id)
         REFERENCES platform_operator_auth_sessions(id, operator_id),
     CHECK (
-        (action = 'REQUEST_CREATED' AND grant_id IS NULL AND scope IS NULL)
-        OR (action IN ('GRANT_APPROVED', 'GRANT_REVOKED') AND grant_id IS NOT NULL AND scope IS NULL)
-        OR (action NOT IN ('REQUEST_CREATED', 'GRANT_APPROVED', 'GRANT_REVOKED')
-            AND grant_id IS NOT NULL AND scope IS NOT NULL)
+        (action = 'REQUEST_CREATED' AND grant_id IS NULL)
+        OR (action <> 'REQUEST_CREATED' AND grant_id IS NOT NULL)
     )
 );
 CREATE INDEX break_glass_events_organization_idx
@@ -208,6 +206,30 @@ ALTER TABLE break_glass_events OWNER TO vela_break_glass_owner;
 REVOKE ALL ON TABLE break_glass_events FROM PUBLIC;
 ALTER TABLE break_glass_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE break_glass_events FORCE ROW LEVEL SECURITY;
+
+CREATE TABLE break_glass_denial_events (
+    id uuid PRIMARY KEY,
+    attempted_grant_id uuid NOT NULL,
+    operator_id uuid NOT NULL,
+    operator_session_id uuid NOT NULL,
+    action break_glass_event_action NOT NULL,
+    scope break_glass_scope NOT NULL,
+    outcome_code break_glass_outcome_code NOT NULL,
+    created_at timestamptz NOT NULL,
+    FOREIGN KEY (operator_session_id, operator_id)
+        REFERENCES platform_operator_auth_sessions(id, operator_id),
+    CHECK (
+        (action = 'REQUEST_CONTENT_DENIED' AND scope = 'REQUEST_CONTENT_READ')
+        OR (action = 'ARTIFACT_DENIED' AND scope = 'ARTIFACT_READ')
+    ),
+    CHECK (outcome_code = 'TARGET_NOT_FOUND')
+);
+CREATE INDEX break_glass_denial_events_operator_idx
+    ON break_glass_denial_events (operator_id, created_at DESC, id DESC);
+ALTER TABLE break_glass_denial_events OWNER TO vela_break_glass_owner;
+REVOKE ALL ON TABLE break_glass_denial_events FROM PUBLIC;
+ALTER TABLE break_glass_denial_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE break_glass_denial_events FORCE ROW LEVEL SECURITY;
 
 CREATE FUNCTION vela_reject_break_glass_evidence_mutation() RETURNS trigger
 LANGUAGE plpgsql
@@ -291,6 +313,9 @@ BEFORE DELETE ON break_glass_grants
 FOR EACH ROW EXECUTE FUNCTION vela_reject_break_glass_evidence_mutation();
 CREATE TRIGGER break_glass_events_immutable
 BEFORE UPDATE OR DELETE ON break_glass_events
+FOR EACH ROW EXECUTE FUNCTION vela_reject_break_glass_evidence_mutation();
+CREATE TRIGGER break_glass_denial_events_immutable
+BEFORE UPDATE OR DELETE ON break_glass_denial_events
 FOR EACH ROW EXECUTE FUNCTION vela_reject_break_glass_evidence_mutation();
 
 CREATE FUNCTION vela_authenticate_platform_operator_oidc(
@@ -589,10 +614,11 @@ BEGIN
     INSERT INTO public.break_glass_events (
         id, organization_id, project_id, job_id, request_id, grant_id,
         operator_id, operator_session_id, action, scope, outcome_code, created_at
-    ) VALUES (
+    )
+    SELECT
         gen_random_uuid(), p_organization_id, p_project_id, p_job_id, p_request_id,
-        NULL, v_operator_id, v_session_id, 'REQUEST_CREATED', NULL, 'CREATED', v_now
-    );
+        NULL, v_operator_id, v_session_id, 'REQUEST_CREATED', scope, 'CREATED', v_now
+    FROM unnest(v_scopes) AS scope;
     RETURN QUERY SELECT p_request_id, false;
 END
 $$;
@@ -630,8 +656,12 @@ BEGIN
 
     SELECT request.* INTO v_request
     FROM public.break_glass_requests AS request
+    JOIN public.jobs AS job
+      ON job.organization_id = request.organization_id
+     AND job.project_id = request.project_id
+     AND job.id = request.job_id
     WHERE request.id = p_request_id
-    FOR UPDATE;
+    FOR UPDATE OF request;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Break-glass request is not found' USING ERRCODE = '02000';
     END IF;
@@ -667,11 +697,12 @@ BEGIN
     INSERT INTO public.break_glass_events (
         id, organization_id, project_id, job_id, request_id, grant_id,
         operator_id, operator_session_id, action, scope, outcome_code, created_at
-    ) VALUES (
+    )
+    SELECT
         gen_random_uuid(), v_request.organization_id, v_request.project_id,
         v_request.job_id, v_request.id, p_grant_id, v_operator_id, v_session_id,
-        'GRANT_APPROVED', NULL, 'APPROVED', v_now
-    );
+        'GRANT_APPROVED', scope, 'APPROVED', v_now
+    FROM unnest(v_request.scopes) AS scope;
     RETURN QUERY SELECT p_grant_id, expires_at, false;
 END
 $$;
@@ -694,14 +725,19 @@ DECLARE
     v_session_id uuid;
     v_now timestamptz;
     v_grant public.break_glass_grants%ROWTYPE;
+    v_request public.break_glass_requests%ROWTYPE;
 BEGIN
     SELECT context.operator_id, context.operator_session_id, context.transaction_time
     INTO v_operator_id, v_session_id, v_now
     FROM vela_private.current_break_glass_request_context() AS context;
     SELECT existing_grant.* INTO v_grant
     FROM public.break_glass_grants AS existing_grant
+    JOIN public.jobs AS job
+      ON job.organization_id = existing_grant.organization_id
+     AND job.project_id = existing_grant.project_id
+     AND job.id = existing_grant.job_id
     WHERE existing_grant.id = p_grant_id
-    FOR UPDATE;
+    FOR UPDATE OF existing_grant;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Break-glass grant is not found' USING ERRCODE = '02000';
     END IF;
@@ -711,8 +747,13 @@ BEGIN
     END IF;
     IF v_grant.expires_at <= v_now THEN
         RAISE EXCEPTION 'Break-glass grant is no longer active'
-            USING ERRCODE = '55000';
+            USING ERRCODE = '55000',
+                CONSTRAINT = 'break_glass_grant_inactive';
     END IF;
+
+    SELECT request.* INTO STRICT v_request
+    FROM public.break_glass_requests AS request
+    WHERE request.id = v_grant.request_id;
 
     UPDATE public.break_glass_grants AS target_grant
     SET revoked_at = v_now,
@@ -722,11 +763,12 @@ BEGIN
     INSERT INTO public.break_glass_events (
         id, organization_id, project_id, job_id, request_id, grant_id,
         operator_id, operator_session_id, action, scope, outcome_code, created_at
-    ) VALUES (
+    )
+    SELECT
         gen_random_uuid(), v_grant.organization_id, v_grant.project_id,
         v_grant.job_id, v_grant.request_id, v_grant.id, v_operator_id, v_session_id,
-        'GRANT_REVOKED', NULL, 'REVOKED', v_now
-    );
+        'GRANT_REVOKED', scope, 'REVOKED', v_now
+    FROM unnest(v_request.scopes) AS scope;
     RETURN QUERY SELECT v_now, false;
 END
 $$;
@@ -850,6 +892,111 @@ $$;
 REVOKE ALL ON FUNCTION vela_get_break_glass_grant(uuid) FROM PUBLIC;
 ALTER FUNCTION vela_get_break_glass_grant(uuid) OWNER TO vela_break_glass_owner;
 
+CREATE FUNCTION vela_private.authorize_break_glass_scope(
+    p_grant_id uuid,
+    p_scope public.break_glass_scope
+) RETURNS TABLE (
+    target_found boolean,
+    evidence_event_id uuid,
+    operator_id uuid,
+    operator_session_id uuid,
+    transaction_time timestamptz,
+    request_id uuid,
+    organization_id uuid,
+    project_id uuid,
+    job_id uuid,
+    grant_expires_at timestamptz,
+    grant_authorized boolean,
+    outcome_code public.break_glass_outcome_code
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, vela_private
+AS $$
+DECLARE
+    v_operator_id uuid;
+    v_session_id uuid;
+    v_now timestamptz;
+    v_grant public.break_glass_grants%ROWTYPE;
+    v_request public.break_glass_requests%ROWTYPE;
+    v_event_id uuid;
+    v_authorized boolean := false;
+    v_outcome public.break_glass_outcome_code;
+BEGIN
+    IF p_grant_id IS NULL OR p_scope IS NULL THEN
+        RAISE EXCEPTION 'Break-glass grant and scope are required' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT context.operator_id, context.operator_session_id, context.transaction_time
+    INTO v_operator_id, v_session_id, v_now
+    FROM vela_private.current_break_glass_request_context() AS context;
+
+    SELECT target_grant.* INTO v_grant
+    FROM public.break_glass_grants AS target_grant
+    JOIN public.jobs AS job
+      ON job.organization_id = target_grant.organization_id
+     AND job.project_id = target_grant.project_id
+     AND job.id = target_grant.job_id
+    WHERE target_grant.id = p_grant_id
+    FOR SHARE OF target_grant;
+    IF NOT FOUND THEN
+        v_event_id := gen_random_uuid();
+        INSERT INTO public.break_glass_denial_events (
+            id, attempted_grant_id, operator_id, operator_session_id,
+            action, scope, outcome_code, created_at
+        ) VALUES (
+            v_event_id, p_grant_id, v_operator_id, v_session_id,
+            CASE p_scope
+                WHEN 'REQUEST_CONTENT_READ' THEN 'REQUEST_CONTENT_DENIED'
+                ELSE 'ARTIFACT_DENIED'
+            END::public.break_glass_event_action,
+            p_scope, 'TARGET_NOT_FOUND', v_now
+        );
+        RETURN QUERY SELECT false, v_event_id, v_operator_id, v_session_id, v_now,
+            NULL::uuid, NULL::uuid, NULL::uuid, NULL::uuid, NULL::timestamptz,
+            false, 'TARGET_NOT_FOUND'::public.break_glass_outcome_code;
+        RETURN;
+    END IF;
+
+    SELECT target_request.* INTO v_request
+    FROM public.break_glass_requests AS target_request
+    JOIN public.jobs AS job
+      ON job.organization_id = target_request.organization_id
+     AND job.project_id = target_request.project_id
+     AND job.id = target_request.job_id
+    WHERE target_request.id = v_grant.request_id
+      AND target_request.organization_id = v_grant.organization_id
+      AND target_request.project_id = v_grant.project_id
+      AND target_request.job_id = v_grant.job_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Break-glass target integrity is unavailable'
+            USING ERRCODE = '55000',
+                CONSTRAINT = 'break_glass_target_integrity';
+    END IF;
+
+    IF v_grant.revoked_at IS NOT NULL THEN
+        v_outcome := 'GRANT_REVOKED';
+    ELSIF v_grant.expires_at <= v_now THEN
+        v_outcome := 'GRANT_EXPIRED';
+    ELSIF NOT (p_scope = ANY(v_request.scopes)) THEN
+        v_outcome := 'SCOPE_DENIED';
+    ELSE
+        v_outcome := 'ALLOWED';
+        v_authorized := true;
+    END IF;
+
+    RETURN QUERY SELECT true, NULL::uuid, v_operator_id, v_session_id, v_now,
+        v_grant.request_id, v_grant.organization_id, v_grant.project_id,
+        v_grant.job_id, v_grant.expires_at, v_authorized, v_outcome;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_private.authorize_break_glass_scope(
+    uuid, public.break_glass_scope
+) FROM PUBLIC;
+ALTER FUNCTION vela_private.authorize_break_glass_scope(
+    uuid, public.break_glass_scope
+) OWNER TO vela_break_glass_owner;
+
 CREATE FUNCTION vela_authorize_break_glass_request_content(
     p_grant_id uuid
 ) RETURNS TABLE (
@@ -868,11 +1015,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, vela_private
 AS $$
 DECLARE
-    v_operator_id uuid;
-    v_session_id uuid;
-    v_now timestamptz;
-    v_grant public.break_glass_grants%ROWTYPE;
-    v_request public.break_glass_requests%ROWTYPE;
+    v_authorization record;
     v_request_content jsonb;
     v_content_expires_at timestamptz;
     v_content_deleted_at timestamptz;
@@ -880,43 +1023,34 @@ DECLARE
     v_authorized boolean := false;
     v_event_id uuid;
 BEGIN
-    SELECT context.operator_id, context.operator_session_id, context.transaction_time
-    INTO v_operator_id, v_session_id, v_now
-    FROM vela_private.current_break_glass_request_context() AS context;
-    SELECT target_grant.* INTO v_grant
-    FROM public.break_glass_grants AS target_grant
-    WHERE target_grant.id = p_grant_id
-    FOR SHARE;
-    IF NOT FOUND THEN
-        RETURN QUERY SELECT false, 'NOT_FOUND'::text, NULL::uuid, NULL::uuid,
+    SELECT scope_authorization.* INTO v_authorization
+    FROM vela_private.authorize_break_glass_scope(
+        p_grant_id, 'REQUEST_CONTENT_READ'
+    ) AS scope_authorization;
+    IF NOT v_authorization.target_found THEN
+        RETURN QUERY SELECT false, v_authorization.outcome_code::text,
+            v_authorization.evidence_event_id, NULL::uuid,
             NULL::uuid, NULL::uuid, NULL::uuid, NULL::timestamptz, NULL::jsonb;
         RETURN;
     END IF;
-    SELECT target_request.* INTO v_request
-    FROM public.break_glass_requests AS target_request
-    WHERE target_request.id = v_grant.request_id;
-
-    IF v_grant.revoked_at IS NOT NULL THEN
-        v_outcome := 'GRANT_REVOKED';
-    ELSIF v_grant.expires_at <= v_now THEN
-        v_outcome := 'GRANT_EXPIRED';
-    ELSIF NOT ('REQUEST_CONTENT_READ'::public.break_glass_scope = ANY(v_request.scopes)) THEN
-        v_outcome := 'SCOPE_DENIED';
-    ELSE
+    v_outcome := v_authorization.outcome_code;
+    v_authorized := v_authorization.grant_authorized;
+    IF v_authorized THEN
+        v_authorized := false;
         SELECT job.request_content, job.request_content_expires_at,
             job.request_content_deleted_at
         INTO v_request_content, v_content_expires_at, v_content_deleted_at
         FROM public.jobs AS job
-        WHERE job.organization_id = v_grant.organization_id
-          AND job.project_id = v_grant.project_id
-          AND job.id = v_grant.job_id;
+        WHERE job.organization_id = v_authorization.organization_id
+          AND job.project_id = v_authorization.project_id
+          AND job.id = v_authorization.job_id;
         IF NOT FOUND THEN
             v_outcome := 'TARGET_NOT_FOUND';
         ELSIF v_content_deleted_at IS NOT NULL
             OR v_request_content = '{"deleted":true}'::jsonb
         THEN
             v_outcome := 'CONTENT_DELETED';
-        ELSIF v_content_expires_at <= v_now THEN
+        ELSIF v_content_expires_at <= v_authorization.transaction_time THEN
             v_outcome := 'CONTENT_EXPIRED';
         ELSE
             v_outcome := 'ALLOWED';
@@ -929,21 +1063,93 @@ BEGIN
         id, organization_id, project_id, job_id, request_id, grant_id,
         operator_id, operator_session_id, action, scope, outcome_code, created_at
     ) VALUES (
-        v_event_id, v_grant.organization_id, v_grant.project_id, v_grant.job_id,
-        v_grant.request_id, v_grant.id, v_operator_id, v_session_id,
+        v_event_id, v_authorization.organization_id, v_authorization.project_id,
+        v_authorization.job_id, v_authorization.request_id, p_grant_id,
+        v_authorization.operator_id, v_authorization.operator_session_id,
         (CASE WHEN v_authorized THEN 'REQUEST_CONTENT_AUTHORIZED'
             ELSE 'REQUEST_CONTENT_DENIED' END)::public.break_glass_event_action,
-        'REQUEST_CONTENT_READ', v_outcome, v_now
+        'REQUEST_CONTENT_READ', v_outcome, v_authorization.transaction_time
     );
     RETURN QUERY SELECT v_authorized, v_outcome::text, v_event_id,
-        v_grant.organization_id, v_grant.project_id, v_grant.job_id,
-        v_grant.request_id, v_grant.expires_at,
+        v_authorization.organization_id, v_authorization.project_id,
+        v_authorization.job_id, v_authorization.request_id,
+        v_authorization.grant_expires_at,
         CASE WHEN v_authorized THEN v_request_content ELSE NULL::jsonb END;
 END
 $$;
 REVOKE ALL ON FUNCTION vela_authorize_break_glass_request_content(uuid) FROM PUBLIC;
 ALTER FUNCTION vela_authorize_break_glass_request_content(uuid)
     OWNER TO vela_break_glass_owner;
+
+CREATE FUNCTION vela_private.available_break_glass_artifact_set(
+    p_organization_id uuid,
+    p_project_id uuid,
+    p_job_id uuid,
+    p_read_at timestamptz
+) RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, vela_private
+AS $$
+DECLARE
+    v_artifact_set_id uuid;
+    v_artifact_count integer := 0;
+    v_artifact record;
+BEGIN
+    SELECT artifact_set.id INTO v_artifact_set_id
+    FROM public.jobs AS job
+    JOIN public.artifact_sets AS artifact_set
+      ON artifact_set.organization_id = job.organization_id
+     AND artifact_set.project_id = job.project_id
+     AND artifact_set.job_id = job.id
+     AND artifact_set.id = job.result_artifact_set_id
+    WHERE job.organization_id = p_organization_id
+      AND job.project_id = p_project_id
+      AND job.id = p_job_id
+      AND job.state = 'SUCCEEDED'
+      AND job.request_content_deleted_at IS NULL
+      AND artifact_set.retention_expires_at > p_read_at
+    FOR SHARE OF job;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+
+    FOR v_artifact IN
+        SELECT artifact.state, artifact.retention_expires_at
+        FROM public.artifact_set_items AS item
+        JOIN public.artifacts AS artifact
+          ON artifact.organization_id = item.organization_id
+         AND artifact.project_id = item.project_id
+         AND artifact.id = item.artifact_id
+        WHERE item.organization_id = p_organization_id
+          AND item.project_id = p_project_id
+          AND item.job_id = p_job_id
+          AND item.artifact_set_id = v_artifact_set_id
+        FOR SHARE OF artifact
+    LOOP
+        v_artifact_count := v_artifact_count + 1;
+        IF v_artifact.state <> 'COMMITTED'
+            OR v_artifact.retention_expires_at IS NULL
+            OR v_artifact.retention_expires_at <= p_read_at
+        THEN
+            RETURN NULL;
+        END IF;
+    END LOOP;
+    IF v_artifact_count = 0 THEN
+        RETURN NULL;
+    END IF;
+    RETURN v_artifact_set_id;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_private.available_break_glass_artifact_set(
+    uuid, uuid, uuid, timestamptz
+) FROM PUBLIC;
+ALTER FUNCTION vela_private.available_break_glass_artifact_set(
+    uuid, uuid, uuid, timestamptz
+) OWNER TO vela_internal;
+GRANT EXECUTE ON FUNCTION vela_private.available_break_glass_artifact_set(
+    uuid, uuid, uuid, timestamptz
+) TO vela_break_glass_owner;
 
 CREATE FUNCTION vela_authorize_break_glass_artifacts(
     p_grant_id uuid
@@ -973,75 +1179,41 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, vela_private
 AS $$
 DECLARE
-    v_operator_id uuid;
-    v_session_id uuid;
-    v_now timestamptz;
-    v_grant public.break_glass_grants%ROWTYPE;
-    v_request public.break_glass_requests%ROWTYPE;
+    v_authorization record;
     v_artifact_set public.artifact_sets%ROWTYPE;
+    v_artifact_set_id uuid;
     v_outcome public.break_glass_outcome_code;
     v_authorized boolean := false;
     v_event_id uuid;
 BEGIN
-    SELECT context.operator_id, context.operator_session_id, context.transaction_time
-    INTO v_operator_id, v_session_id, v_now
-    FROM vela_private.current_break_glass_request_context() AS context;
-    SELECT target_grant.* INTO v_grant
-    FROM public.break_glass_grants AS target_grant
-    WHERE target_grant.id = p_grant_id
-    FOR SHARE;
-    IF NOT FOUND THEN
-        RETURN QUERY SELECT false, 'NOT_FOUND'::text, NULL::uuid, NULL::uuid,
+    SELECT scope_authorization.* INTO v_authorization
+    FROM vela_private.authorize_break_glass_scope(
+        p_grant_id, 'ARTIFACT_READ'
+    ) AS scope_authorization;
+    IF NOT v_authorization.target_found THEN
+        RETURN QUERY SELECT false, v_authorization.outcome_code::text,
+            v_authorization.evidence_event_id, NULL::uuid,
             NULL::uuid, NULL::uuid, NULL::uuid, NULL::timestamptz, NULL::uuid,
             NULL::timestamptz, NULL::timestamptz, NULL::uuid, NULL::text,
             NULL::integer, NULL::text, NULL::text, NULL::bigint, NULL::bytea, NULL::text;
         RETURN;
     END IF;
-    SELECT target_request.* INTO v_request
-    FROM public.break_glass_requests AS target_request
-    WHERE target_request.id = v_grant.request_id;
-
-    IF v_grant.revoked_at IS NOT NULL THEN
-        v_outcome := 'GRANT_REVOKED';
-    ELSIF v_grant.expires_at <= v_now THEN
-        v_outcome := 'GRANT_EXPIRED';
-    ELSIF NOT ('ARTIFACT_READ'::public.break_glass_scope = ANY(v_request.scopes)) THEN
-        v_outcome := 'SCOPE_DENIED';
-    ELSE
+    v_outcome := v_authorization.outcome_code;
+    v_authorized := v_authorization.grant_authorized;
+    IF v_authorized THEN
+        v_authorized := false;
+        v_artifact_set_id := vela_private.available_break_glass_artifact_set(
+            v_authorization.organization_id,
+            v_authorization.project_id,
+            v_authorization.job_id,
+            v_authorization.transaction_time
+        );
         SELECT artifact_set.* INTO v_artifact_set
-        FROM public.jobs AS job
-        JOIN public.artifact_sets AS artifact_set
-          ON artifact_set.organization_id = job.organization_id
-         AND artifact_set.project_id = job.project_id
-         AND artifact_set.job_id = job.id
-         AND artifact_set.id = job.result_artifact_set_id
-        WHERE job.organization_id = v_grant.organization_id
-          AND job.project_id = v_grant.project_id
-          AND job.id = v_grant.job_id
-          AND job.state = 'SUCCEEDED'
-          AND job.request_content_deleted_at IS NULL
-          AND artifact_set.retention_expires_at > v_now
-          AND EXISTS (
-              SELECT 1
-              FROM public.artifact_set_items AS item
-              JOIN public.artifacts AS artifact
-                ON artifact.organization_id = item.organization_id
-               AND artifact.project_id = item.project_id
-               AND artifact.id = item.artifact_id
-               AND artifact.state = 'COMMITTED'
-              WHERE item.artifact_set_id = artifact_set.id
-          )
-          AND NOT EXISTS (
-              SELECT 1
-              FROM public.artifact_set_items AS item
-              LEFT JOIN public.artifacts AS artifact
-                ON artifact.organization_id = item.organization_id
-               AND artifact.project_id = item.project_id
-               AND artifact.id = item.artifact_id
-               AND artifact.state = 'COMMITTED'
-              WHERE item.artifact_set_id = artifact_set.id
-                AND artifact.id IS NULL
-          );
+        FROM public.artifact_sets AS artifact_set
+        WHERE artifact_set.organization_id = v_authorization.organization_id
+          AND artifact_set.project_id = v_authorization.project_id
+          AND artifact_set.job_id = v_authorization.job_id
+          AND artifact_set.id = v_artifact_set_id;
         IF NOT FOUND THEN
             v_outcome := 'CONTENT_UNAVAILABLE';
         ELSE
@@ -1055,16 +1227,18 @@ BEGIN
         id, organization_id, project_id, job_id, request_id, grant_id,
         operator_id, operator_session_id, action, scope, outcome_code, created_at
     ) VALUES (
-        v_event_id, v_grant.organization_id, v_grant.project_id, v_grant.job_id,
-        v_grant.request_id, v_grant.id, v_operator_id, v_session_id,
+        v_event_id, v_authorization.organization_id, v_authorization.project_id,
+        v_authorization.job_id, v_authorization.request_id, p_grant_id,
+        v_authorization.operator_id, v_authorization.operator_session_id,
         (CASE WHEN v_authorized THEN 'ARTIFACT_AUTHORIZED'
             ELSE 'ARTIFACT_DENIED' END)::public.break_glass_event_action,
-        'ARTIFACT_READ', v_outcome, v_now
+        'ARTIFACT_READ', v_outcome, v_authorization.transaction_time
     );
     IF NOT v_authorized THEN
         RETURN QUERY SELECT false, v_outcome::text, v_event_id,
-            v_grant.organization_id, v_grant.project_id, v_grant.job_id,
-            v_grant.request_id, v_grant.expires_at, NULL::uuid,
+            v_authorization.organization_id, v_authorization.project_id,
+            v_authorization.job_id, v_authorization.request_id,
+            v_authorization.grant_expires_at, NULL::uuid,
             NULL::timestamptz, NULL::timestamptz, NULL::uuid, NULL::text,
             NULL::integer, NULL::text, NULL::text, NULL::bigint, NULL::bytea, NULL::text;
         RETURN;
@@ -1072,8 +1246,9 @@ BEGIN
 
     RETURN QUERY
     SELECT true, v_outcome::text, v_event_id,
-        v_grant.organization_id, v_grant.project_id, v_grant.job_id,
-        v_grant.request_id, v_grant.expires_at, v_artifact_set.id,
+        v_authorization.organization_id, v_authorization.project_id,
+        v_authorization.job_id, v_authorization.request_id,
+        v_authorization.grant_expires_at, v_artifact_set.id,
         v_artifact_set.retention_expires_at, v_artifact_set.committed_at,
         item.artifact_id, item.kind::text, item.ordinal, item.object_key,
         item.object_version_id, item.size_bytes, item.sha256, item.content_type
@@ -1104,6 +1279,8 @@ DECLARE
     v_now timestamptz;
     v_authorization public.break_glass_events%ROWTYPE;
     v_grant public.break_glass_grants%ROWTYPE;
+    v_grant_found boolean;
+    v_artifact_set_id uuid;
     v_delivered boolean;
     v_outcome public.break_glass_outcome_code;
     v_event_id uuid := gen_random_uuid();
@@ -1122,18 +1299,38 @@ BEGIN
     END IF;
     SELECT target_grant.* INTO v_grant
     FROM public.break_glass_grants AS target_grant
+    JOIN public.jobs AS job
+      ON job.organization_id = target_grant.organization_id
+     AND job.project_id = target_grant.project_id
+     AND job.id = target_grant.job_id
     WHERE target_grant.id = v_authorization.grant_id
-    FOR SHARE;
+      AND target_grant.organization_id = v_authorization.organization_id
+      AND target_grant.project_id = v_authorization.project_id
+      AND target_grant.job_id = v_authorization.job_id
+    FOR SHARE OF target_grant;
+    v_grant_found := FOUND;
 
-    v_delivered := p_signing_succeeded
-        AND v_grant.revoked_at IS NULL
-        AND v_grant.expires_at > v_now;
-    IF v_delivered THEN
-        v_outcome := 'DELIVERED';
-    ELSIF NOT p_signing_succeeded THEN
+    v_delivered := false;
+    IF NOT p_signing_succeeded THEN
         v_outcome := 'SIGNING_FAILED';
-    ELSE
+    ELSIF NOT v_grant_found
+        OR v_grant.revoked_at IS NOT NULL
+        OR v_grant.expires_at <= v_now
+    THEN
         v_outcome := 'GRANT_INACTIVE';
+    ELSE
+        v_artifact_set_id := vela_private.available_break_glass_artifact_set(
+            v_authorization.organization_id,
+            v_authorization.project_id,
+            v_authorization.job_id,
+            v_now
+        );
+        IF v_artifact_set_id IS NULL THEN
+            v_outcome := 'CONTENT_UNAVAILABLE';
+        ELSE
+            v_delivered := true;
+            v_outcome := 'DELIVERED';
+        END IF;
     END IF;
     INSERT INTO public.break_glass_events (
         id, organization_id, project_id, job_id, request_id, grant_id,
@@ -1336,7 +1533,8 @@ TO vela_break_glass_audit_request;
 
 -- +goose Down
 -- +goose StatementBegin
-LOCK TABLE break_glass_events, break_glass_grants, break_glass_requests,
+LOCK TABLE break_glass_denial_events, break_glass_events,
+    break_glass_grants, break_glass_requests,
     platform_operator_auth_sessions, platform_operator_oidc_bindings
     IN ACCESS EXCLUSIVE MODE;
 DO $$
@@ -1346,6 +1544,7 @@ BEGIN
         OR EXISTS (SELECT 1 FROM break_glass_requests)
         OR EXISTS (SELECT 1 FROM break_glass_grants)
         OR EXISTS (SELECT 1 FROM break_glass_events)
+        OR EXISTS (SELECT 1 FROM break_glass_denial_events)
     THEN
         RAISE EXCEPTION 'cannot remove Break-glass Access with durable evidence'
             USING ERRCODE = '55000',
@@ -1453,6 +1652,9 @@ REVOKE SELECT ON break_glass_events FROM vela_internal;
 
 REVOKE SELECT ON jobs, artifact_sets, artifact_set_items, artifacts
 FROM vela_break_glass_owner;
+REVOKE EXECUTE ON FUNCTION vela_private.available_break_glass_artifact_set(
+    uuid, uuid, uuid, timestamptz
+) FROM vela_break_glass_owner;
 REVOKE USAGE ON SCHEMA public, vela_private FROM vela_break_glass_owner;
 REVOKE EXECUTE ON FUNCTION vela_set_break_glass_request_context(uuid, bytea),
     vela_create_break_glass_request(
@@ -1474,7 +1676,11 @@ REVOKE USAGE ON SCHEMA public FROM vela_platform_operator_auth, vela_break_glass
 
 DROP FUNCTION vela_record_break_glass_artifact_delivery(uuid, boolean);
 DROP FUNCTION vela_authorize_break_glass_artifacts(uuid);
+DROP FUNCTION vela_private.available_break_glass_artifact_set(
+    uuid, uuid, uuid, timestamptz
+);
 DROP FUNCTION vela_authorize_break_glass_request_content(uuid);
+DROP FUNCTION vela_private.authorize_break_glass_scope(uuid, break_glass_scope);
 DROP FUNCTION vela_get_break_glass_grant(uuid);
 DROP FUNCTION vela_get_break_glass_request(uuid);
 DROP FUNCTION vela_revoke_break_glass_grant(uuid);
@@ -1487,6 +1693,7 @@ DROP FUNCTION vela_private.current_break_glass_request_context();
 DROP FUNCTION vela_set_break_glass_request_context(uuid, bytea);
 DROP FUNCTION vela_authenticate_platform_operator_oidc(text, text, bytea, timestamptz);
 
+DROP TRIGGER break_glass_denial_events_immutable ON break_glass_denial_events;
 DROP TRIGGER break_glass_events_immutable ON break_glass_events;
 DROP TRIGGER break_glass_grants_no_delete ON break_glass_grants;
 DROP TRIGGER break_glass_grants_immutable ON break_glass_grants;
@@ -1498,6 +1705,7 @@ DROP FUNCTION vela_enforce_break_glass_grant_immutability();
 DROP FUNCTION vela_enforce_platform_operator_binding_immutability();
 DROP FUNCTION vela_reject_break_glass_evidence_mutation();
 
+DROP TABLE break_glass_denial_events;
 DROP TABLE break_glass_events;
 DROP TABLE break_glass_grants;
 DROP TABLE break_glass_requests;

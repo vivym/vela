@@ -476,8 +476,8 @@ func TestBreakGlassRequiresDistinctApprovalAndRevocationIsPermanent(t *testing.T
 	`, requestID).Scan(&approvalEvents); err != nil {
 		t.Fatalf("count Break-glass approval events: %v", err)
 	}
-	if approvalEvents != 1 {
-		t.Fatalf("Break-glass approval events = %d, want 1", approvalEvents)
+	if approvalEvents != 2 {
+		t.Fatalf("Break-glass approval events = %d, want 2 scoped events", approvalEvents)
 	}
 	unknownOutcome, err := database.Admin.Begin()
 	if err != nil {
@@ -618,8 +618,8 @@ func TestBreakGlassRequiresDistinctApprovalAndRevocationIsPermanent(t *testing.T
 	`, grantID).Scan(&revocationEvents); err != nil {
 		t.Fatalf("count Break-glass revocation events: %v", err)
 	}
-	if revocationEvents != 1 {
-		t.Fatalf("Break-glass revocation events = %d, want 1", revocationEvents)
+	if revocationEvents != 2 {
+		t.Fatalf("Break-glass revocation events = %d, want 2 scoped events", revocationEvents)
 	}
 	for _, mutation := range []struct {
 		name      string
@@ -693,6 +693,132 @@ func TestBreakGlassRequiresDistinctApprovalAndRevocationIsPermanent(t *testing.T
 	var bindingImmutableError *pgconn.PgError
 	if !errors.As(err, &bindingImmutableError) || bindingImmutableError.Code != "55000" {
 		t.Fatalf("restore disabled Platform Operator binding error = %v", err)
+	}
+}
+
+func TestBreakGlassStateTransitionsRevalidateExactJobTarget(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, "break-glass-transition-target", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"transition revalidation target"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit Break-glass transition target = %d body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var target jobResponse
+	if err := json.Unmarshal(accepted.Body, &target); err != nil {
+		t.Fatalf("decode Break-glass transition target: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO platform_operator_oidc_bindings (
+			id, issuer, subject, display_name
+		) VALUES
+			($1, 'https://platform-identity.example.com', 'transition-requester', 'Requester'),
+			($2, 'https://platform-identity.example.com', 'transition-approver', 'Approver')
+	`, platformOperatorRequesterID, platformOperatorApproverID); err != nil {
+		t.Fatalf("seed transition-revalidation Platform Operators: %v", err)
+	}
+	requesterSession, requesterProof := authenticatePlatformOperator(
+		t, database.Admin, "transition-requester", "transition-requester-token",
+	)
+	approverSession, approverProof := authenticatePlatformOperator(
+		t, database.Admin, "transition-approver", "transition-approver-token",
+	)
+	requester := breakglass.NewOperatorForSession(
+		uuid.MustParse(platformOperatorRequesterID), requesterSession, requesterProof,
+	)
+	approver := breakglass.NewOperatorForSession(
+		uuid.MustParse(platformOperatorApproverID), approverSession, approverProof,
+	)
+	service, err := breakglass.NewService(newRolePool(
+		t,
+		database.DSN,
+		"vela_break_glass_request_login",
+		"vela-break-glass-request-password",
+	))
+	if err != nil {
+		t.Fatalf("create transition-revalidation Break-glass service: %v", err)
+	}
+	input := breakglass.RequestInput{
+		Target: breakglass.Target{
+			OrganizationID: uuid.MustParse(testOrganizationID),
+			ProjectID:      uuid.MustParse(testProjectID),
+			JobID:          uuid.MustParse(target.JobID),
+		},
+		Scopes:                   []breakglass.Scope{breakglass.ScopeRequestContentRead},
+		ReasonCode:               breakglass.ReasonServiceRecovery,
+		TicketReference:          "SUPPORT-TARGET-1",
+		RequestedDurationSeconds: 600,
+	}
+	pending, _, err := service.Request(
+		context.Background(), requester, "transition-pending", input,
+	)
+	if err != nil {
+		t.Fatalf("create pending transition-revalidation request: %v", err)
+	}
+	approved, _, err := service.Request(
+		context.Background(), requester, "transition-approved", input,
+	)
+	if err != nil {
+		t.Fatalf("create approved transition-revalidation request: %v", err)
+	}
+	approved, err = service.Approve(context.Background(), approver, approved.ID)
+	if err != nil || approved.GrantID == nil {
+		t.Fatalf("approve transition-revalidation request = %#v error=%v", approved, err)
+	}
+
+	removeTarget, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin forced target removal: %v", err)
+	}
+	if _, err := removeTarget.Exec("ALTER TABLE jobs DISABLE TRIGGER ALL"); err != nil {
+		_ = removeTarget.Rollback()
+		t.Fatalf("disable Job target constraints: %v", err)
+	}
+	if _, err := removeTarget.Exec("DELETE FROM jobs WHERE id = $1", target.JobID); err != nil {
+		_ = removeTarget.Rollback()
+		t.Fatalf("remove Job target fixture: %v", err)
+	}
+	if _, err := removeTarget.Exec("ALTER TABLE jobs ENABLE TRIGGER ALL"); err != nil {
+		_ = removeTarget.Rollback()
+		t.Fatalf("restore Job target constraints: %v", err)
+	}
+	if err := removeTarget.Commit(); err != nil {
+		t.Fatalf("commit forced target removal: %v", err)
+	}
+
+	if _, err := service.Approve(
+		context.Background(), approver, pending.ID,
+	); !breakglass.IsFailure(err, breakglass.FailureNotFound) {
+		t.Fatalf("approval after exact Job removal error = %v", err)
+	}
+	if _, err := service.Revoke(
+		context.Background(), requester, *approved.GrantID,
+	); !breakglass.IsFailure(err, breakglass.FailureNotFound) {
+		t.Fatalf("revocation after exact Job removal error = %v", err)
+	}
+	var transitionEffects int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM break_glass_grants WHERE request_id = $1) +
+			(SELECT count(*) FROM break_glass_events
+			 WHERE request_id = $1 AND action = 'GRANT_APPROVED') +
+			(SELECT count(*) FROM break_glass_events
+			 WHERE grant_id = $2 AND action = 'GRANT_REVOKED') +
+			(SELECT count(*) FROM break_glass_grants
+			 WHERE id = $2 AND revoked_at IS NOT NULL)
+	`, pending.ID, *approved.GrantID).Scan(&transitionEffects); err != nil {
+		t.Fatalf("read target-revalidation transition effects: %v", err)
+	}
+	if transitionEffects != 0 {
+		t.Fatalf("target-revalidation transition effects = %d, want 0", transitionEffects)
 	}
 }
 
@@ -970,9 +1096,11 @@ func TestBreakGlassServiceLifecycleUsesDedicatedRequestRole(t *testing.T) {
 		t.Fatalf("create Break-glass service: %v", err)
 	}
 	validInput := breakglass.RequestInput{
-		OrganizationID:           uuid.MustParse(testOrganizationID),
-		ProjectID:                uuid.MustParse(testProjectID),
-		JobID:                    uuid.MustParse(target.JobID),
+		Target: breakglass.Target{
+			OrganizationID: uuid.MustParse(testOrganizationID),
+			ProjectID:      uuid.MustParse(testProjectID),
+			JobID:          uuid.MustParse(target.JobID),
+		},
 		Scopes:                   []breakglass.Scope{breakglass.ScopeArtifactRead},
 		ReasonCode:               breakglass.ReasonCustomerSupport,
 		TicketReference:          "SUPPORT-VALID",
@@ -1055,9 +1183,11 @@ func TestBreakGlassServiceLifecycleUsesDedicatedRequestRole(t *testing.T) {
 		requester,
 		"service-lifecycle-001",
 		breakglass.RequestInput{
-			OrganizationID:           uuid.MustParse(testOrganizationID),
-			ProjectID:                uuid.MustParse(testProjectID),
-			JobID:                    uuid.MustParse(target.JobID),
+			Target: breakglass.Target{
+				OrganizationID: uuid.MustParse(testOrganizationID),
+				ProjectID:      uuid.MustParse(testProjectID),
+				JobID:          uuid.MustParse(target.JobID),
+			},
 			Scopes:                   []breakglass.Scope{breakglass.ScopeArtifactRead},
 			ReasonCode:               breakglass.ReasonCustomerSupport,
 			TicketReference:          "SUPPORT-2001",
@@ -1072,9 +1202,11 @@ func TestBreakGlassServiceLifecycleUsesDedicatedRequestRole(t *testing.T) {
 		requester,
 		"service-lifecycle-001",
 		breakglass.RequestInput{
-			OrganizationID:           uuid.MustParse(testOrganizationID),
-			ProjectID:                uuid.MustParse(testProjectID),
-			JobID:                    uuid.MustParse(target.JobID),
+			Target: breakglass.Target{
+				OrganizationID: uuid.MustParse(testOrganizationID),
+				ProjectID:      uuid.MustParse(testProjectID),
+				JobID:          uuid.MustParse(target.JobID),
+			},
 			Scopes:                   []breakglass.Scope{breakglass.ScopeArtifactRead},
 			ReasonCode:               breakglass.ReasonCustomerSupport,
 			TicketReference:          "SUPPORT-2001",
@@ -1089,9 +1221,11 @@ func TestBreakGlassServiceLifecycleUsesDedicatedRequestRole(t *testing.T) {
 		requester,
 		"service-lifecycle-001",
 		breakglass.RequestInput{
-			OrganizationID:           uuid.MustParse(testOrganizationID),
-			ProjectID:                uuid.MustParse(testProjectID),
-			JobID:                    uuid.MustParse(target.JobID),
+			Target: breakglass.Target{
+				OrganizationID: uuid.MustParse(testOrganizationID),
+				ProjectID:      uuid.MustParse(testProjectID),
+				JobID:          uuid.MustParse(target.JobID),
+			},
 			Scopes:                   []breakglass.Scope{breakglass.ScopeRequestContentRead},
 			ReasonCode:               breakglass.ReasonCustomerSupport,
 			TicketReference:          "SUPPORT-2001",
@@ -1151,9 +1285,11 @@ func TestBreakGlassServiceLifecycleUsesDedicatedRequestRole(t *testing.T) {
 	}
 	concurrentResults := make(chan requestResult, 2)
 	concurrentInput := breakglass.RequestInput{
-		OrganizationID:           uuid.MustParse(testOrganizationID),
-		ProjectID:                uuid.MustParse(testProjectID),
-		JobID:                    uuid.MustParse(target.JobID),
+		Target: breakglass.Target{
+			OrganizationID: uuid.MustParse(testOrganizationID),
+			ProjectID:      uuid.MustParse(testProjectID),
+			JobID:          uuid.MustParse(target.JobID),
+		},
 		Scopes:                   []breakglass.Scope{breakglass.ScopeArtifactRead},
 		ReasonCode:               breakglass.ReasonCustomerSupport,
 		TicketReference:          "SUPPORT-CONCURRENT-1",
@@ -1270,9 +1406,11 @@ func TestBreakGlassServiceLifecycleUsesDedicatedRequestRole(t *testing.T) {
 			requester,
 			"service-lifecycle-cross-tuple-"+strings.ToLower(mismatch.name),
 			breakglass.RequestInput{
-				OrganizationID:           mismatch.organizationID,
-				ProjectID:                mismatch.projectID,
-				JobID:                    mismatch.jobID,
+				Target: breakglass.Target{
+					OrganizationID: mismatch.organizationID,
+					ProjectID:      mismatch.projectID,
+					JobID:          mismatch.jobID,
+				},
 				Scopes:                   []breakglass.Scope{breakglass.ScopeArtifactRead},
 				ReasonCode:               breakglass.ReasonCustomerSupport,
 				TicketReference:          "SUPPORT-2002",
@@ -1328,9 +1466,11 @@ func TestBreakGlassServiceLifecycleUsesDedicatedRequestRole(t *testing.T) {
 		approver,
 		"service-lifecycle-unavailable",
 		breakglass.RequestInput{
-			OrganizationID:           uuid.MustParse(testOrganizationID),
-			ProjectID:                uuid.MustParse(testProjectID),
-			JobID:                    uuid.MustParse(target.JobID),
+			Target: breakglass.Target{
+				OrganizationID: uuid.MustParse(testOrganizationID),
+				ProjectID:      uuid.MustParse(testProjectID),
+				JobID:          uuid.MustParse(target.JobID),
+			},
 			Scopes:                   []breakglass.Scope{breakglass.ScopeArtifactRead},
 			ReasonCode:               breakglass.ReasonCustomerSupport,
 			TicketReference:          "SUPPORT-2003",
@@ -1398,9 +1538,11 @@ func TestBreakGlassAccessRevalidatesScopeGrantExpiryAndOperatorStatus(t *testing
 		requester,
 		"revalidation-artifact-only",
 		breakglass.RequestInput{
-			OrganizationID:           uuid.MustParse(testOrganizationID),
-			ProjectID:                uuid.MustParse(testProjectID),
-			JobID:                    uuid.MustParse(target.JobID),
+			Target: breakglass.Target{
+				OrganizationID: uuid.MustParse(testOrganizationID),
+				ProjectID:      uuid.MustParse(testProjectID),
+				JobID:          uuid.MustParse(target.JobID),
+			},
 			Scopes:                   []breakglass.Scope{breakglass.ScopeArtifactRead},
 			ReasonCode:               breakglass.ReasonCustomerSupport,
 			TicketReference:          "SUPPORT-5001",
@@ -1497,15 +1639,22 @@ func TestBreakGlassAccessRevalidatesScopeGrantExpiryAndOperatorStatus(t *testing
 	if expiredGrantEvents != 1 {
 		t.Fatalf("expired-grant denial events = %d, want 1", expiredGrantEvents)
 	}
+	if _, err := service.Revoke(
+		context.Background(), requester, expiredGrantID,
+	); !breakglass.IsFailure(err, breakglass.FailureForbidden) {
+		t.Fatalf("expired Break-glass grant revocation error = %v, want forbidden", err)
+	}
 
 	active, _, err := service.Request(
 		context.Background(),
 		requester,
 		"revalidation-disabled-operator",
 		breakglass.RequestInput{
-			OrganizationID:           uuid.MustParse(testOrganizationID),
-			ProjectID:                uuid.MustParse(testProjectID),
-			JobID:                    uuid.MustParse(target.JobID),
+			Target: breakglass.Target{
+				OrganizationID: uuid.MustParse(testOrganizationID),
+				ProjectID:      uuid.MustParse(testProjectID),
+				JobID:          uuid.MustParse(target.JobID),
+			},
 			Scopes:                   []breakglass.Scope{breakglass.ScopeRequestContentRead},
 			ReasonCode:               breakglass.ReasonCustomerSupport,
 			TicketReference:          "SUPPORT-5003",
@@ -1598,14 +1747,61 @@ func TestBreakGlassContentAccessIsScopedAuditedAndGrantBounded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create Break-glass content service: %v", err)
 	}
+	unknownContentGrantID := uuid.New()
+	if _, err := service.ReadRequestContent(
+		context.Background(), requester, unknownContentGrantID,
+	); !breakglass.IsFailure(err, breakglass.FailureNotFound) {
+		t.Fatalf("unknown request-content grant error = %v", err)
+	}
+	unknownArtifactGrantID := uuid.New()
+	if _, err := service.GetArtifacts(
+		context.Background(), requester, unknownArtifactGrantID,
+	); !breakglass.IsFailure(err, breakglass.FailureNotFound) {
+		t.Fatalf("unknown Artifact grant error = %v", err)
+	}
+	var unknownDenials int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT count(*)
+		FROM break_glass_denial_events
+		WHERE operator_id = $1
+		  AND (
+			(attempted_grant_id = $2
+			 AND action = 'REQUEST_CONTENT_DENIED'
+			 AND scope = 'REQUEST_CONTENT_READ')
+			OR
+			(attempted_grant_id = $3
+			 AND action = 'ARTIFACT_DENIED'
+			 AND scope = 'ARTIFACT_READ')
+		  )
+		  AND outcome_code = 'TARGET_NOT_FOUND'
+	`, requester.ID, unknownContentGrantID, unknownArtifactGrantID).Scan(&unknownDenials); err != nil {
+		t.Fatalf("read unknown-grant denial evidence: %v", err)
+	}
+	if unknownDenials != 2 {
+		t.Fatalf("unknown-grant denial events = %d, want 2", unknownDenials)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE break_glass_denial_events
+		SET attempted_grant_id = $2
+		WHERE attempted_grant_id = $1
+	`, unknownContentGrantID, uuid.New()); err == nil {
+		t.Fatal("immutable unknown-grant denial evidence accepted mutation")
+	} else {
+		var postgresError *pgconn.PgError
+		if !errors.As(err, &postgresError) || postgresError.Code != "55000" {
+			t.Fatalf("unknown-grant denial evidence mutation error = %v", err)
+		}
+	}
 	created, _, err := service.Request(
 		context.Background(),
 		requester,
 		"content-access-001",
 		breakglass.RequestInput{
-			OrganizationID: uuid.MustParse(testOrganizationID),
-			ProjectID:      uuid.MustParse(testProjectID),
-			JobID:          fixture.assignment.JobID,
+			Target: breakglass.Target{
+				OrganizationID: uuid.MustParse(testOrganizationID),
+				ProjectID:      uuid.MustParse(testProjectID),
+				JobID:          fixture.assignment.JobID,
+			},
 			Scopes: []breakglass.Scope{
 				breakglass.ScopeRequestContentRead,
 				breakglass.ScopeArtifactRead,
@@ -1739,32 +1935,40 @@ func TestBreakGlassContentAccessIsScopedAuditedAndGrantBounded(t *testing.T) {
 	}
 	expectedActions := map[string]struct {
 		found       bool
-		scope       string
 		outcomeCode string
 	}{
-		"REQUEST_CREATED": {
+		"REQUEST_CREATED/REQUEST_CONTENT_READ": {
 			outcomeCode: "CREATED",
 		},
-		"GRANT_APPROVED": {
+		"REQUEST_CREATED/ARTIFACT_READ": {
+			outcomeCode: "CREATED",
+		},
+		"GRANT_APPROVED/REQUEST_CONTENT_READ": {
 			outcomeCode: "APPROVED",
 		},
-		"REQUEST_CONTENT_AUTHORIZED": {
-			scope: "REQUEST_CONTENT_READ", outcomeCode: "ALLOWED",
+		"GRANT_APPROVED/ARTIFACT_READ": {
+			outcomeCode: "APPROVED",
 		},
-		"ARTIFACT_AUTHORIZED": {
-			scope: "ARTIFACT_READ", outcomeCode: "ALLOWED",
+		"REQUEST_CONTENT_AUTHORIZED/REQUEST_CONTENT_READ": {
+			outcomeCode: "ALLOWED",
 		},
-		"ARTIFACT_DELIVERED": {
-			scope: "ARTIFACT_READ", outcomeCode: "DELIVERED",
+		"ARTIFACT_AUTHORIZED/ARTIFACT_READ": {
+			outcomeCode: "ALLOWED",
 		},
-		"GRANT_REVOKED": {
+		"ARTIFACT_DELIVERED/ARTIFACT_READ": {
+			outcomeCode: "DELIVERED",
+		},
+		"GRANT_REVOKED/REQUEST_CONTENT_READ": {
 			outcomeCode: "REVOKED",
 		},
-		"REQUEST_CONTENT_DENIED": {
-			scope: "REQUEST_CONTENT_READ", outcomeCode: "GRANT_REVOKED",
+		"GRANT_REVOKED/ARTIFACT_READ": {
+			outcomeCode: "REVOKED",
 		},
-		"ARTIFACT_DENIED": {
-			scope: "ARTIFACT_READ", outcomeCode: "GRANT_REVOKED",
+		"REQUEST_CONTENT_DENIED/REQUEST_CONTENT_READ": {
+			outcomeCode: "GRANT_REVOKED",
+		},
+		"ARTIFACT_DENIED/ARTIFACT_READ": {
+			outcomeCode: "GRANT_REVOKED",
 		},
 	}
 	breakGlassAuditEvents := make([]organizationreporting.AuditEvent, 0, len(expectedActions))
@@ -1773,15 +1977,17 @@ func TestBreakGlassContentAccessIsScopedAuditedAndGrantBounded(t *testing.T) {
 			continue
 		}
 		breakGlassAuditEvents = append(breakGlassAuditEvents, event)
-		expected, ok := expectedActions[event.Action]
+		if event.Scope == nil {
+			t.Fatalf("Break-glass Organization audit event lacks scope = %#v", event)
+		}
+		key := event.Action + "/" + *event.Scope
+		expected, ok := expectedActions[key]
 		if !ok {
 			t.Fatalf("unexpected Break-glass Organization audit action = %#v", event)
 		}
 		expected.found = true
-		expectedActions[event.Action] = expected
-		if event.OutcomeCode == nil || *event.OutcomeCode != expected.outcomeCode ||
-			(expected.scope == "" && event.Scope != nil) ||
-			(expected.scope != "" && (event.Scope == nil || *event.Scope != expected.scope)) {
+		expectedActions[key] = expected
+		if event.OutcomeCode == nil || *event.OutcomeCode != expected.outcomeCode {
 			t.Fatalf("Break-glass Organization audit scope/outcome = %#v", event)
 		}
 		if event.ProjectID == nil || *event.ProjectID != uuid.MustParse(testProjectID) ||
@@ -1887,9 +2093,11 @@ func TestBreakGlassContentLifecycleAndSigningFailuresRemainFailClosed(t *testing
 		requester,
 		"content-lifecycle-001",
 		breakglass.RequestInput{
-			OrganizationID: uuid.MustParse(testOrganizationID),
-			ProjectID:      uuid.MustParse(testProjectID),
-			JobID:          fixture.assignment.JobID,
+			Target: breakglass.Target{
+				OrganizationID: uuid.MustParse(testOrganizationID),
+				ProjectID:      uuid.MustParse(testProjectID),
+				JobID:          fixture.assignment.JobID,
+			},
 			Scopes: []breakglass.Scope{
 				breakglass.ScopeRequestContentRead,
 				breakglass.ScopeArtifactRead,
@@ -1940,6 +2148,146 @@ func TestBreakGlassContentLifecycleAndSigningFailuresRemainFailClosed(t *testing
 		LIMIT 1
 	`, completed.ArtifactSetID).Scan(&lifecycleArtifactID); err != nil {
 		t.Fatalf("select lifecycle Artifact: %v", err)
+	}
+	lifecycleRaceSigner := &grantBoundedArtifactSigner{
+		beforeFirstSign: func() {
+			result, updateErr := fixture.database.Admin.Exec(`
+				UPDATE artifacts SET state = 'EXPIRED' WHERE id = $1
+			`, lifecycleArtifactID)
+			if updateErr != nil {
+				t.Fatalf("expire Artifact during Break-glass signing: %v", updateErr)
+			}
+			if rows, rowsErr := result.RowsAffected(); rowsErr != nil || rows != 1 {
+				t.Fatalf("expire Artifact during Break-glass signing rows = %d error=%v", rows, rowsErr)
+			}
+		},
+	}
+	lifecycleRaceService, err := breakglass.NewService(requestPool, lifecycleRaceSigner)
+	if err != nil {
+		t.Fatalf("create lifecycle-race Break-glass service: %v", err)
+	}
+	if _, err := lifecycleRaceService.GetArtifacts(
+		context.Background(), requester, *approved.GrantID,
+	); !breakglass.IsFailure(err, breakglass.FailureForbidden) {
+		t.Fatalf("Break-glass delivery after Artifact lifecycle race error = %v", err)
+	}
+	if !lifecycleRaceSigner.firstSignHookRan {
+		t.Fatal("Break-glass lifecycle race did not execute during signing")
+	}
+	var lifecycleRaceEvents, lifecycleRaceDeliveries int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			count(*) FILTER (
+				WHERE action = 'ARTIFACT_DELIVERY_FAILED'
+				  AND outcome_code = 'CONTENT_UNAVAILABLE'
+			),
+			count(*) FILTER (WHERE action = 'ARTIFACT_DELIVERED')
+		FROM break_glass_events
+		WHERE grant_id = $1
+	`, *approved.GrantID).Scan(&lifecycleRaceEvents, &lifecycleRaceDeliveries); err != nil {
+		t.Fatalf("read Break-glass lifecycle-race delivery evidence: %v", err)
+	}
+	if lifecycleRaceEvents != 1 || lifecycleRaceDeliveries != 0 {
+		t.Fatalf(
+			"Break-glass lifecycle-race events = failed %d delivered %d, want 1/0",
+			lifecycleRaceEvents,
+			lifecycleRaceDeliveries,
+		)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE artifacts SET state = 'COMMITTED' WHERE id = $1
+	`, lifecycleArtifactID); err != nil {
+		t.Fatalf("restore lifecycle Artifact after signing race: %v", err)
+	}
+
+	authorizationTx := beginBreakGlassTransaction(
+		t, fixture.database.Admin, requesterSession, requesterProof,
+	)
+	defer func() { _ = authorizationTx.Rollback() }()
+	var deliveryAuthorizationEventID uuid.UUID
+	var deliveryAuthorized bool
+	if err := authorizationTx.QueryRow(`
+		SELECT authorized, event_id
+		FROM vela_authorize_break_glass_artifacts($1)
+		LIMIT 1
+	`, *approved.GrantID).Scan(
+		&deliveryAuthorized,
+		&deliveryAuthorizationEventID,
+	); err != nil {
+		t.Fatalf("authorize Break-glass Artifact lock fixture: %v", err)
+	}
+	if !deliveryAuthorized || deliveryAuthorizationEventID == uuid.Nil {
+		t.Fatalf(
+			"Break-glass Artifact lock authorization = authorized %t event %s",
+			deliveryAuthorized,
+			deliveryAuthorizationEventID,
+		)
+	}
+	if err := authorizationTx.Commit(); err != nil {
+		t.Fatalf("commit Break-glass Artifact lock authorization: %v", err)
+	}
+
+	deliveryTx := beginBreakGlassTransaction(
+		t, fixture.database.Admin, requesterSession, requesterProof,
+	)
+	defer func() { _ = deliveryTx.Rollback() }()
+	var delivered bool
+	var deliveryOutcome string
+	var deliveryEventID uuid.UUID
+	if err := deliveryTx.QueryRow(`
+		SELECT delivered, outcome_code, event_id
+		FROM vela_record_break_glass_artifact_delivery($1, true)
+	`, deliveryAuthorizationEventID).Scan(
+		&delivered,
+		&deliveryOutcome,
+		&deliveryEventID,
+	); err != nil {
+		t.Fatalf("record Break-glass Artifact lock delivery: %v", err)
+	}
+	if !delivered || deliveryOutcome != "DELIVERED" || deliveryEventID == uuid.Nil {
+		t.Fatalf(
+			"Break-glass Artifact lock delivery = delivered %t outcome %s event %s",
+			delivered,
+			deliveryOutcome,
+			deliveryEventID,
+		)
+	}
+	internalConnection := newRoleConnection(
+		t,
+		fixture.database.DSN,
+		"vela_internal_login",
+		"vela-internal-password",
+	)
+	type lifecycleMutationResult struct {
+		rows int64
+		err  error
+	}
+	lifecycleMutationResults := make(chan lifecycleMutationResult, 1)
+	go func() {
+		command, updateErr := internalConnection.Exec(context.Background(), `
+			UPDATE artifacts SET state = 'EXPIRED' WHERE id = $1
+		`, lifecycleArtifactID)
+		lifecycleMutationResults <- lifecycleMutationResult{
+			rows: command.RowsAffected(),
+			err:  updateErr,
+		}
+	}()
+	waitForRoleDatabaseLock(t, fixture.database.Admin, "vela_internal_login")
+	if err := deliveryTx.Commit(); err != nil {
+		t.Fatalf("commit Break-glass Artifact delivery while lifecycle waits: %v", err)
+	}
+	mutation := <-lifecycleMutationResults
+	if mutation.err != nil || mutation.rows != 1 {
+		t.Fatalf(
+			"Artifact lifecycle mutation after Break-glass delivery = rows %d error=%v",
+			mutation.rows,
+			mutation.err,
+		)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE artifacts SET state = 'COMMITTED' WHERE id = $1
+	`, lifecycleArtifactID); err != nil {
+		t.Fatalf("restore lifecycle Artifact after delivery lock fixture: %v", err)
 	}
 	for _, state := range []string{"EXPIRED", "DELETED"} {
 		if _, err := fixture.database.Admin.Exec(`
@@ -2487,9 +2835,10 @@ func TestBreakGlassMigrationRoundTripRestoresOrganizationAuditProjection(t *test
 	var removedSurface bool
 	if err := database.Admin.QueryRow(`
 		SELECT
-			to_regclass('public.break_glass_requests') IS NULL
-			AND to_regclass('public.break_glass_grants') IS NULL
-			AND to_regclass('public.break_glass_events') IS NULL
+				to_regclass('public.break_glass_requests') IS NULL
+				AND to_regclass('public.break_glass_grants') IS NULL
+				AND to_regclass('public.break_glass_events') IS NULL
+				AND to_regclass('public.break_glass_denial_events') IS NULL
 			AND to_regprocedure(
 				'vela_authenticate_platform_operator_oidc(text,text,bytea,timestamptz)'
 			) IS NULL
@@ -2706,8 +3055,10 @@ type grantBoundedSignerCall struct {
 }
 
 type grantBoundedArtifactSigner struct {
-	calls []grantBoundedSignerCall
-	err   error
+	calls            []grantBoundedSignerCall
+	err              error
+	beforeFirstSign  func()
+	firstSignHookRan bool
 }
 
 type failingArtifactSigner struct {
@@ -2732,6 +3083,10 @@ func (signer *grantBoundedArtifactSigner) PresignExactVersionUntil(
 	signer.calls = append(signer.calls, grantBoundedSignerCall{
 		objectKey: objectKey, versionID: versionID, notAfter: notAfter,
 	})
+	if signer.beforeFirstSign != nil && !signer.firstSignHookRan {
+		signer.firstSignHookRan = true
+		signer.beforeFirstSign()
+	}
 	if signer.err != nil {
 		return artifactstore.SignedRead{}, signer.err
 	}

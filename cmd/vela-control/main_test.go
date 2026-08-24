@@ -242,19 +242,37 @@ func TestRunRejectsInsecureHumanOIDCConfigurationBeforeDatabaseStartup(t *testin
 }
 
 func TestRunRejectsSharedCustomerAndPlatformOIDCTrustDomainBeforeDatabaseStartup(t *testing.T) {
-	setValidConfigEnvironment(t)
-	t.Setenv("VELA_PLATFORM_OIDC_ISSUER", "https://identity.example.com")
-	t.Setenv("VELA_PLATFORM_OIDC_AUDIENCE", "vela-control")
+	for _, test := range []struct {
+		name     string
+		variable string
+		value    string
+	}{
+		{
+			name:     "issuer",
+			variable: "VELA_PLATFORM_OIDC_ISSUER",
+			value:    "https://identity.example.com",
+		},
+		{
+			name:     "audience",
+			variable: "VELA_PLATFORM_OIDC_AUDIENCE",
+			value:    "vela-control",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.variable, test.value)
 
-	err := run()
-	if err == nil || !strings.Contains(
-		err.Error(),
-		"trust domains for Platform Operator and Customer Human OIDC must differ",
-	) {
-		t.Fatalf("run with shared OIDC trust domain error = %v", err)
-	}
-	if strings.Contains(err.Error(), "database") {
-		t.Fatalf("shared OIDC trust domain reached database startup: %v", err)
+			err := run()
+			if err == nil || !strings.Contains(
+				err.Error(),
+				"OIDC issuers and audiences for Platform Operator and Customer Human trust domains must each differ",
+			) {
+				t.Fatalf("run with shared OIDC %s error = %v", test.name, err)
+			}
+			if strings.Contains(err.Error(), "database") {
+				t.Fatalf("shared OIDC %s reached database startup: %v", test.name, err)
+			}
+		})
 	}
 }
 

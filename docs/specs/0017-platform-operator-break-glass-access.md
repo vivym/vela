@@ -203,7 +203,12 @@ object keys or version IDs.
   non-superuser, non-BYPASSRLS roles and own no tables. They receive only exact
   function execution privileges.
 - `vela_break_glass_owner` is NOLOGIN and BYPASSRLS, owns Break-glass tables and
-  security-definer functions, and is never granted to a login or runtime role.
+  domain security-definer functions, and is never granted to a login or runtime
+  role. The sole lifecycle-lock bridge is owned by the existing `vela_internal`
+  mutation owner so it can hold shared Job and Artifact row locks without giving
+  `vela_break_glass_owner` table mutation privileges. That bridge cannot mutate,
+  has no `PUBLIC` execution privilege, and is executable only by
+  `vela_break_glass_owner`, never by a Break-glass runtime role.
 - The Break-glass runtime role cannot directly read or mutate customer,
   identity, Job, Artifact, billing, retention, Webhook, or audit tables and
   cannot execute ordinary customer request-context functions.
