@@ -245,6 +245,7 @@ func verifyRemediationPrivileges(ctx context.Context, database rowQuerier, curre
 			"vela_complete_remediation(uuid,uuid,bigint,boolean,text,text,bytea,text)",
 			"vela_recover_remediation(uuid,text)",
 			"vela_get_remediation_operation(uuid)",
+			"vela_list_executing_remediation(integer)",
 		},
 	})
 }

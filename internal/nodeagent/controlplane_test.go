@@ -9,6 +9,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/remediation"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
@@ -110,6 +113,60 @@ func TestControlPlaneLedgerRejectsWrongRequestHash(t *testing.T) {
 	if err == nil || len(store.completions) != 0 {
 		t.Fatalf("wrong hash save = %v completions=%d", err, len(store.completions))
 	}
+}
+
+func TestRemoteExecutorAuthorizesCallsAgentAndCompletesControlPlane(t *testing.T) {
+	now := time.Now().UTC()
+	operation := remediation.Operation{
+		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 8,
+		NodeIdentity: "node-2", DeviceIdentity: "gpu-1",
+		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v3",
+		ActionLevel: remediation.ActionL0ProcessRestart, State: remediation.StateExecuting,
+		RequestedAt: now.Add(-time.Second), StartedAt: timePtr(now.Add(-500 * time.Millisecond)),
+		DeadlineAt: now.Add(time.Minute),
+	}
+	reader := &recordingOperationReader{operation: operation}
+	claimer := &recordingExecutionClaimer{}
+	authorizer, err := NewControlPlaneAuthorizer(reader, claimer, "controller/control-1")
+	if err != nil {
+		t.Fatalf("NewControlPlaneAuthorizer: %v", err)
+	}
+	authorizer.clock = func() time.Time { return now }
+	store := &recordingOperationStore{operation: operation, finishedAt: now}
+	ledger, err := NewControlPlaneLedger(store, store, "controller/control-1")
+	if err != nil {
+		t.Fatalf("NewControlPlaneLedger: %v", err)
+	}
+	client, err := NewClient(&recordingNodeAgentClient{response: &velav1.ExecuteRemediationResponse{
+		OperationId: operation.ID.String(), Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "verified",
+		PostcheckSha256: digestForTest("postcheck"), StartedAt: timestamppb.New(*operation.StartedAt), FinishedAt: timestamppb.New(now),
+	}}, "controller/control-1")
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	executor, err := NewRemoteExecutor(client, authorizer, ledger, "controller/control-1")
+	if err != nil {
+		t.Fatalf("NewRemoteExecutor: %v", err)
+	}
+	result, err := executor.Execute(context.Background(), remediation.Plan{
+		OperationID: operation.ID, ExecutionClaimID: uuid.New(), WorkerID: operation.WorkerID,
+		WorkerEpoch: operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
+		NodeIdentity: operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
+		ActionLevel: operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
+		FailureEvidenceDigest: operation.EvidenceDigest,
+	})
+	if err != nil || !result.PostcheckVerified || len(store.completions) != 1 || len(claimer.claims) != 1 {
+		t.Fatalf("remote execution = %#v error=%v completions=%#v claims=%#v", result, err, store.completions, claimer.claims)
+	}
+}
+
+type recordingNodeAgentClient struct {
+	velav1.NodeAgentServiceClient
+	response *velav1.ExecuteRemediationResponse
+}
+
+func (client *recordingNodeAgentClient) ExecuteRemediation(context.Context, *velav1.ExecuteRemediationRequest, ...grpc.CallOption) (*velav1.ExecuteRemediationResponse, error) {
+	return client.response, nil
 }
 
 type recordingOperationReader struct {

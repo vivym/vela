@@ -27,6 +27,85 @@ type ExecutionClaimer interface {
 	ClaimExecution(context.Context, uuid.UUID, uuid.UUID, int64, uuid.UUID, string) (remediation.ClaimResult, error)
 }
 
+// RemoteExecutor is the control-plane side of the controller-to-agent
+// contract. Authorization and the persistent completion write happen here;
+// the host Agent only receives an already identity-bound execution request.
+type RemoteExecutor struct {
+	client        *Client
+	authorizer    Authorizer
+	ledger        Ledger
+	actorIdentity string
+}
+
+func NewRemoteExecutor(
+	client *Client,
+	authorizer Authorizer,
+	ledger Ledger,
+	actorIdentity string,
+) (*RemoteExecutor, error) {
+	if client == nil {
+		return nil, errors.New("node Agent remote client is required")
+	}
+	if authorizer == nil {
+		return nil, errors.New("node Agent remote authorizer is required")
+	}
+	if ledger == nil {
+		return nil, errors.New("node Agent remote ledger is required")
+	}
+	if !validText(actorIdentity, maxIdentityText) {
+		return nil, errors.New("node Agent remote actor identity is invalid")
+	}
+	if client.actorIdentity != actorIdentity {
+		return nil, errors.New("node Agent client and remote actor identities differ")
+	}
+	return &RemoteExecutor{
+		client: client, authorizer: authorizer, ledger: ledger, actorIdentity: actorIdentity,
+	}, nil
+}
+
+func (executor *RemoteExecutor) Execute(ctx context.Context, plan remediation.Plan) (remediation.ExecutionResult, error) {
+	if executor == nil || executor.client == nil || executor.authorizer == nil || executor.ledger == nil {
+		return remediation.ExecutionResult{}, errors.New("node Agent remote executor is not configured")
+	}
+	if ctx == nil {
+		return remediation.ExecutionResult{}, errors.New("node Agent remote execution context is required")
+	}
+	if plan.DeadlineAt.IsZero() {
+		return remediation.ExecutionResult{}, errors.New("node Agent remote execution deadline is required")
+	}
+	request := Request{
+		OperationID: plan.OperationID, ExecutionClaimID: plan.ExecutionClaimID,
+		WorkerID: plan.WorkerID, WorkerEpoch: plan.WorkerEpoch,
+		NodeIdentity: plan.NodeIdentity, DeviceIdentity: plan.DeviceIdentity,
+		ActionLevel: plan.ActionLevel, CertificationRevision: plan.CertificationRevision,
+		FailureEvidenceDigest: append([]byte(nil), plan.FailureEvidenceDigest...),
+		DeadlineAt:            plan.DeadlineAt,
+	}
+	if err := validateClientRequest(request); err != nil {
+		return remediation.ExecutionResult{}, err
+	}
+	if err := executor.authorizer.Authorize(ctx, request); err != nil {
+		return remediation.ExecutionResult{}, err
+	}
+	result, err := executor.client.Execute(ctx, request)
+	if err != nil {
+		return remediation.ExecutionResult{}, err
+	}
+	if err := saveReceipt(executor.ledger, ctx, Receipt{
+		RequestHash: hashRequest(request), ActorIdentity: executor.actorIdentity, Result: result,
+	}); err != nil {
+		return remediation.ExecutionResult{}, fmt.Errorf("persist control-plane remediation completion: %w", err)
+	}
+	var postcheckDigest [sha256.Size]byte
+	if len(result.PostcheckHash) == sha256.Size {
+		copy(postcheckDigest[:], result.PostcheckHash)
+	}
+	return remediation.ExecutionResult{
+		PostcheckDigest: postcheckDigest, PostcheckVerified: result.Success,
+		Detail: result.ResultDetail, ResultCode: result.ResultCode,
+	}, nil
+}
+
 // ControlPlaneAuthorizer rejects host execution unless the request matches the
 // currently EXECUTING operation and its immutable Worker/deadline contract.
 type ControlPlaneAuthorizer struct {

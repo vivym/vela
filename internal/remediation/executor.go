@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -15,11 +16,13 @@ var ErrUncertifiedAction = errors.New("remediation action is not certified")
 
 type Plan struct {
 	OperationID           uuid.UUID
+	ExecutionClaimID      uuid.UUID
 	WorkerID              uuid.UUID
 	ActionLevel           ActionLevel
 	NodeIdentity          string
 	DeviceIdentity        string
 	WorkerEpoch           int64
+	DeadlineAt            time.Time
 	CertificationRevision string
 	FailureEvidenceDigest []byte
 }

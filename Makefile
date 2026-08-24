@@ -38,6 +38,9 @@ test-integration:
 
 validate-deployment:
 	kubectl kustomize deploy/control-storage >/dev/null
+	@test -s deploy/node-agent/vela-node-agent.service
+	@test -s deploy/node-agent/README.md
+	@rg -q "VELA_NODE_AGENT_CONTROLLERS_FILE" deploy/node-agent/README.md cmd/vela-node-agent/main.go
 
 verify-generated: generate
 	git diff --exit-code -- api/gen internal/store/sqlc proto/gen

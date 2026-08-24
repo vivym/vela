@@ -2864,6 +2864,15 @@ type RateCardRevision struct {
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type RemediationExecutionClaim struct {
+	OperationID   uuid.UUID          `db:"operation_id" json:"operation_id"`
+	ClaimID       uuid.UUID          `db:"claim_id" json:"claim_id"`
+	WorkerID      uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch   int64              `db:"worker_epoch" json:"worker_epoch"`
+	ActorIdentity string             `db:"actor_identity" json:"actor_identity"`
+	ClaimedAt     pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
+}
+
 type RemediationOperation struct {
 	ID                    uuid.UUID                 `db:"id" json:"id"`
 	WorkerID              uuid.UUID                 `db:"worker_id" json:"worker_id"`

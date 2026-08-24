@@ -1,0 +1,24 @@
+[Unit]
+Description=Vela host remediation Node Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/vela-node-agent
+EnvironmentFile=/etc/vela/node-agent.env
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+RuntimeDirectory=vela-node-agent
+StateDirectory=vela-node-agent
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+NoNewPrivileges=false
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net/url"
 	"sync"
 	"testing"
 	"time"
 
-	"crypto/tls"
-	"crypto/x509"
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/remediation"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -21,55 +21,37 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestNodeAgentServerBindsVerifiedSPIFFEIdentityAndDeadline(t *testing.T) {
+const controllerSPIFFE = "spiffe://vela.internal/controller/control-1"
+
+func TestNodeAgentServerBindsControllerIdentityAndLocalTarget(t *testing.T) {
 	workerID := uuid.New()
-	operationID := uuid.New()
-	nodeIdentity := "node-1"
 	now := time.Unix(1000, 0).UTC()
-	resolver := &recordingIdentityResolver{identity: NodeAgentIdentity{
-		NodeIdentity: nodeIdentity, WorkerID: workerID,
-	}}
+	resolver := mustControllerResolver(t)
 	executor := &recordingExecutor{}
-	server, err := NewServer(resolver, &allowAuthorizer{}, executor, &memoryLedger{})
+	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}, resolver, executor, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 	server.clock = func() time.Time { return now }
 	evidence := sha256.Sum256([]byte("failure"))
-	request := &velav1.ExecuteRemediationRequest{
-		OperationId: operationID.String(), WorkerId: workerID.String(), WorkerEpoch: 7,
-		NodeIdentity: nodeIdentity, DeviceIdentity: "gpu-0",
-		ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1",
-		FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)),
-		ExecutionClaimId: uuid.NewString(),
-	}
-	response, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), request)
+	request := validAgentRequest(workerID, now)
+	request.FailureEvidenceDigest = evidence[:]
+	response, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), request)
 	if err != nil {
 		t.Fatalf("ExecuteRemediation: %v", err)
 	}
-	if !response.GetSuccess() || response.GetOperationId() != operationID.String() ||
-		response.GetResultCode() != "POSTCHECK_OK" || len(response.GetPostcheckSha256()) != sha256.Size {
+	if !response.GetSuccess() || response.GetResultCode() != "POSTCHECK_OK" || len(response.GetPostcheckSha256()) != sha256.Size {
 		t.Fatalf("Node Agent response = %#v", response)
 	}
-	if executor.plan.OperationID != operationID || executor.plan.WorkerID != workerID ||
-		executor.plan.WorkerEpoch != 7 || executor.plan.NodeIdentity != nodeIdentity ||
-		!bytes.Equal(executor.plan.FailureEvidenceDigest, evidence[:]) {
+	if executor.plan.OperationID != uuid.MustParse(request.GetOperationId()) || executor.plan.ExecutionClaimID != uuid.MustParse(request.GetExecutionClaimId()) || executor.plan.WorkerID != workerID || executor.plan.WorkerEpoch != 1 || executor.plan.DeadlineAt != request.GetDeadlineAt().AsTime() || !bytes.Equal(executor.plan.FailureEvidenceDigest, evidence[:]) {
 		t.Fatalf("executor plan = %#v", executor.plan)
-	}
-	if resolver.spiffeID != "spiffe://vela.internal/node/node-1" {
-		t.Fatalf("resolver SPIFFE ID = %q", resolver.spiffeID)
 	}
 }
 
-func TestNodeAgentServerRejectsIdentityPrivilegeAndDeadlineFailures(t *testing.T) {
+func TestNodeAgentServerRejectsUnauthenticatedOrUnsafeRequests(t *testing.T) {
 	workerID := uuid.New()
 	now := time.Unix(2000, 0).UTC()
-	server, err := NewServer(
-		&recordingIdentityResolver{identity: NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}},
-		&allowAuthorizer{},
-		&recordingExecutor{},
-		&memoryLedger{},
-	)
+	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}, mustControllerResolver(t), &recordingExecutor{}, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -79,217 +61,93 @@ func TestNodeAgentServerRejectsIdentityPrivilegeAndDeadlineFailures(t *testing.T
 		t.Fatalf("missing TLS error = %v, want unauthenticated", err)
 	}
 	base.ActionLevel = string(remediation.ActionL6BMCPowerCycle)
-	if _, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), base); status.Code(err) != 7 {
+	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), base); status.Code(err) != 7 {
 		t.Fatalf("L6 error = %v, want permission denied", err)
 	}
 	base = validAgentRequest(workerID, now)
 	base.NodeIdentity = "node-2"
-	if _, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), base); status.Code(err) != 7 {
-		t.Fatalf("identity mismatch error = %v, want permission denied", err)
+	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), base); status.Code(err) != 7 {
+		t.Fatalf("local identity mismatch error = %v, want permission denied", err)
 	}
 	base = validAgentRequest(workerID, now)
 	base.DeadlineAt = timestamppb.New(now.Add(-time.Second))
-	if _, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), base); status.Code(err) != 3 {
+	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), base); status.Code(err) != 3 {
 		t.Fatalf("expired deadline error = %v, want invalid argument", err)
 	}
+	if _, err := server.ExecuteRemediation(controllerPeerContext(t, "spiffe://vela.internal/controller/unknown"), validAgentRequest(workerID, now)); status.Code(err) != 16 {
+		t.Fatalf("unregistered controller error = %v, want unauthenticated", err)
+	}
 }
 
-func TestNodeAgentServerReturnsStructuredExecutorFailure(t *testing.T) {
+func TestNodeAgentServerReplaysAndRejectsConflictingReceipts(t *testing.T) {
 	workerID := uuid.New()
 	now := time.Unix(3000, 0).UTC()
-	executor := &recordingExecutor{err: errors.New("host command failed")}
-	server, err := NewServer(
-		&recordingIdentityResolver{identity: NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}},
-		&allowAuthorizer{},
-		executor,
-		&memoryLedger{},
-	)
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
-	server.clock = func() time.Time { return now }
-	response, err := server.ExecuteRemediation(
-		nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), validAgentRequest(workerID, now),
-	)
-	if err != nil || response.GetSuccess() || response.GetResultCode() != "EXECUTION_FAILED" ||
-		response.GetResultDetail() != "host command failed" {
-		t.Fatalf("structured executor failure = %#v error=%v", response, err)
-	}
-}
-
-func TestNodeAgentServerReplaysReceiptWithoutReexecuting(t *testing.T) {
-	workerID := uuid.New()
-	now := time.Unix(4000, 0).UTC()
 	executor := &recordingExecutor{}
-	server, err := NewServer(
-		&recordingIdentityResolver{identity: NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}},
-		&allowAuthorizer{},
-		executor,
-		&memoryLedger{},
-	)
+	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}, mustControllerResolver(t), executor, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 	server.clock = func() time.Time { return now }
 	request := validAgentRequest(workerID, now)
-	first, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), request)
+	first, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), request)
 	if err != nil {
 		t.Fatalf("first ExecuteRemediation: %v", err)
 	}
-	second, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), request)
+	second, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), request)
 	if err != nil {
 		t.Fatalf("replay ExecuteRemediation: %v", err)
 	}
-	if executor.calls != 1 {
-		t.Fatalf("executor calls = %d, want 1", executor.calls)
-	}
-	if first.GetResultCode() != second.GetResultCode() ||
-		!bytes.Equal(first.GetPostcheckSha256(), second.GetPostcheckSha256()) {
-		t.Fatalf("replay response changed: first=%#v second=%#v", first, second)
-	}
-}
-
-func TestNodeAgentServerRejectsConflictingOperationReplay(t *testing.T) {
-	workerID := uuid.New()
-	now := time.Unix(5000, 0).UTC()
-	executor := &recordingExecutor{}
-	server, err := NewServer(
-		&recordingIdentityResolver{identity: NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}},
-		&allowAuthorizer{},
-		executor,
-		&memoryLedger{},
-	)
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
-	server.clock = func() time.Time { return now }
-	request := validAgentRequest(workerID, now)
-	if _, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), request); err != nil {
-		t.Fatalf("first ExecuteRemediation: %v", err)
+	if executor.calls != 1 || first.GetResultCode() != second.GetResultCode() || !bytes.Equal(first.GetPostcheckSha256(), second.GetPostcheckSha256()) {
+		t.Fatalf("replay changed execution: calls=%d first=%#v second=%#v", executor.calls, first, second)
 	}
 	conflicting := validAgentRequest(workerID, now)
 	conflicting.OperationId = request.GetOperationId()
 	conflicting.DeviceIdentity = "gpu-1"
-	if _, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), conflicting); status.Code(err) != 6 {
+	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), conflicting); status.Code(err) != 6 {
 		t.Fatalf("conflicting replay error = %v, want AlreadyExists", err)
 	}
-	if executor.calls != 1 {
-		t.Fatalf("executor calls = %d, want 1", executor.calls)
-	}
 }
 
-func TestNodeAgentServerRecordsDeadlineAfterExecutorReturns(t *testing.T) {
+func TestNodeAgentServerFailsClosedOnExecutorAndPostcheck(t *testing.T) {
 	workerID := uuid.New()
-	now := time.Now().UTC()
-	executor := &recordingExecutor{delay: 20 * time.Millisecond}
-	server, err := NewServer(
-		&recordingIdentityResolver{identity: NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}},
-		&allowAuthorizer{},
-		executor,
-		&memoryLedger{},
-	)
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
-	server.clock = time.Now
-	request := validAgentRequest(workerID, now)
-	request.DeadlineAt = timestamppb.New(now.Add(2 * time.Millisecond))
-	response, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), request)
-	if err != nil || response.GetSuccess() || response.GetResultCode() != "DEADLINE_EXCEEDED" {
-		t.Fatalf("deadline response = %#v error=%v", response, err)
-	}
-}
-
-func TestNodeAgentServerRejectsInvalidPostcheck(t *testing.T) {
-	workerID := uuid.New()
-	now := time.Unix(6000, 0).UTC()
-	executor := &recordingExecutor{result: &remediation.ExecutionResult{ResultCode: "POSTCHECK_OK"}}
-	server, err := NewServer(
-		&recordingIdentityResolver{identity: NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}},
-		&allowAuthorizer{},
-		executor,
-		&memoryLedger{},
-	)
+	now := time.Unix(4000, 0).UTC()
+	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}, mustControllerResolver(t), &recordingExecutor{err: errors.New("host command failed")}, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 	server.clock = func() time.Time { return now }
-	response, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), validAgentRequest(workerID, now))
+	response, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), validAgentRequest(workerID, now))
+	if err != nil || response.GetSuccess() || response.GetResultCode() != "EXECUTION_FAILED" {
+		t.Fatalf("executor failure = %#v error=%v", response, err)
+	}
+	invalid, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}, mustControllerResolver(t), &recordingExecutor{result: &remediation.ExecutionResult{ResultCode: "POSTCHECK_OK"}}, &memoryLedger{})
+	if err != nil {
+		t.Fatalf("NewServer invalid postcheck: %v", err)
+	}
+	invalid.clock = func() time.Time { return now }
+	response, err = invalid.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), validAgentRequest(workerID, now))
 	if err != nil || response.GetSuccess() || response.GetResultCode() != "INVALID_POSTCHECK" {
-		t.Fatalf("invalid postcheck response = %#v error=%v", response, err)
+		t.Fatalf("invalid postcheck = %#v error=%v", response, err)
 	}
-}
-
-func TestNodeAgentServerRequiresControlPlaneAuthorization(t *testing.T) {
-	workerID := uuid.New()
-	now := time.Unix(7000, 0).UTC()
-	executor := &recordingExecutor{}
-	server, err := NewServer(
-		&recordingIdentityResolver{identity: NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID}},
-		&allowAuthorizer{err: errors.New("operation is not executing")},
-		executor,
-		&memoryLedger{},
-	)
-	if err != nil {
-		t.Fatalf("NewServer: %v", err)
-	}
-	server.clock = func() time.Time { return now }
-	if _, err := server.ExecuteRemediation(nodeAgentPeerContext(t, "spiffe://vela.internal/node/node-1"), validAgentRequest(workerID, now)); status.Code(err) != 9 {
-		t.Fatalf("authorization error = %v, want FailedPrecondition", err)
-	}
-	if executor.calls != 0 {
-		t.Fatalf("executor calls = %d, want 0", executor.calls)
-	}
-}
-
-type recordingIdentityResolver struct {
-	identity NodeAgentIdentity
-	spiffeID string
-}
-
-func (resolver *recordingIdentityResolver) ResolveNodeAgent(_ context.Context, spiffeID string) (NodeAgentIdentity, error) {
-	resolver.spiffeID = spiffeID
-	return resolver.identity, nil
 }
 
 type recordingExecutor struct {
 	plan   remediation.Plan
 	err    error
 	result *remediation.ExecutionResult
-	delay  time.Duration
 	calls  int
 }
 
-func (executor *recordingExecutor) Execute(ctx context.Context, plan remediation.Plan) (remediation.ExecutionResult, error) {
+func (executor *recordingExecutor) Execute(_ context.Context, plan remediation.Plan) (remediation.ExecutionResult, error) {
 	executor.plan = plan
 	executor.calls++
-	if executor.delay > 0 {
-		timer := time.NewTimer(executor.delay)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-		}
-	}
 	if executor.err != nil {
 		return remediation.ExecutionResult{}, executor.err
 	}
 	if executor.result != nil {
 		return *executor.result, nil
 	}
-	return remediation.ExecutionResult{
-		PostcheckDigest:   sha256.Sum256([]byte("post-check")),
-		PostcheckVerified: true,
-		Detail:            "node Agent remediation completed", ResultCode: "POSTCHECK_OK",
-	}, nil
-}
-
-type allowAuthorizer struct {
-	err error
-}
-
-func (authorizer *allowAuthorizer) Authorize(context.Context, Request) error {
-	return authorizer.err
+	return remediation.ExecutionResult{PostcheckDigest: sha256.Sum256([]byte("post-check")), PostcheckVerified: true, Detail: "node Agent remediation completed", ResultCode: "POSTCHECK_OK"}, nil
 }
 
 type memoryLedger struct {
@@ -310,7 +168,10 @@ func (ledger *memoryLedger) Save(_ context.Context, receipt Receipt) error {
 	if ledger.receipts == nil {
 		ledger.receipts = make(map[uuid.UUID]Receipt)
 	}
-	if _, found := ledger.receipts[receipt.Result.OperationID]; found {
+	if prior, found := ledger.receipts[receipt.Result.OperationID]; found {
+		if prior.RequestHash == receipt.RequestHash && prior.ActorIdentity == receipt.ActorIdentity && equalResult(prior.Result, receipt.Result) {
+			return nil
+		}
 		return errors.New("receipt already exists")
 	}
 	ledger.receipts[receipt.Result.OperationID] = receipt
@@ -319,28 +180,26 @@ func (ledger *memoryLedger) Save(_ context.Context, receipt Receipt) error {
 
 func validAgentRequest(workerID uuid.UUID, now time.Time) *velav1.ExecuteRemediationRequest {
 	evidence := sha256.Sum256([]byte("failure"))
-	return &velav1.ExecuteRemediationRequest{
-		OperationId: uuid.NewString(), WorkerId: workerID.String(), WorkerEpoch: 1,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0",
-		ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1",
-		FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)),
-		ExecutionClaimId: uuid.NewString(),
-	}
+	return &velav1.ExecuteRemediationRequest{OperationId: uuid.NewString(), WorkerId: workerID.String(), WorkerEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: "gpu-0", ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1", FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)), ExecutionClaimId: uuid.NewString()}
 }
 
-func nodeAgentPeerContext(t *testing.T, spiffeID string) context.Context {
+func mustControllerResolver(t *testing.T) *StaticControllerIdentityResolver {
+	t.Helper()
+	resolver, err := NewStaticControllerIdentityResolver(map[string]string{controllerSPIFFE: "controller/control-1"})
+	if err != nil {
+		t.Fatalf("NewStaticControllerIdentityResolver: %v", err)
+	}
+	return resolver
+}
+
+func controllerPeerContext(t *testing.T, spiffeID string) context.Context {
 	t.Helper()
 	identity, err := url.Parse(spiffeID)
 	if err != nil {
 		t.Fatalf("parse test SPIFFE ID: %v", err)
 	}
 	certificate := &x509.Certificate{Raw: []byte(spiffeID), URIs: []*url.URL{identity}}
-	return peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{
-		State: tls.ConnectionState{
-			HandshakeComplete: true, PeerCertificates: []*x509.Certificate{certificate},
-			VerifiedChains: [][]*x509.Certificate{{certificate}},
-		},
-	}})
+	return peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{State: tls.ConnectionState{HandshakeComplete: true, PeerCertificates: []*x509.Certificate{certificate}, VerifiedChains: [][]*x509.Certificate{{certificate}}}}})
 }
 
 var _ velav1.NodeAgentServiceServer = (*Server)(nil)

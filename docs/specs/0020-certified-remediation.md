@@ -46,21 +46,25 @@ The production-facing repository seams are:
    immutable operation/event ledger;
 4. the dedicated `vela_remediation` runtime role and
    `vela_remediation_owner` owner boundary.
-5. `nodeagent.Server` and `nodeagent.Client` for an identity-bound transport
-   whose `Authorizer` must bind the request to authoritative operation state.
+5. `nodeagent.RemoteExecutor` and `nodeagent.Client` for the
+   controller-to-agent direction. The controller-side `Authorizer` binds the
+   request to authoritative operation state before the RPC; the host-side
+   `nodeagent.Server` authenticates the controller actor and its local target.
 6. `vela_claim_remediation_execution` for a single persistent execution claim
    per `EXECUTING` operation before any host action starts.
 
 The transport includes `ControlPlaneAuthorizer` and `ControlPlaneLedger`
-adapters over `remediation.Service`; their tests use in-memory fakes. No
-production service registration, process wiring, or live cluster receipt
-evidence is claimed by this spec.
+adapters over `remediation.Service`, a durable host-local `FileLedger`, and the
+`cmd/vela-node-agent` systemd entrypoint. Unit tests use in-memory fakes; no
+live cluster receipt evidence or hardware certification is claimed by this
+spec.
 
 The executor seam accepts only absolute allowlisted command paths, rejects NUL
 arguments, requires a non-empty certified identity, passes the full immutable
-execution `Plan` to the runner for device/epoch/capability checks, and refuses
-L6/L7 direct execution. Real host commands are intentionally injected by a
-future Node Agent rather than embedded in the control plane.
+execution `Plan` to the runner for device/epoch/capability checks, runs a host
+fence and bounded rate limit, and refuses L6/L7 direct execution. Real command
+paths, capability matrices, fence checks, and post-check commands are injected
+by the host Node Agent deployment rather than embedded in the control plane.
 
 ## Operation State And Identity
 
@@ -126,9 +130,10 @@ confusion.
 - immutable operation/event update and delete rejection;
 - operation/event audit sequence and worker lifecycle/reachability transitions;
 - executor allowlist, unsafe-path, NUL-argument, and privileged-action refusal;
-- Node Agent verified mTLS identity, exact receipt replay, conflicting operation
-  rejection, control-plane authorization refusal, deadline receipt, and
-  fail-closed unverified-post-check behavior;
+- Node Agent verified controller mTLS identity, local target binding, exact
+  durable receipt replay, conflicting operation rejection, authoritative
+  controller-side claim, deadline receipt, and fail-closed unverified-post-check
+  behavior;
 - single execution-claim insertion and conflicting cross-process claim
   rejection, with migration 00020 down/up evidence;
 - runtime role exact privileges and security-definer owner/search-path checks;
@@ -141,19 +146,17 @@ confusion.
 
 This repository slice does not implement or claim real `nvidia-smi`, CUDA
 cleanup, GPU reset, PCIe FLR, driver reload, node reboot, BMC power cycle,
-production Node Agent registration, deployed receipt/claim monitoring, or
-device/model warm-up, canary execution, rate limiting, hardware topology
-certification, or production rollback. The transport contract intentionally fails closed without
-an authoritative `Authorizer` and a verified post-check. Those actions require
-an authenticated controller/agent identity contract, host-specific capability
-policy, post-check and canary receipts, deployment isolation, and a versioned
-Launch Receipt.
+device/model warm-up, canary execution, hardware topology certification, or
+production rollback. The runtime contract intentionally fails closed without
+an authoritative controller-side `Authorizer`, host-specific capability
+policy, fence, and verified post-check. Those actions require deployment
+isolation, live hardware evidence, and a versioned Launch Receipt.
 
 ## Completion Boundary
 
 The repository-verifiable Certified Remediation control plane and guarded
 transport contract are complete when the implementation commits, this spec, role
 evidence, migration down/up, narrow and full verification, and standards/spec
-review are recorded. ADR 0023 remains partial until production Node Agent
-wiring, host evidence, and Launch Receipt evidence exist; this slice does not
-change Production Gates from `0/9 PASS`.
+review are recorded. ADR 0023 remains partial until host hardware evidence and
+Launch Receipt evidence exist; this slice does not change Production Gates from
+`0/9 PASS`.

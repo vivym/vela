@@ -545,12 +545,21 @@ func TestRemediationMigrationDownAndUpPreservesRoles(t *testing.T) {
 	}
 	assertRoleExists(t, database.Admin, "vela_remediation")
 	assertRoleExists(t, database.Admin, "vela_remediation_owner")
-	if err := goose.UpTo(database.Admin, migrations, 20); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 21); err != nil {
 		t.Fatalf("Remediation migration up: %v", err)
 	}
 	assertTableExists(t, database.Admin, "remediation_operations")
 	assertTableExists(t, database.Admin, "remediation_operation_events")
 	assertTableExists(t, database.Admin, "remediation_execution_claims")
+	var dispatchFunction string
+	if err := database.Admin.QueryRow(
+		"SELECT to_regprocedure('vela_list_executing_remediation(integer)')",
+	).Scan(&dispatchFunction); err != nil {
+		t.Fatalf("inspect Remediation dispatch function: %v", err)
+	}
+	if dispatchFunction == "" {
+		t.Fatal("Remediation dispatch function missing after migration up")
+	}
 	if err := database.Admin.QueryRow(`
 		SELECT EXISTS (
 			SELECT 1 FROM information_schema.columns

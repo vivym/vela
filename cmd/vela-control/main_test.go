@@ -55,6 +55,12 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Finance Reconciliation server certificate", missingEnv: "VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE"},
 		{name: "Finance Reconciliation server key", missingEnv: "VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE"},
 		{name: "Finance Reconciliation client CA", missingEnv: "VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE"},
+		{name: "Remediation database", missingEnv: "VELA_REMEDIATION_DATABASE_URL"},
+		{name: "Remediation actor", missingEnv: "VELA_REMEDIATION_ACTOR_IDENTITY"},
+		{name: "Remediation Node Agent endpoints", missingEnv: "VELA_REMEDIATION_NODE_AGENTS_FILE"},
+		{name: "Remediation TLS certificate", missingEnv: "VELA_REMEDIATION_TLS_CERT_FILE"},
+		{name: "Remediation TLS key", missingEnv: "VELA_REMEDIATION_TLS_KEY_FILE"},
+		{name: "Remediation TLS root CA", missingEnv: "VELA_REMEDIATION_TLS_ROOT_CA_FILE"},
 		{name: "webhook request database", missingEnv: "VELA_WEBHOOK_REQUEST_DATABASE_URL"},
 		{name: "webhook database", missingEnv: "VELA_WEBHOOK_DATABASE_URL"},
 		{name: "webhook encryption active key", missingEnv: "VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID"},
@@ -143,6 +149,12 @@ func setValidConfigEnvironment(t *testing.T) {
 	)
 	t.Setenv("VELA_CANCEL_DATABASE_URL", "postgres://cancel.example/vela")
 	t.Setenv("VELA_INTERNAL_DATABASE_URL", "postgres://internal.example/vela")
+	t.Setenv("VELA_REMEDIATION_DATABASE_URL", "postgres://remediation.example/vela")
+	t.Setenv("VELA_REMEDIATION_ACTOR_IDENTITY", "controller/control-1")
+	t.Setenv("VELA_REMEDIATION_NODE_AGENTS_FILE", "/run/vela/node-agents.json")
+	t.Setenv("VELA_REMEDIATION_TLS_CERT_FILE", "/run/tls/remediation/client.crt")
+	t.Setenv("VELA_REMEDIATION_TLS_KEY_FILE", "/run/tls/remediation/client.key")
+	t.Setenv("VELA_REMEDIATION_TLS_ROOT_CA_FILE", "/run/tls/remediation/ca.crt")
 	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
 	t.Setenv("VELA_SCHEDULER_ID", "vela-control-scheduler-1")
 	t.Setenv("VELA_BILLING_DATABASE_URL", "postgres://billing.example/vela")
@@ -214,6 +226,8 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_NATS_CLIENT_CERT_FILE", "")
 	t.Setenv("VELA_NATS_CLIENT_KEY_FILE", "")
 	t.Setenv("VELA_OUTBOX_BATCH_SIZE", "")
+	t.Setenv("VELA_REMEDIATION_TICK", "")
+	t.Setenv("VELA_REMEDIATION_BATCH_SIZE", "")
 	t.Setenv("VELA_SCHEDULER_TICK", "")
 	t.Setenv("VELA_SCHEDULER_CLAIM_TTL", "")
 	t.Setenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS", "")

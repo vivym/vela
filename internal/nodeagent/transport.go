@@ -34,8 +34,13 @@ type NodeAgentIdentity struct {
 	WorkerID     uuid.UUID
 }
 
-type IdentityResolver interface {
-	ResolveNodeAgent(context.Context, string) (NodeAgentIdentity, error)
+type ControllerIdentity struct {
+	SPIFFEIdentity string
+	ActorIdentity  string
+}
+
+type ControllerIdentityResolver interface {
+	ResolveController(context.Context, string) (ControllerIdentity, error)
 }
 
 type Executor interface {
@@ -50,8 +55,9 @@ type Authorizer interface {
 }
 
 type Receipt struct {
-	RequestHash [sha256.Size]byte
-	Result      Result
+	RequestHash   [sha256.Size]byte
+	ActorIdentity string
+	Result        Result
 }
 
 type Ledger interface {
@@ -84,50 +90,62 @@ type Result struct {
 
 type Server struct {
 	velav1.UnimplementedNodeAgentServiceServer
-	resolver   IdentityResolver
-	authorizer Authorizer
-	executor   Executor
-	ledger     Ledger
-	clock      func() time.Time
-	mu         sync.Mutex
+	localIdentity      NodeAgentIdentity
+	controllerResolver ControllerIdentityResolver
+	executor           Executor
+	ledger             Ledger
+	clock              func() time.Time
+	mu                 sync.Mutex
 }
 
-func NewServer(resolver IdentityResolver, authorizer Authorizer, executor Executor, ledger Ledger) (*Server, error) {
-	if resolver == nil {
-		return nil, errors.New("node Agent identity resolver is required")
+func NewServer(
+	localIdentity NodeAgentIdentity,
+	controllerResolver ControllerIdentityResolver,
+	executor Executor,
+	ledger Ledger,
+) (*Server, error) {
+	if !validIdentity(localIdentity) {
+		return nil, errors.New("node Agent local identity is invalid")
+	}
+	if controllerResolver == nil {
+		return nil, errors.New("node Agent controller identity resolver is required")
 	}
 	if executor == nil {
 		return nil, errors.New("node Agent executor is required")
 	}
-	if authorizer == nil {
-		return nil, errors.New("node Agent control-plane authorizer is required")
-	}
 	if ledger == nil {
 		return nil, errors.New("node Agent receipt ledger is required")
 	}
-	return &Server{resolver: resolver, authorizer: authorizer, executor: executor, ledger: ledger, clock: time.Now}, nil
+	return &Server{
+		localIdentity:      localIdentity,
+		controllerResolver: controllerResolver,
+		executor:           executor,
+		ledger:             ledger,
+		clock:              time.Now,
+	}, nil
 }
 
 func (server *Server) ExecuteRemediation(
 	ctx context.Context,
 	request *velav1.ExecuteRemediationRequest,
 ) (*velav1.ExecuteRemediationResponse, error) {
-	if server == nil || server.resolver == nil || server.authorizer == nil || server.executor == nil || server.ledger == nil {
+	if server == nil || !validIdentity(server.localIdentity) || server.controllerResolver == nil ||
+		server.executor == nil || server.ledger == nil {
 		return nil, status.Error(codes.FailedPrecondition, "node Agent server is not configured")
 	}
 	if ctx == nil {
 		return nil, status.Error(codes.InvalidArgument, "node Agent context is required")
 	}
-	identity, err := authenticatedNodeAgent(ctx, server.resolver)
+	controller, err := authenticatedController(ctx, server.controllerResolver)
 	if err != nil {
-		return nil, status.Error(codes.Unauthenticated, "verified node Agent mTLS identity is required")
+		return nil, status.Error(codes.Unauthenticated, "verified control-plane mTLS identity is required")
 	}
 	parsed, deadline, err := parseRequest(request, server.clock().UTC())
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if identity.NodeIdentity != parsed.NodeIdentity || identity.WorkerID != parsed.WorkerID {
-		return nil, status.Error(codes.PermissionDenied, "node Agent identity does not match remediation target")
+	if server.localIdentity.NodeIdentity != parsed.NodeIdentity || server.localIdentity.WorkerID != parsed.WorkerID {
+		return nil, status.Error(codes.PermissionDenied, "remediation target does not match local node Agent identity")
 	}
 	if parsed.ActionLevel == remediation.ActionL6BMCPowerCycle ||
 		parsed.ActionLevel == remediation.ActionL7Quarantine {
@@ -141,27 +159,23 @@ func (server *Server) ExecuteRemediation(
 		return nil, status.Error(codes.Internal, "node Agent receipt lookup failed")
 	}
 	if found {
-		if prior.RequestHash != requestHash {
+		if prior.RequestHash != requestHash || prior.ActorIdentity != controller.ActorIdentity {
 			return nil, status.Error(codes.AlreadyExists, "node Agent operation id was reused with different input")
 		}
 		return responseFromResult(prior.Result), nil
-	}
-	if err := server.authorizer.Authorize(ctx, parsed); err != nil {
-		if status.Code(err) != codes.Unknown {
-			return nil, err
-		}
-		return nil, status.Error(codes.FailedPrecondition, "node Agent remediation operation is not authorized")
 	}
 	startedAt := server.clock().UTC()
 	executionContext, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	executionResult, executionErr := server.executor.Execute(executionContext, remediation.Plan{
 		OperationID:           parsed.OperationID,
+		ExecutionClaimID:      parsed.ExecutionClaimID,
 		WorkerID:              parsed.WorkerID,
 		ActionLevel:           parsed.ActionLevel,
 		NodeIdentity:          parsed.NodeIdentity,
 		DeviceIdentity:        parsed.DeviceIdentity,
 		WorkerEpoch:           parsed.WorkerEpoch,
+		DeadlineAt:            parsed.DeadlineAt,
 		CertificationRevision: parsed.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), parsed.FailureEvidenceDigest...),
 	})
@@ -172,7 +186,7 @@ func (server *Server) ExecuteRemediation(
 			ResultCode: "DEADLINE_EXCEEDED", ResultDetail: "node Agent remediation exceeded its deadline",
 			StartedAt: startedAt, FinishedAt: finishedAt,
 		}
-		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, Result: result}); saveErr != nil {
+		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
 			return nil, status.Error(codes.Internal, "node Agent receipt write failed")
 		}
 		return responseFromResult(result), nil
@@ -183,18 +197,26 @@ func (server *Server) ExecuteRemediation(
 			ResultCode: "EXECUTION_FAILED", ResultDetail: boundedDetail(executionErr.Error()),
 			StartedAt: startedAt, FinishedAt: finishedAt,
 		}
-		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, Result: result}); saveErr != nil {
+		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
 			return nil, status.Error(codes.Internal, "node Agent receipt write failed")
 		}
 		return responseFromResult(result), nil
 	}
 	if !executionResult.PostcheckVerified || executionResult.ResultCode == "" || executionResult.PostcheckDigest == [sha256.Size]byte{} {
+		resultCode := executionResult.ResultCode
+		if resultCode == "" || resultCode == "POSTCHECK_OK" {
+			resultCode = "INVALID_POSTCHECK"
+		}
+		resultDetail := boundedDetail(executionResult.Detail)
+		if resultDetail == "node Agent executor failed" {
+			resultDetail = "executor returned no certified post-check"
+		}
 		result := Result{
 			OperationID: parsed.OperationID, Success: false,
-			ResultCode: "INVALID_POSTCHECK", ResultDetail: "executor returned no certified post-check",
+			ResultCode: resultCode, ResultDetail: resultDetail,
 			StartedAt: startedAt, FinishedAt: finishedAt,
 		}
-		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, Result: result}); saveErr != nil {
+		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
 			return nil, status.Error(codes.Internal, "node Agent receipt write failed")
 		}
 		return responseFromResult(result), nil
@@ -205,25 +227,25 @@ func (server *Server) ExecuteRemediation(
 		PostcheckHash: append([]byte(nil), executionResult.PostcheckDigest[:]...),
 		StartedAt:     startedAt, FinishedAt: finishedAt,
 	}
-	if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, Result: result}); saveErr != nil {
+	if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
 		return nil, status.Error(codes.Internal, "node Agent receipt write failed")
 	}
 	return responseFromResult(result), nil
 }
 
 type Client struct {
-	client   velav1.NodeAgentServiceClient
-	identity NodeAgentIdentity
+	client        velav1.NodeAgentServiceClient
+	actorIdentity string
 }
 
-func NewClient(client velav1.NodeAgentServiceClient, identity NodeAgentIdentity) (*Client, error) {
+func NewClient(client velav1.NodeAgentServiceClient, actorIdentity string) (*Client, error) {
 	if client == nil {
 		return nil, errors.New("node Agent gRPC client is required")
 	}
-	if !validIdentity(identity) {
-		return nil, errors.New("node Agent identity is invalid")
+	if !validText(actorIdentity, maxIdentityText) {
+		return nil, errors.New("control-plane actor identity is invalid")
 	}
-	return &Client{client: client, identity: identity}, nil
+	return &Client{client: client, actorIdentity: actorIdentity}, nil
 }
 
 func (client *Client) Execute(ctx context.Context, request Request) (Result, error) {
@@ -235,9 +257,6 @@ func (client *Client) Execute(ctx context.Context, request Request) (Result, err
 	}
 	if err := validateClientRequest(request); err != nil {
 		return Result{}, err
-	}
-	if request.NodeIdentity != client.identity.NodeIdentity || request.WorkerID != client.identity.WorkerID {
-		return Result{}, errors.New("node Agent client identity does not match request")
 	}
 	response, err := client.client.ExecuteRemediation(ctx, &velav1.ExecuteRemediationRequest{
 		OperationId: request.OperationID.String(), WorkerId: request.WorkerID.String(),
@@ -338,6 +357,10 @@ func validateClientRequest(request Request) error {
 	if err := validateRequest(request); err != nil {
 		return err
 	}
+	now := time.Now().UTC()
+	if !request.DeadlineAt.After(now) || request.DeadlineAt.After(now.Add(maxDeadline)) {
+		return errors.New("node Agent remediation deadline is outside the allowed window")
+	}
 	if request.ActionLevel == remediation.ActionL6BMCPowerCycle ||
 		request.ActionLevel == remediation.ActionL7Quarantine {
 		return errors.New("node Agent client cannot directly execute privileged remediation")
@@ -397,10 +420,10 @@ func parseDeadline(timestamp *timestamppb.Timestamp, now time.Time) (time.Time, 
 	return deadline, nil
 }
 
-func authenticatedNodeAgent(ctx context.Context, resolver IdentityResolver) (NodeAgentIdentity, error) {
+func authenticatedController(ctx context.Context, resolver ControllerIdentityResolver) (ControllerIdentity, error) {
 	connectionPeer, ok := peer.FromContext(ctx)
 	if !ok || connectionPeer.AuthInfo == nil {
-		return NodeAgentIdentity{}, errors.New("mTLS node Agent peer is absent")
+		return ControllerIdentity{}, errors.New("mTLS control-plane peer is absent")
 	}
 	var tlsInfo credentials.TLSInfo
 	switch typed := connectionPeer.AuthInfo.(type) {
@@ -408,15 +431,15 @@ func authenticatedNodeAgent(ctx context.Context, resolver IdentityResolver) (Nod
 		tlsInfo = typed
 	case *credentials.TLSInfo:
 		if typed == nil {
-			return NodeAgentIdentity{}, errors.New("mTLS node Agent peer is absent")
+			return ControllerIdentity{}, errors.New("mTLS control-plane peer is absent")
 		}
 		tlsInfo = *typed
 	default:
-		return NodeAgentIdentity{}, errors.New("node Agent peer authentication is not TLS")
+		return ControllerIdentity{}, errors.New("control-plane peer authentication is not TLS")
 	}
 	state := tlsInfo.State
 	if !state.HandshakeComplete || len(state.PeerCertificates) == 0 || len(state.VerifiedChains) == 0 {
-		return NodeAgentIdentity{}, errors.New("node Agent certificate chain is not verified")
+		return ControllerIdentity{}, errors.New("control-plane certificate chain is not verified")
 	}
 	leaf := state.PeerCertificates[0]
 	verifiedLeaf := false
@@ -427,17 +450,21 @@ func authenticatedNodeAgent(ctx context.Context, resolver IdentityResolver) (Nod
 		}
 	}
 	if !verifiedLeaf || len(leaf.URIs) != 1 || !validSPIFFEID(leaf.URIs[0]) {
-		return NodeAgentIdentity{}, errors.New("node Agent certificate has no unique SPIFFE ID")
+		return ControllerIdentity{}, errors.New("control-plane certificate has no unique SPIFFE ID")
 	}
-	identity, err := resolver.ResolveNodeAgent(ctx, leaf.URIs[0].String())
-	if err != nil || !validIdentity(identity) {
-		return NodeAgentIdentity{}, errors.New("node Agent SPIFFE ID is not registered")
+	identity, err := resolver.ResolveController(ctx, leaf.URIs[0].String())
+	if err != nil || !validControllerIdentity(identity, leaf.URIs[0].String()) {
+		return ControllerIdentity{}, errors.New("control-plane SPIFFE ID is not registered")
 	}
 	return identity, nil
 }
 
 func validIdentity(identity NodeAgentIdentity) bool {
 	return identity.WorkerID != uuid.Nil && validText(identity.NodeIdentity, maxIdentityText)
+}
+
+func validControllerIdentity(identity ControllerIdentity, expectedSPIFFE string) bool {
+	return identity.SPIFFEIdentity == expectedSPIFFE && validText(identity.ActorIdentity, maxIdentityText)
 }
 
 func validSPIFFEID(identity *url.URL) bool {

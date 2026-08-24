@@ -328,6 +328,45 @@ func (s *Service) Get(ctx context.Context, operationID uuid.UUID) (Operation, er
 	return operationFromRow(row), nil
 }
 
+func (s *Service) ListExecuting(ctx context.Context, limit int) ([]Operation, error) {
+	if s == nil || s.pool == nil {
+		return nil, errors.New("remediation service is not configured")
+	}
+	if limit < 1 || limit > 1000 {
+		return nil, &Failure{Code: FailureInvalid, Message: "Remediation execution dispatch limit is invalid"}
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT operation_id, worker_id, worker_epoch, node_identity, device_identity,
+			failure_class, evidence_digest, certification_revision, action_level,
+			idempotency_key, requested_by, state, requested_at, deadline_at, started_at, finished_at,
+			result_code, result_detail, postcheck_digest, first_approver, second_approver,
+			approved_at
+		FROM vela_list_executing_remediation($1)
+	`, limit)
+	if err != nil {
+		return nil, mapDatabaseError("list executing Remediation operations", err)
+	}
+	defer rows.Close()
+	operations := make([]Operation, 0, limit)
+	for rows.Next() {
+		var row store.RemediationOperation
+		if err := rows.Scan(
+			&row.ID, &row.WorkerID, &row.WorkerEpoch, &row.NodeIdentity, &row.DeviceIdentity,
+			&row.FailureClass, &row.EvidenceDigest, &row.CertificationRevision, &row.ActionLevel,
+			&row.IdempotencyKey, &row.RequestedBy, &row.State, &row.RequestedAt, &row.DeadlineAt,
+			&row.StartedAt, &row.FinishedAt, &row.ResultCode, &row.ResultDetail, &row.PostcheckDigest,
+			&row.FirstApprover, &row.SecondApprover, &row.ApprovedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan executing Remediation operation: %w", err)
+		}
+		operations = append(operations, operationFromRow(row))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate executing Remediation operations: %w", err)
+	}
+	return operations, nil
+}
+
 func validateRequest(request Request) error {
 	if request.OperationID == uuid.Nil || request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 {
 		return errors.New("remediation operation and Worker identity are required")

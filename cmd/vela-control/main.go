@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -36,8 +37,10 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/natsauth"
+	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/outbox"
+	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/webhook"
@@ -50,6 +53,8 @@ import (
 const (
 	defaultHTTPAddress                          = ":8080"
 	defaultWorkerGRPCAddress                    = ":8443"
+	defaultRemediationTick                      = 500 * time.Millisecond
+	defaultRemediationBatch                     = 100
 	defaultPublisherBatch                       = 100
 	defaultPublisherTick                        = 500 * time.Millisecond
 	defaultCancellationReconciliationTick       = 500 * time.Millisecond
@@ -110,6 +115,14 @@ type config struct {
 	artifactRequestDatabaseURL        string
 	cancelDatabaseURL                 string
 	internalDatabaseURL               string
+	remediationDatabaseURL            string
+	remediationActorIdentity          string
+	remediationNodeAgentsFile         string
+	remediationTLSCertFile            string
+	remediationTLSKeyFile             string
+	remediationTLSRootCAFile          string
+	remediationTick                   time.Duration
+	remediationBatch                  int
 	schedulerDatabaseURL              string
 	schedulerID                       string
 	schedulerTick                     time.Duration
@@ -398,6 +411,41 @@ func run() error {
 		return fmt.Errorf("open internal database pool: %w", err)
 	}
 	defer internalPool.Close()
+	remediationPool, err := openPool(ctx, configuration.remediationDatabaseURL, 10, veladb.RoleRemediation)
+	if err != nil {
+		return fmt.Errorf("open Remediation database pool: %w", err)
+	}
+	defer remediationPool.Close()
+	remediationService, err := remediation.NewService(remediationPool)
+	if err != nil {
+		return fmt.Errorf("configure Remediation service: %w", err)
+	}
+	remediationEndpoints, err := readNodeAgentEndpoints(configuration.remediationNodeAgentsFile)
+	if err != nil {
+		return err
+	}
+	nodeAgents, err := nodeagent.NewStaticAgentResolver(
+		remediationEndpoints,
+		nodeagent.ClientTLSConfig{
+			CertificatePath: configuration.remediationTLSCertFile,
+			PrivateKeyPath:  configuration.remediationTLSKeyFile,
+			RootCAPath:      configuration.remediationTLSRootCAFile,
+		},
+		configuration.remediationActorIdentity,
+	)
+	if err != nil {
+		return fmt.Errorf("configure Node Agent resolver: %w", err)
+	}
+	defer func() { _ = nodeAgents.Close() }()
+	remediationDispatcher, err := nodeagent.NewExecutionDispatcher(
+		remediationService,
+		nodeAgents,
+		configuration.remediationActorIdentity,
+		configuration.remediationBatch,
+	)
+	if err != nil {
+		return fmt.Errorf("configure Remediation dispatcher: %w", err)
+	}
 	schedulerPool, err := openPool(ctx, configuration.schedulerDatabaseURL, 5, veladb.RoleScheduler)
 	if err != nil {
 		return fmt.Errorf("open Scheduler database pool: %w", err)
@@ -805,6 +853,19 @@ func run() error {
 		defer close(retentionDone)
 		runRetentionReconciler(ctx, retentionReconciler, configuration.retentionTick)
 	}()
+	remediationDone := make(chan struct{})
+	go func() {
+		defer close(remediationDone)
+		remediationDispatcher.Run(ctx, configuration.remediationTick, func(result nodeagent.DispatchResult, err error) {
+			if err != nil {
+				slog.Warn("remediation dispatcher cycle failed", "error", err)
+				return
+			}
+			if result.Listed != 0 || result.Recovered != 0 || result.Deferred != 0 {
+				slog.Info("remediation dispatcher cycle", "listed", result.Listed, "dispatched", result.Dispatched, "recovered", result.Recovered, "deferred", result.Deferred)
+			}
+		})
+	}()
 	httpServerErrors := make(chan error, 1)
 	go func() {
 		slog.Info("vela-control HTTP server started", "address", configuration.httpAddress)
@@ -917,6 +978,11 @@ func run() error {
 	case <-shutdownContext.Done():
 		return errors.New("retention Reconciler did not stop before shutdown deadline")
 	}
+	select {
+	case <-remediationDone:
+	case <-shutdownContext.Done():
+		return errors.New("remediation dispatcher did not stop before shutdown deadline")
+	}
 	if err := natsConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 		return fmt.Errorf("drain NATS connection: %w", err)
 	}
@@ -960,6 +1026,14 @@ func loadConfig() (config, error) {
 		platformOIDCJWKSURL:               os.Getenv("VELA_PLATFORM_OIDC_JWKS_URL"),
 		cancelDatabaseURL:                 os.Getenv("VELA_CANCEL_DATABASE_URL"),
 		internalDatabaseURL:               os.Getenv("VELA_INTERNAL_DATABASE_URL"),
+		remediationDatabaseURL:            os.Getenv("VELA_REMEDIATION_DATABASE_URL"),
+		remediationActorIdentity:          os.Getenv("VELA_REMEDIATION_ACTOR_IDENTITY"),
+		remediationNodeAgentsFile:         os.Getenv("VELA_REMEDIATION_NODE_AGENTS_FILE"),
+		remediationTLSCertFile:            os.Getenv("VELA_REMEDIATION_TLS_CERT_FILE"),
+		remediationTLSKeyFile:             os.Getenv("VELA_REMEDIATION_TLS_KEY_FILE"),
+		remediationTLSRootCAFile:          os.Getenv("VELA_REMEDIATION_TLS_ROOT_CA_FILE"),
+		remediationTick:                   defaultRemediationTick,
+		remediationBatch:                  defaultRemediationBatch,
 		schedulerDatabaseURL:              os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
 		schedulerID:                       os.Getenv("VELA_SCHEDULER_ID"),
 		schedulerTick:                     defaultSchedulerTick,
@@ -1049,6 +1123,12 @@ func loadConfig() (config, error) {
 		"VELA_PLATFORM_OIDC_JWKS_URL":                    configuration.platformOIDCJWKSURL,
 		"VELA_CANCEL_DATABASE_URL":                       configuration.cancelDatabaseURL,
 		"VELA_INTERNAL_DATABASE_URL":                     configuration.internalDatabaseURL,
+		"VELA_REMEDIATION_DATABASE_URL":                  configuration.remediationDatabaseURL,
+		"VELA_REMEDIATION_ACTOR_IDENTITY":                configuration.remediationActorIdentity,
+		"VELA_REMEDIATION_NODE_AGENTS_FILE":              configuration.remediationNodeAgentsFile,
+		"VELA_REMEDIATION_TLS_CERT_FILE":                 configuration.remediationTLSCertFile,
+		"VELA_REMEDIATION_TLS_KEY_FILE":                  configuration.remediationTLSKeyFile,
+		"VELA_REMEDIATION_TLS_ROOT_CA_FILE":              configuration.remediationTLSRootCAFile,
 		"VELA_SCHEDULER_DATABASE_URL":                    configuration.schedulerDatabaseURL,
 		"VELA_SCHEDULER_ID":                              configuration.schedulerID,
 		"VELA_BILLING_DATABASE_URL":                      configuration.billingDatabaseURL,
@@ -1093,6 +1173,16 @@ func loadConfig() (config, error) {
 			return config{}, fmt.Errorf("%s is required", name)
 		}
 	}
+	for name, value := range map[string]string{
+		"VELA_REMEDIATION_NODE_AGENTS_FILE": configuration.remediationNodeAgentsFile,
+		"VELA_REMEDIATION_TLS_CERT_FILE":    configuration.remediationTLSCertFile,
+		"VELA_REMEDIATION_TLS_KEY_FILE":     configuration.remediationTLSKeyFile,
+		"VELA_REMEDIATION_TLS_ROOT_CA_FILE": configuration.remediationTLSRootCAFile,
+	} {
+		if !filepath.IsAbs(filepath.Clean(value)) {
+			return config{}, fmt.Errorf("%s must be an absolute path", name)
+		}
+	}
 	encodedPepper := os.Getenv("VELA_CREDENTIAL_PEPPER_BASE64")
 	pepper, err := base64.StdEncoding.DecodeString(encodedPepper)
 	if err != nil || len(pepper) < 32 {
@@ -1123,6 +1213,20 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_OUTBOX_BATCH_SIZE must be between 1 and 1000")
 		}
 		configuration.publisherBatchSize = int32(batchSize)
+	}
+	if value := os.Getenv("VELA_REMEDIATION_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_REMEDIATION_TICK must be in (0, 1m]")
+		}
+		configuration.remediationTick = tick
+	}
+	if value := os.Getenv("VELA_REMEDIATION_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.Atoi(value)
+		if err != nil || batchSize < 1 || batchSize > 1000 {
+			return config{}, errors.New("environment variable VELA_REMEDIATION_BATCH_SIZE must be between 1 and 1000")
+		}
+		configuration.remediationBatch = batchSize
 	}
 	if value := os.Getenv("VELA_RETENTION_TICK"); value != "" {
 		tick, err := time.ParseDuration(value)
@@ -1318,6 +1422,31 @@ func splitCommaSeparated(value string) []string {
 		values = append(values, strings.TrimSpace(part))
 	}
 	return values
+}
+
+func readNodeAgentEndpoints(path string) (map[string]nodeagent.AgentEndpoint, error) {
+	cleaned := filepath.Clean(path)
+	if !filepath.IsAbs(cleaned) {
+		return nil, errors.New("node Agent endpoint file path must be absolute")
+	}
+	file, err := os.Open(cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("open Node Agent endpoint file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 1<<20 {
+		return nil, errors.New("node Agent endpoint file must be a bounded regular file")
+	}
+	var endpoints map[string]nodeagent.AgentEndpoint
+	decoder := json.NewDecoder(io.LimitReader(file, (1<<20)+1))
+	if err := decoder.Decode(&endpoints); err != nil {
+		return nil, fmt.Errorf("decode Node Agent endpoint file: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, errors.New("node Agent endpoint file must contain exactly one JSON document")
+	}
+	return endpoints, nil
 }
 
 func openArtifactStore(ctx context.Context, configuration config) (*artifactstore.S3, error) {
