@@ -146,9 +146,12 @@ func (s *Service) Fail(
 	}
 	if authority.WorkerID != worker.ID || authority.WorkerEpoch != credentials.WorkerEpoch ||
 		authority.AttemptFence != credentials.Fence ||
-		authority.LeasePhase != store.LeasePhaseEXECUTION ||
 		authority.LeaseOwnerKind != store.LeaseOwnerKindWORKER ||
-		authority.LeaseOwnerID != workerRow.SpiffeID {
+		authority.LeaseOwnerID != workerRow.SpiffeID ||
+		(authority.LeasePhase != store.LeasePhaseEXECUTION &&
+			authority.LeasePhase != store.LeasePhaseFINALIZATION) ||
+		(authority.LeasePhase == store.LeasePhaseFINALIZATION &&
+			normalized.BackendStage != "finalization") {
 		return rejectedStaleFailure(), nil
 	}
 	presentedDigest := sha256.Sum256([]byte(credentials.Token))
@@ -184,11 +187,17 @@ func (s *Service) Fail(
 	if err != nil {
 		return RetryDecision{}, err
 	}
+	executionActive := authority.LeasePhase == store.LeasePhaseEXECUTION &&
+		(authority.AttemptState == store.AttemptStateASSIGNED ||
+			authority.AttemptState == store.AttemptStateRUNNING) &&
+		(authority.JobState == store.JobStateASSIGNED || authority.JobState == store.JobStateRUNNING)
+	finalizationActive := authority.LeasePhase == store.LeasePhaseFINALIZATION &&
+		authority.AttemptState == store.AttemptStateFINALIZING &&
+		authority.JobState == store.JobStateFINALIZING
 	if authority.LeaseRevokedAt.Valid || authority.CurrentFence != credentials.Fence ||
 		!authority.LeaseExpiresAt.Valid || !authority.LeaseExpiresAt.Time.After(decidedAt) ||
 		!authority.JobExpiresAt.Valid || !authority.JobExpiresAt.Time.After(decidedAt) ||
-		(authority.AttemptState != store.AttemptStateASSIGNED && authority.AttemptState != store.AttemptStateRUNNING) ||
-		(authority.JobState != store.JobStateASSIGNED && authority.JobState != store.JobStateRUNNING) {
+		(!executionActive && !finalizationActive) {
 		return rejectedStaleFailure(), nil
 	}
 

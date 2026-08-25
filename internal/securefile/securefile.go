@@ -85,6 +85,13 @@ func ResolveTrustedDirectory(path string) (string, error) {
 	return resolved, nil
 }
 
+// OpenTrustedDirectory returns a descriptor reached without following any
+// component symlink. Callers can use openat to keep subsequent file access
+// bound to the validated directory inode.
+func OpenTrustedDirectory(path string) (*os.File, error) {
+	return openTrustedDirectory(path)
+}
+
 func ValidateExecutable(path string) error {
 	file, err := OpenExecutable(path)
 	if err != nil {

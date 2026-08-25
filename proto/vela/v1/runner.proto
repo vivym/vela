@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package vela.v1;
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+service RunnerService {
+  rpc Prepare(PrepareRequest) returns (PrepareResponse);
+  rpc Start(StartRequest) returns (StartResponse);
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+  rpc Status(StatusRequest) returns (StatusResponse);
+  rpc CollectOutputs(CollectOutputsRequest) returns (CollectOutputsResponse);
+}
+
+message RunnerAttemptIdentity {
+  string attempt_id = 1;
+  string job_id = 2;
+  string worker_id = 3;
+  int64 worker_epoch = 4;
+  int64 lease_fence = 5;
+}
+
+message RunnerExecutionSpec {
+  string model_revision_id = 1;
+  string generation_preset_revision_id = 2;
+  string execution_profile_revision_id = 3;
+  string output_spec_id = 4;
+  bytes request_content_json = 5;
+}
+
+enum RunnerCommandDecision {
+  RUNNER_COMMAND_DECISION_UNSPECIFIED = 0;
+  RUNNER_COMMAND_DECISION_ACCEPTED = 1;
+  RUNNER_COMMAND_DECISION_REJECTED = 2;
+}
+
+enum RunnerExecutionState {
+  RUNNER_EXECUTION_STATE_UNSPECIFIED = 0;
+  RUNNER_EXECUTION_STATE_PREPARING = 1;
+  RUNNER_EXECUTION_STATE_READY = 2;
+  RUNNER_EXECUTION_STATE_RUNNING = 3;
+  RUNNER_EXECUTION_STATE_SUCCEEDED = 4;
+  RUNNER_EXECUTION_STATE_FAILED = 5;
+  RUNNER_EXECUTION_STATE_CANCELED = 6;
+}
+
+enum RunnerCancelReason {
+  RUNNER_CANCEL_REASON_UNSPECIFIED = 0;
+  RUNNER_CANCEL_REASON_CONTROL_PLANE_STOP = 1;
+  RUNNER_CANCEL_REASON_LEASE_DEADLINE = 2;
+  RUNNER_CANCEL_REASON_AGENT_SHUTDOWN = 3;
+}
+
+message PrepareRequest {
+  RunnerAttemptIdentity identity = 1;
+  RunnerExecutionSpec execution_spec = 2;
+  bool same_authority_local_recovery = 3;
+}
+
+message PrepareResponse {
+  RunnerAttemptIdentity identity = 1;
+  RunnerCommandDecision decision = 2;
+  bool resumed_local_state = 3;
+  string detail = 4;
+}
+
+message StartRequest {
+  RunnerAttemptIdentity identity = 1;
+}
+
+message StartResponse {
+  RunnerAttemptIdentity identity = 1;
+  RunnerCommandDecision decision = 2;
+  string detail = 3;
+}
+
+message CancelRequest {
+  RunnerAttemptIdentity identity = 1;
+  RunnerCancelReason reason = 2;
+}
+
+message CancelResponse {
+  RunnerAttemptIdentity identity = 1;
+  RunnerCommandDecision decision = 2;
+  string detail = 3;
+}
+
+message StatusRequest {
+  RunnerAttemptIdentity identity = 1;
+}
+
+message RunnerFailure {
+  string failure_class = 1;
+  string failure_fingerprint = 2;
+  string error_summary = 3;
+  string backend_stage = 4;
+  repeated string gpu_uuids = 5;
+  string inference_backend_revision = 6;
+  bool retry_recommended = 7;
+  bool worker_reusable = 8;
+}
+
+message StatusResponse {
+  RunnerAttemptIdentity identity = 1;
+  RunnerExecutionState state = 2;
+  int64 sequence = 3;
+  string backend_stage = 4;
+  optional double backend_stage_progress = 5;
+  optional int64 estimated_remaining_seconds = 6;
+  bytes gpu_health_json = 7;
+  bytes local_artifact_state_json = 8;
+  RunnerFailure failure = 9;
+}
+
+message CollectOutputsRequest {
+  RunnerAttemptIdentity identity = 1;
+}
+
+message RunnerOutput {
+  string kind = 1;
+  int32 ordinal = 2;
+  string path = 3;
+  int64 size_bytes = 4;
+  bytes sha256 = 5;
+  string content_type = 6;
+}
+
+message CollectOutputsResponse {
+  RunnerAttemptIdentity identity = 1;
+  RunnerCommandDecision decision = 2;
+  repeated RunnerOutput outputs = 3;
+  string detail = 4;
+}

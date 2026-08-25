@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package vela.v1;
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+import "google/protobuf/timestamp.proto";
+
+// WorkerHostService is available only on the host-local Unix socket. It keeps
+// privileged filesystem observations out of the Worker Pod.
+service WorkerHostService {
+  rpc GetScratchQuota(GetScratchQuotaRequest)
+      returns (GetScratchQuotaResponse);
+}
+
+message GetScratchQuotaRequest {
+  string worker_id = 1;
+  string root_path = 2;
+  string device_path = 3;
+  uint32 project_id = 4;
+  uint64 root_device = 5;
+  uint64 root_inode = 6;
+}
+
+message GetScratchQuotaResponse {
+  string worker_id = 1;
+  string root_path = 2;
+  string device_path = 3;
+  uint32 project_id = 4;
+  uint64 root_device = 5;
+  uint64 root_inode = 6;
+  int64 total_bytes = 7;
+  int64 free_bytes = 8;
+  google.protobuf.Timestamp observed_at = 9;
+}

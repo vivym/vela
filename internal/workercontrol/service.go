@@ -1,12 +1,15 @@
 package workercontrol
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/google/uuid"
@@ -60,7 +63,11 @@ type Assignment struct {
 	JobID                      uuid.UUID
 	WorkerID                   uuid.UUID
 	WorkerEpoch                int64
+	ModelRevisionID            uuid.UUID
+	GenerationPresetRevisionID uuid.UUID
 	ExecutionProfileRevisionID uuid.UUID
+	OutputSpecID               uuid.UUID
+	RequestContent             string
 	SchedulerDispatchIntentID  uuid.UUID
 	AttemptNumber              int32
 	LeaseToken                 string
@@ -445,6 +452,10 @@ func (s *Service) Acquire(
 		)
 	}
 	leaseValidFor := expiresAt.Sub(commitTime)
+	requestContent, err := canonicalAssignmentRequestContent(job.RequestContent)
+	if err != nil {
+		return Assignment{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return Assignment{}, fmt.Errorf("commit Assignment: %w", err)
 	}
@@ -453,7 +464,11 @@ func (s *Service) Acquire(
 		JobID:                      job.ID,
 		WorkerID:                   worker.ID,
 		WorkerEpoch:                workerEpoch,
+		ModelRevisionID:            job.ModelRevisionID,
+		GenerationPresetRevisionID: job.GenerationPresetRevisionID,
 		ExecutionProfileRevisionID: candidate.ExecutionProfileRevisionID,
+		OutputSpecID:               job.OutputSpecID,
+		RequestContent:             requestContent,
 		SchedulerDispatchIntentID:  schedulerGuard.intentID(),
 		AttemptNumber:              attemptNumber,
 		LeaseToken:                 leaseToken,
@@ -675,18 +690,46 @@ func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow)
 	if !hmac.Equal(digest, row.TokenDigest) {
 		return Assignment{}, errors.New("stored Lease digest does not match reconstructed token")
 	}
+	requestContent, err := canonicalAssignmentRequestContent(row.RequestContent)
+	if err != nil {
+		return Assignment{}, err
+	}
 	return Assignment{
 		AttemptID:                  row.AttemptID,
 		JobID:                      row.JobID,
 		WorkerID:                   row.WorkerID,
 		WorkerEpoch:                row.WorkerEpoch,
+		ModelRevisionID:            row.ModelRevisionID,
+		GenerationPresetRevisionID: row.GenerationPresetRevisionID,
 		ExecutionProfileRevisionID: row.ExecutionProfileRevisionID,
+		OutputSpecID:               row.OutputSpecID,
+		RequestContent:             requestContent,
 		SchedulerDispatchIntentID:  nullUUIDValue(row.SchedulerDispatchIntentID),
 		AttemptNumber:              row.AttemptNumber,
 		LeaseToken:                 token,
 		LeaseFence:                 row.Fence,
 		LeaseExpiresAt:             row.ExpiresAt.Time,
 	}, nil
+}
+
+func canonicalAssignmentRequestContent(raw string) (string, error) {
+	if len(raw) == 0 || len(raw) > 64*1024 {
+		return "", errors.New("stored Assignment request content is absent or too large")
+	}
+	decoder := json.NewDecoder(bytes.NewBufferString(raw))
+	decoder.UseNumber()
+	var object map[string]any
+	if err := decoder.Decode(&object); err != nil || object == nil {
+		return "", errors.New("stored Assignment request content is not one JSON object")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return "", errors.New("stored Assignment request content is not one JSON object")
+	}
+	canonical, err := json.Marshal(object)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize Assignment request content: %w", err)
+	}
+	return string(canonical), nil
 }
 
 func nullUUIDValue(value uuid.NullUUID) uuid.UUID {

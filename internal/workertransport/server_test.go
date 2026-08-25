@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -175,6 +176,178 @@ func TestConnectDispatchesFinalizationOperationsUnderMTLSWorkerIdentity(t *testi
 	}
 }
 
+func TestConnectDispatchesExecutionOperationsUnderMTLSWorkerIdentity(t *testing.T) {
+	const spiffeID = "spiffe://vela.internal/worker/h3-execution-01"
+	workerID := uuid.MustParse("11000000-0000-0000-0000-000000000001")
+	attemptID := uuid.MustParse("12000000-0000-0000-0000-000000000002")
+	jobID := uuid.MustParse("13000000-0000-0000-0000-000000000003")
+	now := time.Date(2026, 8, 25, 4, 0, 0, 0, time.UTC)
+	lease := &velav1.WorkerLeaseCredentials{
+		AttemptId: attemptID.String(), WorkerEpoch: 7, Fence: 3, Token: "opaque-lease-token",
+	}
+	requests := []*velav1.ConnectRequest{
+		{
+			RequestId: uuid.NewString(),
+			Operation: &velav1.ConnectRequest_Acquire{
+				Acquire: &velav1.AcquireRequest{WorkerEpoch: 7},
+			},
+		},
+		{
+			RequestId: uuid.NewString(),
+			Operation: &velav1.ConnectRequest_Start{
+				Start: &velav1.StartWorkerRequest{Lease: lease},
+			},
+		},
+		{
+			RequestId: uuid.NewString(),
+			Operation: &velav1.ConnectRequest_Heartbeat{
+				Heartbeat: &velav1.HeartbeatRequest{
+					Lease: lease, Sequence: 4, BackendStage: "dit",
+					BackendStageProgress: ptr(0.25), EstimatedRemainingSeconds: ptr(int64(90)),
+					GpuHealthJson:          []byte(`{"healthy":true}`),
+					LocalArtifactStateJson: []byte(`{"dit":"running"}`),
+					ScratchFreeBytes:       1 << 30, ArtifactStoreReachable: true,
+				},
+			},
+		},
+		{
+			RequestId: uuid.NewString(),
+			Operation: &velav1.ConnectRequest_Fail{
+				Fail: &velav1.FailRequest{
+					Lease: lease,
+					Observation: &velav1.WorkerFailureObservation{
+						FailureClass: "TRANSIENT_BACKEND", FailureFingerprint: "backend/timeout",
+						ErrorSummary: "runner timed out", BackendStage: "dit",
+						GpuUuids: []string{"GPU-1"}, InferenceBackendRevision: "sglang@abc",
+						RetryRecommended: true, WorkerReusable: true,
+					},
+				},
+			},
+		},
+	}
+	coordinator := &recordingFinalizationCoordinator{
+		assignment: workercontrol.Assignment{
+			AttemptID: attemptID, JobID: jobID, WorkerID: workerID, WorkerEpoch: 7,
+			ModelRevisionID:            uuid.MustParse("14000000-0000-0000-0000-000000000004"),
+			GenerationPresetRevisionID: uuid.MustParse("15000000-0000-0000-0000-000000000005"),
+			ExecutionProfileRevisionID: uuid.MustParse("16000000-0000-0000-0000-000000000006"),
+			OutputSpecID:               uuid.MustParse("17000000-0000-0000-0000-000000000007"),
+			RequestContent:             `{"prompt":"private"}`, AttemptNumber: 2,
+			LeaseToken: "opaque-lease-token", LeaseFence: 3,
+			LeaseExpiresAt: now.Add(time.Minute), LeaseValidFor: 45 * time.Second,
+		},
+		startResult: workercontrol.StartResult{
+			Decision: workercontrol.StartGranted, AttemptID: attemptID, JobID: jobID,
+			WorkerID: workerID, WorkerEpoch: 7, LeaseFence: 3, StartedAt: now,
+		},
+		heartbeatResult: workercontrol.HeartbeatResult{
+			Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+			WorkerID: workerID, WorkerEpoch: 7, LeaseFence: 3, HeartbeatSequence: 4,
+			ExecutionPhase: workercontrol.ExecutionPhaseGenerating, ProgressUpdatedAt: now,
+			LeaseExpiresAt: now.Add(time.Minute), LeaseValidFor: 50 * time.Second,
+		},
+		retryDecision: workercontrol.RetryDecision{
+			Disposition:  workercontrol.RetryDispositionRetryWait,
+			FailureClass: "TRANSIENT_BACKEND", AttemptID: attemptID, JobID: jobID,
+			AttemptState: workercontrol.FailedAttempt, AttemptComputeSeconds: 10,
+			TotalComputeSeconds: 20, JobFence: 4, JobVersion: 5, DecidedAt: now,
+		},
+	}
+	server, err := NewServer(
+		&recordingIdentityResolver{worker: workercontrol.AuthenticatedWorker{ID: workerID}},
+		coordinator,
+		&recordingArtifactUploadStore{},
+	)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	stream := &recordingConnectStream{ctx: mtlsPeerContext(t, spiffeID), requests: requests}
+	if err := server.Connect(stream); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if len(stream.responses) != 4 || stream.responses[0].GetAssignment() == nil ||
+		stream.responses[1].GetStartResult() == nil ||
+		stream.responses[2].GetHeartbeatResult() == nil ||
+		stream.responses[3].GetRetryDecision() == nil {
+		t.Fatalf("typed execution responses = %#v", stream.responses)
+	}
+	assignment := stream.responses[0].GetAssignment()
+	if assignment.GetAttemptId() != attemptID.String() || assignment.GetJobId() != jobID.String() ||
+		assignment.GetRequestContentJson() == nil ||
+		assignment.GetLeaseValidFor().AsDuration() != 45*time.Second {
+		t.Fatalf("Assignment response = %#v", assignment)
+	}
+	if coordinator.acquireEpoch != 7 || coordinator.acquireCandidatePresent ||
+		len(coordinator.workers) != 4 || coordinator.heartbeatObservation.Sequence != 4 ||
+		coordinator.failureObservation.FailureClass != "TRANSIENT_BACKEND" {
+		t.Fatalf("execution coordinator calls = %#v", coordinator)
+	}
+}
+
+func TestConnectRejectsHeartbeatProgressOutsideTheControlPlaneContract(t *testing.T) {
+	const spiffeID = "spiffe://vela.internal/worker/h3-progress-boundary"
+	workerID := uuid.MustParse("18000000-0000-0000-0000-000000000001")
+	attemptID := uuid.MustParse("18000000-0000-0000-0000-000000000002")
+	terminalProgress := 1.0
+	tooLong := int64(math.MaxInt64/int64(time.Second) + 1)
+	tests := []struct {
+		name      string
+		progress  *float64
+		remaining *int64
+	}{
+		{name: "terminal stage progress", progress: &terminalProgress},
+		{name: "remaining time over duration limit", remaining: &tooLong},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			coordinator := &recordingFinalizationCoordinator{}
+			server, err := NewServer(
+				&recordingIdentityResolver{
+					worker: workercontrol.AuthenticatedWorker{ID: workerID},
+				},
+				coordinator,
+				&recordingArtifactUploadStore{},
+			)
+			if err != nil {
+				t.Fatalf("NewServer: %v", err)
+			}
+			requestID := uuid.NewString()
+			stream := &recordingConnectStream{
+				ctx: mtlsPeerContext(t, spiffeID),
+				requests: []*velav1.ConnectRequest{{
+					RequestId: requestID,
+					Operation: &velav1.ConnectRequest_Heartbeat{
+						Heartbeat: &velav1.HeartbeatRequest{
+							Lease: &velav1.WorkerLeaseCredentials{
+								AttemptId: attemptID.String(), WorkerEpoch: 7,
+								Fence: 3, Token: "opaque-lease-token",
+							},
+							Sequence: 4, BackendStage: "dit",
+							BackendStageProgress:      test.progress,
+							EstimatedRemainingSeconds: test.remaining,
+							GpuHealthJson:             []byte(`{"healthy":true}`),
+							LocalArtifactStateJson:    []byte(`{"dit":"running"}`),
+							ScratchFreeBytes:          1 << 30,
+						},
+					},
+				}},
+			}
+
+			if err := server.Connect(stream); err != nil {
+				t.Fatalf("Connect: %v", err)
+			}
+			if len(stream.responses) != 1 ||
+				stream.responses[0].GetRequestId() != requestID ||
+				stream.responses[0].GetOperationError().GetCode() != "INVALID_REQUEST" {
+				t.Fatalf("Connect response = %#v", stream.responses)
+			}
+			if len(coordinator.workers) != 0 {
+				t.Fatalf("invalid Heartbeat reached coordinator: %#v", coordinator.workers)
+			}
+		})
+	}
+}
+
 func TestArtifactUploadClaimAbortsOrphanAndResumesWinningMultipartSession(t *testing.T) {
 	uploadID := uuid.New()
 	artifactID := uuid.New()
@@ -336,12 +509,63 @@ type recordingFinalizationCoordinator struct {
 	inspection                                                             *workercontrol.ArtifactUploadStatus
 	completionIntents                                                      []workercontrol.ArtifactUploadReport
 	uploadReports                                                          []workercontrol.ArtifactUploadReport
+	assignment                                                             workercontrol.Assignment
+	startResult                                                            workercontrol.StartResult
+	heartbeatResult                                                        workercontrol.HeartbeatResult
+	retryDecision                                                          workercontrol.RetryDecision
+	acquireEpoch                                                           int64
+	acquireCandidatePresent                                                bool
+	heartbeatObservation                                                   workercontrol.HeartbeatObservation
+	failureObservation                                                     workercontrol.FailureObservation
 }
 
 func (coordinator *recordingFinalizationCoordinator) record(
 	worker workercontrol.AuthenticatedWorker,
 ) {
 	coordinator.workers = append(coordinator.workers, worker)
+}
+
+func (coordinator *recordingFinalizationCoordinator) Acquire(
+	_ context.Context,
+	worker workercontrol.AuthenticatedWorker,
+	workerEpoch int64,
+	candidate *workercontrol.AssignmentCandidate,
+) (workercontrol.Assignment, error) {
+	coordinator.record(worker)
+	coordinator.acquireEpoch = workerEpoch
+	coordinator.acquireCandidatePresent = candidate != nil
+	return coordinator.assignment, nil
+}
+
+func (coordinator *recordingFinalizationCoordinator) Start(
+	_ context.Context,
+	worker workercontrol.AuthenticatedWorker,
+	_ workercontrol.LeaseCredentials,
+) (workercontrol.StartResult, error) {
+	coordinator.record(worker)
+	return coordinator.startResult, nil
+}
+
+func (coordinator *recordingFinalizationCoordinator) Heartbeat(
+	_ context.Context,
+	worker workercontrol.AuthenticatedWorker,
+	_ workercontrol.LeaseCredentials,
+	observation workercontrol.HeartbeatObservation,
+) (workercontrol.HeartbeatResult, error) {
+	coordinator.record(worker)
+	coordinator.heartbeatObservation = observation
+	return coordinator.heartbeatResult, nil
+}
+
+func (coordinator *recordingFinalizationCoordinator) Fail(
+	_ context.Context,
+	worker workercontrol.AuthenticatedWorker,
+	_ workercontrol.LeaseCredentials,
+	observation workercontrol.FailureObservation,
+) (workercontrol.RetryDecision, error) {
+	coordinator.record(worker)
+	coordinator.failureObservation = observation
+	return coordinator.retryDecision, nil
 }
 
 func (coordinator *recordingFinalizationCoordinator) BeginFinalization(
@@ -641,3 +865,7 @@ func mtlsPeerContext(t *testing.T, spiffeID string) context.Context {
 }
 
 var _ velav1.WorkerControlService_ConnectServer = (*recordingConnectStream)(nil)
+
+func ptr[T any](value T) *T {
+	return &value
+}

@@ -2360,6 +2360,14 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_internal_login", "vela-internal-password",
 		),
+		"VELA_REMEDIATION_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_remediation_login", "vela-remediation-password",
+		),
+		"VELA_REMEDIATION_ACTOR_IDENTITY":   "controller/n-minus-one-startup-probe",
+		"VELA_REMEDIATION_NODE_AGENTS_FILE": "/missing/remediation-node-agents.json",
+		"VELA_REMEDIATION_TLS_CERT_FILE":    "/missing/remediation-client.crt",
+		"VELA_REMEDIATION_TLS_KEY_FILE":     "/missing/remediation-client.key",
+		"VELA_REMEDIATION_TLS_ROOT_CA_FILE": "/missing/remediation-root-ca.crt",
 		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
 		),

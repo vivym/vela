@@ -17,12 +17,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/artifactstore"
+	"github.com/vivym/vela/internal/executionprogress"
 	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -30,7 +32,30 @@ type WorkerIdentityResolver interface {
 	ResolveWorker(context.Context, string) (workercontrol.AuthenticatedWorker, error)
 }
 
-type FinalizationCoordinator interface {
+type WorkerCoordinator interface {
+	Acquire(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		int64,
+		*workercontrol.AssignmentCandidate,
+	) (workercontrol.Assignment, error)
+	Start(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		workercontrol.LeaseCredentials,
+	) (workercontrol.StartResult, error)
+	Heartbeat(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		workercontrol.LeaseCredentials,
+		workercontrol.HeartbeatObservation,
+	) (workercontrol.HeartbeatResult, error)
+	Fail(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		workercontrol.LeaseCredentials,
+		workercontrol.FailureObservation,
+	) (workercontrol.RetryDecision, error)
 	BeginFinalization(
 		context.Context,
 		workercontrol.AuthenticatedWorker,
@@ -109,13 +134,13 @@ type ArtifactUploadStore interface {
 type Server struct {
 	velav1.UnimplementedWorkerControlServiceServer
 	resolver    WorkerIdentityResolver
-	coordinator FinalizationCoordinator
+	coordinator WorkerCoordinator
 	uploadStore ArtifactUploadStore
 }
 
 func NewServer(
 	resolver WorkerIdentityResolver,
-	coordinator FinalizationCoordinator,
+	coordinator WorkerCoordinator,
 	uploadStore ArtifactUploadStore,
 ) (*Server, error) {
 	if resolver == nil {
@@ -153,7 +178,7 @@ func (server *Server) Connect(stream velav1.WorkerControlService_ConnectServer) 
 		if dispatchErr != nil {
 			slog.ErrorContext(
 				stream.Context(),
-				"Worker finalization operation failed",
+				"Worker operation failed",
 				"worker_id", worker.ID,
 				"request_id", request.GetRequestId(),
 				"error", dispatchErr,
@@ -179,6 +204,64 @@ func (server *Server) dispatch(
 		return invalidResponse(requestID, "request_id must be a UUID"), nil
 	}
 	switch operation := request.GetOperation().(type) {
+	case *velav1.ConnectRequest_Acquire:
+		if operation.Acquire == nil || operation.Acquire.GetWorkerEpoch() <= 0 {
+			return invalidResponse(requestID, "positive Worker epoch is required"), nil
+		}
+		result, err := server.coordinator.Acquire(
+			ctx, worker, operation.Acquire.GetWorkerEpoch(), nil,
+		)
+		if err != nil {
+			var failure *workercontrol.Failure
+			if errors.As(err, &failure) {
+				return operationErrorResponse(requestID, string(failure.Code), failure.Message), nil
+			}
+			return nil, err
+		}
+		return &velav1.ConnectResponse{
+			RequestId: requestID,
+			Result: &velav1.ConnectResponse_Assignment{
+				Assignment: workerAssignment(result),
+			},
+		}, nil
+	case *velav1.ConnectRequest_Start:
+		credentials, ok := parseLeaseCredentials(operation.Start.GetLease())
+		if !ok {
+			return invalidResponse(requestID, "valid Lease credentials are required"), nil
+		}
+		result, err := server.coordinator.Start(ctx, worker, credentials)
+		return &velav1.ConnectResponse{
+			RequestId: requestID,
+			Result: &velav1.ConnectResponse_StartResult{
+				StartResult: startWorkerResult(result),
+			},
+		}, err
+	case *velav1.ConnectRequest_Heartbeat:
+		credentials, ok := parseLeaseCredentials(operation.Heartbeat.GetLease())
+		observation, observationOK := parseHeartbeatObservation(operation.Heartbeat)
+		if !ok || !observationOK {
+			return invalidResponse(requestID, "valid Lease and Heartbeat observation are required"), nil
+		}
+		result, err := server.coordinator.Heartbeat(ctx, worker, credentials, observation)
+		return &velav1.ConnectResponse{
+			RequestId: requestID,
+			Result: &velav1.ConnectResponse_HeartbeatResult{
+				HeartbeatResult: heartbeatResult(result),
+			},
+		}, err
+	case *velav1.ConnectRequest_Fail:
+		credentials, ok := parseLeaseCredentials(operation.Fail.GetLease())
+		observation, observationOK := parseFailureObservation(operation.Fail.GetObservation())
+		if !ok || !observationOK {
+			return invalidResponse(requestID, "valid Lease and Failure observation are required"), nil
+		}
+		result, err := server.coordinator.Fail(ctx, worker, credentials, observation)
+		return &velav1.ConnectResponse{
+			RequestId: requestID,
+			Result: &velav1.ConnectResponse_RetryDecision{
+				RetryDecision: retryDecision(result),
+			},
+		}, err
 	case *velav1.ConnectRequest_BeginFinalization:
 		credentials, ok := parseLeaseCredentials(operation.BeginFinalization.GetLease())
 		if !ok {
@@ -775,11 +858,119 @@ func parseRequiredUUID(raw string) (uuid.UUID, bool) {
 }
 
 func invalidResponse(requestID string, message string) *velav1.ConnectResponse {
+	return operationErrorResponse(requestID, "INVALID_REQUEST", message)
+}
+
+func operationErrorResponse(requestID, code, message string) *velav1.ConnectResponse {
 	return &velav1.ConnectResponse{
 		RequestId: requestID,
 		Result: &velav1.ConnectResponse_OperationError{OperationError: &velav1.WorkerOperationError{
-			Code: "INVALID_REQUEST", Message: message,
+			Code: code, Message: message,
 		}},
+	}
+}
+
+func parseHeartbeatObservation(request *velav1.HeartbeatRequest) (workercontrol.HeartbeatObservation, bool) {
+	if request == nil || request.GetSequence() <= 0 || request.GetBackendStage() == "" ||
+		len(request.GetGpuHealthJson()) == 0 || len(request.GetGpuHealthJson()) > 16*1024 ||
+		len(request.GetLocalArtifactStateJson()) == 0 ||
+		len(request.GetLocalArtifactStateJson()) > 16*1024 || request.GetScratchFreeBytes() < 0 {
+		return workercontrol.HeartbeatObservation{}, false
+	}
+	var progress *float64
+	if request.BackendStageProgress != nil {
+		value := request.GetBackendStageProgress()
+		if !executionprogress.ValidStageProgress(value) {
+			return workercontrol.HeartbeatObservation{}, false
+		}
+		progress = &value
+	}
+	var remaining *int64
+	if request.EstimatedRemainingSeconds != nil {
+		value := request.GetEstimatedRemainingSeconds()
+		if !executionprogress.ValidEstimatedRemainingSeconds(value) {
+			return workercontrol.HeartbeatObservation{}, false
+		}
+		remaining = &value
+	}
+	return workercontrol.HeartbeatObservation{
+		Sequence: request.GetSequence(), BackendStage: request.GetBackendStage(),
+		BackendStageProgress: progress, EstimatedRemainingSeconds: remaining,
+		GPUHealthSummary:       append([]byte(nil), request.GetGpuHealthJson()...),
+		LocalArtifactState:     append([]byte(nil), request.GetLocalArtifactStateJson()...),
+		ScratchFreeBytes:       request.GetScratchFreeBytes(),
+		ArtifactStoreReachable: request.GetArtifactStoreReachable(),
+	}, true
+}
+
+func parseFailureObservation(
+	observation *velav1.WorkerFailureObservation,
+) (workercontrol.FailureObservation, bool) {
+	if observation == nil || observation.GetFailureClass() == "" ||
+		observation.GetFailureFingerprint() == "" || observation.GetErrorSummary() == "" ||
+		observation.GetBackendStage() == "" || observation.GetInferenceBackendRevision() == "" ||
+		len(observation.GetGpuUuids()) > 8 {
+		return workercontrol.FailureObservation{}, false
+	}
+	return workercontrol.FailureObservation{
+		FailureClass:       observation.GetFailureClass(),
+		FailureFingerprint: observation.GetFailureFingerprint(),
+		ErrorSummary:       observation.GetErrorSummary(), BackendStage: observation.GetBackendStage(),
+		GPUUUIDs:                 append([]string(nil), observation.GetGpuUuids()...),
+		InferenceBackendRevision: observation.GetInferenceBackendRevision(),
+		RetryRecommended:         observation.GetRetryRecommended(),
+		WorkerReusable:           observation.GetWorkerReusable(),
+	}, true
+}
+
+func workerAssignment(result workercontrol.Assignment) *velav1.WorkerAssignment {
+	return &velav1.WorkerAssignment{
+		AttemptId: result.AttemptID.String(), JobId: result.JobID.String(),
+		WorkerId: result.WorkerID.String(), WorkerEpoch: result.WorkerEpoch,
+		ModelRevisionId:            result.ModelRevisionID.String(),
+		GenerationPresetRevisionId: result.GenerationPresetRevisionID.String(),
+		ExecutionProfileRevisionId: result.ExecutionProfileRevisionID.String(),
+		OutputSpecId:               result.OutputSpecID.String(),
+		RequestContentJson:         []byte(result.RequestContent), AttemptNumber: result.AttemptNumber,
+		LeaseToken: result.LeaseToken, LeaseFence: result.LeaseFence,
+		LeaseExpiresAt: timestamp(result.LeaseExpiresAt),
+		LeaseValidFor:  durationpb.New(result.LeaseValidFor),
+	}
+}
+
+func startWorkerResult(result workercontrol.StartResult) *velav1.StartWorkerResult {
+	return &velav1.StartWorkerResult{
+		Decision: string(result.Decision), StopReason: string(result.StopReason),
+		AttemptId: optionalUUID(result.AttemptID), JobId: optionalUUID(result.JobID),
+		WorkerId: optionalUUID(result.WorkerID), WorkerEpoch: result.WorkerEpoch,
+		LeaseFence: result.LeaseFence, StartedAt: timestamp(result.StartedAt),
+	}
+}
+
+func heartbeatResult(result workercontrol.HeartbeatResult) *velav1.HeartbeatResult {
+	return &velav1.HeartbeatResult{
+		Decision: string(result.Decision), StopReason: string(result.StopReason),
+		AttemptId: optionalUUID(result.AttemptID), JobId: optionalUUID(result.JobID),
+		WorkerId: optionalUUID(result.WorkerID), WorkerEpoch: result.WorkerEpoch,
+		LeaseFence: result.LeaseFence, HeartbeatSequence: result.HeartbeatSequence,
+		ExecutionPhase:    string(result.ExecutionPhase),
+		ProgressUpdatedAt: timestamp(result.ProgressUpdatedAt),
+		LeaseExpiresAt:    timestamp(result.LeaseExpiresAt),
+		LeaseValidFor:     durationpb.New(result.LeaseValidFor),
+	}
+}
+
+func retryDecision(result workercontrol.RetryDecision) *velav1.RetryDecision {
+	return &velav1.RetryDecision{
+		Disposition: string(result.Disposition), FailureClass: result.FailureClass,
+		AttemptId: optionalUUID(result.AttemptID), JobId: optionalUUID(result.JobID),
+		AttemptState:               string(result.AttemptState),
+		AttemptComputeSeconds:      result.AttemptComputeSeconds,
+		TotalComputeSeconds:        result.TotalComputeSeconds,
+		AttemptFinalizationSeconds: result.AttemptFinalizationSeconds,
+		TotalFinalizationSeconds:   result.TotalFinalizationSeconds,
+		NextRetryAt:                timestampPointer(result.NextRetryAt), JobFence: result.JobFence,
+		JobVersion: result.JobVersion, DecidedAt: timestamp(result.DecidedAt),
 	}
 }
 
@@ -943,6 +1134,13 @@ func timestamp(value time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(value)
+}
+
+func timestampPointer(value *time.Time) *timestamppb.Timestamp {
+	if value == nil {
+		return nil
+	}
+	return timestamp(*value)
 }
 
 var _ velav1.WorkerControlServiceServer = (*Server)(nil)

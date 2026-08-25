@@ -76,6 +76,87 @@ func TestLocalRecoveryStateBindsWorkerEpochAndFence(t *testing.T) {
 	}
 }
 
+func TestActiveHandlesReturnsSortedIdentityBoundAttempts(t *testing.T) {
+	root := t.TempDir()
+	workerID := uuid.MustParse("01100000-0000-0000-0000-000000000001")
+	manager := newTestManager(t, root, workerID, 9)
+	identities := []Identity{
+		{AttemptID: uuid.MustParse("01100000-0000-0000-0000-000000000003"), WorkerID: workerID, WorkerEpoch: 9, Fence: 13},
+		{AttemptID: uuid.MustParse("01100000-0000-0000-0000-000000000002"), WorkerID: workerID, WorkerEpoch: 9, Fence: 12},
+	}
+	for _, identity := range identities {
+		if _, err := manager.Open(context.Background(), identity); err != nil {
+			t.Fatalf("Open active handle: %v", err)
+		}
+	}
+
+	handles, err := manager.ActiveHandles(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveHandles: %v", err)
+	}
+	if len(handles) != 2 {
+		t.Fatalf("active handles = %d, want 2", len(handles))
+	}
+	first, err := handles[0].Identity()
+	if err != nil {
+		t.Fatalf("first Identity: %v", err)
+	}
+	second, err := handles[1].Identity()
+	if err != nil {
+		t.Fatalf("second Identity: %v", err)
+	}
+	if first != identities[1] || second != identities[0] {
+		t.Fatalf("active identities = %#v, %#v", first, second)
+	}
+}
+
+func TestActiveHandlesFinishesInterruptedTerminalTransition(t *testing.T) {
+	root := t.TempDir()
+	workerID := uuid.MustParse("01200000-0000-0000-0000-000000000001")
+	manager := newTestManager(t, root, workerID, 9)
+	identity := Identity{
+		AttemptID: uuid.MustParse("01200000-0000-0000-0000-000000000002"),
+		WorkerID:  workerID, WorkerEpoch: 9, Fence: 12,
+	}
+	handle, err := manager.Open(context.Background(), identity)
+	if err != nil {
+		t.Fatalf("Open local recovery state: %v", err)
+	}
+	if _, err := handle.Write(context.Background(), StageUpload, "partial", strings.NewReader("upload")); err != nil {
+		t.Fatalf("write interrupted terminal fixture: %v", err)
+	}
+	manager.mu.Lock()
+	path := manager.attemptPath(identity.AttemptID)
+	metadata, err := manager.requireMetadata(path, identity)
+	if err == nil {
+		now := time.Now().UTC()
+		metadata.TerminalAt = &now
+		metadata.UpdatedAt = now
+		err = manager.writeAttemptMetadata(path, metadata)
+	}
+	manager.mu.Unlock()
+	if err != nil {
+		t.Fatalf("persist interrupted terminal metadata: %v", err)
+	}
+
+	handles, err := manager.ActiveHandles(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveHandles: %v", err)
+	}
+	if len(handles) != 0 {
+		t.Fatalf("active handles = %d, want none", len(handles))
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("interrupted terminal Attempt remains: %v", err)
+	}
+	if _, err := os.Lstat(manager.terminalPath(identity.AttemptID)); err != nil {
+		t.Fatalf("terminal marker was not completed: %v", err)
+	}
+	if _, err := manager.Open(context.Background(), identity); !errors.Is(err, ErrStateTerminal) {
+		t.Fatalf("terminal Attempt reopened: %v", err)
+	}
+}
+
 func TestLocalRecoveryStateRejectsUnsafeNamesAndSymlinks(t *testing.T) {
 	root := t.TempDir()
 	workerID := uuid.New()
@@ -141,6 +222,35 @@ func TestLocalRecoveryStateEnforcesAttemptQuotaAndWatermarks(t *testing.T) {
 	}
 }
 
+func TestLocalRecoveryStateRejectsCapacityInconsistentConfiguration(t *testing.T) {
+	tests := []struct {
+		name         string
+		attemptQuota int64
+		high         int64
+		low          int64
+		criticalFree int64
+	}{
+		{name: "attempt quota exceeds capacity", attemptQuota: 1001, high: 800, low: 400, criticalFree: 32},
+		{name: "high watermark reaches capacity", attemptQuota: 64, high: 1000, low: 400, criticalFree: 32},
+		{name: "critical free watermark reaches capacity", attemptQuota: 64, high: 800, low: 400, criticalFree: 1000},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			space := Space{TotalBytes: 1000, FreeBytes: 1000}
+			_, err := New(Config{
+				Root: filepath.Join(t.TempDir(), "recovery"), WorkerID: uuid.New(), WorkerEpoch: 1,
+				AttemptQuotaBytes: test.attemptQuota, MaxEntryBytes: 16, MaxEntries: 4,
+				HighWatermarkBytes: test.high, LowWatermarkBytes: test.low,
+				CriticalFreeBytes: test.criticalFree, TerminalRetention: time.Hour,
+				SpaceProbe: func(string) (Space, error) { return space, nil },
+			})
+			if err == nil || !strings.Contains(err.Error(), "capacity") {
+				t.Fatalf("New capacity-inconsistent manager error = %v", err)
+			}
+		})
+	}
+}
+
 func TestLocalRecoveryStateTerminalCleanupAndReconcile(t *testing.T) {
 	root := t.TempDir()
 	workerID := uuid.New()
@@ -189,7 +299,7 @@ func TestLocalRecoveryStateTerminalCleanupAndReconcile(t *testing.T) {
 	}
 	manager.mu.Unlock()
 	result, err := manager.Reconcile(context.Background())
-	if err != nil || result.Removed != 1 {
+	if err != nil || result.Removed != 2 {
 		t.Fatalf("Reconcile result = %#v, error=%v", result, err)
 	}
 }

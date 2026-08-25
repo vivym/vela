@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"google.golang.org/grpc/credentials"
 )
@@ -49,6 +50,43 @@ func NewServerTLSCredentials(
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    clientCAs,
 		NextProtos:   []string{"h2"},
+	}), nil
+}
+
+func NewClientTLSCredentials(
+	certificatePath string,
+	privateKeyPath string,
+	serverCAPath string,
+	serverName string,
+) (credentials.TransportCredentials, error) {
+	if strings.TrimSpace(serverName) != serverName || serverName == "" ||
+		len(serverName) > 253 || strings.ContainsRune(serverName, '\x00') {
+		return nil, errors.New("worker gRPC server name is invalid")
+	}
+	certificatePEM, err := readTLSFile(certificatePath, maxTLSCertificateBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read Worker gRPC client certificate: %w", err)
+	}
+	privateKeyPEM, err := readTLSFile(privateKeyPath, maxTLSPrivateKeyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("read Worker gRPC client private key: %w", err)
+	}
+	clientCertificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
+	if err != nil {
+		return nil, errors.New("worker gRPC client certificate and key are invalid")
+	}
+	serverCAPEM, err := readTLSFile(serverCAPath, maxTLSClientCABytes)
+	if err != nil {
+		return nil, fmt.Errorf("read Worker gRPC server CA: %w", err)
+	}
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(serverCAPEM) {
+		return nil, errors.New("worker gRPC server CA contains no certificates")
+	}
+	return credentials.NewTLS(&tls.Config{
+		MinVersion: tls.VersionTLS13, ServerName: serverName,
+		RootCAs: rootCAs, Certificates: []tls.Certificate{clientCertificate},
+		NextProtos: []string{"h2"},
 	}), nil
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -130,6 +131,7 @@ type Manager struct {
 	root              string
 	attemptsRoot      string
 	terminalRoot      string
+	quarantineRoot    string
 	workerID          uuid.UUID
 	workerEpoch       int64
 	attemptQuotaBytes int64
@@ -210,6 +212,16 @@ func New(config Config) (*Manager, error) {
 		spaceProbe:        spaceProbe,
 		clock:             clock,
 	}
+	space, err := manager.observeSpace()
+	if err != nil {
+		return nil, fmt.Errorf("validate Worker local recovery capacity: %w", err)
+	}
+	if manager.attemptQuotaBytes > space.TotalBytes ||
+		manager.highWatermark >= space.TotalBytes ||
+		manager.lowWatermark >= space.TotalBytes ||
+		manager.criticalFree >= space.TotalBytes {
+		return nil, errors.New("worker local recovery quota or watermark exceeds observed capacity")
+	}
 	if err := manager.bindRoot(); err != nil {
 		return nil, err
 	}
@@ -223,7 +235,25 @@ func New(config Config) (*Manager, error) {
 	}
 	manager.attemptsRoot = attemptsRoot
 	manager.terminalRoot = terminalRoot
+	quarantineRoot := filepath.Join(cleanRoot, "quarantine")
+	if err := ensureSecureDirectory(quarantineRoot); err != nil {
+		return nil, fmt.Errorf("prepare Worker local recovery quarantine root: %w", err)
+	}
+	manager.quarantineRoot = quarantineRoot
 	return manager, nil
+}
+
+// QuarantineRoot is mounted only into the Worker Agent container. It remains
+// on the scratch filesystem so terminal output directories can move into it
+// atomically before any unlink.
+func (manager *Manager) QuarantineRoot() (string, error) {
+	if manager == nil || manager.quarantineRoot == "" {
+		return "", errors.New("worker local recovery quarantine root is not configured")
+	}
+	if err := ensureSecureDirectory(manager.quarantineRoot); err != nil {
+		return "", fmt.Errorf("validate Worker local recovery quarantine root: %w", err)
+	}
+	return manager.quarantineRoot, nil
 }
 
 func (manager *Manager) bindRoot() error {
@@ -303,6 +333,74 @@ func (manager *Manager) Open(ctx context.Context, identity Identity) (*Handle, e
 type Handle struct {
 	manager  *Manager
 	identity Identity
+}
+
+// Identity returns the immutable Worker authority bound to this handle.
+func (handle *Handle) Identity() (Identity, error) {
+	if handle == nil || handle.manager == nil || !handle.identity.valid() {
+		return Identity{}, errors.New("worker local recovery handle is not configured")
+	}
+	return handle.identity, nil
+}
+
+// ActiveHandles returns identity-validated non-terminal Attempt handles for
+// same-Worker process recovery. Unknown or malformed directories fail closed.
+func (manager *Manager) ActiveHandles(ctx context.Context) ([]*Handle, error) {
+	if manager == nil {
+		return nil, errors.New("worker local recovery manager is not configured")
+	}
+	if err := requireContext(ctx); err != nil {
+		return nil, err
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	entries, err := os.ReadDir(manager.attemptsRoot)
+	if err != nil {
+		return nil, fmt.Errorf("list active Worker local recovery state: %w", err)
+	}
+	if len(entries) > 1024 {
+		return nil, ErrInvalidStateDirectory
+	}
+	handles := make([]*Handle, 0, len(entries))
+	for _, entry := range entries {
+		if err := requireContext(ctx); err != nil {
+			return nil, err
+		}
+		attemptID := parseUUID(entry.Name())
+		if attemptID == uuid.Nil || attemptID.String() != entry.Name() {
+			return nil, ErrInvalidStateDirectory
+		}
+		path := manager.attemptPath(attemptID)
+		info, err := os.Lstat(path)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 ||
+			info.Mode().Perm() != 0o700 {
+			return nil, ErrInvalidStateDirectory
+		}
+		metadata, err := manager.readAttemptMetadata(path)
+		if err != nil || metadata.AttemptID != attemptID || metadata.WorkerID != manager.workerID ||
+			metadata.WorkerEpoch != manager.workerEpoch || metadata.Fence <= 0 {
+			return nil, ErrStateIdentityMismatch
+		}
+		if metadata.TerminalAt != nil {
+			if err := manager.completeTerminalTransition(path, metadata); err != nil {
+				return nil, fmt.Errorf("finish terminal Worker local recovery transition: %w", err)
+			}
+			continue
+		}
+		if _, err := os.Lstat(manager.terminalPath(attemptID)); err == nil {
+			return nil, ErrStateIdentityMismatch
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("inspect active terminal marker: %w", err)
+		}
+		handles = append(handles, &Handle{manager: manager, identity: Identity{
+			AttemptID: attemptID, WorkerID: manager.workerID,
+			WorkerEpoch: manager.workerEpoch, Fence: metadata.Fence,
+		}})
+	}
+	sort.Slice(handles, func(left, right int) bool {
+		return handles[left].identity.AttemptID.String() < handles[right].identity.AttemptID.String()
+	})
+	return handles, nil
 }
 
 func (handle *Handle) Write(
@@ -438,6 +536,53 @@ func (handle *Handle) Read(ctx context.Context, stage Stage, name string) ([]byt
 	return os.ReadFile(entryPath)
 }
 
+// Delete durably removes one replay record after its external operation has
+// returned an authoritative non-terminal result.
+func (handle *Handle) Delete(ctx context.Context, stage Stage, name string) error {
+	if handle == nil || handle.manager == nil {
+		return errors.New("worker local recovery handle is not configured")
+	}
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
+	if !stage.valid() || !validStateName(name) {
+		return ErrUnsafeName
+	}
+	manager := handle.manager
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	path := manager.attemptPath(handle.identity.AttemptID)
+	metadata, err := manager.requireMetadata(path, handle.identity)
+	if err != nil {
+		return err
+	}
+	if metadata.TerminalAt != nil {
+		return ErrStateTerminal
+	}
+	entryPath := filepath.Join(path, stateFileName(stage, name))
+	info, err := os.Lstat(entryPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect local recovery state before removal: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return ErrInvalidStateDirectory
+	}
+	if err := os.Remove(entryPath); err != nil {
+		return fmt.Errorf("remove local recovery state: %w", err)
+	}
+	metadata.UpdatedAt = manager.clock().UTC()
+	if err := manager.writeAttemptMetadata(path, metadata); err != nil {
+		return fmt.Errorf("update local recovery metadata after removal: %w", err)
+	}
+	if err := syncDirectory(path); err != nil {
+		return fmt.Errorf("sync local recovery directory after removal: %w", err)
+	}
+	return nil
+}
+
 func (handle *Handle) List(ctx context.Context) ([]Entry, error) {
 	if handle == nil || handle.manager == nil {
 		return nil, errors.New("worker local recovery handle is not configured")
@@ -499,12 +644,9 @@ func (manager *Manager) Watermark(ctx context.Context) (Watermark, error) {
 	}
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
-	space, err := manager.spaceProbe(manager.root)
+	space, err := manager.observeSpace()
 	if err != nil {
 		return Watermark{}, fmt.Errorf("observe Worker local recovery capacity: %w", err)
-	}
-	if space.TotalBytes <= 0 || space.FreeBytes < 0 || space.FreeBytes > space.TotalBytes {
-		return Watermark{}, errors.New("worker local recovery capacity observation is invalid")
 	}
 	used := space.TotalBytes - space.FreeBytes
 	state := WatermarkNormal
@@ -519,6 +661,17 @@ func (manager *Manager) Watermark(ctx context.Context) (Watermark, error) {
 		UsedBytes: used, AssignmentAllowed: state == WatermarkNormal,
 		ResumeEligible: used <= manager.lowWatermark,
 	}, nil
+}
+
+func (manager *Manager) observeSpace() (Space, error) {
+	space, err := manager.spaceProbe(manager.root)
+	if err != nil {
+		return Space{}, err
+	}
+	if space.TotalBytes <= 0 || space.FreeBytes < 0 || space.FreeBytes > space.TotalBytes {
+		return Space{}, errors.New("worker local recovery capacity observation is invalid")
+	}
+	return space, nil
 }
 
 // Reconcile only removes directories that carry a durable terminal marker.
@@ -556,11 +709,11 @@ func (manager *Manager) Reconcile(ctx context.Context) (ReconcileResult, error) 
 			result.Unsafe++
 			continue
 		}
-		if metadata.TerminalAt == nil || now.Before(metadata.TerminalAt.Add(manager.terminalRetention)) {
+		if metadata.TerminalAt == nil {
 			result.Deferred++
 			continue
 		}
-		if err := removeAttemptDirectory(path); err != nil {
+		if err := manager.completeTerminalTransition(path, metadata); err != nil {
 			return result, fmt.Errorf("remove terminal Worker local recovery state: %w", err)
 		}
 		result.Removed++
@@ -600,6 +753,22 @@ func (manager *Manager) Reconcile(ctx context.Context) (ReconcileResult, error) 
 		return result, fmt.Errorf("sync terminal Worker local recovery root: %w", err)
 	}
 	return result, nil
+}
+
+func (manager *Manager) completeTerminalTransition(path string, metadata attemptMetadata) error {
+	if metadata.TerminalAt == nil || metadata.AttemptID == uuid.Nil ||
+		metadata.WorkerID != manager.workerID || metadata.WorkerEpoch != manager.workerEpoch ||
+		path != manager.attemptPath(metadata.AttemptID) {
+		return ErrStateIdentityMismatch
+	}
+	if err := writeJSONAtomic(
+		manager.terminalRoot,
+		manager.terminalPath(metadata.AttemptID),
+		metadata,
+	); err != nil {
+		return err
+	}
+	return removeAttemptDirectory(path)
 }
 
 func (manager *Manager) requireWritableSpace(additionalBytes int64) error {

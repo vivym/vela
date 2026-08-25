@@ -112,6 +112,21 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 	if first.WorkerEpoch != 7 || first.AttemptNumber != 1 || first.LeaseFence != 1 || first.LeaseToken == "" {
 		t.Fatalf("Assignment authority = %#v", first)
 	}
+	if first.ModelRevisionID != uuid.MustParse("00000000-0000-0000-0000-000000000010") ||
+		first.GenerationPresetRevisionID != uuid.MustParse("00000000-0000-0000-0000-000000000011") ||
+		first.ExecutionProfileRevisionID != uuid.MustParse("00000000-0000-0000-0000-000000000014") ||
+		first.OutputSpecID != uuid.MustParse("00000000-0000-0000-0000-000000000013") {
+		t.Fatalf("Assignment execution snapshot = %#v", first)
+	}
+	var requestContent map[string]any
+	if err := json.Unmarshal([]byte(first.RequestContent), &requestContent); err != nil {
+		t.Fatalf("decode Assignment request content: %v", err)
+	}
+	if requestContent["model"] != "minimax-h3" || requestContent["generation_preset"] != "balanced" ||
+		requestContent["output_spec"] != "video-1080p-5s-24fps" ||
+		requestContent["prompt"] != "return one durable execution authority" {
+		t.Fatalf("Assignment request content = %#v", requestContent)
+	}
 	if first.LeaseValidFor <= 0 || first.LeaseValidFor > 2*time.Minute {
 		t.Fatalf("Assignment lease_valid_for = %s, want (0, 2m]", first.LeaseValidFor)
 	}

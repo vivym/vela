@@ -5,6 +5,7 @@ package vela.v1;
 option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
 
 service WorkerControlService {
   rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
@@ -18,6 +19,10 @@ service NodeAgentService {
 message ConnectRequest {
   string request_id = 1;
   oneof operation {
+    AcquireRequest acquire = 10;
+    StartWorkerRequest start = 11;
+    HeartbeatRequest heartbeat = 12;
+    FailRequest fail = 13;
     BeginFinalizationRequest begin_finalization = 20;
     ClaimArtifactUploadRequest claim_artifact_upload = 21;
     RecordArtifactMultipartSessionRequest record_artifact_multipart_session = 22;
@@ -31,6 +36,10 @@ message ConnectRequest {
 message ConnectResponse {
   string request_id = 1;
   oneof result {
+    WorkerAssignment assignment = 10;
+    StartWorkerResult start_result = 11;
+    HeartbeatResult heartbeat_result = 12;
+    RetryDecision retry_decision = 13;
     FinalizationPlan finalization_plan = 20;
     ArtifactUploadClaim artifact_upload_claim = 21;
     ArtifactMultipartSession artifact_multipart_session = 22;
@@ -75,6 +84,101 @@ message WorkerLeaseCredentials {
   int64 worker_epoch = 2;
   int64 fence = 3;
   string token = 4;
+}
+
+message AcquireRequest {
+  int64 worker_epoch = 1;
+}
+
+message WorkerAssignment {
+  string attempt_id = 1;
+  string job_id = 2;
+  string worker_id = 3;
+  int64 worker_epoch = 4;
+  string model_revision_id = 5;
+  string generation_preset_revision_id = 6;
+  string execution_profile_revision_id = 7;
+  string output_spec_id = 8;
+  bytes request_content_json = 9;
+  int32 attempt_number = 10;
+  string lease_token = 11;
+  int64 lease_fence = 12;
+  google.protobuf.Timestamp lease_expires_at = 13;
+  google.protobuf.Duration lease_valid_for = 14;
+}
+
+message StartWorkerRequest {
+  WorkerLeaseCredentials lease = 1;
+}
+
+message StartWorkerResult {
+  string decision = 1;
+  string stop_reason = 2;
+  string attempt_id = 3;
+  string job_id = 4;
+  string worker_id = 5;
+  int64 worker_epoch = 6;
+  int64 lease_fence = 7;
+  google.protobuf.Timestamp started_at = 8;
+}
+
+message HeartbeatRequest {
+  WorkerLeaseCredentials lease = 1;
+  int64 sequence = 2;
+  string backend_stage = 3;
+  optional double backend_stage_progress = 4;
+  optional int64 estimated_remaining_seconds = 5;
+  bytes gpu_health_json = 6;
+  bytes local_artifact_state_json = 7;
+  int64 scratch_free_bytes = 8;
+  bool artifact_store_reachable = 9;
+}
+
+message HeartbeatResult {
+  string decision = 1;
+  string stop_reason = 2;
+  string attempt_id = 3;
+  string job_id = 4;
+  string worker_id = 5;
+  int64 worker_epoch = 6;
+  int64 lease_fence = 7;
+  int64 heartbeat_sequence = 8;
+  string execution_phase = 9;
+  google.protobuf.Timestamp progress_updated_at = 10;
+  google.protobuf.Timestamp lease_expires_at = 11;
+  google.protobuf.Duration lease_valid_for = 12;
+}
+
+message FailRequest {
+  WorkerLeaseCredentials lease = 1;
+  WorkerFailureObservation observation = 2;
+}
+
+message WorkerFailureObservation {
+  string failure_class = 1;
+  string failure_fingerprint = 2;
+  string error_summary = 3;
+  string backend_stage = 4;
+  repeated string gpu_uuids = 5;
+  string inference_backend_revision = 6;
+  bool retry_recommended = 7;
+  bool worker_reusable = 8;
+}
+
+message RetryDecision {
+  string disposition = 1;
+  string failure_class = 2;
+  string attempt_id = 3;
+  string job_id = 4;
+  string attempt_state = 5;
+  int64 attempt_compute_seconds = 6;
+  int64 total_compute_seconds = 7;
+  int64 attempt_finalization_seconds = 8;
+  int64 total_finalization_seconds = 9;
+  google.protobuf.Timestamp next_retry_at = 10;
+  int64 job_fence = 11;
+  int64 job_version = 12;
+  google.protobuf.Timestamp decided_at = 13;
 }
 
 message BeginFinalizationRequest {

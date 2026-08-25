@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -18,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/vivym/vela/internal/executionprogress"
 	"github.com/vivym/vela/internal/execution"
 	store "github.com/vivym/vela/internal/store/sqlc"
 )
@@ -353,14 +353,11 @@ func normalizeHeartbeatObservation(
 		return normalizedHeartbeatObservation{}, [sha256.Size]byte{}, errors.New("invalid Heartbeat observation")
 	}
 	if observation.BackendStageProgress != nil &&
-		(math.IsNaN(*observation.BackendStageProgress) ||
-			math.IsInf(*observation.BackendStageProgress, 0) ||
-			*observation.BackendStageProgress < 0 || *observation.BackendStageProgress >= 1) {
+		!executionprogress.ValidStageProgress(*observation.BackendStageProgress) {
 		return normalizedHeartbeatObservation{}, [sha256.Size]byte{}, errors.New("invalid backend stage progress")
 	}
 	if observation.EstimatedRemainingSeconds != nil &&
-		(*observation.EstimatedRemainingSeconds < 0 ||
-			*observation.EstimatedRemainingSeconds > math.MaxInt64/int64(time.Second)) {
+		!executionprogress.ValidEstimatedRemainingSeconds(*observation.EstimatedRemainingSeconds) {
 		return normalizedHeartbeatObservation{}, [sha256.Size]byte{}, errors.New("invalid estimated remaining seconds")
 	}
 	gpuHealth, err := canonicalJSONObject(observation.GPUHealthSummary)

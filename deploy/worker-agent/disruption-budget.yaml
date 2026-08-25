@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vela-h3-worker
+  labels:
+    app.kubernetes.io/name: vela-h3-worker
+    app.kubernetes.io/part-of: vela
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-h3-worker

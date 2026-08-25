@@ -6,6 +6,15 @@ command allowlist. It does not connect to PostgreSQL, NATS, Kubernetes, or the
 customer API. The control plane calls it over mutually authenticated gRPC and
 persists the authoritative operation completion after the response.
 
+The same host process owns a second gRPC server on a Unix socket for XFS project
+quota observations. That service is never registered on the remote mTLS
+listener. Linux requires `CAP_SYS_ADMIN` to query an arbitrary project quota, so
+the Worker Pod receives no such capability. The host service checks the exact
+scratch root inode, block device, project ID, `PROJINHERIT`, project-quota
+accounting and enforcement flags, and positive hard limit. The socket is
+root-owned, belongs to the configured Worker group, has mode `0660`, and accepts
+only the configured Worker UID through `SO_PEERCRED`.
+
 Before enabling the unit, the operator must provision all of the following as
 root-owned files with mode `0600` unless the host policy requires a stricter
 mode:
@@ -16,6 +25,10 @@ mode:
 - the action allowlist JSON;
 - the device/certification capability matrix JSON; and
 - the receipt directory, owned by the service and mode `0750`.
+- the Worker scratch XFS project, exact block device, hard quota, and inherited
+  project ID;
+- the root-owned Worker quota socket parent directory; and
+- the non-root Worker UID/GID allowed to use that socket.
 
 The Agent rejects group/world-writable configuration, TLS material, endpoint
 registries, and state directories. Private keys must not be group or world
@@ -94,7 +107,20 @@ VELA_NODE_AGENT_POSTCHECK_PATH
 VELA_NODE_AGENT_POSTCHECK_ARGS_JSON
 VELA_NODE_AGENT_FENCE_PATH
 VELA_NODE_AGENT_FENCE_ARGS_JSON
+VELA_NODE_AGENT_WORKER_QUOTA_SOCKET
+VELA_NODE_AGENT_WORKER_UID
+VELA_NODE_AGENT_WORKER_GID
+VELA_NODE_AGENT_WORKER_SCRATCH_ROOT
+VELA_NODE_AGENT_WORKER_XFS_DEVICE
+VELA_NODE_AGENT_WORKER_XFS_PROJECT_ID
 ```
+
+`VELA_NODE_AGENT_WORKER_SCRATCH_ROOT` must already exist on the configured XFS
+block device before the service starts. The directory is the project root for
+both Worker Local Recovery State and runner outputs. A successful repository
+test is not the required capacity receipt; production provisioning must record
+the device identity, mount options, project ID, hard limit, observed capacity,
+kernel revision, and release/configuration revisions.
 
 The repository provides the unit template but no credentials or hardware
 capability claims. A production enablement still requires a versioned GPU

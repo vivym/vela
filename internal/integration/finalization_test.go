@@ -417,6 +417,60 @@ func TestFinalizingJobExpiryFencesAuthorityAccountsBothPhasesAndDoesNotCharge(t 
 	}
 }
 
+func TestWorkerReportsFinalizationValidationFailureExactlyOnce(t *testing.T) {
+	fixture := newStartFixture(t, "worker-finalization-validation-failure", 7)
+	if started, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("Start = %#v error=%v", started, err)
+	}
+	plan, err := fixture.service.BeginFinalization(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("BeginFinalization = %#v error=%v", plan, err)
+	}
+	observation := workercontrol.FailureObservation{
+		FailureClass: "ARTIFACT_VALIDATION_FAILED",
+		FailureFingerprint: fmt.Sprintf(
+			"artifact.validation/%s/%s",
+			plan.Artifacts[0].ArtifactID,
+			plan.Artifacts[0].UploadID,
+		),
+		ErrorSummary:             "Artifact failed certified output validation",
+		BackendStage:             "finalization",
+		InferenceBackendRevision: "sglang@validation-failure-test",
+		RetryRecommended:         true,
+		WorkerReusable:           true,
+	}
+
+	first, err := fixture.service.Fail(
+		context.Background(), fixture.worker, fixture.credentials, observation,
+	)
+	if err != nil || first.Disposition != workercontrol.RetryDispositionFailed ||
+		first.FailureClass != observation.FailureClass || first.AttemptID != plan.AttemptID ||
+		first.JobID != plan.JobID || first.AttemptState != workercontrol.FailedAttempt {
+		t.Fatalf("Fail FINALIZING Attempt = %#v error=%v", first, err)
+	}
+	replayed, err := fixture.service.Fail(
+		context.Background(), fixture.worker, fixture.credentials, observation,
+	)
+	if err != nil || !reflect.DeepEqual(replayed, first) {
+		t.Fatalf("replayed Fail FINALIZING Attempt = %#v error=%v, want %#v", replayed, err, first)
+	}
+
+	state := readFinalizationFailureState(t, fixture.database.Admin, plan.JobID, plan.AttemptID)
+	if state.JobState != "FAILED" || state.AttemptState != "FAILED" ||
+		!state.AttemptEnded || !state.LeaseRevoked || state.FinalizationRetryCount != 0 ||
+		state.ProjectRunning != 0 || state.ProjectRetryWait != 0 || state.PoolRetryWait != 0 ||
+		state.ReservationState != "RELEASED" || state.ReservedMinor != 0 ||
+		state.Artifacts != len(plan.Artifacts) || state.Uploads != len(plan.Artifacts) ||
+		state.StagingArtifacts != len(plan.Artifacts) || state.InitiatedUploads != len(plan.Artifacts) ||
+		state.Charges != 0 || state.Decisions != 1 || state.RetryEvents != 0 || state.FailedEvents != 1 {
+		t.Fatalf("worker-reported Finalization failure state = %#v", state)
+	}
+}
+
 func TestFinalizationDeadlineUsesRetryBudgetAndPreservesTemporaryArtifacts(t *testing.T) {
 	tests := []struct {
 		name              string

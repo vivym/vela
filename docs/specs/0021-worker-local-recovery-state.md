@@ -69,6 +69,7 @@ or an equivalent hard quota and provide its capacity receipt.
 The unit and race tests in `internal/workerrecovery/local_test.go` cover same-
 epoch process restart, Worker/epoch/fence binding, path traversal, symlink
 replacement, quotas, watermarks, immediate terminal cleanup, and stale terminal
-reconciliation. This is repository evidence for the local component; an actual
-NVMe/XFS deployment, Worker Agent integration, and production launch receipt
-remain separate ADR 0028 and Production Gate evidence.
+reconciliation. Slice 22 integrates this Manager with the Worker Agent, Python
+Runner, host XFS quota service, and H3 deployment contract. An actual NVMe/XFS
+deployment, node/NVMe-loss exercise, and production Launch Receipt remain
+separate ADR 0028 and Production Gate evidence.

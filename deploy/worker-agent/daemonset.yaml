@@ -1,0 +1,330 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vela-h3-worker
+  labels:
+    app.kubernetes.io/name: vela-h3-worker
+    app.kubernetes.io/part-of: vela
+spec:
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-h3-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-h3-worker
+        app.kubernetes.io/part-of: vela
+        vela.ai/worker-profile: h3
+      annotations:
+        vela.ai/fleet-controller-owned: "true"
+    spec:
+      serviceAccountName: vela-worker
+      automountServiceAccountToken: false
+      hostPID: false
+      hostNetwork: false
+      shareProcessNamespace: false
+      terminationGracePeriodSeconds: 120
+      nodeSelector:
+        vela.ai/worker-profile: h3
+        vela.ai/worker-pool: launch
+      tolerations:
+        - key: vela.ai/h3
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: runner-socket-permissions
+          image: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              mkdir -p /run/vela-runner/private
+              mkdir -p /var/lib/vela/worker/scratch/runner-state /var/lib/vela/worker/scratch/outputs
+              chmod 0700 /run/vela-runner /run/vela-runner/private
+              chmod 0700 /var/lib/vela/worker/scratch /var/lib/vela/worker/scratch/runner-state /var/lib/vela/worker/scratch/outputs
+              chown 10001:10001 /run/vela-runner /run/vela-runner/private
+              chown -R 10001:10001 /var/lib/vela/worker/scratch
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+            limits:
+              cpu: 100m
+              memory: 16Mi
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN]
+          volumeMounts:
+            - name: runner-socket
+              mountPath: /run/vela-runner
+            - name: runner-scratch-view
+              mountPath: /var/lib/vela/worker/scratch
+      containers:
+        - name: worker-agent
+          image: ghcr.io/vivym/vela-worker-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: VELA_WORKER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: vela-worker-identity
+                  key: worker-id
+            - name: VELA_WORKER_EPOCH
+              valueFrom:
+                secretKeyRef:
+                  name: vela-worker-identity
+                  key: worker-epoch
+            - name: VELA_WORKER_CONTROL_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: control-address
+            - name: VELA_WORKER_CONTROL_SERVER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: control-server-name
+            - name: VELA_WORKER_TLS_CERT_FILE
+              value: /etc/vela-worker-tls/tls.crt
+            - name: VELA_WORKER_TLS_KEY_FILE
+              value: /etc/vela-worker-tls/tls.key
+            - name: VELA_WORKER_CONTROL_CA_FILE
+              value: /etc/vela-worker-tls/ca.crt
+            - name: VELA_WORKER_RUNNER_SOCKET
+              value: /run/vela-runner/private/runner.sock
+            - name: VELA_WORKER_RUNNER_EXPECTED_UID
+              value: "10001"
+            - name: VELA_WORKER_SCRATCH_ROOT
+              value: /var/lib/vela/worker/scratch
+            - name: VELA_WORKER_RECOVERY_ROOT
+              value: /var/lib/vela/worker/scratch/recovery
+            - name: VELA_WORKER_OUTPUT_ROOT
+              value: /var/lib/vela/worker/scratch/outputs
+            - name: VELA_WORKER_OUTPUT_OWNER_UID
+              value: "10001"
+            - name: VELA_WORKER_OUTPUT_CLEANUP_MIN_BYTES_PER_SECOND
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: output-cleanup-min-bytes-per-second
+            - name: VELA_WORKER_INFERENCE_BACKEND_REVISION
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: inference-backend-revision
+            - name: VELA_WORKER_ARTIFACT_STORE_HEALTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: artifact-store-health-url
+            - name: VELA_WORKER_ARTIFACT_STORE_CA_FILE
+              value: /etc/vela-artifact-store-tls/ca.crt
+            - name: VELA_WORKER_ARTIFACT_STORE_PROBE_TIMEOUT
+              value: 2s
+            - name: VELA_WORKER_SCRATCH_PROBE
+              value: xfs-project-quota
+            - name: VELA_WORKER_HOST_QUOTA_SOCKET
+              value: /run/vela-node-agent/worker-quota.sock
+            - name: VELA_WORKER_HOST_QUOTA_SOCKET_UID
+              value: "0"
+            - name: VELA_WORKER_HOST_QUOTA_SOCKET_GID
+              value: "10001"
+            - name: VELA_WORKER_XFS_DEVICE
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: xfs-device
+            - name: VELA_WORKER_XFS_PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: xfs-project-id
+            - name: VELA_WORKER_ATTEMPT_QUOTA_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: attempt-quota-bytes
+            - name: VELA_WORKER_MAX_ENTRY_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: max-entry-bytes
+            - name: VELA_WORKER_MAX_ENTRIES
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: max-entries
+            - name: VELA_WORKER_HIGH_WATERMARK_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: high-watermark-bytes
+            - name: VELA_WORKER_LOW_WATERMARK_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: low-watermark-bytes
+            - name: VELA_WORKER_CRITICAL_FREE_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: critical-free-bytes
+            - name: VELA_WORKER_TERMINAL_RETENTION
+              value: 24h
+            - name: VELA_WORKER_ALLOW_DEVELOPMENT_HTTP_UPLOADS
+              value: "false"
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: runner-socket
+              mountPath: /run/vela-runner
+            - name: worker-quota-socket
+              mountPath: /run/vela-node-agent/worker-quota.sock
+            - name: scratch
+              mountPath: /var/lib/vela/worker/scratch
+            - name: worker-control-tls
+              mountPath: /etc/vela-worker-tls
+              readOnly: true
+            - name: artifact-store-tls
+              mountPath: /etc/vela-artifact-store-tls
+              readOnly: true
+        - name: h3-runner
+          image: ghcr.io/vivym/vela-h3-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: VELA_RUNNER_SOCKET
+              value: /run/vela-runner/private/runner.sock
+            - name: VELA_RUNNER_SCRATCH_ROOT
+              value: /var/lib/vela/worker/scratch
+            - name: VELA_RUNNER_STATE_ROOT
+              value: /var/lib/vela/worker/scratch/runner-state
+            - name: VELA_RUNNER_OUTPUT_ROOT
+              value: /var/lib/vela/worker/scratch/outputs
+            - name: VELA_RUNNER_BACKEND_REVISION
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: inference-backend-revision
+            - name: VELA_RUNNER_BACKEND_COMMAND
+              value: /opt/vela/bin/h3-backend
+            - name: VELA_RUNNER_BACKEND_ARGS_JSON
+              value: "[]"
+            - name: VELA_RUNNER_PROFILES_FILE
+              value: /etc/vela-runner/profiles/profiles.json
+            - name: VELA_RUNNER_GPU_ROLES_FILE
+              value: /etc/vela-runner/gpu-roles/gpu-roles.json
+            - name: VELA_RUNNER_STOP_TIMEOUT
+              value: "15"
+            - name: VELA_RUNNER_MAX_OUTPUT_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: vela-worker-runtime
+                  key: attempt-quota-bytes
+          resources:
+            requests:
+              cpu: "16"
+              memory: 128Gi
+              nvidia.com/gpu: "8"
+            limits:
+              cpu: "32"
+              memory: 256Gi
+              nvidia.com/gpu: "8"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: runner-socket
+              mountPath: /run/vela-runner
+            - name: runner-scratch-view
+              mountPath: /var/lib/vela/worker/scratch
+            - name: scratch
+              mountPath: /var/lib/vela/worker/scratch/runner-state
+              subPath: runner-state
+            - name: scratch
+              mountPath: /var/lib/vela/worker/scratch/outputs
+              subPath: outputs
+            - name: model-weights
+              mountPath: /var/lib/vela/models
+              readOnly: true
+            - name: runner-profiles
+              mountPath: /etc/vela-runner/profiles
+              readOnly: true
+            - name: runner-gpu-roles
+              mountPath: /etc/vela-runner/gpu-roles
+              readOnly: true
+      volumes:
+        - name: runner-socket
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+        - name: runner-scratch-view
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: worker-quota-socket
+          hostPath:
+            path: /run/vela-node-agent/worker-quota.sock
+            type: Socket
+        - name: scratch
+          hostPath:
+            path: /var/lib/vela/worker/scratch
+            type: Directory
+        - name: model-weights
+          hostPath:
+            path: /var/lib/vela/models
+            type: Directory
+        - name: worker-control-tls
+          secret:
+            secretName: vela-worker-control-mtls
+            defaultMode: 0400
+        - name: artifact-store-tls
+          secret:
+            secretName: vela-artifact-store-ca
+            defaultMode: 0440
+            items:
+              - key: ca.crt
+                path: ca.crt
+        - name: runner-profiles
+          configMap:
+            name: vela-runner-profiles
+            defaultMode: 0440
+            items:
+              - key: profiles.json
+                path: profiles.json
+        - name: runner-gpu-roles
+          configMap:
+            name: vela-runner-gpu-roles
+            defaultMode: 0440
+            items:
+              - key: gpu-roles.json
+                path: gpu-roles.json

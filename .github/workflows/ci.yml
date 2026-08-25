@@ -26,6 +26,20 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.22"
+          enable-cache: true
+          cache-dependency-glob: runner/uv.lock
+
+      - name: Install locked H3 runner environment
+        working-directory: runner
+        run: uv sync --frozen
+
       - name: Build pinned ffprobe
         shell: bash
         run: |
@@ -68,18 +82,8 @@ jobs:
           echo "VELA_ARTIFACT_VALIDATOR_HELPER_PATH=${RUNNER_TEMP}/ffprobe-bin/vela-artifact-validator" \
             >> "${GITHUB_ENV}"
 
-      - name: Generate contracts and data access
-        run: make generate
-
-      - name: Verify generated sources are committed
-        run: |
-          git diff --exit-code -- api/gen internal/store/sqlc proto/gen
-          test -z "$(git status --porcelain --untracked-files=all -- api/gen internal/store/sqlc proto/gen)"
-
-      - name: Lint and unit test
-        run: |
-          make lint
-          make test
+      - name: Verify generated, source, and deployment contracts
+        run: make verify
 
       - name: PostgreSQL and JetStream integration test
         run: make test-integration

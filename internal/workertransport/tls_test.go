@@ -47,10 +47,16 @@ func TestServerTLSCredentialsRequireVerifiedSPIFFEClientCertificate(t *testing.T
 	serverCertPath := filepath.Join(directory, "server.crt")
 	serverKeyPath := filepath.Join(directory, "server.key")
 	clientCAPath := filepath.Join(directory, "client-ca.crt")
+	clientCertPath := filepath.Join(directory, "client.crt")
+	clientKeyPath := filepath.Join(directory, "client.key")
+	serverCAPath := filepath.Join(directory, "server-ca.crt")
 	for path, content := range map[string][]byte{
 		serverCertPath: serverCertificate,
 		serverKeyPath:  serverKeyPEM,
 		clientCAPath:   caPEM,
+		clientCertPath: clientCertificate,
+		clientKeyPath:  clientKeyPEM,
+		serverCAPath:   caPEM,
 	} {
 		if err := os.WriteFile(path, content, 0o600); err != nil {
 			t.Fatalf("write TLS fixture %s: %v", path, err)
@@ -68,16 +74,15 @@ func TestServerTLSCredentialsRequireVerifiedSPIFFEClientCertificate(t *testing.T
 	if !rootCAs.AppendCertsFromPEM(caPEM) {
 		t.Fatal("append test root CA")
 	}
-	clientPair, err := tls.X509KeyPair(clientCertificate, clientKeyPEM)
+	clientCredentials, err := NewClientTLSCredentials(
+		clientCertPath,
+		clientKeyPath,
+		serverCAPath,
+		"worker-control.internal",
+	)
 	if err != nil {
-		t.Fatalf("parse client certificate: %v", err)
+		t.Fatalf("NewClientTLSCredentials: %v", err)
 	}
-	clientCredentials := credentials.NewTLS(&tls.Config{
-		MinVersion:   tls.VersionTLS13,
-		ServerName:   "worker-control.internal",
-		RootCAs:      rootCAs,
-		Certificates: []tls.Certificate{clientPair},
-	})
 	serverAuthInfo, clientErr, serverErr := performTLSHandshake(
 		t,
 		serverCredentials,

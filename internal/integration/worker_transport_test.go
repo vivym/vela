@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/workercontrol"
 	"github.com/vivym/vela/internal/workertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
@@ -56,6 +57,57 @@ func TestWorkerMTLSIdentityResolvesExactRegisteredSPIFFEID(t *testing.T) {
 		"spiffe://vela.internal/worker/not-registered",
 	); err == nil {
 		t.Fatal("resolved an unregistered Worker SPIFFE ID")
+	}
+}
+
+func TestWorkerControlProductionTransportExecutesAssignmentLifecycleOverMTLS(t *testing.T) {
+	fixture := newAssignmentFixture(t, "worker-transport-execution", 7)
+	scheduled, err := fixture.service.Acquire(
+		context.Background(), fixture.worker, 7, &fixture.candidate,
+	)
+	if err != nil {
+		t.Fatalf("create centrally scheduled Assignment: %v", err)
+	}
+	minio := newMinIOFixture(t, "vela-worker-transport-execution")
+	client := newWorkerTransportTestClient(t, fixture.database, fixture.service, minio.store)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	assignment, err := client.Acquire(ctx, 7)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	if assignment.AttemptID != scheduled.AttemptID || assignment.JobID != fixture.candidate.JobID ||
+		assignment.WorkerID != fixture.worker.ID ||
+		assignment.WorkerEpoch != 7 || assignment.AttemptID == uuid.Nil ||
+		assignment.LeaseFence <= 0 || assignment.LeaseToken == "" {
+		t.Fatalf("Assignment = %#v", assignment)
+	}
+	lease := leaseCredentials(assignment)
+	started, err := client.Start(ctx, lease)
+	if err != nil || started.Decision != workercontrol.StartGranted ||
+		started.AttemptID != assignment.AttemptID || started.JobID != assignment.JobID {
+		t.Fatalf("Start = %#v error=%v", started, err)
+	}
+	heartbeat := validHeartbeatObservation(1)
+	heartbeatResult, err := client.Heartbeat(ctx, lease, heartbeat)
+	if err != nil || heartbeatResult.Decision != workercontrol.HeartbeatContinue ||
+		heartbeatResult.AttemptID != assignment.AttemptID ||
+		heartbeatResult.HeartbeatSequence != heartbeat.Sequence ||
+		heartbeatResult.ExecutionPhase != workercontrol.ExecutionPhaseGenerating {
+		t.Fatalf("Heartbeat = %#v error=%v", heartbeatResult, err)
+	}
+	failure := validFailureObservation()
+	decision, err := client.Fail(ctx, lease, failure)
+	if err != nil || decision.Disposition != workercontrol.RetryDispositionRetryWait ||
+		decision.AttemptID != assignment.AttemptID || decision.JobID != assignment.JobID ||
+		decision.FailureClass != failure.FailureClass {
+		t.Fatalf("Fail = %#v error=%v", decision, err)
+	}
+	state := readFailureState(t, fixture.database.Admin, assignment.AttemptID)
+	if state.AttemptState != "FAILED" || state.JobState != "RETRY_WAIT" ||
+		!state.LeaseRevokedAt.Valid || state.DecisionCount != 1 || state.OutboxCount != 1 {
+		t.Fatalf("authoritative execution transport state = %#v", state)
 	}
 }
 
@@ -171,104 +223,53 @@ func TestWorkerControlProductionTransportResumesAndCompletesArtifactSetOverMTLS(
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	connection, err := grpc.NewClient(
-		listener.Addr().String(),
-		grpc.WithTransportCredentials(clientCredentials),
-	)
+	client, err := workertransport.DialClient(ctx, listener.Addr().String(), clientCredentials)
 	if err != nil {
-		t.Fatalf("create Worker control client: %v", err)
+		t.Fatalf("DialClient: %v", err)
 	}
-	defer connection.Close()
-	stream, err := velav1.NewWorkerControlServiceClient(connection).Connect(ctx)
-	if err != nil {
-		t.Fatalf("connect Worker control stream: %v", err)
+	defer client.Close()
+	plan, err := client.BeginFinalization(ctx, fixture.credentials)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted ||
+		plan.AttemptID != fixture.assignment.AttemptID || plan.JobID != fixture.assignment.JobID ||
+		len(plan.Artifacts) != 2 {
+		t.Fatalf("Worker control FinalizationPlan = %#v error=%v", plan, err)
 	}
-	lease := &velav1.WorkerLeaseCredentials{
-		AttemptId:   fixture.credentials.AttemptID.String(),
-		WorkerEpoch: fixture.credentials.WorkerEpoch,
-		Fence:       fixture.credentials.Fence,
-		Token:       fixture.credentials.Token,
-	}
-	requestID := uuid.NewString()
-	if err := stream.Send(&velav1.ConnectRequest{
-		RequestId: requestID,
-		Operation: &velav1.ConnectRequest_BeginFinalization{
-			BeginFinalization: &velav1.BeginFinalizationRequest{Lease: lease},
-		},
-	}); err != nil {
-		t.Fatalf("send BeginFinalization: %v", err)
-	}
-	response, err := stream.Recv()
-	if err != nil {
-		t.Fatalf("receive FinalizationPlan: %v", err)
-	}
-	plan := response.GetFinalizationPlan()
-	if response.GetRequestId() != requestID || plan == nil ||
-		plan.GetDecision() != "FINALIZATION_GRANTED" ||
-		plan.GetAttemptId() != fixture.assignment.AttemptID.String() ||
-		plan.GetJobId() != fixture.assignment.JobID.String() ||
-		len(plan.GetArtifacts()) != 2 {
-		t.Fatalf("Worker control FinalizationPlan = %#v", response)
-	}
-	exchange := func(request *velav1.ConnectRequest) *velav1.ConnectResponse {
-		t.Helper()
-		request.RequestId = uuid.NewString()
-		if err := stream.Send(request); err != nil {
-			t.Fatalf("send Worker control request %s: %v", request.GetRequestId(), err)
-		}
-		response, err := stream.Recv()
-		if err != nil {
-			t.Fatalf("receive Worker control response %s: %v", request.GetRequestId(), err)
-		}
-		if response.GetRequestId() != request.GetRequestId() || response.GetOperationError() != nil {
-			t.Fatalf("Worker control response for %s = %#v", request.GetRequestId(), response)
-		}
-		return response
-	}
-	artifactIDs := make([]string, 0, len(plan.GetArtifacts()))
-	objectVersions := make(map[string]string, len(plan.GetArtifacts()))
-	for index, artifact := range plan.GetArtifacts() {
+	artifactIDs := make([]uuid.UUID, 0, len(plan.Artifacts))
+	objectVersions := make(map[uuid.UUID]string, len(plan.Artifacts))
+	for index, artifact := range plan.Artifacts {
 		contentType := "video/mp4"
 		partBytes := []byte("transport-video-artifact")
-		if artifact.GetKind() == "THUMBNAIL" {
+		if artifact.Kind == workercontrol.ArtifactKindThumbnail {
 			contentType = "image/webp"
 			partBytes = []byte("transport-thumbnail-artifact")
-		} else if artifact.GetKind() != "VIDEO" {
+		} else if artifact.Kind != workercontrol.ArtifactKindVideo {
 			t.Fatalf("planned Artifact %d = %#v", index, artifact)
 		}
 		partDigest := sha256.Sum256(partBytes)
-		claimID := uuid.NewString()
-		claimRequest := func(claimID string) *velav1.ConnectRequest {
-			return &velav1.ConnectRequest{
-				Operation: &velav1.ConnectRequest_ClaimArtifactUpload{
-					ClaimArtifactUpload: &velav1.ClaimArtifactUploadRequest{
-						Lease: lease, UploadId: artifact.GetUploadId(), ClaimId: claimID,
-						Part: &velav1.ArtifactUploadPartIntent{
-							Number: 1, SizeBytes: int64(len(partBytes)), Sha256: partDigest[:],
-						},
-					},
-				},
-			}
+		claimID := uuid.New()
+		intent := workertransport.ArtifactUploadPartIntent{
+			Number: 1, SizeBytes: int64(len(partBytes)), SHA256: partDigest,
 		}
-		claimResponse := exchange(claimRequest(claimID))
-		claim := claimResponse.GetArtifactUploadClaim()
-		if claim == nil || claim.GetDecision() != "UPLOAD_CLAIM_GRANTED" ||
-			claim.GetMultipartUploadId() == "" || claim.GetUploadPart() == nil ||
-			claim.GetUploadPart().GetNumber() != 1 ||
-			claim.GetUploadPart().GetRequiredHeaders()["X-Amz-Checksum-Sha256"] == "" ||
-			len(claim.GetCompletedParts()) != 0 {
-			t.Fatalf("first production ArtifactUploadClaim %d = %#v", index, claimResponse)
+		claim, err := client.ClaimArtifactUpload(
+			ctx, fixture.credentials, artifact.UploadID, claimID, intent,
+		)
+		if err != nil || claim.Decision != workercontrol.ArtifactUploadClaimGranted ||
+			claim.MultipartUploadID == "" || claim.UploadPart == nil ||
+			claim.UploadPart.Number != 1 ||
+			claim.UploadPart.RequiredHeaders["X-Amz-Checksum-Sha256"] == "" ||
+			len(claim.CompletedParts) != 0 {
+			t.Fatalf("first production ArtifactUploadClaim %d = %#v error=%v", index, claim, err)
 		}
 		put, err := http.NewRequestWithContext(
 			ctx,
 			http.MethodPut,
-			claim.GetUploadPart().GetUrl(),
+			claim.UploadPart.URL,
 			bytes.NewReader(partBytes),
 		)
 		if err != nil {
 			t.Fatalf("create presigned Artifact PUT %d: %v", index, err)
 		}
-		for name, value := range claim.GetUploadPart().GetRequiredHeaders() {
+		for name, value := range claim.UploadPart.RequiredHeaders {
 			if http.CanonicalHeaderKey(name) != "Content-Length" {
 				put.Header.Set(name, value)
 			}
@@ -283,95 +284,69 @@ func TestWorkerControlProductionTransportResumesAndCompletesArtifactSetOverMTLS(
 			t.Fatalf("presigned Artifact PUT %d status = %s", index, putResponse.Status)
 		}
 
-		resumedResponse := exchange(claimRequest(uuid.NewString()))
-		resumed := resumedResponse.GetArtifactUploadClaim()
-		if resumed == nil || resumed.GetMultipartUploadId() != claim.GetMultipartUploadId() ||
-			!resumed.GetPartAlreadyUploaded() || resumed.GetUploadPart() != nil ||
-			len(resumed.GetCompletedParts()) != 1 {
-			t.Fatalf("resumed production ArtifactUploadClaim %d = %#v", index, resumedResponse)
+		resumed, err := client.ClaimArtifactUpload(
+			ctx, fixture.credentials, artifact.UploadID, claimID, intent,
+		)
+		if err != nil || resumed.MultipartUploadID != claim.MultipartUploadID ||
+			!resumed.PartAlreadyUploaded || resumed.UploadPart != nil || len(resumed.CompletedParts) != 1 {
+			t.Fatalf("resumed production ArtifactUploadClaim %d = %#v error=%v", index, resumed, err)
 		}
-		completeRequest := func() *velav1.ConnectRequest {
-			return &velav1.ConnectRequest{
-				Operation: &velav1.ConnectRequest_CompleteArtifactMultipartUpload{
-					CompleteArtifactMultipartUpload: &velav1.CompleteArtifactMultipartUploadRequest{
-						Lease: lease, UploadId: artifact.GetUploadId(), ClaimId: claimID,
-						SizeBytes: int64(len(partBytes)), Sha256: partDigest[:], ContentType: contentType,
-						CompletedParts: []*velav1.ArtifactUploadPartReport{{
-							Number: 1, Etag: resumed.GetCompletedParts()[0].GetEtag(),
-							SizeBytes: int64(len(partBytes)), ChecksumSha256: partDigest[:],
-						}},
-					},
-				},
-			}
+		report := workercontrol.ArtifactUploadReport{
+			SizeBytes: int64(len(partBytes)), SHA256: partDigest, ContentType: contentType,
+			CompletedParts: []workercontrol.ArtifactUploadPart{{
+				Number: 1, ETag: resumed.CompletedParts[0].ETag,
+				SizeBytes:      int64(len(partBytes)),
+				ChecksumSHA256: base64.StdEncoding.EncodeToString(partDigest[:]),
+			}},
 		}
 		var objectVersionID string
 		for replay := 0; replay < 2; replay++ {
-			completeResponse := exchange(completeRequest())
-			result := completeResponse.GetArtifactUploadResult()
-			if result == nil || result.GetDecision() != "ARTIFACT_UPLOAD_RECORDED" ||
-				result.GetObjectVersionId() == "" ||
-				(objectVersionID != "" && result.GetObjectVersionId() != objectVersionID) {
-				t.Fatalf("ArtifactUploadResult %d/%d = %#v", index, replay, completeResponse)
+			result, err := client.CompleteArtifactMultipartUpload(
+				ctx, fixture.credentials, artifact.UploadID, claimID, report,
+			)
+			if err != nil || result.Decision != workercontrol.ArtifactUploadRecorded ||
+				result.ObjectVersionID == "" ||
+				(objectVersionID != "" && result.ObjectVersionID != objectVersionID) {
+				t.Fatalf("ArtifactUploadResult %d/%d = %#v error=%v", index, replay, result, err)
 			}
-			objectVersionID = result.GetObjectVersionId()
+			objectVersionID = result.ObjectVersionID
 		}
-		storedObject, err := uploadStore.HeadCurrentVersion(context.Background(), artifact.GetObjectKey())
+		storedObject, err := uploadStore.HeadCurrentVersion(context.Background(), artifact.ObjectKey)
 		if err != nil || storedObject.VersionID != objectVersionID ||
 			storedObject.SizeBytes != int64(len(partBytes)) {
 			t.Fatalf("transport-completed Artifact object %d = %#v error=%v", index, storedObject, err)
 		}
-		verificationID := uuid.NewString()
-		verificationResponse := exchange(&velav1.ConnectRequest{
-			Operation: &velav1.ConnectRequest_VerifyArtifact{
-				VerifyArtifact: &velav1.VerifyArtifactRequest{
-					Lease: lease, UploadId: artifact.GetUploadId(), VerificationId: verificationID,
-				},
-			},
-		})
-		verified := verificationResponse.GetArtifactVerificationResult()
-		if verified == nil || verified.GetDecision() != "ARTIFACT_VERIFIED" ||
-			verified.GetVerificationId() != verificationID ||
-			verified.GetUploadId() != artifact.GetUploadId() ||
-			verified.GetArtifactId() != artifact.GetArtifactId() ||
-			verified.GetObjectVersionId() != objectVersionID {
-			t.Fatalf("ArtifactVerificationResult %d = %#v", index, verificationResponse)
+		verificationID := uuid.New()
+		verified, err := client.VerifyArtifact(
+			ctx, fixture.credentials, artifact.UploadID, verificationID,
+		)
+		if err != nil || verified.Decision != workercontrol.ArtifactVerified ||
+			verified.VerificationID != verificationID || verified.UploadID != artifact.UploadID ||
+			verified.ArtifactID != artifact.ArtifactID || verified.ObjectVersionID != objectVersionID {
+			t.Fatalf("ArtifactVerificationResult %d = %#v error=%v", index, verified, err)
 		}
-		artifactIDs = append(artifactIDs, artifact.GetArtifactId())
-		objectVersions[artifact.GetUploadId()] = objectVersionID
+		artifactIDs = append(artifactIDs, artifact.ArtifactID)
+		objectVersions[artifact.UploadID] = objectVersionID
 	}
-	completionID := uuid.NewString()
-	completionRequest := func() *velav1.ConnectRequest {
-		return &velav1.ConnectRequest{
-			Operation: &velav1.ConnectRequest_CompleteVisibleCompletion{
-				CompleteVisibleCompletion: &velav1.CompleteVisibleCompletionRequest{
-					Lease: lease,
-					Candidate: &velav1.VisibleCompletionCandidate{
-						CompletionId: completionID, ExpectedJobVersion: plan.GetJobVersion(),
-						ArtifactIds: artifactIDs,
-					},
-				},
-			},
-		}
+	completionID := uuid.New()
+	candidate := workercontrol.VisibleCompletionCandidate{
+		CompletionID: completionID, ExpectedJobVersion: plan.JobVersion, ArtifactIDs: artifactIDs,
 	}
-	var firstCompletion *velav1.VisibleCompletionResult
+	var firstCompletion workercontrol.VisibleCompletionResult
 	for replay := 0; replay < 2; replay++ {
-		completionResponse := exchange(completionRequest())
-		completion := completionResponse.GetVisibleCompletionResult()
-		if completion == nil ||
-			(replay == 0 && completion.GetDecision() != "VISIBLE_COMPLETION_COMMITTED") ||
-			(replay == 1 && completion.GetDecision() != "VISIBLE_COMPLETION_COMMITTED") ||
-			completion.GetCompletionId() != completionID ||
-			completion.GetJobId() != fixture.assignment.JobID.String() ||
-			completion.GetAttemptId() != fixture.assignment.AttemptID.String() ||
-			completion.GetArtifactSetId() == "" || completion.GetChargeId() == "" ||
-			completion.GetJobVersion() != plan.GetJobVersion()+1 ||
-			len(completion.GetManifestSha256()) != sha256.Size ||
-			len(completion.GetArtifacts()) != len(plan.GetArtifacts()) {
-			t.Fatalf("VisibleCompletionResult %d = %#v", replay, completionResponse)
+		completion, err := client.CompleteVisibleCompletion(ctx, fixture.credentials, candidate)
+		if err != nil || completion.Decision != workercontrol.VisibleCompletionCommitted ||
+			completion.CompletionID != completionID || completion.JobID != fixture.assignment.JobID ||
+			completion.AttemptID != fixture.assignment.AttemptID ||
+			completion.ArtifactSetID == uuid.Nil || completion.ChargeID == uuid.Nil ||
+			completion.JobVersion != plan.JobVersion+1 ||
+			completion.ManifestSHA256 == [sha256.Size]byte{} ||
+			len(completion.Artifacts) != len(plan.Artifacts) {
+			t.Fatalf("VisibleCompletionResult %d = %#v error=%v", replay, completion, err)
 		}
-		if firstCompletion != nil &&
-			(completion.GetArtifactSetId() != firstCompletion.GetArtifactSetId() ||
-				completion.GetChargeId() != firstCompletion.GetChargeId()) {
+		if replay > 0 &&
+			(completion.ArtifactSetID != firstCompletion.ArtifactSetID ||
+				completion.ChargeID != firstCompletion.ChargeID) {
 			t.Fatalf("Visible Completion replay changed business identities: %#v / %#v", firstCompletion, completion)
 		}
 		firstCompletion = completion
@@ -430,7 +405,7 @@ func TestWorkerControlProductionTransportResumesAndCompletesArtifactSetOverMTLS(
 			terminalEvents,
 		)
 	}
-	firstArtifact := plan.GetArtifacts()[0]
+	firstArtifact := plan.Artifacts[0]
 	var uploadState, storedObjectVersionID, completedPartChecksum string
 	if err := fixture.database.Admin.QueryRow(`
 		SELECT
@@ -439,7 +414,7 @@ func TestWorkerControlProductionTransportResumesAndCompletesArtifactSetOverMTLS(
 			completed_parts -> 0 ->> 'checksum_sha256'
 		FROM artifact_uploads
 		WHERE id = $1
-	`, firstArtifact.GetUploadId()).Scan(
+	`, firstArtifact.UploadID).Scan(
 		&uploadState,
 		&storedObjectVersionID,
 		&completedPartChecksum,
@@ -447,7 +422,7 @@ func TestWorkerControlProductionTransportResumesAndCompletesArtifactSetOverMTLS(
 		t.Fatalf("read transport-committed Artifact upload: %v", err)
 	}
 	firstDigest := sha256.Sum256([]byte("transport-video-artifact"))
-	if uploadState != "VERIFIED" || storedObjectVersionID != objectVersions[firstArtifact.GetUploadId()] ||
+	if uploadState != "VERIFIED" || storedObjectVersionID != objectVersions[firstArtifact.UploadID] ||
 		completedPartChecksum != base64.StdEncoding.EncodeToString(firstDigest[:]) {
 		t.Fatalf(
 			"transport-committed Artifact upload = state %s version %s checksum %s",
@@ -456,6 +431,112 @@ func TestWorkerControlProductionTransportResumesAndCompletesArtifactSetOverMTLS(
 			completedPartChecksum,
 		)
 	}
+}
+
+func newWorkerTransportTestClient(
+	t *testing.T,
+	database testDatabase,
+	coordinator workertransport.WorkerCoordinator,
+	uploadStore workertransport.ArtifactUploadStore,
+) *workertransport.Client {
+	t.Helper()
+	internal := newRolePool(
+		t,
+		database.DSN,
+		"vela_internal_login",
+		"vela-internal-password",
+	)
+	resolver, err := workertransport.NewPostgresIdentityResolver(internal)
+	if err != nil {
+		t.Fatalf("NewPostgresIdentityResolver: %v", err)
+	}
+	workerServer, err := workertransport.NewServer(resolver, coordinator, uploadStore)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	caCertificate, caKey, caPEM := issueWorkerTransportTestCA(t)
+	serverCertificate, serverKey := issueWorkerTransportTestCertificate(
+		t,
+		caCertificate,
+		caKey,
+		pkix.Name{CommonName: "worker-control.internal"},
+		[]string{"worker-control.internal"},
+		nil,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	)
+	workerSPIFFEID, err := url.Parse("spiffe://vela.internal/worker/h3-primary-fixture")
+	if err != nil {
+		t.Fatalf("parse Worker SPIFFE ID: %v", err)
+	}
+	clientCertificate, clientKey := issueWorkerTransportTestCertificate(
+		t,
+		caCertificate,
+		caKey,
+		pkix.Name{CommonName: "h3-primary-fixture"},
+		nil,
+		[]*url.URL{workerSPIFFEID},
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	)
+	directory := t.TempDir()
+	serverCertificatePath := filepath.Join(directory, "server.crt")
+	serverKeyPath := filepath.Join(directory, "server.key")
+	clientCAPath := filepath.Join(directory, "client-ca.crt")
+	for path, content := range map[string][]byte{
+		serverCertificatePath: serverCertificate,
+		serverKeyPath:         serverKey,
+		clientCAPath:          caPEM,
+	} {
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatalf("write Worker transport TLS fixture %s: %v", path, err)
+		}
+	}
+	serverCredentials, err := workertransport.NewServerTLSCredentials(
+		serverCertificatePath,
+		serverKeyPath,
+		clientCAPath,
+	)
+	if err != nil {
+		t.Fatalf("NewServerTLSCredentials: %v", err)
+	}
+	grpcServer := grpc.NewServer(grpc.Creds(serverCredentials))
+	velav1.RegisterWorkerControlServiceServer(grpcServer, workerServer)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for Worker control integration server: %v", err)
+	}
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- grpcServer.Serve(listener) }()
+	t.Cleanup(func() {
+		grpcServer.Stop()
+		_ = listener.Close()
+		if serveErr := <-serverDone; serveErr != nil && serveErr != grpc.ErrServerStopped {
+			t.Errorf("serve Worker control integration server: %v", serveErr)
+		}
+	})
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(caPEM) {
+		t.Fatal("append Worker transport test CA")
+	}
+	clientPair, err := tls.X509KeyPair(clientCertificate, clientKey)
+	if err != nil {
+		t.Fatalf("parse Worker transport client certificate: %v", err)
+	}
+	clientCredentials := credentials.NewTLS(&tls.Config{
+		MinVersion: tls.VersionTLS13, ServerName: "worker-control.internal",
+		RootCAs: rootCAs, Certificates: []tls.Certificate{clientPair},
+	})
+	clientContext, cancelClient := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancelClient)
+	client, err := workertransport.DialClient(
+		clientContext,
+		listener.Addr().String(),
+		clientCredentials,
+	)
+	if err != nil {
+		t.Fatalf("DialClient: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	return client
 }
 
 func issueWorkerTransportTestCA(t *testing.T) (*x509.Certificate, *rsa.PrivateKey, []byte) {

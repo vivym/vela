@@ -66,7 +66,11 @@ const getActiveWorkerAssignment = `-- name: GetActiveWorkerAssignment :one
 SELECT
     a.id AS attempt_id,
     a.job_id,
+	 j.model_revision_id,
+	 j.generation_preset_revision_id,
     a.execution_profile_revision_id,
+	 j.output_spec_id,
+	 j.request_content::text AS request_content,
     a.attempt_number,
     a.worker_id,
     a.worker_epoch,
@@ -79,6 +83,7 @@ SELECT
     l.expires_at
 FROM attempts AS a
 JOIN attempt_leases AS l ON l.attempt_id = a.id
+JOIN jobs AS j ON j.id = a.job_id
 WHERE a.worker_id = $1
   AND a.worker_epoch = $2
   AND a.state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
@@ -100,7 +105,11 @@ type GetActiveWorkerAssignmentParams struct {
 type GetActiveWorkerAssignmentRow struct {
 	AttemptID                  uuid.UUID          `db:"attempt_id" json:"attempt_id"`
 	JobID                      uuid.UUID          `db:"job_id" json:"job_id"`
+	ModelRevisionID            uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID uuid.UUID          `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
 	ExecutionProfileRevisionID uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	OutputSpecID               uuid.UUID          `db:"output_spec_id" json:"output_spec_id"`
+	RequestContent             string             `db:"request_content" json:"request_content"`
 	AttemptNumber              int32              `db:"attempt_number" json:"attempt_number"`
 	WorkerID                   uuid.UUID          `db:"worker_id" json:"worker_id"`
 	WorkerEpoch                int64              `db:"worker_epoch" json:"worker_epoch"`
@@ -119,7 +128,11 @@ func (q *Queries) GetActiveWorkerAssignment(ctx context.Context, arg GetActiveWo
 	err := row.Scan(
 		&i.AttemptID,
 		&i.JobID,
+		&i.ModelRevisionID,
+		&i.GenerationPresetRevisionID,
 		&i.ExecutionProfileRevisionID,
+		&i.OutputSpecID,
+		&i.RequestContent,
 		&i.AttemptNumber,
 		&i.WorkerID,
 		&i.WorkerEpoch,
@@ -413,6 +426,7 @@ SELECT
 	j.service_class_revision_id,
     scr.state AS service_class_revision_state,
     j.output_spec_id,
+	j.request_content::text AS request_content,
     j.worker_pool_id,
     j.execution_max_attempts,
     j.execution_max_total_compute_seconds,
@@ -445,6 +459,7 @@ type LockJobForAssignmentRow struct {
 	ServiceClassRevisionID          uuid.UUID              `db:"service_class_revision_id" json:"service_class_revision_id"`
 	ServiceClassRevisionState       CatalogState           `db:"service_class_revision_state" json:"service_class_revision_state"`
 	OutputSpecID                    uuid.UUID              `db:"output_spec_id" json:"output_spec_id"`
+	RequestContent                  string                 `db:"request_content" json:"request_content"`
 	WorkerPoolID                    uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
 	ExecutionMaxAttempts            int32                  `db:"execution_max_attempts" json:"execution_max_attempts"`
 	ExecutionMaxTotalComputeSeconds int64                  `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
@@ -472,6 +487,7 @@ func (q *Queries) LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (Lo
 		&i.ServiceClassRevisionID,
 		&i.ServiceClassRevisionState,
 		&i.OutputSpecID,
+		&i.RequestContent,
 		&i.WorkerPoolID,
 		&i.ExecutionMaxAttempts,
 		&i.ExecutionMaxTotalComputeSeconds,

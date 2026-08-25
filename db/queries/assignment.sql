@@ -23,7 +23,11 @@ FOR UPDATE;
 SELECT
     a.id AS attempt_id,
     a.job_id,
+	 j.model_revision_id,
+	 j.generation_preset_revision_id,
     a.execution_profile_revision_id,
+	 j.output_spec_id,
+	 j.request_content::text AS request_content,
     a.attempt_number,
     a.worker_id,
     a.worker_epoch,
@@ -36,6 +40,7 @@ SELECT
     l.expires_at
 FROM attempts AS a
 JOIN attempt_leases AS l ON l.attempt_id = a.id
+JOIN jobs AS j ON j.id = a.job_id
 WHERE a.worker_id = sqlc.arg(worker_id)
   AND a.worker_epoch = sqlc.arg(worker_epoch)
   AND a.state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
@@ -59,6 +64,7 @@ SELECT
 	j.service_class_revision_id,
     scr.state AS service_class_revision_state,
     j.output_spec_id,
+	j.request_content::text AS request_content,
     j.worker_pool_id,
     j.execution_max_attempts,
     j.execution_max_total_compute_seconds,
