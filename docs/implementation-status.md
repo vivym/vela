@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-08-25
+Date: 2026-08-26
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -34,6 +34,7 @@ tests alone do not satisfy a gate.
 | Certified Remediation Control Plane | `37849d0` | `docs/specs/0020-certified-remediation.md` |
 | Worker Local Recovery State | `ea1053a` | `docs/specs/0021-worker-local-recovery-state.md` |
 | H3 Worker Agent And Runner | `baee61a` | `docs/specs/0022-h3-worker-agent-and-runner.md` |
+| Fleet Controller And Worker Readiness | `cc9a4f7` | `docs/specs/0023-fleet-controller-worker-readiness.md` |
 | Production Gate Receipt Validation | `436558e` | `docs/launch-receipts/README.md` |
 | Control/Storage Deployment Contract | `25a3d2e` | `deploy/control-storage/README.md` |
 | Single-Region Recovery Drill Contract | `ee6524c` | `docs/runbooks/single-region-recovery.md` |
@@ -57,7 +58,7 @@ tests alone do not satisfy a gate.
 | 0010 Bounded admission and queues | Implemented for current control plane | Transactional queue counters, pool-scoped bounded projection, risk-aware Admission prediction, Dynamic ETA, hierarchical lanes, and fail-closed counter-drift detection are integrated. | Deployment calibration and Production Gate receipts remain separate. |
 | 0011 No failed-Job Charge | Implemented for current lifecycle | Execution, finalization-deadline, validation, and unrecoverable Artifact failure release credit and create no Charge; only Visible Completion or post-Billable-Start Customer Cancellation posts one. | Future failure sources must use the same terminal authority. |
 | 0012 Single-region DR | Partial | Recovery order, RPO/RTO contract, CNPG off-cluster WAL/base-backup target, explicit JetStream rebuild/Outbox replay contract, and controlled single-node/site recovery runbook are rendered in `deploy/control-storage` and `docs/runbooks/single-region-recovery.md`. | Live WAL/archive, PostgreSQL PITR, Artifact backup, JetStream rebuild, Outbox replay, secret rotation, and quarterly restore-drill receipts. |
-| 0013 Non-interrupting releases | Partial | Twenty-two additive migrations, exact N/N-1 database/control compatibility, an operator-receipted circuit protocol transition, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
+| 0013 Non-interrupting releases | Partial | Twenty-three additive migrations, exact N/N-1 database/control compatibility, operator-receipted circuit and Fleet Assignment protocol transitions, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
 | 0014 Project webhooks | Implemented | Project-scoped subscriptions, safe terminal-event fanout, overlapping HMAC secret rotation, durable at-least-once retry, dead letter, crash recovery, visibility, and manual replay are integrated. | Public-DNS deployment validation and a real endpoint Launch Receipt remain separate Production Gate evidence. |
 | 0015 Class-specific retention | Partial | Versioned 7/30/90-day Project policies are frozen at Admission; request content and successful exact-version Artifacts expire independently; early Content Deletion uses the existing cancellation/Charge authority, tombstones request content, revokes access, deletes exact S3 versions, aborts multipart uploads, recovers/retries claims, and writes immutable receipts under forced RLS; the Worker runtime terminally removes exact Runner outputs and Local Recovery State, while stale-marker reconciliation remains bounded. | Opt-in debug dumps, off-cluster backup expiry/replay, metadata and financial lifecycle enforcement, legal holds, live scratch lifecycle evidence, and Launch Receipts. |
 | 0016 Preset versus Service Class | Implemented for current control plane | Admission, Retry, and Scheduler retain both immutable revisions separately; Scheduler reads ServiceClassRevision policy and never derives priority from Preset or price. | SLO reporting must preserve the same boundary. |
@@ -68,11 +69,11 @@ tests alone do not satisfy a gate.
 | 0021 Bounded retry | Partial | Attempt, cumulative compute, finalization recovery budgets, retry backoff, Job Expiry, and an immutable-policy Cross-Job failure-fingerprint circuit are enforced. | Measured and certified launch runtime values plus Production Gate fault receipts. |
 | 0022 Hierarchical fairness | Implemented | PostgreSQL-authoritative Organization/Service Class/Project weighted-deficit selection, bounded Job score, per-Job retry risk, aging, Protected Lane, retry lane, durable claims, certification invalidation fencing, and multi-replica recovery are integrated. | Production fairness/SLO measurement remains a separate gate receipt. |
 | 0023 Certified remediation | Partial | Slice 20 adds identity/epoch-bound L0-L7 operation ledger, two-person L6 approval, immutable receipts, Worker/Lease fencing, bounded deadlines with orphan recovery, same-epoch quarantine/identity guards, executor allowlist, and exact role/migration evidence. Commit `44543f0` adds guarded transport validation; commit `1c7a49f` adds `ControlPlaneAuthorizer` and `ControlPlaneLedger` adapters over the authoritative remediation operation/completion seams; commit `b25008a` passes the full immutable execution Plan into the runner for device/epoch/capability enforcement; commit `72e5462` adds a PostgreSQL-backed single execution claim and protobuf claim identity; commit `fa6622c` fixes controller-to-agent identity direction and adds the systemd Node Agent runtime, capability/fence/rate-limit/post-check enforcement, durable host receipts, an `EXECUTING` dispatcher, and migration `00021`; commits `0cc6a7c` and `b17b0cd` add exact migration `00022` claim replay, stable claim identity, durable pre-action intent, unknown-outcome quarantine, identity- and FailureClass-bound evidence, persistent rate limiting, atomic receipt publication, cross-process execution locking, secure local-file validation, and independent-pool concurrency evidence; commits `75981bd` and `754c275` require directory-fsync confirmation before receipt or intent replay and bind host execution to a validated inode with trusted Linux/Darwin path ancestry. | Live certificate/endpoint provisioning, hardware/topology capability certification, real host-action and post-check evidence, warm-up/canary, live claim/receipt monitoring, deployment evidence, and Launch Receipt. |
-| 0024 Work-conserving capacity | Implemented for current control plane | Every compatible READY Worker/profile remains available to ordinary work; bounded retry lane, risk Admission, worker scoring, and physical-slot queue projection hold no hard idle reserve. | Fleet deployment and measured SLO effect remain separate gate evidence. |
+| 0024 Work-conserving capacity | Implemented for current control plane | Every compatible READY Worker/profile remains available to ordinary work; bounded retry lane, risk Admission, worker scoring, and physical-slot queue projection hold no hard idle reserve. Slice 23 adds Worker/pool-scoped scratch and Artifact Store hysteresis, current-epoch observation freshness, separate readiness/Assignment eligibility, and transactional Admission/Assignment rechecks without a hard spare. | Live Fleet deployment and measured SLO effect remain separate gate evidence. |
 | 0025 Three control/storage nodes | Partial | `deploy/control-storage` renders a three-instance CNPG cluster, three-replica PVC-backed JetStream, required hostname anti-affinity, two-pod disruption budgets, independent WAL storage, and an external S3 backup contract. | RKE2/CNPG operator installation, approved image digests, three-node disk/topology validation, Artifact S3 durability, backup credentials, failover, and live-cluster evidence. |
 | 0026 Reserve credit at Admission | Implemented for current lifecycle | Admission reserves atomically; cancellation, execution/finalization failure, and Visible Completion consume or release exactly once with counters and Outbox. | Future terminal paths must close the same reservation authority. |
 | 0027 Charge when cancel wins | Implemented | Visible Completion and Customer Cancellation serialize through one Job authority; the winner owns the only Charge and late completion returns the winning ArtifactSet. | Production fault-injection receipt remains a separate gate. |
-| 0028 Recompute after Worker loss | Partial | LOST execution creates a higher-fence whole-Job retry; a circuit-opening failure can select a different actively certified profile without changing product snapshots; finalization loss is recovered on the same Attempt/fence by a Reconciler without resetting its deadline; Slice 21 local state is now integrated into the Worker Agent and Python Runner with exact Worker/epoch/fence recovery, multipart finalization resume, per-Attempt quotas, watermarks, terminal cleanup, a UID-authenticated host XFS quota service, and an unprivileged H3 deployment contract. | Live NVMe/XFS quota and capacity certification, node/NVMe-loss exercise, Fleet materialization, and Launch Receipt. |
+| 0028 Recompute after Worker loss | Partial | LOST execution creates a higher-fence whole-Job retry; a circuit-opening failure can select a different actively certified profile without changing product snapshots; finalization loss is recovered on the same Attempt/fence by a Reconciler without resetting its deadline; Slice 21 local state is integrated into the Worker Agent and Python Runner with exact Worker/epoch/fence recovery, multipart finalization resume, per-Attempt quotas, watermarks, terminal cleanup, a UID-authenticated host XFS quota service, and an unprivileged H3 deployment contract. Slice 23 materializes identity-bound H3 Workers and requires five ordered readiness checks before a recovered or replacement Worker becomes `HEALTHY + READY`. | Live NVMe/XFS quota and capacity certification, node/NVMe-loss exercise, and Launch Receipt. |
 | 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings; missing, malformed, duplicate, or failed receipts cannot evaluate as PASS. | Nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
 
 ## Acceptance Coverage
@@ -90,7 +91,10 @@ Webhook timeout/non-2xx/crash retry, signature, dead-letter, and authority
 behavior (28), NATS cross-workload/subject denial plus Organization/Project data
 isolation (27), and Credential rotation/revocation and Break-glass expiry with
 immutable Principal/session attribution and BillingAdmin/OrganizationAuditor
-content isolation (29).
+content isolation (29). Slice 23 adds direct repository evidence for Artifact
+Store/scratch capacity isolation and hysteretic recovery (16), exact protected
+H3 resource shape plus admission/finalizer retirement authority (17), and
+identity/device/backend/model-warm-up/canary readiness before Assignment (22).
 Current evidence covers the repository portion of same-Worker multipart resume,
 Worker Local Recovery State, and whole-Job recompute; live node/NVMe loss remains
 unproven for scenario 10. Evidence is also partial for
@@ -99,8 +103,9 @@ class-specific request/Artifact retention and Content Deletion without debug,
 backup, or production lifecycle evidence (19), and N/N-1
 database/control/Worker/event compatibility without a deployed rollout, drain,
 rollback, and retained-backlog receipt (30).
-Every other scenario remains unproven
-until a later slice records its exact evidence.
+The committed repository coverage is now 23 direct, 4 partial, and 3 unproven.
+Scenarios 18, 23, and 26 remain unproven until later slices or production
+receipts record their exact evidence.
 
 ## Production Gates
 
