@@ -35,6 +35,7 @@ tests alone do not satisfy a gate.
 | Worker Local Recovery State | `ea1053a` | `docs/specs/0021-worker-local-recovery-state.md` |
 | H3 Worker Agent And Runner | `baee61a` | `docs/specs/0022-h3-worker-agent-and-runner.md` |
 | Fleet Controller And Worker Readiness | `cc9a4f7` | `docs/specs/0023-fleet-controller-worker-readiness.md` |
+| Staging Artifact Expiry And Two-Attempt Completion Race | `4f29d18` | `docs/specs/0024-staging-artifact-expiry-and-two-attempt-completion-race.md` |
 | Production Gate Receipt Validation | `436558e` | `docs/launch-receipts/README.md` |
 | Control/Storage Deployment Contract | `25a3d2e` | `deploy/control-storage/README.md` |
 | Single-Region Recovery Drill Contract | `ee6524c` | `docs/runbooks/single-region-recovery.md` |
@@ -58,9 +59,9 @@ tests alone do not satisfy a gate.
 | 0010 Bounded admission and queues | Implemented for current control plane | Transactional queue counters, pool-scoped bounded projection, risk-aware Admission prediction, Dynamic ETA, hierarchical lanes, and fail-closed counter-drift detection are integrated. | Deployment calibration and Production Gate receipts remain separate. |
 | 0011 No failed-Job Charge | Implemented for current lifecycle | Execution, finalization-deadline, validation, and unrecoverable Artifact failure release credit and create no Charge; only Visible Completion or post-Billable-Start Customer Cancellation posts one. | Future failure sources must use the same terminal authority. |
 | 0012 Single-region DR | Partial | Recovery order, RPO/RTO contract, CNPG off-cluster WAL/base-backup target, explicit JetStream rebuild/Outbox replay contract, and controlled single-node/site recovery runbook are rendered in `deploy/control-storage` and `docs/runbooks/single-region-recovery.md`. | Live WAL/archive, PostgreSQL PITR, Artifact backup, JetStream rebuild, Outbox replay, secret rotation, and quarterly restore-drill receipts. |
-| 0013 Non-interrupting releases | Partial | Twenty-three additive migrations, exact N/N-1 database/control compatibility, operator-receipted circuit and Fleet Assignment protocol transitions, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
+| 0013 Non-interrupting releases | Partial | Twenty-four additive migrations, exact N/N-1 database/control compatibility, operator-receipted circuit and Fleet Assignment protocol transitions, Protobuf/OpenAPI breaking checks, and migration down/up evidence. | Deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
 | 0014 Project webhooks | Implemented | Project-scoped subscriptions, safe terminal-event fanout, overlapping HMAC secret rotation, durable at-least-once retry, dead letter, crash recovery, visibility, and manual replay are integrated. | Public-DNS deployment validation and a real endpoint Launch Receipt remain separate Production Gate evidence. |
-| 0015 Class-specific retention | Partial | Versioned 7/30/90-day Project policies are frozen at Admission; request content and successful exact-version Artifacts expire independently; early Content Deletion uses the existing cancellation/Charge authority, tombstones request content, revokes access, deletes exact S3 versions, aborts multipart uploads, recovers/retries claims, and writes immutable receipts under forced RLS; the Worker runtime terminally removes exact Runner outputs and Local Recovery State, while stale-marker reconciliation remains bounded. | Opt-in debug dumps, off-cluster backup expiry/replay, metadata and financial lifecycle enforcement, legal holds, live scratch lifecycle evidence, and Launch Receipts. |
+| 0015 Class-specific retention | Partial | Versioned 7/30/90-day Project policies are frozen at Admission; request content and successful exact-version Artifacts expire independently; early Content Deletion uses the existing cancellation/Charge authority, tombstones request content, revokes access, deletes exact S3 versions, aborts multipart uploads, recovers/retries claims, and writes immutable receipts under forced RLS; the Worker runtime terminally removes exact Runner outputs and Local Recovery State, while stale-marker reconciliation remains bounded. Slice 24 schedules exact-version cleanup of incomplete STAGING Artifacts from the version-matched terminal Outbox event at 24 hours, permits a Customer deletion request to coexist, preserves `CANCELING`, and completes one idempotent receipt under concurrent Reconcilers. | Opt-in debug dumps, off-cluster backup expiry/replay, metadata and financial lifecycle enforcement, legal holds, live scratch lifecycle evidence, and Launch Receipts. |
 | 0016 Preset versus Service Class | Implemented for current control plane | Admission, Retry, and Scheduler retain both immutable revisions separately; Scheduler reads ServiceClassRevision policy and never derives priority from Preset or price. | SLO reporting must preserve the same boundary. |
 | 0017 Three presets | Partial | Catalog restricts stable IDs to `quality`, `balanced`, and `fast`, while the circuit independently protects each exact certified revision and OutputSpec. | Independent benchmark, certification, ACTIVE promotion, and Launch Receipts for every saleable SKU. |
 | 0018 Certified output SKUs | Implemented for current control plane | ACTIVE certification and RateCard resolve an immutable quote; Assignment rechecks certification, the Cross-Job circuit atomically invalidates repeated-failure profiles, and finalization enforces the certified media facts and fixed complete ArtifactSet. | Benchmark execution, certification issuance, ACTIVE promotion, and saleable-SKU Launch Receipts. |
@@ -95,15 +96,15 @@ content isolation (29). Slice 23 adds direct repository evidence for Artifact
 Store/scratch capacity isolation and hysteretic recovery (16), exact protected
 H3 resource shape plus admission/finalizer retirement authority (17), and
 identity/device/backend/model-warm-up/canary readiness before Assignment (22).
-Current evidence covers the repository portion of same-Worker multipart resume,
-Worker Local Recovery State, and whole-Job recompute; live node/NVMe loss remains
-unproven for scenario 10. Evidence is also partial for
-competing completion authorities without a two-Attempt Artifact race (13),
-class-specific request/Artifact retention and Content Deletion without debug,
-backup, or production lifecycle evidence (19), and N/N-1
+Slice 24 adds direct repository evidence for a two-Attempt completion race with
+one immutable Visible Completion and exact cleanup of the losing STAGING
+Artifacts (13). Evidence remains partial for same-Worker multipart resume,
+Worker Local Recovery State, and whole-Job recompute without live node/NVMe-loss
+evidence (10), class-specific request/Artifact retention and Content Deletion
+without debug, backup, or production lifecycle evidence (19), and N/N-1
 database/control/Worker/event compatibility without a deployed rollout, drain,
 rollback, and retained-backlog receipt (30).
-The committed repository coverage is now 23 direct, 4 partial, and 3 unproven.
+The committed repository coverage is now 24 direct, 3 partial, and 3 unproven.
 Scenarios 18, 23, and 26 remain unproven until later slices or production
 receipts record their exact evidence.
 
