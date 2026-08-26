@@ -7,6 +7,9 @@ metadata:
 data:
   single_node_metadata_rpo: "0"
   single_node_control_plane_rto: "5m"
+  automatic_single_node_failover_required: "true"
+  no_quorum_admission_fail_closed: "true"
+  no_quorum_assignment_fail_closed: "true"
   site_metadata_rpo: "15m"
   site_metadata_rto: "4h"
   restore_order: "postgresql,artifact-store,jetstream,outbox-replay,reconciler"

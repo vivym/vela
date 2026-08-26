@@ -134,6 +134,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_retention_owner",
 			"vela_break_glass_owner",
 			"vela_fleet_owner",
+			"vela_quorum_guard_owner",
 		} {
 			var inheritsOwner bool
 			if err := database.Admin.QueryRow(
@@ -225,6 +226,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_remediation_owner", bypassRLS: true},
 		{name: "vela_fleet", bypassRLS: false},
 		{name: "vela_fleet_owner", bypassRLS: true},
+		{name: "vela_quorum_guard_owner", bypassRLS: false},
 	} {
 		var canLogin, bypassRLS, superuser bool
 		if err := database.Admin.QueryRow(`
@@ -385,6 +387,11 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			owner:     "vela_retention_owner",
 			proconfig: "search_path=pg_catalog, public",
 		},
+		{
+			signature: "vela_enforce_synchronous_quorum()",
+			owner:     "vela_quorum_guard_owner",
+			proconfig: "search_path=pg_catalog",
+		},
 	} {
 		var owner string
 		var securityDefiner, configurationMatches, publicExecute bool
@@ -424,6 +431,45 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 				configurationMatches,
 			)
 		}
+	}
+	var guardCanReadStats, internalInheritsGuard, requestInheritsGuard bool
+	if err := database.Admin.QueryRow(`
+		SELECT
+			pg_catalog.pg_has_role('vela_quorum_guard_owner', 'pg_read_all_stats', 'MEMBER'),
+			pg_catalog.pg_has_role('vela_internal_login', 'vela_quorum_guard_owner', 'MEMBER'),
+			pg_catalog.pg_has_role('vela_request_login', 'vela_quorum_guard_owner', 'MEMBER')
+	`).Scan(&guardCanReadStats, &internalInheritsGuard, &requestInheritsGuard); err != nil {
+		t.Fatalf("inspect synchronous quorum guard role boundary: %v", err)
+	}
+	if !guardCanReadStats || internalInheritsGuard || requestInheritsGuard {
+		t.Fatalf(
+			"synchronous quorum guard role = stats %t internal-member %t request-member %t",
+			guardCanReadStats,
+			internalInheritsGuard,
+			requestInheritsGuard,
+		)
+	}
+	var deferredQuorumGuards int
+	if err := database.Admin.QueryRow(`
+		SELECT count(*)
+		FROM pg_catalog.pg_trigger AS trigger
+		JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
+		JOIN pg_catalog.pg_proc AS procedure ON procedure.oid = trigger.tgfoid
+		WHERE trigger.tgname IN (
+			'jobs_require_synchronous_quorum',
+			'scheduler_dispatch_intents_require_synchronous_quorum',
+			'attempts_require_synchronous_quorum'
+		)
+		  AND relation.relname IN ('jobs', 'scheduler_dispatch_intents', 'attempts')
+		  AND procedure.oid = 'vela_enforce_synchronous_quorum()'::regprocedure
+		  AND trigger.tgdeferrable
+		  AND trigger.tginitdeferred
+		  AND NOT trigger.tgisinternal
+	`).Scan(&deferredQuorumGuards); err != nil {
+		t.Fatalf("inspect deferred synchronous quorum guards: %v", err)
+	}
+	if deferredQuorumGuards != 3 {
+		t.Fatalf("deferred synchronous quorum guards = %d, want 3", deferredQuorumGuards)
 	}
 	var breakGlassOwnerCanLock, breakGlassRuntimeCanLock bool
 	if err := database.Admin.QueryRow(`

@@ -4,9 +4,9 @@ This Kustomize base is the repository deployment contract for ADR 0025 and the
 single-region recovery order in ADR 0012. It describes three non-GPU
 Control/Storage Nodes:
 
-- a three-instance CloudNativePG PostgreSQL cluster with synchronous replication,
-  independent WAL PVCs, node anti-affinity, and off-cluster S3 WAL/base-backup
-  configuration;
+- a three-instance CloudNativePG PostgreSQL cluster requiring an acknowledgement
+  from any one synchronous replica, with independent WAL PVCs, node
+  anti-affinity, and off-cluster S3 WAL/base-backup configuration;
 - a three-replica, PVC-backed NATS JetStream StatefulSet with required hostname
   anti-affinity and a two-pod disruption budget; and
 - a generated `vela-jetstream-contract` ConfigMap whose
@@ -14,6 +14,12 @@ Control/Storage Nodes:
   stream and `VELA_SCHEDULER` durable consumer; and
 - an explicit recovery ConfigMap declaring PostgreSQL, Artifact Store, JetStream,
   Outbox replay, and Reconciler order.
+
+The PostgreSQL Cluster sets `vela.require_synchronous_quorum=on`. Migration
+00026 then rejects new Job, Scheduler dispatch, and Attempt commits with
+SQLSTATE `55000` when synchronous replication is unconfigured or no streaming
+synchronous standby is visible. Single-node development databases leave this
+custom GUC unset.
 
 Render it before any cluster action:
 
@@ -27,6 +33,12 @@ replace the example S3 endpoint and image tags with the approved release
 configuration. Production image digests, storage-class capacity, RKE2 node
 labels, CNPG operator compatibility, and an external or three-node S3 Artifact
 Store are deployment gates, not claims made by this repository render.
+
+The current backup contract uses CNPG 1.30 native
+`spec.backup.barmanObjectStore`. CNPG removes that native integration in 1.31.
+An operator upgrade to 1.31 or later is blocked until the release replaces this
+surface with the Barman Cloud Plugin, pins the plugin/image contract, validates
+credential isolation, and produces successful backup plus PITR restore evidence.
 
 Before applying, the operator must verify:
 

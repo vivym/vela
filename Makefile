@@ -9,7 +9,7 @@ GOLANGCI_LINT_VERSION := v2.13.1
 INTEGRATION_TEST_TIMEOUT ?= 40m
 TOOLS_BIN := $(CURDIR)/bin
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated lint test test-integration test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated lint test test-integration test-cnpg-failover test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -44,6 +44,9 @@ test:
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
+
+test-cnpg-failover:
+	./hack/test-cnpg-failover.sh
 
 test-cross:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -exec=/usr/bin/true ./...

@@ -8,8 +8,6 @@ spec:
   instances: 3
   imageName: ghcr.io/cloudnative-pg/postgresql:16.4
   primaryUpdateStrategy: unsupervised
-  minSyncReplicas: 1
-  maxSyncReplicas: 2
   storage:
     size: 100Gi
     storageClass: local-path
@@ -27,7 +25,10 @@ spec:
       cpu: "8"
       memory: 32Gi
   postgresql:
+    parameters:
+      vela.require_synchronous_quorum: "on"
     synchronous:
+      dataDurability: required
       method: any
       number: 1
   backup:
