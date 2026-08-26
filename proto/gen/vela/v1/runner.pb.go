@@ -9,6 +9,7 @@ package velav1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -20,6 +21,61 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+type RunnerReadinessCheck int32
+
+const (
+	RunnerReadinessCheck_RUNNER_READINESS_CHECK_UNSPECIFIED       RunnerReadinessCheck = 0
+	RunnerReadinessCheck_RUNNER_READINESS_CHECK_DEVICE            RunnerReadinessCheck = 1
+	RunnerReadinessCheck_RUNNER_READINESS_CHECK_INFERENCE_BACKEND RunnerReadinessCheck = 2
+	RunnerReadinessCheck_RUNNER_READINESS_CHECK_MODEL_WARMUP      RunnerReadinessCheck = 3
+	RunnerReadinessCheck_RUNNER_READINESS_CHECK_CANARY            RunnerReadinessCheck = 4
+)
+
+// Enum value maps for RunnerReadinessCheck.
+var (
+	RunnerReadinessCheck_name = map[int32]string{
+		0: "RUNNER_READINESS_CHECK_UNSPECIFIED",
+		1: "RUNNER_READINESS_CHECK_DEVICE",
+		2: "RUNNER_READINESS_CHECK_INFERENCE_BACKEND",
+		3: "RUNNER_READINESS_CHECK_MODEL_WARMUP",
+		4: "RUNNER_READINESS_CHECK_CANARY",
+	}
+	RunnerReadinessCheck_value = map[string]int32{
+		"RUNNER_READINESS_CHECK_UNSPECIFIED":       0,
+		"RUNNER_READINESS_CHECK_DEVICE":            1,
+		"RUNNER_READINESS_CHECK_INFERENCE_BACKEND": 2,
+		"RUNNER_READINESS_CHECK_MODEL_WARMUP":      3,
+		"RUNNER_READINESS_CHECK_CANARY":            4,
+	}
+)
+
+func (x RunnerReadinessCheck) Enum() *RunnerReadinessCheck {
+	p := new(RunnerReadinessCheck)
+	*p = x
+	return p
+}
+
+func (x RunnerReadinessCheck) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RunnerReadinessCheck) Descriptor() protoreflect.EnumDescriptor {
+	return file_vela_v1_runner_proto_enumTypes[0].Descriptor()
+}
+
+func (RunnerReadinessCheck) Type() protoreflect.EnumType {
+	return &file_vela_v1_runner_proto_enumTypes[0]
+}
+
+func (x RunnerReadinessCheck) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RunnerReadinessCheck.Descriptor instead.
+func (RunnerReadinessCheck) EnumDescriptor() ([]byte, []int) {
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{0}
+}
 
 type RunnerCommandDecision int32
 
@@ -54,11 +110,11 @@ func (x RunnerCommandDecision) String() string {
 }
 
 func (RunnerCommandDecision) Descriptor() protoreflect.EnumDescriptor {
-	return file_vela_v1_runner_proto_enumTypes[0].Descriptor()
+	return file_vela_v1_runner_proto_enumTypes[1].Descriptor()
 }
 
 func (RunnerCommandDecision) Type() protoreflect.EnumType {
-	return &file_vela_v1_runner_proto_enumTypes[0]
+	return &file_vela_v1_runner_proto_enumTypes[1]
 }
 
 func (x RunnerCommandDecision) Number() protoreflect.EnumNumber {
@@ -67,7 +123,7 @@ func (x RunnerCommandDecision) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RunnerCommandDecision.Descriptor instead.
 func (RunnerCommandDecision) EnumDescriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{0}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{1}
 }
 
 type RunnerExecutionState int32
@@ -115,11 +171,11 @@ func (x RunnerExecutionState) String() string {
 }
 
 func (RunnerExecutionState) Descriptor() protoreflect.EnumDescriptor {
-	return file_vela_v1_runner_proto_enumTypes[1].Descriptor()
+	return file_vela_v1_runner_proto_enumTypes[2].Descriptor()
 }
 
 func (RunnerExecutionState) Type() protoreflect.EnumType {
-	return &file_vela_v1_runner_proto_enumTypes[1]
+	return &file_vela_v1_runner_proto_enumTypes[2]
 }
 
 func (x RunnerExecutionState) Number() protoreflect.EnumNumber {
@@ -128,7 +184,7 @@ func (x RunnerExecutionState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RunnerExecutionState.Descriptor instead.
 func (RunnerExecutionState) EnumDescriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{1}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{2}
 }
 
 type RunnerCancelReason int32
@@ -167,11 +223,11 @@ func (x RunnerCancelReason) String() string {
 }
 
 func (RunnerCancelReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_vela_v1_runner_proto_enumTypes[2].Descriptor()
+	return file_vela_v1_runner_proto_enumTypes[3].Descriptor()
 }
 
 func (RunnerCancelReason) Type() protoreflect.EnumType {
-	return &file_vela_v1_runner_proto_enumTypes[2]
+	return &file_vela_v1_runner_proto_enumTypes[3]
 }
 
 func (x RunnerCancelReason) Number() protoreflect.EnumNumber {
@@ -180,7 +236,235 @@ func (x RunnerCancelReason) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use RunnerCancelReason.Descriptor instead.
 func (RunnerCancelReason) EnumDescriptor() ([]byte, []int) {
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{3}
+}
+
+type RunnerReadinessIdentity struct {
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	CycleId                    string                 `protobuf:"bytes,1,opt,name=cycle_id,json=cycleId,proto3" json:"cycle_id,omitempty"`
+	WorkerId                   string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerEpoch                int64                  `protobuf:"varint,3,opt,name=worker_epoch,json=workerEpoch,proto3" json:"worker_epoch,omitempty"`
+	NodeIdentity               string                 `protobuf:"bytes,4,opt,name=node_identity,json=nodeIdentity,proto3" json:"node_identity,omitempty"`
+	ExecutionProfileRevisionId string                 `protobuf:"bytes,5,opt,name=execution_profile_revision_id,json=executionProfileRevisionId,proto3" json:"execution_profile_revision_id,omitempty"`
+	InferenceBackendRevision   string                 `protobuf:"bytes,6,opt,name=inference_backend_revision,json=inferenceBackendRevision,proto3" json:"inference_backend_revision,omitempty"`
+	Deadline                   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *RunnerReadinessIdentity) Reset() {
+	*x = RunnerReadinessIdentity{}
+	mi := &file_vela_v1_runner_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunnerReadinessIdentity) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunnerReadinessIdentity) ProtoMessage() {}
+
+func (x *RunnerReadinessIdentity) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_runner_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunnerReadinessIdentity.ProtoReflect.Descriptor instead.
+func (*RunnerReadinessIdentity) Descriptor() ([]byte, []int) {
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *RunnerReadinessIdentity) GetCycleId() string {
+	if x != nil {
+		return x.CycleId
+	}
+	return ""
+}
+
+func (x *RunnerReadinessIdentity) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *RunnerReadinessIdentity) GetWorkerEpoch() int64 {
+	if x != nil {
+		return x.WorkerEpoch
+	}
+	return 0
+}
+
+func (x *RunnerReadinessIdentity) GetNodeIdentity() string {
+	if x != nil {
+		return x.NodeIdentity
+	}
+	return ""
+}
+
+func (x *RunnerReadinessIdentity) GetExecutionProfileRevisionId() string {
+	if x != nil {
+		return x.ExecutionProfileRevisionId
+	}
+	return ""
+}
+
+func (x *RunnerReadinessIdentity) GetInferenceBackendRevision() string {
+	if x != nil {
+		return x.InferenceBackendRevision
+	}
+	return ""
+}
+
+func (x *RunnerReadinessIdentity) GetDeadline() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Deadline
+	}
+	return nil
+}
+
+type ProbeReadinessRequest struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Identity      *RunnerReadinessIdentity `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
+	Check         RunnerReadinessCheck     `protobuf:"varint,2,opt,name=check,proto3,enum=vela.v1.RunnerReadinessCheck" json:"check,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProbeReadinessRequest) Reset() {
+	*x = ProbeReadinessRequest{}
+	mi := &file_vela_v1_runner_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProbeReadinessRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProbeReadinessRequest) ProtoMessage() {}
+
+func (x *ProbeReadinessRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_runner_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProbeReadinessRequest.ProtoReflect.Descriptor instead.
+func (*ProbeReadinessRequest) Descriptor() ([]byte, []int) {
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ProbeReadinessRequest) GetIdentity() *RunnerReadinessIdentity {
+	if x != nil {
+		return x.Identity
+	}
+	return nil
+}
+
+func (x *ProbeReadinessRequest) GetCheck() RunnerReadinessCheck {
+	if x != nil {
+		return x.Check
+	}
+	return RunnerReadinessCheck_RUNNER_READINESS_CHECK_UNSPECIFIED
+}
+
+type ProbeReadinessResponse struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Identity      *RunnerReadinessIdentity `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
+	Check         RunnerReadinessCheck     `protobuf:"varint,2,opt,name=check,proto3,enum=vela.v1.RunnerReadinessCheck" json:"check,omitempty"`
+	Decision      RunnerCommandDecision    `protobuf:"varint,3,opt,name=decision,proto3,enum=vela.v1.RunnerCommandDecision" json:"decision,omitempty"`
+	Passed        bool                     `protobuf:"varint,4,opt,name=passed,proto3" json:"passed,omitempty"`
+	EvidenceJson  []byte                   `protobuf:"bytes,5,opt,name=evidence_json,json=evidenceJson,proto3" json:"evidence_json,omitempty"`
+	Detail        string                   `protobuf:"bytes,6,opt,name=detail,proto3" json:"detail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProbeReadinessResponse) Reset() {
+	*x = ProbeReadinessResponse{}
+	mi := &file_vela_v1_runner_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProbeReadinessResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProbeReadinessResponse) ProtoMessage() {}
+
+func (x *ProbeReadinessResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_runner_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProbeReadinessResponse.ProtoReflect.Descriptor instead.
+func (*ProbeReadinessResponse) Descriptor() ([]byte, []int) {
 	return file_vela_v1_runner_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ProbeReadinessResponse) GetIdentity() *RunnerReadinessIdentity {
+	if x != nil {
+		return x.Identity
+	}
+	return nil
+}
+
+func (x *ProbeReadinessResponse) GetCheck() RunnerReadinessCheck {
+	if x != nil {
+		return x.Check
+	}
+	return RunnerReadinessCheck_RUNNER_READINESS_CHECK_UNSPECIFIED
+}
+
+func (x *ProbeReadinessResponse) GetDecision() RunnerCommandDecision {
+	if x != nil {
+		return x.Decision
+	}
+	return RunnerCommandDecision_RUNNER_COMMAND_DECISION_UNSPECIFIED
+}
+
+func (x *ProbeReadinessResponse) GetPassed() bool {
+	if x != nil {
+		return x.Passed
+	}
+	return false
+}
+
+func (x *ProbeReadinessResponse) GetEvidenceJson() []byte {
+	if x != nil {
+		return x.EvidenceJson
+	}
+	return nil
+}
+
+func (x *ProbeReadinessResponse) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
 }
 
 type RunnerAttemptIdentity struct {
@@ -196,7 +480,7 @@ type RunnerAttemptIdentity struct {
 
 func (x *RunnerAttemptIdentity) Reset() {
 	*x = RunnerAttemptIdentity{}
-	mi := &file_vela_v1_runner_proto_msgTypes[0]
+	mi := &file_vela_v1_runner_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -208,7 +492,7 @@ func (x *RunnerAttemptIdentity) String() string {
 func (*RunnerAttemptIdentity) ProtoMessage() {}
 
 func (x *RunnerAttemptIdentity) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[0]
+	mi := &file_vela_v1_runner_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -221,7 +505,7 @@ func (x *RunnerAttemptIdentity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunnerAttemptIdentity.ProtoReflect.Descriptor instead.
 func (*RunnerAttemptIdentity) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{0}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RunnerAttemptIdentity) GetAttemptId() string {
@@ -272,7 +556,7 @@ type RunnerExecutionSpec struct {
 
 func (x *RunnerExecutionSpec) Reset() {
 	*x = RunnerExecutionSpec{}
-	mi := &file_vela_v1_runner_proto_msgTypes[1]
+	mi := &file_vela_v1_runner_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -284,7 +568,7 @@ func (x *RunnerExecutionSpec) String() string {
 func (*RunnerExecutionSpec) ProtoMessage() {}
 
 func (x *RunnerExecutionSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[1]
+	mi := &file_vela_v1_runner_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -297,7 +581,7 @@ func (x *RunnerExecutionSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunnerExecutionSpec.ProtoReflect.Descriptor instead.
 func (*RunnerExecutionSpec) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{1}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RunnerExecutionSpec) GetModelRevisionId() string {
@@ -346,7 +630,7 @@ type PrepareRequest struct {
 
 func (x *PrepareRequest) Reset() {
 	*x = PrepareRequest{}
-	mi := &file_vela_v1_runner_proto_msgTypes[2]
+	mi := &file_vela_v1_runner_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -358,7 +642,7 @@ func (x *PrepareRequest) String() string {
 func (*PrepareRequest) ProtoMessage() {}
 
 func (x *PrepareRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[2]
+	mi := &file_vela_v1_runner_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -371,7 +655,7 @@ func (x *PrepareRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrepareRequest.ProtoReflect.Descriptor instead.
 func (*PrepareRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{2}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *PrepareRequest) GetIdentity() *RunnerAttemptIdentity {
@@ -407,7 +691,7 @@ type PrepareResponse struct {
 
 func (x *PrepareResponse) Reset() {
 	*x = PrepareResponse{}
-	mi := &file_vela_v1_runner_proto_msgTypes[3]
+	mi := &file_vela_v1_runner_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -419,7 +703,7 @@ func (x *PrepareResponse) String() string {
 func (*PrepareResponse) ProtoMessage() {}
 
 func (x *PrepareResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[3]
+	mi := &file_vela_v1_runner_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -432,7 +716,7 @@ func (x *PrepareResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrepareResponse.ProtoReflect.Descriptor instead.
 func (*PrepareResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{3}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PrepareResponse) GetIdentity() *RunnerAttemptIdentity {
@@ -472,7 +756,7 @@ type StartRequest struct {
 
 func (x *StartRequest) Reset() {
 	*x = StartRequest{}
-	mi := &file_vela_v1_runner_proto_msgTypes[4]
+	mi := &file_vela_v1_runner_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -484,7 +768,7 @@ func (x *StartRequest) String() string {
 func (*StartRequest) ProtoMessage() {}
 
 func (x *StartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[4]
+	mi := &file_vela_v1_runner_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -497,7 +781,7 @@ func (x *StartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartRequest.ProtoReflect.Descriptor instead.
 func (*StartRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{4}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *StartRequest) GetIdentity() *RunnerAttemptIdentity {
@@ -518,7 +802,7 @@ type StartResponse struct {
 
 func (x *StartResponse) Reset() {
 	*x = StartResponse{}
-	mi := &file_vela_v1_runner_proto_msgTypes[5]
+	mi := &file_vela_v1_runner_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -530,7 +814,7 @@ func (x *StartResponse) String() string {
 func (*StartResponse) ProtoMessage() {}
 
 func (x *StartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[5]
+	mi := &file_vela_v1_runner_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -543,7 +827,7 @@ func (x *StartResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartResponse.ProtoReflect.Descriptor instead.
 func (*StartResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{5}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *StartResponse) GetIdentity() *RunnerAttemptIdentity {
@@ -577,7 +861,7 @@ type CancelRequest struct {
 
 func (x *CancelRequest) Reset() {
 	*x = CancelRequest{}
-	mi := &file_vela_v1_runner_proto_msgTypes[6]
+	mi := &file_vela_v1_runner_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -589,7 +873,7 @@ func (x *CancelRequest) String() string {
 func (*CancelRequest) ProtoMessage() {}
 
 func (x *CancelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[6]
+	mi := &file_vela_v1_runner_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -602,7 +886,7 @@ func (x *CancelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelRequest.ProtoReflect.Descriptor instead.
 func (*CancelRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{6}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *CancelRequest) GetIdentity() *RunnerAttemptIdentity {
@@ -630,7 +914,7 @@ type CancelResponse struct {
 
 func (x *CancelResponse) Reset() {
 	*x = CancelResponse{}
-	mi := &file_vela_v1_runner_proto_msgTypes[7]
+	mi := &file_vela_v1_runner_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -642,7 +926,7 @@ func (x *CancelResponse) String() string {
 func (*CancelResponse) ProtoMessage() {}
 
 func (x *CancelResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[7]
+	mi := &file_vela_v1_runner_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -655,7 +939,7 @@ func (x *CancelResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelResponse.ProtoReflect.Descriptor instead.
 func (*CancelResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{7}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *CancelResponse) GetIdentity() *RunnerAttemptIdentity {
@@ -688,7 +972,7 @@ type StatusRequest struct {
 
 func (x *StatusRequest) Reset() {
 	*x = StatusRequest{}
-	mi := &file_vela_v1_runner_proto_msgTypes[8]
+	mi := &file_vela_v1_runner_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -700,7 +984,7 @@ func (x *StatusRequest) String() string {
 func (*StatusRequest) ProtoMessage() {}
 
 func (x *StatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[8]
+	mi := &file_vela_v1_runner_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -713,7 +997,7 @@ func (x *StatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusRequest.ProtoReflect.Descriptor instead.
 func (*StatusRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{8}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *StatusRequest) GetIdentity() *RunnerAttemptIdentity {
@@ -739,7 +1023,7 @@ type RunnerFailure struct {
 
 func (x *RunnerFailure) Reset() {
 	*x = RunnerFailure{}
-	mi := &file_vela_v1_runner_proto_msgTypes[9]
+	mi := &file_vela_v1_runner_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -751,7 +1035,7 @@ func (x *RunnerFailure) String() string {
 func (*RunnerFailure) ProtoMessage() {}
 
 func (x *RunnerFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[9]
+	mi := &file_vela_v1_runner_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -764,7 +1048,7 @@ func (x *RunnerFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunnerFailure.ProtoReflect.Descriptor instead.
 func (*RunnerFailure) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{9}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *RunnerFailure) GetFailureClass() string {
@@ -840,7 +1124,7 @@ type StatusResponse struct {
 
 func (x *StatusResponse) Reset() {
 	*x = StatusResponse{}
-	mi := &file_vela_v1_runner_proto_msgTypes[10]
+	mi := &file_vela_v1_runner_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -852,7 +1136,7 @@ func (x *StatusResponse) String() string {
 func (*StatusResponse) ProtoMessage() {}
 
 func (x *StatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[10]
+	mi := &file_vela_v1_runner_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -865,7 +1149,7 @@ func (x *StatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{10}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *StatusResponse) GetIdentity() *RunnerAttemptIdentity {
@@ -940,7 +1224,7 @@ type CollectOutputsRequest struct {
 
 func (x *CollectOutputsRequest) Reset() {
 	*x = CollectOutputsRequest{}
-	mi := &file_vela_v1_runner_proto_msgTypes[11]
+	mi := &file_vela_v1_runner_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -952,7 +1236,7 @@ func (x *CollectOutputsRequest) String() string {
 func (*CollectOutputsRequest) ProtoMessage() {}
 
 func (x *CollectOutputsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[11]
+	mi := &file_vela_v1_runner_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -965,7 +1249,7 @@ func (x *CollectOutputsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectOutputsRequest.ProtoReflect.Descriptor instead.
 func (*CollectOutputsRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{11}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CollectOutputsRequest) GetIdentity() *RunnerAttemptIdentity {
@@ -989,7 +1273,7 @@ type RunnerOutput struct {
 
 func (x *RunnerOutput) Reset() {
 	*x = RunnerOutput{}
-	mi := &file_vela_v1_runner_proto_msgTypes[12]
+	mi := &file_vela_v1_runner_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1001,7 +1285,7 @@ func (x *RunnerOutput) String() string {
 func (*RunnerOutput) ProtoMessage() {}
 
 func (x *RunnerOutput) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[12]
+	mi := &file_vela_v1_runner_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1014,7 +1298,7 @@ func (x *RunnerOutput) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunnerOutput.ProtoReflect.Descriptor instead.
 func (*RunnerOutput) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{12}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *RunnerOutput) GetKind() string {
@@ -1071,7 +1355,7 @@ type CollectOutputsResponse struct {
 
 func (x *CollectOutputsResponse) Reset() {
 	*x = CollectOutputsResponse{}
-	mi := &file_vela_v1_runner_proto_msgTypes[13]
+	mi := &file_vela_v1_runner_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1083,7 +1367,7 @@ func (x *CollectOutputsResponse) String() string {
 func (*CollectOutputsResponse) ProtoMessage() {}
 
 func (x *CollectOutputsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_runner_proto_msgTypes[13]
+	mi := &file_vela_v1_runner_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1096,7 +1380,7 @@ func (x *CollectOutputsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CollectOutputsResponse.ProtoReflect.Descriptor instead.
 func (*CollectOutputsResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_runner_proto_rawDescGZIP(), []int{13}
+	return file_vela_v1_runner_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CollectOutputsResponse) GetIdentity() *RunnerAttemptIdentity {
@@ -1131,7 +1415,25 @@ var File_vela_v1_runner_proto protoreflect.FileDescriptor
 
 const file_vela_v1_runner_proto_rawDesc = "" +
 	"\n" +
-	"\x14vela/v1/runner.proto\x12\avela.v1\"\xae\x01\n" +
+	"\x14vela/v1/runner.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd2\x02\n" +
+	"\x17RunnerReadinessIdentity\x12\x19\n" +
+	"\bcycle_id\x18\x01 \x01(\tR\acycleId\x12\x1b\n" +
+	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12!\n" +
+	"\fworker_epoch\x18\x03 \x01(\x03R\vworkerEpoch\x12#\n" +
+	"\rnode_identity\x18\x04 \x01(\tR\fnodeIdentity\x12A\n" +
+	"\x1dexecution_profile_revision_id\x18\x05 \x01(\tR\x1aexecutionProfileRevisionId\x12<\n" +
+	"\x1ainference_backend_revision\x18\x06 \x01(\tR\x18inferenceBackendRevision\x126\n" +
+	"\bdeadline\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\"\x8a\x01\n" +
+	"\x15ProbeReadinessRequest\x12<\n" +
+	"\bidentity\x18\x01 \x01(\v2 .vela.v1.RunnerReadinessIdentityR\bidentity\x123\n" +
+	"\x05check\x18\x02 \x01(\x0e2\x1d.vela.v1.RunnerReadinessCheckR\x05check\"\x9c\x02\n" +
+	"\x16ProbeReadinessResponse\x12<\n" +
+	"\bidentity\x18\x01 \x01(\v2 .vela.v1.RunnerReadinessIdentityR\bidentity\x123\n" +
+	"\x05check\x18\x02 \x01(\x0e2\x1d.vela.v1.RunnerReadinessCheckR\x05check\x12:\n" +
+	"\bdecision\x18\x03 \x01(\x0e2\x1e.vela.v1.RunnerCommandDecisionR\bdecision\x12\x16\n" +
+	"\x06passed\x18\x04 \x01(\bR\x06passed\x12#\n" +
+	"\revidence_json\x18\x05 \x01(\fR\fevidenceJson\x12\x16\n" +
+	"\x06detail\x18\x06 \x01(\tR\x06detail\"\xae\x01\n" +
 	"\x15RunnerAttemptIdentity\x12\x1d\n" +
 	"\n" +
 	"attempt_id\x18\x01 \x01(\tR\tattemptId\x12\x15\n" +
@@ -1205,7 +1507,13 @@ const file_vela_v1_runner_proto_rawDesc = "" +
 	"\bidentity\x18\x01 \x01(\v2\x1e.vela.v1.RunnerAttemptIdentityR\bidentity\x12:\n" +
 	"\bdecision\x18\x02 \x01(\x0e2\x1e.vela.v1.RunnerCommandDecisionR\bdecision\x12/\n" +
 	"\aoutputs\x18\x03 \x03(\v2\x15.vela.v1.RunnerOutputR\aoutputs\x12\x16\n" +
-	"\x06detail\x18\x04 \x01(\tR\x06detail*\x8c\x01\n" +
+	"\x06detail\x18\x04 \x01(\tR\x06detail*\xdb\x01\n" +
+	"\x14RunnerReadinessCheck\x12&\n" +
+	"\"RUNNER_READINESS_CHECK_UNSPECIFIED\x10\x00\x12!\n" +
+	"\x1dRUNNER_READINESS_CHECK_DEVICE\x10\x01\x12,\n" +
+	"(RUNNER_READINESS_CHECK_INFERENCE_BACKEND\x10\x02\x12'\n" +
+	"#RUNNER_READINESS_CHECK_MODEL_WARMUP\x10\x03\x12!\n" +
+	"\x1dRUNNER_READINESS_CHECK_CANARY\x10\x04*\x8c\x01\n" +
 	"\x15RunnerCommandDecision\x12'\n" +
 	"#RUNNER_COMMAND_DECISION_UNSPECIFIED\x10\x00\x12$\n" +
 	" RUNNER_COMMAND_DECISION_ACCEPTED\x10\x01\x12$\n" +
@@ -1222,8 +1530,9 @@ const file_vela_v1_runner_proto_rawDesc = "" +
 	" RUNNER_CANCEL_REASON_UNSPECIFIED\x10\x00\x12+\n" +
 	"'RUNNER_CANCEL_REASON_CONTROL_PLANE_STOP\x10\x01\x12'\n" +
 	"#RUNNER_CANCEL_REASON_LEASE_DEADLINE\x10\x02\x12'\n" +
-	"#RUNNER_CANCEL_REASON_AGENT_SHUTDOWN\x10\x032\xce\x02\n" +
-	"\rRunnerService\x12<\n" +
+	"#RUNNER_CANCEL_REASON_AGENT_SHUTDOWN\x10\x032\xa1\x03\n" +
+	"\rRunnerService\x12Q\n" +
+	"\x0eProbeReadiness\x12\x1e.vela.v1.ProbeReadinessRequest\x1a\x1f.vela.v1.ProbeReadinessResponse\x12<\n" +
 	"\aPrepare\x12\x17.vela.v1.PrepareRequest\x1a\x18.vela.v1.PrepareResponse\x126\n" +
 	"\x05Start\x12\x15.vela.v1.StartRequest\x1a\x16.vela.v1.StartResponse\x129\n" +
 	"\x06Cancel\x12\x16.vela.v1.CancelRequest\x1a\x17.vela.v1.CancelResponse\x129\n" +
@@ -1242,62 +1551,75 @@ func file_vela_v1_runner_proto_rawDescGZIP() []byte {
 	return file_vela_v1_runner_proto_rawDescData
 }
 
-var file_vela_v1_runner_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_vela_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_vela_v1_runner_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_vela_v1_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_vela_v1_runner_proto_goTypes = []any{
-	(RunnerCommandDecision)(0),     // 0: vela.v1.RunnerCommandDecision
-	(RunnerExecutionState)(0),      // 1: vela.v1.RunnerExecutionState
-	(RunnerCancelReason)(0),        // 2: vela.v1.RunnerCancelReason
-	(*RunnerAttemptIdentity)(nil),  // 3: vela.v1.RunnerAttemptIdentity
-	(*RunnerExecutionSpec)(nil),    // 4: vela.v1.RunnerExecutionSpec
-	(*PrepareRequest)(nil),         // 5: vela.v1.PrepareRequest
-	(*PrepareResponse)(nil),        // 6: vela.v1.PrepareResponse
-	(*StartRequest)(nil),           // 7: vela.v1.StartRequest
-	(*StartResponse)(nil),          // 8: vela.v1.StartResponse
-	(*CancelRequest)(nil),          // 9: vela.v1.CancelRequest
-	(*CancelResponse)(nil),         // 10: vela.v1.CancelResponse
-	(*StatusRequest)(nil),          // 11: vela.v1.StatusRequest
-	(*RunnerFailure)(nil),          // 12: vela.v1.RunnerFailure
-	(*StatusResponse)(nil),         // 13: vela.v1.StatusResponse
-	(*CollectOutputsRequest)(nil),  // 14: vela.v1.CollectOutputsRequest
-	(*RunnerOutput)(nil),           // 15: vela.v1.RunnerOutput
-	(*CollectOutputsResponse)(nil), // 16: vela.v1.CollectOutputsResponse
+	(RunnerReadinessCheck)(0),       // 0: vela.v1.RunnerReadinessCheck
+	(RunnerCommandDecision)(0),      // 1: vela.v1.RunnerCommandDecision
+	(RunnerExecutionState)(0),       // 2: vela.v1.RunnerExecutionState
+	(RunnerCancelReason)(0),         // 3: vela.v1.RunnerCancelReason
+	(*RunnerReadinessIdentity)(nil), // 4: vela.v1.RunnerReadinessIdentity
+	(*ProbeReadinessRequest)(nil),   // 5: vela.v1.ProbeReadinessRequest
+	(*ProbeReadinessResponse)(nil),  // 6: vela.v1.ProbeReadinessResponse
+	(*RunnerAttemptIdentity)(nil),   // 7: vela.v1.RunnerAttemptIdentity
+	(*RunnerExecutionSpec)(nil),     // 8: vela.v1.RunnerExecutionSpec
+	(*PrepareRequest)(nil),          // 9: vela.v1.PrepareRequest
+	(*PrepareResponse)(nil),         // 10: vela.v1.PrepareResponse
+	(*StartRequest)(nil),            // 11: vela.v1.StartRequest
+	(*StartResponse)(nil),           // 12: vela.v1.StartResponse
+	(*CancelRequest)(nil),           // 13: vela.v1.CancelRequest
+	(*CancelResponse)(nil),          // 14: vela.v1.CancelResponse
+	(*StatusRequest)(nil),           // 15: vela.v1.StatusRequest
+	(*RunnerFailure)(nil),           // 16: vela.v1.RunnerFailure
+	(*StatusResponse)(nil),          // 17: vela.v1.StatusResponse
+	(*CollectOutputsRequest)(nil),   // 18: vela.v1.CollectOutputsRequest
+	(*RunnerOutput)(nil),            // 19: vela.v1.RunnerOutput
+	(*CollectOutputsResponse)(nil),  // 20: vela.v1.CollectOutputsResponse
+	(*timestamppb.Timestamp)(nil),   // 21: google.protobuf.Timestamp
 }
 var file_vela_v1_runner_proto_depIdxs = []int32{
-	3,  // 0: vela.v1.PrepareRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	4,  // 1: vela.v1.PrepareRequest.execution_spec:type_name -> vela.v1.RunnerExecutionSpec
-	3,  // 2: vela.v1.PrepareResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	0,  // 3: vela.v1.PrepareResponse.decision:type_name -> vela.v1.RunnerCommandDecision
-	3,  // 4: vela.v1.StartRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	3,  // 5: vela.v1.StartResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	0,  // 6: vela.v1.StartResponse.decision:type_name -> vela.v1.RunnerCommandDecision
-	3,  // 7: vela.v1.CancelRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	2,  // 8: vela.v1.CancelRequest.reason:type_name -> vela.v1.RunnerCancelReason
-	3,  // 9: vela.v1.CancelResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	0,  // 10: vela.v1.CancelResponse.decision:type_name -> vela.v1.RunnerCommandDecision
-	3,  // 11: vela.v1.StatusRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	3,  // 12: vela.v1.StatusResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	1,  // 13: vela.v1.StatusResponse.state:type_name -> vela.v1.RunnerExecutionState
-	12, // 14: vela.v1.StatusResponse.failure:type_name -> vela.v1.RunnerFailure
-	3,  // 15: vela.v1.CollectOutputsRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	3,  // 16: vela.v1.CollectOutputsResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
-	0,  // 17: vela.v1.CollectOutputsResponse.decision:type_name -> vela.v1.RunnerCommandDecision
-	15, // 18: vela.v1.CollectOutputsResponse.outputs:type_name -> vela.v1.RunnerOutput
-	5,  // 19: vela.v1.RunnerService.Prepare:input_type -> vela.v1.PrepareRequest
-	7,  // 20: vela.v1.RunnerService.Start:input_type -> vela.v1.StartRequest
-	9,  // 21: vela.v1.RunnerService.Cancel:input_type -> vela.v1.CancelRequest
-	11, // 22: vela.v1.RunnerService.Status:input_type -> vela.v1.StatusRequest
-	14, // 23: vela.v1.RunnerService.CollectOutputs:input_type -> vela.v1.CollectOutputsRequest
-	6,  // 24: vela.v1.RunnerService.Prepare:output_type -> vela.v1.PrepareResponse
-	8,  // 25: vela.v1.RunnerService.Start:output_type -> vela.v1.StartResponse
-	10, // 26: vela.v1.RunnerService.Cancel:output_type -> vela.v1.CancelResponse
-	13, // 27: vela.v1.RunnerService.Status:output_type -> vela.v1.StatusResponse
-	16, // 28: vela.v1.RunnerService.CollectOutputs:output_type -> vela.v1.CollectOutputsResponse
-	24, // [24:29] is the sub-list for method output_type
-	19, // [19:24] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	21, // 0: vela.v1.RunnerReadinessIdentity.deadline:type_name -> google.protobuf.Timestamp
+	4,  // 1: vela.v1.ProbeReadinessRequest.identity:type_name -> vela.v1.RunnerReadinessIdentity
+	0,  // 2: vela.v1.ProbeReadinessRequest.check:type_name -> vela.v1.RunnerReadinessCheck
+	4,  // 3: vela.v1.ProbeReadinessResponse.identity:type_name -> vela.v1.RunnerReadinessIdentity
+	0,  // 4: vela.v1.ProbeReadinessResponse.check:type_name -> vela.v1.RunnerReadinessCheck
+	1,  // 5: vela.v1.ProbeReadinessResponse.decision:type_name -> vela.v1.RunnerCommandDecision
+	7,  // 6: vela.v1.PrepareRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	8,  // 7: vela.v1.PrepareRequest.execution_spec:type_name -> vela.v1.RunnerExecutionSpec
+	7,  // 8: vela.v1.PrepareResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	1,  // 9: vela.v1.PrepareResponse.decision:type_name -> vela.v1.RunnerCommandDecision
+	7,  // 10: vela.v1.StartRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	7,  // 11: vela.v1.StartResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	1,  // 12: vela.v1.StartResponse.decision:type_name -> vela.v1.RunnerCommandDecision
+	7,  // 13: vela.v1.CancelRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	3,  // 14: vela.v1.CancelRequest.reason:type_name -> vela.v1.RunnerCancelReason
+	7,  // 15: vela.v1.CancelResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	1,  // 16: vela.v1.CancelResponse.decision:type_name -> vela.v1.RunnerCommandDecision
+	7,  // 17: vela.v1.StatusRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	7,  // 18: vela.v1.StatusResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	2,  // 19: vela.v1.StatusResponse.state:type_name -> vela.v1.RunnerExecutionState
+	16, // 20: vela.v1.StatusResponse.failure:type_name -> vela.v1.RunnerFailure
+	7,  // 21: vela.v1.CollectOutputsRequest.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	7,  // 22: vela.v1.CollectOutputsResponse.identity:type_name -> vela.v1.RunnerAttemptIdentity
+	1,  // 23: vela.v1.CollectOutputsResponse.decision:type_name -> vela.v1.RunnerCommandDecision
+	19, // 24: vela.v1.CollectOutputsResponse.outputs:type_name -> vela.v1.RunnerOutput
+	5,  // 25: vela.v1.RunnerService.ProbeReadiness:input_type -> vela.v1.ProbeReadinessRequest
+	9,  // 26: vela.v1.RunnerService.Prepare:input_type -> vela.v1.PrepareRequest
+	11, // 27: vela.v1.RunnerService.Start:input_type -> vela.v1.StartRequest
+	13, // 28: vela.v1.RunnerService.Cancel:input_type -> vela.v1.CancelRequest
+	15, // 29: vela.v1.RunnerService.Status:input_type -> vela.v1.StatusRequest
+	18, // 30: vela.v1.RunnerService.CollectOutputs:input_type -> vela.v1.CollectOutputsRequest
+	6,  // 31: vela.v1.RunnerService.ProbeReadiness:output_type -> vela.v1.ProbeReadinessResponse
+	10, // 32: vela.v1.RunnerService.Prepare:output_type -> vela.v1.PrepareResponse
+	12, // 33: vela.v1.RunnerService.Start:output_type -> vela.v1.StartResponse
+	14, // 34: vela.v1.RunnerService.Cancel:output_type -> vela.v1.CancelResponse
+	17, // 35: vela.v1.RunnerService.Status:output_type -> vela.v1.StatusResponse
+	20, // 36: vela.v1.RunnerService.CollectOutputs:output_type -> vela.v1.CollectOutputsResponse
+	31, // [31:37] is the sub-list for method output_type
+	25, // [25:31] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_runner_proto_init() }
@@ -1305,14 +1627,14 @@ func file_vela_v1_runner_proto_init() {
 	if File_vela_v1_runner_proto != nil {
 		return
 	}
-	file_vela_v1_runner_proto_msgTypes[10].OneofWrappers = []any{}
+	file_vela_v1_runner_proto_msgTypes[13].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_runner_proto_rawDesc), len(file_vela_v1_runner_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   14,
+			NumEnums:      4,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

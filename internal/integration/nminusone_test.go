@@ -43,7 +43,128 @@ const (
 	retentionNMinusOneCommit              = "87d1f27be568c96a31dcbda9d9c74ce7d2ed3f96"
 	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
 	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
+	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
 )
+
+func TestExactFleetNMinusOneAssignmentWriterAcrossProtocolGate(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, fleetControllerNMinusOneCommit)
+	seedAdmissionFixture(t, database.Admin)
+	server := admissionServerForDatabase(t, database)
+
+	gateOffJob := submitJob(t, server.URL, "fleet-n-minus-one-gate-off", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"legacy Assignment writer before Fleet enforcement"
+	}`))
+	gateOnJob := submitJob(t, server.URL, "fleet-n-minus-one-gate-on", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"legacy Assignment writer after Fleet enforcement"
+	}`))
+	if gateOffJob.StatusCode != 202 || gateOnJob.StatusCode != 202 {
+		t.Fatalf(
+			"Fleet N-1 Admission statuses = %d/%d; bodies=%s / %s",
+			gateOffJob.StatusCode,
+			gateOnJob.StatusCode,
+			gateOffJob.Body,
+			gateOnJob.Body,
+		)
+	}
+	var gateOffResponse, gateOnResponse jobResponse
+	if err := json.Unmarshal(gateOffJob.Body, &gateOffResponse); err != nil {
+		t.Fatalf("decode gate-off Fleet N-1 Job: %v", err)
+	}
+	if err := json.Unmarshal(gateOnJob.Body, &gateOnResponse); err != nil {
+		t.Fatalf("decode gate-on Fleet N-1 Job: %v", err)
+	}
+	firstJobID := uuid.MustParse(gateOffResponse.JobID)
+	secondJobID := uuid.MustParse(gateOnResponse.JobID)
+	firstWorker := uuid.MustParse("23000000-0000-0000-0000-000000000051")
+	secondWorker := uuid.MustParse("23000000-0000-0000-0000-000000000052")
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, firstWorker, "fleet-gate-off")
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, secondWorker, "fleet-gate-on")
+
+	firstAttempt := runNMinusOneAssignmentProbe(
+		t,
+		nMinusOne.AssignmentProbe,
+		database.DSN,
+		firstJobID.String(),
+		firstWorker.String(),
+		7,
+		1,
+	)
+	var firstProtocol int
+	if err := database.Admin.QueryRow(`
+		SELECT fleet_protocol_version FROM attempts WHERE id = $1
+	`, firstAttempt).Scan(&firstProtocol); err != nil {
+		t.Fatalf("read gate-off Fleet protocol version: %v", err)
+	}
+	if firstProtocol != 1 {
+		t.Fatalf("gate-off Fleet protocol version = %d", firstProtocol)
+	}
+
+	if _, err := database.Admin.Exec(`
+		SELECT vela_transition_fleet_assignment_protocol(
+			true, 'exact 37b2689 Assignment writers drained', 0
+		)
+	`); err != nil {
+		t.Fatalf("enforce Fleet Assignment protocol: %v", err)
+	}
+	before := readAssignmentState(t, database.Admin, secondJobID, secondWorker)
+	output, probeErr := runNMinusOneAssignmentProbeProcess(
+		t,
+		nMinusOne.AssignmentProbe,
+		database.DSN,
+		secondJobID.String(),
+		secondWorker.String(),
+		7,
+		1,
+	)
+	if probeErr == nil || !strings.Contains(
+		string(output),
+		"Assignment writer does not match the active Fleet protocol",
+	) {
+		t.Fatalf("gate-on Fleet N-1 writer error=%v\n%s", probeErr, output)
+	}
+	after := readAssignmentState(t, database.Admin, secondJobID, secondWorker)
+	if after != before {
+		t.Fatalf("rejected Fleet N-1 writer changed state: before=%+v after=%+v", before, after)
+	}
+
+	if _, err := database.Admin.Exec(`
+		SELECT vela_transition_fleet_assignment_protocol(
+			false, 'exact 37b2689 rollback verified', 0
+		)
+	`); err != nil {
+		t.Fatalf("roll back Fleet Assignment protocol: %v", err)
+	}
+	secondAttempt := runNMinusOneAssignmentProbe(
+		t,
+		nMinusOne.AssignmentProbe,
+		database.DSN,
+		secondJobID.String(),
+		secondWorker.String(),
+		7,
+		1,
+	)
+	var secondProtocol int
+	if err := database.Admin.QueryRow(`
+		SELECT fleet_protocol_version FROM attempts WHERE id = $1
+	`, secondAttempt).Scan(&secondProtocol); err != nil {
+		t.Fatalf("read rollback Fleet protocol version: %v", err)
+	}
+	if secondProtocol != 1 {
+		t.Fatalf("rollback Fleet protocol version = %d", secondProtocol)
+	}
+}
 
 func TestExactFinanceReconciliationNMinusOneControlAndRequestRemainCompatible(t *testing.T) {
 	database := newPostgres(t)
@@ -1737,7 +1858,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == identityAdministrationNMinusOneCommit ||
 		commit == humanMembershipNMinusOneCommit ||
 		commit == organizationReportingNMinusOneCommit ||
-		commit == retentionNMinusOneCommit || commit == breakGlassNMinusOneCommit {
+		commit == retentionNMinusOneCommit || commit == breakGlassNMinusOneCommit ||
+		commit == fleetControllerNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -2421,6 +2543,14 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_WORKER_GRPC_TLS_CERT_FILE":              "/missing/worker-control.crt",
 		"VELA_WORKER_GRPC_TLS_KEY_FILE":               "/missing/worker-control.key",
 		"VELA_WORKER_GRPC_CLIENT_CA_FILE":             "/missing/worker-client-ca.crt",
+		"VELA_FLEET_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_fleet_login", "vela-fleet-password",
+		),
+		"VELA_FLEET_GRPC_TLS_CERT_FILE":        "/missing/fleet-control.crt",
+		"VELA_FLEET_GRPC_TLS_KEY_FILE":         "/missing/fleet-control.key",
+		"VELA_FLEET_GRPC_CLIENT_CA_FILE":       "/missing/fleet-client-ca.crt",
+		"VELA_FLEET_CONTROLLER_SPIFFE_ID":      "spiffe://vela.internal/fleet-controller/startup-probe",
+		"VELA_FLEET_CONTROLLER_ACTOR_IDENTITY": "fleet-controller/startup-probe",
 	})
 	output, err := command.CombinedOutput()
 	if ctx.Err() != nil {

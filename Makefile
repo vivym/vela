@@ -6,7 +6,7 @@ BUF_VERSION := v1.72.0
 PROTOC_GEN_GO_VERSION := v1.36.11
 PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
 GOLANGCI_LINT_VERSION := v2.13.1
-INTEGRATION_TEST_TIMEOUT ?= 20m
+INTEGRATION_TEST_TIMEOUT ?= 40m
 TOOLS_BIN := $(CURDIR)/bin
 
 .PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated lint test test-integration test-cross validate-deployment verify
@@ -43,7 +43,7 @@ test:
 	cd runner && uv run --frozen pytest
 
 test-integration:
-	go test -tags=integration ./internal/integration/... -timeout=$(INTEGRATION_TEST_TIMEOUT)
+	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
 
 test-cross:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -exec=/usr/bin/true ./...
@@ -51,6 +51,7 @@ test-cross:
 validate-deployment:
 	kubectl kustomize deploy/control-storage >/dev/null
 	kubectl kustomize deploy/worker-agent >/dev/null
+	kubectl kustomize deploy/fleet-controller >/dev/null
 	@test -s deploy/node-agent/vela-node-agent.service
 	@test -s deploy/node-agent/README.md
 	@rg -q "VELA_NODE_AGENT_CONTROLLERS_FILE" deploy/node-agent/README.md cmd/vela-node-agent/main.go
@@ -71,6 +72,7 @@ validate-deployment:
 	@rg -q "name: vela-runner-gpu-roles" deploy/worker-agent/daemonset.yaml
 	@! rg -q "CAP_SYS_ADMIN|privileged: true" deploy/worker-agent/*.yaml
 	@go test ./internal/deploymentcontract -run TestWorkerAgentManifestExcludesRecoveryQuarantineFromRunnerMountNamespace -count=1
+	@go test ./internal/deploymentcontract -run 'TestFleet' -count=1
 
 verify-generated: generate
 	git diff --exit-code -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1

@@ -34,6 +34,11 @@ class RunnerServiceStub:
         Args:
             channel: A grpc.Channel.
         """
+        self.ProbeReadiness = channel.unary_unary(
+                '/vela.v1.RunnerService/ProbeReadiness',
+                request_serializer=vela_dot_v1_dot_runner__pb2.ProbeReadinessRequest.SerializeToString,
+                response_deserializer=vela_dot_v1_dot_runner__pb2.ProbeReadinessResponse.FromString,
+                _registered_method=True)
         self.Prepare = channel.unary_unary(
                 '/vela.v1.RunnerService/Prepare',
                 request_serializer=vela_dot_v1_dot_runner__pb2.PrepareRequest.SerializeToString,
@@ -63,6 +68,12 @@ class RunnerServiceStub:
 
 class RunnerServiceServicer:
     """Missing associated documentation comment in .proto file."""
+
+    def ProbeReadiness(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
 
     def Prepare(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -97,6 +108,11 @@ class RunnerServiceServicer:
 
 def add_RunnerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
+            'ProbeReadiness': grpc.unary_unary_rpc_method_handler(
+                    servicer.ProbeReadiness,
+                    request_deserializer=vela_dot_v1_dot_runner__pb2.ProbeReadinessRequest.FromString,
+                    response_serializer=vela_dot_v1_dot_runner__pb2.ProbeReadinessResponse.SerializeToString,
+            ),
             'Prepare': grpc.unary_unary_rpc_method_handler(
                     servicer.Prepare,
                     request_deserializer=vela_dot_v1_dot_runner__pb2.PrepareRequest.FromString,
@@ -132,6 +148,33 @@ def add_RunnerServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class RunnerService:
     """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def ProbeReadiness(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/vela.v1.RunnerService/ProbeReadiness',
+            vela_dot_v1_dot_runner__pb2.ProbeReadinessRequest.SerializeToString,
+            vela_dot_v1_dot_runner__pb2.ProbeReadinessResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
 
     @staticmethod
     def Prepare(request,

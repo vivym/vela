@@ -1,0 +1,314 @@
+syntax = "proto3";
+
+package vela.v1;
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+import "google/protobuf/timestamp.proto";
+
+service FleetMaintenanceService {
+  rpc ResolveWorkerIdentity(ResolveWorkerIdentityRequest)
+      returns (ResolveWorkerIdentityResponse);
+  rpc ConfigureCapacityPolicy(ConfigureCapacityPolicyRequest)
+      returns (ConfigureCapacityPolicyResponse);
+  rpc ObserveCapacity(ObserveCapacityRequest)
+      returns (ObserveCapacityResponse);
+  rpc BeginReadiness(BeginReadinessRequest)
+      returns (BeginReadinessResponse);
+  rpc ReportReadiness(ReportReadinessRequest)
+      returns (ReportReadinessResponse);
+  rpc GetReadiness(GetReadinessRequest)
+      returns (GetReadinessResponse);
+  rpc RequestDrain(RequestDrainRequest)
+      returns (RequestDrainResponse);
+  rpc ReconcileDrain(ReconcileDrainRequest)
+      returns (ReconcileDrainResponse);
+  rpc GetDrain(GetDrainRequest)
+      returns (GetDrainResponse);
+  rpc AuthorizeMutation(AuthorizeMutationRequest)
+      returns (AuthorizeMutationResponse);
+  rpc HasRetirementAuthorization(HasRetirementAuthorizationRequest)
+      returns (HasRetirementAuthorizationResponse);
+  rpc RecordRetirementCompletion(RecordRetirementCompletionRequest)
+      returns (RecordRetirementCompletionResponse);
+  rpc HasRetirementCompletion(HasRetirementCompletionRequest)
+      returns (HasRetirementCompletionResponse);
+}
+
+message ResolveWorkerIdentityRequest {
+  string node_identity = 1;
+  string worker_pool_id = 2;
+  string kubernetes_uid = 3;
+  string namespace = 4;
+  string name = 5;
+}
+
+message ResolveWorkerIdentityResponse {
+  string worker_id = 1;
+  string worker_pool_id = 2;
+  int64 worker_epoch = 3;
+  string node_identity = 4;
+}
+
+enum FleetCapacityState {
+  FLEET_CAPACITY_STATE_UNSPECIFIED = 0;
+  FLEET_CAPACITY_STATE_ADMITTABLE = 1;
+  FLEET_CAPACITY_STATE_SCRATCH_PRESSURED = 2;
+  FLEET_CAPACITY_STATE_SCRATCH_CRITICAL = 3;
+  FLEET_CAPACITY_STATE_STORAGE_UNAVAILABLE = 4;
+  FLEET_CAPACITY_STATE_MULTIPLE_BLOCKERS = 5;
+}
+
+enum FleetScratchWatermarkState {
+  FLEET_SCRATCH_WATERMARK_STATE_UNSPECIFIED = 0;
+  FLEET_SCRATCH_WATERMARK_STATE_NORMAL = 1;
+  FLEET_SCRATCH_WATERMARK_STATE_PRESSURED = 2;
+  FLEET_SCRATCH_WATERMARK_STATE_CRITICAL = 3;
+}
+
+enum FleetReadinessState {
+  FLEET_READINESS_STATE_UNSPECIFIED = 0;
+  FLEET_READINESS_STATE_CHECKING = 1;
+  FLEET_READINESS_STATE_READY = 2;
+  FLEET_READINESS_STATE_FAILED = 3;
+  FLEET_READINESS_STATE_EXPIRED = 4;
+}
+
+enum FleetReadinessCheck {
+  FLEET_READINESS_CHECK_UNSPECIFIED = 0;
+  FLEET_READINESS_CHECK_IDENTITY = 1;
+  FLEET_READINESS_CHECK_DEVICE = 2;
+  FLEET_READINESS_CHECK_INFERENCE_BACKEND = 3;
+  FLEET_READINESS_CHECK_MODEL_WARMUP = 4;
+  FLEET_READINESS_CHECK_CANARY = 5;
+}
+
+enum FleetDrainState {
+  FLEET_DRAIN_STATE_UNSPECIFIED = 0;
+  FLEET_DRAIN_STATE_DRAINING = 1;
+  FLEET_DRAIN_STATE_COMPLETE = 2;
+  FLEET_DRAIN_STATE_EXPIRED = 3;
+}
+
+enum FleetWorkerLifecycle {
+  FLEET_WORKER_LIFECYCLE_UNSPECIFIED = 0;
+  FLEET_WORKER_LIFECYCLE_REGISTERING = 1;
+  FLEET_WORKER_LIFECYCLE_WARMING = 2;
+  FLEET_WORKER_LIFECYCLE_READY = 3;
+  FLEET_WORKER_LIFECYCLE_BUSY = 4;
+  FLEET_WORKER_LIFECYCLE_DRAINING = 5;
+  FLEET_WORKER_LIFECYCLE_RECOVERING = 6;
+  FLEET_WORKER_LIFECYCLE_QUARANTINED = 7;
+}
+
+enum FleetWorkerReachability {
+  FLEET_WORKER_REACHABILITY_UNSPECIFIED = 0;
+  FLEET_WORKER_REACHABILITY_HEALTHY = 1;
+  FLEET_WORKER_REACHABILITY_SUSPECT = 2;
+  FLEET_WORKER_REACHABILITY_OFFLINE = 3;
+}
+
+enum FleetProtectedResourceKind {
+  FLEET_PROTECTED_RESOURCE_KIND_UNSPECIFIED = 0;
+  FLEET_PROTECTED_RESOURCE_KIND_POD = 1;
+  FLEET_PROTECTED_RESOURCE_KIND_DAEMONSET = 2;
+  FLEET_PROTECTED_RESOURCE_KIND_WORKER_POOL = 3;
+}
+
+enum FleetMutationOperation {
+  FLEET_MUTATION_OPERATION_UNSPECIFIED = 0;
+  FLEET_MUTATION_OPERATION_DELETE = 1;
+  FLEET_MUTATION_OPERATION_PATCH_SELECTOR = 2;
+  FLEET_MUTATION_OPERATION_PATCH_IMAGE = 3;
+  FLEET_MUTATION_OPERATION_REMOVE_FINALIZER = 4;
+}
+
+message ConfigureCapacityPolicyRequest {
+  string worker_pool_id = 1;
+  string revision = 2;
+  int64 worker_high_watermark_bytes = 3;
+  int64 worker_low_watermark_bytes = 4;
+  int64 worker_critical_free_bytes = 5;
+  int64 pool_high_watermark_bytes = 6;
+  int64 pool_low_watermark_bytes = 7;
+  int64 observation_max_age_seconds = 8;
+}
+
+message ConfigureCapacityPolicyResponse {
+  string worker_pool_id = 1;
+  string revision = 2;
+  bool replayed = 3;
+}
+
+message ObserveCapacityRequest {
+  string worker_id = 1;
+  string worker_pool_id = 2;
+  int64 worker_epoch = 3;
+  int64 observation_sequence = 4;
+  int64 total_bytes = 5;
+  int64 free_bytes = 6;
+  int64 high_watermark_bytes = 7;
+  int64 low_watermark_bytes = 8;
+  int64 critical_free_bytes = 9;
+  bool artifact_store_reachable = 10;
+  google.protobuf.Timestamp observed_at = 11;
+  FleetScratchWatermarkState watermark_state = 12;
+}
+
+message ObserveCapacityResponse {
+  string worker_pool_id = 1;
+  bool replayed = 2;
+  FleetCapacityState worker_state = 3;
+  FleetCapacityState pool_state = 4;
+  bool worker_assignment_allowed = 5;
+  bool pool_assignment_allowed = 6;
+  bool pool_readiness_allowed = 7;
+}
+
+message BeginReadinessRequest {
+  string cycle_id = 1;
+  string worker_id = 2;
+  string worker_pool_id = 3;
+  int64 worker_epoch = 4;
+  string node_identity = 5;
+  string execution_profile_revision_id = 6;
+  string inference_backend_revision = 7;
+  google.protobuf.Timestamp deadline = 8;
+}
+
+message ReportReadinessRequest {
+  string cycle_id = 1;
+  FleetReadinessCheck check = 2;
+  bool passed = 3;
+  bytes evidence_digest = 4;
+}
+
+message GetReadinessRequest {
+  string cycle_id = 1;
+}
+
+message FleetReadinessResult {
+  string cycle_id = 1;
+  bool replayed = 2;
+  FleetReadinessState state = 3;
+  FleetReadinessCheck next_check = 4;
+  FleetWorkerLifecycle worker_lifecycle = 5;
+  FleetWorkerReachability worker_reachability = 6;
+}
+
+message BeginReadinessResponse {
+  FleetReadinessResult result = 1;
+}
+
+message ReportReadinessResponse {
+  FleetReadinessResult result = 1;
+}
+
+message GetReadinessResponse {
+  FleetReadinessResult result = 1;
+}
+
+message RequestDrainRequest {
+  string operation_id = 1;
+  string worker_id = 2;
+  int64 expected_epoch = 3;
+  string reason = 4;
+  google.protobuf.Timestamp deadline = 5;
+}
+
+message ReconcileDrainRequest {
+  string operation_id = 1;
+}
+
+message GetDrainRequest {
+  string operation_id = 1;
+}
+
+message FleetDrainResult {
+  string operation_id = 1;
+  bool replayed = 2;
+  FleetDrainState state = 3;
+  string worker_id = 4;
+  int64 worker_epoch = 5;
+  FleetWorkerLifecycle worker_lifecycle = 6;
+  FleetWorkerReachability worker_reachability = 7;
+  google.protobuf.Timestamp deadline = 8;
+}
+
+message RequestDrainResponse {
+  FleetDrainResult result = 1;
+}
+
+message ReconcileDrainResponse {
+  FleetDrainResult result = 1;
+}
+
+message GetDrainResponse {
+  FleetDrainResult result = 1;
+}
+
+message AuthorizeMutationRequest {
+  string request_uid = 1;
+  FleetProtectedResourceKind resource_kind = 2;
+  FleetMutationOperation operation = 3;
+  string kubernetes_uid = 4;
+  string namespace = 5;
+  string name = 6;
+  string worker_pool_id = 7;
+  string worker_id = 8;
+  int64 worker_epoch = 9;
+  repeated string drain_operation_ids = 10;
+  bytes request_digest = 11;
+}
+
+message AuthorizeMutationResponse {
+  string request_uid = 1;
+  bool replayed = 2;
+  bool authorized = 3;
+}
+
+message HasRetirementAuthorizationRequest {
+  FleetProtectedResourceKind resource_kind = 1;
+  string kubernetes_uid = 2;
+  string namespace = 3;
+  string name = 4;
+  string worker_pool_id = 5;
+  string worker_id = 6;
+  int64 worker_epoch = 7;
+  repeated string drain_operation_ids = 8;
+}
+
+message HasRetirementAuthorizationResponse {
+  bool authorized = 1;
+}
+
+message RecordRetirementCompletionRequest {
+  FleetProtectedResourceKind resource_kind = 1;
+  string kubernetes_uid = 2;
+  string namespace = 3;
+  string name = 4;
+  string worker_pool_id = 5;
+  string worker_id = 6;
+  int64 worker_epoch = 7;
+  repeated string drain_operation_ids = 8;
+}
+
+message RecordRetirementCompletionResponse {
+  bool replayed = 1;
+  google.protobuf.Timestamp completed_at = 2;
+}
+
+message HasRetirementCompletionRequest {
+  FleetProtectedResourceKind resource_kind = 1;
+  string kubernetes_uid = 2;
+  string namespace = 3;
+  string name = 4;
+  string worker_pool_id = 5;
+  string worker_id = 6;
+  int64 worker_epoch = 7;
+  repeated string drain_operation_ids = 8;
+}
+
+message HasRetirementCompletionResponse {
+  bool completed = 1;
+}

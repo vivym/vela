@@ -19,6 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	RunnerService_ProbeReadiness_FullMethodName = "/vela.v1.RunnerService/ProbeReadiness"
 	RunnerService_Prepare_FullMethodName        = "/vela.v1.RunnerService/Prepare"
 	RunnerService_Start_FullMethodName          = "/vela.v1.RunnerService/Start"
 	RunnerService_Cancel_FullMethodName         = "/vela.v1.RunnerService/Cancel"
@@ -30,6 +31,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RunnerServiceClient interface {
+	ProbeReadiness(ctx context.Context, in *ProbeReadinessRequest, opts ...grpc.CallOption) (*ProbeReadinessResponse, error)
 	Prepare(ctx context.Context, in *PrepareRequest, opts ...grpc.CallOption) (*PrepareResponse, error)
 	Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*StartResponse, error)
 	Cancel(ctx context.Context, in *CancelRequest, opts ...grpc.CallOption) (*CancelResponse, error)
@@ -43,6 +45,16 @@ type runnerServiceClient struct {
 
 func NewRunnerServiceClient(cc grpc.ClientConnInterface) RunnerServiceClient {
 	return &runnerServiceClient{cc}
+}
+
+func (c *runnerServiceClient) ProbeReadiness(ctx context.Context, in *ProbeReadinessRequest, opts ...grpc.CallOption) (*ProbeReadinessResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProbeReadinessResponse)
+	err := c.cc.Invoke(ctx, RunnerService_ProbeReadiness_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *runnerServiceClient) Prepare(ctx context.Context, in *PrepareRequest, opts ...grpc.CallOption) (*PrepareResponse, error) {
@@ -99,6 +111,7 @@ func (c *runnerServiceClient) CollectOutputs(ctx context.Context, in *CollectOut
 // All implementations must embed UnimplementedRunnerServiceServer
 // for forward compatibility.
 type RunnerServiceServer interface {
+	ProbeReadiness(context.Context, *ProbeReadinessRequest) (*ProbeReadinessResponse, error)
 	Prepare(context.Context, *PrepareRequest) (*PrepareResponse, error)
 	Start(context.Context, *StartRequest) (*StartResponse, error)
 	Cancel(context.Context, *CancelRequest) (*CancelResponse, error)
@@ -114,6 +127,9 @@ type RunnerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRunnerServiceServer struct{}
 
+func (UnimplementedRunnerServiceServer) ProbeReadiness(context.Context, *ProbeReadinessRequest) (*ProbeReadinessResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ProbeReadiness not implemented")
+}
 func (UnimplementedRunnerServiceServer) Prepare(context.Context, *PrepareRequest) (*PrepareResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Prepare not implemented")
 }
@@ -148,6 +164,24 @@ func RegisterRunnerServiceServer(s grpc.ServiceRegistrar, srv RunnerServiceServe
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&RunnerService_ServiceDesc, srv)
+}
+
+func _RunnerService_ProbeReadiness_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProbeReadinessRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RunnerServiceServer).ProbeReadiness(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RunnerService_ProbeReadiness_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RunnerServiceServer).ProbeReadiness(ctx, req.(*ProbeReadinessRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _RunnerService_Prepare_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -247,6 +281,10 @@ var RunnerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "vela.v1.RunnerService",
 	HandlerType: (*RunnerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ProbeReadiness",
+			Handler:    _RunnerService_ProbeReadiness_Handler,
+		},
 		{
 			MethodName: "Prepare",
 			Handler:    _RunnerService_Prepare_Handler,

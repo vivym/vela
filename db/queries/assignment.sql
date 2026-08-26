@@ -9,7 +9,7 @@ WHERE revoked_at IS NULL
 ORDER BY signing_key_id;
 
 -- name: ResolveWorkerBySPIFFEID :one
-SELECT id
+SELECT id, worker_pool_id, spiffe_id
 FROM workers
 WHERE spiffe_id = sqlc.arg(spiffe_id);
 
@@ -131,6 +131,15 @@ FROM worker_pools AS pool
 WHERE pool.id = sqlc.arg(worker_pool_id)
 FOR UPDATE;
 
+-- name: ValidateFleetCapacityForAssignment :one
+SELECT worker.id
+FROM workers AS worker
+WHERE worker.id = sqlc.arg(worker_id)
+  AND worker.worker_pool_id = sqlc.arg(worker_pool_id)
+  AND worker.epoch = sqlc.arg(worker_epoch)
+  AND vela_worker_capacity_allows_assignment(worker.id, worker.epoch)
+  AND vela_pool_capacity_allows_assignment(worker.worker_pool_id);
+
 -- name: CountActiveRetryAssignments :one
 SELECT count(*)::bigint
 FROM attempts
@@ -176,6 +185,7 @@ INSERT INTO attempts (
     worker_pool_id,
     worker_id,
     worker_epoch,
+    fleet_protocol_version,
     scheduler_dispatch_intent_id,
     state,
     fence,
@@ -190,6 +200,7 @@ INSERT INTO attempts (
     sqlc.arg(worker_pool_id),
     sqlc.arg(worker_id),
     sqlc.arg(worker_epoch),
+    vela_current_fleet_assignment_protocol_version(),
     sqlc.narg(scheduler_dispatch_intent_id),
     'ASSIGNED',
     sqlc.arg(fence),

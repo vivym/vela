@@ -1986,9 +1986,12 @@ func newPostgres(t *testing.T) testDatabase {
 		postgrescontainer.WithUsername("postgres"),
 		postgrescontainer.WithPassword("vela-integration"),
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second),
+			wait.ForAll(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).
+					WithStartupTimeout(60*time.Second),
+				wait.ForMappedPort("5432/tcp").WithStartupTimeout(60*time.Second),
+			),
 		),
 	)
 	if err != nil {

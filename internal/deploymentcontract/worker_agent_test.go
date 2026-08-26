@@ -44,11 +44,17 @@ type workerAgentEnv struct {
 
 type workerAgentEnvValueSource struct {
 	ConfigMapKeyRef *workerAgentConfigMapKeySelector `yaml:"configMapKeyRef"`
+	FieldRef        *workerAgentObjectFieldSelector  `yaml:"fieldRef"`
 }
 
 type workerAgentConfigMapKeySelector struct {
 	Name string `yaml:"name"`
 	Key  string `yaml:"key"`
+}
+
+type workerAgentObjectFieldSelector struct {
+	APIVersion string `yaml:"apiVersion"`
+	FieldPath  string `yaml:"fieldPath"`
 }
 
 type workerAgentVolumeMount struct {
@@ -152,6 +158,24 @@ func TestWorkerAgentManifestBindsCertifiedOutputCleanupThroughput(t *testing.T) 
 		t, agent, "VELA_WORKER_OUTPUT_CLEANUP_MIN_BYTES_PER_SECOND",
 		"vela-worker-runtime", "output-cleanup-min-bytes-per-second",
 	)
+}
+
+func TestWorkerAgentManifestBindsNodeIdentityFromScheduledNode(t *testing.T) {
+	manifest := loadWorkerAgentManifest(t)
+	agent := requireContainer(t, manifest.Spec.Template.Spec.Containers, "worker-agent")
+	for _, environment := range agent.Env {
+		if environment.Name != "VELA_WORKER_NODE_IDENTITY" {
+			continue
+		}
+		if environment.ValueFrom == nil || environment.ValueFrom.FieldRef == nil ||
+			environment.ValueFrom.ConfigMapKeyRef != nil ||
+			environment.ValueFrom.FieldRef.APIVersion != "v1" ||
+			environment.ValueFrom.FieldRef.FieldPath != "spec.nodeName" {
+			t.Fatalf("Worker node identity environment = %#v", environment)
+		}
+		return
+	}
+	t.Fatal("worker-agent is missing VELA_WORKER_NODE_IDENTITY")
 }
 
 func TestWorkerAgentManifestBindsRunnerOutputLimitToAttemptQuota(t *testing.T) {

@@ -249,6 +249,7 @@ INSERT INTO attempts (
     worker_pool_id,
     worker_id,
     worker_epoch,
+    fleet_protocol_version,
     scheduler_dispatch_intent_id,
     state,
     fence,
@@ -263,6 +264,7 @@ INSERT INTO attempts (
     $7,
     $8,
     $9,
+    vela_current_fleet_assignment_protocol_version(),
     $10,
     'ASSIGNED',
     $11,
@@ -720,13 +722,42 @@ func (q *Queries) MoveProjectCountersToRunning(ctx context.Context, arg MoveProj
 }
 
 const resolveWorkerBySPIFFEID = `-- name: ResolveWorkerBySPIFFEID :one
-SELECT id
+SELECT id, worker_pool_id, spiffe_id
 FROM workers
 WHERE spiffe_id = $1
 `
 
-func (q *Queries) ResolveWorkerBySPIFFEID(ctx context.Context, spiffeID string) (uuid.UUID, error) {
+type ResolveWorkerBySPIFFEIDRow struct {
+	ID           uuid.UUID `db:"id" json:"id"`
+	WorkerPoolID uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
+	SpiffeID     string    `db:"spiffe_id" json:"spiffe_id"`
+}
+
+func (q *Queries) ResolveWorkerBySPIFFEID(ctx context.Context, spiffeID string) (ResolveWorkerBySPIFFEIDRow, error) {
 	row := q.db.QueryRow(ctx, resolveWorkerBySPIFFEID, spiffeID)
+	var i ResolveWorkerBySPIFFEIDRow
+	err := row.Scan(&i.ID, &i.WorkerPoolID, &i.SpiffeID)
+	return i, err
+}
+
+const validateFleetCapacityForAssignment = `-- name: ValidateFleetCapacityForAssignment :one
+SELECT worker.id
+FROM workers AS worker
+WHERE worker.id = $1
+  AND worker.worker_pool_id = $2
+  AND worker.epoch = $3
+  AND vela_worker_capacity_allows_assignment(worker.id, worker.epoch)
+  AND vela_pool_capacity_allows_assignment(worker.worker_pool_id)
+`
+
+type ValidateFleetCapacityForAssignmentParams struct {
+	WorkerID     uuid.UUID `db:"worker_id" json:"worker_id"`
+	WorkerPoolID uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerEpoch  int64     `db:"worker_epoch" json:"worker_epoch"`
+}
+
+func (q *Queries) ValidateFleetCapacityForAssignment(ctx context.Context, arg ValidateFleetCapacityForAssignmentParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, validateFleetCapacityForAssignment, arg.WorkerID, arg.WorkerPoolID, arg.WorkerEpoch)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err

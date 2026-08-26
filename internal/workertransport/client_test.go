@@ -23,11 +23,15 @@ import (
 
 func TestClientExchangesExecutionOperationsOnOneCorrelatedStream(t *testing.T) {
 	workerID := uuid.MustParse("71000000-0000-0000-0000-000000000001")
+	poolID := uuid.MustParse("70000000-0000-0000-0000-000000000001")
+	cycleID := uuid.MustParse("f98bf4ac-94c4-5360-a476-cac78358adbd")
+	profileID := uuid.MustParse("76000000-0000-0000-0000-000000000006")
 	attemptID := uuid.MustParse("72000000-0000-0000-0000-000000000002")
 	jobID := uuid.MustParse("73000000-0000-0000-0000-000000000003")
 	now := time.Date(2026, 8, 25, 6, 0, 0, 0, time.UTC)
 	server := &executionClientTestServer{
-		workerID: workerID, attemptID: attemptID, jobID: jobID, now: now,
+		workerID: workerID, poolID: poolID, cycleID: cycleID, profileID: profileID,
+		attemptID: attemptID, jobID: jobID, now: now,
 	}
 	grpcServer := grpc.NewServer()
 	velav1.RegisterWorkerControlServiceServer(grpcServer, server)
@@ -52,6 +56,40 @@ func TestClientExchangesExecutionOperationsOnOneCorrelatedStream(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = client.Close() })
 
+	capacity, err := client.ReportCapacity(ctx, workercontrol.CapacityObservation{
+		WorkerEpoch: 7, Sequence: 9, ObservedAt: now, TotalBytes: 1000, FreeBytes: 700,
+		WatermarkState:     workercontrol.ScratchWatermarkNormal,
+		HighWatermarkBytes: 800, LowWatermarkBytes: 400, CriticalFreeBytes: 100,
+		ArtifactStoreReachable: true,
+	})
+	if err != nil || capacity.WorkerPoolID != poolID ||
+		capacity.WorkerState != workercontrol.CapacityAdmittable ||
+		capacity.PoolState != workercontrol.CapacityAdmittable ||
+		!capacity.WorkerAssignmentAllowed || !capacity.PoolAssignmentAllowed {
+		t.Fatalf("ReportCapacity = %#v error=%v", capacity, err)
+	}
+	readiness, err := client.GetReadinessWork(ctx, 7)
+	if err != nil || !readiness.Available || readiness.CycleID != cycleID ||
+		readiness.Check != workercontrol.ReadinessIdentity || readiness.WorkerID != workerID ||
+		readiness.WorkerPoolID != poolID || readiness.WorkerEpoch != 7 ||
+		readiness.NodeIdentity != "h3-node-01" ||
+		readiness.ExecutionProfileRevisionID != profileID ||
+		readiness.InferenceBackendRevision != "sglang-h3-v3" ||
+		!readiness.Deadline.Equal(now.Add(30*time.Minute)) {
+		t.Fatalf("GetReadinessWork = %#v error=%v", readiness, err)
+	}
+	digest := sha256.Sum256([]byte("identity readiness evidence"))
+	readinessResult, err := client.ReportReadiness(ctx, workercontrol.ReadinessEvidence{
+		WorkerEpoch: 7, CycleID: cycleID, Check: workercontrol.ReadinessIdentity,
+		Passed: true, EvidenceDigest: digest,
+	})
+	if err != nil || readinessResult.CycleID != cycleID ||
+		readinessResult.State != workercontrol.ReadinessChecking ||
+		readinessResult.NextCheck != workercontrol.ReadinessDevice ||
+		readinessResult.WorkerLifecycle != "WARMING" ||
+		readinessResult.WorkerReachability != "SUSPECT" {
+		t.Fatalf("ReportReadiness = %#v error=%v", readinessResult, err)
+	}
 	assignment, err := client.Acquire(ctx, 7)
 	if err != nil {
 		t.Fatalf("Acquire: %v", err)
@@ -91,8 +129,8 @@ func TestClientExchangesExecutionOperationsOnOneCorrelatedStream(t *testing.T) {
 		decision.AttemptID != attemptID || decision.JobID != jobID {
 		t.Fatalf("Fail = %#v error=%v", decision, err)
 	}
-	if server.requests != 4 {
-		t.Fatalf("stream requests = %d, want 4", server.requests)
+	if server.requests != 7 {
+		t.Fatalf("stream requests = %d, want 7", server.requests)
 	}
 }
 
@@ -187,6 +225,64 @@ func TestClientRejectsUnknownStopReason(t *testing.T) {
 			client := newClientTestConnection(t, &oneResponseClientTestServer{response: testCase.response})
 			if err := testCase.invoke(client); err == nil {
 				t.Fatal("worker transport Client accepted an unknown STOP reason")
+			}
+		})
+	}
+}
+
+func TestClientRejectsUnspecifiedOrUnknownReadinessWorkerStateEnums(t *testing.T) {
+	cycleID := uuid.MustParse("77410000-0000-0000-0000-000000000001")
+	digest := sha256.Sum256([]byte("typed readiness enum evidence"))
+	for _, testCase := range []struct {
+		name   string
+		mutate func(*velav1.WorkerReadinessResult)
+	}{
+		{
+			name: "unspecified lifecycle",
+			mutate: func(result *velav1.WorkerReadinessResult) {
+				result.WorkerLifecycle = velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_UNSPECIFIED
+			},
+		},
+		{
+			name: "unknown lifecycle",
+			mutate: func(result *velav1.WorkerReadinessResult) {
+				result.WorkerLifecycle = velav1.FleetWorkerLifecycle(99)
+			},
+		},
+		{
+			name: "unspecified reachability",
+			mutate: func(result *velav1.WorkerReadinessResult) {
+				result.WorkerReachability = velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_UNSPECIFIED
+			},
+		},
+		{
+			name: "unknown reachability",
+			mutate: func(result *velav1.WorkerReadinessResult) {
+				result.WorkerReachability = velav1.FleetWorkerReachability(99)
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			server := &oneResponseClientTestServer{response: func(request *velav1.ConnectRequest) *velav1.ConnectResponse {
+				result := &velav1.WorkerReadinessResult{
+					CycleId: cycleID.String(), State: velav1.FleetReadinessState_FLEET_READINESS_STATE_CHECKING,
+					NextCheck:          velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_DEVICE,
+					WorkerLifecycle:    velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_WARMING,
+					WorkerReachability: velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_SUSPECT,
+				}
+				testCase.mutate(result)
+				return &velav1.ConnectResponse{
+					RequestId: request.GetRequestId(),
+					Result:    &velav1.ConnectResponse_ReadinessResult{ReadinessResult: result},
+				}
+			}}
+			client := newClientTestConnection(t, server)
+			_, err := client.ReportReadiness(context.Background(), workercontrol.ReadinessEvidence{
+				WorkerEpoch: 7, CycleID: cycleID, Check: workercontrol.ReadinessIdentity,
+				Passed: true, EvidenceDigest: digest,
+			})
+			if err == nil {
+				t.Fatal("Worker client accepted an unspecified or unknown Worker state enum")
 			}
 		})
 	}
@@ -659,9 +755,9 @@ func newClientTestConnection(
 
 type executionClientTestServer struct {
 	velav1.UnimplementedWorkerControlServiceServer
-	workerID, attemptID, jobID uuid.UUID
-	now                        time.Time
-	requests                   int
+	workerID, poolID, cycleID, profileID, attemptID, jobID uuid.UUID
+	now                                                    time.Time
+	requests                                               int
 }
 
 func (server *executionClientTestServer) Connect(
@@ -678,6 +774,58 @@ func (server *executionClientTestServer) Connect(
 		server.requests++
 		response := &velav1.ConnectResponse{RequestId: request.GetRequestId()}
 		switch operation := request.GetOperation().(type) {
+		case *velav1.ConnectRequest_ReportCapacity:
+			if operation.ReportCapacity.GetWorkerEpoch() != 7 ||
+				operation.ReportCapacity.GetObservationSequence() != 9 ||
+				!operation.ReportCapacity.GetObservedAt().AsTime().Equal(server.now) ||
+				operation.ReportCapacity.GetWatermarkState() !=
+					velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_NORMAL ||
+				operation.ReportCapacity.GetTotalBytes() != 1000 ||
+				operation.ReportCapacity.GetFreeBytes() != 700 ||
+				!operation.ReportCapacity.GetArtifactStoreReachable() {
+				return io.ErrUnexpectedEOF
+			}
+			response.Result = &velav1.ConnectResponse_CapacityResult{
+				CapacityResult: &velav1.ReportWorkerCapacityResult{
+					WorkerPoolId:            "70000000-0000-0000-0000-000000000001",
+					WorkerState:             string(workercontrol.CapacityAdmittable),
+					PoolState:               string(workercontrol.CapacityAdmittable),
+					WorkerAssignmentAllowed: true, PoolAssignmentAllowed: true,
+				},
+			}
+		case *velav1.ConnectRequest_GetReadinessWork:
+			if operation.GetReadinessWork.GetWorkerEpoch() != 7 {
+				return io.ErrUnexpectedEOF
+			}
+			response.Result = &velav1.ConnectResponse_ReadinessWork{
+				ReadinessWork: &velav1.WorkerReadinessWork{
+					Available: true, CycleId: server.cycleID.String(),
+					Check:    velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_IDENTITY,
+					WorkerId: server.workerID.String(), WorkerPoolId: server.poolID.String(),
+					WorkerEpoch: 7, NodeIdentity: "h3-node-01",
+					ExecutionProfileRevisionId: server.profileID.String(),
+					InferenceBackendRevision:   "sglang-h3-v3",
+					Deadline:                   timestamppb.New(server.now.Add(30 * time.Minute)),
+				},
+			}
+		case *velav1.ConnectRequest_ReportReadiness:
+			if operation.ReportReadiness.GetWorkerEpoch() != 7 ||
+				operation.ReportReadiness.GetCycleId() != server.cycleID.String() ||
+				operation.ReportReadiness.GetCheck() !=
+					velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_IDENTITY ||
+				!operation.ReportReadiness.GetPassed() ||
+				len(operation.ReportReadiness.GetEvidenceDigest()) != sha256.Size {
+				return io.ErrUnexpectedEOF
+			}
+			response.Result = &velav1.ConnectResponse_ReadinessResult{
+				ReadinessResult: &velav1.WorkerReadinessResult{
+					CycleId:            server.cycleID.String(),
+					State:              velav1.FleetReadinessState_FLEET_READINESS_STATE_CHECKING,
+					NextCheck:          velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_DEVICE,
+					WorkerLifecycle:    velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_WARMING,
+					WorkerReachability: velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_SUSPECT,
+				},
+			}
 		case *velav1.ConnectRequest_Acquire:
 			if operation.Acquire.GetWorkerEpoch() != 7 {
 				return io.ErrUnexpectedEOF

@@ -2,6 +2,7 @@ package workeragent
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,9 +28,20 @@ const (
 	defaultTerminalControlTimeout               = 10 * time.Second
 	defaultOutputCleanupBaseTimeout             = 10 * time.Second
 	defaultOutputCleanupMaxDuration             = 24 * time.Hour
+	defaultCapacityReportInterval               = 30 * time.Second
+	maximumCapacityReportInterval               = 5 * time.Minute
 )
 
 type ControlPlane interface {
+	ReportCapacity(
+		context.Context,
+		workercontrol.CapacityObservation,
+	) (workercontrol.CapacityResult, error)
+	GetReadinessWork(context.Context, int64) (workercontrol.ReadinessWork, error)
+	ReportReadiness(
+		context.Context,
+		workercontrol.ReadinessEvidence,
+	) (workercontrol.ReadinessResult, error)
 	Acquire(context.Context, int64) (workercontrol.Assignment, error)
 	Start(context.Context, workercontrol.LeaseCredentials) (workercontrol.StartResult, error)
 	Heartbeat(
@@ -45,6 +57,11 @@ type ControlPlane interface {
 }
 
 type Runner interface {
+	ProbeReadiness(
+		context.Context,
+		runnertransport.ReadinessIdentity,
+		runnertransport.ReadinessCheck,
+	) (runnertransport.ReadinessResult, error)
 	Prepare(
 		context.Context,
 		runnertransport.AttemptIdentity,
@@ -104,10 +121,13 @@ type ArtifactPartUploader interface {
 type Config struct {
 	WorkerID                       uuid.UUID
 	WorkerEpoch                    int64
+	NodeIdentity                   string
 	Recovery                       *workerrecovery.Manager
 	Control                        ControlPlane
 	Runner                         Runner
 	HeartbeatInterval              time.Duration
+	CapacityReportInterval         time.Duration
+	ReportCapacityError            func(error)
 	MonotonicNow                   func() time.Duration
 	Wait                           func(context.Context, time.Duration) error
 	ArtifactStoreReachable         func(context.Context) bool
@@ -126,6 +146,7 @@ type Outcome string
 
 const (
 	OutcomeBackpressured        Outcome = "BACKPRESSURED"
+	OutcomeReadinessProgress    Outcome = "READINESS_PROGRESS"
 	OutcomeIdle                 Outcome = "IDLE"
 	OutcomeReadyForFinalization Outcome = "READY_FOR_FINALIZATION"
 	OutcomeVisibleCompletion    Outcome = "VISIBLE_COMPLETION"
@@ -143,15 +164,19 @@ type Result struct {
 	Outputs           []runnertransport.Output
 	StopReason        workercontrol.StopReason
 	VisibleCompletion workercontrol.VisibleCompletionResult
+	Readiness         workercontrol.ReadinessResult
 }
 
 type Agent struct {
 	workerID                       uuid.UUID
 	workerEpoch                    int64
+	nodeIdentity                   string
 	recovery                       *workerrecovery.Manager
 	control                        ControlPlane
 	runner                         Runner
 	heartbeatInterval              time.Duration
+	capacityReportInterval         time.Duration
+	reportCapacityError            func(error)
 	monotonicNow                   func() time.Duration
 	wait                           func(context.Context, time.Duration) error
 	artifactStoreReachable         func(context.Context) bool
@@ -178,6 +203,9 @@ func New(config Config) (*Agent, error) {
 		config.Finalization == nil || config.PartUploader == nil {
 		return nil, errors.New("worker agent configuration is incomplete")
 	}
+	if config.NodeIdentity != "" && !validBoundedPrintable(config.NodeIdentity, 500) {
+		return nil, errors.New("worker agent node identity is invalid")
+	}
 	outputRoot, err := securefile.ResolveTrustedDirectory(config.OutputRoot)
 	if err != nil || outputRoot == string(filepath.Separator) {
 		return nil, fmt.Errorf("validate approved output root: %w", err)
@@ -201,6 +229,18 @@ func New(config Config) (*Agent, error) {
 	wait := config.Wait
 	if wait == nil {
 		wait = waitContext
+	}
+	capacityReportInterval := config.CapacityReportInterval
+	if capacityReportInterval == 0 {
+		capacityReportInterval = defaultCapacityReportInterval
+	}
+	if capacityReportInterval < time.Millisecond ||
+		capacityReportInterval > maximumCapacityReportInterval {
+		return nil, errors.New("worker agent capacity report interval is invalid")
+	}
+	reportCapacityError := config.ReportCapacityError
+	if reportCapacityError == nil {
+		reportCapacityError = func(error) {}
 	}
 	artifactStoreReachable := config.ArtifactStoreReachable
 	if artifactStoreReachable == nil {
@@ -238,9 +278,12 @@ func New(config Config) (*Agent, error) {
 	}
 	return &Agent{
 		workerID: config.WorkerID, workerEpoch: config.WorkerEpoch,
-		recovery: config.Recovery, control: config.Control, runner: config.Runner,
-		heartbeatInterval: config.HeartbeatInterval,
-		monotonicNow:      monotonicNow, wait: wait,
+		nodeIdentity: config.NodeIdentity,
+		recovery:     config.Recovery, control: config.Control, runner: config.Runner,
+		heartbeatInterval:      config.HeartbeatInterval,
+		capacityReportInterval: capacityReportInterval,
+		reportCapacityError:    reportCapacityError,
+		monotonicNow:           monotonicNow, wait: wait,
 		artifactStoreReachable:         artifactStoreReachable,
 		outputRoot:                     outputRoot,
 		outputQuarantineRoot:           outputQuarantineRoot,
@@ -264,6 +307,8 @@ func (agent *Agent) RunOnce(ctx context.Context) (Result, error) {
 	if ctx == nil {
 		return Result{}, errors.New("worker agent context is required")
 	}
+	capacityReports := agent.startCapacityReports(ctx)
+	defer capacityReports.Stop()
 	watermark, err := agent.recovery.Watermark(ctx)
 	if err != nil {
 		return Result{}, err
@@ -274,7 +319,18 @@ func (agent *Agent) RunOnce(ctx context.Context) (Result, error) {
 	if resumed, ok, err := agent.resumeFinalization(ctx, watermark.State); ok || err != nil {
 		return resumed, err
 	}
-	if !watermark.AssignmentAllowed {
+	capacity, err := agent.reportCapacity(ctx, watermark)
+	if err != nil {
+		return Result{}, err
+	}
+	if !watermark.AssignmentAllowed || !capacity.WorkerAssignmentAllowed ||
+		!capacity.PoolReadinessAllowed {
+		return Result{Outcome: OutcomeBackpressured, Watermark: watermark.State}, nil
+	}
+	if readiness, handled, err := agent.runReadiness(ctx, watermark.State); handled || err != nil {
+		return readiness, err
+	}
+	if !capacity.PoolAssignmentAllowed {
 		return Result{Outcome: OutcomeBackpressured, Watermark: watermark.State}, nil
 	}
 	requestStarted := agent.monotonicNow()
@@ -405,6 +461,270 @@ func (agent *Agent) RunOnce(ctx context.Context) (Result, error) {
 		)
 	}
 	return agent.runExecutionLoop(ctx, handle, identity, assignment, credentials, watermark.State, deadline)
+}
+
+func (agent *Agent) runReadiness(
+	ctx context.Context,
+	watermark workerrecovery.WatermarkState,
+) (Result, bool, error) {
+	work, err := agent.control.GetReadinessWork(ctx, agent.workerEpoch)
+	if err != nil {
+		return Result{}, false, err
+	}
+	pending, exists, err := agent.recovery.PendingReadinessReport(ctx)
+	if err != nil {
+		return Result{}, false, err
+	}
+	if exists {
+		if work.Available && samePendingReadinessWork(pending, work) {
+			return agent.reportReadiness(ctx, pending, watermark)
+		}
+		if work.Available && pending.CycleID == work.CycleID &&
+			pending.Check == string(work.Check) {
+			return Result{}, false, errors.New("worker readiness work conflicts with durable evidence")
+		}
+		if err := agent.recovery.CompleteReadinessReport(
+			ctx, pending.CycleID, pending.Check,
+		); err != nil {
+			return Result{}, false, err
+		}
+	}
+	if !work.Available {
+		return Result{}, false, nil
+	}
+	if err := agent.validateReadinessWork(work); err != nil {
+		return Result{}, false, err
+	}
+	passed, evidence, err := agent.executeReadiness(ctx, work)
+	if err != nil {
+		return Result{}, false, err
+	}
+	report, err := agent.recovery.BeginReadinessReport(ctx, workerrecovery.ReadinessReport{
+		CycleID: work.CycleID, Check: string(work.Check), WorkerPoolID: work.WorkerPoolID,
+		NodeIdentity: work.NodeIdentity, ExecutionProfileRevisionID: work.ExecutionProfileRevisionID,
+		InferenceBackendRevision: work.InferenceBackendRevision, Deadline: work.Deadline,
+		Passed: passed, Evidence: append(json.RawMessage(nil), evidence...),
+		EvidenceDigest: sha256.Sum256(evidence),
+	})
+	if err != nil {
+		return Result{}, false, err
+	}
+	return agent.reportReadiness(ctx, report, watermark)
+}
+
+func (agent *Agent) executeReadiness(
+	ctx context.Context,
+	work workercontrol.ReadinessWork,
+) (bool, []byte, error) {
+	if work.Check == workercontrol.ReadinessIdentity {
+		evidence, err := json.Marshal(map[string]any{
+			"schema_version": 1, "cycle_id": work.CycleID.String(),
+			"worker_id": work.WorkerID.String(), "worker_pool_id": work.WorkerPoolID.String(),
+			"worker_epoch": work.WorkerEpoch, "node_identity": work.NodeIdentity,
+			"execution_profile_revision_id": work.ExecutionProfileRevisionID.String(),
+			"inference_backend_revision":    work.InferenceBackendRevision,
+			"deadline":                      work.Deadline.UTC().Format(time.RFC3339Nano),
+			"check":                         string(work.Check), "passed": true,
+		})
+		if err != nil {
+			return false, nil, fmt.Errorf("encode Worker identity readiness evidence: %w", err)
+		}
+		return true, evidence, nil
+	}
+	check, err := runnerReadinessCheck(work.Check)
+	if err != nil {
+		return false, nil, err
+	}
+	result, err := agent.runner.ProbeReadiness(ctx, runnertransport.ReadinessIdentity{
+		CycleID: work.CycleID, WorkerID: work.WorkerID, WorkerEpoch: work.WorkerEpoch,
+		NodeIdentity:               work.NodeIdentity,
+		ExecutionProfileRevisionID: work.ExecutionProfileRevisionID,
+		InferenceBackendRevision:   work.InferenceBackendRevision, Deadline: work.Deadline,
+	}, check)
+	if err != nil {
+		return false, nil, err
+	}
+	if result.Decision != runnertransport.CommandAccepted {
+		evidence, evidenceErr := runnerReadinessFailureEvidence(work, result.Detail)
+		if evidenceErr != nil {
+			return false, nil, evidenceErr
+		}
+		return false, evidence, nil
+	}
+	if len(result.Evidence) == 0 {
+		evidence, evidenceErr := runnerReadinessFailureEvidence(
+			work,
+			"runner readiness response omitted evidence",
+		)
+		if evidenceErr != nil {
+			return false, nil, evidenceErr
+		}
+		return false, evidence, nil
+	}
+	return result.Passed, append([]byte(nil), result.Evidence...), nil
+}
+
+func runnerReadinessFailureEvidence(
+	work workercontrol.ReadinessWork,
+	detail string,
+) ([]byte, error) {
+	evidence, err := json.Marshal(map[string]any{
+		"schema_version": 1, "cycle_id": work.CycleID.String(),
+		"worker_id": work.WorkerID.String(), "worker_pool_id": work.WorkerPoolID.String(),
+		"worker_epoch": work.WorkerEpoch, "node_identity": work.NodeIdentity,
+		"execution_profile_revision_id": work.ExecutionProfileRevisionID.String(),
+		"inference_backend_revision":    work.InferenceBackendRevision,
+		"deadline":                      work.Deadline.UTC().Format(time.RFC3339Nano),
+		"check": string(work.Check), "passed": false,
+		"failure_detail": detail,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode Runner readiness failure evidence: %w", err)
+	}
+	return evidence, nil
+}
+
+func (agent *Agent) reportReadiness(
+	ctx context.Context,
+	report workerrecovery.ReadinessReport,
+	watermark workerrecovery.WatermarkState,
+) (Result, bool, error) {
+	result, err := agent.control.ReportReadiness(ctx, workercontrol.ReadinessEvidence{
+		WorkerEpoch: agent.workerEpoch, CycleID: report.CycleID,
+		Check: workercontrol.ReadinessCheck(report.Check), Passed: report.Passed,
+		EvidenceDigest: report.EvidenceDigest,
+	})
+	if err != nil {
+		return Result{}, true, err
+	}
+	if err := validateReadinessResult(result, report); err != nil {
+		return Result{}, true, err
+	}
+	if err := agent.recovery.CompleteReadinessReport(ctx, report.CycleID, report.Check); err != nil {
+		return Result{}, true, err
+	}
+	return Result{
+		Outcome: OutcomeReadinessProgress, Watermark: watermark, Readiness: result,
+	}, true, nil
+}
+
+func (agent *Agent) validateReadinessWork(work workercontrol.ReadinessWork) error {
+	if agent.nodeIdentity == "" || work.CycleID == uuid.Nil || work.WorkerPoolID == uuid.Nil ||
+		work.WorkerID != agent.workerID || work.WorkerEpoch != agent.workerEpoch ||
+		work.NodeIdentity != agent.nodeIdentity || work.ExecutionProfileRevisionID == uuid.Nil ||
+		work.InferenceBackendRevision != agent.inferenceBackendRevision || work.Deadline.IsZero() {
+		return errors.New("worker readiness work does not match local authority")
+	}
+	switch work.Check {
+	case workercontrol.ReadinessIdentity, workercontrol.ReadinessDevice,
+		workercontrol.ReadinessInferenceBackend, workercontrol.ReadinessModelWarmup,
+		workercontrol.ReadinessCanary:
+		return nil
+	default:
+		return errors.New("worker readiness work has an invalid check")
+	}
+}
+
+func samePendingReadinessWork(
+	pending workerrecovery.ReadinessReport,
+	work workercontrol.ReadinessWork,
+) bool {
+	return pending.CycleID == work.CycleID && pending.Check == string(work.Check) &&
+		pending.WorkerPoolID == work.WorkerPoolID && pending.NodeIdentity == work.NodeIdentity &&
+		pending.ExecutionProfileRevisionID == work.ExecutionProfileRevisionID &&
+		pending.InferenceBackendRevision == work.InferenceBackendRevision &&
+		pending.Deadline.Equal(work.Deadline)
+}
+
+func runnerReadinessCheck(check workercontrol.ReadinessCheck) (runnertransport.ReadinessCheck, error) {
+	switch check {
+	case workercontrol.ReadinessDevice:
+		return runnertransport.ReadinessDevice, nil
+	case workercontrol.ReadinessInferenceBackend:
+		return runnertransport.ReadinessInferenceBackend, nil
+	case workercontrol.ReadinessModelWarmup:
+		return runnertransport.ReadinessModelWarmup, nil
+	case workercontrol.ReadinessCanary:
+		return runnertransport.ReadinessCanary, nil
+	default:
+		return "", errors.New("worker readiness check cannot run through Runner")
+	}
+}
+
+func validateReadinessResult(
+	result workercontrol.ReadinessResult,
+	report workerrecovery.ReadinessReport,
+) error {
+	if result.CycleID != report.CycleID {
+		return errors.New("worker readiness result has a different cycle")
+	}
+	check := workercontrol.ReadinessCheck(report.Check)
+	switch result.State {
+	case workercontrol.ReadinessChecking:
+		next := map[workercontrol.ReadinessCheck]workercontrol.ReadinessCheck{
+			workercontrol.ReadinessIdentity:         workercontrol.ReadinessDevice,
+			workercontrol.ReadinessDevice:           workercontrol.ReadinessInferenceBackend,
+			workercontrol.ReadinessInferenceBackend: workercontrol.ReadinessModelWarmup,
+			workercontrol.ReadinessModelWarmup:      workercontrol.ReadinessCanary,
+		}[check]
+		if !report.Passed || next == "" || result.NextCheck != next ||
+			result.WorkerLifecycle != "WARMING" || result.WorkerReachability != "SUSPECT" {
+			return errors.New("worker readiness checking result is invalid")
+		}
+	case workercontrol.ReadinessReady:
+		if !report.Passed || check != workercontrol.ReadinessCanary || result.NextCheck != "" ||
+			result.WorkerLifecycle != "READY" || result.WorkerReachability != "HEALTHY" {
+			return errors.New("worker readiness READY result is invalid")
+		}
+	case workercontrol.ReadinessFailed:
+		if report.Passed || result.NextCheck != "" || result.WorkerLifecycle != "DRAINING" ||
+			result.WorkerReachability != "SUSPECT" {
+			return errors.New("worker readiness FAILED result is invalid")
+		}
+	case workercontrol.ReadinessExpired:
+		if result.NextCheck != "" || result.WorkerLifecycle != "DRAINING" ||
+			result.WorkerReachability != "SUSPECT" {
+			return errors.New("worker readiness EXPIRED result is invalid")
+		}
+	default:
+		return errors.New("worker readiness result state is invalid")
+	}
+	return nil
+}
+
+func (agent *Agent) reportCapacity(
+	ctx context.Context,
+	watermark workerrecovery.Watermark,
+) (workercontrol.CapacityResult, error) {
+	pending, err := agent.recovery.BeginCapacityReport(ctx, workerrecovery.CapacityReport{
+		WatermarkState: watermark.State,
+		TotalBytes:     watermark.TotalBytes, FreeBytes: watermark.FreeBytes,
+		HighWatermarkBytes:     watermark.HighWatermarkBytes,
+		LowWatermarkBytes:      watermark.LowWatermarkBytes,
+		CriticalFreeBytes:      watermark.CriticalFreeBytes,
+		ArtifactStoreReachable: agent.artifactStoreReachable(ctx),
+	})
+	if err != nil {
+		return workercontrol.CapacityResult{}, fmt.Errorf("persist Worker capacity report: %w", err)
+	}
+	observation := workercontrol.CapacityObservation{
+		WorkerEpoch: agent.workerEpoch, Sequence: pending.Sequence,
+		ObservedAt:     pending.ObservedAt,
+		WatermarkState: workercontrol.ScratchWatermarkState(pending.WatermarkState),
+		TotalBytes:     pending.TotalBytes, FreeBytes: pending.FreeBytes,
+		HighWatermarkBytes:     pending.HighWatermarkBytes,
+		LowWatermarkBytes:      pending.LowWatermarkBytes,
+		CriticalFreeBytes:      pending.CriticalFreeBytes,
+		ArtifactStoreReachable: pending.ArtifactStoreReachable,
+	}
+	result, err := agent.control.ReportCapacity(ctx, observation)
+	if err != nil {
+		return workercontrol.CapacityResult{}, fmt.Errorf("report Worker capacity: %w", err)
+	}
+	if err := agent.recovery.CompleteCapacityReport(ctx, pending.Sequence); err != nil {
+		return workercontrol.CapacityResult{}, fmt.Errorf("acknowledge Worker capacity report: %w", err)
+	}
+	return result, nil
 }
 
 func (agent *Agent) runExecutionLoop(

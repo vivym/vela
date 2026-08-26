@@ -21,12 +21,14 @@ import (
 	"github.com/vivym/vela/internal/workerhost"
 	"github.com/vivym/vela/internal/workerrecovery"
 	"github.com/vivym/vela/internal/workertransport"
+	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
 	scratchProbeXFSProjectQuota   = "xfs-project-quota"
 	scratchProbeStatFSDevelopment = "statfs-dev"
 	defaultHeartbeatInterval      = 20 * time.Second
+	defaultCapacityReportInterval = 30 * time.Second
 	defaultPollInterval           = time.Second
 	defaultBackoffMinimum         = time.Second
 	defaultBackoffMaximum         = 30 * time.Second
@@ -38,6 +40,7 @@ const (
 type config struct {
 	workerID                       uuid.UUID
 	workerEpoch                    int64
+	nodeIdentity                   string
 	controlAddress                 string
 	controlServerName              string
 	tlsCertificateFile             string
@@ -66,6 +69,7 @@ type config struct {
 	criticalFreeBytes              int64
 	terminalRetention              time.Duration
 	heartbeatInterval              time.Duration
+	capacityReportInterval         time.Duration
 	pollInterval                   time.Duration
 	backoffMinimum                 time.Duration
 	backoffMaximum                 time.Duration
@@ -184,8 +188,13 @@ func runWithContext(ctx context.Context, configuration config) error {
 	}
 	agent, err := workeragent.New(workeragent.Config{
 		WorkerID: configuration.workerID, WorkerEpoch: configuration.workerEpoch,
-		Recovery: recovery, Control: control, Runner: runner,
-		HeartbeatInterval:              configuration.heartbeatInterval,
+		NodeIdentity: configuration.nodeIdentity,
+		Recovery:     recovery, Control: control, Runner: runner,
+		HeartbeatInterval:      configuration.heartbeatInterval,
+		CapacityReportInterval: configuration.capacityReportInterval,
+		ReportCapacityError: func(cause error) {
+			slog.Warn("periodic Worker capacity report failed", "error", cause)
+		},
 		OutputRoot:                     configuration.outputRoot,
 		OutputOwnerUID:                 configuration.outputOwnerUID,
 		OutputCleanupMinBytesPerSecond: configuration.outputCleanupMinBytesPerSecond,
@@ -285,6 +294,7 @@ func loadConfig() (config, error) {
 	}
 	configuration := config{
 		workerID: workerID, workerEpoch: workerEpoch,
+		nodeIdentity:                   os.Getenv("VELA_WORKER_NODE_IDENTITY"),
 		controlAddress:                 os.Getenv("VELA_WORKER_CONTROL_ADDRESS"),
 		controlServerName:              os.Getenv("VELA_WORKER_CONTROL_SERVER_NAME"),
 		tlsCertificateFile:             os.Getenv("VELA_WORKER_TLS_CERT_FILE"),
@@ -304,6 +314,7 @@ func loadConfig() (config, error) {
 		xfsDevice:                      os.Getenv("VELA_WORKER_XFS_DEVICE"),
 		workerHostQuotaSocket:          os.Getenv("VELA_WORKER_HOST_QUOTA_SOCKET"),
 		heartbeatInterval:              defaultHeartbeatInterval,
+		capacityReportInterval:         defaultCapacityReportInterval,
 		pollInterval:                   defaultPollInterval,
 		backoffMinimum:                 defaultBackoffMinimum,
 		backoffMaximum:                 defaultBackoffMaximum,
@@ -312,6 +323,7 @@ func loadConfig() (config, error) {
 		workerHostQuotaTimeout:         defaultWorkerHostQuotaTimeout,
 	}
 	for name, value := range map[string]string{
+		"VELA_WORKER_NODE_IDENTITY":              configuration.nodeIdentity,
 		"VELA_WORKER_CONTROL_ADDRESS":            configuration.controlAddress,
 		"VELA_WORKER_CONTROL_SERVER_NAME":        configuration.controlServerName,
 		"VELA_WORKER_TLS_CERT_FILE":              configuration.tlsCertificateFile,
@@ -328,6 +340,12 @@ func loadConfig() (config, error) {
 		if strings.TrimSpace(value) == "" || strings.TrimSpace(value) != value {
 			return config{}, fmt.Errorf("%s is required and must not contain surrounding whitespace", name)
 		}
+	}
+	if problems := k8svalidation.IsDNS1123Subdomain(configuration.nodeIdentity); len(problems) != 0 {
+		return config{}, fmt.Errorf(
+			"VELA_WORKER_NODE_IDENTITY must be a Kubernetes node name: %s",
+			strings.Join(problems, "; "),
+		)
 	}
 	for name, path := range map[string]string{
 		"VELA_WORKER_TLS_CERT_FILE":   configuration.tlsCertificateFile,
@@ -422,6 +440,7 @@ func loadConfig() (config, error) {
 	}
 	for name, target := range map[string]*time.Duration{
 		"VELA_WORKER_HEARTBEAT_INTERVAL":           &configuration.heartbeatInterval,
+		"VELA_WORKER_CAPACITY_REPORT_INTERVAL":     &configuration.capacityReportInterval,
 		"VELA_WORKER_POLL_INTERVAL":                &configuration.pollInterval,
 		"VELA_WORKER_BACKOFF_MINIMUM":              &configuration.backoffMinimum,
 		"VELA_WORKER_BACKOFF_MAXIMUM":              &configuration.backoffMaximum,

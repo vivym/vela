@@ -1,0 +1,60 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: vela-fleet-protection
+  labels:
+    app.kubernetes.io/name: vela-fleet-controller
+    app.kubernetes.io/part-of: vela
+webhooks:
+  - name: fleet-protection.vela.ai
+    admissionReviewVersions:
+      - v1
+    failurePolicy: Fail
+    matchPolicy: Exact
+    sideEffects: None
+    timeoutSeconds: 5
+    clientConfig:
+      service:
+        name: vela-fleet-admission
+        namespace: vela-system
+        path: /validate
+        port: 443
+      # Invalid placeholder. Delivery must inject the exact webhook CA bundle.
+      caBundle: Cg==
+    objectSelector:
+      matchLabels:
+        vela.ai/fleet-protected: "true"
+    rules:
+      - operations:
+          - CREATE
+          - UPDATE
+          - DELETE
+        apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - pods
+        scope: Namespaced
+      - operations:
+          - CREATE
+          - UPDATE
+          - DELETE
+        apiGroups:
+          - apps
+        apiVersions:
+          - v1
+        resources:
+          - daemonsets
+        scope: Namespaced
+      - operations:
+          - CREATE
+          - UPDATE
+          - DELETE
+        apiGroups:
+          - fleet.vela.ai
+        apiVersions:
+          - v1alpha1
+        resources:
+          - workerpools
+        scope: Namespaced

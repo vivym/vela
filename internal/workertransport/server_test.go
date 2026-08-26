@@ -11,18 +11,165 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/artifactstore"
+	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestConnectReportsCapacityUnderMTLSWorkerIdentity(t *testing.T) {
+	const spiffeID = "spiffe://vela.internal/worker/h3-capacity-01"
+	observedAt := time.Date(2026, 8, 26, 1, 2, 3, 0, time.UTC)
+	workerID := uuid.MustParse("10000000-0000-0000-0000-000000000001")
+	poolID := uuid.MustParse("10000000-0000-0000-0000-000000000002")
+	recorder := &recordingFleetCapacityService{result: fleet.CapacityResult{
+		WorkerPoolID: poolID, WorkerState: fleet.CapacityAdmittable,
+		PoolState: fleet.CapacityAdmittable, WorkerAssignmentAllowed: true,
+		PoolAssignmentAllowed: true,
+	}}
+	server, err := NewServer(
+		&recordingIdentityResolver{worker: workercontrol.AuthenticatedWorker{
+			ID: workerID, PoolID: poolID, SPIFFEID: spiffeID,
+		}},
+		&recordingFinalizationCoordinator{},
+		&recordingArtifactUploadStore{},
+		recorder,
+	)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	requestID := uuid.NewString()
+	stream := &recordingConnectStream{
+		ctx: mtlsPeerContext(t, spiffeID),
+		requests: []*velav1.ConnectRequest{{
+			RequestId: requestID,
+			Operation: &velav1.ConnectRequest_ReportCapacity{
+				ReportCapacity: &velav1.ReportWorkerCapacityRequest{
+					WorkerEpoch: 7, ObservationSequence: 3,
+					ObservedAt:     timestamppb.New(observedAt),
+					WatermarkState: velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_NORMAL,
+					TotalBytes:     1000, FreeBytes: 700,
+					HighWatermarkBytes: 800, LowWatermarkBytes: 400,
+					CriticalFreeBytes: 100, ArtifactStoreReachable: true,
+				},
+			},
+		}},
+	}
+	if err := server.Connect(stream); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	want := fleet.CapacityObservation{
+		WorkerID: workerID, WorkerPoolID: poolID, WorkerEpoch: 7, Sequence: 3,
+		ObservedAt: observedAt, WatermarkState: fleet.ScratchWatermarkNormal,
+		TotalBytes: 1000, FreeBytes: 700, HighWatermarkBytes: 800,
+		LowWatermarkBytes: 400, CriticalFreeBytes: 100,
+		ArtifactStoreReachable: true, ObservedBy: spiffeID,
+	}
+	if recorder.observation != want {
+		t.Fatalf("capacity observation = %#v, want %#v", recorder.observation, want)
+	}
+	if len(stream.responses) != 1 || stream.responses[0].GetRequestId() != requestID ||
+		stream.responses[0].GetCapacityResult().GetWorkerPoolId() != poolID.String() ||
+		!stream.responses[0].GetCapacityResult().GetWorkerAssignmentAllowed() ||
+		!stream.responses[0].GetCapacityResult().GetPoolAssignmentAllowed() {
+		t.Fatalf("capacity response = %#v", stream.responses)
+	}
+}
+
+func TestConnectGetsAndReportsReadinessUnderExactMTLSWorkerIdentity(t *testing.T) {
+	const spiffeID = "spiffe://vela.internal/worker/h3-readiness-01"
+	workerID := uuid.MustParse("10000000-0000-0000-0000-000000000001")
+	poolID := uuid.MustParse("10000000-0000-0000-0000-000000000002")
+	cycleID := uuid.MustParse("f98bf4ac-94c4-5360-a476-cac78358adbd")
+	profileID := uuid.MustParse("10000000-0000-0000-0000-000000000003")
+	deadline := time.Date(2026, 8, 25, 15, 0, 0, 0, time.UTC)
+	digest := sha256.Sum256([]byte("identity readiness evidence"))
+	recorder := &recordingFleetCapacityService{
+		readinessWork: fleet.ReadinessWork{
+			Available: true, CycleID: cycleID, Check: fleet.ReadinessIdentity,
+			WorkerID: workerID, WorkerPoolID: poolID, WorkerEpoch: 7,
+			NodeIdentity: "h3-node-01", ExecutionProfileRevisionID: profileID,
+			InferenceBackendRevision: "sglang-h3-v3", Deadline: deadline,
+		},
+		readinessResult: fleet.ReadinessResult{
+			CycleID: cycleID, State: fleet.ReadinessChecking, NextCheck: fleet.ReadinessDevice,
+			WorkerLifecycle: "WARMING", WorkerReachability: "SUSPECT",
+		},
+	}
+	server, err := NewServer(
+		&recordingIdentityResolver{worker: workercontrol.AuthenticatedWorker{
+			ID: workerID, PoolID: poolID, SPIFFEID: spiffeID,
+		}},
+		&recordingFinalizationCoordinator{},
+		&recordingArtifactUploadStore{},
+		recorder,
+	)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	getRequestID := uuid.NewString()
+	reportRequestID := uuid.NewString()
+	stream := &recordingConnectStream{
+		ctx: mtlsPeerContext(t, spiffeID),
+		requests: []*velav1.ConnectRequest{
+			{
+				RequestId: getRequestID,
+				Operation: &velav1.ConnectRequest_GetReadinessWork{
+					GetReadinessWork: &velav1.GetWorkerReadinessRequest{WorkerEpoch: 7},
+				},
+			},
+			{
+				RequestId: reportRequestID,
+				Operation: &velav1.ConnectRequest_ReportReadiness{
+					ReportReadiness: &velav1.ReportWorkerReadinessRequest{
+						WorkerEpoch: 7, CycleId: cycleID.String(),
+						Check:  velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_IDENTITY,
+						Passed: true, EvidenceDigest: digest[:],
+					},
+				},
+			},
+		},
+	}
+	if err := server.Connect(stream); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if !reflect.DeepEqual(recorder.readinessWorkers, []readinessWorkerRequest{
+		{WorkerID: workerID, WorkerEpoch: 7},
+		{WorkerID: workerID, WorkerEpoch: 7},
+	}) {
+		t.Fatalf("readiness Worker lookups = %#v", recorder.readinessWorkers)
+	}
+	wantEvidence := fleet.ReadinessEvidence{
+		CycleID: cycleID, Check: fleet.ReadinessIdentity, Passed: true,
+		EvidenceDigest: digest[:], ObservedBy: spiffeID,
+	}
+	if !reflect.DeepEqual(recorder.readinessEvidence, []fleet.ReadinessEvidence{wantEvidence}) {
+		t.Fatalf("readiness evidence = %#v", recorder.readinessEvidence)
+	}
+	if len(stream.responses) != 2 ||
+		stream.responses[0].GetRequestId() != getRequestID ||
+		stream.responses[0].GetReadinessWork().GetWorkerId() != workerID.String() ||
+		stream.responses[0].GetReadinessWork().GetWorkerPoolId() != poolID.String() ||
+		stream.responses[1].GetRequestId() != reportRequestID ||
+		stream.responses[1].GetReadinessResult().GetNextCheck() !=
+			velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_DEVICE ||
+		stream.responses[1].GetReadinessResult().GetWorkerLifecycle() !=
+			velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_WARMING ||
+		stream.responses[1].GetReadinessResult().GetWorkerReachability() !=
+			velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_SUSPECT {
+		t.Fatalf("readiness responses = %#v", stream.responses)
+	}
+}
 
 func TestConnectDispatchesFinalizationOperationsUnderMTLSWorkerIdentity(t *testing.T) {
 	const spiffeID = "spiffe://vela.internal/worker/h3-primary-01"
@@ -517,6 +664,47 @@ type recordingFinalizationCoordinator struct {
 	acquireCandidatePresent                                                bool
 	heartbeatObservation                                                   workercontrol.HeartbeatObservation
 	failureObservation                                                     workercontrol.FailureObservation
+}
+
+type recordingFleetCapacityService struct {
+	observation       fleet.CapacityObservation
+	result            fleet.CapacityResult
+	readinessWork     fleet.ReadinessWork
+	readinessResult   fleet.ReadinessResult
+	readinessWorkers  []readinessWorkerRequest
+	readinessEvidence []fleet.ReadinessEvidence
+}
+
+type readinessWorkerRequest struct {
+	WorkerID    uuid.UUID
+	WorkerEpoch int64
+}
+
+func (service *recordingFleetCapacityService) ObserveCapacity(
+	_ context.Context,
+	observation fleet.CapacityObservation,
+) (fleet.CapacityResult, error) {
+	service.observation = observation
+	return service.result, nil
+}
+
+func (service *recordingFleetCapacityService) GetWorkerReadinessWork(
+	_ context.Context,
+	workerID uuid.UUID,
+	workerEpoch int64,
+) (fleet.ReadinessWork, error) {
+	service.readinessWorkers = append(service.readinessWorkers, readinessWorkerRequest{
+		WorkerID: workerID, WorkerEpoch: workerEpoch,
+	})
+	return service.readinessWork, nil
+}
+
+func (service *recordingFleetCapacityService) ReportReadiness(
+	_ context.Context,
+	evidence fleet.ReadinessEvidence,
+) (fleet.ReadinessResult, error) {
+	service.readinessEvidence = append(service.readinessEvidence, evidence)
+	return service.readinessResult, nil
 }
 
 func (coordinator *recordingFinalizationCoordinator) record(

@@ -84,7 +84,7 @@ func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 		PostcheckHash: postcheck[:], ActorIdentity: "node-agent-1",
 	})
 	if err != nil || completed.State != remediation.StateSucceeded ||
-		string(completed.WorkerLifecycleState) != "READY" || string(completed.WorkerReachability) != "HEALTHY" {
+		string(completed.WorkerLifecycleState) != "WARMING" || string(completed.WorkerReachability) != "SUSPECT" {
 		t.Fatalf("complete Remediation = %#v error=%v", completed, err)
 	}
 	operation, err := service.Get(context.Background(), request.OperationID)

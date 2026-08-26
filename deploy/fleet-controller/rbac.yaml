@@ -1,0 +1,102 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vela-fleet-controller
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-fleet-controller
+    app.kubernetes.io/part-of: vela
+rules:
+  - apiGroups:
+      - fleet.vela.ai
+    resources:
+      - workerpools
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - fleet.vela.ai
+    resources:
+      - workerpools/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vela-fleet-controller
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-fleet-controller
+    app.kubernetes.io/part-of: vela
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vela-fleet-controller
+subjects:
+  - kind: ServiceAccount
+    name: vela-fleet-controller
+    namespace: vela-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vela-fleet-controller-node-reader
+  labels:
+    app.kubernetes.io/name: vela-fleet-controller
+    app.kubernetes.io/part-of: vela
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vela-fleet-controller-node-reader
+  labels:
+    app.kubernetes.io/name: vela-fleet-controller
+    app.kubernetes.io/part-of: vela
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vela-fleet-controller-node-reader
+subjects:
+  - kind: ServiceAccount
+    name: vela-fleet-controller
+    namespace: vela-system

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
+import threading
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -18,6 +21,246 @@ MODEL_ID = "84000000-0000-0000-0000-000000000004"
 PRESET_ID = "84000000-0000-0000-0000-000000000005"
 PROFILE_ID = "84000000-0000-0000-0000-000000000006"
 OUTPUT_SPEC_ID = "84000000-0000-0000-0000-000000000007"
+CYCLE_ID = "84000000-0000-0000-0000-000000000008"
+
+
+def test_runner_probes_device_readiness_through_the_pinned_backend(tmp_path: Path) -> None:
+    runtime = RunnerRuntime(runtime_config(tmp_path, readiness_backend(tmp_path)))
+    deadline = datetime.now(UTC).replace(microsecond=123456) + timedelta(seconds=5)
+    identity = runner_pb2.RunnerReadinessIdentity(
+        cycle_id=CYCLE_ID,
+        worker_id=WORKER_ID,
+        worker_epoch=7,
+        node_identity="h3-node-01",
+        execution_profile_revision_id=PROFILE_ID,
+        inference_backend_revision="sglang@sha256:test",
+    )
+    identity.deadline.FromDatetime(deadline)
+
+    response = runtime.ProbeReadiness(
+        runner_pb2.ProbeReadinessRequest(
+            identity=identity,
+            check=runner_pb2.RUNNER_READINESS_CHECK_DEVICE,
+        ),
+        None,
+    )
+
+    expected = {
+        "schema_version": 1,
+        "cycle_id": CYCLE_ID,
+        "worker_id": WORKER_ID,
+        "worker_epoch": 7,
+        "node_identity": "h3-node-01",
+        "execution_profile_revision_id": PROFILE_ID,
+        "inference_backend_revision": "sglang@sha256:test",
+        "deadline": deadline.isoformat().replace("+00:00", "Z"),
+        "check": "DEVICE",
+        "passed": True,
+        "encoder_vae_gpu_uuid": "GPU-00000000-0000-0000-0000-000000000001",
+        "dit_gpu_uuids": [
+            f"GPU-00000000-0000-0000-0000-{index:012d}" for index in range(2, 9)
+        ],
+    }
+    assert response.identity == identity
+    assert response.check == runner_pb2.RUNNER_READINESS_CHECK_DEVICE
+    assert response.decision == runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED
+    assert response.passed is True
+    assert response.detail == "device roles verified"
+    assert response.evidence_json == json.dumps(
+        expected, separators=(",", ":"), sort_keys=True
+    ).encode()
+    assert (tmp_path / "readiness-mode").read_text(encoding="utf-8") == "DEVICE"
+    runtime.close()
+
+
+def test_runner_rejects_noncanonical_device_gpu_evidence(tmp_path: Path) -> None:
+    backend = readiness_backend(tmp_path)
+    backend.write_text(
+        backend.read_text(encoding="utf-8").replace(
+            "GPU-00000000-0000-0000-0000-000000000001",
+            "GPU-AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA",
+        ),
+        encoding="utf-8",
+    )
+    runtime = RunnerRuntime(runtime_config(tmp_path, backend))
+    deadline = datetime.now(UTC) + timedelta(seconds=5)
+    identity = runner_pb2.RunnerReadinessIdentity(
+        cycle_id=CYCLE_ID,
+        worker_id=WORKER_ID,
+        worker_epoch=7,
+        node_identity="h3-node-01",
+        execution_profile_revision_id=PROFILE_ID,
+        inference_backend_revision="sglang@sha256:test",
+    )
+    identity.deadline.FromDatetime(deadline)
+
+    response = runtime.ProbeReadiness(
+        runner_pb2.ProbeReadinessRequest(
+            identity=identity,
+            check=runner_pb2.RUNNER_READINESS_CHECK_DEVICE,
+        ),
+        None,
+    )
+
+    assert response.decision == runner_pb2.RUNNER_COMMAND_DECISION_REJECTED
+    assert response.evidence_json == b""
+    runtime.close()
+
+
+def test_runner_rejects_readiness_while_an_attempt_is_active(tmp_path: Path) -> None:
+    runtime = RunnerRuntime(runtime_config(tmp_path, successful_backend(tmp_path)))
+    runtime.Prepare(
+        runner_pb2.PrepareRequest(identity=attempt_identity(), execution_spec=execution_spec()),
+        None,
+    )
+    request = readiness_request(datetime.now(UTC) + timedelta(seconds=5))
+
+    response = runtime.ProbeReadiness(request, None)
+
+    assert response.decision == runner_pb2.RUNNER_COMMAND_DECISION_REJECTED
+    assert response.evidence_json == b""
+    assert "active Attempt" in response.detail
+    runtime.close()
+
+
+def test_runner_rejects_duplicate_backend_readiness_evidence(tmp_path: Path) -> None:
+    runtime = RunnerRuntime(runtime_config(tmp_path, duplicate_readiness_backend(tmp_path)))
+    request = readiness_request(
+        datetime.now(UTC) + timedelta(seconds=5),
+        runner_pb2.RUNNER_READINESS_CHECK_CANARY,
+    )
+
+    response = runtime.ProbeReadiness(request, None)
+
+    assert response.decision == runner_pb2.RUNNER_COMMAND_DECISION_REJECTED
+    assert response.evidence_json == b""
+    runtime.close()
+
+
+def test_runner_terminates_readiness_backend_at_the_absolute_deadline(tmp_path: Path) -> None:
+    runtime = RunnerRuntime(runtime_config(tmp_path, slow_readiness_backend(tmp_path)))
+    request = readiness_request(datetime.now(UTC) + timedelta(milliseconds=100))
+    started = time.monotonic()
+
+    response = runtime.ProbeReadiness(request, None)
+
+    assert time.monotonic() - started < 2
+    assert response.decision == runner_pb2.RUNNER_COMMAND_DECISION_REJECTED
+    assert response.evidence_json == b""
+    assert "timed out" in response.detail
+    runtime.close()
+
+
+def test_runner_cancellation_terminates_readiness_without_blocking_other_rpcs(
+    tmp_path: Path,
+) -> None:
+    runtime = RunnerRuntime(runtime_config(tmp_path, cancellable_readiness_backend(tmp_path)))
+    context = CancelableReadinessContext()
+    response: list[runner_pb2.ProbeReadinessResponse] = []
+    probe = threading.Thread(
+        target=lambda: response.append(
+            runtime.ProbeReadiness(
+                readiness_request(datetime.now(UTC) + timedelta(seconds=30)), context
+            )
+        )
+    )
+    probe.start()
+    pid_path = tmp_path / "readiness-pid"
+    deadline = time.monotonic() + 2
+    while not pid_path.exists():
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+
+    started = time.monotonic()
+    prepared = runtime.Prepare(
+        runner_pb2.PrepareRequest(
+            identity=attempt_identity(), execution_spec=execution_spec()
+        ),
+        None,
+    )
+    assert time.monotonic() - started < 0.5
+    assert prepared.decision == runner_pb2.RUNNER_COMMAND_DECISION_REJECTED
+    assert "readiness probe" in prepared.detail
+
+    context.cancel()
+    probe.join(timeout=2)
+    assert not probe.is_alive()
+    assert len(response) == 1
+    assert response[0].decision == runner_pb2.RUNNER_COMMAND_DECISION_REJECTED
+    assert response[0].detail == "readiness probe canceled"
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_path.read_text(encoding="utf-8")), 0)
+    runtime.close()
+
+
+@pytest.mark.parametrize(
+    ("check", "check_name", "expected_specific", "expected_detail"),
+    [
+        (
+            runner_pb2.RUNNER_READINESS_CHECK_INFERENCE_BACKEND,
+            "INFERENCE_BACKEND",
+            {"loaded": True},
+            "inference backend verified",
+        ),
+        (
+            runner_pb2.RUNNER_READINESS_CHECK_MODEL_WARMUP,
+            "MODEL_WARMUP",
+            {"warmed": True},
+            "model warm-up verified",
+        ),
+        (
+            runner_pb2.RUNNER_READINESS_CHECK_CANARY,
+            "CANARY",
+            {"output_sha256": "a" * 64},
+            "canary output verified",
+        ),
+    ],
+)
+def test_runner_returns_strict_backend_readiness_evidence(
+    tmp_path: Path,
+    check: int,
+    check_name: str,
+    expected_specific: dict[str, object],
+    expected_detail: str,
+) -> None:
+    runtime = RunnerRuntime(runtime_config(tmp_path, readiness_backend(tmp_path)))
+    deadline = datetime.now(UTC).replace(microsecond=234567) + timedelta(seconds=5)
+    identity = runner_pb2.RunnerReadinessIdentity(
+        cycle_id=CYCLE_ID,
+        worker_id=WORKER_ID,
+        worker_epoch=7,
+        node_identity="h3-node-01",
+        execution_profile_revision_id=PROFILE_ID,
+        inference_backend_revision="sglang@sha256:test",
+    )
+    identity.deadline.FromDatetime(deadline)
+
+    response = runtime.ProbeReadiness(
+        runner_pb2.ProbeReadinessRequest(identity=identity, check=check), None
+    )
+
+    expected = {
+        "schema_version": 1,
+        "cycle_id": CYCLE_ID,
+        "worker_id": WORKER_ID,
+        "worker_epoch": 7,
+        "node_identity": "h3-node-01",
+        "execution_profile_revision_id": PROFILE_ID,
+        "inference_backend_revision": "sglang@sha256:test",
+        "deadline": deadline.isoformat().replace("+00:00", "Z"),
+        "check": check_name,
+        "passed": True,
+    } | expected_specific
+    assert response.identity == identity
+    assert response.check == check
+    assert response.decision == runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED
+    assert response.passed is True
+    assert response.detail == expected_detail
+    assert response.evidence_json == json.dumps(
+        expected, separators=(",", ":"), sort_keys=True
+    ).encode()
+    assert (tmp_path / "readiness-mode").read_text(encoding="utf-8") == check_name
+    runtime.close()
 
 
 def test_runner_executes_exact_profile_and_collects_verified_outputs(tmp_path: Path) -> None:
@@ -852,6 +1095,37 @@ def execution_spec() -> runner_pb2.RunnerExecutionSpec:
     )
 
 
+def readiness_request(
+    deadline: datetime,
+    check: int = runner_pb2.RUNNER_READINESS_CHECK_DEVICE,
+) -> runner_pb2.ProbeReadinessRequest:
+    identity = runner_pb2.RunnerReadinessIdentity(
+        cycle_id=CYCLE_ID,
+        worker_id=WORKER_ID,
+        worker_epoch=7,
+        node_identity="h3-node-01",
+        execution_profile_revision_id=PROFILE_ID,
+        inference_backend_revision="sglang@sha256:test",
+    )
+    identity.deadline.FromDatetime(deadline)
+    return runner_pb2.ProbeReadinessRequest(identity=identity, check=check)
+
+
+class CancelableReadinessContext:
+    def __init__(self) -> None:
+        self._active = threading.Event()
+        self._active.set()
+
+    def is_active(self) -> bool:
+        return self._active.is_set()
+
+    def time_remaining(self) -> float:
+        return 30.0
+
+    def cancel(self) -> None:
+        self._active.clear()
+
+
 def wait_for_terminal(
     runtime: RunnerRuntime, identity: runner_pb2.RunnerAttemptIdentity
 ) -> runner_pb2.StatusResponse:
@@ -905,6 +1179,130 @@ Path(args.vela_status).write_text(
     json.dumps({"schema_version": 1, "backend_stage": "vae", "sequence": 3}),
     encoding="utf-8",
 )
+""".strip(),
+        encoding="utf-8",
+    )
+    return script
+
+
+def readiness_backend(tmp_path: Path) -> Path:
+    script = tmp_path / "readiness_backend.py"
+    script.write_text(
+        f"""
+import argparse
+import json
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--vela-readiness-check", required=True)
+parser.add_argument("--vela-readiness-request", required=True)
+parser.add_argument("--vela-readiness-result", required=True)
+args = parser.parse_args()
+request = json.loads(Path(args.vela_readiness_request).read_text(encoding="utf-8"))
+assert request["check"] == args.vela_readiness_check
+assert request["execution_profile_revision_id"] == "{PROFILE_ID}"
+assert request["inference_backend_revision"] == "sglang@sha256:test"
+Path({str(tmp_path / "readiness-mode")!r}).write_text(args.vela_readiness_check, encoding="utf-8")
+results = {{
+    "DEVICE": {{
+        "schema_version": 1,
+        "check": "DEVICE",
+        "passed": True,
+        "encoder_vae_gpu_uuid": "GPU-00000000-0000-0000-0000-000000000001",
+        "dit_gpu_uuids": [
+            f"GPU-00000000-0000-0000-0000-{{index:012d}}" for index in range(2, 9)
+        ],
+    }},
+    "INFERENCE_BACKEND": {{
+        "schema_version": 1,
+        "check": "INFERENCE_BACKEND",
+        "passed": True,
+        "inference_backend_revision": "sglang@sha256:test",
+        "loaded": True,
+    }},
+    "MODEL_WARMUP": {{
+        "schema_version": 1,
+        "check": "MODEL_WARMUP",
+        "passed": True,
+        "execution_profile_revision_id": "{PROFILE_ID}",
+        "warmed": True,
+    }},
+    "CANARY": {{
+        "schema_version": 1,
+        "check": "CANARY",
+        "passed": True,
+        "output_sha256": "a" * 64,
+    }},
+}}
+result_path = Path(args.vela_readiness_result)
+result_path.write_text(json.dumps(results[args.vela_readiness_check]), encoding="utf-8")
+result_path.chmod(0o600)
+""".strip(),
+        encoding="utf-8",
+    )
+    return script
+
+
+def duplicate_readiness_backend(tmp_path: Path) -> Path:
+    script = tmp_path / "duplicate_readiness_backend.py"
+    script.write_text(
+        """
+import argparse
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--vela-readiness-check", required=True)
+parser.add_argument("--vela-readiness-request", required=True)
+parser.add_argument("--vela-readiness-result", required=True)
+args = parser.parse_args()
+result = Path(args.vela_readiness_result)
+result.write_text(
+    '{"schema_version":1,"check":"CANARY","passed":true,'
+    '"passed":false,"output_sha256":"' + "a" * 64 + '"}',
+    encoding="utf-8",
+)
+result.chmod(0o600)
+""".strip(),
+        encoding="utf-8",
+    )
+    return script
+
+
+def slow_readiness_backend(tmp_path: Path) -> Path:
+    script = tmp_path / "slow_readiness_backend.py"
+    script.write_text(
+        """
+import argparse
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--vela-readiness-check", required=True)
+parser.add_argument("--vela-readiness-request", required=True)
+parser.add_argument("--vela-readiness-result", required=True)
+parser.parse_args()
+time.sleep(5)
+""".strip(),
+        encoding="utf-8",
+    )
+    return script
+
+
+def cancellable_readiness_backend(tmp_path: Path) -> Path:
+    script = tmp_path / "cancellable_readiness_backend.py"
+    script.write_text(
+        f"""
+import argparse
+import os
+import time
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--vela-readiness-check", required=True)
+parser.add_argument("--vela-readiness-request", required=True)
+parser.add_argument("--vela-readiness-result", required=True)
+parser.parse_args()
+Path({str(tmp_path / "readiness-pid")!r}).write_text(str(os.getpid()), encoding="utf-8")
+time.sleep(30)
 """.strip(),
         encoding="utf-8",
     )

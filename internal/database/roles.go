@@ -34,6 +34,7 @@ const (
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
 	RoleRemediation                Role = "vela_remediation"
+	RoleFleet                      Role = "vela_fleet"
 )
 
 type rowQuerier interface {
@@ -68,6 +69,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
+	RoleFleet:                      {verifyPrivileges: verifyFleetPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -246,6 +248,30 @@ func verifyRemediationPrivileges(ctx context.Context, database rowQuerier, curre
 			"vela_recover_remediation(uuid,text)",
 			"vela_get_remediation_operation(uuid)",
 			"vela_list_executing_remediation(integer)",
+		},
+	})
+}
+
+func verifyFleetPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Fleet",
+		failureLabel:    "Fleet transaction",
+		functions: []string{
+			"vela_resolve_worker_identity(text,uuid,text,text,text)",
+			"vela_configure_worker_pool_capacity(uuid,text,bigint,bigint,bigint,bigint,bigint,bigint,text)",
+			"vela_observe_worker_capacity(uuid,uuid,bigint,bigint,timestamp with time zone,fleet_scratch_watermark_state,bigint,bigint,bigint,bigint,bigint,boolean,text)",
+			"vela_get_worker_pool_capacity(uuid)",
+			"vela_begin_worker_readiness(uuid,uuid,uuid,bigint,text,uuid,text,text,timestamptz)",
+			"vela_report_worker_readiness(uuid,fleet_readiness_check,boolean,bytea,text)",
+			"vela_get_worker_readiness(uuid)",
+			"vela_get_worker_readiness_work(uuid,bigint)",
+			"vela_request_worker_drain(uuid,uuid,bigint,text,timestamptz,text)",
+			"vela_reconcile_worker_drain(uuid,text)",
+			"vela_get_worker_drain(uuid)",
+			"vela_authorize_fleet_mutation(text,text,fleet_protected_resource_kind,fleet_mutation_operation,text,text,text,uuid,uuid,bigint,uuid[],bytea)",
+			"vela_has_fleet_retirement_authorization(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[])",
+			"vela_record_fleet_retirement_completion(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[],text)",
+			"vela_has_fleet_retirement_completion(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[])",
 		},
 	})
 }

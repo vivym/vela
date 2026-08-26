@@ -72,6 +72,87 @@ func (client *Client) Close() error {
 	return client.connection.Close()
 }
 
+func (client *Client) ReportCapacity(
+	ctx context.Context,
+	observation workercontrol.CapacityObservation,
+) (workercontrol.CapacityResult, error) {
+	observedAt := timestamppb.New(observation.ObservedAt.UTC())
+	watermarkState := scratchWatermarkState(observation.WatermarkState)
+	if observation.WorkerEpoch <= 0 || observation.Sequence <= 0 ||
+		observedAt.CheckValid() != nil ||
+		watermarkState == velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_UNSPECIFIED ||
+		observation.TotalBytes <= 0 || observation.FreeBytes < 0 ||
+		observation.FreeBytes > observation.TotalBytes ||
+		observation.HighWatermarkBytes <= 0 ||
+		observation.HighWatermarkBytes >= observation.TotalBytes ||
+		observation.LowWatermarkBytes < 0 ||
+		observation.LowWatermarkBytes >= observation.HighWatermarkBytes ||
+		observation.CriticalFreeBytes < 0 ||
+		observation.CriticalFreeBytes >= observation.TotalBytes {
+		return workercontrol.CapacityResult{}, errors.New("worker capacity observation is invalid")
+	}
+	response, err := client.exchange(ctx, &velav1.ConnectRequest{
+		Operation: &velav1.ConnectRequest_ReportCapacity{
+			ReportCapacity: &velav1.ReportWorkerCapacityRequest{
+				WorkerEpoch:         observation.WorkerEpoch,
+				ObservationSequence: observation.Sequence,
+				ObservedAt:          observedAt,
+				WatermarkState:      watermarkState,
+				TotalBytes:          observation.TotalBytes, FreeBytes: observation.FreeBytes,
+				HighWatermarkBytes:     observation.HighWatermarkBytes,
+				LowWatermarkBytes:      observation.LowWatermarkBytes,
+				CriticalFreeBytes:      observation.CriticalFreeBytes,
+				ArtifactStoreReachable: observation.ArtifactStoreReachable,
+			},
+		},
+	})
+	if err != nil {
+		return workercontrol.CapacityResult{}, err
+	}
+	return parseCapacityResult(response.GetCapacityResult())
+}
+
+func (client *Client) GetReadinessWork(
+	ctx context.Context,
+	workerEpoch int64,
+) (workercontrol.ReadinessWork, error) {
+	if workerEpoch <= 0 {
+		return workercontrol.ReadinessWork{}, errors.New("positive Worker epoch is required")
+	}
+	response, err := client.exchange(ctx, &velav1.ConnectRequest{
+		Operation: &velav1.ConnectRequest_GetReadinessWork{
+			GetReadinessWork: &velav1.GetWorkerReadinessRequest{WorkerEpoch: workerEpoch},
+		},
+	})
+	if err != nil {
+		return workercontrol.ReadinessWork{}, err
+	}
+	return parseReadinessWork(response.GetReadinessWork(), workerEpoch)
+}
+
+func (client *Client) ReportReadiness(
+	ctx context.Context,
+	evidence workercontrol.ReadinessEvidence,
+) (workercontrol.ReadinessResult, error) {
+	check, ok := readinessCheckToProto(evidence.Check)
+	if evidence.WorkerEpoch <= 0 || evidence.CycleID == uuid.Nil || !ok {
+		return workercontrol.ReadinessResult{}, errors.New("worker readiness evidence is invalid")
+	}
+	response, err := client.exchange(ctx, &velav1.ConnectRequest{
+		Operation: &velav1.ConnectRequest_ReportReadiness{
+			ReportReadiness: &velav1.ReportWorkerReadinessRequest{
+				WorkerEpoch: evidence.WorkerEpoch, CycleId: evidence.CycleID.String(),
+				Check: check, Passed: evidence.Passed,
+				EvidenceDigest: append([]byte(nil), evidence.EvidenceDigest[:]...),
+			},
+		},
+	})
+	if err != nil {
+		return workercontrol.ReadinessResult{}, err
+	}
+	return parseReadinessResult(response.GetReadinessResult(), evidence.CycleID)
+}
+
 func (client *Client) Acquire(ctx context.Context, workerEpoch int64) (workercontrol.Assignment, error) {
 	if workerEpoch <= 0 {
 		return workercontrol.Assignment{}, errors.New("positive Worker epoch is required")
@@ -222,6 +303,213 @@ func protoLeaseCredentials(
 		AttemptId: credentials.AttemptID.String(), WorkerEpoch: credentials.WorkerEpoch,
 		Fence: credentials.Fence, Token: credentials.Token,
 	}, nil
+}
+
+func parseCapacityResult(message *velav1.ReportWorkerCapacityResult) (workercontrol.CapacityResult, error) {
+	if message == nil {
+		return workercontrol.CapacityResult{}, errors.New("worker control response omitted capacity result")
+	}
+	poolID, err := requiredUUID(message.GetWorkerPoolId())
+	if err != nil {
+		return workercontrol.CapacityResult{}, err
+	}
+	workerState := workercontrol.CapacityState(message.GetWorkerState())
+	poolState := workercontrol.CapacityState(message.GetPoolState())
+	if !validCapacityState(workerState) || !validCapacityState(poolState) {
+		return workercontrol.CapacityResult{}, errors.New("worker control capacity result is invalid")
+	}
+	return workercontrol.CapacityResult{
+		WorkerPoolID: poolID, Replayed: message.GetReplayed(),
+		WorkerState: workerState, PoolState: poolState,
+		WorkerAssignmentAllowed: message.GetWorkerAssignmentAllowed(),
+		PoolReadinessAllowed:    message.GetPoolReadinessAllowed(),
+		PoolAssignmentAllowed:   message.GetPoolAssignmentAllowed(),
+	}, nil
+}
+
+func validCapacityState(state workercontrol.CapacityState) bool {
+	switch state {
+	case workercontrol.CapacityAdmittable,
+		workercontrol.CapacityScratchPressured,
+		workercontrol.CapacityScratchCritical,
+		workercontrol.CapacityStorageUnavailable,
+		workercontrol.CapacityMultipleBlockers:
+		return true
+	default:
+		return false
+	}
+}
+
+func scratchWatermarkState(
+	state workercontrol.ScratchWatermarkState,
+) velav1.FleetScratchWatermarkState {
+	switch state {
+	case workercontrol.ScratchWatermarkNormal:
+		return velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_NORMAL
+	case workercontrol.ScratchWatermarkPressured:
+		return velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_PRESSURED
+	case workercontrol.ScratchWatermarkCritical:
+		return velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_CRITICAL
+	default:
+		return velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_UNSPECIFIED
+	}
+}
+
+func parseReadinessWork(
+	message *velav1.WorkerReadinessWork,
+	expectedEpoch int64,
+) (workercontrol.ReadinessWork, error) {
+	if message == nil {
+		return workercontrol.ReadinessWork{}, errors.New("worker control response omitted readiness work")
+	}
+	if !message.GetAvailable() {
+		if message.GetCycleId() != "" || message.GetCheck() !=
+			velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_UNSPECIFIED ||
+			message.GetWorkerId() != "" || message.GetWorkerPoolId() != "" ||
+			message.GetWorkerEpoch() != 0 || message.GetNodeIdentity() != "" ||
+			message.GetExecutionProfileRevisionId() != "" ||
+			message.GetInferenceBackendRevision() != "" || message.GetDeadline() != nil {
+			return workercontrol.ReadinessWork{}, errors.New("unavailable Worker readiness work is malformed")
+		}
+		return workercontrol.ReadinessWork{}, nil
+	}
+	cycleID, cycleErr := requiredUUID(message.GetCycleId())
+	workerID, workerErr := requiredUUID(message.GetWorkerId())
+	poolID, poolErr := requiredUUID(message.GetWorkerPoolId())
+	profileID, profileErr := requiredUUID(message.GetExecutionProfileRevisionId())
+	check, checkOK := readinessCheckFromProto(message.GetCheck())
+	deadline, deadlineErr := requiredTimestamp(message.GetDeadline())
+	if cycleErr != nil || workerErr != nil || poolErr != nil || profileErr != nil ||
+		!checkOK || deadlineErr != nil || message.GetWorkerEpoch() != expectedEpoch ||
+		!validReadinessText(message.GetNodeIdentity(), 500) ||
+		!validReadinessText(message.GetInferenceBackendRevision(), 200) {
+		return workercontrol.ReadinessWork{}, errors.New("worker readiness work is invalid")
+	}
+	return workercontrol.ReadinessWork{
+		Available: true, CycleID: cycleID, Check: check, WorkerID: workerID,
+		WorkerPoolID: poolID, WorkerEpoch: message.GetWorkerEpoch(),
+		NodeIdentity: message.GetNodeIdentity(), ExecutionProfileRevisionID: profileID,
+		InferenceBackendRevision: message.GetInferenceBackendRevision(), Deadline: deadline,
+	}, nil
+}
+
+func parseReadinessResult(
+	message *velav1.WorkerReadinessResult,
+	expectedCycleID uuid.UUID,
+) (workercontrol.ReadinessResult, error) {
+	if message == nil {
+		return workercontrol.ReadinessResult{}, errors.New("worker control response omitted readiness result")
+	}
+	cycleID, cycleErr := requiredUUID(message.GetCycleId())
+	state, stateOK := readinessStateFromProto(message.GetState())
+	nextCheck, nextOK := readinessCheckFromProto(message.GetNextCheck())
+	workerLifecycle, lifecycleOK := workerLifecycleFromProto(message.GetWorkerLifecycle())
+	workerReachability, reachabilityOK := workerReachabilityFromProto(message.GetWorkerReachability())
+	if cycleErr != nil || cycleID != expectedCycleID || !stateOK || !lifecycleOK || !reachabilityOK ||
+		(state == workercontrol.ReadinessChecking && !nextOK) ||
+		(state != workercontrol.ReadinessChecking && message.GetNextCheck() !=
+			velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_UNSPECIFIED) {
+		return workercontrol.ReadinessResult{}, errors.New("worker readiness result is invalid")
+	}
+	return workercontrol.ReadinessResult{
+		CycleID: cycleID, Replayed: message.GetReplayed(), State: state,
+		NextCheck: nextCheck, WorkerLifecycle: workerLifecycle,
+		WorkerReachability: workerReachability,
+	}, nil
+}
+
+func readinessCheckToProto(
+	check workercontrol.ReadinessCheck,
+) (velav1.FleetReadinessCheck, bool) {
+	switch check {
+	case workercontrol.ReadinessIdentity:
+		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_IDENTITY, true
+	case workercontrol.ReadinessDevice:
+		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_DEVICE, true
+	case workercontrol.ReadinessInferenceBackend:
+		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_INFERENCE_BACKEND, true
+	case workercontrol.ReadinessModelWarmup:
+		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_MODEL_WARMUP, true
+	case workercontrol.ReadinessCanary:
+		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_CANARY, true
+	default:
+		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_UNSPECIFIED, false
+	}
+}
+
+func readinessCheckFromProto(
+	check velav1.FleetReadinessCheck,
+) (workercontrol.ReadinessCheck, bool) {
+	switch check {
+	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_IDENTITY:
+		return workercontrol.ReadinessIdentity, true
+	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_DEVICE:
+		return workercontrol.ReadinessDevice, true
+	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_INFERENCE_BACKEND:
+		return workercontrol.ReadinessInferenceBackend, true
+	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_MODEL_WARMUP:
+		return workercontrol.ReadinessModelWarmup, true
+	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_CANARY:
+		return workercontrol.ReadinessCanary, true
+	default:
+		return "", false
+	}
+}
+
+func readinessStateFromProto(
+	state velav1.FleetReadinessState,
+) (workercontrol.ReadinessState, bool) {
+	switch state {
+	case velav1.FleetReadinessState_FLEET_READINESS_STATE_CHECKING:
+		return workercontrol.ReadinessChecking, true
+	case velav1.FleetReadinessState_FLEET_READINESS_STATE_READY:
+		return workercontrol.ReadinessReady, true
+	case velav1.FleetReadinessState_FLEET_READINESS_STATE_FAILED:
+		return workercontrol.ReadinessFailed, true
+	case velav1.FleetReadinessState_FLEET_READINESS_STATE_EXPIRED:
+		return workercontrol.ReadinessExpired, true
+	default:
+		return "", false
+	}
+}
+
+func workerLifecycleFromProto(value velav1.FleetWorkerLifecycle) (string, bool) {
+	switch value {
+	case velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_REGISTERING:
+		return "REGISTERING", true
+	case velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_WARMING:
+		return "WARMING", true
+	case velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_READY:
+		return "READY", true
+	case velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_BUSY:
+		return "BUSY", true
+	case velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_DRAINING:
+		return "DRAINING", true
+	case velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_RECOVERING:
+		return "RECOVERING", true
+	case velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_QUARANTINED:
+		return "QUARANTINED", true
+	default:
+		return "", false
+	}
+}
+
+func workerReachabilityFromProto(value velav1.FleetWorkerReachability) (string, bool) {
+	switch value {
+	case velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_HEALTHY:
+		return "HEALTHY", true
+	case velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_SUSPECT:
+		return "SUSPECT", true
+	case velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_OFFLINE:
+		return "OFFLINE", true
+	default:
+		return "", false
+	}
+}
+
+func validReadinessText(value string, maximum int) bool {
+	return value != "" && len(value) <= maximum && strings.TrimSpace(value) == value &&
+		!strings.ContainsRune(value, '\x00')
 }
 
 func parseAssignment(message *velav1.WorkerAssignment) (workercontrol.Assignment, error) {

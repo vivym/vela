@@ -1,7 +1,9 @@
 package workerrecovery
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"os"
 	"path/filepath"
@@ -73,6 +75,113 @@ func TestLocalRecoveryStateBindsWorkerEpochAndFence(t *testing.T) {
 		SpaceProbe:        func(string) (Space, error) { return space, nil },
 	}); !errors.Is(err, ErrStateIdentityMismatch) {
 		t.Fatalf("new Worker epoch manager error = %v, want identity mismatch", err)
+	}
+}
+
+func TestReadinessReportPersistsBoundedCanonicalRawEvidenceLocally(t *testing.T) {
+	root := t.TempDir()
+	workerID := uuid.New()
+	manager := newTestManager(t, root, workerID, 9)
+	evidence := []byte(`{"check":"DEVICE","passed":true,"schema_version":1}`)
+	report := ReadinessReport{
+		CycleID: uuid.New(), Check: "DEVICE", WorkerPoolID: uuid.New(),
+		NodeIdentity: "h3-node-01", ExecutionProfileRevisionID: uuid.New(),
+		InferenceBackendRevision: "sglang-h3-v3", Deadline: time.Now().UTC().Add(time.Minute),
+		Passed: true, Evidence: evidence, EvidenceDigest: sha256.Sum256(evidence),
+	}
+	persisted, err := manager.BeginReadinessReport(context.Background(), report)
+	if err != nil {
+		t.Fatalf("persist readiness evidence: %v", err)
+	}
+	if !bytes.Equal(persisted.Evidence, evidence) {
+		t.Fatalf("persisted readiness evidence = %q, want %q", persisted.Evidence, evidence)
+	}
+	rawState, err := os.ReadFile(filepath.Join(root, readinessReportName))
+	if err != nil {
+		t.Fatalf("read readiness evidence state: %v", err)
+	}
+	if !bytes.Contains(rawState, evidence) {
+		t.Fatalf("readiness state does not contain canonical raw evidence: %s", rawState)
+	}
+	restarted := newTestManager(t, root, workerID, 9)
+	pending, exists, err := restarted.PendingReadinessReport(context.Background())
+	if err != nil || !exists || !bytes.Equal(pending.Evidence, evidence) ||
+		pending.EvidenceDigest != sha256.Sum256(evidence) {
+		t.Fatalf("restarted readiness evidence = %#v exists=%t error=%v", pending, exists, err)
+	}
+
+	for _, test := range []struct {
+		name     string
+		evidence []byte
+		digest   [32]byte
+	}{
+		{
+			name: "non-canonical", evidence: []byte(`{ "schema_version": 1 }`),
+			digest: sha256.Sum256([]byte(`{ "schema_version": 1 }`)),
+		},
+		{
+			name: "too-large", evidence: append([]byte(`{"value":"`), append(bytes.Repeat([]byte("a"), 16*1024), []byte(`"}`)...)...),
+		},
+		{name: "digest-mismatch", evidence: []byte(`{"schema_version":1}`), digest: sha256.Sum256([]byte("other"))},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			invalid := report
+			invalid.CycleID = uuid.New()
+			invalid.Evidence = test.evidence
+			invalid.EvidenceDigest = test.digest
+			other := newTestManager(t, t.TempDir(), uuid.New(), 9)
+			if _, err := other.BeginReadinessReport(context.Background(), invalid); err == nil {
+				t.Fatal("invalid raw readiness evidence was persisted")
+			}
+		})
+	}
+}
+
+func TestCapacityReportSequenceSurvivesRestartAndReplaysPendingObservation(t *testing.T) {
+	root := t.TempDir()
+	workerID := uuid.MustParse("99000000-0000-0000-0000-000000000001")
+	manager := newTestManager(t, root, workerID, 9)
+	first := CapacityReport{
+		WatermarkState: WatermarkNormal,
+		TotalBytes:     1000, FreeBytes: 700, HighWatermarkBytes: 800,
+		LowWatermarkBytes: 400, CriticalFreeBytes: 32,
+		ArtifactStoreReachable: true,
+	}
+	beforeObservation := time.Now().UTC()
+	pending, err := manager.BeginCapacityReport(context.Background(), first)
+	afterObservation := time.Now().UTC()
+	if err != nil {
+		t.Fatalf("BeginCapacityReport: %v", err)
+	}
+	if pending.Sequence != 1 {
+		t.Fatalf("first capacity sequence = %d", pending.Sequence)
+	}
+	if pending.ObservedAt.Before(beforeObservation) || pending.ObservedAt.After(afterObservation) {
+		t.Fatalf("first capacity observed_at = %s, want within [%s, %s]",
+			pending.ObservedAt, beforeObservation, afterObservation)
+	}
+
+	restarted := newTestManager(t, root, workerID, 9)
+	different := first
+	different.FreeBytes = 600
+	replayed, err := restarted.BeginCapacityReport(context.Background(), different)
+	if err != nil {
+		t.Fatalf("replay pending capacity report: %v", err)
+	}
+	if replayed != pending {
+		t.Fatalf("replayed capacity report = %#v, want %#v", replayed, pending)
+	}
+	if err := restarted.CompleteCapacityReport(context.Background(), replayed.Sequence); err != nil {
+		t.Fatalf("CompleteCapacityReport: %v", err)
+	}
+
+	restartedAgain := newTestManager(t, root, workerID, 9)
+	next, err := restartedAgain.BeginCapacityReport(context.Background(), different)
+	if err != nil {
+		t.Fatalf("begin next capacity report: %v", err)
+	}
+	if next.Sequence != 2 || next.FreeBytes != 600 {
+		t.Fatalf("next capacity report = %#v", next)
 	}
 }
 

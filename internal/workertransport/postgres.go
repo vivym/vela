@@ -35,17 +35,19 @@ func (resolver *PostgresIdentityResolver) ResolveWorker(
 		!strings.HasPrefix(spiffeID, "spiffe://") || strings.ContainsRune(spiffeID, '\x00') {
 		return workercontrol.AuthenticatedWorker{}, errors.New("worker SPIFFE ID is invalid")
 	}
-	workerID, err := store.New(resolver.pool).ResolveWorkerBySPIFFEID(ctx, spiffeID)
+	worker, err := store.New(resolver.pool).ResolveWorkerBySPIFFEID(ctx, spiffeID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return workercontrol.AuthenticatedWorker{}, errors.New("worker SPIFFE ID is not registered")
 	}
 	if err != nil {
 		return workercontrol.AuthenticatedWorker{}, fmt.Errorf("resolve Worker SPIFFE ID: %w", err)
 	}
-	if workerID == uuid.Nil {
+	if worker.ID == uuid.Nil || worker.WorkerPoolID == uuid.Nil || worker.SpiffeID != spiffeID {
 		return workercontrol.AuthenticatedWorker{}, errors.New("registered Worker identity is invalid")
 	}
-	return workercontrol.AuthenticatedWorker{ID: workerID}, nil
+	return workercontrol.AuthenticatedWorker{
+		ID: worker.ID, PoolID: worker.WorkerPoolID, SPIFFEID: worker.SpiffeID,
+	}, nil
 }
 
 var _ WorkerIdentityResolver = (*PostgresIdentityResolver)(nil)

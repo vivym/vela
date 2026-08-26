@@ -153,7 +153,7 @@ type Querier interface {
 	RenewExecutionLease(ctx context.Context, arg RenewExecutionLeaseParams) (int64, error)
 	ReserveOrganizationCredit(ctx context.Context, arg ReserveOrganizationCreditParams) (int64, error)
 	ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUParams) (ResolveActiveSKURow, error)
-	ResolveWorkerBySPIFFEID(ctx context.Context, spiffeID string) (uuid.UUID, error)
+	ResolveWorkerBySPIFFEID(ctx context.Context, spiffeID string) (ResolveWorkerBySPIFFEIDRow, error)
 	RevokeCompletionLease(ctx context.Context, arg RevokeCompletionLeaseParams) (int64, error)
 	RevokeExecutionLeaseForFailure(ctx context.Context, arg RevokeExecutionLeaseForFailureParams) (int64, error)
 	RevokeExpiredFinalizationLeaseForTakeover(ctx context.Context, arg RevokeExpiredFinalizationLeaseForTakeoverParams) (int64, error)
@@ -165,6 +165,7 @@ type Querier interface {
 	UpdateRetryRuntimeForFailure(ctx context.Context, arg UpdateRetryRuntimeForFailureParams) (int64, error)
 	UpdateRetryRuntimeForJobExpiry(ctx context.Context, arg UpdateRetryRuntimeForJobExpiryParams) (int64, error)
 	UpsertAttemptProgress(ctx context.Context, arg UpsertAttemptProgressParams) (int64, error)
+	ValidateFleetCapacityForAssignment(ctx context.Context, arg ValidateFleetCapacityForAssignmentParams) (uuid.UUID, error)
 	ValidateProfileForAssignment(ctx context.Context, arg ValidateProfileForAssignmentParams) (uuid.UUID, error)
 	ValidateScheduledWorkerProfile(ctx context.Context, arg ValidateScheduledWorkerProfileParams) (uuid.UUID, error)
 }

@@ -909,6 +909,313 @@ func (ns NullFinanceReconciliationKind) Value() (driver.Value, error) {
 	return string(ns.FinanceReconciliationKind), nil
 }
 
+type FleetCapacityState string
+
+const (
+	FleetCapacityStateADMITTABLE         FleetCapacityState = "ADMITTABLE"
+	FleetCapacityStateSCRATCHPRESSURED   FleetCapacityState = "SCRATCH_PRESSURED"
+	FleetCapacityStateSCRATCHCRITICAL    FleetCapacityState = "SCRATCH_CRITICAL"
+	FleetCapacityStateSTORAGEUNAVAILABLE FleetCapacityState = "STORAGE_UNAVAILABLE"
+	FleetCapacityStateMULTIPLEBLOCKERS   FleetCapacityState = "MULTIPLE_BLOCKERS"
+)
+
+func (e *FleetCapacityState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FleetCapacityState(s)
+	case string:
+		*e = FleetCapacityState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FleetCapacityState: %T", src)
+	}
+	return nil
+}
+
+type NullFleetCapacityState struct {
+	FleetCapacityState FleetCapacityState `json:"fleet_capacity_state"`
+	Valid              bool               `json:"valid"` // Valid is true if FleetCapacityState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFleetCapacityState) Scan(value interface{}) error {
+	if value == nil {
+		ns.FleetCapacityState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FleetCapacityState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFleetCapacityState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FleetCapacityState), nil
+}
+
+type FleetDrainState string
+
+const (
+	FleetDrainStateDRAINING FleetDrainState = "DRAINING"
+	FleetDrainStateCOMPLETE FleetDrainState = "COMPLETE"
+	FleetDrainStateEXPIRED  FleetDrainState = "EXPIRED"
+)
+
+func (e *FleetDrainState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FleetDrainState(s)
+	case string:
+		*e = FleetDrainState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FleetDrainState: %T", src)
+	}
+	return nil
+}
+
+type NullFleetDrainState struct {
+	FleetDrainState FleetDrainState `json:"fleet_drain_state"`
+	Valid           bool            `json:"valid"` // Valid is true if FleetDrainState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFleetDrainState) Scan(value interface{}) error {
+	if value == nil {
+		ns.FleetDrainState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FleetDrainState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFleetDrainState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FleetDrainState), nil
+}
+
+type FleetMutationOperation string
+
+const (
+	FleetMutationOperationDELETE          FleetMutationOperation = "DELETE"
+	FleetMutationOperationPATCHSELECTOR   FleetMutationOperation = "PATCH_SELECTOR"
+	FleetMutationOperationPATCHIMAGE      FleetMutationOperation = "PATCH_IMAGE"
+	FleetMutationOperationREMOVEFINALIZER FleetMutationOperation = "REMOVE_FINALIZER"
+)
+
+func (e *FleetMutationOperation) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FleetMutationOperation(s)
+	case string:
+		*e = FleetMutationOperation(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FleetMutationOperation: %T", src)
+	}
+	return nil
+}
+
+type NullFleetMutationOperation struct {
+	FleetMutationOperation FleetMutationOperation `json:"fleet_mutation_operation"`
+	Valid                  bool                   `json:"valid"` // Valid is true if FleetMutationOperation is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFleetMutationOperation) Scan(value interface{}) error {
+	if value == nil {
+		ns.FleetMutationOperation, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FleetMutationOperation.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFleetMutationOperation) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FleetMutationOperation), nil
+}
+
+type FleetProtectedResourceKind string
+
+const (
+	FleetProtectedResourceKindPOD        FleetProtectedResourceKind = "POD"
+	FleetProtectedResourceKindDAEMONSET  FleetProtectedResourceKind = "DAEMONSET"
+	FleetProtectedResourceKindWORKERPOOL FleetProtectedResourceKind = "WORKER_POOL"
+)
+
+func (e *FleetProtectedResourceKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FleetProtectedResourceKind(s)
+	case string:
+		*e = FleetProtectedResourceKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FleetProtectedResourceKind: %T", src)
+	}
+	return nil
+}
+
+type NullFleetProtectedResourceKind struct {
+	FleetProtectedResourceKind FleetProtectedResourceKind `json:"fleet_protected_resource_kind"`
+	Valid                      bool                       `json:"valid"` // Valid is true if FleetProtectedResourceKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFleetProtectedResourceKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.FleetProtectedResourceKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FleetProtectedResourceKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFleetProtectedResourceKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FleetProtectedResourceKind), nil
+}
+
+type FleetReadinessCheck string
+
+const (
+	FleetReadinessCheckIDENTITY         FleetReadinessCheck = "IDENTITY"
+	FleetReadinessCheckDEVICE           FleetReadinessCheck = "DEVICE"
+	FleetReadinessCheckINFERENCEBACKEND FleetReadinessCheck = "INFERENCE_BACKEND"
+	FleetReadinessCheckMODELWARMUP      FleetReadinessCheck = "MODEL_WARMUP"
+	FleetReadinessCheckCANARY           FleetReadinessCheck = "CANARY"
+)
+
+func (e *FleetReadinessCheck) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FleetReadinessCheck(s)
+	case string:
+		*e = FleetReadinessCheck(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FleetReadinessCheck: %T", src)
+	}
+	return nil
+}
+
+type NullFleetReadinessCheck struct {
+	FleetReadinessCheck FleetReadinessCheck `json:"fleet_readiness_check"`
+	Valid               bool                `json:"valid"` // Valid is true if FleetReadinessCheck is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFleetReadinessCheck) Scan(value interface{}) error {
+	if value == nil {
+		ns.FleetReadinessCheck, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FleetReadinessCheck.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFleetReadinessCheck) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FleetReadinessCheck), nil
+}
+
+type FleetReadinessState string
+
+const (
+	FleetReadinessStateCHECKING FleetReadinessState = "CHECKING"
+	FleetReadinessStateREADY    FleetReadinessState = "READY"
+	FleetReadinessStateFAILED   FleetReadinessState = "FAILED"
+	FleetReadinessStateEXPIRED  FleetReadinessState = "EXPIRED"
+)
+
+func (e *FleetReadinessState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FleetReadinessState(s)
+	case string:
+		*e = FleetReadinessState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FleetReadinessState: %T", src)
+	}
+	return nil
+}
+
+type NullFleetReadinessState struct {
+	FleetReadinessState FleetReadinessState `json:"fleet_readiness_state"`
+	Valid               bool                `json:"valid"` // Valid is true if FleetReadinessState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFleetReadinessState) Scan(value interface{}) error {
+	if value == nil {
+		ns.FleetReadinessState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FleetReadinessState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFleetReadinessState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FleetReadinessState), nil
+}
+
+type FleetScratchWatermarkState string
+
+const (
+	FleetScratchWatermarkStateNORMAL    FleetScratchWatermarkState = "NORMAL"
+	FleetScratchWatermarkStatePRESSURED FleetScratchWatermarkState = "PRESSURED"
+	FleetScratchWatermarkStateCRITICAL  FleetScratchWatermarkState = "CRITICAL"
+)
+
+func (e *FleetScratchWatermarkState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FleetScratchWatermarkState(s)
+	case string:
+		*e = FleetScratchWatermarkState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FleetScratchWatermarkState: %T", src)
+	}
+	return nil
+}
+
+type NullFleetScratchWatermarkState struct {
+	FleetScratchWatermarkState FleetScratchWatermarkState `json:"fleet_scratch_watermark_state"`
+	Valid                      bool                       `json:"valid"` // Valid is true if FleetScratchWatermarkState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFleetScratchWatermarkState) Scan(value interface{}) error {
+	if value == nil {
+		ns.FleetScratchWatermarkState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FleetScratchWatermarkState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFleetScratchWatermarkState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FleetScratchWatermarkState), nil
+}
+
 type HumanAdministrationContextKind string
 
 const (
@@ -2040,6 +2347,7 @@ type Attempt struct {
 	UpdatedAt                  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	SchedulerDispatchIntentID  uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
 	ProfileCertificationID     uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+	FleetProtocolVersion       int16              `db:"fleet_protocol_version" json:"fleet_protocol_version"`
 }
 
 type AttemptLease struct {
@@ -2397,6 +2705,63 @@ type FinanceReconciliationRecord struct {
 	AccountVersionBefore           int64                     `db:"account_version_before" json:"account_version_before"`
 	AccountVersionAfter            int64                     `db:"account_version_after" json:"account_version_after"`
 	PostedAt                       pgtype.Timestamptz        `db:"posted_at" json:"posted_at"`
+}
+
+type FleetAssignmentProtocolState struct {
+	Singleton         bool               `db:"singleton" json:"singleton"`
+	Enforced          bool               `db:"enforced" json:"enforced"`
+	ProtocolVersion   int32              `db:"protocol_version" json:"protocol_version"`
+	TransitionReceipt *string            `db:"transition_receipt" json:"transition_receipt"`
+	LegacyWriterCount *int32             `db:"legacy_writer_count" json:"legacy_writer_count"`
+	TransitionedAt    pgtype.Timestamptz `db:"transitioned_at" json:"transitioned_at"`
+}
+
+type FleetAssignmentProtocolTransition struct {
+	ProtocolVersion   int32              `db:"protocol_version" json:"protocol_version"`
+	Enforced          bool               `db:"enforced" json:"enforced"`
+	TransitionReceipt string             `db:"transition_receipt" json:"transition_receipt"`
+	LegacyWriterCount int32              `db:"legacy_writer_count" json:"legacy_writer_count"`
+	TransitionedAt    pgtype.Timestamptz `db:"transitioned_at" json:"transitioned_at"`
+}
+
+type FleetMutationAuthorization struct {
+	RequestUid        string                     `db:"request_uid" json:"request_uid"`
+	ActorIdentity     string                     `db:"actor_identity" json:"actor_identity"`
+	ResourceKind      FleetProtectedResourceKind `db:"resource_kind" json:"resource_kind"`
+	Operation         FleetMutationOperation     `db:"operation" json:"operation"`
+	KubernetesUid     string                     `db:"kubernetes_uid" json:"kubernetes_uid"`
+	Namespace         string                     `db:"namespace" json:"namespace"`
+	Name              string                     `db:"name" json:"name"`
+	WorkerPoolID      uuid.UUID                  `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerID          uuid.NullUUID              `db:"worker_id" json:"worker_id"`
+	WorkerEpoch       *int64                     `db:"worker_epoch" json:"worker_epoch"`
+	DrainOperationIds []uuid.UUID                `db:"drain_operation_ids" json:"drain_operation_ids"`
+	RequestDigest     []byte                     `db:"request_digest" json:"request_digest"`
+	AuthorizedAt      pgtype.Timestamptz         `db:"authorized_at" json:"authorized_at"`
+}
+
+type FleetRetirementCompletion struct {
+	ResourceKind      FleetProtectedResourceKind `db:"resource_kind" json:"resource_kind"`
+	KubernetesUid     string                     `db:"kubernetes_uid" json:"kubernetes_uid"`
+	Namespace         string                     `db:"namespace" json:"namespace"`
+	Name              string                     `db:"name" json:"name"`
+	WorkerPoolID      uuid.UUID                  `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerID          uuid.NullUUID              `db:"worker_id" json:"worker_id"`
+	WorkerEpoch       *int64                     `db:"worker_epoch" json:"worker_epoch"`
+	DrainOperationIds []uuid.UUID                `db:"drain_operation_ids" json:"drain_operation_ids"`
+	ObservedBy        string                     `db:"observed_by" json:"observed_by"`
+	CompletedAt       pgtype.Timestamptz         `db:"completed_at" json:"completed_at"`
+}
+
+type FleetWorkerPodIdentityBinding struct {
+	KubernetesUid string             `db:"kubernetes_uid" json:"kubernetes_uid"`
+	Namespace     string             `db:"namespace" json:"namespace"`
+	Name          string             `db:"name" json:"name"`
+	WorkerID      uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerPoolID  uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerEpoch   int64              `db:"worker_epoch" json:"worker_epoch"`
+	NodeIdentity  string             `db:"node_identity" json:"node_identity"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type GenerationPresetRevision struct {
@@ -3213,6 +3578,41 @@ type Worker struct {
 	NodeIdentity          string                      `db:"node_identity" json:"node_identity"`
 }
 
+type WorkerCapacityCondition struct {
+	WorkerID               uuid.UUID                  `db:"worker_id" json:"worker_id"`
+	WorkerPoolID           uuid.UUID                  `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerEpoch            int64                      `db:"worker_epoch" json:"worker_epoch"`
+	ObservationSequence    int64                      `db:"observation_sequence" json:"observation_sequence"`
+	WatermarkState         FleetScratchWatermarkState `db:"watermark_state" json:"watermark_state"`
+	TotalBytes             int64                      `db:"total_bytes" json:"total_bytes"`
+	FreeBytes              int64                      `db:"free_bytes" json:"free_bytes"`
+	HighWatermarkBytes     int64                      `db:"high_watermark_bytes" json:"high_watermark_bytes"`
+	LowWatermarkBytes      int64                      `db:"low_watermark_bytes" json:"low_watermark_bytes"`
+	CriticalFreeBytes      int64                      `db:"critical_free_bytes" json:"critical_free_bytes"`
+	ArtifactStoreReachable bool                       `db:"artifact_store_reachable" json:"artifact_store_reachable"`
+	ScratchLatched         bool                       `db:"scratch_latched" json:"scratch_latched"`
+	State                  FleetCapacityState         `db:"state" json:"state"`
+	AssignmentAllowed      bool                       `db:"assignment_allowed" json:"assignment_allowed"`
+	ObservedBy             string                     `db:"observed_by" json:"observed_by"`
+	ObservedAt             pgtype.Timestamptz         `db:"observed_at" json:"observed_at"`
+	UpdatedAt              pgtype.Timestamptz         `db:"updated_at" json:"updated_at"`
+}
+
+type WorkerDrainOperation struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	WorkerID    uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch int64              `db:"worker_epoch" json:"worker_epoch"`
+	Reason      string             `db:"reason" json:"reason"`
+	DeadlineAt  pgtype.Timestamptz `db:"deadline_at" json:"deadline_at"`
+	RequestedBy string             `db:"requested_by" json:"requested_by"`
+	State       FleetDrainState    `db:"state" json:"state"`
+	ResultCode  *string            `db:"result_code" json:"result_code"`
+	RequestedAt pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
+	FinishedAt  pgtype.Timestamptz `db:"finished_at" json:"finished_at"`
+	FinishedBy  *string            `db:"finished_by" json:"finished_by"`
+	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type WorkerEpoch struct {
 	WorkerID     uuid.UUID          `db:"worker_id" json:"worker_id"`
 	Epoch        int64              `db:"epoch" json:"epoch"`
@@ -3233,6 +3633,34 @@ type WorkerPool struct {
 	RetryRunningLimit          int32              `db:"retry_running_limit" json:"retry_running_limit"`
 }
 
+type WorkerPoolCapacityCondition struct {
+	WorkerPoolID        uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	TotalBytes          int64              `db:"total_bytes" json:"total_bytes"`
+	UsedBytes           int64              `db:"used_bytes" json:"used_bytes"`
+	HighWatermarkBytes  int64              `db:"high_watermark_bytes" json:"high_watermark_bytes"`
+	LowWatermarkBytes   int64              `db:"low_watermark_bytes" json:"low_watermark_bytes"`
+	ObservedWorkerCount int32              `db:"observed_worker_count" json:"observed_worker_count"`
+	OldestObservedAt    pgtype.Timestamptz `db:"oldest_observed_at" json:"oldest_observed_at"`
+	State               FleetCapacityState `db:"state" json:"state"`
+	ScratchLatched      bool               `db:"scratch_latched" json:"scratch_latched"`
+	StorageUnavailable  bool               `db:"storage_unavailable" json:"storage_unavailable"`
+	AssignmentAllowed   bool               `db:"assignment_allowed" json:"assignment_allowed"`
+	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type WorkerPoolCapacityPolicy struct {
+	WorkerPoolID             uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	Revision                 string             `db:"revision" json:"revision"`
+	WorkerHighWatermarkBytes int64              `db:"worker_high_watermark_bytes" json:"worker_high_watermark_bytes"`
+	WorkerLowWatermarkBytes  int64              `db:"worker_low_watermark_bytes" json:"worker_low_watermark_bytes"`
+	WorkerCriticalFreeBytes  int64              `db:"worker_critical_free_bytes" json:"worker_critical_free_bytes"`
+	PoolHighWatermarkBytes   int64              `db:"pool_high_watermark_bytes" json:"pool_high_watermark_bytes"`
+	PoolLowWatermarkBytes    int64              `db:"pool_low_watermark_bytes" json:"pool_low_watermark_bytes"`
+	ObservationMaxAgeSeconds int64              `db:"observation_max_age_seconds" json:"observation_max_age_seconds"`
+	ConfiguredBy             string             `db:"configured_by" json:"configured_by"`
+	ConfiguredAt             pgtype.Timestamptz `db:"configured_at" json:"configured_at"`
+}
+
 type WorkerProfileReadiness struct {
 	WorkerID                     uuid.UUID                   `db:"worker_id" json:"worker_id"`
 	WorkerEpoch                  int64                       `db:"worker_epoch" json:"worker_epoch"`
@@ -3242,4 +3670,31 @@ type WorkerProfileReadiness struct {
 	LocalityPenaltySeconds       int32                       `db:"locality_penalty_seconds" json:"locality_penalty_seconds"`
 	HealthRiskPenaltySeconds     int32                       `db:"health_risk_penalty_seconds" json:"health_risk_penalty_seconds"`
 	UpdatedAt                    pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
+}
+
+type WorkerReadinessCycle struct {
+	ID                         uuid.UUID            `db:"id" json:"id"`
+	WorkerID                   uuid.UUID            `db:"worker_id" json:"worker_id"`
+	WorkerPoolID               uuid.UUID            `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerEpoch                int64                `db:"worker_epoch" json:"worker_epoch"`
+	NodeIdentity               string               `db:"node_identity" json:"node_identity"`
+	ExecutionProfileRevisionID uuid.UUID            `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	InferenceBackendRevision   string               `db:"inference_backend_revision" json:"inference_backend_revision"`
+	RequestedBy                string               `db:"requested_by" json:"requested_by"`
+	State                      FleetReadinessState  `db:"state" json:"state"`
+	NextCheck                  *FleetReadinessCheck `db:"next_check" json:"next_check"`
+	ResultCode                 *string              `db:"result_code" json:"result_code"`
+	DeadlineAt                 pgtype.Timestamptz   `db:"deadline_at" json:"deadline_at"`
+	StartedAt                  pgtype.Timestamptz   `db:"started_at" json:"started_at"`
+	FinishedAt                 pgtype.Timestamptz   `db:"finished_at" json:"finished_at"`
+	UpdatedAt                  pgtype.Timestamptz   `db:"updated_at" json:"updated_at"`
+}
+
+type WorkerReadinessEvidence struct {
+	CycleID        uuid.UUID           `db:"cycle_id" json:"cycle_id"`
+	CheckKind      FleetReadinessCheck `db:"check_kind" json:"check_kind"`
+	Passed         bool                `db:"passed" json:"passed"`
+	EvidenceDigest []byte              `db:"evidence_digest" json:"evidence_digest"`
+	ObservedBy     string              `db:"observed_by" json:"observed_by"`
+	ObservedAt     pgtype.Timestamptz  `db:"observed_at" json:"observed_at"`
 }

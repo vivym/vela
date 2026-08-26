@@ -34,6 +34,8 @@ import (
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/finalizationreconciler"
 	"github.com/vivym/vela/internal/financereconciliation"
+	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/natsauth"
@@ -54,6 +56,7 @@ import (
 const (
 	defaultHTTPAddress                          = ":8080"
 	defaultWorkerGRPCAddress                    = ":8443"
+	defaultFleetGRPCAddress                     = ":8444"
 	defaultRemediationTick                      = 500 * time.Millisecond
 	defaultRemediationBatch                     = 100
 	defaultPublisherBatch                       = 100
@@ -95,6 +98,13 @@ type config struct {
 	workerGRPCTLSCertFile             string
 	workerGRPCTLSKeyFile              string
 	workerGRPCClientCAFile            string
+	fleetGRPCAddress                  string
+	fleetGRPCTLSCertFile              string
+	fleetGRPCTLSKeyFile               string
+	fleetGRPCClientCAFile             string
+	fleetDatabaseURL                  string
+	fleetControllerSPIFFEIdentity     string
+	fleetControllerActorIdentity      string
 	authDatabaseURL                   string
 	humanAuthDatabaseURL              string
 	humanMembershipAuthDatabaseURL    string
@@ -412,6 +422,11 @@ func run() error {
 		return fmt.Errorf("open internal database pool: %w", err)
 	}
 	defer internalPool.Close()
+	fleetPool, err := openPool(ctx, configuration.fleetDatabaseURL, 10, veladb.RoleFleet)
+	if err != nil {
+		return fmt.Errorf("open Fleet database pool: %w", err)
+	}
+	defer fleetPool.Close()
 	remediationPool, err := openPool(ctx, configuration.remediationDatabaseURL, 10, veladb.RoleRemediation)
 	if err != nil {
 		return fmt.Errorf("open Remediation database pool: %w", err)
@@ -626,10 +641,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	fleetService, err := fleet.NewService(fleetPool)
+	if err != nil {
+		return fmt.Errorf("configure Fleet service: %w", err)
+	}
 	workerControlAdapter, err := workertransport.NewServer(
 		workerIdentityResolver,
 		workerCoordinator,
 		artifactStore,
+		fleetService,
 	)
 	if err != nil {
 		return err
@@ -653,6 +673,35 @@ func run() error {
 		return fmt.Errorf("listen for Worker gRPC: %w", err)
 	}
 	defer func() { _ = workerListener.Close() }()
+	fleetMaintenanceAdapter, err := fleettransport.NewServer(
+		fleetService,
+		fleettransport.Config{
+			SPIFFEIdentity: configuration.fleetControllerSPIFFEIdentity,
+			ActorIdentity:  configuration.fleetControllerActorIdentity,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure Fleet maintenance gRPC adapter: %w", err)
+	}
+	fleetTransportCredentials, err := fleettransport.NewServerTLSCredentials(
+		configuration.fleetGRPCTLSCertFile,
+		configuration.fleetGRPCTLSKeyFile,
+		configuration.fleetGRPCClientCAFile,
+	)
+	if err != nil {
+		return err
+	}
+	fleetGRPCServer := grpc.NewServer(
+		grpc.Creds(fleetTransportCredentials),
+		grpc.MaxRecvMsgSize(1<<20),
+		grpc.MaxSendMsgSize(1<<20),
+	)
+	velav1.RegisterFleetMaintenanceServiceServer(fleetGRPCServer, fleetMaintenanceAdapter)
+	fleetListener, err := net.Listen("tcp", configuration.fleetGRPCAddress)
+	if err != nil {
+		return fmt.Errorf("listen for Fleet maintenance gRPC: %w", err)
+	}
+	defer func() { _ = fleetListener.Close() }()
 	artifactReconciler, err := finalizationreconciler.New(
 		workerCoordinator,
 		artifactStore,
@@ -771,6 +820,7 @@ func run() error {
 			artifactRequestPool,
 			cancelPool,
 			internalPool,
+			fleetPool,
 			schedulerPool,
 			billingPool,
 			financeReconciliationPool,
@@ -881,6 +931,15 @@ func run() error {
 		)
 		workerServerErrors <- workerGRPCServer.Serve(workerListener)
 	}()
+	fleetServerErrors := make(chan error, 1)
+	go func() {
+		slog.Info(
+			"vela-control Fleet maintenance gRPC server started",
+			"address",
+			configuration.fleetGRPCAddress,
+		)
+		fleetServerErrors <- fleetGRPCServer.Serve(fleetListener)
+	}()
 	financeReconciliationServerErrors := make(chan error, 1)
 	go func() {
 		slog.Info(
@@ -908,6 +967,11 @@ func run() error {
 			stop()
 			serveErr = fmt.Errorf("serve Worker gRPC: %w", err)
 		}
+	case err := <-fleetServerErrors:
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			stop()
+			serveErr = fmt.Errorf("serve Fleet maintenance gRPC: %w", err)
+		}
 	case err := <-financeReconciliationServerErrors:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			stop()
@@ -921,6 +985,17 @@ func run() error {
 	}
 	if err := httpServer.Shutdown(shutdownContext); err != nil {
 		return fmt.Errorf("shut down HTTP server: %w", err)
+	}
+	fleetServerDone := make(chan struct{})
+	go func() {
+		defer close(fleetServerDone)
+		fleetGRPCServer.GracefulStop()
+	}()
+	select {
+	case <-fleetServerDone:
+	case <-shutdownContext.Done():
+		fleetGRPCServer.Stop()
+		return errors.New("fleet maintenance gRPC server did not stop before shutdown deadline")
 	}
 	workerServerDone := make(chan struct{})
 	go func() {
@@ -1000,6 +1075,13 @@ func loadConfig() (config, error) {
 		workerGRPCTLSCertFile:             os.Getenv("VELA_WORKER_GRPC_TLS_CERT_FILE"),
 		workerGRPCTLSKeyFile:              os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
 		workerGRPCClientCAFile:            os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
+		fleetGRPCAddress:                  envOrDefault("VELA_FLEET_GRPC_ADDRESS", defaultFleetGRPCAddress),
+		fleetGRPCTLSCertFile:              os.Getenv("VELA_FLEET_GRPC_TLS_CERT_FILE"),
+		fleetGRPCTLSKeyFile:               os.Getenv("VELA_FLEET_GRPC_TLS_KEY_FILE"),
+		fleetGRPCClientCAFile:             os.Getenv("VELA_FLEET_GRPC_CLIENT_CA_FILE"),
+		fleetDatabaseURL:                  os.Getenv("VELA_FLEET_DATABASE_URL"),
+		fleetControllerSPIFFEIdentity:     os.Getenv("VELA_FLEET_CONTROLLER_SPIFFE_ID"),
+		fleetControllerActorIdentity:      os.Getenv("VELA_FLEET_CONTROLLER_ACTOR_IDENTITY"),
 		authDatabaseURL:                   os.Getenv("VELA_AUTH_DATABASE_URL"),
 		humanAuthDatabaseURL:              os.Getenv("VELA_HUMAN_AUTH_DATABASE_URL"),
 		humanMembershipAuthDatabaseURL:    os.Getenv("VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"),
@@ -1169,6 +1251,12 @@ func loadConfig() (config, error) {
 		"VELA_WORKER_GRPC_TLS_CERT_FILE":                 configuration.workerGRPCTLSCertFile,
 		"VELA_WORKER_GRPC_TLS_KEY_FILE":                  configuration.workerGRPCTLSKeyFile,
 		"VELA_WORKER_GRPC_CLIENT_CA_FILE":                configuration.workerGRPCClientCAFile,
+		"VELA_FLEET_DATABASE_URL":                        configuration.fleetDatabaseURL,
+		"VELA_FLEET_GRPC_TLS_CERT_FILE":                  configuration.fleetGRPCTLSCertFile,
+		"VELA_FLEET_GRPC_TLS_KEY_FILE":                   configuration.fleetGRPCTLSKeyFile,
+		"VELA_FLEET_GRPC_CLIENT_CA_FILE":                 configuration.fleetGRPCClientCAFile,
+		"VELA_FLEET_CONTROLLER_SPIFFE_ID":                configuration.fleetControllerSPIFFEIdentity,
+		"VELA_FLEET_CONTROLLER_ACTOR_IDENTITY":           configuration.fleetControllerActorIdentity,
 	} {
 		if value == "" {
 			return config{}, fmt.Errorf("%s is required", name)

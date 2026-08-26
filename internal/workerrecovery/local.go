@@ -1,7 +1,9 @@
 package workerrecovery
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"golang.org/x/sys/unix"
@@ -20,10 +23,14 @@ import (
 
 const (
 	defaultMetadataLimit = 16 * 1024
+	readinessReportLimit = 32 * 1024
+	maxReadinessEvidence = 16 * 1024
 	maxRootPathLength    = 4096
 	maxStateNameLength   = 128
 	maxStageLength       = 32
 	maxEntriesLimit      = 100000
+	capacityReportName   = ".capacity-report.json"
+	readinessReportName  = ".readiness-report.json"
 )
 
 var (
@@ -105,12 +112,40 @@ const (
 )
 
 type Watermark struct {
-	State             WatermarkState
-	TotalBytes        int64
-	FreeBytes         int64
-	UsedBytes         int64
-	AssignmentAllowed bool
-	ResumeEligible    bool
+	State              WatermarkState
+	TotalBytes         int64
+	FreeBytes          int64
+	UsedBytes          int64
+	HighWatermarkBytes int64
+	LowWatermarkBytes  int64
+	CriticalFreeBytes  int64
+	AssignmentAllowed  bool
+	ResumeEligible     bool
+}
+
+type CapacityReport struct {
+	Sequence               int64          `json:"sequence"`
+	ObservedAt             time.Time      `json:"observed_at"`
+	WatermarkState         WatermarkState `json:"watermark_state"`
+	TotalBytes             int64          `json:"total_bytes"`
+	FreeBytes              int64          `json:"free_bytes"`
+	HighWatermarkBytes     int64          `json:"high_watermark_bytes"`
+	LowWatermarkBytes      int64          `json:"low_watermark_bytes"`
+	CriticalFreeBytes      int64          `json:"critical_free_bytes"`
+	ArtifactStoreReachable bool           `json:"artifact_store_reachable"`
+}
+
+type ReadinessReport struct {
+	CycleID                    uuid.UUID       `json:"cycle_id"`
+	Check                      string          `json:"check"`
+	WorkerPoolID               uuid.UUID       `json:"worker_pool_id"`
+	NodeIdentity               string          `json:"node_identity"`
+	ExecutionProfileRevisionID uuid.UUID       `json:"execution_profile_revision_id"`
+	InferenceBackendRevision   string          `json:"inference_backend_revision"`
+	Deadline                   time.Time       `json:"deadline"`
+	Passed                     bool            `json:"passed"`
+	Evidence                   json.RawMessage `json:"evidence"`
+	EvidenceDigest             [32]byte        `json:"evidence_digest"`
 }
 
 type Entry struct {
@@ -149,6 +184,19 @@ type Manager struct {
 type rootMetadata struct {
 	WorkerID    uuid.UUID `json:"worker_id"`
 	WorkerEpoch int64     `json:"worker_epoch"`
+}
+
+type capacityReportState struct {
+	WorkerID    uuid.UUID      `json:"worker_id"`
+	WorkerEpoch int64          `json:"worker_epoch"`
+	Pending     bool           `json:"pending"`
+	Report      CapacityReport `json:"report"`
+}
+
+type readinessReportState struct {
+	WorkerID    uuid.UUID       `json:"worker_id"`
+	WorkerEpoch int64           `json:"worker_epoch"`
+	Report      ReadinessReport `json:"report"`
 }
 
 type attemptMetadata struct {
@@ -658,9 +706,291 @@ func (manager *Manager) Watermark(ctx context.Context) (Watermark, error) {
 	}
 	return Watermark{
 		State: state, TotalBytes: space.TotalBytes, FreeBytes: space.FreeBytes,
-		UsedBytes: used, AssignmentAllowed: state == WatermarkNormal,
-		ResumeEligible: used <= manager.lowWatermark,
+		UsedBytes: used, HighWatermarkBytes: manager.highWatermark,
+		LowWatermarkBytes: manager.lowWatermark, CriticalFreeBytes: manager.criticalFree,
+		AssignmentAllowed: state == WatermarkNormal, ResumeEligible: used <= manager.lowWatermark,
 	}, nil
+}
+
+func (manager *Manager) BeginCapacityReport(
+	ctx context.Context,
+	report CapacityReport,
+) (CapacityReport, error) {
+	if manager == nil {
+		return CapacityReport{}, errors.New("worker local recovery manager is not configured")
+	}
+	if err := requireContext(ctx); err != nil {
+		return CapacityReport{}, err
+	}
+	if report.Sequence != 0 || !manager.validCapacityReport(report, false) {
+		return CapacityReport{}, errors.New("worker capacity report is invalid")
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+
+	state, exists, err := manager.readCapacityReportState()
+	if err != nil {
+		return CapacityReport{}, err
+	}
+	if exists && state.Pending {
+		return state.Report, nil
+	}
+	sequence := int64(1)
+	if exists {
+		if state.Report.Sequence == int64(^uint64(0)>>1) {
+			return CapacityReport{}, errors.New("worker capacity report sequence is exhausted")
+		}
+		sequence = state.Report.Sequence + 1
+	}
+	report.Sequence = sequence
+	report.ObservedAt = manager.clock().UTC()
+	if report.ObservedAt.IsZero() {
+		return CapacityReport{}, errors.New("worker capacity observation time is invalid")
+	}
+	state = capacityReportState{
+		WorkerID: manager.workerID, WorkerEpoch: manager.workerEpoch,
+		Pending: true, Report: report,
+	}
+	if err := writeJSONAtomic(manager.root, manager.capacityReportPath(), state); err != nil {
+		return CapacityReport{}, fmt.Errorf("persist pending Worker capacity report: %w", err)
+	}
+	return report, nil
+}
+
+func (manager *Manager) CompleteCapacityReport(ctx context.Context, sequence int64) error {
+	if manager == nil {
+		return errors.New("worker local recovery manager is not configured")
+	}
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
+	if sequence <= 0 {
+		return errors.New("worker capacity report sequence is invalid")
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	state, exists, err := manager.readCapacityReportState()
+	if err != nil {
+		return err
+	}
+	if !exists || state.Report.Sequence != sequence {
+		return errors.New("worker capacity report acknowledgement conflicts with durable state")
+	}
+	if !state.Pending {
+		return nil
+	}
+	state.Pending = false
+	if err := writeJSONAtomic(manager.root, manager.capacityReportPath(), state); err != nil {
+		return fmt.Errorf("acknowledge Worker capacity report: %w", err)
+	}
+	return nil
+}
+
+func (manager *Manager) BeginReadinessReport(
+	ctx context.Context,
+	report ReadinessReport,
+) (ReadinessReport, error) {
+	if manager == nil {
+		return ReadinessReport{}, errors.New("worker local recovery manager is not configured")
+	}
+	if err := requireContext(ctx); err != nil {
+		return ReadinessReport{}, err
+	}
+	if !validReadinessReport(report) {
+		return ReadinessReport{}, errors.New("worker readiness report is invalid")
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	existing, exists, err := manager.readReadinessReportState()
+	if err != nil {
+		return ReadinessReport{}, err
+	}
+	if exists {
+		if !sameReadinessReport(existing.Report, report) {
+			return ReadinessReport{}, errors.New("worker readiness report conflicts with durable state")
+		}
+		return existing.Report, nil
+	}
+	state := readinessReportState{
+		WorkerID: manager.workerID, WorkerEpoch: manager.workerEpoch, Report: report,
+	}
+	if err := writeJSONAtomic(manager.root, manager.readinessReportPath(), state); err != nil {
+		return ReadinessReport{}, fmt.Errorf("persist pending Worker readiness report: %w", err)
+	}
+	return report, nil
+}
+
+func (manager *Manager) PendingReadinessReport(
+	ctx context.Context,
+) (ReadinessReport, bool, error) {
+	if manager == nil {
+		return ReadinessReport{}, false, errors.New("worker local recovery manager is not configured")
+	}
+	if err := requireContext(ctx); err != nil {
+		return ReadinessReport{}, false, err
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	state, exists, err := manager.readReadinessReportState()
+	if err != nil || !exists {
+		return ReadinessReport{}, exists, err
+	}
+	return state.Report, true, nil
+}
+
+func (manager *Manager) CompleteReadinessReport(
+	ctx context.Context,
+	cycleID uuid.UUID,
+	check string,
+) error {
+	if manager == nil {
+		return errors.New("worker local recovery manager is not configured")
+	}
+	if err := requireContext(ctx); err != nil {
+		return err
+	}
+	if cycleID == uuid.Nil || !validReadinessCheck(check) {
+		return errors.New("worker readiness report acknowledgement is invalid")
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	state, exists, err := manager.readReadinessReportState()
+	if err != nil {
+		return err
+	}
+	if !exists || state.Report.CycleID != cycleID || state.Report.Check != check {
+		return errors.New("worker readiness report acknowledgement conflicts with durable state")
+	}
+	if err := os.Remove(manager.readinessReportPath()); err != nil {
+		return fmt.Errorf("remove acknowledged Worker readiness report: %w", err)
+	}
+	if err := syncDirectory(manager.root); err != nil {
+		return fmt.Errorf("sync acknowledged Worker readiness report: %w", err)
+	}
+	return nil
+}
+
+func (manager *Manager) readCapacityReportState() (capacityReportState, bool, error) {
+	var state capacityReportState
+	err := readJSONBounded(manager.capacityReportPath(), defaultMetadataLimit, &state)
+	if errors.Is(err, os.ErrNotExist) {
+		return capacityReportState{}, false, nil
+	}
+	if err != nil {
+		return capacityReportState{}, false, fmt.Errorf("read durable Worker capacity report: %w", err)
+	}
+	if state.WorkerID != manager.workerID || state.WorkerEpoch != manager.workerEpoch ||
+		!manager.validCapacityReport(state.Report, true) {
+		return capacityReportState{}, false, ErrStateIdentityMismatch
+	}
+	return state, true, nil
+}
+
+func (manager *Manager) readReadinessReportState() (readinessReportState, bool, error) {
+	var state readinessReportState
+	err := readJSONBounded(manager.readinessReportPath(), readinessReportLimit, &state)
+	if errors.Is(err, os.ErrNotExist) {
+		return readinessReportState{}, false, nil
+	}
+	if err != nil {
+		return readinessReportState{}, false, fmt.Errorf("read durable Worker readiness report: %w", err)
+	}
+	if state.WorkerID != manager.workerID || state.WorkerEpoch != manager.workerEpoch ||
+		!validReadinessReport(state.Report) {
+		return readinessReportState{}, false, ErrStateIdentityMismatch
+	}
+	return state, true, nil
+}
+
+func (manager *Manager) validCapacityReport(report CapacityReport, requireSequence bool) bool {
+	if requireSequence && (report.Sequence <= 0 || report.ObservedAt.IsZero()) ||
+		!requireSequence && (report.Sequence != 0 || !report.ObservedAt.IsZero()) {
+		return false
+	}
+	expectedState := WatermarkNormal
+	if report.TotalBytes-report.FreeBytes >= report.HighWatermarkBytes {
+		expectedState = WatermarkPressured
+	}
+	if report.FreeBytes <= report.CriticalFreeBytes {
+		expectedState = WatermarkCritical
+	}
+	return report.WatermarkState == expectedState && report.TotalBytes > 0 &&
+		report.FreeBytes >= 0 && report.FreeBytes <= report.TotalBytes &&
+		report.HighWatermarkBytes == manager.highWatermark &&
+		report.LowWatermarkBytes == manager.lowWatermark &&
+		report.CriticalFreeBytes == manager.criticalFree &&
+		report.HighWatermarkBytes < report.TotalBytes &&
+		report.LowWatermarkBytes < report.HighWatermarkBytes &&
+		report.CriticalFreeBytes < report.TotalBytes
+}
+
+func (manager *Manager) capacityReportPath() string {
+	return filepath.Join(manager.root, capacityReportName)
+}
+
+func (manager *Manager) readinessReportPath() string {
+	return filepath.Join(manager.root, readinessReportName)
+}
+
+func validReadinessReport(report ReadinessReport) bool {
+	if report.CycleID == uuid.Nil || report.WorkerPoolID == uuid.Nil ||
+		report.ExecutionProfileRevisionID == uuid.Nil || report.Deadline.IsZero() ||
+		!validReadinessCheck(report.Check) || !validStateText(report.NodeIdentity, 500) ||
+		!validStateText(report.InferenceBackendRevision, 200) {
+		return false
+	}
+	canonical, err := canonicalReadinessEvidence(report.Evidence)
+	if err != nil || !bytes.Equal(canonical, report.Evidence) {
+		return false
+	}
+	return report.EvidenceDigest == sha256.Sum256(report.Evidence)
+}
+
+func validReadinessCheck(check string) bool {
+	switch check {
+	case "IDENTITY", "DEVICE", "INFERENCE_BACKEND", "MODEL_WARMUP", "CANARY":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStateText(value string, maximum int) bool {
+	return value != "" && len(value) <= maximum && utf8.ValidString(value) &&
+		strings.TrimSpace(value) == value && !strings.ContainsRune(value, '\x00')
+}
+
+func sameReadinessAuthority(left, right ReadinessReport) bool {
+	return left.CycleID == right.CycleID && left.Check == right.Check &&
+		left.WorkerPoolID == right.WorkerPoolID && left.NodeIdentity == right.NodeIdentity &&
+		left.ExecutionProfileRevisionID == right.ExecutionProfileRevisionID &&
+		left.InferenceBackendRevision == right.InferenceBackendRevision &&
+		left.Deadline.Equal(right.Deadline)
+}
+
+func sameReadinessReport(left, right ReadinessReport) bool {
+	return sameReadinessAuthority(left, right) && left.Passed == right.Passed &&
+		left.EvidenceDigest == right.EvidenceDigest && bytes.Equal(left.Evidence, right.Evidence)
+}
+
+func canonicalReadinessEvidence(raw []byte) ([]byte, error) {
+	if len(raw) == 0 || len(raw) > maxReadinessEvidence {
+		return nil, errors.New("readiness evidence is absent or too large")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var object map[string]any
+	if err := decoder.Decode(&object); err != nil || object == nil {
+		return nil, errors.New("readiness evidence must contain one JSON object")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, errors.New("readiness evidence must contain one JSON object")
+	}
+	canonical, err := json.Marshal(object)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize readiness evidence: %w", err)
+	}
+	return canonical, nil
 }
 
 func (manager *Manager) observeSpace() (Space, error) {

@@ -2,14 +2,49 @@ syntax = "proto3";
 
 package vela.v1;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
 
 service RunnerService {
+  rpc ProbeReadiness(ProbeReadinessRequest) returns (ProbeReadinessResponse);
   rpc Prepare(PrepareRequest) returns (PrepareResponse);
   rpc Start(StartRequest) returns (StartResponse);
   rpc Cancel(CancelRequest) returns (CancelResponse);
   rpc Status(StatusRequest) returns (StatusResponse);
   rpc CollectOutputs(CollectOutputsRequest) returns (CollectOutputsResponse);
+}
+
+enum RunnerReadinessCheck {
+  RUNNER_READINESS_CHECK_UNSPECIFIED = 0;
+  RUNNER_READINESS_CHECK_DEVICE = 1;
+  RUNNER_READINESS_CHECK_INFERENCE_BACKEND = 2;
+  RUNNER_READINESS_CHECK_MODEL_WARMUP = 3;
+  RUNNER_READINESS_CHECK_CANARY = 4;
+}
+
+message RunnerReadinessIdentity {
+  string cycle_id = 1;
+  string worker_id = 2;
+  int64 worker_epoch = 3;
+  string node_identity = 4;
+  string execution_profile_revision_id = 5;
+  string inference_backend_revision = 6;
+  google.protobuf.Timestamp deadline = 7;
+}
+
+message ProbeReadinessRequest {
+  RunnerReadinessIdentity identity = 1;
+  RunnerReadinessCheck check = 2;
+}
+
+message ProbeReadinessResponse {
+  RunnerReadinessIdentity identity = 1;
+  RunnerReadinessCheck check = 2;
+  RunnerCommandDecision decision = 3;
+  bool passed = 4;
+  bytes evidence_json = 5;
+  string detail = 6;
 }
 
 message RunnerAttemptIdentity {

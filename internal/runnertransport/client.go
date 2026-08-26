@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -24,6 +25,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -32,6 +34,8 @@ const (
 	maxStatusJSONBytes     = 16 * 1024
 	maxRunnerDetailRunes   = 1000
 	maxRunnerOutputPath    = 4096
+	maxReadinessEvidence   = 16 * 1024
+	maxReadinessDuration   = 2 * time.Hour
 )
 
 var (
@@ -52,6 +56,32 @@ type AttemptIdentity struct {
 	WorkerID    uuid.UUID
 	WorkerEpoch int64
 	LeaseFence  int64
+}
+
+type ReadinessIdentity struct {
+	CycleID                    uuid.UUID
+	WorkerID                   uuid.UUID
+	WorkerEpoch                int64
+	NodeIdentity               string
+	ExecutionProfileRevisionID uuid.UUID
+	InferenceBackendRevision   string
+	Deadline                   time.Time
+}
+
+type ReadinessCheck string
+
+const (
+	ReadinessDevice           ReadinessCheck = "DEVICE"
+	ReadinessInferenceBackend ReadinessCheck = "INFERENCE_BACKEND"
+	ReadinessModelWarmup      ReadinessCheck = "MODEL_WARMUP"
+	ReadinessCanary           ReadinessCheck = "CANARY"
+)
+
+type ReadinessResult struct {
+	Decision CommandDecision
+	Passed   bool
+	Evidence json.RawMessage
+	Detail   string
 }
 
 type ExecutionSpec struct {
@@ -196,6 +226,60 @@ func (client *Client) Close() error {
 		return nil
 	}
 	return client.connection.Close()
+}
+
+func (client *Client) ProbeReadiness(
+	ctx context.Context,
+	identity ReadinessIdentity,
+	check ReadinessCheck,
+) (ReadinessResult, error) {
+	if client == nil || client.runner == nil {
+		return ReadinessResult{}, errors.New("runner client is not configured")
+	}
+	if err := validateReadinessIdentity(identity); err != nil {
+		return ReadinessResult{}, err
+	}
+	protoCheck, err := protoReadinessCheck(check)
+	if err != nil {
+		return ReadinessResult{}, err
+	}
+	response, err := client.runner.ProbeReadiness(ctx, &velav1.ProbeReadinessRequest{
+		Identity: protoReadinessIdentity(identity),
+		Check:    protoCheck,
+	})
+	if err != nil {
+		return ReadinessResult{}, err
+	}
+	if response == nil || !sameProtoReadinessIdentity(response.GetIdentity(), identity) ||
+		response.GetCheck() != protoCheck {
+		return ReadinessResult{}, errors.New("runner readiness response authority does not match its request")
+	}
+	decision, err := commandDecision(response.GetDecision())
+	if err != nil {
+		return ReadinessResult{}, err
+	}
+	if !validDetail(response.GetDetail()) {
+		return ReadinessResult{}, errors.New("runner readiness response detail is invalid")
+	}
+	if decision == CommandRejected {
+		if response.GetPassed() || len(response.GetEvidenceJson()) != 0 {
+			return ReadinessResult{}, errors.New("rejected runner readiness response contains evidence")
+		}
+		return ReadinessResult{Decision: decision, Detail: response.GetDetail()}, nil
+	}
+	evidence, err := parseReadinessEvidence(
+		response.GetEvidenceJson(), identity, check, response.GetPassed(),
+	)
+	if err != nil {
+		return ReadinessResult{
+			Decision: CommandRejected,
+			Detail:   "runner readiness evidence is invalid",
+		}, nil
+	}
+	return ReadinessResult{
+		Decision: decision, Passed: response.GetPassed(), Evidence: evidence,
+		Detail: response.GetDetail(),
+	}, nil
 }
 
 func (client *Client) Prepare(
@@ -465,6 +549,20 @@ func validateIdentity(identity AttemptIdentity) error {
 	return nil
 }
 
+func validateReadinessIdentity(identity ReadinessIdentity) error {
+	remaining := time.Until(identity.Deadline)
+	if identity.CycleID == uuid.Nil || identity.WorkerID == uuid.Nil || identity.WorkerEpoch <= 0 ||
+		identity.ExecutionProfileRevisionID == uuid.Nil ||
+		!validPrintableText(identity.NodeIdentity, 500, false) ||
+		strings.TrimSpace(identity.NodeIdentity) != identity.NodeIdentity ||
+		!validPrintableText(identity.InferenceBackendRevision, 200, false) ||
+		strings.TrimSpace(identity.InferenceBackendRevision) != identity.InferenceBackendRevision ||
+		remaining <= 0 || remaining > maxReadinessDuration {
+		return errors.New("runner readiness authority is invalid")
+	}
+	return nil
+}
+
 func validateExecutionSpec(spec ExecutionSpec) error {
 	if spec.ModelRevisionID == uuid.Nil || spec.GenerationPresetRevisionID == uuid.Nil ||
 		spec.ExecutionProfileRevisionID == uuid.Nil || spec.OutputSpecID == uuid.Nil ||
@@ -501,6 +599,166 @@ func canonicalJSONObject(raw []byte, maxBytes int) ([]byte, error) {
 		return nil, fmt.Errorf("canonicalize JSON object: %w", err)
 	}
 	return canonical, nil
+}
+
+type readinessEvidenceCommon struct {
+	Check                      string `json:"check"`
+	CycleID                    string `json:"cycle_id"`
+	Deadline                   string `json:"deadline"`
+	ExecutionProfileRevisionID string `json:"execution_profile_revision_id"`
+	InferenceBackendRevision   string `json:"inference_backend_revision"`
+	NodeIdentity               string `json:"node_identity"`
+	Passed                     *bool  `json:"passed"`
+	SchemaVersion              *int   `json:"schema_version"`
+	WorkerEpoch                *int64 `json:"worker_epoch"`
+	WorkerID                   string `json:"worker_id"`
+}
+
+type deviceReadinessEvidence struct {
+	readinessEvidenceCommon
+	DITGPUUUIDs       []string `json:"dit_gpu_uuids"`
+	EncoderVAEGPUUUID string   `json:"encoder_vae_gpu_uuid"`
+}
+
+type inferenceBackendReadinessEvidence struct {
+	readinessEvidenceCommon
+	Loaded *bool `json:"loaded"`
+}
+
+type modelWarmupReadinessEvidence struct {
+	readinessEvidenceCommon
+	Warmed *bool `json:"warmed"`
+}
+
+type canaryReadinessEvidence struct {
+	readinessEvidenceCommon
+	OutputSHA256 string `json:"output_sha256"`
+}
+
+func parseReadinessEvidence(
+	raw []byte,
+	identity ReadinessIdentity,
+	check ReadinessCheck,
+	passed bool,
+) (json.RawMessage, error) {
+	canonical, err := canonicalJSONObject(raw, maxReadinessEvidence)
+	if err != nil || !bytes.Equal(canonical, raw) {
+		return nil, errors.New("runner readiness evidence is not canonical JSON")
+	}
+	switch check {
+	case ReadinessDevice:
+		var evidence deviceReadinessEvidence
+		if err := decodeReadinessEvidence(canonical, &evidence); err != nil ||
+			!validCommonReadinessEvidence(evidence.readinessEvidenceCommon, identity, check, passed) ||
+			!validGPUUUID(evidence.EncoderVAEGPUUUID) || len(evidence.DITGPUUUIDs) != 7 {
+			return nil, errors.New("runner DEVICE readiness evidence is invalid")
+		}
+		seen := map[string]struct{}{evidence.EncoderVAEGPUUUID: {}}
+		for _, gpuUUID := range evidence.DITGPUUUIDs {
+			if !validGPUUUID(gpuUUID) {
+				return nil, errors.New("runner DEVICE readiness evidence is invalid")
+			}
+			if _, exists := seen[gpuUUID]; exists {
+				return nil, errors.New("runner DEVICE readiness evidence contains duplicate GPUs")
+			}
+			seen[gpuUUID] = struct{}{}
+		}
+	case ReadinessInferenceBackend:
+		var evidence inferenceBackendReadinessEvidence
+		if err := decodeReadinessEvidence(canonical, &evidence); err != nil || evidence.Loaded == nil ||
+			(passed && !*evidence.Loaded) ||
+			!validCommonReadinessEvidence(evidence.readinessEvidenceCommon, identity, check, passed) {
+			return nil, errors.New("runner INFERENCE_BACKEND readiness evidence is invalid")
+		}
+	case ReadinessModelWarmup:
+		var evidence modelWarmupReadinessEvidence
+		if err := decodeReadinessEvidence(canonical, &evidence); err != nil || evidence.Warmed == nil ||
+			(passed && !*evidence.Warmed) ||
+			!validCommonReadinessEvidence(evidence.readinessEvidenceCommon, identity, check, passed) {
+			return nil, errors.New("runner MODEL_WARMUP readiness evidence is invalid")
+		}
+	case ReadinessCanary:
+		var evidence canaryReadinessEvidence
+		if err := decodeReadinessEvidence(canonical, &evidence); err != nil ||
+			!validCommonReadinessEvidence(evidence.readinessEvidenceCommon, identity, check, passed) ||
+			len(evidence.OutputSHA256) != 64 {
+			return nil, errors.New("runner CANARY readiness evidence is invalid")
+		}
+		for _, character := range evidence.OutputSHA256 {
+			if !strings.ContainsRune("0123456789abcdef", character) {
+				return nil, errors.New("runner CANARY readiness evidence digest is invalid")
+			}
+		}
+	default:
+		return nil, errors.New("runner readiness evidence check is unsupported")
+	}
+	return append(json.RawMessage(nil), canonical...), nil
+}
+
+func decodeReadinessEvidence(raw []byte, destination any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(destination)
+}
+
+func validCommonReadinessEvidence(
+	evidence readinessEvidenceCommon,
+	identity ReadinessIdentity,
+	check ReadinessCheck,
+	passed bool,
+) bool {
+	return evidence.SchemaVersion != nil && *evidence.SchemaVersion == 1 &&
+		evidence.Passed != nil && *evidence.Passed == passed &&
+		evidence.WorkerEpoch != nil && *evidence.WorkerEpoch == identity.WorkerEpoch &&
+		evidence.Check == string(check) && evidence.CycleID == identity.CycleID.String() &&
+		evidence.WorkerID == identity.WorkerID.String() && evidence.NodeIdentity == identity.NodeIdentity &&
+		evidence.ExecutionProfileRevisionID == identity.ExecutionProfileRevisionID.String() &&
+		evidence.InferenceBackendRevision == identity.InferenceBackendRevision &&
+		evidence.Deadline == identity.Deadline.UTC().Format(time.RFC3339Nano)
+}
+
+func validGPUUUID(value string) bool {
+	const prefix = "GPU-"
+	if !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	parsed, err := uuid.Parse(strings.TrimPrefix(value, prefix))
+	return err == nil && prefix+parsed.String() == value
+}
+
+func protoReadinessIdentity(identity ReadinessIdentity) *velav1.RunnerReadinessIdentity {
+	return &velav1.RunnerReadinessIdentity{
+		CycleId: identity.CycleID.String(), WorkerId: identity.WorkerID.String(),
+		WorkerEpoch: identity.WorkerEpoch, NodeIdentity: identity.NodeIdentity,
+		ExecutionProfileRevisionId: identity.ExecutionProfileRevisionID.String(),
+		InferenceBackendRevision:   identity.InferenceBackendRevision,
+		Deadline:                   timestamppb.New(identity.Deadline),
+	}
+}
+
+func sameProtoReadinessIdentity(got *velav1.RunnerReadinessIdentity, want ReadinessIdentity) bool {
+	return got != nil && got.GetDeadline() != nil && got.GetDeadline().CheckValid() == nil &&
+		got.GetCycleId() == want.CycleID.String() && got.GetWorkerId() == want.WorkerID.String() &&
+		got.GetWorkerEpoch() == want.WorkerEpoch && got.GetNodeIdentity() == want.NodeIdentity &&
+		got.GetExecutionProfileRevisionId() == want.ExecutionProfileRevisionID.String() &&
+		got.GetInferenceBackendRevision() == want.InferenceBackendRevision &&
+		got.GetDeadline().AsTime().Equal(want.Deadline)
+}
+
+func protoReadinessCheck(check ReadinessCheck) (velav1.RunnerReadinessCheck, error) {
+	switch check {
+	case ReadinessDevice:
+		return velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_DEVICE, nil
+	case ReadinessInferenceBackend:
+		return velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_INFERENCE_BACKEND, nil
+	case ReadinessModelWarmup:
+		return velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_MODEL_WARMUP, nil
+	case ReadinessCanary:
+		return velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_CANARY, nil
+	default:
+		return velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_UNSPECIFIED,
+			errors.New("runner readiness check is invalid")
+	}
 }
 
 func protoIdentity(identity AttemptIdentity) *velav1.RunnerAttemptIdentity {

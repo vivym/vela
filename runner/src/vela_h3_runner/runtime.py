@@ -12,6 +12,7 @@ import subprocess
 import threading
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -24,9 +25,22 @@ _MAX_REQUEST_BYTES = 64 << 10
 _MAX_OUTPUTS = 32
 _MAX_SEQUENCE = (1 << 63) - 1
 _MAX_ESTIMATED_REMAINING_SECONDS = _MAX_SEQUENCE // 1_000_000_000
+_MAX_READINESS_SECONDS = 2 * 60 * 60
 _KIND_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
 _CONTENT_TYPE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$")
-_GPU_PATTERN = re.compile(r"^GPU-[0-9a-fA-F-]{36}$")
+_GPU_PATTERN = re.compile(
+    r"^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_READINESS_DETAILS = {
+    "DEVICE": ("device roles verified", "device roles did not match"),
+    "INFERENCE_BACKEND": (
+        "inference backend verified",
+        "inference backend did not load",
+    ),
+    "MODEL_WARMUP": ("model warm-up verified", "model warm-up did not complete"),
+    "CANARY": ("canary output verified", "canary output did not pass"),
+}
 
 
 @dataclass(frozen=True)
@@ -77,11 +91,307 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
         self._backend_stage_progress: float | None = None
         self._estimated_remaining_seconds: int | None = None
         self._process: subprocess.Popen[bytes] | None = None
+        self._readiness_process: subprocess.Popen[bytes] | None = None
         self._process_logs: tuple[Any, Any] | None = None
         self._outputs: tuple[_Output, ...] = ()
         self._failure: runner_pb2.RunnerFailure | None = None
         self._resume = False
         self._load_recoverable_state()
+
+    def ProbeReadiness(self, request: Any, context: grpc.ServicerContext | None) -> Any:
+        work_dir: Path | None = None
+        process: subprocess.Popen[bytes] | None = None
+        try:
+            with self._lock:
+                identity, deadline, check_name = self._validated_readiness_request(request)
+                self._refresh_process()
+                terminal_states = {
+                    runner_pb2.RUNNER_EXECUTION_STATE_SUCCEEDED,
+                    runner_pb2.RUNNER_EXECUTION_STATE_FAILED,
+                    runner_pb2.RUNNER_EXECUTION_STATE_CANCELED,
+                }
+                if self._readiness_process is not None:
+                    return _readiness_rejected(request, "runner owns an active readiness probe")
+                if self._process is not None or (
+                    self._identity is not None and self._state not in terminal_states
+                ):
+                    return _readiness_rejected(request, "runner owns an active Attempt")
+                if context is not None:
+                    context_remaining = context.time_remaining()
+                    if context_remaining is not None and context_remaining <= 0:
+                        return _readiness_rejected(request, "readiness deadline elapsed")
+
+                work_dir = self._config.state_root / f".readiness-{uuid.uuid4()}"
+                work_dir.mkdir(mode=0o700)
+                request_path = work_dir / "request.json"
+                result_path = work_dir / "result.json"
+                _write_json_atomic(
+                    request_path,
+                    {
+                        "schema_version": 1,
+                        "cycle_id": identity.cycle_id,
+                        "worker_id": identity.worker_id,
+                        "worker_epoch": identity.worker_epoch,
+                        "node_identity": identity.node_identity,
+                        "execution_profile_revision_id": identity.execution_profile_revision_id,
+                        "inference_backend_revision": identity.inference_backend_revision,
+                        "deadline": _timestamp_rfc3339(
+                            identity.deadline.seconds, identity.deadline.nanos
+                        ),
+                        "check": check_name,
+                    },
+                )
+                command = [
+                    *self._config.backend_command,
+                    "--vela-readiness-check",
+                    check_name,
+                    "--vela-readiness-request",
+                    str(request_path),
+                    "--vela-readiness-result",
+                    str(result_path),
+                ]
+                environment = {
+                    **os.environ,
+                    "CUDA_VISIBLE_DEVICES": ",".join(self._gpu_ids),
+                    "VELA_RUNNER_BACKEND_REVISION": self._config.backend_revision,
+                }
+                process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=environment,
+                    close_fds=True,
+                    start_new_session=True,
+                )
+                self._readiness_process = process
+
+            return_code, stopped = self._wait_readiness_process(process, deadline, context)
+            if stopped == "canceled":
+                return _readiness_rejected(request, "readiness probe canceled")
+            if stopped == "timed_out":
+                return _readiness_rejected(request, "readiness probe timed out")
+            if return_code != 0:
+                return _readiness_rejected(request, "readiness backend rejected the probe")
+            result = _read_private_json(result_path)
+            evidence, passed = self._readiness_evidence(identity, check_name, result)
+            passed_detail, failed_detail = _READINESS_DETAILS[check_name]
+            return runner_pb2.ProbeReadinessResponse(
+                identity=identity,
+                check=request.check,
+                decision=runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED,
+                passed=passed,
+                evidence_json=json.dumps(
+                    evidence, separators=(",", ":"), sort_keys=True
+                ).encode(),
+                detail=passed_detail if passed else failed_detail,
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
+            if isinstance(error, (TypeError, ValueError)) and work_dir is None:
+                return _readiness_rejected(request, str(error))
+            return _readiness_rejected(request, "readiness evidence is invalid")
+        finally:
+            if process is not None:
+                with self._lock:
+                    if self._readiness_process is process:
+                        self._readiness_process = None
+            if work_dir is not None:
+                _remove_flat_directory(work_dir)
+
+    def _wait_readiness_process(
+        self,
+        process: subprocess.Popen[bytes],
+        deadline: datetime,
+        context: grpc.ServicerContext | None,
+    ) -> tuple[int | None, str]:
+        while True:
+            return_code = process.poll()
+            if return_code is not None:
+                return return_code, ""
+            if context is not None and not context.is_active():
+                _terminate_process_group(process, self._config.stop_timeout_seconds)
+                return None, "canceled"
+            remaining = (deadline - datetime.now(UTC)).total_seconds()
+            if context is not None:
+                context_remaining = context.time_remaining()
+                if context_remaining is not None:
+                    remaining = min(remaining, context_remaining)
+            if remaining <= 0:
+                _terminate_process_group(process, self._config.stop_timeout_seconds)
+                return None, "timed_out"
+            try:
+                return process.wait(timeout=min(remaining, 0.05)), ""
+            except subprocess.TimeoutExpired:
+                continue
+
+    def _validated_readiness_request(
+        self, request: Any
+    ) -> tuple[runner_pb2.RunnerReadinessIdentity, datetime, str]:
+        identity = runner_pb2.RunnerReadinessIdentity()
+        identity.CopyFrom(request.identity)
+        if (
+            _canonical_uuid(identity.cycle_id) != identity.cycle_id
+            or _canonical_uuid(identity.worker_id) != identity.worker_id
+            or identity.worker_epoch <= 0
+            or not _valid_text(identity.node_identity, 500)
+            or _canonical_uuid(identity.execution_profile_revision_id)
+            != identity.execution_profile_revision_id
+            or identity.inference_backend_revision != self._config.backend_revision
+            or not any(
+                profile.execution_profile_revision_id
+                == identity.execution_profile_revision_id
+                for profile in self._profiles
+            )
+        ):
+            raise ValueError("readiness authority is invalid")
+        try:
+            deadline = identity.deadline.ToDatetime(tzinfo=UTC)
+        except (OverflowError, ValueError) as error:
+            raise ValueError("readiness deadline is invalid") from error
+        remaining = deadline - datetime.now(UTC)
+        if remaining <= timedelta(0) or remaining > timedelta(seconds=_MAX_READINESS_SECONDS):
+            raise ValueError("readiness deadline is invalid")
+        checks = {
+            runner_pb2.RUNNER_READINESS_CHECK_DEVICE: "DEVICE",
+            runner_pb2.RUNNER_READINESS_CHECK_INFERENCE_BACKEND: "INFERENCE_BACKEND",
+            runner_pb2.RUNNER_READINESS_CHECK_MODEL_WARMUP: "MODEL_WARMUP",
+            runner_pb2.RUNNER_READINESS_CHECK_CANARY: "CANARY",
+        }
+        check_name = checks.get(request.check)
+        if check_name is None:
+            raise ValueError("readiness check is invalid")
+        return identity, deadline, check_name
+
+    def _readiness_evidence(
+        self,
+        identity: runner_pb2.RunnerReadinessIdentity,
+        check_name: str,
+        result: dict[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        if check_name == "DEVICE":
+            return self._device_readiness_evidence(identity, result)
+        if check_name == "INFERENCE_BACKEND":
+            return self._inference_backend_readiness_evidence(identity, result)
+        if check_name == "MODEL_WARMUP":
+            return self._model_warmup_readiness_evidence(identity, result)
+        if check_name == "CANARY":
+            return self._canary_readiness_evidence(identity, result)
+        raise ValueError("readiness check is invalid")
+
+    def _device_readiness_evidence(
+        self, identity: runner_pb2.RunnerReadinessIdentity, result: dict[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
+        if set(result) != {
+            "schema_version",
+            "check",
+            "passed",
+            "encoder_vae_gpu_uuid",
+            "dit_gpu_uuids",
+        }:
+            raise ValueError("DEVICE readiness evidence schema is invalid")
+        encoder = result["encoder_vae_gpu_uuid"]
+        dit = result["dit_gpu_uuids"]
+        if (
+            result["schema_version"] != 1
+            or result["check"] != "DEVICE"
+            or type(result["passed"]) is not bool
+            or not isinstance(encoder, str)
+            or not _valid_gpu_uuid(encoder)
+            or not isinstance(dit, list)
+            or len(dit) != 7
+            or len({encoder, *dit}) != 8
+            or any(not _valid_gpu_uuid(gpu) for gpu in dit)
+        ):
+            raise ValueError("DEVICE readiness evidence is invalid")
+        passed = bool(result["passed"] and (encoder, *dit) == self._gpu_ids)
+        return self._base_readiness_evidence(identity, "DEVICE", passed) | {
+            "encoder_vae_gpu_uuid": encoder,
+            "dit_gpu_uuids": dit,
+        }, passed
+
+    def _inference_backend_readiness_evidence(
+        self, identity: runner_pb2.RunnerReadinessIdentity, result: dict[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
+        if set(result) != {
+            "schema_version",
+            "check",
+            "passed",
+            "inference_backend_revision",
+            "loaded",
+        } or (
+            result["schema_version"] != 1
+            or result["check"] != "INFERENCE_BACKEND"
+            or type(result["passed"]) is not bool
+            or result["inference_backend_revision"] != identity.inference_backend_revision
+            or type(result["loaded"]) is not bool
+        ):
+            raise ValueError("INFERENCE_BACKEND readiness evidence is invalid")
+        passed = bool(result["passed"] and result["loaded"])
+        return self._base_readiness_evidence(identity, "INFERENCE_BACKEND", passed) | {
+            "loaded": result["loaded"]
+        }, passed
+
+    def _model_warmup_readiness_evidence(
+        self, identity: runner_pb2.RunnerReadinessIdentity, result: dict[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
+        if set(result) != {
+            "schema_version",
+            "check",
+            "passed",
+            "execution_profile_revision_id",
+            "warmed",
+        } or (
+            result["schema_version"] != 1
+            or result["check"] != "MODEL_WARMUP"
+            or type(result["passed"]) is not bool
+            or result["execution_profile_revision_id"]
+            != identity.execution_profile_revision_id
+            or type(result["warmed"]) is not bool
+        ):
+            raise ValueError("MODEL_WARMUP readiness evidence is invalid")
+        passed = bool(result["passed"] and result["warmed"])
+        return self._base_readiness_evidence(identity, "MODEL_WARMUP", passed) | {
+            "warmed": result["warmed"]
+        }, passed
+
+    def _canary_readiness_evidence(
+        self, identity: runner_pb2.RunnerReadinessIdentity, result: dict[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
+        if set(result) != {
+            "schema_version",
+            "check",
+            "passed",
+            "output_sha256",
+        } or (
+            result["schema_version"] != 1
+            or result["check"] != "CANARY"
+            or type(result["passed"]) is not bool
+            or not isinstance(result["output_sha256"], str)
+            or _SHA256_PATTERN.fullmatch(result["output_sha256"]) is None
+        ):
+            raise ValueError("CANARY readiness evidence is invalid")
+        return self._base_readiness_evidence(identity, "CANARY", result["passed"]) | {
+            "output_sha256": result["output_sha256"]
+        }, result["passed"]
+
+    def _base_readiness_evidence(
+        self,
+        identity: runner_pb2.RunnerReadinessIdentity,
+        check_name: str,
+        passed: bool,
+    ) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "cycle_id": identity.cycle_id,
+            "worker_id": identity.worker_id,
+            "worker_epoch": identity.worker_epoch,
+            "node_identity": identity.node_identity,
+            "execution_profile_revision_id": identity.execution_profile_revision_id,
+            "inference_backend_revision": identity.inference_backend_revision,
+            "deadline": _timestamp_rfc3339(identity.deadline.seconds, identity.deadline.nanos),
+            "check": check_name,
+            "passed": passed,
+        }
 
     def Prepare(self, request: Any, context: grpc.ServicerContext | None) -> Any:
         del context
@@ -94,6 +404,12 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
                     identity=request.identity,
                     decision=runner_pb2.RUNNER_COMMAND_DECISION_REJECTED,
                     detail=str(error),
+                )
+            if self._readiness_process is not None:
+                return runner_pb2.PrepareResponse(
+                    identity=identity,
+                    decision=runner_pb2.RUNNER_COMMAND_DECISION_REJECTED,
+                    detail="runner owns an active readiness probe",
                 )
             if self._identity is not None:
                 if not _same_message(self._identity, identity) or not _same_message(
@@ -376,6 +692,11 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
 
     def close(self) -> None:
         with self._lock:
+            if self._readiness_process is not None:
+                _terminate_process_group(
+                    self._readiness_process, self._config.stop_timeout_seconds
+                )
+                self._readiness_process = None
             self._stop_process()
 
     def _refresh_process(self) -> None:
@@ -584,15 +905,7 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
         process = self._process
         if process is None:
             return
-        if process.poll() is None:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-                process.wait(timeout=self._config.stop_timeout_seconds)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait(timeout=self._config.stop_timeout_seconds)
-            except ProcessLookupError:
-                pass
+        _terminate_process_group(process, self._config.stop_timeout_seconds)
         self._process = None
         self._close_process_logs()
 
@@ -862,7 +1175,7 @@ def _load_gpu_roles(path: Path) -> tuple[str, ...]:
     if (
         len(gpu_ids) != 8
         or len(set(gpu_ids)) != 8
-        or any(not isinstance(gpu, str) or _GPU_PATTERN.fullmatch(gpu) is None for gpu in gpu_ids)
+        or any(not _valid_gpu_uuid(gpu) for gpu in gpu_ids)
     ):
         raise ValueError("GPU role map must bind one Encoder/VAE and seven unique DiT GPUs")
     return gpu_ids
@@ -910,12 +1223,53 @@ def _canonical_uuid(value: Any) -> str:
     return value
 
 
+def _valid_gpu_uuid(value: Any) -> bool:
+    if not isinstance(value, str) or _GPU_PATTERN.fullmatch(value) is None:
+        return False
+    parsed = uuid.UUID(value.removeprefix("GPU-"))
+    return parsed.int != 0 and "GPU-" + str(parsed) == value
+
+
 def _same_message(left: Any, right: Any) -> bool:
     return (
         left is not None
         and right is not None
         and left.SerializeToString() == right.SerializeToString()
     )
+
+
+def _readiness_rejected(request: Any, detail: str) -> runner_pb2.ProbeReadinessResponse:
+    bounded_detail = detail if _valid_text(detail, 1000) else "readiness request rejected"
+    return runner_pb2.ProbeReadinessResponse(
+        identity=request.identity,
+        check=request.check,
+        decision=runner_pb2.RUNNER_COMMAND_DECISION_REJECTED,
+        detail=bounded_detail,
+    )
+
+
+def _terminate_process_group(process: subprocess.Popen[bytes], timeout: float) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        process.wait(timeout=timeout)
+
+
+def _timestamp_rfc3339(seconds: int, nanos: int) -> str:
+    value = datetime.fromtimestamp(seconds, UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    if nanos:
+        value += f".{nanos:09d}".rstrip("0")
+    return value + "Z"
 
 
 def _identity_dict(identity: Any) -> dict[str, Any]:
@@ -1058,7 +1412,7 @@ def _failure_from_dict(payload: Any, backend_revision: str) -> Any:
         or not isinstance(payload["gpu_uuids"], list)
         or len(payload["gpu_uuids"]) > 8
         or any(
-            not isinstance(gpu, str) or _GPU_PATTERN.fullmatch(gpu) is None
+            not _valid_gpu_uuid(gpu)
             for gpu in payload["gpu_uuids"]
         )
         or len(set(payload["gpu_uuids"])) != len(payload["gpu_uuids"])

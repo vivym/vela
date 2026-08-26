@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/workercontrol"
 	"github.com/vivym/vela/internal/workertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -49,14 +50,132 @@ func TestWorkerMTLSIdentityResolvesExactRegisteredSPIFFEID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve registered Worker SPIFFE ID: %v", err)
 	}
-	if worker.ID != uuid.MustParse(testWorkerID) {
-		t.Fatalf("resolved Worker = %s, want %s", worker.ID, testWorkerID)
+	if worker.ID != uuid.MustParse(testWorkerID) ||
+		worker.PoolID != uuid.MustParse("00000000-0000-0000-0000-000000000005") ||
+		worker.SPIFFEID != "spiffe://vela.internal/worker/h3-primary-fixture" {
+		t.Fatalf("resolved Worker = %#v", worker)
 	}
 	if _, err := resolver.ResolveWorker(
 		context.Background(),
 		"spiffe://vela.internal/worker/not-registered",
 	); err == nil {
 		t.Fatal("resolved an unregistered Worker SPIFFE ID")
+	}
+}
+
+func TestWorkerControlReportsAuthoritativeCapacityOverMTLS(t *testing.T) {
+	fixture := newAssignmentFixture(t, "worker-transport-capacity", 7)
+	fleetService, err := fleet.NewService(newRolePool(
+		t, fixture.database.DSN, "vela_fleet_login", "vela-fleet-password",
+	))
+	if err != nil {
+		t.Fatalf("create Fleet service: %v", err)
+	}
+	poolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
+	configureTestCapacityPolicies(t, fleetService, poolID)
+	minio := newMinIOFixture(t, "vela-worker-transport-capacity")
+	client := newWorkerTransportTestClient(
+		t, fixture.database, fixture.service, minio.store, fleetService,
+	)
+	observation := workercontrol.CapacityObservation{
+		WorkerEpoch: 7, Sequence: 1, ObservedAt: time.Now().UTC(),
+		WatermarkState: workercontrol.ScratchWatermarkNormal,
+		TotalBytes:     1000, FreeBytes: 700,
+		HighWatermarkBytes: 800, LowWatermarkBytes: 400, CriticalFreeBytes: 50,
+		ArtifactStoreReachable: false,
+	}
+	result, err := client.ReportCapacity(context.Background(), observation)
+	if err != nil || result.WorkerPoolID != poolID ||
+		result.WorkerState != workercontrol.CapacityStorageUnavailable ||
+		result.PoolState != workercontrol.CapacityStorageUnavailable ||
+		!result.WorkerAssignmentAllowed || !result.PoolAssignmentAllowed {
+		t.Fatalf("ReportCapacity = %#v error=%v", result, err)
+	}
+	enforceFleetProtocol(t, fixture.database.Admin)
+	replayed, err := client.ReportCapacity(context.Background(), observation)
+	if err != nil || !replayed.Replayed || replayed.WorkerPoolID != poolID ||
+		replayed.WorkerState != workercontrol.CapacityStorageUnavailable ||
+		replayed.PoolState != workercontrol.CapacityStorageUnavailable ||
+		replayed.WorkerAssignmentAllowed || replayed.PoolAssignmentAllowed {
+		t.Fatalf("ReportCapacity after Fleet enforcement = %#v error=%v", replayed, err)
+	}
+	pool, err := fleetService.GetPoolCapacity(context.Background(), poolID)
+	if err != nil || pool.PoolState != fleet.CapacityStorageUnavailable ||
+		pool.PoolAssignmentAllowed {
+		t.Fatalf("authoritative pool capacity = %#v error=%v", pool, err)
+	}
+}
+
+func TestWorkerControlExecutesCurrentReadinessWorkOverMTLS(t *testing.T) {
+	fixture := newAssignmentFixture(t, "worker-transport-readiness", 7)
+	enforceFleetProtocol(t, fixture.database.Admin)
+	workerID := uuid.MustParse(testWorkerID)
+	poolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
+	profileID := fixture.candidate.ExecutionProfileRevisionID
+	var nodeIdentity string
+	if err := fixture.database.Admin.QueryRow(`
+		UPDATE workers
+		SET lifecycle_state = 'RECOVERING', reachability_condition = 'OFFLINE'
+		WHERE id = $1 AND epoch = 7
+		RETURNING node_identity
+	`, workerID).Scan(&nodeIdentity); err != nil {
+		t.Fatalf("prepare Worker readiness identity: %v", err)
+	}
+	fleetService, err := fleet.NewService(newRolePool(
+		t, fixture.database.DSN, "vela_fleet_login", "vela-fleet-password",
+	))
+	if err != nil {
+		t.Fatalf("create Fleet service: %v", err)
+	}
+	configureTestCapacityPolicies(t, fleetService, poolID)
+	if _, err := fleetService.ObserveCapacity(
+		context.Background(),
+		capacityObservation(workerID, poolID, 7, 1, 300, true),
+	); err != nil {
+		t.Fatalf("record readiness capacity: %v", err)
+	}
+	cycleID := uuid.MustParse("23020000-0000-0000-0000-000000000022")
+	deadline := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
+	if _, err := fleetService.BeginReadiness(context.Background(), fleet.ReadinessRequest{
+		CycleID: cycleID, WorkerID: workerID, WorkerPoolID: poolID, WorkerEpoch: 7,
+		NodeIdentity: nodeIdentity, ExecutionProfileRevisionID: profileID,
+		InferenceBackendRevision: "sglang-h3-v3", RequestedBy: "fleet-controller/primary",
+		Deadline: deadline,
+	}); err != nil {
+		t.Fatalf("begin Worker readiness: %v", err)
+	}
+	minio := newMinIOFixture(t, "vela-worker-transport-readiness")
+	client := newWorkerTransportTestClient(
+		t, fixture.database, fixture.service, minio.store, fleetService,
+	)
+	work, err := client.GetReadinessWork(context.Background(), 7)
+	if err != nil || !work.Available || work.CycleID != cycleID ||
+		work.Check != workercontrol.ReadinessIdentity || work.WorkerID != workerID ||
+		work.WorkerPoolID != poolID || work.WorkerEpoch != 7 ||
+		work.NodeIdentity != nodeIdentity ||
+		work.ExecutionProfileRevisionID != profileID ||
+		work.InferenceBackendRevision != "sglang-h3-v3" || !work.Deadline.Equal(deadline) {
+		t.Fatalf("mTLS Worker readiness work = %#v error=%v", work, err)
+	}
+	digest := sha256.Sum256([]byte("authenticated identity readiness evidence"))
+	result, err := client.ReportReadiness(context.Background(), workercontrol.ReadinessEvidence{
+		WorkerEpoch: 7, CycleID: cycleID, Check: workercontrol.ReadinessIdentity,
+		Passed: true, EvidenceDigest: digest,
+	})
+	if err != nil || result.State != workercontrol.ReadinessChecking ||
+		result.NextCheck != workercontrol.ReadinessDevice {
+		t.Fatalf("mTLS Worker readiness result = %#v error=%v", result, err)
+	}
+	var observedBy string
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT observed_by
+		FROM worker_readiness_evidence
+		WHERE cycle_id = $1 AND check_kind = 'IDENTITY'
+	`, cycleID).Scan(&observedBy); err != nil {
+		t.Fatalf("read authenticated readiness evidence: %v", err)
+	}
+	if observedBy != "spiffe://vela.internal/worker/h3-primary-fixture" {
+		t.Fatalf("readiness evidence actor = %q", observedBy)
 	}
 }
 
@@ -438,6 +557,7 @@ func newWorkerTransportTestClient(
 	database testDatabase,
 	coordinator workertransport.WorkerCoordinator,
 	uploadStore workertransport.ArtifactUploadStore,
+	fleetServices ...workertransport.WorkerFleetService,
 ) *workertransport.Client {
 	t.Helper()
 	internal := newRolePool(
@@ -450,7 +570,9 @@ func newWorkerTransportTestClient(
 	if err != nil {
 		t.Fatalf("NewPostgresIdentityResolver: %v", err)
 	}
-	workerServer, err := workertransport.NewServer(resolver, coordinator, uploadStore)
+	workerServer, err := workertransport.NewServer(
+		resolver, coordinator, uploadStore, fleetServices...,
+	)
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

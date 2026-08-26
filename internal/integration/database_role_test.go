@@ -100,6 +100,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	remediationPool := newRolePool(
 		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
 	)
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	for _, login := range []string{
 		"vela_internal_login",
@@ -108,6 +109,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_webhook_request_login",
 		"vela_webhook_login",
 		"vela_remediation_login",
+		"vela_fleet_login",
 		"vela_identity_request_login",
 		"vela_human_membership_request_login",
 		"vela_organization_billing_request_login",
@@ -124,6 +126,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_organization_reporting_owner",
 			"vela_retention_owner",
 			"vela_break_glass_owner",
+			"vela_fleet_owner",
 		} {
 			var inheritsOwner bool
 			if err := database.Admin.QueryRow(
@@ -187,6 +190,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "webhook request", pool: webhookRequestPool, role: veladb.RoleWebhookRequest},
 		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
 		{name: "remediation", pool: remediationPool, role: veladb.RoleRemediation},
+		{name: "Fleet", pool: fleetPool, role: veladb.RoleFleet},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -207,6 +211,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_finance_reconciliation_owner", bypassRLS: true},
 		{name: "vela_remediation", bypassRLS: false},
 		{name: "vela_remediation_owner", bypassRLS: true},
+		{name: "vela_fleet", bypassRLS: false},
+		{name: "vela_fleet_owner", bypassRLS: true},
 	} {
 		var canLogin, bypassRLS, superuser bool
 		if err := database.Admin.QueryRow(`

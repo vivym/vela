@@ -3,6 +3,7 @@ package runnertransport
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net"
 	"os"
@@ -13,7 +14,155 @@ import (
 	"github.com/google/uuid"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestProbeReadinessCarriesImmutableWorkerAuthorityAndReturnsCanonicalEvidence(t *testing.T) {
+	deadline := time.Now().UTC().Add(time.Minute).Truncate(time.Microsecond)
+	identity := ReadinessIdentity{
+		CycleID:     uuid.MustParse("01000000-0000-0000-0000-000000000001"),
+		WorkerID:    uuid.MustParse("02000000-0000-0000-0000-000000000002"),
+		WorkerEpoch: 7, NodeIdentity: "h3-node-01",
+		ExecutionProfileRevisionID: uuid.MustParse("03000000-0000-0000-0000-000000000003"),
+		InferenceBackendRevision:   "sglang@sha256:backend-1",
+		Deadline:                   deadline,
+	}
+	evidence := []byte(fmt.Sprintf(
+		`{"check":"DEVICE","cycle_id":"%s","deadline":"%s","dit_gpu_uuids":["GPU-00000000-0000-0000-0000-000000000002","GPU-00000000-0000-0000-0000-000000000003","GPU-00000000-0000-0000-0000-000000000004","GPU-00000000-0000-0000-0000-000000000005","GPU-00000000-0000-0000-0000-000000000006","GPU-00000000-0000-0000-0000-000000000007","GPU-00000000-0000-0000-0000-000000000008"],"encoder_vae_gpu_uuid":"GPU-00000000-0000-0000-0000-000000000001","execution_profile_revision_id":"%s","inference_backend_revision":"sglang@sha256:backend-1","node_identity":"h3-node-01","passed":true,"schema_version":1,"worker_epoch":7,"worker_id":"%s"}`,
+		identity.CycleID, deadline.Format(time.RFC3339Nano),
+		identity.ExecutionProfileRevisionID, identity.WorkerID,
+	))
+	server := &recordingRunnerServer{readinessResponse: &velav1.ProbeReadinessResponse{
+		Identity: &velav1.RunnerReadinessIdentity{
+			CycleId: identity.CycleID.String(), WorkerId: identity.WorkerID.String(),
+			WorkerEpoch: identity.WorkerEpoch, NodeIdentity: identity.NodeIdentity,
+			ExecutionProfileRevisionId: identity.ExecutionProfileRevisionID.String(),
+			InferenceBackendRevision:   identity.InferenceBackendRevision,
+			Deadline:                   timestamppb.New(deadline),
+		},
+		Check:    velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_DEVICE,
+		Decision: velav1.RunnerCommandDecision_RUNNER_COMMAND_DECISION_ACCEPTED,
+		Passed:   true, EvidenceJson: evidence, Detail: "device roles verified",
+	}}
+	client := startRunnerClient(t, server)
+
+	result, err := client.ProbeReadiness(context.Background(), identity, ReadinessDevice)
+	if err != nil {
+		t.Fatalf("ProbeReadiness: %v", err)
+	}
+	if result.Decision != CommandAccepted || !result.Passed ||
+		string(result.Evidence) != string(evidence) || result.Detail != "device roles verified" {
+		t.Fatalf("ProbeReadiness result = %#v", result)
+	}
+	request := server.readinessRequest
+	if request == nil || request.GetIdentity().GetCycleId() != identity.CycleID.String() ||
+		request.GetIdentity().GetWorkerId() != identity.WorkerID.String() ||
+		request.GetIdentity().GetWorkerEpoch() != identity.WorkerEpoch ||
+		request.GetIdentity().GetNodeIdentity() != identity.NodeIdentity ||
+		request.GetIdentity().GetExecutionProfileRevisionId() != identity.ExecutionProfileRevisionID.String() ||
+		request.GetIdentity().GetInferenceBackendRevision() != identity.InferenceBackendRevision ||
+		!request.GetIdentity().GetDeadline().AsTime().Equal(deadline) ||
+		request.GetCheck() != velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_DEVICE {
+		t.Fatalf("ProbeReadiness request = %#v", request)
+	}
+}
+
+func TestProbeReadinessAcceptsStrictEvidenceForBackendChecks(t *testing.T) {
+	deadline := time.Now().UTC().Add(time.Minute).Truncate(time.Microsecond)
+	identity := ReadinessIdentity{
+		CycleID:     uuid.MustParse("04000000-0000-0000-0000-000000000001"),
+		WorkerID:    uuid.MustParse("04000000-0000-0000-0000-000000000002"),
+		WorkerEpoch: 7, NodeIdentity: "h3-node-01",
+		ExecutionProfileRevisionID: uuid.MustParse("04000000-0000-0000-0000-000000000003"),
+		InferenceBackendRevision:   "sglang@sha256:backend-1",
+		Deadline:                   deadline,
+	}
+	common := []any{
+		identity.CycleID, deadline.Format(time.RFC3339Nano), identity.ExecutionProfileRevisionID,
+		identity.InferenceBackendRevision, identity.NodeIdentity, identity.WorkerEpoch, identity.WorkerID,
+	}
+	tests := []struct {
+		name       string
+		check      ReadinessCheck
+		protoCheck velav1.RunnerReadinessCheck
+		evidence   []byte
+	}{
+		{
+			name: "inference backend", check: ReadinessInferenceBackend,
+			protoCheck: velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_INFERENCE_BACKEND,
+			evidence: []byte(fmt.Sprintf(
+				`{"check":"INFERENCE_BACKEND","cycle_id":"%s","deadline":"%s","execution_profile_revision_id":"%s","inference_backend_revision":"%s","loaded":true,"node_identity":"%s","passed":true,"schema_version":1,"worker_epoch":%d,"worker_id":"%s"}`,
+				common...,
+			)),
+		},
+		{
+			name: "model warmup", check: ReadinessModelWarmup,
+			protoCheck: velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_MODEL_WARMUP,
+			evidence: []byte(fmt.Sprintf(
+				`{"check":"MODEL_WARMUP","cycle_id":"%s","deadline":"%s","execution_profile_revision_id":"%s","inference_backend_revision":"%s","node_identity":"%s","passed":true,"schema_version":1,"warmed":true,"worker_epoch":%d,"worker_id":"%s"}`,
+				common...,
+			)),
+		},
+		{
+			name: "canary", check: ReadinessCanary,
+			protoCheck: velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_CANARY,
+			evidence: []byte(fmt.Sprintf(
+				`{"check":"CANARY","cycle_id":"%s","deadline":"%s","execution_profile_revision_id":"%s","inference_backend_revision":"%s","node_identity":"%s","output_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","passed":true,"schema_version":1,"worker_epoch":%d,"worker_id":"%s"}`,
+				common...,
+			)),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := &recordingRunnerServer{readinessResponse: &velav1.ProbeReadinessResponse{
+				Identity: protoReadinessIdentity(identity), Check: test.protoCheck,
+				Decision: velav1.RunnerCommandDecision_RUNNER_COMMAND_DECISION_ACCEPTED,
+				Passed:   true, EvidenceJson: test.evidence,
+			}}
+			client := startRunnerClient(t, server)
+
+			result, err := client.ProbeReadiness(context.Background(), identity, test.check)
+			if err != nil {
+				t.Fatalf("ProbeReadiness: %v", err)
+			}
+			if !result.Passed || string(result.Evidence) != string(test.evidence) {
+				t.Fatalf("ProbeReadiness result = %#v", result)
+			}
+		})
+	}
+}
+
+func TestProbeReadinessRejectsEvidenceThatContradictsThePassedResult(t *testing.T) {
+	deadline := time.Now().UTC().Add(time.Minute).Truncate(time.Microsecond)
+	identity := ReadinessIdentity{
+		CycleID:     uuid.MustParse("05000000-0000-0000-0000-000000000001"),
+		WorkerID:    uuid.MustParse("05000000-0000-0000-0000-000000000002"),
+		WorkerEpoch: 9, NodeIdentity: "h3-node-01",
+		ExecutionProfileRevisionID: uuid.MustParse("05000000-0000-0000-0000-000000000003"),
+		InferenceBackendRevision:   "sglang@sha256:backend-1",
+		Deadline:                   deadline,
+	}
+	evidence := []byte(fmt.Sprintf(
+		`{"check":"INFERENCE_BACKEND","cycle_id":"%s","deadline":"%s","execution_profile_revision_id":"%s","inference_backend_revision":"%s","loaded":false,"node_identity":"%s","passed":true,"schema_version":1,"worker_epoch":%d,"worker_id":"%s"}`,
+		identity.CycleID, deadline.Format(time.RFC3339Nano), identity.ExecutionProfileRevisionID,
+		identity.InferenceBackendRevision, identity.NodeIdentity, identity.WorkerEpoch, identity.WorkerID,
+	))
+	server := &recordingRunnerServer{readinessResponse: &velav1.ProbeReadinessResponse{
+		Identity: protoReadinessIdentity(identity),
+		Check:    velav1.RunnerReadinessCheck_RUNNER_READINESS_CHECK_INFERENCE_BACKEND,
+		Decision: velav1.RunnerCommandDecision_RUNNER_COMMAND_DECISION_ACCEPTED,
+		Passed:   true, EvidenceJson: evidence,
+	}}
+	client := startRunnerClient(t, server)
+
+	result, err := client.ProbeReadiness(
+		context.Background(), identity, ReadinessInferenceBackend,
+	)
+	if err != nil || result.Decision != CommandRejected || result.Passed ||
+		result.Detail != "runner readiness evidence is invalid" {
+		t.Fatalf("invalid readiness evidence result=%#v error=%v", result, err)
+	}
+}
 
 func TestPrepareUsesPrivateUnixSocketAndCarriesImmutableExecutionAuthority(t *testing.T) {
 	identity := AttemptIdentity{
@@ -306,16 +455,26 @@ func TestDialRejectsAnUntrustedRunnerSocket(t *testing.T) {
 
 type recordingRunnerServer struct {
 	velav1.UnimplementedRunnerServiceServer
-	prepareRequest  *velav1.PrepareRequest
-	prepareResponse *velav1.PrepareResponse
-	startRequest    *velav1.StartRequest
-	startResponse   *velav1.StartResponse
-	cancelRequest   *velav1.CancelRequest
-	cancelResponse  *velav1.CancelResponse
-	statusRequest   *velav1.StatusRequest
-	statusResponse  *velav1.StatusResponse
-	collectRequest  *velav1.CollectOutputsRequest
-	collectResponse *velav1.CollectOutputsResponse
+	readinessRequest  *velav1.ProbeReadinessRequest
+	readinessResponse *velav1.ProbeReadinessResponse
+	prepareRequest    *velav1.PrepareRequest
+	prepareResponse   *velav1.PrepareResponse
+	startRequest      *velav1.StartRequest
+	startResponse     *velav1.StartResponse
+	cancelRequest     *velav1.CancelRequest
+	cancelResponse    *velav1.CancelResponse
+	statusRequest     *velav1.StatusRequest
+	statusResponse    *velav1.StatusResponse
+	collectRequest    *velav1.CollectOutputsRequest
+	collectResponse   *velav1.CollectOutputsResponse
+}
+
+func (server *recordingRunnerServer) ProbeReadiness(
+	_ context.Context,
+	request *velav1.ProbeReadinessRequest,
+) (*velav1.ProbeReadinessResponse, error) {
+	server.readinessRequest = request
+	return server.readinessResponse, nil
 }
 
 func (server *recordingRunnerServer) Start(

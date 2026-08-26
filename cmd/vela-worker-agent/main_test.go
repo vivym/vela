@@ -26,12 +26,27 @@ func TestLoadConfigAcceptsExplicitDevelopmentStatFSProbe(t *testing.T) {
 		t.Fatalf("loadConfig: %v", err)
 	}
 	if configuration.scratchProbe != scratchProbeStatFSDevelopment ||
-		configuration.workerEpoch != 9 || configuration.runnerExpectedUID != 10001 ||
+		configuration.workerEpoch != 9 || configuration.nodeIdentity != "h3-node-01" ||
+		configuration.runnerExpectedUID != 10001 ||
 		configuration.outputOwnerUID != 10001 || configuration.heartbeatInterval != 20*time.Second ||
+		configuration.capacityReportInterval != 30*time.Second ||
 		configuration.outputCleanupMinBytesPerSecond != 1<<20 ||
 		configuration.artifactStoreHealthURL != "https://artifact-store.vela.internal/healthz" ||
 		configuration.artifactStoreProbeTimeout != 2*time.Second {
 		t.Fatalf("configuration = %#v", configuration)
+	}
+}
+
+func TestLoadConfigRequiresKubernetesNodeIdentity(t *testing.T) {
+	for _, value := range []string{"", "H3-Node-01", "h3..node", "-h3-node-01"} {
+		t.Run(value, func(t *testing.T) {
+			setValidWorkerAgentEnv(t)
+			t.Setenv("VELA_WORKER_NODE_IDENTITY", value)
+			if _, err := loadConfig(); err == nil ||
+				!strings.Contains(err.Error(), "VELA_WORKER_NODE_IDENTITY") {
+				t.Fatalf("invalid Worker node identity %q error = %v", value, err)
+			}
+		})
 	}
 }
 
@@ -173,6 +188,7 @@ func setValidWorkerAgentEnv(t *testing.T) {
 	values := map[string]string{
 		"VELA_WORKER_ID":                                  "81000000-0000-0000-0000-000000000001",
 		"VELA_WORKER_EPOCH":                               "9",
+		"VELA_WORKER_NODE_IDENTITY":                       "h3-node-01",
 		"VELA_WORKER_CONTROL_ADDRESS":                     "control.vela.internal:8443",
 		"VELA_WORKER_CONTROL_SERVER_NAME":                 "control.vela.internal",
 		"VELA_WORKER_TLS_CERT_FILE":                       filepath.Join(root, "tls.crt"),
@@ -195,6 +211,7 @@ func setValidWorkerAgentEnv(t *testing.T) {
 		"VELA_WORKER_HIGH_WATERMARK_BYTES":                "805306368",
 		"VELA_WORKER_LOW_WATERMARK_BYTES":                 "536870912",
 		"VELA_WORKER_CRITICAL_FREE_BYTES":                 "134217728",
+		"VELA_WORKER_CAPACITY_REPORT_INTERVAL":            "30s",
 		"VELA_WORKER_TERMINAL_RETENTION":                  "1h",
 	}
 	for name, value := range values {

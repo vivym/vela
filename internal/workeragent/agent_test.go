@@ -22,6 +22,543 @@ import (
 	"github.com/vivym/vela/internal/workertransport"
 )
 
+func TestRunOnceReportsLocalIdentityReadinessBeforeAcquire(t *testing.T) {
+	workerID := uuid.MustParse("20000000-0000-0000-0000-000000000001")
+	poolID := uuid.MustParse("20000000-0000-0000-0000-000000000002")
+	cycleID := uuid.MustParse("20000000-0000-0000-0000-000000000003")
+	profileID := uuid.MustParse("20000000-0000-0000-0000-000000000004")
+	deadline := time.Now().UTC().Add(time.Minute).Truncate(time.Microsecond)
+	work := workercontrol.ReadinessWork{
+		Available: true, CycleID: cycleID, Check: workercontrol.ReadinessIdentity,
+		WorkerID: workerID, WorkerPoolID: poolID, WorkerEpoch: 7,
+		NodeIdentity: "h3-node-01", ExecutionProfileRevisionID: profileID,
+		InferenceBackendRevision: "sglang@backend-1", Deadline: deadline,
+	}
+	events := []string{}
+	control := &recordingControlPlane{
+		events:         &events,
+		readinessWorks: []workercontrol.ReadinessWork{work},
+		readinessReportResults: []workercontrol.ReadinessResult{{
+			CycleID: cycleID, State: workercontrol.ReadinessChecking,
+			NextCheck:       workercontrol.ReadinessDevice,
+			WorkerLifecycle: "WARMING", WorkerReachability: "SUSPECT",
+		}},
+	}
+	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+		TotalBytes: 1 << 20, FreeBytes: 1 << 20,
+	})
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 7, NodeIdentity: "h3-node-01",
+		Recovery: recovery, Control: control, Runner: &recordingRunner{events: &events},
+		HeartbeatInterval: time.Second, OutputRoot: t.TempDir(),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization:             &recordingFinalizationControl{}, PartUploader: &recordingPartUploader{},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	result, err := agent.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if result.Outcome != OutcomeReadinessProgress ||
+		result.Readiness.State != workercontrol.ReadinessChecking ||
+		result.Readiness.NextCheck != workercontrol.ReadinessDevice {
+		t.Fatalf("RunOnce result = %#v", result)
+	}
+	if control.acquireCalls != 0 || len(control.readinessReports) != 1 {
+		t.Fatalf("Acquire calls=%d readiness reports=%#v", control.acquireCalls, control.readinessReports)
+	}
+	wantEvidence := []byte(
+		`{"check":"IDENTITY","cycle_id":"` + cycleID.String() +
+			`","deadline":"` + deadline.Format(time.RFC3339Nano) +
+			`","execution_profile_revision_id":"` + profileID.String() +
+			`","inference_backend_revision":"sglang@backend-1","node_identity":"h3-node-01","passed":true,"schema_version":1,"worker_epoch":7,"worker_id":"` + workerID.String() +
+			`","worker_pool_id":"` + poolID.String() + `"}`,
+	)
+	wantDigest := sha256.Sum256(wantEvidence)
+	if report := control.readinessReports[0]; report.WorkerEpoch != 7 ||
+		report.CycleID != cycleID || report.Check != workercontrol.ReadinessIdentity ||
+		!report.Passed || report.EvidenceDigest != wantDigest {
+		t.Fatalf("identity readiness report = %#v", report)
+	}
+	if !reflect.DeepEqual(events, []string{"control.readiness.get", "control.readiness.report"}) {
+		t.Fatalf("readiness events = %#v", events)
+	}
+}
+
+func TestRunOnceBootstrapsReadinessBeforeAssignmentEligibility(t *testing.T) {
+	workerID := uuid.MustParse("20010000-0000-0000-0000-000000000001")
+	cycleID := uuid.MustParse("20010000-0000-0000-0000-000000000002")
+	work := testReadinessWork(workerID, workercontrol.ReadinessIdentity)
+	work.CycleID = cycleID
+	control := &recordingControlPlane{
+		capacityResult: workercontrol.CapacityResult{
+			WorkerState:             workercontrol.CapacityAdmittable,
+			PoolState:               workercontrol.CapacityAdmittable,
+			WorkerAssignmentAllowed: true,
+			PoolReadinessAllowed:    true,
+		},
+		readinessWorks: []workercontrol.ReadinessWork{work},
+		readinessReportResults: []workercontrol.ReadinessResult{{
+			CycleID: cycleID, State: workercontrol.ReadinessChecking,
+			NextCheck: workercontrol.ReadinessDevice,
+			WorkerLifecycle: "WARMING", WorkerReachability: "SUSPECT",
+		}},
+	}
+	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+		TotalBytes: 1 << 20, FreeBytes: 1 << 20,
+	})
+	agent := newTestReadinessAgent(t, workerID, recovery, control, &recordingRunner{})
+
+	result, err := agent.RunOnce(context.Background())
+	if err != nil || result.Outcome != OutcomeReadinessProgress ||
+		result.Readiness.NextCheck != workercontrol.ReadinessDevice {
+		t.Fatalf("bootstrap readiness result=%#v error=%v", result, err)
+	}
+	if len(control.readinessReports) != 1 || control.acquireCalls != 0 {
+		t.Fatalf(
+			"bootstrap readiness reports=%#v Acquire calls=%d",
+			control.readinessReports,
+			control.acquireCalls,
+		)
+	}
+}
+
+func TestRunOnceReportsRejectedRunnerReadinessAsTerminalEvidence(t *testing.T) {
+	workerID := uuid.MustParse("20020000-0000-0000-0000-000000000001")
+	cycleID := uuid.MustParse("20020000-0000-0000-0000-000000000002")
+	work := testReadinessWork(workerID, workercontrol.ReadinessModelWarmup)
+	work.CycleID = cycleID
+	control := &recordingControlPlane{
+		readinessWorks: []workercontrol.ReadinessWork{work},
+		readinessReportResults: []workercontrol.ReadinessResult{{
+			CycleID: cycleID, State: workercontrol.ReadinessFailed,
+			WorkerLifecycle: "DRAINING", WorkerReachability: "SUSPECT",
+		}},
+	}
+	runner := &recordingRunner{readinessResults: []runnertransport.ReadinessResult{{
+		Decision: runnertransport.CommandRejected,
+		Detail:   "model warm-up backend exited nonzero",
+	}}}
+	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+		TotalBytes: 1 << 20, FreeBytes: 1 << 20,
+	})
+	agent := newTestReadinessAgent(t, workerID, recovery, control, runner)
+
+	result, err := agent.RunOnce(context.Background())
+	if err != nil || result.Outcome != OutcomeReadinessProgress ||
+		result.Readiness.State != workercontrol.ReadinessFailed {
+		t.Fatalf("rejected Runner readiness result=%#v error=%v", result, err)
+	}
+	if len(control.readinessReports) != 1 || control.readinessReports[0].Passed ||
+		control.acquireCalls != 0 {
+		t.Fatalf(
+			"rejected Runner readiness reports=%#v Acquire calls=%d",
+			control.readinessReports,
+			control.acquireCalls,
+		)
+	}
+	if len(runner.readinessChecks) != 1 ||
+		runner.readinessChecks[0] != runnertransport.ReadinessModelWarmup {
+		t.Fatalf("rejected Runner readiness checks=%#v", runner.readinessChecks)
+	}
+}
+
+func TestRunOnceExecutesBackendReadinessThroughRunnerBeforeAcquire(t *testing.T) {
+	checks := []struct {
+		workerCheck  workercontrol.ReadinessCheck
+		runnerCheck  runnertransport.ReadinessCheck
+		state        workercontrol.ReadinessState
+		next         workercontrol.ReadinessCheck
+		lifecycle    string
+		reachability string
+	}{
+		{workercontrol.ReadinessDevice, runnertransport.ReadinessDevice,
+			workercontrol.ReadinessChecking, workercontrol.ReadinessInferenceBackend, "WARMING", "SUSPECT"},
+		{workercontrol.ReadinessInferenceBackend, runnertransport.ReadinessInferenceBackend,
+			workercontrol.ReadinessChecking, workercontrol.ReadinessModelWarmup, "WARMING", "SUSPECT"},
+		{workercontrol.ReadinessModelWarmup, runnertransport.ReadinessModelWarmup,
+			workercontrol.ReadinessChecking, workercontrol.ReadinessCanary, "WARMING", "SUSPECT"},
+		{workercontrol.ReadinessCanary, runnertransport.ReadinessCanary,
+			workercontrol.ReadinessReady, "", "READY", "HEALTHY"},
+	}
+	for _, test := range checks {
+		t.Run(string(test.workerCheck), func(t *testing.T) {
+			workerID := uuid.MustParse("20100000-0000-0000-0000-000000000001")
+			cycleID := uuid.New()
+			profileID := uuid.New()
+			deadline := time.Now().UTC().Add(time.Minute)
+			work := workercontrol.ReadinessWork{
+				Available: true, CycleID: cycleID, Check: test.workerCheck,
+				WorkerID: workerID, WorkerPoolID: uuid.New(), WorkerEpoch: 7,
+				NodeIdentity: "h3-node-01", ExecutionProfileRevisionID: profileID,
+				InferenceBackendRevision: "sglang@backend-1", Deadline: deadline,
+			}
+			evidence := []byte(`{"runner":"verified"}`)
+			events := []string{}
+			control := &recordingControlPlane{
+				events: &events, readinessWorks: []workercontrol.ReadinessWork{work},
+				readinessReportResults: []workercontrol.ReadinessResult{{
+					CycleID: cycleID, State: test.state, NextCheck: test.next,
+					WorkerLifecycle: test.lifecycle, WorkerReachability: test.reachability,
+				}},
+			}
+			runner := &recordingRunner{
+				events: &events,
+				readinessResults: []runnertransport.ReadinessResult{{
+					Decision: runnertransport.CommandAccepted, Passed: true, Evidence: evidence,
+				}},
+			}
+			recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+				TotalBytes: 1 << 20, FreeBytes: 1 << 20,
+			})
+			agent, err := New(Config{
+				WorkerID: workerID, WorkerEpoch: 7, NodeIdentity: "h3-node-01",
+				Recovery: recovery, Control: control, Runner: runner,
+				HeartbeatInterval: time.Second, OutputRoot: t.TempDir(),
+				InferenceBackendRevision: "sglang@backend-1",
+				Finalization:             &recordingFinalizationControl{}, PartUploader: &recordingPartUploader{},
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			result, err := agent.RunOnce(context.Background())
+			if err != nil || result.Outcome != OutcomeReadinessProgress || result.Readiness.State != test.state {
+				t.Fatalf("RunOnce result=%#v error=%v", result, err)
+			}
+			if len(runner.readinessIdentities) != 1 || runner.readinessChecks[0] != test.runnerCheck {
+				t.Fatalf("Runner readiness identities=%#v checks=%#v", runner.readinessIdentities, runner.readinessChecks)
+			}
+			identity := runner.readinessIdentities[0]
+			if identity.CycleID != cycleID || identity.WorkerID != workerID || identity.WorkerEpoch != 7 ||
+				identity.NodeIdentity != "h3-node-01" || identity.ExecutionProfileRevisionID != profileID ||
+				identity.InferenceBackendRevision != "sglang@backend-1" || !identity.Deadline.Equal(deadline) {
+				t.Fatalf("Runner readiness identity = %#v", identity)
+			}
+			if len(control.readinessReports) != 1 ||
+				control.readinessReports[0].EvidenceDigest != sha256.Sum256(evidence) ||
+				control.acquireCalls != 0 {
+				t.Fatalf("readiness reports=%#v Acquire calls=%d", control.readinessReports, control.acquireCalls)
+			}
+			wantEvents := []string{"control.readiness.get", "runner.readiness", "control.readiness.report"}
+			if !reflect.DeepEqual(events, wantEvents) {
+				t.Fatalf("readiness events = %#v", events)
+			}
+		})
+	}
+}
+
+func TestRunOnceReplaysDurableReadinessDigestAfterReportResponseLoss(t *testing.T) {
+	workerID := uuid.MustParse("20200000-0000-0000-0000-000000000001")
+	cycleID := uuid.MustParse("20200000-0000-0000-0000-000000000002")
+	root := t.TempDir()
+	newRecovery := func() *workerrecovery.Manager {
+		manager, err := workerrecovery.New(workerrecovery.Config{
+			Root: root, WorkerID: workerID, WorkerEpoch: 7,
+			AttemptQuotaBytes: 1 << 20, MaxEntryBytes: 1 << 18, MaxEntries: 16,
+			HighWatermarkBytes: 50, LowWatermarkBytes: 20, CriticalFreeBytes: 10,
+			TerminalRetention: time.Minute,
+			SpaceProbe: func(string) (workerrecovery.Space, error) {
+				return workerrecovery.Space{TotalBytes: 1 << 20, FreeBytes: 1 << 20}, nil
+			},
+		})
+		if err != nil {
+			t.Fatalf("create recovery Manager: %v", err)
+		}
+		return manager
+	}
+	work := workercontrol.ReadinessWork{
+		Available: true, CycleID: cycleID, Check: workercontrol.ReadinessDevice,
+		WorkerID: workerID, WorkerPoolID: uuid.New(), WorkerEpoch: 7,
+		NodeIdentity: "h3-node-01", ExecutionProfileRevisionID: uuid.New(),
+		InferenceBackendRevision: "sglang@backend-1", Deadline: time.Now().UTC().Add(time.Minute),
+	}
+	evidence := []byte(`{"runner":"stable-device-evidence"}`)
+	firstControl := &recordingControlPlane{
+		readinessWorks:        []workercontrol.ReadinessWork{work},
+		readinessReportErrors: []error{errors.New("readiness response lost")},
+	}
+	firstRunner := &recordingRunner{readinessResults: []runnertransport.ReadinessResult{{
+		Decision: runnertransport.CommandAccepted, Passed: true, Evidence: evidence,
+	}}}
+	firstRecovery := newRecovery()
+	firstAgent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 7, NodeIdentity: "h3-node-01",
+		Recovery: firstRecovery, Control: firstControl, Runner: firstRunner,
+		HeartbeatInterval: time.Second, OutputRoot: t.TempDir(),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization:             &recordingFinalizationControl{}, PartUploader: &recordingPartUploader{},
+	})
+	if err != nil {
+		t.Fatalf("New first Agent: %v", err)
+	}
+	if _, err := firstAgent.RunOnce(context.Background()); err == nil {
+		t.Fatal("first RunOnce did not surface lost readiness response")
+	}
+	pending, exists, err := firstRecovery.PendingReadinessReport(context.Background())
+	if err != nil || !exists || !bytes.Equal(pending.Evidence, evidence) {
+		t.Fatalf("durable raw readiness evidence = %q exists=%t error=%v", pending.Evidence, exists, err)
+	}
+
+	secondControl := &recordingControlPlane{
+		readinessWorks: []workercontrol.ReadinessWork{work},
+		readinessReportResults: []workercontrol.ReadinessResult{{
+			CycleID: cycleID, Replayed: true, State: workercontrol.ReadinessChecking,
+			NextCheck:       workercontrol.ReadinessInferenceBackend,
+			WorkerLifecycle: "WARMING", WorkerReachability: "SUSPECT",
+		}},
+	}
+	secondRunner := &recordingRunner{}
+	secondRecovery := newRecovery()
+	secondAgent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 7, NodeIdentity: "h3-node-01",
+		Recovery: secondRecovery, Control: secondControl, Runner: secondRunner,
+		HeartbeatInterval: time.Second, OutputRoot: t.TempDir(),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization:             &recordingFinalizationControl{}, PartUploader: &recordingPartUploader{},
+	})
+	if err != nil {
+		t.Fatalf("New second Agent: %v", err)
+	}
+	result, err := secondAgent.RunOnce(context.Background())
+	if err != nil || result.Readiness.NextCheck != workercontrol.ReadinessInferenceBackend {
+		t.Fatalf("second RunOnce result=%#v error=%v", result, err)
+	}
+
+	wantDigest := sha256.Sum256(evidence)
+	if firstRunner.readinessChecks == nil || len(secondRunner.readinessChecks) != 0 ||
+		len(firstControl.readinessReports) != 1 || len(secondControl.readinessReports) != 1 ||
+		firstControl.readinessReports[0].EvidenceDigest != wantDigest ||
+		secondControl.readinessReports[0].EvidenceDigest != wantDigest {
+		t.Fatalf(
+			"Runner calls first=%#v second=%#v reports first=%#v second=%#v",
+			firstRunner.readinessChecks, secondRunner.readinessChecks,
+			firstControl.readinessReports, secondControl.readinessReports,
+		)
+	}
+	if _, exists, err := secondRecovery.PendingReadinessReport(context.Background()); err != nil || exists {
+		t.Fatalf("pending readiness after replay exists=%t error=%v", exists, err)
+	}
+}
+
+func TestRunOnceReportsFailedRunnerReadinessWithoutAcquire(t *testing.T) {
+	workerID := uuid.MustParse("20300000-0000-0000-0000-000000000001")
+	work := testReadinessWork(workerID, workercontrol.ReadinessDevice)
+	evidence := []byte(`{"device":"failed"}`)
+	control := &recordingControlPlane{
+		readinessWorks: []workercontrol.ReadinessWork{work},
+		readinessReportResults: []workercontrol.ReadinessResult{{
+			CycleID: work.CycleID, State: workercontrol.ReadinessFailed,
+			WorkerLifecycle: "DRAINING", WorkerReachability: "SUSPECT",
+		}},
+	}
+	runner := &recordingRunner{readinessResults: []runnertransport.ReadinessResult{{
+		Decision: runnertransport.CommandAccepted, Passed: false, Evidence: evidence,
+	}}}
+	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+		TotalBytes: 1 << 20, FreeBytes: 1 << 20,
+	})
+	agent := newTestReadinessAgent(t, workerID, recovery, control, runner)
+
+	result, err := agent.RunOnce(context.Background())
+	if err != nil || result.Outcome != OutcomeReadinessProgress ||
+		result.Readiness.State != workercontrol.ReadinessFailed {
+		t.Fatalf("failed readiness result=%#v error=%v", result, err)
+	}
+	if len(control.readinessReports) != 1 || control.readinessReports[0].Passed ||
+		control.readinessReports[0].EvidenceDigest != sha256.Sum256(evidence) ||
+		control.acquireCalls != 0 || !reflect.DeepEqual(
+		runner.readinessChecks, []runnertransport.ReadinessCheck{runnertransport.ReadinessDevice},
+	) {
+		t.Fatalf(
+			"failed readiness reports=%#v Acquire=%d Runner=%#v",
+			control.readinessReports, control.acquireCalls, runner.readinessChecks,
+		)
+	}
+	if _, exists, pendingErr := recovery.PendingReadinessReport(context.Background()); pendingErr != nil || exists {
+		t.Fatalf("failed readiness pending ledger exists=%t error=%v", exists, pendingErr)
+	}
+}
+
+func TestRunOnceRejectsMismatchedReadinessAuthorityBeforeRunnerOrAcquire(t *testing.T) {
+	workerID := uuid.MustParse("20400000-0000-0000-0000-000000000001")
+	tests := []struct {
+		name   string
+		mutate func(*workercontrol.ReadinessWork)
+	}{
+		{"worker-id", func(work *workercontrol.ReadinessWork) { work.WorkerID = uuid.New() }},
+		{"worker-epoch", func(work *workercontrol.ReadinessWork) { work.WorkerEpoch++ }},
+		{"worker-pool", func(work *workercontrol.ReadinessWork) { work.WorkerPoolID = uuid.Nil }},
+		{"node-identity", func(work *workercontrol.ReadinessWork) { work.NodeIdentity = "h3-node-02" }},
+		{"profile", func(work *workercontrol.ReadinessWork) { work.ExecutionProfileRevisionID = uuid.Nil }},
+		{"backend", func(work *workercontrol.ReadinessWork) { work.InferenceBackendRevision = "other-backend" }},
+		{"deadline", func(work *workercontrol.ReadinessWork) { work.Deadline = time.Time{} }},
+		{"check", func(work *workercontrol.ReadinessWork) { work.Check = "UNRECOGNIZED" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			work := testReadinessWork(workerID, workercontrol.ReadinessDevice)
+			test.mutate(&work)
+			control := &recordingControlPlane{readinessWorks: []workercontrol.ReadinessWork{work}}
+			runner := &recordingRunner{}
+			recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+				TotalBytes: 1 << 20, FreeBytes: 1 << 20,
+			})
+			agent := newTestReadinessAgent(t, workerID, recovery, control, runner)
+
+			if _, err := agent.RunOnce(context.Background()); err == nil ||
+				!strings.Contains(err.Error(), "readiness work") {
+				t.Fatalf("mismatched readiness authority error = %v", err)
+			}
+			if len(runner.readinessChecks) != 0 || len(control.readinessReports) != 0 ||
+				control.acquireCalls != 0 {
+				t.Fatalf(
+					"mismatched authority Runner=%#v reports=%#v Acquire=%d",
+					runner.readinessChecks, control.readinessReports, control.acquireCalls,
+				)
+			}
+		})
+	}
+}
+
+func TestRunOnceRetainsPendingReadinessAfterInvalidControlResult(t *testing.T) {
+	workerID := uuid.MustParse("20500000-0000-0000-0000-000000000001")
+	work := testReadinessWork(workerID, workercontrol.ReadinessDevice)
+	evidence := []byte(`{"device":"verified"}`)
+	control := &recordingControlPlane{
+		readinessWorks: []workercontrol.ReadinessWork{work, work},
+		readinessReportResults: []workercontrol.ReadinessResult{
+			{
+				CycleID: work.CycleID, State: workercontrol.ReadinessChecking,
+				NextCheck:       workercontrol.ReadinessCanary,
+				WorkerLifecycle: "WARMING", WorkerReachability: "SUSPECT",
+			},
+			{
+				CycleID: work.CycleID, Replayed: true, State: workercontrol.ReadinessChecking,
+				NextCheck:       workercontrol.ReadinessInferenceBackend,
+				WorkerLifecycle: "WARMING", WorkerReachability: "SUSPECT",
+			},
+		},
+	}
+	runner := &recordingRunner{readinessResults: []runnertransport.ReadinessResult{{
+		Decision: runnertransport.CommandAccepted, Passed: true, Evidence: evidence,
+	}}}
+	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+		TotalBytes: 1 << 20, FreeBytes: 1 << 20,
+	})
+	agent := newTestReadinessAgent(t, workerID, recovery, control, runner)
+
+	if _, err := agent.RunOnce(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "checking result is invalid") {
+		t.Fatalf("invalid readiness result error = %v", err)
+	}
+	pending, exists, err := recovery.PendingReadinessReport(context.Background())
+	if err != nil || !exists || pending.CycleID != work.CycleID ||
+		pending.Check != string(work.Check) || pending.EvidenceDigest != sha256.Sum256(evidence) {
+		t.Fatalf("pending readiness after invalid result=%#v exists=%t error=%v", pending, exists, err)
+	}
+
+	result, err := agent.RunOnce(context.Background())
+	if err != nil || result.Readiness.NextCheck != workercontrol.ReadinessInferenceBackend {
+		t.Fatalf("replay after invalid result=%#v error=%v", result, err)
+	}
+	if len(runner.readinessChecks) != 1 || len(control.readinessReports) != 2 ||
+		control.readinessReports[0].EvidenceDigest != control.readinessReports[1].EvidenceDigest ||
+		control.acquireCalls != 0 {
+		t.Fatalf(
+			"invalid-result replay Runner=%#v reports=%#v Acquire=%d",
+			runner.readinessChecks, control.readinessReports, control.acquireCalls,
+		)
+	}
+	if _, exists, err := recovery.PendingReadinessReport(context.Background()); err != nil || exists {
+		t.Fatalf("pending readiness after valid replay exists=%t error=%v", exists, err)
+	}
+}
+
+func TestRunOnceClearsLostResponseLedgerWhenControllerAdvancesCheck(t *testing.T) {
+	workerID := uuid.MustParse("20600000-0000-0000-0000-000000000001")
+	deviceWork := testReadinessWork(workerID, workercontrol.ReadinessDevice)
+	backendWork := deviceWork
+	backendWork.Check = workercontrol.ReadinessInferenceBackend
+	control := &recordingControlPlane{
+		readinessWorks:        []workercontrol.ReadinessWork{deviceWork, backendWork},
+		readinessReportErrors: []error{errors.New("readiness response lost")},
+		readinessReportResults: []workercontrol.ReadinessResult{{
+			CycleID: backendWork.CycleID, State: workercontrol.ReadinessChecking,
+			NextCheck:       workercontrol.ReadinessModelWarmup,
+			WorkerLifecycle: "WARMING", WorkerReachability: "SUSPECT",
+		}},
+	}
+	runner := &recordingRunner{readinessResults: []runnertransport.ReadinessResult{
+		{Decision: runnertransport.CommandAccepted, Passed: true, Evidence: []byte(`{"device":"verified"}`)},
+		{Decision: runnertransport.CommandAccepted, Passed: true, Evidence: []byte(`{"backend":"verified"}`)},
+	}}
+	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+		TotalBytes: 1 << 20, FreeBytes: 1 << 20,
+	})
+	agent := newTestReadinessAgent(t, workerID, recovery, control, runner)
+
+	if _, err := agent.RunOnce(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "readiness response lost") {
+		t.Fatalf("lost readiness response error = %v", err)
+	}
+	result, err := agent.RunOnce(context.Background())
+	if err != nil || result.Readiness.NextCheck != workercontrol.ReadinessModelWarmup {
+		t.Fatalf("advanced readiness result=%#v error=%v", result, err)
+	}
+	if !reflect.DeepEqual(runner.readinessChecks, []runnertransport.ReadinessCheck{
+		runnertransport.ReadinessDevice, runnertransport.ReadinessInferenceBackend,
+	}) || len(control.readinessReports) != 2 ||
+		control.readinessReports[0].Check != workercontrol.ReadinessDevice ||
+		control.readinessReports[1].Check != workercontrol.ReadinessInferenceBackend ||
+		control.acquireCalls != 0 {
+		t.Fatalf(
+			"advanced readiness Runner=%#v reports=%#v Acquire=%d",
+			runner.readinessChecks, control.readinessReports, control.acquireCalls,
+		)
+	}
+	if _, exists, err := recovery.PendingReadinessReport(context.Background()); err != nil || exists {
+		t.Fatalf("pending readiness after advancement exists=%t error=%v", exists, err)
+	}
+}
+
+func testReadinessWork(
+	workerID uuid.UUID,
+	check workercontrol.ReadinessCheck,
+) workercontrol.ReadinessWork {
+	return workercontrol.ReadinessWork{
+		Available: true, CycleID: uuid.New(), Check: check,
+		WorkerID: workerID, WorkerPoolID: uuid.New(), WorkerEpoch: 7,
+		NodeIdentity: "h3-node-01", ExecutionProfileRevisionID: uuid.New(),
+		InferenceBackendRevision: "sglang@backend-1",
+		Deadline:                 time.Now().UTC().Add(time.Minute),
+	}
+}
+
+func newTestReadinessAgent(
+	t *testing.T,
+	workerID uuid.UUID,
+	recovery *workerrecovery.Manager,
+	control *recordingControlPlane,
+	runner *recordingRunner,
+) *Agent {
+	t.Helper()
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 7, NodeIdentity: "h3-node-01",
+		Recovery: recovery, Control: control, Runner: runner,
+		HeartbeatInterval: time.Second, OutputRoot: t.TempDir(),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization:             &recordingFinalizationControl{}, PartUploader: &recordingPartUploader{},
+	})
+	if err != nil {
+		t.Fatalf("New readiness Agent: %v", err)
+	}
+	return agent
+}
+
 func TestRunOnceDoesNotAcquireWhenLocalRecoveryStorageIsPressured(t *testing.T) {
 	workerID := uuid.MustParse("21000000-0000-0000-0000-000000000001")
 	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
@@ -48,6 +585,139 @@ func TestRunOnceDoesNotAcquireWhenLocalRecoveryStorageIsPressured(t *testing.T) 
 	}
 	if control.acquireCalls != 0 || runner.calls != 0 {
 		t.Fatalf("backpressured calls = control acquire %d runner %d", control.acquireCalls, runner.calls)
+	}
+}
+
+func TestRunOnceReportsCapacityBeforeAcquireAndHonorsAuthoritativeClosure(t *testing.T) {
+	workerID := uuid.MustParse("21100000-0000-0000-0000-000000000001")
+	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+		TotalBytes: 2 << 20, FreeBytes: 2 << 20,
+	})
+	control := &recordingControlPlane{capacityResult: workercontrol.CapacityResult{
+		WorkerState: workercontrol.CapacityStorageUnavailable,
+		PoolState:   workercontrol.CapacityStorageUnavailable,
+	}}
+	runner := &recordingRunner{}
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 7, Recovery: recovery,
+		Control: control, Runner: runner, HeartbeatInterval: time.Second,
+		ArtifactStoreReachable: func(context.Context) bool { return false },
+		OutputRoot:             t.TempDir(), InferenceBackendRevision: "sglang@backend-1",
+		Finalization: &recordingFinalizationControl{}, PartUploader: &recordingPartUploader{},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	beforeObservation := time.Now().UTC()
+	result, err := agent.RunOnce(context.Background())
+	afterObservation := time.Now().UTC()
+	if err != nil {
+		t.Fatalf("RunOnce: %v", err)
+	}
+	if result.Outcome != OutcomeBackpressured {
+		t.Fatalf("RunOnce result = %#v", result)
+	}
+	want := workercontrol.CapacityObservation{
+		WorkerEpoch: 7, Sequence: 1, TotalBytes: 2 << 20, FreeBytes: 2 << 20,
+		WatermarkState:     workercontrol.ScratchWatermarkNormal,
+		HighWatermarkBytes: 50, LowWatermarkBytes: 20, CriticalFreeBytes: 10,
+		ArtifactStoreReachable: false,
+	}
+	if len(control.capacityObservations) != 1 {
+		t.Fatalf("capacity observations = %#v, want %#v", control.capacityObservations, want)
+	}
+	observed := control.capacityObservations[0]
+	watermarkState := reflect.ValueOf(observed).FieldByName("WatermarkState")
+	if !watermarkState.IsValid() || watermarkState.String() != "NORMAL" {
+		t.Fatalf("capacity watermark state = %v", watermarkState)
+	}
+	if observed.ObservedAt.Before(beforeObservation) || observed.ObservedAt.After(afterObservation) {
+		t.Fatalf("capacity observed_at = %s, want within [%s, %s]",
+			observed.ObservedAt, beforeObservation, afterObservation)
+	}
+	observed.ObservedAt = time.Time{}
+	if !reflect.DeepEqual(observed, want) {
+		t.Fatalf("capacity observation = %#v, want %#v", observed, want)
+	}
+	if control.acquireCalls != 0 || runner.calls != 0 {
+		t.Fatalf("closed capacity calls = control acquire %d runner %d", control.acquireCalls, runner.calls)
+	}
+}
+
+func TestRunOnceRefreshesCapacityWhileAcceptedJobRemainsBusy(t *testing.T) {
+	workerID := uuid.MustParse("21200000-0000-0000-0000-000000000001")
+	attemptID := uuid.MustParse("21200000-0000-0000-0000-000000000002")
+	jobID := uuid.MustParse("21200000-0000-0000-0000-000000000003")
+	recovery := newTestRecoveryManager(t, workerID, 7, workerrecovery.Space{
+		TotalBytes: 1 << 30, FreeBytes: 1 << 30,
+	})
+	assignment := validTestAssignment(workerID, attemptID, jobID, 7, time.Minute)
+	control := &periodicCapacityControl{
+		recordingControlPlane: &recordingControlPlane{
+			assignment: &assignment, startResult: grantedTestStart(assignment),
+		},
+		reports: make(chan workercontrol.CapacityObservation, 8),
+	}
+	statusStarted := make(chan struct{}, 1)
+	runner := &recordingRunner{
+		prepareResult: runnertransport.PrepareResult{Decision: runnertransport.CommandAccepted},
+		startResult:   runnertransport.CommandResult{Decision: runnertransport.CommandAccepted},
+		cancelResult:  runnertransport.CommandResult{Decision: runnertransport.CommandAccepted},
+		statusHook: func(ctx context.Context) error {
+			select {
+			case statusStarted <- struct{}{}:
+			default:
+			}
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 7, Recovery: recovery,
+		Control: control, Runner: runner, HeartbeatInterval: time.Second,
+		CapacityReportInterval: 10 * time.Millisecond,
+		ArtifactStoreReachable: func(context.Context) bool { return true },
+		OutputRoot:             t.TempDir(), InferenceBackendRevision: "sglang@backend-1",
+		Finalization: &recordingFinalizationControl{}, PartUploader: &recordingPartUploader{},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, runErr := agent.RunOnce(ctx)
+		done <- runErr
+	}()
+	select {
+	case <-statusStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Accepted Job did not reach BUSY runner Status")
+	}
+	observations := make([]workercontrol.CapacityObservation, 0, 3)
+	for len(observations) < 3 {
+		select {
+		case observation := <-control.reports:
+			observations = append(observations, observation)
+		case <-time.After(time.Second):
+			t.Fatalf("BUSY Worker capacity observations = %#v", observations)
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled BUSY RunOnce error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("BUSY RunOnce did not stop after cancellation")
+	}
+	for index, observation := range observations {
+		if observation.Sequence != int64(index+1) || observation.ObservedAt.IsZero() ||
+			(index > 0 && observation.ObservedAt.Before(observations[index-1].ObservedAt)) {
+			t.Fatalf("periodic BUSY capacity observations = %#v", observations)
+		}
 	}
 }
 
@@ -2484,7 +3154,7 @@ func TestRunOnceBoundsBlockedArtifactStoreProbeByLeaseDeadline(t *testing.T) {
 	recovery := newTestRecoveryManager(t, workerID, 11, workerrecovery.Space{
 		TotalBytes: 1 << 20, FreeBytes: 1 << 20,
 	})
-	assignment := validTestAssignment(workerID, attemptID, jobID, 11, 30*time.Millisecond)
+	assignment := validTestAssignment(workerID, attemptID, jobID, 11, 100*time.Millisecond)
 	control := &recordingControlPlane{
 		assignment: &assignment, startResult: grantedTestStart(assignment),
 		heartbeatHook: func(ctx context.Context, _ workercontrol.HeartbeatObservation) error {
@@ -2500,10 +3170,22 @@ func TestRunOnceBoundsBlockedArtifactStoreProbeByLeaseDeadline(t *testing.T) {
 			GPUHealth: json.RawMessage(`{"healthy":true}`), LocalArtifactState: json.RawMessage(`{"dit":"running"}`),
 		}},
 	}
+	probeCalls := 0
+	probeDeadline := make(chan time.Duration, 1)
 	agent, err := New(Config{
 		WorkerID: workerID, WorkerEpoch: 11, Recovery: recovery,
 		Control: control, Runner: runner, HeartbeatInterval: time.Second,
 		ArtifactStoreReachable: func(ctx context.Context) bool {
+			probeCalls++
+			if probeCalls == 1 {
+				return true
+			}
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				probeDeadline <- -1
+			} else {
+				probeDeadline <- time.Until(deadline)
+			}
 			<-ctx.Done()
 			return false
 		},
@@ -2513,18 +3195,28 @@ func TestRunOnceBoundsBlockedArtifactStoreProbeByLeaseDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	started := time.Now()
 	result, err := agent.RunOnce(ctx)
 	if err != nil || result.Outcome != OutcomeLeaseDeadlineElapsed {
 		t.Fatalf("RunOnce = %#v error=%v", result, err)
 	}
-	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
-		t.Fatalf("blocked Artifact-store probe stopped after %s, want Lease-bound stop", elapsed)
+	if ctx.Err() != nil {
+		t.Fatalf("blocked Artifact-store probe exhausted outer watchdog: %v", ctx.Err())
+	}
+	select {
+	case remaining := <-probeDeadline:
+		if remaining <= 0 || remaining > assignment.LeaseValidFor {
+			t.Fatalf("Artifact-store probe deadline = %s, want Lease budget", remaining)
+		}
+	default:
+		t.Fatal("Artifact-store probe did not observe a Lease deadline")
 	}
 	if runner.cancelReason != runnertransport.CancelLeaseDeadline {
 		t.Fatalf("cancel reason = %s, want Lease deadline", runner.cancelReason)
+	}
+	if probeCalls != 2 {
+		t.Fatalf("Artifact-store probe calls = %d, want pre-Acquire and running probes", probeCalls)
 	}
 }
 
@@ -3587,6 +4279,8 @@ func newTestRecoveryManager(
 
 type recordingControlPlane struct {
 	acquireCalls           int
+	capacityResult         workercontrol.CapacityResult
+	capacityObservations   []workercontrol.CapacityObservation
 	startCalls             int
 	assignment             *workercontrol.Assignment
 	acquireErr             error
@@ -3602,6 +4296,88 @@ type recordingControlPlane struct {
 	failErrors             []error
 	failResult             workercontrol.RetryDecision
 	failureObservation     workercontrol.FailureObservation
+	readinessWorks         []workercontrol.ReadinessWork
+	readinessWorkErrors    []error
+	readinessReports       []workercontrol.ReadinessEvidence
+	readinessReportResults []workercontrol.ReadinessResult
+	readinessReportErrors  []error
+}
+
+type periodicCapacityControl struct {
+	*recordingControlPlane
+	reports chan workercontrol.CapacityObservation
+}
+
+func (control *periodicCapacityControl) ReportCapacity(
+	_ context.Context,
+	observation workercontrol.CapacityObservation,
+) (workercontrol.CapacityResult, error) {
+	control.reports <- observation
+	return workercontrol.CapacityResult{
+		WorkerState:             workercontrol.CapacityAdmittable,
+		PoolState:               workercontrol.CapacityAdmittable,
+		WorkerAssignmentAllowed: true,
+		PoolReadinessAllowed:    true,
+		PoolAssignmentAllowed:   true,
+	}, nil
+}
+
+func (control *recordingControlPlane) ReportCapacity(
+	_ context.Context,
+	observation workercontrol.CapacityObservation,
+) (workercontrol.CapacityResult, error) {
+	control.capacityObservations = append(control.capacityObservations, observation)
+	result := control.capacityResult
+	if result.WorkerState == "" && result.PoolState == "" {
+		result.WorkerState = workercontrol.CapacityAdmittable
+		result.PoolState = workercontrol.CapacityAdmittable
+		result.WorkerAssignmentAllowed = true
+		result.PoolReadinessAllowed = true
+		result.PoolAssignmentAllowed = true
+	}
+	return result, nil
+}
+
+func (control *recordingControlPlane) GetReadinessWork(
+	context.Context,
+	int64,
+) (workercontrol.ReadinessWork, error) {
+	if len(control.readinessWorkErrors) != 0 {
+		err := control.readinessWorkErrors[0]
+		control.readinessWorkErrors = control.readinessWorkErrors[1:]
+		if err != nil {
+			control.record("control.readiness.get")
+			return workercontrol.ReadinessWork{}, err
+		}
+	}
+	if len(control.readinessWorks) == 0 {
+		return workercontrol.ReadinessWork{}, nil
+	}
+	work := control.readinessWorks[0]
+	control.readinessWorks = control.readinessWorks[1:]
+	control.record("control.readiness.get")
+	return work, nil
+}
+
+func (control *recordingControlPlane) ReportReadiness(
+	_ context.Context,
+	evidence workercontrol.ReadinessEvidence,
+) (workercontrol.ReadinessResult, error) {
+	control.record("control.readiness.report")
+	control.readinessReports = append(control.readinessReports, evidence)
+	if len(control.readinessReportErrors) != 0 {
+		err := control.readinessReportErrors[0]
+		control.readinessReportErrors = control.readinessReportErrors[1:]
+		if err != nil {
+			return workercontrol.ReadinessResult{}, err
+		}
+	}
+	if len(control.readinessReportResults) == 0 {
+		return workercontrol.ReadinessResult{}, nil
+	}
+	result := control.readinessReportResults[0]
+	control.readinessReportResults = control.readinessReportResults[1:]
+	return result, nil
 }
 
 type recordingFinalizationControl struct {
@@ -3985,6 +4761,33 @@ type recordingRunner struct {
 	statusHook            func(context.Context) error
 	cancelContextErr      error
 	canceled              bool
+	readinessResults      []runnertransport.ReadinessResult
+	readinessErrors       []error
+	readinessIdentities   []runnertransport.ReadinessIdentity
+	readinessChecks       []runnertransport.ReadinessCheck
+}
+
+func (runner *recordingRunner) ProbeReadiness(
+	_ context.Context,
+	identity runnertransport.ReadinessIdentity,
+	check runnertransport.ReadinessCheck,
+) (runnertransport.ReadinessResult, error) {
+	runner.record("runner.readiness")
+	runner.readinessIdentities = append(runner.readinessIdentities, identity)
+	runner.readinessChecks = append(runner.readinessChecks, check)
+	if len(runner.readinessErrors) != 0 {
+		err := runner.readinessErrors[0]
+		runner.readinessErrors = runner.readinessErrors[1:]
+		if err != nil {
+			return runnertransport.ReadinessResult{}, err
+		}
+	}
+	if len(runner.readinessResults) == 0 {
+		return runnertransport.ReadinessResult{}, nil
+	}
+	result := runner.readinessResults[0]
+	runner.readinessResults = runner.readinessResults[1:]
+	return result, nil
 }
 
 func (runner *recordingRunner) Prepare(

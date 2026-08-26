@@ -2,10 +2,15 @@
 
 This Kustomize base records the production boundary for one long-running H3
 Worker Pod per eligible eight-GPU node. The Fleet Controller owns the live
-WorkerPool and `OnDelete` DaemonSet. It must materialize a node-bound
-`vela-worker-identity` Secret, a versioned `vela-worker-runtime` ConfigMap, the
-`vela-worker-control-mtls` Secret, and the `vela-artifact-store-ca` Secret before
-creating a Pod. The runtime ConfigMap includes an HTTPS
+WorkerPool and `OnDelete` DaemonSet. It must materialize a versioned
+`vela-worker-runtime` ConfigMap, the `vela-worker-control-mtls` Secret, and the
+`vela-artifact-store-ca` Secret before creating a Pod. Every Pod starts behind
+the `fleet.vela.ai/identity-binding` scheduling gate. After the DaemonSet
+controller binds the exact target node through required node affinity, Fleet
+Controller resolves the durable Worker UUID/epoch, begins the readiness cycle,
+writes `vela.ai/worker-id` and `vela.ai/worker-epoch` labels, and only then removes
+the gate. Worker Agent reads those labels through the Downward API; there is no
+separate mutable identity Secret. The runtime ConfigMap includes an HTTPS
 `artifact-store-health-url`; the Worker Agent probes it with the exact CA and a
 bounded Lease-scoped request for every execution and finalization Heartbeat. It must also render
 the XFS/NVMe-certified `output-cleanup-min-bytes-per-second`; startup rejects a
@@ -41,7 +46,7 @@ scheduled:
 4. `/run/vela-node-agent/worker-quota.sock` from the root host Node Agent,
    owned by `root:10001`, mode `0660`, and accepting only Worker UID `10001`;
 5. pinned model weights under `/var/lib/vela/models`; and
-6. a current Worker UUID/epoch, mTLS identity, backend revision, exact certified
+6. a current centrally resolved Worker UUID/epoch, mTLS identity, backend revision, exact certified
    profile allowlist, exact one-Encoder/VAE plus seven-DiT GPU UUID role map, XFS
    project ID, per-Attempt quota, and high/low/critical watermarks.
    The same certification records a conservative minimum sequential-read

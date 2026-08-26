@@ -86,6 +86,12 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Worker gRPC server certificate", missingEnv: "VELA_WORKER_GRPC_TLS_CERT_FILE"},
 		{name: "Worker gRPC server key", missingEnv: "VELA_WORKER_GRPC_TLS_KEY_FILE"},
 		{name: "Worker gRPC client CA", missingEnv: "VELA_WORKER_GRPC_CLIENT_CA_FILE"},
+		{name: "Fleet database", missingEnv: "VELA_FLEET_DATABASE_URL"},
+		{name: "Fleet gRPC server certificate", missingEnv: "VELA_FLEET_GRPC_TLS_CERT_FILE"},
+		{name: "Fleet gRPC server key", missingEnv: "VELA_FLEET_GRPC_TLS_KEY_FILE"},
+		{name: "Fleet gRPC client CA", missingEnv: "VELA_FLEET_GRPC_CLIENT_CA_FILE"},
+		{name: "Fleet Controller SPIFFE identity", missingEnv: "VELA_FLEET_CONTROLLER_SPIFFE_ID"},
+		{name: "Fleet Controller actor identity", missingEnv: "VELA_FLEET_CONTROLLER_ACTOR_IDENTITY"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -247,6 +253,13 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_WORKER_GRPC_TLS_CERT_FILE", "/run/tls/worker-control/tls.crt")
 	t.Setenv("VELA_WORKER_GRPC_TLS_KEY_FILE", "/run/tls/worker-control/tls.key")
 	t.Setenv("VELA_WORKER_GRPC_CLIENT_CA_FILE", "/run/tls/worker-control/client-ca.crt")
+	t.Setenv("VELA_FLEET_DATABASE_URL", "postgres://fleet.example/vela")
+	t.Setenv("VELA_FLEET_GRPC_ADDRESS", "127.0.0.1:8444")
+	t.Setenv("VELA_FLEET_GRPC_TLS_CERT_FILE", "/run/tls/fleet-control/tls.crt")
+	t.Setenv("VELA_FLEET_GRPC_TLS_KEY_FILE", "/run/tls/fleet-control/tls.key")
+	t.Setenv("VELA_FLEET_GRPC_CLIENT_CA_FILE", "/run/tls/fleet-control/client-ca.crt")
+	t.Setenv("VELA_FLEET_CONTROLLER_SPIFFE_ID", "spiffe://vela.internal/fleet-controller/primary")
+	t.Setenv("VELA_FLEET_CONTROLLER_ACTOR_IDENTITY", "fleet-controller/primary")
 	t.Setenv(
 		"VELA_CREDENTIAL_PEPPER_BASE64",
 		base64.StdEncoding.EncodeToString(make([]byte, 32)),
@@ -268,6 +281,24 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "")
 	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "")
 	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "")
+}
+
+func TestLoadConfigPreservesIndependentFleetMaintenanceBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load Fleet maintenance configuration: %v", err)
+	}
+	if configuration.fleetDatabaseURL != "postgres://fleet.example/vela" ||
+		configuration.fleetGRPCAddress != "127.0.0.1:8444" ||
+		configuration.fleetGRPCTLSCertFile != "/run/tls/fleet-control/tls.crt" ||
+		configuration.fleetGRPCTLSKeyFile != "/run/tls/fleet-control/tls.key" ||
+		configuration.fleetGRPCClientCAFile != "/run/tls/fleet-control/client-ca.crt" ||
+		configuration.fleetControllerSPIFFEIdentity !=
+			"spiffe://vela.internal/fleet-controller/primary" ||
+		configuration.fleetControllerActorIdentity != "fleet-controller/primary" {
+		t.Fatalf("Fleet maintenance configuration = %#v", configuration)
+	}
 }
 
 func TestLoadConfigPreservesFinanceReconciliationBoundary(t *testing.T) {

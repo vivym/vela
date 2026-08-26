@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-fleet-desired-placeholder
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-fleet-controller
+    app.kubernetes.io/part-of: vela
+immutable: true
+data:
+  desired.yaml: |
+    apiVersion: fleet.vela.ai/v1alpha1
+    kind: FleetDesiredRevisions
+    revisions:
+      - workerPoolID: 00000000-0000-0000-0000-000000000005
+        name: h3-worker-pool-primary
+        revision: 0000000000000000000000000000000000000000000000000000000000000000
+        workerProfile: h3
+        daemonSetName: h3-worker-pool-primary
+        nodeSelector:
+          vela.ai/worker-profile: h3
+          vela.ai/worker-pool: launch
+        initImage: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        workerAgentImage: ghcr.io/vivym/vela-worker-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        runnerImage: ghcr.io/vivym/vela-h3-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        workerRuntimeConfigMap: vela-worker-runtime-placeholder
+        runnerProfilesConfigMap: vela-runner-profiles-placeholder
+        runnerGPURolesConfigMap: vela-runner-gpu-roles-placeholder
+        workerControlTLSSecret: vela-worker-control-mtls-placeholder
+        artifactStoreTLSSecret: vela-artifact-store-ca-placeholder
+        executionProfileRevisionID: 23000000-0000-0000-0000-000000000043
+        inferenceBackendRevision: replace-with-approved-backend-revision
+        readinessTimeout: 30m
+        capacityPolicy:
+          workerHighWatermarkBytes: 800000000000
+          workerLowWatermarkBytes: 700000000000
+          workerCriticalFreeBytes: 100000000000
+          poolHighWatermarkBytes: 5600000000000
+          poolLowWatermarkBytes: 4900000000000
+          observationMaxAge: 2m
+    retirements: []

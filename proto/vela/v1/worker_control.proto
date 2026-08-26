@@ -6,6 +6,7 @@ option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
+import "vela/v1/fleet_maintenance.proto";
 
 service WorkerControlService {
   rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
@@ -23,6 +24,9 @@ message ConnectRequest {
     StartWorkerRequest start = 11;
     HeartbeatRequest heartbeat = 12;
     FailRequest fail = 13;
+    ReportWorkerCapacityRequest report_capacity = 14;
+    GetWorkerReadinessRequest get_readiness_work = 15;
+    ReportWorkerReadinessRequest report_readiness = 16;
     BeginFinalizationRequest begin_finalization = 20;
     ClaimArtifactUploadRequest claim_artifact_upload = 21;
     RecordArtifactMultipartSessionRequest record_artifact_multipart_session = 22;
@@ -40,6 +44,9 @@ message ConnectResponse {
     StartWorkerResult start_result = 11;
     HeartbeatResult heartbeat_result = 12;
     RetryDecision retry_decision = 13;
+    ReportWorkerCapacityResult capacity_result = 14;
+    WorkerReadinessWork readiness_work = 15;
+    WorkerReadinessResult readiness_result = 16;
     FinalizationPlan finalization_plan = 20;
     ArtifactUploadClaim artifact_upload_claim = 21;
     ArtifactMultipartSession artifact_multipart_session = 22;
@@ -88,6 +95,63 @@ message WorkerLeaseCredentials {
 
 message AcquireRequest {
   int64 worker_epoch = 1;
+}
+
+message ReportWorkerCapacityRequest {
+  int64 worker_epoch = 1;
+  int64 observation_sequence = 2;
+  int64 total_bytes = 3;
+  int64 free_bytes = 4;
+  int64 high_watermark_bytes = 5;
+  int64 low_watermark_bytes = 6;
+  int64 critical_free_bytes = 7;
+  bool artifact_store_reachable = 8;
+  google.protobuf.Timestamp observed_at = 9;
+  FleetScratchWatermarkState watermark_state = 10;
+}
+
+message ReportWorkerCapacityResult {
+  string worker_pool_id = 1;
+  bool replayed = 2;
+  string worker_state = 3;
+  string pool_state = 4;
+  bool worker_assignment_allowed = 5;
+  bool pool_assignment_allowed = 6;
+  bool pool_readiness_allowed = 7;
+}
+
+message GetWorkerReadinessRequest {
+  int64 worker_epoch = 1;
+}
+
+message ReportWorkerReadinessRequest {
+  int64 worker_epoch = 1;
+  string cycle_id = 2;
+  FleetReadinessCheck check = 3;
+  bool passed = 4;
+  bytes evidence_digest = 5;
+}
+
+message WorkerReadinessWork {
+  bool available = 1;
+  string cycle_id = 2;
+  FleetReadinessCheck check = 3;
+  string worker_id = 4;
+  string worker_pool_id = 5;
+  int64 worker_epoch = 6;
+  string node_identity = 7;
+  string execution_profile_revision_id = 8;
+  string inference_backend_revision = 9;
+  google.protobuf.Timestamp deadline = 10;
+}
+
+message WorkerReadinessResult {
+  string cycle_id = 1;
+  bool replayed = 2;
+  FleetReadinessState state = 3;
+  FleetReadinessCheck next_check = 4;
+  FleetWorkerLifecycle worker_lifecycle = 5;
+  FleetWorkerReachability worker_reachability = 6;
 }
 
 message WorkerAssignment {

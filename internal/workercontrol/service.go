@@ -43,7 +43,99 @@ func (e *Failure) Error() string {
 }
 
 type AuthenticatedWorker struct {
-	ID uuid.UUID
+	ID       uuid.UUID
+	PoolID   uuid.UUID
+	SPIFFEID string
+}
+
+type CapacityState string
+
+const (
+	CapacityAdmittable         CapacityState = "ADMITTABLE"
+	CapacityScratchPressured   CapacityState = "SCRATCH_PRESSURED"
+	CapacityScratchCritical    CapacityState = "SCRATCH_CRITICAL"
+	CapacityStorageUnavailable CapacityState = "STORAGE_UNAVAILABLE"
+	CapacityMultipleBlockers   CapacityState = "MULTIPLE_BLOCKERS"
+)
+
+type ScratchWatermarkState string
+
+const (
+	ScratchWatermarkNormal    ScratchWatermarkState = "NORMAL"
+	ScratchWatermarkPressured ScratchWatermarkState = "PRESSURED"
+	ScratchWatermarkCritical  ScratchWatermarkState = "CRITICAL"
+)
+
+type CapacityObservation struct {
+	WorkerEpoch            int64
+	Sequence               int64
+	ObservedAt             time.Time
+	WatermarkState         ScratchWatermarkState
+	TotalBytes             int64
+	FreeBytes              int64
+	HighWatermarkBytes     int64
+	LowWatermarkBytes      int64
+	CriticalFreeBytes      int64
+	ArtifactStoreReachable bool
+}
+
+type CapacityResult struct {
+	WorkerPoolID            uuid.UUID
+	Replayed                bool
+	WorkerState             CapacityState
+	PoolState               CapacityState
+	WorkerAssignmentAllowed bool
+	PoolReadinessAllowed    bool
+	PoolAssignmentAllowed   bool
+}
+
+type ReadinessCheck string
+
+const (
+	ReadinessIdentity         ReadinessCheck = "IDENTITY"
+	ReadinessDevice           ReadinessCheck = "DEVICE"
+	ReadinessInferenceBackend ReadinessCheck = "INFERENCE_BACKEND"
+	ReadinessModelWarmup      ReadinessCheck = "MODEL_WARMUP"
+	ReadinessCanary           ReadinessCheck = "CANARY"
+)
+
+type ReadinessState string
+
+const (
+	ReadinessChecking ReadinessState = "CHECKING"
+	ReadinessReady    ReadinessState = "READY"
+	ReadinessFailed   ReadinessState = "FAILED"
+	ReadinessExpired  ReadinessState = "EXPIRED"
+)
+
+type ReadinessWork struct {
+	Available                  bool
+	CycleID                    uuid.UUID
+	Check                      ReadinessCheck
+	WorkerID                   uuid.UUID
+	WorkerPoolID               uuid.UUID
+	WorkerEpoch                int64
+	NodeIdentity               string
+	ExecutionProfileRevisionID uuid.UUID
+	InferenceBackendRevision   string
+	Deadline                   time.Time
+}
+
+type ReadinessEvidence struct {
+	WorkerEpoch    int64
+	CycleID        uuid.UUID
+	Check          ReadinessCheck
+	Passed         bool
+	EvidenceDigest [sha256.Size]byte
+}
+
+type ReadinessResult struct {
+	CycleID            uuid.UUID
+	Replayed           bool
+	State              ReadinessState
+	NextCheck          ReadinessCheck
+	WorkerLifecycle    string
+	WorkerReachability string
 }
 
 type AssignmentCandidate struct {
@@ -287,6 +379,21 @@ func (s *Service) Acquire(
 	retryRunningLimit, err := queries.LockAssignmentPoolCapacity(ctx, workerRow.WorkerPoolID)
 	if err != nil {
 		return Assignment{}, fmt.Errorf("lock Worker pool Assignment capacity: %w", err)
+	}
+	if _, err := queries.ValidateFleetCapacityForAssignment(
+		ctx,
+		store.ValidateFleetCapacityForAssignmentParams{
+			WorkerID:     worker.ID,
+			WorkerPoolID: workerRow.WorkerPoolID,
+			WorkerEpoch:  workerEpoch,
+		},
+	); errors.Is(err, pgx.ErrNoRows) {
+		return Assignment{}, failure(
+			FailureWorkerUnavailable,
+			"Worker or pool capacity is blocked by Fleet backpressure",
+		)
+	} else if err != nil {
+		return Assignment{}, fmt.Errorf("validate Fleet capacity for Assignment: %w", err)
 	}
 	if guardErr := schedulerGuard.validateRetryCapacity(
 		ctx,
