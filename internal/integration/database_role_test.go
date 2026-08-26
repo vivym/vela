@@ -86,6 +86,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
 	)
 	schedulerPool := newRolePool(t, database.DSN, "vela_scheduler_login", "vela-scheduler-password")
+	schedulerInboxPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_scheduler_inbox_login",
+		"vela-scheduler-inbox-password",
+	)
 	billingPool := newRolePool(t, database.DSN, "vela_billing_login", "vela-billing-password")
 	financeReconciliationPool := newRolePool(
 		t,
@@ -104,6 +110,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	for _, login := range []string{
 		"vela_internal_login",
+		"vela_scheduler_inbox_login",
 		"vela_billing_login",
 		"vela_finance_reconciliation_login",
 		"vela_webhook_request_login",
@@ -182,6 +189,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
 		{name: "Scheduler", pool: schedulerPool, role: veladb.RoleScheduler},
+		{
+			name: "Scheduler Inbox", pool: schedulerInboxPool,
+			role: veladb.RoleSchedulerInbox,
+		},
 		{name: "billing", pool: billingPool, role: veladb.RoleBilling},
 		{
 			name: "Finance Reconciliation", pool: financeReconciliationPool,
@@ -208,6 +219,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_break_glass_audit_request"},
 		{name: "vela_break_glass_owner", bypassRLS: true},
 		{name: "vela_finance_reconciliation"},
+		{name: "vela_scheduler_inbox"},
 		{name: "vela_finance_reconciliation_owner", bypassRLS: true},
 		{name: "vela_remediation", bypassRLS: false},
 		{name: "vela_remediation_owner", bypassRLS: true},
@@ -741,8 +753,28 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "internal as Artifact request", pool: internalPool, role: veladb.RoleArtifactRequest},
 		{name: "Scheduler as request", pool: schedulerPool, role: veladb.RoleRequest},
 		{name: "Scheduler as internal", pool: schedulerPool, role: veladb.RoleInternal},
+		{
+			name: "Scheduler as Scheduler Inbox", pool: schedulerPool,
+			role: veladb.RoleSchedulerInbox,
+		},
+		{
+			name: "Scheduler Inbox as Scheduler", pool: schedulerInboxPool,
+			role: veladb.RoleScheduler,
+		},
+		{
+			name: "Scheduler Inbox as internal", pool: schedulerInboxPool,
+			role: veladb.RoleInternal,
+		},
 		{name: "internal as Scheduler", pool: internalPool, role: veladb.RoleScheduler},
+		{
+			name: "internal as Scheduler Inbox", pool: internalPool,
+			role: veladb.RoleSchedulerInbox,
+		},
 		{name: "request as Scheduler", pool: requestPool, role: veladb.RoleScheduler},
+		{
+			name: "request as Scheduler Inbox", pool: requestPool,
+			role: veladb.RoleSchedulerInbox,
+		},
 		{name: "billing as internal", pool: billingPool, role: veladb.RoleInternal},
 		{name: "internal as billing", pool: internalPool, role: veladb.RoleBilling},
 		{name: "request as billing", pool: requestPool, role: veladb.RoleBilling},
@@ -885,6 +917,17 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	}
 	if _, err := database.Admin.Exec("REVOKE SELECT ON jobs FROM vela_scheduler_login"); err != nil {
 		t.Fatalf("revoke unexpected Scheduler table privilege: %v", err)
+	}
+	if _, err := database.Admin.Exec("GRANT SELECT ON inbox_receipts TO vela_scheduler_inbox_login"); err != nil {
+		t.Fatalf("grant unexpected Scheduler Inbox table privilege: %v", err)
+	}
+	if err := veladb.VerifyRole(
+		context.Background(), schedulerInboxPool, veladb.RoleSchedulerInbox,
+	); err == nil {
+		t.Fatal("Scheduler Inbox login with direct receipt access was accepted")
+	}
+	if _, err := database.Admin.Exec("REVOKE SELECT ON inbox_receipts FROM vela_scheduler_inbox_login"); err != nil {
+		t.Fatalf("revoke unexpected Scheduler Inbox table privilege: %v", err)
 	}
 	if _, err := database.Admin.Exec("GRANT SELECT ON charges TO vela_billing_login"); err != nil {
 		t.Fatalf("grant unexpected billing Charge privilege: %v", err)

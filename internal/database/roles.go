@@ -29,6 +29,7 @@ const (
 	RoleCancel                     Role = "vela_cancel"
 	RoleArtifactRequest            Role = "vela_artifact_request"
 	RoleScheduler                  Role = "vela_scheduler"
+	RoleSchedulerInbox             Role = "vela_scheduler_inbox"
 	RoleBilling                    Role = "vela_billing"
 	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
 	RoleWebhookRequest             Role = "vela_webhook_request"
@@ -64,6 +65,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleCancel:                     {verifyPrivileges: verifyCancelPrivileges},
 	RoleArtifactRequest:            {verifyPrivileges: verifyArtifactRequestPrivileges},
 	RoleScheduler:                  {verifyPrivileges: verifySchedulerPrivileges},
+	RoleSchedulerInbox:             {verifyPrivileges: verifySchedulerInboxPrivileges},
 	RoleBilling:                    {verifyPrivileges: verifyBillingPrivileges},
 	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
@@ -192,6 +194,17 @@ func verifySchedulerPrivileges(ctx context.Context, database rowQuerier, current
 			"vela_reconcile_expired_scheduler_dispatches()",
 			"vela_predict_admission_capacity(uuid,uuid,uuid,uuid,uuid,integer)",
 			"vela_predict_job_dynamic_eta(uuid)",
+		},
+	})
+}
+
+func verifySchedulerInboxPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Scheduler Inbox",
+		failureLabel:    "Scheduler Inbox receipt",
+		functions: []string{
+			"vela_prepare_scheduler_inbox_receipt(uuid,uuid,uuid,uuid,bigint)",
+			"vela_record_scheduler_inbox_receipt(uuid,uuid,uuid,uuid,bigint)",
 		},
 	})
 }

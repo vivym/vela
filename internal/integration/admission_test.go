@@ -1888,9 +1888,10 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 			CREATE ROLE vela_break_glass_audit_request_login LOGIN PASSWORD 'vela-break-glass-audit-request-password' IN ROLE vela_break_glass_audit_request;
 			CREATE ROLE vela_request_login LOGIN PASSWORD 'vela-request-password' IN ROLE vela_request;
 		CREATE ROLE vela_cancel_login LOGIN PASSWORD 'vela-cancel-password' IN ROLE vela_cancel;
-			CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
-			CREATE ROLE vela_scheduler_login LOGIN PASSWORD 'vela-scheduler-password' IN ROLE vela_scheduler;
-			CREATE ROLE vela_billing_login LOGIN PASSWORD 'vela-billing-password' IN ROLE vela_billing;
+				CREATE ROLE vela_artifact_request_login LOGIN PASSWORD 'vela-artifact-request-password' IN ROLE vela_artifact_request;
+				CREATE ROLE vela_scheduler_login LOGIN PASSWORD 'vela-scheduler-password' IN ROLE vela_scheduler;
+				CREATE ROLE vela_scheduler_inbox_login LOGIN PASSWORD 'vela-scheduler-inbox-password' IN ROLE vela_scheduler_inbox;
+				CREATE ROLE vela_billing_login LOGIN PASSWORD 'vela-billing-password' IN ROLE vela_billing;
 			CREATE ROLE vela_finance_reconciliation_login LOGIN PASSWORD 'vela-finance-reconciliation-password' IN ROLE vela_finance_reconciliation;
 			CREATE ROLE vela_webhook_request_login LOGIN PASSWORD 'vela-webhook-request-password' IN ROLE vela_webhook_request;
 			CREATE ROLE vela_webhook_login LOGIN PASSWORD 'vela-webhook-password' IN ROLE vela_webhook;

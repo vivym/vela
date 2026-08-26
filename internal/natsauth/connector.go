@@ -19,12 +19,16 @@ import (
 
 const (
 	outboxWorkloadName     = "vela-outbox-dispatcher"
-	outboxPublishSubject   = "vela.events.>"
 	outboxSubscribeSubject = "_INBOX.>"
 	degradedBootstrapURL   = "tls://127.0.0.1:0"
 	maxCredentialBytes     = 64 * 1024
 	maxRootCABytes         = 1024 * 1024
 )
+
+var outboxPublishSubjects = []string{
+	"vela.events.>",
+	"$JS.API.STREAM.INFO.VELA_EVENTS",
+}
 
 var (
 	ErrInvalidOutboxConfig     = errors.New("invalid NATS Outbox configuration")
@@ -297,7 +301,7 @@ func validOutboxClaims(claims *jwt.UserClaims, config OutboxConfig, now time.Tim
 		return false
 	}
 	if !exactSubjects(claims.AllowedConnectionTypes, jwt.ConnectionTypeStandard) ||
-		!exactSubjects(claims.Pub.Allow, outboxPublishSubject) ||
+		!exactSubjectSet(claims.Pub.Allow, outboxPublishSubjects) ||
 		!exactSubjects(claims.Sub.Allow, outboxSubscribeSubject) ||
 		len(claims.Pub.Deny) != 0 || len(claims.Sub.Deny) != 0 {
 		return false

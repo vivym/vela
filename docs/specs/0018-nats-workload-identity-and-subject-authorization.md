@@ -59,7 +59,9 @@ Tests exercise behavior only at these public boundaries:
    - limited to standard NATS connections;
    - free of bearer-token and response-permission behavior.
 3. Require the exact Outbox permission set:
-   - publish allow: `vela.events.>`;
+   - publish allow: `vela.events.>` and
+     `$JS.API.STREAM.INFO.VELA_EVENTS`; the API subject exists only so the
+     Publisher can fail closed on live release-stream contract drift;
    - subscribe allow: `_INBOX.>` only, for request/reply PubAck delivery;
    - no deny entries, whose overlap could make the effective policy ambiguous.
 4. Keep the credential file reloadable on reconnect so an atomically replaced,
@@ -94,8 +96,8 @@ Tests exercise behavior only at these public boundaries:
 
 ## Runtime Contract
 
-The current modular monolith opens exactly one NATS connection, used only by the
-Outbox Dispatcher. It requires:
+Slice 18 established one NATS connection used only by the Outbox Dispatcher. Its
+runtime variables were:
 
 ```text
 VELA_NATS_URL=tls://nats.internal:4222
@@ -105,6 +107,11 @@ VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY=<account NKey public key>
 VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS=<current[,overlap] account signer NKey public keys>
 VELA_NATS_OUTBOX_USER_PUBLIC_KEYS=<current[,overlap] user NKey public keys>
 ```
+
+Slice 25 extends the current modular monolith with a second, independently keyed
+Scheduler pull-consumer connection. Its exact current variables and permissions
+are defined by `0025-jetstream-quorum-and-consumer-crash-recovery.md`; the
+Slice 18 Outbox credential remains independent and cannot consume events.
 
 The existing generic credential-file variable is retained for N/N-1 deployment
 compatibility, but its contents are now contractually the Outbox Dispatcher
@@ -130,11 +137,15 @@ validated by the existing publisher before reaching NATS. The Outbox credential
 has no business-event subscription permission. `_INBOX.>` exists only so the
 JetStream client can receive the PubAck for its own request.
 
-The Scheduler fixture permission is intentionally narrow evidence for the
-already-defined `job.ready` wakeup. This slice does not activate a NATS Scheduler
-consumer or grant speculative subjects to Billing, Fleet, or Reconciler. Each
-future consumer must obtain an independent user NKey and a separately reviewed
-exact subject policy before its connection is implemented.
+The Outbox stream-info permission is read-only JetStream control-plane access;
+it does not grant stream mutation or consumer administration. The Slice 18
+Scheduler fixture's direct `job.ready` subscription remains historical evidence
+for the then-defined wakeup boundary; Slice 18 itself did not activate that
+consumer. Slice 25 now activates the production durable pull consumer with a
+different credential that may use only the exact stream-info, consumer-info,
+pull-next, ack, and `_INBOX.>` subjects. Billing, Fleet, and Reconciler consumers
+remain deferred and each requires an independent user NKey and reviewed exact
+subject policy.
 
 ## Error And Secret Handling
 
@@ -171,12 +182,15 @@ non-secret routing metadata, but they must not contain credential material.
 
 ## Explicitly Deferred
 
-This slice does not provide three-replica NATS deployment manifests, PVC and
+Slice 18 did not provide three-replica NATS deployment manifests, PVC and
 anti-affinity topology, internal-network policy, monitoring endpoint exposure,
 external secret distribution, operator/account signing ceremonies, production
-rotation/revocation receipts, durable Scheduler/Billing/Fleet/Reconciler
-consumers, JetStream rebuild, retained-backlog rollout, or any Production Gate
-Launch Receipt.
+rotation/revocation receipts, durable consumers, JetStream rebuild,
+retained-backlog rollout, or any Production Gate Launch Receipt. Slice 25 now
+provides the repository-rendered R3 topology/contract and durable Scheduler
+consumer; live deployment, secret ceremonies, retained-backlog rollout,
+rebuild/restore evidence, Billing/Fleet/Reconciler consumers, and every Launch
+Receipt remain deferred.
 
 Those are separate deployment, release, DR, and future consumer slices. The test
 operator, accounts, JWTs, NKeys, certificates, and credentials are generated at

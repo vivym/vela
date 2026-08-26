@@ -2551,6 +2551,9 @@ func runNMinusOneAdmissionProbe(t *testing.T, binary, adminDSN string) string {
 		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
 		),
+		"VELA_SCHEDULER_INBOX_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_inbox_login", "vela-scheduler-inbox-password",
+		),
 		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
 		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
 		"VELA_PROJECT_ID":               testProjectID,
@@ -2591,6 +2594,9 @@ func runNMinusOneHumanAdmissionProbe(
 		),
 		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
+		),
+		"VELA_SCHEDULER_INBOX_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_inbox_login", "vela-scheduler-inbox-password",
 		),
 		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
 		"VELA_OIDC_ISSUER":              "https://identity.example.com",
@@ -2828,6 +2834,9 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
 		),
+		"VELA_SCHEDULER_INBOX_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_inbox_login", "vela-scheduler-inbox-password",
+		),
 		"VELA_SCHEDULER_ID": "n-minus-one-startup-probe",
 		"VELA_BILLING_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_billing_login", "vela-billing-password",
@@ -2861,6 +2870,8 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":         "schema-probe-account",
 		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS": "schema-probe-signer",
 		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":           "schema-probe-user",
+		"VELA_NATS_SCHEDULER_CREDENTIALS_FILE":        "/missing/nats-scheduler.creds",
+		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS":        "schema-probe-scheduler-user",
 		"VELA_ARTIFACT_S3_ENDPOINT":                   "http://127.0.0.1:1",
 		"VELA_ARTIFACT_S3_REGION":                     "us-east-1",
 		"VELA_ARTIFACT_S3_BUCKET":                     "vela-artifacts",

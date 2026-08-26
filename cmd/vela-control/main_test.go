@@ -28,6 +28,8 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Outbox workload account", missingEnv: "VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY"},
 		{name: "Outbox workload account signers", missingEnv: "VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS"},
 		{name: "Outbox workload users", missingEnv: "VELA_NATS_OUTBOX_USER_PUBLIC_KEYS"},
+		{name: "Scheduler workload credentials", missingEnv: "VELA_NATS_SCHEDULER_CREDENTIALS_FILE"},
+		{name: "Scheduler workload users", missingEnv: "VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS"},
 		{name: "Human auth database", missingEnv: "VELA_HUMAN_AUTH_DATABASE_URL"},
 		{name: "Human membership auth database", missingEnv: "VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"},
 		{name: "identity request database", missingEnv: "VELA_IDENTITY_REQUEST_DATABASE_URL"},
@@ -48,6 +50,7 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Platform OIDC audience", missingEnv: "VELA_PLATFORM_OIDC_AUDIENCE"},
 		{name: "Platform OIDC JWKS URL", missingEnv: "VELA_PLATFORM_OIDC_JWKS_URL"},
 		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
+		{name: "Scheduler Inbox database", missingEnv: "VELA_SCHEDULER_INBOX_DATABASE_URL"},
 		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
 		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
 		{name: "Finance Reconciliation database", missingEnv: "VELA_FINANCE_RECONCILIATION_DATABASE_URL"},
@@ -190,6 +193,7 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_REMEDIATION_TLS_KEY_FILE", "/run/tls/remediation/client.key")
 	t.Setenv("VELA_REMEDIATION_TLS_ROOT_CA_FILE", "/run/tls/remediation/ca.crt")
 	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
+	t.Setenv("VELA_SCHEDULER_INBOX_DATABASE_URL", "postgres://scheduler-inbox.example/vela")
 	t.Setenv("VELA_SCHEDULER_ID", "vela-control-scheduler-1")
 	t.Setenv("VELA_BILLING_DATABASE_URL", "postgres://billing.example/vela")
 	t.Setenv(
@@ -231,6 +235,11 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv(
 		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS",
 		"UD6QZ5NLFZEZLTEQDDBY5RKG6YCEY7QUET2HJHJ3MSQB5JEIOYXRUHDS",
+	)
+	t.Setenv("VELA_NATS_SCHEDULER_CREDENTIALS_FILE", "/run/secrets/vela-scheduler.creds")
+	t.Setenv(
+		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS",
+		"UAWF3LT7L6HYUQF4YB7QTKGMBMTNHTL23W5EPJSGQ2AEVKXOJMLX5MQR",
 	)
 	t.Setenv("VELA_ARTIFACT_S3_ENDPOINT", "https://s3.example")
 	t.Setenv("VELA_ARTIFACT_S3_REGION", "us-east-1")
@@ -634,7 +643,10 @@ func TestLoadConfigParsesBoundedSchedulerControls(t *testing.T) {
 	}
 	if configuration.schedulerTick != 500*time.Millisecond ||
 		configuration.schedulerClaimTTL != 30*time.Second ||
-		configuration.schedulerCandidateAttempts != 5 {
+		configuration.schedulerCandidateAttempts != 5 ||
+		configuration.natsSchedulerCredentials != "/run/secrets/vela-scheduler.creds" ||
+		configuration.natsSchedulerUserPublicKeys !=
+			"UAWF3LT7L6HYUQF4YB7QTKGMBMTNHTL23W5EPJSGQ2AEVKXOJMLX5MQR" {
 		t.Fatalf(
 			"default Scheduler controls = tick %s claim TTL %s attempts %d",
 			configuration.schedulerTick,
@@ -748,7 +760,7 @@ func TestSchedulerRetriesTransientFailureAndStopsWithContext(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runScheduler(ctx, scheduling, time.Millisecond)
+		runScheduler(ctx, scheduling, time.Millisecond, nil)
 	}()
 
 	for range 2 {
@@ -768,6 +780,58 @@ func TestSchedulerRetriesTransientFailureAndStopsWithContext(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("Scheduler did not stop with context")
+	}
+}
+
+func TestSchedulerWakeupRunsCycleWithoutReplacingPeriodicReconciliation(t *testing.T) {
+	scheduling := &testHierarchicalScheduler{
+		calls:      make(chan struct{}, 2),
+		reconciles: make(chan struct{}, 1),
+	}
+	wakeups := make(chan schedulerCycleRequest, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runScheduler(ctx, scheduling, time.Hour, wakeups)
+	}()
+
+	select {
+	case <-scheduling.reconciles:
+	case <-time.After(time.Second):
+		t.Fatal("Scheduler did not run startup reconciliation")
+	}
+	select {
+	case <-scheduling.calls:
+	case <-time.After(time.Second):
+		t.Fatal("Scheduler did not run startup cycle")
+	}
+	cycleResult := make(chan error, 1)
+	wakeups <- schedulerCycleRequest{result: cycleResult}
+	select {
+	case <-scheduling.calls:
+	case <-time.After(time.Second):
+		t.Fatal("Scheduler wakeup did not trigger RunCycle")
+	}
+	select {
+	case err := <-cycleResult:
+		if err != nil {
+			t.Fatalf("Scheduler wakeup cycle result = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Scheduler wakeup did not wait for RunCycle completion")
+	}
+	select {
+	case <-scheduling.reconciles:
+		t.Fatal("event wakeup replaced the periodic PostgreSQL reconciliation boundary")
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Scheduler wakeup loop did not stop with context")
 	}
 }
 

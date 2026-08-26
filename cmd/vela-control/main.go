@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/vivym/vela/internal/admission"
@@ -38,6 +39,7 @@ import (
 	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/inbox"
 	"github.com/vivym/vela/internal/natsauth"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/organizationreporting"
@@ -135,6 +137,7 @@ type config struct {
 	remediationTick                   time.Duration
 	remediationBatch                  int
 	schedulerDatabaseURL              string
+	schedulerInboxDatabaseURL         string
 	schedulerID                       string
 	schedulerTick                     time.Duration
 	schedulerClaimTTL                 time.Duration
@@ -175,6 +178,8 @@ type config struct {
 	natsOutboxAccountPublicKey        string
 	natsOutboxAccountSignerPublicKeys string
 	natsOutboxUserPublicKeys          string
+	natsSchedulerCredentials          string
+	natsSchedulerUserPublicKeys       string
 	natsClientCert                    string
 	natsClientKey                     string
 	publisherBatchSize                int32
@@ -467,6 +472,16 @@ func run() error {
 		return fmt.Errorf("open Scheduler database pool: %w", err)
 	}
 	defer schedulerPool.Close()
+	schedulerInboxPool, err := openPool(
+		ctx,
+		configuration.schedulerInboxDatabaseURL,
+		5,
+		veladb.RoleSchedulerInbox,
+	)
+	if err != nil {
+		return fmt.Errorf("open Scheduler Inbox database pool: %w", err)
+	}
+	defer schedulerInboxPool.Close()
 	billingPool, err := openPool(ctx, configuration.billingDatabaseURL, 5, veladb.RoleBilling)
 	if err != nil {
 		return fmt.Errorf("open billing database pool: %w", err)
@@ -732,6 +747,20 @@ func run() error {
 		return err
 	}
 	defer natsConnection.Close()
+	schedulerNATSConnection, err := connectSchedulerNATS(configuration)
+	if err != nil {
+		return err
+	}
+	defer schedulerNATSConnection.Close()
+	schedulerInboxProcessor, err := inbox.NewSchedulerProcessor(schedulerInboxPool)
+	if err != nil {
+		return fmt.Errorf("configure Scheduler Inbox processor: %w", err)
+	}
+	schedulerMessageConsumer, err := inbox.NewJetStreamConsumer(schedulerInboxProcessor)
+	if err != nil {
+		return fmt.Errorf("configure Scheduler JetStream Inbox consumer: %w", err)
+	}
+	schedulerWakeups := make(chan schedulerCycleRequest, 1)
 	broker, err := outbox.NewJetStreamBroker(natsConnection.Conn)
 	if err != nil {
 		return err
@@ -822,6 +851,7 @@ func run() error {
 			internalPool,
 			fleetPool,
 			schedulerPool,
+			schedulerInboxPool,
 			billingPool,
 			financeReconciliationPool,
 			webhookRequestPool,
@@ -860,10 +890,25 @@ func run() error {
 		<-publisherDone
 		return err
 	}
+	if err := schedulerNATSConnection.Activate(); err != nil {
+		stop()
+		<-publisherDone
+		return err
+	}
+	schedulerWakeupDone := make(chan struct{})
+	go func() {
+		defer close(schedulerWakeupDone)
+		runSchedulerWakeupConsumer(
+			ctx,
+			schedulerNATSConnection.Conn,
+			schedulerMessageConsumer,
+			schedulerWakeups,
+		)
+	}()
 	schedulerDone := make(chan struct{})
 	go func() {
 		defer close(schedulerDone)
-		runScheduler(ctx, scheduling, configuration.schedulerTick)
+		runScheduler(ctx, scheduling, configuration.schedulerTick, schedulerWakeups)
 	}()
 	reconcilerDone := make(chan struct{})
 	go func() {
@@ -1015,6 +1060,11 @@ func run() error {
 		return errors.New("scheduler did not stop before shutdown deadline")
 	}
 	select {
+	case <-schedulerWakeupDone:
+	case <-shutdownContext.Done():
+		return errors.New("scheduler JetStream wakeup consumer did not stop before shutdown deadline")
+	}
+	select {
 	case <-publisherDone:
 	case <-shutdownContext.Done():
 		return errors.New("outbox Publisher did not stop before shutdown deadline")
@@ -1061,6 +1111,9 @@ func run() error {
 	}
 	if err := natsConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 		return fmt.Errorf("drain NATS connection: %w", err)
+	}
+	if err := schedulerNATSConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
+		return fmt.Errorf("drain NATS Scheduler connection: %w", err)
 	}
 	if serveErr != nil {
 		return serveErr
@@ -1118,6 +1171,7 @@ func loadConfig() (config, error) {
 		remediationTick:                   defaultRemediationTick,
 		remediationBatch:                  defaultRemediationBatch,
 		schedulerDatabaseURL:              os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
+		schedulerInboxDatabaseURL:         os.Getenv("VELA_SCHEDULER_INBOX_DATABASE_URL"),
 		schedulerID:                       os.Getenv("VELA_SCHEDULER_ID"),
 		schedulerTick:                     defaultSchedulerTick,
 		schedulerClaimTTL:                 defaultSchedulerClaimTTL,
@@ -1151,6 +1205,8 @@ func loadConfig() (config, error) {
 		natsOutboxAccountPublicKey:        os.Getenv("VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY"),
 		natsOutboxAccountSignerPublicKeys: os.Getenv("VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS"),
 		natsOutboxUserPublicKeys:          os.Getenv("VELA_NATS_OUTBOX_USER_PUBLIC_KEYS"),
+		natsSchedulerCredentials:          os.Getenv("VELA_NATS_SCHEDULER_CREDENTIALS_FILE"),
+		natsSchedulerUserPublicKeys:       os.Getenv("VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS"),
 		natsClientCert:                    os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
 		natsClientKey:                     os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
 		artifactS3Endpoint:                os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
@@ -1213,6 +1269,7 @@ func loadConfig() (config, error) {
 		"VELA_REMEDIATION_TLS_KEY_FILE":                  configuration.remediationTLSKeyFile,
 		"VELA_REMEDIATION_TLS_ROOT_CA_FILE":              configuration.remediationTLSRootCAFile,
 		"VELA_SCHEDULER_DATABASE_URL":                    configuration.schedulerDatabaseURL,
+		"VELA_SCHEDULER_INBOX_DATABASE_URL":              configuration.schedulerInboxDatabaseURL,
 		"VELA_SCHEDULER_ID":                              configuration.schedulerID,
 		"VELA_BILLING_DATABASE_URL":                      configuration.billingDatabaseURL,
 		"VELA_FINANCE_RECONCILIATION_DATABASE_URL":       configuration.financeReconciliationDatabaseURL,
@@ -1234,6 +1291,8 @@ func loadConfig() (config, error) {
 		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":            configuration.natsOutboxAccountPublicKey,
 		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS":    configuration.natsOutboxAccountSignerPublicKeys,
 		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":              configuration.natsOutboxUserPublicKeys,
+		"VELA_NATS_SCHEDULER_CREDENTIALS_FILE":           configuration.natsSchedulerCredentials,
+		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS":           configuration.natsSchedulerUserPublicKeys,
 		"VELA_ARTIFACT_S3_ENDPOINT":                      configuration.artifactS3Endpoint,
 		"VELA_ARTIFACT_S3_REGION":                        configuration.artifactS3Region,
 		"VELA_ARTIFACT_S3_BUCKET":                        configuration.artifactS3Bucket,
@@ -1504,6 +1563,53 @@ func connectNATS(configuration config) (*natsauth.OutboxConnection, error) {
 	return connection, nil
 }
 
+func connectSchedulerNATS(configuration config) (*natsauth.SchedulerConnection, error) {
+	connection, err := natsauth.ConnectScheduler(
+		natsauth.SchedulerConfig{
+			URL:                      configuration.natsURL,
+			CredentialsFile:          configuration.natsSchedulerCredentials,
+			RootCAFile:               configuration.natsRootCA,
+			ExpectedAccountPublicKey: configuration.natsOutboxAccountPublicKey,
+			ExpectedAccountSignerPublicKeys: splitCommaSeparated(
+				configuration.natsOutboxAccountSignerPublicKeys,
+			),
+			ExpectedUserPublicKeys: splitCommaSeparated(
+				configuration.natsSchedulerUserPublicKeys,
+			),
+			ClientCertificateFile: configuration.natsClientCert,
+			ClientKeyFile:         configuration.natsClientKey,
+		},
+		natsauth.Handlers{
+			Disconnect: func(err error) {
+				if err != nil {
+					slog.Warn(
+						"NATS Scheduler consumer disconnected; PostgreSQL reconciliation remains authoritative",
+						"error",
+						err,
+					)
+				}
+			},
+			Reconnect: func(connectedURL string) {
+				slog.Info("NATS Scheduler consumer reconnected", "url", connectedURL)
+			},
+			AsyncError: func(err error) {
+				if err != nil {
+					slog.Warn("NATS Scheduler consumer asynchronous error", "error", err)
+				}
+			},
+			Closed: func(err error) {
+				if err != nil {
+					slog.Error("NATS Scheduler consumer connection closed", "error", err)
+				}
+			},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("connect NATS Scheduler workload: %w", err)
+	}
+	return connection, nil
+}
+
 func splitCommaSeparated(value string) []string {
 	parts := strings.Split(value, ",")
 	values := make([]string, 0, len(parts))
@@ -1769,35 +1875,138 @@ func runPublisher(ctx context.Context, publisher *outbox.Publisher, interval tim
 	}
 }
 
-func runScheduler(ctx context.Context, scheduling hierarchicalScheduler, interval time.Duration) {
+func runScheduler(
+	ctx context.Context,
+	scheduling hierarchicalScheduler,
+	interval time.Duration,
+	wakeups <-chan schedulerCycleRequest,
+) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	if ctx.Err() != nil {
+		return
+	}
+	_ = runSchedulerCycle(ctx, scheduling, true)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
+		case <-ticker.C:
+			_ = runSchedulerCycle(ctx, scheduling, true)
+		case request, open := <-wakeups:
+			if !open {
+				wakeups = nil
+				continue
+			}
+			cycleErr := runSchedulerCycle(ctx, scheduling, false)
+			if request.result == nil {
+				continue
+			}
+			select {
+			case request.result <- cycleErr:
+			case <-ctx.Done():
+				return
+			}
 		}
+	}
+}
+
+type schedulerCycleRequest struct {
+	result chan<- error
+}
+
+func runSchedulerCycle(
+	ctx context.Context,
+	scheduling hierarchicalScheduler,
+	reconcileExpired bool,
+) error {
+	if reconcileExpired {
 		reconciled, err := scheduling.ReconcileExpired(ctx)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("Scheduler claim reconciliation incomplete", "error", err)
 		} else if err == nil && reconciled > 0 {
 			slog.Info("Scheduler expired claims reconciled", "claims", reconciled)
 		}
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	dispatches, err := scheduling.RunCycle(ctx)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		slog.Warn("Scheduler cycle incomplete", "error", err)
+	} else if err == nil && len(dispatches) > 0 {
+		slog.Info("Scheduler cycle dispatched Assignments", "dispatches", len(dispatches))
+	}
+	return err
+}
+
+func runSchedulerWakeupConsumer(
+	ctx context.Context,
+	connection *nats.Conn,
+	messages *inbox.JetStreamConsumer,
+	wakeups chan<- schedulerCycleRequest,
+) {
+	const retryDelay = time.Second
+	for ctx.Err() == nil {
+		bindContext, cancelBind := context.WithTimeout(ctx, 5*time.Second)
+		consumer, err := scheduler.BindJetStreamWakeupConsumer(
+			bindContext,
+			connection,
+			messages,
+			func(handlerContext context.Context, _ pgx.Tx) error {
+				return requestSchedulerCycle(handlerContext, wakeups)
+			},
+		)
+		cancelBind()
+		if err == nil {
+			err = consumer.Run(ctx, func(processErr error) {
+				slog.Warn(
+					"Scheduler JetStream wakeup remains unacknowledged",
+					"error",
+					processErr,
+				)
+			})
+		}
 		if ctx.Err() != nil {
 			return
 		}
-		dispatches, err := scheduling.RunCycle(ctx)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("Scheduler cycle incomplete", "error", err)
-		} else if err == nil && len(dispatches) > 0 {
-			slog.Info("Scheduler cycle dispatched Assignments", "dispatches", len(dispatches))
+		if err != nil {
+			slog.Warn(
+				"Scheduler JetStream wakeup binding unavailable; PostgreSQL reconciliation remains authoritative",
+				"error",
+				err,
+			)
 		}
+		timer := time.NewTimer(retryDelay)
 		select {
 		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
 			return
-		case <-ticker.C:
+		case <-timer.C:
 		}
+	}
+}
+
+func requestSchedulerCycle(
+	ctx context.Context,
+	wakeups chan<- schedulerCycleRequest,
+) error {
+	if wakeups == nil {
+		return errors.New("scheduler cycle request channel is required")
+	}
+	result := make(chan error, 1)
+	select {
+	case wakeups <- schedulerCycleRequest{result: result}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case err := <-result:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

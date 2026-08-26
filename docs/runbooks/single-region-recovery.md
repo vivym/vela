@@ -58,10 +58,21 @@ backup set until all evidence is sealed.
 3. Restore a representative sample of committed Artifact object versions and
    verify object version, size, checksum, content type, and ArtifactSet
    manifest. An incomplete or losing Attempt must not become visible.
-4. Create the three-replica JetStream stream and durable consumers from the
-   release configuration. Rebuild only delivery state; JetStream is not the
-   business authority.
-5. Run Outbox replay with the original `event_id` and aggregate version. Run
+4. Render `deploy/control-storage` from the exact recovery release and extract
+   `jetstream-contract.json` from the generated `vela-jetstream-contract`
+   ConfigMap. Using a separately authorized release reconciler, create the
+   `VELA_EVENTS` stream and `VELA_SCHEDULER` durable consumer from that document.
+   Record the effective stream and consumer info, Raft leader, two current
+   followers, file storage, PVC identity, exact subject/filter, explicit ack,
+   duplicate window, and limits. Do not lower either replica count or use a
+   workload credential for administration. Start `vela-control` with the
+   dedicated Scheduler credential and confirm its contract validator binds the
+   consumer. Rebuild only delivery state; JetStream is not the business
+   authority.
+5. Run Outbox replay with the original `event_id` and aggregate version. Confirm
+   replayed messages receive a `VELA_EVENTS` quorum `PubAck`, the Scheduler Inbox
+   receipt commits before confirmed ack, and periodic PostgreSQL Scheduler scans
+   remain active with JetStream stopped. Run
    Scheduler, Artifact, Invoice, Webhook, retention, and Worker-loss
    reconciliation scans. Verify no duplicate Visible Completion, Charge,
    Invoice line, or terminal webhook authority is created.

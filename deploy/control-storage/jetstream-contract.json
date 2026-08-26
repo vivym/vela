@@ -1,0 +1,48 @@
+{
+  "revision": 1,
+  "stream": {
+    "name": "VELA_EVENTS",
+    "subjects": [
+      "vela.events.>"
+    ],
+    "retention": "limits",
+    "max_consumers": 32,
+    "max_msgs": 1000000,
+    "max_bytes": 68719476736,
+    "discard": "old",
+    "max_age": 604800000000000,
+    "max_msgs_per_subject": -1,
+    "max_msg_size": 1048576,
+    "storage": "file",
+    "num_replicas": 3,
+    "duplicate_window": 600000000000,
+    "deny_delete": true,
+    "deny_purge": true,
+    "metadata": {
+      "vela.contract": "event-delivery",
+      "vela.revision": "1"
+    }
+  },
+  "consumers": [
+    {
+      "name": "VELA_SCHEDULER",
+      "durable_name": "VELA_SCHEDULER",
+      "description": "PostgreSQL-authoritative Scheduler job.ready wakeup",
+      "deliver_policy": "all",
+      "ack_policy": "explicit",
+      "ack_wait": 30000000000,
+      "max_deliver": -1,
+      "filter_subject": "vela.events.job.ready",
+      "replay_policy": "instant",
+      "max_waiting": 32,
+      "max_ack_pending": 128,
+      "max_batch": 1,
+      "max_expires": 5000000000,
+      "num_replicas": 3,
+      "metadata": {
+        "vela.contract": "scheduler-wakeup",
+        "vela.revision": "1"
+      }
+    }
+  ]
+}
