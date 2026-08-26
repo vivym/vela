@@ -427,6 +427,16 @@ func run() error {
 		return fmt.Errorf("open internal database pool: %w", err)
 	}
 	defer internalPool.Close()
+	financeReconciliationPool, err := openPool(
+		ctx,
+		configuration.financeReconciliationDatabaseURL,
+		5,
+		veladb.RoleFinanceReconciliation,
+	)
+	if err != nil {
+		return fmt.Errorf("open Finance Reconciliation database pool: %w", err)
+	}
+	defer financeReconciliationPool.Close()
 	fleetPool, err := openPool(ctx, configuration.fleetDatabaseURL, 10, veladb.RoleFleet)
 	if err != nil {
 		return fmt.Errorf("open Fleet database pool: %w", err)
@@ -487,16 +497,6 @@ func run() error {
 		return fmt.Errorf("open billing database pool: %w", err)
 	}
 	defer billingPool.Close()
-	financeReconciliationPool, err := openPool(
-		ctx,
-		configuration.financeReconciliationDatabaseURL,
-		5,
-		veladb.RoleFinanceReconciliation,
-	)
-	if err != nil {
-		return fmt.Errorf("open Finance Reconciliation database pool: %w", err)
-	}
-	defer financeReconciliationPool.Close()
 	financeReconciliationService, err := financereconciliation.NewService(
 		ctx,
 		financeReconciliationPool,
