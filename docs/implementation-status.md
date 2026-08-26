@@ -45,6 +45,7 @@ tests alone do not satisfy a gate.
 | Certified Remediation Durable Execution Hardening | `0cc6a7c`, `b17b0cd`, `75981bd`, `754c275` | `internal/nodeagent/fileledger.go`, `internal/nodeagent/host.go`, `internal/securefile/securefile.go` |
 | Certified Remediation Runtime Authority | `ad1bcf6` | `docs/specs/0027-certified-remediation-runtime-authority.md` |
 | Authorized Debug-dump Lifecycle | `6603c36` | `docs/specs/0028-authorized-debug-dump-lifecycle.md` |
+| N/N-1 Rollout, Drain, Rollback, And Retained Backlog Conformance | `21e0781` | `docs/specs/0029-nminusone-rollout-drain-backlog-conformance.md` |
 
 ## ADR Evidence Matrix
 
@@ -62,7 +63,7 @@ tests alone do not satisfy a gate.
 | 0010 Bounded admission and queues | Implemented for current control plane | Transactional queue counters, pool-scoped bounded projection, risk-aware Admission prediction, Dynamic ETA, hierarchical lanes, and fail-closed counter-drift detection are integrated. | Deployment calibration and Production Gate receipts remain separate. |
 | 0011 No failed-Job Charge | Implemented for current lifecycle | Execution, finalization-deadline, validation, and unrecoverable Artifact failure release credit and create no Charge; only Visible Completion or post-Billable-Start Customer Cancellation posts one. | Future failure sources must use the same terminal authority. |
 | 0012 Single-region DR | Partial | Recovery order, RPO/RTO contract, CNPG off-cluster WAL/base-backup target, explicit JetStream rebuild/Outbox replay contract, and controlled single-node/site recovery runbook are rendered in `deploy/control-storage` and `docs/runbooks/single-region-recovery.md`. Slice 26 proves automatic single-node CNPG failover with RPO 0 and a measured sub-five-minute RTO, then proves database-enforced no-quorum Admission/Assignment rollback in a pinned repository conformance cluster. | Live WAL/archive, PostgreSQL PITR, Artifact backup, JetStream rebuild, Outbox replay, secret rotation, Barman Cloud Plugin migration before CNPG 1.31, and quarterly restore-drill receipts. |
-| 0013 Non-interrupting releases | Partial | Twenty-seven additive migrations, exact N/N-1 database/control compatibility for the fixed migration points, database-owned no-quorum guards on the current Admission and Scheduler write paths, operator-receipted circuit and Fleet Assignment protocol transitions, Protobuf/OpenAPI breaking checks, and migration down/up evidence. Migration 00027 adds dedicated debug-dump roles without widening the exact N-1 retention or audit role allowlists (`6603c36`). | A fixed N/N-1 no-quorum rollout test, deployed Worker/event/API rollout, drain, rollback, and retained-backlog receipts. |
+| 0013 Non-interrupting releases | Partial | Twenty-seven additive migrations, exact N/N-1 database/control compatibility for the fixed migration points, database-owned no-quorum guards, operator-receipted circuit and Fleet Assignment protocol transitions, Protobuf/OpenAPI breaking checks, and migration down/up evidence. Migration 00027 adds dedicated debug-dump roles without widening the exact N-1 retention or audit role allowlists (`6603c36`). Slice 29 builds the exact adjacent N-1 control and Worker probes, preserves raw retained-event identity through the current Inbox/Scheduler, drains without interrupting the active Lease, restores exact N-1 writers on schema 27, and proves current plus N-1 Admission/Scheduler return SQLSTATE `55000` during CNPG quorum loss (`21e0781`). | A deployed Kubernetes Worker/event/API rollout, real long-running H3 drain, release rollback, and retained production backlog receipt. |
 | 0014 Project webhooks | Implemented | Project-scoped subscriptions, safe terminal-event fanout, overlapping HMAC secret rotation, durable at-least-once retry, dead letter, crash recovery, visibility, and manual replay are integrated. | Public-DNS deployment validation and a real endpoint Launch Receipt remain separate Production Gate evidence. |
 | 0015 Class-specific retention | Partial | Versioned 7/30/90-day Project policies are frozen at Admission; request content and successful exact-version Artifacts expire independently; early Content Deletion uses the existing cancellation/Charge authority, tombstones request content, revokes access, deletes exact S3 versions, aborts multipart uploads, recovers/retries claims, and writes immutable receipts under forced RLS; the Worker runtime terminally removes exact Runner outputs and Local Recovery State, while stale-marker reconciliation remains bounded. Slice 24 schedules exact-version cleanup of incomplete STAGING Artifacts from the version-matched terminal Outbox event at 24 hours, permits a Customer deletion request to coexist, preserves `CANCELING`, and completes one idempotent receipt under concurrent Reconcilers. Slice 28 binds opt-in debug dumps to the immutable 72-hour Job snapshot, keeps failed-attempt uploads non-blocking, and schedules exact-version or incomplete multipart-prefix cleanup with immutable receipts (`6603c36`). | Off-cluster backup expiry/replay, metadata and financial lifecycle enforcement, legal holds, live scratch lifecycle evidence, and Launch Receipts. |
 | 0016 Preset versus Service Class | Implemented for current control plane | Admission, Retry, and Scheduler retain both immutable revisions separately; Scheduler reads ServiceClassRevision policy and never derives priority from Preset or price. | SLO reporting must preserve the same boundary. |
@@ -117,14 +118,18 @@ dumps remain isolated from Artifacts and Charge authority, are uploaded only
 under the current Worker/Lease identity, and expire or delete through
 exact-version and incomplete multipart cleanup without blocking the authoritative
 failure transition (19).
+Slice 29 adds direct repository evidence that exact adjacent N-1 control,
+Admission, Outbox, Scheduler, and Worker binaries coexist with schema 27 and
+current consumers; raw retained event identity reaches the durable current
+Inbox, an active N-1 Worker continues through current Fleet drain, exact N-1
+rollback writers retain authority, and current plus N-1 Admission/Scheduler
+writers fail closed without new authority during synchronous-quorum loss (30).
 Evidence remains partial for same-Worker multipart resume,
 Worker Local Recovery State, and whole-Job recompute without live node/NVMe-loss
 evidence (10), class-specific request/Artifact/debug-dump retention and Content
 Deletion without off-cluster backup expiry/replay or production lifecycle
-evidence (19), and N/N-1
-database/control/Worker/event compatibility without a deployed rollout, drain,
-rollback, and retained-backlog receipt (30).
-The repository coverage is now 27 direct, 3 partial, and 0 unproven.
+evidence (19).
+The repository coverage is now 28 direct, 2 partial, and 0 unproven.
 
 ## Production Gates
 

@@ -1288,7 +1288,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 27. 使用无权限或其他 workload 的 NATS credential 访问受限 subject 被拒绝；Organization A 的任何角色、Project credential、signed URL 或复合外键都不能读取或引用 Organization B 的数据。
 28. Webhook endpoint 超时、返回非 2xx 或 Dispatcher 崩溃时，同一 `event_id` 允许重复投递并在 72 小时后进入 dead letter；签名可验证，payload 不含 Customer Content，GET Job 返回最终权威状态。
 29. Credential 轮换、撤销和 Break-glass 到期不会丢失 Principal 审计归因；BillingAdmin 和 OrganizationAuditor 默认不能读取 prompt 或 Artifact。
-30. N 与 N-1 控制面、Worker、event 和 schema 在长任务 rollout 中共存；升级、回滚和 drain 不终止 Accepted Job，旧 event backlog 能由新 consumer 正确处理。
+30. N 与 N-1 控制面、Worker、event 和 schema 在长任务 rollout 中共存；升级、回滚和 drain 不终止 Accepted Job，旧 event backlog 能由新 consumer 正确处理。Slice 29 已用 exact adjacent N-1 control、Admission、Outbox、Scheduler 与 Worker probe，在 schema 27 上直接证明 retained raw event 由 current Inbox/Scheduler 接收、active Lease 在 current Fleet drain 中继续、exact N-1 rollback writer 保持 authority，并在 CNPG 无同步 quorum 时由 current 与 N-1 writer 共同 fail closed（`21e0781`）；真实 Kubernetes 长任务 rollout 与 production backlog receipt 仍属于 Production Gate。
 
 ## 23. 已决事项、Production Gate 与 Future Work
 

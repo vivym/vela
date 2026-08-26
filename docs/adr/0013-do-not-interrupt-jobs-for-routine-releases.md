@@ -14,6 +14,11 @@ Partial. Twenty-seven additive migrations, exact N/N-1 database/control
 compatibility at fixed migration points, an operator-receipted protocol
 transition, migration round trips, and Protobuf/OpenAPI breaking checks are
 repository-proven. Migration 00027 adds dedicated debug-dump roles without
-widening the N-1 retention or audit role allowlists (`6603c36`). A deployed
-mixed control/Worker/event rollout, long-Job drain, rollback, and
-retained-backlog receipt remain unimplemented.
+widening the N-1 retention or audit role allowlists (`6603c36`). Slice 29 builds
+the exact adjacent N-1 control and Worker probes, proves raw retained-event
+receipt by the current Inbox/Scheduler, drains without interrupting the active
+Lease, restores exact N-1 control/Scheduler writers on schema 27, and proves
+current plus N-1 Admission/Scheduler fail closed with SQLSTATE `55000` during
+CNPG quorum loss (`21e0781`). A real Kubernetes mixed control/Worker/event
+rollout, long-running H3 Job drain, release rollback, and retained production
+backlog receipt remain external deployment evidence.
