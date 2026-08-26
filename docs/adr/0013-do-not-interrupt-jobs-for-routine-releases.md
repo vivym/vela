@@ -10,8 +10,10 @@ An adjacent version change that cannot preserve both old and new execution autho
 
 ## Implementation Status
 
-Partial. Twenty-five additive migrations, exact N/N-1 database/control
-compatibility, an operator-receipted protocol transition, migration round trips,
-and Protobuf/OpenAPI breaking checks are repository-proven. A deployed mixed
-control/Worker/event rollout, long-Job drain, rollback, and retained-backlog
-receipt remain unimplemented.
+Partial. Twenty-seven additive migrations, exact N/N-1 database/control
+compatibility at fixed migration points, an operator-receipted protocol
+transition, migration round trips, and Protobuf/OpenAPI breaking checks are
+repository-proven. Migration 00027 adds dedicated debug-dump roles without
+widening the N-1 retention or audit role allowlists (`6603c36`). A deployed
+mixed control/Worker/event rollout, long-Job drain, rollback, and
+retained-backlog receipt remain unimplemented.

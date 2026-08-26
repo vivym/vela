@@ -5,3 +5,14 @@ Launch retains successful ArtifactSets and request content for 30 days, with con
 ## Consequences
 
 Customers may request early Content Deletion, which completes asynchronously within 24 hours without reversing Charges or required non-content audit history. Retention is enforced and evidenced across PostgreSQL, object storage, multipart uploads, Worker scratch, backups, and debug paths rather than delegated only to an object-store lifecycle rule.
+
+## Implementation Status
+
+Partial. Request content, successful and incomplete Artifacts, multipart uploads,
+Worker scratch, Local Recovery State, and opt-in debug dumps have repository
+expiry or deletion paths. Debug dumps expire at the immutable 72-hour
+authorization ceiling, remain separate from customer Artifacts, and use
+exact-version or multipart-prefix cleanup with immutable receipts under either
+retention or Customer Content Deletion (`6603c36`). Off-cluster backup
+expiry/replay, metadata and financial lifecycle enforcement, legal holds, live
+production scratch lifecycle evidence, and Launch Receipts remain unimplemented.
