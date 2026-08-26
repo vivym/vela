@@ -3454,6 +3454,316 @@ func TestConcurrentVisibleCompletionCommitsOneImmutableResult(t *testing.T) {
 	}
 }
 
+func TestTwoAttemptsRaceOneVisibleCompletionAndCleanupLosingArtifacts(t *testing.T) {
+	fixture := newStartFixture(t, "two-attempt-visible-completion-race", 7)
+	if started, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("Start first Attempt = %#v error=%v", started, err)
+	}
+	firstPlan, err := fixture.service.BeginFinalization(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil || firstPlan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("BeginFinalization first Attempt = %#v error=%v", firstPlan, err)
+	}
+	completionService := visibleCompletionService(t, fixture.database.DSN)
+	firstArtifactIDs := uploadAndVerifyFinalizationPlan(
+		t,
+		completionService,
+		fixture.worker,
+		fixture.credentials,
+		firstPlan,
+	)
+	forceFinalizationFailureWindow(
+		t,
+		fixture.database.Admin,
+		firstPlan.JobID,
+		firstPlan.AttemptID,
+		false,
+		false,
+	)
+	reconciledFailure, err := completionService.ReconcileNextExecutionFailure(
+		context.Background(),
+	)
+	if err != nil || !reconciledFailure.Processed ||
+		reconciledFailure.Decision.Disposition != workercontrol.RetryDispositionRetryWait {
+		t.Fatalf("reconcile first Attempt for retry = %#v error=%v", reconciledFailure, err)
+	}
+	failed := reconciledFailure.Decision
+
+	secondWorkerID := uuid.MustParse("00000000-0000-0000-0000-000000000124")
+	if _, err := fixture.database.Admin.Exec(`
+		INSERT INTO workers (
+			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
+		) VALUES (
+			$1, '00000000-0000-0000-0000-000000000005',
+			'spiffe://vela.internal/worker/h3-two-attempt-race', 7, 'READY', 'HEALTHY'
+		)
+	`, secondWorkerID); err != nil {
+		t.Fatalf("seed replacement Worker: %v", err)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE retry_runtime_states
+		SET next_retry_at = clock_timestamp() - interval '1 second'
+		WHERE job_id = $1
+	`, firstPlan.JobID); err != nil {
+		t.Fatalf("make replacement Attempt eligible: %v", err)
+	}
+	secondWorker := workercontrol.AuthenticatedWorker{ID: secondWorkerID}
+	secondAssignment, err := completionService.Acquire(
+		context.Background(),
+		secondWorker,
+		7,
+		&workercontrol.AssignmentCandidate{
+			JobID:                      firstPlan.JobID,
+			ExpectedJobVersion:         failed.JobVersion,
+			ExecutionProfileRevisionID: fixture.assignment.ExecutionProfileRevisionID,
+		},
+	)
+	if err != nil {
+		t.Fatalf("Acquire replacement Attempt: %v", err)
+	}
+	if secondAssignment.AttemptID == firstPlan.AttemptID ||
+		secondAssignment.AttemptNumber != 2 ||
+		secondAssignment.LeaseFence <= fixture.assignment.LeaseFence {
+		t.Fatalf("replacement Assignment = %#v after first plan %#v", secondAssignment, firstPlan)
+	}
+	secondCredentials := leaseCredentials(secondAssignment)
+	if started, startErr := completionService.Start(
+		context.Background(), secondWorker, secondCredentials,
+	); startErr != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("Start replacement Attempt = %#v error=%v", started, startErr)
+	}
+	secondPlan, err := completionService.BeginFinalization(
+		context.Background(), secondWorker, secondCredentials,
+	)
+	if err != nil || secondPlan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("BeginFinalization replacement Attempt = %#v error=%v", secondPlan, err)
+	}
+	secondArtifactIDs := uploadAndVerifyFinalizationPlan(
+		t,
+		completionService,
+		secondWorker,
+		secondCredentials,
+		secondPlan,
+	)
+
+	type attemptCompletion struct {
+		attempt string
+		result  workercontrol.VisibleCompletionResult
+		err     error
+	}
+	start := make(chan struct{})
+	completed := make(chan attemptCompletion, 2)
+	var wait sync.WaitGroup
+	for _, call := range []struct {
+		attempt     string
+		worker      workercontrol.AuthenticatedWorker
+		credentials workercontrol.LeaseCredentials
+		plan        workercontrol.FinalizationPlan
+		artifactIDs []uuid.UUID
+	}{
+		{
+			attempt:     "first",
+			worker:      fixture.worker,
+			credentials: fixture.credentials,
+			plan:        firstPlan,
+			artifactIDs: firstArtifactIDs,
+		},
+		{
+			attempt:     "second",
+			worker:      secondWorker,
+			credentials: secondCredentials,
+			plan:        secondPlan,
+			artifactIDs: secondArtifactIDs,
+		},
+	} {
+		call := call
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			result, completeErr := completionService.CompleteVisibleCompletion(
+				context.Background(),
+				call.worker,
+				call.credentials,
+				workercontrol.VisibleCompletionCandidate{
+					CompletionID:       uuid.New(),
+					ExpectedJobVersion: call.plan.JobVersion,
+					ArtifactIDs:        call.artifactIDs,
+				},
+			)
+			completed <- attemptCompletion{
+				attempt: call.attempt,
+				result:  result,
+				err:     completeErr,
+			}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(completed)
+	var winning workercontrol.VisibleCompletionResult
+	for call := range completed {
+		if call.err != nil {
+			t.Fatalf("%s Attempt Visible Completion error: %v", call.attempt, call.err)
+		}
+		switch call.attempt {
+		case "first":
+			if call.result.Decision != workercontrol.VisibleCompletionRejectedStaleLease {
+				t.Fatalf("first Attempt completion = %#v", call.result)
+			}
+		case "second":
+			if call.result.Decision != workercontrol.VisibleCompletionCommitted ||
+				call.result.AttemptID != secondPlan.AttemptID {
+				t.Fatalf("second Attempt completion = %#v", call.result)
+			}
+			winning = call.result
+		default:
+			t.Fatalf("unknown completion call %q", call.attempt)
+		}
+	}
+	if winning.ArtifactSetID == uuid.Nil {
+		t.Fatal("replacement Attempt did not produce Visible Completion")
+	}
+
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = array_append(scopes, 'artifacts:read')
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant artifacts:read scope: %v", err)
+	}
+	authenticator := identity.NewAuthenticator(
+		newRolePool(t, fixture.database.DSN, "vela_auth_login", "vela-auth-password"),
+		testCredentialPepper,
+	)
+	principal, err := authenticator.Authenticate(context.Background(), testBearerCredential())
+	if err != nil {
+		t.Fatalf("authenticate Artifact reader: %v", err)
+	}
+	signer := &recordingArtifactSigner{}
+	accessService := artifactaccess.NewService(
+		newRolePool(
+			t,
+			fixture.database.DSN,
+			"vela_artifact_request_login",
+			"vela-artifact-request-password",
+		),
+		signer,
+	)
+	assertWinningArtifactAccess := func(label string) {
+		t.Helper()
+		visible, accessErr := accessService.Get(
+			context.Background(),
+			principal,
+			uuid.MustParse(testProjectID),
+			firstPlan.JobID,
+		)
+		if accessErr != nil {
+			t.Fatalf("%s winning Artifact access: %v", label, accessErr)
+		}
+		if visible.ID != winning.ArtifactSetID || len(visible.Artifacts) != len(secondArtifactIDs) {
+			t.Fatalf("%s visible ArtifactSet = %#v, winner %#v", label, visible, winning)
+		}
+		for index, artifact := range visible.Artifacts {
+			if artifact.ID != secondArtifactIDs[index] {
+				t.Fatalf("%s visible Artifact %d = %#v", label, index, artifact)
+			}
+		}
+	}
+	assertWinningArtifactAccess("before losing cleanup")
+
+	cleanupStore := &recordingRetentionStore{}
+	reconciler, err := retention.NewReconciler(
+		newRolePool(
+			t,
+			fixture.database.DSN,
+			"vela_retention_login",
+			"vela-retention-password",
+		),
+		cleanupStore,
+		retention.ReconcilerConfig{
+			InstanceID: "two-attempt-loser-reconciler",
+			BatchSize:  len(firstArtifactIDs) + 1,
+			ClaimTTL:   time.Minute,
+			RetryDelay: time.Minute,
+		},
+	)
+	if err != nil {
+		t.Fatalf("create losing Artifact Reconciler: %v", err)
+	}
+	cleanup, err := reconciler.ReconcileBatch(context.Background())
+	if err != nil || cleanup.ArtifactRequestsCreated != 1 ||
+		cleanup.Claimed != len(firstArtifactIDs)+1 || cleanup.Completed != cleanup.Claimed ||
+		cleanup.Failed != 0 {
+		t.Fatalf("losing Artifact cleanup = %#v error=%v", cleanup, err)
+	}
+	wantDeleted := make(map[uuid.UUID]struct{}, len(firstArtifactIDs))
+	for _, artifactID := range firstArtifactIDs {
+		wantDeleted[artifactID] = struct{}{}
+	}
+	if len(cleanupStore.deleted) != len(firstArtifactIDs) {
+		t.Fatalf("losing exact deletes = %#v", cleanupStore.deleted)
+	}
+	for _, deleted := range cleanupStore.deleted {
+		matched := false
+		for _, artifact := range firstPlan.Artifacts {
+			if artifact.ObjectKey == deleted.ObjectKey &&
+				deleted.VersionID == "version-"+artifact.ArtifactID.String() {
+				matched = true
+				delete(wantDeleted, artifact.ArtifactID)
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("cleanup deleted non-losing identity %#v", deleted)
+		}
+	}
+	if len(wantDeleted) != 0 {
+		t.Fatalf("losing Artifacts not deleted = %#v", wantDeleted)
+	}
+	assertWinningArtifactAccess("after losing cleanup")
+
+	var sets, completions, charges, grants, succeededEvents, deletedLosers, committedWinners int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM artifact_sets WHERE job_id = $1),
+			(SELECT count(*) FROM visible_completions WHERE job_id = $1),
+			(SELECT count(*) FROM charges WHERE job_id = $1),
+			(SELECT count(*) FROM artifact_access_grants WHERE job_id = $1 AND revoked_at IS NULL),
+			(SELECT count(*) FROM outbox_events
+			 WHERE aggregate_id = $1 AND event_type = 'job.succeeded'),
+			(SELECT count(*) FROM artifacts WHERE attempt_id = $2 AND state = 'DELETED'),
+			(SELECT count(*) FROM artifacts WHERE attempt_id = $3 AND state = 'COMMITTED')
+	`, firstPlan.JobID, firstPlan.AttemptID, secondPlan.AttemptID).Scan(
+		&sets,
+		&completions,
+		&charges,
+		&grants,
+		&succeededEvents,
+		&deletedLosers,
+		&committedWinners,
+	); err != nil {
+		t.Fatalf("read two-Attempt authority ledger: %v", err)
+	}
+	if sets != 1 || completions != 1 || charges != 1 || grants != 1 ||
+		succeededEvents != 1 || deletedLosers != len(firstArtifactIDs) ||
+		committedWinners != len(secondArtifactIDs) {
+		t.Fatalf(
+			"two-Attempt ledger = sets/completions/charges/grants/events %d/%d/%d/%d/%d loser/winner %d/%d",
+			sets,
+			completions,
+			charges,
+			grants,
+			succeededEvents,
+			deletedLosers,
+			committedWinners,
+		)
+	}
+}
+
 func TestIncompleteVisibleCompletionRollsBackEveryPublicationWrite(t *testing.T) {
 	fixture := newStartFixture(t, "incomplete-visible-completion", 7)
 	started, err := fixture.service.Start(

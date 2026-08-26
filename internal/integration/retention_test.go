@@ -2422,6 +2422,455 @@ func TestAutomaticRequestContentExpiryProcessesOverdueNonterminalJobs(t *testing
 	}
 }
 
+func TestTerminalFailedJobEnqueuesAndDeletesIncompleteArtifacts(t *testing.T) {
+	fixture := newStartFixture(t, "terminal-failed-incomplete-artifact-cleanup", 7)
+	if started, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("Start = %#v error=%v", started, err)
+	}
+	plan, err := fixture.service.BeginFinalization(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("BeginFinalization = %#v error=%v", plan, err)
+	}
+	observation := workercontrol.FailureObservation{
+		FailureClass: "ARTIFACT_VALIDATION_FAILED",
+		FailureFingerprint: fmt.Sprintf(
+			"artifact.validation/%s/%s",
+			plan.Artifacts[0].ArtifactID,
+			plan.Artifacts[0].UploadID,
+		),
+		ErrorSummary:             "Artifact failed certified output validation",
+		BackendStage:             "finalization",
+		InferenceBackendRevision: "sglang@terminal-cleanup-test",
+		RetryRecommended:         true,
+		WorkerReusable:           true,
+	}
+	failed, err := fixture.service.Fail(
+		context.Background(), fixture.worker, fixture.credentials, observation,
+	)
+	if err != nil || failed.Disposition != workercontrol.RetryDispositionFailed {
+		t.Fatalf("Fail terminal finalization = %#v error=%v", failed, err)
+	}
+	var terminalAt time.Time
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT occurred_at
+		FROM outbox_events
+		WHERE aggregate_id = $1
+		  AND event_type = 'job.failed'
+	`, plan.JobID).Scan(&terminalAt); err != nil {
+		t.Fatalf("read immutable terminal event time: %v", err)
+	}
+	requestService, principal := contentDeletionAuthority(t, fixture.database)
+	customerDeletion, err := requestService.AcceptContentDeletion(
+		context.Background(),
+		principal,
+		uuid.MustParse(testProjectID),
+		plan.JobID,
+		"customer-and-internal-terminal-cleanup",
+	)
+	if err != nil || customerDeletion.RequestID == uuid.Nil {
+		t.Fatalf("accept Customer deletion before internal cleanup = %#v error=%v", customerDeletion, err)
+	}
+	mutatedUpdatedAt := terminalAt.Add(72 * time.Hour)
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE jobs SET updated_at = $2 WHERE id = $1
+	`, plan.JobID, mutatedUpdatedAt); err != nil {
+		t.Fatalf("move mutable Job updated_at after terminal transition: %v", err)
+	}
+
+	store := &recordingRetentionStore{
+		resolved: make(map[string]artifactstore.ObjectVersion, len(plan.Artifacts)),
+	}
+	for _, artifact := range plan.Artifacts {
+		store.resolved[artifact.ObjectKey] = artifactstore.ObjectVersion{
+			ObjectKey: artifact.ObjectKey,
+			VersionID: "lost-report-" + artifact.ArtifactID.String(),
+		}
+		store.multipart = append(store.multipart, artifactstore.IncompleteMultipartUpload{
+			ObjectKey:   artifact.ObjectKey,
+			UploadID:    "orphan-" + artifact.UploadID.String(),
+			InitiatedAt: plan.FinalizationStartedAt,
+		})
+	}
+	reconciler, err := retention.NewReconciler(
+		newRolePool(
+			t,
+			fixture.database.DSN,
+			"vela_retention_login",
+			"vela-retention-password",
+		),
+		store,
+		retention.ReconcilerConfig{
+			InstanceID: "terminal-incomplete-artifact-reconciler",
+			BatchSize:  2 * (len(plan.Artifacts) + 1),
+			ClaimTTL:   time.Minute,
+			RetryDelay: time.Minute,
+		},
+	)
+	if err != nil {
+		t.Fatalf("create incomplete Artifact Reconciler: %v", err)
+	}
+	result, err := reconciler.ReconcileBatch(context.Background())
+	wantTargets := 2 * (len(plan.Artifacts) + 1)
+	if err != nil || result.RequestContentExpired != 0 ||
+		result.ArtifactRequestsCreated != 1 || result.Claimed != wantTargets ||
+		result.Completed != result.Claimed || result.Failed != 0 {
+		t.Fatalf("terminal incomplete Artifact cleanup = %#v error=%v", result, err)
+	}
+	if len(store.deleted) != 2*len(plan.Artifacts) || len(store.aborted) != 2*len(plan.Artifacts) {
+		t.Fatalf(
+			"terminal cleanup storage calls = deleted %#v aborted %#v",
+			store.deleted,
+			store.aborted,
+		)
+	}
+
+	var (
+		jobState, deletionState, deletionSource, customerState    string
+		requestedAt, deadlineAt, jobUpdatedAt, jobTerminalAt      time.Time
+		deletedArtifacts, abortedUploads, requests, customerCount int
+		receipts, customerReceipts                                int
+	)
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT job.state::text, deletion.state::text, deletion.source::text,
+			customer.state::text,
+			deletion.requested_at, deletion.deadline_at,
+			job.updated_at,
+			terminal.occurred_at,
+			(SELECT count(*) FROM artifacts
+			 WHERE job_id = job.id AND state = 'DELETED'),
+			(SELECT count(*) FROM artifact_uploads
+			 WHERE job_id = job.id AND state = 'ABORTED'),
+			(SELECT count(*) FROM content_deletion_requests
+			 WHERE job_id = job.id AND source = 'RETENTION_INCOMPLETE_ARTIFACT'),
+			(SELECT count(*) FROM content_deletion_requests
+			 WHERE job_id = job.id AND source = 'CUSTOMER'),
+			(SELECT count(*) FROM content_deletion_receipts
+			 WHERE request_id = deletion.id),
+			(SELECT count(*) FROM content_deletion_receipts
+			 WHERE request_id = customer.id)
+		FROM jobs AS job
+		JOIN outbox_events AS terminal
+		  ON terminal.aggregate_id = job.id
+		 AND terminal.event_type = 'job.failed'
+		JOIN content_deletion_requests AS deletion
+		  ON deletion.job_id = job.id
+		 AND deletion.source = 'RETENTION_INCOMPLETE_ARTIFACT'
+		JOIN content_deletion_requests AS customer
+		  ON customer.id = $2
+		 AND customer.job_id = job.id
+		 AND customer.source = 'CUSTOMER'
+		WHERE job.id = $1
+	`, plan.JobID, customerDeletion.RequestID).Scan(
+		&jobState,
+		&deletionState,
+		&deletionSource,
+		&customerState,
+		&requestedAt,
+		&deadlineAt,
+		&jobUpdatedAt,
+		&jobTerminalAt,
+		&deletedArtifacts,
+		&abortedUploads,
+		&requests,
+		&customerCount,
+		&receipts,
+		&customerReceipts,
+	); err != nil {
+		t.Fatalf("read terminal incomplete Artifact cleanup evidence: %v", err)
+	}
+	if jobState != "FAILED" || deletionState != "COMPLETED" || customerState != "COMPLETED" ||
+		deletionSource != "RETENTION_INCOMPLETE_ARTIFACT" ||
+		!requestedAt.Equal(jobTerminalAt) || !deadlineAt.Equal(jobTerminalAt.Add(24*time.Hour)) ||
+		!jobUpdatedAt.Equal(mutatedUpdatedAt) ||
+		deletedArtifacts != len(plan.Artifacts) || abortedUploads != len(plan.Artifacts) ||
+		requests != 1 || customerCount != 1 || receipts != 1 || customerReceipts != 1 {
+		t.Fatalf(
+			"terminal cleanup evidence = job %s deletion/customer/source %s/%s/%s times %s/%s updated/terminal %s/%s artifacts/uploads %d/%d requests/customer/receipts %d/%d/%d/%d",
+			jobState,
+			deletionState,
+			customerState,
+			deletionSource,
+			requestedAt,
+			deadlineAt,
+			jobUpdatedAt,
+			jobTerminalAt,
+			deletedArtifacts,
+			abortedUploads,
+			requests,
+			customerCount,
+			receipts,
+			customerReceipts,
+		)
+	}
+	replayed, err := reconciler.ReconcileBatch(context.Background())
+	if err != nil || replayed.ArtifactRequestsCreated != 0 || replayed.Claimed != 0 {
+		t.Fatalf("replayed terminal incomplete Artifact cleanup = %#v error=%v", replayed, err)
+	}
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	downErr := goose.DownTo(fixture.database.Admin, migrations, 23)
+	var postgresError *pgconn.PgError
+	if !errors.As(downErr, &postgresError) || postgresError.Code != "55000" ||
+		postgresError.ConstraintName != "incomplete_artifact_cleanup_requires_empty_evidence" {
+		t.Fatalf("incomplete Artifact cleanup migration Down error = %v, want named SQLSTATE 55000", downErr)
+	}
+	version, versionErr := goose.GetDBVersion(fixture.database.Admin)
+	if versionErr != nil || version != 24 {
+		t.Fatalf("retention version after refused incomplete cleanup Down = %d error=%v", version, versionErr)
+	}
+}
+
+func TestCanceledJobConcurrentCleanupCreatesOneRequestAndReceipt(t *testing.T) {
+	fixture := newStartFixture(t, "canceled-incomplete-artifact-cleanup", 7)
+	if started, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("Start = %#v error=%v", started, err)
+	}
+	plan, err := fixture.service.BeginFinalization(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("BeginFinalization = %#v error=%v", plan, err)
+	}
+	completionService := visibleCompletionService(t, fixture.database.DSN)
+	artifactIDs := uploadAndVerifyFinalizationPlan(
+		t,
+		completionService,
+		fixture.worker,
+		fixture.credentials,
+		plan,
+	)
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant cancellation scope: %v", err)
+	}
+	canceled := cancelJob(
+		t,
+		admissionServerForDatabase(t, fixture.database).URL,
+		testProjectID,
+		plan.JobID.String(),
+		testBearerCredential(),
+	)
+	if canceled.StatusCode != http.StatusOK {
+		t.Fatalf("cancel FINALIZING Job status = %d; body=%s", canceled.StatusCode, canceled.Body)
+	}
+	var cancellationResult cancelResponse
+	if err := json.Unmarshal(canceled.Body, &cancellationResult); err != nil {
+		t.Fatalf("decode FINALIZING cancellation: %v", err)
+	}
+	if cancellationResult.Decision != "CANCELING" || cancellationResult.Charge == nil {
+		t.Fatalf("FINALIZING cancellation = %#v", cancellationResult)
+	}
+	preterminalStore := &recordingRetentionStore{}
+	preterminalReconciler, err := retention.NewReconciler(
+		newRolePool(
+			t,
+			fixture.database.DSN,
+			"vela_retention_login",
+			"vela-retention-password",
+		),
+		preterminalStore,
+		retention.ReconcilerConfig{
+			InstanceID: "canceling-incomplete-artifact-reconciler",
+			BatchSize:  len(plan.Artifacts) + 1,
+			ClaimTTL:   time.Minute,
+			RetryDelay: time.Minute,
+		},
+	)
+	if err != nil {
+		t.Fatalf("create CANCELING incomplete Artifact Reconciler: %v", err)
+	}
+	preterminal, err := preterminalReconciler.ReconcileBatch(context.Background())
+	if err != nil || preterminal.ArtifactRequestsCreated != 0 || preterminal.Claimed != 0 ||
+		len(preterminalStore.deleted) != 0 || len(preterminalStore.aborted) != 0 {
+		t.Fatalf("CANCELING cleanup = %#v store=%#v error=%v", preterminal, preterminalStore, err)
+	}
+	var preterminalRequests int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT count(*)
+		FROM content_deletion_requests
+		WHERE job_id = $1 AND source = 'RETENTION_INCOMPLETE_ARTIFACT'
+	`, plan.JobID).Scan(&preterminalRequests); err != nil {
+		t.Fatalf("count CANCELING incomplete cleanup requests: %v", err)
+	}
+	if preterminalRequests != 0 {
+		t.Fatalf("CANCELING incomplete cleanup requests = %d, want 0", preterminalRequests)
+	}
+	coordinator := cancellation.NewService(
+		newRolePool(t, fixture.database.DSN, "vela_cancel_login", "vela-cancel-password"),
+		newRolePool(t, fixture.database.DSN, "vela_internal_login", "vela-internal-password"),
+	)
+	stopped, err := coordinator.AcknowledgeCancellationStop(
+		context.Background(),
+		fixture.worker,
+		fixture.credentials,
+		uuid.MustParse(cancellationResult.CancellationID),
+	)
+	if err != nil || stopped.Decision != cancellation.StopAcknowledged || stopped.State != "CANCELED" {
+		t.Fatalf("acknowledge FINALIZING cancellation = %#v error=%v", stopped, err)
+	}
+
+	stores := []*recordingRetentionStore{{}, {}}
+	reconcilers := make([]*retention.Reconciler, 0, len(stores))
+	for index, store := range stores {
+		reconciler, reconcileErr := retention.NewReconciler(
+			newRolePool(
+				t,
+				fixture.database.DSN,
+				"vela_retention_login",
+				"vela-retention-password",
+			),
+			store,
+			retention.ReconcilerConfig{
+				InstanceID: fmt.Sprintf("canceled-incomplete-artifact-reconciler-%d", index),
+				BatchSize:  len(plan.Artifacts) + 1,
+				ClaimTTL:   time.Minute,
+				RetryDelay: time.Minute,
+			},
+		)
+		if reconcileErr != nil {
+			t.Fatalf("create concurrent incomplete Artifact Reconciler %d: %v", index, reconcileErr)
+		}
+		reconcilers = append(reconcilers, reconciler)
+	}
+	type concurrentReconcileOutcome struct {
+		result retention.ReconcileResult
+		err    error
+	}
+	start := make(chan struct{})
+	outcomes := make(chan concurrentReconcileOutcome, len(reconcilers))
+	var wait sync.WaitGroup
+	for _, reconciler := range reconcilers {
+		reconciler := reconciler
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			result, reconcileErr := reconciler.ReconcileBatch(context.Background())
+			outcomes <- concurrentReconcileOutcome{result: result, err: reconcileErr}
+		}()
+	}
+	close(start)
+	wait.Wait()
+	close(outcomes)
+	var created, claimed, completed, failed int
+	for outcome := range outcomes {
+		if outcome.err != nil {
+			t.Fatalf("concurrent incomplete Artifact reconciliation: %v", outcome.err)
+		}
+		created += outcome.result.ArtifactRequestsCreated
+		claimed += outcome.result.Claimed
+		completed += outcome.result.Completed
+		failed += outcome.result.Failed
+	}
+	wantTargets := len(plan.Artifacts) + 1
+	if created != 1 || claimed != wantTargets || completed != wantTargets || failed != 0 {
+		t.Fatalf(
+			"concurrent canceled cleanup = created/claimed/completed/failed %d/%d/%d/%d, want 1/%d/%d/0",
+			created,
+			claimed,
+			completed,
+			failed,
+			wantTargets,
+			wantTargets,
+		)
+	}
+	wantVersions := make(map[string]string, len(plan.Artifacts))
+	for _, artifact := range plan.Artifacts {
+		wantVersions[artifact.ObjectKey] = "version-" + artifact.ArtifactID.String()
+	}
+	deleted := 0
+	for _, store := range stores {
+		for _, object := range store.deleted {
+			if wantVersions[object.ObjectKey] != object.VersionID {
+				t.Fatalf("concurrent cleanup deleted unexpected object version %#v", object)
+			}
+			delete(wantVersions, object.ObjectKey)
+			deleted++
+		}
+	}
+	if deleted != len(plan.Artifacts) || len(wantVersions) != 0 {
+		t.Fatalf("concurrent cleanup exact deletes = %d missing %#v", deleted, wantVersions)
+	}
+
+	var (
+		jobState, requestState, requestSource       string
+		requestedAt, deadlineAt, terminalAt         time.Time
+		requests, targets, receipts, receiptTargets int
+		deletedArtifacts, expiredUploads, charges   int
+	)
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			job.state::text,
+			deletion.state::text,
+			deletion.source::text,
+			deletion.requested_at,
+			deletion.deadline_at,
+			job.updated_at,
+			(SELECT count(*) FROM content_deletion_requests
+			 WHERE job_id = job.id AND source = 'RETENTION_INCOMPLETE_ARTIFACT'),
+			(SELECT count(*) FROM content_deletion_targets WHERE request_id = deletion.id),
+			(SELECT count(*) FROM content_deletion_receipts WHERE request_id = deletion.id),
+			(SELECT count(*) FROM content_deletion_receipt_targets
+			 WHERE request_id = deletion.id),
+			(SELECT count(*) FROM artifacts
+			 WHERE job_id = job.id AND state = 'DELETED'),
+			(SELECT count(*) FROM artifact_uploads
+			 WHERE job_id = job.id AND state = 'EXPIRED'),
+			(SELECT count(*) FROM charges WHERE job_id = job.id)
+		FROM jobs AS job
+		JOIN content_deletion_requests AS deletion
+		  ON deletion.job_id = job.id
+		 AND deletion.source = 'RETENTION_INCOMPLETE_ARTIFACT'
+		WHERE job.id = $1
+	`, plan.JobID).Scan(
+		&jobState,
+		&requestState,
+		&requestSource,
+		&requestedAt,
+		&deadlineAt,
+		&terminalAt,
+		&requests,
+		&targets,
+		&receipts,
+		&receiptTargets,
+		&deletedArtifacts,
+		&expiredUploads,
+		&charges,
+	); err != nil {
+		t.Fatalf("read concurrent canceled cleanup evidence: %v", err)
+	}
+	if jobState != "CANCELED" || requestState != "COMPLETED" ||
+		requestSource != "RETENTION_INCOMPLETE_ARTIFACT" ||
+		!requestedAt.Equal(terminalAt) || !deadlineAt.Equal(terminalAt.Add(24*time.Hour)) ||
+		requests != 1 || targets != wantTargets || receipts != 1 || receiptTargets != wantTargets ||
+		deletedArtifacts != len(artifactIDs) || expiredUploads != len(artifactIDs) || charges != 1 {
+		t.Fatalf(
+			"concurrent canceled cleanup evidence = job/request %s/%s/%s times %s/%s/%s requests/targets/receipts/receipt-targets %d/%d/%d/%d artifacts/uploads/charges %d/%d/%d",
+			jobState,
+			requestState,
+			requestSource,
+			requestedAt,
+			deadlineAt,
+			terminalAt,
+			requests,
+			targets,
+			receipts,
+			receiptTargets,
+			deletedArtifacts,
+			expiredUploads,
+			charges,
+		)
+	}
+}
+
 func TestAutomaticArtifactExpiryDoesNotShortenRequestContentRetention(t *testing.T) {
 	fixture := newStartFixtureWithRetention(t, "automatic-artifact-expiry-7d", 7, 41)
 	if started, err := fixture.service.Start(
@@ -3013,6 +3462,273 @@ func TestRetentionMigrationAllowsEmptyDownUpAndRestoresNMinusOneSurface(t *testi
 		); err != nil {
 			t.Fatalf("verify re-expanded retention %s role: %v", runtime.name, err)
 		}
+	}
+}
+
+func TestIncompleteArtifactRetentionMigrationRestoresExact23And24Surface(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+
+	assertVersion24Surface := func(label string) {
+		t.Helper()
+		var (
+			enumLabels, owner, configuration    string
+			functionExists, securityDefiner     bool
+			retentionExecute, requestExecute    bool
+			legacyFunctionExists, legacyExecute bool
+			compatibilityExecute                bool
+			updatedAtRead, versionRead          bool
+			retentionHoursRead                  bool
+		)
+		if err := database.Admin.QueryRow(`
+			SELECT
+				(SELECT string_agg(value.enumlabel, ',' ORDER BY value.enumsortorder)
+				 FROM pg_catalog.pg_enum AS value
+				 JOIN pg_catalog.pg_type AS enum_type ON enum_type.oid = value.enumtypid
+				 WHERE enum_type.typname = 'content_deletion_source'),
+				procedure.oid IS NOT NULL,
+				COALESCE(owner.rolname, ''),
+				COALESCE(procedure.prosecdef, false),
+				COALESCE(array_to_string(procedure.proconfig, ','), ''),
+				pg_catalog.has_function_privilege(
+					'vela_retention',
+					'vela_enqueue_incomplete_artifact_deletions(integer)',
+					'EXECUTE'
+				),
+				pg_catalog.has_function_privilege(
+					'vela_request',
+					'vela_enqueue_incomplete_artifact_deletions(integer)',
+					'EXECUTE'
+				),
+				to_regprocedure(
+					'vela_enqueue_expired_content_deletions_v23(integer)'
+				) IS NOT NULL,
+				pg_catalog.has_function_privilege(
+					'vela_retention',
+					'vela_enqueue_expired_content_deletions_v23(integer)',
+					'EXECUTE'
+				),
+				pg_catalog.has_function_privilege(
+					'vela_retention',
+					'vela_enqueue_expired_content_deletions(integer)',
+					'EXECUTE'
+				),
+				pg_catalog.has_column_privilege(
+					'vela_retention_owner', 'jobs', 'updated_at', 'SELECT'
+				),
+				pg_catalog.has_column_privilege(
+					'vela_retention_owner', 'jobs', 'version', 'SELECT'
+				),
+				pg_catalog.has_column_privilege(
+					'vela_retention_owner', 'jobs',
+					'retention_incomplete_content_hours', 'SELECT'
+				)
+			FROM (SELECT to_regprocedure(
+				'vela_enqueue_incomplete_artifact_deletions(integer)'
+			) AS oid) AS resolved
+			LEFT JOIN pg_catalog.pg_proc AS procedure ON procedure.oid = resolved.oid
+			LEFT JOIN pg_catalog.pg_roles AS owner ON owner.oid = procedure.proowner
+		`).Scan(
+			&enumLabels,
+			&functionExists,
+			&owner,
+			&securityDefiner,
+			&configuration,
+			&retentionExecute,
+			&requestExecute,
+			&legacyFunctionExists,
+			&legacyExecute,
+			&compatibilityExecute,
+			&updatedAtRead,
+			&versionRead,
+			&retentionHoursRead,
+		); err != nil {
+			t.Fatalf("inspect %s migration 24 surface: %v", label, err)
+		}
+		if enumLabels != "CUSTOMER,RETENTION_REQUEST_CONTENT,RETENTION_ARTIFACT,"+
+			"RETENTION_INCOMPLETE_ARTIFACT" || !functionExists ||
+			owner != "vela_retention_owner" || !securityDefiner ||
+			configuration != "search_path=pg_catalog, public" ||
+			retentionExecute || requestExecute || !legacyFunctionExists || legacyExecute ||
+			!compatibilityExecute || updatedAtRead || !versionRead || !retentionHoursRead {
+			t.Fatalf(
+				"%s migration 24 surface = enum %q function %t owner %q security %t config %q helper execute %t/%t legacy %t/%t compatibility %t columns %t/%t/%t",
+				label,
+				enumLabels,
+				functionExists,
+				owner,
+				securityDefiner,
+				configuration,
+				retentionExecute,
+				requestExecute,
+				legacyFunctionExists,
+				legacyExecute,
+				compatibilityExecute,
+				updatedAtRead,
+				versionRead,
+				retentionHoursRead,
+			)
+		}
+	}
+
+	assertVersion24Surface("initial Up")
+	if err := goose.DownTo(database.Admin, migrations, 23); err != nil {
+		t.Fatalf("contract empty incomplete Artifact retention migration: %v", err)
+	}
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 23 {
+		t.Fatalf("incomplete Artifact retention version after Down = %d error=%v", version, err)
+	}
+	var enumLabels string
+	var (
+		functionAbsent, legacyFunctionAbsent      bool
+		compatibilityExists, compatibilityExecute bool
+		updatedAtRead, versionRead                bool
+		retentionHoursRead                        bool
+	)
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT string_agg(value.enumlabel, ',' ORDER BY value.enumsortorder)
+			 FROM pg_catalog.pg_enum AS value
+			 JOIN pg_catalog.pg_type AS enum_type ON enum_type.oid = value.enumtypid
+			 WHERE enum_type.typname = 'content_deletion_source'),
+			to_regprocedure('vela_enqueue_incomplete_artifact_deletions(integer)') IS NULL,
+			to_regprocedure(
+				'vela_enqueue_expired_content_deletions_v23(integer)'
+			) IS NULL,
+			to_regprocedure(
+				'vela_enqueue_expired_content_deletions(integer)'
+			) IS NOT NULL,
+			pg_catalog.has_function_privilege(
+				'vela_retention',
+				'vela_enqueue_expired_content_deletions(integer)',
+				'EXECUTE'
+			),
+			pg_catalog.has_column_privilege(
+				'vela_retention_owner', 'jobs', 'updated_at', 'SELECT'
+			),
+			pg_catalog.has_column_privilege(
+				'vela_retention_owner', 'jobs', 'version', 'SELECT'
+			),
+			pg_catalog.has_column_privilege(
+				'vela_retention_owner', 'jobs',
+				'retention_incomplete_content_hours', 'SELECT'
+			)
+	`).Scan(
+		&enumLabels,
+		&functionAbsent,
+		&legacyFunctionAbsent,
+		&compatibilityExists,
+		&compatibilityExecute,
+		&updatedAtRead,
+		&versionRead,
+		&retentionHoursRead,
+	); err != nil {
+		t.Fatalf("inspect restored migration 23 surface: %v", err)
+	}
+	if enumLabels != "CUSTOMER,RETENTION_REQUEST_CONTENT,RETENTION_ARTIFACT" ||
+		!functionAbsent || !legacyFunctionAbsent || !compatibilityExists ||
+		!compatibilityExecute || updatedAtRead || versionRead || retentionHoursRead {
+		t.Fatalf(
+			"restored migration 23 surface = enum %q helper/legacy absent %t/%t compatibility %t/%t columns %t/%t/%t",
+			enumLabels,
+			functionAbsent,
+			legacyFunctionAbsent,
+			compatibilityExists,
+			compatibilityExecute,
+			updatedAtRead,
+			versionRead,
+			retentionHoursRead,
+		)
+	}
+	var (
+		typeOIDBefore, tableFileBefore, indexOIDBefore int64
+		indexFileBefore, constraintOIDBefore           int64
+	)
+	if err := database.Admin.QueryRow(`
+		SELECT
+			enum_type.oid::bigint,
+			request_table.relfilenode::bigint,
+			customer_index.oid::bigint,
+			customer_index.relfilenode::bigint,
+			source_constraint.oid::bigint
+		FROM pg_catalog.pg_type AS enum_type
+		JOIN pg_catalog.pg_class AS request_table
+		  ON request_table.oid = 'public.content_deletion_requests'::regclass
+		JOIN pg_catalog.pg_class AS customer_index
+		  ON customer_index.oid =
+			 'public.content_deletion_requests_customer_idempotency_idx'::regclass
+		JOIN pg_catalog.pg_constraint AS source_constraint
+		  ON source_constraint.conrelid = request_table.oid
+		 AND source_constraint.conname = 'content_deletion_requests_source_actor_check'
+		WHERE enum_type.typname = 'content_deletion_source'
+		  AND enum_type.typnamespace = 'public'::regnamespace
+	`).Scan(
+		&typeOIDBefore,
+		&tableFileBefore,
+		&indexOIDBefore,
+		&indexFileBefore,
+		&constraintOIDBefore,
+	); err != nil {
+		t.Fatalf("snapshot migration 23 additive identities: %v", err)
+	}
+
+	if err := goose.UpTo(database.Admin, migrations, 24); err != nil {
+		t.Fatalf("re-expand incomplete Artifact retention migration: %v", err)
+	}
+	version, err = goose.GetDBVersion(database.Admin)
+	if err != nil || version != 24 {
+		t.Fatalf("incomplete Artifact retention version after Down/Up = %d error=%v", version, err)
+	}
+	assertVersion24Surface("replayed Up")
+	var (
+		typeOIDAfter, tableFileAfter, indexOIDAfter int64
+		indexFileAfter, constraintOIDAfter          int64
+	)
+	if err := database.Admin.QueryRow(`
+		SELECT
+			enum_type.oid::bigint,
+			request_table.relfilenode::bigint,
+			customer_index.oid::bigint,
+			customer_index.relfilenode::bigint,
+			source_constraint.oid::bigint
+		FROM pg_catalog.pg_type AS enum_type
+		JOIN pg_catalog.pg_class AS request_table
+		  ON request_table.oid = 'public.content_deletion_requests'::regclass
+		JOIN pg_catalog.pg_class AS customer_index
+		  ON customer_index.oid =
+			 'public.content_deletion_requests_customer_idempotency_idx'::regclass
+		JOIN pg_catalog.pg_constraint AS source_constraint
+		  ON source_constraint.conrelid = request_table.oid
+		 AND source_constraint.conname = 'content_deletion_requests_source_actor_check'
+		WHERE enum_type.typname = 'content_deletion_source'
+		  AND enum_type.typnamespace = 'public'::regnamespace
+	`).Scan(
+		&typeOIDAfter,
+		&tableFileAfter,
+		&indexOIDAfter,
+		&indexFileAfter,
+		&constraintOIDAfter,
+	); err != nil {
+		t.Fatalf("inspect migration 24 additive identities: %v", err)
+	}
+	if typeOIDAfter != typeOIDBefore || tableFileAfter != tableFileBefore ||
+		indexOIDAfter != indexOIDBefore || indexFileAfter != indexFileBefore ||
+		constraintOIDAfter != constraintOIDBefore {
+		t.Fatalf(
+			"migration 24 rewrote existing identities: type %d/%d table %d/%d index %d/%d file %d/%d constraint %d/%d",
+			typeOIDBefore,
+			typeOIDAfter,
+			tableFileBefore,
+			tableFileAfter,
+			indexOIDBefore,
+			indexOIDAfter,
+			indexFileBefore,
+			indexFileAfter,
+			constraintOIDBefore,
+			constraintOIDAfter,
+		)
 	}
 }
 

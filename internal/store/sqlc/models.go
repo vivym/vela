@@ -562,9 +562,10 @@ func (ns NullChargeReason) Value() (driver.Value, error) {
 type ContentDeletionSource string
 
 const (
-	ContentDeletionSourceCUSTOMER                ContentDeletionSource = "CUSTOMER"
-	ContentDeletionSourceRETENTIONREQUESTCONTENT ContentDeletionSource = "RETENTION_REQUEST_CONTENT"
-	ContentDeletionSourceRETENTIONARTIFACT       ContentDeletionSource = "RETENTION_ARTIFACT"
+	ContentDeletionSourceCUSTOMER                    ContentDeletionSource = "CUSTOMER"
+	ContentDeletionSourceRETENTIONREQUESTCONTENT     ContentDeletionSource = "RETENTION_REQUEST_CONTENT"
+	ContentDeletionSourceRETENTIONARTIFACT           ContentDeletionSource = "RETENTION_ARTIFACT"
+	ContentDeletionSourceRETENTIONINCOMPLETEARTIFACT ContentDeletionSource = "RETENTION_INCOMPLETE_ARTIFACT"
 )
 
 func (e *ContentDeletionSource) Scan(src interface{}) error {

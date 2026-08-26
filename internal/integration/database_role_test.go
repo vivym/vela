@@ -358,6 +358,21 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			owner:     "vela_remediation_owner",
 			proconfig: "search_path=pg_catalog, public",
 		},
+		{
+			signature: "vela_enqueue_expired_content_deletions(integer)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_enqueue_expired_content_deletions_v23(integer)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_enqueue_incomplete_artifact_deletions(integer)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
 	} {
 		var owner string
 		var securityDefiner, configurationMatches, publicExecute bool
@@ -598,6 +613,29 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		).Scan(&count)
 		if !isPermissionDenied(err) {
 			t.Fatalf("retention runtime direct %s read error = %v, want permission denied", relation, err)
+		}
+	}
+	for _, runtime := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "request", pool: requestPool},
+		{name: "authentication", pool: authPool},
+		{name: "internal Worker/control", pool: internalPool},
+		{name: "retention request", pool: retentionRequestPool},
+		{name: "retention runtime", pool: retentionPool},
+		{name: "cancellation", pool: cancelPool},
+		{name: "Artifact request", pool: artifactPool},
+	} {
+		if _, err := runtime.pool.Exec(
+			context.Background(),
+			"SELECT vela_enqueue_incomplete_artifact_deletions(1)",
+		); !isPermissionDenied(err) {
+			t.Fatalf(
+				"%s incomplete Artifact enqueue error = %v, want permission denied",
+				runtime.name,
+				err,
+			)
 		}
 	}
 

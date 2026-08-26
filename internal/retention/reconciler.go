@@ -118,14 +118,27 @@ func (r *Reconciler) ReconcileBatch(ctx context.Context) (ReconcileResult, error
 		return ReconcileResult{}, errors.New("content deletion reconciliation context is required")
 	}
 	var result ReconcileResult
-	if err := r.pool.QueryRow(ctx, `
+	enqueueTransaction, err := r.pool.Begin(ctx)
+	if err != nil {
+		return ReconcileResult{}, fmt.Errorf("begin retained Customer Content enqueue: %w", err)
+	}
+	defer func() { _ = enqueueTransaction.Rollback(ctx) }()
+	if _, err := enqueueTransaction.Exec(ctx, `
+		SELECT set_config('vela.retention_protocol_version', '24', true)
+	`); err != nil {
+		return ReconcileResult{}, fmt.Errorf("select retention protocol: %w", err)
+	}
+	if err := enqueueTransaction.QueryRow(ctx, `
 		SELECT request_content_completed, artifact_requests_created
 		FROM vela_enqueue_expired_content_deletions($1)
 	`, r.batchSize).Scan(
 		&result.RequestContentExpired,
 		&result.ArtifactRequestsCreated,
 	); err != nil {
-		return ReconcileResult{}, fmt.Errorf("enqueue expired Customer Content: %w", err)
+		return ReconcileResult{}, fmt.Errorf("enqueue retained Customer Content deletions: %w", err)
+	}
+	if err := enqueueTransaction.Commit(ctx); err != nil {
+		return ReconcileResult{}, fmt.Errorf("commit retained Customer Content enqueue: %w", err)
 	}
 	var reconcileErrors []error
 	for range r.batchSize {

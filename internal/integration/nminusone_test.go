@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
 	veladb "github.com/vivym/vela/internal/database"
+	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
@@ -41,6 +42,7 @@ const (
 	humanMembershipNMinusOneCommit        = "d8537d96cc8aeb7b7d4980e5059cf48efa713d6f"
 	organizationReportingNMinusOneCommit  = "1ce496ce06c4ba33038be91a5fd5f7be502bee85"
 	retentionNMinusOneCommit              = "87d1f27be568c96a31dcbda9d9c74ce7d2ed3f96"
+	incompleteArtifactNMinusOneCommit     = "d038fb9f4fb9eb64d9e3b816e75d737783b9ccf5"
 	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
 	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
 	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
@@ -393,6 +395,256 @@ func TestExactRetentionNMinusOneControlAdmissionAndVisibleCompletionRemainCompat
 			policyRevision,
 			artifactSetExpiresAt,
 			artifactMinExpiry,
+		)
+	}
+}
+
+func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, incompleteArtifactNMinusOneCommit)
+	output := runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN)
+	if strings.Contains(output, "database pool") ||
+		!strings.Contains(output, "open Node Agent endpoint file") {
+		t.Fatalf("Slice 23 N-1 control did not reach the Node Agent resolver sentinel:\n%s", output)
+	}
+
+	setLeaseRenewalProtocolGate(t, database.Admin, true, "incomplete Artifact N-1 compatibility")
+	seedAdmissionFixture(t, database.Admin)
+	workerID := uuid.New()
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, workerID, "incomplete-artifact")
+	jobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+	))
+	service, err := workercontrol.NewService(
+		context.Background(),
+		newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password"),
+		workercontrol.Config{
+			LeaseTTL:         2 * time.Minute,
+			ActiveLeaseKeyID: "lease-key-v1",
+			LeaseKeys: map[string][]byte{
+				"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
+			},
+			ArtifactInspector: artifactInspectorFunc(func(
+				_ context.Context,
+				request workercontrol.ArtifactInspectionRequest,
+			) (workercontrol.ArtifactInspection, error) {
+				return validInspectionForRequest(request), nil
+			}),
+		},
+	)
+	if err != nil {
+		t.Fatalf("create incomplete Artifact N-1 coordinator: %v", err)
+	}
+	worker := workercontrol.AuthenticatedWorker{ID: workerID}
+	assignment, err := service.Acquire(
+		context.Background(),
+		worker,
+		7,
+		&workercontrol.AssignmentCandidate{
+			JobID:                      jobID,
+			ExpectedJobVersion:         1,
+			ExecutionProfileRevisionID: uuid.MustParse("00000000-0000-0000-0000-000000000014"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("assign incomplete Artifact N-1 Job: %v", err)
+	}
+	credentials := leaseCredentials(assignment)
+	if started, startErr := service.Start(
+		context.Background(),
+		worker,
+		credentials,
+	); startErr != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("start incomplete Artifact N-1 Job = %#v error=%v", started, startErr)
+	}
+	plan, err := service.BeginFinalization(context.Background(), worker, credentials)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("begin incomplete Artifact N-1 finalization = %#v error=%v", plan, err)
+	}
+	artifactIDs := uploadAndVerifyFinalizationPlan(t, service, worker, credentials, plan)
+	completed := runNMinusOneVisibleCompletionProbe(
+		t,
+		nMinusOne.VisibleCompletionProbe,
+		database.DSN,
+		worker,
+		credentials,
+		plan.JobVersion,
+		artifactIDs,
+	)
+	if completed.Decision != string(workercontrol.VisibleCompletionCommitted) ||
+		completed.ArtifactSetID == uuid.Nil || completed.ChargeID == uuid.Nil ||
+		completed.CompletedAt.IsZero() {
+		t.Fatalf("incomplete Artifact N-1 Visible Completion = %#v", completed)
+	}
+	failedJobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+	))
+	failedAssignment, err := service.Acquire(
+		context.Background(),
+		worker,
+		7,
+		&workercontrol.AssignmentCandidate{
+			JobID:                      failedJobID,
+			ExpectedJobVersion:         1,
+			ExecutionProfileRevisionID: uuid.MustParse("00000000-0000-0000-0000-000000000014"),
+		},
+	)
+	if err != nil {
+		t.Fatalf("assign N-1 ignored incomplete Artifact Job: %v", err)
+	}
+	failedCredentials := leaseCredentials(failedAssignment)
+	if started, startErr := service.Start(
+		context.Background(),
+		worker,
+		failedCredentials,
+	); startErr != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("start N-1 ignored incomplete Artifact Job = %#v error=%v", started, startErr)
+	}
+	failedPlan, err := service.BeginFinalization(
+		context.Background(),
+		worker,
+		failedCredentials,
+	)
+	if err != nil || failedPlan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("begin N-1 ignored incomplete Artifact finalization = %#v error=%v", failedPlan, err)
+	}
+	failed, err := service.Fail(
+		context.Background(),
+		worker,
+		failedCredentials,
+		workercontrol.FailureObservation{
+			FailureClass: "ARTIFACT_VALIDATION_FAILED",
+			FailureFingerprint: fmt.Sprintf(
+				"n-minus-one.artifact.validation/%s",
+				failedPlan.Artifacts[0].ArtifactID,
+			),
+			ErrorSummary:             "N-1 compatibility fixture failed certified Artifact validation",
+			BackendStage:             "finalization",
+			InferenceBackendRevision: "sglang@n-minus-one-incomplete-artifact",
+			RetryRecommended:         true,
+			WorkerReusable:           true,
+		},
+	)
+	if err != nil || failed.Disposition != workercontrol.RetryDispositionFailed {
+		t.Fatalf("fail N-1 ignored incomplete Artifact Job = %#v error=%v", failed, err)
+	}
+
+	tx, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin N-1 Artifact expiry setup: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`SET LOCAL session_replication_role = 'replica'`); err != nil {
+		t.Fatalf("disable immutable triggers for N-1 Artifact expiry: %v", err)
+	}
+	for relation, timestampColumns := range map[string]string{
+		"artifact_sets":          "committed_at = clock_timestamp() - interval '8 days', retention_expires_at",
+		"artifacts":              "verified_at = clock_timestamp() - interval '8 days', retention_expires_at",
+		"artifact_access_grants": "eligible_at = clock_timestamp() - interval '8 days', retention_expires_at",
+	} {
+		statement := fmt.Sprintf(
+			"UPDATE %s SET %s = clock_timestamp() - interval '1 day' WHERE job_id = $1",
+			relation,
+			timestampColumns,
+		)
+		if _, err := tx.Exec(statement, jobID); err != nil {
+			t.Fatalf("move %s retention into past: %v", relation, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit N-1 Artifact expiry setup: %v", err)
+	}
+	retained := runNMinusOneRetentionProbe(t, nMinusOne.RetentionProbe, database.DSN)
+	wantTargets := len(artifactIDs) + 1
+	if retained.RequestContentExpired != 0 || retained.ArtifactRequestsCreated != 1 ||
+		retained.Claimed != wantTargets || retained.Completed != wantTargets ||
+		retained.Failed != 0 || retained.Deleted != len(artifactIDs) || retained.Aborted != 0 {
+		t.Fatalf("incomplete Artifact N-1 retention = %#v, want %d targets", retained, wantTargets)
+	}
+	var ignoredRequests, ignoredStagingArtifacts int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM content_deletion_requests
+			 WHERE job_id = $1 AND source = 'RETENTION_INCOMPLETE_ARTIFACT'),
+			(SELECT count(*) FROM artifacts
+			 WHERE job_id = $1 AND state = 'STAGING')
+	`, failedJobID).Scan(&ignoredRequests, &ignoredStagingArtifacts); err != nil {
+		t.Fatalf("read N-1 ignored incomplete Artifact evidence: %v", err)
+	}
+	if ignoredRequests != 0 || ignoredStagingArtifacts != len(failedPlan.Artifacts) {
+		t.Fatalf(
+			"N-1 ignored incomplete Artifacts = requests/staging %d/%d, want 0/%d",
+			ignoredRequests,
+			ignoredStagingArtifacts,
+			len(failedPlan.Artifacts),
+		)
+	}
+	currentStore := &recordingRetentionStore{}
+	currentReconciler, err := retention.NewReconciler(
+		newRolePool(
+			t,
+			database.DSN,
+			"vela_retention_login",
+			"vela-retention-password",
+		),
+		currentStore,
+		retention.ReconcilerConfig{
+			InstanceID: "current-incomplete-artifact-protocol-probe",
+			BatchSize:  len(failedPlan.Artifacts) + 1,
+			ClaimTTL:   time.Minute,
+			RetryDelay: time.Minute,
+		},
+	)
+	if err != nil {
+		t.Fatalf("create current incomplete Artifact protocol probe: %v", err)
+	}
+	currentResult, err := currentReconciler.ReconcileBatch(context.Background())
+	if err != nil || currentResult.RequestContentExpired != 0 ||
+		currentResult.ArtifactRequestsCreated != 1 ||
+		currentResult.Claimed != len(failedPlan.Artifacts)+1 ||
+		currentResult.Completed != currentResult.Claimed || currentResult.Failed != 0 {
+		t.Fatalf("current incomplete Artifact protocol result = %#v error=%v", currentResult, err)
+	}
+	var jobState, deletionState, deletionSource string
+	var deletedArtifacts, receipts int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			job.state::text,
+			deletion.state::text,
+			deletion.source::text,
+			(SELECT count(*) FROM artifacts
+			 WHERE job_id = job.id AND state = 'DELETED'),
+			(SELECT count(*) FROM content_deletion_receipts
+			 WHERE request_id = deletion.id)
+		FROM jobs AS job
+		JOIN content_deletion_requests AS deletion
+		  ON deletion.job_id = job.id
+		 AND deletion.source = 'RETENTION_ARTIFACT'
+		WHERE job.id = $1
+	`, jobID).Scan(
+		&jobState,
+		&deletionState,
+		&deletionSource,
+		&deletedArtifacts,
+		&receipts,
+	); err != nil {
+		t.Fatalf("read incomplete Artifact N-1 retention evidence: %v", err)
+	}
+	if jobState != "SUCCEEDED" || deletionState != "COMPLETED" ||
+		deletionSource != "RETENTION_ARTIFACT" ||
+		deletedArtifacts != len(artifactIDs) || receipts != 1 {
+		t.Fatalf(
+			"incomplete Artifact N-1 evidence = job/deletion/source %s/%s/%s artifacts/receipts %d/%d",
+			jobState,
+			deletionState,
+			deletionSource,
+			deletedArtifacts,
+			receipts,
 		)
 	}
 }
@@ -1760,6 +2012,7 @@ type nMinusOneBinaries struct {
 	InvoiceChargeProbe     string
 	FailureProbe           string
 	VisibleCompletionProbe string
+	RetentionProbe         string
 }
 
 type nMinusOneVisibleCompletionResult struct {
@@ -1785,6 +2038,16 @@ type nMinusOneOutboxProbeResult struct {
 	Payload      []byte `json:"payload"`
 	KnownPayload bool   `json:"known_payload"`
 	UnknownBytes int    `json:"unknown_bytes"`
+}
+
+type nMinusOneRetentionProbeResult struct {
+	RequestContentExpired   int `json:"request_content_expired"`
+	ArtifactRequestsCreated int `json:"artifact_requests_created"`
+	Claimed                 int `json:"claimed"`
+	Completed               int `json:"completed"`
+	Failed                  int `json:"failed"`
+	Deleted                 int `json:"deleted"`
+	Aborted                 int `json:"aborted"`
 }
 
 func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
@@ -1858,7 +2121,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == identityAdministrationNMinusOneCommit ||
 		commit == humanMembershipNMinusOneCommit ||
 		commit == organizationReportingNMinusOneCommit ||
-		commit == retentionNMinusOneCommit || commit == breakGlassNMinusOneCommit ||
+		commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit ||
+		commit == breakGlassNMinusOneCommit ||
 		commit == fleetControllerNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
@@ -1963,7 +2227,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		}
 	}
 	var visibleCompletionProbeDirectory string
-	if commit == retentionNMinusOneCommit {
+	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit {
 		visibleCompletionProbeSource, err := os.ReadFile(filepath.Join(
 			repositoryRoot(t),
 			"internal",
@@ -1988,6 +2252,32 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("write N-1 Visible Completion probe: %v", err)
 		}
 	}
+	var retentionProbeDirectory string
+	if commit == incompleteArtifactNMinusOneCommit {
+		retentionProbeSource, err := os.ReadFile(filepath.Join(
+			repositoryRoot(t),
+			"internal",
+			"integration",
+			"testdata",
+			"nminusone_retention_probe.go.txt",
+		))
+		if err != nil {
+			t.Fatalf("read N-1 retention probe: %v", err)
+		}
+		retentionProbeDirectory = filepath.Join(
+			sourceRoot, "cmd", "vela-nminusone-retention-probe",
+		)
+		if err := os.MkdirAll(retentionProbeDirectory, 0o755); err != nil {
+			t.Fatalf("create N-1 retention probe directory: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(retentionProbeDirectory, "main.go"),
+			retentionProbeSource,
+			0o600,
+		); err != nil {
+			t.Fatalf("write N-1 retention probe: %v", err)
+		}
+	}
 
 	binaryDirectory := t.TempDir()
 	binaries := nMinusOneBinaries{
@@ -2010,9 +2300,14 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if commit == profileCircuitNMinusOneCommit {
 		binaries.FailureProbe = filepath.Join(binaryDirectory, "vela-failure-probe-n-minus-one")
 	}
-	if commit == retentionNMinusOneCommit {
+	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit {
 		binaries.VisibleCompletionProbe = filepath.Join(
 			binaryDirectory, "vela-visible-completion-probe-n-minus-one",
+		)
+	}
+	if commit == incompleteArtifactNMinusOneCommit {
+		binaries.RetentionProbe = filepath.Join(
+			binaryDirectory, "vela-retention-probe-n-minus-one",
 		)
 	}
 	build := exec.Command(
@@ -2092,7 +2387,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 failure probe: %v\n%s", err, output)
 		}
 	}
-	if commit == retentionNMinusOneCommit {
+	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit {
 		build = exec.Command(
 			"go",
 			"build",
@@ -2104,6 +2399,20 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
 		if output, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build N-1 Visible Completion probe: %v\n%s", err, output)
+		}
+	}
+	if commit == incompleteArtifactNMinusOneCommit {
+		build = exec.Command(
+			"go",
+			"build",
+			"-o",
+			binaries.RetentionProbe,
+			"./cmd/vela-nminusone-retention-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 retention probe: %v\n%s", err, output)
 		}
 	}
 	return binaries
@@ -2143,6 +2452,32 @@ func runNMinusOneVisibleCompletionProbe(
 	var result nMinusOneVisibleCompletionResult
 	if err := json.Unmarshal(output, &result); err != nil {
 		t.Fatalf("decode N-1 Visible Completion probe: %v\n%s", err, output)
+	}
+	return result
+}
+
+func runNMinusOneRetentionProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+) nMinusOneRetentionProbeResult {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_RETENTION_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_retention_login",
+			"vela-retention-password",
+		),
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 retention probe: %v\n%s", err, output)
+	}
+	var result nMinusOneRetentionProbeResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 retention probe: %v\n%s", err, output)
 	}
 	return result
 }

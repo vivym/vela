@@ -1,0 +1,96 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/artifactstore"
+	"github.com/vivym/vela/internal/retention"
+)
+
+type deletionStore struct {
+	deleted int
+	aborted int
+}
+
+func (store *deletionStore) DeleteExactVersion(
+	_ context.Context,
+	_, _ string,
+) error {
+	store.deleted++
+	return nil
+}
+
+func (*deletionStore) ResolveCurrentVersion(
+	_ context.Context,
+	_ string,
+) (artifactstore.ObjectVersion, bool, error) {
+	return artifactstore.ObjectVersion{}, false, nil
+}
+
+func (*deletionStore) ListIncompleteMultipartUploads(
+	_ context.Context,
+	_ string,
+) ([]artifactstore.IncompleteMultipartUpload, error) {
+	return nil, nil
+}
+
+func (store *deletionStore) AbortMultipartUpload(
+	_ context.Context,
+	_ artifactstore.MultipartUpload,
+) error {
+	store.aborted++
+	return nil
+}
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("VELA_RETENTION_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer pool.Close()
+	store := &deletionStore{}
+	reconciler, err := retention.NewReconciler(pool, store, retention.ReconcilerConfig{
+		InstanceID: "exact-n-minus-one-retention-probe",
+		BatchSize:  100,
+		ClaimTTL:   time.Minute,
+		RetryDelay: time.Minute,
+	})
+	if err != nil {
+		fatal(err)
+	}
+	result, err := reconciler.ReconcileBatch(ctx)
+	if err != nil {
+		fatal(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(struct {
+		RequestContentExpired   int `json:"request_content_expired"`
+		ArtifactRequestsCreated int `json:"artifact_requests_created"`
+		Claimed                 int `json:"claimed"`
+		Completed               int `json:"completed"`
+		Failed                  int `json:"failed"`
+		Deleted                 int `json:"deleted"`
+		Aborted                 int `json:"aborted"`
+	}{
+		RequestContentExpired:   result.RequestContentExpired,
+		ArtifactRequestsCreated: result.ArtifactRequestsCreated,
+		Claimed:                 result.Claimed,
+		Completed:               result.Completed,
+		Failed:                  result.Failed,
+		Deleted:                 store.deleted,
+		Aborted:                 store.aborted,
+	}); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}
