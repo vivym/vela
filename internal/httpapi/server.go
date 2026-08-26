@@ -20,6 +20,7 @@ import (
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
 )
@@ -30,13 +31,16 @@ const (
 	serviceAuthenticationFailureMessage  = "valid Service Principal credential is required"
 	platformAuthenticationFailureMessage = "valid Platform Operator credential is required"
 	breakGlassServiceUnavailableMessage  = "Break-glass dependency is unavailable"
+	remediationServiceUnavailableMessage = "Remediation dependency is unavailable"
 	platformBreakGlassPathPrefix         = "/v1/platform/break-glass/"
+	platformRemediationPathPrefix        = "/v1/platform/remediation/"
 )
 
 type Config struct {
 	Authenticator          *identity.Authenticator
 	PlatformAuthenticator  *breakglass.Authenticator
 	BreakGlass             *breakglass.Service
+	Remediation            *remediation.Service
 	IdentityAdministration *identity.AdministrationService
 	OrganizationReporting  *organizationreporting.Service
 	Retention              *retention.Service
@@ -50,6 +54,7 @@ type server struct {
 	authenticator          *identity.Authenticator
 	platformAuthenticator  *breakglass.Authenticator
 	breakGlass             *breakglass.Service
+	remediation            *remediation.Service
 	identityAdministration *identity.AdministrationService
 	organizationReporting  *organizationreporting.Service
 	retention              *retention.Service
@@ -98,6 +103,7 @@ func NewHandler(config Config) (http.Handler, error) {
 		authenticator:          config.Authenticator,
 		platformAuthenticator:  config.PlatformAuthenticator,
 		breakGlass:             config.BreakGlass,
+		remediation:            config.Remediation,
 		identityAdministration: config.IdentityAdministration,
 		organizationReporting:  config.OrganizationReporting,
 		retention:              config.Retention,
@@ -125,6 +131,164 @@ func NewHandler(config Config) (http.Handler, error) {
 		},
 	}))
 	return api.HandlerFromMux(strict, router), nil
+}
+
+func (s *server) CreateRemediationOperation(
+	ctx context.Context,
+	request api.CreateRemediationOperationRequestObject,
+) (api.CreateRemediationOperationResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.CreateRemediationOperation401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.remediation == nil {
+		return api.CreateRemediationOperation503JSONResponse{
+			ServiceUnavailableJSONResponse: remediationUnavailableResponse(),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateRemediationOperation400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "remediation request body is required",
+			},
+		}, nil
+	}
+	evidence, err := hex.DecodeString(request.Body.EvidenceSha256)
+	if err != nil {
+		return api.CreateRemediationOperation400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "remediation evidence digest is invalid",
+			},
+		}, nil
+	}
+	created, err := s.remediation.Request(ctx, remediation.Request{
+		OperationID:           uuid.UUID(request.Body.OperationId),
+		WorkerID:              uuid.UUID(request.Body.WorkerId),
+		WorkerEpoch:           request.Body.WorkerEpoch,
+		NodeIdentity:          request.Body.NodeIdentity,
+		DeviceIdentity:        request.Body.GpuUuid,
+		FailureClass:          request.Body.FailureClass,
+		EvidenceDigest:        evidence,
+		CertificationRevision: request.Body.CertificationRevision,
+		ActionLevel:           remediation.ActionLevel(request.Body.ActionLevel),
+		IdempotencyKey:        string(request.Params.IdempotencyKey),
+		RequestedBy:           remediationOperatorIdentity(operator),
+	})
+	if err != nil {
+		return createRemediationOperationFailure(err)
+	}
+	operation, err := s.remediation.Get(ctx, created.OperationID)
+	if err != nil {
+		return createRemediationOperationFailure(err)
+	}
+	projection := toAPIRemediationOperation(operation)
+	if created.Replayed {
+		return api.CreateRemediationOperation200JSONResponse(projection), nil
+	}
+	return api.CreateRemediationOperation201JSONResponse(projection), nil
+}
+
+func (s *server) GetRemediationOperation(
+	ctx context.Context,
+	request api.GetRemediationOperationRequestObject,
+) (api.GetRemediationOperationResponseObject, error) {
+	if _, ok := platformOperatorFromContext(ctx); !ok {
+		return api.GetRemediationOperation401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.remediation == nil {
+		return api.GetRemediationOperation503JSONResponse{
+			ServiceUnavailableJSONResponse: remediationUnavailableResponse(),
+		}, nil
+	}
+	operation, err := s.remediation.Get(ctx, uuid.UUID(request.RemediationOperationId))
+	if err != nil {
+		return getRemediationOperationFailure(err)
+	}
+	return api.GetRemediationOperation200JSONResponse(toAPIRemediationOperation(operation)), nil
+}
+
+func (s *server) ApproveRemediationOperation(
+	ctx context.Context,
+	request api.ApproveRemediationOperationRequestObject,
+) (api.ApproveRemediationOperationResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.ApproveRemediationOperation401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.remediation == nil {
+		return api.ApproveRemediationOperation503JSONResponse{
+			ServiceUnavailableJSONResponse: remediationUnavailableResponse(),
+		}, nil
+	}
+	operationID := uuid.UUID(request.RemediationOperationId)
+	if _, err := s.remediation.Approve(ctx, operationID, remediationOperatorIdentity(operator)); err != nil {
+		return approveRemediationOperationFailure(err)
+	}
+	operation, err := s.remediation.Get(ctx, operationID)
+	if err != nil {
+		return approveRemediationOperationFailure(err)
+	}
+	return api.ApproveRemediationOperation200JSONResponse(toAPIRemediationOperation(operation)), nil
+}
+
+func (s *server) StartRemediationOperation(
+	ctx context.Context,
+	request api.StartRemediationOperationRequestObject,
+) (api.StartRemediationOperationResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.StartRemediationOperation401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.remediation == nil {
+		return api.StartRemediationOperation503JSONResponse{
+			ServiceUnavailableJSONResponse: remediationUnavailableResponse(),
+		}, nil
+	}
+	operationID := uuid.UUID(request.RemediationOperationId)
+	operation, err := s.remediation.Get(ctx, operationID)
+	if err != nil {
+		return startRemediationOperationFailure(err)
+	}
+	if _, err := s.remediation.Start(
+		ctx,
+		operationID,
+		operation.WorkerID,
+		operation.WorkerEpoch,
+		remediationOperatorIdentity(operator),
+	); err != nil {
+		return startRemediationOperationFailure(err)
+	}
+	operation, err = s.remediation.Get(ctx, operationID)
+	if err != nil {
+		return startRemediationOperationFailure(err)
+	}
+	return api.StartRemediationOperation200JSONResponse(toAPIRemediationOperation(operation)), nil
+}
+
+func remediationOperatorIdentity(operator breakglass.Operator) string {
+	return "platform-operator/" + operator.ID.String()
+}
+
+func remediationUnavailableResponse() api.ServiceUnavailableJSONResponse {
+	return api.ServiceUnavailableJSONResponse{
+		Code: "service_unavailable", Message: remediationServiceUnavailableMessage,
+	}
 }
 
 func (s *server) CreateBreakGlassRequest(
@@ -1756,7 +1920,8 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized", authenticationFailureMessage)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, platformBreakGlassPathPrefix) {
+		if strings.HasPrefix(r.URL.Path, platformBreakGlassPathPrefix) ||
+			strings.HasPrefix(r.URL.Path, platformRemediationPathPrefix) {
 			if s.platformAuthenticator == nil {
 				writeError(
 					w,
@@ -1913,6 +2078,112 @@ func projectMembershipAdministrationPrincipal(
 		return organizationPrincipal, http.StatusOK
 	}
 	return identity.Principal{}, http.StatusForbidden
+}
+
+type remediationHTTPFailure struct {
+	status  int
+	code    string
+	message string
+}
+
+func classifyRemediationFailure(err error) (remediationHTTPFailure, bool) {
+	var failure *remediation.Failure
+	if !errors.As(err, &failure) {
+		return remediationHTTPFailure{}, false
+	}
+	switch failure.Code {
+	case remediation.FailureInvalid:
+		return remediationHTTPFailure{status: http.StatusBadRequest, code: "invalid_request", message: failure.Message}, true
+	case remediation.FailureNotFound:
+		return remediationHTTPFailure{status: http.StatusNotFound, code: "not_found", message: failure.Message}, true
+	case remediation.FailureConflict, remediation.FailureUncertified, remediation.FailureExecution:
+		return remediationHTTPFailure{status: http.StatusConflict, code: "conflict", message: failure.Message}, true
+	case remediation.FailureUnavailable:
+		return remediationHTTPFailure{
+			status: http.StatusServiceUnavailable, code: "service_unavailable",
+			message: remediationServiceUnavailableMessage,
+		}, true
+	default:
+		return remediationHTTPFailure{}, false
+	}
+}
+
+func createRemediationOperationFailure(err error) (api.CreateRemediationOperationResponseObject, error) {
+	failure, ok := classifyRemediationFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusBadRequest:
+		return api.CreateRemediationOperation400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	case http.StatusNotFound:
+		return api.CreateRemediationOperation404JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusConflict:
+		return api.CreateRemediationOperation409JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusServiceUnavailable:
+		return api.CreateRemediationOperation503JSONResponse{ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	default:
+		return nil, err
+	}
+}
+
+func getRemediationOperationFailure(err error) (api.GetRemediationOperationResponseObject, error) {
+	failure, ok := classifyRemediationFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusNotFound:
+		return api.GetRemediationOperation404JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusServiceUnavailable:
+		return api.GetRemediationOperation503JSONResponse{ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	default:
+		return nil, err
+	}
+}
+
+func approveRemediationOperationFailure(err error) (api.ApproveRemediationOperationResponseObject, error) {
+	failure, ok := classifyRemediationFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusNotFound:
+		return api.ApproveRemediationOperation404JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusBadRequest, http.StatusConflict:
+		return api.ApproveRemediationOperation409JSONResponse{Code: "conflict", Message: failure.message}, nil
+	case http.StatusServiceUnavailable:
+		return api.ApproveRemediationOperation503JSONResponse{ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	default:
+		return nil, err
+	}
+}
+
+func startRemediationOperationFailure(err error) (api.StartRemediationOperationResponseObject, error) {
+	failure, ok := classifyRemediationFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusNotFound:
+		return api.StartRemediationOperation404JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusBadRequest, http.StatusConflict:
+		return api.StartRemediationOperation409JSONResponse{Code: "conflict", Message: failure.message}, nil
+	case http.StatusServiceUnavailable:
+		return api.StartRemediationOperation503JSONResponse{ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	default:
+		return nil, err
+	}
 }
 
 type breakGlassHTTPFailure struct {
@@ -3014,6 +3285,39 @@ func toAPIOrganizationAuditEvent(
 		TargetId:         event.TargetID,
 		TargetKind:       api.OrganizationAuditEventTargetKind(event.TargetKind),
 	}
+}
+
+func toAPIRemediationOperation(operation remediation.Operation) api.RemediationOperation {
+	result := api.RemediationOperation{
+		OperationId: uuid.UUID(operation.ID), WorkerId: uuid.UUID(operation.WorkerID),
+		WorkerEpoch: operation.WorkerEpoch, NodeIdentity: operation.NodeIdentity,
+		GpuUuid: operation.DeviceIdentity, FailureClass: operation.FailureClass,
+		EvidenceSha256:        hex.EncodeToString(operation.EvidenceDigest),
+		CertificationRevision: operation.CertificationRevision,
+		ActionLevel:           api.RemediationActionLevel(operation.ActionLevel),
+		State:                 api.RemediationOperationState(operation.State),
+		RequestedBy:           operation.RequestedBy, RequestedAt: operation.RequestedAt,
+		DeadlineAt: operation.DeadlineAt,
+		StartedAt:  operation.StartedAt, FinishedAt: operation.FinishedAt,
+		ApprovedAt: operation.ApprovedAt,
+	}
+	if operation.ResultCode != "" {
+		result.ResultCode = &operation.ResultCode
+	}
+	if operation.ResultDetail != "" {
+		result.ResultDetail = &operation.ResultDetail
+	}
+	if len(operation.PostcheckDigest) > 0 {
+		value := hex.EncodeToString(operation.PostcheckDigest)
+		result.PostcheckSha256 = &value
+	}
+	if operation.FirstApprover != "" {
+		result.FirstApprover = &operation.FirstApprover
+	}
+	if operation.SecondApprover != "" {
+		result.SecondApprover = &operation.SecondApprover
+	}
+	return result
 }
 
 func toAPIBreakGlassRequest(request breakglass.Request) api.BreakGlassRequest {

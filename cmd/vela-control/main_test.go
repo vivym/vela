@@ -112,11 +112,11 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 func TestReadNodeAgentEndpointsRejectsWritableOrUnknownRegistry(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "node-agents.json")
-	valid := `{"node-1":{"address":"127.0.0.1:9443","server_name":"node-agent.internal","worker_id":"10000000-0000-0000-0000-000000000001","spiffe_identity":"spiffe://vela.internal/node-agent/bm9kZS0x/10000000-0000-0000-0000-000000000001"}}`
+	valid := `{"node-1":{"address":"127.0.0.1:9443","server_name":"node-agent.internal","worker_id":"10000000-0000-0000-0000-000000000001","worker_epoch":7,"spiffe_identity":"spiffe://vela.internal/node-agent/bm9kZS0x/10000000-0000-0000-0000-000000000001"}}`
 	if err := os.WriteFile(path, []byte(valid), 0o600); err != nil {
 		t.Fatalf("write endpoint registry: %v", err)
 	}
-	if endpoints, err := readNodeAgentEndpoints(path); err != nil || len(endpoints) != 1 {
+	if endpoints, err := readNodeAgentEndpoints(path); err != nil || len(endpoints) != 1 || endpoints["node-1"].WorkerEpoch != 7 {
 		t.Fatalf("read endpoint registry = %#v error=%v", endpoints, err)
 	}
 	unknown := strings.Replace(valid, `"worker_id"`, `"unknown":true,"worker_id"`, 1)

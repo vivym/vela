@@ -814,6 +814,7 @@ func run() error {
 			platformOIDCVerifier,
 		),
 		BreakGlass:             breakGlassService,
+		Remediation:            remediationService,
 		IdentityAdministration: identityAdministration,
 		OrganizationReporting:  organizationReporting,
 		Retention:              retentionService,

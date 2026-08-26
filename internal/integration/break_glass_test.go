@@ -29,6 +29,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/workercontrol"
 )
@@ -2516,6 +2517,7 @@ func TestBreakGlassHTTPUsesPlatformIdentityAndHidesStorageIdentity(t *testing.T)
 		),
 		PlatformAuthenticator:  breakglass.NewAuthenticator(platformAuthPool, operatorVerifier),
 		BreakGlass:             breakGlassService,
+		Remediation:            &remediation.Service{},
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},

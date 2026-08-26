@@ -21,6 +21,8 @@ type Plan struct {
 	ActionLevel           ActionLevel
 	NodeIdentity          string
 	DeviceIdentity        string
+	GPUUUID               string
+	PCIBDF                string
 	FailureClass          string
 	WorkerEpoch           int64
 	DeadlineAt            time.Time

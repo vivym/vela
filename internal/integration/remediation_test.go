@@ -5,8 +5,15 @@ package integration_test
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -15,9 +22,233 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
+	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/artifactaccess"
+	"github.com/vivym/vela/internal/breakglass"
+	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/httpapi"
+	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/nodeagent"
+	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/remediation"
+	"github.com/vivym/vela/internal/retention"
+	"github.com/vivym/vela/internal/webhook"
 	"github.com/vivym/vela/internal/workercontrol"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 )
+
+func TestRemediationPlatformAPIRequiresDistinctL6ApprovalBeforeExecution(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	workerID := seedRemediationWorker(t, database)
+	if _, err := database.Admin.Exec(`
+		INSERT INTO platform_operator_oidc_bindings (
+			id, issuer, subject, display_name
+		) VALUES
+			($1, 'https://platform-identity.example.com', 'remediation-requester', 'Requester'),
+			($2, 'https://platform-identity.example.com', 'remediation-approver', 'Approver'),
+			($3, 'https://platform-identity.example.com', 'remediation-third', 'Third')
+	`, platformOperatorRequesterID, platformOperatorApproverID, platformOperatorThirdID); err != nil {
+		t.Fatalf("seed remediation Platform Operators: %v", err)
+	}
+	verifier := tokenOIDCVerifier{
+		"remediation-requester-token": {
+			Issuer: "https://platform-identity.example.com", Subject: "remediation-requester",
+			ExpiresAt: time.Now().UTC().Add(time.Hour),
+		},
+		"remediation-approver-token": {
+			Issuer: "https://platform-identity.example.com", Subject: "remediation-approver",
+			ExpiresAt: time.Now().UTC().Add(time.Hour),
+		},
+		"remediation-third-token": {
+			Issuer: "https://platform-identity.example.com", Subject: "remediation-third",
+			ExpiresAt: time.Now().UTC().Add(time.Hour),
+		},
+	}
+	service, err := remediation.NewService(newRolePool(
+		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
+	))
+	if err != nil {
+		t.Fatalf("create remediation HTTP service: %v", err)
+	}
+	handler, err := httpapi.NewHandler(httpapi.Config{
+		Authenticator:          identity.NewAuthenticator(nil, []byte("remediation-http-pepper")),
+		PlatformAuthenticator:  breakglass.NewAuthenticator(newRolePool(t, database.DSN, "vela_platform_operator_auth_login", "vela-platform-operator-auth-password"), verifier),
+		Remediation:            service,
+		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
+		Admission:              &admission.Service{},
+		Cancellation:           &cancellation.Service{},
+		Artifacts:              &artifactaccess.Service{},
+		Webhooks:               &webhook.Service{},
+	})
+	if err != nil {
+		t.Fatalf("create remediation HTTP handler: %v", err)
+	}
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	operationID := uuid.New()
+	evidence := sha256.Sum256([]byte("L6 hardware fault"))
+	body, err := json.Marshal(map[string]any{
+		"operation_id": operationID, "worker_id": workerID, "worker_epoch": 1,
+		"node_identity": "node-remediation-1",
+		"gpu_uuid":      "GPU-00000000-0000-0000-0000-000000000018",
+		"failure_class": "GPU_UNRECOVERABLE", "evidence_sha256": hex.EncodeToString(evidence[:]),
+		"certification_revision": "matrix-l6-v1", "action_level": "L6_BMC_POWER_CYCLE",
+	})
+	if err != nil {
+		t.Fatalf("encode remediation HTTP request: %v", err)
+	}
+	endpoint := server.URL + "/v1/platform/remediation/operations"
+	unauthorized := doBreakGlassHTTP(t, http.MethodPost, endpoint, "customer-token", "remediation-http-1", body)
+	if unauthorized.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("customer remediation request status = %d body=%s", unauthorized.StatusCode, unauthorized.Body)
+	}
+	created := doBreakGlassHTTP(t, http.MethodPost, endpoint, "remediation-requester-token", "remediation-http-1", body)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("create remediation status = %d body=%s", created.StatusCode, created.Body)
+	}
+	replayed := doBreakGlassHTTP(t, http.MethodPost, endpoint, "remediation-requester-token", "remediation-http-1", body)
+	if replayed.StatusCode != http.StatusOK {
+		t.Fatalf("replay remediation status = %d body=%s", replayed.StatusCode, replayed.Body)
+	}
+	executionEndpoint := endpoint + "/" + operationID.String() + "/execution"
+	blocked := doBreakGlassHTTP(t, http.MethodPost, executionEndpoint, "remediation-requester-token", "", nil)
+	if blocked.StatusCode != http.StatusConflict {
+		t.Fatalf("unapproved L6 execution status = %d body=%s", blocked.StatusCode, blocked.Body)
+	}
+	approvalEndpoint := endpoint + "/" + operationID.String() + "/approvals"
+	first := doBreakGlassHTTP(t, http.MethodPost, approvalEndpoint, "remediation-approver-token", "", nil)
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("first L6 approval status = %d body=%s", first.StatusCode, first.Body)
+	}
+	second := doBreakGlassHTTP(t, http.MethodPost, approvalEndpoint, "remediation-third-token", "", nil)
+	if second.StatusCode != http.StatusOK {
+		t.Fatalf("second L6 approval status = %d body=%s", second.StatusCode, second.Body)
+	}
+	started := doBreakGlassHTTP(t, http.MethodPost, executionEndpoint, "remediation-requester-token", "", nil)
+	if started.StatusCode != http.StatusOK {
+		t.Fatalf("approved L6 execution status = %d body=%s", started.StatusCode, started.Body)
+	}
+	var projection struct {
+		State          string `json:"state"`
+		RequestedBy    string `json:"requested_by"`
+		FirstApprover  string `json:"first_approver"`
+		SecondApprover string `json:"second_approver"`
+	}
+	if err := json.Unmarshal(started.Body, &projection); err != nil {
+		t.Fatalf("decode started remediation: %v", err)
+	}
+	if projection.State != "EXECUTING" ||
+		projection.RequestedBy != "platform-operator/"+platformOperatorRequesterID ||
+		projection.FirstApprover != "platform-operator/"+platformOperatorApproverID ||
+		projection.SecondApprover != "platform-operator/"+platformOperatorThirdID {
+		t.Fatalf("started remediation projection = %#v", projection)
+	}
+}
+
+func TestRemediationDispatcherQuarantinesFailedCertifiedPostcheck(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	workerID := seedRemediationWorker(t, database)
+	service, err := remediation.NewService(newRolePool(
+		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
+	))
+	if err != nil {
+		t.Fatalf("create remediation runtime service: %v", err)
+	}
+	const (
+		gpuUUID = "GPU-00000000-0000-0000-0000-000000000018"
+		pciBDF  = "0000:41:00.0"
+		actor   = "controller/remediation-dispatcher"
+		spiffe  = "spiffe://vela.internal/controller/remediation-dispatcher"
+	)
+	evidence := sha256.Sum256([]byte("GPU process failure"))
+	request := remediation.Request{
+		OperationID: uuid.New(), WorkerID: workerID, WorkerEpoch: 1,
+		NodeIdentity: "node-remediation-1", DeviceIdentity: gpuUUID,
+		FailureClass: "PROCESS_FAILURE", EvidenceDigest: evidence[:],
+		CertificationRevision: "matrix-v1", ActionLevel: remediation.ActionL0ProcessRestart,
+		IdempotencyKey: "runtime-postcheck-failure", RequestedBy: "platform-operator/test",
+	}
+	if _, err := service.Request(context.Background(), request); err != nil {
+		t.Fatalf("request runtime remediation: %v", err)
+	}
+	if _, err := service.Start(context.Background(), request.OperationID, workerID, 1, "platform-operator/test"); err != nil {
+		t.Fatalf("start runtime remediation: %v", err)
+	}
+	runner := remediationRuntimeCommandRunner{postcheckHealthy: false}
+	allowlisted, err := remediation.NewAllowlistedExecutor(runner, map[remediation.ActionLevel]struct {
+		Path string
+		Args []string
+	}{remediation.ActionL0ProcessRestart: {Path: "/usr/local/libexec/vela-process-restart"}})
+	if err != nil {
+		t.Fatalf("configure runtime remediation allowlist: %v", err)
+	}
+	policy, err := nodeagent.NewStaticCapabilityPolicy(map[string]nodeagent.DeviceCapability{
+		gpuUUID: {
+			GPUUUID: gpuUUID, PCIBDF: pciBDF, CertificationRevision: "matrix-v1",
+			FailureClasses: map[string]bool{"PROCESS_FAILURE": true},
+			Actions:        map[remediation.ActionLevel]bool{remediation.ActionL0ProcessRestart: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("configure runtime remediation capability matrix: %v", err)
+	}
+	fence, err := nodeagent.NewCommandFence(runner, "/usr/local/libexec/vela-fence", nil)
+	if err != nil {
+		t.Fatalf("configure runtime remediation fence: %v", err)
+	}
+	postcheck, err := nodeagent.NewCommandPostcheck(runner, "/usr/local/libexec/vela-postcheck", nil)
+	if err != nil {
+		t.Fatalf("configure runtime remediation post-check: %v", err)
+	}
+	limiter, err := nodeagent.NewRateLimiter(nodeagent.RateLimit{
+		MinimumInterval: time.Second, Window: time.Minute, MaxExecutions: 1,
+	})
+	if err != nil {
+		t.Fatalf("configure runtime remediation rate limit: %v", err)
+	}
+	executor, err := nodeagent.NewCertifiedExecutor(allowlisted, policy, fence, postcheck, limiter)
+	if err != nil {
+		t.Fatalf("configure runtime certified executor: %v", err)
+	}
+	resolver, err := nodeagent.NewStaticControllerIdentityResolver(map[string]string{spiffe: actor})
+	if err != nil {
+		t.Fatalf("configure runtime controller identity: %v", err)
+	}
+	hostLedger, err := nodeagent.NewFileLedger(t.TempDir())
+	if err != nil {
+		t.Fatalf("configure runtime host ledger: %v", err)
+	}
+	host, err := nodeagent.NewServer(nodeagent.NodeAgentIdentity{
+		NodeIdentity: "node-remediation-1", WorkerID: workerID, WorkerEpoch: 1,
+	}, resolver, executor, hostLedger)
+	if err != nil {
+		t.Fatalf("configure runtime Node Agent: %v", err)
+	}
+	client, err := nodeagent.NewClient(&directNodeAgentClient{server: host, spiffe: spiffe}, actor)
+	if err != nil {
+		t.Fatalf("configure runtime Node Agent client: %v", err)
+	}
+	dispatcher, err := nodeagent.NewExecutionDispatcher(service, integrationAgentResolver{client: client}, actor, 10)
+	if err != nil {
+		t.Fatalf("configure runtime remediation dispatcher: %v", err)
+	}
+	dispatched, err := dispatcher.RunOnce(context.Background())
+	if err != nil || dispatched.Dispatched != 1 || dispatched.Deferred != 0 {
+		t.Fatalf("runtime remediation dispatch = %#v error=%v", dispatched, err)
+	}
+	operation, err := service.Get(context.Background(), request.OperationID)
+	if err != nil || operation.State != remediation.StateQuarantined || operation.ResultCode != "POSTCHECK_FAILED" {
+		t.Fatalf("failed runtime remediation = %#v error=%v", operation, err)
+	}
+}
 
 func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 	database := newPostgres(t)
@@ -664,6 +895,79 @@ func TestRemediationMigrationDownAndUpPreservesRoles(t *testing.T) {
 	if !nodeIdentityExists {
 		t.Fatal("node_identity missing after Remediation migration up")
 	}
+}
+
+type remediationRuntimeCommandRunner struct {
+	postcheckHealthy bool
+}
+
+func (runner remediationRuntimeCommandRunner) Run(
+	_ context.Context,
+	plan remediation.Plan,
+	path string,
+	_ []string,
+) ([]byte, error) {
+	if path == "/usr/local/libexec/vela-process-restart" {
+		return []byte("process restarted"), nil
+	}
+	evidence := map[string]any{
+		"operation_id": plan.OperationID.String(), "execution_claim_id": plan.ExecutionClaimID.String(),
+		"worker_id": plan.WorkerID.String(), "worker_epoch": plan.WorkerEpoch,
+		"node_identity": plan.NodeIdentity, "device_identity": plan.DeviceIdentity,
+		"gpu_uuid": plan.GPUUUID, "pci_bdf": plan.PCIBDF,
+		"failure_class": plan.FailureClass, "action_level": string(plan.ActionLevel),
+		"certification_revision":  plan.CertificationRevision,
+		"failure_evidence_sha256": hex.EncodeToString(plan.FailureEvidenceDigest),
+	}
+	switch path {
+	case "/usr/local/libexec/vela-fence":
+		evidence["new_assignments_stopped"] = true
+		evidence["target_processes_stopped"] = true
+	case "/usr/local/libexec/vela-postcheck":
+		evidence["device_healthy"] = runner.postcheckHealthy
+		evidence["inference_backend_healthy"] = runner.postcheckHealthy
+		evidence["detail"] = "runtime post-check evidence"
+	default:
+		return nil, errors.New("unexpected remediation runtime command")
+	}
+	return json.Marshal(evidence)
+}
+
+type directNodeAgentClient struct {
+	velav1.NodeAgentServiceClient
+	server *nodeagent.Server
+	spiffe string
+}
+
+func (client *directNodeAgentClient) ExecuteRemediation(
+	ctx context.Context,
+	request *velav1.ExecuteRemediationRequest,
+	_ ...grpc.CallOption,
+) (*velav1.ExecuteRemediationResponse, error) {
+	identity, err := url.Parse(client.spiffe)
+	if err != nil {
+		return nil, err
+	}
+	certificate := &x509.Certificate{Raw: []byte(client.spiffe), URIs: []*url.URL{identity}}
+	authenticated := peer.NewContext(ctx, &peer.Peer{AuthInfo: credentials.TLSInfo{
+		State: tls.ConnectionState{
+			HandshakeComplete: true,
+			PeerCertificates:  []*x509.Certificate{certificate},
+			VerifiedChains:    [][]*x509.Certificate{{certificate}},
+		},
+	}})
+	return client.server.ExecuteRemediation(authenticated, request)
+}
+
+type integrationAgentResolver struct {
+	client *nodeagent.Client
+}
+
+func (resolver integrationAgentResolver) Resolve(
+	context.Context,
+	nodeagent.NodeAgentIdentity,
+) (*nodeagent.Client, error) {
+	return resolver.client, nil
 }
 
 func seedRemediationWorker(t *testing.T, database testDatabase) uuid.UUID {

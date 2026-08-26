@@ -32,6 +32,7 @@ const (
 type NodeAgentIdentity struct {
 	NodeIdentity string
 	WorkerID     uuid.UUID
+	WorkerEpoch  int64
 }
 
 type ControllerIdentity struct {
@@ -170,7 +171,9 @@ func (server *Server) ExecuteRemediation(
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if server.localIdentity.NodeIdentity != parsed.NodeIdentity || server.localIdentity.WorkerID != parsed.WorkerID {
+	if server.localIdentity.NodeIdentity != parsed.NodeIdentity ||
+		server.localIdentity.WorkerID != parsed.WorkerID ||
+		server.localIdentity.WorkerEpoch != parsed.WorkerEpoch {
 		return nil, status.Error(codes.PermissionDenied, "remediation target does not match local node Agent identity")
 	}
 	if parsed.ActionLevel == remediation.ActionL6BMCPowerCycle ||
@@ -527,7 +530,8 @@ func authenticatedController(ctx context.Context, resolver ControllerIdentityRes
 }
 
 func validIdentity(identity NodeAgentIdentity) bool {
-	return identity.WorkerID != uuid.Nil && validText(identity.NodeIdentity, maxIdentityText)
+	return identity.WorkerID != uuid.Nil && identity.WorkerEpoch > 0 &&
+		validText(identity.NodeIdentity, maxIdentityText)
 }
 
 func validControllerIdentity(identity ControllerIdentity, expectedSPIFFE string) bool {

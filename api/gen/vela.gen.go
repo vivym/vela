@@ -524,6 +524,69 @@ func (e ProjectRole) Valid() bool {
 	}
 }
 
+// Defines values for RemediationActionLevel.
+const (
+	L0PROCESSRESTART RemediationActionLevel = "L0_PROCESS_RESTART"
+	L1CUDACLEANUP    RemediationActionLevel = "L1_CUDA_CLEANUP"
+	L2GPURESET       RemediationActionLevel = "L2_GPU_RESET"
+	L3PCIEFLR        RemediationActionLevel = "L3_PCIE_FLR"
+	L4DRIVERRELOAD   RemediationActionLevel = "L4_DRIVER_RELOAD"
+	L5NODEREBOOT     RemediationActionLevel = "L5_NODE_REBOOT"
+	L6BMCPOWERCYCLE  RemediationActionLevel = "L6_BMC_POWER_CYCLE"
+	L7QUARANTINE     RemediationActionLevel = "L7_QUARANTINE"
+)
+
+// Valid indicates whether the value is a known member of the RemediationActionLevel enum.
+func (e RemediationActionLevel) Valid() bool {
+	switch e {
+	case L0PROCESSRESTART:
+		return true
+	case L1CUDACLEANUP:
+		return true
+	case L2GPURESET:
+		return true
+	case L3PCIEFLR:
+		return true
+	case L4DRIVERRELOAD:
+		return true
+	case L5NODEREBOOT:
+		return true
+	case L6BMCPOWERCYCLE:
+		return true
+	case L7QUARANTINE:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RemediationOperationState.
+const (
+	RemediationOperationStateAPPROVALREQUIRED RemediationOperationState = "APPROVAL_REQUIRED"
+	RemediationOperationStateEXECUTING        RemediationOperationState = "EXECUTING"
+	RemediationOperationStateQUARANTINED      RemediationOperationState = "QUARANTINED"
+	RemediationOperationStateREQUESTED        RemediationOperationState = "REQUESTED"
+	RemediationOperationStateSUCCEEDED        RemediationOperationState = "SUCCEEDED"
+)
+
+// Valid indicates whether the value is a known member of the RemediationOperationState enum.
+func (e RemediationOperationState) Valid() bool {
+	switch e {
+	case RemediationOperationStateAPPROVALREQUIRED:
+		return true
+	case RemediationOperationStateEXECUTING:
+		return true
+	case RemediationOperationStateQUARANTINED:
+		return true
+	case RemediationOperationStateREQUESTED:
+		return true
+	case RemediationOperationStateSUCCEEDED:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ServiceCredentialScope.
 const (
 	ArtifactsRead         ServiceCredentialScope = "artifacts:read"
@@ -861,6 +924,19 @@ type CreateHumanMemberRequest struct {
 	OidcSubject string `json:"oidc_subject"`
 }
 
+// CreateRemediationOperationRequest defines model for CreateRemediationOperationRequest.
+type CreateRemediationOperationRequest struct {
+	ActionLevel           RemediationActionLevel `json:"action_level"`
+	CertificationRevision string                 `json:"certification_revision"`
+	EvidenceSha256        string                 `json:"evidence_sha256"`
+	FailureClass          string                 `json:"failure_class"`
+	GpuUuid               string                 `json:"gpu_uuid"`
+	NodeIdentity          string                 `json:"node_identity"`
+	OperationId           openapi_types.UUID     `json:"operation_id"`
+	WorkerEpoch           int64                  `json:"worker_epoch"`
+	WorkerId              openapi_types.UUID     `json:"worker_id"`
+}
+
 // CreateServicePrincipalRequest defines model for CreateServicePrincipalRequest.
 type CreateServicePrincipalRequest struct {
 	DisplayName string `json:"display_name"`
@@ -1111,6 +1187,37 @@ type ProjectUsage struct {
 	Usage     UsageAggregate     `json:"usage"`
 }
 
+// RemediationActionLevel defines model for RemediationActionLevel.
+type RemediationActionLevel string
+
+// RemediationOperation defines model for RemediationOperation.
+type RemediationOperation struct {
+	ActionLevel           RemediationActionLevel    `json:"action_level"`
+	ApprovedAt            *time.Time                `json:"approved_at,omitempty"`
+	CertificationRevision string                    `json:"certification_revision"`
+	DeadlineAt            time.Time                 `json:"deadline_at"`
+	EvidenceSha256        string                    `json:"evidence_sha256"`
+	FailureClass          string                    `json:"failure_class"`
+	FinishedAt            *time.Time                `json:"finished_at,omitempty"`
+	FirstApprover         *string                   `json:"first_approver,omitempty"`
+	GpuUuid               string                    `json:"gpu_uuid"`
+	NodeIdentity          string                    `json:"node_identity"`
+	OperationId           openapi_types.UUID        `json:"operation_id"`
+	PostcheckSha256       *string                   `json:"postcheck_sha256,omitempty"`
+	RequestedAt           time.Time                 `json:"requested_at"`
+	RequestedBy           string                    `json:"requested_by"`
+	ResultCode            *string                   `json:"result_code,omitempty"`
+	ResultDetail          *string                   `json:"result_detail,omitempty"`
+	SecondApprover        *string                   `json:"second_approver,omitempty"`
+	StartedAt             *time.Time                `json:"started_at,omitempty"`
+	State                 RemediationOperationState `json:"state"`
+	WorkerEpoch           int64                     `json:"worker_epoch"`
+	WorkerId              openapi_types.UUID        `json:"worker_id"`
+}
+
+// RemediationOperationState defines model for RemediationOperationState.
+type RemediationOperationState string
+
 // RotatedWebhookSubscription defines model for RotatedWebhookSubscription.
 type RotatedWebhookSubscription struct {
 	CreatedAt                time.Time                `json:"created_at"`
@@ -1310,6 +1417,12 @@ type ProjectId = openapi_types.UUID
 // ProjectRoleName defines model for ProjectRoleName.
 type ProjectRoleName = ProjectRole
 
+// RemediationIdempotencyKey defines model for RemediationIdempotencyKey.
+type RemediationIdempotencyKey = string
+
+// RemediationOperationId defines model for RemediationOperationId.
+type RemediationOperationId = openapi_types.UUID
+
 // ServicePrincipalId defines model for ServicePrincipalId.
 type ServicePrincipalId = openapi_types.UUID
 
@@ -1365,6 +1478,11 @@ type CreateBreakGlassRequestParams struct {
 	IdempotencyKey BreakGlassIdempotencyKey `json:"Idempotency-Key"`
 }
 
+// CreateRemediationOperationParams defines parameters for CreateRemediationOperation.
+type CreateRemediationOperationParams struct {
+	IdempotencyKey RemediationIdempotencyKey `json:"Idempotency-Key"`
+}
+
 // SubmitJobParams defines parameters for SubmitJob.
 type SubmitJobParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
@@ -1411,6 +1529,9 @@ type AssignOrganizationRoleJSONRequestBody = AssignOrganizationRoleRequest
 
 // CreateBreakGlassRequestJSONRequestBody defines body for CreateBreakGlassRequest for application/json ContentType.
 type CreateBreakGlassRequestJSONRequestBody = CreateBreakGlassRequest
+
+// CreateRemediationOperationJSONRequestBody defines body for CreateRemediationOperation for application/json ContentType.
+type CreateRemediationOperationJSONRequestBody = CreateRemediationOperationRequest
 
 // SubmitJobJSONRequestBody defines body for SubmitJob for application/json ContentType.
 type SubmitJobJSONRequestBody = SubmitJobRequest
@@ -1486,6 +1607,18 @@ type ServerInterface interface {
 	// ApproveBreakGlassRequest Approve a pending request as a distinct Platform Operator
 	// (POST /v1/platform/break-glass/requests/{break_glass_request_id}/approval)
 	ApproveBreakGlassRequest(w http.ResponseWriter, r *http.Request, breakGlassRequestId BreakGlassRequestId)
+	// CreateRemediationOperation Request an identity-bound certified Worker remediation operation
+	// (POST /v1/platform/remediation/operations)
+	CreateRemediationOperation(w http.ResponseWriter, r *http.Request, params CreateRemediationOperationParams)
+	// GetRemediationOperation Get an immutable remediation operation projection
+	// (GET /v1/platform/remediation/operations/{remediation_operation_id})
+	GetRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId)
+	// ApproveRemediationOperation Record one distinct Platform Operator approval for L6
+	// (POST /v1/platform/remediation/operations/{remediation_operation_id}/approvals)
+	ApproveRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId)
+	// StartRemediationOperation Fence the current authority and release an approved operation to the dispatcher
+	// (POST /v1/platform/remediation/operations/{remediation_operation_id}/execution)
+	StartRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId)
 	// GetContentDeletionRequest Get safe aggregate status for a Content Deletion request
 	// (GET /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id})
 	GetContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, contentDeletionRequestId ContentDeletionRequestId)
@@ -1666,6 +1799,30 @@ func (_ Unimplemented) GetBreakGlassRequest(w http.ResponseWriter, r *http.Reque
 // ApproveBreakGlassRequest Approve a pending request as a distinct Platform Operator
 // (POST /v1/platform/break-glass/requests/{break_glass_request_id}/approval)
 func (_ Unimplemented) ApproveBreakGlassRequest(w http.ResponseWriter, r *http.Request, breakGlassRequestId BreakGlassRequestId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateRemediationOperation Request an identity-bound certified Worker remediation operation
+// (POST /v1/platform/remediation/operations)
+func (_ Unimplemented) CreateRemediationOperation(w http.ResponseWriter, r *http.Request, params CreateRemediationOperationParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetRemediationOperation Get an immutable remediation operation projection
+// (GET /v1/platform/remediation/operations/{remediation_operation_id})
+func (_ Unimplemented) GetRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ApproveRemediationOperation Record one distinct Platform Operator approval for L6
+// (POST /v1/platform/remediation/operations/{remediation_operation_id}/approvals)
+func (_ Unimplemented) ApproveRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// StartRemediationOperation Fence the current authority and release an approved operation to the dispatcher
+// (POST /v1/platform/remediation/operations/{remediation_operation_id}/execution)
+func (_ Unimplemented) StartRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2432,6 +2589,129 @@ func (siw *ServerInterfaceWrapper) ApproveBreakGlassRequest(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ApproveBreakGlassRequest(w, r, breakGlassRequestId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRemediationOperation operation middleware
+func (siw *ServerInterfaceWrapper) CreateRemediationOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateRemediationOperationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey RemediationIdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRemediationOperation(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRemediationOperation operation middleware
+func (siw *ServerInterfaceWrapper) GetRemediationOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "remediation_operation_id" -------------
+	var remediationOperationId RemediationOperationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "remediation_operation_id", chi.URLParam(r, "remediation_operation_id"), &remediationOperationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "remediation_operation_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRemediationOperation(w, r, remediationOperationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApproveRemediationOperation operation middleware
+func (siw *ServerInterfaceWrapper) ApproveRemediationOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "remediation_operation_id" -------------
+	var remediationOperationId RemediationOperationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "remediation_operation_id", chi.URLParam(r, "remediation_operation_id"), &remediationOperationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "remediation_operation_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveRemediationOperation(w, r, remediationOperationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartRemediationOperation operation middleware
+func (siw *ServerInterfaceWrapper) StartRemediationOperation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "remediation_operation_id" -------------
+	var remediationOperationId RemediationOperationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "remediation_operation_id", chi.URLParam(r, "remediation_operation_id"), &remediationOperationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "remediation_operation_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartRemediationOperation(w, r, remediationOperationId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3485,6 +3765,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/organizations/{organization_id}/audit-events", wrapper.ListOrganizationAuditEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/platform/remediation/operations", wrapper.CreateRemediationOperation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/platform/remediation/operations/{remediation_operation_id}", wrapper.GetRemediationOperation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/platform/remediation/operations/{remediation_operation_id}/approvals", wrapper.ApproveRemediationOperation)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/platform/remediation/operations/{remediation_operation_id}/execution", wrapper.StartRemediationOperation)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/platform/break-glass/requests", wrapper.CreateBreakGlassRequest)
@@ -4964,6 +5256,333 @@ func (response ApproveBreakGlassRequest409JSONResponse) VisitApproveBreakGlassRe
 type ApproveBreakGlassRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ApproveBreakGlassRequest503JSONResponse) VisitApproveBreakGlassRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemediationOperationRequestObject struct {
+	Params CreateRemediationOperationParams
+	Body   *CreateRemediationOperationJSONRequestBody
+}
+
+type CreateRemediationOperationResponseObject interface {
+	VisitCreateRemediationOperationResponse(w http.ResponseWriter) error
+}
+
+type CreateRemediationOperation200JSONResponse RemediationOperation
+
+func (response CreateRemediationOperation200JSONResponse) VisitCreateRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemediationOperation201JSONResponse RemediationOperation
+
+func (response CreateRemediationOperation201JSONResponse) VisitCreateRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemediationOperation400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateRemediationOperation400JSONResponse) VisitCreateRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemediationOperation401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateRemediationOperation401JSONResponse) VisitCreateRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemediationOperation404JSONResponse Error
+
+func (response CreateRemediationOperation404JSONResponse) VisitCreateRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemediationOperation409JSONResponse Error
+
+func (response CreateRemediationOperation409JSONResponse) VisitCreateRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateRemediationOperation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateRemediationOperation503JSONResponse) VisitCreateRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRemediationOperationRequestObject struct {
+	RemediationOperationId RemediationOperationId `json:"remediation_operation_id"`
+}
+
+type GetRemediationOperationResponseObject interface {
+	VisitGetRemediationOperationResponse(w http.ResponseWriter) error
+}
+
+type GetRemediationOperation200JSONResponse RemediationOperation
+
+func (response GetRemediationOperation200JSONResponse) VisitGetRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRemediationOperation401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetRemediationOperation401JSONResponse) VisitGetRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRemediationOperation404JSONResponse Error
+
+func (response GetRemediationOperation404JSONResponse) VisitGetRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRemediationOperation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetRemediationOperation503JSONResponse) VisitGetRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveRemediationOperationRequestObject struct {
+	RemediationOperationId RemediationOperationId `json:"remediation_operation_id"`
+}
+
+type ApproveRemediationOperationResponseObject interface {
+	VisitApproveRemediationOperationResponse(w http.ResponseWriter) error
+}
+
+type ApproveRemediationOperation200JSONResponse RemediationOperation
+
+func (response ApproveRemediationOperation200JSONResponse) VisitApproveRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveRemediationOperation401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ApproveRemediationOperation401JSONResponse) VisitApproveRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveRemediationOperation404JSONResponse Error
+
+func (response ApproveRemediationOperation404JSONResponse) VisitApproveRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveRemediationOperation409JSONResponse Error
+
+func (response ApproveRemediationOperation409JSONResponse) VisitApproveRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveRemediationOperation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApproveRemediationOperation503JSONResponse) VisitApproveRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemediationOperationRequestObject struct {
+	RemediationOperationId RemediationOperationId `json:"remediation_operation_id"`
+}
+
+type StartRemediationOperationResponseObject interface {
+	VisitStartRemediationOperationResponse(w http.ResponseWriter) error
+}
+
+type StartRemediationOperation200JSONResponse RemediationOperation
+
+func (response StartRemediationOperation200JSONResponse) VisitStartRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemediationOperation401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response StartRemediationOperation401JSONResponse) VisitStartRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemediationOperation404JSONResponse Error
+
+func (response StartRemediationOperation404JSONResponse) VisitStartRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemediationOperation409JSONResponse Error
+
+func (response StartRemediationOperation409JSONResponse) VisitStartRemediationOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartRemediationOperation503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response StartRemediationOperation503JSONResponse) VisitStartRemediationOperationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -6862,6 +7481,18 @@ type StrictServerInterface interface {
 	// ApproveBreakGlassRequest Approve a pending request as a distinct Platform Operator
 	// (POST /v1/platform/break-glass/requests/{break_glass_request_id}/approval)
 	ApproveBreakGlassRequest(ctx context.Context, request ApproveBreakGlassRequestRequestObject) (ApproveBreakGlassRequestResponseObject, error)
+	// CreateRemediationOperation Request an identity-bound certified Worker remediation operation
+	// (POST /v1/platform/remediation/operations)
+	CreateRemediationOperation(ctx context.Context, request CreateRemediationOperationRequestObject) (CreateRemediationOperationResponseObject, error)
+	// GetRemediationOperation Get an immutable remediation operation projection
+	// (GET /v1/platform/remediation/operations/{remediation_operation_id})
+	GetRemediationOperation(ctx context.Context, request GetRemediationOperationRequestObject) (GetRemediationOperationResponseObject, error)
+	// ApproveRemediationOperation Record one distinct Platform Operator approval for L6
+	// (POST /v1/platform/remediation/operations/{remediation_operation_id}/approvals)
+	ApproveRemediationOperation(ctx context.Context, request ApproveRemediationOperationRequestObject) (ApproveRemediationOperationResponseObject, error)
+	// StartRemediationOperation Fence the current authority and release an approved operation to the dispatcher
+	// (POST /v1/platform/remediation/operations/{remediation_operation_id}/execution)
+	StartRemediationOperation(ctx context.Context, request StartRemediationOperationRequestObject) (StartRemediationOperationResponseObject, error)
 	// GetContentDeletionRequest Get safe aggregate status for a Content Deletion request
 	// (GET /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id})
 	GetContentDeletionRequest(ctx context.Context, request GetContentDeletionRequestRequestObject) (GetContentDeletionRequestResponseObject, error)
@@ -7471,6 +8102,117 @@ func (sh *strictHandler) ApproveBreakGlassRequest(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ApproveBreakGlassRequestResponseObject); ok {
 		if err := validResponse.VisitApproveBreakGlassRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRemediationOperation operation middleware
+func (sh *strictHandler) CreateRemediationOperation(w http.ResponseWriter, r *http.Request, params CreateRemediationOperationParams) {
+	var request CreateRemediationOperationRequestObject
+
+	request.Params = params
+
+	var body CreateRemediationOperationJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRemediationOperation(ctx, request.(CreateRemediationOperationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRemediationOperation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRemediationOperationResponseObject); ok {
+		if err := validResponse.VisitCreateRemediationOperationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRemediationOperation operation middleware
+func (sh *strictHandler) GetRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId) {
+	var request GetRemediationOperationRequestObject
+
+	request.RemediationOperationId = remediationOperationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRemediationOperation(ctx, request.(GetRemediationOperationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRemediationOperation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRemediationOperationResponseObject); ok {
+		if err := validResponse.VisitGetRemediationOperationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApproveRemediationOperation operation middleware
+func (sh *strictHandler) ApproveRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId) {
+	var request ApproveRemediationOperationRequestObject
+
+	request.RemediationOperationId = remediationOperationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApproveRemediationOperation(ctx, request.(ApproveRemediationOperationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApproveRemediationOperation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApproveRemediationOperationResponseObject); ok {
+		if err := validResponse.VisitApproveRemediationOperationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartRemediationOperation operation middleware
+func (sh *strictHandler) StartRemediationOperation(w http.ResponseWriter, r *http.Request, remediationOperationId RemediationOperationId) {
+	var request StartRemediationOperationRequestObject
+
+	request.RemediationOperationId = remediationOperationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartRemediationOperation(ctx, request.(StartRemediationOperationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartRemediationOperation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartRemediationOperationResponseObject); ok {
+		if err := validResponse.VisitStartRemediationOperationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -8148,135 +8890,148 @@ func (sh *strictHandler) RotateWebhookSubscriptionSecret(w http.ResponseWriter, 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

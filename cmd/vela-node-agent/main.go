@@ -38,6 +38,7 @@ type config struct {
 	address             string
 	nodeIdentity        string
 	workerID            uuid.UUID
+	workerEpoch         int64
 	serverCertificate   string
 	serverPrivateKey    string
 	controllerCA        string
@@ -67,6 +68,8 @@ type commandConfig struct {
 
 type capabilityConfig struct {
 	CertificationRevision string   `json:"certification_revision"`
+	PCIBDF                string   `json:"pci_bdf"`
+	FailureClasses        []string `json:"failure_classes"`
 	Actions               []string `json:"actions"`
 }
 
@@ -134,7 +137,11 @@ func run() error {
 		return err
 	}
 	server, err := nodeagent.NewServer(
-		nodeagent.NodeAgentIdentity{NodeIdentity: configuration.nodeIdentity, WorkerID: configuration.workerID},
+		nodeagent.NodeAgentIdentity{
+			NodeIdentity: configuration.nodeIdentity,
+			WorkerID:     configuration.workerID,
+			WorkerEpoch:  configuration.workerEpoch,
+		},
 		resolver, certified, ledger,
 	)
 	if err != nil {
@@ -171,7 +178,11 @@ func run() error {
 	}
 	credentials, err := nodeagent.NewServerTLSCredentials(
 		configuration.serverCertificate, configuration.serverPrivateKey, configuration.controllerCA,
-		nodeagent.NodeAgentIdentity{NodeIdentity: configuration.nodeIdentity, WorkerID: configuration.workerID},
+		nodeagent.NodeAgentIdentity{
+			NodeIdentity: configuration.nodeIdentity,
+			WorkerID:     configuration.workerID,
+			WorkerEpoch:  configuration.workerEpoch,
+		},
 	)
 	if err != nil {
 		return err
@@ -286,6 +297,10 @@ func loadConfig() (config, error) {
 		rateWindow:          defaultRateWindow,
 		rateMax:             defaultRateMax,
 	}
+	configuration.workerEpoch, err = positiveInt64Env("VELA_NODE_AGENT_WORKER_EPOCH")
+	if err != nil {
+		return config{}, err
+	}
 	for name, value := range map[string]string{
 		"VELA_NODE_AGENT_NODE_IDENTITY":       configuration.nodeIdentity,
 		"VELA_NODE_AGENT_TLS_CERT_FILE":       configuration.serverCertificate,
@@ -378,6 +393,14 @@ func positiveUint32Env(name string) (uint32, error) {
 	return uint32(value), nil
 }
 
+func positiveInt64Env(name string) (int64, error) {
+	value, err := strconv.ParseInt(os.Getenv(name), 10, 64)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("%s must be a positive int64", name)
+	}
+	return value, nil
+}
+
 func loadControllerIdentities(path string) (map[string]string, error) {
 	var identities map[string]string
 	if err := readJSONFile(path, &identities); err != nil {
@@ -422,7 +445,15 @@ func loadCapabilities(path string) (map[string]nodeagent.DeviceCapability, error
 		for _, actionText := range capability.Actions {
 			actions[remediation.ActionLevel(actionText)] = true
 		}
-		capabilities[device] = nodeagent.DeviceCapability{CertificationRevision: capability.CertificationRevision, Actions: actions}
+		failureClasses := make(map[string]bool, len(capability.FailureClasses))
+		for _, failureClass := range capability.FailureClasses {
+			failureClasses[failureClass] = true
+		}
+		capabilities[device] = nodeagent.DeviceCapability{
+			GPUUUID: device, PCIBDF: capability.PCIBDF,
+			CertificationRevision: capability.CertificationRevision,
+			FailureClasses:        failureClasses, Actions: actions,
+		}
 	}
 	return capabilities, nil
 }

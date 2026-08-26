@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -25,6 +26,11 @@ import (
 
 const maxCommandOutputBytes = 64 * 1024
 
+var (
+	gpuUUIDPattern = regexp.MustCompile(`^GPU-[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`)
+	pciBDFPattern  = regexp.MustCompile(`^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$`)
+)
+
 type hostEvidenceIdentity struct {
 	OperationID           string `json:"operation_id"`
 	ExecutionClaimID      string `json:"execution_claim_id"`
@@ -32,6 +38,8 @@ type hostEvidenceIdentity struct {
 	WorkerEpoch           int64  `json:"worker_epoch"`
 	NodeIdentity          string `json:"node_identity"`
 	DeviceIdentity        string `json:"device_identity"`
+	GPUUUID               string `json:"gpu_uuid"`
+	PCIBDF                string `json:"pci_bdf"`
 	FailureClass          string `json:"failure_class"`
 	ActionLevel           string `json:"action_level"`
 	CertificationRevision string `json:"certification_revision"`
@@ -176,7 +184,8 @@ func stageDarwinExecutable(executable *os.File) (string, func() error, error) {
 func planArguments(plan remediation.Plan) ([]string, error) {
 	if plan.OperationID == uuid.Nil || plan.ExecutionClaimID == uuid.Nil || plan.WorkerID == uuid.Nil ||
 		plan.WorkerEpoch <= 0 || !validText(plan.NodeIdentity, maxIdentityText) ||
-		!validText(plan.DeviceIdentity, maxIdentityText) || !validText(plan.FailureClass, 200) ||
+		!validText(plan.DeviceIdentity, maxIdentityText) || !validGPUUUID(plan.GPUUUID) ||
+		!validPCIBDF(plan.PCIBDF) || !validText(plan.FailureClass, 200) ||
 		!remediation.IsActionLevel(plan.ActionLevel) ||
 		!validText(plan.CertificationRevision, maxDetailText) ||
 		len(plan.FailureEvidenceDigest) != sha256.Size || plan.DeadlineAt.IsZero() {
@@ -189,6 +198,8 @@ func planArguments(plan remediation.Plan) ([]string, error) {
 		fmt.Sprintf("--vela-worker-epoch=%d", plan.WorkerEpoch),
 		"--vela-node-identity=" + plan.NodeIdentity,
 		"--vela-device-identity=" + plan.DeviceIdentity,
+		"--vela-gpu-uuid=" + plan.GPUUUID,
+		"--vela-pci-bdf=" + plan.PCIBDF,
 		"--vela-failure-class=" + plan.FailureClass,
 		"--vela-action-level=" + string(plan.ActionLevel),
 		"--vela-certification-revision=" + plan.CertificationRevision,
@@ -338,6 +349,7 @@ func (identity hostEvidenceIdentity) matches(plan remediation.Plan) bool {
 		identity.ExecutionClaimID == plan.ExecutionClaimID.String() &&
 		identity.WorkerID == plan.WorkerID.String() && identity.WorkerEpoch == plan.WorkerEpoch &&
 		identity.NodeIdentity == plan.NodeIdentity && identity.DeviceIdentity == plan.DeviceIdentity &&
+		identity.GPUUUID == plan.GPUUUID && identity.PCIBDF == plan.PCIBDF &&
 		identity.FailureClass == plan.FailureClass &&
 		identity.ActionLevel == string(plan.ActionLevel) &&
 		identity.CertificationRevision == plan.CertificationRevision &&
@@ -345,12 +357,20 @@ func (identity hostEvidenceIdentity) matches(plan remediation.Plan) bool {
 }
 
 type CapabilityPolicy interface {
-	Authorize(remediation.Plan) error
+	Authorize(remediation.Plan) (DeviceBinding, error)
 }
 
 type DeviceCapability struct {
+	GPUUUID               string
+	PCIBDF                string
 	CertificationRevision string
+	FailureClasses        map[string]bool
 	Actions               map[remediation.ActionLevel]bool
+}
+
+type DeviceBinding struct {
+	GPUUUID string
+	PCIBDF  string
 }
 
 type StaticCapabilityPolicy struct {
@@ -362,9 +382,23 @@ func NewStaticCapabilityPolicy(devices map[string]DeviceCapability) (*StaticCapa
 		return nil, errors.New("at least one certified device capability is required")
 	}
 	copyOfDevices := make(map[string]DeviceCapability, len(devices))
+	seenPCIBDFs := make(map[string]struct{}, len(devices))
 	for device, capability := range devices {
-		if !validText(device, maxIdentityText) || !validText(capability.CertificationRevision, maxDetailText) || len(capability.Actions) == 0 {
+		if !validGPUUUID(device) || capability.GPUUUID != device || !validPCIBDF(capability.PCIBDF) ||
+			!validText(capability.CertificationRevision, maxDetailText) ||
+			len(capability.FailureClasses) == 0 || len(capability.Actions) == 0 {
 			return nil, errors.New("certified device capability is invalid")
+		}
+		if _, exists := seenPCIBDFs[capability.PCIBDF]; exists {
+			return nil, errors.New("certified device capabilities reuse a PCI BDF")
+		}
+		seenPCIBDFs[capability.PCIBDF] = struct{}{}
+		failureClasses := make(map[string]bool, len(capability.FailureClasses))
+		for failureClass, allowed := range capability.FailureClasses {
+			if !validText(failureClass, 200) || !allowed {
+				return nil, errors.New("certified device capability contains an invalid failure class")
+			}
+			failureClasses[failureClass] = true
 		}
 		actions := make(map[remediation.ActionLevel]bool, len(capability.Actions))
 		for action, allowed := range capability.Actions {
@@ -373,20 +407,36 @@ func NewStaticCapabilityPolicy(devices map[string]DeviceCapability) (*StaticCapa
 			}
 			actions[action] = true
 		}
-		copyOfDevices[device] = DeviceCapability{CertificationRevision: capability.CertificationRevision, Actions: actions}
+		copyOfDevices[device] = DeviceCapability{
+			GPUUUID: device, PCIBDF: capability.PCIBDF,
+			CertificationRevision: capability.CertificationRevision,
+			FailureClasses:        failureClasses, Actions: actions,
+		}
 	}
 	return &StaticCapabilityPolicy{devices: copyOfDevices}, nil
 }
 
-func (policy *StaticCapabilityPolicy) Authorize(plan remediation.Plan) error {
+func (policy *StaticCapabilityPolicy) Authorize(plan remediation.Plan) (DeviceBinding, error) {
 	if policy == nil {
-		return errors.New("node Agent capability policy is not configured")
+		return DeviceBinding{}, errors.New("node Agent capability policy is not configured")
 	}
 	capability, ok := policy.devices[plan.DeviceIdentity]
-	if !ok || capability.CertificationRevision != plan.CertificationRevision || !capability.Actions[plan.ActionLevel] {
-		return fmt.Errorf("device %q is not certified for action %s and revision %q", plan.DeviceIdentity, plan.ActionLevel, plan.CertificationRevision)
+	if !ok || capability.CertificationRevision != plan.CertificationRevision ||
+		!capability.FailureClasses[plan.FailureClass] || !capability.Actions[plan.ActionLevel] {
+		return DeviceBinding{}, fmt.Errorf(
+			"device %q is not certified for failure class %q, action %s, and revision %q",
+			plan.DeviceIdentity, plan.FailureClass, plan.ActionLevel, plan.CertificationRevision,
+		)
 	}
-	return nil
+	return DeviceBinding{GPUUUID: capability.GPUUUID, PCIBDF: capability.PCIBDF}, nil
+}
+
+func validGPUUUID(value string) bool {
+	return gpuUUIDPattern.MatchString(value)
+}
+
+func validPCIBDF(value string) bool {
+	return pciBDFPattern.MatchString(value)
 }
 
 type HostFence interface {
@@ -487,19 +537,23 @@ func (executor *CertifiedExecutor) Execute(ctx context.Context, plan remediation
 	if executor == nil || executor.allowlisted == nil || executor.policy == nil || executor.fence == nil || executor.postcheck == nil || executor.limiter == nil {
 		return remediation.ExecutionResult{}, errors.New("node Agent certified executor is not configured")
 	}
-	if err := executor.policy.Authorize(plan); err != nil {
+	binding, err := executor.policy.Authorize(plan)
+	if err != nil {
 		return remediation.ExecutionResult{}, err
 	}
-	if err := executor.fence.Check(ctx, plan); err != nil {
+	boundPlan := plan
+	boundPlan.GPUUUID = binding.GPUUUID
+	boundPlan.PCIBDF = binding.PCIBDF
+	if err := executor.fence.Check(ctx, boundPlan); err != nil {
 		return remediation.ExecutionResult{}, fmt.Errorf("host fence rejected remediation: %w", err)
 	}
 	if err := executor.limiter.Allow(executor.clock().UTC()); err != nil {
 		return remediation.ExecutionResult{}, err
 	}
-	if _, err := executor.allowlisted.Execute(ctx, plan); err != nil {
+	if _, err := executor.allowlisted.Execute(ctx, boundPlan); err != nil {
 		return remediation.ExecutionResult{}, err
 	}
-	postcheckResult, err := executor.postcheck.Verify(ctx, plan)
+	postcheckResult, err := executor.postcheck.Verify(ctx, boundPlan)
 	if err != nil {
 		return remediation.ExecutionResult{ResultCode: "POSTCHECK_FAILED", Detail: err.Error()}, nil
 	}

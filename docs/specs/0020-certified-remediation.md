@@ -13,6 +13,10 @@ Predecessors:
 - `docs/specs/0005-execution-failure-retry-and-job-expiry.md`
 - `docs/adr/0023-automate-remediation-through-node-reboot.md`
 
+Successor: `docs/specs/0027-certified-remediation-runtime-authority.md` closes
+the repository production caller, local Worker epoch, exact GPU UUID/PCI BDF
+matrix, and end-to-end quarantine evidence gaps left by this slice.
+
 ## Goal
 
 Record and authorize Worker remediation through an identity-bound, auditable,
@@ -184,6 +188,7 @@ isolation, live hardware evidence, and a versioned Launch Receipt.
 The repository-verifiable Certified Remediation control plane and guarded
 transport contract are complete when the implementation commits, this spec, role
 evidence, migrations 00019-00022 down/up, narrow and full verification, and
-standards/spec review are recorded. ADR 0023 remains partial until host hardware evidence and
-Launch Receipt evidence exist; this slice does not change Production Gates from
-`0/9 PASS`.
+standards/spec review are recorded. The successor Slice 27 supplies direct
+repository evidence for Scenario 18. ADR 0023 remains partial until host
+hardware evidence and Launch Receipt evidence exist; neither slice changes
+Production Gates from `0/9 PASS`.

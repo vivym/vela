@@ -3,6 +3,7 @@ package nodeagent
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,10 +79,11 @@ func TestExecutionDispatcherReusesClaimAfterLostRPCResponse(t *testing.T) {
 }
 
 func TestStaticAgentResolverRequiresEndpointWorkerAndSPIFFEIdentity(t *testing.T) {
-	identity := NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: uuid.New()}
+	identity := NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: uuid.New(), WorkerEpoch: 3}
 	endpoint := AgentEndpoint{
 		Address: "127.0.0.1:9443", ServerName: "node-agent.internal",
-		WorkerID: identity.WorkerID, SPIFFEIdentity: NodeAgentSPIFFEIdentity(identity),
+		WorkerID: identity.WorkerID, WorkerEpoch: identity.WorkerEpoch,
+		SPIFFEIdentity: NodeAgentSPIFFEIdentity(identity),
 	}
 	tlsConfig := ClientTLSConfig{CertificatePath: "/client.crt", PrivateKeyPath: "/client.key", RootCAPath: "/ca.crt"}
 	if _, err := NewStaticAgentResolver(map[string]AgentEndpoint{identity.NodeIdentity: endpoint}, tlsConfig, "controller/control-1"); err != nil {
@@ -90,6 +92,19 @@ func TestStaticAgentResolverRequiresEndpointWorkerAndSPIFFEIdentity(t *testing.T
 	endpoint.WorkerID = uuid.New()
 	if _, err := NewStaticAgentResolver(map[string]AgentEndpoint{identity.NodeIdentity: endpoint}, tlsConfig, "controller/control-1"); err == nil {
 		t.Fatal("endpoint with mismatched Worker and SPIFFE identity was accepted")
+	}
+	endpoint.WorkerID = identity.WorkerID
+	endpoint.WorkerEpoch = identity.WorkerEpoch - 1
+	endpoint.SPIFFEIdentity = NodeAgentSPIFFEIdentity(identity)
+	if _, err := NewStaticAgentResolver(map[string]AgentEndpoint{identity.NodeIdentity: endpoint}, tlsConfig, "controller/control-1"); err != nil {
+		t.Fatalf("static resolver rejected structurally valid stale endpoint: %v", err)
+	}
+	resolver, err := NewStaticAgentResolver(map[string]AgentEndpoint{identity.NodeIdentity: endpoint}, tlsConfig, "controller/control-1")
+	if err != nil {
+		t.Fatalf("NewStaticAgentResolver: %v", err)
+	}
+	if _, err := resolver.Resolve(context.Background(), identity); err == nil || !strings.Contains(err.Error(), "stale Worker epoch") {
+		t.Fatalf("stale endpoint resolution error = %v", err)
 	}
 }
 

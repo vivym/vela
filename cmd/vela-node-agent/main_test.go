@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/nodeagent"
+	"github.com/vivym/vela/internal/remediation"
 	"google.golang.org/grpc"
 )
 
@@ -16,6 +19,47 @@ func TestLoadConfigRequiresHostAgentBoundaries(t *testing.T) {
 	t.Setenv("VELA_NODE_AGENT_WORKER_ID", "")
 	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_NODE_AGENT_WORKER_ID") {
 		t.Fatalf("missing Worker identity error = %v", err)
+	}
+}
+
+func TestLoadConfigRequiresCurrentWorkerEpoch(t *testing.T) {
+	setValidNodeAgentEnv(t)
+	t.Setenv("VELA_NODE_AGENT_WORKER_EPOCH", "")
+	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_NODE_AGENT_WORKER_EPOCH") {
+		t.Fatalf("missing Worker epoch error = %v", err)
+	}
+}
+
+func TestLoadCapabilitiesBindsGPUUUIDPCIBDFFailureAndAction(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "capabilities.json")
+	const gpuUUID = "GPU-00000000-0000-0000-0000-000000000001"
+	encoded, err := json.Marshal(map[string]capabilityConfig{
+		gpuUUID: {
+			CertificationRevision: "matrix-v1", PCIBDF: "0000:41:00.0",
+			FailureClasses: []string{"PROCESS_FAILURE"}, Actions: []string{"L0_PROCESS_RESTART"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("encode capability fixture: %v", err)
+	}
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatalf("write capability fixture: %v", err)
+	}
+	capabilities, err := loadCapabilities(path)
+	if err != nil {
+		t.Fatalf("loadCapabilities: %v", err)
+	}
+	policy, err := nodeagent.NewStaticCapabilityPolicy(capabilities)
+	if err != nil {
+		t.Fatalf("NewStaticCapabilityPolicy: %v", err)
+	}
+	binding, err := policy.Authorize(remediation.Plan{
+		DeviceIdentity: gpuUUID, FailureClass: "PROCESS_FAILURE",
+		ActionLevel: remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1",
+	})
+	if err != nil || binding.GPUUUID != gpuUUID || binding.PCIBDF != "0000:41:00.0" {
+		t.Fatalf("capability binding = %#v error=%v", binding, err)
 	}
 }
 
@@ -114,6 +158,7 @@ func setValidNodeAgentEnv(t *testing.T) {
 		"VELA_NODE_AGENT_ADDRESS":               "127.0.0.1:9443",
 		"VELA_NODE_AGENT_NODE_IDENTITY":         "node-1",
 		"VELA_NODE_AGENT_WORKER_ID":             "83000000-0000-0000-0000-000000000001",
+		"VELA_NODE_AGENT_WORKER_EPOCH":          "7",
 		"VELA_NODE_AGENT_TLS_CERT_FILE":         filepath.Join(root, "tls.crt"),
 		"VELA_NODE_AGENT_TLS_KEY_FILE":          filepath.Join(root, "tls.key"),
 		"VELA_NODE_AGENT_CONTROLLER_CA_FILE":    filepath.Join(root, "ca.crt"),

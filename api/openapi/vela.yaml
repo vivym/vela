@@ -311,6 +311,130 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v1/platform/remediation/operations:
+    post:
+      operationId: createRemediationOperation
+      summary: Request an identity-bound certified Worker remediation operation
+      parameters:
+        - $ref: '#/components/parameters/RemediationIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRemediationOperationRequest'
+      responses:
+        '201':
+          description: Remediation operation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '200':
+          description: Exact remediation operation replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Worker does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Identity, epoch, active-operation, or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/remediation/operations/{remediation_operation_id}:
+    get:
+      operationId: getRemediationOperation
+      summary: Get an immutable remediation operation projection
+      parameters:
+        - $ref: '#/components/parameters/RemediationOperationId'
+      responses:
+        '200':
+          description: Remediation operation projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Remediation operation does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/remediation/operations/{remediation_operation_id}/approvals:
+    post:
+      operationId: approveRemediationOperation
+      summary: Record one distinct Platform Operator approval for L6
+      parameters:
+        - $ref: '#/components/parameters/RemediationOperationId'
+      responses:
+        '200':
+          description: Approval recorded or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Remediation operation does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Operation is not awaiting approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/remediation/operations/{remediation_operation_id}/execution:
+    post:
+      operationId: startRemediationOperation
+      summary: Fence the current authority and release an approved operation to the dispatcher
+      parameters:
+        - $ref: '#/components/parameters/RemediationOperationId'
+      responses:
+        '200':
+          description: Operation is executing or exact start replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Remediation operation does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Identity, epoch, lease fence, deadline, or L6 approval conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/platform/break-glass/requests:
     post:
       operationId: createBreakGlassRequest
@@ -1196,6 +1320,13 @@ components:
       schema:
         type: string
         format: uuid
+    RemediationOperationId:
+      name: remediation_operation_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     BreakGlassGrantId:
       name: break_glass_grant_id
       in: path
@@ -1280,6 +1411,15 @@ components:
         minLength: 1
         maxLength: 200
         pattern: '^[A-Za-z0-9._:-]+$'
+    RemediationIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+        pattern: '^[A-Za-z0-9._:-]+$'
   headers:
     RetryAfter:
       schema:
@@ -1344,6 +1484,137 @@ components:
         - BreakGlassStateACTIVE
         - BreakGlassStateREVOKED
         - BreakGlassStateEXPIRED
+    RemediationActionLevel:
+      type: string
+      enum:
+        - L0_PROCESS_RESTART
+        - L1_CUDA_CLEANUP
+        - L2_GPU_RESET
+        - L3_PCIE_FLR
+        - L4_DRIVER_RELOAD
+        - L5_NODE_REBOOT
+        - L6_BMC_POWER_CYCLE
+        - L7_QUARANTINE
+    RemediationOperationState:
+      type: string
+      enum:
+        - REQUESTED
+        - APPROVAL_REQUIRED
+        - EXECUTING
+        - SUCCEEDED
+        - QUARANTINED
+    CreateRemediationOperationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - worker_id
+        - worker_epoch
+        - node_identity
+        - gpu_uuid
+        - failure_class
+        - evidence_sha256
+        - certification_revision
+        - action_level
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        worker_epoch:
+          type: integer
+          format: int64
+          minimum: 1
+        node_identity:
+          type: string
+          minLength: 1
+          maxLength: 500
+        gpu_uuid:
+          type: string
+          pattern: '^GPU-[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
+        failure_class:
+          type: string
+          minLength: 1
+          maxLength: 200
+        evidence_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        certification_revision:
+          type: string
+          maxLength: 200
+        action_level:
+          $ref: '#/components/schemas/RemediationActionLevel'
+    RemediationOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - worker_id
+        - worker_epoch
+        - node_identity
+        - gpu_uuid
+        - failure_class
+        - evidence_sha256
+        - certification_revision
+        - action_level
+        - state
+        - requested_by
+        - requested_at
+        - deadline_at
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        worker_epoch:
+          type: integer
+          format: int64
+        node_identity:
+          type: string
+        gpu_uuid:
+          type: string
+        failure_class:
+          type: string
+        evidence_sha256:
+          type: string
+        certification_revision:
+          type: string
+        action_level:
+          $ref: '#/components/schemas/RemediationActionLevel'
+        state:
+          $ref: '#/components/schemas/RemediationOperationState'
+        requested_by:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        deadline_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        result_code:
+          type: string
+        result_detail:
+          type: string
+        postcheck_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        first_approver:
+          type: string
+        second_approver:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
     CreateBreakGlassRequest:
       type: object
       additionalProperties: false
