@@ -40,6 +40,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 	setLeaseRenewalProtocolGate(t, database.Admin, true, "Slice 29 adjacent N-1 rollout")
 	enforceFleetProtocol(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	_ = newFinanceReconciliationService(t, database)
 	poolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
 	profileID := uuid.MustParse("00000000-0000-0000-0000-000000000014")
 	oldWorkerID := uuid.MustParse("23000000-0000-0000-0000-000000000440")
@@ -70,7 +71,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 		t.Fatalf("record mixed-version Worker capacity = %#v error=%v", capacity, err)
 	}
 
-	nMinusOne := buildNMinusOneBinaries(t, debugDumpNMinusOneCommit)
+	nMinusOne := buildNMinusOneBinaries(t, adjacentRolloutNMinusOneCommit)
 	assertAdjacentNMinusOneControlStartupPassed(
 		t,
 		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
@@ -300,81 +301,243 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 		rollbackDispatch.IntentID == uuid.Nil || rollbackDispatch.AttemptID == uuid.Nil {
 		t.Fatalf("exact N-1 Scheduler rollback result = %#v", rollbackDispatch)
 	}
-	var (
-		oldJobState       string
-		oldAttemptState   string
-		oldLeaseRevoked   bool
-		inboxReceipts     int
-		rolloutJobs       int
-		rolloutAttempts   int
-		rolloutLeases     int
-		rolloutDispatches int
-	)
-	if err := database.Admin.QueryRow(`
-		SELECT
-			(SELECT state::text FROM jobs WHERE id = $1),
-			(SELECT state::text FROM attempts WHERE id = $2),
-			(SELECT revoked_at IS NOT NULL FROM attempt_leases WHERE attempt_id = $2),
-			(SELECT count(*) FROM inbox_receipts
-			 WHERE consumer_name = 'scheduler' AND event_id = $3),
-			(SELECT count(*) FROM jobs WHERE id = ANY($4::uuid[])),
-			(SELECT count(*) FROM attempts WHERE job_id = ANY($4::uuid[])),
-			(SELECT count(*) FROM attempt_leases
-			 WHERE attempt_id IN (SELECT id FROM attempts WHERE job_id = ANY($4::uuid[]))),
-			(SELECT count(*) FROM scheduler_dispatch_intents
-			 WHERE job_id = ANY($4::uuid[]))
-	`,
-		oldJobID,
-		assignment.AttemptID,
-		oldEventID,
-		[]uuid.UUID{oldJobID, rollbackJobID, rollbackAdmissionID},
-	).Scan(
-		&oldJobState,
-		&oldAttemptState,
-		&oldLeaseRevoked,
-		&inboxReceipts,
-		&rolloutJobs,
-		&rolloutAttempts,
-		&rolloutLeases,
-		&rolloutDispatches,
-	); err != nil {
-		t.Fatalf("read mixed-version rollout authority: %v", err)
+	authorityExpectation := mixedVersionAuthorityExpectation{
+		OldJobID:            oldJobID,
+		OldIntentID:         currentDispatches[0].IntentID,
+		OldAttemptID:        assignment.AttemptID,
+		OldEventID:          oldEventID,
+		OldWorkerID:         oldWorkerID,
+		OldLeaseFence:       assignment.LeaseFence,
+		RollbackJobID:       rollbackJobID,
+		RollbackAdmissionID: rollbackAdmissionID,
+		RollbackIntentID:    rollbackDispatch.IntentID,
+		RollbackAttemptID:   rollbackDispatch.AttemptID,
+		RollbackWorkerID:    rollbackWorkerID,
+		RollbackLeaseFence:  rollbackDispatch.LeaseFence,
 	}
-	if oldJobState != "FAILED" || oldAttemptState != "FAILED" || !oldLeaseRevoked ||
-		inboxReceipts != 1 || rolloutJobs != 3 || rolloutAttempts != 2 ||
-		rolloutLeases != 2 || rolloutDispatches != 2 {
-		t.Fatalf(
-			"mixed-version authority = old %s/%s revoked %t inbox %d jobs/attempts/leases/dispatches %d/%d/%d/%d",
-			oldJobState,
-			oldAttemptState,
-			oldLeaseRevoked,
-			inboxReceipts,
-			rolloutJobs,
-			rolloutAttempts,
-			rolloutLeases,
-			rolloutDispatches,
-		)
-	}
+	authority := readMixedVersionAuthoritySnapshot(t, database, authorityExpectation)
+	assertMixedVersionAuthoritySnapshot(t, authority, authorityExpectation)
 	t.Logf(
-		"mixed-version rollout current=%s n_minus_one=%s event=%s payload_sha256=%x old_job=%s old_attempt=%s old_worker=%s drain=%s rollback_job=%s rollback_intent=%s rollback_attempt=%s rollback_admission=%s authority=jobs:%d,attempts:%d,leases:%d,dispatches:%d,inbox:%d",
+		"mixed-version rollout current=%s n_minus_one=%s event=%s payload_sha256=%x old_job=%s old_intent=%s old_attempt=%s old_lease=%s old_lease_fence=%d old_worker=%s drain=%s inbox=%s/%s/%s/%s/%s/%s/%d/%s rollback_job=%s rollback_intent=%s rollback_attempt=%s rollback_lease=%s rollback_lease_fence=%d rollback_worker=%s rollback_admission=%s authority=jobs:%d,attempts:%d,leases:%d,dispatches:%d,inbox:1",
 		"507384774052efda1f14f5689e6bee487ba3259e",
-		debugDumpNMinusOneCommit,
+		adjacentRolloutNMinusOneCommit,
 		oldEventID,
 		oldPayloadDigest,
 		oldJobID,
-		assignment.AttemptID,
+		authority.Old.IntentID,
+		authority.Old.AttemptID,
+		authority.Old.LeaseID,
+		authority.Old.LeaseFence,
 		oldWorkerID,
 		drainID,
+		authority.Inbox.Consumer,
+		authority.Inbox.EventID,
+		authority.Inbox.OrganizationID,
+		authority.Inbox.ProjectID,
+		authority.Inbox.AggregateType,
+		authority.Inbox.AggregateID,
+		authority.Inbox.AggregateVersion,
+		authority.Inbox.EventType,
 		rollbackJobID,
-		rollbackDispatch.IntentID,
-		rollbackDispatch.AttemptID,
+		authority.Rollback.IntentID,
+		authority.Rollback.AttemptID,
+		authority.Rollback.LeaseID,
+		authority.Rollback.LeaseFence,
+		authority.Rollback.LeaseWorkerID,
 		rollbackAdmissionID,
-		rolloutJobs,
-		rolloutAttempts,
-		rolloutLeases,
-		rolloutDispatches,
-		inboxReceipts,
+		authority.Counts.Jobs,
+		authority.Counts.Attempts,
+		authority.Counts.Leases,
+		authority.Counts.Dispatches,
 	)
+}
+
+type mixedVersionAuthorityChain struct {
+	JobState      string
+	AttemptState  string
+	IntentID      uuid.UUID
+	AttemptID     uuid.UUID
+	LeaseID       uuid.UUID
+	LeaseWorkerID uuid.UUID
+	LeaseFence    int64
+	LeaseRevoked  bool
+}
+
+type mixedVersionInboxIdentity struct {
+	Consumer         string
+	EventID          uuid.UUID
+	OrganizationID   uuid.UUID
+	ProjectID        uuid.UUID
+	AggregateType    string
+	AggregateID      uuid.UUID
+	AggregateVersion int64
+	EventType        string
+}
+
+type mixedVersionAuthorityCounts struct {
+	Jobs       int
+	Attempts   int
+	Leases     int
+	Dispatches int
+}
+
+type mixedVersionAuthoritySnapshot struct {
+	Old                    mixedVersionAuthorityChain
+	Inbox                  mixedVersionInboxIdentity
+	Rollback               mixedVersionAuthorityChain
+	RollbackAdmissionState string
+	Counts                 mixedVersionAuthorityCounts
+}
+
+type mixedVersionAuthorityExpectation struct {
+	OldJobID            uuid.UUID
+	OldIntentID         uuid.UUID
+	OldAttemptID        uuid.UUID
+	OldEventID          uuid.UUID
+	OldWorkerID         uuid.UUID
+	OldLeaseFence       int64
+	RollbackJobID       uuid.UUID
+	RollbackAdmissionID uuid.UUID
+	RollbackIntentID    uuid.UUID
+	RollbackAttemptID   uuid.UUID
+	RollbackWorkerID    uuid.UUID
+	RollbackLeaseFence  int64
+}
+
+func readMixedVersionAuthoritySnapshot(
+	t *testing.T,
+	database testDatabase,
+	expected mixedVersionAuthorityExpectation,
+) mixedVersionAuthoritySnapshot {
+	t.Helper()
+	var snapshot mixedVersionAuthoritySnapshot
+	err := database.Admin.QueryRow(`
+		SELECT
+			old_job.state::text,
+			old_attempt.state::text,
+			old_intent.id,
+			old_attempt.id,
+			old_lease.id,
+			old_lease.worker_id,
+			old_lease.fence,
+			old_lease.revoked_at IS NOT NULL,
+			inbox.consumer_name,
+			inbox.event_id,
+			inbox.organization_id,
+			inbox.project_id,
+			inbox.aggregate_type,
+			inbox.aggregate_id,
+			inbox.aggregate_version,
+			inbox.event_type,
+			rollback_job.state::text,
+			rollback_attempt.state::text,
+			rollback_intent.id,
+			rollback_attempt.id,
+			rollback_lease.id,
+			rollback_lease.worker_id,
+			rollback_lease.fence,
+			rollback_lease.revoked_at IS NOT NULL,
+			rollback_admission.state::text,
+			(SELECT count(*) FROM jobs WHERE id = ANY($9::uuid[])),
+			(SELECT count(*) FROM attempts WHERE job_id = ANY($9::uuid[])),
+			(SELECT count(*) FROM attempt_leases
+			 WHERE attempt_id IN (SELECT id FROM attempts WHERE job_id = ANY($9::uuid[]))),
+			(SELECT count(*) FROM scheduler_dispatch_intents
+			 WHERE job_id = ANY($9::uuid[]))
+		FROM jobs AS old_job
+		JOIN scheduler_dispatch_intents AS old_intent
+		  ON old_intent.id = $2 AND old_intent.job_id = old_job.id
+		JOIN attempts AS old_attempt
+		  ON old_attempt.id = $3
+		 AND old_attempt.job_id = old_job.id
+		 AND old_attempt.scheduler_dispatch_intent_id = old_intent.id
+		JOIN attempt_leases AS old_lease ON old_lease.attempt_id = old_attempt.id
+		JOIN inbox_receipts AS inbox
+		  ON inbox.consumer_name = 'scheduler' AND inbox.event_id = $4
+		JOIN jobs AS rollback_job ON rollback_job.id = $5
+		JOIN jobs AS rollback_admission ON rollback_admission.id = $6
+		JOIN scheduler_dispatch_intents AS rollback_intent
+		  ON rollback_intent.id = $7 AND rollback_intent.job_id = rollback_job.id
+		JOIN attempts AS rollback_attempt
+		  ON rollback_attempt.id = $8
+		 AND rollback_attempt.job_id = rollback_job.id
+		 AND rollback_attempt.scheduler_dispatch_intent_id = rollback_intent.id
+		JOIN attempt_leases AS rollback_lease ON rollback_lease.attempt_id = rollback_attempt.id
+		WHERE old_job.id = $1
+	`,
+		expected.OldJobID,
+		expected.OldIntentID,
+		expected.OldAttemptID,
+		expected.OldEventID,
+		expected.RollbackJobID,
+		expected.RollbackAdmissionID,
+		expected.RollbackIntentID,
+		expected.RollbackAttemptID,
+		[]uuid.UUID{expected.OldJobID, expected.RollbackJobID, expected.RollbackAdmissionID},
+	).Scan(
+		&snapshot.Old.JobState,
+		&snapshot.Old.AttemptState,
+		&snapshot.Old.IntentID,
+		&snapshot.Old.AttemptID,
+		&snapshot.Old.LeaseID,
+		&snapshot.Old.LeaseWorkerID,
+		&snapshot.Old.LeaseFence,
+		&snapshot.Old.LeaseRevoked,
+		&snapshot.Inbox.Consumer,
+		&snapshot.Inbox.EventID,
+		&snapshot.Inbox.OrganizationID,
+		&snapshot.Inbox.ProjectID,
+		&snapshot.Inbox.AggregateType,
+		&snapshot.Inbox.AggregateID,
+		&snapshot.Inbox.AggregateVersion,
+		&snapshot.Inbox.EventType,
+		&snapshot.Rollback.JobState,
+		&snapshot.Rollback.AttemptState,
+		&snapshot.Rollback.IntentID,
+		&snapshot.Rollback.AttemptID,
+		&snapshot.Rollback.LeaseID,
+		&snapshot.Rollback.LeaseWorkerID,
+		&snapshot.Rollback.LeaseFence,
+		&snapshot.Rollback.LeaseRevoked,
+		&snapshot.RollbackAdmissionState,
+		&snapshot.Counts.Jobs,
+		&snapshot.Counts.Attempts,
+		&snapshot.Counts.Leases,
+		&snapshot.Counts.Dispatches,
+	)
+	if err != nil {
+		t.Fatalf("read mixed-version rollout authority: %v", err)
+	}
+	return snapshot
+}
+
+func assertMixedVersionAuthoritySnapshot(
+	t *testing.T,
+	snapshot mixedVersionAuthoritySnapshot,
+	expected mixedVersionAuthorityExpectation,
+) {
+	t.Helper()
+	if snapshot.Old.JobState != "FAILED" || snapshot.Old.AttemptState != "FAILED" ||
+		!snapshot.Old.LeaseRevoked || snapshot.Old.IntentID != expected.OldIntentID ||
+		snapshot.Old.AttemptID != expected.OldAttemptID || snapshot.Old.LeaseID == uuid.Nil ||
+		snapshot.Old.LeaseWorkerID != expected.OldWorkerID ||
+		snapshot.Old.LeaseFence != expected.OldLeaseFence ||
+		snapshot.Inbox.Consumer != "scheduler" || snapshot.Inbox.EventID != expected.OldEventID ||
+		snapshot.Inbox.OrganizationID != uuid.MustParse(testOrganizationID) ||
+		snapshot.Inbox.ProjectID != uuid.MustParse(testProjectID) ||
+		snapshot.Inbox.AggregateType != "Job" || snapshot.Inbox.AggregateID != expected.OldJobID ||
+		snapshot.Inbox.AggregateVersion < 1 || snapshot.Inbox.EventType != "job.ready" ||
+		snapshot.Rollback.JobState != "ASSIGNED" || snapshot.Rollback.AttemptState != "ASSIGNED" ||
+		snapshot.Rollback.LeaseRevoked || snapshot.Rollback.IntentID != expected.RollbackIntentID ||
+		snapshot.Rollback.AttemptID != expected.RollbackAttemptID ||
+		snapshot.Rollback.LeaseID == uuid.Nil ||
+		snapshot.Rollback.LeaseWorkerID != expected.RollbackWorkerID ||
+		snapshot.Rollback.LeaseFence != expected.RollbackLeaseFence ||
+		snapshot.RollbackAdmissionState != "QUEUED" || snapshot.Counts.Jobs != 3 ||
+		snapshot.Counts.Attempts != 2 || snapshot.Counts.Leases != 2 ||
+		snapshot.Counts.Dispatches != 2 {
+		t.Fatalf("mixed-version authority mismatch: snapshot=%#v expected=%#v", snapshot, expected)
+	}
 }
 
 type mixedVersionWorkerEndpoint struct {

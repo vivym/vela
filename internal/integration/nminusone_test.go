@@ -6,11 +6,14 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -44,6 +47,7 @@ const (
 	retentionNMinusOneCommit              = "87d1f27be568c96a31dcbda9d9c74ce7d2ed3f96"
 	incompleteArtifactNMinusOneCommit     = "d038fb9f4fb9eb64d9e3b816e75d737783b9ccf5"
 	debugDumpNMinusOneCommit              = "31991452e60c4254b3b67f72a98ee73e56f7915b"
+	adjacentRolloutNMinusOneCommit        = debugDumpNMinusOneCommit
 	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
 	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
 	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
@@ -2061,6 +2065,42 @@ type nMinusOneBinaries struct {
 	RetentionProbe         string
 }
 
+type adjacentNMinusOneProbeDescriptor struct {
+	CommandName string
+	SourceName  string
+	BinaryName  string
+	assign      func(*nMinusOneBinaries, string)
+}
+
+func adjacentNMinusOneProbeDescriptors() []adjacentNMinusOneProbeDescriptor {
+	return []adjacentNMinusOneProbeDescriptor{
+		{
+			CommandName: "vela-nminusone-jetstream-outbox-probe",
+			SourceName:  "nminusone_jetstream_outbox_probe.go.txt",
+			BinaryName:  "vela-jetstream-outbox-probe-n-minus-one",
+			assign: func(binaries *nMinusOneBinaries, path string) {
+				binaries.JetStreamOutboxProbe = path
+			},
+		},
+		{
+			CommandName: "vela-nminusone-scheduler-probe",
+			SourceName:  "nminusone_scheduler_probe.go.txt",
+			BinaryName:  "vela-scheduler-probe-n-minus-one",
+			assign: func(binaries *nMinusOneBinaries, path string) {
+				binaries.SchedulerProbe = path
+			},
+		},
+		{
+			CommandName: "vela-nminusone-worker-transport-probe",
+			SourceName:  "nminusone_worker_transport_probe.go.txt",
+			BinaryName:  "vela-worker-transport-probe-n-minus-one",
+			assign: func(binaries *nMinusOneBinaries, path string) {
+				binaries.WorkerTransportProbe = path
+			},
+		},
+	}
+}
+
 type nMinusOneVisibleCompletionResult struct {
 	Decision      string    `json:"decision"`
 	ArtifactSetID uuid.UUID `json:"artifact_set_id"`
@@ -2143,6 +2183,7 @@ type nMinusOneRetentionProbeResult struct {
 
 func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	t.Helper()
+	adjacentProbes := adjacentNMinusOneProbeDescriptors()
 	sourceRoot := t.TempDir()
 	archive := exec.Command("git", "archive", "--format=tar", commit)
 	archive.Dir = repositoryRoot(t)
@@ -2371,26 +2412,22 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		}
 	}
 	adjacentProbeDirectories := map[string]string{}
-	if commit == debugDumpNMinusOneCommit {
-		for commandName, sourceName := range map[string]string{
-			"vela-nminusone-jetstream-outbox-probe": "nminusone_jetstream_outbox_probe.go.txt",
-			"vela-nminusone-scheduler-probe":        "nminusone_scheduler_probe.go.txt",
-			"vela-nminusone-worker-transport-probe": "nminusone_worker_transport_probe.go.txt",
-		} {
+	if commit == adjacentRolloutNMinusOneCommit {
+		for _, probe := range adjacentProbes {
 			source, readErr := os.ReadFile(filepath.Join(
-				repositoryRoot(t), "internal", "integration", "testdata", sourceName,
+				repositoryRoot(t), "internal", "integration", "testdata", probe.SourceName,
 			))
 			if readErr != nil {
-				t.Fatalf("read adjacent N-1 %s: %v", sourceName, readErr)
+				t.Fatalf("read adjacent N-1 %s: %v", probe.SourceName, readErr)
 			}
-			directory := filepath.Join(sourceRoot, "cmd", commandName)
+			directory := filepath.Join(sourceRoot, "cmd", probe.CommandName)
 			if err := os.MkdirAll(directory, 0o755); err != nil {
-				t.Fatalf("create adjacent N-1 %s directory: %v", commandName, err)
+				t.Fatalf("create adjacent N-1 %s directory: %v", probe.CommandName, err)
 			}
 			if err := os.WriteFile(filepath.Join(directory, "main.go"), source, 0o600); err != nil {
-				t.Fatalf("write adjacent N-1 %s: %v", commandName, err)
+				t.Fatalf("write adjacent N-1 %s: %v", probe.CommandName, err)
 			}
-			adjacentProbeDirectories[commandName] = directory
+			adjacentProbeDirectories[probe.CommandName] = directory
 		}
 	}
 
@@ -2425,16 +2462,10 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			binaryDirectory, "vela-retention-probe-n-minus-one",
 		)
 	}
-	if commit == debugDumpNMinusOneCommit {
-		binaries.JetStreamOutboxProbe = filepath.Join(
-			binaryDirectory, "vela-jetstream-outbox-probe-n-minus-one",
-		)
-		binaries.SchedulerProbe = filepath.Join(
-			binaryDirectory, "vela-scheduler-probe-n-minus-one",
-		)
-		binaries.WorkerTransportProbe = filepath.Join(
-			binaryDirectory, "vela-worker-transport-probe-n-minus-one",
-		)
+	if commit == adjacentRolloutNMinusOneCommit {
+		for _, probe := range adjacentProbes {
+			probe.assign(&binaries, filepath.Join(binaryDirectory, probe.BinaryName))
+		}
 	}
 	build := exec.Command(
 		"go", "build",
@@ -2541,20 +2572,17 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 retention probe: %v\n%s", err, output)
 		}
 	}
-	if commit == debugDumpNMinusOneCommit {
-		for commandName, binary := range map[string]string{
-			"vela-nminusone-jetstream-outbox-probe": binaries.JetStreamOutboxProbe,
-			"vela-nminusone-scheduler-probe":        binaries.SchedulerProbe,
-			"vela-nminusone-worker-transport-probe": binaries.WorkerTransportProbe,
-		} {
-			build = exec.Command("go", "build", "-o", binary, "./cmd/"+commandName)
+	if commit == adjacentRolloutNMinusOneCommit {
+		for _, probe := range adjacentProbes {
+			binary := filepath.Join(binaryDirectory, probe.BinaryName)
+			build = exec.Command("go", "build", "-o", binary, "./cmd/"+probe.CommandName)
 			build.Dir = sourceRoot
 			build.Env = environmentWith(map[string]string{"GOWORK": "off"})
 			if output, err := build.CombinedOutput(); err != nil {
 				t.Fatalf(
 					"build adjacent N-1 %s from %s: %v\n%s",
-					commandName,
-					adjacentProbeDirectories[commandName],
+					probe.CommandName,
+					adjacentProbeDirectories[probe.CommandName],
 					err,
 					output,
 				)
@@ -2697,24 +2725,7 @@ func runNMinusOneAdmissionProbeWithKey(
 ) string {
 	t.Helper()
 	command := exec.Command(binary)
-	command.Env = environmentWith(map[string]string{
-		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
-			t, adminDSN, "vela_auth_login", "vela-auth-password",
-		),
-		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
-			t, adminDSN, "vela_request_login", "vela-request-password",
-		),
-		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
-			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
-		),
-		"VELA_SCHEDULER_INBOX_DATABASE_URL": roleDatabaseURL(
-			t, adminDSN, "vela_scheduler_inbox_login", "vela-scheduler-inbox-password",
-		),
-		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
-		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
-		"VELA_PROJECT_ID":               testProjectID,
-		"VELA_IDEMPOTENCY_KEY":          idempotencyKey,
-	})
+	command.Env = nMinusOneAdmissionProbeEnvironment(t, adminDSN, idempotencyKey, false)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("run N-1 Admission writer probe: %v\n%s", err, output)
@@ -2739,7 +2750,26 @@ func runNMinusOneAdmissionFailureProbe(
 ) nMinusOneAdmissionProbeResult {
 	t.Helper()
 	command := exec.Command(binary)
-	command.Env = environmentWith(map[string]string{
+	command.Env = nMinusOneAdmissionProbeEnvironment(t, adminDSN, idempotencyKey, true)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Admission failure probe: %v\n%s", err, output)
+	}
+	var result nMinusOneAdmissionProbeResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Admission failure probe: %v\n%s", err, output)
+	}
+	return result
+}
+
+func nMinusOneAdmissionProbeEnvironment(
+	t *testing.T,
+	adminDSN string,
+	idempotencyKey string,
+	expectDatabaseFailure bool,
+) []string {
+	t.Helper()
+	overrides := map[string]string{
 		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_auth_login", "vela-auth-password",
 		),
@@ -2756,17 +2786,11 @@ func runNMinusOneAdmissionFailureProbe(
 		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
 		"VELA_PROJECT_ID":               testProjectID,
 		"VELA_IDEMPOTENCY_KEY":          idempotencyKey,
-		"VELA_EXPECT_DATABASE_FAILURE":  "true",
-	})
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("run N-1 Admission failure probe: %v\n%s", err, output)
 	}
-	var result nMinusOneAdmissionProbeResult
-	if err := json.Unmarshal(output, &result); err != nil {
-		t.Fatalf("decode N-1 Admission failure probe: %v\n%s", err, output)
+	if expectDatabaseFailure {
+		overrides["VELA_EXPECT_DATABASE_FAILURE"] = "true"
 	}
-	return result
+	return environmentWith(overrides)
 }
 
 func runNMinusOneHumanAdmissionProbe(
@@ -3018,7 +3042,8 @@ func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
 
 func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) string {
 	t.Helper()
-	webhookKeyringFile := filepath.Join(t.TempDir(), "webhook-keyring.json")
+	temporary := t.TempDir()
+	webhookKeyringFile := filepath.Join(temporary, "webhook-keyring.json")
 	webhookKey := base64.StdEncoding.EncodeToString(
 		[]byte("0123456789abcdef0123456789abcdef"),
 	)
@@ -3028,6 +3053,55 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		0o600,
 	); err != nil {
 		t.Fatalf("write N-1 Webhook keyring: %v", err)
+	}
+	nodeIdentity := "slice-29-node"
+	nodeWorkerID := uuid.MustParse("23000000-0000-0000-0000-000000000443")
+	nodeAgentFile := filepath.Join(temporary, "node-agents.json")
+	nodeAgentFixture, err := json.Marshal(map[string]map[string]any{
+		nodeIdentity: {
+			"address":      "127.0.0.1:1",
+			"server_name":  "node-agent.internal",
+			"worker_id":    nodeWorkerID,
+			"worker_epoch": 1,
+			"spiffe_identity": "spiffe://vela.internal/node-agent/" +
+				base64.RawURLEncoding.EncodeToString([]byte(nodeIdentity)) + "/" + nodeWorkerID.String(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("encode N-1 Node Agent endpoint fixture: %v", err)
+	}
+	if err := os.WriteFile(nodeAgentFile, nodeAgentFixture, 0o600); err != nil {
+		t.Fatalf("write N-1 Node Agent endpoint fixture: %v", err)
+	}
+	caCertificate, caKey, caPEM := issueWorkerTransportTestCA(t)
+	financeCertificate, financeKey := issueWorkerTransportTestCertificate(
+		t,
+		caCertificate,
+		caKey,
+		pkix.Name{CommonName: "finance-reconciliation.internal"},
+		[]string{"finance-reconciliation.internal"},
+		nil,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	)
+	financeCertificateFile := filepath.Join(temporary, "finance-reconciliation.crt")
+	financeKeyFile := filepath.Join(temporary, "finance-reconciliation.key")
+	financeClientCAFile := filepath.Join(temporary, "finance-reconciliation-client-ca.crt")
+	for path, contents := range map[string][]byte{
+		financeCertificateFile: financeCertificate,
+		financeKeyFile:         financeKey,
+		financeClientCAFile:    caPEM,
+	} {
+		if err := os.WriteFile(path, contents, 0o600); err != nil {
+			t.Fatalf("write N-1 Finance Reconciliation TLS fixture %s: %v", path, err)
+		}
+	}
+	financeListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve N-1 Finance Reconciliation address: %v", err)
+	}
+	financeAddress := financeListener.Addr().String()
+	if err := financeListener.Close(); err != nil {
+		t.Fatalf("release N-1 Finance Reconciliation address: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -3073,18 +3147,8 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			"vela_retention_request_login",
 			"vela-retention-request-password",
 		),
-		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL": roleDatabaseURL(
-			t,
-			adminDSN,
-			"vela_debug_dump_request_login",
-			"vela-debug-dump-request-password",
-		),
-		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL": roleDatabaseURL(
-			t,
-			adminDSN,
-			"vela_debug_dump_audit_request_login",
-			"vela-debug-dump-audit-request-password",
-		),
+		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL":       "",
+		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL": "",
 		"VELA_RETENTION_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_retention_login", "vela-retention-password",
 		),
@@ -3120,7 +3184,7 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			t, adminDSN, "vela_remediation_login", "vela-remediation-password",
 		),
 		"VELA_REMEDIATION_ACTOR_IDENTITY":   "controller/n-minus-one-startup-probe",
-		"VELA_REMEDIATION_NODE_AGENTS_FILE": "/missing/remediation-node-agents.json",
+		"VELA_REMEDIATION_NODE_AGENTS_FILE": nodeAgentFile,
 		"VELA_REMEDIATION_TLS_CERT_FILE":    "/missing/remediation-client.crt",
 		"VELA_REMEDIATION_TLS_KEY_FILE":     "/missing/remediation-client.key",
 		"VELA_REMEDIATION_TLS_ROOT_CA_FILE": "/missing/remediation-root-ca.crt",
@@ -3140,10 +3204,10 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			"vela_finance_reconciliation_login",
 			"vela-finance-reconciliation-password",
 		),
-		"VELA_FINANCE_RECONCILIATION_ADDR":             "127.0.0.1:9444",
-		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE": "/missing/finance-reconciliation.crt",
-		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":  "/missing/finance-reconciliation.key",
-		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":   "/missing/finance-reconciliation-client-ca.crt",
+		"VELA_FINANCE_RECONCILIATION_ADDR":             financeAddress,
+		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE": financeCertificateFile,
+		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":  financeKeyFile,
+		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":   financeClientCAFile,
 		"VELA_WEBHOOK_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_webhook_request_login", "vela-webhook-request-password",
 		),
@@ -3218,9 +3282,8 @@ func assertAdjacentNMinusOneControlStartupPassed(t *testing.T, output string) {
 	if strings.Contains(output, "database pool") {
 		t.Fatalf("adjacent N-1 control startup failed database role preflight:\n%s", output)
 	}
-	if !strings.Contains(output, "open Node Agent endpoint file") &&
-		!strings.Contains(output, "open Artifact S3 access key ID file") {
-		t.Fatalf("adjacent N-1 control did not reach a post-database runtime sentinel:\n%s", output)
+	if !strings.Contains(output, "open Invoice export bearer token file") {
+		t.Fatalf("adjacent N-1 control did not reach the post-role-preflight sentinel:\n%s", output)
 	}
 }
 

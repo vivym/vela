@@ -24,6 +24,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/workercontrol"
 	corev1 "k8s.io/api/core/v1"
@@ -47,7 +49,7 @@ func TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 	applyFoundation(t, database.Admin)
 	setLeaseRenewalProtocolGate(t, database.Admin, true, "CNPG failover conformance")
 	seedAdmissionFixture(t, database.Admin)
-	nMinusOne := buildNMinusOneBinaries(t, debugDumpNMinusOneCommit)
+	nMinusOne := buildNMinusOneBinaries(t, adjacentRolloutNMinusOneCommit)
 	if _, err := database.Admin.Exec(`
 		UPDATE credentials
 		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
@@ -99,6 +101,22 @@ func TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 	})
 	if err != nil {
 		t.Fatalf("create CNPG Scheduler: %v", err)
+	}
+	capacityPredictor, err := scheduler.NewCapacityPredictor(schedulerPool)
+	if err != nil {
+		t.Fatalf("create CNPG Admission capacity predictor: %v", err)
+	}
+	requestPool := newRolePool(
+		t, database.DSN, "vela_request_login", "vela-request-password",
+	)
+	currentAdmission := admission.NewService(requestPool, capacityPredictor)
+	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
+	currentAdmissionPrincipal, err := identity.NewAuthenticator(
+		authPool,
+		testCredentialPepper,
+	).Authenticate(context.Background(), testBearerCredential())
+	if err != nil {
+		t.Fatalf("authenticate current CNPG Admission principal: %v", err)
 	}
 
 	harness.assertReplicationHealth(t, database.Admin, 2)
@@ -200,6 +218,35 @@ func TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 	if admissionErr == nil && admissionResult.StatusCode == http.StatusAccepted {
 		t.Fatalf("no-quorum Admission returned 202: %s", admissionResult.Body)
 	}
+	currentAdmissionContext, cancelCurrentAdmission := context.WithTimeout(
+		context.Background(),
+		4*time.Second,
+	)
+	defer cancelCurrentAdmission()
+	currentAdmissionJob, currentAdmissionErr := currentAdmission.Submit(
+		currentAdmissionContext,
+		currentAdmissionPrincipal,
+		uuid.MustParse(testProjectID),
+		"cnpg-no-quorum-current-admission-structured",
+		admission.Request{
+			Model:            "minimax-h3",
+			GenerationPreset: "balanced",
+			ServiceClass:     "standard",
+			OutputSpec:       "video-1080p-5s-24fps",
+			GenerationCount:  1,
+			Prompt:           "prove current Admission returns structured no-quorum failure",
+		},
+	)
+	var currentAdmissionPostgresError *pgconn.PgError
+	if currentAdmissionErr == nil || currentAdmissionJob.ID != uuid.Nil ||
+		!errors.As(currentAdmissionErr, &currentAdmissionPostgresError) ||
+		currentAdmissionPostgresError.Code != "55000" {
+		t.Fatalf(
+			"no-quorum current Admission Submit = job %#v error=%v, want SQLSTATE 55000 and no Job",
+			currentAdmissionJob,
+			currentAdmissionErr,
+		)
+	}
 
 	acquireContext, cancelAcquire := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancelAcquire()
@@ -261,15 +308,17 @@ func TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 	finalCounts := readCNPGAuthorityCounts(t, database.Admin)
 
 	t.Logf(
-		"CNPG no-quorum primary=%s primary_node=%s stopped_standbys=%s admission_status=%d admission_error=%v scheduler_sqlstate=%s scheduler_error=%v n_minus_one=%s n_minus_one_admission_sqlstate=%s n_minus_one_scheduler_sqlstate=%s final_placement=%s authority_counts=%s reserved_job=%s",
+		"CNPG no-quorum primary=%s primary_node=%s stopped_standbys=%s admission_status=%d admission_error=%v current_admission_sqlstate=%s current_admission_error=%v scheduler_sqlstate=%s scheduler_error=%v n_minus_one=%s n_minus_one_admission_sqlstate=%s n_minus_one_scheduler_sqlstate=%s final_placement=%s authority_counts=%s reserved_job=%s",
 		primary,
 		primaryNode,
 		strings.Join(standbyNodes, ","),
 		admissionResult.StatusCode,
 		admissionErr,
+		currentAdmissionPostgresError.Code,
+		currentAdmissionErr,
 		schedulerPostgresError.Code,
 		schedulerErr,
-		debugDumpNMinusOneCommit,
+		adjacentRolloutNMinusOneCommit,
 		nMinusOneAdmission.SQLState,
 		nMinusOneScheduler.SQLState,
 		strings.Join(finalPlacement, ","),
