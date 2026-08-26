@@ -28,6 +28,8 @@ SELECT
     a.execution_profile_revision_id,
 	 j.output_spec_id,
 	 j.request_content::text AS request_content,
+    a.debug_dump_authorization_id,
+    a.debug_dump_authorization_expires_at,
     a.attempt_number,
     a.worker_id,
     a.worker_epoch,
@@ -84,6 +86,23 @@ JOIN service_class_revisions AS scr ON scr.id = j.service_class_revision_id
 WHERE j.id = sqlc.arg(job_id)
 FOR UPDATE OF j, cr, rts, ere
 FOR SHARE OF scr;
+
+-- name: LockActiveDebugDumpAuthorizationForAssignment :one
+SELECT authorization_id, expires_at
+FROM vela_internal_debug_dump_authorizations
+WHERE organization_id = sqlc.arg(organization_id)
+  AND project_id = sqlc.arg(project_id)
+  AND job_id = sqlc.arg(job_id)
+  AND revoked_at IS NULL
+  AND expires_at > sqlc.arg(assigned_at)
+ORDER BY authorized_at DESC, authorization_id DESC
+LIMIT 1;
+
+-- name: ConfirmDebugDumpAuthorizationForAssignment :one
+SELECT vela_confirm_debug_dump_authorization_for_assignment(
+    sqlc.arg(authorization_id),
+    sqlc.arg(assigned_at)
+)::boolean;
 
 -- name: LockProjectForAssignment :one
 SELECT queued_count, retry_wait_count, running_count, running_limit
@@ -187,6 +206,8 @@ INSERT INTO attempts (
     worker_epoch,
     fleet_protocol_version,
     scheduler_dispatch_intent_id,
+    debug_dump_authorization_id,
+    debug_dump_authorization_expires_at,
     state,
     fence,
     assigned_at
@@ -202,6 +223,8 @@ INSERT INTO attempts (
     sqlc.arg(worker_epoch),
     vela_current_fleet_assignment_protocol_version(),
     sqlc.narg(scheduler_dispatch_intent_id),
+    sqlc.narg(debug_dump_authorization_id),
+    sqlc.narg(debug_dump_authorization_expires_at),
     'ASSIGNED',
     sqlc.arg(fence),
     sqlc.arg(assigned_at)

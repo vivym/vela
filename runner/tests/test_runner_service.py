@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from vela.v1 import runner_pb2
+from vela_h3_runner import runtime as runtime_module
 from vela_h3_runner.runtime import RunnerRuntime, RuntimeConfig
 
 ATTEMPT_ID = "84000000-0000-0000-0000-000000000001"
@@ -21,6 +22,7 @@ MODEL_ID = "84000000-0000-0000-0000-000000000004"
 PRESET_ID = "84000000-0000-0000-0000-000000000005"
 PROFILE_ID = "84000000-0000-0000-0000-000000000006"
 OUTPUT_SPEC_ID = "84000000-0000-0000-0000-000000000007"
+DEBUG_AUTHORIZATION_ID = "84000000-0000-0000-0000-000000000008"
 CYCLE_ID = "84000000-0000-0000-0000-000000000008"
 
 
@@ -57,18 +59,17 @@ def test_runner_probes_device_readiness_through_the_pinned_backend(tmp_path: Pat
         "check": "DEVICE",
         "passed": True,
         "encoder_vae_gpu_uuid": "GPU-00000000-0000-0000-0000-000000000001",
-        "dit_gpu_uuids": [
-            f"GPU-00000000-0000-0000-0000-{index:012d}" for index in range(2, 9)
-        ],
+        "dit_gpu_uuids": [f"GPU-00000000-0000-0000-0000-{index:012d}" for index in range(2, 9)],
     }
     assert response.identity == identity
     assert response.check == runner_pb2.RUNNER_READINESS_CHECK_DEVICE
     assert response.decision == runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED
     assert response.passed is True
     assert response.detail == "device roles verified"
-    assert response.evidence_json == json.dumps(
-        expected, separators=(",", ":"), sort_keys=True
-    ).encode()
+    assert (
+        response.evidence_json
+        == json.dumps(expected, separators=(",", ":"), sort_keys=True).encode()
+    )
     assert (tmp_path / "readiness-mode").read_text(encoding="utf-8") == "DEVICE"
     runtime.close()
 
@@ -173,9 +174,7 @@ def test_runner_cancellation_terminates_readiness_without_blocking_other_rpcs(
 
     started = time.monotonic()
     prepared = runtime.Prepare(
-        runner_pb2.PrepareRequest(
-            identity=attempt_identity(), execution_spec=execution_spec()
-        ),
+        runner_pb2.PrepareRequest(identity=attempt_identity(), execution_spec=execution_spec()),
         None,
     )
     assert time.monotonic() - started < 0.5
@@ -256,9 +255,10 @@ def test_runner_returns_strict_backend_readiness_evidence(
     assert response.decision == runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED
     assert response.passed is True
     assert response.detail == expected_detail
-    assert response.evidence_json == json.dumps(
-        expected, separators=(",", ":"), sort_keys=True
-    ).encode()
+    assert (
+        response.evidence_json
+        == json.dumps(expected, separators=(",", ":"), sort_keys=True).encode()
+    )
     assert (tmp_path / "readiness-mode").read_text(encoding="utf-8") == check_name
     runtime.close()
 
@@ -538,8 +538,86 @@ def test_backend_failure_returns_bounded_receipt_and_removes_partial_outputs(
     assert status.failure.failure_fingerprint == "cuda/oom/dit"
     assert status.failure.inference_backend_revision == "sglang@sha256:test"
     assert status.failure.gpu_uuids == ["GPU-00000000-0000-0000-0000-000000000002"]
+    assert not status.HasField("debug_dump")
     assert not (config.output_root / ATTEMPT_ID).exists()
     runtime.close()
+
+
+def test_authorized_backend_failure_returns_stable_bounded_safe_debug_dump(
+    tmp_path: Path,
+) -> None:
+    config = runtime_config(tmp_path, failing_backend(tmp_path))
+    runtime = RunnerRuntime(config)
+    identity = attempt_identity()
+    spec = execution_spec()
+    spec.debug_dump_authorization.authorization_id = DEBUG_AUTHORIZATION_ID
+    spec.debug_dump_authorization.expires_at.FromDatetime(datetime.now(UTC) + timedelta(hours=1))
+    runtime.Prepare(runner_pb2.PrepareRequest(identity=identity, execution_spec=spec), None)
+    runtime.Start(runner_pb2.StartRequest(identity=identity), None)
+
+    first = wait_for_terminal(runtime, identity)
+    replayed = runtime.Status(runner_pb2.StatusRequest(identity=identity), None)
+
+    assert first.debug_dump == replayed.debug_dump
+    assert first.debug_dump.content_type == "application/vnd.vela.debug-dump+json"
+    assert 0 < first.debug_dump.size_bytes <= 64 * 1024
+    assert first.debug_dump.size_bytes == len(first.debug_dump.content)
+    assert first.debug_dump.sha256 == hashlib.sha256(first.debug_dump.content).digest()
+    payload = json.loads(first.debug_dump.content)
+    assert payload == {
+        "authorization_id": DEBUG_AUTHORIZATION_ID,
+        "attempt_id": ATTEMPT_ID,
+        "backend_stage": "dit",
+        "failure_class": "CUDA_OOM",
+        "failure_fingerprint": "cuda/oom/dit",
+        "gpu_uuids": ["GPU-00000000-0000-0000-0000-000000000002"],
+        "inference_backend_revision": "sglang@sha256:test",
+        "job_id": JOB_ID,
+        "lease_fence": 11,
+        "retry_recommended": True,
+        "schema_version": 1,
+        "worker_epoch": 7,
+        "worker_id": WORKER_ID,
+        "worker_reusable": False,
+    }
+    assert b"test prompt" not in first.debug_dump.content
+    assert b"error_summary" not in first.debug_dump.content
+    runtime.close()
+
+
+def test_debug_dump_rejects_content_like_backend_failure_identifiers() -> None:
+    payload = {
+        "failure_class": "CUDA_OOM",
+        "failure_fingerprint": "cuda/oom/dit",
+        "error_summary": "bounded safe summary",
+        "backend_stage": "customer prompt text",
+        "gpu_uuids": [],
+        "inference_backend_revision": "sglang@sha256:test",
+        "retry_recommended": True,
+        "worker_reusable": False,
+    }
+
+    with pytest.raises(ValueError, match="failure evidence is invalid"):
+        runtime_module._failure_from_dict(payload, "sglang@sha256:test")
+
+
+def test_runner_restart_restores_authorized_debug_dump_receipt(tmp_path: Path) -> None:
+    config = runtime_config(tmp_path, failing_backend(tmp_path))
+    identity = attempt_identity()
+    spec = execution_spec()
+    spec.debug_dump_authorization.authorization_id = DEBUG_AUTHORIZATION_ID
+    spec.debug_dump_authorization.expires_at.FromDatetime(datetime.now(UTC) + timedelta(hours=1))
+    runtime = RunnerRuntime(config)
+    runtime.Prepare(runner_pb2.PrepareRequest(identity=identity, execution_spec=spec), None)
+    runtime.Start(runner_pb2.StartRequest(identity=identity), None)
+    original = wait_for_terminal(runtime, identity).debug_dump
+    runtime.close()
+
+    recovered = RunnerRuntime(config)
+    replayed = recovered.Status(runner_pb2.StatusRequest(identity=identity), None)
+
+    assert replayed.debug_dump == original
+    recovered.close()
 
 
 def test_runner_restart_restores_failed_terminal_receipt(tmp_path: Path) -> None:

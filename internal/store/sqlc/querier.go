@@ -16,9 +16,12 @@ type Querier interface {
 	CancelJob(ctx context.Context, arg CancelJobParams) (CancelJobRow, error)
 	ClaimArtifactUpload(ctx context.Context, arg ClaimArtifactUploadParams) (ClaimArtifactUploadRow, error)
 	ClaimArtifactVerification(ctx context.Context, arg ClaimArtifactVerificationParams) (ClaimArtifactVerificationRow, error)
+	ClaimDebugDumpUpload(ctx context.Context, arg ClaimDebugDumpUploadParams) (ClaimDebugDumpUploadRow, error)
 	ClaimOutboxEvents(ctx context.Context, arg ClaimOutboxEventsParams) ([]ClaimOutboxEventsRow, error)
 	ClaimSchedulerDispatch(ctx context.Context, arg ClaimSchedulerDispatchParams) (ClaimSchedulerDispatchRow, error)
 	CompleteCancelingJob(ctx context.Context, arg CompleteCancelingJobParams) (int64, error)
+	ConfirmDebugDumpAuthorizationForAssignment(ctx context.Context, arg ConfirmDebugDumpAuthorizationForAssignmentParams) (bool, error)
+	ConfirmDebugDumpUploadAuthorization(ctx context.Context, arg ConfirmDebugDumpUploadAuthorizationParams) (bool, error)
 	ConsumeVisibleCompletionCreditReservation(ctx context.Context, arg ConsumeVisibleCompletionCreditReservationParams) (int64, error)
 	CountActiveOrganizationAssignments(ctx context.Context, arg CountActiveOrganizationAssignmentsParams) (int64, error)
 	CountActiveRetryAssignments(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
@@ -38,6 +41,7 @@ type Querier interface {
 	GetArtifactUploadStatus(ctx context.Context, arg GetArtifactUploadStatusParams) (GetArtifactUploadStatusRow, error)
 	GetAttemptProgressForHeartbeat(ctx context.Context, attemptID uuid.UUID) (GetAttemptProgressForHeartbeatRow, error)
 	GetCancellationStopLeaseID(ctx context.Context, arg GetCancellationStopLeaseIDParams) (uuid.UUID, error)
+	GetDebugDumpUploadStatus(ctx context.Context, arg GetDebugDumpUploadStatusParams) (GetDebugDumpUploadStatusRow, error)
 	GetExecutionFailureDecision(ctx context.Context, attemptID uuid.NullUUID) (GetExecutionFailureDecisionRow, error)
 	GetIdempotencyResult(ctx context.Context, arg GetIdempotencyResultParams) (GetIdempotencyResultRow, error)
 	GetJob(ctx context.Context, arg GetJobParams) (GetJobRow, error)
@@ -56,6 +60,8 @@ type Querier interface {
 	InsertCancellationStopReceipt(ctx context.Context, arg InsertCancellationStopReceiptParams) error
 	InsertCancellationStoppedOutboxEvent(ctx context.Context, arg InsertCancellationStoppedOutboxEventParams) error
 	InsertCreditReservation(ctx context.Context, arg InsertCreditReservationParams) error
+	InsertDebugDumpClaimedEvent(ctx context.Context, arg InsertDebugDumpClaimedEventParams) error
+	InsertDebugDumpUpload(ctx context.Context, arg InsertDebugDumpUploadParams) (int64, error)
 	InsertExecutionFailureDecision(ctx context.Context, arg InsertExecutionFailureDecisionParams) error
 	InsertExecutionLease(ctx context.Context, arg InsertExecutionLeaseParams) error
 	InsertIdempotencyResult(ctx context.Context, arg InsertIdempotencyResultParams) error
@@ -81,12 +87,14 @@ type Querier interface {
 	ListReadableArtifactSet(ctx context.Context, arg ListReadableArtifactSetParams) ([]ListReadableArtifactSetRow, error)
 	ListSchedulableWorkerPools(ctx context.Context) ([]uuid.UUID, error)
 	ListSucceededArtifactSetForCancellation(ctx context.Context, arg ListSucceededArtifactSetForCancellationParams) ([]ListSucceededArtifactSetForCancellationRow, error)
+	LockActiveDebugDumpAuthorizationForAssignment(ctx context.Context, arg LockActiveDebugDumpAuthorizationForAssignmentParams) (LockActiveDebugDumpAuthorizationForAssignmentRow, error)
 	LockAssignmentPoolCapacity(ctx context.Context, workerPoolID uuid.UUID) (int32, error)
 	LockCancellationAttempt(ctx context.Context, attemptID uuid.UUID) (LockCancellationAttemptRow, error)
 	LockCancellationLease(ctx context.Context, arg LockCancellationLeaseParams) (LockCancellationLeaseRow, error)
 	LockCancellationStopAuthority(ctx context.Context, cancellationID uuid.UUID) (LockCancellationStopAuthorityRow, error)
 	LockCompatiblePool(ctx context.Context, arg LockCompatiblePoolParams) (LockCompatiblePoolRow, error)
 	LockCreditAccount(ctx context.Context, organizationID uuid.UUID) (LockCreditAccountRow, error)
+	LockDebugDumpUploadAuthority(ctx context.Context, attemptID uuid.UUID) (LockDebugDumpUploadAuthorityRow, error)
 	LockExecutionFailureDecisionWrites(ctx context.Context) error
 	LockExecutionLeaseRenewalProtocol(ctx context.Context) (bool, error)
 	LockExecutionLeaseWrites(ctx context.Context) error
@@ -145,6 +153,9 @@ type Querier interface {
 	RecordArtifactMultipartSession(ctx context.Context, arg RecordArtifactMultipartSessionParams) (RecordArtifactMultipartSessionRow, error)
 	RecordArtifactUploaded(ctx context.Context, arg RecordArtifactUploadedParams) (RecordArtifactUploadedRow, error)
 	RecordArtifactVerified(ctx context.Context, arg RecordArtifactVerifiedParams) (RecordArtifactVerifiedRow, error)
+	RecordDebugDumpCompletionIntent(ctx context.Context, arg RecordDebugDumpCompletionIntentParams) (RecordDebugDumpCompletionIntentRow, error)
+	RecordDebugDumpMultipartSession(ctx context.Context, arg RecordDebugDumpMultipartSessionParams) (RecordDebugDumpMultipartSessionRow, error)
+	RecordDebugDumpUploaded(ctx context.Context, arg RecordDebugDumpUploadedParams) (RecordDebugDumpUploadedRow, error)
 	RecordInboxReceipt(ctx context.Context, arg RecordInboxReceiptParams) (uuid.UUID, error)
 	RecordSchedulerInboxReceipt(ctx context.Context, arg RecordSchedulerInboxReceiptParams) (bool, error)
 	ReleaseArtifactVerificationClaim(ctx context.Context, arg ReleaseArtifactVerificationClaimParams) (int64, error)

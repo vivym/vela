@@ -59,78 +59,24 @@ func (e BreakGlassArtifactKind) Valid() bool {
 	}
 }
 
-// Defines values for BreakGlassAuditOutcomeCode.
-const (
-	BreakGlassAuditOutcomeCodeALLOWED            BreakGlassAuditOutcomeCode = "ALLOWED"
-	BreakGlassAuditOutcomeCodeAPPROVED           BreakGlassAuditOutcomeCode = "APPROVED"
-	BreakGlassAuditOutcomeCodeCONTENTDELETED     BreakGlassAuditOutcomeCode = "CONTENT_DELETED"
-	BreakGlassAuditOutcomeCodeCONTENTEXPIRED     BreakGlassAuditOutcomeCode = "CONTENT_EXPIRED"
-	BreakGlassAuditOutcomeCodeCONTENTUNAVAILABLE BreakGlassAuditOutcomeCode = "CONTENT_UNAVAILABLE"
-	BreakGlassAuditOutcomeCodeCREATED            BreakGlassAuditOutcomeCode = "CREATED"
-	BreakGlassAuditOutcomeCodeDELIVERED          BreakGlassAuditOutcomeCode = "DELIVERED"
-	BreakGlassAuditOutcomeCodeGRANTEXPIRED       BreakGlassAuditOutcomeCode = "GRANT_EXPIRED"
-	BreakGlassAuditOutcomeCodeGRANTINACTIVE      BreakGlassAuditOutcomeCode = "GRANT_INACTIVE"
-	BreakGlassAuditOutcomeCodeGRANTREVOKED       BreakGlassAuditOutcomeCode = "GRANT_REVOKED"
-	BreakGlassAuditOutcomeCodeREVOKED            BreakGlassAuditOutcomeCode = "REVOKED"
-	BreakGlassAuditOutcomeCodeSCOPEDENIED        BreakGlassAuditOutcomeCode = "SCOPE_DENIED"
-	BreakGlassAuditOutcomeCodeSIGNINGFAILED      BreakGlassAuditOutcomeCode = "SIGNING_FAILED"
-	BreakGlassAuditOutcomeCodeTARGETNOTFOUND     BreakGlassAuditOutcomeCode = "TARGET_NOT_FOUND"
-)
-
-// Valid indicates whether the value is a known member of the BreakGlassAuditOutcomeCode enum.
-func (e BreakGlassAuditOutcomeCode) Valid() bool {
-	switch e {
-	case BreakGlassAuditOutcomeCodeALLOWED:
-		return true
-	case BreakGlassAuditOutcomeCodeAPPROVED:
-		return true
-	case BreakGlassAuditOutcomeCodeCONTENTDELETED:
-		return true
-	case BreakGlassAuditOutcomeCodeCONTENTEXPIRED:
-		return true
-	case BreakGlassAuditOutcomeCodeCONTENTUNAVAILABLE:
-		return true
-	case BreakGlassAuditOutcomeCodeCREATED:
-		return true
-	case BreakGlassAuditOutcomeCodeDELIVERED:
-		return true
-	case BreakGlassAuditOutcomeCodeGRANTEXPIRED:
-		return true
-	case BreakGlassAuditOutcomeCodeGRANTINACTIVE:
-		return true
-	case BreakGlassAuditOutcomeCodeGRANTREVOKED:
-		return true
-	case BreakGlassAuditOutcomeCodeREVOKED:
-		return true
-	case BreakGlassAuditOutcomeCodeSCOPEDENIED:
-		return true
-	case BreakGlassAuditOutcomeCodeSIGNINGFAILED:
-		return true
-	case BreakGlassAuditOutcomeCodeTARGETNOTFOUND:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for BreakGlassReasonCode.
 const (
-	CUSTOMERSUPPORT       BreakGlassReasonCode = "CUSTOMER_SUPPORT"
-	LEGALRESPONSE         BreakGlassReasonCode = "LEGAL_RESPONSE"
-	SECURITYINVESTIGATION BreakGlassReasonCode = "SECURITY_INVESTIGATION"
-	SERVICERECOVERY       BreakGlassReasonCode = "SERVICE_RECOVERY"
+	BreakGlassReasonCodeCUSTOMERSUPPORT       BreakGlassReasonCode = "CUSTOMER_SUPPORT"
+	BreakGlassReasonCodeLEGALRESPONSE         BreakGlassReasonCode = "LEGAL_RESPONSE"
+	BreakGlassReasonCodeSECURITYINVESTIGATION BreakGlassReasonCode = "SECURITY_INVESTIGATION"
+	BreakGlassReasonCodeSERVICERECOVERY       BreakGlassReasonCode = "SERVICE_RECOVERY"
 )
 
 // Valid indicates whether the value is a known member of the BreakGlassReasonCode enum.
 func (e BreakGlassReasonCode) Valid() bool {
 	switch e {
-	case CUSTOMERSUPPORT:
+	case BreakGlassReasonCodeCUSTOMERSUPPORT:
 		return true
-	case LEGALRESPONSE:
+	case BreakGlassReasonCodeLEGALRESPONSE:
 		return true
-	case SECURITYINVESTIGATION:
+	case BreakGlassReasonCodeSECURITYINVESTIGATION:
 		return true
-	case SERVICERECOVERY:
+	case BreakGlassReasonCodeSERVICERECOVERY:
 		return true
 	default:
 		return false
@@ -269,6 +215,75 @@ func (e ContentDeletionRequestStatusState) Valid() bool {
 	}
 }
 
+// Defines values for DebugDumpContentType.
+const (
+	DebugDumpContentTypeApplicationvndVelaDebugDumpJson DebugDumpContentType = "application/vnd.vela.debug-dump+json"
+)
+
+// Valid indicates whether the value is a known member of the DebugDumpContentType enum.
+func (e DebugDumpContentType) Valid() bool {
+	switch e {
+	case DebugDumpContentTypeApplicationvndVelaDebugDumpJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DebugDumpDownloadContentType.
+const (
+	DebugDumpDownloadContentTypeApplicationvndVelaDebugDumpJson DebugDumpDownloadContentType = "application/vnd.vela.debug-dump+json"
+)
+
+// Valid indicates whether the value is a known member of the DebugDumpDownloadContentType enum.
+func (e DebugDumpDownloadContentType) Valid() bool {
+	switch e {
+	case DebugDumpDownloadContentTypeApplicationvndVelaDebugDumpJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DebugDumpPurpose.
+const (
+	DebugDumpPurposeCUSTOMERSUPPORT       DebugDumpPurpose = "CUSTOMER_SUPPORT"
+	DebugDumpPurposeINCIDENTINVESTIGATION DebugDumpPurpose = "INCIDENT_INVESTIGATION"
+)
+
+// Valid indicates whether the value is a known member of the DebugDumpPurpose enum.
+func (e DebugDumpPurpose) Valid() bool {
+	switch e {
+	case DebugDumpPurposeCUSTOMERSUPPORT:
+		return true
+	case DebugDumpPurposeINCIDENTINVESTIGATION:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DebugDumpState.
+const (
+	AVAILABLE DebugDumpState = "AVAILABLE"
+	DELETED   DebugDumpState = "DELETED"
+	UPLOADING DebugDumpState = "UPLOADING"
+)
+
+// Valid indicates whether the value is a known member of the DebugDumpState enum.
+func (e DebugDumpState) Valid() bool {
+	switch e {
+	case AVAILABLE:
+		return true
+	case DELETED:
+		return true
+	case UPLOADING:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExecutionPhase.
 const (
 	ExecutionPhaseFINALIZING ExecutionPhase = "FINALIZING"
@@ -347,11 +362,20 @@ const (
 	OrganizationAuditEventActionARTIFACTDELIVERED        OrganizationAuditEventAction = "ARTIFACT_DELIVERED"
 	OrganizationAuditEventActionARTIFACTDELIVERYFAILED   OrganizationAuditEventAction = "ARTIFACT_DELIVERY_FAILED"
 	OrganizationAuditEventActionARTIFACTDENIED           OrganizationAuditEventAction = "ARTIFACT_DENIED"
+	OrganizationAuditEventActionAUTHORIZED               OrganizationAuditEventAction = "AUTHORIZED"
+	OrganizationAuditEventActionDELETED                  OrganizationAuditEventAction = "DELETED"
+	OrganizationAuditEventActionDELIVERED                OrganizationAuditEventAction = "DELIVERED"
+	OrganizationAuditEventActionDELIVERYFAILED           OrganizationAuditEventAction = "DELIVERY_FAILED"
 	OrganizationAuditEventActionGRANTAPPROVED            OrganizationAuditEventAction = "GRANT_APPROVED"
 	OrganizationAuditEventActionGRANTREVOKED             OrganizationAuditEventAction = "GRANT_REVOKED"
+	OrganizationAuditEventActionREADAUTHORIZED           OrganizationAuditEventAction = "READ_AUTHORIZED"
+	OrganizationAuditEventActionREADDENIED               OrganizationAuditEventAction = "READ_DENIED"
 	OrganizationAuditEventActionREQUESTCONTENTAUTHORIZED OrganizationAuditEventAction = "REQUEST_CONTENT_AUTHORIZED"
 	OrganizationAuditEventActionREQUESTCONTENTDENIED     OrganizationAuditEventAction = "REQUEST_CONTENT_DENIED"
 	OrganizationAuditEventActionREQUESTCREATED           OrganizationAuditEventAction = "REQUEST_CREATED"
+	OrganizationAuditEventActionREVOKED                  OrganizationAuditEventAction = "REVOKED"
+	OrganizationAuditEventActionUPLOADCLAIMED            OrganizationAuditEventAction = "UPLOAD_CLAIMED"
+	OrganizationAuditEventActionUPLOADED                 OrganizationAuditEventAction = "UPLOADED"
 	PROJECTROLEASSIGNED                                  OrganizationAuditEventAction = "PROJECT_ROLE_ASSIGNED"
 	PROJECTROLEREVOKED                                   OrganizationAuditEventAction = "PROJECT_ROLE_REVOKED"
 	SERVICEPRINCIPALCREATED                              OrganizationAuditEventAction = "SERVICE_PRINCIPAL_CREATED"
@@ -383,15 +407,33 @@ func (e OrganizationAuditEventAction) Valid() bool {
 		return true
 	case OrganizationAuditEventActionARTIFACTDENIED:
 		return true
+	case OrganizationAuditEventActionAUTHORIZED:
+		return true
+	case OrganizationAuditEventActionDELETED:
+		return true
+	case OrganizationAuditEventActionDELIVERED:
+		return true
+	case OrganizationAuditEventActionDELIVERYFAILED:
+		return true
 	case OrganizationAuditEventActionGRANTAPPROVED:
 		return true
 	case OrganizationAuditEventActionGRANTREVOKED:
+		return true
+	case OrganizationAuditEventActionREADAUTHORIZED:
+		return true
+	case OrganizationAuditEventActionREADDENIED:
 		return true
 	case OrganizationAuditEventActionREQUESTCONTENTAUTHORIZED:
 		return true
 	case OrganizationAuditEventActionREQUESTCONTENTDENIED:
 		return true
 	case OrganizationAuditEventActionREQUESTCREATED:
+		return true
+	case OrganizationAuditEventActionREVOKED:
+		return true
+	case OrganizationAuditEventActionUPLOADCLAIMED:
+		return true
+	case OrganizationAuditEventActionUPLOADED:
 		return true
 	case PROJECTROLEASSIGNED:
 		return true
@@ -413,6 +455,7 @@ func (e OrganizationAuditEventAction) Valid() bool {
 // Defines values for OrganizationAuditEventSource.
 const (
 	OrganizationAuditEventSourceBREAKGLASS        OrganizationAuditEventSource = "BREAK_GLASS"
+	OrganizationAuditEventSourceDEBUGDUMP         OrganizationAuditEventSource = "DEBUG_DUMP"
 	OrganizationAuditEventSourceHUMANIDENTITY     OrganizationAuditEventSource = "HUMAN_IDENTITY"
 	OrganizationAuditEventSourcePROJECTIDENTITY   OrganizationAuditEventSource = "PROJECT_IDENTITY"
 	OrganizationAuditEventSourceSETTLEMENTCONTACT OrganizationAuditEventSource = "SETTLEMENT_CONTACT"
@@ -422,6 +465,8 @@ const (
 func (e OrganizationAuditEventSource) Valid() bool {
 	switch e {
 	case OrganizationAuditEventSourceBREAKGLASS:
+		return true
+	case OrganizationAuditEventSourceDEBUGDUMP:
 		return true
 	case OrganizationAuditEventSourceHUMANIDENTITY:
 		return true
@@ -436,17 +481,23 @@ func (e OrganizationAuditEventSource) Valid() bool {
 
 // Defines values for OrganizationAuditEventTargetKind.
 const (
-	OrganizationAuditEventTargetKindCREDENTIAL        OrganizationAuditEventTargetKind = "CREDENTIAL"
-	OrganizationAuditEventTargetKindHUMANPRINCIPAL    OrganizationAuditEventTargetKind = "HUMAN_PRINCIPAL"
-	OrganizationAuditEventTargetKindJOB               OrganizationAuditEventTargetKind = "JOB"
-	OrganizationAuditEventTargetKindSERVICEPRINCIPAL  OrganizationAuditEventTargetKind = "SERVICE_PRINCIPAL"
-	OrganizationAuditEventTargetKindSETTLEMENTCONTACT OrganizationAuditEventTargetKind = "SETTLEMENT_CONTACT"
+	OrganizationAuditEventTargetKindCREDENTIAL             OrganizationAuditEventTargetKind = "CREDENTIAL"
+	OrganizationAuditEventTargetKindDEBUGDUMP              OrganizationAuditEventTargetKind = "DEBUG_DUMP"
+	OrganizationAuditEventTargetKindDEBUGDUMPAUTHORIZATION OrganizationAuditEventTargetKind = "DEBUG_DUMP_AUTHORIZATION"
+	OrganizationAuditEventTargetKindHUMANPRINCIPAL         OrganizationAuditEventTargetKind = "HUMAN_PRINCIPAL"
+	OrganizationAuditEventTargetKindJOB                    OrganizationAuditEventTargetKind = "JOB"
+	OrganizationAuditEventTargetKindSERVICEPRINCIPAL       OrganizationAuditEventTargetKind = "SERVICE_PRINCIPAL"
+	OrganizationAuditEventTargetKindSETTLEMENTCONTACT      OrganizationAuditEventTargetKind = "SETTLEMENT_CONTACT"
 )
 
 // Valid indicates whether the value is a known member of the OrganizationAuditEventTargetKind enum.
 func (e OrganizationAuditEventTargetKind) Valid() bool {
 	switch e {
 	case OrganizationAuditEventTargetKindCREDENTIAL:
+		return true
+	case OrganizationAuditEventTargetKindDEBUGDUMP:
+		return true
+	case OrganizationAuditEventTargetKindDEBUGDUMPAUTHORIZATION:
 		return true
 	case OrganizationAuditEventTargetKindHUMANPRINCIPAL:
 		return true
@@ -775,6 +826,11 @@ type AssignProjectRoleRequest struct {
 	Role ProjectRole `json:"role"`
 }
 
+// AuthorizeDebugDumpRequest defines model for AuthorizeDebugDumpRequest.
+type AuthorizeDebugDumpRequest struct {
+	Purpose DebugDumpPurpose `json:"purpose"`
+}
+
 // BreakGlassArtifact defines model for BreakGlassArtifact.
 type BreakGlassArtifact struct {
 	ArtifactId           openapi_types.UUID     `json:"artifact_id"`
@@ -800,9 +856,6 @@ type BreakGlassArtifactSet struct {
 	ProjectId          openapi_types.UUID   `json:"project_id"`
 	RetentionExpiresAt time.Time            `json:"retention_expires_at"`
 }
-
-// BreakGlassAuditOutcomeCode defines model for BreakGlassAuditOutcomeCode.
-type BreakGlassAuditOutcomeCode string
 
 // BreakGlassReasonCode defines model for BreakGlassReasonCode.
 type BreakGlassReasonCode string
@@ -966,6 +1019,62 @@ type CreatedWebhookSubscription struct {
 	SubscriptionId openapi_types.UUID       `json:"subscription_id"`
 }
 
+// DebugDump defines model for DebugDump.
+type DebugDump struct {
+	AttemptId       openapi_types.UUID   `json:"attempt_id"`
+	AuthorizationId openapi_types.UUID   `json:"authorization_id"`
+	ContentType     DebugDumpContentType `json:"content_type"`
+	CreatedAt       time.Time            `json:"created_at"`
+	DebugDumpId     openapi_types.UUID   `json:"debug_dump_id"`
+	DeletedAt       *time.Time           `json:"deleted_at,omitempty"`
+	ExpiresAt       time.Time            `json:"expires_at"`
+	Sha256          string               `json:"sha256"`
+	SizeBytes       int64                `json:"size_bytes"`
+	State           DebugDumpState       `json:"state"`
+	UploadedAt      *time.Time           `json:"uploaded_at,omitempty"`
+}
+
+// DebugDumpContentType defines model for DebugDump.ContentType.
+type DebugDumpContentType string
+
+// DebugDumpAuthorization defines model for DebugDumpAuthorization.
+type DebugDumpAuthorization struct {
+	AuthorizationId openapi_types.UUID `json:"authorization_id"`
+	AuthorizedAt    time.Time          `json:"authorized_at"`
+	ExpiresAt       time.Time          `json:"expires_at"`
+	JobId           openapi_types.UUID `json:"job_id"`
+	OrganizationId  openapi_types.UUID `json:"organization_id"`
+	ProjectId       openapi_types.UUID `json:"project_id"`
+	Purpose         DebugDumpPurpose   `json:"purpose"`
+	RevokedAt       *time.Time         `json:"revoked_at,omitempty"`
+}
+
+// DebugDumpDownload defines model for DebugDumpDownload.
+type DebugDumpDownload struct {
+	AuthorizationId      openapi_types.UUID           `json:"authorization_id"`
+	ContentType          DebugDumpDownloadContentType `json:"content_type"`
+	DebugDumpId          openapi_types.UUID           `json:"debug_dump_id"`
+	DownloadUrl          string                       `json:"download_url"`
+	DownloadUrlExpiresAt time.Time                    `json:"download_url_expires_at"`
+	ExpiresAt            time.Time                    `json:"expires_at"`
+	Sha256               string                       `json:"sha256"`
+	SizeBytes            int64                        `json:"size_bytes"`
+}
+
+// DebugDumpDownloadContentType defines model for DebugDumpDownload.ContentType.
+type DebugDumpDownloadContentType string
+
+// DebugDumpList defines model for DebugDumpList.
+type DebugDumpList struct {
+	Dumps []DebugDump `json:"dumps"`
+}
+
+// DebugDumpPurpose defines model for DebugDumpPurpose.
+type DebugDumpPurpose string
+
+// DebugDumpState defines model for DebugDumpState.
+type DebugDumpState string
+
 // Error defines model for Error.
 type Error struct {
 	Code      string  `json:"code"`
@@ -1032,11 +1141,11 @@ type JobState string
 // OrganizationAuditEvent defines model for OrganizationAuditEvent.
 type OrganizationAuditEvent struct {
 	Action           OrganizationAuditEventAction     `json:"action"`
-	ActorPrincipalId openapi_types.UUID               `json:"actor_principal_id"`
-	ActorSessionId   openapi_types.UUID               `json:"actor_session_id"`
+	ActorPrincipalId *openapi_types.UUID              `json:"actor_principal_id,omitempty"`
+	ActorSessionId   *openapi_types.UUID              `json:"actor_session_id,omitempty"`
 	CreatedAt        time.Time                        `json:"created_at"`
 	EventId          openapi_types.UUID               `json:"event_id"`
-	OutcomeCode      *BreakGlassAuditOutcomeCode      `json:"outcome_code,omitempty"`
+	OutcomeCode      *string                          `json:"outcome_code,omitempty"`
 	ProjectId        *openapi_types.UUID              `json:"project_id,omitempty"`
 	Scope            *BreakGlassScope                 `json:"scope,omitempty"`
 	Source           OrganizationAuditEventSource     `json:"source"`
@@ -1390,6 +1499,12 @@ type ContentDeletionRequestId = openapi_types.UUID
 // CredentialId defines model for CredentialId.
 type CredentialId = openapi_types.UUID
 
+// DebugDumpAuthorizationId defines model for DebugDumpAuthorizationId.
+type DebugDumpAuthorizationId = openapi_types.UUID
+
+// DebugDumpId defines model for DebugDumpId.
+type DebugDumpId = openapi_types.UUID
+
 // DeliveryId defines model for DeliveryId.
 type DeliveryId = openapi_types.UUID
 
@@ -1493,6 +1608,16 @@ type AcceptContentDeletionRequestParams struct {
 	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
 }
 
+// AuthorizeDebugDumpParams defines parameters for AuthorizeDebugDump.
+type AuthorizeDebugDumpParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
+// RevokeDebugDumpAuthorizationParams defines parameters for RevokeDebugDumpAuthorization.
+type RevokeDebugDumpAuthorizationParams struct {
+	IdempotencyKey IdempotencyKey `json:"Idempotency-Key"`
+}
+
 // ListProjectMembersParams defines parameters for ListProjectMembers.
 type ListProjectMembersParams struct {
 	Limit *ListLimit `form:"limit,omitempty" json:"limit,omitempty"`
@@ -1535,6 +1660,9 @@ type CreateRemediationOperationJSONRequestBody = CreateRemediationOperationReque
 
 // SubmitJobJSONRequestBody defines body for SubmitJob for application/json ContentType.
 type SubmitJobJSONRequestBody = SubmitJobRequest
+
+// AuthorizeDebugDumpJSONRequestBody defines body for AuthorizeDebugDump for application/json ContentType.
+type AuthorizeDebugDumpJSONRequestBody = AuthorizeDebugDumpRequest
 
 // AssignProjectRoleJSONRequestBody defines body for AssignProjectRole for application/json ContentType.
 type AssignProjectRoleJSONRequestBody = AssignProjectRoleRequest
@@ -1637,6 +1765,21 @@ type ServerInterface interface {
 	// AcceptContentDeletionRequest Accept an idempotent Content Deletion request for a Project Job
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests)
 	AcceptContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, params AcceptContentDeletionRequestParams)
+	// AuthorizeDebugDump Opt a queued Project Job into bounded failure diagnostics
+	// (POST /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations)
+	AuthorizeDebugDump(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, params AuthorizeDebugDumpParams)
+	// GetDebugDumpAuthorization Inspect one Job debug dump authorization
+	// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id})
+	GetDebugDumpAuthorization(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId)
+	// ListDebugDumps List safe metadata for one Job debug dump authorization
+	// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps)
+	ListDebugDumps(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId)
+	// ReadDebugDump Authorize and sign one exact debug dump version
+	// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps/{debug_dump_id})
+	ReadDebugDump(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId, debugDumpId DebugDumpId)
+	// RevokeDebugDumpAuthorization Permanently revoke one Job debug dump authorization
+	// (POST /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/revoke)
+	RevokeDebugDumpAuthorization(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId, params RevokeDebugDumpAuthorizationParams)
 	// ListProjectMembers List Human members assigned to a Project
 	// (GET /v1/projects/{project_id}/members)
 	ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListProjectMembersParams)
@@ -1859,6 +2002,36 @@ func (_ Unimplemented) CancelJob(w http.ResponseWriter, r *http.Request, project
 // AcceptContentDeletionRequest Accept an idempotent Content Deletion request for a Project Job
 // (POST /v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests)
 func (_ Unimplemented) AcceptContentDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, params AcceptContentDeletionRequestParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AuthorizeDebugDump Opt a queued Project Job into bounded failure diagnostics
+// (POST /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations)
+func (_ Unimplemented) AuthorizeDebugDump(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, params AuthorizeDebugDumpParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetDebugDumpAuthorization Inspect one Job debug dump authorization
+// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id})
+func (_ Unimplemented) GetDebugDumpAuthorization(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListDebugDumps List safe metadata for one Job debug dump authorization
+// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps)
+func (_ Unimplemented) ListDebugDumps(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReadDebugDump Authorize and sign one exact debug dump version
+// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps/{debug_dump_id})
+func (_ Unimplemented) ReadDebugDump(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId, debugDumpId DebugDumpId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeDebugDumpAuthorization Permanently revoke one Job debug dump authorization
+// (POST /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/revoke)
+func (_ Unimplemented) RevokeDebugDumpAuthorization(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId, params RevokeDebugDumpAuthorizationParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2978,6 +3151,282 @@ func (siw *ServerInterfaceWrapper) AcceptContentDeletionRequest(w http.ResponseW
 	handler.ServeHTTP(w, r)
 }
 
+// AuthorizeDebugDump operation middleware
+func (siw *ServerInterfaceWrapper) AuthorizeDebugDump(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job_id" -------------
+	var jobId JobId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job_id", chi.URLParam(r, "job_id"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AuthorizeDebugDumpParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AuthorizeDebugDump(w, r, projectId, jobId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetDebugDumpAuthorization operation middleware
+func (siw *ServerInterfaceWrapper) GetDebugDumpAuthorization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job_id" -------------
+	var jobId JobId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job_id", chi.URLParam(r, "job_id"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "debug_dump_authorization_id" -------------
+	var debugDumpAuthorizationId DebugDumpAuthorizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "debug_dump_authorization_id", chi.URLParam(r, "debug_dump_authorization_id"), &debugDumpAuthorizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "debug_dump_authorization_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDebugDumpAuthorization(w, r, projectId, jobId, debugDumpAuthorizationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListDebugDumps operation middleware
+func (siw *ServerInterfaceWrapper) ListDebugDumps(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job_id" -------------
+	var jobId JobId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job_id", chi.URLParam(r, "job_id"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "debug_dump_authorization_id" -------------
+	var debugDumpAuthorizationId DebugDumpAuthorizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "debug_dump_authorization_id", chi.URLParam(r, "debug_dump_authorization_id"), &debugDumpAuthorizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "debug_dump_authorization_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDebugDumps(w, r, projectId, jobId, debugDumpAuthorizationId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadDebugDump operation middleware
+func (siw *ServerInterfaceWrapper) ReadDebugDump(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job_id" -------------
+	var jobId JobId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job_id", chi.URLParam(r, "job_id"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "debug_dump_authorization_id" -------------
+	var debugDumpAuthorizationId DebugDumpAuthorizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "debug_dump_authorization_id", chi.URLParam(r, "debug_dump_authorization_id"), &debugDumpAuthorizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "debug_dump_authorization_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "debug_dump_id" -------------
+	var debugDumpId DebugDumpId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "debug_dump_id", chi.URLParam(r, "debug_dump_id"), &debugDumpId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "debug_dump_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadDebugDump(w, r, projectId, jobId, debugDumpAuthorizationId, debugDumpId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeDebugDumpAuthorization operation middleware
+func (siw *ServerInterfaceWrapper) RevokeDebugDumpAuthorization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "job_id" -------------
+	var jobId JobId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "job_id", chi.URLParam(r, "job_id"), &jobId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "job_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "debug_dump_authorization_id" -------------
+	var debugDumpAuthorizationId DebugDumpAuthorizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "debug_dump_authorization_id", chi.URLParam(r, "debug_dump_authorization_id"), &debugDumpAuthorizationId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "debug_dump_authorization_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RevokeDebugDumpAuthorizationParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeDebugDumpAuthorization(w, r, projectId, jobId, debugDumpAuthorizationId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProjectMembers operation middleware
 func (siw *ServerInterfaceWrapper) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
 
@@ -3813,6 +4262,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests", wrapper.AcceptContentDeletionRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations", wrapper.AuthorizeDebugDump)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}", wrapper.GetDebugDumpAuthorization)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/revoke", wrapper.RevokeDebugDumpAuthorization)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps", wrapper.ListDebugDumps)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps/{debug_dump_id}", wrapper.ReadDebugDump)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id}", wrapper.GetContentDeletionRequest)
@@ -6104,6 +6568,493 @@ func (response AcceptContentDeletionRequest409JSONResponse) VisitAcceptContentDe
 	return err
 }
 
+type AuthorizeDebugDumpRequestObject struct {
+	ProjectId ProjectId `json:"project_id"`
+	JobId     JobId     `json:"job_id"`
+	Params    AuthorizeDebugDumpParams
+	Body      *AuthorizeDebugDumpJSONRequestBody
+}
+
+type AuthorizeDebugDumpResponseObject interface {
+	VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error
+}
+
+type AuthorizeDebugDump200JSONResponse DebugDumpAuthorization
+
+func (response AuthorizeDebugDump200JSONResponse) VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AuthorizeDebugDump201JSONResponse DebugDumpAuthorization
+
+func (response AuthorizeDebugDump201JSONResponse) VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AuthorizeDebugDump400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AuthorizeDebugDump400JSONResponse) VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AuthorizeDebugDump401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response AuthorizeDebugDump401JSONResponse) VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AuthorizeDebugDump403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response AuthorizeDebugDump403JSONResponse) VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AuthorizeDebugDump404JSONResponse Error
+
+func (response AuthorizeDebugDump404JSONResponse) VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AuthorizeDebugDump409JSONResponse Error
+
+func (response AuthorizeDebugDump409JSONResponse) VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AuthorizeDebugDump503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AuthorizeDebugDump503JSONResponse) VisitAuthorizeDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDebugDumpAuthorizationRequestObject struct {
+	ProjectId                ProjectId                `json:"project_id"`
+	JobId                    JobId                    `json:"job_id"`
+	DebugDumpAuthorizationId DebugDumpAuthorizationId `json:"debug_dump_authorization_id"`
+}
+
+type GetDebugDumpAuthorizationResponseObject interface {
+	VisitGetDebugDumpAuthorizationResponse(w http.ResponseWriter) error
+}
+
+type GetDebugDumpAuthorization200JSONResponse DebugDumpAuthorization
+
+func (response GetDebugDumpAuthorization200JSONResponse) VisitGetDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDebugDumpAuthorization401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetDebugDumpAuthorization401JSONResponse) VisitGetDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDebugDumpAuthorization403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetDebugDumpAuthorization403JSONResponse) VisitGetDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDebugDumpAuthorization404JSONResponse Error
+
+func (response GetDebugDumpAuthorization404JSONResponse) VisitGetDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDebugDumpAuthorization503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetDebugDumpAuthorization503JSONResponse) VisitGetDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDebugDumpsRequestObject struct {
+	ProjectId                ProjectId                `json:"project_id"`
+	JobId                    JobId                    `json:"job_id"`
+	DebugDumpAuthorizationId DebugDumpAuthorizationId `json:"debug_dump_authorization_id"`
+}
+
+type ListDebugDumpsResponseObject interface {
+	VisitListDebugDumpsResponse(w http.ResponseWriter) error
+}
+
+type ListDebugDumps200JSONResponse DebugDumpList
+
+func (response ListDebugDumps200JSONResponse) VisitListDebugDumpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDebugDumps400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListDebugDumps400JSONResponse) VisitListDebugDumpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDebugDumps401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListDebugDumps401JSONResponse) VisitListDebugDumpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDebugDumps403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListDebugDumps403JSONResponse) VisitListDebugDumpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDebugDumps404JSONResponse Error
+
+func (response ListDebugDumps404JSONResponse) VisitListDebugDumpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDebugDumps503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListDebugDumps503JSONResponse) VisitListDebugDumpsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadDebugDumpRequestObject struct {
+	ProjectId                ProjectId                `json:"project_id"`
+	JobId                    JobId                    `json:"job_id"`
+	DebugDumpAuthorizationId DebugDumpAuthorizationId `json:"debug_dump_authorization_id"`
+	DebugDumpId              DebugDumpId              `json:"debug_dump_id"`
+}
+
+type ReadDebugDumpResponseObject interface {
+	VisitReadDebugDumpResponse(w http.ResponseWriter) error
+}
+
+type ReadDebugDump200JSONResponse DebugDumpDownload
+
+func (response ReadDebugDump200JSONResponse) VisitReadDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadDebugDump400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReadDebugDump400JSONResponse) VisitReadDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadDebugDump401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ReadDebugDump401JSONResponse) VisitReadDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadDebugDump403JSONResponse Error
+
+func (response ReadDebugDump403JSONResponse) VisitReadDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadDebugDump404JSONResponse Error
+
+func (response ReadDebugDump404JSONResponse) VisitReadDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadDebugDump503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReadDebugDump503JSONResponse) VisitReadDebugDumpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDebugDumpAuthorizationRequestObject struct {
+	ProjectId                ProjectId                `json:"project_id"`
+	JobId                    JobId                    `json:"job_id"`
+	DebugDumpAuthorizationId DebugDumpAuthorizationId `json:"debug_dump_authorization_id"`
+	Params                   RevokeDebugDumpAuthorizationParams
+}
+
+type RevokeDebugDumpAuthorizationResponseObject interface {
+	VisitRevokeDebugDumpAuthorizationResponse(w http.ResponseWriter) error
+}
+
+type RevokeDebugDumpAuthorization200JSONResponse DebugDumpAuthorization
+
+func (response RevokeDebugDumpAuthorization200JSONResponse) VisitRevokeDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDebugDumpAuthorization401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RevokeDebugDumpAuthorization401JSONResponse) VisitRevokeDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDebugDumpAuthorization403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeDebugDumpAuthorization403JSONResponse) VisitRevokeDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDebugDumpAuthorization404JSONResponse Error
+
+func (response RevokeDebugDumpAuthorization404JSONResponse) VisitRevokeDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDebugDumpAuthorization409JSONResponse Error
+
+func (response RevokeDebugDumpAuthorization409JSONResponse) VisitRevokeDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeDebugDumpAuthorization503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeDebugDumpAuthorization503JSONResponse) VisitRevokeDebugDumpAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProjectMembersRequestObject struct {
 	ProjectId ProjectId `json:"project_id"`
 	Params    ListProjectMembersParams
@@ -7511,6 +8462,21 @@ type StrictServerInterface interface {
 	// AcceptContentDeletionRequest Accept an idempotent Content Deletion request for a Project Job
 	// (POST /v1/projects/{project_id}/jobs/{job_id}/content-deletion-requests)
 	AcceptContentDeletionRequest(ctx context.Context, request AcceptContentDeletionRequestRequestObject) (AcceptContentDeletionRequestResponseObject, error)
+	// AuthorizeDebugDump Opt a queued Project Job into bounded failure diagnostics
+	// (POST /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations)
+	AuthorizeDebugDump(ctx context.Context, request AuthorizeDebugDumpRequestObject) (AuthorizeDebugDumpResponseObject, error)
+	// GetDebugDumpAuthorization Inspect one Job debug dump authorization
+	// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id})
+	GetDebugDumpAuthorization(ctx context.Context, request GetDebugDumpAuthorizationRequestObject) (GetDebugDumpAuthorizationResponseObject, error)
+	// ListDebugDumps List safe metadata for one Job debug dump authorization
+	// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps)
+	ListDebugDumps(ctx context.Context, request ListDebugDumpsRequestObject) (ListDebugDumpsResponseObject, error)
+	// ReadDebugDump Authorize and sign one exact debug dump version
+	// (GET /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps/{debug_dump_id})
+	ReadDebugDump(ctx context.Context, request ReadDebugDumpRequestObject) (ReadDebugDumpResponseObject, error)
+	// RevokeDebugDumpAuthorization Permanently revoke one Job debug dump authorization
+	// (POST /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/revoke)
+	RevokeDebugDumpAuthorization(ctx context.Context, request RevokeDebugDumpAuthorizationRequestObject) (RevokeDebugDumpAuthorizationResponseObject, error)
 	// ListProjectMembers List Human members assigned to a Project
 	// (GET /v1/projects/{project_id}/members)
 	ListProjectMembers(ctx context.Context, request ListProjectMembersRequestObject) (ListProjectMembersResponseObject, error)
@@ -8390,6 +9356,155 @@ func (sh *strictHandler) AcceptContentDeletionRequest(w http.ResponseWriter, r *
 	}
 }
 
+// AuthorizeDebugDump operation middleware
+func (sh *strictHandler) AuthorizeDebugDump(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, params AuthorizeDebugDumpParams) {
+	var request AuthorizeDebugDumpRequestObject
+
+	request.ProjectId = projectId
+	request.JobId = jobId
+	request.Params = params
+
+	var body AuthorizeDebugDumpJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AuthorizeDebugDump(ctx, request.(AuthorizeDebugDumpRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AuthorizeDebugDump")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AuthorizeDebugDumpResponseObject); ok {
+		if err := validResponse.VisitAuthorizeDebugDumpResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetDebugDumpAuthorization operation middleware
+func (sh *strictHandler) GetDebugDumpAuthorization(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId) {
+	var request GetDebugDumpAuthorizationRequestObject
+
+	request.ProjectId = projectId
+	request.JobId = jobId
+	request.DebugDumpAuthorizationId = debugDumpAuthorizationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDebugDumpAuthorization(ctx, request.(GetDebugDumpAuthorizationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDebugDumpAuthorization")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDebugDumpAuthorizationResponseObject); ok {
+		if err := validResponse.VisitGetDebugDumpAuthorizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDebugDumps operation middleware
+func (sh *strictHandler) ListDebugDumps(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId) {
+	var request ListDebugDumpsRequestObject
+
+	request.ProjectId = projectId
+	request.JobId = jobId
+	request.DebugDumpAuthorizationId = debugDumpAuthorizationId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDebugDumps(ctx, request.(ListDebugDumpsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDebugDumps")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDebugDumpsResponseObject); ok {
+		if err := validResponse.VisitListDebugDumpsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReadDebugDump operation middleware
+func (sh *strictHandler) ReadDebugDump(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId, debugDumpId DebugDumpId) {
+	var request ReadDebugDumpRequestObject
+
+	request.ProjectId = projectId
+	request.JobId = jobId
+	request.DebugDumpAuthorizationId = debugDumpAuthorizationId
+	request.DebugDumpId = debugDumpId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReadDebugDump(ctx, request.(ReadDebugDumpRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReadDebugDump")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReadDebugDumpResponseObject); ok {
+		if err := validResponse.VisitReadDebugDumpResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeDebugDumpAuthorization operation middleware
+func (sh *strictHandler) RevokeDebugDumpAuthorization(w http.ResponseWriter, r *http.Request, projectId ProjectId, jobId JobId, debugDumpAuthorizationId DebugDumpAuthorizationId, params RevokeDebugDumpAuthorizationParams) {
+	var request RevokeDebugDumpAuthorizationRequestObject
+
+	request.ProjectId = projectId
+	request.JobId = jobId
+	request.DebugDumpAuthorizationId = debugDumpAuthorizationId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeDebugDumpAuthorization(ctx, request.(RevokeDebugDumpAuthorizationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeDebugDumpAuthorization")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeDebugDumpAuthorizationResponseObject); ok {
+		if err := validResponse.VisitRevokeDebugDumpAuthorizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListProjectMembers operation middleware
 func (sh *strictHandler) ListProjectMembers(w http.ResponseWriter, r *http.Request, projectId ProjectId, params ListProjectMembersParams) {
 	var request ListProjectMembersRequestObject
@@ -8890,148 +10005,158 @@ func (sh *strictHandler) RotateWebhookSubscriptionSecret(w http.ResponseWriter, 
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"L3f/PwAA//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

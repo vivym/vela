@@ -382,6 +382,10 @@ func TestConnectDispatchesExecutionOperationsUnderMTLSWorkerIdentity(t *testing.
 			RequestContent:             `{"prompt":"private"}`, AttemptNumber: 2,
 			LeaseToken: "opaque-lease-token", LeaseFence: 3,
 			LeaseExpiresAt: now.Add(time.Minute), LeaseValidFor: 45 * time.Second,
+			DebugDumpAuthorization: &workercontrol.DebugDumpAuthorizationSnapshot{
+				AuthorizationID: uuid.MustParse("17000000-0000-0000-0000-000000000008"),
+				ExpiresAt:       now.Add(72 * time.Hour),
+			},
 		},
 		startResult: workercontrol.StartResult{
 			Decision: workercontrol.StartGranted, AttemptID: attemptID, JobID: jobID,
@@ -421,7 +425,10 @@ func TestConnectDispatchesExecutionOperationsUnderMTLSWorkerIdentity(t *testing.
 	assignment := stream.responses[0].GetAssignment()
 	if assignment.GetAttemptId() != attemptID.String() || assignment.GetJobId() != jobID.String() ||
 		assignment.GetRequestContentJson() == nil ||
-		assignment.GetLeaseValidFor().AsDuration() != 45*time.Second {
+		assignment.GetLeaseValidFor().AsDuration() != 45*time.Second ||
+		assignment.GetDebugDumpAuthorization().GetAuthorizationId() !=
+			"17000000-0000-0000-0000-000000000008" ||
+		!assignment.GetDebugDumpAuthorization().GetExpiresAt().AsTime().Equal(now.Add(72*time.Hour)) {
 		t.Fatalf("Assignment response = %#v", assignment)
 	}
 	if coordinator.acquireEpoch != 7 || coordinator.acquireCandidatePresent ||
@@ -883,6 +890,7 @@ type recordingArtifactUploadStore struct {
 	presigned       []artifactstore.MultipartUpload
 	completed       []artifactstore.MultipartUpload
 	completeErr     error
+	completeVersion artifactstore.ObjectVersion
 	headVersion     artifactstore.ObjectVersion
 	headCalls       int
 	beforeComplete  func()
@@ -963,6 +971,13 @@ func (store *recordingArtifactUploadStore) CompleteMultipartUpload(
 	store.completed = append(store.completed, upload)
 	if store.completeErr != nil {
 		return artifactstore.ObjectVersion{}, store.completeErr
+	}
+	if store.completeVersion.VersionID != "" {
+		version := store.completeVersion
+		if version.ChecksumSHA256 == "" {
+			version.ChecksumSHA256 = mustMultipartChecksumForStore(parts)
+		}
+		return version, nil
 	}
 	return artifactstore.ObjectVersion{
 		ObjectKey: upload.ObjectKey, VersionID: "version-1", SizeBytes: 15, ContentType: "video/mp4",

@@ -21,6 +21,8 @@ const (
 	RoleOrganizationAuditRequest   Role = "vela_organization_audit_request"
 	RoleBreakGlassAuditRequest     Role = "vela_break_glass_audit_request"
 	RoleRetentionRequest           Role = "vela_retention_request"
+	RoleDebugDumpRequest           Role = "vela_debug_dump_request"
+	RoleDebugDumpAuditRequest      Role = "vela_debug_dump_audit_request"
 	RoleRetention                  Role = "vela_retention"
 	RolePlatformOperatorAuth       Role = "vela_platform_operator_auth"
 	RoleBreakGlassRequest          Role = "vela_break_glass_request"
@@ -57,6 +59,8 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleOrganizationAuditRequest:   {verifyPrivileges: verifyOrganizationAuditRequestPrivileges},
 	RoleBreakGlassAuditRequest:     {verifyPrivileges: verifyBreakGlassAuditRequestPrivileges},
 	RoleRetentionRequest:           {verifyPrivileges: verifyRetentionRequestPrivileges},
+	RoleDebugDumpRequest:           {verifyPrivileges: verifyDebugDumpRequestPrivileges},
+	RoleDebugDumpAuditRequest:      {verifyPrivileges: verifyDebugDumpAuditRequestPrivileges},
 	RoleRetention:                  {verifyPrivileges: verifyRetentionPrivileges},
 	RolePlatformOperatorAuth:       {verifyPrivileges: verifyPlatformOperatorAuthPrivileges},
 	RoleBreakGlassRequest:          {verifyPrivileges: verifyBreakGlassRequestPrivileges},
@@ -320,6 +324,41 @@ func verifyRetentionRequestPrivileges(
 			"vela_set_project_retention_policy(uuid,integer,uuid)",
 			"vela_get_content_deletion_request(uuid,uuid)",
 			"vela_accept_content_deletion_request(uuid,uuid,uuid,text,bytea,uuid,uuid,uuid,uuid,uuid,uuid,uuid)",
+		},
+	})
+}
+
+func verifyDebugDumpRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "debug dump request",
+		failureLabel:    "debug dump request transaction",
+		functions: []string{
+			"vela_set_request_context(uuid,bytea,text)",
+			"vela_authorize_debug_dump(uuid,uuid,uuid,text,bytea,debug_dump_purpose)",
+			"vela_get_debug_dump_authorization(uuid,uuid,uuid)",
+			"vela_revoke_debug_dump_authorization(uuid,uuid,uuid,text,bytea)",
+			"vela_list_debug_dumps(uuid,uuid,uuid)",
+			"vela_authorize_debug_dump_read(uuid,uuid,uuid,uuid)",
+			"vela_record_debug_dump_delivery(uuid,uuid,uuid,uuid,text,boolean)",
+		},
+	})
+}
+
+func verifyDebugDumpAuditRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "debug dump audit request",
+		failureLabel:    "debug dump audit projection transaction",
+		functions: []string{
+			"vela_set_organization_identity_admin_context(uuid,bytea,text)",
+			"vela_list_organization_audit_events_v3(uuid,integer)",
 		},
 	})
 }

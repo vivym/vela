@@ -62,6 +62,18 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_retention_request_login",
 		"vela-retention-request-password",
 	)
+	debugDumpRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_debug_dump_request_login",
+		"vela-debug-dump-request-password",
+	)
+	debugDumpAuditRequestPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_debug_dump_audit_request_login",
+		"vela-debug-dump-audit-request-password",
+	)
 	retentionPool := newRolePool(
 		t,
 		database.DSN,
@@ -123,6 +135,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_organization_audit_request_login",
 		"vela_break_glass_audit_request_login",
 		"vela_retention_request_login",
+		"vela_debug_dump_request_login",
+		"vela_debug_dump_audit_request_login",
 		"vela_retention_login",
 		"vela_platform_operator_auth_login",
 		"vela_break_glass_request_login",
@@ -177,6 +191,11 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			role: veladb.RoleBreakGlassAuditRequest,
 		},
 		{name: "retention request", pool: retentionRequestPool, role: veladb.RoleRetentionRequest},
+		{name: "debug dump request", pool: debugDumpRequestPool, role: veladb.RoleDebugDumpRequest},
+		{
+			name: "debug dump audit request", pool: debugDumpAuditRequestPool,
+			role: veladb.RoleDebugDumpAuditRequest,
+		},
 		{name: "retention", pool: retentionPool, role: veladb.RoleRetention},
 		{
 			name: "Platform Operator auth", pool: platformOperatorAuthPool,
@@ -218,6 +237,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_platform_operator_auth"},
 		{name: "vela_break_glass_request"},
 		{name: "vela_break_glass_audit_request"},
+		{name: "vela_debug_dump_request"},
+		{name: "vela_debug_dump_audit_request"},
 		{name: "vela_break_glass_owner", bypassRLS: true},
 		{name: "vela_finance_reconciliation"},
 		{name: "vela_scheduler_inbox"},
@@ -336,6 +357,51 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			signature: "vela_list_organization_audit_events_v2(uuid,integer)",
 			owner:     "vela_internal",
 			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_authorize_debug_dump(uuid,uuid,uuid,text,bytea,debug_dump_purpose)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_get_debug_dump_authorization(uuid,uuid,uuid)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_revoke_debug_dump_authorization(uuid,uuid,uuid,text,bytea)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_list_debug_dumps(uuid,uuid,uuid)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_authorize_debug_dump_read(uuid,uuid,uuid,uuid)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_record_debug_dump_delivery(uuid,uuid,uuid,uuid,text,boolean)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_confirm_debug_dump_authorization_for_assignment(uuid,timestamp with time zone)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_record_debug_dump_uploaded(uuid,uuid,bigint,text,bigint,bytea,text,jsonb,bytea,timestamp with time zone)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_list_organization_audit_events_v3(uuid,integer)",
+			owner:     "vela_internal",
+			proconfig: "search_path=pg_catalog, public",
 		},
 		{
 			signature: "vela_remediation_event(uuid,integer,remediation_operation_state,remediation_operation_state,text,text)",
@@ -595,19 +661,52 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	); !isPermissionDenied(err) {
 		t.Fatalf("Organization audit request Charge call error = %v, want permission denied", err)
 	}
-	for _, relation := range []string{
-		"projects",
-		"jobs",
-		"retention_policy_revisions",
-		"project_retention_policy_events",
+	for _, runtime := range []struct {
+		name string
+		pool *pgxpool.Pool
+	}{
+		{name: "retention request", pool: retentionRequestPool},
+		{name: "debug dump request", pool: debugDumpRequestPool},
+		{name: "debug dump audit request", pool: debugDumpAuditRequestPool},
 	} {
-		var count int64
-		err := retentionRequestPool.QueryRow(
-			context.Background(), "SELECT count(*) FROM "+relation,
-		).Scan(&count)
-		if !isPermissionDenied(err) {
-			t.Fatalf("retention request direct %s read error = %v, want permission denied", relation, err)
+		for _, relation := range []string{
+			"projects",
+			"jobs",
+			"retention_policy_revisions",
+			"project_retention_policy_events",
+			"debug_dump_authorizations",
+			"debug_dumps",
+			"debug_dump_events",
+		} {
+			var count int64
+			err := runtime.pool.QueryRow(
+				context.Background(), "SELECT count(*) FROM "+relation,
+			).Scan(&count)
+			if !isPermissionDenied(err) {
+				t.Fatalf(
+					"%s direct %s read error = %v, want permission denied",
+					runtime.name,
+					relation,
+					err,
+				)
+			}
 		}
+	}
+	if _, err := retentionRequestPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_get_debug_dump_authorization($1, $2, $3)",
+		uuid.New(),
+		uuid.New(),
+		uuid.New(),
+	); !isPermissionDenied(err) {
+		t.Fatalf("legacy retention request debug dump call error = %v, want permission denied", err)
+	}
+	if _, err := breakGlassAuditRequestPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_list_organization_audit_events_v3($1, 100)",
+		uuid.MustParse(testOrganizationID),
+	); !isPermissionDenied(err) {
+		t.Fatalf("legacy Break-glass audit v3 call error = %v, want permission denied", err)
 	}
 	for _, runtime := range []struct {
 		name string
@@ -752,6 +851,22 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request as retention request", pool: requestPool, role: veladb.RoleRetentionRequest},
 		{name: "retention request as request", pool: retentionRequestPool, role: veladb.RoleRequest},
 		{name: "internal as retention request", pool: internalPool, role: veladb.RoleRetentionRequest},
+		{
+			name: "retention request as debug dump request", pool: retentionRequestPool,
+			role: veladb.RoleDebugDumpRequest,
+		},
+		{
+			name: "debug dump request as retention request", pool: debugDumpRequestPool,
+			role: veladb.RoleRetentionRequest,
+		},
+		{
+			name: "Break-glass audit request as debug dump audit request",
+			pool: breakGlassAuditRequestPool, role: veladb.RoleDebugDumpAuditRequest,
+		},
+		{
+			name: "debug dump audit request as Break-glass audit request",
+			pool: debugDumpAuditRequestPool, role: veladb.RoleBreakGlassAuditRequest,
+		},
 		{name: "request as retention", pool: requestPool, role: veladb.RoleRetention},
 		{name: "retention as request", pool: retentionPool, role: veladb.RoleRequest},
 		{name: "internal as retention", pool: internalPool, role: veladb.RoleRetention},

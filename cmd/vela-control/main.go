@@ -33,6 +33,7 @@ import (
 	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
 	veladb "github.com/vivym/vela/internal/database"
+	"github.com/vivym/vela/internal/debugdump"
 	"github.com/vivym/vela/internal/finalizationreconciler"
 	"github.com/vivym/vela/internal/financereconciliation"
 	"github.com/vivym/vela/internal/fleet"
@@ -115,6 +116,8 @@ type config struct {
 	organizationBillingDatabaseURL    string
 	organizationAuditDatabaseURL      string
 	retentionRequestDatabaseURL       string
+	debugDumpRequestDatabaseURL       string
+	debugDumpAuditRequestDatabaseURL  string
 	retentionDatabaseURL              string
 	platformOperatorAuthDatabaseURL   string
 	breakGlassRequestDatabaseURL      string
@@ -541,6 +544,26 @@ func run() error {
 		return fmt.Errorf("open webhook database pool: %w", err)
 	}
 	defer webhookPool.Close()
+	debugDumpRequestPool, err := openPool(
+		ctx,
+		configuration.debugDumpRequestDatabaseURL,
+		10,
+		veladb.RoleDebugDumpRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open debug dump request database pool: %w", err)
+	}
+	defer debugDumpRequestPool.Close()
+	debugDumpAuditRequestPool, err := openPool(
+		ctx,
+		configuration.debugDumpAuditRequestDatabaseURL,
+		10,
+		veladb.RoleDebugDumpAuditRequest,
+	)
+	if err != nil {
+		return fmt.Errorf("open debug dump audit request database pool: %w", err)
+	}
+	defer debugDumpAuditRequestPool.Close()
 	webhookKeyring, err := readWebhookKeyring(configuration.webhookEncryptionKeyringFile)
 	if err != nil {
 		return err
@@ -788,7 +811,7 @@ func run() error {
 	organizationReporting, err := organizationreporting.NewService(
 		organizationBillingPool,
 		organizationAuditPool,
-		breakGlassAuditPool,
+		debugDumpAuditRequestPool,
 	)
 	if err != nil {
 		return fmt.Errorf("configure Organization reporting service: %w", err)
@@ -796,6 +819,10 @@ func run() error {
 	retentionService, err := retention.NewService(retentionRequestPool)
 	if err != nil {
 		return fmt.Errorf("configure retention service: %w", err)
+	}
+	debugDumpService, err := debugdump.NewService(debugDumpRequestPool, artifactStore)
+	if err != nil {
+		return fmt.Errorf("configure debug dump service: %w", err)
 	}
 	breakGlassService, err := breakglass.NewService(breakGlassRequestPool, artifactStore)
 	if err != nil {
@@ -818,6 +845,7 @@ func run() error {
 		IdentityAdministration: identityAdministration,
 		OrganizationReporting:  organizationReporting,
 		Retention:              retentionService,
+		DebugDumps:             debugDumpService,
 		Admission:              admission.NewService(requestPool, capacityPredictor),
 		Cancellation:           cancellationService,
 		Artifacts:              artifactaccess.NewService(artifactRequestPool, artifactStore),
@@ -842,6 +870,8 @@ func run() error {
 			organizationBillingPool,
 			organizationAuditPool,
 			retentionRequestPool,
+			debugDumpRequestPool,
+			debugDumpAuditRequestPool,
 			platformOperatorAuthPool,
 			breakGlassRequestPool,
 			breakGlassAuditPool,
@@ -1144,6 +1174,8 @@ func loadConfig() (config, error) {
 		organizationBillingDatabaseURL:    os.Getenv("VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL"),
 		organizationAuditDatabaseURL:      os.Getenv("VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL"),
 		retentionRequestDatabaseURL:       os.Getenv("VELA_RETENTION_REQUEST_DATABASE_URL"),
+		debugDumpRequestDatabaseURL:       os.Getenv("VELA_DEBUG_DUMP_REQUEST_DATABASE_URL"),
+		debugDumpAuditRequestDatabaseURL:  os.Getenv("VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL"),
 		retentionDatabaseURL:              os.Getenv("VELA_RETENTION_DATABASE_URL"),
 		platformOperatorAuthDatabaseURL:   os.Getenv("VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"),
 		breakGlassRequestDatabaseURL:      os.Getenv("VELA_BREAK_GLASS_REQUEST_DATABASE_URL"),
@@ -1248,6 +1280,8 @@ func loadConfig() (config, error) {
 		"VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL": configuration.organizationBillingDatabaseURL,
 		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL":   configuration.organizationAuditDatabaseURL,
 		"VELA_RETENTION_REQUEST_DATABASE_URL":            configuration.retentionRequestDatabaseURL,
+		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL":           configuration.debugDumpRequestDatabaseURL,
+		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL":     configuration.debugDumpAuditRequestDatabaseURL,
 		"VELA_RETENTION_DATABASE_URL":                    configuration.retentionDatabaseURL,
 		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL":       configuration.platformOperatorAuthDatabaseURL,
 		"VELA_BREAK_GLASS_REQUEST_DATABASE_URL":          configuration.breakGlassRequestDatabaseURL,
@@ -2222,11 +2256,12 @@ func runRetentionReconciler(
 		if err != nil && !errors.Is(err, context.Canceled) {
 			slog.Warn("retention reconciliation incomplete", "error", err)
 		} else if err == nil && (result.RequestContentExpired > 0 ||
-			result.ArtifactRequestsCreated > 0 || result.Claimed > 0) {
+			result.ContentDeletionRequestsCreated > 0 || result.Claimed > 0) {
 			slog.Info(
 				"retention reconciled",
 				"request_content_expired", result.RequestContentExpired,
-				"artifact_requests_created", result.ArtifactRequestsCreated,
+				"content_deletion_requests_created",
+				result.ContentDeletionRequestsCreated,
 				"claimed", result.Claimed,
 				"completed", result.Completed,
 				"failed", result.Failed,

@@ -18,6 +18,7 @@ import (
 	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/debugdump"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/remediation"
@@ -44,6 +45,7 @@ type Config struct {
 	IdentityAdministration *identity.AdministrationService
 	OrganizationReporting  *organizationreporting.Service
 	Retention              *retention.Service
+	DebugDumps             *debugdump.Service
 	Admission              *admission.Service
 	Cancellation           *cancellation.Service
 	Artifacts              *artifactaccess.Service
@@ -58,6 +60,7 @@ type server struct {
 	identityAdministration *identity.AdministrationService
 	organizationReporting  *organizationreporting.Service
 	retention              *retention.Service
+	debugDumps             *debugdump.Service
 	admission              *admission.Service
 	cancellation           *cancellation.Service
 	artifacts              *artifactaccess.Service
@@ -107,6 +110,7 @@ func NewHandler(config Config) (http.Handler, error) {
 		identityAdministration: config.IdentityAdministration,
 		organizationReporting:  config.OrganizationReporting,
 		retention:              config.Retention,
+		debugDumps:             config.DebugDumps,
 		admission:              config.Admission,
 		cancellation:           config.Cancellation,
 		artifacts:              config.Artifacts,
@@ -534,6 +538,256 @@ func (s *server) SetProjectRetentionPolicy(
 		return setProjectRetentionPolicyFailure(err)
 	}
 	return api.SetProjectRetentionPolicy200JSONResponse(toAPIProjectRetentionPolicy(policy)), nil
+}
+
+func (s *server) AuthorizeDebugDump(
+	ctx context.Context,
+	request api.AuthorizeDebugDumpRequestObject,
+) (api.AuthorizeDebugDumpResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.AuthorizeDebugDump401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.AuthorizeDebugDump403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.AuthorizeDebugDump404JSONResponse{
+			Code: "not_found", Message: "Project or Job is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.AuthorizeDebugDump503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.AuthorizeDebugDump400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "debug dump authorization body is required",
+			},
+		}, nil
+	}
+	authorization, err := s.debugDumps.Authorize(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		string(request.Params.IdempotencyKey),
+		debugdump.Purpose(request.Body.Purpose),
+	)
+	if err != nil {
+		return authorizeDebugDumpFailure(err)
+	}
+	response := toAPIDebugDumpAuthorization(authorization)
+	if authorization.Replayed {
+		return api.AuthorizeDebugDump200JSONResponse(response), nil
+	}
+	return api.AuthorizeDebugDump201JSONResponse(response), nil
+}
+
+func (s *server) GetDebugDumpAuthorization(
+	ctx context.Context,
+	request api.GetDebugDumpAuthorizationRequestObject,
+) (api.GetDebugDumpAuthorizationResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.GetDebugDumpAuthorization401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.GetDebugDumpAuthorization403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.GetDebugDumpAuthorization404JSONResponse{
+			Code: "not_found", Message: "debug dump authorization is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.GetDebugDumpAuthorization503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	authorization, err := s.debugDumps.GetAuthorization(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.DebugDumpAuthorizationId,
+	)
+	if err != nil {
+		return getDebugDumpAuthorizationFailure(err)
+	}
+	return api.GetDebugDumpAuthorization200JSONResponse(
+		toAPIDebugDumpAuthorization(authorization),
+	), nil
+}
+
+func (s *server) RevokeDebugDumpAuthorization(
+	ctx context.Context,
+	request api.RevokeDebugDumpAuthorizationRequestObject,
+) (api.RevokeDebugDumpAuthorizationResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.RevokeDebugDumpAuthorization401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.RevokeDebugDumpAuthorization403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.RevokeDebugDumpAuthorization404JSONResponse{
+			Code: "not_found", Message: "debug dump authorization is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.RevokeDebugDumpAuthorization503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	authorization, err := s.debugDumps.RevokeAuthorization(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.DebugDumpAuthorizationId,
+		string(request.Params.IdempotencyKey),
+	)
+	if err != nil {
+		return revokeDebugDumpAuthorizationFailure(err)
+	}
+	return api.RevokeDebugDumpAuthorization200JSONResponse(
+		toAPIDebugDumpAuthorization(authorization),
+	), nil
+}
+
+func (s *server) ListDebugDumps(
+	ctx context.Context,
+	request api.ListDebugDumpsRequestObject,
+) (api.ListDebugDumpsResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListDebugDumps401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListDebugDumps403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.ListDebugDumps404JSONResponse{
+			Code: "not_found", Message: "debug dump authorization is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.ListDebugDumps503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	dumps, err := s.debugDumps.ListDumps(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.DebugDumpAuthorizationId,
+	)
+	if err != nil {
+		return listDebugDumpsFailure(err)
+	}
+	response := api.DebugDumpList{Dumps: make([]api.DebugDump, len(dumps))}
+	for index := range dumps {
+		response.Dumps[index] = toAPIDebugDump(dumps[index])
+	}
+	return api.ListDebugDumps200JSONResponse(response), nil
+}
+
+func (s *server) ReadDebugDump(
+	ctx context.Context,
+	request api.ReadDebugDumpRequestObject,
+) (api.ReadDebugDumpResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ReadDebugDump401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ReadDebugDump403JSONResponse{
+			Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.ReadDebugDump404JSONResponse{
+			Code: "not_found", Message: "debug dump target is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.ReadDebugDump503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	download, err := s.debugDumps.ReadDump(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.DebugDumpAuthorizationId,
+		request.DebugDumpId,
+	)
+	if err != nil {
+		return readDebugDumpFailure(err)
+	}
+	return api.ReadDebugDump200JSONResponse(toAPIDebugDumpDownload(download)), nil
 }
 
 func (s *server) AcceptContentDeletionRequest(
@@ -2931,6 +3185,156 @@ func retentionFailureResponse(err error) (*retention.Failure, api.Error, bool) {
 	return failure, api.Error{Code: string(failure.Code), Message: failure.Message}, true
 }
 
+func authorizeDebugDumpFailure(
+	err error,
+) (api.AuthorizeDebugDumpResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.AuthorizeDebugDump401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.AuthorizeDebugDump403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case debugdump.FailureInvalid:
+		return api.AuthorizeDebugDump400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound:
+		return api.AuthorizeDebugDump404JSONResponse(response), nil
+	case debugdump.FailureConflict:
+		return api.AuthorizeDebugDump409JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.AuthorizeDebugDump503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func getDebugDumpAuthorizationFailure(
+	err error,
+) (api.GetDebugDumpAuthorizationResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.GetDebugDumpAuthorization401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.GetDebugDumpAuthorization403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound, debugdump.FailureInvalid:
+		return api.GetDebugDumpAuthorization404JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.GetDebugDumpAuthorization503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func revokeDebugDumpAuthorizationFailure(
+	err error,
+) (api.RevokeDebugDumpAuthorizationResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.RevokeDebugDumpAuthorization401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.RevokeDebugDumpAuthorization403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound, debugdump.FailureInvalid:
+		return api.RevokeDebugDumpAuthorization404JSONResponse(response), nil
+	case debugdump.FailureConflict:
+		return api.RevokeDebugDumpAuthorization409JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.RevokeDebugDumpAuthorization503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func listDebugDumpsFailure(err error) (api.ListDebugDumpsResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.ListDebugDumps401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.ListDebugDumps403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case debugdump.FailureInvalid:
+		return api.ListDebugDumps400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound:
+		return api.ListDebugDumps404JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.ListDebugDumps503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func readDebugDumpFailure(err error) (api.ReadDebugDumpResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.ReadDebugDump401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.ReadDebugDump403JSONResponse(response), nil
+	case debugdump.FailureInvalid:
+		return api.ReadDebugDump400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound:
+		return api.ReadDebugDump404JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.ReadDebugDump503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
 func acceptContentDeletionRequestFailure(
 	err error,
 ) (api.AcceptContentDeletionRequestResponseObject, error) {
@@ -3267,18 +3671,22 @@ func toAPIOrganizationAuditEvent(
 		value := api.BreakGlassScope(*event.Scope)
 		scope = &value
 	}
-	var outcomeCode *api.BreakGlassAuditOutcomeCode
-	if event.OutcomeCode != nil {
-		value := api.BreakGlassAuditOutcomeCode(*event.OutcomeCode)
-		outcomeCode = &value
+	var actorPrincipalID, actorSessionID *uuid.UUID
+	if event.ActorPrincipalID != uuid.Nil {
+		value := event.ActorPrincipalID
+		actorPrincipalID = &value
+	}
+	if event.ActorSessionID != uuid.Nil {
+		value := event.ActorSessionID
+		actorSessionID = &value
 	}
 	return api.OrganizationAuditEvent{
 		Action:           api.OrganizationAuditEventAction(event.Action),
-		ActorPrincipalId: event.ActorPrincipalID,
-		ActorSessionId:   event.ActorSessionID,
+		ActorPrincipalId: actorPrincipalID,
+		ActorSessionId:   actorSessionID,
 		CreatedAt:        event.CreatedAt,
 		EventId:          event.EventID,
-		OutcomeCode:      outcomeCode,
+		OutcomeCode:      event.OutcomeCode,
 		ProjectId:        event.ProjectID,
 		Scope:            scope,
 		Source:           api.OrganizationAuditEventSource(event.Source),
@@ -3385,6 +3793,50 @@ func toAPIProjectRetentionPolicy(policy retention.Policy) api.ProjectRetentionPo
 		MetadataRetentionDays:           policy.MetadataRetentionDays,
 		FinancialRetentionDays:          policy.FinancialRetentionDays,
 		SelectedAt:                      policy.SelectedAt,
+	}
+}
+
+func toAPIDebugDumpAuthorization(
+	authorization debugdump.Authorization,
+) api.DebugDumpAuthorization {
+	return api.DebugDumpAuthorization{
+		AuthorizationId: authorization.ID,
+		OrganizationId:  authorization.OrganizationID,
+		ProjectId:       authorization.ProjectID,
+		JobId:           authorization.JobID,
+		Purpose:         api.DebugDumpPurpose(authorization.Purpose),
+		AuthorizedAt:    authorization.AuthorizedAt,
+		ExpiresAt:       authorization.ExpiresAt,
+		RevokedAt:       authorization.RevokedAt,
+	}
+}
+
+func toAPIDebugDump(dump debugdump.Dump) api.DebugDump {
+	return api.DebugDump{
+		AttemptId:       dump.AttemptID,
+		AuthorizationId: dump.AuthorizationID,
+		ContentType:     api.DebugDumpContentType(dump.ContentType),
+		CreatedAt:       dump.CreatedAt,
+		DebugDumpId:     dump.ID,
+		DeletedAt:       dump.DeletedAt,
+		ExpiresAt:       dump.ExpiresAt,
+		Sha256:          hex.EncodeToString(dump.SHA256[:]),
+		SizeBytes:       dump.SizeBytes,
+		State:           api.DebugDumpState(dump.State),
+		UploadedAt:      dump.UploadedAt,
+	}
+}
+
+func toAPIDebugDumpDownload(download debugdump.Download) api.DebugDumpDownload {
+	return api.DebugDumpDownload{
+		AuthorizationId:      download.AuthorizationID,
+		ContentType:          api.DebugDumpDownloadContentType(download.ContentType),
+		DebugDumpId:          download.ID,
+		DownloadUrl:          download.DownloadURL,
+		DownloadUrlExpiresAt: download.DownloadURLExpiresAt,
+		ExpiresAt:            download.ExpiresAt,
+		Sha256:               hex.EncodeToString(download.SHA256[:]),
+		SizeBytes:            download.SizeBytes,
 	}
 }
 

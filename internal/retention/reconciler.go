@@ -58,11 +58,11 @@ type ReconcilerConfig struct {
 }
 
 type ReconcileResult struct {
-	RequestContentExpired   int
-	ArtifactRequestsCreated int
-	Claimed                 int
-	Completed               int
-	Failed                  int
+	RequestContentExpired          int
+	ContentDeletionRequestsCreated int
+	Claimed                        int
+	Completed                      int
+	Failed                         int
 }
 
 type Reconciler struct {
@@ -131,9 +131,9 @@ func (r *Reconciler) ReconcileBatch(ctx context.Context) (ReconcileResult, error
 	if err := enqueueTransaction.QueryRow(ctx, `
 		SELECT request_content_completed, artifact_requests_created
 		FROM vela_enqueue_expired_content_deletions($1)
-	`, r.batchSize).Scan(
+		`, r.batchSize).Scan(
 		&result.RequestContentExpired,
-		&result.ArtifactRequestsCreated,
+		&result.ContentDeletionRequestsCreated,
 	); err != nil {
 		return ReconcileResult{}, fmt.Errorf("enqueue retained Customer Content deletions: %w", err)
 	}

@@ -566,6 +566,7 @@ const (
 	ContentDeletionSourceRETENTIONREQUESTCONTENT     ContentDeletionSource = "RETENTION_REQUEST_CONTENT"
 	ContentDeletionSourceRETENTIONARTIFACT           ContentDeletionSource = "RETENTION_ARTIFACT"
 	ContentDeletionSourceRETENTIONINCOMPLETEARTIFACT ContentDeletionSource = "RETENTION_INCOMPLETE_ARTIFACT"
+	ContentDeletionSourceRETENTIONDEBUGDUMP          ContentDeletionSource = "RETENTION_DEBUG_DUMP"
 )
 
 func (e *ContentDeletionSource) Scan(src interface{}) error {
@@ -775,6 +776,140 @@ func (ns NullCreditReservationState) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.CreditReservationState), nil
+}
+
+type DebugDumpEventAction string
+
+const (
+	DebugDumpEventActionAUTHORIZED     DebugDumpEventAction = "AUTHORIZED"
+	DebugDumpEventActionREVOKED        DebugDumpEventAction = "REVOKED"
+	DebugDumpEventActionREADAUTHORIZED DebugDumpEventAction = "READ_AUTHORIZED"
+	DebugDumpEventActionREADDENIED     DebugDumpEventAction = "READ_DENIED"
+	DebugDumpEventActionDELIVERED      DebugDumpEventAction = "DELIVERED"
+	DebugDumpEventActionDELIVERYFAILED DebugDumpEventAction = "DELIVERY_FAILED"
+	DebugDumpEventActionUPLOADCLAIMED  DebugDumpEventAction = "UPLOAD_CLAIMED"
+	DebugDumpEventActionUPLOADED       DebugDumpEventAction = "UPLOADED"
+	DebugDumpEventActionDELETED        DebugDumpEventAction = "DELETED"
+)
+
+func (e *DebugDumpEventAction) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DebugDumpEventAction(s)
+	case string:
+		*e = DebugDumpEventAction(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DebugDumpEventAction: %T", src)
+	}
+	return nil
+}
+
+type NullDebugDumpEventAction struct {
+	DebugDumpEventAction DebugDumpEventAction `json:"debug_dump_event_action"`
+	Valid                bool                 `json:"valid"` // Valid is true if DebugDumpEventAction is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDebugDumpEventAction) Scan(value interface{}) error {
+	if value == nil {
+		ns.DebugDumpEventAction, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DebugDumpEventAction.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDebugDumpEventAction) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DebugDumpEventAction), nil
+}
+
+type DebugDumpPurpose string
+
+const (
+	DebugDumpPurposeCUSTOMERSUPPORT       DebugDumpPurpose = "CUSTOMER_SUPPORT"
+	DebugDumpPurposeINCIDENTINVESTIGATION DebugDumpPurpose = "INCIDENT_INVESTIGATION"
+)
+
+func (e *DebugDumpPurpose) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DebugDumpPurpose(s)
+	case string:
+		*e = DebugDumpPurpose(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DebugDumpPurpose: %T", src)
+	}
+	return nil
+}
+
+type NullDebugDumpPurpose struct {
+	DebugDumpPurpose DebugDumpPurpose `json:"debug_dump_purpose"`
+	Valid            bool             `json:"valid"` // Valid is true if DebugDumpPurpose is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDebugDumpPurpose) Scan(value interface{}) error {
+	if value == nil {
+		ns.DebugDumpPurpose, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DebugDumpPurpose.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDebugDumpPurpose) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DebugDumpPurpose), nil
+}
+
+type DebugDumpState string
+
+const (
+	DebugDumpStateUPLOADING DebugDumpState = "UPLOADING"
+	DebugDumpStateAVAILABLE DebugDumpState = "AVAILABLE"
+	DebugDumpStateDELETED   DebugDumpState = "DELETED"
+)
+
+func (e *DebugDumpState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DebugDumpState(s)
+	case string:
+		*e = DebugDumpState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DebugDumpState: %T", src)
+	}
+	return nil
+}
+
+type NullDebugDumpState struct {
+	DebugDumpState DebugDumpState `json:"debug_dump_state"`
+	Valid          bool           `json:"valid"` // Valid is true if DebugDumpState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDebugDumpState) Scan(value interface{}) error {
+	if value == nil {
+		ns.DebugDumpState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DebugDumpState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDebugDumpState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DebugDumpState), nil
 }
 
 type ExecutionFailureSource string
@@ -2328,27 +2463,29 @@ type ArtifactUpload struct {
 }
 
 type Attempt struct {
-	ID                         uuid.UUID          `db:"id" json:"id"`
-	OrganizationID             uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID                  uuid.UUID          `db:"project_id" json:"project_id"`
-	JobID                      uuid.UUID          `db:"job_id" json:"job_id"`
-	AttemptNumber              int32              `db:"attempt_number" json:"attempt_number"`
-	ExecutionProfileRevisionID uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
-	WorkerPoolID               uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
-	WorkerID                   uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                int64              `db:"worker_epoch" json:"worker_epoch"`
-	State                      AttemptState       `db:"state" json:"state"`
-	Fence                      int64              `db:"fence" json:"fence"`
-	AssignedAt                 pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
-	StartedAt                  pgtype.Timestamptz `db:"started_at" json:"started_at"`
-	FinalizationStartedAt      pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
-	FinalizationDeadlineAt     pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
-	EndedAt                    pgtype.Timestamptz `db:"ended_at" json:"ended_at"`
-	CreatedAt                  pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt                  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	SchedulerDispatchIntentID  uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
-	ProfileCertificationID     uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
-	FleetProtocolVersion       int16              `db:"fleet_protocol_version" json:"fleet_protocol_version"`
+	ID                              uuid.UUID          `db:"id" json:"id"`
+	OrganizationID                  uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                       uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                           uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptNumber                   int32              `db:"attempt_number" json:"attempt_number"`
+	ExecutionProfileRevisionID      uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	WorkerPoolID                    uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerID                        uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                     int64              `db:"worker_epoch" json:"worker_epoch"`
+	State                           AttemptState       `db:"state" json:"state"`
+	Fence                           int64              `db:"fence" json:"fence"`
+	AssignedAt                      pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
+	StartedAt                       pgtype.Timestamptz `db:"started_at" json:"started_at"`
+	FinalizationStartedAt           pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
+	FinalizationDeadlineAt          pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	EndedAt                         pgtype.Timestamptz `db:"ended_at" json:"ended_at"`
+	CreatedAt                       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	SchedulerDispatchIntentID       uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
+	ProfileCertificationID          uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+	FleetProtocolVersion            int16              `db:"fleet_protocol_version" json:"fleet_protocol_version"`
+	DebugDumpAuthorizationID        uuid.NullUUID      `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
+	DebugDumpAuthorizationExpiresAt pgtype.Timestamptz `db:"debug_dump_authorization_expires_at" json:"debug_dump_authorization_expires_at"`
 }
 
 type AttemptLease struct {
@@ -2517,29 +2654,30 @@ type ContentDeletionReceiptTarget struct {
 }
 
 type ContentDeletionRequest struct {
-	ID                uuid.UUID             `db:"id" json:"id"`
-	OrganizationID    uuid.UUID             `db:"organization_id" json:"organization_id"`
-	ProjectID         uuid.UUID             `db:"project_id" json:"project_id"`
-	JobID             uuid.UUID             `db:"job_id" json:"job_id"`
-	Source            ContentDeletionSource `db:"source" json:"source"`
-	IdempotencyKey    *string               `db:"idempotency_key" json:"idempotency_key"`
-	RequestHash       []byte                `db:"request_hash" json:"request_hash"`
-	ActorKind         *PrincipalKind        `db:"actor_kind" json:"actor_kind"`
-	ActorPrincipalID  uuid.NullUUID         `db:"actor_principal_id" json:"actor_principal_id"`
-	ActorCredentialID uuid.NullUUID         `db:"actor_credential_id" json:"actor_credential_id"`
-	State             ContentDeletionState  `db:"state" json:"state"`
-	RequestedAt       pgtype.Timestamptz    `db:"requested_at" json:"requested_at"`
-	DeadlineAt        pgtype.Timestamptz    `db:"deadline_at" json:"deadline_at"`
-	CompletedAt       pgtype.Timestamptz    `db:"completed_at" json:"completed_at"`
-	NextRetryAt       pgtype.Timestamptz    `db:"next_retry_at" json:"next_retry_at"`
-	LastErrorCode     *string               `db:"last_error_code" json:"last_error_code"`
-	LastErrorMessage  *string               `db:"last_error_message" json:"last_error_message"`
-	ClaimID           uuid.NullUUID         `db:"claim_id" json:"claim_id"`
-	ClaimOwnerID      *string               `db:"claim_owner_id" json:"claim_owner_id"`
-	ClaimExpiresAt    pgtype.Timestamptz    `db:"claim_expires_at" json:"claim_expires_at"`
-	Version           int64                 `db:"version" json:"version"`
-	CreatedAt         pgtype.Timestamptz    `db:"created_at" json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz    `db:"updated_at" json:"updated_at"`
+	ID                       uuid.UUID             `db:"id" json:"id"`
+	OrganizationID           uuid.UUID             `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID             `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID             `db:"job_id" json:"job_id"`
+	Source                   ContentDeletionSource `db:"source" json:"source"`
+	IdempotencyKey           *string               `db:"idempotency_key" json:"idempotency_key"`
+	RequestHash              []byte                `db:"request_hash" json:"request_hash"`
+	ActorKind                *PrincipalKind        `db:"actor_kind" json:"actor_kind"`
+	ActorPrincipalID         uuid.NullUUID         `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorCredentialID        uuid.NullUUID         `db:"actor_credential_id" json:"actor_credential_id"`
+	State                    ContentDeletionState  `db:"state" json:"state"`
+	RequestedAt              pgtype.Timestamptz    `db:"requested_at" json:"requested_at"`
+	DeadlineAt               pgtype.Timestamptz    `db:"deadline_at" json:"deadline_at"`
+	CompletedAt              pgtype.Timestamptz    `db:"completed_at" json:"completed_at"`
+	NextRetryAt              pgtype.Timestamptz    `db:"next_retry_at" json:"next_retry_at"`
+	LastErrorCode            *string               `db:"last_error_code" json:"last_error_code"`
+	LastErrorMessage         *string               `db:"last_error_message" json:"last_error_message"`
+	ClaimID                  uuid.NullUUID         `db:"claim_id" json:"claim_id"`
+	ClaimOwnerID             *string               `db:"claim_owner_id" json:"claim_owner_id"`
+	ClaimExpiresAt           pgtype.Timestamptz    `db:"claim_expires_at" json:"claim_expires_at"`
+	Version                  int64                 `db:"version" json:"version"`
+	CreatedAt                pgtype.Timestamptz    `db:"created_at" json:"created_at"`
+	UpdatedAt                pgtype.Timestamptz    `db:"updated_at" json:"updated_at"`
+	DebugDumpAuthorizationID uuid.NullUUID         `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
 }
 
 type ContentDeletionTarget struct {
@@ -2566,6 +2704,8 @@ type ContentDeletionTarget struct {
 	Version                   int64                       `db:"version" json:"version"`
 	CreatedAt                 pgtype.Timestamptz          `db:"created_at" json:"created_at"`
 	UpdatedAt                 pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
+	DebugDumpAuthorizationID  uuid.NullUUID               `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
+	DebugDumpID               uuid.NullUUID               `db:"debug_dump_id" json:"debug_dump_id"`
 }
 
 type Credential struct {
@@ -2598,6 +2738,75 @@ type CustomerOrganization struct {
 	DisplayName string             `db:"display_name" json:"display_name"`
 	Status      string             `db:"status" json:"status"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type DebugDump struct {
+	ID                    uuid.UUID          `db:"id" json:"id"`
+	OrganizationID        uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID             uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                 uuid.UUID          `db:"job_id" json:"job_id"`
+	AuthorizationID       uuid.UUID          `db:"authorization_id" json:"authorization_id"`
+	AttemptID             uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence          int64              `db:"attempt_fence" json:"attempt_fence"`
+	WorkerID              uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch           int64              `db:"worker_epoch" json:"worker_epoch"`
+	ObjectKey             string             `db:"object_key" json:"object_key"`
+	ExpectedSizeBytes     int64              `db:"expected_size_bytes" json:"expected_size_bytes"`
+	ExpectedSha256        []byte             `db:"expected_sha256" json:"expected_sha256"`
+	ExpectedContentType   string             `db:"expected_content_type" json:"expected_content_type"`
+	State                 DebugDumpState     `db:"state" json:"state"`
+	ClaimID               uuid.NullUUID      `db:"claim_id" json:"claim_id"`
+	ClaimExpiresAt        pgtype.Timestamptz `db:"claim_expires_at" json:"claim_expires_at"`
+	MultipartUploadID     *string            `db:"multipart_upload_id" json:"multipart_upload_id"`
+	CompletedParts        []byte             `db:"completed_parts" json:"completed_parts"`
+	CompletionRequestHash []byte             `db:"completion_request_hash" json:"completion_request_hash"`
+	ObjectVersionID       *string            `db:"object_version_id" json:"object_version_id"`
+	SizeBytes             *int64             `db:"size_bytes" json:"size_bytes"`
+	Sha256                []byte             `db:"sha256" json:"sha256"`
+	ContentType           *string            `db:"content_type" json:"content_type"`
+	UploadedAt            pgtype.Timestamptz `db:"uploaded_at" json:"uploaded_at"`
+	ExpiresAt             pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	DeletedAt             pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	Version               int64              `db:"version" json:"version"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type DebugDumpAuthorization struct {
+	ID                       uuid.UUID          `db:"id" json:"id"`
+	OrganizationID           uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID          `db:"job_id" json:"job_id"`
+	Purpose                  DebugDumpPurpose   `db:"purpose" json:"purpose"`
+	IdempotencyKey           string             `db:"idempotency_key" json:"idempotency_key"`
+	RequestHash              []byte             `db:"request_hash" json:"request_hash"`
+	ActorPrincipalID         uuid.UUID          `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorSessionID           uuid.UUID          `db:"actor_session_id" json:"actor_session_id"`
+	AuthorizedAt             pgtype.Timestamptz `db:"authorized_at" json:"authorized_at"`
+	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	RevokedAt                pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	RevokedByPrincipalID     uuid.NullUUID      `db:"revoked_by_principal_id" json:"revoked_by_principal_id"`
+	RevokedBySessionID       uuid.NullUUID      `db:"revoked_by_session_id" json:"revoked_by_session_id"`
+	RevocationIdempotencyKey *string            `db:"revocation_idempotency_key" json:"revocation_idempotency_key"`
+	RevocationRequestHash    []byte             `db:"revocation_request_hash" json:"revocation_request_hash"`
+	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type DebugDumpEvent struct {
+	ID               uuid.UUID            `db:"id" json:"id"`
+	OrganizationID   uuid.UUID            `db:"organization_id" json:"organization_id"`
+	ProjectID        uuid.UUID            `db:"project_id" json:"project_id"`
+	JobID            uuid.UUID            `db:"job_id" json:"job_id"`
+	AuthorizationID  uuid.UUID            `db:"authorization_id" json:"authorization_id"`
+	DebugDumpID      uuid.NullUUID        `db:"debug_dump_id" json:"debug_dump_id"`
+	Action           DebugDumpEventAction `db:"action" json:"action"`
+	OutcomeCode      string               `db:"outcome_code" json:"outcome_code"`
+	ActorKind        string               `db:"actor_kind" json:"actor_kind"`
+	ActorPrincipalID uuid.NullUUID        `db:"actor_principal_id" json:"actor_principal_id"`
+	ActorSessionID   uuid.NullUUID        `db:"actor_session_id" json:"actor_session_id"`
+	WorkerID         uuid.NullUUID        `db:"worker_id" json:"worker_id"`
+	WorkerEpoch      *int64               `db:"worker_epoch" json:"worker_epoch"`
+	CreatedAt        pgtype.Timestamptz   `db:"created_at" json:"created_at"`
 }
 
 type ExecutionFailureDecision struct {
@@ -3406,6 +3615,16 @@ type ServicePrincipal struct {
 	PrincipalKind  PrincipalKind      `db:"principal_kind" json:"principal_kind"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+}
+
+type VelaInternalDebugDumpAuthorization struct {
+	AuthorizationID uuid.UUID          `db:"authorization_id" json:"authorization_id"`
+	OrganizationID  uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID       uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID           uuid.UUID          `db:"job_id" json:"job_id"`
+	AuthorizedAt    pgtype.Timestamptz `db:"authorized_at" json:"authorized_at"`
+	ExpiresAt       pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	RevokedAt       pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
 }
 
 type VelaPrivateBreakGlassRequestContext struct {

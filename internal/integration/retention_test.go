@@ -2233,7 +2233,7 @@ func TestAutomaticRequestContentExpiryIsIndependentAndIdempotent(t *testing.T) {
 	}
 	result, err := reconciler.ReconcileBatch(context.Background())
 	if err != nil || result.RequestContentExpired != 1 ||
-		result.ArtifactRequestsCreated != 0 || result.Claimed != 0 {
+		result.ContentDeletionRequestsCreated != 0 || result.Claimed != 0 {
 		t.Fatalf("automatic request-content expiry = %#v error=%v", result, err)
 	}
 	var (
@@ -2288,7 +2288,7 @@ func TestAutomaticRequestContentExpiryIsIndependentAndIdempotent(t *testing.T) {
 	}
 	replayed, err := reconciler.ReconcileBatch(context.Background())
 	if err != nil || replayed.RequestContentExpired != 0 ||
-		replayed.ArtifactRequestsCreated != 0 || replayed.Claimed != 0 {
+		replayed.ContentDeletionRequestsCreated != 0 || replayed.Claimed != 0 {
 		t.Fatalf("replayed automatic request-content expiry = %#v error=%v", replayed, err)
 	}
 }
@@ -2367,7 +2367,7 @@ func TestAutomaticRequestContentExpiryProcessesOverdueNonterminalJobs(t *testing
 	}
 	result, err := reconciler.ReconcileBatch(context.Background())
 	if err != nil || result.RequestContentExpired != 2 ||
-		result.ArtifactRequestsCreated != 0 || result.Claimed != 0 {
+		result.ContentDeletionRequestsCreated != 0 || result.Claimed != 0 {
 		t.Fatalf("nonterminal request-content expiry = %#v error=%v", result, err)
 	}
 
@@ -2516,7 +2516,7 @@ func TestTerminalFailedJobEnqueuesAndDeletesIncompleteArtifacts(t *testing.T) {
 	result, err := reconciler.ReconcileBatch(context.Background())
 	wantTargets := 2 * (len(plan.Artifacts) + 1)
 	if err != nil || result.RequestContentExpired != 0 ||
-		result.ArtifactRequestsCreated != 1 || result.Claimed != wantTargets ||
+		result.ContentDeletionRequestsCreated != 1 || result.Claimed != wantTargets ||
 		result.Completed != result.Claimed || result.Failed != 0 {
 		t.Fatalf("terminal incomplete Artifact cleanup = %#v error=%v", result, err)
 	}
@@ -2607,7 +2607,7 @@ func TestTerminalFailedJobEnqueuesAndDeletesIncompleteArtifacts(t *testing.T) {
 		)
 	}
 	replayed, err := reconciler.ReconcileBatch(context.Background())
-	if err != nil || replayed.ArtifactRequestsCreated != 0 || replayed.Claimed != 0 {
+	if err != nil || replayed.ContentDeletionRequestsCreated != 0 || replayed.Claimed != 0 {
 		t.Fatalf("replayed terminal incomplete Artifact cleanup = %#v error=%v", replayed, err)
 	}
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
@@ -2688,7 +2688,7 @@ func TestCanceledJobConcurrentCleanupCreatesOneRequestAndReceipt(t *testing.T) {
 		t.Fatalf("create CANCELING incomplete Artifact Reconciler: %v", err)
 	}
 	preterminal, err := preterminalReconciler.ReconcileBatch(context.Background())
-	if err != nil || preterminal.ArtifactRequestsCreated != 0 || preterminal.Claimed != 0 ||
+	if err != nil || preterminal.ContentDeletionRequestsCreated != 0 || preterminal.Claimed != 0 ||
 		len(preterminalStore.deleted) != 0 || len(preterminalStore.aborted) != 0 {
 		t.Fatalf("CANCELING cleanup = %#v store=%#v error=%v", preterminal, preterminalStore, err)
 	}
@@ -2765,7 +2765,7 @@ func TestCanceledJobConcurrentCleanupCreatesOneRequestAndReceipt(t *testing.T) {
 		if outcome.err != nil {
 			t.Fatalf("concurrent incomplete Artifact reconciliation: %v", outcome.err)
 		}
-		created += outcome.result.ArtifactRequestsCreated
+		created += outcome.result.ContentDeletionRequestsCreated
 		claimed += outcome.result.Claimed
 		completed += outcome.result.Completed
 		failed += outcome.result.Failed
@@ -2986,7 +2986,7 @@ func TestAutomaticArtifactExpiryDoesNotShortenRequestContentRetention(t *testing
 	}
 	result, err := reconciler.ReconcileBatch(context.Background())
 	if err != nil || result.RequestContentExpired != 0 ||
-		result.ArtifactRequestsCreated != 1 || result.Claimed != len(artifactIDs)+1 ||
+		result.ContentDeletionRequestsCreated != 1 || result.Claimed != len(artifactIDs)+1 ||
 		result.Completed != result.Claimed || result.Failed != 0 {
 		t.Fatalf("automatic Artifact expiry = %#v error=%v", result, err)
 	}
@@ -3046,7 +3046,7 @@ func TestAutomaticArtifactExpiryDoesNotShortenRequestContentRetention(t *testing
 	}
 	replayed, err := reconciler.ReconcileBatch(context.Background())
 	if err != nil || replayed.RequestContentExpired != 0 ||
-		replayed.ArtifactRequestsCreated != 0 || replayed.Claimed != 0 {
+		replayed.ContentDeletionRequestsCreated != 0 || replayed.Claimed != 0 {
 		t.Fatalf("replayed automatic Artifact expiry = %#v error=%v", replayed, err)
 	}
 }
@@ -3183,7 +3183,7 @@ func TestNinetyDayArtifactRetentionDoesNotExtendRequestContentRetention(t *testi
 	}
 	result, err := reconciler.ReconcileBatch(context.Background())
 	if err != nil || result.RequestContentExpired != 1 ||
-		result.ArtifactRequestsCreated != 0 || result.Claimed != 0 ||
+		result.ContentDeletionRequestsCreated != 0 || result.Claimed != 0 ||
 		len(store.deleted) != 0 {
 		t.Fatalf("90-day request-content expiry = %#v deletes=%#v error=%v", result, store.deleted, err)
 	}
@@ -3469,6 +3469,13 @@ func TestIncompleteArtifactRetentionMigrationRestoresExact23And24Surface(t *test
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 24); err != nil {
+		t.Fatalf("restore initial migration 24 surface: %v", err)
+	}
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 24 {
+		t.Fatalf("initial incomplete Artifact retention version = %d error=%v", version, err)
+	}
 
 	assertVersion24Surface := func(label string) {
 		t.Helper()
@@ -3576,7 +3583,7 @@ func TestIncompleteArtifactRetentionMigrationRestoresExact23And24Surface(t *test
 	if err := goose.DownTo(database.Admin, migrations, 23); err != nil {
 		t.Fatalf("contract empty incomplete Artifact retention migration: %v", err)
 	}
-	version, err := goose.GetDBVersion(database.Admin)
+	version, err = goose.GetDBVersion(database.Admin)
 	if err != nil || version != 23 {
 		t.Fatalf("incomplete Artifact retention version after Down = %d error=%v", version, err)
 	}

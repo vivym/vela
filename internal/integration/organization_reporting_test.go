@@ -55,8 +55,8 @@ func newOrganizationReportingService(
 		newRolePool(
 			t,
 			databaseDSN,
-			"vela_break_glass_audit_request_login",
-			"vela-break-glass-audit-request-password",
+			"vela_debug_dump_audit_request_login",
+			"vela-debug-dump-audit-request-password",
 		),
 	)
 }

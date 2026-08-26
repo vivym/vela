@@ -30,6 +30,9 @@ const (
 	defaultOutputCleanupMaxDuration             = 24 * time.Hour
 	defaultCapacityReportInterval               = 30 * time.Second
 	maximumCapacityReportInterval               = 5 * time.Minute
+	defaultDebugDumpUploadTimeout               = 2 * time.Second
+	minimumDebugDumpUploadTimeout               = 10 * time.Millisecond
+	maximumDebugDumpUploadTimeout               = 10 * time.Second
 )
 
 type ControlPlane interface {
@@ -118,6 +121,32 @@ type ArtifactPartUploader interface {
 	) (workercontrol.ArtifactUploadPart, error)
 }
 
+type DebugDumpControl interface {
+	ClaimDebugDumpUpload(
+		context.Context,
+		workercontrol.LeaseCredentials,
+		workercontrol.DebugDumpUploadIntent,
+		uuid.UUID,
+		workertransport.DebugDumpUploadPartIntent,
+	) (workertransport.DebugDumpUploadClaim, error)
+	CompleteDebugDumpMultipartUpload(
+		context.Context,
+		workercontrol.LeaseCredentials,
+		uuid.UUID,
+		uuid.UUID,
+		uuid.UUID,
+		workercontrol.DebugDumpUploadReport,
+	) (workercontrol.DebugDumpUploadResult, error)
+}
+
+type DebugDumpPartUploader interface {
+	UploadDebugDump(
+		context.Context,
+		workertransport.SignedDebugDumpUploadPart,
+		[]byte,
+	) (workercontrol.DebugDumpUploadPart, error)
+}
+
 type Config struct {
 	WorkerID                       uuid.UUID
 	WorkerEpoch                    int64
@@ -140,6 +169,10 @@ type Config struct {
 	Finalization                   FinalizationControl
 	PartUploader                   ArtifactPartUploader
 	ArtifactPartSize               int64
+	DebugDumps                     DebugDumpControl
+	DebugDumpUploader              DebugDumpPartUploader
+	DebugDumpUploadTimeout         time.Duration
+	ReportDebugDumpError           func(error)
 }
 
 type Outcome string
@@ -194,6 +227,10 @@ type Agent struct {
 	finalization                   FinalizationControl
 	partUploader                   ArtifactPartUploader
 	artifactPartSize               int64
+	debugDumps                     DebugDumpControl
+	debugDumpUploader              DebugDumpPartUploader
+	debugDumpUploadTimeout         time.Duration
+	reportDebugDumpError           func(error)
 }
 
 func New(config Config) (*Agent, error) {
@@ -241,6 +278,21 @@ func New(config Config) (*Agent, error) {
 	reportCapacityError := config.ReportCapacityError
 	if reportCapacityError == nil {
 		reportCapacityError = func(error) {}
+	}
+	if (config.DebugDumps == nil) != (config.DebugDumpUploader == nil) {
+		return nil, errors.New("debug dump control and uploader must be configured together")
+	}
+	debugDumpUploadTimeout := config.DebugDumpUploadTimeout
+	if debugDumpUploadTimeout == 0 {
+		debugDumpUploadTimeout = defaultDebugDumpUploadTimeout
+	}
+	if debugDumpUploadTimeout < minimumDebugDumpUploadTimeout ||
+		debugDumpUploadTimeout > maximumDebugDumpUploadTimeout {
+		return nil, errors.New("debug dump upload timeout is invalid")
+	}
+	reportDebugDumpError := config.ReportDebugDumpError
+	if reportDebugDumpError == nil {
+		reportDebugDumpError = func(error) {}
 	}
 	artifactStoreReachable := config.ArtifactStoreReachable
 	if artifactStoreReachable == nil {
@@ -296,6 +348,10 @@ func New(config Config) (*Agent, error) {
 		finalization:                   config.Finalization,
 		partUploader:                   config.PartUploader,
 		artifactPartSize:               partSize,
+		debugDumps:                     config.DebugDumps,
+		debugDumpUploader:              config.DebugDumpUploader,
+		debugDumpUploadTimeout:         debugDumpUploadTimeout,
+		reportDebugDumpError:           reportDebugDumpError,
 	}, nil
 }
 
@@ -362,6 +418,12 @@ func (agent *Agent) RunOnce(ctx context.Context) (Result, error) {
 		ExecutionProfileRevisionID: assignment.ExecutionProfileRevisionID,
 		OutputSpecID:               assignment.OutputSpecID,
 		RequestContent:             json.RawMessage(assignment.RequestContent),
+	}
+	if authorization := assignment.DebugDumpAuthorization; authorization != nil {
+		spec.DebugDumpAuthorization = &runnertransport.DebugDumpAuthorizationSnapshot{
+			AuthorizationID: authorization.AuthorizationID,
+			ExpiresAt:       authorization.ExpiresAt,
+		}
 	}
 	handle, err := agent.recovery.Open(ctx, workerrecovery.Identity{
 		AttemptID: assignment.AttemptID, WorkerID: assignment.WorkerID,
@@ -575,7 +637,7 @@ func runnerReadinessFailureEvidence(
 		"execution_profile_revision_id": work.ExecutionProfileRevisionID.String(),
 		"inference_backend_revision":    work.InferenceBackendRevision,
 		"deadline":                      work.Deadline.UTC().Format(time.RFC3339Nano),
-		"check": string(work.Check), "passed": false,
+		"check":                         string(work.Check), "passed": false,
 		"failure_detail": detail,
 	})
 	if err != nil {
@@ -757,6 +819,7 @@ func (agent *Agent) runExecutionLoop(
 			if err := agent.requireLeaseTime(deadline); err != nil {
 				return agent.terminateForLeaseDeadline(ctx, handle, identity, assignment, watermark)
 			}
+			agent.uploadDebugDumpBestEffort(ctx, assignment, credentials, status.DebugDump, deadline)
 			return agent.reportRunnerFailure(
 				ctx, handle, identity, assignment, credentials, watermark, deadline,
 				workercontrol.FailureObservation{
@@ -1319,6 +1382,10 @@ func (agent *Agent) validateAssignment(assignment workercontrol.Assignment) erro
 		assignment.AttemptNumber <= 0 || assignment.LeaseFence <= 0 || assignment.LeaseToken == "" ||
 		assignment.LeaseValidFor <= 0 || assignment.RequestContent == "" {
 		return errors.New("control plane returned an invalid or mismatched Assignment")
+	}
+	if authorization := assignment.DebugDumpAuthorization; authorization != nil &&
+		(authorization.AuthorizationID == uuid.Nil || authorization.ExpiresAt.IsZero()) {
+		return errors.New("control plane returned an invalid debug dump authorization snapshot")
 	}
 	return nil
 }

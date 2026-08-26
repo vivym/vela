@@ -37,6 +37,8 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Organization billing request database", missingEnv: "VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL"},
 		{name: "Organization audit request database", missingEnv: "VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL"},
 		{name: "retention request database", missingEnv: "VELA_RETENTION_REQUEST_DATABASE_URL"},
+		{name: "debug dump request database", missingEnv: "VELA_DEBUG_DUMP_REQUEST_DATABASE_URL"},
+		{name: "debug dump audit request database", missingEnv: "VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL"},
 		{name: "retention database", missingEnv: "VELA_RETENTION_DATABASE_URL"},
 		{name: "Platform Operator auth database", missingEnv: "VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"},
 		{name: "Break-glass request database", missingEnv: "VELA_BREAK_GLASS_REQUEST_DATABASE_URL"},
@@ -159,6 +161,11 @@ func setValidConfigEnvironment(t *testing.T) {
 		"postgres://organization-audit-request.example/vela",
 	)
 	t.Setenv("VELA_RETENTION_REQUEST_DATABASE_URL", "postgres://retention-request.example/vela")
+	t.Setenv("VELA_DEBUG_DUMP_REQUEST_DATABASE_URL", "postgres://debug-dump-request.example/vela")
+	t.Setenv(
+		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL",
+		"postgres://debug-dump-audit-request.example/vela",
+	)
 	t.Setenv("VELA_RETENTION_DATABASE_URL", "postgres://retention.example/vela")
 	t.Setenv(
 		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL",

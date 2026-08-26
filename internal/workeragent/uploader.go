@@ -112,6 +112,22 @@ func (uploader *HTTPArtifactPartUploader) Upload(
 	}, nil
 }
 
+func (uploader *HTTPArtifactPartUploader) UploadDebugDump(
+	ctx context.Context,
+	signed workertransport.SignedDebugDumpUploadPart,
+	payload []byte,
+) (workercontrol.DebugDumpUploadPart, error) {
+	completed, err := uploader.Upload(
+		ctx,
+		workertransport.SignedArtifactUploadPart(signed),
+		payload,
+	)
+	if err != nil {
+		return workercontrol.DebugDumpUploadPart{}, err
+	}
+	return workercontrol.DebugDumpUploadPart(completed), nil
+}
+
 func validatedUploadHeaders(
 	required map[string]string,
 	sizeBytes int64,
@@ -146,3 +162,4 @@ func validatedUploadHeaders(
 }
 
 var _ ArtifactPartUploader = (*HTTPArtifactPartUploader)(nil)
+var _ DebugDumpPartUploader = (*HTTPArtifactPartUploader)(nil)

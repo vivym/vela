@@ -26,11 +26,14 @@ _MAX_OUTPUTS = 32
 _MAX_SEQUENCE = (1 << 63) - 1
 _MAX_ESTIMATED_REMAINING_SECONDS = _MAX_SEQUENCE // 1_000_000_000
 _MAX_READINESS_SECONDS = 2 * 60 * 60
+_MAX_DEBUG_DUMP_BYTES = 64 << 10
+_DEBUG_DUMP_CONTENT_TYPE = "application/vnd.vela.debug-dump+json"
 _KIND_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,31}$")
 _CONTENT_TYPE_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*$")
-_GPU_PATTERN = re.compile(
-    r"^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-)
+_FAILURE_CLASS_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{0,99}$")
+_FAILURE_FINGERPRINT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$")
+_BACKEND_STAGE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$")
+_GPU_PATTERN = re.compile(r"^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _READINESS_DETAILS = {
     "DEVICE": ("device roles verified", "device roles did not match"),
@@ -181,9 +184,7 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
                 check=request.check,
                 decision=runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED,
                 passed=passed,
-                evidence_json=json.dumps(
-                    evidence, separators=(",", ":"), sort_keys=True
-                ).encode(),
+                evidence_json=json.dumps(evidence, separators=(",", ":"), sort_keys=True).encode(),
                 detail=passed_detail if passed else failed_detail,
             )
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as error:
@@ -238,8 +239,7 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
             != identity.execution_profile_revision_id
             or identity.inference_backend_revision != self._config.backend_revision
             or not any(
-                profile.execution_profile_revision_id
-                == identity.execution_profile_revision_id
+                profile.execution_profile_revision_id == identity.execution_profile_revision_id
                 for profile in self._profiles
             )
         ):
@@ -344,8 +344,7 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
             result["schema_version"] != 1
             or result["check"] != "MODEL_WARMUP"
             or type(result["passed"]) is not bool
-            or result["execution_profile_revision_id"]
-            != identity.execution_profile_revision_id
+            or result["execution_profile_revision_id"] != identity.execution_profile_revision_id
             or type(result["warmed"]) is not bool
         ):
             raise ValueError("MODEL_WARMUP readiness evidence is invalid")
@@ -655,7 +654,61 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
                 response.estimated_remaining_seconds = self._estimated_remaining_seconds
             if self._failure is not None:
                 response.failure.CopyFrom(self._failure)
+            debug_dump = self._debug_dump()
+            if debug_dump is not None:
+                response.debug_dump.CopyFrom(debug_dump)
             return response
+
+    def _debug_dump(self) -> Any | None:
+        if (
+            self._state != runner_pb2.RUNNER_EXECUTION_STATE_FAILED
+            or self._identity is None
+            or self._spec is None
+            or self._failure is None
+            or not self._spec.HasField("debug_dump_authorization")
+        ):
+            return None
+        authorization = self._spec.debug_dump_authorization
+        try:
+            expires_at = authorization.expires_at.ToDatetime(tzinfo=UTC)
+        except ValueError:
+            return None
+        if expires_at <= datetime.now(UTC):
+            return None
+        if (
+            _FAILURE_CLASS_PATTERN.fullmatch(self._failure.failure_class) is None
+            or _FAILURE_FINGERPRINT_PATTERN.fullmatch(self._failure.failure_fingerprint) is None
+            or _BACKEND_STAGE_PATTERN.fullmatch(self._failure.backend_stage) is None
+        ):
+            return None
+        content = json.dumps(
+            {
+                "authorization_id": authorization.authorization_id,
+                "attempt_id": self._identity.attempt_id,
+                "backend_stage": self._failure.backend_stage,
+                "failure_class": self._failure.failure_class,
+                "failure_fingerprint": self._failure.failure_fingerprint,
+                "gpu_uuids": sorted(self._failure.gpu_uuids),
+                "inference_backend_revision": self._failure.inference_backend_revision,
+                "job_id": self._identity.job_id,
+                "lease_fence": self._identity.lease_fence,
+                "retry_recommended": self._failure.retry_recommended,
+                "schema_version": 1,
+                "worker_epoch": self._identity.worker_epoch,
+                "worker_id": self._identity.worker_id,
+                "worker_reusable": self._failure.worker_reusable,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+        if not 0 < len(content) <= _MAX_DEBUG_DUMP_BYTES:
+            return None
+        return runner_pb2.RunnerDebugDump(
+            content=content,
+            size_bytes=len(content),
+            sha256=hashlib.sha256(content).digest(),
+            content_type=_DEBUG_DUMP_CONTENT_TYPE,
+        )
 
     def CollectOutputs(self, request: Any, context: grpc.ServicerContext | None) -> Any:
         del context
@@ -693,9 +746,7 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
     def close(self) -> None:
         with self._lock:
             if self._readiness_process is not None:
-                _terminate_process_group(
-                    self._readiness_process, self._config.stop_timeout_seconds
-                )
+                _terminate_process_group(self._readiness_process, self._config.stop_timeout_seconds)
                 self._readiness_process = None
             self._stop_process()
 
@@ -929,20 +980,29 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
 
     def _persist_request(self) -> None:
         assert self._identity is not None and self._spec is not None
+        execution_spec = {
+            "model_revision_id": self._spec.model_revision_id,
+            "generation_preset_revision_id": self._spec.generation_preset_revision_id,
+            "execution_profile_revision_id": self._spec.execution_profile_revision_id,
+            "output_spec_id": self._spec.output_spec_id,
+            "request_content_base64": base64.b64encode(self._spec.request_content_json).decode(
+                "ascii"
+            ),
+        }
+        if self._spec.HasField("debug_dump_authorization"):
+            execution_spec["debug_dump_authorization"] = {
+                "authorization_id": self._spec.debug_dump_authorization.authorization_id,
+                "expires_at": {
+                    "seconds": self._spec.debug_dump_authorization.expires_at.seconds,
+                    "nanos": self._spec.debug_dump_authorization.expires_at.nanos,
+                },
+            }
         _write_json_atomic(
             self._attempt_state_dir() / "request.json",
             {
                 "schema_version": 1,
                 "identity": _identity_dict(self._identity),
-                "execution_spec": {
-                    "model_revision_id": self._spec.model_revision_id,
-                    "generation_preset_revision_id": self._spec.generation_preset_revision_id,
-                    "execution_profile_revision_id": self._spec.execution_profile_revision_id,
-                    "output_spec_id": self._spec.output_spec_id,
-                    "request_content_base64": base64.b64encode(
-                        self._spec.request_content_json
-                    ).decode("ascii"),
-                },
+                "execution_spec": execution_spec,
             },
         )
 
@@ -1208,6 +1268,15 @@ def _validated_spec(spec: Any, profiles: frozenset[_Profile]) -> Any:
         raise ValueError("request content must be one JSON object") from error
     if not isinstance(request_content, dict):
         raise ValueError("request content must be one JSON object")
+    if spec.HasField("debug_dump_authorization"):
+        authorization = spec.debug_dump_authorization
+        _canonical_uuid(authorization.authorization_id)
+        try:
+            authorization.expires_at.ToDatetime(tzinfo=UTC)
+        except ValueError as error:
+            raise ValueError("debug dump authorization expiry is invalid") from error
+        if authorization.expires_at.seconds == 0 and authorization.expires_at.nanos == 0:
+            raise ValueError("debug dump authorization expiry is required")
     return runner_pb2.RunnerExecutionSpec().FromString(spec.SerializeToString())
 
 
@@ -1300,20 +1369,40 @@ def _spec_from_dict(payload: Any) -> Any:
         "output_spec_id",
         "request_content_base64",
     }
-    if not isinstance(payload, dict) or set(payload) != expected:
+    if not isinstance(payload, dict) or set(payload) not in {
+        frozenset(expected),
+        frozenset(expected | {"debug_dump_authorization"}),
+    }:
         raise ValueError("runner recovery execution specification schema is invalid")
     encoded = payload["request_content_base64"]
     if not isinstance(encoded, str):
         raise ValueError("runner recovery request content is invalid")
     try:
         request_content = base64.b64decode(encoded, validate=True)
-        return runner_pb2.RunnerExecutionSpec(
+        spec = runner_pb2.RunnerExecutionSpec(
             model_revision_id=payload["model_revision_id"],
             generation_preset_revision_id=payload["generation_preset_revision_id"],
             execution_profile_revision_id=payload["execution_profile_revision_id"],
             output_spec_id=payload["output_spec_id"],
             request_content_json=request_content,
         )
+        authorization = payload.get("debug_dump_authorization")
+        if authorization is not None:
+            if not isinstance(authorization, dict) or set(authorization) != {
+                "authorization_id",
+                "expires_at",
+            }:
+                raise ValueError("runner recovery debug dump authorization is invalid")
+            expires_at = authorization["expires_at"]
+            if not isinstance(expires_at, dict) or set(expires_at) != {
+                "seconds",
+                "nanos",
+            }:
+                raise ValueError("runner recovery debug dump authorization expiry is invalid")
+            spec.debug_dump_authorization.authorization_id = authorization["authorization_id"]
+            spec.debug_dump_authorization.expires_at.seconds = expires_at["seconds"]
+            spec.debug_dump_authorization.expires_at.nanos = expires_at["nanos"]
+        return spec
     except (TypeError, ValueError) as error:
         raise ValueError("runner recovery execution specification is invalid") from error
 
@@ -1405,16 +1494,16 @@ def _failure_from_dict(payload: Any, backend_revision: str) -> Any:
     if not isinstance(payload, dict) or set(payload) != expected:
         raise ValueError("runner recovery failure schema is invalid")
     if (
-        not _valid_text(payload["failure_class"], 100)
-        or not _valid_text(payload["failure_fingerprint"], 200)
+        not isinstance(payload["failure_class"], str)
+        or _FAILURE_CLASS_PATTERN.fullmatch(payload["failure_class"]) is None
+        or not isinstance(payload["failure_fingerprint"], str)
+        or _FAILURE_FINGERPRINT_PATTERN.fullmatch(payload["failure_fingerprint"]) is None
         or not _valid_text(payload["error_summary"], 1000)
-        or not _valid_text(payload["backend_stage"], 100)
+        or not isinstance(payload["backend_stage"], str)
+        or _BACKEND_STAGE_PATTERN.fullmatch(payload["backend_stage"]) is None
         or not isinstance(payload["gpu_uuids"], list)
         or len(payload["gpu_uuids"]) > 8
-        or any(
-            not _valid_gpu_uuid(gpu)
-            for gpu in payload["gpu_uuids"]
-        )
+        or any(not _valid_gpu_uuid(gpu) for gpu in payload["gpu_uuids"])
         or len(set(payload["gpu_uuids"])) != len(payload["gpu_uuids"])
         or payload["inference_backend_revision"] != backend_revision
         or type(payload["retry_recommended"]) is not bool

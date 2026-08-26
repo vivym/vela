@@ -43,6 +43,7 @@ const (
 	organizationReportingNMinusOneCommit  = "1ce496ce06c4ba33038be91a5fd5f7be502bee85"
 	retentionNMinusOneCommit              = "87d1f27be568c96a31dcbda9d9c74ce7d2ed3f96"
 	incompleteArtifactNMinusOneCommit     = "d038fb9f4fb9eb64d9e3b816e75d737783b9ccf5"
+	debugDumpNMinusOneCommit              = "31991452e60c4254b3b67f72a98ee73e56f7915b"
 	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
 	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
 	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
@@ -605,7 +606,7 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 	}
 	currentResult, err := currentReconciler.ReconcileBatch(context.Background())
 	if err != nil || currentResult.RequestContentExpired != 0 ||
-		currentResult.ArtifactRequestsCreated != 1 ||
+		currentResult.ContentDeletionRequestsCreated != 1 ||
 		currentResult.Claimed != len(failedPlan.Artifacts)+1 ||
 		currentResult.Completed != currentResult.Claimed || currentResult.Failed != 0 {
 		t.Fatalf("current incomplete Artifact protocol result = %#v error=%v", currentResult, err)
@@ -644,6 +645,48 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 			deletionState,
 			deletionSource,
 			deletedArtifacts,
+			receipts,
+		)
+	}
+}
+
+func TestExactDebugDumpNMinusOneRetentionProcessesAdditiveTargets(t *testing.T) {
+	fixture := newAssignmentFixture(t, "debug-dump-n-minus-one-retention", 7)
+	authorizationID := seedActiveDebugDumpAuthorization(
+		t, fixture.database, fixture.candidate.JobID,
+	)
+	dumpID, _, _, _, _ := persistAvailableDebugDump(t, fixture, authorizationID)
+	expireDebugDumpAuthorization(t, fixture, authorizationID, dumpID)
+
+	nMinusOne := buildNMinusOneBinaries(t, debugDumpNMinusOneCommit)
+	retained := runNMinusOneRetentionProbe(
+		t, nMinusOne.RetentionProbe, fixture.database.DSN,
+	)
+	if retained.RequestContentExpired != 0 || retained.ArtifactRequestsCreated != 1 ||
+		retained.Claimed != 2 || retained.Completed != 2 || retained.Failed != 0 ||
+		retained.Deleted != 1 || retained.Aborted != 0 {
+		t.Fatalf("debug dump N-1 retention result = %#v", retained)
+	}
+	var requestState, dumpState string
+	var receipts int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			request.state::text,
+			dump.state::text,
+			(SELECT count(*) FROM content_deletion_receipts
+			 WHERE request_id = request.id)
+		FROM content_deletion_requests AS request
+		JOIN debug_dumps AS dump ON dump.id = $2
+		WHERE request.debug_dump_authorization_id = $1
+		  AND request.source = 'RETENTION_DEBUG_DUMP'
+	`, authorizationID, dumpID).Scan(&requestState, &dumpState, &receipts); err != nil {
+		t.Fatalf("read debug dump N-1 retention evidence: %v", err)
+	}
+	if requestState != "COMPLETED" || dumpState != "DELETED" || receipts != 1 {
+		t.Fatalf(
+			"debug dump N-1 request/dump/receipts = %s/%s/%d",
+			requestState,
+			dumpState,
 			receipts,
 		)
 	}
@@ -2122,6 +2165,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == humanMembershipNMinusOneCommit ||
 		commit == organizationReportingNMinusOneCommit ||
 		commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit ||
+		commit == debugDumpNMinusOneCommit ||
 		commit == breakGlassNMinusOneCommit ||
 		commit == fleetControllerNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
@@ -2253,7 +2297,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		}
 	}
 	var retentionProbeDirectory string
-	if commit == incompleteArtifactNMinusOneCommit {
+	if commit == incompleteArtifactNMinusOneCommit || commit == debugDumpNMinusOneCommit {
 		retentionProbeSource, err := os.ReadFile(filepath.Join(
 			repositoryRoot(t),
 			"internal",
@@ -2305,7 +2349,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			binaryDirectory, "vela-visible-completion-probe-n-minus-one",
 		)
 	}
-	if commit == incompleteArtifactNMinusOneCommit {
+	if commit == incompleteArtifactNMinusOneCommit || commit == debugDumpNMinusOneCommit {
 		binaries.RetentionProbe = filepath.Join(
 			binaryDirectory, "vela-retention-probe-n-minus-one",
 		)
@@ -2401,7 +2445,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 Visible Completion probe: %v\n%s", err, output)
 		}
 	}
-	if commit == incompleteArtifactNMinusOneCommit {
+	if commit == incompleteArtifactNMinusOneCommit || commit == debugDumpNMinusOneCommit {
 		build = exec.Command(
 			"go",
 			"build",
@@ -2791,6 +2835,18 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			adminDSN,
 			"vela_retention_request_login",
 			"vela-retention-request-password",
+		),
+		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_debug_dump_request_login",
+			"vela-debug-dump-request-password",
+		),
+		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_debug_dump_audit_request_login",
+			"vela-debug-dump-audit-request-password",
 		),
 		"VELA_RETENTION_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_retention_login", "vela-retention-password",

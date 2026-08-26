@@ -1921,8 +1921,8 @@ func TestBreakGlassContentAccessIsScopedAuditedAndGrantBounded(t *testing.T) {
 		newRolePool(
 			t,
 			fixture.database.DSN,
-			"vela_break_glass_audit_request_login",
-			"vela-break-glass-audit-request-password",
+			"vela_debug_dump_audit_request_login",
+			"vela-debug-dump-audit-request-password",
 		),
 	)
 	if err != nil {

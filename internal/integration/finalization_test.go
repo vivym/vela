@@ -3695,7 +3695,7 @@ func TestTwoAttemptsRaceOneVisibleCompletionAndCleanupLosingArtifacts(t *testing
 		t.Fatalf("create losing Artifact Reconciler: %v", err)
 	}
 	cleanup, err := reconciler.ReconcileBatch(context.Background())
-	if err != nil || cleanup.ArtifactRequestsCreated != 1 ||
+	if err != nil || cleanup.ContentDeletionRequestsCreated != 1 ||
 		cleanup.Claimed != len(firstArtifactIDs)+1 || cleanup.Completed != cleanup.Claimed ||
 		cleanup.Failed != 0 {
 		t.Fatalf("losing Artifact cleanup = %#v error=%v", cleanup, err)
