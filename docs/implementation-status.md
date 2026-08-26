@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-08-26
+Date: 2026-08-27
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -43,6 +43,7 @@ tests alone do not satisfy a gate.
 | Guarded Node Agent Transport Contract | `44543f0` | `internal/nodeagent/transport.go`, `proto/vela/v1/worker_control.proto` |
 | Certified Remediation Node Agent Runtime | `fa6622c` | `cmd/vela-node-agent`, `internal/nodeagent/dispatcher.go`, `deploy/node-agent` |
 | Certified Remediation Durable Execution Hardening | `0cc6a7c`, `b17b0cd`, `75981bd`, `754c275` | `internal/nodeagent/fileledger.go`, `internal/nodeagent/host.go`, `internal/securefile/securefile.go` |
+| Certified Remediation Runtime Authority | `ad1bcf6` | `docs/specs/0027-certified-remediation-runtime-authority.md` |
 
 ## ADR Evidence Matrix
 
@@ -70,7 +71,7 @@ tests alone do not satisfy a gate.
 | 0020 Job Expiry | Implemented for current lifecycle | Queue, retry, assignment, running, and finalization expiry are fenced by PostgreSQL time; recovery cannot extend the immutable deadline. | Scheduler and deployment receipts must preserve the ceiling. |
 | 0021 Bounded retry | Partial | Attempt, cumulative compute, finalization recovery budgets, retry backoff, Job Expiry, and an immutable-policy Cross-Job failure-fingerprint circuit are enforced. | Measured and certified launch runtime values plus Production Gate fault receipts. |
 | 0022 Hierarchical fairness | Implemented | PostgreSQL-authoritative Organization/Service Class/Project weighted-deficit selection, bounded Job score, per-Job retry risk, aging, Protected Lane, retry lane, durable claims, certification invalidation fencing, and multi-replica recovery are integrated. | Production fairness/SLO measurement remains a separate gate receipt. |
-| 0023 Certified remediation | Partial | Slice 20 adds identity/epoch-bound L0-L7 operation ledger, two-person L6 approval, immutable receipts, Worker/Lease fencing, bounded deadlines with orphan recovery, same-epoch quarantine/identity guards, executor allowlist, and exact role/migration evidence. Commit `44543f0` adds guarded transport validation; commit `1c7a49f` adds `ControlPlaneAuthorizer` and `ControlPlaneLedger` adapters over the authoritative remediation operation/completion seams; commit `b25008a` passes the full immutable execution Plan into the runner for device/epoch/capability enforcement; commit `72e5462` adds a PostgreSQL-backed single execution claim and protobuf claim identity; commit `fa6622c` fixes controller-to-agent identity direction and adds the systemd Node Agent runtime, capability/fence/rate-limit/post-check enforcement, durable host receipts, an `EXECUTING` dispatcher, and migration `00021`; commits `0cc6a7c` and `b17b0cd` add exact migration `00022` claim replay, stable claim identity, durable pre-action intent, unknown-outcome quarantine, identity- and FailureClass-bound evidence, persistent rate limiting, atomic receipt publication, cross-process execution locking, secure local-file validation, and independent-pool concurrency evidence; commits `75981bd` and `754c275` require directory-fsync confirmation before receipt or intent replay and bind host execution to a validated inode with trusted Linux/Darwin path ancestry. | Live certificate/endpoint provisioning, hardware/topology capability certification, real host-action and post-check evidence, warm-up/canary, live claim/receipt monitoring, deployment evidence, and Launch Receipt. |
+| 0023 Certified remediation | Partial | Slice 20 adds identity/epoch-bound L0-L7 operation ledger, two-person L6 approval, immutable receipts, Worker/Lease fencing, bounded deadlines with orphan recovery, same-epoch quarantine/identity guards, executor allowlist, and exact role/migration evidence. Commit `44543f0` adds guarded transport validation; commit `1c7a49f` adds `ControlPlaneAuthorizer` and `ControlPlaneLedger` adapters over the authoritative remediation operation/completion seams; commit `b25008a` passes the full immutable execution Plan into the runner for device/epoch/capability enforcement; commit `72e5462` adds a PostgreSQL-backed single execution claim and protobuf claim identity; commit `fa6622c` fixes controller-to-agent identity direction and adds the systemd Node Agent runtime, capability/fence/rate-limit/post-check enforcement, durable host receipts, an `EXECUTING` dispatcher, and migration `00021`; commits `0cc6a7c` and `b17b0cd` add exact migration `00022` claim replay, stable claim identity, durable pre-action intent, unknown-outcome quarantine, identity- and FailureClass-bound evidence, persistent rate limiting, atomic receipt publication, cross-process execution locking, secure local-file validation, and independent-pool concurrency evidence; commits `75981bd` and `754c275` require directory-fsync confirmation before receipt or intent replay and bind host execution to a validated inode with trusted Linux/Darwin path ancestry. Commit `ad1bcf6` exposes authenticated Platform Operator request, read, approval, and start paths; binds local and registered Worker epochs plus canonical GPU UUID, unique PCI BDF, failure class, action, and certification revision; and proves dispatcher-to-PostgreSQL quarantine after a certified post-check failure. | Live certificate/endpoint provisioning, hardware/topology capability certification, real host-action and post-check evidence, warm-up/canary, live claim/receipt monitoring, deployment evidence, and Launch Receipt. |
 | 0024 Work-conserving capacity | Implemented for current control plane | Every compatible READY Worker/profile remains available to ordinary work; bounded retry lane, risk Admission, worker scoring, and physical-slot queue projection hold no hard idle reserve. Slice 23 adds Worker/pool-scoped scratch and Artifact Store hysteresis, current-epoch observation freshness, separate readiness/Assignment eligibility, and transactional Admission/Assignment rechecks without a hard spare. | Live Fleet deployment and measured SLO effect remain separate gate evidence. |
 | 0025 Three control/storage nodes | Partial | `deploy/control-storage` renders a three-instance CNPG cluster, three-replica PVC-backed JetStream, required hostname anti-affinity, two-pod disruption budgets, independent WAL storage, and an external S3 backup contract. Slice 25 binds Publisher and durable Scheduler consumer behavior to that exact release-owned stream/consumer contract and proves quorum loss/recovery plus both Outbox and consumer crash windows in repository integration tests (`d275a91`). Slice 26 applies the release Cluster to a pinned four-node kind environment, verifies three distinct PostgreSQL failure domains, automatically replaces a stopped primary with RPO 0 and RTO below five minutes, and rejects new Admission/Assignment commits after both synchronous standbys stop. | RKE2/CNPG operator installation, approved image digests, three-node disk/topology validation, Artifact S3 durability, backup credentials, Barman Cloud Plugin migration/restore evidence, and a real-environment failover Launch Receipt. |
 | 0026 Reserve credit at Admission | Implemented for current lifecycle | Admission reserves atomically; cancellation, execution/finalization failure, and Visible Completion consume or release exactly once with counters and Outbox. | Future terminal paths must close the same reservation authority. |
@@ -107,15 +108,16 @@ Slice 26 adds direct repository evidence that a stopped CNPG primary is
 automatically replaced within five minutes without changing the committed Vela
 authority, and that deferred database guards leave no Admission or Assignment
 authority after synchronous quorum loss and recovery (26).
+Slice 27 adds direct repository evidence for the authenticated remediation
+control path, distinct L6 approvals, exact Worker epoch and GPU UUID/PCI BDF
+capability binding, and authoritative quarantine after failed post-check (18).
 Evidence remains partial for same-Worker multipart resume,
 Worker Local Recovery State, and whole-Job recompute without live node/NVMe-loss
 evidence (10), class-specific request/Artifact retention and Content Deletion
 without debug, backup, or production lifecycle evidence (19), and N/N-1
 database/control/Worker/event compatibility without a deployed rollout, drain,
 rollback, and retained-backlog receipt (30).
-The repository coverage is now 26 direct, 3 partial, and 1 unproven. Scenario 18
-remains unproven until a later slice or production receipt records its exact
-evidence.
+The repository coverage is now 27 direct, 3 partial, and 0 unproven.
 
 ## Production Gates
 
