@@ -115,10 +115,19 @@ kubectl --kubeconfig "$kubeconfig" apply \
 kubectl --kubeconfig "$kubeconfig" -n vela-system create secret generic vela-backup-s3 \
 	--from-literal=ACCESS_KEY_ID=cnpg-conformance-only \
 	--from-literal=SECRET_ACCESS_KEY=cnpg-conformance-only
-kubectl --kubeconfig "$kubeconfig" -n vela-system apply \
+apply_attempt=0
+until kubectl --kubeconfig "$kubeconfig" -n vela-system apply \
 	-f "$repository_root/deploy/control-storage/recovery-contract.yaml" \
 	-f "$repository_root/deploy/control-storage/disruption-budgets.yaml" \
 	-f "$repository_root/deploy/control-storage/postgres-cluster.yaml"
+do
+	apply_attempt=$((apply_attempt + 1))
+	if [ "$apply_attempt" -ge 60 ]; then
+		echo "CloudNativePG admission webhook did not accept the release Cluster" >&2
+		exit 1
+	fi
+	sleep 1
+done
 patch_attempt=0
 until kubectl --kubeconfig "$kubeconfig" -n vela-system patch \
 	clusters.postgresql.cnpg.io vela-postgres \

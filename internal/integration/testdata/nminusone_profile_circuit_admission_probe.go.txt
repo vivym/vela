@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vivym/vela/internal/admission"
 	"github.com/vivym/vela/internal/identity"
@@ -47,11 +49,15 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	idempotencyKey := os.Getenv("VELA_IDEMPOTENCY_KEY")
+	if idempotencyKey == "" {
+		idempotencyKey = "n-minus-one-profile-circuit-" + uuid.NewString()
+	}
 	job, err := admission.NewService(requestPool, predictor).Submit(
 		ctx,
 		principal,
 		uuid.MustParse(os.Getenv("VELA_PROJECT_ID")),
-		"n-minus-one-profile-circuit-"+uuid.NewString(),
+		idempotencyKey,
 		admission.Request{
 			Model:            "minimax-h3",
 			GenerationPreset: "balanced",
@@ -62,6 +68,21 @@ func main() {
 		},
 	)
 	if err != nil {
+		if os.Getenv("VELA_EXPECT_DATABASE_FAILURE") == "true" {
+			result := struct {
+				JobID    string `json:"job_id"`
+				SQLState string `json:"sqlstate"`
+				Error    string `json:"error"`
+			}{Error: err.Error()}
+			var postgresError *pgconn.PgError
+			if errors.As(err, &postgresError) {
+				result.SQLState = postgresError.Code
+			}
+			if encodeErr := json.NewEncoder(os.Stdout).Encode(result); encodeErr != nil {
+				fatal(encodeErr)
+			}
+			return
+		}
 		fatal(err)
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(struct {

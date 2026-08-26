@@ -47,6 +47,7 @@ func TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 	applyFoundation(t, database.Admin)
 	setLeaseRenewalProtocolGate(t, database.Admin, true, "CNPG failover conformance")
 	seedAdmissionFixture(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, debugDumpNMinusOneCommit)
 	if _, err := database.Admin.Exec(`
 		UPDATE credentials
 		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
@@ -213,6 +214,34 @@ func TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 			schedulerErr,
 		)
 	}
+	nMinusOneAdmission := runNMinusOneAdmissionFailureProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+		"cnpg-no-quorum-n-minus-one-admission",
+	)
+	if nMinusOneAdmission.SQLState != "55000" || nMinusOneAdmission.JobID != "" {
+		t.Fatalf(
+			"no-quorum N-1 Admission = %#v, want SQLSTATE 55000 and no Job",
+			nMinusOneAdmission,
+		)
+	}
+	nMinusOneScheduler := runNMinusOneSchedulerProbe(
+		t,
+		nMinusOne.SchedulerProbe,
+		database.DSN,
+		poolID,
+		"cnpg-no-quorum-n-minus-one-scheduler",
+	)
+	if nMinusOneScheduler.SQLState != "55000" || nMinusOneScheduler.Dispatched ||
+		nMinusOneScheduler.IntentID != uuid.Nil || nMinusOneScheduler.AttemptID != uuid.Nil ||
+		nMinusOneScheduler.JobID != uuid.Nil || nMinusOneScheduler.WorkerID != uuid.Nil ||
+		nMinusOneScheduler.LeaseFence != 0 || nMinusOneScheduler.LeaseToken != "" {
+		t.Fatalf(
+			"no-quorum N-1 Scheduler = %#v, want SQLSTATE 55000 and no authority",
+			nMinusOneScheduler,
+		)
+	}
 
 	harness.startKindNode(t, standbyNodes[0])
 	harness.waitForThreeOrTwoReadyInstances(t, 5*time.Minute)
@@ -232,7 +261,7 @@ func TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 	finalCounts := readCNPGAuthorityCounts(t, database.Admin)
 
 	t.Logf(
-		"CNPG no-quorum primary=%s primary_node=%s stopped_standbys=%s admission_status=%d admission_error=%v scheduler_sqlstate=%s scheduler_error=%v final_placement=%s authority_counts=%s reserved_job=%s",
+		"CNPG no-quorum primary=%s primary_node=%s stopped_standbys=%s admission_status=%d admission_error=%v scheduler_sqlstate=%s scheduler_error=%v n_minus_one=%s n_minus_one_admission_sqlstate=%s n_minus_one_scheduler_sqlstate=%s final_placement=%s authority_counts=%s reserved_job=%s",
 		primary,
 		primaryNode,
 		strings.Join(standbyNodes, ","),
@@ -240,6 +269,9 @@ func TestCloudNativePGSingleNodeFailoverPreservesAuthorityAndNoQuorumFailsClosed
 		admissionErr,
 		schedulerPostgresError.Code,
 		schedulerErr,
+		debugDumpNMinusOneCommit,
+		nMinusOneAdmission.SQLState,
+		nMinusOneScheduler.SQLState,
 		strings.Join(finalPlacement, ","),
 		finalCounts,
 		reservedJob.JobID,
