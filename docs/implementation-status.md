@@ -51,7 +51,7 @@ tests alone do not satisfy a gate.
 | Committed Artifact Backup Replication Conformance | `c08ba84` | `docs/specs/0032-committed-artifact-backup-replication-conformance.md` |
 | Non-content Legal Hold Conformance | `7c397e9` | `docs/specs/0033-non-content-legal-hold-conformance.md` |
 | Non-content Record Expiry Conformance | `7c12884` | `docs/specs/0034-non-content-record-expiry-conformance.md` |
-| Catalog Promotion And Production-Gate Enforcement | pending local commit | `docs/specs/0035-catalog-promotion-and-production-gate-enforcement.md` |
+| Catalog Promotion And Production-Gate Enforcement | `c09de0f`, `aa0ea62` | `docs/specs/0035-catalog-promotion-and-production-gate-enforcement.md` |
 
 ## ADR Evidence Matrix
 

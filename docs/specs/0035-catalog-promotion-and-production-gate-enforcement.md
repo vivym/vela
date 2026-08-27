@@ -2,8 +2,8 @@
 
 Date: 2026-08-28
 
-Status: Repository conformance implemented; validation and fixed-point review
-pending.
+Status: Repository conformance implemented at `aa0ea62` (initial feature at
+`c09de0f`, fixed-point Standards and Spec review closure at `aa0ea62`).
 
 This slice turns the Production Gate receipt contract and three-Preset Catalog
 requirements into fail-closed release tooling and database authority. It
@@ -35,7 +35,10 @@ current `0/9 PASS` result.
    evidenced Presets under the same launch receipt.
 7. Once the Catalog evidence protocol switches from `LEGACY` to `EVIDENCED`,
    every new `ACTIVE` Catalog revision and every mutation of an active RateCard
-   line is checked against the exact release evidence. The switch is one-way.
+   line is checked against immutable release evidence. The switch is one-way;
+   its receipt records the initial transition witness, while each later release
+   remains independently bound through its own certification evidence and
+   RateCard release bindings.
 8. Repository tests and local evidence fixtures never become production
    receipts. Production remains closed until nine real versioned receipts pass.
 
@@ -83,7 +86,9 @@ Evidence and history tables use forced RLS, immutable triggers, exact digest and
 text constraints, and owner-controlled security-definer functions. The legacy
 Catalog remains readable during expansion. The `EVIDENCED` switch is allowed
 only after the exact receipt covers three independent Presets and the active
-RateCard.
+RateCard. Catalog `ACTIVE` writers and RateCard-line writers serialize with the
+one-way switch through the singleton protocol row, so a concurrent legacy write
+cannot commit outside either side of the evidence boundary.
 
 The five mutation seams are:
 
@@ -142,6 +147,12 @@ discarded.
   `balanced`, and `fast` evidence from the same receipt;
 - active Catalog and RateCard-line mutation guards after the protocol switch;
 - exact plan replay without duplicate evidence or transition rows;
+- a later release can promote its own complete evidence without rewriting the
+  immutable initial protocol transition;
+- the protocol switch serializes with concurrent unreceipted `ACTIVE` writes in
+  both commit orders;
+- RateCard rejection for duplicate stable-Preset revisions, any fourth line in
+  a saleable group, or a referenced Preset revision that is not `ACTIVE`;
 - failure at any promotion stage rolls back receipt ingest and every later
   mutation;
 - runtime exact-function privilege, no direct table access, no owner
