@@ -46,6 +46,7 @@ tests alone do not satisfy a gate.
 | Certified Remediation Runtime Authority | `ad1bcf6` | `docs/specs/0027-certified-remediation-runtime-authority.md` |
 | Authorized Debug-dump Lifecycle | `6603c36` | `docs/specs/0028-authorized-debug-dump-lifecycle.md` |
 | N/N-1 Rollout, Drain, Rollback, And Retained Backlog Conformance | `21e0781` | `docs/specs/0029-nminusone-rollout-drain-backlog-conformance.md` |
+| Worker Process And Node-loss Recovery Conformance | `5a9bad6`, `4d2bb7f` | `docs/specs/0030-worker-node-loss-conformance.md` |
 
 ## ADR Evidence Matrix
 
@@ -78,7 +79,7 @@ tests alone do not satisfy a gate.
 | 0025 Three control/storage nodes | Partial | `deploy/control-storage` renders a three-instance CNPG cluster, three-replica PVC-backed JetStream, required hostname anti-affinity, two-pod disruption budgets, independent WAL storage, and an external S3 backup contract. Slice 25 binds Publisher and durable Scheduler consumer behavior to that exact release-owned stream/consumer contract and proves quorum loss/recovery plus both Outbox and consumer crash windows in repository integration tests (`d275a91`). Slice 26 applies the release Cluster to a pinned four-node kind environment, verifies three distinct PostgreSQL failure domains, automatically replaces a stopped primary with RPO 0 and RTO below five minutes, and rejects new Admission/Assignment commits after both synchronous standbys stop. | RKE2/CNPG operator installation, approved image digests, three-node disk/topology validation, Artifact S3 durability, backup credentials, Barman Cloud Plugin migration/restore evidence, and a real-environment failover Launch Receipt. |
 | 0026 Reserve credit at Admission | Implemented for current lifecycle | Admission reserves atomically; cancellation, execution/finalization failure, and Visible Completion consume or release exactly once with counters and Outbox. | Future terminal paths must close the same reservation authority. |
 | 0027 Charge when cancel wins | Implemented | Visible Completion and Customer Cancellation serialize through one Job authority; the winner owns the only Charge and late completion returns the winning ArtifactSet. | Production fault-injection receipt remains a separate gate. |
-| 0028 Recompute after Worker loss | Partial | LOST execution creates a higher-fence whole-Job retry; a circuit-opening failure can select a different actively certified profile without changing product snapshots; finalization loss is recovered on the same Attempt/fence by a Reconciler without resetting its deadline; Slice 21 local state is integrated into the Worker Agent and Python Runner with exact Worker/epoch/fence recovery, multipart finalization resume, per-Attempt quotas, watermarks, terminal cleanup, a UID-authenticated host XFS quota service, and an unprivileged H3 deployment contract. Slice 23 materializes identity-bound H3 Workers and requires five ordered readiness checks before a recovered or replacement Worker becomes `HEALTHY + READY`. | Live NVMe/XFS quota and capacity certification, node/NVMe-loss exercise, and Launch Receipt. |
+| 0028 Recompute after Worker loss | Partial | LOST execution creates a higher-fence whole-Job retry; a circuit-opening failure can select a different actively certified profile without changing product snapshots; finalization loss is recovered on the same Attempt/fence by a Reconciler without resetting its deadline; Slice 21 local state is integrated into the Worker Agent and Python Runner with exact Worker/epoch/fence recovery, multipart finalization resume, per-Attempt quotas, watermarks, terminal cleanup, a UID-authenticated host XFS quota service, and an unprivileged H3 deployment contract. Slice 23 materializes identity-bound H3 Workers and requires five ordered readiness checks before a recovered or replacement Worker becomes `HEALTHY + READY`. Slice 30 proves real signed multipart resume after same-Worker Agent process loss and a distinct higher-fence replacement Attempt from an empty local root after the original Worker recovery root becomes inaccessible, with one Visible Completion, ArtifactSet, and Charge (`864c134`, review closure at `5a9bad6`). | Live H3 NVMe/XFS quota and capacity certification, physical node/NVMe-loss exercise, and Launch Receipt. |
 | 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings; missing, malformed, duplicate, or failed receipts cannot evaluate as PASS. | Nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
 
 ## Acceptance Coverage
@@ -124,12 +125,15 @@ current consumers; raw retained event identity reaches the durable current
 Inbox, an active N-1 Worker continues through current Fleet drain, exact N-1
 rollback writers retain authority, and current plus N-1 Admission/Scheduler
 writers fail closed without new authority during synchronous-quorum loss (30).
-Evidence remains partial for same-Worker multipart resume,
-Worker Local Recovery State, and whole-Job recompute without live node/NVMe-loss
-evidence (10), class-specific request/Artifact/debug-dump retention and Content
-Deletion without off-cluster backup expiry/replay or production lifecycle
-evidence (19).
-The repository coverage is now 28 direct, 2 partial, and 0 unproven.
+Slice 30 adds direct repository evidence that a same-Worker process loss resumes
+only the remaining signed multipart parts without rerunning the Runner, while an
+inaccessible Worker-local recovery root leads to a `LOST` Attempt and a distinct
+higher-fence replacement Worker that recomputes from an empty local root; both
+paths preserve one Visible Completion, ArtifactSet, and Charge (10).
+Evidence remains partial for class-specific request/Artifact/debug-dump
+retention and Content Deletion without off-cluster backup expiry/replay or
+production lifecycle evidence (19).
+The repository coverage is now 29 direct, 1 partial, and 0 unproven.
 
 ## Production Gates
 

@@ -1268,7 +1268,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 7. Scheduler 在 Assignment 事务前后崩溃，Job 不会卡死；BUSY Worker 不接收预派任务，Organization -> Service Class -> Project -> Job 的公平性、aging、Protected Lane 和 retry lane 仍有界。
 8. Worker 网络分区后旧 Attempt 完成返回 `RejectedStaleLease`；最多 3 个 Attempt、累计 compute / finalization budget 和 Job Expiry 中任一耗尽都会停止重试。
 9. Progress 只描述当前 Attempt 的当前 Execution Phase；重试后允许重置，`job_expires_at` 和 Dynamic ETA 均不会被呈现为 Hard Deadline。
-10. multipart upload 中断后，同一 Worker 节点且本地源仍存在时可继续上传；节点或 NVMe 丢失时不声称跨 Worker 恢复，而是按 Retry Budget 从头重算。
+10. multipart upload 中断后，同一 Worker 节点且本地源仍存在时可继续上传；节点或 NVMe 丢失时不声称跨 Worker 恢复，而是按 Retry Budget 从头重算。Slice 30 已通过 production Worker Agent、mTLS WorkerControl、PostgreSQL 和 versioned MinIO 直接证明：同 Worker/epoch/Attempt/fence 的进程丢失只续传剩余 multipart parts，不重跑 Runner；首个 Worker 的本地恢复根不可访问并被判定为 `LOST` 后，不同 Worker 以 higher-fence Attempt 2 从空本地根重算，最终仍只有一个 Visible Completion、ArtifactSet 和 Charge（`864c134`，review closure `5a9bad6`）。真实 H3/XFS/NVMe 故障注入与 Launch Receipt 仍属于 Production Gate。
 11. Worker 在对象上传完成、ArtifactSet commit 前失联时，Artifact Reconciler 可验证并提交已上传对象或安全清理；同一 object key 覆盖写被拒绝，COMMITTED Artifact 固定到不可变 object version。
 12. duration、resolution、frame count、codec、generation count 或任一必需缩略图不符合 OutputSpec 时，整个 ArtifactSet 不能发布或计费。
 13. 两个 Attempt 同时完成时，只有一个能原子形成 Visible Completion 和一条 Charge；未获胜 Attempt 的对象按 Retention Policy 清理。
