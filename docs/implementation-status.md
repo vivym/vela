@@ -47,7 +47,7 @@ tests alone do not satisfy a gate.
 | Authorized Debug-dump Lifecycle | `6603c36` | `docs/specs/0028-authorized-debug-dump-lifecycle.md` |
 | N/N-1 Rollout, Drain, Rollback, And Retained Backlog Conformance | `21e0781` | `docs/specs/0029-nminusone-rollout-drain-backlog-conformance.md` |
 | Worker Process And Node-loss Recovery Conformance | `5a9bad6`, `4d2bb7f` | `docs/specs/0030-worker-node-loss-conformance.md` |
-| Off-cluster Artifact Backup Retention And Restore Replay Conformance | pending local commit | `docs/specs/0031-off-cluster-artifact-backup-retention-conformance.md` |
+| Off-cluster Artifact Backup Retention And Restore Replay Conformance | `4f7aafe` | `docs/specs/0031-off-cluster-artifact-backup-retention-conformance.md` |
 
 ## ADR Evidence Matrix
 

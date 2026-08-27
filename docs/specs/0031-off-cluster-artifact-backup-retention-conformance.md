@@ -2,8 +2,8 @@
 
 Date: 2026-08-27
 
-Status: Repository conformance implemented in this change; fixed-point review
-and local commit receipt pending.
+Status: Repository conformance implemented, fixed-point reviewed, and committed
+in `4f7aafe`.
 
 This slice completes direct repository evidence for Acceptance Scenario 19 and
 advances ADRs 0008, 0012, 0013, and 0015. It exercises separate PostgreSQL
