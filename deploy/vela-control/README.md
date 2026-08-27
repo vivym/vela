@@ -10,13 +10,16 @@ kubectl kustomize deploy/vela-control
 ```
 
 The repository base is deliberately not deployable as production
-configuration. Both container images use an invalid all-zero digest, and
-`vela-control-runtime-placeholder` contains `.invalid` endpoints, placeholder
-public keys/revisions, and one placeholder Node Agent registration. A release
-overlay must replace the images and the complete immutable runtime ConfigMap;
-it may not patch only the visibly convenient fields. Rendering this base is not
-a deployment receipt or a Launch Receipt and does not advance any Production
-Gate from `0/9 PASS`.
+configuration. Both container images use an invalid all-zero digest.
+`vela-control-runtime-r0-placeholder` contains `.invalid` endpoints and
+placeholder public keys/revisions, while
+`vela-control-node-agents-r0-placeholder` contains one placeholder Node Agent
+registration. A release overlay must replace both complete immutable
+ConfigMaps, every `r0-placeholder` Secret name, the Pod template release label,
+the Artifact scratch StorageClass, and both images as one release revision; it
+may not patch only the visibly convenient fields. Rendering this base is not a
+deployment receipt or a Launch Receipt and does not advance any Production Gate
+from `0/9 PASS`.
 
 ## Placement And Availability
 
@@ -33,41 +36,67 @@ receipts required by ADR 0013.
 The application service account has no Kubernetes API RBAC and does not receive
 an automounted token. The application runs as UID/GID 10001 with a read-only
 root filesystem, RuntimeDefault seccomp, no added capability, bounded
-CPU/memory/ephemeral-storage, and a bounded Artifact validation `emptyDir`.
-Release capacity planning must prove the configured Artifact size and ffprobe
-workload fit those bounds on all three Control/Storage nodes.
+CPU/memory/ephemeral storage, and the non-preempting `vela-control-critical`
+PriorityClass. Each Pod requests a 110 GiB generic ephemeral PVC for Artifact
+validation. The release must replace
+`vela-control-artifact-scratch-placeholder` with a StorageClass that reserves
+capacity and enforces I/O isolation from PostgreSQL, etcd, JetStream, and object
+storage. [`storage-contract.json`](storage-contract.json) is the machine-readable
+preflight for `WaitForFirstConsumer`, delete reclaim, a dedicated capacity pool,
+IOPS and throughput limits, and a live verification receipt. Capacity planning
+must reserve three active 110 GiB claims for the one-surge rollout plus at least
+one additional claim for a terminating Pod and delayed PVC/PV reclamation: four
+claims and 440 GiB in aggregate. The release must prove that reclamation stays
+within that headroom, or reserve additional capacity, and prove the Artifact
+size and ffprobe workload fit on all three Control/Storage nodes.
+Provider-specific StorageClass parameters and their live effect remain release
+evidence; the repository placeholder does not claim that isolation already
+exists.
 
 ## Secret Contract
 
 [`secret-contract.json`](secret-contract.json) is the machine-readable preflight
-authority for every external Secret name and required key. It contains no
-Secret values. Delivery must provision all listed Secrets before creating a
+authority for every external Secret name, required key, projected path, and
+materialized regular-file path. It contains no Secret values. Its rotation
+policy requires immutable Secrets and rejects in-place update as a supported
+runtime mechanism. Delivery must provision all listed Secrets before creating a
 Pod and must source them from the approved secret manager or PKI workflow.
 
-- `vela-control-database-urls` supplies each least-privilege PostgreSQL role DSN
-  as a distinct environment key.
-- `vela-control-credential-pepper` supplies only the base64 credential pepper.
-- `vela-control-transport-tls` keeps Worker and Fleet server identities and
-  client CAs separate from public HTTP ingress.
-- `vela-control-privileged-http-tls` contains independent Finance and
+- `vela-control-database-urls-<release>` supplies each least-privilege
+  PostgreSQL role DSN as a distinct environment key.
+- `vela-control-credential-pepper-<release>` supplies only the base64
+  credential pepper.
+- `vela-control-transport-tls-<release>` keeps Worker and Fleet server
+  identities and client CAs separate from public HTTP ingress.
+- `vela-control-privileged-http-tls-<release>` contains independent Finance and
   Compliance server identities and client CAs.
-- `vela-control-nats-client`, `vela-control-artifact-credentials`,
-  `vela-control-keyrings`, `vela-control-invoice-export`, and
-  `vela-control-remediation-client-tls` carry their named workload materials.
+- The remaining names in `secret-contract.json` are also suffixed by the exact
+  release revision and carry their named workload materials.
 
 Kubernetes Secret and ConfigMap volume keys are projected as symlinks. The
 runtime's secure-file boundary deliberately rejects a path-level symlink for
 Node Agent endpoints and TLS private keys. The root init container therefore
-copies every file into a 4 MiB memory-backed volume, sets directories to `0700`,
-files to `0600`, and transfers ownership to UID/GID 10001. The application
-container mounts only those regular files and never mounts the projected source
-volumes. The init image digest is part of the release and vulnerability-scan
-receipt; `CAP_CHOWN` is its only added capability.
+copies each declared key, never a projected directory, into a 4 MiB
+memory-backed volume, sets directories to `0700`, files to `0600`, and transfers
+ownership to UID/GID 10001. The application container mounts only those regular
+files and never mounts the projected source volumes. The init image digest is
+part of the release and vulnerability-scan receipt; `CAP_CHOWN` is its only
+added capability.
 
 The Scheduler, Artifact Reconciler, Retention Reconciler, non-content expiry,
-backup Replicator, Webhook Dispatcher, Invoice Exporter, and remediation actor
-identities are derived from the immutable Pod UID. A release overlay must not
-replace them with one shared static ID.
+backup Replicator, Webhook Dispatcher, and Invoice Exporter claimant identities
+are derived from the immutable Pod UID. A release overlay must not replace them
+with one shared static ID. Remediation is deliberately different: both replicas
+use `controller/vela-control`, and the shared client certificate must contain
+the exact URI `spiffe://vela.internal/controller/vela-control`.
+
+Every Secret and ConfigMap reference in the Pod template is release-versioned.
+Certificate and credential rotation must provision new immutable Secret names,
+wait for cert-manager or the approved issuer to populate them, then roll the
+Deployment to the new Pod template. The prior Secrets and ConfigMaps remain
+until the prior ReplicaSet is fully retired. Updating a referenced Secret in
+place is unsupported because the init container materializes regular files once
+at startup.
 
 ## Network Boundary
 
@@ -84,7 +113,8 @@ Each Service selects the same Pod set but publishes exactly one interface:
 Ingress is default-denied. The repository policies then admit each port from a
 different identity boundary:
 
-- API ingress namespaces require `vela.ai/network-role=api-ingress`;
+- API ingress namespaces require `vela.ai/network-role=api-ingress`, and the
+  gateway Pod requires `vela.ai/client-role=api-gateway`;
 - Worker and Fleet traffic requires the exact workload label in `vela-system`;
 - Finance namespaces and Pods require `vela.ai/network-role=finance` plus
   `vela.ai/client-role=finance-reconciliation`; and
@@ -93,8 +123,9 @@ different identity boundary:
 
 Namespace labels are privileged cluster configuration and must be part of the
 release evidence. Before rollout, verify that the selected CNI enforces both
-`namespaceSelector` and `podSelector`, that kubelet probes can reach Pod port
-8080, and that no alternate Service exposes a privileged port.
+`namespaceSelector` and `podSelector`, that kubelet probes can reach Pod-private
+port 8081, and that no Service exposes the management or privileged ports beyond
+their declared boundary.
 
 The base does not declare egress policy. PostgreSQL, NATS, OIDC, primary and
 backup object storage, Webhook destinations, Invoice export, and host Node Agent
@@ -105,8 +136,9 @@ not an acceptable substitute.
 
 ## Live Verification
 
-`/healthz` is the liveness path. Startup and readiness use dependency-aware
-`/readyz`; they must not be changed to the static liveness response. A production
+`/healthz` is the liveness path on Pod-private management port 8081. Startup and
+readiness use dependency-aware `/readyz` on the same listener; neither path is
+registered by the public API server or exposed through a Service. A production
 rollout still requires approved image digests, Secret/PKI rotation, real
 Control/Storage placement, NetworkPolicy observation, authenticated probes for
 all five interfaces, N/N-1 rollout and rollback, long-running Job drain,

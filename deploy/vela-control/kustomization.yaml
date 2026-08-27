@@ -4,7 +4,9 @@ namespace: vela-system
 resources:
   - namespace.yaml
   - service-account.yaml
+  - priority-class.yaml
   - runtime-config.yaml
+  - node-agent-config.yaml
   - deployment.yaml
   - services.yaml
   - disruption-budget.yaml

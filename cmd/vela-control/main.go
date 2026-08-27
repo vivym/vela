@@ -61,6 +61,7 @@ import (
 
 const (
 	defaultHTTPAddress                          = ":8080"
+	defaultManagementAddress                    = ":8081"
 	defaultWorkerGRPCAddress                    = ":8443"
 	defaultFleetGRPCAddress                     = ":8444"
 	defaultRemediationTick                      = 500 * time.Millisecond
@@ -110,6 +111,7 @@ const (
 
 type config struct {
 	httpAddress                            string
+	managementAddress                      string
 	workerGRPCAddress                      string
 	workerGRPCTLSCertFile                  string
 	workerGRPCTLSKeyFile                   string
@@ -1014,12 +1016,8 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-	mux.HandleFunc(
-		"GET /readyz",
+	publicHTTPHandler, managementHTTPHandler := controlHTTPHandlers(
+		apiHandler,
 		readinessHandler(
 			artifactStore,
 			authPool,
@@ -1051,14 +1049,22 @@ func run() error {
 			webhookPool,
 		),
 	)
-	mux.Handle("/", apiHandler)
 	httpServer := &http.Server{
 		Addr:              configuration.httpAddress,
-		Handler:           mux,
+		Handler:           publicHTTPHandler,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+	}
+	managementServer := &http.Server{
+		Addr:              configuration.managementAddress,
+		Handler:           managementHTTPHandler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      5 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		MaxHeaderBytes:    8 * 1024,
 	}
 	financeReconciliationServer := &http.Server{
 		Handler:           financeReconciliationHandler,
@@ -1188,6 +1194,15 @@ func run() error {
 		slog.Info("vela-control HTTP server started", "address", configuration.httpAddress)
 		httpServerErrors <- httpServer.ListenAndServe()
 	}()
+	managementServerErrors := make(chan error, 1)
+	go func() {
+		slog.Info(
+			"vela-control management server started",
+			"address",
+			configuration.managementAddress,
+		)
+		managementServerErrors <- managementServer.ListenAndServe()
+	}()
 	workerServerErrors := make(chan error, 1)
 	go func() {
 		slog.Info(
@@ -1233,6 +1248,11 @@ func run() error {
 			stop()
 			serveErr = fmt.Errorf("serve HTTP: %w", err)
 		}
+	case err := <-managementServerErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			stop()
+			serveErr = fmt.Errorf("serve management HTTP: %w", err)
+		}
 	case err := <-workerServerErrors:
 		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			stop()
@@ -1257,6 +1277,9 @@ func run() error {
 		return err
 	}
 	if err := shutdownHTTPServer(shutdownContext, httpServer, "HTTP"); err != nil {
+		return err
+	}
+	if err := shutdownHTTPServer(shutdownContext, managementServer, "management HTTP"); err != nil {
 		return err
 	}
 	fleetServerDone := make(chan struct{})
@@ -1362,6 +1385,7 @@ func run() error {
 func loadConfig() (config, error) {
 	configuration := config{
 		httpAddress:                       envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
+		managementAddress:                 envOrDefault("VELA_MANAGEMENT_ADDRESS", defaultManagementAddress),
 		workerGRPCAddress:                 envOrDefault("VELA_WORKER_GRPC_ADDRESS", defaultWorkerGRPCAddress),
 		workerGRPCTLSCertFile:             os.Getenv("VELA_WORKER_GRPC_TLS_CERT_FILE"),
 		workerGRPCTLSKeyFile:              os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
@@ -2326,6 +2350,15 @@ func clearKeyring(keyring map[string][]byte) {
 
 type artifactBucketValidator interface {
 	ValidateBucket(context.Context) error
+}
+
+func controlHTTPHandlers(apiHandler, readiness http.Handler) (http.Handler, http.Handler) {
+	management := http.NewServeMux()
+	management.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	management.Handle("GET /readyz", readiness)
+	return apiHandler, management
 }
 
 func readinessHandler(

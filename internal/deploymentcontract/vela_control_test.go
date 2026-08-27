@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -16,23 +17,50 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/validation"
 	k8syamlutil "k8s.io/apimachinery/pkg/util/yaml"
-	k8syaml "sigs.k8s.io/yaml"
 )
 
 var pinnedVelaControlImage = regexp.MustCompile(`^[^[:space:]]+@sha256:[0-9a-f]{64}$`)
 
 type velaControlSecretContract struct {
-	APIVersion         string `json:"apiVersion"`
-	Kind               string `json:"kind"`
-	EnvironmentSecrets []struct {
-		Name         string   `json:"name"`
-		RequiredKeys []string `json:"requiredKeys"`
-	} `json:"environmentSecrets"`
-	FileSecrets []struct {
-		Name         string   `json:"name"`
-		RequiredKeys []string `json:"requiredKeys"`
-	} `json:"fileSecrets"`
+	APIVersion      string `json:"apiVersion"`
+	Kind            string `json:"kind"`
+	ReleaseRevision string `json:"releaseRevision"`
+	RotationPolicy  struct {
+		Mode                   string `json:"mode"`
+		InPlaceUpdateSupported bool   `json:"inPlaceUpdateSupported"`
+		ImmutableRequired      bool   `json:"immutableRequired"`
+	} `json:"rotationPolicy"`
+	EnvironmentSecrets []velaControlSecretEntry `json:"environmentSecrets"`
+	FileSecrets        []velaControlSecretEntry `json:"fileSecrets"`
+}
+
+type velaControlSecretEntry struct {
+	Name              string            `json:"name"`
+	RequiredKeys      []string          `json:"requiredKeys"`
+	ProjectedPath     string            `json:"projectedPath,omitempty"`
+	MaterializedPaths map[string]string `json:"materializedPaths,omitempty"`
+}
+
+type velaControlStorageContract struct {
+	APIVersion          string `json:"apiVersion"`
+	Kind                string `json:"kind"`
+	StorageClassName    string `json:"storageClassName"`
+	VolumeBindingMode   string `json:"volumeBindingMode"`
+	ReclaimPolicy       string `json:"reclaimPolicy"`
+	CapacityPerClaim    string `json:"capacityPerClaim"`
+	MinimumActiveClaims int    `json:"minimumActiveClaims"`
+	ReclaimHeadroom     int    `json:"terminationAndReclaimHeadroomClaims"`
+	MinimumClaims       int    `json:"minimumAggregateClaims"`
+	AggregateCapacity   string `json:"minimumAggregateCapacity"`
+	DedicatedPool       bool   `json:"dedicatedCapacityPoolRequired"`
+	IOPSLimit           bool   `json:"iopsLimitRequired"`
+	ThroughputLimit     bool   `json:"throughputLimitRequired"`
+	LiveReceiptRequired bool   `json:"liveReceiptRequired"`
 }
 
 func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
@@ -54,6 +82,7 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	if pod.ServiceAccountName != "vela-control" ||
 		pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken ||
 		pod.TerminationGracePeriodSeconds == nil || *pod.TerminationGracePeriodSeconds < 60 ||
+		pod.PriorityClassName != "vela-control-critical" ||
 		pod.NodeSelector["vela.ai/node-role"] != "control-storage" ||
 		pod.SecurityContext == nil || pod.SecurityContext.RunAsNonRoot == nil ||
 		!*pod.SecurityContext.RunAsNonRoot || pod.SecurityContext.RunAsUser == nil ||
@@ -85,6 +114,7 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	requireVelaControlSecurityContext(t, control, false, nil)
 	requireVelaControlResources(t, control)
 	requireVelaControlPort(t, control, "http", 8080)
+	requireVelaControlPort(t, control, "management", 8081)
 	requireVelaControlPort(t, control, "worker-grpc", 8443)
 	requireVelaControlPort(t, control, "fleet-grpc", 8444)
 	requireVelaControlPort(t, control, "finance-https", 8445)
@@ -93,7 +123,7 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 		"startup": control.StartupProbe, "readiness": control.ReadinessProbe,
 		"liveness": control.LivenessProbe,
 	} {
-		if probe == nil || probe.HTTPGet == nil || probe.HTTPGet.Port.StrVal != "http" {
+		if probe == nil || probe.HTTPGet == nil || probe.HTTPGet.Port.StrVal != "management" {
 			t.Fatalf("vela-control %s probe = %#v", name, probe)
 		}
 		wantPath := "/readyz"
@@ -113,6 +143,14 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 		disruptionBudget.Spec.Selector.MatchLabels["app.kubernetes.io/name"] != "vela-control" {
 		t.Fatalf("vela-control disruption budget = %#v", disruptionBudget)
 	}
+
+	var priorityClass schedulingv1.PriorityClass
+	loadVelaControlManifest(t, "priority-class.yaml", &priorityClass)
+	if priorityClass.Name != "vela-control-critical" || priorityClass.Value <= 0 ||
+		priorityClass.GlobalDefault || priorityClass.PreemptionPolicy == nil ||
+		*priorityClass.PreemptionPolicy != corev1.PreemptNever {
+		t.Fatalf("vela-control PriorityClass = %#v", priorityClass)
+	}
 }
 
 func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testing.T) {
@@ -120,12 +158,15 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	loadVelaControlManifest(t, "deployment.yaml", &deployment)
 	pod := deployment.Spec.Template.Spec
 	control := pod.Containers[0]
+	if deployment.Spec.Template.Labels["vela.ai/release-revision"] != "r0-placeholder" {
+		t.Fatalf("vela-control Pod template release revision = %#v", deployment.Spec.Template.Labels)
+	}
 	if len(control.EnvFrom) != 3 || control.EnvFrom[0].ConfigMapRef == nil ||
-		control.EnvFrom[0].ConfigMapRef.Name != "vela-control-runtime-placeholder" ||
+		control.EnvFrom[0].ConfigMapRef.Name != "vela-control-runtime-r0-placeholder" ||
 		control.EnvFrom[1].SecretRef == nil ||
-		control.EnvFrom[1].SecretRef.Name != "vela-control-database-urls" ||
+		control.EnvFrom[1].SecretRef.Name != "vela-control-database-urls-r0-placeholder" ||
 		control.EnvFrom[2].SecretRef == nil ||
-		control.EnvFrom[2].SecretRef.Name != "vela-control-credential-pepper" {
+		control.EnvFrom[2].SecretRef.Name != "vela-control-credential-pepper-r0-placeholder" {
 		t.Fatalf("vela-control environment sources = %#v", control.EnvFrom)
 	}
 	podUID := requireVelaControlEnvironment(t, control, "VELA_POD_UID")
@@ -146,7 +187,6 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 		"VELA_ARTIFACT_REPLICATION_ID":          "artifact-replication/$(VELA_POD_UID)",
 		"VELA_WEBHOOK_DISPATCHER_ID":            "webhook-dispatcher/$(VELA_POD_UID)",
 		"VELA_INVOICE_EXPORTER_ID":              "invoice-exporter/$(VELA_POD_UID)",
-		"VELA_REMEDIATION_ACTOR_IDENTITY":       "controller/$(VELA_POD_UID)",
 		"VELA_FINANCE_RECONCILIATION_ADDR":      "$(VELA_POD_NAME):8445",
 		"VELA_COMPLIANCE_ADDR":                  "$(VELA_POD_NAME):8446",
 	}
@@ -154,6 +194,9 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 		if got := requireVelaControlEnvironment(t, control, name).Value; got != want {
 			t.Fatalf("vela-control environment %s = %q, want %q", name, got, want)
 		}
+	}
+	if got := requireVelaControlEnvironment(t, control, "VELA_REMEDIATION_ACTOR_IDENTITY").Value; got != "controller/vela-control" {
+		t.Fatalf("vela-control remediation actor identity = %q", got)
 	}
 
 	materializer := pod.InitContainers[0]
@@ -173,8 +216,12 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	if strings.Contains(command, "chmod -R 0600") {
 		t.Fatal("vela-control materializer makes credential directories non-traversable")
 	}
+	if strings.Contains(command, "cp -R") || strings.Contains(command, "cp -r") {
+		t.Fatal("vela-control materializer recursively copies projected Secret symlinks")
+	}
+	assertVelaControlDeclaredFileCopies(t, command)
 	for _, name := range []string{
-		"runtime-config", "control-transport-tls", "privileged-http-tls", "nats-client",
+		"node-agent-config", "control-transport-tls", "privileged-http-tls", "nats-client",
 		"artifact-credentials", "keyrings", "invoice-export", "remediation-client-tls",
 	} {
 		if !hasVelaControlVolumeMount(materializer.VolumeMounts, name) {
@@ -195,13 +242,32 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	if !hasVelaControlVolumeMount(control.VolumeMounts, "materialized-secrets") {
 		t.Fatal("vela-control application does not mount materialized credentials")
 	}
+	workspace := requireVelaControlVolume(t, pod.Volumes, "artifact-validation")
+	workspaceCapacity := resource.Quantity{}
+	if workspace.Ephemeral != nil && workspace.Ephemeral.VolumeClaimTemplate != nil {
+		workspaceCapacity = workspace.Ephemeral.VolumeClaimTemplate.Spec.Resources.Requests[corev1.ResourceStorage]
+	}
+	if workspace.Ephemeral == nil || workspace.Ephemeral.VolumeClaimTemplate == nil ||
+		workspace.Ephemeral.VolumeClaimTemplate.Spec.StorageClassName == nil ||
+		*workspace.Ephemeral.VolumeClaimTemplate.Spec.StorageClassName !=
+			"vela-control-artifact-scratch-placeholder" ||
+		!reflect.DeepEqual(
+			workspace.Ephemeral.VolumeClaimTemplate.Spec.AccessModes,
+			[]corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+		) || workspaceCapacity.Cmp(resource.MustParse("110Gi")) < 0 {
+		t.Fatalf("vela-control Artifact validation workspace = %#v", workspace)
+	}
 
 	var runtimeConfig corev1.ConfigMap
 	loadVelaControlManifest(t, "runtime-config.yaml", &runtimeConfig)
-	if runtimeConfig.Immutable == nil || !*runtimeConfig.Immutable {
+	if runtimeConfig.Name != "vela-control-runtime-r0-placeholder" ||
+		runtimeConfig.Immutable == nil || !*runtimeConfig.Immutable {
 		t.Fatalf("vela-control runtime ConfigMap = %#v", runtimeConfig)
 	}
 	for name, value := range runtimeConfig.Data {
+		if problems := validation.IsEnvVarName(name); len(problems) != 0 {
+			t.Fatalf("vela-control envFrom key %q is invalid: %v", name, problems)
+		}
 		if strings.HasSuffix(name, "_DATABASE_URL") || name == "VELA_CREDENTIAL_PEPPER_BASE64" {
 			t.Fatalf("vela-control runtime ConfigMap contains Secret key %q", name)
 		}
@@ -209,6 +275,45 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 			name != "VELA_ARTIFACT_VALIDATOR_HELPER_PATH" && name != "VELA_ARTIFACT_FFPROBE_PATH" {
 			t.Fatalf("vela-control file environment %s bypasses materialization: %q", name, value)
 		}
+	}
+	var nodeAgents corev1.ConfigMap
+	loadVelaControlManifest(t, "node-agent-config.yaml", &nodeAgents)
+	if nodeAgents.Name != "vela-control-node-agents-r0-placeholder" ||
+		nodeAgents.Immutable == nil || !*nodeAgents.Immutable || len(nodeAgents.Data) != 1 ||
+		nodeAgents.Data["node-agents.json"] == "" {
+		t.Fatalf("vela-control Node Agent ConfigMap = %#v", nodeAgents)
+	}
+	nodeAgentVolume := requireVelaControlVolume(t, pod.Volumes, "node-agent-config")
+	if nodeAgentVolume.ConfigMap == nil ||
+		nodeAgentVolume.ConfigMap.Name != "vela-control-node-agents-r0-placeholder" ||
+		!strings.Contains(
+			command,
+			"cp /projected/node-agents/node-agents.json /materialized/remediation/node-agents.json",
+		) {
+		t.Fatalf("vela-control Node Agent materialization = volume %#v command %q", nodeAgentVolume, command)
+	}
+}
+
+func TestVelaControlStorageClassReleaseContractIsExplicit(t *testing.T) {
+	content := readVelaControlManifest(t, "storage-contract.json")
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	var contract velaControlStorageContract
+	if err := decoder.Decode(&contract); err != nil {
+		t.Fatalf("decode vela-control storage contract: %v", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		t.Fatalf("vela-control storage contract has trailing content: %v", err)
+	}
+	if contract.APIVersion != "vela.ai/v1alpha1" || contract.Kind != "VelaControlStorageContract" ||
+		contract.StorageClassName != "vela-control-artifact-scratch-placeholder" ||
+		contract.VolumeBindingMode != "WaitForFirstConsumer" || contract.ReclaimPolicy != "Delete" ||
+		contract.CapacityPerClaim != "110Gi" || contract.MinimumActiveClaims != 3 ||
+		contract.ReclaimHeadroom != 1 || contract.MinimumClaims != 4 ||
+		contract.MinimumClaims != contract.MinimumActiveClaims+contract.ReclaimHeadroom ||
+		contract.AggregateCapacity != "440Gi" || !contract.DedicatedPool || !contract.IOPSLimit ||
+		!contract.ThroughputLimit || !contract.LiveReceiptRequired {
+		t.Fatalf("vela-control storage contract = %#v", contract)
 	}
 }
 
@@ -263,7 +368,9 @@ func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 		podLabels       map[string]string
 	}{
 		"vela-control-allow-api": {
-			port: 8080, namespaceLabels: map[string]string{"vela.ai/network-role": "api-ingress"},
+			port:            8080,
+			namespaceLabels: map[string]string{"vela.ai/network-role": "api-ingress"},
+			podLabels:       map[string]string{"vela.ai/client-role": "api-gateway"},
 		},
 		"vela-control-allow-worker": {
 			port:            8443,
@@ -326,11 +433,14 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		t.Fatalf("vela-control Secret contract has trailing content: %v", err)
 	}
-	if contract.APIVersion != "vela.ai/v1alpha1" || contract.Kind != "VelaControlSecretContract" {
+	if contract.APIVersion != "vela.ai/v1alpha1" || contract.Kind != "VelaControlSecretContract" ||
+		contract.ReleaseRevision != "r0-placeholder" ||
+		contract.RotationPolicy.Mode != "new-secret-name-and-rolling-update" ||
+		contract.RotationPolicy.InPlaceUpdateSupported || !contract.RotationPolicy.ImmutableRequired {
 		t.Fatalf("vela-control Secret contract identity = %#v", contract)
 	}
 	wantEnvironment := map[string][]string{
-		"vela-control-database-urls": {
+		"vela-control-database-urls-r0-placeholder": {
 			"VELA_ARTIFACT_REPLICATION_DATABASE_URL", "VELA_ARTIFACT_REQUEST_DATABASE_URL",
 			"VELA_AUTH_DATABASE_URL", "VELA_BACKUP_RETENTION_DATABASE_URL", "VELA_BILLING_DATABASE_URL",
 			"VELA_BREAK_GLASS_AUDIT_DATABASE_URL", "VELA_BREAK_GLASS_REQUEST_DATABASE_URL",
@@ -346,27 +456,27 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 			"VELA_SCHEDULER_DATABASE_URL", "VELA_SCHEDULER_INBOX_DATABASE_URL",
 			"VELA_WEBHOOK_DATABASE_URL", "VELA_WEBHOOK_REQUEST_DATABASE_URL",
 		},
-		"vela-control-credential-pepper": {"VELA_CREDENTIAL_PEPPER_BASE64"},
+		"vela-control-credential-pepper-r0-placeholder": {"VELA_CREDENTIAL_PEPPER_BASE64"},
 	}
 	wantFiles := map[string][]string{
-		"vela-control-transport-tls": {
+		"vela-control-transport-tls-r0-placeholder": {
 			"fleet-client-ca.crt", "fleet-tls.crt", "fleet-tls.key",
 			"worker-client-ca.crt", "worker-tls.crt", "worker-tls.key",
 		},
-		"vela-control-privileged-http-tls": {
+		"vela-control-privileged-http-tls-r0-placeholder": {
 			"compliance-client-ca.crt", "compliance-tls.crt", "compliance-tls.key",
 			"finance-client-ca.crt", "finance-tls.crt", "finance-tls.key",
 		},
-		"vela-control-nats-client": {"ca.crt", "outbox.creds", "scheduler.creds", "tls.crt", "tls.key"},
-		"vela-control-artifact-credentials": {
+		"vela-control-nats-client-r0-placeholder": {"ca.crt", "outbox.creds", "scheduler.creds", "tls.crt", "tls.key"},
+		"vela-control-artifact-credentials-r0-placeholder": {
 			"backup-retention-access-key-id", "backup-retention-secret-access-key",
 			"primary-access-key-id", "primary-secret-access-key",
 			"replication-backup-access-key-id", "replication-backup-secret-access-key",
 			"replication-source-access-key-id", "replication-source-secret-access-key",
 		},
-		"vela-control-keyrings":               {"lease.json", "webhook.json"},
-		"vela-control-invoice-export":         {"bearer-token"},
-		"vela-control-remediation-client-tls": {"ca.crt", "tls.crt", "tls.key"},
+		"vela-control-keyrings-r0-placeholder":               {"lease.json", "webhook.json"},
+		"vela-control-invoice-export-r0-placeholder":         {"bearer-token"},
+		"vela-control-remediation-client-tls-r0-placeholder": {"ca.crt", "tls.crt", "tls.key"},
 	}
 	assertVelaControlSecretEntries(t, "environment", contract.EnvironmentSecrets, wantEnvironment)
 	assertVelaControlSecretEntries(t, "file", contract.FileSecrets, wantFiles)
@@ -391,6 +501,19 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 	}
 	if !sameStrings(fileSecretNames, mapKeys(wantFiles)) {
 		t.Fatalf("vela-control file Secret refs = %#v", fileSecretNames)
+	}
+	for _, entry := range contract.FileSecrets {
+		var volumeName string
+		for _, volume := range pod.Volumes {
+			if volume.Secret != nil && volume.Secret.SecretName == entry.Name {
+				volumeName = volume.Name
+				break
+			}
+		}
+		mount := requireVelaControlVolumeMount(t, pod.InitContainers[0].VolumeMounts, volumeName)
+		if mount.MountPath != entry.ProjectedPath || !mount.ReadOnly {
+			t.Fatalf("vela-control Secret %q projected mount = %#v", entry.Name, mount)
+		}
 	}
 }
 
@@ -418,10 +541,7 @@ func requireVelaControlSecurityContext(
 func assertVelaControlSecretEntries(
 	t *testing.T,
 	kind string,
-	entries []struct {
-		Name         string   `json:"name"`
-		RequiredKeys []string `json:"requiredKeys"`
-	},
+	entries []velaControlSecretEntry,
 	want map[string][]string,
 ) {
 	t.Helper()
@@ -439,6 +559,35 @@ func assertVelaControlSecretEntries(
 	}
 	if len(seen) != len(want) {
 		t.Fatalf("vela-control %s Secret contract omitted entries", kind)
+	}
+}
+
+func assertVelaControlDeclaredFileCopies(t *testing.T, command string) {
+	t.Helper()
+	content := readVelaControlManifest(t, "secret-contract.json")
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	var contract velaControlSecretContract
+	if err := decoder.Decode(&contract); err != nil {
+		t.Fatalf("decode vela-control Secret materialization contract: %v", err)
+	}
+	for _, entry := range contract.FileSecrets {
+		if !strings.HasPrefix(entry.ProjectedPath, "/projected/") ||
+			filepath.Clean(entry.ProjectedPath) != entry.ProjectedPath ||
+			len(entry.MaterializedPaths) != len(entry.RequiredKeys) {
+			t.Fatalf("vela-control Secret %q materialization paths = %#v", entry.Name, entry)
+		}
+		for _, key := range entry.RequiredKeys {
+			destination, ok := entry.MaterializedPaths[key]
+			if !ok || !strings.HasPrefix(destination, "/materialized/") ||
+				filepath.Clean(destination) != destination {
+				t.Fatalf("vela-control Secret %q key %q has no materialized path", entry.Name, key)
+			}
+			want := "cp " + entry.ProjectedPath + "/" + key + " " + destination
+			if !strings.Contains(command, want) {
+				t.Fatalf("vela-control materializer omitted exact declared copy %q", want)
+			}
+		}
 	}
 }
 
@@ -493,6 +642,21 @@ func hasVelaControlVolumeMount(mounts []corev1.VolumeMount, name string) bool {
 	return false
 }
 
+func requireVelaControlVolumeMount(
+	t *testing.T,
+	mounts []corev1.VolumeMount,
+	name string,
+) corev1.VolumeMount {
+	t.Helper()
+	for _, mount := range mounts {
+		if mount.Name == name {
+			return mount
+		}
+	}
+	t.Fatalf("vela-control volume mount %q is missing", name)
+	return corev1.VolumeMount{}
+}
+
 func requireVelaControlVolume(t *testing.T, volumes []corev1.Volume, name string) corev1.Volume {
 	t.Helper()
 	for _, volume := range volumes {
@@ -506,19 +670,40 @@ func requireVelaControlVolume(t *testing.T, volumes []corev1.Volume, name string
 
 func loadVelaControlManifest(t *testing.T, name string, destination any) {
 	t.Helper()
-	content := readVelaControlManifest(t, name)
-	if err := k8syaml.Unmarshal(content, destination); err != nil {
-		t.Fatalf("parse vela-control manifest %q: %v", name, err)
+	identity, ok := map[string]struct {
+		apiVersion string
+		kind       string
+		name       string
+	}{
+		"deployment.yaml":        {"apps/v1", "Deployment", "vela-control"},
+		"disruption-budget.yaml": {"policy/v1", "PodDisruptionBudget", "vela-control"},
+		"runtime-config.yaml":    {"v1", "ConfigMap", "vela-control-runtime-r0-placeholder"},
+		"node-agent-config.yaml": {"v1", "ConfigMap", "vela-control-node-agents-r0-placeholder"},
+		"priority-class.yaml":    {"scheduling.k8s.io/v1", "PriorityClass", "vela-control-critical"},
+	}[name]
+	if !ok {
+		t.Fatalf("vela-control rendered resource identity is unknown for %q", name)
 	}
+	for _, rendered := range renderVelaControlResources(t) {
+		if rendered.GetAPIVersion() != identity.apiVersion || rendered.GetKind() != identity.kind ||
+			rendered.GetName() != identity.name {
+			continue
+		}
+		content, err := json.Marshal(rendered.Object)
+		if err != nil {
+			t.Fatalf("marshal rendered vela-control resource %s/%s: %v", identity.kind, identity.name, err)
+		}
+		if err := json.Unmarshal(content, destination); err != nil {
+			t.Fatalf("parse rendered vela-control resource %s/%s: %v", identity.kind, identity.name, err)
+		}
+		return
+	}
+	t.Fatalf("rendered vela-control resource %s/%s is missing", identity.kind, identity.name)
 }
 
 func readVelaControlManifest(t *testing.T, name string) []byte {
 	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("locate vela-control deployment contract test")
-	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "deploy", "vela-control", name)
+	path := filepath.Join(velaControlManifestDirectory(t), name)
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read vela-control manifest %q: %v", name, err)
@@ -528,58 +713,86 @@ func readVelaControlManifest(t *testing.T, name string) []byte {
 
 func loadVelaControlServices(t *testing.T) map[string]corev1.Service {
 	t.Helper()
-	decoder := k8syamlutil.NewYAMLOrJSONDecoder(
-		bytes.NewReader(readVelaControlManifest(t, "services.yaml")),
-		4096,
-	)
-	services := make(map[string]corev1.Service)
-	for {
-		var service corev1.Service
-		err := decoder.Decode(&service)
-		if err == io.EOF {
-			return services
-		}
-		if err != nil {
-			t.Fatalf("parse vela-control Services: %v", err)
-		}
-		if service.Kind == "" {
-			continue
-		}
-		if service.APIVersion != "v1" || service.Kind != "Service" || service.Name == "" {
-			t.Fatalf("invalid vela-control Service document = %#v", service)
-		}
-		if _, exists := services[service.Name]; exists {
-			t.Fatalf("duplicate vela-control Service %q", service.Name)
-		}
-		services[service.Name] = service
-	}
+	return loadVelaControlRenderedResources(t, "v1", "Service", func(service corev1.Service) string {
+		return service.Name
+	})
 }
 
 func loadVelaControlNetworkPolicies(t *testing.T) map[string]networkingv1.NetworkPolicy {
 	t.Helper()
-	decoder := k8syamlutil.NewYAMLOrJSONDecoder(
-		bytes.NewReader(readVelaControlManifest(t, "network-policies.yaml")),
-		4096,
+	return loadVelaControlRenderedResources(
+		t,
+		"networking.k8s.io/v1",
+		"NetworkPolicy",
+		func(policy networkingv1.NetworkPolicy) string { return policy.Name },
 	)
-	policies := make(map[string]networkingv1.NetworkPolicy)
-	for {
-		var policy networkingv1.NetworkPolicy
-		err := decoder.Decode(&policy)
-		if err == io.EOF {
-			return policies
-		}
-		if err != nil {
-			t.Fatalf("parse vela-control NetworkPolicies: %v", err)
-		}
-		if policy.Kind == "" {
+}
+
+func loadVelaControlRenderedResources[T any](
+	t *testing.T,
+	apiVersion string,
+	kind string,
+	name func(T) string,
+) map[string]T {
+	t.Helper()
+	result := make(map[string]T)
+	for _, rendered := range renderVelaControlResources(t) {
+		if rendered.GetAPIVersion() != apiVersion || rendered.GetKind() != kind {
 			continue
 		}
-		if policy.APIVersion != "networking.k8s.io/v1" || policy.Kind != "NetworkPolicy" || policy.Name == "" {
-			t.Fatalf("invalid vela-control NetworkPolicy document = %#v", policy)
+		content, err := json.Marshal(rendered.Object)
+		if err != nil {
+			t.Fatalf("marshal rendered vela-control %s: %v", kind, err)
 		}
-		if _, exists := policies[policy.Name]; exists {
-			t.Fatalf("duplicate vela-control NetworkPolicy %q", policy.Name)
+		var typed T
+		if err := json.Unmarshal(content, &typed); err != nil {
+			t.Fatalf("parse rendered vela-control %s: %v", kind, err)
 		}
-		policies[policy.Name] = policy
+		resourceName := name(typed)
+		if resourceName == "" {
+			t.Fatalf("rendered vela-control %s has no name", kind)
+		}
+		if _, exists := result[resourceName]; exists {
+			t.Fatalf("duplicate rendered vela-control %s %q", kind, resourceName)
+		}
+		result[resourceName] = typed
 	}
+	return result
+}
+
+func renderVelaControlResources(t *testing.T) []unstructured.Unstructured {
+	t.Helper()
+	command := exec.Command("kubectl", "kustomize", velaControlManifestDirectory(t))
+	content, err := command.Output()
+	if err != nil {
+		if exit, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("render vela-control Kustomize base: %v: %s", err, exit.Stderr)
+		}
+		t.Fatalf("render vela-control Kustomize base: %v", err)
+	}
+	decoder := k8syamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(content), 4096)
+	var resources []unstructured.Unstructured
+	for {
+		var resource unstructured.Unstructured
+		err := decoder.Decode(&resource)
+		if err == io.EOF {
+			return resources
+		}
+		if err != nil {
+			t.Fatalf("parse rendered vela-control resources: %v", err)
+		}
+		if resource.GetKind() == "" {
+			continue
+		}
+		resources = append(resources, resource)
+	}
+}
+
+func velaControlManifestDirectory(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate vela-control deployment contract test")
+	}
+	return filepath.Join(filepath.Dir(file), "..", "..", "deploy", "vela-control")
 }

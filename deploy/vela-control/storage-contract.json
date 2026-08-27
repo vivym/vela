@@ -1,0 +1,16 @@
+{
+  "apiVersion": "vela.ai/v1alpha1",
+  "kind": "VelaControlStorageContract",
+  "storageClassName": "vela-control-artifact-scratch-placeholder",
+  "volumeBindingMode": "WaitForFirstConsumer",
+  "reclaimPolicy": "Delete",
+  "capacityPerClaim": "110Gi",
+  "minimumActiveClaims": 3,
+  "terminationAndReclaimHeadroomClaims": 1,
+  "minimumAggregateClaims": 4,
+  "minimumAggregateCapacity": "440Gi",
+  "dedicatedCapacityPoolRequired": true,
+  "iopsLimitRequired": true,
+  "throughputLimitRequired": true,
+  "liveReceiptRequired": true
+}

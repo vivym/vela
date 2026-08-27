@@ -388,6 +388,19 @@ func TestLoadConfigPreservesIndependentFleetMaintenanceBoundary(t *testing.T) {
 	}
 }
 
+func TestLoadConfigPreservesPrivateManagementBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	t.Setenv("VELA_MANAGEMENT_ADDRESS", "127.0.0.1:9081")
+
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load management configuration: %v", err)
+	}
+	if configuration.managementAddress != "127.0.0.1:9081" {
+		t.Fatalf("management address = %q", configuration.managementAddress)
+	}
+}
+
 func TestLoadConfigRejectsInvalidArtifactBackupS3PathStyle(t *testing.T) {
 	setValidConfigEnvironment(t)
 	t.Setenv("VELA_ARTIFACT_BACKUP_S3_PATH_STYLE", "sometimes")
@@ -1221,6 +1234,44 @@ func TestReadinessPingsComplianceDatabase(t *testing.T) {
 			compliance.invocations.Load(),
 			artifactStore.invocations.Load(),
 		)
+	}
+}
+
+func TestControlHTTPHandlersKeepHealthEndpointsOffPublicAPI(t *testing.T) {
+	publicCalls := atomic.Int32{}
+	publicAPI := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		publicCalls.Add(1)
+		w.WriteHeader(http.StatusTeapot)
+	})
+	readinessCalls := atomic.Int32{}
+	readiness := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		readinessCalls.Add(1)
+		w.WriteHeader(http.StatusAccepted)
+	})
+	public, management := controlHTTPHandlers(publicAPI, readiness)
+
+	response := httptest.NewRecorder()
+	public.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if response.Code != http.StatusTeapot || publicCalls.Load() != 1 {
+		t.Fatalf("public /healthz = status %d calls %d", response.Code, publicCalls.Load())
+	}
+
+	response = httptest.NewRecorder()
+	management.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if response.Code != http.StatusNoContent || readinessCalls.Load() != 0 {
+		t.Fatalf("management /healthz = status %d readiness calls %d", response.Code, readinessCalls.Load())
+	}
+
+	response = httptest.NewRecorder()
+	management.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if response.Code != http.StatusAccepted || readinessCalls.Load() != 1 {
+		t.Fatalf("management /readyz = status %d readiness calls %d", response.Code, readinessCalls.Load())
+	}
+
+	response = httptest.NewRecorder()
+	management.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/projects", nil))
+	if response.Code != http.StatusNotFound || publicCalls.Load() != 1 {
+		t.Fatalf("management public route = status %d public calls %d", response.Code, publicCalls.Load())
 	}
 }
 

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: vela-control-runtime-placeholder
+  name: vela-control-runtime-r0-placeholder
   namespace: vela-system
   labels:
     app.kubernetes.io/name: vela-control
@@ -9,6 +9,7 @@ metadata:
 immutable: true
 data:
   VELA_HTTP_ADDRESS: ":8080"
+  VELA_MANAGEMENT_ADDRESS: ":8081"
   VELA_WORKER_GRPC_ADDRESS: ":8443"
   VELA_FLEET_GRPC_ADDRESS: ":8444"
   VELA_OIDC_ISSUER: https://replace-with-customer-idp.example.invalid/
@@ -73,13 +74,3 @@ data:
   VELA_ARTIFACT_SPOOL_DIRECTORY: /var/lib/vela/artifact-validation/spool
   VELA_ARTIFACT_FFPROBE_VERSION: replace-with-certified-ffprobe-version
   VELA_ARTIFACT_VALIDATOR_REVISION: replace-with-certified-validator-revision
-  node-agents.json: |
-    {
-      "replace-with-node-identity": {
-        "address": "replace-with-node-agent.vela-system.svc:9444",
-        "server_name": "replace-with-node-agent.vela-system.svc",
-        "worker_id": "00000000-0000-0000-0000-000000000001",
-        "worker_epoch": 1,
-        "spiffe_identity": "spiffe://vela.internal/node-agent/replace-with-node-identity"
-      }
-    }

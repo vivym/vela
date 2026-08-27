@@ -34,6 +34,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               vela.ai/network-role: api-ingress
+          podSelector:
+            matchLabels:
+              vela.ai/client-role: api-gateway
       ports:
         - protocol: TCP
           port: 8080

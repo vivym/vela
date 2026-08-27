@@ -21,9 +21,11 @@ spec:
       labels:
         app.kubernetes.io/name: vela-control
         app.kubernetes.io/part-of: vela
+        vela.ai/release-revision: r0-placeholder
     spec:
       serviceAccountName: vela-control
       automountServiceAccountToken: false
+      priorityClassName: vela-control-critical
       terminationGracePeriodSeconds: 60
       nodeSelector:
         vela.ai/node-role: control-storage
@@ -75,14 +77,21 @@ spec:
               cp /projected/nats/ca.crt /materialized/nats/ca.crt
               cp /projected/nats/tls.crt /materialized/nats/tls.crt
               cp /projected/nats/tls.key /materialized/nats/tls.key
-              cp -R /projected/artifact/. /materialized/artifact/
+              cp /projected/artifact/primary-access-key-id /materialized/artifact/primary-access-key-id
+              cp /projected/artifact/primary-secret-access-key /materialized/artifact/primary-secret-access-key
+              cp /projected/artifact/backup-retention-access-key-id /materialized/artifact/backup-retention-access-key-id
+              cp /projected/artifact/backup-retention-secret-access-key /materialized/artifact/backup-retention-secret-access-key
+              cp /projected/artifact/replication-source-access-key-id /materialized/artifact/replication-source-access-key-id
+              cp /projected/artifact/replication-source-secret-access-key /materialized/artifact/replication-source-secret-access-key
+              cp /projected/artifact/replication-backup-access-key-id /materialized/artifact/replication-backup-access-key-id
+              cp /projected/artifact/replication-backup-secret-access-key /materialized/artifact/replication-backup-secret-access-key
               cp /projected/keyrings/lease.json /materialized/keyrings/lease.json
               cp /projected/keyrings/webhook.json /materialized/keyrings/webhook.json
               cp /projected/invoice/bearer-token /materialized/invoice/bearer-token
               cp /projected/remediation-tls/tls.crt /materialized/remediation/tls.crt
               cp /projected/remediation-tls/tls.key /materialized/remediation/tls.key
               cp /projected/remediation-tls/ca.crt /materialized/remediation/ca.crt
-              cp /projected/runtime/node-agents.json /materialized/remediation/node-agents.json
+              cp /projected/node-agents/node-agents.json /materialized/remediation/node-agents.json
               find /materialized -type d -exec chmod 0700 {} +
               find /materialized -type f -exec chmod 0600 {} +
               chown -R 10001:10001 /materialized
@@ -111,8 +120,8 @@ spec:
               mountPath: /materialized
             - name: artifact-validation
               mountPath: /artifact-validation
-            - name: runtime-config
-              mountPath: /projected/runtime
+            - name: node-agent-config
+              mountPath: /projected/node-agents
               readOnly: true
             - name: control-transport-tls
               mountPath: /projected/control-transport
@@ -143,11 +152,11 @@ spec:
           terminationMessagePolicy: File
           envFrom:
             - configMapRef:
-                name: vela-control-runtime-placeholder
+                name: vela-control-runtime-r0-placeholder
             - secretRef:
-                name: vela-control-database-urls
+                name: vela-control-database-urls-r0-placeholder
             - secretRef:
-                name: vela-control-credential-pepper
+                name: vela-control-credential-pepper-r0-placeholder
           env:
             - name: VELA_POD_UID
               valueFrom:
@@ -174,7 +183,7 @@ spec:
             - name: VELA_INVOICE_EXPORTER_ID
               value: invoice-exporter/$(VELA_POD_UID)
             - name: VELA_REMEDIATION_ACTOR_IDENTITY
-              value: controller/$(VELA_POD_UID)
+              value: controller/vela-control
             - name: VELA_FINANCE_RECONCILIATION_ADDR
               value: $(VELA_POD_NAME):8445
             - name: VELA_COMPLIANCE_ADDR
@@ -182,6 +191,9 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+              protocol: TCP
+            - name: management
+              containerPort: 8081
               protocol: TCP
             - name: worker-grpc
               containerPort: 8443
@@ -199,7 +211,7 @@ spec:
             httpGet:
               scheme: HTTP
               path: /readyz
-              port: http
+              port: management
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 60
@@ -207,7 +219,7 @@ spec:
             httpGet:
               scheme: HTTP
               path: /readyz
-              port: http
+              port: management
             periodSeconds: 5
             timeoutSeconds: 2
             failureThreshold: 3
@@ -215,7 +227,7 @@ spec:
             httpGet:
               scheme: HTTP
               path: /healthz
-              port: http
+              port: management
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
@@ -248,40 +260,52 @@ spec:
             medium: Memory
             sizeLimit: 4Mi
         - name: artifact-validation
-          emptyDir:
-            sizeLimit: 110Gi
-        - name: runtime-config
+          ephemeral:
+            volumeClaimTemplate:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: vela-control
+                  app.kubernetes.io/part-of: vela
+                  vela.ai/storage-purpose: artifact-validation
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                storageClassName: vela-control-artifact-scratch-placeholder
+                resources:
+                  requests:
+                    storage: 110Gi
+        - name: node-agent-config
           configMap:
-            name: vela-control-runtime-placeholder
+            name: vela-control-node-agents-r0-placeholder
             defaultMode: 0440
             items:
               - key: node-agents.json
                 path: node-agents.json
         - name: control-transport-tls
           secret:
-            secretName: vela-control-transport-tls
+            secretName: vela-control-transport-tls-r0-placeholder
             defaultMode: 0400
         - name: privileged-http-tls
           secret:
-            secretName: vela-control-privileged-http-tls
+            secretName: vela-control-privileged-http-tls-r0-placeholder
             defaultMode: 0400
         - name: nats-client
           secret:
-            secretName: vela-control-nats-client
+            secretName: vela-control-nats-client-r0-placeholder
             defaultMode: 0400
         - name: artifact-credentials
           secret:
-            secretName: vela-control-artifact-credentials
+            secretName: vela-control-artifact-credentials-r0-placeholder
             defaultMode: 0400
         - name: keyrings
           secret:
-            secretName: vela-control-keyrings
+            secretName: vela-control-keyrings-r0-placeholder
             defaultMode: 0400
         - name: invoice-export
           secret:
-            secretName: vela-control-invoice-export
+            secretName: vela-control-invoice-export-r0-placeholder
             defaultMode: 0400
         - name: remediation-client-tls
           secret:
-            secretName: vela-control-remediation-client-tls
+            secretName: vela-control-remediation-client-tls-r0-placeholder
             defaultMode: 0400
