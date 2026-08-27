@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vela-control
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/part-of: vela
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control

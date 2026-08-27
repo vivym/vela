@@ -320,6 +320,8 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 
 `vela-control` 可以运行多个相同 replica；后台循环使用 row claim、advisory lock 或唯一约束竞争，不为同进程内的 Scheduler、Catalog 和 Billing 增加网络 Interface。对象存储、OIDC、Invoice export、Kubernetes、Worker、Inference Backend，以及跨进程的 Fleet / Node Health maintenance command 这些真实变化点定义 adapter seam。
 
+`deploy/vela-control` 固定该模块化单体的 Kubernetes 边界：两个 replica 必须分布在不同 Control/Storage Node，所有后台 claimant identity 从不可变 Pod UID 派生，数据库 DSN 和 credential pepper 仅来自外部 Secret，文件型 mTLS / NATS / S3 / keyring material 在启动前复制为 UID 10001 拥有的普通文件。public API、Worker、Fleet、Finance 和 Compliance 使用五个单用途 ClusterIP Service 与独立 ingress policy；其中 `vela-control.vela-system.svc:8444` 只保留 Fleet maintenance 兼容地址。环境相关 egress 由 release overlay 按实际 PostgreSQL、NATS、OIDC、对象存储、Webhook、Invoice 和 Node Agent 目标收敛，仓库 base 不以宽泛外网规则代替。该可渲染 contract 不是已部署证据，也不改变 Production Gate 结果。
+
 ## 7. 领域模型
 
 | 概念 | 定义 | 关键不变量 |
@@ -987,6 +989,8 @@ Fleet Controller 执行 planned rollout，并与硬件维护共用 DRAINING 语�
 普通 release 不得中断 Accepted Job。控制面和 Worker protocol、Protobuf event、数据库 schema 必须支持 N/N-1 版本共存；数据库迁移采用 expand -> backfill -> switch -> contract，contract 只能在旧 binary、旧 event backlog 和旧 Worker 引用归零后执行。消费者必须忽略未知的可选字段，禁止在同一 field number 或 event type 上改变既有语义。若变化无法满足兼容窗口，必须建立显式 migration operation，先 drain 受影响 revision，再执行升级。
 
 每次 release 先升级无状态 `vela-control` replica，再 canary 新 Worker pool。回滚不得回退已提交的数据库 schema，而是切回 N-1 binary / configuration；发布前必须用真实长任务验证升级、回滚、Worker drain 和旧 event backlog 消费。
+
+`vela-control` 的 repository base 使用两个 replica、`maxUnavailable: 0`、`maxSurge: 1`、required hostname anti-affinity 和 `minAvailable: 1` PDB。它只保证 release manifest 不主动同时移除两个 replica；只有真实集群中的旧/新 binary coexistence、readiness、连接 drain、long-running Job 和 retained backlog receipt 才能证明 non-interrupting release。
 
 ### 15.3 Revision 保留
 

@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-control-runtime-placeholder
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/part-of: vela
+immutable: true
+data:
+  VELA_HTTP_ADDRESS: ":8080"
+  VELA_WORKER_GRPC_ADDRESS: ":8443"
+  VELA_FLEET_GRPC_ADDRESS: ":8444"
+  VELA_OIDC_ISSUER: https://replace-with-customer-idp.example.invalid/
+  VELA_OIDC_AUDIENCE: replace-with-customer-audience
+  VELA_OIDC_JWKS_URL: https://replace-with-customer-idp.example.invalid/.well-known/jwks.json
+  VELA_PLATFORM_OIDC_ISSUER: https://replace-with-platform-idp.example.invalid/
+  VELA_PLATFORM_OIDC_AUDIENCE: replace-with-platform-audience
+  VELA_PLATFORM_OIDC_JWKS_URL: https://replace-with-platform-idp.example.invalid/.well-known/jwks.json
+  VELA_FLEET_CONTROLLER_SPIFFE_ID: spiffe://vela.internal/fleet-controller/primary
+  VELA_FLEET_CONTROLLER_ACTOR_IDENTITY: fleet-controller/primary
+  VELA_NATS_URL: tls://nats.vela-system.svc:4222
+  VELA_NATS_CREDENTIALS_FILE: /etc/vela-control/materialized/nats/outbox.creds
+  VELA_NATS_SCHEDULER_CREDENTIALS_FILE: /etc/vela-control/materialized/nats/scheduler.creds
+  VELA_NATS_ROOT_CA_FILE: /etc/vela-control/materialized/nats/ca.crt
+  VELA_NATS_CLIENT_CERT_FILE: /etc/vela-control/materialized/nats/tls.crt
+  VELA_NATS_CLIENT_KEY_FILE: /etc/vela-control/materialized/nats/tls.key
+  VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY: replace-with-outbox-account-public-key
+  VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS: replace-with-outbox-account-signer-public-keys
+  VELA_NATS_OUTBOX_USER_PUBLIC_KEYS: replace-with-outbox-user-public-keys
+  VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS: replace-with-scheduler-user-public-keys
+  VELA_ARTIFACT_S3_ENDPOINT: https://replace-with-primary-object-store.example.invalid
+  VELA_ARTIFACT_S3_REGION: replace-with-primary-region
+  VELA_ARTIFACT_S3_BUCKET: replace-with-primary-bucket
+  VELA_ARTIFACT_S3_PATH_STYLE: "false"
+  VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE: /etc/vela-control/materialized/artifact/primary-access-key-id
+  VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE: /etc/vela-control/materialized/artifact/primary-secret-access-key
+  VELA_ARTIFACT_BACKUP_S3_ENDPOINT: https://replace-with-backup-object-store.example.invalid
+  VELA_ARTIFACT_BACKUP_S3_REGION: replace-with-backup-region
+  VELA_ARTIFACT_BACKUP_S3_BUCKET: replace-with-backup-bucket
+  VELA_ARTIFACT_BACKUP_S3_PATH_STYLE: "false"
+  VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE: /etc/vela-control/materialized/artifact/backup-retention-access-key-id
+  VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE: /etc/vela-control/materialized/artifact/backup-retention-secret-access-key
+  VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE: /etc/vela-control/materialized/artifact/replication-source-access-key-id
+  VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE: /etc/vela-control/materialized/artifact/replication-source-secret-access-key
+  VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE: /etc/vela-control/materialized/artifact/replication-backup-access-key-id
+  VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE: /etc/vela-control/materialized/artifact/replication-backup-secret-access-key
+  VELA_WORKER_GRPC_TLS_CERT_FILE: /etc/vela-control/materialized/worker/tls.crt
+  VELA_WORKER_GRPC_TLS_KEY_FILE: /etc/vela-control/materialized/worker/tls.key
+  VELA_WORKER_GRPC_CLIENT_CA_FILE: /etc/vela-control/materialized/worker/client-ca.crt
+  VELA_FLEET_GRPC_TLS_CERT_FILE: /etc/vela-control/materialized/fleet/tls.crt
+  VELA_FLEET_GRPC_TLS_KEY_FILE: /etc/vela-control/materialized/fleet/tls.key
+  VELA_FLEET_GRPC_CLIENT_CA_FILE: /etc/vela-control/materialized/fleet/client-ca.crt
+  VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE: /etc/vela-control/materialized/finance/tls.crt
+  VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE: /etc/vela-control/materialized/finance/tls.key
+  VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE: /etc/vela-control/materialized/finance/client-ca.crt
+  VELA_COMPLIANCE_SERVER_CERT_FILE: /etc/vela-control/materialized/compliance/tls.crt
+  VELA_COMPLIANCE_SERVER_KEY_FILE: /etc/vela-control/materialized/compliance/tls.key
+  VELA_COMPLIANCE_CLIENT_CA_FILE: /etc/vela-control/materialized/compliance/client-ca.crt
+  VELA_REMEDIATION_NODE_AGENTS_FILE: /etc/vela-control/materialized/remediation/node-agents.json
+  VELA_REMEDIATION_TLS_CERT_FILE: /etc/vela-control/materialized/remediation/tls.crt
+  VELA_REMEDIATION_TLS_KEY_FILE: /etc/vela-control/materialized/remediation/tls.key
+  VELA_REMEDIATION_TLS_ROOT_CA_FILE: /etc/vela-control/materialized/remediation/ca.crt
+  VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID: replace-with-webhook-key-id
+  VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE: /etc/vela-control/materialized/keyrings/webhook.json
+  VELA_INVOICE_EXPORT_ENDPOINT: https://replace-with-finance-endpoint.example.invalid/vela/invoices
+  VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE: /etc/vela-control/materialized/invoice/bearer-token
+  VELA_LEASE_ACTIVE_KEY_ID: replace-with-lease-key-id
+  VELA_LEASE_KEYRING_FILE: /etc/vela-control/materialized/keyrings/lease.json
+  VELA_ARTIFACT_VALIDATOR_HELPER_PATH: /usr/local/bin/vela-artifact-validator
+  VELA_ARTIFACT_FFPROBE_PATH: /usr/bin/ffprobe
+  VELA_ARTIFACT_SANDBOX_ROOT: /var/lib/vela/artifact-validation/sandboxes
+  VELA_ARTIFACT_SPOOL_DIRECTORY: /var/lib/vela/artifact-validation/spool
+  VELA_ARTIFACT_FFPROBE_VERSION: replace-with-certified-ffprobe-version
+  VELA_ARTIFACT_VALIDATOR_REVISION: replace-with-certified-validator-revision
+  node-agents.json: |
+    {
+      "replace-with-node-identity": {
+        "address": "replace-with-node-agent.vela-system.svc:9444",
+        "server_name": "replace-with-node-agent.vela-system.svc",
+        "worker_id": "00000000-0000-0000-0000-000000000001",
+        "worker_epoch": 1,
+        "spiffe_identity": "spiffe://vela.internal/node-agent/replace-with-node-identity"
+      }
+    }

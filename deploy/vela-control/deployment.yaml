@@ -1,0 +1,287 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-control
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/part-of: vela
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-control
+        app.kubernetes.io/part-of: vela
+    spec:
+      serviceAccountName: vela-control
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      nodeSelector:
+        vela.ai/node-role: control-storage
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: vela-control
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: secret-materializer
+          image: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              umask 077
+              mkdir -p \
+                /materialized/worker /materialized/fleet \
+                /materialized/finance /materialized/compliance \
+                /materialized/nats /materialized/artifact \
+                /materialized/keyrings /materialized/invoice \
+                /materialized/remediation
+              mkdir -p /artifact-validation/sandboxes /artifact-validation/spool
+              cp /projected/control-transport/worker-tls.crt /materialized/worker/tls.crt
+              cp /projected/control-transport/worker-tls.key /materialized/worker/tls.key
+              cp /projected/control-transport/worker-client-ca.crt /materialized/worker/client-ca.crt
+              cp /projected/control-transport/fleet-tls.crt /materialized/fleet/tls.crt
+              cp /projected/control-transport/fleet-tls.key /materialized/fleet/tls.key
+              cp /projected/control-transport/fleet-client-ca.crt /materialized/fleet/client-ca.crt
+              cp /projected/privileged-http/finance-tls.crt /materialized/finance/tls.crt
+              cp /projected/privileged-http/finance-tls.key /materialized/finance/tls.key
+              cp /projected/privileged-http/finance-client-ca.crt /materialized/finance/client-ca.crt
+              cp /projected/privileged-http/compliance-tls.crt /materialized/compliance/tls.crt
+              cp /projected/privileged-http/compliance-tls.key /materialized/compliance/tls.key
+              cp /projected/privileged-http/compliance-client-ca.crt /materialized/compliance/client-ca.crt
+              cp /projected/nats/outbox.creds /materialized/nats/outbox.creds
+              cp /projected/nats/scheduler.creds /materialized/nats/scheduler.creds
+              cp /projected/nats/ca.crt /materialized/nats/ca.crt
+              cp /projected/nats/tls.crt /materialized/nats/tls.crt
+              cp /projected/nats/tls.key /materialized/nats/tls.key
+              cp -R /projected/artifact/. /materialized/artifact/
+              cp /projected/keyrings/lease.json /materialized/keyrings/lease.json
+              cp /projected/keyrings/webhook.json /materialized/keyrings/webhook.json
+              cp /projected/invoice/bearer-token /materialized/invoice/bearer-token
+              cp /projected/remediation-tls/tls.crt /materialized/remediation/tls.crt
+              cp /projected/remediation-tls/tls.key /materialized/remediation/tls.key
+              cp /projected/remediation-tls/ca.crt /materialized/remediation/ca.crt
+              cp /projected/runtime/node-agents.json /materialized/remediation/node-agents.json
+              find /materialized -type d -exec chmod 0700 {} +
+              find /materialized -type f -exec chmod 0600 {} +
+              chown -R 10001:10001 /materialized
+              find /artifact-validation -type d -exec chmod 0700 {} +
+              chown -R 10001:10001 /artifact-validation
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+              ephemeral-storage: 1Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+              ephemeral-storage: 16Mi
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN]
+          volumeMounts:
+            - name: materialized-secrets
+              mountPath: /materialized
+            - name: artifact-validation
+              mountPath: /artifact-validation
+            - name: runtime-config
+              mountPath: /projected/runtime
+              readOnly: true
+            - name: control-transport-tls
+              mountPath: /projected/control-transport
+              readOnly: true
+            - name: privileged-http-tls
+              mountPath: /projected/privileged-http
+              readOnly: true
+            - name: nats-client
+              mountPath: /projected/nats
+              readOnly: true
+            - name: artifact-credentials
+              mountPath: /projected/artifact
+              readOnly: true
+            - name: keyrings
+              mountPath: /projected/keyrings
+              readOnly: true
+            - name: invoice-export
+              mountPath: /projected/invoice
+              readOnly: true
+            - name: remediation-client-tls
+              mountPath: /projected/remediation-tls
+              readOnly: true
+      containers:
+        - name: vela-control
+          image: ghcr.io/vivym/vela-control@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          envFrom:
+            - configMapRef:
+                name: vela-control-runtime-placeholder
+            - secretRef:
+                name: vela-control-database-urls
+            - secretRef:
+                name: vela-control-credential-pepper
+          env:
+            - name: VELA_POD_UID
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.uid
+            - name: VELA_POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: VELA_SCHEDULER_ID
+              value: scheduler/$(VELA_POD_UID)
+            - name: VELA_ARTIFACT_RECONCILER_ID
+              value: artifact-reconciler/$(VELA_POD_UID)
+            - name: VELA_RETENTION_RECONCILER_ID
+              value: retention-reconciler/$(VELA_POD_UID)
+            - name: VELA_NON_CONTENT_EXPIRY_RECONCILER_ID
+              value: non-content-expiry/$(VELA_POD_UID)
+            - name: VELA_ARTIFACT_REPLICATION_ID
+              value: artifact-replication/$(VELA_POD_UID)
+            - name: VELA_WEBHOOK_DISPATCHER_ID
+              value: webhook-dispatcher/$(VELA_POD_UID)
+            - name: VELA_INVOICE_EXPORTER_ID
+              value: invoice-exporter/$(VELA_POD_UID)
+            - name: VELA_REMEDIATION_ACTOR_IDENTITY
+              value: controller/$(VELA_POD_UID)
+            - name: VELA_FINANCE_RECONCILIATION_ADDR
+              value: $(VELA_POD_NAME):8445
+            - name: VELA_COMPLIANCE_ADDR
+              value: $(VELA_POD_NAME):8446
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: worker-grpc
+              containerPort: 8443
+              protocol: TCP
+            - name: fleet-grpc
+              containerPort: 8444
+              protocol: TCP
+            - name: finance-https
+              containerPort: 8445
+              protocol: TCP
+            - name: compliance-https
+              containerPort: 8446
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              scheme: HTTP
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+              ephemeral-storage: 4Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+              ephemeral-storage: 128Gi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: materialized-secrets
+              mountPath: /etc/vela-control/materialized
+              readOnly: true
+            - name: artifact-validation
+              mountPath: /var/lib/vela/artifact-validation
+      volumes:
+        - name: materialized-secrets
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Mi
+        - name: artifact-validation
+          emptyDir:
+            sizeLimit: 110Gi
+        - name: runtime-config
+          configMap:
+            name: vela-control-runtime-placeholder
+            defaultMode: 0440
+            items:
+              - key: node-agents.json
+                path: node-agents.json
+        - name: control-transport-tls
+          secret:
+            secretName: vela-control-transport-tls
+            defaultMode: 0400
+        - name: privileged-http-tls
+          secret:
+            secretName: vela-control-privileged-http-tls
+            defaultMode: 0400
+        - name: nats-client
+          secret:
+            secretName: vela-control-nats-client
+            defaultMode: 0400
+        - name: artifact-credentials
+          secret:
+            secretName: vela-control-artifact-credentials
+            defaultMode: 0400
+        - name: keyrings
+          secret:
+            secretName: vela-control-keyrings
+            defaultMode: 0400
+        - name: invoice-export
+          secret:
+            secretName: vela-control-invoice-export
+            defaultMode: 0400
+        - name: remediation-client-tls
+          secret:
+            secretName: vela-control-remediation-client-tls
+            defaultMode: 0400
