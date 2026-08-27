@@ -311,7 +311,7 @@ func TestContentDeletionWaitsForActiveArtifactBackupCopy(t *testing.T) {
 }
 
 func TestArtifactBackupReplicationMigrationFencesClaimsAndPreservesEvidence(t *testing.T) {
-	fixture := newCommittedReplicationFixture(t, "artifact-backup-migration-fencing", 79)
+	fixture := newCommittedReplicationFixtureAtSchema30(t, "artifact-backup-migration-fencing", 79)
 	pool := newRolePool(
 		t, fixture.start.database.DSN,
 		"vela_artifact_replication_login", "vela-artifact-replication-password",
@@ -433,7 +433,7 @@ func TestArtifactBackupReplicationMigrationFencesClaimsAndPreservesEvidence(t *t
 }
 
 func TestArtifactBackupReplicationMigrationBackfillsSchema28Artifacts(t *testing.T) {
-	fixture := newCommittedReplicationFixture(t, "artifact-backup-schema-28-backfill", 81)
+	fixture := newCommittedReplicationFixtureAtSchema30(t, "artifact-backup-schema-28-backfill", 81)
 	tx, err := fixture.start.database.Admin.Begin()
 	if err != nil {
 		t.Fatalf("begin schema-28 Artifact backup fixture cleanup: %v", err)
@@ -518,6 +518,25 @@ func newCommittedReplicationFixture(
 	epoch int64,
 ) committedReplicationFixture {
 	t.Helper()
+	return newCommittedReplicationFixtureWithSchema(t, key, epoch, false)
+}
+
+func newCommittedReplicationFixtureAtSchema30(
+	t *testing.T,
+	key string,
+	epoch int64,
+) committedReplicationFixture {
+	t.Helper()
+	return newCommittedReplicationFixtureWithSchema(t, key, epoch, true)
+}
+
+func newCommittedReplicationFixtureWithSchema(
+	t *testing.T,
+	key string,
+	epoch int64,
+	contractToSchema30 bool,
+) committedReplicationFixture {
+	t.Helper()
 	ctx := context.Background()
 	minio := newMinIOFixture(t, "vela-artifact-replication-primary")
 	minio.enableVersioning(t)
@@ -526,6 +545,9 @@ func newCommittedReplicationFixture(
 	}
 	backup := newAdditionalMinIOStore(t, minio, "vela-artifact-replication-backup")
 	fixture := newStartFixture(t, key, epoch)
+	if contractToSchema30 {
+		migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
+	}
 	if started, err := fixture.service.Start(
 		ctx, fixture.worker, fixture.credentials,
 	); err != nil || started.Decision != workercontrol.StartGranted {

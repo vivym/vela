@@ -1266,6 +1266,7 @@ func TestOrganizationAuditorReadsBoundedNonContentUsageByProject(t *testing.T) {
 	`, outsideJobID, to, fixture.assignment.JobID); err != nil {
 		t.Fatalf("seed upper-bound usage Job: %v", err)
 	}
+	insertCanonicalTerminalJobEvent(t, fixtureTx, outsideJobID, "FAILED", &to)
 	for _, jobID := range []uuid.UUID{insideSecondProjectJobID, outsideJobID} {
 		if _, err := fixtureTx.Exec(`
 			INSERT INTO credit_reservations (
@@ -1511,6 +1512,9 @@ func TestOrganizationUsageCountsEveryExplicitJobState(t *testing.T) {
 			SELECT id, organization_id, project_id FROM jobs WHERE id = $1
 		`, jobID); err != nil {
 			t.Fatalf("seed %s usage RetryRuntimeState: %v", state, err)
+		}
+		if state == "FAILED" || state == "CANCELED" {
+			insertCanonicalTerminalJobEvent(t, tx, jobID, state, &createdAt)
 		}
 	}
 	if err := tx.Commit(); err != nil {

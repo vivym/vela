@@ -1914,6 +1914,92 @@ func (ns NullLegalHoldState) Value() (driver.Value, error) {
 	return string(ns.LegalHoldState), nil
 }
 
+type NonContentExpiryKind string
+
+const (
+	NonContentExpiryKindJOBMETADATA           NonContentExpiryKind = "JOB_METADATA"
+	NonContentExpiryKindJOBFINANCIAL          NonContentExpiryKind = "JOB_FINANCIAL"
+	NonContentExpiryKindORGANIZATIONFINANCIAL NonContentExpiryKind = "ORGANIZATION_FINANCIAL"
+)
+
+func (e *NonContentExpiryKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = NonContentExpiryKind(s)
+	case string:
+		*e = NonContentExpiryKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for NonContentExpiryKind: %T", src)
+	}
+	return nil
+}
+
+type NullNonContentExpiryKind struct {
+	NonContentExpiryKind NonContentExpiryKind `json:"non_content_expiry_kind"`
+	Valid                bool                 `json:"valid"` // Valid is true if NonContentExpiryKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullNonContentExpiryKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.NonContentExpiryKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.NonContentExpiryKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullNonContentExpiryKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.NonContentExpiryKind), nil
+}
+
+type NonContentExpiryState string
+
+const (
+	NonContentExpiryStatePENDING NonContentExpiryState = "PENDING"
+	NonContentExpiryStateCLAIMED NonContentExpiryState = "CLAIMED"
+	NonContentExpiryStateEXPIRED NonContentExpiryState = "EXPIRED"
+)
+
+func (e *NonContentExpiryState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = NonContentExpiryState(s)
+	case string:
+		*e = NonContentExpiryState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for NonContentExpiryState: %T", src)
+	}
+	return nil
+}
+
+type NullNonContentExpiryState struct {
+	NonContentExpiryState NonContentExpiryState `json:"non_content_expiry_state"`
+	Valid                 bool                  `json:"valid"` // Valid is true if NonContentExpiryState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullNonContentExpiryState) Scan(value interface{}) error {
+	if value == nil {
+		ns.NonContentExpiryState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.NonContentExpiryState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullNonContentExpiryState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.NonContentExpiryState), nil
+}
+
 type OrganizationRole string
 
 const (
@@ -3527,6 +3613,68 @@ type ModelRevision struct {
 	State       CatalogState       `db:"state" json:"state"`
 	ContentHash string             `db:"content_hash" json:"content_hash"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type NonContentAttemptRoot struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID          uuid.UUID          `db:"job_id" json:"job_id"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type NonContentExpiryCandidate struct {
+	Kind           NonContentExpiryKind  `db:"kind" json:"kind"`
+	SourceID       uuid.UUID             `db:"source_id" json:"source_id"`
+	RecordClass    LegalHoldRecordClass  `db:"record_class" json:"record_class"`
+	OrganizationID uuid.UUID             `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.NullUUID         `db:"project_id" json:"project_id"`
+	JobID          uuid.NullUUID         `db:"job_id" json:"job_id"`
+	ExpiresAt      pgtype.Timestamptz    `db:"expires_at" json:"expires_at"`
+	State          NonContentExpiryState `db:"state" json:"state"`
+	Attempts       int32                 `db:"attempts" json:"attempts"`
+	NextAttemptAt  pgtype.Timestamptz    `db:"next_attempt_at" json:"next_attempt_at"`
+	ClaimedBy      *string               `db:"claimed_by" json:"claimed_by"`
+	ClaimID        uuid.NullUUID         `db:"claim_id" json:"claim_id"`
+	ClaimExpiresAt pgtype.Timestamptz    `db:"claim_expires_at" json:"claim_expires_at"`
+	ExpiredAt      pgtype.Timestamptz    `db:"expired_at" json:"expired_at"`
+	CreatedAt      pgtype.Timestamptz    `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz    `db:"updated_at" json:"updated_at"`
+}
+
+type NonContentExpiryReceipt struct {
+	ID                            uuid.UUID            `db:"id" json:"id"`
+	Kind                          NonContentExpiryKind `db:"kind" json:"kind"`
+	SourceID                      uuid.UUID            `db:"source_id" json:"source_id"`
+	RecordClass                   LegalHoldRecordClass `db:"record_class" json:"record_class"`
+	OrganizationID                uuid.UUID            `db:"organization_id" json:"organization_id"`
+	ProjectID                     uuid.NullUUID        `db:"project_id" json:"project_id"`
+	JobID                         uuid.NullUUID        `db:"job_id" json:"job_id"`
+	ScheduledAt                   pgtype.Timestamptz   `db:"scheduled_at" json:"scheduled_at"`
+	ExpiredAt                     pgtype.Timestamptz   `db:"expired_at" json:"expired_at"`
+	DeletedJobCount               int32                `db:"deleted_job_count" json:"deleted_job_count"`
+	DeletedAttemptCount           int32                `db:"deleted_attempt_count" json:"deleted_attempt_count"`
+	DeletedCreditReservationCount int32                `db:"deleted_credit_reservation_count" json:"deleted_credit_reservation_count"`
+	DeletedChargeCount            int32                `db:"deleted_charge_count" json:"deleted_charge_count"`
+	DeletedInvoiceExportCount     int32                `db:"deleted_invoice_export_count" json:"deleted_invoice_export_count"`
+	DeletedInvoiceReceiptCount    int32                `db:"deleted_invoice_receipt_count" json:"deleted_invoice_receipt_count"`
+	DeletedReconciliationCount    int32                `db:"deleted_reconciliation_count" json:"deleted_reconciliation_count"`
+}
+
+type NonContentJobRoot struct {
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	OrganizationID          uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID               uuid.UUID          `db:"project_id" json:"project_id"`
+	CancellationID          uuid.NullUUID      `db:"cancellation_id" json:"cancellation_id"`
+	ArtifactSetID           uuid.NullUUID      `db:"artifact_set_id" json:"artifact_set_id"`
+	ChargeID                uuid.NullUUID      `db:"charge_id" json:"charge_id"`
+	InvoiceRequestedEventID uuid.NullUUID      `db:"invoice_requested_event_id" json:"invoice_requested_event_id"`
+	TerminalAt              pgtype.Timestamptz `db:"terminal_at" json:"terminal_at"`
+	MetadataExpiresAt       pgtype.Timestamptz `db:"metadata_expires_at" json:"metadata_expires_at"`
+	FinancialExpiresAt      pgtype.Timestamptz `db:"financial_expires_at" json:"financial_expires_at"`
+	MetadataExpiredAt       pgtype.Timestamptz `db:"metadata_expired_at" json:"metadata_expired_at"`
+	FinancialExpiredAt      pgtype.Timestamptz `db:"financial_expired_at" json:"financial_expired_at"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type OrganizationCapacityShare struct {

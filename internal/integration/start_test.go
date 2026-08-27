@@ -124,13 +124,9 @@ func TestStartStopsWhenAssignmentIsNoLongerStartable(t *testing.T) {
 			name: "Job is terminal",
 			mutate: func(t *testing.T, fixture *startFixture) {
 				t.Helper()
-				if _, err := fixture.database.Admin.Exec(`
-					UPDATE jobs
-					SET state = 'CANCELED', version = version + 1, updated_at = clock_timestamp()
-					WHERE id = $1
-				`, fixture.assignment.JobID); err != nil {
-					t.Fatalf("cancel Job fixture: %v", err)
-				}
+				terminalizeJobWithCanonicalEvent(
+					t, fixture.database.Admin, fixture.assignment.JobID, "CANCELED", nil,
+				)
 			},
 		},
 		{

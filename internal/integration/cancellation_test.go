@@ -2253,7 +2253,7 @@ func TestFailedJobCancellationReturnsAlreadyFailedWithoutHistory(t *testing.T) {
 	}
 }
 
-func TestLegacyCanceledJobCancellationReturnsTerminalWithoutHistory(t *testing.T) {
+func TestLegacyCanceledJobCancellationReturnsTerminalWithoutDecisionHistory(t *testing.T) {
 	server, admin := newAdmissionServer(t)
 	if _, err := admin.Exec(`
 		UPDATE credentials
@@ -2284,13 +2284,7 @@ func TestLegacyCanceledJobCancellationReturnsTerminalWithoutHistory(t *testing.T
 		t.Fatalf("begin legacy CANCELED fixture: %v", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.Exec(`
-		UPDATE jobs
-		SET state = 'CANCELED', version = version + 1, updated_at = clock_timestamp()
-		WHERE id = $1
-	`, jobID); err != nil {
-		t.Fatalf("terminalize legacy CANCELED Job: %v", err)
-	}
+	terminalizeJobWithCanonicalEvent(t, tx, jobID, "CANCELED", nil)
 	if _, err := tx.Exec(`
 		UPDATE credit_reservations
 		SET state = 'RELEASED', updated_at = clock_timestamp()
@@ -2391,7 +2385,7 @@ func TestLegacyCanceledJobCancellationReturnsTerminalWithoutHistory(t *testing.T
 	}
 	if state != "CANCELED" || version != 2 || reservationState != "RELEASED" ||
 		projectQueued != 0 || poolQueued != 0 || reservedMinor != 0 ||
-		decisions != 0 || charges != 0 || cancellationEvents != 0 {
+		decisions != 0 || charges != 0 || cancellationEvents != 1 {
 		t.Fatalf(
 			"legacy CANCELED state = %s/%d reservation %s queue %d/%d credit %d history %d/%d/%d",
 			state,

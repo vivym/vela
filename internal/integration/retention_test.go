@@ -2891,6 +2891,7 @@ func TestAutomaticRequestContentExpiryProcessesOverdueNonterminalJobs(t *testing
 
 func TestTerminalFailedJobEnqueuesAndDeletesIncompleteArtifacts(t *testing.T) {
 	fixture := newStartFixture(t, "terminal-failed-incomplete-artifact-cleanup", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	if started, err := fixture.service.Start(
 		context.Background(), fixture.worker, fixture.credentials,
 	); err != nil || started.Decision != workercontrol.StartGranted {

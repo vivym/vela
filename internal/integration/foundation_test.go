@@ -786,6 +786,7 @@ func TestHierarchicalSchedulerMigrationDownRefusesCustomizedPolicy(t *testing.T)
 
 func TestHierarchicalSchedulerMigrationDownSerializesWithConcurrentClaim(t *testing.T) {
 	fixture := newAssignmentFixture(t, "migration-concurrent-scheduler-claim", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	poolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
 	if _, err := fixture.database.Admin.Exec(`
 		INSERT INTO organization_capacity_shares (
@@ -971,6 +972,7 @@ func TestArtifactFinalizationMigrationDownRefusesDurableEvidence(t *testing.T) {
 
 func TestArtifactFinalizationMigrationDownSerializesWithConcurrentBegin(t *testing.T) {
 	fixture := newStartFixture(t, "migration-concurrent-artifact-finalization", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	if started, err := fixture.service.Start(
 		context.Background(), fixture.worker, fixture.credentials,
 	); err != nil || started.Decision != workercontrol.StartGranted {
@@ -1252,6 +1254,7 @@ func exactV5PlusCurrentCancellationMigrations(t *testing.T) string {
 
 func TestExecutionFailureMigrationDownUpPreservesProtectedEvidence(t *testing.T) {
 	fixture := newAssignmentFixture(t, "migration-protected-evidence", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	assignment, err := fixture.service.Acquire(
 		context.Background(), fixture.worker, 7, &fixture.candidate,
 	)
@@ -1478,6 +1481,7 @@ func TestExecutionFailureMigrationDownRefusesActiveRetryWait(t *testing.T) {
 
 func TestExecutionFailureMigrationDownSerializesWithConcurrentFail(t *testing.T) {
 	fixture := newAssignmentFixture(t, "migration-concurrent-fail", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	assignment, err := fixture.service.Acquire(
 		context.Background(), fixture.worker, 7, &fixture.candidate,
 	)
@@ -1683,6 +1687,7 @@ func TestExecutionFailureMigrationDoesNotTrustLegacyRequestEvidence(t *testing.T
 
 func TestCustomerCancellationMigrationDownUpPreservesImmutableEvidence(t *testing.T) {
 	fixture := newStartFixture(t, "migration-cancellation-evidence", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	if _, err := fixture.database.Admin.Exec(`
 		UPDATE credentials
 		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']

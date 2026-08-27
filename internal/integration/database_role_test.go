@@ -129,6 +129,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_compliance_login",
 		"vela-compliance-password",
 	)
+	nonContentExpiryPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_non_content_expiry_login",
+		"vela-non-content-expiry-password",
+	)
 	webhookRequestPool := newRolePool(
 		t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
 	)
@@ -144,6 +150,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_billing_login",
 		"vela_finance_reconciliation_login",
 		"vela_compliance_login",
+		"vela_non_content_expiry_login",
 		"vela_webhook_request_login",
 		"vela_webhook_login",
 		"vela_remediation_login",
@@ -166,6 +173,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_billing_owner",
 			"vela_finance_reconciliation_owner",
 			"vela_compliance_owner",
+			"vela_non_content_expiry_owner",
 			"vela_organization_reporting_owner",
 			"vela_retention_owner",
 			"vela_artifact_replication_owner",
@@ -250,6 +258,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			role: veladb.RoleFinanceReconciliation,
 		},
 		{name: "Compliance", pool: compliancePool, role: veladb.RoleCompliance},
+		{
+			name: "non-content expiry", pool: nonContentExpiryPool,
+			role: veladb.RoleNonContentExpiry,
+		},
 		{name: "webhook request", pool: webhookRequestPool, role: veladb.RoleWebhookRequest},
 		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
 		{name: "remediation", pool: remediationPool, role: veladb.RoleRemediation},
@@ -273,6 +285,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_debug_dump_audit_request"},
 		{name: "vela_backup_retention"},
 		{name: "vela_artifact_replication"},
+		{name: "vela_non_content_expiry"},
+		{name: "vela_non_content_expiry_owner", bypassRLS: true},
 		{name: "vela_artifact_replication_owner", bypassRLS: true},
 		{name: "vela_break_glass_owner", bypassRLS: true},
 		{name: "vela_finance_reconciliation"},
@@ -361,9 +375,24 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			proconfig: "search_path=pg_catalog, public",
 		},
 		{
-			signature: "vela_private.lock_active_non_content_legal_holds(uuid,uuid,uuid,legal_hold_record_class)",
-			owner:     "vela_compliance_owner",
+			signature: "vela_private.lock_non_content_hold_target()",
+			owner:     "vela_non_content_expiry_owner",
 			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_private.lock_active_non_content_legal_holds(uuid,uuid,uuid,legal_hold_record_class)",
+			owner:     "vela_non_content_expiry_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_claim_non_content_expiry(text,uuid,integer)",
+			owner:     "vela_non_content_expiry_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_complete_non_content_expiry(non_content_expiry_kind,uuid,uuid,integer)",
+			owner:     "vela_non_content_expiry_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
 		},
 		{
 			signature: "vela_get_compliance_identity()",

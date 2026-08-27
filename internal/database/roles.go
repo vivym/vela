@@ -37,6 +37,7 @@ const (
 	RoleBilling                    Role = "vela_billing"
 	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
 	RoleCompliance                 Role = "vela_compliance"
+	RoleNonContentExpiry           Role = "vela_non_content_expiry"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
 	RoleRemediation                Role = "vela_remediation"
@@ -78,6 +79,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleBilling:                    {verifyPrivileges: verifyBillingPrivileges},
 	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
 	RoleCompliance:                 {verifyPrivileges: verifyCompliancePrivileges},
+	RoleNonContentExpiry:           {verifyPrivileges: verifyNonContentExpiryPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
@@ -257,6 +259,21 @@ func verifyCompliancePrivileges(
 		functions: []string{
 			"vela_get_compliance_identity()",
 			"vela_apply_legal_hold_event(uuid,text,bigint,uuid,legal_hold_event_kind,legal_hold_scope,uuid,uuid,uuid,legal_hold_record_class[],text,text,timestamp with time zone)",
+		},
+	})
+}
+
+func verifyNonContentExpiryPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "non-content expiry",
+		failureLabel:    "non-content expiry transaction",
+		functions: []string{
+			"vela_claim_non_content_expiry(text,uuid,integer)",
+			"vela_complete_non_content_expiry(non_content_expiry_kind,uuid,uuid,integer)",
 		},
 	})
 }

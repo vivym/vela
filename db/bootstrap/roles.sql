@@ -65,6 +65,14 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_compliance_owner') THEN
         CREATE ROLE vela_compliance_owner NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_non_content_expiry') THEN
+        CREATE ROLE vela_non_content_expiry NOLOGIN;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'vela_non_content_expiry_owner'
+    ) THEN
+        CREATE ROLE vela_non_content_expiry_owner NOLOGIN BYPASSRLS;
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles WHERE rolname = 'vela_organization_reporting_owner'
     ) THEN
@@ -153,6 +161,10 @@ ALTER ROLE vela_finance_reconciliation_owner
 ALTER ROLE vela_compliance
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_compliance_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_non_content_expiry
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_non_content_expiry_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_organization_reporting_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;

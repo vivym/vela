@@ -52,7 +52,172 @@ const (
 	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
 	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
 	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
+	nonContentExpiryNMinusOneCommit       = "1968a4377c40fd8da9bd16e6ef4fb39d0f11c33a"
 )
+
+func TestExactNonContentExpiryNMinusOneControlAndSourceWritesRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, nonContentExpiryNMinusOneCommit)
+
+	startupOutput := runCurrentControlStartupProbe(t, nMinusOne.Control, database.DSN)
+	if strings.Contains(startupOutput, "database pool") {
+		t.Fatalf("non-content expiry N-1 control failed database role preflight:\n%s", startupOutput)
+	}
+	if !strings.Contains(startupOutput, "configure Finance Reconciliation service") {
+		t.Fatalf("non-content expiry N-1 control did not reach the post-role-preflight sentinel:\n%s", startupOutput)
+	}
+
+	seedAdmissionFixture(t, database.Admin)
+	workerID := uuid.New()
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, workerID, "non-content-expiry")
+	jobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+	))
+	attemptID := uuid.MustParse(runNMinusOneAssignmentProbe(
+		t, nMinusOne.AssignmentProbe, database.DSN, jobID.String(), workerID.String(), 7, 1,
+	))
+	var jobRoots, attemptRoots int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM non_content_job_roots WHERE id = $1),
+			(SELECT count(*) FROM non_content_attempt_roots
+			 WHERE id = $2 AND job_id = $1)
+	`, jobID, attemptID).Scan(&jobRoots, &attemptRoots); err != nil {
+		t.Fatalf("read non-content expiry N-1 roots: %v", err)
+	}
+	if jobRoots != 1 || attemptRoots != 1 {
+		t.Fatalf("non-content expiry N-1 Job/Attempt roots = %d/%d", jobRoots, attemptRoots)
+	}
+
+	internalPool := newRolePool(
+		t, database.DSN, "vela_internal_login", "vela-internal-password",
+	)
+	workerService, err := workercontrol.NewService(
+		context.Background(),
+		internalPool,
+		workercontrol.Config{
+			LeaseTTL:         2 * time.Minute,
+			ActiveLeaseKeyID: "lease-key-v1",
+			LeaseKeys: map[string][]byte{
+				"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("configure non-content expiry N-1 Worker service: %v", err)
+	}
+	worker := workercontrol.AuthenticatedWorker{ID: workerID}
+	assignment, err := workerService.Acquire(context.Background(), worker, 7, nil)
+	if err != nil || assignment.AttemptID != attemptID {
+		t.Fatalf("replay non-content expiry N-1 Assignment = %#v error=%v", assignment, err)
+	}
+	if started, err := workerService.Start(
+		context.Background(), worker, leaseCredentials(assignment),
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("start non-content expiry N-1 Assignment = %#v error=%v", started, err)
+	}
+	if _, err := database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant cancellation scope for non-content expiry N-1 writer: %v", err)
+	}
+	charge := runNMinusOneInvoiceChargeAndStopProbe(
+		t, nMinusOne.InvoiceChargeProbe, database.DSN, jobID, workerID,
+		leaseCredentials(assignment),
+	)
+	if charge.Decision != "CANCELING" || charge.ChargeID == "" ||
+		charge.StopDecision != "ACKNOWLEDGED" || charge.State != "CANCELED" ||
+		charge.CancellationID == "" {
+		t.Fatalf("non-content expiry N-1 Invoice Charge result = %#v", charge)
+	}
+	chargeID := uuid.MustParse(charge.ChargeID)
+	var linkedChargeID uuid.UUID
+	var invoiceExports, terminalEvents, terminalCandidates int64
+	if err := database.Admin.QueryRow(`
+		SELECT root.charge_id,
+			(SELECT count(*) FROM invoice_exports AS export
+			 WHERE export.job_id = root.id AND export.charge_id = $2),
+			(SELECT count(*) FROM outbox_events AS event
+			 WHERE event.aggregate_id = root.id AND event.event_type = 'job.canceled'),
+			(SELECT count(*) FROM non_content_expiry_candidates AS candidate
+			 WHERE candidate.source_id = root.id
+			   AND candidate.kind IN ('JOB_METADATA', 'JOB_FINANCIAL'))
+		FROM non_content_job_roots AS root WHERE root.id = $1
+	`, jobID, chargeID).Scan(
+		&linkedChargeID, &invoiceExports, &terminalEvents, &terminalCandidates,
+	); err != nil {
+		t.Fatalf("read non-content expiry N-1 Invoice linkage: %v", err)
+	}
+	if linkedChargeID != chargeID || invoiceExports != 1 ||
+		terminalEvents != 1 || terminalCandidates != 2 {
+		t.Fatalf(
+			"non-content expiry N-1 Charge/Invoice/terminal linkage = %s/%d/%d/%d",
+			linkedChargeID, invoiceExports, terminalEvents, terminalCandidates,
+		)
+	}
+
+	if _, err := database.Admin.Exec(`
+		INSERT INTO finance_reconciliation_principals (
+			id, stable_id, tls_uri_identity
+		) VALUES ($1, 'non-content-expiry-n-minus-one', $2)
+	`, financeReconciliationPrincipalID, financeReconciliationTLSURI); err != nil {
+		t.Fatalf("provision non-content expiry N-1 Finance Principal: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO finance_reconciliation_database_bindings (
+			database_role, principal_id
+		) VALUES ('vela_finance_reconciliation_login', $1)
+	`, financeReconciliationPrincipalID); err != nil {
+		t.Fatalf("bind non-content expiry N-1 Finance Principal: %v", err)
+	}
+	finance := runNMinusOneFinanceReconciliationProbe(
+		t, nMinusOne.FinanceReconciliationProbe, database.DSN,
+	)
+	var reconciliationRecords, reconciliationCandidates int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM finance_reconciliation_records WHERE id = $1),
+			(SELECT count(*) FROM non_content_expiry_candidates
+			 WHERE kind = 'ORGANIZATION_FINANCIAL' AND source_id = $1
+			   AND expires_at = $2::timestamptz + interval '2557 days')
+	`, finance.RecordID, finance.PostedAt).Scan(
+		&reconciliationRecords, &reconciliationCandidates,
+	); err != nil {
+		t.Fatalf("read non-content expiry N-1 Finance candidate: %v", err)
+	}
+	if reconciliationRecords != 1 || reconciliationCandidates != 1 {
+		t.Fatalf(
+			"non-content expiry N-1 Finance records/candidates = %d/%d",
+			reconciliationRecords, reconciliationCandidates,
+		)
+	}
+}
+
+func TestCurrentNonContentExpiryControlFailsClosedAgainstSchema30(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 30); err != nil {
+		t.Fatalf("contract non-content expiry schema before current-control probe: %v", err)
+	}
+	binary := filepath.Join(t.TempDir(), "vela-control-current-non-content-expiry")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/vela-control")
+	build.Dir = repositoryRoot(t)
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build current non-content expiry control: %v\n%s", err, output)
+	}
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
+	if !strings.Contains(output, "open non-content expiry database pool") ||
+		!strings.Contains(output, "non-content expiry transaction privilege boundary") {
+		t.Fatalf("current non-content expiry control did not fail closed against schema 30:\n%s", output)
+	}
+}
 
 func TestExactFleetNMinusOneAssignmentWriterAcrossProtocolGate(t *testing.T) {
 	database := newPostgres(t)
@@ -2108,18 +2273,19 @@ func assertWaitingCompatibilityCounters(
 }
 
 type nMinusOneBinaries struct {
-	Control                string
-	AdmissionProbe         string
-	HumanAdmissionProbe    string
-	AssignmentProbe        string
-	OutboxProbe            string
-	JetStreamOutboxProbe   string
-	SchedulerProbe         string
-	WorkerTransportProbe   string
-	InvoiceChargeProbe     string
-	FailureProbe           string
-	VisibleCompletionProbe string
-	RetentionProbe         string
+	Control                    string
+	AdmissionProbe             string
+	HumanAdmissionProbe        string
+	AssignmentProbe            string
+	OutboxProbe                string
+	JetStreamOutboxProbe       string
+	SchedulerProbe             string
+	WorkerTransportProbe       string
+	InvoiceChargeProbe         string
+	FinanceReconciliationProbe string
+	FailureProbe               string
+	VisibleCompletionProbe     string
+	RetentionProbe             string
 }
 
 type adjacentNMinusOneProbeDescriptor struct {
@@ -2171,8 +2337,16 @@ type nMinusOneFailureProbeResult struct {
 }
 
 type nMinusOneInvoiceChargeResult struct {
-	Decision string `json:"decision"`
-	ChargeID string `json:"charge_id"`
+	Decision       string `json:"decision"`
+	ChargeID       string `json:"charge_id"`
+	CancellationID string `json:"cancellation_id"`
+	StopDecision   string `json:"stop_decision"`
+	State          string `json:"state"`
+}
+
+type nMinusOneFinanceReconciliationResult struct {
+	RecordID uuid.UUID `json:"record_id"`
+	PostedAt time.Time `json:"posted_at"`
 }
 
 type nMinusOneOutboxProbeResult struct {
@@ -2314,7 +2488,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == debugDumpNMinusOneCommit ||
 		commit == adjacentRolloutNMinusOneCommit ||
 		commit == breakGlassNMinusOneCommit ||
-		commit == fleetControllerNMinusOneCommit {
+		commit == fleetControllerNMinusOneCommit ||
+		commit == nonContentExpiryNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -2370,7 +2545,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		t.Fatalf("write N-1 Outbox probe: %v", err)
 	}
 	var invoiceChargeProbeDirectory string
-	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit ||
+		commit == nonContentExpiryNMinusOneCommit {
 		invoiceChargeProbeSource, err := os.ReadFile(filepath.Join(
 			repositoryRoot(t),
 			"internal",
@@ -2391,6 +2567,32 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			0o600,
 		); err != nil {
 			t.Fatalf("write N-1 Invoice Charge probe: %v", err)
+		}
+	}
+	var financeReconciliationProbeDirectory string
+	if commit == nonContentExpiryNMinusOneCommit {
+		financeReconciliationProbeSource, err := os.ReadFile(filepath.Join(
+			repositoryRoot(t),
+			"internal",
+			"integration",
+			"testdata",
+			"nminusone_finance_reconciliation_probe.go.txt",
+		))
+		if err != nil {
+			t.Fatalf("read N-1 Finance Reconciliation probe: %v", err)
+		}
+		financeReconciliationProbeDirectory = filepath.Join(
+			sourceRoot, "cmd", "vela-nminusone-finance-reconciliation-probe",
+		)
+		if err := os.MkdirAll(financeReconciliationProbeDirectory, 0o755); err != nil {
+			t.Fatalf("create N-1 Finance Reconciliation probe directory: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(financeReconciliationProbeDirectory, "main.go"),
+			financeReconciliationProbeSource,
+			0o600,
+		); err != nil {
+			t.Fatalf("write N-1 Finance Reconciliation probe: %v", err)
 		}
 	}
 	var failureProbeDirectory string
@@ -2501,7 +2703,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			binaryDirectory, "vela-human-admission-probe-n-minus-one",
 		)
 	}
-	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit ||
+		commit == nonContentExpiryNMinusOneCommit {
 		binaries.InvoiceChargeProbe = filepath.Join(
 			binaryDirectory,
 			"vela-invoice-charge-probe-n-minus-one",
@@ -2524,6 +2727,11 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		for _, probe := range adjacentProbes {
 			probe.assign(&binaries, filepath.Join(binaryDirectory, probe.BinaryName))
 		}
+	}
+	if commit == nonContentExpiryNMinusOneCommit {
+		binaries.FinanceReconciliationProbe = filepath.Join(
+			binaryDirectory, "vela-finance-reconciliation-probe-n-minus-one",
+		)
 	}
 	build := exec.Command(
 		"go", "build",
@@ -2574,7 +2782,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 Outbox probe: %v\n%s", err, output)
 		}
 	}
-	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit ||
+		commit == nonContentExpiryNMinusOneCommit {
 		build = exec.Command(
 			"go",
 			"build",
@@ -2586,6 +2795,18 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
 		if output, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build N-1 Invoice Charge probe: %v\n%s", err, output)
+		}
+	}
+	if commit == nonContentExpiryNMinusOneCommit {
+		build = exec.Command(
+			"go", "build",
+			"-o", binaries.FinanceReconciliationProbe,
+			"./cmd/vela-nminusone-finance-reconciliation-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 Finance Reconciliation probe: %v\n%s", err, output)
 		}
 	}
 	if commit == profileCircuitNMinusOneCommit {
@@ -2743,8 +2964,45 @@ func runNMinusOneInvoiceChargeProbe(
 	jobID uuid.UUID,
 ) nMinusOneInvoiceChargeResult {
 	t.Helper()
+	return runNMinusOneInvoiceChargeProbeWithEnvironment(
+		t, binary, adminDSN, jobID, nil,
+	)
+}
+
+func runNMinusOneInvoiceChargeAndStopProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	jobID uuid.UUID,
+	workerID uuid.UUID,
+	credentials workercontrol.LeaseCredentials,
+) nMinusOneInvoiceChargeResult {
+	t.Helper()
+	return runNMinusOneInvoiceChargeProbeWithEnvironment(
+		t,
+		binary,
+		adminDSN,
+		jobID,
+		map[string]string{
+			"VELA_WORKER_ID":     workerID.String(),
+			"VELA_ATTEMPT_ID":    credentials.AttemptID.String(),
+			"VELA_WORKER_EPOCH":  fmt.Sprint(credentials.WorkerEpoch),
+			"VELA_ATTEMPT_FENCE": fmt.Sprint(credentials.Fence),
+			"VELA_LEASE_TOKEN":   credentials.Token,
+		},
+	)
+}
+
+func runNMinusOneInvoiceChargeProbeWithEnvironment(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	jobID uuid.UUID,
+	extraEnvironment map[string]string,
+) nMinusOneInvoiceChargeResult {
+	t.Helper()
 	command := exec.Command(binary)
-	command.Env = environmentWith(map[string]string{
+	environment := map[string]string{
 		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_auth_login", "vela-auth-password",
 		),
@@ -2758,7 +3016,11 @@ func runNMinusOneInvoiceChargeProbe(
 		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
 		"VELA_PROJECT_ID":               testProjectID,
 		"VELA_JOB_ID":                   jobID.String(),
-	})
+	}
+	for key, value := range extraEnvironment {
+		environment[key] = value
+	}
+	command.Env = environmentWith(environment)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("run N-1 Invoice Charge writer probe: %v\n%s", err, output)
@@ -2766,6 +3028,36 @@ func runNMinusOneInvoiceChargeProbe(
 	var result nMinusOneInvoiceChargeResult
 	if err := json.Unmarshal(output, &result); err != nil {
 		t.Fatalf("decode N-1 Invoice Charge result: %v\n%s", err, output)
+	}
+	return result
+}
+
+func runNMinusOneFinanceReconciliationProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+) nMinusOneFinanceReconciliationResult {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_FINANCE_RECONCILIATION_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_finance_reconciliation_login",
+			"vela-finance-reconciliation-password",
+		),
+		"VELA_ORGANIZATION_ID": testOrganizationID,
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Finance Reconciliation writer probe: %v\n%s", err, output)
+	}
+	var result nMinusOneFinanceReconciliationResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Finance Reconciliation result: %v\n%s", err, output)
+	}
+	if result.RecordID == uuid.Nil || result.PostedAt.IsZero() {
+		t.Fatalf("N-1 Finance Reconciliation result = %#v", result)
 	}
 	return result
 }
@@ -3332,6 +3624,10 @@ func runControlStartupProbe(
 		"VELA_ARTIFACT_REPLICATION_DATABASE_URL": artifactReplicationDatabaseURL,
 		"VELA_RETENTION_RECONCILER_ID":           "current-retention-startup-probe",
 		"VELA_ARTIFACT_REPLICATION_ID":           artifactReplicationID,
+		"VELA_NON_CONTENT_EXPIRY_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_non_content_expiry_login", "vela-non-content-expiry-password",
+		),
+		"VELA_NON_CONTENT_EXPIRY_RECONCILER_ID": "current-non-content-expiry-startup-probe",
 		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_platform_operator_auth_login", "vela-platform-operator-auth-password",
 		),

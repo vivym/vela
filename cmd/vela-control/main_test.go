@@ -17,6 +17,7 @@ import (
 	"github.com/vivym/vela/internal/artifactreplication"
 	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/noncontentexpiry"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/webhook"
@@ -44,12 +45,14 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "debug dump request database", missingEnv: "VELA_DEBUG_DUMP_REQUEST_DATABASE_URL"},
 		{name: "debug dump audit request database", missingEnv: "VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL"},
 		{name: "retention database", missingEnv: "VELA_RETENTION_DATABASE_URL"},
+		{name: "non-content expiry database", missingEnv: "VELA_NON_CONTENT_EXPIRY_DATABASE_URL"},
 		{name: "off-cluster backup retention database", missingEnv: "VELA_BACKUP_RETENTION_DATABASE_URL"},
 		{name: "Artifact replication database", missingEnv: "VELA_ARTIFACT_REPLICATION_DATABASE_URL"},
 		{name: "Platform Operator auth database", missingEnv: "VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"},
 		{name: "Break-glass request database", missingEnv: "VELA_BREAK_GLASS_REQUEST_DATABASE_URL"},
 		{name: "Break-glass audit database", missingEnv: "VELA_BREAK_GLASS_AUDIT_DATABASE_URL"},
 		{name: "retention Reconciler identity", missingEnv: "VELA_RETENTION_RECONCILER_ID"},
+		{name: "non-content expiry Reconciler identity", missingEnv: "VELA_NON_CONTENT_EXPIRY_RECONCILER_ID"},
 		{name: "Artifact Replicator identity", missingEnv: "VELA_ARTIFACT_REPLICATION_ID"},
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
 		{name: "OIDC issuer", missingEnv: "VELA_OIDC_ISSUER"},
@@ -189,6 +192,10 @@ func setValidConfigEnvironment(t *testing.T) {
 	)
 	t.Setenv("VELA_RETENTION_DATABASE_URL", "postgres://retention.example/vela")
 	t.Setenv(
+		"VELA_NON_CONTENT_EXPIRY_DATABASE_URL",
+		"postgres://non-content-expiry.example/vela",
+	)
+	t.Setenv(
 		"VELA_BACKUP_RETENTION_DATABASE_URL",
 		"postgres://backup-retention.example/vela",
 	)
@@ -209,6 +216,7 @@ func setValidConfigEnvironment(t *testing.T) {
 		"postgres://break-glass-audit.example/vela",
 	)
 	t.Setenv("VELA_RETENTION_RECONCILER_ID", "vela-control-retention-reconciler-1")
+	t.Setenv("VELA_NON_CONTENT_EXPIRY_RECONCILER_ID", "vela-control-non-content-expiry-1")
 	t.Setenv("VELA_ARTIFACT_REPLICATION_ID", "vela-control-artifact-replicator-1")
 	t.Setenv("VELA_REQUEST_DATABASE_URL", "postgres://request.example/vela")
 	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")
@@ -650,6 +658,59 @@ func TestLoadConfigParsesBoundedRetentionControls(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesBoundedNonContentExpiryControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load default non-content expiry config: %v", err)
+	}
+	if configuration.nonContentExpiryTick != time.Minute ||
+		configuration.nonContentExpiryClaimTTL != time.Minute ||
+		configuration.nonContentExpiryHeldRetry != 5*time.Minute ||
+		configuration.nonContentExpiryBatchSize != 100 {
+		t.Fatalf("default non-content expiry controls = %#v", configuration)
+	}
+
+	t.Setenv("VELA_NON_CONTENT_EXPIRY_TICK", "15s")
+	t.Setenv("VELA_NON_CONTENT_EXPIRY_CLAIM_TTL", "45s")
+	t.Setenv("VELA_NON_CONTENT_EXPIRY_HELD_RETRY", "10m")
+	t.Setenv("VELA_NON_CONTENT_EXPIRY_BATCH_SIZE", "25")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit non-content expiry config: %v", err)
+	}
+	if configuration.nonContentExpiryTick != 15*time.Second ||
+		configuration.nonContentExpiryClaimTTL != 45*time.Second ||
+		configuration.nonContentExpiryHeldRetry != 10*time.Minute ||
+		configuration.nonContentExpiryBatchSize != 25 {
+		t.Fatalf("explicit non-content expiry controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_NON_CONTENT_EXPIRY_TICK", value: "0s"},
+		{env: "VELA_NON_CONTENT_EXPIRY_TICK", value: "1h1s"},
+		{env: "VELA_NON_CONTENT_EXPIRY_CLAIM_TTL", value: "0s"},
+		{env: "VELA_NON_CONTENT_EXPIRY_CLAIM_TTL", value: "1500ms"},
+		{env: "VELA_NON_CONTENT_EXPIRY_CLAIM_TTL", value: "1h1s"},
+		{env: "VELA_NON_CONTENT_EXPIRY_HELD_RETRY", value: "0s"},
+		{env: "VELA_NON_CONTENT_EXPIRY_HELD_RETRY", value: "1500ms"},
+		{env: "VELA_NON_CONTENT_EXPIRY_HELD_RETRY", value: "24h1s"},
+		{env: "VELA_NON_CONTENT_EXPIRY_BATCH_SIZE", value: "0"},
+		{env: "VELA_NON_CONTENT_EXPIRY_BATCH_SIZE", value: "1001"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil || !strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
+}
+
 func TestLoadConfigParsesBoundedArtifactReplicationControls(t *testing.T) {
 	setValidConfigEnvironment(t)
 	configuration, err := loadConfig()
@@ -1080,6 +1141,30 @@ func TestRetentionReconcilerRetriesTransientFailureAndStopsWithContext(t *testin
 	}
 }
 
+func TestNonContentExpiryReconcilerRetriesTransientFailureAndStopsWithContext(t *testing.T) {
+	reconciler := &testNonContentExpiryReconciler{calls: make(chan struct{}, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runNonContentExpiryReconciler(ctx, reconciler, time.Millisecond)
+	}()
+
+	for range 2 {
+		select {
+		case <-reconciler.calls:
+		case <-time.After(time.Second):
+			t.Fatal("non-content expiry Reconciler did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("non-content expiry Reconciler did not stop with context")
+	}
+}
+
 func TestArtifactBackupReplicatorRetriesTransientFailureAndStopsWithContext(t *testing.T) {
 	replicator := &testArtifactBackupReplicator{calls: make(chan struct{}, 2)}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1238,6 +1323,11 @@ type testRetentionReconciler struct {
 	calls       chan struct{}
 }
 
+type testNonContentExpiryReconciler struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+}
+
 type testArtifactBackupReplicator struct {
 	invocations atomic.Int32
 	calls       chan struct{}
@@ -1262,6 +1352,18 @@ func (r *testRetentionReconciler) ReconcileBatch(context.Context) (retention.Rec
 		return retention.ReconcileResult{Claimed: 1, Failed: 1}, errors.New("transient retention failure")
 	}
 	return retention.ReconcileResult{}, nil
+}
+
+func (r *testNonContentExpiryReconciler) ReconcileBatch(
+	context.Context,
+) (noncontentexpiry.Result, error) {
+	invocation := r.invocations.Add(1)
+	r.calls <- struct{}{}
+	if invocation == 1 {
+		return noncontentexpiry.Result{Claimed: 1, Stale: 1},
+			errors.New("transient non-content expiry failure")
+	}
+	return noncontentexpiry.Result{}, nil
 }
 
 func (d *testWebhookDispatcher) DispatchBatch(context.Context) (webhook.BatchResult, error) {

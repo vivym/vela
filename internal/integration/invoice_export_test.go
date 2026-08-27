@@ -919,7 +919,8 @@ func TestInvoiceExporterPersistsReceiptAndUsesChargeIDAsIdempotencyKey(t *testin
 
 type invoiceExportFixture struct {
 	startFixture
-	chargeID uuid.UUID
+	chargeID       uuid.UUID
+	cancellationID uuid.UUID
 }
 
 func newInvoiceExportChargeFixture(t *testing.T, key string) invoiceExportFixture {
@@ -960,7 +961,15 @@ func newInvoiceExportChargeFixture(t *testing.T, key string) invoiceExportFixtur
 	if err != nil {
 		t.Fatalf("parse Invoice fixture Charge id: %v", err)
 	}
-	return invoiceExportFixture{startFixture: fixture, chargeID: chargeID}
+	cancellationID, err := uuid.Parse(response.CancellationID)
+	if err != nil {
+		t.Fatalf("parse Invoice fixture Cancellation id: %v", err)
+	}
+	return invoiceExportFixture{
+		startFixture:   fixture,
+		chargeID:       chargeID,
+		cancellationID: cancellationID,
+	}
 }
 
 type recordingInvoiceAdapter struct {

@@ -42,6 +42,12 @@ retention. The PRIMARY and off-cluster Artifact buckets must both be versioned:
 
 ```text
 VELA_BACKUP_RETENTION_DATABASE_URL=<login bound only to vela_backup_retention>
+VELA_NON_CONTENT_EXPIRY_DATABASE_URL=<login bound only to vela_non_content_expiry>
+VELA_NON_CONTENT_EXPIRY_RECONCILER_ID=<stable unique expiry identity>
+VELA_NON_CONTENT_EXPIRY_TICK=1m
+VELA_NON_CONTENT_EXPIRY_CLAIM_TTL=1m
+VELA_NON_CONTENT_EXPIRY_HELD_RETRY=5m
+VELA_NON_CONTENT_EXPIRY_BATCH_SIZE=100
 VELA_ARTIFACT_REPLICATION_DATABASE_URL=<login bound only to vela_artifact_replication>
 VELA_ARTIFACT_REPLICATION_ID=<stable unique replica identity>
 VELA_ARTIFACT_BACKUP_S3_ENDPOINT=<off-cluster S3-compatible endpoint>
@@ -60,6 +66,13 @@ VELA_ARTIFACT_REPLICATION_RETRY_DELAY=5m
 VELA_ARTIFACT_REPLICATION_TIMEOUT=15m
 VELA_ARTIFACT_REPLICATION_BATCH_SIZE=10
 ```
+
+The non-content expiry login is separate from the Retention, Compliance, and
+internal logins. It can execute only the claim and completion functions added
+by migration 00031; it has no direct table or Customer Content authority.
+`VELA_NON_CONTENT_EXPIRY_CLAIM_TTL` and `VELA_NON_CONTENT_EXPIRY_HELD_RETRY`
+must be whole seconds. The release must keep tick in `(0, 1h]`, claim TTL in
+`[1s, 1h]`, held retry in `[1s, 24h]`, and batch size in `1..1000`.
 
 Migration 00028 creates backup deletion targets only for `COMMITTED` Artifacts.
 The backup Reconciler purges every version and delete marker for the exact key;

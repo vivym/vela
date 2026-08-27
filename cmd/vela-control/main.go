@@ -45,6 +45,7 @@ import (
 	"github.com/vivym/vela/internal/legalhold"
 	"github.com/vivym/vela/internal/natsauth"
 	"github.com/vivym/vela/internal/nodeagent"
+	"github.com/vivym/vela/internal/noncontentexpiry"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/outbox"
 	"github.com/vivym/vela/internal/remediation"
@@ -87,6 +88,10 @@ const (
 	defaultRetentionClaimTTL                    = time.Minute
 	defaultRetentionRetryDelay                  = 5 * time.Minute
 	defaultRetentionBatchSize                   = 100
+	defaultNonContentExpiryTick                 = time.Minute
+	defaultNonContentExpiryClaimTTL             = time.Minute
+	defaultNonContentExpiryHeldRetry            = 5 * time.Minute
+	defaultNonContentExpiryBatchSize            = 100
 	defaultArtifactReplicationTick              = time.Minute
 	defaultArtifactReplicationClaimTTL          = 20 * time.Minute
 	defaultArtifactReplicationRetryDelay        = 5 * time.Minute
@@ -137,6 +142,12 @@ type config struct {
 	retentionClaimTTL                      time.Duration
 	retentionRetryDelay                    time.Duration
 	retentionBatchSize                     int
+	nonContentExpiryDatabaseURL            string
+	nonContentExpiryReconcilerID           string
+	nonContentExpiryTick                   time.Duration
+	nonContentExpiryClaimTTL               time.Duration
+	nonContentExpiryHeldRetry              time.Duration
+	nonContentExpiryBatchSize              int
 	artifactReplicationID                  string
 	artifactReplicationTick                time.Duration
 	artifactReplicationClaimTTL            time.Duration
@@ -278,6 +289,10 @@ type webhookDispatcher interface {
 
 type contentRetentionReconciler interface {
 	ReconcileBatch(context.Context) (retention.ReconcileResult, error)
+}
+
+type nonContentExpiryReconciler interface {
+	ReconcileBatch(context.Context) (noncontentexpiry.Result, error)
 }
 
 type artifactBackupReplicator interface {
@@ -497,6 +512,16 @@ func run() error {
 		return fmt.Errorf("open Compliance database pool: %w", err)
 	}
 	defer compliancePool.Close()
+	nonContentExpiryPool, err := openPool(
+		ctx,
+		configuration.nonContentExpiryDatabaseURL,
+		2,
+		veladb.RoleNonContentExpiry,
+	)
+	if err != nil {
+		return fmt.Errorf("open non-content expiry database pool: %w", err)
+	}
+	defer nonContentExpiryPool.Close()
 	backupRetentionPool, err := openPool(
 		ctx,
 		configuration.backupRetentionDatabaseURL,
@@ -777,6 +802,18 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure retention Reconciler: %w", err)
 	}
+	nonContentExpiryRunner, err := noncontentexpiry.New(
+		nonContentExpiryPool,
+		noncontentexpiry.Config{
+			InstanceID: configuration.nonContentExpiryReconcilerID,
+			BatchSize:  configuration.nonContentExpiryBatchSize,
+			ClaimTTL:   configuration.nonContentExpiryClaimTTL,
+			HeldRetry:  configuration.nonContentExpiryHeldRetry,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure non-content expiry Reconciler: %w", err)
+	}
 	workerCoordinator, err := openWorkerCoordinator(
 		ctx,
 		internalPool,
@@ -1009,6 +1046,7 @@ func run() error {
 			billingPool,
 			financeReconciliationPool,
 			compliancePool,
+			nonContentExpiryPool,
 			webhookRequestPool,
 			webhookPool,
 		),
@@ -1112,6 +1150,15 @@ func run() error {
 	go func() {
 		defer close(retentionDone)
 		runRetentionReconciler(ctx, retentionReconciler, configuration.retentionTick)
+	}()
+	nonContentExpiryDone := make(chan struct{})
+	go func() {
+		defer close(nonContentExpiryDone)
+		runNonContentExpiryReconciler(
+			ctx,
+			nonContentExpiryRunner,
+			configuration.nonContentExpiryTick,
+		)
 	}()
 	artifactReplicationDone := make(chan struct{})
 	go func() {
@@ -1286,6 +1333,11 @@ func run() error {
 		return errors.New("retention Reconciler did not stop before shutdown deadline")
 	}
 	select {
+	case <-nonContentExpiryDone:
+	case <-shutdownContext.Done():
+		return errors.New("non-content expiry Reconciler did not stop before shutdown deadline")
+	}
+	select {
 	case <-artifactReplicationDone:
 	case <-shutdownContext.Done():
 		return errors.New("artifact backup Replicator did not stop before shutdown deadline")
@@ -1342,6 +1394,12 @@ func loadConfig() (config, error) {
 		retentionClaimTTL:                 defaultRetentionClaimTTL,
 		retentionRetryDelay:               defaultRetentionRetryDelay,
 		retentionBatchSize:                defaultRetentionBatchSize,
+		nonContentExpiryDatabaseURL:       os.Getenv("VELA_NON_CONTENT_EXPIRY_DATABASE_URL"),
+		nonContentExpiryReconcilerID:      os.Getenv("VELA_NON_CONTENT_EXPIRY_RECONCILER_ID"),
+		nonContentExpiryTick:              defaultNonContentExpiryTick,
+		nonContentExpiryClaimTTL:          defaultNonContentExpiryClaimTTL,
+		nonContentExpiryHeldRetry:         defaultNonContentExpiryHeldRetry,
+		nonContentExpiryBatchSize:         defaultNonContentExpiryBatchSize,
 		artifactReplicationID:             os.Getenv("VELA_ARTIFACT_REPLICATION_ID"),
 		artifactReplicationTick:           defaultArtifactReplicationTick,
 		artifactReplicationClaimTTL:       defaultArtifactReplicationClaimTTL,
@@ -1474,6 +1532,8 @@ func loadConfig() (config, error) {
 		"VELA_BREAK_GLASS_REQUEST_DATABASE_URL":                      configuration.breakGlassRequestDatabaseURL,
 		"VELA_BREAK_GLASS_AUDIT_DATABASE_URL":                        configuration.breakGlassAuditDatabaseURL,
 		"VELA_RETENTION_RECONCILER_ID":                               configuration.retentionReconcilerID,
+		"VELA_NON_CONTENT_EXPIRY_DATABASE_URL":                       configuration.nonContentExpiryDatabaseURL,
+		"VELA_NON_CONTENT_EXPIRY_RECONCILER_ID":                      configuration.nonContentExpiryReconcilerID,
 		"VELA_ARTIFACT_REPLICATION_ID":                               configuration.artifactReplicationID,
 		"VELA_REQUEST_DATABASE_URL":                                  configuration.requestDatabaseURL,
 		"VELA_ARTIFACT_REQUEST_DATABASE_URL":                         configuration.artifactRequestDatabaseURL,
@@ -1660,6 +1720,36 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_RETENTION_BATCH_SIZE must be in 1..1000")
 		}
 		configuration.retentionBatchSize = batchSize
+	}
+	if value := os.Getenv("VELA_NON_CONTENT_EXPIRY_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Hour {
+			return config{}, errors.New("environment variable VELA_NON_CONTENT_EXPIRY_TICK must be in (0, 1h]")
+		}
+		configuration.nonContentExpiryTick = tick
+	}
+	if value := os.Getenv("VELA_NON_CONTENT_EXPIRY_CLAIM_TTL"); value != "" {
+		claimTTL, err := time.ParseDuration(value)
+		if err != nil || claimTTL < time.Second || claimTTL > time.Hour ||
+			claimTTL%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_NON_CONTENT_EXPIRY_CLAIM_TTL must be in [1s, 1h]")
+		}
+		configuration.nonContentExpiryClaimTTL = claimTTL
+	}
+	if value := os.Getenv("VELA_NON_CONTENT_EXPIRY_HELD_RETRY"); value != "" {
+		heldRetry, err := time.ParseDuration(value)
+		if err != nil || heldRetry < time.Second || heldRetry > 24*time.Hour ||
+			heldRetry%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_NON_CONTENT_EXPIRY_HELD_RETRY must be in [1s, 24h]")
+		}
+		configuration.nonContentExpiryHeldRetry = heldRetry
+	}
+	if value := os.Getenv("VELA_NON_CONTENT_EXPIRY_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.Atoi(value)
+		if err != nil || batchSize < 1 || batchSize > 1000 {
+			return config{}, errors.New("environment variable VELA_NON_CONTENT_EXPIRY_BATCH_SIZE must be in 1..1000")
+		}
+		configuration.nonContentExpiryBatchSize = batchSize
 	}
 	if value := os.Getenv("VELA_ARTIFACT_REPLICATION_TICK"); value != "" {
 		tick, err := time.ParseDuration(value)
@@ -2660,6 +2750,46 @@ func runRetentionReconciler(
 				"claimed", result.Claimed,
 				"completed", result.Completed,
 				"failed", result.Failed,
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runNonContentExpiryReconciler(
+	ctx context.Context,
+	reconciler nonContentExpiryReconciler,
+	interval time.Duration,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		result, err := reconciler.ReconcileBatch(ctx)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn(
+				"non-content expiry reconciliation incomplete",
+				"claimed", result.Claimed,
+				"expired", result.Expired,
+				"held", result.Held,
+				"stale", result.Stale,
+				"error", err,
+			)
+		} else if err == nil && result.Claimed > 0 {
+			slog.Info(
+				"non-content records reconciled",
+				"claimed", result.Claimed,
+				"expired", result.Expired,
+				"held", result.Held,
+				"stale", result.Stale,
 			)
 		}
 		select {

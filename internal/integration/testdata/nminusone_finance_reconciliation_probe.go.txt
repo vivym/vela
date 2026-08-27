@@ -1,0 +1,52 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/financereconciliation"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("VELA_FINANCE_RECONCILIATION_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer pool.Close()
+	service, err := financereconciliation.NewService(ctx, pool)
+	if err != nil {
+		fatal(err)
+	}
+	limit := int64(100001)
+	result, err := service.Apply(ctx, financereconciliation.Request{
+		IdempotencyKey:           "n-minus-one-non-content-expiry-finance",
+		SourceSequence:           1,
+		OrganizationID:           uuid.MustParse(os.Getenv("VELA_ORGANIZATION_ID")),
+		Kind:                     financereconciliation.KindContractCreditLimitChanged,
+		Currency:                 "CNY",
+		ContractCreditLimitMinor: &limit,
+		ExternalReference:        "n-minus-one/non-content-expiry/finance",
+		EffectiveAt:              time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		fatal(err)
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(struct {
+		RecordID uuid.UUID `json:"record_id"`
+		PostedAt time.Time `json:"posted_at"`
+	}{RecordID: result.RecordID, PostedAt: result.PostedAt}); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}
