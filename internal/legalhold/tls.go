@@ -1,4 +1,4 @@
-package financereconciliation
+package legalhold
 
 import (
 	"crypto/tls"
@@ -14,7 +14,7 @@ func NewServerTLSConfig(
 ) (*tls.Config, error) {
 	tlsConfig, err := privilegedlistener.NewServerTLSConfig(certificatePath, privateKeyPath, clientCAPath)
 	if err != nil {
-		return nil, fmt.Errorf("configure Finance Reconciliation server TLS: %w", err)
+		return nil, fmt.Errorf("configure Compliance server TLS: %w", err)
 	}
 	return tlsConfig, nil
 }

@@ -42,6 +42,7 @@ import (
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/inbox"
+	"github.com/vivym/vela/internal/legalhold"
 	"github.com/vivym/vela/internal/natsauth"
 	"github.com/vivym/vela/internal/nodeagent"
 	"github.com/vivym/vela/internal/organizationreporting"
@@ -91,6 +92,7 @@ const (
 	defaultArtifactReplicationRetryDelay        = 5 * time.Minute
 	defaultArtifactReplicationTimeout           = 15 * time.Minute
 	defaultArtifactReplicationBatchSize         = 10
+	defaultShutdownTimeout                      = 20 * time.Second
 	defaultExecutionLeaseTTL                    = 2 * time.Minute
 	defaultWorkerLostGrace                      = 30 * time.Second
 	defaultArtifactInspectionTimeout            = 30 * time.Second
@@ -165,6 +167,11 @@ type config struct {
 	financeReconciliationTLSCertFile       string
 	financeReconciliationTLSKeyFile        string
 	financeReconciliationClientCAFile      string
+	complianceDatabaseURL                  string
+	complianceAddress                      string
+	complianceTLSCertFile                  string
+	complianceTLSKeyFile                   string
+	complianceClientCAFile                 string
 	webhookRequestDatabaseURL              string
 	webhookDatabaseURL                     string
 	webhookEncryptionActiveKeyID           string
@@ -275,6 +282,18 @@ type contentRetentionReconciler interface {
 
 type artifactBackupReplicator interface {
 	ReplicateBatch(context.Context) (artifactreplication.Result, error)
+}
+
+type databasePinger interface {
+	Ping(context.Context) error
+}
+
+type tlsHTTPServer interface {
+	ServeTLS(net.Listener, string, string) error
+}
+
+type httpServerShutdown interface {
+	Shutdown(context.Context) error
 }
 
 var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
@@ -468,6 +487,16 @@ func run() error {
 		return fmt.Errorf("open Finance Reconciliation database pool: %w", err)
 	}
 	defer financeReconciliationPool.Close()
+	compliancePool, err := openPool(
+		ctx,
+		configuration.complianceDatabaseURL,
+		5,
+		veladb.RoleCompliance,
+	)
+	if err != nil {
+		return fmt.Errorf("open Compliance database pool: %w", err)
+	}
+	defer compliancePool.Close()
 	backupRetentionPool, err := openPool(
 		ctx,
 		configuration.backupRetentionDatabaseURL,
@@ -577,6 +606,27 @@ func run() error {
 		return fmt.Errorf("listen for Finance Reconciliation HTTPS: %w", err)
 	}
 	defer func() { _ = financeReconciliationRawListener.Close() }()
+	complianceService, err := legalhold.NewService(ctx, compliancePool)
+	if err != nil {
+		return fmt.Errorf("configure Compliance Legal Hold service: %w", err)
+	}
+	complianceHandler, err := legalhold.NewHTTPHandler(complianceService)
+	if err != nil {
+		return fmt.Errorf("configure Compliance Legal Hold HTTP handler: %w", err)
+	}
+	complianceTLS, err := legalhold.NewServerTLSConfig(
+		configuration.complianceTLSCertFile,
+		configuration.complianceTLSKeyFile,
+		configuration.complianceClientCAFile,
+	)
+	if err != nil {
+		return err
+	}
+	complianceRawListener, err := net.Listen("tcp", configuration.complianceAddress)
+	if err != nil {
+		return fmt.Errorf("listen for Compliance Legal Hold HTTPS: %w", err)
+	}
+	defer func() { _ = complianceRawListener.Close() }()
 	webhookRequestPool, err := openPool(
 		ctx,
 		configuration.webhookRequestDatabaseURL,
@@ -958,6 +1008,7 @@ func run() error {
 			schedulerInboxPool,
 			billingPool,
 			financeReconciliationPool,
+			compliancePool,
 			webhookRequestPool,
 			webhookPool,
 		),
@@ -974,6 +1025,15 @@ func run() error {
 	financeReconciliationServer := &http.Server{
 		Handler:           financeReconciliationHandler,
 		TLSConfig:         financeReconciliationTLS,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		MaxHeaderBytes:    16 * 1024,
+	}
+	complianceServer := &http.Server{
+		Handler:           complianceHandler,
+		TLSConfig:         complianceTLS,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
@@ -1099,19 +1159,24 @@ func run() error {
 		)
 		fleetServerErrors <- fleetGRPCServer.Serve(fleetListener)
 	}()
-	financeReconciliationServerErrors := make(chan error, 1)
-	go func() {
+	financeReconciliationServerErrors := serveTLSHTTPServer(
+		financeReconciliationServer,
+		financeReconciliationRawListener,
+		func() {
+			slog.Info(
+				"vela-control Finance Reconciliation HTTPS server started",
+				"address",
+				configuration.financeReconciliationAddress,
+			)
+		},
+	)
+	complianceServerErrors := serveTLSHTTPServer(complianceServer, complianceRawListener, func() {
 		slog.Info(
-			"vela-control Finance Reconciliation HTTPS server started",
+			"vela-control Compliance Legal Hold HTTPS server started",
 			"address",
-			configuration.financeReconciliationAddress,
+			configuration.complianceAddress,
 		)
-		financeReconciliationServerErrors <- financeReconciliationServer.ServeTLS(
-			financeReconciliationRawListener,
-			"",
-			"",
-		)
-	}()
+	})
 
 	var serveErr error
 	select {
@@ -1132,18 +1197,20 @@ func run() error {
 			serveErr = fmt.Errorf("serve Fleet maintenance gRPC: %w", err)
 		}
 	case err := <-financeReconciliationServerErrors:
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			stop()
-			serveErr = fmt.Errorf("serve Finance Reconciliation HTTPS: %w", err)
-		}
+		serveErr = handleHTTPServerExit(stop, "Finance Reconciliation HTTPS", err)
+	case err := <-complianceServerErrors:
+		serveErr = handleHTTPServerExit(stop, "Compliance Legal Hold HTTPS", err)
 	}
-	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), 20*time.Second)
+	shutdownContext, cancelShutdown := context.WithTimeout(context.Background(), defaultShutdownTimeout)
 	defer cancelShutdown()
-	if err := financeReconciliationServer.Shutdown(shutdownContext); err != nil {
-		return fmt.Errorf("shut down Finance Reconciliation HTTPS server: %w", err)
+	if err := shutdownHTTPServer(shutdownContext, complianceServer, "Compliance Legal Hold HTTPS"); err != nil {
+		return err
 	}
-	if err := httpServer.Shutdown(shutdownContext); err != nil {
-		return fmt.Errorf("shut down HTTP server: %w", err)
+	if err := shutdownHTTPServer(shutdownContext, financeReconciliationServer, "Finance Reconciliation HTTPS"); err != nil {
+		return err
+	}
+	if err := shutdownHTTPServer(shutdownContext, httpServer, "HTTP"); err != nil {
+		return err
 	}
 	fleetServerDone := make(chan struct{})
 	go func() {
@@ -1311,6 +1378,11 @@ func loadConfig() (config, error) {
 		financeReconciliationTLSCertFile:  os.Getenv("VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE"),
 		financeReconciliationTLSKeyFile:   os.Getenv("VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE"),
 		financeReconciliationClientCAFile: os.Getenv("VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE"),
+		complianceDatabaseURL:             os.Getenv("VELA_COMPLIANCE_DATABASE_URL"),
+		complianceAddress:                 os.Getenv("VELA_COMPLIANCE_ADDR"),
+		complianceTLSCertFile:             os.Getenv("VELA_COMPLIANCE_SERVER_CERT_FILE"),
+		complianceTLSKeyFile:              os.Getenv("VELA_COMPLIANCE_SERVER_KEY_FILE"),
+		complianceClientCAFile:            os.Getenv("VELA_COMPLIANCE_CLIENT_CA_FILE"),
 		webhookRequestDatabaseURL:         os.Getenv("VELA_WEBHOOK_REQUEST_DATABASE_URL"),
 		webhookDatabaseURL:                os.Getenv("VELA_WEBHOOK_DATABASE_URL"),
 		webhookEncryptionActiveKeyID:      os.Getenv("VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID"),
@@ -1428,6 +1500,11 @@ func loadConfig() (config, error) {
 		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE":               configuration.financeReconciliationTLSCertFile,
 		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":                configuration.financeReconciliationTLSKeyFile,
 		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":                 configuration.financeReconciliationClientCAFile,
+		"VELA_COMPLIANCE_DATABASE_URL":                               configuration.complianceDatabaseURL,
+		"VELA_COMPLIANCE_ADDR":                                       configuration.complianceAddress,
+		"VELA_COMPLIANCE_SERVER_CERT_FILE":                           configuration.complianceTLSCertFile,
+		"VELA_COMPLIANCE_SERVER_KEY_FILE":                            configuration.complianceTLSKeyFile,
+		"VELA_COMPLIANCE_CLIENT_CA_FILE":                             configuration.complianceClientCAFile,
 		"VELA_WEBHOOK_REQUEST_DATABASE_URL":                          configuration.webhookRequestDatabaseURL,
 		"VELA_WEBHOOK_DATABASE_URL":                                  configuration.webhookDatabaseURL,
 		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":                      configuration.webhookEncryptionActiveKeyID,
@@ -1521,6 +1598,17 @@ func loadConfig() (config, error) {
 	financePort, err := strconv.Atoi(financePortText)
 	if err != nil || financePort < 1 || financePort > 65535 {
 		return config{}, errors.New("environment variable VELA_FINANCE_RECONCILIATION_ADDR must contain a concrete host and port")
+	}
+	complianceHost, compliancePortText, err := net.SplitHostPort(configuration.complianceAddress)
+	if err != nil || complianceHost == "" {
+		return config{}, errors.New("environment variable VELA_COMPLIANCE_ADDR must contain a concrete host and port")
+	}
+	if address, parseErr := netip.ParseAddr(complianceHost); parseErr == nil && address.IsUnspecified() {
+		return config{}, errors.New("environment variable VELA_COMPLIANCE_ADDR must contain a concrete host and port")
+	}
+	compliancePort, err := strconv.Atoi(compliancePortText)
+	if err != nil || compliancePort < 1 || compliancePort > 65535 {
+		return config{}, errors.New("environment variable VELA_COMPLIANCE_ADDR must contain a concrete host and port")
 	}
 	if value := os.Getenv("VELA_OUTBOX_BATCH_SIZE"); value != "" {
 		batchSize, err := strconv.ParseInt(value, 10, 32)
@@ -2152,7 +2240,7 @@ type artifactBucketValidator interface {
 
 func readinessHandler(
 	artifactStore artifactBucketValidator,
-	pools ...*pgxpool.Pool,
+	pools ...databasePinger,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -2169,6 +2257,36 @@ func readinessHandler(
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func serveTLSHTTPServer(
+	server tlsHTTPServer,
+	listener net.Listener,
+	onStart func(),
+) <-chan error {
+	errors := make(chan error, 1)
+	go func() {
+		if onStart != nil {
+			onStart()
+		}
+		errors <- server.ServeTLS(listener, "", "")
+	}()
+	return errors
+}
+
+func handleHTTPServerExit(stop context.CancelFunc, name string, err error) error {
+	if err == nil || errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	stop()
+	return fmt.Errorf("serve %s: %w", name, err)
+}
+
+func shutdownHTTPServer(ctx context.Context, server httpServerShutdown, name string) error {
+	if err := server.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shut down %s server: %w", name, err)
+	}
+	return nil
 }
 
 func runPublisher(ctx context.Context, publisher *outbox.Publisher, interval time.Duration) {

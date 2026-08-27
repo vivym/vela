@@ -295,6 +295,8 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 	assertRoleExists(t, db, "vela_billing_owner")
 	assertRoleExists(t, db, "vela_finance_reconciliation")
 	assertRoleExists(t, db, "vela_finance_reconciliation_owner")
+	assertRoleExists(t, db, "vela_compliance")
+	assertRoleExists(t, db, "vela_compliance_owner")
 	assertRoleExists(t, db, "vela_organization_reporting_owner")
 	assertTableDoesNotExist(t, db, "attempts")
 	assertTableDoesNotExist(t, db, "execution_failure_decisions")

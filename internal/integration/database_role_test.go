@@ -123,6 +123,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_finance_reconciliation_login",
 		"vela-finance-reconciliation-password",
 	)
+	compliancePool := newRolePool(
+		t,
+		database.DSN,
+		"vela_compliance_login",
+		"vela-compliance-password",
+	)
 	webhookRequestPool := newRolePool(
 		t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
 	)
@@ -137,6 +143,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_scheduler_inbox_login",
 		"vela_billing_login",
 		"vela_finance_reconciliation_login",
+		"vela_compliance_login",
 		"vela_webhook_request_login",
 		"vela_webhook_login",
 		"vela_remediation_login",
@@ -158,6 +165,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		for _, ownerRole := range []string{
 			"vela_billing_owner",
 			"vela_finance_reconciliation_owner",
+			"vela_compliance_owner",
 			"vela_organization_reporting_owner",
 			"vela_retention_owner",
 			"vela_artifact_replication_owner",
@@ -241,6 +249,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			name: "Finance Reconciliation", pool: financeReconciliationPool,
 			role: veladb.RoleFinanceReconciliation,
 		},
+		{name: "Compliance", pool: compliancePool, role: veladb.RoleCompliance},
 		{name: "webhook request", pool: webhookRequestPool, role: veladb.RoleWebhookRequest},
 		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
 		{name: "remediation", pool: remediationPool, role: veladb.RoleRemediation},
@@ -269,6 +278,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_finance_reconciliation"},
 		{name: "vela_scheduler_inbox"},
 		{name: "vela_finance_reconciliation_owner", bypassRLS: true},
+		{name: "vela_compliance"},
+		{name: "vela_compliance_owner", bypassRLS: true},
 		{name: "vela_remediation", bypassRLS: false},
 		{name: "vela_remediation_owner", bypassRLS: true},
 		{name: "vela_fleet", bypassRLS: false},
@@ -342,6 +353,26 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{
 			signature: "vela_apply_finance_reconciliation(uuid,text,bigint,uuid,finance_reconciliation_kind,text,bigint,bigint,bigint,text,timestamp with time zone)",
 			owner:     "vela_finance_reconciliation_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_private.require_compliance_identity()",
+			owner:     "vela_compliance_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_private.lock_active_non_content_legal_holds(uuid,uuid,uuid,legal_hold_record_class)",
+			owner:     "vela_compliance_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_get_compliance_identity()",
+			owner:     "vela_compliance_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_apply_legal_hold_event(uuid,text,bigint,uuid,legal_hold_event_kind,legal_hold_scope,uuid,uuid,uuid,legal_hold_record_class[],text,text,timestamp with time zone)",
+			owner:     "vela_compliance_owner",
 			proconfig: "search_path=pg_catalog, public",
 		},
 		{

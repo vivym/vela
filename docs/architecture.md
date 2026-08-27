@@ -276,6 +276,12 @@ Model Catalog 管理 ModelRevision、InferenceBackendRevision、ExecutionProfile
 
 Platform Operator 不属于客户角色。读取 Customer Content 必须通过限时、审批和全审计的 Break-glass Access，不能用共享组织 master key 或模拟客户 Principal。
 
+### 6.10.1 Compliance 与 Legal Hold
+
+Compliance Principal 独立于 Human Principal、Service Principal、Finance Principal 和 Platform Operator。它通过专用 PostgreSQL role 与 TLS 1.3 mutual-auth listener 提交不可变 Legal Hold event，只能为一个确切的 Organization、Project 或 Job 冻结 `METADATA`、`FINANCIAL` 或两者的正常到期。Hold 的 placement 与 release 使用各 Principal 独立且连续的 source sequence，release 单向且不能删除历史证据。
+
+Legal Hold 不拥有 Prompt、输入、Artifact、debug dump、Worker scratch 或 Local Recovery State；这些 Customer Content 仍受 24 小时 Content Deletion 合同约束。metadata / financial expiry authority 必须在删除候选记录的同一 PostgreSQL 事务中锁定并检查匹配的 ACTIVE hold，不能用异步缓存或事后补偿替代。
+
 ### 6.11 Fleet Controller
 
 Fleet Controller 将 Catalog 中的 ExecutionProfileRevision 实现为 Kubernetes Worker pool，并负责 warm-up、canary、planned drain、rollout 和 retirement。它只能通过 Job Coordinator 请求 drain/fence，不能直接终止仍拥有有效 Lease 的 Worker。
@@ -306,7 +312,7 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 
 | 部署单元 | 语言 | 包含的 Module | 拆分原因 |
 | --- | --- | --- | --- |
-| `vela-control` | Go | HTTP adapter、Organization / Project / Identity、Job Coordinator、Scheduler、Worker Registry、Model Catalog、Billing Ledger、Artifact Validator / Reconciler、Webhook / Outbox dispatcher | 共享 PostgreSQL 事务和领域不变量，保持模块化单体 |
+| `vela-control` | Go | HTTP adapter、Organization / Project / Identity、Compliance / Legal Hold、Job Coordinator、Scheduler、Worker Registry、Model Catalog、Billing Ledger、Artifact Validator / Reconciler、Webhook / Outbox dispatcher | 共享 PostgreSQL 事务和领域不变量，保持模块化单体；Compliance 使用独立 listener 与数据库 pool |
 | `vela-fleet-controller` | Go | Fleet Controller、Node Health Controller | 独立 Kubernetes RBAC 与 rollout 生命周期 |
 | `vela-worker-agent` | Go | Worker protocol、Lease client、Artifact upload / validation client | 与推理 runner 分离，保持长连接和恢复语义稳定 |
 | H3 runner | Python | SGLang fork、GPU role binding、模型执行 | 保留 Python / CUDA 推理生态 |
@@ -321,6 +327,7 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 | CustomerOrganization | 合同、信用和结算主体 | 所有 Project 共享一个 Contract Credit Limit 和结算关系 |
 | Project | Organization 内的操作空间 | credential、配额、Idempotency-Key、Artifact namespace 和审计均按 Project 隔离 |
 | Principal / Credential | 行为主体及其可轮换身份凭据 | Human Principal 使用 OIDC；Service Principal 属于一个 Project；审计归因不随 credential 轮换丢失 |
+| CompliancePrincipal / LegalHold | 独立合规主体及其非内容保留指令 | 只能覆盖确切 Organization / Project / Job 的 METADATA / FINANCIAL；不能保留 Customer Content |
 | Job | 用户的一次推理意图 | 请求、报价和执行策略快照创建后不可变 |
 | Attempt | Job 的一次物理执行 | 一个 Job 可有多个 Attempt |
 | Lease | Worker 对 Attempt 的限时执行权 | 区分 EXECUTION / FINALIZATION phase，包含鉴权 token、单调 fence、owner epoch 和 expiry |
@@ -836,6 +843,8 @@ Artifact Validator 必须核对 object version、size、checksum 和 content typ
 | Worker 本地 scratch | 终态后立即清理，最迟 24 小时 |
 
 Retention Policy 版本锁定并由控制面与存储 lifecycle 共同执行，不应写死在 Worker 中。客户 Content Deletion 在 24 小时内异步删除 Prompt 与 Artifact，不撤销 Charge，也不删除法定保留的非内容审计；备份中的删除通过到期与恢复后 deletion replay 闭环。
+
+非内容 Legal Hold 只能延长 Job / Attempt metadata 与财务记录的正常到期，不能改变上表任何 Customer Content 期限。未来 metadata / financial expiry Reconciler 必须先锁定候选记录，再在同一 PostgreSQL 事务中调用 active-hold lock contract；存在匹配 ACTIVE hold 时不得提交到期。Release 只允许后续正常到期，不追溯恢复已删除记录。
 
 ### 13.6 存储故障与背压
 

@@ -1745,6 +1745,175 @@ func (ns NullLeasePhase) Value() (driver.Value, error) {
 	return string(ns.LeasePhase), nil
 }
 
+type LegalHoldEventKind string
+
+const (
+	LegalHoldEventKindHOLDPLACED   LegalHoldEventKind = "HOLD_PLACED"
+	LegalHoldEventKindHOLDRELEASED LegalHoldEventKind = "HOLD_RELEASED"
+)
+
+func (e *LegalHoldEventKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LegalHoldEventKind(s)
+	case string:
+		*e = LegalHoldEventKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LegalHoldEventKind: %T", src)
+	}
+	return nil
+}
+
+type NullLegalHoldEventKind struct {
+	LegalHoldEventKind LegalHoldEventKind `json:"legal_hold_event_kind"`
+	Valid              bool               `json:"valid"` // Valid is true if LegalHoldEventKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLegalHoldEventKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.LegalHoldEventKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LegalHoldEventKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLegalHoldEventKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LegalHoldEventKind), nil
+}
+
+type LegalHoldRecordClass string
+
+const (
+	LegalHoldRecordClassMETADATA  LegalHoldRecordClass = "METADATA"
+	LegalHoldRecordClassFINANCIAL LegalHoldRecordClass = "FINANCIAL"
+)
+
+func (e *LegalHoldRecordClass) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LegalHoldRecordClass(s)
+	case string:
+		*e = LegalHoldRecordClass(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LegalHoldRecordClass: %T", src)
+	}
+	return nil
+}
+
+type NullLegalHoldRecordClass struct {
+	LegalHoldRecordClass LegalHoldRecordClass `json:"legal_hold_record_class"`
+	Valid                bool                 `json:"valid"` // Valid is true if LegalHoldRecordClass is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLegalHoldRecordClass) Scan(value interface{}) error {
+	if value == nil {
+		ns.LegalHoldRecordClass, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LegalHoldRecordClass.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLegalHoldRecordClass) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LegalHoldRecordClass), nil
+}
+
+type LegalHoldScope string
+
+const (
+	LegalHoldScopeORGANIZATION LegalHoldScope = "ORGANIZATION"
+	LegalHoldScopePROJECT      LegalHoldScope = "PROJECT"
+	LegalHoldScopeJOB          LegalHoldScope = "JOB"
+)
+
+func (e *LegalHoldScope) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LegalHoldScope(s)
+	case string:
+		*e = LegalHoldScope(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LegalHoldScope: %T", src)
+	}
+	return nil
+}
+
+type NullLegalHoldScope struct {
+	LegalHoldScope LegalHoldScope `json:"legal_hold_scope"`
+	Valid          bool           `json:"valid"` // Valid is true if LegalHoldScope is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLegalHoldScope) Scan(value interface{}) error {
+	if value == nil {
+		ns.LegalHoldScope, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LegalHoldScope.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLegalHoldScope) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LegalHoldScope), nil
+}
+
+type LegalHoldState string
+
+const (
+	LegalHoldStateACTIVE   LegalHoldState = "ACTIVE"
+	LegalHoldStateRELEASED LegalHoldState = "RELEASED"
+)
+
+func (e *LegalHoldState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LegalHoldState(s)
+	case string:
+		*e = LegalHoldState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LegalHoldState: %T", src)
+	}
+	return nil
+}
+
+type NullLegalHoldState struct {
+	LegalHoldState LegalHoldState `json:"legal_hold_state"`
+	Valid          bool           `json:"valid"` // Valid is true if LegalHoldState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLegalHoldState) Scan(value interface{}) error {
+	if value == nil {
+		ns.LegalHoldState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LegalHoldState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLegalHoldState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LegalHoldState), nil
+}
+
 type OrganizationRole string
 
 const (
@@ -2740,6 +2909,28 @@ type Charge struct {
 	ArtifactSetID       uuid.NullUUID      `db:"artifact_set_id" json:"artifact_set_id"`
 }
 
+type ComplianceDatabaseBinding struct {
+	DatabaseRole string             `db:"database_role" json:"database_role"`
+	PrincipalID  uuid.UUID          `db:"principal_id" json:"principal_id"`
+	DisabledAt   pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ComplianceEventCursor struct {
+	PrincipalID  uuid.UUID          `db:"principal_id" json:"principal_id"`
+	LastSequence int64              `db:"last_sequence" json:"last_sequence"`
+	UpdatedAt    pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type CompliancePrincipal struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	StableID       string             `db:"stable_id" json:"stable_id"`
+	TlsUriIdentity string             `db:"tls_uri_identity" json:"tls_uri_identity"`
+	Status         string             `db:"status" json:"status"`
+	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type ContentDeletionReceipt struct {
 	ID                   uuid.UUID          `db:"id" json:"id"`
 	OrganizationID       uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -3285,6 +3476,48 @@ type JobRuntimePrediction struct {
 	Source                  string             `db:"source" json:"source"`
 	SourceRevision          string             `db:"source_revision" json:"source_revision"`
 	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type LegalHold struct {
+	ID                         uuid.UUID              `db:"id" json:"id"`
+	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ProjectID                  uuid.NullUUID          `db:"project_id" json:"project_id"`
+	JobID                      uuid.NullUUID          `db:"job_id" json:"job_id"`
+	Scope                      LegalHoldScope         `db:"scope" json:"scope"`
+	RecordClasses              []LegalHoldRecordClass `db:"record_classes" json:"record_classes"`
+	State                      LegalHoldState         `db:"state" json:"state"`
+	PlacementPrincipalID       uuid.UUID              `db:"placement_principal_id" json:"placement_principal_id"`
+	PlacementSourceSequence    int64                  `db:"placement_source_sequence" json:"placement_source_sequence"`
+	PlacementReasonCode        string                 `db:"placement_reason_code" json:"placement_reason_code"`
+	PlacementExternalReference string                 `db:"placement_external_reference" json:"placement_external_reference"`
+	PlacementEffectiveAt       pgtype.Timestamptz     `db:"placement_effective_at" json:"placement_effective_at"`
+	PlacedAt                   pgtype.Timestamptz     `db:"placed_at" json:"placed_at"`
+	ReleasePrincipalID         uuid.NullUUID          `db:"release_principal_id" json:"release_principal_id"`
+	ReleaseSourceSequence      *int64                 `db:"release_source_sequence" json:"release_source_sequence"`
+	ReleaseReasonCode          *string                `db:"release_reason_code" json:"release_reason_code"`
+	ReleaseExternalReference   *string                `db:"release_external_reference" json:"release_external_reference"`
+	ReleaseEffectiveAt         pgtype.Timestamptz     `db:"release_effective_at" json:"release_effective_at"`
+	ReleasedAt                 pgtype.Timestamptz     `db:"released_at" json:"released_at"`
+	CreatedAt                  pgtype.Timestamptz     `db:"created_at" json:"created_at"`
+	UpdatedAt                  pgtype.Timestamptz     `db:"updated_at" json:"updated_at"`
+}
+
+type LegalHoldEvent struct {
+	ID                uuid.UUID              `db:"id" json:"id"`
+	PrincipalID       uuid.UUID              `db:"principal_id" json:"principal_id"`
+	IdempotencyKey    string                 `db:"idempotency_key" json:"idempotency_key"`
+	SourceSequence    int64                  `db:"source_sequence" json:"source_sequence"`
+	HoldID            uuid.UUID              `db:"hold_id" json:"hold_id"`
+	Kind              LegalHoldEventKind     `db:"kind" json:"kind"`
+	Scope             *LegalHoldScope        `db:"scope" json:"scope"`
+	OrganizationID    uuid.NullUUID          `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.NullUUID          `db:"project_id" json:"project_id"`
+	JobID             uuid.NullUUID          `db:"job_id" json:"job_id"`
+	RecordClasses     []LegalHoldRecordClass `db:"record_classes" json:"record_classes"`
+	ReasonCode        string                 `db:"reason_code" json:"reason_code"`
+	ExternalReference string                 `db:"external_reference" json:"external_reference"`
+	EffectiveAt       pgtype.Timestamptz     `db:"effective_at" json:"effective_at"`
+	RecordedAt        pgtype.Timestamptz     `db:"recorded_at" json:"recorded_at"`
 }
 
 type ModelRevision struct {

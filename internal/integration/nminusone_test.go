@@ -48,6 +48,7 @@ const (
 	incompleteArtifactNMinusOneCommit     = "d038fb9f4fb9eb64d9e3b816e75d737783b9ccf5"
 	debugDumpNMinusOneCommit              = "31991452e60c4254b3b67f72a98ee73e56f7915b"
 	adjacentRolloutNMinusOneCommit        = "cd5f22dea259aa7188d52d8ab232522fa3ff8d67"
+	legalHoldNMinusOneCommit              = "c08ba84fc5cfc88e9e8de9e0e06a23725c1521e8"
 	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
 	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
 	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
@@ -2533,7 +2534,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build N-1 vela-control: %v\n%s", err, output)
 	}
-	if commit != invoiceExportNMinusOneCommit {
+	if commit != invoiceExportNMinusOneCommit && commit != legalHoldNMinusOneCommit {
 		build = exec.Command(
 			"go", "build",
 			"-o", binaries.AdmissionProbe, "./cmd/vela-nminusone-admission-probe",
@@ -3249,6 +3250,35 @@ func runControlStartupProbe(
 	if err := financeListener.Close(); err != nil {
 		t.Fatalf("release N-1 Finance Reconciliation address: %v", err)
 	}
+	complianceCertificate, complianceKey := issueWorkerTransportTestCertificate(
+		t,
+		caCertificate,
+		caKey,
+		pkix.Name{CommonName: "legal-hold-listener.internal"},
+		[]string{"legal-hold-listener.internal"},
+		nil,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	)
+	complianceCertificateFile := filepath.Join(temporary, "compliance.crt")
+	complianceKeyFile := filepath.Join(temporary, "compliance.key")
+	complianceClientCAFile := filepath.Join(temporary, "compliance-client-ca.crt")
+	for path, contents := range map[string][]byte{
+		complianceCertificateFile: complianceCertificate,
+		complianceKeyFile:         complianceKey,
+		complianceClientCAFile:    caPEM,
+	} {
+		if err := os.WriteFile(path, contents, 0o600); err != nil {
+			t.Fatalf("write N-1 Compliance TLS fixture %s: %v", path, err)
+		}
+	}
+	complianceListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve N-1 Compliance address: %v", err)
+	}
+	complianceAddress := complianceListener.Addr().String()
+	if err := complianceListener.Close(); err != nil {
+		t.Fatalf("release N-1 Compliance address: %v", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, binary)
@@ -3357,6 +3387,13 @@ func runControlStartupProbe(
 		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE": financeCertificateFile,
 		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":  financeKeyFile,
 		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":   financeClientCAFile,
+		"VELA_COMPLIANCE_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_compliance_login", "vela-compliance-password",
+		),
+		"VELA_COMPLIANCE_ADDR":             complianceAddress,
+		"VELA_COMPLIANCE_SERVER_CERT_FILE": complianceCertificateFile,
+		"VELA_COMPLIANCE_SERVER_KEY_FILE":  complianceKeyFile,
+		"VELA_COMPLIANCE_CLIENT_CA_FILE":   complianceClientCAFile,
 		"VELA_WEBHOOK_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_webhook_request_login", "vela-webhook-request-password",
 		),

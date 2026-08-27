@@ -36,6 +36,7 @@ const (
 	RoleSchedulerInbox             Role = "vela_scheduler_inbox"
 	RoleBilling                    Role = "vela_billing"
 	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
+	RoleCompliance                 Role = "vela_compliance"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
 	RoleRemediation                Role = "vela_remediation"
@@ -76,6 +77,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleSchedulerInbox:             {verifyPrivileges: verifySchedulerInboxPrivileges},
 	RoleBilling:                    {verifyPrivileges: verifyBillingPrivileges},
 	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
+	RoleCompliance:                 {verifyPrivileges: verifyCompliancePrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
@@ -240,6 +242,21 @@ func verifyFinanceReconciliationPrivileges(
 		functions: []string{
 			"vela_get_finance_reconciliation_identity()",
 			"vela_apply_finance_reconciliation(uuid,text,bigint,uuid,finance_reconciliation_kind,text,bigint,bigint,bigint,text,timestamp with time zone)",
+		},
+	})
+}
+
+func verifyCompliancePrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Compliance",
+		failureLabel:    "Legal Hold transaction",
+		functions: []string{
+			"vela_get_compliance_identity()",
+			"vela_apply_legal_hold_event(uuid,text,bigint,uuid,legal_hold_event_kind,legal_hold_scope,uuid,uuid,uuid,legal_hold_record_class[],text,text,timestamp with time zone)",
 		},
 	})
 }

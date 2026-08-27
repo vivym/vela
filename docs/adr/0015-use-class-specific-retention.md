@@ -19,7 +19,12 @@ Reconciler, all-version/delete-marker purge, two-tier immutable receipts, and
 PostgreSQL restore replay after deletion authority is durable. Artifact backup
 replication now copies each committed PRIMARY exact version into the versioned
 backup with immutable evidence, independent runtime and storage authorities,
-response-loss recovery, and copy/delete serialization (`c08ba84`). Live
-provider and network fault receipts, restore points before deletion authority,
-metadata and financial lifecycle enforcement, legal holds, live production
-scratch lifecycle evidence, and Launch Receipts remain unimplemented.
+response-loss recovery, and copy/delete serialization (`c08ba84`). Migration
+00030 adds immutable non-content Legal Hold placement/release events for exact
+Organization, Project, or Job targets and only `METADATA`/`FINANCIAL` classes.
+An independent Compliance Principal, PostgreSQL role, and TLS 1.3 mutual-auth
+listener own that authority; no hold can preserve Customer Content or delay its
+24-hour deletion contract. Live provider and network fault receipts, restore
+points before deletion authority, metadata and financial lifecycle enforcement,
+live production scratch lifecycle evidence, and Launch Receipts remain
+unimplemented.

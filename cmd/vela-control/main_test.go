@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,6 +67,11 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Finance Reconciliation server certificate", missingEnv: "VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE"},
 		{name: "Finance Reconciliation server key", missingEnv: "VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE"},
 		{name: "Finance Reconciliation client CA", missingEnv: "VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE"},
+		{name: "Compliance database", missingEnv: "VELA_COMPLIANCE_DATABASE_URL"},
+		{name: "Compliance address", missingEnv: "VELA_COMPLIANCE_ADDR"},
+		{name: "Compliance server certificate", missingEnv: "VELA_COMPLIANCE_SERVER_CERT_FILE"},
+		{name: "Compliance server key", missingEnv: "VELA_COMPLIANCE_SERVER_KEY_FILE"},
+		{name: "Compliance client CA", missingEnv: "VELA_COMPLIANCE_CLIENT_CA_FILE"},
 		{name: "Remediation database", missingEnv: "VELA_REMEDIATION_DATABASE_URL"},
 		{name: "Remediation actor", missingEnv: "VELA_REMEDIATION_ACTOR_IDENTITY"},
 		{name: "Remediation Node Agent endpoints", missingEnv: "VELA_REMEDIATION_NODE_AGENTS_FILE"},
@@ -242,6 +250,11 @@ func setValidConfigEnvironment(t *testing.T) {
 		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE",
 		"/run/tls/finance-reconciliation/client-ca.crt",
 	)
+	t.Setenv("VELA_COMPLIANCE_DATABASE_URL", "postgres://compliance.example/vela")
+	t.Setenv("VELA_COMPLIANCE_ADDR", "127.0.0.1:9445")
+	t.Setenv("VELA_COMPLIANCE_SERVER_CERT_FILE", "/run/tls/compliance/tls.crt")
+	t.Setenv("VELA_COMPLIANCE_SERVER_KEY_FILE", "/run/tls/compliance/tls.key")
+	t.Setenv("VELA_COMPLIANCE_CLIENT_CA_FILE", "/run/tls/compliance/client-ca.crt")
 	t.Setenv("VELA_WEBHOOK_REQUEST_DATABASE_URL", "postgres://webhook-request.example/vela")
 	t.Setenv("VELA_WEBHOOK_DATABASE_URL", "postgres://webhook.example/vela")
 	t.Setenv("VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID", "webhook-key-v1")
@@ -403,6 +416,32 @@ func TestLoadConfigPreservesFinanceReconciliationBoundary(t *testing.T) {
 			_, err := loadConfig()
 			if err == nil || !strings.Contains(err.Error(), "VELA_FINANCE_RECONCILIATION_ADDR") {
 				t.Fatalf("Finance Reconciliation address %q error = %v", address, err)
+			}
+		})
+	}
+}
+
+func TestLoadConfigPreservesIndependentComplianceBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load Compliance configuration: %v", err)
+	}
+	if configuration.complianceDatabaseURL != "postgres://compliance.example/vela" ||
+		configuration.complianceAddress != "127.0.0.1:9445" ||
+		configuration.complianceTLSCertFile != "/run/tls/compliance/tls.crt" ||
+		configuration.complianceTLSKeyFile != "/run/tls/compliance/tls.key" ||
+		configuration.complianceClientCAFile != "/run/tls/compliance/client-ca.crt" {
+		t.Fatalf("Compliance configuration = %#v", configuration)
+	}
+
+	for _, address := range []string{"", ":9445", "127.0.0.1", "127.0.0.1:0", "0.0.0.0:9445", "[::]:9445"} {
+		t.Run("address="+address, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv("VELA_COMPLIANCE_ADDR", address)
+			_, err := loadConfig()
+			if err == nil || !strings.Contains(err.Error(), "VELA_COMPLIANCE_ADDR") {
+				t.Fatalf("Compliance address %q error = %v", address, err)
 			}
 		})
 	}
@@ -1063,6 +1102,119 @@ func TestArtifactBackupReplicatorRetriesTransientFailureAndStopsWithContext(t *t
 	case <-time.After(time.Second):
 		t.Fatal("Artifact backup Replicator did not stop with context")
 	}
+}
+
+func TestReadinessPingsComplianceDatabase(t *testing.T) {
+	first := &testDatabasePinger{}
+	compliance := &testDatabasePinger{err: errors.New("Compliance database unavailable")}
+	artifactStore := &testArtifactBucketValidator{}
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	response := httptest.NewRecorder()
+
+	readinessHandler(artifactStore, first, compliance).ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable || first.invocations.Load() != 1 ||
+		compliance.invocations.Load() != 1 || artifactStore.invocations.Load() != 0 {
+		t.Fatalf(
+			"readiness with failed Compliance ping = status %d pings %d/%d store %d",
+			response.Code,
+			first.invocations.Load(),
+			compliance.invocations.Load(),
+			artifactStore.invocations.Load(),
+		)
+	}
+
+	compliance.err = nil
+	response = httptest.NewRecorder()
+	readinessHandler(artifactStore, first, compliance).ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent || first.invocations.Load() != 2 ||
+		compliance.invocations.Load() != 2 || artifactStore.invocations.Load() != 1 {
+		t.Fatalf(
+			"ready dependencies = status %d pings %d/%d store %d",
+			response.Code,
+			first.invocations.Load(),
+			compliance.invocations.Load(),
+			artifactStore.invocations.Load(),
+		)
+	}
+}
+
+func TestComplianceTLSListenerFailureCancelsRuntime(t *testing.T) {
+	listenerFailure := errors.New("Compliance listener failed")
+	server := &testTLSServer{serveErr: listenerFailure}
+	var started atomic.Bool
+	exits := serveTLSHTTPServer(server, nil, func() { started.Store(true) })
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+
+	var serveErr error
+	select {
+	case err := <-exits:
+		serveErr = handleHTTPServerExit(stop, "Compliance Legal Hold HTTPS", err)
+	case <-time.After(time.Second):
+		t.Fatal("Compliance TLS listener did not report failure")
+	}
+	if !started.Load() || !errors.Is(serveErr, listenerFailure) || ctx.Err() != context.Canceled ||
+		!strings.Contains(serveErr.Error(), "serve Compliance Legal Hold HTTPS") {
+		t.Fatalf("Compliance listener failure = started %t context %v error %v", started.Load(), ctx.Err(), serveErr)
+	}
+}
+
+func TestComplianceShutdownHonorsBoundedContext(t *testing.T) {
+	server := &testTLSServer{shutdown: func(ctx context.Context) error {
+		if _, ok := ctx.Deadline(); !ok {
+			return errors.New("shutdown context has no deadline")
+		}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	startedAt := time.Now()
+
+	err := shutdownHTTPServer(ctx, server, "Compliance Legal Hold HTTPS")
+
+	if !errors.Is(err, context.DeadlineExceeded) ||
+		!strings.Contains(err.Error(), "shut down Compliance Legal Hold HTTPS server") ||
+		time.Since(startedAt) > time.Second {
+		t.Fatalf("bounded Compliance shutdown after %s error = %v", time.Since(startedAt), err)
+	}
+}
+
+type testDatabasePinger struct {
+	invocations atomic.Int32
+	err         error
+}
+
+func (p *testDatabasePinger) Ping(context.Context) error {
+	p.invocations.Add(1)
+	return p.err
+}
+
+type testArtifactBucketValidator struct {
+	invocations atomic.Int32
+	err         error
+}
+
+func (v *testArtifactBucketValidator) ValidateBucket(context.Context) error {
+	v.invocations.Add(1)
+	return v.err
+}
+
+type testTLSServer struct {
+	serveErr error
+	shutdown func(context.Context) error
+}
+
+func (s *testTLSServer) ServeTLS(net.Listener, string, string) error {
+	return s.serveErr
+}
+
+func (s *testTLSServer) Shutdown(ctx context.Context) error {
+	if s.shutdown == nil {
+		return nil
+	}
+	return s.shutdown(ctx)
 }
 
 type testHierarchicalScheduler struct {
