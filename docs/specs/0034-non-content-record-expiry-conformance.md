@@ -2,8 +2,8 @@
 
 Date: 2026-08-28
 
-Status: Repository conformance implemented; validation and fixed-point review
-complete with no unresolved P0-P2 finding; implementation commit pending.
+Status: Repository conformance implemented, validation and fixed-point reviewed,
+and committed in `7c12884`.
 
 This slice implements ordinary expiry for the non-content records governed by
 ADR 0015 and consumes the Legal Hold serialization contract added in migration
