@@ -316,6 +316,7 @@ func TestConnectDispatchesFinalizationOperationsUnderMTLSWorkerIdentity(t *testi
 	if claimResponse.GetMultipartUploadId() != "s3-multipart-session" ||
 		len(claimResponse.GetCompletedParts()) != 1 || claimResponse.GetUploadPart() == nil ||
 		claimResponse.GetUploadPart().GetNumber() != 2 ||
+		claimResponse.GetUploadPart().GetRequiredHeaders()["Host"] != "" ||
 		claimResponse.GetUploadPart().GetRequiredHeaders()["X-Amz-Checksum-Sha256"] == "" ||
 		len(uploadStore.created) != 1 || len(uploadStore.presigned) != 1 ||
 		len(uploadStore.completed) != 1 {
@@ -953,6 +954,7 @@ func (store *recordingArtifactUploadStore) PresignUploadPart(
 	return artifactstore.SignedUploadPart{
 		URL: "https://s3.invalid/signed-part", Method: http.MethodPut,
 		Headers: http.Header{
+			"Host":                  []string{"s3.invalid"},
 			"Content-Length":        []string{strconv.FormatInt(sizeBytes, 10)},
 			"X-Amz-Checksum-Sha256": []string{checksum},
 		},

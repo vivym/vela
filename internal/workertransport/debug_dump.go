@@ -392,12 +392,9 @@ func debugDumpUploadClaimMessage(
 	if signed == nil {
 		return message, nil
 	}
-	requiredHeaders := make(map[string]string, len(signed.signed.Headers))
-	for name, values := range signed.signed.Headers {
-		if name == "" || len(values) == 0 {
-			return nil, errors.New("signed debug dump upload part has invalid headers")
-		}
-		requiredHeaders[name] = strings.Join(values, ",")
+	requiredHeaders, err := transferableSignedUploadHeaders(signed.signed)
+	if err != nil {
+		return nil, fmt.Errorf("validate signed debug dump upload part headers: %w", err)
 	}
 	message.UploadPart = &velav1.SignedDebugDumpUploadPart{
 		Number: signed.intent.Number, SizeBytes: signed.intent.SizeBytes,

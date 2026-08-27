@@ -1461,16 +1461,9 @@ func artifactUploadClaim(
 		!signed.signed.ExpiresAt.After(signed.signed.IssuedAt) {
 		return nil, errors.New("signed Artifact upload part is incomplete")
 	}
-	requiredHeaders := make(map[string]string, len(signed.signed.Headers))
-	for name, values := range signed.signed.Headers {
-		if name == "" || len(values) == 0 {
-			return nil, errors.New("signed Artifact upload part has invalid headers")
-		}
-		value := strings.Join(values, ",")
-		if value == "" || strings.ContainsRune(value, '\x00') {
-			return nil, errors.New("signed Artifact upload part has invalid headers")
-		}
-		requiredHeaders[name] = value
+	requiredHeaders, err := transferableSignedUploadHeaders(signed.signed)
+	if err != nil {
+		return nil, fmt.Errorf("validate signed Artifact upload part headers: %w", err)
 	}
 	claim.UploadPart = &velav1.SignedArtifactUploadPart{
 		Number: signed.intent.number, SizeBytes: signed.intent.sizeBytes,
@@ -1478,6 +1471,40 @@ func artifactUploadClaim(
 		RequiredHeaders: requiredHeaders, ExpiresAt: timestamp(signed.signed.ExpiresAt),
 	}
 	return claim, nil
+}
+
+func transferableSignedUploadHeaders(
+	signed artifactstore.SignedUploadPart,
+) (map[string]string, error) {
+	parsed, err := url.Parse(signed.URL)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return nil, errors.New("signed upload URL is invalid")
+	}
+	required := make(map[string]string, len(signed.Headers))
+	for name, values := range signed.Headers {
+		canonical := http.CanonicalHeaderKey(strings.TrimSpace(name))
+		if canonical == "" || len(values) == 0 {
+			return nil, errors.New("signed upload part has invalid headers")
+		}
+		value := strings.Join(values, ",")
+		if value == "" || strings.ContainsRune(value, '\x00') {
+			return nil, errors.New("signed upload part has invalid headers")
+		}
+		if canonical == "Host" {
+			if len(values) != 1 || value != parsed.Host {
+				return nil, errors.New("signed upload Host does not match its URL")
+			}
+			continue
+		}
+		if _, duplicate := required[canonical]; duplicate {
+			return nil, errors.New("signed upload part has duplicate headers")
+		}
+		required[canonical] = value
+	}
+	if len(required) == 0 {
+		return nil, errors.New("signed upload part has no transferable headers")
+	}
+	return required, nil
 }
 
 func artifactUploadPartReports(

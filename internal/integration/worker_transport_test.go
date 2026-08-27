@@ -560,6 +560,25 @@ func newWorkerTransportTestClient(
 	fleetServices ...workertransport.WorkerFleetService,
 ) *workertransport.Client {
 	t.Helper()
+	return newWorkerTransportTestClientForSPIFFE(
+		t,
+		database,
+		coordinator,
+		uploadStore,
+		"spiffe://vela.internal/worker/h3-primary-fixture",
+		fleetServices...,
+	)
+}
+
+func newWorkerTransportTestClientForSPIFFE(
+	t *testing.T,
+	database testDatabase,
+	coordinator workertransport.WorkerCoordinator,
+	uploadStore workertransport.ArtifactUploadStore,
+	workerSPIFFE string,
+	fleetServices ...workertransport.WorkerFleetService,
+) *workertransport.Client {
+	t.Helper()
 	internal := newRolePool(
 		t,
 		database.DSN,
@@ -586,7 +605,7 @@ func newWorkerTransportTestClient(
 		nil,
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	)
-	workerSPIFFEID, err := url.Parse("spiffe://vela.internal/worker/h3-primary-fixture")
+	workerSPIFFEID, err := url.Parse(workerSPIFFE)
 	if err != nil {
 		t.Fatalf("parse Worker SPIFFE ID: %v", err)
 	}
