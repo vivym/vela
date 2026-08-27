@@ -717,9 +717,11 @@ AS $$
         WHERE line.rate_card_revision_id = p_rate_card_revision_id
         GROUP BY line.model_revision_id, line.service_class_revision_id,
             line.output_spec_id, line.currency
-        HAVING count(DISTINCT preset.stable_id) <> 3
+        HAVING count(*) <> 3
+            OR count(DISTINCT preset.stable_id) <> 3
             OR array_agg(DISTINCT preset.stable_id ORDER BY preset.stable_id)
                 <> ARRAY['balanced', 'fast', 'quality']::text[]
+            OR bool_or(preset.state <> 'ACTIVE')
     )
 $$;
 REVOKE ALL ON FUNCTION vela_private.rate_card_has_evidenced_coverage(uuid, uuid)
@@ -828,11 +830,43 @@ BEGIN
     WHERE state.singleton
     FOR UPDATE;
     IF v_state.mode = 'EVIDENCED' THEN
-        IF v_state.launch_receipt_id <> p_launch_receipt_id THEN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM public.profile_certification_evidence AS evidence
+            JOIN public.profile_certifications AS certification
+              ON certification.id = evidence.profile_certification_id
+            WHERE evidence.launch_receipt_id = p_launch_receipt_id
+        ) OR EXISTS (
+            SELECT 1
+            FROM public.profile_certification_evidence AS evidence
+            JOIN public.profile_certifications AS certification
+              ON certification.id = evidence.profile_certification_id
+            WHERE evidence.launch_receipt_id = p_launch_receipt_id
+              AND (
+                  certification.state <> 'ACTIVE'
+                  OR certification.invalidated_at IS NOT NULL
+              )
+        ) OR NOT EXISTS (
+            SELECT 1
+            FROM public.rate_card_release_bindings AS binding
+            WHERE binding.launch_receipt_id = p_launch_receipt_id
+        ) OR EXISTS (
+            SELECT 1
+            FROM public.rate_card_release_bindings AS binding
+            JOIN public.rate_card_revisions AS rate_card
+              ON rate_card.id = binding.rate_card_revision_id
+            WHERE binding.launch_receipt_id = p_launch_receipt_id
+              AND (
+                  rate_card.state <> 'ACTIVE'
+                  OR NOT vela_private.rate_card_has_evidenced_coverage(
+                      rate_card.id, p_launch_receipt_id
+                  )
+              )
+        ) THEN
             RAISE EXCEPTION USING
                 ERRCODE = '55000',
-                CONSTRAINT = 'catalog_evidence_release_is_immutable',
-                MESSAGE = 'Catalog evidence protocol is already bound to another release';
+                CONSTRAINT = 'catalog_evidence_is_incomplete',
+                MESSAGE = 'the release requires complete ACTIVE Catalog evidence';
         END IF;
         RETURN QUERY SELECT v_state.protocol_version, v_state.mode, true;
         RETURN;
@@ -956,13 +990,14 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 DECLARE
-    v_receipt_id uuid;
+    v_mode catalog_evidence_mode;
     v_evidenced boolean := false;
 BEGIN
-    SELECT state.launch_receipt_id INTO v_receipt_id
+    SELECT state.mode INTO STRICT v_mode
     FROM public.catalog_evidence_protocol_state AS state
-    WHERE state.singleton AND state.mode = 'EVIDENCED';
-    IF NOT FOUND OR NEW.state <> 'ACTIVE' THEN
+    WHERE state.singleton
+    FOR UPDATE;
+    IF v_mode <> 'EVIDENCED' OR NEW.state <> 'ACTIVE' THEN
         RETURN NEW;
     END IF;
     CASE TG_TABLE_NAME
@@ -974,7 +1009,6 @@ BEGIN
                 WHERE certification.model_revision_id = NEW.id
                   AND certification.state = 'ACTIVE'
                   AND certification.invalidated_at IS NULL
-                  AND evidence.launch_receipt_id = v_receipt_id
             ) INTO v_evidenced;
         WHEN 'generation_preset_revisions' THEN
             SELECT EXISTS (
@@ -984,7 +1018,6 @@ BEGIN
                 WHERE certification.generation_preset_revision_id = NEW.id
                   AND certification.state = 'ACTIVE'
                   AND certification.invalidated_at IS NULL
-                  AND evidence.launch_receipt_id = v_receipt_id
             ) INTO v_evidenced;
         WHEN 'output_specs' THEN
             SELECT EXISTS (
@@ -994,7 +1027,6 @@ BEGIN
                 WHERE certification.output_spec_id = NEW.id
                   AND certification.state = 'ACTIVE'
                   AND certification.invalidated_at IS NULL
-                  AND evidence.launch_receipt_id = v_receipt_id
             ) INTO v_evidenced;
         WHEN 'execution_profile_revisions' THEN
             SELECT EXISTS (
@@ -1004,7 +1036,6 @@ BEGIN
                 WHERE certification.execution_profile_revision_id = NEW.id
                   AND certification.state = 'ACTIVE'
                   AND certification.invalidated_at IS NULL
-                  AND evidence.launch_receipt_id = v_receipt_id
             ) INTO v_evidenced;
         WHEN 'inference_backend_revisions' THEN
             SELECT EXISTS (
@@ -1014,13 +1045,11 @@ BEGIN
                 WHERE evidence.inference_backend_revision_id = NEW.id
                   AND certification.state = 'ACTIVE'
                   AND certification.invalidated_at IS NULL
-                  AND evidence.launch_receipt_id = v_receipt_id
             ) INTO v_evidenced;
         WHEN 'profile_certifications' THEN
             SELECT EXISTS (
                 SELECT 1 FROM public.profile_certification_evidence AS evidence
                 WHERE evidence.profile_certification_id = NEW.id
-                  AND evidence.launch_receipt_id = v_receipt_id
             ) INTO v_evidenced;
         WHEN 'service_class_revisions' THEN
             SELECT EXISTS (
@@ -1028,15 +1057,14 @@ BEGIN
                 JOIN public.rate_card_release_bindings AS binding
                   ON binding.rate_card_revision_id = line.rate_card_revision_id
                 WHERE line.service_class_revision_id = NEW.id
-                  AND binding.launch_receipt_id = v_receipt_id
             ) INTO v_evidenced;
         WHEN 'rate_card_revisions' THEN
             SELECT EXISTS (
                 SELECT 1 FROM public.rate_card_release_bindings AS binding
                 WHERE binding.rate_card_revision_id = NEW.id
-                  AND binding.launch_receipt_id = v_receipt_id
-            ) AND vela_private.rate_card_has_evidenced_coverage(
-                NEW.id, v_receipt_id
+                  AND vela_private.rate_card_has_evidenced_coverage(
+                      NEW.id, binding.launch_receipt_id
+                  )
             ) INTO v_evidenced;
     END CASE;
     IF NOT v_evidenced THEN
@@ -1084,11 +1112,13 @@ SET search_path = pg_catalog, public
 AS $$
 DECLARE
     v_rate_card_revision_id uuid;
+    v_mode catalog_evidence_mode;
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM public.catalog_evidence_protocol_state AS state
-        WHERE state.singleton AND state.mode = 'EVIDENCED'
-    ) THEN
+    SELECT state.mode INTO STRICT v_mode
+    FROM public.catalog_evidence_protocol_state AS state
+    WHERE state.singleton
+    FOR UPDATE;
+    IF v_mode <> 'EVIDENCED' THEN
         IF TG_OP = 'TRUNCATE' THEN
             RETURN NULL;
         END IF;

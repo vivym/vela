@@ -131,41 +131,16 @@ func TestCatalogPromotionRequiresSealedThreePresetEvidence(t *testing.T) {
 		t, err, "55000", "catalog_evidence_is_incomplete", "enable without evidence",
 	)
 
-	for index, certificationID := range []uuid.UUID{
-		uuid.MustParse("00000000-0000-0000-0000-000000000015"),
-		uuid.MustParse("35000000-0000-0000-0000-000000000014"),
-		uuid.MustParse("35000000-0000-0000-0000-000000000024"),
-	} {
-		promoteProfileCertification(
-			t,
-			promotion,
-			uuid.MustParse(fmt.Sprintf("35000000-0000-0000-0000-%012d", 100+index)),
-			certificationID,
-			receipts[productiongates.GatePresetCertification],
-		)
-	}
-
-	var bindingID uuid.UUID
-	var replayed bool
-	var state string
-	err = promotion.QueryRow(context.Background(), `
-		SELECT binding_id, replayed, rate_card_state::text
-		FROM vela_promote_rate_card($1, $2, $3)
-	`,
-		uuid.MustParse("35000000-0000-0000-0000-000000000201"),
-		uuid.MustParse("00000000-0000-0000-0000-000000000016"),
-		receipts[productiongates.GatePresetCertification],
-	).Scan(&bindingID, &replayed, &state)
-	if err != nil || bindingID == uuid.Nil || replayed || state != "ACTIVE" {
-		t.Fatalf("promote RateCard = id %s replayed %t state %q error %v", bindingID, replayed, state, err)
-	}
+	presetReceiptID := receipts[productiongates.GatePresetCertification]
+	promoteSeededCatalog(t, promotion, presetReceiptID)
 
 	var protocolVersion int
 	var mode string
+	var replayed bool
 	err = promotion.QueryRow(context.Background(), `
 		SELECT protocol_version, mode::text, replayed
 		FROM vela_enable_evidenced_catalog($1)
-	`, receipts[productiongates.GatePresetCertification]).Scan(&protocolVersion, &mode, &replayed)
+	`, presetReceiptID).Scan(&protocolVersion, &mode, &replayed)
 	if err != nil || protocolVersion != 2 || mode != "EVIDENCED" || replayed {
 		t.Fatalf("enable evidenced Catalog = version %d mode %q replayed %t error %v", protocolVersion, mode, replayed, err)
 	}
@@ -173,7 +148,7 @@ func TestCatalogPromotionRequiresSealedThreePresetEvidence(t *testing.T) {
 	err = promotion.QueryRow(context.Background(), `
 		SELECT protocol_version, mode::text, replayed
 		FROM vela_enable_evidenced_catalog($1)
-	`, receipts[productiongates.GatePresetCertification]).Scan(&protocolVersion, &mode, &replayed)
+	`, presetReceiptID).Scan(&protocolVersion, &mode, &replayed)
 	if err != nil || !replayed {
 		t.Fatalf("replay evidenced Catalog transition = replayed %t error %v", replayed, err)
 	}
@@ -254,6 +229,208 @@ func TestCatalogPromotionRequiresSealedThreePresetEvidence(t *testing.T) {
 	if accepted.StatusCode != 202 {
 		t.Fatalf("Admission after evidenced promotion = %d body=%s", accepted.StatusCode, accepted.Body)
 	}
+}
+
+func TestCatalogPromotionSupportsSubsequentRelease(t *testing.T) {
+	database, promotion, firstReceiptID := prepareCatalogTransition(t)
+
+	var protocolVersion int
+	var mode string
+	var replayed bool
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT protocol_version, mode::text, replayed
+		FROM vela_enable_evidenced_catalog($1)
+	`, firstReceiptID).Scan(&protocolVersion, &mode, &replayed); err != nil ||
+		protocolVersion != 2 || mode != "EVIDENCED" || replayed {
+		t.Fatalf(
+			"initial Catalog transition = version %d mode %q replayed %t error %v",
+			protocolVersion, mode, replayed, err,
+		)
+	}
+
+	seedSubsequentCatalogRelease(t, database)
+	secondReceipts := recordAndSealLaunchManifestForRelease(t, promotion, 2)
+	secondReceiptID := secondReceipts[productiongates.GatePresetCertification]
+	for index, certificationID := range []uuid.UUID{
+		uuid.MustParse("36000000-0000-0000-0000-000000000014"),
+		uuid.MustParse("36000000-0000-0000-0000-000000000024"),
+		uuid.MustParse("36000000-0000-0000-0000-000000000034"),
+	} {
+		promoteProfileCertification(
+			t,
+			promotion,
+			uuid.MustParse(fmt.Sprintf("36000000-0000-0000-0000-%012d", 401+index)),
+			certificationID,
+			secondReceiptID,
+		)
+	}
+	promoteRateCardRevision(
+		t,
+		promotion,
+		uuid.MustParse("36000000-0000-0000-0000-000000000501"),
+		uuid.MustParse("36000000-0000-0000-0000-000000000016"),
+		secondReceiptID,
+	)
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT protocol_version, mode::text, replayed
+		FROM vela_enable_evidenced_catalog($1)
+	`, secondReceiptID).Scan(&protocolVersion, &mode, &replayed); err != nil ||
+		protocolVersion != 2 || mode != "EVIDENCED" || !replayed {
+		t.Fatalf(
+			"subsequent Catalog release = version %d mode %q replayed %t error %v",
+			protocolVersion, mode, replayed, err,
+		)
+	}
+
+	var transitionReceiptID uuid.UUID
+	var transitions, secondBindings int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			state.launch_receipt_id,
+			(SELECT count(*) FROM catalog_evidence_protocol_transitions),
+			(SELECT count(*) FROM rate_card_release_bindings
+			 WHERE launch_receipt_id = $1)
+		FROM catalog_evidence_protocol_state AS state
+		WHERE state.singleton
+	`, secondReceiptID).Scan(&transitionReceiptID, &transitions, &secondBindings); err != nil {
+		t.Fatalf("read subsequent Catalog release authority: %v", err)
+	}
+	if transitionReceiptID != firstReceiptID || transitions != 1 || secondBindings != 1 {
+		t.Fatalf(
+			"subsequent release authority = transition receipt %s transitions %d bindings %d",
+			transitionReceiptID, transitions, secondBindings,
+		)
+	}
+}
+
+func TestCatalogEvidenceTransitionSerializesWithActiveWrites(t *testing.T) {
+	t.Run("writer commits before transition scan", func(t *testing.T) {
+		database, promotion, receiptID := prepareCatalogTransition(t)
+		writer, err := database.Admin.Begin()
+		if err != nil {
+			t.Fatalf("begin unreceipted Catalog writer: %v", err)
+		}
+		defer func() { _ = writer.Rollback() }()
+		if _, err := writer.Exec(`
+			INSERT INTO model_revisions (id, stable_id, revision, state, content_hash)
+			VALUES ($1, 'concurrent-unreceipted-model', 1, 'ACTIVE', repeat('a', 64))
+		`, uuid.New()); err != nil {
+			t.Fatalf("stage concurrent unreceipted ACTIVE revision: %v", err)
+		}
+
+		enableErrors := make(chan error, 1)
+		go func() {
+			_, enableErr := promotion.Exec(context.Background(), `
+				SELECT * FROM vela_enable_evidenced_catalog($1)
+			`, receiptID)
+			enableErrors <- enableErr
+		}()
+		waitForRoleDatabaseLock(t, database.Admin, "vela_catalog_promotion_login")
+		if err := writer.Commit(); err != nil {
+			t.Fatalf("commit concurrent unreceipted ACTIVE revision: %v", err)
+		}
+		select {
+		case enableErr := <-enableErrors:
+			assertCatalogDatabaseError(
+				t, enableErr, "55000", "catalog_evidence_is_incomplete",
+				"transition after concurrent unreceipted ACTIVE revision",
+			)
+		case <-time.After(10 * time.Second):
+			t.Fatal("Catalog evidence transition did not finish after writer commit")
+		}
+	})
+
+	t.Run("transition commits before writer validation", func(t *testing.T) {
+		database, promotion, receiptID := prepareCatalogTransition(t)
+		transition, err := promotion.Begin(context.Background())
+		if err != nil {
+			t.Fatalf("begin Catalog evidence transition: %v", err)
+		}
+		defer func() { _ = transition.Rollback(context.Background()) }()
+		var protocolVersion int
+		var mode string
+		var replayed bool
+		if err := transition.QueryRow(context.Background(), `
+			SELECT protocol_version, mode::text, replayed
+			FROM vela_enable_evidenced_catalog($1)
+		`, receiptID).Scan(&protocolVersion, &mode, &replayed); err != nil {
+			t.Fatalf("stage Catalog evidence transition: %v", err)
+		}
+
+		writerErrors := make(chan error, 1)
+		go func() {
+			_, writerErr := database.Admin.Exec(`
+				INSERT INTO model_revisions (id, stable_id, revision, state, content_hash)
+				VALUES ($1, 'post-transition-unreceipted-model', 1, 'ACTIVE', repeat('b', 64))
+			`, uuid.New())
+			writerErrors <- writerErr
+		}()
+		waitForRoleDatabaseLock(t, database.Admin, "postgres")
+		if err := transition.Commit(context.Background()); err != nil {
+			t.Fatalf("commit Catalog evidence transition: %v", err)
+		}
+		select {
+		case writerErr := <-writerErrors:
+			assertCatalogDatabaseError(
+				t, writerErr, "55000", "catalog_active_revision_requires_evidence",
+				"writer after concurrent Catalog evidence transition",
+			)
+		case <-time.After(10 * time.Second):
+			t.Fatal("unreceipted Catalog writer did not finish after transition commit")
+		}
+	})
+}
+
+func TestCatalogPromotionRejectsNonExactPresetCoverage(t *testing.T) {
+	t.Run("duplicate stable Preset revision", func(t *testing.T) {
+		database, promotion, receiptID := prepareCatalogTransition(t)
+		seedDuplicateQualityPreset(t, database)
+		if _, err := database.Admin.Exec(`
+			UPDATE generation_preset_revisions SET state = 'CANARY'
+			WHERE id = '35000000-0000-0000-0000-000000000011'
+		`); err != nil {
+			t.Fatalf("supersede evidenced quality Preset revision: %v", err)
+		}
+		promoteProfileCertification(
+			t,
+			promotion,
+			uuid.MustParse("37000000-0000-0000-0000-000000000401"),
+			uuid.MustParse("37000000-0000-0000-0000-000000000014"),
+			receiptID,
+		)
+		_, err := promotion.Exec(context.Background(), `
+			SELECT * FROM vela_promote_rate_card($1, $2, $3)
+		`,
+			uuid.MustParse("35000000-0000-0000-0000-000000000201"),
+			uuid.MustParse("00000000-0000-0000-0000-000000000016"),
+			receiptID,
+		)
+		assertCatalogDatabaseError(
+			t, err, "55000", "rate_card_requires_three_preset_evidence",
+			"RateCard with duplicate stable Preset revision",
+		)
+	})
+
+	t.Run("inactive Preset revision", func(t *testing.T) {
+		database, promotion, receiptID := prepareCatalogTransition(t)
+		if _, err := database.Admin.Exec(`
+			UPDATE generation_preset_revisions SET state = 'CANARY'
+			WHERE id = '35000000-0000-0000-0000-000000000011'
+		`); err != nil {
+			t.Fatalf("deactivate evidenced quality Preset: %v", err)
+		}
+		_, err := promotion.Exec(context.Background(), `
+			SELECT * FROM vela_promote_rate_card($1, $2, $3)
+		`,
+			uuid.MustParse("35000000-0000-0000-0000-000000000201"),
+			uuid.MustParse("00000000-0000-0000-0000-000000000016"),
+			receiptID,
+		)
+		assertCatalogDatabaseError(
+			t, err, "55000", "rate_card_requires_three_preset_evidence",
+			"RateCard with inactive Preset revision",
+		)
+	})
 }
 
 func TestCatalogPromotionRejectsMetricsBelowThreshold(t *testing.T) {
@@ -392,6 +569,26 @@ const (
 	testInferenceBackendRevisionID = "35000000-0000-0000-0000-000000000001"
 )
 
+func prepareCatalogTransition(
+	t *testing.T,
+) (testDatabase, *pgxpool.Pool, uuid.UUID) {
+	t.Helper()
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedThreePresetCatalog(t, database)
+	promotion := newRolePool(
+		t,
+		database.DSN,
+		"vela_catalog_promotion_login",
+		"vela-catalog-promotion-password",
+	)
+	receipts := recordAndSealLaunchManifest(t, promotion)
+	receiptID := receipts[productiongates.GatePresetCertification]
+	promoteSeededCatalog(t, promotion, receiptID)
+	return database, promotion, receiptID
+}
+
 func seedThreePresetCatalog(t *testing.T, database testDatabase) {
 	t.Helper()
 	transaction, err := database.Admin.Begin()
@@ -470,14 +667,142 @@ func seedThreePresetCatalog(t *testing.T, database testDatabase) {
 	}
 }
 
+func seedSubsequentCatalogRelease(t *testing.T, database testDatabase) {
+	t.Helper()
+	if _, err := database.Admin.Exec(`
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, worker_pool_id, stable_id, revision, state
+		) VALUES
+			('36000000-0000-0000-0000-000000000012',
+			 '00000000-0000-0000-0000-000000000010',
+			 '00000000-0000-0000-0000-000000000005', 'h3-balanced-release-2', 1, 'CANARY'),
+			('36000000-0000-0000-0000-000000000022',
+			 '00000000-0000-0000-0000-000000000010',
+			 '00000000-0000-0000-0000-000000000005', 'h3-quality-release-2', 1, 'CANARY'),
+			('36000000-0000-0000-0000-000000000032',
+			 '00000000-0000-0000-0000-000000000010',
+			 '00000000-0000-0000-0000-000000000005', 'h3-fast-release-2', 1, 'CANARY');
+
+		INSERT INTO profile_certifications (
+			id, model_revision_id, generation_preset_revision_id, output_spec_id,
+			execution_profile_revision_id, state, evidence_digest, certified_at
+		) VALUES
+			('36000000-0000-0000-0000-000000000014',
+			 '00000000-0000-0000-0000-000000000010',
+			 '00000000-0000-0000-0000-000000000011',
+			 '00000000-0000-0000-0000-000000000013',
+			 '36000000-0000-0000-0000-000000000012', 'CANARY', repeat('c', 32),
+			 clock_timestamp()),
+			('36000000-0000-0000-0000-000000000024',
+			 '00000000-0000-0000-0000-000000000010',
+			 '35000000-0000-0000-0000-000000000011',
+			 '00000000-0000-0000-0000-000000000013',
+			 '36000000-0000-0000-0000-000000000022', 'CANARY', repeat('d', 32),
+			 clock_timestamp()),
+			('36000000-0000-0000-0000-000000000034',
+			 '00000000-0000-0000-0000-000000000010',
+			 '35000000-0000-0000-0000-000000000021',
+			 '00000000-0000-0000-0000-000000000013',
+			 '36000000-0000-0000-0000-000000000032', 'CANARY', repeat('e', 32),
+			 clock_timestamp());
+
+		INSERT INTO rate_card_revisions (id, revision, state, effective_at)
+		VALUES (
+			'36000000-0000-0000-0000-000000000016', 2, 'CANARY',
+			clock_timestamp()
+		);
+		INSERT INTO rate_card_lines (
+			id, rate_card_revision_id, model_revision_id,
+			generation_preset_revision_id, service_class_revision_id,
+			output_spec_id, unit_amount_minor, currency
+		) VALUES
+			('36000000-0000-0000-0000-000000000017',
+			 '36000000-0000-0000-0000-000000000016',
+			 '00000000-0000-0000-0000-000000000010',
+			 '00000000-0000-0000-0000-000000000011',
+			 '00000000-0000-0000-0000-000000000012',
+			 '00000000-0000-0000-0000-000000000013', 1300, 'CNY'),
+			('36000000-0000-0000-0000-000000000027',
+			 '36000000-0000-0000-0000-000000000016',
+			 '00000000-0000-0000-0000-000000000010',
+			 '35000000-0000-0000-0000-000000000011',
+			 '00000000-0000-0000-0000-000000000012',
+			 '00000000-0000-0000-0000-000000000013', 2050, 'CNY'),
+			('36000000-0000-0000-0000-000000000037',
+			 '36000000-0000-0000-0000-000000000016',
+			 '00000000-0000-0000-0000-000000000010',
+			 '35000000-0000-0000-0000-000000000021',
+			 '00000000-0000-0000-0000-000000000012',
+			 '00000000-0000-0000-0000-000000000013', 850, 'CNY');
+	`); err != nil {
+		t.Fatalf("seed subsequent Catalog release: %v", err)
+	}
+}
+
+func seedDuplicateQualityPreset(t *testing.T, database testDatabase) {
+	t.Helper()
+	if _, err := database.Admin.Exec(`
+		INSERT INTO generation_preset_revisions (
+			id, model_revision_id, stable_id, revision, state,
+			certified_p95_compute_seconds
+		) VALUES (
+			'37000000-0000-0000-0000-000000000011',
+			'00000000-0000-0000-0000-000000000010',
+			'quality', 2, 'CANARY', 2300
+		);
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, worker_pool_id, stable_id, revision, state
+		) VALUES (
+			'37000000-0000-0000-0000-000000000012',
+			'00000000-0000-0000-0000-000000000010',
+			'00000000-0000-0000-0000-000000000005',
+			'h3-quality-duplicate', 1, 'CANARY'
+		);
+		INSERT INTO profile_certifications (
+			id, model_revision_id, generation_preset_revision_id, output_spec_id,
+			execution_profile_revision_id, state, evidence_digest, certified_at
+		) VALUES (
+			'37000000-0000-0000-0000-000000000014',
+			'00000000-0000-0000-0000-000000000010',
+			'37000000-0000-0000-0000-000000000011',
+			'00000000-0000-0000-0000-000000000013',
+			'37000000-0000-0000-0000-000000000012',
+			'CANARY', repeat('f', 32), clock_timestamp()
+		);
+		INSERT INTO rate_card_lines (
+			id, rate_card_revision_id, model_revision_id,
+			generation_preset_revision_id, service_class_revision_id,
+			output_spec_id, unit_amount_minor, currency
+		) VALUES (
+			'37000000-0000-0000-0000-000000000016',
+			'00000000-0000-0000-0000-000000000016',
+			'00000000-0000-0000-0000-000000000010',
+			'37000000-0000-0000-0000-000000000011',
+			'00000000-0000-0000-0000-000000000012',
+			'00000000-0000-0000-0000-000000000013', 2100, 'CNY'
+		);
+	`); err != nil {
+		t.Fatalf("seed duplicate quality Preset revision: %v", err)
+	}
+}
+
 func recordAndSealLaunchManifest(
 	t *testing.T,
 	pool *pgxpool.Pool,
 ) map[productiongates.Gate]uuid.UUID {
 	t.Helper()
-	manifestDigest := sha256.Sum256([]byte("release-manifest"))
-	releaseDigest := sha256.Sum256([]byte("release-image"))
-	evidenceDigest := sha256.Sum256([]byte("production-evidence"))
+	return recordAndSealLaunchManifestForRelease(t, pool, 1)
+}
+
+func recordAndSealLaunchManifestForRelease(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	release int,
+) map[productiongates.Gate]uuid.UUID {
+	t.Helper()
+	manifestDigest := sha256.Sum256([]byte(fmt.Sprintf("release-manifest-%d", release)))
+	releaseDigest := sha256.Sum256([]byte(fmt.Sprintf("release-image-%d", release)))
+	evidenceDigest := sha256.Sum256([]byte(fmt.Sprintf("production-evidence-%d", release)))
 	receipts := make(map[productiongates.Gate]uuid.UUID, len(productiongates.AllGates()))
 	transaction, err := pool.Begin(context.Background())
 	if err != nil {
@@ -485,23 +810,27 @@ func recordAndSealLaunchManifest(
 	}
 	defer func() { _ = transaction.Rollback(context.Background()) }()
 	for index, gate := range productiongates.AllGates() {
-		receiptID := uuid.MustParse(fmt.Sprintf("35000000-0000-0000-0000-%012d", 301+index))
+		receiptID := uuid.MustParse(fmt.Sprintf(
+			"35000000-0000-0000-0000-%012d",
+			release*1000+301+index,
+		))
 		receipts[gate] = receiptID
-		startedAt := time.Date(2026, 8, 28, 2, index, 0, 0, time.UTC)
+		startedAt := time.Date(2026, 8, 28, 1+release, index, 0, 0, time.UTC)
 		var returnedID uuid.UUID
 		var replayed bool
 		if err := transaction.QueryRow(context.Background(), `
 			SELECT receipt_id, replayed
 			FROM vela_record_production_gate_receipt(
-				$1, 1, $2, $3, 'release-config-1', 'h3-validation-rack-1',
+				$1, 1, $2, $3, $4, 'h3-validation-rack-1',
 				'PASS', 'platform-oncall@example.invalid',
 				'all gate assertions pass', 'all gate assertions passed',
-				$4, $5, $6, $7, $8, $9
+				$5, $6, $7, $8, $9, $10
 			)
 		`,
 			receiptID,
 			string(gate),
 			releaseDigest[:],
+			fmt.Sprintf("release-config-%d", release),
 			"evidence/"+string(gate)+".json",
 			evidenceDigest[:],
 			manifestDigest[:],
@@ -529,6 +858,55 @@ func recordAndSealLaunchManifest(
 		t.Fatalf("commit Launch Receipt manifest: %v", err)
 	}
 	return receipts
+}
+
+func promoteSeededCatalog(t *testing.T, pool *pgxpool.Pool, receiptID uuid.UUID) {
+	t.Helper()
+	for index, certificationID := range []uuid.UUID{
+		uuid.MustParse("00000000-0000-0000-0000-000000000015"),
+		uuid.MustParse("35000000-0000-0000-0000-000000000014"),
+		uuid.MustParse("35000000-0000-0000-0000-000000000024"),
+	} {
+		promoteProfileCertification(
+			t,
+			pool,
+			uuid.MustParse(fmt.Sprintf("35000000-0000-0000-0000-%012d", 100+index)),
+			certificationID,
+			receiptID,
+		)
+	}
+	promoteRateCardRevision(
+		t,
+		pool,
+		uuid.MustParse("35000000-0000-0000-0000-000000000201"),
+		uuid.MustParse("00000000-0000-0000-0000-000000000016"),
+		receiptID,
+	)
+}
+
+func promoteRateCardRevision(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	bindingID uuid.UUID,
+	rateCardID uuid.UUID,
+	receiptID uuid.UUID,
+) {
+	t.Helper()
+	var returnedID uuid.UUID
+	var replayed bool
+	var state string
+	if err := pool.QueryRow(context.Background(), `
+		SELECT binding_id, replayed, rate_card_state::text
+		FROM vela_promote_rate_card($1, $2, $3)
+	`, bindingID, rateCardID, receiptID).Scan(&returnedID, &replayed, &state); err != nil {
+		t.Fatalf("promote RateCardRevision %s: %v", rateCardID, err)
+	}
+	if returnedID != bindingID || replayed || state != "ACTIVE" {
+		t.Fatalf(
+			"promote RateCardRevision %s = binding %s replayed %t state %q",
+			rateCardID, returnedID, replayed, state,
+		)
+	}
 }
 
 func promoteProfileCertification(
