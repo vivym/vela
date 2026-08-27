@@ -1899,6 +1899,7 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 			CREATE ROLE vela_finance_reconciliation_login LOGIN PASSWORD 'vela-finance-reconciliation-password' IN ROLE vela_finance_reconciliation;
 			CREATE ROLE vela_compliance_login LOGIN PASSWORD 'vela-compliance-password' IN ROLE vela_compliance;
 			CREATE ROLE vela_non_content_expiry_login LOGIN PASSWORD 'vela-non-content-expiry-password' IN ROLE vela_non_content_expiry;
+			CREATE ROLE vela_catalog_promotion_login LOGIN PASSWORD 'vela-catalog-promotion-password' IN ROLE vela_catalog_promotion;
 			CREATE ROLE vela_webhook_request_login LOGIN PASSWORD 'vela-webhook-request-password' IN ROLE vela_webhook_request;
 			CREATE ROLE vela_webhook_login LOGIN PASSWORD 'vela-webhook-password' IN ROLE vela_webhook;
 				CREATE ROLE vela_remediation_login LOGIN PASSWORD 'vela-remediation-password' IN ROLE vela_remediation;

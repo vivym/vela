@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type Gate string
@@ -198,5 +199,5 @@ func validSHA256Digest(value string) bool {
 
 func validBoundedText(value string, max int) bool {
 	return len(value) > 0 && len(value) <= max && strings.TrimSpace(value) == value &&
-		!strings.ContainsAny(value, "\r\n\x00")
+		strings.IndexFunc(value, unicode.IsControl) == -1
 }

@@ -53,7 +53,22 @@ const (
 	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
 	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
 	nonContentExpiryNMinusOneCommit       = "1968a4377c40fd8da9bd16e6ef4fb39d0f11c33a"
+	catalogPromotionNMinusOneCommit       = "e53c62054d068aea19ba7860417698a203ed5225"
 )
+
+func TestExactCatalogPromotionNMinusOneControlStartsAgainstSchema32(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, catalogPromotionNMinusOneCommit)
+
+	output := runCurrentControlStartupProbe(t, nMinusOne.Control, database.DSN)
+	if strings.Contains(output, "database pool") {
+		t.Fatalf("exact e53c620 control failed schema 32 database preflight:\n%s", output)
+	}
+	if !strings.Contains(output, "configure Finance Reconciliation service") {
+		t.Fatalf("exact e53c620 control did not reach post-role-preflight sentinel:\n%s", output)
+	}
+}
 
 func TestExactNonContentExpiryNMinusOneControlAndSourceWritesRemainCompatible(t *testing.T) {
 	database := newPostgres(t)
@@ -2489,7 +2504,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == adjacentRolloutNMinusOneCommit ||
 		commit == breakGlassNMinusOneCommit ||
 		commit == fleetControllerNMinusOneCommit ||
-		commit == nonContentExpiryNMinusOneCommit {
+		commit == nonContentExpiryNMinusOneCommit ||
+		commit == catalogPromotionNMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(

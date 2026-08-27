@@ -38,6 +38,7 @@ const (
 	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
 	RoleCompliance                 Role = "vela_compliance"
 	RoleNonContentExpiry           Role = "vela_non_content_expiry"
+	RoleCatalogPromotion           Role = "vela_catalog_promotion"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
 	RoleRemediation                Role = "vela_remediation"
@@ -80,6 +81,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
 	RoleCompliance:                 {verifyPrivileges: verifyCompliancePrivileges},
 	RoleNonContentExpiry:           {verifyPrivileges: verifyNonContentExpiryPrivileges},
+	RoleCatalogPromotion:           {verifyPrivileges: verifyCatalogPromotionPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
@@ -274,6 +276,24 @@ func verifyNonContentExpiryPrivileges(
 		functions: []string{
 			"vela_claim_non_content_expiry(text,uuid,integer)",
 			"vela_complete_non_content_expiry(non_content_expiry_kind,uuid,uuid,integer)",
+		},
+	})
+}
+
+func verifyCatalogPromotionPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Catalog Promotion",
+		failureLabel:    "Catalog Promotion transaction",
+		functions: []string{
+			"vela_record_production_gate_receipt(uuid,integer,production_gate,bytea,text,text,production_gate_result,text,text,text,text,bytea,bytea,timestamp with time zone,timestamp with time zone,timestamp with time zone)",
+			"vela_seal_production_gate_manifest(bytea)",
+			"vela_promote_profile_certification(uuid,uuid,uuid,text,text,integer,integer,integer,integer,bigint,bigint,bigint,bigint,bigint,text,integer,integer,uuid)",
+			"vela_promote_rate_card(uuid,uuid,uuid)",
+			"vela_enable_evidenced_catalog(uuid)",
 		},
 	})
 }

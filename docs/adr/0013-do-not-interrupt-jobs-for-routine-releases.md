@@ -10,7 +10,7 @@ An adjacent version change that cannot preserve both old and new execution autho
 
 ## Implementation Status
 
-Partial. Thirty additive migrations, exact N/N-1 database/control
+Partial. Thirty-two additive migrations, exact N/N-1 database/control
 compatibility at fixed migration points, an operator-receipted protocol
 transition, migration round trips, and Protobuf/OpenAPI breaking checks are
 repository-proven. Migration 00027 adds dedicated debug-dump roles without
@@ -24,7 +24,13 @@ behind a new role and current-only runtime configuration while the exact Slice
 31 N-1 binary remains valid on the expanded schema. Migration 00030 adds an
 independent Compliance role and additive non-content Legal Hold authority; the
 exact Slice 32 binary at `c08ba84` remains valid on schema 30, while the current
-binary fails closed at the Compliance role boundary on schema 29. A real
+binary fails closed at the Compliance role boundary on schema 29.
+Migration 00031 adds current-only non-content expiry while the exact Slice 33
+binary remains valid on schema 31 and the current control fails closed on schema
+30. Migration 00032 adds Catalog Promotion and evidence enforcement behind a
+new role while the exact Slice 34 binary at `e53c620` remains valid on schema 32;
+the current promoter fails closed on schema 31, empty Down/Up restores the
+authority, and durable release evidence prevents unsafe contraction. A real
 Kubernetes mixed control/Worker/event rollout, long-running H3 Job drain,
 release rollback, and retained production backlog receipt remain external
 deployment evidence.

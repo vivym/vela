@@ -46,6 +46,11 @@ func TestReceiptValidationRejectsMissingEvidenceAndBadDigest(t *testing.T) {
 	if err := receipt.Validate(); !errors.Is(err, ErrInvalidReceipt) {
 		t.Fatalf("reversed receipt timestamps error = %v, want invalid receipt", err)
 	}
+	receipt = validReceipt(GateDataDisasterRecovery, time.Unix(10, 0).UTC())
+	receipt.Owner = "platform\toncall"
+	if err := receipt.Validate(); !errors.Is(err, ErrInvalidReceipt) {
+		t.Fatalf("control-character owner error = %v, want invalid receipt", err)
+	}
 }
 
 func TestEvaluationFailsClosedOnDuplicateOrFailedReceipt(t *testing.T) {

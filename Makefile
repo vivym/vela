@@ -7,9 +7,10 @@ PROTOC_GEN_GO_VERSION := v1.36.11
 PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
 GOLANGCI_LINT_VERSION := v2.13.1
 INTEGRATION_TEST_TIMEOUT ?= 40m
+LAUNCH_RECEIPTS ?=
 TOOLS_BIN := $(CURDIR)/bin
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated lint test test-integration test-cnpg-failover test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated verify-launch lint test test-integration test-cnpg-failover test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -44,6 +45,11 @@ test:
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
+
+verify-launch:
+	@test -n "$(LAUNCH_RECEIPTS)" || \
+		(echo "LAUNCH_RECEIPTS is required" >&2; exit 2)
+	go run ./cmd/vela-verify-launch "$(LAUNCH_RECEIPTS)"
 
 test-cnpg-failover:
 	./hack/test-cnpg-failover.sh

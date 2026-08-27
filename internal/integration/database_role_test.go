@@ -135,6 +135,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_non_content_expiry_login",
 		"vela-non-content-expiry-password",
 	)
+	catalogPromotionPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_catalog_promotion_login",
+		"vela-catalog-promotion-password",
+	)
 	webhookRequestPool := newRolePool(
 		t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
 	)
@@ -151,6 +157,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_finance_reconciliation_login",
 		"vela_compliance_login",
 		"vela_non_content_expiry_login",
+		"vela_catalog_promotion_login",
 		"vela_webhook_request_login",
 		"vela_webhook_login",
 		"vela_remediation_login",
@@ -174,6 +181,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_finance_reconciliation_owner",
 			"vela_compliance_owner",
 			"vela_non_content_expiry_owner",
+			"vela_catalog_promotion_owner",
 			"vela_organization_reporting_owner",
 			"vela_retention_owner",
 			"vela_artifact_replication_owner",
@@ -262,6 +270,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			name: "non-content expiry", pool: nonContentExpiryPool,
 			role: veladb.RoleNonContentExpiry,
 		},
+		{
+			name: "Catalog Promotion", pool: catalogPromotionPool,
+			role: veladb.RoleCatalogPromotion,
+		},
 		{name: "webhook request", pool: webhookRequestPool, role: veladb.RoleWebhookRequest},
 		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
 		{name: "remediation", pool: remediationPool, role: veladb.RoleRemediation},
@@ -287,6 +299,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_artifact_replication"},
 		{name: "vela_non_content_expiry"},
 		{name: "vela_non_content_expiry_owner", bypassRLS: true},
+		{name: "vela_catalog_promotion"},
+		{name: "vela_catalog_promotion_owner", bypassRLS: true},
 		{name: "vela_artifact_replication_owner", bypassRLS: true},
 		{name: "vela_break_glass_owner", bypassRLS: true},
 		{name: "vela_finance_reconciliation"},
@@ -393,6 +407,56 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			signature: "vela_complete_non_content_expiry(non_content_expiry_kind,uuid,uuid,integer)",
 			owner:     "vela_non_content_expiry_owner",
 			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_private.require_sealed_preset_receipt(uuid)",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_record_production_gate_receipt(uuid,integer,production_gate,bytea,text,text,production_gate_result,text,text,text,text,bytea,bytea,timestamp with time zone,timestamp with time zone,timestamp with time zone)",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_seal_production_gate_manifest(bytea)",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_promote_profile_certification(uuid,uuid,uuid,text,text,integer,integer,integer,integer,bigint,bigint,bigint,bigint,bigint,text,integer,integer,uuid)",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_private.rate_card_has_evidenced_coverage(uuid,uuid)",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_promote_rate_card(uuid,uuid,uuid)",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_enable_evidenced_catalog(uuid)",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_enforce_catalog_protocol_state_transition()",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_guard_active_catalog_revision()",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_guard_active_rate_card_line_mutation()",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public",
 		},
 		{
 			signature: "vela_get_compliance_identity()",
@@ -607,6 +671,52 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			t.Fatalf(
 				"%s boundary = owner %s security definer %t public execute %t config match %t",
 				function.signature,
+				owner,
+				securityDefiner,
+				publicExecute,
+				configurationMatches,
+			)
+		}
+	}
+	for _, signature := range []string{
+		"vela_reject_catalog_evidence_mutation()",
+		"vela_enforce_production_gate_manifest_seal()",
+		"vela_reject_inference_backend_definition_mutation()",
+		"vela_reject_catalog_protocol_state_delete()",
+	} {
+		var owner string
+		var securityDefiner, configurationMatches, publicExecute bool
+		if err := database.Admin.QueryRow(`
+			SELECT owner.rolname,
+				procedure.prosecdef,
+				procedure.proconfig = ARRAY['search_path=pg_catalog']::text[],
+				EXISTS (
+					SELECT 1
+					FROM pg_catalog.aclexplode(
+						COALESCE(
+							procedure.proacl,
+							pg_catalog.acldefault('f', procedure.proowner)
+						)
+					) AS privilege
+					WHERE privilege.grantee = 0
+					  AND privilege.privilege_type = 'EXECUTE'
+				)
+			FROM pg_catalog.pg_proc AS procedure
+			JOIN pg_catalog.pg_roles AS owner ON owner.oid = procedure.proowner
+			WHERE procedure.oid = $1::regprocedure
+		`, signature).Scan(
+			&owner,
+			&securityDefiner,
+			&configurationMatches,
+			&publicExecute,
+		); err != nil {
+			t.Fatalf("inspect %s trigger boundary: %v", signature, err)
+		}
+		if owner != "vela_catalog_promotion_owner" || securityDefiner ||
+			!configurationMatches || publicExecute {
+			t.Fatalf(
+				"%s boundary = owner %s security definer %t public execute %t config match %t",
+				signature,
 				owner,
 				securityDefiner,
 				publicExecute,

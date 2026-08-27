@@ -512,6 +512,48 @@ func (ns NullCancellationStopSource) Value() (driver.Value, error) {
 	return string(ns.CancellationStopSource), nil
 }
 
+type CatalogEvidenceMode string
+
+const (
+	CatalogEvidenceModeLEGACY    CatalogEvidenceMode = "LEGACY"
+	CatalogEvidenceModeEVIDENCED CatalogEvidenceMode = "EVIDENCED"
+)
+
+func (e *CatalogEvidenceMode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CatalogEvidenceMode(s)
+	case string:
+		*e = CatalogEvidenceMode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CatalogEvidenceMode: %T", src)
+	}
+	return nil
+}
+
+type NullCatalogEvidenceMode struct {
+	CatalogEvidenceMode CatalogEvidenceMode `json:"catalog_evidence_mode"`
+	Valid               bool                `json:"valid"` // Valid is true if CatalogEvidenceMode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCatalogEvidenceMode) Scan(value interface{}) error {
+	if value == nil {
+		ns.CatalogEvidenceMode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CatalogEvidenceMode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCatalogEvidenceMode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CatalogEvidenceMode), nil
+}
+
 type CatalogState string
 
 const (
@@ -2085,6 +2127,97 @@ func (ns NullPrincipalKind) Value() (driver.Value, error) {
 	return string(ns.PrincipalKind), nil
 }
 
+type ProductionGate string
+
+const (
+	ProductionGatePresetCertification                ProductionGate = "preset-certification"
+	ProductionGateRealH3Soak                         ProductionGate = "real-h3-soak"
+	ProductionGateStateEventFaultInjection           ProductionGate = "state-event-fault-injection"
+	ProductionGateGpuRemediation                     ProductionGate = "gpu-remediation"
+	ProductionGateOrganizationIsolationContentSafety ProductionGate = "organization-isolation-content-safety"
+	ProductionGateDataDisasterRecovery               ProductionGate = "data-disaster-recovery"
+	ProductionGateReleaseRollback                    ProductionGate = "release-rollback"
+	ProductionGateCommercialDataLifecycle            ProductionGate = "commercial-data-lifecycle"
+	ProductionGateObservabilityOnCall                ProductionGate = "observability-on-call"
+)
+
+func (e *ProductionGate) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ProductionGate(s)
+	case string:
+		*e = ProductionGate(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ProductionGate: %T", src)
+	}
+	return nil
+}
+
+type NullProductionGate struct {
+	ProductionGate ProductionGate `json:"production_gate"`
+	Valid          bool           `json:"valid"` // Valid is true if ProductionGate is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullProductionGate) Scan(value interface{}) error {
+	if value == nil {
+		ns.ProductionGate, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ProductionGate.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullProductionGate) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ProductionGate), nil
+}
+
+type ProductionGateResult string
+
+const (
+	ProductionGateResultPASS ProductionGateResult = "PASS"
+	ProductionGateResultFAIL ProductionGateResult = "FAIL"
+)
+
+func (e *ProductionGateResult) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ProductionGateResult(s)
+	case string:
+		*e = ProductionGateResult(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ProductionGateResult: %T", src)
+	}
+	return nil
+}
+
+type NullProductionGateResult struct {
+	ProductionGateResult ProductionGateResult `json:"production_gate_result"`
+	Valid                bool                 `json:"valid"` // Valid is true if ProductionGateResult is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullProductionGateResult) Scan(value interface{}) error {
+	if value == nil {
+		ns.ProductionGateResult, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ProductionGateResult.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullProductionGateResult) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ProductionGateResult), nil
+}
+
 type ProjectRole string
 
 const (
@@ -2979,6 +3112,21 @@ type CancellationStopReceipt struct {
 	CreatedAt          pgtype.Timestamptz     `db:"created_at" json:"created_at"`
 }
 
+type CatalogEvidenceProtocolState struct {
+	Singleton       bool                `db:"singleton" json:"singleton"`
+	Mode            CatalogEvidenceMode `db:"mode" json:"mode"`
+	ProtocolVersion int32               `db:"protocol_version" json:"protocol_version"`
+	LaunchReceiptID uuid.NullUUID       `db:"launch_receipt_id" json:"launch_receipt_id"`
+	TransitionedAt  pgtype.Timestamptz  `db:"transitioned_at" json:"transitioned_at"`
+}
+
+type CatalogEvidenceProtocolTransition struct {
+	ProtocolVersion int32               `db:"protocol_version" json:"protocol_version"`
+	Mode            CatalogEvidenceMode `db:"mode" json:"mode"`
+	LaunchReceiptID uuid.UUID           `db:"launch_receipt_id" json:"launch_receipt_id"`
+	TransitionedAt  pgtype.Timestamptz  `db:"transitioned_at" json:"transitioned_at"`
+}
+
 type Charge struct {
 	ID                  uuid.UUID          `db:"id" json:"id"`
 	OrganizationID      uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -3453,6 +3601,15 @@ type InboxReceipt struct {
 	ConsumedAt       pgtype.Timestamptz `db:"consumed_at" json:"consumed_at"`
 }
 
+type InferenceBackendRevision struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	StableID      string             `db:"stable_id" json:"stable_id"`
+	Revision      int32              `db:"revision" json:"revision"`
+	State         CatalogState       `db:"state" json:"state"`
+	ContentDigest []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type InvoiceExport struct {
 	ChargeID         uuid.UUID          `db:"charge_id" json:"charge_id"`
 	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -3787,6 +3944,35 @@ type Principal struct {
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type ProductionGateManifest struct {
+	ManifestDigest        []byte             `db:"manifest_digest" json:"manifest_digest"`
+	ReleaseDigest         []byte             `db:"release_digest" json:"release_digest"`
+	ConfigurationRevision string             `db:"configuration_revision" json:"configuration_revision"`
+	SealedAt              pgtype.Timestamptz `db:"sealed_at" json:"sealed_at"`
+	ReceiptCount          int32              `db:"receipt_count" json:"receipt_count"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ProductionGateReceipt struct {
+	ID                    uuid.UUID            `db:"id" json:"id"`
+	ManifestDigest        []byte               `db:"manifest_digest" json:"manifest_digest"`
+	SchemaVersion         int32                `db:"schema_version" json:"schema_version"`
+	Gate                  ProductionGate       `db:"gate" json:"gate"`
+	ReleaseDigest         []byte               `db:"release_digest" json:"release_digest"`
+	ConfigurationRevision string               `db:"configuration_revision" json:"configuration_revision"`
+	ValidationEnvironment string               `db:"validation_environment" json:"validation_environment"`
+	Result                ProductionGateResult `db:"result" json:"result"`
+	OwnerIdentity         string               `db:"owner_identity" json:"owner_identity"`
+	AcceptanceThreshold   string               `db:"acceptance_threshold" json:"acceptance_threshold"`
+	ObservedResult        string               `db:"observed_result" json:"observed_result"`
+	EvidenceRef           string               `db:"evidence_ref" json:"evidence_ref"`
+	EvidenceDigest        []byte               `db:"evidence_digest" json:"evidence_digest"`
+	StartedAt             pgtype.Timestamptz   `db:"started_at" json:"started_at"`
+	CompletedAt           pgtype.Timestamptz   `db:"completed_at" json:"completed_at"`
+	RecordedAt            pgtype.Timestamptz   `db:"recorded_at" json:"recorded_at"`
+	IngestedAt            pgtype.Timestamptz   `db:"ingested_at" json:"ingested_at"`
+}
+
 type ProfileCertification struct {
 	ID                         uuid.UUID          `db:"id" json:"id"`
 	ModelRevisionID            uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
@@ -3819,6 +4005,28 @@ type ProfileCertificationCircuitOpening struct {
 	ObservedDistinctHealthyWorkers       int32              `db:"observed_distinct_healthy_workers" json:"observed_distinct_healthy_workers"`
 	EvidenceWindowStartedAt              pgtype.Timestamptz `db:"evidence_window_started_at" json:"evidence_window_started_at"`
 	OpenedAt                             pgtype.Timestamptz `db:"opened_at" json:"opened_at"`
+}
+
+type ProfileCertificationEvidence struct {
+	ID                         uuid.UUID          `db:"id" json:"id"`
+	ProfileCertificationID     uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+	InferenceBackendRevisionID uuid.UUID          `db:"inference_backend_revision_id" json:"inference_backend_revision_id"`
+	HardwareDriverBaseline     string             `db:"hardware_driver_baseline" json:"hardware_driver_baseline"`
+	BenchmarkCorpusRevision    string             `db:"benchmark_corpus_revision" json:"benchmark_corpus_revision"`
+	QualityThresholdPpm        int32              `db:"quality_threshold_ppm" json:"quality_threshold_ppm"`
+	QualityObservedPpm         int32              `db:"quality_observed_ppm" json:"quality_observed_ppm"`
+	SuccessRateThresholdPpm    int32              `db:"success_rate_threshold_ppm" json:"success_rate_threshold_ppm"`
+	SuccessRateObservedPpm     int32              `db:"success_rate_observed_ppm" json:"success_rate_observed_ppm"`
+	P50Milliseconds            int64              `db:"p50_milliseconds" json:"p50_milliseconds"`
+	P95ThresholdMilliseconds   int64              `db:"p95_threshold_milliseconds" json:"p95_threshold_milliseconds"`
+	P95ObservedMilliseconds    int64              `db:"p95_observed_milliseconds" json:"p95_observed_milliseconds"`
+	CostThresholdMinor         int64              `db:"cost_threshold_minor" json:"cost_threshold_minor"`
+	CostObservedMinor          int64              `db:"cost_observed_minor" json:"cost_observed_minor"`
+	CostCurrency               string             `db:"cost_currency" json:"cost_currency"`
+	ConfidenceThresholdPpm     int32              `db:"confidence_threshold_ppm" json:"confidence_threshold_ppm"`
+	ConfidenceObservedPpm      int32              `db:"confidence_observed_ppm" json:"confidence_observed_ppm"`
+	LaunchReceiptID            uuid.UUID          `db:"launch_receipt_id" json:"launch_receipt_id"`
+	IssuedAt                   pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
 }
 
 type ProfileCircuitProtocolState struct {
@@ -3927,6 +4135,13 @@ type RateCardLine struct {
 	OutputSpecID               uuid.UUID `db:"output_spec_id" json:"output_spec_id"`
 	UnitAmountMinor            int64     `db:"unit_amount_minor" json:"unit_amount_minor"`
 	Currency                   string    `db:"currency" json:"currency"`
+}
+
+type RateCardReleaseBinding struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	RateCardRevisionID uuid.UUID          `db:"rate_card_revision_id" json:"rate_card_revision_id"`
+	LaunchReceiptID    uuid.UUID          `db:"launch_receipt_id" json:"launch_receipt_id"`
+	PromotedAt         pgtype.Timestamptz `db:"promoted_at" json:"promoted_at"`
 }
 
 type RateCardRevision struct {

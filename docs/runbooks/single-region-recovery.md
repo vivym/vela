@@ -130,6 +130,8 @@ timestamps. A verbal sign-off or a successful backup-only job is not a PASS.
 
 The repository includes a PostgreSQL dump/restore plus versioned-MinIO
 conformance test for a restore point after Content Deletion authority is durable
-and before its targets complete. It does not perform live WAL PITR, implement
-Artifact replication, cover a restore point before deletion authority, or create
-a `data-disaster-recovery` Launch Receipt.
+and before its targets complete. It also includes committed exact-version
+Artifact replication with immutable evidence and copy/delete serialization. It
+does not perform live WAL PITR, prove provider/network replication behavior,
+cover a restore point before deletion authority, or create a
+`data-disaster-recovery` Launch Receipt.
