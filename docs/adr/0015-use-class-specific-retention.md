@@ -17,6 +17,9 @@ retention or Customer Content Deletion (`6603c36`). Migration 00028 adds
 committed-only OFF_CLUSTER_BACKUP targets, an independent least-privilege
 Reconciler, all-version/delete-marker purge, two-tier immutable receipts, and
 PostgreSQL restore replay after deletion authority is durable. Artifact backup
-replication and its deletion race, restore points before deletion authority,
+replication now copies each committed PRIMARY exact version into the versioned
+backup with immutable evidence, independent runtime and storage authorities,
+response-loss recovery, and copy/delete serialization (`c08ba84`). Live
+provider and network fault receipts, restore points before deletion authority,
 metadata and financial lifecycle enforcement, legal holds, live production
 scratch lifecycle evidence, and Launch Receipts remain unimplemented.
