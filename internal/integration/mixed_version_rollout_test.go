@@ -319,7 +319,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 	assertMixedVersionAuthoritySnapshot(t, authority, authorityExpectation)
 	t.Logf(
 		"mixed-version rollout current=%s n_minus_one=%s event=%s payload_sha256=%x old_job=%s old_intent=%s old_attempt=%s old_lease=%s old_lease_fence=%d old_worker=%s drain=%s inbox=%s/%s/%s/%s/%s/%s/%d/%s rollback_job=%s rollback_intent=%s rollback_attempt=%s rollback_lease=%s rollback_lease_fence=%d rollback_worker=%s rollback_admission=%s authority=jobs:%d,attempts:%d,leases:%d,dispatches:%d,inbox:1",
-		"507384774052efda1f14f5689e6bee487ba3259e",
+		"c08ba84fc5cfc88e9e8de9e0e06a23725c1521e8",
 		adjacentRolloutNMinusOneCommit,
 		oldEventID,
 		oldPayloadDigest,

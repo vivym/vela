@@ -2,8 +2,8 @@
 
 Date: 2026-08-27
 
-Status: Repository conformance implemented in this change and fixed-point
-reviewed; local commit receipt pending.
+Status: Repository conformance implemented, fixed-point reviewed, and committed
+in `c08ba84`.
 
 This slice completes direct repository evidence for the committed-Artifact copy
 portion of Acceptance Scenario 19 and advances ADRs 0008, 0012, 0013, and 0015.
