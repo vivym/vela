@@ -212,7 +212,7 @@ func TestCurrentFinanceReconciliationControlFailsClosedAgainstSchema17(t *testin
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build current Finance Reconciliation control: %v\n%s", err, output)
 	}
-	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
 	if !strings.Contains(output, "open Finance Reconciliation database pool") ||
 		!strings.Contains(output, "Finance Reconciliation transaction privilege boundary") {
 		t.Fatalf("current Finance Reconciliation control did not fail closed against schema 17:\n%s", output)
@@ -259,7 +259,7 @@ func TestCurrentBreakGlassControlFailsClosedAgainstSchema16(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build current Break-glass control: %v\n%s", err, output)
 	}
-	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
 	if !strings.Contains(output, "open Platform Operator auth database pool") ||
 		!strings.Contains(output, "Platform Operator authentication transaction privilege boundary") {
 		t.Fatalf("current Break-glass control did not fail closed against schema 16:\n%s", output)
@@ -710,7 +710,7 @@ func TestCurrentRetentionControlFailsClosedAgainstSchema15(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build current retention control: %v\n%s", err, output)
 	}
-	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
 	if !strings.Contains(output, "open retention request database pool") ||
 		!strings.Contains(
 			output,
@@ -3040,7 +3040,36 @@ func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
 	return string(output)
 }
 
+type controlStartupProbeOptions struct {
+	currentDebugDumpRoles bool
+	currentNodeAgentFile  bool
+}
+
 func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) string {
+	t.Helper()
+	return runControlStartupProbe(t, binary, adminDSN, controlStartupProbeOptions{})
+}
+
+func runAdjacentNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) string {
+	t.Helper()
+	return runControlStartupProbe(t, binary, adminDSN, controlStartupProbeOptions{
+		currentNodeAgentFile: true,
+	})
+}
+
+func runCurrentControlStartupProbe(t *testing.T, binary, adminDSN string) string {
+	t.Helper()
+	return runControlStartupProbe(t, binary, adminDSN, controlStartupProbeOptions{
+		currentDebugDumpRoles: true,
+		currentNodeAgentFile:  true,
+	})
+}
+
+func runControlStartupProbe(
+	t *testing.T,
+	binary, adminDSN string,
+	options controlStartupProbeOptions,
+) string {
 	t.Helper()
 	temporary := t.TempDir()
 	webhookKeyringFile := filepath.Join(temporary, "webhook-keyring.json")
@@ -3054,24 +3083,40 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 	); err != nil {
 		t.Fatalf("write N-1 Webhook keyring: %v", err)
 	}
-	nodeIdentity := "slice-29-node"
-	nodeWorkerID := uuid.MustParse("23000000-0000-0000-0000-000000000443")
-	nodeAgentFile := filepath.Join(temporary, "node-agents.json")
-	nodeAgentFixture, err := json.Marshal(map[string]map[string]any{
-		nodeIdentity: {
-			"address":      "127.0.0.1:1",
-			"server_name":  "node-agent.internal",
-			"worker_id":    nodeWorkerID,
-			"worker_epoch": 1,
-			"spiffe_identity": "spiffe://vela.internal/node-agent/" +
-				base64.RawURLEncoding.EncodeToString([]byte(nodeIdentity)) + "/" + nodeWorkerID.String(),
-		},
-	})
-	if err != nil {
-		t.Fatalf("encode N-1 Node Agent endpoint fixture: %v", err)
+	nodeAgentFile := "/missing/remediation-node-agents.json"
+	if options.currentNodeAgentFile {
+		nodeIdentity := "slice-29-node"
+		nodeWorkerID := uuid.MustParse("23000000-0000-0000-0000-000000000443")
+		nodeAgentFile = filepath.Join(temporary, "node-agents.json")
+		nodeAgentFixture, err := json.Marshal(map[string]map[string]any{
+			nodeIdentity: {
+				"address":      "127.0.0.1:1",
+				"server_name":  "node-agent.internal",
+				"worker_id":    nodeWorkerID,
+				"worker_epoch": 1,
+				"spiffe_identity": "spiffe://vela.internal/node-agent/" +
+					base64.RawURLEncoding.EncodeToString([]byte(nodeIdentity)) + "/" + nodeWorkerID.String(),
+			},
+		})
+		if err != nil {
+			t.Fatalf("encode current Node Agent endpoint fixture: %v", err)
+		}
+		if err := os.WriteFile(nodeAgentFile, nodeAgentFixture, 0o600); err != nil {
+			t.Fatalf("write current Node Agent endpoint fixture: %v", err)
+		}
 	}
-	if err := os.WriteFile(nodeAgentFile, nodeAgentFixture, 0o600); err != nil {
-		t.Fatalf("write N-1 Node Agent endpoint fixture: %v", err)
+	debugDumpRequestDatabaseURL := ""
+	debugDumpAuditRequestDatabaseURL := ""
+	if options.currentDebugDumpRoles {
+		debugDumpRequestDatabaseURL = roleDatabaseURL(
+			t, adminDSN, "vela_debug_dump_request_login", "vela-debug-dump-request-password",
+		)
+		debugDumpAuditRequestDatabaseURL = roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_debug_dump_audit_request_login",
+			"vela-debug-dump-audit-request-password",
+		)
 	}
 	caCertificate, caKey, caPEM := issueWorkerTransportTestCA(t)
 	financeCertificate, financeKey := issueWorkerTransportTestCertificate(
@@ -3147,8 +3192,8 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			"vela_retention_request_login",
 			"vela-retention-request-password",
 		),
-		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL":       "",
-		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL": "",
+		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL":       debugDumpRequestDatabaseURL,
+		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL": debugDumpAuditRequestDatabaseURL,
 		"VELA_RETENTION_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_retention_login", "vela-retention-password",
 		),

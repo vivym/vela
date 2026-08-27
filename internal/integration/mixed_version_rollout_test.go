@@ -74,7 +74,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 	nMinusOne := buildNMinusOneBinaries(t, adjacentRolloutNMinusOneCommit)
 	assertAdjacentNMinusOneControlStartupPassed(
 		t,
-		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+		runAdjacentNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
 	)
 
 	oldJobID := uuid.MustParse(runNMinusOneAdmissionProbeWithKey(
@@ -280,7 +280,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 	)
 	assertAdjacentNMinusOneControlStartupPassed(
 		t,
-		runSchedulerNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
+		runAdjacentNMinusOneStartupProbe(t, nMinusOne.Control, database.DSN),
 	)
 	rollbackAdmissionID := uuid.MustParse(runNMinusOneAdmissionProbeWithKey(
 		t,

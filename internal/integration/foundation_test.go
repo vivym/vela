@@ -1989,8 +1989,8 @@ func newPostgres(t *testing.T) testDatabase {
 			wait.ForAll(
 				wait.ForLog("database system is ready to accept connections").
 					WithOccurrence(2).
-					WithStartupTimeout(60*time.Second),
-				wait.ForMappedPort("5432/tcp").WithStartupTimeout(60*time.Second),
+					WithStartupTimeout(2*time.Minute),
+				wait.ForMappedPort("5432/tcp").WithStartupTimeout(2*time.Minute),
 			),
 		),
 	)

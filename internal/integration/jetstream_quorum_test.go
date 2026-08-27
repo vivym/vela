@@ -159,6 +159,7 @@ func TestThreeReplicaJetStreamRequiresQuorumBeforeOutboxMarker(t *testing.T) {
 	if err := cluster.containers[0].Stop(ctx, &stopTimeout); err != nil {
 		t.Fatalf("stop first JetStream replica: %v", err)
 	}
+	waitForReleaseStreamQuorumWithOneReplicaOffline(t, stream, cluster.containers...)
 	secondEvent := submitQuorumEvent(t, database, server.URL, "one-replica-offline")
 	if published, err := publisher.PublishBatch(ctx); err != nil || published != 1 {
 		t.Fatalf("publish with one replica offline = %d, %v", published, err)
@@ -365,6 +366,58 @@ func waitForReleaseStreamCurrent(
 		t.Logf("JetStream recovery replica %d logs:\n%s", index, contents)
 	}
 	t.Fatalf("three-replica stream did not become current: info=%#v error=%v", lastInfo, lastErr)
+}
+
+func waitForReleaseStreamQuorumWithOneReplicaOffline(
+	t *testing.T,
+	stream jetstream.Stream,
+	containers ...testcontainers.Container,
+) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var lastInfo *jetstream.StreamInfo
+	var lastErr error
+	for ctx.Err() == nil {
+		attemptContext, cancelAttempt := context.WithTimeout(ctx, 2*time.Second)
+		information, err := stream.Info(attemptContext)
+		cancelAttempt()
+		lastInfo, lastErr = information, err
+		if err == nil && information.Cluster != nil && information.Cluster.Leader != "" &&
+			len(information.Cluster.Replicas) == 2 {
+			current, offline := 0, 0
+			for _, replica := range information.Cluster.Replicas {
+				if replica.Current {
+					current++
+				}
+				if replica.Offline {
+					offline++
+				}
+			}
+			if current == 1 && offline == 1 {
+				return
+			}
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	for index, container := range containers {
+		logs, err := container.Logs(context.Background())
+		if err != nil {
+			t.Logf("read one-offline JetStream replica %d logs: %v", index, err)
+			continue
+		}
+		contents, err := io.ReadAll(logs)
+		_ = logs.Close()
+		if err != nil {
+			t.Logf("read one-offline JetStream replica %d log contents: %v", index, err)
+			continue
+		}
+		if len(contents) > 8000 {
+			contents = contents[len(contents)-8000:]
+		}
+		t.Logf("one-offline JetStream replica %d logs:\n%s", index, contents)
+	}
+	t.Fatalf("three-replica stream did not retain quorum with one replica offline: info=%#v error=%v", lastInfo, lastErr)
 }
 
 func waitForReleaseConsumerCurrent(t *testing.T, consumer jetstream.Consumer) {
