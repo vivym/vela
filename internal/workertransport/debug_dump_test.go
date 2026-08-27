@@ -222,6 +222,8 @@ func TestConnectCompletesAuthorizedDebugDumpOutsideArtifactFlow(t *testing.T) {
 	}
 	if len(stream.responses) != 2 || stream.responses[0].GetDebugDumpUploadClaim() == nil ||
 		stream.responses[0].GetDebugDumpUploadClaim().GetUploadPart() == nil ||
+		stream.responses[0].GetDebugDumpUploadClaim().GetUploadPart().GetRequiredHeaders()["Host"] != "" ||
+		stream.responses[0].GetDebugDumpUploadClaim().GetUploadPart().GetRequiredHeaders()["X-Amz-Checksum-Sha256"] == "" ||
 		stream.responses[1].GetDebugDumpUploadResult().GetDecision() !=
 			string(workercontrol.DebugDumpUploadRecorded) ||
 		stream.responses[1].GetDebugDumpUploadResult().GetObjectVersionId() != "debug-version-1" {

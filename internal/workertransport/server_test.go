@@ -962,6 +962,19 @@ func (store *recordingArtifactUploadStore) PresignUploadPart(
 	}, nil
 }
 
+func TestTransferableSignedUploadHeadersRejectsMismatchedHost(t *testing.T) {
+	signed := artifactstore.SignedUploadPart{
+		URL: "https://s3.invalid/signed-part",
+		Headers: http.Header{
+			"Host":           []string{"other.invalid"},
+			"Content-Length": []string{"5"},
+		},
+	}
+	if _, err := transferableSignedUploadHeaders(signed); err == nil {
+		t.Fatal("accepted a signed Host that does not match the upload URL")
+	}
+}
+
 func (store *recordingArtifactUploadStore) CompleteMultipartUpload(
 	_ context.Context,
 	upload artifactstore.MultipartUpload,

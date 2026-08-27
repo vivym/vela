@@ -32,23 +32,8 @@ func TestWorkerAgentResumesSameWorkerMultipartAfterProcessLoss(t *testing.T) {
 		t.Fatalf("create exact Assignment: %v", err)
 	}
 
-	minio := newMinIOFixture(t, "vela-worker-process-recovery")
-	minio.enableVersioning(t)
-	if err := minio.store.ValidateBucket(context.Background()); err != nil {
-		t.Fatalf("validate recovery Artifact Store: %v", err)
-	}
-	coordinator := visibleCompletionService(t, fixture.database.DSN)
-	fleetService, err := fleet.NewService(newRolePool(
-		t, fixture.database.DSN, "vela_fleet_login", "vela-fleet-password",
-	))
-	if err != nil {
-		t.Fatalf("create Fleet service: %v", err)
-	}
-	configureTestCapacityPolicies(
-		t, fleetService, uuid.MustParse("00000000-0000-0000-0000-000000000005"),
-	)
-	control := newWorkerTransportTestClient(
-		t, fixture.database, coordinator, minio.store, fleetService,
+	controlFixture := newWorkerRecoveryControlFixture(
+		t, fixture, "vela-worker-process-recovery",
 	)
 
 	recoveryRoot := filepath.Join(t.TempDir(), "recovery")
@@ -59,6 +44,10 @@ func TestWorkerAgentResumesSameWorkerMultipartAfterProcessLoss(t *testing.T) {
 		}
 	}
 	recovery := newWorkerRecoveryConformanceManager(t, recoveryRoot, fixture.worker.ID, 7)
+	agentFixture := workerRecoveryAgentFixture{
+		workerID: fixture.worker.ID, workerEpoch: 7, recovery: recovery,
+		control: controlFixture.control, outputRoot: outputRoot,
+	}
 	attemptRoot := filepath.Join(outputRoot, assignment.AttemptID.String())
 	if err := os.Mkdir(attemptRoot, 0o700); err != nil {
 		t.Fatalf("create Attempt output root: %v", err)
@@ -73,20 +62,12 @@ func TestWorkerAgentResumesSameWorkerMultipartAfterProcessLoss(t *testing.T) {
 		writeWorkerRecoveryOutput(t, attemptRoot, "thumbnail.webp", "THUMBNAIL", thumbnail, "image/webp"),
 	}
 
-	httpUploader, err := workeragent.NewHTTPArtifactPartUploader(
-		workeragent.HTTPArtifactPartUploaderConfig{AllowHTTP: true, Timeout: 30 * time.Second},
-	)
-	if err != nil {
-		t.Fatalf("create Artifact part uploader: %v", err)
-	}
 	processLost := errors.New("simulated Worker Agent process loss")
 	firstUploader := &workerRecoveryPartUploader{
-		delegate: httpUploader, failAtCall: 2, failure: processLost,
+		delegate: controlFixture.uploader, failAtCall: 2, failure: processLost,
 	}
 	firstRunner := &workerRecoveryRunner{outputs: outputs}
-	firstAgent := newWorkerRecoveryConformanceAgent(
-		t, fixture.worker.ID, 7, recovery, control, firstRunner, firstUploader, outputRoot,
-	)
+	firstAgent := agentFixture.newAgent(t, firstRunner, firstUploader)
 	if _, err := firstAgent.RunOnce(context.Background()); !errors.Is(err, processLost) {
 		t.Fatalf("first Worker Agent run error = %v, want process loss", err)
 	}
@@ -102,11 +83,9 @@ func TestWorkerAgentResumesSameWorkerMultipartAfterProcessLoss(t *testing.T) {
 		t.Fatalf("active Local Recovery State after process loss = %d error=%v", len(active), err)
 	}
 
-	resumedUploader := &workerRecoveryPartUploader{delegate: httpUploader}
+	resumedUploader := &workerRecoveryPartUploader{delegate: controlFixture.uploader}
 	resumedRunner := &workerRecoveryRunner{rejectCalls: true}
-	resumedAgent := newWorkerRecoveryConformanceAgent(
-		t, fixture.worker.ID, 7, recovery, control, resumedRunner, resumedUploader, outputRoot,
-	)
+	resumedAgent := agentFixture.newAgent(t, resumedRunner, resumedUploader)
 	result, err := resumedAgent.RunOnce(context.Background())
 	if err != nil {
 		t.Fatalf("resume Worker Agent finalization: %v", err)
@@ -171,29 +150,7 @@ func TestWorkerNodeAndNVMeLossCreatesWholeJobReplacementAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create first Assignment: %v", err)
 	}
-	minio := newMinIOFixture(t, "vela-worker-node-loss")
-	minio.enableVersioning(t)
-	if err := minio.store.ValidateBucket(context.Background()); err != nil {
-		t.Fatalf("validate node-loss Artifact Store: %v", err)
-	}
-	coordinator := visibleCompletionService(t, fixture.database.DSN)
-	fleetService, err := fleet.NewService(newRolePool(
-		t, fixture.database.DSN, "vela_fleet_login", "vela-fleet-password",
-	))
-	if err != nil {
-		t.Fatalf("create Fleet service: %v", err)
-	}
-	poolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
-	configureTestCapacityPolicies(t, fleetService, poolID)
-	firstControl := newWorkerTransportTestClient(
-		t, fixture.database, coordinator, minio.store, fleetService,
-	)
-	uploader, err := workeragent.NewHTTPArtifactPartUploader(
-		workeragent.HTTPArtifactPartUploaderConfig{AllowHTTP: true, Timeout: 30 * time.Second},
-	)
-	if err != nil {
-		t.Fatalf("create Artifact part uploader: %v", err)
-	}
+	controlFixture := newWorkerRecoveryControlFixture(t, fixture, "vela-worker-node-loss")
 
 	firstRecoveryRoot := filepath.Join(t.TempDir(), "first-worker-nvme")
 	firstOutputRoot := filepath.Join(t.TempDir(), "first-worker-outputs")
@@ -205,11 +162,14 @@ func TestWorkerNodeAndNVMeLossCreatesWholeJobReplacementAttempt(t *testing.T) {
 	firstRecovery := newWorkerRecoveryConformanceManager(
 		t, firstRecoveryRoot, fixture.worker.ID, 7,
 	)
+	firstAgentFixture := workerRecoveryAgentFixture{
+		workerID: fixture.worker.ID, workerEpoch: 7, recovery: firstRecovery,
+		control: controlFixture.control, outputRoot: firstOutputRoot,
+	}
 	nodeLost := errors.New("simulated Worker node loss")
 	firstRunner := &workerRecoveryRunner{statusError: nodeLost}
-	firstAgent := newWorkerRecoveryConformanceAgent(
-		t, fixture.worker.ID, 7, firstRecovery, firstControl, firstRunner,
-		&workerRecoveryPartUploader{delegate: uploader}, firstOutputRoot,
+	firstAgent := firstAgentFixture.newAgent(
+		t, firstRunner, &workerRecoveryPartUploader{delegate: controlFixture.uploader},
 	)
 	if _, err := firstAgent.RunOnce(context.Background()); !errors.Is(err, nodeLost) {
 		t.Fatalf("first Worker Agent run error = %v, want node loss", err)
@@ -256,12 +216,14 @@ func TestWorkerNodeAndNVMeLossCreatesWholeJobReplacementAttempt(t *testing.T) {
 	}
 
 	secondWorkerID := uuid.MustParse("30020000-0000-0000-0000-000000000021")
-	secondSPIFFE := "spiffe://vela.internal/worker/h3-node-loss-replacement"
+	secondSPIFFE := mustParseWorkerSPIFFEID(
+		t, "spiffe://vela.internal/worker/h3-node-loss-replacement",
+	)
 	if _, err := fixture.database.Admin.Exec(`
 		INSERT INTO workers (
 			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
 		) VALUES ($1, $2, $3, 1, 'READY', 'HEALTHY')
-	`, secondWorkerID, poolID, secondSPIFFE); err != nil {
+	`, secondWorkerID, controlFixture.poolID, secondSPIFFE.String()); err != nil {
 		t.Fatalf("seed replacement Worker: %v", err)
 	}
 	replacement, err := fixture.service.Acquire(
@@ -284,7 +246,8 @@ func TestWorkerNodeAndNVMeLossCreatesWholeJobReplacementAttempt(t *testing.T) {
 	}
 
 	secondControl := newWorkerTransportTestClientForSPIFFE(
-		t, fixture.database, coordinator, minio.store, secondSPIFFE, fleetService,
+		t, fixture.database, controlFixture.coordinator, controlFixture.uploadStore,
+		secondSPIFFE, controlFixture.fleetService,
 	)
 	secondRecoveryRoot := filepath.Join(t.TempDir(), "replacement-worker-nvme")
 	secondOutputRoot := filepath.Join(t.TempDir(), "replacement-worker-outputs")
@@ -296,6 +259,10 @@ func TestWorkerNodeAndNVMeLossCreatesWholeJobReplacementAttempt(t *testing.T) {
 	secondRecovery := newWorkerRecoveryConformanceManager(
 		t, secondRecoveryRoot, secondWorkerID, 1,
 	)
+	secondAgentFixture := workerRecoveryAgentFixture{
+		workerID: secondWorkerID, workerEpoch: 1, recovery: secondRecovery,
+		control: secondControl, outputRoot: secondOutputRoot,
+	}
 	if handles, err := secondRecovery.ActiveHandles(context.Background()); err != nil || len(handles) != 0 {
 		t.Fatalf("replacement Worker inherited local state: handles=%d error=%v", len(handles), err)
 	}
@@ -314,9 +281,8 @@ func TestWorkerNodeAndNVMeLossCreatesWholeJobReplacementAttempt(t *testing.T) {
 		),
 	}
 	secondRunner := &workerRecoveryRunner{outputs: replacementOutputs}
-	secondAgent := newWorkerRecoveryConformanceAgent(
-		t, secondWorkerID, 1, secondRecovery, secondControl, secondRunner,
-		&workerRecoveryPartUploader{delegate: uploader}, secondOutputRoot,
+	secondAgent := secondAgentFixture.newAgent(
+		t, secondRunner, &workerRecoveryPartUploader{delegate: controlFixture.uploader},
 	)
 	completed, err := secondAgent.RunOnce(context.Background())
 	if err != nil {
@@ -336,10 +302,10 @@ func TestWorkerNodeAndNVMeLossCreatesWholeJobReplacementAttempt(t *testing.T) {
 	}
 
 	var (
-		jobState                  string
-		attempts, lostAttempts    int
-		succeededAttempts, charge int
-		completions               int
+		jobState                       string
+		attempts, lostAttempts         int
+		succeededAttempts, chargeCount int
+		completions                    int
 	)
 	if err := fixture.database.Admin.QueryRow(`
 		SELECT
@@ -352,20 +318,65 @@ func TestWorkerNodeAndNVMeLossCreatesWholeJobReplacementAttempt(t *testing.T) {
 		FROM jobs AS job
 		WHERE job.id = $1
 	`, first.JobID).Scan(
-		&jobState, &attempts, &lostAttempts, &succeededAttempts, &charge, &completions,
+		&jobState, &attempts, &lostAttempts, &succeededAttempts, &chargeCount, &completions,
 	); err != nil {
 		t.Fatalf("read node-loss recompute authority: %v", err)
 	}
 	if jobState != "SUCCEEDED" || attempts != 2 || lostAttempts != 1 ||
-		succeededAttempts != 1 || charge != 1 || completions != 1 {
+		succeededAttempts != 1 || chargeCount != 1 || completions != 1 {
 		t.Fatalf("node-loss recompute authority = Job %s attempts=%d lost=%d succeeded=%d charges=%d completions=%d",
-			jobState, attempts, lostAttempts, succeededAttempts, charge, completions)
+			jobState, attempts, lostAttempts, succeededAttempts, chargeCount, completions)
 	}
 	preserved, err := os.ReadFile(filepath.Join(
 		detachedNVMeRoot, "attempts", first.AttemptID.String(), "dit--latent.state",
 	))
 	if err != nil || string(preserved) != "worker-local-only-state" {
 		t.Fatalf("detached Worker-local state changed or disappeared: %q error=%v", preserved, err)
+	}
+}
+
+type workerRecoveryControlFixture struct {
+	poolID       uuid.UUID
+	coordinator  *workercontrol.Service
+	uploadStore  workertransport.ArtifactUploadStore
+	fleetService *fleet.Service
+	control      *workertransport.Client
+	uploader     workeragent.ArtifactPartUploader
+}
+
+func newWorkerRecoveryControlFixture(
+	t *testing.T,
+	assignment assignmentFixture,
+	bucketName string,
+) workerRecoveryControlFixture {
+	t.Helper()
+	minio := newMinIOFixture(t, bucketName)
+	minio.enableVersioning(t)
+	if err := minio.store.ValidateBucket(context.Background()); err != nil {
+		t.Fatalf("validate Worker recovery Artifact Store: %v", err)
+	}
+	coordinator := visibleCompletionService(t, assignment.database.DSN)
+	fleetService, err := fleet.NewService(newRolePool(
+		t, assignment.database.DSN, "vela_fleet_login", "vela-fleet-password",
+	))
+	if err != nil {
+		t.Fatalf("create Fleet service: %v", err)
+	}
+	poolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
+	configureTestCapacityPolicies(t, fleetService, poolID)
+	uploader, err := workeragent.NewHTTPArtifactPartUploader(
+		workeragent.HTTPArtifactPartUploaderConfig{AllowHTTP: true, Timeout: 30 * time.Second},
+	)
+	if err != nil {
+		t.Fatalf("create Artifact part uploader: %v", err)
+	}
+	return workerRecoveryControlFixture{
+		poolID: poolID, coordinator: coordinator, uploadStore: minio.store,
+		fleetService: fleetService,
+		control: newWorkerTransportTestClient(
+			t, assignment.database, coordinator, minio.store, fleetService,
+		),
+		uploader: uploader,
 	}
 }
 
@@ -425,26 +436,29 @@ func newWorkerRecoveryConformanceManager(
 	return manager
 }
 
-func newWorkerRecoveryConformanceAgent(
+type workerRecoveryAgentFixture struct {
+	workerID    uuid.UUID
+	workerEpoch int64
+	recovery    *workerrecovery.Manager
+	control     *workertransport.Client
+	outputRoot  string
+}
+
+func (fixture workerRecoveryAgentFixture) newAgent(
 	t *testing.T,
-	workerID uuid.UUID,
-	workerEpoch int64,
-	recovery *workerrecovery.Manager,
-	control *workertransport.Client,
 	runner workeragent.Runner,
 	uploader workeragent.ArtifactPartUploader,
-	outputRoot string,
 ) *workeragent.Agent {
 	t.Helper()
 	agent, err := workeragent.New(workeragent.Config{
-		WorkerID: workerID, WorkerEpoch: workerEpoch, Recovery: recovery,
-		Control: control, Runner: runner, HeartbeatInterval: 10 * time.Second,
+		WorkerID: fixture.workerID, WorkerEpoch: fixture.workerEpoch, Recovery: fixture.recovery,
+		Control: fixture.control, Runner: runner, HeartbeatInterval: 10 * time.Second,
 		CapacityReportInterval: time.Minute,
 		ArtifactStoreReachable: func(context.Context) bool { return true },
-		OutputRoot:             outputRoot, OutputOwnerUID: uint32(os.Geteuid()),
+		OutputRoot:             fixture.outputRoot, OutputOwnerUID: uint32(os.Geteuid()),
 		OutputCleanupMaxBytes:    32 << 20,
 		InferenceBackendRevision: "sglang-h3-worker-recovery-conformance",
-		Finalization:             control, PartUploader: uploader, ArtifactPartSize: 5 << 20,
+		Finalization:             fixture.control, PartUploader: uploader, ArtifactPartSize: 5 << 20,
 	})
 	if err != nil {
 		t.Fatalf("create Worker Agent: %v", err)

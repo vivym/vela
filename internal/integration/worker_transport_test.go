@@ -565,7 +565,7 @@ func newWorkerTransportTestClient(
 		database,
 		coordinator,
 		uploadStore,
-		"spiffe://vela.internal/worker/h3-primary-fixture",
+		mustParseWorkerSPIFFEID(t, "spiffe://vela.internal/worker/h3-primary-fixture"),
 		fleetServices...,
 	)
 }
@@ -575,7 +575,7 @@ func newWorkerTransportTestClientForSPIFFE(
 	database testDatabase,
 	coordinator workertransport.WorkerCoordinator,
 	uploadStore workertransport.ArtifactUploadStore,
-	workerSPIFFE string,
+	workerSPIFFEID *url.URL,
 	fleetServices ...workertransport.WorkerFleetService,
 ) *workertransport.Client {
 	t.Helper()
@@ -605,10 +605,6 @@ func newWorkerTransportTestClientForSPIFFE(
 		nil,
 		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	)
-	workerSPIFFEID, err := url.Parse(workerSPIFFE)
-	if err != nil {
-		t.Fatalf("parse Worker SPIFFE ID: %v", err)
-	}
 	clientCertificate, clientKey := issueWorkerTransportTestCertificate(
 		t,
 		caCertificate,
@@ -678,6 +674,15 @@ func newWorkerTransportTestClientForSPIFFE(
 	}
 	t.Cleanup(func() { _ = client.Close() })
 	return client
+}
+
+func mustParseWorkerSPIFFEID(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	id, err := url.Parse(raw)
+	if err != nil || id.Scheme != "spiffe" || id.Host == "" || id.User != nil || id.Fragment != "" {
+		t.Fatalf("parse Worker SPIFFE ID %q: %v", raw, err)
+	}
+	return id
 }
 
 func issueWorkerTransportTestCA(t *testing.T) (*x509.Certificate, *rsa.PrivateKey, []byte) {
