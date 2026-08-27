@@ -2,8 +2,8 @@
 
 Date: 2026-08-27
 
-Status: Repository conformance implemented; validation and fixed-point review
-complete with no unresolved P0-P2 finding; implementation commit pending.
+Status: Repository conformance implemented, validation and fixed-point reviewed,
+and committed in `7c397e9`.
 
 This slice adds the repository authority that can extend the retention of
 non-content operational metadata and financial records beyond their ordinary
