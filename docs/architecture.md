@@ -3,7 +3,7 @@
 | 属性 | 内容 |
 | --- | --- |
 | 状态 | Accepted architecture baseline |
-| 实现状态 | Pre-implementation；Production Gate 未通过前不得承载正式流量 |
+| 实现状态 | Repository implementation in progress；Production Gates 仍为 0/9 PASS，未通过前不得承载正式流量 |
 | 日期 | 2026-08-20 |
 | 首个工作负载 | MiniMax H3 文生视频 |
 | 首发客户 | 通过邀请和线下合同接入的 Customer Organization |

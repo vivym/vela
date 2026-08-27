@@ -13,6 +13,49 @@ import (
 	"github.com/vivym/vela/internal/execution"
 )
 
+type ArtifactBackupReplicationState string
+
+const (
+	ArtifactBackupReplicationStatePENDING   ArtifactBackupReplicationState = "PENDING"
+	ArtifactBackupReplicationStateCOMPLETED ArtifactBackupReplicationState = "COMPLETED"
+	ArtifactBackupReplicationStateCANCELED  ArtifactBackupReplicationState = "CANCELED"
+)
+
+func (e *ArtifactBackupReplicationState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ArtifactBackupReplicationState(s)
+	case string:
+		*e = ArtifactBackupReplicationState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ArtifactBackupReplicationState: %T", src)
+	}
+	return nil
+}
+
+type NullArtifactBackupReplicationState struct {
+	ArtifactBackupReplicationState ArtifactBackupReplicationState `json:"artifact_backup_replication_state"`
+	Valid                          bool                           `json:"valid"` // Valid is true if ArtifactBackupReplicationState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullArtifactBackupReplicationState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ArtifactBackupReplicationState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ArtifactBackupReplicationState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullArtifactBackupReplicationState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ArtifactBackupReplicationState), nil
+}
+
 type ArtifactKind string
 
 const (
@@ -2435,6 +2478,35 @@ type ArtifactAccessGrant struct {
 	RetentionExpiresAt pgtype.Timestamptz `db:"retention_expires_at" json:"retention_expires_at"`
 	RevokedAt          pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
 	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ArtifactBackupReplication struct {
+	ID                    uuid.UUID                      `db:"id" json:"id"`
+	OrganizationID        uuid.UUID                      `db:"organization_id" json:"organization_id"`
+	ProjectID             uuid.UUID                      `db:"project_id" json:"project_id"`
+	JobID                 uuid.UUID                      `db:"job_id" json:"job_id"`
+	ArtifactID            uuid.UUID                      `db:"artifact_id" json:"artifact_id"`
+	SourceObjectKey       string                         `db:"source_object_key" json:"source_object_key"`
+	SourceObjectVersionID string                         `db:"source_object_version_id" json:"source_object_version_id"`
+	SourceSizeBytes       int64                          `db:"source_size_bytes" json:"source_size_bytes"`
+	SourceSha256          []byte                         `db:"source_sha256" json:"source_sha256"`
+	SourceContentType     string                         `db:"source_content_type" json:"source_content_type"`
+	State                 ArtifactBackupReplicationState `db:"state" json:"state"`
+	AttemptCount          int32                          `db:"attempt_count" json:"attempt_count"`
+	NextRetryAt           pgtype.Timestamptz             `db:"next_retry_at" json:"next_retry_at"`
+	LastErrorCode         *string                        `db:"last_error_code" json:"last_error_code"`
+	ClaimID               uuid.NullUUID                  `db:"claim_id" json:"claim_id"`
+	ClaimOwnerID          *string                        `db:"claim_owner_id" json:"claim_owner_id"`
+	ClaimExpiresAt        pgtype.Timestamptz             `db:"claim_expires_at" json:"claim_expires_at"`
+	LastAttemptOwnerID    *string                        `db:"last_attempt_owner_id" json:"last_attempt_owner_id"`
+	BackupObjectVersionID *string                        `db:"backup_object_version_id" json:"backup_object_version_id"`
+	BackupSizeBytes       *int64                         `db:"backup_size_bytes" json:"backup_size_bytes"`
+	BackupSha256          []byte                         `db:"backup_sha256" json:"backup_sha256"`
+	BackupContentType     *string                        `db:"backup_content_type" json:"backup_content_type"`
+	CompletedAt           pgtype.Timestamptz             `db:"completed_at" json:"completed_at"`
+	CanceledAt            pgtype.Timestamptz             `db:"canceled_at" json:"canceled_at"`
+	CreatedAt             pgtype.Timestamptz             `db:"created_at" json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz             `db:"updated_at" json:"updated_at"`
 }
 
 type ArtifactSet struct {

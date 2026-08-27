@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/artifactreplication"
 	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/retention"
@@ -41,10 +42,12 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "debug dump audit request database", missingEnv: "VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL"},
 		{name: "retention database", missingEnv: "VELA_RETENTION_DATABASE_URL"},
 		{name: "off-cluster backup retention database", missingEnv: "VELA_BACKUP_RETENTION_DATABASE_URL"},
+		{name: "Artifact replication database", missingEnv: "VELA_ARTIFACT_REPLICATION_DATABASE_URL"},
 		{name: "Platform Operator auth database", missingEnv: "VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"},
 		{name: "Break-glass request database", missingEnv: "VELA_BREAK_GLASS_REQUEST_DATABASE_URL"},
 		{name: "Break-glass audit database", missingEnv: "VELA_BREAK_GLASS_AUDIT_DATABASE_URL"},
 		{name: "retention Reconciler identity", missingEnv: "VELA_RETENTION_RECONCILER_ID"},
+		{name: "Artifact Replicator identity", missingEnv: "VELA_ARTIFACT_REPLICATION_ID"},
 		{name: "Artifact request database", missingEnv: "VELA_ARTIFACT_REQUEST_DATABASE_URL"},
 		{name: "OIDC issuer", missingEnv: "VELA_OIDC_ISSUER"},
 		{name: "OIDC audience", missingEnv: "VELA_OIDC_AUDIENCE"},
@@ -85,6 +88,10 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Artifact backup S3 bucket", missingEnv: "VELA_ARTIFACT_BACKUP_S3_BUCKET"},
 		{name: "Artifact backup S3 access key", missingEnv: "VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE"},
 		{name: "Artifact backup S3 secret key", missingEnv: "VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE"},
+		{name: "Artifact replication source S3 access key", missingEnv: "VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE"},
+		{name: "Artifact replication source S3 secret key", missingEnv: "VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE"},
+		{name: "Artifact replication backup S3 access key", missingEnv: "VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE"},
+		{name: "Artifact replication backup S3 secret key", missingEnv: "VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE"},
 		{name: "Lease active key", missingEnv: "VELA_LEASE_ACTIVE_KEY_ID"},
 		{name: "Lease keyring", missingEnv: "VELA_LEASE_KEYRING_FILE"},
 		{name: "Artifact validator helper", missingEnv: "VELA_ARTIFACT_VALIDATOR_HELPER_PATH"},
@@ -178,6 +185,10 @@ func setValidConfigEnvironment(t *testing.T) {
 		"postgres://backup-retention.example/vela",
 	)
 	t.Setenv(
+		"VELA_ARTIFACT_REPLICATION_DATABASE_URL",
+		"postgres://artifact-replication.example/vela",
+	)
+	t.Setenv(
 		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL",
 		"postgres://platform-operator-auth.example/vela",
 	)
@@ -190,6 +201,7 @@ func setValidConfigEnvironment(t *testing.T) {
 		"postgres://break-glass-audit.example/vela",
 	)
 	t.Setenv("VELA_RETENTION_RECONCILER_ID", "vela-control-retention-reconciler-1")
+	t.Setenv("VELA_ARTIFACT_REPLICATION_ID", "vela-control-artifact-replicator-1")
 	t.Setenv("VELA_REQUEST_DATABASE_URL", "postgres://request.example/vela")
 	t.Setenv("VELA_ARTIFACT_REQUEST_DATABASE_URL", "postgres://artifact-request.example/vela")
 	t.Setenv("VELA_OIDC_ISSUER", "https://identity.example.com")
@@ -276,6 +288,22 @@ func setValidConfigEnvironment(t *testing.T) {
 		"/run/secrets/backup-s3-secret-access-key",
 	)
 	t.Setenv("VELA_ARTIFACT_BACKUP_S3_PATH_STYLE", "false")
+	t.Setenv(
+		"VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE",
+		"/run/secrets/artifact-replication-source-access-key-id",
+	)
+	t.Setenv(
+		"VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE",
+		"/run/secrets/artifact-replication-source-secret-access-key",
+	)
+	t.Setenv(
+		"VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE",
+		"/run/secrets/artifact-replication-backup-access-key-id",
+	)
+	t.Setenv(
+		"VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE",
+		"/run/secrets/artifact-replication-backup-secret-access-key",
+	)
 	t.Setenv("VELA_LEASE_ACTIVE_KEY_ID", "lease-key-v2")
 	t.Setenv("VELA_LEASE_KEYRING_FILE", "/run/secrets/lease-keyring.json")
 	t.Setenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH", "/usr/local/bin/vela-artifact-validator")
@@ -581,6 +609,72 @@ func TestLoadConfigParsesBoundedRetentionControls(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoadConfigParsesBoundedArtifactReplicationControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load default Artifact replication config: %v", err)
+	}
+	if configuration.artifactReplicationTick != time.Minute ||
+		configuration.artifactReplicationClaimTTL != 20*time.Minute ||
+		configuration.artifactReplicationRetryDelay != 5*time.Minute ||
+		configuration.artifactReplicationTimeout != 15*time.Minute ||
+		configuration.artifactReplicationBatchSize != 10 {
+		t.Fatalf("default Artifact replication controls = %#v", configuration)
+	}
+
+	t.Setenv("VELA_ARTIFACT_REPLICATION_TICK", "10s")
+	t.Setenv("VELA_ARTIFACT_REPLICATION_CLAIM_TTL", "30m")
+	t.Setenv("VELA_ARTIFACT_REPLICATION_RETRY_DELAY", "1m")
+	t.Setenv("VELA_ARTIFACT_REPLICATION_TIMEOUT", "20m")
+	t.Setenv("VELA_ARTIFACT_REPLICATION_BATCH_SIZE", "25")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit Artifact replication config: %v", err)
+	}
+	if configuration.artifactReplicationTick != 10*time.Second ||
+		configuration.artifactReplicationClaimTTL != 30*time.Minute ||
+		configuration.artifactReplicationRetryDelay != time.Minute ||
+		configuration.artifactReplicationTimeout != 20*time.Minute ||
+		configuration.artifactReplicationBatchSize != 25 {
+		t.Fatalf("explicit Artifact replication controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_ARTIFACT_REPLICATION_TICK", value: "0s"},
+		{env: "VELA_ARTIFACT_REPLICATION_TICK", value: "1m1s"},
+		{env: "VELA_ARTIFACT_REPLICATION_CLAIM_TTL", value: "1500ms"},
+		{env: "VELA_ARTIFACT_REPLICATION_CLAIM_TTL", value: "1h1s"},
+		{env: "VELA_ARTIFACT_REPLICATION_RETRY_DELAY", value: "0s"},
+		{env: "VELA_ARTIFACT_REPLICATION_RETRY_DELAY", value: "24h1s"},
+		{env: "VELA_ARTIFACT_REPLICATION_TIMEOUT", value: "1500ms"},
+		{env: "VELA_ARTIFACT_REPLICATION_TIMEOUT", value: "1h1s"},
+		{env: "VELA_ARTIFACT_REPLICATION_BATCH_SIZE", value: "0"},
+		{env: "VELA_ARTIFACT_REPLICATION_BATCH_SIZE", value: "1001"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil ||
+				!strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
+	t.Run("timeout must precede claim expiry", func(t *testing.T) {
+		setValidConfigEnvironment(t)
+		t.Setenv("VELA_ARTIFACT_REPLICATION_TIMEOUT", "20m")
+		t.Setenv("VELA_ARTIFACT_REPLICATION_CLAIM_TTL", "20m")
+		if _, loadErr := loadConfig(); loadErr == nil ||
+			!strings.Contains(loadErr.Error(), "VELA_ARTIFACT_REPLICATION_TIMEOUT") {
+			t.Fatalf("loadConfig error = %v, want timeout/claim ordering rejection", loadErr)
+		}
+	})
 }
 
 func TestReadWebhookKeyringRequiresExactAES256Keys(t *testing.T) {
@@ -947,6 +1041,30 @@ func TestRetentionReconcilerRetriesTransientFailureAndStopsWithContext(t *testin
 	}
 }
 
+func TestArtifactBackupReplicatorRetriesTransientFailureAndStopsWithContext(t *testing.T) {
+	replicator := &testArtifactBackupReplicator{calls: make(chan struct{}, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runArtifactBackupReplicator(ctx, replicator, time.Millisecond, time.Second)
+	}()
+
+	for range 2 {
+		select {
+		case <-replicator.calls:
+		case <-time.After(time.Second):
+			t.Fatal("Artifact backup Replicator did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Artifact backup Replicator did not stop with context")
+	}
+}
+
 type testHierarchicalScheduler struct {
 	invocations atomic.Int32
 	calls       chan struct{}
@@ -966,6 +1084,23 @@ type testWebhookDispatcher struct {
 type testRetentionReconciler struct {
 	invocations atomic.Int32
 	calls       chan struct{}
+}
+
+type testArtifactBackupReplicator struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+}
+
+func (r *testArtifactBackupReplicator) ReplicateBatch(
+	context.Context,
+) (artifactreplication.Result, error) {
+	invocation := r.invocations.Add(1)
+	r.calls <- struct{}{}
+	if invocation == 1 {
+		return artifactreplication.Result{Claimed: 1, Failed: 1},
+			errors.New("transient Artifact replication failure")
+	}
+	return artifactreplication.Result{}, nil
 }
 
 func (r *testRetentionReconciler) ReconcileBatch(context.Context) (retention.ReconcileResult, error) {

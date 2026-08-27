@@ -14,5 +14,10 @@ bound, independently revalidated, and terminally cleaned. Opt-in failure debug
 dumps require exact ProjectAdmin authorization, remain isolated from Artifacts
 and Charge authority, use short-lived exact-version reads with safe audit, and
 expire or delete under retention and Content Deletion (`6603c36`). Policy
-enforcement outside implemented services, off-cluster backup deletion, and
-production object/scratch isolation receipts remain unimplemented.
+enforcement outside implemented services and production object/scratch
+isolation receipts remain unimplemented. Slice 31 adds committed-only
+off-cluster backup deletion and post-authority restore replay. Slice 32 adds
+committed-only exact-version replication, immutable copy evidence, separate
+read/write/delete authorities, response-loss recovery, and serialization with
+Content Deletion. Live object-store/network fault and deployment receipts remain
+Production Gates.

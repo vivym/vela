@@ -35,29 +35,51 @@ labels, CNPG operator compatibility, and an external or three-node S3 Artifact
 Store are deployment gates, not claims made by this repository render.
 
 The CNPG backup and the committed Artifact backup are separate stores and
-credential domains. The application release must provide a login inheriting
-only `vela_backup_retention` plus an independently credentialed, versioned
-off-cluster Artifact bucket:
+credential domains. The application release must provide independent logins
+for replication and deletion, independent PRIMARY-read and backup-write
+credentials for replication, and a third backup read/delete credential for
+retention. The PRIMARY and off-cluster Artifact buckets must both be versioned:
 
 ```text
 VELA_BACKUP_RETENTION_DATABASE_URL=<login bound only to vela_backup_retention>
+VELA_ARTIFACT_REPLICATION_DATABASE_URL=<login bound only to vela_artifact_replication>
+VELA_ARTIFACT_REPLICATION_ID=<stable unique replica identity>
 VELA_ARTIFACT_BACKUP_S3_ENDPOINT=<off-cluster S3-compatible endpoint>
 VELA_ARTIFACT_BACKUP_S3_REGION=<region>
 VELA_ARTIFACT_BACKUP_S3_BUCKET=<versioned committed-Artifact backup bucket>
 VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE=<read/delete credential file>
 VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE=<secret credential file>
 VELA_ARTIFACT_BACKUP_S3_PATH_STYLE=<true|false>
+VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE=<PRIMARY exact-version read-only credential file>
+VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE=<PRIMARY exact-version read-only secret file>
+VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE=<backup conditional-write/current-head credential file>
+VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE=<backup conditional-write/current-head secret file>
+VELA_ARTIFACT_REPLICATION_TICK=1m
+VELA_ARTIFACT_REPLICATION_CLAIM_TTL=20m
+VELA_ARTIFACT_REPLICATION_RETRY_DELAY=5m
+VELA_ARTIFACT_REPLICATION_TIMEOUT=15m
+VELA_ARTIFACT_REPLICATION_BATCH_SIZE=10
 ```
 
 Migration 00028 creates backup deletion targets only for `COMMITTED` Artifacts.
 The backup Reconciler purges every version and delete marker for the exact key;
 the request receipt is not complete until PRIMARY and OFF_CLUSTER_BACKUP targets
-both complete. This repository does not implement the component that copies a
-committed Artifact into the off-cluster bucket. A deployment therefore needs
-separate evidence that replication completes, cannot publish a late copy after
-Content Deletion authority is durable, and remains fenced during restore and
-retention replay. An `ALREADY_ABSENT` deletion receipt proves idempotent cleanup,
-not that a backup copy previously existed.
+both complete. Migration 00029 and the `vela-control` Artifact Replicator create
+an immutable intent only when an Artifact becomes `COMMITTED`, read the frozen
+PRIMARY version, conditionally write the backup, validate a matching current
+backup object after an ambiguous write response, and retain one PostgreSQL row
+lock across storage I/O. Content Deletion updates the same row: deletion first
+cancels the pending copy; copy first commits its backup version before deletion
+can create durable targets and receipts. The operation timeout must remain
+strictly below the claim TTL.
+
+Repository integration tests exercise that contract against PostgreSQL and two
+versioned MinIO buckets. A deployment still needs live evidence for its exact
+network, S3-compatible service, credential policy, process-kill windows, and
+failure-domain separation. In particular, an `ALREADY_ABSENT` deletion receipt
+proves idempotent cleanup, not that a backup copy previously existed, and the
+repository does not claim to eliminate a provider-side write that continues
+after the client process and database connection both fail.
 
 The current backup contract uses CNPG 1.30 native
 `spec.backup.barmanObjectStore`. CNPG removes that native integration in 1.31.

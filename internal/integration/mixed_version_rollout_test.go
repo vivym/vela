@@ -37,7 +37,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 	defer cancel()
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
-	setLeaseRenewalProtocolGate(t, database.Admin, true, "Slice 29 adjacent N-1 rollout")
+	setLeaseRenewalProtocolGate(t, database.Admin, true, "Slice 32 adjacent N-1 rollout")
 	enforceFleetProtocol(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	_ = newFinanceReconciliationService(t, database)
@@ -81,7 +81,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 		t,
 		nMinusOne.AdmissionProbe,
 		database.DSN,
-		"slice-29-old-admission",
+		"slice-32-old-admission",
 	))
 	var oldEventID uuid.UUID
 	var oldPayload []byte
@@ -105,7 +105,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 		t, database.DSN, "vela_scheduler_login", "vela-scheduler-password",
 	)
 	currentScheduler, err := scheduler.NewService(schedulerPool, coordinator, scheduler.Config{
-		SchedulerID:       "slice-29-current-scheduler",
+		SchedulerID:       "slice-32-current-scheduler",
 		ClaimTTL:          30 * time.Second,
 		CandidateAttempts: 1,
 	})
@@ -214,7 +214,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 		ExpectedEpoch: 7,
 		Reason:        "Slice 29 adjacent Worker rollout",
 		Deadline:      time.Now().Add(time.Hour),
-		RequestedBy:   "fleet-controller/slice-29",
+		RequestedBy:   "fleet-controller/slice-32",
 	}
 	draining, err := fleetService.RequestDrain(ctx, drainRequest)
 	if err != nil || draining.State != fleet.DrainDraining ||
@@ -224,7 +224,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 	stillDraining, err := fleetService.ReconcileDrain(
 		ctx,
 		drainID,
-		"fleet-controller/slice-29",
+		"fleet-controller/slice-32",
 	)
 	if err != nil || stillDraining.State != fleet.DrainDraining {
 		t.Fatalf("active Lease completed drain early = %#v error=%v", stillDraining, err)
@@ -249,7 +249,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 	completedDrain, err := fleetService.ReconcileDrain(
 		ctx,
 		drainID,
-		"fleet-controller/slice-29",
+		"fleet-controller/slice-32",
 	)
 	if err != nil || completedDrain.State != fleet.DrainComplete ||
 		completedDrain.WorkerLifecycle != "DRAINING" {
@@ -259,7 +259,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 	rollbackWorkerID := uuid.MustParse("23000000-0000-0000-0000-000000000442")
 	seedSchedulerWorkers(t, database.Admin, poolID, profileID, schedulerWorker{
 		ID:       rollbackWorkerID,
-		SPIFFEID: "spiffe://vela.internal/worker/slice-29-rollback",
+		SPIFFEID: "spiffe://vela.internal/worker/slice-32-rollback",
 		Epoch:    8,
 	})
 	rollbackCapacity, err := fleetService.ObserveCapacity(
@@ -276,7 +276,7 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 		currentServer.URL,
 		testProjectID,
 		testBearerCredential(),
-		"slice-29-current-admission-before-rollback",
+		"slice-32-current-admission-before-rollback",
 	)
 	assertAdjacentNMinusOneControlStartupPassed(
 		t,
@@ -286,14 +286,14 @@ func TestExactNMinusOneMixedVersionRolloutDrainRollbackAndRetainedBacklog(t *tes
 		t,
 		nMinusOne.AdmissionProbe,
 		database.DSN,
-		"slice-29-n-minus-one-admission-after-rollback",
+		"slice-32-n-minus-one-admission-after-rollback",
 	))
 	rollbackDispatch := runNMinusOneSchedulerProbe(
 		t,
 		nMinusOne.SchedulerProbe,
 		database.DSN,
 		poolID,
-		"slice-29-n-minus-one-rollback",
+		"slice-32-n-minus-one-rollback",
 	)
 	if rollbackDispatch.SQLState != "" || !rollbackDispatch.Dispatched ||
 		rollbackDispatch.JobID != rollbackJobID ||
@@ -650,14 +650,14 @@ func (unavailableArtifactUploadStore) CreateMultipartUpload(
 	string,
 	string,
 ) (artifactstore.MultipartUpload, error) {
-	return artifactstore.MultipartUpload{}, errors.New("Artifact upload is outside rollout conformance")
+	return artifactstore.MultipartUpload{}, errors.New("artifact upload is outside rollout conformance")
 }
 
 func (unavailableArtifactUploadStore) ListParts(
 	context.Context,
 	artifactstore.MultipartUpload,
 ) ([]artifactstore.CompletedPart, error) {
-	return nil, errors.New("Artifact upload is outside rollout conformance")
+	return nil, errors.New("artifact upload is outside rollout conformance")
 }
 
 func (unavailableArtifactUploadStore) PresignUploadPart(
@@ -668,7 +668,7 @@ func (unavailableArtifactUploadStore) PresignUploadPart(
 	[sha256.Size]byte,
 	time.Time,
 ) (artifactstore.SignedUploadPart, error) {
-	return artifactstore.SignedUploadPart{}, errors.New("Artifact upload is outside rollout conformance")
+	return artifactstore.SignedUploadPart{}, errors.New("artifact upload is outside rollout conformance")
 }
 
 func (unavailableArtifactUploadStore) CompleteMultipartUpload(
@@ -676,19 +676,19 @@ func (unavailableArtifactUploadStore) CompleteMultipartUpload(
 	artifactstore.MultipartUpload,
 	[]artifactstore.CompletedPart,
 ) (artifactstore.ObjectVersion, error) {
-	return artifactstore.ObjectVersion{}, errors.New("Artifact upload is outside rollout conformance")
+	return artifactstore.ObjectVersion{}, errors.New("artifact upload is outside rollout conformance")
 }
 
 func (unavailableArtifactUploadStore) HeadCurrentVersion(
 	context.Context,
 	string,
 ) (artifactstore.ObjectVersion, error) {
-	return artifactstore.ObjectVersion{}, errors.New("Artifact upload is outside rollout conformance")
+	return artifactstore.ObjectVersion{}, errors.New("artifact upload is outside rollout conformance")
 }
 
 func (unavailableArtifactUploadStore) AbortMultipartUpload(
 	context.Context,
 	artifactstore.MultipartUpload,
 ) error {
-	return errors.New("Artifact upload is outside rollout conformance")
+	return errors.New("artifact upload is outside rollout conformance")
 }

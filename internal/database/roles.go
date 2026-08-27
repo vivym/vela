@@ -25,6 +25,7 @@ const (
 	RoleDebugDumpAuditRequest      Role = "vela_debug_dump_audit_request"
 	RoleRetention                  Role = "vela_retention"
 	RoleBackupRetention            Role = "vela_backup_retention"
+	RoleArtifactReplication        Role = "vela_artifact_replication"
 	RolePlatformOperatorAuth       Role = "vela_platform_operator_auth"
 	RoleBreakGlassRequest          Role = "vela_break_glass_request"
 	RoleRequest                    Role = "vela_request"
@@ -64,6 +65,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleDebugDumpAuditRequest:      {verifyPrivileges: verifyDebugDumpAuditRequestPrivileges},
 	RoleRetention:                  {verifyPrivileges: verifyRetentionPrivileges},
 	RoleBackupRetention:            {verifyPrivileges: verifyBackupRetentionPrivileges},
+	RoleArtifactReplication:        {verifyPrivileges: verifyArtifactReplicationPrivileges},
 	RolePlatformOperatorAuth:       {verifyPrivileges: verifyPlatformOperatorAuthPrivileges},
 	RoleBreakGlassRequest:          {verifyPrivileges: verifyBreakGlassRequestPrivileges},
 	RoleRequest:                    {verifyPrivileges: verifyRequestPrivileges},
@@ -390,6 +392,22 @@ func verifyBackupRetentionPrivileges(
 			"vela_claim_off_cluster_content_deletion_target(text,uuid,integer)",
 			"vela_complete_off_cluster_content_deletion_target(uuid,uuid,uuid,integer)",
 			"vela_retry_off_cluster_content_deletion_target(uuid,uuid,integer,integer)",
+		},
+	})
+}
+
+func verifyArtifactReplicationPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Artifact backup replication",
+		failureLabel:    "Artifact backup replication transaction",
+		functions: []string{
+			"vela_claim_artifact_backup_replication(text,uuid,integer)",
+			"vela_complete_artifact_backup_replication(uuid,uuid,text,bigint,bytea,text)",
+			"vela_retry_artifact_backup_replication(uuid,uuid,integer,text)",
 		},
 	})
 }

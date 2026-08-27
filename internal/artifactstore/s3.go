@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,10 +16,12 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsv4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/aws/smithy-go/middleware"
 )
 
 const (
@@ -33,6 +36,7 @@ const (
 
 var (
 	ErrObjectAlreadyExists      = errors.New("artifact object already exists")
+	ErrObjectVersionNotFound    = errors.New("artifact object version not found")
 	ErrBucketVersioningRequired = errors.New("artifact bucket versioning is required")
 	ErrBucketNotPrivate         = errors.New("artifact bucket must be private")
 )
@@ -539,15 +543,24 @@ func (store *S3) PutIfAbsent(
 		return ObjectVersion{}, errors.New("invalid conditional Artifact object")
 	}
 	checksum := base64.StdEncoding.EncodeToString(digest[:])
-	output, err := store.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:         aws.String(store.bucket),
-		Key:            aws.String(objectKey),
-		Body:           body,
-		ContentLength:  aws.Int64(sizeBytes),
-		ContentType:    aws.String(contentType),
-		ChecksumSHA256: aws.String(checksum),
-		IfNoneMatch:    aws.String("*"),
-	})
+	output, err := store.client.PutObject(
+		ctx,
+		&s3.PutObjectInput{
+			Bucket:         aws.String(store.bucket),
+			Key:            aws.String(objectKey),
+			Body:           body,
+			ContentLength:  aws.Int64(sizeBytes),
+			ContentType:    aws.String(contentType),
+			ChecksumSHA256: aws.String(checksum),
+			IfNoneMatch:    aws.String("*"),
+		},
+		func(options *s3.Options) {
+			options.APIOptions = append(
+				options.APIOptions,
+				allowChecksummedStreamingPut(digest),
+			)
+		},
+	)
 	if err != nil {
 		if isPreconditionFailed(err) {
 			return ObjectVersion{}, ErrObjectAlreadyExists
@@ -558,6 +571,38 @@ func (store *S3) PutIfAbsent(
 		return ObjectVersion{}, errors.New("conditionally created S3 object has no version ID")
 	}
 	return store.headExactVersion(ctx, objectKey, *output.VersionId)
+}
+
+func allowChecksummedStreamingPut(
+	digest [sha256.Size]byte,
+) func(*middleware.Stack) error {
+	return func(stack *middleware.Stack) error {
+		if _, err := stack.Finalize.Remove("AWSChecksum:ComputeInputPayloadChecksum"); err != nil {
+			return err
+		}
+		return stack.Finalize.Insert(
+			&knownPayloadSHA256{encoded: hex.EncodeToString(digest[:])},
+			"ComputePayloadHash",
+			middleware.Before,
+		)
+	}
+}
+
+type knownPayloadSHA256 struct {
+	encoded string
+}
+
+func (hash *knownPayloadSHA256) ID() string {
+	return "VelaKnownPayloadSHA256"
+}
+
+func (hash *knownPayloadSHA256) HandleFinalize(
+	ctx context.Context,
+	input middleware.FinalizeInput,
+	next middleware.FinalizeHandler,
+) (middleware.FinalizeOutput, middleware.Metadata, error) {
+	ctx = awsv4.SetPayloadHash(ctx, hash.encoded)
+	return next.HandleFinalize(ctx, input)
 }
 
 func (store *S3) ReadExactVersion(
@@ -575,6 +620,9 @@ func (store *S3) ReadExactVersion(
 		ChecksumMode: types.ChecksumModeEnabled,
 	})
 	if err != nil {
+		if isAPIErrorCode(err, "NoSuchKey", "NoSuchVersion", "NotFound", "404") {
+			return nil, fmt.Errorf("%w: %v", ErrObjectVersionNotFound, err)
+		}
 		return nil, fmt.Errorf("read exact S3 Artifact version: %w", err)
 	}
 	if output.Body == nil || output.VersionId == nil || *output.VersionId != versionID ||

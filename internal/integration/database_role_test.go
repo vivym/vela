@@ -86,6 +86,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_backup_retention_login",
 		"vela-backup-retention-password",
 	)
+	artifactReplicationPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_artifact_replication_login",
+		"vela-artifact-replication-password",
+	)
 	platformOperatorAuthPool := newRolePool(
 		t,
 		database.DSN,
@@ -145,6 +151,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_debug_dump_audit_request_login",
 		"vela_retention_login",
 		"vela_backup_retention_login",
+		"vela_artifact_replication_login",
 		"vela_platform_operator_auth_login",
 		"vela_break_glass_request_login",
 	} {
@@ -153,6 +160,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_finance_reconciliation_owner",
 			"vela_organization_reporting_owner",
 			"vela_retention_owner",
+			"vela_artifact_replication_owner",
 			"vela_break_glass_owner",
 			"vela_fleet_owner",
 			"vela_quorum_guard_owner",
@@ -209,6 +217,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			role: veladb.RoleBackupRetention,
 		},
 		{
+			name: "Artifact backup replication", pool: artifactReplicationPool,
+			role: veladb.RoleArtifactReplication,
+		},
+		{
 			name: "Platform Operator auth", pool: platformOperatorAuthPool,
 			role: veladb.RolePlatformOperatorAuth,
 		},
@@ -251,6 +263,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_debug_dump_request"},
 		{name: "vela_debug_dump_audit_request"},
 		{name: "vela_backup_retention"},
+		{name: "vela_artifact_replication"},
+		{name: "vela_artifact_replication_owner", bypassRLS: true},
 		{name: "vela_break_glass_owner", bypassRLS: true},
 		{name: "vela_finance_reconciliation"},
 		{name: "vela_scheduler_inbox"},
@@ -298,6 +312,21 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{
 			signature: "vela_retry_off_cluster_content_deletion_target(uuid,uuid,integer,integer)",
 			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_claim_artifact_backup_replication(text,uuid,integer)",
+			owner:     "vela_artifact_replication_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_complete_artifact_backup_replication(uuid,uuid,text,bigint,bytea,text)",
+			owner:     "vela_artifact_replication_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_retry_artifact_backup_replication(uuid,uuid,integer,text)",
+			owner:     "vela_artifact_replication_owner",
 			proconfig: "search_path=pg_catalog, public",
 		},
 		{
@@ -797,6 +826,48 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		).Scan(&count)
 		if !isPermissionDenied(err) {
 			t.Fatalf("retention runtime direct %s read error = %v, want permission denied", relation, err)
+		}
+	}
+	for operation, statement := range map[string]string{
+		"read":   "SELECT count(*) FROM artifact_backup_replications",
+		"mutate": "UPDATE artifact_backup_replications SET updated_at = updated_at",
+	} {
+		if _, err := artifactReplicationPool.Exec(
+			context.Background(), statement,
+		); !isPermissionDenied(err) {
+			t.Fatalf(
+				"Artifact backup replication runtime direct table %s error = %v, want permission denied",
+				operation,
+				err,
+			)
+		}
+	}
+	for _, functionCall := range []string{
+		"SELECT * FROM vela_claim_off_cluster_content_deletion_target('', gen_random_uuid(), 1)",
+		"SELECT vela_complete_off_cluster_content_deletion_target(gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 0)",
+		"SELECT vela_retry_off_cluster_content_deletion_target(gen_random_uuid(), gen_random_uuid(), 1, 1)",
+	} {
+		if _, err := artifactReplicationPool.Exec(
+			context.Background(), functionCall,
+		); !isPermissionDenied(err) {
+			t.Fatalf(
+				"Artifact backup replication runtime backup-deletion call error = %v, want permission denied",
+				err,
+			)
+		}
+	}
+	for _, functionCall := range []string{
+		"SELECT * FROM vela_claim_artifact_backup_replication('', gen_random_uuid(), 1)",
+		"SELECT vela_complete_artifact_backup_replication(gen_random_uuid(), gen_random_uuid(), '', 1, decode(repeat('00', 32), 'hex'), '')",
+		"SELECT vela_retry_artifact_backup_replication(gen_random_uuid(), gen_random_uuid(), 1, 'STORAGE_OPERATION_FAILED')",
+	} {
+		if _, err := backupRetentionPool.Exec(
+			context.Background(), functionCall,
+		); !isPermissionDenied(err) {
+			t.Fatalf(
+				"off-cluster backup retention runtime replication call error = %v, want permission denied",
+				err,
+			)
 		}
 	}
 	for _, runtime := range []struct {

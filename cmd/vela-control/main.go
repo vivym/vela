@@ -27,6 +27,7 @@ import (
 	"github.com/vivym/vela/internal/admission"
 	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/artifactcleanup"
+	"github.com/vivym/vela/internal/artifactreplication"
 	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/artifactvalidator"
 	"github.com/vivym/vela/internal/billingexport"
@@ -85,6 +86,11 @@ const (
 	defaultRetentionClaimTTL                    = time.Minute
 	defaultRetentionRetryDelay                  = 5 * time.Minute
 	defaultRetentionBatchSize                   = 100
+	defaultArtifactReplicationTick              = time.Minute
+	defaultArtifactReplicationClaimTTL          = 20 * time.Minute
+	defaultArtifactReplicationRetryDelay        = 5 * time.Minute
+	defaultArtifactReplicationTimeout           = 15 * time.Minute
+	defaultArtifactReplicationBatchSize         = 10
 	defaultExecutionLeaseTTL                    = 2 * time.Minute
 	defaultWorkerLostGrace                      = 30 * time.Second
 	defaultArtifactInspectionTimeout            = 30 * time.Second
@@ -96,131 +102,142 @@ const (
 )
 
 type config struct {
-	httpAddress                       string
-	workerGRPCAddress                 string
-	workerGRPCTLSCertFile             string
-	workerGRPCTLSKeyFile              string
-	workerGRPCClientCAFile            string
-	fleetGRPCAddress                  string
-	fleetGRPCTLSCertFile              string
-	fleetGRPCTLSKeyFile               string
-	fleetGRPCClientCAFile             string
-	fleetDatabaseURL                  string
-	fleetControllerSPIFFEIdentity     string
-	fleetControllerActorIdentity      string
-	authDatabaseURL                   string
-	humanAuthDatabaseURL              string
-	humanMembershipAuthDatabaseURL    string
-	identityRequestDatabaseURL        string
-	humanMembershipRequestDatabaseURL string
-	organizationBillingDatabaseURL    string
-	organizationAuditDatabaseURL      string
-	retentionRequestDatabaseURL       string
-	debugDumpRequestDatabaseURL       string
-	debugDumpAuditRequestDatabaseURL  string
-	retentionDatabaseURL              string
-	backupRetentionDatabaseURL        string
-	platformOperatorAuthDatabaseURL   string
-	breakGlassRequestDatabaseURL      string
-	breakGlassAuditDatabaseURL        string
-	retentionReconcilerID             string
-	retentionTick                     time.Duration
-	retentionClaimTTL                 time.Duration
-	retentionRetryDelay               time.Duration
-	retentionBatchSize                int
-	requestDatabaseURL                string
-	artifactRequestDatabaseURL        string
-	cancelDatabaseURL                 string
-	internalDatabaseURL               string
-	remediationDatabaseURL            string
-	remediationActorIdentity          string
-	remediationNodeAgentsFile         string
-	remediationTLSCertFile            string
-	remediationTLSKeyFile             string
-	remediationTLSRootCAFile          string
-	remediationTick                   time.Duration
-	remediationBatch                  int
-	schedulerDatabaseURL              string
-	schedulerInboxDatabaseURL         string
-	schedulerID                       string
-	schedulerTick                     time.Duration
-	schedulerClaimTTL                 time.Duration
-	schedulerCandidateAttempts        int
-	billingDatabaseURL                string
-	financeReconciliationDatabaseURL  string
-	financeReconciliationAddress      string
-	financeReconciliationTLSCertFile  string
-	financeReconciliationTLSKeyFile   string
-	financeReconciliationClientCAFile string
-	webhookRequestDatabaseURL         string
-	webhookDatabaseURL                string
-	webhookEncryptionActiveKeyID      string
-	webhookEncryptionKeyringFile      string
-	webhookDispatcherID               string
-	webhookTick                       time.Duration
-	webhookClaimTTL                   time.Duration
-	webhookHTTPTimeout                time.Duration
-	webhookBatchSize                  int32
-	invoiceExporterID                 string
-	invoiceExportEndpoint             string
-	invoiceExportTokenFile            string
-	invoiceExportTick                 time.Duration
-	invoiceExportClaimTTL             time.Duration
-	invoiceExportRetryDelay           time.Duration
-	invoiceExportHTTPTimeout          time.Duration
-	invoiceExportBatchSize            int32
-	credentialPepper                  []byte
-	oidcIssuer                        string
-	oidcAudience                      string
-	oidcJWKSURL                       string
-	platformOIDCIssuer                string
-	platformOIDCAudience              string
-	platformOIDCJWKSURL               string
-	natsURL                           string
-	natsCredentials                   string
-	natsRootCA                        string
-	natsOutboxAccountPublicKey        string
-	natsOutboxAccountSignerPublicKeys string
-	natsOutboxUserPublicKeys          string
-	natsSchedulerCredentials          string
-	natsSchedulerUserPublicKeys       string
-	natsClientCert                    string
-	natsClientKey                     string
-	publisherBatchSize                int32
-	publisherTick                     time.Duration
-	cancellationTick                  time.Duration
-	finalizationTick                  time.Duration
-	failureTick                       time.Duration
-	artifactCleanupTick               time.Duration
-	artifactS3Endpoint                string
-	artifactS3Region                  string
-	artifactS3Bucket                  string
-	artifactS3AccessKeyFile           string
-	artifactS3SecretKeyFile           string
-	artifactS3PathStyle               bool
-	artifactBackupS3Endpoint          string
-	artifactBackupS3Region            string
-	artifactBackupS3Bucket            string
-	artifactBackupS3AccessKeyFile     string
-	artifactBackupS3SecretKeyFile     string
-	artifactBackupS3PathStyle         bool
-	leaseActiveKeyID                  string
-	leaseKeyringFile                  string
-	executionLeaseTTL                 time.Duration
-	workerLostGrace                   time.Duration
-	artifactValidatorHelper           string
-	artifactFFprobePath               string
-	artifactSandboxRoot               string
-	artifactSpoolDirectory            string
-	artifactFFprobeVersion            string
-	artifactValidatorRevision         string
-	artifactInspectionTimeout         time.Duration
-	artifactMaxInputBytes             int64
-	artifactMaxProbeBytes             int64
-	artifactMaxStderrBytes            int64
-	artifactReconcilerID              string
-	artifactOrphanMinimumAge          time.Duration
-	artifactCleanupBatch              int
+	httpAddress                            string
+	workerGRPCAddress                      string
+	workerGRPCTLSCertFile                  string
+	workerGRPCTLSKeyFile                   string
+	workerGRPCClientCAFile                 string
+	fleetGRPCAddress                       string
+	fleetGRPCTLSCertFile                   string
+	fleetGRPCTLSKeyFile                    string
+	fleetGRPCClientCAFile                  string
+	fleetDatabaseURL                       string
+	fleetControllerSPIFFEIdentity          string
+	fleetControllerActorIdentity           string
+	authDatabaseURL                        string
+	humanAuthDatabaseURL                   string
+	humanMembershipAuthDatabaseURL         string
+	identityRequestDatabaseURL             string
+	humanMembershipRequestDatabaseURL      string
+	organizationBillingDatabaseURL         string
+	organizationAuditDatabaseURL           string
+	retentionRequestDatabaseURL            string
+	debugDumpRequestDatabaseURL            string
+	debugDumpAuditRequestDatabaseURL       string
+	retentionDatabaseURL                   string
+	backupRetentionDatabaseURL             string
+	artifactReplicationDatabaseURL         string
+	platformOperatorAuthDatabaseURL        string
+	breakGlassRequestDatabaseURL           string
+	breakGlassAuditDatabaseURL             string
+	retentionReconcilerID                  string
+	retentionTick                          time.Duration
+	retentionClaimTTL                      time.Duration
+	retentionRetryDelay                    time.Duration
+	retentionBatchSize                     int
+	artifactReplicationID                  string
+	artifactReplicationTick                time.Duration
+	artifactReplicationClaimTTL            time.Duration
+	artifactReplicationRetryDelay          time.Duration
+	artifactReplicationTimeout             time.Duration
+	artifactReplicationBatchSize           int
+	requestDatabaseURL                     string
+	artifactRequestDatabaseURL             string
+	cancelDatabaseURL                      string
+	internalDatabaseURL                    string
+	remediationDatabaseURL                 string
+	remediationActorIdentity               string
+	remediationNodeAgentsFile              string
+	remediationTLSCertFile                 string
+	remediationTLSKeyFile                  string
+	remediationTLSRootCAFile               string
+	remediationTick                        time.Duration
+	remediationBatch                       int
+	schedulerDatabaseURL                   string
+	schedulerInboxDatabaseURL              string
+	schedulerID                            string
+	schedulerTick                          time.Duration
+	schedulerClaimTTL                      time.Duration
+	schedulerCandidateAttempts             int
+	billingDatabaseURL                     string
+	financeReconciliationDatabaseURL       string
+	financeReconciliationAddress           string
+	financeReconciliationTLSCertFile       string
+	financeReconciliationTLSKeyFile        string
+	financeReconciliationClientCAFile      string
+	webhookRequestDatabaseURL              string
+	webhookDatabaseURL                     string
+	webhookEncryptionActiveKeyID           string
+	webhookEncryptionKeyringFile           string
+	webhookDispatcherID                    string
+	webhookTick                            time.Duration
+	webhookClaimTTL                        time.Duration
+	webhookHTTPTimeout                     time.Duration
+	webhookBatchSize                       int32
+	invoiceExporterID                      string
+	invoiceExportEndpoint                  string
+	invoiceExportTokenFile                 string
+	invoiceExportTick                      time.Duration
+	invoiceExportClaimTTL                  time.Duration
+	invoiceExportRetryDelay                time.Duration
+	invoiceExportHTTPTimeout               time.Duration
+	invoiceExportBatchSize                 int32
+	credentialPepper                       []byte
+	oidcIssuer                             string
+	oidcAudience                           string
+	oidcJWKSURL                            string
+	platformOIDCIssuer                     string
+	platformOIDCAudience                   string
+	platformOIDCJWKSURL                    string
+	natsURL                                string
+	natsCredentials                        string
+	natsRootCA                             string
+	natsOutboxAccountPublicKey             string
+	natsOutboxAccountSignerPublicKeys      string
+	natsOutboxUserPublicKeys               string
+	natsSchedulerCredentials               string
+	natsSchedulerUserPublicKeys            string
+	natsClientCert                         string
+	natsClientKey                          string
+	publisherBatchSize                     int32
+	publisherTick                          time.Duration
+	cancellationTick                       time.Duration
+	finalizationTick                       time.Duration
+	failureTick                            time.Duration
+	artifactCleanupTick                    time.Duration
+	artifactS3Endpoint                     string
+	artifactS3Region                       string
+	artifactS3Bucket                       string
+	artifactS3AccessKeyFile                string
+	artifactS3SecretKeyFile                string
+	artifactS3PathStyle                    bool
+	artifactBackupS3Endpoint               string
+	artifactBackupS3Region                 string
+	artifactBackupS3Bucket                 string
+	artifactBackupS3AccessKeyFile          string
+	artifactBackupS3SecretKeyFile          string
+	artifactBackupS3PathStyle              bool
+	artifactReplicationSourceAccessKeyFile string
+	artifactReplicationSourceSecretKeyFile string
+	artifactReplicationBackupAccessKeyFile string
+	artifactReplicationBackupSecretKeyFile string
+	leaseActiveKeyID                       string
+	leaseKeyringFile                       string
+	executionLeaseTTL                      time.Duration
+	workerLostGrace                        time.Duration
+	artifactValidatorHelper                string
+	artifactFFprobePath                    string
+	artifactSandboxRoot                    string
+	artifactSpoolDirectory                 string
+	artifactFFprobeVersion                 string
+	artifactValidatorRevision              string
+	artifactInspectionTimeout              time.Duration
+	artifactMaxInputBytes                  int64
+	artifactMaxProbeBytes                  int64
+	artifactMaxStderrBytes                 int64
+	artifactReconcilerID                   string
+	artifactOrphanMinimumAge               time.Duration
+	artifactCleanupBatch                   int
 }
 
 type cancellationStopReconciler interface {
@@ -254,6 +271,10 @@ type webhookDispatcher interface {
 
 type contentRetentionReconciler interface {
 	ReconcileBatch(context.Context) (retention.ReconcileResult, error)
+}
+
+type artifactBackupReplicator interface {
+	ReplicateBatch(context.Context) (artifactreplication.Result, error)
 }
 
 var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
@@ -457,6 +478,16 @@ func run() error {
 		return fmt.Errorf("open off-cluster backup retention database pool: %w", err)
 	}
 	defer backupRetentionPool.Close()
+	artifactReplicationPool, err := openPool(
+		ctx,
+		configuration.artifactReplicationDatabaseURL,
+		2,
+		veladb.RoleArtifactReplication,
+	)
+	if err != nil {
+		return fmt.Errorf("open Artifact backup replication database pool: %w", err)
+	}
+	defer artifactReplicationPool.Close()
 	fleetPool, err := openPool(ctx, configuration.fleetDatabaseURL, 10, veladb.RoleFleet)
 	if err != nil {
 		return fmt.Errorf("open Fleet database pool: %w", err)
@@ -661,6 +692,25 @@ func run() error {
 	artifactBackupStore, err := openArtifactBackupStore(ctx, configuration)
 	if err != nil {
 		return err
+	}
+	artifactReplicationSourceStore, artifactReplicationBackupStore, err :=
+		openArtifactReplicationStores(ctx, configuration)
+	if err != nil {
+		return err
+	}
+	artifactReplicator, err := artifactreplication.New(
+		artifactReplicationPool,
+		artifactReplicationSourceStore,
+		artifactReplicationBackupStore,
+		artifactreplication.Config{
+			InstanceID: configuration.artifactReplicationID,
+			BatchSize:  configuration.artifactReplicationBatchSize,
+			ClaimTTL:   configuration.artifactReplicationClaimTTL,
+			RetryDelay: configuration.artifactReplicationRetryDelay,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure Artifact backup Replicator: %w", err)
 	}
 	retentionReconciler, err := retention.NewReconciler(
 		retentionPool,
@@ -1003,6 +1053,16 @@ func run() error {
 		defer close(retentionDone)
 		runRetentionReconciler(ctx, retentionReconciler, configuration.retentionTick)
 	}()
+	artifactReplicationDone := make(chan struct{})
+	go func() {
+		defer close(artifactReplicationDone)
+		runArtifactBackupReplicator(
+			ctx,
+			artifactReplicator,
+			configuration.artifactReplicationTick,
+			configuration.artifactReplicationTimeout,
+		)
+	}()
 	remediationDone := make(chan struct{})
 	go func() {
 		defer close(remediationDone)
@@ -1159,6 +1219,11 @@ func run() error {
 		return errors.New("retention Reconciler did not stop before shutdown deadline")
 	}
 	select {
+	case <-artifactReplicationDone:
+	case <-shutdownContext.Done():
+		return errors.New("artifact backup Replicator did not stop before shutdown deadline")
+	}
+	select {
 	case <-remediationDone:
 	case <-shutdownContext.Done():
 		return errors.New("remediation dispatcher did not stop before shutdown deadline")
@@ -1201,6 +1266,7 @@ func loadConfig() (config, error) {
 		debugDumpAuditRequestDatabaseURL:  os.Getenv("VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL"),
 		retentionDatabaseURL:              os.Getenv("VELA_RETENTION_DATABASE_URL"),
 		backupRetentionDatabaseURL:        os.Getenv("VELA_BACKUP_RETENTION_DATABASE_URL"),
+		artifactReplicationDatabaseURL:    os.Getenv("VELA_ARTIFACT_REPLICATION_DATABASE_URL"),
 		platformOperatorAuthDatabaseURL:   os.Getenv("VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"),
 		breakGlassRequestDatabaseURL:      os.Getenv("VELA_BREAK_GLASS_REQUEST_DATABASE_URL"),
 		breakGlassAuditDatabaseURL:        os.Getenv("VELA_BREAK_GLASS_AUDIT_DATABASE_URL"),
@@ -1209,6 +1275,12 @@ func loadConfig() (config, error) {
 		retentionClaimTTL:                 defaultRetentionClaimTTL,
 		retentionRetryDelay:               defaultRetentionRetryDelay,
 		retentionBatchSize:                defaultRetentionBatchSize,
+		artifactReplicationID:             os.Getenv("VELA_ARTIFACT_REPLICATION_ID"),
+		artifactReplicationTick:           defaultArtifactReplicationTick,
+		artifactReplicationClaimTTL:       defaultArtifactReplicationClaimTTL,
+		artifactReplicationRetryDelay:     defaultArtifactReplicationRetryDelay,
+		artifactReplicationTimeout:        defaultArtifactReplicationTimeout,
+		artifactReplicationBatchSize:      defaultArtifactReplicationBatchSize,
 		requestDatabaseURL:                os.Getenv("VELA_REQUEST_DATABASE_URL"),
 		artifactRequestDatabaseURL:        os.Getenv("VELA_ARTIFACT_REQUEST_DATABASE_URL"),
 		oidcIssuer:                        os.Getenv("VELA_OIDC_ISSUER"),
@@ -1276,116 +1348,134 @@ func loadConfig() (config, error) {
 		artifactBackupS3Bucket:            os.Getenv("VELA_ARTIFACT_BACKUP_S3_BUCKET"),
 		artifactBackupS3AccessKeyFile:     os.Getenv("VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE"),
 		artifactBackupS3SecretKeyFile:     os.Getenv("VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE"),
-		publisherBatchSize:                defaultPublisherBatch,
-		publisherTick:                     defaultPublisherTick,
-		cancellationTick:                  defaultCancellationReconciliationTick,
-		finalizationTick:                  defaultFinalizationReconciliationTick,
-		failureTick:                       defaultFailureReconciliationTick,
-		artifactCleanupTick:               defaultArtifactCleanupTick,
-		leaseActiveKeyID:                  os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
-		leaseKeyringFile:                  os.Getenv("VELA_LEASE_KEYRING_FILE"),
-		executionLeaseTTL:                 defaultExecutionLeaseTTL,
-		workerLostGrace:                   defaultWorkerLostGrace,
-		artifactValidatorHelper:           os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
-		artifactFFprobePath:               os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
-		artifactSandboxRoot:               os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
-		artifactSpoolDirectory:            os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
-		artifactFFprobeVersion:            os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
-		artifactValidatorRevision:         os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
-		artifactInspectionTimeout:         defaultArtifactInspectionTimeout,
-		artifactMaxInputBytes:             defaultArtifactMaxInputBytes,
-		artifactMaxProbeBytes:             defaultArtifactMaxProbeBytes,
-		artifactMaxStderrBytes:            defaultArtifactMaxStderrBytes,
-		artifactReconcilerID:              os.Getenv("VELA_ARTIFACT_RECONCILER_ID"),
-		artifactOrphanMinimumAge:          defaultArtifactOrphanMinimumAge,
-		artifactCleanupBatch:              defaultArtifactCleanupBatch,
+		artifactReplicationSourceAccessKeyFile: os.Getenv(
+			"VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE",
+		),
+		artifactReplicationSourceSecretKeyFile: os.Getenv(
+			"VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE",
+		),
+		artifactReplicationBackupAccessKeyFile: os.Getenv(
+			"VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE",
+		),
+		artifactReplicationBackupSecretKeyFile: os.Getenv(
+			"VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE",
+		),
+		publisherBatchSize:        defaultPublisherBatch,
+		publisherTick:             defaultPublisherTick,
+		cancellationTick:          defaultCancellationReconciliationTick,
+		finalizationTick:          defaultFinalizationReconciliationTick,
+		failureTick:               defaultFailureReconciliationTick,
+		artifactCleanupTick:       defaultArtifactCleanupTick,
+		leaseActiveKeyID:          os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
+		leaseKeyringFile:          os.Getenv("VELA_LEASE_KEYRING_FILE"),
+		executionLeaseTTL:         defaultExecutionLeaseTTL,
+		workerLostGrace:           defaultWorkerLostGrace,
+		artifactValidatorHelper:   os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
+		artifactFFprobePath:       os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
+		artifactSandboxRoot:       os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
+		artifactSpoolDirectory:    os.Getenv("VELA_ARTIFACT_SPOOL_DIRECTORY"),
+		artifactFFprobeVersion:    os.Getenv("VELA_ARTIFACT_FFPROBE_VERSION"),
+		artifactValidatorRevision: os.Getenv("VELA_ARTIFACT_VALIDATOR_REVISION"),
+		artifactInspectionTimeout: defaultArtifactInspectionTimeout,
+		artifactMaxInputBytes:     defaultArtifactMaxInputBytes,
+		artifactMaxProbeBytes:     defaultArtifactMaxProbeBytes,
+		artifactMaxStderrBytes:    defaultArtifactMaxStderrBytes,
+		artifactReconcilerID:      os.Getenv("VELA_ARTIFACT_RECONCILER_ID"),
+		artifactOrphanMinimumAge:  defaultArtifactOrphanMinimumAge,
+		artifactCleanupBatch:      defaultArtifactCleanupBatch,
 	}
 	for name, value := range map[string]string{
-		"VELA_AUTH_DATABASE_URL":                         configuration.authDatabaseURL,
-		"VELA_HUMAN_AUTH_DATABASE_URL":                   configuration.humanAuthDatabaseURL,
-		"VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL":        configuration.humanMembershipAuthDatabaseURL,
-		"VELA_IDENTITY_REQUEST_DATABASE_URL":             configuration.identityRequestDatabaseURL,
-		"VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL":     configuration.humanMembershipRequestDatabaseURL,
-		"VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL": configuration.organizationBillingDatabaseURL,
-		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL":   configuration.organizationAuditDatabaseURL,
-		"VELA_RETENTION_REQUEST_DATABASE_URL":            configuration.retentionRequestDatabaseURL,
-		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL":           configuration.debugDumpRequestDatabaseURL,
-		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL":     configuration.debugDumpAuditRequestDatabaseURL,
-		"VELA_RETENTION_DATABASE_URL":                    configuration.retentionDatabaseURL,
-		"VELA_BACKUP_RETENTION_DATABASE_URL":             configuration.backupRetentionDatabaseURL,
-		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL":       configuration.platformOperatorAuthDatabaseURL,
-		"VELA_BREAK_GLASS_REQUEST_DATABASE_URL":          configuration.breakGlassRequestDatabaseURL,
-		"VELA_BREAK_GLASS_AUDIT_DATABASE_URL":            configuration.breakGlassAuditDatabaseURL,
-		"VELA_RETENTION_RECONCILER_ID":                   configuration.retentionReconcilerID,
-		"VELA_REQUEST_DATABASE_URL":                      configuration.requestDatabaseURL,
-		"VELA_ARTIFACT_REQUEST_DATABASE_URL":             configuration.artifactRequestDatabaseURL,
-		"VELA_OIDC_ISSUER":                               configuration.oidcIssuer,
-		"VELA_OIDC_AUDIENCE":                             configuration.oidcAudience,
-		"VELA_OIDC_JWKS_URL":                             configuration.oidcJWKSURL,
-		"VELA_PLATFORM_OIDC_ISSUER":                      configuration.platformOIDCIssuer,
-		"VELA_PLATFORM_OIDC_AUDIENCE":                    configuration.platformOIDCAudience,
-		"VELA_PLATFORM_OIDC_JWKS_URL":                    configuration.platformOIDCJWKSURL,
-		"VELA_CANCEL_DATABASE_URL":                       configuration.cancelDatabaseURL,
-		"VELA_INTERNAL_DATABASE_URL":                     configuration.internalDatabaseURL,
-		"VELA_REMEDIATION_DATABASE_URL":                  configuration.remediationDatabaseURL,
-		"VELA_REMEDIATION_ACTOR_IDENTITY":                configuration.remediationActorIdentity,
-		"VELA_REMEDIATION_NODE_AGENTS_FILE":              configuration.remediationNodeAgentsFile,
-		"VELA_REMEDIATION_TLS_CERT_FILE":                 configuration.remediationTLSCertFile,
-		"VELA_REMEDIATION_TLS_KEY_FILE":                  configuration.remediationTLSKeyFile,
-		"VELA_REMEDIATION_TLS_ROOT_CA_FILE":              configuration.remediationTLSRootCAFile,
-		"VELA_SCHEDULER_DATABASE_URL":                    configuration.schedulerDatabaseURL,
-		"VELA_SCHEDULER_INBOX_DATABASE_URL":              configuration.schedulerInboxDatabaseURL,
-		"VELA_SCHEDULER_ID":                              configuration.schedulerID,
-		"VELA_BILLING_DATABASE_URL":                      configuration.billingDatabaseURL,
-		"VELA_FINANCE_RECONCILIATION_DATABASE_URL":       configuration.financeReconciliationDatabaseURL,
-		"VELA_FINANCE_RECONCILIATION_ADDR":               configuration.financeReconciliationAddress,
-		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE":   configuration.financeReconciliationTLSCertFile,
-		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":    configuration.financeReconciliationTLSKeyFile,
-		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":     configuration.financeReconciliationClientCAFile,
-		"VELA_WEBHOOK_REQUEST_DATABASE_URL":              configuration.webhookRequestDatabaseURL,
-		"VELA_WEBHOOK_DATABASE_URL":                      configuration.webhookDatabaseURL,
-		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":          configuration.webhookEncryptionActiveKeyID,
-		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":           configuration.webhookEncryptionKeyringFile,
-		"VELA_WEBHOOK_DISPATCHER_ID":                     configuration.webhookDispatcherID,
-		"VELA_INVOICE_EXPORTER_ID":                       configuration.invoiceExporterID,
-		"VELA_INVOICE_EXPORT_ENDPOINT":                   configuration.invoiceExportEndpoint,
-		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":          configuration.invoiceExportTokenFile,
-		"VELA_NATS_URL":                                  configuration.natsURL,
-		"VELA_NATS_CREDENTIALS_FILE":                     configuration.natsCredentials,
-		"VELA_NATS_ROOT_CA_FILE":                         configuration.natsRootCA,
-		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":            configuration.natsOutboxAccountPublicKey,
-		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS":    configuration.natsOutboxAccountSignerPublicKeys,
-		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":              configuration.natsOutboxUserPublicKeys,
-		"VELA_NATS_SCHEDULER_CREDENTIALS_FILE":           configuration.natsSchedulerCredentials,
-		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS":           configuration.natsSchedulerUserPublicKeys,
-		"VELA_ARTIFACT_S3_ENDPOINT":                      configuration.artifactS3Endpoint,
-		"VELA_ARTIFACT_S3_REGION":                        configuration.artifactS3Region,
-		"VELA_ARTIFACT_S3_BUCKET":                        configuration.artifactS3Bucket,
-		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":            configuration.artifactS3AccessKeyFile,
-		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":        configuration.artifactS3SecretKeyFile,
-		"VELA_ARTIFACT_BACKUP_S3_ENDPOINT":               configuration.artifactBackupS3Endpoint,
-		"VELA_ARTIFACT_BACKUP_S3_REGION":                 configuration.artifactBackupS3Region,
-		"VELA_ARTIFACT_BACKUP_S3_BUCKET":                 configuration.artifactBackupS3Bucket,
-		"VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE":     configuration.artifactBackupS3AccessKeyFile,
-		"VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE": configuration.artifactBackupS3SecretKeyFile,
-		"VELA_LEASE_ACTIVE_KEY_ID":                       configuration.leaseActiveKeyID,
-		"VELA_LEASE_KEYRING_FILE":                        configuration.leaseKeyringFile,
-		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":            configuration.artifactValidatorHelper,
-		"VELA_ARTIFACT_FFPROBE_PATH":                     configuration.artifactFFprobePath,
-		"VELA_ARTIFACT_SANDBOX_ROOT":                     configuration.artifactSandboxRoot,
-		"VELA_ARTIFACT_SPOOL_DIRECTORY":                  configuration.artifactSpoolDirectory,
-		"VELA_ARTIFACT_FFPROBE_VERSION":                  configuration.artifactFFprobeVersion,
-		"VELA_ARTIFACT_VALIDATOR_REVISION":               configuration.artifactValidatorRevision,
-		"VELA_ARTIFACT_RECONCILER_ID":                    configuration.artifactReconcilerID,
-		"VELA_WORKER_GRPC_TLS_CERT_FILE":                 configuration.workerGRPCTLSCertFile,
-		"VELA_WORKER_GRPC_TLS_KEY_FILE":                  configuration.workerGRPCTLSKeyFile,
-		"VELA_WORKER_GRPC_CLIENT_CA_FILE":                configuration.workerGRPCClientCAFile,
-		"VELA_FLEET_DATABASE_URL":                        configuration.fleetDatabaseURL,
-		"VELA_FLEET_GRPC_TLS_CERT_FILE":                  configuration.fleetGRPCTLSCertFile,
-		"VELA_FLEET_GRPC_TLS_KEY_FILE":                   configuration.fleetGRPCTLSKeyFile,
-		"VELA_FLEET_GRPC_CLIENT_CA_FILE":                 configuration.fleetGRPCClientCAFile,
-		"VELA_FLEET_CONTROLLER_SPIFFE_ID":                configuration.fleetControllerSPIFFEIdentity,
-		"VELA_FLEET_CONTROLLER_ACTOR_IDENTITY":           configuration.fleetControllerActorIdentity,
+		"VELA_AUTH_DATABASE_URL":                                     configuration.authDatabaseURL,
+		"VELA_HUMAN_AUTH_DATABASE_URL":                               configuration.humanAuthDatabaseURL,
+		"VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL":                    configuration.humanMembershipAuthDatabaseURL,
+		"VELA_IDENTITY_REQUEST_DATABASE_URL":                         configuration.identityRequestDatabaseURL,
+		"VELA_HUMAN_MEMBERSHIP_REQUEST_DATABASE_URL":                 configuration.humanMembershipRequestDatabaseURL,
+		"VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL":             configuration.organizationBillingDatabaseURL,
+		"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL":               configuration.organizationAuditDatabaseURL,
+		"VELA_RETENTION_REQUEST_DATABASE_URL":                        configuration.retentionRequestDatabaseURL,
+		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL":                       configuration.debugDumpRequestDatabaseURL,
+		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL":                 configuration.debugDumpAuditRequestDatabaseURL,
+		"VELA_RETENTION_DATABASE_URL":                                configuration.retentionDatabaseURL,
+		"VELA_BACKUP_RETENTION_DATABASE_URL":                         configuration.backupRetentionDatabaseURL,
+		"VELA_ARTIFACT_REPLICATION_DATABASE_URL":                     configuration.artifactReplicationDatabaseURL,
+		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL":                   configuration.platformOperatorAuthDatabaseURL,
+		"VELA_BREAK_GLASS_REQUEST_DATABASE_URL":                      configuration.breakGlassRequestDatabaseURL,
+		"VELA_BREAK_GLASS_AUDIT_DATABASE_URL":                        configuration.breakGlassAuditDatabaseURL,
+		"VELA_RETENTION_RECONCILER_ID":                               configuration.retentionReconcilerID,
+		"VELA_ARTIFACT_REPLICATION_ID":                               configuration.artifactReplicationID,
+		"VELA_REQUEST_DATABASE_URL":                                  configuration.requestDatabaseURL,
+		"VELA_ARTIFACT_REQUEST_DATABASE_URL":                         configuration.artifactRequestDatabaseURL,
+		"VELA_OIDC_ISSUER":                                           configuration.oidcIssuer,
+		"VELA_OIDC_AUDIENCE":                                         configuration.oidcAudience,
+		"VELA_OIDC_JWKS_URL":                                         configuration.oidcJWKSURL,
+		"VELA_PLATFORM_OIDC_ISSUER":                                  configuration.platformOIDCIssuer,
+		"VELA_PLATFORM_OIDC_AUDIENCE":                                configuration.platformOIDCAudience,
+		"VELA_PLATFORM_OIDC_JWKS_URL":                                configuration.platformOIDCJWKSURL,
+		"VELA_CANCEL_DATABASE_URL":                                   configuration.cancelDatabaseURL,
+		"VELA_INTERNAL_DATABASE_URL":                                 configuration.internalDatabaseURL,
+		"VELA_REMEDIATION_DATABASE_URL":                              configuration.remediationDatabaseURL,
+		"VELA_REMEDIATION_ACTOR_IDENTITY":                            configuration.remediationActorIdentity,
+		"VELA_REMEDIATION_NODE_AGENTS_FILE":                          configuration.remediationNodeAgentsFile,
+		"VELA_REMEDIATION_TLS_CERT_FILE":                             configuration.remediationTLSCertFile,
+		"VELA_REMEDIATION_TLS_KEY_FILE":                              configuration.remediationTLSKeyFile,
+		"VELA_REMEDIATION_TLS_ROOT_CA_FILE":                          configuration.remediationTLSRootCAFile,
+		"VELA_SCHEDULER_DATABASE_URL":                                configuration.schedulerDatabaseURL,
+		"VELA_SCHEDULER_INBOX_DATABASE_URL":                          configuration.schedulerInboxDatabaseURL,
+		"VELA_SCHEDULER_ID":                                          configuration.schedulerID,
+		"VELA_BILLING_DATABASE_URL":                                  configuration.billingDatabaseURL,
+		"VELA_FINANCE_RECONCILIATION_DATABASE_URL":                   configuration.financeReconciliationDatabaseURL,
+		"VELA_FINANCE_RECONCILIATION_ADDR":                           configuration.financeReconciliationAddress,
+		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE":               configuration.financeReconciliationTLSCertFile,
+		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":                configuration.financeReconciliationTLSKeyFile,
+		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":                 configuration.financeReconciliationClientCAFile,
+		"VELA_WEBHOOK_REQUEST_DATABASE_URL":                          configuration.webhookRequestDatabaseURL,
+		"VELA_WEBHOOK_DATABASE_URL":                                  configuration.webhookDatabaseURL,
+		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":                      configuration.webhookEncryptionActiveKeyID,
+		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":                       configuration.webhookEncryptionKeyringFile,
+		"VELA_WEBHOOK_DISPATCHER_ID":                                 configuration.webhookDispatcherID,
+		"VELA_INVOICE_EXPORTER_ID":                                   configuration.invoiceExporterID,
+		"VELA_INVOICE_EXPORT_ENDPOINT":                               configuration.invoiceExportEndpoint,
+		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":                      configuration.invoiceExportTokenFile,
+		"VELA_NATS_URL":                                              configuration.natsURL,
+		"VELA_NATS_CREDENTIALS_FILE":                                 configuration.natsCredentials,
+		"VELA_NATS_ROOT_CA_FILE":                                     configuration.natsRootCA,
+		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":                        configuration.natsOutboxAccountPublicKey,
+		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS":                configuration.natsOutboxAccountSignerPublicKeys,
+		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":                          configuration.natsOutboxUserPublicKeys,
+		"VELA_NATS_SCHEDULER_CREDENTIALS_FILE":                       configuration.natsSchedulerCredentials,
+		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS":                       configuration.natsSchedulerUserPublicKeys,
+		"VELA_ARTIFACT_S3_ENDPOINT":                                  configuration.artifactS3Endpoint,
+		"VELA_ARTIFACT_S3_REGION":                                    configuration.artifactS3Region,
+		"VELA_ARTIFACT_S3_BUCKET":                                    configuration.artifactS3Bucket,
+		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":                        configuration.artifactS3AccessKeyFile,
+		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":                    configuration.artifactS3SecretKeyFile,
+		"VELA_ARTIFACT_BACKUP_S3_ENDPOINT":                           configuration.artifactBackupS3Endpoint,
+		"VELA_ARTIFACT_BACKUP_S3_REGION":                             configuration.artifactBackupS3Region,
+		"VELA_ARTIFACT_BACKUP_S3_BUCKET":                             configuration.artifactBackupS3Bucket,
+		"VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE":                 configuration.artifactBackupS3AccessKeyFile,
+		"VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE":             configuration.artifactBackupS3SecretKeyFile,
+		"VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE":     configuration.artifactReplicationSourceAccessKeyFile,
+		"VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE": configuration.artifactReplicationSourceSecretKeyFile,
+		"VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE":     configuration.artifactReplicationBackupAccessKeyFile,
+		"VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE": configuration.artifactReplicationBackupSecretKeyFile,
+		"VELA_LEASE_ACTIVE_KEY_ID":                                   configuration.leaseActiveKeyID,
+		"VELA_LEASE_KEYRING_FILE":                                    configuration.leaseKeyringFile,
+		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":                        configuration.artifactValidatorHelper,
+		"VELA_ARTIFACT_FFPROBE_PATH":                                 configuration.artifactFFprobePath,
+		"VELA_ARTIFACT_SANDBOX_ROOT":                                 configuration.artifactSandboxRoot,
+		"VELA_ARTIFACT_SPOOL_DIRECTORY":                              configuration.artifactSpoolDirectory,
+		"VELA_ARTIFACT_FFPROBE_VERSION":                              configuration.artifactFFprobeVersion,
+		"VELA_ARTIFACT_VALIDATOR_REVISION":                           configuration.artifactValidatorRevision,
+		"VELA_ARTIFACT_RECONCILER_ID":                                configuration.artifactReconcilerID,
+		"VELA_WORKER_GRPC_TLS_CERT_FILE":                             configuration.workerGRPCTLSCertFile,
+		"VELA_WORKER_GRPC_TLS_KEY_FILE":                              configuration.workerGRPCTLSKeyFile,
+		"VELA_WORKER_GRPC_CLIENT_CA_FILE":                            configuration.workerGRPCClientCAFile,
+		"VELA_FLEET_DATABASE_URL":                                    configuration.fleetDatabaseURL,
+		"VELA_FLEET_GRPC_TLS_CERT_FILE":                              configuration.fleetGRPCTLSCertFile,
+		"VELA_FLEET_GRPC_TLS_KEY_FILE":                               configuration.fleetGRPCTLSKeyFile,
+		"VELA_FLEET_GRPC_CLIENT_CA_FILE":                             configuration.fleetGRPCClientCAFile,
+		"VELA_FLEET_CONTROLLER_SPIFFE_ID":                            configuration.fleetControllerSPIFFEIdentity,
+		"VELA_FLEET_CONTROLLER_ACTOR_IDENTITY":                       configuration.fleetControllerActorIdentity,
 	} {
 		if value == "" {
 			return config{}, fmt.Errorf("%s is required", name)
@@ -1482,6 +1572,47 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_RETENTION_BATCH_SIZE must be in 1..1000")
 		}
 		configuration.retentionBatchSize = batchSize
+	}
+	if value := os.Getenv("VELA_ARTIFACT_REPLICATION_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_ARTIFACT_REPLICATION_TICK must be in (0, 1m]")
+		}
+		configuration.artifactReplicationTick = tick
+	}
+	if value := os.Getenv("VELA_ARTIFACT_REPLICATION_CLAIM_TTL"); value != "" {
+		claimTTL, err := time.ParseDuration(value)
+		if err != nil || claimTTL < time.Second || claimTTL > time.Hour ||
+			claimTTL%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_ARTIFACT_REPLICATION_CLAIM_TTL must be in [1s, 1h]")
+		}
+		configuration.artifactReplicationClaimTTL = claimTTL
+	}
+	if value := os.Getenv("VELA_ARTIFACT_REPLICATION_RETRY_DELAY"); value != "" {
+		retryDelay, err := time.ParseDuration(value)
+		if err != nil || retryDelay < time.Second || retryDelay > 24*time.Hour ||
+			retryDelay%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_ARTIFACT_REPLICATION_RETRY_DELAY must be in [1s, 24h]")
+		}
+		configuration.artifactReplicationRetryDelay = retryDelay
+	}
+	if value := os.Getenv("VELA_ARTIFACT_REPLICATION_TIMEOUT"); value != "" {
+		timeout, err := time.ParseDuration(value)
+		if err != nil || timeout < time.Second || timeout > time.Hour ||
+			timeout%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_ARTIFACT_REPLICATION_TIMEOUT must be in [1s, 1h]")
+		}
+		configuration.artifactReplicationTimeout = timeout
+	}
+	if configuration.artifactReplicationTimeout >= configuration.artifactReplicationClaimTTL {
+		return config{}, errors.New("VELA_ARTIFACT_REPLICATION_TIMEOUT must be less than VELA_ARTIFACT_REPLICATION_CLAIM_TTL")
+	}
+	if value := os.Getenv("VELA_ARTIFACT_REPLICATION_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.Atoi(value)
+		if err != nil || batchSize < 1 || batchSize > 1000 {
+			return config{}, errors.New("environment variable VELA_ARTIFACT_REPLICATION_BATCH_SIZE must be in 1..1000")
+		}
+		configuration.artifactReplicationBatchSize = batchSize
 	}
 	if value := os.Getenv("VELA_SCHEDULER_TICK"); value != "" {
 		tick, err := time.ParseDuration(value)
@@ -1785,6 +1916,75 @@ func openArtifactBackupStore(ctx context.Context, configuration config) (*artifa
 		return nil, fmt.Errorf("validate off-cluster Artifact backup bucket: %w", err)
 	}
 	return store, nil
+}
+
+func openArtifactReplicationStores(
+	ctx context.Context,
+	configuration config,
+) (*artifactstore.S3, *artifactstore.S3, error) {
+	sourceAccessKeyID, err := readSecretFile(
+		configuration.artifactReplicationSourceAccessKeyFile,
+		"Artifact replication source S3 access key ID",
+		1024,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	sourceSecretAccessKey, err := readSecretFile(
+		configuration.artifactReplicationSourceSecretKeyFile,
+		"Artifact replication source S3 secret access key",
+		4096,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	backupAccessKeyID, err := readSecretFile(
+		configuration.artifactReplicationBackupAccessKeyFile,
+		"Artifact replication backup S3 access key ID",
+		1024,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	backupSecretAccessKey, err := readSecretFile(
+		configuration.artifactReplicationBackupSecretKeyFile,
+		"Artifact replication backup S3 secret access key",
+		4096,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	source, err := artifactstore.NewS3(artifactstore.S3Config{
+		Endpoint:        configuration.artifactS3Endpoint,
+		Region:          configuration.artifactS3Region,
+		Bucket:          configuration.artifactS3Bucket,
+		AccessKeyID:     sourceAccessKeyID,
+		SecretAccessKey: sourceSecretAccessKey,
+		UsePathStyle:    configuration.artifactS3PathStyle,
+		SignedGETTTL:    artifactstore.MaxSignedGETTTL,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("configure Artifact replication source Store: %w", err)
+	}
+	if err := source.ValidateBucket(ctx); err != nil {
+		return nil, nil, fmt.Errorf("validate Artifact replication source bucket: %w", err)
+	}
+	backup, err := artifactstore.NewS3(artifactstore.S3Config{
+		Endpoint:        configuration.artifactBackupS3Endpoint,
+		Region:          configuration.artifactBackupS3Region,
+		Bucket:          configuration.artifactBackupS3Bucket,
+		AccessKeyID:     backupAccessKeyID,
+		SecretAccessKey: backupSecretAccessKey,
+		UsePathStyle:    configuration.artifactBackupS3PathStyle,
+		SignedGETTTL:    artifactstore.MaxSignedGETTTL,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("configure Artifact replication backup Store: %w", err)
+	}
+	if err := backup.ValidateBucket(ctx); err != nil {
+		return nil, nil, fmt.Errorf("validate Artifact replication backup bucket: %w", err)
+	}
+	return source, backup, nil
 }
 
 func openWorkerCoordinator(
@@ -2339,6 +2539,42 @@ func runRetentionReconciler(
 				"request_content_expired", result.RequestContentExpired,
 				"content_deletion_requests_created",
 				result.ContentDeletionRequestsCreated,
+				"claimed", result.Claimed,
+				"completed", result.Completed,
+				"failed", result.Failed,
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func runArtifactBackupReplicator(
+	ctx context.Context,
+	replicator artifactBackupReplicator,
+	interval time.Duration,
+	operationTimeout time.Duration,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		operationContext, cancel := context.WithTimeout(ctx, operationTimeout)
+		result, err := replicator.ReplicateBatch(operationContext)
+		cancel()
+		if err != nil && !errors.Is(err, context.Canceled) &&
+			!errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("Artifact backup replication incomplete", "error", err)
+		} else if err == nil && result.Claimed > 0 {
+			slog.Info(
+				"Artifacts replicated to off-cluster backup",
 				"claimed", result.Claimed,
 				"completed", result.Completed,
 				"failed", result.Failed,

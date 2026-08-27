@@ -8,8 +8,10 @@ in `4f7aafe`.
 This slice completes direct repository evidence for Acceptance Scenario 19 and
 advances ADRs 0008, 0012, 0013, and 0015. It exercises separate PostgreSQL
 roles, versioned primary and backup MinIO buckets, and a real PostgreSQL
-dump/restore. It does not implement Artifact replication, perform live WAL PITR,
-or create a Production Gate Launch Receipt.
+dump/restore. At the Slice 31 boundary it did not implement Artifact
+replication; Slice 32 adds that repository component and is documented in
+`0032-committed-artifact-backup-replication-conformance.md`. Neither slice
+performs live WAL PITR or creates a Production Gate Launch Receipt.
 
 ## Scope
 
@@ -61,11 +63,12 @@ receipts, object-store outcomes, or restored replay results.
 
 ## Recovery and replication boundary
 
-The repository does not contain the component that copies a committed Artifact
-to the off-cluster bucket. A backup deletion target and an `ALREADY_ABSENT`
-outcome therefore do not prove that replication occurred. Production needs a
-separate lifecycle receipt proving the copy, its failure-domain independence,
-and the fence that prevents a late replication after deletion authority.
+Slice 32 adds the repository component that copies a committed Artifact to the
+off-cluster bucket and records immutable lifecycle evidence. A backup deletion
+target and an `ALREADY_ABSENT` outcome alone still do not prove that replication
+occurred. Production needs a live lifecycle receipt proving the copy, its
+failure-domain independence, and the fence under real process/network/storage
+faults that prevents a late replication after deletion authority.
 
 This release also has no external deletion journal. The restore test deliberately
 selects a point after the protected Content Deletion request committed. Restoring

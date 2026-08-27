@@ -79,6 +79,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_backup_retention') THEN
         CREATE ROLE vela_backup_retention NOLOGIN;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_artifact_replication') THEN
+        CREATE ROLE vela_artifact_replication NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_artifact_replication_owner') THEN
+        CREATE ROLE vela_artifact_replication_owner NOLOGIN BYPASSRLS;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_retention_owner') THEN
         CREATE ROLE vela_retention_owner NOLOGIN BYPASSRLS;
     END IF;
@@ -150,6 +156,10 @@ ALTER ROLE vela_retention
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_backup_retention
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_artifact_replication
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_artifact_replication_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_retention_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_platform_operator_auth

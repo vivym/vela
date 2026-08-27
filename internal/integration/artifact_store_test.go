@@ -246,7 +246,7 @@ func TestS3ArtifactStoreResumesMultipartAndReadsExactPrivateVersion(t *testing.T
 		ctx,
 		manifestKey,
 		"application/json",
-		bytes.NewReader(manifest),
+		bytes.NewBuffer(manifest),
 		int64(len(manifest)),
 		manifestDigest,
 	); err != nil {
