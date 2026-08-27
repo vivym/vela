@@ -40,6 +40,7 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "debug dump request database", missingEnv: "VELA_DEBUG_DUMP_REQUEST_DATABASE_URL"},
 		{name: "debug dump audit request database", missingEnv: "VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL"},
 		{name: "retention database", missingEnv: "VELA_RETENTION_DATABASE_URL"},
+		{name: "off-cluster backup retention database", missingEnv: "VELA_BACKUP_RETENTION_DATABASE_URL"},
 		{name: "Platform Operator auth database", missingEnv: "VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"},
 		{name: "Break-glass request database", missingEnv: "VELA_BREAK_GLASS_REQUEST_DATABASE_URL"},
 		{name: "Break-glass audit database", missingEnv: "VELA_BREAK_GLASS_AUDIT_DATABASE_URL"},
@@ -79,6 +80,11 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Artifact S3 bucket", missingEnv: "VELA_ARTIFACT_S3_BUCKET"},
 		{name: "Artifact S3 access key", missingEnv: "VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"},
 		{name: "Artifact S3 secret key", missingEnv: "VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE"},
+		{name: "Artifact backup S3 endpoint", missingEnv: "VELA_ARTIFACT_BACKUP_S3_ENDPOINT"},
+		{name: "Artifact backup S3 region", missingEnv: "VELA_ARTIFACT_BACKUP_S3_REGION"},
+		{name: "Artifact backup S3 bucket", missingEnv: "VELA_ARTIFACT_BACKUP_S3_BUCKET"},
+		{name: "Artifact backup S3 access key", missingEnv: "VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE"},
+		{name: "Artifact backup S3 secret key", missingEnv: "VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE"},
 		{name: "Lease active key", missingEnv: "VELA_LEASE_ACTIVE_KEY_ID"},
 		{name: "Lease keyring", missingEnv: "VELA_LEASE_KEYRING_FILE"},
 		{name: "Artifact validator helper", missingEnv: "VELA_ARTIFACT_VALIDATOR_HELPER_PATH"},
@@ -168,6 +174,10 @@ func setValidConfigEnvironment(t *testing.T) {
 	)
 	t.Setenv("VELA_RETENTION_DATABASE_URL", "postgres://retention.example/vela")
 	t.Setenv(
+		"VELA_BACKUP_RETENTION_DATABASE_URL",
+		"postgres://backup-retention.example/vela",
+	)
+	t.Setenv(
 		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL",
 		"postgres://platform-operator-auth.example/vela",
 	)
@@ -254,6 +264,18 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE", "/run/secrets/s3-access-key-id")
 	t.Setenv("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE", "/run/secrets/s3-secret-access-key")
 	t.Setenv("VELA_ARTIFACT_S3_PATH_STYLE", "false")
+	t.Setenv("VELA_ARTIFACT_BACKUP_S3_ENDPOINT", "https://s3-backup.example")
+	t.Setenv("VELA_ARTIFACT_BACKUP_S3_REGION", "us-east-1")
+	t.Setenv("VELA_ARTIFACT_BACKUP_S3_BUCKET", "vela-artifacts-backup")
+	t.Setenv(
+		"VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE",
+		"/run/secrets/backup-s3-access-key-id",
+	)
+	t.Setenv(
+		"VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE",
+		"/run/secrets/backup-s3-secret-access-key",
+	)
+	t.Setenv("VELA_ARTIFACT_BACKUP_S3_PATH_STYLE", "false")
 	t.Setenv("VELA_LEASE_ACTIVE_KEY_ID", "lease-key-v2")
 	t.Setenv("VELA_LEASE_KEYRING_FILE", "/run/secrets/lease-keyring.json")
 	t.Setenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH", "/usr/local/bin/vela-artifact-validator")
@@ -314,6 +336,17 @@ func TestLoadConfigPreservesIndependentFleetMaintenanceBoundary(t *testing.T) {
 			"spiffe://vela.internal/fleet-controller/primary" ||
 		configuration.fleetControllerActorIdentity != "fleet-controller/primary" {
 		t.Fatalf("Fleet maintenance configuration = %#v", configuration)
+	}
+}
+
+func TestLoadConfigRejectsInvalidArtifactBackupS3PathStyle(t *testing.T) {
+	setValidConfigEnvironment(t)
+	t.Setenv("VELA_ARTIFACT_BACKUP_S3_PATH_STYLE", "sometimes")
+
+	_, err := loadConfig()
+	if err == nil || err.Error() !=
+		"environment variable VELA_ARTIFACT_BACKUP_S3_PATH_STYLE must be true or false" {
+		t.Fatalf("load invalid Artifact backup S3 path style error = %v", err)
 	}
 }
 

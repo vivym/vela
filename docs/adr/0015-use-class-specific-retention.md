@@ -13,6 +13,10 @@ Worker scratch, Local Recovery State, and opt-in debug dumps have repository
 expiry or deletion paths. Debug dumps expire at the immutable 72-hour
 authorization ceiling, remain separate from customer Artifacts, and use
 exact-version or multipart-prefix cleanup with immutable receipts under either
-retention or Customer Content Deletion (`6603c36`). Off-cluster backup
-expiry/replay, metadata and financial lifecycle enforcement, legal holds, live
-production scratch lifecycle evidence, and Launch Receipts remain unimplemented.
+retention or Customer Content Deletion (`6603c36`). Migration 00028 adds
+committed-only OFF_CLUSTER_BACKUP targets, an independent least-privilege
+Reconciler, all-version/delete-marker purge, two-tier immutable receipts, and
+PostgreSQL restore replay after deletion authority is durable. Artifact backup
+replication and its deletion race, restore points before deletion authority,
+metadata and financial lifecycle enforcement, legal holds, live production
+scratch lifecycle evidence, and Launch Receipts remain unimplemented.

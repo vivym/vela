@@ -80,6 +80,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_retention_login",
 		"vela-retention-password",
 	)
+	backupRetentionPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_backup_retention_login",
+		"vela-backup-retention-password",
+	)
 	platformOperatorAuthPool := newRolePool(
 		t,
 		database.DSN,
@@ -138,6 +144,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_debug_dump_request_login",
 		"vela_debug_dump_audit_request_login",
 		"vela_retention_login",
+		"vela_backup_retention_login",
 		"vela_platform_operator_auth_login",
 		"vela_break_glass_request_login",
 	} {
@@ -198,6 +205,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		},
 		{name: "retention", pool: retentionPool, role: veladb.RoleRetention},
 		{
+			name: "off-cluster backup retention", pool: backupRetentionPool,
+			role: veladb.RoleBackupRetention,
+		},
+		{
 			name: "Platform Operator auth", pool: platformOperatorAuthPool,
 			role: veladb.RolePlatformOperatorAuth,
 		},
@@ -239,6 +250,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_break_glass_audit_request"},
 		{name: "vela_debug_dump_request"},
 		{name: "vela_debug_dump_audit_request"},
+		{name: "vela_backup_retention"},
 		{name: "vela_break_glass_owner", bypassRLS: true},
 		{name: "vela_finance_reconciliation"},
 		{name: "vela_scheduler_inbox"},
@@ -273,6 +285,21 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		owner     string
 		proconfig string
 	}{
+		{
+			signature: "vela_claim_off_cluster_content_deletion_target(text,uuid,integer)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_complete_off_cluster_content_deletion_target(uuid,uuid,uuid,integer)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
+		{
+			signature: "vela_retry_off_cluster_content_deletion_target(uuid,uuid,integer,integer)",
+			owner:     "vela_retention_owner",
+			proconfig: "search_path=pg_catalog, public",
+		},
 		{
 			signature: "vela_private.require_finance_reconciliation_identity()",
 			owner:     "vela_finance_reconciliation_owner",

@@ -119,6 +119,7 @@ type config struct {
 	debugDumpRequestDatabaseURL       string
 	debugDumpAuditRequestDatabaseURL  string
 	retentionDatabaseURL              string
+	backupRetentionDatabaseURL        string
 	platformOperatorAuthDatabaseURL   string
 	breakGlassRequestDatabaseURL      string
 	breakGlassAuditDatabaseURL        string
@@ -197,6 +198,12 @@ type config struct {
 	artifactS3AccessKeyFile           string
 	artifactS3SecretKeyFile           string
 	artifactS3PathStyle               bool
+	artifactBackupS3Endpoint          string
+	artifactBackupS3Region            string
+	artifactBackupS3Bucket            string
+	artifactBackupS3AccessKeyFile     string
+	artifactBackupS3SecretKeyFile     string
+	artifactBackupS3PathStyle         bool
 	leaseActiveKeyID                  string
 	leaseKeyringFile                  string
 	executionLeaseTTL                 time.Duration
@@ -440,6 +447,16 @@ func run() error {
 		return fmt.Errorf("open Finance Reconciliation database pool: %w", err)
 	}
 	defer financeReconciliationPool.Close()
+	backupRetentionPool, err := openPool(
+		ctx,
+		configuration.backupRetentionDatabaseURL,
+		5,
+		veladb.RoleBackupRetention,
+	)
+	if err != nil {
+		return fmt.Errorf("open off-cluster backup retention database pool: %w", err)
+	}
+	defer backupRetentionPool.Close()
 	fleetPool, err := openPool(ctx, configuration.fleetDatabaseURL, 10, veladb.RoleFleet)
 	if err != nil {
 		return fmt.Errorf("open Fleet database pool: %w", err)
@@ -641,14 +658,20 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	artifactBackupStore, err := openArtifactBackupStore(ctx, configuration)
+	if err != nil {
+		return err
+	}
 	retentionReconciler, err := retention.NewReconciler(
 		retentionPool,
 		artifactStore,
 		retention.ReconcilerConfig{
-			InstanceID: configuration.retentionReconcilerID,
-			BatchSize:  configuration.retentionBatchSize,
-			ClaimTTL:   configuration.retentionClaimTTL,
-			RetryDelay: configuration.retentionRetryDelay,
+			InstanceID:  configuration.retentionReconcilerID,
+			BatchSize:   configuration.retentionBatchSize,
+			ClaimTTL:    configuration.retentionClaimTTL,
+			RetryDelay:  configuration.retentionRetryDelay,
+			BackupPool:  backupRetentionPool,
+			BackupStore: artifactBackupStore,
 		},
 	)
 	if err != nil {
@@ -1177,6 +1200,7 @@ func loadConfig() (config, error) {
 		debugDumpRequestDatabaseURL:       os.Getenv("VELA_DEBUG_DUMP_REQUEST_DATABASE_URL"),
 		debugDumpAuditRequestDatabaseURL:  os.Getenv("VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL"),
 		retentionDatabaseURL:              os.Getenv("VELA_RETENTION_DATABASE_URL"),
+		backupRetentionDatabaseURL:        os.Getenv("VELA_BACKUP_RETENTION_DATABASE_URL"),
 		platformOperatorAuthDatabaseURL:   os.Getenv("VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL"),
 		breakGlassRequestDatabaseURL:      os.Getenv("VELA_BREAK_GLASS_REQUEST_DATABASE_URL"),
 		breakGlassAuditDatabaseURL:        os.Getenv("VELA_BREAK_GLASS_AUDIT_DATABASE_URL"),
@@ -1247,6 +1271,11 @@ func loadConfig() (config, error) {
 		artifactS3Bucket:                  os.Getenv("VELA_ARTIFACT_S3_BUCKET"),
 		artifactS3AccessKeyFile:           os.Getenv("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE"),
 		artifactS3SecretKeyFile:           os.Getenv("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE"),
+		artifactBackupS3Endpoint:          os.Getenv("VELA_ARTIFACT_BACKUP_S3_ENDPOINT"),
+		artifactBackupS3Region:            os.Getenv("VELA_ARTIFACT_BACKUP_S3_REGION"),
+		artifactBackupS3Bucket:            os.Getenv("VELA_ARTIFACT_BACKUP_S3_BUCKET"),
+		artifactBackupS3AccessKeyFile:     os.Getenv("VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE"),
+		artifactBackupS3SecretKeyFile:     os.Getenv("VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE"),
 		publisherBatchSize:                defaultPublisherBatch,
 		publisherTick:                     defaultPublisherTick,
 		cancellationTick:                  defaultCancellationReconciliationTick,
@@ -1283,6 +1312,7 @@ func loadConfig() (config, error) {
 		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL":           configuration.debugDumpRequestDatabaseURL,
 		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL":     configuration.debugDumpAuditRequestDatabaseURL,
 		"VELA_RETENTION_DATABASE_URL":                    configuration.retentionDatabaseURL,
+		"VELA_BACKUP_RETENTION_DATABASE_URL":             configuration.backupRetentionDatabaseURL,
 		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL":       configuration.platformOperatorAuthDatabaseURL,
 		"VELA_BREAK_GLASS_REQUEST_DATABASE_URL":          configuration.breakGlassRequestDatabaseURL,
 		"VELA_BREAK_GLASS_AUDIT_DATABASE_URL":            configuration.breakGlassAuditDatabaseURL,
@@ -1333,6 +1363,11 @@ func loadConfig() (config, error) {
 		"VELA_ARTIFACT_S3_BUCKET":                        configuration.artifactS3Bucket,
 		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":            configuration.artifactS3AccessKeyFile,
 		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":        configuration.artifactS3SecretKeyFile,
+		"VELA_ARTIFACT_BACKUP_S3_ENDPOINT":               configuration.artifactBackupS3Endpoint,
+		"VELA_ARTIFACT_BACKUP_S3_REGION":                 configuration.artifactBackupS3Region,
+		"VELA_ARTIFACT_BACKUP_S3_BUCKET":                 configuration.artifactBackupS3Bucket,
+		"VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE":     configuration.artifactBackupS3AccessKeyFile,
+		"VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE": configuration.artifactBackupS3SecretKeyFile,
 		"VELA_LEASE_ACTIVE_KEY_ID":                       configuration.leaseActiveKeyID,
 		"VELA_LEASE_KEYRING_FILE":                        configuration.leaseKeyringFile,
 		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":            configuration.artifactValidatorHelper,
@@ -1378,6 +1413,13 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_ARTIFACT_S3_PATH_STYLE must be true or false")
 		}
 		configuration.artifactS3PathStyle = pathStyle
+	}
+	if value := os.Getenv("VELA_ARTIFACT_BACKUP_S3_PATH_STYLE"); value != "" {
+		pathStyle, err := strconv.ParseBool(value)
+		if err != nil {
+			return config{}, errors.New("environment variable VELA_ARTIFACT_BACKUP_S3_PATH_STYLE must be true or false")
+		}
+		configuration.artifactBackupS3PathStyle = pathStyle
 	}
 	financeHost, financePortText, err := net.SplitHostPort(configuration.financeReconciliationAddress)
 	if err != nil || financeHost == "" {
@@ -1706,6 +1748,41 @@ func openArtifactStore(ctx context.Context, configuration config) (*artifactstor
 	}
 	if err := store.ValidateBucket(ctx); err != nil {
 		return nil, fmt.Errorf("validate Artifact Store bucket: %w", err)
+	}
+	return store, nil
+}
+
+func openArtifactBackupStore(ctx context.Context, configuration config) (*artifactstore.S3, error) {
+	accessKeyID, err := readSecretFile(
+		configuration.artifactBackupS3AccessKeyFile,
+		"Artifact backup S3 access key ID",
+		1024,
+	)
+	if err != nil {
+		return nil, err
+	}
+	secretAccessKey, err := readSecretFile(
+		configuration.artifactBackupS3SecretKeyFile,
+		"Artifact backup S3 secret access key",
+		4096,
+	)
+	if err != nil {
+		return nil, err
+	}
+	store, err := artifactstore.NewS3(artifactstore.S3Config{
+		Endpoint:        configuration.artifactBackupS3Endpoint,
+		Region:          configuration.artifactBackupS3Region,
+		Bucket:          configuration.artifactBackupS3Bucket,
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+		UsePathStyle:    configuration.artifactBackupS3PathStyle,
+		SignedGETTTL:    artifactstore.MaxSignedGETTTL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure off-cluster Artifact backup Store: %w", err)
+	}
+	if err := store.ValidateBucket(ctx); err != nil {
+		return nil, fmt.Errorf("validate off-cluster Artifact backup bucket: %w", err)
 	}
 	return store, nil
 }

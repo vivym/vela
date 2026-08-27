@@ -25,12 +25,18 @@ backup_set_id=<base backup and WAL archive set>
 artifact_backup_set_id=<versioned Artifact backup set>
 fault_injected_at=<UTC timestamp>
 last_known_committed_marker=<PostgreSQL transaction or event marker>
+last_protected_deletion_authority_marker=<latest deletion authority that must survive restore>
+artifact_replication_watermark=<last committed Artifact copy decision included in evidence>
 ```
 
 The operator must verify that the backup credentials are loaded from an
 independent secret manager, the Artifact Store is private and versioned, the
 CNPG and JetStream manifests render from the same configuration revision, and
-the validation namespace cannot receive customer traffic.
+the validation namespace cannot receive customer traffic. Freeze Artifact
+replication before selecting a restore point. This release has no external
+deletion journal, so the selected PostgreSQL restore point must be at or after
+`last_protected_deletion_authority_marker`; otherwise stop rather than risk
+reintroducing content whose deletion authority is absent from the restored DB.
 
 ## Exercise A: single-node failure
 
@@ -57,8 +63,18 @@ backup set until all evidence is sealed.
    Job/Attempt/Charge constraints before starting application replicas.
 3. Restore a representative sample of committed Artifact object versions and
    verify object version, size, checksum, content type, and ArtifactSet
-   manifest. An incomplete or losing Attempt must not become visible.
-4. Render `deploy/control-storage` from the exact recovery release and extract
+   manifest. An incomplete or losing Attempt must not become visible. Keep
+   Artifact replication and customer reads disabled.
+4. Before JetStream rebuild or application traffic, start only the PRIMARY and
+   OFF_CLUSTER_BACKUP retention pools with their separate least-privilege roles
+   and stores. Replay all pending Content Deletion and retention targets. Verify
+   prompt tombstones, Charge and actor attribution remain present; PRIMARY exact
+   versions are absent; every version and delete marker for each backup key is
+   absent; and immutable per-target receipts cover both storage tiers. Re-run
+   until no eligible target remains. Do not resume replication until its
+   watermark is reconciled against deleted Artifacts and a late copy is proven
+   impossible.
+5. Render `deploy/control-storage` from the exact recovery release and extract
    `jetstream-contract.json` from the generated `vela-jetstream-contract`
    ConfigMap. Using a separately authorized release reconciler, create the
    `VELA_EVENTS` stream and `VELA_SCHEDULER` durable consumer from that document.
@@ -69,20 +85,20 @@ backup set until all evidence is sealed.
    dedicated Scheduler credential and confirm its contract validator binds the
    consumer. Rebuild only delivery state; JetStream is not the business
    authority.
-5. Run Outbox replay with the original `event_id` and aggregate version. Confirm
+6. Run Outbox replay with the original `event_id` and aggregate version. Confirm
    replayed messages receive a `VELA_EVENTS` quorum `PubAck`, the Scheduler Inbox
    receipt commits before confirmed ack, and periodic PostgreSQL Scheduler scans
    remain active with JetStream stopped. Run
    Scheduler, Artifact, Invoice, Webhook, retention, and Worker-loss
    reconciliation scans. Verify no duplicate Visible Completion, Charge,
    Invoice line, or terminal webhook authority is created.
-6. Rotate recovery credentials and record the old-credential rejection. Verify
+7. Rotate recovery credentials and record the old-credential rejection. Verify
    NATS workload identity and subject authorization before opening internal
    traffic.
-7. Run read-only Organization/Project isolation probes and the production-gate
+8. Run read-only Organization/Project isolation probes and the production-gate
    smoke suite. Re-enable Admission only after all invariants and dashboards
    are green.
-8. Measure metadata RPO from the final source marker and metadata RTO from
+9. Measure metadata RPO from the final source marker and metadata RTO from
    fault injection to the first authorized control-plane operation. The gate
    fails if RPO exceeds fifteen minutes or RTO exceeds four hours.
 
@@ -91,6 +107,9 @@ backup set until all evidence is sealed.
 Abort the exercise and keep traffic closed if any of these occur:
 
 - backup, WAL, Artifact, or secret identity cannot be proven;
+- the selected restore point predates a protected deletion authority, no
+  external deletion journal can replay it, or Artifact replication may race a
+  restored/deleted target;
 - PostgreSQL has no quorum, restored schema/roles differ, or the source marker
   cannot be reconciled;
 - JetStream is treated as the source of Job state, or Outbox replay cannot be
@@ -109,5 +128,8 @@ the release digest, configuration revision, validation environment, owner,
 thresholds, observed values, evidence reference, evidence SHA-256, and ordered
 timestamps. A verbal sign-off or a successful backup-only job is not a PASS.
 
-The repository currently provides the contract and manifests only; no live
-cluster drill or `data-disaster-recovery` receipt exists yet.
+The repository includes a PostgreSQL dump/restore plus versioned-MinIO
+conformance test for a restore point after Content Deletion authority is durable
+and before its targets complete. It does not perform live WAL PITR, implement
+Artifact replication, cover a restore point before deletion authority, or create
+a `data-disaster-recovery` Launch Receipt.

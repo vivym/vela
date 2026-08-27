@@ -735,6 +735,48 @@ func (ns NullContentDeletionTargetState) Value() (driver.Value, error) {
 	return string(ns.ContentDeletionTargetState), nil
 }
 
+type ContentStorageTier string
+
+const (
+	ContentStorageTierPRIMARY          ContentStorageTier = "PRIMARY"
+	ContentStorageTierOFFCLUSTERBACKUP ContentStorageTier = "OFF_CLUSTER_BACKUP"
+)
+
+func (e *ContentStorageTier) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ContentStorageTier(s)
+	case string:
+		*e = ContentStorageTier(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ContentStorageTier: %T", src)
+	}
+	return nil
+}
+
+type NullContentStorageTier struct {
+	ContentStorageTier ContentStorageTier `json:"content_storage_tier"`
+	Valid              bool               `json:"valid"` // Valid is true if ContentStorageTier is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullContentStorageTier) Scan(value interface{}) error {
+	if value == nil {
+		ns.ContentStorageTier, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ContentStorageTier.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullContentStorageTier) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ContentStorageTier), nil
+}
+
 type CreditReservationState string
 
 const (
@@ -2640,17 +2682,19 @@ type ContentDeletionReceipt struct {
 }
 
 type ContentDeletionReceiptTarget struct {
-	ReceiptID         uuid.UUID                   `db:"receipt_id" json:"receipt_id"`
-	TargetID          uuid.UUID                   `db:"target_id" json:"target_id"`
-	OrganizationID    uuid.UUID                   `db:"organization_id" json:"organization_id"`
-	ProjectID         uuid.UUID                   `db:"project_id" json:"project_id"`
-	JobID             uuid.UUID                   `db:"job_id" json:"job_id"`
-	RequestID         uuid.UUID                   `db:"request_id" json:"request_id"`
-	Action            ContentDeletionTargetAction `db:"action" json:"action"`
-	AttemptCount      int32                       `db:"attempt_count" json:"attempt_count"`
-	TargetCompletedAt pgtype.Timestamptz          `db:"target_completed_at" json:"target_completed_at"`
-	StorageOutcome    string                      `db:"storage_outcome" json:"storage_outcome"`
-	CreatedAt         pgtype.Timestamptz          `db:"created_at" json:"created_at"`
+	ReceiptID          uuid.UUID                   `db:"receipt_id" json:"receipt_id"`
+	TargetID           uuid.UUID                   `db:"target_id" json:"target_id"`
+	OrganizationID     uuid.UUID                   `db:"organization_id" json:"organization_id"`
+	ProjectID          uuid.UUID                   `db:"project_id" json:"project_id"`
+	JobID              uuid.UUID                   `db:"job_id" json:"job_id"`
+	RequestID          uuid.UUID                   `db:"request_id" json:"request_id"`
+	Action             ContentDeletionTargetAction `db:"action" json:"action"`
+	AttemptCount       int32                       `db:"attempt_count" json:"attempt_count"`
+	TargetCompletedAt  pgtype.Timestamptz          `db:"target_completed_at" json:"target_completed_at"`
+	StorageOutcome     string                      `db:"storage_outcome" json:"storage_outcome"`
+	CreatedAt          pgtype.Timestamptz          `db:"created_at" json:"created_at"`
+	StorageTier        ContentStorageTier          `db:"storage_tier" json:"storage_tier"`
+	PurgedVersionCount *int32                      `db:"purged_version_count" json:"purged_version_count"`
 }
 
 type ContentDeletionRequest struct {
@@ -2706,6 +2750,8 @@ type ContentDeletionTarget struct {
 	UpdatedAt                 pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
 	DebugDumpAuthorizationID  uuid.NullUUID               `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
 	DebugDumpID               uuid.NullUUID               `db:"debug_dump_id" json:"debug_dump_id"`
+	StorageTier               ContentStorageTier          `db:"storage_tier" json:"storage_tier"`
+	PurgedVersionCount        *int32                      `db:"purged_version_count" json:"purged_version_count"`
 }
 
 type Credential struct {

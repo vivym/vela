@@ -34,6 +34,31 @@ configuration. Production image digests, storage-class capacity, RKE2 node
 labels, CNPG operator compatibility, and an external or three-node S3 Artifact
 Store are deployment gates, not claims made by this repository render.
 
+The CNPG backup and the committed Artifact backup are separate stores and
+credential domains. The application release must provide a login inheriting
+only `vela_backup_retention` plus an independently credentialed, versioned
+off-cluster Artifact bucket:
+
+```text
+VELA_BACKUP_RETENTION_DATABASE_URL=<login bound only to vela_backup_retention>
+VELA_ARTIFACT_BACKUP_S3_ENDPOINT=<off-cluster S3-compatible endpoint>
+VELA_ARTIFACT_BACKUP_S3_REGION=<region>
+VELA_ARTIFACT_BACKUP_S3_BUCKET=<versioned committed-Artifact backup bucket>
+VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE=<read/delete credential file>
+VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE=<secret credential file>
+VELA_ARTIFACT_BACKUP_S3_PATH_STYLE=<true|false>
+```
+
+Migration 00028 creates backup deletion targets only for `COMMITTED` Artifacts.
+The backup Reconciler purges every version and delete marker for the exact key;
+the request receipt is not complete until PRIMARY and OFF_CLUSTER_BACKUP targets
+both complete. This repository does not implement the component that copies a
+committed Artifact into the off-cluster bucket. A deployment therefore needs
+separate evidence that replication completes, cannot publish a late copy after
+Content Deletion authority is durable, and remains fenced during restore and
+retention replay. An `ALREADY_ABSENT` deletion receipt proves idempotent cleanup,
+not that a backup copy previously existed.
+
 The current backup contract uses CNPG 1.30 native
 `spec.backup.barmanObjectStore`. CNPG removes that native integration in 1.31.
 An operator upgrade to 1.31 or later is blocked until the release replaces this
@@ -46,10 +71,13 @@ Before applying, the operator must verify:
    places each replica on a different failure domain;
 2. PostgreSQL synchronous replication and WAL archive reach the independent
    backup domain;
-3. JetStream storage is on independent durable disks and its replica quorum is
+3. committed Artifact replication uses an independent failure domain, and a
+   replication/deletion race exercise proves no deleted object can be copied
+   after deletion authority or restored after retention replay;
+4. JetStream storage is on independent durable disks and its replica quorum is
    healthy, and the rendered `vela-jetstream-contract` data matches the release
    artifact byte-for-byte; and
-4. the quarterly restore drill produces a versioned Production Gate receipt.
+5. the quarterly restore drill produces a versioned Production Gate receipt.
 
 The release reconciler must create or update JetStream only from
 `jetstream-contract.json`; neither `vela-control` nor a workload credential has

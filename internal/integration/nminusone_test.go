@@ -571,6 +571,34 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 		retained.Failed != 0 || retained.Deleted != len(artifactIDs) || retained.Aborted != 0 {
 		t.Fatalf("incomplete Artifact N-1 retention = %#v, want %d targets", retained, wantTargets)
 	}
+	var retainedRequestState string
+	var retainedPrimaryTargets, pendingBackupTargets int
+	if err := database.Admin.QueryRow(`
+		SELECT deletion.state::text,
+			(SELECT count(*) FROM content_deletion_targets
+			 WHERE request_id = deletion.id
+			   AND storage_tier = 'PRIMARY' AND state = 'COMPLETED'),
+			(SELECT count(*) FROM content_deletion_targets
+			 WHERE request_id = deletion.id
+			   AND storage_tier = 'OFF_CLUSTER_BACKUP' AND state = 'PENDING')
+		FROM content_deletion_requests AS deletion
+		WHERE deletion.job_id = $1 AND deletion.source = 'RETENTION_ARTIFACT'
+	`, jobID).Scan(
+		&retainedRequestState,
+		&retainedPrimaryTargets,
+		&pendingBackupTargets,
+	); err != nil {
+		t.Fatalf("read N-1 primary-only retention boundary: %v", err)
+	}
+	if retainedRequestState != "PENDING" || retainedPrimaryTargets != wantTargets ||
+		pendingBackupTargets != len(artifactIDs) {
+		t.Fatalf(
+			"N-1 primary-only retention = request %s primary/backup %d/%d",
+			retainedRequestState,
+			retainedPrimaryTargets,
+			pendingBackupTargets,
+		)
+	}
 	var ignoredRequests, ignoredStagingArtifacts int
 	if err := database.Admin.QueryRow(`
 		SELECT
@@ -590,6 +618,7 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 		)
 	}
 	currentStore := &recordingRetentionStore{}
+	currentBackupStore := &recordingBackupRetentionStore{}
 	currentReconciler, err := retention.NewReconciler(
 		newRolePool(
 			t,
@@ -603,6 +632,13 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 			BatchSize:  len(failedPlan.Artifacts) + 1,
 			ClaimTTL:   time.Minute,
 			RetryDelay: time.Minute,
+			BackupPool: newRolePool(
+				t,
+				database.DSN,
+				"vela_backup_retention_login",
+				"vela-backup-retention-password",
+			),
+			BackupStore: currentBackupStore,
 		},
 	)
 	if err != nil {
@@ -611,7 +647,7 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 	currentResult, err := currentReconciler.ReconcileBatch(context.Background())
 	if err != nil || currentResult.RequestContentExpired != 0 ||
 		currentResult.ContentDeletionRequestsCreated != 1 ||
-		currentResult.Claimed != len(failedPlan.Artifacts)+1 ||
+		currentResult.Claimed != len(failedPlan.Artifacts)+1+len(artifactIDs) ||
 		currentResult.Completed != currentResult.Claimed || currentResult.Failed != 0 {
 		t.Fatalf("current incomplete Artifact protocol result = %#v error=%v", currentResult, err)
 	}
@@ -717,6 +753,26 @@ func TestCurrentRetentionControlFailsClosedAgainstSchema15(t *testing.T) {
 			"Retention Policy and Content Deletion request transaction privilege boundary",
 		) {
 		t.Fatalf("current retention control did not fail closed against schema 15:\n%s", output)
+	}
+}
+
+func TestCurrentControlStartsWithIndependentBackupRetentionRole(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	binary := filepath.Join(t.TempDir(), "vela-control-current-backup-retention")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/vela-control")
+	build.Dir = repositoryRoot(t)
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build current backup-retention control: %v\n%s", err, output)
+	}
+
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
+	if strings.Contains(output, "database pool") {
+		t.Fatalf("current control failed a database role preflight:\n%s", output)
+	}
+	if !strings.Contains(output, "configure Finance Reconciliation service") {
+		t.Fatalf("current control did not reach the post-role-preflight sentinel:\n%s", output)
 	}
 }
 
@@ -3041,8 +3097,9 @@ func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
 }
 
 type controlStartupProbeOptions struct {
-	currentDebugDumpRoles bool
-	currentNodeAgentFile  bool
+	currentDebugDumpRoles      bool
+	currentBackupRetentionRole bool
+	currentNodeAgentFile       bool
 }
 
 func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) string {
@@ -3060,8 +3117,9 @@ func runAdjacentNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) str
 func runCurrentControlStartupProbe(t *testing.T, binary, adminDSN string) string {
 	t.Helper()
 	return runControlStartupProbe(t, binary, adminDSN, controlStartupProbeOptions{
-		currentDebugDumpRoles: true,
-		currentNodeAgentFile:  true,
+		currentDebugDumpRoles:      true,
+		currentBackupRetentionRole: true,
+		currentNodeAgentFile:       true,
 	})
 }
 
@@ -3117,6 +3175,25 @@ func runControlStartupProbe(
 			"vela_debug_dump_audit_request_login",
 			"vela-debug-dump-audit-request-password",
 		)
+	}
+	backupRetentionDatabaseURL := ""
+	artifactBackupS3Endpoint := ""
+	artifactBackupS3Region := ""
+	artifactBackupS3Bucket := ""
+	artifactBackupS3AccessKeyFile := ""
+	artifactBackupS3SecretKeyFile := ""
+	if options.currentBackupRetentionRole {
+		backupRetentionDatabaseURL = roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_backup_retention_login",
+			"vela-backup-retention-password",
+		)
+		artifactBackupS3Endpoint = "http://127.0.0.1:1"
+		artifactBackupS3Region = "us-east-1"
+		artifactBackupS3Bucket = "vela-artifacts-backup"
+		artifactBackupS3AccessKeyFile = "/missing/backup-s3-access-key-id"
+		artifactBackupS3SecretKeyFile = "/missing/backup-s3-secret-access-key"
 	}
 	caCertificate, caKey, caPEM := issueWorkerTransportTestCA(t)
 	financeCertificate, financeKey := issueWorkerTransportTestCertificate(
@@ -3197,7 +3274,8 @@ func runControlStartupProbe(
 		"VELA_RETENTION_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_retention_login", "vela-retention-password",
 		),
-		"VELA_RETENTION_RECONCILER_ID": "current-retention-startup-probe",
+		"VELA_BACKUP_RETENTION_DATABASE_URL": backupRetentionDatabaseURL,
+		"VELA_RETENTION_RECONCILER_ID":       "current-retention-startup-probe",
 		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_platform_operator_auth_login", "vela-platform-operator-auth-password",
 		),
@@ -3259,38 +3337,43 @@ func runControlStartupProbe(
 		"VELA_WEBHOOK_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_webhook_login", "vela-webhook-password",
 		),
-		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":       "webhook-key-v1",
-		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":        webhookKeyringFile,
-		"VELA_WEBHOOK_DISPATCHER_ID":                  "n-minus-one-startup-probe",
-		"VELA_INVOICE_EXPORTER_ID":                    "n-minus-one-startup-probe",
-		"VELA_INVOICE_EXPORT_ENDPOINT":                "https://127.0.0.1:1/invoices",
-		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":       "/missing/invoice-export-token",
-		"VELA_CREDENTIAL_PEPPER_BASE64":               base64.StdEncoding.EncodeToString(make([]byte, 32)),
-		"VELA_NATS_URL":                               "nats://127.0.0.1:1",
-		"VELA_NATS_CREDENTIALS_FILE":                  "/missing/nats.creds",
-		"VELA_NATS_ROOT_CA_FILE":                      "/missing/nats-ca.pem",
-		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":         "schema-probe-account",
-		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS": "schema-probe-signer",
-		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":           "schema-probe-user",
-		"VELA_NATS_SCHEDULER_CREDENTIALS_FILE":        "/missing/nats-scheduler.creds",
-		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS":        "schema-probe-scheduler-user",
-		"VELA_ARTIFACT_S3_ENDPOINT":                   "http://127.0.0.1:1",
-		"VELA_ARTIFACT_S3_REGION":                     "us-east-1",
-		"VELA_ARTIFACT_S3_BUCKET":                     "vela-artifacts",
-		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":         "/missing/s3-access-key-id",
-		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":     "/missing/s3-secret-access-key",
-		"VELA_LEASE_ACTIVE_KEY_ID":                    "lease-key-v1",
-		"VELA_LEASE_KEYRING_FILE":                     "/missing/lease-keyring.json",
-		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":         "/missing/vela-artifact-validator",
-		"VELA_ARTIFACT_FFPROBE_PATH":                  "/missing/ffprobe",
-		"VELA_ARTIFACT_SANDBOX_ROOT":                  "/missing/sandbox",
-		"VELA_ARTIFACT_SPOOL_DIRECTORY":               "/missing/spool",
-		"VELA_ARTIFACT_FFPROBE_VERSION":               "8.0.1",
-		"VELA_ARTIFACT_VALIDATOR_REVISION":            "ffprobe-8.0.1-sandbox-v1",
-		"VELA_ARTIFACT_RECONCILER_ID":                 "spiffe://vela.internal/reconciler/artifact-finalization",
-		"VELA_WORKER_GRPC_TLS_CERT_FILE":              "/missing/worker-control.crt",
-		"VELA_WORKER_GRPC_TLS_KEY_FILE":               "/missing/worker-control.key",
-		"VELA_WORKER_GRPC_CLIENT_CA_FILE":             "/missing/worker-client-ca.crt",
+		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":          "webhook-key-v1",
+		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":           webhookKeyringFile,
+		"VELA_WEBHOOK_DISPATCHER_ID":                     "n-minus-one-startup-probe",
+		"VELA_INVOICE_EXPORTER_ID":                       "n-minus-one-startup-probe",
+		"VELA_INVOICE_EXPORT_ENDPOINT":                   "https://127.0.0.1:1/invoices",
+		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":          "/missing/invoice-export-token",
+		"VELA_CREDENTIAL_PEPPER_BASE64":                  base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"VELA_NATS_URL":                                  "nats://127.0.0.1:1",
+		"VELA_NATS_CREDENTIALS_FILE":                     "/missing/nats.creds",
+		"VELA_NATS_ROOT_CA_FILE":                         "/missing/nats-ca.pem",
+		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":            "schema-probe-account",
+		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS":    "schema-probe-signer",
+		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":              "schema-probe-user",
+		"VELA_NATS_SCHEDULER_CREDENTIALS_FILE":           "/missing/nats-scheduler.creds",
+		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS":           "schema-probe-scheduler-user",
+		"VELA_ARTIFACT_S3_ENDPOINT":                      "http://127.0.0.1:1",
+		"VELA_ARTIFACT_S3_REGION":                        "us-east-1",
+		"VELA_ARTIFACT_S3_BUCKET":                        "vela-artifacts",
+		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":            "/missing/s3-access-key-id",
+		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":        "/missing/s3-secret-access-key",
+		"VELA_ARTIFACT_BACKUP_S3_ENDPOINT":               artifactBackupS3Endpoint,
+		"VELA_ARTIFACT_BACKUP_S3_REGION":                 artifactBackupS3Region,
+		"VELA_ARTIFACT_BACKUP_S3_BUCKET":                 artifactBackupS3Bucket,
+		"VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE":     artifactBackupS3AccessKeyFile,
+		"VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE": artifactBackupS3SecretKeyFile,
+		"VELA_LEASE_ACTIVE_KEY_ID":                       "lease-key-v1",
+		"VELA_LEASE_KEYRING_FILE":                        "/missing/lease-keyring.json",
+		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":            "/missing/vela-artifact-validator",
+		"VELA_ARTIFACT_FFPROBE_PATH":                     "/missing/ffprobe",
+		"VELA_ARTIFACT_SANDBOX_ROOT":                     "/missing/sandbox",
+		"VELA_ARTIFACT_SPOOL_DIRECTORY":                  "/missing/spool",
+		"VELA_ARTIFACT_FFPROBE_VERSION":                  "8.0.1",
+		"VELA_ARTIFACT_VALIDATOR_REVISION":               "ffprobe-8.0.1-sandbox-v1",
+		"VELA_ARTIFACT_RECONCILER_ID":                    "spiffe://vela.internal/reconciler/artifact-finalization",
+		"VELA_WORKER_GRPC_TLS_CERT_FILE":                 "/missing/worker-control.crt",
+		"VELA_WORKER_GRPC_TLS_KEY_FILE":                  "/missing/worker-control.key",
+		"VELA_WORKER_GRPC_CLIENT_CA_FILE":                "/missing/worker-client-ca.crt",
 		"VELA_FLEET_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_fleet_login", "vela-fleet-password",
 		),

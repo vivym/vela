@@ -1971,8 +1971,9 @@ func TestCustomerCancellationMigrationDownSerializesWithConcurrentCancellation(t
 }
 
 type testDatabase struct {
-	Admin *sql.DB
-	DSN   string
+	Admin     *sql.DB
+	DSN       string
+	Container testcontainers.Container
 }
 
 func newPostgres(t *testing.T) testDatabase {
@@ -2019,7 +2020,7 @@ func newPostgres(t *testing.T) testDatabase {
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatalf("ping PostgreSQL: %v", err)
 	}
-	return testDatabase{Admin: db, DSN: dsn}
+	return testDatabase{Admin: db, DSN: dsn, Container: container}
 }
 
 func repositoryRoot(t *testing.T) string {

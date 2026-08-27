@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -109,6 +111,152 @@ func TestDeleteExactVersionTreatsNoSuchVersionAsAlreadyAbsent(t *testing.T) {
 	); err != nil {
 		t.Fatalf("DeleteExactVersion absent version: %v", err)
 	}
+}
+
+func TestPurgeObjectVersionsDeletesExactVersionsAndMarkers(t *testing.T) {
+	const objectKey = "artifacts/org/project/job/attempt/artifact/video.mp4"
+	deleted := make(chan string, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			writeObjectVersionsResult(w, objectKey, 1, true, true)
+		case http.MethodDelete:
+			deleted <- request.URL.Query().Get("versionId")
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Fatalf("unexpected purge request = %s %s", request.Method, request.URL.String())
+		}
+	}))
+	t.Cleanup(server.Close)
+	store := newTestS3Store(t, server.URL)
+
+	result, err := store.PurgeObjectVersions(context.Background(), objectKey)
+	if err != nil || result.PurgedVersionCount != 2 {
+		t.Fatalf("PurgeObjectVersions result=%#v error=%v, want 2 and nil", result, err)
+	}
+	close(deleted)
+	want := map[string]bool{"version-0": true, "marker-0": true}
+	for versionID := range deleted {
+		if !want[versionID] {
+			t.Fatalf("deleted unexpected version %q", versionID)
+		}
+		delete(want, versionID)
+	}
+	if len(want) != 0 {
+		t.Fatalf("versions not deleted = %#v", want)
+	}
+}
+
+func TestPurgeObjectVersionsReturnsPartialCount(t *testing.T) {
+	const objectKey = "artifacts/org/project/job/attempt/artifact/video.mp4"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodGet {
+			writeObjectVersionsResult(w, objectKey, 2, false, false)
+			return
+		}
+		if request.Method != http.MethodDelete {
+			t.Fatalf("unexpected partial purge request = %s %s", request.Method, request.URL.String())
+		}
+		if request.URL.Query().Get("versionId") == "version-0" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`<Error><Code>InvalidRequest</Code><Message>injected</Message></Error>`))
+	}))
+	t.Cleanup(server.Close)
+	store := newTestS3Store(t, server.URL)
+
+	result, err := store.PurgeObjectVersions(context.Background(), objectKey)
+	if err == nil || result.PurgedVersionCount != 1 {
+		t.Fatalf("partial PurgeObjectVersions result=%#v error=%v, want 1 and error", result, err)
+	}
+}
+
+func TestPurgeObjectVersionsFailsClosedAboveSafetyBound(t *testing.T) {
+	const objectKey = "artifacts/org/project/job/attempt/artifact/video.mp4"
+	deleteRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodDelete {
+			deleteRequests++
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if request.Method != http.MethodGet {
+			t.Fatalf("unexpected bounded purge request = %s %s", request.Method, request.URL.String())
+		}
+		writeObjectVersionsResult(w, objectKey, maxObjectVersionsToPurge+1, false, false)
+	}))
+	t.Cleanup(server.Close)
+	store := newTestS3Store(t, server.URL)
+
+	result, err := store.PurgeObjectVersions(context.Background(), objectKey)
+	if err == nil || err.Error() != "too many S3 backup object versions" ||
+		result.PurgedVersionCount != 0 ||
+		deleteRequests != 0 {
+		t.Fatalf(
+			"bounded PurgeObjectVersions result=%#v deletes=%d error=%v",
+			result,
+			deleteRequests,
+			err,
+		)
+	}
+}
+
+func newTestS3Store(t *testing.T, endpoint string) *S3 {
+	t.Helper()
+	store, err := NewS3(S3Config{
+		Endpoint:        endpoint,
+		Region:          "us-test-1",
+		Bucket:          "vela-artifacts",
+		AccessKeyID:     "test-access-key",
+		SecretAccessKey: "test-secret-key",
+		UsePathStyle:    true,
+		SignedGETTTL:    15 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("NewS3: %v", err)
+	}
+	return store
+}
+
+func writeObjectVersionsResult(
+	w http.ResponseWriter,
+	objectKey string,
+	versionCount int,
+	includeMarker bool,
+	includeSibling bool,
+) {
+	var body strings.Builder
+	body.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	body.WriteString(`<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	body.WriteString(`<Name>vela-artifacts</Name><IsTruncated>false</IsTruncated>`)
+	for index := range versionCount {
+		_, _ = fmt.Fprintf(
+			&body,
+			"<Version><Key>%s</Key><VersionId>version-%d</VersionId></Version>",
+			objectKey,
+			index,
+		)
+	}
+	if includeMarker {
+		_, _ = fmt.Fprintf(
+			&body,
+			"<DeleteMarker><Key>%s</Key><VersionId>marker-0</VersionId></DeleteMarker>",
+			objectKey,
+		)
+	}
+	if includeSibling {
+		_, _ = fmt.Fprintf(
+			&body,
+			"<Version><Key>%s.sidecar</Key><VersionId>sibling-version</VersionId></Version>",
+			objectKey,
+		)
+	}
+	body.WriteString(`</ListVersionsResult>`)
+	w.Header().Set("Content-Type", "application/xml")
+	_, _ = w.Write([]byte(body.String()))
 }
 
 func TestResolveCurrentVersionReturnsExactMetadata(t *testing.T) {

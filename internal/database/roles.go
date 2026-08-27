@@ -24,6 +24,7 @@ const (
 	RoleDebugDumpRequest           Role = "vela_debug_dump_request"
 	RoleDebugDumpAuditRequest      Role = "vela_debug_dump_audit_request"
 	RoleRetention                  Role = "vela_retention"
+	RoleBackupRetention            Role = "vela_backup_retention"
 	RolePlatformOperatorAuth       Role = "vela_platform_operator_auth"
 	RoleBreakGlassRequest          Role = "vela_break_glass_request"
 	RoleRequest                    Role = "vela_request"
@@ -62,6 +63,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleDebugDumpRequest:           {verifyPrivileges: verifyDebugDumpRequestPrivileges},
 	RoleDebugDumpAuditRequest:      {verifyPrivileges: verifyDebugDumpAuditRequestPrivileges},
 	RoleRetention:                  {verifyPrivileges: verifyRetentionPrivileges},
+	RoleBackupRetention:            {verifyPrivileges: verifyBackupRetentionPrivileges},
 	RolePlatformOperatorAuth:       {verifyPrivileges: verifyPlatformOperatorAuthPrivileges},
 	RoleBreakGlassRequest:          {verifyPrivileges: verifyBreakGlassRequestPrivileges},
 	RoleRequest:                    {verifyPrivileges: verifyRequestPrivileges},
@@ -372,6 +374,22 @@ func verifyRetentionPrivileges(ctx context.Context, database rowQuerier, current
 			"vela_complete_content_deletion_target(uuid,uuid,uuid,text,text)",
 			"vela_retry_content_deletion_target(uuid,uuid,integer,text)",
 			"vela_enqueue_expired_content_deletions(integer)",
+		},
+	})
+}
+
+func verifyBackupRetentionPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "off-cluster backup retention",
+		failureLabel:    "off-cluster backup Content Deletion transaction",
+		functions: []string{
+			"vela_claim_off_cluster_content_deletion_target(text,uuid,integer)",
+			"vela_complete_off_cluster_content_deletion_target(uuid,uuid,uuid,integer)",
+			"vela_retry_off_cluster_content_deletion_target(uuid,uuid,integer,integer)",
 		},
 	})
 }

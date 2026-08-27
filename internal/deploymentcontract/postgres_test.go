@@ -124,6 +124,14 @@ func TestControlStoragePostgreSQLContractRequiresAutomaticFailoverAndNoQuorumSaf
 		"automatic_single_node_failover_required": "true",
 		"no_quorum_admission_fail_closed":         "true",
 		"no_quorum_assignment_fail_closed":        "true",
+		"restore_order": "postgresql,artifact-store,retention-replay,jetstream," +
+			"outbox-replay,reconcilers",
+		"artifact_backup_scope":                          "committed-artifacts-only",
+		"artifact_backup_all_versions_purge_required":    "true",
+		"retention_replay_after_restore_required":        "true",
+		"restore_not_before_deletion_authority_required": "true",
+		"artifact_replication_race_receipt_required":     "true",
+		"external_deletion_journal_available":            "false",
 	}
 	for key, want := range wantRecovery {
 		if got := recovery.Data[key]; got != want {

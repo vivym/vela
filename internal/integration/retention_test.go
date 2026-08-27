@@ -19,6 +19,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
@@ -930,9 +933,13 @@ func TestVisibleCompletionAndContentDeletionSerializeOneChargeAndPublication(t *
 	); err != nil {
 		t.Fatalf("read Visible Completion/Content Deletion winner: %v", err)
 	}
+	expectedTargetCount := len(artifactIDs) + 1
+	if completionWon {
+		expectedTargetCount += len(artifactIDs)
+	}
 	if requestContent != `{"deleted": true}` || requestContentDeletedAt == nil ||
 		reservationState != "CONSUMED" || chargeCount != 1 ||
-		artifactCount != len(artifactIDs) || targetCount != len(artifactIDs)+1 {
+		artifactCount != len(artifactIDs) || targetCount != expectedTargetCount {
 		t.Fatalf(
 			"race invariant = state %s content %s deleted %v reservation %s charge %d artifacts %d targets %d",
 			jobState,
@@ -1350,6 +1357,7 @@ func TestContentDeletionReconcilerDeletesExactArtifactVersionsAndMultipartUpload
 			InitiatedAt: time.Now().UTC().Add(-time.Hour),
 		}},
 	}
+	backupStore := &recordingBackupRetentionStore{}
 	reconciler, err := retention.NewReconciler(
 		newRolePool(
 			t,
@@ -1363,6 +1371,13 @@ func TestContentDeletionReconcilerDeletesExactArtifactVersionsAndMultipartUpload
 			BatchSize:  10,
 			ClaimTTL:   time.Minute,
 			RetryDelay: time.Minute,
+			BackupPool: newRolePool(
+				t,
+				fixture.database.DSN,
+				"vela_backup_retention_login",
+				"vela-backup-retention-password",
+			),
+			BackupStore: backupStore,
 		},
 	)
 	if err != nil {
@@ -1372,7 +1387,7 @@ func TestContentDeletionReconcilerDeletesExactArtifactVersionsAndMultipartUpload
 	if err != nil {
 		t.Fatalf("reconcile Content Deletion: %v", err)
 	}
-	if result.Claimed != len(artifactIDs)+1 || result.Completed != result.Claimed ||
+	if result.Claimed != (2*len(artifactIDs))+1 || result.Completed != result.Claimed ||
 		result.Failed != 0 {
 		t.Fatalf("Content Deletion reconciliation result = %#v", result)
 	}
@@ -1382,6 +1397,21 @@ func TestContentDeletionReconcilerDeletesExactArtifactVersionsAndMultipartUpload
 	for _, deleted := range store.deleted {
 		if _, ok := wantExact[exactIdentity{key: deleted.ObjectKey, version: deleted.VersionID}]; !ok {
 			t.Fatalf("unexpected exact deletion = %#v", deleted)
+		}
+	}
+	if len(backupStore.purged) != len(wantExact) {
+		t.Fatalf("off-cluster backup purges = %#v, want one per Artifact", backupStore.purged)
+	}
+	for _, objectKey := range backupStore.purged {
+		found := false
+		for identity := range wantExact {
+			if identity.key == objectKey {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("unexpected off-cluster backup purge = %q", objectKey)
 		}
 	}
 	if len(store.aborted) != 1 || store.aborted[0].ObjectKey != prefix+"orphan/video.mp4" ||
@@ -1428,8 +1458,8 @@ func TestContentDeletionReconcilerDeletesExactArtifactVersionsAndMultipartUpload
 	if requestState != "COMPLETED" || requestCompletedAt == nil || receiptCount != 1 ||
 		deletedArtifacts != len(artifactIDs) || artifactSetCount != 1 ||
 		visibleCompletionCount != 1 || chargeCount != 1 ||
-		cancellationDecisionCount != 0 || completedTargetCount != len(artifactIDs)+1 ||
-		totalTargetAttemptCount != len(artifactIDs)+1 {
+		cancellationDecisionCount != 0 || completedTargetCount != (2*len(artifactIDs))+1 ||
+		totalTargetAttemptCount != (2*len(artifactIDs))+1 {
 		t.Fatalf(
 			"completed Content Deletion evidence = state %s at %v receipt %d artifacts %d set %d visible %d charges %d cancellations %d targets %d attempts %d",
 			requestState,
@@ -1453,24 +1483,24 @@ func TestContentDeletionReconcilerDeletesExactArtifactVersionsAndMultipartUpload
 			 WHERE receipt.request_id = $1),
 			(SELECT count(*) FROM (
 				(
-					SELECT target.id, target.action::text, target.attempt_count,
-						target.completed_at, target.storage_outcome
+						SELECT target.id, target.storage_tier::text, target.action::text, target.attempt_count,
+							target.completed_at, target.storage_outcome
 					FROM content_deletion_targets AS target
 					WHERE target.request_id = $1
 					EXCEPT
-					SELECT snapshot.target_id, snapshot.action::text, snapshot.attempt_count,
+						SELECT snapshot.target_id, snapshot.storage_tier::text, snapshot.action::text, snapshot.attempt_count,
 						snapshot.target_completed_at, snapshot.storage_outcome
 					FROM content_deletion_receipt_targets AS snapshot
 					WHERE snapshot.request_id = $1
 				)
 				UNION ALL
 				(
-					SELECT snapshot.target_id, snapshot.action::text, snapshot.attempt_count,
+						SELECT snapshot.target_id, snapshot.storage_tier::text, snapshot.action::text, snapshot.attempt_count,
 						snapshot.target_completed_at, snapshot.storage_outcome
 					FROM content_deletion_receipt_targets AS snapshot
 					WHERE snapshot.request_id = $1
 					EXCEPT
-					SELECT target.id, target.action::text, target.attempt_count,
+						SELECT target.id, target.storage_tier::text, target.action::text, target.attempt_count,
 						target.completed_at, target.storage_outcome
 					FROM content_deletion_targets AS target
 					WHERE target.request_id = $1
@@ -1479,12 +1509,12 @@ func TestContentDeletionReconcilerDeletesExactArtifactVersionsAndMultipartUpload
 	`, deletion.RequestID).Scan(&receiptTargetCount, &receiptTargetMismatchCount); err != nil {
 		t.Fatalf("read immutable per-target receipt: %v", err)
 	}
-	if receiptTargetCount != len(artifactIDs)+1 || receiptTargetMismatchCount != 0 {
+	if receiptTargetCount != (2*len(artifactIDs))+1 || receiptTargetMismatchCount != 0 {
 		t.Fatalf(
 			"per-target receipt = count %d mismatches %d, want %d and 0",
 			receiptTargetCount,
 			receiptTargetMismatchCount,
-			len(artifactIDs)+1,
+			(2*len(artifactIDs))+1,
 		)
 	}
 	for operation, statement := range map[string]string{
@@ -1507,6 +1537,11 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 	if err := minio.store.ValidateBucket(ctx); err != nil {
 		t.Fatalf("validate retention Artifact Store: %v", err)
 	}
+	backupStore := newAdditionalMinIOStore(
+		t,
+		minio,
+		"vela-retention-off-cluster-backup",
+	)
 	fixture := newStartFixtureWithRetention(t, "minio-content-deletion", 30, 59)
 	if started, err := fixture.service.Start(
 		ctx, fixture.worker, fixture.credentials,
@@ -1523,6 +1558,7 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 
 	artifactIDs := make([]uuid.UUID, 0, len(plan.Artifacts))
 	versions := make([]artifactstore.ObjectVersion, 0, len(plan.Artifacts))
+	backupVersions := make([]artifactstore.ObjectVersion, 0, len(plan.Artifacts))
 	for index, artifact := range plan.Artifacts {
 		claimID := uuid.New()
 		claim, claimErr := completionService.ClaimArtifactUpload(
@@ -1600,8 +1636,20 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 		if closeErr := reader.Close(); closeErr != nil {
 			t.Fatalf("close real Artifact %d before deletion: %v", index, closeErr)
 		}
+		backupVersion, backupErr := backupStore.PutIfAbsent(
+			ctx,
+			artifact.ObjectKey,
+			claim.ExpectedContentType,
+			bytes.NewReader(payload),
+			int64(len(payload)),
+			digest,
+		)
+		if backupErr != nil {
+			t.Fatalf("copy real Artifact %d to off-cluster backup: %v", index, backupErr)
+		}
 		artifactIDs = append(artifactIDs, artifact.ArtifactID)
 		versions = append(versions, version)
+		backupVersions = append(backupVersions, backupVersion)
 	}
 	completed, err := completionService.CompleteVisibleCompletion(
 		ctx,
@@ -1653,6 +1701,11 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 	if err != nil {
 		t.Fatalf("accept real MinIO Content Deletion: %v", err)
 	}
+	snapshotPath := capturePostgresDatabaseSnapshot(
+		t,
+		fixture.database,
+		"/tmp/vela-retention-authority.dump",
+	)
 	retentionPool := newRolePool(
 		t,
 		fixture.database.DSN,
@@ -1734,13 +1787,20 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 			BatchSize:  10,
 			ClaimTTL:   time.Minute,
 			RetryDelay: time.Minute,
+			BackupPool: newRolePool(
+				t,
+				fixture.database.DSN,
+				"vela_backup_retention_login",
+				"vela-backup-retention-password",
+			),
+			BackupStore: backupStore,
 		},
 	)
 	if err != nil {
 		t.Fatalf("create restarted real MinIO retention Reconciler: %v", err)
 	}
 	result, err := reconciler.ReconcileBatch(ctx)
-	if err != nil || result.Claimed != len(versions)+1 || result.Completed != result.Claimed ||
+	if err != nil || result.Claimed != (2*len(versions))+1 || result.Completed != result.Claimed ||
 		result.Failed != 0 {
 		t.Fatalf("real MinIO Content Deletion result = %#v error=%v", result, err)
 	}
@@ -1749,6 +1809,13 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 		if readErr == nil {
 			_ = reader.Close()
 			t.Fatalf("real Artifact %d exact version remained readable after deletion", index)
+		}
+	}
+	for index, version := range backupVersions {
+		reader, readErr := backupStore.ReadExactVersion(ctx, version.ObjectKey, version.VersionID)
+		if readErr == nil {
+			_ = reader.Close()
+			t.Fatalf("off-cluster backup Artifact %d remained readable after deletion", index)
 		}
 	}
 	incomplete, err = minio.store.ListIncompleteMultipartUploads(ctx, objectPrefix)
@@ -1781,15 +1848,17 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 			(SELECT count(*)
 			 FROM content_deletion_receipt_targets AS snapshot
 			 JOIN content_deletion_targets AS target
-			   ON target.id = snapshot.target_id
+				   ON target.id = snapshot.target_id
 			  AND target.organization_id = snapshot.organization_id
 			  AND target.project_id = snapshot.project_id
 			  AND target.job_id = snapshot.job_id
-			  AND target.request_id = snapshot.request_id
-			  AND target.action = snapshot.action
+				  AND target.request_id = snapshot.request_id
+				  AND target.storage_tier = snapshot.storage_tier
+				  AND target.action = snapshot.action
 			  AND target.attempt_count = snapshot.attempt_count
 			  AND target.completed_at = snapshot.target_completed_at
-			  AND target.storage_outcome = snapshot.storage_outcome
+				  AND target.storage_outcome = snapshot.storage_outcome
+				  AND target.purged_version_count IS NOT DISTINCT FROM snapshot.purged_version_count
 			 WHERE snapshot.request_id = deletion.id),
 			(SELECT count(*) FROM content_deletion_receipt_targets
 			 WHERE request_id = deletion.id
@@ -1813,7 +1882,7 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 		t.Fatalf("read real MinIO deletion receipt: %v", err)
 	}
 	if requestState != "COMPLETED" || deletedArtifacts != len(versions) ||
-		receiptTargets != len(versions)+1 || matchingTargets != receiptTargets ||
+		receiptTargets != (2*len(versions))+1 || matchingTargets != receiptTargets ||
 		multipartOutcomes != 1 || totalAttempts != int64(receiptTargets)+2 ||
 		crashedTargetAttempts != 3 {
 		t.Fatalf(
@@ -1827,6 +1896,404 @@ func TestContentDeletionReconcilerDeletesRealMinIOVersionsAndMultipartUploads(t 
 			crashedTargetAttempts,
 		)
 	}
+
+	restored := restorePostgresDatabaseSnapshot(
+		t,
+		fixture.database,
+		snapshotPath,
+		"vela_retention_restore",
+	)
+	restoredReconciler, err := retention.NewReconciler(
+		newRolePool(
+			t,
+			restored.DSN,
+			"vela_retention_login",
+			"vela-retention-password",
+		),
+		minio.store,
+		retention.ReconcilerConfig{
+			InstanceID: "restored-real-minio-retention-reconciler",
+			BatchSize:  10,
+			ClaimTTL:   time.Minute,
+			RetryDelay: time.Minute,
+			BackupPool: newRolePool(
+				t,
+				restored.DSN,
+				"vela_backup_retention_login",
+				"vela-backup-retention-password",
+			),
+			BackupStore: backupStore,
+		},
+	)
+	if err != nil {
+		t.Fatalf("create restored real MinIO retention Reconciler: %v", err)
+	}
+	replayed, err := restoredReconciler.ReconcileBatch(ctx)
+	if err != nil || replayed.Claimed != (2*len(versions))+1 ||
+		replayed.Completed != replayed.Claimed || replayed.Failed != 0 {
+		t.Fatalf("restored real MinIO Content Deletion replay = %#v error=%v", replayed, err)
+	}
+	for index, version := range versions {
+		reader, readErr := minio.store.ReadExactVersion(ctx, version.ObjectKey, version.VersionID)
+		if readErr == nil {
+			_ = reader.Close()
+			t.Fatalf("restored primary Artifact %d was resurrected", index)
+		}
+	}
+	for index, version := range backupVersions {
+		reader, readErr := backupStore.ReadExactVersion(ctx, version.ObjectKey, version.VersionID)
+		if readErr == nil {
+			_ = reader.Close()
+			t.Fatalf("restored off-cluster backup Artifact %d was resurrected", index)
+		}
+	}
+	var (
+		restoredRequestState, restoredRequestSource, restoredIdempotencyKey string
+		requestTombstoned, actorAuditRetained                               bool
+		restoredCharges, restoredReceipts, restoredDeletedArtifacts         int
+		restoredCompletedTargets, restoredAbsentBackupTargets               int
+	)
+	if err := restored.Admin.QueryRow(`
+		SELECT deletion.state::text,
+			deletion.source::text,
+			deletion.idempotency_key,
+			job.request_content = '{"deleted":true}'::jsonb
+				AND job.request_content_deleted_at IS NOT NULL,
+			deletion.actor_principal_id IS NOT NULL
+				AND deletion.actor_credential_id IS NOT NULL,
+			(SELECT count(*) FROM charges WHERE job_id = deletion.job_id),
+			(SELECT count(*) FROM content_deletion_receipts WHERE request_id = deletion.id),
+			(SELECT count(*) FROM artifacts
+			 WHERE job_id = deletion.job_id AND state = 'DELETED'),
+			(SELECT count(*) FROM content_deletion_targets
+			 WHERE request_id = deletion.id AND state = 'COMPLETED'),
+			(SELECT count(*) FROM content_deletion_targets
+			 WHERE request_id = deletion.id
+			   AND storage_tier = 'OFF_CLUSTER_BACKUP'
+			   AND storage_outcome = 'ALREADY_ABSENT'
+			   AND purged_version_count = 0)
+		FROM content_deletion_requests AS deletion
+		JOIN jobs AS job ON job.id = deletion.job_id
+		WHERE deletion.id = $1
+	`, deletion.RequestID).Scan(
+		&restoredRequestState,
+		&restoredRequestSource,
+		&restoredIdempotencyKey,
+		&requestTombstoned,
+		&actorAuditRetained,
+		&restoredCharges,
+		&restoredReceipts,
+		&restoredDeletedArtifacts,
+		&restoredCompletedTargets,
+		&restoredAbsentBackupTargets,
+	); err != nil {
+		t.Fatalf("read restored Content Deletion evidence: %v", err)
+	}
+	if restoredRequestState != "COMPLETED" || restoredRequestSource != "CUSTOMER" ||
+		restoredIdempotencyKey != "real-minio-content-deletion" || !requestTombstoned ||
+		!actorAuditRetained || restoredCharges != 1 || restoredReceipts != 1 ||
+		restoredDeletedArtifacts != len(versions) ||
+		restoredCompletedTargets != (2*len(versions))+1 ||
+		restoredAbsentBackupTargets != len(versions) {
+		t.Fatalf(
+			"restored Content Deletion evidence = state/source/key %s/%s/%s tombstone/audit %t/%t charges/receipts/artifacts/targets/absent-backups %d/%d/%d/%d/%d",
+			restoredRequestState,
+			restoredRequestSource,
+			restoredIdempotencyKey,
+			requestTombstoned,
+			actorAuditRetained,
+			restoredCharges,
+			restoredReceipts,
+			restoredDeletedArtifacts,
+			restoredCompletedTargets,
+			restoredAbsentBackupTargets,
+		)
+	}
+}
+
+func TestOffClusterBackupMigrationBackfillsCommittedDeletionTargets(t *testing.T) {
+	fixture := newStartFixtureWithRetention(t, "backup-retention-migration-backfill", 30, 61)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(fixture.database.Admin, migrations, 27); err != nil {
+		t.Fatalf("contract database before backup-retention backfill: %v", err)
+	}
+	if started, err := fixture.service.Start(
+		context.Background(), fixture.worker, fixture.credentials,
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("Start before backup-retention backfill = %#v error=%v", started, err)
+	}
+	completionService := visibleCompletionService(t, fixture.database.DSN)
+	plan, err := completionService.BeginFinalization(
+		context.Background(), fixture.worker, fixture.credentials,
+	)
+	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
+		t.Fatalf("BeginFinalization before backup-retention backfill = %#v error=%v", plan, err)
+	}
+	artifactIDs := uploadAndVerifyFinalizationPlan(
+		t,
+		completionService,
+		fixture.worker,
+		fixture.credentials,
+		plan,
+	)
+	completed, err := completionService.CompleteVisibleCompletion(
+		context.Background(),
+		fixture.worker,
+		fixture.credentials,
+		workercontrol.VisibleCompletionCandidate{
+			CompletionID:       uuid.New(),
+			ExpectedJobVersion: plan.JobVersion,
+			ArtifactIDs:        artifactIDs,
+		},
+	)
+	if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
+		t.Fatalf("Visible Completion before backup-retention backfill = %#v error=%v", completed, err)
+	}
+	requestService, principal := contentDeletionAuthority(t, fixture.database)
+	deletion, err := requestService.AcceptContentDeletion(
+		context.Background(),
+		principal,
+		uuid.MustParse(testProjectID),
+		fixture.candidate.JobID,
+		"backup-retention-migration-backfill",
+	)
+	if err != nil {
+		t.Fatalf("accept Content Deletion before backup-retention backfill: %v", err)
+	}
+	retentionPool := newRolePool(
+		t,
+		fixture.database.DSN,
+		"vela_retention_login",
+		"vela-retention-password",
+	)
+	claimID := uuid.New()
+	var claimedTargetID uuid.UUID
+	var claimedAction, claimedObjectKey string
+	var claimedObjectVersion sql.NullString
+	if err := retentionPool.QueryRow(context.Background(), `
+		SELECT target_id, target_action::text, object_key, object_version_id
+		FROM vela_claim_content_deletion_target($1, $2, $3)
+	`, "schema-27-primary-reconciler", claimID, 60).Scan(
+		&claimedTargetID,
+		&claimedAction,
+		&claimedObjectKey,
+		&claimedObjectVersion,
+	); err != nil {
+		t.Fatalf("claim schema 27 primary target: %v", err)
+	}
+	if claimedAction != "OBJECT_VERSION" || claimedObjectKey == "" ||
+		!claimedObjectVersion.Valid {
+		t.Fatalf(
+			"schema 27 primary target = action/key/version %s/%s/%v",
+			claimedAction,
+			claimedObjectKey,
+			claimedObjectVersion,
+		)
+	}
+	var marked bool
+	if err := retentionPool.QueryRow(context.Background(), `
+		SELECT vela_complete_content_deletion_target($1, $2, $3, NULL, 'DELETED')
+	`, claimedTargetID, claimID, uuid.New()).Scan(&marked); err != nil || !marked {
+		t.Fatalf("complete schema 27 primary target = %t error=%v", marked, err)
+	}
+	var primaryTargets, backupTargets int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT count(*), 0
+		FROM content_deletion_targets
+		WHERE request_id = $1
+	`, deletion.RequestID).Scan(&primaryTargets, &backupTargets); err != nil {
+		t.Fatalf("read pre-migration deletion targets: %v", err)
+	}
+	if primaryTargets != len(artifactIDs)+1 || backupTargets != 0 {
+		t.Fatalf("pre-migration primary/backup targets = %d/%d", primaryTargets, backupTargets)
+	}
+
+	if err := goose.UpTo(fixture.database.Admin, migrations, 28); err != nil {
+		t.Fatalf("expand backup-retention migration: %v", err)
+	}
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			count(*) FILTER (WHERE storage_tier = 'PRIMARY'),
+			count(*) FILTER (
+				WHERE storage_tier = 'OFF_CLUSTER_BACKUP'
+				  AND action = 'OBJECT_DISCOVERY'
+				  AND state = 'PENDING'
+			)
+		FROM content_deletion_targets
+		WHERE request_id = $1
+	`, deletion.RequestID).Scan(&primaryTargets, &backupTargets); err != nil {
+		t.Fatalf("read backfilled deletion targets: %v", err)
+	}
+	if primaryTargets != len(artifactIDs)+1 || backupTargets != len(artifactIDs) {
+		t.Fatalf("backfilled primary/backup targets = %d/%d", primaryTargets, backupTargets)
+	}
+	backupRetentionPool := newRolePool(
+		t,
+		fixture.database.DSN,
+		"vela_backup_retention_login",
+		"vela-backup-retention-password",
+	)
+	backupClaimID := uuid.New()
+	var backupTargetID uuid.UUID
+	var backupObjectKey string
+	if err := backupRetentionPool.QueryRow(context.Background(), `
+		SELECT target_id, object_key
+		FROM vela_claim_off_cluster_content_deletion_target($1, $2, $3)
+	`, "schema-28-backup-reconciler", backupClaimID, 60).Scan(
+		&backupTargetID,
+		&backupObjectKey,
+	); err != nil {
+		t.Fatalf("claim backfilled backup target: %v", err)
+	}
+	if backupObjectKey == "" {
+		t.Fatal("backfilled backup target object key is empty")
+	}
+	if err := backupRetentionPool.QueryRow(context.Background(), `
+		SELECT vela_retry_off_cluster_content_deletion_target($1, $2, $3, $4)
+	`, backupTargetID, backupClaimID, 60, 2).Scan(&marked); err != nil || !marked {
+		t.Fatalf("retry backfilled backup target = %t error=%v", marked, err)
+	}
+	var (
+		backupTargetState, backupErrorCode string
+		backupPurgedVersionCount           int
+	)
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT state::text, last_error_code, purged_version_count
+		FROM content_deletion_targets
+		WHERE id = $1
+	`, backupTargetID).Scan(
+		&backupTargetState,
+		&backupErrorCode,
+		&backupPurgedVersionCount,
+	); err != nil {
+		t.Fatalf("read retried backup target: %v", err)
+	}
+	if backupTargetState != "RETRY_WAIT" || backupErrorCode != "STORAGE_OPERATION_FAILED" ||
+		backupPurgedVersionCount != 2 {
+		t.Fatalf(
+			"retried backup target = state %s error %s purged %d",
+			backupTargetState,
+			backupErrorCode,
+			backupPurgedVersionCount,
+		)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE content_deletion_requests
+		SET next_retry_at = clock_timestamp()
+		WHERE id = $1
+	`, deletion.RequestID); err != nil {
+		t.Fatalf("advance request after backup retry: %v", err)
+	}
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE content_deletion_targets
+		SET next_retry_at = clock_timestamp()
+		WHERE id = $1
+	`, backupTargetID); err != nil {
+		t.Fatalf("advance backup target after retry: %v", err)
+	}
+	backupClaimID = uuid.New()
+	if err := backupRetentionPool.QueryRow(context.Background(), `
+		SELECT target_id, object_key
+		FROM vela_claim_off_cluster_content_deletion_target($1, $2, $3)
+	`, "schema-28-backup-retry", backupClaimID, 60).Scan(
+		&backupTargetID,
+		&backupObjectKey,
+	); err != nil {
+		t.Fatalf("reclaim backfilled backup target: %v", err)
+	}
+	if err := backupRetentionPool.QueryRow(context.Background(), `
+		SELECT vela_complete_off_cluster_content_deletion_target($1, $2, $3, $4)
+	`, backupTargetID, backupClaimID, uuid.New(), 0).Scan(&marked); err != nil || !marked {
+		t.Fatalf("complete retried backup target = %t error=%v", marked, err)
+	}
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT state::text, storage_outcome, purged_version_count
+		FROM content_deletion_targets
+		WHERE id = $1
+	`, backupTargetID).Scan(
+		&backupTargetState,
+		&backupErrorCode,
+		&backupPurgedVersionCount,
+	); err != nil {
+		t.Fatalf("read completed retried backup target: %v", err)
+	}
+	if backupTargetState != "COMPLETED" || backupErrorCode != "PURGED" ||
+		backupPurgedVersionCount != 2 {
+		t.Fatalf(
+			"completed retried backup target = state %s outcome %s purged %d",
+			backupTargetState,
+			backupErrorCode,
+			backupPurgedVersionCount,
+		)
+	}
+	primaryClaimID := uuid.New()
+	if err := retentionPool.QueryRow(context.Background(), `
+		SELECT target_id
+		FROM vela_claim_content_deletion_target($1, $2, $3)
+	`, "schema-28-primary-reconciler", primaryClaimID, 60).Scan(&claimedTargetID); err != nil {
+		t.Fatalf("claim primary target for backup-role isolation: %v", err)
+	}
+	if err := backupRetentionPool.QueryRow(context.Background(), `
+		SELECT vela_complete_off_cluster_content_deletion_target($1, $2, $3, $4)
+	`, claimedTargetID, primaryClaimID, uuid.New(), 0).Scan(&marked); err != nil {
+		t.Fatalf("attempt backup-role completion of primary target: %v", err)
+	}
+	if marked {
+		t.Fatal("backup role completed a primary target")
+	}
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT state::text
+		FROM content_deletion_targets
+		WHERE id = $1
+	`, claimedTargetID).Scan(&backupTargetState); err != nil {
+		t.Fatalf("read primary target after backup-role completion attempt: %v", err)
+	}
+	if backupTargetState != "IN_PROGRESS" {
+		t.Fatalf("primary target after backup-role completion attempt = %s", backupTargetState)
+	}
+
+	err = goose.DownTo(fixture.database.Admin, migrations, 27)
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
+		postgresError.ConstraintName != "off_cluster_retention_requires_empty_evidence" {
+		t.Fatalf("backup-retention migration Down error = %v", err)
+	}
+	version, versionErr := goose.GetDBVersion(fixture.database.Admin)
+	if versionErr != nil || version != 28 {
+		t.Fatalf("backup-retention version after refused Down = %d error=%v", version, versionErr)
+	}
+}
+
+func newAdditionalMinIOStore(
+	t *testing.T,
+	fixture *minIOFixture,
+	bucket string,
+) *artifactstore.S3 {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := fixture.admin.CreateBucket(ctx, &s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	}); err != nil {
+		t.Fatalf("create off-cluster backup bucket: %v", err)
+	}
+	if _, err := fixture.admin.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{
+		Bucket: aws.String(bucket),
+		VersioningConfiguration: &types.VersioningConfiguration{
+			Status: types.BucketVersioningStatusEnabled,
+		},
+	}); err != nil {
+		t.Fatalf("enable off-cluster backup versioning: %v", err)
+	}
+	config := fixture.config
+	config.Bucket = bucket
+	store, err := artifactstore.NewS3(config)
+	if err != nil {
+		t.Fatalf("create off-cluster backup store: %v", err)
+	}
+	if err := store.ValidateBucket(ctx); err != nil {
+		t.Fatalf("validate off-cluster backup store: %v", err)
+	}
+	return store
 }
 
 func TestContentDeletionReconcilerDiscoversStagingVersionBeforeExactDelete(t *testing.T) {
@@ -2966,6 +3433,7 @@ func TestAutomaticArtifactExpiryDoesNotShortenRequestContentRetention(t *testing
 	}
 	rows.Close()
 	store := &recordingRetentionStore{}
+	backupStore := &recordingBackupRetentionStore{}
 	reconciler, err := retention.NewReconciler(
 		newRolePool(
 			t,
@@ -2979,6 +3447,13 @@ func TestAutomaticArtifactExpiryDoesNotShortenRequestContentRetention(t *testing
 			BatchSize:  len(artifactIDs) + 1,
 			ClaimTTL:   time.Minute,
 			RetryDelay: time.Minute,
+			BackupPool: newRolePool(
+				t,
+				fixture.database.DSN,
+				"vela_backup_retention_login",
+				"vela-backup-retention-password",
+			),
+			BackupStore: backupStore,
 		},
 	)
 	if err != nil {
@@ -2986,7 +3461,7 @@ func TestAutomaticArtifactExpiryDoesNotShortenRequestContentRetention(t *testing
 	}
 	result, err := reconciler.ReconcileBatch(context.Background())
 	if err != nil || result.RequestContentExpired != 0 ||
-		result.ContentDeletionRequestsCreated != 1 || result.Claimed != len(artifactIDs)+1 ||
+		result.ContentDeletionRequestsCreated != 1 || result.Claimed != (2*len(artifactIDs))+1 ||
 		result.Completed != result.Claimed || result.Failed != 0 {
 		t.Fatalf("automatic Artifact expiry = %#v error=%v", result, err)
 	}
@@ -2997,6 +3472,9 @@ func TestAutomaticArtifactExpiryDoesNotShortenRequestContentRetention(t *testing
 		if _, ok := wantExact[exactIdentity{key: deleted.ObjectKey, version: deleted.VersionID}]; !ok {
 			t.Fatalf("unexpected automatic exact deletion = %#v", deleted)
 		}
+	}
+	if len(backupStore.purged) != len(artifactIDs) {
+		t.Fatalf("automatic off-cluster purges = %#v, want %d", backupStore.purged, len(artifactIDs))
 	}
 	var (
 		requestContent, deletionState, deletionSource string
@@ -3966,6 +4444,18 @@ type recordingRetentionStore struct {
 	aborted   []artifactstore.MultipartUpload
 	resolved  map[string]artifactstore.ObjectVersion
 	listErr   error
+}
+
+type recordingBackupRetentionStore struct {
+	purged []string
+}
+
+func (store *recordingBackupRetentionStore) PurgeObjectVersions(
+	_ context.Context,
+	objectKey string,
+) (artifactstore.ObjectVersionsPurgeResult, error) {
+	store.purged = append(store.purged, objectKey)
+	return artifactstore.ObjectVersionsPurgeResult{PurgedVersionCount: 1}, nil
 }
 
 type blockingRetentionStore struct {
