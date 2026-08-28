@@ -47,6 +47,9 @@ func (service *Service) Apply(ctx context.Context, planPath string) (Result, err
 	if err != nil {
 		return Result{}, fmt.Errorf("load Launch Receipt manifest: %w", err)
 	}
+	if err := validatePlanEvidence(plan, manifest); err != nil {
+		return Result{}, err
+	}
 	manifestDigest, err := decodeDigest(manifest.Digest)
 	if err != nil {
 		return Result{}, err
@@ -144,6 +147,77 @@ func (service *Service) Apply(ctx context.Context, planPath string) (Result, err
 		ReceiptIDs:      receiptIDs,
 		ProtocolVersion: protocolVersion,
 	}, nil
+}
+
+func validatePlanEvidence(plan Plan, manifest productiongates.Manifest) error {
+	evidence, ok := manifest.TypedEvidence[productiongates.GatePresetCertification]
+	if !ok || evidence.PresetCertification == nil {
+		return errors.New("preset-certification Launch Receipt lacks verified promotion claims")
+	}
+	claims := evidence.PresetCertification
+	if len(plan.Certifications) != len(claims.Certifications) ||
+		len(plan.RateCards) != len(claims.RateCards) {
+		return errors.New("catalog promotion plan does not exactly match preset-certification evidence")
+	}
+	byEvidenceID := make(map[string]productiongates.PresetCertificationClaim, len(claims.Certifications))
+	for _, claim := range claims.Certifications {
+		byEvidenceID[claim.EvidenceID] = claim
+	}
+	for _, promotion := range plan.Certifications {
+		claim, present := byEvidenceID[promotion.EvidenceID.String()]
+		if !present || !certificationPromotionMatchesClaim(promotion, claim) {
+			return fmt.Errorf(
+				"catalog promotion for ProfileCertification %s does not match verified preset evidence",
+				promotion.ProfileCertificationID,
+			)
+		}
+	}
+	type rateCardClaimKey struct {
+		bindingID          string
+		rateCardRevisionID string
+	}
+	wantRateCards := make(map[rateCardClaimKey]struct{}, len(claims.RateCards))
+	for _, claim := range claims.RateCards {
+		wantRateCards[rateCardClaimKey{
+			bindingID:          claim.BindingID,
+			rateCardRevisionID: claim.RateCardRevisionID,
+		}] = struct{}{}
+	}
+	for _, promotion := range plan.RateCards {
+		key := rateCardClaimKey{
+			bindingID:          promotion.BindingID.String(),
+			rateCardRevisionID: promotion.RateCardRevisionID.String(),
+		}
+		if _, present := wantRateCards[key]; !present {
+			return fmt.Errorf(
+				"rate card promotion %s does not match verified preset evidence",
+				promotion.RateCardRevisionID,
+			)
+		}
+	}
+	return nil
+}
+
+func certificationPromotionMatchesClaim(
+	promotion CertificationPromotion,
+	claim productiongates.PresetCertificationClaim,
+) bool {
+	return claim.ProfileCertificationID == promotion.ProfileCertificationID.String() &&
+		claim.InferenceBackendRevisionID == promotion.InferenceBackendRevisionID.String() &&
+		claim.HardwareDriverBaseline == promotion.HardwareDriverBaseline &&
+		claim.BenchmarkCorpusRevision == promotion.BenchmarkCorpusRevision &&
+		claim.QualityThresholdPPM == promotion.QualityThresholdPPM &&
+		claim.QualityObservedPPM == promotion.QualityObservedPPM &&
+		claim.SuccessRateThresholdPPM == promotion.SuccessRateThresholdPPM &&
+		claim.SuccessRateObservedPPM == promotion.SuccessRateObservedPPM &&
+		claim.P50Milliseconds == promotion.P50Milliseconds &&
+		claim.P95ThresholdMilliseconds == promotion.P95ThresholdMilliseconds &&
+		claim.P95ObservedMilliseconds == promotion.P95ObservedMilliseconds &&
+		claim.CostThresholdMinor == promotion.CostThresholdMinor &&
+		claim.CostObservedMinor == promotion.CostObservedMinor &&
+		claim.CostCurrency == promotion.CostCurrency &&
+		claim.ConfidenceThresholdPPM == promotion.ConfidenceThresholdPPM &&
+		claim.ConfidenceObservedPPM == promotion.ConfidenceObservedPPM
 }
 
 func promoteCertification(

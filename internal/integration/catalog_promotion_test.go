@@ -110,6 +110,73 @@ func TestCatalogPromotionPlanFailureRollsBackManifest(t *testing.T) {
 	}
 }
 
+func TestCatalogPromotionRejectsPlanEvidenceMismatchBeforeDatabaseMutation(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedThreePresetCatalog(t, database)
+	promotionPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_catalog_promotion_login",
+		"vela-catalog-promotion-password",
+	)
+	service, err := catalogpromotion.New(context.Background(), promotionPool)
+	if err != nil {
+		t.Fatalf("configure Catalog Promotion service: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*catalogpromotion.Plan)
+	}{
+		{
+			name: "certification metric",
+			mutate: func(plan *catalogpromotion.Plan) {
+				plan.Certifications[0].QualityObservedPPM++
+			},
+		},
+		{
+			name: "RateCard binding ID",
+			mutate: func(plan *catalogpromotion.Plan) {
+				plan.RateCards[0].BindingID = uuid.MustParse("35000000-0000-0000-0000-000000000599")
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			planPath := writeCatalogPromotionFiles(t, false)
+			plan, err := catalogpromotion.LoadPlan(planPath)
+			if err != nil {
+				t.Fatalf("load Catalog promotion fixture: %v", err)
+			}
+			test.mutate(&plan)
+			writeJSONFixture(t, planPath, plan)
+			if _, err := service.Apply(context.Background(), planPath); err == nil ||
+				!strings.Contains(err.Error(), "does not match verified preset evidence") {
+				t.Fatalf("mismatched Catalog promotion error = %v", err)
+			}
+			var manifests, receipts, evidence, bindings int64
+			if err := database.Admin.QueryRow(`
+				SELECT
+					(SELECT count(*) FROM production_gate_manifests),
+					(SELECT count(*) FROM production_gate_receipts),
+					(SELECT count(*) FROM profile_certification_evidence),
+					(SELECT count(*) FROM rate_card_release_bindings)
+			`).Scan(&manifests, &receipts, &evidence, &bindings); err != nil {
+				t.Fatalf("read pre-transaction Catalog rows: %v", err)
+			}
+			if manifests != 0 || receipts != 0 || evidence != 0 || bindings != 0 {
+				t.Fatalf(
+					"mismatched Catalog plan left rows %d/%d/%d/%d",
+					manifests,
+					receipts,
+					evidence,
+					bindings,
+				)
+			}
+		})
+	}
+}
+
 func TestCatalogPromotionRequiresSealedThreePresetEvidence(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -964,16 +1031,47 @@ func assertCatalogDatabaseError(
 func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string {
 	t.Helper()
 	directory := t.TempDir()
-	evidence := []byte(`{"result":"real-environment evidence fixture"}`)
 	manifest := productiongates.Manifest{
 		SchemaVersion: 1,
 		Receipts:      make([]productiongates.Receipt, 0, len(productiongates.AllGates())),
 	}
 	releaseDigest := sha256.Sum256([]byte("catalog-promotion-release"))
+	certificationIDs := []uuid.UUID{
+		uuid.MustParse("00000000-0000-0000-0000-000000000015"),
+		uuid.MustParse("35000000-0000-0000-0000-000000000014"),
+		uuid.MustParse("35000000-0000-0000-0000-000000000024"),
+	}
+	if invalidCertification {
+		certificationIDs[1] = uuid.MustParse("35000000-0000-0000-0000-000000000999")
+	}
 	for index, gate := range productiongates.AllGates() {
-		gateEvidence := evidence
+		startedAt := time.Date(2026, 8, 28, 3, index, 0, 0, time.UTC)
+		completedAt := startedAt.Add(time.Minute)
+		if gate == productiongates.GateRealH3Soak {
+			completedAt = startedAt.Add(72 * time.Hour)
+		}
+		acceptanceThreshold := "all gate assertions pass"
+		observedResult := "all gate assertions passed"
+		var gateEvidence []byte
 		if gate == productiongates.GateObservabilityOnCall {
 			gateEvidence = catalogObservabilityEvidenceFixture(t, directory)
+		} else {
+			typed := catalogTypedEvidenceFixture(
+				t,
+				directory,
+				gate,
+				"sha256:"+hex.EncodeToString(releaseDigest[:]),
+				startedAt,
+				completedAt,
+				certificationIDs,
+			)
+			acceptanceThreshold = typed.AcceptanceThreshold()
+			observedResult = typed.ObservedResult()
+			var err error
+			gateEvidence, err = json.Marshal(typed)
+			if err != nil {
+				t.Fatalf("encode %s Catalog evidence: %v", gate, err)
+			}
 		}
 		evidenceDigest := sha256.Sum256(gateEvidence)
 		evidenceRef := filepath.ToSlash(filepath.Join("evidence", string(gate)+".json"))
@@ -984,7 +1082,6 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 		if err := os.WriteFile(evidencePath, gateEvidence, 0o600); err != nil {
 			t.Fatalf("write Catalog evidence: %v", err)
 		}
-		startedAt := time.Date(2026, 8, 28, 3, index, 0, 0, time.UTC)
 		manifest.Receipts = append(manifest.Receipts, productiongates.Receipt{
 			SchemaVersion:         1,
 			Gate:                  gate,
@@ -993,25 +1090,17 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 			ValidationEnvironment: "h3-validation-rack-1",
 			Result:                productiongates.ResultPass,
 			Owner:                 "platform-oncall@example.invalid",
-			AcceptanceThreshold:   "all gate assertions pass",
-			ObservedResult:        "all gate assertions passed",
+			AcceptanceThreshold:   acceptanceThreshold,
+			ObservedResult:        observedResult,
 			EvidenceRef:           evidenceRef,
 			EvidenceDigest:        "sha256:" + hex.EncodeToString(evidenceDigest[:]),
 			StartedAt:             startedAt,
-			CompletedAt:           startedAt.Add(time.Minute),
-			RecordedAt:            startedAt.Add(2 * time.Minute),
+			CompletedAt:           completedAt,
+			RecordedAt:            completedAt.Add(time.Minute),
 		})
 	}
 	writeJSONFixture(t, filepath.Join(directory, "launch-receipts.json"), manifest)
 
-	certificationIDs := []uuid.UUID{
-		uuid.MustParse("00000000-0000-0000-0000-000000000015"),
-		uuid.MustParse("35000000-0000-0000-0000-000000000014"),
-		uuid.MustParse("35000000-0000-0000-0000-000000000024"),
-	}
-	if invalidCertification {
-		certificationIDs[1] = uuid.MustParse("35000000-0000-0000-0000-000000000999")
-	}
 	certifications := make([]catalogpromotion.CertificationPromotion, 0, len(certificationIDs))
 	for index, certificationID := range certificationIDs {
 		certifications = append(certifications, catalogpromotion.CertificationPromotion{
@@ -1047,6 +1136,124 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 	planPath := filepath.Join(directory, "catalog-promotion.json")
 	writeJSONFixture(t, planPath, plan)
 	return planPath
+}
+
+func catalogTypedEvidenceFixture(
+	t *testing.T,
+	directory string,
+	gate productiongates.Gate,
+	releaseDigest string,
+	startedAt,
+	completedAt time.Time,
+	certificationIDs []uuid.UUID,
+) productiongates.TypedEvidence {
+	t.Helper()
+	contract, ok := productiongates.TypedEvidenceContractForGate(gate)
+	if !ok {
+		t.Fatalf("typed evidence contract missing for %s", gate)
+	}
+	evidence := productiongates.TypedEvidence{
+		SchemaVersion: 1, Gate: gate, CriteriaRevision: contract.CriteriaRevision,
+		ReleaseDigest: releaseDigest, ConfigurationRevision: "catalog-config-1",
+		ValidationEnvironment: "h3-validation-rack-1",
+		Owner:                 "platform-oncall@example.invalid",
+		StartedAt:             startedAt, CompletedAt: completedAt,
+		Checks:       make([]productiongates.EvidenceCheck, 0, len(contract.CheckIDs)),
+		Measurements: make([]productiongates.EvidenceMeasurement, 0, len(contract.Measurements)),
+		Artifacts:    make([]productiongates.EvidenceArtifact, 0, len(contract.ArtifactKinds)),
+	}
+	for _, id := range contract.CheckIDs {
+		evidence.Checks = append(evidence.Checks, productiongates.EvidenceCheck{ID: id, Passed: true})
+	}
+	for _, requirement := range contract.Measurements {
+		evidence.Measurements = append(evidence.Measurements, productiongates.EvidenceMeasurement{
+			ID: requirement.ID, Unit: requirement.Unit,
+			Comparator: requirement.Comparator, Threshold: requirement.Threshold,
+			Observed: requirement.Threshold,
+		})
+	}
+	if gate == productiongates.GatePresetCertification {
+		claims := make([]productiongates.PresetCertificationClaim, 0, len(certificationIDs))
+		for index, preset := range []string{"quality", "balanced", "fast"} {
+			claims = append(claims, productiongates.PresetCertificationClaim{
+				EvidenceID:                 uuid.MustParse(fmt.Sprintf("35000000-0000-0000-0000-%012d", 401+index)).String(),
+				ProfileCertificationID:     certificationIDs[index].String(),
+				InferenceBackendRevisionID: uuid.MustParse(testInferenceBackendRevisionID).String(),
+				SaleableGroupID:            "model-v1/standard-v1/1080p-v1/CNY",
+				StablePreset:               preset,
+				HardwareDriverBaseline:     "h3-8gpu-driver-r1",
+				BenchmarkCorpusRevision:    "h3-video-quality-v2",
+				SampleCount:                100,
+				QualityThresholdPPM:        820000, QualityObservedPPM: 850000,
+				SuccessRateThresholdPPM: 990000, SuccessRateObservedPPM: 999000,
+				P50Milliseconds: 900000, P95ThresholdMilliseconds: 1800000,
+				P95ObservedMilliseconds: 1700000,
+				CostThresholdMinor:      500000, CostObservedMinor: 450000, CostCurrency: "CNY",
+				ConfidenceThresholdPPM: 950000, ConfidenceObservedPPM: 990000,
+			})
+		}
+		evidence.PresetCertification = &productiongates.PresetCertificationClaims{
+			SaleableGroupIDs: []string{"model-v1/standard-v1/1080p-v1/CNY"},
+			Certifications:   claims,
+			RateCards: []productiongates.RateCardPromotionClaim{{
+				BindingID: uuid.MustParse("35000000-0000-0000-0000-000000000501").String(),
+				RateCardRevisionID: uuid.MustParse(
+					"00000000-0000-0000-0000-000000000016",
+				).String(),
+			}},
+		}
+	}
+	catalogWriteTypedEvidenceArtifacts(t, directory, &evidence, contract.ArtifactKinds)
+	return evidence
+}
+
+func catalogWriteTypedEvidenceArtifacts(
+	t *testing.T,
+	directory string,
+	evidence *productiongates.TypedEvidence,
+	kinds []string,
+) {
+	t.Helper()
+	payloads := make([]productiongates.TypedEvidenceArtifact, len(kinds))
+	for index, kind := range kinds {
+		payloads[index] = productiongates.TypedEvidenceArtifact{
+			SchemaVersion: 1, Gate: evidence.Gate, Kind: kind,
+			ReleaseDigest: evidence.ReleaseDigest, ConfigurationRevision: evidence.ConfigurationRevision,
+			ValidationEnvironment: evidence.ValidationEnvironment, Owner: evidence.Owner,
+			StartedAt: evidence.StartedAt, CompletedAt: evidence.CompletedAt,
+			Checks:       make([]productiongates.EvidenceCheck, 0),
+			Measurements: make([]productiongates.EvidenceMeasurement, 0),
+		}
+	}
+	for index, check := range evidence.Checks {
+		payloads[index%len(payloads)].Checks = append(payloads[index%len(payloads)].Checks, check)
+	}
+	for index, measurement := range evidence.Measurements {
+		payloads[index%len(payloads)].Measurements = append(
+			payloads[index%len(payloads)].Measurements,
+			measurement,
+		)
+	}
+	for index := range payloads {
+		if evidence.Gate == productiongates.GatePresetCertification {
+			payloads[index].PresetCertification = evidence.PresetCertification
+		}
+		content, err := json.Marshal(payloads[index])
+		if err != nil {
+			t.Fatalf("encode Catalog %s/%s artifact: %v", evidence.Gate, payloads[index].Kind, err)
+		}
+		ref := filepath.ToSlash(filepath.Join("typed", string(evidence.Gate), payloads[index].Kind+".json"))
+		path := filepath.Join(directory, filepath.FromSlash(ref))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("create Catalog typed artifact directory: %v", err)
+		}
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatalf("write Catalog typed artifact: %v", err)
+		}
+		evidence.Artifacts = append(evidence.Artifacts, productiongates.EvidenceArtifact{
+			Kind: payloads[index].Kind, Ref: ref, Digest: sloevidence.Digest(content),
+		})
+	}
 }
 
 func catalogObservabilityEvidenceFixture(t *testing.T, directory string) []byte {
