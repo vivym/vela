@@ -35,8 +35,9 @@ compatibility. A rendered manifest is not a deployment receipt.
 
 Production assembly must include the final `kubectl kustomize` output as the
 exact `worker-agent` render, the built `h3-runner` package and contract, and one
-canonical materialization for every admitted Worker node. One logical
-WorkerPool retains the shared EPR, circuit, and aggregate-capacity authority,
+canonical materialization for every registered Worker node. One logical
+WorkerPool retains the shared ExecutionProfileRevision, circuit, and
+aggregate-capacity authority,
 while each node placement is hostname-pinned through its own `OnDelete`
 DaemonSet and owns its runtime/profile/GPU-role ConfigMaps and Worker TLS Secret.
 Each materialization binds the Worker/epoch, Fleet revision, Node Agent

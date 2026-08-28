@@ -273,6 +273,16 @@ func (reconciler *Reconciler) BindWorkerPodIdentity(
 		desired.Revision != pod.Metadata.Labels[fleetRevisionLabel] {
 		return WorkerPodIdentityBinding{}, ErrWorkerIdentityConflict
 	}
+	placementFound := false
+	for _, placement := range desired.Placements {
+		if placement.NodeIdentity == nodeIdentity {
+			placementFound = true
+			break
+		}
+	}
+	if !placementFound {
+		return WorkerPodIdentityBinding{}, ErrWorkerIdentityConflict
+	}
 	identity, err := reconciler.identities.ResolveWorkerIdentity(ctx, fleet.WorkerIdentityRequest{
 		NodeIdentity: nodeIdentity, WorkerPoolID: workerPoolID,
 		KubernetesUID: pod.KubernetesUID, Namespace: pod.Metadata.Namespace,

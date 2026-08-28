@@ -86,6 +86,7 @@ func TestReconcileMaterializesImmutableProtectedWorkerPoolAndOnDeleteDaemonSet(t
 	if daemonSet.UpdateStrategy != "OnDelete" ||
 		daemonSet.Metadata.Name != placement.DaemonSetName ||
 		daemonSet.Template.Labels["app.kubernetes.io/name"] != daemonSet.Selector["app.kubernetes.io/name"] ||
+		daemonSet.Template.Labels["vela.ai/worker-profile"] != "h3" ||
 		daemonSet.Template.Labels["vela.ai/fleet-protected"] != "true" ||
 		daemonSet.Template.Labels["vela.ai/worker-pool-id"] != desired.WorkerPoolID.String() ||
 		daemonSet.Template.Labels["vela.ai/fleet-revision"] != desired.Revision ||
@@ -178,6 +179,48 @@ func TestReconcileFailsClosedWhenAuthoritativeCapacityPolicyCannotBeConfigured(t
 	}
 	if operations[len(operations)-1] != "configure-capacity-policy" {
 		t.Fatalf("failed capacity policy authority order = %#v", operations)
+	}
+}
+
+func TestRuntimeDoesNotBindPodsForDesiredRevisionThatFailedReconciliation(t *testing.T) {
+	reconcileFailure := errors.New("capacity authority unavailable")
+	resources := &recordingResources{}
+	resolver := &staticIdentityResolver{identity: fleet.WorkerIdentity{
+		WorkerID:     uuid.MustParse("23000000-0000-0000-0000-000000000041"),
+		WorkerPoolID: uuid.MustParse("00000000-0000-0000-0000-000000000005"),
+		WorkerEpoch:  20,
+		NodeIdentity: "h3-node-01",
+	}}
+	readiness := successfulReadinessStarter()
+	reconciler, err := fleetcontroller.NewReconciler(
+		resources,
+		&staticDrainReader{},
+		resolver,
+		readiness,
+		&staticCapacityPolicyConfigurator{err: reconcileFailure},
+	)
+	if err != nil {
+		t.Fatalf("create Fleet reconciler: %v", err)
+	}
+	runtimeController, err := fleetcontroller.NewRuntime(
+		staticPendingWorkerPodLister{pods: []fleetcontroller.WorkerPod{pendingWorkerPod()}},
+		reconciler,
+		fleetcontroller.RuntimeConfig{
+			DesiredRevisions: []fleetcontroller.DesiredRevision{desiredRevision()},
+			PollInterval:     time.Second,
+		},
+	)
+	if err != nil {
+		t.Fatalf("create Fleet runtime: %v", err)
+	}
+	result, err := runtimeController.RunOnce(context.Background())
+	if !errors.Is(err, reconcileFailure) || result.DesiredRevisionsConverged != 0 ||
+		result.WorkerPodsBound != 0 {
+		t.Fatalf("failed desired reconciliation result = %#v error=%v", result, err)
+	}
+	if len(resolver.requests) != 0 || len(readiness.requests) != 0 || len(resources.bindings) != 0 {
+		t.Fatalf("failed desired revision reached Worker binding: resolver=%#v readiness=%#v bindings=%#v",
+			resolver.requests, readiness.requests, resources.bindings)
 	}
 }
 
@@ -438,8 +481,8 @@ func TestRuntimeCompletesExactPoolDrainSetBeforeRetiringProtectedResources(t *te
 		t.Fatalf("Fleet retirement completion receipts = %#v", drains.completionRecords)
 	}
 	wantAttachedDrainIDs := map[string][]uuid.UUID{
-		plan.Placements[0].DaemonSetName: {workers[0].OperationID},
-		plan.Placements[1].DaemonSetName: {workers[1].OperationID},
+		plan.Placements[0].DaemonSetName: {workers[0].OperationID, workers[1].OperationID},
+		plan.Placements[1].DaemonSetName: {workers[0].OperationID, workers[1].OperationID},
 		plan.WorkerPoolName:              {workers[0].OperationID, workers[1].OperationID},
 	}
 	for name, want := range wantAttachedDrainIDs {
@@ -524,7 +567,10 @@ func TestMultiPlacementRetirementReplaysReceiptsBeforeDeletingWorkerPool(t *test
 		resources.attachedResources[0].Name != plan.Placements[1].DaemonSetName ||
 		!reflect.DeepEqual(
 			resources.attachedIDSets[0],
-			[]uuid.UUID{plan.Placements[1].Workers[0].OperationID},
+			[]uuid.UUID{
+				plan.Placements[0].Workers[0].OperationID,
+				plan.Placements[1].Workers[0].OperationID,
+			},
 		) {
 		t.Fatalf("staged retirement attachment = %#v / %#v",
 			resources.attachedResources, resources.attachedIDSets)
@@ -1134,6 +1180,16 @@ func TestBindWorkerPodIdentityFailsClosedBeforePodMutation(t *testing.T) {
 			},
 		},
 		{
+			name: "target Node outside desired placements",
+			mutate: func(pod *fleetcontroller.WorkerPod) {
+				pod.RequiredNodeAffinity[0].MatchFields[0].Values = []string{"h3-node-99"}
+			},
+			identity: fleet.WorkerIdentity{
+				WorkerID:     uuid.MustParse("23000000-0000-0000-0000-000000000041"),
+				WorkerPoolID: poolID, WorkerEpoch: 20, NodeIdentity: "h3-node-99",
+			},
+		},
+		{
 			name: "returned pool mismatch",
 			identity: fleet.WorkerIdentity{
 				WorkerID:     uuid.MustParse("23000000-0000-0000-0000-000000000041"),
@@ -1580,10 +1636,13 @@ func drainResultForRequest(request fleet.DrainRequest, state fleet.DrainState) f
 	}
 }
 
-type staticPendingWorkerPodLister struct{}
+type staticPendingWorkerPodLister struct {
+	pods []fleetcontroller.WorkerPod
+	err  error
+}
 
-func (staticPendingWorkerPodLister) ListPendingWorkerPods(context.Context) ([]fleetcontroller.WorkerPod, error) {
-	return nil, nil
+func (lister staticPendingWorkerPodLister) ListPendingWorkerPods(context.Context) ([]fleetcontroller.WorkerPod, error) {
+	return append([]fleetcontroller.WorkerPod(nil), lister.pods...), lister.err
 }
 
 type staticCapacityPolicyConfigurator struct {

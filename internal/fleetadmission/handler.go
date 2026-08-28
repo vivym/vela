@@ -951,7 +951,13 @@ func validWorkerPoolShape(object protectedObject) bool {
 }
 
 func validPlacementResourceName(value string) bool {
-	return len(validation.IsDNS1123Subdomain(value)) == 0
+	lower := strings.ToLower(value)
+	return len(validation.IsDNS1123Subdomain(value)) == 0 &&
+		!strings.Contains(lower, "placeholder") &&
+		!strings.Contains(lower, "replace-with") &&
+		!strings.Contains(lower, "changeme") &&
+		!strings.Contains(lower, "todo") &&
+		!strings.Contains(lower, ".invalid")
 }
 
 func claimPlacementValue(seen map[string]struct{}, value string) bool {

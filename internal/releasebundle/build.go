@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -84,7 +83,7 @@ func newRenderInventory() renderInventory {
 	}
 }
 
-func build(root *os.Root, plan BuildPlan) (Bundle, error) {
+func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 	if plan.SchemaVersion != SchemaVersion || len(plan.FinalRenders) != len(fixedRenderNames) ||
 		len(plan.Packages) != len(fixedPackageNames) || len(plan.WorkerMaterializations) == 0 ||
 		len(plan.WorkerMaterializations) > maxWorkerNodeCount || len(plan.OCIManifests) == 0 ||
@@ -237,7 +236,7 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 	}, nil
 }
 
-func verify(root *os.Root, bundle Bundle) error {
+func verify(root *rootedFS, bundle Bundle) error {
 	if bundle.SchemaVersion != SchemaVersion || !validDigest(bundle.ReleaseDigest) ||
 		!validDigest(bundle.ConfigurationRevision) {
 		return invalid("bundle header is invalid")

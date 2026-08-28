@@ -111,10 +111,8 @@ func (reconciler *Reconciler) ReconcileRetirement(
 		return RetirementResult{}, err
 	}
 	drainIDs := make([]uuid.UUID, 0)
-	placementDrainIDs := make([][]uuid.UUID, len(plan.Placements))
 	allComplete := true
-	for placementIndex, placement := range plan.Placements {
-		placementDrainIDs[placementIndex] = make([]uuid.UUID, 0, len(placement.Workers))
+	for _, placement := range plan.Placements {
 		for _, worker := range placement.Workers {
 			request := fleet.DrainRequest{
 				OperationID:   worker.OperationID,
@@ -142,9 +140,6 @@ func (reconciler *Reconciler) ReconcileRetirement(
 			switch drain.State {
 			case fleet.DrainComplete:
 				drainIDs = append(drainIDs, worker.OperationID)
-				placementDrainIDs[placementIndex] = append(
-					placementDrainIDs[placementIndex], worker.OperationID,
-				)
 			case fleet.DrainDraining:
 				allComplete = false
 			case fleet.DrainExpired:
@@ -159,13 +154,13 @@ func (reconciler *Reconciler) ReconcileRetirement(
 	}
 
 	result := RetirementResult{}
-	for placementIndex, placement := range plan.Placements {
+	for _, placement := range plan.Placements {
 		daemonSet := ProtectedResource{
 			Kind: ResourceDaemonSet, KubernetesUID: placement.DaemonSetKubernetesUID,
 			Namespace: plan.Namespace, Name: placement.DaemonSetName, WorkerPoolID: plan.WorkerPoolID,
 		}
 		daemonSetRetired, err := reconciler.retireProtectedResource(
-			ctx, daemonSet, placementDrainIDs[placementIndex],
+			ctx, daemonSet, drainIDs,
 		)
 		if err != nil {
 			return RetirementResult{}, fmt.Errorf("retire protected DaemonSet %s: %w", placement.DaemonSetName, err)
@@ -173,14 +168,14 @@ func (reconciler *Reconciler) ReconcileRetirement(
 		if !daemonSetRetired {
 			return RetirementResult{Pending: true}, nil
 		}
-		for workerIndex, worker := range placement.Workers {
+		for _, worker := range placement.Workers {
 			pod := ProtectedResource{
 				Kind: ResourcePod, KubernetesUID: worker.PodKubernetesUID,
 				Namespace: plan.Namespace, Name: worker.PodName, WorkerPoolID: plan.WorkerPoolID,
 				WorkerID: worker.WorkerID, WorkerEpoch: worker.WorkerEpoch,
 			}
 			retired, err := reconciler.retireProtectedResource(
-				ctx, pod, placementDrainIDs[placementIndex][workerIndex:workerIndex+1],
+				ctx, pod, []uuid.UUID{worker.OperationID},
 			)
 			if err != nil {
 				return RetirementResult{}, fmt.Errorf("retire protected Worker Pod %s: %w", worker.PodName, err)

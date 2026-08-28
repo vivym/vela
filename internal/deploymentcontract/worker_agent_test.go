@@ -16,8 +16,21 @@ type workerAgentManifest struct {
 	Kind string `yaml:"kind"`
 	Spec struct {
 		Template struct {
+			Metadata struct {
+				Labels map[string]string `yaml:"labels"`
+			} `yaml:"metadata"`
 			Spec workerAgentPodSpec `yaml:"spec"`
 		} `yaml:"template"`
+	} `yaml:"spec"`
+}
+
+type workerAgentDisruptionBudget struct {
+	Kind string `yaml:"kind"`
+	Spec struct {
+		MaxUnavailable int `yaml:"maxUnavailable"`
+		Selector       struct {
+			MatchLabels map[string]string `yaml:"matchLabels"`
+		} `yaml:"selector"`
 	} `yaml:"spec"`
 }
 
@@ -151,6 +164,23 @@ func TestWorkerAgentManifestExcludesRecoveryQuarantineFromRunnerMountNamespace(t
 	}
 }
 
+func TestWorkerAgentDisruptionBudgetSelectsEveryH3WorkerPlacement(t *testing.T) {
+	manifest := loadWorkerAgentManifest(t)
+	var budget workerAgentDisruptionBudget
+	loadWorkerAgentYAML(t, "disruption-budget.yaml", &budget)
+	selector := budget.Spec.Selector.MatchLabels
+	if budget.Kind != "PodDisruptionBudget" || budget.Spec.MaxUnavailable != 1 ||
+		len(selector) != 1 || selector["vela.ai/worker-profile"] != "h3" {
+		t.Fatalf("Worker disruption budget = %#v", budget)
+	}
+	for key, value := range selector {
+		if manifest.Spec.Template.Metadata.Labels[key] != value {
+			t.Fatalf("static Worker template labels %#v do not match PDB selector %#v",
+				manifest.Spec.Template.Metadata.Labels, selector)
+		}
+	}
+}
+
 func TestWorkerAgentManifestBindsCertifiedOutputCleanupThroughput(t *testing.T) {
 	manifest := loadWorkerAgentManifest(t)
 	agent := requireContainer(t, manifest.Spec.Template.Spec.Containers, "worker-agent")
@@ -216,20 +246,25 @@ func requireConfigMapEnv(
 
 func loadWorkerAgentManifest(t *testing.T) workerAgentManifest {
 	t.Helper()
+	var manifest workerAgentManifest
+	loadWorkerAgentYAML(t, "daemonset.yaml", &manifest)
+	return manifest
+}
+
+func loadWorkerAgentYAML(t *testing.T, name string, destination any) {
+	t.Helper()
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve deployment contract test path")
 	}
-	path := filepath.Join(filepath.Dir(currentFile), "..", "..", "deploy", "worker-agent", "daemonset.yaml")
+	path := filepath.Join(filepath.Dir(currentFile), "..", "..", "deploy", "worker-agent", name)
 	payload, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("read Worker Agent manifest: %v", err)
+		t.Fatalf("read Worker Agent manifest %q: %v", name, err)
 	}
-	var manifest workerAgentManifest
-	if err := yaml.Unmarshal(payload, &manifest); err != nil {
-		t.Fatalf("parse Worker Agent manifest: %v", err)
+	if err := yaml.Unmarshal(payload, destination); err != nil {
+		t.Fatalf("parse Worker Agent manifest %q: %v", name, err)
 	}
-	return manifest
 }
 
 func requireContainer(

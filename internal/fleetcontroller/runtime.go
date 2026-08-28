@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type PendingWorkerPodLister interface {
@@ -224,6 +226,7 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 	}
 	result := RuntimeResult{}
 	var failures []error
+	reconciledPools := make(map[uuid.UUID]struct{}, len(runtime.desiredRevisions))
 	for _, desired := range runtime.desiredRevisions {
 		if _, err := runtime.reconciler.Reconcile(ctx, desired); err != nil {
 			failures = append(failures, fmt.Errorf(
@@ -234,6 +237,7 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 			))
 			continue
 		}
+		reconciledPools[desired.WorkerPoolID] = struct{}{}
 		result.DesiredRevisionsConverged++
 	}
 	pods, err := runtime.pods.ListPendingWorkerPods(ctx)
@@ -248,6 +252,14 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 					pod.Metadata.Namespace,
 					pod.Metadata.Name,
 					err,
+				))
+				continue
+			}
+			if _, reconciled := reconciledPools[desired.WorkerPoolID]; !reconciled {
+				failures = append(failures, fmt.Errorf(
+					"bind pending Worker Pod %s/%s: desired revision did not reconcile in this cycle",
+					pod.Metadata.Namespace,
+					pod.Metadata.Name,
 				))
 				continue
 			}

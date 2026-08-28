@@ -14,11 +14,12 @@ import (
 	"strings"
 
 	"github.com/vivym/vela/internal/strictjson"
+	"golang.org/x/sys/unix"
 )
 
 func Build(path string) (Bundle, []byte, error) {
 	directory, reference := filepath.Dir(path), filepath.Base(path)
-	root, err := os.OpenRoot(directory)
+	root, err := openRootedFS(directory)
 	if err != nil {
 		return Bundle{}, nil, fmt.Errorf("%w: open plan root: %v", ErrInvalidBundle, err)
 	}
@@ -48,7 +49,7 @@ func Load(path string) (Bundle, error) {
 }
 
 func LoadWithin(directory, reference string) (Bundle, error) {
-	root, err := os.OpenRoot(directory)
+	root, err := openRootedFS(directory)
 	if err != nil {
 		return Bundle{}, fmt.Errorf("%w: open bundle root: %v", ErrInvalidBundle, err)
 	}
@@ -57,8 +58,7 @@ func LoadWithin(directory, reference string) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, fmt.Errorf("%w: bundle reference: %v", ErrInvalidBundle, err)
 	}
-	// readNormalizedRooted checks every path component before OpenRoot is used;
-	// os.Root alone still permits symlinks that remain beneath its root.
+	// rootedFS opens every component with O_NOFOLLOW from a held directory fd.
 	encoded, err := readNormalizedRooted(root, normalized, maxBundleBytes)
 	if err != nil {
 		return Bundle{}, fmt.Errorf("%w: read bundle: %v", ErrInvalidBundle, err)
@@ -70,7 +70,7 @@ func LoadWithin(directory, reference string) (Bundle, error) {
 	bundleRoot := root
 	bundleDirectory := filepath.Dir(normalized)
 	if bundleDirectory != "." {
-		bundleRoot, err = root.OpenRoot(bundleDirectory)
+		bundleRoot, err = root.openRoot(bundleDirectory)
 		if err != nil {
 			return Bundle{}, fmt.Errorf("%w: open bundle directory: %v", ErrInvalidBundle, err)
 		}
@@ -107,12 +107,12 @@ type artifactReference struct {
 }
 
 type artifactReader struct {
-	root       *os.Root
+	root       *rootedFS
 	normalized map[string]string
 	remaining  int64
 }
 
-func preflightArtifactGraph(root *os.Root, plan BuildPlan) (*artifactReader, error) {
+func preflightArtifactGraph(root *rootedFS, plan BuildPlan) (*artifactReader, error) {
 	references := collectArtifactReferences(plan)
 	if len(references) > maxArtifactCount {
 		return nil, fmt.Errorf("artifact graph exceeds %d entries", maxArtifactCount)
@@ -203,7 +203,7 @@ func collectArtifactReferences(plan BuildPlan) []artifactReference {
 	return references
 }
 
-func readRooted(root *os.Root, reference string, maximum int64) ([]byte, error) {
+func readRooted(root *rootedFS, reference string, maximum int64) ([]byte, error) {
 	normalized, err := normalizeArtifactReference(reference)
 	if err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ func normalizeArtifactReference(reference string) (string, error) {
 	return normalized, nil
 }
 
-func readNormalizedRooted(root *os.Root, normalized string, maximum int64) ([]byte, error) {
+func readNormalizedRooted(root *rootedFS, normalized string, maximum int64) ([]byte, error) {
 	file, _, err := openNormalizedRooted(root, normalized, maximum)
 	if err != nil {
 		return nil, err
@@ -238,23 +238,8 @@ func readNormalizedRooted(root *os.Root, normalized string, maximum int64) ([]by
 	return content, nil
 }
 
-func openNormalizedRooted(root *os.Root, normalized string, maximum int64) (*os.File, int64, error) {
-	prefix := ""
-	for _, component := range strings.Split(normalized, string(filepath.Separator)) {
-		if prefix == "" {
-			prefix = component
-		} else {
-			prefix = filepath.Join(prefix, component)
-		}
-		information, err := root.Lstat(prefix)
-		if err != nil {
-			return nil, 0, err
-		}
-		if information.Mode()&os.ModeSymlink != 0 {
-			return nil, 0, errors.New("artifact path must not contain a symbolic link")
-		}
-	}
-	file, err := root.Open(normalized)
+func openNormalizedRooted(root *rootedFS, normalized string, maximum int64) (*os.File, int64, error) {
+	file, err := root.openFile(normalized)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -264,6 +249,75 @@ func openNormalizedRooted(root *os.Root, normalized string, maximum int64) (*os.
 		return nil, 0, fmt.Errorf("artifact must be a regular file of 1..%d bytes", maximum)
 	}
 	return file, information.Size(), nil
+}
+
+type rootedFS struct {
+	directory *os.File
+	name      string
+}
+
+func openRootedFS(name string) (*rootedFS, error) {
+	fd, err := unix.Open(name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	return &rootedFS{directory: os.NewFile(uintptr(fd), name), name: name}, nil
+}
+
+func (root *rootedFS) Close() error {
+	if root == nil || root.directory == nil {
+		return nil
+	}
+	return root.directory.Close()
+}
+
+func (root *rootedFS) openRoot(normalized string) (*rootedFS, error) {
+	file, err := root.open(normalized, true)
+	if err != nil {
+		return nil, err
+	}
+	return &rootedFS{directory: file, name: filepath.Join(root.name, normalized)}, nil
+}
+
+func (root *rootedFS) openFile(normalized string) (*os.File, error) {
+	return root.open(normalized, false)
+}
+
+func (root *rootedFS) open(normalized string, directory bool) (*os.File, error) {
+	components := strings.Split(normalized, string(filepath.Separator))
+	currentFD := int(root.directory.Fd())
+	ownedFD := -1
+	closeOwned := func() {
+		if ownedFD >= 0 {
+			_ = unix.Close(ownedFD)
+			ownedFD = -1
+		}
+	}
+	for _, component := range components[:len(components)-1] {
+		nextFD, err := unix.Openat(
+			currentFD,
+			component,
+			unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC,
+			0,
+		)
+		if err != nil {
+			closeOwned()
+			return nil, errors.New("artifact path must not contain a symbolic link or non-directory component")
+		}
+		closeOwned()
+		currentFD = nextFD
+		ownedFD = nextFD
+	}
+	flags := unix.O_RDONLY | unix.O_NOFOLLOW | unix.O_CLOEXEC
+	if directory {
+		flags |= unix.O_DIRECTORY
+	}
+	fd, err := unix.Openat(currentFD, components[len(components)-1], flags, 0)
+	closeOwned()
+	if err != nil {
+		return nil, fmt.Errorf("open artifact without following symbolic links: %w", err)
+	}
+	return os.NewFile(uintptr(fd), filepath.Join(root.name, normalized)), nil
 }
 
 func (reader *artifactReader) artifactFor(

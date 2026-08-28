@@ -748,6 +748,10 @@ func TestFleetCannotCreateProtectedWorkerPoolOutsidePlacementAndSelectorBounds(t
 			placement := object["spec"].(map[string]any)["placements"].([]any)[0].(map[string]any)
 			placement["nodeIdentity"] = strings.Repeat("a", 63) + ".b"
 		}},
+		{name: "placement contains template marker", mutate: func(object map[string]any) {
+			placement := object["spec"].(map[string]any)["placements"].([]any)[0].(map[string]any)
+			placement["workerRuntimeConfigMap"] = "worker-runtime-placeholder"
+		}},
 		{name: "invalid selector key", mutate: func(object map[string]any) {
 			selector := object["spec"].(map[string]any)["nodeSelector"].(map[string]any)
 			selector["bad key"] = "value"

@@ -558,7 +558,7 @@ func TestArtifactReaderEnforcesSharedActualReadBudget(t *testing.T) {
 	directory := t.TempDir()
 	writeTestFile(t, filepath.Join(directory, "metadata.yaml"), []byte("abc"))
 	writeTestFile(t, filepath.Join(directory, "package.tar"), []byte("defg"))
-	root, err := os.OpenRoot(directory)
+	root, err := openRootedFS(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
