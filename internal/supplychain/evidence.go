@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -32,60 +31,117 @@ type validatedKey struct {
 type validatedPolicy struct {
 	imageSigners  map[string]validatedKey
 	approvers     map[string]validatedKey
-	scanners      map[string]struct{}
+	scanners      map[scannerIdentity]struct{}
 	vulnerability VulnerabilityPolicy
 }
 
+type scannerIdentity struct {
+	name    string
+	version string
+}
+
+type imageBindingContext struct {
+	image                     string
+	releaseDigest             string
+	configurationRevision     string
+	publicationReceiptDigest  string
+	sbomDigest                string
+	vulnerabilityReportDigest string
+	policyDigest              string
+}
+
 type evidenceReader struct {
-	root      *os.Root
+	root      *rootedFS
 	remaining int64
 	used      map[string]string
 }
 
 func Load(manifestPath, policyPath string, bundle releasebundle.Bundle) (Evidence, error) {
-	manifestDirectory, manifestReference := filepath.Dir(manifestPath), filepath.Base(manifestPath)
-	policyDirectory, policyReference := filepath.Dir(policyPath), filepath.Base(policyPath)
-	if manifestDirectory != policyDirectory {
-		return Evidence{}, fmt.Errorf("%w: manifest and trust policy must share one evidence root", ErrInvalidEvidence)
-	}
-	return LoadWithin(manifestDirectory, manifestReference, policyReference, bundle)
+	return load(manifestPath, policyPath, "", bundle)
 }
 
-func LoadWithin(directory, manifestReference, policyReference string, bundle releasebundle.Bundle) (Evidence, error) {
+func LoadWithPolicyDigest(
+	manifestPath,
+	policyPath,
+	expectedPolicyDigest string,
+	bundle releasebundle.Bundle,
+) (Evidence, error) {
+	if !validDigest(expectedPolicyDigest) {
+		return Evidence{}, invalidf("expected supply-chain trust policy digest is invalid")
+	}
+	return load(manifestPath, policyPath, expectedPolicyDigest, bundle)
+}
+
+func LoadWithinWithPolicyDigest(
+	directory,
+	manifestReference,
+	policyPath,
+	expectedPolicyDigest string,
+	bundle releasebundle.Bundle,
+) (Evidence, error) {
+	if !canonicalAbsolutePath(directory) || !canonicalAbsolutePath(policyPath) ||
+		!validDigest(expectedPolicyDigest) {
+		return Evidence{}, invalidf("root, trust policy path, or expected policy digest is invalid")
+	}
 	manifestNormalized, err := normalizeReference(manifestReference)
 	if err != nil {
 		return Evidence{}, invalidf("supply-chain manifest reference: %v", err)
 	}
-	policyNormalized, err := normalizeReference(policyReference)
+	root, err := openAbsoluteRoot(directory)
 	if err != nil {
-		return Evidence{}, invalidf("supply-chain trust policy reference: %v", err)
-	}
-	manifestDirectory := filepath.Dir(manifestNormalized)
-	if filepath.Dir(policyNormalized) != manifestDirectory {
-		return Evidence{}, invalidf("supply-chain manifest and trust policy must share one evidence directory")
-	}
-	root, err := os.OpenRoot(directory)
-	if err != nil {
-		return Evidence{}, invalidf("open evidence root: %v", err)
+		return Evidence{}, invalidf("open supply-chain plan root: %v", err)
 	}
 	defer func() { _ = root.Close() }()
 	evidenceRoot := root
+	manifestDirectory := filepath.Dir(manifestNormalized)
 	if manifestDirectory != "." {
-		evidenceRoot, err = root.OpenRoot(manifestDirectory)
+		evidenceRoot, err = root.openRoot(manifestDirectory)
 		if err != nil {
 			return Evidence{}, invalidf("open supply-chain evidence directory: %v", err)
 		}
 		defer func() { _ = evidenceRoot.Close() }()
 	}
-	reader := &evidenceReader{root: evidenceRoot, remaining: maxEvidenceBytes, used: make(map[string]string)}
-	manifestEncoded, err := reader.readUnique(filepath.Base(manifestNormalized), "supply-chain manifest", maxManifestBytes)
+	return loadFromRoot(
+		evidenceRoot,
+		filepath.Base(manifestNormalized),
+		policyPath,
+		expectedPolicyDigest,
+		bundle,
+	)
+}
+
+func load(manifestPath, policyPath, expectedPolicyDigest string, bundle releasebundle.Bundle) (Evidence, error) {
+	if !canonicalAbsolutePath(manifestPath) || !canonicalAbsolutePath(policyPath) {
+		return Evidence{}, invalidf("supply-chain manifest and trust policy paths must be canonical absolute paths")
+	}
+	root, err := openAbsoluteRoot(filepath.Dir(manifestPath))
+	if err != nil {
+		return Evidence{}, invalidf("open supply-chain evidence root: %v", err)
+	}
+	defer func() { _ = root.Close() }()
+	return loadFromRoot(root, filepath.Base(manifestPath), policyPath, expectedPolicyDigest, bundle)
+}
+
+func loadFromRoot(
+	root *rootedFS,
+	manifestReference,
+	policyPath,
+	expectedPolicyDigest string,
+	bundle releasebundle.Bundle,
+) (Evidence, error) {
+	reader := &evidenceReader{root: root, remaining: maxEvidenceBytes, used: make(map[string]string)}
+	manifestEncoded, err := reader.readUnique(manifestReference, "supply-chain manifest", maxManifestBytes)
 	if err != nil {
 		return Evidence{}, err
 	}
-	policyEncoded, err := reader.readUnique(filepath.Base(policyNormalized), "supply-chain trust policy", maxPolicyBytes)
+	policyEncoded, err := readAbsoluteFile(policyPath, maxPolicyBytes)
 	if err != nil {
-		return Evidence{}, err
+		return Evidence{}, invalidf("read supply-chain trust policy: %v", err)
 	}
+	if int64(len(policyEncoded)) > reader.remaining {
+		return Evidence{}, invalidf("supply-chain evidence exceeds aggregate byte limit")
+	}
+	reader.remaining -= int64(len(policyEncoded))
 	var manifest Manifest
 	if err := decodeStrictJSON(manifestEncoded, &manifest); err != nil {
 		return Evidence{}, invalidf("decode supply-chain manifest: %v", err)
@@ -99,6 +155,9 @@ func LoadWithin(directory, manifestReference, policyReference string, bundle rel
 		return Evidence{}, err
 	}
 	policyDigest := digestBytes(policyEncoded)
+	if expectedPolicyDigest != "" && policyDigest != expectedPolicyDigest {
+		return Evidence{}, invalidf("supply-chain trust policy digest mismatch")
+	}
 	if err := validateManifestHeader(manifest, bundle); err != nil {
 		return Evidence{}, err
 	}
@@ -132,7 +191,7 @@ func validateTrustPolicy(policy TrustPolicy) (validatedPolicy, error) {
 	result := validatedPolicy{
 		imageSigners:  make(map[string]validatedKey, len(policy.ImageSigners)),
 		approvers:     make(map[string]validatedKey, len(policy.VulnerabilityApprovers)),
-		scanners:      make(map[string]struct{}, len(policy.Scanners)),
+		scanners:      make(map[scannerIdentity]struct{}, len(policy.Scanners)),
 		vulnerability: policy.VulnerabilityPolicy,
 	}
 	publicKeys := make(map[string]string, len(policy.ImageSigners)+len(policy.VulnerabilityApprovers))
@@ -146,7 +205,7 @@ func validateTrustPolicy(policy TrustPolicy) (validatedPolicy, error) {
 		if !validText(scanner.Name, 100) || !validText(scanner.Version, 100) {
 			return validatedPolicy{}, invalidf("trusted scanner identity is invalid")
 		}
-		key := scanner.Name + "\x00" + scanner.Version
+		key := scannerIdentity{name: scanner.Name, version: scanner.Version}
 		if _, duplicate := result.scanners[key]; duplicate {
 			return validatedPolicy{}, invalidf("trusted scanner identity is duplicated")
 		}
@@ -299,7 +358,16 @@ func verifyImages(
 		if err := decodeStrictJSON(statementPayload, &statement); err != nil {
 			return nil, invalidf("decode image statement: %v", err)
 		}
-		signedAt, err := validateImageStatement(statement, image.Image, bundle, binding.PublicationReceiptDigest, sbomDigest, reportDigest)
+		bindingContext := imageBindingContext{
+			image:                     image.Image,
+			releaseDigest:             bundle.ReleaseDigest,
+			configurationRevision:     bundle.ConfigurationRevision,
+			publicationReceiptDigest:  binding.PublicationReceiptDigest,
+			sbomDigest:                sbomDigest,
+			vulnerabilityReportDigest: reportDigest,
+			policyDigest:              policyDigest,
+		}
+		signedAt, err := validateImageStatement(statement, bindingContext)
 		if err != nil {
 			return nil, err
 		}
@@ -318,11 +386,12 @@ func verifyImages(
 		if err := decodeStrictJSON(approvalPayload, &approval); err != nil {
 			return nil, invalidf("decode vulnerability approval: %v", err)
 		}
-		approvedAt, err := validateApproval(approval, image.Image, bundle, policyDigest, sbomDigest, reportDigest, report, policy.vulnerability)
+		approvedAt, err := validateApproval(approval, bindingContext, report, policy.vulnerability)
 		if err != nil {
 			return nil, err
 		}
-		if approvedAt.Before(scannedAt) || approvedAt.Before(signedAt) || !keyValidAt(policy.approvers[approverID], approvedAt) {
+		if !approvedAt.After(scannedAt) || !approvedAt.After(signedAt) ||
+			!keyValidAt(policy.approvers[approverID], approvedAt) {
 			return nil, invalidf("vulnerability approval time or trusted key validity is invalid")
 		}
 		verified = append(verified, VerifiedImage{
@@ -377,7 +446,7 @@ func validateSPDX(encoded []byte, image releasebundle.OCIImage) (time.Time, erro
 			continue
 		}
 		if found || candidate.Name != repository || candidate.VersionInfo != digest ||
-			candidate.DownloadLocation != "NOASSERTION" || candidate.FilesAnalyzed == nil || *candidate.FilesAnalyzed ||
+			candidate.FilesAnalyzed == nil || *candidate.FilesAnalyzed ||
 			!hasExactSHA256(candidate.Checksums, strings.TrimPrefix(digest, "sha256:")) {
 			return time.Time{}, invalidf("SPDX SBOM subject does not bind image %s", image.Image)
 		}
@@ -408,7 +477,8 @@ func validateVulnerabilityReport(
 		report.Critical < 0 || report.High < 0 || report.Medium < 0 || report.Low < 0 || report.Unknown != 0 {
 		return report, time.Time{}, invalidf("vulnerability report semantics are invalid")
 	}
-	if _, trusted := policy.scanners[report.ScannerName+"\x00"+report.ScannerVersion]; !trusted {
+	identity := scannerIdentity{name: report.ScannerName, version: report.ScannerVersion}
+	if _, trusted := policy.scanners[identity]; !trusted {
 		return report, time.Time{}, invalidf("vulnerability scanner identity is not trusted")
 	}
 	databaseUpdatedAt, err := parseCanonicalTime(report.DatabaseUpdatedAt)
@@ -435,17 +505,16 @@ func validateVulnerabilityReport(
 
 func validateImageStatement(
 	statement imageStatement,
-	image string,
-	bundle releasebundle.Bundle,
-	publicationDigest, sbomDigest, reportDigest string,
+	binding imageBindingContext,
 ) (time.Time, error) {
-	if statement.SchemaVersion != 1 || statement.Image != image ||
-		statement.ReleaseDigest != bundle.ReleaseDigest ||
-		statement.ConfigurationRevision != bundle.ConfigurationRevision ||
-		statement.PublicationReceiptDigest != publicationDigest || statement.SBOMDigest != sbomDigest {
+	if statement.SchemaVersion != 1 || statement.Image != binding.image ||
+		statement.ReleaseDigest != binding.releaseDigest ||
+		statement.ConfigurationRevision != binding.configurationRevision ||
+		statement.PublicationReceiptDigest != binding.publicationReceiptDigest ||
+		statement.SBOMDigest != binding.sbomDigest {
 		return time.Time{}, invalidf("image statement SBOM digest or release binding is invalid")
 	}
-	if statement.VulnerabilityReportDigest != reportDigest {
+	if statement.VulnerabilityReportDigest != binding.vulnerabilityReportDigest {
 		return time.Time{}, invalidf("image statement vulnerability report digest is invalid")
 	}
 	signedAt, err := parseCanonicalTime(statement.SignedAt)
@@ -457,17 +526,16 @@ func validateImageStatement(
 
 func validateApproval(
 	approval vulnerabilityApproval,
-	image string,
-	bundle releasebundle.Bundle,
-	policyDigest, sbomDigest, reportDigest string,
+	binding imageBindingContext,
 	report vulnerabilityReport,
 	policy VulnerabilityPolicy,
 ) (time.Time, error) {
-	if approval.SchemaVersion != 1 || approval.Image != image || approval.Decision != "APPROVED" ||
-		approval.ReleaseDigest != bundle.ReleaseDigest ||
-		approval.ConfigurationRevision != bundle.ConfigurationRevision ||
-		approval.SBOMDigest != sbomDigest || approval.VulnerabilityReportDigest != reportDigest ||
-		approval.PolicyDigest != policyDigest || approval.ScannerName != report.ScannerName ||
+	if approval.SchemaVersion != 1 || approval.Image != binding.image || approval.Decision != "APPROVED" ||
+		approval.ReleaseDigest != binding.releaseDigest ||
+		approval.ConfigurationRevision != binding.configurationRevision ||
+		approval.SBOMDigest != binding.sbomDigest ||
+		approval.VulnerabilityReportDigest != binding.vulnerabilityReportDigest ||
+		approval.PolicyDigest != binding.policyDigest || approval.ScannerName != report.ScannerName ||
 		approval.ScannerVersion != report.ScannerVersion || approval.DatabaseDigest != report.DatabaseDigest ||
 		approval.MaximumCritical != policy.MaximumCritical || approval.MaximumHigh != policy.MaximumHigh ||
 		approval.MaximumDatabaseAgeSeconds != policy.MaximumDatabaseAgeSeconds {
@@ -514,7 +582,7 @@ func (reader *evidenceReader) readUnique(reference, role string, maximum int64) 
 		return nil, invalidf("artifact reference %q is shared by %s and %s", reference, prior, role)
 	}
 	reader.used[normalized] = role
-	file, err := reader.root.Open(normalized)
+	file, err := reader.root.openFile(normalized)
 	if err != nil {
 		return nil, invalidf("open %s: %v", role, err)
 	}
@@ -541,6 +609,10 @@ func normalizeReference(reference string) (string, error) {
 		return "", errors.New("reference must be a local relative file path")
 	}
 	return normalized, nil
+}
+
+func canonicalAbsolutePath(value string) bool {
+	return filepath.IsAbs(value) && filepath.Clean(value) == value
 }
 
 func validBundleImage(image releasebundle.OCIImage) bool {

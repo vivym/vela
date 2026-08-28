@@ -19,10 +19,9 @@ import (
 func TestLoadWithinVerifiesCompleteSupplyChain(t *testing.T) {
 	fixture := writeEvidenceFixture(t)
 
-	evidence, err := LoadWithin(
-		fixture.directory,
-		"supply-chain.json",
-		"supply-chain-policy.json",
+	evidence, err := Load(
+		filepath.Join(fixture.directory, "supply-chain.json"),
+		filepath.Join(fixture.directory, "supply-chain-policy.json"),
 		fixture.bundle,
 	)
 	if err != nil {
@@ -141,20 +140,91 @@ func TestLoadWithinRejectsTamperedOrIncompleteEvidence(t *testing.T) {
 			},
 			match: "unknown field",
 		},
+		{
+			name: "symlinked SBOM",
+			mutate: func(t *testing.T, fixture evidenceFixture) {
+				t.Helper()
+				path := filepath.Join(fixture.directory, "images", "control.spdx.json")
+				target := filepath.Join(fixture.directory, "control-target.spdx.json")
+				if err := os.Rename(path, target); err != nil {
+					t.Fatalf("move SBOM fixture: %v", err)
+				}
+				if err := os.Symlink(target, path); err != nil {
+					t.Fatalf("link SBOM fixture: %v", err)
+				}
+			},
+			match: "symbolic links",
+		},
+		{
+			name: "approval not after scan",
+			mutate: func(t *testing.T, fixture evidenceFixture) {
+				t.Helper()
+				path := filepath.Join(fixture.directory, "images", "control.approval.dsse.json")
+				encoded, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatalf("read approval fixture: %v", err)
+				}
+				var envelope map[string]any
+				if err := json.Unmarshal(encoded, &envelope); err != nil {
+					t.Fatalf("decode approval envelope fixture: %v", err)
+				}
+				payloadEncoded, err := base64.StdEncoding.DecodeString(envelope["payload"].(string))
+				if err != nil {
+					t.Fatalf("decode approval payload fixture: %v", err)
+				}
+				var payload map[string]any
+				if err := json.Unmarshal(payloadEncoded, &payload); err != nil {
+					t.Fatalf("decode approval payload JSON fixture: %v", err)
+				}
+				payload["approved_at"] = "2026-08-29T04:00:00Z"
+				writeJSON(t, path, testEnvelope(
+					t,
+					vulnerabilityApprovalPayloadType,
+					"security-approver-1",
+					fixture.approverPrivate,
+					payload,
+				))
+			},
+			match: "approval time",
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := writeEvidenceFixture(t)
 			test.mutate(t, fixture)
-			_, err := LoadWithin(
-				fixture.directory,
-				"supply-chain.json",
-				"supply-chain-policy.json",
+			_, err := Load(
+				filepath.Join(fixture.directory, "supply-chain.json"),
+				filepath.Join(fixture.directory, "supply-chain-policy.json"),
 				fixture.bundle,
 			)
 			if err == nil || !strings.Contains(err.Error(), test.match) {
 				t.Fatalf("LoadWithin error = %v, want %q", err, test.match)
 			}
 		})
+	}
+}
+
+func TestLoadRequiresPinnedIndependentPolicy(t *testing.T) {
+	fixture := writeEvidenceFixture(t)
+	manifestPath := filepath.Join(fixture.directory, "supply-chain.json")
+	policyPath := filepath.Join(fixture.directory, "supply-chain-policy.json")
+	if _, err := LoadWithPolicyDigest(
+		manifestPath,
+		policyPath,
+		testDigest("wrong-policy"),
+		fixture.bundle,
+	); err == nil || !strings.Contains(err.Error(), "trust policy digest mismatch") {
+		t.Fatalf("policy digest mismatch error = %v", err)
+	}
+	target := filepath.Join(fixture.directory, "policy-target.json")
+	if err := os.Rename(policyPath, target); err != nil {
+		t.Fatalf("move trust policy fixture: %v", err)
+	}
+	if err := os.Symlink(target, policyPath); err != nil {
+		t.Fatalf("link trust policy fixture: %v", err)
+	}
+	if _, err := Load(manifestPath, policyPath, fixture.bundle); err == nil ||
+		!strings.Contains(err.Error(), "symbolic links") {
+		t.Fatalf("symlinked policy error = %v", err)
 	}
 }
 
@@ -174,10 +244,9 @@ func TestLoadWithinRejectsDuplicateJSONKeys(t *testing.T) {
 	if err := os.WriteFile(path, encoded, 0o600); err != nil {
 		t.Fatalf("write duplicate-key manifest fixture: %v", err)
 	}
-	_, err = LoadWithin(
-		fixture.directory,
-		"supply-chain.json",
-		"supply-chain-policy.json",
+	_, err = Load(
+		filepath.Join(fixture.directory, "supply-chain.json"),
+		filepath.Join(fixture.directory, "supply-chain-policy.json"),
 		fixture.bundle,
 	)
 	if err == nil || !strings.Contains(err.Error(), "duplicate JSON key") {
@@ -186,8 +255,9 @@ func TestLoadWithinRejectsDuplicateJSONKeys(t *testing.T) {
 }
 
 type evidenceFixture struct {
-	directory string
-	bundle    releasebundle.Bundle
+	directory       string
+	bundle          releasebundle.Bundle
+	approverPrivate ed25519.PrivateKey
 }
 
 func writeEvidenceFixture(t *testing.T) evidenceFixture {
@@ -294,7 +364,9 @@ func writeEvidenceFixture(t *testing.T) evidenceFixture {
 		"images": manifestImages,
 	}
 	writeJSON(t, filepath.Join(directory, "supply-chain.json"), manifest)
-	return evidenceFixture{directory: directory, bundle: bundle}
+	return evidenceFixture{
+		directory: directory, bundle: bundle, approverPrivate: approverPrivate,
+	}
 }
 
 func testBundleImage(repository, seed string) releasebundle.OCIImage {
@@ -338,7 +410,8 @@ func testSPDX(image releasebundle.OCIImage, created time.Time) map[string]any {
 		"documentDescribes": []string{"SPDXRef-IMAGE"},
 		"packages": []any{map[string]any{
 			"SPDXID": "SPDXRef-IMAGE", "name": repository,
-			"versionInfo": digest, "downloadLocation": "NOASSERTION", "filesAnalyzed": false,
+			"versionInfo": digest, "downloadLocation": "https://registry.example.invalid/v2/" + repository,
+			"filesAnalyzed": false,
 			"checksums": []any{map[string]any{
 				"algorithm": "SHA256", "checksumValue": strings.TrimPrefix(digest, "sha256:"),
 			}},

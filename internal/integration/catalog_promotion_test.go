@@ -37,10 +37,7 @@ func TestCatalogPromotionPlanAppliesAndReplaysAtomically(t *testing.T) {
 		"vela_catalog_promotion_login",
 		"vela-catalog-promotion-password",
 	)
-	service, err := catalogpromotion.New(context.Background(), promotionPool)
-	if err != nil {
-		t.Fatalf("configure Catalog Promotion service: %v", err)
-	}
+	service := newCatalogPromotionService(t, promotionPool)
 	planPath := writeCatalogPromotionFiles(t, false)
 	first, err := service.Apply(context.Background(), planPath)
 	if err != nil {
@@ -87,10 +84,7 @@ func TestCatalogPromotionLoadsNestedReleaseBundle(t *testing.T) {
 		"vela_catalog_promotion_login",
 		"vela-catalog-promotion-password",
 	)
-	service, err := catalogpromotion.New(context.Background(), promotionPool)
-	if err != nil {
-		t.Fatalf("configure Catalog Promotion service: %v", err)
-	}
+	service := newCatalogPromotionService(t, promotionPool)
 	planPath := writeCatalogPromotionFiles(t, false)
 	plan, err := catalogpromotion.LoadPlan(planPath)
 	if err != nil {
@@ -120,11 +114,8 @@ func TestCatalogPromotionPlanFailureRollsBackManifest(t *testing.T) {
 		"vela_catalog_promotion_login",
 		"vela-catalog-promotion-password",
 	)
-	service, err := catalogpromotion.New(context.Background(), promotionPool)
-	if err != nil {
-		t.Fatalf("configure Catalog Promotion service: %v", err)
-	}
-	_, err = service.Apply(context.Background(), writeCatalogPromotionFiles(t, true))
+	service := newCatalogPromotionService(t, promotionPool)
+	_, err := service.Apply(context.Background(), writeCatalogPromotionFiles(t, true))
 	var postgresError *pgconn.PgError
 	if !errors.As(err, &postgresError) || postgresError.ConstraintName != "profile_certification_not_promotable" {
 		t.Fatalf("invalid Catalog Promotion error = %v", err)
@@ -154,10 +145,7 @@ func TestCatalogPromotionRejectsPlanEvidenceMismatchBeforeDatabaseMutation(t *te
 		"vela_catalog_promotion_login",
 		"vela-catalog-promotion-password",
 	)
-	service, err := catalogpromotion.New(context.Background(), promotionPool)
-	if err != nil {
-		t.Fatalf("configure Catalog Promotion service: %v", err)
-	}
+	service := newCatalogPromotionService(t, promotionPool)
 	for _, test := range []struct {
 		name   string
 		mutate func(*catalogpromotion.Plan)
@@ -221,10 +209,7 @@ func TestCatalogPromotionRejectsInvalidOrMismatchedReleaseBundleBeforeDatabaseMu
 		"vela_catalog_promotion_login",
 		"vela-catalog-promotion-password",
 	)
-	service, err := catalogpromotion.New(context.Background(), promotionPool)
-	if err != nil {
-		t.Fatalf("configure Catalog Promotion service: %v", err)
-	}
+	service := newCatalogPromotionService(t, promotionPool)
 	for _, test := range []struct {
 		name       string
 		mutate     func(*testing.T, string)
@@ -300,10 +285,7 @@ func TestCatalogPromotionRejectsInvalidSupplyChainBeforeDatabaseMutation(t *test
 		"vela_catalog_promotion_login",
 		"vela-catalog-promotion-password",
 	)
-	service, err := catalogpromotion.New(context.Background(), promotionPool)
-	if err != nil {
-		t.Fatalf("configure Catalog Promotion service: %v", err)
-	}
+	service := newCatalogPromotionService(t, promotionPool)
 	for _, test := range []struct {
 		name   string
 		mutate func(*testing.T, string)
@@ -359,6 +341,48 @@ func TestCatalogPromotionRejectsInvalidSupplyChainBeforeDatabaseMutation(t *test
 				)
 			}
 		})
+	}
+}
+
+func TestCatalogPromotionRejectsUnpinnedTrustPolicyBeforeDatabaseMutation(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedThreePresetCatalog(t, database)
+	promotionPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_catalog_promotion_login",
+		"vela-catalog-promotion-password",
+	)
+	policy := writeCatalogSupplyChainPolicySource(t)
+	policy.Digest = catalogReleaseDigest("different-policy")
+	service, err := catalogpromotion.New(context.Background(), promotionPool, policy)
+	if err != nil {
+		t.Fatalf("configure Catalog Promotion service: %v", err)
+	}
+	if _, err := service.Apply(context.Background(), writeCatalogPromotionFiles(t, false)); err == nil ||
+		!strings.Contains(err.Error(), "trust policy digest mismatch") {
+		t.Fatalf("Catalog promotion unpinned policy error = %v", err)
+	}
+	var manifests, receipts, evidence, bindings int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM production_gate_manifests),
+			(SELECT count(*) FROM production_gate_receipts),
+			(SELECT count(*) FROM profile_certification_evidence),
+			(SELECT count(*) FROM rate_card_release_bindings)
+	`).Scan(&manifests, &receipts, &evidence, &bindings); err != nil {
+		t.Fatalf("read pre-transaction Catalog rows: %v", err)
+	}
+	if manifests != 0 || receipts != 0 || evidence != 0 || bindings != 0 {
+		t.Fatalf(
+			"unpinned Catalog trust policy left rows %d/%d/%d/%d",
+			manifests,
+			receipts,
+			evidence,
+			bindings,
+		)
 	}
 }
 
@@ -813,7 +837,11 @@ func TestCurrentCatalogPromoterFailsClosedAgainstSchema31(t *testing.T) {
 		"vela_catalog_promotion_login",
 		"vela-catalog-promotion-password",
 	)
-	_, err := catalogpromotion.New(context.Background(), promotion)
+	_, err := catalogpromotion.New(
+		context.Background(),
+		promotion,
+		writeCatalogSupplyChainPolicySource(t),
+	)
 	if err == nil || !strings.Contains(err.Error(), "Catalog Promotion transaction privilege boundary") {
 		t.Fatalf("current Catalog Promoter schema 31 error = %v, want privilege-boundary refusal", err)
 	}
@@ -1320,7 +1348,6 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 		ManifestRef:            "launch-receipts.json",
 		ReleaseBundleRef:       "release-bundle.json",
 		SupplyChainManifestRef: "supply-chain/manifest.json",
-		SupplyChainPolicyRef:   "supply-chain/policy.json",
 		Certifications:         certifications,
 		RateCards: []catalogpromotion.RateCardPromotion{{
 			BindingID:          uuid.MustParse("35000000-0000-0000-0000-000000000501"),

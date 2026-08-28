@@ -20,7 +20,13 @@ import (
 var receiptNamespace = uuid.MustParse("8e45d190-25fa-5ac1-90fd-6d342778ce51")
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool              *pgxpool.Pool
+	supplyChainPolicy SupplyChainPolicySource
+}
+
+type SupplyChainPolicySource struct {
+	Path   string
+	Digest string
 }
 
 type Result struct {
@@ -32,14 +38,25 @@ type Result struct {
 	SupplyChainPolicyDigest   string
 }
 
-func New(ctx context.Context, pool *pgxpool.Pool) (*Service, error) {
+func New(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	supplyChainPolicy SupplyChainPolicySource,
+) (*Service, error) {
 	if pool == nil {
 		return nil, errors.New("catalog promotion database pool is required")
 	}
 	if err := veladb.VerifyRole(ctx, pool, veladb.RoleCatalogPromotion); err != nil {
 		return nil, fmt.Errorf("verify Catalog Promotion database role: %w", err)
 	}
-	return &Service{pool: pool}, nil
+	if !filepath.IsAbs(supplyChainPolicy.Path) ||
+		filepath.Clean(supplyChainPolicy.Path) != supplyChainPolicy.Path {
+		return nil, errors.New("Catalog Promotion supply-chain trust policy path must be canonical and absolute")
+	}
+	if _, err := decodeDigest(supplyChainPolicy.Digest); err != nil {
+		return nil, fmt.Errorf("Catalog Promotion supply-chain trust policy digest: %w", err)
+	}
+	return &Service{pool: pool, supplyChainPolicy: supplyChainPolicy}, nil
 }
 
 func (service *Service) Apply(ctx context.Context, planPath string) (Result, error) {
@@ -47,15 +64,19 @@ func (service *Service) Apply(ctx context.Context, planPath string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	root := filepath.Dir(planPath)
+	root, err := filepath.Abs(filepath.Dir(planPath))
+	if err != nil {
+		return Result{}, fmt.Errorf("resolve Catalog Promotion plan root: %w", err)
+	}
 	bundle, err := releasebundle.LoadWithin(root, plan.ReleaseBundleRef)
 	if err != nil {
 		return Result{}, fmt.Errorf("load release bundle: %w", err)
 	}
-	supplyChainEvidence, err := supplychain.LoadWithin(
+	supplyChainEvidence, err := supplychain.LoadWithinWithPolicyDigest(
 		root,
 		plan.SupplyChainManifestRef,
-		plan.SupplyChainPolicyRef,
+		service.supplyChainPolicy.Path,
+		service.supplyChainPolicy.Digest,
 		bundle,
 	)
 	if err != nil {

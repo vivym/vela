@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -15,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/catalogpromotion"
 	"github.com/vivym/vela/internal/releasebundle"
 )
 
@@ -32,17 +35,15 @@ func writeCatalogSupplyChainFixture(t *testing.T, directory string, bundle relea
 	now := time.Date(2026, 8, 29, 4, 0, 0, 0, time.UTC)
 	signerPrivate := ed25519.NewKeyFromSeed(catalogSupplyChainSeed("release-signer"))
 	approverPrivate := ed25519.NewKeyFromSeed(catalogSupplyChainSeed("security-approver"))
-	policy := map[string]any{
-		"schema_version":          1,
-		"image_signers":           []any{catalogTrustedKey("release-signer-1", signerPrivate.Public().(ed25519.PublicKey), now)},
-		"vulnerability_approvers": []any{catalogTrustedKey("security-approver-1", approverPrivate.Public().(ed25519.PublicKey), now)},
-		"scanners":                []any{map[string]any{"name": "grype", "version": "0.99.1"}},
-		"vulnerability_policy": map[string]any{
-			"maximum_critical": 0, "maximum_high": 0,
-			"maximum_database_age_seconds": 86400,
-		},
+	policy := catalogSupplyChainPolicy(
+		now,
+		signerPrivate.Public().(ed25519.PublicKey),
+		approverPrivate.Public().(ed25519.PublicKey),
+	)
+	policyEncoded, err := json.Marshal(policy)
+	if err != nil {
+		t.Fatalf("encode Catalog supply-chain trust policy: %v", err)
 	}
-	policyEncoded := writeCatalogSupplyChainJSON(t, filepath.Join(evidenceDirectory, "policy.json"), policy)
 	policyDigest := catalogSupplyChainDigest(policyEncoded)
 	publicationImages := make([]any, 0, len(bundle.OCIImages))
 	for _, image := range bundle.OCIImages {
@@ -141,6 +142,52 @@ func writeCatalogSupplyChainFixture(t *testing.T, directory string, bundle relea
 			"images": manifestImages,
 		},
 	)
+}
+
+func catalogSupplyChainPolicy(
+	now time.Time,
+	signerPublic,
+	approverPublic ed25519.PublicKey,
+) map[string]any {
+	return map[string]any{
+		"schema_version":          1,
+		"image_signers":           []any{catalogTrustedKey("release-signer-1", signerPublic, now)},
+		"vulnerability_approvers": []any{catalogTrustedKey("security-approver-1", approverPublic, now)},
+		"scanners":                []any{map[string]any{"name": "grype", "version": "0.99.1"}},
+		"vulnerability_policy": map[string]any{
+			"maximum_critical": 0, "maximum_high": 0,
+			"maximum_database_age_seconds": 86400,
+		},
+	}
+}
+
+func writeCatalogSupplyChainPolicySource(t *testing.T) catalogpromotion.SupplyChainPolicySource {
+	t.Helper()
+	now := time.Date(2026, 8, 29, 4, 0, 0, 0, time.UTC)
+	signerPrivate := ed25519.NewKeyFromSeed(catalogSupplyChainSeed("release-signer"))
+	approverPrivate := ed25519.NewKeyFromSeed(catalogSupplyChainSeed("security-approver"))
+	path := filepath.Join(t.TempDir(), "supply-chain-policy.json")
+	encoded := writeCatalogSupplyChainJSON(t, path, catalogSupplyChainPolicy(
+		now,
+		signerPrivate.Public().(ed25519.PublicKey),
+		approverPrivate.Public().(ed25519.PublicKey),
+	))
+	return catalogpromotion.SupplyChainPolicySource{
+		Path: path, Digest: catalogSupplyChainDigest(encoded),
+	}
+}
+
+func newCatalogPromotionService(t *testing.T, pool *pgxpool.Pool) *catalogpromotion.Service {
+	t.Helper()
+	service, err := catalogpromotion.New(
+		context.Background(),
+		pool,
+		writeCatalogSupplyChainPolicySource(t),
+	)
+	if err != nil {
+		t.Fatalf("configure Catalog Promotion service: %v", err)
+	}
+	return service
 }
 
 func catalogSupplyChainSeed(value string) []byte {

@@ -25,7 +25,6 @@ type Plan struct {
 	ManifestRef            string                   `json:"manifest_ref"`
 	ReleaseBundleRef       string                   `json:"release_bundle_ref"`
 	SupplyChainManifestRef string                   `json:"supply_chain_manifest_ref"`
-	SupplyChainPolicyRef   string                   `json:"supply_chain_policy_ref"`
 	Certifications         []CertificationPromotion `json:"certifications"`
 	RateCards              []RateCardPromotion      `json:"rate_cards"`
 	EnableEvidenced        bool                     `json:"enable_evidenced"`
@@ -92,7 +91,6 @@ func (plan Plan) validate() error {
 	if plan.SchemaVersion != 2 || !validLocalReference(plan.ManifestRef) ||
 		!validLocalReference(plan.ReleaseBundleRef) ||
 		!validLocalReference(plan.SupplyChainManifestRef) ||
-		!validLocalReference(plan.SupplyChainPolicyRef) ||
 		len(plan.Certifications) == 0 || len(plan.RateCards) == 0 ||
 		!plan.EnableEvidenced {
 		return fmt.Errorf("%w: required release fields are missing", ErrInvalidPlan)

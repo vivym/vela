@@ -20,7 +20,6 @@ func TestLoadPlanAcceptsOneReleasePromotion(t *testing.T) {
 	if plan.SchemaVersion != 2 || plan.ManifestRef != "launch-receipts.json" ||
 		plan.ReleaseBundleRef != "release-bundle.json" ||
 		plan.SupplyChainManifestRef != "supply-chain.json" ||
-		plan.SupplyChainPolicyRef != "supply-chain-policy.json" ||
 		len(plan.Certifications) != 1 || len(plan.RateCards) != 1 || !plan.EnableEvidenced {
 		t.Fatalf("loaded Catalog promotion plan = %#v", plan)
 	}
@@ -47,12 +46,6 @@ func TestLoadPlanRejectsAmbiguousOrEscapedInput(t *testing.T) {
 			name: "supply-chain manifest omitted",
 			mutate: func(plan *Plan) {
 				plan.SupplyChainManifestRef = ""
-			},
-		},
-		{
-			name: "supply-chain policy path escape",
-			mutate: func(plan *Plan) {
-				plan.SupplyChainPolicyRef = "../supply-chain-policy.json"
 			},
 		},
 		{
@@ -159,7 +152,6 @@ func writePlanFixture(t *testing.T, mutate func(*Plan)) string {
 		ManifestRef:            "launch-receipts.json",
 		ReleaseBundleRef:       "release-bundle.json",
 		SupplyChainManifestRef: "supply-chain.json",
-		SupplyChainPolicyRef:   "supply-chain-policy.json",
 		EnableEvidenced:        true,
 		Certifications: []CertificationPromotion{{
 			EvidenceID:                 uuid.MustParse("35000000-0000-0000-0000-000000000101"),

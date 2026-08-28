@@ -10,19 +10,45 @@ import (
 	"github.com/vivym/vela/internal/catalogpromotion"
 )
 
-const databaseURLEnvironment = "VELA_CATALOG_PROMOTION_DATABASE_URL"
+const (
+	databaseURLEnvironment             = "VELA_CATALOG_PROMOTION_DATABASE_URL"
+	supplyChainPolicyEnvironment       = "VELA_CATALOG_PROMOTION_SUPPLY_CHAIN_POLICY"
+	supplyChainPolicyDigestEnvironment = "VELA_CATALOG_PROMOTION_SUPPLY_CHAIN_POLICY_SHA256"
+)
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Getenv(databaseURLEnvironment), os.Stdout, os.Stderr))
+	os.Exit(run(
+		os.Args[1:],
+		os.Getenv(databaseURLEnvironment),
+		os.Getenv(supplyChainPolicyEnvironment),
+		os.Getenv(supplyChainPolicyDigestEnvironment),
+		os.Stdout,
+		os.Stderr,
+	))
 }
 
-func run(arguments []string, databaseURL string, stdout, stderr io.Writer) int {
+func run(
+	arguments []string,
+	databaseURL,
+	supplyChainPolicy,
+	supplyChainPolicyDigest string,
+	stdout,
+	stderr io.Writer,
+) int {
 	if len(arguments) != 1 {
 		_, _ = fmt.Fprintln(stderr, "usage: vela-catalog-promoter <catalog-promotion.json>")
 		return 2
 	}
 	if databaseURL == "" {
 		_, _ = fmt.Fprintf(stderr, "%s is required\n", databaseURLEnvironment)
+		return 2
+	}
+	if supplyChainPolicy == "" {
+		_, _ = fmt.Fprintf(stderr, "%s is required\n", supplyChainPolicyEnvironment)
+		return 2
+	}
+	if supplyChainPolicyDigest == "" {
+		_, _ = fmt.Fprintf(stderr, "%s is required\n", supplyChainPolicyDigestEnvironment)
 		return 2
 	}
 	ctx := context.Background()
@@ -32,7 +58,9 @@ func run(arguments []string, databaseURL string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer pool.Close()
-	service, err := catalogpromotion.New(ctx, pool)
+	service, err := catalogpromotion.New(ctx, pool, catalogpromotion.SupplyChainPolicySource{
+		Path: supplyChainPolicy, Digest: supplyChainPolicyDigest,
+	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "configure Catalog Promotion: %v\n", err)
 		return 1
