@@ -39,6 +39,7 @@ const (
 	RoleCompliance                 Role = "vela_compliance"
 	RoleNonContentExpiry           Role = "vela_non_content_expiry"
 	RoleCatalogPromotion           Role = "vela_catalog_promotion"
+	RoleSLOReporting               Role = "vela_slo_reporting"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
 	RoleRemediation                Role = "vela_remediation"
@@ -82,6 +83,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleCompliance:                 {verifyPrivileges: verifyCompliancePrivileges},
 	RoleNonContentExpiry:           {verifyPrivileges: verifyNonContentExpiryPrivileges},
 	RoleCatalogPromotion:           {verifyPrivileges: verifyCatalogPromotionPrivileges},
+	RoleSLOReporting:               {verifyPrivileges: verifySLOReportingPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
@@ -294,6 +296,23 @@ func verifyCatalogPromotionPrivileges(
 			"vela_promote_profile_certification(uuid,uuid,uuid,text,text,integer,integer,integer,integer,bigint,bigint,bigint,bigint,bigint,text,integer,integer,uuid)",
 			"vela_promote_rate_card(uuid,uuid,uuid)",
 			"vela_enable_evidenced_catalog(uuid)",
+		},
+	})
+}
+
+func verifySLOReportingPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "statistical SLO reporting",
+		failureLabel:    "statistical SLO reporting transaction",
+		functions: []string{
+			"vela_register_slo_contract(uuid,text,uuid,uuid,uuid,uuid,integer,bigint,integer,integer,uuid)",
+			"vela_enable_slo_measurement(uuid)",
+			"vela_seal_slo_measurement(uuid,uuid,timestamp with time zone,timestamp with time zone)",
+			"vela_get_slo_measurement(uuid)",
 		},
 	})
 }

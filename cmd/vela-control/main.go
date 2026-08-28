@@ -52,6 +52,7 @@ import (
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/telemetry"
 	"github.com/vivym/vela/internal/webhook"
 	"github.com/vivym/vela/internal/workercontrol"
 	"github.com/vivym/vela/internal/workertransport"
@@ -990,7 +991,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Break-glass service: %w", err)
 	}
+	httpMetrics := telemetry.NewHTTPMetrics()
+	if err := httpMetrics.Register(telemetry.NewSLOCollector(
+		telemetry.NewPostgresSLOReportReader(internalPool),
+	)); err != nil {
+		return fmt.Errorf("register statistical SLO metrics: %w", err)
+	}
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
+		Observer: httpMetrics.Middleware,
 		Authenticator: identity.NewAuthenticatorWithHumanMembershipOIDC(
 			authPool,
 			humanAuthPool,
@@ -1018,6 +1026,7 @@ func run() error {
 	}
 	publicHTTPHandler, managementHTTPHandler := controlHTTPHandlers(
 		apiHandler,
+		httpMetrics.Handler(),
 		readinessHandler(
 			artifactStore,
 			authPool,
@@ -2352,12 +2361,13 @@ type artifactBucketValidator interface {
 	ValidateBucket(context.Context) error
 }
 
-func controlHTTPHandlers(apiHandler, readiness http.Handler) (http.Handler, http.Handler) {
+func controlHTTPHandlers(apiHandler, metrics, readiness http.Handler) (http.Handler, http.Handler) {
 	management := http.NewServeMux()
 	management.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	management.Handle("GET /readyz", readiness)
+	management.Handle("GET /metrics", metrics)
 	return apiHandler, management
 }
 

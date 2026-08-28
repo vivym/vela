@@ -119,7 +119,9 @@ different identity boundary:
 - Finance namespaces and Pods require `vela.ai/network-role=finance` plus
   `vela.ai/client-role=finance-reconciliation`; and
 - Compliance namespaces and Pods require `vela.ai/network-role=compliance`
-  plus `vela.ai/client-role=legal-hold`.
+  plus `vela.ai/client-role=legal-hold`; and
+- the PodMonitor scraper requires `vela.ai/network-role=observability` plus
+  `vela.ai/client-role=otel-collector`, and can reach only management port 8081.
 
 Namespace labels are privileged cluster configuration and must be part of the
 release evidence. Before rollout, verify that the selected CNI enforces both
@@ -139,7 +141,12 @@ not an acceptable substitute.
 `/healthz` is the liveness path on Pod-private management port 8081. Startup and
 readiness use dependency-aware `/readyz` on the same listener; neither path is
 registered by the public API server or exposed through a Service. A production
-rollout still requires approved image digests, Secret/PKI rotation, real
+scraper reads `/metrics` on that listener through the exact NetworkPolicy
+identity above; metrics never use Organization, Project, Job, Attempt or other
+customer identifiers as labels. The deployable rule/dashboard contract lives
+under `deploy/observability`.
+
+A production rollout still requires approved image digests, Secret/PKI rotation, real
 Control/Storage placement, NetworkPolicy observation, authenticated probes for
 all five interfaces, N/N-1 rollout and rollback, long-running Job drain,
 database/NATS/object-store failure exercises, and the corresponding immutable

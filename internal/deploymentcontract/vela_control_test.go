@@ -354,7 +354,7 @@ func TestVelaControlPublishesFiveSinglePurposeServices(t *testing.T) {
 
 func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 	policies := loadVelaControlNetworkPolicies(t)
-	if len(policies) != 6 {
+	if len(policies) != 7 {
 		t.Fatalf("vela-control NetworkPolicies = %#v", policies)
 	}
 	defaultDeny, ok := policies["vela-control-default-deny-ingress"]
@@ -391,6 +391,11 @@ func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 			port:            8446,
 			namespaceLabels: map[string]string{"vela.ai/network-role": "compliance"},
 			podLabels:       map[string]string{"vela.ai/client-role": "legal-hold"},
+		},
+		"vela-control-allow-observability": {
+			port:            8081,
+			namespaceLabels: map[string]string{"vela.ai/network-role": "observability"},
+			podLabels:       map[string]string{"vela.ai/client-role": "otel-collector"},
 		},
 	}
 	for name, expected := range want {

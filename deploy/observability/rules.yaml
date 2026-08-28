@@ -1,0 +1,71 @@
+groups:
+  - name: vela-api-slo
+    interval: 30s
+    rules:
+      - record: vela:api_availability:ratio_30d
+        expr: sum(increase(vela_gateway_sli_requests_total{classification="good"}[30d])) / sum(increase(vela_gateway_sli_requests_total{classification="eligible"}[30d]))
+      - record: vela:api_error_budget_remaining:ratio_30d
+        expr: 1 - ((1 - vela:api_availability:ratio_30d) / (1 - 0.999))
+      - alert: VelaAPIErrorBudgetFastBurn
+        expr: ((1 - (sum(rate(vela_gateway_sli_requests_total{classification="good"}[5m])) / sum(rate(vela_gateway_sli_requests_total{classification="eligible"}[5m])))) > (14.4 * (1 - 0.999))) and ((1 - (sum(rate(vela_gateway_sli_requests_total{classification="good"}[1h])) / sum(rate(vela_gateway_sli_requests_total{classification="eligible"}[1h])))) > (14.4 * (1 - 0.999)))
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/statistical-slo-breach.md
+      - alert: VelaAPIErrorBudgetSlowBurn
+        expr: ((1 - (sum(rate(vela_gateway_sli_requests_total{classification="good"}[6h])) / sum(rate(vela_gateway_sli_requests_total{classification="eligible"}[6h])))) > (3 * (1 - 0.999))) and ((1 - (sum(rate(vela_gateway_sli_requests_total{classification="good"}[3d])) / sum(rate(vela_gateway_sli_requests_total{classification="eligible"}[3d])))) > (3 * (1 - 0.999)))
+        for: 1h
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/statistical-slo-breach.md
+      - alert: VelaAPISLISeriesMissing
+        expr: absent(sum(vela_gateway_sli_requests_total{classification="eligible"})) or absent(sum(vela_gateway_sli_requests_total{classification="good"}))
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/statistical-slo-breach.md
+  - name: vela-preset-slo
+    interval: 30s
+    rules:
+      - record: vela:slo_report_p95_ratio
+        expr: vela_slo_report_p95_milliseconds / vela_slo_target_p95_milliseconds
+      - record: vela:slo_report_success_margin
+        expr: vela_slo_report_success_lower_bound_ratio - vela_slo_target_success_ratio
+      - alert: VelaPresetP95SLOBreach
+        expr: vela:slo_report_p95_ratio > 1
+        for: 15m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/statistical-slo-breach.md
+      - alert: VelaPresetSuccessSLOBreach
+        expr: vela:slo_report_success_margin < 0
+        for: 15m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/statistical-slo-breach.md
+      - alert: VelaSLOContractCoverageMissing
+        expr: absent(vela_slo_report_eligible_jobs{generation_preset="quality"}) or absent(vela_slo_report_eligible_jobs{generation_preset="balanced"}) or absent(vela_slo_report_eligible_jobs{generation_preset="fast"})
+        for: 30m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/statistical-slo-breach.md
+      - alert: VelaSLOTelemetryStale
+        expr: time() - max(vela_slo_report_sealed_timestamp_seconds) > 3456000
+        for: 30m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/statistical-slo-breach.md
+      - alert: VelaSLOExporterFailed
+        expr: max(vela_slo_report_exporter_last_scrape_success) == 0 or absent(vela_slo_report_exporter_last_scrape_success)
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/statistical-slo-breach.md

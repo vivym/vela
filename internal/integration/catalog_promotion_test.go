@@ -22,6 +22,8 @@ import (
 	"github.com/vivym/vela/internal/catalogpromotion"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/productiongates"
+	"github.com/vivym/vela/internal/slo"
+	"github.com/vivym/vela/internal/sloevidence"
 )
 
 func TestCatalogPromotionPlanAppliesAndReplaysAtomically(t *testing.T) {
@@ -963,19 +965,23 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 	t.Helper()
 	directory := t.TempDir()
 	evidence := []byte(`{"result":"real-environment evidence fixture"}`)
-	evidenceDigest := sha256.Sum256(evidence)
 	manifest := productiongates.Manifest{
 		SchemaVersion: 1,
 		Receipts:      make([]productiongates.Receipt, 0, len(productiongates.AllGates())),
 	}
 	releaseDigest := sha256.Sum256([]byte("catalog-promotion-release"))
 	for index, gate := range productiongates.AllGates() {
+		gateEvidence := evidence
+		if gate == productiongates.GateObservabilityOnCall {
+			gateEvidence = catalogObservabilityEvidenceFixture(t, directory)
+		}
+		evidenceDigest := sha256.Sum256(gateEvidence)
 		evidenceRef := filepath.ToSlash(filepath.Join("evidence", string(gate)+".json"))
 		evidencePath := filepath.Join(directory, filepath.FromSlash(evidenceRef))
 		if err := os.MkdirAll(filepath.Dir(evidencePath), 0o700); err != nil {
 			t.Fatalf("create Catalog evidence directory: %v", err)
 		}
-		if err := os.WriteFile(evidencePath, evidence, 0o600); err != nil {
+		if err := os.WriteFile(evidencePath, gateEvidence, 0o600); err != nil {
 			t.Fatalf("write Catalog evidence: %v", err)
 		}
 		startedAt := time.Date(2026, 8, 28, 3, index, 0, 0, time.UTC)
@@ -1041,6 +1047,168 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 	planPath := filepath.Join(directory, "catalog-promotion.json")
 	writeJSONFixture(t, planPath, plan)
 	return planPath
+}
+
+func catalogObservabilityEvidenceFixture(t *testing.T, directory string) []byte {
+	t.Helper()
+	window := slo.Window{
+		Start: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+	}
+	evaluatedAt := window.End.Add(time.Hour)
+	cohorts := make([]sloevidence.CohortEvidence, 0, 3)
+	contractIDs := make([]string, 0, 3)
+	for _, preset := range []string{"quality", "balanced", "fast"} {
+		contract := slo.Contract{
+			RevisionID: "catalog-slo-" + preset + "-v1", ModelRevisionID: "model-v1",
+			GenerationPreset: preset, GenerationPresetRevisionID: preset + "-v1",
+			ServiceClassRevisionID: "standard-v1", OutputSpecID: "1080p-v1",
+			GenerationCount: 1, P95TargetMilliseconds: 60_000,
+			SuccessTargetPPM: 800_000, MinimumSample: 20,
+			ConfidenceMethod:      slo.ConfidenceMethod,
+			OneSidedConfidencePPM: slo.OneSidedConfidencePPM,
+			CancellationPolicy:    slo.CancellationPolicy,
+		}
+		observations := make([]slo.Observation, 0, 20)
+		for index := 0; index < 20; index++ {
+			acceptedAt := window.Start.Add(time.Duration(index+1) * time.Minute)
+			completedAt := acceptedAt.Add(time.Duration(index+1) * time.Second)
+			observations = append(observations, slo.Observation{
+				JobID:              fmt.Sprintf("catalog-%s-%02d", preset, index),
+				ContractRevisionID: contract.RevisionID,
+				AcceptedAt:         acceptedAt, ExpiresAt: acceptedAt.Add(time.Hour),
+				Outcome:    slo.OutcomeSucceeded,
+				TerminalAt: &completedAt, VisibleCompletedAt: &completedAt,
+			})
+		}
+		report, err := slo.Evaluate(contract, window, evaluatedAt, observations)
+		if err != nil || report.Result != slo.ResultPass {
+			t.Fatalf("build Catalog observability cohort: report=%#v error=%v", report, err)
+		}
+		cohorts = append(cohorts, sloevidence.CohortEvidence{
+			Contract: contract, Observations: observations, Report: report,
+		})
+		contractIDs = append(contractIDs, contract.RevisionID)
+	}
+	apiReport, err := slo.EvaluateAvailability(1_000_000, 1_000_000, 10_000)
+	if err != nil || apiReport.Result != slo.ResultPass {
+		t.Fatalf("build Catalog API availability evidence: report=%#v error=%v", apiReport, err)
+	}
+	artifacts := make([]sloevidence.Artifact, 0, 7)
+	for _, kind := range []sloevidence.ArtifactKind{
+		sloevidence.ArtifactGatewayObservations, sloevidence.ArtifactSaleableSKUSnapshot,
+		sloevidence.ArtifactDashboard, sloevidence.ArtifactAlertRules,
+		sloevidence.ArtifactRuleTests, sloevidence.ArtifactRunbook,
+		sloevidence.ArtifactPageEvents,
+	} {
+		content := []byte("Catalog fixture for " + kind)
+		switch kind {
+		case sloevidence.ArtifactGatewayObservations:
+			content = catalogGatewayObservationsArtifact(t, window, 1_000_000, 1_000_000)
+		case sloevidence.ArtifactSaleableSKUSnapshot:
+			content = catalogSaleableSnapshotArtifact(t, evaluatedAt, cohorts)
+		}
+		ref := filepath.ToSlash(filepath.Join("observability", string(kind)+".json"))
+		path := filepath.Join(directory, filepath.FromSlash(ref))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("create Catalog observability artifact directory: %v", err)
+		}
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatalf("write Catalog observability artifact: %v", err)
+		}
+		artifacts = append(artifacts, sloevidence.Artifact{
+			Kind: kind, Ref: ref, Digest: sloevidence.Digest(content),
+		})
+	}
+	firedAt := evaluatedAt.Add(time.Hour)
+	evidence := sloevidence.Evidence{
+		SchemaVersion:         1,
+		ReleaseDigest:         "sha256:" + hex.EncodeToString(sha256Sum([]byte("catalog-promotion-release"))),
+		ConfigurationRevision: "catalog-config-1",
+		ValidationEnvironment: "h3-validation-rack-1",
+		Owner:                 "platform-oncall@example.invalid", Coverage: "24x7",
+		Window: window, EvaluatedAt: evaluatedAt,
+		SaleableContractRevisionIDs: contractIDs,
+		API: sloevidence.APIEvidence{
+			EligibleCount: 1_000_000, GoodCount: 1_000_000,
+			MinimumSample: 10_000, Report: apiReport,
+		},
+		Cohorts: cohorts, Artifacts: artifacts,
+		Exercise: sloevidence.Exercise{
+			AlertFiredAt: firedAt, AlertDeliveredAt: firedAt.Add(time.Minute),
+			AlertAckedAt: firedAt.Add(2 * time.Minute),
+			ResolvedAt:   firedAt.Add(3 * time.Minute), Result: slo.ResultPass,
+		},
+	}
+	encoded, err := json.Marshal(evidence)
+	if err != nil {
+		t.Fatalf("encode Catalog observability evidence: %v", err)
+	}
+	return encoded
+}
+
+func catalogGatewayObservationsArtifact(
+	t *testing.T,
+	window slo.Window,
+	eligible,
+	good int,
+) []byte {
+	t.Helper()
+	streams := make([]sloevidence.GatewayObservationStream, 0, 2)
+	for _, source := range []sloevidence.GatewayObservationSource{
+		sloevidence.GatewaySourceExternalGateway,
+		sloevidence.GatewaySourceSyntheticProbe,
+	} {
+		buckets := make([]sloevidence.GatewayObservationBucket, 0, 31)
+		start := window.Start
+		for start.Before(window.End) {
+			end := start.Add(24 * time.Hour)
+			if end.After(window.End) {
+				end = window.End
+			}
+			bucket := sloevidence.GatewayObservationBucket{Start: start, End: end}
+			if len(buckets) == 0 && source == sloevidence.GatewaySourceExternalGateway {
+				bucket.EligibleCount = eligible
+				bucket.GoodCount = good
+			}
+			buckets = append(buckets, bucket)
+			start = end
+		}
+		streams = append(streams, sloevidence.GatewayObservationStream{
+			Source: source, Buckets: buckets,
+		})
+	}
+	encoded, err := json.Marshal(sloevidence.GatewayObservations{
+		SchemaVersion: 1, Window: window, Streams: streams,
+	})
+	if err != nil {
+		t.Fatalf("encode Catalog gateway observations: %v", err)
+	}
+	return encoded
+}
+
+func catalogSaleableSnapshotArtifact(
+	t *testing.T,
+	capturedAt time.Time,
+	cohorts []sloevidence.CohortEvidence,
+) []byte {
+	t.Helper()
+	contracts := make([]slo.Contract, 0, len(cohorts))
+	for _, cohort := range cohorts {
+		contracts = append(contracts, cohort.Contract)
+	}
+	encoded, err := json.Marshal(sloevidence.SaleableSKUSnapshot{
+		SchemaVersion: 1, CapturedAt: capturedAt, Contracts: contracts,
+	})
+	if err != nil {
+		t.Fatalf("encode Catalog saleable SKU snapshot: %v", err)
+	}
+	return encoded
+}
+
+func sha256Sum(value []byte) []byte {
+	digest := sha256.Sum256(value)
+	return digest[:]
 }
 
 func writeJSONFixture(t *testing.T, path string, value any) {

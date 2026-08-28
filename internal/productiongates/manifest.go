@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/vivym/vela/internal/sloevidence"
 	"github.com/vivym/vela/internal/strictjson"
 )
 
@@ -124,15 +125,82 @@ func verifyEvidence(root *os.Root, receipt Receipt) error {
 	if err != nil || !information.Mode().IsRegular() {
 		return fmt.Errorf("%w: evidence for %s must be a regular file", ErrInvalidManifest, receipt.Gate)
 	}
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return fmt.Errorf("%w: hash evidence for %s: %v", ErrInvalidManifest, receipt.Gate, err)
+	var encoded []byte
+	if receipt.Gate == GateObservabilityOnCall {
+		encoded, err = io.ReadAll(io.LimitReader(file, sloevidence.MaxEvidenceBytes+1))
+		if err != nil || len(encoded) == 0 || len(encoded) > sloevidence.MaxEvidenceBytes {
+			return fmt.Errorf("%w: read bounded observability evidence: %v", ErrInvalidManifest, err)
+		}
+	} else {
+		hash := sha256.New()
+		if _, err := io.Copy(hash, file); err != nil {
+			return fmt.Errorf("%w: hash evidence for %s: %v", ErrInvalidManifest, receipt.Gate, err)
+		}
+		encoded = hash.Sum(nil)
 	}
-	actualDigest := "sha256:" + hex.EncodeToString(hash.Sum(nil))
+	var actualDigest string
+	if receipt.Gate == GateObservabilityOnCall {
+		actualDigest = sloevidence.Digest(encoded)
+	} else {
+		actualDigest = "sha256:" + hex.EncodeToString(encoded)
+	}
 	if actualDigest != receipt.EvidenceDigest {
 		return fmt.Errorf("%w: evidence digest mismatch for %s", ErrInvalidManifest, receipt.Gate)
 	}
+	if receipt.Gate == GateObservabilityOnCall {
+		evidence, decodeErr := sloevidence.Decode(
+			encoded,
+			receipt.ReleaseDigest,
+			receipt.ConfigurationRevision,
+		)
+		if decodeErr != nil || evidence.ValidationEnvironment != receipt.ValidationEnvironment ||
+			evidence.Owner != receipt.Owner {
+			return fmt.Errorf("%w: observability evidence semantics are invalid: %v", ErrInvalidManifest, decodeErr)
+		}
+		for _, artifact := range evidence.Artifacts {
+			encodedArtifact, artifactErr := readAndVerifyReferencedArtifact(
+				root,
+				artifact.Ref,
+				artifact.Digest,
+			)
+			if artifactErr != nil {
+				return artifactErr
+			}
+			if err := evidence.ValidateArtifact(artifact.Kind, encodedArtifact); err != nil {
+				return fmt.Errorf("%w: observability artifact semantics are invalid: %v", ErrInvalidManifest, err)
+			}
+		}
+	}
 	return nil
+}
+
+func readAndVerifyReferencedArtifact(
+	root *os.Root,
+	reference,
+	expectedDigest string,
+) ([]byte, error) {
+	reference = filepath.FromSlash(reference)
+	if !filepath.IsLocal(reference) {
+		return nil, fmt.Errorf("%w: observability artifact reference must be local", ErrInvalidManifest)
+	}
+	file, err := root.Open(reference)
+	if err != nil {
+		return nil, fmt.Errorf("%w: open observability artifact %q: %v", ErrInvalidManifest, reference, err)
+	}
+	defer func() { _ = file.Close() }()
+	information, err := file.Stat()
+	if err != nil || !information.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: observability artifact %q must be a regular file", ErrInvalidManifest, reference)
+	}
+	encoded, err := io.ReadAll(io.LimitReader(file, sloevidence.MaxEvidenceBytes+1))
+	if err != nil || len(encoded) == 0 || len(encoded) > sloevidence.MaxEvidenceBytes {
+		return nil, fmt.Errorf("%w: read bounded observability artifact %q: %v", ErrInvalidManifest, reference, err)
+	}
+	actualDigest := sloevidence.Digest(encoded)
+	if actualDigest != expectedDigest {
+		return nil, fmt.Errorf("%w: observability artifact digest mismatch for %q", ErrInvalidManifest, reference)
+	}
+	return encoded, nil
 }
 
 func requireJSONEOF(decoder *json.Decoder) error {

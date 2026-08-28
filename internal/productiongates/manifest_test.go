@@ -5,11 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vivym/vela/internal/slo"
+	"github.com/vivym/vela/internal/sloevidence"
 )
 
 func TestLoadManifestVerifiesCompleteReleaseEvidence(t *testing.T) {
@@ -152,6 +156,27 @@ func TestLoadManifestRejectsEvidenceSymlinkOutsideRoot(t *testing.T) {
 	}
 }
 
+func TestLoadManifestRejectsOpaqueObservabilityEvidence(t *testing.T) {
+	directory := t.TempDir()
+	manifestPath := writeManifestFixture(t, directory, func(manifest *Manifest) {
+		for index := range manifest.Receipts {
+			if manifest.Receipts[index].Gate != GateObservabilityOnCall {
+				continue
+			}
+			opaque := []byte(`{"result":"independent production evidence"}`)
+			path := filepath.Join(directory, filepath.FromSlash(manifest.Receipts[index].EvidenceRef))
+			if err := os.WriteFile(path, opaque, 0o600); err != nil {
+				t.Fatalf("write opaque observability evidence: %v", err)
+			}
+			manifest.Receipts[index].EvidenceDigest = sloevidence.Digest(opaque)
+		}
+	})
+	if _, err := LoadManifest(manifestPath); !errors.Is(err, ErrInvalidManifest) ||
+		!strings.Contains(err.Error(), "observability evidence semantics") {
+		t.Fatalf("LoadManifest opaque observability error = %v", err)
+	}
+}
+
 func TestLoadManifestWithinRejectsManifestSymlinkOutsideRoot(t *testing.T) {
 	outside := t.TempDir()
 	manifestPath := writeManifestFixture(t, outside, func(_ *Manifest) {})
@@ -167,15 +192,19 @@ func TestLoadManifestWithinRejectsManifestSymlinkOutsideRoot(t *testing.T) {
 func writeManifestFixture(t *testing.T, directory string, mutate func(*Manifest)) string {
 	t.Helper()
 	evidence := []byte(`{"result":"independent production evidence"}`)
-	evidenceDigest := sha256.Sum256(evidence)
 	manifest := Manifest{SchemaVersion: 1, Receipts: make([]Receipt, 0, len(AllGates()))}
 	for index, gate := range AllGates() {
+		gateEvidence := evidence
+		if gate == GateObservabilityOnCall {
+			gateEvidence = observabilityEvidenceFixture(t, directory)
+		}
+		gateEvidenceDigest := sha256.Sum256(gateEvidence)
 		evidenceRef := filepath.ToSlash(filepath.Join("evidence", string(gate)+".json"))
 		evidencePath := filepath.Join(directory, filepath.FromSlash(evidenceRef))
 		if err := os.MkdirAll(filepath.Dir(evidencePath), 0o700); err != nil {
 			t.Fatalf("create evidence directory: %v", err)
 		}
-		if err := os.WriteFile(evidencePath, evidence, 0o600); err != nil {
+		if err := os.WriteFile(evidencePath, gateEvidence, 0o600); err != nil {
 			t.Fatalf("write evidence fixture: %v", err)
 		}
 		startedAt := time.Date(2026, 8, 28, 1, index, 0, 0, time.UTC)
@@ -190,7 +219,7 @@ func writeManifestFixture(t *testing.T, directory string, mutate func(*Manifest)
 			AcceptanceThreshold:   "all required assertions pass",
 			ObservedResult:        "all required assertions passed",
 			EvidenceRef:           evidenceRef,
-			EvidenceDigest:        "sha256:" + hex.EncodeToString(evidenceDigest[:]),
+			EvidenceDigest:        "sha256:" + hex.EncodeToString(gateEvidenceDigest[:]),
 			StartedAt:             startedAt,
 			CompletedAt:           startedAt.Add(time.Minute),
 			RecordedAt:            startedAt.Add(2 * time.Minute),
@@ -206,6 +235,161 @@ func writeManifestFixture(t *testing.T, directory string, mutate func(*Manifest)
 		t.Fatalf("write manifest fixture: %v", err)
 	}
 	return manifestPath
+}
+
+func observabilityEvidenceFixture(t *testing.T, directory string) []byte {
+	t.Helper()
+	window := slo.Window{
+		Start: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		End:   time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+	}
+	evaluatedAt := window.End.Add(time.Hour)
+	cohorts := make([]sloevidence.CohortEvidence, 0, 3)
+	contractIDs := make([]string, 0, 3)
+	for _, preset := range []string{"quality", "balanced", "fast"} {
+		contract := slo.Contract{
+			RevisionID: "slo-" + preset + "-v1", ModelRevisionID: "model-v1",
+			GenerationPreset: preset, GenerationPresetRevisionID: preset + "-v1",
+			ServiceClassRevisionID: "standard-v1", OutputSpecID: "1080p-v1",
+			GenerationCount: 1, P95TargetMilliseconds: 60_000,
+			SuccessTargetPPM: 800_000, MinimumSample: 20,
+			ConfidenceMethod:      slo.ConfidenceMethod,
+			OneSidedConfidencePPM: slo.OneSidedConfidencePPM,
+			CancellationPolicy:    slo.CancellationPolicy,
+		}
+		observations := make([]slo.Observation, 0, 20)
+		for index := 0; index < 20; index++ {
+			accepted := window.Start.Add(time.Duration(index+1) * time.Minute)
+			completed := accepted.Add(time.Duration(index+1) * time.Second)
+			observations = append(observations, slo.Observation{
+				JobID:              fmt.Sprintf("%s-%02d", preset, index),
+				ContractRevisionID: contract.RevisionID,
+				AcceptedAt:         accepted, ExpiresAt: accepted.Add(time.Hour),
+				Outcome: slo.OutcomeSucceeded, TerminalAt: &completed, VisibleCompletedAt: &completed,
+			})
+		}
+		report, err := slo.Evaluate(contract, window, evaluatedAt, observations)
+		if err != nil || report.Result != slo.ResultPass {
+			t.Fatalf("build observability cohort: report=%#v error=%v", report, err)
+		}
+		cohorts = append(cohorts, sloevidence.CohortEvidence{
+			Contract: contract, Observations: observations, Report: report,
+		})
+		contractIDs = append(contractIDs, contract.RevisionID)
+	}
+	apiReport, err := slo.EvaluateAvailability(1_000_000, 1_000_000, 10_000)
+	if err != nil || apiReport.Result != slo.ResultPass {
+		t.Fatalf("build observability API report: report=%#v error=%v", apiReport, err)
+	}
+	artifacts := make([]sloevidence.Artifact, 0, 7)
+	for _, kind := range []sloevidence.ArtifactKind{
+		sloevidence.ArtifactGatewayObservations, sloevidence.ArtifactSaleableSKUSnapshot,
+		sloevidence.ArtifactDashboard, sloevidence.ArtifactAlertRules,
+		sloevidence.ArtifactRuleTests, sloevidence.ArtifactRunbook,
+		sloevidence.ArtifactPageEvents,
+	} {
+		content := []byte("fixture for " + kind)
+		switch kind {
+		case sloevidence.ArtifactGatewayObservations:
+			content = observabilityGatewayArtifact(t, window, 1_000_000, 1_000_000)
+		case sloevidence.ArtifactSaleableSKUSnapshot:
+			content = observabilitySaleableSnapshotArtifact(t, evaluatedAt, cohorts)
+		}
+		ref := filepath.ToSlash(filepath.Join("observability", string(kind)+".json"))
+		path := filepath.Join(directory, filepath.FromSlash(ref))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("create observability fixture directory: %v", err)
+		}
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatalf("write observability fixture: %v", err)
+		}
+		artifacts = append(artifacts, sloevidence.Artifact{
+			Kind: kind, Ref: ref, Digest: sloevidence.Digest(content),
+		})
+	}
+	fired := evaluatedAt.Add(time.Hour)
+	evidence := sloevidence.Evidence{
+		SchemaVersion: 1, ReleaseDigest: fixtureDigest("release"),
+		ConfigurationRevision: "config-rev-1",
+		ValidationEnvironment: "production-validation-rack-1",
+		Owner:                 "platform-oncall@example.invalid", Coverage: "24x7",
+		Window: window, EvaluatedAt: evaluatedAt,
+		SaleableContractRevisionIDs: contractIDs,
+		API: sloevidence.APIEvidence{
+			EligibleCount: 1_000_000, GoodCount: 1_000_000,
+			MinimumSample: 10_000, Report: apiReport,
+		},
+		Cohorts: cohorts, Artifacts: artifacts,
+		Exercise: sloevidence.Exercise{
+			AlertFiredAt: fired, AlertDeliveredAt: fired.Add(time.Minute),
+			AlertAckedAt: fired.Add(2 * time.Minute), ResolvedAt: fired.Add(3 * time.Minute),
+			Result: slo.ResultPass,
+		},
+	}
+	encoded, err := json.Marshal(evidence)
+	if err != nil {
+		t.Fatalf("encode observability evidence fixture: %v", err)
+	}
+	return encoded
+}
+
+func observabilityGatewayArtifact(
+	t *testing.T,
+	window slo.Window,
+	eligible,
+	good int,
+) []byte {
+	t.Helper()
+	streams := make([]sloevidence.GatewayObservationStream, 0, 2)
+	for _, source := range []sloevidence.GatewayObservationSource{
+		sloevidence.GatewaySourceExternalGateway,
+		sloevidence.GatewaySourceSyntheticProbe,
+	} {
+		buckets := make([]sloevidence.GatewayObservationBucket, 0, 31)
+		start := window.Start
+		for start.Before(window.End) {
+			end := start.Add(24 * time.Hour)
+			if end.After(window.End) {
+				end = window.End
+			}
+			bucket := sloevidence.GatewayObservationBucket{Start: start, End: end}
+			if len(buckets) == 0 && source == sloevidence.GatewaySourceExternalGateway {
+				bucket.EligibleCount = eligible
+				bucket.GoodCount = good
+			}
+			buckets = append(buckets, bucket)
+			start = end
+		}
+		streams = append(streams, sloevidence.GatewayObservationStream{
+			Source: source, Buckets: buckets,
+		})
+	}
+	encoded, err := json.Marshal(sloevidence.GatewayObservations{
+		SchemaVersion: 1, Window: window, Streams: streams,
+	})
+	if err != nil {
+		t.Fatalf("encode gateway observation artifact: %v", err)
+	}
+	return encoded
+}
+
+func observabilitySaleableSnapshotArtifact(
+	t *testing.T,
+	capturedAt time.Time,
+	cohorts []sloevidence.CohortEvidence,
+) []byte {
+	t.Helper()
+	contracts := make([]slo.Contract, 0, len(cohorts))
+	for _, cohort := range cohorts {
+		contracts = append(contracts, cohort.Contract)
+	}
+	encoded, err := json.Marshal(sloevidence.SaleableSKUSnapshot{
+		SchemaVersion: 1, CapturedAt: capturedAt, Contracts: contracts,
+	})
+	if err != nil {
+		t.Fatalf("encode saleable SKU snapshot artifact: %v", err)
+	}
+	return encoded
 }
 
 func fixtureDigest(value string) string {

@@ -1248,7 +1248,10 @@ func TestControlHTTPHandlersKeepHealthEndpointsOffPublicAPI(t *testing.T) {
 		readinessCalls.Add(1)
 		w.WriteHeader(http.StatusAccepted)
 	})
-	public, management := controlHTTPHandlers(publicAPI, readiness)
+	metrics := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	public, management := controlHTTPHandlers(publicAPI, metrics, readiness)
 
 	response := httptest.NewRecorder()
 	public.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
@@ -1266,6 +1269,11 @@ func TestControlHTTPHandlersKeepHealthEndpointsOffPublicAPI(t *testing.T) {
 	management.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if response.Code != http.StatusAccepted || readinessCalls.Load() != 1 {
 		t.Fatalf("management /readyz = status %d readiness calls %d", response.Code, readinessCalls.Load())
+	}
+	response = httptest.NewRecorder()
+	management.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("management /metrics = status %d", response.Code)
 	}
 
 	response = httptest.NewRecorder()

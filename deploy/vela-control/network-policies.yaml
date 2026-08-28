@@ -44,6 +44,33 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: vela-control-allow-observability
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              vela.ai/network-role: observability
+          podSelector:
+            matchLabels:
+              vela.ai/client-role: otel-collector
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: vela-control-allow-worker
   namespace: vela-system
   labels:

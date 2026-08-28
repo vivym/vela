@@ -2524,6 +2524,134 @@ func (ns NullSettlementContactAction) Value() (driver.Value, error) {
 	return string(ns.SettlementContactAction), nil
 }
 
+type SloJobOutcome string
+
+const (
+	SloJobOutcomeSUCCEEDED        SloJobOutcome = "SUCCEEDED"
+	SloJobOutcomeFAILED           SloJobOutcome = "FAILED"
+	SloJobOutcomeCUSTOMERCANCELED SloJobOutcome = "CUSTOMER_CANCELED"
+)
+
+func (e *SloJobOutcome) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SloJobOutcome(s)
+	case string:
+		*e = SloJobOutcome(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SloJobOutcome: %T", src)
+	}
+	return nil
+}
+
+type NullSloJobOutcome struct {
+	SloJobOutcome SloJobOutcome `json:"slo_job_outcome"`
+	Valid         bool          `json:"valid"` // Valid is true if SloJobOutcome is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSloJobOutcome) Scan(value interface{}) error {
+	if value == nil {
+		ns.SloJobOutcome, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SloJobOutcome.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSloJobOutcome) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SloJobOutcome), nil
+}
+
+type SloMeasurementProtocolMode string
+
+const (
+	SloMeasurementProtocolModeLEGACY   SloMeasurementProtocolMode = "LEGACY"
+	SloMeasurementProtocolModeENFORCED SloMeasurementProtocolMode = "ENFORCED"
+)
+
+func (e *SloMeasurementProtocolMode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SloMeasurementProtocolMode(s)
+	case string:
+		*e = SloMeasurementProtocolMode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SloMeasurementProtocolMode: %T", src)
+	}
+	return nil
+}
+
+type NullSloMeasurementProtocolMode struct {
+	SloMeasurementProtocolMode SloMeasurementProtocolMode `json:"slo_measurement_protocol_mode"`
+	Valid                      bool                       `json:"valid"` // Valid is true if SloMeasurementProtocolMode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSloMeasurementProtocolMode) Scan(value interface{}) error {
+	if value == nil {
+		ns.SloMeasurementProtocolMode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SloMeasurementProtocolMode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSloMeasurementProtocolMode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SloMeasurementProtocolMode), nil
+}
+
+type SloMeasurementResult string
+
+const (
+	SloMeasurementResultPASS             SloMeasurementResult = "PASS"
+	SloMeasurementResultFAIL             SloMeasurementResult = "FAIL"
+	SloMeasurementResultINSUFFICIENTDATA SloMeasurementResult = "INSUFFICIENT_DATA"
+)
+
+func (e *SloMeasurementResult) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SloMeasurementResult(s)
+	case string:
+		*e = SloMeasurementResult(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SloMeasurementResult: %T", src)
+	}
+	return nil
+}
+
+type NullSloMeasurementResult struct {
+	SloMeasurementResult SloMeasurementResult `json:"slo_measurement_result"`
+	Valid                bool                 `json:"valid"` // Valid is true if SloMeasurementResult is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSloMeasurementResult) Scan(value interface{}) error {
+	if value == nil {
+		ns.SloMeasurementResult, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SloMeasurementResult.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSloMeasurementResult) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SloMeasurementResult), nil
+}
+
 type WebhookDeliveryAttemptState string
 
 const (
@@ -3721,6 +3849,29 @@ type JobRuntimePrediction struct {
 	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type JobSloAdmission struct {
+	JobID                      uuid.UUID          `db:"job_id" json:"job_id"`
+	OrganizationID             uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                  uuid.UUID          `db:"project_id" json:"project_id"`
+	ContractRevisionID         uuid.UUID          `db:"contract_revision_id" json:"contract_revision_id"`
+	ModelRevisionID            uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID uuid.UUID          `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	ServiceClassRevisionID     uuid.UUID          `db:"service_class_revision_id" json:"service_class_revision_id"`
+	OutputSpecID               uuid.UUID          `db:"output_spec_id" json:"output_spec_id"`
+	GenerationCount            int32              `db:"generation_count" json:"generation_count"`
+	QueuedAt                   pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
+	JobExpiresAt               pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
+	CapturedAt                 pgtype.Timestamptz `db:"captured_at" json:"captured_at"`
+}
+
+type JobSloOutcome struct {
+	JobID              uuid.UUID          `db:"job_id" json:"job_id"`
+	Outcome            SloJobOutcome      `db:"outcome" json:"outcome"`
+	TerminalAt         pgtype.Timestamptz `db:"terminal_at" json:"terminal_at"`
+	VisibleCompletedAt pgtype.Timestamptz `db:"visible_completed_at" json:"visible_completed_at"`
+	RecordedAt         pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+}
+
 type LegalHold struct {
 	ID                         uuid.UUID              `db:"id" json:"id"`
 	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
@@ -4329,6 +4480,62 @@ type ServicePrincipal struct {
 	PrincipalKind  PrincipalKind      `db:"principal_kind" json:"principal_kind"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
+}
+
+type SloMeasurementProtocolState struct {
+	Singleton       bool                       `db:"singleton" json:"singleton"`
+	Mode            SloMeasurementProtocolMode `db:"mode" json:"mode"`
+	ProtocolVersion int32                      `db:"protocol_version" json:"protocol_version"`
+	LaunchReceiptID uuid.NullUUID              `db:"launch_receipt_id" json:"launch_receipt_id"`
+	EnforcedAt      pgtype.Timestamptz         `db:"enforced_at" json:"enforced_at"`
+}
+
+type SloMeasurementProtocolTransition struct {
+	ProtocolVersion int32                      `db:"protocol_version" json:"protocol_version"`
+	Mode            SloMeasurementProtocolMode `db:"mode" json:"mode"`
+	LaunchReceiptID uuid.UUID                  `db:"launch_receipt_id" json:"launch_receipt_id"`
+	TransitionedAt  pgtype.Timestamptz         `db:"transitioned_at" json:"transitioned_at"`
+}
+
+type SloMeasurementReport struct {
+	ID                    uuid.UUID            `db:"id" json:"id"`
+	ContractRevisionID    uuid.UUID            `db:"contract_revision_id" json:"contract_revision_id"`
+	WindowStart           pgtype.Timestamptz   `db:"window_start" json:"window_start"`
+	WindowEnd             pgtype.Timestamptz   `db:"window_end" json:"window_end"`
+	AlgorithmRevision     string               `db:"algorithm_revision" json:"algorithm_revision"`
+	SourceSetDigest       []byte               `db:"source_set_digest" json:"source_set_digest"`
+	ObservationCount      int32                `db:"observation_count" json:"observation_count"`
+	EligibleCount         int32                `db:"eligible_count" json:"eligible_count"`
+	SucceededCount        int32                `db:"succeeded_count" json:"succeeded_count"`
+	FailedCount           int32                `db:"failed_count" json:"failed_count"`
+	CustomerCanceledCount int32                `db:"customer_canceled_count" json:"customer_canceled_count"`
+	OpenCount             int32                `db:"open_count" json:"open_count"`
+	P95Milliseconds       *int64               `db:"p95_milliseconds" json:"p95_milliseconds"`
+	SuccessObservedPpm    int32                `db:"success_observed_ppm" json:"success_observed_ppm"`
+	SuccessLowerBoundPpm  int32                `db:"success_lower_bound_ppm" json:"success_lower_bound_ppm"`
+	Result                SloMeasurementResult `db:"result" json:"result"`
+	SealedAt              pgtype.Timestamptz   `db:"sealed_at" json:"sealed_at"`
+}
+
+type StatisticalSloContractRevision struct {
+	ID                         uuid.UUID          `db:"id" json:"id"`
+	TargetMatrixRevision       string             `db:"target_matrix_revision" json:"target_matrix_revision"`
+	ModelRevisionID            uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID uuid.UUID          `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	ServiceClassRevisionID     uuid.UUID          `db:"service_class_revision_id" json:"service_class_revision_id"`
+	OutputSpecID               uuid.UUID          `db:"output_spec_id" json:"output_spec_id"`
+	GenerationCount            int32              `db:"generation_count" json:"generation_count"`
+	P95TargetMilliseconds      int64              `db:"p95_target_milliseconds" json:"p95_target_milliseconds"`
+	SuccessTargetPpm           int32              `db:"success_target_ppm" json:"success_target_ppm"`
+	MinimumSample              int32              `db:"minimum_sample" json:"minimum_sample"`
+	ConfidenceMethod           string             `db:"confidence_method" json:"confidence_method"`
+	OneSidedConfidencePpm      int32              `db:"one_sided_confidence_ppm" json:"one_sided_confidence_ppm"`
+	CancellationPolicy         string             `db:"cancellation_policy" json:"cancellation_policy"`
+	AlgorithmRevision          string             `db:"algorithm_revision" json:"algorithm_revision"`
+	ReleaseDigest              []byte             `db:"release_digest" json:"release_digest"`
+	ConfigurationRevision      string             `db:"configuration_revision" json:"configuration_revision"`
+	LaunchReceiptID            uuid.UUID          `db:"launch_receipt_id" json:"launch_receipt_id"`
+	ActivatedAt                pgtype.Timestamptz `db:"activated_at" json:"activated_at"`
 }
 
 type VelaInternalDebugDumpAuthorization struct {

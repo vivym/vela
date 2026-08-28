@@ -54,7 +54,41 @@ const (
 	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
 	nonContentExpiryNMinusOneCommit       = "1968a4377c40fd8da9bd16e6ef4fb39d0f11c33a"
 	catalogPromotionNMinusOneCommit       = "e53c62054d068aea19ba7860417698a203ed5225"
+	statisticalSLONMinusOneCommit         = "7e5907789b36441c8a4a635d84ea0a5cfaefd5f7"
 )
+
+func TestExactStatisticalSLONMinusOneControlAndAdmissionRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, statisticalSLONMinusOneCommit)
+
+	output := runCurrentControlStartupProbe(t, nMinusOne.Control, database.DSN)
+	if strings.Contains(output, "database pool") {
+		t.Fatalf("exact 7e59077 control failed schema 33 database preflight:\n%s", output)
+	}
+	if !strings.Contains(output, "configure Finance Reconciliation service") {
+		t.Fatalf("exact 7e59077 control did not reach post-role-preflight sentinel:\n%s", output)
+	}
+
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "statistical-slo")
+	jobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+	))
+	var jobs, snapshots int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM jobs WHERE id = $1),
+			(SELECT count(*) FROM job_slo_admissions WHERE job_id = $1)
+	`, jobID).Scan(&jobs, &snapshots); err != nil {
+		t.Fatalf("read statistical SLO N-1 Admission: %v", err)
+	}
+	if jobs != 1 || snapshots != 0 {
+		t.Fatalf("statistical SLO N-1 Admission = Jobs %d snapshots %d", jobs, snapshots)
+	}
+}
 
 func TestExactCatalogPromotionNMinusOneControlStartsAgainstSchema32(t *testing.T) {
 	database := newPostgres(t)
@@ -2505,7 +2539,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == breakGlassNMinusOneCommit ||
 		commit == fleetControllerNMinusOneCommit ||
 		commit == nonContentExpiryNMinusOneCommit ||
-		commit == catalogPromotionNMinusOneCommit {
+		commit == catalogPromotionNMinusOneCommit ||
+		commit == statisticalSLONMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(

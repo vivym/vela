@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 39,
+  "title": "Vela Statistical SLOs",
+  "uid": "vela-statistical-slos",
+  "refresh": "30s",
+  "time": {"from": "now-30d", "to": "now"},
+  "templating": {
+    "list": [
+      {"name": "preset", "type": "query", "query": "label_values(vela_slo_report_eligible_jobs, generation_preset)", "includeAll": true},
+      {"name": "service_class", "type": "query", "query": "label_values(vela_slo_report_eligible_jobs, service_class_revision)", "includeAll": true},
+      {"name": "output_spec", "type": "query", "query": "label_values(vela_slo_report_eligible_jobs, output_spec)", "includeAll": true}
+    ]
+  },
+  "panels": [
+    {"id": 1, "type": "stat", "title": "API availability 30d", "targets": [{"expr": "vela:api_availability:ratio_30d", "legendFormat": "availability"}]},
+    {"id": 2, "type": "gauge", "title": "API error budget remaining", "targets": [{"expr": "vela:api_error_budget_remaining:ratio_30d", "legendFormat": "remaining"}]},
+    {"id": 3, "type": "timeseries", "title": "Queued to Visible Completion p95 / target", "targets": [{"expr": "vela_slo_report_p95_milliseconds{generation_preset=~\"$preset\",service_class_revision=~\"$service_class\",output_spec=~\"$output_spec\"}", "legendFormat": "{{generation_preset}} observed"}, {"expr": "vela_slo_target_p95_milliseconds{generation_preset=~\"$preset\",service_class_revision=~\"$service_class\",output_spec=~\"$output_spec\"}", "legendFormat": "{{generation_preset}} target"}]},
+    {"id": 4, "type": "timeseries", "title": "Success lower bound / target", "targets": [{"expr": "vela_slo_report_success_lower_bound_ratio{generation_preset=~\"$preset\",service_class_revision=~\"$service_class\",output_spec=~\"$output_spec\"}", "legendFormat": "{{generation_preset}} lower bound"}, {"expr": "vela_slo_target_success_ratio{generation_preset=~\"$preset\",service_class_revision=~\"$service_class\",output_spec=~\"$output_spec\"}", "legendFormat": "{{generation_preset}} target"}]},
+    {"id": 5, "type": "table", "title": "Cohort coverage and outcomes", "targets": [{"expr": "vela_slo_report_eligible_jobs", "format": "table"}, {"expr": "vela_slo_report_succeeded_jobs", "format": "table"}, {"expr": "vela_slo_report_failed_jobs", "format": "table"}, {"expr": "vela_slo_report_customer_canceled_jobs", "format": "table"}, {"expr": "vela_slo_report_open_jobs", "format": "table"}]},
+    {"id": 6, "type": "stat", "title": "Evidence freshness", "targets": [{"expr": "time() - max(vela_slo_report_sealed_timestamp_seconds)", "legendFormat": "seconds since seal"}]}
+  ]
+}

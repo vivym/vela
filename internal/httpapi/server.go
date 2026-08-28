@@ -38,6 +38,7 @@ const (
 )
 
 type Config struct {
+	Observer               func(http.Handler) http.Handler
 	Authenticator          *identity.Authenticator
 	PlatformAuthenticator  *breakglass.Authenticator
 	BreakGlass             *breakglass.Service
@@ -127,6 +128,9 @@ func NewHandler(config Config) (http.Handler, error) {
 	})
 
 	router := chi.NewRouter()
+	if config.Observer != nil {
+		router.Use(config.Observer)
+	}
 	router.Use(implementation.limitRequestBody)
 	router.Use(implementation.authenticate)
 	router.Use(oapimiddleware.OapiRequestValidatorWithOptions(openAPI, &oapimiddleware.Options{

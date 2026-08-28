@@ -81,6 +81,14 @@ BEGIN
     ) THEN
         CREATE ROLE vela_catalog_promotion_owner NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_slo_reporting') THEN
+        CREATE ROLE vela_slo_reporting NOLOGIN;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'vela_slo_reporting_owner'
+    ) THEN
+        CREATE ROLE vela_slo_reporting_owner NOLOGIN BYPASSRLS;
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles WHERE rolname = 'vela_organization_reporting_owner'
     ) THEN
@@ -177,6 +185,10 @@ ALTER ROLE vela_non_content_expiry_owner
 ALTER ROLE vela_catalog_promotion
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_catalog_promotion_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_slo_reporting
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_slo_reporting_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_organization_reporting_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;

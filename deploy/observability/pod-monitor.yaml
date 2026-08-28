@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: vela-control
+  namespace: vela-observability
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/part-of: vela
+spec:
+  namespaceSelector:
+    matchNames:
+      - vela-system
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  podMetricsEndpoints:
+    - port: management
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 5s

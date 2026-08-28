@@ -62,6 +62,7 @@ validate-deployment:
 	kubectl kustomize deploy/vela-control >/dev/null
 	kubectl kustomize deploy/worker-agent >/dev/null
 	kubectl kustomize deploy/fleet-controller >/dev/null
+	kubectl kustomize deploy/observability >/dev/null
 	@test -s deploy/node-agent/vela-node-agent.service
 	@test -s deploy/node-agent/README.md
 	@rg -q "VELA_NODE_AGENT_CONTROLLERS_FILE" deploy/node-agent/README.md cmd/vela-node-agent/main.go
@@ -84,6 +85,7 @@ validate-deployment:
 	@go test ./internal/deploymentcontract -run TestWorkerAgentManifestExcludesRecoveryQuarantineFromRunnerMountNamespace -count=1
 	@go test ./internal/deploymentcontract -run 'TestVelaControl' -count=1
 	@go test ./internal/deploymentcontract -run 'TestFleet' -count=1
+	@go test ./internal/deploymentcontract -run 'TestObservability' -count=1
 
 verify-generated: generate
 	git diff --exit-code -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1
