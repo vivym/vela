@@ -4,7 +4,7 @@ Date: 2026-08-29
 
 Status: Repository conformance implemented by Slice 47.
 
-Implementation: `6d916bb`; review closure: pending.
+Implementation: `6d916bb`; review closure: `9f4063e`.
 
 This slice removes the zero BusyBox digest from the three repository-owned root
 materializer inputs. It pins one exact `linux/amd64` manifest for the
@@ -92,6 +92,10 @@ RKE2, and H3 certification also remain external deployment inputs.
 - the render test was observed failing at all three consumers before the YAML
   changes and passing after the digest pin;
 - the complete `internal/deploymentcontract` and `internal/fleetcontroller`
-  packages pass; and
+  packages pass;
 - the mirror pull and local execution confirmed the selected manifest reports
-  `linux/amd64` and runs BusyBox `1.37.0`.
+  `linux/amd64` and runs BusyBox `1.37.0`;
+- `make validate-deployment` renders all five deployment bases and explicitly
+  runs the BusyBox contract test; and
+- post-review `make verify`, the focused deployment-contract race test, and
+  `go mod verify` pass.

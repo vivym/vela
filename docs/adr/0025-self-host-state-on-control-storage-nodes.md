@@ -21,7 +21,7 @@ credential reads. Slice 46 pins the JetStream StatefulSet to the exact NATS
 final Control/Storage Kustomize render (`760cd7a`, review closure `431bf3f`).
 Slice 47 pins the shared BusyBox `1.37.0` root materializer to its exact
 `linux/amd64` OCI manifest across the final `vela-control`, Worker Agent, and
-Fleet desired-input Kustomize renders (`6d916bb`).
+Fleet desired-input Kustomize renders (`6d916bb`, review closure `9f4063e`).
 The repository does not prove three physical RKE2 Control/Storage Nodes, independent
 disks, colocated I/O isolation, production operator installation, secret
 rotation, durable external S3, or a real-environment failover/restore Launch
