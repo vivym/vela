@@ -35,7 +35,7 @@ func TestH3WorkerPodTemplateExactlyMatchesStaticDeploymentContract(t *testing.T)
 			"vela.ai/worker-profile": "h3",
 			"vela.ai/worker-pool":    "launch",
 		},
-		InitImage:                "docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		InitImage:                "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
 		WorkerAgentImage:         "ghcr.io/vivym/vela-worker-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		RunnerImage:              "ghcr.io/vivym/vela-h3-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		ArtifactStoreTLSSecret:   "vela-artifact-store-ca",
