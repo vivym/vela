@@ -144,6 +144,7 @@ validate-deployment:
 	@go test ./internal/deploymentcontract -run TestWorkerAgentManifestExcludesRecoveryQuarantineFromRunnerMountNamespace -count=1
 	@go test ./internal/deploymentcontract -run 'TestVelaControl' -count=1
 	@go test ./internal/deploymentcontract -run 'TestFleet' -count=1
+	@go test ./internal/deploymentcontract -run '^TestRenderedRootMaterializersUsePinnedBusyBoxImage$$' -count=1
 	@go test ./internal/deploymentcontract -run 'TestObservability' -count=1
 
 verify-generated: generate
