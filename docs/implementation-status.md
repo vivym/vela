@@ -56,7 +56,7 @@ tests alone do not satisfy a gate.
 | Statistical SLO Measurement And Observability Conformance | `6036604`, `06f3414` | `docs/specs/0037-statistical-slo-measurement-and-observability-conformance.md`, `deploy/observability`, `docs/runbooks/statistical-slo-breach.md` |
 | Barman Cloud Plugin And PITR Conformance | `4f4bc2d`, `e8a4149` | `docs/specs/0038-barman-cloud-plugin-and-pitr-conformance.md`, `deploy/control-storage`, `hack/test-cnpg-pitr.sh` |
 | Production Gate Typed Evidence | `7829104` | `docs/specs/0039-production-gate-typed-evidence.md`, `internal/productiongates/typed_evidence.go` |
-| Production Release Bundle And Configuration Revision Closure | `1339c79`, `c2cb72b`, `8cf46c9`, `389f61a`, `7ce90f2`, `07eef0d`, `2e298fe` | `docs/specs/0040-production-release-bundle-and-configuration-revision-closure.md`, `internal/releasebundle`, `cmd/vela-release-bundle` |
+| Production Release Bundle And Configuration Revision Closure | `1339c79`, `c2cb72b`, `8cf46c9`, `389f61a`, `7ce90f2`, `07eef0d`, `2e298fe`, `3101111`, `e25abd5` | `docs/specs/0040-production-release-bundle-and-configuration-revision-closure.md`, `internal/releasebundle`, `cmd/vela-release-bundle` |
 
 ## ADR Evidence Matrix
 
@@ -192,7 +192,7 @@ and RateCard claims before transaction start. It strengthens the repository
 enforcement for all Production Gates but does not produce external exercise
 evidence or change the launch result.
 Slice 40 (`1339c79`, `c2cb72b`, `8cf46c9`, `389f61a`, `7ce90f2`, `07eef0d`,
-`2e298fe`)
+`2e298fe`, review closure `3101111`, verification closure `e25abd5`)
 derives one canonical release/configuration identity from the exact rendered,
 packaged, Worker, Secret revision, and OCI artifact graph. Launch verification
 and Catalog promotion rebuild that bundle and require exact receipt bindings
