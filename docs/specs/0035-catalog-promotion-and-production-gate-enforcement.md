@@ -55,27 +55,36 @@ The read-only verifier is an explicit release command:
 ```text
 make verify-launch \
   RELEASE_BUNDLE=/absolute/path/to/release-bundle.json \
+  SUPPLY_CHAIN_MANIFEST=/absolute/path/to/supply-chain/manifest.json \
+  SUPPLY_CHAIN_POLICY=/absolute/path/to/supply-chain/policy.json \
   LAUNCH_RECEIPTS=/absolute/path/to/launch-receipts.json
 ```
 
 Slice 40 requires the canonical release bundle as the source of the expected
-release digest and configuration revision. The command exits nonzero for an
-invalid bundle, a missing gate, failed gate, mixed or mismatched
-release/configuration, malformed or ambiguous JSON, path escape, non-regular
-evidence object, or evidence digest mismatch. Success prints only the verified
-release, configuration, manifest digest, and `PASS 9/9` result.
+release digest and configuration revision. Slice 45 additionally requires
+externally produced registry, signature, SPDX SBOM, scan, and independent
+approval evidence under an external trust policy. The command exits nonzero for
+an invalid bundle, missing or policy-failing supply-chain evidence, a missing or
+failed gate, mixed or mismatched release/configuration, malformed or ambiguous
+JSON, path escape, non-regular evidence object, or evidence digest mismatch.
+Success prints only verified identities and the `PASS 9/9` result.
 
 Catalog promotion is a separate database-mutating command:
 
 ```text
 VELA_CATALOG_PROMOTION_DATABASE_URL=<dedicated login DSN> \
+VELA_CATALOG_PROMOTION_SUPPLY_CHAIN_POLICY=/secure/release-policy.json \
+VELA_CATALOG_PROMOTION_SUPPLY_CHAIN_POLICY_SHA256=sha256:<64-lowercase-hex> \
   go run ./cmd/vela-catalog-promoter /absolute/path/to/catalog-promotion.json
 ```
 
-The plan references both the launch manifest and canonical release bundle
-relative to its own directory and lists the ProfileCertification evidence and
-RateCard bindings for the release. The command verifies all files and requires
-exact bundle/manifest identity before opening one PostgreSQL transaction.
+The strict schema-version-2 plan references the launch manifest, canonical
+release bundle, and supply-chain manifest relative to its own directory and
+lists the ProfileCertification evidence and RateCard bindings for the release.
+The plan cannot select the trust root: the process receives an independently
+configured canonical absolute trust-policy path and expected SHA-256. The
+command verifies all files and requires exact bundle/supply-chain/manifest
+identity before opening one PostgreSQL transaction.
 Receipt ingest, manifest sealing, certification promotion, RateCard promotion,
 and the protocol switch either commit together or leave no durable effect.
 

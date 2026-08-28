@@ -74,37 +74,50 @@ revision from the exact final renders, host packages, Node Agent unit, Worker
 materializations, external resource revisions, and OCI manifest/config bytes.
 The command verifies its temporary candidate before atomic replacement.
 
-Run the read-only launch check with both canonical artifacts:
+Run the read-only launch check with the canonical bundle, externally retained
+supply-chain evidence and trust policy, and Launch Receipts:
 
 ```text
 make verify-launch \
   RELEASE_BUNDLE=/absolute/path/to/release/release-bundle.json \
+  SUPPLY_CHAIN_MANIFEST=/absolute/path/to/release/supply-chain/manifest.json \
+  SUPPLY_CHAIN_POLICY=/absolute/path/to/release/supply-chain/policy.json \
   LAUNCH_RECEIPTS=/absolute/path/to/release/launch-receipts.json
 ```
 
-Catalog promotion is a separate, mutating operation. Its strict plan includes
-both `manifest_ref` and `release_bundle_ref`, rooted beneath the plan directory,
-and uses the dedicated `vela_catalog_promotion` login:
+Catalog promotion is a separate, mutating operation. Its strict
+`schema_version: 2` plan includes `manifest_ref`, `release_bundle_ref`, and
+`supply_chain_manifest_ref`, rooted beneath the plan directory. The policy path
+and expected SHA-256 are independent process configuration, not plan fields.
+The command uses the dedicated `vela_catalog_promotion` login:
 
 ```text
 VELA_CATALOG_PROMOTION_DATABASE_URL=<dedicated login DSN> \
+VELA_CATALOG_PROMOTION_SUPPLY_CHAIN_POLICY=/secure/release-policy.json \
+VELA_CATALOG_PROMOTION_SUPPLY_CHAIN_POLICY_SHA256=sha256:<64-lowercase-hex> \
   go run ./cmd/vela-catalog-promoter /absolute/path/to/catalog-promotion.json
 ```
 
-Before opening the transaction, the service rebuilds the release bundle and
-requires its release digest and configuration revision to match the verified
-receipt manifest exactly. The promotion transaction then ingests and seals the
-manifest, records independent three-Preset certification evidence, promotes the
-release RateCard, and enables the fail-closed `EVIDENCED` Catalog protocol
-atomically. The repository contains no production plan, bundle, receipt, or
-credential. See
+Before opening the transaction, the service rebuilds the release bundle,
+validates exact registry publication coverage, DSSE/Ed25519 image statements,
+SPDX 2.3 image subjects, scanner/database evidence, and independently signed
+vulnerability approval against the externally configured and digest-pinned
+trust policy, then requires the
+Launch Receipt manifest to bind the same release and configuration. The
+promotion transaction then ingests and seals the manifest, records independent
+three-Preset certification evidence, promotes the release RateCard, and enables
+the fail-closed `EVIDENCED` Catalog protocol atomically. The repository contains
+no production plan, bundle, receipt, policy, key, or credential. See
 `docs/specs/0035-catalog-promotion-and-production-gate-enforcement.md` for the
 database authority and
 `docs/specs/0039-production-gate-typed-evidence.md` for the typed evidence
 contract. The canonical release contract is documented in
 `docs/specs/0040-production-release-bundle-and-configuration-revision-closure.md`.
+The supply-chain contract is documented in
+`docs/specs/0045-release-supply-chain-evidence-binding.md`.
 
-Registry publication, signatures, SBOMs, vulnerability approval, real Secret
-and PKI material, production node materialization, and the nine real exercises
-remain external release responsibilities. A repository bundle or fixture is
-not a Launch Receipt and does not advance `0/9 PASS`.
+Actual registry publication, signatures, SBOM generation, vulnerability scans
+and approval, real Secret and PKI material, production node materialization,
+and the nine real exercises remain external release responsibilities. A
+repository bundle, validator, or fixture is not a Launch Receipt and does not
+advance `0/9 PASS`.

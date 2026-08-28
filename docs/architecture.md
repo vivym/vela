@@ -1347,6 +1347,11 @@ receipt 绑定。Slice 44 提供经过完整本地验证后的 digest-only regis
 raw manifest 回读和 credential-free publication receipt contract；实际生产
 registry receipt、signature、SBOM、vulnerability approval、真实 PKI/Secret、
 生产节点 materialization 与部署仍是外部 release responsibility。
+Slice 45 以外部 trust policy、职责分离的 Ed25519 keys 和 DSSE envelopes
+严格验证完整 release image set 的 publication receipt、SPDX 2.3 subject、
+scanner/database identity 与 vulnerability approval，并让 launch verification
+及 Catalog promotion 在任何缺失或不匹配时于 transaction 前 fail closed；
+repository validator 与 test fixture 不构成实际生产 evidence。
 仓库内 bundle、fixture 和测试不是 Launch Receipt，当前仍为 `0/9 PASS`。
 
 | Gate | PASS 证据 | 未通过时行为 |
