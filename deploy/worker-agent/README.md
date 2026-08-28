@@ -27,9 +27,11 @@ Render the contract locally with:
 kubectl kustomize deploy/worker-agent
 ```
 
-The image digests in the base are invalid placeholders. Fleet Controller must
-replace all three with approved OCI digests and preserve adjacent-version protocol
-compatibility. A rendered manifest is not a deployment receipt.
+The BusyBox root materializer is pinned to the shared `1.37.0` `linux/amd64`
+OCI manifest. The Worker Agent and H3 Runner digests remain invalid
+placeholders. Fleet Controller must replace those two Vela images with approved
+OCI digests and preserve adjacent-version protocol compatibility. A rendered
+manifest is not a deployment receipt or supply-chain receipt.
 
 ## Release bundle boundary
 

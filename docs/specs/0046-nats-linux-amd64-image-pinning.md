@@ -11,7 +11,7 @@ contract. It pins the exact `linux/amd64` manifest used by the three-replica
 JetStream StatefulSet and verifies the identity through the final Kustomize
 render. It does not pin release-specific Vela or materializer images, publish
 or sign an image, deploy RKE2, or change the current `0/9 PASS` Production Gate
-result.
+result. Slice 47 later pins the shared BusyBox materializer image.
 
 ## Image identity
 
@@ -61,11 +61,12 @@ and independent approval evidence for every image in a real release. This
 repository pin supplies none of those external artifacts and is not a registry
 receipt or Launch Receipt.
 
-The zero-digest Vela, BusyBox materializer, Worker Agent, and H3 Runner values
-remain deliberate release-overlay inputs. Their exact identities depend on the
-approved release artifacts and must not be inferred from local smoke images.
-The example S3 endpoint, real Secrets, storage topology, and RKE2 target also
-remain external deployment inputs.
+The zero-digest Vela Control, Fleet Controller, Worker Agent, and H3 Runner
+values remain deliberate release-overlay inputs. Their exact identities depend
+on the approved release artifacts and must not be inferred from local smoke
+images. Slice 47 separately pins the BusyBox materializer. The example S3
+endpoint, real Secrets, storage topology, and RKE2 target also remain external
+deployment inputs.
 
 ## Verification evidence
 

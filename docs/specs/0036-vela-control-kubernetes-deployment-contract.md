@@ -42,9 +42,10 @@ Kubernetes API objects rather than individual source YAML files.
    independent capacity, topology, reclaim, IOPS, throughput, and live-receipt
    preflight; provider-specific StorageClass values remain an overlay and live
    gate, not repository evidence.
-2. Pin the control and secret-materializer images by OCI digest. Repository
-   zero-digest values are explicit invalid placeholders that a release overlay
-   must replace with approved digests.
+2. Pin the control and secret-materializer images by OCI digest. The control
+   zero digest remains an explicit invalid placeholder that a release overlay
+   must replace with an approved Vela digest. Slice 47 later pins the shared
+   BusyBox secret-materializer to its exact `linux/amd64` manifest.
 3. Run the application as UID/GID 10001 with a read-only root filesystem, no
    privilege escalation, all Linux capabilities dropped, RuntimeDefault
    seccomp, no service-account token, and a bounded writable Artifact validation

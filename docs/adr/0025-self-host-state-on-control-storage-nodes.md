@@ -19,6 +19,9 @@ Barman principals only exact `vela-backup-s3` access and denies Artifact
 credential reads. Slice 46 pins the JetStream StatefulSet to the exact NATS
 `2.10.22` `linux/amd64` OCI manifest and verifies that identity through the
 final Control/Storage Kustomize render (`760cd7a`, review closure `431bf3f`).
+Slice 47 pins the shared BusyBox `1.37.0` root materializer to its exact
+`linux/amd64` OCI manifest across the final `vela-control`, Worker Agent, and
+Fleet desired-input Kustomize renders (`6d916bb`).
 The repository does not prove three physical RKE2 Control/Storage Nodes, independent
 disks, colocated I/O isolation, production operator installation, secret
 rotation, durable external S3, or a real-environment failover/restore Launch

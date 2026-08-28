@@ -90,9 +90,10 @@ Node Agent endpoints and TLS private keys. The root init container therefore
 copies each declared key, never a projected directory, into a 4 MiB
 memory-backed volume, sets directories to `0700`, files to `0600`, and transfers
 ownership to UID/GID 10001. The application container mounts only those regular
-files and never mounts the projected source volumes. The init image digest is
-part of the release and vulnerability-scan receipt; `CAP_CHOWN` is its only
-added capability.
+files and never mounts the projected source volumes. The init image is pinned to
+the shared BusyBox `1.37.0` `linux/amd64` OCI manifest. Its exact manifest/config
+bytes and required supply-chain evidence remain part of the release;
+`CAP_CHOWN` is its only added capability.
 
 The Scheduler, Artifact Reconciler, Retention Reconciler, non-content expiry,
 backup Replicator, Webhook Dispatcher, and Invoice Exporter claimant identities
@@ -157,8 +158,9 @@ identity above; metrics never use Organization, Project, Job, Attempt or other
 customer identifiers as labels. The deployable rule/dashboard contract lives
 under `deploy/observability`.
 
-A production rollout still requires approved image digests, Secret/PKI rotation, real
-Control/Storage placement, NetworkPolicy observation, authenticated probes for
-all five interfaces, N/N-1 rollout and rollback, long-running Job drain,
+A production rollout still requires approved Vela image digests, complete
+BusyBox and Vela supply-chain evidence, Secret/PKI rotation, real Control/Storage
+placement, NetworkPolicy observation, authenticated probes for all five
+interfaces, N/N-1 rollout and rollback, long-running Job drain,
 database/NATS/object-store failure exercises, and the corresponding immutable
 Launch Receipts.
