@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-08-28
+Date: 2026-08-29
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -58,6 +58,7 @@ tests alone do not satisfy a gate.
 | Production Gate Typed Evidence | `7829104` | `docs/specs/0039-production-gate-typed-evidence.md`, `internal/productiongates/typed_evidence.go` |
 | Production Release Bundle And Configuration Revision Closure | `1339c79`, `c2cb72b`, `8cf46c9`, `389f61a`, `7ce90f2`, `07eef0d`, `2e298fe`, `3101111`, `e25abd5` | `docs/specs/0040-production-release-bundle-and-configuration-revision-closure.md`, `internal/releasebundle`, `cmd/vela-release-bundle` |
 | Host Package Release Artifact Assembly | `286eb29` | `docs/specs/0041-host-package-release-artifact-assembly.md`, `internal/releaseartifacts`, `cmd/vela-release-artifacts` |
+| Vela OCI Image Build Seam | `eeddbaa` | `docs/specs/0042-vela-oci-image-build-seam.md`, `Dockerfile`, `docker-bake.hcl` |
 
 ## ADR Evidence Matrix
 
@@ -91,7 +92,7 @@ tests alone do not satisfy a gate.
 | 0026 Reserve credit at Admission | Implemented for current lifecycle | Admission reserves atomically; cancellation, execution/finalization failure, and Visible Completion consume or release exactly once with counters and Outbox. | Future terminal paths must close the same reservation authority. |
 | 0027 Charge when cancel wins | Implemented | Visible Completion and Customer Cancellation serialize through one Job authority; the winner owns the only Charge and late completion returns the winning ArtifactSet. | Production fault-injection receipt remains a separate gate. |
 | 0028 Recompute after Worker loss | Partial | LOST execution creates a higher-fence whole-Job retry; a circuit-opening failure can select a different actively certified profile without changing product snapshots; finalization loss is recovered on the same Attempt/fence by a Reconciler without resetting its deadline; Slice 21 local state is integrated into the Worker Agent and Python Runner with exact Worker/epoch/fence recovery, multipart finalization resume, per-Attempt quotas, watermarks, terminal cleanup, a UID-authenticated host XFS quota service, and an unprivileged H3 deployment contract. Slice 23 materializes identity-bound H3 Workers and requires five ordered readiness checks before a recovered or replacement Worker becomes `HEALTHY + READY`. Slice 30 proves real signed multipart resume after same-Worker Agent process loss and a distinct higher-fence replacement Attempt from an empty local root after the original Worker recovery root becomes inaccessible, with one Visible Completion, ArtifactSet, and Charge (`864c134`, review closure at `5a9bad6`). | Live H3 NVMe/XFS quota and capacity certification, physical node/NVMe-loss exercise, and Launch Receipt. |
-| 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings. Slice 35 adds a bounded duplicate-key-safe manifest loader, same-release/config closure, rooted evidence paths, evidence-byte SHA-256 recomputation, immutable database receipts, and Catalog ACTIVE enforcement bound to the sealed manifest. Slice 39 (`7829104`) gives all eight non-observability gates versioned check, measurement, and typed-artifact contracts; binds preset evidence to the saleable-group snapshot, certification values, and complete RateCard bindings; and rejects plan mismatch before database mutation. Slice 40 derives the release/configuration pair from one strict, rooted, bounded bundle spanning exact renders, packages, Worker materializations, external revisions, and OCI manifest/config bytes; launch verification and Catalog promotion both require that canonical bundle, with promotion mismatch rejected before transaction start. Slice 41 (`286eb29`) reproducibly builds and pre-publication verifies the exact H3 Runner wheel and Linux/amd64 Node Agent package inputs, then publishes them atomically without replacement. Missing, malformed, duplicate, mixed, failed, opaque, semantically incomplete, tampered, or independently asserted identity cannot evaluate as PASS or promote the Catalog. | Registry publication, signature/SBOM and vulnerability approval, real PKI/Secret and node materialization, and nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
+| 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings. Slice 35 adds a bounded duplicate-key-safe manifest loader, same-release/config closure, rooted evidence paths, evidence-byte SHA-256 recomputation, immutable database receipts, and Catalog ACTIVE enforcement bound to the sealed manifest. Slice 39 (`7829104`) gives all eight non-observability gates versioned check, measurement, and typed-artifact contracts; binds preset evidence to the saleable-group snapshot, certification values, and complete RateCard bindings; and rejects plan mismatch before database mutation. Slice 40 derives the release/configuration pair from one strict, rooted, bounded bundle spanning exact renders, packages, Worker materializations, external revisions, and OCI manifest/config bytes; launch verification and Catalog promotion both require that canonical bundle, with promotion mismatch rejected before transaction start. Slice 41 (`286eb29`) reproducibly builds and pre-publication verifies the exact H3 Runner wheel and Linux/amd64 Node Agent package inputs, then publishes them atomically without replacement. Slice 42 (`eeddbaa`) assembles the four exact `linux/amd64` Vela runtime images from digest-pinned build inputs while requiring a private, digest-bound external H3 backend. Missing, malformed, duplicate, mixed, failed, opaque, semantically incomplete, tampered, or independently asserted identity cannot evaluate as PASS or promote the Catalog. | Registry publication, signature/SBOM and vulnerability approval, real PKI/Secret and node materialization, and nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
 
 ## Acceptance Coverage
 
@@ -200,6 +201,11 @@ and Catalog promotion rebuild that bundle and require exact receipt bindings
 before any database mutation. It does not publish or sign registry artifacts,
 provision production PKI/Secrets or nodes, deploy real infrastructure, or create
 a Launch Receipt.
+Slice 42 (`eeddbaa`) provides the repository-owned `linux/amd64` build seam for
+the four Vela runtime images, including pinned build inputs, exact runtime
+entrypoints, and a private digest-bound H3 backend context. It does not provide
+the production backend, publish or sign registry artifacts, approve
+vulnerabilities, deploy RKE2/H3, or create a Launch Receipt.
 The repository coverage is now 31 direct, 0 partial, and 0 unproven.
 
 ## Production Gates
