@@ -12,9 +12,14 @@ RELEASE_BUNDLE_PLAN ?=
 RELEASE_BUNDLE ?=
 RELEASE_REVISION ?=
 RELEASE_ARTIFACT_DIR ?=
+RELEASE_IMAGE_PREFIX ?=
+H3_BACKEND_CONTEXT ?=
+H3_BACKEND_SHA256 ?=
 TOOLS_BIN := $(CURDIR)/bin
+VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" \
+	"$(RELEASE_IMAGE_PREFIX)" "$(H3_BACKEND_CONTEXT)" "$(H3_BACKEND_SHA256)"
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-host-packages build-release-bundle verify-release-bundle verify-launch lint test test-integration test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-host-packages print-vela-image-build build-vela-images build-release-bundle verify-release-bundle verify-launch lint test test-integration test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -57,6 +62,14 @@ build-host-packages:
 		(echo "RELEASE_ARTIFACT_DIR is required" >&2; exit 2)
 	go run ./cmd/vela-release-artifacts build-host-packages \
 		"$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_ARTIFACT_DIR)"
+
+print-vela-image-build:
+	@go run ./cmd/vela-release-artifacts print-vela-image-build \
+		$(VELA_IMAGE_BUILD_ARGUMENTS)
+
+build-vela-images:
+	go run ./cmd/vela-release-artifacts build-vela-images \
+		$(VELA_IMAGE_BUILD_ARGUMENTS)
 
 build-release-bundle:
 	@test -n "$(RELEASE_BUNDLE_PLAN)" || \
