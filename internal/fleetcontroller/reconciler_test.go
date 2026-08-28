@@ -600,12 +600,44 @@ func countRetirementOperations(operations []string) int {
 }
 
 func TestFleetConfigurationRejectsKubernetesNamesOutsideCRDContract(t *testing.T) {
-	for _, invalidName := range []string{".pool", "pool.", "a..b"} {
+	for _, invalidName := range []string{".pool", "pool.", "a..b", "worker-pool-placeholder"} {
 		desired := desiredRevision()
 		desired.Name = invalidName
 		if err := fleetcontroller.ValidateDesiredRevision(desired); err == nil {
 			t.Fatalf("invalid Kubernetes resource name %q was accepted", invalidName)
 		}
+	}
+}
+
+func TestFleetDesiredRevisionRejectsZeroAndTemplateReleaseInputs(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*fleetcontroller.DesiredRevision)
+	}{
+		{name: "zero revision", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			desired.Revision = strings.Repeat("0", 64)
+		}},
+		{name: "zero init image digest", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			desired.InitImage = "docker.io/library/busybox@sha256:" + strings.Repeat("0", 64)
+		}},
+		{name: "tagged image", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			desired.RunnerImage = "ghcr.io/vivym/vela-h3-runner:r1@sha256:" + strings.Repeat("c", 64)
+		}},
+		{name: "uppercase image", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			desired.WorkerAgentImage = "ghcr.io/vivym/Vela-worker-agent@sha256:" + strings.Repeat("b", 64)
+		}},
+		{name: "template backend revision", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			desired.InferenceBackendRevision = "replace-with-approved-backend-revision"
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			desired := desiredRevision()
+			test.mutate(&desired)
+			if err := fleetcontroller.ValidateDesiredRevision(desired); err == nil {
+				t.Fatal("invalid production desired revision was accepted")
+			}
+		})
 	}
 }
 

@@ -48,6 +48,9 @@ func TestH3WorkerPodTemplateExactlyMatchesStaticDeploymentContract(t *testing.T)
 			ObservationMaxAge: 2 * time.Minute,
 		},
 	}
+	if err := ValidateDesiredRevision(desired); err == nil {
+		t.Fatal("static H3 deployment base must remain an explicitly invalid template")
+	}
 	materialized := h3WorkerPodTemplate(desired, map[string]string{
 		"app.kubernetes.io/name": "vela-h3-worker",
 	})

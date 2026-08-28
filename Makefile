@@ -8,9 +8,11 @@ PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
 GOLANGCI_LINT_VERSION := v2.13.1
 INTEGRATION_TEST_TIMEOUT ?= 40m
 LAUNCH_RECEIPTS ?=
+RELEASE_BUNDLE_PLAN ?=
+RELEASE_BUNDLE ?=
 TOOLS_BIN := $(CURDIR)/bin
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated verify-launch lint test test-integration test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-release-bundle verify-release-bundle verify-launch lint test test-integration test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -46,10 +48,24 @@ test:
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
 
+build-release-bundle:
+	@test -n "$(RELEASE_BUNDLE_PLAN)" || \
+		(echo "RELEASE_BUNDLE_PLAN is required" >&2; exit 2)
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	go run ./cmd/vela-release-bundle build "$(RELEASE_BUNDLE_PLAN)" "$(RELEASE_BUNDLE)"
+
+verify-release-bundle:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	go run ./cmd/vela-release-bundle verify "$(RELEASE_BUNDLE)"
+
 verify-launch:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
 	@test -n "$(LAUNCH_RECEIPTS)" || \
 		(echo "LAUNCH_RECEIPTS is required" >&2; exit 2)
-	go run ./cmd/vela-verify-launch "$(LAUNCH_RECEIPTS)"
+	go run ./cmd/vela-verify-launch "$(RELEASE_BUNDLE)" "$(LAUNCH_RECEIPTS)"
 
 test-cnpg-failover:
 	./hack/test-cnpg-failover.sh

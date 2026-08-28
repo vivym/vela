@@ -455,7 +455,7 @@ func ValidateDesiredRevision(desired DesiredRevision) error {
 		!validResourceName(desired.WorkerControlTLSSecret) ||
 		!validResourceName(desired.ArtifactStoreTLSSecret) ||
 		desired.ExecutionProfileRevisionID == uuid.Nil ||
-		!validBoundedText(desired.InferenceBackendRevision, 200) ||
+		!validProductionRevision(desired.InferenceBackendRevision, 200) ||
 		desired.ReadinessTimeout <= 0 || desired.ReadinessTimeout > 2*time.Hour ||
 		!validCapacityPolicySpec(desired.CapacityPolicy) {
 		return errors.New("fleet desired revision is invalid")
@@ -526,11 +526,12 @@ func containsString(values []string, expected string) bool {
 }
 
 func validResourceName(value string) bool {
-	return len(validation.IsDNS1123Subdomain(value)) == 0
+	return len(validation.IsDNS1123Subdomain(value)) == 0 && !containsTemplateMarker(value)
 }
 
 func validSHA256(value string) bool {
-	if len(value) != sha256.Size*2 || strings.ToLower(value) != value {
+	if len(value) != sha256.Size*2 || strings.ToLower(value) != value ||
+		value == strings.Repeat("0", sha256.Size*2) {
 		return false
 	}
 	_, err := hex.DecodeString(value)
@@ -539,7 +540,27 @@ func validSHA256(value string) bool {
 
 func validPinnedImage(value string) bool {
 	marker := strings.LastIndex(value, "@sha256:")
-	return marker > 0 && validSHA256(value[marker+len("@sha256:"):])
+	if marker <= 0 {
+		return false
+	}
+	repository := value[:marker]
+	lastSlash := strings.LastIndex(repository, "/")
+	return strings.Count(value, "@sha256:") == 1 && strings.ToLower(value) == value &&
+		!strings.ContainsAny(repository, "@ \t\r\n") && lastSlash > 0 &&
+		!strings.Contains(repository[lastSlash+1:], ":") && !containsTemplateMarker(repository) &&
+		validSHA256(value[marker+len("@sha256:"):])
+}
+
+func validProductionRevision(value string, maximum int) bool {
+	return validBoundedText(value, maximum) && !containsTemplateMarker(value) &&
+		value != strings.Repeat("0", 64) && value != "sha256:"+strings.Repeat("0", 64)
+}
+
+func containsTemplateMarker(value string) bool {
+	lower := strings.ToLower(value)
+	return strings.Contains(lower, "placeholder") || strings.Contains(lower, "replace-with") ||
+		strings.Contains(lower, "changeme") || strings.Contains(lower, "todo") ||
+		strings.Contains(lower, ".invalid")
 }
 
 func cloneMap(source map[string]string) map[string]string {

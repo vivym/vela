@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/vivym/vela/internal/productiongates"
+	"github.com/vivym/vela/internal/releasebundle"
 )
 
 func main() {
@@ -13,13 +14,22 @@ func main() {
 }
 
 func run(arguments []string, stdout, stderr io.Writer) int {
-	if len(arguments) != 1 {
-		_, _ = fmt.Fprintln(stderr, "usage: vela-verify-launch <launch-receipts.json>")
+	if len(arguments) != 2 {
+		_, _ = fmt.Fprintln(stderr, "usage: vela-verify-launch <release-bundle.json> <launch-receipts.json>")
 		return 2
 	}
-	manifest, err := productiongates.LoadManifest(arguments[0])
+	bundle, err := releasebundle.Load(arguments[0])
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "verify release bundle: %v\n", err)
+		return 1
+	}
+	manifest, err := productiongates.LoadManifest(arguments[1])
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "verify launch receipts: %v\n", err)
+		return 1
+	}
+	if err := validateBindings(bundle, manifest); err != nil {
+		_, _ = fmt.Fprintf(stderr, "verify launch bindings: %v\n", err)
 		return 1
 	}
 	_, _ = fmt.Fprintf(
@@ -32,4 +42,18 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		manifest.Digest,
 	)
 	return 0
+}
+
+func validateBindings(bundle releasebundle.Bundle, manifest productiongates.Manifest) error {
+	if manifest.ReleaseDigest != bundle.ReleaseDigest ||
+		manifest.ConfigurationRevision != bundle.ConfigurationRevision {
+		return fmt.Errorf(
+			"Launch Receipts bind release=%s configuration=%s, want release=%s configuration=%s",
+			manifest.ReleaseDigest,
+			manifest.ConfigurationRevision,
+			bundle.ReleaseDigest,
+			bundle.ConfigurationRevision,
+		)
+	}
+	return nil
 }
