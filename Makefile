@@ -10,7 +10,7 @@ INTEGRATION_TEST_TIMEOUT ?= 40m
 LAUNCH_RECEIPTS ?=
 TOOLS_BIN := $(CURDIR)/bin
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated verify-launch lint test test-integration test-cnpg-failover test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated verify-launch lint test test-integration test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -53,6 +53,9 @@ verify-launch:
 
 test-cnpg-failover:
 	./hack/test-cnpg-failover.sh
+
+test-cnpg-pitr:
+	./hack/test-cnpg-pitr.sh
 
 test-cross:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -exec=/usr/bin/true ./...

@@ -2,8 +2,11 @@ package deploymentcontract
 
 import (
 	"bytes"
+	"encoding/hex"
+	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -35,21 +38,7 @@ type cnpgClusterContract struct {
 				Number         int    `yaml:"number"`
 			} `yaml:"synchronous"`
 		} `yaml:"postgresql"`
-		Backup struct {
-			RetentionPolicy   string `yaml:"retentionPolicy"`
-			BarmanObjectStore struct {
-				DestinationPath string `yaml:"destinationPath"`
-				EndpointURL     string `yaml:"endpointURL"`
-				S3Credentials   struct {
-					AccessKeyID     cnpgSecretKeySelector `yaml:"accessKeyId"`
-					SecretAccessKey cnpgSecretKeySelector `yaml:"secretAccessKey"`
-				} `yaml:"s3Credentials"`
-				WAL struct {
-					Compression string `yaml:"compression"`
-					MaxParallel int    `yaml:"maxParallel"`
-				} `yaml:"wal"`
-			} `yaml:"barmanObjectStore"`
-		} `yaml:"backup"`
+		Plugins []cnpgPluginContract `yaml:"plugins"`
 	} `yaml:"spec"`
 }
 
@@ -63,6 +52,61 @@ type cnpgSecretKeySelector struct {
 	Key  string `yaml:"key"`
 }
 
+type cnpgPluginContract struct {
+	Name          string            `yaml:"name"`
+	IsWALArchiver bool              `yaml:"isWALArchiver"`
+	Parameters    map[string]string `yaml:"parameters"`
+}
+
+type barmanObjectStoreContract struct {
+	APIVersion string `yaml:"apiVersion"`
+	Kind       string `yaml:"kind"`
+	Metadata   struct {
+		Name   string            `yaml:"name"`
+		Labels map[string]string `yaml:"labels"`
+	} `yaml:"metadata"`
+	Spec struct {
+		RetentionPolicy string `yaml:"retentionPolicy"`
+		Configuration   struct {
+			DestinationPath string `yaml:"destinationPath"`
+			EndpointURL     string `yaml:"endpointURL"`
+			S3Credentials   struct {
+				AccessKeyID     cnpgSecretKeySelector `yaml:"accessKeyId"`
+				SecretAccessKey cnpgSecretKeySelector `yaml:"secretAccessKey"`
+			} `yaml:"s3Credentials"`
+			WAL struct {
+				Compression string `yaml:"compression"`
+				MaxParallel int    `yaml:"maxParallel"`
+			} `yaml:"wal"`
+		} `yaml:"configuration"`
+		InstanceSidecarConfiguration struct {
+			RetentionPolicyIntervalSeconds int                          `yaml:"retentionPolicyIntervalSeconds"`
+			Resources                      map[string]map[string]string `yaml:"resources"`
+		} `yaml:"instanceSidecarConfiguration"`
+	} `yaml:"spec"`
+}
+
+type cnpgScheduledBackupContract struct {
+	APIVersion string `yaml:"apiVersion"`
+	Kind       string `yaml:"kind"`
+	Metadata   struct {
+		Name   string            `yaml:"name"`
+		Labels map[string]string `yaml:"labels"`
+	} `yaml:"metadata"`
+	Spec struct {
+		Schedule             string `yaml:"schedule"`
+		Immediate            bool   `yaml:"immediate"`
+		BackupOwnerReference string `yaml:"backupOwnerReference"`
+		Method               string `yaml:"method"`
+		Cluster              struct {
+			Name string `yaml:"name"`
+		} `yaml:"cluster"`
+		PluginConfiguration struct {
+			Name string `yaml:"name"`
+		} `yaml:"pluginConfiguration"`
+	} `yaml:"spec"`
+}
+
 func TestControlStoragePostgreSQLContractRequiresAutomaticFailoverAndNoQuorumSafety(
 	t *testing.T,
 ) {
@@ -70,7 +114,8 @@ func TestControlStoragePostgreSQLContractRequiresAutomaticFailoverAndNoQuorumSaf
 	loadControlStorageYAML(t, "postgres-cluster.yaml", &cluster)
 	if cluster.APIVersion != "postgresql.cnpg.io/v1" || cluster.Kind != "Cluster" ||
 		cluster.Metadata.Name != "vela-postgres" || cluster.Spec.Instances != 3 ||
-		cluster.Spec.ImageName != "ghcr.io/cloudnative-pg/postgresql:16.4" ||
+		cluster.Spec.ImageName != "ghcr.io/cloudnative-pg/postgresql:16.4@sha256:"+
+			"99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe" ||
 		cluster.Spec.PrimaryUpdateStrategy != "unsupervised" {
 		t.Fatalf("CloudNativePG identity/replication contract = %#v", cluster)
 	}
@@ -90,17 +135,46 @@ func TestControlStoragePostgreSQLContractRequiresAutomaticFailoverAndNoQuorumSaf
 			cluster.Spec.WALStorage,
 		)
 	}
-	backup := cluster.Spec.Backup
-	if backup.RetentionPolicy != "30d" || backup.BarmanObjectStore.DestinationPath == "" ||
-		backup.BarmanObjectStore.EndpointURL == "" ||
-		backup.BarmanObjectStore.S3Credentials.AccessKeyID != (cnpgSecretKeySelector{
-			Name: "vela-backup-s3", Key: "ACCESS_KEY_ID",
-		}) || backup.BarmanObjectStore.S3Credentials.SecretAccessKey != (cnpgSecretKeySelector{
-		Name: "vela-backup-s3", Key: "SECRET_ACCESS_KEY",
-	}) || backup.BarmanObjectStore.WAL.Compression != "gzip" ||
-		backup.BarmanObjectStore.WAL.MaxParallel != 2 {
-		t.Fatalf("CloudNativePG backup contract = %#v", backup)
+	if len(cluster.Spec.Plugins) != 1 || cluster.Spec.Plugins[0].Name !=
+		"barman-cloud.cloudnative-pg.io" || !cluster.Spec.Plugins[0].IsWALArchiver ||
+		cluster.Spec.Plugins[0].Parameters["barmanObjectName"] != "vela-postgres-backup" {
+		t.Fatalf("CloudNativePG plugin contract = %#v", cluster.Spec.Plugins)
 	}
+
+	var objectStore barmanObjectStoreContract
+	loadControlStorageYAML(t, "postgres-object-store.yaml", &objectStore)
+	if objectStore.APIVersion != "barmancloud.cnpg.io/v1" ||
+		objectStore.Kind != "ObjectStore" || objectStore.Metadata.Name != "vela-postgres-backup" ||
+		objectStore.Spec.RetentionPolicy != "30d" ||
+		objectStore.Spec.Configuration.DestinationPath == "" ||
+		objectStore.Spec.Configuration.EndpointURL == "" ||
+		objectStore.Spec.Configuration.S3Credentials.AccessKeyID != (cnpgSecretKeySelector{
+			Name: "vela-backup-s3", Key: "ACCESS_KEY_ID",
+		}) || objectStore.Spec.Configuration.S3Credentials.SecretAccessKey != (cnpgSecretKeySelector{
+		Name: "vela-backup-s3", Key: "SECRET_ACCESS_KEY",
+	}) || objectStore.Spec.Configuration.WAL.Compression != "gzip" ||
+		objectStore.Spec.Configuration.WAL.MaxParallel != 2 ||
+		objectStore.Spec.InstanceSidecarConfiguration.RetentionPolicyIntervalSeconds != 1800 {
+		t.Fatalf("Barman ObjectStore contract = %#v", objectStore)
+	}
+	resources := objectStore.Spec.InstanceSidecarConfiguration.Resources
+	if len(resources) != 2 || len(resources["requests"]) != 2 || len(resources["limits"]) != 2 ||
+		resources["requests"]["cpu"] != "100m" || resources["requests"]["memory"] != "128Mi" ||
+		resources["limits"]["cpu"] != "1" || resources["limits"]["memory"] != "512Mi" {
+		t.Fatalf("Barman ObjectStore sidecar resources = %#v", resources)
+	}
+
+	var scheduled cnpgScheduledBackupContract
+	loadControlStorageYAML(t, "postgres-scheduled-backup.yaml", &scheduled)
+	if scheduled.APIVersion != "postgresql.cnpg.io/v1" || scheduled.Kind != "ScheduledBackup" ||
+		scheduled.Metadata.Name != "vela-postgres-daily" || scheduled.Spec.Schedule != "0 0 2 * * *" ||
+		!scheduled.Spec.Immediate || scheduled.Spec.BackupOwnerReference != "self" ||
+		scheduled.Spec.Method != "plugin" || scheduled.Spec.Cluster.Name != "vela-postgres" ||
+		scheduled.Spec.PluginConfiguration.Name != "barman-cloud.cloudnative-pg.io" {
+		t.Fatalf("CloudNativePG ScheduledBackup contract = %#v", scheduled)
+	}
+
+	assertBarmanPluginIdentityContract(t, cluster.Spec.ImageName)
 
 	assertPostgreSQLDisruptionBudget(t)
 
@@ -138,6 +212,106 @@ func TestControlStoragePostgreSQLContractRequiresAutomaticFailoverAndNoQuorumSaf
 			t.Errorf("recovery contract %s = %q, want %q", key, got, want)
 		}
 	}
+}
+
+func assertBarmanPluginIdentityContract(t *testing.T, postgresImage string) {
+	t.Helper()
+	contents, err := os.ReadFile(controlStoragePath(t, "barman-cloud-plugin-contract.json"))
+	if err != nil {
+		t.Fatalf("read Barman plugin identity contract: %v", err)
+	}
+	var contract struct {
+		SchemaVersion int `json:"schema_version"`
+		CloudNativePG struct {
+			Version        string `json:"version"`
+			ManifestURL    string `json:"manifest_url"`
+			ManifestSHA256 string `json:"manifest_sha256"`
+			OperatorImage  string `json:"operator_image"`
+			PostgresImage  string `json:"postgres_image"`
+		} `json:"cloudnative_pg"`
+		CertManager struct {
+			Version        string            `json:"version"`
+			ManifestURL    string            `json:"manifest_url"`
+			ManifestSHA256 string            `json:"manifest_sha256"`
+			Images         map[string]string `json:"images"`
+		} `json:"cert_manager"`
+		BarmanCloudPlugin struct {
+			Version        string `json:"version"`
+			Name           string `json:"name"`
+			ManifestURL    string `json:"manifest_url"`
+			ManifestSHA256 string `json:"manifest_sha256"`
+			OperatorImage  string `json:"operator_image"`
+			SidecarImage   string `json:"sidecar_image"`
+		} `json:"barman_cloud_plugin"`
+		LocalConformance struct {
+			MinIOImage string `json:"minio_image"`
+		} `json:"local_conformance"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(contents))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&contract); err != nil {
+		t.Fatalf("decode Barman plugin identity contract: %v", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		t.Fatalf("Barman plugin identity contract has trailing JSON: %v", err)
+	}
+	if contract.SchemaVersion != 1 || contract.CloudNativePG.Version != "v1.30.0" ||
+		contract.CertManager.Version != "v1.21.1" ||
+		contract.BarmanCloudPlugin.Version != "v0.14.0" ||
+		contract.BarmanCloudPlugin.Name != "barman-cloud.cloudnative-pg.io" {
+		t.Fatalf("Barman plugin versions = %#v", contract)
+	}
+	identities := []string{
+		contract.CloudNativePG.OperatorImage,
+		contract.CloudNativePG.PostgresImage,
+		contract.BarmanCloudPlugin.OperatorImage,
+		contract.BarmanCloudPlugin.SidecarImage,
+		contract.LocalConformance.MinIOImage,
+	}
+	for name, image := range contract.CertManager.Images {
+		if name == "" || image == "" {
+			t.Fatalf("empty cert-manager image identity = %q:%q", name, image)
+		}
+		identities = append(identities, image)
+	}
+	if len(contract.CertManager.Images) != 3 {
+		t.Fatalf("cert-manager images = %#v", contract.CertManager.Images)
+	}
+	for _, identity := range identities {
+		parts := strings.Split(identity, "@sha256:")
+		if len(parts) != 2 || parts[0] == "" || !validSHA256(parts[1]) {
+			t.Errorf("mutable or empty image digest identity %q", identity)
+		}
+	}
+	if contract.CloudNativePG.PostgresImage != postgresImage {
+		t.Errorf("PostgreSQL image contract %q != Cluster %q", contract.CloudNativePG.PostgresImage, postgresImage)
+	}
+	for name, value := range map[string]string{
+		"CloudNativePG": contract.CloudNativePG.ManifestURL,
+		"cert-manager":  contract.CertManager.ManifestURL,
+		"Barman":        contract.BarmanCloudPlugin.ManifestURL,
+	} {
+		if !strings.HasPrefix(value, "https://") {
+			t.Errorf("%s manifest URL is not HTTPS: %q", name, value)
+		}
+	}
+	for name, value := range map[string]string{
+		"CloudNativePG": contract.CloudNativePG.ManifestSHA256,
+		"cert-manager":  contract.CertManager.ManifestSHA256,
+		"Barman":        contract.BarmanCloudPlugin.ManifestSHA256,
+	} {
+		if !validSHA256(value) {
+			t.Errorf("%s manifest SHA-256 is invalid: %q", name, value)
+		}
+	}
+}
+
+func validSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }
 
 func assertPostgreSQLDisruptionBudget(t *testing.T) {

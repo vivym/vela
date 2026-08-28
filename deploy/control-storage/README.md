@@ -6,12 +6,16 @@ Control/Storage Nodes:
 
 - a three-instance CloudNativePG PostgreSQL cluster requiring an acknowledgement
   from any one synchronous replica, with independent WAL PVCs, node
-  anti-affinity, and off-cluster S3 WAL/base-backup configuration;
+  anti-affinity, a Barman Cloud Plugin WAL archiver, an off-cluster S3
+  `ObjectStore`, and an immediate plus daily base-backup schedule;
 - a three-replica, PVC-backed NATS JetStream StatefulSet with required hostname
   anti-affinity and a two-pod disruption budget; and
 - a generated `vela-jetstream-contract` ConfigMap whose
   `jetstream-contract.json` is the release authority for the `VELA_EVENTS`
-  stream and `VELA_SCHEDULER` durable consumer; and
+  stream and `VELA_SCHEDULER` durable consumer;
+- a generated `vela-barman-cloud-plugin-contract` ConfigMap whose JSON pins the
+  CloudNativePG, cert-manager, Barman operator/sidecar, PostgreSQL, and local
+  conformance image/manifest identities; and
 - an explicit recovery ConfigMap declaring PostgreSQL, Artifact Store, JetStream,
   Outbox replay, and Reconciler order.
 
@@ -29,10 +33,12 @@ kubectl kustomize deploy/control-storage
 
 The manifests intentionally contain no backup credentials. The operator must
 create `vela-backup-s3` in `vela-system` from an independent secret manager and
-replace the example S3 endpoint and image tags with the approved release
-configuration. Production image digests, storage-class capacity, RKE2 node
-labels, CNPG operator compatibility, and an external or three-node S3 Artifact
-Store are deployment gates, not claims made by this repository render.
+replace the example S3 endpoint with the approved release configuration. The
+PostgreSQL image and third-party install contract are digest-pinned, but an
+installer must still verify the manifest bytes and rewrite the cluster-wide
+operator/sidecar image tags to the recorded digests. Storage-class capacity,
+RKE2 node labels, provider credentials, and an external or three-node S3
+Artifact Store remain deployment gates, not claims made by this render.
 
 The CNPG backup and the committed Artifact backup are separate stores and
 credential domains. The application release must provide independent logins
@@ -94,11 +100,32 @@ proves idempotent cleanup, not that a backup copy previously existed, and the
 repository does not claim to eliminate a provider-side write that continues
 after the client process and database connection both fail.
 
-The current backup contract uses CNPG 1.30 native
-`spec.backup.barmanObjectStore`. CNPG removes that native integration in 1.31.
-An operator upgrade to 1.31 or later is blocked until the release replaces this
-surface with the Barman Cloud Plugin, pins the plugin/image contract, validates
-credential isolation, and produces successful backup plus PITR restore evidence.
+The backup contract uses CloudNativePG `v1.30.0` with the Barman Cloud Plugin
+`v0.14.0`; it does not use deprecated `spec.backup.barmanObjectStore`.
+`postgres-object-store.yaml` owns the thirty-day recovery window and exact
+`vela-backup-s3` selectors. `postgres-scheduled-backup.yaml` creates an
+immediate plugin base backup and then runs at 02:00 UTC every day. The Barman
+release installs into the CNPG operator namespace and requires cert-manager
+`v1.21.1`; those cluster-wide resources are intentionally not installed by the
+`vela-system` Kustomize base. Exact manifest SHA-256 values and multi-platform
+OCI digests live in `barman-cloud-plugin-contract.json`.
+
+Run the repository conformance drill with proxy variables when the registries
+are not directly reachable:
+
+```sh
+HTTP_PROXY=http://127.0.0.1:7897 \
+HTTPS_PROXY=http://127.0.0.1:7897 \
+NO_PROXY=localhost,127.0.0.1,::1 \
+  make test-cnpg-pitr
+```
+
+The drill creates a fresh four-node kind cluster, verifies every manifest
+digest, preloads exact-platform images, runs MinIO with bucket versioning,
+completes one plugin base backup, archives the target WAL, and restores a new
+Cluster to a timestamp between two durable marker writes. It proves local API
+and recovery-path conformance only. It is not evidence for a production object
+store, independent fault domain, credential rotation, RKE2, or quarterly DR.
 
 Before applying, the operator must verify:
 
@@ -152,6 +179,6 @@ application contract, and may subscribe only to `_INBOX.>` request replies. It
 must not subscribe directly to `vela.events.>`, publish business events, or
 administer JetStream.
 
-The current repository has only a rendered contract, not a live-cluster
-deployment or restore receipt. `docs/launch-receipts/README.md` remains the
-authority for launch evidence.
+The repository has a rendered release contract and a disposable kind/MinIO
+plugin PITR test, not a live production deployment or restore receipt.
+`docs/launch-receipts/README.md` remains the authority for launch evidence.

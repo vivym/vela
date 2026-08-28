@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repository_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repository_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cluster_name=vela-cnpg-failover
 kind_binary="$repository_root/bin/kind"
 kind_version=v0.32.0
@@ -62,13 +62,13 @@ if "$kind_binary" get clusters | awk -v name="$cluster_name" '$0 == name { found
 	exit 1
 fi
 
+created=true
 "$kind_binary" create cluster \
 	--name "$cluster_name" \
 	--image "$kind_node_image" \
 	--config "$repository_root/internal/integration/testdata/cnpg-kind.yaml" \
 	--kubeconfig "$kubeconfig" \
 	--wait 5m
-created=true
 
 pull_image() {
 	image=$1
@@ -131,7 +131,7 @@ done
 patch_attempt=0
 until kubectl --kubeconfig "$kubeconfig" -n vela-system patch \
 	clusters.postgresql.cnpg.io vela-postgres \
-	--type=json -p '[{"op":"add","path":"/spec/enableSuperuserAccess","value":true},{"op":"remove","path":"/spec/backup"}]'
+	--type=json -p '[{"op":"add","path":"/spec/enableSuperuserAccess","value":true},{"op":"add","path":"/spec/imagePullPolicy","value":"IfNotPresent"},{"op":"replace","path":"/spec/imageName","value":"ghcr.io/cloudnative-pg/postgresql:16.4"},{"op":"remove","path":"/spec/plugins"}]'
 do
 	patch_attempt=$((patch_attempt + 1))
 	if [ "$patch_attempt" -ge 60 ]; then

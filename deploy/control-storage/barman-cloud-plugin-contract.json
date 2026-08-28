@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "cloudnative_pg": {
+    "version": "v1.30.0",
+    "manifest_url": "https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v1.30.0/cnpg-1.30.0.yaml",
+    "manifest_sha256": "f8bede43fe4ee0d478c2355b204a36876b2ae4faac60f2a9452280b293da3b88",
+    "operator_image": "ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0@sha256:a2701eb97cdd2a34b1fdb2cb51987f544b706e40bec72ae7146cd8580efefebb",
+    "postgres_image": "ghcr.io/cloudnative-pg/postgresql:16.4@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe"
+  },
+  "cert_manager": {
+    "version": "v1.21.1",
+    "manifest_url": "https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml",
+    "manifest_sha256": "5f6a499b8c1857d57f560f536e0dcc830914b45c420899fe7ad0692c8624e408",
+    "images": {
+      "cainjector": "quay.io/jetstack/cert-manager-cainjector:v1.21.1@sha256:ccf6b919ec0500745a47a910118f834f9636d0aac1ff221245cd2557ed8c7c98",
+      "controller": "quay.io/jetstack/cert-manager-controller:v1.21.1@sha256:416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a",
+      "webhook": "quay.io/jetstack/cert-manager-webhook:v1.21.1@sha256:d8b3961b51c8c7320633f8208dc46bf88aa13804d0f7cbe48a096b2c523cee42"
+    }
+  },
+  "barman_cloud_plugin": {
+    "version": "v0.14.0",
+    "name": "barman-cloud.cloudnative-pg.io",
+    "manifest_url": "https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.14.0/manifest.yaml",
+    "manifest_sha256": "8d4f1719cc54891ddffd7633279ec93b5d2cc547df8684c3b84f3b156a615e7c",
+    "operator_image": "ghcr.io/cloudnative-pg/plugin-barman-cloud:v0.14.0@sha256:823a8893690980ba5830bbbb11196a35f695b0488db7d846abc33baebf32417c",
+    "sidecar_image": "ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.14.0@sha256:9880817c285c7afa4d195da2145064d21907405489ed6ec39abe59b1feb558a4"
+  },
+  "local_conformance": {
+    "minio_image": "minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e"
+  }
+}

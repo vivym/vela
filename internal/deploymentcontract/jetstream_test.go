@@ -72,11 +72,22 @@ func TestControlStorageKustomizationPublishesJetStreamReleaseContract(t *testing
 	if err := yaml.Unmarshal(contents, &kustomization); err != nil {
 		t.Fatalf("decode Control/Storage kustomization: %v", err)
 	}
-	if len(kustomization.ConfigMapGenerator) != 1 ||
-		kustomization.ConfigMapGenerator[0].Name != "vela-jetstream-contract" ||
-		len(kustomization.ConfigMapGenerator[0].Files) != 1 ||
-		kustomization.ConfigMapGenerator[0].Files[0] != "jetstream-contract.json" {
-		t.Fatalf("JetStream ConfigMap generator = %#v", kustomization.ConfigMapGenerator)
+	want := map[string]string{
+		"vela-jetstream-contract":           "jetstream-contract.json",
+		"vela-barman-cloud-plugin-contract": "barman-cloud-plugin-contract.json",
+	}
+	for _, generator := range kustomization.ConfigMapGenerator {
+		file, required := want[generator.Name]
+		if !required {
+			continue
+		}
+		if len(generator.Files) != 1 || generator.Files[0] != file {
+			t.Fatalf("ConfigMap generator %s = %#v", generator.Name, generator.Files)
+		}
+		delete(want, generator.Name)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing Control/Storage ConfigMap generators = %#v", want)
 	}
 }
 
