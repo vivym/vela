@@ -241,7 +241,7 @@ static Worker contract, and Fleet desired input, then verifies all three
 identities through final Kustomize renders and the repository deployment
 validation entry point. It does not provide registry publication, signatures,
 SBOM, scan/approval evidence, a deployment, or a Launch Receipt.
-The repository coverage is now 32 direct, 0 partial, and 0 unproven.
+The repository coverage remains 30 direct, 0 partial, and 0 unproven.
 
 ## Production Gates
 
