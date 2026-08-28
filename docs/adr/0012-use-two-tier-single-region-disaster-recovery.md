@@ -13,7 +13,10 @@ backup surface with a digest-pinned Barman Cloud Plugin `ObjectStore`, WAL
 archiver, and immediate plus daily base-backup schedule. A fresh four-node
 kind/MinIO drill completed a plugin base backup, archived the target WAL, and
 restored a second cluster to a timestamp between two durable markers
-(`4f4bc2d`). This is repository and local recovery-path evidence, not proof of
-production RKE2, an independent S3 fault domain, provider/network failure,
+(`4f4bc2d`, credential-isolation review closure `e8a4149`). The release-owned
+install render restricts both Barman principals to the exact backup Secret and
+denies Artifact credential reads. This is repository and local recovery-path
+evidence, not proof of production RKE2, an independent S3 fault domain,
+provider/network failure,
 JetStream rebuild, Outbox replay, credential rotation, the four-hour site RTO,
 or a quarterly `data-disaster-recovery` Launch Receipt.

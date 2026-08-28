@@ -1098,7 +1098,10 @@ Worker 与控制面失联时，旧 Worker 可能仍继续计算。控制面可�
 Slice 38 将仓库中的 CNPG native backup surface 迁移到 digest-pinned
 Barman Cloud Plugin `ObjectStore`、WAL archiver 和 immediate/daily base backup，
 并在 fresh four-node kind/MinIO 环境完成真实 base backup、目标 WAL 归档和
-timestamp restore（`4f4bc2d`）。这只证明 local plugin API/recovery path；生产
+timestamp restore（`4f4bc2d`，credential-isolation review closure
+`e8a4149`）。release-owned install render 将两个 Barman principal 限制为只能
+访问精确的 `vela-backup-s3`，并拒绝 Artifact credential 读取。这只证明 local
+plugin API/recovery path；生产
 RKE2、独立 S3 故障域、provider/network failure、完整恢复顺序、季度演练与
 Launch Receipt 仍是外部 Production Gate。
 
