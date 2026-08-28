@@ -83,7 +83,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
         - name: nats
-          image: nats:2.10.22
+          image: docker.io/library/nats@sha256:26b0ee1a95285aedae137aefb953701d9da1dfffcf7818eb3aeb536c4373892f
           imagePullPolicy: IfNotPresent
           args:
             - --config

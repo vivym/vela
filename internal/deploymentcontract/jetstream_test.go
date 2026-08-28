@@ -1,10 +1,12 @@
 package deploymentcontract
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -88,6 +90,53 @@ func TestControlStorageKustomizationPublishesReleaseContracts(t *testing.T) {
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing Control/Storage ConfigMap generators = %#v", want)
+	}
+}
+
+func TestRenderedJetStreamUsesPinnedNATSImage(t *testing.T) {
+	command := exec.Command("kubectl", "kustomize", filepath.Dir(controlStoragePath(t, "kustomization.yaml")))
+	contents, err := command.Output()
+	if err != nil {
+		if exit, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("render Control/Storage Kustomize base: %v: %s", err, exit.Stderr)
+		}
+		t.Fatalf("render Control/Storage Kustomize base: %v", err)
+	}
+	decoder := yaml.NewDecoder(bytes.NewReader(contents))
+	for {
+		var document struct {
+			Kind     string `yaml:"kind"`
+			Metadata struct {
+				Name      string `yaml:"name"`
+				Namespace string `yaml:"namespace"`
+			} `yaml:"metadata"`
+			Spec struct {
+				Template struct {
+					Spec struct {
+						Containers []struct {
+							Name  string `yaml:"name"`
+							Image string `yaml:"image"`
+						} `yaml:"containers"`
+					} `yaml:"spec"`
+				} `yaml:"template"`
+			} `yaml:"spec"`
+		}
+		if err := decoder.Decode(&document); err != nil {
+			if errors.Is(err, io.EOF) {
+				t.Fatal("rendered Control/Storage resources do not contain StatefulSet/vela-system/nats")
+			}
+			t.Fatalf("decode rendered Control/Storage resources: %v", err)
+		}
+		if document.Kind != "StatefulSet" || document.Metadata.Namespace != "vela-system" ||
+			document.Metadata.Name != "nats" {
+			continue
+		}
+		containers := document.Spec.Template.Spec.Containers
+		if len(containers) != 1 || containers[0].Name != "nats" ||
+			containers[0].Image != "docker.io/library/nats@sha256:26b0ee1a95285aedae137aefb953701d9da1dfffcf7818eb3aeb536c4373892f" {
+			t.Fatalf("rendered NATS container image = %#v", containers)
+		}
+		return
 	}
 }
 
