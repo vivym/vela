@@ -18,7 +18,17 @@ all three independent certification claims, and complete RateCard binding
 pairs. Catalog promotion rejects any plan/evidence mismatch before opening a
 database transaction.
 
+Slice 40 adds one canonical release bundle as the source of the release digest
+and configuration revision. The bundle rebuilds and digest-binds the exact
+Kubernetes renders, host packages, Node Agent unit, per-Worker materialization,
+external Secret/ConfigMap revision contract, and OCI manifest/config graph.
+Launch verification requires that bundle alongside the receipt manifest, and
+Catalog promotion verifies their exact release/configuration match before
+opening a database transaction. Operator-supplied identity strings alone are no
+longer sufficient for either path.
+
 Repository fixtures prove the validator, not the external facts asserted by a
-production owner. Real H3 identity, fault domains, exercises, and retained raw
-evidence remain external requirements. No receipt is created by this decision;
-the current result remains `0/9 PASS`.
+production owner. Registry publication, signature, SBOM and vulnerability
+approval, real Secret/PKI provisioning, H3 identity, fault domains, deployment,
+exercises, and retained raw evidence remain external requirements. No receipt
+is created by this decision; the current result remains `0/9 PASS`.

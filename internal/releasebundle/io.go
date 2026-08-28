@@ -53,7 +53,13 @@ func LoadWithin(directory, reference string) (Bundle, error) {
 		return Bundle{}, fmt.Errorf("%w: open bundle root: %v", ErrInvalidBundle, err)
 	}
 	defer func() { _ = root.Close() }()
-	encoded, err := readRooted(root, reference, maxBundleBytes)
+	normalized, err := normalizeArtifactReference(reference)
+	if err != nil {
+		return Bundle{}, fmt.Errorf("%w: bundle reference: %v", ErrInvalidBundle, err)
+	}
+	// readNormalizedRooted checks every path component before OpenRoot is used;
+	// os.Root alone still permits symlinks that remain beneath its root.
+	encoded, err := readNormalizedRooted(root, normalized, maxBundleBytes)
 	if err != nil {
 		return Bundle{}, fmt.Errorf("%w: read bundle: %v", ErrInvalidBundle, err)
 	}
@@ -61,7 +67,16 @@ func LoadWithin(directory, reference string) (Bundle, error) {
 	if err := decodeStrictJSON(encoded, &bundle); err != nil {
 		return Bundle{}, fmt.Errorf("%w: decode bundle: %v", ErrInvalidBundle, err)
 	}
-	if err := verify(root, bundle); err != nil {
+	bundleRoot := root
+	bundleDirectory := filepath.Dir(normalized)
+	if bundleDirectory != "." {
+		bundleRoot, err = root.OpenRoot(bundleDirectory)
+		if err != nil {
+			return Bundle{}, fmt.Errorf("%w: open bundle directory: %v", ErrInvalidBundle, err)
+		}
+		defer func() { _ = bundleRoot.Close() }()
+	}
+	if err := verify(bundleRoot, bundle); err != nil {
 		return Bundle{}, err
 	}
 	return bundle, nil
@@ -146,7 +161,7 @@ func collectArtifactReferences(plan BuildPlan) []artifactReference {
 	)
 	for _, render := range plan.FinalRenders {
 		references = append(references, artifactReference{
-			role: "render/" + render.Name, reference: render.Ref, maximum: maxMetadataBytes,
+			role: "render/" + render.Name, reference: render.Ref, maximum: maxYAMLArtifactBytes,
 		})
 	}
 	references = append(references, artifactReference{
@@ -165,13 +180,13 @@ func collectArtifactReferences(plan BuildPlan) []artifactReference {
 	for _, item := range plan.WorkerMaterializations {
 		references = append(references,
 			artifactReference{
-				role: "worker-runtime/" + item.NodeIdentity, reference: item.WorkerRuntimeRef, maximum: maxMetadataBytes,
+				role: "worker-runtime/" + item.NodeIdentity, reference: item.WorkerRuntimeRef, maximum: maxYAMLArtifactBytes,
 			},
 			artifactReference{
-				role: "runner-profiles/" + item.NodeIdentity, reference: item.RunnerProfilesRef, maximum: maxMetadataBytes,
+				role: "runner-profiles/" + item.NodeIdentity, reference: item.RunnerProfilesRef, maximum: maxYAMLArtifactBytes,
 			},
 			artifactReference{
-				role: "runner-gpu-roles/" + item.NodeIdentity, reference: item.RunnerGPURolesRef, maximum: maxMetadataBytes,
+				role: "runner-gpu-roles/" + item.NodeIdentity, reference: item.RunnerGPURolesRef, maximum: maxYAMLArtifactBytes,
 			},
 		)
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,6 +168,7 @@ WantedBy=multi-user.target
 	worker.NodeAgentIdentity = "spiffe://vela.internal/node-agent/" +
 		base64.RawURLEncoding.EncodeToString([]byte(worker.NodeIdentity)) + "/" + worker.WorkerID
 	writeCatalogWorkerMaterialization(t, directory, worker)
+	writeCatalogFleetDesiredRender(t, directory, worker, images)
 
 	plan := releasebundle.BuildPlan{
 		SchemaVersion: 1,
@@ -178,7 +180,10 @@ WantedBy=multi-user.target
 		ExternalResources: []releasebundle.ExternalResource{
 			{
 				Kind: "Secret", Namespace: "vela-system", Name: "artifact-store-ca-r1", Revision: catalogReleaseDigest("artifact ca"),
-				RequiredKeys: []string{"ca.crt"}, Consumers: []string{"DaemonSet/vela-system/vela-h3-worker"},
+				RequiredKeys: []string{"ca.crt"}, Consumers: []string{
+					"ConfigMap/vela-system/vela-fleet-desired-r1",
+					"DaemonSet/vela-system/vela-h3-worker",
+				},
 			},
 			{
 				Kind: "Secret", Namespace: "vela-observability", Name: "shared-secret-r1", Revision: catalogReleaseDigest("observability shared"),
@@ -198,6 +203,7 @@ WantedBy=multi-user.target
 				Revision:     worker.WorkerControlTLSSecretRevision,
 				RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
 				Consumers: []string{
+					"ConfigMap/vela-system/vela-fleet-desired-r1",
 					"DaemonSet/vela-system/vela-h3-worker",
 					"WorkerMaterialization/vela-system/" + worker.NodeIdentity + "/" + worker.WorkerID,
 				},
@@ -219,6 +225,108 @@ WantedBy=multi-user.target
 	}
 	writeCatalogReleaseFile(t, filepath.Join(directory, "release-bundle.json"), encoded)
 	return bundle
+}
+
+func writeCatalogFleetDesiredRender(
+	t *testing.T,
+	directory string,
+	worker releasebundle.WorkerMaterializationInput,
+	images []string,
+) {
+	t.Helper()
+	render := catalogReleaseRender("fleet-controller", images[1], images)
+	identity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-desired-r1\n  namespace: vela-system\n"
+	desired := fmt.Sprintf(`apiVersion: fleet.vela.ai/v1alpha1
+kind: FleetDesiredRevisions
+revisions:
+  - workerPoolID: %s
+    name: h3-worker-pool-primary
+    revision: %s
+    workerProfile: h3
+    nodeSelector:
+      vela.ai/worker-profile: h3
+      vela.ai/worker-pool: launch
+    initImage: %s
+    workerAgentImage: %s
+    runnerImage: %s
+    artifactStoreTLSSecret: artifact-store-ca-r1
+    executionProfileRevisionID: %s
+    inferenceBackendRevision: %s
+    readinessTimeout: 30m
+    capacityPolicy:
+      workerHighWatermarkBytes: 800
+      workerLowWatermarkBytes: 400
+      workerCriticalFreeBytes: 100
+      poolHighWatermarkBytes: 5600
+      poolLowWatermarkBytes: 2800
+      observationMaxAge: 2m
+    placements:
+      - nodeIdentity: %s
+        daemonSetName: h3-worker-pool-primary-node-01
+        workerRuntimeConfigMap: %s
+        runnerProfilesConfigMap: %s
+        runnerGPURolesConfigMap: %s
+        workerControlTLSSecret: %s
+retirements: []
+`, worker.WorkerPoolID, worker.FleetRevision, images[0], images[1], images[1],
+		worker.ExecutionProfileRevisionID, worker.InferenceBackendRevision,
+		worker.NodeIdentity, worker.WorkerRuntimeConfigMap, worker.RunnerProfilesConfigMap,
+		worker.RunnerGPURolesConfigMap, worker.WorkerControlTLSSecret)
+	data := "data:\n  desired.yaml: |\n    " + strings.ReplaceAll(strings.TrimSuffix(desired, "\n"), "\n", "\n    ") + "\n"
+	writeCatalogReleaseFile(
+		t,
+		filepath.Join(directory, "render-fleet-controller.yaml"),
+		[]byte(strings.Replace(render, identity, identity+data, 1)),
+	)
+}
+
+func relocateCatalogReleaseBundleFixture(
+	t *testing.T,
+	directory,
+	bundleRef,
+	destinationDirectory string,
+) string {
+	t.Helper()
+	bundle, err := releasebundle.LoadWithin(directory, bundleRef)
+	if err != nil {
+		t.Fatalf("load Catalog release bundle before relocation: %v", err)
+	}
+	references := make(map[string]struct{})
+	for _, render := range bundle.ConfigurationManifest.FinalRenders {
+		references[render.Artifact.Ref] = struct{}{}
+	}
+	references[bundle.ConfigurationManifest.NodeAgentUnit.Artifact.Ref] = struct{}{}
+	for _, item := range bundle.ConfigurationManifest.Packages {
+		references[item.Contract.Ref] = struct{}{}
+		references[item.Artifact.Ref] = struct{}{}
+	}
+	for _, item := range bundle.ConfigurationManifest.WorkerMaterializations {
+		references[item.WorkerRuntime.Ref] = struct{}{}
+		references[item.RunnerProfiles.Ref] = struct{}{}
+		references[item.RunnerGPURoles.Ref] = struct{}{}
+	}
+	for _, image := range bundle.OCIImages {
+		references[image.Descriptor.Ref] = struct{}{}
+		references[image.Config.Ref] = struct{}{}
+	}
+	for reference := range references {
+		source := filepath.Join(directory, filepath.FromSlash(reference))
+		destination := filepath.Join(directory, destinationDirectory, filepath.FromSlash(reference))
+		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+			t.Fatalf("create nested Catalog release artifact directory: %v", err)
+		}
+		if err := os.Rename(source, destination); err != nil {
+			t.Fatalf("relocate Catalog release artifact %s: %v", reference, err)
+		}
+	}
+	nestedBundleRef := filepath.ToSlash(filepath.Join(destinationDirectory, filepath.Base(bundleRef)))
+	if err := os.Rename(
+		filepath.Join(directory, filepath.FromSlash(bundleRef)),
+		filepath.Join(directory, filepath.FromSlash(nestedBundleRef)),
+	); err != nil {
+		t.Fatalf("relocate Catalog release bundle: %v", err)
+	}
+	return nestedBundleRef
 }
 
 type catalogOCIManifest struct {

@@ -21,6 +21,17 @@ may not patch only the visibly convenient fields. Rendering this base is not a
 deployment receipt or a Launch Receipt and does not advance any Production Gate
 from `0/9 PASS`.
 
+## Release bundle boundary
+
+Production assembly must include the final `kubectl kustomize` output as the
+exact `vela-control` render in the canonical Slice 40 release bundle. The bundle
+binds every pinned workload/init image plus the exact versioned ConfigMap and
+Secret references, required Secret keys, consumer identities, and external
+material revisions; it never embeds Secret values. Any overlay, image, Secret
+name/revision, or rendered-resource change derives a new configuration revision
+and release digest. Bundle verification does not prove real PKI issuance,
+credential rotation, storage placement, CNI enforcement, or deployment health.
+
 ## Placement And Availability
 
 Every eligible Control/Storage node must carry

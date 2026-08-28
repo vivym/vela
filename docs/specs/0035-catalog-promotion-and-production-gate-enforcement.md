@@ -53,13 +53,17 @@ transaction begins. See
 The read-only verifier is an explicit release command:
 
 ```text
-make verify-launch LAUNCH_RECEIPTS=/absolute/path/to/launch-receipts.json
+make verify-launch \
+  RELEASE_BUNDLE=/absolute/path/to/release-bundle.json \
+  LAUNCH_RECEIPTS=/absolute/path/to/launch-receipts.json
 ```
 
-It exits nonzero for a missing gate, failed gate, mixed release/configuration,
-malformed or ambiguous JSON, path escape, non-regular evidence object, or
-evidence digest mismatch. Success prints only the verified release,
-configuration, manifest digest, and `PASS 9/9` result.
+Slice 40 requires the canonical release bundle as the source of the expected
+release digest and configuration revision. The command exits nonzero for an
+invalid bundle, a missing gate, failed gate, mixed or mismatched
+release/configuration, malformed or ambiguous JSON, path escape, non-regular
+evidence object, or evidence digest mismatch. Success prints only the verified
+release, configuration, manifest digest, and `PASS 9/9` result.
 
 Catalog promotion is a separate database-mutating command:
 
@@ -68,11 +72,12 @@ VELA_CATALOG_PROMOTION_DATABASE_URL=<dedicated login DSN> \
   go run ./cmd/vela-catalog-promoter /absolute/path/to/catalog-promotion.json
 ```
 
-The plan references the launch manifest relative to its own directory and lists
-the ProfileCertification evidence and RateCard bindings for the release. The
-command verifies all files before opening one PostgreSQL transaction. Receipt
-ingest, manifest sealing, certification promotion, RateCard promotion, and the
-protocol switch either commit together or leave no durable effect.
+The plan references both the launch manifest and canonical release bundle
+relative to its own directory and lists the ProfileCertification evidence and
+RateCard bindings for the release. The command verifies all files and requires
+exact bundle/manifest identity before opening one PostgreSQL transaction.
+Receipt ingest, manifest sealing, certification promotion, RateCard promotion,
+and the protocol switch either commit together or leave no durable effect.
 
 Database credentials come only from
 `VELA_CATALOG_PROMOTION_DATABASE_URL`. They are not accepted in the plan or

@@ -53,9 +53,17 @@ type fleetSchema struct {
 	Required               []string               `yaml:"required"`
 	Pattern                string                 `yaml:"pattern"`
 	Enum                   []string               `yaml:"enum"`
+	MinLength              *int64                 `yaml:"minLength"`
+	MaxLength              *int64                 `yaml:"maxLength"`
+	MinItems               *int64                 `yaml:"minItems"`
+	MaxItems               *int64                 `yaml:"maxItems"`
+	MinProperties          *int64                 `yaml:"minProperties"`
+	MaxProperties          *int64                 `yaml:"maxProperties"`
 	Minimum                *int64                 `yaml:"minimum"`
 	Maximum                *int64                 `yaml:"maximum"`
 	Properties             map[string]fleetSchema `yaml:"properties"`
+	Items                  *fleetSchema           `yaml:"items"`
+	AdditionalProperties   *fleetSchema           `yaml:"additionalProperties"`
 	XKubernetesValidations []struct {
 		Rule    string `yaml:"rule"`
 		Message string `yaml:"message"`
@@ -139,14 +147,51 @@ func TestFleetWorkerPoolCRDRequiresImmutableH3Revision(t *testing.T) {
 	}
 	spec := root.Properties["spec"]
 	if !sameStrings(spec.Required, []string{
-		"capacityPolicy", "daemonSetName", "nodeSelector", "revision", "workerProfile",
+		"capacityPolicy", "nodeSelector", "placements", "revision", "workerProfile",
 	}) ||
 		len(spec.XKubernetesValidations) != 1 || spec.XKubernetesValidations[0].Rule != "self == oldSelf" {
 		t.Fatalf("WorkerPool immutable spec schema = %#v", spec)
 	}
+	if _, obsolete := spec.Properties["daemonSetName"]; obsolete {
+		t.Fatal("WorkerPool CRD still exposes the obsolete pool-wide daemonSetName")
+	}
 	if spec.Properties["revision"].Pattern != "^[0-9a-f]{64}$" ||
 		!reflect.DeepEqual(spec.Properties["workerProfile"].Enum, []string{"h3"}) {
 		t.Fatalf("WorkerPool revision/profile schema = %#v", spec.Properties)
+	}
+	selector := spec.Properties["nodeSelector"]
+	if schemaInt64(selector.MinProperties) != 2 || schemaInt64(selector.MaxProperties) != 64 ||
+		selector.AdditionalProperties == nil ||
+		schemaInt64(selector.AdditionalProperties.MaxLength) != 63 ||
+		!hasFleetValidation(selector, "!('kubernetes.io/hostname' in self)") {
+		t.Fatalf("WorkerPool node selector schema = %#v", selector)
+	}
+	placements := spec.Properties["placements"]
+	if placements.Type != "array" || schemaInt64(placements.MinItems) != 1 ||
+		schemaInt64(placements.MaxItems) != 1024 || placements.Items == nil ||
+		!sameStrings(placements.Items.Required, []string{
+			"daemonSetName", "nodeIdentity", "runnerGPURolesConfigMap",
+			"runnerProfilesConfigMap", "workerControlTLSSecret", "workerRuntimeConfigMap",
+		}) {
+		t.Fatalf("WorkerPool placements schema = %#v", placements)
+	}
+	for _, field := range []string{"nodeIdentity", "daemonSetName"} {
+		property := placements.Items.Properties[field]
+		if schemaInt64(property.MinLength) != 1 || schemaInt64(property.MaxLength) != 63 || property.Pattern == "" {
+			t.Fatalf("WorkerPool placement label field %q schema = %#v", field, property)
+		}
+	}
+	for _, field := range []string{
+		"workerRuntimeConfigMap", "runnerProfilesConfigMap", "runnerGPURolesConfigMap",
+		"workerControlTLSSecret",
+	} {
+		property := placements.Items.Properties[field]
+		if schemaInt64(property.MinLength) != 1 || schemaInt64(property.MaxLength) != 253 || property.Pattern == "" {
+			t.Fatalf("WorkerPool placement material field %q schema = %#v", field, property)
+		}
+	}
+	if _, obsolete := root.Properties["status"].Properties["daemonSetName"]; obsolete {
+		t.Fatal("WorkerPool status still exposes the obsolete daemonSetName")
 	}
 	capacity := spec.Properties["capacityPolicy"]
 	if capacity.Type != "object" || !sameStrings(capacity.Required, []string{
@@ -360,6 +405,9 @@ func TestFleetDesiredInputIsImmutableAndExplicitlyPlaceholderBound(t *testing.T)
 		"revision: 0000000000000000000000000000000000000000000000000000000000000000",
 		"initImage: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		"workerRuntimeConfigMap: vela-worker-runtime-placeholder",
+		"placements:",
+		"nodeIdentity: replace-with-registered-node-identity",
+		"daemonSetName: h3-worker-pool-primary-node-placeholder",
 		"runnerProfilesConfigMap: vela-runner-profiles-placeholder",
 		"runnerGPURolesConfigMap: vela-runner-gpu-roles-placeholder",
 		"workerControlTLSSecret: vela-worker-control-mtls-placeholder",
@@ -376,6 +424,9 @@ func TestFleetDesiredInputIsImmutableAndExplicitlyPlaceholderBound(t *testing.T)
 			t.Fatalf("Fleet desired input omitted %q", required)
 		}
 	}
+	if strings.Contains(payload, "workerProfile: h3\n        daemonSetName:") {
+		t.Fatal("Fleet desired input still uses the obsolete pool-wide daemonSetName")
+	}
 }
 
 func schemaMinimum(schema fleetSchema) int64 {
@@ -390,6 +441,22 @@ func schemaMaximum(schema fleetSchema) int64 {
 		return -1
 	}
 	return *schema.Maximum
+}
+
+func schemaInt64(value *int64) int64 {
+	if value == nil {
+		return -1
+	}
+	return *value
+}
+
+func hasFleetValidation(schema fleetSchema, rule string) bool {
+	for _, validation := range schema.XKubernetesValidations {
+		if validation.Rule == rule {
+			return true
+		}
+	}
+	return false
 }
 
 func requireFleetEnvironment(

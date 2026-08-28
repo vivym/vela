@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/imageref"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -90,8 +91,8 @@ var finalRenderInventory = map[string][]renderedResourceContract{
 	},
 }
 
-func validateFinalRender(name string, encoded []byte, inventory *renderInventory) error {
-	documents, err := decodeYAMLDocuments(encoded)
+func validateFinalRender(name string, encoded []byte, inventory *renderInventory, budget *yamlGraphBudget) error {
+	documents, err := decodeYAMLDocuments(encoded, budget)
 	if err != nil || len(documents) == 0 {
 		return invalidf("final render %s must contain valid Kubernetes YAML documents: %v", name, err)
 	}
@@ -134,14 +135,89 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 			inventory.declared[key] = struct{}{}
 		}
 		consumer := consumerIdentity(kind, namespace, resourceName)
-		if err := scanRenderedValue(document, namespace, consumer, inventory, ""); err != nil {
+		if err := scanRenderedValue(document, namespace, consumer, inventory, "", budget); err != nil {
 			return invalidf("final render %s: %v", name, err)
+		}
+		if kind == "ConfigMap" && namespace == "vela-system" && strings.HasPrefix(resourceName, "vela-fleet-desired-") {
+			desired, err := decodeFleetDesiredConfigMap(document, namespace)
+			if err != nil {
+				return invalidf("Fleet desired ConfigMap %s/%s: %v", namespace, resourceName, err)
+			}
+			inventory.fleetDesired = append(inventory.fleetDesired, desired...)
 		}
 	}
 	for index, present := range found {
 		if !present {
 			contract := expected[index]
 			return invalidf("final render %s is missing resource %s/%s/%s/%s", name, contract.APIVersion, contract.Kind, contract.Namespace, contract.displayName())
+		}
+	}
+	return nil
+}
+
+func decodeFleetDesiredConfigMap(
+	document map[string]any,
+	namespace string,
+) ([]fleetcontroller.DesiredRevision, error) {
+	data, ok := document["data"].(map[string]any)
+	if !ok || len(data) == 0 {
+		return nil, errors.New("data must contain desired.yaml")
+	}
+	desiredYAML, ok := data["desired.yaml"].(string)
+	if !ok || desiredYAML == "" {
+		return nil, errors.New("data must contain desired.yaml")
+	}
+	revisions, _, err := fleetcontroller.DecodeDesiredConfiguration([]byte(desiredYAML), namespace)
+	if err != nil {
+		return nil, err
+	}
+	return revisions, nil
+}
+
+func validateFleetDesiredMaterializations(
+	desiredRevisions []fleetcontroller.DesiredRevision,
+	materializations []WorkerMaterializationInput,
+) error {
+	type desiredPlacement struct {
+		revision  fleetcontroller.DesiredRevision
+		placement fleetcontroller.WorkerPlacement
+	}
+	placements := make(map[string]desiredPlacement, len(materializations))
+	placementCount := 0
+	for _, desired := range desiredRevisions {
+		for _, placement := range desired.Placements {
+			key := desired.Namespace + "/" + desired.WorkerPoolID.String() + "/" + placement.NodeIdentity
+			if _, duplicate := placements[key]; duplicate {
+				return invalid("Fleet desired configuration contains a duplicate Worker placement")
+			}
+			placements[key] = desiredPlacement{revision: desired, placement: placement}
+			placementCount++
+		}
+	}
+	if len(desiredRevisions) == 0 || placementCount != len(materializations) {
+		return invalid("Fleet desired and Worker materialization coverage is not exact")
+	}
+	matched := make(map[string]struct{}, len(materializations))
+	for _, materialization := range materializations {
+		key := materialization.Namespace + "/" + materialization.WorkerPoolID + "/" + materialization.NodeIdentity
+		if _, duplicate := matched[key]; duplicate {
+			return invalid("Worker materializations contain a duplicate Worker placement")
+		}
+		matched[key] = struct{}{}
+		expected, present := placements[key]
+		desired := expected.revision
+		placement := expected.placement
+		if !present || desired.Namespace != materialization.Namespace ||
+			desired.WorkerPoolID.String() != materialization.WorkerPoolID ||
+			desired.Revision != materialization.FleetRevision ||
+			placement.NodeIdentity != materialization.NodeIdentity ||
+			placement.WorkerRuntimeConfigMap != materialization.WorkerRuntimeConfigMap ||
+			placement.RunnerProfilesConfigMap != materialization.RunnerProfilesConfigMap ||
+			placement.RunnerGPURolesConfigMap != materialization.RunnerGPURolesConfigMap ||
+			placement.WorkerControlTLSSecret != materialization.WorkerControlTLSSecret ||
+			desired.ExecutionProfileRevisionID.String() != materialization.ExecutionProfileRevisionID ||
+			desired.InferenceBackendRevision != materialization.InferenceBackendRevision {
+			return invalid("Fleet desired revision does not match Worker materialization")
 		}
 	}
 	return nil
@@ -170,7 +246,14 @@ func (contract renderedResourceContract) displayName() string {
 	return contract.NamePrefix + "*"
 }
 
-func scanRenderedValue(value any, namespace, consumer string, inventory *renderInventory, parentKey string) error {
+func scanRenderedValue(
+	value any,
+	namespace,
+	consumer string,
+	inventory *renderInventory,
+	parentKey string,
+	budget *yamlGraphBudget,
+) error {
 	switch typed := value.(type) {
 	case map[string]any:
 		if kind, _ := typed["kind"].(string); kind == "Secret" {
@@ -200,6 +283,9 @@ func scanRenderedValue(value any, namespace, consumer string, inventory *renderI
 			}
 			if childMap, ok := child.(map[string]any); ok {
 				if kind := selectorReferenceKind(key); kind != "" {
+					if err := validateSelectorOptional(childMap); err != nil {
+						return fmt.Errorf("%s reference: %w", key, err)
+					}
 					name, _ := childMap["name"].(string)
 					if name == "" && key == "secret" {
 						name, _ = childMap["secretName"].(string)
@@ -217,18 +303,18 @@ func scanRenderedValue(value any, namespace, consumer string, inventory *renderI
 			}
 			if parentKey == "data" {
 				if stringValue, ok := child.(string); ok && (strings.HasSuffix(key, ".json") || strings.HasSuffix(key, ".yaml") || strings.HasSuffix(key, ".yml")) {
-					if err := scanEmbeddedConfiguration(key, []byte(stringValue), namespace, consumer, inventory); err != nil {
+					if err := scanEmbeddedConfiguration(key, []byte(stringValue), namespace, consumer, inventory, budget); err != nil {
 						return err
 					}
 				}
 			}
-			if err := scanRenderedValue(child, namespace, consumer, inventory, key); err != nil {
+			if err := scanRenderedValue(child, namespace, consumer, inventory, key, budget); err != nil {
 				return err
 			}
 		}
 	case []any:
 		for _, child := range typed {
-			if err := scanRenderedValue(child, namespace, consumer, inventory, parentKey); err != nil {
+			if err := scanRenderedValue(child, namespace, consumer, inventory, parentKey, budget); err != nil {
 				return err
 			}
 		}
@@ -240,14 +326,33 @@ func scanRenderedValue(value any, namespace, consumer string, inventory *renderI
 	return nil
 }
 
-func scanEmbeddedConfiguration(name string, encoded []byte, namespace, consumer string, inventory *renderInventory) error {
+func validateSelectorOptional(selector map[string]any) error {
+	value, present := selector["optional"]
+	if !present {
+		return nil
+	}
+	optional, ok := value.(bool)
+	if !ok || optional {
+		return errors.New("optional must be absent or false")
+	}
+	return nil
+}
+
+func scanEmbeddedConfiguration(
+	name string,
+	encoded []byte,
+	namespace,
+	consumer string,
+	inventory *renderInventory,
+	budget *yamlGraphBudget,
+) error {
 	var value any
 	if strings.HasSuffix(name, ".json") {
 		if err := decodeStrictJSON(encoded, &value); err != nil {
 			return fmt.Errorf("embedded ConfigMap JSON %s is invalid: %w", name, err)
 		}
 	} else {
-		node, err := decodeSingleYAMLNode(encoded)
+		node, err := decodeSingleYAMLNode(encoded, budget)
 		if err != nil {
 			return fmt.Errorf("embedded ConfigMap YAML %s is invalid: %w", name, err)
 		}
@@ -255,7 +360,7 @@ func scanEmbeddedConfiguration(name string, encoded []byte, namespace, consumer 
 			return fmt.Errorf("embedded ConfigMap YAML %s is invalid: %w", name, err)
 		}
 	}
-	return scanRenderedValue(value, namespace, consumer, inventory, "")
+	return scanRenderedValue(value, namespace, consumer, inventory, "", budget)
 }
 
 func consumerIdentity(kind, namespace, name string) string {
@@ -382,8 +487,8 @@ type configMapDocument struct {
 	Data      map[string]string `yaml:"data"`
 }
 
-func decodeConfigMap(encoded []byte) (configMapDocument, error) {
-	if _, err := decodeSingleYAMLNode(encoded); err != nil {
+func decodeConfigMap(encoded []byte, budget *yamlGraphBudget) (configMapDocument, error) {
+	if _, err := decodeSingleYAMLNode(encoded, budget); err != nil {
 		return configMapDocument{}, err
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(encoded))
@@ -407,8 +512,9 @@ func buildWorkerMaterialization(
 	input WorkerMaterializationInput,
 	inventory *renderInventory,
 	unique map[string]struct{},
+	budget *yamlGraphBudget,
 ) (WorkerMaterialization, error) {
-	if !validRevision(input.NodeIdentity) || !validResourceName(input.Namespace) ||
+	if !validResourceName(input.NodeIdentity) || !validResourceName(input.Namespace) ||
 		!canonicalUUID(input.WorkerID) || input.WorkerEpoch <= 0 || !canonicalUUID(input.WorkerPoolID) ||
 		!isLowerHex(input.FleetRevision) || input.FleetRevision == strings.Repeat("0", 64) ||
 		input.NodeAgentIdentity != expectedNodeAgentIdentity(input.NodeIdentity, input.WorkerID) ||
@@ -431,15 +537,15 @@ func buildWorkerMaterialization(
 		unique[value] = struct{}{}
 	}
 
-	runtimeArtifact, runtimeContent, err := artifacts.artifactFor(input.WorkerRuntimeRef, "application/yaml", maxMetadataBytes)
+	runtimeArtifact, runtimeContent, err := artifacts.artifactFor(input.WorkerRuntimeRef, "application/yaml", maxYAMLArtifactBytes)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("read Worker runtime ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
-	profilesArtifact, profilesContent, err := artifacts.artifactFor(input.RunnerProfilesRef, "application/yaml", maxMetadataBytes)
+	profilesArtifact, profilesContent, err := artifacts.artifactFor(input.RunnerProfilesRef, "application/yaml", maxYAMLArtifactBytes)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("read runner profiles ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
-	gpuArtifact, gpuContent, err := artifacts.artifactFor(input.RunnerGPURolesRef, "application/yaml", maxMetadataBytes)
+	gpuArtifact, gpuContent, err := artifacts.artifactFor(input.RunnerGPURolesRef, "application/yaml", maxYAMLArtifactBytes)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("read runner GPU roles ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
@@ -451,15 +557,15 @@ func buildWorkerMaterialization(
 		unique[key] = struct{}{}
 	}
 
-	runtimeConfig, err := validateRuntimeConfigMap(runtimeContent, input)
+	runtimeConfig, err := validateRuntimeConfigMap(runtimeContent, input, budget)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("Worker runtime ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
-	profilesConfig, err := validateProfilesConfigMap(profilesContent, input)
+	profilesConfig, err := validateProfilesConfigMap(profilesContent, input, budget)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("runner profiles ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
-	gpuConfig, gpuIDs, err := validateGPURolesConfigMap(gpuContent, input)
+	gpuConfig, gpuIDs, err := validateGPURolesConfigMap(gpuContent, input, budget)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("runner GPU roles ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
@@ -514,8 +620,12 @@ func validateConfigMapIdentity(document configMapDocument, namespace, name strin
 	return nil
 }
 
-func validateRuntimeConfigMap(encoded []byte, input WorkerMaterializationInput) (configMapDocument, error) {
-	document, err := decodeConfigMap(encoded)
+func validateRuntimeConfigMap(
+	encoded []byte,
+	input WorkerMaterializationInput,
+	budget *yamlGraphBudget,
+) (configMapDocument, error) {
+	document, err := decodeConfigMap(encoded, budget)
 	if err != nil {
 		return configMapDocument{}, err
 	}
@@ -560,8 +670,12 @@ type profileAllowlistEntry struct {
 	OutputSpecID               string `json:"output_spec_id"`
 }
 
-func validateProfilesConfigMap(encoded []byte, input WorkerMaterializationInput) (configMapDocument, error) {
-	document, err := decodeConfigMap(encoded)
+func validateProfilesConfigMap(
+	encoded []byte,
+	input WorkerMaterializationInput,
+	budget *yamlGraphBudget,
+) (configMapDocument, error) {
+	document, err := decodeConfigMap(encoded, budget)
 	if err != nil {
 		return configMapDocument{}, err
 	}
@@ -600,8 +714,12 @@ type gpuRoles struct {
 	DiT           []string `json:"dit"`
 }
 
-func validateGPURolesConfigMap(encoded []byte, input WorkerMaterializationInput) (configMapDocument, []string, error) {
-	document, err := decodeConfigMap(encoded)
+func validateGPURolesConfigMap(
+	encoded []byte,
+	input WorkerMaterializationInput,
+	budget *yamlGraphBudget,
+) (configMapDocument, []string, error) {
+	document, err := decodeConfigMap(encoded, budget)
 	if err != nil {
 		return configMapDocument{}, nil, err
 	}
@@ -775,13 +893,8 @@ func validateOCIManifest(
 
 func validOCIBlobDescriptor(descriptor ociBlobDescriptor) bool {
 	if descriptor.MediaType == "" || !validRevision(descriptor.MediaType) ||
-		!validDigest(descriptor.Digest) || descriptor.Size <= 0 || len(descriptor.URLs) > 32 || len(descriptor.Data) > maxMetadataBytes {
+		!validDigest(descriptor.Digest) || descriptor.Size <= 0 || len(descriptor.URLs) != 0 || len(descriptor.Data) != 0 {
 		return false
-	}
-	for _, address := range descriptor.URLs {
-		if containsTemplateValue(address) {
-			return false
-		}
 	}
 	return true
 }

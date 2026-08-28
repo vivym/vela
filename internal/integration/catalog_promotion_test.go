@@ -76,6 +76,39 @@ func TestCatalogPromotionPlanAppliesAndReplaysAtomically(t *testing.T) {
 	}
 }
 
+func TestCatalogPromotionLoadsNestedReleaseBundle(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedThreePresetCatalog(t, database)
+	promotionPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_catalog_promotion_login",
+		"vela-catalog-promotion-password",
+	)
+	service, err := catalogpromotion.New(context.Background(), promotionPool)
+	if err != nil {
+		t.Fatalf("configure Catalog Promotion service: %v", err)
+	}
+	planPath := writeCatalogPromotionFiles(t, false)
+	plan, err := catalogpromotion.LoadPlan(planPath)
+	if err != nil {
+		t.Fatalf("load Catalog Promotion plan: %v", err)
+	}
+	plan.ReleaseBundleRef = relocateCatalogReleaseBundleFixture(
+		t,
+		filepath.Dir(planPath),
+		plan.ReleaseBundleRef,
+		"nested/release",
+	)
+	writeJSONFixture(t, planPath, plan)
+	result, err := service.Apply(context.Background(), planPath)
+	if err != nil || !strings.HasPrefix(result.ReleaseDigest, "sha256:") {
+		t.Fatalf("apply nested Catalog Promotion plan = %#v error=%v", result, err)
+	}
+}
+
 func TestCatalogPromotionPlanFailureRollsBackManifest(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)

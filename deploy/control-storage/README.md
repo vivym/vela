@@ -31,6 +31,17 @@ Render it before any cluster action:
 kubectl kustomize deploy/control-storage
 ```
 
+## Release bundle boundary
+
+Production assembly must include the final `kubectl kustomize` output as the
+exact `control-storage` render in the canonical Slice 40 release bundle. The
+bundle binds its complete versioned resource inventory, referenced OCI images,
+and external Secret/ConfigMap names and revisions; it contains no Secret values.
+Changing an overlay, image, external revision, or rendered object requires a new
+configuration revision and release digest. Bundle verification is repository
+conformance only and does not prove live storage, credential, failover, PITR, or
+independent-fault-domain behavior.
+
 The manifests intentionally contain no backup credentials. The operator must
 create `vela-backup-s3` in `vela-system` from an independent secret manager and
 replace the example S3 endpoint with the approved release configuration. The

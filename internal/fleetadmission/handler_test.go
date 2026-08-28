@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -711,6 +714,79 @@ func TestFleetCannotCreateProtectedWorkerPoolWithInvalidCapacityPolicy(t *testin
 	}
 }
 
+func TestFleetCannotCreateProtectedWorkerPoolOutsidePlacementAndSelectorBounds(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{name: "placement missing required field", mutate: func(object map[string]any) {
+			placement := object["spec"].(map[string]any)["placements"].([]any)[0].(map[string]any)
+			delete(placement, "workerControlTLSSecret")
+		}},
+		{name: "duplicate placement", mutate: func(object map[string]any) {
+			spec := object["spec"].(map[string]any)
+			placement := spec["placements"].([]any)[0]
+			spec["placements"] = []any{placement, placement}
+		}},
+		{name: "more than 1024 placements", mutate: func(object map[string]any) {
+			spec := object["spec"].(map[string]any)
+			placement := spec["placements"].([]any)[0]
+			placements := make([]any, 1025)
+			for index := range placements {
+				clone := maps.Clone(placement.(map[string]any))
+				clone["nodeIdentity"] = fmt.Sprintf("h3-node-%d", index)
+				clone["daemonSetName"] = fmt.Sprintf("h3-worker-%d", index)
+				clone["workerRuntimeConfigMap"] = fmt.Sprintf("runtime-%d", index)
+				clone["runnerProfilesConfigMap"] = fmt.Sprintf("profiles-%d", index)
+				clone["runnerGPURolesConfigMap"] = fmt.Sprintf("gpu-roles-%d", index)
+				clone["workerControlTLSSecret"] = fmt.Sprintf("worker-tls-%d", index)
+				placements[index] = clone
+			}
+			spec["placements"] = placements
+		}},
+		{name: "placement label value exceeds 63 characters", mutate: func(object map[string]any) {
+			placement := object["spec"].(map[string]any)["placements"].([]any)[0].(map[string]any)
+			placement["nodeIdentity"] = strings.Repeat("a", 63) + ".b"
+		}},
+		{name: "invalid selector key", mutate: func(object map[string]any) {
+			selector := object["spec"].(map[string]any)["nodeSelector"].(map[string]any)
+			selector["bad key"] = "value"
+		}},
+		{name: "invalid selector value", mutate: func(object map[string]any) {
+			selector := object["spec"].(map[string]any)["nodeSelector"].(map[string]any)
+			selector["vela.ai/rack"] = "bad/value"
+		}},
+		{name: "explicit hostname selector", mutate: func(object map[string]any) {
+			selector := object["spec"].(map[string]any)["nodeSelector"].(map[string]any)
+			selector[corev1.LabelHostname] = ""
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler, err := NewHandler(&recordingAuthorizer{}, Config{
+				FleetUsername: "system:serviceaccount:vela-system:vela-fleet-controller",
+			})
+			if err != nil {
+				t.Fatalf("create Fleet admission handler: %v", err)
+			}
+			var review map[string]any
+			if err := json.Unmarshal(protectedWorkerPoolCreateReview(), &review); err != nil {
+				t.Fatalf("decode WorkerPool admission fixture: %v", err)
+			}
+			object := review["request"].(map[string]any)["object"].(map[string]any)
+			test.mutate(object)
+			encoded, err := json.Marshal(review)
+			if err != nil {
+				t.Fatalf("encode WorkerPool admission fixture: %v", err)
+			}
+			response := serveAdmission(t, handler, encoded)
+			if response.Allowed {
+				t.Fatal("invalid protected WorkerPool was allowed")
+			}
+		})
+	}
+}
+
 func TestDaemonSetControllerMayCreateExactProtectedWorkerPod(t *testing.T) {
 	authorizer := &recordingAuthorizer{}
 	validator := &recordingPodCreateValidator{}
@@ -790,7 +866,7 @@ func TestActualMaterializedDaemonSetPodPassesThroughAdmission(t *testing.T) {
 		Group: "apps", Version: "v1", Resource: "daemonsets",
 	}
 	live, err := client.Resource(daemonSetResource).Namespace(desired.Namespace).Get(
-		context.Background(), desired.DaemonSetName, metav1.GetOptions{},
+		context.Background(), desired.Placements[0].DaemonSetName, metav1.GetOptions{},
 	)
 	if err != nil {
 		t.Fatalf("get materialized DaemonSet: %v", err)
@@ -1210,7 +1286,6 @@ func admissionDesiredRevision() fleetcontroller.DesiredRevision {
 		Name:          "h3-worker-pool-primary",
 		Revision:      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		WorkerProfile: "h3",
-		DaemonSetName: "h3-worker-pool-primary",
 		NodeSelector: map[string]string{
 			"vela.ai/worker-profile": "h3",
 			"vela.ai/worker-pool":    "launch",
@@ -1218,10 +1293,6 @@ func admissionDesiredRevision() fleetcontroller.DesiredRevision {
 		InitImage:                  "docker.io/library/busybox@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
 		WorkerAgentImage:           "ghcr.io/vivym/vela-worker-agent@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		RunnerImage:                "ghcr.io/vivym/vela-h3-runner@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-		WorkerRuntimeConfigMap:     "vela-worker-runtime-a1",
-		RunnerProfilesConfigMap:    "vela-runner-profiles-a1",
-		RunnerGPURolesConfigMap:    "vela-runner-gpu-roles-a1",
-		WorkerControlTLSSecret:     "vela-worker-control-mtls-a1",
 		ArtifactStoreTLSSecret:     "vela-artifact-store-ca-a1",
 		ExecutionProfileRevisionID: uuid.MustParse("23000000-0000-0000-0000-000000000043"),
 		InferenceBackendRevision:   "sglang-h3-v3",
@@ -1234,6 +1305,13 @@ func admissionDesiredRevision() fleetcontroller.DesiredRevision {
 			PoolLowWatermarkBytes:    2800,
 			ObservationMaxAge:        2 * time.Minute,
 		},
+		Placements: []fleetcontroller.WorkerPlacement{{
+			NodeIdentity: "h3-node-01", DaemonSetName: "h3-worker-pool-primary-node-01",
+			WorkerRuntimeConfigMap:  "vela-worker-runtime-a1",
+			RunnerProfilesConfigMap: "vela-runner-profiles-a1",
+			RunnerGPURolesConfigMap: "vela-runner-gpu-roles-a1",
+			WorkerControlTLSSecret:  "vela-worker-control-mtls-a1",
+		}},
 	}
 }
 
@@ -1687,8 +1765,15 @@ func protectedWorkerPoolObject(withUID bool) []byte {
 			"spec":{
 				"revision":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
 				"workerProfile":"h3",
-				"daemonSetName":"h3-worker-pool-primary",
 				"nodeSelector":{"vela.ai/worker-profile":"h3","vela.ai/worker-pool":"launch"},
+				"placements":[{
+					"nodeIdentity":"h3-node-01",
+					"daemonSetName":"h3-worker-pool-primary-node-01",
+					"workerRuntimeConfigMap":"vela-worker-runtime-a1",
+					"runnerProfilesConfigMap":"vela-runner-profiles-a1",
+					"runnerGPURolesConfigMap":"vela-runner-gpu-roles-a1",
+					"workerControlTLSSecret":"vela-worker-control-mtls-a1"
+				}],
 				"capacityPolicy":{
 					"workerHighWatermarkBytes":800,
 					"workerLowWatermarkBytes":400,
@@ -1726,7 +1811,7 @@ func protectedDaemonSetObject(image string) []byte {
 				"metadata":{"labels":{"app.kubernetes.io/name":"vela-h3-worker"}},
 				"spec":{
 					"schedulingGates":[{"name":"fleet.vela.ai/identity-binding"}],
-					"nodeSelector":{"vela.ai/worker-profile":"h3","vela.ai/worker-pool":"launch"},
+					"nodeSelector":{"vela.ai/worker-profile":"h3","vela.ai/worker-pool":"launch","kubernetes.io/hostname":"h3-node-01"},
 					"tolerations":[{"key":"vela.ai/h3","operator":"Equal","value":"true","effect":"NoSchedule"}],
 					"containers":[{
 						"name":"h3-runner","image":"` + image + `",

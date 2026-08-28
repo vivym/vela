@@ -11,17 +11,20 @@ const (
 	OCIManifestMediaType       = "application/vnd.oci.image.manifest.v1+json"
 	OCIImageConfigMediaType    = "application/vnd.oci.image.config.v1+json"
 
-	maxPlanBytes       = 4 << 20
-	maxBundleBytes     = 16 << 20
-	maxMetadataBytes   = 16 << 20
-	maxPackageBytes    = 256 << 20
-	maxArtifactBytes   = 1 << 30
-	maxArtifactCount   = 4096
-	maxWorkerNodeCount = 1024
-	maxYAMLDocuments   = 128
-	maxYAMLNodes       = 100_000
-	maxYAMLDepth       = 64
-	maxYAMLAliases     = 0
+	maxPlanBytes          = 4 << 20
+	maxBundleBytes        = 16 << 20
+	maxMetadataBytes      = 16 << 20
+	maxPackageBytes       = 256 << 20
+	maxArtifactBytes      = 1 << 30
+	maxArtifactCount      = 4096
+	maxWorkerNodeCount    = 1024
+	maxYAMLArtifactBytes  = 256 << 10
+	maxYAMLDocuments      = 128
+	maxYAMLNodes          = 100_000
+	maxYAMLGraphDocuments = 4096
+	maxYAMLGraphNodes     = 400_000
+	maxYAMLDepth          = 64
+	maxYAMLAliases        = 0
 )
 
 var ErrInvalidBundle = errors.New("invalid release bundle")

@@ -31,6 +31,22 @@ The image digests in the base are invalid placeholders. Fleet Controller must
 replace all three with approved OCI digests and preserve adjacent-version protocol
 compatibility. A rendered manifest is not a deployment receipt.
 
+## Release bundle boundary
+
+Production assembly must include the final `kubectl kustomize` output as the
+exact `worker-agent` render, the built `h3-runner` package and contract, and one
+canonical materialization for every admitted Worker node. One logical
+WorkerPool retains the shared EPR, circuit, and aggregate-capacity authority,
+while each node placement is hostname-pinned through its own `OnDelete`
+DaemonSet and owns its runtime/profile/GPU-role ConfigMaps and Worker TLS Secret.
+Each materialization binds the Worker/epoch, Fleet revision, Node Agent
+identity, placement materials, Worker TLS Secret revision, and certified
+model/profile/backend revisions. OCI platform is derived from the verified
+config blob and must be `linux/amd64`. Any image, package, placement material,
+external revision, or rendered object change derives a new configuration
+revision and release digest. Bundle verification is not real H3 certification
+or a Launch Receipt.
+
 ## Host preflight
 
 Every eligible node must provide all of the following before the Pod is

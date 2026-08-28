@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleetcontroller"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
@@ -69,6 +70,7 @@ type renderInventory struct {
 	secretKeys       map[resourceKey]map[string]struct{}
 	secretConsumers  map[resourceKey]map[string]struct{}
 	images           map[string]struct{}
+	fleetDesired     []fleetcontroller.DesiredRevision
 }
 
 func newRenderInventory() renderInventory {
@@ -93,6 +95,7 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 	if err != nil {
 		return Bundle{}, invalidf("preflight artifact graph: %v", err)
 	}
+	yamlBudget := &yamlGraphBudget{}
 	slices.SortFunc(plan.FinalRenders, func(left, right ArtifactInput) int {
 		return strings.Compare(left.Name, right.Name)
 	})
@@ -119,11 +122,11 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 		if input.Name != fixedRenderNames[index] {
 			return Bundle{}, invalid("final render names must be the exact fixed set")
 		}
-		artifact, content, err := artifacts.artifactFor(input.Ref, "application/yaml", maxMetadataBytes)
+		artifact, content, err := artifacts.artifactFor(input.Ref, "application/yaml", maxYAMLArtifactBytes)
 		if err != nil {
 			return Bundle{}, invalidf("read final render %s: %v", input.Name, err)
 		}
-		if err := validateFinalRender(input.Name, content, &inventory); err != nil {
+		if err := validateFinalRender(input.Name, content, &inventory, yamlBudget); err != nil {
 			return Bundle{}, err
 		}
 		configuration.FinalRenders = append(configuration.FinalRenders, NamedArtifact{Name: input.Name, Artifact: artifact})
@@ -168,11 +171,14 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 
 	materialKeys := make(map[string]struct{})
 	for _, input := range plan.WorkerMaterializations {
-		materialization, err := buildWorkerMaterialization(artifacts, input, &inventory, materialKeys)
+		materialization, err := buildWorkerMaterialization(artifacts, input, &inventory, materialKeys, yamlBudget)
 		if err != nil {
 			return Bundle{}, err
 		}
 		configuration.WorkerMaterializations = append(configuration.WorkerMaterializations, materialization)
+	}
+	if err := validateFleetDesiredMaterializations(inventory.fleetDesired, plan.WorkerMaterializations); err != nil {
+		return Bundle{}, err
 	}
 	if err := validateExternalResources(plan.ExternalResources, inventory); err != nil {
 		return Bundle{}, err
@@ -447,8 +453,25 @@ func containsTemplateValue(value string) bool {
 		value == strings.Repeat("0", 64)
 }
 
-func decodeYAMLDocuments(encoded []byte) ([]map[string]any, error) {
-	nodes, err := decodeBoundedYAMLNodes(encoded)
+type yamlGraphBudget struct {
+	documents int
+	nodes     int
+}
+
+func (budget *yamlGraphBudget) consume(documents, nodes int) error {
+	if documents > maxYAMLGraphDocuments-budget.documents {
+		return fmt.Errorf("YAML graph exceeds %d documents", maxYAMLGraphDocuments)
+	}
+	if nodes > maxYAMLGraphNodes-budget.nodes {
+		return fmt.Errorf("YAML graph exceeds %d nodes", maxYAMLGraphNodes)
+	}
+	budget.documents += documents
+	budget.nodes += nodes
+	return nil
+}
+
+func decodeYAMLDocuments(encoded []byte, budget *yamlGraphBudget) ([]map[string]any, error) {
+	nodes, err := decodeBoundedYAMLNodes(encoded, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -468,8 +491,8 @@ func decodeYAMLDocuments(encoded []byte) ([]map[string]any, error) {
 	return documents, nil
 }
 
-func decodeSingleYAMLNode(encoded []byte) (*yaml.Node, error) {
-	documents, err := decodeBoundedYAMLNodes(encoded)
+func decodeSingleYAMLNode(encoded []byte, budget *yamlGraphBudget) (*yaml.Node, error) {
+	documents, err := decodeBoundedYAMLNodes(encoded, budget)
 	if err != nil {
 		return nil, err
 	}
@@ -479,7 +502,10 @@ func decodeSingleYAMLNode(encoded []byte) (*yaml.Node, error) {
 	return documents[0], nil
 }
 
-func decodeBoundedYAMLNodes(encoded []byte) ([]*yaml.Node, error) {
+func decodeBoundedYAMLNodes(encoded []byte, budget *yamlGraphBudget) ([]*yaml.Node, error) {
+	if len(encoded) == 0 || len(encoded) > maxYAMLArtifactBytes {
+		return nil, fmt.Errorf("YAML input must be in 1..%d bytes", maxYAMLArtifactBytes)
+	}
 	decoder := yaml.NewDecoder(bytes.NewReader(encoded))
 	documents := make([]*yaml.Node, 0)
 	nodeCount := 0
@@ -496,7 +522,11 @@ func decodeBoundedYAMLNodes(encoded []byte) ([]*yaml.Node, error) {
 		if len(documents) == maxYAMLDocuments {
 			return nil, fmt.Errorf("YAML input exceeds %d documents", maxYAMLDocuments)
 		}
+		priorNodeCount := nodeCount
 		if err := validateYAMLNodeBounds(&document, 1, &nodeCount, &aliasCount); err != nil {
+			return nil, err
+		}
+		if err := budget.consume(1, nodeCount-priorNodeCount); err != nil {
 			return nil, err
 		}
 		documents = append(documents, &document)

@@ -1337,8 +1337,15 @@ Slice 35 提供严格 manifest loader、evidence bytes SHA-256 复算、显式
 RateCard 与 `ACTIVE` Catalog promotion authority。它只闭合 repository
 enforcement。Slice 39 为八个非 observability Gate 增加固定 typed semantic
 contract、typed artifact aggregate 和 Catalog plan/evidence 精确绑定；现有
-observability schema 保持独立版本。仓库内测试不是 Launch Receipt，当前仍为
-`0/9 PASS`。
+observability schema 保持独立版本。Slice 40 再以一个 canonical release
+bundle 从 exact final renders、host packages、Node Agent unit、per-Worker
+materialization、logical WorkerPool 下 hostname-pinned placement、external
+Secret/ConfigMap revisions 和 OCI manifest/config bytes 推导 release digest 与
+configuration revision；`vela-verify-launch` 与
+Catalog promotion 都必须重新验证该 bundle，并在数据库 transaction 前精确匹配
+receipt 绑定。Registry publication、signature、SBOM、vulnerability approval、
+真实 PKI/Secret、生产节点 materialization 与部署仍是外部 release responsibility。
+仓库内 bundle、fixture 和测试不是 Launch Receipt，当前仍为 `0/9 PASS`。
 
 | Gate | PASS 证据 | 未通过时行为 |
 | --- | --- | --- |

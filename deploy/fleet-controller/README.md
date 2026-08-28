@@ -23,6 +23,18 @@ Delivery must also inject the serving-certificate CA into the webhook
 `caBundle`. Applying the placeholders is not a successful deployment and cannot
 produce a Launch Receipt.
 
+## Release bundle boundary
+
+Production assembly must include the final `kubectl kustomize` output as the
+exact `fleet-controller` render in the canonical Slice 40 release bundle. The
+bundle rejects placeholder or mutable image references and binds the desired
+Fleet revision, referenced configuration/Secret revisions, and complete
+versioned resource inventory. Per-node desired Worker state is separately bound
+by each Worker materialization. A changed render, desired revision, image,
+materialization, or external revision requires a new configuration revision and
+release digest. Verification does not replace live admission, RBAC, rollout, or
+Launch Receipt evidence.
+
 ## Admission Identity Contract
 
 `/validate` trusts `AdmissionReview.userInfo` only after TLS has verified the

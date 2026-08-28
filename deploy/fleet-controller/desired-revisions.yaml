@@ -16,17 +16,12 @@ data:
         name: h3-worker-pool-primary
         revision: 0000000000000000000000000000000000000000000000000000000000000000
         workerProfile: h3
-        daemonSetName: h3-worker-pool-primary
         nodeSelector:
           vela.ai/worker-profile: h3
           vela.ai/worker-pool: launch
         initImage: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
         workerAgentImage: ghcr.io/vivym/vela-worker-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000
         runnerImage: ghcr.io/vivym/vela-h3-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000
-        workerRuntimeConfigMap: vela-worker-runtime-placeholder
-        runnerProfilesConfigMap: vela-runner-profiles-placeholder
-        runnerGPURolesConfigMap: vela-runner-gpu-roles-placeholder
-        workerControlTLSSecret: vela-worker-control-mtls-placeholder
         artifactStoreTLSSecret: vela-artifact-store-ca-placeholder
         executionProfileRevisionID: 23000000-0000-0000-0000-000000000043
         inferenceBackendRevision: replace-with-approved-backend-revision
@@ -38,4 +33,11 @@ data:
           poolHighWatermarkBytes: 5600000000000
           poolLowWatermarkBytes: 4900000000000
           observationMaxAge: 2m
+        placements:
+          - nodeIdentity: replace-with-registered-node-identity
+            daemonSetName: h3-worker-pool-primary-node-placeholder
+            workerRuntimeConfigMap: vela-worker-runtime-placeholder
+            runnerProfilesConfigMap: vela-runner-profiles-placeholder
+            runnerGPURolesConfigMap: vela-runner-gpu-roles-placeholder
+            workerControlTLSSecret: vela-worker-control-mtls-placeholder
     retirements: []

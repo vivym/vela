@@ -522,8 +522,19 @@ func (resources *KubernetesResources) resourceClient(
 
 func workerPoolToUnstructured(workerPool WorkerPool) (*unstructured.Unstructured, error) {
 	if workerPool.Spec.Revision == "" || workerPool.Spec.WorkerProfile == "" ||
-		workerPool.Spec.DaemonSetName == "" {
+		len(workerPool.Spec.Placements) == 0 {
 		return nil, errors.New("fleet WorkerPool is invalid")
+	}
+	placements := make([]any, 0, len(workerPool.Spec.Placements))
+	for _, placement := range workerPool.Spec.Placements {
+		placements = append(placements, map[string]any{
+			"nodeIdentity":            placement.NodeIdentity,
+			"daemonSetName":           placement.DaemonSetName,
+			"workerRuntimeConfigMap":  placement.WorkerRuntimeConfigMap,
+			"runnerProfilesConfigMap": placement.RunnerProfilesConfigMap,
+			"runnerGPURolesConfigMap": placement.RunnerGPURolesConfigMap,
+			"workerControlTLSSecret":  placement.WorkerControlTLSSecret,
+		})
 	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "fleet.vela.ai/v1alpha1",
@@ -537,8 +548,8 @@ func workerPoolToUnstructured(workerPool WorkerPool) (*unstructured.Unstructured
 		"spec": map[string]any{
 			"revision":      workerPool.Spec.Revision,
 			"workerProfile": workerPool.Spec.WorkerProfile,
-			"daemonSetName": workerPool.Spec.DaemonSetName,
 			"nodeSelector":  stringMapToAny(workerPool.Spec.NodeSelector),
+			"placements":    placements,
 			"capacityPolicy": map[string]any{
 				"workerHighWatermarkBytes": workerPool.Spec.CapacityPolicy.WorkerHighWatermarkBytes,
 				"workerLowWatermarkBytes":  workerPool.Spec.CapacityPolicy.WorkerLowWatermarkBytes,
@@ -554,8 +565,41 @@ func workerPoolToUnstructured(workerPool WorkerPool) (*unstructured.Unstructured
 func workerPoolFromUnstructured(object *unstructured.Unstructured) (WorkerPool, error) {
 	revision, revisionOK, _ := unstructured.NestedString(object.Object, "spec", "revision")
 	profile, profileOK, _ := unstructured.NestedString(object.Object, "spec", "workerProfile")
-	daemonSetName, daemonSetOK, _ := unstructured.NestedString(object.Object, "spec", "daemonSetName")
 	nodeSelector, selectorOK, _ := unstructured.NestedStringMap(object.Object, "spec", "nodeSelector")
+	encodedPlacements, placementsOK, _ := unstructured.NestedSlice(object.Object, "spec", "placements")
+	placements := make([]WorkerPlacement, 0, len(encodedPlacements))
+	for _, encodedPlacement := range encodedPlacements {
+		placementMap, ok := encodedPlacement.(map[string]any)
+		if !ok || len(placementMap) != 6 {
+			return WorkerPool{}, errors.New("live Fleet WorkerPool placement shape is invalid")
+		}
+		placement := WorkerPlacement{}
+		placement.NodeIdentity, ok = placementMap["nodeIdentity"].(string)
+		if !ok {
+			return WorkerPool{}, errors.New("live Fleet WorkerPool placement shape is invalid")
+		}
+		placement.DaemonSetName, ok = placementMap["daemonSetName"].(string)
+		if !ok {
+			return WorkerPool{}, errors.New("live Fleet WorkerPool placement shape is invalid")
+		}
+		placement.WorkerRuntimeConfigMap, ok = placementMap["workerRuntimeConfigMap"].(string)
+		if !ok {
+			return WorkerPool{}, errors.New("live Fleet WorkerPool placement shape is invalid")
+		}
+		placement.RunnerProfilesConfigMap, ok = placementMap["runnerProfilesConfigMap"].(string)
+		if !ok {
+			return WorkerPool{}, errors.New("live Fleet WorkerPool placement shape is invalid")
+		}
+		placement.RunnerGPURolesConfigMap, ok = placementMap["runnerGPURolesConfigMap"].(string)
+		if !ok {
+			return WorkerPool{}, errors.New("live Fleet WorkerPool placement shape is invalid")
+		}
+		placement.WorkerControlTLSSecret, ok = placementMap["workerControlTLSSecret"].(string)
+		if !ok {
+			return WorkerPool{}, errors.New("live Fleet WorkerPool placement shape is invalid")
+		}
+		placements = append(placements, placement)
+	}
 	workerHigh, workerHighOK, _ := unstructured.NestedInt64(
 		object.Object, "spec", "capacityPolicy", "workerHighWatermarkBytes",
 	)
@@ -582,7 +626,7 @@ func workerPoolFromUnstructured(object *unstructured.Unstructured) (WorkerPool, 
 		PoolLowWatermarkBytes:    poolLow,
 		ObservationMaxAge:        time.Duration(maxAgeSeconds) * time.Second,
 	}
-	if !revisionOK || !profileOK || !daemonSetOK || !selectorOK || !workerHighOK ||
+	if !revisionOK || !profileOK || !selectorOK || !placementsOK || len(placements) == 0 || !workerHighOK ||
 		!workerLowOK || !workerCriticalOK || !poolHighOK || !poolLowOK || !maxAgeOK ||
 		!validCapacityPolicySpec(policy) {
 		return WorkerPool{}, errors.New("live Fleet WorkerPool shape is invalid")
@@ -591,8 +635,7 @@ func workerPoolFromUnstructured(object *unstructured.Unstructured) (WorkerPool, 
 		Metadata: metadataFromUnstructured(object),
 		Spec: WorkerPoolSpec{
 			Revision: revision, WorkerProfile: profile,
-			DaemonSetName: daemonSetName, NodeSelector: nodeSelector,
-			CapacityPolicy: policy,
+			NodeSelector: nodeSelector, Placements: placements, CapacityPolicy: policy,
 		},
 	}, nil
 }

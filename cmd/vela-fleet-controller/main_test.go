@@ -143,6 +143,8 @@ func TestLoadConfigRequiresExactFleetRuntimeInputs(t *testing.T) {
 		configuration.desiredRevisions[0].ExecutionProfileRevisionID.String() !=
 			"23000000-0000-0000-0000-000000000043" ||
 		configuration.desiredRevisions[0].InferenceBackendRevision != "sglang-h3-v3" ||
+		len(configuration.desiredRevisions[0].Placements) != 1 ||
+		configuration.desiredRevisions[0].Placements[0].NodeIdentity != "h3-node-01" ||
 		configuration.desiredRevisions[0].ReadinessTimeout != 30*time.Minute ||
 		configuration.desiredRevisions[0].CapacityPolicy.WorkerHighWatermarkBytes != 800 ||
 		configuration.desiredRevisions[0].CapacityPolicy.WorkerLowWatermarkBytes != 400 ||
@@ -157,16 +159,17 @@ func TestLoadConfigRequiresExactFleetRuntimeInputs(t *testing.T) {
 			"23000000-0000-0000-0000-000000000085" ||
 		configuration.retirementPlans[0].WorkerPoolKubernetesUID !=
 			"kubernetes-old-worker-pool-uid" ||
-		configuration.retirementPlans[0].DaemonSetKubernetesUID !=
+		len(configuration.retirementPlans[0].Placements) != 1 ||
+		configuration.retirementPlans[0].Placements[0].DaemonSetKubernetesUID !=
 			"kubernetes-old-daemonset-uid" ||
 		configuration.retirementPlans[0].Reason != "retire immutable H3 revision eeee" ||
 		!configuration.retirementPlans[0].Deadline.Equal(
 			time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC),
-		) || len(configuration.retirementPlans[0].Workers) != 1 ||
-		configuration.retirementPlans[0].Workers[0].OperationID.String() !=
+		) || len(configuration.retirementPlans[0].Placements[0].Workers) != 1 ||
+		configuration.retirementPlans[0].Placements[0].Workers[0].OperationID.String() !=
 			"23000000-0000-0000-0000-000000000081" ||
-		configuration.retirementPlans[0].Workers[0].WorkerEpoch != 8 ||
-		configuration.retirementPlans[0].Workers[0].PodKubernetesUID !=
+		configuration.retirementPlans[0].Placements[0].Workers[0].WorkerEpoch != 8 ||
+		configuration.retirementPlans[0].Placements[0].Workers[0].PodKubernetesUID !=
 			"kubernetes-old-worker-pod-uid-1" {
 		t.Fatalf("Fleet controller config = %#v", configuration)
 	}
@@ -317,17 +320,12 @@ revisions:
     name: h3-worker-pool-primary
     revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     workerProfile: h3
-    daemonSetName: h3-worker-pool-primary
     nodeSelector:
       vela.ai/worker-profile: h3
       vela.ai/worker-pool: launch
     initImage: docker.io/library/busybox@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
     workerAgentImage: ghcr.io/vivym/vela-worker-agent@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     runnerImage: ghcr.io/vivym/vela-h3-runner@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-    workerRuntimeConfigMap: vela-worker-runtime-a1
-    runnerProfilesConfigMap: vela-runner-profiles-a1
-    runnerGPURolesConfigMap: vela-runner-gpu-roles-a1
-    workerControlTLSSecret: vela-worker-control-mtls-a1
     artifactStoreTLSSecret: vela-artifact-store-ca-a1
     executionProfileRevisionID: 23000000-0000-0000-0000-000000000043
     inferenceBackendRevision: sglang-h3-v3
@@ -339,6 +337,13 @@ revisions:
       poolHighWatermarkBytes: 5600
       poolLowWatermarkBytes: 2800
       observationMaxAge: 2m
+    placements:
+      - nodeIdentity: h3-node-01
+        daemonSetName: h3-worker-pool-primary-node-01
+        workerRuntimeConfigMap: vela-worker-runtime-a1
+        runnerProfilesConfigMap: vela-runner-profiles-a1
+        runnerGPURolesConfigMap: vela-runner-gpu-roles-a1
+        workerControlTLSSecret: vela-worker-control-mtls-a1
 `
 
 const validDesiredInputWithRetirement = validDesiredInput + `retirements:
@@ -346,14 +351,15 @@ const validDesiredInputWithRetirement = validDesiredInput + `retirements:
     workerPoolID: 23000000-0000-0000-0000-000000000085
     workerPoolName: h3-worker-pool-old
     workerPoolKubernetesUID: kubernetes-old-worker-pool-uid
-    daemonSetName: h3-worker-pool-old
-    daemonSetKubernetesUID: kubernetes-old-daemonset-uid
     reason: retire immutable H3 revision eeee
     deadline: "2026-08-27T12:00:00Z"
-    workers:
-      - operationID: 23000000-0000-0000-0000-000000000081
-        workerID: 23000000-0000-0000-0000-000000000082
-        workerEpoch: 8
-        podName: h3-worker-old-node-1
-        podKubernetesUID: kubernetes-old-worker-pod-uid-1
+    placements:
+      - daemonSetName: h3-worker-pool-old
+        daemonSetKubernetesUID: kubernetes-old-daemonset-uid
+        workers:
+          - operationID: 23000000-0000-0000-0000-000000000081
+            workerID: 23000000-0000-0000-0000-000000000082
+            workerEpoch: 8
+            podName: h3-worker-old-node-1
+            podKubernetesUID: kubernetes-old-worker-pod-uid-1
 `

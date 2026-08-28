@@ -6,6 +6,16 @@ command allowlist. It does not connect to PostgreSQL, NATS, Kubernetes, or the
 customer API. The control plane calls it over mutually authenticated gRPC and
 persists the authoritative operation completion after the response.
 
+## Release bundle boundary
+
+Production assembly must include the `node-agent` package and strict package
+contract plus the exact systemd unit in the canonical Slice 40 release bundle.
+The contract binds `linux/amd64`, revision, absolute entrypoint, package digest,
+and size. Bundle verification parses the unit as an exact directive allowlist
+with one package-bound `ExecStart`; extra start hooks or conflicting directives
+fail closed. Host configuration, capability files, PKI, hardware identity, and
+live service enablement remain external and require their own release evidence.
+
 The same host process owns a second gRPC server on a Unix socket for XFS project
 quota observations. That service is never registered on the remote mTLS
 listener. Linux requires `CAP_SYS_ADMIN` to query an arbitrary project quota, so

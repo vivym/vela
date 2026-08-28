@@ -3,6 +3,7 @@ package fleetcontroller_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -29,6 +30,13 @@ func TestReconcileMaterializesImmutableProtectedWorkerPoolAndOnDeleteDaemonSet(t
 		t.Fatalf("create Fleet reconciler: %v", err)
 	}
 	desired := desiredRevision()
+	desired.Placements = append(desired.Placements, fleetcontroller.WorkerPlacement{
+		NodeIdentity: "h3-node-02", DaemonSetName: "h3-worker-pool-primary-node-02",
+		WorkerRuntimeConfigMap:  "vela-worker-runtime-a2",
+		RunnerProfilesConfigMap: "vela-runner-profiles-a2",
+		RunnerGPURolesConfigMap: "vela-runner-gpu-roles-a2",
+		WorkerControlTLSSecret:  "vela-worker-control-mtls-a2",
+	})
 	result, err := reconciler.Reconcile(context.Background(), desired)
 	if err != nil {
 		t.Fatalf("reconcile desired Fleet revision: %v", err)
@@ -38,11 +46,13 @@ func TestReconcileMaterializesImmutableProtectedWorkerPoolAndOnDeleteDaemonSet(t
 	}
 	if !reflect.DeepEqual(resources.operations, []string{
 		"get-worker-pool", "create-worker-pool", "get-daemonset", "create-daemonset",
+		"get-daemonset", "create-daemonset",
 	}) {
 		t.Fatalf("Fleet resource operations = %#v", resources.operations)
 	}
 	if !reflect.DeepEqual(operations, []string{
 		"get-worker-pool", "create-worker-pool", "get-daemonset", "create-daemonset",
+		"get-daemonset", "create-daemonset",
 		"configure-capacity-policy",
 	}) {
 		t.Fatalf("Fleet reconciliation authority order = %#v", operations)
@@ -62,20 +72,26 @@ func TestReconcileMaterializesImmutableProtectedWorkerPoolAndOnDeleteDaemonSet(t
 	workerPool := resources.createdWorkerPool
 	assertProtectedMetadata(t, workerPool.Metadata, desired)
 	if workerPool.Spec.Revision != desired.Revision || workerPool.Spec.WorkerProfile != "h3" ||
-		workerPool.Spec.DaemonSetName != desired.DaemonSetName ||
+		!reflect.DeepEqual(workerPool.Spec.Placements, desired.Placements) ||
 		!reflect.DeepEqual(workerPool.Spec.NodeSelector, desired.NodeSelector) ||
 		!reflect.DeepEqual(workerPool.Spec.CapacityPolicy, desired.CapacityPolicy) {
 		t.Fatalf("materialized WorkerPool = %#v", workerPool)
 	}
-	daemonSet := resources.createdDaemonSet
+	if len(resources.createdDaemonSets) != 2 {
+		t.Fatalf("materialized DaemonSets = %#v", resources.createdDaemonSets)
+	}
+	daemonSet := resources.createdDaemonSets[0]
+	placement := desired.Placements[0]
 	assertProtectedMetadata(t, daemonSet.Metadata, desired)
 	if daemonSet.UpdateStrategy != "OnDelete" ||
+		daemonSet.Metadata.Name != placement.DaemonSetName ||
 		daemonSet.Template.Labels["app.kubernetes.io/name"] != daemonSet.Selector["app.kubernetes.io/name"] ||
 		daemonSet.Template.Labels["vela.ai/fleet-protected"] != "true" ||
 		daemonSet.Template.Labels["vela.ai/worker-pool-id"] != desired.WorkerPoolID.String() ||
 		daemonSet.Template.Labels["vela.ai/fleet-revision"] != desired.Revision ||
 		!reflect.DeepEqual(daemonSet.Template.Finalizers, []string{"fleet.vela.ai/drain-protection"}) ||
-		!reflect.DeepEqual(daemonSet.Template.Spec.NodeSelector, desired.NodeSelector) ||
+		daemonSet.Template.Spec.NodeSelector["kubernetes.io/hostname"] != placement.NodeIdentity ||
+		daemonSet.Template.Spec.NodeSelector["vela.ai/worker-pool"] != desired.NodeSelector["vela.ai/worker-pool"] ||
 		!reflect.DeepEqual(
 			daemonSet.Template.Spec.SchedulingGates,
 			[]corev1.PodSchedulingGate{{Name: fleetcontroller.IdentityBindingSchedulingGate}},
@@ -119,9 +135,19 @@ func TestReconcileMaterializesImmutableProtectedWorkerPoolAndOnDeleteDaemonSet(t
 		nodeEnvironment.ValueFrom == nil || nodeEnvironment.ValueFrom.FieldRef == nil ||
 		nodeEnvironment.ValueFrom.FieldRef.FieldPath != "spec.nodeName" ||
 		runtimeEnvironment.ValueFrom == nil || runtimeEnvironment.ValueFrom.ConfigMapKeyRef == nil ||
-		runtimeEnvironment.ValueFrom.ConfigMapKeyRef.Name != desired.WorkerRuntimeConfigMap ||
+		runtimeEnvironment.ValueFrom.ConfigMapKeyRef.Name != placement.WorkerRuntimeConfigMap ||
 		capacityReportInterval.Value != "40s" {
 		t.Fatalf("materialized Worker Agent = %#v", agent)
+	}
+	second := resources.createdDaemonSets[1]
+	if second.Metadata.Name != desired.Placements[1].DaemonSetName ||
+		second.Template.Spec.NodeSelector["kubernetes.io/hostname"] != desired.Placements[1].NodeIdentity ||
+		requireFleetEnvironment(
+			t,
+			requireFleetContainer(t, second.Template.Spec.Containers, "worker-agent"),
+			"VELA_WORKER_CONTROL_ADDRESS",
+		).ValueFrom.ConfigMapKeyRef.Name != desired.Placements[1].WorkerRuntimeConfigMap {
+		t.Fatalf("second materialized DaemonSet placement = %#v", second)
 	}
 }
 
@@ -170,8 +196,8 @@ func TestReconcileRejectsSameWorkerPoolNameWithDifferentImmutableRevision(t *tes
 		},
 		Spec: fleetcontroller.WorkerPoolSpec{
 			Revision:      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			WorkerProfile: "h3", DaemonSetName: desired.DaemonSetName,
-			NodeSelector: desired.NodeSelector,
+			WorkerProfile: "h3", NodeSelector: desired.NodeSelector,
+			Placements: desired.Placements,
 		},
 	}
 	resources := &recordingResources{workerPool: existing}
@@ -313,10 +339,17 @@ func TestRuntimeCompletesExactPoolDrainSetBeforeRetiringProtectedResources(t *te
 		WorkerPoolID: uuid.MustParse("23000000-0000-0000-0000-000000000085"),
 		Namespace:    "vela-system", WorkerPoolName: "h3-worker-pool-old",
 		WorkerPoolKubernetesUID: "kubernetes-old-worker-pool-uid",
-		DaemonSetName:           "h3-worker-pool-old",
-		DaemonSetKubernetesUID:  "kubernetes-old-daemonset-uid",
 		Reason:                  "retire immutable H3 revision eeee", Deadline: deadline,
-		Workers: workers,
+		Placements: []fleetcontroller.RetirementPlacement{
+			{
+				DaemonSetName: "h3-worker-pool-old-node-1", DaemonSetKubernetesUID: "kubernetes-old-daemonset-uid-1",
+				Workers: workers[:1],
+			},
+			{
+				DaemonSetName: "h3-worker-pool-old-node-2", DaemonSetKubernetesUID: "kubernetes-old-daemonset-uid-2",
+				Workers: workers[1:],
+			},
+		},
 	}
 	resources := &recordingResources{}
 	drains := &recordingDrainCoordinator{state: fleet.DrainDraining, retirementAuthorized: true}
@@ -386,6 +419,7 @@ func TestRuntimeCompletesExactPoolDrainSetBeforeRetiringProtectedResources(t *te
 		fleetcontroller.ResourceDaemonSet,
 		fleetcontroller.ResourceDaemonSet,
 		fleetcontroller.ResourcePod,
+		fleetcontroller.ResourceDaemonSet,
 		fleetcontroller.ResourcePod,
 		fleetcontroller.ResourceWorkerPool,
 	}
@@ -400,13 +434,100 @@ func TestRuntimeCompletesExactPoolDrainSetBeforeRetiringProtectedResources(t *te
 	if !runtimeController.Converged() {
 		t.Fatal("Fleet runtime did not converge after exact retirement plan completed")
 	}
-	if len(drains.completionRecords) != 4 {
+	if len(drains.completionRecords) != 5 {
 		t.Fatalf("Fleet retirement completion receipts = %#v", drains.completionRecords)
+	}
+	wantAttachedDrainIDs := map[string][]uuid.UUID{
+		plan.Placements[0].DaemonSetName: {workers[0].OperationID},
+		plan.Placements[1].DaemonSetName: {workers[1].OperationID},
+		plan.WorkerPoolName:              {workers[0].OperationID, workers[1].OperationID},
+	}
+	for name, want := range wantAttachedDrainIDs {
+		if got := resources.lastAttachedDrainIDs(name); !reflect.DeepEqual(got, want) {
+			t.Fatalf("retirement drain IDs attached to %s = %#v, want %#v", name, got, want)
+		}
 	}
 	if len(drains.requests) != 3*len(workers) || drains.requests[0] != drains.requests[2] ||
 		drains.requests[1] != drains.requests[3] || drains.requests[0] != drains.requests[4] ||
 		drains.requests[1] != drains.requests[5] {
 		t.Fatalf("Fleet drain replay changed immutable requests = %#v", drains.requests)
+	}
+}
+
+func TestMultiPlacementRetirementDoesNotMutateBeforeEveryDrainCompletes(t *testing.T) {
+	plan := retirementPlanForValidation(1)
+	second := plan.Placements[0]
+	second.DaemonSetName = "h3-worker-pool-old-node-b"
+	second.DaemonSetKubernetesUID = "kubernetes-daemonset-old-b-uid"
+	second.Workers = []fleetcontroller.WorkerRetirement{{
+		OperationID: uuid.MustParse("23000000-0000-0000-0000-0000000000a1"),
+		WorkerID:    uuid.MustParse("23000000-0000-0000-0000-0000000000a2"),
+		WorkerEpoch: 4, PodName: "h3-worker-old-node-b",
+		PodKubernetesUID: "kubernetes-old-worker-pod-b-uid",
+	}}
+	plan.Placements = append(plan.Placements, second)
+	resources := &recordingResources{}
+	drains := &recordingDrainCoordinator{states: map[uuid.UUID]fleet.DrainState{
+		plan.Placements[0].Workers[0].OperationID: fleet.DrainComplete,
+		plan.Placements[1].Workers[0].OperationID: fleet.DrainDraining,
+	}}
+	reconciler, err := fleetcontroller.NewReconciler(
+		resources, drains, &staticIdentityResolver{}, &staticReadinessStarter{},
+		&staticCapacityPolicyConfigurator{},
+	)
+	if err != nil {
+		t.Fatalf("create Fleet reconciler: %v", err)
+	}
+	result, err := reconciler.ReconcileRetirement(context.Background(), plan)
+	if err != nil || !result.Pending || result.Completed {
+		t.Fatalf("multi-placement retirement = %#v error=%v", result, err)
+	}
+	if len(resources.deletedResources) != 0 || len(resources.absenceRequests) != 0 {
+		t.Fatalf("partial multi-placement drain mutated resources: deletes=%#v absence=%#v",
+			resources.deletedResources, resources.absenceRequests)
+	}
+}
+
+func TestMultiPlacementRetirementReplaysReceiptsBeforeDeletingWorkerPool(t *testing.T) {
+	plan := retirementPlanForValidation(1)
+	plan.Placements = append(plan.Placements, retirementPlanForValidation(2).Placements[0])
+	first := plan.Placements[0]
+	resources := &recordingResources{}
+	drains := &recordingDrainCoordinator{
+		state:                fleet.DrainComplete,
+		retirementAuthorized: true,
+		completionByTarget: map[string]bool{
+			string(fleet.ProtectedDaemonSet) + "/" + first.DaemonSetKubernetesUID: true,
+			string(fleet.ProtectedPod) + "/" + first.Workers[0].PodKubernetesUID:  true,
+		},
+	}
+	reconciler, err := fleetcontroller.NewReconciler(
+		resources, drains, &staticIdentityResolver{}, &staticReadinessStarter{},
+		&staticCapacityPolicyConfigurator{},
+	)
+	if err != nil {
+		t.Fatalf("create Fleet reconciler: %v", err)
+	}
+	result, err := reconciler.ReconcileRetirement(context.Background(), plan)
+	if err != nil || !result.Pending || result.Completed {
+		t.Fatalf("staged multi-placement retirement = %#v error=%v", result, err)
+	}
+	for _, resource := range append(
+		append([]fleetcontroller.ProtectedResource(nil), resources.attachedResources...),
+		resources.deletedResources...,
+	) {
+		if resource.Kind == fleetcontroller.ResourceWorkerPool {
+			t.Fatalf("WorkerPool was mutated before every placement completed: %#v", resource)
+		}
+	}
+	if len(resources.attachedResources) != 1 ||
+		resources.attachedResources[0].Name != plan.Placements[1].DaemonSetName ||
+		!reflect.DeepEqual(
+			resources.attachedIDSets[0],
+			[]uuid.UUID{plan.Placements[1].Workers[0].OperationID},
+		) {
+		t.Fatalf("staged retirement attachment = %#v / %#v",
+			resources.attachedResources, resources.attachedIDSets)
 	}
 }
 
@@ -422,11 +543,12 @@ func TestRuntimeNeverRetiresProtectedResourcesForExpiredDrain(t *testing.T) {
 		WorkerPoolID: uuid.MustParse("23000000-0000-0000-0000-000000000093"),
 		Namespace:    "vela-system", WorkerPoolName: "h3-worker-pool-expired",
 		WorkerPoolKubernetesUID: "kubernetes-expired-worker-pool-uid",
-		DaemonSetName:           "h3-worker-pool-expired",
-		DaemonSetKubernetesUID:  "kubernetes-expired-daemonset-uid",
 		Reason:                  "expired routine retirement must fail closed",
 		Deadline:                time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC),
-		Workers:                 []fleetcontroller.WorkerRetirement{worker},
+		Placements: []fleetcontroller.RetirementPlacement{{
+			DaemonSetName: "h3-worker-pool-expired", DaemonSetKubernetesUID: "kubernetes-expired-daemonset-uid",
+			Workers: []fleetcontroller.WorkerRetirement{worker},
+		}},
 	}
 	resources := &recordingResources{}
 	reconciler, err := fleetcontroller.NewReconciler(
@@ -473,11 +595,12 @@ func TestRuntimeNeverInfersRetirementFromAbsenceWithoutPersistedCompletion(t *te
 		Namespace:               "vela-system",
 		WorkerPoolName:          "h3-worker-pool-absent",
 		WorkerPoolKubernetesUID: "kubernetes-absent-worker-pool-uid",
-		DaemonSetName:           "h3-worker-pool-absent",
-		DaemonSetKubernetesUID:  "kubernetes-absent-daemonset-uid",
 		Reason:                  "prove restart retirement from durable completion",
 		Deadline:                time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC),
-		Workers:                 []fleetcontroller.WorkerRetirement{worker},
+		Placements: []fleetcontroller.RetirementPlacement{{
+			DaemonSetName: "h3-worker-pool-absent", DaemonSetKubernetesUID: "kubernetes-absent-daemonset-uid",
+			Workers: []fleetcontroller.WorkerRetirement{worker},
+		}},
 	}
 	resources := &recordingResources{attachErr: fleetcontroller.ErrResourceNotFound, absent: true}
 	drains := &recordingDrainCoordinator{state: fleet.DrainComplete}
@@ -510,7 +633,7 @@ func TestRuntimeNeverInfersRetirementFromAbsenceWithoutPersistedCompletion(t *te
 	}
 	if len(drains.completionRequests) != 1 || len(drains.authorizationRequests) != 1 ||
 		drains.completionRequests[0].ResourceKind != fleet.ProtectedDaemonSet ||
-		drains.completionRequests[0].KubernetesUID != plan.DaemonSetKubernetesUID {
+		drains.completionRequests[0].KubernetesUID != plan.Placements[0].DaemonSetKubernetesUID {
 		t.Fatalf("absent retirement completion lookups = %#v", drains.completionRequests)
 	}
 	drains.retirementAuthorized = true
@@ -609,6 +732,82 @@ func TestFleetConfigurationRejectsKubernetesNamesOutsideCRDContract(t *testing.T
 	}
 }
 
+func TestFleetDesiredRevisionRejectsPlacementsOutsideBoundedLabelContract(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*fleetcontroller.DesiredRevision)
+	}{
+		{
+			name: "more than 1024 placements",
+			mutate: func(desired *fleetcontroller.DesiredRevision) {
+				placement := desired.Placements[0]
+				desired.Placements = make([]fleetcontroller.WorkerPlacement, 1025)
+				for index := range desired.Placements {
+					desired.Placements[index] = placement
+					desired.Placements[index].NodeIdentity = fmt.Sprintf("h3-node-%d", index)
+					desired.Placements[index].DaemonSetName = fmt.Sprintf("h3-worker-%d", index)
+					desired.Placements[index].WorkerRuntimeConfigMap = fmt.Sprintf("runtime-%d", index)
+					desired.Placements[index].RunnerProfilesConfigMap = fmt.Sprintf("profiles-%d", index)
+					desired.Placements[index].RunnerGPURolesConfigMap = fmt.Sprintf("gpu-roles-%d", index)
+					desired.Placements[index].WorkerControlTLSSecret = fmt.Sprintf("worker-tls-%d", index)
+				}
+			},
+		},
+		{
+			name: "node identity is a DNS subdomain but exceeds label value length",
+			mutate: func(desired *fleetcontroller.DesiredRevision) {
+				desired.Placements[0].NodeIdentity = strings.Repeat("a", 63) + ".b"
+			},
+		},
+		{
+			name: "DaemonSet name exceeds label value length",
+			mutate: func(desired *fleetcontroller.DesiredRevision) {
+				desired.Placements[0].DaemonSetName = strings.Repeat("a", 64)
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			desired := desiredRevision()
+			test.mutate(&desired)
+			if err := fleetcontroller.ValidateDesiredRevision(desired); err == nil {
+				t.Fatal("invalid placement contract was accepted")
+			}
+		})
+	}
+}
+
+func TestFleetDesiredRevisionRejectsInvalidOrUnboundedPoolSelector(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*fleetcontroller.DesiredRevision)
+	}{
+		{name: "invalid qualified label key", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			desired.NodeSelector["bad key"] = "value"
+		}},
+		{name: "invalid label value", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			desired.NodeSelector["vela.ai/rack"] = "bad/value"
+		}},
+		{name: "explicit empty hostname selector", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			desired.NodeSelector[corev1.LabelHostname] = ""
+		}},
+		{name: "more than 64 selector entries", mutate: func(desired *fleetcontroller.DesiredRevision) {
+			for index := 0; index < 63; index++ {
+				desired.NodeSelector[fmt.Sprintf("vela.ai/selector-%d", index)] = "value"
+			}
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			desired := desiredRevision()
+			test.mutate(&desired)
+			if err := fleetcontroller.ValidateDesiredRevision(desired); err == nil {
+				t.Fatal("invalid pool selector was accepted")
+			}
+		})
+	}
+}
+
 func TestFleetDesiredRevisionRejectsZeroAndTemplateReleaseInputs(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -643,14 +842,64 @@ func TestFleetDesiredRevisionRejectsZeroAndTemplateReleaseInputs(t *testing.T) {
 
 func TestRetirementPlanRejectsMoreThanTransportMaximumWorkers(t *testing.T) {
 	plan := retirementPlanForValidation(1)
-	worker := plan.Workers[0]
-	plan.Workers = make([]fleetcontroller.WorkerRetirement, 4097)
-	for index := range plan.Workers {
-		plan.Workers[index] = worker
+	worker := plan.Placements[0].Workers[0]
+	plan.Placements[0].Workers = make([]fleetcontroller.WorkerRetirement, 4097)
+	for index := range plan.Placements[0].Workers {
+		plan.Placements[0].Workers[index] = worker
 	}
 	if err := fleetcontroller.ValidateRetirementPlan(plan); err == nil ||
 		err.Error() != "fleet retirement plan is invalid" {
 		t.Fatalf("oversized retirement plan error = %v", err)
+	}
+}
+
+func TestRetirementPlanRejectsMalformedOrAliasedPlacements(t *testing.T) {
+	base := retirementPlanForValidation(1)
+	second := retirementPlanForValidation(2).Placements[0]
+	base.Placements = append(base.Placements, second)
+	tests := []struct {
+		name   string
+		mutate func(*fleetcontroller.RetirementPlan)
+	}{
+		{name: "placement has no Workers", mutate: func(plan *fleetcontroller.RetirementPlan) {
+			plan.Placements[1].Workers = nil
+		}},
+		{name: "duplicate DaemonSet name", mutate: func(plan *fleetcontroller.RetirementPlan) {
+			plan.Placements[1].DaemonSetName = plan.Placements[0].DaemonSetName
+		}},
+		{name: "duplicate DaemonSet UID", mutate: func(plan *fleetcontroller.RetirementPlan) {
+			plan.Placements[1].DaemonSetKubernetesUID = plan.Placements[0].DaemonSetKubernetesUID
+		}},
+		{name: "DaemonSet reuses WorkerPool UID", mutate: func(plan *fleetcontroller.RetirementPlan) {
+			plan.Placements[1].DaemonSetKubernetesUID = plan.WorkerPoolKubernetesUID
+		}},
+		{name: "duplicate DrainOperation id", mutate: func(plan *fleetcontroller.RetirementPlan) {
+			plan.Placements[1].Workers[0].OperationID = plan.Placements[0].Workers[0].OperationID
+		}},
+		{name: "duplicate Worker id", mutate: func(plan *fleetcontroller.RetirementPlan) {
+			plan.Placements[1].Workers[0].WorkerID = plan.Placements[0].Workers[0].WorkerID
+		}},
+		{name: "duplicate Pod name", mutate: func(plan *fleetcontroller.RetirementPlan) {
+			plan.Placements[1].Workers[0].PodName = plan.Placements[0].Workers[0].PodName
+		}},
+		{name: "Pod reuses DaemonSet UID", mutate: func(plan *fleetcontroller.RetirementPlan) {
+			plan.Placements[1].Workers[0].PodKubernetesUID = plan.Placements[0].DaemonSetKubernetesUID
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			plan := base
+			plan.Placements = append([]fleetcontroller.RetirementPlacement(nil), base.Placements...)
+			for index := range plan.Placements {
+				plan.Placements[index].Workers = append(
+					[]fleetcontroller.WorkerRetirement(nil), base.Placements[index].Workers...,
+				)
+			}
+			test.mutate(&plan)
+			if err := fleetcontroller.ValidateRetirementPlan(plan); err == nil {
+				t.Fatal("invalid multi-placement retirement plan was accepted")
+			}
+		})
 	}
 }
 
@@ -677,7 +926,7 @@ func TestRuntimeConfigurationRejectsOverlappingDesiredAndRetirementIdentities(t 
 		{
 			name: "desired DaemonSet name",
 			mutate: func(first, _ *fleetcontroller.RetirementPlan) {
-				first.DaemonSetName = desired.DaemonSetName
+				first.Placements[0].DaemonSetName = desired.Placements[0].DaemonSetName
 			},
 		},
 		{
@@ -695,40 +944,58 @@ func TestRuntimeConfigurationRejectsOverlappingDesiredAndRetirementIdentities(t 
 		{
 			name: "retirement DaemonSet UID",
 			mutate: func(first, second *fleetcontroller.RetirementPlan) {
-				second.DaemonSetKubernetesUID = first.DaemonSetKubernetesUID
+				second.Placements[0].DaemonSetKubernetesUID = first.Placements[0].DaemonSetKubernetesUID
+			},
+		},
+		{
+			name: "retirement DaemonSet name",
+			mutate: func(first, second *fleetcontroller.RetirementPlan) {
+				second.Placements[0].DaemonSetName = first.Placements[0].DaemonSetName
+			},
+		},
+		{
+			name: "retirement DaemonSet reuses Pod UID",
+			mutate: func(first, second *fleetcontroller.RetirementPlan) {
+				second.Placements[0].DaemonSetKubernetesUID = first.Placements[0].Workers[0].PodKubernetesUID
 			},
 		},
 		{
 			name: "retirement Worker id",
 			mutate: func(first, second *fleetcontroller.RetirementPlan) {
-				second.Workers[0].WorkerID = first.Workers[0].WorkerID
+				second.Placements[0].Workers[0].WorkerID = first.Placements[0].Workers[0].WorkerID
 			},
 		},
 		{
 			name: "retirement Pod name",
 			mutate: func(first, second *fleetcontroller.RetirementPlan) {
-				second.Workers[0].PodName = first.Workers[0].PodName
+				second.Placements[0].Workers[0].PodName = first.Placements[0].Workers[0].PodName
 			},
 		},
 		{
 			name: "retirement Pod UID",
 			mutate: func(first, second *fleetcontroller.RetirementPlan) {
-				second.Workers[0].PodKubernetesUID = first.Workers[0].PodKubernetesUID
+				second.Placements[0].Workers[0].PodKubernetesUID = first.Placements[0].Workers[0].PodKubernetesUID
 			},
 		},
 		{
 			name: "retirement DrainOperation id",
 			mutate: func(first, second *fleetcontroller.RetirementPlan) {
-				second.Workers[0].OperationID = first.Workers[0].OperationID
+				second.Placements[0].Workers[0].OperationID = first.Placements[0].Workers[0].OperationID
 			},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			firstCopy := first
-			firstCopy.Workers = append([]fleetcontroller.WorkerRetirement(nil), first.Workers...)
+			firstCopy.Placements = append([]fleetcontroller.RetirementPlacement(nil), first.Placements...)
+			firstCopy.Placements[0].Workers = append(
+				[]fleetcontroller.WorkerRetirement(nil), first.Placements[0].Workers...,
+			)
 			secondCopy := second
-			secondCopy.Workers = append([]fleetcontroller.WorkerRetirement(nil), second.Workers...)
+			secondCopy.Placements = append([]fleetcontroller.RetirementPlacement(nil), second.Placements...)
+			secondCopy.Placements[0].Workers = append(
+				[]fleetcontroller.WorkerRetirement(nil), second.Placements[0].Workers...,
+			)
 			test.mutate(&firstCopy, &secondCopy)
 			if err := fleetcontroller.ValidateRuntimeConfiguration(
 				[]fleetcontroller.DesiredRevision{desired},
@@ -912,7 +1179,6 @@ func desiredRevision() fleetcontroller.DesiredRevision {
 		Name:          "h3-worker-pool-primary",
 		Revision:      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		WorkerProfile: "h3",
-		DaemonSetName: "h3-worker-pool-primary",
 		NodeSelector: map[string]string{
 			"vela.ai/worker-profile": "h3",
 			"vela.ai/worker-pool":    "launch",
@@ -920,10 +1186,6 @@ func desiredRevision() fleetcontroller.DesiredRevision {
 		InitImage:                  "docker.io/library/busybox@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
 		WorkerAgentImage:           "ghcr.io/vivym/vela-worker-agent@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		RunnerImage:                "ghcr.io/vivym/vela-h3-runner@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-		WorkerRuntimeConfigMap:     "vela-worker-runtime-a1",
-		RunnerProfilesConfigMap:    "vela-runner-profiles-a1",
-		RunnerGPURolesConfigMap:    "vela-runner-gpu-roles-a1",
-		WorkerControlTLSSecret:     "vela-worker-control-mtls-a1",
 		ArtifactStoreTLSSecret:     "vela-artifact-store-ca-a1",
 		ExecutionProfileRevisionID: uuid.MustParse("23000000-0000-0000-0000-000000000043"),
 		InferenceBackendRevision:   "sglang-h3-v3",
@@ -936,6 +1198,13 @@ func desiredRevision() fleetcontroller.DesiredRevision {
 			PoolLowWatermarkBytes:    2800,
 			ObservationMaxAge:        2 * time.Minute,
 		},
+		Placements: []fleetcontroller.WorkerPlacement{{
+			NodeIdentity: "h3-node-01", DaemonSetName: "h3-worker-pool-primary-node-01",
+			WorkerRuntimeConfigMap:  "vela-worker-runtime-a1",
+			RunnerProfilesConfigMap: "vela-runner-profiles-a1",
+			RunnerGPURolesConfigMap: "vela-runner-gpu-roles-a1",
+			WorkerControlTLSSecret:  "vela-worker-control-mtls-a1",
+		}},
 	}
 }
 
@@ -946,13 +1215,15 @@ func retirementPlanForValidation(index int) fleetcontroller.RetirementPlan {
 			WorkerPoolID: uuid.MustParse("23000000-0000-0000-0000-000000000085"),
 			Namespace:    "vela-system", WorkerPoolName: "h3-worker-pool-old-a",
 			WorkerPoolKubernetesUID: "kubernetes-worker-pool-old-a-uid",
-			DaemonSetName:           "h3-worker-pool-old-a", DaemonSetKubernetesUID: "kubernetes-daemonset-old-a-uid",
-			Reason: "retire old Fleet revision a", Deadline: time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC),
-			Workers: []fleetcontroller.WorkerRetirement{{
-				OperationID: uuid.MustParse("23000000-0000-0000-0000-000000000081"),
-				WorkerID:    uuid.MustParse("23000000-0000-0000-0000-000000000082"),
-				WorkerEpoch: 8, PodName: "h3-worker-old-a",
-				PodKubernetesUID: "kubernetes-worker-pod-old-a-uid",
+			Reason:                  "retire old Fleet revision a", Deadline: time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC),
+			Placements: []fleetcontroller.RetirementPlacement{{
+				DaemonSetName: "h3-worker-pool-old-a", DaemonSetKubernetesUID: "kubernetes-daemonset-old-a-uid",
+				Workers: []fleetcontroller.WorkerRetirement{{
+					OperationID: uuid.MustParse("23000000-0000-0000-0000-000000000081"),
+					WorkerID:    uuid.MustParse("23000000-0000-0000-0000-000000000082"),
+					WorkerEpoch: 8, PodName: "h3-worker-old-a",
+					PodKubernetesUID: "kubernetes-worker-pod-old-a-uid",
+				}},
 			}},
 		}
 	}
@@ -961,13 +1232,15 @@ func retirementPlanForValidation(index int) fleetcontroller.RetirementPlan {
 		WorkerPoolID: uuid.MustParse("23000000-0000-0000-0000-000000000095"),
 		Namespace:    "vela-system", WorkerPoolName: "h3-worker-pool-old-b",
 		WorkerPoolKubernetesUID: "kubernetes-worker-pool-old-b-uid",
-		DaemonSetName:           "h3-worker-pool-old-b", DaemonSetKubernetesUID: "kubernetes-daemonset-old-b-uid",
-		Reason: "retire old Fleet revision b", Deadline: time.Date(2026, 8, 27, 13, 0, 0, 0, time.UTC),
-		Workers: []fleetcontroller.WorkerRetirement{{
-			OperationID: uuid.MustParse("23000000-0000-0000-0000-000000000091"),
-			WorkerID:    uuid.MustParse("23000000-0000-0000-0000-000000000092"),
-			WorkerEpoch: 9, PodName: "h3-worker-old-b",
-			PodKubernetesUID: "kubernetes-worker-pod-old-b-uid",
+		Reason:                  "retire old Fleet revision b", Deadline: time.Date(2026, 8, 27, 13, 0, 0, 0, time.UTC),
+		Placements: []fleetcontroller.RetirementPlacement{{
+			DaemonSetName: "h3-worker-pool-old-b", DaemonSetKubernetesUID: "kubernetes-daemonset-old-b-uid",
+			Workers: []fleetcontroller.WorkerRetirement{{
+				OperationID: uuid.MustParse("23000000-0000-0000-0000-000000000091"),
+				WorkerID:    uuid.MustParse("23000000-0000-0000-0000-000000000092"),
+				WorkerEpoch: 9, PodName: "h3-worker-old-b",
+				PodKubernetesUID: "kubernetes-worker-pod-old-b-uid",
+			}},
 		}},
 	}
 }
@@ -1064,9 +1337,13 @@ func requireFleetEnvironment(
 type recordingResources struct {
 	workerPool        fleetcontroller.WorkerPool
 	daemonSet         fleetcontroller.DaemonSet
+	daemonSets        map[string]fleetcontroller.DaemonSet
 	createdWorkerPool fleetcontroller.WorkerPool
 	createdDaemonSet  fleetcontroller.DaemonSet
+	createdDaemonSets []fleetcontroller.DaemonSet
 	attachedDrainIDs  []uuid.UUID
+	attachedResources []fleetcontroller.ProtectedResource
+	attachedIDSets    [][]uuid.UUID
 	bindings          []fleetcontroller.WorkerPodIdentityBinding
 	operations        []string
 	sharedOperations  *[]string
@@ -1114,10 +1391,13 @@ func (resources *recordingResources) CreateWorkerPool(
 
 func (resources *recordingResources) GetDaemonSet(
 	_ context.Context,
-	_ fleetcontroller.ResourceKey,
+	key fleetcontroller.ResourceKey,
 ) (fleetcontroller.DaemonSet, error) {
 	resources.operations = append(resources.operations, "get-daemonset")
 	resources.recordSharedOperation("get-daemonset")
+	if daemonSet, present := resources.daemonSets[key.Name]; present {
+		return daemonSet, nil
+	}
 	if resources.daemonSet.Metadata.Name == "" {
 		return fleetcontroller.DaemonSet{}, fleetcontroller.ErrResourceNotFound
 	}
@@ -1131,17 +1411,31 @@ func (resources *recordingResources) CreateDaemonSet(
 	resources.operations = append(resources.operations, "create-daemonset")
 	resources.recordSharedOperation("create-daemonset")
 	resources.createdDaemonSet = daemonSet
+	resources.createdDaemonSets = append(resources.createdDaemonSets, daemonSet)
 	return nil
 }
 
 func (resources *recordingResources) AttachDrainOperations(
 	_ context.Context,
-	_ fleetcontroller.ProtectedResource,
+	resource fleetcontroller.ProtectedResource,
 	drainIDs []uuid.UUID,
 ) error {
 	resources.operations = append(resources.operations, "attach-drain-operations")
 	resources.attachedDrainIDs = append([]uuid.UUID(nil), drainIDs...)
+	resources.attachedResources = append(resources.attachedResources, resource)
+	resources.attachedIDSets = append(
+		resources.attachedIDSets, append([]uuid.UUID(nil), drainIDs...),
+	)
 	return resources.attachErr
+}
+
+func (resources *recordingResources) lastAttachedDrainIDs(name string) []uuid.UUID {
+	for index := len(resources.attachedResources) - 1; index >= 0; index-- {
+		if resources.attachedResources[index].Name == name {
+			return resources.attachedIDSets[index]
+		}
+	}
+	return nil
 }
 
 func (resources *recordingResources) Delete(
@@ -1186,6 +1480,7 @@ type staticDrainReader struct {
 
 type recordingDrainCoordinator struct {
 	state                 fleet.DrainState
+	states                map[uuid.UUID]fleet.DrainState
 	requests              []fleet.DrainRequest
 	reconciled            []uuid.UUID
 	retirementAuthorized  bool
@@ -1203,7 +1498,7 @@ func (coordinator *recordingDrainCoordinator) GetDrain(
 ) (fleet.DrainResult, error) {
 	for _, request := range coordinator.requests {
 		if request.OperationID == operationID {
-			return drainResultForRequest(request, coordinator.state), nil
+			return drainResultForRequest(request, coordinator.stateFor(operationID)), nil
 		}
 	}
 	return fleet.DrainResult{}, fleetcontroller.ErrResourceNotFound
@@ -1214,7 +1509,7 @@ func (coordinator *recordingDrainCoordinator) RequestDrain(
 	request fleet.DrainRequest,
 ) (fleet.DrainResult, error) {
 	coordinator.requests = append(coordinator.requests, request)
-	return drainResultForRequest(request, coordinator.state), nil
+	return drainResultForRequest(request, coordinator.stateFor(request.OperationID)), nil
 }
 
 func (coordinator *recordingDrainCoordinator) ReconcileDrain(
@@ -1224,10 +1519,19 @@ func (coordinator *recordingDrainCoordinator) ReconcileDrain(
 	coordinator.reconciled = append(coordinator.reconciled, operationID)
 	for index := len(coordinator.requests) - 1; index >= 0; index-- {
 		if coordinator.requests[index].OperationID == operationID {
-			return drainResultForRequest(coordinator.requests[index], coordinator.state), nil
+			return drainResultForRequest(
+				coordinator.requests[index], coordinator.stateFor(operationID),
+			), nil
 		}
 	}
 	return fleet.DrainResult{}, fleetcontroller.ErrResourceNotFound
+}
+
+func (coordinator *recordingDrainCoordinator) stateFor(operationID uuid.UUID) fleet.DrainState {
+	if state, exists := coordinator.states[operationID]; exists {
+		return state
+	}
+	return coordinator.state
 }
 
 func (coordinator *recordingDrainCoordinator) HasRetirementAuthorization(
