@@ -1335,7 +1335,10 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 Slice 35 提供严格 manifest loader、evidence bytes SHA-256 复算、显式
 `vela-verify-launch` release check，以及绑定 sealed receipt 的三 Preset、
 RateCard 与 `ACTIVE` Catalog promotion authority。它只闭合 repository
-enforcement；仓库内测试不是 Launch Receipt，当前仍为 `0/9 PASS`。
+enforcement。Slice 39 为八个非 observability Gate 增加固定 typed semantic
+contract、typed artifact aggregate 和 Catalog plan/evidence 精确绑定；现有
+observability schema 保持独立版本。仓库内测试不是 Launch Receipt，当前仍为
+`0/9 PASS`。
 
 | Gate | PASS 证据 | 未通过时行为 |
 | --- | --- | --- |

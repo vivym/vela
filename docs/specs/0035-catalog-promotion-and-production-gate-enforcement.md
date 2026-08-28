@@ -11,6 +11,12 @@ advances ADRs 0013, 0017, 0018, and 0029. It does not create a production
 Launch Receipt, run a benchmark, authorize production traffic, or change the
 current `0/9 PASS` result.
 
+Slice 39 (`7829104`) subsequently hardens the eight non-observability evidence
+files into typed semantic envelopes and requires the promotion plan to exactly
+match verified certification values and full RateCard binding pairs before the
+transaction begins. See
+`docs/specs/0039-production-gate-typed-evidence.md`.
+
 ## Governing boundary
 
 1. One launch manifest contains exactly the nine stable Production Gate

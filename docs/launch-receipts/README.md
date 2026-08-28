@@ -43,6 +43,20 @@ the SHA-256 digest of every evidence file, rejects duplicate or unknown JSON
 keys, and requires all receipts to bind the same release digest and
 configuration revision.
 
+The eight non-observability gates also require
+`vela.production-gates/<gate>/v1` typed semantic evidence. Each envelope binds
+the receipt owner, environment, exact time window, release, and configuration;
+uses a fixed check/measurement/artifact inventory; and replaces free-form
+receipt summaries with canonical verifier output. Every referenced artifact is
+a strict typed payload whose observations must exactly reproduce the envelope.
+Artifacts are limited to 16 MiB each and 128 MiB across the manifest.
+
+`preset-certification` evidence additionally lists the authoritative saleable
+groups, exactly `quality`, `balanced`, and `fast` certification claims for each
+group, and full RateCard binding pairs. A Catalog promotion plan must exactly
+match those verified claims before a database transaction begins. The existing
+`observability-on-call` schema remains in `internal/sloevidence`.
+
 Run the read-only release check with:
 
 ```text
@@ -62,4 +76,6 @@ three-Preset certification evidence, promotes the release RateCard, and enables
 the fail-closed `EVIDENCED` Catalog protocol atomically. The repository contains
 no production plan or credential. See
 `docs/specs/0035-catalog-promotion-and-production-gate-enforcement.md` for the
-complete contract.
+database authority and
+`docs/specs/0039-production-gate-typed-evidence.md` for the typed evidence
+contract.

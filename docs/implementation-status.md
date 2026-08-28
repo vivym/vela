@@ -55,6 +55,7 @@ tests alone do not satisfy a gate.
 | `vela-control` Kubernetes Deployment Contract | `4dd2ac1`, `5eac303` | `docs/specs/0036-vela-control-kubernetes-deployment-contract.md`, `deploy/vela-control/README.md` |
 | Statistical SLO Measurement And Observability Conformance | `6036604`, `06f3414` | `docs/specs/0037-statistical-slo-measurement-and-observability-conformance.md`, `deploy/observability`, `docs/runbooks/statistical-slo-breach.md` |
 | Barman Cloud Plugin And PITR Conformance | `4f4bc2d`, `e8a4149` | `docs/specs/0038-barman-cloud-plugin-and-pitr-conformance.md`, `deploy/control-storage`, `hack/test-cnpg-pitr.sh` |
+| Production Gate Typed Evidence | `7829104` | `docs/specs/0039-production-gate-typed-evidence.md`, `internal/productiongates/typed_evidence.go` |
 
 ## ADR Evidence Matrix
 
@@ -88,7 +89,7 @@ tests alone do not satisfy a gate.
 | 0026 Reserve credit at Admission | Implemented for current lifecycle | Admission reserves atomically; cancellation, execution/finalization failure, and Visible Completion consume or release exactly once with counters and Outbox. | Future terminal paths must close the same reservation authority. |
 | 0027 Charge when cancel wins | Implemented | Visible Completion and Customer Cancellation serialize through one Job authority; the winner owns the only Charge and late completion returns the winning ArtifactSet. | Production fault-injection receipt remains a separate gate. |
 | 0028 Recompute after Worker loss | Partial | LOST execution creates a higher-fence whole-Job retry; a circuit-opening failure can select a different actively certified profile without changing product snapshots; finalization loss is recovered on the same Attempt/fence by a Reconciler without resetting its deadline; Slice 21 local state is integrated into the Worker Agent and Python Runner with exact Worker/epoch/fence recovery, multipart finalization resume, per-Attempt quotas, watermarks, terminal cleanup, a UID-authenticated host XFS quota service, and an unprivileged H3 deployment contract. Slice 23 materializes identity-bound H3 Workers and requires five ordered readiness checks before a recovered or replacement Worker becomes `HEALTHY + READY`. Slice 30 proves real signed multipart resume after same-Worker Agent process loss and a distinct higher-fence replacement Attempt from an empty local root after the original Worker recovery root becomes inaccessible, with one Visible Completion, ArtifactSet, and Charge (`864c134`, review closure at `5a9bad6`). | Live H3 NVMe/XFS quota and capacity certification, physical node/NVMe-loss exercise, and Launch Receipt. |
-| 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings. Slice 35 adds a bounded duplicate-key-safe manifest loader, same-release/config closure, rooted evidence paths, evidence-byte SHA-256 recomputation, an explicit release CLI, immutable database receipts, and Catalog ACTIVE enforcement bound to the sealed manifest. Missing, malformed, duplicate, mixed, failed, or tampered evidence cannot evaluate as PASS or promote the Catalog. | Nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
+| 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings. Slice 35 adds a bounded duplicate-key-safe manifest loader, same-release/config closure, rooted evidence paths, evidence-byte SHA-256 recomputation, an explicit release CLI, immutable database receipts, and Catalog ACTIVE enforcement bound to the sealed manifest. Slice 39 (`7829104`) gives all eight non-observability gates versioned check, measurement, and typed-artifact contracts; binds preset evidence to the saleable-group snapshot, certification values, and complete RateCard bindings; and rejects plan mismatch before database mutation. Missing, malformed, duplicate, mixed, failed, opaque, semantically incomplete, or tampered evidence cannot evaluate as PASS or promote the Catalog. | Nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
 
 ## Acceptance Coverage
 
@@ -183,6 +184,12 @@ target WAL archive, and timestamp restore between two durable markers. It
 strengthens the data-and-recovery evidence behind scenario 26, but does not
 prove production RKE2, independent S3 durability, the full site-recovery order,
 or any Production Gate.
+Slice 39 (`7829104`) rejects opaque evidence for every non-observability gate,
+requires strict receipt-bound typed artifacts whose aggregate reproduces the
+gate envelope, and binds Catalog promotion inputs to the exact verified preset
+and RateCard claims before transaction start. It strengthens the repository
+enforcement for all Production Gates but does not produce external exercise
+evidence or change the launch result.
 The repository coverage is now 30 direct, 0 partial, and 0 unproven.
 
 ## Production Gates
