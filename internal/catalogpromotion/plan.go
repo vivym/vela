@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -20,11 +21,12 @@ const maxPlanBytes = 1024 * 1024
 var ErrInvalidPlan = errors.New("invalid Catalog promotion plan")
 
 type Plan struct {
-	SchemaVersion   int                      `json:"schema_version"`
-	ManifestRef     string                   `json:"manifest_ref"`
-	Certifications  []CertificationPromotion `json:"certifications"`
-	RateCards       []RateCardPromotion      `json:"rate_cards"`
-	EnableEvidenced bool                     `json:"enable_evidenced"`
+	SchemaVersion    int                      `json:"schema_version"`
+	ManifestRef      string                   `json:"manifest_ref"`
+	ReleaseBundleRef string                   `json:"release_bundle_ref"`
+	Certifications   []CertificationPromotion `json:"certifications"`
+	RateCards        []RateCardPromotion      `json:"rate_cards"`
+	EnableEvidenced  bool                     `json:"enable_evidenced"`
 }
 
 type CertificationPromotion struct {
@@ -85,9 +87,8 @@ func LoadPlan(path string) (Plan, error) {
 }
 
 func (plan Plan) validate() error {
-	if plan.SchemaVersion != 1 ||
-		!filepath.IsLocal(filepath.FromSlash(plan.ManifestRef)) ||
-		!validText(plan.ManifestRef, 2000) ||
+	if plan.SchemaVersion != 1 || !validLocalReference(plan.ManifestRef) ||
+		!validLocalReference(plan.ReleaseBundleRef) ||
 		len(plan.Certifications) == 0 || len(plan.RateCards) == 0 ||
 		!plan.EnableEvidenced {
 		return fmt.Errorf("%w: required release fields are missing", ErrInvalidPlan)
@@ -131,6 +132,11 @@ func (plan Plan) validate() error {
 		rateCardIDs[promotion.RateCardRevisionID] = true
 	}
 	return nil
+}
+
+func validLocalReference(value string) bool {
+	return validText(value, 2000) && !strings.Contains(value, `\`) && path.Clean(value) == value &&
+		value != "." && filepath.IsLocal(filepath.FromSlash(value))
 }
 
 func validText(value string, max int) bool {

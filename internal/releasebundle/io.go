@@ -44,7 +44,10 @@ func Build(path string) (Bundle, []byte, error) {
 }
 
 func Load(path string) (Bundle, error) {
-	directory, reference := filepath.Dir(path), filepath.Base(path)
+	return LoadWithin(filepath.Dir(path), filepath.Base(path))
+}
+
+func LoadWithin(directory, reference string) (Bundle, error) {
 	root, err := os.OpenRoot(directory)
 	if err != nil {
 		return Bundle{}, fmt.Errorf("%w: open bundle root: %v", ErrInvalidBundle, err)

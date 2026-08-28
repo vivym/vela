@@ -10,6 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.3
 	github.com/aws/smithy-go v1.27.8
 	github.com/coreos/go-oidc/v3 v3.16.0
+	github.com/distribution/reference v0.6.0
 	github.com/felixge/httpsnoop v1.1.0
 	github.com/getkin/kin-openapi v0.147.0
 	github.com/go-chi/chi/v5 v5.3.2
@@ -20,6 +21,7 @@ require (
 	github.com/nats-io/nkeys v0.4.16
 	github.com/oapi-codegen/nethttp-middleware v1.2.0
 	github.com/oapi-codegen/runtime v1.7.0
+	github.com/opencontainers/image-spec v1.1.1
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/testcontainers/testcontainers-go v0.44.0
@@ -56,7 +58,6 @@ require (
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
@@ -97,7 +98,6 @@ require (
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect

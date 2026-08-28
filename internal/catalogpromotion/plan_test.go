@@ -18,6 +18,7 @@ func TestLoadPlanAcceptsOneReleasePromotion(t *testing.T) {
 		t.Fatalf("load Catalog promotion plan: %v", err)
 	}
 	if plan.SchemaVersion != 1 || plan.ManifestRef != "launch-receipts.json" ||
+		plan.ReleaseBundleRef != "release-bundle.json" ||
 		len(plan.Certifications) != 1 || len(plan.RateCards) != 1 || !plan.EnableEvidenced {
 		t.Fatalf("loaded Catalog promotion plan = %#v", plan)
 	}
@@ -32,6 +33,24 @@ func TestLoadPlanRejectsAmbiguousOrEscapedInput(t *testing.T) {
 			name: "path escape",
 			mutate: func(plan *Plan) {
 				plan.ManifestRef = "../launch-receipts.json"
+			},
+		},
+		{
+			name: "release bundle omitted",
+			mutate: func(plan *Plan) {
+				plan.ReleaseBundleRef = ""
+			},
+		},
+		{
+			name: "release bundle path escape",
+			mutate: func(plan *Plan) {
+				plan.ReleaseBundleRef = "../release-bundle.json"
+			},
+		},
+		{
+			name: "release bundle noncanonical path",
+			mutate: func(plan *Plan) {
+				plan.ReleaseBundleRef = "bundle/../release-bundle.json"
 			},
 		},
 		{
@@ -116,9 +135,10 @@ func TestLoadPlanRejectsDuplicateJSONKeys(t *testing.T) {
 func writePlanFixture(t *testing.T, mutate func(*Plan)) string {
 	t.Helper()
 	plan := Plan{
-		SchemaVersion:   1,
-		ManifestRef:     "launch-receipts.json",
-		EnableEvidenced: true,
+		SchemaVersion:    1,
+		ManifestRef:      "launch-receipts.json",
+		ReleaseBundleRef: "release-bundle.json",
+		EnableEvidenced:  true,
 		Certifications: []CertificationPromotion{{
 			EvidenceID:                 uuid.MustParse("35000000-0000-0000-0000-000000000101"),
 			ProfileCertificationID:     uuid.MustParse("35000000-0000-0000-0000-000000000102"),

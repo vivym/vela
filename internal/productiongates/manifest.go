@@ -32,6 +32,19 @@ type Manifest struct {
 	TypedEvidence         map[Gate]TypedEvidence `json:"-"`
 }
 
+func (manifest Manifest) ValidateBinding(releaseDigest, configurationRevision string) error {
+	if manifest.ReleaseDigest != releaseDigest || manifest.ConfigurationRevision != configurationRevision {
+		return fmt.Errorf(
+			"Launch Receipts bind release=%s configuration=%s, want release=%s configuration=%s",
+			manifest.ReleaseDigest,
+			manifest.ConfigurationRevision,
+			releaseDigest,
+			configurationRevision,
+		)
+	}
+	return nil
+}
+
 func LoadManifest(path string) (Manifest, error) {
 	return LoadManifestWithin(filepath.Dir(path), filepath.Base(path))
 }

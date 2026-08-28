@@ -123,7 +123,7 @@ func bundleArtifactReferences(bundle releasebundle.Bundle) []string {
 		references = append(references, item.WorkerRuntime.Ref, item.RunnerProfiles.Ref, item.RunnerGPURoles.Ref)
 	}
 	for _, image := range bundle.OCIImages {
-		references = append(references, image.Descriptor.Ref)
+		references = append(references, image.Descriptor.Ref, image.Config.Ref)
 	}
 	return references
 }

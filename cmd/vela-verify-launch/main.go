@@ -45,15 +45,5 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 }
 
 func validateBindings(bundle releasebundle.Bundle, manifest productiongates.Manifest) error {
-	if manifest.ReleaseDigest != bundle.ReleaseDigest ||
-		manifest.ConfigurationRevision != bundle.ConfigurationRevision {
-		return fmt.Errorf(
-			"Launch Receipts bind release=%s configuration=%s, want release=%s configuration=%s",
-			manifest.ReleaseDigest,
-			manifest.ConfigurationRevision,
-			bundle.ReleaseDigest,
-			bundle.ConfigurationRevision,
-		)
-	}
-	return nil
+	return manifest.ValidateBinding(bundle.ReleaseDigest, bundle.ConfigurationRevision)
 }

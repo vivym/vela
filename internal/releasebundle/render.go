@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 
+	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/vivym/vela/internal/imageref"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
@@ -338,11 +340,7 @@ func isImageField(key, parent string) bool {
 }
 
 func validImage(value string) bool {
-	if strings.ToLower(value) != value || !imagePattern.MatchString(value) || containsTemplateValue(value) {
-		return false
-	}
-	separator := strings.LastIndex(value, "@sha256:")
-	return separator > 0 && validDigest(value[separator+1:])
+	return !containsTemplateValue(value) && imageref.ValidPinned(value)
 }
 
 func directReferenceKind(key string) string {
@@ -417,7 +415,7 @@ func buildWorkerMaterialization(
 		!validResourceName(input.RunnerProfilesConfigMap) || !validResourceName(input.RunnerGPURolesConfigMap) ||
 		!validResourceName(input.WorkerControlTLSSecret) || !validDigest(input.WorkerControlTLSSecretRevision) ||
 		!canonicalUUID(input.ExecutionProfileRevisionID) || !canonicalUUID(input.ModelRevisionID) ||
-		!validRevision(input.InferenceBackendRevision) {
+		!validRevision(input.InferenceBackendRevision) || len(input.InferenceBackendRevision) > 200 {
 		return WorkerMaterialization{}, invalidf("Worker materialization for node %q has invalid identity or revision fields", input.NodeIdentity)
 	}
 	for _, value := range []string{
@@ -732,32 +730,47 @@ type ociBlobDescriptor struct {
 	Data        []byte            `json:"data,omitempty"`
 }
 
-func validateOCIManifest(input OCIManifestInput, artifact Artifact, encoded []byte) (string, error) {
-	if !validImage(input.Image) || input.Platform.OS != "linux" || input.Platform.Architecture != "amd64" {
-		return "", invalidf("OCI image %q or platform is invalid", input.Image)
+func validateOCIManifest(
+	input OCIManifestInput,
+	artifact Artifact,
+	encoded []byte,
+	configArtifact Artifact,
+	configEncoded []byte,
+) (string, Platform, error) {
+	if !validImage(input.Image) {
+		return "", Platform{}, invalidf("OCI image %q is invalid", input.Image)
 	}
 	digest := input.Image[strings.LastIndex(input.Image, "@")+1:]
 	if artifact.Digest != digest {
-		return "", invalidf("OCI manifest digest for %s does not match its image reference", input.Image)
+		return "", Platform{}, invalidf("OCI manifest digest for %s does not match its image reference", input.Image)
 	}
 	var manifest ociManifest
 	if err := decodeStrictJSON(encoded, &manifest); err != nil {
-		return "", invalidf("decode OCI manifest for %s: %v", input.Image, err)
+		return "", Platform{}, invalidf("decode OCI manifest for %s: %v", input.Image, err)
 	}
 	if manifest.SchemaVersion != 2 ||
 		(manifest.MediaType != OCIManifestMediaType && manifest.MediaType != DockerManifestMediaType) ||
-		!validOCIBlobDescriptor(manifest.Config) || len(manifest.Layers) == 0 || len(manifest.Layers) > 4096 {
-		return "", invalidf("OCI manifest for %s has an invalid header, config, or layer count", input.Image)
+		!validOCIBlobDescriptor(manifest.Config) || manifest.Config.MediaType != OCIImageConfigMediaType ||
+		manifest.Config.Digest != configArtifact.Digest || manifest.Config.Size != configArtifact.SizeBytes ||
+		len(manifest.Layers) == 0 || len(manifest.Layers) > 4096 {
+		return "", Platform{}, invalidf("OCI manifest for %s has an invalid header, config, or layer count", input.Image)
 	}
 	for _, layer := range manifest.Layers {
 		if !validOCIBlobDescriptor(layer) {
-			return "", invalidf("OCI manifest for %s has an invalid layer descriptor", input.Image)
+			return "", Platform{}, invalidf("OCI manifest for %s has an invalid layer descriptor", input.Image)
 		}
 	}
 	if manifest.Subject != nil && !validOCIBlobDescriptor(*manifest.Subject) {
-		return "", invalidf("OCI manifest for %s has an invalid subject descriptor", input.Image)
+		return "", Platform{}, invalidf("OCI manifest for %s has an invalid subject descriptor", input.Image)
 	}
-	return manifest.MediaType, nil
+	var config ociv1.Image
+	if err := decodeStrictJSON(configEncoded, &config); err != nil {
+		return "", Platform{}, invalidf("decode OCI config for %s: %v", input.Image, err)
+	}
+	if config.OS != "linux" || config.Architecture != "amd64" {
+		return "", Platform{}, invalidf("OCI config for %s must bind linux/amd64", input.Image)
+	}
+	return manifest.MediaType, Platform{OS: config.OS, Architecture: config.Architecture}, nil
 }
 
 func validOCIBlobDescriptor(descriptor ociBlobDescriptor) bool {

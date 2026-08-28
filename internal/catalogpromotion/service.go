@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/productiongates"
+	"github.com/vivym/vela/internal/releasebundle"
 )
 
 var receiptNamespace = uuid.MustParse("8e45d190-25fa-5ac1-90fd-6d342778ce51")
@@ -43,12 +44,20 @@ func (service *Service) Apply(ctx context.Context, planPath string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	manifest, err := productiongates.LoadManifestWithin(filepath.Dir(planPath), plan.ManifestRef)
+	root := filepath.Dir(planPath)
+	bundle, err := releasebundle.LoadWithin(root, plan.ReleaseBundleRef)
+	if err != nil {
+		return Result{}, fmt.Errorf("load release bundle: %w", err)
+	}
+	manifest, err := productiongates.LoadManifestWithin(root, plan.ManifestRef)
 	if err != nil {
 		return Result{}, fmt.Errorf("load Launch Receipt manifest: %w", err)
 	}
 	if err := validatePlanEvidence(plan, manifest); err != nil {
 		return Result{}, err
+	}
+	if err := manifest.ValidateBinding(bundle.ReleaseDigest, bundle.ConfigurationRevision); err != nil {
+		return Result{}, fmt.Errorf("validate release bundle binding: %w", err)
 	}
 	manifestDigest, err := decodeDigest(manifest.Digest)
 	if err != nil {

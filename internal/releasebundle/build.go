@@ -25,7 +25,6 @@ var (
 		"control-storage", "fleet-controller", "observability", "vela-control", "worker-agent",
 	}
 	fixedPackageNames  = []string{"h3-runner", "node-agent"}
-	imagePattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._-]*)+@sha256:[0-9a-f]{64}$`)
 	gpuPattern         = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	nodeAgentSystemdV1 = map[string]map[string]string{
 		"Unit": {
@@ -186,12 +185,16 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 		if err != nil {
 			return Bundle{}, invalidf("read OCI manifest for %s: %v", input.Image, err)
 		}
-		mediaType, err := validateOCIManifest(input, artifact, content)
+		configArtifact, configContent, err := artifactFor(root, input.ConfigRef, OCIImageConfigMediaType, maxMetadataBytes)
+		if err != nil {
+			return Bundle{}, invalidf("read OCI config for %s: %v", input.Image, err)
+		}
+		mediaType, platform, err := validateOCIManifest(input, artifact, content, configArtifact, configContent)
 		if err != nil {
 			return Bundle{}, err
 		}
 		artifact.MediaType = mediaType
-		ociImages = append(ociImages, OCIImage{Image: input.Image, Descriptor: artifact, Platform: input.Platform})
+		ociImages = append(ociImages, OCIImage{Image: input.Image, Descriptor: artifact, Config: configArtifact, Platform: platform})
 	}
 	if !reflect.DeepEqual(inventory.images, seenImages) {
 		return Bundle{}, invalidf("OCI manifest set does not exactly match rendered image set: rendered=%v supplied=%v", sortedKeys(inventory.images), sortedKeys(seenImages))
@@ -205,7 +208,7 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 		return Bundle{}, invalidf("digest configuration manifest: %v", err)
 	}
 	release := ReleaseDescriptor{
-		SchemaVersion: 2, MediaType: OCIIndexMediaType, ArtifactType: ReleaseArtifactType,
+		SchemaVersion: 2, MediaType: ReleaseDescriptorMediaType, ArtifactType: ReleaseArtifactType,
 		Config:    Descriptor{MediaType: ConfigurationMediaType, Digest: configurationRevision, Size: configurationSize},
 		Manifests: make([]Descriptor, 0, len(ociImages)),
 	}
@@ -276,6 +279,9 @@ func validateUniqueArtifactReferences(configuration ConfigurationManifest, image
 		if err := claim("oci-manifest/"+image.Image, image.Descriptor); err != nil {
 			return err
 		}
+		if err := claim("oci-config/"+image.Image, image.Config); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -317,7 +323,7 @@ func verify(root *os.Root, bundle Bundle) error {
 	}
 	for _, image := range bundle.OCIImages {
 		plan.OCIManifests = append(plan.OCIManifests, OCIManifestInput{
-			Image: image.Image, Ref: image.Descriptor.Ref, Platform: image.Platform,
+			Image: image.Image, Ref: image.Descriptor.Ref, ConfigRef: image.Config.Ref,
 		})
 	}
 	rebuilt, err := build(root, plan)

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontract"
+	"github.com/vivym/vela/internal/imageref"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
@@ -539,16 +540,7 @@ func validSHA256(value string) bool {
 }
 
 func validPinnedImage(value string) bool {
-	marker := strings.LastIndex(value, "@sha256:")
-	if marker <= 0 {
-		return false
-	}
-	repository := value[:marker]
-	lastSlash := strings.LastIndex(repository, "/")
-	return strings.Count(value, "@sha256:") == 1 && strings.ToLower(value) == value &&
-		!strings.ContainsAny(repository, "@ \t\r\n") && lastSlash > 0 &&
-		!strings.Contains(repository[lastSlash+1:], ":") && !containsTemplateMarker(repository) &&
-		validSHA256(value[marker+len("@sha256:"):])
+	return !containsTemplateMarker(value) && imageref.ValidPinned(value)
 }
 
 func validProductionRevision(value string, maximum int) bool {

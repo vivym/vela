@@ -21,11 +21,17 @@ func TestBuildAndLoadCanonicalReleaseBundle(t *testing.T) {
 	}
 	if bundle.SchemaVersion != 1 || !validDigest(bundle.ReleaseDigest) ||
 		!validDigest(bundle.ConfigurationRevision) ||
+		bundle.ReleaseDescriptor.MediaType != ReleaseDescriptorMediaType ||
 		bundle.ReleaseDescriptor.Config.Digest != bundle.ConfigurationRevision ||
 		len(bundle.ConfigurationManifest.FinalRenders) != 5 ||
 		len(bundle.ConfigurationManifest.Packages) != 2 ||
 		len(bundle.ConfigurationManifest.WorkerMaterializations) != 1 || len(bundle.OCIImages) != 2 {
 		t.Fatalf("built bundle = %#v", bundle)
+	}
+	for _, image := range bundle.OCIImages {
+		if image.Config.MediaType != OCIImageConfigMediaType || image.Platform != (Platform{OS: "linux", Architecture: "amd64"}) {
+			t.Fatalf("OCI image config binding = %#v", image)
+		}
 	}
 	configurationDigest, _, err := canonicalDigest(bundle.ConfigurationManifest)
 	if err != nil || configurationDigest != bundle.ConfigurationRevision {
@@ -452,6 +458,61 @@ func TestBuildRejectsInvalidArtifactGraph(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsInvalidOCIConfigBinding(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*testing.T, *bundleFixture)
+	}{
+		{name: "missing config", mutate: func(_ *testing.T, fixture *bundleFixture) {
+			fixture.plan.OCIManifests[0].ConfigRef = "missing-config.json"
+		}},
+		{name: "ARM config", mutate: func(t *testing.T, fixture *bundleFixture) {
+			input := &fixture.plan.OCIManifests[0]
+			encoded := []byte(strings.Replace(string(readTestFile(t, filepath.Join(fixture.directory, input.ConfigRef))), `"amd64"`, `"arm64"`, 1))
+			rewriteOCIInput(t, fixture, input, encoded, nil)
+		}},
+		{name: "trailing config", mutate: func(t *testing.T, fixture *bundleFixture) {
+			input := &fixture.plan.OCIManifests[0]
+			encoded := append(readTestFile(t, filepath.Join(fixture.directory, input.ConfigRef)), []byte(` {}`)...)
+			rewriteOCIInput(t, fixture, input, encoded, nil)
+		}},
+		{name: "unknown config field", mutate: func(t *testing.T, fixture *bundleFixture) {
+			input := &fixture.plan.OCIManifests[0]
+			encoded := []byte(strings.Replace(string(readTestFile(t, filepath.Join(fixture.directory, input.ConfigRef))),
+				`{"architecture"`, `{"unknown":true,"architecture"`, 1))
+			rewriteOCIInput(t, fixture, input, encoded, nil)
+		}},
+		{name: "wrong config digest", mutate: func(t *testing.T, fixture *bundleFixture) {
+			input := &fixture.plan.OCIManifests[0]
+			rewriteOCIInput(t, fixture, input, readTestFile(t, filepath.Join(fixture.directory, input.ConfigRef)), func(config map[string]any) {
+				config["digest"] = testDigest("wrong config")
+			})
+		}},
+		{name: "wrong config size", mutate: func(t *testing.T, fixture *bundleFixture) {
+			input := &fixture.plan.OCIManifests[0]
+			rewriteOCIInput(t, fixture, input, readTestFile(t, filepath.Join(fixture.directory, input.ConfigRef)), func(config map[string]any) {
+				config["size"] = float64(1)
+			})
+		}},
+		{name: "wrong config media type", mutate: func(t *testing.T, fixture *bundleFixture) {
+			input := &fixture.plan.OCIManifests[0]
+			rewriteOCIInput(t, fixture, input, readTestFile(t, filepath.Join(fixture.directory, input.ConfigRef)), func(config map[string]any) {
+				config["mediaType"] = "application/octet-stream"
+			})
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newBundleFixture(t)
+			test.mutate(t, fixture)
+			fixture.writePlan(t)
+			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
+			}
+		})
+	}
+}
+
 func TestBuildRejectsEscapesAndSymlinks(t *testing.T) {
 	for _, reference := range []string{"../outside.service", "./node-agent.service", "sub/../node-agent.service", `sub\node-agent.service`} {
 		t.Run("path "+reference, func(t *testing.T) {
@@ -732,8 +793,8 @@ WantedBy=multi-user.target
 			},
 		},
 		OCIManifests: []OCIManifestInput{
-			{Image: images[0], Ref: manifestOne.ref, Platform: Platform{OS: "linux", Architecture: "amd64"}},
-			{Image: images[1], Ref: manifestTwo.ref, Platform: Platform{OS: "linux", Architecture: "amd64"}},
+			{Image: images[0], Ref: manifestOne.ref, ConfigRef: manifestOne.configRef},
+			{Image: images[1], Ref: manifestTwo.ref, ConfigRef: manifestTwo.configRef},
 		},
 	}
 	for _, name := range fixedRenderNames {
@@ -831,17 +892,33 @@ spec:
 }
 
 type manifestFixture struct {
-	ref    string
-	digest string
+	ref       string
+	configRef string
+	digest    string
 }
 
 func testOCIManifest(t *testing.T, directory, name string) manifestFixture {
 	t.Helper()
+	config := map[string]any{
+		"architecture": "amd64",
+		"os":           "linux",
+		"rootfs":       map[string]any{"type": "layers", "diff_ids": []string{}},
+	}
+	configEncoded, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configRef := "oci-" + name + "-config.json"
+	writeTestFile(t, filepath.Join(directory, configRef), configEncoded)
 	manifest := map[string]any{
 		"schemaVersion": 2,
 		"mediaType":     OCIManifestMediaType,
-		"config":        map[string]any{"mediaType": "application/vnd.oci.image.config.v1+json", "digest": testDigest(name + " config"), "size": 128},
-		"layers":        []any{map[string]any{"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip", "digest": testDigest(name + " layer"), "size": 256}},
+		"config": map[string]any{
+			"mediaType": OCIImageConfigMediaType,
+			"digest":    testContentDigest(configEncoded),
+			"size":      len(configEncoded),
+		},
+		"layers": []any{map[string]any{"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip", "digest": testDigest(name + " layer"), "size": 256}},
 	}
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
@@ -849,7 +926,40 @@ func testOCIManifest(t *testing.T, directory, name string) manifestFixture {
 	}
 	ref := "oci-" + name + ".json"
 	writeTestFile(t, filepath.Join(directory, ref), encoded)
-	return manifestFixture{ref: ref, digest: testContentDigest(encoded)}
+	return manifestFixture{ref: ref, configRef: configRef, digest: testContentDigest(encoded)}
+}
+
+func rewriteOCIInput(
+	t *testing.T,
+	fixture *bundleFixture,
+	input *OCIManifestInput,
+	configEncoded []byte,
+	mutateDescriptor func(map[string]any),
+) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(fixture.directory, input.ConfigRef), configEncoded)
+	var manifest map[string]any
+	if err := json.Unmarshal(readTestFile(t, filepath.Join(fixture.directory, input.Ref)), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	config := manifest["config"].(map[string]any)
+	config["digest"] = testContentDigest(configEncoded)
+	config["size"] = float64(len(configEncoded))
+	if mutateDescriptor != nil {
+		mutateDescriptor(config)
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(fixture.directory, input.Ref), encoded)
+	oldImage := input.Image
+	input.Image = oldImage[:strings.LastIndex(oldImage, "@")+1] + testContentDigest(encoded)
+	for _, render := range fixture.plan.FinalRenders {
+		path := filepath.Join(fixture.directory, render.Ref)
+		content := strings.ReplaceAll(string(readTestFile(t, path)), oldImage, input.Image)
+		writeTestFile(t, path, []byte(content))
+	}
 }
 
 func writeWorkerMaterialization(t *testing.T, directory string, worker WorkerMaterializationInput) {

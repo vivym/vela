@@ -5,11 +5,12 @@ import "errors"
 const (
 	SchemaVersion = 1
 
-	ConfigurationMediaType  = "application/vnd.vela.release.configuration.v1+json"
-	ReleaseArtifactType     = "application/vnd.vela.release.bundle.v1+json"
-	OCIIndexMediaType       = "application/vnd.oci.image.index.v1+json"
-	OCIManifestMediaType    = "application/vnd.oci.image.manifest.v1+json"
-	DockerManifestMediaType = "application/vnd.docker.distribution.manifest.v2+json"
+	ConfigurationMediaType     = "application/vnd.vela.release.configuration.v1+json"
+	ReleaseArtifactType        = "application/vnd.vela.release.bundle.v1+json"
+	ReleaseDescriptorMediaType = "application/vnd.vela.release.descriptor.v1+json"
+	OCIManifestMediaType       = "application/vnd.oci.image.manifest.v1+json"
+	DockerManifestMediaType    = "application/vnd.docker.distribution.manifest.v2+json"
+	OCIImageConfigMediaType    = "application/vnd.oci.image.config.v1+json"
 
 	maxPlanBytes       = 4 << 20
 	maxBundleBytes     = 16 << 20
@@ -69,9 +70,9 @@ type Platform struct {
 }
 
 type OCIManifestInput struct {
-	Image    string   `json:"image"`
-	Ref      string   `json:"ref"`
-	Platform Platform `json:"platform"`
+	Image     string `json:"image"`
+	Ref       string `json:"ref"`
+	ConfigRef string `json:"config_ref"`
 }
 
 type BuildPlan struct {
@@ -126,6 +127,7 @@ type WorkerMaterialization struct {
 type OCIImage struct {
 	Image      string   `json:"image"`
 	Descriptor Artifact `json:"descriptor"`
+	Config     Artifact `json:"config"`
 	Platform   Platform `json:"platform"`
 }
 

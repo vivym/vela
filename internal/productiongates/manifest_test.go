@@ -33,6 +33,24 @@ func TestLoadManifestVerifiesCompleteReleaseEvidence(t *testing.T) {
 	}
 }
 
+func TestManifestValidateBindingRequiresExactReleaseAndConfiguration(t *testing.T) {
+	manifest := Manifest{
+		ReleaseDigest:         fixtureDigest("release"),
+		ConfigurationRevision: "config-rev-1",
+	}
+	if err := manifest.ValidateBinding(manifest.ReleaseDigest, manifest.ConfigurationRevision); err != nil {
+		t.Fatalf("validate exact manifest binding: %v", err)
+	}
+	if err := manifest.ValidateBinding(fixtureDigest("other-release"), manifest.ConfigurationRevision); err == nil ||
+		!strings.Contains(err.Error(), "want release=") {
+		t.Fatalf("release mismatch error = %v", err)
+	}
+	if err := manifest.ValidateBinding(manifest.ReleaseDigest, "config-rev-2"); err == nil ||
+		!strings.Contains(err.Error(), "configuration=config-rev-2") {
+		t.Fatalf("configuration mismatch error = %v", err)
+	}
+}
+
 func TestLoadManifestRejectsUnboundOrUnverifiedEvidence(t *testing.T) {
 	for _, test := range []struct {
 		name   string

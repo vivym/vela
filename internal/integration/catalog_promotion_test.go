@@ -177,6 +177,85 @@ func TestCatalogPromotionRejectsPlanEvidenceMismatchBeforeDatabaseMutation(t *te
 	}
 }
 
+func TestCatalogPromotionRejectsInvalidOrMismatchedReleaseBundleBeforeDatabaseMutation(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedThreePresetCatalog(t, database)
+	promotionPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_catalog_promotion_login",
+		"vela-catalog-promotion-password",
+	)
+	service, err := catalogpromotion.New(context.Background(), promotionPool)
+	if err != nil {
+		t.Fatalf("configure Catalog Promotion service: %v", err)
+	}
+	for _, test := range []struct {
+		name       string
+		mutate     func(*testing.T, string)
+		errorMatch string
+	}{
+		{
+			name: "missing bundle",
+			mutate: func(t *testing.T, directory string) {
+				t.Helper()
+				if err := os.Remove(filepath.Join(directory, "release-bundle.json")); err != nil {
+					t.Fatalf("remove release bundle fixture: %v", err)
+				}
+			},
+			errorMatch: "load release bundle",
+		},
+		{
+			name: "invalid bundle",
+			mutate: func(t *testing.T, directory string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(directory, "release-bundle.json"), []byte("{}"), 0o600); err != nil {
+					t.Fatalf("write invalid release bundle fixture: %v", err)
+				}
+			},
+			errorMatch: "load release bundle",
+		},
+		{
+			name: "mismatched valid bundle",
+			mutate: func(t *testing.T, directory string) {
+				t.Helper()
+				writeCatalogReleaseBundleFixture(t, directory, "-different-release")
+			},
+			errorMatch: "validate release bundle binding",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			planPath := writeCatalogPromotionFiles(t, false)
+			test.mutate(t, filepath.Dir(planPath))
+			if _, err := service.Apply(context.Background(), planPath); err == nil ||
+				!strings.Contains(err.Error(), test.errorMatch) {
+				t.Fatalf("Catalog promotion error = %v, want %q", err, test.errorMatch)
+			}
+			var manifests, receipts, evidence, bindings int64
+			if err := database.Admin.QueryRow(`
+				SELECT
+					(SELECT count(*) FROM production_gate_manifests),
+					(SELECT count(*) FROM production_gate_receipts),
+					(SELECT count(*) FROM profile_certification_evidence),
+					(SELECT count(*) FROM rate_card_release_bindings)
+			`).Scan(&manifests, &receipts, &evidence, &bindings); err != nil {
+				t.Fatalf("read pre-transaction Catalog rows: %v", err)
+			}
+			if manifests != 0 || receipts != 0 || evidence != 0 || bindings != 0 {
+				t.Fatalf(
+					"failed Catalog release binding left rows %d/%d/%d/%d",
+					manifests,
+					receipts,
+					evidence,
+					bindings,
+				)
+			}
+		})
+	}
+}
+
 func TestCatalogPromotionRequiresSealedThreePresetEvidence(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -1031,11 +1110,11 @@ func assertCatalogDatabaseError(
 func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string {
 	t.Helper()
 	directory := t.TempDir()
+	bundle := writeCatalogReleaseBundleFixture(t, directory, "")
 	manifest := productiongates.Manifest{
 		SchemaVersion: 1,
 		Receipts:      make([]productiongates.Receipt, 0, len(productiongates.AllGates())),
 	}
-	releaseDigest := sha256.Sum256([]byte("catalog-promotion-release"))
 	certificationIDs := []uuid.UUID{
 		uuid.MustParse("00000000-0000-0000-0000-000000000015"),
 		uuid.MustParse("35000000-0000-0000-0000-000000000014"),
@@ -1054,13 +1133,19 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 		observedResult := "all gate assertions passed"
 		var gateEvidence []byte
 		if gate == productiongates.GateObservabilityOnCall {
-			gateEvidence = catalogObservabilityEvidenceFixture(t, directory)
+			gateEvidence = catalogObservabilityEvidenceFixture(
+				t,
+				directory,
+				bundle.ReleaseDigest,
+				bundle.ConfigurationRevision,
+			)
 		} else {
 			typed := catalogTypedEvidenceFixture(
 				t,
 				directory,
 				gate,
-				"sha256:"+hex.EncodeToString(releaseDigest[:]),
+				bundle.ReleaseDigest,
+				bundle.ConfigurationRevision,
 				startedAt,
 				completedAt,
 				certificationIDs,
@@ -1085,8 +1170,8 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 		manifest.Receipts = append(manifest.Receipts, productiongates.Receipt{
 			SchemaVersion:         1,
 			Gate:                  gate,
-			ReleaseDigest:         "sha256:" + hex.EncodeToString(releaseDigest[:]),
-			ConfigurationRevision: "catalog-config-1",
+			ReleaseDigest:         bundle.ReleaseDigest,
+			ConfigurationRevision: bundle.ConfigurationRevision,
 			ValidationEnvironment: "h3-validation-rack-1",
 			Result:                productiongates.ResultPass,
 			Owner:                 "platform-oncall@example.invalid",
@@ -1124,9 +1209,10 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 		})
 	}
 	plan := catalogpromotion.Plan{
-		SchemaVersion:  1,
-		ManifestRef:    "launch-receipts.json",
-		Certifications: certifications,
+		SchemaVersion:    1,
+		ManifestRef:      "launch-receipts.json",
+		ReleaseBundleRef: "release-bundle.json",
+		Certifications:   certifications,
 		RateCards: []catalogpromotion.RateCardPromotion{{
 			BindingID:          uuid.MustParse("35000000-0000-0000-0000-000000000501"),
 			RateCardRevisionID: uuid.MustParse("00000000-0000-0000-0000-000000000016"),
@@ -1143,6 +1229,7 @@ func catalogTypedEvidenceFixture(
 	directory string,
 	gate productiongates.Gate,
 	releaseDigest string,
+	configurationRevision string,
 	startedAt,
 	completedAt time.Time,
 	certificationIDs []uuid.UUID,
@@ -1154,7 +1241,7 @@ func catalogTypedEvidenceFixture(
 	}
 	evidence := productiongates.TypedEvidence{
 		SchemaVersion: 1, Gate: gate, CriteriaRevision: contract.CriteriaRevision,
-		ReleaseDigest: releaseDigest, ConfigurationRevision: "catalog-config-1",
+		ReleaseDigest: releaseDigest, ConfigurationRevision: configurationRevision,
 		ValidationEnvironment: "h3-validation-rack-1",
 		Owner:                 "platform-oncall@example.invalid",
 		StartedAt:             startedAt, CompletedAt: completedAt,
@@ -1256,7 +1343,12 @@ func catalogWriteTypedEvidenceArtifacts(
 	}
 }
 
-func catalogObservabilityEvidenceFixture(t *testing.T, directory string) []byte {
+func catalogObservabilityEvidenceFixture(
+	t *testing.T,
+	directory,
+	releaseDigest,
+	configurationRevision string,
+) []byte {
 	t.Helper()
 	window := slo.Window{
 		Start: time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
@@ -1330,8 +1422,8 @@ func catalogObservabilityEvidenceFixture(t *testing.T, directory string) []byte 
 	firedAt := evaluatedAt.Add(time.Hour)
 	evidence := sloevidence.Evidence{
 		SchemaVersion:         1,
-		ReleaseDigest:         "sha256:" + hex.EncodeToString(sha256Sum([]byte("catalog-promotion-release"))),
-		ConfigurationRevision: "catalog-config-1",
+		ReleaseDigest:         releaseDigest,
+		ConfigurationRevision: configurationRevision,
 		ValidationEnvironment: "h3-validation-rack-1",
 		Owner:                 "platform-oncall@example.invalid", Coverage: "24x7",
 		Window: window, EvaluatedAt: evaluatedAt,
