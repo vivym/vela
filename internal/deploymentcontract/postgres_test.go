@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -107,7 +108,28 @@ type cnpgScheduledBackupContract struct {
 	} `yaml:"spec"`
 }
 
-func TestControlStoragePostgreSQLContractRequiresAutomaticFailoverAndNoQuorumSafety(
+type barmanInstallKustomizationContract struct {
+	APIVersion string   `yaml:"apiVersion"`
+	Kind       string   `yaml:"kind"`
+	Resources  []string `yaml:"resources"`
+	Patches    []struct {
+		Target struct {
+			Group   string `yaml:"group"`
+			Version string `yaml:"version"`
+			Kind    string `yaml:"kind"`
+			Name    string `yaml:"name"`
+		} `yaml:"target"`
+		Patch string `yaml:"patch"`
+	} `yaml:"patches"`
+}
+
+type kustomizePatchOperation struct {
+	Op    string `yaml:"op"`
+	Path  string `yaml:"path"`
+	Value any    `yaml:"value"`
+}
+
+func TestControlStoragePostgreSQLReplicationBackupAndRecoveryContract(
 	t *testing.T,
 ) {
 	var cluster cnpgClusterContract
@@ -236,12 +258,13 @@ func assertBarmanPluginIdentityContract(t *testing.T, postgresImage string) {
 			Images         map[string]string `json:"images"`
 		} `json:"cert_manager"`
 		BarmanCloudPlugin struct {
-			Version        string `json:"version"`
-			Name           string `json:"name"`
-			ManifestURL    string `json:"manifest_url"`
-			ManifestSHA256 string `json:"manifest_sha256"`
-			OperatorImage  string `json:"operator_image"`
-			SidecarImage   string `json:"sidecar_image"`
+			Version              string `json:"version"`
+			Name                 string `json:"name"`
+			ManifestURL          string `json:"manifest_url"`
+			ManifestSHA256       string `json:"manifest_sha256"`
+			InstallKustomization string `json:"install_kustomization"`
+			OperatorImage        string `json:"operator_image"`
+			SidecarImage         string `json:"sidecar_image"`
 		} `json:"barman_cloud_plugin"`
 		LocalConformance struct {
 			MinIOImage string `json:"minio_image"`
@@ -258,8 +281,73 @@ func assertBarmanPluginIdentityContract(t *testing.T, postgresImage string) {
 	if contract.SchemaVersion != 1 || contract.CloudNativePG.Version != "v1.30.0" ||
 		contract.CertManager.Version != "v1.21.1" ||
 		contract.BarmanCloudPlugin.Version != "v0.14.0" ||
-		contract.BarmanCloudPlugin.Name != "barman-cloud.cloudnative-pg.io" {
+		contract.BarmanCloudPlugin.Name != "barman-cloud.cloudnative-pg.io" ||
+		contract.BarmanCloudPlugin.InstallKustomization !=
+			"barman-cloud-plugin-install/kustomization.yaml" {
 		t.Fatalf("Barman plugin versions = %#v", contract)
+	}
+	exactValues := map[string][2]string{
+		"CloudNativePG manifest URL": {
+			contract.CloudNativePG.ManifestURL,
+			"https://github.com/cloudnative-pg/cloudnative-pg/releases/download/v1.30.0/cnpg-1.30.0.yaml",
+		},
+		"CloudNativePG manifest SHA-256": {
+			contract.CloudNativePG.ManifestSHA256,
+			"f8bede43fe4ee0d478c2355b204a36876b2ae4faac60f2a9452280b293da3b88",
+		},
+		"CloudNativePG operator image": {
+			contract.CloudNativePG.OperatorImage,
+			"ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0@sha256:a2701eb97cdd2a34b1fdb2cb51987f544b706e40bec72ae7146cd8580efefebb",
+		},
+		"PostgreSQL image": {
+			contract.CloudNativePG.PostgresImage,
+			"ghcr.io/cloudnative-pg/postgresql:16.4@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe",
+		},
+		"cert-manager manifest URL": {
+			contract.CertManager.ManifestURL,
+			"https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml",
+		},
+		"cert-manager manifest SHA-256": {
+			contract.CertManager.ManifestSHA256,
+			"5f6a499b8c1857d57f560f536e0dcc830914b45c420899fe7ad0692c8624e408",
+		},
+		"cert-manager cainjector image": {
+			contract.CertManager.Images["cainjector"],
+			"quay.io/jetstack/cert-manager-cainjector:v1.21.1@sha256:ccf6b919ec0500745a47a910118f834f9636d0aac1ff221245cd2557ed8c7c98",
+		},
+		"cert-manager controller image": {
+			contract.CertManager.Images["controller"],
+			"quay.io/jetstack/cert-manager-controller:v1.21.1@sha256:416a2d76870d996460e62bd7f521bf14fa017be9e3e904aab92163a331fcb61a",
+		},
+		"cert-manager webhook image": {
+			contract.CertManager.Images["webhook"],
+			"quay.io/jetstack/cert-manager-webhook:v1.21.1@sha256:d8b3961b51c8c7320633f8208dc46bf88aa13804d0f7cbe48a096b2c523cee42",
+		},
+		"Barman manifest URL": {
+			contract.BarmanCloudPlugin.ManifestURL,
+			"https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.14.0/manifest.yaml",
+		},
+		"Barman manifest SHA-256": {
+			contract.BarmanCloudPlugin.ManifestSHA256,
+			"8d4f1719cc54891ddffd7633279ec93b5d2cc547df8684c3b84f3b156a615e7c",
+		},
+		"Barman operator image": {
+			contract.BarmanCloudPlugin.OperatorImage,
+			"ghcr.io/cloudnative-pg/plugin-barman-cloud:v0.14.0@sha256:823a8893690980ba5830bbbb11196a35f695b0488db7d846abc33baebf32417c",
+		},
+		"Barman sidecar image": {
+			contract.BarmanCloudPlugin.SidecarImage,
+			"ghcr.io/cloudnative-pg/plugin-barman-cloud-sidecar:v0.14.0@sha256:9880817c285c7afa4d195da2145064d21907405489ed6ec39abe59b1feb558a4",
+		},
+		"MinIO image": {
+			contract.LocalConformance.MinIOImage,
+			"minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e",
+		},
+	}
+	for name, values := range exactValues {
+		if values[0] != values[1] {
+			t.Errorf("%s = %q, want %q", name, values[0], values[1])
+		}
 	}
 	identities := []string{
 		contract.CloudNativePG.OperatorImage,
@@ -303,6 +391,47 @@ func assertBarmanPluginIdentityContract(t *testing.T, postgresImage string) {
 		if !validSHA256(value) {
 			t.Errorf("%s manifest SHA-256 is invalid: %q", name, value)
 		}
+	}
+	assertBarmanPluginRBACHardeningContract(
+		t,
+		contract.BarmanCloudPlugin.InstallKustomization,
+	)
+}
+
+func assertBarmanPluginRBACHardeningContract(t *testing.T, relativePath string) {
+	t.Helper()
+	contents, err := os.ReadFile(controlStoragePath(t, relativePath))
+	if err != nil {
+		t.Fatalf("read Barman install kustomization: %v", err)
+	}
+	var kustomization barmanInstallKustomizationContract
+	if err := yaml.Unmarshal(contents, &kustomization); err != nil {
+		t.Fatalf("decode Barman install kustomization: %v", err)
+	}
+	if kustomization.APIVersion != "kustomize.config.k8s.io/v1beta1" ||
+		kustomization.Kind != "Kustomization" || len(kustomization.Resources) != 1 ||
+		kustomization.Resources[0] != "manifest.yaml" || len(kustomization.Patches) != 1 {
+		t.Fatalf("Barman install kustomization = %#v", kustomization)
+	}
+	patch := kustomization.Patches[0]
+	if patch.Target.Group != "rbac.authorization.k8s.io" || patch.Target.Version != "v1" ||
+		patch.Target.Kind != "ClusterRole" || patch.Target.Name != "plugin-barman-cloud" {
+		t.Fatalf("Barman RBAC patch target = %#v", patch.Target)
+	}
+	var operations []kustomizePatchOperation
+	if err := yaml.Unmarshal([]byte(patch.Patch), &operations); err != nil {
+		t.Fatalf("decode Barman RBAC patch: %v", err)
+	}
+	if len(operations) != 4 ||
+		operations[0].Op != "test" || operations[0].Path != "/rules/0/apiGroups/0" ||
+		operations[0].Value != "" ||
+		operations[1].Op != "test" || operations[1].Path != "/rules/0/resources/0" ||
+		operations[1].Value != "secrets" ||
+		operations[2].Op != "replace" || operations[2].Path != "/rules/0/verbs" ||
+		!reflect.DeepEqual(operations[2].Value, []any{"get", "list", "watch"}) ||
+		operations[3].Op != "add" || operations[3].Path != "/rules/0/resourceNames" ||
+		!reflect.DeepEqual(operations[3].Value, []any{"vela-backup-s3"}) {
+		t.Fatalf("Barman RBAC hardening operations = %#v", operations)
 	}
 }
 

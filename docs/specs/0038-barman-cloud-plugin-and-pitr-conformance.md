@@ -55,17 +55,24 @@ contract:
    operator-facing labels only; every accepted OCI identity also has an exact
    multi-architecture digest.
 6. Backup credentials remain absent from Git. The ObjectStore may only refer to
-   the named Secret keys; the plugin operator and PostgreSQL sidecar must not
-   receive Vela Artifact replication or deletion credentials.
+   the named Secret keys. The upstream operator's cluster-wide Secret rule is
+   narrowed before installation through the release-owned Kustomize patch; the
+   plugin operator may access only the exact `vela-backup-s3` Secret so it can
+   create the generated PostgreSQL Role. That Role may read the same Secret;
+   neither principal may receive Vela Artifact replication or deletion
+   credentials.
 
 The Barman Cloud Plugin release manifest depends on cert-manager and installs
 into `cnpg-system`, while the ObjectStore is namespaced with the Cluster in
 `vela-system`. The repository does not vendor those cluster-wide third-party
 manifests. A production installer must download them by exact version, verify
-their SHA-256, and rewrite the operator and sidecar images to the recorded
-digests. The local harness pulls the exact digest for its platform, preloads
-those bytes into kind, verifies the manifest's release tags, and uses
-`IfNotPresent` so a node never resolves a host-local proxy.
+their SHA-256, render the Barman manifest through
+`barman-cloud-plugin-install/kustomization.yaml` before first apply, and rewrite
+the operator and sidecar images to the recorded digests. The hardening patch
+fails closed if the verified upstream Secret rule changes shape. The local
+harness pulls the exact digest for its platform, preloads those bytes into kind,
+verifies the manifest's release tags, and uses `IfNotPresent` so a node never
+resolves a host-local proxy.
 
 ## Local PITR Evidence
 
@@ -73,14 +80,16 @@ those bytes into kind, verifies the manifest's release tags, and uses
 to reuse a pre-existing cluster. It preloads the exact platform images so a host
 proxy is never interpreted as node-local loopback, then:
 
-1. installs pinned cert-manager, CloudNativePG, and Barman Cloud Plugin
-   manifests after verifying every downloaded byte digest;
+1. installs pinned cert-manager, CloudNativePG, and the RBAC-hardened Barman
+   Cloud Plugin manifests after verifying every downloaded byte digest;
 2. starts a test-only MinIO endpoint and creates the PostgreSQL backup bucket;
 3. applies the release ObjectStore, Cluster, and ScheduledBackup, with only
    test-only endpoint, storage-size, resource, superuser, and pull-policy
    overlays;
-4. verifies the plugin sidecar is injected and continuous WAL archiving becomes
-   healthy;
+4. proves the plugin operator cannot list Secrets generally, both plugin
+   principals can read only `vela-backup-s3`, and neither can read Artifact
+   credentials; then verifies the plugin sidecar is injected and continuous WAL
+   archiving becomes healthy;
 5. writes a durable pre-target marker and completes one plugin base backup;
 6. records a PostgreSQL target timestamp, writes a post-target marker, switches
    WAL, and waits until the containing WAL is archived;
@@ -98,7 +107,7 @@ clean up only the kind cluster it created.
 - A native `spec.backup`, missing ObjectStore, non-plugin ScheduledBackup,
   missing immediate base backup, wrong Secret selector, unbounded sidecar,
   mutable operator/sidecar image-only tag, manifest digest drift, or plugin
-  name drift fails the repository deployment-contract test.
+  name/RBAC-hardening drift fails the repository deployment-contract test.
 - The local drill fails on any manifest checksum mismatch, unexpected image
   platform, failed plugin rollout, failed backup, absent archived WAL, failed
   recovery, or marker mismatch.

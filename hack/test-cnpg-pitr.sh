@@ -56,10 +56,16 @@ cert_manager_controller_identity=$(contract_value '.cert_manager.images.controll
 cert_manager_webhook_identity=$(contract_value '.cert_manager.images.webhook')
 barman_manifest_url=$(contract_value '.barman_cloud_plugin.manifest_url')
 barman_manifest_sha256=$(contract_value '.barman_cloud_plugin.manifest_sha256')
+barman_install_kustomization=$(contract_value '.barman_cloud_plugin.install_kustomization')
 barman_operator_identity=$(contract_value '.barman_cloud_plugin.operator_image')
 barman_sidecar_identity=$(contract_value '.barman_cloud_plugin.sidecar_image')
 barman_plugin_name=$(contract_value '.barman_cloud_plugin.name')
 minio_identity=$(contract_value '.local_conformance.minio_image')
+barman_install_kustomization="$repository_root/deploy/control-storage/$barman_install_kustomization"
+if [ ! -s "$barman_install_kustomization" ]; then
+	echo "Barman install kustomization is missing: $barman_install_kustomization" >&2
+	exit 1
+fi
 
 image_tag() {
 	case "$1" in
@@ -178,6 +184,20 @@ wait_for_jsonpath() {
 	exit 1
 }
 
+assert_can_i() {
+	want=$1
+	description=$2
+	shift 2
+	actual=no
+	if kubectl --kubeconfig "$kubeconfig" auth can-i "$@" --quiet; then
+		actual=yes
+	fi
+	if [ "$actual" != "$want" ]; then
+		echo "$description authorization = $actual, want $want" >&2
+		exit 1
+	fi
+}
+
 created=true
 "$kind_binary" create cluster \
 	--name "$cluster_name" \
@@ -208,9 +228,13 @@ pull_image "$minio_identity" minio.tar
 cert_manager_manifest="$test_directory/cert-manager.yaml"
 cnpg_manifest="$test_directory/cnpg.yaml"
 barman_manifest="$test_directory/barman-cloud.yaml"
+barman_install_directory="$test_directory/barman-cloud-install"
 download_verified "$cert_manager_manifest_url" "$cert_manager_manifest_sha256" "$cert_manager_manifest"
 download_verified "$cnpg_manifest_url" "$cnpg_manifest_sha256" "$cnpg_manifest"
 download_verified "$barman_manifest_url" "$barman_manifest_sha256" "$barman_manifest"
+mkdir -p "$barman_install_directory"
+cp "$barman_manifest" "$barman_install_directory/manifest.yaml"
+cp "$barman_install_kustomization" "$barman_install_directory/kustomization.yaml"
 for manifest_image in \
 	"$cert_manager_cainjector_image" \
 	"$cert_manager_controller_image" \
@@ -245,7 +269,8 @@ kubectl --kubeconfig "$kubeconfig" -n cnpg-system patch \
 kubectl --kubeconfig "$kubeconfig" -n cnpg-system rollout status \
 	deployment/cnpg-controller-manager --timeout=5m
 
-kubectl --kubeconfig "$kubeconfig" apply --server-side -f "$barman_manifest"
+kubectl kustomize "$barman_install_directory" | \
+	kubectl --kubeconfig "$kubeconfig" apply --server-side -f -
 kubectl --kubeconfig "$kubeconfig" -n cnpg-system patch \
 	deployment barman-cloud --type=strategic \
 	-p '{"spec":{"template":{"spec":{"nodeSelector":{"node-role.kubernetes.io/control-plane":""},"tolerations":[{"key":"node-role.kubernetes.io/control-plane","operator":"Exists","effect":"NoSchedule"}],"containers":[{"name":"barman-cloud","imagePullPolicy":"IfNotPresent"}]}}}}'
@@ -333,6 +358,19 @@ kubectl --kubeconfig "$kubeconfig" -n "$namespace" apply \
 	-f "$repository_root/deploy/control-storage/postgres-scheduled-backup.yaml"
 kubectl --kubeconfig "$kubeconfig" -n "$namespace" wait \
 	--for=condition=Ready "clusters.postgresql.cnpg.io/$source_cluster" --timeout=10m
+
+operator_subject=system:serviceaccount:cnpg-system:plugin-barman-cloud
+cluster_subject=system:serviceaccount:$namespace:$source_cluster
+assert_can_i no "Barman operator Secret listing" \
+	list secrets --as="$operator_subject" -n "$namespace"
+assert_can_i yes "Barman operator backup Secret read" \
+	get secret/vela-backup-s3 --as="$operator_subject" -n "$namespace"
+assert_can_i no "Barman operator Artifact Secret read" \
+	get secret/vela-control-artifact-credentials-r0-review --as="$operator_subject" -n "$namespace"
+assert_can_i yes "PostgreSQL plugin backup Secret read" \
+	get secret/vela-backup-s3 --as="$cluster_subject" -n "$namespace"
+assert_can_i no "PostgreSQL plugin Artifact Secret read" \
+	get secret/vela-control-artifact-credentials-r0-review --as="$cluster_subject" -n "$namespace"
 
 source_primary=$(kubectl --kubeconfig "$kubeconfig" -n "$namespace" get \
 	"clusters.postgresql.cnpg.io/$source_cluster" -o jsonpath='{.status.currentPrimary}')
@@ -451,6 +489,18 @@ fi
 printf '%s\n' \
 	"[VERIFIED] Barman Cloud Plugin PITR conformance" \
 	"- platform: $image_platform" \
+	"- CloudNativePG manifest: $cnpg_manifest_url sha256:$cnpg_manifest_sha256" \
+	"- cert-manager manifest: $cert_manager_manifest_url sha256:$cert_manager_manifest_sha256" \
+	"- Barman Cloud manifest: $barman_manifest_url sha256:$barman_manifest_sha256" \
+	"- CloudNativePG operator: $cnpg_operator_identity" \
+	"- PostgreSQL: $postgres_identity" \
+	"- cert-manager cainjector: $cert_manager_cainjector_identity" \
+	"- cert-manager controller: $cert_manager_controller_identity" \
+	"- cert-manager webhook: $cert_manager_webhook_identity" \
+	"- Barman Cloud operator: $barman_operator_identity" \
+	"- Barman Cloud sidecar: $barman_sidecar_identity" \
+	"- MinIO: $minio_identity" \
+	"- credential isolation: operator list=no vela-backup-s3=yes Artifact secrets=no; PostgreSQL vela-backup-s3=yes Artifact secrets=no" \
 	"- source cluster: $source_cluster" \
 	"- restore cluster: $restore_cluster" \
 	"- backup: $backup_name (completed)" \

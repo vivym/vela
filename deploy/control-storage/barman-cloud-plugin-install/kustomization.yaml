@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - manifest.yaml
+patches:
+  - target:
+      group: rbac.authorization.k8s.io
+      version: v1
+      kind: ClusterRole
+      name: plugin-barman-cloud
+    patch: |-
+      - op: test
+        path: /rules/0/apiGroups/0
+        value: ""
+      - op: test
+        path: /rules/0/resources/0
+        value: secrets
+      - op: replace
+        path: /rules/0/verbs
+        value: [get, list, watch]
+      - op: add
+        path: /rules/0/resourceNames
+        value: [vela-backup-s3]

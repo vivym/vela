@@ -57,7 +57,7 @@ func TestRenderedJetStreamContractMatchesTypedReleaseAuthority(t *testing.T) {
 	}
 }
 
-func TestControlStorageKustomizationPublishesJetStreamReleaseContract(t *testing.T) {
+func TestControlStorageKustomizationPublishesReleaseContracts(t *testing.T) {
 	path := controlStoragePath(t, "kustomization.yaml")
 	contents, err := os.ReadFile(path)
 	if err != nil {

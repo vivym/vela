@@ -41,8 +41,12 @@ reintroducing content whose deletion authority is absent from the restored DB.
 For the PostgreSQL path, verify
 `deploy/control-storage/barman-cloud-plugin-contract.json` against the exact
 recovery release before installing cert-manager, CloudNativePG, or the Barman
-Cloud Plugin. Verify each manifest SHA-256, rewrite every operator/sidecar image
-to the recorded digest, and confirm the Cluster names
+Cloud Plugin. Verify each manifest SHA-256, render the verified Barman manifest
+through its release-owned install Kustomization before first apply, rewrite
+every operator/sidecar image to the recorded digest, and confirm the Barman
+operator can read only the exact `vela-backup-s3` Secret while the PostgreSQL
+Role can read the same Secret and neither principal can read Artifact
+credentials. Confirm the Cluster names
 `barman-cloud.cloudnative-pg.io` as its only WAL archiver. Do not fall back to
 deprecated `spec.backup.barmanObjectStore`.
 

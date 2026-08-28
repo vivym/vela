@@ -110,6 +110,17 @@ release installs into the CNPG operator namespace and requires cert-manager
 `vela-system` Kustomize base. Exact manifest SHA-256 values and multi-platform
 OCI digests live in `barman-cloud-plugin-contract.json`.
 
+The upstream Barman manifest grants its operator cluster-wide Secret access,
+which is incompatible with Vela's Artifact credential boundary. After verifying
+the downloaded manifest SHA-256, place it at `manifest.yaml` beside
+`barman-cloud-plugin-install/kustomization.yaml` and render that directory before
+the first apply. The JSON patch tests the pinned rule shape and restricts the
+operator to `get`, `list`, and `watch` on the exact `vela-backup-s3` resource.
+That authority is required for the operator to create the plugin-generated Role
+for `vela-postgres`, which may also read only `vela-backup-s3`; neither principal
+can read Vela Artifact credentials. Any direct application of the upstream
+manifest is rejected by this release contract.
+
 Run the repository conformance drill with proxy variables when the registries
 are not directly reachable:
 
@@ -121,7 +132,8 @@ NO_PROXY=localhost,127.0.0.1,::1 \
 ```
 
 The drill creates a fresh four-node kind cluster, verifies every manifest
-digest, preloads exact-platform images, runs MinIO with bucket versioning,
+digest, applies the RBAC-hardened plugin render, proves operator/sidecar Secret
+isolation, preloads exact-platform images, runs MinIO with bucket versioning,
 completes one plugin base backup, archives the target WAL, and restores a new
 Cluster to a timestamp between two durable marker writes. It proves local API
 and recovery-path conformance only. It is not evidence for a production object
