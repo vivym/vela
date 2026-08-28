@@ -57,6 +57,10 @@ type evidenceReader struct {
 }
 
 func Load(manifestPath, policyPath string, bundle releasebundle.Bundle) (Evidence, error) {
+	manifestPath, policyPath, err := resolveLoadPaths(manifestPath, policyPath)
+	if err != nil {
+		return Evidence{}, err
+	}
 	return load(manifestPath, policyPath, "", bundle)
 }
 
@@ -69,7 +73,30 @@ func LoadWithPolicyDigest(
 	if !validDigest(expectedPolicyDigest) {
 		return Evidence{}, invalidf("expected supply-chain trust policy digest is invalid")
 	}
+	manifestPath, policyPath, err := resolveLoadPaths(manifestPath, policyPath)
+	if err != nil {
+		return Evidence{}, err
+	}
 	return load(manifestPath, policyPath, expectedPolicyDigest, bundle)
+}
+
+func resolveLoadPaths(manifestPath, policyPath string) (string, string, error) {
+	resolvedManifest, err := resolveRelativePath(manifestPath)
+	if err != nil {
+		return "", "", invalidf("resolve supply-chain manifest path: %v", err)
+	}
+	resolvedPolicy, err := resolveRelativePath(policyPath)
+	if err != nil {
+		return "", "", invalidf("resolve supply-chain trust policy path: %v", err)
+	}
+	return resolvedManifest, resolvedPolicy, nil
+}
+
+func resolveRelativePath(value string) (string, error) {
+	if value == "" || filepath.IsAbs(value) {
+		return value, nil
+	}
+	return filepath.Abs(value)
 }
 
 func LoadWithinWithPolicyDigest(
@@ -438,6 +465,9 @@ func validateSPDX(encoded []byte, image releasebundle.OCIImage) (time.Time, erro
 		if !validText(candidate.SPDXID, 500) {
 			return time.Time{}, invalidf("SPDX SBOM package identity is invalid")
 		}
+		if !validSPDXDownloadLocation(candidate.DownloadLocation) {
+			return time.Time{}, invalidf("SPDX SBOM package download location is invalid")
+		}
 		if _, duplicate := ids[candidate.SPDXID]; duplicate {
 			return time.Time{}, invalidf("SPDX SBOM package identity is duplicated")
 		}
@@ -651,6 +681,17 @@ func validDigest(value string) bool {
 func validText(value string, maximum int) bool {
 	return len(value) > 0 && len(value) <= maximum && strings.TrimSpace(value) == value &&
 		strings.IndexFunc(value, unicode.IsControl) == -1
+}
+
+func validSPDXDownloadLocation(value string) bool {
+	if value == "NONE" || value == "NOASSERTION" {
+		return true
+	}
+	if !validText(value, 4096) || strings.IndexFunc(value, unicode.IsSpace) != -1 {
+		return false
+	}
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.IsAbs()
 }
 
 func parseCanonicalTime(value string) (time.Time, error) {

@@ -36,6 +36,74 @@ func TestLoadWithinVerifiesCompleteSupplyChain(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsRelativeManifestAndPolicyPaths(t *testing.T) {
+	fixture := writeEvidenceFixture(t)
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	manifestPath, err := filepath.Rel(workingDirectory, filepath.Join(fixture.directory, "supply-chain.json"))
+	if err != nil {
+		t.Fatalf("make manifest path relative: %v", err)
+	}
+	policyPath, err := filepath.Rel(workingDirectory, filepath.Join(fixture.directory, "supply-chain-policy.json"))
+	if err != nil {
+		t.Fatalf("make policy path relative: %v", err)
+	}
+
+	if _, err := Load(manifestPath, policyPath, fixture.bundle); err != nil {
+		t.Fatalf("load supply-chain evidence through relative CLI paths: %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidSPDXDownloadLocations(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		location string
+		omit     bool
+	}{
+		{name: "missing", omit: true},
+		{name: "empty"},
+		{name: "control character", location: "https://registry.example.invalid/\x00image"},
+		{name: "relative URI", location: "registry.example.invalid/image"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := writeEvidenceFixture(t)
+			setSPDXDownloadLocation(t, fixture, test.location, test.omit)
+
+			_, err := Load(
+				filepath.Join(fixture.directory, "supply-chain.json"),
+				filepath.Join(fixture.directory, "supply-chain-policy.json"),
+				fixture.bundle,
+			)
+			if err == nil || !strings.Contains(err.Error(), "package download location") {
+				t.Fatalf("Load error = %v, want invalid package download location", err)
+			}
+		})
+	}
+}
+
+func TestLoadAcceptsStandardSPDXDownloadLocations(t *testing.T) {
+	for _, location := range []string{
+		"NONE",
+		"NOASSERTION",
+		"git+https://github.com/example/vela.git@v1.0.0",
+	} {
+		t.Run(location, func(t *testing.T) {
+			fixture := writeEvidenceFixture(t)
+			setSPDXDownloadLocation(t, fixture, location, false)
+
+			if _, err := Load(
+				filepath.Join(fixture.directory, "supply-chain.json"),
+				filepath.Join(fixture.directory, "supply-chain-policy.json"),
+				fixture.bundle,
+			); err != nil {
+				t.Fatalf("load standard SPDX download location %q: %v", location, err)
+			}
+		})
+	}
+}
+
 func TestLoadWithinRejectsTamperedOrIncompleteEvidence(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -257,6 +325,7 @@ func TestLoadWithinRejectsDuplicateJSONKeys(t *testing.T) {
 type evidenceFixture struct {
 	directory       string
 	bundle          releasebundle.Bundle
+	signerPrivate   ed25519.PrivateKey
 	approverPrivate ed25519.PrivateKey
 }
 
@@ -365,8 +434,81 @@ func writeEvidenceFixture(t *testing.T) evidenceFixture {
 	}
 	writeJSON(t, filepath.Join(directory, "supply-chain.json"), manifest)
 	return evidenceFixture{
-		directory: directory, bundle: bundle, approverPrivate: approverPrivate,
+		directory: directory, bundle: bundle,
+		signerPrivate: signerPrivate, approverPrivate: approverPrivate,
 	}
+}
+
+func setSPDXDownloadLocation(t *testing.T, fixture evidenceFixture, location string, omit bool) {
+	t.Helper()
+	sbomPath := filepath.Join(fixture.directory, "images", "control.spdx.json")
+	sbomEncoded := mutateJSONFile(t, sbomPath, func(value map[string]any) {
+		spdxPackage := value["packages"].([]any)[0].(map[string]any)
+		if omit {
+			delete(spdxPackage, "downloadLocation")
+			return
+		}
+		spdxPackage["downloadLocation"] = location
+	})
+	sbomDigest := digestBytes(sbomEncoded)
+
+	reportPath := filepath.Join(fixture.directory, "images", "control.vulnerabilities.json")
+	reportEncoded := mutateJSONFile(t, reportPath, func(value map[string]any) {
+		value["sbom_digest"] = sbomDigest
+	})
+	reportDigest := digestBytes(reportEncoded)
+
+	resignEnvelopePayload(
+		t,
+		filepath.Join(fixture.directory, "images", "control.statement.dsse.json"),
+		imageStatementPayloadType,
+		"release-signer-1",
+		fixture.signerPrivate,
+		func(payload map[string]any) {
+			payload["sbom_digest"] = sbomDigest
+			payload["vulnerability_report_digest"] = reportDigest
+		},
+	)
+	resignEnvelopePayload(
+		t,
+		filepath.Join(fixture.directory, "images", "control.approval.dsse.json"),
+		vulnerabilityApprovalPayloadType,
+		"security-approver-1",
+		fixture.approverPrivate,
+		func(payload map[string]any) {
+			payload["sbom_digest"] = sbomDigest
+			payload["vulnerability_report_digest"] = reportDigest
+		},
+	)
+}
+
+func resignEnvelopePayload(
+	t *testing.T,
+	path,
+	payloadType,
+	keyID string,
+	privateKey ed25519.PrivateKey,
+	mutate func(map[string]any),
+) {
+	t.Helper()
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read DSSE envelope fixture: %v", err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatalf("decode DSSE envelope fixture: %v", err)
+	}
+	payloadEncoded, err := base64.StdEncoding.DecodeString(envelope["payload"].(string))
+	if err != nil {
+		t.Fatalf("decode DSSE payload fixture: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloadEncoded, &payload); err != nil {
+		t.Fatalf("decode DSSE payload JSON fixture: %v", err)
+	}
+	mutate(payload)
+	writeJSON(t, path, testEnvelope(t, payloadType, keyID, privateKey, payload))
 }
 
 func testBundleImage(repository, seed string) releasebundle.OCIImage {
@@ -456,7 +598,7 @@ func writeJSON(t *testing.T, path string, value any) []byte {
 	return encoded
 }
 
-func mutateJSONFile(t *testing.T, path string, mutate func(map[string]any)) {
+func mutateJSONFile(t *testing.T, path string, mutate func(map[string]any)) []byte {
 	t.Helper()
 	encoded, err := os.ReadFile(path)
 	if err != nil {
@@ -467,5 +609,5 @@ func mutateJSONFile(t *testing.T, path string, mutate func(map[string]any)) {
 		t.Fatalf("decode JSON fixture: %v", err)
 	}
 	mutate(value)
-	writeJSON(t, path, value)
+	return writeJSON(t, path, value)
 }
