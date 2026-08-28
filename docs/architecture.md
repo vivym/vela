@@ -1343,8 +1343,10 @@ materialization、logical WorkerPool 下 hostname-pinned placement、external
 Secret/ConfigMap revisions 和 OCI manifest/config bytes 推导 release digest 与
 configuration revision；`vela-verify-launch` 与
 Catalog promotion 都必须重新验证该 bundle，并在数据库 transaction 前精确匹配
-receipt 绑定。Registry publication、signature、SBOM、vulnerability approval、
-真实 PKI/Secret、生产节点 materialization 与部署仍是外部 release responsibility。
+receipt 绑定。Slice 44 提供经过完整本地验证后的 digest-only registry upload、
+raw manifest 回读和 credential-free publication receipt contract；实际生产
+registry receipt、signature、SBOM、vulnerability approval、真实 PKI/Secret、
+生产节点 materialization 与部署仍是外部 release responsibility。
 仓库内 bundle、fixture 和测试不是 Launch Receipt，当前仍为 `0/9 PASS`。
 
 | Gate | PASS 证据 | 未通过时行为 |
