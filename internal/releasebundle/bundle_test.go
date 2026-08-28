@@ -170,6 +170,106 @@ func TestBuildRejectsInvalidSecretContracts(t *testing.T) {
 	})
 }
 
+func TestBuildRejectsUnkeyedSecretSelectors(t *testing.T) {
+	tests := []struct {
+		name       string
+		secretName string
+		selector   string
+		keys       []string
+	}{
+		{
+			name:       "whole Secret volume",
+			secretName: "whole-volume-secret-r1",
+			selector:   "  volumes:\n    - name: credentials\n      secret:\n        secretName: whole-volume-secret-r1\n",
+			keys:       []string{"token"},
+		},
+		{
+			name:       "whole Secret envFrom",
+			secretName: "whole-env-secret-r1",
+			selector:   "      envFrom:\n        - secretRef:\n            name: whole-env-secret-r1\n",
+			keys:       []string{"token"},
+		},
+		{
+			name:       "arbitrary declared keys",
+			secretName: "arbitrary-secret-r1",
+			selector:   "      envFrom:\n        - secretRef:\n            name: arbitrary-secret-r1\n",
+			keys:       []string{"alpha", "zeta"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newBundleFixture(t)
+			consumer := "Pod/vela-system/" + test.secretName
+			fixture.plan.ExternalResources = append(fixture.plan.ExternalResources, ExternalResource{
+				Kind: "Secret", Namespace: "vela-system", Name: test.secretName,
+				Revision: testDigest(test.secretName), RequiredKeys: test.keys, Consumers: []string{consumer},
+			})
+			appendFinalRender(t, fixture, "control-storage", testSecretPod(test.secretName, fixture.images[0], test.selector))
+			fixture.writePlan(t)
+			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
+			}
+		})
+	}
+}
+
+func TestBuildRequiresDockerConfigJSONForImagePullSecrets(t *testing.T) {
+	build := func(t *testing.T, keys []string) error {
+		t.Helper()
+		fixture := newBundleFixture(t)
+		fixture.plan.ExternalResources = append(fixture.plan.ExternalResources, ExternalResource{
+			Kind: "Secret", Namespace: "vela-system", Name: "registry-auth-r1",
+			Revision: testDigest("registry auth"), RequiredKeys: keys,
+			Consumers: []string{"Pod/vela-system/registry-auth-r1"},
+		})
+		selector := "  imagePullSecrets:\n    - name: registry-auth-r1\n"
+		appendFinalRender(t, fixture, "control-storage", testSecretPod("registry-auth-r1", fixture.images[0], selector))
+		fixture.writePlan(t)
+		_, _, err := Build(fixture.planPath)
+		return err
+	}
+	if err := build(t, []string{".dockerconfigjson"}); err != nil {
+		t.Fatalf("Build with exact image pull key: %v", err)
+	}
+	if err := build(t, []string{"token"}); !errors.Is(err, ErrInvalidBundle) {
+		t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
+	}
+}
+
+func TestBuildRequiresExactKeysForKeyedSecretSelectors(t *testing.T) {
+	build := func(t *testing.T, keys []string) error {
+		t.Helper()
+		fixture := newBundleFixture(t)
+		fixture.plan.ExternalResources = append(fixture.plan.ExternalResources, ExternalResource{
+			Kind: "Secret", Namespace: "vela-system", Name: "keyed-secret-r1",
+			Revision: testDigest("keyed secret"), RequiredKeys: keys,
+			Consumers: []string{"Pod/vela-system/keyed-secret-r1"},
+		})
+		selector := "      env:\n        - name: TOKEN\n          valueFrom:\n            secretKeyRef:\n              name: keyed-secret-r1\n              key: token\n" +
+			"  volumes:\n    - name: projected-credentials\n      projected:\n        sources:\n          - secret:\n              name: keyed-secret-r1\n              items:\n                - key: certificate\n                  path: certificate\n"
+		appendFinalRender(t, fixture, "control-storage", testSecretPod("keyed-secret-r1", fixture.images[0], selector))
+		fixture.writePlan(t)
+		_, _, err := Build(fixture.planPath)
+		return err
+	}
+	if err := build(t, []string{"certificate", "token"}); err != nil {
+		t.Fatalf("Build with exact keyed selectors: %v", err)
+	}
+	for _, test := range []struct {
+		name string
+		keys []string
+	}{
+		{name: "omission", keys: []string{"token"}},
+		{name: "extra", keys: []string{"certificate", "token", "z-extra"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := build(t, test.keys); !errors.Is(err, ErrInvalidBundle) {
+				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
+			}
+		})
+	}
+}
+
 func TestBuildRejectsInvalidFinalRenderIdentity(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -441,6 +541,24 @@ func findExternalResource(t *testing.T, fixture *bundleFixture, namespace, name 
 	}
 	t.Fatalf("external resource %s/%s not found", namespace, name)
 	return nil
+}
+
+func appendFinalRender(t *testing.T, fixture *bundleFixture, name, document string) {
+	t.Helper()
+	for _, render := range fixture.plan.FinalRenders {
+		if render.Name == name {
+			path := filepath.Join(fixture.directory, render.Ref)
+			writeTestFile(t, path, append(readTestFile(t, path), []byte(document)...))
+			return
+		}
+	}
+	t.Fatalf("final render %s not found", name)
+}
+
+func testSecretPod(name, image, selector string) string {
+	return "apiVersion: v1\nkind: Pod\nmetadata:\n  name: " + name +
+		"\n  namespace: vela-system\nspec:\n  containers:\n    - name: probe\n      image: " + image + "\n" +
+		selector + "---\n"
 }
 
 func newBundleFixture(t *testing.T) *bundleFixture {

@@ -139,7 +139,7 @@ func scanRenderedValue(value any, namespace, consumer string, inventory *renderI
 					if !validResourceName(stringValue) {
 						return errors.New("imagePullSecrets contains an invalid Secret name")
 					}
-					recordReference(inventory, resourceKey{Kind: "Secret", Namespace: namespace, Name: stringValue}, consumer, nil)
+					recordReference(inventory, resourceKey{Kind: "Secret", Namespace: namespace, Name: stringValue}, consumer, []string{".dockerconfigjson"})
 				}
 			}
 			if childMap, ok := child.(map[string]any); ok {
@@ -151,8 +151,12 @@ func scanRenderedValue(value any, namespace, consumer string, inventory *renderI
 					if !validResourceName(name) {
 						return fmt.Errorf("%s reference has an invalid name", key)
 					}
+					keys, err := selectorSecretKeys(kind, childMap)
+					if err != nil {
+						return fmt.Errorf("%s reference: %w", key, err)
+					}
 					resource := resourceKey{Kind: kind, Namespace: namespace, Name: name}
-					recordReference(inventory, resource, consumer, selectorSecretKeys(kind, childMap))
+					recordReference(inventory, resource, consumer, keys)
 				}
 			}
 			if parentKey == "data" {
@@ -234,23 +238,36 @@ func directSecretKeys(key string) []string {
 	}
 }
 
-func selectorSecretKeys(kind string, selector map[string]any) []string {
+func selectorSecretKeys(kind string, selector map[string]any) ([]string, error) {
 	if kind != "Secret" {
-		return nil
+		return nil, nil
 	}
 	keys := make([]string, 0)
-	if key, ok := selector["key"].(string); ok {
+	if value, present := selector["key"]; present {
+		key, ok := value.(string)
+		if !ok || len(validation.IsConfigMapKey(key)) != 0 || containsTemplateValue(key) {
+			return nil, errors.New("key must name an exact Secret key")
+		}
 		keys = append(keys, key)
 	}
-	if items, ok := selector["items"].([]any); ok {
+	if value, present := selector["items"]; present {
+		items, ok := value.([]any)
+		if !ok {
+			return nil, errors.New("items must enumerate exact Secret keys")
+		}
 		for _, item := range items {
-			itemMap, _ := item.(map[string]any)
-			if key, ok := itemMap["key"].(string); ok {
-				keys = append(keys, key)
+			itemMap, ok := item.(map[string]any)
+			key, keyOK := itemMap["key"].(string)
+			if !ok || !keyOK || len(validation.IsConfigMapKey(key)) != 0 || containsTemplateValue(key) {
+				return nil, errors.New("items must enumerate exact Secret keys")
 			}
+			keys = append(keys, key)
 		}
 	}
-	return keys
+	if len(keys) == 0 {
+		return nil, errors.New("must enumerate at least one exact Secret key")
+	}
+	return keys, nil
 }
 
 func isImageField(key, parent string) bool {
@@ -587,7 +604,7 @@ func validateExternalResources(resources []ExternalResource, inventory renderInv
 				return invalidf("external Secret %s/%s consumers do not exactly match rendered consumers", resource.Namespace, resource.Name)
 			}
 			observedKeys := sortedSet(inventory.secretKeys[key])
-			if len(observedKeys) != 0 && !reflect.DeepEqual(observedKeys, resource.RequiredKeys) {
+			if !reflect.DeepEqual(observedKeys, resource.RequiredKeys) {
 				return invalidf("external Secret %s/%s required_keys do not exactly match keyed references", resource.Namespace, resource.Name)
 			}
 		}
