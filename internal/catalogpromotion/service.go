@@ -51,10 +51,10 @@ func New(
 	}
 	if !filepath.IsAbs(supplyChainPolicy.Path) ||
 		filepath.Clean(supplyChainPolicy.Path) != supplyChainPolicy.Path {
-		return nil, errors.New("Catalog Promotion supply-chain trust policy path must be canonical and absolute")
+		return nil, errors.New("catalog promotion supply-chain trust policy path must be canonical and absolute")
 	}
 	if _, err := decodeDigest(supplyChainPolicy.Digest); err != nil {
-		return nil, fmt.Errorf("Catalog Promotion supply-chain trust policy digest: %w", err)
+		return nil, fmt.Errorf("catalog promotion supply-chain trust policy digest: %w", err)
 	}
 	return &Service{pool: pool, supplyChainPolicy: supplyChainPolicy}, nil
 }
