@@ -227,31 +227,16 @@ func TestLoadWithinRejectsTamperedOrIncompleteEvidence(t *testing.T) {
 			name: "approval not after scan",
 			mutate: func(t *testing.T, fixture evidenceFixture) {
 				t.Helper()
-				path := filepath.Join(fixture.directory, "images", "control.approval.dsse.json")
-				encoded, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatalf("read approval fixture: %v", err)
-				}
-				var envelope map[string]any
-				if err := json.Unmarshal(encoded, &envelope); err != nil {
-					t.Fatalf("decode approval envelope fixture: %v", err)
-				}
-				payloadEncoded, err := base64.StdEncoding.DecodeString(envelope["payload"].(string))
-				if err != nil {
-					t.Fatalf("decode approval payload fixture: %v", err)
-				}
-				var payload map[string]any
-				if err := json.Unmarshal(payloadEncoded, &payload); err != nil {
-					t.Fatalf("decode approval payload JSON fixture: %v", err)
-				}
-				payload["approved_at"] = "2026-08-29T04:00:00Z"
-				writeJSON(t, path, testEnvelope(
+				resignEnvelopePayload(
 					t,
+					filepath.Join(fixture.directory, "images", "control.approval.dsse.json"),
 					vulnerabilityApprovalPayloadType,
 					"security-approver-1",
 					fixture.approverPrivate,
-					payload,
-				))
+					func(payload map[string]any) {
+						payload["approved_at"] = "2026-08-29T04:00:00Z"
+					},
+				)
 			},
 			match: "approval time",
 		},

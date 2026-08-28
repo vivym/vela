@@ -626,7 +626,11 @@ func (reader *evidenceReader) readUnique(reference, role string, maximum int64) 
 	if err != nil || len(encoded) == 0 || int64(len(encoded)) > maximum {
 		return nil, invalidf("read bounded %s: %v", role, err)
 	}
-	reader.remaining -= int64(len(encoded))
+	actual := int64(len(encoded))
+	if actual > reader.remaining {
+		return nil, invalidf("supply-chain evidence exceeds aggregate byte limit")
+	}
+	reader.remaining -= actual
 	return encoded, nil
 }
 
