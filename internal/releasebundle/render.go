@@ -17,34 +17,76 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
-var essentialResources = map[string][]resourceKey{
+type renderedResourceContract struct {
+	APIVersion    string
+	Kind          string
+	Namespace     string
+	Name          string
+	NamePrefix    string
+	ClusterScoped bool
+}
+
+var finalRenderInventory = map[string][]renderedResourceContract{
 	"control-storage": {
-		{Kind: "Service", Namespace: "vela-system", Name: "nats"},
-		{Kind: "StatefulSet", Namespace: "vela-system", Name: "nats"},
-		{Kind: "ObjectStore", Namespace: "vela-system", Name: "vela-postgres-backup"},
-		{Kind: "Cluster", Namespace: "vela-system", Name: "vela-postgres"},
-		{Kind: "ScheduledBackup", Namespace: "vela-system", Name: "vela-postgres-daily"},
+		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", Name: "nats-config"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-barman-cloud-plugin-contract-"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-jetstream-contract-"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", Name: "vela-recovery-contract"},
+		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "nats"},
+		{APIVersion: "apps/v1", Kind: "StatefulSet", Namespace: "vela-system", Name: "nats"},
+		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "nats"},
+		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "vela-postgres"},
+		{APIVersion: "barmancloud.cnpg.io/v1", Kind: "ObjectStore", Namespace: "vela-system", Name: "vela-postgres-backup"},
+		{APIVersion: "postgresql.cnpg.io/v1", Kind: "Cluster", Namespace: "vela-system", Name: "vela-postgres"},
+		{APIVersion: "postgresql.cnpg.io/v1", Kind: "ScheduledBackup", Namespace: "vela-system", Name: "vela-postgres-daily"},
 	},
 	"fleet-controller": {
-		{Kind: "Deployment", Namespace: "vela-system", Name: "vela-fleet-controller"},
-		{Kind: "Service", Namespace: "vela-system", Name: "vela-fleet-admission"},
-		{Kind: "CustomResourceDefinition", Name: "workerpools.fleet.vela.ai"},
-		{Kind: "ValidatingWebhookConfiguration", Name: "vela-fleet-protection"},
+		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
+		{APIVersion: "apiextensions.k8s.io/v1", Kind: "CustomResourceDefinition", Name: "workerpools.fleet.vela.ai", ClusterScoped: true},
+		{APIVersion: "v1", Kind: "ServiceAccount", Namespace: "vela-system", Name: "vela-fleet-controller"},
+		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "Role", Namespace: "vela-system", Name: "vela-fleet-controller"},
+		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRole", Name: "vela-fleet-controller-node-reader", ClusterScoped: true},
+		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "RoleBinding", Namespace: "vela-system", Name: "vela-fleet-controller"},
+		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRoleBinding", Name: "vela-fleet-controller-node-reader", ClusterScoped: true},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-fleet-desired-"},
+		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-fleet-admission"},
+		{APIVersion: "apps/v1", Kind: "Deployment", Namespace: "vela-system", Name: "vela-fleet-controller"},
+		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "vela-fleet-controller"},
+		{APIVersion: "admissionregistration.k8s.io/v1", Kind: "ValidatingWebhookConfiguration", Name: "vela-fleet-protection", ClusterScoped: true},
 	},
 	"observability": {
-		{Kind: "PodMonitor", Namespace: "vela-observability", Name: "vela-control"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-observability", NamePrefix: "vela-slo-alert-rules-"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-observability", NamePrefix: "vela-slo-contract-"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-observability", NamePrefix: "vela-slo-dashboard-"},
+		{APIVersion: "monitoring.coreos.com/v1", Kind: "PodMonitor", Namespace: "vela-observability", Name: "vela-control"},
 	},
 	"vela-control": {
-		{Kind: "Deployment", Namespace: "vela-system", Name: "vela-control"},
-		{Kind: "Service", Namespace: "vela-system", Name: "vela-api"},
-		{Kind: "Service", Namespace: "vela-system", Name: "vela-control"},
-		{Kind: "Service", Namespace: "vela-system", Name: "vela-worker-control"},
-		{Kind: "Service", Namespace: "vela-system", Name: "vela-finance-reconciliation"},
-		{Kind: "Service", Namespace: "vela-system", Name: "vela-compliance"},
-		{Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-default-deny-ingress"},
+		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
+		{APIVersion: "v1", Kind: "ServiceAccount", Namespace: "vela-system", Name: "vela-control"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-control-node-agents-"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-control-runtime-"},
+		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-api"},
+		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-compliance"},
+		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-control"},
+		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-finance-reconciliation"},
+		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-worker-control"},
+		{APIVersion: "scheduling.k8s.io/v1", Kind: "PriorityClass", Name: "vela-control-critical", ClusterScoped: true},
+		{APIVersion: "apps/v1", Kind: "Deployment", Namespace: "vela-system", Name: "vela-control"},
+		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "vela-control"},
+		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-api"},
+		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-compliance"},
+		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-finance"},
+		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-fleet"},
+		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-observability"},
+		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-worker"},
+		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-default-deny-ingress"},
 	},
 	"worker-agent": {
-		{Kind: "DaemonSet", Namespace: "vela-system", Name: "vela-h3-worker"},
+		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
+		{APIVersion: "v1", Kind: "ServiceAccount", Namespace: "vela-system", Name: "vela-worker"},
+		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "vela-h3-worker"},
+		{APIVersion: "apps/v1", Kind: "DaemonSet", Namespace: "vela-system", Name: "vela-h3-worker"},
 	},
 }
 
@@ -53,12 +95,11 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 	if err != nil || len(documents) == 0 {
 		return invalidf("final render %s must contain valid Kubernetes YAML documents: %v", name, err)
 	}
-	expectedNamespace := "vela-system"
-	if name == "observability" {
-		expectedNamespace = "vela-observability"
+	expected := finalRenderInventory[name]
+	if len(documents) != len(expected) {
+		return invalidf("final render %s contains %d resources, want exact inventory of %d", name, len(documents), len(expected))
 	}
-	namespacedObjects := 0
-	foundEssential := make(map[resourceKey]struct{}, len(essentialResources[name]))
+	found := make([]bool, len(expected))
 	for _, document := range documents {
 		apiVersion, _ := document["apiVersion"].(string)
 		kind, _ := document["kind"].(string)
@@ -68,29 +109,23 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 		if apiVersion == "" || kind == "" || !validResourceName(resourceName) {
 			return invalidf("final render %s contains an invalid Kubernetes object identity", name)
 		}
-		fullKey := objectKey{APIVersion: apiVersion, Kind: kind, Namespace: namespace, Name: resourceName}
-		if prior, duplicate := inventory.objects[fullKey]; duplicate {
-			return invalidf("Kubernetes resource %s/%s/%s/%s is duplicated in renders %s and %s", apiVersion, kind, namespace, resourceName, prior, name)
-		}
-		inventory.objects[fullKey] = name
-		identity := resourceKey{Kind: kind, Namespace: namespace, Name: resourceName}
-		for owner, required := range essentialResources {
-			if slices.Contains(required, identity) {
-				if owner != name {
-					return invalidf("essential resource %s/%s/%s is in render %s, want %s", kind, namespace, resourceName, name, owner)
-				}
-				foundEssential[identity] = struct{}{}
-			}
-		}
 		if kind == "Secret" {
 			return invalidf("final render %s embeds a Secret object", name)
 		}
-		if namespace != "" {
-			namespacedObjects++
-			if namespace != expectedNamespace {
-				return invalidf("final render %s contains object %s/%s in namespace %s, want %s", name, kind, resourceName, namespace, expectedNamespace)
+		matched := -1
+		for index, contract := range expected {
+			if contract.matches(apiVersion, kind, namespace, resourceName) {
+				if found[index] {
+					return invalidf("final render %s duplicates resource %s/%s/%s/%s", name, apiVersion, kind, namespace, resourceName)
+				}
+				matched = index
+				break
 			}
 		}
+		if matched < 0 {
+			return invalidf("final render %s contains unexpected resource %s/%s/%s/%s", name, apiVersion, kind, namespace, resourceName)
+		}
+		found[matched] = true
 		if kind == "ConfigMap" {
 			key := resourceKey{Kind: kind, Namespace: namespace, Name: resourceName}
 			if _, duplicate := inventory.declared[key]; duplicate {
@@ -103,15 +138,36 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 			return invalidf("final render %s: %v", name, err)
 		}
 	}
-	for _, required := range essentialResources[name] {
-		if _, found := foundEssential[required]; !found {
-			return invalidf("final render %s is missing essential resource %s/%s/%s", name, required.Kind, required.Namespace, required.Name)
+	for index, present := range found {
+		if !present {
+			contract := expected[index]
+			return invalidf("final render %s is missing resource %s/%s/%s/%s", name, contract.APIVersion, contract.Kind, contract.Namespace, contract.displayName())
 		}
 	}
-	if namespacedObjects == 0 {
-		return invalidf("final render %s contains no object in namespace %s", name, expectedNamespace)
-	}
 	return nil
+}
+
+// The inventory validates release ownership and identity only. Kubernetes API
+// schema and admission validation remain external deployment gates.
+func (contract renderedResourceContract) matches(apiVersion, kind, namespace, name string) bool {
+	if apiVersion != contract.APIVersion || kind != contract.Kind || (namespace == "") != contract.ClusterScoped {
+		return false
+	}
+	if !contract.ClusterScoped && namespace != contract.Namespace {
+		return false
+	}
+	if contract.Name != "" {
+		return name == contract.Name
+	}
+	return contract.Kind == "ConfigMap" && strings.HasPrefix(name, contract.NamePrefix) &&
+		len(name) > len(contract.NamePrefix) && !containsTemplateValue(name)
+}
+
+func (contract renderedResourceContract) displayName() string {
+	if contract.Name != "" {
+		return contract.Name
+	}
+	return contract.NamePrefix + "*"
 }
 
 func scanRenderedValue(value any, namespace, consumer string, inventory *renderInventory, parentKey string) error {

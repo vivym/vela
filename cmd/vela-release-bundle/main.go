@@ -49,13 +49,8 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stderr, "build release bundle: %v\n", err)
 			return 1
 		}
-		if err := writeAtomic(arguments[2], encoded); err != nil {
-			_, _ = fmt.Fprintf(stderr, "build release bundle: write output: %v\n", err)
-			return 1
-		}
-		verified, err := loadBundle(arguments[2])
-		if err != nil || !sameDerivedIdentity(verified, bundle) {
-			_, _ = fmt.Fprintf(stderr, "build release bundle: post-write verification failed: %v\n", err)
+		if err := writeVerifiedAtomic(arguments[2], encoded, bundle); err != nil {
+			_, _ = fmt.Fprintf(stderr, "build release bundle: write verified output: %v\n", err)
 			return 1
 		}
 		_, _ = fmt.Fprintf(stdout, "PASS release=%s configuration=%s output=%s\n", bundle.ReleaseDigest, bundle.ConfigurationRevision, arguments[2])
@@ -140,7 +135,7 @@ func sameDerivedIdentity(left, right releasebundle.Bundle) bool {
 		reflect.DeepEqual(left.ConfigurationManifest, right.ConfigurationManifest)
 }
 
-func writeAtomic(path string, content []byte) error {
+func writeVerifiedAtomic(path string, content []byte, expected releasebundle.Bundle) error {
 	directory := filepath.Dir(path)
 	temporary, err := os.CreateTemp(directory, ".vela-release-bundle-*")
 	if err != nil {
@@ -163,5 +158,23 @@ func writeAtomic(path string, content []byte) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, path)
+	verified, err := loadBundle(temporaryPath)
+	if err != nil {
+		return fmt.Errorf("verify candidate: %w", err)
+	}
+	if !sameDerivedIdentity(verified, expected) {
+		return fmt.Errorf("verify candidate: derived identity mismatch")
+	}
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return err
+	}
+	directoryHandle, err := os.Open(directory)
+	if err != nil {
+		return fmt.Errorf("open output directory for sync: %w", err)
+	}
+	defer func() { _ = directoryHandle.Close() }()
+	if err := directoryHandle.Sync(); err != nil {
+		return fmt.Errorf("sync output directory: %w", err)
+	}
+	return nil
 }

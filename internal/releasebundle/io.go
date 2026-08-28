@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -82,12 +83,27 @@ func decodeStrictJSON(encoded []byte, destination any) error {
 }
 
 func readRooted(root *os.Root, reference string, maximum int64) ([]byte, error) {
-	reference = filepath.FromSlash(reference)
-	if !filepath.IsLocal(reference) || reference == "." {
-		return nil, errors.New("artifact reference must be a local relative file path")
+	normalized, err := normalizeArtifactReference(reference)
+	if err != nil {
+		return nil, err
 	}
+	return readNormalizedRooted(root, normalized, maximum)
+}
+
+func normalizeArtifactReference(reference string) (string, error) {
+	if reference == "" || strings.Contains(reference, `\`) || path.Clean(reference) != reference {
+		return "", errors.New("artifact reference must be a canonical slash-separated path")
+	}
+	normalized := filepath.FromSlash(reference)
+	if !filepath.IsLocal(normalized) || normalized == "." {
+		return "", errors.New("artifact reference must be a local relative file path")
+	}
+	return normalized, nil
+}
+
+func readNormalizedRooted(root *os.Root, normalized string, maximum int64) ([]byte, error) {
 	prefix := ""
-	for _, component := range strings.Split(filepath.Clean(reference), string(filepath.Separator)) {
+	for _, component := range strings.Split(normalized, string(filepath.Separator)) {
 		if prefix == "" {
 			prefix = component
 		} else {
@@ -101,7 +117,7 @@ func readRooted(root *os.Root, reference string, maximum int64) ([]byte, error) 
 			return nil, errors.New("artifact path must not contain a symbolic link")
 		}
 	}
-	file, err := root.Open(reference)
+	file, err := root.Open(normalized)
 	if err != nil {
 		return nil, err
 	}
@@ -118,13 +134,17 @@ func readRooted(root *os.Root, reference string, maximum int64) ([]byte, error) 
 }
 
 func artifactFor(root *os.Root, reference, mediaType string, maximum int64) (Artifact, []byte, error) {
-	content, err := readRooted(root, reference, maximum)
+	normalized, err := normalizeArtifactReference(reference)
+	if err != nil {
+		return Artifact{}, nil, err
+	}
+	content, err := readNormalizedRooted(root, normalized, maximum)
 	if err != nil {
 		return Artifact{}, nil, err
 	}
 	digest := sha256.Sum256(content)
 	return Artifact{
-		Ref: filepath.ToSlash(filepath.Clean(reference)), MediaType: mediaType,
+		Ref: filepath.ToSlash(normalized), MediaType: mediaType,
 		Digest: "sha256:" + hex.EncodeToString(digest[:]), SizeBytes: int64(len(content)),
 	}, content, nil
 }

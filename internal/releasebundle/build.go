@@ -24,9 +24,37 @@ var (
 	fixedRenderNames = []string{
 		"control-storage", "fleet-controller", "observability", "vela-control", "worker-agent",
 	}
-	fixedPackageNames = []string{"h3-runner", "node-agent"}
-	imagePattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._-]*)+@sha256:[0-9a-f]{64}$`)
-	gpuPattern        = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	fixedPackageNames  = []string{"h3-runner", "node-agent"}
+	imagePattern       = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._-]*)+@sha256:[0-9a-f]{64}$`)
+	gpuPattern         = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	nodeAgentSystemdV1 = map[string]map[string]string{
+		"Unit": {
+			"Description": "Vela host remediation Node Agent",
+			"Wants":       "network-online.target",
+			"After":       "network-online.target",
+		},
+		"Service": {
+			"Type":                    "simple",
+			"ExecStart":               "",
+			"EnvironmentFile":         "/etc/vela/node-agent.env",
+			"Restart":                 "on-failure",
+			"RestartSec":              "5s",
+			"UMask":                   "0077",
+			"RuntimeDirectory":        "vela-node-agent",
+			"RuntimeDirectoryMode":    "0755",
+			"StateDirectory":          "vela-node-agent",
+			"ProtectHome":             "true",
+			"PrivateTmp":              "true",
+			"RestrictAddressFamilies": "AF_UNIX AF_INET AF_INET6",
+			"LockPersonality":         "true",
+			"MemoryDenyWriteExecute":  "true",
+			"NoNewPrivileges":         "false",
+			"LimitNOFILE":             "4096",
+		},
+		"Install": {
+			"WantedBy": "multi-user.target",
+		},
+	}
 )
 
 type resourceKey struct {
@@ -35,20 +63,12 @@ type resourceKey struct {
 	Name      string
 }
 
-type objectKey struct {
-	APIVersion string
-	Kind       string
-	Namespace  string
-	Name       string
-}
-
 type renderInventory struct {
 	declared         map[resourceKey]struct{}
 	referred         map[resourceKey]struct{}
 	expectedRevision map[resourceKey]string
 	secretKeys       map[resourceKey]map[string]struct{}
 	secretConsumers  map[resourceKey]map[string]struct{}
-	objects          map[objectKey]string
 	images           map[string]struct{}
 }
 
@@ -59,7 +79,6 @@ func newRenderInventory() renderInventory {
 		expectedRevision: make(map[resourceKey]string),
 		secretKeys:       make(map[resourceKey]map[string]struct{}),
 		secretConsumers:  make(map[resourceKey]map[string]struct{}),
-		objects:          make(map[objectKey]string),
 		images:           make(map[string]struct{}),
 	}
 }
@@ -408,12 +427,63 @@ func validatePackageContract(name string, encoded []byte, artifact Artifact) (Pa
 }
 
 func validateSystemdUnit(encoded []byte, entrypoint string) error {
-	content := string(encoded)
-	if entrypoint == "" || strings.Count(content, "ExecStart="+entrypoint) != 1 ||
-		!strings.Contains(content, "[Service]") || !strings.Contains(content, "[Install]") ||
-		!strings.Contains(content, "UMask=0077") || !strings.Contains(content, "WantedBy=multi-user.target") ||
-		containsTemplateValue(content) {
+	if entrypoint == "" || containsTemplateValue(string(encoded)) {
 		return invalid("node Agent systemd unit is not bound to the package entrypoint and hardening contract")
+	}
+	seenSections := make(map[string]struct{}, len(nodeAgentSystemdV1))
+	seenDirectives := make(map[string]struct{})
+	section := ""
+	for lineNumber, raw := range strings.Split(string(encoded), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if strings.HasSuffix(line, `\`) {
+			return invalidf("node Agent systemd unit line %d uses a continuation", lineNumber+1)
+		}
+		if strings.HasPrefix(line, "[") || strings.HasSuffix(line, "]") {
+			if len(line) < 3 || !strings.HasPrefix(line, "[") || !strings.HasSuffix(line, "]") {
+				return invalidf("node Agent systemd unit line %d has a malformed section", lineNumber+1)
+			}
+			section = strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
+			if _, allowed := nodeAgentSystemdV1[section]; !allowed {
+				return invalidf("node Agent systemd unit contains unknown section %q", section)
+			}
+			if _, duplicate := seenSections[section]; duplicate {
+				return invalidf("node Agent systemd unit repeats section %q", section)
+			}
+			seenSections[section] = struct{}{}
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		if !found || section == "" || key == "" || strings.TrimSpace(key) != key {
+			return invalidf("node Agent systemd unit line %d is malformed", lineNumber+1)
+		}
+		expected, allowed := nodeAgentSystemdV1[section][key]
+		if !allowed {
+			return invalidf("node Agent systemd unit contains unknown directive %s.%s", section, key)
+		}
+		identity := section + "." + key
+		if _, duplicate := seenDirectives[identity]; duplicate {
+			return invalidf("node Agent systemd unit repeats directive %s", identity)
+		}
+		seenDirectives[identity] = struct{}{}
+		if key == "ExecStart" {
+			expected = entrypoint
+		}
+		if value != expected {
+			return invalidf("node Agent systemd unit directive %s does not match version 1", identity)
+		}
+	}
+	for expectedSection, directives := range nodeAgentSystemdV1 {
+		if _, present := seenSections[expectedSection]; !present {
+			return invalidf("node Agent systemd unit is missing section %q", expectedSection)
+		}
+		for key := range directives {
+			if _, present := seenDirectives[expectedSection+"."+key]; !present {
+				return invalidf("node Agent systemd unit is missing directive %s.%s", expectedSection, key)
+			}
+		}
 	}
 	return nil
 }

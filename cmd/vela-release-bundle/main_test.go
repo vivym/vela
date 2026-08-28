@@ -96,6 +96,9 @@ func TestRunBuildRejectsPostWriteIdentityMismatch(t *testing.T) {
 	if err := os.WriteFile(plan, []byte("plan"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(output, []byte("prior valid bundle"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	built := releasebundle.Bundle{
 		ReleaseDigest:         "sha256:" + strings.Repeat("a", 64),
 		ConfigurationRevision: "sha256:" + strings.Repeat("b", 64),
@@ -108,8 +111,16 @@ func TestRunBuildRejectsPostWriteIdentityMismatch(t *testing.T) {
 	t.Cleanup(func() { buildBundle, loadBundle = priorBuild, priorLoad })
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"build", plan, output}, &stdout, &stderr); code != 1 ||
-		stdout.Len() != 0 || !strings.Contains(stderr.String(), "post-write verification failed") {
+		stdout.Len() != 0 || !strings.Contains(stderr.String(), "derived identity mismatch") {
 		t.Fatalf("run = code %d stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+	content, err := os.ReadFile(output)
+	if err != nil || string(content) != "prior valid bundle" {
+		t.Fatalf("prior output = %q error=%v", content, err)
+	}
+	matches, err := filepath.Glob(filepath.Join(directory, ".vela-release-bundle-*"))
+	if err != nil || len(matches) != 0 {
+		t.Fatalf("candidate files = %v error=%v", matches, err)
 	}
 }
 
@@ -143,16 +154,30 @@ func TestRunRejectsOutputOutsidePlanRoot(t *testing.T) {
 	}
 }
 
-func TestWriteAtomicReplacesCompleteFile(t *testing.T) {
+func TestWriteVerifiedAtomicReplacesCompleteFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bundle.json")
 	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeAtomic(path, []byte("new bundle")); err != nil {
+	expected := releasebundle.Bundle{ReleaseDigest: "sha256:" + strings.Repeat("a", 64)}
+	priorLoad := loadBundle
+	loadBundle = func(candidate string) (releasebundle.Bundle, error) {
+		content, err := os.ReadFile(candidate)
+		if err != nil || string(content) != "new bundle" {
+			t.Fatalf("candidate = %q error=%v", content, err)
+		}
+		return expected, nil
+	}
+	t.Cleanup(func() { loadBundle = priorLoad })
+	if err := writeVerifiedAtomic(path, []byte("new bundle"), expected); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil || string(content) != "new bundle" {
 		t.Fatalf("atomic output = %q error=%v", content, err)
+	}
+	information, err := os.Stat(path)
+	if err != nil || information.Mode().Perm() != 0o600 {
+		t.Fatalf("atomic output mode = %v error=%v", information.Mode(), err)
 	}
 }

@@ -180,31 +180,31 @@ func TestBuildRejectsUnkeyedSecretSelectors(t *testing.T) {
 		{
 			name:       "whole Secret volume",
 			secretName: "whole-volume-secret-r1",
-			selector:   "  volumes:\n    - name: credentials\n      secret:\n        secretName: whole-volume-secret-r1\n",
+			selector:   "secretProbe:\n  secret:\n    secretName: whole-volume-secret-r1\n",
 			keys:       []string{"token"},
 		},
 		{
 			name:       "whole Secret envFrom",
 			secretName: "whole-env-secret-r1",
-			selector:   "      envFrom:\n        - secretRef:\n            name: whole-env-secret-r1\n",
+			selector:   "envProbe:\n  secretRef:\n    name: whole-env-secret-r1\n",
 			keys:       []string{"token"},
 		},
 		{
 			name:       "arbitrary declared keys",
 			secretName: "arbitrary-secret-r1",
-			selector:   "      envFrom:\n        - secretRef:\n            name: arbitrary-secret-r1\n",
+			selector:   "envProbe:\n  secretRef:\n    name: arbitrary-secret-r1\n",
 			keys:       []string{"alpha", "zeta"},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newBundleFixture(t)
-			consumer := "Pod/vela-system/" + test.secretName
+			consumer := "StatefulSet/vela-system/nats"
 			fixture.plan.ExternalResources = append(fixture.plan.ExternalResources, ExternalResource{
 				Kind: "Secret", Namespace: "vela-system", Name: test.secretName,
 				Revision: testDigest(test.secretName), RequiredKeys: test.keys, Consumers: []string{consumer},
 			})
-			appendFinalRender(t, fixture, "control-storage", testSecretPod(test.secretName, fixture.images[0], test.selector))
+			appendToRenderedResource(t, fixture, "control-storage", "apps/v1", "StatefulSet", "nats", test.selector)
 			fixture.writePlan(t)
 			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
@@ -220,10 +220,10 @@ func TestBuildRequiresDockerConfigJSONForImagePullSecrets(t *testing.T) {
 		fixture.plan.ExternalResources = append(fixture.plan.ExternalResources, ExternalResource{
 			Kind: "Secret", Namespace: "vela-system", Name: "registry-auth-r1",
 			Revision: testDigest("registry auth"), RequiredKeys: keys,
-			Consumers: []string{"Pod/vela-system/registry-auth-r1"},
+			Consumers: []string{"StatefulSet/vela-system/nats"},
 		})
-		selector := "  imagePullSecrets:\n    - name: registry-auth-r1\n"
-		appendFinalRender(t, fixture, "control-storage", testSecretPod("registry-auth-r1", fixture.images[0], selector))
+		selector := "imagePullSecrets:\n  - name: registry-auth-r1\n"
+		appendToRenderedResource(t, fixture, "control-storage", "apps/v1", "StatefulSet", "nats", selector)
 		fixture.writePlan(t)
 		_, _, err := Build(fixture.planPath)
 		return err
@@ -243,11 +243,11 @@ func TestBuildRequiresExactKeysForKeyedSecretSelectors(t *testing.T) {
 		fixture.plan.ExternalResources = append(fixture.plan.ExternalResources, ExternalResource{
 			Kind: "Secret", Namespace: "vela-system", Name: "keyed-secret-r1",
 			Revision: testDigest("keyed secret"), RequiredKeys: keys,
-			Consumers: []string{"Pod/vela-system/keyed-secret-r1"},
+			Consumers: []string{"StatefulSet/vela-system/nats"},
 		})
-		selector := "      env:\n        - name: TOKEN\n          valueFrom:\n            secretKeyRef:\n              name: keyed-secret-r1\n              key: token\n" +
-			"  volumes:\n    - name: projected-credentials\n      projected:\n        sources:\n          - secret:\n              name: keyed-secret-r1\n              items:\n                - key: certificate\n                  path: certificate\n"
-		appendFinalRender(t, fixture, "control-storage", testSecretPod("keyed-secret-r1", fixture.images[0], selector))
+		selector := "envProbe:\n  secretKeyRef:\n    name: keyed-secret-r1\n    key: token\n" +
+			"projectedProbe:\n  secret:\n    name: keyed-secret-r1\n    items:\n      - key: certificate\n        path: certificate\n"
+		appendToRenderedResource(t, fixture, "control-storage", "apps/v1", "StatefulSet", "nats", selector)
 		fixture.writePlan(t)
 		_, _, err := Build(fixture.planPath)
 		return err
@@ -288,6 +288,23 @@ func TestBuildRejectsInvalidFinalRenderIdentity(t *testing.T) {
 			path := filepath.Join(fixture.directory, fixture.plan.FinalRenders[0].Ref)
 			content := append(readTestFile(t, path), []byte(testObject("v1", "Service", "vela-system", "nats"))...)
 			writeTestFile(t, path, content)
+		}},
+		{name: "extra resource", mutate: func(t *testing.T, fixture *bundleFixture) {
+			path := filepath.Join(fixture.directory, fixture.plan.FinalRenders[0].Ref)
+			content := append(readTestFile(t, path), []byte(testObject("v1", "Service", "vela-system", "unexpected"))...)
+			writeTestFile(t, path, content)
+		}},
+		{name: "wrong apiVersion", mutate: func(t *testing.T, fixture *bundleFixture) {
+			path := filepath.Join(fixture.directory, fixture.plan.FinalRenders[0].Ref)
+			content := readTestFile(t, path)
+			writeTestFile(t, path, []byte(strings.Replace(string(content),
+				"apiVersion: apps/v1\nkind: StatefulSet", "apiVersion: example.com/v1\nkind: StatefulSet", 1)))
+		}},
+		{name: "unowned dynamic prefix", mutate: func(t *testing.T, fixture *bundleFixture) {
+			path := filepath.Join(fixture.directory, fixture.plan.FinalRenders[1].Ref)
+			content := readTestFile(t, path)
+			writeTestFile(t, path, []byte(strings.Replace(string(content),
+				"vela-fleet-desired-r1", "vela-fleet-candidate-r1", 1)))
 		}},
 	}
 	for _, test := range tests {
@@ -365,10 +382,11 @@ func TestBuildRejectsInvalidArtifactGraph(t *testing.T) {
 		{
 			name: "Secret hidden in ConfigMap data",
 			mutate: func(t *testing.T, fixture *bundleFixture) {
-				path := filepath.Join(fixture.directory, fixture.plan.FinalRenders[len(fixture.plan.FinalRenders)-1].Ref)
+				path := filepath.Join(fixture.directory, fixture.plan.FinalRenders[0].Ref)
 				content := readTestFile(t, path)
+				identity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: nats-config\n  namespace: vela-system\n"
 				writeTestFile(t, path, []byte(strings.Replace(string(content),
-					"  desired.yaml: |", "  secret.yaml: |\n    apiVersion: v1\n    kind: Secret\n    metadata:\n      name: hidden\n      namespace: vela-system\n    data:\n      token: c2VjcmV0\n  desired.yaml: |", 1)))
+					identity, identity+"data:\n  secret.yaml: |\n    apiVersion: v1\n    kind: Secret\n    metadata:\n      name: hidden\n      namespace: vela-system\n    data:\n      token: c2VjcmV0\n", 1)))
 			},
 		},
 		{
@@ -435,14 +453,16 @@ func TestBuildRejectsInvalidArtifactGraph(t *testing.T) {
 }
 
 func TestBuildRejectsEscapesAndSymlinks(t *testing.T) {
-	t.Run("path escape", func(t *testing.T) {
-		fixture := newBundleFixture(t)
-		fixture.plan.NodeAgentUnit.Ref = "../outside.service"
-		fixture.writePlan(t)
-		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
-			t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
-		}
-	})
+	for _, reference := range []string{"../outside.service", "./node-agent.service", "sub/../node-agent.service", `sub\node-agent.service`} {
+		t.Run("path "+reference, func(t *testing.T) {
+			fixture := newBundleFixture(t)
+			fixture.plan.NodeAgentUnit.Ref = reference
+			fixture.writePlan(t)
+			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
+			}
+		})
+	}
 	t.Run("symlink", func(t *testing.T) {
 		fixture := newBundleFixture(t)
 		target := filepath.Join(fixture.directory, fixture.plan.NodeAgentUnit.Ref)
@@ -456,6 +476,38 @@ func TestBuildRejectsEscapesAndSymlinks(t *testing.T) {
 			t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 		}
 	})
+}
+
+func TestBuildRejectsNonCanonicalSystemdUnit(t *testing.T) {
+	tests := []struct {
+		name    string
+		oldText string
+		newText string
+	}{
+		{name: "commented expected command", oldText: "ExecStart=/usr/local/bin/vela-node-agent", newText: "# ExecStart=/usr/local/bin/vela-node-agent\nExecStart=/bin/false"},
+		{name: "command suffix", oldText: "ExecStart=/usr/local/bin/vela-node-agent", newText: "ExecStart=/usr/local/bin/vela-node-agent-other"},
+		{name: "wrong command", oldText: "ExecStart=/usr/local/bin/vela-node-agent", newText: "ExecStart=/bin/false"},
+		{name: "pre command", oldText: "ExecStart=/usr/local/bin/vela-node-agent", newText: "ExecStartPre=/bin/true\nExecStart=/usr/local/bin/vela-node-agent"},
+		{name: "post command", oldText: "ExecStart=/usr/local/bin/vela-node-agent", newText: "ExecStart=/usr/local/bin/vela-node-agent\nExecStartPost=/bin/true"},
+		{name: "duplicate", oldText: "ExecStart=/usr/local/bin/vela-node-agent", newText: "ExecStart=/usr/local/bin/vela-node-agent\nExecStart=/usr/local/bin/vela-node-agent"},
+		{name: "wrong section", oldText: "[Service]\nType=simple", newText: "UMask=0077\n[Service]\nType=simple"},
+		{name: "weakened hardening", oldText: "ProtectHome=true", newText: "ProtectHome=false"},
+		{name: "continuation", oldText: "After=network-online.target", newText: "After=network-online.target\\"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newBundleFixture(t)
+			path := filepath.Join(fixture.directory, fixture.plan.NodeAgentUnit.Ref)
+			content := strings.Replace(string(readTestFile(t, path)), test.oldText, test.newText, 1)
+			if test.name == "wrong section" {
+				content = strings.Replace(content, "RestartSec=5s\nUMask=0077\n", "RestartSec=5s\n", 1)
+			}
+			writeTestFile(t, path, []byte(content))
+			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
+			}
+		})
+	}
 }
 
 func TestLoadRejectsTamperAndNonCanonicalJSON(t *testing.T) {
@@ -543,22 +595,35 @@ func findExternalResource(t *testing.T, fixture *bundleFixture, namespace, name 
 	return nil
 }
 
-func appendFinalRender(t *testing.T, fixture *bundleFixture, name, document string) {
+func appendToRenderedResource(
+	t *testing.T,
+	fixture *bundleFixture,
+	renderName,
+	apiVersion,
+	kind,
+	resourceName,
+	fragment string,
+) {
 	t.Helper()
 	for _, render := range fixture.plan.FinalRenders {
-		if render.Name == name {
+		if render.Name == renderName {
 			path := filepath.Join(fixture.directory, render.Ref)
-			writeTestFile(t, path, append(readTestFile(t, path), []byte(document)...))
+			content := string(readTestFile(t, path))
+			identity := "apiVersion: " + apiVersion + "\nkind: " + kind + "\nmetadata:\n  name: " + resourceName + "\n"
+			start := strings.Index(content, identity)
+			if start < 0 {
+				t.Fatalf("resource %s/%s/%s not found", apiVersion, kind, resourceName)
+			}
+			endOffset := strings.Index(content[start:], "---\n")
+			if endOffset < 0 {
+				t.Fatalf("resource %s/%s/%s has no document end", apiVersion, kind, resourceName)
+			}
+			end := start + endOffset
+			writeTestFile(t, path, []byte(content[:end]+fragment+content[end:]))
 			return
 		}
 	}
-	t.Fatalf("final render %s not found", name)
-}
-
-func testSecretPod(name, image, selector string) string {
-	return "apiVersion: v1\nkind: Pod\nmetadata:\n  name: " + name +
-		"\n  namespace: vela-system\nspec:\n  containers:\n    - name: probe\n      image: " + image + "\n" +
-		selector + "---\n"
+	t.Fatalf("final render %s not found", renderName)
 }
 
 func newBundleFixture(t *testing.T) *bundleFixture {
@@ -576,10 +641,28 @@ func newBundleFixture(t *testing.T) *bundleFixture {
 	}
 
 	writeTestFile(t, filepath.Join(directory, "node-agent.service"), []byte(`[Unit]
-Description=Vela Node Agent
+Description=Vela host remediation Node Agent
+Wants=network-online.target
+After=network-online.target
+
 [Service]
+Type=simple
 ExecStart=/usr/local/bin/vela-node-agent
+EnvironmentFile=/etc/vela/node-agent.env
+Restart=on-failure
+RestartSec=5s
 UMask=0077
+RuntimeDirectory=vela-node-agent
+RuntimeDirectoryMode=0755
+StateDirectory=vela-node-agent
+ProtectHome=true
+PrivateTmp=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+NoNewPrivileges=false
+LimitNOFILE=4096
+
 [Install]
 WantedBy=multi-user.target
 `))
@@ -625,11 +708,11 @@ WantedBy=multi-user.target
 		ExternalResources: []ExternalResource{
 			{
 				Kind: "Secret", Namespace: "vela-system", Name: "artifact-store-ca-r1", Revision: testDigest("artifact ca"),
-				RequiredKeys: []string{"ca.crt"}, Consumers: []string{"ConfigMap/vela-system/worker-agent-config-r1"},
+				RequiredKeys: []string{"ca.crt"}, Consumers: []string{"DaemonSet/vela-system/vela-h3-worker"},
 			},
 			{
 				Kind: "Secret", Namespace: "vela-observability", Name: "shared-secret-r1", Revision: testDigest("observability shared"),
-				RequiredKeys: []string{"token"}, Consumers: []string{"Deployment/vela-observability/vela-observability-exporter"},
+				RequiredKeys: []string{"token"}, Consumers: []string{"PodMonitor/vela-observability/vela-control"},
 			},
 			{
 				Kind: "Secret", Namespace: "vela-system", Name: "shared-secret-r1", Revision: testDigest("shared"),
@@ -643,7 +726,7 @@ WantedBy=multi-user.target
 			{
 				Kind: "Secret", Namespace: "vela-system", Name: "worker-control-tls-node-1", Revision: worker.WorkerControlTLSSecretRevision,
 				RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"}, Consumers: []string{
-					"ConfigMap/vela-system/worker-agent-config-r1",
+					"DaemonSet/vela-system/vela-h3-worker",
 					workerConsumerIdentity(worker),
 				},
 			},
@@ -686,51 +769,37 @@ func addSecondWorker(t *testing.T, fixture *bundleFixture) {
 }
 
 func testFinalRender(name, image string, images []string) string {
-	switch name {
-	case "control-storage":
-		return testObject("v1", "Service", "vela-system", "nats") +
-			testWorkload("apps/v1", "StatefulSet", "vela-system", "nats", image) +
-			testObject("barmancloud.cnpg.io/v1", "ObjectStore", "vela-system", "vela-postgres-backup") +
-			testObject("postgresql.cnpg.io/v1", "Cluster", "vela-system", "vela-postgres") +
-			testObject("postgresql.cnpg.io/v1", "ScheduledBackup", "vela-system", "vela-postgres-daily")
-	case "fleet-controller":
-		return testWorkload("apps/v1", "Deployment", "vela-system", "vela-fleet-controller", image) +
-			testObject("v1", "Service", "vela-system", "vela-fleet-admission") +
-			testObject("apiextensions.k8s.io/v1", "CustomResourceDefinition", "", "workerpools.fleet.vela.ai") +
-			testObject("admissionregistration.k8s.io/v1", "ValidatingWebhookConfiguration", "", "vela-fleet-protection")
-	case "observability":
-		return testObject("monitoring.coreos.com/v1", "PodMonitor", "vela-observability", "vela-control") +
-			testWorkload("apps/v1", "Deployment", "vela-observability", "vela-observability-exporter", image)
-	case "vela-control":
-		return testWorkload("apps/v1", "Deployment", "vela-system", "vela-control", image) +
-			testObject("v1", "Service", "vela-system", "vela-api") +
-			testObject("v1", "Service", "vela-system", "vela-control") +
-			testObject("v1", "Service", "vela-system", "vela-worker-control") +
-			testObject("v1", "Service", "vela-system", "vela-finance-reconciliation") +
-			testObject("v1", "Service", "vela-system", "vela-compliance") +
-			testObject("networking.k8s.io/v1", "NetworkPolicy", "vela-system", "vela-control-default-deny-ingress")
-	case "worker-agent":
-		return testWorkload("apps/v1", "DaemonSet", "vela-system", "vela-h3-worker", image) + `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: worker-agent-config-r1
-  namespace: vela-system
-immutable: true
-data:
-  desired.yaml: |
-    workerRuntimeConfigMap: worker-runtime-node-1
-    runnerProfilesConfigMap: runner-profiles-node-1
-    runnerGPURolesConfigMap: runner-gpu-roles-node-1
-    workerControlTLSSecret: worker-control-tls-node-1
-    artifactStoreTLSSecret: artifact-store-ca-r1
-    initImage: ` + images[0] + `
-    workerAgentImage: ` + images[1] + `
-    runnerImage: ` + images[1] + `
----
-`
-	default:
+	contracts, ok := finalRenderInventory[name]
+	if !ok {
 		panic("unknown final render " + name)
 	}
+	var rendered strings.Builder
+	for _, contract := range contracts {
+		resourceName := contract.Name
+		if resourceName == "" {
+			resourceName = contract.NamePrefix + "r1"
+		}
+		isWorkload := contract.Kind == "StatefulSet" || contract.Kind == "Deployment" ||
+			contract.Kind == "DaemonSet" || (name == "observability" && contract.Kind == "PodMonitor")
+		if !isWorkload {
+			rendered.WriteString(testObject(contract.APIVersion, contract.Kind, contract.Namespace, resourceName))
+			continue
+		}
+		document := testWorkload(contract.APIVersion, contract.Kind, contract.Namespace, resourceName, image)
+		if name == "worker-agent" && contract.Kind == "DaemonSet" {
+			document = strings.Replace(document, "spec:\n", "spec:\n"+
+				"  workerRuntimeConfigMap: worker-runtime-node-1\n"+
+				"  runnerProfilesConfigMap: runner-profiles-node-1\n"+
+				"  runnerGPURolesConfigMap: runner-gpu-roles-node-1\n"+
+				"  workerControlTLSSecret: worker-control-tls-node-1\n"+
+				"  artifactStoreTLSSecret: artifact-store-ca-r1\n"+
+				"  initImage: "+images[0]+"\n"+
+				"  workerAgentImage: "+images[1]+"\n"+
+				"  runnerImage: "+images[1]+"\n", 1)
+		}
+		rendered.WriteString(document)
+	}
+	return rendered.String()
 }
 
 func testObject(apiVersion, kind, namespace, name string) string {
