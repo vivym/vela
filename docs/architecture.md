@@ -439,7 +439,7 @@ PostgreSQL 是以下数据的权威事实源：
 
 首发 Scheduler Job claim 使用按 Worker pool scoped 的 PostgreSQL advisory transaction lock 串行化短暂的公平性决策，并从一个有硬上限的 point-in-time candidate snapshot 创建 durable dispatch intent；partial unique index 禁止同一 Job 或 Worker 同时存在多个 live claim。Scheduler 不把该锁延伸到 Assignment，`Acquire` 在独立事务中锁定并重新检查 dispatch intent、Job、Worker epoch、认证、额度和重试 authority。每个业务 row 显式带 `organization_id`；Project-owned row 同时带 `project_id`，composite foreign key 禁止跨 Organization 关联。客户请求使用受限数据库 role、transaction-local identity context 和 `FORCE ROW LEVEL SECURITY`，Scheduler / Reconciler 使用独立内部 role 和连接池，客户请求路径不得借用该 privileged pool。
 
-控制面所有 Lease expiry、Job Expiry 和重试时间比较以 PostgreSQL 时间为准，不能依赖各 Pod 的 wall clock。Worker 只使用服务端返回的 `lease_valid_for` 和本地 monotonic clock 做保守的 fail-closed 倒计时，不能自行延长 Lease。CloudNativePG 在三个 Control/Storage Node 上使用同步提交、跨节点副本、自动 failover、PITR 和集群外 WAL 归档；数据库不可用时系统停止 Admission 和新 Assignment。
+控制面所有 Lease expiry、Job Expiry 和重试时间比较以 PostgreSQL 时间为准，不能依赖各 Pod 的 wall clock。Worker 只使用服务端返回的 `lease_valid_for` 和本地 monotonic clock 做保守的 fail-closed 倒计时，不能自行延长 Lease。CloudNativePG 在三个 Control/Storage Node 上使用同步提交、跨节点副本和自动 failover，并通过 Barman Cloud Plugin 把 WAL 与 base backup 写入独立故障域以支持 PITR；数据库不可用时系统停止 Admission 和新 Assignment。
 
 ### 8.2 队列语义
 
@@ -1095,6 +1095,13 @@ Worker 与控制面失联时，旧 Worker 可能仍继续计算。控制面可�
 - JetStream 是可重建的投递设施，不是灾备事实源。恢复顺序为 PostgreSQL / Catalog -> Artifact Store -> JetStream -> Outbox replay -> Reconciler；恢复不能制造第二个 Visible Completion、Charge 或 Webhook event id。
 - PostgreSQL restore、JetStream rebuild、Outbox replay、Artifact 抽样恢复和 secret rotation 至少每季度实演一次。备份任务成功不等于恢复通过。
 
+Slice 38 将仓库中的 CNPG native backup surface 迁移到 digest-pinned
+Barman Cloud Plugin `ObjectStore`、WAL archiver 和 immediate/daily base backup，
+并在 fresh four-node kind/MinIO 环境完成真实 base backup、目标 WAL 归档和
+timestamp restore（`4f4bc2d`）。这只证明 local plugin API/recovery path；生产
+RKE2、独立 S3 故障域、provider/network failure、完整恢复顺序、季度演练与
+Launch Receipt 仍是外部 Production Gate。
+
 ### 17.4 外部依赖故障
 
 - PostgreSQL 不可用时停止新 Assignment，Worker 可以在有限 Lease 内继续当前 Attempt。
@@ -1193,7 +1200,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 | 领域 | 选择 | 生产基线 |
 | --- | --- | --- |
-| 事实源 | CloudNativePG / PostgreSQL | 三台 Control/Storage Node 各运行一个 replica，同步提交、自动 failover、PITR，WAL 归档到独立故障域 |
+| 事实源 | CloudNativePG / PostgreSQL | 三台 Control/Storage Node 各运行一个 replica，同步提交、自动 failover；Barman Cloud Plugin 将 WAL 与 base backup 归档到独立故障域并提供 PITR |
 | 事件设施 | NATS JetStream | 3 replicas、PVC-backed file storage、durable consumer、explicit ack、anti-affinity |
 | 一致性 | Transactional outbox + idempotent consumer + reconciliation | 不做 PostgreSQL / NATS 双写，不依赖 Broker exactly-once 宣称 |
 | Catalog 配置 | YAML authoring + JSON Schema + canonical JSON | 接纳时校验，入库保存 canonical JSON、schema revision 和 content hash，不执行任意模板代码 |
@@ -1290,7 +1297,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 16. Artifact Store 故障停止受影响 pool 的新 Assignment；scratch high watermark 只停止对应 Worker / pool，存储探测和 low watermark 同时恢复后才重新接纳。
 17. H3 Worker 请求 `nvidia.com/gpu: 8` 并受专用 taint / label 约束；Fleet Controller 之外的 Pod / pool delete、selector / image patch 和 Argo prune 被 RBAC、admission 和 finalizer 拒绝。
 18. Remediation Operation 的 node identity、GPU UUID / PCI BDF 或 Worker epoch 不匹配时拒绝执行；L0-L5 只按认证矩阵自动执行，L6 没有人工审批不得执行，失败验证自动 Quarantine。
-19. 失败对象 24 小时、scratch 最多 24 小时、授权 debug dump 最多 72 小时、成功 Artifact / prompt 30 天后按策略删除；Content Deletion 提前删除内容但保留法定 Charge 和审计记录。Slice 31 已用独立最小权限角色、versioned MinIO 双 bucket 和真实 PostgreSQL dump/restore 证明：只为 COMMITTED Artifact 创建 off-cluster backup target，删除覆盖 backup key 的全部 versions/delete markers，恢复点位于 deletion authority 之后时可重放 PRIMARY 与 OFF_CLUSTER_BACKUP targets 而不复活对象，并保留 prompt tombstone、Charge 与 actor attribution。Slice 32 为每个 COMMITTED Artifact 将冻结的 PRIMARY exact version 复制到 versioned backup，记录不可变证据，并通过同一 PostgreSQL row lock 串行化复制与删除。Slice 33 增加独立 Compliance Principal，以不可变事件在精确 Organization、Project 或 Job 范围放置/释放只覆盖 `METADATA`/`FINANCIAL` 的 Legal Hold，且不能保存 Customer Content。Slice 34 从 canonical terminal event 或 Finance Reconciliation `posted_at` 建立 365/2557 天时钟，与 active hold 串行化后物理删除 Job、Attempt 和 financial source row，并以最小 root 保留独立证据。真实 provider/network 故障证据、早于 deletion authority 的恢复点、live PITR、生产 expiry/failover/observability 与 Launch Receipt 仍属于 Production Gate。
+19. 失败对象 24 小时、scratch 最多 24 小时、授权 debug dump 最多 72 小时、成功 Artifact / prompt 30 天后按策略删除；Content Deletion 提前删除内容但保留法定 Charge 和审计记录。Slice 31 已用独立最小权限角色、versioned MinIO 双 bucket 和真实 PostgreSQL dump/restore 证明：只为 COMMITTED Artifact 创建 off-cluster backup target，删除覆盖 backup key 的全部 versions/delete markers，恢复点位于 deletion authority 之后时可重放 PRIMARY 与 OFF_CLUSTER_BACKUP targets 而不复活对象，并保留 prompt tombstone、Charge 与 actor attribution。Slice 32 为每个 COMMITTED Artifact 将冻结的 PRIMARY exact version 复制到 versioned backup，记录不可变证据，并通过同一 PostgreSQL row lock 串行化复制与删除。Slice 33 增加独立 Compliance Principal，以不可变事件在精确 Organization、Project 或 Job 范围放置/释放只覆盖 `METADATA`/`FINANCIAL` 的 Legal Hold，且不能保存 Customer Content。Slice 34 从 canonical terminal event 或 Finance Reconciliation `posted_at` 建立 365/2557 天时钟，与 active hold 串行化后物理删除 Job、Attempt 和 financial source row，并以最小 root 保留独立证据。Slice 38 用 Barman Cloud Plugin 在 fresh kind/MinIO 环境完成 local base backup、目标 WAL 归档和 timestamp restore。真实 provider/network 故障证据、早于 deletion authority 的恢复点、生产独立故障域 PITR、expiry/failover/observability 与 Launch Receipt 仍属于 Production Gate。
 20. JetStream 短暂或整体不可用后，Outbox 保留发布意图，reconciliation 从 PostgreSQL 恢复待调度 Job；Invoice exporter 不可用不阻塞 Visible Completion 或 Artifact access，恢复重试以 `charge_id` 幂等且不产生重复 Invoice line。
 21. `begin_finalization()` 在事务提交前后崩溃，重放仍只得到一组 Artifact / ArtifactUpload，并保留原 `finalization_deadline_at`。
 22. OFFLINE Worker 恢复后必须经过身份、设备、Inference Backend、model warm-up 和 canary 检查，达到 HEALTHY + READY 才重新接收 Assignment。

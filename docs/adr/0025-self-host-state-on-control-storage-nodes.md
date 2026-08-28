@@ -5,3 +5,16 @@ Launch uses at least three Control/Storage Nodes separate from GPU Workers inste
 ## Consequences
 
 The design retains basic single-node tolerance and off-cluster PostgreSQL WAL and Artifact backups, but accepts manual restoration after loss of the whole control cluster or site and does not build cross-region failover. Sharing nodes reduces infrastructure cost while making resource isolation, disk health, restore drills, and aggregate failure testing production gates.
+
+## Implementation Status
+
+Partial. `deploy/control-storage` renders three-instance CloudNativePG and
+three-replica JetStream contracts with required anti-affinity, disruption
+budgets, independent WAL storage, and off-cluster backup selectors. Slice 38
+adds the Barman Cloud Plugin `ObjectStore`, plugin WAL archiver, immediate and
+daily base backups, and exact third-party manifest/image identities; its fresh
+four-node kind/MinIO drill completes a real timestamp restore (`4f4bc2d`). The
+repository does not prove three physical RKE2 Control/Storage Nodes, independent
+disks, colocated I/O isolation, production operator installation, secret
+rotation, durable external S3, or a real-environment failover/restore Launch
+Receipt.

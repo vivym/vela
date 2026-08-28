@@ -38,6 +38,33 @@ deletion journal, so the selected PostgreSQL restore point must be at or after
 `last_protected_deletion_authority_marker`; otherwise stop rather than risk
 reintroducing content whose deletion authority is absent from the restored DB.
 
+For the PostgreSQL path, verify
+`deploy/control-storage/barman-cloud-plugin-contract.json` against the exact
+recovery release before installing cert-manager, CloudNativePG, or the Barman
+Cloud Plugin. Verify each manifest SHA-256, rewrite every operator/sidecar image
+to the recorded digest, and confirm the Cluster names
+`barman-cloud.cloudnative-pg.io` as its only WAL archiver. Do not fall back to
+deprecated `spec.backup.barmanObjectStore`.
+
+## Repository conformance
+
+The local plugin API and recovery path can be exercised before a production
+drill:
+
+```sh
+HTTP_PROXY=http://127.0.0.1:7897 \
+HTTPS_PROXY=http://127.0.0.1:7897 \
+NO_PROXY=localhost,127.0.0.1,::1 \
+  make test-cnpg-pitr
+```
+
+This command creates a fresh disposable four-node kind cluster, verifies and
+preloads the pinned images, runs a versioned MinIO bucket, completes a plugin
+base backup, archives the target WAL, and restores a second PostgreSQL cluster
+to a timestamp between two durable markers. Its output is local conformance
+evidence only; it is not a Launch Receipt and cannot replace the production
+exercise below.
+
 ## Exercise A: single-node failure
 
 1. Capture PostgreSQL health, synchronous replica state, JetStream replica and
@@ -58,8 +85,10 @@ backup set until all evidence is sealed.
 
 1. Stop control-plane writes and record the final source marker and archive
    timestamp. Do not accept new Admission or Assignment requests.
-2. Restore PostgreSQL from the selected base backup and WAL archive. Verify the
-   restored marker, schema migration version, RLS/role inventory, and immutable
+2. Restore PostgreSQL through the pinned Barman Cloud Plugin from the selected
+   base backup and WAL archive. Bind the recovery Cluster to the exact
+   `ObjectStore` and source server identity, then verify the restored marker,
+   schema migration version, RLS/role inventory, and immutable
    Job/Attempt/Charge constraints before starting application replicas.
 3. Restore a representative sample of committed Artifact object versions and
    verify object version, size, checksum, content type, and ArtifactSet
@@ -131,7 +160,10 @@ timestamps. A verbal sign-off or a successful backup-only job is not a PASS.
 The repository includes a PostgreSQL dump/restore plus versioned-MinIO
 conformance test for a restore point after Content Deletion authority is durable
 and before its targets complete. It also includes committed exact-version
-Artifact replication with immutable evidence and copy/delete serialization. It
-does not perform live WAL PITR, prove provider/network replication behavior,
-cover a restore point before deletion authority, or create a
+Artifact replication with immutable evidence and copy/delete serialization.
+Slice 38 adds a real local Barman Cloud Plugin base backup, WAL archive, and
+timestamp PITR in a fresh kind/MinIO environment (`4f4bc2d`). These tests do not
+prove production RKE2 or an independent S3 fault domain, provider/network
+replication behavior, a restore point before deletion authority, JetStream
+rebuild, Outbox replay, secret rotation, the quarterly site exercise, or a
 `data-disaster-recovery` Launch Receipt.

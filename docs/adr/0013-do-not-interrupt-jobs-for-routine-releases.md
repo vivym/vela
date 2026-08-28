@@ -10,7 +10,7 @@ An adjacent version change that cannot preserve both old and new execution autho
 
 ## Implementation Status
 
-Partial. Thirty-two additive migrations, exact N/N-1 database/control
+Partial. Thirty-three additive migrations, exact N/N-1 database/control
 compatibility at fixed migration points, an operator-receipted protocol
 transition, migration round trips, and Protobuf/OpenAPI breaking checks are
 repository-proven. Migration 00027 adds dedicated debug-dump roles without
@@ -30,7 +30,12 @@ binary remains valid on schema 31 and the current control fails closed on schema
 30. Migration 00032 adds Catalog Promotion and evidence enforcement behind a
 new role while the exact Slice 34 binary at `e53c620` remains valid on schema 32;
 the current promoter fails closed on schema 31, empty Down/Up restores the
-authority, and durable release evidence prevents unsafe contraction. A real
+authority, and durable release evidence prevents unsafe contraction. Migration
+00033 adds exact-contract statistical SLO authority in a disabled compatibility
+state: the exact Slice 36 control writer remains valid in `LEGACY`, current SLO
+sealing fails closed until activation and backfill complete, empty Down/Up
+restores the authority, and durable SLO evidence prevents unsafe contraction
+(`6036604`, review closure `06f3414`). A real
 Kubernetes mixed control/Worker/event rollout, long-running H3 Job drain,
 release rollback, and retained production backlog receipt remain external
 deployment evidence.
