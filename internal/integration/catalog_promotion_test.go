@@ -241,7 +241,7 @@ func TestCatalogPromotionRejectsInvalidOrMismatchedReleaseBundleBeforeDatabaseMu
 				t.Helper()
 				writeCatalogReleaseBundleFixture(t, directory, "-different-release")
 			},
-			errorMatch: "validate release bundle binding",
+			errorMatch: "supply-chain manifest does not bind the release bundle",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
