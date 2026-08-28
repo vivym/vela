@@ -10,9 +10,11 @@ INTEGRATION_TEST_TIMEOUT ?= 40m
 LAUNCH_RECEIPTS ?=
 RELEASE_BUNDLE_PLAN ?=
 RELEASE_BUNDLE ?=
+RELEASE_REVISION ?=
+RELEASE_ARTIFACT_DIR ?=
 TOOLS_BIN := $(CURDIR)/bin
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-release-bundle verify-release-bundle verify-launch lint test test-integration test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-host-packages build-release-bundle verify-release-bundle verify-launch lint test test-integration test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -47,6 +49,14 @@ test:
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
+
+build-host-packages:
+	@test -n "$(RELEASE_REVISION)" || \
+		(echo "RELEASE_REVISION is required" >&2; exit 2)
+	@test -n "$(RELEASE_ARTIFACT_DIR)" || \
+		(echo "RELEASE_ARTIFACT_DIR is required" >&2; exit 2)
+	go run ./cmd/vela-release-artifacts build-host-packages \
+		"$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_ARTIFACT_DIR)"
 
 build-release-bundle:
 	@test -n "$(RELEASE_BUNDLE_PLAN)" || \

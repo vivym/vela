@@ -153,7 +153,7 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 		if err != nil {
 			return Bundle{}, invalidf("read %s package artifact: %v", input.Name, err)
 		}
-		contract, err := validatePackageContract(input.Name, contractContent, packageArtifact)
+		contract, err := ValidatePackageContract(input.Name, contractContent, packageArtifact)
 		if err != nil {
 			return Bundle{}, err
 		}
@@ -318,7 +318,8 @@ func validDigest(value string) bool {
 		value != "sha256:"+strings.Repeat("0", 64) && isLowerHex(strings.TrimPrefix(value, "sha256:"))
 }
 
-func validRevision(value string) bool {
+// ValidRevision reports whether value is safe for a release identity or contract field.
+func ValidRevision(value string) bool {
 	lower := strings.ToLower(value)
 	return value != "" && len(value) <= 300 && strings.TrimSpace(value) == value &&
 		!strings.ContainsAny(value, "\x00\r\n") && !strings.Contains(lower, "placeholder") &&
@@ -328,7 +329,7 @@ func validRevision(value string) bool {
 }
 
 func validResourceName(value string) bool {
-	return value != "" && len(validation.IsDNS1123Subdomain(value)) == 0 && validRevision(value)
+	return value != "" && len(validation.IsDNS1123Subdomain(value)) == 0 && ValidRevision(value)
 }
 
 func isLowerHex(value string) bool {
@@ -356,7 +357,7 @@ func expectedNodeAgentIdentity(nodeIdentity, workerID string) string {
 func validSPIFFE(value string) bool {
 	parsed, err := url.Parse(value)
 	return err == nil && parsed.Scheme == "spiffe" && parsed.Host == "vela.internal" &&
-		parsed.RawQuery == "" && parsed.Fragment == "" && validRevision(value)
+		parsed.RawQuery == "" && parsed.Fragment == "" && ValidRevision(value)
 }
 
 func canonicalGPUUUID(value string) bool {
@@ -367,15 +368,16 @@ func canonicalGPUUUID(value string) bool {
 	return err == nil && parsed != uuid.Nil && "GPU-"+parsed.String() == value
 }
 
-func validatePackageContract(name string, encoded []byte, artifact Artifact) (PackageContract, error) {
+// ValidatePackageContract strictly validates one host package contract against its artifact.
+func ValidatePackageContract(name string, encoded []byte, artifact Artifact) (PackageContract, error) {
 	var contract PackageContract
 	if err := decodeStrictJSON(encoded, &contract); err != nil {
 		return PackageContract{}, invalidf("decode %s package contract: %v", name, err)
 	}
 	wantName := "vela-" + name
 	if contract.SchemaVersion != 1 || contract.Name != wantName || contract.OS != "linux" ||
-		contract.Architecture != "amd64" || !validRevision(contract.Revision) ||
-		!filepath.IsAbs(contract.Entrypoint) || !validRevision(contract.Entrypoint) ||
+		contract.Architecture != "amd64" || !ValidRevision(contract.Revision) ||
+		!filepath.IsAbs(contract.Entrypoint) || !ValidRevision(contract.Entrypoint) ||
 		contract.ArtifactDigest != artifact.Digest || contract.ArtifactSizeBytes != artifact.SizeBytes {
 		return PackageContract{}, invalidf("%s package contract does not bind the linux/amd64 artifact", name)
 	}

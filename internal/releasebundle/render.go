@@ -522,7 +522,7 @@ func buildWorkerMaterialization(
 		!validResourceName(input.RunnerProfilesConfigMap) || !validResourceName(input.RunnerGPURolesConfigMap) ||
 		!validResourceName(input.WorkerControlTLSSecret) || !validDigest(input.WorkerControlTLSSecretRevision) ||
 		!canonicalUUID(input.ExecutionProfileRevisionID) || !canonicalUUID(input.ModelRevisionID) ||
-		!validRevision(input.InferenceBackendRevision) || len(input.InferenceBackendRevision) > 200 {
+		!ValidRevision(input.InferenceBackendRevision) || len(input.InferenceBackendRevision) > 200 {
 		return WorkerMaterialization{}, invalidf("Worker materialization for node %q has invalid identity or revision fields", input.NodeIdentity)
 	}
 	for _, value := range []string{
@@ -814,7 +814,7 @@ func validSecretContract(keys, consumers []string) bool {
 		}
 	}
 	for index, consumer := range consumers {
-		if !validRevision(consumer) || (index > 0 && consumer == consumers[index-1]) {
+		if !ValidRevision(consumer) || (index > 0 && consumer == consumers[index-1]) {
 			return false
 		}
 	}
@@ -892,7 +892,7 @@ func validateOCIManifest(
 }
 
 func validOCIBlobDescriptor(descriptor ociBlobDescriptor) bool {
-	if descriptor.MediaType == "" || !validRevision(descriptor.MediaType) ||
+	if descriptor.MediaType == "" || !ValidRevision(descriptor.MediaType) ||
 		!validDigest(descriptor.Digest) || descriptor.Size <= 0 || len(descriptor.URLs) != 0 || len(descriptor.Data) != 0 {
 		return false
 	}
