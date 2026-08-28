@@ -45,9 +45,12 @@ independent-fault-domain behavior.
 The manifests intentionally contain no backup credentials. The operator must
 create `vela-backup-s3` in `vela-system` from an independent secret manager and
 replace the example S3 endpoint with the approved release configuration. The
-PostgreSQL image and third-party install contract are digest-pinned, but an
-installer must still verify the manifest bytes and rewrite the cluster-wide
-operator/sidecar image tags to the recorded digests. Storage-class capacity,
+PostgreSQL and NATS `linux/amd64` runtime images and the third-party install
+contract are digest-pinned. An installer must still verify the cluster-wide
+operator manifest bytes and rewrite its operator/sidecar image tags to the
+recorded digests. The canonical release bundle must also carry the exact NATS
+manifest/config bytes and the supply-chain evidence required for the release;
+the repository pin alone is not a publication receipt. Storage-class capacity,
 RKE2 node labels, provider credentials, and an external or three-node S3
 Artifact Store remain deployment gates, not claims made by this render.
 

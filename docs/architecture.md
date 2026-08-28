@@ -1352,6 +1352,10 @@ Slice 45 以外部 trust policy、职责分离的 Ed25519 keys 和 DSSE envelope
 scanner/database identity 与 vulnerability approval，并让 launch verification
 及 Catalog promotion 在任何缺失或不匹配时于 transaction 前 fail closed；
 repository validator 与 test fixture 不构成实际生产 evidence。
+Slice 46 将 Control/Storage JetStream workload 固定到 NATS `2.10.22` 的
+exact `linux/amd64` OCI manifest，并通过最终 Kustomize render 验证该身份；
+它不提供 registry/supply-chain evidence，也不替代 release-specific Vela、
+materializer、PKI/Secret 与目标集群输入。
 仓库内 bundle、fixture 和测试不是 Launch Receipt，当前仍为 `0/9 PASS`。
 
 | Gate | PASS 证据 | 未通过时行为 |
