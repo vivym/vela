@@ -74,7 +74,8 @@ func TestObservabilityContractBindsMetricsRulesDashboardAndRunbook(t *testing.T)
 	if !strings.Contains(rules, "14.4 * (1 - 0.999)") ||
 		!strings.Contains(rules, "3 * (1 - 0.999)") ||
 		!strings.Contains(rules, "absent(sum(vela_gateway_sli_requests_total") ||
-		!strings.Contains(rules, "absent(vela_slo_report_eligible_jobs") {
+		!strings.Contains(rules, "vela_slo_contract_report_coverage == 0") ||
+		!strings.Contains(rules, "absent(vela_slo_contract_report_coverage)") {
 		t.Fatalf("observability rules omit multi-window burn or missing-series fail-closed checks")
 	}
 
@@ -94,6 +95,7 @@ func TestObservabilityContractBindsMetricsRulesDashboardAndRunbook(t *testing.T)
 		"vela_slo_report_failed_jobs",
 		"vela_slo_report_customer_canceled_jobs",
 		"vela_slo_report_open_jobs",
+		"vela_slo_contract_report_coverage",
 		"vela_slo_report_sealed_timestamp_seconds",
 	} {
 		if !strings.Contains(dashboardText, metric) {

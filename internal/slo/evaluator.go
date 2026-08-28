@@ -3,11 +3,12 @@ package slo
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -127,7 +128,7 @@ func Evaluate(contract Contract, window Window, now time.Time, observations []Ob
 			return Report{}, fmt.Errorf("%w: duplicate job_id %q", ErrInvalidInput, observation.JobID)
 		}
 		seen[observation.JobID] = struct{}{}
-		switch observation.Outcome {
+		switch measuredOutcome(observation, now) {
 		case OutcomeSucceeded:
 			report.SucceededCount++
 			latencies = append(latencies, observation.VisibleCompletedAt.Sub(observation.AcceptedAt).Milliseconds())
@@ -253,6 +254,17 @@ func validateObservation(contract Contract, window Window, observation Observati
 	return nil
 }
 
+func measuredOutcome(observation Observation, evaluatedAt time.Time) Outcome {
+	if observation.Outcome == OutcomeOpen && !observation.ExpiresAt.After(evaluatedAt) {
+		return OutcomeFailed
+	}
+	if (observation.Outcome == OutcomeSucceeded || observation.Outcome == OutcomeCustomerCanceled) &&
+		observation.TerminalAt.After(observation.ExpiresAt) {
+		return OutcomeFailed
+	}
+	return observation.Outcome
+}
+
 func nearestRank(sorted []int64, numerator, denominator int) int64 {
 	rank := (numerator*len(sorted) + denominator - 1) / denominator
 	return sorted[rank-1]
@@ -279,12 +291,31 @@ func wilsonLowerBoundPPM(successes, total int) int {
 }
 
 func sourceSetDigest(observations []Observation) string {
-	encoded, err := json.Marshal(observations)
-	if err != nil {
-		panic(err)
+	digest := sha256.New()
+	for _, observation := range observations {
+		writeDigestField(digest, observation.JobID)
+		writeDigestField(digest, observation.ContractRevisionID)
+		writeDigestField(digest, strconv.FormatInt(observation.AcceptedAt.UnixMicro(), 10))
+		writeDigestField(digest, strconv.FormatInt(observation.ExpiresAt.UnixMicro(), 10))
+		writeDigestField(digest, string(observation.Outcome))
+		writeDigestTime(digest, observation.TerminalAt)
+		writeDigestTime(digest, observation.VisibleCompletedAt)
 	}
-	digest := sha256.Sum256(encoded)
-	return "sha256:" + hex.EncodeToString(digest[:])
+	return "sha256:" + hex.EncodeToString(digest.Sum(nil))
+}
+
+func writeDigestField(writer io.Writer, value string) {
+	_, _ = io.WriteString(writer, strconv.Itoa(len(value)))
+	_, _ = io.WriteString(writer, ":")
+	_, _ = io.WriteString(writer, value)
+}
+
+func writeDigestTime(writer io.Writer, value *time.Time) {
+	if value == nil {
+		_, _ = io.WriteString(writer, "-1:")
+		return
+	}
+	writeDigestField(writer, strconv.FormatInt(value.UnixMicro(), 10))
 }
 
 func bounded(value string, maximum int) bool {

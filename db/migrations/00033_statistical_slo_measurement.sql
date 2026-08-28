@@ -561,6 +561,7 @@ DECLARE
     v_z double precision := 1.6448536269514722;
     v_n double precision;
     v_p double precision;
+    v_evaluated_at timestamptz := clock_timestamp();
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM public.slo_measurement_protocol_state
@@ -576,36 +577,69 @@ BEGIN
     IF v_contract.id IS NULL
        OR p_window_start <> date_trunc('month', p_window_start AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
        OR p_window_end <> p_window_start + interval '1 month'
-       OR p_window_end > clock_timestamp() THEN
+       OR p_window_end > v_evaluated_at THEN
         RAISE EXCEPTION USING
             ERRCODE = '22023',
             CONSTRAINT = 'statistical_slo_measurement_window_is_invalid',
             MESSAGE = 'statistical SLO measurement requires a closed UTC calendar month';
     END IF;
+    WITH source_observations AS (
+        SELECT admission.job_id::text AS job_id,
+            admission.contract_revision_id::text AS contract_revision_id,
+            trunc(extract(epoch FROM admission.queued_at) * 1000000)::bigint::text
+                AS queued_at_us,
+            trunc(extract(epoch FROM admission.job_expires_at) * 1000000)::bigint::text
+                AS job_expires_at_us,
+            COALESCE(outcome.outcome::text, 'OPEN') AS source_outcome,
+            CASE
+                WHEN outcome.outcome IS NULL
+                     AND admission.job_expires_at <= v_evaluated_at THEN 'FAILED'
+                WHEN outcome.outcome IN ('SUCCEEDED', 'CUSTOMER_CANCELED')
+                     AND outcome.terminal_at > admission.job_expires_at THEN 'FAILED'
+                ELSE COALESCE(outcome.outcome::text, 'OPEN')
+            END AS measured_outcome,
+            CASE WHEN outcome.terminal_at IS NULL THEN NULL ELSE
+                trunc(extract(epoch FROM outcome.terminal_at) * 1000000)::bigint::text
+            END AS terminal_at_us,
+            CASE WHEN outcome.visible_completed_at IS NULL THEN NULL ELSE
+                trunc(extract(epoch FROM outcome.visible_completed_at) * 1000000)::bigint::text
+            END AS visible_completed_at_us,
+            admission.queued_at,
+            outcome.visible_completed_at
+        FROM public.job_slo_admissions AS admission
+        LEFT JOIN public.job_slo_outcomes AS outcome ON outcome.job_id = admission.job_id
+        WHERE admission.contract_revision_id = p_contract_revision_id
+          AND admission.queued_at >= p_window_start
+          AND admission.queued_at < p_window_end
+    ), canonical_observations AS (
+        SELECT *,
+            octet_length(job_id)::text || ':' || job_id ||
+            octet_length(contract_revision_id)::text || ':' || contract_revision_id ||
+            octet_length(queued_at_us)::text || ':' || queued_at_us ||
+            octet_length(job_expires_at_us)::text || ':' || job_expires_at_us ||
+            octet_length(source_outcome)::text || ':' || source_outcome ||
+            CASE WHEN terminal_at_us IS NULL THEN '-1:' ELSE
+                octet_length(terminal_at_us)::text || ':' || terminal_at_us END ||
+            CASE WHEN visible_completed_at_us IS NULL THEN '-1:' ELSE
+                octet_length(visible_completed_at_us)::text || ':' || visible_completed_at_us END
+                AS canonical_source
+        FROM source_observations
+    )
     SELECT count(*)::integer,
-        count(*) FILTER (WHERE outcome.outcome = 'SUCCEEDED')::integer,
-        count(*) FILTER (WHERE outcome.outcome = 'FAILED')::integer,
-        count(*) FILTER (WHERE outcome.outcome = 'CUSTOMER_CANCELED')::integer,
-        count(*) FILTER (WHERE outcome.job_id IS NULL)::integer,
+        count(*) FILTER (WHERE measured_outcome = 'SUCCEEDED')::integer,
+        count(*) FILTER (WHERE measured_outcome = 'FAILED')::integer,
+        count(*) FILTER (WHERE measured_outcome = 'CUSTOMER_CANCELED')::integer,
+        count(*) FILTER (WHERE measured_outcome = 'OPEN')::integer,
         percentile_disc(0.95) WITHIN GROUP (
             ORDER BY floor(extract(epoch FROM
-                (outcome.visible_completed_at - admission.queued_at)) * 1000)::bigint
-        ) FILTER (WHERE outcome.outcome = 'SUCCEEDED'),
-        sha256(convert_to(COALESCE(jsonb_agg(jsonb_build_object(
-            'job_id', admission.job_id,
-            'queued_at', admission.queued_at,
-            'job_expires_at', admission.job_expires_at,
-            'outcome', COALESCE(outcome.outcome::text, 'OPEN'),
-            'terminal_at', outcome.terminal_at,
-            'visible_completed_at', outcome.visible_completed_at
-        ) ORDER BY admission.job_id)::text, '[]'), 'UTF8'))
+                (visible_completed_at - queued_at)) * 1000)::bigint
+        ) FILTER (WHERE measured_outcome = 'SUCCEEDED'),
+        sha256(convert_to(COALESCE(
+            string_agg(canonical_source, '' ORDER BY job_id), ''
+        ), 'UTF8'))
     INTO v_observation_count, v_succeeded_count, v_failed_count,
         v_canceled_count, v_open_count, v_p95, v_source_digest
-    FROM public.job_slo_admissions AS admission
-    LEFT JOIN public.job_slo_outcomes AS outcome ON outcome.job_id = admission.job_id
-    WHERE admission.contract_revision_id = p_contract_revision_id
-      AND admission.queued_at >= p_window_start
-      AND admission.queued_at < p_window_end;
+    FROM canonical_observations;
     v_eligible_count := v_succeeded_count + v_failed_count;
     IF v_eligible_count > 0 THEN
         v_success_ppm := floor(v_succeeded_count::numeric * 1000000 / v_eligible_count)::integer;

@@ -62,6 +62,24 @@ func TestEvidenceRejectsArtifactRecomputationMismatch(t *testing.T) {
 	}
 }
 
+func TestGatewayEvidenceCannotDiluteExternalFailuresWithSyntheticProbes(t *testing.T) {
+	evidence := validEvidence(t)
+	evidence.API.EligibleCount = 1_000_000
+	evidence.API.GoodCount = 999_000
+	gateway := gatewayObservations(evidence)
+	gateway.Streams[0].Buckets[0].EligibleCount = 1_000
+	gateway.Streams[0].Buckets[0].GoodCount = 0
+	gateway.Streams[1].Buckets[0].EligibleCount = 999_000
+	gateway.Streams[1].Buckets[0].GoodCount = 999_000
+	encoded, err := json.Marshal(gateway)
+	if err != nil {
+		t.Fatalf("marshal diluted gateway observations: %v", err)
+	}
+	if err := evidence.ValidateArtifact(ArtifactGatewayObservations, encoded); !errors.Is(err, ErrInvalidEvidence) {
+		t.Fatalf("synthetic-diluted gateway observation error = %v", err)
+	}
+}
+
 func TestEvidenceRejectsAmbiguousOrUnknownArtifactFields(t *testing.T) {
 	evidence := validEvidence(t)
 	gateway := gatewayArtifact(t, evidence)

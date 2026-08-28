@@ -49,7 +49,7 @@ groups:
         annotations:
           runbook: docs/runbooks/statistical-slo-breach.md
       - alert: VelaSLOContractCoverageMissing
-        expr: absent(vela_slo_report_eligible_jobs{generation_preset="quality"}) or absent(vela_slo_report_eligible_jobs{generation_preset="balanced"}) or absent(vela_slo_report_eligible_jobs{generation_preset="fast"})
+        expr: vela_slo_contract_report_coverage == 0 or absent(vela_slo_contract_report_coverage)
         for: 30m
         labels:
           severity: page

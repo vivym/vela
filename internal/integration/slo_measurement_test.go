@@ -18,6 +18,7 @@ import (
 	"github.com/pressly/goose/v3"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/productiongates"
+	"github.com/vivym/vela/internal/slo"
 	"github.com/vivym/vela/internal/telemetry"
 )
 
@@ -54,7 +55,7 @@ func TestStatisticalSLOMeasurementEnforcesCoverageAndSealsMonthlyReport(t *testi
 		if _, err := reporting.Exec(context.Background(), `
 			SELECT * FROM vela_register_slo_contract(
 				$1, 'h3-standard-slo-v1', $2, $3, $4, $5,
-				1, 60000, 800000, 20, $6
+				1, 60000, 700000, 20, $6
 			)
 		`, contracts[preset],
 			uuid.MustParse("00000000-0000-0000-0000-000000000010"),
@@ -94,7 +95,7 @@ func TestStatisticalSLOMeasurementEnforcesCoverageAndSealsMonthlyReport(t *testi
 			if _, err := reporting.Exec(context.Background(), `
 				SELECT * FROM vela_register_slo_contract(
 					$1, 'h3-standard-slo-v1', $2, $3, $4, $5,
-					$6, 60000, 800000, 20, $7
+					$6, 60000, 700000, 20, $7
 				)
 			`, uuid.New(),
 				uuid.MustParse("00000000-0000-0000-0000-000000000010"),
@@ -179,33 +180,56 @@ func TestStatisticalSLOMeasurementEnforcesCoverageAndSealsMonthlyReport(t *testi
 		t.Fatalf("captured terminal statistical SLO outcome = %q error=%v", terminalOutcome, err)
 	}
 
-	seedSLOMeasurementObservations(t, database, contracts["quality"])
+	sourceObservations := seedSLOMeasurementObservations(t, database, contracts["quality"])
 	reportID := uuid.MustParse("33000000-0000-0000-0000-000000000041")
 	var (
 		result                                                    string
 		observations, eligible, succeeded, failed, canceled, open int
 		p95                                                       int64
 		successPPM, lowerPPM                                      int
+		sourceDigest                                              string
 	)
 	if err := reporting.QueryRow(context.Background(), `
 		SELECT result::text, observation_count, eligible_count,
 			succeeded_count, failed_count, customer_canceled_count,
 			open_count, p95_milliseconds, success_observed_ppm,
-			success_lower_bound_ppm
+			success_lower_bound_ppm,
+			'sha256:' || encode(source_set_digest, 'hex')
 		FROM vela_seal_slo_measurement($1, $2, $3, $4)
 	`, reportID, contracts["quality"], windowStart, windowEnd).Scan(
 		&result, &observations, &eligible, &succeeded, &failed, &canceled,
-		&open, &p95, &successPPM, &lowerPPM,
+		&open, &p95, &successPPM, &lowerPPM, &sourceDigest,
 	); err != nil {
 		t.Fatalf("seal statistical SLO report: %v", err)
 	}
-	if result != "PASS" || observations != 22 || eligible != 21 || succeeded != 20 ||
-		failed != 1 || canceled != 1 || open != 0 || p95 != 19_000 ||
-		successPPM != 952380 || lowerPPM < 800000 {
+	if result != "PASS" || observations != 24 || eligible != 23 || succeeded != 20 ||
+		failed != 3 || canceled != 1 || open != 0 || p95 != 19_000 ||
+		successPPM != 869565 || lowerPPM < 700000 {
 		t.Fatalf(
 			"sealed report = result %s counts %d/%d/%d/%d/%d/%d p95 %d rate %d lower %d",
 			result, observations, eligible, succeeded, failed, canceled, open, p95,
 			successPPM, lowerPPM,
+		)
+	}
+	canonicalReport, err := slo.Evaluate(slo.Contract{
+		RevisionID:                 contracts["quality"].String(),
+		ModelRevisionID:            "00000000-0000-0000-0000-000000000010",
+		GenerationPreset:           "quality",
+		GenerationPresetRevisionID: "35000000-0000-0000-0000-000000000011",
+		ServiceClassRevisionID:     "00000000-0000-0000-0000-000000000012",
+		OutputSpecID:               "00000000-0000-0000-0000-000000000013",
+		GenerationCount:            1, P95TargetMilliseconds: 60_000,
+		SuccessTargetPPM: 700_000, MinimumSample: 20,
+		ConfidenceMethod:      slo.ConfidenceMethod,
+		OneSidedConfidencePPM: slo.OneSidedConfidencePPM,
+		CancellationPolicy:    slo.CancellationPolicy,
+	}, slo.Window{Start: windowStart, End: windowEnd}, windowEnd, sourceObservations)
+	if err != nil || canonicalReport.SourceSetDigest != sourceDigest {
+		t.Fatalf(
+			"canonical source digest = Go %q SQL %q error=%v",
+			canonicalReport.SourceSetDigest,
+			sourceDigest,
+			err,
 		)
 	}
 	internalPool := newRolePool(
@@ -217,10 +241,20 @@ func TestStatisticalSLOMeasurementEnforcesCoverageAndSealsMonthlyReport(t *testi
 	metrics, err := telemetry.NewPostgresSLOReportReader(internalPool).LatestSLOReports(
 		context.Background(),
 	)
-	if err != nil || len(metrics) != 1 || metrics[0].GenerationPreset != "quality" ||
-		metrics[0].EligibleCount != 21 || metrics[0].SucceededCount != 20 ||
-		metrics[0].FailedCount != 1 || metrics[0].CustomerCanceledCount != 1 ||
-		metrics[0].OpenCount != 0 {
+	var reported *telemetry.SLOMetric
+	missingReports := 0
+	for index := range metrics {
+		if metrics[index].HasReport {
+			reported = &metrics[index]
+		} else {
+			missingReports++
+		}
+	}
+	if err != nil || len(metrics) != 48 || missingReports != 47 || reported == nil ||
+		reported.GenerationPreset != "quality" || reported.GenerationCount != 1 ||
+		reported.EligibleCount != 23 || reported.SucceededCount != 20 ||
+		reported.FailedCount != 3 || reported.CustomerCanceledCount != 1 ||
+		reported.OpenCount != 0 {
 		t.Fatalf("internal statistical SLO collector reports = %#v error=%v", metrics, err)
 	}
 
@@ -580,7 +614,11 @@ func createSLOReportingLogin(t *testing.T, database testDatabase) {
 	}
 }
 
-func seedSLOMeasurementObservations(t *testing.T, database testDatabase, contractID uuid.UUID) {
+func seedSLOMeasurementObservations(
+	t *testing.T,
+	database testDatabase,
+	contractID uuid.UUID,
+) []slo.Observation {
 	t.Helper()
 	transaction, err := database.Admin.Begin()
 	if err != nil {
@@ -588,10 +626,8 @@ func seedSLOMeasurementObservations(t *testing.T, database testDatabase, contrac
 	}
 	defer func() { _ = transaction.Rollback() }()
 	start := time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)
-	for index := 0; index < 20; index++ {
-		jobID := uuid.New()
-		queuedAt := start.Add(time.Duration(index+1) * time.Minute)
-		completedAt := queuedAt.Add(time.Duration(index+1) * time.Second)
+	observations := make([]slo.Observation, 0, 24)
+	insertAdmission := func(jobID uuid.UUID, queuedAt, expiresAt time.Time) {
 		if _, err := transaction.Exec(`
 			INSERT INTO job_slo_admissions (
 				job_id, organization_id, project_id, contract_revision_id,
@@ -605,10 +641,17 @@ func seedSLOMeasurementObservations(t *testing.T, database testDatabase, contrac
 			uuid.MustParse("35000000-0000-0000-0000-000000000011"),
 			uuid.MustParse("00000000-0000-0000-0000-000000000012"),
 			uuid.MustParse("00000000-0000-0000-0000-000000000013"),
-			queuedAt, queuedAt.Add(time.Hour),
+			queuedAt, expiresAt,
 		); err != nil {
-			t.Fatalf("insert successful statistical SLO observation %d: %v", index, err)
+			t.Fatalf("insert statistical SLO admission %s: %v", jobID, err)
 		}
+	}
+	for index := 0; index < 20; index++ {
+		jobID := uuid.New()
+		queuedAt := start.Add(time.Duration(index+1) * time.Minute)
+		expiresAt := queuedAt.Add(time.Hour)
+		completedAt := queuedAt.Add(time.Duration(index+1) * time.Second)
+		insertAdmission(jobID, queuedAt, expiresAt)
 		if _, err := transaction.Exec(`
 			INSERT INTO job_slo_outcomes (
 				job_id, outcome, terminal_at, visible_completed_at
@@ -616,38 +659,62 @@ func seedSLOMeasurementObservations(t *testing.T, database testDatabase, contrac
 		`, jobID, completedAt); err != nil {
 			t.Fatalf("insert successful statistical SLO outcome %d: %v", index, err)
 		}
+		observations = append(observations, slo.Observation{
+			JobID: jobID.String(), ContractRevisionID: contractID.String(),
+			AcceptedAt: queuedAt, ExpiresAt: expiresAt, Outcome: slo.OutcomeSucceeded,
+			TerminalAt: &completedAt, VisibleCompletedAt: &completedAt,
+		})
 	}
 	for index, outcome := range []string{"FAILED", "CUSTOMER_CANCELED"} {
 		jobID := uuid.New()
 		queuedAt := start.Add(time.Duration(21+index) * time.Minute)
+		expiresAt := queuedAt.Add(time.Hour)
 		terminalAt := queuedAt.Add(time.Minute)
-		if _, err := transaction.Exec(`
-			INSERT INTO job_slo_admissions (
-				job_id, organization_id, project_id, contract_revision_id,
-				model_revision_id, generation_preset_revision_id,
-				service_class_revision_id, output_spec_id, generation_count,
-				queued_at, job_expires_at
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $10)
-		`, jobID,
-			uuid.MustParse(testOrganizationID), uuid.MustParse(testProjectID), contractID,
-			uuid.MustParse("00000000-0000-0000-0000-000000000010"),
-			uuid.MustParse("35000000-0000-0000-0000-000000000011"),
-			uuid.MustParse("00000000-0000-0000-0000-000000000012"),
-			uuid.MustParse("00000000-0000-0000-0000-000000000013"),
-			queuedAt, queuedAt.Add(time.Hour),
-		); err != nil {
-			t.Fatalf("insert %s statistical SLO observation: %v", outcome, err)
-		}
+		insertAdmission(jobID, queuedAt, expiresAt)
 		if _, err := transaction.Exec(`
 			INSERT INTO job_slo_outcomes (job_id, outcome, terminal_at)
 			VALUES ($1, $2, $3)
 		`, jobID, outcome, terminalAt); err != nil {
 			t.Fatalf("insert %s statistical SLO outcome: %v", outcome, err)
 		}
+		observations = append(observations, slo.Observation{
+			JobID: jobID.String(), ContractRevisionID: contractID.String(),
+			AcceptedAt: queuedAt, ExpiresAt: expiresAt, Outcome: slo.Outcome(outcome),
+			TerminalAt: &terminalAt,
+		})
 	}
+	expiredOpenID := uuid.New()
+	expiredOpenQueuedAt := start.Add(23 * time.Minute)
+	expiredOpenExpiresAt := expiredOpenQueuedAt.Add(time.Minute)
+	insertAdmission(expiredOpenID, expiredOpenQueuedAt, expiredOpenExpiresAt)
+	observations = append(observations, slo.Observation{
+		JobID: expiredOpenID.String(), ContractRevisionID: contractID.String(),
+		AcceptedAt: expiredOpenQueuedAt, ExpiresAt: expiredOpenExpiresAt,
+		Outcome: slo.OutcomeOpen,
+	})
+
+	lateSuccessID := uuid.New()
+	lateSuccessQueuedAt := start.Add(24 * time.Minute)
+	lateSuccessExpiresAt := lateSuccessQueuedAt.Add(time.Minute)
+	lateSuccessCompletedAt := lateSuccessExpiresAt.Add(time.Second)
+	insertAdmission(lateSuccessID, lateSuccessQueuedAt, lateSuccessExpiresAt)
+	if _, err := transaction.Exec(`
+		INSERT INTO job_slo_outcomes (
+			job_id, outcome, terminal_at, visible_completed_at
+		) VALUES ($1, 'SUCCEEDED', $2, $2)
+	`, lateSuccessID, lateSuccessCompletedAt); err != nil {
+		t.Fatalf("insert late-success statistical SLO outcome: %v", err)
+	}
+	observations = append(observations, slo.Observation{
+		JobID: lateSuccessID.String(), ContractRevisionID: contractID.String(),
+		AcceptedAt: lateSuccessQueuedAt, ExpiresAt: lateSuccessExpiresAt,
+		Outcome:    slo.OutcomeSucceeded,
+		TerminalAt: &lateSuccessCompletedAt, VisibleCompletedAt: &lateSuccessCompletedAt,
+	})
 	if err := transaction.Commit(); err != nil {
 		t.Fatalf("commit statistical SLO observations: %v", err)
 	}
+	return observations
 }
 
 func isPostgresCode(err error, code string) bool {

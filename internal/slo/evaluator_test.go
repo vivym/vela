@@ -66,6 +66,43 @@ func TestEvaluateRejectsAttemptLikeCompletionAndDuplicateJobs(t *testing.T) {
 	}
 }
 
+func TestEvaluateTreatsExpiredAndLateTerminalJobsAsFailures(t *testing.T) {
+	contract := testContract()
+	window := testWindow()
+	accepted := window.Start.Add(time.Hour)
+	expires := accepted.Add(time.Minute)
+	lateSuccessExpires := expires.Add(time.Minute)
+	lateSuccess := lateSuccessExpires.Add(time.Second)
+	lateCancelExpires := accepted.Add(3 * time.Minute)
+	lateCancellation := lateCancelExpires.Add(time.Second)
+	observations := []Observation{
+		succeededObservation(1, window.Start, time.Second),
+		{
+			JobID: "expired-open", ContractRevisionID: contract.RevisionID,
+			AcceptedAt: accepted, ExpiresAt: expires, Outcome: OutcomeOpen,
+		},
+		{
+			JobID: "late-success", ContractRevisionID: contract.RevisionID,
+			AcceptedAt: accepted.Add(time.Minute), ExpiresAt: lateSuccessExpires,
+			Outcome: OutcomeSucceeded, TerminalAt: &lateSuccess, VisibleCompletedAt: &lateSuccess,
+		},
+		{
+			JobID: "late-cancellation", ContractRevisionID: contract.RevisionID,
+			AcceptedAt: accepted.Add(2 * time.Minute), ExpiresAt: lateCancelExpires,
+			Outcome: OutcomeCustomerCanceled, TerminalAt: &lateCancellation,
+		},
+	}
+	report, err := Evaluate(contract, window, window.End, observations)
+	if err != nil {
+		t.Fatalf("evaluate expired observations: %v", err)
+	}
+	if report.SucceededCount != 1 || report.FailedCount != 3 ||
+		report.CustomerCanceledCount != 0 || report.OpenCount != 0 ||
+		report.EligibleCount != 4 {
+		t.Fatalf("expired report = %#v", report)
+	}
+}
+
 func TestEvaluateRejectsGenerationCountOutsideAdmissionContract(t *testing.T) {
 	contract := testContract()
 	contract.GenerationCount = 17

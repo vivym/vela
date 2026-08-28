@@ -80,8 +80,8 @@ func (evidence Evidence) validateGatewayObservations(observations GatewayObserva
 		return fmt.Errorf("%w: gateway observation window or source set is invalid", ErrInvalidEvidence)
 	}
 	seenSources := make(map[GatewayObservationSource]bool, maximumGatewayStreams)
-	totalEligible := 0
-	totalGood := 0
+	externalEligible := 0
+	externalGood := 0
 	for _, stream := range observations.Streams {
 		if (stream.Source != GatewaySourceExternalGateway && stream.Source != GatewaySourceSyntheticProbe) ||
 			seenSources[stream.Source] || len(stream.Buckets) == 0 || len(stream.Buckets) > maximumGatewayBuckets {
@@ -89,26 +89,32 @@ func (evidence Evidence) validateGatewayObservations(observations GatewayObserva
 		}
 		seenSources[stream.Source] = true
 		nextStart := evidence.Window.Start
+		streamEligible := 0
+		streamGood := 0
 		for _, bucket := range stream.Buckets {
 			if !bucket.Start.Equal(nextStart) || !bucket.Start.Before(bucket.End) ||
 				bucket.End.After(evidence.Window.End) ||
 				bucket.End.Sub(bucket.Start) > maximumGatewayBucketPeriod ||
 				bucket.EligibleCount < 0 || bucket.EligibleCount > maximumGatewayBucketCount ||
 				bucket.GoodCount < 0 || bucket.GoodCount > bucket.EligibleCount ||
-				totalEligible > maximumGatewayBucketCount-bucket.EligibleCount ||
-				totalGood > maximumGatewayBucketCount-bucket.GoodCount {
+				streamEligible > maximumGatewayBucketCount-bucket.EligibleCount ||
+				streamGood > maximumGatewayBucketCount-bucket.GoodCount {
 				return fmt.Errorf("%w: gateway observation bucket is invalid or unbounded", ErrInvalidEvidence)
 			}
-			totalEligible += bucket.EligibleCount
-			totalGood += bucket.GoodCount
+			streamEligible += bucket.EligibleCount
+			streamGood += bucket.GoodCount
 			nextStart = bucket.End
 		}
 		if !nextStart.Equal(evidence.Window.End) {
 			return fmt.Errorf("%w: gateway observation buckets are not contiguous over the evidence window", ErrInvalidEvidence)
 		}
+		if stream.Source == GatewaySourceExternalGateway {
+			externalEligible = streamEligible
+			externalGood = streamGood
+		}
 	}
 	if !seenSources[GatewaySourceExternalGateway] || !seenSources[GatewaySourceSyntheticProbe] ||
-		totalEligible != evidence.API.EligibleCount || totalGood != evidence.API.GoodCount {
+		externalEligible != evidence.API.EligibleCount || externalGood != evidence.API.GoodCount {
 		return fmt.Errorf("%w: gateway observation counts do not reproduce API evidence", ErrInvalidEvidence)
 	}
 	return nil

@@ -43,8 +43,11 @@ SLI.
   `wilson-one-sided-95-v1`;
 - PASS requires a closed window, no open observations, minimum eligible sample,
   at least one success, p95 at or below target, and Wilson lower bound at or
-  above the success target; and
-- canonical sorted observations produce a SHA-256 source-set digest.
+  above the success target;
+- OPEN Jobs expired by evaluation, and success or cancellation recorded after
+  Job Expiry, are failures; and
+- canonical Job-ID-sorted, length-prefixed UTF-8 observation fields produce a
+  SHA-256 source-set digest that PostgreSQL and `internal/slo` reproduce exactly.
 
 `internal/sloevidence` strictly decodes the existing `observability-on-call`
 gate evidence. It rejects duplicate or unknown JSON keys, oversized documents,
@@ -55,8 +58,9 @@ gateway, SKU snapshot or page-event artifacts. The general Launch Receipt
 loader still verifies the outer evidence bytes and now performs this semantic
 verification for the observability gate. The nested gateway artifact is itself
 strict JSON with exact external-gateway and synthetic-probe streams, contiguous
-at-most-daily buckets over the full measurement window and bounded counts; its
-eligible/good totals must reproduce the API report. The nested saleable-SKU
+at-most-daily buckets over the full measurement window and bounded counts; only
+the external-gateway eligible/good totals reproduce the authoritative API
+report, while synthetic probes remain independently visible. The nested saleable-SKU
 snapshot is also strict JSON and its complete immutable contract values must
 exactly reproduce the evidence cohorts.
 
@@ -96,8 +100,8 @@ The public chi router records `vela_api_requests_total` and duration using only
 method, OpenAPI route pattern and status. Raw URL, Organization, Project,
 Principal, Job, Attempt and Worker identifiers are forbidden labels. The
 PostgreSQL-authoritative collector exports only latest sealed report values,
-immutable targets, eligible/success/failure/customer-cancellation/open counts
-and freshness by controlled catalog dimensions.
+immutable targets, eligible/success/failure/customer-cancellation/open counts,
+exact-contract report coverage and freshness by controlled catalog dimensions.
 
 `/metrics` is registered only on the existing Pod-private management listener
 at port 8081. No Service exposes it. NetworkPolicy admits only namespaces with
