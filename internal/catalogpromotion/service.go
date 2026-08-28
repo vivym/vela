@@ -14,6 +14,7 @@ import (
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/productiongates"
 	"github.com/vivym/vela/internal/releasebundle"
+	"github.com/vivym/vela/internal/supplychain"
 )
 
 var receiptNamespace = uuid.MustParse("8e45d190-25fa-5ac1-90fd-6d342778ce51")
@@ -23,10 +24,12 @@ type Service struct {
 }
 
 type Result struct {
-	ManifestDigest  string
-	ReleaseDigest   string
-	ReceiptIDs      map[productiongates.Gate]uuid.UUID
-	ProtocolVersion int
+	ManifestDigest            string
+	ReleaseDigest             string
+	ReceiptIDs                map[productiongates.Gate]uuid.UUID
+	ProtocolVersion           int
+	SupplyChainManifestDigest string
+	SupplyChainPolicyDigest   string
 }
 
 func New(ctx context.Context, pool *pgxpool.Pool) (*Service, error) {
@@ -48,6 +51,15 @@ func (service *Service) Apply(ctx context.Context, planPath string) (Result, err
 	bundle, err := releasebundle.LoadWithin(root, plan.ReleaseBundleRef)
 	if err != nil {
 		return Result{}, fmt.Errorf("load release bundle: %w", err)
+	}
+	supplyChainEvidence, err := supplychain.LoadWithin(
+		root,
+		plan.SupplyChainManifestRef,
+		plan.SupplyChainPolicyRef,
+		bundle,
+	)
+	if err != nil {
+		return Result{}, fmt.Errorf("load release supply-chain evidence: %w", err)
 	}
 	manifest, err := productiongates.LoadManifestWithin(root, plan.ManifestRef)
 	if err != nil {
@@ -151,10 +163,12 @@ func (service *Service) Apply(ctx context.Context, planPath string) (Result, err
 		return Result{}, fmt.Errorf("commit Catalog Promotion transaction: %w", err)
 	}
 	return Result{
-		ManifestDigest:  manifest.Digest,
-		ReleaseDigest:   manifest.ReleaseDigest,
-		ReceiptIDs:      receiptIDs,
-		ProtocolVersion: protocolVersion,
+		ManifestDigest:            manifest.Digest,
+		ReleaseDigest:             manifest.ReleaseDigest,
+		ReceiptIDs:                receiptIDs,
+		ProtocolVersion:           protocolVersion,
+		SupplyChainManifestDigest: supplyChainEvidence.ManifestDigest,
+		SupplyChainPolicyDigest:   supplyChainEvidence.PolicyDigest,
 	}, nil
 }
 

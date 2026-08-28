@@ -17,8 +17,10 @@ func TestLoadPlanAcceptsOneReleasePromotion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load Catalog promotion plan: %v", err)
 	}
-	if plan.SchemaVersion != 1 || plan.ManifestRef != "launch-receipts.json" ||
+	if plan.SchemaVersion != 2 || plan.ManifestRef != "launch-receipts.json" ||
 		plan.ReleaseBundleRef != "release-bundle.json" ||
+		plan.SupplyChainManifestRef != "supply-chain.json" ||
+		plan.SupplyChainPolicyRef != "supply-chain-policy.json" ||
 		len(plan.Certifications) != 1 || len(plan.RateCards) != 1 || !plan.EnableEvidenced {
 		t.Fatalf("loaded Catalog promotion plan = %#v", plan)
 	}
@@ -39,6 +41,24 @@ func TestLoadPlanRejectsAmbiguousOrEscapedInput(t *testing.T) {
 			name: "release bundle omitted",
 			mutate: func(plan *Plan) {
 				plan.ReleaseBundleRef = ""
+			},
+		},
+		{
+			name: "supply-chain manifest omitted",
+			mutate: func(plan *Plan) {
+				plan.SupplyChainManifestRef = ""
+			},
+		},
+		{
+			name: "supply-chain policy path escape",
+			mutate: func(plan *Plan) {
+				plan.SupplyChainPolicyRef = "../supply-chain-policy.json"
+			},
+		},
+		{
+			name: "legacy schema",
+			mutate: func(plan *Plan) {
+				plan.SchemaVersion = 1
 			},
 		},
 		{
@@ -112,7 +132,7 @@ func TestLoadPlanRejectsUnknownFieldAndTrailingDocument(t *testing.T) {
 
 func TestLoadPlanRejectsDuplicateJSONKeys(t *testing.T) {
 	for _, replacement := range []string{
-		`"schema_version":1,"schema_version":1`,
+		`"schema_version":2,"schema_version":2`,
 		`"evidence_id":"35000000-0000-0000-0000-000000000101","evidence_id":"35000000-0000-0000-0000-000000000101"`,
 	} {
 		path := writePlanFixture(t, func(_ *Plan) {})
@@ -135,10 +155,12 @@ func TestLoadPlanRejectsDuplicateJSONKeys(t *testing.T) {
 func writePlanFixture(t *testing.T, mutate func(*Plan)) string {
 	t.Helper()
 	plan := Plan{
-		SchemaVersion:    1,
-		ManifestRef:      "launch-receipts.json",
-		ReleaseBundleRef: "release-bundle.json",
-		EnableEvidenced:  true,
+		SchemaVersion:          2,
+		ManifestRef:            "launch-receipts.json",
+		ReleaseBundleRef:       "release-bundle.json",
+		SupplyChainManifestRef: "supply-chain.json",
+		SupplyChainPolicyRef:   "supply-chain-policy.json",
+		EnableEvidenced:        true,
 		Certifications: []CertificationPromotion{{
 			EvidenceID:                 uuid.MustParse("35000000-0000-0000-0000-000000000101"),
 			ProfileCertificationID:     uuid.MustParse("35000000-0000-0000-0000-000000000102"),

@@ -289,6 +289,79 @@ func TestCatalogPromotionRejectsInvalidOrMismatchedReleaseBundleBeforeDatabaseMu
 	}
 }
 
+func TestCatalogPromotionRejectsInvalidSupplyChainBeforeDatabaseMutation(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedThreePresetCatalog(t, database)
+	promotionPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_catalog_promotion_login",
+		"vela-catalog-promotion-password",
+	)
+	service, err := catalogpromotion.New(context.Background(), promotionPool)
+	if err != nil {
+		t.Fatalf("configure Catalog Promotion service: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*testing.T, string)
+	}{
+		{
+			name: "missing manifest",
+			mutate: func(t *testing.T, directory string) {
+				t.Helper()
+				if err := os.Remove(filepath.Join(directory, "supply-chain", "manifest.json")); err != nil {
+					t.Fatalf("remove supply-chain manifest fixture: %v", err)
+				}
+			},
+		},
+		{
+			name: "tampered SBOM",
+			mutate: func(t *testing.T, directory string) {
+				t.Helper()
+				path := filepath.Join(directory, "supply-chain", "image-0.spdx.json")
+				encoded, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatalf("read supply-chain SBOM fixture: %v", err)
+				}
+				if err := os.WriteFile(path, append(encoded, '\n'), 0o600); err != nil {
+					t.Fatalf("tamper supply-chain SBOM fixture: %v", err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			planPath := writeCatalogPromotionFiles(t, false)
+			test.mutate(t, filepath.Dir(planPath))
+			if _, err := service.Apply(context.Background(), planPath); err == nil ||
+				!strings.Contains(err.Error(), "load release supply-chain evidence") {
+				t.Fatalf("Catalog promotion supply-chain error = %v", err)
+			}
+			var manifests, receipts, evidence, bindings int64
+			if err := database.Admin.QueryRow(`
+				SELECT
+					(SELECT count(*) FROM production_gate_manifests),
+					(SELECT count(*) FROM production_gate_receipts),
+					(SELECT count(*) FROM profile_certification_evidence),
+					(SELECT count(*) FROM rate_card_release_bindings)
+			`).Scan(&manifests, &receipts, &evidence, &bindings); err != nil {
+				t.Fatalf("read pre-transaction Catalog rows: %v", err)
+			}
+			if manifests != 0 || receipts != 0 || evidence != 0 || bindings != 0 {
+				t.Fatalf(
+					"failed Catalog supply chain left rows %d/%d/%d/%d",
+					manifests,
+					receipts,
+					evidence,
+					bindings,
+				)
+			}
+		})
+	}
+}
+
 func TestCatalogPromotionRequiresSealedThreePresetEvidence(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -1144,6 +1217,7 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 	t.Helper()
 	directory := t.TempDir()
 	bundle := writeCatalogReleaseBundleFixture(t, directory, "")
+	writeCatalogSupplyChainFixture(t, directory, bundle)
 	manifest := productiongates.Manifest{
 		SchemaVersion: 1,
 		Receipts:      make([]productiongates.Receipt, 0, len(productiongates.AllGates())),
@@ -1242,10 +1316,12 @@ func writeCatalogPromotionFiles(t *testing.T, invalidCertification bool) string 
 		})
 	}
 	plan := catalogpromotion.Plan{
-		SchemaVersion:    1,
-		ManifestRef:      "launch-receipts.json",
-		ReleaseBundleRef: "release-bundle.json",
-		Certifications:   certifications,
+		SchemaVersion:          2,
+		ManifestRef:            "launch-receipts.json",
+		ReleaseBundleRef:       "release-bundle.json",
+		SupplyChainManifestRef: "supply-chain/manifest.json",
+		SupplyChainPolicyRef:   "supply-chain/policy.json",
+		Certifications:         certifications,
 		RateCards: []catalogpromotion.RateCardPromotion{{
 			BindingID:          uuid.MustParse("35000000-0000-0000-0000-000000000501"),
 			RateCardRevisionID: uuid.MustParse("00000000-0000-0000-0000-000000000016"),

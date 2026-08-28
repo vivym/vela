@@ -98,9 +98,14 @@ verify-release-bundle:
 verify-launch:
 	@test -n "$(RELEASE_BUNDLE)" || \
 		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	@test -n "$(SUPPLY_CHAIN_MANIFEST)" || \
+		(echo "SUPPLY_CHAIN_MANIFEST is required" >&2; exit 2)
+	@test -n "$(SUPPLY_CHAIN_POLICY)" || \
+		(echo "SUPPLY_CHAIN_POLICY is required" >&2; exit 2)
 	@test -n "$(LAUNCH_RECEIPTS)" || \
 		(echo "LAUNCH_RECEIPTS is required" >&2; exit 2)
-	go run ./cmd/vela-verify-launch "$(RELEASE_BUNDLE)" "$(LAUNCH_RECEIPTS)"
+	go run ./cmd/vela-verify-launch "$(RELEASE_BUNDLE)" \
+		"$(SUPPLY_CHAIN_MANIFEST)" "$(SUPPLY_CHAIN_POLICY)" "$(LAUNCH_RECEIPTS)"
 
 test-cnpg-failover:
 	./hack/test-cnpg-failover.sh
