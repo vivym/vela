@@ -5,7 +5,7 @@ Date: 2026-08-29
 Status: Repository conformance implemented by Slice 45.
 
 Implementation: `3d384b0`; trust-boundary review closures: `247e6f7`,
-`1b56e49`, `6757932`.
+`1b56e49`, `6757932`; verification closures: `4a65429`, `9179665`.
 
 This slice makes registry publication, image signatures, SPDX SBOMs,
 vulnerability scans, and independent vulnerability approval mandatory inputs
