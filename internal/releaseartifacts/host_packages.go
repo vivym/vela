@@ -284,19 +284,7 @@ func writeJSONFile(path string, value any) error {
 		return err
 	}
 	encoded = append(encoded, '\n')
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
-	if _, err := file.Write(encoded); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return err
-	}
-	return file.Close()
+	return writeExactFile(path, encoded)
 }
 
 func verifyHostPackageCandidate(directory, revision string) error {

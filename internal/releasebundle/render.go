@@ -2,6 +2,7 @@ package releasebundle
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -847,6 +848,34 @@ type ociBlobDescriptor struct {
 	URLs        []string          `json:"urls,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
 	Data        []byte            `json:"data,omitempty"`
+}
+
+// ValidateOCIManifestInput applies the same manifest/config contract used by
+// Build to an in-memory release artifact pair.
+func ValidateOCIManifestInput(
+	input OCIManifestInput,
+	manifestEncoded, configEncoded []byte,
+) error {
+	if len(manifestEncoded) == 0 || len(manifestEncoded) > maxMetadataBytes ||
+		len(configEncoded) == 0 || len(configEncoded) > maxMetadataBytes {
+		return invalid("OCI manifest and config must be bounded non-empty metadata")
+	}
+	manifestDigest := sha256.Sum256(manifestEncoded)
+	configDigest := sha256.Sum256(configEncoded)
+	manifestArtifact := artifactDescriptor(
+		input.Ref, "", manifestDigest[:], int64(len(manifestEncoded)),
+	)
+	configArtifact := artifactDescriptor(
+		input.ConfigRef, OCIImageConfigMediaType, configDigest[:], int64(len(configEncoded)),
+	)
+	_, _, err := validateOCIManifest(
+		input,
+		manifestArtifact,
+		manifestEncoded,
+		configArtifact,
+		configEncoded,
+	)
+	return err
 }
 
 func validateOCIManifest(

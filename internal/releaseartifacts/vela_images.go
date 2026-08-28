@@ -137,6 +137,15 @@ func runVelaImageBake(
 	} else {
 		arguments = append(arguments, "--load")
 	}
+	return runVelaImageBakeCommand(ctx, request, arguments, "run Docker Buildx Bake")
+}
+
+func runVelaImageBakeCommand(
+	ctx context.Context,
+	request VelaImageBuildRequest,
+	arguments []string,
+	operation string,
+) error {
 	command := exec.CommandContext(ctx, "docker", arguments...)
 	command.Dir = request.SourceRoot
 	command.Env = buildEnvironment(map[string]string{
@@ -148,7 +157,7 @@ func runVelaImageBake(
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
-		return fmt.Errorf("run Docker Buildx Bake: %w", err)
+		return fmt.Errorf("%s: %w", operation, err)
 	}
 	return nil
 }
