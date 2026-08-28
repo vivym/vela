@@ -103,6 +103,10 @@ func TestRenderedJetStreamUsesPinnedNATSImage(t *testing.T) {
 		t.Fatalf("render Control/Storage Kustomize base: %v", err)
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(contents))
+	type renderedContainer struct {
+		Name  string `yaml:"name"`
+		Image string `yaml:"image"`
+	}
 	for {
 		var document struct {
 			Kind     string `yaml:"kind"`
@@ -113,10 +117,9 @@ func TestRenderedJetStreamUsesPinnedNATSImage(t *testing.T) {
 			Spec struct {
 				Template struct {
 					Spec struct {
-						Containers []struct {
-							Name  string `yaml:"name"`
-							Image string `yaml:"image"`
-						} `yaml:"containers"`
+						Containers          []renderedContainer `yaml:"containers"`
+						InitContainers      []renderedContainer `yaml:"initContainers"`
+						EphemeralContainers []renderedContainer `yaml:"ephemeralContainers"`
 					} `yaml:"spec"`
 				} `yaml:"template"`
 			} `yaml:"spec"`
@@ -131,10 +134,12 @@ func TestRenderedJetStreamUsesPinnedNATSImage(t *testing.T) {
 			document.Metadata.Name != "nats" {
 			continue
 		}
-		containers := document.Spec.Template.Spec.Containers
+		pod := document.Spec.Template.Spec
+		containers := pod.Containers
 		if len(containers) != 1 || containers[0].Name != "nats" ||
-			containers[0].Image != "docker.io/library/nats@sha256:26b0ee1a95285aedae137aefb953701d9da1dfffcf7818eb3aeb536c4373892f" {
-			t.Fatalf("rendered NATS container image = %#v", containers)
+			containers[0].Image != "docker.io/library/nats@sha256:26b0ee1a95285aedae137aefb953701d9da1dfffcf7818eb3aeb536c4373892f" ||
+			len(pod.InitContainers) != 0 || len(pod.EphemeralContainers) != 0 {
+			t.Fatalf("rendered NATS Pod containers = %#v", pod)
 		}
 		return
 	}
