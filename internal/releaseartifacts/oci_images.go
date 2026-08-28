@@ -43,6 +43,18 @@ type velaImageSpecification struct {
 }
 
 func BuildVelaImageArtifacts(ctx context.Context, request VelaImageArtifactBuildRequest) error {
+	return buildVelaImageArtifacts(ctx, request, nil)
+}
+
+func PublishVelaImageArtifacts(ctx context.Context, request VelaImageArtifactBuildRequest) error {
+	return buildVelaImageArtifacts(ctx, request, newRemoteVelaImageRegistry())
+}
+
+func buildVelaImageArtifacts(
+	ctx context.Context,
+	request VelaImageArtifactBuildRequest,
+	registry velaImageRegistryClient,
+) error {
 	validated, err := validateVelaImageBuildInputs(ctx, request.VelaImageBuildRequest)
 	if err != nil {
 		return err
@@ -104,6 +116,18 @@ func BuildVelaImageArtifacts(ctx context.Context, request VelaImageArtifactBuild
 	}
 	if err := verifyVelaImageArtifactCandidate(candidate, validated); err != nil {
 		return fmt.Errorf("verify Vela image artifact candidate: %w", err)
+	}
+	if registry != nil {
+		receipt, err := publishVelaImageLayouts(ctx, layoutRoot, candidate, manifest, registry)
+		if err != nil {
+			return err
+		}
+		if err := writeJSONFile(filepath.Join(candidate, velaRegistryPublicationFile), receipt); err != nil {
+			return fmt.Errorf("write Vela registry publication receipt: %w", err)
+		}
+		if err := verifyVelaImagePublicationCandidate(candidate, validated, receipt); err != nil {
+			return fmt.Errorf("verify Vela image publication candidate: %w", err)
+		}
 	}
 	if err := syncDirectory(candidate); err != nil {
 		return fmt.Errorf("sync Vela image artifact candidate: %w", err)
@@ -472,12 +496,49 @@ func writeExactFile(path string, content []byte) error {
 }
 
 func verifyVelaImageArtifactCandidate(directory string, request VelaImageBuildRequest) error {
+	if err := verifyVelaImageArtifactInventory(directory, false); err != nil {
+		return err
+	}
+	return verifyVelaImageArtifactFiles(directory, request)
+}
+
+func verifyVelaImagePublicationCandidate(
+	directory string,
+	request VelaImageBuildRequest,
+	expected velaRegistryPublicationReceipt,
+) error {
+	if err := verifyVelaImageArtifactInventory(directory, true); err != nil {
+		return err
+	}
+	if err := verifyVelaImageArtifactFiles(directory, request); err != nil {
+		return err
+	}
+	encoded, err := readRegularMetadata(filepath.Join(directory, velaRegistryPublicationFile))
+	if err != nil {
+		return fmt.Errorf("read registry publication receipt: %w", err)
+	}
+	var receipt velaRegistryPublicationReceipt
+	if err := decodeStrictJSON(encoded, &receipt); err != nil {
+		return fmt.Errorf("decode registry publication receipt: %w", err)
+	}
+	if receipt.SchemaVersion != velaRegistryPublicationSchemaVersion ||
+		receipt.Revision != request.Revision || len(receipt.Images) != velaImageCount ||
+		!slices.Equal(receipt.Images, expected.Images) {
+		return errors.New("registry publication receipt does not bind the exact Vela image set")
+	}
+	return nil
+}
+
+func verifyVelaImageArtifactInventory(directory string, includePublicationReceipt bool) error {
 	expectedInventory := []string{"vela-images.json"}
 	for _, specification := range velaImageSpecifications() {
 		expectedInventory = append(expectedInventory,
 			specification.name+".config.json",
 			specification.name+".manifest.json",
 		)
+	}
+	if includePublicationReceipt {
+		expectedInventory = append(expectedInventory, velaRegistryPublicationFile)
 	}
 	slices.Sort(expectedInventory)
 	entries, err := os.ReadDir(directory)
@@ -491,6 +552,10 @@ func verifyVelaImageArtifactCandidate(directory string, request VelaImageBuildRe
 	if !slices.Equal(actualInventory, expectedInventory) {
 		return fmt.Errorf("inventory is not exact: got %v want %v", actualInventory, expectedInventory)
 	}
+	return nil
+}
+
+func verifyVelaImageArtifactFiles(directory string, request VelaImageBuildRequest) error {
 	manifestEncoded, err := readRegularMetadata(filepath.Join(directory, "vela-images.json"))
 	if err != nil {
 		return err

@@ -43,19 +43,26 @@ func run(arguments []string) int {
 		}
 		return 0
 	}
-	if len(arguments) == 7 && arguments[0] == "build-vela-image-artifacts" {
+	if len(arguments) == 7 &&
+		(arguments[0] == "build-vela-image-artifacts" || arguments[0] == "publish-vela-images") {
 		request := releaseartifacts.VelaImageArtifactBuildRequest{
 			VelaImageBuildRequest: velaImageBuildRequest(arguments),
 			OutputDirectory:       arguments[6],
 		}
-		if err := releaseartifacts.BuildVelaImageArtifacts(context.Background(), request); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "build Vela image artifacts: %v\n", err)
+		operation := releaseartifacts.BuildVelaImageArtifacts
+		output := arguments[6] + "/vela-images.json"
+		if arguments[0] == "publish-vela-images" {
+			operation = releaseartifacts.PublishVelaImageArtifacts
+			output = arguments[6] + "/vela-registry-publication.json"
+		}
+		if err := operation(context.Background(), request); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", arguments[0], err)
 			return 1
 		}
-		_, _ = fmt.Fprintln(os.Stdout, arguments[6]+"/vela-images.json")
+		_, _ = fmt.Fprintln(os.Stdout, output)
 		return 0
 	}
-	_, _ = fmt.Fprintln(os.Stderr, "usage: vela-release-artifacts <build-host-packages|verify-h3-backend|print-vela-image-build|build-vela-images|build-vela-image-artifacts> ...")
+	_, _ = fmt.Fprintln(os.Stderr, "usage: vela-release-artifacts <build-host-packages|verify-h3-backend|print-vela-image-build|build-vela-images|build-vela-image-artifacts|publish-vela-images> ...")
 	return 2
 }
 
