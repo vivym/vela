@@ -18,9 +18,8 @@ credential-isolation review closure `e8a4149`). The install render gives the
 Barman principals only exact `vela-backup-s3` access and denies Artifact
 credential reads. Slice 46 pins the JetStream StatefulSet to the exact NATS
 `2.10.22` `linux/amd64` OCI manifest and verifies that identity through the
-final Control/Storage Kustomize render (`760cd7a`). The repository does not
-prove three physical RKE2
-Control/Storage Nodes, independent
+final Control/Storage Kustomize render (`760cd7a`, review closure `431bf3f`).
+The repository does not prove three physical RKE2 Control/Storage Nodes, independent
 disks, colocated I/O isolation, production operator installation, secret
 rotation, durable external S3, or a real-environment failover/restore Launch
 Receipt.

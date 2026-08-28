@@ -62,7 +62,7 @@ tests alone do not satisfy a gate.
 | Vela OCI Release Artifact Export | `32718ac` | `docs/specs/0043-vela-oci-release-artifact-export.md`, `internal/releaseartifacts/oci_images.go`, `cmd/vela-release-artifacts` |
 | Vela OCI Registry Publication | `91e883f` | `docs/specs/0044-vela-oci-registry-publication.md`, `internal/releaseartifacts/oci_publication.go`, `cmd/vela-release-artifacts` |
 | Release Supply-chain Evidence Binding | `3d384b0`, `247e6f7`, `1b56e49`, `6757932`, `4a65429`, `9179665` | `docs/specs/0045-release-supply-chain-evidence-binding.md`, `internal/supplychain`, `cmd/vela-verify-launch` |
-| NATS Linux/amd64 Image Pinning | `760cd7a` | `docs/specs/0046-nats-linux-amd64-image-pinning.md`, `deploy/control-storage/nats-statefulset.yaml`, `internal/deploymentcontract/jetstream_test.go` |
+| NATS Linux/amd64 Image Pinning | `760cd7a`, `431bf3f` | `docs/specs/0046-nats-linux-amd64-image-pinning.md`, `deploy/control-storage/nats-statefulset.yaml`, `internal/deploymentcontract/jetstream_test.go` |
 
 ## ADR Evidence Matrix
 
@@ -229,10 +229,11 @@ database identity, raw scanner output, and exact vulnerability policy approval
 under a process-configured, digest-pinned external trust root.
 Repository fixtures prove fail-closed validation and pre-transaction rejection;
 they do not provide any actual production evidence or Launch Receipt.
-Slice 46 (`760cd7a`) pins the Control/Storage JetStream workload to the exact
-NATS `2.10.22` `linux/amd64` OCI manifest and verifies that identity through the
-final Kustomize render. It does not provide publication or supply-chain
-evidence, release-specific Vela/materializer images, or a deployment receipt.
+Slice 46 (`760cd7a`, review closure `431bf3f`) pins the Control/Storage
+JetStream workload to the exact NATS `2.10.22` `linux/amd64` OCI manifest and
+verifies that identity through the final Kustomize render. It does not provide
+publication or supply-chain evidence, release-specific Vela/materializer
+images, or a deployment receipt.
 The repository coverage is now 31 direct, 0 partial, and 0 unproven.
 
 ## Production Gates

@@ -4,7 +4,7 @@ Date: 2026-08-29
 
 Status: Repository conformance implemented by Slice 46.
 
-Implementation: `760cd7a`.
+Implementation: `760cd7a`; review closure: `431bf3f`.
 
 This slice removes the mutable NATS tag from the Control/Storage deployment
 contract. It pins the exact `linux/amd64` manifest used by the three-replica
@@ -47,9 +47,10 @@ kubectl kustomize deploy/control-storage
 
 `internal/deploymentcontract.TestRenderedJetStreamUsesPinnedNATSImage` locates
 the exact `StatefulSet/vela-system/nats` in that output and requires its sole
-container to use the expected digest reference. A source YAML change,
-Kustomize overlay drift, tag regression, repository change, platform digest
-change, or additional container therefore fails repository validation.
+ordinary container to use the expected digest reference. It also rejects any
+init or ephemeral container. A source YAML change, Kustomize overlay drift, tag
+regression, repository change, platform digest change, or additional container
+therefore fails repository validation.
 
 ## Release boundary
 
@@ -72,4 +73,5 @@ remain external deployment inputs.
   change and passing after the digest pin;
 - the complete `internal/deploymentcontract` package passes; and
 - `make validate-deployment` renders all five deployment bases and passes their
-  focused contract tests.
+  focused contract tests; and
+- post-review `make verify`, the focused race test, and `go mod verify` pass.
