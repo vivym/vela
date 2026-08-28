@@ -89,6 +89,10 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 		len(plan.OCIManifests) > maxArtifactCount {
 		return Bundle{}, invalid("build plan graph cardinality is invalid")
 	}
+	artifacts, err := preflightArtifactGraph(root, plan)
+	if err != nil {
+		return Bundle{}, invalidf("preflight artifact graph: %v", err)
+	}
 	slices.SortFunc(plan.FinalRenders, func(left, right ArtifactInput) int {
 		return strings.Compare(left.Name, right.Name)
 	})
@@ -115,7 +119,7 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 		if input.Name != fixedRenderNames[index] {
 			return Bundle{}, invalid("final render names must be the exact fixed set")
 		}
-		artifact, content, err := artifactFor(root, input.Ref, "application/yaml", maxMetadataBytes)
+		artifact, content, err := artifacts.artifactFor(input.Ref, "application/yaml", maxMetadataBytes)
 		if err != nil {
 			return Bundle{}, invalidf("read final render %s: %v", input.Name, err)
 		}
@@ -128,7 +132,7 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 	if plan.NodeAgentUnit.Name != "node-agent-systemd-unit" {
 		return Bundle{}, invalid("node Agent unit name must be node-agent-systemd-unit")
 	}
-	unitArtifact, unitContent, err := artifactFor(root, plan.NodeAgentUnit.Ref, "text/plain", maxMetadataBytes)
+	unitArtifact, unitContent, err := artifacts.artifactFor(plan.NodeAgentUnit.Ref, "text/plain", maxMetadataBytes)
 	if err != nil {
 		return Bundle{}, invalidf("read node Agent systemd unit: %v", err)
 	}
@@ -139,11 +143,11 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 		if input.Name != fixedPackageNames[index] {
 			return Bundle{}, invalid("package names must be the exact fixed set")
 		}
-		contractArtifact, contractContent, err := artifactFor(root, input.ContractRef, "application/json", maxMetadataBytes)
+		contractArtifact, contractContent, err := artifacts.artifactFor(input.ContractRef, "application/json", maxMetadataBytes)
 		if err != nil {
 			return Bundle{}, invalidf("read %s package contract: %v", input.Name, err)
 		}
-		packageArtifact, _, err := artifactFor(root, input.ArtifactRef, "application/octet-stream", maxPackageBytes)
+		packageArtifact, err := artifacts.digestArtifact(input.ArtifactRef, "application/octet-stream", maxPackageBytes)
 		if err != nil {
 			return Bundle{}, invalidf("read %s package artifact: %v", input.Name, err)
 		}
@@ -164,7 +168,7 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 
 	materialKeys := make(map[string]struct{})
 	for _, input := range plan.WorkerMaterializations {
-		materialization, err := buildWorkerMaterialization(root, input, &inventory, materialKeys)
+		materialization, err := buildWorkerMaterialization(artifacts, input, &inventory, materialKeys)
 		if err != nil {
 			return Bundle{}, err
 		}
@@ -181,11 +185,11 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 			return Bundle{}, invalidf("OCI image %q is duplicated", input.Image)
 		}
 		seenImages[input.Image] = struct{}{}
-		artifact, content, err := artifactFor(root, input.Ref, "", maxMetadataBytes)
+		artifact, content, err := artifacts.artifactFor(input.Ref, "", maxMetadataBytes)
 		if err != nil {
 			return Bundle{}, invalidf("read OCI manifest for %s: %v", input.Image, err)
 		}
-		configArtifact, configContent, err := artifactFor(root, input.ConfigRef, OCIImageConfigMediaType, maxMetadataBytes)
+		configArtifact, configContent, err := artifacts.artifactFor(input.ConfigRef, OCIImageConfigMediaType, maxMetadataBytes)
 		if err != nil {
 			return Bundle{}, invalidf("read OCI config for %s: %v", input.Image, err)
 		}
@@ -199,10 +203,6 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 	if !reflect.DeepEqual(inventory.images, seenImages) {
 		return Bundle{}, invalidf("OCI manifest set does not exactly match rendered image set: rendered=%v supplied=%v", sortedKeys(inventory.images), sortedKeys(seenImages))
 	}
-	if err := validateUniqueArtifactReferences(configuration, ociImages); err != nil {
-		return Bundle{}, err
-	}
-
 	configurationRevision, configurationSize, err := canonicalDigest(configuration)
 	if err != nil {
 		return Bundle{}, invalidf("digest configuration manifest: %v", err)
@@ -229,61 +229,6 @@ func build(root *os.Root, plan BuildPlan) (Bundle, error) {
 		ConfigurationRevision: configurationRevision, ConfigurationManifest: configuration,
 		ReleaseDescriptor: release, OCIImages: ociImages,
 	}, nil
-}
-
-func validateUniqueArtifactReferences(configuration ConfigurationManifest, images []OCIImage) error {
-	seen := make(map[string]string)
-	var totalBytes int64
-	claim := func(role string, artifact Artifact) error {
-		if prior, duplicate := seen[artifact.Ref]; duplicate {
-			return invalidf("artifact reference %q is shared by %s and %s", artifact.Ref, prior, role)
-		}
-		seen[artifact.Ref] = role
-		if artifact.SizeBytes <= 0 || totalBytes > maxArtifactBytes-artifact.SizeBytes {
-			return invalidf("artifact graph exceeds %d bytes", maxArtifactBytes)
-		}
-		totalBytes += artifact.SizeBytes
-		if len(seen) > maxArtifactCount {
-			return invalidf("artifact graph exceeds %d entries", maxArtifactCount)
-		}
-		return nil
-	}
-	for _, render := range configuration.FinalRenders {
-		if err := claim("render/"+render.Name, render.Artifact); err != nil {
-			return err
-		}
-	}
-	if err := claim("node-agent-unit", configuration.NodeAgentUnit.Artifact); err != nil {
-		return err
-	}
-	for _, item := range configuration.Packages {
-		if err := claim("package-contract/"+item.Name, item.Contract); err != nil {
-			return err
-		}
-		if err := claim("package/"+item.Name, item.Artifact); err != nil {
-			return err
-		}
-	}
-	for _, item := range configuration.WorkerMaterializations {
-		for role, artifact := range map[string]Artifact{
-			"worker-runtime/" + item.NodeIdentity:   item.WorkerRuntime,
-			"runner-profiles/" + item.NodeIdentity:  item.RunnerProfiles,
-			"runner-gpu-roles/" + item.NodeIdentity: item.RunnerGPURoles,
-		} {
-			if err := claim(role, artifact); err != nil {
-				return err
-			}
-		}
-	}
-	for _, image := range images {
-		if err := claim("oci-manifest/"+image.Image, image.Descriptor); err != nil {
-			return err
-		}
-		if err := claim("oci-config/"+image.Image, image.Config); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func verify(root *os.Root, bundle Bundle) error {
@@ -503,15 +448,17 @@ func containsTemplateValue(value string) bool {
 }
 
 func decodeYAMLDocuments(encoded []byte) ([]map[string]any, error) {
-	decoder := yaml.NewDecoder(bytes.NewReader(encoded))
-	var documents []map[string]any
-	for {
-		var document map[string]any
-		err := decoder.Decode(&document)
-		if errors.Is(err, io.EOF) {
-			break
+	nodes, err := decodeBoundedYAMLNodes(encoded)
+	if err != nil {
+		return nil, err
+	}
+	documents := make([]map[string]any, 0, len(nodes))
+	for _, node := range nodes {
+		if len(node.Content) == 0 {
+			continue
 		}
-		if err != nil {
+		var document map[string]any
+		if err := node.Decode(&document); err != nil {
 			return nil, err
 		}
 		if len(document) != 0 {
@@ -519,4 +466,62 @@ func decodeYAMLDocuments(encoded []byte) ([]map[string]any, error) {
 		}
 	}
 	return documents, nil
+}
+
+func decodeSingleYAMLNode(encoded []byte) (*yaml.Node, error) {
+	documents, err := decodeBoundedYAMLNodes(encoded)
+	if err != nil {
+		return nil, err
+	}
+	if len(documents) != 1 || len(documents[0].Content) == 0 {
+		return nil, errors.New("YAML input must contain exactly one non-empty document")
+	}
+	return documents[0], nil
+}
+
+func decodeBoundedYAMLNodes(encoded []byte) ([]*yaml.Node, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(encoded))
+	documents := make([]*yaml.Node, 0)
+	nodeCount := 0
+	aliasCount := 0
+	for {
+		var document yaml.Node
+		err := decoder.Decode(&document)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(documents) == maxYAMLDocuments {
+			return nil, fmt.Errorf("YAML input exceeds %d documents", maxYAMLDocuments)
+		}
+		if err := validateYAMLNodeBounds(&document, 1, &nodeCount, &aliasCount); err != nil {
+			return nil, err
+		}
+		documents = append(documents, &document)
+	}
+	return documents, nil
+}
+
+func validateYAMLNodeBounds(node *yaml.Node, depth int, nodeCount, aliasCount *int) error {
+	(*nodeCount)++
+	if *nodeCount > maxYAMLNodes {
+		return fmt.Errorf("YAML input exceeds %d nodes", maxYAMLNodes)
+	}
+	if depth > maxYAMLDepth {
+		return fmt.Errorf("YAML input exceeds depth %d", maxYAMLDepth)
+	}
+	if node.Kind == yaml.AliasNode {
+		(*aliasCount)++
+		if *aliasCount > maxYAMLAliases {
+			return fmt.Errorf("YAML input exceeds %d aliases", maxYAMLAliases)
+		}
+	}
+	for _, child := range node.Content {
+		if err := validateYAMLNodeBounds(child, depth+1, nodeCount, aliasCount); err != nil {
+			return err
+		}
+	}
+	return nil
 }

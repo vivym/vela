@@ -2,11 +2,9 @@ package releasebundle
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"reflect"
 	"slices"
 	"sort"
@@ -249,12 +247,12 @@ func scanEmbeddedConfiguration(name string, encoded []byte, namespace, consumer 
 			return fmt.Errorf("embedded ConfigMap JSON %s is invalid: %w", name, err)
 		}
 	} else {
-		decoder := yaml.NewDecoder(bytes.NewReader(encoded))
-		if err := decoder.Decode(&value); err != nil {
+		node, err := decodeSingleYAMLNode(encoded)
+		if err != nil {
 			return fmt.Errorf("embedded ConfigMap YAML %s is invalid: %w", name, err)
 		}
-		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-			return fmt.Errorf("embedded ConfigMap YAML %s must contain one document", name)
+		if err := node.Decode(&value); err != nil {
+			return fmt.Errorf("embedded ConfigMap YAML %s is invalid: %w", name, err)
 		}
 	}
 	return scanRenderedValue(value, namespace, consumer, inventory, "")
@@ -385,6 +383,9 @@ type configMapDocument struct {
 }
 
 func decodeConfigMap(encoded []byte) (configMapDocument, error) {
+	if _, err := decodeSingleYAMLNode(encoded); err != nil {
+		return configMapDocument{}, err
+	}
 	decoder := yaml.NewDecoder(bytes.NewReader(encoded))
 	decoder.KnownFields(true)
 	var document configMapDocument
@@ -402,7 +403,7 @@ func decodeConfigMap(encoded []byte) (configMapDocument, error) {
 }
 
 func buildWorkerMaterialization(
-	root *os.Root,
+	artifacts *artifactReader,
 	input WorkerMaterializationInput,
 	inventory *renderInventory,
 	unique map[string]struct{},
@@ -430,15 +431,15 @@ func buildWorkerMaterialization(
 		unique[value] = struct{}{}
 	}
 
-	runtimeArtifact, runtimeContent, err := artifactFor(root, input.WorkerRuntimeRef, "application/yaml", maxMetadataBytes)
+	runtimeArtifact, runtimeContent, err := artifacts.artifactFor(input.WorkerRuntimeRef, "application/yaml", maxMetadataBytes)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("read Worker runtime ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
-	profilesArtifact, profilesContent, err := artifactFor(root, input.RunnerProfilesRef, "application/yaml", maxMetadataBytes)
+	profilesArtifact, profilesContent, err := artifacts.artifactFor(input.RunnerProfilesRef, "application/yaml", maxMetadataBytes)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("read runner profiles ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
-	gpuArtifact, gpuContent, err := artifactFor(root, input.RunnerGPURolesRef, "application/yaml", maxMetadataBytes)
+	gpuArtifact, gpuContent, err := artifacts.artifactFor(input.RunnerGPURolesRef, "application/yaml", maxMetadataBytes)
 	if err != nil {
 		return WorkerMaterialization{}, invalidf("read runner GPU roles ConfigMap for %s: %v", input.NodeIdentity, err)
 	}
@@ -547,14 +548,16 @@ func validateRuntimeConfigMap(encoded []byte, input WorkerMaterializationInput) 
 }
 
 type profileAllowlist struct {
-	SchemaVersion   int    `json:"schema_version"`
-	BackendRevision string `json:"backend_revision"`
-	Profiles        []struct {
-		ModelRevisionID            string `json:"model_revision_id"`
-		GenerationPresetRevisionID string `json:"generation_preset_revision_id"`
-		ExecutionProfileRevisionID string `json:"execution_profile_revision_id"`
-		OutputSpecID               string `json:"output_spec_id"`
-	} `json:"profiles"`
+	SchemaVersion   int                     `json:"schema_version"`
+	BackendRevision string                  `json:"backend_revision"`
+	Profiles        []profileAllowlistEntry `json:"profiles"`
+}
+
+type profileAllowlistEntry struct {
+	ModelRevisionID            string `json:"model_revision_id"`
+	GenerationPresetRevisionID string `json:"generation_preset_revision_id"`
+	ExecutionProfileRevisionID string `json:"execution_profile_revision_id"`
+	OutputSpecID               string `json:"output_spec_id"`
 }
 
 func validateProfilesConfigMap(encoded []byte, input WorkerMaterializationInput) (configMapDocument, error) {
@@ -576,19 +579,17 @@ func validateProfilesConfigMap(encoded []byte, input WorkerMaterializationInput)
 		len(allowlist.Profiles) == 0 || len(allowlist.Profiles) > 1024 {
 		return configMapDocument{}, errors.New("profile allowlist header or count is invalid")
 	}
-	seen := make(map[string]struct{}, len(allowlist.Profiles))
+	seen := make(map[profileAllowlistEntry]struct{}, len(allowlist.Profiles))
 	for _, profile := range allowlist.Profiles {
 		if profile.ModelRevisionID != input.ModelRevisionID ||
 			profile.ExecutionProfileRevisionID != input.ExecutionProfileRevisionID ||
 			!canonicalUUID(profile.GenerationPresetRevisionID) || !canonicalUUID(profile.OutputSpecID) {
 			return configMapDocument{}, errors.New("profile allowlist entry does not match materialized revisions")
 		}
-		encodedProfile, _ := json.Marshal(profile)
-		key := string(encodedProfile)
-		if _, duplicate := seen[key]; duplicate {
+		if _, duplicate := seen[profile]; duplicate {
 			return configMapDocument{}, errors.New("profile allowlist contains a duplicate entry")
 		}
-		seen[key] = struct{}{}
+		seen[profile] = struct{}{}
 	}
 	return document, nil
 }
@@ -748,8 +749,7 @@ func validateOCIManifest(
 	if err := decodeStrictJSON(encoded, &manifest); err != nil {
 		return "", Platform{}, invalidf("decode OCI manifest for %s: %v", input.Image, err)
 	}
-	if manifest.SchemaVersion != 2 ||
-		(manifest.MediaType != OCIManifestMediaType && manifest.MediaType != DockerManifestMediaType) ||
+	if manifest.SchemaVersion != 2 || manifest.MediaType != OCIManifestMediaType ||
 		!validOCIBlobDescriptor(manifest.Config) || manifest.Config.MediaType != OCIImageConfigMediaType ||
 		manifest.Config.Digest != configArtifact.Digest || manifest.Config.Size != configArtifact.SizeBytes ||
 		len(manifest.Layers) == 0 || len(manifest.Layers) > 4096 {

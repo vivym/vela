@@ -85,6 +85,109 @@ func decodeStrictJSON(encoded []byte, destination any) error {
 	return nil
 }
 
+type artifactReference struct {
+	role      string
+	reference string
+	maximum   int64
+}
+
+type artifactReader struct {
+	root       *os.Root
+	normalized map[string]string
+	remaining  int64
+}
+
+func preflightArtifactGraph(root *os.Root, plan BuildPlan) (*artifactReader, error) {
+	references := collectArtifactReferences(plan)
+	if len(references) > maxArtifactCount {
+		return nil, fmt.Errorf("artifact graph exceeds %d entries", maxArtifactCount)
+	}
+	reader := &artifactReader{
+		root:       root,
+		normalized: make(map[string]string, len(references)),
+		remaining:  maxArtifactBytes,
+	}
+	roles := make(map[string]string, len(references))
+	for _, artifact := range references {
+		normalized, err := normalizeArtifactReference(artifact.reference)
+		if err != nil {
+			return nil, fmt.Errorf("%s reference: %w", artifact.role, err)
+		}
+		if prior, duplicate := roles[normalized]; duplicate {
+			return nil, fmt.Errorf(
+				"artifact reference %q is shared by %s and %s",
+				artifact.reference,
+				prior,
+				artifact.role,
+			)
+		}
+		roles[normalized] = artifact.role
+		reader.normalized[artifact.reference] = normalized
+	}
+	totalBytes := int64(0)
+	for _, artifact := range references {
+		file, size, err := openNormalizedRooted(root, reader.normalized[artifact.reference], artifact.maximum)
+		if err != nil {
+			return nil, fmt.Errorf("stat %s: %w", artifact.role, err)
+		}
+		_ = file.Close()
+		if size > maxArtifactBytes-totalBytes {
+			return nil, fmt.Errorf("artifact graph exceeds %d bytes", maxArtifactBytes)
+		}
+		totalBytes += size
+	}
+	return reader, nil
+}
+
+func collectArtifactReferences(plan BuildPlan) []artifactReference {
+	references := make([]artifactReference, 0,
+		len(plan.FinalRenders)+1+2*len(plan.Packages)+
+			3*len(plan.WorkerMaterializations)+2*len(plan.OCIManifests),
+	)
+	for _, render := range plan.FinalRenders {
+		references = append(references, artifactReference{
+			role: "render/" + render.Name, reference: render.Ref, maximum: maxMetadataBytes,
+		})
+	}
+	references = append(references, artifactReference{
+		role: "node-agent-unit", reference: plan.NodeAgentUnit.Ref, maximum: maxMetadataBytes,
+	})
+	for _, item := range plan.Packages {
+		references = append(references,
+			artifactReference{
+				role: "package-contract/" + item.Name, reference: item.ContractRef, maximum: maxMetadataBytes,
+			},
+			artifactReference{
+				role: "package/" + item.Name, reference: item.ArtifactRef, maximum: maxPackageBytes,
+			},
+		)
+	}
+	for _, item := range plan.WorkerMaterializations {
+		references = append(references,
+			artifactReference{
+				role: "worker-runtime/" + item.NodeIdentity, reference: item.WorkerRuntimeRef, maximum: maxMetadataBytes,
+			},
+			artifactReference{
+				role: "runner-profiles/" + item.NodeIdentity, reference: item.RunnerProfilesRef, maximum: maxMetadataBytes,
+			},
+			artifactReference{
+				role: "runner-gpu-roles/" + item.NodeIdentity, reference: item.RunnerGPURolesRef, maximum: maxMetadataBytes,
+			},
+		)
+	}
+	for _, image := range plan.OCIManifests {
+		references = append(references,
+			artifactReference{
+				role: "oci-manifest/" + image.Image, reference: image.Ref, maximum: maxMetadataBytes,
+			},
+			artifactReference{
+				role: "oci-config/" + image.Image, reference: image.ConfigRef, maximum: maxMetadataBytes,
+			},
+		)
+	}
+	return references
+}
+
 func readRooted(root *os.Root, reference string, maximum int64) ([]byte, error) {
 	normalized, err := normalizeArtifactReference(reference)
 	if err != nil {
@@ -105,6 +208,22 @@ func normalizeArtifactReference(reference string) (string, error) {
 }
 
 func readNormalizedRooted(root *os.Root, normalized string, maximum int64) ([]byte, error) {
+	file, _, err := openNormalizedRooted(root, normalized, maximum)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	content, err := io.ReadAll(io.LimitReader(file, maximum+1))
+	if err != nil {
+		return nil, fmt.Errorf("read bounded artifact: %w", err)
+	}
+	if len(content) == 0 || int64(len(content)) > maximum {
+		return nil, fmt.Errorf("artifact content must be in 1..%d bytes", maximum)
+	}
+	return content, nil
+}
+
+func openNormalizedRooted(root *os.Root, normalized string, maximum int64) (*os.File, int64, error) {
 	prefix := ""
 	for _, component := range strings.Split(normalized, string(filepath.Separator)) {
 		if prefix == "" {
@@ -114,42 +233,98 @@ func readNormalizedRooted(root *os.Root, normalized string, maximum int64) ([]by
 		}
 		information, err := root.Lstat(prefix)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if information.Mode()&os.ModeSymlink != 0 {
-			return nil, errors.New("artifact path must not contain a symbolic link")
+			return nil, 0, errors.New("artifact path must not contain a symbolic link")
 		}
 	}
 	file, err := root.Open(normalized)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	defer func() { _ = file.Close() }()
 	information, err := file.Stat()
 	if err != nil || !information.Mode().IsRegular() || information.Size() <= 0 || information.Size() > maximum {
-		return nil, fmt.Errorf("artifact must be a regular file of 1..%d bytes", maximum)
+		_ = file.Close()
+		return nil, 0, fmt.Errorf("artifact must be a regular file of 1..%d bytes", maximum)
 	}
-	content, err := io.ReadAll(io.LimitReader(file, maximum+1))
-	if err != nil || len(content) == 0 || int64(len(content)) > maximum {
-		return nil, fmt.Errorf("read bounded artifact: %w", err)
-	}
-	return content, nil
+	return file, information.Size(), nil
 }
 
-func artifactFor(root *os.Root, reference, mediaType string, maximum int64) (Artifact, []byte, error) {
-	normalized, err := normalizeArtifactReference(reference)
+func (reader *artifactReader) artifactFor(
+	reference,
+	mediaType string,
+	maximum int64,
+) (Artifact, []byte, error) {
+	normalized, file, limit, err := reader.openPreflightedArtifact(reference, maximum)
 	if err != nil {
 		return Artifact{}, nil, err
 	}
-	content, err := readNormalizedRooted(root, normalized, maximum)
+	defer func() { _ = file.Close() }()
+	content, err := io.ReadAll(io.LimitReader(file, limit))
 	if err != nil {
+		return Artifact{}, nil, fmt.Errorf("read bounded artifact: %w", err)
+	}
+	actual := int64(len(content))
+	if err := reader.consume(actual, maximum); err != nil {
 		return Artifact{}, nil, err
 	}
 	digest := sha256.Sum256(content)
+	return artifactDescriptor(normalized, mediaType, digest[:], actual), content, nil
+}
+
+func (reader *artifactReader) digestArtifact(
+	reference,
+	mediaType string,
+	maximum int64,
+) (Artifact, error) {
+	normalized, file, limit, err := reader.openPreflightedArtifact(reference, maximum)
+	if err != nil {
+		return Artifact{}, err
+	}
+	defer func() { _ = file.Close() }()
+	digest := sha256.New()
+	actual, err := io.Copy(digest, io.LimitReader(file, limit))
+	if err != nil {
+		return Artifact{}, fmt.Errorf("hash bounded artifact: %w", err)
+	}
+	if err := reader.consume(actual, maximum); err != nil {
+		return Artifact{}, err
+	}
+	return artifactDescriptor(normalized, mediaType, digest.Sum(nil), actual), nil
+}
+
+func (reader *artifactReader) openPreflightedArtifact(
+	reference string,
+	maximum int64,
+) (string, *os.File, int64, error) {
+	normalized, ok := reader.normalized[reference]
+	if !ok {
+		return "", nil, 0, errors.New("artifact reference was not preflighted")
+	}
+	file, _, err := openNormalizedRooted(reader.root, normalized, maximum)
+	if err != nil {
+		return "", nil, 0, err
+	}
+	return normalized, file, min(maximum, reader.remaining) + 1, nil
+}
+
+func (reader *artifactReader) consume(actual, maximum int64) error {
+	if actual <= 0 || actual > maximum {
+		return fmt.Errorf("artifact content must be in 1..%d bytes", maximum)
+	}
+	if actual > reader.remaining {
+		return fmt.Errorf("artifact graph exceeds %d actual bytes", maxArtifactBytes)
+	}
+	reader.remaining -= actual
+	return nil
+}
+
+func artifactDescriptor(normalized, mediaType string, digest []byte, size int64) Artifact {
 	return Artifact{
 		Ref: filepath.ToSlash(normalized), MediaType: mediaType,
-		Digest: "sha256:" + hex.EncodeToString(digest[:]), SizeBytes: int64(len(content)),
-	}, content, nil
+		Digest: "sha256:" + hex.EncodeToString(digest), SizeBytes: size,
+	}
 }
 
 func canonicalDigest(value any) (string, int64, error) {

@@ -9,7 +9,6 @@ const (
 	ReleaseArtifactType        = "application/vnd.vela.release.bundle.v1+json"
 	ReleaseDescriptorMediaType = "application/vnd.vela.release.descriptor.v1+json"
 	OCIManifestMediaType       = "application/vnd.oci.image.manifest.v1+json"
-	DockerManifestMediaType    = "application/vnd.docker.distribution.manifest.v2+json"
 	OCIImageConfigMediaType    = "application/vnd.oci.image.config.v1+json"
 
 	maxPlanBytes       = 4 << 20
@@ -19,6 +18,10 @@ const (
 	maxArtifactBytes   = 1 << 30
 	maxArtifactCount   = 4096
 	maxWorkerNodeCount = 1024
+	maxYAMLDocuments   = 128
+	maxYAMLNodes       = 100_000
+	maxYAMLDepth       = 64
+	maxYAMLAliases     = 0
 )
 
 var ErrInvalidBundle = errors.New("invalid release bundle")

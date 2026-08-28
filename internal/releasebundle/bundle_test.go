@@ -351,6 +351,202 @@ func TestBuildPlanStrictJSON(t *testing.T) {
 	}
 }
 
+func TestBuildPreflightsArtifactGraphLimits(t *testing.T) {
+	t.Run("reference count", func(t *testing.T) {
+		fixture := newBundleFixture(t)
+		fixture.plan.WorkerMaterializations = make([]WorkerMaterializationInput, maxWorkerNodeCount)
+		for index := range fixture.plan.WorkerMaterializations {
+			fixture.plan.WorkerMaterializations[index] = WorkerMaterializationInput{
+				NodeIdentity:      fmt.Sprintf("count-worker-%04d", index),
+				WorkerRuntimeRef:  fmt.Sprintf("count-worker-%04d-runtime.yaml", index),
+				RunnerProfilesRef: fmt.Sprintf("count-worker-%04d-profiles.yaml", index),
+				RunnerGPURolesRef: fmt.Sprintf("count-worker-%04d-gpus.yaml", index),
+			}
+		}
+		fixture.plan.OCIManifests = make([]OCIManifestInput, 513)
+		for index := range fixture.plan.OCIManifests {
+			fixture.plan.OCIManifests[index] = OCIManifestInput{
+				Image:     fmt.Sprintf("registry.example.com/release/image-%04d@%s", index, testDigest(fmt.Sprintf("image-%04d", index))),
+				Ref:       fmt.Sprintf("count-image-%04d.json", index),
+				ConfigRef: fmt.Sprintf("count-image-%04d-config.json", index),
+			}
+		}
+		fixture.writePlan(t)
+		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+			!strings.Contains(err.Error(), "exceeds 4096 entries") {
+			t.Fatalf("Build error = %v, want artifact count rejection", err)
+		}
+	})
+
+	t.Run("aggregate stat bytes", func(t *testing.T) {
+		fixture := newBundleFixture(t)
+		for _, item := range fixture.plan.Packages {
+			writeSparseTestFile(t, filepath.Join(fixture.directory, item.ArtifactRef), maxPackageBytes)
+		}
+		for index := 0; index < 11; index++ {
+			worker := fixture.plan.WorkerMaterializations[0]
+			worker.NodeIdentity = fmt.Sprintf("size-worker-%02d", index)
+			worker.WorkerRuntimeRef = fmt.Sprintf("size-worker-%02d-runtime.yaml", index)
+			worker.RunnerProfilesRef = fmt.Sprintf("size-worker-%02d-profiles.yaml", index)
+			worker.RunnerGPURolesRef = fmt.Sprintf("size-worker-%02d-gpus.yaml", index)
+			fixture.plan.WorkerMaterializations = append(fixture.plan.WorkerMaterializations, worker)
+			for _, reference := range []string{
+				worker.WorkerRuntimeRef,
+				worker.RunnerProfilesRef,
+				worker.RunnerGPURolesRef,
+			} {
+				writeSparseTestFile(t, filepath.Join(fixture.directory, reference), maxMetadataBytes)
+			}
+		}
+		fixture.writePlan(t)
+		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+			!strings.Contains(err.Error(), "exceeds 1073741824 bytes") {
+			t.Fatalf("Build error = %v, want aggregate byte rejection", err)
+		}
+	})
+}
+
+func TestArtifactReaderEnforcesSharedActualReadBudget(t *testing.T) {
+	directory := t.TempDir()
+	writeTestFile(t, filepath.Join(directory, "metadata.yaml"), []byte("abc"))
+	writeTestFile(t, filepath.Join(directory, "package.tar"), []byte("defg"))
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = root.Close() })
+	newReader := func(remaining int64) *artifactReader {
+		return &artifactReader{
+			root: root,
+			normalized: map[string]string{
+				"metadata.yaml": "metadata.yaml",
+				"package.tar":   "package.tar",
+			},
+			remaining: remaining,
+		}
+	}
+
+	t.Run("buffered read", func(t *testing.T) {
+		reader := newReader(2)
+		if _, _, err := reader.artifactFor("metadata.yaml", "application/yaml", maxMetadataBytes); err == nil ||
+			!strings.Contains(err.Error(), "actual bytes") {
+			t.Fatalf("buffered read error = %v, want shared budget rejection", err)
+		}
+		if reader.remaining != 2 {
+			t.Fatalf("remaining budget after rejected buffered read = %d, want 2", reader.remaining)
+		}
+	})
+
+	t.Run("streamed read after buffered read", func(t *testing.T) {
+		reader := newReader(6)
+		if _, _, err := reader.artifactFor("metadata.yaml", "application/yaml", maxMetadataBytes); err != nil {
+			t.Fatalf("consume buffered artifact: %v", err)
+		}
+		if reader.remaining != 3 {
+			t.Fatalf("remaining budget after buffered read = %d, want 3", reader.remaining)
+		}
+		if _, err := reader.digestArtifact("package.tar", "application/octet-stream", maxPackageBytes); err == nil ||
+			!strings.Contains(err.Error(), "actual bytes") {
+			t.Fatalf("streamed read error = %v, want shared budget rejection", err)
+		}
+		if reader.remaining != 3 {
+			t.Fatalf("remaining budget after rejected streamed read = %d, want 3", reader.remaining)
+		}
+
+		reader = newReader(4)
+		artifact, err := reader.digestArtifact("package.tar", "application/octet-stream", maxPackageBytes)
+		if err != nil || artifact.Digest != testContentDigest([]byte("defg")) || artifact.SizeBytes != 4 ||
+			reader.remaining != 0 {
+			t.Fatalf("exact streamed budget artifact=%#v remaining=%d error=%v", artifact, reader.remaining, err)
+		}
+	})
+}
+
+func TestBuildRejectsUnboundedYAMLStructures(t *testing.T) {
+	tests := []struct {
+		name    string
+		content func() []byte
+	}{
+		{
+			name: "documents",
+			content: func() []byte {
+				return []byte(strings.Repeat("apiVersion: v1\nkind: ConfigMap\n---\n", maxYAMLDocuments+1))
+			},
+		},
+		{
+			name: "nodes",
+			content: func() []byte {
+				var encoded strings.Builder
+				for index := 0; index < maxYAMLNodes/2+1; index++ {
+					_, _ = fmt.Fprintf(&encoded, "key-%05d: value\n", index)
+				}
+				return []byte(encoded.String())
+			},
+		},
+		{
+			name: "depth",
+			content: func() []byte {
+				var encoded strings.Builder
+				for depth := 0; depth < maxYAMLDepth+1; depth++ {
+					_, _ = fmt.Fprintf(&encoded, "%slevel-%02d:\n", strings.Repeat("  ", depth), depth)
+				}
+				encoded.WriteString(strings.Repeat("  ", maxYAMLDepth+1) + "value: bounded\n")
+				return []byte(encoded.String())
+			},
+		},
+		{
+			name: "alias",
+			content: func() []byte {
+				return []byte("base: &base\n  value: bounded\ncopy: *base\n")
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newBundleFixture(t)
+			writeTestFile(
+				t,
+				filepath.Join(fixture.directory, fixture.plan.FinalRenders[0].Ref),
+				test.content(),
+			)
+			fixture.writePlan(t)
+			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+				!strings.Contains(err.Error(), "YAML input exceeds") {
+				t.Fatalf("Build error = %v, want bounded YAML rejection", err)
+			}
+		})
+	}
+}
+
+func TestBuildRejectsDuplicateProfileTypedKey(t *testing.T) {
+	fixture := newBundleFixture(t)
+	worker := fixture.plan.WorkerMaterializations[0]
+	profile := map[string]any{
+		"model_revision_id":             worker.ModelRevisionID,
+		"generation_preset_revision_id": "50000000-0000-0000-0000-000000000001",
+		"execution_profile_revision_id": worker.ExecutionProfileRevisionID,
+		"output_spec_id":                "60000000-0000-0000-0000-000000000001",
+	}
+	profiles, err := json.Marshal(map[string]any{
+		"schema_version":   1,
+		"backend_revision": worker.InferenceBackendRevision,
+		"profiles":         []any{profile, profile},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(
+		t,
+		filepath.Join(fixture.directory, worker.RunnerProfilesRef),
+		[]byte(configMapWithJSON(worker.Namespace, worker.RunnerProfilesConfigMap, "profiles.json", string(profiles))),
+	)
+	fixture.writePlan(t)
+	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+		!strings.Contains(err.Error(), "duplicate entry") {
+		t.Fatalf("Build error = %v, want duplicate profile rejection", err)
+	}
+}
+
 func TestBuildRejectsInvalidArtifactGraph(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -465,6 +661,12 @@ func TestBuildRejectsInvalidOCIConfigBinding(t *testing.T) {
 	}{
 		{name: "missing config", mutate: func(_ *testing.T, fixture *bundleFixture) {
 			fixture.plan.OCIManifests[0].ConfigRef = "missing-config.json"
+		}},
+		{name: "Docker schema 2 manifest", mutate: func(t *testing.T, fixture *bundleFixture) {
+			input := &fixture.plan.OCIManifests[0]
+			rewriteOCIManifest(t, fixture, input, func(manifest map[string]any) {
+				manifest["mediaType"] = "application/vnd.docker.distribution.manifest.v2+json"
+			})
 		}},
 		{name: "ARM config", mutate: func(t *testing.T, fixture *bundleFixture) {
 			input := &fixture.plan.OCIManifests[0]
@@ -938,16 +1140,28 @@ func rewriteOCIInput(
 ) {
 	t.Helper()
 	writeTestFile(t, filepath.Join(fixture.directory, input.ConfigRef), configEncoded)
+	rewriteOCIManifest(t, fixture, input, func(manifest map[string]any) {
+		config := manifest["config"].(map[string]any)
+		config["digest"] = testContentDigest(configEncoded)
+		config["size"] = float64(len(configEncoded))
+		if mutateDescriptor != nil {
+			mutateDescriptor(config)
+		}
+	})
+}
+
+func rewriteOCIManifest(
+	t *testing.T,
+	fixture *bundleFixture,
+	input *OCIManifestInput,
+	mutate func(map[string]any),
+) {
+	t.Helper()
 	var manifest map[string]any
 	if err := json.Unmarshal(readTestFile(t, filepath.Join(fixture.directory, input.Ref)), &manifest); err != nil {
 		t.Fatal(err)
 	}
-	config := manifest["config"].(map[string]any)
-	config["digest"] = testContentDigest(configEncoded)
-	config["size"] = float64(len(configEncoded))
-	if mutateDescriptor != nil {
-		mutateDescriptor(config)
-	}
+	mutate(manifest)
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
@@ -1042,6 +1256,21 @@ func writeTestJSON(t *testing.T, path string, value any) {
 func writeTestFile(t *testing.T, path string, content []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeSparseTestFile(t *testing.T, path string, size int64) {
+	t.Helper()
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(size); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
 }
