@@ -140,13 +140,7 @@ func DecodeDesiredConfiguration(
 		}
 		desired.Placements = make([]WorkerPlacement, 0, len(encoded.Placements))
 		for _, placement := range encoded.Placements {
-			desired.Placements = append(desired.Placements, WorkerPlacement{
-				NodeIdentity: placement.NodeIdentity, DaemonSetName: placement.DaemonSetName,
-				WorkerRuntimeConfigMap:  placement.WorkerRuntimeConfigMap,
-				RunnerProfilesConfigMap: placement.RunnerProfilesConfigMap,
-				RunnerGPURolesConfigMap: placement.RunnerGPURolesConfigMap,
-				WorkerControlTLSSecret:  placement.WorkerControlTLSSecret,
-			})
+			desired.Placements = append(desired.Placements, WorkerPlacement(placement))
 		}
 		if err := ValidateDesiredRevision(desired); err != nil {
 			return nil, nil, err
