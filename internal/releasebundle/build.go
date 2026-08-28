@@ -35,10 +35,20 @@ type resourceKey struct {
 	Name      string
 }
 
+type objectKey struct {
+	APIVersion string
+	Kind       string
+	Namespace  string
+	Name       string
+}
+
 type renderInventory struct {
 	declared         map[resourceKey]struct{}
 	referred         map[resourceKey]struct{}
 	expectedRevision map[resourceKey]string
+	secretKeys       map[resourceKey]map[string]struct{}
+	secretConsumers  map[resourceKey]map[string]struct{}
+	objects          map[objectKey]string
 	images           map[string]struct{}
 }
 
@@ -47,6 +57,9 @@ func newRenderInventory() renderInventory {
 		declared:         make(map[resourceKey]struct{}),
 		referred:         make(map[resourceKey]struct{}),
 		expectedRevision: make(map[resourceKey]string),
+		secretKeys:       make(map[resourceKey]map[string]struct{}),
+		secretConsumers:  make(map[resourceKey]map[string]struct{}),
+		objects:          make(map[objectKey]string),
 		images:           make(map[string]struct{}),
 	}
 }

@@ -55,10 +55,12 @@ type WorkerMaterializationInput struct {
 }
 
 type ExternalResource struct {
-	Kind      string `json:"kind"`
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
-	Revision  string `json:"revision"`
+	Kind         string   `json:"kind"`
+	Namespace    string   `json:"namespace"`
+	Name         string   `json:"name"`
+	Revision     string   `json:"revision"`
+	RequiredKeys []string `json:"required_keys,omitempty"`
+	Consumers    []string `json:"consumers,omitempty"`
 }
 
 type Platform struct {

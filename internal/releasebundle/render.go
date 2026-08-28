@@ -8,12 +8,45 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
+
+var essentialResources = map[string][]resourceKey{
+	"control-storage": {
+		{Kind: "Service", Namespace: "vela-system", Name: "nats"},
+		{Kind: "StatefulSet", Namespace: "vela-system", Name: "nats"},
+		{Kind: "ObjectStore", Namespace: "vela-system", Name: "vela-postgres-backup"},
+		{Kind: "Cluster", Namespace: "vela-system", Name: "vela-postgres"},
+		{Kind: "ScheduledBackup", Namespace: "vela-system", Name: "vela-postgres-daily"},
+	},
+	"fleet-controller": {
+		{Kind: "Deployment", Namespace: "vela-system", Name: "vela-fleet-controller"},
+		{Kind: "Service", Namespace: "vela-system", Name: "vela-fleet-admission"},
+		{Kind: "CustomResourceDefinition", Name: "workerpools.fleet.vela.ai"},
+		{Kind: "ValidatingWebhookConfiguration", Name: "vela-fleet-protection"},
+	},
+	"observability": {
+		{Kind: "PodMonitor", Namespace: "vela-observability", Name: "vela-control"},
+	},
+	"vela-control": {
+		{Kind: "Deployment", Namespace: "vela-system", Name: "vela-control"},
+		{Kind: "Service", Namespace: "vela-system", Name: "vela-api"},
+		{Kind: "Service", Namespace: "vela-system", Name: "vela-control"},
+		{Kind: "Service", Namespace: "vela-system", Name: "vela-worker-control"},
+		{Kind: "Service", Namespace: "vela-system", Name: "vela-finance-reconciliation"},
+		{Kind: "Service", Namespace: "vela-system", Name: "vela-compliance"},
+		{Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-default-deny-ingress"},
+	},
+	"worker-agent": {
+		{Kind: "DaemonSet", Namespace: "vela-system", Name: "vela-h3-worker"},
+	},
+}
 
 func validateFinalRender(name string, encoded []byte, inventory *renderInventory) error {
 	documents, err := decodeYAMLDocuments(encoded)
@@ -25,6 +58,7 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 		expectedNamespace = "vela-observability"
 	}
 	namespacedObjects := 0
+	foundEssential := make(map[resourceKey]struct{}, len(essentialResources[name]))
 	for _, document := range documents {
 		apiVersion, _ := document["apiVersion"].(string)
 		kind, _ := document["kind"].(string)
@@ -33,6 +67,20 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 		namespace, _ := metadata["namespace"].(string)
 		if apiVersion == "" || kind == "" || !validResourceName(resourceName) {
 			return invalidf("final render %s contains an invalid Kubernetes object identity", name)
+		}
+		fullKey := objectKey{APIVersion: apiVersion, Kind: kind, Namespace: namespace, Name: resourceName}
+		if prior, duplicate := inventory.objects[fullKey]; duplicate {
+			return invalidf("Kubernetes resource %s/%s/%s/%s is duplicated in renders %s and %s", apiVersion, kind, namespace, resourceName, prior, name)
+		}
+		inventory.objects[fullKey] = name
+		identity := resourceKey{Kind: kind, Namespace: namespace, Name: resourceName}
+		for owner, required := range essentialResources {
+			if slices.Contains(required, identity) {
+				if owner != name {
+					return invalidf("essential resource %s/%s/%s is in render %s, want %s", kind, namespace, resourceName, name, owner)
+				}
+				foundEssential[identity] = struct{}{}
+			}
 		}
 		if kind == "Secret" {
 			return invalidf("final render %s embeds a Secret object", name)
@@ -50,8 +98,14 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 			}
 			inventory.declared[key] = struct{}{}
 		}
-		if err := scanRenderedValue(document, namespace, inventory, ""); err != nil {
+		consumer := consumerIdentity(kind, namespace, resourceName)
+		if err := scanRenderedValue(document, namespace, consumer, inventory, ""); err != nil {
 			return invalidf("final render %s: %v", name, err)
+		}
+	}
+	for _, required := range essentialResources[name] {
+		if _, found := foundEssential[required]; !found {
+			return invalidf("final render %s is missing essential resource %s/%s/%s", name, required.Kind, required.Namespace, required.Name)
 		}
 	}
 	if namespacedObjects == 0 {
@@ -60,7 +114,7 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 	return nil
 }
 
-func scanRenderedValue(value any, namespace string, inventory *renderInventory, parentKey string) error {
+func scanRenderedValue(value any, namespace, consumer string, inventory *renderInventory, parentKey string) error {
 	switch typed := value.(type) {
 	case map[string]any:
 		if kind, _ := typed["kind"].(string); kind == "Secret" {
@@ -78,13 +132,14 @@ func scanRenderedValue(value any, namespace string, inventory *renderInventory, 
 					inventory.images[stringValue] = struct{}{}
 				}
 				if kind := directReferenceKind(key); kind != "" {
-					inventory.referred[resourceKey{Kind: kind, Namespace: namespace, Name: stringValue}] = struct{}{}
+					resource := resourceKey{Kind: kind, Namespace: namespace, Name: stringValue}
+					recordReference(inventory, resource, consumer, directSecretKeys(key))
 				}
 				if parentKey == "imagePullSecrets" && key == "name" {
 					if !validResourceName(stringValue) {
 						return errors.New("imagePullSecrets contains an invalid Secret name")
 					}
-					inventory.referred[resourceKey{Kind: "Secret", Namespace: namespace, Name: stringValue}] = struct{}{}
+					recordReference(inventory, resourceKey{Kind: "Secret", Namespace: namespace, Name: stringValue}, consumer, nil)
 				}
 			}
 			if childMap, ok := child.(map[string]any); ok {
@@ -96,23 +151,24 @@ func scanRenderedValue(value any, namespace string, inventory *renderInventory, 
 					if !validResourceName(name) {
 						return fmt.Errorf("%s reference has an invalid name", key)
 					}
-					inventory.referred[resourceKey{Kind: kind, Namespace: namespace, Name: name}] = struct{}{}
+					resource := resourceKey{Kind: kind, Namespace: namespace, Name: name}
+					recordReference(inventory, resource, consumer, selectorSecretKeys(kind, childMap))
 				}
 			}
 			if parentKey == "data" {
 				if stringValue, ok := child.(string); ok && (strings.HasSuffix(key, ".json") || strings.HasSuffix(key, ".yaml") || strings.HasSuffix(key, ".yml")) {
-					if err := scanEmbeddedConfiguration(key, []byte(stringValue), namespace, inventory); err != nil {
+					if err := scanEmbeddedConfiguration(key, []byte(stringValue), namespace, consumer, inventory); err != nil {
 						return err
 					}
 				}
 			}
-			if err := scanRenderedValue(child, namespace, inventory, key); err != nil {
+			if err := scanRenderedValue(child, namespace, consumer, inventory, key); err != nil {
 				return err
 			}
 		}
 	case []any:
 		for _, child := range typed {
-			if err := scanRenderedValue(child, namespace, inventory, parentKey); err != nil {
+			if err := scanRenderedValue(child, namespace, consumer, inventory, parentKey); err != nil {
 				return err
 			}
 		}
@@ -124,7 +180,7 @@ func scanRenderedValue(value any, namespace string, inventory *renderInventory, 
 	return nil
 }
 
-func scanEmbeddedConfiguration(name string, encoded []byte, namespace string, inventory *renderInventory) error {
+func scanEmbeddedConfiguration(name string, encoded []byte, namespace, consumer string, inventory *renderInventory) error {
 	var value any
 	if strings.HasSuffix(name, ".json") {
 		if err := decodeStrictJSON(encoded, &value); err != nil {
@@ -139,7 +195,62 @@ func scanEmbeddedConfiguration(name string, encoded []byte, namespace string, in
 			return fmt.Errorf("embedded ConfigMap YAML %s must contain one document", name)
 		}
 	}
-	return scanRenderedValue(value, namespace, inventory, "")
+	return scanRenderedValue(value, namespace, consumer, inventory, "")
+}
+
+func consumerIdentity(kind, namespace, name string) string {
+	return kind + "/" + namespace + "/" + name
+}
+
+func workerConsumerIdentity(input WorkerMaterializationInput) string {
+	return "WorkerMaterialization/" + input.Namespace + "/" + input.NodeIdentity + "/" + input.WorkerID
+}
+
+func recordReference(inventory *renderInventory, resource resourceKey, consumer string, keys []string) {
+	inventory.referred[resource] = struct{}{}
+	if resource.Kind != "Secret" {
+		return
+	}
+	if inventory.secretConsumers[resource] == nil {
+		inventory.secretConsumers[resource] = make(map[string]struct{})
+	}
+	inventory.secretConsumers[resource][consumer] = struct{}{}
+	if inventory.secretKeys[resource] == nil {
+		inventory.secretKeys[resource] = make(map[string]struct{})
+	}
+	for _, key := range keys {
+		inventory.secretKeys[resource][key] = struct{}{}
+	}
+}
+
+func directSecretKeys(key string) []string {
+	switch key {
+	case "workerControlTLSSecret":
+		return []string{"ca.crt", "tls.crt", "tls.key"}
+	case "artifactStoreTLSSecret":
+		return []string{"ca.crt"}
+	default:
+		return nil
+	}
+}
+
+func selectorSecretKeys(kind string, selector map[string]any) []string {
+	if kind != "Secret" {
+		return nil
+	}
+	keys := make([]string, 0)
+	if key, ok := selector["key"].(string); ok {
+		keys = append(keys, key)
+	}
+	if items, ok := selector["items"].([]any); ok {
+		for _, item := range items {
+			itemMap, _ := item.(map[string]any)
+			if key, ok := itemMap["key"].(string); ok {
+				keys = append(keys, key)
+			}
+		}
+	}
+	return keys
 }
 
 func isImageField(key, parent string) bool {
@@ -296,7 +407,12 @@ func buildWorkerMaterialization(
 		inventory.referred[key] = struct{}{}
 	}
 	workerSecret := resourceKey{Kind: "Secret", Namespace: input.Namespace, Name: input.WorkerControlTLSSecret}
-	inventory.referred[workerSecret] = struct{}{}
+	recordReference(
+		inventory,
+		workerSecret,
+		workerConsumerIdentity(input),
+		[]string{"ca.crt", "tls.crt", "tls.key"},
+	)
 	inventory.expectedRevision[workerSecret] = input.WorkerControlTLSSecretRevision
 
 	return WorkerMaterialization{
@@ -452,12 +568,29 @@ func validateExternalResources(resources []ExternalResource, inventory renderInv
 			!validDigest(resource.Revision) {
 			return invalid("external resource declaration is invalid")
 		}
+		if resource.Kind == "ConfigMap" {
+			if len(resource.RequiredKeys) != 0 || len(resource.Consumers) != 0 {
+				return invalidf("external ConfigMap %s/%s must not carry Secret contract fields", resource.Namespace, resource.Name)
+			}
+		} else if !validSecretContract(resource.RequiredKeys, resource.Consumers) {
+			return invalidf("external Secret %s/%s required_keys or consumers are invalid", resource.Namespace, resource.Name)
+		}
 		key := resourceKey{Kind: resource.Kind, Namespace: resource.Namespace, Name: resource.Name}
 		if _, duplicate := external[key]; duplicate {
 			return invalidf("external resource %v is duplicated", key)
 		}
 		external[key] = struct{}{}
 		externalRevision[key] = resource.Revision
+		if resource.Kind == "Secret" {
+			observedConsumers := sortedSet(inventory.secretConsumers[key])
+			if !reflect.DeepEqual(observedConsumers, resource.Consumers) {
+				return invalidf("external Secret %s/%s consumers do not exactly match rendered consumers", resource.Namespace, resource.Name)
+			}
+			observedKeys := sortedSet(inventory.secretKeys[key])
+			if len(observedKeys) != 0 && !reflect.DeepEqual(observedKeys, resource.RequiredKeys) {
+				return invalidf("external Secret %s/%s required_keys do not exactly match keyed references", resource.Namespace, resource.Name)
+			}
+		}
 	}
 	for resource, expected := range inventory.expectedRevision {
 		if externalRevision[resource] != expected {
@@ -478,6 +611,33 @@ func validateExternalResources(resources []ExternalResource, inventory renderInv
 		}
 	}
 	return nil
+}
+
+func validSecretContract(keys, consumers []string) bool {
+	if len(keys) == 0 || len(consumers) == 0 || !slices.IsSorted(keys) || !slices.IsSorted(consumers) {
+		return false
+	}
+	for index, key := range keys {
+		if len(validation.IsConfigMapKey(key)) != 0 || containsTemplateValue(key) ||
+			(index > 0 && key == keys[index-1]) {
+			return false
+		}
+	}
+	for index, consumer := range consumers {
+		if !validRevision(consumer) || (index > 0 && consumer == consumers[index-1]) {
+			return false
+		}
+	}
+	return true
+}
+
+func sortedSet(values map[string]struct{}) []string {
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }
 
 type ociManifest struct {

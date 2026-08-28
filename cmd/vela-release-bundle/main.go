@@ -5,8 +5,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"github.com/vivym/vela/internal/releasebundle"
+)
+
+var (
+	buildBundle = releasebundle.Build
+	loadBundle  = releasebundle.Load
 )
 
 func main() {
@@ -15,7 +21,7 @@ func main() {
 
 func run(arguments []string, stdout, stderr io.Writer) int {
 	if len(arguments) == 2 && arguments[0] == "verify" {
-		bundle, err := releasebundle.Load(arguments[1])
+		bundle, err := loadBundle(arguments[1])
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "verify release bundle: %v\n", err)
 			return 1
@@ -34,13 +40,22 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintln(stderr, "build release bundle: output must be in the build plan directory so artifact references remain rooted")
 			return 1
 		}
-		bundle, encoded, err := releasebundle.Build(arguments[1])
+		bundle, encoded, err := buildBundle(arguments[1])
 		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "build release bundle: %v\n", err)
+			return 1
+		}
+		if err := rejectProtectedOutput(arguments[1], arguments[2], bundle); err != nil {
 			_, _ = fmt.Fprintf(stderr, "build release bundle: %v\n", err)
 			return 1
 		}
 		if err := writeAtomic(arguments[2], encoded); err != nil {
 			_, _ = fmt.Fprintf(stderr, "build release bundle: write output: %v\n", err)
+			return 1
+		}
+		verified, err := loadBundle(arguments[2])
+		if err != nil || !sameDerivedIdentity(verified, bundle) {
+			_, _ = fmt.Fprintf(stderr, "build release bundle: post-write verification failed: %v\n", err)
 			return 1
 		}
 		_, _ = fmt.Fprintf(stdout, "PASS release=%s configuration=%s output=%s\n", bundle.ReleaseDigest, bundle.ConfigurationRevision, arguments[2])
@@ -49,6 +64,80 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 	_, _ = fmt.Fprintln(stderr, "usage: vela-release-bundle build <bundle-plan.json> <release-bundle.json>")
 	_, _ = fmt.Fprintln(stderr, "       vela-release-bundle verify <release-bundle.json>")
 	return 2
+}
+
+func rejectProtectedOutput(planPath, outputPath string, bundle releasebundle.Bundle) error {
+	root := filepath.Dir(planPath)
+	protected := []string{planPath}
+	for _, reference := range bundleArtifactReferences(bundle) {
+		protected = append(protected, filepath.Join(root, filepath.FromSlash(reference)))
+	}
+	outputCanonical, err := canonicalPath(outputPath)
+	if err != nil {
+		return fmt.Errorf("resolve output path: %w", err)
+	}
+	outputInformation, outputStatErr := os.Stat(outputPath)
+	for _, path := range protected {
+		canonical, resolveErr := canonicalPath(path)
+		if resolveErr != nil {
+			return fmt.Errorf("resolve protected path %q: %w", path, resolveErr)
+		}
+		if canonical == outputCanonical {
+			return fmt.Errorf("output must not overwrite build plan or referenced artifact %q", path)
+		}
+		if outputStatErr == nil {
+			information, statErr := os.Stat(path)
+			if statErr != nil {
+				return fmt.Errorf("stat protected path %q: %w", path, statErr)
+			}
+			if os.SameFile(outputInformation, information) {
+				return fmt.Errorf("output must not alias build plan or referenced artifact %q", path)
+			}
+		}
+	}
+	return nil
+}
+
+func canonicalPath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(absolute); resolveErr == nil {
+		return resolved, nil
+	} else if !os.IsNotExist(resolveErr) {
+		return "", resolveErr
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(absolute))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(parent, filepath.Base(absolute)), nil
+}
+
+func bundleArtifactReferences(bundle releasebundle.Bundle) []string {
+	var references []string
+	for _, render := range bundle.ConfigurationManifest.FinalRenders {
+		references = append(references, render.Artifact.Ref)
+	}
+	references = append(references, bundle.ConfigurationManifest.NodeAgentUnit.Artifact.Ref)
+	for _, item := range bundle.ConfigurationManifest.Packages {
+		references = append(references, item.Contract.Ref, item.Artifact.Ref)
+	}
+	for _, item := range bundle.ConfigurationManifest.WorkerMaterializations {
+		references = append(references, item.WorkerRuntime.Ref, item.RunnerProfiles.Ref, item.RunnerGPURoles.Ref)
+	}
+	for _, image := range bundle.OCIImages {
+		references = append(references, image.Descriptor.Ref)
+	}
+	return references
+}
+
+func sameDerivedIdentity(left, right releasebundle.Bundle) bool {
+	return left.ReleaseDigest == right.ReleaseDigest &&
+		left.ConfigurationRevision == right.ConfigurationRevision &&
+		reflect.DeepEqual(left.ReleaseDescriptor, right.ReleaseDescriptor) &&
+		reflect.DeepEqual(left.ConfigurationManifest, right.ConfigurationManifest)
 }
 
 func writeAtomic(path string, content []byte) error {
