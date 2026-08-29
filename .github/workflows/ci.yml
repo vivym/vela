@@ -44,7 +44,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends binutils musl-tools
+          sudo apt-get install --yes --no-install-recommends binutils musl-tools ripgrep
           archive="${RUNNER_TEMP}/ffmpeg-8.0.1.tar.xz"
           curl --fail --location --silent --show-error --retry 4 --retry-all-errors \
             https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz \
