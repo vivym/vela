@@ -569,6 +569,25 @@ func (service *Service) AuthorizeMutation(
 		return MutationAuthorizationResult{}, &Failure{Code: FailureInvalid, Message: err.Error()}
 	}
 	var result MutationAuthorizationResult
+	if request.WorkerInstanceID != uuid.Nil {
+		err := service.pool.QueryRow(ctx, `
+			SELECT request_uid, replayed, authorized
+			FROM vela_authorize_worker_instance_pod_mutation(
+				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+			)
+		`, request.RequestUID, request.ActorIdentity, request.Operation,
+			request.KubernetesUID, request.Namespace, request.Name,
+			request.WorkerInstanceID, request.WorkerInstanceEpoch,
+			request.ResidencyPlanRevisionID, request.WorkerBundleID,
+			request.WorkerMemberID, request.RequestDigest,
+		).Scan(&result.RequestUID, &result.Replayed, &result.Authorized)
+		if err != nil {
+			return MutationAuthorizationResult{}, mapDatabaseError(
+				"authorize WorkerInstance Pod mutation", err,
+			)
+		}
+		return result, nil
+	}
 	err := service.pool.QueryRow(ctx, `
 		SELECT request_uid, replayed, authorized
 		FROM vela_authorize_fleet_mutation(

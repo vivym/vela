@@ -278,6 +278,110 @@ func TestWorkerRegistryReleaseRequiresApprovalAndBreakEvenEvidence(t *testing.T)
 	}
 }
 
+func TestWorkerRegistryAuthorizesPodMutationOnlyAfterExactResidencyRelease(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	pool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	service, err := fleet.NewService(pool)
+	if err != nil {
+		t.Fatalf("construct WorkerRegistryAndFleet service: %v", err)
+	}
+	var registry fleet.WorkerRegistryAndFleet = service
+
+	proposalID := uuid.MustParse("49200000-0000-0000-0000-000000000230")
+	if _, err := registry.Propose(context.Background(), fleet.ResidencyPlanInputs{
+		ProposalID:       proposalID,
+		InputDigest:      mustDigestBytes(t, digestHex(0xf0)),
+		ConfidencePPM:    900000,
+		ExpiresAt:        time.Now().UTC().Add(time.Hour),
+		MinCapacity:      map[string]int64{"dit": 7},
+		DesiredCapacity:  map[string]int64{"dit": 7},
+		MaxCapacity:      map[string]int64{"dit": 14},
+		Cooldown:         24 * time.Hour,
+		BudgetMicroUnits: 1000000,
+		ReasonCodes:      []string{"WARM_RESIDENCY_FLOOR"},
+		ProposedBy:       "capacity-simulator/shadow",
+	}); err != nil {
+		t.Fatalf("record Pod mutation ResidencyProposal: %v", err)
+	}
+	encodedPlan, err := json.Marshal(approvedResidencyPlanFixture(proposalID))
+	if err != nil {
+		t.Fatalf("encode Pod mutation ResidencyPlan: %v", err)
+	}
+	var approvedPlan fleet.ApprovedResidencyPlan
+	if err := json.Unmarshal(encodedPlan, &approvedPlan); err != nil {
+		t.Fatalf("decode Pod mutation ResidencyPlan: %v", err)
+	}
+	if _, err := registry.Apply(context.Background(), approvedPlan); err != nil {
+		t.Fatalf("apply Pod mutation ResidencyPlan: %v", err)
+	}
+
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000204")
+	evidence := workerRegistryEvidenceValue(t, workerID, 0xf1)
+	if _, err := registry.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("observe Pod mutation WorkerInstance: %v", err)
+	}
+	request := fleet.MutationAuthorizationRequest{
+		RequestUID: "worker-instance-pod-delete-1", ActorIdentity: "fleet/controller",
+		ResourceKind: fleet.ProtectedPod, Operation: fleet.MutationDelete,
+		KubernetesUID: "worker-instance-pod-uid-1", Namespace: "vela-system",
+		Name:                    "wi-49200000000000000000000000000204-ba3790e0",
+		WorkerInstanceID:        workerID,
+		WorkerInstanceEpoch:     evidence.InstanceEpoch,
+		ResidencyPlanRevisionID: approvedPlan.ID,
+		WorkerBundleID:          approvedPlan.WorkerBundles[0].ID,
+		WorkerMemberID:          evidence.Members[0].ID,
+		RequestDigest:           mustDigestBytes(t, digestHex(0xf2)),
+	}
+	_, err = service.AuthorizeMutation(context.Background(), request)
+	assertFleetFailure(t, err, fleet.FailureConflict)
+
+	if _, err := registry.Drain(context.Background(), fleet.WorkerInstanceDrainRequest{
+		WorkerInstanceID:      workerID,
+		ExpectedInstanceEpoch: evidence.InstanceEpoch,
+		Reason:                "approved WorkerInstance retirement",
+		RequestedBy:           "fleet/operator-4",
+	}); err != nil {
+		t.Fatalf("drain Pod mutation WorkerInstance: %v", err)
+	}
+	_, err = service.AuthorizeMutation(context.Background(), request)
+	assertFleetFailure(t, err, fleet.FailureConflict)
+
+	releaseID := uuid.MustParse("49200000-0000-0000-0000-000000000231")
+	if _, err := pool.Exec(context.Background(), `
+		SELECT * FROM vela_approve_model_residency_release(
+			$1, $2, 1, 'REVISION_ROLLOUT', 'residency-plan-v2', 'fleet/operator-4',
+			7200, 3600, decode(repeat('f3', 32), 'hex')
+		)
+	`, releaseID, evidence.Residencies[0].ID); err != nil {
+		t.Fatalf("approve Pod mutation ModelResidency release: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(), `
+		SELECT * FROM vela_complete_model_residency_release(
+			$1, 1, decode(repeat('f4', 32), 'hex'), 'node-agent/h3-node-01'
+		)
+	`, releaseID); err != nil {
+		t.Fatalf("complete Pod mutation ModelResidency release: %v", err)
+	}
+
+	authorized, err := service.AuthorizeMutation(context.Background(), request)
+	if err != nil || !authorized.Authorized || authorized.Replayed ||
+		authorized.RequestUID != request.RequestUID {
+		t.Fatalf("authorize released WorkerInstance Pod = %#v error=%v", authorized, err)
+	}
+	replayed, err := service.AuthorizeMutation(context.Background(), request)
+	if err != nil || !replayed.Authorized || !replayed.Replayed ||
+		replayed.RequestUID != request.RequestUID {
+		t.Fatalf("replay released WorkerInstance Pod authorization = %#v error=%v", replayed, err)
+	}
+	conflicting := request
+	conflicting.RequestDigest = mustDigestBytes(t, digestHex(0xf5))
+	_, err = service.AuthorizeMutation(context.Background(), conflicting)
+	assertFleetFailure(t, err, fleet.FailureConflict)
+}
+
 func TestWorkerRegistryRequiresCompleteMultiMemberIdentity(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
