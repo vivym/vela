@@ -354,13 +354,31 @@ func TestVelaControlPublishesFiveSinglePurposeServices(t *testing.T) {
 
 func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 	policies := loadVelaControlNetworkPolicies(t)
-	if len(policies) != 7 {
+	if len(policies) != 8 {
 		t.Fatalf("vela-control NetworkPolicies = %#v", policies)
 	}
 	defaultDeny, ok := policies["vela-control-default-deny-ingress"]
 	if !ok || !reflect.DeepEqual(defaultDeny.Spec.PolicyTypes, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}) ||
 		len(defaultDeny.Spec.Ingress) != 0 {
 		t.Fatalf("vela-control default deny ingress = %#v", defaultDeny)
+	}
+	nodeAgent, ok := policies["vela-control-allow-node-agent-placeholder"]
+	if !ok || nodeAgent.Annotations["vela.ai/release-placeholder"] != "replace-entire-resource" ||
+		!reflect.DeepEqual(nodeAgent.Spec.PodSelector.MatchLabels, map[string]string{"app.kubernetes.io/name": "vela-control"}) ||
+		!reflect.DeepEqual(nodeAgent.Spec.PolicyTypes, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}) ||
+		len(nodeAgent.Spec.Ingress) != 1 || len(nodeAgent.Spec.Ingress[0].From) != 1 ||
+		len(nodeAgent.Spec.Ingress[0].Ports) != 1 ||
+		nodeAgent.Spec.Ingress[0].From[0].IPBlock == nil ||
+		nodeAgent.Spec.Ingress[0].From[0].IPBlock.CIDR != "192.0.2.0/32" ||
+		len(nodeAgent.Spec.Ingress[0].From[0].IPBlock.Except) != 0 ||
+		nodeAgent.Spec.Ingress[0].From[0].NamespaceSelector != nil ||
+		nodeAgent.Spec.Ingress[0].From[0].PodSelector != nil {
+		t.Fatalf("vela-control Node Agent placeholder ingress = %#v", nodeAgent)
+	}
+	nodeAgentPort := nodeAgent.Spec.Ingress[0].Ports[0]
+	if nodeAgentPort.Protocol == nil || *nodeAgentPort.Protocol != corev1.ProtocolTCP ||
+		nodeAgentPort.Port == nil || nodeAgentPort.Port.IntValue() != 8444 {
+		t.Fatalf("vela-control Node Agent placeholder port = %#v", nodeAgentPort)
 	}
 	want := map[string]struct {
 		port            int

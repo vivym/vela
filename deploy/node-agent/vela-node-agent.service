@@ -13,6 +13,7 @@ UMask=0077
 RuntimeDirectory=vela-node-agent
 RuntimeDirectoryMode=0755
 StateDirectory=vela-node-agent
+StateDirectoryMode=0750
 ProtectHome=true
 PrivateTmp=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

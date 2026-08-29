@@ -29,10 +29,13 @@ URI before accepting `ObserveWorkerInstance`. Other Fleet RPCs remain limited
 to the configured Fleet Controller identity. The Fleet client CA file must be
 an explicit bundle of the approved Fleet Controller client issuer and host Node
 Agent client issuer; adding an issuer does not register or authorize any
-certificate by itself. The repository NetworkPolicy currently admits only the
-Fleet Controller Pod selector on port 8444; host Node Agent ingress remains a
-separate environment-specific gate and must not be enabled by broadening that
-selector.
+certificate by itself. The repository base keeps the exact Fleet Controller Pod
+selector and adds a separate host-ingress placeholder restricted to the
+documentation-only `192.0.2.0/32` address on TCP 8444. That CIDR is deliberately
+unusable as a production Node source. A release overlay must replace the entire
+`vela-control-allow-node-agent-placeholder` resource with the measured CNI view
+of the exact GPU Node source CIDRs; it may not broaden the Fleet Controller
+selector, use `0.0.0.0/0`, or enable any other port.
 
 ## Release bundle boundary
 

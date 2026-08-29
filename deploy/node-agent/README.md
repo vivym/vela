@@ -31,14 +31,20 @@ mode:
 
 - the Node Agent server certificate and private key;
 - the controller CA bundle;
+- a separate Node Agent `ClientAuth` certificate/private key and Fleet server CA;
+- a pinned Fleet address and TLS server name;
 - the explicit controller SPIFFE-to-actor map;
 - the action allowlist JSON;
 - the device/certification capability matrix JSON;
 - the receipt directory, owned by the service and mode `0750`;
 - the Worker scratch XFS project, exact block device, hard quota, and inherited
   project ID;
-- the root-owned Worker quota socket parent directory; and
-- the non-root Worker UID/GID allowed to use that socket.
+- the root-owned Worker quota socket parent directory;
+- the non-root Worker UID/GID allowed to use that socket;
+- a strict WorkerInstance template file and private persistent observation state
+  directory; and
+- the exact `nvidia-smi`, PCI sysfs, device sysfs, NVIDIA driver-version, and
+  Linux boot-ID paths used to attest resident WorkerInstances.
 
 The Agent rejects group/world-writable configuration, TLS material, endpoint
 registries, and state directories. Private keys must not be group or world
@@ -130,13 +136,77 @@ and WorkerMember belongs to the authenticated Node. Fleet Controller identity
 remains required for every mutation, ResidencyPlan, and cross-node aggregate
 operation.
 
-This is the Fleet server-side authorization contract, not an activation claim.
-Outbound observation additionally requires a Node Agent client certificate
-valid for `ClientAuth`, a pinned Fleet endpoint and server CA, reporter
-configuration, and a CNI-specific host-to-port-8444 ingress rule. The current
-host unit does not provide those settings yet, so a release must not enable
-Node Agent observation until that transport and NetworkPolicy are delivered and
-verified together.
+Outbound observation uses a Node Agent certificate valid for `ClientAuth`, a
+pinned Fleet endpoint/TLS server name and server CA, immediate-first periodic
+reporting, per-call timeout, and per-WorkerInstance bounded exponential backoff.
+One failing WorkerInstance does not stop reports for another. The reporter can
+attest inventory and append fresh capacity evidence. It has no model load,
+unload, replace, or release authority. ModelResidency evidence is accepted only
+as `READY`, and a changed runtime/device/member identity fails closed.
+
+The local WorkerInstance file is a JSON array of static evidence templates.
+Runtime fields are intentionally absent from its schema: `observed_at`,
+`observed_by`, DeviceSet/member digests, Node/Agent/Device epochs, attestation
+digests, health, capacity sequence, and capacity timestamps are generated at
+runtime. Unknown or duplicate JSON keys, duplicate WorkerInstances, noncanonical
+UUIDs, incomplete Device ownership, cross-Node membership, and non-`READY`
+residency fail startup. A structural single-GPU template has this shape:
+
+```json
+[
+  {
+    "schema_version": 1,
+    "worker_instance_id": "49440000-0000-0000-0000-000000000001",
+    "instance_epoch": 1,
+    "control_session_epoch": 1,
+    "device_set": {
+      "id": "49440000-0000-0000-0000-000000000002",
+      "devices": [
+        {
+          "id": "49440000-0000-0000-0000-000000000003",
+          "compute_node_id": "49440000-0000-0000-0000-000000000004",
+          "node_identity": "node-1",
+          "region": "cn-shanghai",
+          "network_domain": "rack-a",
+          "fault_domain": "power-a",
+          "kind": "GPU",
+          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000001",
+          "pci_bdf": "0000:41:00.0",
+          "ordinal": 0
+        }
+      ]
+    },
+    "members": [
+      {
+        "id": "49440000-0000-0000-0000-000000000005",
+        "member_key": "dit-0",
+        "compute_node_id": "49440000-0000-0000-0000-000000000004",
+        "member_epoch": 1,
+        "device_ids": ["49440000-0000-0000-0000-000000000003"],
+        "readiness": "READY"
+      }
+    ],
+    "residencies": [
+      {
+        "id": "49440000-0000-0000-0000-000000000006",
+        "model_component_revision": "h3-dit-v1",
+        "runtime_identity": "h3-dit-runtime-v1",
+        "runtime_image_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "model_runtime_epoch": 1,
+        "state": "READY",
+        "warmup_evidence_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "canary_evidence_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    ],
+    "capacity": {"vector": {"concurrency": 1}}
+  }
+]
+```
+
+The `vela-control` base permits only the non-production `192.0.2.0/32`
+placeholder to TCP 8444. Every release overlay must replace that whole policy
+with its CNI-observed GPU Node source CIDRs and verify the rendered policy and a
+live mTLS observation together.
 
 Rate-limit history survives Agent restarts. A durable execution intent is
 published before the action; if the Agent restarts before a terminal receipt is
@@ -166,7 +236,28 @@ VELA_NODE_AGENT_WORKER_GID
 VELA_NODE_AGENT_WORKER_SCRATCH_ROOT
 VELA_NODE_AGENT_WORKER_XFS_DEVICE
 VELA_NODE_AGENT_WORKER_XFS_PROJECT_ID
+VELA_NODE_AGENT_FLEET_ADDRESS
+VELA_NODE_AGENT_FLEET_SERVER_NAME
+VELA_NODE_AGENT_FLEET_CA_FILE
+VELA_NODE_AGENT_FLEET_CLIENT_CERT_FILE
+VELA_NODE_AGENT_FLEET_CLIENT_KEY_FILE
+VELA_NODE_AGENT_WORKER_INSTANCES_FILE
+VELA_NODE_AGENT_WORKER_INSTANCE_STATE_DIRECTORY
+VELA_NODE_AGENT_NVIDIA_SMI_PATH
+VELA_NODE_AGENT_PCI_BUS_DEVICES_ROOT
+VELA_NODE_AGENT_SYS_DEVICES_ROOT
+VELA_NODE_AGENT_NVIDIA_DRIVER_VERSION_PATH
+VELA_NODE_AGENT_BOOT_ID_PATH
 ```
+
+Optional bounded timing overrides are
+`VELA_NODE_AGENT_WORKER_INSTANCE_REPORT_INTERVAL`,
+`VELA_NODE_AGENT_WORKER_INSTANCE_CALL_TIMEOUT`,
+`VELA_NODE_AGENT_WORKER_INSTANCE_BACKOFF_INITIAL`,
+`VELA_NODE_AGENT_WORKER_INSTANCE_BACKOFF_MAX`,
+`VELA_NODE_AGENT_WORKER_INSTANCE_EVIDENCE_TTL`, and
+`VELA_NODE_AGENT_FLEET_DIAL_TIMEOUT`. Defaults are respectively `30s`, `10s`,
+`1s`, `30s`, `2m`, and `15s`.
 
 `VELA_NODE_AGENT_WORKER_SCRATCH_ROOT` must already exist on the configured XFS
 block device before the service starts. The directory is the project root for

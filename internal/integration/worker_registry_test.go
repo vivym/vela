@@ -5,9 +5,15 @@ package integration_test
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"net"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +23,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/fleettransport"
+	"github.com/vivym/vela/internal/nodeagent"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -172,6 +182,172 @@ func TestWorkerRegistryRefreshesExistingWorkerInstanceEvidence(t *testing.T) {
 	}
 	if runtimeIdentity != evidence.Residencies[0].RuntimeIdentity || observations != 2 {
 		t.Fatalf("failed refresh changed runtime=%q observations=%d", runtimeIdentity, observations)
+	}
+}
+
+func TestNodeAgentWorkerInstanceReporterPersistsThroughMutualTLS(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	seedWorkerRegistryPlan(t, database.Admin)
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	service, err := fleet.NewService(fleetPool)
+	if err != nil {
+		t.Fatalf("construct Worker Registry service: %v", err)
+	}
+	workerInstanceID := uuid.MustParse("49200000-0000-0000-0000-000000000013")
+	seedWorkerInstance(t, database.Admin, workerInstanceID, workerRegistryProfileID, 1, 1)
+
+	legacyWorkerID := uuid.MustParse("49200000-0000-0000-0000-000000000014")
+	localIdentity := nodeagent.NodeAgentIdentity{
+		NodeIdentity: "h3-node-01", WorkerID: legacyWorkerID, WorkerEpoch: 7,
+	}
+	nodeAgentSPIFFE := nodeagent.NodeAgentSPIFFEIdentity(localIdentity)
+	transportServer, err := fleettransport.NewServer(service, fleettransport.Config{
+		SPIFFEIdentity: "spiffe://vela.internal/fleet-controller/primary",
+		ActorIdentity:  "fleet-controller/primary",
+		NodeAgentRegistrations: []fleettransport.NodeAgentRegistration{{
+			NodeIdentity: localIdentity.NodeIdentity, WorkerID: localIdentity.WorkerID,
+			SPIFFEIdentity: nodeAgentSPIFFE,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("construct Fleet transport server: %v", err)
+	}
+
+	caCertificate, caKey, caPEM := issueWorkerTransportTestCA(t)
+	serverName := "fleet-maintenance.internal"
+	serverCertificate, serverKey := issueWorkerTransportTestCertificate(
+		t, caCertificate, caKey, pkix.Name{CommonName: serverName},
+		[]string{serverName}, nil, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	)
+	clientCertificate, clientKey := issueWorkerTransportTestCertificate(
+		t, caCertificate, caKey, pkix.Name{CommonName: "vela-node-agent"}, nil,
+		[]*url.URL{mustParseWorkerSPIFFEID(t, nodeAgentSPIFFE)},
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	)
+	directory := t.TempDir()
+	paths := map[string]string{
+		"serverCertificate": filepath.Join(directory, "server.crt"),
+		"serverKey":         filepath.Join(directory, "server.key"),
+		"clientCA":          filepath.Join(directory, "client-ca.crt"),
+		"clientCertificate": filepath.Join(directory, "client.crt"),
+		"clientKey":         filepath.Join(directory, "client.key"),
+		"serverCA":          filepath.Join(directory, "server-ca.crt"),
+	}
+	for path, content := range map[string][]byte{
+		paths["serverCertificate"]: serverCertificate,
+		paths["serverKey"]:         serverKey,
+		paths["clientCA"]:          caPEM,
+		paths["clientCertificate"]: clientCertificate,
+		paths["clientKey"]:         clientKey,
+		paths["serverCA"]:          caPEM,
+	} {
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatalf("write Fleet transport TLS fixture %s: %v", path, err)
+		}
+	}
+	serverCredentials, err := fleettransport.NewServerTLSCredentials(
+		paths["serverCertificate"], paths["serverKey"], paths["clientCA"],
+	)
+	if err != nil {
+		t.Fatalf("construct Fleet server TLS credentials: %v", err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen for Fleet mTLS integration: %v", err)
+	}
+	grpcServer := grpc.NewServer(grpc.Creds(serverCredentials))
+	velav1.RegisterFleetMaintenanceServiceServer(grpcServer, transportServer)
+	serveError := make(chan error, 1)
+	go func() { serveError <- grpcServer.Serve(listener) }()
+	t.Cleanup(func() {
+		grpcServer.Stop()
+		_ = listener.Close()
+		<-serveError
+	})
+	clientCredentials, err := fleettransport.NewClientTLSCredentials(
+		paths["clientCertificate"], paths["clientKey"], paths["serverCA"], serverName,
+	)
+	if err != nil {
+		t.Fatalf("construct Node Agent Fleet client TLS credentials: %v", err)
+	}
+	dialContext, cancelDial := context.WithTimeout(context.Background(), 5*time.Second)
+	client, err := fleettransport.DialClient(dialContext, listener.Addr().String(), clientCredentials)
+	cancelDial()
+	if err != nil {
+		t.Fatalf("dial Fleet as Node Agent: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	templateEvidence := workerRegistryEvidenceValue(t, workerInstanceID, 0x13)
+	attested := templateEvidence.DeviceSet.Devices[0]
+	templateEvidence.ObservedAt = time.Time{}
+	templateEvidence.ObservedBy = ""
+	templateEvidence.DeviceSet.MembershipDigest = ""
+	templateEvidence.DeviceSet.TopologyDigest = ""
+	templateEvidence.DeviceSet.Devices[0].NodeEpoch = 0
+	templateEvidence.DeviceSet.Devices[0].AgentSessionEpoch = 0
+	templateEvidence.DeviceSet.Devices[0].NodeAttestationDigest = ""
+	templateEvidence.DeviceSet.Devices[0].DeviceEpoch = 0
+	templateEvidence.DeviceSet.Devices[0].Health = ""
+	templateEvidence.DeviceSet.Devices[0].AttestationDigest = ""
+	templateEvidence.Members[0].DeviceSubsetDigest = ""
+	templateEvidence.Members[0].IdentityDigest = ""
+	templateEvidence.Capacity.Sequence = 0
+	templateEvidence.Capacity.ObservedAt = time.Time{}
+	templateEvidence.Capacity.ExpiresAt = time.Time{}
+	reporter, err := nodeagent.NewWorkerInstanceEvidenceReporter(
+		staticIntegrationWorkerInstanceProbe{device: nodeagent.AttestedWorkerDevice{
+			DeviceID: attested.ID, ComputeNodeID: attested.ComputeNodeID,
+			NodeIdentity: attested.NodeIdentity, GPUUUID: attested.GPUUUID, PCIBDF: attested.PCIBDF,
+			NodeEpoch: 1, AgentSessionEpoch: 1, DeviceEpoch: 1,
+			NodeAttestationDigest: digestHex(0x43), DeviceAttestationDigest: digestHex(0x44),
+			Health: "HEALTHY",
+		}},
+		client,
+		staticIntegrationObservationSequencer{sequence: 1},
+		2*time.Minute,
+		time.Now,
+	)
+	if err != nil {
+		t.Fatalf("construct Node Agent WorkerInstance reporter: %v", err)
+	}
+	decision, err := reporter.Report(context.Background(), nodeagent.WorkerInstanceEvidenceTemplate{
+		Evidence: templateEvidence, ObservedBy: nodeAgentSPIFFE,
+	})
+	if err != nil || decision.Readiness != fleet.WorkerInstanceReady {
+		t.Fatalf("report WorkerInstance through Node Agent mTLS decision=%#v error=%v", decision, err)
+	}
+
+	var lifecycle, residencyState, observedBy string
+	var observations int
+	if err := database.Admin.QueryRow(`
+		SELECT worker.lifecycle_state::text, worker.observed_by,
+		       residency.state::text,
+		       (SELECT count(*) FROM capacity_observations WHERE worker_instance_id = worker.id)
+		FROM worker_instances AS worker
+		JOIN model_residencies AS residency ON residency.worker_instance_id = worker.id
+		WHERE worker.id = $1
+	`, workerInstanceID).Scan(&lifecycle, &observedBy, &residencyState, &observations); err != nil {
+		t.Fatalf("read Node Agent mTLS WorkerInstance observation: %v", err)
+	}
+	expectedActor := strings.Replace(
+		nodeAgentSPIFFE,
+		"spiffe://vela.internal/node-agent/",
+		"node-agent/",
+		1,
+	)
+	if lifecycle != "READY" || residencyState != "READY" || observations != 1 ||
+		observedBy != expectedActor {
+		t.Fatalf(
+			"Node Agent mTLS observation lifecycle=%s residency=%s observations=%d actor=%q",
+			lifecycle,
+			residencyState,
+			observations,
+			observedBy,
+		)
 	}
 }
 
@@ -1285,6 +1461,43 @@ func workerRegistryEvidence(workerID uuid.UUID, identityByte byte) []byte {
 		panic(err)
 	}
 	return encoded
+}
+
+type staticIntegrationWorkerInstanceProbe struct {
+	device nodeagent.AttestedWorkerDevice
+}
+
+func (probe staticIntegrationWorkerInstanceProbe) AttestWorkerInstanceDevices(
+	ctx context.Context,
+	expected []nodeagent.ExpectedWorkerDevice,
+) ([]nodeagent.AttestedWorkerDevice, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(expected) != 1 || expected[0].DeviceID != probe.device.DeviceID ||
+		expected[0].ComputeNodeID != probe.device.ComputeNodeID ||
+		expected[0].NodeIdentity != probe.device.NodeIdentity ||
+		expected[0].GPUUUID != probe.device.GPUUUID || expected[0].PCIBDF != probe.device.PCIBDF {
+		return nil, errors.New("unexpected WorkerInstance Device identity")
+	}
+	return []nodeagent.AttestedWorkerDevice{probe.device}, nil
+}
+
+type staticIntegrationObservationSequencer struct {
+	sequence int64
+}
+
+func (sequencer staticIntegrationObservationSequencer) NextWorkerInstanceObservationSequence(
+	ctx context.Context,
+	workerInstanceID uuid.UUID,
+) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if workerInstanceID == uuid.Nil || sequencer.sequence <= 0 {
+		return 0, errors.New("invalid WorkerInstance observation sequence")
+	}
+	return sequencer.sequence, nil
 }
 
 func digestHex(value byte) string {
