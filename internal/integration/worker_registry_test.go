@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -365,6 +366,50 @@ func TestWorkerRegistryAuthorizesPodMutationOnlyAfterExactResidencyRelease(t *te
 	`, releaseID); err != nil {
 		t.Fatalf("complete Pod mutation ModelResidency release: %v", err)
 	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*fleet.MutationAuthorizationRequest)
+	}{
+		{
+			name: "ResidencyPlan revision",
+			mutate: func(candidate *fleet.MutationAuthorizationRequest) {
+				candidate.ResidencyPlanRevisionID = uuid.MustParse(
+					"49200000-0000-0000-0000-000000000299",
+				)
+			},
+		},
+		{
+			name: "WorkerBundle",
+			mutate: func(candidate *fleet.MutationAuthorizationRequest) {
+				candidate.WorkerBundleID = uuid.MustParse(
+					"49200000-0000-0000-0000-000000000298",
+				)
+			},
+		},
+		{
+			name: "WorkerMember",
+			mutate: func(candidate *fleet.MutationAuthorizationRequest) {
+				candidate.WorkerMemberID = uuid.MustParse(
+					"49200000-0000-0000-0000-000000000297",
+				)
+			},
+		},
+		{
+			name: "WorkerInstance epoch",
+			mutate: func(candidate *fleet.MutationAuthorizationRequest) {
+				candidate.WorkerInstanceEpoch++
+			},
+		},
+	} {
+		t.Run("rejects mismatched "+test.name, func(t *testing.T) {
+			candidate := request
+			candidate.RequestUID = "worker-instance-pod-mismatch-" + test.name
+			candidate.RequestDigest = mustDigestBytes(t, digestHex(0xf5))
+			test.mutate(&candidate)
+			_, err := service.AuthorizeMutation(context.Background(), candidate)
+			assertFleetFailure(t, err, fleet.FailureConflict)
+		})
+	}
 
 	authorized, err := service.AuthorizeMutation(context.Background(), request)
 	if err != nil || !authorized.Authorized || authorized.Replayed ||
@@ -379,6 +424,95 @@ func TestWorkerRegistryAuthorizesPodMutationOnlyAfterExactResidencyRelease(t *te
 	conflicting := request
 	conflicting.RequestDigest = mustDigestBytes(t, digestHex(0xf5))
 	_, err = service.AuthorizeMutation(context.Background(), conflicting)
+	assertFleetFailure(t, err, fleet.FailureConflict)
+
+	finalizerRequest := request
+	finalizerRequest.RequestUID = "worker-instance-pod-finalizer-1"
+	finalizerRequest.Operation = fleet.MutationRemoveFinalizer
+	finalizerRequest.RequestDigest = mustDigestBytes(t, digestHex(0xf6))
+	finalized, err := service.AuthorizeMutation(context.Background(), finalizerRequest)
+	if err != nil || !finalized.Authorized || finalized.Replayed {
+		t.Fatalf("authorize released WorkerInstance Pod finalizer = %#v error=%v", finalized, err)
+	}
+	if _, err := database.Admin.Exec(`
+		UPDATE worker_instance_pod_mutation_authorizations
+		SET actor_identity = 'fleet/rewritten'
+		WHERE request_uid = $1
+	`, request.RequestUID); err == nil || !strings.Contains(err.Error(), "55000") {
+		t.Fatalf("rewrite WorkerInstance Pod authorization error=%v, want SQLSTATE 55000", err)
+	}
+}
+
+func TestWorkerRegistryAuthorizesFencedOldEpochPodCleanup(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	pool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	service, err := fleet.NewService(pool)
+	if err != nil {
+		t.Fatalf("construct WorkerRegistryAndFleet service: %v", err)
+	}
+	var registry fleet.WorkerRegistryAndFleet = service
+
+	proposalID := uuid.MustParse("49200000-0000-0000-0000-000000000232")
+	if _, err := registry.Propose(context.Background(), fleet.ResidencyPlanInputs{
+		ProposalID:       proposalID,
+		InputDigest:      mustDigestBytes(t, digestHex(0xf7)),
+		ConfidencePPM:    900000,
+		ExpiresAt:        time.Now().UTC().Add(time.Hour),
+		MinCapacity:      map[string]int64{"dit": 7},
+		DesiredCapacity:  map[string]int64{"dit": 7},
+		MaxCapacity:      map[string]int64{"dit": 14},
+		Cooldown:         24 * time.Hour,
+		BudgetMicroUnits: 1000000,
+		ReasonCodes:      []string{"WARM_RESIDENCY_FLOOR"},
+		ProposedBy:       "capacity-simulator/shadow",
+	}); err != nil {
+		t.Fatalf("record fenced cleanup ResidencyProposal: %v", err)
+	}
+	encodedPlan, err := json.Marshal(approvedResidencyPlanFixture(proposalID))
+	if err != nil {
+		t.Fatalf("encode fenced cleanup ResidencyPlan: %v", err)
+	}
+	var approvedPlan fleet.ApprovedResidencyPlan
+	if err := json.Unmarshal(encodedPlan, &approvedPlan); err != nil {
+		t.Fatalf("decode fenced cleanup ResidencyPlan: %v", err)
+	}
+	if _, err := registry.Apply(context.Background(), approvedPlan); err != nil {
+		t.Fatalf("apply fenced cleanup ResidencyPlan: %v", err)
+	}
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000204")
+	evidence := workerRegistryEvidenceValue(t, workerID, 0xf8)
+	if _, err := registry.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("observe fenced cleanup WorkerInstance: %v", err)
+	}
+	if _, err := pool.Exec(context.Background(), `
+		SELECT * FROM vela_fence_worker_instance($1, $2, $3, $4)
+	`, workerID, evidence.InstanceEpoch, "device authority changed", "node-agent/h3-node-01"); err != nil {
+		t.Fatalf("fence old WorkerInstance epoch: %v", err)
+	}
+	request := fleet.MutationAuthorizationRequest{
+		RequestUID: "worker-instance-fenced-pod-delete-1", ActorIdentity: "fleet/controller",
+		ResourceKind: fleet.ProtectedPod, Operation: fleet.MutationDelete,
+		KubernetesUID: "worker-instance-fenced-pod-uid-1", Namespace: "vela-system",
+		Name:                    "wi-49200000000000000000000000000204-ba3790e0",
+		WorkerInstanceID:        workerID,
+		WorkerInstanceEpoch:     evidence.InstanceEpoch,
+		ResidencyPlanRevisionID: approvedPlan.ID,
+		WorkerBundleID:          approvedPlan.WorkerBundles[0].ID,
+		WorkerMemberID:          evidence.Members[0].ID,
+		RequestDigest:           mustDigestBytes(t, digestHex(0xf9)),
+	}
+	authorized, err := service.AuthorizeMutation(context.Background(), request)
+	if err != nil || !authorized.Authorized || authorized.Replayed {
+		t.Fatalf("authorize fenced old WorkerInstance Pod = %#v error=%v", authorized, err)
+	}
+	currentEpoch := request
+	currentEpoch.RequestUID = "worker-instance-fenced-pod-delete-current"
+	currentEpoch.WorkerInstanceEpoch++
+	currentEpoch.RequestDigest = mustDigestBytes(t, digestHex(0xfa))
+	_, err = service.AuthorizeMutation(context.Background(), currentEpoch)
 	assertFleetFailure(t, err, fleet.FailureConflict)
 }
 
