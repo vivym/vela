@@ -7,6 +7,8 @@ PROTOC_GEN_GO_VERSION := v1.36.11
 PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
 GOLANGCI_LINT_VERSION := v2.13.1
 INTEGRATION_TEST_TIMEOUT ?= 40m
+INTEGRATION_TEST_SHARD_INDEX ?=
+INTEGRATION_TEST_SHARD_TOTAL ?=
 LAUNCH_RECEIPTS ?=
 RELEASE_BUNDLE_PLAN ?=
 RELEASE_BUNDLE ?=
@@ -20,7 +22,7 @@ TOOLS_BIN := $(CURDIR)/bin
 VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" \
 	"$(RELEASE_IMAGE_PREFIX)" "$(H3_BACKEND_CONTEXT)" "$(H3_BACKEND_SHA256)"
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle verify-launch lint test test-integration test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -55,6 +57,15 @@ test:
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
+
+test-integration-shard:
+	@test -n "$(INTEGRATION_TEST_SHARD_INDEX)" || \
+		(echo "INTEGRATION_TEST_SHARD_INDEX is required" >&2; exit 2)
+	@test -n "$(INTEGRATION_TEST_SHARD_TOTAL)" || \
+		(echo "INTEGRATION_TEST_SHARD_TOTAL is required" >&2; exit 2)
+	INTEGRATION_TEST_TIMEOUT="$(INTEGRATION_TEST_TIMEOUT)" \
+		sh ./hack/test-integration-shard.sh \
+		"$(INTEGRATION_TEST_SHARD_INDEX)" "$(INTEGRATION_TEST_SHARD_TOTAL)"
 
 build-h3-mock-backend:
 	@test -n "$(H3_MOCK_BACKEND_CONTEXT)" || \
