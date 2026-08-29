@@ -64,7 +64,7 @@ tests alone do not satisfy a gate.
 | Release Supply-chain Evidence Binding | `3d384b0`, `247e6f7`, `1b56e49`, `6757932`, `4a65429`, `9179665` | `docs/specs/0045-release-supply-chain-evidence-binding.md`, `internal/supplychain`, `cmd/vela-verify-launch` |
 | NATS Linux/amd64 Image Pinning | `760cd7a`, `431bf3f` | `docs/specs/0046-nats-linux-amd64-image-pinning.md`, `deploy/control-storage/nats-statefulset.yaml`, `internal/deploymentcontract/jetstream_test.go` |
 | BusyBox Linux/amd64 Materializer Image Pinning | `6d916bb`, `9f4063e` | `docs/specs/0047-busybox-linux-amd64-image-pinning.md`, `deploy/vela-control/deployment.yaml`, `deploy/worker-agent/daemonset.yaml`, `deploy/fleet-controller/desired-revisions.yaml`, `internal/deploymentcontract/busybox_image_test.go` |
-| H3 Mock Backend (non-production) | `4304fe9` | `docs/specs/0048-h3-mock-backend.md`, `internal/h3mockbackend`, `cmd/vela-h3-mock-backend` |
+| H3 Mock Backend (non-production) | `4304fe9`, `f6cb45b` | `docs/specs/0048-h3-mock-backend.md`, `internal/h3mockbackend`, `cmd/vela-h3-mock-backend` |
 
 ## ADR Evidence Matrix
 
@@ -242,9 +242,10 @@ static Worker contract, and Fleet desired input, then verifies all three
 identities through final Kustomize renders and the repository deployment
 validation entry point. It does not provide registry publication, signatures,
 SBOM, scan/approval evidence, a deployment, or a Launch Receipt.
-The H3 mock backend (`4304fe9`) is development-only Runner protocol and staging
-deployment tooling. It is not H3, certification or performance evidence, does
-not add acceptance-scenario evidence, and cannot satisfy a Production Gate.
+The H3 mock backend (`4304fe9`, review closure `f6cb45b`) is development-only
+Runner protocol and staging deployment tooling. It is not H3, certification or
+performance evidence, does not add acceptance-scenario evidence, and cannot
+satisfy a Production Gate.
 The repository coverage remains 30 direct, 0 partial, and 0 unproven.
 
 ## Production Gates

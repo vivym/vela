@@ -5,7 +5,7 @@ Date: 2026-08-29
 Status: Repository implementation complete; deployment evidence pending target
 server inventory.
 
-Implementation commit: `4304fe9`.
+Implementation commit: `4304fe9`; review closure: `f6cb45b`.
 
 This development backend implements the exact file protocol used between the
 Python H3 Runner and the proprietary H3 process. It exists to exercise image
@@ -112,6 +112,10 @@ target-specific mock overlay may remove the GPU request only for explicitly
 non-production CPU staging while retaining eight synthetic role UUIDs. Such an
 overlay must never be used as hardware readiness, remediation, soak,
 certification, or performance evidence.
+
+The target-specific overlay and mock-only Catalog records are deliberately
+deferred until server inventory is supplied; the repository mock must not guess
+whether a target retains physical GPU resources or uses CPU-only staging.
 
 Mock images may be built and deployed to staging, but they must use a mock
 backend revision and separate Catalog records. They do not satisfy
