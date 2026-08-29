@@ -83,7 +83,23 @@ jobs:
           echo "VELA_ARTIFACT_VALIDATOR_HELPER_PATH=${RUNNER_TEMP}/ffprobe-bin/vela-artifact-validator" \
             >> "${GITHUB_ENV}"
 
+      - name: Verify pinned ffprobe production sandbox
+        shell: bash
+        run: |
+          original_userns_policy="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)"
+          restore_userns_policy() {
+            sudo sysctl -w \
+              "kernel.apparmor_restrict_unprivileged_userns=${original_userns_policy}"
+          }
+          trap restore_userns_policy EXIT
+
+          # Ubuntu 24.04 runners otherwise deny the sandbox's unprivileged mount namespace.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          go test ./internal/artifactvalidator -count=1
+
       - name: Verify generated, source, and deployment contracts
+        env:
+          VELA_REQUIRE_PINNED_FFPROBE: "0"
         run: make verify
 
       - name: PostgreSQL and JetStream integration test
