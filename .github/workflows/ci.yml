@@ -59,6 +59,7 @@ jobs:
             --disable-autodetect \
             --disable-doc \
             --disable-network \
+            --disable-x86asm \
             --disable-shared \
             --enable-static \
             --extra-ldflags=-static \
