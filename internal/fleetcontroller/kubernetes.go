@@ -118,6 +118,47 @@ func (resources *KubernetesResources) CreateDaemonSet(
 	return mapKubernetesWriteError(err)
 }
 
+func (resources *KubernetesResources) GetWorkerInstancePod(
+	ctx context.Context,
+	key ResourceKey,
+) (corev1.Pod, error) {
+	if err := resources.validateKey(key); err != nil {
+		return corev1.Pod{}, err
+	}
+	object, err := resources.client.Resource(podResource).
+		Namespace(resources.namespace).
+		Get(ctx, key.Name, metav1.GetOptions{})
+	if err != nil {
+		return corev1.Pod{}, mapKubernetesResourceError(err)
+	}
+	var pod corev1.Pod
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(object.Object, &pod); err != nil {
+		return corev1.Pod{}, fmt.Errorf("decode WorkerInstance Pod: %w", err)
+	}
+	return pod, nil
+}
+
+func (resources *KubernetesResources) CreateWorkerInstancePod(
+	ctx context.Context,
+	pod corev1.Pod,
+) error {
+	if resources == nil || resources.client == nil || pod.APIVersion != "v1" ||
+		pod.Kind != "Pod" || pod.Namespace != resources.namespace ||
+		!validResourceName(pod.Name) || pod.Labels[protectedLabel] != "true" ||
+		pod.Labels[workerInstanceIDLabel] == "" ||
+		!containsString(pod.Finalizers, protectionFinalizer) {
+		return errors.New("WorkerInstance Pod is invalid")
+	}
+	encoded, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&pod)
+	if err != nil {
+		return fmt.Errorf("encode WorkerInstance Pod: %w", err)
+	}
+	_, err = resources.client.Resource(podResource).
+		Namespace(resources.namespace).
+		Create(ctx, &unstructured.Unstructured{Object: encoded}, metav1.CreateOptions{})
+	return mapKubernetesWriteError(err)
+}
+
 func (resources *KubernetesResources) ValidateProtectedPodCreate(
 	ctx context.Context,
 	pod corev1.Pod,

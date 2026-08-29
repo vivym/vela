@@ -25,6 +25,7 @@ type WorkerRegistryAndFleet interface {
 	Propose(context.Context, ResidencyPlanInputs) (ResidencyProposal, error)
 	Apply(context.Context, ApprovedResidencyPlan) (ActuationPlan, error)
 	Observe(context.Context, WorkerInstanceEvidence) (WorkerInstanceDecision, error)
+	AuthorityMatches(context.Context, WorkerInstanceAuthority) (bool, error)
 	Drain(context.Context, WorkerInstanceDrainRequest) (WorkerInstanceTransition, error)
 	Fence(context.Context, WorkerInstanceFenceRequest) (WorkerInstanceTransition, error)
 }
@@ -170,6 +171,15 @@ type WorkerInstanceDecision struct {
 	Readiness           WorkerInstanceLifecycle
 }
 
+type WorkerInstanceAuthority struct {
+	WorkerInstanceID  uuid.UUID
+	InstanceEpoch     int64
+	DeviceSetDigest   []byte
+	MembershipDigest  []byte
+	ModelResidencyID  uuid.UUID
+	ModelRuntimeEpoch int64
+}
+
 type WorkerInstanceDrainRequest struct {
 	WorkerInstanceID      uuid.UUID
 	ExpectedInstanceEpoch int64
@@ -294,6 +304,31 @@ func (service *Service) Observe(
 		return WorkerInstanceDecision{}, mapDatabaseError("observe WorkerInstance", err)
 	}
 	return decision, nil
+}
+
+func (service *Service) AuthorityMatches(
+	ctx context.Context,
+	authority WorkerInstanceAuthority,
+) (bool, error) {
+	if service == nil || service.pool == nil {
+		return false, errors.New("fleet service is not configured")
+	}
+	if authority.WorkerInstanceID == uuid.Nil || authority.InstanceEpoch <= 0 ||
+		len(authority.DeviceSetDigest) != 32 || len(authority.MembershipDigest) != 32 ||
+		authority.ModelResidencyID == uuid.Nil || authority.ModelRuntimeEpoch <= 0 {
+		return false, &Failure{
+			Code: FailureInvalid, Message: "WorkerInstance authority is invalid",
+		}
+	}
+	var matches bool
+	if err := service.pool.QueryRow(ctx, `
+		SELECT vela_worker_instance_authority_matches($1, $2, $3, $4, $5, $6)
+	`, authority.WorkerInstanceID, authority.InstanceEpoch,
+		authority.DeviceSetDigest, authority.MembershipDigest,
+		authority.ModelResidencyID, authority.ModelRuntimeEpoch).Scan(&matches); err != nil {
+		return false, mapDatabaseError("match WorkerInstance authority", err)
+	}
+	return matches, nil
 }
 
 func (service *Service) Drain(

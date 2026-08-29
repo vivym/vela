@@ -4,14 +4,17 @@ package integration_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/fleet"
 )
 
@@ -48,22 +51,43 @@ func TestWorkerRegistryRejectsSharedGPUAcrossWorkerInstances(t *testing.T) {
 		}
 	}
 
-	firstEvidence := workerRegistryEvidence(firstWorkerID, 0x10)
-	if _, err := fleetPool.Exec(
-		context.Background(),
-		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
-		firstEvidence,
-	); err != nil {
-		t.Fatalf("observe first WorkerInstance: %v", err)
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	for _, candidate := range []struct {
+		workerID     uuid.UUID
+		identityByte byte
+	}{
+		{workerID: firstWorkerID, identityByte: 0x10},
+		{workerID: secondWorkerID, identityByte: 0x11},
+	} {
+		candidate := candidate
+		go func() {
+			<-start
+			_, err := fleetPool.Exec(
+				context.Background(),
+				"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
+				workerRegistryEvidence(candidate.workerID, candidate.identityByte),
+			)
+			results <- err
+		}()
 	}
-
-	secondEvidence := workerRegistryEvidence(secondWorkerID, 0x11)
-	_, err := fleetPool.Exec(
-		context.Background(),
-		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
-		secondEvidence,
-	)
-	assertPostgresConstraint(t, err, "device_already_bound_to_worker_instance")
+	close(start)
+	var succeeded, rejected int
+	for range 2 {
+		err := <-results
+		if err == nil {
+			succeeded++
+			continue
+		}
+		if postgresConstraint(err, "device_already_bound_to_worker_instance") {
+			rejected++
+			continue
+		}
+		t.Fatalf("concurrent WorkerInstance binding error = %v", err)
+	}
+	if succeeded != 1 || rejected != 1 {
+		t.Fatalf("concurrent WorkerInstance binding succeeded=%d rejected=%d, want 1/1", succeeded, rejected)
+	}
 }
 
 func TestWorkerRegistryReconnectPreservesRuntimeAndFenceInvalidatesAuthority(t *testing.T) {
@@ -468,6 +492,150 @@ func TestWorkerRegistryAndFleetGoInterfaceOwnsCommandSequence(t *testing.T) {
 	if err != nil || transition.Lifecycle != fleet.WorkerInstanceDraining {
 		t.Fatalf("drain WorkerInstance = %#v error=%v", transition, err)
 	}
+}
+
+func TestWorkerRegistryAuthorityFailsClosedWithoutFreshCapacityObservation(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	seedWorkerRegistryPlan(t, database.Admin)
+	pool := newRolePool(t, database.DSN, "vela_scheduler_login", "vela-scheduler-password")
+	service, err := fleet.NewService(pool)
+	if err != nil {
+		t.Fatalf("construct Scheduler authority reader: %v", err)
+	}
+	var registry fleet.WorkerRegistryAndFleet = service
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000220")
+	seedWorkerInstance(t, database.Admin, workerID, workerRegistryProfileID, 1, 1)
+	evidence := workerRegistryEvidenceValue(t, workerID, 0xe0)
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	if _, err := fleetPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
+		mustJSON(t, evidence),
+	); err != nil {
+		t.Fatalf("observe WorkerInstance: %v", err)
+	}
+	authority := workerAuthority(t, evidence)
+	matches, err := registry.AuthorityMatches(context.Background(), authority)
+	if err != nil || !matches {
+		t.Fatalf("fresh WorkerInstance authority matches=%t error=%v, want true", matches, err)
+	}
+
+	if _, err := database.Admin.Exec(
+		"DELETE FROM capacity_observations WHERE worker_instance_id = $1",
+		workerID,
+	); err != nil {
+		t.Fatalf("remove CapacityObservation fixture: %v", err)
+	}
+	matches, err = registry.AuthorityMatches(context.Background(), authority)
+	if err != nil || matches {
+		t.Fatalf("missing-capacity WorkerInstance authority matches=%t error=%v, want false", matches, err)
+	}
+	if _, err := fleetPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_fence_worker_instance($1, 1, 'freshness test turnover', $2)",
+		workerID,
+		"fleet/freshness-test",
+	); err != nil {
+		t.Fatalf("fence first WorkerInstance before expired-capacity fixture: %v", err)
+	}
+
+	expiredWorkerID := uuid.MustParse("49200000-0000-0000-0000-000000000221")
+	seedWorkerInstance(t, database.Admin, expiredWorkerID, workerRegistryProfileID, 1, 1)
+	expired := workerRegistryEvidenceValue(t, expiredWorkerID, 0xe1)
+	expired.Capacity.ObservedAt = time.Now().UTC().Add(-2 * time.Minute)
+	expired.Capacity.ExpiresAt = time.Now().UTC().Add(-time.Minute)
+	if _, err := fleetPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
+		mustJSON(t, expired),
+	); err != nil {
+		t.Fatalf("observe WorkerInstance with expired capacity evidence: %v", err)
+	}
+	matches, err = registry.AuthorityMatches(context.Background(), workerAuthority(t, expired))
+	if err != nil || matches {
+		t.Fatalf("expired-capacity WorkerInstance authority matches=%t error=%v, want false", matches, err)
+	}
+}
+
+func TestWorkerRegistryMigrationRollbackRequiresEmptyAuthority(t *testing.T) {
+	t.Run("empty registry rolls back", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+		if err := goose.DownTo(database.Admin, migrations, 34); err != nil {
+			t.Fatalf("roll back empty Worker Registry: %v", err)
+		}
+	})
+
+	t.Run("proposal authority refuses rollback", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+		fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+		proposal := map[string]any{
+			"schema_version":     1,
+			"id":                 "49200000-0000-0000-0000-000000000222",
+			"input_digest":       digestHex(0xe2),
+			"confidence_ppm":     800000,
+			"expires_at":         time.Now().UTC().Add(time.Hour).Format(time.RFC3339Nano),
+			"min_capacity":       map[string]int64{"dit": 7},
+			"desired_capacity":   map[string]int64{"dit": 14},
+			"max_capacity":       map[string]int64{"dit": 21},
+			"cooldown_seconds":   3600,
+			"budget_micro_units": 1000000,
+			"reason_codes":       []string{"QUEUE_PRESSURE"},
+			"proposed_by":        "capacity-simulator/shadow",
+		}
+		if _, err := fleetPool.Exec(
+			context.Background(),
+			"SELECT * FROM vela_record_residency_proposal($1::jsonb)",
+			mustJSON(t, proposal),
+		); err != nil {
+			t.Fatalf("record rollback guard proposal: %v", err)
+		}
+		err := goose.DownTo(database.Admin, migrations, 34)
+		assertPostgresConstraint(t, err, "worker_registry_rollback_is_unsafe")
+	})
+}
+
+func workerAuthority(t *testing.T, evidence fleet.WorkerInstanceEvidence) fleet.WorkerInstanceAuthority {
+	t.Helper()
+	membership := mustDigestBytes(t, evidence.DeviceSet.MembershipDigest)
+	topology := mustDigestBytes(t, evidence.DeviceSet.TopologyDigest)
+	deviceSetDigest := sha256.Sum256(append(append([]byte(nil), membership...), topology...))
+	return fleet.WorkerInstanceAuthority{
+		WorkerInstanceID:  evidence.WorkerInstanceID,
+		InstanceEpoch:     evidence.InstanceEpoch,
+		DeviceSetDigest:   deviceSetDigest[:],
+		MembershipDigest:  membership,
+		ModelResidencyID:  evidence.Residencies[0].ID,
+		ModelRuntimeEpoch: evidence.Residencies[0].ModelRuntimeEpoch,
+	}
+}
+
+func workerRegistryEvidenceValue(
+	t *testing.T,
+	workerID uuid.UUID,
+	identityByte byte,
+) fleet.WorkerInstanceEvidence {
+	t.Helper()
+	var evidence fleet.WorkerInstanceEvidence
+	if err := json.Unmarshal(workerRegistryEvidence(workerID, identityByte), &evidence); err != nil {
+		t.Fatalf("decode WorkerInstance evidence fixture: %v", err)
+	}
+	return evidence
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("encode JSON fixture: %v", err)
+	}
+	return encoded
 }
 
 func mustDigestBytes(t *testing.T, encoded string) []byte {
