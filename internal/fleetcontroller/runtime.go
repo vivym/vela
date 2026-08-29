@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sync/atomic"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type PendingWorkerPodLister interface {
@@ -53,12 +55,13 @@ func NewRuntime(
 	for _, desired := range config.DesiredRevisions {
 		cloned := desired
 		cloned.NodeSelector = cloneMap(desired.NodeSelector)
+		cloned.Placements = clonePlacements(desired.Placements)
 		desiredRevisions = append(desiredRevisions, cloned)
 	}
 	retirementPlans := make([]RetirementPlan, 0, len(config.RetirementPlans))
 	for _, plan := range config.RetirementPlans {
 		cloned := plan
-		cloned.Workers = append([]WorkerRetirement(nil), plan.Workers...)
+		cloned.Placements = cloneRetirementPlacements(plan.Placements)
 		retirementPlans = append(retirementPlans, cloned)
 	}
 	runtime := &Runtime{
@@ -82,7 +85,10 @@ func ValidateRuntimeConfiguration(
 	}
 	desiredPoolIDs := make(map[string]struct{}, len(desiredRevisions))
 	desiredPoolNames := make(map[string]struct{}, len(desiredRevisions))
-	desiredDaemonSetNames := make(map[string]struct{}, len(desiredRevisions))
+	desiredDaemonSetNames := make(map[string]struct{})
+	desiredNodeIdentities := make(map[string]struct{})
+	desiredConfigMapNames := make(map[string]struct{})
+	desiredTLSSecretNames := make(map[string]struct{})
 	for _, desired := range desiredRevisions {
 		if err := ValidateDesiredRevision(desired); err != nil {
 			return err
@@ -93,19 +99,42 @@ func ValidateRuntimeConfiguration(
 		if !claimRuntimeIdentity(desiredPoolNames, runtimeResourceName(desired.Namespace, desired.Name)) {
 			return errors.New("fleet runtime contains a duplicate desired WorkerPool name")
 		}
-		if !claimRuntimeIdentity(
-			desiredDaemonSetNames,
-			runtimeResourceName(desired.Namespace, desired.DaemonSetName),
-		) {
-			return errors.New("fleet runtime contains a duplicate desired DaemonSet name")
+		for _, placement := range desired.Placements {
+			if !claimRuntimeIdentity(desiredNodeIdentities, placement.NodeIdentity) {
+				return errors.New("fleet runtime contains a duplicate desired Node identity")
+			}
+			if !claimRuntimeIdentity(
+				desiredDaemonSetNames,
+				runtimeResourceName(desired.Namespace, placement.DaemonSetName),
+			) {
+				return errors.New("fleet runtime contains a duplicate desired DaemonSet name")
+			}
+			for _, name := range []string{
+				placement.WorkerRuntimeConfigMap,
+				placement.RunnerProfilesConfigMap,
+				placement.RunnerGPURolesConfigMap,
+			} {
+				if !claimRuntimeIdentity(
+					desiredConfigMapNames,
+					runtimeResourceName(desired.Namespace, name),
+				) {
+					return errors.New("fleet runtime contains a duplicate desired ConfigMap name")
+				}
+			}
+			if !claimRuntimeIdentity(
+				desiredTLSSecretNames,
+				runtimeResourceName(desired.Namespace, placement.WorkerControlTLSSecret),
+			) {
+				return errors.New("fleet runtime contains a duplicate desired Worker TLS Secret name")
+			}
 		}
 	}
 
 	planRevisions := make(map[string]struct{}, len(retirementPlans))
 	retiredPoolIDs := make(map[string]struct{}, len(retirementPlans))
 	retiredPoolNames := make(map[string]struct{}, len(retirementPlans))
-	retiredDaemonSetNames := make(map[string]struct{}, len(retirementPlans))
-	retiredResourceUIDs := make(map[string]struct{}, len(retirementPlans)*2)
+	retiredDaemonSetNames := make(map[string]struct{})
+	retiredResourceUIDs := make(map[string]struct{})
 	retiredWorkerIDs := make(map[string]struct{})
 	retiredPodNames := make(map[string]struct{})
 	retiredDrainOperations := make(map[string]struct{})
@@ -115,15 +144,11 @@ func ValidateRuntimeConfiguration(
 		}
 		poolID := plan.WorkerPoolID.String()
 		poolName := runtimeResourceName(plan.Namespace, plan.WorkerPoolName)
-		daemonSetName := runtimeResourceName(plan.Namespace, plan.DaemonSetName)
 		if _, overlapsDesired := desiredPoolIDs[poolID]; overlapsDesired {
 			return errors.New("fleet runtime overlaps desired and retiring WorkerPool id")
 		}
 		if _, overlapsDesired := desiredPoolNames[poolName]; overlapsDesired {
 			return errors.New("fleet runtime overlaps desired and retiring WorkerPool name")
-		}
-		if _, overlapsDesired := desiredDaemonSetNames[daemonSetName]; overlapsDesired {
-			return errors.New("fleet runtime overlaps desired and retiring DaemonSet name")
 		}
 		if !claimRuntimeIdentity(planRevisions, plan.Revision) {
 			return errors.New("fleet runtime contains a duplicate retirement plan revision")
@@ -134,32 +159,49 @@ func ValidateRuntimeConfiguration(
 		if !claimRuntimeIdentity(retiredPoolNames, poolName) {
 			return errors.New("fleet runtime retires a WorkerPool name more than once")
 		}
-		if !claimRuntimeIdentity(retiredDaemonSetNames, daemonSetName) {
-			return errors.New("fleet runtime retires a DaemonSet name more than once")
-		}
-		if !claimRuntimeIdentity(retiredResourceUIDs, plan.WorkerPoolKubernetesUID) ||
-			!claimRuntimeIdentity(retiredResourceUIDs, plan.DaemonSetKubernetesUID) {
+		if !claimRuntimeIdentity(retiredResourceUIDs, plan.WorkerPoolKubernetesUID) {
 			return errors.New("fleet runtime reuses a retirement Kubernetes resource UID")
 		}
-		for _, worker := range plan.Workers {
-			if !claimRuntimeIdentity(retiredDrainOperations, worker.OperationID.String()) {
-				return errors.New("fleet runtime reuses a retirement DrainOperation id")
+		for _, placement := range plan.Placements {
+			daemonSetName := runtimeResourceName(plan.Namespace, placement.DaemonSetName)
+			if _, overlapsDesired := desiredDaemonSetNames[daemonSetName]; overlapsDesired {
+				return errors.New("fleet runtime overlaps desired and retiring DaemonSet name")
 			}
-			if !claimRuntimeIdentity(retiredWorkerIDs, worker.WorkerID.String()) {
-				return errors.New("fleet runtime retires a Worker id more than once")
+			if !claimRuntimeIdentity(retiredDaemonSetNames, daemonSetName) {
+				return errors.New("fleet runtime retires a DaemonSet name more than once")
 			}
-			if !claimRuntimeIdentity(
-				retiredPodNames,
-				runtimeResourceName(plan.Namespace, worker.PodName),
-			) {
-				return errors.New("fleet runtime retires a Worker Pod name more than once")
-			}
-			if !claimRuntimeIdentity(retiredResourceUIDs, worker.PodKubernetesUID) {
+			if !claimRuntimeIdentity(retiredResourceUIDs, placement.DaemonSetKubernetesUID) {
 				return errors.New("fleet runtime reuses a retirement Kubernetes resource UID")
+			}
+			for _, worker := range placement.Workers {
+				if !claimRuntimeIdentity(retiredDrainOperations, worker.OperationID.String()) {
+					return errors.New("fleet runtime reuses a retirement DrainOperation id")
+				}
+				if !claimRuntimeIdentity(retiredWorkerIDs, worker.WorkerID.String()) {
+					return errors.New("fleet runtime retires a Worker id more than once")
+				}
+				if !claimRuntimeIdentity(
+					retiredPodNames,
+					runtimeResourceName(plan.Namespace, worker.PodName),
+				) {
+					return errors.New("fleet runtime retires a Worker Pod name more than once")
+				}
+				if !claimRuntimeIdentity(retiredResourceUIDs, worker.PodKubernetesUID) {
+					return errors.New("fleet runtime reuses a retirement Kubernetes resource UID")
+				}
 			}
 		}
 	}
 	return nil
+}
+
+func cloneRetirementPlacements(placements []RetirementPlacement) []RetirementPlacement {
+	cloned := make([]RetirementPlacement, len(placements))
+	for index, placement := range placements {
+		cloned[index] = placement
+		cloned[index].Workers = append([]WorkerRetirement(nil), placement.Workers...)
+	}
+	return cloned
 }
 
 func claimRuntimeIdentity(seen map[string]struct{}, identity string) bool {
@@ -184,6 +226,7 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 	}
 	result := RuntimeResult{}
 	var failures []error
+	reconciledPools := make(map[uuid.UUID]struct{}, len(runtime.desiredRevisions))
 	for _, desired := range runtime.desiredRevisions {
 		if _, err := runtime.reconciler.Reconcile(ctx, desired); err != nil {
 			failures = append(failures, fmt.Errorf(
@@ -194,6 +237,7 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 			))
 			continue
 		}
+		reconciledPools[desired.WorkerPoolID] = struct{}{}
 		result.DesiredRevisionsConverged++
 	}
 	pods, err := runtime.pods.ListPendingWorkerPods(ctx)
@@ -208,6 +252,14 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 					pod.Metadata.Namespace,
 					pod.Metadata.Name,
 					err,
+				))
+				continue
+			}
+			if _, reconciled := reconciledPools[desired.WorkerPoolID]; !reconciled {
+				failures = append(failures, fmt.Errorf(
+					"bind pending Worker Pod %s/%s: desired revision did not reconcile in this cycle",
+					pod.Metadata.Namespace,
+					pod.Metadata.Name,
 				))
 				continue
 			}

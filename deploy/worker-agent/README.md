@@ -27,9 +27,28 @@ Render the contract locally with:
 kubectl kustomize deploy/worker-agent
 ```
 
-The image digests in the base are invalid placeholders. Fleet Controller must
-replace all three with approved OCI digests and preserve adjacent-version protocol
-compatibility. A rendered manifest is not a deployment receipt.
+The BusyBox root materializer is pinned to the shared `1.37.0` `linux/amd64`
+OCI manifest. The Worker Agent and H3 Runner digests remain invalid
+placeholders. Fleet Controller must replace those two Vela images with approved
+OCI digests and preserve adjacent-version protocol compatibility. A rendered
+manifest is not a deployment receipt or supply-chain receipt.
+
+## Release bundle boundary
+
+Production assembly must include the final `kubectl kustomize` output as the
+exact `worker-agent` render, the built `h3-runner` package and contract, and one
+canonical materialization for every registered Worker node. One logical
+WorkerPool retains the shared ExecutionProfileRevision, circuit, and
+aggregate-capacity authority,
+while each node placement is hostname-pinned through its own `OnDelete`
+DaemonSet and owns its runtime/profile/GPU-role ConfigMaps and Worker TLS Secret.
+Each materialization binds the Worker/epoch, Fleet revision, Node Agent
+identity, placement materials, Worker TLS Secret revision, and certified
+model/profile/backend revisions. OCI platform is derived from the verified
+config blob and must be `linux/amd64`. Any image, package, placement material,
+external revision, or rendered object change derives a new configuration
+revision and release digest. Bundle verification is not real H3 certification
+or a Launch Receipt.
 
 ## Host preflight
 

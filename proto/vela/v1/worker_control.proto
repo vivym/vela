@@ -34,6 +34,9 @@ message ConnectRequest {
     VerifyArtifactRequest verify_artifact = 24;
     CompleteVisibleCompletionRequest complete_visible_completion = 25;
     CompleteArtifactMultipartUploadRequest complete_artifact_multipart_upload = 26;
+    ClaimDebugDumpUploadRequest claim_debug_dump_upload = 27;
+    RecordDebugDumpMultipartSessionRequest record_debug_dump_multipart_session = 28;
+    CompleteDebugDumpMultipartUploadRequest complete_debug_dump_multipart_upload = 29;
   }
 }
 
@@ -53,6 +56,9 @@ message ConnectResponse {
     ArtifactUploadResult artifact_upload_result = 23;
     ArtifactVerificationResult artifact_verification_result = 24;
     VisibleCompletionResult visible_completion_result = 25;
+    DebugDumpUploadClaim debug_dump_upload_claim = 26;
+    DebugDumpMultipartSession debug_dump_multipart_session = 27;
+    DebugDumpUploadResult debug_dump_upload_result = 28;
     WorkerOperationError operation_error = 99;
   }
 }
@@ -169,6 +175,12 @@ message WorkerAssignment {
   int64 lease_fence = 12;
   google.protobuf.Timestamp lease_expires_at = 13;
   google.protobuf.Duration lease_valid_for = 14;
+  DebugDumpAuthorizationSnapshot debug_dump_authorization = 15;
+}
+
+message DebugDumpAuthorizationSnapshot {
+  string authorization_id = 1;
+  google.protobuf.Timestamp expires_at = 2;
 }
 
 message StartWorkerRequest {
@@ -300,6 +312,48 @@ message CompleteArtifactMultipartUploadRequest {
   repeated ArtifactUploadPartReport completed_parts = 7;
 }
 
+message ClaimDebugDumpUploadRequest {
+  WorkerLeaseCredentials lease = 1;
+  string debug_dump_id = 2;
+  string authorization_id = 3;
+  int64 size_bytes = 4;
+  bytes sha256 = 5;
+  string content_type = 6;
+  DebugDumpUploadPartIntent part = 7;
+  string claim_id = 8;
+}
+
+message DebugDumpUploadPartIntent {
+  int32 number = 1;
+  int64 size_bytes = 2;
+  bytes sha256 = 3;
+}
+
+message RecordDebugDumpMultipartSessionRequest {
+  WorkerLeaseCredentials lease = 1;
+  string debug_dump_id = 2;
+  string claim_id = 3;
+  string multipart_upload_id = 4;
+}
+
+message DebugDumpUploadPartReport {
+  int32 number = 1;
+  string etag = 2;
+  int64 size_bytes = 3;
+  bytes checksum_sha256 = 4;
+}
+
+message CompleteDebugDumpMultipartUploadRequest {
+  WorkerLeaseCredentials lease = 1;
+  string debug_dump_id = 2;
+  string claim_id = 3;
+  string authorization_id = 4;
+  int64 size_bytes = 5;
+  bytes sha256 = 6;
+  string content_type = 7;
+  repeated DebugDumpUploadPartReport completed_parts = 8;
+}
+
 message VerifyArtifactRequest {
   WorkerLeaseCredentials lease = 1;
   string upload_id = 2;
@@ -373,6 +427,49 @@ message ArtifactUploadResult {
   string decision = 1;
   string upload_id = 2;
   string artifact_id = 3;
+  string object_version_id = 4;
+  int64 version = 5;
+}
+
+message DebugDumpUploadClaim {
+  string decision = 1;
+  string claim_id = 2;
+  string debug_dump_id = 3;
+  string authorization_id = 4;
+  string object_key = 5;
+  int64 expected_size_bytes = 6;
+  bytes expected_sha256 = 7;
+  string expected_content_type = 8;
+  google.protobuf.Timestamp claim_expires_at = 9;
+  google.protobuf.Timestamp upload_expires_at = 10;
+  int64 version = 11;
+  string multipart_upload_id = 12;
+  repeated DebugDumpUploadPartReport completed_parts = 13;
+  SignedDebugDumpUploadPart upload_part = 14;
+  bool part_already_uploaded = 15;
+}
+
+message SignedDebugDumpUploadPart {
+  int32 number = 1;
+  int64 size_bytes = 2;
+  bytes sha256 = 3;
+  string url = 4;
+  map<string, string> required_headers = 5;
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message DebugDumpMultipartSession {
+  string decision = 1;
+  string debug_dump_id = 2;
+  string authorization_id = 3;
+  string multipart_upload_id = 4;
+  int64 version = 5;
+}
+
+message DebugDumpUploadResult {
+  string decision = 1;
+  string debug_dump_id = 2;
+  string authorization_id = 3;
   string object_version_id = 4;
   int64 version = 5;
 }

@@ -132,6 +132,44 @@ type ArtifactUploadStore interface {
 	AbortMultipartUpload(context.Context, artifactstore.MultipartUpload) error
 }
 
+type DebugDumpCoordinator interface {
+	ClaimDebugDumpUpload(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		workercontrol.LeaseCredentials,
+		workercontrol.DebugDumpUploadIntent,
+		uuid.UUID,
+	) (workercontrol.DebugDumpUploadClaim, error)
+	RecordDebugDumpMultipartSession(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		workercontrol.LeaseCredentials,
+		uuid.UUID,
+		uuid.UUID,
+		string,
+	) (workercontrol.DebugDumpMultipartSession, error)
+	InspectDebugDumpUpload(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		workercontrol.LeaseCredentials,
+		uuid.UUID,
+	) (workercontrol.DebugDumpUploadStatus, error)
+	RecordDebugDumpCompletionIntent(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		workercontrol.LeaseCredentials,
+		uuid.UUID,
+		workercontrol.DebugDumpUploadReport,
+	) (workercontrol.DebugDumpCompletionIntentResult, error)
+	RecordDebugDumpUploaded(
+		context.Context,
+		workercontrol.AuthenticatedWorker,
+		workercontrol.LeaseCredentials,
+		uuid.UUID,
+		workercontrol.DebugDumpUploadReport,
+	) (workercontrol.DebugDumpUploadResult, error)
+}
+
 type WorkerFleetService interface {
 	ObserveCapacity(context.Context, fleet.CapacityObservation) (fleet.CapacityResult, error)
 	GetWorkerReadinessWork(context.Context, uuid.UUID, int64) (fleet.ReadinessWork, error)
@@ -142,6 +180,7 @@ type Server struct {
 	velav1.UnimplementedWorkerControlServiceServer
 	resolver    WorkerIdentityResolver
 	coordinator WorkerCoordinator
+	debugDumps  DebugDumpCoordinator
 	uploadStore ArtifactUploadStore
 	fleet       WorkerFleetService
 }
@@ -168,9 +207,10 @@ func NewServer(
 	if len(fleetServices) == 1 {
 		fleetService = fleetServices[0]
 	}
+	debugDumps, _ := coordinator.(DebugDumpCoordinator)
 	return &Server{
 		resolver: resolver, coordinator: coordinator, uploadStore: uploadStore,
-		fleet: fleetService,
+		debugDumps: debugDumps, fleet: fleetService,
 	}, nil
 }
 
@@ -464,6 +504,79 @@ func (server *Server) dispatch(
 			RequestId: requestID,
 			Result: &velav1.ConnectResponse_ArtifactUploadResult{
 				ArtifactUploadResult: artifactUploadResult(result),
+			},
+		}, err
+	case *velav1.ConnectRequest_ClaimDebugDumpUpload:
+		if server.debugDumps == nil {
+			return nil, errors.New("debug dump upload coordinator is not configured")
+		}
+		request := operation.ClaimDebugDumpUpload
+		credentials, credentialsOK := parseLeaseCredentials(request.GetLease())
+		debugDumpID, dumpOK := parseRequiredUUID(request.GetDebugDumpId())
+		authorizationID, authorizationOK := parseRequiredUUID(request.GetAuthorizationId())
+		claimID, claimOK := parseRequiredUUID(request.GetClaimId())
+		intent, part, intentOK := parseDebugDumpUploadIntent(request)
+		if !credentialsOK || !dumpOK || !authorizationOK || !claimOK || !intentOK ||
+			intent.DebugDumpID != debugDumpID || intent.AuthorizationID != authorizationID {
+			return invalidResponse(requestID, "valid Lease and debug dump upload intent are required"), nil
+		}
+		result, err := server.debugDumps.ClaimDebugDumpUpload(
+			ctx, worker, credentials, intent, claimID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		claim, err := server.prepareDebugDumpUploadClaim(
+			ctx, worker, credentials, claimID, result, part,
+		)
+		return &velav1.ConnectResponse{
+			RequestId: requestID,
+			Result: &velav1.ConnectResponse_DebugDumpUploadClaim{
+				DebugDumpUploadClaim: claim,
+			},
+		}, err
+	case *velav1.ConnectRequest_RecordDebugDumpMultipartSession:
+		if server.debugDumps == nil {
+			return nil, errors.New("debug dump upload coordinator is not configured")
+		}
+		request := operation.RecordDebugDumpMultipartSession
+		credentials, credentialsOK := parseLeaseCredentials(request.GetLease())
+		debugDumpID, dumpOK := parseRequiredUUID(request.GetDebugDumpId())
+		claimID, claimOK := parseRequiredUUID(request.GetClaimId())
+		multipartID := request.GetMultipartUploadId()
+		if !credentialsOK || !dumpOK || !claimOK || multipartID == "" ||
+			len(multipartID) > 1000 || strings.ContainsRune(multipartID, '\x00') {
+			return invalidResponse(requestID, "valid Lease and debug dump multipart identities are required"), nil
+		}
+		result, err := server.debugDumps.RecordDebugDumpMultipartSession(
+			ctx, worker, credentials, debugDumpID, claimID, multipartID,
+		)
+		return &velav1.ConnectResponse{
+			RequestId: requestID,
+			Result: &velav1.ConnectResponse_DebugDumpMultipartSession{
+				DebugDumpMultipartSession: debugDumpMultipartSession(result),
+			},
+		}, err
+	case *velav1.ConnectRequest_CompleteDebugDumpMultipartUpload:
+		if server.debugDumps == nil {
+			return nil, errors.New("debug dump upload coordinator is not configured")
+		}
+		request := operation.CompleteDebugDumpMultipartUpload
+		credentials, credentialsOK := parseLeaseCredentials(request.GetLease())
+		debugDumpID, dumpOK := parseRequiredUUID(request.GetDebugDumpId())
+		_, claimOK := parseRequiredUUID(request.GetClaimId())
+		authorizationID, authorizationOK := parseRequiredUUID(request.GetAuthorizationId())
+		report, completedParts, reportOK := parseDebugDumpMultipartCompletion(request)
+		if !credentialsOK || !dumpOK || !claimOK || !authorizationOK || !reportOK {
+			return invalidResponse(requestID, "valid Lease and debug dump multipart receipt are required"), nil
+		}
+		result, err := server.completeDebugDumpMultipartUpload(
+			ctx, worker, credentials, debugDumpID, authorizationID, report, completedParts,
+		)
+		return &velav1.ConnectResponse{
+			RequestId: requestID,
+			Result: &velav1.ConnectResponse_DebugDumpUploadResult{
+				DebugDumpUploadResult: debugDumpUploadResult(result),
 			},
 		}, err
 	case *velav1.ConnectRequest_VerifyArtifact:
@@ -1243,7 +1356,7 @@ func parseFailureObservation(
 }
 
 func workerAssignment(result workercontrol.Assignment) *velav1.WorkerAssignment {
-	return &velav1.WorkerAssignment{
+	message := &velav1.WorkerAssignment{
 		AttemptId: result.AttemptID.String(), JobId: result.JobID.String(),
 		WorkerId: result.WorkerID.String(), WorkerEpoch: result.WorkerEpoch,
 		ModelRevisionId:            result.ModelRevisionID.String(),
@@ -1255,6 +1368,13 @@ func workerAssignment(result workercontrol.Assignment) *velav1.WorkerAssignment 
 		LeaseExpiresAt: timestamp(result.LeaseExpiresAt),
 		LeaseValidFor:  durationpb.New(result.LeaseValidFor),
 	}
+	if result.DebugDumpAuthorization != nil {
+		message.DebugDumpAuthorization = &velav1.DebugDumpAuthorizationSnapshot{
+			AuthorizationId: result.DebugDumpAuthorization.AuthorizationID.String(),
+			ExpiresAt:       timestamp(result.DebugDumpAuthorization.ExpiresAt),
+		}
+	}
+	return message
 }
 
 func startWorkerResult(result workercontrol.StartResult) *velav1.StartWorkerResult {
@@ -1341,16 +1461,9 @@ func artifactUploadClaim(
 		!signed.signed.ExpiresAt.After(signed.signed.IssuedAt) {
 		return nil, errors.New("signed Artifact upload part is incomplete")
 	}
-	requiredHeaders := make(map[string]string, len(signed.signed.Headers))
-	for name, values := range signed.signed.Headers {
-		if name == "" || len(values) == 0 {
-			return nil, errors.New("signed Artifact upload part has invalid headers")
-		}
-		value := strings.Join(values, ",")
-		if value == "" || strings.ContainsRune(value, '\x00') {
-			return nil, errors.New("signed Artifact upload part has invalid headers")
-		}
-		requiredHeaders[name] = value
+	requiredHeaders, err := transferableSignedUploadHeaders(signed.signed)
+	if err != nil {
+		return nil, fmt.Errorf("validate signed Artifact upload part headers: %w", err)
 	}
 	claim.UploadPart = &velav1.SignedArtifactUploadPart{
 		Number: signed.intent.number, SizeBytes: signed.intent.sizeBytes,
@@ -1358,6 +1471,40 @@ func artifactUploadClaim(
 		RequiredHeaders: requiredHeaders, ExpiresAt: timestamp(signed.signed.ExpiresAt),
 	}
 	return claim, nil
+}
+
+func transferableSignedUploadHeaders(
+	signed artifactstore.SignedUploadPart,
+) (map[string]string, error) {
+	parsed, err := url.Parse(signed.URL)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+		return nil, errors.New("signed upload URL is invalid")
+	}
+	required := make(map[string]string, len(signed.Headers))
+	for name, values := range signed.Headers {
+		canonical := http.CanonicalHeaderKey(strings.TrimSpace(name))
+		if canonical == "" || len(values) == 0 {
+			return nil, errors.New("signed upload part has invalid headers")
+		}
+		value := strings.Join(values, ",")
+		if value == "" || strings.ContainsRune(value, '\x00') {
+			return nil, errors.New("signed upload part has invalid headers")
+		}
+		if canonical == "Host" {
+			if len(values) != 1 || value != parsed.Host {
+				return nil, errors.New("signed upload Host does not match its URL")
+			}
+			continue
+		}
+		if _, duplicate := required[canonical]; duplicate {
+			return nil, errors.New("signed upload part has duplicate headers")
+		}
+		required[canonical] = value
+	}
+	if len(required) == 0 {
+		return nil, errors.New("signed upload part has no transferable headers")
+	}
+	return required, nil
 }
 
 func artifactUploadPartReports(

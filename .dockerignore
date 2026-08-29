@@ -1,0 +1,10 @@
+.git
+.gitignore
+bin
+runner/.venv
+runner/.pytest_cache
+runner/.ruff_cache
+**/__pycache__
+**/*.pyc
+*.out
+coverage*

@@ -186,6 +186,12 @@ func TestConnectOutboxRejectsCredentialDriftWithoutLeakingSecrets(t *testing.T) 
 			},
 		},
 		{
+			name: "missing stream-info permission",
+			mutateClaims: func(claims *jwt.UserClaims) {
+				claims.Pub.Allow = jwt.StringList{"vela.events.>"}
+			},
+		},
+		{
 			name: "publish permission drift",
 			mutateClaims: func(claims *jwt.UserClaims) {
 				claims.Pub.Allow.Add("vela.commands.>")
@@ -313,6 +319,7 @@ func issueOutboxCredential(t *testing.T, mutate func(*jwt.UserClaims)) testCrede
 	claims.Expires = time.Now().Add(time.Hour).Unix()
 	claims.AllowedConnectionTypes.Add(jwt.ConnectionTypeStandard)
 	claims.Pub.Allow.Add("vela.events.>")
+	claims.Pub.Allow.Add("$JS.API.STREAM.INFO.VELA_EVENTS")
 	claims.Sub.Allow.Add("_INBOX.>")
 	if mutate != nil {
 		mutate(claims)

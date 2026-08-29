@@ -50,24 +50,35 @@ type DeletionStore interface {
 	AbortMultipartUpload(context.Context, artifactstore.MultipartUpload) error
 }
 
+type BackupDeletionStore interface {
+	PurgeObjectVersions(
+		context.Context,
+		string,
+	) (artifactstore.ObjectVersionsPurgeResult, error)
+}
+
 type ReconcilerConfig struct {
-	InstanceID string
-	BatchSize  int
-	ClaimTTL   time.Duration
-	RetryDelay time.Duration
+	InstanceID  string
+	BatchSize   int
+	ClaimTTL    time.Duration
+	RetryDelay  time.Duration
+	BackupPool  *pgxpool.Pool
+	BackupStore BackupDeletionStore
 }
 
 type ReconcileResult struct {
-	RequestContentExpired   int
-	ArtifactRequestsCreated int
-	Claimed                 int
-	Completed               int
-	Failed                  int
+	RequestContentExpired          int
+	ContentDeletionRequestsCreated int
+	Claimed                        int
+	Completed                      int
+	Failed                         int
 }
 
 type Reconciler struct {
 	pool         *pgxpool.Pool
 	store        DeletionStore
+	backupPool   *pgxpool.Pool
+	backupStore  BackupDeletionStore
 	instanceID   string
 	batchSize    int
 	claimSeconds int32
@@ -84,6 +95,9 @@ func NewReconciler(
 	}
 	if store == nil {
 		return nil, errors.New("content deletion reconciler store is required")
+	}
+	if (config.BackupPool == nil) != (config.BackupStore == nil) {
+		return nil, errors.New("off-cluster backup retention pool and store must be configured together")
 	}
 	if len(config.InstanceID) < 1 || len(config.InstanceID) > 500 ||
 		strings.TrimSpace(config.InstanceID) != config.InstanceID {
@@ -103,6 +117,8 @@ func NewReconciler(
 	return &Reconciler{
 		pool:         pool,
 		store:        store,
+		backupPool:   config.BackupPool,
+		backupStore:  config.BackupStore,
 		instanceID:   config.InstanceID,
 		batchSize:    config.BatchSize,
 		claimSeconds: claimSeconds,
@@ -131,9 +147,9 @@ func (r *Reconciler) ReconcileBatch(ctx context.Context) (ReconcileResult, error
 	if err := enqueueTransaction.QueryRow(ctx, `
 		SELECT request_content_completed, artifact_requests_created
 		FROM vela_enqueue_expired_content_deletions($1)
-	`, r.batchSize).Scan(
+		`, r.batchSize).Scan(
 		&result.RequestContentExpired,
-		&result.ArtifactRequestsCreated,
+		&result.ContentDeletionRequestsCreated,
 	); err != nil {
 		return ReconcileResult{}, fmt.Errorf("enqueue retained Customer Content deletions: %w", err)
 	}
@@ -153,7 +169,58 @@ func (r *Reconciler) ReconcileBatch(ctx context.Context) (ReconcileResult, error
 			break
 		}
 	}
+	if r.backupPool != nil && r.backupStore != nil {
+		for range r.batchSize {
+			current, err := r.reconcileBackupOne(ctx)
+			result.Claimed += current.Claimed
+			result.Completed += current.Completed
+			result.Failed += current.Failed
+			if err != nil {
+				reconcileErrors = append(reconcileErrors, err)
+			}
+			if current.Claimed == 0 {
+				break
+			}
+		}
+	}
 	return result, errors.Join(reconcileErrors...)
+}
+
+func (r *Reconciler) reconcileBackupOne(ctx context.Context) (ReconcileResult, error) {
+	claim, found, err := r.claimBackup(ctx)
+	if err != nil {
+		return ReconcileResult{}, err
+	}
+	if !found {
+		return ReconcileResult{}, nil
+	}
+	result := ReconcileResult{Claimed: 1}
+	purgeResult, operationErr := r.backupStore.PurgeObjectVersions(ctx, claim.objectKey)
+	if operationErr != nil {
+		result.Failed = 1
+		if markErr := r.markBackupRetry(
+			ctx,
+			claim,
+			purgeResult.PurgedVersionCount,
+		); markErr != nil {
+			return result, errors.Join(
+				errors.New("off-cluster backup content deletion failed"),
+				markErr,
+			)
+		}
+		return result, errors.New("off-cluster backup content deletion failed")
+	}
+	marked, err := r.markBackupCompleted(ctx, claim, purgeResult.PurgedVersionCount)
+	if err != nil {
+		result.Failed = 1
+		return result, err
+	}
+	if !marked {
+		result.Failed = 1
+		return result, errors.New("off-cluster backup deletion claim became stale after storage success")
+	}
+	result.Completed = 1
+	return result, nil
 }
 
 func (r *Reconciler) reconcileOne(ctx context.Context) (ReconcileResult, error) {
@@ -218,6 +285,27 @@ func (r *Reconciler) claim(ctx context.Context) (deletionTargetClaim, bool, erro
 	if objectVersionID.Valid {
 		claim.objectVersionID = objectVersionID.String
 	}
+	return claim, true, nil
+}
+
+func (r *Reconciler) claimBackup(ctx context.Context) (deletionTargetClaim, bool, error) {
+	claimID := uuid.New()
+	var claim deletionTargetClaim
+	err := r.backupPool.QueryRow(ctx, `
+		SELECT target_id, object_key
+		FROM vela_claim_off_cluster_content_deletion_target($1, $2, $3)
+	`, r.instanceID, claimID, r.claimSeconds).Scan(&claim.targetID, &claim.objectKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return deletionTargetClaim{}, false, nil
+	}
+	if err != nil {
+		return deletionTargetClaim{}, false, fmt.Errorf("claim off-cluster Content Deletion target: %w", err)
+	}
+	if claim.objectKey == "" {
+		return deletionTargetClaim{}, false, errStorageIdentityInvalid
+	}
+	claim.claimID = claimID
+	claim.action = targetActionObjectDiscovery
 	return claim, true, nil
 }
 
@@ -297,13 +385,22 @@ func (r *Reconciler) markRetry(
 	claim deletionTargetClaim,
 	errorCode string,
 ) error {
+	return r.markRetryWithPool(ctx, r.pool, claim, errorCode)
+}
+
+func (r *Reconciler) markRetryWithPool(
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	claim deletionTargetClaim,
+	errorCode string,
+) error {
 	receiptContext, cancel := context.WithTimeout(
 		context.WithoutCancel(ctx),
 		retentionReceiptTimeout,
 	)
 	defer cancel()
 	var marked bool
-	if err := r.pool.QueryRow(receiptContext, `
+	if err := pool.QueryRow(receiptContext, `
 		SELECT vela_retry_content_deletion_target($1, $2, $3, $4)
 	`, claim.targetID, claim.claimID, r.retrySeconds, errorCode).Scan(&marked); err != nil {
 		return fmt.Errorf("record Content Deletion retry: %w", err)
@@ -312,6 +409,53 @@ func (r *Reconciler) markRetry(
 		return errors.New("content deletion claim became stale after storage failure")
 	}
 	return nil
+}
+
+func (r *Reconciler) markBackupRetry(
+	ctx context.Context,
+	claim deletionTargetClaim,
+	purgedVersionCount int,
+) error {
+	if purgedVersionCount < 0 {
+		return errors.New("off-cluster backup purge returned a negative version count")
+	}
+	receiptContext, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		retentionReceiptTimeout,
+	)
+	defer cancel()
+	var marked bool
+	if err := r.backupPool.QueryRow(receiptContext, `
+		SELECT vela_retry_off_cluster_content_deletion_target($1, $2, $3, $4)
+	`, claim.targetID, claim.claimID, r.retrySeconds, purgedVersionCount).Scan(&marked); err != nil {
+		return fmt.Errorf("record off-cluster backup Content Deletion retry: %w", err)
+	}
+	if !marked {
+		return errors.New("off-cluster backup Content Deletion retry claim became stale")
+	}
+	return nil
+}
+
+func (r *Reconciler) markBackupCompleted(
+	ctx context.Context,
+	claim deletionTargetClaim,
+	purgedVersionCount int,
+) (bool, error) {
+	if purgedVersionCount < 0 {
+		return false, errors.New("off-cluster backup purge returned a negative version count")
+	}
+	receiptContext, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		retentionReceiptTimeout,
+	)
+	defer cancel()
+	var marked bool
+	if err := r.backupPool.QueryRow(receiptContext, `
+		SELECT vela_complete_off_cluster_content_deletion_target($1, $2, $3, $4)
+	`, claim.targetID, claim.claimID, uuid.New(), purgedVersionCount).Scan(&marked); err != nil {
+		return false, fmt.Errorf("record completed off-cluster Content Deletion target: %w", err)
+	}
+	return marked, nil
 }
 
 func (r *Reconciler) markCompleted(

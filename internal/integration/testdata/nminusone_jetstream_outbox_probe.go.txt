@@ -1,0 +1,90 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go"
+	"github.com/vivym/vela/internal/outbox"
+)
+
+type publishResult struct {
+	EventID  uuid.UUID `json:"event_id"`
+	Stream   string    `json:"stream"`
+	Sequence int64     `json:"sequence"`
+}
+
+type recordingBroker struct {
+	delegate outbox.Broker
+	result   publishResult
+}
+
+func (broker *recordingBroker) Publish(
+	ctx context.Context,
+	subject string,
+	messageID string,
+	payload []byte,
+) (outbox.Receipt, error) {
+	receipt, err := broker.delegate.Publish(ctx, subject, messageID, payload)
+	if err != nil {
+		return outbox.Receipt{}, err
+	}
+	broker.result = publishResult{
+		EventID:  uuid.MustParse(messageID),
+		Stream:   receipt.Stream,
+		Sequence: receipt.Sequence,
+	}
+	return receipt, nil
+}
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, os.Getenv("VELA_INTERNAL_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer pool.Close()
+	connection, err := nats.Connect(
+		os.Getenv("VELA_NATS_URL"),
+		nats.Timeout(5*time.Second),
+	)
+	if err != nil {
+		fatal(err)
+	}
+	defer connection.Close()
+	jetStream, err := outbox.NewJetStreamBroker(connection)
+	if err != nil {
+		fatal(err)
+	}
+	broker := &recordingBroker{delegate: jetStream}
+	publisher, err := outbox.NewPublisher(pool, broker, outbox.Config{
+		InstanceID: "slice-29-n-minus-one-outbox",
+		BatchSize:  1,
+		ClaimTTL:   30 * time.Second,
+		RetryDelay: 0,
+	})
+	if err != nil {
+		fatal(err)
+	}
+	published, err := publisher.PublishBatch(ctx)
+	if err != nil {
+		fatal(err)
+	}
+	if published != 1 || broker.result.EventID == uuid.Nil {
+		fatal(fmt.Errorf("published %d retained events, want one", published))
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(broker.result); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}

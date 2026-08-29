@@ -150,6 +150,11 @@ type SchedulerClaim struct {
 	WorkerPoolID uuid.UUID
 }
 
+type DebugDumpAuthorizationSnapshot struct {
+	AuthorizationID uuid.UUID
+	ExpiresAt       time.Time
+}
+
 type Assignment struct {
 	AttemptID                  uuid.UUID
 	JobID                      uuid.UUID
@@ -160,6 +165,7 @@ type Assignment struct {
 	ExecutionProfileRevisionID uuid.UUID
 	OutputSpecID               uuid.UUID
 	RequestContent             string
+	DebugDumpAuthorization     *DebugDumpAuthorizationSnapshot
 	SchedulerDispatchIntentID  uuid.UUID
 	AttemptNumber              int32
 	LeaseToken                 string
@@ -420,6 +426,47 @@ func (s *Service) Acquire(
 		return Assignment{}, failure(FailureCandidateUnavailable, "candidate Job no longer satisfies Assignment time preconditions")
 	}
 	assignedAt := pgtype.Timestamptz{Time: now, Valid: true}
+	var debugDumpAuthorization *DebugDumpAuthorizationSnapshot
+	var debugDumpAuthorizationID uuid.NullUUID
+	var debugDumpAuthorizationExpiresAt pgtype.Timestamptz
+	activeDebugAuthorization, err := queries.LockActiveDebugDumpAuthorizationForAssignment(
+		ctx,
+		store.LockActiveDebugDumpAuthorizationForAssignmentParams{
+			OrganizationID: job.OrganizationID,
+			ProjectID:      job.ProjectID,
+			JobID:          job.ID,
+			AssignedAt:     assignedAt,
+		},
+	)
+	if err == nil {
+		confirmed, confirmErr := queries.ConfirmDebugDumpAuthorizationForAssignment(
+			ctx,
+			store.ConfirmDebugDumpAuthorizationForAssignmentParams{
+				AuthorizationID: activeDebugAuthorization.AuthorizationID,
+				AssignedAt:      assignedAt,
+			},
+		)
+		if confirmErr != nil {
+			return Assignment{}, fmt.Errorf("confirm active debug dump authorization: %w", confirmErr)
+		}
+		if confirmed {
+			if activeDebugAuthorization.AuthorizationID == uuid.Nil ||
+				!activeDebugAuthorization.ExpiresAt.Valid ||
+				!activeDebugAuthorization.ExpiresAt.Time.After(now) {
+				return Assignment{}, errors.New("active debug dump authorization snapshot is invalid")
+			}
+			debugDumpAuthorization = &DebugDumpAuthorizationSnapshot{
+				AuthorizationID: activeDebugAuthorization.AuthorizationID,
+				ExpiresAt:       activeDebugAuthorization.ExpiresAt.Time,
+			}
+			debugDumpAuthorizationID = uuid.NullUUID{
+				UUID: activeDebugAuthorization.AuthorizationID, Valid: true,
+			}
+			debugDumpAuthorizationExpiresAt = activeDebugAuthorization.ExpiresAt
+		}
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return Assignment{}, fmt.Errorf("lock active debug dump authorization: %w", err)
+	}
 
 	attemptID := uuid.New()
 	leaseID := uuid.New()
@@ -443,18 +490,20 @@ func (s *Service) Acquire(
 	}
 
 	if err := queries.InsertAttempt(ctx, store.InsertAttemptParams{
-		ID:                         attemptID,
-		OrganizationID:             job.OrganizationID,
-		ProjectID:                  job.ProjectID,
-		JobID:                      job.ID,
-		AttemptNumber:              attemptNumber,
-		ExecutionProfileRevisionID: candidate.ExecutionProfileRevisionID,
-		WorkerPoolID:               workerRow.WorkerPoolID,
-		WorkerID:                   worker.ID,
-		WorkerEpoch:                workerEpoch,
-		SchedulerDispatchIntentID:  schedulerGuard.nullableIntentID(),
-		Fence:                      fence,
-		AssignedAt:                 assignedAt,
+		ID:                              attemptID,
+		OrganizationID:                  job.OrganizationID,
+		ProjectID:                       job.ProjectID,
+		JobID:                           job.ID,
+		AttemptNumber:                   attemptNumber,
+		ExecutionProfileRevisionID:      candidate.ExecutionProfileRevisionID,
+		WorkerPoolID:                    workerRow.WorkerPoolID,
+		WorkerID:                        worker.ID,
+		WorkerEpoch:                     workerEpoch,
+		SchedulerDispatchIntentID:       schedulerGuard.nullableIntentID(),
+		DebugDumpAuthorizationID:        debugDumpAuthorizationID,
+		DebugDumpAuthorizationExpiresAt: debugDumpAuthorizationExpiresAt,
+		Fence:                           fence,
+		AssignedAt:                      assignedAt,
 	}); err != nil {
 		return Assignment{}, fmt.Errorf("insert Attempt: %w", err)
 	}
@@ -576,6 +625,7 @@ func (s *Service) Acquire(
 		ExecutionProfileRevisionID: candidate.ExecutionProfileRevisionID,
 		OutputSpecID:               job.OutputSpecID,
 		RequestContent:             requestContent,
+		DebugDumpAuthorization:     debugDumpAuthorization,
 		SchedulerDispatchIntentID:  schedulerGuard.intentID(),
 		AttemptNumber:              attemptNumber,
 		LeaseToken:                 leaseToken,
@@ -801,6 +851,19 @@ func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow)
 	if err != nil {
 		return Assignment{}, err
 	}
+	var debugDumpAuthorization *DebugDumpAuthorizationSnapshot
+	if row.DebugDumpAuthorizationID.Valid != row.DebugDumpAuthorizationExpiresAt.Valid {
+		return Assignment{}, errors.New("stored debug dump authorization snapshot is incomplete")
+	}
+	if row.DebugDumpAuthorizationID.Valid {
+		if row.DebugDumpAuthorizationID.UUID == uuid.Nil {
+			return Assignment{}, errors.New("stored debug dump authorization identity is invalid")
+		}
+		debugDumpAuthorization = &DebugDumpAuthorizationSnapshot{
+			AuthorizationID: row.DebugDumpAuthorizationID.UUID,
+			ExpiresAt:       row.DebugDumpAuthorizationExpiresAt.Time,
+		}
+	}
 	return Assignment{
 		AttemptID:                  row.AttemptID,
 		JobID:                      row.JobID,
@@ -811,6 +874,7 @@ func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow)
 		ExecutionProfileRevisionID: row.ExecutionProfileRevisionID,
 		OutputSpecID:               row.OutputSpecID,
 		RequestContent:             requestContent,
+		DebugDumpAuthorization:     debugDumpAuthorization,
 		SchedulerDispatchIntentID:  nullUUIDValue(row.SchedulerDispatchIntentID),
 		AttemptNumber:              row.AttemptNumber,
 		LeaseToken:                 token,

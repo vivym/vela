@@ -9,7 +9,9 @@ failed validation automatically quarantines the Worker.
 The repository implements the verifiable control-plane portion of this decision
 in migrations `00019`-`00022` and `internal/remediation`, plus a guarded
 controller-to-host Node Agent gRPC runtime in `internal/nodeagent` and
-`cmd/vela-node-agent`. The control-plane `RemoteExecutor` authorizes and claims
+`cmd/vela-node-agent`. The Platform Operator OpenAPI can request, inspect,
+approve, and start the authoritative operation; the existing dispatcher then
+owns delivery. The control-plane `RemoteExecutor` authorizes and claims
 the authoritative operation before the RPC; the host Agent authenticates an
 explicit `spiffe://vela.internal/controller/...` identity, checks its local
 Node/Worker target, replays durable local receipts, and fails closed unless the
@@ -21,7 +23,7 @@ when its prior outcome cannot be proven.
 
 ## Consequences
 
-Every repository Remediation Operation binds node identity, device identity,
+Every repository Remediation Operation binds node identity, canonical GPU UUID,
 worker epoch, idempotency key, certification revision, failure evidence, and
 audit events. L6 requires two distinct approvals; L7 is immediate quarantine;
 successful completion requires a post-check digest, an empty active-Attempt set,
@@ -33,8 +35,11 @@ identity changes and quarantine reuse require a Worker epoch advance.
 
 The repository now has a controller-side authoritative adapter, a host-side
 systemd entrypoint, an explicit controller actor map, a bounded command
-allowlist, device/certification policy, host fence, per-node rate limit, health
-post-check, and durable local receipt path. Production still requires the
+allowlist, GPU UUID/PCI BDF/failure-class/certification policy, local Worker
+epoch binding, host fence, per-node rate limit, health post-check, and durable
+local receipt path. The authenticated Platform Operator path and the
+dispatcher-to-host failure path have direct PostgreSQL integration evidence.
+Production still requires the
 actual Node Agent deployment, certificate provisioning, hardware capability
 matrix certification, device and runner checks, model warm-up, canary, live
 claim/receipt monitoring, and versioned Launch Receipts before this ADR can be
@@ -45,4 +50,5 @@ the immutable Plan as bounded arguments and must return identity-bound JSON
 evidence. Rate-limit history, execution intents, and terminal receipts are
 locked or atomically published and fsynced on host-local storage.
 
-Repository evidence: `docs/specs/0020-certified-remediation.md`.
+Repository evidence: `docs/specs/0020-certified-remediation.md` and
+`docs/specs/0027-certified-remediation-runtime-authority.md`.

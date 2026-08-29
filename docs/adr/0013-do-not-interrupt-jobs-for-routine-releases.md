@@ -10,8 +10,32 @@ An adjacent version change that cannot preserve both old and new execution autho
 
 ## Implementation Status
 
-Partial. Twenty-two additive migrations, exact N/N-1 database/control
-compatibility, an operator-receipted protocol transition, migration round trips,
-and Protobuf/OpenAPI breaking checks are repository-proven. A deployed mixed
-control/Worker/event rollout, long-Job drain, rollback, and retained-backlog
-receipt remain unimplemented.
+Partial. Thirty-three additive migrations, exact N/N-1 database/control
+compatibility at fixed migration points, an operator-receipted protocol
+transition, migration round trips, and Protobuf/OpenAPI breaking checks are
+repository-proven. Migration 00027 adds dedicated debug-dump roles without
+widening the N-1 retention or audit role allowlists (`6603c36`). Slice 29 builds
+the exact adjacent N-1 control and Worker probes, proves raw retained-event
+receipt by the current Inbox/Scheduler, drains without interrupting the active
+Lease, restores exact N-1 control/Scheduler writers on schema 27, and proves
+current plus N-1 Admission/Scheduler fail closed with SQLSTATE `55000` during
+CNPG quorum loss (`21e0781`). Migration 00029 adds Artifact backup replication
+behind a new role and current-only runtime configuration while the exact Slice
+31 N-1 binary remains valid on the expanded schema. Migration 00030 adds an
+independent Compliance role and additive non-content Legal Hold authority; the
+exact Slice 32 binary at `c08ba84` remains valid on schema 30, while the current
+binary fails closed at the Compliance role boundary on schema 29.
+Migration 00031 adds current-only non-content expiry while the exact Slice 33
+binary remains valid on schema 31 and the current control fails closed on schema
+30. Migration 00032 adds Catalog Promotion and evidence enforcement behind a
+new role while the exact Slice 34 binary at `e53c620` remains valid on schema 32;
+the current promoter fails closed on schema 31, empty Down/Up restores the
+authority, and durable release evidence prevents unsafe contraction. Migration
+00033 adds exact-contract statistical SLO authority in a disabled compatibility
+state: the exact Slice 36 control writer remains valid in `LEGACY`, current SLO
+sealing fails closed until activation and backfill complete, empty Down/Up
+restores the authority, and durable SLO evidence prevents unsafe contraction
+(`6036604`, review closure `06f3414`). A real
+Kubernetes mixed control/Worker/event rollout, long-running H3 Job drain,
+release rollback, and retained production backlog receipt remain external
+deployment evidence.

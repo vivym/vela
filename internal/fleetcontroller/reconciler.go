@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontract"
+	"github.com/vivym/vela/internal/imageref"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
@@ -26,6 +27,8 @@ const (
 	protectionFinalizer = fleetcontract.ProtectionFinalizer
 
 	IdentityBindingSchedulingGate = fleetcontract.IdentityBindingSchedulingGate
+	maximumDesiredPlacements      = 1024
+	maximumPoolSelectorEntries    = 64
 )
 
 var (
@@ -64,14 +67,23 @@ type Metadata struct {
 type WorkerPoolSpec struct {
 	Revision       string
 	WorkerProfile  string
-	DaemonSetName  string
 	NodeSelector   map[string]string
 	CapacityPolicy CapacityPolicySpec
+	Placements     []WorkerPlacement
 }
 
 type WorkerPool struct {
 	Metadata Metadata
 	Spec     WorkerPoolSpec
+}
+
+type WorkerPlacement struct {
+	NodeIdentity            string
+	DaemonSetName           string
+	WorkerRuntimeConfigMap  string
+	RunnerProfilesConfigMap string
+	RunnerGPURolesConfigMap string
+	WorkerControlTLSSecret  string
 }
 
 type DaemonSet struct {
@@ -96,20 +108,16 @@ type DesiredRevision struct {
 	Name                       string
 	Revision                   string
 	WorkerProfile              string
-	DaemonSetName              string
 	NodeSelector               map[string]string
 	InitImage                  string
 	WorkerAgentImage           string
 	RunnerImage                string
-	WorkerRuntimeConfigMap     string
-	RunnerProfilesConfigMap    string
-	RunnerGPURolesConfigMap    string
-	WorkerControlTLSSecret     string
 	ArtifactStoreTLSSecret     string
 	ExecutionProfileRevisionID uuid.UUID
 	InferenceBackendRevision   string
 	ReadinessTimeout           time.Duration
 	CapacityPolicy             CapacityPolicySpec
+	Placements                 []WorkerPlacement
 }
 
 type ProtectedResource struct {
@@ -265,6 +273,16 @@ func (reconciler *Reconciler) BindWorkerPodIdentity(
 		desired.Revision != pod.Metadata.Labels[fleetRevisionLabel] {
 		return WorkerPodIdentityBinding{}, ErrWorkerIdentityConflict
 	}
+	placementFound := false
+	for _, placement := range desired.Placements {
+		if placement.NodeIdentity == nodeIdentity {
+			placementFound = true
+			break
+		}
+	}
+	if !placementFound {
+		return WorkerPodIdentityBinding{}, ErrWorkerIdentityConflict
+	}
 	identity, err := reconciler.identities.ResolveWorkerIdentity(ctx, fleet.WorkerIdentityRequest{
 		NodeIdentity: nodeIdentity, WorkerPoolID: workerPoolID,
 		KubernetesUID: pod.KubernetesUID, Namespace: pod.Metadata.Namespace,
@@ -319,7 +337,6 @@ func (reconciler *Reconciler) Reconcile(
 		return ReconcileResult{}, err
 	}
 	desiredWorkerPool := materializeWorkerPool(desired)
-	desiredDaemonSet := materializeDaemonSet(desired)
 	result := ReconcileResult{}
 
 	workerPool, err := reconciler.resources.GetWorkerPool(ctx, ResourceKey{
@@ -337,19 +354,22 @@ func (reconciler *Reconciler) Reconcile(
 		return ReconcileResult{}, ErrImmutableDesiredRevision
 	}
 
-	daemonSet, err := reconciler.resources.GetDaemonSet(ctx, ResourceKey{
-		Namespace: desired.Namespace,
-		Name:      desired.DaemonSetName,
-	})
-	if errors.Is(err, ErrResourceNotFound) {
-		if err := reconciler.resources.CreateDaemonSet(ctx, desiredDaemonSet); err != nil {
-			return ReconcileResult{}, fmt.Errorf("create protected OnDelete DaemonSet: %w", err)
+	for _, placement := range desired.Placements {
+		desiredDaemonSet := materializeDaemonSet(desired, placement)
+		daemonSet, err := reconciler.resources.GetDaemonSet(ctx, ResourceKey{
+			Namespace: desired.Namespace,
+			Name:      placement.DaemonSetName,
+		})
+		if errors.Is(err, ErrResourceNotFound) {
+			if err := reconciler.resources.CreateDaemonSet(ctx, desiredDaemonSet); err != nil {
+				return ReconcileResult{}, fmt.Errorf("create protected OnDelete DaemonSet: %w", err)
+			}
+			result.DaemonSetCreated = true
+		} else if err != nil {
+			return ReconcileResult{}, fmt.Errorf("get protected DaemonSet: %w", err)
+		} else if !reflect.DeepEqual(daemonSet, desiredDaemonSet) {
+			return ReconcileResult{}, ErrProtectedResourceDrift
 		}
-		result.DaemonSetCreated = true
-	} else if err != nil {
-		return ReconcileResult{}, fmt.Errorf("get protected DaemonSet: %w", err)
-	} else if !reflect.DeepEqual(daemonSet, desiredDaemonSet) {
-		return ReconcileResult{}, ErrProtectedResourceDrift
 	}
 
 	policy := fleet.CapacityPolicy{
@@ -411,21 +431,25 @@ func materializeWorkerPool(desired DesiredRevision) WorkerPool {
 		Spec: WorkerPoolSpec{
 			Revision:       desired.Revision,
 			WorkerProfile:  desired.WorkerProfile,
-			DaemonSetName:  desired.DaemonSetName,
 			NodeSelector:   cloneMap(desired.NodeSelector),
 			CapacityPolicy: desired.CapacityPolicy,
+			Placements:     clonePlacements(desired.Placements),
 		},
 	}
 }
 
-func materializeDaemonSet(desired DesiredRevision) DaemonSet {
-	selector := map[string]string{"app.kubernetes.io/name": desired.DaemonSetName}
+func materializeDaemonSet(desired DesiredRevision, placement WorkerPlacement) DaemonSet {
+	selector := map[string]string{"app.kubernetes.io/name": placement.DaemonSetName}
 	return DaemonSet{
-		Metadata:       protectedMetadata(desired.Namespace, desired.DaemonSetName, desired),
+		Metadata:       protectedMetadata(desired.Namespace, placement.DaemonSetName, desired),
 		UpdateStrategy: "OnDelete",
 		Selector:       cloneMap(selector),
-		Template:       h3WorkerPodTemplate(desired, selector),
+		Template:       h3WorkerPodTemplate(desired, placement, selector),
 	}
+}
+
+func clonePlacements(placements []WorkerPlacement) []WorkerPlacement {
+	return append([]WorkerPlacement(nil), placements...)
 }
 
 func protectedMetadata(namespace, name string, desired DesiredRevision) Metadata {
@@ -442,25 +466,58 @@ func protectedMetadata(namespace, name string, desired DesiredRevision) Metadata
 }
 
 func ValidateDesiredRevision(desired DesiredRevision) error {
+	_, selectsHostname := desired.NodeSelector[corev1.LabelHostname]
 	if desired.WorkerPoolID == uuid.Nil || !validResourceName(desired.Namespace) ||
-		!validResourceName(desired.Name) || !validResourceName(desired.DaemonSetName) ||
+		!validResourceName(desired.Name) || len(desired.Placements) == 0 ||
+		len(desired.Placements) > maximumDesiredPlacements ||
 		desired.WorkerProfile != "h3" || !validSHA256(desired.Revision) ||
 		desired.NodeSelector["vela.ai/worker-profile"] != "h3" ||
 		!validResourceName(desired.NodeSelector["vela.ai/worker-pool"]) ||
+		selectsHostname || !validPoolNodeSelector(desired.NodeSelector) ||
 		!validPinnedImage(desired.InitImage) ||
 		!validPinnedImage(desired.WorkerAgentImage) || !validPinnedImage(desired.RunnerImage) ||
-		!validResourceName(desired.WorkerRuntimeConfigMap) ||
-		!validResourceName(desired.RunnerProfilesConfigMap) ||
-		!validResourceName(desired.RunnerGPURolesConfigMap) ||
-		!validResourceName(desired.WorkerControlTLSSecret) ||
 		!validResourceName(desired.ArtifactStoreTLSSecret) ||
 		desired.ExecutionProfileRevisionID == uuid.Nil ||
-		!validBoundedText(desired.InferenceBackendRevision, 200) ||
+		!validProductionRevision(desired.InferenceBackendRevision, 200) ||
 		desired.ReadinessTimeout <= 0 || desired.ReadinessTimeout > 2*time.Hour ||
 		!validCapacityPolicySpec(desired.CapacityPolicy) {
 		return errors.New("fleet desired revision is invalid")
 	}
+	nodes := make(map[string]struct{}, len(desired.Placements))
+	daemonSets := make(map[string]struct{}, len(desired.Placements))
+	configMaps := make(map[string]struct{}, len(desired.Placements)*3)
+	secrets := make(map[string]struct{}, len(desired.Placements))
+	for _, placement := range desired.Placements {
+		if !validResourceName(placement.NodeIdentity) || !validResourceName(placement.DaemonSetName) ||
+			len(validation.IsValidLabelValue(placement.NodeIdentity)) != 0 ||
+			len(validation.IsValidLabelValue(placement.DaemonSetName)) != 0 ||
+			!validResourceName(placement.WorkerRuntimeConfigMap) ||
+			!validResourceName(placement.RunnerProfilesConfigMap) ||
+			!validResourceName(placement.RunnerGPURolesConfigMap) ||
+			!validResourceName(placement.WorkerControlTLSSecret) ||
+			!claimRuntimeIdentity(nodes, placement.NodeIdentity) ||
+			!claimRuntimeIdentity(daemonSets, placement.DaemonSetName) ||
+			!claimRuntimeIdentity(configMaps, placement.WorkerRuntimeConfigMap) ||
+			!claimRuntimeIdentity(configMaps, placement.RunnerProfilesConfigMap) ||
+			!claimRuntimeIdentity(configMaps, placement.RunnerGPURolesConfigMap) ||
+			!claimRuntimeIdentity(secrets, placement.WorkerControlTLSSecret) {
+			return errors.New("fleet desired placement is invalid or reuses a node or material name")
+		}
+	}
 	return nil
+}
+
+func validPoolNodeSelector(selector map[string]string) bool {
+	if len(selector) < 2 || len(selector) > maximumPoolSelectorEntries {
+		return false
+	}
+	for key, value := range selector {
+		if len(validation.IsQualifiedName(key)) != 0 ||
+			len(validation.IsValidLabelValue(value)) != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func validCapacityPolicySpec(policy CapacityPolicySpec) bool {
@@ -526,11 +583,12 @@ func containsString(values []string, expected string) bool {
 }
 
 func validResourceName(value string) bool {
-	return len(validation.IsDNS1123Subdomain(value)) == 0
+	return len(validation.IsDNS1123Subdomain(value)) == 0 && !containsTemplateMarker(value)
 }
 
 func validSHA256(value string) bool {
-	if len(value) != sha256.Size*2 || strings.ToLower(value) != value {
+	if len(value) != sha256.Size*2 || strings.ToLower(value) != value ||
+		value == strings.Repeat("0", sha256.Size*2) {
 		return false
 	}
 	_, err := hex.DecodeString(value)
@@ -538,8 +596,19 @@ func validSHA256(value string) bool {
 }
 
 func validPinnedImage(value string) bool {
-	marker := strings.LastIndex(value, "@sha256:")
-	return marker > 0 && validSHA256(value[marker+len("@sha256:"):])
+	return !containsTemplateMarker(value) && imageref.ValidPinned(value)
+}
+
+func validProductionRevision(value string, maximum int) bool {
+	return validBoundedText(value, maximum) && !containsTemplateMarker(value) &&
+		value != strings.Repeat("0", 64) && value != "sha256:"+strings.Repeat("0", 64)
+}
+
+func containsTemplateMarker(value string) bool {
+	lower := strings.ToLower(value)
+	return strings.Contains(lower, "placeholder") || strings.Contains(lower, "replace-with") ||
+		strings.Contains(lower, "changeme") || strings.Contains(lower, "todo") ||
+		strings.Contains(lower, ".invalid")
 }
 
 func cloneMap(source map[string]string) map[string]string {

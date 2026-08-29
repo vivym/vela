@@ -35,20 +35,27 @@ func TestH3WorkerPodTemplateExactlyMatchesStaticDeploymentContract(t *testing.T)
 			"vela.ai/worker-profile": "h3",
 			"vela.ai/worker-pool":    "launch",
 		},
-		InitImage:                "docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+		InitImage:                "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
 		WorkerAgentImage:         "ghcr.io/vivym/vela-worker-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000",
 		RunnerImage:              "ghcr.io/vivym/vela-h3-runner@sha256:0000000000000000000000000000000000000000000000000000000000000000",
-		WorkerRuntimeConfigMap:   "vela-worker-runtime",
-		RunnerProfilesConfigMap:  "vela-runner-profiles",
-		RunnerGPURolesConfigMap:  "vela-runner-gpu-roles",
-		WorkerControlTLSSecret:   "vela-worker-control-mtls",
 		ArtifactStoreTLSSecret:   "vela-artifact-store-ca",
 		InferenceBackendRevision: "replace-with-approved-backend-revision",
 		CapacityPolicy: CapacityPolicySpec{
 			ObservationMaxAge: 2 * time.Minute,
 		},
 	}
-	materialized := h3WorkerPodTemplate(desired, map[string]string{
+	if err := ValidateDesiredRevision(desired); err == nil {
+		t.Fatal("static H3 deployment base must remain an explicitly invalid template")
+	}
+	placement := WorkerPlacement{
+		NodeIdentity: "h3-node-01", DaemonSetName: "vela-h3-worker",
+		WorkerRuntimeConfigMap:  "vela-worker-runtime",
+		RunnerProfilesConfigMap: "vela-runner-profiles",
+		RunnerGPURolesConfigMap: "vela-runner-gpu-roles",
+		WorkerControlTLSSecret:  "vela-worker-control-mtls",
+	}
+	static.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] = placement.NodeIdentity
+	materialized := h3WorkerPodTemplate(desired, placement, map[string]string{
 		"app.kubernetes.io/name": "vela-h3-worker",
 	})
 	if !reflect.DeepEqual(static.Spec.Template, materialized) {

@@ -1,0 +1,30 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: vela-postgres-backup
+  labels:
+    app.kubernetes.io/part-of: vela
+spec:
+  retentionPolicy: "30d"
+  configuration:
+    destinationPath: s3://vela-postgres-backup/cluster
+    endpointURL: https://s3-backup.example.invalid
+    s3Credentials:
+      accessKeyId:
+        name: vela-backup-s3
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: vela-backup-s3
+        key: SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+      maxParallel: 2
+  instanceSidecarConfiguration:
+    retentionPolicyIntervalSeconds: 1800
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,10 +16,12 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsv4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/aws/smithy-go/middleware"
 )
 
 const (
@@ -26,10 +29,14 @@ const (
 	MaxSignedUploadTTL = 15 * time.Minute
 )
 
-const maxIncompleteMultipartUploads = 10_000
+const (
+	maxIncompleteMultipartUploads = 10_000
+	maxObjectVersionsToPurge      = 10_000
+)
 
 var (
 	ErrObjectAlreadyExists      = errors.New("artifact object already exists")
+	ErrObjectVersionNotFound    = errors.New("artifact object version not found")
 	ErrBucketVersioningRequired = errors.New("artifact bucket versioning is required")
 	ErrBucketNotPrivate         = errors.New("artifact bucket must be private")
 )
@@ -105,6 +112,10 @@ type ObjectVersion struct {
 	SizeBytes      int64
 	ContentType    string
 	ChecksumSHA256 string
+}
+
+type ObjectVersionsPurgeResult struct {
+	PurgedVersionCount int
 }
 
 type ExactVersionReader struct {
@@ -532,15 +543,24 @@ func (store *S3) PutIfAbsent(
 		return ObjectVersion{}, errors.New("invalid conditional Artifact object")
 	}
 	checksum := base64.StdEncoding.EncodeToString(digest[:])
-	output, err := store.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket:         aws.String(store.bucket),
-		Key:            aws.String(objectKey),
-		Body:           body,
-		ContentLength:  aws.Int64(sizeBytes),
-		ContentType:    aws.String(contentType),
-		ChecksumSHA256: aws.String(checksum),
-		IfNoneMatch:    aws.String("*"),
-	})
+	output, err := store.client.PutObject(
+		ctx,
+		&s3.PutObjectInput{
+			Bucket:         aws.String(store.bucket),
+			Key:            aws.String(objectKey),
+			Body:           body,
+			ContentLength:  aws.Int64(sizeBytes),
+			ContentType:    aws.String(contentType),
+			ChecksumSHA256: aws.String(checksum),
+			IfNoneMatch:    aws.String("*"),
+		},
+		func(options *s3.Options) {
+			options.APIOptions = append(
+				options.APIOptions,
+				allowChecksummedStreamingPut(digest),
+			)
+		},
+	)
 	if err != nil {
 		if isPreconditionFailed(err) {
 			return ObjectVersion{}, ErrObjectAlreadyExists
@@ -551,6 +571,38 @@ func (store *S3) PutIfAbsent(
 		return ObjectVersion{}, errors.New("conditionally created S3 object has no version ID")
 	}
 	return store.headExactVersion(ctx, objectKey, *output.VersionId)
+}
+
+func allowChecksummedStreamingPut(
+	digest [sha256.Size]byte,
+) func(*middleware.Stack) error {
+	return func(stack *middleware.Stack) error {
+		if _, err := stack.Finalize.Remove("AWSChecksum:ComputeInputPayloadChecksum"); err != nil {
+			return err
+		}
+		return stack.Finalize.Insert(
+			&knownPayloadSHA256{encoded: hex.EncodeToString(digest[:])},
+			"ComputePayloadHash",
+			middleware.Before,
+		)
+	}
+}
+
+type knownPayloadSHA256 struct {
+	encoded string
+}
+
+func (hash *knownPayloadSHA256) ID() string {
+	return "VelaKnownPayloadSHA256"
+}
+
+func (hash *knownPayloadSHA256) HandleFinalize(
+	ctx context.Context,
+	input middleware.FinalizeInput,
+	next middleware.FinalizeHandler,
+) (middleware.FinalizeOutput, middleware.Metadata, error) {
+	ctx = awsv4.SetPayloadHash(ctx, hash.encoded)
+	return next.HandleFinalize(ctx, input)
 }
 
 func (store *S3) ReadExactVersion(
@@ -568,6 +620,9 @@ func (store *S3) ReadExactVersion(
 		ChecksumMode: types.ChecksumModeEnabled,
 	})
 	if err != nil {
+		if isAPIErrorCode(err, "NoSuchKey", "NoSuchVersion", "NotFound", "404") {
+			return nil, fmt.Errorf("%w: %v", ErrObjectVersionNotFound, err)
+		}
 		return nil, fmt.Errorf("read exact S3 Artifact version: %w", err)
 	}
 	if output.Body == nil || output.VersionId == nil || *output.VersionId != versionID ||
@@ -613,6 +668,70 @@ func (store *S3) DeleteExactVersion(
 		return fmt.Errorf("delete exact S3 object version: %w", err)
 	}
 	return nil
+}
+
+func (store *S3) PurgeObjectVersions(
+	ctx context.Context,
+	objectKey string,
+) (ObjectVersionsPurgeResult, error) {
+	if store == nil || store.client == nil || store.bucket == "" {
+		return ObjectVersionsPurgeResult{}, errors.New("S3 Artifact Store is not configured")
+	}
+	if err := validateObjectKey(objectKey); err != nil {
+		return ObjectVersionsPurgeResult{}, err
+	}
+
+	type versionIdentity struct {
+		key       string
+		versionID string
+	}
+	identities := make([]versionIdentity, 0, 1)
+	paginator := s3.NewListObjectVersionsPaginator(store.client, &s3.ListObjectVersionsInput{
+		Bucket: aws.String(store.bucket),
+		Prefix: aws.String(objectKey),
+	})
+	for paginator.HasMorePages() {
+		page, err := paginator.NextPage(ctx)
+		if err != nil {
+			return ObjectVersionsPurgeResult{}, fmt.Errorf("list S3 backup object versions: %w", err)
+		}
+		for _, version := range page.Versions {
+			if version.Key == nil || version.VersionId == nil || *version.VersionId == "" {
+				return ObjectVersionsPurgeResult{}, errors.New("S3 backup object version identity is incomplete")
+			}
+			if *version.Key != objectKey {
+				continue
+			}
+			identities = append(identities, versionIdentity{*version.Key, *version.VersionId})
+		}
+		for _, marker := range page.DeleteMarkers {
+			if marker.Key == nil || marker.VersionId == nil || *marker.VersionId == "" {
+				return ObjectVersionsPurgeResult{}, errors.New("S3 backup delete marker identity is incomplete")
+			}
+			if *marker.Key != objectKey {
+				continue
+			}
+			identities = append(identities, versionIdentity{*marker.Key, *marker.VersionId})
+		}
+		if len(identities) > maxObjectVersionsToPurge {
+			return ObjectVersionsPurgeResult{}, errors.New("too many S3 backup object versions")
+		}
+	}
+
+	removed := 0
+	for _, identity := range identities {
+		_, err := store.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+			Bucket:    aws.String(store.bucket),
+			Key:       aws.String(identity.key),
+			VersionId: aws.String(identity.versionID),
+		})
+		if err != nil && !isAPIErrorCode(err, "NoSuchKey", "NoSuchVersion") {
+			return ObjectVersionsPurgeResult{PurgedVersionCount: removed},
+				fmt.Errorf("delete exact S3 backup object version: %w", err)
+		}
+		removed++
+	}
+	return ObjectVersionsPurgeResult{PurgedVersionCount: removed}, nil
 }
 
 func (store *S3) ResolveCurrentVersion(

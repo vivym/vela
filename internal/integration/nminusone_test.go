@@ -6,11 +6,14 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -43,10 +46,227 @@ const (
 	organizationReportingNMinusOneCommit  = "1ce496ce06c4ba33038be91a5fd5f7be502bee85"
 	retentionNMinusOneCommit              = "87d1f27be568c96a31dcbda9d9c74ce7d2ed3f96"
 	incompleteArtifactNMinusOneCommit     = "d038fb9f4fb9eb64d9e3b816e75d737783b9ccf5"
+	debugDumpNMinusOneCommit              = "31991452e60c4254b3b67f72a98ee73e56f7915b"
+	adjacentRolloutNMinusOneCommit        = "cd5f22dea259aa7188d52d8ab232522fa3ff8d67"
+	legalHoldNMinusOneCommit              = "c08ba84fc5cfc88e9e8de9e0e06a23725c1521e8"
 	breakGlassNMinusOneCommit             = "e0e9cfc80032890d63ed21da2dce1013cb623f57"
 	financeReconciliationNMinusOneCommit  = "afe83d146ae8550c32bcf9ddc42fe17bf3e28b67"
 	fleetControllerNMinusOneCommit        = "37b2689ba199b2d234b5827d1e4f24cbfefb4334"
+	nonContentExpiryNMinusOneCommit       = "1968a4377c40fd8da9bd16e6ef4fb39d0f11c33a"
+	catalogPromotionNMinusOneCommit       = "e53c62054d068aea19ba7860417698a203ed5225"
+	statisticalSLONMinusOneCommit         = "7e5907789b36441c8a4a635d84ea0a5cfaefd5f7"
 )
+
+func TestExactStatisticalSLONMinusOneControlAndAdmissionRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, statisticalSLONMinusOneCommit)
+
+	output := runCurrentControlStartupProbe(t, nMinusOne.Control, database.DSN)
+	if strings.Contains(output, "database pool") {
+		t.Fatalf("exact 7e59077 control failed schema 33 database preflight:\n%s", output)
+	}
+	if !strings.Contains(output, "configure Finance Reconciliation service") {
+		t.Fatalf("exact 7e59077 control did not reach post-role-preflight sentinel:\n%s", output)
+	}
+
+	seedAdmissionFixture(t, database.Admin)
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, uuid.New(), "statistical-slo")
+	jobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+	))
+	var jobs, snapshots int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM jobs WHERE id = $1),
+			(SELECT count(*) FROM job_slo_admissions WHERE job_id = $1)
+	`, jobID).Scan(&jobs, &snapshots); err != nil {
+		t.Fatalf("read statistical SLO N-1 Admission: %v", err)
+	}
+	if jobs != 1 || snapshots != 0 {
+		t.Fatalf("statistical SLO N-1 Admission = Jobs %d snapshots %d", jobs, snapshots)
+	}
+}
+
+func TestExactCatalogPromotionNMinusOneControlStartsAgainstSchema32(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, catalogPromotionNMinusOneCommit)
+
+	output := runCurrentControlStartupProbe(t, nMinusOne.Control, database.DSN)
+	if strings.Contains(output, "database pool") {
+		t.Fatalf("exact e53c620 control failed schema 32 database preflight:\n%s", output)
+	}
+	if !strings.Contains(output, "configure Finance Reconciliation service") {
+		t.Fatalf("exact e53c620 control did not reach post-role-preflight sentinel:\n%s", output)
+	}
+}
+
+func TestExactNonContentExpiryNMinusOneControlAndSourceWritesRemainCompatible(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	nMinusOne := buildNMinusOneBinaries(t, nonContentExpiryNMinusOneCommit)
+
+	startupOutput := runCurrentControlStartupProbe(t, nMinusOne.Control, database.DSN)
+	if strings.Contains(startupOutput, "database pool") {
+		t.Fatalf("non-content expiry N-1 control failed database role preflight:\n%s", startupOutput)
+	}
+	if !strings.Contains(startupOutput, "configure Finance Reconciliation service") {
+		t.Fatalf("non-content expiry N-1 control did not reach the post-role-preflight sentinel:\n%s", startupOutput)
+	}
+
+	seedAdmissionFixture(t, database.Admin)
+	workerID := uuid.New()
+	seedNMinusOneProfileCircuitWorker(t, database.Admin, workerID, "non-content-expiry")
+	jobID := uuid.MustParse(runNMinusOneAdmissionProbe(
+		t,
+		nMinusOne.AdmissionProbe,
+		database.DSN,
+	))
+	attemptID := uuid.MustParse(runNMinusOneAssignmentProbe(
+		t, nMinusOne.AssignmentProbe, database.DSN, jobID.String(), workerID.String(), 7, 1,
+	))
+	var jobRoots, attemptRoots int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM non_content_job_roots WHERE id = $1),
+			(SELECT count(*) FROM non_content_attempt_roots
+			 WHERE id = $2 AND job_id = $1)
+	`, jobID, attemptID).Scan(&jobRoots, &attemptRoots); err != nil {
+		t.Fatalf("read non-content expiry N-1 roots: %v", err)
+	}
+	if jobRoots != 1 || attemptRoots != 1 {
+		t.Fatalf("non-content expiry N-1 Job/Attempt roots = %d/%d", jobRoots, attemptRoots)
+	}
+
+	internalPool := newRolePool(
+		t, database.DSN, "vela_internal_login", "vela-internal-password",
+	)
+	workerService, err := workercontrol.NewService(
+		context.Background(),
+		internalPool,
+		workercontrol.Config{
+			LeaseTTL:         2 * time.Minute,
+			ActiveLeaseKeyID: "lease-key-v1",
+			LeaseKeys: map[string][]byte{
+				"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("configure non-content expiry N-1 Worker service: %v", err)
+	}
+	worker := workercontrol.AuthenticatedWorker{ID: workerID}
+	assignment, err := workerService.Acquire(context.Background(), worker, 7, nil)
+	if err != nil || assignment.AttemptID != attemptID {
+		t.Fatalf("replay non-content expiry N-1 Assignment = %#v error=%v", assignment, err)
+	}
+	if started, err := workerService.Start(
+		context.Background(), worker, leaseCredentials(assignment),
+	); err != nil || started.Decision != workercontrol.StartGranted {
+		t.Fatalf("start non-content expiry N-1 Assignment = %#v error=%v", started, err)
+	}
+	if _, err := database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant cancellation scope for non-content expiry N-1 writer: %v", err)
+	}
+	charge := runNMinusOneInvoiceChargeAndStopProbe(
+		t, nMinusOne.InvoiceChargeProbe, database.DSN, jobID, workerID,
+		leaseCredentials(assignment),
+	)
+	if charge.Decision != "CANCELING" || charge.ChargeID == "" ||
+		charge.StopDecision != "ACKNOWLEDGED" || charge.State != "CANCELED" ||
+		charge.CancellationID == "" {
+		t.Fatalf("non-content expiry N-1 Invoice Charge result = %#v", charge)
+	}
+	chargeID := uuid.MustParse(charge.ChargeID)
+	var linkedChargeID uuid.UUID
+	var invoiceExports, terminalEvents, terminalCandidates int64
+	if err := database.Admin.QueryRow(`
+		SELECT root.charge_id,
+			(SELECT count(*) FROM invoice_exports AS export
+			 WHERE export.job_id = root.id AND export.charge_id = $2),
+			(SELECT count(*) FROM outbox_events AS event
+			 WHERE event.aggregate_id = root.id AND event.event_type = 'job.canceled'),
+			(SELECT count(*) FROM non_content_expiry_candidates AS candidate
+			 WHERE candidate.source_id = root.id
+			   AND candidate.kind IN ('JOB_METADATA', 'JOB_FINANCIAL'))
+		FROM non_content_job_roots AS root WHERE root.id = $1
+	`, jobID, chargeID).Scan(
+		&linkedChargeID, &invoiceExports, &terminalEvents, &terminalCandidates,
+	); err != nil {
+		t.Fatalf("read non-content expiry N-1 Invoice linkage: %v", err)
+	}
+	if linkedChargeID != chargeID || invoiceExports != 1 ||
+		terminalEvents != 1 || terminalCandidates != 2 {
+		t.Fatalf(
+			"non-content expiry N-1 Charge/Invoice/terminal linkage = %s/%d/%d/%d",
+			linkedChargeID, invoiceExports, terminalEvents, terminalCandidates,
+		)
+	}
+
+	if _, err := database.Admin.Exec(`
+		INSERT INTO finance_reconciliation_principals (
+			id, stable_id, tls_uri_identity
+		) VALUES ($1, 'non-content-expiry-n-minus-one', $2)
+	`, financeReconciliationPrincipalID, financeReconciliationTLSURI); err != nil {
+		t.Fatalf("provision non-content expiry N-1 Finance Principal: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO finance_reconciliation_database_bindings (
+			database_role, principal_id
+		) VALUES ('vela_finance_reconciliation_login', $1)
+	`, financeReconciliationPrincipalID); err != nil {
+		t.Fatalf("bind non-content expiry N-1 Finance Principal: %v", err)
+	}
+	finance := runNMinusOneFinanceReconciliationProbe(
+		t, nMinusOne.FinanceReconciliationProbe, database.DSN,
+	)
+	var reconciliationRecords, reconciliationCandidates int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM finance_reconciliation_records WHERE id = $1),
+			(SELECT count(*) FROM non_content_expiry_candidates
+			 WHERE kind = 'ORGANIZATION_FINANCIAL' AND source_id = $1
+			   AND expires_at = $2::timestamptz + interval '2557 days')
+	`, finance.RecordID, finance.PostedAt).Scan(
+		&reconciliationRecords, &reconciliationCandidates,
+	); err != nil {
+		t.Fatalf("read non-content expiry N-1 Finance candidate: %v", err)
+	}
+	if reconciliationRecords != 1 || reconciliationCandidates != 1 {
+		t.Fatalf(
+			"non-content expiry N-1 Finance records/candidates = %d/%d",
+			reconciliationRecords, reconciliationCandidates,
+		)
+	}
+}
+
+func TestCurrentNonContentExpiryControlFailsClosedAgainstSchema30(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 30); err != nil {
+		t.Fatalf("contract non-content expiry schema before current-control probe: %v", err)
+	}
+	binary := filepath.Join(t.TempDir(), "vela-control-current-non-content-expiry")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/vela-control")
+	build.Dir = repositoryRoot(t)
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build current non-content expiry control: %v\n%s", err, output)
+	}
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
+	if !strings.Contains(output, "open non-content expiry database pool") ||
+		!strings.Contains(output, "non-content expiry transaction privilege boundary") {
+		t.Fatalf("current non-content expiry control did not fail closed against schema 30:\n%s", output)
+	}
+}
 
 func TestExactFleetNMinusOneAssignmentWriterAcrossProtocolGate(t *testing.T) {
 	database := newPostgres(t)
@@ -207,7 +427,7 @@ func TestCurrentFinanceReconciliationControlFailsClosedAgainstSchema17(t *testin
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build current Finance Reconciliation control: %v\n%s", err, output)
 	}
-	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
 	if !strings.Contains(output, "open Finance Reconciliation database pool") ||
 		!strings.Contains(output, "Finance Reconciliation transaction privilege boundary") {
 		t.Fatalf("current Finance Reconciliation control did not fail closed against schema 17:\n%s", output)
@@ -254,7 +474,7 @@ func TestCurrentBreakGlassControlFailsClosedAgainstSchema16(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build current Break-glass control: %v\n%s", err, output)
 	}
-	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
 	if !strings.Contains(output, "open Platform Operator auth database pool") ||
 		!strings.Contains(output, "Platform Operator authentication transaction privilege boundary") {
 		t.Fatalf("current Break-glass control did not fail closed against schema 16:\n%s", output)
@@ -566,6 +786,34 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 		retained.Failed != 0 || retained.Deleted != len(artifactIDs) || retained.Aborted != 0 {
 		t.Fatalf("incomplete Artifact N-1 retention = %#v, want %d targets", retained, wantTargets)
 	}
+	var retainedRequestState string
+	var retainedPrimaryTargets, pendingBackupTargets int
+	if err := database.Admin.QueryRow(`
+		SELECT deletion.state::text,
+			(SELECT count(*) FROM content_deletion_targets
+			 WHERE request_id = deletion.id
+			   AND storage_tier = 'PRIMARY' AND state = 'COMPLETED'),
+			(SELECT count(*) FROM content_deletion_targets
+			 WHERE request_id = deletion.id
+			   AND storage_tier = 'OFF_CLUSTER_BACKUP' AND state = 'PENDING')
+		FROM content_deletion_requests AS deletion
+		WHERE deletion.job_id = $1 AND deletion.source = 'RETENTION_ARTIFACT'
+	`, jobID).Scan(
+		&retainedRequestState,
+		&retainedPrimaryTargets,
+		&pendingBackupTargets,
+	); err != nil {
+		t.Fatalf("read N-1 primary-only retention boundary: %v", err)
+	}
+	if retainedRequestState != "PENDING" || retainedPrimaryTargets != wantTargets ||
+		pendingBackupTargets != len(artifactIDs) {
+		t.Fatalf(
+			"N-1 primary-only retention = request %s primary/backup %d/%d",
+			retainedRequestState,
+			retainedPrimaryTargets,
+			pendingBackupTargets,
+		)
+	}
 	var ignoredRequests, ignoredStagingArtifacts int
 	if err := database.Admin.QueryRow(`
 		SELECT
@@ -585,6 +833,7 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 		)
 	}
 	currentStore := &recordingRetentionStore{}
+	currentBackupStore := &recordingBackupRetentionStore{}
 	currentReconciler, err := retention.NewReconciler(
 		newRolePool(
 			t,
@@ -598,6 +847,13 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 			BatchSize:  len(failedPlan.Artifacts) + 1,
 			ClaimTTL:   time.Minute,
 			RetryDelay: time.Minute,
+			BackupPool: newRolePool(
+				t,
+				database.DSN,
+				"vela_backup_retention_login",
+				"vela-backup-retention-password",
+			),
+			BackupStore: currentBackupStore,
 		},
 	)
 	if err != nil {
@@ -605,8 +861,8 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 	}
 	currentResult, err := currentReconciler.ReconcileBatch(context.Background())
 	if err != nil || currentResult.RequestContentExpired != 0 ||
-		currentResult.ArtifactRequestsCreated != 1 ||
-		currentResult.Claimed != len(failedPlan.Artifacts)+1 ||
+		currentResult.ContentDeletionRequestsCreated != 1 ||
+		currentResult.Claimed != len(failedPlan.Artifacts)+1+len(artifactIDs) ||
 		currentResult.Completed != currentResult.Claimed || currentResult.Failed != 0 {
 		t.Fatalf("current incomplete Artifact protocol result = %#v error=%v", currentResult, err)
 	}
@@ -649,6 +905,48 @@ func TestExactIncompleteArtifactNMinusOneControlCompletesJobAndRunsRetention(t *
 	}
 }
 
+func TestExactDebugDumpNMinusOneRetentionProcessesAdditiveTargets(t *testing.T) {
+	fixture := newAssignmentFixture(t, "debug-dump-n-minus-one-retention", 7)
+	authorizationID := seedActiveDebugDumpAuthorization(
+		t, fixture.database, fixture.candidate.JobID,
+	)
+	dumpID, _, _, _, _ := persistAvailableDebugDump(t, fixture, authorizationID)
+	expireDebugDumpAuthorization(t, fixture, authorizationID, dumpID)
+
+	nMinusOne := buildNMinusOneBinaries(t, debugDumpNMinusOneCommit)
+	retained := runNMinusOneRetentionProbe(
+		t, nMinusOne.RetentionProbe, fixture.database.DSN,
+	)
+	if retained.RequestContentExpired != 0 || retained.ArtifactRequestsCreated != 1 ||
+		retained.Claimed != 2 || retained.Completed != 2 || retained.Failed != 0 ||
+		retained.Deleted != 1 || retained.Aborted != 0 {
+		t.Fatalf("debug dump N-1 retention result = %#v", retained)
+	}
+	var requestState, dumpState string
+	var receipts int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			request.state::text,
+			dump.state::text,
+			(SELECT count(*) FROM content_deletion_receipts
+			 WHERE request_id = request.id)
+		FROM content_deletion_requests AS request
+		JOIN debug_dumps AS dump ON dump.id = $2
+		WHERE request.debug_dump_authorization_id = $1
+		  AND request.source = 'RETENTION_DEBUG_DUMP'
+	`, authorizationID, dumpID).Scan(&requestState, &dumpState, &receipts); err != nil {
+		t.Fatalf("read debug dump N-1 retention evidence: %v", err)
+	}
+	if requestState != "COMPLETED" || dumpState != "DELETED" || receipts != 1 {
+		t.Fatalf(
+			"debug dump N-1 request/dump/receipts = %s/%s/%d",
+			requestState,
+			dumpState,
+			receipts,
+		)
+	}
+}
+
 func TestCurrentRetentionControlFailsClosedAgainstSchema15(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -663,13 +961,33 @@ func TestCurrentRetentionControlFailsClosedAgainstSchema15(t *testing.T) {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build current retention control: %v\n%s", err, output)
 	}
-	output := runSchedulerNMinusOneStartupProbe(t, binary, database.DSN)
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
 	if !strings.Contains(output, "open retention request database pool") ||
 		!strings.Contains(
 			output,
 			"Retention Policy and Content Deletion request transaction privilege boundary",
 		) {
 		t.Fatalf("current retention control did not fail closed against schema 15:\n%s", output)
+	}
+}
+
+func TestCurrentControlStartsWithIndependentBackupAndReplicationRoles(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	binary := filepath.Join(t.TempDir(), "vela-control-current-backup-retention")
+	build := exec.Command("go", "build", "-o", binary, "./cmd/vela-control")
+	build.Dir = repositoryRoot(t)
+	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build current backup-retention control: %v\n%s", err, output)
+	}
+
+	output := runCurrentControlStartupProbe(t, binary, database.DSN)
+	if strings.Contains(output, "database pool") {
+		t.Fatalf("current control failed a database role preflight:\n%s", output)
+	}
+	if !strings.Contains(output, "configure Finance Reconciliation service") {
+		t.Fatalf("current control did not reach the post-role-preflight sentinel:\n%s", output)
 	}
 }
 
@@ -2004,15 +2322,55 @@ func assertWaitingCompatibilityCounters(
 }
 
 type nMinusOneBinaries struct {
-	Control                string
-	AdmissionProbe         string
-	HumanAdmissionProbe    string
-	AssignmentProbe        string
-	OutboxProbe            string
-	InvoiceChargeProbe     string
-	FailureProbe           string
-	VisibleCompletionProbe string
-	RetentionProbe         string
+	Control                    string
+	AdmissionProbe             string
+	HumanAdmissionProbe        string
+	AssignmentProbe            string
+	OutboxProbe                string
+	JetStreamOutboxProbe       string
+	SchedulerProbe             string
+	WorkerTransportProbe       string
+	InvoiceChargeProbe         string
+	FinanceReconciliationProbe string
+	FailureProbe               string
+	VisibleCompletionProbe     string
+	RetentionProbe             string
+}
+
+type adjacentNMinusOneProbeDescriptor struct {
+	CommandName string
+	SourceName  string
+	BinaryName  string
+	assign      func(*nMinusOneBinaries, string)
+}
+
+func adjacentNMinusOneProbeDescriptors() []adjacentNMinusOneProbeDescriptor {
+	return []adjacentNMinusOneProbeDescriptor{
+		{
+			CommandName: "vela-nminusone-jetstream-outbox-probe",
+			SourceName:  "nminusone_jetstream_outbox_probe.go.txt",
+			BinaryName:  "vela-jetstream-outbox-probe-n-minus-one",
+			assign: func(binaries *nMinusOneBinaries, path string) {
+				binaries.JetStreamOutboxProbe = path
+			},
+		},
+		{
+			CommandName: "vela-nminusone-scheduler-probe",
+			SourceName:  "nminusone_scheduler_probe.go.txt",
+			BinaryName:  "vela-scheduler-probe-n-minus-one",
+			assign: func(binaries *nMinusOneBinaries, path string) {
+				binaries.SchedulerProbe = path
+			},
+		},
+		{
+			CommandName: "vela-nminusone-worker-transport-probe",
+			SourceName:  "nminusone_worker_transport_probe.go.txt",
+			BinaryName:  "vela-worker-transport-probe-n-minus-one",
+			assign: func(binaries *nMinusOneBinaries, path string) {
+				binaries.WorkerTransportProbe = path
+			},
+		},
+	}
 }
 
 type nMinusOneVisibleCompletionResult struct {
@@ -2028,8 +2386,16 @@ type nMinusOneFailureProbeResult struct {
 }
 
 type nMinusOneInvoiceChargeResult struct {
-	Decision string `json:"decision"`
-	ChargeID string `json:"charge_id"`
+	Decision       string `json:"decision"`
+	ChargeID       string `json:"charge_id"`
+	CancellationID string `json:"cancellation_id"`
+	StopDecision   string `json:"stop_decision"`
+	State          string `json:"state"`
+}
+
+type nMinusOneFinanceReconciliationResult struct {
+	RecordID uuid.UUID `json:"record_id"`
+	PostedAt time.Time `json:"posted_at"`
 }
 
 type nMinusOneOutboxProbeResult struct {
@@ -2038,6 +2404,51 @@ type nMinusOneOutboxProbeResult struct {
 	Payload      []byte `json:"payload"`
 	KnownPayload bool   `json:"known_payload"`
 	UnknownBytes int    `json:"unknown_bytes"`
+}
+
+type nMinusOneJetStreamOutboxProbeResult struct {
+	EventID  uuid.UUID `json:"event_id"`
+	Stream   string    `json:"stream"`
+	Sequence int64     `json:"sequence"`
+}
+
+type nMinusOneAdmissionProbeResult struct {
+	JobID    string `json:"job_id"`
+	SQLState string `json:"sqlstate"`
+	Error    string `json:"error"`
+}
+
+type nMinusOneSchedulerProbeResult struct {
+	Dispatched  bool      `json:"dispatched"`
+	SQLState    string    `json:"sqlstate"`
+	Error       string    `json:"error"`
+	IntentID    uuid.UUID `json:"intent_id"`
+	AttemptID   uuid.UUID `json:"attempt_id"`
+	JobID       uuid.UUID `json:"job_id"`
+	WorkerID    uuid.UUID `json:"worker_id"`
+	WorkerEpoch int64     `json:"worker_epoch"`
+	LeaseFence  int64     `json:"lease_fence"`
+	LeaseToken  string    `json:"lease_token"`
+}
+
+type nMinusOneWorkerProbeRequest struct {
+	Action      string
+	WorkerEpoch int64
+	AttemptID   uuid.UUID
+	LeaseFence  int64
+	LeaseToken  string
+}
+
+type nMinusOneWorkerProbeResult struct {
+	AttemptID          uuid.UUID                       `json:"attempt_id"`
+	JobID              uuid.UUID                       `json:"job_id"`
+	WorkerID           uuid.UUID                       `json:"worker_id"`
+	WorkerEpoch        int64                           `json:"worker_epoch"`
+	LeaseFence         int64                           `json:"lease_fence"`
+	LeaseToken         string                          `json:"lease_token"`
+	StartDecision      workercontrol.StartDecision     `json:"start_decision"`
+	HeartbeatDecision  workercontrol.HeartbeatDecision `json:"heartbeat_decision"`
+	FailureDisposition workercontrol.RetryDisposition  `json:"failure_disposition"`
 }
 
 type nMinusOneRetentionProbeResult struct {
@@ -2052,6 +2463,7 @@ type nMinusOneRetentionProbeResult struct {
 
 func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	t.Helper()
+	adjacentProbes := adjacentNMinusOneProbeDescriptors()
 	sourceRoot := t.TempDir()
 	archive := exec.Command("git", "archive", "--format=tar", commit)
 	archive.Dir = repositoryRoot(t)
@@ -2122,8 +2534,13 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		commit == humanMembershipNMinusOneCommit ||
 		commit == organizationReportingNMinusOneCommit ||
 		commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit ||
+		commit == debugDumpNMinusOneCommit ||
+		commit == adjacentRolloutNMinusOneCommit ||
 		commit == breakGlassNMinusOneCommit ||
-		commit == fleetControllerNMinusOneCommit {
+		commit == fleetControllerNMinusOneCommit ||
+		commit == nonContentExpiryNMinusOneCommit ||
+		commit == catalogPromotionNMinusOneCommit ||
+		commit == statisticalSLONMinusOneCommit {
 		admissionProbeSourceName = "nminusone_profile_circuit_admission_probe.go.txt"
 	}
 	admissionProbeSource, err := os.ReadFile(filepath.Join(
@@ -2179,7 +2596,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		t.Fatalf("write N-1 Outbox probe: %v", err)
 	}
 	var invoiceChargeProbeDirectory string
-	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit ||
+		commit == nonContentExpiryNMinusOneCommit {
 		invoiceChargeProbeSource, err := os.ReadFile(filepath.Join(
 			repositoryRoot(t),
 			"internal",
@@ -2200,6 +2618,32 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			0o600,
 		); err != nil {
 			t.Fatalf("write N-1 Invoice Charge probe: %v", err)
+		}
+	}
+	var financeReconciliationProbeDirectory string
+	if commit == nonContentExpiryNMinusOneCommit {
+		financeReconciliationProbeSource, err := os.ReadFile(filepath.Join(
+			repositoryRoot(t),
+			"internal",
+			"integration",
+			"testdata",
+			"nminusone_finance_reconciliation_probe.go.txt",
+		))
+		if err != nil {
+			t.Fatalf("read N-1 Finance Reconciliation probe: %v", err)
+		}
+		financeReconciliationProbeDirectory = filepath.Join(
+			sourceRoot, "cmd", "vela-nminusone-finance-reconciliation-probe",
+		)
+		if err := os.MkdirAll(financeReconciliationProbeDirectory, 0o755); err != nil {
+			t.Fatalf("create N-1 Finance Reconciliation probe directory: %v", err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(financeReconciliationProbeDirectory, "main.go"),
+			financeReconciliationProbeSource,
+			0o600,
+		); err != nil {
+			t.Fatalf("write N-1 Finance Reconciliation probe: %v", err)
 		}
 	}
 	var failureProbeDirectory string
@@ -2253,7 +2697,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		}
 	}
 	var retentionProbeDirectory string
-	if commit == incompleteArtifactNMinusOneCommit {
+	if commit == incompleteArtifactNMinusOneCommit || commit == debugDumpNMinusOneCommit {
 		retentionProbeSource, err := os.ReadFile(filepath.Join(
 			repositoryRoot(t),
 			"internal",
@@ -2278,6 +2722,25 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("write N-1 retention probe: %v", err)
 		}
 	}
+	adjacentProbeDirectories := map[string]string{}
+	if commit == adjacentRolloutNMinusOneCommit {
+		for _, probe := range adjacentProbes {
+			source, readErr := os.ReadFile(filepath.Join(
+				repositoryRoot(t), "internal", "integration", "testdata", probe.SourceName,
+			))
+			if readErr != nil {
+				t.Fatalf("read adjacent N-1 %s: %v", probe.SourceName, readErr)
+			}
+			directory := filepath.Join(sourceRoot, "cmd", probe.CommandName)
+			if err := os.MkdirAll(directory, 0o755); err != nil {
+				t.Fatalf("create adjacent N-1 %s directory: %v", probe.CommandName, err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "main.go"), source, 0o600); err != nil {
+				t.Fatalf("write adjacent N-1 %s: %v", probe.CommandName, err)
+			}
+			adjacentProbeDirectories[probe.CommandName] = directory
+		}
+	}
 
 	binaryDirectory := t.TempDir()
 	binaries := nMinusOneBinaries{
@@ -2291,7 +2754,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			binaryDirectory, "vela-human-admission-probe-n-minus-one",
 		)
 	}
-	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit ||
+		commit == nonContentExpiryNMinusOneCommit {
 		binaries.InvoiceChargeProbe = filepath.Join(
 			binaryDirectory,
 			"vela-invoice-charge-probe-n-minus-one",
@@ -2305,9 +2769,19 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			binaryDirectory, "vela-visible-completion-probe-n-minus-one",
 		)
 	}
-	if commit == incompleteArtifactNMinusOneCommit {
+	if commit == incompleteArtifactNMinusOneCommit || commit == debugDumpNMinusOneCommit {
 		binaries.RetentionProbe = filepath.Join(
 			binaryDirectory, "vela-retention-probe-n-minus-one",
+		)
+	}
+	if commit == adjacentRolloutNMinusOneCommit {
+		for _, probe := range adjacentProbes {
+			probe.assign(&binaries, filepath.Join(binaryDirectory, probe.BinaryName))
+		}
+	}
+	if commit == nonContentExpiryNMinusOneCommit {
+		binaries.FinanceReconciliationProbe = filepath.Join(
+			binaryDirectory, "vela-finance-reconciliation-probe-n-minus-one",
 		)
 	}
 	build := exec.Command(
@@ -2319,7 +2793,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build N-1 vela-control: %v\n%s", err, output)
 	}
-	if commit != invoiceExportNMinusOneCommit {
+	if commit != invoiceExportNMinusOneCommit && commit != legalHoldNMinusOneCommit {
 		build = exec.Command(
 			"go", "build",
 			"-o", binaries.AdmissionProbe, "./cmd/vela-nminusone-admission-probe",
@@ -2359,7 +2833,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 Outbox probe: %v\n%s", err, output)
 		}
 	}
-	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit {
+	if commit == invoiceExportNMinusOneCommit || commit == webhookNMinusOneCommit ||
+		commit == nonContentExpiryNMinusOneCommit {
 		build = exec.Command(
 			"go",
 			"build",
@@ -2371,6 +2846,18 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
 		if output, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build N-1 Invoice Charge probe: %v\n%s", err, output)
+		}
+	}
+	if commit == nonContentExpiryNMinusOneCommit {
+		build = exec.Command(
+			"go", "build",
+			"-o", binaries.FinanceReconciliationProbe,
+			"./cmd/vela-nminusone-finance-reconciliation-probe",
+		)
+		build.Dir = sourceRoot
+		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build N-1 Finance Reconciliation probe: %v\n%s", err, output)
 		}
 	}
 	if commit == profileCircuitNMinusOneCommit {
@@ -2401,7 +2888,7 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 Visible Completion probe: %v\n%s", err, output)
 		}
 	}
-	if commit == incompleteArtifactNMinusOneCommit {
+	if commit == incompleteArtifactNMinusOneCommit || commit == debugDumpNMinusOneCommit {
 		build = exec.Command(
 			"go",
 			"build",
@@ -2413,6 +2900,23 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		build.Env = environmentWith(map[string]string{"GOWORK": "off"})
 		if output, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build N-1 retention probe: %v\n%s", err, output)
+		}
+	}
+	if commit == adjacentRolloutNMinusOneCommit {
+		for _, probe := range adjacentProbes {
+			binary := filepath.Join(binaryDirectory, probe.BinaryName)
+			build = exec.Command("go", "build", "-o", binary, "./cmd/"+probe.CommandName)
+			build.Dir = sourceRoot
+			build.Env = environmentWith(map[string]string{"GOWORK": "off"})
+			if output, err := build.CombinedOutput(); err != nil {
+				t.Fatalf(
+					"build adjacent N-1 %s from %s: %v\n%s",
+					probe.CommandName,
+					adjacentProbeDirectories[probe.CommandName],
+					err,
+					output,
+				)
+			}
 		}
 	}
 	return binaries
@@ -2511,8 +3015,45 @@ func runNMinusOneInvoiceChargeProbe(
 	jobID uuid.UUID,
 ) nMinusOneInvoiceChargeResult {
 	t.Helper()
+	return runNMinusOneInvoiceChargeProbeWithEnvironment(
+		t, binary, adminDSN, jobID, nil,
+	)
+}
+
+func runNMinusOneInvoiceChargeAndStopProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	jobID uuid.UUID,
+	workerID uuid.UUID,
+	credentials workercontrol.LeaseCredentials,
+) nMinusOneInvoiceChargeResult {
+	t.Helper()
+	return runNMinusOneInvoiceChargeProbeWithEnvironment(
+		t,
+		binary,
+		adminDSN,
+		jobID,
+		map[string]string{
+			"VELA_WORKER_ID":     workerID.String(),
+			"VELA_ATTEMPT_ID":    credentials.AttemptID.String(),
+			"VELA_WORKER_EPOCH":  fmt.Sprint(credentials.WorkerEpoch),
+			"VELA_ATTEMPT_FENCE": fmt.Sprint(credentials.Fence),
+			"VELA_LEASE_TOKEN":   credentials.Token,
+		},
+	)
+}
+
+func runNMinusOneInvoiceChargeProbeWithEnvironment(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	jobID uuid.UUID,
+	extraEnvironment map[string]string,
+) nMinusOneInvoiceChargeResult {
+	t.Helper()
 	command := exec.Command(binary)
-	command.Env = environmentWith(map[string]string{
+	environment := map[string]string{
 		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_auth_login", "vela-auth-password",
 		),
@@ -2526,7 +3067,11 @@ func runNMinusOneInvoiceChargeProbe(
 		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
 		"VELA_PROJECT_ID":               testProjectID,
 		"VELA_JOB_ID":                   jobID.String(),
-	})
+	}
+	for key, value := range extraEnvironment {
+		environment[key] = value
+	}
+	command.Env = environmentWith(environment)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("run N-1 Invoice Charge writer probe: %v\n%s", err, output)
@@ -2538,23 +3083,50 @@ func runNMinusOneInvoiceChargeProbe(
 	return result
 }
 
-func runNMinusOneAdmissionProbe(t *testing.T, binary, adminDSN string) string {
+func runNMinusOneFinanceReconciliationProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+) nMinusOneFinanceReconciliationResult {
 	t.Helper()
 	command := exec.Command(binary)
 	command.Env = environmentWith(map[string]string{
-		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
-			t, adminDSN, "vela_auth_login", "vela-auth-password",
+		"VELA_FINANCE_RECONCILIATION_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_finance_reconciliation_login",
+			"vela-finance-reconciliation-password",
 		),
-		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
-			t, adminDSN, "vela_request_login", "vela-request-password",
-		),
-		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
-			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
-		),
-		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
-		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
-		"VELA_PROJECT_ID":               testProjectID,
+		"VELA_ORGANIZATION_ID": testOrganizationID,
 	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Finance Reconciliation writer probe: %v\n%s", err, output)
+	}
+	var result nMinusOneFinanceReconciliationResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Finance Reconciliation result: %v\n%s", err, output)
+	}
+	if result.RecordID == uuid.Nil || result.PostedAt.IsZero() {
+		t.Fatalf("N-1 Finance Reconciliation result = %#v", result)
+	}
+	return result
+}
+
+func runNMinusOneAdmissionProbe(t *testing.T, binary, adminDSN string) string {
+	t.Helper()
+	return runNMinusOneAdmissionProbeWithKey(t, binary, adminDSN, "")
+}
+
+func runNMinusOneAdmissionProbeWithKey(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	idempotencyKey string,
+) string {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = nMinusOneAdmissionProbeEnvironment(t, adminDSN, idempotencyKey, false)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("run N-1 Admission writer probe: %v\n%s", err, output)
@@ -2569,6 +3141,57 @@ func runNMinusOneAdmissionProbe(t *testing.T, binary, adminDSN string) string {
 		t.Fatalf("N-1 Admission probe returned invalid Job id %q", result.JobID)
 	}
 	return result.JobID
+}
+
+func runNMinusOneAdmissionFailureProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	idempotencyKey string,
+) nMinusOneAdmissionProbeResult {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = nMinusOneAdmissionProbeEnvironment(t, adminDSN, idempotencyKey, true)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run N-1 Admission failure probe: %v\n%s", err, output)
+	}
+	var result nMinusOneAdmissionProbeResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode N-1 Admission failure probe: %v\n%s", err, output)
+	}
+	return result
+}
+
+func nMinusOneAdmissionProbeEnvironment(
+	t *testing.T,
+	adminDSN string,
+	idempotencyKey string,
+	expectDatabaseFailure bool,
+) []string {
+	t.Helper()
+	overrides := map[string]string{
+		"VELA_AUTH_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_auth_login", "vela-auth-password",
+		),
+		"VELA_REQUEST_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_request_login", "vela-request-password",
+		),
+		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
+		),
+		"VELA_SCHEDULER_INBOX_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_inbox_login", "vela-scheduler-inbox-password",
+		),
+		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
+		"VELA_BEARER_CREDENTIAL":        testBearerCredential(),
+		"VELA_PROJECT_ID":               testProjectID,
+		"VELA_IDEMPOTENCY_KEY":          idempotencyKey,
+	}
+	if expectDatabaseFailure {
+		overrides["VELA_EXPECT_DATABASE_FAILURE"] = "true"
+	}
+	return environmentWith(overrides)
 }
 
 func runNMinusOneHumanAdmissionProbe(
@@ -2591,6 +3214,9 @@ func runNMinusOneHumanAdmissionProbe(
 		),
 		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
+		),
+		"VELA_SCHEDULER_INBOX_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_inbox_login", "vela-scheduler-inbox-password",
 		),
 		"VELA_CREDENTIAL_PEPPER_BASE64": base64.StdEncoding.EncodeToString(testCredentialPepper),
 		"VELA_OIDC_ISSUER":              "https://identity.example.com",
@@ -2691,6 +3317,92 @@ func runNMinusOneOutboxProbe(
 	return result
 }
 
+func runNMinusOneJetStreamOutboxProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	natsURL string,
+) nMinusOneJetStreamOutboxProbeResult {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_internal_login", "vela-internal-password",
+		),
+		"VELA_NATS_URL": natsURL,
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run adjacent N-1 JetStream Outbox probe: %v\n%s", err, output)
+	}
+	var result nMinusOneJetStreamOutboxProbeResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode adjacent N-1 JetStream Outbox probe: %v\n%s", err, output)
+	}
+	return result
+}
+
+func runNMinusOneSchedulerProbe(
+	t *testing.T,
+	binary string,
+	adminDSN string,
+	workerPoolID uuid.UUID,
+	schedulerID string,
+) nMinusOneSchedulerProbeResult {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_INTERNAL_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_internal_login", "vela-internal-password",
+		),
+		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
+		),
+		"VELA_WORKER_POOL_ID": workerPoolID.String(),
+		"VELA_SCHEDULER_ID":   schedulerID,
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run adjacent N-1 Scheduler probe: %v\n%s", err, output)
+	}
+	var result nMinusOneSchedulerProbeResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode adjacent N-1 Scheduler probe: %v\n%s", err, output)
+	}
+	return result
+}
+
+func runNMinusOneWorkerTransportProbe(
+	t *testing.T,
+	binary string,
+	endpoint mixedVersionWorkerEndpoint,
+	request nMinusOneWorkerProbeRequest,
+) nMinusOneWorkerProbeResult {
+	t.Helper()
+	command := exec.Command(binary)
+	command.Env = environmentWith(map[string]string{
+		"VELA_WORKER_CONTROL_ADDRESS":  endpoint.Address,
+		"VELA_WORKER_TLS_CERT_FILE":    endpoint.ClientCertificateFile,
+		"VELA_WORKER_TLS_KEY_FILE":     endpoint.ClientKeyFile,
+		"VELA_WORKER_TLS_ROOT_CA_FILE": endpoint.ServerCAFile,
+		"VELA_WORKER_TLS_SERVER_NAME":  endpoint.ServerName,
+		"VELA_WORKER_PROBE_ACTION":     request.Action,
+		"VELA_WORKER_EPOCH":            fmt.Sprint(request.WorkerEpoch),
+		"VELA_ATTEMPT_ID":              request.AttemptID.String(),
+		"VELA_LEASE_FENCE":             fmt.Sprint(request.LeaseFence),
+		"VELA_LEASE_TOKEN":             request.LeaseToken,
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run adjacent N-1 Worker transport probe: %v\n%s", err, output)
+	}
+	var result nMinusOneWorkerProbeResult
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatalf("decode adjacent N-1 Worker transport probe: %v\n%s", err, output)
+	}
+	return result
+}
+
 func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
 	t.Helper()
 	temporary := t.TempDir()
@@ -2729,9 +3441,45 @@ func runNMinusOneControl(t *testing.T, binary, adminDSN string) string {
 	return string(output)
 }
 
+type controlStartupProbeOptions struct {
+	currentDebugDumpRoles      bool
+	currentBackupRetentionRole bool
+	currentArtifactReplication bool
+	currentNodeAgentFile       bool
+}
+
 func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) string {
 	t.Helper()
-	webhookKeyringFile := filepath.Join(t.TempDir(), "webhook-keyring.json")
+	return runControlStartupProbe(t, binary, adminDSN, controlStartupProbeOptions{})
+}
+
+func runAdjacentNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) string {
+	t.Helper()
+	return runControlStartupProbe(t, binary, adminDSN, controlStartupProbeOptions{
+		currentDebugDumpRoles:      true,
+		currentBackupRetentionRole: true,
+		currentNodeAgentFile:       true,
+	})
+}
+
+func runCurrentControlStartupProbe(t *testing.T, binary, adminDSN string) string {
+	t.Helper()
+	return runControlStartupProbe(t, binary, adminDSN, controlStartupProbeOptions{
+		currentDebugDumpRoles:      true,
+		currentBackupRetentionRole: true,
+		currentArtifactReplication: true,
+		currentNodeAgentFile:       true,
+	})
+}
+
+func runControlStartupProbe(
+	t *testing.T,
+	binary, adminDSN string,
+	options controlStartupProbeOptions,
+) string {
+	t.Helper()
+	temporary := t.TempDir()
+	webhookKeyringFile := filepath.Join(temporary, "webhook-keyring.json")
 	webhookKey := base64.StdEncoding.EncodeToString(
 		[]byte("0123456789abcdef0123456789abcdef"),
 	)
@@ -2741,6 +3489,138 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 		0o600,
 	); err != nil {
 		t.Fatalf("write N-1 Webhook keyring: %v", err)
+	}
+	nodeAgentFile := "/missing/remediation-node-agents.json"
+	if options.currentNodeAgentFile {
+		nodeIdentity := "slice-32-node"
+		nodeWorkerID := uuid.MustParse("23000000-0000-0000-0000-000000000443")
+		nodeAgentFile = filepath.Join(temporary, "node-agents.json")
+		nodeAgentFixture, err := json.Marshal(map[string]map[string]any{
+			nodeIdentity: {
+				"address":      "127.0.0.1:1",
+				"server_name":  "node-agent.internal",
+				"worker_id":    nodeWorkerID,
+				"worker_epoch": 1,
+				"spiffe_identity": "spiffe://vela.internal/node-agent/" +
+					base64.RawURLEncoding.EncodeToString([]byte(nodeIdentity)) + "/" + nodeWorkerID.String(),
+			},
+		})
+		if err != nil {
+			t.Fatalf("encode current Node Agent endpoint fixture: %v", err)
+		}
+		if err := os.WriteFile(nodeAgentFile, nodeAgentFixture, 0o600); err != nil {
+			t.Fatalf("write current Node Agent endpoint fixture: %v", err)
+		}
+	}
+	debugDumpRequestDatabaseURL := ""
+	debugDumpAuditRequestDatabaseURL := ""
+	if options.currentDebugDumpRoles {
+		debugDumpRequestDatabaseURL = roleDatabaseURL(
+			t, adminDSN, "vela_debug_dump_request_login", "vela-debug-dump-request-password",
+		)
+		debugDumpAuditRequestDatabaseURL = roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_debug_dump_audit_request_login",
+			"vela-debug-dump-audit-request-password",
+		)
+	}
+	backupRetentionDatabaseURL := ""
+	artifactBackupS3Endpoint := ""
+	artifactBackupS3Region := ""
+	artifactBackupS3Bucket := ""
+	artifactBackupS3AccessKeyFile := ""
+	artifactBackupS3SecretKeyFile := ""
+	if options.currentBackupRetentionRole {
+		backupRetentionDatabaseURL = roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_backup_retention_login",
+			"vela-backup-retention-password",
+		)
+		artifactBackupS3Endpoint = "http://127.0.0.1:1"
+		artifactBackupS3Region = "us-east-1"
+		artifactBackupS3Bucket = "vela-artifacts-backup"
+		artifactBackupS3AccessKeyFile = "/missing/backup-s3-access-key-id"
+		artifactBackupS3SecretKeyFile = "/missing/backup-s3-secret-access-key"
+	}
+	artifactReplicationDatabaseURL := ""
+	artifactReplicationID := ""
+	artifactReplicationSourceAccessKeyFile := ""
+	artifactReplicationSourceSecretKeyFile := ""
+	artifactReplicationBackupAccessKeyFile := ""
+	artifactReplicationBackupSecretKeyFile := ""
+	if options.currentArtifactReplication {
+		artifactReplicationDatabaseURL = roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_artifact_replication_login",
+			"vela-artifact-replication-password",
+		)
+		artifactReplicationID = "current-artifact-backup-replication-startup-probe"
+		artifactReplicationSourceAccessKeyFile = "/missing/replication-source-s3-access-key-id"
+		artifactReplicationSourceSecretKeyFile = "/missing/replication-source-s3-secret-access-key"
+		artifactReplicationBackupAccessKeyFile = "/missing/replication-backup-s3-access-key-id"
+		artifactReplicationBackupSecretKeyFile = "/missing/replication-backup-s3-secret-access-key"
+	}
+	caCertificate, caKey, caPEM := issueWorkerTransportTestCA(t)
+	financeCertificate, financeKey := issueWorkerTransportTestCertificate(
+		t,
+		caCertificate,
+		caKey,
+		pkix.Name{CommonName: "finance-reconciliation.internal"},
+		[]string{"finance-reconciliation.internal"},
+		nil,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	)
+	financeCertificateFile := filepath.Join(temporary, "finance-reconciliation.crt")
+	financeKeyFile := filepath.Join(temporary, "finance-reconciliation.key")
+	financeClientCAFile := filepath.Join(temporary, "finance-reconciliation-client-ca.crt")
+	for path, contents := range map[string][]byte{
+		financeCertificateFile: financeCertificate,
+		financeKeyFile:         financeKey,
+		financeClientCAFile:    caPEM,
+	} {
+		if err := os.WriteFile(path, contents, 0o600); err != nil {
+			t.Fatalf("write N-1 Finance Reconciliation TLS fixture %s: %v", path, err)
+		}
+	}
+	financeListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve N-1 Finance Reconciliation address: %v", err)
+	}
+	financeAddress := financeListener.Addr().String()
+	if err := financeListener.Close(); err != nil {
+		t.Fatalf("release N-1 Finance Reconciliation address: %v", err)
+	}
+	complianceCertificate, complianceKey := issueWorkerTransportTestCertificate(
+		t,
+		caCertificate,
+		caKey,
+		pkix.Name{CommonName: "legal-hold-listener.internal"},
+		[]string{"legal-hold-listener.internal"},
+		nil,
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	)
+	complianceCertificateFile := filepath.Join(temporary, "compliance.crt")
+	complianceKeyFile := filepath.Join(temporary, "compliance.key")
+	complianceClientCAFile := filepath.Join(temporary, "compliance-client-ca.crt")
+	for path, contents := range map[string][]byte{
+		complianceCertificateFile: complianceCertificate,
+		complianceKeyFile:         complianceKey,
+		complianceClientCAFile:    caPEM,
+	} {
+		if err := os.WriteFile(path, contents, 0o600); err != nil {
+			t.Fatalf("write N-1 Compliance TLS fixture %s: %v", path, err)
+		}
+	}
+	complianceListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve N-1 Compliance address: %v", err)
+	}
+	complianceAddress := complianceListener.Addr().String()
+	if err := complianceListener.Close(); err != nil {
+		t.Fatalf("release N-1 Compliance address: %v", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -2786,10 +3666,19 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			"vela_retention_request_login",
 			"vela-retention-request-password",
 		),
+		"VELA_DEBUG_DUMP_REQUEST_DATABASE_URL":       debugDumpRequestDatabaseURL,
+		"VELA_DEBUG_DUMP_AUDIT_REQUEST_DATABASE_URL": debugDumpAuditRequestDatabaseURL,
 		"VELA_RETENTION_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_retention_login", "vela-retention-password",
 		),
-		"VELA_RETENTION_RECONCILER_ID": "current-retention-startup-probe",
+		"VELA_BACKUP_RETENTION_DATABASE_URL":     backupRetentionDatabaseURL,
+		"VELA_ARTIFACT_REPLICATION_DATABASE_URL": artifactReplicationDatabaseURL,
+		"VELA_RETENTION_RECONCILER_ID":           "current-retention-startup-probe",
+		"VELA_ARTIFACT_REPLICATION_ID":           artifactReplicationID,
+		"VELA_NON_CONTENT_EXPIRY_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_non_content_expiry_login", "vela-non-content-expiry-password",
+		),
+		"VELA_NON_CONTENT_EXPIRY_RECONCILER_ID": "current-non-content-expiry-startup-probe",
 		"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_platform_operator_auth_login", "vela-platform-operator-auth-password",
 		),
@@ -2821,12 +3710,15 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			t, adminDSN, "vela_remediation_login", "vela-remediation-password",
 		),
 		"VELA_REMEDIATION_ACTOR_IDENTITY":   "controller/n-minus-one-startup-probe",
-		"VELA_REMEDIATION_NODE_AGENTS_FILE": "/missing/remediation-node-agents.json",
+		"VELA_REMEDIATION_NODE_AGENTS_FILE": nodeAgentFile,
 		"VELA_REMEDIATION_TLS_CERT_FILE":    "/missing/remediation-client.crt",
 		"VELA_REMEDIATION_TLS_KEY_FILE":     "/missing/remediation-client.key",
 		"VELA_REMEDIATION_TLS_ROOT_CA_FILE": "/missing/remediation-root-ca.crt",
 		"VELA_SCHEDULER_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_scheduler_login", "vela-scheduler-password",
+		),
+		"VELA_SCHEDULER_INBOX_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_scheduler_inbox_login", "vela-scheduler-inbox-password",
 		),
 		"VELA_SCHEDULER_ID": "n-minus-one-startup-probe",
 		"VELA_BILLING_DATABASE_URL": roleDatabaseURL(
@@ -2838,46 +3730,64 @@ func runSchedulerNMinusOneStartupProbe(t *testing.T, binary, adminDSN string) st
 			"vela_finance_reconciliation_login",
 			"vela-finance-reconciliation-password",
 		),
-		"VELA_FINANCE_RECONCILIATION_ADDR":             "127.0.0.1:9444",
-		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE": "/missing/finance-reconciliation.crt",
-		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":  "/missing/finance-reconciliation.key",
-		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":   "/missing/finance-reconciliation-client-ca.crt",
+		"VELA_FINANCE_RECONCILIATION_ADDR":             financeAddress,
+		"VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE": financeCertificateFile,
+		"VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE":  financeKeyFile,
+		"VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE":   financeClientCAFile,
+		"VELA_COMPLIANCE_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_compliance_login", "vela-compliance-password",
+		),
+		"VELA_COMPLIANCE_ADDR":             complianceAddress,
+		"VELA_COMPLIANCE_SERVER_CERT_FILE": complianceCertificateFile,
+		"VELA_COMPLIANCE_SERVER_KEY_FILE":  complianceKeyFile,
+		"VELA_COMPLIANCE_CLIENT_CA_FILE":   complianceClientCAFile,
 		"VELA_WEBHOOK_REQUEST_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_webhook_request_login", "vela-webhook-request-password",
 		),
 		"VELA_WEBHOOK_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_webhook_login", "vela-webhook-password",
 		),
-		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":       "webhook-key-v1",
-		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":        webhookKeyringFile,
-		"VELA_WEBHOOK_DISPATCHER_ID":                  "n-minus-one-startup-probe",
-		"VELA_INVOICE_EXPORTER_ID":                    "n-minus-one-startup-probe",
-		"VELA_INVOICE_EXPORT_ENDPOINT":                "https://127.0.0.1:1/invoices",
-		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":       "/missing/invoice-export-token",
-		"VELA_CREDENTIAL_PEPPER_BASE64":               base64.StdEncoding.EncodeToString(make([]byte, 32)),
-		"VELA_NATS_URL":                               "nats://127.0.0.1:1",
-		"VELA_NATS_CREDENTIALS_FILE":                  "/missing/nats.creds",
-		"VELA_NATS_ROOT_CA_FILE":                      "/missing/nats-ca.pem",
-		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":         "schema-probe-account",
-		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS": "schema-probe-signer",
-		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":           "schema-probe-user",
-		"VELA_ARTIFACT_S3_ENDPOINT":                   "http://127.0.0.1:1",
-		"VELA_ARTIFACT_S3_REGION":                     "us-east-1",
-		"VELA_ARTIFACT_S3_BUCKET":                     "vela-artifacts",
-		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":         "/missing/s3-access-key-id",
-		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":     "/missing/s3-secret-access-key",
-		"VELA_LEASE_ACTIVE_KEY_ID":                    "lease-key-v1",
-		"VELA_LEASE_KEYRING_FILE":                     "/missing/lease-keyring.json",
-		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":         "/missing/vela-artifact-validator",
-		"VELA_ARTIFACT_FFPROBE_PATH":                  "/missing/ffprobe",
-		"VELA_ARTIFACT_SANDBOX_ROOT":                  "/missing/sandbox",
-		"VELA_ARTIFACT_SPOOL_DIRECTORY":               "/missing/spool",
-		"VELA_ARTIFACT_FFPROBE_VERSION":               "8.0.1",
-		"VELA_ARTIFACT_VALIDATOR_REVISION":            "ffprobe-8.0.1-sandbox-v1",
-		"VELA_ARTIFACT_RECONCILER_ID":                 "spiffe://vela.internal/reconciler/artifact-finalization",
-		"VELA_WORKER_GRPC_TLS_CERT_FILE":              "/missing/worker-control.crt",
-		"VELA_WORKER_GRPC_TLS_KEY_FILE":               "/missing/worker-control.key",
-		"VELA_WORKER_GRPC_CLIENT_CA_FILE":             "/missing/worker-client-ca.crt",
+		"VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID":                      "webhook-key-v1",
+		"VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE":                       webhookKeyringFile,
+		"VELA_WEBHOOK_DISPATCHER_ID":                                 "n-minus-one-startup-probe",
+		"VELA_INVOICE_EXPORTER_ID":                                   "n-minus-one-startup-probe",
+		"VELA_INVOICE_EXPORT_ENDPOINT":                               "https://127.0.0.1:1/invoices",
+		"VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE":                      "/missing/invoice-export-token",
+		"VELA_CREDENTIAL_PEPPER_BASE64":                              base64.StdEncoding.EncodeToString(make([]byte, 32)),
+		"VELA_NATS_URL":                                              "nats://127.0.0.1:1",
+		"VELA_NATS_CREDENTIALS_FILE":                                 "/missing/nats.creds",
+		"VELA_NATS_ROOT_CA_FILE":                                     "/missing/nats-ca.pem",
+		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":                        "schema-probe-account",
+		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS":                "schema-probe-signer",
+		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":                          "schema-probe-user",
+		"VELA_NATS_SCHEDULER_CREDENTIALS_FILE":                       "/missing/nats-scheduler.creds",
+		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS":                       "schema-probe-scheduler-user",
+		"VELA_ARTIFACT_S3_ENDPOINT":                                  "http://127.0.0.1:1",
+		"VELA_ARTIFACT_S3_REGION":                                    "us-east-1",
+		"VELA_ARTIFACT_S3_BUCKET":                                    "vela-artifacts",
+		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":                        "/missing/s3-access-key-id",
+		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":                    "/missing/s3-secret-access-key",
+		"VELA_ARTIFACT_BACKUP_S3_ENDPOINT":                           artifactBackupS3Endpoint,
+		"VELA_ARTIFACT_BACKUP_S3_REGION":                             artifactBackupS3Region,
+		"VELA_ARTIFACT_BACKUP_S3_BUCKET":                             artifactBackupS3Bucket,
+		"VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE":                 artifactBackupS3AccessKeyFile,
+		"VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE":             artifactBackupS3SecretKeyFile,
+		"VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE":     artifactReplicationSourceAccessKeyFile,
+		"VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE": artifactReplicationSourceSecretKeyFile,
+		"VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE":     artifactReplicationBackupAccessKeyFile,
+		"VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE": artifactReplicationBackupSecretKeyFile,
+		"VELA_LEASE_ACTIVE_KEY_ID":                                   "lease-key-v1",
+		"VELA_LEASE_KEYRING_FILE":                                    "/missing/lease-keyring.json",
+		"VELA_ARTIFACT_VALIDATOR_HELPER_PATH":                        "/missing/vela-artifact-validator",
+		"VELA_ARTIFACT_FFPROBE_PATH":                                 "/missing/ffprobe",
+		"VELA_ARTIFACT_SANDBOX_ROOT":                                 "/missing/sandbox",
+		"VELA_ARTIFACT_SPOOL_DIRECTORY":                              "/missing/spool",
+		"VELA_ARTIFACT_FFPROBE_VERSION":                              "8.0.1",
+		"VELA_ARTIFACT_VALIDATOR_REVISION":                           "ffprobe-8.0.1-sandbox-v1",
+		"VELA_ARTIFACT_RECONCILER_ID":                                "spiffe://vela.internal/reconciler/artifact-finalization",
+		"VELA_WORKER_GRPC_TLS_CERT_FILE":                             "/missing/worker-control.crt",
+		"VELA_WORKER_GRPC_TLS_KEY_FILE":                              "/missing/worker-control.key",
+		"VELA_WORKER_GRPC_CLIENT_CA_FILE":                            "/missing/worker-client-ca.crt",
 		"VELA_FLEET_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_fleet_login", "vela-fleet-password",
 		),
@@ -2906,6 +3816,16 @@ func assertNMinusOneDatabaseStartupPassed(t *testing.T, output string) {
 	}
 	if !strings.Contains(output, "connect NATS") {
 		t.Fatalf("N-1 startup did not reach the NATS sentinel:\n%s", output)
+	}
+}
+
+func assertAdjacentNMinusOneControlStartupPassed(t *testing.T, output string) {
+	t.Helper()
+	if strings.Contains(output, "database pool") {
+		t.Fatalf("adjacent N-1 control startup failed database role preflight:\n%s", output)
+	}
+	if !strings.Contains(output, "open Invoice export bearer token file") {
+		t.Fatalf("adjacent N-1 control did not reach the post-role-preflight sentinel:\n%s", output)
 	}
 }
 

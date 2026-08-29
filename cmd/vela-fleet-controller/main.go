@@ -19,20 +19,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetadmission"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/securefile"
-	"gopkg.in/yaml.v3"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 )
 
 const (
-	maximumDesiredInputBytes = 1 << 20
-	startupTimeout           = 20 * time.Second
-	shutdownTimeout          = 20 * time.Second
+	startupTimeout  = 20 * time.Second
+	shutdownTimeout = 20 * time.Second
 )
 
 type config struct {
@@ -53,63 +50,6 @@ type config struct {
 	pollInterval                  time.Duration
 	desiredRevisions              []fleetcontroller.DesiredRevision
 	retirementPlans               []fleetcontroller.RetirementPlan
-}
-
-type desiredInput struct {
-	APIVersion  string                 `yaml:"apiVersion"`
-	Kind        string                 `yaml:"kind"`
-	Revisions   []desiredRevisionInput `yaml:"revisions"`
-	Retirements []retirementPlanInput  `yaml:"retirements"`
-}
-
-type desiredRevisionInput struct {
-	WorkerPoolID               string              `yaml:"workerPoolID"`
-	Name                       string              `yaml:"name"`
-	Revision                   string              `yaml:"revision"`
-	WorkerProfile              string              `yaml:"workerProfile"`
-	DaemonSetName              string              `yaml:"daemonSetName"`
-	NodeSelector               map[string]string   `yaml:"nodeSelector"`
-	InitImage                  string              `yaml:"initImage"`
-	WorkerAgentImage           string              `yaml:"workerAgentImage"`
-	RunnerImage                string              `yaml:"runnerImage"`
-	WorkerRuntimeConfigMap     string              `yaml:"workerRuntimeConfigMap"`
-	RunnerProfilesConfigMap    string              `yaml:"runnerProfilesConfigMap"`
-	RunnerGPURolesConfigMap    string              `yaml:"runnerGPURolesConfigMap"`
-	WorkerControlTLSSecret     string              `yaml:"workerControlTLSSecret"`
-	ArtifactStoreTLSSecret     string              `yaml:"artifactStoreTLSSecret"`
-	ExecutionProfileRevisionID string              `yaml:"executionProfileRevisionID"`
-	InferenceBackendRevision   string              `yaml:"inferenceBackendRevision"`
-	ReadinessTimeout           string              `yaml:"readinessTimeout"`
-	CapacityPolicy             capacityPolicyInput `yaml:"capacityPolicy"`
-}
-
-type capacityPolicyInput struct {
-	WorkerHighWatermarkBytes int64  `yaml:"workerHighWatermarkBytes"`
-	WorkerLowWatermarkBytes  int64  `yaml:"workerLowWatermarkBytes"`
-	WorkerCriticalFreeBytes  int64  `yaml:"workerCriticalFreeBytes"`
-	PoolHighWatermarkBytes   int64  `yaml:"poolHighWatermarkBytes"`
-	PoolLowWatermarkBytes    int64  `yaml:"poolLowWatermarkBytes"`
-	ObservationMaxAge        string `yaml:"observationMaxAge"`
-}
-
-type retirementPlanInput struct {
-	Revision                string                  `yaml:"revision"`
-	WorkerPoolID            string                  `yaml:"workerPoolID"`
-	WorkerPoolName          string                  `yaml:"workerPoolName"`
-	WorkerPoolKubernetesUID string                  `yaml:"workerPoolKubernetesUID"`
-	DaemonSetName           string                  `yaml:"daemonSetName"`
-	DaemonSetKubernetesUID  string                  `yaml:"daemonSetKubernetesUID"`
-	Reason                  string                  `yaml:"reason"`
-	Deadline                string                  `yaml:"deadline"`
-	Workers                 []workerRetirementInput `yaml:"workers"`
-}
-
-type workerRetirementInput struct {
-	OperationID      string `yaml:"operationID"`
-	WorkerID         string `yaml:"workerID"`
-	WorkerEpoch      int64  `yaml:"workerEpoch"`
-	PodName          string `yaml:"podName"`
-	PodKubernetesUID string `yaml:"podKubernetesUID"`
 }
 
 type readinessSource interface {
@@ -457,134 +397,14 @@ func loadDesiredConfiguration(
 	}
 	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maximumDesiredInputBytes {
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > fleetcontroller.MaximumDesiredConfigurationBytes {
 		return nil, nil, errors.New("fleet desired input file is empty, non-regular, or too large")
 	}
-	decoder := yaml.NewDecoder(io.LimitReader(file, maximumDesiredInputBytes+1))
-	decoder.KnownFields(true)
-	var input desiredInput
-	if err := decoder.Decode(&input); err != nil {
+	encoded, err := io.ReadAll(io.LimitReader(file, fleetcontroller.MaximumDesiredConfigurationBytes+1))
+	if err != nil {
 		return nil, nil, err
 	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return nil, nil, errors.New("fleet desired input must contain exactly one YAML document")
-	}
-	if input.APIVersion != "fleet.vela.ai/v1alpha1" ||
-		input.Kind != "FleetDesiredRevisions" || len(input.Revisions) == 0 {
-		return nil, nil, errors.New("fleet desired input apiVersion, kind, or revisions are invalid")
-	}
-	seenPools := map[uuid.UUID]struct{}{}
-	seenNames := map[string]struct{}{}
-	seenDaemonSets := map[string]struct{}{}
-	revisions := make([]fleetcontroller.DesiredRevision, 0, len(input.Revisions))
-	for _, encoded := range input.Revisions {
-		workerPoolID, err := uuid.Parse(encoded.WorkerPoolID)
-		if err != nil || workerPoolID == uuid.Nil {
-			return nil, nil, errors.New("fleet desired revision WorkerPool id is invalid")
-		}
-		executionProfileRevisionID, err := uuid.Parse(encoded.ExecutionProfileRevisionID)
-		if err != nil || executionProfileRevisionID == uuid.Nil {
-			return nil, nil, errors.New("fleet desired revision ExecutionProfileRevision id is invalid")
-		}
-		readinessTimeout, err := time.ParseDuration(encoded.ReadinessTimeout)
-		if err != nil {
-			return nil, nil, errors.New("fleet desired revision readiness timeout is invalid")
-		}
-		observationMaxAge, err := time.ParseDuration(encoded.CapacityPolicy.ObservationMaxAge)
-		if err != nil {
-			return nil, nil, errors.New("fleet desired revision capacity observation age is invalid")
-		}
-		desired := fleetcontroller.DesiredRevision{
-			WorkerPoolID: workerPoolID, Namespace: namespace, Name: encoded.Name,
-			Revision: encoded.Revision, WorkerProfile: encoded.WorkerProfile,
-			DaemonSetName: encoded.DaemonSetName, NodeSelector: encoded.NodeSelector,
-			InitImage: encoded.InitImage, WorkerAgentImage: encoded.WorkerAgentImage,
-			RunnerImage:                encoded.RunnerImage,
-			WorkerRuntimeConfigMap:     encoded.WorkerRuntimeConfigMap,
-			RunnerProfilesConfigMap:    encoded.RunnerProfilesConfigMap,
-			RunnerGPURolesConfigMap:    encoded.RunnerGPURolesConfigMap,
-			WorkerControlTLSSecret:     encoded.WorkerControlTLSSecret,
-			ArtifactStoreTLSSecret:     encoded.ArtifactStoreTLSSecret,
-			ExecutionProfileRevisionID: executionProfileRevisionID,
-			InferenceBackendRevision:   encoded.InferenceBackendRevision,
-			ReadinessTimeout:           readinessTimeout,
-			CapacityPolicy: fleetcontroller.CapacityPolicySpec{
-				WorkerHighWatermarkBytes: encoded.CapacityPolicy.WorkerHighWatermarkBytes,
-				WorkerLowWatermarkBytes:  encoded.CapacityPolicy.WorkerLowWatermarkBytes,
-				WorkerCriticalFreeBytes:  encoded.CapacityPolicy.WorkerCriticalFreeBytes,
-				PoolHighWatermarkBytes:   encoded.CapacityPolicy.PoolHighWatermarkBytes,
-				PoolLowWatermarkBytes:    encoded.CapacityPolicy.PoolLowWatermarkBytes,
-				ObservationMaxAge:        observationMaxAge,
-			},
-		}
-		if err := fleetcontroller.ValidateDesiredRevision(desired); err != nil {
-			return nil, nil, err
-		}
-		if _, ok := seenPools[workerPoolID]; ok {
-			return nil, nil, errors.New("fleet desired input contains a duplicate WorkerPool id")
-		}
-		if _, ok := seenNames[desired.Name]; ok {
-			return nil, nil, errors.New("fleet desired input contains a duplicate WorkerPool name")
-		}
-		if _, ok := seenDaemonSets[desired.DaemonSetName]; ok {
-			return nil, nil, errors.New("fleet desired input contains a duplicate DaemonSet name")
-		}
-		seenPools[workerPoolID] = struct{}{}
-		seenNames[desired.Name] = struct{}{}
-		seenDaemonSets[desired.DaemonSetName] = struct{}{}
-		revisions = append(revisions, desired)
-	}
-	retirementPlans := make([]fleetcontroller.RetirementPlan, 0, len(input.Retirements))
-	seenPlanRevisions := make(map[string]struct{}, len(input.Retirements))
-	seenDrainOperations := make(map[uuid.UUID]struct{})
-	for _, encoded := range input.Retirements {
-		workerPoolID, err := uuid.Parse(encoded.WorkerPoolID)
-		if err != nil || workerPoolID == uuid.Nil {
-			return nil, nil, errors.New("fleet retirement plan WorkerPool id is invalid")
-		}
-		deadline, err := time.Parse(time.RFC3339, encoded.Deadline)
-		if err != nil {
-			return nil, nil, errors.New("fleet retirement plan deadline must be RFC3339")
-		}
-		plan := fleetcontroller.RetirementPlan{
-			Revision: encoded.Revision, WorkerPoolID: workerPoolID, Namespace: namespace,
-			WorkerPoolName:          encoded.WorkerPoolName,
-			WorkerPoolKubernetesUID: encoded.WorkerPoolKubernetesUID,
-			DaemonSetName:           encoded.DaemonSetName,
-			DaemonSetKubernetesUID:  encoded.DaemonSetKubernetesUID,
-			Reason:                  encoded.Reason, Deadline: deadline.UTC(),
-			Workers: make([]fleetcontroller.WorkerRetirement, 0, len(encoded.Workers)),
-		}
-		for _, encodedWorker := range encoded.Workers {
-			operationID, operationErr := uuid.Parse(encodedWorker.OperationID)
-			workerID, workerErr := uuid.Parse(encodedWorker.WorkerID)
-			if operationErr != nil || operationID == uuid.Nil ||
-				workerErr != nil || workerID == uuid.Nil {
-				return nil, nil, errors.New("fleet retirement Worker identity is invalid")
-			}
-			if _, exists := seenDrainOperations[operationID]; exists {
-				return nil, nil, errors.New("fleet desired input reuses a retirement DrainOperation id")
-			}
-			seenDrainOperations[operationID] = struct{}{}
-			plan.Workers = append(plan.Workers, fleetcontroller.WorkerRetirement{
-				OperationID: operationID, WorkerID: workerID,
-				WorkerEpoch: encodedWorker.WorkerEpoch, PodName: encodedWorker.PodName,
-				PodKubernetesUID: encodedWorker.PodKubernetesUID,
-			})
-		}
-		if err := fleetcontroller.ValidateRetirementPlan(plan); err != nil {
-			return nil, nil, err
-		}
-		if _, exists := seenPlanRevisions[plan.Revision]; exists {
-			return nil, nil, errors.New("fleet desired input contains a duplicate retirement plan revision")
-		}
-		seenPlanRevisions[plan.Revision] = struct{}{}
-		retirementPlans = append(retirementPlans, plan)
-	}
-	if err := fleetcontroller.ValidateRuntimeConfiguration(revisions, retirementPlans); err != nil {
-		return nil, nil, err
-	}
-	return revisions, retirementPlans, nil
+	return fleetcontroller.DecodeDesiredConfiguration(encoded, namespace)
 }
 
 func requireHostPort(address string, allowEmptyHost bool) error {

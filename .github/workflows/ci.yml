@@ -9,17 +9,16 @@ on:
 permissions:
   contents: read
 
-env:
-  VELA_REQUIRE_PINNED_FFPROBE: "1"
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  verify:
+  generated_runner:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-go@v6
         with:
@@ -40,6 +39,66 @@ jobs:
         working-directory: runner
         run: uv sync --frozen
 
+      - name: Verify generated contracts
+        run: make verify-generated
+
+      - name: Verify H3 runner
+        working-directory: runner
+        run: |
+          uv run --frozen ruff check .
+          uv run --frozen pytest
+
+  go_quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.22"
+          enable-cache: true
+          cache-dependency-glob: runner/uv.lock
+
+      - name: Install locked H3 runner environment
+        working-directory: runner
+        run: uv sync --frozen
+
+      - name: Install deployment validation dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ripgrep
+
+      - name: Verify Go source and deployment contracts
+        run: |
+          go vet ./...
+          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1 run ./...
+          go test ./...
+          make test-cross
+          make validate-deployment
+
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VELA_REQUIRE_PINNED_FFPROBE: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Build pinned ffprobe
         shell: bash
         run: |
@@ -59,6 +118,7 @@ jobs:
             --disable-autodetect \
             --disable-doc \
             --disable-network \
+            --disable-x86asm \
             --disable-shared \
             --enable-static \
             --extra-ldflags=-static \
@@ -82,14 +142,59 @@ jobs:
           echo "VELA_ARTIFACT_VALIDATOR_HELPER_PATH=${RUNNER_TEMP}/ffprobe-bin/vela-artifact-validator" \
             >> "${GITHUB_ENV}"
 
-      - name: Verify generated, source, and deployment contracts
-        run: make verify
+      - name: Verify pinned ffprobe production sandbox
+        shell: bash
+        run: |
+          original_userns_policy="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)"
+          restore_userns_policy() {
+            sudo sysctl -w \
+              "kernel.apparmor_restrict_unprivileged_userns=${original_userns_policy}"
+          }
+          trap restore_userns_policy EXIT
 
-      - name: PostgreSQL and JetStream integration test
-        run: make test-integration
+          # Ubuntu 24.04 runners otherwise deny the sandbox's unprivileged mount namespace.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          go test ./internal/artifactvalidator -count=1
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration shard ${{ matrix.shard }} of 10
+        run: |
+          make test-integration-shard \
+            INTEGRATION_TEST_SHARD_INDEX=${{ matrix.shard }} \
+            INTEGRATION_TEST_SHARD_TOTAL=10 \
+            INTEGRATION_TEST_TIMEOUT=8m
+
+  contracts:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
 
       - name: Check contract compatibility
-        if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
@@ -103,4 +208,23 @@ jobs:
             git show "${BASE_SHA}:api/openapi/vela.yaml" > "${contract_base}/vela.yaml"
             go run github.com/oasdiff/oasdiff@v1.29.1 breaking \
               "${contract_base}/vela.yaml" api/openapi/vela.yaml
+          fi
+
+  verify:
+    if: always()
+    needs: [generated_runner, go_quality, sandbox, integration, contracts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every CI lane
+        shell: bash
+        run: |
+          test "${{ needs.generated_runner.result }}" = success
+          test "${{ needs.go_quality.result }}" = success
+          test "${{ needs.sandbox.result }}" = success
+          test "${{ needs.integration.result }}" = success
+          if [[ "${{ github.event_name }}" == pull_request ]]; then
+            test "${{ needs.contracts.result }}" = success
+          else
+            test "${{ needs.contracts.result }}" = skipped
           fi

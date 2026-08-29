@@ -3,6 +3,7 @@ package runnertransport
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -19,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/debugdumpcontract"
 	"github.com/vivym/vela/internal/executionprogress"
 	"github.com/vivym/vela/internal/securefile"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -36,6 +39,7 @@ const (
 	maxRunnerOutputPath    = 4096
 	maxReadinessEvidence   = 16 * 1024
 	maxReadinessDuration   = 2 * time.Hour
+	debugDumpContentType   = debugdumpcontract.ContentType
 )
 
 var (
@@ -90,6 +94,12 @@ type ExecutionSpec struct {
 	ExecutionProfileRevisionID uuid.UUID
 	OutputSpecID               uuid.UUID
 	RequestContent             json.RawMessage
+	DebugDumpAuthorization     *DebugDumpAuthorizationSnapshot
+}
+
+type DebugDumpAuthorizationSnapshot struct {
+	AuthorizationID uuid.UUID
+	ExpiresAt       time.Time
 }
 
 type CommandDecision string
@@ -149,6 +159,14 @@ type Status struct {
 	GPUHealth                 json.RawMessage
 	LocalArtifactState        json.RawMessage
 	Failure                   *Failure
+	DebugDump                 *DebugDump
+}
+
+type DebugDump struct {
+	Content     json.RawMessage
+	SizeBytes   int64
+	SHA256      [sha256.Size]byte
+	ContentType string
 }
 
 type Output struct {
@@ -297,15 +315,22 @@ func (client *Client) Prepare(
 	if err := validateExecutionSpec(spec); err != nil {
 		return PrepareResult{}, err
 	}
+	protoSpec := &velav1.RunnerExecutionSpec{
+		ModelRevisionId:            spec.ModelRevisionID.String(),
+		GenerationPresetRevisionId: spec.GenerationPresetRevisionID.String(),
+		ExecutionProfileRevisionId: spec.ExecutionProfileRevisionID.String(),
+		OutputSpecId:               spec.OutputSpecID.String(),
+		RequestContentJson:         append([]byte(nil), spec.RequestContent...),
+	}
+	if spec.DebugDumpAuthorization != nil {
+		protoSpec.DebugDumpAuthorization = &velav1.RunnerDebugDumpAuthorizationSnapshot{
+			AuthorizationId: spec.DebugDumpAuthorization.AuthorizationID.String(),
+			ExpiresAt:       timestamppb.New(spec.DebugDumpAuthorization.ExpiresAt),
+		}
+	}
 	response, err := client.runner.Prepare(ctx, &velav1.PrepareRequest{
-		Identity: protoIdentity(identity),
-		ExecutionSpec: &velav1.RunnerExecutionSpec{
-			ModelRevisionId:            spec.ModelRevisionID.String(),
-			GenerationPresetRevisionId: spec.GenerationPresetRevisionID.String(),
-			ExecutionProfileRevisionId: spec.ExecutionProfileRevisionID.String(),
-			OutputSpecId:               spec.OutputSpecID.String(),
-			RequestContentJson:         append([]byte(nil), spec.RequestContent...),
-		},
+		Identity:                   protoIdentity(identity),
+		ExecutionSpec:              protoSpec,
 		SameAuthorityLocalRecovery: sameAuthorityLocalRecovery,
 	})
 	if err != nil {
@@ -436,6 +461,8 @@ func (client *Client) Status(ctx context.Context, identity AttemptIdentity) (Sta
 	if err != nil {
 		return Status{}, err
 	}
+	// Optional diagnostic evidence never invalidates the authoritative execution status.
+	debugDump, _ := parseDebugDump(state, response.GetDebugDump(), identity, failure)
 	return Status{
 		State:                     state,
 		Sequence:                  response.GetSequence(),
@@ -445,6 +472,7 @@ func (client *Client) Status(ctx context.Context, identity AttemptIdentity) (Sta
 		GPUHealth:                 gpuHealth,
 		LocalArtifactState:        localState,
 		Failure:                   failure,
+		DebugDump:                 debugDump,
 	}, nil
 }
 
@@ -577,6 +605,13 @@ func validateExecutionSpec(spec ExecutionSpec) error {
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return errors.New("runner request content must contain one JSON object")
+	}
+	if authorization := spec.DebugDumpAuthorization; authorization != nil {
+		timestamp := timestamppb.New(authorization.ExpiresAt)
+		if authorization.AuthorizationID == uuid.Nil || authorization.ExpiresAt.IsZero() ||
+			timestamp.CheckValid() != nil {
+			return errors.New("runner debug dump authorization is invalid")
+		}
 	}
 	return nil
 }
@@ -857,6 +892,53 @@ func parseFailure(state ExecutionState, protoFailure *velav1.RunnerFailure) (*Fa
 		InferenceBackendRevision: protoFailure.GetInferenceBackendRevision(),
 		RetryRecommended:         protoFailure.GetRetryRecommended(),
 		WorkerReusable:           protoFailure.GetWorkerReusable(),
+	}, nil
+}
+
+func parseDebugDump(
+	state ExecutionState,
+	candidate *velav1.RunnerDebugDump,
+	identity AttemptIdentity,
+	failure *Failure,
+) (*DebugDump, error) {
+	if state != ExecutionFailed {
+		if candidate != nil {
+			return nil, errors.New("non-failed runner Status contains a debug dump")
+		}
+		return nil, nil
+	}
+	if candidate == nil {
+		return nil, nil
+	}
+	content := candidate.GetContent()
+	if len(content) == 0 || len(content) > debugdumpcontract.MaxBytes ||
+		candidate.GetSizeBytes() != int64(len(content)) ||
+		len(candidate.GetSha256()) != sha256.Size ||
+		candidate.GetContentType() != debugdumpcontract.ContentType {
+		return nil, errors.New("failed runner Status has an invalid debug dump receipt")
+	}
+	envelope, err := debugdumpcontract.Parse(content)
+	if err != nil || failure == nil || envelope.AttemptID != identity.AttemptID.String() ||
+		envelope.JobID != identity.JobID.String() || envelope.WorkerID != identity.WorkerID.String() ||
+		envelope.WorkerEpoch != identity.WorkerEpoch || envelope.LeaseFence != identity.LeaseFence ||
+		envelope.BackendStage != failure.BackendStage ||
+		envelope.FailureClass != failure.FailureClass ||
+		envelope.FailureFingerprint != failure.FailureFingerprint ||
+		envelope.InferenceBackendRevision != failure.InferenceBackendRevision ||
+		envelope.RetryRecommended != failure.RetryRecommended ||
+		envelope.WorkerReusable != failure.WorkerReusable ||
+		!slices.Equal(envelope.GPUUUIDs, failure.GPUUUIDs) {
+		return nil, errors.New("failed runner Status debug dump envelope is invalid")
+	}
+	digest := sha256.Sum256(content)
+	if !bytes.Equal(digest[:], candidate.GetSha256()) {
+		return nil, errors.New("failed runner Status debug dump checksum does not match")
+	}
+	return &DebugDump{
+		Content:     append(json.RawMessage(nil), content...),
+		SizeBytes:   candidate.GetSizeBytes(),
+		SHA256:      digest,
+		ContentType: candidate.GetContentType(),
 	}, nil
 }
 

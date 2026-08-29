@@ -15,6 +15,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/debugdump"
+	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
@@ -106,6 +108,9 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 		t.Fatalf("concurrent Assignment replay differs: first=%#v second=%#v", assignments[0], assignments[1])
 	}
 	first := assignments[0]
+	if first.DebugDumpAuthorization != nil {
+		t.Fatalf("default-off Assignment debug authorization = %#v", first.DebugDumpAuthorization)
+	}
 	if first.AttemptID == uuid.Nil || first.JobID != candidate.JobID || first.WorkerID != identity.ID {
 		t.Fatalf("Assignment identity = %#v", first)
 	}
@@ -277,6 +282,88 @@ func TestAcquireReplaysOneAssignmentWithoutRenewingLease(t *testing.T) {
 		assignedEvent.GetWorkerId() != first.WorkerID.String() ||
 		assignedEvent.GetLeaseFence() != uint64(first.LeaseFence) {
 		t.Fatalf("job.assigned envelope = %#v", &envelope)
+	}
+}
+
+func TestAcquireSnapshotsActiveDebugDumpAuthorizationAcrossReplay(t *testing.T) {
+	fixture := newAssignmentFixture(t, "assignment-debug-dump-authorization", 7)
+	principalID := uuid.New()
+	seedHumanRoleFixture(
+		t,
+		fixture.database.Admin,
+		principalID,
+		"assignment-debug-dump-admin",
+		nil,
+		map[string][]string{testProjectID: {"ProjectAdmin"}},
+	)
+	authenticator := newHumanMembershipAuthenticator(
+		t,
+		fixture.database,
+		newRolePool(t, fixture.database.DSN, "vela_auth_login", "vela-auth-password"),
+		newRolePool(
+			t,
+			fixture.database.DSN,
+			"vela_human_auth_login",
+			"vela-human-auth-password",
+		),
+		testCredentialPepper,
+		staticOIDCTokenVerifier{identity: identity.OIDCIdentity{
+			Issuer: "https://identity.example.com", Subject: "assignment-debug-dump-admin",
+			ExpiresAt: time.Now().UTC().Add(time.Hour),
+		}},
+	)
+	actor, err := authenticator.Authenticate(context.Background(), "assignment-debug-dump-token")
+	if err != nil {
+		t.Fatalf("authenticate debug dump ProjectAdmin: %v", err)
+	}
+	projectID := uuid.MustParse(testProjectID)
+	actor, ok := actor.ForProject(projectID)
+	if !ok {
+		t.Fatal("select debug dump Project authority")
+	}
+	debugService, err := debugdump.NewService(newRolePool(
+		t,
+		fixture.database.DSN,
+		"vela_debug_dump_request_login",
+		"vela-debug-dump-request-password",
+	))
+	if err != nil {
+		t.Fatalf("create debug dump service: %v", err)
+	}
+	authorization, err := debugService.Authorize(
+		context.Background(),
+		actor,
+		projectID,
+		fixture.candidate.JobID,
+		"assignment-debug-dump-authorization",
+		debugdump.PurposeIncidentInvestigation,
+	)
+	if err != nil {
+		t.Fatalf("authorize Assignment debug dump: %v", err)
+	}
+
+	assignment, err := fixture.service.Acquire(
+		context.Background(), fixture.worker, 7, &fixture.candidate,
+	)
+	if err != nil {
+		t.Fatalf("Acquire authorized Assignment: %v", err)
+	}
+	if assignment.DebugDumpAuthorization == nil ||
+		assignment.DebugDumpAuthorization.AuthorizationID != authorization.ID ||
+		!assignment.DebugDumpAuthorization.ExpiresAt.Equal(authorization.ExpiresAt) {
+		t.Fatalf(
+			"Assignment debug dump authorization = %#v, want %s until %s",
+			assignment.DebugDumpAuthorization,
+			authorization.ID,
+			authorization.ExpiresAt,
+		)
+	}
+	replayed, err := fixture.service.Acquire(context.Background(), fixture.worker, 7, nil)
+	if err != nil {
+		t.Fatalf("replay authorized Assignment: %v", err)
+	}
+	if !sameAssignmentAuthority(assignment, replayed) {
+		t.Fatalf("authorized Assignment replay = %#v, want %#v", replayed, assignment)
 	}
 }
 
@@ -1567,6 +1654,15 @@ func waitForDatabaseTimeAfter(t *testing.T, db *sql.DB, instant time.Time) {
 }
 
 func sameAssignmentAuthority(left, right workercontrol.Assignment) bool {
+	if (left.DebugDumpAuthorization == nil) != (right.DebugDumpAuthorization == nil) {
+		return false
+	}
+	if left.DebugDumpAuthorization != nil &&
+		*left.DebugDumpAuthorization != *right.DebugDumpAuthorization {
+		return false
+	}
+	left.DebugDumpAuthorization = nil
+	right.DebugDumpAuthorization = nil
 	left.LeaseValidFor = 0
 	right.LeaseValidFor = 0
 	return left == right

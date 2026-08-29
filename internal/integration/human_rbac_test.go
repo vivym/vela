@@ -50,14 +50,15 @@ func TestHumanFixedRoleMatrixKeepsProjectPermissionsExplicit(t *testing.T) {
 		{
 			name: "ProjectAdmin", subject: "project-admin-matrix",
 			projectRoles: map[string][]string{testProjectID: {"ProjectAdmin"}},
-				expectedScope: map[string][]string{
-					testProjectID: {
-						identity.ScopeContentDeletionManage,
-						identity.ScopeProjectMembersManage,
-						identity.ScopeProjectMembersRead,
-						identity.ScopeRetentionPolicyManage,
-						identity.ScopeServicePrincipalsManage,
-						identity.ScopeServicePrincipalsRead,
+			expectedScope: map[string][]string{
+				testProjectID: {
+					identity.ScopeContentDeletionManage,
+					identity.ScopeDebugDumpsManage,
+					identity.ScopeProjectMembersManage,
+					identity.ScopeProjectMembersRead,
+					identity.ScopeRetentionPolicyManage,
+					identity.ScopeServicePrincipalsManage,
+					identity.ScopeServicePrincipalsRead,
 					identity.ScopeWebhooksManage,
 					identity.ScopeWebhooksRead,
 				},
@@ -88,15 +89,16 @@ func TestHumanFixedRoleMatrixKeepsProjectPermissionsExplicit(t *testing.T) {
 				testProjectID:    {"ProjectAdmin", "ProjectViewer"},
 				testProjectTwoID: {"Developer"},
 			},
-				expectedScope: map[string][]string{
-					testProjectID: {
-						identity.ScopeArtifactsRead,
-						identity.ScopeContentDeletionManage,
-						identity.ScopeJobsRead,
-						identity.ScopeProjectMembersManage,
-						identity.ScopeProjectMembersRead,
-						identity.ScopeRetentionPolicyManage,
-						identity.ScopeServicePrincipalsManage,
+			expectedScope: map[string][]string{
+				testProjectID: {
+					identity.ScopeArtifactsRead,
+					identity.ScopeContentDeletionManage,
+					identity.ScopeDebugDumpsManage,
+					identity.ScopeJobsRead,
+					identity.ScopeProjectMembersManage,
+					identity.ScopeProjectMembersRead,
+					identity.ScopeRetentionPolicyManage,
+					identity.ScopeServicePrincipalsManage,
 					identity.ScopeServicePrincipalsRead,
 					identity.ScopeWebhooksManage,
 					identity.ScopeWebhooksRead,

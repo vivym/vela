@@ -562,12 +562,28 @@ func parseAssignment(message *velav1.WorkerAssignment) (workercontrol.Assignment
 	if err != nil {
 		return workercontrol.Assignment{}, err
 	}
+	var debugDumpAuthorization *workercontrol.DebugDumpAuthorizationSnapshot
+	if snapshot := message.GetDebugDumpAuthorization(); snapshot != nil {
+		authorizationID, authorizationErr := requiredUUID(snapshot.GetAuthorizationId())
+		if authorizationErr != nil {
+			return workercontrol.Assignment{}, errors.New("worker control Assignment debug authorization identity is invalid")
+		}
+		authorizationExpiresAt, authorizationErr := requiredTimestamp(snapshot.GetExpiresAt())
+		if authorizationErr != nil {
+			return workercontrol.Assignment{}, errors.New("worker control Assignment debug authorization expiry is invalid")
+		}
+		debugDumpAuthorization = &workercontrol.DebugDumpAuthorizationSnapshot{
+			AuthorizationID: authorizationID,
+			ExpiresAt:       authorizationExpiresAt,
+		}
+	}
 	return workercontrol.Assignment{
 		AttemptID: attemptID, JobID: jobID, WorkerID: workerID,
 		WorkerEpoch: message.GetWorkerEpoch(), ModelRevisionID: modelID,
 		GenerationPresetRevisionID: presetID, ExecutionProfileRevisionID: profileID,
 		OutputSpecID: outputSpecID, RequestContent: requestContent,
-		AttemptNumber: message.GetAttemptNumber(), LeaseToken: message.GetLeaseToken(),
+		DebugDumpAuthorization: debugDumpAuthorization,
+		AttemptNumber:          message.GetAttemptNumber(), LeaseToken: message.GetLeaseToken(),
 		LeaseFence: message.GetLeaseFence(), LeaseExpiresAt: expiresAt, LeaseValidFor: validFor,
 	}, nil
 }

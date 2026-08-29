@@ -18,14 +18,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nats-io/jwt/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/nats-io/nkeys"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/vivym/vela/internal/eventstream"
 	"github.com/vivym/vela/internal/natsauth"
-	"github.com/vivym/vela/internal/outbox"
 )
 
 func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
@@ -178,16 +179,17 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 		t.Fatalf("flush Scheduler job.ready subscription: %v", err)
 	}
 
-	broker, err := outbox.NewJetStreamBroker(outboxConnection.Conn)
+	outboxJetStream, err := jetstream.New(outboxConnection.Conn)
 	if err != nil {
-		t.Fatalf("create authenticated Outbox JetStream broker: %v", err)
+		t.Fatalf("create authenticated Outbox JetStream client: %v", err)
 	}
 	const eventID = "00000000-0000-0000-0000-000000001801"
-	receipt, err := broker.Publish(
+	receipt, err := outboxJetStream.Publish(
 		context.Background(),
 		"vela.events.job.ready",
-		eventID,
 		[]byte(`{"event_id":"`+eventID+`","event_type":"job.ready"}`),
+		jetstream.WithMsgID(eventID),
+		jetstream.WithExpectStream(eventstream.StreamName),
 	)
 	if err != nil {
 		t.Fatalf("publish with exact Outbox workload credential: %v", err)
@@ -278,15 +280,16 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 			asyncErr,
 		)
 	}
-	rotatingBroker, err := outbox.NewJetStreamBroker(rotatingConnection.Conn)
+	rotatingJetStream, err := jetstream.New(rotatingConnection.Conn)
 	if err != nil {
-		t.Fatalf("create rotated Outbox broker: %v", err)
+		t.Fatalf("create rotated Outbox JetStream client: %v", err)
 	}
-	rotatedReceipt, err := rotatingBroker.Publish(
+	rotatedReceipt, err := rotatingJetStream.Publish(
 		context.Background(),
 		"vela.events.job.ready",
-		"00000000-0000-0000-0000-000000001802",
 		[]byte(`{"event_type":"job.ready","rotation":true}`),
+		jetstream.WithMsgID("00000000-0000-0000-0000-000000001802"),
+		jetstream.WithExpectStream(eventstream.StreamName),
 	)
 	if err != nil || rotatedReceipt.Stream != "VELA_EVENTS" || rotatedReceipt.Sequence != 2 {
 		t.Fatalf("rotated Outbox PubAck = %#v error %v", rotatedReceipt, err)
@@ -392,6 +395,119 @@ func TestNATSWorkloadIdentityAndSubjectAuthorization(t *testing.T) {
 	}
 }
 
+func TestSchedulerConsumerWorkloadIdentity(t *testing.T) {
+	fixture := startAuthenticatedNATS(t)
+	ctx := context.Background()
+	bootstrap, bootstrapErrors := fixture.connectCredential(t, fixture.bootstrapCredential, true)
+	t.Cleanup(bootstrap.Close)
+	bootstrapJetStream, err := jetstream.New(bootstrap)
+	if err != nil {
+		t.Fatalf("create bootstrap JetStream client: %v", err)
+	}
+	streamConfig := eventstream.StreamConfig()
+	streamConfig.Replicas = 1
+	stream, err := bootstrapJetStream.CreateStream(ctx, streamConfig)
+	if err != nil {
+		t.Fatalf("create Scheduler workload test stream: %v", err)
+	}
+	consumerConfig := eventstream.SchedulerConsumerConfig()
+	consumerConfig.Replicas = 1
+	if _, err := stream.CreateConsumer(ctx, consumerConfig); err != nil {
+		t.Fatalf("create Scheduler workload test consumer: %v", err)
+	}
+	assertNoUnexpectedNATSError(t, bootstrapErrors)
+
+	legacyConnection, err := natsauth.ConnectScheduler(
+		fixture.schedulerConfig(fixture.schedulerCredential, fixture.schedulerUser),
+		natsauth.Handlers{},
+	)
+	if legacyConnection != nil {
+		legacyConnection.Close()
+		t.Fatal("Scheduler durable-consumer connector accepted the legacy subscription credential")
+	}
+	if !errors.Is(err, natsauth.ErrInvalidSchedulerCredential) {
+		t.Fatalf("legacy Scheduler credential error = %v, want workload identity rejection", err)
+	}
+
+	schedulerErrors := make(chan error, 16)
+	schedulerConnection, err := natsauth.ConnectScheduler(
+		fixture.schedulerConfig(
+			fixture.schedulerConsumerCredential,
+			fixture.schedulerConsumerUser,
+		),
+		natsauth.Handlers{AsyncError: func(err error) { schedulerErrors <- err }},
+	)
+	if err != nil {
+		t.Fatalf("connect Scheduler durable-consumer workload: %v", err)
+	}
+	t.Cleanup(schedulerConnection.Close)
+	schedulerJetStream, err := jetstream.New(schedulerConnection.Conn)
+	if err != nil {
+		t.Fatalf("create Scheduler JetStream client: %v", err)
+	}
+	schedulerStream, err := schedulerJetStream.Stream(ctx, eventstream.StreamName)
+	if err != nil {
+		t.Fatalf("read release-owned Scheduler stream: %v", err)
+	}
+	schedulerConsumer, err := schedulerStream.Consumer(ctx, eventstream.SchedulerConsumerName)
+	if err != nil {
+		t.Fatalf("bind release-owned Scheduler durable consumer: %v", err)
+	}
+
+	outboxConnection, err := natsauth.ConnectOutbox(
+		fixture.outboxConfig(fixture.outboxCredential, fixture.outboxUser),
+		natsauth.Handlers{},
+	)
+	if err != nil {
+		t.Fatalf("connect Outbox workload for Scheduler wakeup: %v", err)
+	}
+	t.Cleanup(outboxConnection.Close)
+	outboxJetStream, err := jetstream.New(outboxConnection.Conn)
+	if err != nil {
+		t.Fatalf("create Scheduler wakeup Outbox JetStream client: %v", err)
+	}
+	messageID := uuid.NewString()
+	if _, err := outboxJetStream.Publish(
+		ctx,
+		eventstream.SchedulerFilterSubject,
+		[]byte("scheduler-wakeup"),
+		jetstream.WithMsgID(messageID),
+		jetstream.WithExpectStream(eventstream.StreamName),
+	); err != nil {
+		t.Fatalf("publish Scheduler wakeup with Outbox workload: %v", err)
+	}
+	delivery, err := schedulerConsumer.Next(jetstream.FetchMaxWait(2 * time.Second))
+	if err != nil {
+		t.Fatalf("fetch Scheduler wakeup with least-authority credential: %v", err)
+	}
+	if delivery.Headers().Get(jetstream.MsgIDHeader) != messageID {
+		t.Fatalf("fetched Scheduler wakeup id = %q, want %q", delivery.Headers().Get(jetstream.MsgIDHeader), messageID)
+	}
+	if err := delivery.DoubleAck(ctx); err != nil {
+		t.Fatalf("confirm Scheduler wakeup with least-authority credential: %v", err)
+	}
+	assertNoUnexpectedNATSError(t, schedulerErrors)
+
+	expectSubscribePermissionViolation(
+		t,
+		schedulerConnection.Conn,
+		schedulerErrors,
+		eventstream.SchedulerFilterSubject,
+	)
+	expectPublishPermissionViolation(
+		t,
+		schedulerConnection.Conn,
+		schedulerErrors,
+		eventstream.SchedulerFilterSubject,
+	)
+	expectPublishPermissionViolation(
+		t,
+		schedulerConnection.Conn,
+		schedulerErrors,
+		"$JS.API.STREAM.DELETE."+eventstream.StreamName,
+	)
+}
+
 func reserveNATSProxyAddress(t *testing.T) (string, string) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -456,21 +572,24 @@ func proxyNATSConnection(client, upstream net.Conn) {
 }
 
 type authenticatedNATSFixture struct {
-	url                     string
-	rootCAFile              string
-	workloadAccount         string
-	workloadAccountSigner   string
-	outboxUser              string
-	revokedOutboxUser       string
-	outboxCredential        string
-	revokedOutboxCredential string
-	overlapOutboxUser       string
-	overlapOutboxCredential string
-	schedulerCredential     string
-	bootstrapCredential     string
-	systemCredential        string
-	rootCAPEM               []byte
-	container               testcontainers.Container
+	url                         string
+	rootCAFile                  string
+	workloadAccount             string
+	workloadAccountSigner       string
+	outboxUser                  string
+	revokedOutboxUser           string
+	outboxCredential            string
+	revokedOutboxCredential     string
+	overlapOutboxUser           string
+	overlapOutboxCredential     string
+	schedulerUser               string
+	schedulerCredential         string
+	schedulerConsumerUser       string
+	schedulerConsumerCredential string
+	bootstrapCredential         string
+	systemCredential            string
+	rootCAPEM                   []byte
+	container                   testcontainers.Container
 }
 
 func startAuthenticatedNATS(t *testing.T) authenticatedNATSFixture {
@@ -536,6 +655,16 @@ func startAuthenticatedNATS(t *testing.T) authenticatedNATSFixture {
 			claims.Sub.Allow.Add("vela.events.job.ready")
 		},
 	)
+	schedulerConsumer := issueNATSUser(
+		t, directory, "scheduler-consumer.creds", workloadAccountPublic, workloadSigner,
+		"vela-scheduler-consumer", func(claims *jwt.UserClaims) {
+			claims.Pub.Allow.Add("$JS.API.STREAM.INFO.VELA_EVENTS")
+			claims.Pub.Allow.Add("$JS.API.CONSUMER.INFO.VELA_EVENTS.VELA_SCHEDULER")
+			claims.Pub.Allow.Add("$JS.API.CONSUMER.MSG.NEXT.VELA_EVENTS.VELA_SCHEDULER")
+			claims.Pub.Allow.Add("$JS.ACK.VELA_EVENTS.VELA_SCHEDULER.>")
+			claims.Sub.Allow.Add("_INBOX.>")
+		},
+	)
 	bootstrap := issueNATSUser(
 		t, directory, "bootstrap.creds", workloadAccountPublic, workloadSigner,
 		"vela-test-account-bootstrap", func(claims *jwt.UserClaims) {
@@ -583,6 +712,8 @@ resolver_preload: {
 }
 jetstream {
   store_dir: "/data"
+  # Keep the production-sized stream contract independent of CI runner disk size.
+  max_file_store: 128GiB
 }
 tls {
   cert_file: "/etc/nats/server.crt"
@@ -634,21 +765,24 @@ tls {
 		},
 	)
 	return authenticatedNATSFixture{
-		url:                     "tls://" + endpoint,
-		rootCAFile:              rootCAFile,
-		workloadAccount:         workloadAccountPublic,
-		workloadAccountSigner:   workloadSignerPublic,
-		outboxUser:              outboxUser.publicKey,
-		revokedOutboxUser:       revokedOutbox.publicKey,
-		outboxCredential:        outboxUser.path,
-		revokedOutboxCredential: revokedOutbox.path,
-		overlapOutboxUser:       overlapOutbox.publicKey,
-		overlapOutboxCredential: overlapOutbox.path,
-		schedulerCredential:     scheduler.path,
-		bootstrapCredential:     bootstrap.path,
-		systemCredential:        system.path,
-		rootCAPEM:               caPEM,
-		container:               container,
+		url:                         "tls://" + endpoint,
+		rootCAFile:                  rootCAFile,
+		workloadAccount:             workloadAccountPublic,
+		workloadAccountSigner:       workloadSignerPublic,
+		outboxUser:                  outboxUser.publicKey,
+		revokedOutboxUser:           revokedOutbox.publicKey,
+		outboxCredential:            outboxUser.path,
+		revokedOutboxCredential:     revokedOutbox.path,
+		overlapOutboxUser:           overlapOutbox.publicKey,
+		overlapOutboxCredential:     overlapOutbox.path,
+		schedulerUser:               scheduler.publicKey,
+		schedulerCredential:         scheduler.path,
+		schedulerConsumerUser:       schedulerConsumer.publicKey,
+		schedulerConsumerCredential: schedulerConsumer.path,
+		bootstrapCredential:         bootstrap.path,
+		systemCredential:            system.path,
+		rootCAPEM:                   caPEM,
+		container:                   container,
 	}
 }
 
@@ -702,6 +836,7 @@ func issueNATSUser(
 
 func configureOutboxPermissions(claims *jwt.UserClaims) {
 	claims.Pub.Allow.Add("vela.events.>")
+	claims.Pub.Allow.Add("$JS.API.STREAM.INFO.VELA_EVENTS")
 	claims.Sub.Allow.Add("_INBOX.>")
 }
 
@@ -753,6 +888,20 @@ func (f authenticatedNATSFixture) outboxConfig(
 	expectedUsers ...string,
 ) natsauth.OutboxConfig {
 	return natsauth.OutboxConfig{
+		URL:                             f.url,
+		CredentialsFile:                 credentialFile,
+		RootCAFile:                      f.rootCAFile,
+		ExpectedAccountPublicKey:        f.workloadAccount,
+		ExpectedAccountSignerPublicKeys: []string{f.workloadAccountSigner},
+		ExpectedUserPublicKeys:          expectedUsers,
+	}
+}
+
+func (f authenticatedNATSFixture) schedulerConfig(
+	credentialFile string,
+	expectedUsers ...string,
+) natsauth.SchedulerConfig {
+	return natsauth.SchedulerConfig{
 		URL:                             f.url,
 		CredentialsFile:                 credentialFile,
 		RootCAFile:                      f.rootCAFile,

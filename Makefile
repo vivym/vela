@@ -7,9 +7,22 @@ PROTOC_GEN_GO_VERSION := v1.36.11
 PROTOC_GEN_GO_GRPC_VERSION := v1.6.2
 GOLANGCI_LINT_VERSION := v2.13.1
 INTEGRATION_TEST_TIMEOUT ?= 40m
+INTEGRATION_TEST_SHARD_INDEX ?=
+INTEGRATION_TEST_SHARD_TOTAL ?=
+LAUNCH_RECEIPTS ?=
+RELEASE_BUNDLE_PLAN ?=
+RELEASE_BUNDLE ?=
+RELEASE_REVISION ?=
+RELEASE_ARTIFACT_DIR ?=
+RELEASE_IMAGE_PREFIX ?=
+H3_BACKEND_CONTEXT ?=
+H3_BACKEND_SHA256 ?=
+H3_MOCK_BACKEND_CONTEXT ?=
 TOOLS_BIN := $(CURDIR)/bin
+VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" \
+	"$(RELEASE_IMAGE_PREFIX)" "$(H3_BACKEND_CONTEXT)" "$(H3_BACKEND_SHA256)"
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated lint test test-integration test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -45,13 +58,88 @@ test:
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
 
+test-integration-shard:
+	@test -n "$(INTEGRATION_TEST_SHARD_INDEX)" || \
+		(echo "INTEGRATION_TEST_SHARD_INDEX is required" >&2; exit 2)
+	@test -n "$(INTEGRATION_TEST_SHARD_TOTAL)" || \
+		(echo "INTEGRATION_TEST_SHARD_TOTAL is required" >&2; exit 2)
+	INTEGRATION_TEST_TIMEOUT="$(INTEGRATION_TEST_TIMEOUT)" \
+		sh ./hack/test-integration-shard.sh \
+		"$(INTEGRATION_TEST_SHARD_INDEX)" "$(INTEGRATION_TEST_SHARD_TOTAL)"
+
+build-h3-mock-backend:
+	@test -n "$(H3_MOCK_BACKEND_CONTEXT)" || \
+		(echo "H3_MOCK_BACKEND_CONTEXT is required" >&2; exit 2)
+	go run ./cmd/vela-release-artifacts build-h3-mock-backend \
+		"$(CURDIR)" "$(H3_MOCK_BACKEND_CONTEXT)"
+
+build-host-packages:
+	@test -n "$(RELEASE_REVISION)" || \
+		(echo "RELEASE_REVISION is required" >&2; exit 2)
+	@test -n "$(RELEASE_ARTIFACT_DIR)" || \
+		(echo "RELEASE_ARTIFACT_DIR is required" >&2; exit 2)
+	go run ./cmd/vela-release-artifacts build-host-packages \
+		"$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_ARTIFACT_DIR)"
+
+print-vela-image-build:
+	@go run ./cmd/vela-release-artifacts print-vela-image-build \
+		$(VELA_IMAGE_BUILD_ARGUMENTS)
+
+build-vela-images:
+	go run ./cmd/vela-release-artifacts build-vela-images \
+		$(VELA_IMAGE_BUILD_ARGUMENTS)
+
+build-vela-image-artifacts:
+	@test -n "$(RELEASE_ARTIFACT_DIR)" || \
+		(echo "RELEASE_ARTIFACT_DIR is required" >&2; exit 2)
+	@go run ./cmd/vela-release-artifacts build-vela-image-artifacts \
+		$(VELA_IMAGE_BUILD_ARGUMENTS) "$(RELEASE_ARTIFACT_DIR)"
+
+publish-vela-images:
+	@test -n "$(RELEASE_ARTIFACT_DIR)" || \
+		(echo "RELEASE_ARTIFACT_DIR is required" >&2; exit 2)
+	@go run ./cmd/vela-release-artifacts publish-vela-images \
+		$(VELA_IMAGE_BUILD_ARGUMENTS) "$(RELEASE_ARTIFACT_DIR)"
+
+build-release-bundle:
+	@test -n "$(RELEASE_BUNDLE_PLAN)" || \
+		(echo "RELEASE_BUNDLE_PLAN is required" >&2; exit 2)
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	go run ./cmd/vela-release-bundle build "$(RELEASE_BUNDLE_PLAN)" "$(RELEASE_BUNDLE)"
+
+verify-release-bundle:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	go run ./cmd/vela-release-bundle verify "$(RELEASE_BUNDLE)"
+
+verify-launch:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	@test -n "$(SUPPLY_CHAIN_MANIFEST)" || \
+		(echo "SUPPLY_CHAIN_MANIFEST is required" >&2; exit 2)
+	@test -n "$(SUPPLY_CHAIN_POLICY)" || \
+		(echo "SUPPLY_CHAIN_POLICY is required" >&2; exit 2)
+	@test -n "$(LAUNCH_RECEIPTS)" || \
+		(echo "LAUNCH_RECEIPTS is required" >&2; exit 2)
+	go run ./cmd/vela-verify-launch "$(RELEASE_BUNDLE)" \
+		"$(SUPPLY_CHAIN_MANIFEST)" "$(SUPPLY_CHAIN_POLICY)" "$(LAUNCH_RECEIPTS)"
+
+test-cnpg-failover:
+	./hack/test-cnpg-failover.sh
+
+test-cnpg-pitr:
+	./hack/test-cnpg-pitr.sh
+
 test-cross:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go test -exec=/usr/bin/true ./...
 
 validate-deployment:
 	kubectl kustomize deploy/control-storage >/dev/null
+	kubectl kustomize deploy/vela-control >/dev/null
 	kubectl kustomize deploy/worker-agent >/dev/null
 	kubectl kustomize deploy/fleet-controller >/dev/null
+	kubectl kustomize deploy/observability >/dev/null
 	@test -s deploy/node-agent/vela-node-agent.service
 	@test -s deploy/node-agent/README.md
 	@rg -q "VELA_NODE_AGENT_CONTROLLERS_FILE" deploy/node-agent/README.md cmd/vela-node-agent/main.go
@@ -72,7 +160,10 @@ validate-deployment:
 	@rg -q "name: vela-runner-gpu-roles" deploy/worker-agent/daemonset.yaml
 	@! rg -q "CAP_SYS_ADMIN|privileged: true" deploy/worker-agent/*.yaml
 	@go test ./internal/deploymentcontract -run TestWorkerAgentManifestExcludesRecoveryQuarantineFromRunnerMountNamespace -count=1
+	@go test ./internal/deploymentcontract -run 'TestVelaControl' -count=1
 	@go test ./internal/deploymentcontract -run 'TestFleet' -count=1
+	@go test ./internal/deploymentcontract -run '^TestRenderedRootMaterializersUsePinnedBusyBoxImage$$' -count=1
+	@go test ./internal/deploymentcontract -run 'TestObservability' -count=1
 
 verify-generated: generate
 	git diff --exit-code -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1

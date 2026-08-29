@@ -316,6 +316,7 @@ func TestConnectDispatchesFinalizationOperationsUnderMTLSWorkerIdentity(t *testi
 	if claimResponse.GetMultipartUploadId() != "s3-multipart-session" ||
 		len(claimResponse.GetCompletedParts()) != 1 || claimResponse.GetUploadPart() == nil ||
 		claimResponse.GetUploadPart().GetNumber() != 2 ||
+		claimResponse.GetUploadPart().GetRequiredHeaders()["Host"] != "" ||
 		claimResponse.GetUploadPart().GetRequiredHeaders()["X-Amz-Checksum-Sha256"] == "" ||
 		len(uploadStore.created) != 1 || len(uploadStore.presigned) != 1 ||
 		len(uploadStore.completed) != 1 {
@@ -382,6 +383,10 @@ func TestConnectDispatchesExecutionOperationsUnderMTLSWorkerIdentity(t *testing.
 			RequestContent:             `{"prompt":"private"}`, AttemptNumber: 2,
 			LeaseToken: "opaque-lease-token", LeaseFence: 3,
 			LeaseExpiresAt: now.Add(time.Minute), LeaseValidFor: 45 * time.Second,
+			DebugDumpAuthorization: &workercontrol.DebugDumpAuthorizationSnapshot{
+				AuthorizationID: uuid.MustParse("17000000-0000-0000-0000-000000000008"),
+				ExpiresAt:       now.Add(72 * time.Hour),
+			},
 		},
 		startResult: workercontrol.StartResult{
 			Decision: workercontrol.StartGranted, AttemptID: attemptID, JobID: jobID,
@@ -421,7 +426,10 @@ func TestConnectDispatchesExecutionOperationsUnderMTLSWorkerIdentity(t *testing.
 	assignment := stream.responses[0].GetAssignment()
 	if assignment.GetAttemptId() != attemptID.String() || assignment.GetJobId() != jobID.String() ||
 		assignment.GetRequestContentJson() == nil ||
-		assignment.GetLeaseValidFor().AsDuration() != 45*time.Second {
+		assignment.GetLeaseValidFor().AsDuration() != 45*time.Second ||
+		assignment.GetDebugDumpAuthorization().GetAuthorizationId() !=
+			"17000000-0000-0000-0000-000000000008" ||
+		!assignment.GetDebugDumpAuthorization().GetExpiresAt().AsTime().Equal(now.Add(72*time.Hour)) {
 		t.Fatalf("Assignment response = %#v", assignment)
 	}
 	if coordinator.acquireEpoch != 7 || coordinator.acquireCandidatePresent ||
@@ -883,6 +891,7 @@ type recordingArtifactUploadStore struct {
 	presigned       []artifactstore.MultipartUpload
 	completed       []artifactstore.MultipartUpload
 	completeErr     error
+	completeVersion artifactstore.ObjectVersion
 	headVersion     artifactstore.ObjectVersion
 	headCalls       int
 	beforeComplete  func()
@@ -945,11 +954,25 @@ func (store *recordingArtifactUploadStore) PresignUploadPart(
 	return artifactstore.SignedUploadPart{
 		URL: "https://s3.invalid/signed-part", Method: http.MethodPut,
 		Headers: http.Header{
+			"Host":                  []string{"s3.invalid"},
 			"Content-Length":        []string{strconv.FormatInt(sizeBytes, 10)},
 			"X-Amz-Checksum-Sha256": []string{checksum},
 		},
 		IssuedAt: time.Now(), ExpiresAt: expiresAt,
 	}, nil
+}
+
+func TestTransferableSignedUploadHeadersRejectsMismatchedHost(t *testing.T) {
+	signed := artifactstore.SignedUploadPart{
+		URL: "https://s3.invalid/signed-part",
+		Headers: http.Header{
+			"Host":           []string{"other.invalid"},
+			"Content-Length": []string{"5"},
+		},
+	}
+	if _, err := transferableSignedUploadHeaders(signed); err == nil {
+		t.Fatal("accepted a signed Host that does not match the upload URL")
+	}
 }
 
 func (store *recordingArtifactUploadStore) CompleteMultipartUpload(
@@ -963,6 +986,13 @@ func (store *recordingArtifactUploadStore) CompleteMultipartUpload(
 	store.completed = append(store.completed, upload)
 	if store.completeErr != nil {
 		return artifactstore.ObjectVersion{}, store.completeErr
+	}
+	if store.completeVersion.VersionID != "" {
+		version := store.completeVersion
+		if version.ChecksumSHA256 == "" {
+			version.ChecksumSHA256 = mustMultipartChecksumForStore(parts)
+		}
+		return version, nil
 	}
 	return artifactstore.ObjectVersion{
 		ObjectKey: upload.ObjectKey, VersionID: "version-1", SizeBytes: 15, ContentType: "video/mp4",

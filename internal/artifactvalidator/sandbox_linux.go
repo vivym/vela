@@ -53,7 +53,7 @@ func NewProductionSandbox(config SandboxConfig) (Sandbox, error) {
 	}, nil
 }
 
-func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) ([]byte, error) {
+func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (output []byte, err error) {
 	if sandbox == nil || sandbox.helper == nil || sandbox.ffprobe == nil || ctx == nil || input == nil {
 		return nil, errors.New("production Artifact sandbox is not configured")
 	}
@@ -71,14 +71,23 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) ([]
 	if err != nil {
 		return nil, fmt.Errorf("create Artifact sandbox root: %w", err)
 	}
-	defer os.RemoveAll(sandboxRoot)
+	defer func() {
+		if cleanupErr := os.RemoveAll(sandboxRoot); cleanupErr != nil {
+			output = nil
+			err = errors.Join(err, fmt.Errorf("remove Artifact sandbox root: %w", cleanupErr))
+		}
+	}()
 	if err := os.Chmod(sandboxRoot, 0o700); err != nil {
 		return nil, fmt.Errorf("restrict Artifact sandbox root: %w", err)
+	}
+	helperPath := filepath.Join(sandboxRoot, "artifact-validator-helper")
+	if err := stageSandboxExecutable(sandbox.helper, helperPath); err != nil {
+		return nil, fmt.Errorf("stage pinned Artifact sandbox helper: %w", err)
 	}
 
 	command := exec.CommandContext(
 		ctx,
-		"/proc/self/fd/5",
+		helperPath,
 		"--root", sandboxRoot,
 	)
 	command.Dir = "/"
@@ -128,6 +137,38 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) ([]
 	return stdout.Bytes(), nil
 }
 
+func stageSandboxExecutable(source *os.File, destination string) (err error) {
+	info, err := source.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+		return errors.New("pinned sandbox executable is invalid")
+	}
+	staged, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o500)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := staged.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close staged sandbox executable: %w", closeErr))
+		}
+		if err != nil {
+			if removeErr := os.Remove(destination); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				err = errors.Join(err, fmt.Errorf("remove staged sandbox executable: %w", removeErr))
+			}
+		}
+	}()
+	written, err := io.Copy(staged, io.NewSectionReader(source, 0, info.Size()))
+	if err != nil {
+		return err
+	}
+	if written != info.Size() {
+		return errors.New("staged sandbox executable size is incomplete")
+	}
+	if err := staged.Chmod(0o500); err != nil {
+		return err
+	}
+	return staged.Sync()
+}
+
 func openSandboxExecutable(path string, requireStatic bool) (*os.File, error) {
 	cleaned := filepath.Clean(path)
 	if !filepath.IsAbs(cleaned) {
@@ -165,7 +206,7 @@ func validSandboxExecutableFile(file *os.File, requireStatic bool) bool {
 	if err != nil {
 		return false
 	}
-	defer binary.Close()
+	defer func() { _ = binary.Close() }()
 	libraries, err := binary.ImportedLibraries()
 	return err == nil && len(libraries) == 0
 }
@@ -231,12 +272,12 @@ func RunSandboxHelper(arguments []string) error {
 		return errors.New("artifact sandbox helper did not enter the isolated user namespace")
 	}
 	input := os.NewFile(uintptr(3), "artifact-input")
-	if input == nil {
-		return errors.New("artifact sandbox input descriptor is missing")
+	if err := validateInheritedSandboxDescriptor(input); err != nil {
+		return fmt.Errorf("artifact sandbox input descriptor is invalid: %w", err)
 	}
 	ffprobe := os.NewFile(uintptr(4), "ffprobe")
-	if ffprobe == nil || !validSandboxExecutableFile(ffprobe, true) {
-		return errors.New("artifact sandbox ffprobe descriptor is invalid")
+	if err := validateInheritedSandboxDescriptor(ffprobe); err != nil {
+		return fmt.Errorf("artifact sandbox ffprobe descriptor is invalid: %w", err)
 	}
 	helper := os.NewFile(uintptr(5), "artifact-validator-helper")
 	if helper == nil {
@@ -244,10 +285,6 @@ func RunSandboxHelper(arguments []string) error {
 	}
 	if err := helper.Close(); err != nil {
 		return fmt.Errorf("close Artifact sandbox helper descriptor: %w", err)
-	}
-	inputInfo, err := input.Stat()
-	if err != nil || !inputInfo.Mode().IsRegular() || inputInfo.Size() <= 0 {
-		return errors.New("artifact sandbox input descriptor is invalid")
 	}
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		return fmt.Errorf("make Artifact sandbox mounts private: %w", err)
@@ -304,6 +341,17 @@ func RunSandboxHelper(arguments []string) error {
 	runtime.KeepAlive(input)
 	runtime.KeepAlive(ffprobe)
 	return err
+}
+
+func validateInheritedSandboxDescriptor(file *os.File) error {
+	if file == nil {
+		return errors.New("descriptor is missing")
+	}
+	_, err := unix.FcntlInt(file.Fd(), unix.F_GETFD, 0)
+	if err != nil {
+		return fmt.Errorf("inspect descriptor: %w", err)
+	}
+	return nil
 }
 
 func execSandboxFFprobe(fd int, arguments []string, environment []string) error {

@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const confirmDebugDumpAuthorizationForAssignment = `-- name: ConfirmDebugDumpAuthorizationForAssignment :one
+SELECT vela_confirm_debug_dump_authorization_for_assignment(
+    $1,
+    $2
+)::boolean
+`
+
+type ConfirmDebugDumpAuthorizationForAssignmentParams struct {
+	AuthorizationID uuid.UUID          `db:"authorization_id" json:"authorization_id"`
+	AssignedAt      pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
+}
+
+func (q *Queries) ConfirmDebugDumpAuthorizationForAssignment(ctx context.Context, arg ConfirmDebugDumpAuthorizationForAssignmentParams) (bool, error) {
+	row := q.db.QueryRow(ctx, confirmDebugDumpAuthorizationForAssignment, arg.AuthorizationID, arg.AssignedAt)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countActiveOrganizationAssignments = `-- name: CountActiveOrganizationAssignments :one
 SELECT count(*)::bigint
 FROM attempts
@@ -71,6 +90,8 @@ SELECT
     a.execution_profile_revision_id,
 	 j.output_spec_id,
 	 j.request_content::text AS request_content,
+    a.debug_dump_authorization_id,
+    a.debug_dump_authorization_expires_at,
     a.attempt_number,
     a.worker_id,
     a.worker_epoch,
@@ -103,23 +124,25 @@ type GetActiveWorkerAssignmentParams struct {
 }
 
 type GetActiveWorkerAssignmentRow struct {
-	AttemptID                  uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	JobID                      uuid.UUID          `db:"job_id" json:"job_id"`
-	ModelRevisionID            uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
-	GenerationPresetRevisionID uuid.UUID          `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
-	ExecutionProfileRevisionID uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
-	OutputSpecID               uuid.UUID          `db:"output_spec_id" json:"output_spec_id"`
-	RequestContent             string             `db:"request_content" json:"request_content"`
-	AttemptNumber              int32              `db:"attempt_number" json:"attempt_number"`
-	WorkerID                   uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                int64              `db:"worker_epoch" json:"worker_epoch"`
-	Fence                      int64              `db:"fence" json:"fence"`
-	SchedulerDispatchIntentID  uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
-	SigningKeyID               string             `db:"signing_key_id" json:"signing_key_id"`
-	TokenDigest                []byte             `db:"token_digest" json:"token_digest"`
-	IssuedAt                   pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
-	TokenClaimExpiresAt        pgtype.Timestamptz `db:"token_claim_expires_at" json:"token_claim_expires_at"`
-	ExpiresAt                  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	AttemptID                       uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	JobID                           uuid.UUID          `db:"job_id" json:"job_id"`
+	ModelRevisionID                 uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID      uuid.UUID          `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	ExecutionProfileRevisionID      uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	OutputSpecID                    uuid.UUID          `db:"output_spec_id" json:"output_spec_id"`
+	RequestContent                  string             `db:"request_content" json:"request_content"`
+	DebugDumpAuthorizationID        uuid.NullUUID      `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
+	DebugDumpAuthorizationExpiresAt pgtype.Timestamptz `db:"debug_dump_authorization_expires_at" json:"debug_dump_authorization_expires_at"`
+	AttemptNumber                   int32              `db:"attempt_number" json:"attempt_number"`
+	WorkerID                        uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                     int64              `db:"worker_epoch" json:"worker_epoch"`
+	Fence                           int64              `db:"fence" json:"fence"`
+	SchedulerDispatchIntentID       uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
+	SigningKeyID                    string             `db:"signing_key_id" json:"signing_key_id"`
+	TokenDigest                     []byte             `db:"token_digest" json:"token_digest"`
+	IssuedAt                        pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	TokenClaimExpiresAt             pgtype.Timestamptz `db:"token_claim_expires_at" json:"token_claim_expires_at"`
+	ExpiresAt                       pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
 func (q *Queries) GetActiveWorkerAssignment(ctx context.Context, arg GetActiveWorkerAssignmentParams) (GetActiveWorkerAssignmentRow, error) {
@@ -133,6 +156,8 @@ func (q *Queries) GetActiveWorkerAssignment(ctx context.Context, arg GetActiveWo
 		&i.ExecutionProfileRevisionID,
 		&i.OutputSpecID,
 		&i.RequestContent,
+		&i.DebugDumpAuthorizationID,
+		&i.DebugDumpAuthorizationExpiresAt,
 		&i.AttemptNumber,
 		&i.WorkerID,
 		&i.WorkerEpoch,
@@ -251,6 +276,8 @@ INSERT INTO attempts (
     worker_epoch,
     fleet_protocol_version,
     scheduler_dispatch_intent_id,
+    debug_dump_authorization_id,
+    debug_dump_authorization_expires_at,
     state,
     fence,
     assigned_at
@@ -266,25 +293,29 @@ INSERT INTO attempts (
     $9,
     vela_current_fleet_assignment_protocol_version(),
     $10,
-    'ASSIGNED',
     $11,
-    $12
+    $12,
+    'ASSIGNED',
+    $13,
+    $14
 )
 `
 
 type InsertAttemptParams struct {
-	ID                         uuid.UUID          `db:"id" json:"id"`
-	OrganizationID             uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID                  uuid.UUID          `db:"project_id" json:"project_id"`
-	JobID                      uuid.UUID          `db:"job_id" json:"job_id"`
-	AttemptNumber              int32              `db:"attempt_number" json:"attempt_number"`
-	ExecutionProfileRevisionID uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
-	WorkerPoolID               uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
-	WorkerID                   uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                int64              `db:"worker_epoch" json:"worker_epoch"`
-	SchedulerDispatchIntentID  uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
-	Fence                      int64              `db:"fence" json:"fence"`
-	AssignedAt                 pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
+	ID                              uuid.UUID          `db:"id" json:"id"`
+	OrganizationID                  uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                       uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                           uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptNumber                   int32              `db:"attempt_number" json:"attempt_number"`
+	ExecutionProfileRevisionID      uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	WorkerPoolID                    uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerID                        uuid.UUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                     int64              `db:"worker_epoch" json:"worker_epoch"`
+	SchedulerDispatchIntentID       uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
+	DebugDumpAuthorizationID        uuid.NullUUID      `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
+	DebugDumpAuthorizationExpiresAt pgtype.Timestamptz `db:"debug_dump_authorization_expires_at" json:"debug_dump_authorization_expires_at"`
+	Fence                           int64              `db:"fence" json:"fence"`
+	AssignedAt                      pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
 }
 
 func (q *Queries) InsertAttempt(ctx context.Context, arg InsertAttemptParams) error {
@@ -299,6 +330,8 @@ func (q *Queries) InsertAttempt(ctx context.Context, arg InsertAttemptParams) er
 		arg.WorkerID,
 		arg.WorkerEpoch,
 		arg.SchedulerDispatchIntentID,
+		arg.DebugDumpAuthorizationID,
+		arg.DebugDumpAuthorizationExpiresAt,
 		arg.Fence,
 		arg.AssignedAt,
 	)
@@ -400,6 +433,42 @@ func (q *Queries) ListActiveLeaseSigningKeyIDs(ctx context.Context) ([]string, e
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockActiveDebugDumpAuthorizationForAssignment = `-- name: LockActiveDebugDumpAuthorizationForAssignment :one
+SELECT authorization_id, expires_at
+FROM vela_internal_debug_dump_authorizations
+WHERE organization_id = $1
+  AND project_id = $2
+  AND job_id = $3
+  AND revoked_at IS NULL
+  AND expires_at > $4
+ORDER BY authorized_at DESC, authorization_id DESC
+LIMIT 1
+`
+
+type LockActiveDebugDumpAuthorizationForAssignmentParams struct {
+	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID          uuid.UUID          `db:"job_id" json:"job_id"`
+	AssignedAt     pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
+}
+
+type LockActiveDebugDumpAuthorizationForAssignmentRow struct {
+	AuthorizationID uuid.UUID          `db:"authorization_id" json:"authorization_id"`
+	ExpiresAt       pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+func (q *Queries) LockActiveDebugDumpAuthorizationForAssignment(ctx context.Context, arg LockActiveDebugDumpAuthorizationForAssignmentParams) (LockActiveDebugDumpAuthorizationForAssignmentRow, error) {
+	row := q.db.QueryRow(ctx, lockActiveDebugDumpAuthorizationForAssignment,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.JobID,
+		arg.AssignedAt,
+	)
+	var i LockActiveDebugDumpAuthorizationForAssignmentRow
+	err := row.Scan(&i.AuthorizationID, &i.ExpiresAt)
+	return i, err
 }
 
 const lockAssignmentPoolCapacity = `-- name: LockAssignmentPoolCapacity :one

@@ -61,6 +61,12 @@ message RunnerExecutionSpec {
   string execution_profile_revision_id = 3;
   string output_spec_id = 4;
   bytes request_content_json = 5;
+  RunnerDebugDumpAuthorizationSnapshot debug_dump_authorization = 6;
+}
+
+message RunnerDebugDumpAuthorizationSnapshot {
+  string authorization_id = 1;
+  google.protobuf.Timestamp expires_at = 2;
 }
 
 enum RunnerCommandDecision {
@@ -145,6 +151,14 @@ message StatusResponse {
   bytes gpu_health_json = 7;
   bytes local_artifact_state_json = 8;
   RunnerFailure failure = 9;
+  RunnerDebugDump debug_dump = 10;
+}
+
+message RunnerDebugDump {
+  bytes content = 1;
+  int64 size_bytes = 2;
+  bytes sha256 = 3;
+  string content_type = 4;
 }
 
 message CollectOutputsRequest {

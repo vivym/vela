@@ -119,13 +119,13 @@ type AuditEvent struct {
 }
 
 type Service struct {
-	billingPool         *pgxpool.Pool
-	auditPool           *pgxpool.Pool
-	breakGlassAuditPool *pgxpool.Pool
+	billingPool       *pgxpool.Pool
+	auditPool         *pgxpool.Pool
+	extendedAuditPool *pgxpool.Pool
 }
 
 func NewService(
-	billingPool, auditPool, breakGlassAuditPool *pgxpool.Pool,
+	billingPool, auditPool, extendedAuditPool *pgxpool.Pool,
 ) (*Service, error) {
 	if billingPool == nil {
 		return nil, errors.New("organization billing request database pool is required")
@@ -133,13 +133,13 @@ func NewService(
 	if auditPool == nil {
 		return nil, errors.New("organization audit request database pool is required")
 	}
-	if breakGlassAuditPool == nil {
-		return nil, errors.New("break-glass audit request database pool is required")
+	if extendedAuditPool == nil {
+		return nil, errors.New("extended Organization audit request database pool is required")
 	}
 	return &Service{
-		billingPool:         billingPool,
-		auditPool:           auditPool,
-		breakGlassAuditPool: breakGlassAuditPool,
+		billingPool:       billingPool,
+		auditPool:         auditPool,
+		extendedAuditPool: extendedAuditPool,
 	}, nil
 }
 
@@ -525,10 +525,10 @@ func (s *Service) ListAuditEvents(
 			Message: "audit event list limit must be between 1 and 100",
 		}
 	}
-	if s == nil || s.breakGlassAuditPool == nil {
+	if s == nil || s.extendedAuditPool == nil {
 		return nil, errors.New("organization audit reporting is not configured")
 	}
-	tx, err := s.breakGlassAuditPool.BeginTx(
+	tx, err := s.extendedAuditPool.BeginTx(
 		ctx,
 		pgx.TxOptions{IsoLevel: pgx.ReadCommitted},
 	)
@@ -544,7 +544,7 @@ func (s *Service) ListAuditEvents(
 	rows, err := tx.Query(ctx, `
 		SELECT event_id, source, action, project_id, actor_principal_id,
 			actor_session_id, target_kind, target_id, created_at, scope, outcome_code
-		FROM vela_list_organization_audit_events_v2($1, $2)
+		FROM vela_list_organization_audit_events_v3($1, $2)
 	`, organizationID, limit)
 	if err != nil {
 		return nil, mapDatabaseFailure(err)
@@ -554,14 +554,15 @@ func (s *Service) ListAuditEvents(
 	for rows.Next() {
 		var event AuditEvent
 		var projectID pgtype.UUID
+		var actorPrincipalID, actorSessionID pgtype.UUID
 		var scope, outcomeCode pgtype.Text
 		if err := rows.Scan(
 			&event.EventID,
 			&event.Source,
 			&event.Action,
 			&projectID,
-			&event.ActorPrincipalID,
-			&event.ActorSessionID,
+			&actorPrincipalID,
+			&actorSessionID,
 			&event.TargetKind,
 			&event.TargetID,
 			&event.CreatedAt,
@@ -573,6 +574,12 @@ func (s *Service) ListAuditEvents(
 		if projectID.Valid {
 			value := uuid.UUID(projectID.Bytes)
 			event.ProjectID = &value
+		}
+		if actorPrincipalID.Valid {
+			event.ActorPrincipalID = uuid.UUID(actorPrincipalID.Bytes)
+		}
+		if actorSessionID.Valid {
+			event.ActorSessionID = uuid.UUID(actorSessionID.Bytes)
 		}
 		if scope.Valid {
 			value := scope.String

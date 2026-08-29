@@ -204,6 +204,11 @@ func runWithContext(ctx context.Context, configuration config) error {
 		ArtifactStoreReachable:         artifactStoreProbe.Reachable,
 		Finalization:                   control,
 		PartUploader:                   uploader,
+		DebugDumps:                     control,
+		DebugDumpUploader:              uploader,
+		ReportDebugDumpError: func(cause error) {
+			slog.Warn("authorized debug dump upload failed", "error", cause)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("configure Worker Agent: %w", err)

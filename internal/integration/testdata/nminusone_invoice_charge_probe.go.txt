@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/identity"
+	"github.com/vivym/vela/internal/workercontrol"
 )
 
 func main() {
@@ -49,7 +51,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	result, err := cancellation.NewService(cancelPool, internalPool).Cancel(
+	coordinator := cancellation.NewService(cancelPool, internalPool)
+	result, err := coordinator.Cancel(
 		ctx,
 		principal,
 		projectID,
@@ -59,11 +62,50 @@ func main() {
 		log.Fatal(err)
 	}
 	response := struct {
-		Decision string `json:"decision"`
-		ChargeID string `json:"charge_id"`
-	}{Decision: string(result.Decision)}
+		Decision       string `json:"decision"`
+		ChargeID       string `json:"charge_id"`
+		CancellationID string `json:"cancellation_id"`
+		StopDecision   string `json:"stop_decision"`
+		State          string `json:"state"`
+	}{
+		Decision:       string(result.Decision),
+		CancellationID: result.CancellationID.String(),
+		State:          result.State,
+	}
 	if result.Charge != nil {
 		response.ChargeID = result.Charge.ID.String()
+	}
+	if workerIDText := os.Getenv("VELA_WORKER_ID"); workerIDText != "" {
+		workerID, parseErr := uuid.Parse(workerIDText)
+		if parseErr != nil {
+			log.Fatal(parseErr)
+		}
+		attemptID, parseErr := uuid.Parse(os.Getenv("VELA_ATTEMPT_ID"))
+		if parseErr != nil {
+			log.Fatal(parseErr)
+		}
+		workerEpoch, parseErr := strconv.ParseInt(os.Getenv("VELA_WORKER_EPOCH"), 10, 64)
+		if parseErr != nil {
+			log.Fatal(parseErr)
+		}
+		fence, parseErr := strconv.ParseInt(os.Getenv("VELA_ATTEMPT_FENCE"), 10, 64)
+		if parseErr != nil {
+			log.Fatal(parseErr)
+		}
+		stopped, stopErr := coordinator.AcknowledgeCancellationStop(
+			ctx,
+			workercontrol.AuthenticatedWorker{ID: workerID},
+			workercontrol.LeaseCredentials{
+				AttemptID: attemptID, WorkerEpoch: workerEpoch,
+				Fence: fence, Token: os.Getenv("VELA_LEASE_TOKEN"),
+			},
+			result.CancellationID,
+		)
+		if stopErr != nil {
+			log.Fatal(stopErr)
+		}
+		response.StopDecision = string(stopped.Decision)
+		response.State = stopped.State
 	}
 	if err := json.NewEncoder(os.Stdout).Encode(response); err != nil {
 		log.Fatal(err)

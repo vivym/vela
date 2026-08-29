@@ -13,9 +13,12 @@ const (
 
 func h3WorkerPodTemplate(
 	desired DesiredRevision,
+	placement WorkerPlacement,
 	selector map[string]string,
 ) corev1.PodTemplateSpec {
 	labels := cloneMap(selector)
+	nodeSelector := cloneMap(desired.NodeSelector)
+	nodeSelector[corev1.LabelHostname] = placement.NodeIdentity
 	labels["app.kubernetes.io/part-of"] = "vela"
 	labels["vela.ai/worker-profile"] = "h3"
 	labels[protectedLabel] = "true"
@@ -45,7 +48,7 @@ func h3WorkerPodTemplate(
 			DNSPolicy:                     corev1.DNSClusterFirst,
 			SchedulerName:                 corev1.DefaultSchedulerName,
 			EnableServiceLinks:            &enableServiceLinks,
-			NodeSelector:                  cloneMap(desired.NodeSelector),
+			NodeSelector:                  nodeSelector,
 			SchedulingGates: []corev1.PodSchedulingGate{{
 				Name: IdentityBindingSchedulingGate,
 			}},
@@ -63,10 +66,10 @@ func h3WorkerPodTemplate(
 			},
 			InitContainers: []corev1.Container{h3SocketInitializer(desired.InitImage)},
 			Containers: []corev1.Container{
-				h3WorkerAgentContainer(desired),
-				h3RunnerContainer(desired),
+				h3WorkerAgentContainer(desired, placement),
+				h3RunnerContainer(desired, placement),
 			},
-			Volumes: h3WorkerVolumes(desired),
+			Volumes: h3WorkerVolumes(desired, placement),
 		},
 	}
 }
@@ -113,7 +116,7 @@ chown -R 10001:10001 /var/lib/vela/worker/scratch
 	})
 }
 
-func h3WorkerAgentContainer(desired DesiredRevision) corev1.Container {
+func h3WorkerAgentContainer(desired DesiredRevision, placement WorkerPlacement) corev1.Container {
 	return withKubernetesContainerDefaults(corev1.Container{
 		Name:            "worker-agent",
 		Image:           desired.WorkerAgentImage,
@@ -122,8 +125,8 @@ func h3WorkerAgentContainer(desired DesiredRevision) corev1.Container {
 			fieldEnvironment("VELA_WORKER_ID", "metadata.labels['vela.ai/worker-id']"),
 			fieldEnvironment("VELA_WORKER_EPOCH", "metadata.labels['vela.ai/worker-epoch']"),
 			fieldEnvironment("VELA_WORKER_NODE_IDENTITY", "spec.nodeName"),
-			configMapEnvironment("VELA_WORKER_CONTROL_ADDRESS", desired.WorkerRuntimeConfigMap, "control-address"),
-			configMapEnvironment("VELA_WORKER_CONTROL_SERVER_NAME", desired.WorkerRuntimeConfigMap, "control-server-name"),
+			configMapEnvironment("VELA_WORKER_CONTROL_ADDRESS", placement.WorkerRuntimeConfigMap, "control-address"),
+			configMapEnvironment("VELA_WORKER_CONTROL_SERVER_NAME", placement.WorkerRuntimeConfigMap, "control-server-name"),
 			literalEnvironment("VELA_WORKER_TLS_CERT_FILE", "/etc/vela-worker-tls/tls.crt"),
 			literalEnvironment("VELA_WORKER_TLS_KEY_FILE", "/etc/vela-worker-tls/tls.key"),
 			literalEnvironment("VELA_WORKER_CONTROL_CA_FILE", "/etc/vela-worker-tls/ca.crt"),
@@ -133,9 +136,9 @@ func h3WorkerAgentContainer(desired DesiredRevision) corev1.Container {
 			literalEnvironment("VELA_WORKER_RECOVERY_ROOT", workerScratchRoot+"/recovery"),
 			literalEnvironment("VELA_WORKER_OUTPUT_ROOT", workerScratchRoot+"/outputs"),
 			literalEnvironment("VELA_WORKER_OUTPUT_OWNER_UID", "10001"),
-			configMapEnvironment("VELA_WORKER_OUTPUT_CLEANUP_MIN_BYTES_PER_SECOND", desired.WorkerRuntimeConfigMap, "output-cleanup-min-bytes-per-second"),
+			configMapEnvironment("VELA_WORKER_OUTPUT_CLEANUP_MIN_BYTES_PER_SECOND", placement.WorkerRuntimeConfigMap, "output-cleanup-min-bytes-per-second"),
 			literalEnvironment("VELA_WORKER_INFERENCE_BACKEND_REVISION", desired.InferenceBackendRevision),
-			configMapEnvironment("VELA_WORKER_ARTIFACT_STORE_HEALTH_URL", desired.WorkerRuntimeConfigMap, "artifact-store-health-url"),
+			configMapEnvironment("VELA_WORKER_ARTIFACT_STORE_HEALTH_URL", placement.WorkerRuntimeConfigMap, "artifact-store-health-url"),
 			literalEnvironment("VELA_WORKER_ARTIFACT_STORE_CA_FILE", "/etc/vela-artifact-store-tls/ca.crt"),
 			literalEnvironment("VELA_WORKER_ARTIFACT_STORE_PROBE_TIMEOUT", "2s"),
 			literalEnvironment(
@@ -146,14 +149,14 @@ func h3WorkerAgentContainer(desired DesiredRevision) corev1.Container {
 			literalEnvironment("VELA_WORKER_HOST_QUOTA_SOCKET", "/run/vela-node-agent/worker-quota.sock"),
 			literalEnvironment("VELA_WORKER_HOST_QUOTA_SOCKET_UID", "0"),
 			literalEnvironment("VELA_WORKER_HOST_QUOTA_SOCKET_GID", "10001"),
-			configMapEnvironment("VELA_WORKER_XFS_DEVICE", desired.WorkerRuntimeConfigMap, "xfs-device"),
-			configMapEnvironment("VELA_WORKER_XFS_PROJECT_ID", desired.WorkerRuntimeConfigMap, "xfs-project-id"),
-			configMapEnvironment("VELA_WORKER_ATTEMPT_QUOTA_BYTES", desired.WorkerRuntimeConfigMap, "attempt-quota-bytes"),
-			configMapEnvironment("VELA_WORKER_MAX_ENTRY_BYTES", desired.WorkerRuntimeConfigMap, "max-entry-bytes"),
-			configMapEnvironment("VELA_WORKER_MAX_ENTRIES", desired.WorkerRuntimeConfigMap, "max-entries"),
-			configMapEnvironment("VELA_WORKER_HIGH_WATERMARK_BYTES", desired.WorkerRuntimeConfigMap, "high-watermark-bytes"),
-			configMapEnvironment("VELA_WORKER_LOW_WATERMARK_BYTES", desired.WorkerRuntimeConfigMap, "low-watermark-bytes"),
-			configMapEnvironment("VELA_WORKER_CRITICAL_FREE_BYTES", desired.WorkerRuntimeConfigMap, "critical-free-bytes"),
+			configMapEnvironment("VELA_WORKER_XFS_DEVICE", placement.WorkerRuntimeConfigMap, "xfs-device"),
+			configMapEnvironment("VELA_WORKER_XFS_PROJECT_ID", placement.WorkerRuntimeConfigMap, "xfs-project-id"),
+			configMapEnvironment("VELA_WORKER_ATTEMPT_QUOTA_BYTES", placement.WorkerRuntimeConfigMap, "attempt-quota-bytes"),
+			configMapEnvironment("VELA_WORKER_MAX_ENTRY_BYTES", placement.WorkerRuntimeConfigMap, "max-entry-bytes"),
+			configMapEnvironment("VELA_WORKER_MAX_ENTRIES", placement.WorkerRuntimeConfigMap, "max-entries"),
+			configMapEnvironment("VELA_WORKER_HIGH_WATERMARK_BYTES", placement.WorkerRuntimeConfigMap, "high-watermark-bytes"),
+			configMapEnvironment("VELA_WORKER_LOW_WATERMARK_BYTES", placement.WorkerRuntimeConfigMap, "low-watermark-bytes"),
+			configMapEnvironment("VELA_WORKER_CRITICAL_FREE_BYTES", placement.WorkerRuntimeConfigMap, "critical-free-bytes"),
 			literalEnvironment("VELA_WORKER_TERMINAL_RETENTION", "24h"),
 			literalEnvironment("VELA_WORKER_ALLOW_DEVELOPMENT_HTTP_UPLOADS", "false"),
 		},
@@ -176,7 +179,7 @@ func h3WorkerAgentContainer(desired DesiredRevision) corev1.Container {
 	})
 }
 
-func h3RunnerContainer(desired DesiredRevision) corev1.Container {
+func h3RunnerContainer(desired DesiredRevision, placement WorkerPlacement) corev1.Container {
 	return withKubernetesContainerDefaults(corev1.Container{
 		Name:            "h3-runner",
 		Image:           desired.RunnerImage,
@@ -192,7 +195,7 @@ func h3RunnerContainer(desired DesiredRevision) corev1.Container {
 			literalEnvironment("VELA_RUNNER_PROFILES_FILE", "/etc/vela-runner/profiles/profiles.json"),
 			literalEnvironment("VELA_RUNNER_GPU_ROLES_FILE", "/etc/vela-runner/gpu-roles/gpu-roles.json"),
 			literalEnvironment("VELA_RUNNER_STOP_TIMEOUT", "15"),
-			configMapEnvironment("VELA_RUNNER_MAX_OUTPUT_BYTES", desired.WorkerRuntimeConfigMap, "attempt-quota-bytes"),
+			configMapEnvironment("VELA_RUNNER_MAX_OUTPUT_BYTES", placement.WorkerRuntimeConfigMap, "attempt-quota-bytes"),
 		},
 		Resources: corev1.ResourceRequirements{
 			Requests: resourceList(map[corev1.ResourceName]string{
@@ -221,7 +224,7 @@ func withKubernetesContainerDefaults(container corev1.Container) corev1.Containe
 	return container
 }
 
-func h3WorkerVolumes(desired DesiredRevision) []corev1.Volume {
+func h3WorkerVolumes(desired DesiredRevision, placement WorkerPlacement) []corev1.Volume {
 	mode0400 := int32(0o400)
 	mode0440 := int32(0o440)
 	return []corev1.Volume{
@@ -241,18 +244,18 @@ func h3WorkerVolumes(desired DesiredRevision) []corev1.Volume {
 			Path: "/var/lib/vela/models", Type: valuePointer(corev1.HostPathDirectory),
 		}}},
 		{Name: "worker-control-tls", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
-			SecretName: desired.WorkerControlTLSSecret, DefaultMode: &mode0400,
+			SecretName: placement.WorkerControlTLSSecret, DefaultMode: &mode0400,
 		}}},
 		{Name: "artifact-store-tls", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
 			SecretName: desired.ArtifactStoreTLSSecret, DefaultMode: &mode0440,
 			Items: []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}},
 		}}},
 		{Name: "runner-profiles", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
-			LocalObjectReference: corev1.LocalObjectReference{Name: desired.RunnerProfilesConfigMap},
+			LocalObjectReference: corev1.LocalObjectReference{Name: placement.RunnerProfilesConfigMap},
 			DefaultMode:          &mode0440, Items: []corev1.KeyToPath{{Key: "profiles.json", Path: "profiles.json"}},
 		}}},
 		{Name: "runner-gpu-roles", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{
-			LocalObjectReference: corev1.LocalObjectReference{Name: desired.RunnerGPURolesConfigMap},
+			LocalObjectReference: corev1.LocalObjectReference{Name: placement.RunnerGPURolesConfigMap},
 			DefaultMode:          &mode0440, Items: []corev1.KeyToPath{{Key: "gpu-roles.json", Path: "gpu-roles.json"}},
 		}}},
 	}

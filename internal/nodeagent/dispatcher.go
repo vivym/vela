@@ -27,6 +27,7 @@ type AgentEndpoint struct {
 	Address        string    `json:"address"`
 	ServerName     string    `json:"server_name"`
 	WorkerID       uuid.UUID `json:"worker_id"`
+	WorkerEpoch    int64     `json:"worker_epoch"`
 	SPIFFEIdentity string    `json:"spiffe_identity"`
 }
 
@@ -85,6 +86,9 @@ func (resolver *StaticAgentResolver) Resolve(ctx context.Context, identity NodeA
 	endpoint, ok := resolver.endpoints[identity.NodeIdentity]
 	if !ok || endpoint.WorkerID != identity.WorkerID {
 		return nil, fmt.Errorf("node Agent endpoint for %q is not registered", identity.NodeIdentity)
+	}
+	if endpoint.WorkerEpoch != identity.WorkerEpoch {
+		return nil, fmt.Errorf("node Agent endpoint for %q has a stale Worker epoch", identity.NodeIdentity)
 	}
 	resolver.mu.Lock()
 	defer resolver.mu.Unlock()
@@ -185,6 +189,7 @@ func (dispatcher *ExecutionDispatcher) RunOnce(ctx context.Context) (DispatchRes
 		client, resolveErr := dispatcher.agents.Resolve(ctx, NodeAgentIdentity{
 			NodeIdentity: operation.NodeIdentity,
 			WorkerID:     operation.WorkerID,
+			WorkerEpoch:  operation.WorkerEpoch,
 		})
 		if resolveErr != nil {
 			result.Deferred++
@@ -240,7 +245,11 @@ func validAgentEndpoint(nodeIdentity string, endpoint AgentEndpoint) bool {
 	if !validText(endpoint.ServerName, maxIdentityText) {
 		return false
 	}
-	identity := NodeAgentIdentity{NodeIdentity: nodeIdentity, WorkerID: endpoint.WorkerID}
+	identity := NodeAgentIdentity{
+		NodeIdentity: nodeIdentity,
+		WorkerID:     endpoint.WorkerID,
+		WorkerEpoch:  endpoint.WorkerEpoch,
+	}
 	if !validIdentity(identity) || endpoint.SPIFFEIdentity != NodeAgentSPIFFEIdentity(identity) {
 		return false
 	}

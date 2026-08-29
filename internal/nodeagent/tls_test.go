@@ -21,7 +21,7 @@ import (
 
 func TestNodeAgentTLSBindsServerCertificateToNodeAndWorkerIdentity(t *testing.T) {
 	caCertificate, caKey, caPEM := issueNodeAgentTestCA(t)
-	identity := NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: uuid.New()}
+	identity := NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: uuid.New(), WorkerEpoch: 1}
 	nodeSPIFFE, err := url.Parse(NodeAgentSPIFFEIdentity(identity))
 	if err != nil {
 		t.Fatalf("parse Node Agent SPIFFE ID: %v", err)
@@ -88,7 +88,7 @@ func TestNodeAgentTLSBindsServerCertificateToNodeAndWorkerIdentity(t *testing.T)
 		t.Fatalf("restore client key permissions: %v", err)
 	}
 
-	wrongIdentity := NodeAgentIdentity{NodeIdentity: identity.NodeIdentity, WorkerID: uuid.New()}
+	wrongIdentity := NodeAgentIdentity{NodeIdentity: identity.NodeIdentity, WorkerID: uuid.New(), WorkerEpoch: 1}
 	if _, err := NewServerTLSCredentials(
 		filepath.Join(directory, "server.crt"), filepath.Join(directory, "server.key"),
 		filepath.Join(directory, "ca.crt"), wrongIdentity,

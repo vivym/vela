@@ -16,6 +16,7 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontract"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
@@ -28,6 +29,8 @@ const (
 	protectionFinalizer = fleetcontract.ProtectionFinalizer
 	identityBindingGate = fleetcontract.IdentityBindingSchedulingGate
 	maximumReviewBytes  = 2 << 20
+	maximumPlacements   = 1024
+	maximumNodeSelector = 64
 )
 
 type MutationAuthorizer interface {
@@ -128,10 +131,17 @@ type protectedObject struct {
 		} `json:"ownerReferences"`
 	} `json:"metadata"`
 	Spec struct {
-		Revision       string            `json:"revision"`
-		WorkerProfile  string            `json:"workerProfile"`
-		DaemonSetName  string            `json:"daemonSetName"`
-		NodeSelector   map[string]string `json:"nodeSelector"`
+		Revision      string            `json:"revision"`
+		WorkerProfile string            `json:"workerProfile"`
+		NodeSelector  map[string]string `json:"nodeSelector"`
+		Placements    []struct {
+			NodeIdentity            string `json:"nodeIdentity"`
+			DaemonSetName           string `json:"daemonSetName"`
+			WorkerRuntimeConfigMap  string `json:"workerRuntimeConfigMap"`
+			RunnerProfilesConfigMap string `json:"runnerProfilesConfigMap"`
+			RunnerGPURolesConfigMap string `json:"runnerGPURolesConfigMap"`
+			WorkerControlTLSSecret  string `json:"workerControlTLSSecret"`
+		} `json:"placements"`
 		CapacityPolicy struct {
 			WorkerHighWatermarkBytes int64 `json:"workerHighWatermarkBytes"`
 			WorkerLowWatermarkBytes  int64 `json:"workerLowWatermarkBytes"`
@@ -896,16 +906,69 @@ func buildMutationAuthorizationRequest(
 
 func validWorkerPoolShape(object protectedObject) bool {
 	policy := object.Spec.CapacityPolicy
-	return object.Spec.WorkerProfile == "h3" && object.Spec.DaemonSetName != "" &&
-		object.Spec.DaemonSetName == object.Metadata.Name &&
-		object.Spec.NodeSelector["vela.ai/worker-profile"] == "h3" &&
-		object.Spec.NodeSelector["vela.ai/worker-pool"] != "" &&
-		policy.WorkerHighWatermarkBytes > 0 && policy.WorkerLowWatermarkBytes >= 0 &&
+	_, selectsHostname := object.Spec.NodeSelector[corev1.LabelHostname]
+	if object.Spec.WorkerProfile != "h3" || len(object.Spec.Placements) == 0 ||
+		len(object.Spec.Placements) > maximumPlacements ||
+		len(object.Spec.NodeSelector) < 2 || len(object.Spec.NodeSelector) > maximumNodeSelector ||
+		object.Spec.NodeSelector["vela.ai/worker-profile"] != "h3" ||
+		object.Spec.NodeSelector["vela.ai/worker-pool"] == "" || selectsHostname {
+		return false
+	}
+	for key, value := range object.Spec.NodeSelector {
+		if len(validation.IsQualifiedName(key)) != 0 ||
+			len(validation.IsValidLabelValue(value)) != 0 {
+			return false
+		}
+	}
+	nodes := make(map[string]struct{}, len(object.Spec.Placements))
+	daemonSets := make(map[string]struct{}, len(object.Spec.Placements))
+	configMaps := make(map[string]struct{}, len(object.Spec.Placements)*3)
+	secrets := make(map[string]struct{}, len(object.Spec.Placements))
+	for _, placement := range object.Spec.Placements {
+		if !validPlacementResourceName(placement.NodeIdentity) ||
+			!validPlacementResourceName(placement.DaemonSetName) ||
+			len(validation.IsValidLabelValue(placement.NodeIdentity)) != 0 ||
+			len(validation.IsValidLabelValue(placement.DaemonSetName)) != 0 ||
+			!validPlacementResourceName(placement.WorkerRuntimeConfigMap) ||
+			!validPlacementResourceName(placement.RunnerProfilesConfigMap) ||
+			!validPlacementResourceName(placement.RunnerGPURolesConfigMap) ||
+			!validPlacementResourceName(placement.WorkerControlTLSSecret) ||
+			!claimPlacementValue(nodes, placement.NodeIdentity) ||
+			!claimPlacementValue(daemonSets, placement.DaemonSetName) ||
+			!claimPlacementValue(configMaps, placement.WorkerRuntimeConfigMap) ||
+			!claimPlacementValue(configMaps, placement.RunnerProfilesConfigMap) ||
+			!claimPlacementValue(configMaps, placement.RunnerGPURolesConfigMap) ||
+			!claimPlacementValue(secrets, placement.WorkerControlTLSSecret) {
+			return false
+		}
+	}
+	return policy.WorkerHighWatermarkBytes > 0 && policy.WorkerLowWatermarkBytes >= 0 &&
 		policy.WorkerLowWatermarkBytes < policy.WorkerHighWatermarkBytes &&
 		policy.WorkerCriticalFreeBytes >= 0 && policy.PoolHighWatermarkBytes > 0 &&
 		policy.PoolLowWatermarkBytes >= 0 &&
 		policy.PoolLowWatermarkBytes < policy.PoolHighWatermarkBytes &&
 		policy.ObservationMaxAgeSeconds >= 10 && policy.ObservationMaxAgeSeconds <= 600
+}
+
+func validPlacementResourceName(value string) bool {
+	lower := strings.ToLower(value)
+	return len(validation.IsDNS1123Subdomain(value)) == 0 &&
+		!strings.Contains(lower, "placeholder") &&
+		!strings.Contains(lower, "replace-with") &&
+		!strings.Contains(lower, "changeme") &&
+		!strings.Contains(lower, "todo") &&
+		!strings.Contains(lower, ".invalid")
+}
+
+func claimPlacementValue(seen map[string]struct{}, value string) bool {
+	if value == "" {
+		return false
+	}
+	if _, duplicate := seen[value]; duplicate {
+		return false
+	}
+	seen[value] = struct{}{}
+	return true
 }
 
 func validDaemonSetShape(object protectedObject) bool {
@@ -914,6 +977,7 @@ func validDaemonSetShape(object protectedObject) bool {
 		object.Spec.Template.Spec.SchedulingGates[0].Name != identityBindingGate ||
 		object.Spec.Template.Spec.NodeSelector["vela.ai/worker-profile"] != "h3" ||
 		object.Spec.Template.Spec.NodeSelector["vela.ai/worker-pool"] == "" ||
+		object.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] == "" ||
 		!selectorMatchesTemplateLabels(
 			object.Spec.Selector.MatchLabels,
 			object.Spec.Template.Metadata.Labels,

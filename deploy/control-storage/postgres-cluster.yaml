@@ -6,10 +6,8 @@ metadata:
     app.kubernetes.io/part-of: vela
 spec:
   instances: 3
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4@sha256:99be063781d171d3971089b49c992706bdab9ccbd2b57cdf126c7542773aedfe
   primaryUpdateStrategy: unsupervised
-  minSyncReplicas: 1
-  maxSyncReplicas: 2
   storage:
     size: 100Gi
     storageClass: local-path
@@ -27,21 +25,14 @@ spec:
       cpu: "8"
       memory: 32Gi
   postgresql:
+    parameters:
+      vela.require_synchronous_quorum: "on"
     synchronous:
+      dataDurability: required
       method: any
       number: 1
-  backup:
-    retentionPolicy: "30d"
-    barmanObjectStore:
-      destinationPath: s3://vela-postgres-backup/cluster
-      endpointURL: https://s3-backup.example.invalid
-      s3Credentials:
-        accessKeyId:
-          name: vela-backup-s3
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: vela-backup-s3
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-        maxParallel: 2
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: vela-postgres-backup

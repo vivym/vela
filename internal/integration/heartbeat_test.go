@@ -837,12 +837,9 @@ func TestHeartbeatStopsWhenAssignmentIsNotHeartbeatable(t *testing.T) {
 			name: "Job is terminal",
 			mutate: func(t *testing.T, fixture *assignmentFixture, assignment workercontrol.Assignment) {
 				t.Helper()
-				if _, err := fixture.database.Admin.Exec(`
-					UPDATE jobs SET state = 'CANCELED', version = version + 1, updated_at = clock_timestamp()
-					WHERE id = $1
-				`, assignment.JobID); err != nil {
-					t.Fatalf("cancel Job fixture: %v", err)
-				}
+				terminalizeJobWithCanonicalEvent(
+					t, fixture.database.Admin, assignment.JobID, "CANCELED", nil,
+				)
 			},
 		},
 		{
@@ -1581,8 +1578,8 @@ func TestAttemptProgressCannotReferenceAnotherJob(t *testing.T) {
 	)
 	var postgresError *pgconn.PgError
 	if !errors.As(err, &postgresError) || postgresError.Code != "23503" ||
-		postgresError.ConstraintName != "attempt_progress_attempt_identity_fkey" {
-		t.Fatalf("cross-Job Attempt progress error = %v, want attempt identity foreign key", err)
+		postgresError.ConstraintName != "full_live_attempt_identity" {
+		t.Fatalf("cross-Job Attempt progress error = %v, want live Attempt identity trigger", err)
 	}
 }
 

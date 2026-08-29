@@ -246,7 +246,7 @@ func TestS3ArtifactStoreResumesMultipartAndReadsExactPrivateVersion(t *testing.T
 		ctx,
 		manifestKey,
 		"application/json",
-		bytes.NewReader(manifest),
+		bytes.NewBuffer(manifest),
 		int64(len(manifest)),
 		manifestDigest,
 	); err != nil {
@@ -271,6 +271,56 @@ func TestS3ArtifactStoreResumesMultipartAndReadsExactPrivateVersion(t *testing.T
 	_ = unsigned.Body.Close()
 	if unsigned.StatusCode != http.StatusForbidden {
 		t.Fatalf("private Artifact status = %d, want 403", unsigned.StatusCode)
+	}
+}
+
+func TestS3ArtifactStorePurgesEveryBackupVersionAndDeleteMarker(t *testing.T) {
+	ctx := context.Background()
+	minio := newMinIOFixture(t, "vela-artifact-backup")
+	minio.enableVersioning(t)
+	const objectKey = "artifacts/organization/project/job/attempt/artifact/video.mp4"
+
+	for _, body := range [][]byte{[]byte("first backup version"), []byte("second backup version")} {
+		digest := sha256.Sum256(body)
+		if _, err := minio.admin.PutObject(ctx, &s3.PutObjectInput{
+			Bucket:         aws.String(minio.bucket),
+			Key:            aws.String(objectKey),
+			Body:           bytes.NewReader(body),
+			ContentLength:  aws.Int64(int64(len(body))),
+			ContentType:    aws.String("video/mp4"),
+			ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(digest[:])),
+		}); err != nil {
+			t.Fatalf("write backup object version: %v", err)
+		}
+	}
+	if _, err := minio.admin.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(minio.bucket),
+		Key:    aws.String(objectKey),
+	}); err != nil {
+		t.Fatalf("create backup delete marker: %v", err)
+	}
+
+	result, err := minio.store.PurgeObjectVersions(ctx, objectKey)
+	if err != nil || result.PurgedVersionCount != 3 {
+		t.Fatalf("purge backup versions result=%#v error=%v, want 3 and nil", result, err)
+	}
+	versions, err := minio.admin.ListObjectVersions(ctx, &s3.ListObjectVersionsInput{
+		Bucket: aws.String(minio.bucket),
+		Prefix: aws.String(objectKey),
+	})
+	if err != nil {
+		t.Fatalf("list backup versions after purge: %v", err)
+	}
+	if len(versions.Versions) != 0 || len(versions.DeleteMarkers) != 0 {
+		t.Fatalf(
+			"backup versions after purge = versions %d delete markers %d, want 0 and 0",
+			len(versions.Versions),
+			len(versions.DeleteMarkers),
+		)
+	}
+	result, err = minio.store.PurgeObjectVersions(ctx, objectKey)
+	if err != nil || result.PurgedVersionCount != 0 {
+		t.Fatalf("idempotent backup purge result=%#v error=%v, want 0 and nil", result, err)
 	}
 }
 

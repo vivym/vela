@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/privilegedlistener"
 )
 
 const (
@@ -160,7 +161,7 @@ func (h *HTTPHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 	if result.Replayed {
 		status = http.StatusOK
 	}
-	writeJSON(writer, status, httpResult{
+	privilegedlistener.WriteJSON(writer, status, httpResult{
 		RecordID:                 result.RecordID.String(),
 		Replayed:                 result.Replayed,
 		OrganizationID:           result.OrganizationID.String(),
@@ -174,20 +175,7 @@ func (h *HTTPHandler) ServeHTTP(writer http.ResponseWriter, request *http.Reques
 }
 
 func (h *HTTPHandler) authenticated(request *http.Request) bool {
-	if request == nil || request.TLS == nil || len(request.TLS.PeerCertificates) == 0 ||
-		len(request.TLS.VerifiedChains) == 0 {
-		return false
-	}
-	leaf := request.TLS.PeerCertificates[0]
-	if len(leaf.URIs) != 1 || leaf.URIs[0].String() != h.expectedTLSIdentity {
-		return false
-	}
-	for _, chain := range request.TLS.VerifiedChains {
-		if len(chain) > 0 && chain[0].Equal(leaf) {
-			return true
-		}
-	}
-	return false
+	return privilegedlistener.AuthenticatedExactURI(request, h.expectedTLSIdentity)
 }
 
 func writeApplyFailure(writer http.ResponseWriter, err error) {
@@ -211,14 +199,7 @@ func writeApplyFailure(writer http.ResponseWriter, err error) {
 }
 
 func writeHTTPFailure(writer http.ResponseWriter, status int, code, message string) {
-	writeJSON(writer, status, httpFailure{Code: code, Message: message})
-}
-
-func writeJSON(writer http.ResponseWriter, status int, value any) {
-	writer.Header().Set("Content-Type", "application/json")
-	writer.Header().Set("X-Content-Type-Options", "nosniff")
-	writer.WriteHeader(status)
-	_ = json.NewEncoder(writer).Encode(value)
+	privilegedlistener.WriteJSON(writer, status, httpFailure{Code: code, Message: message})
 }
 
 func uuidFromString(value string) (uuid.UUID, error) {

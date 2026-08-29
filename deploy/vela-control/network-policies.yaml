@@ -1,0 +1,177 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-control-default-deny-ingress
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-control-allow-api
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: public-api
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              vela.ai/network-role: api-ingress
+          podSelector:
+            matchLabels:
+              vela.ai/client-role: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-control-allow-observability
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              vela.ai/network-role: observability
+          podSelector:
+            matchLabels:
+              vela.ai/client-role: otel-collector
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-control-allow-worker
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: worker-control
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vela-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vela-h3-worker
+      ports:
+        - protocol: TCP
+          port: 8443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-control-allow-fleet
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: fleet-maintenance
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vela-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vela-fleet-controller
+      ports:
+        - protocol: TCP
+          port: 8444
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-control-allow-finance
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: finance-reconciliation
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              vela.ai/network-role: finance
+          podSelector:
+            matchLabels:
+              vela.ai/client-role: finance-reconciliation
+      ports:
+        - protocol: TCP
+          port: 8445
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-control-allow-compliance
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: compliance
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              vela.ai/network-role: compliance
+          podSelector:
+            matchLabels:
+              vela.ai/client-role: legal-hold
+      ports:
+        - protocol: TCP
+          port: 8446

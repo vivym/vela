@@ -58,7 +58,7 @@ func TestKubernetesResourcesMaterializeLiveWorkerPoolAndGatedDaemonSet(t *testin
 		Group: "apps", Version: "v1", Resource: "daemonsets",
 	}).Namespace("vela-system").Get(
 		context.Background(),
-		desired.DaemonSetName,
+		desired.Placements[0].DaemonSetName,
 		metav1.GetOptions{},
 	)
 	if err != nil {
@@ -122,7 +122,7 @@ func TestKubernetesReconcileAcceptsAPIServerDefaultedDaemonSet(t *testing.T) {
 		Group: "apps", Version: "v1", Resource: "daemonsets",
 	}).Namespace(desired.Namespace)
 	live, err := daemonSets.Get(
-		context.Background(), desired.DaemonSetName, metav1.GetOptions{},
+		context.Background(), desired.Placements[0].DaemonSetName, metav1.GetOptions{},
 	)
 	if err != nil {
 		t.Fatalf("get materialized DaemonSet: %v", err)
@@ -192,7 +192,7 @@ func TestProtectedPodCreateMatchesLiveMaterializedDaemonSetExactly(t *testing.T)
 		Group: "apps", Version: "v1", Resource: "daemonsets",
 	}
 	live, err := client.Resource(daemonSetResource).Namespace(desired.Namespace).Get(
-		context.Background(), desired.DaemonSetName, metav1.GetOptions{},
+		context.Background(), desired.Placements[0].DaemonSetName, metav1.GetOptions{},
 	)
 	if err != nil {
 		t.Fatalf("get materialized DaemonSet: %v", err)

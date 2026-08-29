@@ -10,7 +10,10 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 )
 
-const maximumRetirementWorkers = 4096
+const (
+	maximumRetirementPlacements = 1024
+	maximumRetirementWorkers    = 4096
+)
 
 var ErrDrainExpired = errors.New("routine Worker drain expired without mutation authority")
 
@@ -22,17 +25,21 @@ type WorkerRetirement struct {
 	PodKubernetesUID string
 }
 
+type RetirementPlacement struct {
+	DaemonSetName          string
+	DaemonSetKubernetesUID string
+	Workers                []WorkerRetirement
+}
+
 type RetirementPlan struct {
 	Revision                string
 	WorkerPoolID            uuid.UUID
 	Namespace               string
 	WorkerPoolName          string
 	WorkerPoolKubernetesUID string
-	DaemonSetName           string
-	DaemonSetKubernetesUID  string
 	Reason                  string
 	Deadline                time.Time
-	Workers                 []WorkerRetirement
+	Placements              []RetirementPlacement
 }
 
 type RetirementResult struct {
@@ -45,38 +52,50 @@ func ValidateRetirementPlan(plan RetirementPlan) error {
 	if !validSHA256(plan.Revision) || plan.WorkerPoolID == uuid.Nil ||
 		!validResourceName(plan.Namespace) || !validResourceName(plan.WorkerPoolName) ||
 		!validBoundedText(plan.WorkerPoolKubernetesUID, 200) ||
-		!validResourceName(plan.DaemonSetName) ||
-		!validBoundedText(plan.DaemonSetKubernetesUID, 200) ||
 		!validBoundedText(plan.Reason, 1000) || plan.Deadline.IsZero() ||
-		len(plan.Workers) == 0 || len(plan.Workers) > maximumRetirementWorkers {
+		len(plan.Placements) == 0 || len(plan.Placements) > maximumRetirementPlacements {
 		return errors.New("fleet retirement plan is invalid")
 	}
-	operationIDs := make(map[uuid.UUID]struct{}, len(plan.Workers))
-	workerIDs := make(map[uuid.UUID]struct{}, len(plan.Workers))
-	podNames := make(map[string]struct{}, len(plan.Workers))
-	podUIDs := make(map[string]struct{}, len(plan.Workers))
-	for _, worker := range plan.Workers {
-		if worker.OperationID == uuid.Nil || worker.WorkerID == uuid.Nil ||
-			worker.WorkerEpoch <= 0 || !validResourceName(worker.PodName) ||
-			!validBoundedText(worker.PodKubernetesUID, 200) {
-			return errors.New("fleet retirement Worker identity is invalid")
+	operationIDs := make(map[uuid.UUID]struct{})
+	workerIDs := make(map[uuid.UUID]struct{})
+	podNames := make(map[string]struct{})
+	resourceUIDs := map[string]struct{}{plan.WorkerPoolKubernetesUID: {}}
+	daemonSetNames := make(map[string]struct{}, len(plan.Placements))
+	workerCount := 0
+	for _, placement := range plan.Placements {
+		if !validResourceName(placement.DaemonSetName) ||
+			!validBoundedText(placement.DaemonSetKubernetesUID, 200) ||
+			len(placement.Workers) == 0 ||
+			!claimRuntimeIdentity(daemonSetNames, placement.DaemonSetName) ||
+			!claimRuntimeIdentity(resourceUIDs, placement.DaemonSetKubernetesUID) {
+			return errors.New("fleet retirement placement is invalid or duplicated")
 		}
-		if _, exists := operationIDs[worker.OperationID]; exists {
-			return errors.New("fleet retirement plan contains a duplicate DrainOperation id")
+		workerCount += len(placement.Workers)
+		if workerCount > maximumRetirementWorkers {
+			return errors.New("fleet retirement plan is invalid")
 		}
-		if _, exists := workerIDs[worker.WorkerID]; exists {
-			return errors.New("fleet retirement plan contains a duplicate Worker id")
+		for _, worker := range placement.Workers {
+			if worker.OperationID == uuid.Nil || worker.WorkerID == uuid.Nil ||
+				worker.WorkerEpoch <= 0 || !validResourceName(worker.PodName) ||
+				!validBoundedText(worker.PodKubernetesUID, 200) {
+				return errors.New("fleet retirement Worker identity is invalid")
+			}
+			if _, exists := operationIDs[worker.OperationID]; exists {
+				return errors.New("fleet retirement plan contains a duplicate DrainOperation id")
+			}
+			if _, exists := workerIDs[worker.WorkerID]; exists {
+				return errors.New("fleet retirement plan contains a duplicate Worker id")
+			}
+			if _, exists := podNames[worker.PodName]; exists {
+				return errors.New("fleet retirement plan contains a duplicate Worker Pod name")
+			}
+			if !claimRuntimeIdentity(resourceUIDs, worker.PodKubernetesUID) {
+				return errors.New("fleet retirement plan contains a duplicate Kubernetes resource UID")
+			}
+			operationIDs[worker.OperationID] = struct{}{}
+			workerIDs[worker.WorkerID] = struct{}{}
+			podNames[worker.PodName] = struct{}{}
 		}
-		if _, exists := podNames[worker.PodName]; exists {
-			return errors.New("fleet retirement plan contains a duplicate Worker Pod name")
-		}
-		if _, exists := podUIDs[worker.PodKubernetesUID]; exists {
-			return errors.New("fleet retirement plan contains a duplicate Worker Pod UID")
-		}
-		operationIDs[worker.OperationID] = struct{}{}
-		workerIDs[worker.WorkerID] = struct{}{}
-		podNames[worker.PodName] = struct{}{}
-		podUIDs[worker.PodKubernetesUID] = struct{}{}
 	}
 	return nil
 }
@@ -91,74 +110,82 @@ func (reconciler *Reconciler) ReconcileRetirement(
 	if err := ValidateRetirementPlan(plan); err != nil {
 		return RetirementResult{}, err
 	}
-	drainIDs := make([]uuid.UUID, 0, len(plan.Workers))
+	drainIDs := make([]uuid.UUID, 0)
 	allComplete := true
-	for _, worker := range plan.Workers {
-		request := fleet.DrainRequest{
-			OperationID:   worker.OperationID,
-			WorkerID:      worker.WorkerID,
-			ExpectedEpoch: worker.WorkerEpoch,
-			Reason:        plan.Reason,
-			Deadline:      plan.Deadline.UTC(),
-		}
-		drain, err := reconciler.drains.RequestDrain(ctx, request)
-		if err != nil {
-			return RetirementResult{}, fmt.Errorf("request planned Worker drain %s: %w", worker.OperationID, err)
-		}
-		if err := validateRetirementDrain(drain, request); err != nil {
-			return RetirementResult{}, err
-		}
-		if drain.State == fleet.DrainDraining {
-			drain, err = reconciler.drains.ReconcileDrain(ctx, worker.OperationID)
+	for _, placement := range plan.Placements {
+		for _, worker := range placement.Workers {
+			request := fleet.DrainRequest{
+				OperationID:   worker.OperationID,
+				WorkerID:      worker.WorkerID,
+				ExpectedEpoch: worker.WorkerEpoch,
+				Reason:        plan.Reason,
+				Deadline:      plan.Deadline.UTC(),
+			}
+			drain, err := reconciler.drains.RequestDrain(ctx, request)
 			if err != nil {
-				return RetirementResult{}, fmt.Errorf("reconcile planned Worker drain %s: %w", worker.OperationID, err)
+				return RetirementResult{}, fmt.Errorf("request planned Worker drain %s: %w", worker.OperationID, err)
 			}
 			if err := validateRetirementDrain(drain, request); err != nil {
 				return RetirementResult{}, err
 			}
-		}
-		switch drain.State {
-		case fleet.DrainComplete:
-			drainIDs = append(drainIDs, worker.OperationID)
-		case fleet.DrainDraining:
-			allComplete = false
-		case fleet.DrainExpired:
-			return RetirementResult{}, fmt.Errorf("planned Worker drain %s: %w", worker.OperationID, ErrDrainExpired)
-		default:
-			return RetirementResult{}, ErrDrainIncomplete
+			if drain.State == fleet.DrainDraining {
+				drain, err = reconciler.drains.ReconcileDrain(ctx, worker.OperationID)
+				if err != nil {
+					return RetirementResult{}, fmt.Errorf("reconcile planned Worker drain %s: %w", worker.OperationID, err)
+				}
+				if err := validateRetirementDrain(drain, request); err != nil {
+					return RetirementResult{}, err
+				}
+			}
+			switch drain.State {
+			case fleet.DrainComplete:
+				drainIDs = append(drainIDs, worker.OperationID)
+			case fleet.DrainDraining:
+				allComplete = false
+			case fleet.DrainExpired:
+				return RetirementResult{}, fmt.Errorf("planned Worker drain %s: %w", worker.OperationID, ErrDrainExpired)
+			default:
+				return RetirementResult{}, ErrDrainIncomplete
+			}
 		}
 	}
 	if !allComplete {
 		return RetirementResult{Pending: true}, nil
 	}
 
-	daemonSet := ProtectedResource{
-		Kind: ResourceDaemonSet, KubernetesUID: plan.DaemonSetKubernetesUID,
-		Namespace: plan.Namespace, Name: plan.DaemonSetName, WorkerPoolID: plan.WorkerPoolID,
-	}
-	daemonSetRetired, err := reconciler.retireProtectedResource(ctx, daemonSet, drainIDs)
-	if err != nil {
-		return RetirementResult{}, fmt.Errorf("retire protected DaemonSet: %w", err)
-	}
-	if !daemonSetRetired {
-		return RetirementResult{Pending: true}, nil
-	}
 	result := RetirementResult{}
-	for index, worker := range plan.Workers {
-		pod := ProtectedResource{
-			Kind: ResourcePod, KubernetesUID: worker.PodKubernetesUID,
-			Namespace: plan.Namespace, Name: worker.PodName, WorkerPoolID: plan.WorkerPoolID,
-			WorkerID: worker.WorkerID, WorkerEpoch: worker.WorkerEpoch,
+	for _, placement := range plan.Placements {
+		daemonSet := ProtectedResource{
+			Kind: ResourceDaemonSet, KubernetesUID: placement.DaemonSetKubernetesUID,
+			Namespace: plan.Namespace, Name: placement.DaemonSetName, WorkerPoolID: plan.WorkerPoolID,
 		}
-		retired, err := reconciler.retireProtectedResource(ctx, pod, drainIDs[index:index+1])
+		daemonSetRetired, err := reconciler.retireProtectedResource(
+			ctx, daemonSet, drainIDs,
+		)
 		if err != nil {
-			return RetirementResult{}, fmt.Errorf("retire protected Worker Pod %s: %w", worker.PodName, err)
+			return RetirementResult{}, fmt.Errorf("retire protected DaemonSet %s: %w", placement.DaemonSetName, err)
 		}
-		if retired {
-			result.WorkerPodsRetired++
-		} else {
-			result.Pending = true
-			return result, nil
+		if !daemonSetRetired {
+			return RetirementResult{Pending: true}, nil
+		}
+		for _, worker := range placement.Workers {
+			pod := ProtectedResource{
+				Kind: ResourcePod, KubernetesUID: worker.PodKubernetesUID,
+				Namespace: plan.Namespace, Name: worker.PodName, WorkerPoolID: plan.WorkerPoolID,
+				WorkerID: worker.WorkerID, WorkerEpoch: worker.WorkerEpoch,
+			}
+			retired, err := reconciler.retireProtectedResource(
+				ctx, pod, []uuid.UUID{worker.OperationID},
+			)
+			if err != nil {
+				return RetirementResult{}, fmt.Errorf("retire protected Worker Pod %s: %w", worker.PodName, err)
+			}
+			if retired {
+				result.WorkerPodsRetired++
+			} else {
+				result.Pending = true
+				return result, nil
+			}
 		}
 	}
 	workerPool := ProtectedResource{

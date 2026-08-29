@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "public_api_availability_target_ppm": 999000,
+  "management_endpoint": {
+    "port": 8081,
+    "path": "/metrics",
+    "public_service_exposed": false,
+    "namespace_label": "vela.ai/network-role=observability",
+    "pod_label": "vela.ai/client-role=otel-collector"
+  },
+  "job_slo_algorithm_revision": "queued-visible-nearest-rank-wilson-v1",
+  "confidence_method": "wilson-one-sided-95-v1",
+  "required_presets": ["quality", "balanced", "fast"],
+  "allowed_metric_labels": [
+    "method",
+    "route",
+    "status",
+    "model_revision",
+    "generation_preset",
+    "generation_preset_revision",
+    "service_class_revision",
+    "output_spec",
+    "generation_count",
+    "result"
+  ],
+  "forbidden_metric_labels": [
+    "organization_id",
+    "project_id",
+    "principal_id",
+    "job_id",
+    "attempt_id",
+    "worker_id"
+  ],
+  "required_recording_rules": [
+    "vela:api_availability:ratio_30d",
+    "vela:api_error_budget_remaining:ratio_30d",
+    "vela:slo_report_p95_ratio",
+    "vela:slo_report_success_margin"
+  ],
+  "required_alerts": [
+    "VelaAPIErrorBudgetFastBurn",
+    "VelaAPIErrorBudgetSlowBurn",
+    "VelaAPISLISeriesMissing",
+    "VelaPresetP95SLOBreach",
+    "VelaPresetSuccessSLOBreach",
+    "VelaSLOContractCoverageMissing",
+    "VelaSLOTelemetryStale",
+    "VelaSLOExporterFailed"
+  ],
+  "required_evidence_artifacts": [
+    "gateway-observations",
+    "saleable-sku-snapshot",
+    "dashboard",
+    "alert-rules",
+    "rule-tests",
+    "runbook",
+    "page-events"
+  ]
+}

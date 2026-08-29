@@ -130,7 +130,11 @@ func TestProductionSandboxProbesPinnedVideoAndThumbnail(t *testing.T) {
 			if err != nil {
 				t.Fatalf("open fixed media fixture: %v", err)
 			}
-			defer input.Close()
+			defer func() {
+				if err := input.Close(); err != nil {
+					t.Errorf("close fixed media fixture: %v", err)
+				}
+			}()
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			output, err := sandbox.Probe(ctx, input)
@@ -154,7 +158,11 @@ func copyExecutable(t *testing.T, sourcePath string, destinationPath string) {
 	if err != nil {
 		t.Fatalf("open source executable: %v", err)
 	}
-	defer source.Close()
+	defer func() {
+		if err := source.Close(); err != nil {
+			t.Errorf("close source executable: %v", err)
+		}
+	}()
 	destination, err := os.OpenFile(destinationPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o500)
 	if err != nil {
 		t.Fatalf("create copied executable: %v", err)

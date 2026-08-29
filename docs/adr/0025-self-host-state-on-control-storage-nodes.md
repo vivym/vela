@@ -5,3 +5,24 @@ Launch uses at least three Control/Storage Nodes separate from GPU Workers inste
 ## Consequences
 
 The design retains basic single-node tolerance and off-cluster PostgreSQL WAL and Artifact backups, but accepts manual restoration after loss of the whole control cluster or site and does not build cross-region failover. Sharing nodes reduces infrastructure cost while making resource isolation, disk health, restore drills, and aggregate failure testing production gates.
+
+## Implementation Status
+
+Partial. `deploy/control-storage` renders three-instance CloudNativePG and
+three-replica JetStream contracts with required anti-affinity, disruption
+budgets, independent WAL storage, and off-cluster backup selectors. Slice 38
+adds the Barman Cloud Plugin `ObjectStore`, plugin WAL archiver, immediate and
+daily base backups, and exact third-party manifest/image identities; its fresh
+four-node kind/MinIO drill completes a real timestamp restore (`4f4bc2d`,
+credential-isolation review closure `e8a4149`). The install render gives the
+Barman principals only exact `vela-backup-s3` access and denies Artifact
+credential reads. Slice 46 pins the JetStream StatefulSet to the exact NATS
+`2.10.22` `linux/amd64` OCI manifest and verifies that identity through the
+final Control/Storage Kustomize render (`760cd7a`, review closure `431bf3f`).
+Slice 47 pins the shared BusyBox `1.37.0` root materializer to its exact
+`linux/amd64` OCI manifest across the final `vela-control`, Worker Agent, and
+Fleet desired-input Kustomize renders (`6d916bb`, review closure `9f4063e`).
+The repository does not prove three physical RKE2 Control/Storage Nodes, independent
+disks, colocated I/O isolation, production operator installation, secret
+rotation, durable external S3, or a real-environment failover/restore Launch
+Receipt.

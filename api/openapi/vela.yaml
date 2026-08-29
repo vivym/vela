@@ -311,6 +311,130 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v1/platform/remediation/operations:
+    post:
+      operationId: createRemediationOperation
+      summary: Request an identity-bound certified Worker remediation operation
+      parameters:
+        - $ref: '#/components/parameters/RemediationIdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRemediationOperationRequest'
+      responses:
+        '201':
+          description: Remediation operation created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '200':
+          description: Exact remediation operation replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Worker does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Identity, epoch, active-operation, or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/remediation/operations/{remediation_operation_id}:
+    get:
+      operationId: getRemediationOperation
+      summary: Get an immutable remediation operation projection
+      parameters:
+        - $ref: '#/components/parameters/RemediationOperationId'
+      responses:
+        '200':
+          description: Remediation operation projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Remediation operation does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/remediation/operations/{remediation_operation_id}/approvals:
+    post:
+      operationId: approveRemediationOperation
+      summary: Record one distinct Platform Operator approval for L6
+      parameters:
+        - $ref: '#/components/parameters/RemediationOperationId'
+      responses:
+        '200':
+          description: Approval recorded or replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Remediation operation does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Operation is not awaiting approval
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/platform/remediation/operations/{remediation_operation_id}/execution:
+    post:
+      operationId: startRemediationOperation
+      summary: Fence the current authority and release an approved operation to the dispatcher
+      parameters:
+        - $ref: '#/components/parameters/RemediationOperationId'
+      responses:
+        '200':
+          description: Operation is executing or exact start replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemediationOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Remediation operation does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Identity, epoch, lease fence, deadline, or L6 approval conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/platform/break-glass/requests:
     post:
       operationId: createBreakGlassRequest
@@ -654,6 +778,177 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations:
+    post:
+      operationId: authorizeDebugDump
+      summary: Opt a queued Project Job into bounded failure diagnostics
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorizeDebugDumpRequest'
+      responses:
+        '200':
+          description: Exact authorization replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugDumpAuthorization'
+        '201':
+          description: Debug dump authorization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugDumpAuthorization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Project or Job is not visible to the Principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Authorization conflicts with Job state or active authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}:
+    get:
+      operationId: getDebugDumpAuthorization
+      summary: Inspect one Job debug dump authorization
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/DebugDumpAuthorizationId'
+      responses:
+        '200':
+          description: Debug dump authorization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugDumpAuthorization'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Authorization is not visible to the Principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/revoke:
+    post:
+      operationId: revokeDebugDumpAuthorization
+      summary: Permanently revoke one Job debug dump authorization
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/DebugDumpAuthorizationId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Revoked authorization or exact permanent replay
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugDumpAuthorization'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Authorization is not visible to the Principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Revocation does not match the original idempotent request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps:
+    get:
+      operationId: listDebugDumps
+      summary: List safe metadata for one Job debug dump authorization
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/DebugDumpAuthorizationId'
+      responses:
+        '200':
+          description: Debug dump metadata without storage identity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugDumpList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Authorization is not visible to the Principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/projects/{project_id}/jobs/{job_id}/debug-dump-authorizations/{debug_dump_authorization_id}/dumps/{debug_dump_id}:
+    get:
+      operationId: readDebugDump
+      summary: Authorize and sign one exact debug dump version
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/DebugDumpAuthorizationId'
+        - $ref: '#/components/parameters/DebugDumpId'
+      responses:
+        '200':
+          description: Short-lived exact-version debug dump download
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugDumpDownload'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Authorization is revoked, expired, or became inactive before delivery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Debug dump target is not visible to the Principal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/projects/{project_id}/content-deletion-requests/{content_deletion_request_id}:
     get:
       operationId: getContentDeletionRequest
@@ -1182,6 +1477,20 @@ components:
       schema:
         type: string
         format: uuid
+    DebugDumpAuthorizationId:
+      name: debug_dump_authorization_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DebugDumpId:
+      name: debug_dump_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ContentDeletionRequestId:
       name: content_deletion_request_id
       in: path
@@ -1191,6 +1500,13 @@ components:
         format: uuid
     BreakGlassRequestId:
       name: break_glass_request_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RemediationOperationId:
+      name: remediation_operation_id
       in: path
       required: true
       schema:
@@ -1280,6 +1596,15 @@ components:
         minLength: 1
         maxLength: 200
         pattern: '^[A-Za-z0-9._:-]+$'
+    RemediationIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+        pattern: '^[A-Za-z0-9._:-]+$'
   headers:
     RetryAfter:
       schema:
@@ -1344,6 +1669,137 @@ components:
         - BreakGlassStateACTIVE
         - BreakGlassStateREVOKED
         - BreakGlassStateEXPIRED
+    RemediationActionLevel:
+      type: string
+      enum:
+        - L0_PROCESS_RESTART
+        - L1_CUDA_CLEANUP
+        - L2_GPU_RESET
+        - L3_PCIE_FLR
+        - L4_DRIVER_RELOAD
+        - L5_NODE_REBOOT
+        - L6_BMC_POWER_CYCLE
+        - L7_QUARANTINE
+    RemediationOperationState:
+      type: string
+      enum:
+        - REQUESTED
+        - APPROVAL_REQUIRED
+        - EXECUTING
+        - SUCCEEDED
+        - QUARANTINED
+    CreateRemediationOperationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - worker_id
+        - worker_epoch
+        - node_identity
+        - gpu_uuid
+        - failure_class
+        - evidence_sha256
+        - certification_revision
+        - action_level
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        worker_epoch:
+          type: integer
+          format: int64
+          minimum: 1
+        node_identity:
+          type: string
+          minLength: 1
+          maxLength: 500
+        gpu_uuid:
+          type: string
+          pattern: '^GPU-[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
+        failure_class:
+          type: string
+          minLength: 1
+          maxLength: 200
+        evidence_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        certification_revision:
+          type: string
+          maxLength: 200
+        action_level:
+          $ref: '#/components/schemas/RemediationActionLevel'
+    RemediationOperation:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - worker_id
+        - worker_epoch
+        - node_identity
+        - gpu_uuid
+        - failure_class
+        - evidence_sha256
+        - certification_revision
+        - action_level
+        - state
+        - requested_by
+        - requested_at
+        - deadline_at
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        worker_id:
+          type: string
+          format: uuid
+        worker_epoch:
+          type: integer
+          format: int64
+        node_identity:
+          type: string
+        gpu_uuid:
+          type: string
+        failure_class:
+          type: string
+        evidence_sha256:
+          type: string
+        certification_revision:
+          type: string
+        action_level:
+          $ref: '#/components/schemas/RemediationActionLevel'
+        state:
+          $ref: '#/components/schemas/RemediationOperationState'
+        requested_by:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        deadline_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        result_code:
+          type: string
+        result_detail:
+          type: string
+        postcheck_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        first_approver:
+          type: string
+        second_approver:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
     CreateBreakGlassRequest:
       type: object
       additionalProperties: false
@@ -2123,6 +2579,162 @@ components:
           nullable: true
           minLength: 1
           maxLength: 500
+    DebugDumpPurpose:
+      type: string
+      enum:
+        - CUSTOMER_SUPPORT
+        - INCIDENT_INVESTIGATION
+    AuthorizeDebugDumpRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - purpose
+      properties:
+        purpose:
+          $ref: '#/components/schemas/DebugDumpPurpose'
+    DebugDumpAuthorization:
+      type: object
+      additionalProperties: false
+      required:
+        - authorization_id
+        - organization_id
+        - project_id
+        - job_id
+        - purpose
+        - authorized_at
+        - expires_at
+      properties:
+        authorization_id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        purpose:
+          $ref: '#/components/schemas/DebugDumpPurpose'
+        authorized_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    DebugDumpState:
+      type: string
+      enum:
+        - UPLOADING
+        - AVAILABLE
+        - DELETED
+    DebugDump:
+      type: object
+      additionalProperties: false
+      required:
+        - debug_dump_id
+        - authorization_id
+        - attempt_id
+        - state
+        - size_bytes
+        - sha256
+        - content_type
+        - created_at
+        - expires_at
+      properties:
+        debug_dump_id:
+          type: string
+          format: uuid
+        authorization_id:
+          type: string
+          format: uuid
+        attempt_id:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/DebugDumpState'
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 65536
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        content_type:
+          type: string
+          enum:
+            - application/vnd.vela.debug-dump+json
+        created_at:
+          type: string
+          format: date-time
+        uploaded_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+    DebugDumpList:
+      type: object
+      additionalProperties: false
+      required:
+        - dumps
+      properties:
+        dumps:
+          type: array
+          items:
+            $ref: '#/components/schemas/DebugDump'
+    DebugDumpDownload:
+      type: object
+      additionalProperties: false
+      required:
+        - debug_dump_id
+        - authorization_id
+        - size_bytes
+        - sha256
+        - content_type
+        - expires_at
+        - download_url
+        - download_url_expires_at
+      properties:
+        debug_dump_id:
+          type: string
+          format: uuid
+        authorization_id:
+          type: string
+          format: uuid
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 65536
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        content_type:
+          type: string
+          enum:
+            - application/vnd.vela.debug-dump+json
+        expires_at:
+          type: string
+          format: date-time
+        download_url:
+          type: string
+          format: uri
+        download_url_expires_at:
+          type: string
+          format: date-time
     ProjectMember:
       type: object
       additionalProperties: false
@@ -2486,8 +3098,6 @@ components:
         - event_id
         - source
         - action
-        - actor_principal_id
-        - actor_session_id
         - target_kind
         - target_id
         - created_at
@@ -2502,6 +3112,7 @@ components:
             - PROJECT_IDENTITY
             - SETTLEMENT_CONTACT
             - BREAK_GLASS
+            - DEBUG_DUMP
         action:
           type: string
           enum:
@@ -2526,6 +3137,15 @@ components:
             - ARTIFACT_DELIVERED
             - ARTIFACT_DELIVERY_FAILED
             - ARTIFACT_DENIED
+            - AUTHORIZED
+            - REVOKED
+            - READ_AUTHORIZED
+            - READ_DENIED
+            - DELIVERED
+            - DELIVERY_FAILED
+            - UPLOAD_CLAIMED
+            - UPLOADED
+            - DELETED
           x-enum-varnames:
             - HUMANMEMBERCREATED
             - HUMANMEMBERDISABLED
@@ -2548,19 +3168,32 @@ components:
             - OrganizationAuditEventActionARTIFACTDELIVERED
             - OrganizationAuditEventActionARTIFACTDELIVERYFAILED
             - OrganizationAuditEventActionARTIFACTDENIED
+            - OrganizationAuditEventActionAUTHORIZED
+            - OrganizationAuditEventActionREVOKED
+            - OrganizationAuditEventActionREADAUTHORIZED
+            - OrganizationAuditEventActionREADDENIED
+            - OrganizationAuditEventActionDELIVERED
+            - OrganizationAuditEventActionDELIVERYFAILED
+            - OrganizationAuditEventActionUPLOADCLAIMED
+            - OrganizationAuditEventActionUPLOADED
+            - OrganizationAuditEventActionDELETED
         scope:
           $ref: '#/components/schemas/BreakGlassScope'
         outcome_code:
-          $ref: '#/components/schemas/BreakGlassAuditOutcomeCode'
+          type: string
+          minLength: 1
+          maxLength: 100
         project_id:
           type: string
           format: uuid
         actor_principal_id:
           type: string
           format: uuid
+          nullable: true
         actor_session_id:
           type: string
           format: uuid
+          nullable: true
         target_kind:
           type: string
           enum:
@@ -2569,6 +3202,8 @@ components:
             - CREDENTIAL
             - SETTLEMENT_CONTACT
             - JOB
+            - DEBUG_DUMP_AUTHORIZATION
+            - DEBUG_DUMP
         target_id:
           type: string
           format: uuid

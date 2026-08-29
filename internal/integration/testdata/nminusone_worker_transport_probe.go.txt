@@ -1,0 +1,153 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/workertransport"
+)
+
+type probeResult struct {
+	AttemptID          uuid.UUID                       `json:"attempt_id"`
+	JobID              uuid.UUID                       `json:"job_id"`
+	WorkerID           uuid.UUID                       `json:"worker_id"`
+	WorkerEpoch        int64                           `json:"worker_epoch"`
+	LeaseFence         int64                           `json:"lease_fence"`
+	LeaseToken         string                          `json:"lease_token,omitempty"`
+	StartDecision      workercontrol.StartDecision     `json:"start_decision,omitempty"`
+	HeartbeatDecision  workercontrol.HeartbeatDecision `json:"heartbeat_decision,omitempty"`
+	FailureDisposition workercontrol.RetryDisposition  `json:"failure_disposition,omitempty"`
+}
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	credentials, err := workertransport.NewClientTLSCredentials(
+		os.Getenv("VELA_WORKER_TLS_CERT_FILE"),
+		os.Getenv("VELA_WORKER_TLS_KEY_FILE"),
+		os.Getenv("VELA_WORKER_TLS_ROOT_CA_FILE"),
+		os.Getenv("VELA_WORKER_TLS_SERVER_NAME"),
+	)
+	if err != nil {
+		fatal(err)
+	}
+	client, err := workertransport.DialClient(
+		ctx,
+		os.Getenv("VELA_WORKER_CONTROL_ADDRESS"),
+		credentials,
+	)
+	if err != nil {
+		fatal(err)
+	}
+	defer func() { _ = client.Close() }()
+	workerEpoch, err := strconv.ParseInt(os.Getenv("VELA_WORKER_EPOCH"), 10, 64)
+	if err != nil {
+		fatal(err)
+	}
+	switch os.Getenv("VELA_WORKER_PROBE_ACTION") {
+	case "start":
+		runStart(ctx, client, workerEpoch)
+	case "heartbeat-fail":
+		runHeartbeatAndFail(ctx, client, workerEpoch)
+	default:
+		fatal(fmt.Errorf("unknown Worker probe action"))
+	}
+}
+
+func runStart(ctx context.Context, client *workertransport.Client, workerEpoch int64) {
+	assignment, err := client.Acquire(ctx, workerEpoch)
+	if err != nil {
+		fatal(err)
+	}
+	lease := workercontrol.LeaseCredentials{
+		AttemptID:   assignment.AttemptID,
+		WorkerEpoch: assignment.WorkerEpoch,
+		Fence:       assignment.LeaseFence,
+		Token:       assignment.LeaseToken,
+	}
+	started, err := client.Start(ctx, lease)
+	if err != nil {
+		fatal(err)
+	}
+	heartbeat, err := client.Heartbeat(ctx, lease, heartbeatObservation(1))
+	if err != nil {
+		fatal(err)
+	}
+	writeResult(probeResult{
+		AttemptID:         assignment.AttemptID,
+		JobID:             assignment.JobID,
+		WorkerID:          assignment.WorkerID,
+		WorkerEpoch:       assignment.WorkerEpoch,
+		LeaseFence:        assignment.LeaseFence,
+		LeaseToken:        assignment.LeaseToken,
+		StartDecision:     started.Decision,
+		HeartbeatDecision: heartbeat.Decision,
+	})
+}
+
+func runHeartbeatAndFail(ctx context.Context, client *workertransport.Client, workerEpoch int64) {
+	leaseFence, err := strconv.ParseInt(os.Getenv("VELA_LEASE_FENCE"), 10, 64)
+	if err != nil {
+		fatal(err)
+	}
+	lease := workercontrol.LeaseCredentials{
+		AttemptID:   uuid.MustParse(os.Getenv("VELA_ATTEMPT_ID")),
+		WorkerEpoch: workerEpoch,
+		Fence:       leaseFence,
+		Token:       os.Getenv("VELA_LEASE_TOKEN"),
+	}
+	heartbeat, err := client.Heartbeat(ctx, lease, heartbeatObservation(2))
+	if err != nil {
+		fatal(err)
+	}
+	decision, err := client.Fail(ctx, lease, workercontrol.FailureObservation{
+		FailureClass:             "FATAL_BACKEND",
+		FailureFingerprint:       "slice29.nminusone.normal-terminal",
+		ErrorSummary:             "N-1 Worker ended its active rollout conformance task",
+		BackendStage:             "generation",
+		GPUUUIDs:                 []string{"GPU-00000000-0000-0000-0000-000000000001"},
+		InferenceBackendRevision: "sglang-vela@slice29-n-minus-one",
+		RetryRecommended:         false,
+		WorkerReusable:           true,
+	})
+	if err != nil {
+		fatal(err)
+	}
+	writeResult(probeResult{
+		AttemptID:          heartbeat.AttemptID,
+		JobID:              heartbeat.JobID,
+		WorkerID:           heartbeat.WorkerID,
+		WorkerEpoch:        heartbeat.WorkerEpoch,
+		LeaseFence:         heartbeat.LeaseFence,
+		HeartbeatDecision:  heartbeat.Decision,
+		FailureDisposition: decision.Disposition,
+	})
+}
+
+func heartbeatObservation(sequence int64) workercontrol.HeartbeatObservation {
+	return workercontrol.HeartbeatObservation{
+		Sequence:               sequence,
+		BackendStage:           "generation",
+		GPUHealthSummary:       json.RawMessage(`{"healthy":true}`),
+		LocalArtifactState:     json.RawMessage(`{"state":"active"}`),
+		ScratchFreeBytes:       1 << 36,
+		ArtifactStoreReachable: true,
+	}
+}
+
+func writeResult(result probeResult) {
+	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}

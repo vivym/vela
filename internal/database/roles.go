@@ -21,7 +21,11 @@ const (
 	RoleOrganizationAuditRequest   Role = "vela_organization_audit_request"
 	RoleBreakGlassAuditRequest     Role = "vela_break_glass_audit_request"
 	RoleRetentionRequest           Role = "vela_retention_request"
+	RoleDebugDumpRequest           Role = "vela_debug_dump_request"
+	RoleDebugDumpAuditRequest      Role = "vela_debug_dump_audit_request"
 	RoleRetention                  Role = "vela_retention"
+	RoleBackupRetention            Role = "vela_backup_retention"
+	RoleArtifactReplication        Role = "vela_artifact_replication"
 	RolePlatformOperatorAuth       Role = "vela_platform_operator_auth"
 	RoleBreakGlassRequest          Role = "vela_break_glass_request"
 	RoleRequest                    Role = "vela_request"
@@ -29,8 +33,13 @@ const (
 	RoleCancel                     Role = "vela_cancel"
 	RoleArtifactRequest            Role = "vela_artifact_request"
 	RoleScheduler                  Role = "vela_scheduler"
+	RoleSchedulerInbox             Role = "vela_scheduler_inbox"
 	RoleBilling                    Role = "vela_billing"
 	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
+	RoleCompliance                 Role = "vela_compliance"
+	RoleNonContentExpiry           Role = "vela_non_content_expiry"
+	RoleCatalogPromotion           Role = "vela_catalog_promotion"
+	RoleSLOReporting               Role = "vela_slo_reporting"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
 	RoleRemediation                Role = "vela_remediation"
@@ -56,7 +65,11 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleOrganizationAuditRequest:   {verifyPrivileges: verifyOrganizationAuditRequestPrivileges},
 	RoleBreakGlassAuditRequest:     {verifyPrivileges: verifyBreakGlassAuditRequestPrivileges},
 	RoleRetentionRequest:           {verifyPrivileges: verifyRetentionRequestPrivileges},
+	RoleDebugDumpRequest:           {verifyPrivileges: verifyDebugDumpRequestPrivileges},
+	RoleDebugDumpAuditRequest:      {verifyPrivileges: verifyDebugDumpAuditRequestPrivileges},
 	RoleRetention:                  {verifyPrivileges: verifyRetentionPrivileges},
+	RoleBackupRetention:            {verifyPrivileges: verifyBackupRetentionPrivileges},
+	RoleArtifactReplication:        {verifyPrivileges: verifyArtifactReplicationPrivileges},
 	RolePlatformOperatorAuth:       {verifyPrivileges: verifyPlatformOperatorAuthPrivileges},
 	RoleBreakGlassRequest:          {verifyPrivileges: verifyBreakGlassRequestPrivileges},
 	RoleRequest:                    {verifyPrivileges: verifyRequestPrivileges},
@@ -64,8 +77,13 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleCancel:                     {verifyPrivileges: verifyCancelPrivileges},
 	RoleArtifactRequest:            {verifyPrivileges: verifyArtifactRequestPrivileges},
 	RoleScheduler:                  {verifyPrivileges: verifySchedulerPrivileges},
+	RoleSchedulerInbox:             {verifyPrivileges: verifySchedulerInboxPrivileges},
 	RoleBilling:                    {verifyPrivileges: verifyBillingPrivileges},
 	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
+	RoleCompliance:                 {verifyPrivileges: verifyCompliancePrivileges},
+	RoleNonContentExpiry:           {verifyPrivileges: verifyNonContentExpiryPrivileges},
+	RoleCatalogPromotion:           {verifyPrivileges: verifyCatalogPromotionPrivileges},
+	RoleSLOReporting:               {verifyPrivileges: verifySLOReportingPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
@@ -196,6 +214,17 @@ func verifySchedulerPrivileges(ctx context.Context, database rowQuerier, current
 	})
 }
 
+func verifySchedulerInboxPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Scheduler Inbox",
+		failureLabel:    "Scheduler Inbox receipt",
+		functions: []string{
+			"vela_prepare_scheduler_inbox_receipt(uuid,uuid,uuid,uuid,bigint)",
+			"vela_record_scheduler_inbox_receipt(uuid,uuid,uuid,uuid,bigint)",
+		},
+	})
+}
+
 func verifyBillingPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
 	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
 		inspectionLabel: "billing",
@@ -219,6 +248,71 @@ func verifyFinanceReconciliationPrivileges(
 		functions: []string{
 			"vela_get_finance_reconciliation_identity()",
 			"vela_apply_finance_reconciliation(uuid,text,bigint,uuid,finance_reconciliation_kind,text,bigint,bigint,bigint,text,timestamp with time zone)",
+		},
+	})
+}
+
+func verifyCompliancePrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Compliance",
+		failureLabel:    "Legal Hold transaction",
+		functions: []string{
+			"vela_get_compliance_identity()",
+			"vela_apply_legal_hold_event(uuid,text,bigint,uuid,legal_hold_event_kind,legal_hold_scope,uuid,uuid,uuid,legal_hold_record_class[],text,text,timestamp with time zone)",
+		},
+	})
+}
+
+func verifyNonContentExpiryPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "non-content expiry",
+		failureLabel:    "non-content expiry transaction",
+		functions: []string{
+			"vela_claim_non_content_expiry(text,uuid,integer)",
+			"vela_complete_non_content_expiry(non_content_expiry_kind,uuid,uuid,integer)",
+		},
+	})
+}
+
+func verifyCatalogPromotionPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Catalog Promotion",
+		failureLabel:    "Catalog Promotion transaction",
+		functions: []string{
+			"vela_record_production_gate_receipt(uuid,integer,production_gate,bytea,text,text,production_gate_result,text,text,text,text,bytea,bytea,timestamp with time zone,timestamp with time zone,timestamp with time zone)",
+			"vela_seal_production_gate_manifest(bytea)",
+			"vela_promote_profile_certification(uuid,uuid,uuid,text,text,integer,integer,integer,integer,bigint,bigint,bigint,bigint,bigint,text,integer,integer,uuid)",
+			"vela_promote_rate_card(uuid,uuid,uuid)",
+			"vela_enable_evidenced_catalog(uuid)",
+		},
+	})
+}
+
+func verifySLOReportingPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "statistical SLO reporting",
+		failureLabel:    "statistical SLO reporting transaction",
+		functions: []string{
+			"vela_register_slo_contract(uuid,text,uuid,uuid,uuid,uuid,integer,bigint,integer,integer,uuid)",
+			"vela_enable_slo_measurement(uuid)",
+			"vela_seal_slo_measurement(uuid,uuid,timestamp with time zone,timestamp with time zone)",
+			"vela_get_slo_measurement(uuid)",
 		},
 	})
 }
@@ -311,6 +405,41 @@ func verifyRetentionRequestPrivileges(
 	})
 }
 
+func verifyDebugDumpRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "debug dump request",
+		failureLabel:    "debug dump request transaction",
+		functions: []string{
+			"vela_set_request_context(uuid,bytea,text)",
+			"vela_authorize_debug_dump(uuid,uuid,uuid,text,bytea,debug_dump_purpose)",
+			"vela_get_debug_dump_authorization(uuid,uuid,uuid)",
+			"vela_revoke_debug_dump_authorization(uuid,uuid,uuid,text,bytea)",
+			"vela_list_debug_dumps(uuid,uuid,uuid)",
+			"vela_authorize_debug_dump_read(uuid,uuid,uuid,uuid)",
+			"vela_record_debug_dump_delivery(uuid,uuid,uuid,uuid,text,boolean)",
+		},
+	})
+}
+
+func verifyDebugDumpAuditRequestPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "debug dump audit request",
+		failureLabel:    "debug dump audit projection transaction",
+		functions: []string{
+			"vela_set_organization_identity_admin_context(uuid,bytea,text)",
+			"vela_list_organization_audit_events_v3(uuid,integer)",
+		},
+	})
+}
+
 func verifyRetentionPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
 	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
 		inspectionLabel: "retention",
@@ -320,6 +449,38 @@ func verifyRetentionPrivileges(ctx context.Context, database rowQuerier, current
 			"vela_complete_content_deletion_target(uuid,uuid,uuid,text,text)",
 			"vela_retry_content_deletion_target(uuid,uuid,integer,text)",
 			"vela_enqueue_expired_content_deletions(integer)",
+		},
+	})
+}
+
+func verifyBackupRetentionPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "off-cluster backup retention",
+		failureLabel:    "off-cluster backup Content Deletion transaction",
+		functions: []string{
+			"vela_claim_off_cluster_content_deletion_target(text,uuid,integer)",
+			"vela_complete_off_cluster_content_deletion_target(uuid,uuid,uuid,integer)",
+			"vela_retry_off_cluster_content_deletion_target(uuid,uuid,integer,integer)",
+		},
+	})
+}
+
+func verifyArtifactReplicationPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Artifact backup replication",
+		failureLabel:    "Artifact backup replication transaction",
+		functions: []string{
+			"vela_claim_artifact_backup_replication(text,uuid,integer)",
+			"vela_complete_artifact_backup_replication(uuid,uuid,text,bigint,bytea,text)",
+			"vela_retry_artifact_backup_replication(uuid,uuid,integer,text)",
 		},
 	})
 }

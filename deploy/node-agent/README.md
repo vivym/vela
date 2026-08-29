@@ -6,6 +6,16 @@ command allowlist. It does not connect to PostgreSQL, NATS, Kubernetes, or the
 customer API. The control plane calls it over mutually authenticated gRPC and
 persists the authoritative operation completion after the response.
 
+## Release bundle boundary
+
+Production assembly must include the `node-agent` package and strict package
+contract plus the exact systemd unit in the canonical Slice 40 release bundle.
+The contract binds `linux/amd64`, revision, absolute entrypoint, package digest,
+and size. Bundle verification parses the unit as an exact directive allowlist
+with one package-bound `ExecStart`; extra start hooks or conflicting directives
+fail closed. Host configuration, capability files, PKI, hardware identity, and
+live service enablement remain external and require their own release evidence.
+
 The same host process owns a second gRPC server on a Unix socket for XFS project
 quota observations. That service is never registered on the remote mTLS
 listener. Linux requires `CAP_SYS_ADMIN` to query an arbitrary project quota, so
@@ -23,8 +33,8 @@ mode:
 - the controller CA bundle;
 - the explicit controller SPIFFE-to-actor map;
 - the action allowlist JSON;
-- the device/certification capability matrix JSON; and
-- the receipt directory, owned by the service and mode `0750`.
+- the device/certification capability matrix JSON;
+- the receipt directory, owned by the service and mode `0750`;
 - the Worker scratch XFS project, exact block device, hard quota, and inherited
   project ID;
 - the root-owned Worker quota socket parent directory; and
@@ -42,6 +52,26 @@ structured health evidence only after device and inference-backend validation.
 An absent or invalid capability, fence, rate-limit, or post-check configuration
 causes startup failure or a fail-closed operation result.
 
+The capability matrix is keyed by canonical NVIDIA GPU UUID. Each entry binds
+that UUID to one lowercase canonical PCI BDF, one certification revision, an
+explicit failure-class set, and an explicit L0-L5 action set. For example:
+
+```json
+{
+  "GPU-00000000-0000-0000-0000-000000000001": {
+    "certification_revision": "gpu-remediation-matrix-v1",
+    "pci_bdf": "0000:41:00.0",
+    "failure_classes": ["PROCESS_FAILURE"],
+    "actions": ["L0_PROCESS_RESTART"]
+  }
+}
+```
+
+This example is structural only and is not a hardware certification. The host
+helpers must discover the actual GPU UUID and PCI BDF and return both exact
+values. A stale Worker epoch, unknown GPU UUID, changed BDF, unlisted failure
+class, unlisted action, or revision mismatch fails before or during execution.
+
 Every action, fence, and post-check helper receives these arguments after its
 fixed configured argument vector:
 
@@ -51,7 +81,9 @@ fixed configured argument vector:
 --vela-worker-id=<uuid>
 --vela-worker-epoch=<positive integer>
 --vela-node-identity=<registered identity>
---vela-device-identity=<registered identity>
+--vela-device-identity=<canonical GPU UUID>
+--vela-gpu-uuid=<canonical GPU UUID>
+--vela-pci-bdf=<canonical PCI BDF>
 --vela-failure-class=<authoritative failure class>
 --vela-action-level=<L0...L5 enum>
 --vela-certification-revision=<revision>
@@ -59,7 +91,8 @@ fixed configured argument vector:
 --vela-deadline-at=<RFC3339Nano UTC>
 ```
 
-Fence output is exactly one JSON object containing those identity fields plus
+Fence output is exactly one JSON object containing those identity fields,
+including `gpu_uuid` and `pci_bdf`, plus
 `new_assignments_stopped=true` and `target_processes_stopped=true`. Post-check
 output is exactly one JSON object containing the identity fields plus
 `device_healthy=true`, `inference_backend_healthy=true`, and a bounded `detail`.
@@ -81,6 +114,7 @@ endpoint registry is keyed by Node identity and has this shape:
     "address": "10.0.0.10:9443",
     "server_name": "node-1.vela.internal",
     "worker_id": "10000000-0000-0000-0000-000000000001",
+    "worker_epoch": 7,
     "spiffe_identity": "spiffe://vela.internal/node-agent/bm9kZS0x/10000000-0000-0000-0000-000000000001"
   }
 }
@@ -96,6 +130,7 @@ Required environment variables are documented by `cmd/vela-node-agent`:
 VELA_NODE_AGENT_ADDRESS
 VELA_NODE_AGENT_NODE_IDENTITY
 VELA_NODE_AGENT_WORKER_ID
+VELA_NODE_AGENT_WORKER_EPOCH
 VELA_NODE_AGENT_TLS_CERT_FILE
 VELA_NODE_AGENT_TLS_KEY_FILE
 VELA_NODE_AGENT_CONTROLLER_CA_FILE

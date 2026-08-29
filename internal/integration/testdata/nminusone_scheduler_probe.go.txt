@@ -1,0 +1,103 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/scheduler"
+	"github.com/vivym/vela/internal/workercontrol"
+)
+
+type probeResult struct {
+	Dispatched  bool      `json:"dispatched"`
+	SQLState    string    `json:"sqlstate,omitempty"`
+	Error       string    `json:"error,omitempty"`
+	IntentID    uuid.UUID `json:"intent_id"`
+	AttemptID   uuid.UUID `json:"attempt_id"`
+	JobID       uuid.UUID `json:"job_id"`
+	WorkerID    uuid.UUID `json:"worker_id"`
+	WorkerEpoch int64     `json:"worker_epoch"`
+	LeaseFence  int64     `json:"lease_fence"`
+	LeaseToken  string    `json:"lease_token,omitempty"`
+}
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	internalPool, err := pgxpool.New(ctx, os.Getenv("VELA_INTERNAL_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer internalPool.Close()
+	schedulerPool, err := pgxpool.New(ctx, os.Getenv("VELA_SCHEDULER_DATABASE_URL"))
+	if err != nil {
+		fatal(err)
+	}
+	defer schedulerPool.Close()
+	coordinator, err := workercontrol.NewService(ctx, internalPool, workercontrol.Config{
+		LeaseTTL:         2 * time.Minute,
+		ActiveLeaseKeyID: "lease-key-v1",
+		LeaseKeys: map[string][]byte{
+			"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
+		},
+	})
+	if err != nil {
+		writeFailure(err)
+		return
+	}
+	service, err := scheduler.NewService(schedulerPool, coordinator, scheduler.Config{
+		SchedulerID:       os.Getenv("VELA_SCHEDULER_ID"),
+		ClaimTTL:          30 * time.Second,
+		CandidateAttempts: 1,
+	})
+	if err != nil {
+		writeFailure(err)
+		return
+	}
+	dispatch, ok, err := service.RunOnce(
+		ctx,
+		uuid.MustParse(os.Getenv("VELA_WORKER_POOL_ID")),
+	)
+	if err != nil {
+		writeFailure(err)
+		return
+	}
+	result := probeResult{Dispatched: ok}
+	if ok {
+		result.IntentID = dispatch.IntentID
+		result.AttemptID = dispatch.Assignment.AttemptID
+		result.JobID = dispatch.Assignment.JobID
+		result.WorkerID = dispatch.Assignment.WorkerID
+		result.WorkerEpoch = dispatch.Assignment.WorkerEpoch
+		result.LeaseFence = dispatch.Assignment.LeaseFence
+		result.LeaseToken = dispatch.Assignment.LeaseToken
+	}
+	writeResult(result)
+}
+
+func writeFailure(err error) {
+	result := probeResult{Error: err.Error()}
+	var postgresError *pgconn.PgError
+	if errors.As(err, &postgresError) {
+		result.SQLState = postgresError.Code
+	}
+	writeResult(result)
+}
+
+func writeResult(result probeResult) {
+	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(err error) {
+	_, _ = fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}

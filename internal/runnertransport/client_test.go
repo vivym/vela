@@ -1,7 +1,9 @@
 package runnertransport
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -178,6 +180,10 @@ func TestPrepareUsesPrivateUnixSocketAndCarriesImmutableExecutionAuthority(t *te
 		ExecutionProfileRevisionID: uuid.MustParse("60000000-0000-0000-0000-000000000006"),
 		OutputSpecID:               uuid.MustParse("70000000-0000-0000-0000-000000000007"),
 		RequestContent:             json.RawMessage(`{"prompt":"private customer request"}`),
+		DebugDumpAuthorization: &DebugDumpAuthorizationSnapshot{
+			AuthorizationID: uuid.MustParse("70000000-0000-0000-0000-000000000008"),
+			ExpiresAt:       time.Now().UTC().Add(time.Hour),
+		},
 	}
 	server := &recordingRunnerServer{prepareResponse: &velav1.PrepareResponse{
 		Identity:          protoIdentity(identity),
@@ -207,6 +213,11 @@ func TestPrepareUsesPrivateUnixSocketAndCarriesImmutableExecutionAuthority(t *te
 		request.GetExecutionSpec().GetExecutionProfileRevisionId() != spec.ExecutionProfileRevisionID.String() ||
 		request.GetExecutionSpec().GetOutputSpecId() != spec.OutputSpecID.String() ||
 		string(request.GetExecutionSpec().GetRequestContentJson()) != string(spec.RequestContent) ||
+		request.GetExecutionSpec().GetDebugDumpAuthorization().GetAuthorizationId() !=
+			spec.DebugDumpAuthorization.AuthorizationID.String() ||
+		!request.GetExecutionSpec().GetDebugDumpAuthorization().GetExpiresAt().AsTime().Equal(
+			spec.DebugDumpAuthorization.ExpiresAt,
+		) ||
 		!request.GetSameAuthorityLocalRecovery() {
 		t.Fatalf("Prepare request = %#v", request)
 	}
@@ -314,6 +325,77 @@ func TestStatusReturnsBoundedBackendNeutralProgressForHeartbeat(t *testing.T) {
 	if server.statusRequest == nil ||
 		server.statusRequest.GetIdentity().GetLeaseFence() != identity.LeaseFence {
 		t.Fatalf("Status request = %#v", server.statusRequest)
+	}
+}
+
+func TestStatusReturnsVerifiedCanonicalDebugDumpOnlyForFailure(t *testing.T) {
+	identity := AttemptIdentity{
+		AttemptID:   uuid.MustParse("a1000000-0000-0000-0000-000000000021"),
+		JobID:       uuid.MustParse("a2000000-0000-0000-0000-000000000022"),
+		WorkerID:    uuid.MustParse("a3000000-0000-0000-0000-000000000023"),
+		WorkerEpoch: 13, LeaseFence: 10,
+	}
+	content := []byte(
+		`{"authorization_id":"a4000000-0000-0000-0000-000000000024",` +
+			`"attempt_id":"a1000000-0000-0000-0000-000000000021",` +
+			`"backend_stage":"dit","failure_class":"CUDA_OOM",` +
+			`"failure_fingerprint":"cuda/oom/dit","gpu_uuids":[],` +
+			`"inference_backend_revision":"sglang@sha256:test",` +
+			`"job_id":"a2000000-0000-0000-0000-000000000022",` +
+			`"lease_fence":10,"retry_recommended":false,"schema_version":1,` +
+			`"worker_epoch":13,"worker_id":"a3000000-0000-0000-0000-000000000023",` +
+			`"worker_reusable":false}`,
+	)
+	digest := sha256.Sum256(content)
+	response := &velav1.StatusResponse{
+		Identity: protoIdentity(identity),
+		State:    velav1.RunnerExecutionState_RUNNER_EXECUTION_STATE_FAILED,
+		Sequence: 12, BackendStage: "dit",
+		GpuHealthJson:          []byte(`{"healthy":false}`),
+		LocalArtifactStateJson: []byte(`{"output_count":0}`),
+		Failure: &velav1.RunnerFailure{
+			FailureClass: "CUDA_OOM", FailureFingerprint: "cuda/oom/dit",
+			ErrorSummary: "backend failed", BackendStage: "dit",
+			InferenceBackendRevision: "sglang@sha256:test",
+		},
+		DebugDump: &velav1.RunnerDebugDump{
+			Content: content, SizeBytes: int64(len(content)), Sha256: digest[:],
+			ContentType: debugDumpContentType,
+		},
+	}
+	client := startRunnerClient(t, &recordingRunnerServer{statusResponse: response})
+
+	status, err := client.Status(context.Background(), identity)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status.DebugDump == nil || string(status.DebugDump.Content) != string(content) ||
+		status.DebugDump.SizeBytes != int64(len(content)) || status.DebugDump.SHA256 != digest ||
+		status.DebugDump.ContentType != debugDumpContentType {
+		t.Fatalf("Status debug dump = %#v", status.DebugDump)
+	}
+
+	response.DebugDump.Sha256 = make([]byte, sha256.Size)
+	status, err = client.Status(context.Background(), identity)
+	if err != nil || status.DebugDump != nil || status.Failure == nil {
+		t.Fatalf("Status did not discard a mismatched optional debug dump: %#v error=%v", status, err)
+	}
+	unsafeContent := bytes.Replace(content, []byte(`"backend_stage":"dit"`),
+		[]byte(`"backend_stage":"customer prompt text"`), 1)
+	unsafeDigest := sha256.Sum256(unsafeContent)
+	response.DebugDump.Content = unsafeContent
+	response.DebugDump.SizeBytes = int64(len(unsafeContent))
+	response.DebugDump.Sha256 = unsafeDigest[:]
+	status, err = client.Status(context.Background(), identity)
+	if err != nil || status.DebugDump != nil || status.Failure == nil ||
+		status.Failure.BackendStage != "dit" {
+		t.Fatalf("Status did not discard content-like optional debug dump: %#v error=%v", status, err)
+	}
+	response.DebugDump = nil
+	response.State = velav1.RunnerExecutionState_RUNNER_EXECUTION_STATE_RUNNING
+	response.Failure = nil
+	if _, err := client.Status(context.Background(), identity); err != nil {
+		t.Fatalf("Status rejected an authorized failure without a debug dump: %v", err)
 	}
 }
 

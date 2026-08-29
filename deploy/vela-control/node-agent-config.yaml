@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-control-node-agents-r0-placeholder
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/part-of: vela
+immutable: true
+data:
+  node-agents.json: |
+    {
+      "replace-with-node-identity": {
+        "address": "replace-with-node-agent.vela-system.svc:9444",
+        "server_name": "replace-with-node-agent.vela-system.svc",
+        "worker_id": "00000000-0000-0000-0000-000000000001",
+        "worker_epoch": 1,
+        "spiffe_identity": "spiffe://vela.internal/node-agent/replace-with-node-identity"
+      }
+    }

@@ -1,0 +1,55 @@
+rule_files:
+  - rules.yaml
+evaluation_interval: 1m
+tests:
+  - name: Preset p95 breach pages
+    interval: 1m
+    input_series:
+      - series: 'vela_slo_report_p95_milliseconds{model_revision="m1",generation_preset="fast",generation_preset_revision="p1",service_class_revision="s1",output_spec="o1",generation_count="1",result="FAIL"}'
+        values: '61000x20'
+      - series: 'vela_slo_target_p95_milliseconds{model_revision="m1",generation_preset="fast",generation_preset_revision="p1",service_class_revision="s1",output_spec="o1",generation_count="1",result="FAIL"}'
+        values: '60000x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: VelaPresetP95SLOBreach
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              model_revision: m1
+              generation_preset: fast
+              generation_preset_revision: p1
+              service_class_revision: s1
+              output_spec: o1
+              generation_count: "1"
+              result: FAIL
+            exp_annotations:
+              runbook: docs/runbooks/statistical-slo-breach.md
+  - name: Missing API SLI series pages
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: VelaAPISLISeriesMissing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              runbook: docs/runbooks/statistical-slo-breach.md
+  - name: Missing exact contract report pages
+    interval: 1m
+    input_series:
+      - series: 'vela_slo_contract_report_coverage{model_revision="m1",generation_preset="fast",generation_preset_revision="p1",service_class_revision="s1",output_spec="o1",generation_count="2"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: VelaSLOContractCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              model_revision: m1
+              generation_preset: fast
+              generation_preset_revision: p1
+              service_class_revision: s1
+              output_spec: o1
+              generation_count: "2"
+            exp_annotations:
+              runbook: docs/runbooks/statistical-slo-breach.md

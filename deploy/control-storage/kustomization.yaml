@@ -1,9 +1,18 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: vela-system
+configMapGenerator:
+  - name: vela-jetstream-contract
+    files:
+      - jetstream-contract.json
+  - name: vela-barman-cloud-plugin-contract
+    files:
+      - barman-cloud-plugin-contract.json
 resources:
   - namespace.yaml
   - recovery-contract.yaml
+  - postgres-object-store.yaml
   - postgres-cluster.yaml
+  - postgres-scheduled-backup.yaml
   - nats-statefulset.yaml
   - disruption-budgets.yaml

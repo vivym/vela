@@ -7,10 +7,12 @@ Controller owns protected `WorkerPool`, `OnDelete` DaemonSet, and Worker Pod
 lifecycle. Argo CD may install this base and versioned desired input, but this
 base grants no Argo identity access to live protected resources.
 
-The controller image, desired revision/images/configuration names, and webhook
-`caBundle` are deliberately invalid placeholders. Delivery must replace the
-immutable desired-input ConfigMap with an approved revision and provision these
-independent trust materials:
+The controller image, desired revision, Worker Agent and H3 Runner images,
+configuration names, and webhook `caBundle` are deliberately invalid
+placeholders. The desired BusyBox init image is the repository-pinned shared
+`1.37.0` `linux/amd64` manifest. Delivery must replace the immutable
+desired-input ConfigMap with an approved revision and provision these independent
+trust materials:
 
 - `vela-fleet-control-mtls`: Fleet Controller client certificate, private key,
   and CA for the Fleet maintenance gRPC service;
@@ -22,6 +24,18 @@ independent trust materials:
 Delivery must also inject the serving-certificate CA into the webhook
 `caBundle`. Applying the placeholders is not a successful deployment and cannot
 produce a Launch Receipt.
+
+## Release bundle boundary
+
+Production assembly must include the final `kubectl kustomize` output as the
+exact `fleet-controller` render in the canonical Slice 40 release bundle. The
+bundle rejects placeholder or mutable image references and binds the desired
+Fleet revision, referenced configuration/Secret revisions, and complete
+versioned resource inventory. Per-node desired Worker state is separately bound
+by each Worker materialization. A changed render, desired revision, image,
+materialization, or external revision requires a new configuration revision and
+release digest. Verification does not replace live admission, RBAC, rollout, or
+Launch Receipt evidence.
 
 ## Admission Identity Contract
 

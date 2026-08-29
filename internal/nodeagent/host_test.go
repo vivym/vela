@@ -16,6 +16,15 @@ import (
 	"github.com/vivym/vela/internal/remediation"
 )
 
+const (
+	testGPUUUID0 = "GPU-00000000-0000-0000-0000-000000000000"
+	testGPUUUID1 = "GPU-11111111-1111-1111-1111-111111111111"
+	testGPUUUID2 = "GPU-22222222-2222-2222-2222-222222222222"
+	testPCIBDF0  = "0000:41:00.0"
+	testPCIBDF1  = "0000:42:00.0"
+	testPCIBDF2  = "0000:43:00.0"
+)
+
 type fakeCommandRunner struct {
 	output  []byte
 	outputs map[string][]byte
@@ -34,7 +43,8 @@ func (runner *fakeCommandRunner) Run(_ context.Context, _ remediation.Plan, path
 func TestCertifiedExecutorRequiresCapabilityFenceRateAndPostcheck(t *testing.T) {
 	plan := remediation.Plan{
 		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure", ActionLevel: remediation.ActionL0ProcessRestart,
+		NodeIdentity: "node-1", DeviceIdentity: testGPUUUID0, GPUUUID: testGPUUUID0,
+		PCIBDF: testPCIBDF0, FailureClass: "process_failure", ActionLevel: remediation.ActionL0ProcessRestart,
 		CertificationRevision: "matrix-v1", FailureEvidenceDigest: digestForTest("failure"),
 		DeadlineAt: time.Now().Add(time.Minute).UTC(),
 	}
@@ -49,7 +59,11 @@ func TestCertifiedExecutorRequiresCapabilityFenceRateAndPostcheck(t *testing.T) 
 		t.Fatalf("NewAllowlistedExecutor: %v", err)
 	}
 	policy, err := NewStaticCapabilityPolicy(map[string]DeviceCapability{
-		"gpu-0": {CertificationRevision: "matrix-v1", Actions: map[remediation.ActionLevel]bool{remediation.ActionL0ProcessRestart: true}},
+		testGPUUUID0: {
+			GPUUUID: testGPUUUID0, PCIBDF: testPCIBDF0, CertificationRevision: "matrix-v1",
+			FailureClasses: map[string]bool{"process_failure": true},
+			Actions:        map[remediation.ActionLevel]bool{remediation.ActionL0ProcessRestart: true},
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewStaticCapabilityPolicy: %v", err)
@@ -87,7 +101,11 @@ func TestCertifiedExecutorFailsClosedOnPolicyFenceAndPostcheck(t *testing.T) {
 		t.Fatalf("NewAllowlistedExecutor: %v", err)
 	}
 	policy, err := NewStaticCapabilityPolicy(map[string]DeviceCapability{
-		"gpu-0": {CertificationRevision: "matrix-v1", Actions: map[remediation.ActionLevel]bool{remediation.ActionL0ProcessRestart: true}},
+		testGPUUUID0: {
+			GPUUUID: testGPUUUID0, PCIBDF: testPCIBDF0, CertificationRevision: "matrix-v1",
+			FailureClasses: map[string]bool{"process_failure": true},
+			Actions:        map[remediation.ActionLevel]bool{remediation.ActionL0ProcessRestart: true},
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewStaticCapabilityPolicy: %v", err)
@@ -97,7 +115,8 @@ func TestCertifiedExecutorFailsClosedOnPolicyFenceAndPostcheck(t *testing.T) {
 	blocked, _ := NewCertifiedExecutor(allowlisted, policy, CallbackFence(func(context.Context, remediation.Plan) error { return errors.New("active lease") }), postcheck, limiter)
 	plan := remediation.Plan{
 		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure", ActionLevel: remediation.ActionL0ProcessRestart,
+		NodeIdentity: "node-1", DeviceIdentity: testGPUUUID0, GPUUUID: testGPUUUID0,
+		PCIBDF: testPCIBDF0, FailureClass: "process_failure", ActionLevel: remediation.ActionL0ProcessRestart,
 		CertificationRevision: "matrix-v1", FailureEvidenceDigest: digestForTest("failure"),
 		DeadlineAt: time.Now().Add(time.Minute).UTC(),
 	}
@@ -105,17 +124,33 @@ func TestCertifiedExecutorFailsClosedOnPolicyFenceAndPostcheck(t *testing.T) {
 		t.Fatalf("fence rejection = %v", err)
 	}
 	failedPolicy, _ := NewCertifiedExecutor(allowlisted, policy, CallbackFence(func(context.Context, remediation.Plan) error { return nil }), postcheck, limiter)
-	plan.DeviceIdentity = "gpu-1"
+	plan.DeviceIdentity = testGPUUUID1
 	if _, err := failedPolicy.Execute(context.Background(), plan); err == nil || !strings.Contains(err.Error(), "not certified") {
 		t.Fatalf("policy rejection = %v", err)
 	}
 	postcheckRunner := &fakeCommandRunner{err: errors.New("health unavailable")}
 	failedPostcheck, _ := NewCommandPostcheck(postcheckRunner, "/usr/local/bin/health", nil)
 	postcheckExecutor, _ := NewCertifiedExecutor(allowlisted, policy, CallbackFence(func(context.Context, remediation.Plan) error { return nil }), failedPostcheck, limiter)
-	plan.DeviceIdentity = "gpu-0"
+	plan.DeviceIdentity = testGPUUUID0
 	result, err := postcheckExecutor.Execute(context.Background(), plan)
 	if err != nil || result.PostcheckVerified || result.ResultCode != "POSTCHECK_FAILED" {
 		t.Fatalf("post-check failure = %#v err=%v", result, err)
+	}
+}
+
+func TestStaticCapabilityPolicyRejectsDuplicatePCIBDF(t *testing.T) {
+	capability := func(gpuUUID string) DeviceCapability {
+		return DeviceCapability{
+			GPUUUID: gpuUUID, PCIBDF: testPCIBDF0, CertificationRevision: "matrix-v1",
+			FailureClasses: map[string]bool{"process_failure": true},
+			Actions:        map[remediation.ActionLevel]bool{remediation.ActionL0ProcessRestart: true},
+		}
+	}
+	if _, err := NewStaticCapabilityPolicy(map[string]DeviceCapability{
+		testGPUUUID0: capability(testGPUUUID0),
+		testGPUUUID1: capability(testGPUUUID1),
+	}); err == nil || !strings.Contains(err.Error(), "reuse a PCI BDF") {
+		t.Fatalf("duplicate PCI BDF error = %v", err)
 	}
 }
 
@@ -136,7 +171,8 @@ func TestExecCommandRunnerPassesImmutablePlanAsBoundedArguments(t *testing.T) {
 		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000000001"),
 		ExecutionClaimID: uuid.MustParse("20000000-0000-0000-0000-000000000002"),
 		WorkerID:         uuid.MustParse("30000000-0000-0000-0000-000000000003"),
-		WorkerEpoch:      7, NodeIdentity: "node-7", DeviceIdentity: "GPU-7", FailureClass: "gpu_fault",
+		WorkerEpoch:      7, NodeIdentity: "node-7", DeviceIdentity: testGPUUUID0,
+		GPUUUID: testGPUUUID0, PCIBDF: testPCIBDF0, FailureClass: "gpu_fault",
 		ActionLevel: remediation.ActionL2GPUReset, CertificationRevision: "matrix-v7",
 		FailureEvidenceDigest: evidence, DeadlineAt: time.Unix(20_000, 123).UTC(),
 	}
@@ -148,7 +184,9 @@ func TestExecCommandRunnerPassesImmutablePlanAsBoundedArguments(t *testing.T) {
 		"fixed", "--vela-operation-id=10000000-0000-0000-0000-000000000001",
 		"--vela-execution-claim-id=20000000-0000-0000-0000-000000000002",
 		"--vela-worker-id=30000000-0000-0000-0000-000000000003", "--vela-worker-epoch=7",
-		"--vela-node-identity=node-7", "--vela-device-identity=GPU-7", "--vela-failure-class=gpu_fault", "--vela-action-level=L2_GPU_RESET",
+		"--vela-node-identity=node-7", "--vela-device-identity=" + testGPUUUID0,
+		"--vela-gpu-uuid=" + testGPUUUID0, "--vela-pci-bdf=" + testPCIBDF0,
+		"--vela-failure-class=gpu_fault", "--vela-action-level=L2_GPU_RESET",
 		"--vela-certification-revision=matrix-v7", "--vela-failure-evidence-sha256=" + hex.EncodeToString(evidence),
 		"--vela-deadline-at=1970-01-01T05:33:20.000000123Z",
 	} {
@@ -162,7 +200,8 @@ func TestExecCommandRunnerPassesHeldExecutableFileDescriptor(t *testing.T) {
 	path := writeHostHelper(t, "#!/bin/sh\ntest -r /dev/fd/3 || exit 42\nprintf held-executable-fd\n")
 	plan := remediation.Plan{
 		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure",
+		NodeIdentity: "node-1", DeviceIdentity: testGPUUUID0, GPUUUID: testGPUUUID0,
+		PCIBDF: testPCIBDF0, FailureClass: "process_failure",
 		ActionLevel: remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1",
 		FailureEvidenceDigest: digestForTest("failure"), DeadlineAt: time.Now().Add(time.Minute).UTC(),
 	}
@@ -187,7 +226,8 @@ func TestExecCommandRunnerRejectsUnsafeDarwinTemporaryParent(t *testing.T) {
 	t.Setenv("TMPDIR", unsafeTemporaryParent)
 	plan := remediation.Plan{
 		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
-		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure",
+		NodeIdentity: "node-1", DeviceIdentity: testGPUUUID0, GPUUUID: testGPUUUID0,
+		PCIBDF: testPCIBDF0, FailureClass: "process_failure",
 		ActionLevel: remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1",
 		FailureEvidenceDigest: digestForTest("failure"), DeadlineAt: time.Now().Add(time.Minute).UTC(),
 	}
@@ -209,12 +249,13 @@ func writeHostHelper(t *testing.T, content string) string {
 func TestFenceAndPostcheckRejectMismatchedStructuredEvidence(t *testing.T) {
 	plan := remediation.Plan{
 		OperationID: uuid.New(), ExecutionClaimID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 2,
-		NodeIdentity: "node-2", DeviceIdentity: "gpu-2", FailureClass: "cuda_fault", ActionLevel: remediation.ActionL1CUDACleanup,
+		NodeIdentity: "node-2", DeviceIdentity: testGPUUUID2, GPUUUID: testGPUUUID2,
+		PCIBDF: testPCIBDF2, FailureClass: "cuda_fault", ActionLevel: remediation.ActionL1CUDACleanup,
 		CertificationRevision: "matrix-v2", FailureEvidenceDigest: digestForTest("failure"),
 		DeadlineAt: time.Now().Add(time.Minute).UTC(),
 	}
 	wrongPlan := plan
-	wrongPlan.DeviceIdentity = "gpu-other"
+	wrongPlan.PCIBDF = testPCIBDF1
 	fenceRunner := &fakeCommandRunner{output: fenceEvidenceForTest(t, wrongPlan)}
 	fence, err := NewCommandFence(fenceRunner, "/usr/local/bin/fence", nil)
 	if err != nil {
@@ -284,6 +325,8 @@ func marshalHostEvidenceForTest(t *testing.T, plan remediation.Plan, fields map[
 	fields["worker_epoch"] = plan.WorkerEpoch
 	fields["node_identity"] = plan.NodeIdentity
 	fields["device_identity"] = plan.DeviceIdentity
+	fields["gpu_uuid"] = plan.GPUUUID
+	fields["pci_bdf"] = plan.PCIBDF
 	fields["failure_class"] = plan.FailureClass
 	fields["action_level"] = string(plan.ActionLevel)
 	fields["certification_revision"] = plan.CertificationRevision

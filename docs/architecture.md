@@ -3,7 +3,7 @@
 | 属性 | 内容 |
 | --- | --- |
 | 状态 | Accepted architecture baseline |
-| 实现状态 | Pre-implementation；Production Gate 未通过前不得承载正式流量 |
+| 实现状态 | Repository implementation in progress；Production Gates 仍为 0/9 PASS，未通过前不得承载正式流量 |
 | 日期 | 2026-08-20 |
 | 首个工作负载 | MiniMax H3 文生视频 |
 | 首发客户 | 通过邀请和线下合同接入的 Customer Organization |
@@ -276,6 +276,12 @@ Model Catalog 管理 ModelRevision、InferenceBackendRevision、ExecutionProfile
 
 Platform Operator 不属于客户角色。读取 Customer Content 必须通过限时、审批和全审计的 Break-glass Access，不能用共享组织 master key 或模拟客户 Principal。
 
+### 6.10.1 Compliance 与 Legal Hold
+
+Compliance Principal 独立于 Human Principal、Service Principal、Finance Principal 和 Platform Operator。它通过专用 PostgreSQL role 与 TLS 1.3 mutual-auth listener 提交不可变 Legal Hold event，只能为一个确切的 Organization、Project 或 Job 冻结 `METADATA`、`FINANCIAL` 或两者的正常到期。Hold 的 placement 与 release 使用各 Principal 独立且连续的 source sequence，release 单向且不能删除历史证据。
+
+Legal Hold 不拥有 Prompt、输入、Artifact、debug dump、Worker scratch 或 Local Recovery State；这些 Customer Content 仍受 24 小时 Content Deletion 合同约束。metadata / financial expiry authority 必须在删除候选记录的同一 PostgreSQL 事务中锁定并检查匹配的 ACTIVE hold，不能用异步缓存或事后补偿替代。
+
 ### 6.11 Fleet Controller
 
 Fleet Controller 将 Catalog 中的 ExecutionProfileRevision 实现为 Kubernetes Worker pool，并负责 warm-up、canary、planned drain、rollout 和 retirement。它只能通过 Job Coordinator 请求 drain/fence，不能直接终止仍拥有有效 Lease 的 Worker。
@@ -306,13 +312,15 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 
 | 部署单元 | 语言 | 包含的 Module | 拆分原因 |
 | --- | --- | --- | --- |
-| `vela-control` | Go | HTTP adapter、Organization / Project / Identity、Job Coordinator、Scheduler、Worker Registry、Model Catalog、Billing Ledger、Artifact Validator / Reconciler、Webhook / Outbox dispatcher | 共享 PostgreSQL 事务和领域不变量，保持模块化单体 |
+| `vela-control` | Go | HTTP adapter、Organization / Project / Identity、Compliance / Legal Hold、Job Coordinator、Scheduler、Worker Registry、Model Catalog、Billing Ledger、Artifact Validator / Reconciler、Webhook / Outbox dispatcher | 共享 PostgreSQL 事务和领域不变量，保持模块化单体；Compliance 使用独立 listener 与数据库 pool |
 | `vela-fleet-controller` | Go | Fleet Controller、Node Health Controller | 独立 Kubernetes RBAC 与 rollout 生命周期 |
 | `vela-worker-agent` | Go | Worker protocol、Lease client、Artifact upload / validation client | 与推理 runner 分离，保持长连接和恢复语义稳定 |
 | H3 runner | Python | SGLang fork、GPU role binding、模型执行 | 保留 Python / CUDA 推理生态 |
 | `vela-node-agent` | Go | allowlisted remediation executor | host systemd 高权限进程，不依赖 Kubernetes 或 container runtime |
 
 `vela-control` 可以运行多个相同 replica；后台循环使用 row claim、advisory lock 或唯一约束竞争，不为同进程内的 Scheduler、Catalog 和 Billing 增加网络 Interface。对象存储、OIDC、Invoice export、Kubernetes、Worker、Inference Backend，以及跨进程的 Fleet / Node Health maintenance command 这些真实变化点定义 adapter seam。
+
+`deploy/vela-control` 固定该模块化单体的 Kubernetes 边界：两个 replica 必须分布在不同 Control/Storage Node，Scheduler、各 Reconciler 和 Dispatcher 的 claimant identity 从不可变 Pod UID 派生；Remediation 使用与共享证书 URI `spiffe://vela.internal/controller/vela-control` 匹配的稳定 actor。数据库 DSN 和 credential pepper 仅来自 release-versioned 外部 Secret，文件型 mTLS / NATS / S3 / keyring material 逐 key 复制为 UID 10001 拥有的普通文件；轮换必须创建新 Secret 名称并滚动 Pod template，不支持原地 Secret 更新。public API、Worker、Fleet、Finance 和 Compliance 使用五个单用途 ClusterIP Service 与独立 ingress policy，`/healthz` 和 `/readyz` 只监听不经 Service 暴露的 Pod-private management port；其中 `vela-control.vela-system.svc:8444` 只保留 Fleet maintenance 兼容地址。每个 Pod 通过独立 ephemeral PVC 预留 Artifact validation scratch，并由专用 StorageClass 和 PriorityClass 隔离共享 Control/Storage Node 上的容量与 I/O 风险。环境相关 egress 由 release overlay 按实际 PostgreSQL、NATS、OIDC、对象存储、Webhook、Invoice 和 Node Agent 目标收敛，仓库 base 不以宽泛外网规则代替。该可渲染 contract 不是已部署证据，也不改变 Production Gate 结果。
 
 ## 7. 领域模型
 
@@ -321,6 +329,7 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 | CustomerOrganization | 合同、信用和结算主体 | 所有 Project 共享一个 Contract Credit Limit 和结算关系 |
 | Project | Organization 内的操作空间 | credential、配额、Idempotency-Key、Artifact namespace 和审计均按 Project 隔离 |
 | Principal / Credential | 行为主体及其可轮换身份凭据 | Human Principal 使用 OIDC；Service Principal 属于一个 Project；审计归因不随 credential 轮换丢失 |
+| CompliancePrincipal / LegalHold | 独立合规主体及其非内容保留指令 | 只能覆盖确切 Organization / Project / Job 的 METADATA / FINANCIAL；不能保留 Customer Content |
 | Job | 用户的一次推理意图 | 请求、报价和执行策略快照创建后不可变 |
 | Attempt | Job 的一次物理执行 | 一个 Job 可有多个 Attempt |
 | Lease | Worker 对 Attempt 的限时执行权 | 区分 EXECUTION / FINALIZATION phase，包含鉴权 token、单调 fence、owner epoch 和 expiry |
@@ -430,7 +439,7 @@ PostgreSQL 是以下数据的权威事实源：
 
 首发 Scheduler Job claim 使用按 Worker pool scoped 的 PostgreSQL advisory transaction lock 串行化短暂的公平性决策，并从一个有硬上限的 point-in-time candidate snapshot 创建 durable dispatch intent；partial unique index 禁止同一 Job 或 Worker 同时存在多个 live claim。Scheduler 不把该锁延伸到 Assignment，`Acquire` 在独立事务中锁定并重新检查 dispatch intent、Job、Worker epoch、认证、额度和重试 authority。每个业务 row 显式带 `organization_id`；Project-owned row 同时带 `project_id`，composite foreign key 禁止跨 Organization 关联。客户请求使用受限数据库 role、transaction-local identity context 和 `FORCE ROW LEVEL SECURITY`，Scheduler / Reconciler 使用独立内部 role 和连接池，客户请求路径不得借用该 privileged pool。
 
-控制面所有 Lease expiry、Job Expiry 和重试时间比较以 PostgreSQL 时间为准，不能依赖各 Pod 的 wall clock。Worker 只使用服务端返回的 `lease_valid_for` 和本地 monotonic clock 做保守的 fail-closed 倒计时，不能自行延长 Lease。CloudNativePG 在三个 Control/Storage Node 上使用同步提交、跨节点副本、自动 failover、PITR 和集群外 WAL 归档；数据库不可用时系统停止 Admission 和新 Assignment。
+控制面所有 Lease expiry、Job Expiry 和重试时间比较以 PostgreSQL 时间为准，不能依赖各 Pod 的 wall clock。Worker 只使用服务端返回的 `lease_valid_for` 和本地 monotonic clock 做保守的 fail-closed 倒计时，不能自行延长 Lease。CloudNativePG 在三个 Control/Storage Node 上使用同步提交、跨节点副本和自动 failover，并通过 Barman Cloud Plugin 把 WAL 与 base backup 写入独立故障域以支持 PITR；数据库不可用时系统停止 Admission 和新 Assignment。
 
 ### 8.2 队列语义
 
@@ -837,6 +846,8 @@ Artifact Validator 必须核对 object version、size、checksum 和 content typ
 
 Retention Policy 版本锁定并由控制面与存储 lifecycle 共同执行，不应写死在 Worker 中。客户 Content Deletion 在 24 小时内异步删除 Prompt 与 Artifact，不撤销 Charge，也不删除法定保留的非内容审计；备份中的删除通过到期与恢复后 deletion replay 闭环。
 
+非内容 Legal Hold 只能延长 Job / Attempt metadata 与财务记录的正常到期，不能改变上表任何 Customer Content 期限。未来 metadata / financial expiry Reconciler 必须先锁定候选记录，再在同一 PostgreSQL 事务中调用 active-hold lock contract；存在匹配 ACTIVE hold 时不得提交到期。Release 只允许后续正常到期，不追溯恢复已删除记录。
+
 ### 13.6 存储故障与背压
 
 Worker heartbeat 上报 scratch 剩余容量和 Artifact Store 可达性。控制面维护 Artifact Store circuit，并采用 high / low watermark 避免抖动：
@@ -979,6 +990,8 @@ Fleet Controller 执行 planned rollout，并与硬件维护共用 DRAINING 语�
 
 每次 release 先升级无状态 `vela-control` replica，再 canary 新 Worker pool。回滚不得回退已提交的数据库 schema，而是切回 N-1 binary / configuration；发布前必须用真实长任务验证升级、回滚、Worker drain 和旧 event backlog 消费。
 
+`vela-control` 的 repository base 使用两个 replica、`maxUnavailable: 0`、`maxSurge: 1`、required hostname anti-affinity 和 `minAvailable: 1` PDB。它只保证 release manifest 不主动同时移除两个 replica；只有真实集群中的旧/新 binary coexistence、readiness、连接 drain、long-running Job 和 retained backlog receipt 才能证明 non-interrupting release。
+
 ### 15.3 Revision 保留
 
 - QUEUED、ASSIGNED、RUNNING、FINALIZING 或 RETRY_WAIT Job 引用的 ModelRevision、GenerationPresetRevision、ExecutionPolicySnapshot 和 PricingSnapshot 必须保留；非终态 Attempt 引用的 InferenceBackendRevision、ExecutionProfileRevision 和 ProfileCertification 同样必须保留。
@@ -1082,6 +1095,16 @@ Worker 与控制面失联时，旧 Worker 可能仍继续计算。控制面可�
 - JetStream 是可重建的投递设施，不是灾备事实源。恢复顺序为 PostgreSQL / Catalog -> Artifact Store -> JetStream -> Outbox replay -> Reconciler；恢复不能制造第二个 Visible Completion、Charge 或 Webhook event id。
 - PostgreSQL restore、JetStream rebuild、Outbox replay、Artifact 抽样恢复和 secret rotation 至少每季度实演一次。备份任务成功不等于恢复通过。
 
+Slice 38 将仓库中的 CNPG native backup surface 迁移到 digest-pinned
+Barman Cloud Plugin `ObjectStore`、WAL archiver 和 immediate/daily base backup，
+并在 fresh four-node kind/MinIO 环境完成真实 base backup、目标 WAL 归档和
+timestamp restore（`4f4bc2d`，credential-isolation review closure
+`e8a4149`）。release-owned install render 将两个 Barman principal 限制为只能
+访问精确的 `vela-backup-s3`，并拒绝 Artifact credential 读取。这只证明 local
+plugin API/recovery path；生产
+RKE2、独立 S3 故障域、provider/network failure、完整恢复顺序、季度演练与
+Launch Receipt 仍是外部 Production Gate。
+
 ### 17.4 外部依赖故障
 
 - PostgreSQL 不可用时停止新 Assignment，Worker 可以在有限 Lease 内继续当前 Attempt。
@@ -1180,7 +1203,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 | 领域 | 选择 | 生产基线 |
 | --- | --- | --- |
-| 事实源 | CloudNativePG / PostgreSQL | 三台 Control/Storage Node 各运行一个 replica，同步提交、自动 failover、PITR，WAL 归档到独立故障域 |
+| 事实源 | CloudNativePG / PostgreSQL | 三台 Control/Storage Node 各运行一个 replica，同步提交、自动 failover；Barman Cloud Plugin 将 WAL 与 base backup 归档到独立故障域并提供 PITR |
 | 事件设施 | NATS JetStream | 3 replicas、PVC-backed file storage、durable consumer、explicit ack、anti-affinity |
 | 一致性 | Transactional outbox + idempotent consumer + reconciliation | 不做 PostgreSQL / NATS 双写，不依赖 Broker exactly-once 宣称 |
 | Catalog 配置 | YAML authoring + JSON Schema + canonical JSON | 接纳时校验，入库保存 canonical JSON、schema revision 和 content hash，不执行任意模板代码 |
@@ -1267,8 +1290,8 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 6. 除 Billable Start 后 Customer Cancellation 外，所有 terminal FAILED Job 都释放 CreditReservation 且不形成 Charge。
 7. Scheduler 在 Assignment 事务前后崩溃，Job 不会卡死；BUSY Worker 不接收预派任务，Organization -> Service Class -> Project -> Job 的公平性、aging、Protected Lane 和 retry lane 仍有界。
 8. Worker 网络分区后旧 Attempt 完成返回 `RejectedStaleLease`；最多 3 个 Attempt、累计 compute / finalization budget 和 Job Expiry 中任一耗尽都会停止重试。
-9. Progress 只描述当前 Attempt 的当前 Execution Phase；重试后允许重置，`job_expires_at` 和 Dynamic ETA 均不会被呈现为 Hard Deadline。
-10. multipart upload 中断后，同一 Worker 节点且本地源仍存在时可继续上传；节点或 NVMe 丢失时不声称跨 Worker 恢复，而是按 Retry Budget 从头重算。
+9. Progress 只描述当前 Attempt 的当前 Execution Phase；重试后允许重置，`job_expires_at` 和 Dynamic ETA 均不会被呈现为 Hard Deadline。统计 SLO 必须按 UTC 月度 Accepted/QUEUED cohort，对 exact ModelRevision、GenerationPresetRevision、ServiceClassRevision、OutputSpec 和 generation count 独立计算；p95 从 `jobs.created_at` 到 Visible Completion，FAILED/expiry 进入成功率分母，Customer Cancellation 单列，open/低样本/缺 target/mixed revision 一律不能 PASS。Slice 37 用 migration 00033、统一 Go evaluator、strict typed evidence、Pod-private metrics、burn-rate rules/dashboard/runbook 和复合迁移测试建立 repository conformance；真实月度流量、H3 结果、paging/P1 演练和 Launch Receipt 仍属于 Production Gate。
+10. multipart upload 中断后，同一 Worker 节点且本地源仍存在时可继续上传；节点或 NVMe 丢失时不声称跨 Worker 恢复，而是按 Retry Budget 从头重算。Slice 30 已通过 production Worker Agent、mTLS WorkerControl、PostgreSQL 和 versioned MinIO 直接证明：同 Worker/epoch/Attempt/fence 的进程丢失只续传剩余 multipart parts，不重跑 Runner；首个 Worker 的本地恢复根不可访问并被判定为 `LOST` 后，不同 Worker 以 higher-fence Attempt 2 从空本地根重算，最终仍只有一个 Visible Completion、ArtifactSet 和 Charge（`864c134`，review closure `5a9bad6`）。真实 H3/XFS/NVMe 故障注入与 Launch Receipt 仍属于 Production Gate。
 11. Worker 在对象上传完成、ArtifactSet commit 前失联时，Artifact Reconciler 可验证并提交已上传对象或安全清理；同一 object key 覆盖写被拒绝，COMMITTED Artifact 固定到不可变 object version。
 12. duration、resolution、frame count、codec、generation count 或任一必需缩略图不符合 OutputSpec 时，整个 ArtifactSet 不能发布或计费。
 13. 两个 Attempt 同时完成时，只有一个能原子形成 Visible Completion 和一条 Charge；未获胜 Attempt 的对象按 Retention Policy 清理。
@@ -1277,7 +1300,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 16. Artifact Store 故障停止受影响 pool 的新 Assignment；scratch high watermark 只停止对应 Worker / pool，存储探测和 low watermark 同时恢复后才重新接纳。
 17. H3 Worker 请求 `nvidia.com/gpu: 8` 并受专用 taint / label 约束；Fleet Controller 之外的 Pod / pool delete、selector / image patch 和 Argo prune 被 RBAC、admission 和 finalizer 拒绝。
 18. Remediation Operation 的 node identity、GPU UUID / PCI BDF 或 Worker epoch 不匹配时拒绝执行；L0-L5 只按认证矩阵自动执行，L6 没有人工审批不得执行，失败验证自动 Quarantine。
-19. 失败对象 24 小时、scratch 最多 24 小时、授权 debug dump 最多 72 小时、成功 Artifact / prompt 30 天后按策略删除；Content Deletion 提前删除内容但保留法定 Charge 和审计记录。
+19. 失败对象 24 小时、scratch 最多 24 小时、授权 debug dump 最多 72 小时、成功 Artifact / prompt 30 天后按策略删除；Content Deletion 提前删除内容但保留法定 Charge 和审计记录。Slice 31 已用独立最小权限角色、versioned MinIO 双 bucket 和真实 PostgreSQL dump/restore 证明：只为 COMMITTED Artifact 创建 off-cluster backup target，删除覆盖 backup key 的全部 versions/delete markers，恢复点位于 deletion authority 之后时可重放 PRIMARY 与 OFF_CLUSTER_BACKUP targets 而不复活对象，并保留 prompt tombstone、Charge 与 actor attribution。Slice 32 为每个 COMMITTED Artifact 将冻结的 PRIMARY exact version 复制到 versioned backup，记录不可变证据，并通过同一 PostgreSQL row lock 串行化复制与删除。Slice 33 增加独立 Compliance Principal，以不可变事件在精确 Organization、Project 或 Job 范围放置/释放只覆盖 `METADATA`/`FINANCIAL` 的 Legal Hold，且不能保存 Customer Content。Slice 34 从 canonical terminal event 或 Finance Reconciliation `posted_at` 建立 365/2557 天时钟，与 active hold 串行化后物理删除 Job、Attempt 和 financial source row，并以最小 root 保留独立证据。Slice 38 用 Barman Cloud Plugin 在 fresh kind/MinIO 环境完成 local base backup、目标 WAL 归档和 timestamp restore。真实 provider/network 故障证据、早于 deletion authority 的恢复点、生产独立故障域 PITR、expiry/failover/observability 与 Launch Receipt 仍属于 Production Gate。
 20. JetStream 短暂或整体不可用后，Outbox 保留发布意图，reconciliation 从 PostgreSQL 恢复待调度 Job；Invoice exporter 不可用不阻塞 Visible Completion 或 Artifact access，恢复重试以 `charge_id` 幂等且不产生重复 Invoice line。
 21. `begin_finalization()` 在事务提交前后崩溃，重放仍只得到一组 Artifact / ArtifactUpload，并保留原 `finalization_deadline_at`。
 22. OFFLINE Worker 恢复后必须经过身份、设备、Inference Backend、model warm-up 和 canary 检查，达到 HEALTHY + READY 才重新接收 Assignment。
@@ -1288,7 +1311,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 27. 使用无权限或其他 workload 的 NATS credential 访问受限 subject 被拒绝；Organization A 的任何角色、Project credential、signed URL 或复合外键都不能读取或引用 Organization B 的数据。
 28. Webhook endpoint 超时、返回非 2xx 或 Dispatcher 崩溃时，同一 `event_id` 允许重复投递并在 72 小时后进入 dead letter；签名可验证，payload 不含 Customer Content，GET Job 返回最终权威状态。
 29. Credential 轮换、撤销和 Break-glass 到期不会丢失 Principal 审计归因；BillingAdmin 和 OrganizationAuditor 默认不能读取 prompt 或 Artifact。
-30. N 与 N-1 控制面、Worker、event 和 schema 在长任务 rollout 中共存；升级、回滚和 drain 不终止 Accepted Job，旧 event backlog 能由新 consumer 正确处理。
+30. N 与 N-1 控制面、Worker、event 和 schema 在长任务 rollout 中共存；升级、回滚和 drain 不终止 Accepted Job，旧 event backlog 能由新 consumer 正确处理。Slice 29 已用 exact adjacent N-1 control、Admission、Outbox、Scheduler 与 Worker probe，在 schema 27 上直接证明 retained raw event 由 current Inbox/Scheduler 接收、active Lease 在 current Fleet drain 中继续、exact N-1 rollback writer 保持 authority，并在 CNPG 无同步 quorum 时由 current 与 N-1 writer 共同 fail closed（`21e0781`）；真实 Kubernetes 长任务 rollout 与 production backlog receipt 仍属于 Production Gate。
 
 ## 23. 已决事项、Production Gate 与 Future Work
 
@@ -1308,6 +1331,36 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 ### 23.2 硬 Production Gates
 
 每个 Gate 必须产生绑定 release digest、configuration revision、验证环境、原始结果、owner、时间和阈值的 Launch Receipt。缺失或失败的 receipt 不能因客户熟悉、口头豁免或“上线后再修”而标记 PASS。
+
+Slice 35 提供严格 manifest loader、evidence bytes SHA-256 复算、显式
+`vela-verify-launch` release check，以及绑定 sealed receipt 的三 Preset、
+RateCard 与 `ACTIVE` Catalog promotion authority。它只闭合 repository
+enforcement。Slice 39 为八个非 observability Gate 增加固定 typed semantic
+contract、typed artifact aggregate 和 Catalog plan/evidence 精确绑定；现有
+observability schema 保持独立版本。Slice 40 再以一个 canonical release
+bundle 从 exact final renders、host packages、Node Agent unit、per-Worker
+materialization、logical WorkerPool 下 hostname-pinned placement、external
+Secret/ConfigMap revisions 和 OCI manifest/config bytes 推导 release digest 与
+configuration revision；`vela-verify-launch` 与
+Catalog promotion 都必须重新验证该 bundle，并在数据库 transaction 前精确匹配
+receipt 绑定。Slice 44 提供经过完整本地验证后的 digest-only registry upload、
+raw manifest 回读和 credential-free publication receipt contract；实际生产
+registry receipt、signature、SBOM、vulnerability approval、真实 PKI/Secret、
+生产节点 materialization 与部署仍是外部 release responsibility。
+Slice 45 以外部 trust policy、职责分离的 Ed25519 keys 和 DSSE envelopes
+严格验证完整 release image set 的 publication receipt、SPDX 2.3 subject、
+scanner/database identity 与 vulnerability approval，并让 launch verification
+及 Catalog promotion 在任何缺失或不匹配时于 transaction 前 fail closed；
+repository validator 与 test fixture 不构成实际生产 evidence。
+Slice 46 将 Control/Storage JetStream workload 固定到 NATS `2.10.22` 的
+exact `linux/amd64` OCI manifest，并通过最终 Kustomize render 验证该身份；
+它不提供 registry/supply-chain evidence，也不替代 release-specific Vela、
+PKI/Secret 与目标集群输入。Slice 47 将 `vela-control` secret materializer、
+静态 Worker root initializer 和 Fleet desired input 的共享 BusyBox `1.37.0`
+固定到同一个 exact `linux/amd64` OCI manifest，并通过三个最终 Kustomize
+render 验证该身份；实际 registry publication、signature、SBOM、scan、
+vulnerability approval 和部署证据仍属于 release responsibility。
+仓库内 bundle、fixture 和测试不是 Launch Receipt，当前仍为 `0/9 PASS`。
 
 | Gate | PASS 证据 | 未通过时行为 |
 | --- | --- | --- |

@@ -18,8 +18,10 @@ import (
 	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/debugdump"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
+	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
 )
@@ -30,16 +32,21 @@ const (
 	serviceAuthenticationFailureMessage  = "valid Service Principal credential is required"
 	platformAuthenticationFailureMessage = "valid Platform Operator credential is required"
 	breakGlassServiceUnavailableMessage  = "Break-glass dependency is unavailable"
+	remediationServiceUnavailableMessage = "Remediation dependency is unavailable"
 	platformBreakGlassPathPrefix         = "/v1/platform/break-glass/"
+	platformRemediationPathPrefix        = "/v1/platform/remediation/"
 )
 
 type Config struct {
+	Observer               func(http.Handler) http.Handler
 	Authenticator          *identity.Authenticator
 	PlatformAuthenticator  *breakglass.Authenticator
 	BreakGlass             *breakglass.Service
+	Remediation            *remediation.Service
 	IdentityAdministration *identity.AdministrationService
 	OrganizationReporting  *organizationreporting.Service
 	Retention              *retention.Service
+	DebugDumps             *debugdump.Service
 	Admission              *admission.Service
 	Cancellation           *cancellation.Service
 	Artifacts              *artifactaccess.Service
@@ -50,9 +57,11 @@ type server struct {
 	authenticator          *identity.Authenticator
 	platformAuthenticator  *breakglass.Authenticator
 	breakGlass             *breakglass.Service
+	remediation            *remediation.Service
 	identityAdministration *identity.AdministrationService
 	organizationReporting  *organizationreporting.Service
 	retention              *retention.Service
+	debugDumps             *debugdump.Service
 	admission              *admission.Service
 	cancellation           *cancellation.Service
 	artifacts              *artifactaccess.Service
@@ -98,9 +107,11 @@ func NewHandler(config Config) (http.Handler, error) {
 		authenticator:          config.Authenticator,
 		platformAuthenticator:  config.PlatformAuthenticator,
 		breakGlass:             config.BreakGlass,
+		remediation:            config.Remediation,
 		identityAdministration: config.IdentityAdministration,
 		organizationReporting:  config.OrganizationReporting,
 		retention:              config.Retention,
+		debugDumps:             config.DebugDumps,
 		admission:              config.Admission,
 		cancellation:           config.Cancellation,
 		artifacts:              config.Artifacts,
@@ -117,6 +128,9 @@ func NewHandler(config Config) (http.Handler, error) {
 	})
 
 	router := chi.NewRouter()
+	if config.Observer != nil {
+		router.Use(config.Observer)
+	}
 	router.Use(implementation.limitRequestBody)
 	router.Use(implementation.authenticate)
 	router.Use(oapimiddleware.OapiRequestValidatorWithOptions(openAPI, &oapimiddleware.Options{
@@ -125,6 +139,164 @@ func NewHandler(config Config) (http.Handler, error) {
 		},
 	}))
 	return api.HandlerFromMux(strict, router), nil
+}
+
+func (s *server) CreateRemediationOperation(
+	ctx context.Context,
+	request api.CreateRemediationOperationRequestObject,
+) (api.CreateRemediationOperationResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.CreateRemediationOperation401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.remediation == nil {
+		return api.CreateRemediationOperation503JSONResponse{
+			ServiceUnavailableJSONResponse: remediationUnavailableResponse(),
+		}, nil
+	}
+	if request.Body == nil {
+		return api.CreateRemediationOperation400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "remediation request body is required",
+			},
+		}, nil
+	}
+	evidence, err := hex.DecodeString(request.Body.EvidenceSha256)
+	if err != nil {
+		return api.CreateRemediationOperation400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "remediation evidence digest is invalid",
+			},
+		}, nil
+	}
+	created, err := s.remediation.Request(ctx, remediation.Request{
+		OperationID:           uuid.UUID(request.Body.OperationId),
+		WorkerID:              uuid.UUID(request.Body.WorkerId),
+		WorkerEpoch:           request.Body.WorkerEpoch,
+		NodeIdentity:          request.Body.NodeIdentity,
+		DeviceIdentity:        request.Body.GpuUuid,
+		FailureClass:          request.Body.FailureClass,
+		EvidenceDigest:        evidence,
+		CertificationRevision: request.Body.CertificationRevision,
+		ActionLevel:           remediation.ActionLevel(request.Body.ActionLevel),
+		IdempotencyKey:        string(request.Params.IdempotencyKey),
+		RequestedBy:           remediationOperatorIdentity(operator),
+	})
+	if err != nil {
+		return createRemediationOperationFailure(err)
+	}
+	operation, err := s.remediation.Get(ctx, created.OperationID)
+	if err != nil {
+		return createRemediationOperationFailure(err)
+	}
+	projection := toAPIRemediationOperation(operation)
+	if created.Replayed {
+		return api.CreateRemediationOperation200JSONResponse(projection), nil
+	}
+	return api.CreateRemediationOperation201JSONResponse(projection), nil
+}
+
+func (s *server) GetRemediationOperation(
+	ctx context.Context,
+	request api.GetRemediationOperationRequestObject,
+) (api.GetRemediationOperationResponseObject, error) {
+	if _, ok := platformOperatorFromContext(ctx); !ok {
+		return api.GetRemediationOperation401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.remediation == nil {
+		return api.GetRemediationOperation503JSONResponse{
+			ServiceUnavailableJSONResponse: remediationUnavailableResponse(),
+		}, nil
+	}
+	operation, err := s.remediation.Get(ctx, uuid.UUID(request.RemediationOperationId))
+	if err != nil {
+		return getRemediationOperationFailure(err)
+	}
+	return api.GetRemediationOperation200JSONResponse(toAPIRemediationOperation(operation)), nil
+}
+
+func (s *server) ApproveRemediationOperation(
+	ctx context.Context,
+	request api.ApproveRemediationOperationRequestObject,
+) (api.ApproveRemediationOperationResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.ApproveRemediationOperation401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.remediation == nil {
+		return api.ApproveRemediationOperation503JSONResponse{
+			ServiceUnavailableJSONResponse: remediationUnavailableResponse(),
+		}, nil
+	}
+	operationID := uuid.UUID(request.RemediationOperationId)
+	if _, err := s.remediation.Approve(ctx, operationID, remediationOperatorIdentity(operator)); err != nil {
+		return approveRemediationOperationFailure(err)
+	}
+	operation, err := s.remediation.Get(ctx, operationID)
+	if err != nil {
+		return approveRemediationOperationFailure(err)
+	}
+	return api.ApproveRemediationOperation200JSONResponse(toAPIRemediationOperation(operation)), nil
+}
+
+func (s *server) StartRemediationOperation(
+	ctx context.Context,
+	request api.StartRemediationOperationRequestObject,
+) (api.StartRemediationOperationResponseObject, error) {
+	operator, ok := platformOperatorFromContext(ctx)
+	if !ok {
+		return api.StartRemediationOperation401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: platformAuthenticationFailureMessage,
+			},
+		}, nil
+	}
+	if s.remediation == nil {
+		return api.StartRemediationOperation503JSONResponse{
+			ServiceUnavailableJSONResponse: remediationUnavailableResponse(),
+		}, nil
+	}
+	operationID := uuid.UUID(request.RemediationOperationId)
+	operation, err := s.remediation.Get(ctx, operationID)
+	if err != nil {
+		return startRemediationOperationFailure(err)
+	}
+	if _, err := s.remediation.Start(
+		ctx,
+		operationID,
+		operation.WorkerID,
+		operation.WorkerEpoch,
+		remediationOperatorIdentity(operator),
+	); err != nil {
+		return startRemediationOperationFailure(err)
+	}
+	operation, err = s.remediation.Get(ctx, operationID)
+	if err != nil {
+		return startRemediationOperationFailure(err)
+	}
+	return api.StartRemediationOperation200JSONResponse(toAPIRemediationOperation(operation)), nil
+}
+
+func remediationOperatorIdentity(operator breakglass.Operator) string {
+	return "platform-operator/" + operator.ID.String()
+}
+
+func remediationUnavailableResponse() api.ServiceUnavailableJSONResponse {
+	return api.ServiceUnavailableJSONResponse{
+		Code: "service_unavailable", Message: remediationServiceUnavailableMessage,
+	}
 }
 
 func (s *server) CreateBreakGlassRequest(
@@ -370,6 +542,256 @@ func (s *server) SetProjectRetentionPolicy(
 		return setProjectRetentionPolicyFailure(err)
 	}
 	return api.SetProjectRetentionPolicy200JSONResponse(toAPIProjectRetentionPolicy(policy)), nil
+}
+
+func (s *server) AuthorizeDebugDump(
+	ctx context.Context,
+	request api.AuthorizeDebugDumpRequestObject,
+) (api.AuthorizeDebugDumpResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.AuthorizeDebugDump401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.AuthorizeDebugDump403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.AuthorizeDebugDump404JSONResponse{
+			Code: "not_found", Message: "Project or Job is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.AuthorizeDebugDump503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	if request.Body == nil {
+		return api.AuthorizeDebugDump400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse{
+				Code: "invalid_request", Message: "debug dump authorization body is required",
+			},
+		}, nil
+	}
+	authorization, err := s.debugDumps.Authorize(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		string(request.Params.IdempotencyKey),
+		debugdump.Purpose(request.Body.Purpose),
+	)
+	if err != nil {
+		return authorizeDebugDumpFailure(err)
+	}
+	response := toAPIDebugDumpAuthorization(authorization)
+	if authorization.Replayed {
+		return api.AuthorizeDebugDump200JSONResponse(response), nil
+	}
+	return api.AuthorizeDebugDump201JSONResponse(response), nil
+}
+
+func (s *server) GetDebugDumpAuthorization(
+	ctx context.Context,
+	request api.GetDebugDumpAuthorizationRequestObject,
+) (api.GetDebugDumpAuthorizationResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.GetDebugDumpAuthorization401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.GetDebugDumpAuthorization403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.GetDebugDumpAuthorization404JSONResponse{
+			Code: "not_found", Message: "debug dump authorization is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.GetDebugDumpAuthorization503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	authorization, err := s.debugDumps.GetAuthorization(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.DebugDumpAuthorizationId,
+	)
+	if err != nil {
+		return getDebugDumpAuthorizationFailure(err)
+	}
+	return api.GetDebugDumpAuthorization200JSONResponse(
+		toAPIDebugDumpAuthorization(authorization),
+	), nil
+}
+
+func (s *server) RevokeDebugDumpAuthorization(
+	ctx context.Context,
+	request api.RevokeDebugDumpAuthorizationRequestObject,
+) (api.RevokeDebugDumpAuthorizationResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.RevokeDebugDumpAuthorization401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.RevokeDebugDumpAuthorization403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.RevokeDebugDumpAuthorization404JSONResponse{
+			Code: "not_found", Message: "debug dump authorization is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.RevokeDebugDumpAuthorization503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	authorization, err := s.debugDumps.RevokeAuthorization(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.DebugDumpAuthorizationId,
+		string(request.Params.IdempotencyKey),
+	)
+	if err != nil {
+		return revokeDebugDumpAuthorizationFailure(err)
+	}
+	return api.RevokeDebugDumpAuthorization200JSONResponse(
+		toAPIDebugDumpAuthorization(authorization),
+	), nil
+}
+
+func (s *server) ListDebugDumps(
+	ctx context.Context,
+	request api.ListDebugDumpsRequestObject,
+) (api.ListDebugDumpsResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ListDebugDumps401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ListDebugDumps403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse{
+				Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+			},
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.ListDebugDumps404JSONResponse{
+			Code: "not_found", Message: "debug dump authorization is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.ListDebugDumps503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	dumps, err := s.debugDumps.ListDumps(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.DebugDumpAuthorizationId,
+	)
+	if err != nil {
+		return listDebugDumpsFailure(err)
+	}
+	response := api.DebugDumpList{Dumps: make([]api.DebugDump, len(dumps))}
+	for index := range dumps {
+		response.Dumps[index] = toAPIDebugDump(dumps[index])
+	}
+	return api.ListDebugDumps200JSONResponse(response), nil
+}
+
+func (s *server) ReadDebugDump(
+	ctx context.Context,
+	request api.ReadDebugDumpRequestObject,
+) (api.ReadDebugDumpResponseObject, error) {
+	principal, status := retentionPolicyAdministrationPrincipal(
+		ctx, request.ProjectId, identity.ScopeDebugDumpsManage,
+	)
+	if status == http.StatusUnauthorized {
+		return api.ReadDebugDump401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse{
+				Code: "unauthorized", Message: authenticationFailureMessage,
+			},
+		}, nil
+	}
+	if status == http.StatusForbidden {
+		return api.ReadDebugDump403JSONResponse{
+			Code: "forbidden", Message: "Human ProjectAdmin debug dump authority is required",
+		}, nil
+	}
+	if status == http.StatusNotFound {
+		return api.ReadDebugDump404JSONResponse{
+			Code: "not_found", Message: "debug dump target is not visible",
+		}, nil
+	}
+	if s.debugDumps == nil {
+		return api.ReadDebugDump503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+				Code: "service_unavailable", Message: "Debug dump dependency is unavailable",
+			},
+		}, nil
+	}
+	download, err := s.debugDumps.ReadDump(
+		ctx,
+		principal,
+		request.ProjectId,
+		request.JobId,
+		request.DebugDumpAuthorizationId,
+		request.DebugDumpId,
+	)
+	if err != nil {
+		return readDebugDumpFailure(err)
+	}
+	return api.ReadDebugDump200JSONResponse(toAPIDebugDumpDownload(download)), nil
 }
 
 func (s *server) AcceptContentDeletionRequest(
@@ -1756,7 +2178,8 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized", authenticationFailureMessage)
 			return
 		}
-		if strings.HasPrefix(r.URL.Path, platformBreakGlassPathPrefix) {
+		if strings.HasPrefix(r.URL.Path, platformBreakGlassPathPrefix) ||
+			strings.HasPrefix(r.URL.Path, platformRemediationPathPrefix) {
 			if s.platformAuthenticator == nil {
 				writeError(
 					w,
@@ -1913,6 +2336,112 @@ func projectMembershipAdministrationPrincipal(
 		return organizationPrincipal, http.StatusOK
 	}
 	return identity.Principal{}, http.StatusForbidden
+}
+
+type remediationHTTPFailure struct {
+	status  int
+	code    string
+	message string
+}
+
+func classifyRemediationFailure(err error) (remediationHTTPFailure, bool) {
+	var failure *remediation.Failure
+	if !errors.As(err, &failure) {
+		return remediationHTTPFailure{}, false
+	}
+	switch failure.Code {
+	case remediation.FailureInvalid:
+		return remediationHTTPFailure{status: http.StatusBadRequest, code: "invalid_request", message: failure.Message}, true
+	case remediation.FailureNotFound:
+		return remediationHTTPFailure{status: http.StatusNotFound, code: "not_found", message: failure.Message}, true
+	case remediation.FailureConflict, remediation.FailureUncertified, remediation.FailureExecution:
+		return remediationHTTPFailure{status: http.StatusConflict, code: "conflict", message: failure.Message}, true
+	case remediation.FailureUnavailable:
+		return remediationHTTPFailure{
+			status: http.StatusServiceUnavailable, code: "service_unavailable",
+			message: remediationServiceUnavailableMessage,
+		}, true
+	default:
+		return remediationHTTPFailure{}, false
+	}
+}
+
+func createRemediationOperationFailure(err error) (api.CreateRemediationOperationResponseObject, error) {
+	failure, ok := classifyRemediationFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusBadRequest:
+		return api.CreateRemediationOperation400JSONResponse{BadRequestJSONResponse: api.BadRequestJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	case http.StatusNotFound:
+		return api.CreateRemediationOperation404JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusConflict:
+		return api.CreateRemediationOperation409JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusServiceUnavailable:
+		return api.CreateRemediationOperation503JSONResponse{ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	default:
+		return nil, err
+	}
+}
+
+func getRemediationOperationFailure(err error) (api.GetRemediationOperationResponseObject, error) {
+	failure, ok := classifyRemediationFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusNotFound:
+		return api.GetRemediationOperation404JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusServiceUnavailable:
+		return api.GetRemediationOperation503JSONResponse{ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	default:
+		return nil, err
+	}
+}
+
+func approveRemediationOperationFailure(err error) (api.ApproveRemediationOperationResponseObject, error) {
+	failure, ok := classifyRemediationFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusNotFound:
+		return api.ApproveRemediationOperation404JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusBadRequest, http.StatusConflict:
+		return api.ApproveRemediationOperation409JSONResponse{Code: "conflict", Message: failure.message}, nil
+	case http.StatusServiceUnavailable:
+		return api.ApproveRemediationOperation503JSONResponse{ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	default:
+		return nil, err
+	}
+}
+
+func startRemediationOperationFailure(err error) (api.StartRemediationOperationResponseObject, error) {
+	failure, ok := classifyRemediationFailure(err)
+	if !ok {
+		return nil, err
+	}
+	switch failure.status {
+	case http.StatusNotFound:
+		return api.StartRemediationOperation404JSONResponse{Code: failure.code, Message: failure.message}, nil
+	case http.StatusBadRequest, http.StatusConflict:
+		return api.StartRemediationOperation409JSONResponse{Code: "conflict", Message: failure.message}, nil
+	case http.StatusServiceUnavailable:
+		return api.StartRemediationOperation503JSONResponse{ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse{
+			Code: failure.code, Message: failure.message,
+		}}, nil
+	default:
+		return nil, err
+	}
 }
 
 type breakGlassHTTPFailure struct {
@@ -2660,6 +3189,156 @@ func retentionFailureResponse(err error) (*retention.Failure, api.Error, bool) {
 	return failure, api.Error{Code: string(failure.Code), Message: failure.Message}, true
 }
 
+func authorizeDebugDumpFailure(
+	err error,
+) (api.AuthorizeDebugDumpResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.AuthorizeDebugDump401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.AuthorizeDebugDump403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case debugdump.FailureInvalid:
+		return api.AuthorizeDebugDump400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound:
+		return api.AuthorizeDebugDump404JSONResponse(response), nil
+	case debugdump.FailureConflict:
+		return api.AuthorizeDebugDump409JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.AuthorizeDebugDump503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func getDebugDumpAuthorizationFailure(
+	err error,
+) (api.GetDebugDumpAuthorizationResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.GetDebugDumpAuthorization401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.GetDebugDumpAuthorization403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound, debugdump.FailureInvalid:
+		return api.GetDebugDumpAuthorization404JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.GetDebugDumpAuthorization503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func revokeDebugDumpAuthorizationFailure(
+	err error,
+) (api.RevokeDebugDumpAuthorizationResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.RevokeDebugDumpAuthorization401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.RevokeDebugDumpAuthorization403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound, debugdump.FailureInvalid:
+		return api.RevokeDebugDumpAuthorization404JSONResponse(response), nil
+	case debugdump.FailureConflict:
+		return api.RevokeDebugDumpAuthorization409JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.RevokeDebugDumpAuthorization503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func listDebugDumpsFailure(err error) (api.ListDebugDumpsResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.ListDebugDumps401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.ListDebugDumps403JSONResponse{
+			ForbiddenJSONResponse: api.ForbiddenJSONResponse(response),
+		}, nil
+	case debugdump.FailureInvalid:
+		return api.ListDebugDumps400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound:
+		return api.ListDebugDumps404JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.ListDebugDumps503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
+func readDebugDumpFailure(err error) (api.ReadDebugDumpResponseObject, error) {
+	var failure *debugdump.Failure
+	if !errors.As(err, &failure) {
+		return nil, err
+	}
+	response := api.Error{Code: string(failure.Code), Message: failure.Message}
+	switch failure.Code {
+	case debugdump.FailureUnauthorized:
+		return api.ReadDebugDump401JSONResponse{
+			UnauthorizedJSONResponse: api.UnauthorizedJSONResponse(response),
+		}, nil
+	case debugdump.FailureForbidden:
+		return api.ReadDebugDump403JSONResponse(response), nil
+	case debugdump.FailureInvalid:
+		return api.ReadDebugDump400JSONResponse{
+			BadRequestJSONResponse: api.BadRequestJSONResponse(response),
+		}, nil
+	case debugdump.FailureNotFound:
+		return api.ReadDebugDump404JSONResponse(response), nil
+	case debugdump.FailureUnavailable:
+		return api.ReadDebugDump503JSONResponse{
+			ServiceUnavailableJSONResponse: api.ServiceUnavailableJSONResponse(response),
+		}, nil
+	default:
+		return nil, err
+	}
+}
+
 func acceptContentDeletionRequestFailure(
 	err error,
 ) (api.AcceptContentDeletionRequestResponseObject, error) {
@@ -2996,24 +3675,61 @@ func toAPIOrganizationAuditEvent(
 		value := api.BreakGlassScope(*event.Scope)
 		scope = &value
 	}
-	var outcomeCode *api.BreakGlassAuditOutcomeCode
-	if event.OutcomeCode != nil {
-		value := api.BreakGlassAuditOutcomeCode(*event.OutcomeCode)
-		outcomeCode = &value
+	var actorPrincipalID, actorSessionID *uuid.UUID
+	if event.ActorPrincipalID != uuid.Nil {
+		value := event.ActorPrincipalID
+		actorPrincipalID = &value
+	}
+	if event.ActorSessionID != uuid.Nil {
+		value := event.ActorSessionID
+		actorSessionID = &value
 	}
 	return api.OrganizationAuditEvent{
 		Action:           api.OrganizationAuditEventAction(event.Action),
-		ActorPrincipalId: event.ActorPrincipalID,
-		ActorSessionId:   event.ActorSessionID,
+		ActorPrincipalId: actorPrincipalID,
+		ActorSessionId:   actorSessionID,
 		CreatedAt:        event.CreatedAt,
 		EventId:          event.EventID,
-		OutcomeCode:      outcomeCode,
+		OutcomeCode:      event.OutcomeCode,
 		ProjectId:        event.ProjectID,
 		Scope:            scope,
 		Source:           api.OrganizationAuditEventSource(event.Source),
 		TargetId:         event.TargetID,
 		TargetKind:       api.OrganizationAuditEventTargetKind(event.TargetKind),
 	}
+}
+
+func toAPIRemediationOperation(operation remediation.Operation) api.RemediationOperation {
+	result := api.RemediationOperation{
+		OperationId: uuid.UUID(operation.ID), WorkerId: uuid.UUID(operation.WorkerID),
+		WorkerEpoch: operation.WorkerEpoch, NodeIdentity: operation.NodeIdentity,
+		GpuUuid: operation.DeviceIdentity, FailureClass: operation.FailureClass,
+		EvidenceSha256:        hex.EncodeToString(operation.EvidenceDigest),
+		CertificationRevision: operation.CertificationRevision,
+		ActionLevel:           api.RemediationActionLevel(operation.ActionLevel),
+		State:                 api.RemediationOperationState(operation.State),
+		RequestedBy:           operation.RequestedBy, RequestedAt: operation.RequestedAt,
+		DeadlineAt: operation.DeadlineAt,
+		StartedAt:  operation.StartedAt, FinishedAt: operation.FinishedAt,
+		ApprovedAt: operation.ApprovedAt,
+	}
+	if operation.ResultCode != "" {
+		result.ResultCode = &operation.ResultCode
+	}
+	if operation.ResultDetail != "" {
+		result.ResultDetail = &operation.ResultDetail
+	}
+	if len(operation.PostcheckDigest) > 0 {
+		value := hex.EncodeToString(operation.PostcheckDigest)
+		result.PostcheckSha256 = &value
+	}
+	if operation.FirstApprover != "" {
+		result.FirstApprover = &operation.FirstApprover
+	}
+	if operation.SecondApprover != "" {
+		result.SecondApprover = &operation.SecondApprover
+	}
+	return result
 }
 
 func toAPIBreakGlassRequest(request breakglass.Request) api.BreakGlassRequest {
@@ -3081,6 +3797,50 @@ func toAPIProjectRetentionPolicy(policy retention.Policy) api.ProjectRetentionPo
 		MetadataRetentionDays:           policy.MetadataRetentionDays,
 		FinancialRetentionDays:          policy.FinancialRetentionDays,
 		SelectedAt:                      policy.SelectedAt,
+	}
+}
+
+func toAPIDebugDumpAuthorization(
+	authorization debugdump.Authorization,
+) api.DebugDumpAuthorization {
+	return api.DebugDumpAuthorization{
+		AuthorizationId: authorization.ID,
+		OrganizationId:  authorization.OrganizationID,
+		ProjectId:       authorization.ProjectID,
+		JobId:           authorization.JobID,
+		Purpose:         api.DebugDumpPurpose(authorization.Purpose),
+		AuthorizedAt:    authorization.AuthorizedAt,
+		ExpiresAt:       authorization.ExpiresAt,
+		RevokedAt:       authorization.RevokedAt,
+	}
+}
+
+func toAPIDebugDump(dump debugdump.Dump) api.DebugDump {
+	return api.DebugDump{
+		AttemptId:       dump.AttemptID,
+		AuthorizationId: dump.AuthorizationID,
+		ContentType:     api.DebugDumpContentType(dump.ContentType),
+		CreatedAt:       dump.CreatedAt,
+		DebugDumpId:     dump.ID,
+		DeletedAt:       dump.DeletedAt,
+		ExpiresAt:       dump.ExpiresAt,
+		Sha256:          hex.EncodeToString(dump.SHA256[:]),
+		SizeBytes:       dump.SizeBytes,
+		State:           api.DebugDumpState(dump.State),
+		UploadedAt:      dump.UploadedAt,
+	}
+}
+
+func toAPIDebugDumpDownload(download debugdump.Download) api.DebugDumpDownload {
+	return api.DebugDumpDownload{
+		AuthorizationId:      download.AuthorizationID,
+		ContentType:          api.DebugDumpDownloadContentType(download.ContentType),
+		DebugDumpId:          download.ID,
+		DownloadUrl:          download.DownloadURL,
+		DownloadUrlExpiresAt: download.DownloadURLExpiresAt,
+		ExpiresAt:            download.ExpiresAt,
+		Sha256:               hex.EncodeToString(download.SHA256[:]),
+		SizeBytes:            download.SizeBytes,
 	}
 }
 

@@ -28,6 +28,7 @@ func TestClientExchangesExecutionOperationsOnOneCorrelatedStream(t *testing.T) {
 	profileID := uuid.MustParse("76000000-0000-0000-0000-000000000006")
 	attemptID := uuid.MustParse("72000000-0000-0000-0000-000000000002")
 	jobID := uuid.MustParse("73000000-0000-0000-0000-000000000003")
+	debugAuthorizationID := uuid.MustParse("73000000-0000-0000-0000-000000000004")
 	now := time.Date(2026, 8, 25, 6, 0, 0, 0, time.UTC)
 	server := &executionClientTestServer{
 		workerID: workerID, poolID: poolID, cycleID: cycleID, profileID: profileID,
@@ -97,7 +98,10 @@ func TestClientExchangesExecutionOperationsOnOneCorrelatedStream(t *testing.T) {
 	if assignment.AttemptID != attemptID || assignment.JobID != jobID ||
 		assignment.WorkerID != workerID || assignment.WorkerEpoch != 7 ||
 		assignment.LeaseValidFor != 45*time.Second ||
-		assignment.RequestContent != `{"prompt":"private"}` {
+		assignment.RequestContent != `{"prompt":"private"}` ||
+		assignment.DebugDumpAuthorization == nil ||
+		assignment.DebugDumpAuthorization.AuthorizationID != debugAuthorizationID ||
+		!assignment.DebugDumpAuthorization.ExpiresAt.Equal(now.Add(72*time.Hour)) {
 		t.Fatalf("Assignment = %#v", assignment)
 	}
 	credentials := workercontrol.LeaseCredentials{
@@ -841,6 +845,10 @@ func (server *executionClientTestServer) Connect(
 				AttemptNumber:              1, LeaseToken: "lease-token", LeaseFence: 3,
 				LeaseExpiresAt: timestamppb.New(server.now.Add(time.Minute)),
 				LeaseValidFor:  durationpb.New(45 * time.Second),
+				DebugDumpAuthorization: &velav1.DebugDumpAuthorizationSnapshot{
+					AuthorizationId: "73000000-0000-0000-0000-000000000004",
+					ExpiresAt:       timestamppb.New(server.now.Add(72 * time.Hour)),
+				},
 			}}
 		case *velav1.ConnectRequest_Start:
 			response.Result = &velav1.ConnectResponse_StartResult{StartResult: &velav1.StartWorkerResult{

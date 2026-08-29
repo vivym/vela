@@ -295,6 +295,8 @@ func TestFoundationMigrationUpDownUp(t *testing.T) {
 	assertRoleExists(t, db, "vela_billing_owner")
 	assertRoleExists(t, db, "vela_finance_reconciliation")
 	assertRoleExists(t, db, "vela_finance_reconciliation_owner")
+	assertRoleExists(t, db, "vela_compliance")
+	assertRoleExists(t, db, "vela_compliance_owner")
 	assertRoleExists(t, db, "vela_organization_reporting_owner")
 	assertTableDoesNotExist(t, db, "attempts")
 	assertTableDoesNotExist(t, db, "execution_failure_decisions")
@@ -784,6 +786,7 @@ func TestHierarchicalSchedulerMigrationDownRefusesCustomizedPolicy(t *testing.T)
 
 func TestHierarchicalSchedulerMigrationDownSerializesWithConcurrentClaim(t *testing.T) {
 	fixture := newAssignmentFixture(t, "migration-concurrent-scheduler-claim", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	poolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")
 	if _, err := fixture.database.Admin.Exec(`
 		INSERT INTO organization_capacity_shares (
@@ -969,6 +972,7 @@ func TestArtifactFinalizationMigrationDownRefusesDurableEvidence(t *testing.T) {
 
 func TestArtifactFinalizationMigrationDownSerializesWithConcurrentBegin(t *testing.T) {
 	fixture := newStartFixture(t, "migration-concurrent-artifact-finalization", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	if started, err := fixture.service.Start(
 		context.Background(), fixture.worker, fixture.credentials,
 	); err != nil || started.Decision != workercontrol.StartGranted {
@@ -1250,6 +1254,7 @@ func exactV5PlusCurrentCancellationMigrations(t *testing.T) string {
 
 func TestExecutionFailureMigrationDownUpPreservesProtectedEvidence(t *testing.T) {
 	fixture := newAssignmentFixture(t, "migration-protected-evidence", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	assignment, err := fixture.service.Acquire(
 		context.Background(), fixture.worker, 7, &fixture.candidate,
 	)
@@ -1476,6 +1481,7 @@ func TestExecutionFailureMigrationDownRefusesActiveRetryWait(t *testing.T) {
 
 func TestExecutionFailureMigrationDownSerializesWithConcurrentFail(t *testing.T) {
 	fixture := newAssignmentFixture(t, "migration-concurrent-fail", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	assignment, err := fixture.service.Acquire(
 		context.Background(), fixture.worker, 7, &fixture.candidate,
 	)
@@ -1681,6 +1687,7 @@ func TestExecutionFailureMigrationDoesNotTrustLegacyRequestEvidence(t *testing.T
 
 func TestCustomerCancellationMigrationDownUpPreservesImmutableEvidence(t *testing.T) {
 	fixture := newStartFixture(t, "migration-cancellation-evidence", 7)
+	migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	if _, err := fixture.database.Admin.Exec(`
 		UPDATE credentials
 		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
@@ -1971,8 +1978,9 @@ func TestCustomerCancellationMigrationDownSerializesWithConcurrentCancellation(t
 }
 
 type testDatabase struct {
-	Admin *sql.DB
-	DSN   string
+	Admin     *sql.DB
+	DSN       string
+	Container testcontainers.Container
 }
 
 func newPostgres(t *testing.T) testDatabase {
@@ -1989,8 +1997,8 @@ func newPostgres(t *testing.T) testDatabase {
 			wait.ForAll(
 				wait.ForLog("database system is ready to accept connections").
 					WithOccurrence(2).
-					WithStartupTimeout(60*time.Second),
-				wait.ForMappedPort("5432/tcp").WithStartupTimeout(60*time.Second),
+					WithStartupTimeout(2*time.Minute),
+				wait.ForMappedPort("5432/tcp").WithStartupTimeout(2*time.Minute),
 			),
 		),
 	)
@@ -2019,7 +2027,7 @@ func newPostgres(t *testing.T) testDatabase {
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatalf("ping PostgreSQL: %v", err)
 	}
-	return testDatabase{Admin: db, DSN: dsn}
+	return testDatabase{Admin: db, DSN: dsn, Container: container}
 }
 
 func repositoryRoot(t *testing.T) string {

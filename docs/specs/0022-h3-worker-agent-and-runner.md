@@ -114,11 +114,12 @@ all capabilities dropped. The host `runner-state` and `outputs` subdirectories
 must already satisfy the host preflight contract before kubelet resolves their
 `subPath` mounts.
 
-The application and socket-init image digests in the base are deliberately
-invalid. Fleet Controller must
-materialize node-bound identity, epoch, configuration, secrets, immutable
-profile/role inputs, and approved Worker/runner/backend image digests. It must
-also enforce the drain/fence/finalizer lifecycle before replacing a Pod.
+The Worker Agent and runner image digests in the base are deliberately invalid.
+Slice 47 later pins the shared BusyBox socket-init image to its exact
+`linux/amd64` manifest. Fleet Controller must materialize node-bound identity,
+epoch, configuration, secrets, immutable profile/role inputs, and approved
+Worker/runner/backend image digests. It must also enforce the
+drain/fence/finalizer lifecycle before replacing a Pod.
 
 ## Evidence
 
