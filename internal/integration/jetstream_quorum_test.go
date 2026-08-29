@@ -245,6 +245,8 @@ port: 4222
 http: 8222
 jetstream {
   store_dir: "/data/jetstream"
+  # Keep the production-sized stream contract independent of CI runner disk size.
+  max_file_store: 128GiB
 }
 cluster {
   name: VELA

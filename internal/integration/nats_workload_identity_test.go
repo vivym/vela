@@ -712,6 +712,8 @@ resolver_preload: {
 }
 jetstream {
   store_dir: "/data"
+  # Keep the production-sized stream contract independent of CI runner disk size.
+  max_file_store: 128GiB
 }
 tls {
   cert_file: "/etc/nats/server.crt"
