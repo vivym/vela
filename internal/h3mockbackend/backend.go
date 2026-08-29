@@ -99,6 +99,16 @@ type executionSpec struct {
 	DebugDumpAuthorization     json.RawMessage `json:"debug_dump_authorization,omitempty"`
 }
 
+type debugDumpAuthorization struct {
+	AuthorizationID string            `json:"authorization_id"`
+	ExpiresAt       protobufTimestamp `json:"expires_at"`
+}
+
+type protobufTimestamp struct {
+	Seconds int64 `json:"seconds"`
+	Nanos   int32 `json:"nanos"`
+}
+
 type backendStatus struct {
 	SchemaVersion             int     `json:"schema_version"`
 	BackendStage              string  `json:"backend_stage"`
@@ -244,6 +254,14 @@ func runExecution(ctx context.Context, arguments executionArguments) error {
 	if request.ExecutionSpec.OutputSpecID != arguments.outputSpecID {
 		return errors.New("mock execution request does not match configured OutputSpec")
 	}
+	if err := validateResultPaths(
+		arguments.requestPath,
+		arguments.statusPath,
+		arguments.manifestPath,
+		arguments.failurePath,
+	); err != nil {
+		return err
+	}
 	if err := validateOutputDirectory(arguments.outputDir); err != nil {
 		return err
 	}
@@ -269,9 +287,6 @@ func runExecution(ctx context.Context, arguments executionArguments) error {
 		{SchemaVersion: 1, BackendStage: "mock/encode", Sequence: 2, BackendStageProgress: 0.50, EstimatedRemainingSeconds: 1},
 		{SchemaVersion: 1, BackendStage: "mock/package", Sequence: 3, BackendStageProgress: 0.85, EstimatedRemainingSeconds: 0},
 		{SchemaVersion: 1, BackendStage: "mock/finalize", Sequence: 4, BackendStageProgress: 0.95, EstimatedRemainingSeconds: 0},
-	}
-	if arguments.resume {
-		stages[0].BackendStage = "mock/resume"
 	}
 	for _, status := range stages[:3] {
 		if err := writeJSONAtomic(arguments.statusPath, status); err != nil {
@@ -358,6 +373,9 @@ func validateExecutionRequest(request executionRequest) error {
 	if err := strictjson.RejectDuplicateKeys(content); err != nil {
 		return errors.New("mock request content must be one unambiguous JSON object")
 	}
+	if err := validateDebugDumpAuthorization(spec.DebugDumpAuthorization); err != nil {
+		return err
+	}
 	var requestContent map[string]any
 	decoder := json.NewDecoder(strings.NewReader(string(content)))
 	if err := decoder.Decode(&requestContent); err != nil || requestContent == nil {
@@ -367,6 +385,36 @@ func validateExecutionRequest(request executionRequest) error {
 		return errors.New("mock request content must be one JSON object")
 	}
 	return nil
+}
+
+func validateDebugDumpAuthorization(encoded json.RawMessage) error {
+	if len(encoded) == 0 {
+		return nil
+	}
+	authorization := debugDumpAuthorization{}
+	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&authorization); err != nil {
+		return fmt.Errorf("mock debug dump authorization is invalid: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("mock debug dump authorization must contain exactly one document")
+	}
+	if !uuidPattern.MatchString(authorization.AuthorizationID) ||
+		!validProtobufTimestamp(authorization.ExpiresAt) {
+		return errors.New("mock debug dump authorization is invalid")
+	}
+	return nil
+}
+
+func validProtobufTimestamp(value protobufTimestamp) bool {
+	const (
+		minimumSeconds = -62_135_596_800
+		maximumSeconds = 253_402_300_799
+	)
+	return value.Seconds >= minimumSeconds && value.Seconds <= maximumSeconds &&
+		value.Nanos >= 0 && value.Nanos < 1_000_000_000 &&
+		(value.Seconds != 0 || value.Nanos != 0)
 }
 
 func validateOutputDirectory(path string) error {
@@ -389,6 +437,25 @@ func validateOutputDirectoryInfo(info os.FileInfo, ownerUID uint32) error {
 	if err != nil || actualOwnerUID != ownerUID || !info.IsDir() ||
 		info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
 		return errors.New("mock output directory must be a private current-owner directory")
+	}
+	return nil
+}
+
+func validateResultPaths(requestPath string, resultPaths ...string) error {
+	requestDirectory := filepath.Dir(requestPath)
+	if err := validateOutputDirectory(requestDirectory); err != nil {
+		return fmt.Errorf("mock result directory must be a private current-owner directory: %w", err)
+	}
+	seen := map[string]struct{}{requestPath: {}}
+	for _, path := range resultPaths {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path ||
+			filepath.Dir(path) != requestDirectory {
+			return errors.New("mock result files must be direct children of the Runner-owned request directory")
+		}
+		if _, exists := seen[path]; exists {
+			return errors.New("mock result file paths must be unique")
+		}
+		seen[path] = struct{}{}
 	}
 	return nil
 }
@@ -425,6 +492,10 @@ func writeEmbeddedFile(path, fixture string, replace bool) error {
 		return err
 	}
 	if _, err := destination.Write(content); err != nil {
+		_ = destination.Close()
+		return err
+	}
+	if err := destination.Chmod(0o600); err != nil {
 		_ = destination.Close()
 		return err
 	}
@@ -470,6 +541,9 @@ func runReadiness(ctx context.Context, check, requestPath, resultPath string) er
 	if err := readStrictJSON(requestPath, &request); err != nil {
 		return fmt.Errorf("read readiness request: %w", err)
 	}
+	if err := validateResultPaths(requestPath, resultPath); err != nil {
+		return err
+	}
 	revision := os.Getenv("VELA_RUNNER_BACKEND_REVISION")
 	if request.SchemaVersion != 1 || !uuidPattern.MatchString(request.CycleID) ||
 		!uuidPattern.MatchString(request.WorkerID) || request.WorkerEpoch <= 0 ||
@@ -478,9 +552,9 @@ func runReadiness(ctx context.Context, check, requestPath, resultPath string) er
 		request.Deadline == "" || request.Check != check {
 		return errors.New("readiness request identity is invalid")
 	}
-	gpus := strings.Split(os.Getenv("CUDA_VISIBLE_DEVICES"), ",")
-	if len(gpus) != 8 || !allUniqueGPUs(gpus) {
-		return errors.New("CUDA_VISIBLE_DEVICES must contain eight unique canonical GPU UUIDs")
+	gpus, err := runtimeGPUUUIDs()
+	if err != nil {
+		return err
 	}
 	switch check {
 	case "DEVICE":
@@ -587,26 +661,5 @@ func writeJSONAtomic(path string, value any) error {
 	if len(content) == 0 || len(content) > maxJSONBytes {
 		return errors.New("JSON output is outside its byte limit")
 	}
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".vela-h3-mock-*.tmp")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	defer func() { _ = os.Remove(temporaryPath) }()
-	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if _, err := temporary.Write(content); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temporaryPath, path)
+	return replaceFileAtomic(path, content)
 }

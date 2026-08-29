@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,9 +19,10 @@ import (
 )
 
 const (
-	testWorkerID  = "20000000-0000-0000-0000-000000000001"
-	testProfileID = "30000000-0000-0000-0000-000000000001"
-	testRevision  = "vela-h3-mock-v1"
+	testWorkerID     = "20000000-0000-0000-0000-000000000001"
+	testProfileID    = "30000000-0000-0000-0000-000000000001"
+	testOutputSpecID = "80000000-0000-0000-0000-000000000001"
+	testRevision     = "vela-h3-mock-v1"
 )
 
 var testGPUs = []string{
@@ -49,7 +51,7 @@ func TestRunReportsExactDeviceReadiness(t *testing.T) {
 		"deadline":                      "2030-01-01T00:00:00Z",
 		"check":                         "DEVICE",
 	})
-	t.Setenv("CUDA_VISIBLE_DEVICES", joinComma(testGPUs))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
 	t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
 
 	err := Run(context.Background(), []string{
@@ -76,7 +78,7 @@ func TestRunReportsExactDeviceReadiness(t *testing.T) {
 		t.Fatalf("decode result: %v", err)
 	}
 	if result.SchemaVersion != 1 || result.Check != "DEVICE" || !result.Passed ||
-		result.EncoderVAEGPU != testGPUs[0] || joinComma(result.DiTGPUUUIDs) != joinComma(testGPUs[1:]) {
+		result.EncoderVAEGPU != testGPUs[0] || !reflect.DeepEqual(result.DiTGPUUUIDs, testGPUs[1:]) {
 		t.Fatalf("device readiness = %#v", result)
 	}
 	info, err := os.Stat(resultPath)
@@ -129,7 +131,7 @@ func TestRunReportsBackendWarmupAndCanaryReadiness(t *testing.T) {
 			requestPath := filepath.Join(root, "request.json")
 			resultPath := filepath.Join(root, "result.json")
 			writeJSON(t, requestPath, readinessPayload(test.check))
-			t.Setenv("CUDA_VISIBLE_DEVICES", joinComma(testGPUs))
+			t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
 			t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
 
 			err := Run(context.Background(), []string{
@@ -167,19 +169,13 @@ func TestRunProducesCompleteMockArtifactSet(t *testing.T) {
 	}
 	requestContent := []byte(`{"client_metadata":{"source":"mock-test"},"generation_count":1,"generation_preset":"balanced","model":"minimax-h3","output_spec":"video-1080p-5s-24fps","prompt":"mock prompt","service_class":"standard"}`)
 	writeJSON(t, requestPath, executionRequestPayload(requestContent))
-	t.Setenv("CUDA_VISIBLE_DEVICES", joinComma(testGPUs))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
 	t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
 
-	err := Run(context.Background(), []string{
-		"--mock-stage-delay", "0s",
-		"--mock-output-spec-id", "80000000-0000-0000-0000-000000000001",
-		"--vela-request", requestPath,
-		"--vela-output-dir", outputDir,
-		"--vela-status", statusPath,
-		"--vela-output-manifest", manifestPath,
-		"--vela-failure", failurePath,
-		"--vela-resume", "false",
-	})
+	err := Run(context.Background(), executionArgumentsForTest(
+		requestPath, outputDir, statusPath, manifestPath, failurePath,
+		testOutputSpecID, false,
+	))
 	if err != nil {
 		t.Fatalf("Run execution: %v", err)
 	}
@@ -247,19 +243,18 @@ func TestRunRejectsOutputSpecOutsideConfiguredMockContract(t *testing.T) {
 		t.Fatalf("create output directory: %v", err)
 	}
 	writeJSON(t, requestPath, executionRequestPayload([]byte(`{"prompt":"mock prompt"}`)))
-	t.Setenv("CUDA_VISIBLE_DEVICES", joinComma(testGPUs))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
 	t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
 
-	err := Run(context.Background(), []string{
-		"--mock-stage-delay", "0s",
-		"--mock-output-spec-id", "80000000-0000-0000-0000-000000000099",
-		"--vela-request", requestPath,
-		"--vela-output-dir", outputDir,
-		"--vela-status", filepath.Join(root, "status.json"),
-		"--vela-output-manifest", filepath.Join(root, "manifest.json"),
-		"--vela-failure", filepath.Join(root, "failure.json"),
-		"--vela-resume", "false",
-	})
+	err := Run(context.Background(), executionArgumentsForTest(
+		requestPath,
+		outputDir,
+		filepath.Join(root, "status.json"),
+		filepath.Join(root, "manifest.json"),
+		filepath.Join(root, "failure.json"),
+		"80000000-0000-0000-0000-000000000099",
+		false,
+	))
 	if err == nil || err.Error() != "mock execution request does not match configured OutputSpec" {
 		t.Fatalf("output spec mismatch error = %v", err)
 	}
@@ -280,28 +275,27 @@ func TestRunWritesBoundedInjectedFailureReceipt(t *testing.T) {
 		t.Fatalf("create output directory: %v", err)
 	}
 	writeJSON(t, requestPath, executionRequestPayload([]byte(`{"prompt":"private prompt"}`)))
-	t.Setenv("CUDA_VISIBLE_DEVICES", joinComma(testGPUs))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
 	t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
 	failurePath := filepath.Join(root, "failure.json")
 	manifestPath := filepath.Join(root, "manifest.json")
 
-	err := Run(context.Background(), []string{
+	err := Run(context.Background(), executionArgumentsForTest(
+		requestPath,
+		outputDir,
+		filepath.Join(root, "status.json"),
+		manifestPath,
+		failurePath,
+		testOutputSpecID,
+		false,
 		"--mock-mode", "failure",
-		"--mock-stage-delay", "0s",
-		"--mock-output-spec-id", "80000000-0000-0000-0000-000000000001",
 		"--mock-failure-class", "CUDA_OOM",
 		"--mock-failure-fingerprint", "mock/cuda-oom/dit",
 		"--mock-failure-stage", "mock/encode",
 		"--mock-failure-gpu-index", "1",
 		"--mock-retry-recommended", "true",
 		"--mock-worker-reusable", "false",
-		"--vela-request", requestPath,
-		"--vela-output-dir", outputDir,
-		"--vela-status", filepath.Join(root, "status.json"),
-		"--vela-output-manifest", manifestPath,
-		"--vela-failure", failurePath,
-		"--vela-resume", "false",
-	})
+	))
 	if !errors.Is(err, ErrInjectedFailure) {
 		t.Fatalf("injected failure error = %v", err)
 	}
@@ -348,19 +342,18 @@ func TestRunResumeAtomicallyReplacesPartialMockOutput(t *testing.T) {
 		t.Fatalf("write partial output: %v", err)
 	}
 	writeJSON(t, requestPath, executionRequestPayload([]byte(`{"prompt":"mock prompt"}`)))
-	t.Setenv("CUDA_VISIBLE_DEVICES", joinComma(testGPUs))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
 	t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
 
-	err := Run(context.Background(), []string{
-		"--mock-stage-delay", "0s",
-		"--mock-output-spec-id", "80000000-0000-0000-0000-000000000001",
-		"--vela-request", requestPath,
-		"--vela-output-dir", outputDir,
-		"--vela-status", filepath.Join(root, "status.json"),
-		"--vela-output-manifest", filepath.Join(root, "manifest.json"),
-		"--vela-failure", filepath.Join(root, "failure.json"),
-		"--vela-resume", "true",
-	})
+	err := Run(context.Background(), executionArgumentsForTest(
+		requestPath,
+		outputDir,
+		filepath.Join(root, "status.json"),
+		filepath.Join(root, "manifest.json"),
+		filepath.Join(root, "failure.json"),
+		testOutputSpecID,
+		true,
+	))
 	if err != nil {
 		t.Fatalf("Run resumed execution: %v", err)
 	}
@@ -382,25 +375,19 @@ func TestRunHangStopsOnCancellationWithoutPublishingArtifacts(t *testing.T) {
 		t.Fatalf("create output directory: %v", err)
 	}
 	writeJSON(t, requestPath, executionRequestPayload([]byte(`{"prompt":"mock prompt"}`)))
-	t.Setenv("CUDA_VISIBLE_DEVICES", joinComma(testGPUs))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
 	t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
 	statusPath := filepath.Join(root, "status.json")
 	manifestPath := filepath.Join(root, "manifest.json")
 	failurePath := filepath.Join(root, "failure.json")
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	arguments := executionArgumentsForTest(
+		requestPath, outputDir, statusPath, manifestPath, failurePath,
+		testOutputSpecID, false, "--mock-mode", "hang",
+	)
 	go func() {
-		done <- Run(ctx, []string{
-			"--mock-mode", "hang",
-			"--mock-stage-delay", "0s",
-			"--mock-output-spec-id", "80000000-0000-0000-0000-000000000001",
-			"--vela-request", requestPath,
-			"--vela-output-dir", outputDir,
-			"--vela-status", statusPath,
-			"--vela-output-manifest", manifestPath,
-			"--vela-failure", failurePath,
-			"--vela-resume", "false",
-		})
+		done <- Run(ctx, arguments)
 	}()
 	waitForFile(t, statusPath)
 	cancel()
@@ -427,7 +414,7 @@ func TestRunRejectsDuplicateReadinessAuthority(t *testing.T) {
 	if err := os.WriteFile(requestPath, content, 0o600); err != nil {
 		t.Fatalf("write duplicate request: %v", err)
 	}
-	t.Setenv("CUDA_VISIBLE_DEVICES", joinComma(testGPUs))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
 	t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
 
 	err := Run(context.Background(), []string{
@@ -440,6 +427,141 @@ func TestRunRejectsDuplicateReadinessAuthority(t *testing.T) {
 	}
 	if _, err := os.Stat(resultPath); !os.IsNotExist(err) {
 		t.Fatalf("duplicate request result stat error = %v", err)
+	}
+}
+
+func TestRunRejectsUnknownNestedDebugDumpAuthorizationField(t *testing.T) {
+	root := t.TempDir()
+	requestPath := filepath.Join(root, "request.json")
+	outputDir := filepath.Join(root, "outputs")
+	if err := os.Mkdir(outputDir, 0o700); err != nil {
+		t.Fatalf("create output directory: %v", err)
+	}
+	payload := executionRequestPayload([]byte(`{"prompt":"mock prompt"}`))
+	spec := payload["execution_spec"].(map[string]any)
+	spec["debug_dump_authorization"] = map[string]any{
+		"authorization_id": "90000000-0000-0000-0000-000000000001",
+		"expires_at": map[string]any{
+			"seconds": 1_900_000_000,
+			"nanos":   0,
+			"unknown": true,
+		},
+	}
+	writeJSON(t, requestPath, payload)
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
+
+	err := Run(context.Background(), executionArgumentsForTest(
+		requestPath,
+		outputDir,
+		filepath.Join(root, "status.json"),
+		filepath.Join(root, "manifest.json"),
+		filepath.Join(root, "failure.json"),
+		testOutputSpecID,
+		false,
+	))
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("nested unknown field error = %v", err)
+	}
+}
+
+func TestRunAcceptsStrictDebugDumpAuthorization(t *testing.T) {
+	root := t.TempDir()
+	requestPath := filepath.Join(root, "request.json")
+	outputDir := filepath.Join(root, "outputs")
+	if err := os.Mkdir(outputDir, 0o700); err != nil {
+		t.Fatalf("create output directory: %v", err)
+	}
+	payload := executionRequestPayload([]byte(`{"prompt":"mock prompt"}`))
+	spec := payload["execution_spec"].(map[string]any)
+	spec["debug_dump_authorization"] = map[string]any{
+		"authorization_id": "90000000-0000-0000-0000-000000000001",
+		"expires_at": map[string]any{
+			"seconds": 1_900_000_000,
+			"nanos":   0,
+		},
+	}
+	writeJSON(t, requestPath, payload)
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
+
+	err := Run(context.Background(), executionArgumentsForTest(
+		requestPath,
+		outputDir,
+		filepath.Join(root, "status.json"),
+		filepath.Join(root, "manifest.json"),
+		filepath.Join(root, "failure.json"),
+		testOutputSpecID,
+		false,
+	))
+	if err != nil {
+		t.Fatalf("Run with debug dump authorization: %v", err)
+	}
+}
+
+func TestRunRejectsResultOutsideRunnerOwnedRequestDirectory(t *testing.T) {
+	root := t.TempDir()
+	requestPath := filepath.Join(root, "request.json")
+	outputDir := filepath.Join(root, "outputs")
+	if err := os.Mkdir(outputDir, 0o700); err != nil {
+		t.Fatalf("create output directory: %v", err)
+	}
+	writeJSON(t, requestPath, executionRequestPayload([]byte(`{"prompt":"mock prompt"}`)))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
+	outsideStatusPath := filepath.Join(t.TempDir(), "status.json")
+
+	err := Run(context.Background(), executionArgumentsForTest(
+		requestPath,
+		outputDir,
+		outsideStatusPath,
+		filepath.Join(root, "manifest.json"),
+		filepath.Join(root, "failure.json"),
+		testOutputSpecID,
+		false,
+	))
+	if err == nil || !strings.Contains(err.Error(), "direct children") {
+		t.Fatalf("outside result path error = %v", err)
+	}
+	if _, err := os.Stat(outsideStatusPath); !os.IsNotExist(err) {
+		t.Fatalf("outside result path was written: %v", err)
+	}
+}
+
+func TestRunResumeStartsWithDocumentedPrepareStage(t *testing.T) {
+	root := t.TempDir()
+	requestPath := filepath.Join(root, "request.json")
+	outputDir := filepath.Join(root, "outputs")
+	statusPath := filepath.Join(root, "status.json")
+	if err := os.Mkdir(outputDir, 0o700); err != nil {
+		t.Fatalf("create output directory: %v", err)
+	}
+	writeJSON(t, requestPath, executionRequestPayload([]byte(`{"prompt":"mock prompt"}`)))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	arguments := executionArgumentsForTest(
+		requestPath,
+		outputDir,
+		statusPath,
+		filepath.Join(root, "manifest.json"),
+		filepath.Join(root, "failure.json"),
+		testOutputSpecID,
+		true,
+	)
+	arguments[1] = "1s"
+	go func() { done <- Run(ctx, arguments) }()
+	waitForFile(t, statusPath)
+	var status backendStatus
+	readJSON(t, statusPath, &status)
+	if status.BackendStage != "mock/prepare" {
+		t.Fatalf("first resumed stage = %q, want mock/prepare", status.BackendStage)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("resumed execution cancellation error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("resumed execution did not stop after cancellation")
 	}
 }
 
@@ -551,6 +673,9 @@ func TestMockMediaFixturesMatchDocumentedOutputSpec(t *testing.T) {
 
 func writeJSON(t *testing.T, path string, payload any) {
 	t.Helper()
+	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("protect fixture directory: %v", err)
+	}
 	content, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal fixture: %v", err)
@@ -621,6 +746,24 @@ func waitForFile(t *testing.T, path string) {
 	}
 }
 
-func joinComma(values []string) string {
-	return strings.Join(values, ",")
+func executionArgumentsForTest(
+	requestPath string,
+	outputDir string,
+	statusPath string,
+	manifestPath string,
+	failurePath string,
+	outputSpecID string,
+	resume bool,
+	extra ...string,
+) []string {
+	return append(extra, []string{
+		"--mock-stage-delay", "0s",
+		"--mock-output-spec-id", outputSpecID,
+		"--vela-request", requestPath,
+		"--vela-output-dir", outputDir,
+		"--vela-status", statusPath,
+		"--vela-output-manifest", manifestPath,
+		"--vela-failure", failurePath,
+		"--vela-resume", fmt.Sprintf("%t", resume),
+	}...)
 }
