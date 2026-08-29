@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"reflect"
@@ -82,12 +83,14 @@ func TestFleetWireContractsCarryTypedWorkerState(t *testing.T) {
 	}
 }
 
-func TestFleetMaintenanceWireContractExposesDurableRetirementCompletion(t *testing.T) {
+func TestFleetMaintenanceWireContractExposesWorkerRegistryAndRetirementMethods(t *testing.T) {
 	service := velav1.File_vela_v1_fleet_maintenance_proto.Services().ByName("FleetMaintenanceService")
 	if service == nil {
 		t.Fatal("FleetMaintenanceService descriptor is missing")
 	}
 	for _, methodName := range []protoreflect.Name{
+		"ApplyResidencyPlan",
+		"ObserveWorkerInstance",
 		"RecordRetirementCompletion",
 		"HasRetirementCompletion",
 	} {
@@ -118,6 +121,61 @@ func TestServerRequiresExactConfiguredFleetControllerSPIFFEIdentity(t *testing.T
 	}
 	if len(service.getDrainIDs) != 0 {
 		t.Fatalf("rejected Fleet identity reached service: %#v", service.getDrainIDs)
+	}
+}
+
+func TestServerMapsWorkerRegistryPayloadsToAuthoritativeFleetService(t *testing.T) {
+	planID := uuid.MustParse("49200000-0000-0000-0000-000000000201")
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000204")
+	service := &recordingWorkerRegistryFleetService{
+		recordingFleetService: &recordingFleetService{},
+		actuation:             fleet.ActuationPlan{PlanRevisionID: planID, WorkerInstanceCount: 8},
+		decision: fleet.WorkerInstanceDecision{
+			WorkerInstanceID: workerID, InstanceEpoch: 1, ControlSessionEpoch: 2,
+			ModelRuntimeEpoch: 3, Readiness: fleet.WorkerInstanceReady,
+		},
+	}
+	server, err := fleettransport.NewServer(service, fleettransport.Config{
+		SPIFFEIdentity: fleetSPIFFE,
+		ActorIdentity:  fleetActor,
+	})
+	if err != nil {
+		t.Fatalf("create Fleet maintenance server: %v", err)
+	}
+	plan := fleet.ApprovedResidencyPlan{SchemaVersion: 1, ID: planID}
+	encodedPlan, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("encode approved ResidencyPlan: %v", err)
+	}
+	response, err := server.ApplyResidencyPlan(
+		fleetPeerContext(t, fleetSPIFFE),
+		&velav1.ApplyResidencyPlanRequest{ApprovedPlanJson: encodedPlan},
+	)
+	if err != nil || response.GetPlanRevisionId() != planID.String() ||
+		response.GetWorkerInstanceCount() != 8 || len(service.plans) != 1 {
+		t.Fatalf("apply ResidencyPlan response=%#v plans=%#v error=%v", response, service.plans, err)
+	}
+	evidence := fleet.WorkerInstanceEvidence{
+		SchemaVersion: 1, WorkerInstanceID: workerID, ObservedBy: "untrusted-caller-value",
+	}
+	encodedEvidence, err := json.Marshal(evidence)
+	if err != nil {
+		t.Fatalf("encode WorkerInstance evidence: %v", err)
+	}
+	observation, err := server.ObserveWorkerInstance(
+		fleetPeerContext(t, fleetSPIFFE),
+		&velav1.ObserveWorkerInstanceRequest{EvidenceJson: encodedEvidence},
+	)
+	if err != nil || observation.GetWorkerInstanceId() != workerID.String() ||
+		observation.GetReadiness() != string(fleet.WorkerInstanceReady) ||
+		len(service.evidence) != 1 || service.evidence[0].ObservedBy != fleetActor {
+		t.Fatalf("observe WorkerInstance response=%#v evidence=%#v error=%v", observation, service.evidence, err)
+	}
+	if _, err := server.ApplyResidencyPlan(
+		fleetPeerContext(t, fleetSPIFFE),
+		&velav1.ApplyResidencyPlanRequest{ApprovedPlanJson: []byte(`{"schema_version":1,"unknown":true}`)},
+	); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("unknown ResidencyPlan payload field code=%s error=%v", status.Code(err), err)
 	}
 }
 
@@ -576,6 +634,30 @@ type recordingFleetService struct {
 	retirementCompletionLookups     []fleet.RetirementAuthorizationRequest
 	workerIdentityRequests          []fleet.WorkerIdentityRequest
 	getDrainErr                     error
+}
+
+type recordingWorkerRegistryFleetService struct {
+	*recordingFleetService
+	plans     []fleet.ApprovedResidencyPlan
+	evidence  []fleet.WorkerInstanceEvidence
+	actuation fleet.ActuationPlan
+	decision  fleet.WorkerInstanceDecision
+}
+
+func (service *recordingWorkerRegistryFleetService) Apply(
+	_ context.Context,
+	plan fleet.ApprovedResidencyPlan,
+) (fleet.ActuationPlan, error) {
+	service.plans = append(service.plans, plan)
+	return service.actuation, nil
+}
+
+func (service *recordingWorkerRegistryFleetService) Observe(
+	_ context.Context,
+	evidence fleet.WorkerInstanceEvidence,
+) (fleet.WorkerInstanceDecision, error) {
+	service.evidence = append(service.evidence, evidence)
+	return service.decision, nil
 }
 
 func (service *recordingFleetService) ConfigureCapacityPolicy(

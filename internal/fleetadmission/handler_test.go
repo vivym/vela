@@ -814,6 +814,50 @@ func TestDaemonSetControllerMayCreateExactProtectedWorkerPod(t *testing.T) {
 	}
 }
 
+func TestFleetControllerMayCreateOnlyAuthoritativelyValidatedWorkerInstancePod(t *testing.T) {
+	validator := &recordingPodCreateValidator{}
+	handler, err := NewHandler(&recordingAuthorizer{}, Config{
+		FleetUsername:         "system:serviceaccount:vela-system:vela-fleet-controller",
+		PodControllerUsername: "system:kube-controller-manager",
+		PodCreateValidator:    validator,
+	})
+	if err != nil {
+		t.Fatalf("create Fleet admission handler: %v", err)
+	}
+	var review map[string]any
+	if err := json.Unmarshal(protectedPodCreateReview(), &review); err != nil {
+		t.Fatalf("decode protected Pod review: %v", err)
+	}
+	request := review["request"].(map[string]any)
+	request["userInfo"] = map[string]any{
+		"username": "system:serviceaccount:vela-system:vela-fleet-controller",
+	}
+	object := request["object"].(map[string]any)
+	metadata := object["metadata"].(map[string]any)
+	labels := metadata["labels"].(map[string]any)
+	delete(labels, fleetRevisionLabel)
+	delete(labels, workerPoolLabel)
+	labels[workerInstanceIDLabel] = "49300000-0000-0000-0000-000000000030"
+	encoded, err := json.Marshal(review)
+	if err != nil {
+		t.Fatalf("encode WorkerInstance Pod review: %v", err)
+	}
+	response := serveAdmission(t, handler, encoded)
+	if !response.Allowed || len(validator.pods) != 1 {
+		t.Fatalf("validated WorkerInstance Pod response=%#v calls=%d", response, len(validator.pods))
+	}
+
+	request["userInfo"] = map[string]any{"username": "system:kube-controller-manager"}
+	encoded, err = json.Marshal(review)
+	if err != nil {
+		t.Fatalf("encode controller-owned WorkerInstance Pod review: %v", err)
+	}
+	response = serveAdmission(t, handler, encoded)
+	if response.Allowed {
+		t.Fatal("DaemonSet controller was allowed to create a direct WorkerInstance Pod")
+	}
+}
+
 func TestDaemonSetControllerPodCreateUsesNativeAuthoritativeValidation(t *testing.T) {
 	validator := &recordingPodCreateValidator{validate: func(pod corev1.Pod) error {
 		if len(pod.Spec.Containers) != 1 || pod.Spec.Containers[0].SecurityContext == nil ||

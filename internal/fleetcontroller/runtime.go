@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleet"
 )
 
 type PendingWorkerPodLister interface {
@@ -15,14 +16,18 @@ type PendingWorkerPodLister interface {
 }
 
 type RuntimeConfig struct {
-	DesiredRevisions []DesiredRevision
-	RetirementPlans  []RetirementPlan
-	PollInterval     time.Duration
-	ReportError      func(error)
+	DesiredRevisions         []DesiredRevision
+	RetirementPlans          []RetirementPlan
+	ResidencyPlanRollouts    []ResidencyPlanRollout
+	WorkerInstanceController *ResidencyPlanRolloutController
+	PollInterval             time.Duration
+	ReportError              func(error)
 }
 
 type RuntimeResult struct {
 	DesiredRevisionsConverged int
+	ResidencyPlansConverged   int
+	WorkerInstancePodsCreated int
 	WorkerPodsBound           int
 	RetirementPlansPending    int
 	RetirementPlansCompleted  int
@@ -30,14 +35,16 @@ type RuntimeResult struct {
 }
 
 type Runtime struct {
-	pods             PendingWorkerPodLister
-	reconciler       *Reconciler
-	desiredRevisions []DesiredRevision
-	retirementPlans  []RetirementPlan
-	pollInterval     time.Duration
-	reportError      func(error)
-	admissionReady   atomic.Bool
-	converged        atomic.Bool
+	pods              PendingWorkerPodLister
+	reconciler        *Reconciler
+	desiredRevisions  []DesiredRevision
+	retirementPlans   []RetirementPlan
+	residencyRollouts []ResidencyPlanRollout
+	workerInstances   *ResidencyPlanRolloutController
+	pollInterval      time.Duration
+	reportError       func(error)
+	admissionReady    atomic.Bool
+	converged         atomic.Bool
 }
 
 func NewRuntime(
@@ -45,11 +52,28 @@ func NewRuntime(
 	reconciler *Reconciler,
 	config RuntimeConfig,
 ) (*Runtime, error) {
-	if pods == nil || reconciler == nil || config.PollInterval <= 0 {
+	if config.PollInterval <= 0 ||
+		(len(config.DesiredRevisions) == 0 && len(config.ResidencyPlanRollouts) == 0) ||
+		(len(config.DesiredRevisions) != 0 && (pods == nil || reconciler == nil)) ||
+		(len(config.ResidencyPlanRollouts) != 0 && config.WorkerInstanceController == nil) {
 		return nil, errors.New("fleet runtime configuration is invalid")
 	}
-	if err := ValidateRuntimeConfiguration(config.DesiredRevisions, config.RetirementPlans); err != nil {
-		return nil, err
+	if len(config.DesiredRevisions) != 0 {
+		if err := ValidateRuntimeConfiguration(config.DesiredRevisions, config.RetirementPlans); err != nil {
+			return nil, err
+		}
+	} else if len(config.RetirementPlans) != 0 {
+		return nil, errors.New("legacy Fleet retirements require legacy desired revisions")
+	}
+	rolloutPlans := make(map[uuid.UUID]struct{}, len(config.ResidencyPlanRollouts))
+	for _, rollout := range config.ResidencyPlanRollouts {
+		if err := ValidateResidencyPlanRollout(rollout); err != nil {
+			return nil, err
+		}
+		if _, exists := rolloutPlans[rollout.ApprovedPlan.ID]; exists {
+			return nil, errors.New("fleet runtime contains a duplicate ResidencyPlan rollout")
+		}
+		rolloutPlans[rollout.ApprovedPlan.ID] = struct{}{}
 	}
 	desiredRevisions := make([]DesiredRevision, 0, len(config.DesiredRevisions))
 	for _, desired := range config.DesiredRevisions {
@@ -65,15 +89,61 @@ func NewRuntime(
 		retirementPlans = append(retirementPlans, cloned)
 	}
 	runtime := &Runtime{
-		pods:             pods,
-		reconciler:       reconciler,
-		desiredRevisions: desiredRevisions,
-		retirementPlans:  retirementPlans,
-		pollInterval:     config.PollInterval,
-		reportError:      config.ReportError,
+		pods:              pods,
+		reconciler:        reconciler,
+		desiredRevisions:  desiredRevisions,
+		retirementPlans:   retirementPlans,
+		residencyRollouts: cloneResidencyPlanRollouts(config.ResidencyPlanRollouts),
+		workerInstances:   config.WorkerInstanceController,
+		pollInterval:      config.PollInterval,
+		reportError:       config.ReportError,
 	}
 	runtime.admissionReady.Store(true)
 	return runtime, nil
+}
+
+func cloneResidencyPlanRollouts(rollouts []ResidencyPlanRollout) []ResidencyPlanRollout {
+	cloned := make([]ResidencyPlanRollout, len(rollouts))
+	for index, rollout := range rollouts {
+		cloned[index] = rollout
+		cloned[index].ApprovedPlan.CapacityPools = append(
+			[]fleet.PlannedCapacityPool(nil), rollout.ApprovedPlan.CapacityPools...,
+		)
+		cloned[index].ApprovedPlan.WorkerBundles = append(
+			[]fleet.PlannedWorkerBundle(nil), rollout.ApprovedPlan.WorkerBundles...,
+		)
+		cloned[index].ApprovedPlan.WorkerInstances = append(
+			[]fleet.PlannedWorkerInstance(nil), rollout.ApprovedPlan.WorkerInstances...,
+		)
+		cloned[index].WorkerBundles = make([]WorkerBundleActuation, len(rollout.WorkerBundles))
+		for bundleIndex, bundle := range rollout.WorkerBundles {
+			cloned[index].WorkerBundles[bundleIndex] = cloneWorkerBundleActuation(bundle)
+		}
+	}
+	return cloned
+}
+
+func cloneWorkerBundleActuation(bundle WorkerBundleActuation) WorkerBundleActuation {
+	cloned := bundle
+	cloned.WorkerInstances = make([]WorkerInstanceActuation, len(bundle.WorkerInstances))
+	for index, worker := range bundle.WorkerInstances {
+		cloned.WorkerInstances[index] = worker
+		cloned.WorkerInstances[index].ModelRuntimes = make([]ModelRuntimeProcess, len(worker.ModelRuntimes))
+		for runtimeIndex, modelRuntime := range worker.ModelRuntimes {
+			cloned.WorkerInstances[index].ModelRuntimes[runtimeIndex] = modelRuntime
+			cloned.WorkerInstances[index].ModelRuntimes[runtimeIndex].Command = append(
+				[]string(nil), modelRuntime.Command...,
+			)
+		}
+		cloned.WorkerInstances[index].Members = make([]WorkerMemberActuation, len(worker.Members))
+		for memberIndex, member := range worker.Members {
+			cloned.WorkerInstances[index].Members[memberIndex] = member
+			cloned.WorkerInstances[index].Members[memberIndex].DeviceConstraints = append(
+				[]DeviceConstraint(nil), member.DeviceConstraints...,
+			)
+		}
+	}
+	return cloned
 }
 
 func ValidateRuntimeConfiguration(
@@ -217,7 +287,9 @@ func runtimeResourceName(namespace, name string) string {
 }
 
 func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
-	if runtime == nil || runtime.pods == nil || runtime.reconciler == nil {
+	if runtime == nil ||
+		(len(runtime.desiredRevisions) != 0 && (runtime.pods == nil || runtime.reconciler == nil)) ||
+		(len(runtime.residencyRollouts) != 0 && runtime.workerInstances == nil) {
 		if runtime != nil {
 			runtime.admissionReady.Store(false)
 			runtime.converged.Store(false)
@@ -226,6 +298,24 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 	}
 	result := RuntimeResult{}
 	var failures []error
+	residencyPending := false
+	for _, rollout := range runtime.residencyRollouts {
+		actuation, err := runtime.workerInstances.Reconcile(ctx, rollout)
+		if err != nil {
+			failures = append(failures, fmt.Errorf(
+				"reconcile ResidencyPlan %s: %w",
+				rollout.ApprovedPlan.ID,
+				err,
+			))
+			continue
+		}
+		result.WorkerInstancePodsCreated += actuation.CreatedPods
+		if actuation.Converged {
+			result.ResidencyPlansConverged++
+		} else {
+			residencyPending = true
+		}
+	}
 	reconciledPools := make(map[uuid.UUID]struct{}, len(runtime.desiredRevisions))
 	for _, desired := range runtime.desiredRevisions {
 		if _, err := runtime.reconciler.Reconcile(ctx, desired); err != nil {
@@ -240,39 +330,41 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 		reconciledPools[desired.WorkerPoolID] = struct{}{}
 		result.DesiredRevisionsConverged++
 	}
-	pods, err := runtime.pods.ListPendingWorkerPods(ctx)
-	if err != nil {
-		failures = append(failures, fmt.Errorf("list pending Worker Pods: %w", err))
-	} else {
-		for _, pod := range pods {
-			desired, err := runtime.desiredRevisionForPod(pod)
-			if err != nil {
-				failures = append(failures, fmt.Errorf(
-					"match pending Worker Pod %s/%s: %w",
-					pod.Metadata.Namespace,
-					pod.Metadata.Name,
-					err,
-				))
-				continue
+	if len(runtime.desiredRevisions) != 0 {
+		pods, err := runtime.pods.ListPendingWorkerPods(ctx)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("list pending Worker Pods: %w", err))
+		} else {
+			for _, pod := range pods {
+				desired, err := runtime.desiredRevisionForPod(pod)
+				if err != nil {
+					failures = append(failures, fmt.Errorf(
+						"match pending Worker Pod %s/%s: %w",
+						pod.Metadata.Namespace,
+						pod.Metadata.Name,
+						err,
+					))
+					continue
+				}
+				if _, reconciled := reconciledPools[desired.WorkerPoolID]; !reconciled {
+					failures = append(failures, fmt.Errorf(
+						"bind pending Worker Pod %s/%s: desired revision did not reconcile in this cycle",
+						pod.Metadata.Namespace,
+						pod.Metadata.Name,
+					))
+					continue
+				}
+				if _, err := runtime.reconciler.BindWorkerPodIdentity(ctx, pod, desired); err != nil {
+					failures = append(failures, fmt.Errorf(
+						"bind pending Worker Pod %s/%s: %w",
+						pod.Metadata.Namespace,
+						pod.Metadata.Name,
+						err,
+					))
+					continue
+				}
+				result.WorkerPodsBound++
 			}
-			if _, reconciled := reconciledPools[desired.WorkerPoolID]; !reconciled {
-				failures = append(failures, fmt.Errorf(
-					"bind pending Worker Pod %s/%s: desired revision did not reconcile in this cycle",
-					pod.Metadata.Namespace,
-					pod.Metadata.Name,
-				))
-				continue
-			}
-			if _, err := runtime.reconciler.BindWorkerPodIdentity(ctx, pod, desired); err != nil {
-				failures = append(failures, fmt.Errorf(
-					"bind pending Worker Pod %s/%s: %w",
-					pod.Metadata.Namespace,
-					pod.Metadata.Name,
-					err,
-				))
-				continue
-			}
-			result.WorkerPodsBound++
 		}
 	}
 	for _, plan := range runtime.retirementPlans {
@@ -294,7 +386,9 @@ func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
 		result.WorkerPodsRetired += retirement.WorkerPodsRetired
 	}
 	cycleErr := errors.Join(failures...)
-	runtime.converged.Store(cycleErr == nil && result.RetirementPlansPending == 0)
+	runtime.converged.Store(
+		cycleErr == nil && result.RetirementPlansPending == 0 && !residencyPending,
+	)
 	return result, cycleErr
 }
 

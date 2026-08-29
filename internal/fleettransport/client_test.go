@@ -2,6 +2,7 @@ package fleettransport_test
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"reflect"
 	"strings"
@@ -17,6 +18,39 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestClientCarriesApprovedPlanAndWorkerInstanceEvidence(t *testing.T) {
+	planID := uuid.MustParse("49200000-0000-0000-0000-000000000201")
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000204")
+	server := &recordingFleetRPCServer{
+		applyResidencyPlanResponse: &velav1.ApplyResidencyPlanResponse{
+			PlanRevisionId: planID.String(), WorkerInstanceCount: 8,
+		},
+		observeWorkerInstanceResponse: &velav1.ObserveWorkerInstanceResponse{
+			WorkerInstanceId: workerID.String(), InstanceEpoch: 1,
+			ControlSessionEpoch: 2, ModelRuntimeEpoch: 3,
+			Readiness: string(fleet.WorkerInstanceReady),
+		},
+	}
+	client := newFleetBufconnClient(t, server)
+	plan := fleet.ApprovedResidencyPlan{SchemaVersion: 1, ID: planID}
+	result, err := client.Apply(context.Background(), plan)
+	if err != nil || result.PlanRevisionID != planID || result.WorkerInstanceCount != 8 ||
+		len(server.applyResidencyPlanRequests) != 1 {
+		t.Fatalf("apply ResidencyPlan result=%#v requests=%d error=%v", result, len(server.applyResidencyPlanRequests), err)
+	}
+	var carriedPlan fleet.ApprovedResidencyPlan
+	if err := json.Unmarshal(server.applyResidencyPlanRequests[0].GetApprovedPlanJson(), &carriedPlan); err != nil || carriedPlan.ID != planID {
+		t.Fatalf("carried ResidencyPlan=%#v error=%v", carriedPlan, err)
+	}
+	evidence := fleet.WorkerInstanceEvidence{SchemaVersion: 1, WorkerInstanceID: workerID}
+	decision, err := client.Observe(context.Background(), evidence)
+	if err != nil || decision.WorkerInstanceID != workerID ||
+		decision.Readiness != fleet.WorkerInstanceReady ||
+		len(server.observeWorkerInstanceRequests) != 1 {
+		t.Fatalf("observe WorkerInstance decision=%#v requests=%d error=%v", decision, len(server.observeWorkerInstanceRequests), err)
+	}
+}
 
 func TestClientMapsIdentityDrainAndMutationThroughTypedFleetRPC(t *testing.T) {
 	workerID := uuid.MustParse("23000000-0000-0000-0000-000000000041")
@@ -306,6 +340,8 @@ func TestClientRejectsUnspecifiedOrUnknownWorkerStateEnums(t *testing.T) {
 
 type recordingFleetRPCServer struct {
 	velav1.UnimplementedFleetMaintenanceServiceServer
+	applyResidencyPlanResponse         *velav1.ApplyResidencyPlanResponse
+	observeWorkerInstanceResponse      *velav1.ObserveWorkerInstanceResponse
 	capacityPolicyResponse             *velav1.ConfigureCapacityPolicyResponse
 	identityResponse                   *velav1.ResolveWorkerIdentityResponse
 	readinessResponse                  *velav1.BeginReadinessResponse
@@ -326,6 +362,24 @@ type recordingFleetRPCServer struct {
 	retirementAuthorizationRequests    []*velav1.HasRetirementAuthorizationRequest
 	retirementCompletionRequests       []*velav1.RecordRetirementCompletionRequest
 	retirementCompletionLookupRequests []*velav1.HasRetirementCompletionRequest
+	applyResidencyPlanRequests         []*velav1.ApplyResidencyPlanRequest
+	observeWorkerInstanceRequests      []*velav1.ObserveWorkerInstanceRequest
+}
+
+func (server *recordingFleetRPCServer) ApplyResidencyPlan(
+	_ context.Context,
+	request *velav1.ApplyResidencyPlanRequest,
+) (*velav1.ApplyResidencyPlanResponse, error) {
+	server.applyResidencyPlanRequests = append(server.applyResidencyPlanRequests, request)
+	return server.applyResidencyPlanResponse, nil
+}
+
+func (server *recordingFleetRPCServer) ObserveWorkerInstance(
+	_ context.Context,
+	request *velav1.ObserveWorkerInstanceRequest,
+) (*velav1.ObserveWorkerInstanceResponse, error) {
+	server.observeWorkerInstanceRequests = append(server.observeWorkerInstanceRequests, request)
+	return server.observeWorkerInstanceResponse, nil
 }
 
 func (server *recordingFleetRPCServer) ConfigureCapacityPolicy(

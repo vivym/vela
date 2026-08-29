@@ -2,6 +2,7 @@ package fleettransport
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -16,6 +17,75 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func (client *Client) Apply(
+	ctx context.Context,
+	plan fleet.ApprovedResidencyPlan,
+) (fleet.ActuationPlan, error) {
+	if client == nil || client.service == nil {
+		return fleet.ActuationPlan{}, errors.New("fleet maintenance client is not configured")
+	}
+	encoded, err := json.Marshal(plan)
+	if err != nil || len(encoded) == 0 || len(encoded) > maximumWorkerRegistryPayloadBytes {
+		return fleet.ActuationPlan{}, errors.New("approved ResidencyPlan payload is invalid")
+	}
+	response, err := client.service.ApplyResidencyPlan(ctx, &velav1.ApplyResidencyPlanRequest{
+		ApprovedPlanJson: encoded,
+	})
+	if err != nil {
+		return fleet.ActuationPlan{}, err
+	}
+	planID, parseErr := parseUUID(response.GetPlanRevisionId())
+	if parseErr != nil || planID != plan.ID || response.GetWorkerInstanceCount() <= 0 {
+		return fleet.ActuationPlan{}, errors.New("applied ResidencyPlan response is invalid")
+	}
+	return fleet.ActuationPlan{
+		PlanRevisionID: planID, WorkerInstanceCount: int(response.GetWorkerInstanceCount()),
+	}, nil
+}
+
+func (client *Client) Observe(
+	ctx context.Context,
+	evidence fleet.WorkerInstanceEvidence,
+) (fleet.WorkerInstanceDecision, error) {
+	if client == nil || client.service == nil {
+		return fleet.WorkerInstanceDecision{}, errors.New("fleet maintenance client is not configured")
+	}
+	encoded, err := json.Marshal(evidence)
+	if err != nil || len(encoded) == 0 || len(encoded) > maximumWorkerRegistryPayloadBytes {
+		return fleet.WorkerInstanceDecision{}, errors.New("WorkerInstance evidence payload is invalid")
+	}
+	response, err := client.service.ObserveWorkerInstance(ctx, &velav1.ObserveWorkerInstanceRequest{
+		EvidenceJson: encoded,
+	})
+	if err != nil {
+		return fleet.WorkerInstanceDecision{}, err
+	}
+	workerID, parseErr := parseUUID(response.GetWorkerInstanceId())
+	decision := fleet.WorkerInstanceDecision{
+		WorkerInstanceID: workerID, InstanceEpoch: response.GetInstanceEpoch(),
+		ControlSessionEpoch: response.GetControlSessionEpoch(),
+		ModelRuntimeEpoch:   response.GetModelRuntimeEpoch(),
+		Readiness:           fleet.WorkerInstanceLifecycle(response.GetReadiness()),
+	}
+	if parseErr != nil || workerID != evidence.WorkerInstanceID || decision.InstanceEpoch <= 0 ||
+		decision.ControlSessionEpoch <= 0 || decision.ModelRuntimeEpoch <= 0 ||
+		!validWorkerInstanceLifecycle(decision.Readiness) {
+		return fleet.WorkerInstanceDecision{}, errors.New("WorkerInstance observation response is invalid")
+	}
+	return decision, nil
+}
+
+func validWorkerInstanceLifecycle(state fleet.WorkerInstanceLifecycle) bool {
+	switch state {
+	case fleet.WorkerInstanceProvisioning, fleet.WorkerInstanceWarming,
+		fleet.WorkerInstanceReady, fleet.WorkerInstanceDraining,
+		fleet.WorkerInstanceFenced, fleet.WorkerInstanceRetired:
+		return true
+	default:
+		return false
+	}
+}
 
 type Client struct {
 	connection *grpc.ClientConn

@@ -50,39 +50,39 @@ type WorkerInstanceActuator struct {
 }
 
 type WorkerBundleActuation struct {
-	SchemaVersion          int
-	PlanRevisionID         uuid.UUID
-	WorkerBundleID         uuid.UUID
-	RevisionDigest         string
-	Namespace              string
-	InitImage              string
-	WorkerAgentImage       string
-	RuntimeImage           string
-	ArtifactStoreTLSSecret string
-	WorkerRuntimeConfigMap string
-	WorkerControlTLSSecret string
-	WorkerInstances        []WorkerInstanceActuation
+	SchemaVersion          int                       `json:"schema_version"`
+	PlanRevisionID         uuid.UUID                 `json:"plan_revision_id"`
+	WorkerBundleID         uuid.UUID                 `json:"worker_bundle_id"`
+	RevisionDigest         string                    `json:"revision_digest"`
+	Namespace              string                    `json:"namespace"`
+	InitImage              string                    `json:"init_image"`
+	WorkerAgentImage       string                    `json:"worker_agent_image"`
+	RuntimeImage           string                    `json:"runtime_image"`
+	ArtifactStoreTLSSecret string                    `json:"artifact_store_tls_secret"`
+	WorkerRuntimeConfigMap string                    `json:"worker_runtime_config_map"`
+	WorkerControlTLSSecret string                    `json:"worker_control_tls_secret"`
+	WorkerInstances        []WorkerInstanceActuation `json:"worker_instances"`
 }
 
 type WorkerInstanceActuation struct {
-	ID                      uuid.UUID
-	InstanceEpoch           int64
-	WorkerProfileRevisionID uuid.UUID
-	CapacityPoolID          uuid.UUID
-	Role                    string
-	CapacitySlots           int
-	SharedSlotException     string
-	ModelRuntimes           []ModelRuntimeProcess
-	Members                 []WorkerMemberActuation
+	ID                      uuid.UUID               `json:"id"`
+	InstanceEpoch           int64                   `json:"instance_epoch"`
+	WorkerProfileRevisionID uuid.UUID               `json:"worker_profile_revision_id"`
+	CapacityPoolID          uuid.UUID               `json:"capacity_pool_id"`
+	Role                    string                  `json:"role"`
+	CapacitySlots           int                     `json:"capacity_slots"`
+	SharedSlotException     string                  `json:"shared_slot_exception,omitempty"`
+	ModelRuntimes           []ModelRuntimeProcess   `json:"model_runtimes"`
+	Members                 []WorkerMemberActuation `json:"members"`
 }
 
 type WorkerMemberActuation struct {
-	ID                uuid.UUID
-	Key               string
-	NodeIdentity      string
-	ResourceClass     string
-	DeviceCount       int
-	DeviceConstraints []DeviceConstraint
+	ID                uuid.UUID          `json:"id"`
+	Key               string             `json:"key"`
+	NodeIdentity      string             `json:"node_identity"`
+	ResourceClass     string             `json:"resource_class"`
+	DeviceCount       int                `json:"device_count"`
+	DeviceConstraints []DeviceConstraint `json:"device_constraints,omitempty"`
 }
 
 type DeviceConstraint struct {

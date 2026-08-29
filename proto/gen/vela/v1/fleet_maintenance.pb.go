@@ -520,6 +520,222 @@ func (FleetMutationOperation) EnumDescriptor() ([]byte, []int) {
 	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{8}
 }
 
+type ApplyResidencyPlanRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ApprovedPlanJson []byte                 `protobuf:"bytes,1,opt,name=approved_plan_json,json=approvedPlanJson,proto3" json:"approved_plan_json,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ApplyResidencyPlanRequest) Reset() {
+	*x = ApplyResidencyPlanRequest{}
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyResidencyPlanRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyResidencyPlanRequest) ProtoMessage() {}
+
+func (x *ApplyResidencyPlanRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyResidencyPlanRequest.ProtoReflect.Descriptor instead.
+func (*ApplyResidencyPlanRequest) Descriptor() ([]byte, []int) {
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ApplyResidencyPlanRequest) GetApprovedPlanJson() []byte {
+	if x != nil {
+		return x.ApprovedPlanJson
+	}
+	return nil
+}
+
+type ApplyResidencyPlanResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	PlanRevisionId      string                 `protobuf:"bytes,1,opt,name=plan_revision_id,json=planRevisionId,proto3" json:"plan_revision_id,omitempty"`
+	WorkerInstanceCount int32                  `protobuf:"varint,2,opt,name=worker_instance_count,json=workerInstanceCount,proto3" json:"worker_instance_count,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ApplyResidencyPlanResponse) Reset() {
+	*x = ApplyResidencyPlanResponse{}
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyResidencyPlanResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyResidencyPlanResponse) ProtoMessage() {}
+
+func (x *ApplyResidencyPlanResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyResidencyPlanResponse.ProtoReflect.Descriptor instead.
+func (*ApplyResidencyPlanResponse) Descriptor() ([]byte, []int) {
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ApplyResidencyPlanResponse) GetPlanRevisionId() string {
+	if x != nil {
+		return x.PlanRevisionId
+	}
+	return ""
+}
+
+func (x *ApplyResidencyPlanResponse) GetWorkerInstanceCount() int32 {
+	if x != nil {
+		return x.WorkerInstanceCount
+	}
+	return 0
+}
+
+type ObserveWorkerInstanceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EvidenceJson  []byte                 `protobuf:"bytes,1,opt,name=evidence_json,json=evidenceJson,proto3" json:"evidence_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ObserveWorkerInstanceRequest) Reset() {
+	*x = ObserveWorkerInstanceRequest{}
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObserveWorkerInstanceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObserveWorkerInstanceRequest) ProtoMessage() {}
+
+func (x *ObserveWorkerInstanceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObserveWorkerInstanceRequest.ProtoReflect.Descriptor instead.
+func (*ObserveWorkerInstanceRequest) Descriptor() ([]byte, []int) {
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ObserveWorkerInstanceRequest) GetEvidenceJson() []byte {
+	if x != nil {
+		return x.EvidenceJson
+	}
+	return nil
+}
+
+type ObserveWorkerInstanceResponse struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	WorkerInstanceId    string                 `protobuf:"bytes,1,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
+	InstanceEpoch       int64                  `protobuf:"varint,2,opt,name=instance_epoch,json=instanceEpoch,proto3" json:"instance_epoch,omitempty"`
+	ControlSessionEpoch int64                  `protobuf:"varint,3,opt,name=control_session_epoch,json=controlSessionEpoch,proto3" json:"control_session_epoch,omitempty"`
+	ModelRuntimeEpoch   int64                  `protobuf:"varint,4,opt,name=model_runtime_epoch,json=modelRuntimeEpoch,proto3" json:"model_runtime_epoch,omitempty"`
+	Readiness           string                 `protobuf:"bytes,5,opt,name=readiness,proto3" json:"readiness,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ObserveWorkerInstanceResponse) Reset() {
+	*x = ObserveWorkerInstanceResponse{}
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ObserveWorkerInstanceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ObserveWorkerInstanceResponse) ProtoMessage() {}
+
+func (x *ObserveWorkerInstanceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ObserveWorkerInstanceResponse.ProtoReflect.Descriptor instead.
+func (*ObserveWorkerInstanceResponse) Descriptor() ([]byte, []int) {
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ObserveWorkerInstanceResponse) GetWorkerInstanceId() string {
+	if x != nil {
+		return x.WorkerInstanceId
+	}
+	return ""
+}
+
+func (x *ObserveWorkerInstanceResponse) GetInstanceEpoch() int64 {
+	if x != nil {
+		return x.InstanceEpoch
+	}
+	return 0
+}
+
+func (x *ObserveWorkerInstanceResponse) GetControlSessionEpoch() int64 {
+	if x != nil {
+		return x.ControlSessionEpoch
+	}
+	return 0
+}
+
+func (x *ObserveWorkerInstanceResponse) GetModelRuntimeEpoch() int64 {
+	if x != nil {
+		return x.ModelRuntimeEpoch
+	}
+	return 0
+}
+
+func (x *ObserveWorkerInstanceResponse) GetReadiness() string {
+	if x != nil {
+		return x.Readiness
+	}
+	return ""
+}
+
 type ResolveWorkerIdentityRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NodeIdentity  string                 `protobuf:"bytes,1,opt,name=node_identity,json=nodeIdentity,proto3" json:"node_identity,omitempty"`
@@ -533,7 +749,7 @@ type ResolveWorkerIdentityRequest struct {
 
 func (x *ResolveWorkerIdentityRequest) Reset() {
 	*x = ResolveWorkerIdentityRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[0]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -545,7 +761,7 @@ func (x *ResolveWorkerIdentityRequest) String() string {
 func (*ResolveWorkerIdentityRequest) ProtoMessage() {}
 
 func (x *ResolveWorkerIdentityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[0]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -558,7 +774,7 @@ func (x *ResolveWorkerIdentityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveWorkerIdentityRequest.ProtoReflect.Descriptor instead.
 func (*ResolveWorkerIdentityRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{0}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ResolveWorkerIdentityRequest) GetNodeIdentity() string {
@@ -608,7 +824,7 @@ type ResolveWorkerIdentityResponse struct {
 
 func (x *ResolveWorkerIdentityResponse) Reset() {
 	*x = ResolveWorkerIdentityResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[1]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -620,7 +836,7 @@ func (x *ResolveWorkerIdentityResponse) String() string {
 func (*ResolveWorkerIdentityResponse) ProtoMessage() {}
 
 func (x *ResolveWorkerIdentityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[1]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -633,7 +849,7 @@ func (x *ResolveWorkerIdentityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveWorkerIdentityResponse.ProtoReflect.Descriptor instead.
 func (*ResolveWorkerIdentityResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{1}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ResolveWorkerIdentityResponse) GetWorkerId() string {
@@ -680,7 +896,7 @@ type ConfigureCapacityPolicyRequest struct {
 
 func (x *ConfigureCapacityPolicyRequest) Reset() {
 	*x = ConfigureCapacityPolicyRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[2]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -692,7 +908,7 @@ func (x *ConfigureCapacityPolicyRequest) String() string {
 func (*ConfigureCapacityPolicyRequest) ProtoMessage() {}
 
 func (x *ConfigureCapacityPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[2]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -705,7 +921,7 @@ func (x *ConfigureCapacityPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigureCapacityPolicyRequest.ProtoReflect.Descriptor instead.
 func (*ConfigureCapacityPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{2}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ConfigureCapacityPolicyRequest) GetWorkerPoolId() string {
@@ -775,7 +991,7 @@ type ConfigureCapacityPolicyResponse struct {
 
 func (x *ConfigureCapacityPolicyResponse) Reset() {
 	*x = ConfigureCapacityPolicyResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[3]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -787,7 +1003,7 @@ func (x *ConfigureCapacityPolicyResponse) String() string {
 func (*ConfigureCapacityPolicyResponse) ProtoMessage() {}
 
 func (x *ConfigureCapacityPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[3]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -800,7 +1016,7 @@ func (x *ConfigureCapacityPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigureCapacityPolicyResponse.ProtoReflect.Descriptor instead.
 func (*ConfigureCapacityPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{3}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ConfigureCapacityPolicyResponse) GetWorkerPoolId() string {
@@ -844,7 +1060,7 @@ type ObserveCapacityRequest struct {
 
 func (x *ObserveCapacityRequest) Reset() {
 	*x = ObserveCapacityRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[4]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -856,7 +1072,7 @@ func (x *ObserveCapacityRequest) String() string {
 func (*ObserveCapacityRequest) ProtoMessage() {}
 
 func (x *ObserveCapacityRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[4]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -869,7 +1085,7 @@ func (x *ObserveCapacityRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObserveCapacityRequest.ProtoReflect.Descriptor instead.
 func (*ObserveCapacityRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{4}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ObserveCapacityRequest) GetWorkerId() string {
@@ -971,7 +1187,7 @@ type ObserveCapacityResponse struct {
 
 func (x *ObserveCapacityResponse) Reset() {
 	*x = ObserveCapacityResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[5]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -983,7 +1199,7 @@ func (x *ObserveCapacityResponse) String() string {
 func (*ObserveCapacityResponse) ProtoMessage() {}
 
 func (x *ObserveCapacityResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[5]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -996,7 +1212,7 @@ func (x *ObserveCapacityResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObserveCapacityResponse.ProtoReflect.Descriptor instead.
 func (*ObserveCapacityResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{5}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ObserveCapacityResponse) GetWorkerPoolId() string {
@@ -1064,7 +1280,7 @@ type BeginReadinessRequest struct {
 
 func (x *BeginReadinessRequest) Reset() {
 	*x = BeginReadinessRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[6]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1076,7 +1292,7 @@ func (x *BeginReadinessRequest) String() string {
 func (*BeginReadinessRequest) ProtoMessage() {}
 
 func (x *BeginReadinessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[6]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1089,7 +1305,7 @@ func (x *BeginReadinessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginReadinessRequest.ProtoReflect.Descriptor instead.
 func (*BeginReadinessRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{6}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *BeginReadinessRequest) GetCycleId() string {
@@ -1160,7 +1376,7 @@ type ReportReadinessRequest struct {
 
 func (x *ReportReadinessRequest) Reset() {
 	*x = ReportReadinessRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[7]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1172,7 +1388,7 @@ func (x *ReportReadinessRequest) String() string {
 func (*ReportReadinessRequest) ProtoMessage() {}
 
 func (x *ReportReadinessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[7]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1185,7 +1401,7 @@ func (x *ReportReadinessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportReadinessRequest.ProtoReflect.Descriptor instead.
 func (*ReportReadinessRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{7}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ReportReadinessRequest) GetCycleId() string {
@@ -1225,7 +1441,7 @@ type GetReadinessRequest struct {
 
 func (x *GetReadinessRequest) Reset() {
 	*x = GetReadinessRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1453,7 @@ func (x *GetReadinessRequest) String() string {
 func (*GetReadinessRequest) ProtoMessage() {}
 
 func (x *GetReadinessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[8]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1466,7 @@ func (x *GetReadinessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReadinessRequest.ProtoReflect.Descriptor instead.
 func (*GetReadinessRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{8}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *GetReadinessRequest) GetCycleId() string {
@@ -1274,7 +1490,7 @@ type FleetReadinessResult struct {
 
 func (x *FleetReadinessResult) Reset() {
 	*x = FleetReadinessResult{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1286,7 +1502,7 @@ func (x *FleetReadinessResult) String() string {
 func (*FleetReadinessResult) ProtoMessage() {}
 
 func (x *FleetReadinessResult) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[9]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1299,7 +1515,7 @@ func (x *FleetReadinessResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FleetReadinessResult.ProtoReflect.Descriptor instead.
 func (*FleetReadinessResult) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{9}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *FleetReadinessResult) GetCycleId() string {
@@ -1353,7 +1569,7 @@ type BeginReadinessResponse struct {
 
 func (x *BeginReadinessResponse) Reset() {
 	*x = BeginReadinessResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1365,7 +1581,7 @@ func (x *BeginReadinessResponse) String() string {
 func (*BeginReadinessResponse) ProtoMessage() {}
 
 func (x *BeginReadinessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[10]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1378,7 +1594,7 @@ func (x *BeginReadinessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginReadinessResponse.ProtoReflect.Descriptor instead.
 func (*BeginReadinessResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{10}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *BeginReadinessResponse) GetResult() *FleetReadinessResult {
@@ -1397,7 +1613,7 @@ type ReportReadinessResponse struct {
 
 func (x *ReportReadinessResponse) Reset() {
 	*x = ReportReadinessResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1409,7 +1625,7 @@ func (x *ReportReadinessResponse) String() string {
 func (*ReportReadinessResponse) ProtoMessage() {}
 
 func (x *ReportReadinessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[11]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1422,7 +1638,7 @@ func (x *ReportReadinessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportReadinessResponse.ProtoReflect.Descriptor instead.
 func (*ReportReadinessResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{11}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ReportReadinessResponse) GetResult() *FleetReadinessResult {
@@ -1441,7 +1657,7 @@ type GetReadinessResponse struct {
 
 func (x *GetReadinessResponse) Reset() {
 	*x = GetReadinessResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1453,7 +1669,7 @@ func (x *GetReadinessResponse) String() string {
 func (*GetReadinessResponse) ProtoMessage() {}
 
 func (x *GetReadinessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[12]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1466,7 +1682,7 @@ func (x *GetReadinessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetReadinessResponse.ProtoReflect.Descriptor instead.
 func (*GetReadinessResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{12}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetReadinessResponse) GetResult() *FleetReadinessResult {
@@ -1489,7 +1705,7 @@ type RequestDrainRequest struct {
 
 func (x *RequestDrainRequest) Reset() {
 	*x = RequestDrainRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1501,7 +1717,7 @@ func (x *RequestDrainRequest) String() string {
 func (*RequestDrainRequest) ProtoMessage() {}
 
 func (x *RequestDrainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[13]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1514,7 +1730,7 @@ func (x *RequestDrainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestDrainRequest.ProtoReflect.Descriptor instead.
 func (*RequestDrainRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{13}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RequestDrainRequest) GetOperationId() string {
@@ -1561,7 +1777,7 @@ type ReconcileDrainRequest struct {
 
 func (x *ReconcileDrainRequest) Reset() {
 	*x = ReconcileDrainRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1573,7 +1789,7 @@ func (x *ReconcileDrainRequest) String() string {
 func (*ReconcileDrainRequest) ProtoMessage() {}
 
 func (x *ReconcileDrainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[14]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1586,7 +1802,7 @@ func (x *ReconcileDrainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileDrainRequest.ProtoReflect.Descriptor instead.
 func (*ReconcileDrainRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{14}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ReconcileDrainRequest) GetOperationId() string {
@@ -1605,7 +1821,7 @@ type GetDrainRequest struct {
 
 func (x *GetDrainRequest) Reset() {
 	*x = GetDrainRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1617,7 +1833,7 @@ func (x *GetDrainRequest) String() string {
 func (*GetDrainRequest) ProtoMessage() {}
 
 func (x *GetDrainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[15]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1630,7 +1846,7 @@ func (x *GetDrainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDrainRequest.ProtoReflect.Descriptor instead.
 func (*GetDrainRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{15}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetDrainRequest) GetOperationId() string {
@@ -1656,7 +1872,7 @@ type FleetDrainResult struct {
 
 func (x *FleetDrainResult) Reset() {
 	*x = FleetDrainResult{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1668,7 +1884,7 @@ func (x *FleetDrainResult) String() string {
 func (*FleetDrainResult) ProtoMessage() {}
 
 func (x *FleetDrainResult) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[16]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1681,7 +1897,7 @@ func (x *FleetDrainResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FleetDrainResult.ProtoReflect.Descriptor instead.
 func (*FleetDrainResult) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{16}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *FleetDrainResult) GetOperationId() string {
@@ -1749,7 +1965,7 @@ type RequestDrainResponse struct {
 
 func (x *RequestDrainResponse) Reset() {
 	*x = RequestDrainResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[17]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1761,7 +1977,7 @@ func (x *RequestDrainResponse) String() string {
 func (*RequestDrainResponse) ProtoMessage() {}
 
 func (x *RequestDrainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[17]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1774,7 +1990,7 @@ func (x *RequestDrainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RequestDrainResponse.ProtoReflect.Descriptor instead.
 func (*RequestDrainResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{17}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RequestDrainResponse) GetResult() *FleetDrainResult {
@@ -1793,7 +2009,7 @@ type ReconcileDrainResponse struct {
 
 func (x *ReconcileDrainResponse) Reset() {
 	*x = ReconcileDrainResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[18]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1805,7 +2021,7 @@ func (x *ReconcileDrainResponse) String() string {
 func (*ReconcileDrainResponse) ProtoMessage() {}
 
 func (x *ReconcileDrainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[18]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1818,7 +2034,7 @@ func (x *ReconcileDrainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReconcileDrainResponse.ProtoReflect.Descriptor instead.
 func (*ReconcileDrainResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{18}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ReconcileDrainResponse) GetResult() *FleetDrainResult {
@@ -1837,7 +2053,7 @@ type GetDrainResponse struct {
 
 func (x *GetDrainResponse) Reset() {
 	*x = GetDrainResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[19]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1849,7 +2065,7 @@ func (x *GetDrainResponse) String() string {
 func (*GetDrainResponse) ProtoMessage() {}
 
 func (x *GetDrainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[19]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1862,7 +2078,7 @@ func (x *GetDrainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDrainResponse.ProtoReflect.Descriptor instead.
 func (*GetDrainResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{19}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetDrainResponse) GetResult() *FleetDrainResult {
@@ -1891,7 +2107,7 @@ type AuthorizeMutationRequest struct {
 
 func (x *AuthorizeMutationRequest) Reset() {
 	*x = AuthorizeMutationRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[20]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1903,7 +2119,7 @@ func (x *AuthorizeMutationRequest) String() string {
 func (*AuthorizeMutationRequest) ProtoMessage() {}
 
 func (x *AuthorizeMutationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[20]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1916,7 +2132,7 @@ func (x *AuthorizeMutationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeMutationRequest.ProtoReflect.Descriptor instead.
 func (*AuthorizeMutationRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{20}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *AuthorizeMutationRequest) GetRequestUid() string {
@@ -2007,7 +2223,7 @@ type AuthorizeMutationResponse struct {
 
 func (x *AuthorizeMutationResponse) Reset() {
 	*x = AuthorizeMutationResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[21]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2019,7 +2235,7 @@ func (x *AuthorizeMutationResponse) String() string {
 func (*AuthorizeMutationResponse) ProtoMessage() {}
 
 func (x *AuthorizeMutationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[21]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2032,7 +2248,7 @@ func (x *AuthorizeMutationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthorizeMutationResponse.ProtoReflect.Descriptor instead.
 func (*AuthorizeMutationResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{21}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *AuthorizeMutationResponse) GetRequestUid() string {
@@ -2072,7 +2288,7 @@ type HasRetirementAuthorizationRequest struct {
 
 func (x *HasRetirementAuthorizationRequest) Reset() {
 	*x = HasRetirementAuthorizationRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[22]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2084,7 +2300,7 @@ func (x *HasRetirementAuthorizationRequest) String() string {
 func (*HasRetirementAuthorizationRequest) ProtoMessage() {}
 
 func (x *HasRetirementAuthorizationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[22]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2097,7 +2313,7 @@ func (x *HasRetirementAuthorizationRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use HasRetirementAuthorizationRequest.ProtoReflect.Descriptor instead.
 func (*HasRetirementAuthorizationRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{22}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *HasRetirementAuthorizationRequest) GetResourceKind() FleetProtectedResourceKind {
@@ -2165,7 +2381,7 @@ type HasRetirementAuthorizationResponse struct {
 
 func (x *HasRetirementAuthorizationResponse) Reset() {
 	*x = HasRetirementAuthorizationResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[23]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2177,7 +2393,7 @@ func (x *HasRetirementAuthorizationResponse) String() string {
 func (*HasRetirementAuthorizationResponse) ProtoMessage() {}
 
 func (x *HasRetirementAuthorizationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[23]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2190,7 +2406,7 @@ func (x *HasRetirementAuthorizationResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use HasRetirementAuthorizationResponse.ProtoReflect.Descriptor instead.
 func (*HasRetirementAuthorizationResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{23}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *HasRetirementAuthorizationResponse) GetAuthorized() bool {
@@ -2216,7 +2432,7 @@ type RecordRetirementCompletionRequest struct {
 
 func (x *RecordRetirementCompletionRequest) Reset() {
 	*x = RecordRetirementCompletionRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[24]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2228,7 +2444,7 @@ func (x *RecordRetirementCompletionRequest) String() string {
 func (*RecordRetirementCompletionRequest) ProtoMessage() {}
 
 func (x *RecordRetirementCompletionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[24]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2241,7 +2457,7 @@ func (x *RecordRetirementCompletionRequest) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use RecordRetirementCompletionRequest.ProtoReflect.Descriptor instead.
 func (*RecordRetirementCompletionRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{24}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *RecordRetirementCompletionRequest) GetResourceKind() FleetProtectedResourceKind {
@@ -2310,7 +2526,7 @@ type RecordRetirementCompletionResponse struct {
 
 func (x *RecordRetirementCompletionResponse) Reset() {
 	*x = RecordRetirementCompletionResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[25]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2322,7 +2538,7 @@ func (x *RecordRetirementCompletionResponse) String() string {
 func (*RecordRetirementCompletionResponse) ProtoMessage() {}
 
 func (x *RecordRetirementCompletionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[25]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2335,7 +2551,7 @@ func (x *RecordRetirementCompletionResponse) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use RecordRetirementCompletionResponse.ProtoReflect.Descriptor instead.
 func (*RecordRetirementCompletionResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{25}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *RecordRetirementCompletionResponse) GetReplayed() bool {
@@ -2368,7 +2584,7 @@ type HasRetirementCompletionRequest struct {
 
 func (x *HasRetirementCompletionRequest) Reset() {
 	*x = HasRetirementCompletionRequest{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[26]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2380,7 +2596,7 @@ func (x *HasRetirementCompletionRequest) String() string {
 func (*HasRetirementCompletionRequest) ProtoMessage() {}
 
 func (x *HasRetirementCompletionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[26]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2393,7 +2609,7 @@ func (x *HasRetirementCompletionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HasRetirementCompletionRequest.ProtoReflect.Descriptor instead.
 func (*HasRetirementCompletionRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{26}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *HasRetirementCompletionRequest) GetResourceKind() FleetProtectedResourceKind {
@@ -2461,7 +2677,7 @@ type HasRetirementCompletionResponse struct {
 
 func (x *HasRetirementCompletionResponse) Reset() {
 	*x = HasRetirementCompletionResponse{}
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[27]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2473,7 +2689,7 @@ func (x *HasRetirementCompletionResponse) String() string {
 func (*HasRetirementCompletionResponse) ProtoMessage() {}
 
 func (x *HasRetirementCompletionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[27]
+	mi := &file_vela_v1_fleet_maintenance_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2486,7 +2702,7 @@ func (x *HasRetirementCompletionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HasRetirementCompletionResponse.ProtoReflect.Descriptor instead.
 func (*HasRetirementCompletionResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{27}
+	return file_vela_v1_fleet_maintenance_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *HasRetirementCompletionResponse) GetCompleted() bool {
@@ -2500,7 +2716,20 @@ var File_vela_v1_fleet_maintenance_proto protoreflect.FileDescriptor
 
 const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"\n" +
-	"\x1fvela/v1/fleet_maintenance.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc2\x01\n" +
+	"\x1fvela/v1/fleet_maintenance.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"I\n" +
+	"\x19ApplyResidencyPlanRequest\x12,\n" +
+	"\x12approved_plan_json\x18\x01 \x01(\fR\x10approvedPlanJson\"z\n" +
+	"\x1aApplyResidencyPlanResponse\x12(\n" +
+	"\x10plan_revision_id\x18\x01 \x01(\tR\x0eplanRevisionId\x122\n" +
+	"\x15worker_instance_count\x18\x02 \x01(\x05R\x13workerInstanceCount\"C\n" +
+	"\x1cObserveWorkerInstanceRequest\x12#\n" +
+	"\revidence_json\x18\x01 \x01(\fR\fevidenceJson\"\xf6\x01\n" +
+	"\x1dObserveWorkerInstanceResponse\x12,\n" +
+	"\x12worker_instance_id\x18\x01 \x01(\tR\x10workerInstanceId\x12%\n" +
+	"\x0einstance_epoch\x18\x02 \x01(\x03R\rinstanceEpoch\x122\n" +
+	"\x15control_session_epoch\x18\x03 \x01(\x03R\x13controlSessionEpoch\x12.\n" +
+	"\x13model_runtime_epoch\x18\x04 \x01(\x03R\x11modelRuntimeEpoch\x12\x1c\n" +
+	"\treadiness\x18\x05 \x01(\tR\treadiness\"\xc2\x01\n" +
 	"\x1cResolveWorkerIdentityRequest\x12#\n" +
 	"\rnode_identity\x18\x01 \x01(\tR\fnodeIdentity\x12$\n" +
 	"\x0eworker_pool_id\x18\x02 \x01(\tR\fworkerPoolId\x12%\n" +
@@ -2717,8 +2946,10 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"\x1fFLEET_MUTATION_OPERATION_DELETE\x10\x01\x12+\n" +
 	"'FLEET_MUTATION_OPERATION_PATCH_SELECTOR\x10\x02\x12(\n" +
 	"$FLEET_MUTATION_OPERATION_PATCH_IMAGE\x10\x03\x12-\n" +
-	")FLEET_MUTATION_OPERATION_REMOVE_FINALIZER\x10\x042\xd4\t\n" +
-	"\x17FleetMaintenanceService\x12f\n" +
+	")FLEET_MUTATION_OPERATION_REMOVE_FINALIZER\x10\x042\x9b\v\n" +
+	"\x17FleetMaintenanceService\x12]\n" +
+	"\x12ApplyResidencyPlan\x12\".vela.v1.ApplyResidencyPlanRequest\x1a#.vela.v1.ApplyResidencyPlanResponse\x12f\n" +
+	"\x15ObserveWorkerInstance\x12%.vela.v1.ObserveWorkerInstanceRequest\x1a&.vela.v1.ObserveWorkerInstanceResponse\x12f\n" +
 	"\x15ResolveWorkerIdentity\x12%.vela.v1.ResolveWorkerIdentityRequest\x1a&.vela.v1.ResolveWorkerIdentityResponse\x12l\n" +
 	"\x17ConfigureCapacityPolicy\x12'.vela.v1.ConfigureCapacityPolicyRequest\x1a(.vela.v1.ConfigureCapacityPolicyResponse\x12T\n" +
 	"\x0fObserveCapacity\x12\x1f.vela.v1.ObserveCapacityRequest\x1a .vela.v1.ObserveCapacityResponse\x12Q\n" +
@@ -2746,7 +2977,7 @@ func file_vela_v1_fleet_maintenance_proto_rawDescGZIP() []byte {
 }
 
 var file_vela_v1_fleet_maintenance_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
-var file_vela_v1_fleet_maintenance_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_vela_v1_fleet_maintenance_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_vela_v1_fleet_maintenance_proto_goTypes = []any{
 	(FleetCapacityState)(0),                    // 0: vela.v1.FleetCapacityState
 	(FleetScratchWatermarkState)(0),            // 1: vela.v1.FleetScratchWatermarkState
@@ -2757,92 +2988,100 @@ var file_vela_v1_fleet_maintenance_proto_goTypes = []any{
 	(FleetWorkerReachability)(0),               // 6: vela.v1.FleetWorkerReachability
 	(FleetProtectedResourceKind)(0),            // 7: vela.v1.FleetProtectedResourceKind
 	(FleetMutationOperation)(0),                // 8: vela.v1.FleetMutationOperation
-	(*ResolveWorkerIdentityRequest)(nil),       // 9: vela.v1.ResolveWorkerIdentityRequest
-	(*ResolveWorkerIdentityResponse)(nil),      // 10: vela.v1.ResolveWorkerIdentityResponse
-	(*ConfigureCapacityPolicyRequest)(nil),     // 11: vela.v1.ConfigureCapacityPolicyRequest
-	(*ConfigureCapacityPolicyResponse)(nil),    // 12: vela.v1.ConfigureCapacityPolicyResponse
-	(*ObserveCapacityRequest)(nil),             // 13: vela.v1.ObserveCapacityRequest
-	(*ObserveCapacityResponse)(nil),            // 14: vela.v1.ObserveCapacityResponse
-	(*BeginReadinessRequest)(nil),              // 15: vela.v1.BeginReadinessRequest
-	(*ReportReadinessRequest)(nil),             // 16: vela.v1.ReportReadinessRequest
-	(*GetReadinessRequest)(nil),                // 17: vela.v1.GetReadinessRequest
-	(*FleetReadinessResult)(nil),               // 18: vela.v1.FleetReadinessResult
-	(*BeginReadinessResponse)(nil),             // 19: vela.v1.BeginReadinessResponse
-	(*ReportReadinessResponse)(nil),            // 20: vela.v1.ReportReadinessResponse
-	(*GetReadinessResponse)(nil),               // 21: vela.v1.GetReadinessResponse
-	(*RequestDrainRequest)(nil),                // 22: vela.v1.RequestDrainRequest
-	(*ReconcileDrainRequest)(nil),              // 23: vela.v1.ReconcileDrainRequest
-	(*GetDrainRequest)(nil),                    // 24: vela.v1.GetDrainRequest
-	(*FleetDrainResult)(nil),                   // 25: vela.v1.FleetDrainResult
-	(*RequestDrainResponse)(nil),               // 26: vela.v1.RequestDrainResponse
-	(*ReconcileDrainResponse)(nil),             // 27: vela.v1.ReconcileDrainResponse
-	(*GetDrainResponse)(nil),                   // 28: vela.v1.GetDrainResponse
-	(*AuthorizeMutationRequest)(nil),           // 29: vela.v1.AuthorizeMutationRequest
-	(*AuthorizeMutationResponse)(nil),          // 30: vela.v1.AuthorizeMutationResponse
-	(*HasRetirementAuthorizationRequest)(nil),  // 31: vela.v1.HasRetirementAuthorizationRequest
-	(*HasRetirementAuthorizationResponse)(nil), // 32: vela.v1.HasRetirementAuthorizationResponse
-	(*RecordRetirementCompletionRequest)(nil),  // 33: vela.v1.RecordRetirementCompletionRequest
-	(*RecordRetirementCompletionResponse)(nil), // 34: vela.v1.RecordRetirementCompletionResponse
-	(*HasRetirementCompletionRequest)(nil),     // 35: vela.v1.HasRetirementCompletionRequest
-	(*HasRetirementCompletionResponse)(nil),    // 36: vela.v1.HasRetirementCompletionResponse
-	(*timestamppb.Timestamp)(nil),              // 37: google.protobuf.Timestamp
+	(*ApplyResidencyPlanRequest)(nil),          // 9: vela.v1.ApplyResidencyPlanRequest
+	(*ApplyResidencyPlanResponse)(nil),         // 10: vela.v1.ApplyResidencyPlanResponse
+	(*ObserveWorkerInstanceRequest)(nil),       // 11: vela.v1.ObserveWorkerInstanceRequest
+	(*ObserveWorkerInstanceResponse)(nil),      // 12: vela.v1.ObserveWorkerInstanceResponse
+	(*ResolveWorkerIdentityRequest)(nil),       // 13: vela.v1.ResolveWorkerIdentityRequest
+	(*ResolveWorkerIdentityResponse)(nil),      // 14: vela.v1.ResolveWorkerIdentityResponse
+	(*ConfigureCapacityPolicyRequest)(nil),     // 15: vela.v1.ConfigureCapacityPolicyRequest
+	(*ConfigureCapacityPolicyResponse)(nil),    // 16: vela.v1.ConfigureCapacityPolicyResponse
+	(*ObserveCapacityRequest)(nil),             // 17: vela.v1.ObserveCapacityRequest
+	(*ObserveCapacityResponse)(nil),            // 18: vela.v1.ObserveCapacityResponse
+	(*BeginReadinessRequest)(nil),              // 19: vela.v1.BeginReadinessRequest
+	(*ReportReadinessRequest)(nil),             // 20: vela.v1.ReportReadinessRequest
+	(*GetReadinessRequest)(nil),                // 21: vela.v1.GetReadinessRequest
+	(*FleetReadinessResult)(nil),               // 22: vela.v1.FleetReadinessResult
+	(*BeginReadinessResponse)(nil),             // 23: vela.v1.BeginReadinessResponse
+	(*ReportReadinessResponse)(nil),            // 24: vela.v1.ReportReadinessResponse
+	(*GetReadinessResponse)(nil),               // 25: vela.v1.GetReadinessResponse
+	(*RequestDrainRequest)(nil),                // 26: vela.v1.RequestDrainRequest
+	(*ReconcileDrainRequest)(nil),              // 27: vela.v1.ReconcileDrainRequest
+	(*GetDrainRequest)(nil),                    // 28: vela.v1.GetDrainRequest
+	(*FleetDrainResult)(nil),                   // 29: vela.v1.FleetDrainResult
+	(*RequestDrainResponse)(nil),               // 30: vela.v1.RequestDrainResponse
+	(*ReconcileDrainResponse)(nil),             // 31: vela.v1.ReconcileDrainResponse
+	(*GetDrainResponse)(nil),                   // 32: vela.v1.GetDrainResponse
+	(*AuthorizeMutationRequest)(nil),           // 33: vela.v1.AuthorizeMutationRequest
+	(*AuthorizeMutationResponse)(nil),          // 34: vela.v1.AuthorizeMutationResponse
+	(*HasRetirementAuthorizationRequest)(nil),  // 35: vela.v1.HasRetirementAuthorizationRequest
+	(*HasRetirementAuthorizationResponse)(nil), // 36: vela.v1.HasRetirementAuthorizationResponse
+	(*RecordRetirementCompletionRequest)(nil),  // 37: vela.v1.RecordRetirementCompletionRequest
+	(*RecordRetirementCompletionResponse)(nil), // 38: vela.v1.RecordRetirementCompletionResponse
+	(*HasRetirementCompletionRequest)(nil),     // 39: vela.v1.HasRetirementCompletionRequest
+	(*HasRetirementCompletionResponse)(nil),    // 40: vela.v1.HasRetirementCompletionResponse
+	(*timestamppb.Timestamp)(nil),              // 41: google.protobuf.Timestamp
 }
 var file_vela_v1_fleet_maintenance_proto_depIdxs = []int32{
-	37, // 0: vela.v1.ObserveCapacityRequest.observed_at:type_name -> google.protobuf.Timestamp
+	41, // 0: vela.v1.ObserveCapacityRequest.observed_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: vela.v1.ObserveCapacityRequest.watermark_state:type_name -> vela.v1.FleetScratchWatermarkState
 	0,  // 2: vela.v1.ObserveCapacityResponse.worker_state:type_name -> vela.v1.FleetCapacityState
 	0,  // 3: vela.v1.ObserveCapacityResponse.pool_state:type_name -> vela.v1.FleetCapacityState
-	37, // 4: vela.v1.BeginReadinessRequest.deadline:type_name -> google.protobuf.Timestamp
+	41, // 4: vela.v1.BeginReadinessRequest.deadline:type_name -> google.protobuf.Timestamp
 	3,  // 5: vela.v1.ReportReadinessRequest.check:type_name -> vela.v1.FleetReadinessCheck
 	2,  // 6: vela.v1.FleetReadinessResult.state:type_name -> vela.v1.FleetReadinessState
 	3,  // 7: vela.v1.FleetReadinessResult.next_check:type_name -> vela.v1.FleetReadinessCheck
 	5,  // 8: vela.v1.FleetReadinessResult.worker_lifecycle:type_name -> vela.v1.FleetWorkerLifecycle
 	6,  // 9: vela.v1.FleetReadinessResult.worker_reachability:type_name -> vela.v1.FleetWorkerReachability
-	18, // 10: vela.v1.BeginReadinessResponse.result:type_name -> vela.v1.FleetReadinessResult
-	18, // 11: vela.v1.ReportReadinessResponse.result:type_name -> vela.v1.FleetReadinessResult
-	18, // 12: vela.v1.GetReadinessResponse.result:type_name -> vela.v1.FleetReadinessResult
-	37, // 13: vela.v1.RequestDrainRequest.deadline:type_name -> google.protobuf.Timestamp
+	22, // 10: vela.v1.BeginReadinessResponse.result:type_name -> vela.v1.FleetReadinessResult
+	22, // 11: vela.v1.ReportReadinessResponse.result:type_name -> vela.v1.FleetReadinessResult
+	22, // 12: vela.v1.GetReadinessResponse.result:type_name -> vela.v1.FleetReadinessResult
+	41, // 13: vela.v1.RequestDrainRequest.deadline:type_name -> google.protobuf.Timestamp
 	4,  // 14: vela.v1.FleetDrainResult.state:type_name -> vela.v1.FleetDrainState
 	5,  // 15: vela.v1.FleetDrainResult.worker_lifecycle:type_name -> vela.v1.FleetWorkerLifecycle
 	6,  // 16: vela.v1.FleetDrainResult.worker_reachability:type_name -> vela.v1.FleetWorkerReachability
-	37, // 17: vela.v1.FleetDrainResult.deadline:type_name -> google.protobuf.Timestamp
-	25, // 18: vela.v1.RequestDrainResponse.result:type_name -> vela.v1.FleetDrainResult
-	25, // 19: vela.v1.ReconcileDrainResponse.result:type_name -> vela.v1.FleetDrainResult
-	25, // 20: vela.v1.GetDrainResponse.result:type_name -> vela.v1.FleetDrainResult
+	41, // 17: vela.v1.FleetDrainResult.deadline:type_name -> google.protobuf.Timestamp
+	29, // 18: vela.v1.RequestDrainResponse.result:type_name -> vela.v1.FleetDrainResult
+	29, // 19: vela.v1.ReconcileDrainResponse.result:type_name -> vela.v1.FleetDrainResult
+	29, // 20: vela.v1.GetDrainResponse.result:type_name -> vela.v1.FleetDrainResult
 	7,  // 21: vela.v1.AuthorizeMutationRequest.resource_kind:type_name -> vela.v1.FleetProtectedResourceKind
 	8,  // 22: vela.v1.AuthorizeMutationRequest.operation:type_name -> vela.v1.FleetMutationOperation
 	7,  // 23: vela.v1.HasRetirementAuthorizationRequest.resource_kind:type_name -> vela.v1.FleetProtectedResourceKind
 	7,  // 24: vela.v1.RecordRetirementCompletionRequest.resource_kind:type_name -> vela.v1.FleetProtectedResourceKind
-	37, // 25: vela.v1.RecordRetirementCompletionResponse.completed_at:type_name -> google.protobuf.Timestamp
+	41, // 25: vela.v1.RecordRetirementCompletionResponse.completed_at:type_name -> google.protobuf.Timestamp
 	7,  // 26: vela.v1.HasRetirementCompletionRequest.resource_kind:type_name -> vela.v1.FleetProtectedResourceKind
-	9,  // 27: vela.v1.FleetMaintenanceService.ResolveWorkerIdentity:input_type -> vela.v1.ResolveWorkerIdentityRequest
-	11, // 28: vela.v1.FleetMaintenanceService.ConfigureCapacityPolicy:input_type -> vela.v1.ConfigureCapacityPolicyRequest
-	13, // 29: vela.v1.FleetMaintenanceService.ObserveCapacity:input_type -> vela.v1.ObserveCapacityRequest
-	15, // 30: vela.v1.FleetMaintenanceService.BeginReadiness:input_type -> vela.v1.BeginReadinessRequest
-	16, // 31: vela.v1.FleetMaintenanceService.ReportReadiness:input_type -> vela.v1.ReportReadinessRequest
-	17, // 32: vela.v1.FleetMaintenanceService.GetReadiness:input_type -> vela.v1.GetReadinessRequest
-	22, // 33: vela.v1.FleetMaintenanceService.RequestDrain:input_type -> vela.v1.RequestDrainRequest
-	23, // 34: vela.v1.FleetMaintenanceService.ReconcileDrain:input_type -> vela.v1.ReconcileDrainRequest
-	24, // 35: vela.v1.FleetMaintenanceService.GetDrain:input_type -> vela.v1.GetDrainRequest
-	29, // 36: vela.v1.FleetMaintenanceService.AuthorizeMutation:input_type -> vela.v1.AuthorizeMutationRequest
-	31, // 37: vela.v1.FleetMaintenanceService.HasRetirementAuthorization:input_type -> vela.v1.HasRetirementAuthorizationRequest
-	33, // 38: vela.v1.FleetMaintenanceService.RecordRetirementCompletion:input_type -> vela.v1.RecordRetirementCompletionRequest
-	35, // 39: vela.v1.FleetMaintenanceService.HasRetirementCompletion:input_type -> vela.v1.HasRetirementCompletionRequest
-	10, // 40: vela.v1.FleetMaintenanceService.ResolveWorkerIdentity:output_type -> vela.v1.ResolveWorkerIdentityResponse
-	12, // 41: vela.v1.FleetMaintenanceService.ConfigureCapacityPolicy:output_type -> vela.v1.ConfigureCapacityPolicyResponse
-	14, // 42: vela.v1.FleetMaintenanceService.ObserveCapacity:output_type -> vela.v1.ObserveCapacityResponse
-	19, // 43: vela.v1.FleetMaintenanceService.BeginReadiness:output_type -> vela.v1.BeginReadinessResponse
-	20, // 44: vela.v1.FleetMaintenanceService.ReportReadiness:output_type -> vela.v1.ReportReadinessResponse
-	21, // 45: vela.v1.FleetMaintenanceService.GetReadiness:output_type -> vela.v1.GetReadinessResponse
-	26, // 46: vela.v1.FleetMaintenanceService.RequestDrain:output_type -> vela.v1.RequestDrainResponse
-	27, // 47: vela.v1.FleetMaintenanceService.ReconcileDrain:output_type -> vela.v1.ReconcileDrainResponse
-	28, // 48: vela.v1.FleetMaintenanceService.GetDrain:output_type -> vela.v1.GetDrainResponse
-	30, // 49: vela.v1.FleetMaintenanceService.AuthorizeMutation:output_type -> vela.v1.AuthorizeMutationResponse
-	32, // 50: vela.v1.FleetMaintenanceService.HasRetirementAuthorization:output_type -> vela.v1.HasRetirementAuthorizationResponse
-	34, // 51: vela.v1.FleetMaintenanceService.RecordRetirementCompletion:output_type -> vela.v1.RecordRetirementCompletionResponse
-	36, // 52: vela.v1.FleetMaintenanceService.HasRetirementCompletion:output_type -> vela.v1.HasRetirementCompletionResponse
-	40, // [40:53] is the sub-list for method output_type
-	27, // [27:40] is the sub-list for method input_type
+	9,  // 27: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:input_type -> vela.v1.ApplyResidencyPlanRequest
+	11, // 28: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:input_type -> vela.v1.ObserveWorkerInstanceRequest
+	13, // 29: vela.v1.FleetMaintenanceService.ResolveWorkerIdentity:input_type -> vela.v1.ResolveWorkerIdentityRequest
+	15, // 30: vela.v1.FleetMaintenanceService.ConfigureCapacityPolicy:input_type -> vela.v1.ConfigureCapacityPolicyRequest
+	17, // 31: vela.v1.FleetMaintenanceService.ObserveCapacity:input_type -> vela.v1.ObserveCapacityRequest
+	19, // 32: vela.v1.FleetMaintenanceService.BeginReadiness:input_type -> vela.v1.BeginReadinessRequest
+	20, // 33: vela.v1.FleetMaintenanceService.ReportReadiness:input_type -> vela.v1.ReportReadinessRequest
+	21, // 34: vela.v1.FleetMaintenanceService.GetReadiness:input_type -> vela.v1.GetReadinessRequest
+	26, // 35: vela.v1.FleetMaintenanceService.RequestDrain:input_type -> vela.v1.RequestDrainRequest
+	27, // 36: vela.v1.FleetMaintenanceService.ReconcileDrain:input_type -> vela.v1.ReconcileDrainRequest
+	28, // 37: vela.v1.FleetMaintenanceService.GetDrain:input_type -> vela.v1.GetDrainRequest
+	33, // 38: vela.v1.FleetMaintenanceService.AuthorizeMutation:input_type -> vela.v1.AuthorizeMutationRequest
+	35, // 39: vela.v1.FleetMaintenanceService.HasRetirementAuthorization:input_type -> vela.v1.HasRetirementAuthorizationRequest
+	37, // 40: vela.v1.FleetMaintenanceService.RecordRetirementCompletion:input_type -> vela.v1.RecordRetirementCompletionRequest
+	39, // 41: vela.v1.FleetMaintenanceService.HasRetirementCompletion:input_type -> vela.v1.HasRetirementCompletionRequest
+	10, // 42: vela.v1.FleetMaintenanceService.ApplyResidencyPlan:output_type -> vela.v1.ApplyResidencyPlanResponse
+	12, // 43: vela.v1.FleetMaintenanceService.ObserveWorkerInstance:output_type -> vela.v1.ObserveWorkerInstanceResponse
+	14, // 44: vela.v1.FleetMaintenanceService.ResolveWorkerIdentity:output_type -> vela.v1.ResolveWorkerIdentityResponse
+	16, // 45: vela.v1.FleetMaintenanceService.ConfigureCapacityPolicy:output_type -> vela.v1.ConfigureCapacityPolicyResponse
+	18, // 46: vela.v1.FleetMaintenanceService.ObserveCapacity:output_type -> vela.v1.ObserveCapacityResponse
+	23, // 47: vela.v1.FleetMaintenanceService.BeginReadiness:output_type -> vela.v1.BeginReadinessResponse
+	24, // 48: vela.v1.FleetMaintenanceService.ReportReadiness:output_type -> vela.v1.ReportReadinessResponse
+	25, // 49: vela.v1.FleetMaintenanceService.GetReadiness:output_type -> vela.v1.GetReadinessResponse
+	30, // 50: vela.v1.FleetMaintenanceService.RequestDrain:output_type -> vela.v1.RequestDrainResponse
+	31, // 51: vela.v1.FleetMaintenanceService.ReconcileDrain:output_type -> vela.v1.ReconcileDrainResponse
+	32, // 52: vela.v1.FleetMaintenanceService.GetDrain:output_type -> vela.v1.GetDrainResponse
+	34, // 53: vela.v1.FleetMaintenanceService.AuthorizeMutation:output_type -> vela.v1.AuthorizeMutationResponse
+	36, // 54: vela.v1.FleetMaintenanceService.HasRetirementAuthorization:output_type -> vela.v1.HasRetirementAuthorizationResponse
+	38, // 55: vela.v1.FleetMaintenanceService.RecordRetirementCompletion:output_type -> vela.v1.RecordRetirementCompletionResponse
+	40, // 56: vela.v1.FleetMaintenanceService.HasRetirementCompletion:output_type -> vela.v1.HasRetirementCompletionResponse
+	42, // [42:57] is the sub-list for method output_type
+	27, // [27:42] is the sub-list for method input_type
 	27, // [27:27] is the sub-list for extension type_name
 	27, // [27:27] is the sub-list for extension extendee
 	0,  // [0:27] is the sub-list for field type_name
@@ -2859,7 +3098,7 @@ func file_vela_v1_fleet_maintenance_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_fleet_maintenance_proto_rawDesc), len(file_vela_v1_fleet_maintenance_proto_rawDesc)),
 			NumEnums:      9,
-			NumMessages:   28,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

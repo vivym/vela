@@ -239,7 +239,7 @@ func TestFleetControllerRBACIsNamespaceBoundAndNodeReadOnly(t *testing.T) {
 		"fleet.vela.ai|workerpools":        {"get", "list", "watch", "create", "update", "patch", "delete"},
 		"fleet.vela.ai|workerpools/status": {"get", "update", "patch"},
 		"apps|daemonsets":                  {"get", "list", "watch", "create", "update", "patch", "delete"},
-		"|pods":                            {"get", "list", "watch", "update", "patch", "delete"},
+		"|pods":                            {"get", "list", "watch", "create", "update", "patch", "delete"},
 	}
 	if len(role.Rules) != len(wantRoleRules) {
 		t.Fatalf("Fleet Role rules = %#v", role.Rules)

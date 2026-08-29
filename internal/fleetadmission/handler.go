@@ -20,17 +20,18 @@ import (
 )
 
 const (
-	protectedLabel      = fleetcontract.ProtectedLabel
-	workerPoolLabel     = fleetcontract.WorkerPoolIDLabel
-	fleetRevisionLabel  = fleetcontract.FleetRevisionLabel
-	workerIDLabel       = fleetcontract.WorkerIDLabel
-	workerEpochLabel    = fleetcontract.WorkerEpochLabel
-	drainIDsAnnotation  = fleetcontract.DrainOperationIDsAnnotation
-	protectionFinalizer = fleetcontract.ProtectionFinalizer
-	identityBindingGate = fleetcontract.IdentityBindingSchedulingGate
-	maximumReviewBytes  = 2 << 20
-	maximumPlacements   = 1024
-	maximumNodeSelector = 64
+	protectedLabel        = fleetcontract.ProtectedLabel
+	workerPoolLabel       = fleetcontract.WorkerPoolIDLabel
+	fleetRevisionLabel    = fleetcontract.FleetRevisionLabel
+	workerIDLabel         = fleetcontract.WorkerIDLabel
+	workerEpochLabel      = fleetcontract.WorkerEpochLabel
+	workerInstanceIDLabel = "vela.ai/worker-instance-id"
+	drainIDsAnnotation    = fleetcontract.DrainOperationIDsAnnotation
+	protectionFinalizer   = fleetcontract.ProtectionFinalizer
+	identityBindingGate   = fleetcontract.IdentityBindingSchedulingGate
+	maximumReviewBytes    = 2 << 20
+	maximumPlacements     = 1024
+	maximumNodeSelector   = 64
 )
 
 type MutationAuthorizer interface {
@@ -287,6 +288,7 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 	if protected && review.Request.Operation == "CREATE" &&
 		review.Request.Kind.Group == "" && review.Request.Kind.Version == "v1" &&
 		review.Request.Kind.Kind == "Pod" && handler.podControllerUsername != "" &&
+		object.Metadata.Labels[workerInstanceIDLabel] == "" &&
 		review.Request.UserInfo.Username == handler.podControllerUsername {
 		authorizedActor = true
 	}
@@ -519,8 +521,23 @@ func validProtectedCreate(
 		object.Metadata.Namespace != request.Namespace || object.Metadata.Name != request.Name ||
 		object.Metadata.Labels[protectedLabel] != "true" ||
 		object.Metadata.Annotations[drainIDsAnnotation] != "" ||
-		!hasFinalizer(object, protectionFinalizer) ||
-		!validSHA256Label(object.Metadata.Labels[fleetRevisionLabel]) {
+		!hasFinalizer(object, protectionFinalizer) {
+		return false
+	}
+	if request.Kind.Group == "" && request.Kind.Version == "v1" &&
+		request.Kind.Kind == "Pod" && object.APIVersion == "v1" && object.Kind == "Pod" &&
+		object.Metadata.Labels[workerInstanceIDLabel] != "" {
+		if podValidator == nil || object.Metadata.Labels[workerIDLabel] != "" ||
+			object.Metadata.Labels[workerEpochLabel] != "" {
+			return false
+		}
+		var pod corev1.Pod
+		if err := json.Unmarshal(request.Object, &pod); err != nil {
+			return false
+		}
+		return podValidator.ValidateProtectedPodCreate(ctx, pod) == nil
+	}
+	if !validSHA256Label(object.Metadata.Labels[fleetRevisionLabel]) {
 		return false
 	}
 	workerPoolID, err := uuid.Parse(object.Metadata.Labels[workerPoolLabel])

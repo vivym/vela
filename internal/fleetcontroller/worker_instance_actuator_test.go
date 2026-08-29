@@ -3,6 +3,7 @@ package fleetcontroller_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -182,6 +183,48 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 	}
 	if !seenMembers["member-0"] || !seenMembers["member-1"] {
 		t.Fatalf("multi-member Pods = %#v", seenMembers)
+	}
+}
+
+func TestKubernetesActuatorFailsClosedOnImmutablePodDrift(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("register core Kubernetes scheme: %v", err)
+	}
+	client := dynamicfake.NewSimpleDynamicClient(scheme)
+	resources, err := fleetcontroller.NewKubernetesResources(client, "vela-system")
+	if err != nil {
+		t.Fatalf("create Kubernetes resources: %v", err)
+	}
+	actuator, err := fleetcontroller.NewWorkerInstanceActuator(resources)
+	if err != nil {
+		t.Fatalf("create WorkerInstance actuator: %v", err)
+	}
+	bundle, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())
+	if err != nil {
+		t.Fatalf("build H3 WorkerBundle actuation: %v", err)
+	}
+	if _, err := actuator.Actuate(context.Background(), bundle); err != nil {
+		t.Fatalf("materialize H3 WorkerBundle: %v", err)
+	}
+	pods := client.Resource(schema.GroupVersionResource{
+		Group: "", Version: "v1", Resource: "pods",
+	}).Namespace("vela-system")
+	live, err := pods.List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(live.Items) == 0 {
+		t.Fatalf("list WorkerInstance Pods count=%d error=%v", len(live.Items), err)
+	}
+	drifted := live.Items[0].DeepCopy()
+	drifted.SetAnnotations(map[string]string{
+		"vela.ai/fleet-controller-owned": "true",
+		"vela.ai/device-constraints":     `[]`,
+		"vela.ai/actuation-revision":     digestString('f'),
+	})
+	if _, err := pods.Update(context.Background(), drifted, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("inject immutable Pod drift: %v", err)
+	}
+	if _, err := actuator.Actuate(context.Background(), bundle); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
+		t.Fatalf("drifted WorkerInstance Pod error=%v, want ErrProtectedResourceDrift", err)
 	}
 }
 

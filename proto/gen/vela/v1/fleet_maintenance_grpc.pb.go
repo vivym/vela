@@ -19,6 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	FleetMaintenanceService_ApplyResidencyPlan_FullMethodName         = "/vela.v1.FleetMaintenanceService/ApplyResidencyPlan"
+	FleetMaintenanceService_ObserveWorkerInstance_FullMethodName      = "/vela.v1.FleetMaintenanceService/ObserveWorkerInstance"
 	FleetMaintenanceService_ResolveWorkerIdentity_FullMethodName      = "/vela.v1.FleetMaintenanceService/ResolveWorkerIdentity"
 	FleetMaintenanceService_ConfigureCapacityPolicy_FullMethodName    = "/vela.v1.FleetMaintenanceService/ConfigureCapacityPolicy"
 	FleetMaintenanceService_ObserveCapacity_FullMethodName            = "/vela.v1.FleetMaintenanceService/ObserveCapacity"
@@ -38,6 +40,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FleetMaintenanceServiceClient interface {
+	ApplyResidencyPlan(ctx context.Context, in *ApplyResidencyPlanRequest, opts ...grpc.CallOption) (*ApplyResidencyPlanResponse, error)
+	ObserveWorkerInstance(ctx context.Context, in *ObserveWorkerInstanceRequest, opts ...grpc.CallOption) (*ObserveWorkerInstanceResponse, error)
 	ResolveWorkerIdentity(ctx context.Context, in *ResolveWorkerIdentityRequest, opts ...grpc.CallOption) (*ResolveWorkerIdentityResponse, error)
 	ConfigureCapacityPolicy(ctx context.Context, in *ConfigureCapacityPolicyRequest, opts ...grpc.CallOption) (*ConfigureCapacityPolicyResponse, error)
 	ObserveCapacity(ctx context.Context, in *ObserveCapacityRequest, opts ...grpc.CallOption) (*ObserveCapacityResponse, error)
@@ -59,6 +63,26 @@ type fleetMaintenanceServiceClient struct {
 
 func NewFleetMaintenanceServiceClient(cc grpc.ClientConnInterface) FleetMaintenanceServiceClient {
 	return &fleetMaintenanceServiceClient{cc}
+}
+
+func (c *fleetMaintenanceServiceClient) ApplyResidencyPlan(ctx context.Context, in *ApplyResidencyPlanRequest, opts ...grpc.CallOption) (*ApplyResidencyPlanResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApplyResidencyPlanResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_ApplyResidencyPlan_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *fleetMaintenanceServiceClient) ObserveWorkerInstance(ctx context.Context, in *ObserveWorkerInstanceRequest, opts ...grpc.CallOption) (*ObserveWorkerInstanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ObserveWorkerInstanceResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_ObserveWorkerInstance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *fleetMaintenanceServiceClient) ResolveWorkerIdentity(ctx context.Context, in *ResolveWorkerIdentityRequest, opts ...grpc.CallOption) (*ResolveWorkerIdentityResponse, error) {
@@ -195,6 +219,8 @@ func (c *fleetMaintenanceServiceClient) HasRetirementCompletion(ctx context.Cont
 // All implementations must embed UnimplementedFleetMaintenanceServiceServer
 // for forward compatibility.
 type FleetMaintenanceServiceServer interface {
+	ApplyResidencyPlan(context.Context, *ApplyResidencyPlanRequest) (*ApplyResidencyPlanResponse, error)
+	ObserveWorkerInstance(context.Context, *ObserveWorkerInstanceRequest) (*ObserveWorkerInstanceResponse, error)
 	ResolveWorkerIdentity(context.Context, *ResolveWorkerIdentityRequest) (*ResolveWorkerIdentityResponse, error)
 	ConfigureCapacityPolicy(context.Context, *ConfigureCapacityPolicyRequest) (*ConfigureCapacityPolicyResponse, error)
 	ObserveCapacity(context.Context, *ObserveCapacityRequest) (*ObserveCapacityResponse, error)
@@ -218,6 +244,12 @@ type FleetMaintenanceServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedFleetMaintenanceServiceServer struct{}
 
+func (UnimplementedFleetMaintenanceServiceServer) ApplyResidencyPlan(context.Context, *ApplyResidencyPlanRequest) (*ApplyResidencyPlanResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyResidencyPlan not implemented")
+}
+func (UnimplementedFleetMaintenanceServiceServer) ObserveWorkerInstance(context.Context, *ObserveWorkerInstanceRequest) (*ObserveWorkerInstanceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ObserveWorkerInstance not implemented")
+}
 func (UnimplementedFleetMaintenanceServiceServer) ResolveWorkerIdentity(context.Context, *ResolveWorkerIdentityRequest) (*ResolveWorkerIdentityResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResolveWorkerIdentity not implemented")
 }
@@ -277,6 +309,42 @@ func RegisterFleetMaintenanceServiceServer(s grpc.ServiceRegistrar, srv FleetMai
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&FleetMaintenanceService_ServiceDesc, srv)
+}
+
+func _FleetMaintenanceService_ApplyResidencyPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyResidencyPlanRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetMaintenanceServiceServer).ApplyResidencyPlan(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetMaintenanceService_ApplyResidencyPlan_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetMaintenanceServiceServer).ApplyResidencyPlan(ctx, req.(*ApplyResidencyPlanRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FleetMaintenanceService_ObserveWorkerInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ObserveWorkerInstanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FleetMaintenanceServiceServer).ObserveWorkerInstance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FleetMaintenanceService_ObserveWorkerInstance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FleetMaintenanceServiceServer).ObserveWorkerInstance(ctx, req.(*ObserveWorkerInstanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _FleetMaintenanceService_ResolveWorkerIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -520,6 +588,14 @@ var FleetMaintenanceService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "vela.v1.FleetMaintenanceService",
 	HandlerType: (*FleetMaintenanceServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ApplyResidencyPlan",
+			Handler:    _FleetMaintenanceService_ApplyResidencyPlan_Handler,
+		},
+		{
+			MethodName: "ObserveWorkerInstance",
+			Handler:    _FleetMaintenanceService_ObserveWorkerInstance_Handler,
+		},
 		{
 			MethodName: "ResolveWorkerIdentity",
 			Handler:    _FleetMaintenanceService_ResolveWorkerIdentity_Handler,

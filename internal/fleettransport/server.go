@@ -3,7 +3,9 @@ package fleettransport
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -19,15 +21,21 @@ import (
 )
 
 const (
-	maximumActorBytes        = 500
-	maximumIdentityBytes     = 500
-	maximumReasonBytes       = 1000
-	maximumRequestUIDBytes   = 200
-	maximumWorkerPodUIDBytes = 128
-	maximumNameBytes         = 253
-	maximumDrainOperations   = 4096
-	maximumDeadline          = 24 * time.Hour
+	maximumActorBytes                 = 500
+	maximumIdentityBytes              = 500
+	maximumReasonBytes                = 1000
+	maximumRequestUIDBytes            = 200
+	maximumWorkerPodUIDBytes          = 128
+	maximumNameBytes                  = 253
+	maximumDrainOperations            = 4096
+	maximumDeadline                   = 24 * time.Hour
+	maximumWorkerRegistryPayloadBytes = 1 << 20
 )
+
+type workerRegistryService interface {
+	Apply(context.Context, fleet.ApprovedResidencyPlan) (fleet.ActuationPlan, error)
+	Observe(context.Context, fleet.WorkerInstanceEvidence) (fleet.WorkerInstanceDecision, error)
+}
 
 type Service interface {
 	ResolveWorkerIdentity(
@@ -61,6 +69,79 @@ type Service interface {
 		context.Context,
 		fleet.RetirementAuthorizationRequest,
 	) (bool, error)
+}
+
+func (server *Server) ApplyResidencyPlan(
+	ctx context.Context,
+	request *velav1.ApplyResidencyPlanRequest,
+) (*velav1.ApplyResidencyPlanResponse, error) {
+	if err := server.authenticate(ctx); err != nil {
+		return nil, err
+	}
+	registry, ok := server.service.(workerRegistryService)
+	if !ok || request == nil {
+		return nil, invalidRequest("ResidencyPlan apply")
+	}
+	var plan fleet.ApprovedResidencyPlan
+	if !decodeWorkerRegistryPayload(request.GetApprovedPlanJson(), &plan) {
+		return nil, invalidRequest("ResidencyPlan apply")
+	}
+	result, err := registry.Apply(ctx, plan)
+	if err != nil {
+		return nil, mapServiceError("apply approved ResidencyPlan", err)
+	}
+	if result.PlanRevisionID != plan.ID || result.WorkerInstanceCount <= 0 {
+		return nil, invalidAuthoritativeResult("ResidencyPlan apply")
+	}
+	return &velav1.ApplyResidencyPlanResponse{
+		PlanRevisionId:      result.PlanRevisionID.String(),
+		WorkerInstanceCount: int32(result.WorkerInstanceCount),
+	}, nil
+}
+
+func (server *Server) ObserveWorkerInstance(
+	ctx context.Context,
+	request *velav1.ObserveWorkerInstanceRequest,
+) (*velav1.ObserveWorkerInstanceResponse, error) {
+	if err := server.authenticate(ctx); err != nil {
+		return nil, err
+	}
+	registry, ok := server.service.(workerRegistryService)
+	if !ok || request == nil {
+		return nil, invalidRequest("WorkerInstance observation")
+	}
+	var evidence fleet.WorkerInstanceEvidence
+	if !decodeWorkerRegistryPayload(request.GetEvidenceJson(), &evidence) {
+		return nil, invalidRequest("WorkerInstance observation")
+	}
+	evidence.ObservedBy = server.actorIdentity
+	decision, err := registry.Observe(ctx, evidence)
+	if err != nil {
+		return nil, mapServiceError("observe WorkerInstance", err)
+	}
+	if decision.WorkerInstanceID != evidence.WorkerInstanceID || decision.InstanceEpoch <= 0 ||
+		decision.ControlSessionEpoch <= 0 || decision.ModelRuntimeEpoch <= 0 {
+		return nil, invalidAuthoritativeResult("WorkerInstance observation")
+	}
+	return &velav1.ObserveWorkerInstanceResponse{
+		WorkerInstanceId:    decision.WorkerInstanceID.String(),
+		InstanceEpoch:       decision.InstanceEpoch,
+		ControlSessionEpoch: decision.ControlSessionEpoch,
+		ModelRuntimeEpoch:   decision.ModelRuntimeEpoch,
+		Readiness:           string(decision.Readiness),
+	}, nil
+}
+
+func decodeWorkerRegistryPayload(encoded []byte, target any) bool {
+	if len(encoded) == 0 || len(encoded) > maximumWorkerRegistryPayloadBytes || target == nil {
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return false
+	}
+	return errors.Is(decoder.Decode(&struct{}{}), io.EOF)
 }
 
 func (server *Server) ConfigureCapacityPolicy(
