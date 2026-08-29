@@ -179,6 +179,60 @@ func TestServerMapsWorkerRegistryPayloadsToAuthoritativeFleetService(t *testing.
 	}
 }
 
+func TestServerMapsWorkerInstancePodMutationToExactRegistryAuthority(t *testing.T) {
+	service := &recordingFleetService{mutationResult: fleet.MutationAuthorizationResult{
+		RequestUID: "worker-instance-delete-1", Authorized: true,
+	}}
+	server, err := fleettransport.NewServer(service, fleettransport.Config{
+		SPIFFEIdentity: fleetSPIFFE,
+		ActorIdentity:  fleetActor,
+	})
+	if err != nil {
+		t.Fatalf("create Fleet maintenance server: %v", err)
+	}
+	response, err := server.AuthorizeMutation(
+		fleetPeerContext(t, fleetSPIFFE),
+		&velav1.AuthorizeMutationRequest{
+			RequestUid:    "worker-instance-delete-1",
+			ResourceKind:  velav1.FleetProtectedResourceKind_FLEET_PROTECTED_RESOURCE_KIND_POD,
+			Operation:     velav1.FleetMutationOperation_FLEET_MUTATION_OPERATION_DELETE,
+			KubernetesUid: "pod-uid-1", Namespace: "vela-system", Name: "wi-1-member-0",
+			WorkerInstanceId:        "49320000-0000-0000-0000-000000000001",
+			WorkerInstanceEpoch:     7,
+			ResidencyPlanRevisionId: "49320000-0000-0000-0000-000000000002",
+			WorkerBundleId:          "49320000-0000-0000-0000-000000000003",
+			WorkerMemberId:          "49320000-0000-0000-0000-000000000004",
+			RequestDigest:           make([]byte, 32),
+		},
+	)
+	if err != nil || !response.GetAuthorized() || len(service.mutationRequests) != 1 {
+		t.Fatalf("authorize WorkerInstance Pod mutation response=%#v requests=%d error=%v", response, len(service.mutationRequests), err)
+	}
+	request := service.mutationRequests[0]
+	if request.ActorIdentity != fleetActor || request.WorkerPoolID != uuid.Nil ||
+		request.WorkerInstanceID.String() != "49320000-0000-0000-0000-000000000001" ||
+		request.WorkerInstanceEpoch != 7 ||
+		request.ResidencyPlanRevisionID.String() != "49320000-0000-0000-0000-000000000002" ||
+		request.WorkerBundleID.String() != "49320000-0000-0000-0000-000000000003" ||
+		request.WorkerMemberID.String() != "49320000-0000-0000-0000-000000000004" {
+		t.Fatalf("WorkerInstance Pod mutation request=%#v", request)
+	}
+	if _, err := server.AuthorizeMutation(
+		fleetPeerContext(t, fleetSPIFFE),
+		&velav1.AuthorizeMutationRequest{
+			RequestUid: "mixed-worker-delete", ResourceKind: 1, Operation: 1,
+			KubernetesUid: "pod-uid-1", Namespace: "vela-system", Name: "wi-1-member-0",
+			WorkerPoolId:        "23000000-0000-0000-0000-000000000001",
+			WorkerInstanceId:    "49320000-0000-0000-0000-000000000001",
+			WorkerInstanceEpoch: 7, ResidencyPlanRevisionId: "49320000-0000-0000-0000-000000000002",
+			WorkerBundleId: "49320000-0000-0000-0000-000000000003",
+			WorkerMemberId: "49320000-0000-0000-0000-000000000004", RequestDigest: make([]byte, 32),
+		},
+	); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("mixed Worker authority code=%s error=%v", status.Code(err), err)
+	}
+}
+
 func TestServerMapsTypedFleetMaintenanceRequestsToAuthoritativeService(t *testing.T) {
 	workerID := uuid.MustParse("23000000-0000-0000-0000-000000000041")
 	workerPoolID := uuid.MustParse("00000000-0000-0000-0000-000000000005")

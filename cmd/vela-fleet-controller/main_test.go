@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +12,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/fleetcontroller"
 )
 
 type readinessProbe func() bool
@@ -173,6 +178,117 @@ func TestLoadConfigRequiresExactFleetRuntimeInputs(t *testing.T) {
 			"kubernetes-old-worker-pod-uid-1" {
 		t.Fatalf("Fleet controller config = %#v", configuration)
 	}
+}
+
+func TestLoadConfigSupportsResidencyPlanOnlyRuntime(t *testing.T) {
+	for _, name := range fleetEnvironmentNames() {
+		t.Setenv(name, "")
+	}
+	directory := t.TempDir()
+	rolloutPath := filepath.Join(directory, "residency-plan-rollouts.json")
+	encoded, err := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"rollouts":       []fleetcontroller.ResidencyPlanRollout{singleGPUResidencyPlanRollout(t)},
+	})
+	if err != nil {
+		t.Fatalf("encode target-only ResidencyPlan rollout: %v", err)
+	}
+	if err := os.WriteFile(rolloutPath, encoded, 0o600); err != nil {
+		t.Fatalf("write target-only ResidencyPlan rollout: %v", err)
+	}
+	values := map[string]string{
+		"VELA_FLEET_NAMESPACE":                    "vela-system",
+		"VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE": rolloutPath,
+		"VELA_FLEET_MAINTENANCE_ADDRESS":          "vela-control.vela-system.svc:8444",
+		"VELA_FLEET_MAINTENANCE_SERVER_NAME":      "vela-control.vela-system.svc",
+		"VELA_FLEET_TLS_CERT_FILE":                filepath.Join(directory, "tls.crt"),
+		"VELA_FLEET_TLS_KEY_FILE":                 filepath.Join(directory, "tls.key"),
+		"VELA_FLEET_CA_FILE":                      filepath.Join(directory, "ca.crt"),
+		"VELA_FLEET_ADMISSION_ADDRESS":            ":9443",
+		"VELA_FLEET_ADMISSION_TLS_CERT_FILE":      filepath.Join(directory, "admission.crt"),
+		"VELA_FLEET_ADMISSION_TLS_KEY_FILE":       filepath.Join(directory, "admission.key"),
+		"VELA_FLEET_ADMISSION_CLIENT_CA_FILE":     filepath.Join(directory, "admission-client-ca.crt"),
+		"VELA_FLEET_ADMISSION_CLIENT_SPIFFE_ID":   "spiffe://vela.internal/kube-apiserver/admission",
+		"VELA_FLEET_KUBERNETES_USERNAME":          "system:serviceaccount:vela-system:vela-fleet-controller",
+		"VELA_FLEET_POD_CONTROLLER_USERNAME":      "system:kube-controller-manager",
+		"VELA_FLEET_POLL_INTERVAL":                "2s",
+	}
+	for name, value := range values {
+		t.Setenv(name, value)
+	}
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load target-only Fleet controller config: %v", err)
+	}
+	if configuration.desiredInputFile != "" || len(configuration.desiredRevisions) != 0 ||
+		len(configuration.retirementPlans) != 0 || len(configuration.residencyPlanRollouts) != 1 {
+		t.Fatalf("target-only Fleet controller config = %#v", configuration)
+	}
+}
+
+func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRollout {
+	t.Helper()
+	planID := uuid.MustParse("49310000-0000-0000-0000-000000000001")
+	bundleID := uuid.MustParse("49310000-0000-0000-0000-000000000002")
+	poolID := uuid.MustParse("49310000-0000-0000-0000-000000000003")
+	workerID := uuid.MustParse("49310000-0000-0000-0000-000000000004")
+	profileID := uuid.MustParse("49310000-0000-0000-0000-000000000005")
+	bundle := fleetcontroller.WorkerBundleActuation{
+		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
+		Namespace: "vela-system", InitImage: pinnedTestImage("busybox", 'a'),
+		WorkerAgentImage:       pinnedTestImage("vela-worker-agent", 'b'),
+		RuntimeImage:           pinnedTestImage("vela-h3-stage-runtime", 'c'),
+		ArtifactStoreTLSSecret: "artifact-store-ca-r1",
+		WorkerRuntimeConfigMap: "worker-runtime-r1",
+		WorkerControlTLSSecret: "worker-control-tls-r1",
+		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
+			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
+			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
+				Component: "DIT", ModelComponentRevision: "h3-dit-v1",
+				RuntimeIdentity: "h3-dit-runtime-v1", Command: []string{"/opt/vela/bin/h3-dit"},
+			}},
+			Members: []fleetcontroller.WorkerMemberActuation{{
+				ID:  uuid.MustParse("49310000-0000-0000-0000-000000000006"),
+				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
+				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
+					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
+				}},
+			}},
+		}},
+	}
+	var err error
+	bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil {
+		t.Fatalf("digest target-only WorkerBundle: %v", err)
+	}
+	return fleetcontroller.ResidencyPlanRollout{
+		ApprovedPlan: fleet.ApprovedResidencyPlan{
+			SchemaVersion: 1, ID: planID, StableID: "h3-target-only", Revision: 1,
+			ContentDigest: bundle.RevisionDigest, ApprovalEvidenceDigest: testDigest('d'),
+			ApprovedAt: time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC), ApprovedBy: "fleet/operator-1",
+			CapacityPools: []fleet.PlannedCapacityPool{{
+				ID: poolID, StableID: "h3-dit", StageProfileRevisionID: uuid.MustParse("49310000-0000-0000-0000-000000000007"),
+				ResourceClass: "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai", MaxReadyQueueDepth: 128,
+			}},
+			WorkerBundles: []fleet.PlannedWorkerBundle{{
+				ID: bundleID, StableID: "h3-node-01", DesiredGeneration: 1, LayoutDigest: bundle.RevisionDigest,
+			}},
+			WorkerInstances: []fleet.PlannedWorkerInstance{{
+				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
+				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
+			}},
+		},
+		WorkerBundles: []fleetcontroller.WorkerBundleActuation{bundle},
+	}
+}
+
+func pinnedTestImage(name string, digit rune) string {
+	return "ghcr.io/vivym/" + name + "@sha256:" + testDigest(digit)
+}
+
+func testDigest(digit rune) string {
+	return strings.Repeat(string(digit), 64)
 }
 
 func TestLoadDesiredInputRejectsUnknownOrUnpinnedConfiguration(t *testing.T) {

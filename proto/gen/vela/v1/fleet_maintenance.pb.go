@@ -2089,20 +2089,25 @@ func (x *GetDrainResponse) GetResult() *FleetDrainResult {
 }
 
 type AuthorizeMutationRequest struct {
-	state             protoimpl.MessageState     `protogen:"open.v1"`
-	RequestUid        string                     `protobuf:"bytes,1,opt,name=request_uid,json=requestUid,proto3" json:"request_uid,omitempty"`
-	ResourceKind      FleetProtectedResourceKind `protobuf:"varint,2,opt,name=resource_kind,json=resourceKind,proto3,enum=vela.v1.FleetProtectedResourceKind" json:"resource_kind,omitempty"`
-	Operation         FleetMutationOperation     `protobuf:"varint,3,opt,name=operation,proto3,enum=vela.v1.FleetMutationOperation" json:"operation,omitempty"`
-	KubernetesUid     string                     `protobuf:"bytes,4,opt,name=kubernetes_uid,json=kubernetesUid,proto3" json:"kubernetes_uid,omitempty"`
-	Namespace         string                     `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	Name              string                     `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
-	WorkerPoolId      string                     `protobuf:"bytes,7,opt,name=worker_pool_id,json=workerPoolId,proto3" json:"worker_pool_id,omitempty"`
-	WorkerId          string                     `protobuf:"bytes,8,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
-	WorkerEpoch       int64                      `protobuf:"varint,9,opt,name=worker_epoch,json=workerEpoch,proto3" json:"worker_epoch,omitempty"`
-	DrainOperationIds []string                   `protobuf:"bytes,10,rep,name=drain_operation_ids,json=drainOperationIds,proto3" json:"drain_operation_ids,omitempty"`
-	RequestDigest     []byte                     `protobuf:"bytes,11,opt,name=request_digest,json=requestDigest,proto3" json:"request_digest,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                   protoimpl.MessageState     `protogen:"open.v1"`
+	RequestUid              string                     `protobuf:"bytes,1,opt,name=request_uid,json=requestUid,proto3" json:"request_uid,omitempty"`
+	ResourceKind            FleetProtectedResourceKind `protobuf:"varint,2,opt,name=resource_kind,json=resourceKind,proto3,enum=vela.v1.FleetProtectedResourceKind" json:"resource_kind,omitempty"`
+	Operation               FleetMutationOperation     `protobuf:"varint,3,opt,name=operation,proto3,enum=vela.v1.FleetMutationOperation" json:"operation,omitempty"`
+	KubernetesUid           string                     `protobuf:"bytes,4,opt,name=kubernetes_uid,json=kubernetesUid,proto3" json:"kubernetes_uid,omitempty"`
+	Namespace               string                     `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	Name                    string                     `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
+	WorkerPoolId            string                     `protobuf:"bytes,7,opt,name=worker_pool_id,json=workerPoolId,proto3" json:"worker_pool_id,omitempty"`
+	WorkerId                string                     `protobuf:"bytes,8,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	WorkerEpoch             int64                      `protobuf:"varint,9,opt,name=worker_epoch,json=workerEpoch,proto3" json:"worker_epoch,omitempty"`
+	DrainOperationIds       []string                   `protobuf:"bytes,10,rep,name=drain_operation_ids,json=drainOperationIds,proto3" json:"drain_operation_ids,omitempty"`
+	RequestDigest           []byte                     `protobuf:"bytes,11,opt,name=request_digest,json=requestDigest,proto3" json:"request_digest,omitempty"`
+	WorkerInstanceId        string                     `protobuf:"bytes,12,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
+	WorkerInstanceEpoch     int64                      `protobuf:"varint,13,opt,name=worker_instance_epoch,json=workerInstanceEpoch,proto3" json:"worker_instance_epoch,omitempty"`
+	ResidencyPlanRevisionId string                     `protobuf:"bytes,14,opt,name=residency_plan_revision_id,json=residencyPlanRevisionId,proto3" json:"residency_plan_revision_id,omitempty"`
+	WorkerBundleId          string                     `protobuf:"bytes,15,opt,name=worker_bundle_id,json=workerBundleId,proto3" json:"worker_bundle_id,omitempty"`
+	WorkerMemberId          string                     `protobuf:"bytes,16,opt,name=worker_member_id,json=workerMemberId,proto3" json:"worker_member_id,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *AuthorizeMutationRequest) Reset() {
@@ -2210,6 +2215,41 @@ func (x *AuthorizeMutationRequest) GetRequestDigest() []byte {
 		return x.RequestDigest
 	}
 	return nil
+}
+
+func (x *AuthorizeMutationRequest) GetWorkerInstanceId() string {
+	if x != nil {
+		return x.WorkerInstanceId
+	}
+	return ""
+}
+
+func (x *AuthorizeMutationRequest) GetWorkerInstanceEpoch() int64 {
+	if x != nil {
+		return x.WorkerInstanceEpoch
+	}
+	return 0
+}
+
+func (x *AuthorizeMutationRequest) GetResidencyPlanRevisionId() string {
+	if x != nil {
+		return x.ResidencyPlanRevisionId
+	}
+	return ""
+}
+
+func (x *AuthorizeMutationRequest) GetWorkerBundleId() string {
+	if x != nil {
+		return x.WorkerBundleId
+	}
+	return ""
+}
+
+func (x *AuthorizeMutationRequest) GetWorkerMemberId() string {
+	if x != nil {
+		return x.WorkerMemberId
+	}
+	return ""
 }
 
 type AuthorizeMutationResponse struct {
@@ -2834,7 +2874,7 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"\x16ReconcileDrainResponse\x121\n" +
 	"\x06result\x18\x01 \x01(\v2\x19.vela.v1.FleetDrainResultR\x06result\"E\n" +
 	"\x10GetDrainResponse\x121\n" +
-	"\x06result\x18\x01 \x01(\v2\x19.vela.v1.FleetDrainResultR\x06result\"\xda\x03\n" +
+	"\x06result\x18\x01 \x01(\v2\x19.vela.v1.FleetDrainResultR\x06result\"\xcd\x05\n" +
 	"\x18AuthorizeMutationRequest\x12\x1f\n" +
 	"\vrequest_uid\x18\x01 \x01(\tR\n" +
 	"requestUid\x12H\n" +
@@ -2848,7 +2888,12 @@ const file_vela_v1_fleet_maintenance_proto_rawDesc = "" +
 	"\fworker_epoch\x18\t \x01(\x03R\vworkerEpoch\x12.\n" +
 	"\x13drain_operation_ids\x18\n" +
 	" \x03(\tR\x11drainOperationIds\x12%\n" +
-	"\x0erequest_digest\x18\v \x01(\fR\rrequestDigest\"x\n" +
+	"\x0erequest_digest\x18\v \x01(\fR\rrequestDigest\x12,\n" +
+	"\x12worker_instance_id\x18\f \x01(\tR\x10workerInstanceId\x122\n" +
+	"\x15worker_instance_epoch\x18\r \x01(\x03R\x13workerInstanceEpoch\x12;\n" +
+	"\x1aresidency_plan_revision_id\x18\x0e \x01(\tR\x17residencyPlanRevisionId\x12(\n" +
+	"\x10worker_bundle_id\x18\x0f \x01(\tR\x0eworkerBundleId\x12(\n" +
+	"\x10worker_member_id\x18\x10 \x01(\tR\x0eworkerMemberId\"x\n" +
 	"\x19AuthorizeMutationResponse\x12\x1f\n" +
 	"\vrequest_uid\x18\x01 \x01(\tR\n" +
 	"requestUid\x12\x1a\n" +

@@ -327,20 +327,43 @@ func (client *Client) AuthorizeMutation(
 		!validText(request.ActorIdentity, maximumActorBytes) ||
 		!validText(request.KubernetesUID, maximumRequestUIDBytes) ||
 		!validText(request.Namespace, maximumNameBytes) ||
-		!validText(request.Name, maximumNameBytes) || request.WorkerPoolID == uuid.Nil ||
-		len(request.DrainOperationIDs) == 0 ||
+		!validText(request.Name, maximumNameBytes) ||
 		len(request.DrainOperationIDs) > maximumDrainOperations || len(request.RequestDigest) != 32 {
 		return fleet.MutationAuthorizationResult{}, errors.New("fleet mutation authorization request is invalid")
 	}
 	workerID := ""
-	if request.ResourceKind == fleet.ProtectedPod {
-		if request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 ||
-			len(request.DrainOperationIDs) != 1 {
+	workerPoolID := ""
+	workerInstanceID := ""
+	residencyPlanRevisionID := ""
+	workerBundleID := ""
+	workerMemberID := ""
+	workerInstanceMutation := request.WorkerInstanceID != uuid.Nil || request.WorkerInstanceEpoch != 0 ||
+		request.ResidencyPlanRevisionID != uuid.Nil || request.WorkerBundleID != uuid.Nil ||
+		request.WorkerMemberID != uuid.Nil
+	if workerInstanceMutation {
+		if request.ResourceKind != fleet.ProtectedPod || request.WorkerInstanceID == uuid.Nil ||
+			request.WorkerInstanceEpoch <= 0 || request.ResidencyPlanRevisionID == uuid.Nil ||
+			request.WorkerBundleID == uuid.Nil || request.WorkerMemberID == uuid.Nil ||
+			request.WorkerPoolID != uuid.Nil || request.WorkerID != uuid.Nil || request.WorkerEpoch != 0 ||
+			len(request.DrainOperationIDs) != 0 {
 			return fleet.MutationAuthorizationResult{}, errors.New("fleet mutation authorization request is invalid")
 		}
+		workerInstanceID = request.WorkerInstanceID.String()
+		residencyPlanRevisionID = request.ResidencyPlanRevisionID.String()
+		workerBundleID = request.WorkerBundleID.String()
+		workerMemberID = request.WorkerMemberID.String()
+	} else if request.ResourceKind == fleet.ProtectedPod {
+		if request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 ||
+			request.WorkerPoolID == uuid.Nil || len(request.DrainOperationIDs) != 1 {
+			return fleet.MutationAuthorizationResult{}, errors.New("fleet mutation authorization request is invalid")
+		}
+		workerPoolID = request.WorkerPoolID.String()
 		workerID = request.WorkerID.String()
-	} else if request.WorkerID != uuid.Nil || request.WorkerEpoch != 0 {
+	} else if request.WorkerPoolID == uuid.Nil || request.WorkerID != uuid.Nil ||
+		request.WorkerEpoch != 0 || len(request.DrainOperationIDs) == 0 {
 		return fleet.MutationAuthorizationResult{}, errors.New("fleet mutation authorization request is invalid")
+	} else {
+		workerPoolID = request.WorkerPoolID.String()
 	}
 	drainIDs := make([]string, 0, len(request.DrainOperationIDs))
 	for _, operationID := range request.DrainOperationIDs {
@@ -352,9 +375,12 @@ func (client *Client) AuthorizeMutation(
 	response, err := client.service.AuthorizeMutation(ctx, &velav1.AuthorizeMutationRequest{
 		RequestUid: request.RequestUID, ResourceKind: resourceKind, Operation: operation,
 		KubernetesUid: request.KubernetesUID, Namespace: request.Namespace, Name: request.Name,
-		WorkerPoolId: request.WorkerPoolID.String(), WorkerId: workerID,
+		WorkerPoolId: workerPoolID, WorkerId: workerID,
 		WorkerEpoch: request.WorkerEpoch, DrainOperationIds: drainIDs,
-		RequestDigest: append([]byte(nil), request.RequestDigest...),
+		RequestDigest:    append([]byte(nil), request.RequestDigest...),
+		WorkerInstanceId: workerInstanceID, WorkerInstanceEpoch: request.WorkerInstanceEpoch,
+		ResidencyPlanRevisionId: residencyPlanRevisionID, WorkerBundleId: workerBundleID,
+		WorkerMemberId: workerMemberID,
 	})
 	if err != nil {
 		return fleet.MutationAuthorizationResult{}, err

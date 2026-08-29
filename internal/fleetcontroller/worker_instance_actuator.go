@@ -14,22 +14,23 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleetcontract"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
-	workerInstanceIDLabel       = "vela.ai/worker-instance-id"
-	workerInstanceEpochLabel    = "vela.ai/worker-instance-epoch"
-	workerMemberIDLabel         = "vela.ai/worker-member-id"
-	workerMemberKeyLabel        = "vela.ai/worker-member-key"
-	workerBundleIDLabel         = "vela.ai/worker-bundle-id"
-	workerProfileRevisionLabel  = "vela.ai/worker-profile-revision-id"
-	capacityPoolIDLabel         = "vela.ai/capacity-pool-id"
-	residencyPlanRevisionLabel  = "vela.ai/residency-plan-revision-id"
-	workerRoleLabel             = "vela.ai/worker-role"
-	deviceConstraintsAnnotation = "vela.ai/device-constraints"
-	actuationRevisionAnnotation = "vela.ai/actuation-revision"
+	workerInstanceIDLabel       = fleetcontract.WorkerInstanceIDLabel
+	workerInstanceEpochLabel    = fleetcontract.WorkerInstanceEpochLabel
+	workerMemberIDLabel         = fleetcontract.WorkerMemberIDLabel
+	workerMemberKeyLabel        = fleetcontract.WorkerMemberKeyLabel
+	workerBundleIDLabel         = fleetcontract.WorkerBundleIDLabel
+	workerProfileRevisionLabel  = fleetcontract.WorkerProfileRevisionIDLabel
+	capacityPoolIDLabel         = fleetcontract.CapacityPoolIDLabel
+	residencyPlanRevisionLabel  = fleetcontract.ResidencyPlanRevisionIDLabel
+	workerRoleLabel             = fleetcontract.WorkerRoleLabel
+	deviceConstraintsAnnotation = fleetcontract.DeviceConstraintsAnnotation
+	actuationRevisionAnnotation = fleetcontract.ActuationRevisionAnnotation
 	h3AUXSharedSlotException    = "H3_AUX_ENCODER_VAE"
 )
 
@@ -136,7 +137,8 @@ func NewWorkerInstanceActuator(
 
 func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuation, error) {
 	if spec.SchemaVersion != 1 || spec.PlanRevisionID == uuid.Nil ||
-		spec.WorkerBundleID == uuid.Nil || !validSHA256(spec.RevisionDigest) ||
+		spec.WorkerBundleID == uuid.Nil ||
+		(spec.RevisionDigest != "" && !validSHA256(spec.RevisionDigest)) ||
 		!validResourceName(spec.Namespace) || !validResourceName(spec.NodeIdentity) ||
 		spec.AuxCapacityPoolID == uuid.Nil || spec.DiTCapacityPoolID == uuid.Nil ||
 		spec.AuxWorkerProfileRevisionID == uuid.Nil || spec.DiTWorkerProfileRevisionID == uuid.Nil ||
@@ -154,10 +156,11 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 			return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle device constraint is invalid")
 		}
 	}
+	expectedDigest := spec.RevisionDigest
 	bundle := WorkerBundleActuation{
 		SchemaVersion: 1, PlanRevisionID: spec.PlanRevisionID,
-		WorkerBundleID: spec.WorkerBundleID, RevisionDigest: spec.RevisionDigest,
-		Namespace: spec.Namespace, InitImage: spec.InitImage,
+		WorkerBundleID: spec.WorkerBundleID,
+		Namespace:      spec.Namespace, InitImage: spec.InitImage,
 		WorkerAgentImage: spec.WorkerAgentImage, RuntimeImage: spec.RuntimeImage,
 		ArtifactStoreTLSSecret: spec.ArtifactStoreTLSSecret,
 		WorkerRuntimeConfigMap: spec.WorkerRuntimeConfigMap,
@@ -182,6 +185,14 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 			ModelRuntimes: []ModelRuntimeProcess{spec.DiT},
 			Members:       []WorkerMemberActuation{h3Member(workerID, spec.NodeIdentity, spec.Devices[index+1])},
 		})
+	}
+	computedDigest, err := ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil {
+		return WorkerBundleActuation{}, err
+	}
+	bundle.RevisionDigest = computedDigest
+	if expectedDigest != "" && expectedDigest != bundle.RevisionDigest {
+		return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle revision digest does not match its actuation content")
 	}
 	if err := ValidateWorkerBundleActuation(bundle); err != nil {
 		return WorkerBundleActuation{}, err
@@ -312,7 +323,28 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 			}
 		}
 	}
+	digest, err := ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil || digest != bundle.RevisionDigest {
+		return errors.New("WorkerBundle actuation revision digest does not match its content")
+	}
 	return nil
+}
+
+func ComputeWorkerBundleActuationDigest(bundle WorkerBundleActuation) (string, error) {
+	canonical := cloneWorkerBundleActuation(bundle)
+	canonical.RevisionDigest = ""
+	encoded, err := json.Marshal(struct {
+		Schema string                `json:"schema"`
+		Bundle WorkerBundleActuation `json:"bundle"`
+	}{
+		Schema: "vela.worker-bundle-actuation/v1",
+		Bundle: canonical,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode canonical WorkerBundle actuation: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func validSharedSlotException(worker WorkerInstanceActuation) bool {

@@ -83,6 +83,38 @@ func TestProtectedPodDeleteRequiresPersistedFleetAuthorization(t *testing.T) {
 	}
 }
 
+func TestWorkerInstancePodDeleteRequiresExactWorkerRegistryAuthorization(t *testing.T) {
+	const requestUID = "admission-delete-worker-instance"
+	authorizer := &recordingAuthorizer{result: fleet.MutationAuthorizationResult{
+		RequestUID: requestUID, Authorized: true,
+	}}
+	handler, err := NewHandler(authorizer, Config{
+		FleetUsername: "system:serviceaccount:vela-system:vela-fleet-controller",
+	})
+	if err != nil {
+		t.Fatalf("create Fleet admission handler: %v", err)
+	}
+	response := serveAdmission(t, handler, protectedWorkerInstancePodDeleteReview(requestUID))
+	if !response.Allowed || response.UID != requestUID {
+		t.Fatalf("authorized WorkerInstance Pod delete response = %#v", response)
+	}
+	if len(authorizer.requests) != 1 {
+		t.Fatalf("WorkerInstance Pod authorization calls = %d, want 1", len(authorizer.requests))
+	}
+	request := authorizer.requests[0]
+	if request.ResourceKind != fleet.ProtectedPod || request.Operation != fleet.MutationDelete ||
+		request.WorkerPoolID != uuid.Nil || request.WorkerID != uuid.Nil || request.WorkerEpoch != 0 ||
+		len(request.DrainOperationIDs) != 0 ||
+		request.WorkerInstanceID.String() != "49320000-0000-0000-0000-000000000001" ||
+		request.WorkerInstanceEpoch != 7 ||
+		request.ResidencyPlanRevisionID.String() != "49320000-0000-0000-0000-000000000002" ||
+		request.WorkerBundleID.String() != "49320000-0000-0000-0000-000000000003" ||
+		request.WorkerMemberID.String() != "49320000-0000-0000-0000-000000000004" ||
+		len(request.RequestDigest) != 32 {
+		t.Fatalf("WorkerInstance Pod authorization request = %#v", request)
+	}
+}
+
 func TestProtectedPodDeleteRejectsNilWorkerIdentityBeforeAuthorization(t *testing.T) {
 	const requestUID = "admission-delete-nil-worker"
 	authorizer := &recordingAuthorizer{result: fleet.MutationAuthorizationResult{
@@ -1437,6 +1469,40 @@ func protectedPodDeleteReview(uid, username string) []byte {
 					},
 					"annotations":{
 						"vela.ai/drain-operation-ids":"23000000-0000-0000-0000-000000000042"
+					},
+					"finalizers":["fleet.vela.ai/drain-protection"]
+				}
+			}
+		}
+	}`)
+}
+
+func protectedWorkerInstancePodDeleteReview(uid string) []byte {
+	return []byte(`{
+		"apiVersion":"admission.k8s.io/v1",
+		"kind":"AdmissionReview",
+		"request":{
+			"uid":"` + uid + `",
+			"operation":"DELETE",
+			"kind":{"group":"","version":"v1","kind":"Pod"},
+			"resource":{"group":"","version":"v1","resource":"pods"},
+			"namespace":"vela-system",
+			"name":"wi-49320000-0000-0000-0000-000000000001-member-0",
+			"userInfo":{"username":"system:serviceaccount:vela-system:vela-fleet-controller"},
+			"oldObject":{
+				"apiVersion":"v1",
+				"kind":"Pod",
+				"metadata":{
+					"uid":"kubernetes-worker-instance-pod-uid-1",
+					"namespace":"vela-system",
+					"name":"wi-49320000-0000-0000-0000-000000000001-member-0",
+					"labels":{
+						"vela.ai/fleet-protected":"true",
+						"vela.ai/worker-instance-id":"49320000-0000-0000-0000-000000000001",
+						"vela.ai/worker-instance-epoch":"7",
+						"vela.ai/residency-plan-revision-id":"49320000-0000-0000-0000-000000000002",
+						"vela.ai/worker-bundle-id":"49320000-0000-0000-0000-000000000003",
+						"vela.ai/worker-member-id":"49320000-0000-0000-0000-000000000004"
 					},
 					"finalizers":["fleet.vela.ai/drain-protection"]
 				}

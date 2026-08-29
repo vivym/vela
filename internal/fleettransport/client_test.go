@@ -236,6 +236,38 @@ func TestClientMapsIdentityDrainAndMutationThroughTypedFleetRPC(t *testing.T) {
 	}
 }
 
+func TestClientCarriesWorkerInstancePodMutationAuthority(t *testing.T) {
+	server := &recordingFleetRPCServer{mutationResponse: &velav1.AuthorizeMutationResponse{
+		RequestUid: "worker-instance-delete-1", Authorized: true,
+	}}
+	client := newFleetBufconnClient(t, server)
+	request := fleet.MutationAuthorizationRequest{
+		RequestUID: "worker-instance-delete-1", ActorIdentity: "fleet/controller",
+		ResourceKind: fleet.ProtectedPod, Operation: fleet.MutationDelete,
+		KubernetesUID: "pod-uid-1", Namespace: "vela-system", Name: "wi-1-member-0",
+		WorkerInstanceID:        uuid.MustParse("49320000-0000-0000-0000-000000000001"),
+		WorkerInstanceEpoch:     7,
+		ResidencyPlanRevisionID: uuid.MustParse("49320000-0000-0000-0000-000000000002"),
+		WorkerBundleID:          uuid.MustParse("49320000-0000-0000-0000-000000000003"),
+		WorkerMemberID:          uuid.MustParse("49320000-0000-0000-0000-000000000004"),
+		RequestDigest:           make([]byte, 32),
+	}
+	result, err := client.AuthorizeMutation(context.Background(), request)
+	if err != nil || !result.Authorized || len(server.mutationRequests) != 1 {
+		t.Fatalf("authorize WorkerInstance Pod mutation result=%#v requests=%d error=%v", result, len(server.mutationRequests), err)
+	}
+	carried := server.mutationRequests[0]
+	if carried.GetWorkerPoolId() != "" || carried.GetWorkerId() != "" || carried.GetWorkerEpoch() != 0 ||
+		len(carried.GetDrainOperationIds()) != 0 ||
+		carried.GetWorkerInstanceId() != request.WorkerInstanceID.String() ||
+		carried.GetWorkerInstanceEpoch() != request.WorkerInstanceEpoch ||
+		carried.GetResidencyPlanRevisionId() != request.ResidencyPlanRevisionID.String() ||
+		carried.GetWorkerBundleId() != request.WorkerBundleID.String() ||
+		carried.GetWorkerMemberId() != request.WorkerMemberID.String() {
+		t.Fatalf("carried WorkerInstance Pod mutation = %#v", carried)
+	}
+}
+
 func TestClientRejectsUnspecifiedOrUnknownWorkerStateEnums(t *testing.T) {
 	cycleID := uuid.MustParse("23030000-0000-0000-0000-000000000041")
 	workerID := uuid.MustParse("23030000-0000-0000-0000-000000000042")

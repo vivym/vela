@@ -20,18 +20,22 @@ import (
 )
 
 const (
-	protectedLabel        = fleetcontract.ProtectedLabel
-	workerPoolLabel       = fleetcontract.WorkerPoolIDLabel
-	fleetRevisionLabel    = fleetcontract.FleetRevisionLabel
-	workerIDLabel         = fleetcontract.WorkerIDLabel
-	workerEpochLabel      = fleetcontract.WorkerEpochLabel
-	workerInstanceIDLabel = "vela.ai/worker-instance-id"
-	drainIDsAnnotation    = fleetcontract.DrainOperationIDsAnnotation
-	protectionFinalizer   = fleetcontract.ProtectionFinalizer
-	identityBindingGate   = fleetcontract.IdentityBindingSchedulingGate
-	maximumReviewBytes    = 2 << 20
-	maximumPlacements     = 1024
-	maximumNodeSelector   = 64
+	protectedLabel             = fleetcontract.ProtectedLabel
+	workerPoolLabel            = fleetcontract.WorkerPoolIDLabel
+	fleetRevisionLabel         = fleetcontract.FleetRevisionLabel
+	workerIDLabel              = fleetcontract.WorkerIDLabel
+	workerEpochLabel           = fleetcontract.WorkerEpochLabel
+	workerInstanceIDLabel      = fleetcontract.WorkerInstanceIDLabel
+	workerInstanceEpochLabel   = fleetcontract.WorkerInstanceEpochLabel
+	workerMemberIDLabel        = fleetcontract.WorkerMemberIDLabel
+	workerBundleIDLabel        = fleetcontract.WorkerBundleIDLabel
+	residencyPlanRevisionLabel = fleetcontract.ResidencyPlanRevisionIDLabel
+	drainIDsAnnotation         = fleetcontract.DrainOperationIDsAnnotation
+	protectionFinalizer        = fleetcontract.ProtectionFinalizer
+	identityBindingGate        = fleetcontract.IdentityBindingSchedulingGate
+	maximumReviewBytes         = 2 << 20
+	maximumPlacements          = 1024
+	maximumNodeSelector        = 64
 )
 
 type MutationAuthorizer interface {
@@ -203,17 +207,22 @@ type protectedObject struct {
 }
 
 type normalizedMutation struct {
-	ResourceKind      fleet.ProtectedResourceKind `json:"resource_kind"`
-	Operation         fleet.MutationOperation     `json:"operation"`
-	KubernetesUID     string                      `json:"kubernetes_uid"`
-	Namespace         string                      `json:"namespace"`
-	Name              string                      `json:"name"`
-	WorkerPoolID      uuid.UUID                   `json:"worker_pool_id"`
-	WorkerID          uuid.UUID                   `json:"worker_id"`
-	WorkerEpoch       int64                       `json:"worker_epoch"`
-	DrainOperationIDs []uuid.UUID                 `json:"drain_operation_ids"`
-	FleetRevision     string                      `json:"fleet_revision"`
-	TargetState       string                      `json:"target_state"`
+	ResourceKind            fleet.ProtectedResourceKind `json:"resource_kind"`
+	Operation               fleet.MutationOperation     `json:"operation"`
+	KubernetesUID           string                      `json:"kubernetes_uid"`
+	Namespace               string                      `json:"namespace"`
+	Name                    string                      `json:"name"`
+	WorkerPoolID            uuid.UUID                   `json:"worker_pool_id"`
+	WorkerID                uuid.UUID                   `json:"worker_id"`
+	WorkerEpoch             int64                       `json:"worker_epoch"`
+	WorkerInstanceID        uuid.UUID                   `json:"worker_instance_id"`
+	WorkerInstanceEpoch     int64                       `json:"worker_instance_epoch"`
+	ResidencyPlanRevisionID uuid.UUID                   `json:"residency_plan_revision_id"`
+	WorkerBundleID          uuid.UUID                   `json:"worker_bundle_id"`
+	WorkerMemberID          uuid.UUID                   `json:"worker_member_id"`
+	DrainOperationIDs       []uuid.UUID                 `json:"drain_operation_ids"`
+	FleetRevision           string                      `json:"fleet_revision"`
+	TargetState             string                      `json:"target_state"`
 }
 
 type admissionResponse struct {
@@ -681,6 +690,8 @@ func preservesOwnershipIdentity(oldObject, newObject protectedObject) bool {
 	}
 	for _, label := range []string{
 		protectedLabel, workerPoolLabel, fleetRevisionLabel, workerIDLabel, workerEpochLabel,
+		workerInstanceIDLabel, workerInstanceEpochLabel, residencyPlanRevisionLabel,
+		workerBundleIDLabel, workerMemberIDLabel,
 	} {
 		if oldObject.Metadata.Labels[label] != newObject.Metadata.Labels[label] {
 			return false
@@ -725,6 +736,9 @@ func protectedMutationRequest(
 	default:
 		return fleet.MutationAuthorizationRequest{}, errors.New("protected Pod operation is invalid")
 	}
+	if object.Metadata.Labels[workerInstanceIDLabel] != "" {
+		return protectedWorkerInstancePodMutationRequest(request, object, operation)
+	}
 	workerPoolID, err := uuid.Parse(object.Metadata.Labels[workerPoolLabel])
 	if err != nil || workerPoolID == uuid.Nil {
 		return fleet.MutationAuthorizationRequest{}, errors.New("worker pool label is invalid")
@@ -752,6 +766,40 @@ func protectedMutationRequest(
 		WorkerEpoch: workerEpoch, DrainOperationIDs: drainIDs, FleetRevision: fleetRevision,
 	}
 	return buildMutationAuthorizationRequest(request, normalized)
+}
+
+func protectedWorkerInstancePodMutationRequest(
+	request *admissionRequest,
+	object protectedObject,
+	operation fleet.MutationOperation,
+) (fleet.MutationAuthorizationRequest, error) {
+	if object.Metadata.Labels[workerPoolLabel] != "" ||
+		object.Metadata.Labels[workerIDLabel] != "" ||
+		object.Metadata.Labels[workerEpochLabel] != "" ||
+		object.Metadata.Annotations[drainIDsAnnotation] != "" {
+		return fleet.MutationAuthorizationRequest{}, errors.New("WorkerInstance Pod mixes legacy Worker authority")
+	}
+	workerInstanceID, workerErr := uuid.Parse(object.Metadata.Labels[workerInstanceIDLabel])
+	workerInstanceEpoch, epochErr := strconv.ParseInt(
+		object.Metadata.Labels[workerInstanceEpochLabel],
+		10,
+		64,
+	)
+	planID, planErr := uuid.Parse(object.Metadata.Labels[residencyPlanRevisionLabel])
+	bundleID, bundleErr := uuid.Parse(object.Metadata.Labels[workerBundleIDLabel])
+	memberID, memberErr := uuid.Parse(object.Metadata.Labels[workerMemberIDLabel])
+	if workerErr != nil || workerInstanceID == uuid.Nil || epochErr != nil || workerInstanceEpoch <= 0 ||
+		planErr != nil || planID == uuid.Nil || bundleErr != nil || bundleID == uuid.Nil ||
+		memberErr != nil || memberID == uuid.Nil {
+		return fleet.MutationAuthorizationRequest{}, errors.New("WorkerInstance Pod authority labels are invalid")
+	}
+	return buildMutationAuthorizationRequest(request, normalizedMutation{
+		ResourceKind: fleet.ProtectedPod, Operation: operation,
+		KubernetesUID: object.Metadata.UID, Namespace: object.Metadata.Namespace,
+		Name: object.Metadata.Name, WorkerInstanceID: workerInstanceID,
+		WorkerInstanceEpoch: workerInstanceEpoch, ResidencyPlanRevisionID: planID,
+		WorkerBundleID: bundleID, WorkerMemberID: memberID,
+	})
 }
 
 func protectedDaemonSetMutationRequest(
@@ -917,6 +965,10 @@ func buildMutationAuthorizationRequest(
 		KubernetesUID: normalized.KubernetesUID, Namespace: normalized.Namespace,
 		Name: normalized.Name, WorkerPoolID: normalized.WorkerPoolID,
 		WorkerID: normalized.WorkerID, WorkerEpoch: normalized.WorkerEpoch,
+		WorkerInstanceID:        normalized.WorkerInstanceID,
+		WorkerInstanceEpoch:     normalized.WorkerInstanceEpoch,
+		ResidencyPlanRevisionID: normalized.ResidencyPlanRevisionID,
+		WorkerBundleID:          normalized.WorkerBundleID, WorkerMemberID: normalized.WorkerMemberID,
 		DrainOperationIDs: normalized.DrainOperationIDs, RequestDigest: digest[:],
 	}, nil
 }

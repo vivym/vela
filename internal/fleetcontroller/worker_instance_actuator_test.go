@@ -124,7 +124,6 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		SchemaVersion:          1,
 		PlanRevisionID:         uuid.MustParse("49300000-0000-0000-0000-000000000001"),
 		WorkerBundleID:         uuid.MustParse("49300000-0000-0000-0000-000000000002"),
-		RevisionDigest:         digestString('a'),
 		Namespace:              "vela-system",
 		InitImage:              pinnedImage("busybox", 'b'),
 		WorkerAgentImage:       pinnedImage("vela-worker-agent", 'c'),
@@ -154,6 +153,10 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 				},
 			},
 		}},
+	}
+	bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil {
+		t.Fatalf("digest multi-member WorkerBundle actuation: %v", err)
 	}
 	result, err := actuator.Actuate(context.Background(), bundle)
 	if err != nil || result.CreatedPods != 2 {
@@ -240,7 +243,6 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 		SchemaVersion:  1,
 		PlanRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000001"),
 		WorkerBundleID: uuid.MustParse("49300000-0000-0000-0000-000000000002"),
-		RevisionDigest: digestString('a'),
 		Namespace:      "vela-system", NodeIdentity: "h3-node-01",
 		AuxCapacityPoolID:          uuid.MustParse("49300000-0000-0000-0000-000000000003"),
 		DiTCapacityPoolID:          uuid.MustParse("49300000-0000-0000-0000-000000000004"),

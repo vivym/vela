@@ -62,6 +62,23 @@ func TestResidencyPlanRolloutRejectsActuationOutsideApprovedAuthority(t *testing
 	}
 }
 
+func TestResidencyPlanRolloutRejectsTamperedActuationWithRetainedDigest(t *testing.T) {
+	rollout := h3ResidencyPlanRollout(t)
+	rollout.WorkerBundles[0].RuntimeImage = pinnedImage("tampered-runtime", 'f')
+	applier := &recordingResidencyPlanApplier{}
+	actuator := &recordingWorkerBundleActuator{}
+	controller, err := fleetcontroller.NewResidencyPlanRolloutController(applier, actuator)
+	if err != nil {
+		t.Fatalf("create ResidencyPlan rollout controller: %v", err)
+	}
+	if _, err := controller.Reconcile(context.Background(), rollout); err == nil {
+		t.Fatal("ResidencyPlan rollout accepted tampered actuation under a retained digest")
+	}
+	if applier.calls != 0 || actuator.calls != 0 {
+		t.Fatalf("tampered rollout reached authority or actuator: apply=%d actuate=%d", applier.calls, actuator.calls)
+	}
+}
+
 func TestResidencyPlanRolloutStopsBeforePodsWhenAuthorityApplyFails(t *testing.T) {
 	rollout := h3ResidencyPlanRollout(t)
 	applier := &recordingResidencyPlanApplier{err: errors.New("approval rejected")}

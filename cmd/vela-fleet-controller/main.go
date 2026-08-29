@@ -349,7 +349,6 @@ func loadConfig() (config, error) {
 		value string
 	}{
 		{"VELA_FLEET_NAMESPACE", configuration.namespace},
-		{"VELA_FLEET_DESIRED_INPUT_FILE", configuration.desiredInputFile},
 		{"VELA_FLEET_MAINTENANCE_ADDRESS", configuration.maintenanceAddress},
 		{"VELA_FLEET_MAINTENANCE_SERVER_NAME", configuration.maintenanceServerName},
 		{"VELA_FLEET_TLS_CERT_FILE", configuration.tlsCertificateFile},
@@ -369,8 +368,12 @@ func loadConfig() (config, error) {
 			return config{}, fmt.Errorf("%s is required", name)
 		}
 	}
-	if !filepath.IsAbs(filepath.Clean(configuration.desiredInputFile)) ||
-		filepath.Clean(configuration.desiredInputFile) != configuration.desiredInputFile {
+	if configuration.desiredInputFile == "" && configuration.residencyPlanRolloutsFile == "" {
+		return config{}, errors.New("VELA_FLEET_DESIRED_INPUT_FILE or VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE is required")
+	}
+	if configuration.desiredInputFile != "" &&
+		(!filepath.IsAbs(filepath.Clean(configuration.desiredInputFile)) ||
+			filepath.Clean(configuration.desiredInputFile) != configuration.desiredInputFile) {
 		return config{}, errors.New("VELA_FLEET_DESIRED_INPUT_FILE must be an absolute clean path")
 	}
 	if configuration.residencyPlanRolloutsFile != "" &&
@@ -404,12 +407,14 @@ func loadConfig() (config, error) {
 		return config{}, errors.New("VELA_FLEET_POLL_INTERVAL must be a positive duration")
 	}
 	configuration.pollInterval = pollInterval
-	configuration.desiredRevisions, configuration.retirementPlans, err = loadDesiredConfiguration(
-		configuration.desiredInputFile,
-		configuration.namespace,
-	)
-	if err != nil {
-		return config{}, fmt.Errorf("load Fleet desired input: %w", err)
+	if configuration.desiredInputFile != "" {
+		configuration.desiredRevisions, configuration.retirementPlans, err = loadDesiredConfiguration(
+			configuration.desiredInputFile,
+			configuration.namespace,
+		)
+		if err != nil {
+			return config{}, fmt.Errorf("load Fleet desired input: %w", err)
+		}
 	}
 	if configuration.residencyPlanRolloutsFile != "" {
 		configuration.residencyPlanRollouts, err = loadResidencyPlanRollouts(

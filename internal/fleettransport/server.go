@@ -524,15 +524,18 @@ func (server *Server) AuthorizeMutation(
 		!validText(request.GetKubernetesUid(), maximumRequestUIDBytes) ||
 		!validText(request.GetNamespace(), maximumNameBytes) ||
 		!validText(request.GetName(), maximumNameBytes) ||
-		len(request.GetDrainOperationIds()) == 0 ||
 		len(request.GetDrainOperationIds()) > maximumDrainOperations ||
 		len(request.GetRequestDigest()) != 32 {
 		return nil, invalidRequest("mutation authorization")
 	}
 	resourceKind, kindOK := protectedResourceKindFromProto(request.GetResourceKind())
 	operation, operationOK := mutationOperationFromProto(request.GetOperation())
-	workerPoolID, poolErr := parseUUID(request.GetWorkerPoolId())
+	workerPoolID, poolErr := parseOptionalUUID(request.GetWorkerPoolId())
 	workerID, workerErr := parseOptionalUUID(request.GetWorkerId())
+	workerInstanceID, workerInstanceErr := parseOptionalUUID(request.GetWorkerInstanceId())
+	planID, planErr := parseOptionalUUID(request.GetResidencyPlanRevisionId())
+	bundleID, bundleErr := parseOptionalUUID(request.GetWorkerBundleId())
+	memberID, memberErr := parseOptionalUUID(request.GetWorkerMemberId())
 	drainIDs, drainErr := parseDistinctUUIDs(request.GetDrainOperationIds())
 	parsed := fleet.MutationAuthorizationRequest{
 		RequestUID: request.GetRequestUid(), ActorIdentity: server.actorIdentity,
@@ -540,13 +543,13 @@ func (server *Server) AuthorizeMutation(
 		KubernetesUID: request.GetKubernetesUid(), Namespace: request.GetNamespace(),
 		Name: request.GetName(), WorkerPoolID: workerPoolID, WorkerID: workerID,
 		WorkerEpoch: request.GetWorkerEpoch(), DrainOperationIDs: drainIDs,
+		WorkerInstanceID: workerInstanceID, WorkerInstanceEpoch: request.GetWorkerInstanceEpoch(),
+		ResidencyPlanRevisionID: planID, WorkerBundleID: bundleID, WorkerMemberID: memberID,
 		RequestDigest: append([]byte(nil), request.GetRequestDigest()...),
 	}
-	if !kindOK || !operationOK || poolErr != nil || workerErr != nil || drainErr != nil ||
-		resourceKind == fleet.ProtectedPod &&
-			(workerID == uuid.Nil || parsed.WorkerEpoch <= 0 || len(drainIDs) != 1) ||
-		resourceKind != fleet.ProtectedPod &&
-			(workerID != uuid.Nil || parsed.WorkerEpoch != 0) {
+	if !kindOK || !operationOK || poolErr != nil || workerErr != nil ||
+		workerInstanceErr != nil || planErr != nil || bundleErr != nil || memberErr != nil ||
+		drainErr != nil || validateMutationTransportShape(parsed) != nil {
 		return nil, invalidRequest("mutation authorization")
 	}
 	result, err := server.service.AuthorizeMutation(ctx, parsed)
@@ -556,6 +559,35 @@ func (server *Server) AuthorizeMutation(
 	return &velav1.AuthorizeMutationResponse{
 		RequestUid: result.RequestUID, Replayed: result.Replayed, Authorized: result.Authorized,
 	}, nil
+}
+
+func validateMutationTransportShape(request fleet.MutationAuthorizationRequest) error {
+	workerInstanceMutation := request.WorkerInstanceID != uuid.Nil || request.WorkerInstanceEpoch != 0 ||
+		request.ResidencyPlanRevisionID != uuid.Nil || request.WorkerBundleID != uuid.Nil ||
+		request.WorkerMemberID != uuid.Nil
+	if workerInstanceMutation {
+		if request.ResourceKind != fleet.ProtectedPod || request.WorkerInstanceID == uuid.Nil ||
+			request.WorkerInstanceEpoch <= 0 || request.ResidencyPlanRevisionID == uuid.Nil ||
+			request.WorkerBundleID == uuid.Nil || request.WorkerMemberID == uuid.Nil ||
+			request.WorkerPoolID != uuid.Nil || request.WorkerID != uuid.Nil || request.WorkerEpoch != 0 ||
+			len(request.DrainOperationIDs) != 0 {
+			return errors.New("WorkerInstance mutation transport shape is invalid")
+		}
+		return nil
+	}
+	if request.WorkerPoolID == uuid.Nil || len(request.DrainOperationIDs) == 0 {
+		return errors.New("legacy mutation transport shape is invalid")
+	}
+	if request.ResourceKind == fleet.ProtectedPod {
+		if request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 || len(request.DrainOperationIDs) != 1 {
+			return errors.New("legacy Pod mutation transport shape is invalid")
+		}
+		return nil
+	}
+	if request.WorkerID != uuid.Nil || request.WorkerEpoch != 0 {
+		return errors.New("legacy pool mutation transport shape is invalid")
+	}
+	return nil
 }
 
 func (server *Server) HasRetirementAuthorization(

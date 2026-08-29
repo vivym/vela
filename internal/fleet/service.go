@@ -217,18 +217,23 @@ type DrainResult struct {
 }
 
 type MutationAuthorizationRequest struct {
-	RequestUID        string
-	ActorIdentity     string
-	ResourceKind      ProtectedResourceKind
-	Operation         MutationOperation
-	KubernetesUID     string
-	Namespace         string
-	Name              string
-	WorkerPoolID      uuid.UUID
-	WorkerID          uuid.UUID
-	WorkerEpoch       int64
-	DrainOperationIDs []uuid.UUID
-	RequestDigest     []byte
+	RequestUID              string
+	ActorIdentity           string
+	ResourceKind            ProtectedResourceKind
+	Operation               MutationOperation
+	KubernetesUID           string
+	Namespace               string
+	Name                    string
+	WorkerPoolID            uuid.UUID
+	WorkerID                uuid.UUID
+	WorkerEpoch             int64
+	WorkerInstanceID        uuid.UUID
+	WorkerInstanceEpoch     int64
+	ResidencyPlanRevisionID uuid.UUID
+	WorkerBundleID          uuid.UUID
+	WorkerMemberID          uuid.UUID
+	DrainOperationIDs       []uuid.UUID
+	RequestDigest           []byte
 }
 
 type MutationAuthorizationResult struct {
@@ -737,8 +742,7 @@ func validateMutationAuthorizationRequest(request MutationAuthorizationRequest) 
 		!validProtectedResourceKind(request.ResourceKind) ||
 		!validMutationOperation(request.Operation) ||
 		!validText(request.KubernetesUID, 200) || !validText(request.Namespace, 253) ||
-		!validText(request.Name, 253) || request.WorkerPoolID == uuid.Nil ||
-		len(request.DrainOperationIDs) == 0 || len(request.DrainOperationIDs) > 4096 ||
+		!validText(request.Name, 253) || len(request.DrainOperationIDs) > 4096 ||
 		len(request.RequestDigest) != 32 {
 		return errors.New("fleet mutation authorization request is invalid")
 	}
@@ -746,6 +750,22 @@ func validateMutationAuthorizationRequest(request MutationAuthorizationRequest) 
 		if operationID == uuid.Nil {
 			return errors.New("fleet mutation authorization request is invalid")
 		}
+	}
+	workerInstanceMutation := request.WorkerInstanceID != uuid.Nil || request.WorkerInstanceEpoch != 0 ||
+		request.ResidencyPlanRevisionID != uuid.Nil || request.WorkerBundleID != uuid.Nil ||
+		request.WorkerMemberID != uuid.Nil
+	if workerInstanceMutation {
+		if request.ResourceKind != ProtectedPod || request.WorkerInstanceID == uuid.Nil ||
+			request.WorkerInstanceEpoch <= 0 || request.ResidencyPlanRevisionID == uuid.Nil ||
+			request.WorkerBundleID == uuid.Nil || request.WorkerMemberID == uuid.Nil ||
+			request.WorkerPoolID != uuid.Nil || request.WorkerID != uuid.Nil || request.WorkerEpoch != 0 ||
+			len(request.DrainOperationIDs) != 0 {
+			return errors.New("fleet mutation authorization request is invalid")
+		}
+		return nil
+	}
+	if request.WorkerPoolID == uuid.Nil || len(request.DrainOperationIDs) == 0 {
+		return errors.New("fleet mutation authorization request is invalid")
 	}
 	if request.ResourceKind == ProtectedPod {
 		if request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 ||
