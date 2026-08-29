@@ -5,6 +5,8 @@ Date: 2026-08-29
 Status: Repository implementation complete; deployment evidence pending target
 server inventory.
 
+Implementation commit: `4304fe9`.
+
 This development backend implements the exact file protocol used between the
 Python H3 Runner and the proprietary H3 process. It exists to exercise image
 assembly, Worker lifecycle, progress, cancellation, recovery, Artifact upload
