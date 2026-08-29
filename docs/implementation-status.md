@@ -8,6 +8,28 @@ an ADR. `Partial` means at least one required production behavior remains. A
 Production Gate is PASS only when its versioned Launch Receipt exists; repository
 tests alone do not satisfy a gate.
 
+## Accepted Target Design, Not Implemented
+
+The H3 stage-disaggregated architecture is accepted as the replacement target,
+but no production code in this worktree implements it. The current committed
+Worker Assignment, Attempt Lease, H3 Worker Agent, Runner, and Fleet slices
+below remain evidence for the machine-level baseline and must not be read as
+evidence for StageRun, StageLease, StageArtifact cache, per-GPU WorkerInstance,
+or cross-node H3 execution.
+
+| Design package | Status | Evidence |
+| --- | --- | --- |
+| H3 Stage Execution Architecture | Accepted target; not implemented | `docs/h3-stage-execution-architecture.md` |
+| ADR 0030-0034 | Accepted decisions; not implemented | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
+| Schema and protocol migration | Proposed; not implemented | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Implementation slices | Proposed; no slice started | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Capacity simulator | Proposed; not implemented or calibrated | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
+
+Until cutover and contraction complete, `db/migrations/00002_worker_assignment.sql`,
+`proto/vela/v1/worker_control.proto`, and `proto/vela/v1/runner.proto` still bind
+one Attempt directly to one machine-level Worker. Production Gates remain
+unchanged at `0/9 PASS`.
+
 ## Implemented Slices
 
 | Slice | Commit | Primary evidence |

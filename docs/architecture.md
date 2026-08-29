@@ -9,13 +9,21 @@
 | 首发客户 | 通过邀请和线下合同接入的 Customer Organization |
 | 长期定位 | 通用 AI 推理集群控制面 |
 
+> **H3 execution supersession (2026-08-29):**
+> `docs/h3-stage-execution-architecture.md` replaces this document's H3
+> execution, placement, Worker, retry, and intermediate-data assumptions. This
+> document remains authoritative for the commercial, identity, retention, DR,
+> and Visible Completion baseline. The repository still implements the older
+> machine-level path; the replacement is accepted design, not implemented
+> behavior.
+
 ## 1. 摘要
 
 Vela 是面向大规模 AI 推理集群的正式 B2B 控制面。它接收耗时从数分钟到数十分钟的异步推理任务，根据模型、生成质量档位、Service Class、执行拓扑、机器健康度和队列负载选择 Worker，并负责重试、产物发布、合同信用计费和故障恢复。首发客户范围受控，但其请求、数据和账单适用完整生产可靠性、隔离和审计要求，不视为 beta 或测试流量。
 
 Vela 不实现模型内部的张量并行或流水线执行。具体推理由 SGLang fork、vLLM 或其他 Inference Backend 完成；Vela 决定什么任务应当放在哪个 Worker 上、以哪个 ExecutionProfileRevision 执行，以及执行失败后如何恢复。
 
-MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Inference Backend。每台 H3 机器有 8 张 GPU，其中 1 张负责 Encoder 和 VAE Decoder，另外 7 张负责 DiT。由于 PCIe 带宽低，8 张卡对 serving plane 是不可拆分的整体。Kubernetes 管理长期运行并已预热的 Worker，Vela Scheduler 管理单个推理 Job，SGLang fork 管理节点内部的 8 卡执行。
+MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Inference Backend。已确认的当前布局是：一张 GPU 运行 Encoder 与 VAE Decoder 两个独立进程，另外七张 GPU 各运行一个独立的单卡 DiT 进程；DiT 不是七卡 gang。目标架构允许这些 stage 独立调度到不同机器，并以 durable StageArtifact 连接，同时保持模型长期驻留。未来 LLM 的单机或跨节点多卡执行封装在一个 WorkerInstance 内部。
 
 系统的核心可靠性语义是：
 
@@ -31,7 +39,7 @@ MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Infere
 
 - 提供异步 AI 推理接口，支持最长 40 到 50 分钟或更久的任务。
 - 支持 Customer Organization 下的多个 Project、Human Principal、Service Principal、固定 RBAC 和强制 Organization Isolation。
-- 将一台机器或多机拓扑抽象成一个可调度的 Worker / ExecutionProfileRevision。
+- 将一个独占 DeviceSet 的单卡或多卡拓扑抽象成 WorkerInstance，并允许 Job 的不同 StageRun 独立选择 CapacityPool。
 - 根据 Dynamic ETA、ServiceClassRevision、Organization / Project Capacity Share、模型预热状态和硬件风险进行调度。
 - 在 Worker、GPU、驱动或网络故障后自动重试，并避免重复发布和重复计费。
 - 将视频、缩略图和 checkpoint 等 Artifact 可靠写入对象存储。
@@ -44,7 +52,7 @@ MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Infere
 ### 2.2 非目标
 
 - Vela 不替代 SGLang、vLLM 或模型专用推理引擎。
-- Kubernetes 不感知 Encoder、DiT、VAE 等模型内部阶段。
+- Kubernetes 只负责 WorkerInstance/WorkerBundle 的 actuation；Vela Catalog 和 Coordinator 拥有 Encoder、DiT、VAE 等 StageDefinition 与执行 authority。
 - 首发不支持任意 DiT step 的跨 Worker Durable Checkpoint；节点丢失后从头重算。
 - 首发不承诺跨地域强一致调度、自动 failover 或 Artifact 同步复制。
 - 首发不要求构建通用 GPU 云、训练调度平台、支付网关或发票系统。
@@ -54,23 +62,20 @@ MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Infere
 ### 3.1 H3 硬件约束
 
 ```text
-8-GPU H3 Worker
+8-GPU node (current co-located layout)
 
-GPU-E:   Encoder + VAE Decoder
-           |
-           | embedding / latent
-           v
-GPU-D0 --+
-GPU-D1   |
-GPU-D2   |
-GPU-D3   +-- 7-GPU DiT
-GPU-D4   |
-GPU-D5   |
-GPU-D6 --+
+GPU-0: Encoder process + VAE Decoder process (certified AUX exception)
+GPU-1: independent single-GPU DiT process
+GPU-2: independent single-GPU DiT process
+GPU-3: independent single-GPU DiT process
+GPU-4: independent single-GPU DiT process
+GPU-5: independent single-GPU DiT process
+GPU-6: independent single-GPU DiT process
+GPU-7: independent single-GPU DiT process
 ```
 
-- PCIe 带宽很低，必须尽量减少跨 GPU tensor movement。
-- 一张 GPU 失效就会使整个 H3 Worker 无法继续 serving。
+- 组件传输成本必须实测，但各组件执行时间很长，目标架构允许以 durable StageArtifact 换取独立扩缩容和故障隔离。
+- 一张 GPU 失效只 fencing 其 WorkerInstance/DeviceSet；已提交的上游 StageArtifact 可被其他兼容 WorkerInstance 复用。
 - GPU 可能需要 process restart、GPU reset、PCIe FLR、driver reload、reboot 或 BMC power cycle。
 - GPU role 必须通过 GPU UUID 或 PCI BDF 绑定，不能依赖可能变化的 CUDA index。
 - Host kernel、GPU driver、firmware/VBIOS 和 container toolkit 在早期应锁定版本。
@@ -94,13 +99,13 @@ GPU-D6 --+
 
 ## 4. 核心设计原则
 
-1. **Worker 是 serving 资源。** H3 首发中，一台 8-GPU 机器等于一个 Worker。
+1. **Legacy Worker 是当前 serving 资源。** 当前实现仍把一台 8-GPU 机器作为一个 Worker；目标架构已由 supersession 文档替换为独占 DeviceSet 的 WorkerInstance。
 2. **Kubernetes 只管理 Worker 生命周期。** 单个 Job 由 Vela Scheduler 调度。
 3. **Inference Backend 封装节点内部执行。** Vela 不理解 Inference Backend 内部 tensor movement。
-4. **Job、Attempt 和 Lease 分离。** Job 表示用户意图，Attempt 表示一次物理执行，Lease 表示限时执行权。
+4. **Job、Attempt 和 Lease 分离。** 本基线中 Attempt 表示一次 machine-level 物理执行；目标架构把它提升为端到端 graph epoch，并增加 StageRun、StageAttempt 和 StageLease。
 5. **状态存储是事实源。** 队列用于唤醒和传递事件，不能成为唯一事实源。
 6. **计算允许重复，发布只能一次。** 使用 fencing token 和 compare-and-swap 选择唯一获胜 Attempt。
-7. **Serving domain 与 fault domain 分离。** 单张 GPU 是 fault domain，整台 8-GPU 机器是 H3 serving domain。
+7. **Legacy serving domain 与 fault domain 分离。** 当前实现以整台 8-GPU 机器调度；目标架构按 supersession 文档把单卡 H3 WorkerInstance 与 machine placement 分离。
 8. **恢复逻辑不依赖被恢复对象。** 特权 Node Agent 运行在 host systemd 下，不依赖 GPU Pod 或 container runtime。
 9. **GenerationPresetRevision 是用户承诺，ExecutionProfileRevision 是内部手段。** 重试不得静默降低用户购买的质量档位。
 10. **用户计费与内部成本分离。** 平台重试增加内部 COGS，但不重复向用户收费。
@@ -133,9 +138,9 @@ Scheduler <------------- Model Catalog
                               ^
                               | heartbeat / health / warm state
                               |
-H3 Worker Pod ----------------+-----------------------> Job Coordinator
+Legacy H3 Worker Pod ---------+-----------------------> Job Coordinator
   |                                   acquire / heartbeat / complete
-  +-- Inference Backend --> 8-GPU H3 Worker
+  +-- Inference Backend --> machine-level Assignment
   |
   +-- Artifact Store -------- Object Storage
             ^
@@ -231,7 +236,7 @@ Worker 重启后必须递增 `worker_epoch`。旧 epoch 签发的 Lease 不能�
 
 ### 6.5 Inference Worker
 
-Inference Worker 是长期运行并已预热的进程。H3 首发中，一个 Pod 独占整台 8-GPU 节点，并拆成两个职责明确的进程：Go `vela-worker-agent` 管理 Assignment、Lease、heartbeat、ArtifactUpload 和 finalization；Python H3 runner 封装 SGLang fork，并协调 Encoder、DiT 和 VAE 进程。
+当前已实现的 Inference Worker 是长期运行并已预热的 machine-level 进程组：一个 Pod 独占整台 8-GPU 节点，Go `vela-worker-agent` 管理 Assignment、Lease、heartbeat、ArtifactUpload 和 finalization，Python H3 runner 封装 backend 进程。该实现是迁移前基线；目标 WorkerInstance、StageAssignment 和 ModelRuntime Interface 以 supersession 文档为准。
 
 二者通过 Pod 内 Unix domain socket 上的 Protobuf / gRPC Interface 通信，最小方法为 `prepare()`、`start()`、`cancel()`、`status()` 和 `collect_outputs()`。未来的 LLM runner 是该 Interface 的另一个 adapter，不把 backend-specific tensor 或进程细节暴露给 Worker Agent。
 
@@ -333,7 +338,7 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 | Job | 用户的一次推理意图 | 请求、报价和执行策略快照创建后不可变 |
 | Attempt | Job 的一次物理执行 | 一个 Job 可有多个 Attempt |
 | Lease | Worker 对 Attempt 的限时执行权 | 区分 EXECUTION / FINALIZATION phase，包含鉴权 token、单调 fence、owner epoch 和 expiry |
-| Worker | 对外可调度的执行实体 | H3 中为完整 8-GPU appliance |
+| Legacy Worker | 当前对外可调度的执行实体 | H3 迁移前为 machine-level 8-GPU Assignment；目标由 WorkerInstance 替代 |
 | ModelRevision | 确切的模型权重和配置版本 | 可复现，不使用浮动 latest |
 | InferenceBackendRevision | 推理引擎及其适配代码版本 | 与 ModelRevision 的兼容性已验证 |
 | ExecutionProfileRevision | 内部执行拓扑和加速方法 | 必须具有有效 ProfileCertification |
@@ -1246,7 +1251,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 | Kafka | 不采用；当前不需要长期事件历史和超高吞吐 replay，JetStream 运维面更小 |
 | Redis Streams | 不承担关键事件或状态；只有出现有测量依据的缓存需求时再引入 Redis |
 | K8s + Ray Serve | 不采用，避免 Kubernetes、Ray、Vela 和 SGLang 四层重复调度 |
-| Kubernetes Job per inference | 不采用，避免每个请求重新调度、启动和加载 8-GPU 模型 |
+| Kubernetes Job per inference | 不采用，避免每个请求重新调度、启动和加载 H3 resident models |
 | Slurm | 不作为互联网在线 serving 主框架 |
 | 纯 systemd + 自研集群管理 | 仅适合很小规模，不能替代 Kubernetes rollout、service discovery 和 declarative lifecycle |
 | Nomad | 可行，但当前没有足够收益替换 Kubernetes 生态 |
@@ -1257,7 +1262,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 - 单地域、单 RKE2 集群；三台 Control/Storage Node 承载 etcd、CloudNativePG、3-replica JetStream 和分布式 S3-compatible storage，GPU Worker 独立部署。
 - MiniMax H3 Model / Workload、SGLang fork Inference Backend，以及 `quality`、`balanced`、`fast` 三个已认证 Generation Preset；首发 Service Class 为 `standard`。
-- Go 模块化 `vela-control`、Fleet Controller、Worker Agent、host Node Agent 与 Python H3 runner；一台 8-GPU 节点对应一个长期运行的 Worker Pod。
+- 当前基线使用 Go 模块化 `vela-control`、Fleet Controller、Worker Agent、host Node Agent 与 Python H3 runner，并让一台 8-GPU 节点对应一个长期运行的 Worker Pod；目标形态由 stage execution 设计替换。
 - Customer Organization、Project、企业 OIDC Human Principal、Project Service Principal、固定 RBAC、Organization Isolation、审计和 Break-glass Access。
 - REST / OpenAPI 的异步 submit / get / cancel / Artifact / Content Deletion / Webhook Interface，Project-scoped Idempotency-Key 和明确的 402 / 429 / 503 Admission 结果。
 - Job、Attempt、Lease、fencing、ExecutionPolicySnapshot、RetryRuntimeState、Job Expiry、Attempt-scoped phase progress、最多 3 次 Attempt 和累计 compute budget。
