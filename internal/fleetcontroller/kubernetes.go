@@ -14,6 +14,7 @@ import (
 	"github.com/vivym/vela/internal/fleetcontract"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -31,7 +32,10 @@ var (
 	daemonSetResource = schema.GroupVersionResource{
 		Group: "apps", Version: "v1", Resource: "daemonsets",
 	}
-	podResource = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+	podResource                   = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+	resourceClaimTemplateResource = schema.GroupVersionResource{
+		Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates",
+	}
 )
 
 type KubernetesResources struct {
@@ -154,6 +158,50 @@ func (resources *KubernetesResources) CreateWorkerInstancePod(
 		return fmt.Errorf("encode WorkerInstance Pod: %w", err)
 	}
 	_, err = resources.client.Resource(podResource).
+		Namespace(resources.namespace).
+		Create(ctx, &unstructured.Unstructured{Object: encoded}, metav1.CreateOptions{})
+	return mapKubernetesWriteError(err)
+}
+
+func (resources *KubernetesResources) GetWorkerInstanceGPUClaimTemplate(
+	ctx context.Context,
+	key ResourceKey,
+) (resourcev1.ResourceClaimTemplate, error) {
+	if err := resources.validateKey(key); err != nil {
+		return resourcev1.ResourceClaimTemplate{}, err
+	}
+	object, err := resources.client.Resource(resourceClaimTemplateResource).
+		Namespace(resources.namespace).
+		Get(ctx, key.Name, metav1.GetOptions{})
+	if err != nil {
+		return resourcev1.ResourceClaimTemplate{}, mapKubernetesResourceError(err)
+	}
+	var claim resourcev1.ResourceClaimTemplate
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(object.Object, &claim); err != nil {
+		return resourcev1.ResourceClaimTemplate{}, fmt.Errorf(
+			"decode WorkerInstance GPU ResourceClaimTemplate: %w", err,
+		)
+	}
+	return claim, nil
+}
+
+func (resources *KubernetesResources) CreateWorkerInstanceGPUClaimTemplate(
+	ctx context.Context,
+	claim resourcev1.ResourceClaimTemplate,
+) error {
+	if resources == nil || resources.client == nil ||
+		claim.APIVersion != resourcev1.SchemeGroupVersion.String() ||
+		claim.Kind != "ResourceClaimTemplate" || claim.Namespace != resources.namespace ||
+		!validResourceName(claim.Name) || claim.Labels[workerInstanceIDLabel] == "" ||
+		claim.Labels[workerMemberIDLabel] == "" ||
+		len(claim.Spec.Spec.Devices.Requests) == 0 {
+		return errors.New("WorkerInstance GPU ResourceClaimTemplate is invalid")
+	}
+	encoded, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&claim)
+	if err != nil {
+		return fmt.Errorf("encode WorkerInstance GPU ResourceClaimTemplate: %w", err)
+	}
+	_, err = resources.client.Resource(resourceClaimTemplateResource).
 		Namespace(resources.namespace).
 		Create(ctx, &unstructured.Unstructured{Object: encoded}, metav1.CreateOptions{})
 	return mapKubernetesWriteError(err)

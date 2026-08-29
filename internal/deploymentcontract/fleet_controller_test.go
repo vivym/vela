@@ -236,10 +236,11 @@ func TestFleetControllerRBACIsNamespaceBoundAndNodeReadOnly(t *testing.T) {
 		t.Fatalf("Fleet namespaced Role = %#v", role)
 	}
 	wantRoleRules := map[string][]string{
-		"fleet.vela.ai|workerpools":        {"get", "list", "watch", "create", "update", "patch", "delete"},
-		"fleet.vela.ai|workerpools/status": {"get", "update", "patch"},
-		"apps|daemonsets":                  {"get", "list", "watch", "create", "update", "patch", "delete"},
-		"|pods":                            {"get", "list", "watch", "create", "update", "patch", "delete"},
+		"fleet.vela.ai|workerpools":              {"get", "list", "watch", "create", "update", "patch", "delete"},
+		"fleet.vela.ai|workerpools/status":       {"get", "update", "patch"},
+		"apps|daemonsets":                        {"get", "list", "watch", "create", "update", "patch", "delete"},
+		"|pods":                                  {"get", "list", "watch", "create", "update", "patch", "delete"},
+		"resource.k8s.io|resourceclaimtemplates": {"get", "list", "watch", "create"},
 	}
 	if len(role.Rules) != len(wantRoleRules) {
 		t.Fatalf("Fleet Role rules = %#v", role.Rules)

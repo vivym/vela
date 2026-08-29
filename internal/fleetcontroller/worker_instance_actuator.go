@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontract"
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -42,6 +43,11 @@ var (
 )
 
 type WorkerInstancePodResources interface {
+	GetWorkerInstanceGPUClaimTemplate(
+		context.Context,
+		ResourceKey,
+	) (resourcev1.ResourceClaimTemplate, error)
+	CreateWorkerInstanceGPUClaimTemplate(context.Context, resourcev1.ResourceClaimTemplate) error
 	GetWorkerInstancePod(context.Context, ResourceKey) (corev1.Pod, error)
 	CreateWorkerInstancePod(context.Context, corev1.Pod) error
 }
@@ -122,8 +128,9 @@ type H3WorkerBundleSpec struct {
 }
 
 type WorkerInstanceActuationResult struct {
-	CreatedPods int
-	Converged   bool
+	CreatedGPUClaims int
+	CreatedPods      int
+	Converged        bool
 }
 
 func NewWorkerInstanceActuator(
@@ -222,33 +229,71 @@ func (actuator *WorkerInstanceActuator) Actuate(
 	if err := ValidateWorkerBundleActuation(bundle); err != nil {
 		return WorkerInstanceActuationResult{}, err
 	}
+	desiredClaims, err := materializeWorkerInstanceGPUClaimTemplates(bundle)
+	if err != nil {
+		return WorkerInstanceActuationResult{}, err
+	}
 	desiredPods, err := materializeWorkerInstancePods(bundle)
 	if err != nil {
 		return WorkerInstanceActuationResult{}, err
 	}
-	missing := make([]corev1.Pod, 0, len(desiredPods))
+	missingClaims := make([]resourcev1.ResourceClaimTemplate, 0, len(desiredClaims))
+	missingClaimNames := make(map[string]struct{}, len(desiredClaims))
+	for _, desired := range desiredClaims {
+		live, err := actuator.resources.GetWorkerInstanceGPUClaimTemplate(ctx, ResourceKey{
+			Namespace: bundle.Namespace, Name: desired.Name,
+		})
+		if errors.Is(err, ErrResourceNotFound) {
+			missingClaims = append(missingClaims, desired)
+			missingClaimNames[desired.Name] = struct{}{}
+			continue
+		}
+		if err != nil {
+			return WorkerInstanceActuationResult{}, fmt.Errorf(
+				"get WorkerInstance GPU ResourceClaimTemplate %q: %w", desired.Name, err,
+			)
+		}
+		if !workerInstanceGPUClaimTemplateMatches(live, desired) {
+			return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
+		}
+	}
+	missingPods := make([]corev1.Pod, 0, len(desiredPods))
 	for _, desired := range desiredPods {
 		live, err := actuator.resources.GetWorkerInstancePod(ctx, ResourceKey{
 			Namespace: bundle.Namespace, Name: desired.Name,
 		})
 		if errors.Is(err, ErrResourceNotFound) {
-			missing = append(missing, desired)
+			missingPods = append(missingPods, desired)
 			continue
 		}
 		if err != nil {
 			return WorkerInstanceActuationResult{}, fmt.Errorf("get WorkerInstance Pod %q: %w", desired.Name, err)
 		}
+		if claimName := workerInstancePodGPUClaimTemplateName(desired); claimName != "" {
+			if _, missing := missingClaimNames[claimName]; missing {
+				return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
+			}
+		}
 		if !workerInstancePodMatches(live, desired) {
 			return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
 		}
 	}
-	for _, pod := range missing {
+	for _, claim := range missingClaims {
+		if err := actuator.resources.CreateWorkerInstanceGPUClaimTemplate(ctx, claim); err != nil {
+			return WorkerInstanceActuationResult{}, fmt.Errorf(
+				"create WorkerInstance GPU ResourceClaimTemplate %q: %w", claim.Name, err,
+			)
+		}
+	}
+	for _, pod := range missingPods {
 		if err := actuator.resources.CreateWorkerInstancePod(ctx, pod); err != nil {
 			return WorkerInstanceActuationResult{}, fmt.Errorf("create WorkerInstance Pod %q: %w", pod.Name, err)
 		}
 	}
 	return WorkerInstanceActuationResult{
-		CreatedPods: len(missing), Converged: len(missing) == 0,
+		CreatedGPUClaims: len(missingClaims),
+		CreatedPods:      len(missingPods),
+		Converged:        len(missingClaims) == 0 && len(missingPods) == 0,
 	}, nil
 }
 
@@ -410,6 +455,75 @@ func materializeWorkerInstancePods(bundle WorkerBundleActuation) ([]corev1.Pod, 
 	return pods, nil
 }
 
+func materializeWorkerInstanceGPUClaimTemplates(
+	bundle WorkerBundleActuation,
+) ([]resourcev1.ResourceClaimTemplate, error) {
+	claims := make([]resourcev1.ResourceClaimTemplate, 0)
+	for _, worker := range bundle.WorkerInstances {
+		for _, member := range worker.Members {
+			if len(member.DeviceConstraints) != member.DeviceCount {
+				return nil, errors.New("WorkerMember exact GPU device constraints are incomplete")
+			}
+			requests := make([]resourcev1.DeviceRequest, 0, len(member.DeviceConstraints))
+			for index, constraint := range member.DeviceConstraints {
+				expression := "device.driver == 'gpu.nvidia.com'" +
+					" && device.attributes['gpu.nvidia.com'].type == 'gpu'" +
+					" && device.attributes['gpu.nvidia.com'].uuid == '" + constraint.GPUUUID + "'" +
+					" && device.attributes['resource.kubernetes.io'].pciBusID == '" + constraint.PCIBDF + "'"
+				requests = append(requests, resourcev1.DeviceRequest{
+					Name: "gpu-" + strconv.Itoa(index),
+					Exactly: &resourcev1.ExactDeviceRequest{
+						DeviceClassName: "gpu.nvidia.com",
+						Selectors: []resourcev1.DeviceSelector{{
+							CEL: &resourcev1.CELDeviceSelector{Expression: expression},
+						}},
+						AllocationMode: resourcev1.DeviceAllocationModeExactCount,
+						Count:          1,
+					},
+				})
+			}
+			labels := map[string]string{
+				"app.kubernetes.io/name":    "vela-worker-instance-gpu",
+				"app.kubernetes.io/part-of": "vela",
+				workerInstanceIDLabel:       worker.ID.String(),
+				workerInstanceEpochLabel:    strconv.FormatInt(worker.InstanceEpoch, 10),
+				workerMemberIDLabel:         member.ID.String(),
+				workerMemberKeyLabel:        member.Key,
+				workerBundleIDLabel:         bundle.WorkerBundleID.String(),
+				residencyPlanRevisionLabel:  bundle.PlanRevisionID.String(),
+			}
+			annotations := map[string]string{
+				"vela.ai/fleet-controller-owned": "true",
+				deviceConstraintsAnnotation:      mustEncodeDeviceConstraints(member.DeviceConstraints),
+				actuationRevisionAnnotation:      bundle.RevisionDigest,
+			}
+			claims = append(claims, resourcev1.ResourceClaimTemplate{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: resourcev1.SchemeGroupVersion.String(),
+					Kind:       "ResourceClaimTemplate",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:   bundle.Namespace,
+					Name:        workerInstanceGPUClaimTemplateName(worker.ID, member.Key),
+					Labels:      labels,
+					Annotations: annotations,
+				},
+				Spec: resourcev1.ResourceClaimTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels:      cloneStringMap(labels),
+						Annotations: cloneStringMap(annotations),
+					},
+					Spec: resourcev1.ResourceClaimSpec{Devices: resourcev1.DeviceClaim{
+						Requests: requests,
+					}},
+				},
+			})
+		}
+	}
+	sort.Slice(claims, func(left, right int) bool { return claims[left].Name < claims[right].Name })
+	return claims, nil
+}
+
 func materializeWorkerInstancePod(
 	bundle WorkerBundleActuation,
 	worker WorkerInstanceActuation,
@@ -476,6 +590,12 @@ func materializeWorkerInstancePod(
 				workerInstanceAgentContainer(bundle, worker, member),
 				workerInstanceRuntimeContainer(bundle, worker, member, string(runtimes)),
 			},
+			ResourceClaims: []corev1.PodResourceClaim{{
+				Name: "gpu",
+				ResourceClaimTemplateName: valuePointer(
+					workerInstanceGPUClaimTemplateName(worker.ID, member.Key),
+				),
+			}},
 			Volumes: workerInstanceVolumes(bundle, worker, member),
 		},
 	}
@@ -528,7 +648,6 @@ func workerInstanceRuntimeContainer(
 	member WorkerMemberActuation,
 	modelRuntimesJSON string,
 ) corev1.Container {
-	gpuCount := strconv.Itoa(member.DeviceCount)
 	return withKubernetesContainerDefaults(corev1.Container{
 		Name: "model-runtime", Image: bundle.RuntimeImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
@@ -545,11 +664,12 @@ func workerInstanceRuntimeContainer(
 		},
 		Resources: corev1.ResourceRequirements{
 			Requests: resourceList(map[corev1.ResourceName]string{
-				corev1.ResourceCPU: "4", corev1.ResourceMemory: "32Gi", "nvidia.com/gpu": gpuCount,
+				corev1.ResourceCPU: "4", corev1.ResourceMemory: "32Gi",
 			}),
 			Limits: resourceList(map[corev1.ResourceName]string{
-				corev1.ResourceCPU: "16", corev1.ResourceMemory: "128Gi", "nvidia.com/gpu": gpuCount,
+				corev1.ResourceCPU: "16", corev1.ResourceMemory: "128Gi",
 			}),
+			Claims: []corev1.ResourceClaim{{Name: "gpu"}},
 		},
 		SecurityContext: unprivilegedContainerSecurityContext(),
 		VolumeMounts: []corev1.VolumeMount{
@@ -595,6 +715,50 @@ func workerInstancePodName(workerID uuid.UUID, memberKey string) string {
 	memberDigest := sha256.Sum256([]byte(memberKey))
 	return "wi-" + strings.ReplaceAll(workerID.String(), "-", "") + "-" +
 		hex.EncodeToString(memberDigest[:4])
+}
+
+func workerInstanceGPUClaimTemplateName(workerID uuid.UUID, memberKey string) string {
+	return workerInstancePodName(workerID, memberKey) + "-gpu"
+}
+
+func workerInstancePodGPUClaimTemplateName(pod corev1.Pod) string {
+	if len(pod.Spec.ResourceClaims) != 1 ||
+		pod.Spec.ResourceClaims[0].ResourceClaimTemplateName == nil {
+		return ""
+	}
+	return *pod.Spec.ResourceClaims[0].ResourceClaimTemplateName
+}
+
+func workerInstanceGPUClaimTemplateMatches(
+	live resourcev1.ResourceClaimTemplate,
+	desired resourcev1.ResourceClaimTemplate,
+) bool {
+	normalize := func(claim resourcev1.ResourceClaimTemplate) resourcev1.ResourceClaimTemplate {
+		copy := *claim.DeepCopy()
+		copy.ResourceVersion = ""
+		copy.Generation = 0
+		copy.UID = ""
+		copy.CreationTimestamp = metav1.Time{}
+		copy.ManagedFields = nil
+		return copy
+	}
+	return reflect.DeepEqual(normalize(live), normalize(desired))
+}
+
+func mustEncodeDeviceConstraints(constraints []DeviceConstraint) string {
+	encoded, err := json.Marshal(constraints)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func workerInstancePodMatches(live, desired corev1.Pod) bool {

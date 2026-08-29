@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 )
 
@@ -19,6 +23,9 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("register core Kubernetes scheme: %v", err)
+	}
+	if err := resourcev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("register resource Kubernetes scheme: %v", err)
 	}
 	client := dynamicfake.NewSimpleDynamicClient(scheme)
 	resources, err := fleetcontroller.NewKubernetesResources(client, "vela-system")
@@ -50,7 +57,7 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 	}
 
 	result, err := actuator.Actuate(context.Background(), bundle)
-	if err != nil || result.CreatedPods != 8 || result.Converged {
+	if err != nil || result.CreatedGPUClaims != 8 || result.CreatedPods != 8 || result.Converged {
 		t.Fatalf("actuate H3 WorkerBundle = %#v error=%v", result, err)
 	}
 	pods, err := client.Resource(schema.GroupVersionResource{
@@ -78,10 +85,14 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 		}
 		seenWorkers[workerID] = struct{}{}
 		runtimeContainer := requireContainer(t, pod.Spec.Containers, "model-runtime")
-		gpu := runtimeContainer.Resources.Limits["nvidia.com/gpu"]
-		if gpu.String() != "1" {
-			t.Fatalf("WorkerInstance Pod %q GPU limit = %s, want 1", pod.Name,
-				gpu.String())
+		if _, exists := runtimeContainer.Resources.Limits["nvidia.com/gpu"]; exists {
+			t.Fatalf("WorkerInstance Pod %q retained generic nvidia.com/gpu allocation", pod.Name)
+		}
+		if len(pod.Spec.ResourceClaims) != 1 || len(runtimeContainer.Resources.Claims) != 1 ||
+			pod.Spec.ResourceClaims[0].ResourceClaimTemplateName == nil ||
+			runtimeContainer.Resources.Claims[0].Name != pod.Spec.ResourceClaims[0].Name {
+			t.Fatalf("WorkerInstance Pod %q exact GPU claims = %#v/%#v", pod.Name,
+				pod.Spec.ResourceClaims, runtimeContainer.Resources.Claims)
 		}
 		if pod.Labels["vela.ai/worker-role"] == "aux" {
 			auxPod = pod
@@ -89,6 +100,40 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 	}
 	if auxPod.Name == "" {
 		t.Fatal("H3 AUX WorkerInstance Pod is missing")
+	}
+	claims, err := client.Resource(schema.GroupVersionResource{
+		Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates",
+	}).Namespace("vela-system").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(claims.Items) != 8 {
+		t.Fatalf("list exact H3 GPU claims count=%d error=%v", len(claims.Items), err)
+	}
+	expectedConstraints := make(map[string]fleetcontroller.DeviceConstraint, 8)
+	for _, worker := range bundle.WorkerInstances {
+		expectedConstraints[worker.ID.String()] = worker.Members[0].DeviceConstraints[0]
+	}
+	for index := range claims.Items {
+		var claim resourcev1.ResourceClaimTemplate
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(
+			claims.Items[index].Object,
+			&claim,
+		); err != nil {
+			t.Fatalf("decode exact GPU claim: %v", err)
+		}
+		workerID := claim.Labels["vela.ai/worker-instance-id"]
+		expected, exists := expectedConstraints[workerID]
+		requests := claim.Spec.Spec.Devices.Requests
+		if !exists || len(requests) != 1 || requests[0].Exactly == nil ||
+			requests[0].Exactly.DeviceClassName != "gpu.nvidia.com" ||
+			requests[0].Exactly.Count != 1 || len(requests[0].Exactly.Selectors) != 1 ||
+			requests[0].Exactly.Selectors[0].CEL == nil {
+			t.Fatalf("exact GPU claim %q = %#v", claim.Name, claim)
+		}
+		expression := requests[0].Exactly.Selectors[0].CEL.Expression
+		if !strings.Contains(expression, "device.attributes['gpu.nvidia.com'].type == 'gpu'") ||
+			!strings.Contains(expression, expected.GPUUUID) ||
+			!strings.Contains(expression, expected.PCIBDF) {
+			t.Fatalf("exact GPU claim %q selector %q misses %#v", claim.Name, expression, expected)
+		}
 	}
 	var runtimes []fleetcontroller.ModelRuntimeProcess
 	if err := json.Unmarshal(
@@ -100,7 +145,8 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 	}
 
 	replayed, err := actuator.Actuate(context.Background(), bundle)
-	if err != nil || !replayed.Converged || replayed.CreatedPods != 0 {
+	if err != nil || !replayed.Converged || replayed.CreatedGPUClaims != 0 ||
+		replayed.CreatedPods != 0 {
 		t.Fatalf("replay H3 WorkerBundle actuation = %#v error=%v", replayed, err)
 	}
 }
@@ -109,6 +155,9 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("register core Kubernetes scheme: %v", err)
+	}
+	if err := resourcev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("register resource Kubernetes scheme: %v", err)
 	}
 	client := dynamicfake.NewSimpleDynamicClient(scheme)
 	resources, err := fleetcontroller.NewKubernetesResources(client, "vela-system")
@@ -120,6 +169,16 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		t.Fatalf("create WorkerInstance actuator: %v", err)
 	}
 	workerID := uuid.MustParse("49300000-0000-0000-0000-000000000030")
+	memberDevices := map[string][]fleetcontroller.DeviceConstraint{
+		"member-0": {
+			{GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0"},
+			{GPUUUID: "GPU-00000000-0000-0000-0000-000000000002", PCIBDF: "0000:42:00.0"},
+		},
+		"member-1": {
+			{GPUUUID: "GPU-00000000-0000-0000-0000-000000000003", PCIBDF: "0000:43:00.0"},
+			{GPUUUID: "GPU-00000000-0000-0000-0000-000000000004", PCIBDF: "0000:44:00.0"},
+		},
+	}
 	bundle := fleetcontroller.WorkerBundleActuation{
 		SchemaVersion:          1,
 		PlanRevisionID:         uuid.MustParse("49300000-0000-0000-0000-000000000001"),
@@ -145,11 +204,13 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 			Members: []fleetcontroller.WorkerMemberActuation{
 				{
 					ID:  uuid.MustParse("49300000-0000-0000-0000-000000000033"),
-					Key: "member-0", NodeIdentity: "llm-node-a", DeviceCount: 2,
+					Key: "member-0", NodeIdentity: "llm-node-a", ResourceClass: "GPU",
+					DeviceCount: 2, DeviceConstraints: memberDevices["member-0"],
 				},
 				{
 					ID:  uuid.MustParse("49300000-0000-0000-0000-000000000034"),
-					Key: "member-1", NodeIdentity: "llm-node-b", DeviceCount: 2,
+					Key: "member-1", NodeIdentity: "llm-node-b", ResourceClass: "GPU",
+					DeviceCount: 2, DeviceConstraints: memberDevices["member-1"],
 				},
 			},
 		}},
@@ -159,7 +220,7 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		t.Fatalf("digest multi-member WorkerBundle actuation: %v", err)
 	}
 	result, err := actuator.Actuate(context.Background(), bundle)
-	if err != nil || result.CreatedPods != 2 {
+	if err != nil || result.CreatedGPUClaims != 2 || result.CreatedPods != 2 {
 		t.Fatalf("actuate multi-member WorkerInstance = %#v error=%v", result, err)
 	}
 	pods, err := client.Resource(schema.GroupVersionResource{
@@ -179,13 +240,43 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(object.Object, &pod); err != nil {
 			t.Fatalf("decode member Pod: %v", err)
 		}
-		gpu := requireContainer(t, pod.Spec.Containers, "model-runtime").Resources.Limits["nvidia.com/gpu"]
-		if gpu.String() != "2" {
-			t.Fatalf("member Pod %q GPU limit = %s, want 2", pod.Name, gpu.String())
+		runtimeContainer := requireContainer(t, pod.Spec.Containers, "model-runtime")
+		if _, exists := runtimeContainer.Resources.Limits["nvidia.com/gpu"]; exists ||
+			len(runtimeContainer.Resources.Claims) != 1 || len(pod.Spec.ResourceClaims) != 1 {
+			t.Fatalf("member Pod %q GPU claim = %#v/%#v", pod.Name,
+				pod.Spec.ResourceClaims, runtimeContainer.Resources.Claims)
 		}
 	}
 	if !seenMembers["member-0"] || !seenMembers["member-1"] {
 		t.Fatalf("multi-member Pods = %#v", seenMembers)
+	}
+	claims, err := client.Resource(schema.GroupVersionResource{
+		Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates",
+	}).Namespace("vela-system").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(claims.Items) != 2 {
+		t.Fatalf("multi-member GPU claim count=%d error=%v", len(claims.Items), err)
+	}
+	for index := range claims.Items {
+		var claim resourcev1.ResourceClaimTemplate
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(
+			claims.Items[index].Object,
+			&claim,
+		); err != nil {
+			t.Fatalf("decode multi-member GPU claim: %v", err)
+		}
+		memberKey := claim.Labels["vela.ai/worker-member-key"]
+		requests := claim.Spec.Spec.Devices.Requests
+		if len(memberDevices[memberKey]) != 2 || len(requests) != 2 {
+			t.Fatalf("member %q exact GPU requests = %#v", memberKey, requests)
+		}
+		for deviceIndex, expected := range memberDevices[memberKey] {
+			expression := requests[deviceIndex].Exactly.Selectors[0].CEL.Expression
+			if !strings.Contains(expression, expected.GPUUUID) ||
+				!strings.Contains(expression, expected.PCIBDF) {
+				t.Fatalf("member %q request %d selector %q misses %#v",
+					memberKey, deviceIndex, expression, expected)
+			}
+		}
 	}
 }
 
@@ -228,6 +319,88 @@ func TestKubernetesActuatorFailsClosedOnImmutablePodDrift(t *testing.T) {
 	}
 	if _, err := actuator.Actuate(context.Background(), bundle); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
 		t.Fatalf("drifted WorkerInstance Pod error=%v, want ErrProtectedResourceDrift", err)
+	}
+}
+
+func TestKubernetesActuatorFailsClosedOnMissingOrDriftedExactGPUClaim(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*testing.T, dynamic.ResourceInterface, unstructured.Unstructured)
+	}{
+		{
+			name: "missing claim with live Pod",
+			mutate: func(t *testing.T, claims dynamic.ResourceInterface, claim unstructured.Unstructured) {
+				t.Helper()
+				if err := claims.Delete(
+					context.Background(), claim.GetName(), metav1.DeleteOptions{},
+				); err != nil {
+					t.Fatalf("delete exact GPU claim: %v", err)
+				}
+			},
+		},
+		{
+			name: "drifted exact selector",
+			mutate: func(t *testing.T, claims dynamic.ResourceInterface, claim unstructured.Unstructured) {
+				t.Helper()
+				var decoded resourcev1.ResourceClaimTemplate
+				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(
+					claim.Object,
+					&decoded,
+				); err != nil {
+					t.Fatalf("decode exact GPU claim for drift: %v", err)
+				}
+				decoded.Spec.Spec.Devices.Requests[0].Exactly.Selectors[0].CEL.Expression =
+					"device.attributes['gpu.nvidia.com'].type == 'gpu' && false"
+				encoded, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&decoded)
+				if err != nil {
+					t.Fatalf("encode exact GPU selector drift: %v", err)
+				}
+				if _, err := claims.Update(
+					context.Background(), &unstructured.Unstructured{Object: encoded}, metav1.UpdateOptions{},
+				); err != nil {
+					t.Fatalf("store exact GPU selector drift: %v", err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			if err := corev1.AddToScheme(scheme); err != nil {
+				t.Fatalf("register core Kubernetes scheme: %v", err)
+			}
+			if err := resourcev1.AddToScheme(scheme); err != nil {
+				t.Fatalf("register resource Kubernetes scheme: %v", err)
+			}
+			client := dynamicfake.NewSimpleDynamicClient(scheme)
+			resources, err := fleetcontroller.NewKubernetesResources(client, "vela-system")
+			if err != nil {
+				t.Fatalf("create Kubernetes resources: %v", err)
+			}
+			actuator, err := fleetcontroller.NewWorkerInstanceActuator(resources)
+			if err != nil {
+				t.Fatalf("create WorkerInstance actuator: %v", err)
+			}
+			bundle, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())
+			if err != nil {
+				t.Fatalf("build H3 WorkerBundle actuation: %v", err)
+			}
+			if _, err := actuator.Actuate(context.Background(), bundle); err != nil {
+				t.Fatalf("materialize exact GPU claims: %v", err)
+			}
+			claims := client.Resource(schema.GroupVersionResource{
+				Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates",
+			}).Namespace("vela-system")
+			live, err := claims.List(context.Background(), metav1.ListOptions{})
+			if err != nil || len(live.Items) == 0 {
+				t.Fatalf("list exact GPU claims count=%d error=%v", len(live.Items), err)
+			}
+			test.mutate(t, claims, live.Items[0])
+			if _, err := actuator.Actuate(
+				context.Background(), bundle,
+			); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
+				t.Fatalf("reconcile invalid exact GPU claim error=%v, want ErrProtectedResourceDrift", err)
+			}
+		})
 	}
 }
 
