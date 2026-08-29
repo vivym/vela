@@ -706,6 +706,7 @@ DECLARE
     v_member_device_id_text text;
     v_model_runtime_epoch bigint := 0;
     v_bound boolean;
+    v_matched boolean;
     v_observed_at timestamptz;
     v_observed_by text;
     v_device_count integer;
@@ -876,16 +877,42 @@ BEGIN
         ) VALUES (
             v_device_set_id, v_device_id, v_device_epoch,
             (v_device ->> 'ordinal')::integer
-        );
+        )
+        ON CONFLICT (device_set_id, device_id) DO UPDATE SET
+            ordinal = EXCLUDED.ordinal
+        WHERE public.device_set_members.device_epoch = EXCLUDED.device_epoch
+          AND public.device_set_members.ordinal = EXCLUDED.ordinal
+        RETURNING true INTO v_matched;
+        IF NOT COALESCE(v_matched, false) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '55000',
+                CONSTRAINT = 'device_set_member_identity_conflict',
+                MESSAGE = 'DeviceSet membership cannot change';
+        END IF;
+        v_matched := false;
     END LOOP;
 
     UPDATE public.worker_instances AS worker
     SET device_set_id = v_device_set_id,
         membership_digest = v_membership_digest,
         device_set_digest = v_device_set_digest,
-        observed_at = v_observed_at,
+        observed_at = GREATEST(worker.observed_at, v_observed_at),
         observed_by = v_observed_by
-    WHERE worker.id = v_worker.id;
+    WHERE worker.id = v_worker.id
+      AND (
+          (worker.device_set_id IS NULL
+           AND worker.membership_digest IS NULL
+           AND worker.device_set_digest IS NULL)
+          OR (worker.device_set_id = v_device_set_id
+              AND worker.membership_digest = v_membership_digest
+              AND worker.device_set_digest = v_device_set_digest)
+      );
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'worker_instance_observed_identity_conflict',
+            MESSAGE = 'WorkerInstance observed identity cannot change within an epoch';
+    END IF;
 
     INSERT INTO public.worker_instance_epochs (
         worker_instance_id, epoch, device_set_id, membership_digest,
@@ -893,10 +920,31 @@ BEGIN
     ) VALUES (
         v_worker.id, v_worker.instance_epoch, v_device_set_id, v_membership_digest,
         v_device_set_digest, v_observed_at
-    );
+    )
+    ON CONFLICT ON CONSTRAINT worker_instance_epochs_pkey DO UPDATE SET
+        started_at = public.worker_instance_epochs.started_at
+    WHERE public.worker_instance_epochs.device_set_id = EXCLUDED.device_set_id
+      AND public.worker_instance_epochs.membership_digest = EXCLUDED.membership_digest
+      AND public.worker_instance_epochs.device_set_digest = EXCLUDED.device_set_digest
+      AND public.worker_instance_epochs.ended_at IS NULL
+      AND public.worker_instance_epochs.end_reason IS NULL
+    RETURNING true INTO v_matched;
+    IF NOT COALESCE(v_matched, false) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'worker_instance_epoch_identity_conflict',
+            MESSAGE = 'WorkerInstance epoch identity cannot change';
+    END IF;
+    v_matched := false;
 
     FOR v_member IN SELECT value FROM jsonb_array_elements(p_evidence -> 'members') LOOP
         v_member_id := (v_member ->> 'id')::uuid;
+        IF v_member ->> 'readiness' <> 'READY' THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '23514',
+                CONSTRAINT = 'worker_member_observation_not_ready',
+                MESSAGE = 'WorkerInstance observation may only report READY members';
+        END IF;
         INSERT INTO public.worker_members (
             id, worker_instance_id, worker_instance_epoch, member_key,
             compute_node_id, worker_bundle_id, member_epoch, device_subset_digest,
@@ -909,7 +957,27 @@ BEGIN
             decode(v_member ->> 'identity_digest', 'hex'),
             (v_member ->> 'readiness')::public.worker_member_readiness_state,
             v_observed_at, v_observed_by
-        );
+        )
+        ON CONFLICT (id) DO UPDATE SET
+            readiness = EXCLUDED.readiness,
+            observed_at = GREATEST(public.worker_members.observed_at, EXCLUDED.observed_at),
+            observed_by = EXCLUDED.observed_by
+        WHERE public.worker_members.worker_instance_id = EXCLUDED.worker_instance_id
+          AND public.worker_members.worker_instance_epoch = EXCLUDED.worker_instance_epoch
+          AND public.worker_members.member_key = EXCLUDED.member_key
+          AND public.worker_members.compute_node_id = EXCLUDED.compute_node_id
+          AND public.worker_members.worker_bundle_id IS NOT DISTINCT FROM EXCLUDED.worker_bundle_id
+          AND public.worker_members.member_epoch = EXCLUDED.member_epoch
+          AND public.worker_members.device_subset_digest = EXCLUDED.device_subset_digest
+          AND public.worker_members.identity_digest = EXCLUDED.identity_digest
+        RETURNING true INTO v_matched;
+        IF NOT COALESCE(v_matched, false) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '55000',
+                CONSTRAINT = 'worker_member_identity_conflict',
+                MESSAGE = 'WorkerMember identity cannot change within an epoch';
+        END IF;
+        v_matched := false;
         FOR v_member_device_id_text IN SELECT value #>> '{}'
             FROM jsonb_array_elements(v_member -> 'device_ids')
         LOOP
@@ -922,7 +990,20 @@ BEGIN
             ) VALUES (
                 v_worker.id, v_member_id, v_device_set_id,
                 v_member_device_id_text::uuid, v_device_epoch
-            );
+            )
+            ON CONFLICT (worker_member_id, device_id) DO UPDATE SET
+                device_epoch = EXCLUDED.device_epoch
+            WHERE public.worker_member_devices.worker_instance_id = EXCLUDED.worker_instance_id
+              AND public.worker_member_devices.device_set_id = EXCLUDED.device_set_id
+              AND public.worker_member_devices.device_epoch = EXCLUDED.device_epoch
+            RETURNING true INTO v_matched;
+            IF NOT COALESCE(v_matched, false) THEN
+                RAISE EXCEPTION USING
+                    ERRCODE = '55000',
+                    CONSTRAINT = 'worker_member_device_identity_conflict',
+                    MESSAGE = 'WorkerMember device ownership cannot change within an epoch';
+            END IF;
+            v_matched := false;
         END LOOP;
     END LOOP;
 
@@ -949,12 +1030,12 @@ BEGIN
             v_worker.instance_epoch, v_observed_at, v_membership_digest
         )
         ON CONFLICT (device_id) DO UPDATE SET
-            bound_at = GREATEST(public.active_device_bindings.bound_at, EXCLUDED.bound_at),
-            evidence_digest = EXCLUDED.evidence_digest
+            bound_at = GREATEST(public.active_device_bindings.bound_at, EXCLUDED.bound_at)
         WHERE public.active_device_bindings.worker_instance_id = EXCLUDED.worker_instance_id
           AND public.active_device_bindings.worker_instance_epoch = EXCLUDED.worker_instance_epoch
           AND public.active_device_bindings.device_set_id = EXCLUDED.device_set_id
           AND public.active_device_bindings.device_epoch = EXCLUDED.device_epoch
+          AND public.active_device_bindings.evidence_digest = EXCLUDED.evidence_digest
         RETURNING true INTO v_bound;
         IF NOT COALESCE(v_bound, false) THEN
             RAISE EXCEPTION USING
@@ -972,6 +1053,12 @@ BEGIN
                 CONSTRAINT = 'model_residency_not_certified_for_worker_profile',
                 MESSAGE = 'ModelResidency is not allowed by WorkerProfileRevision';
         END IF;
+        IF v_residency ->> 'state' <> 'READY' THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '23514',
+                CONSTRAINT = 'model_residency_observation_not_ready',
+                MESSAGE = 'WorkerInstance observation may only report READY ModelResidencies';
+        END IF;
         INSERT INTO public.model_residencies (
             id, worker_instance_id, worker_instance_epoch, model_component_revision,
             runtime_identity, runtime_image_digest, model_runtime_epoch, state,
@@ -988,7 +1075,28 @@ BEGIN
             CASE WHEN v_residency ->> 'state' = 'READY' THEN v_observed_at END,
             CASE WHEN v_residency ->> 'state' = 'RELEASED' THEN v_observed_at END,
             v_observed_at, v_observed_by
-        );
+        )
+        ON CONFLICT (id) DO UPDATE SET
+            observed_at = GREATEST(public.model_residencies.observed_at, EXCLUDED.observed_at),
+            observed_by = EXCLUDED.observed_by
+        WHERE public.model_residencies.worker_instance_id = EXCLUDED.worker_instance_id
+          AND public.model_residencies.worker_instance_epoch = EXCLUDED.worker_instance_epoch
+          AND public.model_residencies.model_component_revision = EXCLUDED.model_component_revision
+          AND public.model_residencies.runtime_identity = EXCLUDED.runtime_identity
+          AND public.model_residencies.runtime_image_digest = EXCLUDED.runtime_image_digest
+          AND public.model_residencies.model_runtime_epoch = EXCLUDED.model_runtime_epoch
+          AND public.model_residencies.state = 'READY'
+          AND public.model_residencies.warmup_evidence_digest = EXCLUDED.warmup_evidence_digest
+          AND public.model_residencies.canary_evidence_digest = EXCLUDED.canary_evidence_digest
+          AND public.model_residencies.released_at IS NULL
+        RETURNING true INTO v_matched;
+        IF NOT COALESCE(v_matched, false) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '55000',
+                CONSTRAINT = 'model_residency_identity_conflict',
+                MESSAGE = 'ModelResidency identity cannot change within an epoch';
+        END IF;
+        v_matched := false;
         v_model_runtime_epoch := GREATEST(
             v_model_runtime_epoch,
             (v_residency ->> 'model_runtime_epoch')::bigint
@@ -1015,6 +1123,16 @@ BEGIN
             ERRCODE = '23514',
             CONSTRAINT = 'capacity_observation_exceeds_worker_profile',
             MESSAGE = 'CapacityObservation exceeds certified WorkerProfile limits';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.capacity_observations AS observation
+        WHERE observation.worker_instance_id = v_worker.id
+          AND observation.observation_sequence >= (v_capacity ->> 'sequence')::bigint
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'capacity_observation_sequence_stale',
+            MESSAGE = 'CapacityObservation sequence must increase monotonically';
     END IF;
     INSERT INTO public.capacity_observations (
         worker_instance_id, worker_instance_epoch, observation_sequence,

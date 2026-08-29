@@ -352,11 +352,14 @@ func TestFileWorkerInstanceEpochStoreRejectsInvalidStateAndLockConflict(t *testi
 	const validPrefix = `{"schema_version":1,"node_identity":"h3-node-01","boot_id":"49420000-0000-0000-0000-000000000001","node_epoch":1,"agent_session_epoch":1,`
 	const digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	cases := map[string]string{
-		"malformed":         `{"schema_version":`,
-		"duplicate key":     `{"schema_version":1,"schema_version":1}`,
-		"unknown field":     validPrefix + `"devices":{},"unexpected":true}`,
-		"another Node":      `{"schema_version":1,"node_identity":"h3-node-02","boot_id":"49420000-0000-0000-0000-000000000001","node_epoch":1,"agent_session_epoch":1,"devices":{}}`,
-		"duplicate PCI BDF": validPrefix + `"devices":{"GPU-00000000-0000-0000-0000-000000000001":{"pci_bdf":"0000:41:00.0","attestation_digest":"` + digest + `","epoch":1},"GPU-00000000-0000-0000-0000-000000000002":{"pci_bdf":"0000:41:00.0","attestation_digest":"` + digest + `","epoch":1}}}`,
+		"malformed":                   `{"schema_version":`,
+		"duplicate key":               `{"schema_version":1,"schema_version":1}`,
+		"unknown field":               validPrefix + `"devices":{},"observation_sequences":{},"unexpected":true}`,
+		"another Node":                `{"schema_version":1,"node_identity":"h3-node-02","boot_id":"49420000-0000-0000-0000-000000000001","node_epoch":1,"agent_session_epoch":1,"devices":{},"observation_sequences":{}}`,
+		"duplicate PCI BDF":           validPrefix + `"devices":{"GPU-00000000-0000-0000-0000-000000000001":{"pci_bdf":"0000:41:00.0","attestation_digest":"` + digest + `","epoch":1},"GPU-00000000-0000-0000-0000-000000000002":{"pci_bdf":"0000:41:00.0","attestation_digest":"` + digest + `","epoch":1}},"observation_sequences":{}}`,
+		"missing sequences":           validPrefix + `"devices":{}}`,
+		"noncanonical WorkerInstance": validPrefix + `"devices":{},"observation_sequences":{"49420000-0000-0000-0000-0000000000AA":1}}`,
+		"zero sequence":               validPrefix + `"devices":{},"observation_sequences":{"49420000-0000-0000-0000-000000000031":0}}`,
 	}
 	for name, state := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -425,5 +428,54 @@ func TestFileWorkerInstanceEpochStoreReadsLinuxProcBootID(t *testing.T) {
 	}
 	if err := store.Close(); err != nil {
 		t.Fatalf("close epoch store: %v", err)
+	}
+}
+
+func TestFileWorkerInstanceEpochStorePersistsObservationSequence(t *testing.T) {
+	root := t.TempDir()
+	bootIDPath := filepath.Join(root, "boot_id")
+	writePrivateFixture(t, bootIDPath, "49420000-0000-0000-0000-000000000001\n")
+	stateDirectory := filepath.Join(root, "state")
+	workerID := uuid.MustParse("49420000-0000-0000-0000-000000000031")
+	store := openEpochStore(t, stateDirectory, bootIDPath)
+	for want := int64(1); want <= 2; want++ {
+		sequence, err := store.NextWorkerInstanceObservationSequence(context.Background(), workerID)
+		if err != nil || sequence != want {
+			t.Fatalf("observation sequence=%d error=%v want=%d", sequence, err, want)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close sequence store: %v", err)
+	}
+	store = openEpochStore(t, stateDirectory, bootIDPath)
+	sequence, err := store.NextWorkerInstanceObservationSequence(context.Background(), workerID)
+	if err != nil || sequence != 3 {
+		t.Fatalf("persisted observation sequence=%d error=%v want=3", sequence, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close persisted sequence store: %v", err)
+	}
+	statePath := filepath.Join(stateDirectory, "worker-instance-epochs.json")
+	state, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("read observation sequence state: %v", err)
+	}
+	exhausted := strings.Replace(
+		string(state),
+		`"49420000-0000-0000-0000-000000000031":3`,
+		`"49420000-0000-0000-0000-000000000031":9223372036854775807`,
+		1,
+	)
+	if exhausted == string(state) {
+		t.Fatal("observation sequence fixture was not updated")
+	}
+	writePrivateFixture(t, statePath, exhausted)
+	store = openEpochStore(t, stateDirectory, bootIDPath)
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := store.NextWorkerInstanceObservationSequence(
+		context.Background(),
+		workerID,
+	); err == nil || !strings.Contains(err.Error(), "sequence is exhausted") {
+		t.Fatalf("exhausted observation sequence error=%v", err)
 	}
 }

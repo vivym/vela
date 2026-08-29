@@ -28,9 +28,11 @@ func TestWorkerInstanceEvidenceReporterAttestsExactDeviceSetBeforeObserve(t *tes
 		WorkerInstanceID: workerID, InstanceEpoch: 1, ControlSessionEpoch: 1,
 		ModelRuntimeEpoch: 3, Readiness: fleet.WorkerInstanceReady,
 	}}
+	sequencer := &recordingWorkerInstanceObservationSequencer{next: 41}
 	reporter, err := nodeagent.NewWorkerInstanceEvidenceReporter(
 		probe,
 		observer,
+		sequencer,
 		2*time.Minute,
 		func() time.Time { return now },
 	)
@@ -51,6 +53,7 @@ func TestWorkerInstanceEvidenceReporterAttestsExactDeviceSetBeforeObserve(t *tes
 		device.DeviceEpoch != 11 || device.AgentSessionEpoch != 9 ||
 		len(evidence.DeviceSet.MembershipDigest) != 64 || len(evidence.DeviceSet.TopologyDigest) != 64 ||
 		len(evidence.Members[0].DeviceSubsetDigest) != 64 || len(evidence.Members[0].IdentityDigest) != 64 ||
+		evidence.Capacity.Sequence != 41 || sequencer.workerIDs[0] != workerID ||
 		!evidence.ObservedAt.Equal(now) || !evidence.Capacity.ObservedAt.Equal(now) ||
 		!evidence.Capacity.ExpiresAt.Equal(now.Add(2*time.Minute)) {
 		t.Fatalf("attested WorkerInstance evidence=%#v", evidence)
@@ -70,8 +73,9 @@ func TestWorkerInstanceEvidenceReporterRejectsUnexpectedPhysicalDevice(t *testin
 		DeviceAttestationDigest: strings.Repeat("b", 64), Health: "HEALTHY",
 	}}}
 	observer := &recordingWorkerInstanceObserver{}
+	sequencer := &recordingWorkerInstanceObservationSequencer{next: 1}
 	reporter, err := nodeagent.NewWorkerInstanceEvidenceReporter(
-		probe, observer, time.Minute, time.Now,
+		probe, observer, sequencer, time.Minute, time.Now,
 	)
 	if err != nil {
 		t.Fatalf("create WorkerInstance evidence reporter: %v", err)
@@ -82,8 +86,12 @@ func TestWorkerInstanceEvidenceReporterRejectsUnexpectedPhysicalDevice(t *testin
 	); err == nil {
 		t.Fatal("WorkerInstance evidence accepted an unexpected GPU UUID")
 	}
-	if len(observer.evidence) != 0 {
-		t.Fatalf("unexpected physical device reached Observe: %#v", observer.evidence)
+	if len(observer.evidence) != 0 || len(sequencer.workerIDs) != 0 {
+		t.Fatalf(
+			"unexpected physical device advanced authority: evidence=%#v sequences=%#v",
+			observer.evidence,
+			sequencer.workerIDs,
+		)
 	}
 }
 
@@ -113,16 +121,29 @@ func workerInstanceEvidenceTemplate(
 			Residencies: []fleet.ModelResidencyEvidence{{
 				ID:                     uuid.MustParse("49400000-0000-0000-0000-000000000006"),
 				ModelComponentRevision: "h3-dit-v1", RuntimeIdentity: "h3-dit-runtime-v1",
-				RuntimeImageDigest: strings.Repeat("c", 64), ModelRuntimeEpoch: 3,
+				RuntimeImageDigest: "sha256:" + strings.Repeat("c", 64), ModelRuntimeEpoch: 3,
 				State: "READY", WarmupEvidenceDigest: strings.Repeat("d", 64),
 				CanaryEvidenceDigest: strings.Repeat("e", 64),
 			}},
 			Capacity: fleet.WorkerCapacityEvidence{
-				Sequence: 1, Vector: map[string]int64{"concurrency": 1},
+				Vector: map[string]int64{"concurrency": 1},
 			},
 		},
 		ObservedBy: "node-agent/h3-node-01",
 	}
+}
+
+type recordingWorkerInstanceObservationSequencer struct {
+	next      int64
+	workerIDs []uuid.UUID
+}
+
+func (sequencer *recordingWorkerInstanceObservationSequencer) NextWorkerInstanceObservationSequence(
+	_ context.Context,
+	workerID uuid.UUID,
+) (int64, error) {
+	sequencer.workerIDs = append(sequencer.workerIDs, workerID)
+	return sequencer.next, nil
 }
 
 type recordingWorkerInstanceDeviceProbe struct {

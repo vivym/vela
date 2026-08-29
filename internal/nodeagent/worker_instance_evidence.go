@@ -53,24 +53,27 @@ type WorkerInstanceEvidenceTemplate struct {
 }
 
 type WorkerInstanceEvidenceReporter struct {
-	probe    WorkerInstanceDeviceProbe
-	observer WorkerInstanceObserver
-	ttl      time.Duration
-	clock    func() time.Time
+	probe     WorkerInstanceDeviceProbe
+	observer  WorkerInstanceObserver
+	sequencer WorkerInstanceObservationSequencer
+	ttl       time.Duration
+	clock     func() time.Time
 }
 
 func NewWorkerInstanceEvidenceReporter(
 	probe WorkerInstanceDeviceProbe,
 	observer WorkerInstanceObserver,
+	sequencer WorkerInstanceObservationSequencer,
 	ttl time.Duration,
 	clock func() time.Time,
 ) (*WorkerInstanceEvidenceReporter, error) {
-	if probe == nil || observer == nil || ttl < 10*time.Second || ttl > 10*time.Minute ||
+	if probe == nil || observer == nil || sequencer == nil ||
+		ttl < 10*time.Second || ttl > 10*time.Minute ||
 		ttl%time.Second != 0 || clock == nil {
 		return nil, errors.New("WorkerInstance evidence reporter configuration is invalid")
 	}
 	return &WorkerInstanceEvidenceReporter{
-		probe: probe, observer: observer, ttl: ttl, clock: clock,
+		probe: probe, observer: observer, sequencer: sequencer, ttl: ttl, clock: clock,
 	}, nil
 }
 
@@ -79,7 +82,7 @@ func (reporter *WorkerInstanceEvidenceReporter) Report(
 	template WorkerInstanceEvidenceTemplate,
 ) (fleet.WorkerInstanceDecision, error) {
 	if ctx == nil || reporter == nil || reporter.probe == nil || reporter.observer == nil ||
-		reporter.clock == nil {
+		reporter.sequencer == nil || reporter.clock == nil {
 		return fleet.WorkerInstanceDecision{}, errors.New("WorkerInstance evidence reporter is not configured")
 	}
 	evidence := cloneWorkerInstanceEvidence(template.Evidence)
@@ -87,9 +90,16 @@ func (reporter *WorkerInstanceEvidenceReporter) Report(
 		evidence.InstanceEpoch <= 0 || evidence.ControlSessionEpoch <= 0 ||
 		evidence.DeviceSet.ID == uuid.Nil || len(evidence.DeviceSet.Devices) == 0 ||
 		len(evidence.Members) == 0 || len(evidence.Residencies) == 0 ||
-		evidence.Capacity.Sequence <= 0 || len(evidence.Capacity.Vector) == 0 ||
+		evidence.Capacity.Sequence != 0 || len(evidence.Capacity.Vector) == 0 ||
+		!evidence.ObservedAt.IsZero() || evidence.ObservedBy != "" ||
+		!evidence.Capacity.ObservedAt.IsZero() || !evidence.Capacity.ExpiresAt.IsZero() ||
 		!validText(template.ObservedBy, maxIdentityText) {
 		return fleet.WorkerInstanceDecision{}, errors.New("WorkerInstance evidence template is invalid")
+	}
+	for _, residency := range evidence.Residencies {
+		if residency.State != "READY" {
+			return fleet.WorkerInstanceDecision{}, errors.New("WorkerInstance evidence may only report READY ModelResidencies")
+		}
 	}
 	expected := make([]ExpectedWorkerDevice, 0, len(evidence.DeviceSet.Devices))
 	expectedByID := make(map[uuid.UUID]fleet.WorkerDeviceEvidence, len(evidence.DeviceSet.Devices))
@@ -165,6 +175,17 @@ func (reporter *WorkerInstanceEvidenceReporter) Report(
 	}
 	evidence.ObservedAt = now
 	evidence.ObservedBy = template.ObservedBy
+	sequence, err := reporter.sequencer.NextWorkerInstanceObservationSequence(
+		ctx,
+		evidence.WorkerInstanceID,
+	)
+	if err != nil {
+		return fleet.WorkerInstanceDecision{}, fmt.Errorf("allocate WorkerInstance observation sequence: %w", err)
+	}
+	if sequence <= 0 {
+		return fleet.WorkerInstanceDecision{}, errors.New("WorkerInstance observation sequence is invalid")
+	}
+	evidence.Capacity.Sequence = sequence
 	evidence.Capacity.ObservedAt = now
 	evidence.Capacity.ExpiresAt = now.Add(reporter.ttl)
 	decision, err := reporter.observer.Observe(ctx, evidence)

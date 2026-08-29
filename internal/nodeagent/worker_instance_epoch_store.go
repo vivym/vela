@@ -51,6 +51,10 @@ type WorkerInstanceEpochStore interface {
 	) (WorkerInstanceEpochSnapshot, error)
 }
 
+type WorkerInstanceObservationSequencer interface {
+	NextWorkerInstanceObservationSequence(context.Context, uuid.UUID) (int64, error)
+}
+
 type fileWorkerInstanceDeviceEpoch struct {
 	PCIBDF            string `json:"pci_bdf"`
 	AttestationDigest string `json:"attestation_digest"`
@@ -58,12 +62,13 @@ type fileWorkerInstanceDeviceEpoch struct {
 }
 
 type fileWorkerInstanceEpochState struct {
-	SchemaVersion     int                                      `json:"schema_version"`
-	NodeIdentity      string                                   `json:"node_identity"`
-	BootID            string                                   `json:"boot_id"`
-	NodeEpoch         int64                                    `json:"node_epoch"`
-	AgentSessionEpoch int64                                    `json:"agent_session_epoch"`
-	Devices           map[string]fileWorkerInstanceDeviceEpoch `json:"devices"`
+	SchemaVersion        int                                      `json:"schema_version"`
+	NodeIdentity         string                                   `json:"node_identity"`
+	BootID               string                                   `json:"boot_id"`
+	NodeEpoch            int64                                    `json:"node_epoch"`
+	AgentSessionEpoch    int64                                    `json:"agent_session_epoch"`
+	Devices              map[string]fileWorkerInstanceDeviceEpoch `json:"devices"`
+	ObservationSequences map[string]int64                         `json:"observation_sequences"`
 }
 
 type FileWorkerInstanceEpochStore struct {
@@ -121,7 +126,8 @@ func (store *FileWorkerInstanceEpochStore) load(nodeIdentity string, bootID stri
 		store.state = fileWorkerInstanceEpochState{
 			SchemaVersion: 1, NodeIdentity: nodeIdentity, BootID: bootID,
 			NodeEpoch: 1, AgentSessionEpoch: 1,
-			Devices: make(map[string]fileWorkerInstanceDeviceEpoch),
+			Devices:              make(map[string]fileWorkerInstanceDeviceEpoch),
+			ObservationSequences: make(map[string]int64),
 		}
 		return store.persist(store.state)
 	case err != nil:
@@ -166,6 +172,40 @@ func (store *FileWorkerInstanceEpochStore) load(nodeIdentity string, bootID stri
 	}
 	store.state = state
 	return nil
+}
+
+func (store *FileWorkerInstanceEpochStore) NextWorkerInstanceObservationSequence(
+	ctx context.Context,
+	workerInstanceID uuid.UUID,
+) (int64, error) {
+	if store == nil || workerInstanceID == uuid.Nil {
+		return 0, errors.New("WorkerInstance observation sequencer is not configured")
+	}
+	if err := contextError(ctx); err != nil {
+		return 0, err
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.lock == nil {
+		return 0, errors.New("WorkerInstance observation sequencer is not configured")
+	}
+	state := cloneFileWorkerInstanceEpochState(store.state)
+	key := workerInstanceID.String()
+	current := state.ObservationSequences[key]
+	if current == math.MaxInt64 {
+		return 0, errors.New("WorkerInstance observation sequence is exhausted")
+	}
+	next := current + 1
+	state.ObservationSequences[key] = next
+	if !validFileWorkerInstanceEpochState(state) {
+		return 0, errors.New("WorkerInstance observation sequence transition is invalid")
+	}
+	if err := store.persist(state); err != nil {
+		return 0, err
+	}
+	store.state = state
+	return next, nil
 }
 
 func (store *FileWorkerInstanceEpochStore) BindWorkerInstanceDevices(
@@ -337,7 +377,8 @@ func readBootID(path string) (string, error) {
 func validFileWorkerInstanceEpochState(state fileWorkerInstanceEpochState) bool {
 	if state.SchemaVersion != 1 || !validText(state.NodeIdentity, maxIdentityText) ||
 		state.NodeEpoch <= 0 || state.AgentSessionEpoch <= 0 ||
-		len(state.Devices) > maxWorkerInstanceEpochDevices {
+		len(state.Devices) > maxWorkerInstanceEpochDevices || state.Devices == nil ||
+		state.ObservationSequences == nil {
 		return false
 	}
 	bootID, err := uuid.Parse(state.BootID)
@@ -355,6 +396,12 @@ func validFileWorkerInstanceEpochState(state fileWorkerInstanceEpochState) bool 
 		}
 		seenBDFs[device.PCIBDF] = struct{}{}
 	}
+	for workerInstanceID, sequence := range state.ObservationSequences {
+		parsed, err := uuid.Parse(workerInstanceID)
+		if err != nil || parsed == uuid.Nil || parsed.String() != workerInstanceID || sequence <= 0 {
+			return false
+		}
+	}
 	return true
 }
 
@@ -366,7 +413,12 @@ func cloneFileWorkerInstanceEpochState(
 	for gpuUUID, device := range state.Devices {
 		cloned.Devices[gpuUUID] = device
 	}
+	cloned.ObservationSequences = make(map[string]int64, len(state.ObservationSequences))
+	for workerInstanceID, sequence := range state.ObservationSequences {
+		cloned.ObservationSequences[workerInstanceID] = sequence
+	}
 	return cloned
 }
 
 var _ WorkerInstanceEpochStore = (*FileWorkerInstanceEpochStore)(nil)
+var _ WorkerInstanceObservationSequencer = (*FileWorkerInstanceEpochStore)(nil)

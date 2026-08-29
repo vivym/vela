@@ -91,6 +91,90 @@ func TestWorkerRegistryRejectsSharedGPUAcrossWorkerInstances(t *testing.T) {
 	}
 }
 
+func TestWorkerRegistryRefreshesExistingWorkerInstanceEvidence(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	seedWorkerRegistryPlan(t, database.Admin)
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	service, err := fleet.NewService(fleetPool)
+	if err != nil {
+		t.Fatalf("construct Worker Registry service: %v", err)
+	}
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000012")
+	seedWorkerInstance(t, database.Admin, workerID, workerRegistryProfileID, 1, 1)
+	evidence := workerRegistryEvidenceValue(t, workerID, 0x12)
+	if _, err := service.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("observe initial WorkerInstance evidence: %v", err)
+	}
+	refreshedAt := evidence.ObservedAt.Add(time.Second)
+	evidence.ObservedAt = refreshedAt
+	evidence.Capacity.Sequence++
+	evidence.Capacity.ObservedAt = refreshedAt
+	evidence.Capacity.ExpiresAt = refreshedAt.Add(time.Minute)
+	if _, err := service.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("refresh existing WorkerInstance evidence: %v", err)
+	}
+
+	var epochs, members, memberDevices, residencies, observations int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM worker_instance_epochs WHERE worker_instance_id = $1),
+			(SELECT count(*) FROM worker_members WHERE worker_instance_id = $1),
+			(SELECT count(*) FROM worker_member_devices WHERE worker_instance_id = $1),
+			(SELECT count(*) FROM model_residencies WHERE worker_instance_id = $1),
+			(SELECT count(*) FROM capacity_observations WHERE worker_instance_id = $1)
+	`, workerID).Scan(&epochs, &members, &memberDevices, &residencies, &observations); err != nil {
+		t.Fatalf("read refreshed WorkerInstance evidence: %v", err)
+	}
+	if epochs != 1 || members != 1 || memberDevices != 1 || residencies != 1 || observations != 2 {
+		t.Fatalf("refreshed evidence rows=%d epochs/%d members/%d member devices/%d residencies/%d observations", epochs, members, memberDevices, residencies, observations)
+	}
+
+	conflicting := evidence
+	conflicting.Residencies = append([]fleet.ModelResidencyEvidence(nil), evidence.Residencies...)
+	conflicting.Capacity.Sequence++
+	conflicting.Residencies[0].RuntimeIdentity += "-changed"
+	_, err = fleetPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
+		mustJSON(t, conflicting),
+	)
+	assertPostgresConstraint(t, err, "model_residency_identity_conflict")
+
+	_, err = fleetPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
+		mustJSON(t, evidence),
+	)
+	assertPostgresConstraint(t, err, "capacity_observation_sequence_stale")
+
+	notReady := evidence
+	notReady.Residencies = append([]fleet.ModelResidencyEvidence(nil), evidence.Residencies...)
+	notReady.Capacity.Sequence++
+	notReady.Residencies[0].State = "DRAINING"
+	_, err = fleetPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
+		mustJSON(t, notReady),
+	)
+	assertPostgresConstraint(t, err, "model_residency_observation_not_ready")
+
+	var runtimeIdentity string
+	if err := database.Admin.QueryRow(`
+		SELECT residency.runtime_identity,
+		       (SELECT count(*) FROM capacity_observations WHERE worker_instance_id = $1)
+		FROM model_residencies AS residency
+		WHERE residency.worker_instance_id = $1
+	`, workerID).Scan(&runtimeIdentity, &observations); err != nil {
+		t.Fatalf("read fail-closed refreshed WorkerInstance evidence: %v", err)
+	}
+	if runtimeIdentity != evidence.Residencies[0].RuntimeIdentity || observations != 2 {
+		t.Fatalf("failed refresh changed runtime=%q observations=%d", runtimeIdentity, observations)
+	}
+}
+
 func TestWorkerRegistryReconnectPreservesRuntimeAndFenceInvalidatesAuthority(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
