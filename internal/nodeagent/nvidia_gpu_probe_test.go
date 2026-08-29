@@ -25,6 +25,7 @@ func TestNVIDIAGPUProbePersistsNodeSessionAndDeviceEpochs(t *testing.T) {
 	}
 	firstUUID := "GPU-00000000-0000-0000-0000-000000000001"
 	secondUUID := "GPU-00000000-0000-0000-0000-000000000002"
+	replacementUUID := "GPU-00000000-0000-0000-0000-000000000003"
 	firstBDF := "0000:41:00.0"
 	secondBDF := "0000:42:00.0"
 	firstRevision := createPCIDeviceFixture(t, busRoot, sysDevicesRoot, driverRoot, firstBDF, "0xa1")
@@ -83,8 +84,27 @@ func TestNVIDIAGPUProbePersistsNodeSessionAndDeviceEpochs(t *testing.T) {
 		deviceChanged[1].DeviceAttestationDigest != firstDeviceDigests[secondUUID] {
 		t.Fatalf("device-only change produced inconsistent attestation digests: %#v", deviceChanged)
 	}
+	expected[0].GPUUUID = replacementUUID
+	runner.output = []byte(
+		replacementUUID + ", 00000000:41:00.0\n" +
+			secondUUID + ", 00000000:42:00.0\n",
+	)
+	replaced := attestDevices(t, probe, expected)
+	assertDeviceEpochs(t, replaced, 1, 2, map[string]int64{replacementUUID: 3, secondUUID: 1})
+	if replaced[0].NodeAttestationDigest != firstNodeDigest ||
+		replaced[0].DeviceAttestationDigest == deviceChanged[0].DeviceAttestationDigest {
+		t.Fatalf("GPU replacement produced inconsistent attestation digests: %#v", replaced)
+	}
 	if err := store.Close(); err != nil {
 		t.Fatalf("close restarted epoch store: %v", err)
+	}
+
+	store = openEpochStore(t, stateDirectory, bootIDPath)
+	probe = newGPUProbe(t, runner, store, busRoot, sysDevicesRoot, driverVersionPath)
+	replacementRestarted := attestDevices(t, probe, expected)
+	assertDeviceEpochs(t, replacementRestarted, 1, 3, map[string]int64{replacementUUID: 3, secondUUID: 1})
+	if err := store.Close(); err != nil {
+		t.Fatalf("close replacement epoch store: %v", err)
 	}
 
 	writePrivateFixture(t, bootIDPath, "49420000-0000-0000-0000-000000000002\n")
@@ -92,14 +112,14 @@ func TestNVIDIAGPUProbePersistsNodeSessionAndDeviceEpochs(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 	probe = newGPUProbe(t, runner, store, busRoot, sysDevicesRoot, driverVersionPath)
 	rebooted := attestDevices(t, probe, expected)
-	assertDeviceEpochs(t, rebooted, 2, 3, map[string]int64{firstUUID: 3, secondUUID: 2})
+	assertDeviceEpochs(t, rebooted, 2, 4, map[string]int64{replacementUUID: 4, secondUUID: 2})
 	if rebooted[0].NodeAttestationDigest == firstNodeDigest {
 		t.Fatal("Node reboot did not change the Node attestation digest")
 	}
 
 	if !reflect.DeepEqual(runner.args, []string{
 		"--query-gpu=uuid,pci.bus_id", "--format=csv,noheader,nounits",
-	}) || runner.path != "/usr/bin/nvidia-smi" || runner.calls != 5 {
+	}) || runner.path != "/usr/bin/nvidia-smi" || runner.calls != 7 {
 		t.Fatalf("NVIDIA inventory calls=%d path=%q args=%#v", runner.calls, runner.path, runner.args)
 	}
 	stateInfo, err := os.Stat(filepath.Join(stateDirectory, "worker-instance-epochs.json"))

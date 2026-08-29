@@ -206,15 +206,17 @@ func (store *FileWorkerInstanceEpochStore) BindWorkerInstanceDevices(
 	state := cloneFileWorkerInstanceEpochState(store.state)
 	changed := false
 	deviceEpochs := make(map[string]int64, len(bindings))
+	originalByBDF := make(map[string]string, len(state.Devices))
+	for gpuUUID, device := range state.Devices {
+		originalByBDF[device.PCIBDF] = gpuUUID
+	}
+	updates := make(map[string]fileWorkerInstanceDeviceEpoch, len(bindings))
+	displaced := make(map[string]struct{})
 	for _, binding := range bindings {
 		device, exists := state.Devices[binding.GPUUUID]
 		switch {
-		case !exists:
-			device = fileWorkerInstanceDeviceEpoch{
-				PCIBDF: binding.PCIBDF, AttestationDigest: binding.AttestationDigest, Epoch: 1,
-			}
-			changed = true
-		case device.PCIBDF != binding.PCIBDF || device.AttestationDigest != binding.AttestationDigest:
+		case exists && (device.PCIBDF != binding.PCIBDF ||
+			device.AttestationDigest != binding.AttestationDigest):
 			if device.Epoch == math.MaxInt64 {
 				return WorkerInstanceEpochSnapshot{}, errors.New("WorkerInstance Device epoch is exhausted")
 			}
@@ -222,9 +224,41 @@ func (store *FileWorkerInstanceEpochStore) BindWorkerInstanceDevices(
 			device.AttestationDigest = binding.AttestationDigest
 			device.Epoch++
 			changed = true
+		case !exists:
+			predecessorUUID, replacesSlot := originalByBDF[binding.PCIBDF]
+			if replacesSlot {
+				predecessor := state.Devices[predecessorUUID]
+				if predecessor.Epoch == math.MaxInt64 {
+					return WorkerInstanceEpochSnapshot{}, errors.New("WorkerInstance Device epoch is exhausted")
+				}
+				device = fileWorkerInstanceDeviceEpoch{
+					PCIBDF: binding.PCIBDF, AttestationDigest: binding.AttestationDigest,
+					Epoch: predecessor.Epoch + 1,
+				}
+			} else {
+				device = fileWorkerInstanceDeviceEpoch{
+					PCIBDF: binding.PCIBDF, AttestationDigest: binding.AttestationDigest, Epoch: 1,
+				}
+			}
+			changed = true
 		}
-		state.Devices[binding.GPUUUID] = device
+		if predecessorUUID, occupied := originalByBDF[binding.PCIBDF]; occupied && predecessorUUID != binding.GPUUUID {
+			if _, remainsInSet := seenGPU[predecessorUUID]; !remainsInSet {
+				displaced[predecessorUUID] = struct{}{}
+			}
+		}
+		updates[binding.GPUUUID] = device
 		deviceEpochs[binding.GPUUUID] = device.Epoch
+	}
+	for gpuUUID := range displaced {
+		delete(state.Devices, gpuUUID)
+		changed = true
+	}
+	for gpuUUID, device := range updates {
+		state.Devices[gpuUUID] = device
+	}
+	if !validFileWorkerInstanceEpochState(state) {
+		return WorkerInstanceEpochSnapshot{}, errors.New("WorkerInstance Device epoch state transition is invalid")
 	}
 	if changed {
 		if err := store.persist(state); err != nil {
