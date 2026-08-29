@@ -211,7 +211,8 @@ CREATE TABLE execution_graph_stages (
     stage_definition_revision_id uuid NOT NULL REFERENCES stage_definition_revisions(id),
     required boolean NOT NULL,
     max_fan_out integer NOT NULL CHECK (max_fan_out BETWEEN 1 AND 64),
-    PRIMARY KEY (execution_graph_revision_id, stage_key)
+    PRIMARY KEY (execution_graph_revision_id, stage_key),
+    UNIQUE (execution_graph_revision_id, stage_key, stage_definition_revision_id)
 );
 
 CREATE TABLE execution_graph_edges (
@@ -260,22 +261,40 @@ CREATE TABLE execution_graph_outputs (
 );
 
 ALTER TABLE execution_profile_revisions
-    ADD COLUMN execution_graph_revision_id uuid REFERENCES execution_graph_revisions(id);
+    ALTER COLUMN worker_pool_id DROP NOT NULL,
+    ADD COLUMN execution_graph_revision_id uuid REFERENCES execution_graph_revisions(id),
+    ADD CONSTRAINT execution_profile_revisions_authority_shape CHECK (
+        (worker_pool_id IS NOT NULL AND execution_graph_revision_id IS NULL)
+        OR (worker_pool_id IS NULL AND execution_graph_revision_id IS NOT NULL)
+    ),
+    ADD CONSTRAINT execution_profile_revisions_graph_identity
+        UNIQUE (id, execution_graph_revision_id);
 
 CREATE TABLE execution_profile_stage_options (
-    execution_profile_revision_id uuid NOT NULL REFERENCES execution_profile_revisions(id),
+    execution_profile_revision_id uuid NOT NULL,
     execution_graph_revision_id uuid NOT NULL REFERENCES execution_graph_revisions(id),
     stage_key text NOT NULL,
-    stage_profile_revision_id uuid NOT NULL REFERENCES stage_profile_revisions(id),
+    stage_definition_revision_id uuid NOT NULL,
+    stage_profile_revision_id uuid NOT NULL,
     preference integer NOT NULL DEFAULT 0,
     eligibility_metadata jsonb NOT NULL CHECK (jsonb_typeof(eligibility_metadata) = 'object'),
     PRIMARY KEY (execution_profile_revision_id, stage_key, stage_profile_revision_id),
-    FOREIGN KEY (execution_graph_revision_id, stage_key)
-        REFERENCES execution_graph_stages(execution_graph_revision_id, stage_key)
+    CONSTRAINT execution_profile_stage_options_profile_graph
+        FOREIGN KEY (execution_profile_revision_id, execution_graph_revision_id)
+        REFERENCES execution_profile_revisions(id, execution_graph_revision_id),
+    CONSTRAINT execution_profile_stage_options_graph_definition
+        FOREIGN KEY (
+            execution_graph_revision_id, stage_key, stage_definition_revision_id
+        ) REFERENCES execution_graph_stages(
+            execution_graph_revision_id, stage_key, stage_definition_revision_id
+        ),
+    CONSTRAINT execution_profile_stage_options_profile_definition
+        FOREIGN KEY (stage_profile_revision_id, stage_definition_revision_id)
+        REFERENCES stage_profile_revisions(id, stage_definition_revision_id)
 );
 
 CREATE TABLE execution_profile_connector_options (
-    execution_profile_revision_id uuid NOT NULL REFERENCES execution_profile_revisions(id),
+    execution_profile_revision_id uuid NOT NULL,
     execution_graph_revision_id uuid NOT NULL REFERENCES execution_graph_revisions(id),
     execution_graph_edge_id uuid NOT NULL,
     connector_revision_id uuid NOT NULL REFERENCES connector_revisions(id),
@@ -284,6 +303,9 @@ CREATE TABLE execution_profile_connector_options (
     PRIMARY KEY (
         execution_profile_revision_id, execution_graph_edge_id, connector_revision_id
     ),
+    CONSTRAINT execution_profile_connector_options_profile_graph
+        FOREIGN KEY (execution_profile_revision_id, execution_graph_revision_id)
+        REFERENCES execution_profile_revisions(id, execution_graph_revision_id),
     FOREIGN KEY (execution_graph_edge_id, execution_graph_revision_id)
         REFERENCES execution_graph_edges(id, execution_graph_revision_id)
 );
@@ -401,14 +423,27 @@ AS $$
 DECLARE
     v_old_state public.catalog_state;
     v_new_state public.catalog_state;
+    v_old_graph_state public.catalog_state;
+    v_new_graph_state public.catalog_state;
 BEGIN
     IF TG_OP <> 'INSERT' THEN
         SELECT state INTO v_old_state FROM public.execution_profile_revisions
         WHERE id = OLD.execution_profile_revision_id;
+        SELECT state INTO v_old_graph_state FROM public.execution_graph_revisions
+        WHERE id = OLD.execution_graph_revision_id;
     END IF;
     IF TG_OP <> 'DELETE' THEN
         SELECT state INTO v_new_state FROM public.execution_profile_revisions
         WHERE id = NEW.execution_profile_revision_id;
+        SELECT state INTO v_new_graph_state FROM public.execution_graph_revisions
+        WHERE id = NEW.execution_graph_revision_id;
+    END IF;
+    IF v_old_graph_state IN ('ACTIVE', 'DRAINING', 'RETIRED')
+       OR v_new_graph_state IN ('ACTIVE', 'DRAINING', 'RETIRED') THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'active_execution_graph_is_immutable',
+            MESSAGE = TG_TABLE_NAME || ' cannot mutate activated graph options';
     END IF;
     IF v_old_state IN ('ACTIVE', 'DRAINING', 'RETIRED')
        OR v_new_state IN ('ACTIVE', 'DRAINING', 'RETIRED') THEN
@@ -445,6 +480,168 @@ $$;
 REVOKE ALL ON FUNCTION vela_require_execution_graph_activation() FROM PUBLIC;
 ALTER FUNCTION vela_require_execution_graph_activation() OWNER TO vela_catalog_promotion_owner;
 
+CREATE FUNCTION vela_guard_execution_graph_definition() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+BEGIN
+    IF (to_jsonb(NEW) - 'state' - 'topological_order' - 'content_digest')
+       IS DISTINCT FROM
+       (to_jsonb(OLD) - 'state' - 'topological_order' - 'content_digest') THEN
+        RAISE EXCEPTION 'immutable revision definition fields cannot be changed on %', TG_TABLE_NAME;
+    END IF;
+    RETURN NEW;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_guard_execution_graph_definition() FROM PUBLIC;
+ALTER FUNCTION vela_guard_execution_graph_definition() OWNER TO vela_catalog_promotion_owner;
+
+CREATE FUNCTION vela_guard_active_execution_graph_dependency() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_in_use boolean := false;
+BEGIN
+    IF OLD.state NOT IN ('CERTIFIED', 'CANARY', 'ACTIVE')
+       OR NEW.state IN ('CERTIFIED', 'CANARY', 'ACTIVE') THEN
+        RETURN NEW;
+    END IF;
+
+    CASE TG_TABLE_NAME
+        WHEN 'stage_interface_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                WHERE graph.state = 'ACTIVE'
+                  AND (
+                      EXISTS (
+                          SELECT 1 FROM public.execution_graph_inputs AS input
+                          WHERE input.execution_graph_revision_id = graph.id
+                            AND input.interface_revision_id = OLD.id
+                      )
+                      OR EXISTS (
+                          SELECT 1 FROM public.execution_graph_outputs AS output
+                          WHERE output.execution_graph_revision_id = graph.id
+                            AND output.interface_revision_id = OLD.id
+                      )
+                      OR EXISTS (
+                          SELECT 1
+                          FROM public.execution_graph_stages AS stage
+                          JOIN public.stage_definition_revisions AS definition
+                            ON definition.id = stage.stage_definition_revision_id
+                          CROSS JOIN LATERAL jsonb_each_text(
+                              definition.input_ports || definition.output_ports
+                          ) AS port(name, interface_id)
+                          WHERE stage.execution_graph_revision_id = graph.id
+                            AND port.interface_id = OLD.id::text
+                      )
+                      OR EXISTS (
+                          SELECT 1
+                          FROM public.execution_profile_connector_options AS connector_option
+                          JOIN public.connector_revisions AS connector
+                            ON connector.id = connector_option.connector_revision_id
+                          WHERE connector_option.execution_graph_revision_id = graph.id
+                            AND (
+                                connector.source_interface_revision_id = OLD.id
+                                OR connector.destination_interface_revision_id = OLD.id
+                            )
+                      )
+                  )
+            ) INTO v_in_use;
+        WHEN 'stage_definition_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                JOIN public.execution_graph_stages AS stage
+                  ON stage.execution_graph_revision_id = graph.id
+                WHERE graph.state = 'ACTIVE'
+                  AND stage.stage_definition_revision_id = OLD.id
+            ) INTO v_in_use;
+        WHEN 'stage_profile_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                JOIN public.execution_profile_stage_options AS stage_option
+                  ON stage_option.execution_graph_revision_id = graph.id
+                WHERE graph.state = 'ACTIVE'
+                  AND stage_option.stage_profile_revision_id = OLD.id
+            ) INTO v_in_use;
+        WHEN 'worker_profile_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                JOIN public.execution_profile_stage_options AS stage_option
+                  ON stage_option.execution_graph_revision_id = graph.id
+                JOIN public.stage_profile_revisions AS stage_profile
+                  ON stage_profile.id = stage_option.stage_profile_revision_id
+                WHERE graph.state = 'ACTIVE'
+                  AND stage_profile.worker_profile_revision_id = OLD.id
+            ) INTO v_in_use;
+        WHEN 'stage_result_equivalence_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                JOIN public.execution_profile_stage_options AS stage_option
+                  ON stage_option.execution_graph_revision_id = graph.id
+                JOIN public.stage_profile_revisions AS stage_profile
+                  ON stage_profile.id = stage_option.stage_profile_revision_id
+                WHERE graph.state = 'ACTIVE'
+                  AND stage_profile.result_equivalence_revision_id = OLD.id
+            ) INTO v_in_use;
+        WHEN 'stage_cache_policy_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                JOIN public.execution_graph_stages AS stage
+                  ON stage.execution_graph_revision_id = graph.id
+                JOIN public.stage_definition_revisions AS definition
+                  ON definition.id = stage.stage_definition_revision_id
+                WHERE graph.state = 'ACTIVE'
+                  AND definition.cache_policy_revision_id = OLD.id
+            ) INTO v_in_use;
+        WHEN 'checkpoint_policy_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                JOIN public.execution_graph_stages AS stage
+                  ON stage.execution_graph_revision_id = graph.id
+                JOIN public.stage_definition_revisions AS definition
+                  ON definition.id = stage.stage_definition_revision_id
+                WHERE graph.state = 'ACTIVE'
+                  AND definition.checkpoint_policy_revision_id = OLD.id
+            ) INTO v_in_use;
+        WHEN 'connector_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                JOIN public.execution_profile_connector_options AS connector_option
+                  ON connector_option.execution_graph_revision_id = graph.id
+                WHERE graph.state = 'ACTIVE'
+                  AND connector_option.connector_revision_id = OLD.id
+            ) INTO v_in_use;
+        WHEN 'execution_profile_revisions' THEN
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.execution_graph_revisions AS graph
+                WHERE graph.id = OLD.execution_graph_revision_id
+                  AND graph.state = 'ACTIVE'
+            ) INTO v_in_use;
+    END CASE;
+
+    IF v_in_use THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'active_execution_graph_dependency_in_use',
+            MESSAGE = TG_TABLE_NAME || ' is required by an ACTIVE ExecutionGraphRevision';
+    END IF;
+    RETURN NEW;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_guard_active_execution_graph_dependency() FROM PUBLIC;
+ALTER FUNCTION vela_guard_active_execution_graph_dependency()
+    OWNER TO vela_catalog_promotion_owner;
+
 CREATE TRIGGER stage_interface_revision_definition_immutable
 BEFORE UPDATE ON stage_interface_revisions
 FOR EACH ROW EXECUTE FUNCTION vela_reject_revision_definition_mutation('state');
@@ -480,7 +677,7 @@ BEFORE UPDATE ON connector_revisions
 FOR EACH ROW EXECUTE FUNCTION vela_reject_revision_definition_mutation('state');
 CREATE TRIGGER execution_graph_definition_immutable
 BEFORE UPDATE ON execution_graph_revisions
-FOR EACH ROW EXECUTE FUNCTION vela_reject_revision_definition_mutation('state', 'topological_order');
+FOR EACH ROW EXECUTE FUNCTION vela_guard_execution_graph_definition();
 
 CREATE TRIGGER a_stage_interface_revision_lifecycle
 BEFORE UPDATE OR DELETE ON stage_interface_revisions
@@ -518,6 +715,33 @@ FOR EACH ROW EXECUTE FUNCTION vela_guard_stage_catalog_revision();
 CREATE TRIGGER a_execution_graph_lifecycle
 BEFORE UPDATE OR DELETE ON execution_graph_revisions
 FOR EACH ROW EXECUTE FUNCTION vela_guard_stage_catalog_revision();
+CREATE TRIGGER z_stage_interface_active_graph_dependency
+BEFORE UPDATE OF state ON stage_interface_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
+CREATE TRIGGER z_stage_result_equivalence_active_graph_dependency
+BEFORE UPDATE OF state ON stage_result_equivalence_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
+CREATE TRIGGER z_worker_profile_active_graph_dependency
+BEFORE UPDATE OF state ON worker_profile_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
+CREATE TRIGGER z_stage_cache_policy_active_graph_dependency
+BEFORE UPDATE OF state ON stage_cache_policy_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
+CREATE TRIGGER z_checkpoint_policy_active_graph_dependency
+BEFORE UPDATE OF state ON checkpoint_policy_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
+CREATE TRIGGER z_stage_definition_active_graph_dependency
+BEFORE UPDATE OF state ON stage_definition_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
+CREATE TRIGGER z_stage_profile_active_graph_dependency
+BEFORE UPDATE OF state ON stage_profile_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
+CREATE TRIGGER z_connector_active_graph_dependency
+BEFORE UPDATE OF state ON connector_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
+CREATE TRIGGER z_execution_profile_active_graph_dependency
+BEFORE UPDATE OF state ON execution_profile_revisions
+FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_graph_dependency();
 CREATE TRIGGER z_execution_graph_activation_required
 BEFORE UPDATE OF state ON execution_graph_revisions
 FOR EACH ROW EXECUTE FUNCTION vela_require_execution_graph_activation();
@@ -553,6 +777,92 @@ CREATE TRIGGER execution_profile_connector_options_active_guard
 BEFORE INSERT OR UPDATE OR DELETE ON execution_profile_connector_options
 FOR EACH ROW EXECUTE FUNCTION vela_guard_active_execution_profile_member();
 
+CREATE FUNCTION vela_execution_graph_content_digest(
+    p_execution_graph_revision_id uuid
+) RETURNS bytea
+LANGUAGE sql
+STABLE
+SET search_path = pg_catalog, public
+AS $$
+    SELECT sha256(convert_to(jsonb_build_object(
+        'graph', jsonb_build_object(
+            'id', graph.id,
+            'model_revision_id', graph.model_revision_id,
+            'stable_id', graph.stable_id,
+            'revision', graph.revision,
+            'schema_version', graph.schema_version,
+            'final_output_contract', graph.final_output_contract,
+            'public_phase_map', graph.public_phase_map
+        ),
+        'stages', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                'stage_key', stage.stage_key,
+                'stage_definition_revision_id', stage.stage_definition_revision_id,
+                'required', stage.required,
+                'max_fan_out', stage.max_fan_out
+            ) ORDER BY stage.stage_key)
+            FROM public.execution_graph_stages AS stage
+            WHERE stage.execution_graph_revision_id = graph.id
+        ), '[]'::jsonb),
+        'edges', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                'id', edge.id,
+                'source_stage_key', edge.source_stage_key,
+                'source_port', edge.source_port,
+                'destination_stage_key', edge.destination_stage_key,
+                'destination_port', edge.destination_port,
+                'buffer_class', edge.buffer_class
+            ) ORDER BY edge.source_stage_key, edge.source_port,
+                       edge.destination_stage_key, edge.destination_port, edge.id)
+            FROM public.execution_graph_edges AS edge
+            WHERE edge.execution_graph_revision_id = graph.id
+        ), '[]'::jsonb),
+        'inputs', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                'input_key', input.input_key,
+                'interface_revision_id', input.interface_revision_id,
+                'destination_stage_key', input.destination_stage_key,
+                'destination_port', input.destination_port
+            ) ORDER BY input.input_key)
+            FROM public.execution_graph_inputs AS input
+            WHERE input.execution_graph_revision_id = graph.id
+        ), '[]'::jsonb),
+        'outputs', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                'output_key', output.output_key,
+                'interface_revision_id', output.interface_revision_id,
+                'source_stage_key', output.source_stage_key,
+                'source_port', output.source_port,
+                'required', output.required
+            ) ORDER BY output.output_key)
+            FROM public.execution_graph_outputs AS output
+            WHERE output.execution_graph_revision_id = graph.id
+        ), '[]'::jsonb)
+    )::text, 'UTF8'))
+    FROM public.execution_graph_revisions AS graph
+    WHERE graph.id = p_execution_graph_revision_id
+$$;
+REVOKE ALL ON FUNCTION vela_execution_graph_content_digest(uuid) FROM PUBLIC;
+ALTER FUNCTION vela_execution_graph_content_digest(uuid)
+    OWNER TO vela_catalog_promotion_owner;
+
+CREATE FUNCTION vela_private.lock_execution_profiles_for_stage_activation()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $$
+BEGIN
+    LOCK TABLE public.execution_profile_revisions IN SHARE MODE;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_private.lock_execution_profiles_for_stage_activation()
+    FROM PUBLIC;
+ALTER FUNCTION vela_private.lock_execution_profiles_for_stage_activation()
+    OWNER TO vela_internal;
+GRANT EXECUTE ON FUNCTION vela_private.lock_execution_profiles_for_stage_activation()
+    TO vela_catalog_promotion_owner;
+
 CREATE FUNCTION vela_activate_execution_graph(
     p_execution_graph_revision_id uuid,
     p_expected_content_digest bytea
@@ -566,7 +876,29 @@ DECLARE
     v_stage_count integer;
     v_next_stage text;
     v_order text[] := ARRAY[]::text[];
+    v_computed_content_digest bytea;
 BEGIN
+    PERFORM vela_private.lock_execution_profiles_for_stage_activation();
+    LOCK TABLE
+        public.stage_interface_revisions,
+        public.stage_result_equivalence_revisions,
+        public.input_canonicalization_revisions,
+        public.worker_profile_revisions,
+        public.stage_runtime_model_revisions,
+        public.stage_cache_policy_revisions,
+        public.checkpoint_policy_revisions,
+        public.cost_model_revisions,
+        public.stage_definition_revisions,
+        public.stage_profile_revisions,
+        public.connector_revisions,
+        public.execution_graph_stages,
+        public.execution_graph_edges,
+        public.execution_graph_inputs,
+        public.execution_graph_outputs,
+        public.execution_profile_stage_options,
+        public.execution_profile_connector_options
+    IN SHARE MODE;
+
     SELECT graph.* INTO v_graph
     FROM public.execution_graph_revisions AS graph
     WHERE graph.id = p_execution_graph_revision_id
@@ -577,8 +909,12 @@ BEGIN
             CONSTRAINT = 'execution_graph_revision_not_found',
             MESSAGE = 'ExecutionGraphRevision does not exist';
     END IF;
-    IF octet_length(p_expected_content_digest) <> 32
-       OR v_graph.content_digest <> p_expected_content_digest THEN
+    SELECT public.vela_execution_graph_content_digest(p_execution_graph_revision_id)
+    INTO v_computed_content_digest;
+    IF p_expected_content_digest IS NULL
+       OR octet_length(p_expected_content_digest) <> 32
+       OR v_graph.content_digest IS DISTINCT FROM p_expected_content_digest
+       OR v_graph.content_digest IS DISTINCT FROM v_computed_content_digest THEN
         RAISE EXCEPTION USING
             ERRCODE = '22000',
             CONSTRAINT = 'execution_graph_content_digest_mismatch',
@@ -885,6 +1221,76 @@ BEGIN
     END IF;
 
     IF NOT EXISTS (
+        SELECT 1
+        FROM public.execution_profile_revisions AS execution_profile
+        WHERE execution_profile.execution_graph_revision_id = p_execution_graph_revision_id
+          AND execution_profile.state IN ('CERTIFIED', 'CANARY', 'ACTIVE')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM public.execution_graph_stages AS stage
+              WHERE stage.execution_graph_revision_id = p_execution_graph_revision_id
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM public.execution_profile_stage_options AS stage_option
+                    JOIN public.stage_profile_revisions AS stage_profile
+                      ON stage_profile.id = stage_option.stage_profile_revision_id
+                     AND stage_profile.stage_definition_revision_id =
+                         stage_option.stage_definition_revision_id
+                    JOIN public.worker_profile_revisions AS worker_profile
+                      ON worker_profile.id = stage_profile.worker_profile_revision_id
+                    JOIN public.stage_result_equivalence_revisions AS equivalence
+                      ON equivalence.id = stage_profile.result_equivalence_revision_id
+                    WHERE stage_option.execution_profile_revision_id = execution_profile.id
+                      AND stage_option.execution_graph_revision_id =
+                          p_execution_graph_revision_id
+                      AND stage_option.stage_key = stage.stage_key
+                      AND stage_option.stage_definition_revision_id =
+                          stage.stage_definition_revision_id
+                      AND stage_profile.state IN ('CERTIFIED', 'CANARY', 'ACTIVE')
+                      AND worker_profile.state IN ('CERTIFIED', 'CANARY', 'ACTIVE')
+                      AND equivalence.state IN ('CERTIFIED', 'CANARY', 'ACTIVE')
+                      AND worker_profile.device_count > 0
+                )
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM public.execution_graph_edges AS edge
+              JOIN public.execution_graph_stages AS source_stage
+                ON source_stage.execution_graph_revision_id = edge.execution_graph_revision_id
+               AND source_stage.stage_key = edge.source_stage_key
+              JOIN public.stage_definition_revisions AS source_definition
+                ON source_definition.id = source_stage.stage_definition_revision_id
+              JOIN public.execution_graph_stages AS destination_stage
+                ON destination_stage.execution_graph_revision_id = edge.execution_graph_revision_id
+               AND destination_stage.stage_key = edge.destination_stage_key
+              JOIN public.stage_definition_revisions AS destination_definition
+                ON destination_definition.id = destination_stage.stage_definition_revision_id
+              WHERE edge.execution_graph_revision_id = p_execution_graph_revision_id
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM public.execution_profile_connector_options AS connector_option
+                    JOIN public.connector_revisions AS connector
+                      ON connector.id = connector_option.connector_revision_id
+                    WHERE connector_option.execution_profile_revision_id = execution_profile.id
+                      AND connector_option.execution_graph_revision_id =
+                          p_execution_graph_revision_id
+                      AND connector_option.execution_graph_edge_id = edge.id
+                      AND connector.state IN ('CERTIFIED', 'CANARY', 'ACTIVE')
+                      AND connector.durable_fallback
+                      AND connector.source_interface_revision_id =
+                          (source_definition.output_ports ->> edge.source_port)::uuid
+                      AND connector.destination_interface_revision_id =
+                          (destination_definition.input_ports ->> edge.destination_port)::uuid
+                )
+          )
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'execution_graph_profile_options_incomplete',
+            MESSAGE = 'ExecutionGraph has no complete certified ExecutionProfile option set';
+    END IF;
+
+    IF NOT EXISTS (
         SELECT 1 FROM public.execution_graph_outputs AS output
         WHERE output.execution_graph_revision_id = p_execution_graph_revision_id
           AND output.required
@@ -963,9 +1369,30 @@ GRANT SELECT ON stage_interface_revisions, stage_result_equivalence_revisions,
 
 -- +goose Down
 -- +goose StatementBegin
+LOCK TABLE public.execution_profile_revisions IN ACCESS EXCLUSIVE MODE;
+LOCK TABLE
+    public.stage_interface_revisions,
+    public.stage_result_equivalence_revisions,
+    public.input_canonicalization_revisions,
+    public.worker_profile_revisions,
+    public.stage_runtime_model_revisions,
+    public.stage_cache_policy_revisions,
+    public.checkpoint_policy_revisions,
+    public.cost_model_revisions,
+    public.stage_definition_revisions,
+    public.stage_profile_revisions,
+    public.connector_revisions,
+    public.execution_graph_revisions,
+    public.execution_graph_stages,
+    public.execution_graph_edges,
+    public.execution_graph_inputs,
+    public.execution_graph_outputs,
+    public.execution_profile_stage_options,
+    public.execution_profile_connector_options
+IN ACCESS EXCLUSIVE MODE;
+
 DO $$
 BEGIN
-    LOCK TABLE execution_graph_revisions IN ACCESS EXCLUSIVE MODE;
     IF EXISTS (SELECT 1 FROM execution_graph_revisions)
        OR EXISTS (SELECT 1 FROM stage_interface_revisions)
        OR EXISTS (SELECT 1 FROM stage_definition_revisions)
@@ -1000,6 +1427,8 @@ REVOKE EXECUTE ON FUNCTION vela_activate_execution_graph(uuid, bytea)
 REVOKE USAGE ON SCHEMA public FROM vela_stage_catalog_activation;
 
 DROP FUNCTION vela_activate_execution_graph(uuid, bytea);
+DROP FUNCTION vela_private.lock_execution_profiles_for_stage_activation();
+DROP FUNCTION vela_execution_graph_content_digest(uuid);
 DROP TRIGGER execution_profile_connector_options_active_guard
     ON execution_profile_connector_options;
 DROP TRIGGER execution_profile_stage_options_active_guard
@@ -1014,6 +1443,16 @@ DROP TRIGGER execution_graph_stages_truncate_guard ON execution_graph_stages;
 DROP TRIGGER execution_graph_stages_active_guard ON execution_graph_stages;
 
 DROP TRIGGER z_execution_graph_activation_required ON execution_graph_revisions;
+DROP TRIGGER z_execution_profile_active_graph_dependency ON execution_profile_revisions;
+DROP TRIGGER z_connector_active_graph_dependency ON connector_revisions;
+DROP TRIGGER z_stage_profile_active_graph_dependency ON stage_profile_revisions;
+DROP TRIGGER z_stage_definition_active_graph_dependency ON stage_definition_revisions;
+DROP TRIGGER z_checkpoint_policy_active_graph_dependency ON checkpoint_policy_revisions;
+DROP TRIGGER z_stage_cache_policy_active_graph_dependency ON stage_cache_policy_revisions;
+DROP TRIGGER z_worker_profile_active_graph_dependency ON worker_profile_revisions;
+DROP TRIGGER z_stage_result_equivalence_active_graph_dependency
+    ON stage_result_equivalence_revisions;
+DROP TRIGGER z_stage_interface_active_graph_dependency ON stage_interface_revisions;
 DROP TRIGGER a_execution_graph_lifecycle ON execution_graph_revisions;
 DROP TRIGGER a_connector_lifecycle ON connector_revisions;
 DROP TRIGGER a_stage_profile_lifecycle ON stage_profile_revisions;
@@ -1041,6 +1480,8 @@ DROP TRIGGER stage_result_equivalence_definition_immutable ON stage_result_equiv
 DROP TRIGGER stage_interface_revision_definition_immutable ON stage_interface_revisions;
 
 DROP FUNCTION vela_require_execution_graph_activation();
+DROP FUNCTION vela_guard_execution_graph_definition();
+DROP FUNCTION vela_guard_active_execution_graph_dependency();
 DROP FUNCTION vela_guard_active_execution_profile_member();
 DROP FUNCTION vela_guard_active_execution_graph_truncate();
 DROP FUNCTION vela_guard_active_execution_graph_member();
@@ -1048,7 +1489,11 @@ DROP FUNCTION vela_guard_stage_catalog_revision();
 
 DROP TABLE execution_profile_connector_options;
 DROP TABLE execution_profile_stage_options;
-ALTER TABLE execution_profile_revisions DROP COLUMN execution_graph_revision_id;
+ALTER TABLE execution_profile_revisions
+    DROP CONSTRAINT execution_profile_revisions_graph_identity,
+    DROP CONSTRAINT execution_profile_revisions_authority_shape,
+    DROP COLUMN execution_graph_revision_id,
+    ALTER COLUMN worker_pool_id SET NOT NULL;
 DROP TABLE execution_graph_outputs;
 DROP TABLE execution_graph_inputs;
 DROP TABLE execution_graph_edges;

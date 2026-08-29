@@ -168,6 +168,130 @@ func TestValidateExecutionGraphRejectsDuplicateStageKey(t *testing.T) {
 	}
 }
 
+func TestValidateExecutionGraphRejectsDuplicateLogicalIdentity(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*executiongraph.GraphRevision)
+	}{
+		{
+			name: "interface",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				graph.Interfaces = append(graph.Interfaces, graph.Interfaces[0])
+			},
+		},
+		{
+			name: "input_port",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				graph.Stages[0].Inputs = append(graph.Stages[0].Inputs, graph.Stages[0].Inputs[0])
+			},
+		},
+		{
+			name: "output_port",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				graph.Stages[0].Outputs = append(graph.Stages[0].Outputs, graph.Stages[0].Outputs[0])
+			},
+		},
+		{
+			name: "profile_option",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				graph.Stages[0].Profiles = append(graph.Stages[0].Profiles, graph.Stages[0].Profiles[0])
+			},
+		},
+		{
+			name: "edge",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				graph.Edges = append(graph.Edges, graph.Edges[0])
+			},
+		},
+		{
+			name: "connector_option",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				graph.Edges[0].Connectors = append(graph.Edges[0].Connectors, graph.Edges[0].Connectors[0])
+			},
+		},
+		{
+			name: "graph_input_key",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				graph.Inputs = append(graph.Inputs, graph.Inputs[0])
+			},
+		},
+		{
+			name: "graph_input_destination",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				duplicate := graph.Inputs[0]
+				duplicate.Key = "second-request"
+				graph.Inputs = append(graph.Inputs, duplicate)
+			},
+		},
+		{
+			name: "graph_output_key",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				graph.Outputs = append(graph.Outputs, graph.Outputs[0])
+			},
+		},
+		{
+			name: "graph_output_source",
+			mutate: func(graph *executiongraph.GraphRevision) {
+				duplicate := graph.Outputs[0]
+				duplicate.Key = "second-video"
+				graph.Outputs = append(graph.Outputs, duplicate)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			graph := h3Graph()
+			test.mutate(&graph)
+			_, err := executiongraph.ValidateExecutionGraph(graph)
+			var validationError *executiongraph.ValidationError
+			if !errors.As(err, &validationError) {
+				t.Fatalf("duplicate identity error = %v, want ValidationError", err)
+			}
+			if validationError.Reason != executiongraph.ReasonDuplicateLogicalIdentity {
+				t.Fatalf("duplicate identity reason = %q, want %q", validationError.Reason, executiongraph.ReasonDuplicateLogicalIdentity)
+			}
+		})
+	}
+}
+
+func TestValidateExecutionGraphReturnsBoundedReasonForMalformedInput(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*executiongraph.GraphRevision)
+	}{
+		{name: "unsupported_schema", mutate: func(graph *executiongraph.GraphRevision) { graph.SchemaVersion++ }},
+		{name: "missing_graph_identity", mutate: func(graph *executiongraph.GraphRevision) { graph.StableID = "" }},
+		{name: "missing_stages", mutate: func(graph *executiongraph.GraphRevision) { graph.Stages = nil }},
+		{name: "incomplete_interface", mutate: func(graph *executiongraph.GraphRevision) { graph.Interfaces[0].MaxBytes = 0 }},
+		{name: "missing_stage_key", mutate: func(graph *executiongraph.GraphRevision) { graph.Stages[0].Key = "" }},
+		{name: "input_unknown_stage", mutate: func(graph *executiongraph.GraphRevision) { graph.Inputs[0].DestinationStage = "missing" }},
+		{name: "input_unknown_port", mutate: func(graph *executiongraph.GraphRevision) { graph.Inputs[0].DestinationPort = "missing" }},
+		{name: "output_unknown_stage", mutate: func(graph *executiongraph.GraphRevision) { graph.Outputs[0].SourceStage = "missing" }},
+		{name: "output_unknown_port", mutate: func(graph *executiongraph.GraphRevision) { graph.Outputs[0].SourcePort = "missing" }},
+		{name: "edge_unknown_source_stage", mutate: func(graph *executiongraph.GraphRevision) { graph.Edges[0].SourceStage = "missing" }},
+		{name: "edge_unknown_destination_stage", mutate: func(graph *executiongraph.GraphRevision) { graph.Edges[0].DestinationStage = "missing" }},
+		{name: "edge_unknown_port", mutate: func(graph *executiongraph.GraphRevision) { graph.Edges[0].SourcePort = "missing" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			graph := h3Graph()
+			test.mutate(&graph)
+			_, err := executiongraph.ValidateExecutionGraph(graph)
+			var validationError *executiongraph.ValidationError
+			if !errors.As(err, &validationError) {
+				t.Fatalf("malformed input error = %v, want ValidationError", err)
+			}
+			if validationError.Reason != executiongraph.ReasonInvalidGraph {
+				t.Fatalf("malformed input reason = %q, want %q", validationError.Reason, executiongraph.ReasonInvalidGraph)
+			}
+		})
+	}
+}
+
 func TestValidateExecutionGraphRejectsMissingRequiredOutputPath(t *testing.T) {
 	t.Parallel()
 

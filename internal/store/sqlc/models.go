@@ -3630,7 +3630,7 @@ type ExecutionProfileConnectorOption struct {
 type ExecutionProfileRevision struct {
 	ID                       uuid.UUID          `db:"id" json:"id"`
 	ModelRevisionID          uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
-	WorkerPoolID             uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerPoolID             uuid.NullUUID      `db:"worker_pool_id" json:"worker_pool_id"`
 	StableID                 string             `db:"stable_id" json:"stable_id"`
 	Revision                 int32              `db:"revision" json:"revision"`
 	State                    CatalogState       `db:"state" json:"state"`
@@ -3642,6 +3642,7 @@ type ExecutionProfileStageOption struct {
 	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
 	ExecutionGraphRevisionID   uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
 	StageKey                   string    `db:"stage_key" json:"stage_key"`
+	StageDefinitionRevisionID  uuid.UUID `db:"stage_definition_revision_id" json:"stage_definition_revision_id"`
 	StageProfileRevisionID     uuid.UUID `db:"stage_profile_revision_id" json:"stage_profile_revision_id"`
 	Preference                 int32     `db:"preference" json:"preference"`
 	EligibilityMetadata        []byte    `db:"eligibility_metadata" json:"eligibility_metadata"`

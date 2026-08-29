@@ -163,7 +163,9 @@ func (s *Service) applyAttemptFailure(
 				OutputSpecID:               authority.OutputSpecID,
 				ProfileCertificationID:     authority.ProfileCertificationID,
 				ExecutionProfileRevisionID: authority.ExecutionProfileRevisionID,
-				WorkerPoolID:               authority.WorkerPoolID,
+				WorkerPoolID: uuid.NullUUID{
+					UUID: authority.WorkerPoolID, Valid: true,
+				},
 			},
 		)
 		if err != nil {

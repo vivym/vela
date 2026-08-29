@@ -851,11 +851,11 @@ FOR SHARE OF epr, pc
 `
 
 type ValidateProfileForAssignmentParams struct {
-	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
-	ModelRevisionID            uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
-	WorkerPoolID               uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
-	GenerationPresetRevisionID uuid.UUID `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
-	OutputSpecID               uuid.UUID `db:"output_spec_id" json:"output_spec_id"`
+	ExecutionProfileRevisionID uuid.UUID     `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ModelRevisionID            uuid.UUID     `db:"model_revision_id" json:"model_revision_id"`
+	WorkerPoolID               uuid.NullUUID `db:"worker_pool_id" json:"worker_pool_id"`
+	GenerationPresetRevisionID uuid.UUID     `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	OutputSpecID               uuid.UUID     `db:"output_spec_id" json:"output_spec_id"`
 }
 
 func (q *Queries) ValidateProfileForAssignment(ctx context.Context, arg ValidateProfileForAssignmentParams) (uuid.UUID, error) {

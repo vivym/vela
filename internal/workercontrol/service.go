@@ -413,7 +413,9 @@ func (s *Service) Acquire(
 	if _, err := queries.ValidateProfileForAssignment(ctx, store.ValidateProfileForAssignmentParams{
 		ExecutionProfileRevisionID: candidate.ExecutionProfileRevisionID,
 		ModelRevisionID:            job.ModelRevisionID,
-		WorkerPoolID:               workerRow.WorkerPoolID,
+		WorkerPoolID: uuid.NullUUID{
+			UUID: workerRow.WorkerPoolID, Valid: true,
+		},
 		GenerationPresetRevisionID: job.GenerationPresetRevisionID,
 		OutputSpecID:               job.OutputSpecID,
 	}); errors.Is(err, pgx.ErrNoRows) {

@@ -18,8 +18,10 @@ type ReasonCode string
 
 const (
 	ReasonCycle                    ReasonCode = "CYCLE"
+	ReasonInvalidGraph             ReasonCode = "INVALID_GRAPH"
 	ReasonSelfEdge                 ReasonCode = "SELF_EDGE"
 	ReasonDuplicateStageKey        ReasonCode = "DUPLICATE_STAGE_KEY"
+	ReasonDuplicateLogicalIdentity ReasonCode = "DUPLICATE_LOGICAL_IDENTITY"
 	ReasonMissingRequiredInput     ReasonCode = "MISSING_REQUIRED_INPUT"
 	ReasonMissingRequiredOutput    ReasonCode = "MISSING_REQUIRED_OUTPUT"
 	ReasonIncompatibleInterface    ReasonCode = "INCOMPATIBLE_INTERFACE"
@@ -117,19 +119,19 @@ type ValidatedGraph struct {
 
 func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 	if graph.SchemaVersion != SchemaVersionV1 {
-		return ValidatedGraph{}, fmt.Errorf("unsupported execution graph schema version %d", graph.SchemaVersion)
+		return ValidatedGraph{}, invalidGraph("unsupported execution graph schema version %d", graph.SchemaVersion)
 	}
 	if graph.StableID == "" || graph.Revision <= 0 || len(graph.Stages) == 0 {
-		return ValidatedGraph{}, fmt.Errorf("execution graph identity and stages are required")
+		return ValidatedGraph{}, invalidGraph("execution graph identity and stages are required")
 	}
 
 	interfaces := make(map[string]struct{}, len(graph.Interfaces))
 	for _, contract := range graph.Interfaces {
 		if contract.ID == "" || contract.PayloadKind == "" || contract.Serialization == "" || contract.MaxBytes <= 0 {
-			return ValidatedGraph{}, fmt.Errorf("execution graph interface contract is incomplete")
+			return ValidatedGraph{}, invalidGraph("execution graph interface contract is incomplete")
 		}
 		if _, exists := interfaces[contract.ID]; exists {
-			return ValidatedGraph{}, fmt.Errorf("duplicate interface revision %q", contract.ID)
+			return ValidatedGraph{}, duplicateLogicalIdentity("interface revision %q appears more than once", contract.ID)
 		}
 		interfaces[contract.ID] = struct{}{}
 	}
@@ -140,7 +142,7 @@ func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 	outgoingCount := make(map[string]int, len(graph.Stages))
 	for _, stage := range graph.Stages {
 		if stage.Key == "" {
-			return ValidatedGraph{}, fmt.Errorf("execution graph stage key is required")
+			return ValidatedGraph{}, invalidGraph("execution graph stage key is required")
 		}
 		if stage.MaxFanOut <= 0 || stage.MaxFanOut > MaxFanOutV1 {
 			return ValidatedGraph{}, &ValidationError{
@@ -153,11 +155,41 @@ func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 				),
 			}
 		}
+		inputPorts := make(map[string]struct{}, len(stage.Inputs))
+		for _, port := range stage.Inputs {
+			if _, exists := inputPorts[port.Name]; exists {
+				return ValidatedGraph{}, duplicateLogicalIdentity(
+					"input port %q on stage %q appears more than once",
+					port.Name,
+					stage.Key,
+				)
+			}
+			inputPorts[port.Name] = struct{}{}
+		}
+		outputPorts := make(map[string]struct{}, len(stage.Outputs))
+		for _, port := range stage.Outputs {
+			if _, exists := outputPorts[port.Name]; exists {
+				return ValidatedGraph{}, duplicateLogicalIdentity(
+					"output port %q on stage %q appears more than once",
+					port.Name,
+					stage.Key,
+				)
+			}
+			outputPorts[port.Name] = struct{}{}
+		}
 		certifiedProfile := false
+		profiles := make(map[string]struct{}, len(stage.Profiles))
 		for _, profile := range stage.Profiles {
+			if _, exists := profiles[profile.ID]; exists {
+				return ValidatedGraph{}, duplicateLogicalIdentity(
+					"profile option %q on stage %q appears more than once",
+					profile.ID,
+					stage.Key,
+				)
+			}
+			profiles[profile.ID] = struct{}{}
 			if profile.Certified && profile.ID != "" && profile.DeviceCount > 0 {
 				certifiedProfile = true
-				break
 			}
 		}
 		if !certifiedProfile {
@@ -188,14 +220,29 @@ func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 		stages[stage.Key] = stage
 		indegree[stage.Key] = 0
 	}
+	inputKeys := make(map[string]struct{}, len(graph.Inputs))
+	inputDestinations := make(map[string]struct{}, len(graph.Inputs))
 	for _, input := range graph.Inputs {
+		if _, exists := inputKeys[input.Key]; exists {
+			return ValidatedGraph{}, duplicateLogicalIdentity("graph input key %q appears more than once", input.Key)
+		}
+		inputKeys[input.Key] = struct{}{}
+		destination := portIdentity(input.DestinationStage, input.DestinationPort)
+		if _, exists := inputDestinations[destination]; exists {
+			return ValidatedGraph{}, duplicateLogicalIdentity(
+				"graph input destination %s.%s appears more than once",
+				input.DestinationStage,
+				input.DestinationPort,
+			)
+		}
+		inputDestinations[destination] = struct{}{}
 		stage, exists := stages[input.DestinationStage]
 		if !exists {
-			return ValidatedGraph{}, fmt.Errorf("graph input %q references unknown stage %q", input.Key, input.DestinationStage)
+			return ValidatedGraph{}, invalidGraph("graph input %q references unknown stage %q", input.Key, input.DestinationStage)
 		}
 		port, exists := findPort(stage.Inputs, input.DestinationPort)
 		if !exists {
-			return ValidatedGraph{}, fmt.Errorf("graph input %q references unknown port %q", input.Key, input.DestinationPort)
+			return ValidatedGraph{}, invalidGraph("graph input %q references unknown port %q", input.Key, input.DestinationPort)
 		}
 		if port.InterfaceID != input.InterfaceID {
 			return ValidatedGraph{}, &ValidationError{
@@ -211,14 +258,29 @@ func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 			}
 		}
 	}
+	outputKeys := make(map[string]struct{}, len(graph.Outputs))
+	outputSources := make(map[string]struct{}, len(graph.Outputs))
 	for _, output := range graph.Outputs {
+		if _, exists := outputKeys[output.Key]; exists {
+			return ValidatedGraph{}, duplicateLogicalIdentity("graph output key %q appears more than once", output.Key)
+		}
+		outputKeys[output.Key] = struct{}{}
+		source := portIdentity(output.SourceStage, output.SourcePort)
+		if _, exists := outputSources[source]; exists {
+			return ValidatedGraph{}, duplicateLogicalIdentity(
+				"graph output source %s.%s appears more than once",
+				output.SourceStage,
+				output.SourcePort,
+			)
+		}
+		outputSources[source] = struct{}{}
 		stage, exists := stages[output.SourceStage]
 		if !exists {
-			return ValidatedGraph{}, fmt.Errorf("graph output %q references unknown stage %q", output.Key, output.SourceStage)
+			return ValidatedGraph{}, invalidGraph("graph output %q references unknown stage %q", output.Key, output.SourceStage)
 		}
 		port, exists := findPort(stage.Outputs, output.SourcePort)
 		if !exists {
-			return ValidatedGraph{}, fmt.Errorf("graph output %q references unknown port %q", output.Key, output.SourcePort)
+			return ValidatedGraph{}, invalidGraph("graph output %q references unknown port %q", output.Key, output.SourcePort)
 		}
 		if port.InterfaceID != output.InterfaceID {
 			return ValidatedGraph{}, &ValidationError{
@@ -234,7 +296,20 @@ func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 			}
 		}
 	}
+	edges := make(map[string]struct{}, len(graph.Edges))
 	for _, edge := range graph.Edges {
+		edgeIdentity := portIdentity(edge.SourceStage, edge.SourcePort) + "\x00" +
+			portIdentity(edge.DestinationStage, edge.DestinationPort)
+		if _, exists := edges[edgeIdentity]; exists {
+			return ValidatedGraph{}, duplicateLogicalIdentity(
+				"edge %s.%s -> %s.%s appears more than once",
+				edge.SourceStage,
+				edge.SourcePort,
+				edge.DestinationStage,
+				edge.DestinationPort,
+			)
+		}
+		edges[edgeIdentity] = struct{}{}
 		if edge.SourceStage == edge.DestinationStage {
 			return ValidatedGraph{}, &ValidationError{
 				Reason: ReasonSelfEdge,
@@ -243,16 +318,16 @@ func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 		}
 		sourceStage, exists := stages[edge.SourceStage]
 		if !exists {
-			return ValidatedGraph{}, fmt.Errorf("edge source stage %q does not exist", edge.SourceStage)
+			return ValidatedGraph{}, invalidGraph("edge source stage %q does not exist", edge.SourceStage)
 		}
 		destinationStage, exists := stages[edge.DestinationStage]
 		if !exists {
-			return ValidatedGraph{}, fmt.Errorf("edge destination stage %q does not exist", edge.DestinationStage)
+			return ValidatedGraph{}, invalidGraph("edge destination stage %q does not exist", edge.DestinationStage)
 		}
 		sourcePort, sourceExists := findPort(sourceStage.Outputs, edge.SourcePort)
 		destinationPort, destinationExists := findPort(destinationStage.Inputs, edge.DestinationPort)
 		if !sourceExists || !destinationExists {
-			return ValidatedGraph{}, fmt.Errorf(
+			return ValidatedGraph{}, invalidGraph(
 				"edge %s.%s -> %s.%s references an unknown port",
 				edge.SourceStage,
 				edge.SourcePort,
@@ -275,10 +350,21 @@ func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 			}
 		}
 		certifiedFallback := false
+		connectors := make(map[string]struct{}, len(edge.Connectors))
 		for _, connector := range edge.Connectors {
+			if _, exists := connectors[connector.ID]; exists {
+				return ValidatedGraph{}, duplicateLogicalIdentity(
+					"connector option %q on edge %s.%s -> %s.%s appears more than once",
+					connector.ID,
+					edge.SourceStage,
+					edge.SourcePort,
+					edge.DestinationStage,
+					edge.DestinationPort,
+				)
+			}
+			connectors[connector.ID] = struct{}{}
 			if connector.ID != "" && connector.Certified && connector.DurableFallback {
 				certifiedFallback = true
-				break
 			}
 		}
 		if !certifiedFallback {
@@ -385,6 +471,20 @@ func ValidateExecutionGraph(graph GraphRevision) (ValidatedGraph, error) {
 		TopologicalOrder: order,
 		ContentDigest:    hex.EncodeToString(digest[:]),
 	}, nil
+}
+
+func duplicateLogicalIdentity(format string, values ...any) *ValidationError {
+	return &ValidationError{
+		Reason: ReasonDuplicateLogicalIdentity,
+		Detail: fmt.Sprintf(format, values...),
+	}
+}
+
+func invalidGraph(format string, values ...any) *ValidationError {
+	return &ValidationError{
+		Reason: ReasonInvalidGraph,
+		Detail: fmt.Sprintf(format, values...),
+	}
 }
 
 func canonicalGraph(graph GraphRevision) GraphRevision {

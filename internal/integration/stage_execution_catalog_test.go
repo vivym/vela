@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/pressly/goose/v3"
 	veladb "github.com/vivym/vela/internal/database"
@@ -31,15 +32,21 @@ func TestStageExecutionCatalogActivationAndImmutability(t *testing.T) {
 		"vela_stage_catalog_activation_login",
 		"vela-stage-catalog-activation-password",
 	)
+	var graphDigest []byte
+	if err := database.Admin.QueryRow(`
+		SELECT content_digest FROM execution_graph_revisions WHERE id = $1
+	`, stageGraphID).Scan(&graphDigest); err != nil {
+		t.Fatalf("read H3 graph digest: %v", err)
+	}
 
 	var state string
 	var topologicalOrder string
 	err := activation.QueryRow(context.Background(), `
 		SELECT state::text, topological_order::text
 		FROM vela_activate_execution_graph(
-			$1, decode(repeat('91', 32), 'hex')
+			$1, $2
 		)
-	`, stageGraphID).Scan(&state, &topologicalOrder)
+	`, stageGraphID, graphDigest).Scan(&state, &topologicalOrder)
 	assertPostgresConstraint(t, err, "execution_graph_connector_fallback_missing")
 	if _, err := activation.Exec(context.Background(), `
 		UPDATE connector_revisions SET state = 'CERTIFIED'
@@ -57,9 +64,9 @@ func TestStageExecutionCatalogActivationAndImmutability(t *testing.T) {
 	if err := activation.QueryRow(context.Background(), `
 		SELECT state::text, topological_order::text
 		FROM vela_activate_execution_graph(
-			$1, decode(repeat('91', 32), 'hex')
+			$1, $2
 		)
-	`, stageGraphID).Scan(&state, &topologicalOrder); err != nil {
+	`, stageGraphID, graphDigest).Scan(&state, &topologicalOrder); err != nil {
 		t.Fatalf("activate H3 execution graph: %v", err)
 	}
 	if state != "ACTIVE" || topologicalOrder != "{encoder,dit,vae}" {
@@ -83,13 +90,418 @@ func TestStageExecutionCatalogActivationAndImmutability(t *testing.T) {
 	_, err = database.Admin.Exec(`
 		INSERT INTO execution_profile_stage_options (
 			execution_profile_revision_id, execution_graph_revision_id, stage_key,
-			stage_profile_revision_id, preference, eligibility_metadata
+			stage_definition_revision_id, stage_profile_revision_id,
+			preference, eligibility_metadata
 		) VALUES (
 			'00000000-0000-0000-0000-000000000014', $1, 'encoder',
+			'49000000-0000-0000-0000-000000000030',
 			'49000000-0000-0000-0000-000000000040', 0, '{}'
 		)
 	`, stageGraphID)
-	assertPostgresConstraint(t, err, "active_execution_profile_is_immutable")
+	assertPostgresConstraint(t, err, "active_execution_graph_is_immutable")
+}
+
+func TestStageExecutionCatalogExecutionProfileAuthorityShape(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+
+	if _, err := database.Admin.Exec(`
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			stable_id, revision, state
+		) VALUES (
+			'49000000-0000-0000-0000-000000000071',
+			'00000000-0000-0000-0000-000000000010', NULL, $1,
+			'h3-stage-graph-alt', 1, 'CERTIFIED'
+		)
+	`, stageGraphID); err != nil {
+		t.Fatalf("insert graph-only ExecutionProfile: %v", err)
+	}
+
+	for _, test := range []struct {
+		name       string
+		workerPool any
+		graph      any
+	}{
+		{name: "neither authority", workerPool: nil, graph: nil},
+		{
+			name:       "mixed authority",
+			workerPool: "00000000-0000-0000-0000-000000000005",
+			graph:      stageGraphID,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := database.Admin.Exec(`
+				INSERT INTO execution_profile_revisions (
+					id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+					stable_id, revision, state
+				) VALUES (
+					gen_random_uuid(), '00000000-0000-0000-0000-000000000010', $1, $2,
+					$3, 1, 'CERTIFIED'
+				)
+			`, test.workerPool, test.graph, "invalid-"+test.name)
+			assertPostgresConstraint(t, err, "execution_profile_revisions_authority_shape")
+		})
+	}
+}
+
+func TestStageExecutionCatalogProfileOptionsCannotCrossGraphs(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+
+	if _, err := database.Admin.Exec(`
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			stable_id, revision, state
+		) VALUES (
+			'49000000-0000-0000-0000-000000000072',
+			'00000000-0000-0000-0000-000000000010', NULL, $1,
+			'h3-stage-graph-cross-check', 1, 'CERTIFIED'
+		)
+	`, stageGraphID); err != nil {
+		t.Fatalf("seed cross-graph ExecutionProfile: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO execution_graph_revisions (
+			id, model_revision_id, stable_id, revision, schema_version, state,
+			final_output_contract, public_phase_map, content_digest
+		) VALUES (
+			'49000000-0000-0000-0000-000000000002',
+			'00000000-0000-0000-0000-000000000010', 'minimax-h3-other-graph', 1, 1,
+			'CERTIFIED', '{"output_key":"latent"}', '{}', decode(repeat('92', 32), 'hex')
+		);
+		INSERT INTO execution_graph_stages (
+			execution_graph_revision_id, stage_key, stage_definition_revision_id,
+			required, max_fan_out
+		) VALUES
+			('49000000-0000-0000-0000-000000000002', 'encoder-copy',
+			 '49000000-0000-0000-0000-000000000030', true, 1),
+			('49000000-0000-0000-0000-000000000002', 'dit-copy',
+			 '49000000-0000-0000-0000-000000000031', true, 1);
+		INSERT INTO execution_graph_edges (
+			id, execution_graph_revision_id, source_stage_key, source_port,
+			destination_stage_key, destination_port, buffer_class
+		) VALUES (
+			'49000000-0000-0000-0000-000000000064',
+			'49000000-0000-0000-0000-000000000002',
+			'encoder-copy', 'conditioning', 'dit-copy', 'conditioning', 'L2_DURABLE'
+		)
+	`); err != nil {
+		t.Fatalf("seed cross-graph option fixture: %v", err)
+	}
+
+	t.Run("StageProfile option", func(t *testing.T) {
+		_, err := database.Admin.Exec(`
+			INSERT INTO execution_profile_stage_options (
+				execution_profile_revision_id, execution_graph_revision_id, stage_key,
+				stage_definition_revision_id, stage_profile_revision_id,
+				preference, eligibility_metadata
+			) VALUES (
+				'49000000-0000-0000-0000-000000000072',
+				'49000000-0000-0000-0000-000000000002', 'encoder-copy',
+				'49000000-0000-0000-0000-000000000030',
+				'49000000-0000-0000-0000-000000000040', 0, '{}'
+			)
+		`)
+		assertPostgresConstraint(t, err, "execution_profile_stage_options_profile_graph")
+	})
+
+	t.Run("Connector option", func(t *testing.T) {
+		_, err := database.Admin.Exec(`
+			INSERT INTO execution_profile_connector_options (
+				execution_profile_revision_id, execution_graph_revision_id,
+				execution_graph_edge_id, connector_revision_id,
+				required_topology_policy, preference
+			) VALUES (
+				'49000000-0000-0000-0000-000000000072',
+				'49000000-0000-0000-0000-000000000002',
+				'49000000-0000-0000-0000-000000000064',
+				'49000000-0000-0000-0000-000000000050', '{}', 0
+			)
+		`)
+		assertPostgresConstraint(t, err, "execution_profile_connector_options_profile_graph")
+	})
+}
+
+func TestStageExecutionCatalogStageOptionDefinitionMustMatch(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+
+	if _, err := database.Admin.Exec(`
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			stable_id, revision, state
+		) VALUES (
+			'49000000-0000-0000-0000-000000000073',
+			'00000000-0000-0000-0000-000000000010', NULL, $1,
+			'h3-stage-definition-check', 1, 'CERTIFIED'
+		)
+	`, stageGraphID); err != nil {
+		t.Fatalf("insert graph-only ExecutionProfile: %v", err)
+	}
+
+	_, err := database.Admin.Exec(`
+		INSERT INTO execution_profile_stage_options (
+			execution_profile_revision_id, execution_graph_revision_id, stage_key,
+			stage_definition_revision_id, stage_profile_revision_id,
+			preference, eligibility_metadata
+		) VALUES (
+			'49000000-0000-0000-0000-000000000073', $1, 'encoder',
+			'49000000-0000-0000-0000-000000000030',
+			'49000000-0000-0000-0000-000000000041', 0, '{}'
+		)
+	`, stageGraphID)
+	assertPostgresConstraint(t, err, "execution_profile_stage_options_profile_definition")
+}
+
+func TestStageExecutionCatalogActivationRequiresCompleteProfileOptions(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate string
+	}{
+		{
+			name: "certified ExecutionProfile",
+			mutate: `UPDATE execution_profile_revisions
+				SET state = 'REGISTERED'
+				WHERE id = '49000000-0000-0000-0000-000000000070'`,
+		},
+		{
+			name: "every Stage option",
+			mutate: `DELETE FROM execution_profile_stage_options
+				WHERE execution_profile_revision_id = '49000000-0000-0000-0000-000000000070'
+				  AND stage_key = 'dit'`,
+		},
+		{
+			name: "every Connector option",
+			mutate: `DELETE FROM execution_profile_connector_options
+				WHERE execution_profile_revision_id = '49000000-0000-0000-0000-000000000070'
+				  AND execution_graph_edge_id = '49000000-0000-0000-0000-000000000060'`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			database := newPostgres(t)
+			applyFoundation(t, database.Admin)
+			seedAdmissionFixture(t, database.Admin)
+			seedStageExecutionCatalog(t, database.Admin)
+			if _, err := database.Admin.Exec(`
+				UPDATE connector_revisions SET state = 'CERTIFIED';
+			`); err != nil {
+				t.Fatalf("certify Connector fixtures: %v", err)
+			}
+			if _, err := database.Admin.Exec(test.mutate); err != nil {
+				t.Fatalf("remove complete ExecutionProfile option: %v", err)
+			}
+			_, err := database.Admin.Exec(`
+				SELECT * FROM vela_activate_execution_graph(
+					$1, (SELECT content_digest FROM execution_graph_revisions WHERE id = $1)
+				)
+			`, stageGraphID)
+			assertPostgresConstraint(t, err, "execution_graph_profile_options_incomplete")
+		})
+	}
+}
+
+func TestStageExecutionCatalogActivationRejectsStaleStoredDigest(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	if _, err := database.Admin.Exec(`
+		UPDATE connector_revisions SET state = 'CERTIFIED'
+	`); err != nil {
+		t.Fatalf("certify Connector fixtures: %v", err)
+	}
+
+	var storedDigest []byte
+	if err := database.Admin.QueryRow(`
+		SELECT content_digest FROM execution_graph_revisions WHERE id = $1
+	`, stageGraphID).Scan(&storedDigest); err != nil {
+		t.Fatalf("read stored graph digest: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		UPDATE execution_graph_stages
+		SET max_fan_out = 2
+		WHERE execution_graph_revision_id = $1 AND stage_key = 'encoder'
+	`, stageGraphID); err != nil {
+		t.Fatalf("mutate graph after stored digest: %v", err)
+	}
+
+	_, err := database.Admin.Exec(`
+		SELECT * FROM vela_activate_execution_graph($1, $2)
+	`, stageGraphID, storedDigest)
+	assertPostgresConstraint(t, err, "execution_graph_content_digest_mismatch")
+}
+
+func TestStageExecutionCatalogActiveGraphDependenciesCannotBeDemoted(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	if _, err := database.Admin.Exec(`
+		UPDATE connector_revisions SET state = 'CERTIFIED'
+	`); err != nil {
+		t.Fatalf("certify Connector fixtures: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		SELECT * FROM vela_activate_execution_graph(
+			$1, (SELECT content_digest FROM execution_graph_revisions WHERE id = $1)
+		)
+	`, stageGraphID); err != nil {
+		t.Fatalf("activate H3 graph: %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate string
+	}{
+		{name: "StageInterface", mutate: `UPDATE stage_interface_revisions SET state = 'REGISTERED' WHERE id = '` + latentInterface + `'`},
+		{name: "StageDefinition", mutate: `UPDATE stage_definition_revisions SET state = 'REGISTERED' WHERE id = '49000000-0000-0000-0000-000000000031'`},
+		{name: "StageProfile", mutate: `UPDATE stage_profile_revisions SET state = 'REGISTERED' WHERE id = '49000000-0000-0000-0000-000000000041'`},
+		{name: "WorkerProfile", mutate: `UPDATE worker_profile_revisions SET state = 'REGISTERED' WHERE id = '49000000-0000-0000-0000-000000000022'`},
+		{name: "ResultEquivalence", mutate: `UPDATE stage_result_equivalence_revisions SET state = 'REGISTERED' WHERE id = '49000000-0000-0000-0000-000000000024'`},
+		{name: "CachePolicy", mutate: `UPDATE stage_cache_policy_revisions SET state = 'REGISTERED' WHERE id = '49000000-0000-0000-0000-000000000020'`},
+		{name: "CheckpointPolicy", mutate: `UPDATE checkpoint_policy_revisions SET state = 'REGISTERED' WHERE id = '49000000-0000-0000-0000-000000000021'`},
+		{name: "Connector", mutate: `UPDATE connector_revisions SET state = 'REGISTERED' WHERE id = '49000000-0000-0000-0000-000000000051'`},
+		{name: "ExecutionProfile", mutate: `UPDATE execution_profile_revisions SET state = 'REGISTERED' WHERE id = '49000000-0000-0000-0000-000000000070'`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tx, err := database.Admin.Begin()
+			if err != nil {
+				t.Fatalf("begin dependency demotion: %v", err)
+			}
+			defer func() { _ = tx.Rollback() }()
+			_, err = tx.Exec(test.mutate)
+			assertPostgresConstraint(t, err, "active_execution_graph_dependency_in_use")
+		})
+	}
+}
+
+func TestStageExecutionCatalogActiveGraphOptionsAreImmutable(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	if _, err := database.Admin.Exec(`
+		UPDATE connector_revisions SET state = 'CERTIFIED'
+	`); err != nil {
+		t.Fatalf("certify Connector fixtures: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		SELECT * FROM vela_activate_execution_graph(
+			$1, (SELECT content_digest FROM execution_graph_revisions WHERE id = $1)
+		)
+	`, stageGraphID); err != nil {
+		t.Fatalf("activate H3 graph: %v", err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate string
+	}{
+		{
+			name: "StageProfile option",
+			mutate: `DELETE FROM execution_profile_stage_options
+				WHERE execution_profile_revision_id = '49000000-0000-0000-0000-000000000070'
+				  AND stage_key = 'dit'`,
+		},
+		{
+			name: "Connector option",
+			mutate: `DELETE FROM execution_profile_connector_options
+				WHERE execution_profile_revision_id = '49000000-0000-0000-0000-000000000070'
+				  AND execution_graph_edge_id = '49000000-0000-0000-0000-000000000060'`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := database.Admin.Exec(test.mutate)
+			assertPostgresConstraint(t, err, "active_execution_graph_is_immutable")
+		})
+	}
+}
+
+func TestStageExecutionCatalogActivationWaitsForConcurrentCatalogMutation(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	if _, err := database.Admin.Exec(`
+		UPDATE connector_revisions SET state = 'CERTIFIED'
+	`); err != nil {
+		t.Fatalf("certify Connector fixtures: %v", err)
+	}
+	var graphDigest []byte
+	if err := database.Admin.QueryRow(`
+		SELECT content_digest FROM execution_graph_revisions WHERE id = $1
+	`, stageGraphID).Scan(&graphDigest); err != nil {
+		t.Fatalf("read H3 graph digest: %v", err)
+	}
+
+	mutation, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin Catalog mutation: %v", err)
+	}
+	defer func() { _ = mutation.Rollback() }()
+	if _, err := mutation.Exec(`
+		UPDATE execution_graph_stages
+		SET max_fan_out = 2
+		WHERE execution_graph_revision_id = $1 AND stage_key = 'encoder'
+	`, stageGraphID); err != nil {
+		t.Fatalf("hold concurrent graph mutation: %v", err)
+	}
+
+	activationConnection, err := database.Admin.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("reserve activation connection: %v", err)
+	}
+	defer activationConnection.Close()
+	var activationPID int
+	if err := activationConnection.QueryRowContext(
+		context.Background(), `SELECT pg_backend_pid()`,
+	).Scan(&activationPID); err != nil {
+		t.Fatalf("read activation backend PID: %v", err)
+	}
+	activationResult := make(chan error, 1)
+	go func() {
+		_, activationErr := activationConnection.ExecContext(context.Background(), `
+			SELECT * FROM vela_activate_execution_graph($1, $2)
+		`, stageGraphID, graphDigest)
+		activationResult <- activationErr
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	observedLockWait := false
+	for time.Now().Before(deadline) {
+		select {
+		case activationErr := <-activationResult:
+			t.Fatalf("activation completed before concurrent mutation ended: %v", activationErr)
+		default:
+		}
+		var waitEventType sql.NullString
+		if err := database.Admin.QueryRow(`
+			SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1
+		`, activationPID).Scan(&waitEventType); err != nil {
+			t.Fatalf("inspect activation lock wait: %v", err)
+		}
+		if waitEventType.Valid && waitEventType.String == "Lock" {
+			observedLockWait = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !observedLockWait {
+		t.Fatal("activation did not wait on a Catalog lock")
+	}
+	if err := mutation.Rollback(); err != nil {
+		t.Fatalf("release concurrent graph mutation: %v", err)
+	}
+	if err := <-activationResult; err != nil {
+		t.Fatalf("activate after concurrent mutation rolled back: %v", err)
+	}
 }
 
 func TestStageExecutionCatalogActivationRejectsMalformedGraphs(t *testing.T) {
@@ -191,15 +603,29 @@ func TestStageExecutionCatalogActivationRejectsMalformedGraphs(t *testing.T) {
 		{
 			name:       "cycle",
 			constraint: "execution_graph_cycle",
-			mutate: `INSERT INTO execution_graph_edges (
-				id, execution_graph_revision_id, source_stage_key, source_port,
-				destination_stage_key, destination_port, buffer_class
-			) VALUES (
-				'49000000-0000-0000-0000-000000000063',
-				'49000000-0000-0000-0000-000000000001',
-				'vae', 'cycle', 'encoder', 'cycle', 'L2_DURABLE'
-			)`,
-			restore: `DELETE FROM execution_graph_edges
+			mutate: `
+				INSERT INTO execution_graph_edges (
+					id, execution_graph_revision_id, source_stage_key, source_port,
+					destination_stage_key, destination_port, buffer_class
+				) VALUES (
+					'49000000-0000-0000-0000-000000000063',
+					'49000000-0000-0000-0000-000000000001',
+					'vae', 'cycle', 'encoder', 'cycle', 'L2_DURABLE'
+				);
+				INSERT INTO execution_profile_connector_options (
+					execution_profile_revision_id, execution_graph_revision_id,
+					execution_graph_edge_id, connector_revision_id,
+					required_topology_policy, preference
+				) VALUES (
+					'49000000-0000-0000-0000-000000000070',
+					'49000000-0000-0000-0000-000000000001',
+					'49000000-0000-0000-0000-000000000063',
+					'49000000-0000-0000-0000-000000000052', '{}', 0
+				)`,
+			restore: `
+				DELETE FROM execution_profile_connector_options
+				WHERE execution_graph_edge_id = '49000000-0000-0000-0000-000000000063';
+				DELETE FROM execution_graph_edges
 				WHERE id = '49000000-0000-0000-0000-000000000063'`,
 		},
 	} {
@@ -207,14 +633,28 @@ func TestStageExecutionCatalogActivationRejectsMalformedGraphs(t *testing.T) {
 			if _, err := database.Admin.Exec(test.mutate); err != nil {
 				t.Fatalf("mutate graph fixture: %v", err)
 			}
+			if _, err := database.Admin.Exec(`
+				UPDATE execution_graph_revisions
+				SET content_digest = vela_execution_graph_content_digest(id)
+				WHERE id = $1
+			`, stageGraphID); err != nil {
+				t.Fatalf("seal mutated graph digest: %v", err)
+			}
 			_, err := database.Admin.Exec(`
 				SELECT * FROM vela_activate_execution_graph(
-					$1, decode(repeat('91', 32), 'hex')
+					$1, (SELECT content_digest FROM execution_graph_revisions WHERE id = $1)
 				)
 			`, stageGraphID)
 			assertPostgresConstraint(t, err, test.constraint)
 			if _, err := database.Admin.Exec(test.restore); err != nil {
 				t.Fatalf("restore graph fixture: %v", err)
+			}
+			if _, err := database.Admin.Exec(`
+				UPDATE execution_graph_revisions
+				SET content_digest = vela_execution_graph_content_digest(id)
+				WHERE id = $1
+			`, stageGraphID); err != nil {
+				t.Fatalf("seal restored graph digest: %v", err)
 			}
 		})
 	}
@@ -283,6 +723,50 @@ func TestStageExecutionCatalogMigrationEmptyDownUpAndAuthorityRefusal(t *testing
 			t.Fatalf("Stage Execution Catalog version after refused Down = %d error=%v", version, versionErr)
 		}
 	})
+}
+
+func TestStageExecutionCatalogDownWaitsForConcurrentCatalogInsert(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+
+	mutation, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin concurrent Catalog insert: %v", err)
+	}
+	defer func() { _ = mutation.Rollback() }()
+	if _, err := mutation.Exec(`
+		INSERT INTO stage_interface_revisions (
+			id, stable_id, revision, state, payload_kind, dtype, layout,
+			shape_contract, serialization, max_bytes, digest_algorithm,
+			schema_digest, content_digest
+		) VALUES (
+			'49000000-0000-0000-0000-000000000099', 'concurrent-interface', 1,
+			'REGISTERED', 'tensor', 'bf16', 'test', '{}', 'safetensors', 1024,
+			'sha256', decode(repeat('98', 32), 'hex'), decode(repeat('99', 32), 'hex')
+		)
+	`); err != nil {
+		t.Fatalf("hold concurrent Catalog insert: %v", err)
+	}
+
+	downResult := make(chan error, 1)
+	go func() {
+		downResult <- goose.DownTo(database.Admin, migrations, 33)
+	}()
+	select {
+	case downErr := <-downResult:
+		t.Fatalf("Stage Catalog Down completed before concurrent insert ended: %v", downErr)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if err := mutation.Commit(); err != nil {
+		t.Fatalf("commit concurrent Catalog insert: %v", err)
+	}
+	downErr := <-downResult
+	assertPostgresConstraint(t, downErr, "stage_execution_catalog_rollback_is_unsafe")
+	version, versionErr := goose.GetDBVersion(database.Admin)
+	if versionErr != nil || version != 34 {
+		t.Fatalf("Stage Catalog version after concurrent refused Down = %d error=%v", version, versionErr)
+	}
 }
 
 func seedStageExecutionCatalog(t *testing.T, database *sql.DB) {
@@ -448,6 +932,50 @@ func seedStageExecutionCatalog(t *testing.T, database *sql.DB) {
 			'49000000-0000-0000-0000-000000000001', 'video',
 			'49000000-0000-0000-0000-000000000013', 'vae', 'video', true
 		);
+
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			stable_id, revision, state
+		) VALUES (
+			'49000000-0000-0000-0000-000000000070',
+			'00000000-0000-0000-0000-000000000010', NULL,
+			'49000000-0000-0000-0000-000000000001',
+			'h3-stage-graph', 1, 'CERTIFIED'
+		);
+		INSERT INTO execution_profile_stage_options (
+			execution_profile_revision_id, execution_graph_revision_id, stage_key,
+			stage_definition_revision_id, stage_profile_revision_id,
+			preference, eligibility_metadata
+		) VALUES
+			('49000000-0000-0000-0000-000000000070',
+			 '49000000-0000-0000-0000-000000000001', 'encoder',
+			 '49000000-0000-0000-0000-000000000030',
+			 '49000000-0000-0000-0000-000000000040', 0, '{}'),
+			('49000000-0000-0000-0000-000000000070',
+			 '49000000-0000-0000-0000-000000000001', 'dit',
+			 '49000000-0000-0000-0000-000000000031',
+			 '49000000-0000-0000-0000-000000000041', 0, '{}'),
+			('49000000-0000-0000-0000-000000000070',
+			 '49000000-0000-0000-0000-000000000001', 'vae',
+			 '49000000-0000-0000-0000-000000000032',
+			 '49000000-0000-0000-0000-000000000042', 0, '{}');
+		INSERT INTO execution_profile_connector_options (
+			execution_profile_revision_id, execution_graph_revision_id,
+			execution_graph_edge_id, connector_revision_id,
+			required_topology_policy, preference
+		) VALUES
+			('49000000-0000-0000-0000-000000000070',
+			 '49000000-0000-0000-0000-000000000001',
+			 '49000000-0000-0000-0000-000000000060',
+			 '49000000-0000-0000-0000-000000000050', '{}', 0),
+			('49000000-0000-0000-0000-000000000070',
+			 '49000000-0000-0000-0000-000000000001',
+			 '49000000-0000-0000-0000-000000000061',
+			 '49000000-0000-0000-0000-000000000051', '{}', 0);
+
+		UPDATE execution_graph_revisions
+		SET content_digest = vela_execution_graph_content_digest(id)
+		WHERE id = '49000000-0000-0000-0000-000000000001';
 	`); err != nil {
 		t.Fatalf("seed H3 Stage Execution Catalog: %v", err)
 	}

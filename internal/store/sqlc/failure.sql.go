@@ -311,12 +311,12 @@ SELECT EXISTS (
 `
 
 type HasAlternateActiveProfileCertificationParams struct {
-	ModelRevisionID            uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
-	GenerationPresetRevisionID uuid.UUID `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
-	OutputSpecID               uuid.UUID `db:"output_spec_id" json:"output_spec_id"`
-	ProfileCertificationID     uuid.UUID `db:"profile_certification_id" json:"profile_certification_id"`
-	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
-	WorkerPoolID               uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
+	ModelRevisionID            uuid.UUID     `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID uuid.UUID     `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	OutputSpecID               uuid.UUID     `db:"output_spec_id" json:"output_spec_id"`
+	ProfileCertificationID     uuid.UUID     `db:"profile_certification_id" json:"profile_certification_id"`
+	ExecutionProfileRevisionID uuid.UUID     `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	WorkerPoolID               uuid.NullUUID `db:"worker_pool_id" json:"worker_pool_id"`
 }
 
 func (q *Queries) HasAlternateActiveProfileCertification(ctx context.Context, arg HasAlternateActiveProfileCertificationParams) (bool, error) {
