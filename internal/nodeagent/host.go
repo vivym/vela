@@ -71,11 +71,6 @@ func (ExecCommandRunner) Run(ctx context.Context, plan remediation.Plan, path st
 	if !filepath.IsAbs(cleaned) || cleaned != path {
 		return nil, errors.New("host command path must be an absolute clean path")
 	}
-	executable, err := securefile.OpenExecutable(cleaned)
-	if err != nil {
-		return nil, fmt.Errorf("host command executable is not trusted: %w", err)
-	}
-	defer func() { _ = executable.Close() }()
 	for _, arg := range args {
 		if strings.ContainsRune(arg, '\x00') {
 			return nil, errors.New("host command arguments cannot contain NUL")
@@ -86,14 +81,35 @@ func (ExecCommandRunner) Run(ctx context.Context, plan remediation.Plan, path st
 		return nil, err
 	}
 	commandArgs := append(append([]string(nil), args...), boundArgs...)
+	return runHeldExecutable(ctx, cleaned, commandArgs, maxCommandOutputBytes)
+}
+
+func runHeldExecutable(ctx context.Context, path string, args []string, outputLimit int) ([]byte, error) {
+	if ctx == nil {
+		return nil, errors.New("held executable context is required")
+	}
+	cleaned := filepath.Clean(path)
+	if !filepath.IsAbs(cleaned) || cleaned != path || outputLimit <= 0 {
+		return nil, errors.New("held executable path or output bound is invalid")
+	}
+	for _, arg := range args {
+		if strings.ContainsRune(arg, '\x00') {
+			return nil, errors.New("held executable arguments cannot contain NUL")
+		}
+	}
+	executable, err := securefile.OpenExecutable(cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("held executable is not trusted: %w", err)
+	}
+	defer func() { _ = executable.Close() }()
 	executablePath, cleanup, err := prepareExecutablePath(executable, runtime.GOOS)
 	if err != nil {
 		return nil, err
 	}
-	command := exec.CommandContext(ctx, executablePath, commandArgs...)
+	command := exec.CommandContext(ctx, executablePath, args...)
 	command.Args[0] = cleaned
 	command.ExtraFiles = []*os.File{executable}
-	output := &boundedBuffer{limit: maxCommandOutputBytes}
+	output := &boundedBuffer{limit: outputLimit}
 	command.Stdout = output
 	command.Stderr = output
 	runErr := command.Run()
