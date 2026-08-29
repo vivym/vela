@@ -67,6 +67,41 @@ func TestBuildHostPackagesProducesReleaseBundleInputs(t *testing.T) {
 	assertRunnerWheel(t, filepath.Join(output, "vela_h3_runner-0.1.0-py3-none-any.whl"))
 }
 
+func TestBuildH3MockBackendProducesExactVerifiedContext(t *testing.T) {
+	repository := deploymentRepositoryRoot(t)
+	output := filepath.Join(canonicalTemporaryDirectory(t), "h3-mock-context")
+	command := exec.Command("make", "-s", "build-h3-mock-backend")
+	command.Dir = repository
+	command.Env = append(os.Environ(), "H3_MOCK_BACKEND_CONTEXT="+output)
+	encoded, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build H3 mock backend: %v\n%s", err, encoded)
+	}
+	entries, err := os.ReadDir(output)
+	if err != nil {
+		t.Fatalf("read mock backend context: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "h3-backend" || !entries[0].Type().IsRegular() {
+		t.Fatalf("mock backend context inventory = %v", entries)
+	}
+	backendPath := filepath.Join(output, "h3-backend")
+	content, err := os.ReadFile(backendPath)
+	if err != nil {
+		t.Fatalf("read mock backend: %v", err)
+	}
+	digest := sha256.Sum256(content)
+	if err := releaseartifacts.VerifyH3Backend(output, hex.EncodeToString(digest[:])); err != nil {
+		t.Fatalf("verify mock backend: %v", err)
+	}
+	information, err := os.Stat(backendPath)
+	if err != nil {
+		t.Fatalf("stat mock backend: %v", err)
+	}
+	if information.Mode().Perm() != 0o555 {
+		t.Fatalf("mock backend mode = %04o, want 0555", information.Mode().Perm())
+	}
+}
+
 func TestBuildHostPackagesRejectsSymlinkOutputParent(t *testing.T) {
 	repository := deploymentRepositoryRoot(t)
 	temporary := canonicalTemporaryDirectory(t)
