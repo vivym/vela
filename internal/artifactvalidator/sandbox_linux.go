@@ -272,11 +272,11 @@ func RunSandboxHelper(arguments []string) error {
 		return errors.New("artifact sandbox helper did not enter the isolated user namespace")
 	}
 	input := os.NewFile(uintptr(3), "artifact-input")
-	if input == nil {
-		return errors.New("artifact sandbox input descriptor is missing")
+	if err := validateInheritedSandboxDescriptor(input); err != nil {
+		return fmt.Errorf("artifact sandbox input descriptor is invalid: %w", err)
 	}
 	ffprobe := os.NewFile(uintptr(4), "ffprobe")
-	if err := validateInheritedSandboxExecutable(ffprobe); err != nil {
+	if err := validateInheritedSandboxDescriptor(ffprobe); err != nil {
 		return fmt.Errorf("artifact sandbox ffprobe descriptor is invalid: %w", err)
 	}
 	helper := os.NewFile(uintptr(5), "artifact-validator-helper")
@@ -285,10 +285,6 @@ func RunSandboxHelper(arguments []string) error {
 	}
 	if err := helper.Close(); err != nil {
 		return fmt.Errorf("close Artifact sandbox helper descriptor: %w", err)
-	}
-	inputInfo, err := input.Stat()
-	if err != nil || !inputInfo.Mode().IsRegular() || inputInfo.Size() <= 0 {
-		return errors.New("artifact sandbox input descriptor is invalid")
 	}
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		return fmt.Errorf("make Artifact sandbox mounts private: %w", err)
@@ -347,19 +343,13 @@ func RunSandboxHelper(arguments []string) error {
 	return err
 }
 
-func validateInheritedSandboxExecutable(file *os.File) error {
+func validateInheritedSandboxDescriptor(file *os.File) error {
 	if file == nil {
 		return errors.New("descriptor is missing")
 	}
-	info, err := file.Stat()
+	_, err := unix.FcntlInt(file.Fd(), unix.F_GETFD, 0)
 	if err != nil {
-		return fmt.Errorf("stat descriptor: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("descriptor is not a regular file")
-	}
-	if info.Mode().Perm()&0o022 != 0 || info.Mode().Perm()&0o111 == 0 {
-		return errors.New("descriptor permissions are unsafe")
+		return fmt.Errorf("inspect descriptor: %w", err)
 	}
 	return nil
 }
