@@ -80,10 +80,14 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (ou
 	if err := os.Chmod(sandboxRoot, 0o700); err != nil {
 		return nil, fmt.Errorf("restrict Artifact sandbox root: %w", err)
 	}
+	helperPath := filepath.Join(sandboxRoot, "artifact-validator-helper")
+	if err := stageSandboxExecutable(sandbox.helper, helperPath); err != nil {
+		return nil, fmt.Errorf("stage pinned Artifact sandbox helper: %w", err)
+	}
 
 	command := exec.CommandContext(
 		ctx,
-		"/proc/self/fd/5",
+		helperPath,
 		"--root", sandboxRoot,
 	)
 	command.Dir = "/"
@@ -131,6 +135,38 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (ou
 		return nil, errors.New("sandboxed ffprobe output exceeded configured bounds")
 	}
 	return stdout.Bytes(), nil
+}
+
+func stageSandboxExecutable(source *os.File, destination string) (err error) {
+	info, err := source.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+		return errors.New("pinned sandbox executable is invalid")
+	}
+	staged, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o500)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := staged.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close staged sandbox executable: %w", closeErr))
+		}
+		if err != nil {
+			if removeErr := os.Remove(destination); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				err = errors.Join(err, fmt.Errorf("remove staged sandbox executable: %w", removeErr))
+			}
+		}
+	}()
+	written, err := io.Copy(staged, io.NewSectionReader(source, 0, info.Size()))
+	if err != nil {
+		return err
+	}
+	if written != info.Size() {
+		return errors.New("staged sandbox executable size is incomplete")
+	}
+	if err := staged.Chmod(0o500); err != nil {
+		return err
+	}
+	return staged.Sync()
 }
 
 func openSandboxExecutable(path string, requireStatic bool) (*os.File, error) {

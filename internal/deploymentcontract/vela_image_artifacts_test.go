@@ -381,7 +381,7 @@ func (fixture velaImageArtifactFixture) run(
 	if err := os.WriteFile(filepath.Join(fakeBin, "docker"), []byte(fakeDocker), 0o700); err != nil {
 		t.Fatalf("write fake Docker: %v", err)
 	}
-	command := exec.Command("make", "-s", "build-vela-image-artifacts")
+	command := exec.Command("make", "-s", "--no-print-directory", "build-vela-image-artifacts")
 	command.Dir = fixture.repository
 	command.Env = append(os.Environ(),
 		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),

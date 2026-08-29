@@ -177,11 +177,6 @@ func TestUnixListenerReplacesOnlyStaleEndpoint(t *testing.T) {
 		_ = stale.Close()
 		t.Fatalf("set stale socket mode: %v", err)
 	}
-	staleInfo, err := os.Lstat(socketPath)
-	if err != nil {
-		_ = stale.Close()
-		t.Fatalf("inspect stale socket: %v", err)
-	}
 	if err := stale.Close(); err != nil {
 		t.Fatalf("close stale socket fixture: %v", err)
 	}
@@ -195,9 +190,14 @@ func TestUnixListenerReplacesOnlyStaleEndpoint(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 	current, err := os.Lstat(socketPath)
-	if err != nil || os.SameFile(staleInfo, current) {
+	if err != nil || current.Mode()&os.ModeSocket == 0 {
 		t.Fatalf("stale socket was not replaced: info=%v error=%v", current, err)
 	}
+	connection, err := net.DialTimeout("unix", socketPath, time.Second)
+	if err != nil {
+		t.Fatalf("dial replacement socket: %v", err)
+	}
+	_ = connection.Close()
 }
 
 func TestUnixListenerCloseDoesNotUnlinkReplacementPath(t *testing.T) {

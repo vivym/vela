@@ -770,7 +770,7 @@ func runHostPackageMake(repository, revision, output string) ([]byte, error) {
 func runPrintVelaImageBuild(
 	repository, revision, imagePrefix, backendContext, backendSHA string,
 ) ([]byte, error) {
-	command := exec.Command("make", "-s", "print-vela-image-build")
+	command := exec.Command("make", "-s", "--no-print-directory", "print-vela-image-build")
 	command.Dir = repository
 	command.Env = append(os.Environ(),
 		"RELEASE_REVISION="+revision,

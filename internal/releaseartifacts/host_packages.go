@@ -173,7 +173,6 @@ func buildRunnerWheel(ctx context.Context, sourceRoot, outputDirectory string) e
 		"build",
 		"--wheel",
 		"--no-build-logs",
-		"--no-create-gitignore",
 		"--no-sources",
 		"--out-dir",
 		outputDirectory,
@@ -186,6 +185,9 @@ func buildRunnerWheel(ctx context.Context, sourceRoot, outputDirectory string) e
 	})
 	if encoded, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("build H3 Runner wheel: %w: %s", err, strings.TrimSpace(string(encoded)))
+	}
+	if err := os.Remove(filepath.Join(outputDirectory, ".gitignore")); err != nil {
+		return fmt.Errorf("remove uv build metadata: %w", err)
 	}
 	wheel := filepath.Join(outputDirectory, runnerArtifactName)
 	information, err := os.Stat(wheel)
