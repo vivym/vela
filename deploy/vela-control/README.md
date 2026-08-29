@@ -21,6 +21,19 @@ may not patch only the visibly convenient fields. Rendering this base is not a
 deployment receipt or a Launch Receipt and does not advance any Production Gate
 from `0/9 PASS`.
 
+The Node Agent registry is shared by outbound Remediation dispatch and inbound
+WorkerInstance evidence authorization. The Fleet mTLS client CA establishes
+certificate-chain trust only; `vela-control` additionally requires the exact
+registered Node identity, legacy Worker UUID, and canonical Node Agent SPIFFE
+URI before accepting `ObserveWorkerInstance`. Other Fleet RPCs remain limited
+to the configured Fleet Controller identity. The Fleet client CA file must be
+an explicit bundle of the approved Fleet Controller client issuer and host Node
+Agent client issuer; adding an issuer does not register or authorize any
+certificate by itself. The repository NetworkPolicy currently admits only the
+Fleet Controller Pod selector on port 8444; host Node Agent ingress remains a
+separate environment-specific gate and must not be enabled by broadening that
+selector.
+
 ## Release bundle boundary
 
 Production assembly must include the final `kubectl kustomize` output as the

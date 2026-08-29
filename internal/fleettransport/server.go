@@ -3,12 +3,14 @@ package fleettransport
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
@@ -30,7 +32,24 @@ const (
 	maximumDrainOperations            = 4096
 	maximumDeadline                   = 24 * time.Hour
 	maximumWorkerRegistryPayloadBytes = 1 << 20
+	nodeAgentSPIFFEPrefix             = "spiffe://vela.internal/node-agent/"
+	nodeAgentActorPrefix              = "node-agent/"
 )
+
+type workerInstanceObserverPrincipal struct {
+	ActorIdentity string
+	NodeIdentity  string
+}
+
+type nodeAgentPrincipal struct {
+	SPIFFEIdentity string
+	NodeIdentity   string
+	WorkerID       uuid.UUID
+}
+
+func (principal nodeAgentPrincipal) actorIdentity() string {
+	return nodeAgentActorPrefix + strings.TrimPrefix(principal.SPIFFEIdentity, nodeAgentSPIFFEPrefix)
+}
 
 type workerRegistryService interface {
 	Apply(context.Context, fleet.ApprovedResidencyPlan) (fleet.ActuationPlan, error)
@@ -103,7 +122,8 @@ func (server *Server) ObserveWorkerInstance(
 	ctx context.Context,
 	request *velav1.ObserveWorkerInstanceRequest,
 ) (*velav1.ObserveWorkerInstanceResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
+	principal, err := server.authenticateWorkerInstanceObserver(ctx)
+	if err != nil {
 		return nil, err
 	}
 	registry, ok := server.service.(workerRegistryService)
@@ -114,7 +134,14 @@ func (server *Server) ObserveWorkerInstance(
 	if !decodeWorkerRegistryPayload(request.GetEvidenceJson(), &evidence) {
 		return nil, invalidRequest("WorkerInstance observation")
 	}
-	evidence.ObservedBy = server.actorIdentity
+	if principal.NodeIdentity != "" &&
+		!singleNodeWorkerInstanceEvidenceBelongsToNode(evidence, principal.NodeIdentity) {
+		return nil, status.Error(
+			codes.PermissionDenied,
+			"WorkerInstance evidence does not belong to the authenticated Node Agent",
+		)
+	}
+	evidence.ObservedBy = principal.ActorIdentity
 	decision, err := registry.Observe(ctx, evidence)
 	if err != nil {
 		return nil, mapServiceError("observe WorkerInstance", err)
@@ -218,16 +245,24 @@ func (server *Server) ResolveWorkerIdentity(
 }
 
 type Config struct {
+	SPIFFEIdentity         string
+	ActorIdentity          string
+	NodeAgentRegistrations []NodeAgentRegistration
+}
+
+type NodeAgentRegistration struct {
+	NodeIdentity   string
+	WorkerID       uuid.UUID
 	SPIFFEIdentity string
-	ActorIdentity  string
 }
 
 type Server struct {
 	velav1.UnimplementedFleetMaintenanceServiceServer
-	service        Service
-	spiffeIdentity string
-	actorIdentity  string
-	clock          func() time.Time
+	service             Service
+	spiffeIdentity      string
+	actorIdentity       string
+	nodeAgentPrincipals map[string]nodeAgentPrincipal
+	clock               func() time.Time
 }
 
 func NewServer(service Service, config Config) (*Server, error) {
@@ -240,9 +275,27 @@ func NewServer(service Service, config Config) (*Server, error) {
 	if !validText(config.ActorIdentity, maximumActorBytes) {
 		return nil, errors.New("fleet Controller actor identity is invalid")
 	}
+	nodeAgentPrincipals := make(map[string]nodeAgentPrincipal, len(config.NodeAgentRegistrations))
+	nodeIdentities := make(map[string]struct{}, len(config.NodeAgentRegistrations))
+	for _, registration := range config.NodeAgentRegistrations {
+		principal, ok := parseNodeAgentSPIFFEIdentity(registration.SPIFFEIdentity)
+		if !ok || principal.NodeIdentity != registration.NodeIdentity ||
+			principal.WorkerID != registration.WorkerID {
+			return nil, errors.New("Node Agent registration is invalid")
+		}
+		if _, duplicate := nodeAgentPrincipals[principal.SPIFFEIdentity]; duplicate {
+			return nil, errors.New("Node Agent registration is duplicated")
+		}
+		if _, duplicate := nodeIdentities[principal.NodeIdentity]; duplicate {
+			return nil, errors.New("Node Agent Node identity is duplicated")
+		}
+		nodeAgentPrincipals[principal.SPIFFEIdentity] = principal
+		nodeIdentities[principal.NodeIdentity] = struct{}{}
+	}
 	return &Server{
 		service: service, spiffeIdentity: config.SPIFFEIdentity,
-		actorIdentity: config.ActorIdentity, clock: time.Now,
+		actorIdentity: config.ActorIdentity, nodeAgentPrincipals: nodeAgentPrincipals,
+		clock: time.Now,
 	}, nil
 }
 
@@ -712,12 +765,54 @@ func (server *Server) authenticate(ctx context.Context) error {
 		!validText(server.actorIdentity, maximumActorBytes) {
 		return status.Error(codes.FailedPrecondition, "Fleet maintenance server is not configured")
 	}
-	if ctx == nil {
+	identity, ok := verifiedPeerSPIFFEIdentity(ctx)
+	if !ok || identity != server.spiffeIdentity {
 		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+	}
+	return nil
+}
+
+func (server *Server) authenticateWorkerInstanceObserver(
+	ctx context.Context,
+) (workerInstanceObserverPrincipal, error) {
+	if server == nil || server.service == nil || !validSPIFFEIdentity(server.spiffeIdentity) ||
+		!validText(server.actorIdentity, maximumActorBytes) {
+		return workerInstanceObserverPrincipal{}, status.Error(
+			codes.FailedPrecondition,
+			"Fleet maintenance server is not configured",
+		)
+	}
+	identity, ok := verifiedPeerSPIFFEIdentity(ctx)
+	if !ok {
+		return workerInstanceObserverPrincipal{}, status.Error(
+			codes.Unauthenticated,
+			"verified Fleet Controller or Node Agent mTLS identity is required",
+		)
+	}
+	if identity == server.spiffeIdentity {
+		return workerInstanceObserverPrincipal{ActorIdentity: server.actorIdentity}, nil
+	}
+	nodeAgent, ok := parseNodeAgentSPIFFEIdentity(identity)
+	registered, registeredOK := server.nodeAgentPrincipals[identity]
+	if !ok || !registeredOK || registered != nodeAgent {
+		return workerInstanceObserverPrincipal{}, status.Error(
+			codes.Unauthenticated,
+			"verified Fleet Controller or Node Agent mTLS identity is required",
+		)
+	}
+	return workerInstanceObserverPrincipal{
+		ActorIdentity: nodeAgent.actorIdentity(),
+		NodeIdentity:  nodeAgent.NodeIdentity,
+	}, nil
+}
+
+func verifiedPeerSPIFFEIdentity(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
 	}
 	connectionPeer, ok := peer.FromContext(ctx)
 	if !ok || connectionPeer.AuthInfo == nil {
-		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+		return "", false
 	}
 	var tlsInfo credentials.TLSInfo
 	switch typed := connectionPeer.AuthInfo.(type) {
@@ -725,15 +820,15 @@ func (server *Server) authenticate(ctx context.Context) error {
 		tlsInfo = typed
 	case *credentials.TLSInfo:
 		if typed == nil {
-			return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+			return "", false
 		}
 		tlsInfo = *typed
 	default:
-		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+		return "", false
 	}
 	state := tlsInfo.State
 	if !state.HandshakeComplete || len(state.PeerCertificates) == 0 || len(state.VerifiedChains) == 0 {
-		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+		return "", false
 	}
 	leaf := state.PeerCertificates[0]
 	verifiedLeaf := false
@@ -743,11 +838,80 @@ func (server *Server) authenticate(ctx context.Context) error {
 			break
 		}
 	}
-	if !verifiedLeaf || len(leaf.URIs) != 1 || leaf.URIs[0] == nil ||
-		leaf.URIs[0].String() != server.spiffeIdentity {
-		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+	if !verifiedLeaf || len(leaf.URIs) != 1 || leaf.URIs[0] == nil {
+		return "", false
 	}
-	return nil
+	return leaf.URIs[0].String(), true
+}
+
+func parseNodeAgentSPIFFEIdentity(value string) (nodeAgentPrincipal, bool) {
+	identity, err := url.Parse(value)
+	if err != nil || identity == nil || identity.Scheme != "spiffe" ||
+		identity.Host != "vela.internal" || identity.User != nil ||
+		identity.RawQuery != "" || identity.Fragment != "" ||
+		!strings.HasPrefix(value, nodeAgentSPIFFEPrefix) {
+		return nodeAgentPrincipal{}, false
+	}
+	path := strings.TrimPrefix(value, nodeAgentSPIFFEPrefix)
+	segments := strings.Split(path, "/")
+	if len(segments) != 2 || segments[0] == "" || segments[1] == "" {
+		return nodeAgentPrincipal{}, false
+	}
+	decodedNode, err := base64.RawURLEncoding.DecodeString(segments[0])
+	if err != nil || !utf8.Valid(decodedNode) {
+		return nodeAgentPrincipal{}, false
+	}
+	nodeIdentity := string(decodedNode)
+	workerID, err := uuid.Parse(segments[1])
+	if err != nil || workerID == uuid.Nil || !validText(nodeIdentity, maximumIdentityBytes) {
+		return nodeAgentPrincipal{}, false
+	}
+	canonical := nodeAgentSPIFFEPrefix +
+		base64.RawURLEncoding.EncodeToString(decodedNode) + "/" + workerID.String()
+	principal := nodeAgentPrincipal{
+		SPIFFEIdentity: canonical,
+		NodeIdentity:   nodeIdentity,
+		WorkerID:       workerID,
+	}
+	if canonical != value || !validText(principal.actorIdentity(), maximumActorBytes) {
+		return nodeAgentPrincipal{}, false
+	}
+	return principal, true
+}
+
+// A direct Node Agent observation may cover only a complete single-node
+// WorkerInstance. Cross-node WorkerMember attestations require Fleet-side
+// aggregation before the Fleet Controller submits the complete evidence.
+func singleNodeWorkerInstanceEvidenceBelongsToNode(
+	evidence fleet.WorkerInstanceEvidence,
+	nodeIdentity string,
+) bool {
+	if !validText(nodeIdentity, maximumIdentityBytes) ||
+		len(evidence.DeviceSet.Devices) == 0 || len(evidence.Members) == 0 {
+		return false
+	}
+	computeNodeID := uuid.Nil
+	devices := make(map[uuid.UUID]struct{}, len(evidence.DeviceSet.Devices))
+	for _, device := range evidence.DeviceSet.Devices {
+		if device.ID == uuid.Nil || device.ComputeNodeID == uuid.Nil ||
+			device.NodeIdentity != nodeIdentity ||
+			computeNodeID != uuid.Nil && device.ComputeNodeID != computeNodeID {
+			return false
+		}
+		computeNodeID = device.ComputeNodeID
+		devices[device.ID] = struct{}{}
+	}
+	for _, member := range evidence.Members {
+		if member.ComputeNodeID != computeNodeID || len(member.DeviceIDs) == 0 {
+			return false
+		}
+		for _, deviceID := range member.DeviceIDs {
+			if _, ok := devices[deviceID]; !ok {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func readinessResult(result fleet.ReadinessResult) (*velav1.FleetReadinessResult, error) {

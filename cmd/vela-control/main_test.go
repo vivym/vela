@@ -152,6 +152,25 @@ func TestReadNodeAgentEndpointsRejectsWritableOrUnknownRegistry(t *testing.T) {
 	if _, err := readNodeAgentEndpoints(path); err == nil {
 		t.Fatal("unknown endpoint registry field was accepted")
 	}
+	duplicateRegistries := map[string]string{
+		"top-level Node identity": strings.TrimSuffix(valid, "}") + "," + strings.TrimPrefix(valid, "{"),
+		"nested endpoint field": strings.Replace(
+			valid,
+			`"worker_epoch":7`,
+			`"worker_epoch":7,"worker_epoch":8`,
+			1,
+		),
+	}
+	for name, duplicate := range duplicateRegistries {
+		t.Run("duplicate "+name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(duplicate), 0o600); err != nil {
+				t.Fatalf("write duplicate endpoint registry: %v", err)
+			}
+			if _, err := readNodeAgentEndpoints(path); err == nil {
+				t.Fatal("duplicate endpoint registry key was accepted")
+			}
+		})
+	}
 	if err := os.WriteFile(path, []byte(valid), 0o600); err != nil {
 		t.Fatalf("restore endpoint registry: %v", err)
 	}

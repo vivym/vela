@@ -52,6 +52,7 @@ import (
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/strictjson"
 	"github.com/vivym/vela/internal/telemetry"
 	"github.com/vivym/vela/internal/webhook"
 	"github.com/vivym/vela/internal/workercontrol"
@@ -877,8 +878,9 @@ func run() error {
 	fleetMaintenanceAdapter, err := fleettransport.NewServer(
 		fleetService,
 		fleettransport.Config{
-			SPIFFEIdentity: configuration.fleetControllerSPIFFEIdentity,
-			ActorIdentity:  configuration.fleetControllerActorIdentity,
+			SPIFFEIdentity:         configuration.fleetControllerSPIFFEIdentity,
+			ActorIdentity:          configuration.fleetControllerActorIdentity,
+			NodeAgentRegistrations: nodeAgentRegistrations(remediationEndpoints),
 		},
 	)
 	if err != nil {
@@ -2047,6 +2049,9 @@ func readNodeAgentEndpoints(path string) (map[string]nodeagent.AgentEndpoint, er
 	if err != nil {
 		return nil, fmt.Errorf("open Node Agent endpoint file: %w", err)
 	}
+	if err := strictjson.RejectDuplicateKeys(content); err != nil {
+		return nil, fmt.Errorf("decode Node Agent endpoint file: %w", err)
+	}
 	var endpoints map[string]nodeagent.AgentEndpoint
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
@@ -2057,6 +2062,20 @@ func readNodeAgentEndpoints(path string) (map[string]nodeagent.AgentEndpoint, er
 		return nil, errors.New("node Agent endpoint file must contain exactly one JSON document")
 	}
 	return endpoints, nil
+}
+
+func nodeAgentRegistrations(
+	endpoints map[string]nodeagent.AgentEndpoint,
+) []fleettransport.NodeAgentRegistration {
+	registrations := make([]fleettransport.NodeAgentRegistration, 0, len(endpoints))
+	for nodeIdentity, endpoint := range endpoints {
+		registrations = append(registrations, fleettransport.NodeAgentRegistration{
+			NodeIdentity:   nodeIdentity,
+			WorkerID:       endpoint.WorkerID,
+			SPIFFEIdentity: endpoint.SPIFFEIdentity,
+		})
+	}
+	return registrations
 }
 
 func openArtifactStore(ctx context.Context, configuration config) (*artifactstore.S3, error) {

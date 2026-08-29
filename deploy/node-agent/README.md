@@ -120,6 +120,24 @@ endpoint registry is keyed by Node identity and has this shape:
 }
 ```
 
+The control plane uses this same registry as the inbound authorization map for
+WorkerInstance observations. A certificate chaining to the configured Fleet
+client CA is not sufficient: its canonical Node Agent SPIFFE URI, decoded Node
+identity, and legacy Worker UUID must exactly match a current registry entry.
+Registered Node Agents may call only `ObserveWorkerInstance`, and direct
+reports must contain a complete single-node WorkerInstance whose every Device
+and WorkerMember belongs to the authenticated Node. Fleet Controller identity
+remains required for every mutation, ResidencyPlan, and cross-node aggregate
+operation.
+
+This is the Fleet server-side authorization contract, not an activation claim.
+Outbound observation additionally requires a Node Agent client certificate
+valid for `ClientAuth`, a pinned Fleet endpoint and server CA, reporter
+configuration, and a CNI-specific host-to-port-8444 ingress rule. The current
+host unit does not provide those settings yet, so a release must not enable
+Node Agent observation until that transport and NetworkPolicy are delivered and
+verified together.
+
 Rate-limit history survives Agent restarts. A durable execution intent is
 published before the action; if the Agent restarts before a terminal receipt is
 published, it returns `EXECUTION_OUTCOME_UNKNOWN` and does not repeat the action.

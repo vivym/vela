@@ -25,8 +25,10 @@ import (
 )
 
 const (
-	fleetSPIFFE = "spiffe://vela.internal/fleet-controller/primary"
-	fleetActor  = "fleet-controller/primary"
+	fleetSPIFFE     = "spiffe://vela.internal/fleet-controller/primary"
+	fleetActor      = "fleet-controller/primary"
+	nodeAgentSPIFFE = "spiffe://vela.internal/node-agent/aDMtbm9kZS0wMQ/49410000-0000-0000-0000-000000000001"
+	nodeAgentActor  = "node-agent/aDMtbm9kZS0wMQ/49410000-0000-0000-0000-000000000001"
 )
 
 func TestCapacityWireContractsCarryWorkerComputedWatermarkState(t *testing.T) {
@@ -121,6 +123,130 @@ func TestServerRequiresExactConfiguredFleetControllerSPIFFEIdentity(t *testing.T
 	}
 	if len(service.getDrainIDs) != 0 {
 		t.Fatalf("rejected Fleet identity reached service: %#v", service.getDrainIDs)
+	}
+}
+
+func TestServerAuthorizesNodeAgentOnlyForLocalWorkerInstanceObservation(t *testing.T) {
+	workerID := uuid.MustParse("49410000-0000-0000-0000-000000000002")
+	computeNodeID := uuid.MustParse("49410000-0000-0000-0000-000000000003")
+	deviceID := uuid.MustParse("49410000-0000-0000-0000-000000000004")
+	legacyWorkerID := uuid.MustParse("49410000-0000-0000-0000-000000000001")
+	service := &recordingWorkerRegistryFleetService{
+		recordingFleetService: &recordingFleetService{},
+		decision: fleet.WorkerInstanceDecision{
+			WorkerInstanceID: workerID, InstanceEpoch: 1, ControlSessionEpoch: 2,
+			ModelRuntimeEpoch: 3, Readiness: fleet.WorkerInstanceReady,
+		},
+	}
+	server, err := fleettransport.NewServer(service, fleettransport.Config{
+		SPIFFEIdentity: fleetSPIFFE,
+		ActorIdentity:  fleetActor,
+		NodeAgentRegistrations: []fleettransport.NodeAgentRegistration{{
+			NodeIdentity: "h3-node-01", WorkerID: legacyWorkerID,
+			SPIFFEIdentity: nodeAgentSPIFFE,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create Fleet maintenance server: %v", err)
+	}
+	if _, err := fleettransport.NewServer(service, fleettransport.Config{
+		SPIFFEIdentity: fleetSPIFFE,
+		ActorIdentity:  fleetActor,
+		NodeAgentRegistrations: []fleettransport.NodeAgentRegistration{{
+			NodeIdentity: "h3-node-02", WorkerID: legacyWorkerID,
+			SPIFFEIdentity: nodeAgentSPIFFE,
+		}},
+	}); err == nil {
+		t.Fatal("Node Agent registration accepted a SPIFFE identity for another Node")
+	}
+	evidence := fleet.WorkerInstanceEvidence{
+		SchemaVersion: 1, WorkerInstanceID: workerID,
+		DeviceSet: fleet.WorkerDeviceSetEvidence{Devices: []fleet.WorkerDeviceEvidence{{
+			ID: deviceID, ComputeNodeID: computeNodeID, NodeIdentity: "h3-node-01",
+		}}},
+		Members: []fleet.WorkerMemberEvidence{{
+			ID:            uuid.MustParse("49410000-0000-0000-0000-000000000005"),
+			ComputeNodeID: computeNodeID, DeviceIDs: []uuid.UUID{deviceID},
+		}},
+		ObservedBy: "forged/caller-value",
+	}
+	encodedEvidence, err := json.Marshal(evidence)
+	if err != nil {
+		t.Fatalf("encode WorkerInstance evidence: %v", err)
+	}
+	unregistered, err := fleettransport.NewServer(service, fleettransport.Config{
+		SPIFFEIdentity: fleetSPIFFE,
+		ActorIdentity:  fleetActor,
+	})
+	if err != nil {
+		t.Fatalf("create Fleet maintenance server without Node Agent registry: %v", err)
+	}
+	if _, err := unregistered.ObserveWorkerInstance(
+		fleetPeerContext(t, nodeAgentSPIFFE),
+		&velav1.ObserveWorkerInstanceRequest{EvidenceJson: encodedEvidence},
+	); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("unregistered canonical Node Agent code=%s error=%v", status.Code(err), err)
+	}
+	if len(service.evidence) != 0 {
+		t.Fatalf("unregistered Node Agent reached service: %#v", service.evidence)
+	}
+	response, err := server.ObserveWorkerInstance(
+		fleetPeerContext(t, nodeAgentSPIFFE),
+		&velav1.ObserveWorkerInstanceRequest{EvidenceJson: encodedEvidence},
+	)
+	if err != nil || response.GetWorkerInstanceId() != workerID.String() ||
+		len(service.evidence) != 1 || service.evidence[0].ObservedBy != nodeAgentActor {
+		t.Fatalf("Node Agent observation response=%#v evidence=%#v error=%v", response, service.evidence, err)
+	}
+	if _, err := server.GetDrain(
+		fleetPeerContext(t, nodeAgentSPIFFE),
+		&velav1.GetDrainRequest{OperationId: "49410000-0000-0000-0000-000000000006"},
+	); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("Node Agent control RPC code=%s error=%v", status.Code(err), err)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*fleet.WorkerInstanceEvidence)
+	}{
+		{
+			name: "foreign device node identity",
+			mutate: func(candidate *fleet.WorkerInstanceEvidence) {
+				candidate.DeviceSet.Devices[0].NodeIdentity = "h3-node-02"
+			},
+		},
+		{
+			name: "foreign member compute node",
+			mutate: func(candidate *fleet.WorkerInstanceEvidence) {
+				candidate.Members[0].ComputeNodeID = uuid.MustParse(
+					"49410000-0000-0000-0000-000000000099",
+				)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := evidence
+			candidate.DeviceSet.Devices = append(
+				[]fleet.WorkerDeviceEvidence(nil),
+				evidence.DeviceSet.Devices...,
+			)
+			candidate.Members = append([]fleet.WorkerMemberEvidence(nil), evidence.Members...)
+			test.mutate(&candidate)
+			encoded, encodeErr := json.Marshal(candidate)
+			if encodeErr != nil {
+				t.Fatalf("encode mismatched WorkerInstance evidence: %v", encodeErr)
+			}
+			_, observeErr := server.ObserveWorkerInstance(
+				fleetPeerContext(t, nodeAgentSPIFFE),
+				&velav1.ObserveWorkerInstanceRequest{EvidenceJson: encoded},
+			)
+			if status.Code(observeErr) != codes.PermissionDenied {
+				t.Fatalf("mismatched Node Agent evidence code=%s error=%v", status.Code(observeErr), observeErr)
+			}
+		})
+	}
+	if len(service.evidence) != 1 {
+		t.Fatalf("mismatched Node Agent evidence reached service: %#v", service.evidence)
 	}
 }
 
