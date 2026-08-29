@@ -276,8 +276,8 @@ func RunSandboxHelper(arguments []string) error {
 		return errors.New("artifact sandbox input descriptor is missing")
 	}
 	ffprobe := os.NewFile(uintptr(4), "ffprobe")
-	if ffprobe == nil || !validSandboxExecutableFile(ffprobe, true) {
-		return errors.New("artifact sandbox ffprobe descriptor is invalid")
+	if err := validateInheritedSandboxExecutable(ffprobe); err != nil {
+		return fmt.Errorf("artifact sandbox ffprobe descriptor is invalid: %w", err)
 	}
 	helper := os.NewFile(uintptr(5), "artifact-validator-helper")
 	if helper == nil {
@@ -345,6 +345,23 @@ func RunSandboxHelper(arguments []string) error {
 	runtime.KeepAlive(input)
 	runtime.KeepAlive(ffprobe)
 	return err
+}
+
+func validateInheritedSandboxExecutable(file *os.File) error {
+	if file == nil {
+		return errors.New("descriptor is missing")
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("stat descriptor: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("descriptor is not a regular file")
+	}
+	if info.Mode().Perm()&0o022 != 0 || info.Mode().Perm()&0o111 == 0 {
+		return errors.New("descriptor permissions are unsafe")
+	}
+	return nil
 }
 
 func execSandboxFFprobe(fd int, arguments []string, environment []string) error {
