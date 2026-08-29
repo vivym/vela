@@ -512,6 +512,49 @@ func (ns NullCancellationStopSource) Value() (driver.Value, error) {
 	return string(ns.CancellationStopSource), nil
 }
 
+type CapacityPoolState string
+
+const (
+	CapacityPoolStateACTIVE   CapacityPoolState = "ACTIVE"
+	CapacityPoolStateDRAINING CapacityPoolState = "DRAINING"
+	CapacityPoolStateRETIRED  CapacityPoolState = "RETIRED"
+)
+
+func (e *CapacityPoolState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = CapacityPoolState(s)
+	case string:
+		*e = CapacityPoolState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for CapacityPoolState: %T", src)
+	}
+	return nil
+}
+
+type NullCapacityPoolState struct {
+	CapacityPoolState CapacityPoolState `json:"capacity_pool_state"`
+	Valid             bool              `json:"valid"` // Valid is true if CapacityPoolState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullCapacityPoolState) Scan(value interface{}) error {
+	if value == nil {
+		ns.CapacityPoolState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.CapacityPoolState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullCapacityPoolState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.CapacityPoolState), nil
+}
+
 type CatalogEvidenceMode string
 
 const (
@@ -642,6 +685,50 @@ func (ns NullChargeReason) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.ChargeReason), nil
+}
+
+type ComputeNodeLifecycleState string
+
+const (
+	ComputeNodeLifecycleStateACTIVE   ComputeNodeLifecycleState = "ACTIVE"
+	ComputeNodeLifecycleStateDRAINING ComputeNodeLifecycleState = "DRAINING"
+	ComputeNodeLifecycleStateFENCED   ComputeNodeLifecycleState = "FENCED"
+	ComputeNodeLifecycleStateRETIRED  ComputeNodeLifecycleState = "RETIRED"
+)
+
+func (e *ComputeNodeLifecycleState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ComputeNodeLifecycleState(s)
+	case string:
+		*e = ComputeNodeLifecycleState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ComputeNodeLifecycleState: %T", src)
+	}
+	return nil
+}
+
+type NullComputeNodeLifecycleState struct {
+	ComputeNodeLifecycleState ComputeNodeLifecycleState `json:"compute_node_lifecycle_state"`
+	Valid                     bool                      `json:"valid"` // Valid is true if ComputeNodeLifecycleState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullComputeNodeLifecycleState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ComputeNodeLifecycleState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ComputeNodeLifecycleState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullComputeNodeLifecycleState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ComputeNodeLifecycleState), nil
 }
 
 type ContentDeletionSource string
@@ -1037,6 +1124,92 @@ func (ns NullDebugDumpState) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.DebugDumpState), nil
+}
+
+type DeviceHealthState string
+
+const (
+	DeviceHealthStateHEALTHY  DeviceHealthState = "HEALTHY"
+	DeviceHealthStateDEGRADED DeviceHealthState = "DEGRADED"
+	DeviceHealthStateFENCED   DeviceHealthState = "FENCED"
+	DeviceHealthStateMISSING  DeviceHealthState = "MISSING"
+)
+
+func (e *DeviceHealthState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DeviceHealthState(s)
+	case string:
+		*e = DeviceHealthState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DeviceHealthState: %T", src)
+	}
+	return nil
+}
+
+type NullDeviceHealthState struct {
+	DeviceHealthState DeviceHealthState `json:"device_health_state"`
+	Valid             bool              `json:"valid"` // Valid is true if DeviceHealthState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDeviceHealthState) Scan(value interface{}) error {
+	if value == nil {
+		ns.DeviceHealthState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DeviceHealthState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDeviceHealthState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DeviceHealthState), nil
+}
+
+type DeviceKind string
+
+const (
+	DeviceKindGPU DeviceKind = "GPU"
+	DeviceKindCPU DeviceKind = "CPU"
+)
+
+func (e *DeviceKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DeviceKind(s)
+	case string:
+		*e = DeviceKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DeviceKind: %T", src)
+	}
+	return nil
+}
+
+type NullDeviceKind struct {
+	DeviceKind DeviceKind `json:"device_kind"`
+	Valid      bool       `json:"valid"` // Valid is true if DeviceKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDeviceKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.DeviceKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DeviceKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDeviceKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DeviceKind), nil
 }
 
 type ExecutionFailureSource string
@@ -1956,6 +2129,140 @@ func (ns NullLegalHoldState) Value() (driver.Value, error) {
 	return string(ns.LegalHoldState), nil
 }
 
+type ModelResidencyReleaseReason string
+
+const (
+	ModelResidencyReleaseReasonSHUTDOWN         ModelResidencyReleaseReason = "SHUTDOWN"
+	ModelResidencyReleaseReasonHARDWARERESPONSE ModelResidencyReleaseReason = "HARDWARE_RESPONSE"
+	ModelResidencyReleaseReasonSECURITYRESPONSE ModelResidencyReleaseReason = "SECURITY_RESPONSE"
+	ModelResidencyReleaseReasonREVISIONROLLOUT  ModelResidencyReleaseReason = "REVISION_ROLLOUT"
+	ModelResidencyReleaseReasonCAPACITYCHANGE   ModelResidencyReleaseReason = "CAPACITY_CHANGE"
+)
+
+func (e *ModelResidencyReleaseReason) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ModelResidencyReleaseReason(s)
+	case string:
+		*e = ModelResidencyReleaseReason(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ModelResidencyReleaseReason: %T", src)
+	}
+	return nil
+}
+
+type NullModelResidencyReleaseReason struct {
+	ModelResidencyReleaseReason ModelResidencyReleaseReason `json:"model_residency_release_reason"`
+	Valid                       bool                        `json:"valid"` // Valid is true if ModelResidencyReleaseReason is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullModelResidencyReleaseReason) Scan(value interface{}) error {
+	if value == nil {
+		ns.ModelResidencyReleaseReason, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ModelResidencyReleaseReason.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullModelResidencyReleaseReason) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ModelResidencyReleaseReason), nil
+}
+
+type ModelResidencyReleaseState string
+
+const (
+	ModelResidencyReleaseStateAPPROVED  ModelResidencyReleaseState = "APPROVED"
+	ModelResidencyReleaseStateCOMPLETED ModelResidencyReleaseState = "COMPLETED"
+	ModelResidencyReleaseStateCANCELED  ModelResidencyReleaseState = "CANCELED"
+)
+
+func (e *ModelResidencyReleaseState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ModelResidencyReleaseState(s)
+	case string:
+		*e = ModelResidencyReleaseState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ModelResidencyReleaseState: %T", src)
+	}
+	return nil
+}
+
+type NullModelResidencyReleaseState struct {
+	ModelResidencyReleaseState ModelResidencyReleaseState `json:"model_residency_release_state"`
+	Valid                      bool                       `json:"valid"` // Valid is true if ModelResidencyReleaseState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullModelResidencyReleaseState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ModelResidencyReleaseState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ModelResidencyReleaseState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullModelResidencyReleaseState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ModelResidencyReleaseState), nil
+}
+
+type ModelResidencyState string
+
+const (
+	ModelResidencyStateLOADING  ModelResidencyState = "LOADING"
+	ModelResidencyStateWARMING  ModelResidencyState = "WARMING"
+	ModelResidencyStateREADY    ModelResidencyState = "READY"
+	ModelResidencyStateDRAINING ModelResidencyState = "DRAINING"
+	ModelResidencyStateRELEASED ModelResidencyState = "RELEASED"
+	ModelResidencyStateFAILED   ModelResidencyState = "FAILED"
+)
+
+func (e *ModelResidencyState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ModelResidencyState(s)
+	case string:
+		*e = ModelResidencyState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ModelResidencyState: %T", src)
+	}
+	return nil
+}
+
+type NullModelResidencyState struct {
+	ModelResidencyState ModelResidencyState `json:"model_residency_state"`
+	Valid               bool                `json:"valid"` // Valid is true if ModelResidencyState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullModelResidencyState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ModelResidencyState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ModelResidencyState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullModelResidencyState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ModelResidencyState), nil
+}
+
 type NonContentExpiryKind string
 
 const (
@@ -2825,6 +3132,141 @@ func (ns NullWebhookSubscriptionState) Value() (driver.Value, error) {
 	return string(ns.WebhookSubscriptionState), nil
 }
 
+type WorkerBundleState string
+
+const (
+	WorkerBundleStatePROPOSED WorkerBundleState = "PROPOSED"
+	WorkerBundleStateAPPLYING WorkerBundleState = "APPLYING"
+	WorkerBundleStateREADY    WorkerBundleState = "READY"
+	WorkerBundleStateDRAINING WorkerBundleState = "DRAINING"
+	WorkerBundleStateFAILED   WorkerBundleState = "FAILED"
+	WorkerBundleStateRETIRED  WorkerBundleState = "RETIRED"
+)
+
+func (e *WorkerBundleState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WorkerBundleState(s)
+	case string:
+		*e = WorkerBundleState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WorkerBundleState: %T", src)
+	}
+	return nil
+}
+
+type NullWorkerBundleState struct {
+	WorkerBundleState WorkerBundleState `json:"worker_bundle_state"`
+	Valid             bool              `json:"valid"` // Valid is true if WorkerBundleState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWorkerBundleState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WorkerBundleState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WorkerBundleState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWorkerBundleState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WorkerBundleState), nil
+}
+
+type WorkerInstanceLifecycleState string
+
+const (
+	WorkerInstanceLifecycleStatePROVISIONING WorkerInstanceLifecycleState = "PROVISIONING"
+	WorkerInstanceLifecycleStateWARMING      WorkerInstanceLifecycleState = "WARMING"
+	WorkerInstanceLifecycleStateREADY        WorkerInstanceLifecycleState = "READY"
+	WorkerInstanceLifecycleStateDRAINING     WorkerInstanceLifecycleState = "DRAINING"
+	WorkerInstanceLifecycleStateFENCED       WorkerInstanceLifecycleState = "FENCED"
+	WorkerInstanceLifecycleStateRETIRED      WorkerInstanceLifecycleState = "RETIRED"
+)
+
+func (e *WorkerInstanceLifecycleState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WorkerInstanceLifecycleState(s)
+	case string:
+		*e = WorkerInstanceLifecycleState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WorkerInstanceLifecycleState: %T", src)
+	}
+	return nil
+}
+
+type NullWorkerInstanceLifecycleState struct {
+	WorkerInstanceLifecycleState WorkerInstanceLifecycleState `json:"worker_instance_lifecycle_state"`
+	Valid                        bool                         `json:"valid"` // Valid is true if WorkerInstanceLifecycleState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWorkerInstanceLifecycleState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WorkerInstanceLifecycleState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WorkerInstanceLifecycleState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWorkerInstanceLifecycleState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WorkerInstanceLifecycleState), nil
+}
+
+type WorkerInstanceReachabilityState string
+
+const (
+	WorkerInstanceReachabilityStateCONNECTED    WorkerInstanceReachabilityState = "CONNECTED"
+	WorkerInstanceReachabilityStateDISCONNECTED WorkerInstanceReachabilityState = "DISCONNECTED"
+	WorkerInstanceReachabilityStateUNREACHABLE  WorkerInstanceReachabilityState = "UNREACHABLE"
+)
+
+func (e *WorkerInstanceReachabilityState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WorkerInstanceReachabilityState(s)
+	case string:
+		*e = WorkerInstanceReachabilityState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WorkerInstanceReachabilityState: %T", src)
+	}
+	return nil
+}
+
+type NullWorkerInstanceReachabilityState struct {
+	WorkerInstanceReachabilityState WorkerInstanceReachabilityState `json:"worker_instance_reachability_state"`
+	Valid                           bool                            `json:"valid"` // Valid is true if WorkerInstanceReachabilityState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWorkerInstanceReachabilityState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WorkerInstanceReachabilityState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WorkerInstanceReachabilityState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWorkerInstanceReachabilityState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WorkerInstanceReachabilityState), nil
+}
+
 type WorkerLifecycleState string
 
 const (
@@ -2870,6 +3312,50 @@ func (ns NullWorkerLifecycleState) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.WorkerLifecycleState), nil
+}
+
+type WorkerMemberReadinessState string
+
+const (
+	WorkerMemberReadinessStateJOINING WorkerMemberReadinessState = "JOINING"
+	WorkerMemberReadinessStateREADY   WorkerMemberReadinessState = "READY"
+	WorkerMemberReadinessStateFAILED  WorkerMemberReadinessState = "FAILED"
+	WorkerMemberReadinessStateFENCED  WorkerMemberReadinessState = "FENCED"
+)
+
+func (e *WorkerMemberReadinessState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = WorkerMemberReadinessState(s)
+	case string:
+		*e = WorkerMemberReadinessState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for WorkerMemberReadinessState: %T", src)
+	}
+	return nil
+}
+
+type NullWorkerMemberReadinessState struct {
+	WorkerMemberReadinessState WorkerMemberReadinessState `json:"worker_member_readiness_state"`
+	Valid                      bool                       `json:"valid"` // Valid is true if WorkerMemberReadinessState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullWorkerMemberReadinessState) Scan(value interface{}) error {
+	if value == nil {
+		ns.WorkerMemberReadinessState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.WorkerMemberReadinessState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullWorkerMemberReadinessState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.WorkerMemberReadinessState), nil
 }
 
 type WorkerProfileReadinessState string
@@ -2955,6 +3441,16 @@ func (ns NullWorkerReachabilityCondition) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.WorkerReachabilityCondition), nil
+}
+
+type ActiveDeviceBinding struct {
+	DeviceID            uuid.UUID          `db:"device_id" json:"device_id"`
+	DeviceEpoch         int64              `db:"device_epoch" json:"device_epoch"`
+	DeviceSetID         uuid.UUID          `db:"device_set_id" json:"device_set_id"`
+	WorkerInstanceID    uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch int64              `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	BoundAt             pgtype.Timestamptz `db:"bound_at" json:"bound_at"`
+	EvidenceDigest      []byte             `db:"evidence_digest" json:"evidence_digest"`
 }
 
 type Artifact struct {
@@ -3240,6 +3736,29 @@ type CancellationStopReceipt struct {
 	CreatedAt          pgtype.Timestamptz     `db:"created_at" json:"created_at"`
 }
 
+type CapacityObservation struct {
+	WorkerInstanceID    uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch int64              `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	ObservationSequence int64              `db:"observation_sequence" json:"observation_sequence"`
+	CapacityVector      []byte             `db:"capacity_vector" json:"capacity_vector"`
+	ObservedAt          pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ExpiresAt           pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ObservedBy          string             `db:"observed_by" json:"observed_by"`
+}
+
+type CapacityPool struct {
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	StableID                string             `db:"stable_id" json:"stable_id"`
+	StageProfileRevisionID  uuid.UUID          `db:"stage_profile_revision_id" json:"stage_profile_revision_id"`
+	ResourceClass           string             `db:"resource_class" json:"resource_class"`
+	SecurityClass           string             `db:"security_class" json:"security_class"`
+	Region                  string             `db:"region" json:"region"`
+	MaxReadyQueueDepth      int32              `db:"max_ready_queue_depth" json:"max_ready_queue_depth"`
+	State                   CapacityPoolState  `db:"state" json:"state"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ResidencyPlanRevisionID uuid.NullUUID      `db:"residency_plan_revision_id" json:"residency_plan_revision_id"`
+}
+
 type CatalogEvidenceProtocolState struct {
 	Singleton       bool                `db:"singleton" json:"singleton"`
 	Mode            CatalogEvidenceMode `db:"mode" json:"mode"`
@@ -3305,6 +3824,20 @@ type CompliancePrincipal struct {
 	Status         string             `db:"status" json:"status"`
 	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ComputeNode struct {
+	ID                uuid.UUID                 `db:"id" json:"id"`
+	NodeIdentity      string                    `db:"node_identity" json:"node_identity"`
+	Region            string                    `db:"region" json:"region"`
+	NetworkDomain     string                    `db:"network_domain" json:"network_domain"`
+	FaultDomain       string                    `db:"fault_domain" json:"fault_domain"`
+	LifecycleState    ComputeNodeLifecycleState `db:"lifecycle_state" json:"lifecycle_state"`
+	LifecycleEpoch    int64                     `db:"lifecycle_epoch" json:"lifecycle_epoch"`
+	AgentSessionEpoch int64                     `db:"agent_session_epoch" json:"agent_session_epoch"`
+	AttestationDigest []byte                    `db:"attestation_digest" json:"attestation_digest"`
+	ObservedAt        pgtype.Timestamptz        `db:"observed_at" json:"observed_at"`
+	ObservedBy        string                    `db:"observed_by" json:"observed_by"`
 }
 
 type ConnectorRevision struct {
@@ -3523,6 +4056,34 @@ type DebugDumpEvent struct {
 	WorkerID         uuid.NullUUID        `db:"worker_id" json:"worker_id"`
 	WorkerEpoch      *int64               `db:"worker_epoch" json:"worker_epoch"`
 	CreatedAt        pgtype.Timestamptz   `db:"created_at" json:"created_at"`
+}
+
+type Device struct {
+	ID                uuid.UUID          `db:"id" json:"id"`
+	ComputeNodeID     uuid.UUID          `db:"compute_node_id" json:"compute_node_id"`
+	Kind              DeviceKind         `db:"kind" json:"kind"`
+	GpuUuid           *string            `db:"gpu_uuid" json:"gpu_uuid"`
+	PciBdf            *string            `db:"pci_bdf" json:"pci_bdf"`
+	DeviceEpoch       int64              `db:"device_epoch" json:"device_epoch"`
+	Health            DeviceHealthState  `db:"health" json:"health"`
+	AttestationDigest []byte             `db:"attestation_digest" json:"attestation_digest"`
+	ObservedAt        pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ObservedBy        string             `db:"observed_by" json:"observed_by"`
+}
+
+type DeviceSet struct {
+	ID               uuid.UUID          `db:"id" json:"id"`
+	MembershipDigest []byte             `db:"membership_digest" json:"membership_digest"`
+	TopologyDigest   []byte             `db:"topology_digest" json:"topology_digest"`
+	DeviceCount      int32              `db:"device_count" json:"device_count"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type DeviceSetMember struct {
+	DeviceSetID uuid.UUID `db:"device_set_id" json:"device_set_id"`
+	DeviceID    uuid.UUID `db:"device_id" json:"device_id"`
+	DeviceEpoch int64     `db:"device_epoch" json:"device_epoch"`
+	Ordinal     int32     `db:"ordinal" json:"ordinal"`
 }
 
 type ExecutionFailureDecision struct {
@@ -4041,6 +4602,41 @@ type LegalHoldEvent struct {
 	RecordedAt        pgtype.Timestamptz     `db:"recorded_at" json:"recorded_at"`
 }
 
+type ModelResidency struct {
+	ID                     uuid.UUID           `db:"id" json:"id"`
+	WorkerInstanceID       uuid.UUID           `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch    int64               `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	ModelComponentRevision string              `db:"model_component_revision" json:"model_component_revision"`
+	RuntimeIdentity        string              `db:"runtime_identity" json:"runtime_identity"`
+	RuntimeImageDigest     string              `db:"runtime_image_digest" json:"runtime_image_digest"`
+	ModelRuntimeEpoch      int64               `db:"model_runtime_epoch" json:"model_runtime_epoch"`
+	State                  ModelResidencyState `db:"state" json:"state"`
+	WarmupEvidenceDigest   []byte              `db:"warmup_evidence_digest" json:"warmup_evidence_digest"`
+	CanaryEvidenceDigest   []byte              `db:"canary_evidence_digest" json:"canary_evidence_digest"`
+	ReadyAt                pgtype.Timestamptz  `db:"ready_at" json:"ready_at"`
+	ReleasedAt             pgtype.Timestamptz  `db:"released_at" json:"released_at"`
+	ObservedAt             pgtype.Timestamptz  `db:"observed_at" json:"observed_at"`
+	ObservedBy             string              `db:"observed_by" json:"observed_by"`
+}
+
+type ModelResidencyReleaseOperation struct {
+	ID                       uuid.UUID                   `db:"id" json:"id"`
+	ModelResidencyID         uuid.UUID                   `db:"model_residency_id" json:"model_residency_id"`
+	WorkerInstanceID         uuid.UUID                   `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch      int64                       `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	Reason                   ModelResidencyReleaseReason `db:"reason" json:"reason"`
+	ApprovedPlanRevision     string                      `db:"approved_plan_revision" json:"approved_plan_revision"`
+	ApprovedBy               string                      `db:"approved_by" json:"approved_by"`
+	PlannedOfflineSeconds    int64                       `db:"planned_offline_seconds" json:"planned_offline_seconds"`
+	MeasuredReloadSeconds    int64                       `db:"measured_reload_seconds" json:"measured_reload_seconds"`
+	BreakEvenEvidenceDigest  []byte                      `db:"break_even_evidence_digest" json:"break_even_evidence_digest"`
+	State                    ModelResidencyReleaseState  `db:"state" json:"state"`
+	ApprovedAt               pgtype.Timestamptz          `db:"approved_at" json:"approved_at"`
+	CompletedAt              pgtype.Timestamptz          `db:"completed_at" json:"completed_at"`
+	CompletionEvidenceDigest []byte                      `db:"completion_evidence_digest" json:"completion_evidence_digest"`
+	CompletedBy              *string                     `db:"completed_by" json:"completed_by"`
+}
+
 type ModelRevision struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	StableID    string             `db:"stable_id" json:"stable_id"`
@@ -4473,6 +5069,34 @@ type RemediationOperationEvent struct {
 	ActorIdentity string                     `db:"actor_identity" json:"actor_identity"`
 	ResultCode    *string                    `db:"result_code" json:"result_code"`
 	ObservedAt    pgtype.Timestamptz         `db:"observed_at" json:"observed_at"`
+}
+
+type ResidencyPlanRevision struct {
+	ID                     uuid.UUID          `db:"id" json:"id"`
+	StableID               string             `db:"stable_id" json:"stable_id"`
+	Revision               int32              `db:"revision" json:"revision"`
+	SourceProposalID       uuid.NullUUID      `db:"source_proposal_id" json:"source_proposal_id"`
+	ContentDigest          []byte             `db:"content_digest" json:"content_digest"`
+	ApprovalEvidenceDigest []byte             `db:"approval_evidence_digest" json:"approval_evidence_digest"`
+	ApprovedAt             pgtype.Timestamptz `db:"approved_at" json:"approved_at"`
+	ApprovedBy             string             `db:"approved_by" json:"approved_by"`
+	AppliedAt              pgtype.Timestamptz `db:"applied_at" json:"applied_at"`
+}
+
+type ResidencyProposal struct {
+	ID               uuid.UUID          `db:"id" json:"id"`
+	SchemaVersion    int32              `db:"schema_version" json:"schema_version"`
+	InputDigest      []byte             `db:"input_digest" json:"input_digest"`
+	ConfidencePpm    int32              `db:"confidence_ppm" json:"confidence_ppm"`
+	ExpiresAt        pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	MinCapacity      []byte             `db:"min_capacity" json:"min_capacity"`
+	DesiredCapacity  []byte             `db:"desired_capacity" json:"desired_capacity"`
+	MaxCapacity      []byte             `db:"max_capacity" json:"max_capacity"`
+	CooldownSeconds  int64              `db:"cooldown_seconds" json:"cooldown_seconds"`
+	BudgetMicroUnits int64              `db:"budget_micro_units" json:"budget_micro_units"`
+	ReasonCodes      []string           `db:"reason_codes" json:"reason_codes"`
+	ProposedAt       pgtype.Timestamptz `db:"proposed_at" json:"proposed_at"`
+	ProposedBy       string             `db:"proposed_by" json:"proposed_by"`
 }
 
 type RetentionPolicyRevision struct {
@@ -4938,6 +5562,21 @@ type Worker struct {
 	NodeIdentity          string                      `db:"node_identity" json:"node_identity"`
 }
 
+type WorkerBundle struct {
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	StableID                string             `db:"stable_id" json:"stable_id"`
+	PlanRevision            string             `db:"plan_revision" json:"plan_revision"`
+	ResidencyPlanRevisionID uuid.NullUUID      `db:"residency_plan_revision_id" json:"residency_plan_revision_id"`
+	ComputeNodeID           uuid.NullUUID      `db:"compute_node_id" json:"compute_node_id"`
+	DesiredGeneration       int64              `db:"desired_generation" json:"desired_generation"`
+	ObservedGeneration      int64              `db:"observed_generation" json:"observed_generation"`
+	LifecycleState          WorkerBundleState  `db:"lifecycle_state" json:"lifecycle_state"`
+	LayoutDigest            []byte             `db:"layout_digest" json:"layout_digest"`
+	ApprovedBy              string             `db:"approved_by" json:"approved_by"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type WorkerCapacityCondition struct {
 	WorkerID               uuid.UUID                  `db:"worker_id" json:"worker_id"`
 	WorkerPoolID           uuid.UUID                  `db:"worker_pool_id" json:"worker_pool_id"`
@@ -4977,6 +5616,69 @@ type WorkerEpoch struct {
 	WorkerID     uuid.UUID          `db:"worker_id" json:"worker_id"`
 	Epoch        int64              `db:"epoch" json:"epoch"`
 	RegisteredAt pgtype.Timestamptz `db:"registered_at" json:"registered_at"`
+}
+
+type WorkerInstance struct {
+	ID                      uuid.UUID                       `db:"id" json:"id"`
+	WorkerProfileRevisionID uuid.UUID                       `db:"worker_profile_revision_id" json:"worker_profile_revision_id"`
+	ResidencyPlanRevisionID uuid.NullUUID                   `db:"residency_plan_revision_id" json:"residency_plan_revision_id"`
+	CapacityPoolID          uuid.UUID                       `db:"capacity_pool_id" json:"capacity_pool_id"`
+	WorkerBundleID          uuid.NullUUID                   `db:"worker_bundle_id" json:"worker_bundle_id"`
+	DeviceSetID             uuid.NullUUID                   `db:"device_set_id" json:"device_set_id"`
+	LifecycleState          WorkerInstanceLifecycleState    `db:"lifecycle_state" json:"lifecycle_state"`
+	ReachabilityState       WorkerInstanceReachabilityState `db:"reachability_state" json:"reachability_state"`
+	InstanceEpoch           int64                           `db:"instance_epoch" json:"instance_epoch"`
+	ControlSessionEpoch     int64                           `db:"control_session_epoch" json:"control_session_epoch"`
+	DesiredMemberCount      int32                           `db:"desired_member_count" json:"desired_member_count"`
+	DesiredDeviceCount      int32                           `db:"desired_device_count" json:"desired_device_count"`
+	MembershipDigest        []byte                          `db:"membership_digest" json:"membership_digest"`
+	DeviceSetDigest         []byte                          `db:"device_set_digest" json:"device_set_digest"`
+	ControlSessionID        *string                         `db:"control_session_id" json:"control_session_id"`
+	ObservedAt              pgtype.Timestamptz              `db:"observed_at" json:"observed_at"`
+	ObservedBy              *string                         `db:"observed_by" json:"observed_by"`
+	CreatedAt               pgtype.Timestamptz              `db:"created_at" json:"created_at"`
+}
+
+type WorkerInstanceDrainOperation struct {
+	WorkerInstanceID    uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch int64              `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	Reason              string             `db:"reason" json:"reason"`
+	RequestedBy         string             `db:"requested_by" json:"requested_by"`
+	RequestedAt         pgtype.Timestamptz `db:"requested_at" json:"requested_at"`
+}
+
+type WorkerInstanceEpoch struct {
+	WorkerInstanceID uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
+	Epoch            int64              `db:"epoch" json:"epoch"`
+	DeviceSetID      uuid.UUID          `db:"device_set_id" json:"device_set_id"`
+	MembershipDigest []byte             `db:"membership_digest" json:"membership_digest"`
+	DeviceSetDigest  []byte             `db:"device_set_digest" json:"device_set_digest"`
+	StartedAt        pgtype.Timestamptz `db:"started_at" json:"started_at"`
+	EndedAt          pgtype.Timestamptz `db:"ended_at" json:"ended_at"`
+	EndReason        *string            `db:"end_reason" json:"end_reason"`
+}
+
+type WorkerMember struct {
+	ID                  uuid.UUID                  `db:"id" json:"id"`
+	WorkerInstanceID    uuid.UUID                  `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch int64                      `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	MemberKey           string                     `db:"member_key" json:"member_key"`
+	ComputeNodeID       uuid.UUID                  `db:"compute_node_id" json:"compute_node_id"`
+	WorkerBundleID      uuid.NullUUID              `db:"worker_bundle_id" json:"worker_bundle_id"`
+	MemberEpoch         int64                      `db:"member_epoch" json:"member_epoch"`
+	DeviceSubsetDigest  []byte                     `db:"device_subset_digest" json:"device_subset_digest"`
+	IdentityDigest      []byte                     `db:"identity_digest" json:"identity_digest"`
+	Readiness           WorkerMemberReadinessState `db:"readiness" json:"readiness"`
+	ObservedAt          pgtype.Timestamptz         `db:"observed_at" json:"observed_at"`
+	ObservedBy          string                     `db:"observed_by" json:"observed_by"`
+}
+
+type WorkerMemberDevice struct {
+	WorkerInstanceID uuid.UUID `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerMemberID   uuid.UUID `db:"worker_member_id" json:"worker_member_id"`
+	DeviceSetID      uuid.UUID `db:"device_set_id" json:"device_set_id"`
+	DeviceID         uuid.UUID `db:"device_id" json:"device_id"`
+	DeviceEpoch      int64     `db:"device_epoch" json:"device_epoch"`
 }
 
 type WorkerPool struct {
