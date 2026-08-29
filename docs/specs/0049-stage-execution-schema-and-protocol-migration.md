@@ -2,8 +2,10 @@
 
 Date: 2026-08-29
 
-Status: Proposed design; no migration, generated code, or runtime behavior is
-implemented.
+Status: Implementation in progress. S49.1 implements the immutable Catalog
+subset, graph activation transaction, generated sqlc models, and migration
+evidence. Runtime authority, resource, Artifact, usage, and protocol expansion
+remain pending.
 
 ## Purpose
 
@@ -87,7 +89,10 @@ Catalog status, never by editing contract fields.
 Activation validates graph acyclicity, stable topological order, connected
 required outputs, interface compatibility on every edge, bounded fan-out,
 complete certified profile alternatives, connector fallback, and final output
-compatibility. Runtime code never reinterprets malformed active JSON.
+compatibility. The dedicated `vela_stage_catalog_activation` role can execute
+only that activation function; the existing five-function
+`vela_catalog_promotion` boundary remains unchanged for exact N-1 startup.
+Runtime code never reinterprets malformed active JSON.
 
 The existing `execution_profile_revisions.worker_pool_id` remains populated for
 legacy profiles during expansion. A target profile instead references one

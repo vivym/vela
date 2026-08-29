@@ -3271,6 +3271,20 @@ type Charge struct {
 	ArtifactSetID       uuid.NullUUID      `db:"artifact_set_id" json:"artifact_set_id"`
 }
 
+type CheckpointPolicyRevision struct {
+	ID                    uuid.UUID          `db:"id" json:"id"`
+	StableID              string             `db:"stable_id" json:"stable_id"`
+	Revision              int32              `db:"revision" json:"revision"`
+	State                 CatalogState       `db:"state" json:"state"`
+	ResumeFormat          string             `db:"resume_format" json:"resume_format"`
+	CompatibilityContract []byte             `db:"compatibility_contract" json:"compatibility_contract"`
+	IntervalPolicy        []byte             `db:"interval_policy" json:"interval_policy"`
+	MaxOverheadPpm        int32              `db:"max_overhead_ppm" json:"max_overhead_ppm"`
+	EvidenceDigest        []byte             `db:"evidence_digest" json:"evidence_digest"`
+	ContentDigest         []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type ComplianceDatabaseBinding struct {
 	DatabaseRole string             `db:"database_role" json:"database_role"`
 	PrincipalID  uuid.UUID          `db:"principal_id" json:"principal_id"`
@@ -3291,6 +3305,23 @@ type CompliancePrincipal struct {
 	Status         string             `db:"status" json:"status"`
 	DisabledAt     pgtype.Timestamptz `db:"disabled_at" json:"disabled_at"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ConnectorRevision struct {
+	ID                             uuid.UUID          `db:"id" json:"id"`
+	StableID                       string             `db:"stable_id" json:"stable_id"`
+	Revision                       int32              `db:"revision" json:"revision"`
+	State                          CatalogState       `db:"state" json:"state"`
+	SourceInterfaceRevisionID      uuid.UUID          `db:"source_interface_revision_id" json:"source_interface_revision_id"`
+	DestinationInterfaceRevisionID uuid.UUID          `db:"destination_interface_revision_id" json:"destination_interface_revision_id"`
+	Transport                      string             `db:"transport" json:"transport"`
+	DurableFallback                bool               `db:"durable_fallback" json:"durable_fallback"`
+	TopologyPolicy                 []byte             `db:"topology_policy" json:"topology_policy"`
+	IntegrityPolicy                []byte             `db:"integrity_policy" json:"integrity_policy"`
+	SecurityPolicy                 []byte             `db:"security_policy" json:"security_policy"`
+	Limits                         []byte             `db:"limits" json:"limits"`
+	ContentDigest                  []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt                      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type ContentDeletionReceipt struct {
@@ -3377,6 +3408,20 @@ type ContentDeletionTarget struct {
 	DebugDumpID               uuid.NullUUID               `db:"debug_dump_id" json:"debug_dump_id"`
 	StorageTier               ContentStorageTier          `db:"storage_tier" json:"storage_tier"`
 	PurgedVersionCount        *int32                      `db:"purged_version_count" json:"purged_version_count"`
+}
+
+type CostModelRevision struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	StableID           string             `db:"stable_id" json:"stable_id"`
+	Revision           int32              `db:"revision" json:"revision"`
+	State              CatalogState       `db:"state" json:"state"`
+	EffectiveAt        pgtype.Timestamptz `db:"effective_at" json:"effective_at"`
+	ExpiresAt          pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ResourceValuations []byte             `db:"resource_valuations" json:"resource_valuations"`
+	AllocationMethod   string             `db:"allocation_method" json:"allocation_method"`
+	EvidenceDigest     []byte             `db:"evidence_digest" json:"evidence_digest"`
+	ContentDigest      []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type Credential struct {
@@ -3517,6 +3562,55 @@ type ExecutionFailureDecision struct {
 	WorkerWasHealthy           bool                   `db:"worker_was_healthy" json:"worker_was_healthy"`
 }
 
+type ExecutionGraphEdge struct {
+	ID                       uuid.UUID `db:"id" json:"id"`
+	ExecutionGraphRevisionID uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	SourceStageKey           string    `db:"source_stage_key" json:"source_stage_key"`
+	SourcePort               string    `db:"source_port" json:"source_port"`
+	DestinationStageKey      string    `db:"destination_stage_key" json:"destination_stage_key"`
+	DestinationPort          string    `db:"destination_port" json:"destination_port"`
+	BufferClass              string    `db:"buffer_class" json:"buffer_class"`
+}
+
+type ExecutionGraphInput struct {
+	ExecutionGraphRevisionID uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	InputKey                 string    `db:"input_key" json:"input_key"`
+	InterfaceRevisionID      uuid.UUID `db:"interface_revision_id" json:"interface_revision_id"`
+	DestinationStageKey      string    `db:"destination_stage_key" json:"destination_stage_key"`
+	DestinationPort          string    `db:"destination_port" json:"destination_port"`
+}
+
+type ExecutionGraphOutput struct {
+	ExecutionGraphRevisionID uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	OutputKey                string    `db:"output_key" json:"output_key"`
+	InterfaceRevisionID      uuid.UUID `db:"interface_revision_id" json:"interface_revision_id"`
+	SourceStageKey           string    `db:"source_stage_key" json:"source_stage_key"`
+	SourcePort               string    `db:"source_port" json:"source_port"`
+	Required                 bool      `db:"required" json:"required"`
+}
+
+type ExecutionGraphRevision struct {
+	ID                  uuid.UUID          `db:"id" json:"id"`
+	ModelRevisionID     uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
+	StableID            string             `db:"stable_id" json:"stable_id"`
+	Revision            int32              `db:"revision" json:"revision"`
+	SchemaVersion       int32              `db:"schema_version" json:"schema_version"`
+	State               CatalogState       `db:"state" json:"state"`
+	FinalOutputContract []byte             `db:"final_output_contract" json:"final_output_contract"`
+	PublicPhaseMap      []byte             `db:"public_phase_map" json:"public_phase_map"`
+	TopologicalOrder    []string           `db:"topological_order" json:"topological_order"`
+	ContentDigest       []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type ExecutionGraphStage struct {
+	ExecutionGraphRevisionID  uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	StageKey                  string    `db:"stage_key" json:"stage_key"`
+	StageDefinitionRevisionID uuid.UUID `db:"stage_definition_revision_id" json:"stage_definition_revision_id"`
+	Required                  bool      `db:"required" json:"required"`
+	MaxFanOut                 int32     `db:"max_fan_out" json:"max_fan_out"`
+}
+
 type ExecutionLeaseRenewalProtocol struct {
 	Singleton         bool               `db:"singleton" json:"singleton"`
 	Enabled           bool               `db:"enabled" json:"enabled"`
@@ -3524,14 +3618,33 @@ type ExecutionLeaseRenewalProtocol struct {
 	TransitionedAt    pgtype.Timestamptz `db:"transitioned_at" json:"transitioned_at"`
 }
 
+type ExecutionProfileConnectorOption struct {
+	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ExecutionGraphRevisionID   uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionGraphEdgeID       uuid.UUID `db:"execution_graph_edge_id" json:"execution_graph_edge_id"`
+	ConnectorRevisionID        uuid.UUID `db:"connector_revision_id" json:"connector_revision_id"`
+	RequiredTopologyPolicy     []byte    `db:"required_topology_policy" json:"required_topology_policy"`
+	Preference                 int32     `db:"preference" json:"preference"`
+}
+
 type ExecutionProfileRevision struct {
-	ID              uuid.UUID          `db:"id" json:"id"`
-	ModelRevisionID uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
-	WorkerPoolID    uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
-	StableID        string             `db:"stable_id" json:"stable_id"`
-	Revision        int32              `db:"revision" json:"revision"`
-	State           CatalogState       `db:"state" json:"state"`
-	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ID                       uuid.UUID          `db:"id" json:"id"`
+	ModelRevisionID          uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
+	WorkerPoolID             uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	StableID                 string             `db:"stable_id" json:"stable_id"`
+	Revision                 int32              `db:"revision" json:"revision"`
+	State                    CatalogState       `db:"state" json:"state"`
+	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ExecutionGraphRevisionID uuid.NullUUID      `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+}
+
+type ExecutionProfileStageOption struct {
+	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ExecutionGraphRevisionID   uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	StageKey                   string    `db:"stage_key" json:"stage_key"`
+	StageProfileRevisionID     uuid.UUID `db:"stage_profile_revision_id" json:"stage_profile_revision_id"`
+	Preference                 int32     `db:"preference" json:"preference"`
+	EligibilityMetadata        []byte    `db:"eligibility_metadata" json:"eligibility_metadata"`
 }
 
 type ExecutionRetryEvidence struct {
@@ -3736,6 +3849,19 @@ type InferenceBackendRevision struct {
 	State         CatalogState       `db:"state" json:"state"`
 	ContentDigest []byte             `db:"content_digest" json:"content_digest"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type InputCanonicalizationRevision struct {
+	ID                       uuid.UUID          `db:"id" json:"id"`
+	StableID                 string             `db:"stable_id" json:"stable_id"`
+	Revision                 int32              `db:"revision" json:"revision"`
+	State                    CatalogState       `db:"state" json:"state"`
+	EncodingContract         []byte             `db:"encoding_contract" json:"encoding_contract"`
+	ExactEquivalenceRules    []byte             `db:"exact_equivalence_rules" json:"exact_equivalence_rules"`
+	TestCorpusDigest         []byte             `db:"test_corpus_digest" json:"test_corpus_digest"`
+	ActivationEvidenceDigest []byte             `db:"activation_evidence_digest" json:"activation_evidence_digest"`
+	ContentDigest            []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type InvoiceExport struct {
@@ -4517,6 +4643,98 @@ type SloMeasurementReport struct {
 	SealedAt              pgtype.Timestamptz   `db:"sealed_at" json:"sealed_at"`
 }
 
+type StageCachePolicyRevision struct {
+	ID               uuid.UUID          `db:"id" json:"id"`
+	StableID         string             `db:"stable_id" json:"stable_id"`
+	Revision         int32              `db:"revision" json:"revision"`
+	State            CatalogState       `db:"state" json:"state"`
+	AllowedStageKeys []string           `db:"allowed_stage_keys" json:"allowed_stage_keys"`
+	ScopeCeiling     string             `db:"scope_ceiling" json:"scope_ceiling"`
+	TtlSeconds       int64              `db:"ttl_seconds" json:"ttl_seconds"`
+	QuotaPolicy      []byte             `db:"quota_policy" json:"quota_policy"`
+	EncryptionPolicy []byte             `db:"encryption_policy" json:"encryption_policy"`
+	DeletionPolicy   []byte             `db:"deletion_policy" json:"deletion_policy"`
+	ContentDigest    []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageDefinitionRevision struct {
+	ID                         uuid.UUID          `db:"id" json:"id"`
+	StableID                   string             `db:"stable_id" json:"stable_id"`
+	Revision                   int32              `db:"revision" json:"revision"`
+	State                      CatalogState       `db:"state" json:"state"`
+	StageKind                  string             `db:"stage_kind" json:"stage_kind"`
+	InputPorts                 []byte             `db:"input_ports" json:"input_ports"`
+	OutputPorts                []byte             `db:"output_ports" json:"output_ports"`
+	RequiredInputPorts         []string           `db:"required_input_ports" json:"required_input_ports"`
+	RequiredOutputPorts        []string           `db:"required_output_ports" json:"required_output_ports"`
+	ResourceClass              string             `db:"resource_class" json:"resource_class"`
+	RetryClass                 string             `db:"retry_class" json:"retry_class"`
+	CachePolicyRevisionID      uuid.NullUUID      `db:"cache_policy_revision_id" json:"cache_policy_revision_id"`
+	CheckpointPolicyRevisionID uuid.NullUUID      `db:"checkpoint_policy_revision_id" json:"checkpoint_policy_revision_id"`
+	PublicPhase                execution.Phase    `db:"public_phase" json:"public_phase"`
+	ContentDigest              []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt                  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageInterfaceRevision struct {
+	ID              uuid.UUID          `db:"id" json:"id"`
+	StableID        string             `db:"stable_id" json:"stable_id"`
+	Revision        int32              `db:"revision" json:"revision"`
+	State           CatalogState       `db:"state" json:"state"`
+	PayloadKind     string             `db:"payload_kind" json:"payload_kind"`
+	Dtype           string             `db:"dtype" json:"dtype"`
+	Layout          string             `db:"layout" json:"layout"`
+	ShapeContract   []byte             `db:"shape_contract" json:"shape_contract"`
+	Serialization   string             `db:"serialization" json:"serialization"`
+	MaxBytes        int64              `db:"max_bytes" json:"max_bytes"`
+	DigestAlgorithm string             `db:"digest_algorithm" json:"digest_algorithm"`
+	SchemaDigest    []byte             `db:"schema_digest" json:"schema_digest"`
+	ContentDigest   []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageProfileRevision struct {
+	ID                          uuid.UUID          `db:"id" json:"id"`
+	StableID                    string             `db:"stable_id" json:"stable_id"`
+	Revision                    int32              `db:"revision" json:"revision"`
+	State                       CatalogState       `db:"state" json:"state"`
+	StageDefinitionRevisionID   uuid.UUID          `db:"stage_definition_revision_id" json:"stage_definition_revision_id"`
+	ModelComponentRevision      string             `db:"model_component_revision" json:"model_component_revision"`
+	RuntimeImageDigest          string             `db:"runtime_image_digest" json:"runtime_image_digest"`
+	WorkerProfileRevisionID     uuid.UUID          `db:"worker_profile_revision_id" json:"worker_profile_revision_id"`
+	ResultEquivalenceRevisionID uuid.UUID          `db:"result_equivalence_revision_id" json:"result_equivalence_revision_id"`
+	CertifiedCapacityVector     []byte             `db:"certified_capacity_vector" json:"certified_capacity_vector"`
+	ContentDigest               []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt                   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageResultEquivalenceRevision struct {
+	ID                 uuid.UUID          `db:"id" json:"id"`
+	StableID           string             `db:"stable_id" json:"stable_id"`
+	Revision           int32              `db:"revision" json:"revision"`
+	State              CatalogState       `db:"state" json:"state"`
+	ExactContract      []byte             `db:"exact_contract" json:"exact_contract"`
+	EvidenceReceiptRef string             `db:"evidence_receipt_ref" json:"evidence_receipt_ref"`
+	EvidenceDigest     []byte             `db:"evidence_digest" json:"evidence_digest"`
+	ContentDigest      []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageRuntimeModelRevision struct {
+	ID                   uuid.UUID          `db:"id" json:"id"`
+	StableID             string             `db:"stable_id" json:"stable_id"`
+	Revision             int32              `db:"revision" json:"revision"`
+	State                CatalogState       `db:"state" json:"state"`
+	RequestCohortSchema  []byte             `db:"request_cohort_schema" json:"request_cohort_schema"`
+	ServiceDistributions []byte             `db:"service_distributions" json:"service_distributions"`
+	OutputDistributions  []byte             `db:"output_distributions" json:"output_distributions"`
+	TransferModel        []byte             `db:"transfer_model" json:"transfer_model"`
+	EvidenceDigest       []byte             `db:"evidence_digest" json:"evidence_digest"`
+	ContentDigest        []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type StatisticalSloContractRevision struct {
 	ID                         uuid.UUID          `db:"id" json:"id"`
 	TargetMatrixRevision       string             `db:"target_matrix_revision" json:"target_matrix_revision"`
@@ -4811,6 +5029,21 @@ type WorkerProfileReadiness struct {
 	LocalityPenaltySeconds       int32                       `db:"locality_penalty_seconds" json:"locality_penalty_seconds"`
 	HealthRiskPenaltySeconds     int32                       `db:"health_risk_penalty_seconds" json:"health_risk_penalty_seconds"`
 	UpdatedAt                    pgtype.Timestamptz          `db:"updated_at" json:"updated_at"`
+}
+
+type WorkerProfileRevision struct {
+	ID                     uuid.UUID          `db:"id" json:"id"`
+	StableID               string             `db:"stable_id" json:"stable_id"`
+	Revision               int32              `db:"revision" json:"revision"`
+	State                  CatalogState       `db:"state" json:"state"`
+	DeviceCount            int32              `db:"device_count" json:"device_count"`
+	MemberCount            int32              `db:"member_count" json:"member_count"`
+	DeviceSetShape         []byte             `db:"device_set_shape" json:"device_set_shape"`
+	ResidentModelRevisions []byte             `db:"resident_model_revisions" json:"resident_model_revisions"`
+	CapacityLimits         []byte             `db:"capacity_limits" json:"capacity_limits"`
+	ReadinessChecks        []byte             `db:"readiness_checks" json:"readiness_checks"`
+	ContentDigest          []byte             `db:"content_digest" json:"content_digest"`
+	CreatedAt              pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type WorkerReadinessCycle struct {

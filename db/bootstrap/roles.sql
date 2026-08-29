@@ -76,6 +76,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_catalog_promotion') THEN
         CREATE ROLE vela_catalog_promotion NOLOGIN;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_catalog_activation') THEN
+        CREATE ROLE vela_stage_catalog_activation NOLOGIN;
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles WHERE rolname = 'vela_catalog_promotion_owner'
     ) THEN
@@ -183,6 +186,8 @@ ALTER ROLE vela_non_content_expiry
 ALTER ROLE vela_non_content_expiry_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_catalog_promotion
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_stage_catalog_activation
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_catalog_promotion_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;

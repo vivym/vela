@@ -141,6 +141,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_catalog_promotion_login",
 		"vela-catalog-promotion-password",
 	)
+	stageCatalogActivationPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_stage_catalog_activation_login",
+		"vela-stage-catalog-activation-password",
+	)
 	webhookRequestPool := newRolePool(
 		t, database.DSN, "vela_webhook_request_login", "vela-webhook-request-password",
 	)
@@ -158,6 +164,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_compliance_login",
 		"vela_non_content_expiry_login",
 		"vela_catalog_promotion_login",
+		"vela_stage_catalog_activation_login",
 		"vela_webhook_request_login",
 		"vela_webhook_login",
 		"vela_remediation_login",
@@ -274,6 +281,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			name: "Catalog Promotion", pool: catalogPromotionPool,
 			role: veladb.RoleCatalogPromotion,
 		},
+		{
+			name: "Stage Catalog activation", pool: stageCatalogActivationPool,
+			role: veladb.RoleStageCatalogActivation,
+		},
 		{name: "webhook request", pool: webhookRequestPool, role: veladb.RoleWebhookRequest},
 		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
 		{name: "remediation", pool: remediationPool, role: veladb.RoleRemediation},
@@ -300,6 +311,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_non_content_expiry"},
 		{name: "vela_non_content_expiry_owner", bypassRLS: true},
 		{name: "vela_catalog_promotion"},
+		{name: "vela_stage_catalog_activation"},
 		{name: "vela_catalog_promotion_owner", bypassRLS: true},
 		{name: "vela_artifact_replication_owner", bypassRLS: true},
 		{name: "vela_break_glass_owner", bypassRLS: true},
@@ -442,6 +454,11 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			signature: "vela_enable_evidenced_catalog(uuid)",
 			owner:     "vela_catalog_promotion_owner",
 			proconfig: "search_path=pg_catalog, public, vela_private",
+		},
+		{
+			signature: "vela_activate_execution_graph(uuid,bytea)",
+			owner:     "vela_catalog_promotion_owner",
+			proconfig: "search_path=pg_catalog, public",
 		},
 		{
 			signature: "vela_enforce_catalog_protocol_state_transition()",

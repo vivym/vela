@@ -2,7 +2,7 @@
 
 Date: 2026-08-29
 
-Status: Proposed plan; no slice started.
+Status: In progress. S49.1 is implemented; S49.2-S49.12 are pending.
 
 ## Delivery rule
 

@@ -39,6 +39,7 @@ const (
 	RoleCompliance                 Role = "vela_compliance"
 	RoleNonContentExpiry           Role = "vela_non_content_expiry"
 	RoleCatalogPromotion           Role = "vela_catalog_promotion"
+	RoleStageCatalogActivation     Role = "vela_stage_catalog_activation"
 	RoleSLOReporting               Role = "vela_slo_reporting"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
@@ -83,6 +84,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleCompliance:                 {verifyPrivileges: verifyCompliancePrivileges},
 	RoleNonContentExpiry:           {verifyPrivileges: verifyNonContentExpiryPrivileges},
 	RoleCatalogPromotion:           {verifyPrivileges: verifyCatalogPromotionPrivileges},
+	RoleStageCatalogActivation:     {verifyPrivileges: verifyStageCatalogActivationPrivileges},
 	RoleSLOReporting:               {verifyPrivileges: verifySLOReportingPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
@@ -296,6 +298,20 @@ func verifyCatalogPromotionPrivileges(
 			"vela_promote_profile_certification(uuid,uuid,uuid,text,text,integer,integer,integer,integer,bigint,bigint,bigint,bigint,bigint,text,integer,integer,uuid)",
 			"vela_promote_rate_card(uuid,uuid,uuid)",
 			"vela_enable_evidenced_catalog(uuid)",
+		},
+	})
+}
+
+func verifyStageCatalogActivationPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Stage Catalog activation",
+		failureLabel:    "Stage Catalog activation transaction",
+		functions: []string{
+			"vela_activate_execution_graph(uuid,bytea)",
 		},
 	})
 }
