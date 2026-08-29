@@ -114,7 +114,7 @@ func probeXFSProjectQuota(
 	}
 	var filesystem unix.Statfs_t
 	if err := unix.Fstatfs(rootFD, &filesystem); err != nil || uint64(filesystem.Type) != xfsSuperMagic {
-		return XFSProjectQuotaObservation{}, errors.New("Worker scratch root is not on XFS")
+		return XFSProjectQuotaObservation{}, errors.New("worker scratch root is not on XFS")
 	}
 	var deviceStat unix.Stat_t
 	if err := unix.Lstat(config.DevicePath, &deviceStat); err != nil ||
@@ -136,7 +136,7 @@ func probeXFSProjectQuota(
 		return XFSProjectQuotaObservation{}, errno
 	}
 	if attribute.ProjectID != config.ProjectID || attribute.XFlags&xfsXFlagProjectInherit == 0 {
-		return XFSProjectQuotaObservation{}, errors.New("Worker scratch root is not bound to the configured inherited XFS project")
+		return XFSProjectQuotaObservation{}, errors.New("worker scratch root is not bound to the configured inherited XFS project")
 	}
 
 	device, err := unix.BytePtrFromString(config.DevicePath)

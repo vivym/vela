@@ -53,7 +53,7 @@ func NewProductionSandbox(config SandboxConfig) (Sandbox, error) {
 	}, nil
 }
 
-func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) ([]byte, error) {
+func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (output []byte, err error) {
 	if sandbox == nil || sandbox.helper == nil || sandbox.ffprobe == nil || ctx == nil || input == nil {
 		return nil, errors.New("production Artifact sandbox is not configured")
 	}
@@ -71,7 +71,12 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) ([]
 	if err != nil {
 		return nil, fmt.Errorf("create Artifact sandbox root: %w", err)
 	}
-	defer os.RemoveAll(sandboxRoot)
+	defer func() {
+		if cleanupErr := os.RemoveAll(sandboxRoot); cleanupErr != nil {
+			output = nil
+			err = errors.Join(err, fmt.Errorf("remove Artifact sandbox root: %w", cleanupErr))
+		}
+	}()
 	if err := os.Chmod(sandboxRoot, 0o700); err != nil {
 		return nil, fmt.Errorf("restrict Artifact sandbox root: %w", err)
 	}
@@ -165,7 +170,7 @@ func validSandboxExecutableFile(file *os.File, requireStatic bool) bool {
 	if err != nil {
 		return false
 	}
-	defer binary.Close()
+	defer func() { _ = binary.Close() }()
 	libraries, err := binary.ImportedLibraries()
 	return err == nil && len(libraries) == 0
 }
