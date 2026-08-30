@@ -3702,6 +3702,48 @@ func (ns NullStageRetryBudgetState) Value() (driver.Value, error) {
 	return string(ns.StageRetryBudgetState), nil
 }
 
+type StageRunOutputSourceKind string
+
+const (
+	StageRunOutputSourceKindPHYSICAL   StageRunOutputSourceKind = "PHYSICAL"
+	StageRunOutputSourceKindEXACTCACHE StageRunOutputSourceKind = "EXACT_CACHE"
+)
+
+func (e *StageRunOutputSourceKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StageRunOutputSourceKind(s)
+	case string:
+		*e = StageRunOutputSourceKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StageRunOutputSourceKind: %T", src)
+	}
+	return nil
+}
+
+type NullStageRunOutputSourceKind struct {
+	StageRunOutputSourceKind StageRunOutputSourceKind `json:"stage_run_output_source_kind"`
+	Valid                    bool                     `json:"valid"` // Valid is true if StageRunOutputSourceKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStageRunOutputSourceKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.StageRunOutputSourceKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StageRunOutputSourceKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStageRunOutputSourceKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StageRunOutputSourceKind), nil
+}
+
 type StageRunState string
 
 const (
@@ -6951,6 +6993,22 @@ type StageRun struct {
 	CreatedAt                      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt                      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	WinnerStageArtifactID          uuid.NullUUID      `db:"winner_stage_artifact_id" json:"winner_stage_artifact_id"`
+}
+
+type StageRunOutputBinding struct {
+	OrganizationID             uuid.UUID                `db:"organization_id" json:"organization_id"`
+	ProjectID                  uuid.UUID                `db:"project_id" json:"project_id"`
+	JobID                      uuid.UUID                `db:"job_id" json:"job_id"`
+	AttemptID                  uuid.UUID                `db:"attempt_id" json:"attempt_id"`
+	StageRunID                 uuid.UUID                `db:"stage_run_id" json:"stage_run_id"`
+	OutputPort                 string                   `db:"output_port" json:"output_port"`
+	StageInterfaceRevisionID   uuid.UUID                `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	StageArtifactID            uuid.UUID                `db:"stage_artifact_id" json:"stage_artifact_id"`
+	SourceKind                 StageRunOutputSourceKind `db:"source_kind" json:"source_kind"`
+	PhysicalProducerStageRunID uuid.NullUUID            `db:"physical_producer_stage_run_id" json:"physical_producer_stage_run_id"`
+	StageCacheReferenceID      uuid.NullUUID            `db:"stage_cache_reference_id" json:"stage_cache_reference_id"`
+	BoundAt                    pgtype.Timestamptz       `db:"bound_at" json:"bound_at"`
+	CreatedAt                  pgtype.Timestamptz       `db:"created_at" json:"created_at"`
 }
 
 type StageRuntimeModelRevision struct {

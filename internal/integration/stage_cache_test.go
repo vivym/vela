@@ -18,12 +18,14 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stagecache"
+	"github.com/vivym/vela/internal/workercontrol"
 )
 
 const (
 	h3CachePolicyID      = "49000000-0000-0000-0000-000000000020"
 	h3OrgCachePolicyID   = "49800000-0000-0000-0000-000000000020"
 	h3EncoderEquivalence = "49000000-0000-0000-0000-000000000023"
+	h3VAEEquivalence     = "49000000-0000-0000-0000-000000000025"
 )
 
 func TestStageCacheAdmitAndHitPinsExactArtifactAtBillableStart(t *testing.T) {
@@ -174,6 +176,184 @@ func TestStageCacheAdmitAndHitPinsExactArtifactAtBillableStart(t *testing.T) {
 			"cache effects job=%s billable=%s pin=%s/%s active=%d receipts=%d",
 			jobState, billableStartedAt, pinState, pinVersion, activePins, progressReceipts,
 		)
+	}
+}
+
+func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
+	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
+	seedWorkerRegistryPlan(t, database.Admin)
+	registry, err := fleet.NewService(newRolePool(
+		t, database.DSN, "vela_internal_login", "vela-internal-password",
+	))
+	if err != nil {
+		t.Fatalf("construct cache-leaf Worker Registry: %v", err)
+	}
+	artifacts, err := stageartifact.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_stage_artifact_login", "vela-stage-artifact-password",
+	))
+	if err != nil {
+		t.Fatalf("construct cache-leaf StageArtifact repository: %v", err)
+	}
+	cache, err := stagecache.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
+	))
+	if err != nil {
+		t.Fatalf("construct cache-leaf repository: %v", err)
+	}
+
+	sourceJob, sourceAttemptID := instantiateH3IntegrationGraph(
+		t, database, coordinator, serverURL, "stage-cache-leaf-source",
+	)
+	advanceUnboundIntegrationCacheStage(t, database, coordinator, sourceAttemptID, "encoder", 1, 0xe1)
+	advanceUnboundIntegrationCacheStage(t, database, coordinator, sourceAttemptID, "dit", 2, 0xe2)
+	var sourceVAERunID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'vae'
+	`, sourceAttemptID).Scan(&sourceVAERunID); err != nil {
+		t.Fatalf("read source VAE StageRun: %v", err)
+	}
+	vae := h3IntegrationStage{
+		key: "vae", stage: "VAE", profileStableID: "h3-vae-single-gpu",
+		profileID: h3VAEStageProfileID, workerProfileID: h3VAEWorkerProfileID,
+		component: "h3-vae-v1", outputPort: "video",
+		outputInterface: "49000000-0000-0000-0000-000000000013",
+		nodeIdentity:    "cache-leaf-source-node", contentType: "video/mp4",
+	}
+	assignment := assignH3IntegrationStage(
+		t, database, coordinator, registry, sourceAttemptID, sourceVAERunID, 2, vae, 0xe3,
+	)
+	authority := signedAssignedStageAuthority(t, database, sourceJob, assignment, 3)
+	_ = startH3IntegrationStage(t, database, assignment, authority)
+	sourceArtifact := materializeH3IntegrationStage(
+		t, artifacts, artifactstore.NewLocal(), sourceAttemptID, sourceVAERunID,
+		assignment, vae, []byte("exact reusable VAE video"),
+		[]byte(`{"kind":"video","cache":"exact"}`),
+	)
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	if _, err := cache.SetProjectControl(context.Background(), stagecache.ProjectControlCommand{
+		OrganizationID: uuid.MustParse(testOrganizationID), ProjectID: uuid.MustParse(testProjectID),
+		CachePolicyRevisionID: uuid.MustParse(h3CachePolicyID), Enabled: true,
+		MaxEntries: 100, MaxBytes: 1 << 30, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("enable VAE Stage Cache: %v", err)
+	}
+	cacheKey := sha256.Sum256([]byte("project/exact/vae/cache-key-v1"))
+	entryID := uuid.New()
+	if _, err := cache.Admit(context.Background(), stagecache.AdmitCommand{
+		CommandID: uuid.New(), EntryID: entryID, ArtifactID: sourceArtifact.ID,
+		CachePolicyRevisionID:       uuid.MustParse(h3CachePolicyID),
+		StageProfileRevisionID:      uuid.MustParse(h3VAEStageProfileID),
+		ResultEquivalenceRevisionID: uuid.MustParse(h3VAEEquivalence),
+		Scope:                       stagecache.ScopeProject, StageKey: "vae", CacheKeyDigest: cacheKey,
+		ExpectedSavedComputeMinor: 20_000, CarryCostMinor: 20,
+		AdmittedAt: now, ExpiresAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("admit exact VAE Stage Cache entry: %v", err)
+	}
+
+	_, targetAttemptID := instantiateH3IntegrationGraph(
+		t, database, coordinator, serverURL, "stage-cache-leaf-target",
+	)
+	advanceUnboundIntegrationCacheStage(t, database, coordinator, targetAttemptID, "encoder", 1, 0xe4)
+	advanceUnboundIntegrationCacheStage(t, database, coordinator, targetAttemptID, "dit", 2, 0xe5)
+	var targetVAERunID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'vae'
+	`, targetAttemptID).Scan(&targetVAERunID); err != nil {
+		t.Fatalf("read target VAE StageRun: %v", err)
+	}
+	hit, err := cache.Hit(context.Background(), stagecache.HitCommand{
+		CommandID: uuid.New(), EntryID: entryID, PinID: uuid.New(),
+		AttemptID: targetAttemptID, StageRunID: targetVAERunID,
+		StageProfileRevisionID: uuid.MustParse(h3VAEStageProfileID),
+		ExpectedOrganizationID: uuid.MustParse(testOrganizationID),
+		ExpectedProjectID:      uuid.MustParse(testProjectID),
+		ExpectedAttemptFence:   1, ExpectedStageFence: 1, ExpectedStageVersion: 2,
+		ProgressReceiptID: uuid.New(), CacheKeyDigest: cacheKey,
+		HitAt: now.Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("hit exact VAE Stage Cache entry: %v", err)
+	}
+	if hit.ArtifactID != sourceArtifact.ID || hit.StageRunID != targetVAERunID ||
+		hit.StageState != "SUCCEEDED" || hit.StageVersion != 3 {
+		t.Fatalf("VAE Stage Cache hit = %#v", hit)
+	}
+
+	var jobState, attemptState, graphState, sourceKind, referenceState string
+	var boundArtifactID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, attempt.state::text, attempt.graph_state::text,
+		       binding.source_kind::text, binding.stage_artifact_id,
+		       reference.state::text
+		FROM attempts AS attempt
+		JOIN jobs AS job ON job.id = attempt.job_id
+		JOIN stage_run_output_bindings AS binding
+		  ON binding.attempt_id = attempt.id AND binding.stage_run_id = $2
+		JOIN stage_cache_references AS reference
+		  ON reference.id = binding.stage_cache_reference_id
+		WHERE attempt.id = $1
+	`, targetAttemptID, targetVAERunID).Scan(
+		&jobState, &attemptState, &graphState, &sourceKind, &boundArtifactID, &referenceState,
+	); err != nil {
+		t.Fatalf("read exact-cache StageRun output binding: %v", err)
+	}
+	if jobState != "FINALIZING" || attemptState != "FINALIZING" ||
+		graphState != "FINALIZING" || sourceKind != "EXACT_CACHE" ||
+		boundArtifactID != sourceArtifact.ID || referenceState != "ACTIVE" {
+		t.Fatalf(
+			"cache-leaf authority=%s/%s/%s source=%s artifact=%s reference=%s",
+			jobState, attemptState, graphState, sourceKind, boundArtifactID, referenceState,
+		)
+	}
+
+	finalizerService := visibleCompletionService(t, database.DSN)
+	var targetClaim workercontrol.StageGraphFinalizationClaim
+	for index := 0; index < 2; index++ {
+		claim, err := finalizerService.ClaimNextStageGraphFinalization(
+			context.Background(), workercontrol.AuthenticatedFinalizer{
+				ID: "spiffe://vela.internal/finalizer/cache-leaf-" + string(rune('a'+index)),
+			},
+		)
+		if err != nil || claim.Decision != workercontrol.StageGraphFinalizationGranted {
+			t.Fatalf("claim cache-leaf finalization %d = %#v error=%v", index, claim, err)
+		}
+		if claim.Credentials.AttemptID == targetAttemptID {
+			targetClaim = claim
+		}
+	}
+	if targetClaim.Credentials.AttemptID != targetAttemptID ||
+		targetClaim.Source.StageRunID != targetVAERunID ||
+		targetClaim.Source.StageArtifactID != sourceArtifact.ID ||
+		targetClaim.Source.ObjectVersion != sourceArtifact.ObjectVersion {
+		t.Fatalf("target cache-leaf finalization claim = %#v", targetClaim)
+	}
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err = goose.DownTo(database.Admin, migrations, 47)
+	assertPostgresConstraint(t, err, "stage_run_output_binding_rollback_is_unsafe")
+	version, versionErr := goose.GetDBVersion(database.Admin)
+	if versionErr != nil || version != 48 {
+		t.Fatalf("StageRun output binding version after refused Down = %d error=%v", version, versionErr)
+	}
+}
+
+func TestStageRunOutputBindingMigrationRoundTrip(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+
+	if err := goose.DownTo(database.Admin, migrations, 47); err != nil {
+		t.Fatalf("migrate empty StageRun output binding down: %v", err)
+	}
+	assertTableDoesNotExist(t, database.Admin, "stage_run_output_bindings")
+	if err := goose.UpTo(database.Admin, migrations, 48); err != nil {
+		t.Fatalf("migrate StageRun output binding up again: %v", err)
+	}
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 48 {
+		t.Fatalf("StageRun output binding version after Down Up = %d error=%v", version, err)
 	}
 }
 
@@ -568,27 +748,31 @@ func TestStageCacheMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
 	t.Run("durable evidence refuses Down", func(t *testing.T) {
 		fixture := newPinnedStageCacheFixture(t, "stage-cache-migration-refusal")
 		err := goose.DownTo(fixture.database.Admin, migrations, 43)
-		assertPostgresConstraint(t, err, "stage_cache_rollback_is_unsafe")
+		assertPostgresConstraint(t, err, "stage_run_output_binding_rollback_is_unsafe")
 		version, versionErr := goose.GetDBVersion(fixture.database.Admin)
-		if versionErr != nil || version != 44 {
+		if versionErr != nil || version != 48 {
 			t.Fatalf(
 				"Stage Cache version after refused Down = %d error=%v",
 				version, versionErr,
 			)
 		}
-		var entries, commands, pins int
+		var entries, commands, pins, bindings int
 		if err := fixture.database.Admin.QueryRow(`
 			SELECT
 				(SELECT count(*) FROM stage_cache_entries),
 				(SELECT count(*) FROM stage_cache_commands),
-				(SELECT count(*) FROM stage_artifact_pins WHERE id = $1)
-		`, fixture.hit.PinID).Scan(&entries, &commands, &pins); err != nil {
+				(SELECT count(*) FROM stage_artifact_pins WHERE id = $1),
+				(SELECT count(*) FROM stage_run_output_bindings
+				 WHERE stage_run_id = $2 AND stage_artifact_id = $3)
+		`, fixture.hit.PinID, fixture.targetRunID, fixture.hit.ArtifactID).Scan(
+			&entries, &commands, &pins, &bindings,
+		); err != nil {
 			t.Fatalf("read Stage Cache evidence after refused Down: %v", err)
 		}
-		if entries != 1 || commands != 2 || pins != 1 {
+		if entries != 1 || commands != 2 || pins != 1 || bindings != 1 {
 			t.Fatalf(
-				"Stage Cache evidence after refused Down entries/commands/pins = %d/%d/%d",
-				entries, commands, pins,
+				"Stage Cache evidence after refused Down entries/commands/pins/bindings = %d/%d/%d/%d",
+				entries, commands, pins, bindings,
 			)
 		}
 	})
@@ -739,4 +923,37 @@ func newPinnedStageCacheFixture(t *testing.T, idempotencyPrefix string) pinnedSt
 		sourceJobID: uuid.MustParse(sourceJob.JobID), entryID: entryID, cacheKey: cacheKey,
 		targetJobID: uuid.MustParse(targetJob.JobID), targetRunID: targetRunID, hit: hit,
 	}
+}
+
+func advanceUnboundIntegrationCacheStage(
+	t *testing.T,
+	database testDatabase,
+	coordinator *attemptcoordinator.Service,
+	attemptID uuid.UUID,
+	stageKey string,
+	expectedVersion int64,
+	digestByte byte,
+) uuid.UUID {
+	t.Helper()
+	var stageRunID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = $2
+	`, attemptID, stageKey).Scan(&stageRunID); err != nil {
+		t.Fatalf("read unbound-cache %s StageRun: %v", stageKey, err)
+	}
+	decision, err := coordinator.Apply(context.Background(), attemptcoordinator.ExactCacheAdvanceCommand{
+		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: stageRunID,
+		ExpectedAttemptFence: 1, ExpectedStageFence: 1,
+		ExpectedStageVersion: expectedVersion, ProgressReceiptID: uuid.New(),
+		CacheSourceIdentity: "unbound-integration-cache/" + stageKey,
+		OutputDigest:        bytesOf(digestByte, sha256.Size),
+		AdvancedAt:          time.Now().UTC().Truncate(time.Millisecond),
+	})
+	if err != nil {
+		t.Fatalf("advance unbound-cache %s StageRun: %v", stageKey, err)
+	}
+	if decision.State != "SUCCEEDED" || decision.StageVersion != expectedVersion+1 {
+		t.Fatalf("unbound-cache %s decision = %#v", stageKey, decision)
+	}
+	return stageRunID
 }

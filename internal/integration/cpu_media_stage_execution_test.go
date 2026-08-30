@@ -229,7 +229,7 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 			t.Fatalf("migrate Stage graph Visible Completion back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 46 {
+		if err != nil || version != 48 {
 			t.Fatalf("Stage graph Visible Completion version after Up = %d error=%v", version, err)
 		}
 	})

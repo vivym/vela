@@ -939,7 +939,7 @@ func TestStageGraphRunningCancellationPostsChargeAndFencesLateProgress(t *testin
 	}
 }
 
-func TestStageGraphExactCacheLeafBeginsFinalization(t *testing.T) {
+func TestUnboundExactCacheLeafCannotBeginFinalization(t *testing.T) {
 	database, _, coordinator, _, attemptID, encoderRunID, ditRunID :=
 		newStageGraphCancellationFixture(t, "stage-graph-cache-only-finalization")
 	var vaeRunID uuid.UUID
@@ -983,26 +983,28 @@ func TestStageGraphExactCacheLeafBeginsFinalization(t *testing.T) {
 
 	var jobState, attemptState, graphState string
 	var finalizationStartedAt, finalizationDeadlineAt sql.NullTime
+	var outputBindings int
 	if err := database.Admin.QueryRow(`
 		SELECT job.state::text, attempt.state::text, attempt.graph_state::text,
-		       attempt.finalization_started_at, attempt.finalization_deadline_at
+		       attempt.finalization_started_at, attempt.finalization_deadline_at,
+		       (SELECT count(*) FROM stage_run_output_bindings
+		        WHERE stage_run_id = $2)
 		FROM attempts AS attempt
 		JOIN jobs AS job ON job.id = attempt.job_id
 		WHERE attempt.id = $1
-	`, attemptID).Scan(
+	`, attemptID, vaeRunID).Scan(
 		&jobState, &attemptState, &graphState,
-		&finalizationStartedAt, &finalizationDeadlineAt,
+		&finalizationStartedAt, &finalizationDeadlineAt, &outputBindings,
 	); err != nil {
-		t.Fatalf("read cache-only finalization authority: %v", err)
+		t.Fatalf("read unbound cache finalization authority: %v", err)
 	}
-	if jobState != "FINALIZING" || attemptState != "FINALIZING" ||
-		graphState != "FINALIZING" || !finalizationStartedAt.Valid ||
-		!finalizationDeadlineAt.Valid ||
-		!finalizationDeadlineAt.Time.After(finalizationStartedAt.Time) {
+	if jobState != "RUNNING" || attemptState != "RUNNING" ||
+		graphState != "RUNNING" || finalizationStartedAt.Valid ||
+		finalizationDeadlineAt.Valid || outputBindings != 0 {
 		t.Fatalf(
-			"cache-only finalization = job/attempt/graph %s/%s/%s started/deadline %v/%v",
+			"unbound cache finalization = job/attempt/graph %s/%s/%s started/deadline %v/%v bindings=%d",
 			jobState, attemptState, graphState,
-			finalizationStartedAt, finalizationDeadlineAt,
+			finalizationStartedAt, finalizationDeadlineAt, outputBindings,
 		)
 	}
 }

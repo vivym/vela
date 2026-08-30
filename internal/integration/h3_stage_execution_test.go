@@ -376,7 +376,7 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("migrate Stage graph finalization back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 46 {
+		if err != nil || version != 48 {
 			t.Fatalf("Stage graph finalization version after Up = %d error=%v", version, err)
 		}
 	})

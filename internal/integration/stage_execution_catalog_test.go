@@ -795,7 +795,7 @@ func seedStageExecutionCatalog(t *testing.T, database *sql.DB) {
 			ttl_seconds, quota_policy, encryption_policy, deletion_policy, content_digest
 		) VALUES (
 			'49000000-0000-0000-0000-000000000020', 'h3-exact-cache', 1, 'CERTIFIED',
-			ARRAY['encoder', 'dit'], 'PROJECT', 86400, '{}', '{}', '{}',
+			ARRAY['encoder', 'dit', 'vae'], 'PROJECT', 86400, '{}', '{}', '{}',
 			decode(repeat('30', 32), 'hex')
 		);
 		INSERT INTO checkpoint_policy_revisions (

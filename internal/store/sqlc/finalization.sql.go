@@ -1538,7 +1538,6 @@ SELECT
 FROM stage_graph_finalization_claim_outputs AS output
 JOIN stage_artifacts AS artifact
   ON artifact.id = output.stage_artifact_id
- AND artifact.producer_stage_run_id = output.stage_run_id
  AND artifact.stage_interface_revision_id = output.stage_interface_revision_id
  AND artifact.object_version = output.exact_object_version
  AND artifact.state = 'COMMITTED'
@@ -1610,11 +1609,13 @@ FROM stage_runs AS run
 JOIN execution_graph_outputs AS output
   ON output.execution_graph_revision_id = run.execution_graph_revision_id
  AND output.source_stage_key = run.stage_key
+JOIN stage_run_output_bindings AS binding
+  ON binding.attempt_id = run.attempt_id
+ AND binding.stage_run_id = run.id
+ AND binding.output_port = output.source_port
+ AND binding.stage_interface_revision_id = output.interface_revision_id
 JOIN stage_artifacts AS artifact
-  ON artifact.id = run.winner_stage_artifact_id
- AND artifact.producer_stage_run_id = run.id
- AND artifact.output_port = output.source_port
- AND artifact.stage_interface_revision_id = output.interface_revision_id
+  ON artifact.id = binding.stage_artifact_id
 WHERE run.attempt_id = $1
   AND run.state = 'SUCCEEDED'
   AND output.required
@@ -1819,7 +1820,10 @@ SELECT
 FROM attempts AS attempt
 JOIN jobs AS job ON job.id = attempt.job_id
 JOIN stage_runs AS run ON run.attempt_id = attempt.id
-JOIN stage_artifacts AS artifact ON artifact.id = run.winner_stage_artifact_id
+JOIN stage_run_output_bindings AS binding
+  ON binding.attempt_id = attempt.id
+ AND binding.stage_run_id = run.id
+JOIN stage_artifacts AS artifact ON artifact.id = binding.stage_artifact_id
 WHERE attempt.state = 'FINALIZING'
   AND attempt.graph_state = 'FINALIZING'
   AND attempt.worker_id IS NULL
