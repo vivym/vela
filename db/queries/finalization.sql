@@ -46,6 +46,123 @@ WHERE l.attempt_id = sqlc.arg(attempt_id)
 LIMIT 1
 FOR UPDATE OF l, a, j;
 
+-- name: ExpireStageGraphFinalizationClaims :exec
+UPDATE stage_graph_finalization_claims
+SET state = 'EXPIRED',
+    expired_at = sqlc.arg(expired_at),
+    updated_at = sqlc.arg(expired_at)
+WHERE state = 'ACTIVE'
+  AND expires_at <= sqlc.arg(expired_at);
+
+-- name: FindActiveStageGraphFinalizationClaim :one
+SELECT
+    claim.id AS claim_id,
+    claim.organization_id,
+    claim.project_id,
+    claim.job_id,
+    claim.attempt_id,
+    claim.attempt_fence,
+    claim.final_stage_run_id,
+    claim.final_stage_artifact_id,
+    claim.exact_object_version,
+    claim.owner_id,
+    claim.token_digest,
+    claim.signing_key_id,
+    claim.issued_at,
+    claim.expires_at,
+    attempt.finalization_started_at,
+    attempt.finalization_deadline_at,
+    job.version AS job_version,
+    artifact.object_key,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.stage_interface_revision_id,
+    artifact.expires_at AS artifact_expires_at
+FROM stage_graph_finalization_claims AS claim
+JOIN attempts AS attempt ON attempt.id = claim.attempt_id
+JOIN jobs AS job ON job.id = claim.job_id
+JOIN stage_artifacts AS artifact ON artifact.id = claim.final_stage_artifact_id
+WHERE claim.owner_id = sqlc.arg(owner_id)
+  AND claim.state = 'ACTIVE'
+  AND claim.expires_at > sqlc.arg(observed_at)
+  AND attempt.state = 'FINALIZING'
+  AND attempt.graph_state = 'FINALIZING'
+  AND attempt.worker_id IS NULL
+  AND attempt.fence = claim.attempt_fence
+  AND attempt.finalization_deadline_at > sqlc.arg(observed_at)
+  AND job.state = 'FINALIZING'
+  AND job.current_fence = claim.attempt_fence
+  AND job.job_expires_at > sqlc.arg(observed_at)
+  AND artifact.state = 'COMMITTED'
+  AND artifact.object_version = claim.exact_object_version
+ORDER BY claim.issued_at, claim.id
+LIMIT 1
+FOR UPDATE OF claim, attempt, job;
+
+-- name: LockNextStageGraphFinalizationCandidate :one
+SELECT
+    attempt.organization_id,
+    attempt.project_id,
+    attempt.job_id,
+    attempt.id AS attempt_id,
+    attempt.fence AS attempt_fence,
+    attempt.finalization_started_at,
+    attempt.finalization_deadline_at,
+    job.version AS job_version,
+    job.job_expires_at,
+    run.id AS final_stage_run_id,
+    artifact.id AS final_stage_artifact_id,
+    artifact.object_key,
+    artifact.object_version,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.stage_interface_revision_id,
+    artifact.expires_at AS artifact_expires_at
+FROM attempts AS attempt
+JOIN jobs AS job ON job.id = attempt.job_id
+JOIN stage_runs AS run ON run.attempt_id = attempt.id
+JOIN stage_artifacts AS artifact ON artifact.id = run.winner_stage_artifact_id
+WHERE attempt.state = 'FINALIZING'
+  AND attempt.graph_state = 'FINALIZING'
+  AND attempt.worker_id IS NULL
+  AND attempt.finalization_deadline_at > sqlc.arg(observed_at)
+  AND job.state = 'FINALIZING'
+  AND job.current_fence = attempt.fence
+  AND job.job_expires_at > sqlc.arg(observed_at)
+  AND run.state = 'SUCCEEDED'
+  AND artifact.state = 'COMMITTED'
+  AND artifact.expires_at > sqlc.arg(observed_at)
+  AND NOT EXISTS (
+      SELECT 1
+      FROM stage_dependencies AS outgoing
+      WHERE outgoing.attempt_id = attempt.id
+        AND outgoing.source_stage_run_id = run.id
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM stage_graph_finalization_claims AS active_claim
+      WHERE active_claim.attempt_id = attempt.id
+        AND active_claim.state = 'ACTIVE'
+  )
+ORDER BY attempt.finalization_started_at, attempt.id, run.id
+LIMIT 1
+FOR UPDATE OF attempt, job SKIP LOCKED;
+
+-- name: InsertStageGraphFinalizationClaim :exec
+INSERT INTO stage_graph_finalization_claims (
+    id, organization_id, project_id, job_id, attempt_id, attempt_fence,
+    final_stage_run_id, final_stage_artifact_id, exact_object_version,
+    owner_id, token_digest, signing_key_id, issued_at, expires_at
+) VALUES (
+    sqlc.arg(claim_id), sqlc.arg(organization_id), sqlc.arg(project_id),
+    sqlc.arg(job_id), sqlc.arg(attempt_id), sqlc.arg(attempt_fence),
+    sqlc.arg(final_stage_run_id), sqlc.arg(final_stage_artifact_id),
+    sqlc.arg(exact_object_version), sqlc.arg(owner_id), sqlc.arg(token_digest),
+    sqlc.arg(signing_key_id), sqlc.arg(issued_at), sqlc.arg(expires_at)
+);
+
 -- name: FindActiveReconcilerFinalizationCandidate :one
 SELECT a.id AS attempt_id, a.worker_id, a.worker_epoch, a.fence
 FROM attempt_leases AS lease

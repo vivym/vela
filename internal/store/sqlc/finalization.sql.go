@@ -277,6 +277,20 @@ func (q *Queries) DecrementProjectRunningForVisibleCompletion(ctx context.Contex
 	return result.RowsAffected(), nil
 }
 
+const expireStageGraphFinalizationClaims = `-- name: ExpireStageGraphFinalizationClaims :exec
+UPDATE stage_graph_finalization_claims
+SET state = 'EXPIRED',
+    expired_at = $1,
+    updated_at = $1
+WHERE state = 'ACTIVE'
+  AND expires_at <= $1
+`
+
+func (q *Queries) ExpireStageGraphFinalizationClaims(ctx context.Context, expiredAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, expireStageGraphFinalizationClaims, expiredAt)
+	return err
+}
+
 const findActiveReconcilerFinalizationCandidate = `-- name: FindActiveReconcilerFinalizationCandidate :one
 SELECT a.id AS attempt_id, a.worker_id, a.worker_epoch, a.fence
 FROM attempt_leases AS lease
@@ -310,6 +324,115 @@ func (q *Queries) FindActiveReconcilerFinalizationCandidate(ctx context.Context,
 		&i.WorkerID,
 		&i.WorkerEpoch,
 		&i.Fence,
+	)
+	return i, err
+}
+
+const findActiveStageGraphFinalizationClaim = `-- name: FindActiveStageGraphFinalizationClaim :one
+SELECT
+    claim.id AS claim_id,
+    claim.organization_id,
+    claim.project_id,
+    claim.job_id,
+    claim.attempt_id,
+    claim.attempt_fence,
+    claim.final_stage_run_id,
+    claim.final_stage_artifact_id,
+    claim.exact_object_version,
+    claim.owner_id,
+    claim.token_digest,
+    claim.signing_key_id,
+    claim.issued_at,
+    claim.expires_at,
+    attempt.finalization_started_at,
+    attempt.finalization_deadline_at,
+    job.version AS job_version,
+    artifact.object_key,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.stage_interface_revision_id,
+    artifact.expires_at AS artifact_expires_at
+FROM stage_graph_finalization_claims AS claim
+JOIN attempts AS attempt ON attempt.id = claim.attempt_id
+JOIN jobs AS job ON job.id = claim.job_id
+JOIN stage_artifacts AS artifact ON artifact.id = claim.final_stage_artifact_id
+WHERE claim.owner_id = $1
+  AND claim.state = 'ACTIVE'
+  AND claim.expires_at > $2
+  AND attempt.state = 'FINALIZING'
+  AND attempt.graph_state = 'FINALIZING'
+  AND attempt.worker_id IS NULL
+  AND attempt.fence = claim.attempt_fence
+  AND attempt.finalization_deadline_at > $2
+  AND job.state = 'FINALIZING'
+  AND job.current_fence = claim.attempt_fence
+  AND job.job_expires_at > $2
+  AND artifact.state = 'COMMITTED'
+  AND artifact.object_version = claim.exact_object_version
+ORDER BY claim.issued_at, claim.id
+LIMIT 1
+FOR UPDATE OF claim, attempt, job
+`
+
+type FindActiveStageGraphFinalizationClaimParams struct {
+	OwnerID    string             `db:"owner_id" json:"owner_id"`
+	ObservedAt pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+}
+
+type FindActiveStageGraphFinalizationClaimRow struct {
+	ClaimID                  uuid.UUID          `db:"claim_id" json:"claim_id"`
+	OrganizationID           uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID                uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence             int64              `db:"attempt_fence" json:"attempt_fence"`
+	FinalStageRunID          uuid.UUID          `db:"final_stage_run_id" json:"final_stage_run_id"`
+	FinalStageArtifactID     uuid.UUID          `db:"final_stage_artifact_id" json:"final_stage_artifact_id"`
+	ExactObjectVersion       string             `db:"exact_object_version" json:"exact_object_version"`
+	OwnerID                  string             `db:"owner_id" json:"owner_id"`
+	TokenDigest              []byte             `db:"token_digest" json:"token_digest"`
+	SigningKeyID             string             `db:"signing_key_id" json:"signing_key_id"`
+	IssuedAt                 pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	FinalizationStartedAt    pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
+	FinalizationDeadlineAt   pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	JobVersion               int64              `db:"job_version" json:"job_version"`
+	ObjectKey                string             `db:"object_key" json:"object_key"`
+	ContentType              string             `db:"content_type" json:"content_type"`
+	Sha256                   []byte             `db:"sha256" json:"sha256"`
+	SizeBytes                int64              `db:"size_bytes" json:"size_bytes"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ArtifactExpiresAt        pgtype.Timestamptz `db:"artifact_expires_at" json:"artifact_expires_at"`
+}
+
+func (q *Queries) FindActiveStageGraphFinalizationClaim(ctx context.Context, arg FindActiveStageGraphFinalizationClaimParams) (FindActiveStageGraphFinalizationClaimRow, error) {
+	row := q.db.QueryRow(ctx, findActiveStageGraphFinalizationClaim, arg.OwnerID, arg.ObservedAt)
+	var i FindActiveStageGraphFinalizationClaimRow
+	err := row.Scan(
+		&i.ClaimID,
+		&i.OrganizationID,
+		&i.ProjectID,
+		&i.JobID,
+		&i.AttemptID,
+		&i.AttemptFence,
+		&i.FinalStageRunID,
+		&i.FinalStageArtifactID,
+		&i.ExactObjectVersion,
+		&i.OwnerID,
+		&i.TokenDigest,
+		&i.SigningKeyID,
+		&i.IssuedAt,
+		&i.ExpiresAt,
+		&i.FinalizationStartedAt,
+		&i.FinalizationDeadlineAt,
+		&i.JobVersion,
+		&i.ObjectKey,
+		&i.ContentType,
+		&i.Sha256,
+		&i.SizeBytes,
+		&i.StageInterfaceRevisionID,
+		&i.ArtifactExpiresAt,
 	)
 	return i, err
 }
@@ -794,6 +917,57 @@ func (q *Queries) InsertReconcilerFinalizationLease(ctx context.Context, arg Ins
 		arg.WorkerEpoch,
 		arg.OwnerID,
 		arg.Fence,
+		arg.TokenDigest,
+		arg.SigningKeyID,
+		arg.IssuedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const insertStageGraphFinalizationClaim = `-- name: InsertStageGraphFinalizationClaim :exec
+INSERT INTO stage_graph_finalization_claims (
+    id, organization_id, project_id, job_id, attempt_id, attempt_fence,
+    final_stage_run_id, final_stage_artifact_id, exact_object_version,
+    owner_id, token_digest, signing_key_id, issued_at, expires_at
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6,
+    $7, $8,
+    $9, $10, $11,
+    $12, $13, $14
+)
+`
+
+type InsertStageGraphFinalizationClaimParams struct {
+	ClaimID              uuid.UUID          `db:"claim_id" json:"claim_id"`
+	OrganizationID       uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID            uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID            uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence         int64              `db:"attempt_fence" json:"attempt_fence"`
+	FinalStageRunID      uuid.UUID          `db:"final_stage_run_id" json:"final_stage_run_id"`
+	FinalStageArtifactID uuid.UUID          `db:"final_stage_artifact_id" json:"final_stage_artifact_id"`
+	ExactObjectVersion   string             `db:"exact_object_version" json:"exact_object_version"`
+	OwnerID              string             `db:"owner_id" json:"owner_id"`
+	TokenDigest          []byte             `db:"token_digest" json:"token_digest"`
+	SigningKeyID         string             `db:"signing_key_id" json:"signing_key_id"`
+	IssuedAt             pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+func (q *Queries) InsertStageGraphFinalizationClaim(ctx context.Context, arg InsertStageGraphFinalizationClaimParams) error {
+	_, err := q.db.Exec(ctx, insertStageGraphFinalizationClaim,
+		arg.ClaimID,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.JobID,
+		arg.AttemptID,
+		arg.AttemptFence,
+		arg.FinalStageRunID,
+		arg.FinalStageArtifactID,
+		arg.ExactObjectVersion,
+		arg.OwnerID,
 		arg.TokenDigest,
 		arg.SigningKeyID,
 		arg.IssuedAt,
@@ -1300,6 +1474,104 @@ func (q *Queries) LockFinalizationAuthority(ctx context.Context, arg LockFinaliz
 		&i.GenerationCount,
 		&i.Container,
 		&i.CreditReservationState,
+	)
+	return i, err
+}
+
+const lockNextStageGraphFinalizationCandidate = `-- name: LockNextStageGraphFinalizationCandidate :one
+SELECT
+    attempt.organization_id,
+    attempt.project_id,
+    attempt.job_id,
+    attempt.id AS attempt_id,
+    attempt.fence AS attempt_fence,
+    attempt.finalization_started_at,
+    attempt.finalization_deadline_at,
+    job.version AS job_version,
+    job.job_expires_at,
+    run.id AS final_stage_run_id,
+    artifact.id AS final_stage_artifact_id,
+    artifact.object_key,
+    artifact.object_version,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.stage_interface_revision_id,
+    artifact.expires_at AS artifact_expires_at
+FROM attempts AS attempt
+JOIN jobs AS job ON job.id = attempt.job_id
+JOIN stage_runs AS run ON run.attempt_id = attempt.id
+JOIN stage_artifacts AS artifact ON artifact.id = run.winner_stage_artifact_id
+WHERE attempt.state = 'FINALIZING'
+  AND attempt.graph_state = 'FINALIZING'
+  AND attempt.worker_id IS NULL
+  AND attempt.finalization_deadline_at > $1
+  AND job.state = 'FINALIZING'
+  AND job.current_fence = attempt.fence
+  AND job.job_expires_at > $1
+  AND run.state = 'SUCCEEDED'
+  AND artifact.state = 'COMMITTED'
+  AND artifact.expires_at > $1
+  AND NOT EXISTS (
+      SELECT 1
+      FROM stage_dependencies AS outgoing
+      WHERE outgoing.attempt_id = attempt.id
+        AND outgoing.source_stage_run_id = run.id
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM stage_graph_finalization_claims AS active_claim
+      WHERE active_claim.attempt_id = attempt.id
+        AND active_claim.state = 'ACTIVE'
+  )
+ORDER BY attempt.finalization_started_at, attempt.id, run.id
+LIMIT 1
+FOR UPDATE OF attempt, job SKIP LOCKED
+`
+
+type LockNextStageGraphFinalizationCandidateRow struct {
+	OrganizationID           uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID                uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence             int64              `db:"attempt_fence" json:"attempt_fence"`
+	FinalizationStartedAt    pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
+	FinalizationDeadlineAt   pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	JobVersion               int64              `db:"job_version" json:"job_version"`
+	JobExpiresAt             pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
+	FinalStageRunID          uuid.UUID          `db:"final_stage_run_id" json:"final_stage_run_id"`
+	FinalStageArtifactID     uuid.UUID          `db:"final_stage_artifact_id" json:"final_stage_artifact_id"`
+	ObjectKey                string             `db:"object_key" json:"object_key"`
+	ObjectVersion            string             `db:"object_version" json:"object_version"`
+	ContentType              string             `db:"content_type" json:"content_type"`
+	Sha256                   []byte             `db:"sha256" json:"sha256"`
+	SizeBytes                int64              `db:"size_bytes" json:"size_bytes"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ArtifactExpiresAt        pgtype.Timestamptz `db:"artifact_expires_at" json:"artifact_expires_at"`
+}
+
+func (q *Queries) LockNextStageGraphFinalizationCandidate(ctx context.Context, observedAt pgtype.Timestamptz) (LockNextStageGraphFinalizationCandidateRow, error) {
+	row := q.db.QueryRow(ctx, lockNextStageGraphFinalizationCandidate, observedAt)
+	var i LockNextStageGraphFinalizationCandidateRow
+	err := row.Scan(
+		&i.OrganizationID,
+		&i.ProjectID,
+		&i.JobID,
+		&i.AttemptID,
+		&i.AttemptFence,
+		&i.FinalizationStartedAt,
+		&i.FinalizationDeadlineAt,
+		&i.JobVersion,
+		&i.JobExpiresAt,
+		&i.FinalStageRunID,
+		&i.FinalStageArtifactID,
+		&i.ObjectKey,
+		&i.ObjectVersion,
+		&i.ContentType,
+		&i.Sha256,
+		&i.SizeBytes,
+		&i.StageInterfaceRevisionID,
+		&i.ArtifactExpiresAt,
 	)
 	return i, err
 }

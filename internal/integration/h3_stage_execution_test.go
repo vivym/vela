@@ -10,10 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/h3stage"
@@ -22,6 +25,7 @@ import (
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkercontrol"
 	"github.com/vivym/vela/internal/stageworkertransport"
+	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -43,6 +47,12 @@ type h3IntegrationStage struct {
 	nodeIdentity    string
 }
 
+type splitH3GraphOutcome struct {
+	database      testDatabase
+	attemptID     uuid.UUID
+	finalArtifact stageartifact.Artifact
+}
+
 func TestSplitH3StageGraphProducesExactOutputOnSameAndCrossNodePlacements(t *testing.T) {
 	placements := map[string][]string{
 		"same-node":  {"h3-node-01", "h3-node-01", "h3-node-01"},
@@ -51,7 +61,7 @@ func TestSplitH3StageGraphProducesExactOutputOnSameAndCrossNodePlacements(t *tes
 	var reference [sha256.Size]byte
 	for name, nodes := range placements {
 		t.Run(name, func(t *testing.T) {
-			got := runSplitH3StageGraph(t, nodes)
+			got := runSplitH3StageGraph(t, nodes).finalArtifact.SHA256
 			if reference == ([sha256.Size]byte{}) {
 				reference = got
 				return
@@ -63,7 +73,130 @@ func TestSplitH3StageGraphProducesExactOutputOnSameAndCrossNodePlacements(t *tes
 	}
 }
 
-func runSplitH3StageGraph(t *testing.T, nodes []string) [sha256.Size]byte {
+func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testing.T) {
+	outcome := runSplitH3StageGraph(
+		t,
+		[]string{"encoder-node-01", "dit-node-09", "vae-node-03"},
+	)
+	service := visibleCompletionService(t, outcome.database.DSN)
+	firstFinalizer := workercontrol.AuthenticatedFinalizer{
+		ID: "spiffe://vela.internal/finalizer/h3-primary",
+	}
+	first, err := service.ClaimNextStageGraphFinalization(
+		context.Background(), firstFinalizer,
+	)
+	if err != nil {
+		t.Fatalf("claim Stage graph finalization: %v", err)
+	}
+	if first.Decision != workercontrol.StageGraphFinalizationGranted ||
+		first.ClaimID == uuid.Nil || first.Credentials.Token == "" ||
+		first.Credentials.AttemptID != outcome.attemptID ||
+		first.Source.StageArtifactID != outcome.finalArtifact.ID ||
+		first.Source.ObjectKey != outcome.finalArtifact.ObjectKey ||
+		first.Source.ObjectVersion != outcome.finalArtifact.ObjectVersion ||
+		first.Source.SHA256 != outcome.finalArtifact.SHA256 ||
+		first.Source.SizeBytes != outcome.finalArtifact.SizeBytes {
+		t.Fatalf("Stage graph finalization claim = %#v", first)
+	}
+
+	replayed, err := service.ClaimNextStageGraphFinalization(
+		context.Background(), firstFinalizer,
+	)
+	if err != nil {
+		t.Fatalf("replay Stage graph finalization claim: %v", err)
+	}
+	if !reflect.DeepEqual(replayed, first) {
+		t.Fatalf("replayed Stage graph finalization claim = %#v, want %#v", replayed, first)
+	}
+
+	if _, err := outcome.database.Admin.Exec(`
+		UPDATE stage_graph_finalization_claims
+		SET expires_at = clock_timestamp()
+		WHERE id = $1
+	`, first.ClaimID); err != nil {
+		t.Fatalf("expire Stage graph finalization claim: %v", err)
+	}
+	second, err := service.ClaimNextStageGraphFinalization(
+		context.Background(), workercontrol.AuthenticatedFinalizer{
+			ID: "spiffe://vela.internal/finalizer/h3-recovery",
+		},
+	)
+	if err != nil {
+		t.Fatalf("reclaim Stage graph finalization: %v", err)
+	}
+	if second.Decision != workercontrol.StageGraphFinalizationGranted ||
+		second.ClaimID == first.ClaimID || second.Credentials.Token == "" ||
+		second.Source != first.Source {
+		t.Fatalf("reclaimed Stage graph finalization = %#v, first %#v", second, first)
+	}
+
+	var vaeAttempts int
+	if err := outcome.database.Admin.QueryRow(`
+		SELECT count(*)
+		FROM stage_attempts AS physical
+		JOIN stage_runs AS run ON run.id = physical.stage_run_id
+		WHERE run.attempt_id = $1 AND run.stage_key = 'vae'
+	`, outcome.attemptID).Scan(&vaeAttempts); err != nil {
+		t.Fatalf("count VAE StageAttempts: %v", err)
+	}
+	if vaeAttempts != 1 {
+		t.Fatalf("VAE StageAttempt count after Finalizer recovery = %d, want 1", vaeAttempts)
+	}
+}
+
+func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testing.T) {
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	t.Run("empty Down Up", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		if err := goose.DownTo(database.Admin, migrations, 42); err != nil {
+			t.Fatalf("migrate empty Stage graph finalization down: %v", err)
+		}
+		var removed bool
+		if err := database.Admin.QueryRow(`
+			SELECT to_regclass('stage_graph_finalization_claims') IS NULL
+		`).Scan(&removed); err != nil {
+			t.Fatalf("inspect Stage graph finalization rollback: %v", err)
+		}
+		if !removed {
+			t.Fatal("Stage graph finalization claim table survived empty Down")
+		}
+		if err := goose.Up(database.Admin, migrations); err != nil {
+			t.Fatalf("migrate Stage graph finalization back up: %v", err)
+		}
+		version, err := goose.GetDBVersion(database.Admin)
+		if err != nil || version != 43 {
+			t.Fatalf("Stage graph finalization version after Up = %d error=%v", version, err)
+		}
+	})
+
+	t.Run("durable claim refuses Down", func(t *testing.T) {
+		outcome := runSplitH3StageGraph(
+			t,
+			[]string{"encoder-node-01", "dit-node-09", "vae-node-03"},
+		)
+		service := visibleCompletionService(t, outcome.database.DSN)
+		claim, err := service.ClaimNextStageGraphFinalization(
+			context.Background(), workercontrol.AuthenticatedFinalizer{
+				ID: "spiffe://vela.internal/finalizer/migration-guard",
+			},
+		)
+		if err != nil || claim.Decision != workercontrol.StageGraphFinalizationGranted {
+			t.Fatalf("seed durable Stage graph finalization claim = %#v error=%v", claim, err)
+		}
+		err = goose.DownTo(outcome.database.Admin, migrations, 42)
+		assertPostgresConstraint(t, err, "stage_graph_finalization_rollback_is_unsafe")
+		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
+		if versionErr != nil || version != 43 {
+			t.Fatalf(
+				"Stage graph finalization version after refused Down = %d error=%v",
+				version, versionErr,
+			)
+		}
+	})
+}
+
+func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 	t.Helper()
 	if len(nodes) != 3 {
 		t.Fatalf("H3 placement nodes = %v, want Encoder/DiT/VAE", nodes)
@@ -223,7 +356,9 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) [sha256.Size]byte {
 			jobState, attemptState, graphState, vaeState, winningArtifact,
 		)
 	}
-	return finalArtifact.SHA256
+	return splitH3GraphOutcome{
+		database: database, attemptID: attemptID, finalArtifact: finalArtifact,
+	}
 }
 
 func assignH3IntegrationStage(

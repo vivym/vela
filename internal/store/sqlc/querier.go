@@ -31,7 +31,9 @@ type Querier interface {
 	DecrementProjectRunningForFailure(ctx context.Context, arg DecrementProjectRunningForFailureParams) (int64, error)
 	DecrementProjectRunningForVisibleCompletion(ctx context.Context, arg DecrementProjectRunningForVisibleCompletionParams) (int64, error)
 	DecrementProjectWaitingForFailure(ctx context.Context, arg DecrementProjectWaitingForFailureParams) (int64, error)
+	ExpireStageGraphFinalizationClaims(ctx context.Context, expiredAt pgtype.Timestamptz) error
 	FindActiveReconcilerFinalizationCandidate(ctx context.Context, ownerID string) (FindActiveReconcilerFinalizationCandidateRow, error)
+	FindActiveStageGraphFinalizationClaim(ctx context.Context, arg FindActiveStageGraphFinalizationClaimParams) (FindActiveStageGraphFinalizationClaimRow, error)
 	FindExpiredExecutionLeaseCandidate(ctx context.Context, workerLostGraceSeconds int64) (FindExpiredExecutionLeaseCandidateRow, error)
 	FindExpiredFinalizationDeadlineCandidate(ctx context.Context) (FindExpiredFinalizationDeadlineCandidateRow, error)
 	FindExpiredJobFailureCandidate(ctx context.Context) (FindExpiredJobFailureCandidateRow, error)
@@ -74,6 +76,7 @@ type Querier interface {
 	InsertReconcilerFinalizationLease(ctx context.Context, arg InsertReconcilerFinalizationLeaseParams) error
 	InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRuntimeStateParams) error
 	InsertRetryWaitOutboxEvent(ctx context.Context, arg InsertRetryWaitOutboxEventParams) error
+	InsertStageGraphFinalizationClaim(ctx context.Context, arg InsertStageGraphFinalizationClaimParams) error
 	InsertStartOutboxEvent(ctx context.Context, arg InsertStartOutboxEventParams) error
 	InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error
 	InsertVisibleCompletionCharge(ctx context.Context, arg InsertVisibleCompletionChargeParams) error
@@ -108,6 +111,7 @@ type Querier interface {
 	LockIdempotencyKey(ctx context.Context, arg LockIdempotencyKeyParams) (interface{}, error)
 	LockJobExpiryWithoutAttempt(ctx context.Context, jobID uuid.UUID) (LockJobExpiryWithoutAttemptRow, error)
 	LockJobForAssignment(ctx context.Context, jobID uuid.UUID) (LockJobForAssignmentRow, error)
+	LockNextStageGraphFinalizationCandidate(ctx context.Context, observedAt pgtype.Timestamptz) (LockNextStageGraphFinalizationCandidateRow, error)
 	LockOrganizationCapacityForAssignment(ctx context.Context, arg LockOrganizationCapacityForAssignmentParams) (int32, error)
 	LockProfileCertificationForFailure(ctx context.Context, arg LockProfileCertificationForFailureParams) (LockProfileCertificationForFailureRow, error)
 	LockProfileCircuitProtocol(ctx context.Context) (LockProfileCircuitProtocolRow, error)
