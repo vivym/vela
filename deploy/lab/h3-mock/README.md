@@ -229,22 +229,22 @@ kills only the exact control container process through a pidfd after validating
 the PubAck marker. Recovery is allowed to wait through the 30-second Outbox
 claim TTL.
 
-The passing result is fixed scenarios `5/10`, Production Gates `0/9`. Job
-`930186ea-1abe-4d73-96dc-1dec3c43916a` completed with one Attempt, one Visible
-Completion, one posted completion Charge, and two committed Artifacts. Outbox
-event `bb91b103-9663-4066-b0c4-f6818c1ead83` retained Broker stream
-`VELA_EVENTS` and sequence `262`; `publish_attempts` changed from `1` to `2` as
+The passing hardened v2 result is fixed scenarios `5/10`, Production Gates
+`0/9`. Job `af71a549-36be-49b3-aaba-e7c299245f92` completed with one Attempt,
+one Visible Completion, one posted completion Charge, and two committed
+Artifacts. Outbox
+event `06d54b4e-9d90-469d-ae82-298682be4a79` retained Broker stream
+`VELA_EVENTS` and sequence `268`; `publish_attempts` changed from `1` to `2` as
 the recovered Publisher reclaimed the event. The root-only receipt is
-`receipts/publisher-post-puback-pre-mark-crash-v1`; its `SHA256SUMS` file has
+`receipts/publisher-post-puback-pre-mark-crash-v2`; its `SHA256SUMS` file has
 SHA-256
-`a90dea77c837bbddb2e0cee60510964c41f23644c36723c2bb64f77f92ccb7e3`.
+`d73cdce02500580a4f1b5961844e7808f5f19f3cb4bc0bb9be25d236a9165bfb`.
 The executed harness has SHA-256
-`6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
-The review-hardened repository harness has SHA-256
 `cc37ee0df5e813e0929f4ea083782d785153b846bd81040d70802f397065f0a0`
-and has not been rerun. It forces interrupted uncommitted invocations to exit
-nonzero and requires cleanup to replace the exact control Pod by UID and prove
-that the fault environment and marker are absent before disarming the watchdog.
+and proves the review hardening: interrupted uncommitted invocations exit
+nonzero, while cleanup replaces the exact control Pod by UID and proves that
+the fault environment and marker are absent before disarming the watchdog. The
+earlier v1 success receipt remains preserved but is superseded by v2.
 
 The first diagnostic run checked the database marker before the claim TTL had
 expired and correctly refused to pass. It is retained only as hidden diagnostic
@@ -252,6 +252,48 @@ evidence. The harness now waits up to 90 seconds for convergence and drains the
 Outbox during cleanup. Cleanup also removes the fault variable, fault Pod,
 watchdog state, and marker; diagnostic receipts must not be counted as scenario
 passes.
+
+## Publisher pre-PubAck control-crash rehearsal
+
+The sixth fixed-scenario harness uses
+`VELA_LAB_OUTBOX_FAULT_PHASE=publisher-pre-puback-crash`. The tagged Publisher
+writes a private payload-free marker only after PostgreSQL has claimed the
+exact `job.ready` event and before it delegates a publish to NATS. The marker
+must bind the claim and require an empty Broker stream plus sequence zero. The
+harness captures the NATS leader state before the Job and immediately before
+the crash, requiring three current replicas and the ten-minute duplicate
+window. The Scheduler may advance the Job locally before the signal; the
+database/Broker boundary, not a transient Job state, determines whether fault
+injection is allowed.
+
+Run `deploy/lab/control-plane/publisher-pre-puback-crash.sh` as root on
+`marslab-server` with the v19 rendered manifests and the exact deployed tagged
+control image. It pins the hardened `5/10` v2 receipt, requires two
+`READY/HEALTHY` Workers and an idle control plane, and signals only the exact
+control container process through a pidfd. The signal must occur less than 90
+seconds after the database start; recovery must record a new Broker receipt
+within ten minutes and strictly after the pre-crash NATS leader sequence.
+
+The passing result is fixed scenarios `6/10`, Production Gates `0/9`. Job
+`86a1e970-0847-4f8a-b9c1-4577ec2d6915` completed with one Attempt, one Visible
+Completion, one posted completion Charge, and two committed Artifacts. Outbox
+event `bb4ed838-7a6c-4f29-816b-b0186341b949` changed from empty Broker marker
+and sequence zero to `VELA_EVENTS` sequence `285`; `publish_attempts` changed
+from `1` to `2`. The pre-crash NATS leader `last_seq` was `279`, and the signal
+occurred nine seconds after the database start. The root-only receipt is
+`receipts/publisher-pre-puback-crash-v1`; its `SHA256SUMS` file has SHA-256
+`a05cc044f7b2536cc58604aed95fadc5723806aeb814319d4058c3f4a210c3d9`.
+The executed harness has SHA-256
+`6483f806b62c747110ff9a159d6e8bbba40a98efe46e599765a336874a21ed88`.
+
+Two hidden failed runs remain diagnostic only. One exposed POSIX shell variable
+collision that truncated captured NATS JSON; the other exposed the invalid
+assumption that the Job must remain `QUEUED` before the Publisher signal. Both
+failed closed before `SIGKILL`. Cleanup removes the fault variable, marker,
+fault Pod, watchdog state, and temporary staging copy. The four remaining fixed
+scenarios are `node-reboot`, `consumer-post-db-pre-ack-crash`,
+`assignment-post-commit-pre-response-crash`, and
+`stale-fence-late-completion`.
 
 Rollback removes only the managed container and preserves Runner state:
 

@@ -8,7 +8,9 @@ recovery, Kubernetes GPU smoke, Vela control-plane deployment, two Worker
 Agents, an end-to-end mock Job with verified Artifacts, concurrent mock
 endurance, one Worker-control-network-partition rehearsal, one bounded
 retry-budget-exhaustion rehearsal, one process-kill rehearsal, and one Outbox
-post-commit/pre-claim control-crash rehearsal are operational.
+post-commit/pre-claim control-crash rehearsal, one Publisher
+post-PubAck/pre-marker control-crash rehearsal, and one Publisher pre-PubAck
+control-crash rehearsal are operational.
 
 This document records the current non-production lab inventory and the private
 registry used to stage H3 mock experiments. It is an environment receipt, not
@@ -1015,26 +1017,24 @@ boundary and sent `SIGKILL` through a pidfd to the exact control process.
 
 After the 30-second claim TTL, the restarted Publisher reclaimed the same
 Outbox event and converged the PostgreSQL marker to the original NATS receipt.
-Application Job `930186ea-1abe-4d73-96dc-1dec3c43916a` ended `SUCCEEDED` with
+Application Job `af71a549-36be-49b3-aaba-e7c299245f92` ended `SUCCEEDED` with
 one Attempt, one Visible Completion, one posted completion Charge, two Artifact
 rows, and two committed Artifacts. Outbox event
-`bb91b103-9663-4066-b0c4-f6818c1ead83` retained Broker stream `VELA_EVENTS` and
-sequence `262`; its `publish_attempts` advanced from `1` before the crash to `2`
+`06d54b4e-9d90-469d-ae82-298682be4a79` retained Broker stream `VELA_EVENTS` and
+sequence `268`; its `publish_attempts` advanced from `1` before the crash to `2`
 after recovery. This is at-least-once Publisher execution with one visible
 business result, not a Production Gate receipt.
 
-The successful root-only receipt is
-`/root/vela-lab-deploy-bc590e20/receipts/publisher-post-puback-pre-mark-crash-v1`.
+The successful hardened root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/publisher-post-puback-pre-mark-crash-v2`.
 Its `SHA256SUMS` file has SHA-256
-`a90dea77c837bbddb2e0cee60510964c41f23644c36723c2bb64f77f92ccb7e3`,
+`d73cdce02500580a4f1b5961844e7808f5f19f3cb4bc0bb9be25d236a9165bfb`,
 and the executed harness has SHA-256
-`6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
-The review-hardened repository harness now has SHA-256
 `cc37ee0df5e813e0929f4ea083782d785153b846bd81040d70802f397065f0a0`.
 It forces every interrupted uncommitted run to exit nonzero and permits cleanup
 to disarm the watchdog only after a UID-bound control Pod replacement proves
-the fault environment and marker are absent. This version has not been rerun
-and is not provenance for the retained live receipt.
+the fault environment and marker are absent. The earlier v1 success receipt is
+preserved but superseded by this v2 rerun.
 
 The first diagnostic run checked PostgreSQL too early, before the claim TTL
 expired, and correctly refused to emit a passing receipt. Its hidden directory
@@ -1045,12 +1045,67 @@ stronger Outbox drain during cleanup.
 
 Postflight found zero active Jobs, unrevoked Leases, pending Outbox events, and
 Production Gate receipts; exactly two Workers remained `READY/HEALTHY`, the
-single control Pod was Ready with zero restarts, and no fault Pod or watchdog
-remained. Both mock Runners were healthy, and all 24 physical GPUs across the
-three hosts reported zero memory use and zero utilization. The fault variable
-and temporary Publisher tick were absent from the ConfigMap. This advances only
-the non-production fixed-scenario matrix to `5/10`; Production Gates remain
-`0/9 PASS`, and five fixed scenarios remain unexecuted.
+single control Pod was Ready, and no fault Pod or watchdog remained. Both mock
+Runners were healthy, all 16 Worker GPUs reported zero memory use and zero
+utilization, and the control host had no GPU compute process. The fault
+variable and temporary Publisher tick were absent from the ConfigMap. This
+advances only the non-production fixed-scenario matrix to `5/10`; Production
+Gates remain `0/9 PASS`, and five fixed scenarios remain unexecuted.
+
+## Publisher pre-PubAck control-crash rehearsal
+
+On 2026-08-30, the sixth live fixed-scenario rehearsal set
+`VELA_LAB_OUTBOX_FAULT_PHASE=publisher-pre-puback-crash`. The tagged Publisher
+claimed one `job.ready` event in PostgreSQL, wrote a private payload-free marker
+that required empty Broker stream and sequence zero, and paused before
+delegating any publish to NATS. The harness captured the NATS leader before the
+Job and before the signal, requiring all three replicas to be current and the
+duplicate window to remain `600000000000ns`.
+
+The Scheduler was allowed to advance the Job before the crash; the fault
+boundary was the exact committed PostgreSQL claim plus absence of a Broker
+receipt and unchanged NATS leader sequence. The harness sent `SIGKILL` through
+a pidfd to the exact control process nine seconds after the database start,
+within the 90-second signal bound and 120-second hook timeout. Before the crash,
+the leader `last_seq` remained `279`. Recovery reclaimed the same Outbox event,
+advanced `publish_attempts` from `1` to `2`, and recorded `VELA_EVENTS`
+sequence `285`, strictly after the pre-crash sequence.
+
+Application Job `86a1e970-0847-4f8a-b9c1-4577ec2d6915` ended `SUCCEEDED` with
+one Attempt, one Visible Completion, one posted completion Charge, two Artifact
+rows, and two committed Artifacts. Outbox event
+`bb4ed838-7a6c-4f29-816b-b0186341b949` retained the recovered Broker receipt.
+The lost-accepted Job, duplicate completion, duplicate Charge, and stale
+authority acceptance measurements were all zero.
+
+The successful root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/publisher-pre-puback-crash-v1`. Its
+`SHA256SUMS` file has SHA-256
+`a05cc044f7b2536cc58604aed95fadc5723806aeb814319d4058c3f4a210c3d9`,
+and the executed harness has SHA-256
+`6483f806b62c747110ff9a159d6e8bbba40a98efe46e599765a336874a21ed88`.
+Both this manifest and the hardened fifth-scenario v2 manifest pass
+`sha256sum --check --strict` from their receipt directories.
+
+Two hidden failed-run directories remain diagnostic evidence only:
+`receipts/.vela-lab-publisher-pre-puback-crash.bOt1sb` records a POSIX shell
+variable collision that truncated captured NATS JSON, while
+`receipts/.vela-lab-publisher-pre-puback-crash.Oh8ucl` records the invalid
+assumption that the Job must remain `QUEUED` before the signal. Both stopped
+before `SIGKILL` and are not counted as passes.
+
+Postflight found zero active Jobs, unrevoked Leases, pending Outbox events, and
+Production Gate receipts; two Workers remained `READY/HEALTHY`; and replacement
+control Pod `vela-lab-control-556bfdc76-ltjf9` was Ready with zero restarts. No
+fault ConfigMap value, marker, fault Pod, or watchdog remained. Both Runners
+were healthy, all 16 Worker GPUs reported `0 MiB / 0%` with no compute process,
+and the control host had no compute process. Four temporary staging harnesses
+under `/home/marslab` were removed; the root-only harness and receipts remain.
+This advances only the non-production fixed-scenario matrix to `6/10`;
+Production Gates remain `0/9 PASS`. The four remaining fixed scenarios are
+`node-reboot`, `consumer-post-db-pre-ack-crash`,
+`assignment-post-commit-pre-response-crash`, and
+`stale-fence-late-completion`.
 
 ## Experiment operating rules
 

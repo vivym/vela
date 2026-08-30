@@ -6,7 +6,7 @@ Status: Repository implementation complete; three-host lab registry, image
 distribution, ephemeral protocol checks, and persistent two-Worker Runner
 deployment verified; RKE2 GPU integration and one/eight-GPU Pod smoke verified;
 Vela Worker Agents, application control plane, concurrent mock endurance, and
-five fixed fault-scenario rehearsals verified.
+six fixed fault-scenario rehearsals verified.
 
 Implementation commit: `4304fe9`; review closure: `f6cb45b`.
 
@@ -140,8 +140,9 @@ plane now run a mock-only Catalog through one success path, a balanced ten-Job
 concurrent rehearsal, Worker-control network partition, and retry-budget
 exhaustion, exact Runner process kill, and an Outbox post-commit/pre-claim
 control crash, followed by an Outbox Publisher post-PubAck/pre-database-marker
-control crash. These remain non-production synthetic receipts; five of the ten
-fixed fault scenarios and every Production Gate remain open.
+control crash and a Publisher pre-PubAck control crash. These remain
+non-production synthetic receipts; four of the ten fixed fault scenarios and
+every Production Gate remain open.
 
 The retry-budget receipt records zero Artifact rows, including zero committed
 Artifacts. It was produced by harness SHA-256
@@ -182,19 +183,38 @@ exact control process through a pidfd before the Publisher records the broker
 receipt in PostgreSQL. A normal build fails closed when the lab fault variable
 is present. After restart and the 30-second claim TTL, the same Outbox event is
 claimed again and converges to the original Broker receipt without duplicating
-the Job result. Job `930186ea-1abe-4d73-96dc-1dec3c43916a` completed with one
+the Job result. The hardened v2 rehearsal Job
+`af71a549-36be-49b3-aaba-e7c299245f92` completed with one
 Attempt, one Visible Completion, one Charge, and two committed Artifacts;
-Outbox event `bb91b103-9663-4066-b0c4-f6818c1ead83` retained stream
-`VELA_EVENTS`, sequence `262`, and `publish_attempts` advanced from `1` to `2`.
-The successful receipt is bound to harness SHA-256
-`6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
-Post-rehearsal review changed the repository harness SHA-256 to
-`cc37ee0df5e813e0929f4ea083782d785153b846bd81040d70802f397065f0a0`:
-interrupted uncommitted runs now exit nonzero, and cleanup requires a UID-bound
-control Pod replacement plus proof that both the fault environment and marker
-are absent. That hardened harness has not been rerun and is not provenance for
-the retained receipt.
+Outbox event `06d54b4e-9d90-469d-ae82-298682be4a79` retained stream
+`VELA_EVENTS`, sequence `268`, and `publish_attempts` advanced from `1` to `2`.
+The successful v2 receipt is bound to the review-hardened repository harness
+SHA-256
+`cc37ee0df5e813e0929f4ea083782d785153b846bd81040d70802f397065f0a0`;
+its root-only `SHA256SUMS` file has SHA-256
+`d73cdce02500580a4f1b5961844e7808f5f19f3cb4bc0bb9be25d236a9165bfb`.
+The earlier v1 receipt is superseded.
 This advances only the synthetic matrix to `5/10`; Production Gates remain
+`0/9 PASS`.
+
+The Publisher pre-PubAck rehearsal uses the same tagged control binary but
+pauses after PostgreSQL claims the exact `job.ready` event and before the
+Publisher delegates any publish to NATS. The private marker binds the event and
+claim while requiring empty Broker stream and sequence zero. The harness also
+captures the current three-replica NATS leader state and its ten-minute
+duplicate window, then kills only the exact control process through a pidfd.
+Recovery published sequence `285`, strictly after the pre-crash leader
+`last_seq=279`, while `publish_attempts` advanced from `1` to `2`. Job
+`86a1e970-0847-4f8a-b9c1-4577ec2d6915` completed with one Attempt, one Visible
+Completion, one Charge, and two committed Artifacts; event
+`bb4ed838-7a6c-4f29-816b-b0186341b949` retained the recovered receipt. The
+signal occurred nine seconds after the database start, within the 90-second
+signal bound and 120-second hook timeout. The executed repository harness has
+SHA-256
+`6483f806b62c747110ff9a159d6e8bbba40a98efe46e599765a336874a21ed88`;
+the root-only receipt `SHA256SUMS` file has SHA-256
+`a05cc044f7b2536cc58604aed95fadc5723806aeb814319d4058c3f4a210c3d9`.
+This advances only the synthetic matrix to `6/10`; Production Gates remain
 `0/9 PASS`.
 
 Mock images may be built and deployed to staging, but they must use a mock
