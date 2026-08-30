@@ -6,7 +6,7 @@ Status: Repository implementation complete; three-host lab registry, image
 distribution, ephemeral protocol checks, and persistent two-Worker Runner
 deployment verified; RKE2 GPU integration and one/eight-GPU Pod smoke verified;
 Vela Worker Agents, application control plane, concurrent mock endurance, and
-two fixed fault-scenario rehearsals verified.
+three fixed fault-scenario rehearsals verified.
 
 Implementation commit: `4304fe9`; review closure: `f6cb45b`.
 
@@ -138,7 +138,8 @@ sequential one/eight-GPU Pods separately verify Kubernetes placement and
 runtime access. Two persistent Vela Worker Agents and the application control
 plane now run a mock-only Catalog through one success path, a balanced ten-Job
 concurrent rehearsal, Worker-control network partition, and retry-budget
-exhaustion. These remain non-production synthetic receipts; eight of the ten
+exhaustion, and exact Runner process kill. These remain non-production
+synthetic receipts; seven of the ten
 fixed fault scenarios and every Production Gate remain open.
 
 The retry-budget receipt records zero Artifact rows, including zero committed
@@ -147,6 +148,19 @@ Artifacts. It was produced by harness SHA-256
 The review-hardened repository harness is
 `b39652e15234f37cf9096f3a7268cfd1b2d830594b4ea4863d9eb9aefbdb132b`
 and has not been rerun, so it is not the provenance of the retained receipt.
+
+The process-kill rehearsal binds Worker 1 through a root-owned immutable
+container-identity file, validates the exact Docker container and main-process
+identity, and sends `SIGKILL` through a pidfd. Container-policy restart changed
+the PID and `StartedAt` without changing the container ID; the original
+Attempt persisted as `LOST` with `WORKER_LOST`, and one higher-fence replacement
+on Worker 2 succeeded with exactly one Visible Completion, one Charge, and two
+committed Artifacts. Its harness SHA-256 is
+`cc6a79dad257ad51933cc31b0f664977f4f22d56beacc2b6ead3b9e2f5ec7d80`.
+The fault Pod alone uses container-level `appArmorProfile: Unconfined` while
+retaining `RuntimeDefault` seccomp, no privilege escalation, a read-only root
+filesystem, and only `CAP_KILL`. The result advances the synthetic fixed
+scenario matrix to `3/10`; Production Gates remain `0/9 PASS`.
 
 Mock images may be built and deployed to staging, but they must use a mock
 backend revision and separate Catalog records. They do not satisfy

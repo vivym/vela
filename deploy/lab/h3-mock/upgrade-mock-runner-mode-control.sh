@@ -29,7 +29,8 @@ rollback() {
 			rm -f -- "$root/config/mock-backend-wrapper.sh" "$root/config/mock-mode" \
 				"$root/admin/set-mock-runner-mode.sh" "$root/admin/start-mock-runner-container.sh" \
 				"$root/admin/upgrade-mock-runner-catalog-profile.sh" \
-				"$root/admin/validate-runner-restart-state.sh"
+				"$root/admin/validate-runner-restart-state.sh" \
+				"$root/admin/write-mock-runner-container-identity.sh"
 		fi
 		if [ "$transition_started" = true ]; then
 			if "$script_dir/start-mock-runner-container.sh" "$image" legacy-success >/dev/null 2>&1; then
@@ -47,7 +48,7 @@ trap rollback EXIT HUP INT TERM
 [ "$(id -u)" -eq 0 ] || fail "run as root"
 printf '%s\n' "$image" | grep -Eq '@sha256:[0-9a-f]{64}$' || fail "image must use an immutable sha256 digest"
 [ "$root" = /var/lib/vela-lab/mock-runner ] || fail "VELA_LAB_RUNNER_ROOT must remain /var/lib/vela-lab/mock-runner"
-for source in mock-backend-wrapper.sh set-mock-runner-mode.sh start-mock-runner-container.sh upgrade-mock-runner-catalog-profile.sh validate-runner-restart-state.sh; do
+for source in mock-backend-wrapper.sh set-mock-runner-mode.sh start-mock-runner-container.sh upgrade-mock-runner-catalog-profile.sh validate-runner-restart-state.sh write-mock-runner-container-identity.sh; do
 	[ -f "$script_dir/$source" ] || fail "$source is missing"
 done
 [ "$(docker container inspect "$container" --format '{{index .Config.Labels "vela.ai.component"}}' 2>/dev/null)" = h3-mock-runner ] ||
@@ -73,6 +74,7 @@ chown 0:0 "$root/config/mock-mode"
 chmod 0444 "$root/config/mock-mode"
 install -m 0550 -o 0 -g 0 "$script_dir/set-mock-runner-mode.sh" "$root/admin/set-mock-runner-mode.sh"
 install -m 0550 -o 0 -g 0 "$script_dir/start-mock-runner-container.sh" "$root/admin/start-mock-runner-container.sh"
+install -m 0550 -o 0 -g 0 "$script_dir/write-mock-runner-container-identity.sh" "$root/admin/write-mock-runner-container-identity.sh"
 install -m 0550 -o 0 -g 0 "$script_dir/upgrade-mock-runner-catalog-profile.sh" "$root/admin/upgrade-mock-runner-catalog-profile.sh"
 install -m 0550 -o 0 -g 0 "$script_dir/validate-runner-restart-state.sh" "$root/admin/validate-runner-restart-state.sh"
 transition_started=true

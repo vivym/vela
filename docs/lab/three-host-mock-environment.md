@@ -7,7 +7,8 @@ eight-GPU Workers, non-canonical mock Runner distribution, persistent Runner
 recovery, Kubernetes GPU smoke, Vela control-plane deployment, two Worker
 Agents, an end-to-end mock Job with verified Artifacts, concurrent mock
 endurance, one Worker-control-network-partition rehearsal, and one bounded
-retry-budget-exhaustion rehearsal are operational.
+retry-budget-exhaustion rehearsal, and one process-kill rehearsal are
+operational.
 
 This document records the current non-production lab inventory and the private
 registry used to stage H3 mock experiments. It is an environment receipt, not
@@ -513,6 +514,20 @@ Both containers use the same immutable image digest recorded above and enforce:
 - all eight physical GPUs visible for DEVICE checks without an idle compute
   process.
 
+Both Workers also expose a root-owned mode-`0444`
+`config/container-identity` file containing only its exact 64-character Docker
+container ID and immutable Runner image digest. Existing containers received
+this identity contract through a guarded, atomic helper upgrade without a
+restart: container ID, PID, `StartedAt`, `RestartCount`, and health were
+unchanged across that migration. The installed writer has SHA-256
+`b63553613181fcdf11b24178b528ec8551bee835fc3033f715cdcbddb9525c0e`.
+The corresponding installed start and remove helpers have SHA-256
+`266b913e89433a50746b25ac8877cd78293d83dd21d6f82af0ba13c8e53a54da`
+and
+`5bf409876ae020e2a7f63dceca01e7a5682e81e538bb84f345be2dcab850c40c`.
+This is an exact lab control identity, not a general host-container discovery
+interface.
+
 The initial and post-restart smoke checks passed on both Workers. Each check:
 
 1. accepted and passed `DEVICE`, `INFERENCE_BACKEND`, `MODEL_WARMUP`, and
@@ -855,6 +870,64 @@ Gate receipts, exactly two `READY/HEALTHY` Workers, both Runners
 `running/healthy` in `success` mode with one main process, and zero GPU compute
 processes. The result advances only the non-production fixed-scenario matrix to
 `2/10`; it does not pass the `state-event-fault-injection` Production Gate.
+
+## Process-kill rehearsal
+
+On 2026-08-30, the third live fixed-scenario rehearsal started a non-terminating
+Attempt on Worker 1, then sent `SIGKILL` to the exact Runner main process. The
+fault path read the preinstalled container identity, mounted only that
+container's Docker metadata directory read-only, and revalidated the Docker
+state, container ID, runtime UID, PID, process start ticks, cgroup identity, and
+pidfd immediately before signaling. It used `pidfd_send_signal`; the Docker
+container ID remained unchanged while PID and `StartedAt` changed and
+`RestartCount` advanced to `4`.
+
+The final fault Pod retained `RuntimeDefault` seccomp,
+`allowPrivilegeEscalation=false`, a read-only root filesystem, and only
+`CAP_KILL`. Its container-level AppArmor profile alone was set to `Unconfined`.
+This narrow exception was required because Ubuntu denied signals from the
+RKE2 sender profile `cri-containerd.apparmor.d` to the Docker receiver profile
+`docker-default`; the host-wide AppArmor policy and every non-fault Pod remain
+unchanged. Before the destructive attempt, an otherwise identical Pod proved
+the permission path with non-destructive `os.kill(pid, 0)`. Every fault-Pod
+deletion path used the observed Kubernetes Pod UID as a server-side deletion
+precondition.
+
+The successful application Job was
+`36cdaaf0-c8a1-4c71-93eb-4a89bfb55c0b`. Attempt 1 on Worker 1 ended `LOST`
+with `failure_class=WORKER_LOST`; Attempt 2 on Worker 2 used a higher fence and
+ended `SUCCEEDED`. Durable state contains exactly one Visible Completion, one
+posted completion Charge, two Artifact rows, and two committed Artifacts, with
+zero active Leases:
+
+| Check | Result |
+| --- | --- |
+| Runner fault identity | container `efa8e7ffb1efd5b59adc4cada916f6d715a27ea32f05b1e373dbbea8ca1c3cbc`; PID `732569` -> `742572`; `StartedAt` `2026-08-30T03:41:04.950724625Z` -> `2026-08-30T03:51:30.421984086Z`; `RestartCount=4` |
+| Original Attempt | Worker 1, fence 1, `LOST`, `WORKER_LOST` |
+| Replacement Attempt | Worker 2, fence 3, `SUCCEEDED` |
+| Durable result | one Visible Completion, one posted completion Charge, two committed Artifacts |
+| Fixed measurements | lost accepted Jobs 0; duplicate completions 0; duplicate Charges 0; stale-authority acceptances 0 |
+| Fixed scenario matrix | `3/10` lab rehearsals complete |
+| Production Gates | `0/9 PASS` |
+
+The root-only successful receipt is retained at
+`/root/vela-lab-deploy-bc590e20/receipts/process-kill-v1`. Its mode is `0700`,
+it contains no symlink, all files pass `sha256sum --check --strict`, and the
+`SHA256SUMS` file has SHA-256
+`9d1ca447fc0c37c16811fc7baf63051d98ea7914f400e01db9b16af25e553ec0`.
+The executed harness has SHA-256
+`cc6a79dad257ad51933cc31b0f664977f4f22d56beacc2b6ead3b9e2f5ec7d80`.
+SSH transferred that 55,962-byte shell harness, not a Runner image or OCI
+layer; the immutable Runner image remained in the LAN Registry.
+
+Five hidden failed-run receipts remain as diagnostic evidence. They record the
+initial AppArmor denial, fault-permission probing, cleanup result propagation,
+guarded two-Worker recovery, and the exact authority-query corrections. None is
+counted as a scenario pass. Independent postflight found all three RKE2 Nodes
+`Ready`, no active fault/control Pod, watchdog, or Lease, both Runners healthy,
+Worker 2 still at `RestartCount=0`, and zero GPU compute processes on all three
+hosts. This advances only the non-production fixed-scenario matrix to `3/10`;
+Production Gates remain `0/9 PASS`.
 
 The exact nine-gate status and missing external evidence are tracked in
 [`production-gate-gap-matrix.md`](production-gate-gap-matrix.md). Every gate

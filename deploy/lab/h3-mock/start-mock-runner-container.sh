@@ -24,6 +24,7 @@ command -v docker >/dev/null 2>&1 || fail "docker is required"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 command -v nvidia-smi >/dev/null 2>&1 || fail "nvidia-smi is required"
 [ -x "$script_dir/validate-runner-restart-state.sh" ] || fail "restart-state validator is missing"
+[ -x "$script_dir/write-mock-runner-container-identity.sh" ] || fail "container-identity writer is missing"
 [ -f "$root/config/profiles.json" ] || fail "installed profiles.json is missing"
 [ -f "$root/config/gpu-roles.json" ] || fail "installed gpu-roles.json is missing"
 if docker container inspect "$container" >/dev/null 2>&1; then
@@ -134,6 +135,7 @@ done
 observed_gpus=$(docker exec "$container" nvidia-smi --query-gpu=uuid --format=csv,noheader,nounits |
 	sed '/^[[:space:]]*$/d' | sort -u | wc -l | tr -d ' ')
 [ "$observed_gpus" -eq 8 ] || fail "container does not observe exactly eight GPUs"
+"$script_dir/write-mock-runner-container-identity.sh" >/dev/null
 
 printf 'container=%s\nimage=%s\nlayout=%s\nconfig_revision=sha256:%s\nhealth=%s\ngpus=%s\n' \
 	"$container" "$image" "$layout" "$config_revision" "$status" "$observed_gpus"

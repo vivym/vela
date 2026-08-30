@@ -132,6 +132,51 @@ After review, the repository harness was hardened to SHA-256
 The hardened revision has not been rerun and is not the provenance of that
 receipt.
 
+## Container identity and process-kill rehearsal
+
+The control-plane process-kill harness must never discover or select an
+arbitrary Docker container from the host. Install a root-owned, mode-`0444`
+identity file that binds the exact managed Runner container ID and immutable
+image digest. New installs and starts write it automatically. Upgrade an
+already-running Runner from an approved staged copy without restarting it:
+
+```text
+sudo ./upgrade-mock-runner-container-identity.sh \
+  10.1.200.17:5443/vela-lab/vela-h3-runner@sha256:71af1330eefdfff2a33d68e5f8c53c66ebe5b402dc28c35b3ff7516357ec4ca3 \
+  --apply
+```
+
+The upgrader accepts only the fixed private repository and immutable digest,
+requires the managed container to be healthy, validates every predecessor or
+current helper revision, installs files atomically, and emits a root-only
+self-checking receipt. It fails closed and restores the previous helpers and
+identity file on error. Container ID, PID, `StartedAt`, `RestartCount`, and
+health must remain unchanged across the upgrade.
+
+After both Workers have the identity contract, run
+`deploy/lab/control-plane/process-kill.sh` as root on `marslab-server`. The
+harness requires the passing two-scenario receipt, two exact `READY/HEALTHY`
+Workers, zero active Jobs and Leases, both Runners in `success` mode, and the
+expected image and profile identities. It starts a hang Attempt on Worker 1,
+signals only the exact Runner main process through a pidfd, verifies the Docker
+restart identity, requires Attempt 1 to become `LOST` with `WORKER_LOST`, and
+accepts only one higher-fence successful replacement on Worker 2.
+
+The fault Pod mounts only
+`/var/lib/docker/containers/<exact-container-id>` read-only. It retains
+`RuntimeDefault` seccomp, `allowPrivilegeEscalation=false`, a read-only root
+filesystem, and only `CAP_KILL`. Only that container has
+`appArmorProfile: Unconfined`, because Ubuntu otherwise denies a signal from
+the RKE2 AppArmor profile to `docker-default`. Every deletion of the fault Pod
+uses its observed Kubernetes UID as a server-side precondition. This is a
+narrow non-production fault-injection exception, not a host policy change.
+
+The passing result is fixed scenarios `3/10`, Production Gates `0/9`. The
+root-only receipt is `receipts/process-kill-v1`; failed hidden receipts are
+diagnostic evidence only and must not be counted as scenario passes. The
+55,962-byte harness may be staged through SSH, but Runner image layers must
+remain in the private Registry and travel over the lab LAN.
+
 Rollback removes only the managed container and preserves Runner state:
 
 ```text

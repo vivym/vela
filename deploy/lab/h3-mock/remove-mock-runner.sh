@@ -21,6 +21,7 @@ if docker container inspect "$container" >/dev/null 2>&1; then
 	docker stop --time 20 "$container" >/dev/null
 	docker rm "$container" >/dev/null
 fi
+rm -f -- "$root/config/container-identity"
 
 if [ "$purge" = --purge ]; then
 	[ -d "$root" ] || fail "$root is not a directory"

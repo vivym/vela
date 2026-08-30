@@ -22,6 +22,7 @@ printf '%s\n' "$image" | grep -Eq '@sha256:[0-9a-f]{64}$' ||
 [ -f "$script_dir/mock-backend-wrapper.sh" ] || fail "mock-backend-wrapper.sh is missing"
 [ -f "$script_dir/set-mock-runner-mode.sh" ] || fail "set-mock-runner-mode.sh is missing"
 [ -f "$script_dir/start-mock-runner-container.sh" ] || fail "start-mock-runner-container.sh is missing"
+[ -f "$script_dir/write-mock-runner-container-identity.sh" ] || fail "write-mock-runner-container-identity.sh is missing"
 [ -f "$script_dir/upgrade-mock-runner-catalog-profile.sh" ] || fail "upgrade-mock-runner-catalog-profile.sh is missing"
 [ -f "$script_dir/validate-runner-restart-state.sh" ] || fail "validate-runner-restart-state.sh is missing"
 [ -f "$script_dir/smoke_mock_runner.py" ] || fail "smoke_mock_runner.py is missing"
@@ -94,6 +95,7 @@ install -m 0550 -o 0 -g 0 "$script_dir/recover-mock-runner.sh" "$root/admin/reco
 install -m 0550 -o 0 -g 0 "$script_dir/remove-mock-runner.sh" "$root/admin/remove-mock-runner.sh"
 install -m 0550 -o 0 -g 0 "$script_dir/set-mock-runner-mode.sh" "$root/admin/set-mock-runner-mode.sh"
 install -m 0550 -o 0 -g 0 "$script_dir/start-mock-runner-container.sh" "$root/admin/start-mock-runner-container.sh"
+install -m 0550 -o 0 -g 0 "$script_dir/write-mock-runner-container-identity.sh" "$root/admin/write-mock-runner-container-identity.sh"
 install -m 0550 -o 0 -g 0 "$script_dir/upgrade-mock-runner-catalog-profile.sh" "$root/admin/upgrade-mock-runner-catalog-profile.sh"
 install -m 0550 -o 0 -g 0 "$script_dir/validate-runner-restart-state.sh" "$root/admin/validate-runner-restart-state.sh"
 
