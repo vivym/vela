@@ -3210,7 +3210,7 @@ func TestAssignmentWinsQueuedDiscoveryAndCancellationRetriesActiveAuthority(t *t
 		)
 		cancelResult <- cancelCall{result: result, err: cancelErr}
 	}()
-	waitForRoleDatabaseLock(t, fixture.database.Admin, "vela_cancel_login")
+	waitForRoleDatabaseLockCount(t, fixture.database.Admin, "vela_internal_login", 2)
 	if err := holder.Commit(); err != nil {
 		t.Fatalf("release queued Job for Assignment/cancel race: %v", err)
 	}

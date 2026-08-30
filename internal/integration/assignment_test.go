@@ -1617,24 +1617,27 @@ func readAssignmentState(t *testing.T, db *sql.DB, jobID, workerID uuid.UUID) as
 
 func waitForRoleDatabaseLock(t *testing.T, db *sql.DB, role string) {
 	t.Helper()
+	waitForRoleDatabaseLockCount(t, db, role, 1)
+}
+
+func waitForRoleDatabaseLockCount(t *testing.T, db *sql.DB, role string, want int) {
+	t.Helper()
 	deadline := time.Now().Add(6 * time.Second)
 	for time.Now().Before(deadline) {
-		var waiting bool
+		var waiting int
 		if err := db.QueryRow(`
-			SELECT EXISTS (
-				SELECT 1
-				FROM pg_stat_activity
-				WHERE usename = $1 AND wait_event_type = 'Lock'
-			)
+			SELECT count(*)
+			FROM pg_stat_activity
+			WHERE usename = $1 AND wait_event_type = 'Lock'
 		`, role).Scan(&waiting); err != nil {
 			t.Fatalf("inspect %s database lock wait: %v", role, err)
 		}
-		if waiting {
+		if waiting >= want {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("%s database session did not wait for a lock", role)
+	t.Fatalf("%s database lock waiters did not reach %d", role, want)
 }
 
 func waitForDatabaseTimeAfter(t *testing.T, db *sql.DB, instant time.Time) {
