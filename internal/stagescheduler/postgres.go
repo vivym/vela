@@ -153,6 +153,87 @@ func (repository *PostgresRepository) ReconcileExpired(
 	return processed, nil
 }
 
+func (repository *PostgresRepository) ListShadowSnapshots(
+	ctx context.Context,
+	limit int,
+) ([]ShadowSnapshot, error) {
+	if repository == nil || repository.pool == nil {
+		return nil, errors.New("StageScheduler repository is not configured")
+	}
+	if limit < 1 || limit > 1000 {
+		return nil, errors.New("StageScheduler shadow replay limit is invalid")
+	}
+	rows, err := repository.pool.Query(ctx, `
+		SELECT snapshot_id, snapshot, expected_evidence_digest
+		FROM vela_list_stage_scheduler_shadow_snapshots($1)
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list StageScheduler shadow snapshots: %w", err)
+	}
+	defer rows.Close()
+
+	snapshots := make([]ShadowSnapshot, 0, limit)
+	for rows.Next() {
+		var snapshot ShadowSnapshot
+		var encodedSnapshot, expectedDigest []byte
+		if err := rows.Scan(&snapshot.ID, &encodedSnapshot, &expectedDigest); err != nil {
+			return nil, fmt.Errorf("scan StageScheduler shadow snapshot: %w", err)
+		}
+		if len(expectedDigest) != len(snapshot.ExpectedEvidenceDigest) {
+			return nil, errors.New("StageScheduler shadow evidence digest is invalid")
+		}
+		copy(snapshot.ExpectedEvidenceDigest[:], expectedDigest)
+		if err := json.Unmarshal(encodedSnapshot, &snapshot.Snapshot); err != nil {
+			return nil, fmt.Errorf("decode StageScheduler shadow snapshot: %w", err)
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate StageScheduler shadow snapshots: %w", err)
+	}
+	return snapshots, nil
+}
+
+func (repository *PostgresRepository) RecordShadowReplay(
+	ctx context.Context,
+	receipt ShadowReplayReceipt,
+) error {
+	if repository == nil || repository.pool == nil {
+		return errors.New("StageScheduler repository is not configured")
+	}
+	if receipt.ID == uuid.Nil || receipt.SnapshotID == uuid.Nil ||
+		receipt.AlgorithmRevision == "" || receipt.ReplayedAt.IsZero() ||
+		receipt.ReplayedBy == "" {
+		return errors.New("StageScheduler shadow replay receipt is incomplete")
+	}
+	payload, err := json.Marshal(map[string]any{
+		"schema_version":           1,
+		"receipt_id":               receipt.ID,
+		"snapshot_id":              receipt.SnapshotID,
+		"algorithm_revision":       receipt.AlgorithmRevision,
+		"expected_evidence_digest": hex.EncodeToString(receipt.ExpectedEvidenceDigest[:]),
+		"replayed_evidence_digest": hex.EncodeToString(receipt.ReplayedEvidenceDigest[:]),
+		"matched":                  receipt.Matched,
+		"replayed_at":              receipt.ReplayedAt.UTC().Format(time.RFC3339Nano),
+		"replayed_by":              receipt.ReplayedBy,
+	})
+	if err != nil {
+		return fmt.Errorf("encode StageScheduler shadow replay receipt: %w", err)
+	}
+	var receiptID uuid.UUID
+	var replayed bool
+	if err := repository.pool.QueryRow(ctx, `
+		SELECT receipt_id, replayed
+		FROM vela_record_stage_scheduler_shadow_replay($1::jsonb)
+	`, payload).Scan(&receiptID, &replayed); err != nil {
+		return fmt.Errorf("record StageScheduler shadow replay receipt: %w", err)
+	}
+	if receiptID != receipt.ID {
+		return errors.New("StageScheduler shadow replay receipt identity changed")
+	}
+	return nil
+}
+
 func encodeClaimRequest(request ClaimRequest) ([]byte, error) {
 	if request.ClaimID == uuid.Nil || request.DecisionID == uuid.Nil ||
 		request.CapturedSnapshotID == uuid.Nil || request.SchedulerID == "" ||

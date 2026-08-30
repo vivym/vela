@@ -53,6 +53,7 @@ import (
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/stagescheduler"
 	"github.com/vivym/vela/internal/strictjson"
 	"github.com/vivym/vela/internal/telemetry"
 	"github.com/vivym/vela/internal/webhook"
@@ -77,6 +78,11 @@ const (
 	defaultSchedulerTick                        = 500 * time.Millisecond
 	defaultSchedulerClaimTTL                    = 30 * time.Second
 	defaultSchedulerCandidateAttempts           = 5
+	defaultStageSchedulerTick                   = 500 * time.Millisecond
+	defaultStageSchedulerClaimTTL               = 30 * time.Second
+	defaultStageSchedulerLeaseTTL               = 2 * time.Minute
+	defaultStageSchedulerLocalDeadlineTTL       = 90 * time.Second
+	defaultStageSchedulerBatchSize              = 100
 	defaultArtifactCleanupTick                  = time.Minute
 	defaultInvoiceExportTick                    = 500 * time.Millisecond
 	defaultInvoiceExportClaimTTL                = 30 * time.Second
@@ -177,6 +183,14 @@ type config struct {
 	schedulerTick                          time.Duration
 	schedulerClaimTTL                      time.Duration
 	schedulerCandidateAttempts             int
+	attemptCoordinatorDatabaseURL          string
+	stageSchedulerDatabaseURL              string
+	stageSchedulerID                       string
+	stageSchedulerTick                     time.Duration
+	stageSchedulerClaimTTL                 time.Duration
+	stageSchedulerLeaseTTL                 time.Duration
+	stageSchedulerLocalDeadlineTTL         time.Duration
+	stageSchedulerBatchSize                int
 	billingDatabaseURL                     string
 	financeReconciliationDatabaseURL       string
 	financeReconciliationAddress           string
@@ -282,6 +296,11 @@ type artifactMultipartCleaner interface {
 type hierarchicalScheduler interface {
 	ReconcileExpired(context.Context) (int64, error)
 	RunCycle(context.Context) ([]scheduler.Dispatch, error)
+}
+
+type stageSchedulerMaintenance interface {
+	ReconcileExpired(context.Context, int) (int64, error)
+	ReplayShadow(context.Context, int) (stagescheduler.ShadowReplaySummary, error)
 }
 
 type invoiceExporter interface {
@@ -602,6 +621,26 @@ func run() error {
 		return fmt.Errorf("open Scheduler Inbox database pool: %w", err)
 	}
 	defer schedulerInboxPool.Close()
+	attemptCoordinatorPool, err := openPool(
+		ctx,
+		configuration.attemptCoordinatorDatabaseURL,
+		5,
+		veladb.RoleAttemptCoordinator,
+	)
+	if err != nil {
+		return fmt.Errorf("open AttemptCoordinator database pool: %w", err)
+	}
+	defer attemptCoordinatorPool.Close()
+	stageSchedulerPool, err := openPool(
+		ctx,
+		configuration.stageSchedulerDatabaseURL,
+		5,
+		veladb.RoleStageScheduler,
+	)
+	if err != nil {
+		return fmt.Errorf("open StageScheduler database pool: %w", err)
+	}
+	defer stageSchedulerPool.Close()
 	billingPool, err := openPool(ctx, configuration.billingDatabaseURL, 5, veladb.RoleBilling)
 	if err != nil {
 		return fmt.Errorf("open billing database pool: %w", err)
@@ -836,6 +875,30 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Scheduler: %w", err)
 	}
+	stageAttemptCoordinator, err := attemptcoordinator.NewService(attemptCoordinatorPool)
+	if err != nil {
+		return fmt.Errorf("configure StageScheduler AttemptCoordinator: %w", err)
+	}
+	stageSchedulerRepository, err := stagescheduler.NewPostgresRepository(stageSchedulerPool)
+	if err != nil {
+		return fmt.Errorf("configure StageScheduler repository: %w", err)
+	}
+	stageSchedulerMetrics := stagescheduler.NewMetrics()
+	stageScheduling, err := stagescheduler.NewService(
+		stageSchedulerRepository,
+		stageAttemptCoordinator,
+		stagescheduler.Config{
+			SchedulerID:      configuration.stageSchedulerID,
+			ClaimTTL:         configuration.stageSchedulerClaimTTL,
+			LeaseTTL:         configuration.stageSchedulerLeaseTTL,
+			LocalDeadlineTTL: configuration.stageSchedulerLocalDeadlineTTL,
+			SigningKeyID:     configuration.leaseActiveKeyID,
+			Metrics:          stageSchedulerMetrics,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("configure StageScheduler: %w", err)
+	}
 	capacityPredictor, err := scheduler.NewCapacityPredictor(schedulerPool)
 	if err != nil {
 		return fmt.Errorf("configure Scheduler capacity predictor: %w", err)
@@ -1004,6 +1067,9 @@ func run() error {
 	)); err != nil {
 		return fmt.Errorf("register statistical SLO metrics: %w", err)
 	}
+	if err := httpMetrics.Register(stageSchedulerMetrics); err != nil {
+		return fmt.Errorf("register StageScheduler metrics: %w", err)
+	}
 	apiHandler, err := httpapi.NewHandler(httpapi.Config{
 		Observer: httpMetrics.Middleware,
 		Authenticator: identity.NewAuthenticatorWithHumanMembershipOIDC(
@@ -1058,6 +1124,8 @@ func run() error {
 			fleetPool,
 			schedulerPool,
 			schedulerInboxPool,
+			attemptCoordinatorPool,
+			stageSchedulerPool,
 			billingPool,
 			financeReconciliationPool,
 			compliancePool,
@@ -1134,6 +1202,16 @@ func run() error {
 	go func() {
 		defer close(schedulerDone)
 		runScheduler(ctx, scheduling, configuration.schedulerTick, schedulerWakeups)
+	}()
+	stageSchedulerDone := make(chan struct{})
+	go func() {
+		defer close(stageSchedulerDone)
+		runStageSchedulerMaintenance(
+			ctx,
+			stageScheduling,
+			configuration.stageSchedulerTick,
+			configuration.stageSchedulerBatchSize,
+		)
 	}()
 	reconcilerDone := make(chan struct{})
 	go func() {
@@ -1328,6 +1406,11 @@ func run() error {
 		return errors.New("scheduler did not stop before shutdown deadline")
 	}
 	select {
+	case <-stageSchedulerDone:
+	case <-shutdownContext.Done():
+		return errors.New("StageScheduler maintenance did not stop before shutdown deadline")
+	}
+	select {
 	case <-schedulerWakeupDone:
 	case <-shutdownContext.Done():
 		return errors.New("scheduler JetStream wakeup consumer did not stop before shutdown deadline")
@@ -1471,6 +1554,14 @@ func loadConfig() (config, error) {
 		schedulerTick:                     defaultSchedulerTick,
 		schedulerClaimTTL:                 defaultSchedulerClaimTTL,
 		schedulerCandidateAttempts:        defaultSchedulerCandidateAttempts,
+		attemptCoordinatorDatabaseURL:     os.Getenv("VELA_ATTEMPT_COORDINATOR_DATABASE_URL"),
+		stageSchedulerDatabaseURL:         os.Getenv("VELA_STAGE_SCHEDULER_DATABASE_URL"),
+		stageSchedulerID:                  os.Getenv("VELA_STAGE_SCHEDULER_ID"),
+		stageSchedulerTick:                defaultStageSchedulerTick,
+		stageSchedulerClaimTTL:            defaultStageSchedulerClaimTTL,
+		stageSchedulerLeaseTTL:            defaultStageSchedulerLeaseTTL,
+		stageSchedulerLocalDeadlineTTL:    defaultStageSchedulerLocalDeadlineTTL,
+		stageSchedulerBatchSize:           defaultStageSchedulerBatchSize,
 		billingDatabaseURL:                os.Getenv("VELA_BILLING_DATABASE_URL"),
 		financeReconciliationDatabaseURL:  os.Getenv("VELA_FINANCE_RECONCILIATION_DATABASE_URL"),
 		financeReconciliationAddress:      os.Getenv("VELA_FINANCE_RECONCILIATION_ADDR"),
@@ -1595,6 +1686,9 @@ func loadConfig() (config, error) {
 		"VELA_SCHEDULER_DATABASE_URL":                                configuration.schedulerDatabaseURL,
 		"VELA_SCHEDULER_INBOX_DATABASE_URL":                          configuration.schedulerInboxDatabaseURL,
 		"VELA_SCHEDULER_ID":                                          configuration.schedulerID,
+		"VELA_ATTEMPT_COORDINATOR_DATABASE_URL":                      configuration.attemptCoordinatorDatabaseURL,
+		"VELA_STAGE_SCHEDULER_DATABASE_URL":                          configuration.stageSchedulerDatabaseURL,
+		"VELA_STAGE_SCHEDULER_ID":                                    configuration.stageSchedulerID,
 		"VELA_BILLING_DATABASE_URL":                                  configuration.billingDatabaseURL,
 		"VELA_FINANCE_RECONCILIATION_DATABASE_URL":                   configuration.financeReconciliationDatabaseURL,
 		"VELA_FINANCE_RECONCILIATION_ADDR":                           configuration.financeReconciliationAddress,
@@ -1853,6 +1947,46 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_SCHEDULER_CANDIDATE_ATTEMPTS must be in 1..20")
 		}
 		configuration.schedulerCandidateAttempts = candidateAttempts
+	}
+	if value := os.Getenv("VELA_STAGE_SCHEDULER_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_STAGE_SCHEDULER_TICK must be in (0, 1m]")
+		}
+		configuration.stageSchedulerTick = tick
+	}
+	if value := os.Getenv("VELA_STAGE_SCHEDULER_CLAIM_TTL"); value != "" {
+		claimTTL, err := time.ParseDuration(value)
+		if err != nil || claimTTL <= 0 || claimTTL > 5*time.Minute {
+			return config{}, errors.New("environment variable VELA_STAGE_SCHEDULER_CLAIM_TTL must be in (0, 5m]")
+		}
+		configuration.stageSchedulerClaimTTL = claimTTL
+	}
+	if value := os.Getenv("VELA_STAGE_SCHEDULER_LEASE_TTL"); value != "" {
+		leaseTTL, err := time.ParseDuration(value)
+		if err != nil || leaseTTL <= 0 || leaseTTL > time.Hour {
+			return config{}, errors.New("environment variable VELA_STAGE_SCHEDULER_LEASE_TTL must be in (0, 1h]")
+		}
+		configuration.stageSchedulerLeaseTTL = leaseTTL
+	}
+	if value := os.Getenv("VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL"); value != "" {
+		deadlineTTL, err := time.ParseDuration(value)
+		if err != nil || deadlineTTL <= 0 || deadlineTTL > time.Hour {
+			return config{}, errors.New("environment variable VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL must be in (0, 1h]")
+		}
+		configuration.stageSchedulerLocalDeadlineTTL = deadlineTTL
+	}
+	if configuration.stageSchedulerLocalDeadlineTTL > configuration.stageSchedulerLeaseTTL {
+		return config{}, errors.New(
+			"VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL must not exceed VELA_STAGE_SCHEDULER_LEASE_TTL",
+		)
+	}
+	if value := os.Getenv("VELA_STAGE_SCHEDULER_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.Atoi(value)
+		if err != nil || batchSize < 1 || batchSize > 1000 {
+			return config{}, errors.New("environment variable VELA_STAGE_SCHEDULER_BATCH_SIZE must be in 1..1000")
+		}
+		configuration.stageSchedulerBatchSize = batchSize
 	}
 	if value := os.Getenv("VELA_INVOICE_EXPORT_TICK"); value != "" {
 		tick, err := time.ParseDuration(value)
@@ -2526,6 +2660,49 @@ func runSchedulerCycle(
 		slog.Info("Scheduler cycle dispatched Assignments", "dispatches", len(dispatches))
 	}
 	return err
+}
+
+func runStageSchedulerMaintenance(
+	ctx context.Context,
+	maintenance stageSchedulerMaintenance,
+	interval time.Duration,
+	batchSize int,
+) {
+	runStageSchedulerMaintenanceCycle(ctx, maintenance, batchSize)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runStageSchedulerMaintenanceCycle(ctx, maintenance, batchSize)
+		}
+	}
+}
+
+func runStageSchedulerMaintenanceCycle(
+	ctx context.Context,
+	maintenance stageSchedulerMaintenance,
+	batchSize int,
+) {
+	reconciled, err := maintenance.ReconcileExpired(ctx, batchSize)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		slog.Warn("StageScheduler claim reconciliation incomplete", "error", err)
+	} else if err == nil && reconciled > 0 {
+		slog.Info("StageScheduler expired claims reconciled", "claims", reconciled)
+	}
+	summary, err := maintenance.ReplayShadow(ctx, batchSize)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		slog.Error("StageScheduler shadow replay incomplete", "error", err)
+	} else if err == nil && summary.Processed > 0 {
+		slog.Info(
+			"StageScheduler shadow replay completed",
+			"processed", summary.Processed,
+			"matched", summary.Matched,
+			"diverged", summary.Diverged,
+		)
+	}
 }
 
 func runSchedulerWakeupConsumer(

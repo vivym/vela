@@ -20,6 +20,7 @@ import (
 	"github.com/vivym/vela/internal/noncontentexpiry"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
+	"github.com/vivym/vela/internal/stagescheduler"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -64,6 +65,9 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
 		{name: "Scheduler Inbox database", missingEnv: "VELA_SCHEDULER_INBOX_DATABASE_URL"},
 		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
+		{name: "AttemptCoordinator database", missingEnv: "VELA_ATTEMPT_COORDINATOR_DATABASE_URL"},
+		{name: "StageScheduler database", missingEnv: "VELA_STAGE_SCHEDULER_DATABASE_URL"},
+		{name: "StageScheduler identity", missingEnv: "VELA_STAGE_SCHEDULER_ID"},
 		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
 		{name: "Finance Reconciliation database", missingEnv: "VELA_FINANCE_RECONCILIATION_DATABASE_URL"},
 		{name: "Finance Reconciliation address", missingEnv: "VELA_FINANCE_RECONCILIATION_ADDR"},
@@ -259,6 +263,12 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
 	t.Setenv("VELA_SCHEDULER_INBOX_DATABASE_URL", "postgres://scheduler-inbox.example/vela")
 	t.Setenv("VELA_SCHEDULER_ID", "vela-control-scheduler-1")
+	t.Setenv(
+		"VELA_ATTEMPT_COORDINATOR_DATABASE_URL",
+		"postgres://attempt-coordinator.example/vela",
+	)
+	t.Setenv("VELA_STAGE_SCHEDULER_DATABASE_URL", "postgres://stage-scheduler.example/vela")
+	t.Setenv("VELA_STAGE_SCHEDULER_ID", "vela-control-stage-scheduler-1")
 	t.Setenv("VELA_BILLING_DATABASE_URL", "postgres://billing.example/vela")
 	t.Setenv(
 		"VELA_FINANCE_RECONCILIATION_DATABASE_URL",
@@ -378,6 +388,11 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_SCHEDULER_TICK", "")
 	t.Setenv("VELA_SCHEDULER_CLAIM_TTL", "")
 	t.Setenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_TICK", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_CLAIM_TTL", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_LEASE_TTL", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_BATCH_SIZE", "")
 	t.Setenv("VELA_INVOICE_EXPORT_TICK", "")
 	t.Setenv("VELA_INVOICE_EXPORT_CLAIM_TTL", "")
 	t.Setenv("VELA_INVOICE_EXPORT_RETRY_DELAY", "")
@@ -404,6 +419,77 @@ func TestLoadConfigPreservesIndependentFleetMaintenanceBoundary(t *testing.T) {
 			"spiffe://vela.internal/fleet-controller/primary" ||
 		configuration.fleetControllerActorIdentity != "fleet-controller/primary" {
 		t.Fatalf("Fleet maintenance configuration = %#v", configuration)
+	}
+}
+
+func TestLoadConfigPreservesIndependentStageSchedulerBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load StageScheduler configuration: %v", err)
+	}
+	if configuration.attemptCoordinatorDatabaseURL !=
+		"postgres://attempt-coordinator.example/vela" ||
+		configuration.stageSchedulerDatabaseURL != "postgres://stage-scheduler.example/vela" ||
+		configuration.stageSchedulerID != "vela-control-stage-scheduler-1" ||
+		configuration.stageSchedulerTick != 500*time.Millisecond ||
+		configuration.stageSchedulerClaimTTL != 30*time.Second ||
+		configuration.stageSchedulerLeaseTTL != 2*time.Minute ||
+		configuration.stageSchedulerLocalDeadlineTTL != 90*time.Second ||
+		configuration.stageSchedulerBatchSize != 100 {
+		t.Fatalf("StageScheduler configuration = %#v", configuration)
+	}
+
+	t.Setenv("VELA_STAGE_SCHEDULER_TICK", "250ms")
+	t.Setenv("VELA_STAGE_SCHEDULER_CLAIM_TTL", "20s")
+	t.Setenv("VELA_STAGE_SCHEDULER_LEASE_TTL", "3m")
+	t.Setenv("VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", "2m")
+	t.Setenv("VELA_STAGE_SCHEDULER_BATCH_SIZE", "25")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit StageScheduler configuration: %v", err)
+	}
+	if configuration.stageSchedulerTick != 250*time.Millisecond ||
+		configuration.stageSchedulerClaimTTL != 20*time.Second ||
+		configuration.stageSchedulerLeaseTTL != 3*time.Minute ||
+		configuration.stageSchedulerLocalDeadlineTTL != 2*time.Minute ||
+		configuration.stageSchedulerBatchSize != 25 {
+		t.Fatalf("explicit StageScheduler controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_STAGE_SCHEDULER_TICK", value: "0s"},
+		{env: "VELA_STAGE_SCHEDULER_TICK", value: "1m1s"},
+		{env: "VELA_STAGE_SCHEDULER_CLAIM_TTL", value: "0s"},
+		{env: "VELA_STAGE_SCHEDULER_CLAIM_TTL", value: "5m1s"},
+		{env: "VELA_STAGE_SCHEDULER_LEASE_TTL", value: "0s"},
+		{env: "VELA_STAGE_SCHEDULER_LEASE_TTL", value: "1h1s"},
+		{env: "VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", value: "0s"},
+		{env: "VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", value: "1h1s"},
+		{env: "VELA_STAGE_SCHEDULER_BATCH_SIZE", value: "0"},
+		{env: "VELA_STAGE_SCHEDULER_BATCH_SIZE", value: "1001"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil ||
+				!strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
+
+	setValidConfigEnvironment(t)
+	t.Setenv("VELA_STAGE_SCHEDULER_LEASE_TTL", "30s")
+	t.Setenv("VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", "31s")
+	if _, err := loadConfig(); err == nil || !strings.Contains(
+		err.Error(),
+		"VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL must not exceed VELA_STAGE_SCHEDULER_LEASE_TTL",
+	) {
+		t.Fatalf("load invalid StageScheduler deadline ordering error = %v", err)
 	}
 }
 
@@ -1101,6 +1187,41 @@ func TestSchedulerWakeupRunsCycleWithoutReplacingPeriodicReconciliation(t *testi
 	}
 }
 
+func TestStageSchedulerMaintenanceRetriesAndStopsWithContext(t *testing.T) {
+	maintenance := &testStageSchedulerMaintenance{
+		reconciles: make(chan struct{}, 2),
+		replays:    make(chan struct{}, 2),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runStageSchedulerMaintenance(ctx, maintenance, time.Millisecond, 25)
+	}()
+
+	for range 2 {
+		select {
+		case <-maintenance.reconciles:
+		case <-time.After(time.Second):
+			t.Fatal("StageScheduler maintenance did not reconcile expired claims")
+		}
+		select {
+		case <-maintenance.replays:
+		case <-time.After(time.Second):
+			t.Fatal("StageScheduler maintenance did not replay shadow evidence")
+		}
+	}
+	if maintenance.lastLimit.Load() != 25 {
+		t.Fatalf("StageScheduler maintenance batch limit = %d", maintenance.lastLimit.Load())
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("StageScheduler maintenance did not stop with context")
+	}
+}
+
 func TestInvoiceExporterRetriesTransientFailureAndStopsWithContext(t *testing.T) {
 	exporter := &testInvoiceExporter{calls: make(chan struct{}, 2)}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1384,6 +1505,41 @@ type testHierarchicalScheduler struct {
 	invocations atomic.Int32
 	calls       chan struct{}
 	reconciles  chan struct{}
+}
+
+type testStageSchedulerMaintenance struct {
+	reconcileInvocations atomic.Int32
+	replayInvocations    atomic.Int32
+	lastLimit            atomic.Int32
+	reconciles           chan struct{}
+	replays              chan struct{}
+}
+
+func (maintenance *testStageSchedulerMaintenance) ReconcileExpired(
+	_ context.Context,
+	limit int,
+) (int64, error) {
+	maintenance.lastLimit.Store(int32(limit))
+	invocation := maintenance.reconcileInvocations.Add(1)
+	maintenance.reconciles <- struct{}{}
+	if invocation == 1 {
+		return 0, errors.New("transient StageScheduler claim reconciliation failure")
+	}
+	return 1, nil
+}
+
+func (maintenance *testStageSchedulerMaintenance) ReplayShadow(
+	_ context.Context,
+	limit int,
+) (stagescheduler.ShadowReplaySummary, error) {
+	maintenance.lastLimit.Store(int32(limit))
+	invocation := maintenance.replayInvocations.Add(1)
+	maintenance.replays <- struct{}{}
+	if invocation == 1 {
+		return stagescheduler.ShadowReplaySummary{},
+			errors.New("transient StageScheduler shadow replay failure")
+	}
+	return stagescheduler.ShadowReplaySummary{Processed: 1, Matched: 1}, nil
 }
 
 type testInvoiceExporter struct {

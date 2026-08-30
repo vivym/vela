@@ -20,6 +20,11 @@ data:
   VELA_PLATFORM_OIDC_JWKS_URL: https://replace-with-platform-idp.example.invalid/.well-known/jwks.json
   VELA_FLEET_CONTROLLER_SPIFFE_ID: spiffe://vela.internal/fleet-controller/primary
   VELA_FLEET_CONTROLLER_ACTOR_IDENTITY: fleet-controller/primary
+  VELA_STAGE_SCHEDULER_TICK: "500ms"
+  VELA_STAGE_SCHEDULER_CLAIM_TTL: "30s"
+  VELA_STAGE_SCHEDULER_LEASE_TTL: "2m"
+  VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL: "90s"
+  VELA_STAGE_SCHEDULER_BATCH_SIZE: "100"
   VELA_NATS_URL: tls://nats.vela-system.svc:4222
   VELA_NATS_CREDENTIALS_FILE: /etc/vela-control/materialized/nats/outbox.creds
   VELA_NATS_SCHEDULER_CREDENTIALS_FILE: /etc/vela-control/materialized/nats/scheduler.creds

@@ -2,10 +2,12 @@
 
 Date: 2026-08-29
 
-Status: Implementation in progress. S49.1 implements the immutable Catalog
-subset, graph activation transaction, generated sqlc models, and migration
-evidence. Runtime authority, resource, Artifact, usage, and protocol expansion
-remain pending.
+Status: Implementation in progress. S49.1-S49.4 implement the immutable Catalog,
+WorkerInstance and residency inventory, parent Attempt and StageRun authority,
+and deterministic StageScheduler with durable claim and shadow-replay evidence.
+Stage Worker protocols, Artifact transfer, split H3 runtimes, cache, CPU media,
+usage/cost, capacity planning, and legacy contraction remain pending. Repository
+evidence does not advance a Production Gate.
 
 ## Purpose
 

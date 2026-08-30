@@ -2,7 +2,7 @@
 
 Date: 2026-08-29
 
-Status: In progress. S49.1-S49.3 are implemented; S49.4-S49.12 are pending.
+Status: In progress. S49.1-S49.4 are implemented; S49.5-S49.12 are pending.
 
 ## Delivery rule
 
@@ -107,6 +107,14 @@ Acceptance:
 - existing Charge and Visible Completion tests continue to pass.
 
 ## S49.4: Deterministic stage scheduler
+
+Status: Repository implementation complete in migration
+`00037_stage_scheduler.sql` and the `internal/stagescheduler` Module. The
+versioned decision kernel, durable acquire/claim/reconcile path, immutable
+decision and shadow-replay evidence, bounded metrics, dedicated database role,
+and `vela-control` maintenance wiring have unit, PostgreSQL integration,
+migration round-trip, and deployment-contract coverage. This repository
+evidence does not constitute a Launch Receipt or pass a Production Gate.
 
 Deliver:
 

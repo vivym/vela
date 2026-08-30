@@ -170,6 +170,8 @@ spec:
                   fieldPath: metadata.name
             - name: VELA_SCHEDULER_ID
               value: scheduler/$(VELA_POD_UID)
+            - name: VELA_STAGE_SCHEDULER_ID
+              value: stage-scheduler/$(VELA_POD_UID)
             - name: VELA_ARTIFACT_RECONCILER_ID
               value: artifact-reconciler/$(VELA_POD_UID)
             - name: VELA_RETENTION_RECONCILER_ID

@@ -111,12 +111,13 @@ the shared BusyBox `1.37.0` `linux/amd64` OCI manifest. Its exact manifest/confi
 bytes and required supply-chain evidence remain part of the release;
 `CAP_CHOWN` is its only added capability.
 
-The Scheduler, Artifact Reconciler, Retention Reconciler, non-content expiry,
-backup Replicator, Webhook Dispatcher, and Invoice Exporter claimant identities
-are derived from the immutable Pod UID. A release overlay must not replace them
-with one shared static ID. Remediation is deliberately different: both replicas
-use `controller/vela-control`, and the shared client certificate must contain
-the exact URI `spiffe://vela.internal/controller/vela-control`.
+The Scheduler, StageScheduler, Artifact Reconciler, Retention Reconciler,
+non-content expiry, backup Replicator, Webhook Dispatcher, and Invoice Exporter
+claimant identities are derived from the immutable Pod UID. A release overlay
+must not replace them with one shared static ID. Remediation is deliberately
+different: both replicas use `controller/vela-control`, and the shared client
+certificate must contain the exact URI
+`spiffe://vela.internal/controller/vela-control`.
 
 Every Secret and ConfigMap reference in the Pod template is release-versioned.
 Certificate and credential rotation must provision new immutable Secret names,

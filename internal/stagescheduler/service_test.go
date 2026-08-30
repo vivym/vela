@@ -130,6 +130,76 @@ func TestAcquireAbandonsClaimWhenAttemptCoordinatorRejectsAssignment(t *testing.
 	}
 }
 
+func TestReplayShadowPersistsDeterministicReceipt(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC)
+	candidate := schedulingCandidate(
+		"52000000-0000-0000-0000-000000000040",
+		"52000000-0000-0000-0000-000000000041",
+		"52000000-0000-0000-0000-000000000042",
+		now.Add(-time.Minute),
+	)
+	snapshot := schedulingSnapshot(now, []Candidate{candidate})
+	expected, selected, err := Decide(snapshot)
+	if err != nil || !selected {
+		t.Fatalf("prepare shadow evidence selected=%t error=%v", selected, err)
+	}
+	repository := &recordingStageRepository{shadow: []ShadowSnapshot{{
+		ID:                     uuid.MustParse("52000000-0000-0000-0000-000000000043"),
+		Snapshot:               snapshot,
+		ExpectedEvidenceDigest: expected.EvidenceDigest,
+	}}}
+	service := testStageScheduler(t, repository, &recordingStageCoordinator{}, now)
+
+	summary, err := service.ReplayShadow(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("ReplayShadow: %v", err)
+	}
+	if summary.Processed != 1 || summary.Matched != 1 || summary.Diverged != 0 {
+		t.Fatalf("ReplayShadow summary = %#v", summary)
+	}
+	if len(repository.shadowReceipts) != 1 {
+		t.Fatalf("shadow receipts = %#v", repository.shadowReceipts)
+	}
+	receipt := repository.shadowReceipts[0]
+	if receipt.ID == uuid.Nil || receipt.SnapshotID != repository.shadow[0].ID ||
+		receipt.AlgorithmRevision != AlgorithmRevisionV1 ||
+		receipt.ExpectedEvidenceDigest != expected.EvidenceDigest ||
+		receipt.ReplayedEvidenceDigest != expected.EvidenceDigest || !receipt.Matched ||
+		receipt.ReplayedAt != now || receipt.ReplayedBy != "stage-scheduler/test" {
+		t.Fatalf("shadow receipt = %#v", receipt)
+	}
+
+	firstReceiptID := receipt.ID
+	repository.shadowReceipts = nil
+	if _, err := service.ReplayShadow(context.Background(), 10); err != nil {
+		t.Fatalf("ReplayShadow retry: %v", err)
+	}
+	if len(repository.shadowReceipts) != 1 ||
+		repository.shadowReceipts[0].ID != firstReceiptID {
+		t.Fatalf("shadow retry receipts = %#v, want receipt %s", repository.shadowReceipts, firstReceiptID)
+	}
+}
+
+func TestReconcileExpiredClaimsUsesBoundedRepositoryOperation(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 30, 8, 0, 0, 0, time.UTC)
+	repository := &recordingStageRepository{reconciled: 3}
+	service := testStageScheduler(t, repository, &recordingStageCoordinator{}, now)
+
+	processed, err := service.ReconcileExpired(context.Background(), 25)
+	if err != nil || processed != 3 || repository.reconcileLimit != 25 {
+		t.Fatalf(
+			"ReconcileExpired processed=%d limit=%d error=%v",
+			processed,
+			repository.reconcileLimit,
+			err,
+		)
+	}
+}
+
 func testStageScheduler(
 	t *testing.T,
 	repository stageRepository,
@@ -172,6 +242,10 @@ type recordingStageRepository struct {
 	committedClaimID uuid.UUID
 	abandonedClaimID uuid.UUID
 	abandonReason    string
+	shadow           []ShadowSnapshot
+	shadowReceipts   []ShadowReplayReceipt
+	reconciled       int64
+	reconcileLimit   int
 }
 
 func (repository *recordingStageRepository) Capture(
@@ -207,6 +281,29 @@ func (repository *recordingStageRepository) Abandon(
 	repository.abandonedClaimID = claimID
 	repository.abandonReason = reason
 	return nil
+}
+
+func (repository *recordingStageRepository) ListShadowSnapshots(
+	_ context.Context,
+	_ int,
+) ([]ShadowSnapshot, error) {
+	return append([]ShadowSnapshot(nil), repository.shadow...), nil
+}
+
+func (repository *recordingStageRepository) RecordShadowReplay(
+	_ context.Context,
+	receipt ShadowReplayReceipt,
+) error {
+	repository.shadowReceipts = append(repository.shadowReceipts, receipt)
+	return nil
+}
+
+func (repository *recordingStageRepository) ReconcileExpired(
+	_ context.Context,
+	limit int,
+) (int64, error) {
+	repository.reconcileLimit = limit
+	return repository.reconciled, nil
 }
 
 type recordingStageCoordinator struct {

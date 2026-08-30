@@ -302,12 +302,18 @@ BEGIN
 
     IF EXISTS (
         SELECT 1
-        FROM public.stage_ready_queue_entries AS ready
-        JOIN public.capacity_pools AS pool ON pool.id = ready.capacity_pool_id
-        WHERE ready.stage_run_id = p_stage_run_id
-        GROUP BY pool.id, pool.max_ready_queue_depth
-        HAVING count(*) FILTER (WHERE ready.capacity_pool_id = pool.id)
-            > pool.max_ready_queue_depth
+        FROM public.capacity_pools AS pool
+        WHERE EXISTS (
+            SELECT 1
+            FROM public.stage_ready_queue_entries AS inserted
+            WHERE inserted.stage_run_id = p_stage_run_id
+              AND inserted.capacity_pool_id = pool.id
+        )
+          AND (
+              SELECT count(*)
+              FROM public.stage_ready_queue_entries AS ready
+              WHERE ready.capacity_pool_id = pool.id
+          ) > pool.max_ready_queue_depth
     ) THEN
         RAISE EXCEPTION USING
             ERRCODE = '54000',
@@ -604,6 +610,7 @@ DECLARE
     v_profile_id uuid := (p_claim #>> '{evidence,selected_stage_profile_revision_id}')::uuid;
     v_existing public.stage_scheduler_claims%ROWTYPE;
     v_trace public.stage_scheduler_snapshot_traces%ROWTYPE;
+    v_ready public.stage_ready_queue_entries%ROWTYPE;
     v_run public.stage_runs%ROWTYPE;
     v_now timestamptz := clock_timestamp();
 BEGIN
@@ -637,7 +644,7 @@ BEGIN
             ERRCODE = '40001', CONSTRAINT = 'stage_scheduler_snapshot_stale',
             MESSAGE = 'StageScheduler snapshot changed before claim';
     END IF;
-    PERFORM 1
+    SELECT ready.* INTO v_ready
     FROM public.stage_ready_queue_entries AS ready
     WHERE ready.stage_run_id = v_stage_run_id
       AND ready.capacity_pool_id = v_trace.capacity_pool_id
@@ -647,6 +654,16 @@ BEGIN
         RAISE EXCEPTION USING
             ERRCODE = '40001', CONSTRAINT = 'stage_scheduler_candidate_stale',
             MESSAGE = 'StageScheduler candidate changed before claim';
+    END IF;
+    IF v_ready.organization_id <>
+           (p_claim #>> '{evidence,organization_id}')::uuid
+       OR v_ready.service_class_revision_id <>
+           (p_claim #>> '{evidence,service_class_revision_id}')::uuid
+       OR v_ready.project_id <> (p_claim #>> '{evidence,project_id}')::uuid THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            CONSTRAINT = 'stage_scheduler_candidate_identity_stale',
+            MESSAGE = 'StageScheduler candidate fairness identity changed before claim';
     END IF;
     SELECT run.* INTO v_run
     FROM public.stage_runs AS run
@@ -659,6 +676,11 @@ BEGIN
            SELECT 1 FROM public.attempts AS attempt
            JOIN public.jobs AS job ON job.id = attempt.job_id
            WHERE attempt.id = v_attempt_id
+             AND attempt.organization_id = v_ready.organization_id
+             AND attempt.project_id = v_ready.project_id
+             AND job.organization_id = v_ready.organization_id
+             AND job.project_id = v_ready.project_id
+             AND job.service_class_revision_id = v_ready.service_class_revision_id
              AND attempt.fence = (p_claim #>> '{evidence,attempt_fence}')::bigint
              AND attempt.fence = job.current_fence
              AND attempt.execution_authority_kind = 'STAGE_GRAPH'
@@ -998,14 +1020,31 @@ AS $$
 DECLARE
     v_id uuid := (p_receipt ->> 'receipt_id')::uuid;
     v_snapshot_id uuid := (p_receipt ->> 'snapshot_id')::uuid;
+    v_algorithm_revision text := p_receipt ->> 'algorithm_revision';
+    v_expected_evidence_digest bytea :=
+        decode(p_receipt ->> 'expected_evidence_digest', 'hex');
+    v_replayed_evidence_digest bytea :=
+        decode(p_receipt ->> 'replayed_evidence_digest', 'hex');
+    v_matched boolean := (p_receipt ->> 'matched')::boolean;
+    v_replayed_at timestamptz := (p_receipt ->> 'replayed_at')::timestamptz;
+    v_replayed_by text := p_receipt ->> 'replayed_by';
     v_existing public.stage_scheduler_shadow_replay_receipts%ROWTYPE;
 BEGIN
     SELECT receipt.* INTO v_existing
     FROM public.stage_scheduler_shadow_replay_receipts AS receipt
     WHERE receipt.id = v_id;
     IF FOUND THEN
-        IF v_existing.snapshot_trace_id <> v_snapshot_id THEN
-            RAISE EXCEPTION USING ERRCODE = '23505', MESSAGE = 'Shadow receipt identity was reused';
+        IF v_existing.snapshot_trace_id IS DISTINCT FROM v_snapshot_id
+           OR v_existing.algorithm_revision IS DISTINCT FROM v_algorithm_revision
+           OR v_existing.expected_evidence_digest IS DISTINCT FROM v_expected_evidence_digest
+           OR v_existing.replayed_evidence_digest IS DISTINCT FROM v_replayed_evidence_digest
+           OR v_existing.matched IS DISTINCT FROM v_matched
+           OR v_existing.replayed_at IS DISTINCT FROM v_replayed_at
+           OR v_existing.replayed_by IS DISTINCT FROM v_replayed_by THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '23505',
+                CONSTRAINT = 'stage_scheduler_shadow_receipt_identity_reused',
+                MESSAGE = 'Shadow receipt identity was reused';
         END IF;
         RETURN QUERY SELECT v_existing.id, true;
         RETURN;
@@ -1014,12 +1053,9 @@ BEGIN
         id, snapshot_trace_id, algorithm_revision, expected_evidence_digest,
         replayed_evidence_digest, matched, replayed_at, replayed_by
     ) VALUES (
-        v_id, v_snapshot_id, p_receipt ->> 'algorithm_revision',
-        decode(p_receipt ->> 'expected_evidence_digest', 'hex'),
-        decode(p_receipt ->> 'replayed_evidence_digest', 'hex'),
-        (p_receipt ->> 'matched')::boolean,
-        (p_receipt ->> 'replayed_at')::timestamptz,
-        p_receipt ->> 'replayed_by'
+        v_id, v_snapshot_id, v_algorithm_revision,
+        v_expected_evidence_digest, v_replayed_evidence_digest,
+        v_matched, v_replayed_at, v_replayed_by
     );
     RETURN QUERY SELECT v_id, false;
 END

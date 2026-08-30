@@ -16,6 +16,8 @@ import (
 
 const AbandonAssignmentRejected = "ASSIGNMENT_REJECTED"
 
+var ErrShadowReplayDiverged = errors.New("StageScheduler shadow replay diverged")
+
 type WorkerAuthority struct {
 	CapacityPoolID         uuid.UUID
 	StageProfileRevisionID uuid.UUID
@@ -64,11 +66,37 @@ type ClaimResult struct {
 	Replayed bool
 }
 
+type ShadowSnapshot struct {
+	ID                     uuid.UUID
+	Snapshot               Snapshot
+	ExpectedEvidenceDigest [32]byte
+}
+
+type ShadowReplayReceipt struct {
+	ID                     uuid.UUID
+	SnapshotID             uuid.UUID
+	AlgorithmRevision      string
+	ExpectedEvidenceDigest [32]byte
+	ReplayedEvidenceDigest [32]byte
+	Matched                bool
+	ReplayedAt             time.Time
+	ReplayedBy             string
+}
+
+type ShadowReplaySummary struct {
+	Processed int
+	Matched   int
+	Diverged  int
+}
+
 type stageRepository interface {
 	Capture(context.Context, WorkerAuthority, CapacityObservation) (CapturedSnapshot, error)
 	Claim(context.Context, ClaimRequest) (ClaimResult, error)
 	Commit(context.Context, uuid.UUID, uuid.UUID) error
 	Abandon(context.Context, uuid.UUID, string) error
+	ReconcileExpired(context.Context, int) (int64, error)
+	ListShadowSnapshots(context.Context, int) ([]ShadowSnapshot, error)
+	RecordShadowReplay(context.Context, ShadowReplayReceipt) error
 }
 
 type stageAttemptCoordinator interface {
@@ -83,12 +111,14 @@ type Config struct {
 	SigningKeyID     string
 	Now              func() time.Time
 	Random           io.Reader
+	Metrics          *Metrics
 }
 
 type Service struct {
 	repository  stageRepository
 	coordinator stageAttemptCoordinator
 	config      Config
+	metrics     *Metrics
 }
 
 func NewService(
@@ -118,7 +148,12 @@ func NewService(
 	if config.Random == nil {
 		config.Random = rand.Reader
 	}
-	return &Service{repository: repository, coordinator: coordinator, config: config}, nil
+	return &Service{
+		repository:  repository,
+		coordinator: coordinator,
+		config:      config,
+		metrics:     config.Metrics,
+	}, nil
 }
 
 func (service *Service) Acquire(
@@ -129,11 +164,22 @@ func (service *Service) Acquire(
 	if service == nil || service.repository == nil || service.coordinator == nil {
 		return Assignment{}, false, errors.New("StageScheduler is not configured")
 	}
+	metricResult := struct {
+		outcome metricOutcome
+		reason  metricReason
+	}{outcome: metricOutcomeError, reason: metricReasonInternal}
+	defer func() {
+		service.metrics.observeAcquire(metricResult.outcome, metricResult.reason)
+	}()
 	if err := validateWorkerAuthority(authority, observation); err != nil {
+		metricResult.outcome = metricOutcomeRejected
+		metricResult.reason = metricReasonInvalidAuthority
 		return Assignment{}, false, err
 	}
 	captured, err := service.repository.Capture(ctx, authority, observation)
 	if err != nil {
+		metricResult.outcome = metricOutcomeRejected
+		metricResult.reason = metricReasonForError(err)
 		return Assignment{}, false, fmt.Errorf("capture StageScheduler snapshot: %w", err)
 	}
 	if captured.ID == uuid.Nil {
@@ -141,9 +187,13 @@ func (service *Service) Acquire(
 	}
 	evidence, selected, err := Decide(captured.Snapshot)
 	if err != nil {
+		metricResult.outcome = metricOutcomeRejected
+		metricResult.reason = metricReasonForError(err)
 		return Assignment{}, false, err
 	}
 	if !selected {
+		metricResult.outcome = metricOutcomeNoWork
+		metricResult.reason = metricReasonNone
 		return Assignment{}, false, nil
 	}
 
@@ -162,6 +212,8 @@ func (service *Service) Acquire(
 	}
 	claimed, err := service.repository.Claim(ctx, claim)
 	if err != nil {
+		metricResult.outcome = metricOutcomeRejected
+		metricResult.reason = metricReasonForError(err)
 		return Assignment{}, false, fmt.Errorf("claim StageScheduler decision: %w", err)
 	}
 	if claimed.ClaimID != claim.ClaimID {
@@ -169,6 +221,8 @@ func (service *Service) Acquire(
 	}
 	decision, err := service.coordinator.Apply(ctx, command)
 	if err != nil {
+		metricResult.outcome = metricOutcomeRejected
+		metricResult.reason = metricReasonAssignmentRejected
 		abandonErr := service.repository.Abandon(
 			ctx, claim.ClaimID, AbandonAssignmentRejected,
 		)
@@ -187,7 +241,120 @@ func (service *Service) Acquire(
 	if err := service.repository.Commit(ctx, claim.ClaimID, command.StageAttemptID); err != nil {
 		return Assignment{}, false, fmt.Errorf("commit StageScheduler claim: %w", err)
 	}
+	metricResult.outcome = metricOutcomeAssigned
+	metricResult.reason = metricReasonNone
 	return assignment, true, nil
+}
+
+func (service *Service) ReplayShadow(
+	ctx context.Context,
+	limit int,
+) (ShadowReplaySummary, error) {
+	if service == nil || service.repository == nil {
+		return ShadowReplaySummary{}, errors.New("StageScheduler is not configured")
+	}
+	metricResult := struct {
+		outcome metricOutcome
+		reason  metricReason
+	}{outcome: metricOutcomeError, reason: metricReasonInternal}
+	defer func() {
+		service.metrics.observeShadowReplay(metricResult.outcome, metricResult.reason)
+	}()
+	if limit < 1 || limit > 1000 {
+		return ShadowReplaySummary{}, errors.New("StageScheduler shadow replay limit is invalid")
+	}
+	snapshots, err := service.repository.ListShadowSnapshots(ctx, limit)
+	if err != nil {
+		return ShadowReplaySummary{}, fmt.Errorf("list StageScheduler shadow snapshots: %w", err)
+	}
+	summary := ShadowReplaySummary{}
+	if len(snapshots) == 0 {
+		metricResult.outcome = metricOutcomeNoWork
+		metricResult.reason = metricReasonNone
+		return summary, nil
+	}
+	for _, snapshot := range snapshots {
+		if snapshot.ID == uuid.Nil {
+			return summary, errors.New("StageScheduler shadow snapshot identity is missing")
+		}
+		evidence, selected, err := Decide(snapshot.Snapshot)
+		if err != nil {
+			return summary, fmt.Errorf("replay StageScheduler shadow snapshot %s: %w", snapshot.ID, err)
+		}
+		if !selected {
+			return summary, fmt.Errorf(
+				"replay StageScheduler shadow snapshot %s: persisted decision has no winner",
+				snapshot.ID,
+			)
+		}
+		receipt := ShadowReplayReceipt{
+			ID: deriveShadowReplayReceiptID(
+				snapshot.ID,
+				evidence.AlgorithmRevision,
+				service.config.SchedulerID,
+			),
+			SnapshotID:             snapshot.ID,
+			AlgorithmRevision:      evidence.AlgorithmRevision,
+			ExpectedEvidenceDigest: snapshot.ExpectedEvidenceDigest,
+			ReplayedEvidenceDigest: evidence.EvidenceDigest,
+			Matched:                snapshot.ExpectedEvidenceDigest == evidence.EvidenceDigest,
+			ReplayedAt:             service.config.Now().UTC(),
+			ReplayedBy:             service.config.SchedulerID,
+		}
+		if err := service.repository.RecordShadowReplay(ctx, receipt); err != nil {
+			return summary, fmt.Errorf(
+				"record StageScheduler shadow replay for snapshot %s: %w",
+				snapshot.ID,
+				err,
+			)
+		}
+		summary.Processed++
+		if receipt.Matched {
+			summary.Matched++
+		} else {
+			summary.Diverged++
+		}
+	}
+	if summary.Diverged > 0 {
+		metricResult.outcome = metricOutcomeDiverged
+		metricResult.reason = metricReasonReplayDiverged
+		return summary, ErrShadowReplayDiverged
+	}
+	metricResult.outcome = metricOutcomeMatched
+	metricResult.reason = metricReasonNone
+	return summary, nil
+}
+
+func (service *Service) ReconcileExpired(ctx context.Context, limit int) (int64, error) {
+	if service == nil || service.repository == nil {
+		return 0, errors.New("StageScheduler is not configured")
+	}
+	if limit < 1 || limit > 1000 {
+		service.metrics.observeClaimReconcile(
+			metricOutcomeRejected,
+			metricReasonInvalidAuthority,
+		)
+		return 0, errors.New("StageScheduler reconcile limit is invalid")
+	}
+	processed, err := service.repository.ReconcileExpired(ctx, limit)
+	if err != nil {
+		service.metrics.observeClaimReconcile(
+			metricOutcomeError,
+			metricReasonForError(err),
+		)
+		return 0, fmt.Errorf("reconcile StageScheduler expired claims: %w", err)
+	}
+	service.metrics.observeClaimReconcile(metricOutcomeSuccess, metricReasonNone)
+	return processed, nil
+}
+
+func deriveShadowReplayReceiptID(
+	snapshotID uuid.UUID,
+	algorithmRevision string,
+	replayedBy string,
+) uuid.UUID {
+	identity := snapshotID.String() + "\x00" + algorithmRevision + "\x00" + replayedBy
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte(identity))
 }
 
 func (service *Service) newAssignment(

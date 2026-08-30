@@ -181,6 +181,7 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	}
 	wantPodBound := map[string]string{
 		"VELA_SCHEDULER_ID":                     "scheduler/$(VELA_POD_UID)",
+		"VELA_STAGE_SCHEDULER_ID":               "stage-scheduler/$(VELA_POD_UID)",
 		"VELA_ARTIFACT_RECONCILER_ID":           "artifact-reconciler/$(VELA_POD_UID)",
 		"VELA_RETENTION_RECONCILER_ID":          "retention-reconciler/$(VELA_POD_UID)",
 		"VELA_NON_CONTENT_EXPIRY_RECONCILER_ID": "non-content-expiry/$(VELA_POD_UID)",
@@ -465,6 +466,7 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 	wantEnvironment := map[string][]string{
 		"vela-control-database-urls-r0-placeholder": {
 			"VELA_ARTIFACT_REPLICATION_DATABASE_URL", "VELA_ARTIFACT_REQUEST_DATABASE_URL",
+			"VELA_ATTEMPT_COORDINATOR_DATABASE_URL",
 			"VELA_AUTH_DATABASE_URL", "VELA_BACKUP_RETENTION_DATABASE_URL", "VELA_BILLING_DATABASE_URL",
 			"VELA_BREAK_GLASS_AUDIT_DATABASE_URL", "VELA_BREAK_GLASS_REQUEST_DATABASE_URL",
 			"VELA_CANCEL_DATABASE_URL", "VELA_COMPLIANCE_DATABASE_URL",
@@ -477,6 +479,7 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 			"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL", "VELA_REMEDIATION_DATABASE_URL",
 			"VELA_REQUEST_DATABASE_URL", "VELA_RETENTION_DATABASE_URL", "VELA_RETENTION_REQUEST_DATABASE_URL",
 			"VELA_SCHEDULER_DATABASE_URL", "VELA_SCHEDULER_INBOX_DATABASE_URL",
+			"VELA_STAGE_SCHEDULER_DATABASE_URL",
 			"VELA_WEBHOOK_DATABASE_URL", "VELA_WEBHOOK_REQUEST_DATABASE_URL",
 		},
 		"vela-control-credential-pepper-r0-placeholder": {"VELA_CREDENTIAL_PEPPER_BASE64"},
