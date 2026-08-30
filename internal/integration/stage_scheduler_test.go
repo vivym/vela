@@ -17,7 +17,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/attemptcoordinator"
-	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/stagescheduler"
 )
@@ -1243,16 +1242,38 @@ func TestStageSchedulerMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T)
 		if err != nil || version != 37 {
 			t.Fatalf("StageScheduler version after Down Up = %d error=%v", version, err)
 		}
-		stageSchedulerPool := newRolePool(
-			t,
-			database.DSN,
-			"vela_stage_scheduler_login",
-			"vela-stage-scheduler-password",
-		)
-		if err := veladb.VerifyRole(
-			context.Background(), stageSchedulerPool, veladb.RoleStageScheduler,
-		); err != nil {
-			t.Fatalf("verify StageScheduler role after Down Up: %v", err)
+		var exactSchema37Surface bool
+		if err := database.Admin.QueryRow(`
+			WITH expected(signature) AS (
+				SELECT unnest($1::text[])::regprocedure
+			), actual(signature) AS (
+				SELECT function.oid::regprocedure
+				FROM pg_catalog.pg_proc AS function
+				JOIN pg_catalog.pg_namespace AS namespace
+				  ON namespace.oid = function.pronamespace
+				WHERE namespace.nspname = 'public'
+				  AND has_function_privilege(
+					'vela_stage_scheduler_login', function.oid, 'EXECUTE'
+				  )
+			)
+			SELECT NOT EXISTS (
+				(SELECT signature FROM expected EXCEPT SELECT signature FROM actual)
+				UNION ALL
+				(SELECT signature FROM actual EXCEPT SELECT signature FROM expected)
+			)
+		`, []string{
+			"vela_capture_stage_scheduler_snapshot(jsonb)",
+			"vela_claim_stage_scheduler_decision(jsonb)",
+			"vela_commit_stage_scheduler_claim(uuid,uuid)",
+			"vela_abandon_stage_scheduler_claim(uuid,text)",
+			"vela_reconcile_expired_stage_scheduler_claims(integer)",
+			"vela_list_stage_scheduler_shadow_snapshots(integer)",
+			"vela_record_stage_scheduler_shadow_replay(jsonb)",
+		}).Scan(&exactSchema37Surface); err != nil {
+			t.Fatalf("inspect schema 37 StageScheduler role surface: %v", err)
+		}
+		if !exactSchema37Surface {
+			t.Fatal("schema 37 StageScheduler function privileges differ after Down Up")
 		}
 	})
 

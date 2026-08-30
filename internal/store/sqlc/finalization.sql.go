@@ -1079,6 +1079,69 @@ func (q *Queries) InsertStageGraphFinalizationClaimOutput(ctx context.Context, a
 	return err
 }
 
+const insertStageGraphVisibleCompletion = `-- name: InsertStageGraphVisibleCompletion :exec
+INSERT INTO visible_completions (
+    id,
+    organization_id,
+    project_id,
+    job_id,
+    attempt_id,
+    attempt_fence,
+    authority_stage_graph_finalization_claim_id,
+    artifact_set_id,
+    charge_id,
+    candidate_sha256,
+    job_version,
+    completed_at
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12
+)
+`
+
+type InsertStageGraphVisibleCompletionParams struct {
+	ID                                     uuid.UUID          `db:"id" json:"id"`
+	OrganizationID                         uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                              uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                                  uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID                              uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence                           int64              `db:"attempt_fence" json:"attempt_fence"`
+	AuthorityStageGraphFinalizationClaimID uuid.NullUUID      `db:"authority_stage_graph_finalization_claim_id" json:"authority_stage_graph_finalization_claim_id"`
+	ArtifactSetID                          uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	ChargeID                               uuid.UUID          `db:"charge_id" json:"charge_id"`
+	CandidateSha256                        []byte             `db:"candidate_sha256" json:"candidate_sha256"`
+	JobVersion                             int64              `db:"job_version" json:"job_version"`
+	CompletedAt                            pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+}
+
+func (q *Queries) InsertStageGraphVisibleCompletion(ctx context.Context, arg InsertStageGraphVisibleCompletionParams) error {
+	_, err := q.db.Exec(ctx, insertStageGraphVisibleCompletion,
+		arg.ID,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.JobID,
+		arg.AttemptID,
+		arg.AttemptFence,
+		arg.AuthorityStageGraphFinalizationClaimID,
+		arg.ArtifactSetID,
+		arg.ChargeID,
+		arg.CandidateSha256,
+		arg.JobVersion,
+		arg.CompletedAt,
+	)
+	return err
+}
+
 const insertVerifiedStageGraphArtifact = `-- name: InsertVerifiedStageGraphArtifact :exec
 INSERT INTO artifacts (
     id, organization_id, project_id, job_id, attempt_id, attempt_fence,
@@ -1154,7 +1217,6 @@ INSERT INTO visible_completions (
     attempt_id,
     attempt_fence,
     authority_lease_id,
-    authority_stage_graph_finalization_claim_id,
     artifact_set_id,
     charge_id,
     candidate_sha256,
@@ -1172,25 +1234,23 @@ INSERT INTO visible_completions (
     $9,
     $10,
     $11,
-    $12,
-    $13
+    $12
 )
 `
 
 type InsertVisibleCompletionParams struct {
-	ID                                     uuid.UUID          `db:"id" json:"id"`
-	OrganizationID                         uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID                              uuid.UUID          `db:"project_id" json:"project_id"`
-	JobID                                  uuid.UUID          `db:"job_id" json:"job_id"`
-	AttemptID                              uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence                           int64              `db:"attempt_fence" json:"attempt_fence"`
-	AuthorityLeaseID                       uuid.NullUUID      `db:"authority_lease_id" json:"authority_lease_id"`
-	AuthorityStageGraphFinalizationClaimID uuid.NullUUID      `db:"authority_stage_graph_finalization_claim_id" json:"authority_stage_graph_finalization_claim_id"`
-	ArtifactSetID                          uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
-	ChargeID                               uuid.UUID          `db:"charge_id" json:"charge_id"`
-	CandidateSha256                        []byte             `db:"candidate_sha256" json:"candidate_sha256"`
-	JobVersion                             int64              `db:"job_version" json:"job_version"`
-	CompletedAt                            pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	ID               uuid.UUID          `db:"id" json:"id"`
+	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID        uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID            uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID        uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence     int64              `db:"attempt_fence" json:"attempt_fence"`
+	AuthorityLeaseID uuid.NullUUID      `db:"authority_lease_id" json:"authority_lease_id"`
+	ArtifactSetID    uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	ChargeID         uuid.UUID          `db:"charge_id" json:"charge_id"`
+	CandidateSha256  []byte             `db:"candidate_sha256" json:"candidate_sha256"`
+	JobVersion       int64              `db:"job_version" json:"job_version"`
+	CompletedAt      pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
 }
 
 func (q *Queries) InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error {
@@ -1202,7 +1262,6 @@ func (q *Queries) InsertVisibleCompletion(ctx context.Context, arg InsertVisible
 		arg.AttemptID,
 		arg.AttemptFence,
 		arg.AuthorityLeaseID,
-		arg.AuthorityStageGraphFinalizationClaimID,
 		arg.ArtifactSetID,
 		arg.ChargeID,
 		arg.CandidateSha256,
@@ -2113,8 +2172,6 @@ SELECT
     reservation.currency,
     completion.id AS completion_id,
     completion.authority_lease_id AS completion_authority_lease_id,
-    completion.authority_stage_graph_finalization_claim_id AS
-        completion_authority_stage_graph_finalization_claim_id,
     completion.candidate_sha256,
     completion.artifact_set_id,
     completion.charge_id,
@@ -2154,47 +2211,46 @@ type LockVisibleCompletionAuthorityParams struct {
 }
 
 type LockVisibleCompletionAuthorityRow struct {
-	LeaseID                                          uuid.UUID              `db:"lease_id" json:"lease_id"`
-	LeasePhase                                       LeasePhase             `db:"lease_phase" json:"lease_phase"`
-	LeaseOwnerKind                                   LeaseOwnerKind         `db:"lease_owner_kind" json:"lease_owner_kind"`
-	LeaseOwnerID                                     string                 `db:"lease_owner_id" json:"lease_owner_id"`
-	TokenDigest                                      []byte                 `db:"token_digest" json:"token_digest"`
-	LeaseExpiresAt                                   pgtype.Timestamptz     `db:"lease_expires_at" json:"lease_expires_at"`
-	LeaseRevokedAt                                   pgtype.Timestamptz     `db:"lease_revoked_at" json:"lease_revoked_at"`
-	AttemptID                                        uuid.UUID              `db:"attempt_id" json:"attempt_id"`
-	JobID                                            uuid.UUID              `db:"job_id" json:"job_id"`
-	AttemptState                                     AttemptState           `db:"attempt_state" json:"attempt_state"`
-	WorkerID                                         uuid.NullUUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                                      *int64                 `db:"worker_epoch" json:"worker_epoch"`
-	AttemptFence                                     int64                  `db:"attempt_fence" json:"attempt_fence"`
-	FinalizationStartedAt                            pgtype.Timestamptz     `db:"finalization_started_at" json:"finalization_started_at"`
-	FinalizationDeadlineAt                           pgtype.Timestamptz     `db:"finalization_deadline_at" json:"finalization_deadline_at"`
-	AttemptEndedAt                                   pgtype.Timestamptz     `db:"attempt_ended_at" json:"attempt_ended_at"`
-	OrganizationID                                   uuid.UUID              `db:"organization_id" json:"organization_id"`
-	ProjectID                                        uuid.UUID              `db:"project_id" json:"project_id"`
-	WorkerPoolID                                     uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
-	JobState                                         JobState               `db:"job_state" json:"job_state"`
-	JobVersion                                       int64                  `db:"job_version" json:"job_version"`
-	CurrentFence                                     int64                  `db:"current_fence" json:"current_fence"`
-	JobExpiresAt                                     pgtype.Timestamptz     `db:"job_expires_at" json:"job_expires_at"`
-	RequestContentDeletedAt                          pgtype.Timestamptz     `db:"request_content_deleted_at" json:"request_content_deleted_at"`
-	RetentionArtifactDays                            int32                  `db:"retention_artifact_days" json:"retention_artifact_days"`
-	RetentionPolicyRevision                          string                 `db:"retention_policy_revision" json:"retention_policy_revision"`
-	GenerationCount                                  int32                  `db:"generation_count" json:"generation_count"`
-	CreditReservationID                              uuid.UUID              `db:"credit_reservation_id" json:"credit_reservation_id"`
-	CreditReservationState                           CreditReservationState `db:"credit_reservation_state" json:"credit_reservation_state"`
-	AmountMinor                                      int64                  `db:"amount_minor" json:"amount_minor"`
-	Currency                                         string                 `db:"currency" json:"currency"`
-	CompletionID                                     uuid.NullUUID          `db:"completion_id" json:"completion_id"`
-	CompletionAuthorityLeaseID                       uuid.NullUUID          `db:"completion_authority_lease_id" json:"completion_authority_lease_id"`
-	CompletionAuthorityStageGraphFinalizationClaimID uuid.NullUUID          `db:"completion_authority_stage_graph_finalization_claim_id" json:"completion_authority_stage_graph_finalization_claim_id"`
-	CandidateSha256                                  []byte                 `db:"candidate_sha256" json:"candidate_sha256"`
-	ArtifactSetID                                    uuid.NullUUID          `db:"artifact_set_id" json:"artifact_set_id"`
-	ChargeID                                         uuid.NullUUID          `db:"charge_id" json:"charge_id"`
-	CompletionJobVersion                             *int64                 `db:"completion_job_version" json:"completion_job_version"`
-	CompletedAt                                      pgtype.Timestamptz     `db:"completed_at" json:"completed_at"`
-	ManifestSha256                                   []byte                 `db:"manifest_sha256" json:"manifest_sha256"`
-	RetentionExpiresAt                               pgtype.Timestamptz     `db:"retention_expires_at" json:"retention_expires_at"`
+	LeaseID                    uuid.UUID              `db:"lease_id" json:"lease_id"`
+	LeasePhase                 LeasePhase             `db:"lease_phase" json:"lease_phase"`
+	LeaseOwnerKind             LeaseOwnerKind         `db:"lease_owner_kind" json:"lease_owner_kind"`
+	LeaseOwnerID               string                 `db:"lease_owner_id" json:"lease_owner_id"`
+	TokenDigest                []byte                 `db:"token_digest" json:"token_digest"`
+	LeaseExpiresAt             pgtype.Timestamptz     `db:"lease_expires_at" json:"lease_expires_at"`
+	LeaseRevokedAt             pgtype.Timestamptz     `db:"lease_revoked_at" json:"lease_revoked_at"`
+	AttemptID                  uuid.UUID              `db:"attempt_id" json:"attempt_id"`
+	JobID                      uuid.UUID              `db:"job_id" json:"job_id"`
+	AttemptState               AttemptState           `db:"attempt_state" json:"attempt_state"`
+	WorkerID                   uuid.NullUUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                *int64                 `db:"worker_epoch" json:"worker_epoch"`
+	AttemptFence               int64                  `db:"attempt_fence" json:"attempt_fence"`
+	FinalizationStartedAt      pgtype.Timestamptz     `db:"finalization_started_at" json:"finalization_started_at"`
+	FinalizationDeadlineAt     pgtype.Timestamptz     `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	AttemptEndedAt             pgtype.Timestamptz     `db:"attempt_ended_at" json:"attempt_ended_at"`
+	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ProjectID                  uuid.UUID              `db:"project_id" json:"project_id"`
+	WorkerPoolID               uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
+	JobState                   JobState               `db:"job_state" json:"job_state"`
+	JobVersion                 int64                  `db:"job_version" json:"job_version"`
+	CurrentFence               int64                  `db:"current_fence" json:"current_fence"`
+	JobExpiresAt               pgtype.Timestamptz     `db:"job_expires_at" json:"job_expires_at"`
+	RequestContentDeletedAt    pgtype.Timestamptz     `db:"request_content_deleted_at" json:"request_content_deleted_at"`
+	RetentionArtifactDays      int32                  `db:"retention_artifact_days" json:"retention_artifact_days"`
+	RetentionPolicyRevision    string                 `db:"retention_policy_revision" json:"retention_policy_revision"`
+	GenerationCount            int32                  `db:"generation_count" json:"generation_count"`
+	CreditReservationID        uuid.UUID              `db:"credit_reservation_id" json:"credit_reservation_id"`
+	CreditReservationState     CreditReservationState `db:"credit_reservation_state" json:"credit_reservation_state"`
+	AmountMinor                int64                  `db:"amount_minor" json:"amount_minor"`
+	Currency                   string                 `db:"currency" json:"currency"`
+	CompletionID               uuid.NullUUID          `db:"completion_id" json:"completion_id"`
+	CompletionAuthorityLeaseID uuid.NullUUID          `db:"completion_authority_lease_id" json:"completion_authority_lease_id"`
+	CandidateSha256            []byte                 `db:"candidate_sha256" json:"candidate_sha256"`
+	ArtifactSetID              uuid.NullUUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	ChargeID                   uuid.NullUUID          `db:"charge_id" json:"charge_id"`
+	CompletionJobVersion       *int64                 `db:"completion_job_version" json:"completion_job_version"`
+	CompletedAt                pgtype.Timestamptz     `db:"completed_at" json:"completed_at"`
+	ManifestSha256             []byte                 `db:"manifest_sha256" json:"manifest_sha256"`
+	RetentionExpiresAt         pgtype.Timestamptz     `db:"retention_expires_at" json:"retention_expires_at"`
 }
 
 func (q *Queries) LockVisibleCompletionAuthority(ctx context.Context, arg LockVisibleCompletionAuthorityParams) (LockVisibleCompletionAuthorityRow, error) {
@@ -2241,7 +2297,6 @@ func (q *Queries) LockVisibleCompletionAuthority(ctx context.Context, arg LockVi
 		&i.Currency,
 		&i.CompletionID,
 		&i.CompletionAuthorityLeaseID,
-		&i.CompletionAuthorityStageGraphFinalizationClaimID,
 		&i.CandidateSha256,
 		&i.ArtifactSetID,
 		&i.ChargeID,

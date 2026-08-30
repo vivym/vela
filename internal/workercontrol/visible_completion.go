@@ -213,8 +213,7 @@ func leaseVisibleCompletionAuthority(
 		AmountMinor:            row.AmountMinor, Currency: row.Currency,
 		CompletionID:               row.CompletionID,
 		CompletionAuthorityLeaseID: row.CompletionAuthorityLeaseID,
-		CompletionAuthorityStageGraphFinalizationClaimID: row.CompletionAuthorityStageGraphFinalizationClaimID,
-		CandidateSha256: row.CandidateSha256, ArtifactSetID: row.ArtifactSetID,
+		CandidateSha256:            row.CandidateSha256, ArtifactSetID: row.ArtifactSetID,
 		ChargeID: row.ChargeID, CompletionJobVersion: row.CompletionJobVersion,
 		CompletedAt: row.CompletedAt, ManifestSha256: row.ManifestSha256,
 		RetentionExpiresAt: row.RetentionExpiresAt,
@@ -499,24 +498,37 @@ func commitVisibleCompletion(
 	}); err != nil {
 		return VisibleCompletionResult{}, fmt.Errorf("insert Artifact access eligibility: %w", err)
 	}
-	authorityLeaseID := uuid.NullUUID{}
-	authorityStageGraphClaimID := uuid.NullUUID{}
 	if actor.lease != nil {
-		authorityLeaseID = uuid.NullUUID{UUID: actor.lease.leaseID, Valid: true}
+		if err := queries.InsertVisibleCompletion(ctx, store.InsertVisibleCompletionParams{
+			ID: normalized.completionID, OrganizationID: authority.OrganizationID,
+			ProjectID: authority.ProjectID, JobID: authority.JobID,
+			AttemptID: authority.AttemptID, AttemptFence: authority.AttemptFence,
+			AuthorityLeaseID: uuid.NullUUID{UUID: actor.lease.leaseID, Valid: true},
+			ArtifactSetID:    artifactSetID, ChargeID: chargeID,
+			CandidateSha256: normalized.hash[:], JobVersion: nextJobVersion,
+			CompletedAt: completedAt,
+		}); err != nil {
+			return VisibleCompletionResult{}, fmt.Errorf("insert lease Visible Completion: %w", err)
+		}
 	} else {
-		authorityStageGraphClaimID = uuid.NullUUID{UUID: actor.stageGraph.claimID, Valid: true}
-	}
-	if err := queries.InsertVisibleCompletion(ctx, store.InsertVisibleCompletionParams{
-		ID: normalized.completionID, OrganizationID: authority.OrganizationID,
-		ProjectID: authority.ProjectID, JobID: authority.JobID,
-		AttemptID: authority.AttemptID, AttemptFence: authority.AttemptFence,
-		AuthorityLeaseID:                       authorityLeaseID,
-		AuthorityStageGraphFinalizationClaimID: authorityStageGraphClaimID,
-		ArtifactSetID:                          artifactSetID, ChargeID: chargeID,
-		CandidateSha256: normalized.hash[:], JobVersion: nextJobVersion,
-		CompletedAt: completedAt,
-	}); err != nil {
-		return VisibleCompletionResult{}, fmt.Errorf("insert Visible Completion: %w", err)
+		if err := queries.InsertStageGraphVisibleCompletion(
+			ctx,
+			store.InsertStageGraphVisibleCompletionParams{
+				ID: normalized.completionID, OrganizationID: authority.OrganizationID,
+				ProjectID: authority.ProjectID, JobID: authority.JobID,
+				AttemptID: authority.AttemptID, AttemptFence: authority.AttemptFence,
+				AuthorityStageGraphFinalizationClaimID: uuid.NullUUID{
+					UUID: actor.stageGraph.claimID, Valid: true,
+				},
+				ArtifactSetID: artifactSetID, ChargeID: chargeID,
+				CandidateSha256: normalized.hash[:], JobVersion: nextJobVersion,
+				CompletedAt: completedAt,
+			},
+		); err != nil {
+			return VisibleCompletionResult{}, fmt.Errorf(
+				"insert Stage graph Visible Completion: %w", err,
+			)
+		}
 	}
 	if actor.lease != nil {
 		if changed, updateErr := queries.MarkCompletionAttemptSucceeded(

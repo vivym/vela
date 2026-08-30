@@ -897,8 +897,6 @@ SELECT
     reservation.currency,
     completion.id AS completion_id,
     completion.authority_lease_id AS completion_authority_lease_id,
-    completion.authority_stage_graph_finalization_claim_id AS
-        completion_authority_stage_graph_finalization_claim_id,
     completion.candidate_sha256,
     completion.artifact_set_id,
     completion.charge_id,
@@ -1120,7 +1118,6 @@ INSERT INTO visible_completions (
     attempt_id,
     attempt_fence,
     authority_lease_id,
-    authority_stage_graph_finalization_claim_id,
     artifact_set_id,
     charge_id,
     candidate_sha256,
@@ -1134,6 +1131,34 @@ INSERT INTO visible_completions (
     sqlc.arg(attempt_id),
     sqlc.arg(attempt_fence),
     sqlc.arg(authority_lease_id),
+    sqlc.arg(artifact_set_id),
+    sqlc.arg(charge_id),
+    sqlc.arg(candidate_sha256),
+    sqlc.arg(job_version),
+    sqlc.arg(completed_at)
+);
+
+-- name: InsertStageGraphVisibleCompletion :exec
+INSERT INTO visible_completions (
+    id,
+    organization_id,
+    project_id,
+    job_id,
+    attempt_id,
+    attempt_fence,
+    authority_stage_graph_finalization_claim_id,
+    artifact_set_id,
+    charge_id,
+    candidate_sha256,
+    job_version,
+    completed_at
+) VALUES (
+    sqlc.arg(id),
+    sqlc.arg(organization_id),
+    sqlc.arg(project_id),
+    sqlc.arg(job_id),
+    sqlc.arg(attempt_id),
+    sqlc.arg(attempt_fence),
     sqlc.arg(authority_stage_graph_finalization_claim_id),
     sqlc.arg(artifact_set_id),
     sqlc.arg(charge_id),

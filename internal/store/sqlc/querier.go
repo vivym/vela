@@ -80,6 +80,7 @@ type Querier interface {
 	InsertRetryWaitOutboxEvent(ctx context.Context, arg InsertRetryWaitOutboxEventParams) error
 	InsertStageGraphFinalizationClaim(ctx context.Context, arg InsertStageGraphFinalizationClaimParams) error
 	InsertStageGraphFinalizationClaimOutput(ctx context.Context, arg InsertStageGraphFinalizationClaimOutputParams) error
+	InsertStageGraphVisibleCompletion(ctx context.Context, arg InsertStageGraphVisibleCompletionParams) error
 	InsertStartOutboxEvent(ctx context.Context, arg InsertStartOutboxEventParams) error
 	InsertVerifiedStageGraphArtifact(ctx context.Context, arg InsertVerifiedStageGraphArtifactParams) error
 	InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error
