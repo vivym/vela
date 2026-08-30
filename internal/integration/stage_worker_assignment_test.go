@@ -230,7 +230,7 @@ func TestStageWorkerAssignmentMigrationRoundTripAndDurableEvidenceRefusal(t *tes
 		if intents || completeFunction {
 			t.Fatal("Stage Worker assignment surface survived empty Down")
 		}
-		if err := goose.Up(database.Admin, migrations); err != nil {
+		if err := goose.UpTo(database.Admin, migrations, 42); err != nil {
 			t.Fatalf("migrate Stage Worker assignment back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
