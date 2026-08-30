@@ -6,9 +6,9 @@ Status: Private registry, RKE2/Canal, host-lifecycle-off GPU Operator, two
 eight-GPU Workers, non-canonical mock Runner distribution, persistent Runner
 recovery, Kubernetes GPU smoke, Vela control-plane deployment, two Worker
 Agents, an end-to-end mock Job with verified Artifacts, concurrent mock
-endurance, one Worker-control-network-partition rehearsal, and one bounded
-retry-budget-exhaustion rehearsal, and one process-kill rehearsal are
-operational.
+endurance, one Worker-control-network-partition rehearsal, one bounded
+retry-budget-exhaustion rehearsal, one process-kill rehearsal, and one Outbox
+post-commit/pre-claim control-crash rehearsal are operational.
 
 This document records the current non-production lab inventory and the private
 registry used to stage H3 mock experiments. It is an environment receipt, not
@@ -171,12 +171,12 @@ logged two carrier-loss/DHCP-lease-loss events followed by reacquisition of
 `.17` on 2026-08-29. Retaining the same address after reacquisition is useful
 observation, not reservation evidence.
 
-On 2026-08-29 the operator confirmed that these LAN addresses normally remain
-stable and approved temporary use without reservation proof. Deployment guards
-record that decision as `--dynamic-ip-risk-approved`; it must never be
-represented as `--dhcp-reservation-proven`. A changed control address requires
-reissuing Registry/API certificates and updating all pinned endpoints before
-the cluster can be considered healthy again.
+On 2026-08-29, and again on 2026-08-30, the operator confirmed that these LAN
+addresses normally remain stable and approved temporary use without reservation
+proof. Deployment guards record that decision as `--dynamic-ip-risk-approved`;
+it must never be represented as `--dhcp-reservation-proven`. A changed control
+address requires reissuing Registry/API certificates and updating all pinned
+endpoints before the cluster can be considered healthy again.
 
 Both Workers also report the same OS hostname `ubuntu`, so their future RKE2
 `node-name` values must be explicitly unique. Non-secret candidate configs are
@@ -597,15 +597,28 @@ The current immutable application images are:
 | MinIO | `10.1.200.17:5443/vela-lab/minio@sha256:3f97c5651cb6662b880c787a232b6b34fec8d8922e08d6617b25d241a21164bb` |
 | bootstrap and smoke | `10.1.200.17:5443/vela-lab/vela-lab-bootstrap@sha256:3f6a8bc440ee7bd7f9ba263d07435329c0863134217349db565cded2e9df9eac` |
 | Worker Agent | `10.1.200.17:5443/vela-lab/vela-worker-agent@sha256:bf6db207e52dbbaad4bcb0f4aaad739854b6cd3c6ff7088beda90705d6fab9e0` |
-| control | `10.1.200.17:5443/vela-lab/vela-control@sha256:1c8e44236019d2ce8061c1e8e257a08c3d0fac5402f101548878372081d65a2d` |
+| control | `10.1.200.17:5443/vela-lab/vela-control@sha256:a056d70743a1dfab5ff7fbf01a3c22b789073974ff86ddbc1d781048b666c3b7` |
 
-The control image was built on Worker 1 and pushed once over the LAN. No image
-layer crossed the SSH administration path. Its release tag is
-`bc590e20-lab-87ffc4d25fd6-sandbox-v17`, its complete staged source fingerprint
-is `87ffc4d25fd6765021e0379f8bb1a10c570b7d2268c3ba00750c798b836efcdb`,
-and Docker reports an unpacked size of 17,302,562 bytes. The Registry returned
-an OCI index containing the intended `linux/amd64` manifest and a BuildKit
-attestation descriptor.
+The current control image is a bounded replacement of the preceding
+`10.1.200.17:5443/vela-lab/vela-control@sha256:1c8e44236019d2ce8061c1e8e257a08c3d0fac5402f101548878372081d65a2d`
+image, which remains available as the rollback image. The local build sent only
+an 11,035,751-byte gzip-compressed Linux binary over SSH; no OCI archive or
+image layer crossed the SSH administration path. The
+uncompressed binary is 34,803,838 bytes with SHA-256
+`13e5cb95d4d1cc25a0d2460ca992b93eef16e53bf3b40e8d8fdd4f3c852fcd10`.
+The control host assembled and pushed the image to the LAN Registry. Its
+Registry config digest is
+`sha256:86ba76444c74da20011181a1f4ccd224d33268cef59306a523b4aab190874df7`,
+and Docker reports an unpacked size of 28,646,065 bytes.
+
+The applied v18 manifests are retained at
+`/root/vela-lab-deploy-bc590e20/rendered-manifests-v18`; they were derived from
+the actually deployed v17 image set and changed only the control image. The
+root-level historical `images.env` is not an authoritative v18 input and must
+not overwrite this set. The root-only rollout receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/control-outbox-rollout-v1`; all files
+pass `sha256sum --check --strict`, and its `SHA256SUMS` file has SHA-256
+`e5da9a552653083164d23634ea596491366348427f83b5deb2dfe97aa51312a9`.
 
 The control Pod remains UID/GID `10001:10001`, drops all outer capabilities,
 disallows privilege escalation, and uses a read-only root filesystem. Ubuntu's
@@ -631,8 +644,9 @@ ffprobe 8.0.1 against real H.264 MP4 and WebP inputs, and the complete
 `internal/artifactvalidator` test binary passed after its read-only test fixture
 cleanup was made explicit.
 
-After an API Server dry-run, only the control image digest changed from the
-previous rendered manifests. The control rollout completed with one Ready Pod,
+In the preceding sandbox-v17 rollout, an API Server dry-run showed that only
+the control image digest changed from the previous rendered manifests. That
+control rollout completed with one Ready Pod,
 zero restarts, and the expected Registry image ID. Worker 1 was then restored
 from `DRAINING/HEALTHY` to `READY/HEALTHY` by an atomic, exact-identity SQL guard
 that also required epoch `1` and zero unrevoked leases.
@@ -929,6 +943,53 @@ Worker 2 still at `RestartCount=0`, and zero GPU compute processes on all three
 hosts. This advances only the non-production fixed-scenario matrix to `3/10`;
 Production Gates remain `0/9 PASS`.
 
+## Outbox post-commit control-crash rehearsal
+
+On 2026-08-30, the fourth live fixed-scenario rehearsal delayed only the Outbox
+Publisher loop to one minute, submitted one Job, and observed its durable
+`job.ready` event after the Admission transaction committed but before any
+Publisher claim or broker receipt. The accepted boundary was
+`RUNNING|1 Attempt|1 active Lease|job.ready|0 publish attempts|unpublished|unclaimed|no broker receipt`.
+The local Scheduler wakeup may start the first Attempt before `job.ready` is
+published; that does not weaken the Outbox boundary and the harness still
+requires exactly one final Attempt.
+
+The fault Pod targeted the exact control Pod, container, host PID, process start
+ticks, and cgroup. It used a pidfd to send `SIGKILL`, retained
+`RuntimeDefault` seccomp, no privilege escalation, a read-only root filesystem,
+and only `CAP_KILL`. The signal was sent at
+`2026-08-30T05:25:49.882699Z`. After the container restarted, the Publisher
+published `job.ready` at `2026-08-30T05:25:52.270536+00:00` with exactly one
+publish attempt and Broker stream `VELA_EVENTS`.
+
+Application Job `1c36decc-98a4-43c3-a92c-05c653650524` ended `SUCCEEDED` with
+one Attempt, one Visible Completion, one posted completion Charge, two Artifact
+rows, and two committed Artifacts. The four fixed measurements remained zero,
+and final state contained no active Lease or Production Gate receipt. Cleanup
+removed the temporary `VELA_PUBLISHER_TICK` ConfigMap entry, reloaded the
+control container on its default `500ms` Publisher interval, and removed the
+fault and image-warm Pods and watchdog state. Both Runners remained healthy;
+Worker 1 retained `RestartCount=4`, Worker 2 retained `RestartCount=0`, and all
+16 Worker GPUs reported zero memory use, zero utilization, and no compute
+process.
+
+The successful root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/outbox-post-commit-crash-v2`. Its
+`SHA256SUMS` file has SHA-256
+`674eaf8ac922f8fe4a9740435fbe3c08daa42a9ed88d5a519fee9c8703beb812`,
+and the executed harness has SHA-256
+`70dab9231d7f75f49abfc531dfd028a2316ae462ee6dcdb1af865980898034ef`.
+Review moved watchdog arming ahead of every reversible config mutation and made
+the ten scenario IDs an exact-set check before this v2 rerun. The earlier v1
+success receipt remains preserved but is superseded by v2. Two hidden
+failed-run directories remain diagnostic evidence only. The first stopped on a
+malformed readiness `jq` expression before any config mutation, Job creation,
+or signal. The second exposed the incorrect assumption that an unpublished
+Outbox event prevents local scheduling; it sent no signal and cleanup restored
+the default config. Neither is counted as a pass.
+
+This advances only the non-production fixed-scenario matrix to `4/10`;
+Production Gates remain `0/9 PASS`, and six fixed scenarios remain unexecuted.
 The exact nine-gate status and missing external evidence are tracked in
 [`production-gate-gap-matrix.md`](production-gate-gap-matrix.md). Every gate
 remains `NOT PASS`.

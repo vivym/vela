@@ -177,6 +177,39 @@ diagnostic evidence only and must not be counted as scenario passes. The
 55,962-byte harness may be staged through SSH, but Runner image layers must
 remain in the private Registry and travel over the lab LAN.
 
+## Outbox post-commit control-crash rehearsal
+
+The fourth fixed-scenario harness requires the control image that implements
+the bounded `VELA_PUBLISHER_TICK` setting. The default is `500ms`; only values in
+`(0, 1m]` are accepted. The harness temporarily sets it to `1m`, reloads the
+control Pod, and submits one smoke Job. It accepts a `job.ready` event only after
+the database commit and before Publisher claim or broker publication. The local
+Scheduler may already have started the first Attempt, but the final result must
+still contain exactly one Attempt.
+
+Run `deploy/lab/control-plane/outbox-post-commit-crash.sh` as root on
+`marslab-server` with the v18 rendered manifests and the exact deployed control
+image. The harness pins the preceding `3/10` receipt, requires two
+`READY/HEALTHY` Workers, zero active Jobs and Leases, zero Production Gate
+receipts, and an image-warm preflight before fault injection. It signals only
+the exact control container process through a pidfd; the fault Pod has a
+read-only root filesystem, no privilege escalation, `RuntimeDefault` seccomp,
+and only `CAP_KILL`.
+
+The passing result is fixed scenarios `4/10`, Production Gates `0/9`. Job
+`1c36decc-98a4-43c3-a92c-05c653650524` completed with one Attempt, one Visible
+Completion, one posted completion Charge, and two committed Artifacts. The
+recovered `job.ready` event has one publish attempt and Broker stream
+`VELA_EVENTS`. The root-only receipt is
+`receipts/outbox-post-commit-crash-v2`; its `SHA256SUMS` file has SHA-256
+`674eaf8ac922f8fe4a9740435fbe3c08daa42a9ed88d5a519fee9c8703beb812`.
+The executed harness has SHA-256
+`70dab9231d7f75f49abfc531dfd028a2316ae462ee6dcdb1af865980898034ef`.
+
+Cleanup removes the temporary Publisher override, reloads the default interval,
+and removes the fault Pod, warm Pod, and watchdog state. Failed hidden receipts
+remain diagnostic evidence only. They must not be counted as scenario passes.
+
 Rollback removes only the managed container and preserves Runner state:
 
 ```text

@@ -6,7 +6,7 @@ Status: Repository implementation complete; three-host lab registry, image
 distribution, ephemeral protocol checks, and persistent two-Worker Runner
 deployment verified; RKE2 GPU integration and one/eight-GPU Pod smoke verified;
 Vela Worker Agents, application control plane, concurrent mock endurance, and
-three fixed fault-scenario rehearsals verified.
+four fixed fault-scenario rehearsals verified.
 
 Implementation commit: `4304fe9`; review closure: `f6cb45b`.
 
@@ -138,8 +138,8 @@ sequential one/eight-GPU Pods separately verify Kubernetes placement and
 runtime access. Two persistent Vela Worker Agents and the application control
 plane now run a mock-only Catalog through one success path, a balanced ten-Job
 concurrent rehearsal, Worker-control network partition, and retry-budget
-exhaustion, and exact Runner process kill. These remain non-production
-synthetic receipts; seven of the ten
+exhaustion, exact Runner process kill, and an Outbox post-commit/pre-claim
+control crash. These remain non-production synthetic receipts; six of the ten
 fixed fault scenarios and every Production Gate remain open.
 
 The retry-budget receipt records zero Artifact rows, including zero committed
@@ -161,6 +161,18 @@ The fault Pod alone uses container-level `appArmorProfile: Unconfined` while
 retaining `RuntimeDefault` seccomp, no privilege escalation, a read-only root
 filesystem, and only `CAP_KILL`. The result advances the synthetic fixed
 scenario matrix to `3/10`; Production Gates remain `0/9 PASS`.
+
+The Outbox-post-commit rehearsal temporarily sets the bounded
+`VELA_PUBLISHER_TICK` to one minute, verifies a committed but unpublished and
+unclaimed `job.ready` event, and sends `SIGKILL` only to the exact control
+process through a pidfd. After restart, the Publisher records exactly one
+publication to `VELA_EVENTS`; the Job completes with one Attempt, one Visible
+Completion, one Charge, and two committed Artifacts. The successful receipt is
+bound to harness SHA-256
+`70dab9231d7f75f49abfc531dfd028a2316ae462ee6dcdb1af865980898034ef`.
+Cleanup removes the override and reloads the default `500ms` Publisher interval.
+This advances only the synthetic matrix to `4/10`; Production Gates remain
+`0/9 PASS`.
 
 Mock images may be built and deployed to staging, but they must use a mock
 backend revision and separate Catalog records. They do not satisfy

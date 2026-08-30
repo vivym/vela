@@ -1710,6 +1710,13 @@ func loadConfig() (config, error) {
 		}
 		configuration.publisherBatchSize = int32(batchSize)
 	}
+	if value := os.Getenv("VELA_PUBLISHER_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_PUBLISHER_TICK must be in (0, 1m]")
+		}
+		configuration.publisherTick = tick
+	}
 	if value := os.Getenv("VELA_REMEDIATION_TICK"); value != "" {
 		tick, err := time.ParseDuration(value)
 		if err != nil || tick <= 0 || tick > time.Minute {

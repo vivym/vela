@@ -354,6 +354,7 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_NATS_CLIENT_CERT_FILE", "")
 	t.Setenv("VELA_NATS_CLIENT_KEY_FILE", "")
 	t.Setenv("VELA_OUTBOX_BATCH_SIZE", "")
+	t.Setenv("VELA_PUBLISHER_TICK", "")
 	t.Setenv("VELA_REMEDIATION_TICK", "")
 	t.Setenv("VELA_REMEDIATION_BATCH_SIZE", "")
 	t.Setenv("VELA_SCHEDULER_TICK", "")
@@ -368,6 +369,47 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "")
 	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "")
 	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "")
+}
+
+func TestLoadConfigParsesBoundedOutboxPublisherControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load default Outbox Publisher config: %v", err)
+	}
+	if configuration.publisherBatchSize != defaultPublisherBatch ||
+		configuration.publisherTick != defaultPublisherTick {
+		t.Fatalf("default Outbox Publisher controls = %#v", configuration)
+	}
+
+	t.Setenv("VELA_OUTBOX_BATCH_SIZE", "17")
+	t.Setenv("VELA_PUBLISHER_TICK", "1m")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit Outbox Publisher config: %v", err)
+	}
+	if configuration.publisherBatchSize != 17 || configuration.publisherTick != time.Minute {
+		t.Fatalf("explicit Outbox Publisher controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_OUTBOX_BATCH_SIZE", value: "0"},
+		{env: "VELA_OUTBOX_BATCH_SIZE", value: "1001"},
+		{env: "VELA_PUBLISHER_TICK", value: "not-a-duration"},
+		{env: "VELA_PUBLISHER_TICK", value: "0s"},
+		{env: "VELA_PUBLISHER_TICK", value: "1m1s"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil || !strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
 }
 
 func TestLoadConfigPreservesIndependentFleetMaintenanceBoundary(t *testing.T) {
