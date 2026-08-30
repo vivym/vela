@@ -3306,6 +3306,135 @@ func (ns NullStageAttemptState) Value() (driver.Value, error) {
 	return string(ns.StageAttemptState), nil
 }
 
+type StageCacheEntryState string
+
+const (
+	StageCacheEntryStateLIVE     StageCacheEntryState = "LIVE"
+	StageCacheEntryStateEVICTING StageCacheEntryState = "EVICTING"
+	StageCacheEntryStateEVICTED  StageCacheEntryState = "EVICTED"
+	StageCacheEntryStateDELETED  StageCacheEntryState = "DELETED"
+	StageCacheEntryStateEXPIRED  StageCacheEntryState = "EXPIRED"
+)
+
+func (e *StageCacheEntryState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StageCacheEntryState(s)
+	case string:
+		*e = StageCacheEntryState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StageCacheEntryState: %T", src)
+	}
+	return nil
+}
+
+type NullStageCacheEntryState struct {
+	StageCacheEntryState StageCacheEntryState `json:"stage_cache_entry_state"`
+	Valid                bool                 `json:"valid"` // Valid is true if StageCacheEntryState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStageCacheEntryState) Scan(value interface{}) error {
+	if value == nil {
+		ns.StageCacheEntryState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StageCacheEntryState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStageCacheEntryState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StageCacheEntryState), nil
+}
+
+type StageCacheReferenceState string
+
+const (
+	StageCacheReferenceStateACTIVE   StageCacheReferenceState = "ACTIVE"
+	StageCacheReferenceStateRELEASED StageCacheReferenceState = "RELEASED"
+)
+
+func (e *StageCacheReferenceState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StageCacheReferenceState(s)
+	case string:
+		*e = StageCacheReferenceState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StageCacheReferenceState: %T", src)
+	}
+	return nil
+}
+
+type NullStageCacheReferenceState struct {
+	StageCacheReferenceState StageCacheReferenceState `json:"stage_cache_reference_state"`
+	Valid                    bool                     `json:"valid"` // Valid is true if StageCacheReferenceState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStageCacheReferenceState) Scan(value interface{}) error {
+	if value == nil {
+		ns.StageCacheReferenceState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StageCacheReferenceState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStageCacheReferenceState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StageCacheReferenceState), nil
+}
+
+type StageCacheScope string
+
+const (
+	StageCacheScopePROJECT      StageCacheScope = "PROJECT"
+	StageCacheScopeORGANIZATION StageCacheScope = "ORGANIZATION"
+)
+
+func (e *StageCacheScope) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StageCacheScope(s)
+	case string:
+		*e = StageCacheScope(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StageCacheScope: %T", src)
+	}
+	return nil
+}
+
+type NullStageCacheScope struct {
+	StageCacheScope StageCacheScope `json:"stage_cache_scope"`
+	Valid           bool            `json:"valid"` // Valid is true if StageCacheScope is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStageCacheScope) Scan(value interface{}) error {
+	if value == nil {
+		ns.StageCacheScope, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StageCacheScope.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStageCacheScope) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StageCacheScope), nil
+}
+
 type StageGraphFinalizationClaimState string
 
 const (
@@ -5601,6 +5730,17 @@ type OrganizationSettlementContactEvent struct {
 	CreatedAt        pgtype.Timestamptz      `db:"created_at" json:"created_at"`
 }
 
+type OrganizationStageCacheAuthorization struct {
+	OrganizationID        uuid.UUID          `db:"organization_id" json:"organization_id"`
+	CachePolicyRevisionID uuid.UUID          `db:"cache_policy_revision_id" json:"cache_policy_revision_id"`
+	Enabled               bool               `db:"enabled" json:"enabled"`
+	MaxEntries            int32              `db:"max_entries" json:"max_entries"`
+	MaxBytes              int64              `db:"max_bytes" json:"max_bytes"`
+	Version               int64              `db:"version" json:"version"`
+	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type OutboxEvent struct {
 	EventID          uuid.UUID          `db:"event_id" json:"event_id"`
 	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -5843,6 +5983,18 @@ type ProjectRoleBinding struct {
 	Role                  ProjectRole        `db:"role" json:"role"`
 	AssignedByPrincipalID uuid.UUID          `db:"assigned_by_principal_id" json:"assigned_by_principal_id"`
 	AssignedAt            pgtype.Timestamptz `db:"assigned_at" json:"assigned_at"`
+}
+
+type ProjectStageCacheControl struct {
+	OrganizationID        uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID             uuid.UUID          `db:"project_id" json:"project_id"`
+	CachePolicyRevisionID uuid.UUID          `db:"cache_policy_revision_id" json:"cache_policy_revision_id"`
+	Enabled               bool               `db:"enabled" json:"enabled"`
+	MaxEntries            int32              `db:"max_entries" json:"max_entries"`
+	MaxBytes              int64              `db:"max_bytes" json:"max_bytes"`
+	Version               int64              `db:"version" json:"version"`
+	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type RateCardLine struct {
@@ -6226,6 +6378,43 @@ type StageAuthorityRenewal struct {
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type StageCacheCommand struct {
+	CommandID     uuid.UUID          `db:"command_id" json:"command_id"`
+	CommandKind   string             `db:"command_kind" json:"command_kind"`
+	RequestDigest []byte             `db:"request_digest" json:"request_digest"`
+	Result        []byte             `db:"result" json:"result"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageCacheEntry struct {
+	ID                          uuid.UUID            `db:"id" json:"id"`
+	OrganizationID              uuid.UUID            `db:"organization_id" json:"organization_id"`
+	Scope                       StageCacheScope      `db:"scope" json:"scope"`
+	ScopeProjectID              uuid.NullUUID        `db:"scope_project_id" json:"scope_project_id"`
+	SourceProjectID             uuid.UUID            `db:"source_project_id" json:"source_project_id"`
+	SourceJobID                 uuid.UUID            `db:"source_job_id" json:"source_job_id"`
+	SourceStageRunID            uuid.UUID            `db:"source_stage_run_id" json:"source_stage_run_id"`
+	CachePolicyRevisionID       uuid.UUID            `db:"cache_policy_revision_id" json:"cache_policy_revision_id"`
+	StageProfileRevisionID      uuid.UUID            `db:"stage_profile_revision_id" json:"stage_profile_revision_id"`
+	ResultEquivalenceRevisionID uuid.UUID            `db:"result_equivalence_revision_id" json:"result_equivalence_revision_id"`
+	StageKey                    string               `db:"stage_key" json:"stage_key"`
+	CacheKeyDigest              []byte               `db:"cache_key_digest" json:"cache_key_digest"`
+	StageArtifactID             uuid.UUID            `db:"stage_artifact_id" json:"stage_artifact_id"`
+	ExactObjectVersion          string               `db:"exact_object_version" json:"exact_object_version"`
+	Sha256                      []byte               `db:"sha256" json:"sha256"`
+	SizeBytes                   int64                `db:"size_bytes" json:"size_bytes"`
+	ExpectedSavedComputeMinor   int64                `db:"expected_saved_compute_minor" json:"expected_saved_compute_minor"`
+	CarryCostMinor              int64                `db:"carry_cost_minor" json:"carry_cost_minor"`
+	HitCount                    int64                `db:"hit_count" json:"hit_count"`
+	LastAccessedAt              pgtype.Timestamptz   `db:"last_accessed_at" json:"last_accessed_at"`
+	AdmittedAt                  pgtype.Timestamptz   `db:"admitted_at" json:"admitted_at"`
+	ExpiresAt                   pgtype.Timestamptz   `db:"expires_at" json:"expires_at"`
+	State                       StageCacheEntryState `db:"state" json:"state"`
+	DeletionRequestedAt         pgtype.Timestamptz   `db:"deletion_requested_at" json:"deletion_requested_at"`
+	TerminalAt                  pgtype.Timestamptz   `db:"terminal_at" json:"terminal_at"`
+	CreatedAt                   pgtype.Timestamptz   `db:"created_at" json:"created_at"`
+}
+
 type StageCachePolicyRevision struct {
 	ID               uuid.UUID          `db:"id" json:"id"`
 	StableID         string             `db:"stable_id" json:"stable_id"`
@@ -6239,6 +6428,20 @@ type StageCachePolicyRevision struct {
 	DeletionPolicy   []byte             `db:"deletion_policy" json:"deletion_policy"`
 	ContentDigest    []byte             `db:"content_digest" json:"content_digest"`
 	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageCacheReference struct {
+	ID                uuid.UUID                `db:"id" json:"id"`
+	StageCacheEntryID uuid.UUID                `db:"stage_cache_entry_id" json:"stage_cache_entry_id"`
+	StageArtifactID   uuid.UUID                `db:"stage_artifact_id" json:"stage_artifact_id"`
+	ExecutionPinID    uuid.NullUUID            `db:"execution_pin_id" json:"execution_pin_id"`
+	OwnerJobID        uuid.UUID                `db:"owner_job_id" json:"owner_job_id"`
+	OwnerStageRunID   uuid.NullUUID            `db:"owner_stage_run_id" json:"owner_stage_run_id"`
+	State             StageCacheReferenceState `db:"state" json:"state"`
+	AcquiredAt        pgtype.Timestamptz       `db:"acquired_at" json:"acquired_at"`
+	ReleasedAt        pgtype.Timestamptz       `db:"released_at" json:"released_at"`
+	ReleaseReason     *string                  `db:"release_reason" json:"release_reason"`
+	CreatedAt         pgtype.Timestamptz       `db:"created_at" json:"created_at"`
 }
 
 type StageCancellationStopReceipt struct {
@@ -6346,6 +6549,22 @@ type StageGraphFinalizationClaim struct {
 	CompletedAt          pgtype.Timestamptz               `db:"completed_at" json:"completed_at"`
 	CreatedAt            pgtype.Timestamptz               `db:"created_at" json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz               `db:"updated_at" json:"updated_at"`
+	OutputSetDigest      []byte                           `db:"output_set_digest" json:"output_set_digest"`
+}
+
+type StageGraphFinalizationClaimOutput struct {
+	ClaimID                  uuid.UUID          `db:"claim_id" json:"claim_id"`
+	OrganizationID           uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID          `db:"project_id" json:"project_id"`
+	AttemptID                uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	OutputKey                string             `db:"output_key" json:"output_key"`
+	ArtifactKind             ArtifactKind       `db:"artifact_kind" json:"artifact_kind"`
+	Ordinal                  int32              `db:"ordinal" json:"ordinal"`
+	StageRunID               uuid.UUID          `db:"stage_run_id" json:"stage_run_id"`
+	StageArtifactID          uuid.UUID          `db:"stage_artifact_id" json:"stage_artifact_id"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ExactObjectVersion       string             `db:"exact_object_version" json:"exact_object_version"`
+	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type StageInterfaceRevision struct {

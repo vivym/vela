@@ -116,12 +116,26 @@ func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testi
 	if first.Decision != workercontrol.StageGraphFinalizationGranted ||
 		first.ClaimID == uuid.Nil || first.Credentials.Token == "" ||
 		first.Credentials.AttemptID != outcome.attemptID ||
+		len(first.Sources) != 1 || first.Sources[0].OutputKey != "video" ||
+		first.Sources[0].ArtifactKind != workercontrol.ArtifactKindVideo ||
+		first.Sources[0].Ordinal != 0 ||
 		first.Source.StageArtifactID != outcome.finalArtifact.ID ||
 		first.Source.ObjectKey != outcome.finalArtifact.ObjectKey ||
 		first.Source.ObjectVersion != outcome.finalArtifact.ObjectVersion ||
 		first.Source.SHA256 != outcome.finalArtifact.SHA256 ||
 		first.Source.SizeBytes != outcome.finalArtifact.SizeBytes {
 		t.Fatalf("Stage graph finalization claim = %#v", first)
+	}
+	var claimOutputs int
+	if err := outcome.database.Admin.QueryRow(`
+		SELECT count(*)
+		FROM stage_graph_finalization_claim_outputs
+		WHERE claim_id = $1
+	`, first.ClaimID).Scan(&claimOutputs); err != nil {
+		t.Fatalf("count Stage graph finalization claim outputs: %v", err)
+	}
+	if claimOutputs != 1 {
+		t.Fatalf("Stage graph finalization claim output count = %d, want 1", claimOutputs)
 	}
 
 	replayed, err := service.ClaimNextStageGraphFinalization(
@@ -328,7 +342,7 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("migrate Stage graph finalization back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 43 {
+		if err != nil || version != 45 {
 			t.Fatalf("Stage graph finalization version after Up = %d error=%v", version, err)
 		}
 	})
@@ -348,9 +362,9 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("seed durable Stage graph finalization claim = %#v error=%v", claim, err)
 		}
 		err = goose.DownTo(outcome.database.Admin, migrations, 42)
-		assertPostgresConstraint(t, err, "stage_graph_finalization_rollback_is_unsafe")
+		assertPostgresConstraint(t, err, "stage_graph_finalization_outputs_rollback_is_unsafe")
 		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 43 {
+		if versionErr != nil || version != 45 {
 			t.Fatalf(
 				"Stage graph finalization version after refused Down = %d error=%v",
 				version, versionErr,

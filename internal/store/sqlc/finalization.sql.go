@@ -342,6 +342,7 @@ SELECT
     claim.owner_id,
     claim.token_digest,
     claim.signing_key_id,
+    claim.output_set_digest,
     claim.issued_at,
     claim.expires_at,
     attempt.finalization_started_at,
@@ -393,6 +394,7 @@ type FindActiveStageGraphFinalizationClaimRow struct {
 	OwnerID                  string             `db:"owner_id" json:"owner_id"`
 	TokenDigest              []byte             `db:"token_digest" json:"token_digest"`
 	SigningKeyID             string             `db:"signing_key_id" json:"signing_key_id"`
+	OutputSetDigest          []byte             `db:"output_set_digest" json:"output_set_digest"`
 	IssuedAt                 pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
 	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	FinalizationStartedAt    pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
@@ -422,6 +424,7 @@ func (q *Queries) FindActiveStageGraphFinalizationClaim(ctx context.Context, arg
 		&i.OwnerID,
 		&i.TokenDigest,
 		&i.SigningKeyID,
+		&i.OutputSetDigest,
 		&i.IssuedAt,
 		&i.ExpiresAt,
 		&i.FinalizationStartedAt,
@@ -929,13 +932,14 @@ const insertStageGraphFinalizationClaim = `-- name: InsertStageGraphFinalization
 INSERT INTO stage_graph_finalization_claims (
     id, organization_id, project_id, job_id, attempt_id, attempt_fence,
     final_stage_run_id, final_stage_artifact_id, exact_object_version,
-    owner_id, token_digest, signing_key_id, issued_at, expires_at
+    owner_id, token_digest, signing_key_id, output_set_digest, issued_at, expires_at
 ) VALUES (
     $1, $2, $3,
     $4, $5, $6,
     $7, $8,
     $9, $10, $11,
-    $12, $13, $14
+    $12, $13,
+    $14, $15
 )
 `
 
@@ -952,6 +956,7 @@ type InsertStageGraphFinalizationClaimParams struct {
 	OwnerID              string             `db:"owner_id" json:"owner_id"`
 	TokenDigest          []byte             `db:"token_digest" json:"token_digest"`
 	SigningKeyID         string             `db:"signing_key_id" json:"signing_key_id"`
+	OutputSetDigest      []byte             `db:"output_set_digest" json:"output_set_digest"`
 	IssuedAt             pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
 	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
@@ -970,8 +975,53 @@ func (q *Queries) InsertStageGraphFinalizationClaim(ctx context.Context, arg Ins
 		arg.OwnerID,
 		arg.TokenDigest,
 		arg.SigningKeyID,
+		arg.OutputSetDigest,
 		arg.IssuedAt,
 		arg.ExpiresAt,
+	)
+	return err
+}
+
+const insertStageGraphFinalizationClaimOutput = `-- name: InsertStageGraphFinalizationClaimOutput :exec
+INSERT INTO stage_graph_finalization_claim_outputs (
+    claim_id, organization_id, project_id, attempt_id, output_key,
+    artifact_kind, ordinal, stage_run_id, stage_artifact_id,
+    stage_interface_revision_id, exact_object_version
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6,
+    $7, $8, $9,
+    $10, $11
+)
+`
+
+type InsertStageGraphFinalizationClaimOutputParams struct {
+	ClaimID                  uuid.UUID    `db:"claim_id" json:"claim_id"`
+	OrganizationID           uuid.UUID    `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID    `db:"project_id" json:"project_id"`
+	AttemptID                uuid.UUID    `db:"attempt_id" json:"attempt_id"`
+	OutputKey                string       `db:"output_key" json:"output_key"`
+	ArtifactKind             ArtifactKind `db:"artifact_kind" json:"artifact_kind"`
+	Ordinal                  int32        `db:"ordinal" json:"ordinal"`
+	StageRunID               uuid.UUID    `db:"stage_run_id" json:"stage_run_id"`
+	StageArtifactID          uuid.UUID    `db:"stage_artifact_id" json:"stage_artifact_id"`
+	StageInterfaceRevisionID uuid.UUID    `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ExactObjectVersion       string       `db:"exact_object_version" json:"exact_object_version"`
+}
+
+func (q *Queries) InsertStageGraphFinalizationClaimOutput(ctx context.Context, arg InsertStageGraphFinalizationClaimOutputParams) error {
+	_, err := q.db.Exec(ctx, insertStageGraphFinalizationClaimOutput,
+		arg.ClaimID,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.AttemptID,
+		arg.OutputKey,
+		arg.ArtifactKind,
+		arg.Ordinal,
+		arg.StageRunID,
+		arg.StageArtifactID,
+		arg.StageInterfaceRevisionID,
+		arg.ExactObjectVersion,
 	)
 	return err
 }
@@ -1336,6 +1386,150 @@ func (q *Queries) ListFinalizationArtifacts(ctx context.Context, arg ListFinaliz
 			&i.Kind,
 			&i.Ordinal,
 			&i.ObjectKey,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStageGraphFinalizationClaimOutputs = `-- name: ListStageGraphFinalizationClaimOutputs :many
+SELECT
+    output.output_key,
+    output.artifact_kind,
+    output.ordinal,
+    output.stage_run_id,
+    output.stage_artifact_id,
+    output.stage_interface_revision_id,
+    output.exact_object_version,
+    artifact.object_key,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.expires_at
+FROM stage_graph_finalization_claim_outputs AS output
+JOIN stage_artifacts AS artifact
+  ON artifact.id = output.stage_artifact_id
+ AND artifact.producer_stage_run_id = output.stage_run_id
+ AND artifact.stage_interface_revision_id = output.stage_interface_revision_id
+ AND artifact.object_version = output.exact_object_version
+WHERE output.claim_id = $1
+ORDER BY output.output_key
+`
+
+type ListStageGraphFinalizationClaimOutputsRow struct {
+	OutputKey                string             `db:"output_key" json:"output_key"`
+	ArtifactKind             ArtifactKind       `db:"artifact_kind" json:"artifact_kind"`
+	Ordinal                  int32              `db:"ordinal" json:"ordinal"`
+	StageRunID               uuid.UUID          `db:"stage_run_id" json:"stage_run_id"`
+	StageArtifactID          uuid.UUID          `db:"stage_artifact_id" json:"stage_artifact_id"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ExactObjectVersion       string             `db:"exact_object_version" json:"exact_object_version"`
+	ObjectKey                string             `db:"object_key" json:"object_key"`
+	ContentType              string             `db:"content_type" json:"content_type"`
+	Sha256                   []byte             `db:"sha256" json:"sha256"`
+	SizeBytes                int64              `db:"size_bytes" json:"size_bytes"`
+	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+func (q *Queries) ListStageGraphFinalizationClaimOutputs(ctx context.Context, claimID uuid.UUID) ([]ListStageGraphFinalizationClaimOutputsRow, error) {
+	rows, err := q.db.Query(ctx, listStageGraphFinalizationClaimOutputs, claimID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStageGraphFinalizationClaimOutputsRow{}
+	for rows.Next() {
+		var i ListStageGraphFinalizationClaimOutputsRow
+		if err := rows.Scan(
+			&i.OutputKey,
+			&i.ArtifactKind,
+			&i.Ordinal,
+			&i.StageRunID,
+			&i.StageArtifactID,
+			&i.StageInterfaceRevisionID,
+			&i.ExactObjectVersion,
+			&i.ObjectKey,
+			&i.ContentType,
+			&i.Sha256,
+			&i.SizeBytes,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStageGraphFinalizationOutputs = `-- name: ListStageGraphFinalizationOutputs :many
+SELECT
+    output.output_key,
+    output.interface_revision_id AS stage_interface_revision_id,
+    run.id AS stage_run_id,
+    artifact.id AS stage_artifact_id,
+    artifact.object_key,
+    artifact.object_version,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.expires_at
+FROM stage_runs AS run
+JOIN execution_graph_outputs AS output
+  ON output.execution_graph_revision_id = run.execution_graph_revision_id
+ AND output.source_stage_key = run.stage_key
+JOIN stage_artifacts AS artifact
+  ON artifact.id = run.winner_stage_artifact_id
+ AND artifact.producer_stage_run_id = run.id
+ AND artifact.output_port = output.source_port
+ AND artifact.stage_interface_revision_id = output.interface_revision_id
+WHERE run.attempt_id = $1
+  AND run.state = 'SUCCEEDED'
+  AND output.required
+  AND artifact.state = 'COMMITTED'
+ORDER BY output.output_key
+`
+
+type ListStageGraphFinalizationOutputsRow struct {
+	OutputKey                string             `db:"output_key" json:"output_key"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	StageRunID               uuid.UUID          `db:"stage_run_id" json:"stage_run_id"`
+	StageArtifactID          uuid.UUID          `db:"stage_artifact_id" json:"stage_artifact_id"`
+	ObjectKey                string             `db:"object_key" json:"object_key"`
+	ObjectVersion            string             `db:"object_version" json:"object_version"`
+	ContentType              string             `db:"content_type" json:"content_type"`
+	Sha256                   []byte             `db:"sha256" json:"sha256"`
+	SizeBytes                int64              `db:"size_bytes" json:"size_bytes"`
+	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+func (q *Queries) ListStageGraphFinalizationOutputs(ctx context.Context, attemptID uuid.UUID) ([]ListStageGraphFinalizationOutputsRow, error) {
+	rows, err := q.db.Query(ctx, listStageGraphFinalizationOutputs, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStageGraphFinalizationOutputsRow{}
+	for rows.Next() {
+		var i ListStageGraphFinalizationOutputsRow
+		if err := rows.Scan(
+			&i.OutputKey,
+			&i.StageInterfaceRevisionID,
+			&i.StageRunID,
+			&i.StageArtifactID,
+			&i.ObjectKey,
+			&i.ObjectVersion,
+			&i.ContentType,
+			&i.Sha256,
+			&i.SizeBytes,
 			&i.ExpiresAt,
 		); err != nil {
 			return nil, err

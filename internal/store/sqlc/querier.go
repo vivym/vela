@@ -77,6 +77,7 @@ type Querier interface {
 	InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRuntimeStateParams) error
 	InsertRetryWaitOutboxEvent(ctx context.Context, arg InsertRetryWaitOutboxEventParams) error
 	InsertStageGraphFinalizationClaim(ctx context.Context, arg InsertStageGraphFinalizationClaimParams) error
+	InsertStageGraphFinalizationClaimOutput(ctx context.Context, arg InsertStageGraphFinalizationClaimOutputParams) error
 	InsertStartOutboxEvent(ctx context.Context, arg InsertStartOutboxEventParams) error
 	InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error
 	InsertVisibleCompletionCharge(ctx context.Context, arg InsertVisibleCompletionChargeParams) error
@@ -89,6 +90,8 @@ type Querier interface {
 	ListFinalizationArtifacts(ctx context.Context, arg ListFinalizationArtifactsParams) ([]ListFinalizationArtifactsRow, error)
 	ListReadableArtifactSet(ctx context.Context, arg ListReadableArtifactSetParams) ([]ListReadableArtifactSetRow, error)
 	ListSchedulableWorkerPools(ctx context.Context) ([]uuid.UUID, error)
+	ListStageGraphFinalizationClaimOutputs(ctx context.Context, claimID uuid.UUID) ([]ListStageGraphFinalizationClaimOutputsRow, error)
+	ListStageGraphFinalizationOutputs(ctx context.Context, attemptID uuid.UUID) ([]ListStageGraphFinalizationOutputsRow, error)
 	ListSucceededArtifactSetForCancellation(ctx context.Context, arg ListSucceededArtifactSetForCancellationParams) ([]ListSucceededArtifactSetForCancellationRow, error)
 	LockActiveDebugDumpAuthorizationForAssignment(ctx context.Context, arg LockActiveDebugDumpAuthorizationForAssignmentParams) (LockActiveDebugDumpAuthorizationForAssignmentRow, error)
 	LockAssignmentPoolCapacity(ctx context.Context, workerPoolID uuid.UUID) (int32, error)

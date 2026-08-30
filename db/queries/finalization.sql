@@ -68,6 +68,7 @@ SELECT
     claim.owner_id,
     claim.token_digest,
     claim.signing_key_id,
+    claim.output_set_digest,
     claim.issued_at,
     claim.expires_at,
     attempt.finalization_started_at,
@@ -99,6 +100,68 @@ WHERE claim.owner_id = sqlc.arg(owner_id)
 ORDER BY claim.issued_at, claim.id
 LIMIT 1
 FOR UPDATE OF claim, attempt, job;
+
+-- name: ListStageGraphFinalizationOutputs :many
+SELECT
+    output.output_key,
+    output.interface_revision_id AS stage_interface_revision_id,
+    run.id AS stage_run_id,
+    artifact.id AS stage_artifact_id,
+    artifact.object_key,
+    artifact.object_version,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.expires_at
+FROM stage_runs AS run
+JOIN execution_graph_outputs AS output
+  ON output.execution_graph_revision_id = run.execution_graph_revision_id
+ AND output.source_stage_key = run.stage_key
+JOIN stage_artifacts AS artifact
+  ON artifact.id = run.winner_stage_artifact_id
+ AND artifact.producer_stage_run_id = run.id
+ AND artifact.output_port = output.source_port
+ AND artifact.stage_interface_revision_id = output.interface_revision_id
+WHERE run.attempt_id = sqlc.arg(attempt_id)
+  AND run.state = 'SUCCEEDED'
+  AND output.required
+  AND artifact.state = 'COMMITTED'
+ORDER BY output.output_key;
+
+-- name: InsertStageGraphFinalizationClaimOutput :exec
+INSERT INTO stage_graph_finalization_claim_outputs (
+    claim_id, organization_id, project_id, attempt_id, output_key,
+    artifact_kind, ordinal, stage_run_id, stage_artifact_id,
+    stage_interface_revision_id, exact_object_version
+) VALUES (
+    sqlc.arg(claim_id), sqlc.arg(organization_id), sqlc.arg(project_id),
+    sqlc.arg(attempt_id), sqlc.arg(output_key), sqlc.arg(artifact_kind),
+    sqlc.arg(ordinal), sqlc.arg(stage_run_id), sqlc.arg(stage_artifact_id),
+    sqlc.arg(stage_interface_revision_id), sqlc.arg(exact_object_version)
+);
+
+-- name: ListStageGraphFinalizationClaimOutputs :many
+SELECT
+    output.output_key,
+    output.artifact_kind,
+    output.ordinal,
+    output.stage_run_id,
+    output.stage_artifact_id,
+    output.stage_interface_revision_id,
+    output.exact_object_version,
+    artifact.object_key,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.expires_at
+FROM stage_graph_finalization_claim_outputs AS output
+JOIN stage_artifacts AS artifact
+  ON artifact.id = output.stage_artifact_id
+ AND artifact.producer_stage_run_id = output.stage_run_id
+ AND artifact.stage_interface_revision_id = output.stage_interface_revision_id
+ AND artifact.object_version = output.exact_object_version
+WHERE output.claim_id = sqlc.arg(claim_id)
+ORDER BY output.output_key;
 
 -- name: LockNextStageGraphFinalizationCandidate :one
 SELECT
@@ -154,13 +217,14 @@ FOR UPDATE OF attempt, job SKIP LOCKED;
 INSERT INTO stage_graph_finalization_claims (
     id, organization_id, project_id, job_id, attempt_id, attempt_fence,
     final_stage_run_id, final_stage_artifact_id, exact_object_version,
-    owner_id, token_digest, signing_key_id, issued_at, expires_at
+    owner_id, token_digest, signing_key_id, output_set_digest, issued_at, expires_at
 ) VALUES (
     sqlc.arg(claim_id), sqlc.arg(organization_id), sqlc.arg(project_id),
     sqlc.arg(job_id), sqlc.arg(attempt_id), sqlc.arg(attempt_fence),
     sqlc.arg(final_stage_run_id), sqlc.arg(final_stage_artifact_id),
     sqlc.arg(exact_object_version), sqlc.arg(owner_id), sqlc.arg(token_digest),
-    sqlc.arg(signing_key_id), sqlc.arg(issued_at), sqlc.arg(expires_at)
+    sqlc.arg(signing_key_id), sqlc.arg(output_set_digest),
+    sqlc.arg(issued_at), sqlc.arg(expires_at)
 );
 
 -- name: FindActiveReconcilerFinalizationCandidate :one
