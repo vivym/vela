@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
+	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/h3stage"
@@ -61,7 +63,23 @@ func TestSplitH3StageGraphProducesExactOutputOnSameAndCrossNodePlacements(t *tes
 	var reference [sha256.Size]byte
 	for name, nodes := range placements {
 		t.Run(name, func(t *testing.T) {
-			got := runSplitH3StageGraph(t, nodes).finalArtifact.SHA256
+			outcome := runSplitH3StageGraph(t, nodes)
+			got := outcome.finalArtifact.SHA256
+			var consumedTransfers, releasedCredits int
+			if err := outcome.database.Admin.QueryRow(`
+				SELECT
+					count(*) FILTER (WHERE ticket.state = 'CONSUMED'),
+					(SELECT count(*) FROM edge_buffer_credits WHERE state = 'RELEASED')
+				FROM transfer_tickets AS ticket
+			`).Scan(&consumedTransfers, &releasedCredits); err != nil {
+				t.Fatalf("inspect split H3 transfers: %v", err)
+			}
+			if consumedTransfers != 2 || releasedCredits != 2 {
+				t.Fatalf(
+					"split H3 transfers consumed=%d released_credits=%d, want 2/2",
+					consumedTransfers, releasedCredits,
+				)
+			}
 			if reference == ([sha256.Size]byte{}) {
 				reference = got
 				return
@@ -217,6 +235,17 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 	if err != nil {
 		t.Fatalf("construct split H3 StageArtifact repository: %v", err)
 	}
+	objectStore := artifactstore.NewLocal()
+	transferSigner, err := stageartifact.NewTransferTicketSigner(
+		"stage-transfer-key-v1", []byte("0123456789abcdef0123456789abcdef"),
+	)
+	if err != nil {
+		t.Fatalf("construct split H3 TransferTicket signer: %v", err)
+	}
+	transferIssuer, err := stageartifact.NewTransferTicketIssuer(stageArtifacts, transferSigner)
+	if err != nil {
+		t.Fatalf("construct split H3 TransferTicket issuer: %v", err)
+	}
 
 	stages := []h3IntegrationStage{
 		{
@@ -251,6 +280,7 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 	root := sha256.Sum256([]byte("certified-h3-input-v1"))
 	stageInput := root[:]
 	var inputArtifact *velav1.StageInputArtifact
+	var inputPayload []byte
 	var finalArtifact stageartifact.Artifact
 	for index, stage := range stages {
 		var stageRunID uuid.UUID
@@ -269,6 +299,13 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 			t, database, coordinator, registry, attemptID, stageRunID, stageVersion,
 			stage, byte(0xc0+index),
 		)
+		if inputArtifact != nil {
+			pullH3IntegrationInput(
+				t, database, stageArtifacts, objectStore, transferSigner,
+				transferIssuer, stageRunID, assignment, inputArtifact,
+				inputPayload, index,
+			)
+		}
 		spec := &velav1.StageExecutionSpec{
 			ParametersJson: []byte(fmt.Sprintf(
 				`{"certified_input":"%s","stage":"%s"}`,
@@ -322,11 +359,12 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 		}
 
 		artifact := materializeH3IntegrationStage(
-			t, stageArtifacts, attemptID, stageRunID, assignment,
+			t, stageArtifacts, objectStore, attemptID, stageRunID, assignment,
 			stage, payload, sealedOutput.OutputManifestJSON,
 		)
 		finalArtifact = artifact
 		stageInput = artifact.SHA256[:]
+		inputPayload = append([]byte(nil), payload...)
 		inputArtifact = &velav1.StageInputArtifact{
 			StageArtifactId: artifact.ID.String(), ObjectVersion: artifact.ObjectVersion,
 			Sha256: artifact.SHA256[:], SizeBytes: artifact.SizeBytes,
@@ -596,6 +634,7 @@ func startH3IntegrationStage(
 func materializeH3IntegrationStage(
 	t *testing.T,
 	repository *stageartifact.PostgresRepository,
+	objectStore artifactstore.VersionedStore,
 	attemptID uuid.UUID,
 	stageRunID uuid.UUID,
 	assignment attemptcoordinator.AssignStageCommand,
@@ -629,16 +668,101 @@ func materializeH3IntegrationStage(
 	if err != nil {
 		t.Fatalf("seal %s StageArtifact: %v", stage.key, err)
 	}
+	object, err := objectStore.PutIfAbsent(
+		context.Background(), lease.ObjectKey, lease.ContentType,
+		bytes.NewReader(payload), int64(len(payload)), digest,
+	)
+	if err != nil {
+		t.Fatalf("publish %s StageArtifact exact object: %v", stage.key, err)
+	}
 	artifact, err := repository.Commit(context.Background(), stageartifact.CommitCommand{
 		CommandID: uuid.New(), ProgressReceiptID: uuid.New(), MaterializationLeaseID: lease.ID,
 		ArtifactID: artifactID, ObjectKey: lease.ObjectKey,
-		ObjectVersion: "l2-" + stage.key + "-exact-v1", SHA256: digest,
+		ObjectVersion: object.VersionID, SHA256: digest,
 		SizeBytes: int64(len(payload)), TokenDigest: tokenDigest, CommittedAt: now.Add(time.Millisecond),
 	})
 	if err != nil {
 		t.Fatalf("commit %s StageArtifact: %v", stage.key, err)
 	}
 	return artifact
+}
+
+func pullH3IntegrationInput(
+	t *testing.T,
+	database testDatabase,
+	repository *stageartifact.PostgresRepository,
+	objectStore artifactstore.VersionedStore,
+	signer *stageartifact.TransferTicketSigner,
+	issuer *stageartifact.TransferTicketIssuer,
+	destinationStageRunID uuid.UUID,
+	assignment attemptcoordinator.AssignStageCommand,
+	input *velav1.StageInputArtifact,
+	wantPayload []byte,
+	edgeIndex int,
+) {
+	t.Helper()
+	artifactID, err := uuid.Parse(input.GetStageArtifactId())
+	if err != nil {
+		t.Fatalf("parse upstream StageArtifact identity: %v", err)
+	}
+	var pinID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT id
+		FROM stage_artifact_pins
+		WHERE stage_artifact_id = $1
+		  AND owner_stage_run_id = $2
+		  AND state = 'ACTIVE'
+	`, artifactID, destinationStageRunID).Scan(&pinID); err != nil {
+		t.Fatalf("read downstream StageArtifact pin: %v", err)
+	}
+	connectorID := uuid.MustParse("49000000-0000-0000-0000-000000000050")
+	if edgeIndex == 2 {
+		connectorID = uuid.MustParse("49000000-0000-0000-0000-000000000051")
+	}
+	destination := stageartifact.TransferDestination{
+		WorkerInstanceID:    assignment.WorkerInstanceID,
+		WorkerInstanceEpoch: assignment.WorkerInstanceEpoch,
+		ModelResidencyID:    assignment.ModelResidencyID,
+		ModelRuntimeEpoch:   assignment.ModelRuntimeEpoch,
+		ConnectorRevisionID: connectorID,
+	}
+	now := assignment.IssuedAt.Add(time.Millisecond)
+	ticketID := uuid.New()
+	ticket, err := issuer.Issue(context.Background(), stageartifact.IssueTransferRequest{
+		CommandID: uuid.New(), TicketID: ticketID, ArtifactID: artifactID,
+		PinID: pinID, Destination: destination, IssuedAt: now,
+		ExpiresAt: now.Add(5 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("issue downstream TransferTicket: %v", err)
+	}
+	connector, err := stageartifact.NewObjectStorePullConnector(
+		objectStore, repository, signer, func() time.Time { return now.Add(time.Millisecond) },
+	)
+	if err != nil {
+		t.Fatalf("construct object-store pull Connector: %v", err)
+	}
+	wrongDestination := destination
+	wrongDestination.WorkerInstanceID = uuid.New()
+	if _, err := connector.Pull(
+		context.Background(), ticket, wrongDestination, stageartifact.NewMemoryTransferTarget(),
+	); !errors.Is(err, stageartifact.ErrTransferTicketDestinationMismatch) {
+		t.Fatalf("wrong destination TransferTicket error = %v", err)
+	}
+	for replay := 0; replay < 2; replay++ {
+		target := stageartifact.NewMemoryTransferTarget()
+		receipt, err := connector.Pull(context.Background(), ticket, destination, target)
+		if err != nil {
+			t.Fatalf("pull downstream StageArtifact replay=%d: %v", replay, err)
+		}
+		if receipt.ArtifactID != artifactID || receipt.SHA256 != sha256.Sum256(wantPayload) ||
+			!bytes.Equal(target.Bytes(), wantPayload) {
+			t.Fatalf(
+				"pulled downstream StageArtifact replay=%d receipt=%#v bytes=%x",
+				replay, receipt, target.Bytes(),
+			)
+		}
+	}
 }
 
 type h3IntegrationDriver struct {
