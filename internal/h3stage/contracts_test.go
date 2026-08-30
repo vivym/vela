@@ -97,6 +97,60 @@ func TestCurrentSameNodeLayoutIsOneAUXPlusSevenIndependentDiTWorkers(t *testing.
 	}
 }
 
+func TestCrossNodeLayoutScalesEncoderDiTAndVAEIndependently(t *testing.T) {
+	encoderDevices := []h3stage.NodeDevicePlacement{
+		{NodeIdentity: "encoder-node-01", Device: testDevice(0)},
+		{NodeIdentity: "encoder-node-02", Device: testDevice(1)},
+	}
+	ditDevices := []h3stage.NodeDevicePlacement{
+		{NodeIdentity: "dit-node-01", Device: testDevice(2)},
+		{NodeIdentity: "dit-node-02", Device: testDevice(3)},
+		{NodeIdentity: "dit-node-03", Device: testDevice(4)},
+	}
+	vaeDevices := []h3stage.NodeDevicePlacement{
+		{NodeIdentity: "vae-node-01", Device: testDevice(5)},
+	}
+
+	layout, err := h3stage.CrossNodeLayout(encoderDevices, ditDevices, vaeDevices)
+	if err != nil {
+		t.Fatalf("CrossNodeLayout: %v", err)
+	}
+	if len(layout.Workers) != 6 {
+		t.Fatalf("WorkerInstance count = %d, want 6", len(layout.Workers))
+	}
+
+	counts := map[string]int{}
+	seenDevices := map[string]struct{}{}
+	for _, worker := range layout.Workers {
+		counts[worker.WorkerProfileStableID]++
+		if len(worker.Devices) != 1 || worker.ActiveStageSlots != 1 {
+			t.Fatalf("cross-node WorkerInstance = %#v", worker)
+		}
+		if _, duplicated := seenDevices[worker.Devices[0].GPUUUID]; duplicated {
+			t.Fatalf("GPU %q is shared", worker.Devices[0].GPUUUID)
+		}
+		seenDevices[worker.Devices[0].GPUUUID] = struct{}{}
+		if worker.WorkerProfileStableID == h3stage.DiTWorkerProfile &&
+			(len(worker.AllowedStageProfiles) != 1 ||
+				worker.AllowedStageProfiles[0] != h3stage.DiTSingleGPUProfile) {
+			t.Fatalf("DiT WorkerInstance profile allowlist = %v", worker.AllowedStageProfiles)
+		}
+	}
+	if counts[h3stage.EncoderWorkerProfile] != 2 ||
+		counts[h3stage.DiTWorkerProfile] != 3 ||
+		counts[h3stage.VAEWorkerProfile] != 1 {
+		t.Fatalf("independent Encoder/DiT/VAE capacity = %#v", counts)
+	}
+}
+
+func testDevice(index int) h3stage.DevicePlacement {
+	return h3stage.DevicePlacement{
+		ID:      fmt.Sprintf("cross-device-%d", index),
+		GPUUUID: fmt.Sprintf("GPU-10000000-0000-0000-0000-%012d", index),
+		PCIBDF:  fmt.Sprintf("0000:%02x:00.0", index+32),
+	}
+}
+
 func requireProfile(
 	t *testing.T,
 	profiles []h3stage.StageProfile,

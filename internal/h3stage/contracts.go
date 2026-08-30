@@ -55,6 +55,11 @@ type DevicePlacement struct {
 	PCIBDF  string
 }
 
+type NodeDevicePlacement struct {
+	NodeIdentity string
+	Device       DevicePlacement
+}
+
 type WorkerPlacement struct {
 	StableID              string
 	NodeIdentity          string
@@ -129,6 +134,60 @@ func CurrentSameNodeLayout(nodeIdentity string, devices []DevicePlacement) (Layo
 			AllowedStageProfiles:  []string{DiTSingleGPUProfile},
 			ActiveStageSlots:      1,
 		})
+	}
+	return Layout{Workers: cloneWorkers(workers)}, nil
+}
+
+func CrossNodeLayout(
+	encoderDevices []NodeDevicePlacement,
+	ditDevices []NodeDevicePlacement,
+	vaeDevices []NodeDevicePlacement,
+) (Layout, error) {
+	if len(encoderDevices) == 0 || len(ditDevices) == 0 || len(vaeDevices) == 0 {
+		return Layout{}, errors.New("cross-node H3 layout requires Encoder, DiT, and VAE capacity")
+	}
+	seenIDs := make(map[string]struct{})
+	seenGPUUUIDs := make(map[string]struct{})
+	seenBDFs := make(map[string]struct{})
+	workers := make([]WorkerPlacement, 0, len(encoderDevices)+len(ditDevices)+len(vaeDevices))
+	appendWorkers := func(
+		placements []NodeDevicePlacement,
+		stageLabel string,
+		workerProfile string,
+		stageProfile string,
+	) error {
+		for index, placement := range placements {
+			device := placement.Device
+			if strings.TrimSpace(placement.NodeIdentity) == "" ||
+				strings.TrimSpace(device.ID) == "" || strings.TrimSpace(device.GPUUUID) == "" ||
+				strings.TrimSpace(device.PCIBDF) == "" {
+				return errors.New("cross-node H3 layout device identity is incomplete")
+			}
+			if duplicate(seenIDs, device.ID) || duplicate(seenGPUUUIDs, device.GPUUUID) ||
+				duplicate(seenBDFs, device.PCIBDF) {
+				return errors.New("cross-node H3 layout cannot share a device between WorkerInstances")
+			}
+			workers = append(workers, WorkerPlacement{
+				StableID:              placement.NodeIdentity + fmt.Sprintf("/%s-%d", stageLabel, index),
+				NodeIdentity:          placement.NodeIdentity,
+				WorkerProfileStableID: workerProfile,
+				Devices:               []DevicePlacement{device},
+				AllowedStageProfiles:  []string{stageProfile},
+				ActiveStageSlots:      1,
+			})
+		}
+		return nil
+	}
+	if err := appendWorkers(
+		encoderDevices, "encoder", EncoderWorkerProfile, EncoderSingleGPUProfile,
+	); err != nil {
+		return Layout{}, err
+	}
+	if err := appendWorkers(ditDevices, "dit", DiTWorkerProfile, DiTSingleGPUProfile); err != nil {
+		return Layout{}, err
+	}
+	if err := appendWorkers(vaeDevices, "vae", VAEWorkerProfile, VAESingleGPUProfile); err != nil {
+		return Layout{}, err
 	}
 	return Layout{Workers: cloneWorkers(workers)}, nil
 }
