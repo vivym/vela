@@ -317,6 +317,72 @@ func TestStageWorkerControlHeartbeatRenewsAuthorityAndFencesPreviousEnvelope(t *
 
 func TestStageWorkerExecutionMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	t.Run("empty operations Down Up restores exact role surface", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		if err := goose.DownTo(database.Admin, migrations, 40); err != nil {
+			t.Fatalf("migrate empty Stage Worker operations down: %v", err)
+		}
+		version, err := goose.GetDBVersion(database.Admin)
+		if err != nil || version != 40 {
+			t.Fatalf("Stage Worker operations version after Down = %d error=%v", version, err)
+		}
+		var reattach, readClaim, verifyRegistration, verifyCapacity, reattachments bool
+		if err := database.Admin.QueryRow(`
+			SELECT
+				to_regprocedure('vela_reattach_stage_worker_command(jsonb)') IS NOT NULL,
+				to_regprocedure('vela_read_stage_scheduler_claim(uuid)') IS NOT NULL,
+				to_regprocedure('vela_verify_stage_worker_registration(jsonb)') IS NOT NULL,
+				to_regprocedure('vela_verify_stage_capacity_observation(jsonb)') IS NOT NULL,
+				to_regclass('stage_worker_reattachments') IS NOT NULL
+		`).Scan(
+			&reattach, &readClaim, &verifyRegistration, &verifyCapacity, &reattachments,
+		); err != nil {
+			t.Fatalf("inspect schema 40 Stage Worker operations surface: %v", err)
+		}
+		if reattach || readClaim || verifyRegistration || verifyCapacity || reattachments {
+			t.Fatalf(
+				"schema 40 Stage Worker operations surface = %t/%t/%t/%t/%t",
+				reattach, readClaim, verifyRegistration, verifyCapacity, reattachments,
+			)
+		}
+		if err := goose.UpTo(database.Admin, migrations, 41); err != nil {
+			t.Fatalf("migrate Stage Worker operations up again: %v", err)
+		}
+		version, err = goose.GetDBVersion(database.Admin)
+		if err != nil || version != 41 {
+			t.Fatalf("Stage Worker operations version after Down Up = %d error=%v", version, err)
+		}
+		var schedulerCanRecover, workerCanReattach, workerCanRegister, workerCanReport bool
+		if err := database.Admin.QueryRow(`
+			SELECT
+				has_function_privilege(
+					'vela_stage_scheduler', 'vela_read_stage_scheduler_claim(uuid)', 'EXECUTE'
+				),
+				has_function_privilege(
+					'vela_stage_worker_control',
+					'vela_reattach_stage_worker_command(jsonb)', 'EXECUTE'
+				),
+				has_function_privilege(
+					'vela_stage_worker_control',
+					'vela_verify_stage_worker_registration(jsonb)', 'EXECUTE'
+				),
+				has_function_privilege(
+					'vela_stage_worker_control',
+					'vela_verify_stage_capacity_observation(jsonb)', 'EXECUTE'
+				)
+		`).Scan(
+			&schedulerCanRecover, &workerCanReattach, &workerCanRegister, &workerCanReport,
+		); err != nil {
+			t.Fatalf("inspect Stage Worker operations grants after Down Up: %v", err)
+		}
+		if !schedulerCanRecover || !workerCanReattach || !workerCanRegister || !workerCanReport {
+			t.Fatalf(
+				"Stage Worker operations grants after Down Up = %t/%t/%t/%t",
+				schedulerCanRecover, workerCanReattach, workerCanRegister, workerCanReport,
+			)
+		}
+	})
 	t.Run("empty Down Up preserves Stage authority snapshot", func(t *testing.T) {
 		database := newPostgres(t)
 		applyFoundation(t, database.Admin)
@@ -531,6 +597,277 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 			started.RenewedAuthority.GetIssuedAt().AsTime(),
 		) {
 		t.Fatalf("PostgresExecutionBackend Heartbeat result = %#v", heartbeatResult)
+	}
+}
+
+func TestPostgresReattachmentBackendPersistsReplayAndFencesSupersededAuthority(t *testing.T) {
+	database, _, _, job, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "stage-worker-postgres-reattachment")
+	coordinatorPool := newRolePool(
+		t, database.DSN,
+		"vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
+	)
+	coordinator, err := attemptcoordinator.NewService(coordinatorPool)
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	assignment := assignEncoder(
+		t, database, coordinator, attemptID, encoderRunID, time.Now().Add(time.Hour),
+	)
+	assigned := signedAssignedStageAuthority(t, database, job, assignment, 2)
+	keys := map[string][]byte{
+		"stage-authority-key-v1": bytes.Repeat([]byte{0x9a}, 32),
+	}
+	signer, err := stageauthority.NewSigner(keys)
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	workerPool := newRolePool(
+		t, database.DSN,
+		"vela_stage_worker_control_login", "vela-stage-worker-control-password",
+	)
+	execution, err := stageworkercontrol.NewPostgresExecutionBackend(
+		workerPool,
+		signer,
+		stageworkercontrol.PostgresExecutionConfig{
+			ActiveSigningKeyID: "stage-authority-key-v1",
+			AuthorityTTL:       2 * time.Minute,
+			LocalDeadlineTTL:   90 * time.Second,
+			MaxClockSkew:       time.Second,
+			Now: func() time.Time {
+				return assignment.IssuedAt.Add(100 * time.Millisecond)
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewPostgresExecutionBackend: %v", err)
+	}
+	identity := stageworkertransport.Identity{
+		SPIFFEID: "spiffe://vela/worker/" + assignment.WorkerInstanceID.String(),
+	}
+	started, err := execution.StartStage(
+		context.Background(),
+		stageworkercontrol.CommandContext{
+			CommandID: uuid.New(), Identity: identity, ControlSessionEpoch: 1,
+		},
+		&velav1.StartStageRequest{
+			Authority: assigned.Authority,
+			StartedAt: timestamppb.New(assignment.IssuedAt.Add(5 * time.Millisecond)),
+		},
+		stageworkercontrol.VerifiedAuthorities{Stage: &assigned},
+	)
+	if err != nil || started.RenewedAuthority == nil {
+		t.Fatalf("start before Reattach = %#v error=%v", started, err)
+	}
+	startedDigest, err := stageauthority.Digest(started.RenewedAuthority)
+	if err != nil {
+		t.Fatalf("digest started authority: %v", err)
+	}
+	startedVerified := stageauthority.Verified{
+		Authority: started.RenewedAuthority, Digest: startedDigest,
+	}
+	reattachments, err := stageworkercontrol.NewPostgresReattachmentBackend(workerPool)
+	if err != nil {
+		t.Fatalf("NewPostgresReattachmentBackend: %v", err)
+	}
+	command := stageworkercontrol.CommandContext{
+		CommandID: uuid.New(), Identity: identity, ControlSessionEpoch: 1,
+	}
+	request := &velav1.ReattachStageRequest{
+		Authority:            started.RenewedAuthority,
+		ObservedRuntimeState: velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING,
+	}
+	result, err := reattachments.ReattachStage(
+		context.Background(), command, request,
+		stageworkercontrol.VerifiedAuthorities{Stage: &startedVerified},
+	)
+	if err != nil || result.Decision !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("Reattach result = %#v error=%v", result, err)
+	}
+	replayed, err := reattachments.ReattachStage(
+		context.Background(), command, request,
+		stageworkercontrol.VerifiedAuthorities{Stage: &startedVerified},
+	)
+	if err != nil || replayed.Decision !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED {
+		t.Fatalf("Reattach replay = %#v error=%v", replayed, err)
+	}
+
+	mismatched := proto.Clone(request).(*velav1.ReattachStageRequest)
+	mismatched.ObservedRuntimeState =
+		velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED
+	rejected, err := reattachments.ReattachStage(
+		context.Background(), command, mismatched,
+		stageworkercontrol.VerifiedAuthorities{Stage: &startedVerified},
+	)
+	if err != nil || rejected.Decision !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED {
+		t.Fatalf("mismatched Reattach replay = %#v error=%v", rejected, err)
+	}
+
+	heartbeat, err := execution.HeartbeatStage(
+		context.Background(),
+		stageworkercontrol.CommandContext{
+			CommandID: uuid.New(), Identity: identity, ControlSessionEpoch: 1,
+		},
+		&velav1.HeartbeatStageRequest{
+			Authority: started.RenewedAuthority, Sequence: 1,
+			RuntimeState:      velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING,
+			BoundedStatusJson: []byte(`{"state":"running"}`),
+			ObservedAt:        timestamppb.New(assignment.IssuedAt.Add(20 * time.Millisecond)),
+		},
+		stageworkercontrol.VerifiedAuthorities{Stage: &startedVerified},
+	)
+	if err != nil || heartbeat.RenewedAuthority == nil {
+		t.Fatalf("Heartbeat before stale Reattach = %#v error=%v", heartbeat, err)
+	}
+	stale, err := reattachments.ReattachStage(
+		context.Background(),
+		stageworkercontrol.CommandContext{
+			CommandID: uuid.New(), Identity: identity, ControlSessionEpoch: 1,
+		},
+		request,
+		stageworkercontrol.VerifiedAuthorities{Stage: &startedVerified},
+	)
+	if err != nil || stale.Decision !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE {
+		t.Fatalf("superseded Reattach = %#v error=%v", stale, err)
+	}
+
+	var reattachmentCount int64
+	if err := database.Admin.QueryRow(`
+		SELECT count(*) FROM stage_worker_reattachments
+	`).Scan(&reattachmentCount); err != nil {
+		t.Fatalf("read durable Reattach evidence: %v", err)
+	}
+	if reattachmentCount != 1 {
+		t.Fatalf("durable Reattach evidence count = %d, want 1", reattachmentCount)
+	}
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err = goose.DownTo(database.Admin, migrations, 40)
+	assertPostgresConstraint(t, err, "stage_worker_operations_rollback_is_unsafe")
+	version, versionErr := goose.GetDBVersion(database.Admin)
+	if versionErr != nil || version != 41 {
+		t.Fatalf(
+			"Stage Worker operations version after refusal = %d error=%v",
+			version, versionErr,
+		)
+	}
+}
+
+func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) {
+	database, _, coordinator, job, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "stage-worker-fleet-evidence")
+	assignment := assignEncoder(
+		t, database, coordinator, attemptID, encoderRunID, time.Now().Add(time.Hour),
+	)
+	authority := signedAssignedStageAuthority(t, database, job, assignment, 2).Authority
+	readinessEvidence := []byte("certified encoder readiness receipt")
+	readinessDigest := sha256.Sum256(readinessEvidence)
+	if _, err := database.Admin.Exec(`
+		UPDATE model_residencies
+		SET canary_evidence_digest = $2,
+		    runtime_image_digest =
+		        'sha256:3333333333333333333333333333333333333333333333333333333333333333'
+		WHERE id = $1
+	`, assignment.ModelResidencyID, readinessDigest[:]); err != nil {
+		t.Fatalf("bind readiness evidence digest: %v", err)
+	}
+	var observedAt, expiresAt time.Time
+	var capacityVector []byte
+	if err := database.Admin.QueryRow(`
+		SELECT observed_at, expires_at, capacity_vector
+		FROM capacity_observations
+		WHERE worker_instance_id = $1 AND observation_sequence = $2
+	`, assignment.WorkerInstanceID, assignment.ObservationSequence).Scan(
+		&observedAt, &expiresAt, &capacityVector,
+	); err != nil {
+		t.Fatalf("read durable CapacityObservation: %v", err)
+	}
+	var capacity map[string]int64
+	if err := json.Unmarshal(capacityVector, &capacity); err != nil {
+		t.Fatalf("decode durable CapacityObservation: %v", err)
+	}
+	workerPool := newRolePool(
+		t, database.DSN,
+		"vela_stage_worker_control_login", "vela-stage-worker-control-password",
+	)
+	backend, err := stageworkercontrol.NewPostgresWorkerEvidenceBackend(workerPool)
+	if err != nil {
+		t.Fatalf("NewPostgresWorkerEvidenceBackend: %v", err)
+	}
+	identity := stageworkertransport.Identity{
+		SPIFFEID: "spiffe://vela/worker/" + assignment.WorkerInstanceID.String(),
+	}
+	command := stageworkercontrol.CommandContext{
+		CommandID: uuid.New(), Identity: identity, ControlSessionEpoch: 1,
+	}
+	registration := &velav1.RegisterWorkerEvidenceRequest{
+		RuntimeIdentity: &velav1.ModelRuntimeIdentity{
+			WorkerInstanceId:       authority.GetWorkerInstanceId(),
+			WorkerInstanceEpoch:    authority.GetWorkerInstanceEpoch(),
+			DeviceSetDigest:        authority.GetDeviceSetDigest(),
+			MembershipDigest:       authority.GetMembershipDigest(),
+			ModelResidencyId:       authority.GetModelResidencyId(),
+			RuntimeIdentity:        authority.GetModelRuntimeIdentity(),
+			ModelRuntimeEpoch:      authority.GetMembers()[0].GetModelRuntimeEpoch(),
+			StageProfileRevisionId: authority.GetStageProfileRevisionId(),
+			WorkerMemberId:         authority.GetMembers()[0].GetWorkerMemberId(),
+			WorkerMemberEpoch:      authority.GetMembers()[0].GetMemberEpoch(),
+		},
+		CapacityObservationSequence: authority.GetCapacityObservationSequence(),
+		Devices:                     authority.GetDevices(), Members: authority.GetMembers(),
+		ReadinessEvidence: readinessEvidence,
+	}
+	registered, err := backend.RegisterWorkerEvidence(
+		context.Background(), command, registration,
+	)
+	if err != nil || !registered.Ready ||
+		registered.WorkerInstanceID != assignment.WorkerInstanceID ||
+		registered.WorkerInstanceEpoch != assignment.WorkerInstanceEpoch {
+		t.Fatalf("registered durable Worker evidence = %#v error=%v", registered, err)
+	}
+
+	wrongProfile := proto.Clone(registration).(*velav1.RegisterWorkerEvidenceRequest)
+	wrongProfile.RuntimeIdentity.StageProfileRevisionId = uuid.NewString()
+	rejected, err := backend.RegisterWorkerEvidence(
+		context.Background(), command, wrongProfile,
+	)
+	if err != nil || rejected.Ready {
+		t.Fatalf("forged Worker profile evidence = %#v error=%v", rejected, err)
+	}
+
+	capacityRequest := &velav1.ReportStageCapacityObservationRequest{
+		WorkerInstanceId:    assignment.WorkerInstanceID.String(),
+		WorkerInstanceEpoch: assignment.WorkerInstanceEpoch,
+		ObservationSequence: assignment.ObservationSequence,
+		CapacityVector:      capacity,
+		ObservedAt:          timestamppb.New(observedAt), ExpiresAt: timestamppb.New(expiresAt),
+	}
+	verifiedCapacity, err := backend.ReportCapacityObservation(
+		context.Background(), command, capacityRequest,
+	)
+	if err != nil || !verifiedCapacity.Ready {
+		t.Fatalf("verified durable CapacityObservation = %#v error=%v", verifiedCapacity, err)
+	}
+	forgedCapacity := proto.Clone(capacityRequest).(*velav1.ReportStageCapacityObservationRequest)
+	forgedCapacity.CapacityVector["concurrency"]++
+	rejectedCapacity, err := backend.ReportCapacityObservation(
+		context.Background(), command, forgedCapacity,
+	)
+	if err != nil || rejectedCapacity.Ready {
+		t.Fatalf("forged CapacityObservation = %#v error=%v", rejectedCapacity, err)
+	}
+
+	var observationCount int64
+	if err := database.Admin.QueryRow(`
+		SELECT count(*) FROM capacity_observations WHERE worker_instance_id = $1
+	`, assignment.WorkerInstanceID).Scan(&observationCount); err != nil {
+		t.Fatalf("count durable CapacityObservations: %v", err)
+	}
+	if observationCount != 1 {
+		t.Fatalf("StageWorkerControl mutated Fleet observations: count=%d", observationCount)
 	}
 }
 

@@ -5,6 +5,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -350,6 +351,118 @@ func TestStageSchedulerExpiredClaimRecoversWithoutDoubleAssignment(t *testing.T)
 			expiredClaims,
 			finalAttempts,
 		)
+	}
+}
+
+func TestStageSchedulerIdentifiedClaimRecoversAndReplaysExactAuthority(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "identified-claim-recovery")
+	identity := stagescheduler.AssignmentIdentity{
+		ClaimID:           uuid.New(),
+		DecisionID:        uuid.New(),
+		CommandID:         uuid.New(),
+		StageAttemptID:    uuid.New(),
+		StageAllocationID: uuid.New(),
+		StageLeaseID:      uuid.New(),
+		LeaseToken:        [32]byte{0xa1, 0xa1},
+		ExecutionNonce:    [32]byte{0xa2, 0xa2},
+		IssuedAt:          time.Now().UTC(),
+	}
+	var captured stagescheduler.ClaimRequest
+	crashingRepository := &tamperingStageRepository{
+		PostgresRepository: fixture.repository,
+		tamper: func(request *stagescheduler.ClaimRequest) {
+			captured = *request
+		},
+	}
+	crashing, err := stagescheduler.NewService(
+		crashingRepository,
+		panickingStageCoordinator{},
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/identified-crash",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct identified crashing StageScheduler: %v", err)
+	}
+	func() {
+		defer func() {
+			if recovered := recover(); recovered == nil {
+				t.Fatal("identified StageScheduler fixture did not stop after claim")
+			}
+		}()
+		_, _, _ = crashing.AcquireIdentified(
+			context.Background(), fixture.authority, fixture.observation, identity,
+		)
+	}()
+	if captured.ClaimID != identity.ClaimID || captured.DecisionID != identity.DecisionID ||
+		captured.Command.CommandID != identity.CommandID ||
+		captured.Command.StageAttemptID != identity.StageAttemptID ||
+		captured.Command.StageAllocationID != identity.StageAllocationID ||
+		captured.Command.StageLeaseID != identity.StageLeaseID ||
+		!captured.Command.IssuedAt.Equal(identity.IssuedAt) {
+		t.Fatalf("captured identified claim = %#v", captured)
+	}
+	recovered, exists, err := fixture.repository.Recover(
+		context.Background(), identity.ClaimID,
+	)
+	if err != nil || !exists || recovered.State != "CLAIMED" ||
+		recovered.Command.CommandID != identity.CommandID ||
+		recovered.Assignment.StageAttemptID != identity.StageAttemptID ||
+		!bytes.Equal(recovered.Command.TokenDigest, digestToken(identity.LeaseToken)) {
+		t.Fatalf("recover identified CLAIMED authority = %#v exists=%t error=%v", recovered, exists, err)
+	}
+	coordinator := &countingStageCoordinator{delegate: fixture.coordinator}
+	scheduling, err := stagescheduler.NewService(
+		fixture.repository,
+		coordinator,
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/identified-recovery",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct identified recovery StageScheduler: %v", err)
+	}
+	first, ok, err := scheduling.AcquireIdentified(
+		context.Background(), fixture.authority, fixture.observation, identity,
+	)
+	if err != nil || !ok || coordinator.calls != 1 || first.ClaimID != identity.ClaimID ||
+		first.DecisionID != identity.DecisionID || first.StageAttemptID != identity.StageAttemptID ||
+		first.StageAllocationID != identity.StageAllocationID ||
+		first.StageLeaseID != identity.StageLeaseID || first.LeaseToken != identity.LeaseToken {
+		t.Fatalf(
+			"resume identified claim = %#v ok=%t calls=%d error=%v",
+			first, ok, coordinator.calls, err,
+		)
+	}
+	second, ok, err := scheduling.AcquireIdentified(
+		context.Background(), fixture.authority, fixture.observation, identity,
+	)
+	if err != nil || !ok || second != first || coordinator.calls != 1 {
+		t.Fatalf(
+			"replay identified committed claim = %#v ok=%t calls=%d error=%v",
+			second, ok, coordinator.calls, err,
+		)
+	}
+	var claimState string
+	var attempts int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT claim.state::text,
+		       (SELECT count(*) FROM stage_attempts WHERE stage_run_id = $2)
+		FROM stage_scheduler_claims AS claim
+		WHERE claim.id = $1
+	`, identity.ClaimID, fixture.stageRunID).Scan(&claimState, &attempts); err != nil {
+		t.Fatalf("read identified recovery result: %v", err)
+	}
+	if claimState != "COMMITTED" || attempts != 1 {
+		t.Fatalf("identified recovery state=%s attempts=%d", claimState, attempts)
 	}
 }
 
@@ -1338,6 +1451,24 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 }
 
 type panickingStageCoordinator struct{}
+
+type countingStageCoordinator struct {
+	delegate *attemptcoordinator.Service
+	calls    int
+}
+
+func (coordinator *countingStageCoordinator) Apply(
+	ctx context.Context,
+	command attemptcoordinator.StageCommand,
+) (attemptcoordinator.StageDecision, error) {
+	coordinator.calls++
+	return coordinator.delegate.Apply(ctx, command)
+}
+
+func digestToken(token [32]byte) []byte {
+	digest := sha256.Sum256(token[:])
+	return digest[:]
+}
 
 func acquireUntilClaimCrash(
 	t *testing.T,

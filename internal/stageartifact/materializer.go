@@ -51,6 +51,7 @@ type Artifact struct {
 	SHA256        [sha256.Size]byte
 	SizeBytes     int64
 	CommittedAt   time.Time
+	Replayed      bool
 }
 
 type PublishedObject struct {

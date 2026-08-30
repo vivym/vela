@@ -1,6 +1,7 @@
 package stagescheduler
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -44,6 +45,18 @@ type Assignment struct {
 	LeaseToken        [32]byte
 	LeaseExpiresAt    time.Time
 	LocalDeadlineAt   time.Time
+}
+
+type AssignmentIdentity struct {
+	ClaimID           uuid.UUID
+	DecisionID        uuid.UUID
+	CommandID         uuid.UUID
+	StageAttemptID    uuid.UUID
+	StageAllocationID uuid.UUID
+	StageLeaseID      uuid.UUID
+	LeaseToken        [32]byte
+	ExecutionNonce    [32]byte
+	IssuedAt          time.Time
 }
 
 type CapturedSnapshot struct {
@@ -91,12 +104,19 @@ type ShadowReplaySummary struct {
 
 type stageRepository interface {
 	Capture(context.Context, WorkerAuthority, CapacityObservation) (CapturedSnapshot, error)
+	Recover(context.Context, uuid.UUID) (RecoveredClaim, bool, error)
 	Claim(context.Context, ClaimRequest) (ClaimResult, error)
 	Commit(context.Context, uuid.UUID, uuid.UUID) error
 	Abandon(context.Context, uuid.UUID, string) error
 	ReconcileExpired(context.Context, int) (int64, error)
 	ListShadowSnapshots(context.Context, int) ([]ShadowSnapshot, error)
 	RecordShadowReplay(context.Context, ShadowReplayReceipt) error
+}
+
+type RecoveredClaim struct {
+	State      string
+	Assignment Assignment
+	Command    attemptcoordinator.AssignStageCommand
 }
 
 type stageAttemptCoordinator interface {
@@ -161,6 +181,27 @@ func (service *Service) Acquire(
 	authority WorkerAuthority,
 	observation CapacityObservation,
 ) (Assignment, bool, error) {
+	return service.acquire(ctx, authority, observation, nil)
+}
+
+func (service *Service) AcquireIdentified(
+	ctx context.Context,
+	authority WorkerAuthority,
+	observation CapacityObservation,
+	identity AssignmentIdentity,
+) (Assignment, bool, error) {
+	if err := validateAssignmentIdentity(identity); err != nil {
+		return Assignment{}, false, err
+	}
+	return service.acquire(ctx, authority, observation, &identity)
+}
+
+func (service *Service) acquire(
+	ctx context.Context,
+	authority WorkerAuthority,
+	observation CapacityObservation,
+	identity *AssignmentIdentity,
+) (Assignment, bool, error) {
 	if service == nil || service.repository == nil || service.coordinator == nil {
 		return Assignment{}, false, errors.New("StageScheduler is not configured")
 	}
@@ -175,6 +216,21 @@ func (service *Service) Acquire(
 		metricResult.outcome = metricOutcomeRejected
 		metricResult.reason = metricReasonInvalidAuthority
 		return Assignment{}, false, err
+	}
+	if identity != nil {
+		recovered, exists, err := service.repository.Recover(ctx, identity.ClaimID)
+		if err != nil {
+			return Assignment{}, false, fmt.Errorf("recover StageScheduler claim: %w", err)
+		}
+		if exists {
+			assignment, err := service.resumeRecoveredClaim(ctx, authority, *identity, recovered)
+			if err != nil {
+				return Assignment{}, false, err
+			}
+			metricResult.outcome = metricOutcomeAssigned
+			metricResult.reason = metricReasonNone
+			return assignment, true, nil
+		}
 	}
 	captured, err := service.repository.Capture(ctx, authority, observation)
 	if err != nil {
@@ -198,7 +254,7 @@ func (service *Service) Acquire(
 	}
 
 	assignment, command, err := service.newAssignment(
-		authority, captured.Snapshot.ObservationSequence, evidence,
+		authority, captured.Snapshot.ObservationSequence, evidence, identity,
 	)
 	if err != nil {
 		return Assignment{}, false, err
@@ -208,7 +264,7 @@ func (service *Service) Acquire(
 		DecisionID:         assignment.DecisionID,
 		CapturedSnapshotID: captured.ID,
 		SchedulerID:        service.config.SchedulerID,
-		ClaimExpiresAt:     service.config.Now().UTC().Add(service.config.ClaimTTL),
+		ClaimExpiresAt:     command.IssuedAt.Add(service.config.ClaimTTL),
 		Evidence:           evidence,
 		Command:            command,
 	}
@@ -246,6 +302,46 @@ func (service *Service) Acquire(
 	metricResult.outcome = metricOutcomeAssigned
 	metricResult.reason = metricReasonNone
 	return assignment, true, nil
+}
+
+func (service *Service) resumeRecoveredClaim(
+	ctx context.Context,
+	authority WorkerAuthority,
+	identity AssignmentIdentity,
+	recovered RecoveredClaim,
+) (Assignment, error) {
+	command := recovered.Command
+	if recovered.State != "CLAIMED" && recovered.State != "COMMITTED" {
+		return Assignment{}, errors.New("StageScheduler recovered claim is terminal")
+	}
+	if !assignmentIdentityMatches(identity, recovered.Assignment, command) ||
+		command.WorkerInstanceID != authority.WorkerInstanceID ||
+		command.WorkerInstanceEpoch != authority.WorkerInstanceEpoch ||
+		command.ModelResidencyID != authority.ModelResidencyID ||
+		command.ModelRuntimeEpoch != authority.ModelRuntimeEpoch ||
+		command.StageProfileRevisionID != authority.StageProfileRevisionID ||
+		command.CapacityPoolID != authority.CapacityPoolID ||
+		command.ObservationSequence <= 0 ||
+		!maps.Equal(command.CapacityVector, authority.CapacityVector) ||
+		!bytes.Equal(command.DeviceSetDigest, authority.DeviceSetDigest) ||
+		!bytes.Equal(command.MembershipDigest, authority.MembershipDigest) {
+		return Assignment{}, errors.New("StageScheduler recovered claim authority changed")
+	}
+	if recovered.State == "CLAIMED" {
+		decision, err := service.coordinator.Apply(ctx, command)
+		if err != nil {
+			return Assignment{}, fmt.Errorf("resume StageScheduler assignment: %w", err)
+		}
+		if decision.StageRunID != command.StageRunID ||
+			decision.StageAttemptID != command.StageAttemptID || decision.State != "ASSIGNED" {
+			return Assignment{}, errors.New("AttemptCoordinator returned mismatched recovered assignment")
+		}
+		if err := service.repository.Commit(ctx, identity.ClaimID, command.StageAttemptID); err != nil {
+			return Assignment{}, fmt.Errorf("commit recovered StageScheduler claim: %w", err)
+		}
+	}
+	recovered.Assignment.LeaseToken = identity.LeaseToken
+	return recovered.Assignment, nil
 }
 
 func (service *Service) ReplayShadow(
@@ -363,62 +459,36 @@ func (service *Service) newAssignment(
 	authority WorkerAuthority,
 	observationSequence int64,
 	evidence DecisionEvidence,
+	provided *AssignmentIdentity,
 ) (Assignment, attemptcoordinator.AssignStageCommand, error) {
-	claimID, err := uuid.NewRandomFromReader(service.config.Random)
+	identity, err := service.assignmentIdentity(provided)
 	if err != nil {
-		return Assignment{}, attemptcoordinator.AssignStageCommand{}, fmt.Errorf("generate claim identity: %w", err)
+		return Assignment{}, attemptcoordinator.AssignStageCommand{}, err
 	}
-	decisionID, err := uuid.NewRandomFromReader(service.config.Random)
-	if err != nil {
-		return Assignment{}, attemptcoordinator.AssignStageCommand{}, fmt.Errorf("generate decision identity: %w", err)
-	}
-	commandID, err := uuid.NewRandomFromReader(service.config.Random)
-	if err != nil {
-		return Assignment{}, attemptcoordinator.AssignStageCommand{}, fmt.Errorf("generate command identity: %w", err)
-	}
-	stageAttemptID, err := uuid.NewRandomFromReader(service.config.Random)
-	if err != nil {
-		return Assignment{}, attemptcoordinator.AssignStageCommand{}, fmt.Errorf("generate StageAttempt identity: %w", err)
-	}
-	allocationID, err := uuid.NewRandomFromReader(service.config.Random)
-	if err != nil {
-		return Assignment{}, attemptcoordinator.AssignStageCommand{}, fmt.Errorf("generate StageAllocation identity: %w", err)
-	}
-	leaseID, err := uuid.NewRandomFromReader(service.config.Random)
-	if err != nil {
-		return Assignment{}, attemptcoordinator.AssignStageCommand{}, fmt.Errorf("generate StageLease identity: %w", err)
-	}
-	var token, nonce [32]byte
-	if _, err := io.ReadFull(service.config.Random, token[:]); err != nil {
-		return Assignment{}, attemptcoordinator.AssignStageCommand{}, fmt.Errorf("generate StageLease token: %w", err)
-	}
-	if _, err := io.ReadFull(service.config.Random, nonce[:]); err != nil {
-		return Assignment{}, attemptcoordinator.AssignStageCommand{}, fmt.Errorf("generate execution nonce: %w", err)
-	}
-	now := service.config.Now().UTC()
+	now := identity.IssuedAt.UTC()
 	expiresAt := now.Add(service.config.LeaseTTL)
 	localDeadlineAt := now.Add(service.config.LocalDeadlineTTL)
 	assignment := Assignment{
-		ClaimID:           claimID,
-		DecisionID:        decisionID,
+		ClaimID:           identity.ClaimID,
+		DecisionID:        identity.DecisionID,
 		StageRunID:        evidence.SelectedStageRunID,
-		StageAttemptID:    stageAttemptID,
-		StageAllocationID: allocationID,
-		StageLeaseID:      leaseID,
-		LeaseToken:        token,
+		StageAttemptID:    identity.StageAttemptID,
+		StageAllocationID: identity.StageAllocationID,
+		StageLeaseID:      identity.StageLeaseID,
+		LeaseToken:        identity.LeaseToken,
 		LeaseExpiresAt:    expiresAt,
 		LocalDeadlineAt:   localDeadlineAt,
 	}
 	command := attemptcoordinator.AssignStageCommand{
-		CommandID:              commandID,
+		CommandID:              identity.CommandID,
 		AttemptID:              evidence.SelectedAttemptID,
 		StageRunID:             evidence.SelectedStageRunID,
 		ExpectedAttemptFence:   evidence.AttemptFence,
 		ExpectedStageFence:     evidence.StageFence,
 		ExpectedStageVersion:   evidence.StageVersion,
-		StageAttemptID:         stageAttemptID,
-		StageAllocationID:      allocationID,
-		StageLeaseID:           leaseID,
+		StageAttemptID:         identity.StageAttemptID,
+		StageAllocationID:      identity.StageAllocationID,
+		StageLeaseID:           identity.StageLeaseID,
 		StageProfileRevisionID: evidence.SelectedStageProfileRevisionID,
 		CapacityPoolID:         authority.CapacityPoolID,
 		WorkerInstanceID:       authority.WorkerInstanceID,
@@ -429,14 +499,69 @@ func (service *Service) newAssignment(
 		ModelResidencyID:       authority.ModelResidencyID,
 		ModelRuntimeEpoch:      authority.ModelRuntimeEpoch,
 		CapacityVector:         maps.Clone(authority.CapacityVector),
-		TokenDigest:            digestBytes(token),
+		TokenDigest:            digestBytes(identity.LeaseToken),
 		SigningKeyID:           service.config.SigningKeyID,
-		ExecutionNonce:         append([]byte(nil), nonce[:]...),
+		ExecutionNonce:         append([]byte(nil), identity.ExecutionNonce[:]...),
 		IssuedAt:               now,
 		ExpiresAt:              expiresAt,
 		LocalDeadlineAt:        localDeadlineAt,
 	}
 	return assignment, command, nil
+}
+
+func (service *Service) assignmentIdentity(
+	provided *AssignmentIdentity,
+) (AssignmentIdentity, error) {
+	if provided != nil {
+		return *provided, validateAssignmentIdentity(*provided)
+	}
+	identity := AssignmentIdentity{IssuedAt: service.config.Now().UTC()}
+	ids := []*uuid.UUID{
+		&identity.ClaimID, &identity.DecisionID, &identity.CommandID,
+		&identity.StageAttemptID, &identity.StageAllocationID, &identity.StageLeaseID,
+	}
+	for index := range ids {
+		generated, err := uuid.NewRandomFromReader(service.config.Random)
+		if err != nil {
+			return AssignmentIdentity{}, fmt.Errorf("generate StageScheduler identity: %w", err)
+		}
+		*ids[index] = generated
+	}
+	if _, err := io.ReadFull(service.config.Random, identity.LeaseToken[:]); err != nil {
+		return AssignmentIdentity{}, fmt.Errorf("generate StageLease token: %w", err)
+	}
+	if _, err := io.ReadFull(service.config.Random, identity.ExecutionNonce[:]); err != nil {
+		return AssignmentIdentity{}, fmt.Errorf("generate execution nonce: %w", err)
+	}
+	return identity, nil
+}
+
+func validateAssignmentIdentity(identity AssignmentIdentity) error {
+	if identity.ClaimID == uuid.Nil || identity.DecisionID == uuid.Nil ||
+		identity.CommandID == uuid.Nil || identity.StageAttemptID == uuid.Nil ||
+		identity.StageAllocationID == uuid.Nil || identity.StageLeaseID == uuid.Nil ||
+		identity.LeaseToken == ([32]byte{}) || identity.ExecutionNonce == ([32]byte{}) ||
+		identity.IssuedAt.IsZero() {
+		return errors.New("StageScheduler assignment identity is incomplete")
+	}
+	return nil
+}
+
+func assignmentIdentityMatches(
+	identity AssignmentIdentity,
+	assignment Assignment,
+	command attemptcoordinator.AssignStageCommand,
+) bool {
+	return assignment.ClaimID == identity.ClaimID && assignment.DecisionID == identity.DecisionID &&
+		assignment.StageAttemptID == identity.StageAttemptID &&
+		assignment.StageAllocationID == identity.StageAllocationID &&
+		assignment.StageLeaseID == identity.StageLeaseID && command.CommandID == identity.CommandID &&
+		command.StageAttemptID == identity.StageAttemptID &&
+		command.StageAllocationID == identity.StageAllocationID &&
+		command.StageLeaseID == identity.StageLeaseID &&
+		bytes.Equal(command.TokenDigest, digestBytes(identity.LeaseToken)) &&
+		bytes.Equal(command.ExecutionNonce, identity.ExecutionNonce[:]) &&
+		command.IssuedAt.Equal(identity.IssuedAt)
 }
 
 func validateWorkerAuthority(authority WorkerAuthority, observation CapacityObservation) error {

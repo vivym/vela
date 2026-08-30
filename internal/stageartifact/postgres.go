@@ -227,7 +227,6 @@ func (repository *PostgresRepository) Commit(
 	}
 	var artifact Artifact
 	var digest []byte
-	var replayed bool
 	err = repository.pool.QueryRow(ctx, `
 		SELECT artifact_id, object_key, object_version, sha256,
 		       size_bytes, committed_at, replayed
@@ -239,7 +238,7 @@ func (repository *PostgresRepository) Commit(
 		&digest,
 		&artifact.SizeBytes,
 		&artifact.CommittedAt,
-		&replayed,
+		&artifact.Replayed,
 	)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("commit StageArtifact: %w", err)

@@ -250,6 +250,7 @@ func verifyStageSchedulerPrivileges(
 		failureLabel:    "StageScheduler transaction",
 		functions: []string{
 			"vela_capture_stage_scheduler_snapshot(jsonb)",
+			"vela_read_stage_scheduler_claim(uuid)",
 			"vela_claim_stage_scheduler_decision(jsonb)",
 			"vela_commit_stage_scheduler_claim(uuid,uuid)",
 			"vela_abandon_stage_scheduler_claim(uuid,text)",
@@ -292,6 +293,9 @@ func verifyStageWorkerControlPrivileges(
 			"vela_read_stage_authority_snapshot(uuid,bigint)",
 			"vela_start_stage_worker_command(jsonb)",
 			"vela_heartbeat_stage_worker_command(jsonb)",
+			"vela_reattach_stage_worker_command(jsonb)",
+			"vela_verify_stage_worker_registration(jsonb)",
+			"vela_verify_stage_capacity_observation(jsonb)",
 		},
 	})
 }

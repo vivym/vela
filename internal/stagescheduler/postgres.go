@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vivym/vela/internal/attemptcoordinator"
 )
@@ -60,6 +61,46 @@ func (repository *PostgresRepository) Capture(
 		return CapturedSnapshot{}, fmt.Errorf("decode StageScheduler snapshot: %w", err)
 	}
 	return captured, nil
+}
+
+func (repository *PostgresRepository) Recover(
+	ctx context.Context,
+	claimID uuid.UUID,
+) (RecoveredClaim, bool, error) {
+	if repository == nil || repository.pool == nil {
+		return RecoveredClaim{}, false, errors.New("StageScheduler repository is not configured")
+	}
+	if claimID == uuid.Nil {
+		return RecoveredClaim{}, false, errors.New("StageScheduler recovery claim identity is required")
+	}
+	var recovered RecoveredClaim
+	var returnedClaimID, decisionID uuid.UUID
+	var encoded []byte
+	err := repository.pool.QueryRow(ctx, `
+		SELECT claim_id, decision_id, claim_state, command_payload
+		FROM vela_read_stage_scheduler_claim($1)
+	`, claimID).Scan(&returnedClaimID, &decisionID, &recovered.State, &encoded)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return RecoveredClaim{}, false, nil
+	}
+	if err != nil {
+		return RecoveredClaim{}, false, fmt.Errorf("read StageScheduler claim recovery: %w", err)
+	}
+	if returnedClaimID != claimID || decisionID == uuid.Nil {
+		return RecoveredClaim{}, false, errors.New("StageScheduler recovered claim identity changed")
+	}
+	command, err := decodeAssignmentCommand(encoded)
+	if err != nil {
+		return RecoveredClaim{}, false, err
+	}
+	recovered.Command = command
+	recovered.Assignment = Assignment{
+		ClaimID: returnedClaimID, DecisionID: decisionID,
+		StageRunID: command.StageRunID, StageAttemptID: command.StageAttemptID,
+		StageAllocationID: command.StageAllocationID, StageLeaseID: command.StageLeaseID,
+		LeaseExpiresAt: command.ExpiresAt, LocalDeadlineAt: command.LocalDeadlineAt,
+	}
+	return recovered, true, nil
 }
 
 func (repository *PostgresRepository) Claim(
@@ -295,4 +336,113 @@ func encodeAssignmentCommand(command attemptcoordinator.AssignStageCommand) map[
 		"expires_at":                    command.ExpiresAt.UTC().Format(time.RFC3339Nano),
 		"local_deadline_at":             command.LocalDeadlineAt.UTC().Format(time.RFC3339Nano),
 	}
+}
+
+type persistedAssignmentCommand struct {
+	SchemaVersion          int              `json:"schema_version"`
+	CommandKind            string           `json:"command_kind"`
+	CommandID              uuid.UUID        `json:"command_id"`
+	AttemptID              uuid.UUID        `json:"attempt_id"`
+	StageRunID             uuid.UUID        `json:"stage_run_id"`
+	ExpectedAttemptFence   int64            `json:"expected_attempt_fence"`
+	ExpectedStageFence     int64            `json:"expected_stage_fence"`
+	ExpectedStageVersion   int64            `json:"expected_stage_version"`
+	StageAttemptID         uuid.UUID        `json:"stage_attempt_id"`
+	StageAllocationID      uuid.UUID        `json:"stage_allocation_id"`
+	StageLeaseID           uuid.UUID        `json:"stage_lease_id"`
+	StageProfileRevisionID uuid.UUID        `json:"stage_profile_revision_id"`
+	CapacityPoolID         uuid.UUID        `json:"capacity_pool_id"`
+	WorkerInstanceID       uuid.UUID        `json:"worker_instance_id"`
+	WorkerInstanceEpoch    int64            `json:"worker_instance_epoch"`
+	ObservationSequence    int64            `json:"capacity_observation_sequence"`
+	DeviceSetDigest        string           `json:"device_set_digest"`
+	MembershipDigest       string           `json:"membership_digest"`
+	ModelResidencyID       uuid.UUID        `json:"model_residency_id"`
+	ModelRuntimeEpoch      int64            `json:"model_runtime_epoch"`
+	CapacityVector         map[string]int64 `json:"capacity_vector"`
+	TokenDigest            string           `json:"token_digest"`
+	SigningKeyID           string           `json:"signing_key_id"`
+	ExecutionNonce         string           `json:"execution_nonce"`
+	IssuedAt               time.Time        `json:"issued_at"`
+	ExpiresAt              time.Time        `json:"expires_at"`
+	LocalDeadlineAt        time.Time        `json:"local_deadline_at"`
+}
+
+func decodeAssignmentCommand(encoded []byte) (attemptcoordinator.AssignStageCommand, error) {
+	var persisted persistedAssignmentCommand
+	if err := json.Unmarshal(encoded, &persisted); err != nil {
+		return attemptcoordinator.AssignStageCommand{}, fmt.Errorf(
+			"decode recovered StageScheduler assignment: %w", err,
+		)
+	}
+	deviceSetDigest, err := hex.DecodeString(persisted.DeviceSetDigest)
+	if err != nil {
+		return attemptcoordinator.AssignStageCommand{}, errors.New(
+			"recovered StageScheduler device digest is malformed",
+		)
+	}
+	membershipDigest, err := hex.DecodeString(persisted.MembershipDigest)
+	if err != nil {
+		return attemptcoordinator.AssignStageCommand{}, errors.New(
+			"recovered StageScheduler membership digest is malformed",
+		)
+	}
+	tokenDigest, err := hex.DecodeString(persisted.TokenDigest)
+	if err != nil {
+		return attemptcoordinator.AssignStageCommand{}, errors.New(
+			"recovered StageScheduler token digest is malformed",
+		)
+	}
+	executionNonce, err := hex.DecodeString(persisted.ExecutionNonce)
+	if err != nil {
+		return attemptcoordinator.AssignStageCommand{}, errors.New(
+			"recovered StageScheduler execution nonce is malformed",
+		)
+	}
+	command := attemptcoordinator.AssignStageCommand{
+		CommandID: persisted.CommandID, AttemptID: persisted.AttemptID,
+		StageRunID: persisted.StageRunID, ExpectedAttemptFence: persisted.ExpectedAttemptFence,
+		ExpectedStageFence:   persisted.ExpectedStageFence,
+		ExpectedStageVersion: persisted.ExpectedStageVersion,
+		StageAttemptID:       persisted.StageAttemptID,
+		StageAllocationID:    persisted.StageAllocationID, StageLeaseID: persisted.StageLeaseID,
+		StageProfileRevisionID: persisted.StageProfileRevisionID,
+		CapacityPoolID:         persisted.CapacityPoolID, WorkerInstanceID: persisted.WorkerInstanceID,
+		WorkerInstanceEpoch: persisted.WorkerInstanceEpoch,
+		ObservationSequence: persisted.ObservationSequence,
+		DeviceSetDigest:     deviceSetDigest, MembershipDigest: membershipDigest,
+		ModelResidencyID:  persisted.ModelResidencyID,
+		ModelRuntimeEpoch: persisted.ModelRuntimeEpoch,
+		CapacityVector:    persisted.CapacityVector, TokenDigest: tokenDigest,
+		SigningKeyID: persisted.SigningKeyID, ExecutionNonce: executionNonce,
+		IssuedAt: persisted.IssuedAt, ExpiresAt: persisted.ExpiresAt,
+		LocalDeadlineAt: persisted.LocalDeadlineAt,
+	}
+	if persisted.SchemaVersion != 1 || persisted.CommandKind != "ASSIGN" ||
+		validateRecoveredAssignment(command) != nil {
+		return attemptcoordinator.AssignStageCommand{}, errors.New(
+			"recovered StageScheduler assignment is invalid",
+		)
+	}
+	return command, nil
+}
+
+func validateRecoveredAssignment(command attemptcoordinator.AssignStageCommand) error {
+	if command.CommandID == uuid.Nil || command.AttemptID == uuid.Nil ||
+		command.StageRunID == uuid.Nil || command.StageAttemptID == uuid.Nil ||
+		command.StageAllocationID == uuid.Nil || command.StageLeaseID == uuid.Nil ||
+		command.StageProfileRevisionID == uuid.Nil || command.CapacityPoolID == uuid.Nil ||
+		command.WorkerInstanceID == uuid.Nil || command.ModelResidencyID == uuid.Nil ||
+		command.ExpectedAttemptFence <= 0 || command.ExpectedStageFence <= 0 ||
+		command.ExpectedStageVersion <= 0 || command.WorkerInstanceEpoch <= 0 ||
+		command.ObservationSequence <= 0 || command.ModelRuntimeEpoch <= 0 ||
+		len(command.DeviceSetDigest) != 32 || len(command.MembershipDigest) != 32 ||
+		len(command.TokenDigest) != 32 || len(command.ExecutionNonce) != 32 ||
+		len(command.CapacityVector) == 0 || command.SigningKeyID == "" ||
+		command.IssuedAt.IsZero() || !command.ExpiresAt.After(command.IssuedAt) ||
+		!command.LocalDeadlineAt.After(command.IssuedAt) ||
+		command.LocalDeadlineAt.After(command.ExpiresAt) {
+		return errors.New("incomplete recovered assignment")
+	}
+	return nil
 }
