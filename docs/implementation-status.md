@@ -16,12 +16,11 @@ transfer, split H3 execution, exact cache, CPU media stages, and the immutable
 Usage/Cost Ledger. Migration `00048` closes the repository-level cache-only leaf
 path by binding a physical or exact-cache StageArtifact to each StageRun output
 used by finalization. This is not complete acceptance closure. Repository-wide
-integration revalidation is still non-green because the older
-`TestArtifactBackupReplicationMigrationBackfillsSchema28Artifacts` fixture runs
-the current Visible Completion query on schema 30, where a migration `00046`
-column does not exist. The current committed legacy Worker Assignment, Attempt
-Lease, H3 Worker Agent, Runner, and Fleet slices remain the active machine-level
-baseline until cutover and contraction; the target implementation is not
+integration shards `0` through `9` are green after restoring historical-schema
+Visible Completion compatibility and version-specific role-surface checks. The
+current committed legacy Worker Assignment, Attempt Lease, H3 Worker Agent,
+Runner, and Fleet slices remain the active machine-level baseline until cutover
+and contraction; the target implementation and repository tests are not
 production evidence or a Launch Receipt.
 
 | Design package | Status | Evidence |
