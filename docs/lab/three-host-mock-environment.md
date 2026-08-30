@@ -275,22 +275,21 @@ memory available. Kubernetes documents that kubelet does not start with swap by
 default and recommends control-plane nodes without swap. Disabling host swap is
 not authorized on this shared machine. The lab candidate therefore preserves
 host swap and sets `fail-swap-on=false`, with `NoSwap` as the requested Pod
-policy. The live `configz` responses on all three nodes report
-`failSwapOn=false` but only `memorySwap: {}`. The current strict verifier fails
-closed on that missing observation; an approved kubelet configuration change,
-RKE2 restart, and fresh receipt must explicitly establish
-`memorySwap.swapBehavior=NoSwap`. This lab exception cannot satisfy a
-production control-plane gate.
+policy. The initial live `configz` responses reported `failSwapOn=false` but
+only `memorySwap: {}`. A fresh 2026-08-31 read-only postflight now reports
+`memorySwap.swapBehavior=NoSwap` on all three nodes. The verifier therefore no
+longer fails the explicit Pod swap-policy checks. Active host swap on the
+shared control node remains a lab exception and cannot satisfy a production
+control-plane gate.
 
 A fresh run of the strict `verify-cluster.sh gpu` at
-`2026-08-29T23:48:11Z` passed API, node identity, version, labels, taints,
-DaemonSet, Deployment, Canal, and GPU capacity checks, but returned
-`FAIL failures=4`: the three explicit Pod swap-policy checks above and one
-cluster cleanliness check covering ten retained historical failed
-`vela-lab-smoke-*` Pods. Those failed Jobs range from
-`vela-lab-smoke-r8756` through `vela-lab-smoke-kd587`; they are not from the
-latest passing rehearsal. They remain available for diagnosis because deleting
-them was not authorized. A clean strict postflight therefore remains pending.
+`2026-08-30T22:07:31Z` passed API, node identity, version, labels, taints, all
+three `NoSwap` observations, DaemonSet, Deployment, Canal, and GPU capacity
+checks, but returned `FAIL failures=1`. The only failed check covers 22 retained
+historical failed lab Pods. The organization-isolation harness deleted each of
+its own temporary Pods by exact UID, so it did not increase that count. The
+historical Pods remain available for diagnosis because deleting them was not
+authorized. A clean strict postflight therefore remains pending.
 
 The GPU smoke helper also passed its two mutation guards: without literal
 `--apply` it failed before privilege or cluster access, and a root test with a
@@ -1300,6 +1299,51 @@ persistent Runners were `running/healthy` in `success` mode with the fixed
 Runner digest, and no harness or watchdog process remained. The receipt ledger
 in `authority-after.json` and its checksum manifest both passed independent
 structural validation.
+
+## Organization isolation and content-safety rehearsal
+
+On 2026-08-30, the live non-production isolation harness exercised seven of the
+nine fixed `organization-isolation-content-safety` scenarios. It passed
+cross-Organization and cross-Project invisibility, the fixed non-superuser and
+non-`BYPASSRLS` request-role matrix, forced RLS with private request context,
+credential revocation, composite foreign-key rejection, and exact-version
+signed URL scope. The HTTP probe read both committed Artifacts for Job
+`3e4be0cc-fcc0-42fa-a502-6080df76c634`, verified their sizes and SHA-256
+digests, and rejected method, path, and syntactically valid version tampering.
+The final evidence contains ten database and ten HTTP negative probes, zero
+unexpected allows, and zero credential-revocation bypasses.
+
+The two unexecuted scenarios remain explicit `NOT_RUN` entries:
+`break-glass-audit` requires the absent real Platform IdP and approval workflow,
+and `customer-content-no-reuse` requires an independent audit sink. Their
+measurements are `NOT_MEASURED`, not zero. The result is therefore
+`LAB_REHEARSAL_PARTIAL`, scenarios `7/9`, evidence boundary
+`NON_PRODUCTION_MOCK_REHEARSAL`, and Production Gates `0/9`.
+
+The root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/organization-isolation-content-safety-v1`.
+All 21 listed files pass `sha256sum --check --strict`; the `SHA256SUMS` file has
+SHA-256 `39efd866e74cce62010e173d01532d53626b11cac794ea8a28cc730f99ed256f`.
+The executed harness has SHA-256
+`9563d42809513d59b4ff7b1b4b98c567d7ee8e7ab6bc2d562854ada7d5b78549`,
+the executed Python probe has SHA-256
+`47deea009391215df063eee4066b186f410b6b99d7fbe991e43b207d4507f6d4`,
+and the Pod runtime used the pinned Runner digest
+`sha256:71af1330eefdfff2a33d68e5f8c53c66ebe5b402dc28c35b3ff7516357ec4ca3`.
+
+Independent postflight matched the complete before/after database snapshot:
+zero active Jobs, zero active Leases, zero Production Gate receipts, zero active
+Break-glass grants, two `READY/HEALTHY` Workers, zero fixture rows, and an
+unchanged actor-session-attribution count of two. The temporary Pod and
+immutable ConfigMap were absent and no harness process remained. Four hidden
+failed runs are retained as diagnostics only: they found a missing Worker taint
+toleration, a committed synthetic-Credential audit side effect, invalid-format
+version tampering rejected before signature verification, and a receipt-wrapper
+`jq` projection error. Each failed closed, cleaned its owned Kubernetes
+resources and removable fixture rows, and is not counted as a pass. The
+diagnostic actor-session attribution was not deleted; it is retained as part of
+the before/after count of two. The successful transaction-scoped Credential
+probe added no further attribution.
 
 ## Experiment operating rules
 

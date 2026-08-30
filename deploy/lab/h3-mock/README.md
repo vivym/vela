@@ -416,6 +416,30 @@ Runners `running/healthy` in `success` mode, and no harness/watchdog process.
 The complete `10/10` matrix remains a `NON_PRODUCTION_MOCK_REHEARSAL`; it is not
 a Launch Receipt.
 
+## Organization isolation and content-safety rehearsal
+
+From `marslab-server`, run the separate isolation harness only at the idle
+two-Worker boundary. It creates one immutable ConfigMap and one short-lived Pod
+on Worker 1, plus exact synthetic database fixture IDs. The harness binds the
+executed probe source SHA-256, Runner image digest, Pod runtime `imageID`,
+database before/after snapshot, and checksum manifest. It deletes only the Pod
+and ConfigMap UIDs it created and rolls back synthetic Credential probes so
+actor-session audit rows are not added.
+
+```text
+sudo deploy/lab/control-plane/organization-isolation-content-safety.sh \
+  /absolute/path/to/deploy/lab/control-plane/organization_isolation_probe.py \
+  10.1.200.17:5443/vela-lab/vela-h3-runner@sha256:71af1330eefdfff2a33d68e5f8c53c66ebe5b402dc28c35b3ff7516357ec4ca3 \
+  /root/vela-lab-deploy-bc590e20/receipts/organization-isolation-content-safety-v1 \
+  --apply
+```
+
+The retained result is `LAB_REHEARSAL_PARTIAL`, scenarios `7/9`, 20 negative
+probes, and Production Gates `0/9`. The real Platform IdP and Break-glass audit
+workflow are absent, and customer-content non-reuse is not measurable without
+an independent audit sink. These two rows remain `NOT_RUN`; do not reinterpret
+them as zero failures or create a Production Gate receipt from this output.
+
 Rollback removes only the managed container and preserves Runner state:
 
 ```text
