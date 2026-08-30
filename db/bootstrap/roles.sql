@@ -165,6 +165,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_artifact') THEN
         CREATE ROLE vela_stage_artifact NOLOGIN;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_worker_control') THEN
+        CREATE ROLE vela_stage_worker_control NOLOGIN;
+    END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_scheduler_owner'
     ) THEN
@@ -252,6 +255,8 @@ ALTER ROLE vela_attempt_coordinator_owner
 ALTER ROLE vela_stage_scheduler
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_stage_artifact
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_stage_worker_control
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_stage_scheduler_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;

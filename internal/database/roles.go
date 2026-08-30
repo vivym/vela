@@ -48,6 +48,7 @@ const (
 	RoleAttemptCoordinator         Role = "vela_attempt_coordinator"
 	RoleStageScheduler             Role = "vela_stage_scheduler"
 	RoleStageArtifact              Role = "vela_stage_artifact"
+	RoleStageWorkerControl         Role = "vela_stage_worker_control"
 )
 
 type rowQuerier interface {
@@ -96,6 +97,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleAttemptCoordinator:         {verifyPrivileges: verifyAttemptCoordinatorPrivileges},
 	RoleStageScheduler:             {verifyPrivileges: verifyStageSchedulerPrivileges},
 	RoleStageArtifact:              {verifyPrivileges: verifyStageArtifactPrivileges},
+	RoleStageWorkerControl:         {verifyPrivileges: verifyStageWorkerControlPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -274,6 +276,20 @@ func verifyStageArtifactPrivileges(
 			"vela_issue_stage_transfer_ticket(jsonb)",
 			"vela_resolve_stage_transfer_ticket(jsonb)",
 			"vela_consume_stage_transfer_ticket(jsonb)",
+		},
+	})
+}
+
+func verifyStageWorkerControlPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "StageWorkerControl",
+		failureLabel:    "StageWorkerControl authority snapshot",
+		functions: []string{
+			"vela_read_stage_authority_snapshot(uuid,bigint)",
 		},
 	})
 }

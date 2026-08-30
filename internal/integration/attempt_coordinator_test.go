@@ -4,7 +4,9 @@ package integration_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -1781,6 +1783,9 @@ func assignEncoder(
 	}
 	evidence := workerRegistryEvidenceValue(t, workerID, 0xb0)
 	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
+	workerSPIFFEID := "spiffe://vela/worker/" + workerID.String()
+	workerSPIFFEDigest := sha256.Sum256([]byte(workerSPIFFEID))
+	evidence.Members[0].IdentityDigest = hex.EncodeToString(workerSPIFFEDigest[:])
 	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	registry, err := fleet.NewService(fleetPool)
 	if err != nil {
@@ -1794,6 +1799,8 @@ func assignEncoder(
 	if !leaseExpiresAt.After(issuedAt.Add(100 * time.Millisecond)) {
 		t.Fatalf("physical cancellation Lease deadline %s is too close to issue time %s", leaseExpiresAt, issuedAt)
 	}
+	leaseToken := bytesOf(0xb3, 32)
+	leaseTokenDigest := sha256.Sum256(leaseToken)
 	assignment := attemptcoordinator.AssignStageCommand{
 		CommandID:              uuid.New(),
 		AttemptID:              attemptID,
@@ -1814,7 +1821,7 @@ func assignEncoder(
 		ModelResidencyID:       authority.ModelResidencyID,
 		ModelRuntimeEpoch:      authority.ModelRuntimeEpoch,
 		CapacityVector:         map[string]int64{"concurrency": 1},
-		TokenDigest:            bytesOf(0xb3, 32),
+		TokenDigest:            leaseTokenDigest[:],
 		SigningKeyID:           "stage-authority-key-v1",
 		ExecutionNonce:         bytesOf(0xb4, 32),
 		IssuedAt:               issuedAt,
