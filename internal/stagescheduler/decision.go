@@ -106,6 +106,12 @@ type DecisionEvidence struct {
 	SelectedStageRunID             uuid.UUID            `json:"selected_stage_run_id"`
 	SelectedAttemptID              uuid.UUID            `json:"selected_attempt_id"`
 	SelectedStageProfileRevisionID uuid.UUID            `json:"selected_stage_profile_revision_id"`
+	OrganizationID                 uuid.UUID            `json:"organization_id"`
+	ServiceClassRevisionID         uuid.UUID            `json:"service_class_revision_id"`
+	ProjectID                      uuid.UUID            `json:"project_id"`
+	AttemptFence                   int64                `json:"attempt_fence"`
+	StageFence                     int64                `json:"stage_fence"`
+	StageVersion                   int64                `json:"stage_version"`
 	Lane                           Lane                 `json:"lane"`
 	ResourceMillis                 int64                `json:"resource_millis"`
 	OrganizationDeficitMillis      int64                `json:"organization_deficit_millis"`
@@ -193,6 +199,12 @@ func Decide(snapshot Snapshot) (DecisionEvidence, bool, error) {
 		SelectedStageRunID:             winner.StageRunID,
 		SelectedAttemptID:              winner.AttemptID,
 		SelectedStageProfileRevisionID: winner.StageProfileRevisionID,
+		OrganizationID:                 winner.OrganizationID,
+		ServiceClassRevisionID:         winner.ServiceClassRevisionID,
+		ProjectID:                      winner.ProjectID,
+		AttemptFence:                   winner.AttemptFence,
+		StageFence:                     winner.StageFence,
+		StageVersion:                   winner.StageVersion,
 		Lane:                           winner.Lane,
 		ResourceMillis:                 winner.ResourceMillis,
 		OrganizationDeficitMillis:      winner.OrganizationDeficitMillis,

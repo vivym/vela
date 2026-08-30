@@ -161,6 +161,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_attempt_coordinator_login",
 		"vela-attempt-coordinator-password",
 	)
+	stageSchedulerPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_stage_scheduler_login",
+		"vela-stage-scheduler-password",
+	)
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	for _, login := range []string{
 		"vela_internal_login",
@@ -176,6 +182,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_remediation_login",
 		"vela_fleet_login",
 		"vela_attempt_coordinator_login",
+		"vela_stage_scheduler_login",
 		"vela_identity_request_login",
 		"vela_human_membership_request_login",
 		"vela_organization_billing_request_login",
@@ -202,6 +209,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_break_glass_owner",
 			"vela_fleet_owner",
 			"vela_attempt_coordinator_owner",
+			"vela_stage_scheduler_owner",
 			"vela_quorum_guard_owner",
 		} {
 			var inheritsOwner bool
@@ -301,6 +309,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			name: "AttemptCoordinator", pool: attemptCoordinatorPool,
 			role: veladb.RoleAttemptCoordinator,
 		},
+		{name: "StageScheduler", pool: stageSchedulerPool, role: veladb.RoleStageScheduler},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -338,6 +347,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_fleet_owner", bypassRLS: true},
 		{name: "vela_attempt_coordinator", bypassRLS: false},
 		{name: "vela_attempt_coordinator_owner", bypassRLS: true},
+		{name: "vela_stage_scheduler", bypassRLS: false},
+		{name: "vela_stage_scheduler_owner", bypassRLS: true},
 		{name: "vela_quorum_guard_owner", bypassRLS: false},
 	} {
 		var canLogin, bypassRLS, superuser bool

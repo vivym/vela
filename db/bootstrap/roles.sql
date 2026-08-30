@@ -159,6 +159,14 @@ BEGIN
     ) THEN
         CREATE ROLE vela_attempt_coordinator_owner NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_scheduler') THEN
+        CREATE ROLE vela_stage_scheduler NOLOGIN;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_scheduler_owner'
+    ) THEN
+        CREATE ROLE vela_stage_scheduler_owner NOLOGIN BYPASSRLS;
+    END IF;
 END
 $$;
 
@@ -237,6 +245,10 @@ ALTER ROLE vela_fleet_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLIC
 ALTER ROLE vela_attempt_coordinator
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_attempt_coordinator_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_stage_scheduler
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_stage_scheduler_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 
 GRANT pg_read_all_stats TO vela_quorum_guard_owner;
