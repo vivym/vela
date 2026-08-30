@@ -43,6 +43,7 @@ type StartBarrierResult struct {
 	StartedMembers                  int
 	CancellationAcknowledgedMembers int
 	BarrierPassed                   bool
+	StartedAt                       time.Time
 }
 
 type CancellationResult struct {
@@ -136,6 +137,10 @@ func (agent *Agent) PrepareAndStart(
 			memberResult.start, digest, assignment.GetAuthority(), memberResult.id,
 		) {
 			result.StartedMembers++
+			startedAt := memberResult.start.GetStartedAt().AsTime().UTC()
+			if startedAt.After(result.StartedAt) {
+				result.StartedAt = startedAt
+			}
 			continue
 		}
 		acknowledged, cancelErr := agent.cancelAfterBarrierFailure(
@@ -536,6 +541,7 @@ func validStartResponse(
 	memberID string,
 ) bool {
 	return response != nil && bytes.Equal(response.GetAuthorityDigest(), digest[:]) &&
+		response.GetStartedAt() != nil && response.GetStartedAt().CheckValid() == nil &&
 		runtimeIdentityMatchesMember(response.GetRuntimeIdentity(), authority, memberID) &&
 		(response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED ||
 			response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED) &&

@@ -685,6 +685,7 @@ type ReportStageCapacityObservationRequest struct {
 	ObservationSequence int64                  `protobuf:"varint,3,opt,name=observation_sequence,json=observationSequence,proto3" json:"observation_sequence,omitempty"`
 	CapacityVector      map[string]int64       `protobuf:"bytes,4,rep,name=capacity_vector,json=capacityVector,proto3" json:"capacity_vector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
 	ObservedAt          *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	ExpiresAt           *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -754,11 +755,21 @@ func (x *ReportStageCapacityObservationRequest) GetObservedAt() *timestamppb.Tim
 	return nil
 }
 
+func (x *ReportStageCapacityObservationRequest) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 type AcquireStageRequest struct {
 	state                       protoimpl.MessageState `protogen:"open.v1"`
 	WorkerInstanceId            string                 `protobuf:"bytes,1,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
 	WorkerInstanceEpoch         int64                  `protobuf:"varint,2,opt,name=worker_instance_epoch,json=workerInstanceEpoch,proto3" json:"worker_instance_epoch,omitempty"`
 	CapacityObservationSequence int64                  `protobuf:"varint,3,opt,name=capacity_observation_sequence,json=capacityObservationSequence,proto3" json:"capacity_observation_sequence,omitempty"`
+	ModelResidencyId            string                 `protobuf:"bytes,4,opt,name=model_residency_id,json=modelResidencyId,proto3" json:"model_residency_id,omitempty"`
+	ModelRuntimeEpoch           int64                  `protobuf:"varint,5,opt,name=model_runtime_epoch,json=modelRuntimeEpoch,proto3" json:"model_runtime_epoch,omitempty"`
+	StageProfileRevisionId      string                 `protobuf:"bytes,6,opt,name=stage_profile_revision_id,json=stageProfileRevisionId,proto3" json:"stage_profile_revision_id,omitempty"`
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -814,9 +825,31 @@ func (x *AcquireStageRequest) GetCapacityObservationSequence() int64 {
 	return 0
 }
 
+func (x *AcquireStageRequest) GetModelResidencyId() string {
+	if x != nil {
+		return x.ModelResidencyId
+	}
+	return ""
+}
+
+func (x *AcquireStageRequest) GetModelRuntimeEpoch() int64 {
+	if x != nil {
+		return x.ModelRuntimeEpoch
+	}
+	return 0
+}
+
+func (x *AcquireStageRequest) GetStageProfileRevisionId() string {
+	if x != nil {
+		return x.StageProfileRevisionId
+	}
+	return ""
+}
+
 type StartStageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Authority     *StageAuthority        `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -858,6 +891,13 @@ func (x *StartStageRequest) GetAuthority() *StageAuthority {
 	return nil
 }
 
+func (x *StartStageRequest) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
 type HeartbeatStageRequest struct {
 	state              protoimpl.MessageState     `protogen:"open.v1"`
 	Authority          *StageAuthority            `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
@@ -866,6 +906,7 @@ type HeartbeatStageRequest struct {
 	BoundedStatusJson  []byte                     `protobuf:"bytes,4,opt,name=bounded_status_json,json=boundedStatusJson,proto3" json:"bounded_status_json,omitempty"`
 	LocalReceiptId     string                     `protobuf:"bytes,5,opt,name=local_receipt_id,json=localReceiptId,proto3" json:"local_receipt_id,omitempty"`
 	LocalReceiptDigest []byte                     `protobuf:"bytes,6,opt,name=local_receipt_digest,json=localReceiptDigest,proto3" json:"local_receipt_digest,omitempty"`
+	ObservedAt         *timestamppb.Timestamp     `protobuf:"bytes,7,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -942,6 +983,13 @@ func (x *HeartbeatStageRequest) GetLocalReceiptDigest() []byte {
 	return nil
 }
 
+func (x *HeartbeatStageRequest) GetObservedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ObservedAt
+	}
+	return nil
+}
+
 type SealStageOutputRequest struct {
 	state         protoimpl.MessageState       `protogen:"open.v1"`
 	Authority     *StageAuthority              `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
@@ -998,6 +1046,7 @@ type CommitStageMaterializationRequest struct {
 	state                    protoimpl.MessageState    `protogen:"open.v1"`
 	MaterializationAuthority *MaterializationAuthority `protobuf:"bytes,1,opt,name=materialization_authority,json=materializationAuthority,proto3" json:"materialization_authority,omitempty"`
 	ObjectVersion            string                    `protobuf:"bytes,2,opt,name=object_version,json=objectVersion,proto3" json:"object_version,omitempty"`
+	CommittedAt              *timestamppb.Timestamp    `protobuf:"bytes,3,opt,name=committed_at,json=committedAt,proto3" json:"committed_at,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
 }
@@ -1044,6 +1093,13 @@ func (x *CommitStageMaterializationRequest) GetObjectVersion() string {
 		return x.ObjectVersion
 	}
 	return ""
+}
+
+func (x *CommitStageMaterializationRequest) GetCommittedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CommittedAt
+	}
+	return nil
 }
 
 type ReportMaterializationSourceLostRequest struct {
@@ -1123,14 +1179,17 @@ func (x *ReportMaterializationSourceLostRequest) GetRetryAt() *timestamppb.Times
 }
 
 type FailStageRequest struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	Authority          *StageAuthority        `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	FailureClass       string                 `protobuf:"bytes,2,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
-	FailureFingerprint []byte                 `protobuf:"bytes,3,opt,name=failure_fingerprint,json=failureFingerprint,proto3" json:"failure_fingerprint,omitempty"`
-	Detail             string                 `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
-	WorkerReusable     bool                   `protobuf:"varint,5,opt,name=worker_reusable,json=workerReusable,proto3" json:"worker_reusable,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Authority             *StageAuthority        `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+	FailureClass          string                 `protobuf:"bytes,2,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
+	FailureFingerprint    []byte                 `protobuf:"bytes,3,opt,name=failure_fingerprint,json=failureFingerprint,proto3" json:"failure_fingerprint,omitempty"`
+	Detail                string                 `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
+	WorkerReusable        bool                   `protobuf:"varint,5,opt,name=worker_reusable,json=workerReusable,proto3" json:"worker_reusable,omitempty"`
+	ConsumedResourceUnits int64                  `protobuf:"varint,6,opt,name=consumed_resource_units,json=consumedResourceUnits,proto3" json:"consumed_resource_units,omitempty"`
+	FailedAt              *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=failed_at,json=failedAt,proto3" json:"failed_at,omitempty"`
+	RetryAt               *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=retry_at,json=retryAt,proto3" json:"retry_at,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *FailStageRequest) Reset() {
@@ -1196,6 +1255,27 @@ func (x *FailStageRequest) GetWorkerReusable() bool {
 		return x.WorkerReusable
 	}
 	return false
+}
+
+func (x *FailStageRequest) GetConsumedResourceUnits() int64 {
+	if x != nil {
+		return x.ConsumedResourceUnits
+	}
+	return 0
+}
+
+func (x *FailStageRequest) GetFailedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FailedAt
+	}
+	return nil
+}
+
+func (x *FailStageRequest) GetRetryAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RetryAt
+	}
+	return nil
 }
 
 type ReattachStageRequest struct {
@@ -1878,48 +1958,61 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\x1dcapacity_observation_sequence\x18\x02 \x01(\x03R\x1bcapacityObservationSequence\x12<\n" +
 	"\adevices\x18\x03 \x03(\v2\".vela.v1.StageAuthorityDeviceEpochR\adevices\x12<\n" +
 	"\amembers\x18\x04 \x03(\v2\".vela.v1.StageAuthorityMemberEpochR\amembers\x12-\n" +
-	"\x12readiness_evidence\x18\x05 \x01(\fR\x11readinessEvidence\"\xa9\x03\n" +
+	"\x12readiness_evidence\x18\x05 \x01(\fR\x11readinessEvidence\"\xe4\x03\n" +
 	"%ReportStageCapacityObservationRequest\x12,\n" +
 	"\x12worker_instance_id\x18\x01 \x01(\tR\x10workerInstanceId\x122\n" +
 	"\x15worker_instance_epoch\x18\x02 \x01(\x03R\x13workerInstanceEpoch\x121\n" +
 	"\x14observation_sequence\x18\x03 \x01(\x03R\x13observationSequence\x12k\n" +
 	"\x0fcapacity_vector\x18\x04 \x03(\v2B.vela.v1.ReportStageCapacityObservationRequest.CapacityVectorEntryR\x0ecapacityVector\x12;\n" +
 	"\vobserved_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"observedAt\x1aA\n" +
+	"observedAt\x129\n" +
+	"\n" +
+	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x1aA\n" +
 	"\x13CapacityVectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\"\xbb\x01\n" +
+	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01\"\xd4\x02\n" +
 	"\x13AcquireStageRequest\x12,\n" +
 	"\x12worker_instance_id\x18\x01 \x01(\tR\x10workerInstanceId\x122\n" +
 	"\x15worker_instance_epoch\x18\x02 \x01(\x03R\x13workerInstanceEpoch\x12B\n" +
-	"\x1dcapacity_observation_sequence\x18\x03 \x01(\x03R\x1bcapacityObservationSequence\"J\n" +
+	"\x1dcapacity_observation_sequence\x18\x03 \x01(\x03R\x1bcapacityObservationSequence\x12,\n" +
+	"\x12model_residency_id\x18\x04 \x01(\tR\x10modelResidencyId\x12.\n" +
+	"\x13model_runtime_epoch\x18\x05 \x01(\x03R\x11modelRuntimeEpoch\x129\n" +
+	"\x19stage_profile_revision_id\x18\x06 \x01(\tR\x16stageProfileRevisionId\"\x85\x01\n" +
 	"\x11StartStageRequest\x125\n" +
-	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\"\xc0\x02\n" +
+	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x129\n" +
+	"\n" +
+	"started_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\xfd\x02\n" +
 	"\x15HeartbeatStageRequest\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\x03R\bsequence\x12H\n" +
 	"\rruntime_state\x18\x03 \x01(\x0e2#.vela.v1.ModelRuntimeExecutionStateR\fruntimeState\x12.\n" +
 	"\x13bounded_status_json\x18\x04 \x01(\fR\x11boundedStatusJson\x12(\n" +
 	"\x10local_receipt_id\x18\x05 \x01(\tR\x0elocalReceiptId\x120\n" +
-	"\x14local_receipt_digest\x18\x06 \x01(\fR\x12localReceiptDigest\"\x9a\x01\n" +
+	"\x14local_receipt_digest\x18\x06 \x01(\fR\x12localReceiptDigest\x12;\n" +
+	"\vobserved_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"observedAt\"\x9a\x01\n" +
 	"\x16SealStageOutputRequest\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12I\n" +
-	"\rlocal_receipt\x18\x02 \x01(\v2$.vela.v1.LocalMaterializationReceiptR\flocalReceipt\"\xaa\x01\n" +
+	"\rlocal_receipt\x18\x02 \x01(\v2$.vela.v1.LocalMaterializationReceiptR\flocalReceipt\"\xe9\x01\n" +
 	"!CommitStageMaterializationRequest\x12^\n" +
 	"\x19materialization_authority\x18\x01 \x01(\v2!.vela.v1.MaterializationAuthorityR\x18materializationAuthority\x12%\n" +
-	"\x0eobject_version\x18\x02 \x01(\tR\robjectVersion\"\xdd\x02\n" +
+	"\x0eobject_version\x18\x02 \x01(\tR\robjectVersion\x12=\n" +
+	"\fcommitted_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vcommittedAt\"\xdd\x02\n" +
 	"&ReportMaterializationSourceLostRequest\x12^\n" +
 	"\x19materialization_authority\x18\x01 \x01(\v2!.vela.v1.MaterializationAuthorityR\x18materializationAuthority\x12/\n" +
 	"\x13failure_fingerprint\x18\x02 \x01(\fR\x12failureFingerprint\x126\n" +
 	"\x17consumed_resource_units\x18\x03 \x01(\x03R\x15consumedResourceUnits\x123\n" +
 	"\alost_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x06lostAt\x125\n" +
-	"\bretry_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aretryAt\"\xe0\x01\n" +
+	"\bretry_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aretryAt\"\x88\x03\n" +
 	"\x10FailStageRequest\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12#\n" +
 	"\rfailure_class\x18\x02 \x01(\tR\ffailureClass\x12/\n" +
 	"\x13failure_fingerprint\x18\x03 \x01(\fR\x12failureFingerprint\x12\x16\n" +
 	"\x06detail\x18\x04 \x01(\tR\x06detail\x12'\n" +
-	"\x0fworker_reusable\x18\x05 \x01(\bR\x0eworkerReusable\"\x84\x02\n" +
+	"\x0fworker_reusable\x18\x05 \x01(\bR\x0eworkerReusable\x126\n" +
+	"\x17consumed_resource_units\x18\x06 \x01(\x03R\x15consumedResourceUnits\x127\n" +
+	"\tfailed_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bfailedAt\x125\n" +
+	"\bretry_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\aretryAt\"\x84\x02\n" +
 	"\x14ReattachStageRequest\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12(\n" +
 	"\x10local_receipt_id\x18\x02 \x01(\tR\x0elocalReceiptId\x120\n" +
@@ -2075,38 +2168,44 @@ var file_vela_v1_stage_worker_control_proto_depIdxs = []int32{
 	25, // 18: vela.v1.RegisterWorkerEvidenceRequest.members:type_name -> vela.v1.StageAuthorityMemberEpoch
 	22, // 19: vela.v1.ReportStageCapacityObservationRequest.capacity_vector:type_name -> vela.v1.ReportStageCapacityObservationRequest.CapacityVectorEntry
 	26, // 20: vela.v1.ReportStageCapacityObservationRequest.observed_at:type_name -> google.protobuf.Timestamp
-	27, // 21: vela.v1.StartStageRequest.authority:type_name -> vela.v1.StageAuthority
-	27, // 22: vela.v1.HeartbeatStageRequest.authority:type_name -> vela.v1.StageAuthority
-	28, // 23: vela.v1.HeartbeatStageRequest.runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
-	27, // 24: vela.v1.SealStageOutputRequest.authority:type_name -> vela.v1.StageAuthority
-	29, // 25: vela.v1.SealStageOutputRequest.local_receipt:type_name -> vela.v1.LocalMaterializationReceipt
-	21, // 26: vela.v1.CommitStageMaterializationRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
-	21, // 27: vela.v1.ReportMaterializationSourceLostRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
-	26, // 28: vela.v1.ReportMaterializationSourceLostRequest.lost_at:type_name -> google.protobuf.Timestamp
-	26, // 29: vela.v1.ReportMaterializationSourceLostRequest.retry_at:type_name -> google.protobuf.Timestamp
-	27, // 30: vela.v1.FailStageRequest.authority:type_name -> vela.v1.StageAuthority
-	27, // 31: vela.v1.ReattachStageRequest.authority:type_name -> vela.v1.StageAuthority
-	28, // 32: vela.v1.ReattachStageRequest.observed_runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
-	27, // 33: vela.v1.StageAssignment.authority:type_name -> vela.v1.StageAuthority
-	30, // 34: vela.v1.StageAssignment.execution_spec:type_name -> vela.v1.StageExecutionSpec
-	31, // 35: vela.v1.StageAssignment.member_start_timeout:type_name -> google.protobuf.Duration
-	17, // 36: vela.v1.StageAssignment.input_transfer_tickets:type_name -> vela.v1.StageInputTransferTicket
-	31, // 37: vela.v1.NoStageWork.retry_after:type_name -> google.protobuf.Duration
-	0,  // 38: vela.v1.StageCommandResult.decision:type_name -> vela.v1.StageWorkerCommandDecision
-	2,  // 39: vela.v1.StageCommandResult.operation:type_name -> vela.v1.StageWorkerOperation
-	27, // 40: vela.v1.StageCommandResult.renewed_authority:type_name -> vela.v1.StageAuthority
-	27, // 41: vela.v1.StopStage.authority:type_name -> vela.v1.StageAuthority
-	1,  // 42: vela.v1.StopStage.reason:type_name -> vela.v1.StageWorkerStopReason
-	26, // 43: vela.v1.StopStage.issued_at:type_name -> google.protobuf.Timestamp
-	26, // 44: vela.v1.MaterializationAuthority.issued_at:type_name -> google.protobuf.Timestamp
-	26, // 45: vela.v1.MaterializationAuthority.expires_at:type_name -> google.protobuf.Timestamp
-	3,  // 46: vela.v1.StageWorkerControlService.Connect:input_type -> vela.v1.StageWorkerControlServiceConnectRequest
-	4,  // 47: vela.v1.StageWorkerControlService.Connect:output_type -> vela.v1.StageWorkerControlServiceConnectResponse
-	47, // [47:48] is the sub-list for method output_type
-	46, // [46:47] is the sub-list for method input_type
-	46, // [46:46] is the sub-list for extension type_name
-	46, // [46:46] is the sub-list for extension extendee
-	0,  // [0:46] is the sub-list for field type_name
+	26, // 21: vela.v1.ReportStageCapacityObservationRequest.expires_at:type_name -> google.protobuf.Timestamp
+	27, // 22: vela.v1.StartStageRequest.authority:type_name -> vela.v1.StageAuthority
+	26, // 23: vela.v1.StartStageRequest.started_at:type_name -> google.protobuf.Timestamp
+	27, // 24: vela.v1.HeartbeatStageRequest.authority:type_name -> vela.v1.StageAuthority
+	28, // 25: vela.v1.HeartbeatStageRequest.runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
+	26, // 26: vela.v1.HeartbeatStageRequest.observed_at:type_name -> google.protobuf.Timestamp
+	27, // 27: vela.v1.SealStageOutputRequest.authority:type_name -> vela.v1.StageAuthority
+	29, // 28: vela.v1.SealStageOutputRequest.local_receipt:type_name -> vela.v1.LocalMaterializationReceipt
+	21, // 29: vela.v1.CommitStageMaterializationRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
+	26, // 30: vela.v1.CommitStageMaterializationRequest.committed_at:type_name -> google.protobuf.Timestamp
+	21, // 31: vela.v1.ReportMaterializationSourceLostRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
+	26, // 32: vela.v1.ReportMaterializationSourceLostRequest.lost_at:type_name -> google.protobuf.Timestamp
+	26, // 33: vela.v1.ReportMaterializationSourceLostRequest.retry_at:type_name -> google.protobuf.Timestamp
+	27, // 34: vela.v1.FailStageRequest.authority:type_name -> vela.v1.StageAuthority
+	26, // 35: vela.v1.FailStageRequest.failed_at:type_name -> google.protobuf.Timestamp
+	26, // 36: vela.v1.FailStageRequest.retry_at:type_name -> google.protobuf.Timestamp
+	27, // 37: vela.v1.ReattachStageRequest.authority:type_name -> vela.v1.StageAuthority
+	28, // 38: vela.v1.ReattachStageRequest.observed_runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
+	27, // 39: vela.v1.StageAssignment.authority:type_name -> vela.v1.StageAuthority
+	30, // 40: vela.v1.StageAssignment.execution_spec:type_name -> vela.v1.StageExecutionSpec
+	31, // 41: vela.v1.StageAssignment.member_start_timeout:type_name -> google.protobuf.Duration
+	17, // 42: vela.v1.StageAssignment.input_transfer_tickets:type_name -> vela.v1.StageInputTransferTicket
+	31, // 43: vela.v1.NoStageWork.retry_after:type_name -> google.protobuf.Duration
+	0,  // 44: vela.v1.StageCommandResult.decision:type_name -> vela.v1.StageWorkerCommandDecision
+	2,  // 45: vela.v1.StageCommandResult.operation:type_name -> vela.v1.StageWorkerOperation
+	27, // 46: vela.v1.StageCommandResult.renewed_authority:type_name -> vela.v1.StageAuthority
+	27, // 47: vela.v1.StopStage.authority:type_name -> vela.v1.StageAuthority
+	1,  // 48: vela.v1.StopStage.reason:type_name -> vela.v1.StageWorkerStopReason
+	26, // 49: vela.v1.StopStage.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 50: vela.v1.MaterializationAuthority.issued_at:type_name -> google.protobuf.Timestamp
+	26, // 51: vela.v1.MaterializationAuthority.expires_at:type_name -> google.protobuf.Timestamp
+	3,  // 52: vela.v1.StageWorkerControlService.Connect:input_type -> vela.v1.StageWorkerControlServiceConnectRequest
+	4,  // 53: vela.v1.StageWorkerControlService.Connect:output_type -> vela.v1.StageWorkerControlServiceConnectResponse
+	53, // [53:54] is the sub-list for method output_type
+	52, // [52:53] is the sub-list for method input_type
+	52, // [52:52] is the sub-list for extension type_name
+	52, // [52:52] is the sub-list for extension extendee
+	0,  // [0:52] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_stage_worker_control_proto_init() }

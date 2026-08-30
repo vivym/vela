@@ -35,6 +35,7 @@ type fileMaterializationRecordV1 struct {
 	LocalReceipt             []byte `json:"local_receipt"`
 	MaterializationAuthority []byte `json:"materialization_authority,omitempty"`
 	ObjectVersion            string `json:"object_version,omitempty"`
+	CommittedAt              string `json:"committed_at,omitempty"`
 	SourceLossFingerprint    []byte `json:"source_loss_fingerprint,omitempty"`
 	SourceLossResourceUnits  int64  `json:"source_loss_resource_units,omitempty"`
 	SourceLostAt             string `json:"source_lost_at,omitempty"`
@@ -265,6 +266,9 @@ func encodeFileMaterializationRecord(record PendingMaterialization) ([]byte, err
 		SchemaVersion: 1, ID: record.ID, StageAuthority: stage, LocalReceipt: receipt,
 		MaterializationAuthority: authority, ObjectVersion: record.ObjectVersion,
 	}
+	if !record.CommittedAt.IsZero() {
+		diskRecord.CommittedAt = record.CommittedAt.UTC().Format(time.RFC3339Nano)
+	}
 	if record.SourceLoss != nil {
 		diskRecord.SourceLossFingerprint = append(
 			[]byte(nil), record.SourceLoss.FailureFingerprint[:]...,
@@ -304,6 +308,13 @@ func decodeFileMaterializationRecord(document []byte) (PendingMaterialization, e
 	record := PendingMaterialization{
 		ID: decoded.ID, StageAuthority: &velav1.StageAuthority{},
 		LocalReceipt: &velav1.LocalMaterializationReceipt{}, ObjectVersion: decoded.ObjectVersion,
+	}
+	if decoded.CommittedAt != "" {
+		committedAt, err := time.Parse(time.RFC3339Nano, decoded.CommittedAt)
+		if err != nil {
+			return PendingMaterialization{}, err
+		}
+		record.CommittedAt = committedAt.UTC()
 	}
 	if err := proto.Unmarshal(decoded.StageAuthority, record.StageAuthority); err != nil {
 		return PendingMaterialization{}, err

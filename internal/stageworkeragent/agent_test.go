@@ -34,7 +34,8 @@ func TestMultiMemberStartBarrierStartsOnlyAfterEveryMemberPrepares(t *testing.T)
 	if err != nil {
 		t.Fatalf("PrepareAndStart: %v", err)
 	}
-	if result.PreparedMembers != 2 || result.StartedMembers != 2 || !result.BarrierPassed {
+	if result.PreparedMembers != 2 || result.StartedMembers != 2 || !result.BarrierPassed ||
+		result.StartedAt.IsZero() {
 		t.Fatalf("barrier result = %#v", result)
 	}
 	for index, client := range fixture.clients {

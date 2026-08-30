@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -15,6 +16,7 @@ import (
 func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 	fixture := newSingleMemberMaterializationFixture(t)
 	manifestDigest := sha256.Sum256(fixture.manifest)
+	committedAt := time.Date(2026, 8, 30, 8, 45, 0, 123, time.UTC)
 	record := stageworkeragent.PendingMaterialization{
 		ID:             "92000000-0000-0000-0000-000000000001",
 		StageAuthority: fixture.authority,
@@ -25,6 +27,9 @@ func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 			SealedAt:           timestamppb.Now(),
 			OutputManifestJson: fixture.manifest,
 		},
+		MaterializationAuthority: &velav1.MaterializationAuthority{SchemaVersion: 1},
+		ObjectVersion:            "l2-version-before-restart",
+		CommittedAt:              committedAt,
 	}
 	root := t.TempDir()
 	journal, err := stageworkeragent.NewFileMaterializationJournal(root, 1)
@@ -45,7 +50,10 @@ func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 	records, err := restarted.List(context.Background())
 	if err != nil || len(records) != 1 || records[0].ID != record.ID ||
 		!proto.Equal(records[0].StageAuthority, record.StageAuthority) ||
-		!proto.Equal(records[0].LocalReceipt, record.LocalReceipt) {
+		!proto.Equal(records[0].LocalReceipt, record.LocalReceipt) ||
+		!proto.Equal(records[0].MaterializationAuthority, record.MaterializationAuthority) ||
+		records[0].ObjectVersion != record.ObjectVersion ||
+		!records[0].CommittedAt.Equal(committedAt) {
 		t.Fatalf("restarted List = %#v error=%v", records, err)
 	}
 	if err := restarted.EnsureCapacity(context.Background()); !errors.Is(err, stageworkeragent.ErrMaterializationJournalFull) {

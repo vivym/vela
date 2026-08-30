@@ -41,13 +41,47 @@ func TestStreamAgentStartsControlAuthorityOnlyAfterRuntimeBarrier(t *testing.T) 
 	}
 	result, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment)
 	if err != nil || !result.BarrierPassed || !result.ControlStartAccepted ||
-		control.lastRequest.GetStartStage() == nil {
+		control.lastRequest.GetStartStage() == nil ||
+		!control.lastRequest.GetStartStage().GetStartedAt().AsTime().Equal(result.StartedAt) {
 		t.Fatalf("ExecuteAssignment = %#v error=%v request=%#v", result, err, control.lastRequest)
 	}
 	second, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment)
 	if !errors.Is(err, stageworkeragent.ErrStageWorkerBusy) || second.PreparedMembers != 0 ||
 		control.calls != 1 {
 		t.Fatalf("busy ExecuteAssignment = %#v error=%v control_calls=%d", second, err, control.calls)
+	}
+}
+
+func TestStreamAgentAdoptsRenewedAuthorityAfterControlStart(t *testing.T) {
+	fixture := newBarrierFixture(t, false)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{
+			{ID: fixture.memberIDs[0], Client: fixture.clients[0]},
+			{ID: fixture.memberIDs[1], Client: fixture.clients[1]},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	renewed := renewBarrierAuthority(t, fixture.authority)
+	control := &recordingStreamControl{
+		decision:         velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
+		renewedAuthority: renewed,
+	}
+	streamAgent, err := stageworkeragent.NewStreamAgent(runtimeAgent, control)
+	if err != nil {
+		t.Fatalf("NewStreamAgent: %v", err)
+	}
+	if _, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatalf("ExecuteAssignment: %v", err)
+	}
+	if _, err := streamAgent.Heartbeat(context.Background(), 1); err != nil {
+		t.Fatalf("Heartbeat with renewed authority: %v", err)
+	}
+	heartbeat := control.lastRequest.GetHeartbeatStage()
+	if heartbeat == nil || heartbeat.GetAuthority().GetStageVersion() != renewed.GetStageVersion() ||
+		heartbeat.GetObservedAt() == nil || heartbeat.GetObservedAt().CheckValid() != nil {
+		t.Fatalf("Heartbeat request = %#v, want renewed StageAuthority", heartbeat)
 	}
 }
 
@@ -371,6 +405,12 @@ func TestStreamAgentRetriesCommitFromExactPublishedVersionAfterReconnect(t *test
 			control.sealCalls, control.commitCalls,
 		)
 	}
+	if len(control.commitRequests) != 2 ||
+		!proto.Equal(control.commitRequests[0], control.commitRequests[1]) ||
+		control.commitRequests[0].GetCommittedAt() == nil ||
+		control.commitRequests[0].GetCommittedAt().CheckValid() != nil {
+		t.Fatalf("commit retry requests = %#v, want identical durable event", control.commitRequests)
+	}
 }
 
 func TestStreamAgentReportsLocalSourceLossWithMaterializationAuthority(t *testing.T) {
@@ -522,11 +562,12 @@ func TestStreamAgentReplaysIdenticalSourceLossEvidenceAfterControlReconnect(t *t
 }
 
 type recordingStreamControl struct {
-	decision    velav1.StageWorkerCommandDecision
-	lastRequest *velav1.StageWorkerControlServiceConnectRequest
-	calls       int
-	err         error
-	commands    <-chan *velav1.StageWorkerControlServiceConnectResponse
+	decision         velav1.StageWorkerCommandDecision
+	renewedAuthority *velav1.StageAuthority
+	lastRequest      *velav1.StageWorkerControlServiceConnectRequest
+	calls            int
+	err              error
+	commands         <-chan *velav1.StageWorkerControlServiceConnectResponse
 }
 
 type singleMemberMaterializationFixture struct {
@@ -694,6 +735,7 @@ type materializingStreamControl struct {
 	sealCalls          int
 	commitCalls        int
 	commitFailures     int
+	commitRequests     []*velav1.CommitStageMaterializationRequest
 	sourceLossCalls    int
 	sourceLossFailures int
 	sourceLossReports  []*velav1.ReportMaterializationSourceLostRequest
@@ -771,6 +813,10 @@ func (control *materializingStreamControl) Exchange(
 		}, nil
 	case *velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization:
 		control.commitCalls++
+		control.commitRequests = append(
+			control.commitRequests,
+			proto.Clone(operation.CommitStageMaterialization).(*velav1.CommitStageMaterializationRequest),
+		)
 		if control.commitFailures > 0 {
 			control.commitFailures--
 			return nil, errors.New("injected CommitStageMaterialization outage")
@@ -872,7 +918,35 @@ func (control *recordingStreamControl) Exchange(
 		Result: &velav1.StageWorkerControlServiceConnectResponse_StageCommandResult{
 			StageCommandResult: &velav1.StageCommandResult{
 				Decision: control.decision, Operation: operation,
+				RenewedAuthority: control.renewedAuthority,
 			},
 		},
 	}, nil
+}
+
+func renewBarrierAuthority(
+	t *testing.T,
+	authority *velav1.StageAuthority,
+) *velav1.StageAuthority {
+	t.Helper()
+	signer, err := stageauthority.NewSigner(map[string][]byte{
+		"barrier-key": bytes.Repeat([]byte{0x6b}, 32),
+	})
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	renewed := proto.Clone(authority).(*velav1.StageAuthority)
+	renewed.StageVersion++
+	issuedAt := time.Now().UTC()
+	if !issuedAt.After(authority.GetIssuedAt().AsTime()) {
+		issuedAt = authority.GetIssuedAt().AsTime().UTC().Add(time.Nanosecond)
+	}
+	renewed.IssuedAt = timestamppb.New(issuedAt)
+	renewed.ExpiresAt = timestamppb.New(authority.GetExpiresAt().AsTime().UTC().Add(time.Minute))
+	renewed.Signature = nil
+	renewed, err = signer.Sign(renewed)
+	if err != nil {
+		t.Fatalf("sign renewed StageAuthority: %v", err)
+	}
+	return renewed
 }

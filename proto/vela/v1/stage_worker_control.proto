@@ -87,16 +87,21 @@ message ReportStageCapacityObservationRequest {
   int64 observation_sequence = 3;
   map<string, int64> capacity_vector = 4;
   google.protobuf.Timestamp observed_at = 5;
+  google.protobuf.Timestamp expires_at = 6;
 }
 
 message AcquireStageRequest {
   string worker_instance_id = 1;
   int64 worker_instance_epoch = 2;
   int64 capacity_observation_sequence = 3;
+  string model_residency_id = 4;
+  int64 model_runtime_epoch = 5;
+  string stage_profile_revision_id = 6;
 }
 
 message StartStageRequest {
   StageAuthority authority = 1;
+  google.protobuf.Timestamp started_at = 2;
 }
 
 message HeartbeatStageRequest {
@@ -106,6 +111,7 @@ message HeartbeatStageRequest {
   bytes bounded_status_json = 4;
   string local_receipt_id = 5;
   bytes local_receipt_digest = 6;
+  google.protobuf.Timestamp observed_at = 7;
 }
 
 message SealStageOutputRequest {
@@ -116,6 +122,7 @@ message SealStageOutputRequest {
 message CommitStageMaterializationRequest {
   MaterializationAuthority materialization_authority = 1;
   string object_version = 2;
+  google.protobuf.Timestamp committed_at = 3;
 }
 
 message ReportMaterializationSourceLostRequest {
@@ -132,6 +139,9 @@ message FailStageRequest {
   bytes failure_fingerprint = 3;
   string detail = 4;
   bool worker_reusable = 5;
+  int64 consumed_resource_units = 6;
+  google.protobuf.Timestamp failed_at = 7;
+  google.protobuf.Timestamp retry_at = 8;
 }
 
 message ReattachStageRequest {

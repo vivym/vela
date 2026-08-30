@@ -59,6 +59,7 @@ type PendingMaterialization struct {
 	LocalReceipt             *velav1.LocalMaterializationReceipt
 	MaterializationAuthority *velav1.MaterializationAuthority
 	ObjectVersion            string
+	CommittedAt              time.Time
 	SourceLoss               *MaterializationSourceLossEvidence
 }
 
@@ -303,11 +304,18 @@ func (agent *StreamAgent) advancePendingMaterialization(
 	} else {
 		result.L2Published = true
 	}
+	if record.CommittedAt.IsZero() {
+		record.CommittedAt = time.Now().UTC()
+		if err := agent.materialization.journal.Put(ctx, record); err != nil {
+			return result, fmt.Errorf("persist StageArtifact commit time: %w", err)
+		}
+	}
 	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization{
 			CommitStageMaterialization: &velav1.CommitStageMaterializationRequest{
 				MaterializationAuthority: record.MaterializationAuthority,
 				ObjectVersion:            record.ObjectVersion,
+				CommittedAt:              timestamppb.New(record.CommittedAt),
 			},
 		},
 	})
@@ -468,6 +476,9 @@ func validatePendingMaterialization(record PendingMaterialization) error {
 	}
 	if record.ObjectVersion != "" && record.MaterializationAuthority == nil {
 		return errors.New("published StageArtifact version lacks MaterializationAuthority")
+	}
+	if !record.CommittedAt.IsZero() && record.ObjectVersion == "" {
+		return errors.New("StageArtifact commit time lacks published object version")
 	}
 	if record.SourceLoss != nil {
 		if record.MaterializationAuthority == nil {

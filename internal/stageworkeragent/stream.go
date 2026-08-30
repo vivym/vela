@@ -11,6 +11,7 @@ import (
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var ErrStageWorkerBusy = errors.New("Stage Worker already has active compute authority")
@@ -125,7 +126,10 @@ func (agent *StreamAgent) ExecuteAssignment(
 	}
 	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_StartStage{
-			StartStage: &velav1.StartStageRequest{Authority: assignment.GetAuthority()},
+			StartStage: &velav1.StartStageRequest{
+				Authority: assignment.GetAuthority(),
+				StartedAt: timestamppb.New(barrier.StartedAt),
+			},
 		},
 	})
 	if err != nil {
@@ -153,8 +157,21 @@ func (agent *StreamAgent) ExecuteAssignment(
 		result.CancellationAcknowledgedMembers = acknowledged
 		return result, cancelErr
 	}
+	activeAuthority := assignment.GetAuthority()
+	if renewed := command.GetRenewedAuthority(); renewed != nil {
+		if _, err := agent.runtime.Status(ctx, renewed); err != nil {
+			acknowledged, cancelErr := agent.cancelAfterControlStartFailure(
+				ctx,
+				assignment.GetAuthority(),
+				fmt.Errorf("validate renewed StageAuthority with resident runtime: %w", err),
+			)
+			result.CancellationAcknowledgedMembers = acknowledged
+			return result, cancelErr
+		}
+		activeAuthority = renewed
+	}
 	result.ControlStartAccepted = true
-	agent.setActive(assignment.GetAuthority())
+	agent.setActive(activeAuthority)
 	return result, nil
 }
 
@@ -185,6 +202,7 @@ func (agent *StreamAgent) Heartbeat(
 				Authority: authority, Sequence: sequence,
 				RuntimeState:      aggregateRuntimeState(statusResult),
 				BoundedStatusJson: statusJSON,
+				ObservedAt:        timestamppb.Now(),
 			},
 		},
 	})
