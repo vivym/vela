@@ -290,6 +290,8 @@ func verifyStageWorkerControlPrivileges(
 		failureLabel:    "StageWorkerControl authority snapshot",
 		functions: []string{
 			"vela_read_stage_authority_snapshot(uuid,bigint)",
+			"vela_start_stage_worker_command(jsonb)",
+			"vela_heartbeat_stage_worker_command(jsonb)",
 		},
 	})
 }
