@@ -2,7 +2,7 @@
 
 Date: 2026-08-29
 
-Status: In progress. S49.1-S49.4 are implemented; S49.5-S49.12 are pending.
+Status: In progress. S49.1-S49.5 are implemented; S49.6-S49.12 are pending.
 
 ## Delivery rule
 

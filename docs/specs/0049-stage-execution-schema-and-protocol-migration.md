@@ -2,12 +2,13 @@
 
 Date: 2026-08-29
 
-Status: Implementation in progress. S49.1-S49.4 implement the immutable Catalog,
+Status: Implementation in progress. S49.1-S49.5 implement the immutable Catalog,
 WorkerInstance and residency inventory, parent Attempt and StageRun authority,
-and deterministic StageScheduler with durable claim and shadow-replay evidence.
-Stage Worker protocols, Artifact transfer, split H3 runtimes, cache, CPU media,
-usage/cost, capacity planning, and legacy contraction remain pending. Repository
-evidence does not advance a Production Gate.
+deterministic StageScheduler with durable claim and shadow-replay evidence, and
+the signed Stage Worker/local ModelRuntime protocol boundary. Artifact transfer,
+production split H3 runtime Adapters, cache, CPU media, usage/cost, capacity
+planning, and legacy contraction remain pending. Repository evidence does not
+advance a Production Gate.
 
 ## Purpose
 
@@ -300,11 +301,11 @@ Control -> Worker
 ```
 
 `StageAuthority` contains Job, Attempt, StageRun, StageAttempt, attempt/stage
-fences, WorkerInstance/model/device/member epochs, StageProfile, execution
-nonce, token, issuance, absolute PostgreSQL expiry, and relative monotonic
-validity. `StageAssignment` contains exact input Artifact identities plus
-destination-bound TransferTickets; it never contains general object-store
-credentials.
+fences, WorkerInstance/device/member epochs, each member's ModelRuntime epoch,
+StageProfile, exact execution-spec digest, nonce, token, issuance, absolute
+PostgreSQL expiry, and relative monotonic validity. `StageAssignment` contains
+exact input Artifact identities plus destination-bound TransferTickets; it never
+contains general object-store credentials.
 
 Multi-member Workers register independent member identities and readiness
 evidence. One StageAssignment is accepted only after the WorkerInstance

@@ -10,21 +10,21 @@ tests alone do not satisfy a gate.
 
 ## Accepted Target Design, Implementation In Progress
 
-The H3 stage-disaggregated architecture is accepted as the replacement target,
-and S49.1 now implements the immutable Stage Execution Catalog schema, pure
-ExecutionGraph validator, activation transaction, generated sqlc models, and
-migration/immutability evidence. The current committed Worker Assignment,
+The H3 stage-disaggregated architecture is accepted as the replacement target.
+S49.1-S49.5 implement the immutable Stage Execution Catalog and graph validator,
+per-DeviceSet WorkerInstance/residency inventory, parent Attempt/StageRun
+authority, deterministic StageScheduler, and the signed Stage Worker/local
+ModelRuntime protocol boundary. The current committed legacy Worker Assignment,
 Attempt Lease, H3 Worker Agent, Runner, and Fleet slices below remain evidence
-for the machine-level baseline and must not be read as evidence for StageRun,
-StageLease, StageArtifact cache, per-GPU WorkerInstance, or cross-node H3
-execution.
+for the machine-level baseline and must not be read as production evidence for
+StageArtifact transfer/cache, split H3 execution, or cross-node placement.
 
 | Design package | Status | Evidence |
 | --- | --- | --- |
-| H3 Stage Execution Architecture | Accepted target; S49.1 Catalog foundation implemented | `docs/h3-stage-execution-architecture.md` |
-| ADR 0030-0034 | Accepted decisions; Catalog foundation only | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Expansion in progress; S49.1 Catalog subset implemented | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
-| Implementation slices | S49.1 implemented; S49.2-S49.12 pending | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| H3 Stage Execution Architecture | Accepted target; S49.1-S49.5 implemented | `docs/h3-stage-execution-architecture.md` |
+| ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
+| Schema and protocol migration | Expansion in progress; S49.1-S49.5 implemented | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Implementation slices | S49.1-S49.5 implemented; S49.6-S49.12 pending | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Proposed; not implemented or calibrated | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
 Until cutover and contraction complete, `db/migrations/00002_worker_assignment.sql`,
