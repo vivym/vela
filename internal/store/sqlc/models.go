@@ -2791,6 +2791,58 @@ func (ns NullRemediationOperationState) Value() (driver.Value, error) {
 	return string(ns.RemediationOperationState), nil
 }
 
+type ResourceUsageClass string
+
+const (
+	ResourceUsageClassEXECUTION             ResourceUsageClass = "EXECUTION"
+	ResourceUsageClassRESIDENCY             ResourceUsageClass = "RESIDENCY"
+	ResourceUsageClassLOADWARMUP            ResourceUsageClass = "LOAD_WARMUP"
+	ResourceUsageClassRETRY                 ResourceUsageClass = "RETRY"
+	ResourceUsageClassCANCELLATION          ResourceUsageClass = "CANCELLATION"
+	ResourceUsageClassTRANSFER              ResourceUsageClass = "TRANSFER"
+	ResourceUsageClassSTORAGE               ResourceUsageClass = "STORAGE"
+	ResourceUsageClassFINALIZATION          ResourceUsageClass = "FINALIZATION"
+	ResourceUsageClassDRAIN                 ResourceUsageClass = "DRAIN"
+	ResourceUsageClassFAILEDRECONFIGURATION ResourceUsageClass = "FAILED_RECONFIGURATION"
+	ResourceUsageClassMINIMUMWARMCAPACITY   ResourceUsageClass = "MINIMUM_WARM_CAPACITY"
+	ResourceUsageClassCACHEAVOIDEDCOMPUTE   ResourceUsageClass = "CACHE_AVOIDED_COMPUTE"
+)
+
+func (e *ResourceUsageClass) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ResourceUsageClass(s)
+	case string:
+		*e = ResourceUsageClass(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ResourceUsageClass: %T", src)
+	}
+	return nil
+}
+
+type NullResourceUsageClass struct {
+	ResourceUsageClass ResourceUsageClass `json:"resource_usage_class"`
+	Valid              bool               `json:"valid"` // Valid is true if ResourceUsageClass is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullResourceUsageClass) Scan(value interface{}) error {
+	if value == nil {
+		ns.ResourceUsageClass, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ResourceUsageClass.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullResourceUsageClass) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ResourceUsageClass), nil
+}
+
 type RetryDisposition string
 
 const (
@@ -3874,6 +3926,142 @@ func (ns NullStageWorkerAcquireResultKind) Value() (driver.Value, error) {
 	return string(ns.StageWorkerAcquireResultKind), nil
 }
 
+type UsageAttribution string
+
+const (
+	UsageAttributionDIRECT         UsageAttribution = "DIRECT"
+	UsageAttributionSHARED         UsageAttribution = "SHARED"
+	UsageAttributionCOUNTERFACTUAL UsageAttribution = "COUNTERFACTUAL"
+)
+
+func (e *UsageAttribution) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UsageAttribution(s)
+	case string:
+		*e = UsageAttribution(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UsageAttribution: %T", src)
+	}
+	return nil
+}
+
+type NullUsageAttribution struct {
+	UsageAttribution UsageAttribution `json:"usage_attribution"`
+	Valid            bool             `json:"valid"` // Valid is true if UsageAttribution is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUsageAttribution) Scan(value interface{}) error {
+	if value == nil {
+		ns.UsageAttribution, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UsageAttribution.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUsageAttribution) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UsageAttribution), nil
+}
+
+type UsageResourceKind string
+
+const (
+	UsageResourceKindGPUNANOSECOND   UsageResourceKind = "GPU_NANOSECOND"
+	UsageResourceKindCPUNANOSECOND   UsageResourceKind = "CPU_NANOSECOND"
+	UsageResourceKindBYTENANOSECOND  UsageResourceKind = "BYTE_NANOSECOND"
+	UsageResourceKindBYTE            UsageResourceKind = "BYTE"
+	UsageResourceKindOBJECTOPERATION UsageResourceKind = "OBJECT_OPERATION"
+)
+
+func (e *UsageResourceKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UsageResourceKind(s)
+	case string:
+		*e = UsageResourceKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UsageResourceKind: %T", src)
+	}
+	return nil
+}
+
+type NullUsageResourceKind struct {
+	UsageResourceKind UsageResourceKind `json:"usage_resource_kind"`
+	Valid             bool              `json:"valid"` // Valid is true if UsageResourceKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUsageResourceKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.UsageResourceKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UsageResourceKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUsageResourceKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UsageResourceKind), nil
+}
+
+type UsageSourceKind string
+
+const (
+	UsageSourceKindSTAGEATTEMPT       UsageSourceKind = "STAGE_ATTEMPT"
+	UsageSourceKindSTAGECACHE         UsageSourceKind = "STAGE_CACHE"
+	UsageSourceKindTRANSFERTICKET     UsageSourceKind = "TRANSFER_TICKET"
+	UsageSourceKindSTORAGERESERVATION UsageSourceKind = "STORAGE_RESERVATION"
+	UsageSourceKindFINALIZATIONCLAIM  UsageSourceKind = "FINALIZATION_CLAIM"
+	UsageSourceKindCAPACITYPOOL       UsageSourceKind = "CAPACITY_POOL"
+	UsageSourceKindMODELRESIDENCY     UsageSourceKind = "MODEL_RESIDENCY"
+	UsageSourceKindRESIDENCYOPERATION UsageSourceKind = "RESIDENCY_OPERATION"
+)
+
+func (e *UsageSourceKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UsageSourceKind(s)
+	case string:
+		*e = UsageSourceKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UsageSourceKind: %T", src)
+	}
+	return nil
+}
+
+type NullUsageSourceKind struct {
+	UsageSourceKind UsageSourceKind `json:"usage_source_kind"`
+	Valid           bool            `json:"valid"` // Valid is true if UsageSourceKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUsageSourceKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.UsageSourceKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UsageSourceKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUsageSourceKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UsageSourceKind), nil
+}
+
 type WebhookDeliveryAttemptState string
 
 const (
@@ -4880,6 +5068,22 @@ type ContentDeletionTarget struct {
 	DebugDumpID               uuid.NullUUID               `db:"debug_dump_id" json:"debug_dump_id"`
 	StorageTier               ContentStorageTier          `db:"storage_tier" json:"storage_tier"`
 	PurgedVersionCount        *int32                      `db:"purged_version_count" json:"purged_version_count"`
+}
+
+type CostAllocationRecord struct {
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	UsageRecordID           uuid.UUID          `db:"usage_record_id" json:"usage_record_id"`
+	CostModelRevisionID     uuid.UUID          `db:"cost_model_revision_id" json:"cost_model_revision_id"`
+	SupersedesAllocationID  uuid.NullUUID      `db:"supersedes_allocation_id" json:"supersedes_allocation_id"`
+	Attribution             UsageAttribution   `db:"attribution" json:"attribution"`
+	UsageClass              ResourceUsageClass `db:"usage_class" json:"usage_class"`
+	ResourceKind            UsageResourceKind  `db:"resource_kind" json:"resource_kind"`
+	Quantity                int64              `db:"quantity" json:"quantity"`
+	RateNumeratorMicroUnits int64              `db:"rate_numerator_micro_units" json:"rate_numerator_micro_units"`
+	RateDenominatorUnits    int64              `db:"rate_denominator_units" json:"rate_denominator_units"`
+	CostMicroUnits          int64              `db:"cost_micro_units" json:"cost_micro_units"`
+	ValuedAt                pgtype.Timestamptz `db:"valued_at" json:"valued_at"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type CostModelRevision struct {
@@ -6095,6 +6299,28 @@ type ResidencyProposal struct {
 	ReasonCodes      []string           `db:"reason_codes" json:"reason_codes"`
 	ProposedAt       pgtype.Timestamptz `db:"proposed_at" json:"proposed_at"`
 	ProposedBy       string             `db:"proposed_by" json:"proposed_by"`
+}
+
+type ResourceUsageRecord struct {
+	ID                uuid.UUID          `db:"id" json:"id"`
+	SchemaVersion     int32              `db:"schema_version" json:"schema_version"`
+	SourceKind        UsageSourceKind    `db:"source_kind" json:"source_kind"`
+	SourceAuthorityID uuid.UUID          `db:"source_authority_id" json:"source_authority_id"`
+	ReceiptDigest     []byte             `db:"receipt_digest" json:"receipt_digest"`
+	Attribution       UsageAttribution   `db:"attribution" json:"attribution"`
+	UsageClass        ResourceUsageClass `db:"usage_class" json:"usage_class"`
+	ResourceKind      UsageResourceKind  `db:"resource_kind" json:"resource_kind"`
+	Quantity          int64              `db:"quantity" json:"quantity"`
+	OrganizationID    uuid.NullUUID      `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.NullUUID      `db:"project_id" json:"project_id"`
+	JobID             uuid.NullUUID      `db:"job_id" json:"job_id"`
+	AttemptID         uuid.NullUUID      `db:"attempt_id" json:"attempt_id"`
+	StageAttemptID    uuid.NullUUID      `db:"stage_attempt_id" json:"stage_attempt_id"`
+	CapacityPoolID    uuid.NullUUID      `db:"capacity_pool_id" json:"capacity_pool_id"`
+	IntervalStart     pgtype.Timestamptz `db:"interval_start" json:"interval_start"`
+	IntervalEnd       pgtype.Timestamptz `db:"interval_end" json:"interval_end"`
+	RecordedAt        pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+	CreatedAt         pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type RetentionPolicyRevision struct {

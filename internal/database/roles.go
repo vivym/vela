@@ -49,6 +49,7 @@ const (
 	RoleStageScheduler             Role = "vela_stage_scheduler"
 	RoleStageArtifact              Role = "vela_stage_artifact"
 	RoleStageWorkerControl         Role = "vela_stage_worker_control"
+	RoleUsageCost                  Role = "vela_usage_cost"
 )
 
 type rowQuerier interface {
@@ -98,6 +99,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleStageScheduler:             {verifyPrivileges: verifyStageSchedulerPrivileges},
 	RoleStageArtifact:              {verifyPrivileges: verifyStageArtifactPrivileges},
 	RoleStageWorkerControl:         {verifyPrivileges: verifyStageWorkerControlPrivileges},
+	RoleUsageCost:                  {verifyPrivileges: verifyUsageCostPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -236,6 +238,13 @@ func verifyAttemptCoordinatorPrivileges(
 			"vela_instantiate_stage_graph(jsonb)",
 			"vela_apply_stage_command(jsonb)",
 			"vela_reconcile_stage_graphs(integer)",
+			"vela_set_project_stage_cache_control(jsonb)",
+			"vela_set_organization_stage_cache_authorization(jsonb)",
+			"vela_admit_stage_cache_entry(jsonb)",
+			"vela_hit_stage_cache(jsonb)",
+			"vela_release_stage_cache_execution_pin(jsonb)",
+			"vela_request_stage_cache_deletion(jsonb)",
+			"vela_reconcile_stage_cache_deletions(timestamp with time zone,integer)",
 		},
 	})
 }
@@ -300,6 +309,22 @@ func verifyStageWorkerControlPrivileges(
 			"vela_reattach_stage_worker_command(jsonb)",
 			"vela_verify_stage_worker_registration(jsonb)",
 			"vela_verify_stage_capacity_observation(jsonb)",
+		},
+	})
+}
+
+func verifyUsageCostPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Usage/Cost Ledger",
+		failureLabel:    "Usage/Cost Ledger command",
+		functions: []string{
+			"vela_record_resource_usage(jsonb)",
+			"vela_value_resource_usage(jsonb)",
+			"vela_summarize_usage_cost(uuid,timestamp with time zone,timestamp with time zone)",
 		},
 	})
 }

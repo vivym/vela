@@ -179,6 +179,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_stage_worker_control_login",
 		"vela-stage-worker-control-password",
 	)
+	usageCostPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_usage_cost_login",
+		"vela-usage-cost-password",
+	)
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	for _, login := range []string{
 		"vela_internal_login",
@@ -197,6 +203,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_stage_scheduler_login",
 		"vela_stage_artifact_login",
 		"vela_stage_worker_control_login",
+		"vela_usage_cost_login",
 		"vela_identity_request_login",
 		"vela_human_membership_request_login",
 		"vela_organization_billing_request_login",
@@ -224,6 +231,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_fleet_owner",
 			"vela_attempt_coordinator_owner",
 			"vela_stage_scheduler_owner",
+			"vela_usage_cost_owner",
 			"vela_quorum_guard_owner",
 		} {
 			var inheritsOwner bool
@@ -329,6 +337,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			name: "StageWorkerControl", pool: stageWorkerControlPool,
 			role: veladb.RoleStageWorkerControl,
 		},
+		{name: "Usage/Cost Ledger", pool: usageCostPool, role: veladb.RoleUsageCost},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -369,6 +378,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_stage_scheduler", bypassRLS: false},
 		{name: "vela_stage_artifact", bypassRLS: false},
 		{name: "vela_stage_worker_control", bypassRLS: false},
+		{name: "vela_usage_cost", bypassRLS: false},
+		{name: "vela_usage_cost_owner", bypassRLS: true},
 		{name: "vela_stage_scheduler_owner", bypassRLS: true},
 		{name: "vela_quorum_guard_owner", bypassRLS: false},
 	} {
