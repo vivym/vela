@@ -55,6 +55,13 @@ type splitH3GraphOutcome struct {
 	finalArtifact stageartifact.Artifact
 }
 
+type runningH3DiT struct {
+	attemptID       uuid.UUID
+	encoderArtifact stageartifact.Artifact
+	stageRunID      uuid.UUID
+	assignment      attemptcoordinator.AssignStageCommand
+}
+
 func TestSplitH3StageGraphProducesExactOutputOnSameAndCrossNodePlacements(t *testing.T) {
 	placements := map[string][]string{
 		"same-node":  {"h3-node-01", "h3-node-01", "h3-node-01"},
@@ -159,6 +166,144 @@ func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testi
 	}
 	if vaeAttempts != 1 {
 		t.Fatalf("VAE StageAttempt count after Finalizer recovery = %d, want 1", vaeAttempts)
+	}
+}
+
+func TestOneOfSevenSameNodeDiTFailuresDoesNotFenceUnrelatedWorkers(t *testing.T) {
+	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
+	if _, err := database.Admin.Exec(`
+		UPDATE projects SET running_limit = 7 WHERE id = $1
+	`, testProjectID); err != nil {
+		t.Fatalf("set seven-DiT Project concurrency: %v", err)
+	}
+	seedWorkerRegistryPlan(t, database.Admin)
+	registry, err := fleet.NewService(newRolePool(
+		t, database.DSN, "vela_internal_login", "vela-internal-password",
+	))
+	if err != nil {
+		t.Fatalf("construct seven-DiT Worker Registry: %v", err)
+	}
+	stageArtifacts, err := stageartifact.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_stage_artifact_login", "vela-stage-artifact-password",
+	))
+	if err != nil {
+		t.Fatalf("construct seven-DiT StageArtifact repository: %v", err)
+	}
+	objectStore := artifactstore.NewLocal()
+	encoderStage := h3IntegrationStage{
+		key: "encoder", stage: h3stage.StageEncoder,
+		profileStableID: h3stage.EncoderSingleGPUProfile,
+		profileID:       encoderStageProfileID,
+		workerProfileID: encoderWorkerProfileID,
+		component:       "h3-encoder-v1", outputPort: "conditioning",
+		outputInterface: "49000000-0000-0000-0000-000000000011",
+		nodeIdentity:    "h3-node-01",
+	}
+	ditStage := h3IntegrationStage{
+		key: "dit", stage: h3stage.StageDiT,
+		profileStableID: h3stage.DiTSingleGPUProfile,
+		profileID:       ditStageProfileID,
+		workerProfileID: ditWorkerProfileID,
+		component:       "h3-dit-v1", outputPort: "latent",
+		outputInterface: "49000000-0000-0000-0000-000000000012",
+		nodeIdentity:    "h3-node-01",
+	}
+	running := make([]runningH3DiT, 0, 7)
+	for index := 0; index < 7; index++ {
+		job, attemptID := instantiateH3IntegrationGraph(
+			t, database, coordinator, serverURL, fmt.Sprintf("seven-dit-%d", index),
+		)
+		var encoderRunID, ditRunID uuid.UUID
+		if err := database.Admin.QueryRow(`
+			SELECT
+				(SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'encoder'),
+				(SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'dit')
+		`, attemptID).Scan(&encoderRunID, &ditRunID); err != nil {
+			t.Fatalf("read graph %d Encoder/DiT StageRuns: %v", index, err)
+		}
+		encoderAssignment := assignH3IntegrationStage(
+			t, database, coordinator, registry, attemptID, encoderRunID, 1,
+			encoderStage, byte(0x80+index),
+		)
+		encoderAuthority := signedAssignedStageAuthority(t, database, job, encoderAssignment, 2)
+		_ = startH3IntegrationStage(t, database, encoderAssignment, encoderAuthority)
+		payload := []byte(fmt.Sprintf("committed conditioning for DiT worker %d", index))
+		manifest := []byte(fmt.Sprintf(`{"kind":"conditioning","worker":%d}`, index))
+		encoderArtifact := materializeH3IntegrationStage(
+			t, stageArtifacts, objectStore, attemptID, encoderRunID,
+			encoderAssignment, encoderStage, payload, manifest,
+		)
+
+		ditAssignment := assignH3IntegrationStage(
+			t, database, coordinator, registry, attemptID, ditRunID, 2,
+			ditStage, byte(0x90+index),
+		)
+		ditAuthority := signedAssignedStageAuthority(t, database, job, ditAssignment, 3)
+		_ = startH3IntegrationStage(t, database, ditAssignment, ditAuthority)
+		running = append(running, runningH3DiT{
+			attemptID: attemptID, encoderArtifact: encoderArtifact,
+			stageRunID: ditRunID, assignment: ditAssignment,
+		})
+	}
+
+	failing := running[0]
+	failedAt := failing.assignment.IssuedAt.Add(10 * time.Millisecond)
+	decision, err := coordinator.Apply(context.Background(), attemptcoordinator.FailStageCommand{
+		CommandID: uuid.New(), AttemptID: failing.attemptID,
+		StageRunID: failing.stageRunID, StageAttemptID: failing.assignment.StageAttemptID,
+		StageLeaseID:         failing.assignment.StageLeaseID,
+		ExpectedAttemptFence: 1, ExpectedStageFence: 1, ExpectedStageVersion: 4,
+		FailureClass: "TRANSIENT_BACKEND", FailureFingerprint: bytesOf(0xde, 32),
+		ConsumedResourceUnits: 1, FailedAt: failedAt, RetryAt: failedAt.Add(time.Millisecond),
+	})
+	if err != nil {
+		t.Fatalf("fail one of seven DiT StageAttempts: %v", err)
+	}
+	if decision.State != "RETRY_WAIT" || decision.StageFence != 2 ||
+		decision.StageVersion != 5 {
+		t.Fatalf("failed DiT decision = %#v", decision)
+	}
+	var failedArtifactState string
+	if err := database.Admin.QueryRow(`
+		SELECT state::text FROM stage_artifacts WHERE id = $1
+	`, failing.encoderArtifact.ID).Scan(&failedArtifactState); err != nil {
+		t.Fatalf("read failed Job Encoder Artifact: %v", err)
+	}
+	if failedArtifactState != "COMMITTED" {
+		t.Fatalf("failed Job Encoder Artifact state = %s, want COMMITTED", failedArtifactState)
+	}
+
+	seenWorkers := map[uuid.UUID]struct{}{failing.assignment.WorkerInstanceID: {}}
+	for index, active := range running[1:] {
+		if _, duplicate := seenWorkers[active.assignment.WorkerInstanceID]; duplicate {
+			t.Fatalf("DiT WorkerInstance %s was shared", active.assignment.WorkerInstanceID)
+		}
+		seenWorkers[active.assignment.WorkerInstanceID] = struct{}{}
+		var runState, leaseState, reachability string
+		var runFence, runVersion, workerEpoch int64
+		if err := database.Admin.QueryRow(`
+			SELECT run.state::text, run.fence, run.version,
+			       lease.state::text, worker.instance_epoch, worker.reachability_state::text
+			FROM stage_runs AS run
+			JOIN stage_leases AS lease ON lease.id = $2
+			JOIN worker_instances AS worker ON worker.id = $3
+			WHERE run.id = $1
+		`, active.stageRunID, active.assignment.StageLeaseID,
+			active.assignment.WorkerInstanceID).Scan(
+			&runState, &runFence, &runVersion, &leaseState, &workerEpoch, &reachability,
+		); err != nil {
+			t.Fatalf("read unrelated DiT worker %d: %v", index+1, err)
+		}
+		if runState != "RUNNING" || runFence != 1 || runVersion != 4 ||
+			leaseState != "ACTIVE" || workerEpoch != 1 || reachability != "CONNECTED" {
+			t.Fatalf(
+				"unrelated DiT worker %d run=%s fence=%d version=%d lease=%s epoch=%d reachability=%s",
+				index+1, runState, runFence, runVersion, leaseState, workerEpoch, reachability,
+			)
+		}
+	}
+	if len(seenWorkers) != 7 {
+		t.Fatalf("independent DiT WorkerInstance count = %d, want 7", len(seenWorkers))
 	}
 }
 
@@ -482,6 +627,17 @@ func newH3IntegrationGraphFixture(
 	idempotencyKey string,
 ) (testDatabase, *attemptcoordinator.Service, jobResponse, uuid.UUID) {
 	t.Helper()
+	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
+	job, attemptID := instantiateH3IntegrationGraph(
+		t, database, coordinator, serverURL, idempotencyKey,
+	)
+	return database, coordinator, job, attemptID
+}
+
+func newH3IntegrationEnvironment(
+	t *testing.T,
+) (testDatabase, *attemptcoordinator.Service, string) {
+	t.Helper()
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
@@ -491,7 +647,25 @@ func newH3IntegrationGraphFixture(
 	seedVAEIntegrationProfile(t, database)
 	activateH3StageGraph(t, database)
 	server := admissionServerForDatabase(t, database)
-	accepted := submitJob(t, server.URL, idempotencyKey, []byte(`{
+	coordinator, err := attemptcoordinator.NewService(newRolePool(
+		t, database.DSN,
+		"vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
+	))
+	if err != nil {
+		t.Fatalf("construct split H3 AttemptCoordinator: %v", err)
+	}
+	return database, coordinator, server.URL
+}
+
+func instantiateH3IntegrationGraph(
+	t *testing.T,
+	database testDatabase,
+	coordinator *attemptcoordinator.Service,
+	serverURL string,
+	idempotencyKey string,
+) (jobResponse, uuid.UUID) {
+	t.Helper()
+	accepted := submitJob(t, serverURL, idempotencyKey, []byte(`{
 		"model":"minimax-h3",
 		"generation_preset":"balanced",
 		"service_class":"standard",
@@ -506,13 +680,6 @@ func newH3IntegrationGraphFixture(
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode split H3 Job: %v", err)
 	}
-	coordinator, err := attemptcoordinator.NewService(newRolePool(
-		t, database.DSN,
-		"vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
-	))
-	if err != nil {
-		t.Fatalf("construct split H3 AttemptCoordinator: %v", err)
-	}
 	attemptID := uuid.New()
 	if _, err := coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
 		CommandID: uuid.New(), JobID: uuid.MustParse(job.JobID),
@@ -523,7 +690,7 @@ func newH3IntegrationGraphFixture(
 	}); err != nil {
 		t.Fatalf("instantiate split H3 graph: %v", err)
 	}
-	return database, coordinator, job, attemptID
+	return job, attemptID
 }
 
 func seedVAEIntegrationProfile(t *testing.T, database testDatabase) {
