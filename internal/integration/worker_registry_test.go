@@ -46,7 +46,7 @@ func TestWorkerRegistryRejectsSharedGPUAcrossWorkerInstances(t *testing.T) {
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	seedWorkerRegistryPlan(t, database.Admin)
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 
 	firstWorkerID := uuid.MustParse("49200000-0000-0000-0000-000000000010")
 	secondWorkerID := uuid.MustParse("49200000-0000-0000-0000-000000000011")
@@ -107,7 +107,7 @@ func TestWorkerRegistryRefreshesExistingWorkerInstanceEvidence(t *testing.T) {
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	seedWorkerRegistryPlan(t, database.Admin)
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	service, err := fleet.NewService(fleetPool)
 	if err != nil {
 		t.Fatalf("construct Worker Registry service: %v", err)
@@ -191,7 +191,7 @@ func TestNodeAgentWorkerInstanceReporterPersistsThroughMutualTLS(t *testing.T) {
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	seedWorkerRegistryPlan(t, database.Admin)
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	service, err := fleet.NewService(fleetPool)
 	if err != nil {
 		t.Fatalf("construct Worker Registry service: %v", err)
@@ -357,7 +357,7 @@ func TestWorkerRegistryReconnectPreservesRuntimeAndFenceInvalidatesAuthority(t *
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	seedWorkerRegistryPlan(t, database.Admin)
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000020")
 	seedWorkerInstance(t, database.Admin, workerID, workerRegistryProfileID, 1, 1)
 	if _, err := fleetPool.Exec(
@@ -449,7 +449,7 @@ func TestWorkerRegistryReleaseRequiresApprovalAndBreakEvenEvidence(t *testing.T)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	seedWorkerRegistryPlan(t, database.Admin)
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	schedulerPool := newRolePool(
 		t, database.DSN, "vela_scheduler_login", "vela-scheduler-password",
 	)
@@ -544,7 +544,7 @@ func TestWorkerRegistryAuthorizesPodMutationOnlyAfterExactResidencyRelease(t *te
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
-	pool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	pool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	service, err := fleet.NewService(pool)
 	if err != nil {
 		t.Fatalf("construct WorkerRegistryAndFleet service: %v", err)
@@ -708,7 +708,7 @@ func TestWorkerRegistryAuthorizesFencedOldEpochPodCleanup(t *testing.T) {
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
-	pool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	pool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	service, err := fleet.NewService(pool)
 	if err != nil {
 		t.Fatalf("construct WorkerRegistryAndFleet service: %v", err)
@@ -783,7 +783,7 @@ func TestWorkerRegistryRequiresCompleteMultiMemberIdentity(t *testing.T) {
 	seedStageExecutionCatalog(t, database.Admin)
 	seedWorkerRegistryPlan(t, database.Admin)
 	seedMultiMemberProfile(t, database.Admin)
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000103")
 	if _, err := database.Admin.Exec(`
 		INSERT INTO worker_instances (
@@ -846,7 +846,7 @@ func TestWorkerRegistryProposalIsAdvisoryUntilApprovedPlan(t *testing.T) {
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	schedulerPool := newRolePool(
 		t, database.DSN, "vela_scheduler_login", "vela-scheduler-password",
 	)
@@ -934,7 +934,7 @@ func TestWorkerRegistryAndFleetGoInterfaceOwnsCommandSequence(t *testing.T) {
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
-	pool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	pool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	service, err := fleet.NewService(pool)
 	if err != nil {
 		t.Fatalf("construct WorkerRegistryAndFleet service: %v", err)
@@ -998,16 +998,16 @@ func TestWorkerRegistryAuthorityFailsClosedWithoutFreshCapacityObservation(t *te
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	seedWorkerRegistryPlan(t, database.Admin)
-	pool := newRolePool(t, database.DSN, "vela_scheduler_login", "vela-scheduler-password")
+	pool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	service, err := fleet.NewService(pool)
 	if err != nil {
-		t.Fatalf("construct Scheduler authority reader: %v", err)
+		t.Fatalf("construct Worker Registry authority reader: %v", err)
 	}
 	var registry fleet.WorkerRegistryAndFleet = service
 	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000220")
 	seedWorkerInstance(t, database.Admin, workerID, workerRegistryProfileID, 1, 1)
 	evidence := workerRegistryEvidenceValue(t, workerID, 0xe0)
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	if _, err := fleetPool.Exec(
 		context.Background(),
 		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
@@ -1072,7 +1072,7 @@ func TestWorkerRegistryMigrationRollbackRequiresEmptyAuthority(t *testing.T) {
 		database := newPostgres(t)
 		applyFoundation(t, database.Admin)
 		migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
-		fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+		fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 		proposal := map[string]any{
 			"schema_version":     1,
 			"id":                 "49200000-0000-0000-0000-000000000222",

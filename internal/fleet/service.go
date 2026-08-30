@@ -264,14 +264,25 @@ type RetirementCompletionRequest struct {
 }
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	registryPool *pgxpool.Pool
 }
 
-func NewService(pool *pgxpool.Pool) (*Service, error) {
+func NewService(pool *pgxpool.Pool, registryPools ...*pgxpool.Pool) (*Service, error) {
 	if pool == nil {
 		return nil, errors.New("fleet database pool is required")
 	}
-	return &Service{pool: pool}, nil
+	registryPool := pool
+	if len(registryPools) > 1 {
+		return nil, errors.New("at most one Worker Registry database pool is allowed")
+	}
+	if len(registryPools) == 1 {
+		if registryPools[0] == nil {
+			return nil, errors.New("Worker Registry database pool is required")
+		}
+		registryPool = registryPools[0]
+	}
+	return &Service{pool: pool, registryPool: registryPool}, nil
 }
 
 func (service *Service) ResolveWorkerIdentity(
@@ -570,7 +581,10 @@ func (service *Service) AuthorizeMutation(
 	}
 	var result MutationAuthorizationResult
 	if request.WorkerInstanceID != uuid.Nil {
-		err := service.pool.QueryRow(ctx, `
+		if service.registryPool == nil {
+			return MutationAuthorizationResult{}, errors.New("Worker Registry service is not configured")
+		}
+		err := service.registryPool.QueryRow(ctx, `
 			SELECT request_uid, replayed, authorized
 			FROM vela_authorize_worker_instance_pod_mutation(
 				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12

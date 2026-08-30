@@ -219,7 +219,7 @@ func (service *Service) Propose(
 	ctx context.Context,
 	inputs ResidencyPlanInputs,
 ) (ResidencyProposal, error) {
-	if service == nil || service.pool == nil {
+	if service == nil || service.registryPool == nil {
 		return ResidencyProposal{}, errors.New("fleet service is not configured")
 	}
 	if err := validateResidencyPlanInputs(inputs); err != nil {
@@ -243,7 +243,7 @@ func (service *Service) Propose(
 		return ResidencyProposal{}, &Failure{Code: FailureInvalid, Message: "encode ResidencyProposal: " + err.Error()}
 	}
 	var proposal ResidencyProposal
-	if err := service.pool.QueryRow(ctx, `
+	if err := service.registryPool.QueryRow(ctx, `
 		SELECT proposal_id FROM vela_record_residency_proposal($1::jsonb)
 	`, payload).Scan(&proposal.ID); err != nil {
 		return ResidencyProposal{}, mapDatabaseError("record ResidencyProposal", err)
@@ -255,7 +255,7 @@ func (service *Service) Apply(
 	ctx context.Context,
 	plan ApprovedResidencyPlan,
 ) (ActuationPlan, error) {
-	if service == nil || service.pool == nil {
+	if service == nil || service.registryPool == nil {
 		return ActuationPlan{}, errors.New("fleet service is not configured")
 	}
 	if err := validateApprovedResidencyPlan(plan); err != nil {
@@ -266,7 +266,7 @@ func (service *Service) Apply(
 		return ActuationPlan{}, &Failure{Code: FailureInvalid, Message: "encode ResidencyPlan: " + err.Error()}
 	}
 	var result ActuationPlan
-	if err := service.pool.QueryRow(ctx, `
+	if err := service.registryPool.QueryRow(ctx, `
 		SELECT plan_revision_id, worker_instance_count
 		FROM vela_apply_residency_plan($1::jsonb)
 	`, payload).Scan(&result.PlanRevisionID, &result.WorkerInstanceCount); err != nil {
@@ -279,7 +279,7 @@ func (service *Service) Observe(
 	ctx context.Context,
 	evidence WorkerInstanceEvidence,
 ) (WorkerInstanceDecision, error) {
-	if service == nil || service.pool == nil {
+	if service == nil || service.registryPool == nil {
 		return WorkerInstanceDecision{}, errors.New("fleet service is not configured")
 	}
 	if err := validateWorkerInstanceEvidence(evidence); err != nil {
@@ -290,7 +290,7 @@ func (service *Service) Observe(
 		return WorkerInstanceDecision{}, &Failure{Code: FailureInvalid, Message: "encode WorkerInstance evidence: " + err.Error()}
 	}
 	var decision WorkerInstanceDecision
-	if err := service.pool.QueryRow(ctx, `
+	if err := service.registryPool.QueryRow(ctx, `
 		SELECT worker_instance_id, instance_epoch, control_session_epoch,
 			model_runtime_epoch, readiness
 		FROM vela_observe_worker_instance($1::jsonb)
@@ -310,7 +310,7 @@ func (service *Service) AuthorityMatches(
 	ctx context.Context,
 	authority WorkerInstanceAuthority,
 ) (bool, error) {
-	if service == nil || service.pool == nil {
+	if service == nil || service.registryPool == nil {
 		return false, errors.New("fleet service is not configured")
 	}
 	if authority.WorkerInstanceID == uuid.Nil || authority.InstanceEpoch <= 0 ||
@@ -321,7 +321,7 @@ func (service *Service) AuthorityMatches(
 		}
 	}
 	var matches bool
-	if err := service.pool.QueryRow(ctx, `
+	if err := service.registryPool.QueryRow(ctx, `
 		SELECT vela_worker_instance_authority_matches($1, $2, $3, $4, $5, $6)
 	`, authority.WorkerInstanceID, authority.InstanceEpoch,
 		authority.DeviceSetDigest, authority.MembershipDigest,
@@ -335,7 +335,7 @@ func (service *Service) Drain(
 	ctx context.Context,
 	request WorkerInstanceDrainRequest,
 ) (WorkerInstanceTransition, error) {
-	if service == nil || service.pool == nil {
+	if service == nil || service.registryPool == nil {
 		return WorkerInstanceTransition{}, errors.New("fleet service is not configured")
 	}
 	if request.WorkerInstanceID == uuid.Nil || request.ExpectedInstanceEpoch <= 0 ||
@@ -345,7 +345,7 @@ func (service *Service) Drain(
 		}
 	}
 	result := WorkerInstanceTransition{WorkerInstanceID: request.WorkerInstanceID}
-	if err := service.pool.QueryRow(ctx, `
+	if err := service.registryPool.QueryRow(ctx, `
 		SELECT instance_epoch, lifecycle_state
 		FROM vela_begin_worker_instance_drain($1, $2, $3, $4)
 	`, request.WorkerInstanceID, request.ExpectedInstanceEpoch,
@@ -362,7 +362,7 @@ func (service *Service) Fence(
 	ctx context.Context,
 	request WorkerInstanceFenceRequest,
 ) (WorkerInstanceTransition, error) {
-	if service == nil || service.pool == nil {
+	if service == nil || service.registryPool == nil {
 		return WorkerInstanceTransition{}, errors.New("fleet service is not configured")
 	}
 	if request.WorkerInstanceID == uuid.Nil || request.ExpectedInstanceEpoch <= 0 ||
@@ -372,7 +372,7 @@ func (service *Service) Fence(
 		}
 	}
 	result := WorkerInstanceTransition{WorkerInstanceID: request.WorkerInstanceID}
-	if err := service.pool.QueryRow(ctx, `
+	if err := service.registryPool.QueryRow(ctx, `
 		SELECT instance_epoch, lifecycle_state
 		FROM vela_fence_worker_instance($1, $2, $3, $4)
 	`, request.WorkerInstanceID, request.ExpectedInstanceEpoch,

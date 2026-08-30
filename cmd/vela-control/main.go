@@ -844,7 +844,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	fleetService, err := fleet.NewService(fleetPool)
+	fleetService, err := fleet.NewService(fleetPool, internalPool)
 	if err != nil {
 		return fmt.Errorf("configure Fleet service: %w", err)
 	}

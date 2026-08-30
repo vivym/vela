@@ -214,7 +214,7 @@ func TestAttemptCoordinatorPhysicalStageLifecycleIsIdempotent(t *testing.T) {
 	}
 	evidence := workerRegistryEvidenceValue(t, workerID, 0x31)
 	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	registry, err := fleet.NewService(fleetPool)
 	if err != nil {
 		t.Fatalf("construct Worker Registry: %v", err)
@@ -655,7 +655,7 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentity(t 
 	}
 	ditEvidence := workerRegistryEvidenceValue(t, ditWorkerID, 0x41)
 	ditEvidence.Residencies[0].ModelComponentRevision = "h3-dit-v1"
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	registry, err := fleet.NewService(fleetPool)
 	if err != nil {
 		t.Fatalf("construct Worker Registry for DiT retry: %v", err)
@@ -1779,7 +1779,7 @@ func assignEncoder(
 	}
 	evidence := workerRegistryEvidenceValue(t, workerID, 0xb0)
 	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
-	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	registry, err := fleet.NewService(fleetPool)
 	if err != nil {
 		t.Fatalf("construct physical cancellation Worker Registry: %v", err)

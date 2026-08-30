@@ -1867,30 +1867,30 @@ REVOKE ALL ON FUNCTION
 
 GRANT SELECT ON worker_profile_revisions, stage_profile_revisions,
     stage_definition_revisions TO vela_fleet_owner;
-GRANT EXECUTE ON FUNCTION vela_observe_worker_instance(jsonb) TO vela_fleet;
-GRANT EXECUTE ON FUNCTION vela_record_residency_proposal(jsonb) TO vela_fleet;
-GRANT EXECUTE ON FUNCTION vela_apply_residency_plan(jsonb) TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_observe_worker_instance(jsonb) TO vela_internal;
+GRANT EXECUTE ON FUNCTION vela_record_residency_proposal(jsonb) TO vela_internal;
+GRANT EXECUTE ON FUNCTION vela_apply_residency_plan(jsonb) TO vela_internal;
 GRANT EXECUTE ON FUNCTION vela_worker_instance_authority_matches(
     uuid, bigint, bytea, bytea, uuid, bigint
-) TO vela_fleet, vela_scheduler;
+) TO vela_internal;
 GRANT EXECUTE ON FUNCTION vela_reconnect_worker_instance(
     uuid, bigint, bigint, text, timestamptz, text
-) TO vela_fleet;
+) TO vela_internal;
 GRANT EXECUTE ON FUNCTION vela_fence_worker_instance(uuid, bigint, text, text)
-    TO vela_fleet;
+    TO vela_internal;
 GRANT EXECUTE ON FUNCTION vela_begin_worker_instance_drain(uuid, bigint, text, text)
-    TO vela_fleet;
+    TO vela_internal;
 GRANT EXECUTE ON FUNCTION vela_approve_model_residency_release(
     uuid, uuid, bigint, model_residency_release_reason, text, text,
     bigint, bigint, bytea
-) TO vela_fleet;
+) TO vela_internal;
 GRANT EXECUTE ON FUNCTION vela_complete_model_residency_release(
     uuid, bigint, bytea, text
-) TO vela_fleet;
+) TO vela_internal;
 GRANT EXECUTE ON FUNCTION vela_authorize_worker_instance_pod_mutation(
     text, text, fleet_mutation_operation, text, text, text,
     uuid, bigint, uuid, uuid, uuid, bytea
-) TO vela_fleet;
+) TO vela_internal;
 GRANT SELECT ON capacity_pools, residency_proposals, residency_plan_revisions,
     worker_bundles, compute_nodes, devices,
     device_sets, device_set_members, worker_instances, worker_instance_epochs, worker_members,
@@ -1929,30 +1929,30 @@ $$;
 
 REVOKE SELECT ON worker_profile_revisions, stage_profile_revisions,
     stage_definition_revisions FROM vela_fleet_owner;
-REVOKE EXECUTE ON FUNCTION vela_observe_worker_instance(jsonb) FROM vela_fleet;
-REVOKE EXECUTE ON FUNCTION vela_record_residency_proposal(jsonb) FROM vela_fleet;
-REVOKE EXECUTE ON FUNCTION vela_apply_residency_plan(jsonb) FROM vela_fleet;
+REVOKE EXECUTE ON FUNCTION vela_observe_worker_instance(jsonb) FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_record_residency_proposal(jsonb) FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_apply_residency_plan(jsonb) FROM vela_internal;
 REVOKE EXECUTE ON FUNCTION vela_worker_instance_authority_matches(
     uuid, bigint, bytea, bytea, uuid, bigint
-) FROM vela_fleet, vela_scheduler;
+) FROM vela_internal;
 REVOKE EXECUTE ON FUNCTION vela_reconnect_worker_instance(
     uuid, bigint, bigint, text, timestamptz, text
-) FROM vela_fleet;
+) FROM vela_internal;
 REVOKE EXECUTE ON FUNCTION vela_fence_worker_instance(uuid, bigint, text, text)
-    FROM vela_fleet;
+    FROM vela_internal;
 REVOKE EXECUTE ON FUNCTION vela_begin_worker_instance_drain(uuid, bigint, text, text)
-    FROM vela_fleet;
+    FROM vela_internal;
 REVOKE EXECUTE ON FUNCTION vela_approve_model_residency_release(
     uuid, uuid, bigint, model_residency_release_reason, text, text,
     bigint, bigint, bytea
-) FROM vela_fleet;
+) FROM vela_internal;
 REVOKE EXECUTE ON FUNCTION vela_complete_model_residency_release(
     uuid, bigint, bytea, text
-) FROM vela_fleet;
+) FROM vela_internal;
 REVOKE EXECUTE ON FUNCTION vela_authorize_worker_instance_pod_mutation(
     text, text, fleet_mutation_operation, text, text, text,
     uuid, bigint, uuid, uuid, uuid, bytea
-) FROM vela_fleet;
+) FROM vela_internal;
 REVOKE SELECT ON capacity_pools, residency_proposals, residency_plan_revisions,
     worker_bundles, compute_nodes, devices,
     device_sets, device_set_members, worker_instances, worker_instance_epochs, worker_members,
