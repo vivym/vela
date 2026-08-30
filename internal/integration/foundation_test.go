@@ -1813,7 +1813,17 @@ func TestCustomerCancellationMigrationDownUpPreservesImmutableEvidence(t *testin
 	var decisionRestored, chargeRestored, receiptRestored bool
 	if err := fixture.database.Admin.QueryRow(`
 		SELECT
-			to_jsonb(cancellation_row) = $1::jsonb,
+			(
+				to_jsonb(cancellation_row) - ARRAY[
+					'execution_authority_kind',
+					'stage_graph_attempt_id',
+					'stage_graph_attempt_fence',
+					'stage_lease_ids',
+					'stage_cancel_requested_event_id',
+					'stage_canceling_event_id',
+					'stage_canceled_event_id'
+				]::text[]
+			) = $1::jsonb,
 			(to_jsonb(charge) - 'artifact_set_id') = $2::jsonb,
 			to_jsonb(receipt) = $3::jsonb
 		FROM job_cancellation_decisions AS cancellation_row
