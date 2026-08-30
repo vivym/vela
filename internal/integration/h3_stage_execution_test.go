@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -47,6 +48,9 @@ type h3IntegrationStage struct {
 	outputPort      string
 	outputInterface string
 	nodeIdentity    string
+	resourceClass   string
+	capacityVector  map[string]int64
+	contentType     string
 }
 
 type splitH3GraphOutcome struct {
@@ -136,6 +140,36 @@ func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testi
 	}
 	if claimOutputs != 1 {
 		t.Fatalf("Stage graph finalization claim output count = %d, want 1", claimOutputs)
+	}
+	incomplete, err := service.CompleteStageGraphVisibleCompletion(
+		context.Background(), firstFinalizer, first.Credentials,
+		workercontrol.StageGraphVisibleCompletionCandidate{
+			CompletionID: uuid.New(), ExpectedJobVersion: first.JobVersion,
+		},
+	)
+	if err != nil {
+		t.Fatalf("reject incomplete Stage graph Visible Completion: %v", err)
+	}
+	if incomplete.Decision != workercontrol.VisibleCompletionIncompleteArtifact {
+		t.Fatalf("incomplete Stage graph Visible Completion = %#v", incomplete)
+	}
+	var workerID *uuid.UUID
+	var leases, artifactSets, charges int
+	if err := outcome.database.Admin.QueryRow(`
+		SELECT attempt.worker_id,
+		       (SELECT count(*) FROM attempt_leases WHERE attempt_id = attempt.id),
+		       (SELECT count(*) FROM artifact_sets WHERE attempt_id = attempt.id),
+		       (SELECT count(*) FROM charges WHERE job_id = attempt.job_id)
+		FROM attempts AS attempt
+		WHERE attempt.id = $1
+	`, outcome.attemptID).Scan(&workerID, &leases, &artifactSets, &charges); err != nil {
+		t.Fatalf("inspect incomplete Stage graph Finalizer state: %v", err)
+	}
+	if workerID != nil || leases != 0 || artifactSets != 0 || charges != 0 {
+		t.Fatalf(
+			"incomplete Stage graph Finalizer worker=%v leases=%d sets=%d charges=%d",
+			workerID, leases, artifactSets, charges,
+		)
 	}
 
 	replayed, err := service.ClaimNextStageGraphFinalization(
@@ -342,7 +376,7 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("migrate Stage graph finalization back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 45 {
+		if err != nil || version != 46 {
 			t.Fatalf("Stage graph finalization version after Up = %d error=%v", version, err)
 		}
 	})
@@ -459,10 +493,14 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 			stage, byte(0xc0+index),
 		)
 		if inputArtifact != nil {
+			connectorID := uuid.MustParse("49000000-0000-0000-0000-000000000050")
+			if index == 2 {
+				connectorID = uuid.MustParse("49000000-0000-0000-0000-000000000051")
+			}
 			pullH3IntegrationInput(
 				t, database, stageArtifacts, objectStore, transferSigner,
 				transferIssuer, stageRunID, assignment, inputArtifact,
-				inputPayload, index,
+				inputPayload, connectorID,
 			)
 		}
 		spec := &velav1.StageExecutionSpec{
@@ -572,12 +610,21 @@ func assignH3IntegrationStage(
 	t.Helper()
 	poolID := uuid.New()
 	workerID := uuid.New()
+	resourceClass := stage.resourceClass
+	if resourceClass == "" {
+		resourceClass = "GPU"
+	}
+	capacityVector := stage.capacityVector
+	if capacityVector == nil {
+		capacityVector = map[string]int64{"concurrency": 1}
+	}
 	if _, err := database.Admin.Exec(`
 		INSERT INTO capacity_pools (
 			id, stable_id, stage_profile_revision_id, resource_class,
 			security_class, region, max_ready_queue_depth, state
-		) VALUES ($1, $2, $3, 'GPU', 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE')
-	`, poolID, "h3-integration-"+stage.key+"-"+workerID.String(), stage.profileID); err != nil {
+		) VALUES ($1, $2, $3, $4, 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE')
+	`, poolID, "h3-integration-"+stage.key+"-"+workerID.String(), stage.profileID,
+		resourceClass); err != nil {
 		t.Fatalf("seed %s CapacityPool: %v", stage.key, err)
 	}
 	if _, err := database.Admin.Exec(`
@@ -595,12 +642,19 @@ func assignH3IntegrationStage(
 	evidence.DeviceSet.Devices[0].ID = deviceID
 	evidence.DeviceSet.Devices[0].ComputeNodeID = nodeID
 	evidence.DeviceSet.Devices[0].NodeIdentity = stage.nodeIdentity
-	evidence.DeviceSet.Devices[0].GPUUUID = "GPU-" + workerID.String()
-	evidence.DeviceSet.Devices[0].PCIBDF = fmt.Sprintf("0000:%02x:00.0", identityByte)
+	if resourceClass == "CPU" {
+		evidence.DeviceSet.Devices[0].Kind = "CPU"
+		evidence.DeviceSet.Devices[0].GPUUUID = ""
+		evidence.DeviceSet.Devices[0].PCIBDF = ""
+	} else {
+		evidence.DeviceSet.Devices[0].GPUUUID = "GPU-" + workerID.String()
+		evidence.DeviceSet.Devices[0].PCIBDF = fmt.Sprintf("0000:%02x:00.0", identityByte)
+	}
 	evidence.Members[0].ComputeNodeID = nodeID
 	evidence.Members[0].DeviceIDs = []uuid.UUID{deviceID}
 	evidence.Residencies[0].ModelComponentRevision = stage.component
 	evidence.Residencies[0].RuntimeIdentity = stage.key + "@sha256:h3-integration"
+	evidence.Capacity.Vector = maps.Clone(capacityVector)
 	evidence.ObservedBy = "node-agent/" + stage.nodeIdentity
 	spiffeID := "spiffe://vela/worker/" + workerID.String()
 	spiffeDigest := sha256.Sum256([]byte(spiffeID))
@@ -621,7 +675,7 @@ func assignH3IntegrationStage(
 		ObservationSequence: evidence.Capacity.Sequence,
 		DeviceSetDigest:     authority.DeviceSetDigest, MembershipDigest: authority.MembershipDigest,
 		ModelResidencyID: authority.ModelResidencyID, ModelRuntimeEpoch: authority.ModelRuntimeEpoch,
-		CapacityVector: map[string]int64{"concurrency": 1}, TokenDigest: leaseTokenDigest[:],
+		CapacityVector: maps.Clone(capacityVector), TokenDigest: leaseTokenDigest[:],
 		SigningKeyID: "stage-authority-key-v1", ExecutionNonce: bytesOf(identityByte, 32),
 		IssuedAt: issuedAt, ExpiresAt: issuedAt.Add(5 * time.Minute),
 		LocalDeadlineAt: issuedAt.Add(4 * time.Minute),
@@ -831,9 +885,11 @@ func materializeH3IntegrationStage(
 	artifactID := uuid.New()
 	leaseID := uuid.New()
 	now := assignment.IssuedAt.Add(20 * time.Millisecond)
-	objectKey := fmt.Sprintf(
-		"artifacts/stage/%s/%s/%s.bin", attemptID, stage.key, artifactID,
-	)
+	contentType := stage.contentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	objectKey := fmt.Sprintf("artifacts/stage/%s/%s/%s.bin", attemptID, stage.key, artifactID)
 	lease, err := repository.Seal(context.Background(), stageartifact.SealCommand{
 		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: stageRunID,
 		StageAttemptID: assignment.StageAttemptID, StageAllocationID: assignment.StageAllocationID,
@@ -843,7 +899,7 @@ func materializeH3IntegrationStage(
 		LocalReceiptDigest: manifestDigest, ManifestSHA256: manifestDigest, SHA256: digest,
 		LineageDigest: lineageDigest, TokenDigest: tokenDigest, SizeBytes: int64(len(payload)),
 		ArtifactID: artifactID, MaterializationLeaseID: leaseID, ObjectKey: objectKey,
-		ContentType: "application/octet-stream", SealedAt: now,
+		ContentType: contentType, SealedAt: now,
 		LeaseExpiresAt: now.Add(30 * time.Minute),
 	})
 	if err != nil {
@@ -879,7 +935,7 @@ func pullH3IntegrationInput(
 	assignment attemptcoordinator.AssignStageCommand,
 	input *velav1.StageInputArtifact,
 	wantPayload []byte,
-	edgeIndex int,
+	connectorID uuid.UUID,
 ) {
 	t.Helper()
 	artifactID, err := uuid.Parse(input.GetStageArtifactId())
@@ -895,10 +951,6 @@ func pullH3IntegrationInput(
 		  AND state = 'ACTIVE'
 	`, artifactID, destinationStageRunID).Scan(&pinID); err != nil {
 		t.Fatalf("read downstream StageArtifact pin: %v", err)
-	}
-	connectorID := uuid.MustParse("49000000-0000-0000-0000-000000000050")
-	if edgeIndex == 2 {
-		connectorID = uuid.MustParse("49000000-0000-0000-0000-000000000051")
 	}
 	destination := stageartifact.TransferDestination{
 		WorkerInstanceID:    assignment.WorkerInstanceID,

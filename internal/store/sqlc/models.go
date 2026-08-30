@@ -4393,6 +4393,7 @@ type Artifact struct {
 	ExpiresAt               pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	SourceStageArtifactID   uuid.NullUUID      `db:"source_stage_artifact_id" json:"source_stage_artifact_id"`
 }
 
 type ArtifactAccessGrant struct {
@@ -7010,19 +7011,20 @@ type VelaRequestJobRuntime struct {
 }
 
 type VisibleCompletion struct {
-	ID               uuid.UUID          `db:"id" json:"id"`
-	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID        uuid.UUID          `db:"project_id" json:"project_id"`
-	JobID            uuid.UUID          `db:"job_id" json:"job_id"`
-	AttemptID        uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence     int64              `db:"attempt_fence" json:"attempt_fence"`
-	AuthorityLeaseID uuid.UUID          `db:"authority_lease_id" json:"authority_lease_id"`
-	ArtifactSetID    uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
-	ChargeID         uuid.UUID          `db:"charge_id" json:"charge_id"`
-	CandidateSha256  []byte             `db:"candidate_sha256" json:"candidate_sha256"`
-	JobVersion       int64              `db:"job_version" json:"job_version"`
-	CompletedAt      pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
-	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ID                                     uuid.UUID          `db:"id" json:"id"`
+	OrganizationID                         uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                              uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                                  uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID                              uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence                           int64              `db:"attempt_fence" json:"attempt_fence"`
+	AuthorityLeaseID                       uuid.NullUUID      `db:"authority_lease_id" json:"authority_lease_id"`
+	ArtifactSetID                          uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	ChargeID                               uuid.UUID          `db:"charge_id" json:"charge_id"`
+	CandidateSha256                        []byte             `db:"candidate_sha256" json:"candidate_sha256"`
+	JobVersion                             int64              `db:"job_version" json:"job_version"`
+	CompletedAt                            pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	CreatedAt                              pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	AuthorityStageGraphFinalizationClaimID uuid.NullUUID      `db:"authority_stage_graph_finalization_claim_id" json:"authority_stage_graph_finalization_claim_id"`
 }
 
 type WebhookDelivery struct {

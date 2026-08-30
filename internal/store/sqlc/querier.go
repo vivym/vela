@@ -20,6 +20,8 @@ type Querier interface {
 	ClaimOutboxEvents(ctx context.Context, arg ClaimOutboxEventsParams) ([]ClaimOutboxEventsRow, error)
 	ClaimSchedulerDispatch(ctx context.Context, arg ClaimSchedulerDispatchParams) (ClaimSchedulerDispatchRow, error)
 	CompleteCancelingJob(ctx context.Context, arg CompleteCancelingJobParams) (int64, error)
+	CompleteStageGraphAttemptForVisibleCompletion(ctx context.Context, arg CompleteStageGraphAttemptForVisibleCompletionParams) (bool, error)
+	CompleteStageGraphFinalizationClaim(ctx context.Context, arg CompleteStageGraphFinalizationClaimParams) (int64, error)
 	ConfirmDebugDumpAuthorizationForAssignment(ctx context.Context, arg ConfirmDebugDumpAuthorizationForAssignmentParams) (bool, error)
 	ConfirmDebugDumpUploadAuthorization(ctx context.Context, arg ConfirmDebugDumpUploadAuthorizationParams) (bool, error)
 	ConsumeVisibleCompletionCreditReservation(ctx context.Context, arg ConsumeVisibleCompletionCreditReservationParams) (int64, error)
@@ -79,6 +81,7 @@ type Querier interface {
 	InsertStageGraphFinalizationClaim(ctx context.Context, arg InsertStageGraphFinalizationClaimParams) error
 	InsertStageGraphFinalizationClaimOutput(ctx context.Context, arg InsertStageGraphFinalizationClaimOutputParams) error
 	InsertStartOutboxEvent(ctx context.Context, arg InsertStartOutboxEventParams) error
+	InsertVerifiedStageGraphArtifact(ctx context.Context, arg InsertVerifiedStageGraphArtifactParams) error
 	InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error
 	InsertVisibleCompletionCharge(ctx context.Context, arg InsertVisibleCompletionChargeParams) error
 	InsertVisibleCompletionOutboxEvent(ctx context.Context, arg InsertVisibleCompletionOutboxEventParams) error
@@ -121,6 +124,7 @@ type Querier interface {
 	LockProjectForAdmission(ctx context.Context, arg LockProjectForAdmissionParams) (LockProjectForAdmissionRow, error)
 	LockProjectForAssignment(ctx context.Context, arg LockProjectForAssignmentParams) (LockProjectForAssignmentRow, error)
 	LockSchedulerDispatchForAssignment(ctx context.Context, intentID uuid.UUID) (LockSchedulerDispatchForAssignmentRow, error)
+	LockStageGraphFinalizationCompletionAuthority(ctx context.Context, arg LockStageGraphFinalizationCompletionAuthorityParams) (LockStageGraphFinalizationCompletionAuthorityRow, error)
 	LockStartAuthority(ctx context.Context, arg LockStartAuthorityParams) (LockStartAuthorityRow, error)
 	LockVisibleCompletionAuthority(ctx context.Context, arg LockVisibleCompletionAuthorityParams) (LockVisibleCompletionAuthorityRow, error)
 	LockVisibleCompletionCreditReservation(ctx context.Context, arg LockVisibleCompletionCreditReservationParams) (LockVisibleCompletionCreditReservationRow, error)

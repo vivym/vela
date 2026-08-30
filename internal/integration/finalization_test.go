@@ -2182,6 +2182,20 @@ func TestCompleteVisibleCompletionAtomicallyPublishesAndReplays(t *testing.T) {
 		first.ManifestSHA256 == [sha256.Size]byte{} || len(first.Artifacts) != len(plan.Artifacts) {
 		t.Fatalf("Visible Completion = %#v", first)
 	}
+	var authorityLeaseID, authorityStageGraphClaimID *uuid.UUID
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT authority_lease_id, authority_stage_graph_finalization_claim_id
+		FROM visible_completions
+		WHERE id = $1
+	`, first.CompletionID).Scan(&authorityLeaseID, &authorityStageGraphClaimID); err != nil {
+		t.Fatalf("read legacy Visible Completion authority: %v", err)
+	}
+	if authorityLeaseID == nil || authorityStageGraphClaimID != nil {
+		t.Fatalf(
+			"legacy Visible Completion authority = Lease %v Stage claim %v",
+			authorityLeaseID, authorityStageGraphClaimID,
+		)
+	}
 
 	var (
 		jobState, attemptState, workerState, reservationState string

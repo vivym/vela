@@ -1353,19 +1353,40 @@ func artifactInspectionRequest(
 		ExpectedSHA256:      digest,
 		ExpectedContentType: *row.ContentType,
 	}
+	return applyArtifactInspectionExpectations(request, artifactInspectionExpectations{
+		width: row.ExpectedWidth, height: row.ExpectedHeight,
+		durationMilliseconds: row.ExpectedDurationMilliseconds,
+		frameRateMilli:       row.ExpectedFrameRateMilli,
+		codec:                row.ExpectedCodec, container: row.ExpectedContainer,
+	})
+}
+
+type artifactInspectionExpectations struct {
+	width                int32
+	height               int32
+	durationMilliseconds int32
+	frameRateMilli       int32
+	codec                string
+	container            string
+}
+
+func applyArtifactInspectionExpectations(
+	request ArtifactInspectionRequest,
+	expected artifactInspectionExpectations,
+) (ArtifactInspectionRequest, error) {
 	switch request.Kind {
 	case ArtifactKindVideo:
-		frameProduct := int64(row.ExpectedDurationMilliseconds) * int64(row.ExpectedFrameRateMilli)
+		frameProduct := int64(expected.durationMilliseconds) * int64(expected.frameRateMilli)
 		if frameProduct%1_000_000 != 0 || frameProduct/1_000_000 > math.MaxInt32 {
 			return ArtifactInspectionRequest{}, errors.New("OutputSpec frame count is not integral")
 		}
-		request.ExpectedWidth = row.ExpectedWidth
-		request.ExpectedHeight = row.ExpectedHeight
-		request.ExpectedDurationMillis = row.ExpectedDurationMilliseconds
-		request.ExpectedFrameRateMilli = row.ExpectedFrameRateMilli
+		request.ExpectedWidth = expected.width
+		request.ExpectedHeight = expected.height
+		request.ExpectedDurationMillis = expected.durationMilliseconds
+		request.ExpectedFrameRateMilli = expected.frameRateMilli
 		request.ExpectedFrameCount = int32(frameProduct / 1_000_000)
-		request.ExpectedCodec = row.ExpectedCodec
-		request.ExpectedContainer = row.ExpectedContainer
+		request.ExpectedCodec = expected.codec
+		request.ExpectedContainer = expected.container
 	case ArtifactKindThumbnail:
 		request.ExpectedWidth = 320
 		request.ExpectedHeight = 180

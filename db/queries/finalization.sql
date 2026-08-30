@@ -160,6 +160,7 @@ JOIN stage_artifacts AS artifact
  AND artifact.producer_stage_run_id = output.stage_run_id
  AND artifact.stage_interface_revision_id = output.stage_interface_revision_id
  AND artifact.object_version = output.exact_object_version
+ AND artifact.state = 'COMMITTED'
 WHERE output.claim_id = sqlc.arg(claim_id)
 ORDER BY output.output_key;
 
@@ -226,6 +227,72 @@ INSERT INTO stage_graph_finalization_claims (
     sqlc.arg(signing_key_id), sqlc.arg(output_set_digest),
     sqlc.arg(issued_at), sqlc.arg(expires_at)
 );
+
+-- name: LockStageGraphFinalizationCompletionAuthority :one
+SELECT
+    claim.id AS claim_id,
+    claim.attempt_id,
+    claim.attempt_fence,
+    claim.owner_id,
+    claim.token_digest,
+    claim.signing_key_id,
+    claim.output_set_digest,
+    claim.state AS claim_state,
+    claim.issued_at,
+    claim.expires_at AS claim_expires_at,
+    attempt.job_id,
+    attempt.state AS attempt_state,
+    attempt.graph_state,
+    attempt.worker_id,
+    attempt.fence AS current_attempt_fence,
+    attempt.ended_at AS attempt_ended_at,
+    attempt.finalization_deadline_at,
+    job.organization_id,
+    job.project_id,
+    job.worker_pool_id,
+    job.state AS job_state,
+    job.version AS job_version,
+    job.current_fence,
+    job.job_expires_at,
+    job.retention_artifact_days,
+    retention_policy.stable_id AS retention_policy_revision,
+    job.pricing_quantity AS generation_count,
+    job.request_content_deleted_at,
+    reservation.id AS credit_reservation_id,
+    reservation.state AS credit_reservation_state,
+    reservation.amount_minor,
+    reservation.currency,
+    output_spec.width AS expected_width,
+    output_spec.height AS expected_height,
+    output_spec.duration_milliseconds AS expected_duration_milliseconds,
+    output_spec.frame_rate_milli AS expected_frame_rate_milli,
+    output_spec.codec AS expected_codec,
+    output_spec.container AS expected_container,
+    completion.id AS completion_id,
+    completion.authority_lease_id AS completion_authority_lease_id,
+    completion.authority_stage_graph_finalization_claim_id AS
+        completion_authority_stage_graph_finalization_claim_id,
+    completion.candidate_sha256,
+    completion.artifact_set_id,
+    completion.charge_id,
+    completion.job_version AS completion_job_version,
+    completion.completed_at,
+    artifact_set.manifest_sha256,
+    artifact_set.retention_expires_at
+FROM stage_graph_finalization_claims AS claim
+JOIN attempts AS attempt ON attempt.id = claim.attempt_id
+JOIN jobs AS job ON job.id = claim.job_id
+JOIN retention_policy_revisions AS retention_policy
+  ON retention_policy.id = job.retention_policy_revision_id
+JOIN credit_reservations AS reservation ON reservation.job_id = job.id
+JOIN output_specs AS output_spec ON output_spec.id = job.output_spec_id
+LEFT JOIN visible_completions AS completion ON completion.job_id = job.id
+LEFT JOIN artifact_sets AS artifact_set ON artifact_set.id = completion.artifact_set_id
+WHERE claim.id = sqlc.arg(claim_id)
+  AND claim.attempt_id = sqlc.arg(attempt_id)
+  AND claim.attempt_fence = sqlc.arg(attempt_fence)
+LIMIT 1
+FOR UPDATE OF claim, attempt, job;
 
 -- name: FindActiveReconcilerFinalizationCandidate :one
 SELECT a.id AS attempt_id, a.worker_id, a.worker_epoch, a.fence
@@ -826,6 +893,8 @@ SELECT
     reservation.currency,
     completion.id AS completion_id,
     completion.authority_lease_id AS completion_authority_lease_id,
+    completion.authority_stage_graph_finalization_claim_id AS
+        completion_authority_stage_graph_finalization_claim_id,
     completion.candidate_sha256,
     completion.artifact_set_id,
     completion.charge_id,
@@ -1047,6 +1116,7 @@ INSERT INTO visible_completions (
     attempt_id,
     attempt_fence,
     authority_lease_id,
+    authority_stage_graph_finalization_claim_id,
     artifact_set_id,
     charge_id,
     candidate_sha256,
@@ -1060,11 +1130,30 @@ INSERT INTO visible_completions (
     sqlc.arg(attempt_id),
     sqlc.arg(attempt_fence),
     sqlc.arg(authority_lease_id),
+    sqlc.arg(authority_stage_graph_finalization_claim_id),
     sqlc.arg(artifact_set_id),
     sqlc.arg(charge_id),
     sqlc.arg(candidate_sha256),
     sqlc.arg(job_version),
     sqlc.arg(completed_at)
+);
+
+-- name: InsertVerifiedStageGraphArtifact :exec
+INSERT INTO artifacts (
+    id, organization_id, project_id, job_id, attempt_id, attempt_fence,
+    kind, ordinal, object_key, expected_content_type, object_version_id,
+    size_bytes, sha256, content_type, uploaded_at, verification_id,
+    verification_request_hash, validation_receipt, verified_at, state,
+    expires_at, source_stage_artifact_id, updated_at
+) VALUES (
+    sqlc.arg(id), sqlc.arg(organization_id), sqlc.arg(project_id),
+    sqlc.arg(job_id), sqlc.arg(attempt_id), sqlc.arg(attempt_fence),
+    sqlc.arg(kind), sqlc.arg(ordinal), sqlc.arg(object_key),
+    sqlc.arg(content_type), sqlc.arg(object_version_id), sqlc.arg(size_bytes),
+    sqlc.arg(sha256), sqlc.arg(content_type), sqlc.arg(verified_at),
+    sqlc.arg(verification_id), sqlc.arg(verification_request_hash),
+    sqlc.arg(validation_receipt), sqlc.arg(verified_at), 'VERIFIED',
+    sqlc.arg(expires_at), sqlc.arg(source_stage_artifact_id), sqlc.arg(verified_at)
 );
 
 -- name: MarkCompletionAttemptSucceeded :execrows
@@ -1091,6 +1180,22 @@ WHERE id = sqlc.arg(lease_id)
   AND phase = 'FINALIZATION'
   AND owner_kind = sqlc.arg(owner_kind)
   AND revoked_at IS NULL;
+
+-- name: CompleteStageGraphAttemptForVisibleCompletion :one
+SELECT vela_complete_stage_graph_visible_completion_attempt(
+    sqlc.arg(attempt_id), sqlc.arg(fence), sqlc.arg(completed_at)
+);
+
+-- name: CompleteStageGraphFinalizationClaim :execrows
+UPDATE stage_graph_finalization_claims
+SET state = 'COMPLETED',
+    completed_at = sqlc.arg(completed_at),
+    updated_at = sqlc.arg(completed_at)
+WHERE id = sqlc.arg(claim_id)
+  AND attempt_id = sqlc.arg(attempt_id)
+  AND attempt_fence = sqlc.arg(attempt_fence)
+  AND owner_id = sqlc.arg(owner_id)
+  AND state = 'ACTIVE';
 
 -- name: ReleaseWorkerAfterVisibleCompletion :execrows
 UPDATE workers

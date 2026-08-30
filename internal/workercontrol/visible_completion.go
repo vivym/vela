@@ -140,6 +140,113 @@ type visibleCompletionActor struct {
 	releaseWorker       bool
 }
 
+type visibleCompletionAuthority struct {
+	AttemptID                                        uuid.UUID
+	JobID                                            uuid.UUID
+	AttemptState                                     store.AttemptState
+	AttemptFence                                     int64
+	AttemptEndedAt                                   pgtype.Timestamptz
+	FinalizationDeadlineAt                           pgtype.Timestamptz
+	OrganizationID                                   uuid.UUID
+	ProjectID                                        uuid.UUID
+	WorkerPoolID                                     uuid.UUID
+	JobState                                         store.JobState
+	JobVersion                                       int64
+	CurrentFence                                     int64
+	JobExpiresAt                                     pgtype.Timestamptz
+	RequestContentDeletedAt                          pgtype.Timestamptz
+	RetentionArtifactDays                            int32
+	RetentionPolicyRevision                          string
+	GenerationCount                                  int32
+	CreditReservationID                              uuid.UUID
+	CreditReservationState                           store.CreditReservationState
+	AmountMinor                                      int64
+	Currency                                         string
+	CompletionID                                     uuid.NullUUID
+	CompletionAuthorityLeaseID                       uuid.NullUUID
+	CompletionAuthorityStageGraphFinalizationClaimID uuid.NullUUID
+	CandidateSha256                                  []byte
+	ArtifactSetID                                    uuid.NullUUID
+	ChargeID                                         uuid.NullUUID
+	CompletionJobVersion                             *int64
+	CompletedAt                                      pgtype.Timestamptz
+	ManifestSha256                                   []byte
+	RetentionExpiresAt                               pgtype.Timestamptz
+}
+
+type visibleCompletionLeaseCommit struct {
+	leaseID       uuid.UUID
+	workerID      uuid.UUID
+	workerEpoch   int64
+	fence         int64
+	ownerKind     store.LeaseOwnerKind
+	releaseWorker bool
+}
+
+type visibleCompletionStageGraphCommit struct {
+	claimID uuid.UUID
+	ownerID string
+	fence   int64
+}
+
+type visibleCompletionCommitActor struct {
+	lease            *visibleCompletionLeaseCommit
+	stageGraph       *visibleCompletionStageGraphCommit
+	prepareArtifacts func(context.Context, *store.Queries, time.Time) error
+}
+
+func leaseVisibleCompletionAuthority(
+	row store.LockVisibleCompletionAuthorityRow,
+) visibleCompletionAuthority {
+	return visibleCompletionAuthority{
+		AttemptID: row.AttemptID, JobID: row.JobID, AttemptState: row.AttemptState,
+		AttemptFence: row.AttemptFence, AttemptEndedAt: row.AttemptEndedAt,
+		FinalizationDeadlineAt: row.FinalizationDeadlineAt,
+		OrganizationID:         row.OrganizationID, ProjectID: row.ProjectID,
+		WorkerPoolID: row.WorkerPoolID, JobState: row.JobState,
+		JobVersion: row.JobVersion, CurrentFence: row.CurrentFence,
+		JobExpiresAt: row.JobExpiresAt, RequestContentDeletedAt: row.RequestContentDeletedAt,
+		RetentionArtifactDays:   row.RetentionArtifactDays,
+		RetentionPolicyRevision: row.RetentionPolicyRevision,
+		GenerationCount:         row.GenerationCount, CreditReservationID: row.CreditReservationID,
+		CreditReservationState: row.CreditReservationState,
+		AmountMinor:            row.AmountMinor, Currency: row.Currency,
+		CompletionID:               row.CompletionID,
+		CompletionAuthorityLeaseID: row.CompletionAuthorityLeaseID,
+		CompletionAuthorityStageGraphFinalizationClaimID: row.CompletionAuthorityStageGraphFinalizationClaimID,
+		CandidateSha256: row.CandidateSha256, ArtifactSetID: row.ArtifactSetID,
+		ChargeID: row.ChargeID, CompletionJobVersion: row.CompletionJobVersion,
+		CompletedAt: row.CompletedAt, ManifestSha256: row.ManifestSha256,
+		RetentionExpiresAt: row.RetentionExpiresAt,
+	}
+}
+
+func stageGraphVisibleCompletionAuthority(
+	row store.LockStageGraphFinalizationCompletionAuthorityRow,
+) visibleCompletionAuthority {
+	return visibleCompletionAuthority{
+		AttemptID: row.AttemptID, JobID: row.JobID, AttemptState: row.AttemptState,
+		AttemptFence: row.AttemptFence, AttemptEndedAt: row.AttemptEndedAt,
+		FinalizationDeadlineAt: row.FinalizationDeadlineAt,
+		OrganizationID:         row.OrganizationID, ProjectID: row.ProjectID,
+		WorkerPoolID: row.WorkerPoolID, JobState: row.JobState,
+		JobVersion: row.JobVersion, CurrentFence: row.CurrentFence,
+		JobExpiresAt: row.JobExpiresAt, RequestContentDeletedAt: row.RequestContentDeletedAt,
+		RetentionArtifactDays:   row.RetentionArtifactDays,
+		RetentionPolicyRevision: row.RetentionPolicyRevision,
+		GenerationCount:         row.GenerationCount, CreditReservationID: row.CreditReservationID,
+		CreditReservationState: row.CreditReservationState,
+		AmountMinor:            row.AmountMinor, Currency: row.Currency,
+		CompletionID:               row.CompletionID,
+		CompletionAuthorityLeaseID: row.CompletionAuthorityLeaseID,
+		CompletionAuthorityStageGraphFinalizationClaimID: row.CompletionAuthorityStageGraphFinalizationClaimID,
+		CandidateSha256: row.CandidateSha256, ArtifactSetID: row.ArtifactSetID,
+		ChargeID: row.ChargeID, CompletionJobVersion: row.CompletionJobVersion,
+		CompletedAt: row.CompletedAt, ManifestSha256: row.ManifestSha256,
+		RetentionExpiresAt: row.RetentionExpiresAt,
+	}
+}
+
 func (s *Service) completeVisibleCompletion(
 	ctx context.Context,
 	actor visibleCompletionActor,
@@ -179,7 +286,7 @@ func (s *Service) completeVisibleCompletion(
 	if actor.ownerKind == store.LeaseOwnerKindWORKER {
 		ownerID = workerRow.SpiffeID
 	}
-	authority, err := queries.LockVisibleCompletionAuthority(
+	leaseAuthority, err := queries.LockVisibleCompletionAuthority(
 		ctx,
 		store.LockVisibleCompletionAuthorityParams{
 			AttemptID:   credentials.AttemptID,
@@ -198,21 +305,23 @@ func (s *Service) completeVisibleCompletion(
 	}
 	presentedDigest := sha256.Sum256([]byte(credentials.Token))
 	if (actor.requireCurrentEpoch && workerRow.Epoch != credentials.WorkerEpoch) ||
-		authority.AttemptFence != credentials.Fence ||
-		!hmac.Equal(presentedDigest[:], authority.TokenDigest) {
+		leaseAuthority.AttemptFence != credentials.Fence ||
+		!hmac.Equal(presentedDigest[:], leaseAuthority.TokenDigest) {
 		return rejectedVisibleCompletion(), nil
 	}
+	authority := leaseVisibleCompletionAuthority(leaseAuthority)
 
 	if authority.CompletionID.Valid {
 		result, replayErr := committedVisibleCompletionResult(ctx, queries, authority)
 		if replayErr != nil {
 			return VisibleCompletionResult{}, replayErr
 		}
-		if !authority.CompletionAuthorityLeaseID.Valid {
+		if !authority.CompletionAuthorityLeaseID.Valid ||
+			authority.CompletionAuthorityStageGraphFinalizationClaimID.Valid {
 			return VisibleCompletionResult{}, errors.New("visible Completion has no winning Lease identity")
 		}
 		switch {
-		case authority.CompletionAuthorityLeaseID.UUID != authority.LeaseID:
+		case authority.CompletionAuthorityLeaseID.UUID != leaseAuthority.LeaseID:
 			result.Decision = VisibleCompletionAlreadySucceeded
 		case authority.CompletionID.UUID == normalized.completionID &&
 			hmac.Equal(authority.CandidateSha256, normalized.hash[:]):
@@ -238,7 +347,7 @@ func (s *Service) completeVisibleCompletion(
 	if authority.CurrentFence != credentials.Fence ||
 		authority.AttemptState != store.AttemptStateFINALIZING ||
 		authority.JobState != store.JobStateFINALIZING ||
-		authority.LeaseRevokedAt.Valid ||
+		leaseAuthority.LeaseRevokedAt.Valid ||
 		authority.CreditReservationState != store.CreditReservationStateRESERVED ||
 		authority.JobVersion != normalized.expectedJobVersion {
 		return rejectedVisibleCompletion(), nil
@@ -248,13 +357,35 @@ func (s *Service) completeVisibleCompletion(
 	if err != nil {
 		return VisibleCompletionResult{}, err
 	}
-	if !authority.LeaseExpiresAt.Valid || !authority.LeaseExpiresAt.Time.After(now) ||
+	if !leaseAuthority.LeaseExpiresAt.Valid || !leaseAuthority.LeaseExpiresAt.Time.After(now) ||
 		!authority.FinalizationDeadlineAt.Valid ||
 		!authority.FinalizationDeadlineAt.Time.After(now) ||
 		!authority.JobExpiresAt.Valid || !authority.JobExpiresAt.Time.After(now) {
 		return rejectedVisibleCompletion(), nil
 	}
 
+	return commitVisibleCompletion(
+		ctx, tx, queries, authority, normalized, now,
+		visibleCompletionCommitActor{lease: &visibleCompletionLeaseCommit{
+			leaseID: leaseAuthority.LeaseID, workerID: actor.workerID,
+			workerEpoch: credentials.WorkerEpoch, fence: credentials.Fence,
+			ownerKind: actor.ownerKind, releaseWorker: actor.releaseWorker,
+		}},
+	)
+}
+
+func commitVisibleCompletion(
+	ctx context.Context,
+	tx pgx.Tx,
+	queries *store.Queries,
+	authority visibleCompletionAuthority,
+	normalized normalizedVisibleCompletionCandidate,
+	now time.Time,
+	actor visibleCompletionCommitActor,
+) (VisibleCompletionResult, error) {
+	if (actor.lease == nil) == (actor.stageGraph == nil) {
+		return VisibleCompletionResult{}, errors.New("Visible Completion authority is ambiguous")
+	}
 	runningCount, err := queries.LockVisibleCompletionProject(
 		ctx,
 		store.LockVisibleCompletionProjectParams{
@@ -291,6 +422,11 @@ func (s *Service) completeVisibleCompletion(
 		credit.ReservedMinor < reservation.AmountMinor {
 		return VisibleCompletionResult{}, errors.New("visible Completion credit authority is inconsistent")
 	}
+	if actor.prepareArtifacts != nil {
+		if err := actor.prepareArtifacts(ctx, queries, now); err != nil {
+			return VisibleCompletionResult{}, err
+		}
+	}
 
 	rows, err := queries.ListCompletionArtifactsForUpdate(
 		ctx,
@@ -302,7 +438,7 @@ func (s *Service) completeVisibleCompletion(
 	if err != nil {
 		return VisibleCompletionResult{}, fmt.Errorf("lock candidate Artifacts: %w", err)
 	}
-	artifacts, manifest, manifestHash, complete := completionManifest(
+	artifacts, _, manifestHash, complete := completionManifest(
 		authority,
 		normalized.artifactIDs,
 		rows,
@@ -310,7 +446,6 @@ func (s *Service) completeVisibleCompletion(
 	if !complete {
 		return VisibleCompletionResult{Decision: VisibleCompletionIncompleteArtifact}, nil
 	}
-	_ = manifest
 
 	artifactSetID := uuid.New()
 	chargeID := uuid.New()
@@ -321,23 +456,16 @@ func (s *Service) completeVisibleCompletion(
 		return VisibleCompletionResult{}, errors.New("job Retention Policy snapshot is invalid")
 	}
 	retentionExpiresAt := pgtype.Timestamptz{
-		Time: now.Add(
-			time.Duration(authority.RetentionArtifactDays) * 24 * time.Hour,
-		),
+		Time:  now.Add(time.Duration(authority.RetentionArtifactDays) * 24 * time.Hour),
 		Valid: true,
 	}
 	nextJobVersion := authority.JobVersion + 1
 	if err := queries.InsertArtifactSet(ctx, store.InsertArtifactSetParams{
-		ID:                      artifactSetID,
-		OrganizationID:          authority.OrganizationID,
-		ProjectID:               authority.ProjectID,
-		JobID:                   authority.JobID,
-		AttemptID:               authority.AttemptID,
-		AttemptFence:            authority.AttemptFence,
-		ManifestSha256:          manifestHash[:],
-		RetentionPolicyRevision: authority.RetentionPolicyRevision,
-		RetentionExpiresAt:      retentionExpiresAt,
-		CommittedAt:             completedAt,
+		ID: artifactSetID, OrganizationID: authority.OrganizationID,
+		ProjectID: authority.ProjectID, JobID: authority.JobID,
+		AttemptID: authority.AttemptID, AttemptFence: authority.AttemptFence,
+		ManifestSha256: manifestHash[:], RetentionPolicyRevision: authority.RetentionPolicyRevision,
+		RetentionExpiresAt: retentionExpiresAt, CommittedAt: completedAt,
 	}); err != nil {
 		return VisibleCompletionResult{}, fmt.Errorf("insert ArtifactSet: %w", err)
 	}
@@ -346,192 +474,175 @@ func (s *Service) completeVisibleCompletion(
 			return VisibleCompletionResult{}, err
 		}
 		if changed, updateErr := queries.MarkArtifactCommitted(ctx, store.MarkArtifactCommittedParams{
-			RetentionExpiresAt: retentionExpiresAt,
-			CommittedAt:        completedAt,
-			ArtifactID:         row.ID,
-			AttemptID:          authority.AttemptID,
-			AttemptFence:       authority.AttemptFence,
+			RetentionExpiresAt: retentionExpiresAt, CommittedAt: completedAt,
+			ArtifactID: row.ID, AttemptID: authority.AttemptID,
+			AttemptFence: authority.AttemptFence,
 		}); updateErr != nil || changed != 1 {
-			return VisibleCompletionResult{}, changedRowsError(
-				"commit Artifact",
-				changed,
-				updateErr,
-			)
+			return VisibleCompletionResult{}, changedRowsError("commit Artifact", changed, updateErr)
 		}
 	}
 	if err := queries.InsertVisibleCompletionCharge(ctx, store.InsertVisibleCompletionChargeParams{
-		ID:                  chargeID,
-		OrganizationID:      authority.OrganizationID,
-		ProjectID:           authority.ProjectID,
-		JobID:               authority.JobID,
+		ID: chargeID, OrganizationID: authority.OrganizationID,
+		ProjectID: authority.ProjectID, JobID: authority.JobID,
 		CreditReservationID: reservation.ID,
 		ArtifactSetID:       uuid.NullUUID{UUID: artifactSetID, Valid: true},
-		AmountMinor:         reservation.AmountMinor,
-		Currency:            reservation.Currency,
-		PostedAt:            completedAt,
+		AmountMinor:         reservation.AmountMinor, Currency: reservation.Currency,
+		PostedAt: completedAt,
 	}); err != nil {
 		return VisibleCompletionResult{}, fmt.Errorf("insert Visible Completion Charge: %w", err)
 	}
 	if err := queries.InsertArtifactAccessGrant(ctx, store.InsertArtifactAccessGrantParams{
-		ID:                 accessGrantID,
-		OrganizationID:     authority.OrganizationID,
-		ProjectID:          authority.ProjectID,
-		JobID:              authority.JobID,
-		ArtifactSetID:      artifactSetID,
-		EligibleAt:         completedAt,
+		ID: accessGrantID, OrganizationID: authority.OrganizationID,
+		ProjectID: authority.ProjectID, JobID: authority.JobID,
+		ArtifactSetID: artifactSetID, EligibleAt: completedAt,
 		RetentionExpiresAt: retentionExpiresAt,
 	}); err != nil {
 		return VisibleCompletionResult{}, fmt.Errorf("insert Artifact access eligibility: %w", err)
 	}
+	authorityLeaseID := uuid.NullUUID{}
+	authorityStageGraphClaimID := uuid.NullUUID{}
+	if actor.lease != nil {
+		authorityLeaseID = uuid.NullUUID{UUID: actor.lease.leaseID, Valid: true}
+	} else {
+		authorityStageGraphClaimID = uuid.NullUUID{UUID: actor.stageGraph.claimID, Valid: true}
+	}
 	if err := queries.InsertVisibleCompletion(ctx, store.InsertVisibleCompletionParams{
-		ID:               normalized.completionID,
-		OrganizationID:   authority.OrganizationID,
-		ProjectID:        authority.ProjectID,
-		JobID:            authority.JobID,
-		AttemptID:        authority.AttemptID,
-		AttemptFence:     authority.AttemptFence,
-		AuthorityLeaseID: authority.LeaseID,
-		ArtifactSetID:    artifactSetID,
-		ChargeID:         chargeID,
-		CandidateSha256:  normalized.hash[:],
-		JobVersion:       nextJobVersion,
-		CompletedAt:      completedAt,
+		ID: normalized.completionID, OrganizationID: authority.OrganizationID,
+		ProjectID: authority.ProjectID, JobID: authority.JobID,
+		AttemptID: authority.AttemptID, AttemptFence: authority.AttemptFence,
+		AuthorityLeaseID:                       authorityLeaseID,
+		AuthorityStageGraphFinalizationClaimID: authorityStageGraphClaimID,
+		ArtifactSetID:                          artifactSetID, ChargeID: chargeID,
+		CandidateSha256: normalized.hash[:], JobVersion: nextJobVersion,
+		CompletedAt: completedAt,
 	}); err != nil {
 		return VisibleCompletionResult{}, fmt.Errorf("insert Visible Completion: %w", err)
 	}
-	if changed, updateErr := queries.MarkCompletionAttemptSucceeded(
-		ctx,
-		store.MarkCompletionAttemptSucceededParams{
-			CompletedAt: completedAt,
-			AttemptID:   authority.AttemptID,
-			WorkerID:    uuid.NullUUID{UUID: actor.workerID, Valid: true},
-			WorkerEpoch: &credentials.WorkerEpoch,
-			Fence:       credentials.Fence,
-		},
-	); updateErr != nil || changed != 1 {
-		return VisibleCompletionResult{}, changedRowsError(
-			"terminalize successful Attempt",
-			changed,
-			updateErr,
-		)
-	}
-	if changed, updateErr := queries.RevokeCompletionLease(ctx, store.RevokeCompletionLeaseParams{
-		CompletedAt: completedAt,
-		LeaseID:     authority.LeaseID,
-		AttemptID:   authority.AttemptID,
-		WorkerID:    actor.workerID,
-		WorkerEpoch: credentials.WorkerEpoch,
-		Fence:       credentials.Fence,
-		OwnerKind:   actor.ownerKind,
-	}); updateErr != nil || changed != 1 {
-		return VisibleCompletionResult{}, changedRowsError(
-			"revoke successful Finalization Lease",
-			changed,
-			updateErr,
-		)
-	}
-	if actor.releaseWorker {
-		if changed, updateErr := queries.ReleaseWorkerAfterVisibleCompletion(
+	if actor.lease != nil {
+		if changed, updateErr := queries.MarkCompletionAttemptSucceeded(
 			ctx,
-			store.ReleaseWorkerAfterVisibleCompletionParams{
-				CompletedAt: completedAt,
-				WorkerID:    actor.workerID,
-				WorkerEpoch: credentials.WorkerEpoch,
+			store.MarkCompletionAttemptSucceededParams{
+				CompletedAt: completedAt, AttemptID: authority.AttemptID,
+				WorkerID:    uuid.NullUUID{UUID: actor.lease.workerID, Valid: true},
+				WorkerEpoch: &actor.lease.workerEpoch, Fence: actor.lease.fence,
 			},
 		); updateErr != nil || changed != 1 {
 			return VisibleCompletionResult{}, changedRowsError(
-				"release Worker after Visible Completion",
-				changed,
-				updateErr,
+				"terminalize successful Attempt", changed, updateErr,
+			)
+		}
+		if changed, updateErr := queries.RevokeCompletionLease(ctx, store.RevokeCompletionLeaseParams{
+			CompletedAt: completedAt, LeaseID: actor.lease.leaseID,
+			AttemptID: authority.AttemptID, WorkerID: actor.lease.workerID,
+			WorkerEpoch: actor.lease.workerEpoch, Fence: actor.lease.fence,
+			OwnerKind: actor.lease.ownerKind,
+		}); updateErr != nil || changed != 1 {
+			return VisibleCompletionResult{}, changedRowsError(
+				"revoke successful Finalization Lease", changed, updateErr,
+			)
+		}
+		if actor.lease.releaseWorker {
+			if changed, updateErr := queries.ReleaseWorkerAfterVisibleCompletion(
+				ctx,
+				store.ReleaseWorkerAfterVisibleCompletionParams{
+					CompletedAt: completedAt, WorkerID: actor.lease.workerID,
+					WorkerEpoch: actor.lease.workerEpoch,
+				},
+			); updateErr != nil || changed != 1 {
+				return VisibleCompletionResult{}, changedRowsError(
+					"release Worker after Visible Completion", changed, updateErr,
+				)
+			}
+		}
+	} else {
+		if changed, updateErr := queries.CompleteStageGraphAttemptForVisibleCompletion(
+			ctx,
+			store.CompleteStageGraphAttemptForVisibleCompletionParams{
+				CompletedAt: completedAt, AttemptID: authority.AttemptID,
+				Fence: actor.stageGraph.fence,
+			},
+		); updateErr != nil || !changed {
+			if updateErr != nil {
+				return VisibleCompletionResult{}, fmt.Errorf(
+					"terminalize successful Stage graph Attempt: %w", updateErr,
+				)
+			}
+			return VisibleCompletionResult{}, errors.New(
+				"terminalize successful Stage graph Attempt changed no rows",
+			)
+		}
+		if changed, updateErr := queries.CompleteStageGraphFinalizationClaim(
+			ctx,
+			store.CompleteStageGraphFinalizationClaimParams{
+				CompletedAt: completedAt, ClaimID: actor.stageGraph.claimID,
+				AttemptID: authority.AttemptID, AttemptFence: authority.AttemptFence,
+				OwnerID: actor.stageGraph.ownerID,
+			},
+		); updateErr != nil || changed != 1 {
+			return VisibleCompletionResult{}, changedRowsError(
+				"complete Stage graph Finalization claim", changed, updateErr,
 			)
 		}
 	}
 	if changed, updateErr := queries.DecrementProjectRunningForVisibleCompletion(
 		ctx,
 		store.DecrementProjectRunningForVisibleCompletionParams{
-			OrganizationID: authority.OrganizationID,
-			ProjectID:      authority.ProjectID,
+			OrganizationID: authority.OrganizationID, ProjectID: authority.ProjectID,
 		},
 	); updateErr != nil || changed != 1 {
 		return VisibleCompletionResult{}, changedRowsError(
-			"decrement Project running counter for Visible Completion",
-			changed,
-			updateErr,
+			"decrement Project running counter for Visible Completion", changed, updateErr,
 		)
 	}
 	if changed, updateErr := queries.ConsumeVisibleCompletionCreditReservation(
 		ctx,
 		store.ConsumeVisibleCompletionCreditReservationParams{
-			CompletedAt:         completedAt,
-			CreditReservationID: reservation.ID,
-			JobID:               authority.JobID,
+			CompletedAt: completedAt, CreditReservationID: reservation.ID,
+			JobID: authority.JobID,
 		},
 	); updateErr != nil || changed != 1 {
 		return VisibleCompletionResult{}, changedRowsError(
-			"consume Visible Completion CreditReservation",
-			changed,
-			updateErr,
+			"consume Visible Completion CreditReservation", changed, updateErr,
 		)
 	}
 	if changed, updateErr := queries.PostVisibleCompletionOrganizationCredit(
 		ctx,
 		store.PostVisibleCompletionOrganizationCreditParams{
-			AmountMinor:    reservation.AmountMinor,
-			CompletedAt:    completedAt,
-			OrganizationID: authority.OrganizationID,
-			Currency:       reservation.Currency,
+			AmountMinor: reservation.AmountMinor, CompletedAt: completedAt,
+			OrganizationID: authority.OrganizationID, Currency: reservation.Currency,
 		},
 	); updateErr != nil || changed != 1 {
 		return VisibleCompletionResult{}, changedRowsError(
-			"post Visible Completion Organization credit",
-			changed,
-			updateErr,
+			"post Visible Completion Organization credit", changed, updateErr,
 		)
 	}
 	if err := insertVisibleCompletionEvents(
-		ctx,
-		queries,
-		authority,
-		artifactSetID,
-		chargeID,
-		manifestHash,
-		artifacts,
-		nextJobVersion,
-		now,
+		ctx, queries, authority, artifactSetID, chargeID, manifestHash,
+		artifacts, nextJobVersion, now,
 	); err != nil {
 		return VisibleCompletionResult{}, err
 	}
 	jobVersion, err := queries.MarkJobSucceeded(ctx, store.MarkJobSucceededParams{
-		ArtifactSetID:   uuid.NullUUID{UUID: artifactSetID, Valid: true},
-		CompletedAt:     completedAt,
-		JobID:           authority.JobID,
-		ExpectedVersion: authority.JobVersion,
-		Fence:           authority.AttemptFence,
+		ArtifactSetID: uuid.NullUUID{UUID: artifactSetID, Valid: true},
+		CompletedAt:   completedAt, JobID: authority.JobID,
+		ExpectedVersion: authority.JobVersion, Fence: authority.AttemptFence,
 	})
 	if err != nil {
 		return VisibleCompletionResult{}, fmt.Errorf("mark Job SUCCEEDED: %w", err)
 	}
 	if jobVersion != nextJobVersion {
 		return VisibleCompletionResult{}, fmt.Errorf(
-			"committed Job version %d, want %d",
-			jobVersion,
-			nextJobVersion,
+			"committed Job version %d, want %d", jobVersion, nextJobVersion,
 		)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return VisibleCompletionResult{}, fmt.Errorf("commit Visible Completion: %w", err)
 	}
 	return VisibleCompletionResult{
-		Decision:       VisibleCompletionCommitted,
-		CompletionID:   normalized.completionID,
-		JobID:          authority.JobID,
-		AttemptID:      authority.AttemptID,
-		ArtifactSetID:  artifactSetID,
-		ChargeID:       chargeID,
-		JobVersion:     jobVersion,
-		ManifestSHA256: manifestHash,
-		Artifacts:      artifacts,
-		CompletedAt:    now,
+		Decision: VisibleCompletionCommitted, CompletionID: normalized.completionID,
+		JobID: authority.JobID, AttemptID: authority.AttemptID,
+		ArtifactSetID: artifactSetID, ChargeID: chargeID, JobVersion: jobVersion,
+		ManifestSHA256: manifestHash, Artifacts: artifacts, CompletedAt: now,
 	}, nil
 }
 
@@ -569,7 +680,7 @@ func normalizeVisibleCompletionCandidate(
 }
 
 func completionManifest(
-	authority store.LockVisibleCompletionAuthorityRow,
+	authority visibleCompletionAuthority,
 	candidateArtifactIDs []uuid.UUID,
 	rows []store.ListCompletionArtifactsForUpdateRow,
 ) ([]CommittedArtifact, []byte, [sha256.Size]byte, bool) {
@@ -647,7 +758,7 @@ func completionManifest(
 func insertArtifactSetItem(
 	ctx context.Context,
 	queries *store.Queries,
-	authority store.LockVisibleCompletionAuthorityRow,
+	authority visibleCompletionAuthority,
 	artifactSetID uuid.UUID,
 	row store.ListCompletionArtifactsForUpdateRow,
 ) error {
@@ -680,7 +791,7 @@ func insertArtifactSetItem(
 func insertVisibleCompletionEvents(
 	ctx context.Context,
 	queries *store.Queries,
-	authority store.LockVisibleCompletionAuthorityRow,
+	authority visibleCompletionAuthority,
 	artifactSetID uuid.UUID,
 	chargeID uuid.UUID,
 	manifestHash [sha256.Size]byte,
@@ -790,7 +901,7 @@ func insertVisibleCompletionEvents(
 func committedVisibleCompletionResult(
 	ctx context.Context,
 	queries *store.Queries,
-	authority store.LockVisibleCompletionAuthorityRow,
+	authority visibleCompletionAuthority,
 ) (VisibleCompletionResult, error) {
 	if !authority.CompletionID.Valid || !authority.ArtifactSetID.Valid ||
 		!authority.ChargeID.Valid || authority.CompletionJobVersion == nil ||
