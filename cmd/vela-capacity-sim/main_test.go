@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -119,6 +120,46 @@ func TestRunFailsClosedWithoutOverwritingInputs(t *testing.T) {
 	if code := run([]string{"run", "--unknown"}, &stdout, &stderr); code != 2 ||
 		stdout.Len() != 0 || !strings.Contains(stderr.String(), "usage:") {
 		t.Fatalf("unknown flag = code %d stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestProductionDependencyClosureHasNoActuationAuthority(t *testing.T) {
+	command := exec.Command(
+		"go", "list", "-deps", "-f", "{{.ImportPath}}", "./cmd/vela-capacity-sim",
+	)
+	command.Dir = filepath.Join("..", "..")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list production dependencies: %v\n%s", err, output)
+	}
+	for _, dependency := range strings.Fields(string(output)) {
+		if strings.HasPrefix(dependency, "k8s.io/") ||
+			strings.HasPrefix(dependency, "sigs.k8s.io/") {
+			t.Fatalf("capacity simulator acquired Kubernetes dependency %q", dependency)
+		}
+		if strings.HasPrefix(dependency, "github.com/vivym/vela/") &&
+			dependency != "github.com/vivym/vela/internal/capacitysim" &&
+			dependency != "github.com/vivym/vela/cmd/vela-capacity-sim" {
+			t.Fatalf("capacity simulator acquired runtime/actuation dependency %q", dependency)
+		}
+	}
+}
+
+func TestCheckedInSyntheticH3ExampleRemainsExecutable(t *testing.T) {
+	repositoryRoot := filepath.Join("..", "..")
+	exampleRoot := filepath.Join(repositoryRoot, "examples", "capacitysim", "h3-synthetic")
+	outputRoot := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"run",
+		"--scenario", filepath.Join(exampleRoot, "scenario.json"),
+		"--trace", filepath.Join(exampleRoot, "trace.ndjson"),
+		"--calibration", filepath.Join(exampleRoot, "calibration.json"),
+		"--out", filepath.Join(outputRoot, "receipt.json"),
+		"--proposal-out", filepath.Join(outputRoot, "proposal.json"),
+	}, &stdout, &stderr)
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "PASS") {
+		t.Fatalf("synthetic H3 example = code %d stdout %q stderr %q", code, stdout.String(), stderr.String())
 	}
 }
 

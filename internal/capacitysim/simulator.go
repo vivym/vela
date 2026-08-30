@@ -611,7 +611,8 @@ func (state *simulationState) materializeOutput(
 	state.addBuffer(bytes)
 	if state.scenario.Policy.CacheEnabled && job.record.CacheKeyCohort != "" {
 		key := scopedCacheKey(job.record, stage.ID)
-		if state.admitCache(key, stage.ID, bytes) {
+		_, alreadyCached := state.cache[key]
+		if state.admitCache(key, stage.ID, bytes) && !alreadyCached {
 			output.cacheKey = key
 			output.cached = true
 		}

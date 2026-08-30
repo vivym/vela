@@ -2,9 +2,9 @@
 
 Date: 2026-08-31
 
-Status: Implementation in progress. S49.1-S49.10 have committed repository
-implementations through the immutable Usage/Cost Ledger. S49.11 capacity
-planning and S49.12 cutover/contraction remain pending. Migration `00048` adds an
+Status: Implementation in progress. S49.1-S49.11 have committed repository
+implementations through the capacity simulator and advisory planning boundary.
+S49.12 cutover/contraction remains pending. Migration `00048` adds an
 immutable StageRun output binding for both physical and exact-cache artifacts,
 closing the repository-level cache-only leaf to finalization-output path.
 Repository evidence does not advance a Production Gate.

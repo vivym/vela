@@ -2,7 +2,11 @@
 
 Date: 2026-08-29
 
-Status: Proposed design; simulator and calibration do not exist.
+Status: S49.11 repository implementation complete. `internal/capacitysim` and
+`cmd/vela-capacity-sim` implement the bounded deterministic simulator, replay
+CLI, comparison receipt, and advisory proposal boundary. Checked-in inputs are
+synthetic; no real H3 calibration, benchmark, shadow result, production
+recommendation, or Launch Receipt exists.
 
 ## Question answered
 

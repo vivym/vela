@@ -2,8 +2,8 @@
 
 Date: 2026-08-31
 
-Status: In progress. S49.1-S49.10 have committed repository implementations;
-S49.11-S49.12 are pending. Migration `00048` closes the cross-slice exact-cache
+Status: In progress. S49.1-S49.11 have committed repository implementations;
+S49.12 is pending. Migration `00048` closes the cross-slice exact-cache
 leaf to finalization-output binding with immutable physical or exact-cache
 StageRun output evidence.
 
@@ -269,6 +269,15 @@ Acceptance:
 - direct and shared allocated cost remain separately visible.
 
 ## S49.11: Capacity simulation and advisory planning
+
+Status: Repository implementation complete in `internal/capacitysim` and
+`cmd/vela-capacity-sim`. Strict content-free inputs, deterministic receipts,
+randomized conservation/pin/bounds tests, analytical fixtures, per-stage error,
+transfer sensitivity, comparison, owner-only CLI outputs, a checked-in synthetic
+H3 example, and a production-dependency negative test pass. Advisory proposals
+remain `auto_apply=false` and have no Fleet/Kubernetes authority. This evidence
+is not real H3 calibration, a production capacity recommendation, or a Launch
+Receipt.
 
 Deliver:
 

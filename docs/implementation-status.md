@@ -11,9 +11,10 @@ tests alone do not satisfy a gate.
 ## Accepted Target Design, Implementation In Progress
 
 The H3 stage-disaggregated architecture is accepted as the replacement target.
-S49.1-S49.10 have committed repository implementations through StageArtifact
+S49.1-S49.11 have committed repository implementations through StageArtifact
 transfer, split H3 execution, exact cache, CPU media stages, and the immutable
-Usage/Cost Ledger. Migration `00048` closes the repository-level cache-only leaf
+Usage/Cost Ledger, plus the deterministic capacity simulator and advisory
+planning boundary. Migration `00048` closes the repository-level cache-only leaf
 path by binding a physical or exact-cache StageArtifact to each StageRun output
 used by finalization. This is not complete acceptance closure. Repository-wide
 integration shards `0` through `9` are green after restoring historical-schema
@@ -25,11 +26,11 @@ production evidence or a Launch Receipt.
 
 | Design package | Status | Evidence |
 | --- | --- | --- |
-| H3 Stage Execution Architecture | Accepted target; S49.1-S49.10 and cache-only finalization binding committed | `docs/h3-stage-execution-architecture.md` |
+| H3 Stage Execution Architecture | Accepted target; S49.1-S49.11 and cache-only finalization binding committed | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
 | Schema and protocol migration | Expansion through migration `00048`; cache-only finalization binding closed | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
-| Implementation slices | S49.1-S49.10 committed; S49.11-S49.12 pending | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
-| Capacity simulator | Proposed; not implemented or calibrated | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
+| Implementation slices | S49.1-S49.11 committed; S49.12 pending | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
 Until cutover and contraction complete, `db/migrations/00002_worker_assignment.sql`,
 `proto/vela/v1/worker_control.proto`, and `proto/vela/v1/runner.proto` still bind
