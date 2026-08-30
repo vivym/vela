@@ -240,6 +240,11 @@ SHA-256
 `a90dea77c837bbddb2e0cee60510964c41f23644c36723c2bb64f77f92ccb7e3`.
 The executed harness has SHA-256
 `6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
+The review-hardened repository harness has SHA-256
+`cc37ee0df5e813e0929f4ea083782d785153b846bd81040d70802f397065f0a0`
+and has not been rerun. It forces interrupted uncommitted invocations to exit
+nonzero and requires cleanup to replace the exact control Pod by UID and prove
+that the fault environment and marker are absent before disarming the watchdog.
 
 The first diagnostic run checked the database marker before the claim TTL had
 expired and correctly refused to pass. It is retained only as hidden diagnostic

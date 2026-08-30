@@ -69,6 +69,11 @@ runs remain diagnostic evidence and are not counted.
 The retained Publisher post-PubAck/pre-marker receipt was produced by harness
 SHA-256
 `6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
+The review-hardened repository harness is
+`cc37ee0df5e813e0929f4ea083782d785153b846bd81040d70802f397065f0a0`
+and has not been rerun. It makes interrupted uncommitted runs fail and requires
+a UID-bound control Pod replacement plus proof that the fault environment and
+marker are absent before cleanup can disarm the watchdog.
 Its root-only `SHA256SUMS` file has SHA-256
 `a90dea77c837bbddb2e0cee60510964c41f23644c36723c2bb64f77f92ccb7e3`.
 The successful event kept `VELA_EVENTS` sequence `262` while

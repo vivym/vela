@@ -188,6 +188,12 @@ Outbox event `bb91b103-9663-4066-b0c4-f6818c1ead83` retained stream
 `VELA_EVENTS`, sequence `262`, and `publish_attempts` advanced from `1` to `2`.
 The successful receipt is bound to harness SHA-256
 `6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
+Post-rehearsal review changed the repository harness SHA-256 to
+`cc37ee0df5e813e0929f4ea083782d785153b846bd81040d70802f397065f0a0`:
+interrupted uncommitted runs now exit nonzero, and cleanup requires a UID-bound
+control Pod replacement plus proof that both the fault environment and marker
+are absent. That hardened harness has not been rerun and is not provenance for
+the retained receipt.
 This advances only the synthetic matrix to `5/10`; Production Gates remain
 `0/9 PASS`.
 

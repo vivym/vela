@@ -308,6 +308,64 @@ reload_control() {
 	wait_ready_control_pod "$after_file" "$uid"
 }
 
+replace_control_pod_for_recovery() {
+	before_file=$1
+	after_file=$2
+	error_file=$before_file.error
+	iteration=0
+	while [ "$iteration" -lt 120 ]; do
+		heartbeat
+		pods=$($kubectl_bin get pods --namespace "$namespace" \
+			-l app.kubernetes.io/name=vela-lab-control -o json) || return 1
+		if printf '%s\n' "$pods" | jq -e \
+			--arg image "$expected_control_image" \
+			--arg node "$control_node" '
+		  [.items[] | select(.metadata.deletionTimestamp == null)] as $active
+		  | select(($active | length) == 1)
+		  | $active[0]
+		  | select(
+		      .spec.nodeName == $node
+		      and (.spec.containers | map(select(
+		        .name == "control" and .image == $image)) | length) == 1
+		    )
+		' >"$before_file" 2>"$error_file"; then
+			rm -f -- "$error_file"
+			break
+		fi
+		[ ! -s "$error_file" ] || return 1
+		rm -f -- "$error_file"
+		iteration=$((iteration + 1))
+		sleep 1
+	done
+	[ -s "$before_file" ] || return 1
+	name=$(jq -er '.metadata.name' "$before_file") || return 1
+	uid=$(jq -er '.metadata.uid' "$before_file") || return 1
+	delete_pod_by_uid "$name" "$uid" 30 || return 1
+	wait_ready_control_pod "$after_file" "$uid"
+}
+
+verify_fault_runtime_cleared() {
+	pod_file=$1
+	output_file=$2
+	current=$($kubectl_bin get configmap vela-lab-control-runtime --namespace "$namespace" -o json) || return 1
+	[ "$(printf '%s\n' "$current" | jq -r '.data.VELA_LAB_OUTBOX_FAULT_PHASE // ""')" = "" ] || return 1
+	jq -e '
+	  .metadata.deletionTimestamp == null
+	  and any(.spec.containers[];
+	    .name == "control"
+	    and ((.env // []) | all(.name != "VELA_LAB_OUTBOX_FAULT_PHASE"))
+	    and any(.envFrom[]?; .configMapRef.name == "vela-lab-control-runtime"))
+	' "$pod_file" >/dev/null || return 1
+	name=$(jq -er '.metadata.name' "$pod_file") || return 1
+	if $kubectl_bin exec --namespace "$namespace" "pod/$name" --container control -- \
+		/usr/local/bin/vela-control --lab-read-outbox-fault-marker \
+		>"$output_file" 2>&1; then
+		return 1
+	fi
+	grep -F 'inspect lab Outbox fault marker' "$output_file" >/dev/null &&
+		grep -F 'no such file or directory' "$output_file" >/dev/null
+}
+
 warm_pod_json() {
 	name=$1
 	jq -n \
@@ -603,17 +661,16 @@ recover_environment() {
 	neutralize_fault_pod >>"$log_file" 2>&1 || recovery_result=1
 	restore_fault_config >>"$log_file" 2>&1 || recovery_result=1
 	if [ -f "$temporary/FAULT_PHASE_APPLIED" ] && [ ! -f "$temporary/FAULT_PHASE_CLEARED" ]; then
-		if wait_ready_control_pod "$temporary/recovery-control-before.json" 2>>"$log_file"; then
-			if reload_control "$temporary/recovery-control-before.json" \
-				"$temporary/recovery-control-after.json" >>"$log_file" 2>&1; then
-				printf 'reloaded_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
-						>"$temporary/FAULT_PHASE_CLEARED"
-			else
-				recovery_result=1
-			fi
+		if replace_control_pod_for_recovery \
+			"$temporary/recovery-control-before.json" \
+			"$temporary/recovery-control-after.json" >>"$log_file" 2>&1 &&
+			verify_fault_runtime_cleared \
+				"$temporary/recovery-control-after.json" \
+				"$temporary/recovery-fault-runtime-cleared.txt" >>"$log_file" 2>&1; then
+			printf 'reloaded_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+				>"$temporary/FAULT_PHASE_CLEARED"
 		else
-			$kubectl_bin rollout status deployment/vela-lab-control --namespace "$namespace" \
-				--timeout=120s >>"$log_file" 2>&1 || recovery_result=1
+			recovery_result=1
 		fi
 	fi
 	$kubectl_bin rollout status deployment/vela-lab-control --namespace "$namespace" \
@@ -659,9 +716,10 @@ disarm_watchdog() {
 }
 
 cleanup() {
-	cleanup_result=$?
+	cleanup_result=$1
 	trap - EXIT HUP INT TERM
 	if [ "$committed" != true ] && [ -n "$temporary" ] && [ -d "$temporary" ]; then
+		[ "$cleanup_result" -ne 0 ] || cleanup_result=1
 		printf 'status=INCOMPLETE production_gates=0/9\n' >"$temporary/STATUS"
 		if recover_environment "$temporary/cleanup.log"; then
 			disarm_watchdog
@@ -672,7 +730,10 @@ cleanup() {
 	fi
 	exit "$cleanup_result"
 }
-trap cleanup EXIT HUP INT TERM
+trap 'cleanup $?' EXIT
+trap 'cleanup 129' HUP
+trap 'cleanup 130' INT
+trap 'cleanup 143' TERM
 
 if [ "${1:-}" = --render-fault-pod ]; then
 	trap - EXIT HUP INT TERM
@@ -1030,6 +1091,10 @@ wait_ready_control_pod "$temporary/control-before-default-reload.json" ||
 	fail "control was not Ready before clearing the Publisher fault phase"
 reload_control "$temporary/control-before-default-reload.json" "$temporary/control-default-restored.json" ||
 	fail "control did not clear the Publisher fault phase"
+verify_fault_runtime_cleared \
+	"$temporary/control-default-restored.json" \
+	"$temporary/fault-runtime-cleared.txt" ||
+	fail "control fault runtime or marker remained after the default reload"
 printf 'reloaded_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$temporary/FAULT_PHASE_CLEARED"
 $kubectl_bin get configmap vela-lab-control-runtime --namespace "$namespace" -o json \
 	>"$temporary/control-runtime-restored.json"
@@ -1149,7 +1214,8 @@ jq -n \
       "fault-pod-identity.txt", "fault-injection.log", "raw-event-payloads.jsonl",
       "control-runtime-before.json", "control-runtime-fault-enabled.json",
       "control-runtime-restored.json", "control-fault-enabled.json",
-      "control-after-crash.json", "control-default-restored.json", "smoke-receipt.json"
+      "control-after-crash.json", "control-default-restored.json",
+      "fault-runtime-cleared.txt", "smoke-receipt.json"
     ]
   }
 ' >"$temporary/summary.json"

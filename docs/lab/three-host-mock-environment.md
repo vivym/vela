@@ -1029,6 +1029,12 @@ Its `SHA256SUMS` file has SHA-256
 `a90dea77c837bbddb2e0cee60510964c41f23644c36723c2bb64f77f92ccb7e3`,
 and the executed harness has SHA-256
 `6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
+The review-hardened repository harness now has SHA-256
+`cc37ee0df5e813e0929f4ea083782d785153b846bd81040d70802f397065f0a0`.
+It forces every interrupted uncommitted run to exit nonzero and permits cleanup
+to disarm the watchdog only after a UID-bound control Pod replacement proves
+the fault environment and marker are absent. This version has not been rerun
+and is not provenance for the retained live receipt.
 
 The first diagnostic run checked PostgreSQL too early, before the claim TTL
 expired, and correctly refused to emit a passing receipt. Its hidden directory
