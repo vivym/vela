@@ -166,13 +166,12 @@ func (agent *Agent) finalizeOutputs(
 		CompletionID: state.CompletionID, ExpectedJobVersion: plan.JobVersion,
 		ArtifactIDs: artifactIDs,
 	}
-	state.CompletionCandidate = &candidate
-	if err := writeFinalizationState(heartbeats.Context(), handle, state); err != nil {
+	state, err = heartbeats.persistCompletionCandidate(heartbeats.Context(), candidate)
+	if err != nil {
 		return workercontrol.VisibleCompletionResult{}, nil, errors.Join(err, heartbeats.Stop())
 	}
-	completion, cleanup, err := agent.commitVisibleCompletion(
+	completion, cleanup, err := agent.requestVisibleCompletion(
 		heartbeats.Context(),
-		handle,
 		assignment,
 		credentials,
 		state,
@@ -185,12 +184,39 @@ func (agent *Agent) finalizeOutputs(
 	if err := heartbeats.Stop(); err != nil {
 		return workercontrol.VisibleCompletionResult{}, nil, err
 	}
+	persistContext, cancelPersist := boundedCleanupContext(ctx)
+	defer cancelPersist()
+	state.VisibleCompletion = &completion
+	if err := writeFinalizationState(persistContext, handle, state); err != nil {
+		return workercontrol.VisibleCompletionResult{}, nil, err
+	}
 	return completion, cleanup, nil
 }
 
 func (agent *Agent) commitVisibleCompletion(
 	ctx context.Context,
 	handle *workerrecovery.Handle,
+	assignment workercontrol.Assignment,
+	credentials workercontrol.LeaseCredentials,
+	state localFinalizationState,
+	outputs []runnertransport.Output,
+	candidate workercontrol.VisibleCompletionCandidate,
+) (workercontrol.VisibleCompletionResult, func(context.Context) error, error) {
+	completion, cleanup, err := agent.requestVisibleCompletion(
+		ctx, assignment, credentials, state, outputs, candidate,
+	)
+	if err != nil {
+		return workercontrol.VisibleCompletionResult{}, nil, err
+	}
+	state.VisibleCompletion = &completion
+	if err := writeFinalizationState(ctx, handle, state); err != nil {
+		return workercontrol.VisibleCompletionResult{}, nil, err
+	}
+	return completion, cleanup, nil
+}
+
+func (agent *Agent) requestVisibleCompletion(
+	ctx context.Context,
 	assignment workercontrol.Assignment,
 	credentials workercontrol.LeaseCredentials,
 	state localFinalizationState,
@@ -214,10 +240,6 @@ func (agent *Agent) commitVisibleCompletion(
 	}
 	plan := workercontrol.FinalizationPlan{JobVersion: state.JobVersion}
 	if err := validateVisibleCompletion(completion, state, plan, outputs); err != nil {
-		return workercontrol.VisibleCompletionResult{}, nil, err
-	}
-	state.VisibleCompletion = &completion
-	if err := writeFinalizationState(ctx, handle, state); err != nil {
 		return workercontrol.VisibleCompletionResult{}, nil, err
 	}
 	cleanup := func(cleanupContext context.Context) error {

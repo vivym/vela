@@ -321,6 +321,15 @@ func main() {
 	if !handled && err == nil {
 		handled, err = runLabConsumerFaultCommand(os.Args[1:], os.Stdout)
 	}
+	if !handled && err == nil {
+		handled, err = runLabAssignmentFaultCommand(os.Args[1:], os.Stdout)
+	}
+	if !handled && err == nil {
+		handled, err = runLabVisibleCompletionFaultCommand(os.Args[1:], os.Stdout)
+	}
+	if !handled && err == nil {
+		handled, err = runLabStaleCompletionProbeCommand(os.Args[1:], os.Stdout)
+	}
 	if err != nil {
 		slog.Error("vela-control command failed", "error", err)
 		os.Exit(1)
@@ -837,7 +846,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	scheduling, err := scheduler.NewService(schedulerPool, workerCoordinator, scheduler.Config{
+	schedulerAssignmentCoordinator, err := configureSchedulerAssignmentCoordinator(workerCoordinator)
+	if err != nil {
+		return fmt.Errorf("configure Scheduler Assignment coordinator: %w", err)
+	}
+	scheduling, err := scheduler.NewService(schedulerPool, schedulerAssignmentCoordinator, scheduler.Config{
 		SchedulerID:       configuration.schedulerID,
 		ClaimTTL:          configuration.schedulerClaimTTL,
 		CandidateAttempts: configuration.schedulerCandidateAttempts,
@@ -853,13 +866,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	workerTransportCoordinator, err := configureWorkerTransportCoordinator(workerCoordinator)
+	if err != nil {
+		return fmt.Errorf("configure Worker transport coordinator: %w", err)
+	}
 	fleetService, err := fleet.NewService(fleetPool)
 	if err != nil {
 		return fmt.Errorf("configure Fleet service: %w", err)
 	}
 	workerControlAdapter, err := workertransport.NewServer(
 		workerIdentityResolver,
-		workerCoordinator,
+		workerTransportCoordinator,
 		artifactStore,
 		fleetService,
 	)

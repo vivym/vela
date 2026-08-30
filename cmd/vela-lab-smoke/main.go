@@ -10,10 +10,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -147,6 +149,9 @@ func smoke(ctx context.Context, configuration options, client *http.Client) (smo
 		}
 		request.Header.Set("Authorization", "Bearer "+credential)
 		if err := requestJSON(client, request, http.StatusOK, &job); err != nil {
+			if retryablePollError(err) {
+				continue
+			}
 			return smokeReceipt{}, fmt.Errorf("poll mock Job: %w", err)
 		}
 	}
@@ -210,6 +215,19 @@ func requestJSON(client *http.Client, request *http.Request, expectedStatus int,
 		return errors.New("HTTP response contains trailing JSON")
 	}
 	return nil
+}
+
+func retryablePollError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) {
+		return true
+	}
+	var networkError net.Error
+	return errors.As(err, &networkError) && networkError.Timeout()
 }
 
 func verifyArtifact(ctx context.Context, client *http.Client, artifact api.ArtifactDownload) error {

@@ -1,6 +1,6 @@
 # Three-host lab Production Gate gap matrix
 
-Date: 2026-08-30
+Date: 2026-08-31
 
 Status: `0/9 PASS`. This is a planning and evidence-boundary document, not a
 Launch Receipt manifest.
@@ -46,13 +46,17 @@ committed Artifacts. A node-reboot scenario then bound an out-of-band Worker 1
 reboot to the exact node UID, boot ID, Job, Attempt, and fence. Kubernetes
 observed `Ready=Unknown`, the boot ID changed, Attempt 1 became
 `LOST/WORKER_LOST`, and Worker 2 completed one higher-fence replacement without
-duplicate durable results. Both Workers
-previously passed sequential one-GPU and eight-GPU Kubernetes smoke, while the
-control node remained at zero allocatable GPUs. The Runner and application images are
-explicitly non-canonical, the backend is synthetic, the concurrent rehearsal
-lasted only 47 seconds, only `8/10` fixed fault scenarios have lab evidence,
-and no production receipt file is present. Repository tests and these lab
-observations cannot substitute for the external facts required by ADR 0029.
+duplicate durable results. An Assignment post-commit/pre-response crash then
+recovered one committed dispatch authority without creating another Attempt.
+Finally, the exact old FINALIZATION Completion Candidate was replayed after a
+higher-fence replacement had succeeded and was rejected as
+`REJECTED_STALE_LEASE`. Both Workers previously passed sequential one-GPU and
+eight-GPU Kubernetes smoke, while the control node remained at zero allocatable
+GPUs. The Runner and application images are explicitly non-canonical, the
+backend is synthetic, the concurrent rehearsal lasted only 47 seconds, all
+`10/10` fixed fault scenarios have lab evidence, and no production receipt file
+is present. Repository tests and these lab observations cannot substitute for
+the external facts required by ADR 0029.
 
 The retained retry-budget receipt was produced by harness SHA-256
 `852a7ff868bb2cb88808bd746c74e42ed0186865f4ca19d0b7848954f2a13222`.
@@ -121,8 +125,28 @@ and committed Artifact counts remained one, one, and two. The first run failed
 closed on transient `Ready=True` with zero allocatable GPUs and remains
 diagnostic only.
 
-Two fixed scenarios remain: `assignment-post-commit-pre-response-crash` and
-`stale-fence-late-completion`.
+The retained Assignment post-commit/pre-response receipt was produced by
+harness SHA-256
+`333cb27a399fc03da909a187ae1690b06a50292e8e9fbc317533fc6a1ef1f393`.
+Its root-only `SHA256SUMS` file has SHA-256
+`f0c1a320b396579359921a51f0a1d9d97d6f305dc331d1bed288767818bf6b30`.
+The Attempt count remained one across recovery; the committed dispatch intent
+was replayed without a new Assignment, and the Job retained one completion, one
+posted Charge, and two committed Artifacts.
+
+The retained stale-fence late-completion receipt was produced by harness SHA-256
+`2d6f642a20758ac47ee5e397ef9fcb2191dbb853edb90defc0e8f07cb3022909`.
+Its root-only `SHA256SUMS` file has SHA-256
+`e2bc7e8af1bdfb43ba546d5ef89f9737ff961e812b1be6ddb570f5cc3f18c4cd`.
+The old fence-1 Attempt failed with `FINALIZATION_TIMEOUT`, the RetryDecision
+advanced the Job to fence 2, the replacement succeeded at fence 3, and exact
+old-candidate replay returned `REJECTED_STALE_LEASE`. The final ledger contains
+one completion, one posted Charge, one winning ArtifactSet, and two committed
+replacement Artifacts. Independent live postflight restored the idle two-Worker
+boundary and verified the Worker Agent runtime digests.
+
+All ten fixed scenarios now have synthetic lab evidence. This closes the mock
+harness inventory only; it does not advance the Production Gate result.
 
 ## Environment gates before a production exercise
 
@@ -141,7 +165,7 @@ Two fixed scenarios remain: `assignment-post-commit-pre-response-crash` and
 | --- | --- | --- | --- |
 | `preset-certification` | One synthetic profile and fixed mock media contract | No real H3 backend, saleable-group snapshot, three independent Preset certifications, quality/performance/cost measurements, or complete RateCard bindings | Keep mock records isolated; wait for the real backend and approved benchmark corpus |
 | `real-h3-soak` | Two persistent Workers expose eight GPUs; success, restart, failure, cancel, one accepted durable control-plane smoke Job, and a balanced five-wave/ten-Job concurrent mock rehearsal with verified Artifacts passed | The backend is mock, the concurrent run lasted 47 seconds, and no real-H3 72-hour mixed-load or reconciliation window exists | Use longer mock cycles only for harness regression; repeat the full 72-hour mixed-load contract on real H3 |
-| `state-event-fault-injection` | Runner cancellation, active-Attempt same-authority recovery after host `SIGKILL`, repository crash/fence conformance tests, one live PostgreSQL/NATS/Scheduler/Worker/Runner success path, a no-fault concurrent rehearsal, and live evidence for eight fixed scenarios exist. The Worker-control-network-partition scenario produced one `LOST` Attempt, one higher-fence successful replacement, one Visible Completion, one Charge, two Artifacts, and four zero-valued fixed measurements. The retry-budget-exhaustion scenario produced two Worker-reported `TRANSIENT_BACKEND` failures, `RETRY_WAIT -> FAILED`, a released CreditReservation, and no completion, Charge, or Artifact row. The process-kill scenario used `pidfd_send_signal` against the exact Worker 1 Runner process, observed container-policy restart, persisted `WORKER_LOST`, and accepted one higher-fence replacement on Worker 2 without duplicate completion, Charge, Artifact, or stale-authority acceptance. The Outbox-post-commit scenario killed the exact control process after `job.ready` committed but before claim/publication; restart produced one `VELA_EVENTS` publication, one Attempt, one completion, one Charge, and two committed Artifacts. The Publisher post-PubAck/pre-marker scenario killed the exact control process after the NATS PubAck but before the PostgreSQL marker; recovery reused the same Broker receipt after a second publish attempt and still produced one Attempt, one completion, one Charge, and two committed Artifacts. The Publisher pre-PubAck scenario killed the exact control process after PostgreSQL claim but before broker delegation; recovery published a new sequence and preserved one Attempt, one completion, one Charge, and two committed Artifacts. The Consumer post-DB/pre-Ack scenario killed the exact control process after the Scheduler handler returned and the separate Inbox receipt transaction committed, but before confirmed Ack; recovery redelivered the same stream sequence, reused the single Inbox receipt, avoided handler reapplication, and preserved one Attempt and one durable result. The Node-reboot scenario bound an out-of-band Worker 1 reboot to the exact node UID, boot ID, Job, Attempt, and fence; observed `Ready=Unknown` and a changed boot ID; persisted Attempt 1 as `LOST/WORKER_LOST`; and accepted only one Worker 2 replacement at higher fence with one completion, one Charge, and two committed Artifacts. All eight retain base64-preserved raw protobuf events | This is synthetic non-production evidence for only `8/10` fixed scenarios. The remaining two scenarios, real H3 behavior, Fleet reconciliation, broader repeated runs, and Production Gate review remain absent | Execute `assignment-post-commit-pre-response-crash` and `stale-fence-late-completion` with the same fail-closed receipt boundary, then repeat the applicable matrix against the real H3 backend |
+| `state-event-fault-injection` | Repository crash/fence conformance, live PostgreSQL/NATS/Scheduler/Worker/Runner flow, and all `10/10` fixed lab scenarios have evidence. The matrix covers Worker-control partition, bounded retry exhaustion, exact process kill, three Publisher/Outbox boundaries, Consumer post-DB/pre-Ack redelivery, node reboot, Assignment post-commit/pre-response replay, and exact stale FINALIZATION candidate rejection after a higher-fence replacement. Passing receipts retain complete authority ledgers, exact fault markers, checksums, and base64-preserved raw protobuf events; the final live postflight restored the idle `0 active Jobs / 0 active Leases / 2 READY+HEALTHY Workers` boundary | This remains synthetic non-production mock evidence. Real H3 behavior, Fleet reconciliation under production topology, broader repeated runs, independent Production Gate review, and production identities/services remain absent | Repeat the applicable ten-scenario matrix against the real H3 backend and production dependencies, under the versioned Production Gate receipt contract |
 | `gpu-remediation` | Physical eight-GPU UUID inventories are available | Node Agent is absent, no XFS quota path exists, and L0-L7 actions, approvals, post-checks, canaries, quarantine, and rate limits were not exercised | Provision a non-destructive mock post-check/fence harness first; real remediation still requires approved hardware actions and owners |
 | `organization-isolation-content-safety` | Repository RLS and authorization tests plus one live synthetic tenant path through MinIO signed Artifact download exist | No multi-organization isolation run, real IdP, credential revocation, break-glass workflow, or content-reuse audit exists | Deploy isolated test tenants and external identity dependencies, then run only synthetic non-sensitive probes |
 | `data-disaster-recovery` | Repository CNPG failover/PITR conformance exists; the lab runs one PostgreSQL instance, three co-located NATS replicas, and primary/backup buckets on one MinIO service | One control node cannot prove quorum or independent fault domains; there is no off-cluster WAL/Object Store, failover, restore, or credential-rotation exercise | Add two independent control/storage nodes before attempting the production RPO/RTO matrix |

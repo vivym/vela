@@ -1352,7 +1352,7 @@ JOIN jobs AS job ON job.id = attempt.job_id
 JOIN retention_policy_revisions AS retention_policy
   ON retention_policy.id = job.retention_policy_revision_id
 JOIN credit_reservations AS reservation ON reservation.job_id = job.id
-LEFT JOIN visible_completions AS completion ON completion.job_id = job.id
+LEFT JOIN visible_completions AS completion ON completion.attempt_id = attempt.id
 LEFT JOIN artifact_sets AS artifact_set ON artifact_set.id = completion.artifact_set_id
 WHERE lease.attempt_id = $1
   AND lease.worker_id = $2

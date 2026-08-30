@@ -5,14 +5,30 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
+
+type failFirstPollTransport struct {
+	base   http.RoundTripper
+	failed atomic.Bool
+}
+
+func (transport *failFirstPollTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/85000000-0000-0000-0000-000000000001") &&
+		transport.failed.CompareAndSwap(false, true) {
+		return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+	}
+	return transport.base.RoundTrip(request)
+}
 
 func TestSmokeSubmitsPollsAndVerifiesArtifacts(t *testing.T) {
 	video := []byte("mock-video")
@@ -59,12 +75,18 @@ func TestSmokeSubmitsPollsAndVerifiesArtifacts(t *testing.T) {
 	if err := os.WriteFile(credential, []byte("vla_fixture.secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	client := server.Client()
+	transport := &failFirstPollTransport{base: client.Transport}
+	client.Transport = transport
 	receipt, err := smoke(t.Context(), options{
 		baseURL: server.URL, projectID: defaultProjectID, credentialFile: credential,
 		pollInterval: time.Millisecond,
-	}, server.Client())
+	}, client)
 	if err != nil {
 		t.Fatalf("smoke: %v", err)
+	}
+	if !transport.failed.Load() {
+		t.Fatal("smoke did not exercise transient poll failure")
 	}
 	if receipt.Status != "LAB VERIFIED" || receipt.FinalState != "SUCCEEDED" || receipt.ArtifactCount != 2 {
 		t.Fatalf("receipt = %#v", receipt)

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -103,7 +104,7 @@ func TestRunOnceBootstrapsReadinessBeforeAssignmentEligibility(t *testing.T) {
 		readinessWorks: []workercontrol.ReadinessWork{work},
 		readinessReportResults: []workercontrol.ReadinessResult{{
 			CycleID: cycleID, State: workercontrol.ReadinessChecking,
-			NextCheck: workercontrol.ReadinessDevice,
+			NextCheck:       workercontrol.ReadinessDevice,
 			WorkerLifecycle: "WARMING", WorkerReachability: "SUSPECT",
 		}},
 	}
@@ -1979,6 +1980,133 @@ func TestRunOnceRenewsFinalizationLeaseDuringSlowArtifactUpload(t *testing.T) {
 	}
 }
 
+func TestRunOnceFinalizationHeartbeatPreservesCandidateWhileCompletionBlocked(t *testing.T) {
+	workerID := uuid.MustParse("30115000-0000-0000-0000-000000000001")
+	attemptID := uuid.MustParse("30115000-0000-0000-0000-000000000002")
+	jobID := uuid.MustParse("30115000-0000-0000-0000-000000000003")
+	recovery := newTestRecoveryManager(t, workerID, 14, workerrecovery.Space{
+		TotalBytes: 1 << 30, FreeBytes: 1 << 30,
+	})
+	assignment := validTestAssignment(workerID, attemptID, jobID, 14, time.Minute)
+	heartbeats := make(chan int64, 16)
+	control := &recordingControlPlane{
+		assignment: &assignment, startResult: grantedTestStart(assignment),
+		finalizationHeartbeats: heartbeats,
+	}
+	outputRoot := t.TempDir()
+	attemptRoot := filepath.Join(outputRoot, attemptID.String())
+	if err := os.Mkdir(attemptRoot, 0o700); err != nil {
+		t.Fatalf("create Attempt output root: %v", err)
+	}
+	payload := []byte("candidate-survives-finalization-heartbeat")
+	digest := sha256.Sum256(payload)
+	outputPath := filepath.Join(attemptRoot, "video.mp4")
+	if err := os.WriteFile(outputPath, payload, 0o600); err != nil {
+		t.Fatalf("write runner output: %v", err)
+	}
+	outputs := []runnertransport.Output{{
+		Kind: "VIDEO", Ordinal: 0, Path: outputPath, SizeBytes: int64(len(payload)),
+		SHA256: digest, ContentType: "video/mp4",
+	}}
+	runner := &recordingRunner{
+		prepareResult: runnertransport.PrepareResult{Decision: runnertransport.CommandAccepted},
+		startResult:   runnertransport.CommandResult{Decision: runnertransport.CommandAccepted},
+		statuses: []runnertransport.Status{{
+			State: runnertransport.ExecutionSucceeded, Sequence: 1, BackendStage: "complete",
+			GPUHealth: json.RawMessage(`{"healthy":true}`), LocalArtifactState: json.RawMessage(`{"outputs":"ready"}`),
+		}},
+		collectResult: runnertransport.CollectOutputsResult{
+			Decision: runnertransport.CommandAccepted, Outputs: outputs,
+		},
+	}
+	completionStarted := make(chan workercontrol.VisibleCompletionCandidate, 1)
+	releaseCompletion := make(chan struct{})
+	released := false
+	defer func() {
+		if !released {
+			close(releaseCompletion)
+		}
+	}()
+	finalization := successfulTestFinalization(assignment, outputs, nil)
+	finalization.completionHook = func(
+		ctx context.Context,
+		candidate workercontrol.VisibleCompletionCandidate,
+	) error {
+		completionStarted <- candidate
+		select {
+		case <-releaseCompletion:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 14, Recovery: recovery,
+		Control: control, Runner: runner, HeartbeatInterval: 20 * time.Millisecond,
+		ArtifactStoreReachable: func(context.Context) bool { return true },
+		OutputRoot:             outputRoot, OutputOwnerUID: uint32(os.Geteuid()),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization:             finalization, PartUploader: &recordingPartUploader{},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	type runResult struct {
+		result Result
+		err    error
+	}
+	done := make(chan runResult, 1)
+	go func() {
+		result, runErr := agent.RunOnce(context.Background())
+		done <- runResult{result: result, err: runErr}
+	}()
+	var candidate workercontrol.VisibleCompletionCandidate
+	select {
+	case candidate = <-completionStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Visible Completion did not block")
+	}
+	handle, err := recovery.Open(context.Background(), workerrecovery.Identity{
+		AttemptID: attemptID, WorkerID: workerID, WorkerEpoch: 14, Fence: assignment.LeaseFence,
+	})
+	if err != nil {
+		t.Fatalf("open active Finalization State: %v", err)
+	}
+	before, err := readFinalizationState(context.Background(), handle)
+	if err != nil || before.CompletionCandidate == nil {
+		t.Fatalf("candidate before next Heartbeat = %#v error=%v", before.CompletionCandidate, err)
+	}
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case sequence := <-heartbeats:
+			if sequence > before.HeartbeatSequence {
+				goto heartbeatObserved
+			}
+		case <-deadline:
+			t.Fatal("Finalization Heartbeat did not run while Visible Completion was blocked")
+		}
+	}
+
+heartbeatObserved:
+	after, err := readFinalizationState(context.Background(), handle)
+	if err != nil || after.CompletionCandidate == nil ||
+		after.CompletionCandidate.CompletionID != candidate.CompletionID ||
+		!reflect.DeepEqual(after.CompletionCandidate.ArtifactIDs, candidate.ArtifactIDs) {
+		t.Fatalf("candidate after next Heartbeat = %#v error=%v", after.CompletionCandidate, err)
+	}
+	close(releaseCompletion)
+	released = true
+	select {
+	case completed := <-done:
+		if completed.err != nil || completed.result.Outcome != OutcomeVisibleCompletion {
+			t.Fatalf("RunOnce = %#v error=%v", completed.result, completed.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("RunOnce did not finish after Visible Completion resumed")
+	}
+}
+
 func TestRunOnceReplaysPersistedFinalizationHeartbeatAfterLostResponse(t *testing.T) {
 	workerID := uuid.MustParse("30120000-0000-0000-0000-000000000001")
 	attemptID := uuid.MustParse("30120000-0000-0000-0000-000000000002")
@@ -2944,6 +3072,275 @@ func TestRunOnceFailsClosedForUntrustedFinalizationState(t *testing.T) {
 	}
 }
 
+func TestRunOnceFailsClosedForUntrustedExecutionHeartbeatState(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		write func(*testing.T, *workerrecovery.Handle, uuid.UUID, uuid.UUID)
+	}{
+		{
+			name: "malformed",
+			write: func(t *testing.T, handle *workerrecovery.Handle, _, _ uuid.UUID) {
+				t.Helper()
+				if _, err := handle.Write(
+					context.Background(), workerrecovery.StageUpload, executionHeartbeatStateName,
+					strings.NewReader("{"),
+				); err != nil {
+					t.Fatalf("write malformed execution Heartbeat State: %v", err)
+				}
+			},
+		},
+		{
+			name: "identity mismatch",
+			write: func(t *testing.T, handle *workerrecovery.Handle, _, attemptID uuid.UUID) {
+				t.Helper()
+				encoded, err := json.Marshal(executionHeartbeatState{
+					SchemaVersion: 1,
+					Authority: localAttemptAuthority{
+						AttemptID: attemptID, JobID: uuid.New(), WorkerID: uuid.New(),
+						WorkerEpoch: 15, LeaseFence: 7,
+					},
+					Sequence: 3,
+				})
+				if err != nil {
+					t.Fatalf("encode mismatched execution Heartbeat State: %v", err)
+				}
+				if _, err := handle.Write(
+					context.Background(), workerrecovery.StageUpload, executionHeartbeatStateName,
+					bytes.NewReader(encoded),
+				); err != nil {
+					t.Fatalf("write mismatched execution Heartbeat State: %v", err)
+				}
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			workerID := uuid.New()
+			attemptID := uuid.New()
+			recovery := newTestRecoveryManager(t, workerID, 15, workerrecovery.Space{
+				TotalBytes: 1 << 30, FreeBytes: 1 << 30,
+			})
+			handle, err := recovery.Open(context.Background(), workerrecovery.Identity{
+				AttemptID: attemptID, WorkerID: workerID, WorkerEpoch: 15, Fence: 7,
+			})
+			if err != nil {
+				t.Fatalf("Open recovery handle: %v", err)
+			}
+			testCase.write(t, handle, workerID, attemptID)
+			events := []string{}
+			control := &recordingControlPlane{events: &events}
+			agent, err := New(Config{
+				WorkerID: workerID, WorkerEpoch: 15, Recovery: recovery,
+				Control: control, Runner: &recordingRunner{events: &events}, HeartbeatInterval: time.Second,
+				OutputRoot: t.TempDir(), OutputOwnerUID: uint32(os.Geteuid()),
+				InferenceBackendRevision: "sglang@backend-1",
+				Finalization:             &recordingFinalizationControl{events: &events},
+				PartUploader:             &recordingPartUploader{events: &events},
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			if _, err := agent.RunOnce(context.Background()); err == nil {
+				t.Fatal("RunOnce accepted untrusted execution Heartbeat State")
+			}
+			if control.acquireCalls != 0 || len(events) != 0 {
+				t.Fatalf(
+					"untrusted state invoked external operations: acquire=%d events=%#v",
+					control.acquireCalls, events,
+				)
+			}
+		})
+	}
+}
+
+func TestRunOnceFailsClosedWhenExecutionHeartbeatSequenceIsExhausted(t *testing.T) {
+	workerID := uuid.New()
+	attemptID := uuid.New()
+	recovery := newTestRecoveryManager(t, workerID, 15, workerrecovery.Space{
+		TotalBytes: 1 << 30, FreeBytes: 1 << 30,
+	})
+	handle, err := recovery.Open(context.Background(), workerrecovery.Identity{
+		AttemptID: attemptID, WorkerID: workerID, WorkerEpoch: 15, Fence: 7,
+	})
+	if err != nil {
+		t.Fatalf("Open recovery handle: %v", err)
+	}
+	encoded, err := json.Marshal(executionHeartbeatState{
+		SchemaVersion: 1,
+		Authority: localAttemptAuthority{
+			AttemptID: attemptID, JobID: uuid.New(), WorkerID: workerID,
+			WorkerEpoch: 15, LeaseFence: 7,
+		},
+		Sequence: math.MaxInt64,
+	})
+	if err != nil {
+		t.Fatalf("encode exhausted execution Heartbeat State: %v", err)
+	}
+	if _, err := handle.Write(
+		context.Background(), workerrecovery.StageUpload, executionHeartbeatStateName,
+		bytes.NewReader(encoded),
+	); err != nil {
+		t.Fatalf("write exhausted execution Heartbeat State: %v", err)
+	}
+	events := []string{}
+	control := &recordingControlPlane{events: &events}
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 15, Recovery: recovery,
+		Control: control, Runner: &recordingRunner{events: &events}, HeartbeatInterval: time.Second,
+		OutputRoot: t.TempDir(), OutputOwnerUID: uint32(os.Geteuid()),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization:             &recordingFinalizationControl{events: &events},
+		PartUploader:             &recordingPartUploader{events: &events},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if _, err := agent.RunOnce(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "sequence is exhausted") {
+		t.Fatalf("RunOnce error = %v", err)
+	}
+	if control.acquireCalls != 0 || len(events) != 0 {
+		t.Fatalf(
+			"exhausted sequence invoked external operations: acquire=%d events=%#v",
+			control.acquireCalls, events,
+		)
+	}
+}
+
+func TestRunOnceReplaysPendingHeartbeatAtMaximumSequenceBeforeExhaustion(t *testing.T) {
+	workerID := uuid.New()
+	attemptID := uuid.New()
+	jobID := uuid.New()
+	recovery := newTestRecoveryManager(t, workerID, 15, workerrecovery.Space{
+		TotalBytes: 1 << 30, FreeBytes: 1 << 30,
+	})
+	assignment := validTestAssignment(workerID, attemptID, jobID, 15, time.Minute)
+	handle, err := recovery.Open(context.Background(), workerrecovery.Identity{
+		AttemptID: attemptID, WorkerID: workerID, WorkerEpoch: 15,
+		Fence: assignment.LeaseFence,
+	})
+	if err != nil {
+		t.Fatalf("Open recovery handle: %v", err)
+	}
+	control := &recordingControlPlane{heartbeatResults: []workercontrol.HeartbeatResult{{
+		Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+		WorkerID: workerID, WorkerEpoch: 15, LeaseFence: assignment.LeaseFence,
+		HeartbeatSequence: math.MaxInt64, ExecutionPhase: workercontrol.ExecutionPhaseGenerating,
+		LeaseValidFor: time.Minute,
+	}}}
+	runner := &recordingRunner{statuses: []runnertransport.Status{{
+		State: runnertransport.ExecutionRunning, Sequence: math.MaxInt64,
+		BackendStage: "dit", GPUHealth: json.RawMessage(`{"healthy":true}`),
+		LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+	}}}
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 15, Recovery: recovery,
+		Control: control, Runner: runner, HeartbeatInterval: time.Second,
+		MonotonicNow:             func() time.Duration { return 10 * time.Second },
+		Wait:                     func(context.Context, time.Duration) error { return nil },
+		OutputRoot:               t.TempDir(),
+		OutputOwnerUID:           uint32(os.Geteuid()),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization:             &recordingFinalizationControl{},
+		PartUploader:             &recordingPartUploader{},
+		ArtifactStoreReachable:   func(context.Context) bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := persistExecutionHeartbeatSequence(
+		context.Background(), handle, assignment, math.MaxInt64,
+	); err != nil {
+		t.Fatalf("persist maximum execution Heartbeat sequence: %v", err)
+	}
+	if err := agent.persistPendingHeartbeat(
+		context.Background(), handle, assignment,
+		workercontrol.HeartbeatObservation{
+			Sequence: math.MaxInt64, BackendStage: "dit",
+			GPUHealthSummary:       json.RawMessage(`{"healthy":true}`),
+			LocalArtifactState:     json.RawMessage(`{"output_count":0}`),
+			ArtifactStoreReachable: true,
+		},
+		workercontrol.ExecutionPhaseGenerating,
+		nil,
+	); err != nil {
+		t.Fatalf("persist maximum pending Heartbeat: %v", err)
+	}
+
+	if _, err := agent.RunOnce(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "sequence is exhausted") {
+		t.Fatalf("RunOnce error = %v", err)
+	}
+	if len(control.heartbeatObservations) != 1 ||
+		control.heartbeatObservations[0].Sequence != math.MaxInt64 {
+		t.Fatalf("replayed Heartbeats = %#v", control.heartbeatObservations)
+	}
+	if control.acquireCalls != 0 || control.startCalls != 0 {
+		t.Fatalf(
+			"maximum pending replay acquired or started: acquire=%d start=%d",
+			control.acquireCalls, control.startCalls,
+		)
+	}
+}
+
+func TestRunOnceRejectsExecutionHeartbeatStateThatConflictsWithPendingReplay(t *testing.T) {
+	workerID := uuid.New()
+	attemptID := uuid.New()
+	jobID := uuid.New()
+	recovery := newTestRecoveryManager(t, workerID, 15, workerrecovery.Space{
+		TotalBytes: 1 << 30, FreeBytes: 1 << 30,
+	})
+	assignment := validTestAssignment(workerID, attemptID, jobID, 15, time.Minute)
+	handle, err := recovery.Open(context.Background(), workerrecovery.Identity{
+		AttemptID: attemptID, WorkerID: workerID, WorkerEpoch: 15,
+		Fence: assignment.LeaseFence,
+	})
+	if err != nil {
+		t.Fatalf("Open recovery handle: %v", err)
+	}
+	events := []string{}
+	control := &recordingControlPlane{events: &events}
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 15, Recovery: recovery,
+		Control: control, Runner: &recordingRunner{events: &events}, HeartbeatInterval: time.Second,
+		OutputRoot: t.TempDir(), OutputOwnerUID: uint32(os.Geteuid()),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization:             &recordingFinalizationControl{events: &events},
+		PartUploader:             &recordingPartUploader{events: &events},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := persistExecutionHeartbeatSequence(context.Background(), handle, assignment, 8); err != nil {
+		t.Fatalf("persist execution Heartbeat sequence: %v", err)
+	}
+	if err := agent.persistPendingHeartbeat(
+		context.Background(), handle, assignment,
+		workercontrol.HeartbeatObservation{
+			Sequence: 7, BackendStage: "dit",
+			GPUHealthSummary:       json.RawMessage(`{"healthy":true}`),
+			LocalArtifactState:     json.RawMessage(`{"output_count":0}`),
+			ArtifactStoreReachable: true,
+		},
+		workercontrol.ExecutionPhaseGenerating,
+		nil,
+	); err != nil {
+		t.Fatalf("persist conflicting pending Heartbeat: %v", err)
+	}
+
+	if _, err := agent.RunOnce(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "does not match execution Heartbeat State") {
+		t.Fatalf("RunOnce error = %v", err)
+	}
+	if len(control.heartbeatObservations) != 0 || control.acquireCalls != 0 || len(events) != 0 {
+		t.Fatalf(
+			"conflicting recovery records invoked external operations: heartbeats=%#v acquire=%d events=%#v",
+			control.heartbeatObservations, control.acquireCalls, events,
+		)
+	}
+}
+
 func TestRunOnceRenewsOnlyFromRequestStartMonotonicPlusLeaseValidFor(t *testing.T) {
 	workerID := uuid.MustParse("31000000-0000-0000-0000-000000000001")
 	attemptID := uuid.MustParse("32000000-0000-0000-0000-000000000002")
@@ -3046,6 +3443,476 @@ func TestRunOnceRenewsOnlyFromRequestStartMonotonicPlusLeaseValidFor(t *testing.
 	}
 	if !reflect.DeepEqual(events, wantEvents) {
 		t.Fatalf("execution events = %#v, want %#v", events, wantEvents)
+	}
+}
+
+func TestRunOnceAdvancesHeartbeatWhenRunnerSequenceDoesNotChange(t *testing.T) {
+	workerID := uuid.MustParse("31010000-0000-0000-0000-000000000001")
+	attemptID := uuid.MustParse("31010000-0000-0000-0000-000000000002")
+	jobID := uuid.MustParse("31010000-0000-0000-0000-000000000003")
+	spaceReads := int64(0)
+	recovery, err := workerrecovery.New(workerrecovery.Config{
+		Root: t.TempDir(), WorkerID: workerID, WorkerEpoch: 9,
+		AttemptQuotaBytes: 1 << 20, MaxEntryBytes: 1 << 18, MaxEntries: 16,
+		HighWatermarkBytes: 50, LowWatermarkBytes: 20, CriticalFreeBytes: 10,
+		TerminalRetention: time.Minute,
+		SpaceProbe: func(string) (workerrecovery.Space, error) {
+			spaceReads++
+			return workerrecovery.Space{
+				TotalBytes: 1 << 30,
+				FreeBytes:  (1 << 30) - spaceReads,
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("create recovery Manager: %v", err)
+	}
+	assignment := validTestAssignment(workerID, attemptID, jobID, 9, time.Minute)
+	control := &recordingControlPlane{
+		assignment: &assignment, startResult: grantedTestStart(assignment),
+		heartbeatResults: []workercontrol.HeartbeatResult{
+			{
+				Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+				WorkerID: workerID, WorkerEpoch: 9, LeaseFence: assignment.LeaseFence,
+				HeartbeatSequence: 1, ExecutionPhase: workercontrol.ExecutionPhaseGenerating,
+				LeaseValidFor: time.Minute,
+			},
+			{
+				Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+				WorkerID: workerID, WorkerEpoch: 9, LeaseFence: assignment.LeaseFence,
+				HeartbeatSequence: 2, ExecutionPhase: workercontrol.ExecutionPhaseGenerating,
+				LeaseValidFor: time.Minute,
+			},
+		},
+	}
+	outputRoot := t.TempDir()
+	attemptOutputRoot := filepath.Join(outputRoot, attemptID.String())
+	if err := os.Mkdir(attemptOutputRoot, 0o700); err != nil {
+		t.Fatalf("create Attempt output root: %v", err)
+	}
+	content := []byte("same-runner-sequence")
+	digest := sha256.Sum256(content)
+	outputPath := filepath.Join(attemptOutputRoot, "video.mp4")
+	if err := os.WriteFile(outputPath, content, 0o600); err != nil {
+		t.Fatalf("write runner output: %v", err)
+	}
+	runner := &recordingRunner{
+		prepareResult: runnertransport.PrepareResult{Decision: runnertransport.CommandAccepted},
+		startResult:   runnertransport.CommandResult{Decision: runnertransport.CommandAccepted},
+		statuses: []runnertransport.Status{
+			{
+				State: runnertransport.ExecutionRunning, Sequence: 1, BackendStage: "mock/prepare",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+			},
+			{
+				State: runnertransport.ExecutionRunning, Sequence: 1, BackendStage: "mock/prepare",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+			},
+			{
+				State: runnertransport.ExecutionSucceeded, Sequence: 2, BackendStage: "complete",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"outputs":"ready"}`),
+			},
+		},
+		collectResult: runnertransport.CollectOutputsResult{
+			Decision: runnertransport.CommandAccepted,
+			Outputs: []runnertransport.Output{{
+				Kind: "VIDEO", Path: outputPath, SizeBytes: int64(len(content)),
+				SHA256: digest, ContentType: "video/mp4",
+			}},
+		},
+	}
+	agent, err := New(Config{
+		WorkerID: workerID, WorkerEpoch: 9, Recovery: recovery,
+		Control: control, Runner: runner, HeartbeatInterval: time.Second,
+		MonotonicNow:             func() time.Duration { return 10 * time.Second },
+		Wait:                     func(context.Context, time.Duration) error { return nil },
+		ArtifactStoreReachable:   func(context.Context) bool { return true },
+		OutputRoot:               outputRoot,
+		OutputOwnerUID:           uint32(os.Geteuid()),
+		InferenceBackendRevision: "sglang@backend-1",
+		Finalization: successfulTestFinalization(
+			assignment, runner.collectResult.Outputs, nil,
+		),
+		PartUploader: &recordingPartUploader{},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	result, err := agent.RunOnce(context.Background())
+	if err != nil || result.Outcome != OutcomeVisibleCompletion {
+		t.Fatalf("RunOnce result = %#v error=%v", result, err)
+	}
+	if len(control.heartbeatObservations) != 3 {
+		t.Fatalf("Heartbeat observations = %#v", control.heartbeatObservations)
+	}
+	first := control.heartbeatObservations[0]
+	second := control.heartbeatObservations[1]
+	if first.Sequence != 1 || second.Sequence != 2 ||
+		first.BackendStage != second.BackendStage ||
+		first.ScratchFreeBytes <= second.ScratchFreeBytes {
+		t.Fatalf("same-stage Heartbeats = %#v, %#v", first, second)
+	}
+}
+
+func TestRunOnceAdvancesHeartbeatAfterReplayingLostResponse(t *testing.T) {
+	workerID := uuid.MustParse("31020000-0000-0000-0000-000000000001")
+	attemptID := uuid.MustParse("31020000-0000-0000-0000-000000000002")
+	jobID := uuid.MustParse("31020000-0000-0000-0000-000000000003")
+	spaceReads := int64(0)
+	recovery, err := workerrecovery.New(workerrecovery.Config{
+		Root: t.TempDir(), WorkerID: workerID, WorkerEpoch: 9,
+		AttemptQuotaBytes: 1 << 20, MaxEntryBytes: 1 << 18, MaxEntries: 16,
+		HighWatermarkBytes: 50, LowWatermarkBytes: 20, CriticalFreeBytes: 10,
+		TerminalRetention: time.Minute,
+		SpaceProbe: func(string) (workerrecovery.Space, error) {
+			spaceReads++
+			return workerrecovery.Space{
+				TotalBytes: 1 << 30,
+				FreeBytes:  (1 << 30) - spaceReads,
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("create recovery Manager: %v", err)
+	}
+	assignment := validTestAssignment(workerID, attemptID, jobID, 9, time.Minute)
+	control := &recordingControlPlane{
+		assignment: &assignment, startResult: grantedTestStart(assignment),
+		heartbeatErrors: []error{errors.New("response lost after Heartbeat commit")},
+		heartbeatResults: []workercontrol.HeartbeatResult{
+			{
+				Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+				WorkerID: workerID, WorkerEpoch: 9, LeaseFence: assignment.LeaseFence,
+				HeartbeatSequence: 7, ExecutionPhase: workercontrol.ExecutionPhaseGenerating,
+				LeaseValidFor: time.Minute,
+			},
+			{
+				Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+				WorkerID: workerID, WorkerEpoch: 9, LeaseFence: assignment.LeaseFence,
+				HeartbeatSequence: 8, ExecutionPhase: workercontrol.ExecutionPhaseGenerating,
+				LeaseValidFor: time.Minute,
+			},
+		},
+	}
+	outputRoot := t.TempDir()
+	attemptOutputRoot := filepath.Join(outputRoot, attemptID.String())
+	if err := os.Mkdir(attemptOutputRoot, 0o700); err != nil {
+		t.Fatalf("create Attempt output root: %v", err)
+	}
+	content := []byte("replayed-heartbeat")
+	digest := sha256.Sum256(content)
+	outputPath := filepath.Join(attemptOutputRoot, "video.mp4")
+	if err := os.WriteFile(outputPath, content, 0o600); err != nil {
+		t.Fatalf("write runner output: %v", err)
+	}
+	runner := &recordingRunner{
+		prepareResult: runnertransport.PrepareResult{Decision: runnertransport.CommandAccepted},
+		startResult:   runnertransport.CommandResult{Decision: runnertransport.CommandAccepted},
+		statuses: []runnertransport.Status{
+			{
+				State: runnertransport.ExecutionRunning, Sequence: 7, BackendStage: "mock/prepare",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+			},
+			{
+				State: runnertransport.ExecutionRunning, Sequence: 7, BackendStage: "mock/prepare",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+			},
+			{
+				State: runnertransport.ExecutionSucceeded, Sequence: 8, BackendStage: "complete",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"outputs":"ready"}`),
+			},
+		},
+		collectResult: runnertransport.CollectOutputsResult{
+			Decision: runnertransport.CommandAccepted,
+			Outputs: []runnertransport.Output{{
+				Kind: "VIDEO", Path: outputPath, SizeBytes: int64(len(content)),
+				SHA256: digest, ContentType: "video/mp4",
+			}},
+		},
+	}
+	newAgent := func() *Agent {
+		agent, newErr := New(Config{
+			WorkerID: workerID, WorkerEpoch: 9, Recovery: recovery,
+			Control: control, Runner: runner, HeartbeatInterval: time.Second,
+			MonotonicNow:             func() time.Duration { return 10 * time.Second },
+			Wait:                     func(context.Context, time.Duration) error { return nil },
+			ArtifactStoreReachable:   func(context.Context) bool { return true },
+			OutputRoot:               outputRoot,
+			OutputOwnerUID:           uint32(os.Geteuid()),
+			InferenceBackendRevision: "sglang@backend-1",
+			Finalization: successfulTestFinalization(
+				assignment, runner.collectResult.Outputs, nil,
+			),
+			PartUploader: &recordingPartUploader{},
+		})
+		if newErr != nil {
+			t.Fatalf("New: %v", newErr)
+		}
+		return agent
+	}
+
+	if _, err := newAgent().RunOnce(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "response lost after Heartbeat commit") {
+		t.Fatalf("first RunOnce error = %v", err)
+	}
+	result, err := newAgent().RunOnce(context.Background())
+	if err != nil || result.Outcome != OutcomeVisibleCompletion {
+		t.Fatalf("resumed RunOnce result = %#v error=%v", result, err)
+	}
+	if control.acquireCalls != 1 || control.startCalls != 1 {
+		t.Fatalf(
+			"resumed running Attempt acquired or started again: Acquire=%d Start=%d",
+			control.acquireCalls, control.startCalls,
+		)
+	}
+	gotSequences := make([]int64, len(control.heartbeatObservations))
+	for index, observation := range control.heartbeatObservations {
+		gotSequences[index] = observation.Sequence
+	}
+	if !reflect.DeepEqual(gotSequences, []int64{7, 7, 8, 9}) {
+		t.Fatalf("Heartbeat sequences = %#v", gotSequences)
+	}
+}
+
+func TestRunOnceAdvancesHeartbeatAfterConfirmedResponseAndProcessLoss(t *testing.T) {
+	workerID := uuid.MustParse("31030000-0000-0000-0000-000000000001")
+	attemptID := uuid.MustParse("31030000-0000-0000-0000-000000000002")
+	jobID := uuid.MustParse("31030000-0000-0000-0000-000000000003")
+	spaceReads := int64(0)
+	recovery, err := workerrecovery.New(workerrecovery.Config{
+		Root: t.TempDir(), WorkerID: workerID, WorkerEpoch: 9,
+		AttemptQuotaBytes: 1 << 20, MaxEntryBytes: 1 << 18, MaxEntries: 16,
+		HighWatermarkBytes: 50, LowWatermarkBytes: 20, CriticalFreeBytes: 10,
+		TerminalRetention: time.Minute,
+		SpaceProbe: func(string) (workerrecovery.Space, error) {
+			spaceReads++
+			return workerrecovery.Space{
+				TotalBytes: 1 << 30,
+				FreeBytes:  (1 << 30) - spaceReads,
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("create recovery Manager: %v", err)
+	}
+	assignment := validTestAssignment(workerID, attemptID, jobID, 9, time.Minute)
+	control := &recordingControlPlane{
+		assignment: &assignment, startResult: grantedTestStart(assignment),
+		heartbeatResults: []workercontrol.HeartbeatResult{
+			{
+				Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+				WorkerID: workerID, WorkerEpoch: 9, LeaseFence: assignment.LeaseFence,
+				HeartbeatSequence: 7, ExecutionPhase: workercontrol.ExecutionPhaseGenerating,
+				LeaseValidFor: time.Minute,
+			},
+			{
+				Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+				WorkerID: workerID, WorkerEpoch: 9, LeaseFence: assignment.LeaseFence,
+				HeartbeatSequence: 8, ExecutionPhase: workercontrol.ExecutionPhaseGenerating,
+				LeaseValidFor: time.Minute,
+			},
+		},
+	}
+	outputRoot := t.TempDir()
+	attemptOutputRoot := filepath.Join(outputRoot, attemptID.String())
+	if err := os.Mkdir(attemptOutputRoot, 0o700); err != nil {
+		t.Fatalf("create Attempt output root: %v", err)
+	}
+	content := []byte("confirmed-heartbeat")
+	digest := sha256.Sum256(content)
+	outputPath := filepath.Join(attemptOutputRoot, "video.mp4")
+	if err := os.WriteFile(outputPath, content, 0o600); err != nil {
+		t.Fatalf("write runner output: %v", err)
+	}
+	runner := &recordingRunner{
+		prepareResult: runnertransport.PrepareResult{Decision: runnertransport.CommandAccepted},
+		startResult:   runnertransport.CommandResult{Decision: runnertransport.CommandAccepted},
+		statuses: []runnertransport.Status{
+			{
+				State: runnertransport.ExecutionRunning, Sequence: 7, BackendStage: "mock/prepare",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+			},
+			{
+				State: runnertransport.ExecutionRunning, Sequence: 7, BackendStage: "mock/prepare",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+			},
+			{
+				State: runnertransport.ExecutionSucceeded, Sequence: 8, BackendStage: "complete",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"outputs":"ready"}`),
+			},
+		},
+		collectResult: runnertransport.CollectOutputsResult{
+			Decision: runnertransport.CommandAccepted,
+			Outputs: []runnertransport.Output{{
+				Kind: "VIDEO", Path: outputPath, SizeBytes: int64(len(content)),
+				SHA256: digest, ContentType: "video/mp4",
+			}},
+		},
+	}
+	processLost := errors.New("simulated Worker Agent process loss")
+	newAgent := func(wait func(context.Context, time.Duration) error) *Agent {
+		agent, newErr := New(Config{
+			WorkerID: workerID, WorkerEpoch: 9, Recovery: recovery,
+			Control: control, Runner: runner, HeartbeatInterval: time.Second,
+			MonotonicNow:             func() time.Duration { return 10 * time.Second },
+			Wait:                     wait,
+			ArtifactStoreReachable:   func(context.Context) bool { return true },
+			OutputRoot:               outputRoot,
+			OutputOwnerUID:           uint32(os.Geteuid()),
+			InferenceBackendRevision: "sglang@backend-1",
+			Finalization: successfulTestFinalization(
+				assignment, runner.collectResult.Outputs, nil,
+			),
+			PartUploader: &recordingPartUploader{},
+		})
+		if newErr != nil {
+			t.Fatalf("New: %v", newErr)
+		}
+		return agent
+	}
+
+	if _, err := newAgent(func(context.Context, time.Duration) error {
+		return processLost
+	}).RunOnce(context.Background()); !errors.Is(err, processLost) {
+		t.Fatalf("first RunOnce error = %v", err)
+	}
+	result, err := newAgent(func(context.Context, time.Duration) error {
+		return nil
+	}).RunOnce(context.Background())
+	if err != nil || result.Outcome != OutcomeVisibleCompletion {
+		t.Fatalf("resumed RunOnce result = %#v error=%v", result, err)
+	}
+	if control.acquireCalls != 2 || control.startCalls != 2 {
+		t.Fatalf(
+			"same-authority recovery calls: Acquire=%d Start=%d",
+			control.acquireCalls, control.startCalls,
+		)
+	}
+	gotSequences := make([]int64, len(control.heartbeatObservations))
+	for index, observation := range control.heartbeatObservations {
+		gotSequences[index] = observation.Sequence
+	}
+	if !reflect.DeepEqual(gotSequences, []int64{7, 8, 9}) {
+		t.Fatalf("Heartbeat sequences = %#v", gotSequences)
+	}
+}
+
+func TestRunOnceDoesNotReuseHeartbeatSequenceReservedBeforePendingWrite(t *testing.T) {
+	workerID := uuid.MustParse("31040000-0000-0000-0000-000000000001")
+	attemptID := uuid.MustParse("31040000-0000-0000-0000-000000000002")
+	jobID := uuid.MustParse("31040000-0000-0000-0000-000000000003")
+	recoveryRoot := t.TempDir()
+	newRecovery := func(maxEntries int) *workerrecovery.Manager {
+		recovery, err := workerrecovery.New(workerrecovery.Config{
+			Root: recoveryRoot, WorkerID: workerID, WorkerEpoch: 9,
+			AttemptQuotaBytes: 1 << 20, MaxEntryBytes: 1 << 18, MaxEntries: maxEntries,
+			HighWatermarkBytes: 50, LowWatermarkBytes: 20, CriticalFreeBytes: 10,
+			TerminalRetention: time.Minute,
+			SpaceProbe: func(string) (workerrecovery.Space, error) {
+				return workerrecovery.Space{TotalBytes: 1 << 30, FreeBytes: 1 << 30}, nil
+			},
+		})
+		if err != nil {
+			t.Fatalf("create recovery Manager: %v", err)
+		}
+		return recovery
+	}
+	assignment := validTestAssignment(workerID, attemptID, jobID, 9, time.Minute)
+	control := &recordingControlPlane{
+		assignment: &assignment, startResult: grantedTestStart(assignment),
+		heartbeatResults: []workercontrol.HeartbeatResult{{
+			Decision: workercontrol.HeartbeatContinue, AttemptID: attemptID, JobID: jobID,
+			WorkerID: workerID, WorkerEpoch: 9, LeaseFence: assignment.LeaseFence,
+			HeartbeatSequence: 8, ExecutionPhase: workercontrol.ExecutionPhaseGenerating,
+			LeaseValidFor: time.Minute,
+		}},
+	}
+	outputRoot := t.TempDir()
+	attemptOutputRoot := filepath.Join(outputRoot, attemptID.String())
+	if err := os.Mkdir(attemptOutputRoot, 0o700); err != nil {
+		t.Fatalf("create Attempt output root: %v", err)
+	}
+	content := []byte("reserved-before-pending")
+	digest := sha256.Sum256(content)
+	outputPath := filepath.Join(attemptOutputRoot, "video.mp4")
+	if err := os.WriteFile(outputPath, content, 0o600); err != nil {
+		t.Fatalf("write runner output: %v", err)
+	}
+	runner := &recordingRunner{
+		prepareResult: runnertransport.PrepareResult{Decision: runnertransport.CommandAccepted},
+		startResult:   runnertransport.CommandResult{Decision: runnertransport.CommandAccepted},
+		statuses: []runnertransport.Status{
+			{
+				State: runnertransport.ExecutionRunning, Sequence: 7, BackendStage: "mock/prepare",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+			},
+			{
+				State: runnertransport.ExecutionRunning, Sequence: 7, BackendStage: "mock/prepare",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"output_count":0}`),
+			},
+			{
+				State: runnertransport.ExecutionSucceeded, Sequence: 8, BackendStage: "complete",
+				GPUHealth:          json.RawMessage(`{"healthy":true}`),
+				LocalArtifactState: json.RawMessage(`{"outputs":"ready"}`),
+			},
+		},
+		collectResult: runnertransport.CollectOutputsResult{
+			Decision: runnertransport.CommandAccepted,
+			Outputs: []runnertransport.Output{{
+				Kind: "VIDEO", Path: outputPath, SizeBytes: int64(len(content)),
+				SHA256: digest, ContentType: "video/mp4",
+			}},
+		},
+	}
+	newAgent := func(recovery *workerrecovery.Manager) *Agent {
+		agent, err := New(Config{
+			WorkerID: workerID, WorkerEpoch: 9, Recovery: recovery,
+			Control: control, Runner: runner, HeartbeatInterval: time.Second,
+			MonotonicNow:             func() time.Duration { return 10 * time.Second },
+			Wait:                     func(context.Context, time.Duration) error { return nil },
+			ArtifactStoreReachable:   func(context.Context) bool { return true },
+			OutputRoot:               outputRoot,
+			OutputOwnerUID:           uint32(os.Geteuid()),
+			InferenceBackendRevision: "sglang@backend-1",
+			Finalization: successfulTestFinalization(
+				assignment, runner.collectResult.Outputs, nil,
+			),
+			PartUploader: &recordingPartUploader{},
+		})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		return agent
+	}
+
+	if _, err := newAgent(newRecovery(1)).RunOnce(context.Background()); !errors.Is(err, workerrecovery.ErrQuotaExceeded) {
+		t.Fatalf("first RunOnce error = %v", err)
+	}
+	if len(control.heartbeatObservations) != 0 {
+		t.Fatalf("Heartbeat sent before pending write = %#v", control.heartbeatObservations)
+	}
+	result, err := newAgent(newRecovery(16)).RunOnce(context.Background())
+	if err != nil || result.Outcome != OutcomeVisibleCompletion {
+		t.Fatalf("resumed RunOnce result = %#v error=%v", result, err)
+	}
+	gotSequences := make([]int64, len(control.heartbeatObservations))
+	for index, observation := range control.heartbeatObservations {
+		gotSequences[index] = observation.Sequence
+	}
+	if !reflect.DeepEqual(gotSequences, []int64{8, 9}) {
+		t.Fatalf("Heartbeat sequences = %#v", gotSequences)
 	}
 }
 
@@ -4393,6 +5260,7 @@ type recordingFinalizationControl struct {
 	completeUploadDecisions []workercontrol.ArtifactUploadDecision
 	verificationErrors      []error
 	completionErrors        []error
+	completionHook          func(context.Context, workercontrol.VisibleCompletionCandidate) error
 	claimIDs                []uuid.UUID
 	verificationIDs         []uuid.UUID
 	completionIDs           []uuid.UUID
@@ -4578,12 +5446,17 @@ func (control *recordingFinalizationControl) VerifyArtifact(
 }
 
 func (control *recordingFinalizationControl) CompleteVisibleCompletion(
-	_ context.Context,
+	ctx context.Context,
 	_ workercontrol.LeaseCredentials,
 	candidate workercontrol.VisibleCompletionCandidate,
 ) (workercontrol.VisibleCompletionResult, error) {
 	control.record("finalization.visible_completion")
 	control.completionIDs = append(control.completionIDs, candidate.CompletionID)
+	if control.completionHook != nil {
+		if err := control.completionHook(ctx, candidate); err != nil {
+			return workercontrol.VisibleCompletionResult{}, err
+		}
+	}
 	if len(control.completionErrors) != 0 {
 		err := control.completionErrors[0]
 		control.completionErrors = control.completionErrors[1:]

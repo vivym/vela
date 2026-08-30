@@ -368,9 +368,53 @@ The first hidden diagnostic run is preserved at
 `receipts/.vela-lab-node-reboot.ygpybI` and is not counted: kubelet first
 returned `Ready` with zero allocatable GPUs before the device plugin restored
 eight. Cleanup completed the Job and restored the idle two-Worker boundary.
-The two remaining fixed scenarios are
-`assignment-post-commit-pre-response-crash` and
-`stale-fence-late-completion`.
+
+## Assignment post-commit/pre-response crash rehearsal
+
+The ninth harness runs only after the passing `8/10` receipt and an idle
+two-Worker preflight. It uses the lab-tagged control image to pause after the
+Scheduler transaction has committed the Assignment, Attempt, Lease, and
+dispatch intent, but before the response returns. After the exact control
+process is killed, recovery must replay that committed authority without
+creating another Attempt.
+
+The passing result is fixed scenarios `9/10`, Production Gates `0/9`. Job
+`16a9a421-4fce-4416-860e-49e3fa5e3d34` kept one Attempt before and after
+recovery and ended with one Visible Completion, one posted completion Charge,
+and two committed Artifacts. The root-only receipt is
+`receipts/assignment-post-commit-pre-response-crash-v1`; its `SHA256SUMS` file
+has SHA-256
+`f0c1a320b396579359921a51f0a1d9d97d6f305dc331d1bed288767818bf6b30`.
+The executed harness has SHA-256
+`333cb27a399fc03da909a187ae1690b06a50292e8e9fbc317533fc6a1ef1f393`.
+
+## Stale-fence late-completion rehearsal
+
+The tenth harness pins the passing `9/10` receipt and the exact Worker Agent,
+control, Runner, and bootstrap/tool image digests. It captures an actual
+FINALIZATION Completion Candidate on Worker 1, advances durable authority
+through a finalization timeout and replacement Attempt, and then replays the
+exact old candidate over Worker 1's mTLS identity. Only
+`REJECTED_STALE_LEASE` is accepted.
+
+The passing result is fixed scenarios `10/10`, Production Gates `0/9`. Job
+`3e4be0cc-fcc0-42fa-a502-6080df76c634` used a failed fence-1 Attempt on Worker 1,
+a RetryDecision at Job fence 2, and a successful fence-3 replacement on Worker
+2. The final ledger contains one Visible Completion, one posted completion
+Charge, one winning ArtifactSet, two committed replacement Artifacts, and two
+non-published `VERIFIED` original-fence Artifacts. The root-only receipt is
+`receipts/stale-fence-late-completion-v2`; its `SHA256SUMS` file has SHA-256
+`e2bc7e8af1bdfb43ba546d5ef89f9737ff961e812b1be6ddb570f5cc3f18c4cd`.
+The executed harness has SHA-256
+`2d6f642a20758ac47ee5e397ef9fcb2191dbb853edb90defc0e8f07cb3022909`.
+
+Independent live postflight verified zero active Jobs and Leases, zero
+Production Gate receipts, two `READY/HEALTHY` Workers, three Ready nodes with
+allocatable GPUs `0/8/8`, baseline NetworkPolicy and ServiceClass state, absent
+fault resources, matching Worker Agent spec/runtime digests, both persistent
+Runners `running/healthy` in `success` mode, and no harness/watchdog process.
+The complete `10/10` matrix remains a `NON_PRODUCTION_MOCK_REHEARSAL`; it is not
+a Launch Receipt.
 
 Rollback removes only the managed container and preserves Runner state:
 

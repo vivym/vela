@@ -9,6 +9,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -209,6 +210,7 @@ type Agent struct {
 	runner                         Runner
 	heartbeatInterval              time.Duration
 	capacityReportInterval         time.Duration
+	capacityReportMu               sync.Mutex
 	reportCapacityError            func(error)
 	monotonicNow                   func() time.Duration
 	wait                           func(context.Context, time.Duration) error
@@ -369,8 +371,14 @@ func (agent *Agent) RunOnce(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if err := agent.validateExecutionHeartbeatStates(ctx, true); err != nil {
+		return Result{}, err
+	}
 	if resumed, ok, err := agent.resumePendingControlOperation(ctx, watermark.State); ok || err != nil {
 		return resumed, err
+	}
+	if err := agent.validateExecutionHeartbeatStates(ctx, false); err != nil {
+		return Result{}, err
 	}
 	if resumed, ok, err := agent.resumeFinalization(ctx, watermark.State); ok || err != nil {
 		return resumed, err
@@ -522,7 +530,9 @@ func (agent *Agent) RunOnce(ctx context.Context) (Result, error) {
 			},
 		)
 	}
-	return agent.runExecutionLoop(ctx, handle, identity, assignment, credentials, watermark.State, deadline)
+	return agent.runExecutionLoop(
+		ctx, handle, identity, assignment, credentials, watermark.State, deadline, 0,
+	)
 }
 
 func (agent *Agent) runReadiness(
@@ -758,6 +768,9 @@ func (agent *Agent) reportCapacity(
 	ctx context.Context,
 	watermark workerrecovery.Watermark,
 ) (workercontrol.CapacityResult, error) {
+	agent.capacityReportMu.Lock()
+	defer agent.capacityReportMu.Unlock()
+
 	pending, err := agent.recovery.BeginCapacityReport(ctx, workerrecovery.CapacityReport{
 		WatermarkState: watermark.State,
 		TotalBytes:     watermark.TotalBytes, FreeBytes: watermark.FreeBytes,
@@ -797,7 +810,15 @@ func (agent *Agent) runExecutionLoop(
 	credentials workercontrol.LeaseCredentials,
 	watermark workerrecovery.WatermarkState,
 	deadline time.Duration,
+	heartbeatSequence int64,
 ) (Result, error) {
+	persistedSequence, err := loadExecutionHeartbeatSequence(ctx, handle, assignment)
+	if err != nil {
+		return Result{}, err
+	}
+	if persistedSequence > heartbeatSequence {
+		heartbeatSequence = persistedSequence
+	}
 	for {
 		operationContext, cancelOperation, err := agent.leaseOperationContext(ctx, deadline)
 		if err != nil {
@@ -834,6 +855,9 @@ func (agent *Agent) runExecutionLoop(
 				},
 			)
 		case runnertransport.ExecutionSucceeded:
+			if status.Sequence > heartbeatSequence {
+				heartbeatSequence = status.Sequence
+			}
 			operationContext, cancelOperation, err = agent.leaseOperationContext(ctx, deadline)
 			if err != nil {
 				return agent.terminateForLeaseDeadline(ctx, handle, identity, assignment, watermark)
@@ -856,7 +880,7 @@ func (agent *Agent) runExecutionLoop(
 			}
 			completion, cleanup, err := agent.finalizeOutputs(
 				ctx, handle, assignment, credentials, collected.Outputs,
-				status.Sequence, status.GPUHealth, deadline,
+				heartbeatSequence, status.GPUHealth, deadline,
 			)
 			if errors.Is(err, errFinalizationAuthorityLost) {
 				return agent.terminateFinalizationForControlStop(
@@ -909,6 +933,14 @@ func (agent *Agent) runExecutionLoop(
 			)
 		case runnertransport.ExecutionPreparing, runnertransport.ExecutionReady,
 			runnertransport.ExecutionRunning:
+			if status.Sequence > heartbeatSequence {
+				heartbeatSequence = status.Sequence
+			} else {
+				if heartbeatSequence == math.MaxInt64 {
+					return Result{}, errors.New("execution Heartbeat sequence is exhausted")
+				}
+				heartbeatSequence++
+			}
 			phase := workercontrol.ExecutionPhasePreparing
 			if status.State == runnertransport.ExecutionRunning {
 				phase = workercontrol.ExecutionPhaseGenerating
@@ -926,13 +958,19 @@ func (agent *Agent) runExecutionLoop(
 				return agent.terminateForLeaseDeadline(ctx, handle, identity, assignment, watermark)
 			}
 			observation := workercontrol.HeartbeatObservation{
-				Sequence: status.Sequence, BackendStage: status.BackendStage,
+				Sequence: heartbeatSequence, BackendStage: status.BackendStage,
 				BackendStageProgress:      status.BackendStageProgress,
 				EstimatedRemainingSeconds: status.EstimatedRemainingSeconds,
 				GPUHealthSummary:          append([]byte(nil), status.GPUHealth...),
 				LocalArtifactState:        append([]byte(nil), status.LocalArtifactState...),
 				ScratchFreeBytes:          currentWatermark.FreeBytes,
 				ArtifactStoreReachable:    agent.artifactStoreReachable(operationContext),
+			}
+			if err := persistExecutionHeartbeatSequence(
+				ctx, handle, assignment, heartbeatSequence,
+			); err != nil {
+				cancelOperation()
+				return Result{}, err
 			}
 			if err := agent.persistPendingHeartbeat(
 				ctx, handle, assignment, observation, phase, nil,
@@ -958,7 +996,7 @@ func (agent *Agent) runExecutionLoop(
 				heartbeat.WorkerID != assignment.WorkerID ||
 				heartbeat.WorkerEpoch != assignment.WorkerEpoch ||
 				heartbeat.LeaseFence != assignment.LeaseFence ||
-				heartbeat.HeartbeatSequence != status.Sequence ||
+				heartbeat.HeartbeatSequence != heartbeatSequence ||
 				heartbeat.ExecutionPhase != phase {
 				return Result{}, errors.New("control-plane Heartbeat did not continue the exact Assignment authority")
 			}

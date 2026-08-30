@@ -47,6 +47,29 @@ For each Assignment, the Agent:
 8. terminally removes exact runner outputs and Local Recovery State only after
    the authoritative failure, cancellation, or Visible Completion result.
 
+The Worker Agent, not the runner, owns the Attempt-scoped control-plane
+Heartbeat sequence. A runner status sequence is only a lower bound: repeated
+runner observations may carry changed scratch, Artifact-store, health, ETA, or
+progress fields, so every new control-plane observation still receives a
+strictly greater Agent sequence. Before writing the pending Heartbeat request,
+the Agent atomically persists the newly reserved high-water sequence in
+`upload--execution-heartbeat.json`, bound to the exact Attempt, Job, Worker,
+Worker epoch, and Lease fence. A process lost before the pending record skips
+that reserved value after restart; a process lost after the pending record
+replays the exact request and sequence. A confirmed response may clear the
+pending request only after the high-water record is durable. Finalization starts
+above the greater of this Agent high water and the terminal runner observation.
+Sequence exhaustion fails closed.
+
+On startup the Agent strictly decodes every execution-sequence record before
+any control or runner operation. If a pending EXECUTION Heartbeat and a durable
+sequence record coexist, their complete authority and sequence must match.
+Malformed, unknown, case-folded, duplicate, trailing, cross-authority, or
+internally contradictory recovery records require operator reconciliation and
+must not trigger an RPC. An exact pending Heartbeat from the immediately prior
+Agent version may be replayed without a sequence record during the bounded
+adjacent-version rollout.
+
 Terminal output verification uses a fresh cleanup context after control RPCs.
 Its bounded duration is derived from the exact receipt byte total and a
 Fleet-supplied, XFS/NVMe-certified minimum sequential-read throughput. Worker

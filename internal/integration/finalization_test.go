@@ -3627,6 +3627,19 @@ func TestTwoAttemptsRaceOneVisibleCompletionAndCleanupLosingArtifacts(t *testing
 	if winning.ArtifactSetID == uuid.Nil {
 		t.Fatal("replacement Attempt did not produce Visible Completion")
 	}
+	lateFirst, err := completionService.CompleteVisibleCompletion(
+		context.Background(),
+		fixture.worker,
+		fixture.credentials,
+		workercontrol.VisibleCompletionCandidate{
+			CompletionID:       uuid.New(),
+			ExpectedJobVersion: firstPlan.JobVersion,
+			ArtifactIDs:        firstArtifactIDs,
+		},
+	)
+	if err != nil || lateFirst.Decision != workercontrol.VisibleCompletionRejectedStaleLease {
+		t.Fatalf("first Attempt completion after replacement committed = %#v error=%v", lateFirst, err)
+	}
 
 	if _, err := fixture.database.Admin.Exec(`
 		UPDATE credentials

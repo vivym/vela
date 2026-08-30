@@ -22,12 +22,12 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 [ "$apply" = --apply ] ||
-	fail "usage: $0 <expected:success|hang|failure> <requested:success|hang|failure> --apply"
+	fail "usage: $0 <expected:success|slow-success|hang|failure> <requested:success|slow-success|hang|failure> --apply"
 [ "$(id -u)" -eq 0 ] || fail "run as root"
 [ "$root" = /var/lib/vela-lab/mock-runner ] ||
 	fail "VELA_LAB_RUNNER_ROOT must remain /var/lib/vela-lab/mock-runner"
-case "$expected" in success | hang | failure) ;; *) fail "expected mode must be success, hang, or failure" ;; esac
-case "$requested" in success | hang | failure) ;; *) fail "requested mode must be success, hang, or failure" ;; esac
+case "$expected" in success | slow-success | hang | failure) ;; *) fail "expected mode is unsupported" ;; esac
+case "$requested" in success | slow-success | hang | failure) ;; *) fail "requested mode is unsupported" ;; esac
 [ "$expected" != "$requested" ] || fail "expected and requested modes must differ"
 command -v docker >/dev/null 2>&1 || fail "docker is required"
 command -v ip >/dev/null 2>&1 || fail "ip is required"

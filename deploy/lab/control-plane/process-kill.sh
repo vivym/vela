@@ -66,7 +66,30 @@ claim_fault_injection() {
 	if ! mkdir "$temporary/FAULT_INJECTION_CLAIM" 2>/dev/null; then
 		return 1
 	fi
-	printf 'owner=%s claimed_at=%s\n' "$owner" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$temporary/FAULT_INJECTION_OWNER"
+	if ! printf 'owner=%s claimed_at=%s\n' "$owner" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+		>"$temporary/FAULT_INJECTION_OWNER"; then
+		rmdir "$temporary/FAULT_INJECTION_CLAIM" 2>/dev/null || true
+		return 1
+	fi
+}
+
+release_unarmed_fault_injection_claim() {
+	owner=$1
+	log_file=$2
+	[ -d "$temporary/FAULT_INJECTION_CLAIM" ] || return 1
+	[ ! -f "$temporary/FAULT_INJECTION_COMPLETED" ] || return 1
+	[ ! -f "$temporary/fault-pod-identity.txt" ] || return 1
+	grep -Eq "^owner=$owner claimed_at=[^[:space:]]+$" "$temporary/FAULT_INJECTION_OWNER" || return 1
+	[ -f "$temporary/fault-pod-name.txt" ] || return 1
+	name=$(cat "$temporary/fault-pod-name.txt")
+	resource=$($kubectl_bin get pod --namespace "$namespace" "$name" \
+		--ignore-not-found -o name 2>>"$log_file") || return 1
+	[ -z "$resource" ] || return 1
+	rmdir "$temporary/FAULT_INJECTION_CLAIM" || return 1
+	rm -f -- "$temporary/FAULT_INJECTION_OWNER"
+	printf 'owner=%s released_at=%s reason=FAULT_POD_PROVEN_ABSENT\n' \
+		"$owner" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+		>"$temporary/FAULT_INJECTION_CLAIM_RELEASED_PRE_SIGNAL"
 }
 
 validate_previous_scenario_receipt() {
@@ -651,8 +674,14 @@ run_fault_pod() {
 	printf '%s\n' "$name" >"$temporary/fault-pod-name.txt"
 	fault_pod_json "$name" "$worker1_node" "$runner_container_id" "$job_id" >"$temporary/$name.json"
 	if ! $kubectl_bin create -f "$temporary/$name.json" >/dev/null; then
-		persist_fault_pod_identity "$log_file" >/dev/null 2>&1 || true
-		neutralize_active_fault_pod "$log_file" >/dev/null 2>&1 || true
+		resource=$($kubectl_bin get pod --namespace "$namespace" "$name" \
+			--ignore-not-found -o name 2>>"$log_file") || return 1
+		if [ -z "$resource" ]; then
+			release_unarmed_fault_injection_claim main "$log_file" || return 1
+		else
+			persist_fault_pod_identity "$log_file" >/dev/null 2>&1 || true
+			neutralize_active_fault_pod "$log_file" >/dev/null 2>&1 || true
+		fi
 		return 1
 	fi
 	persist_fault_pod_identity "$log_file" || return 1

@@ -1,17 +1,14 @@
 # Three-host H3 mock experiment environment
 
-Date: 2026-08-30
+Date: 2026-08-31
 
 Status: Private registry, RKE2/Canal, host-lifecycle-off GPU Operator, two
 eight-GPU Workers, non-canonical mock Runner distribution, persistent Runner
 recovery, Kubernetes GPU smoke, Vela control-plane deployment, two Worker
 Agents, an end-to-end mock Job with verified Artifacts, concurrent mock
-endurance, one Worker-control-network-partition rehearsal, one bounded
-retry-budget-exhaustion rehearsal, one process-kill rehearsal, and one Outbox
-post-commit/pre-claim control-crash rehearsal, one Publisher
-post-PubAck/pre-marker control-crash rehearsal, and one Publisher pre-PubAck
-control-crash rehearsal, and one Consumer post-DB/pre-Ack control-crash
-rehearsal are operational.
+endurance, and all ten fixed non-production fault rehearsals are operational.
+The final independent live postflight restored and verified the idle two-Worker
+authority boundary.
 
 This document records the current non-production lab inventory and the private
 registry used to stage H3 mock experiments. It is an environment receipt, not
@@ -1219,9 +1216,90 @@ Workers at eight GPUs with healthy persistent Runners and no GPU compute
 process, zero active Jobs, unrevoked Leases, pending Outbox events, or
 Production Gate receipts, and no live harness/watchdog process. This advances
 only the non-production matrix to `8/10`; Production Gates remain `0/9 PASS`.
-The two remaining fixed scenarios are
+At this `8/10` checkpoint, the two remaining fixed scenarios were
 `assignment-post-commit-pre-response-crash` and
-`stale-fence-late-completion`.
+`stale-fence-late-completion`; both are recorded below.
+
+## Assignment post-commit/pre-response control-crash rehearsal
+
+On 2026-08-30, the ninth live fixed-scenario rehearsal paused the Scheduler only
+after PostgreSQL committed one Assignment, Attempt, Lease, and dispatch intent,
+but before the assignment response returned to the dispatch loop. The harness
+then killed the exact control process through a pidfd. The durable pre-crash
+marker bound Attempt `68ee0635-e039-4879-b9b1-7e1a7fa14682` on Worker 1 at
+epoch 1 and fence 1 to dispatch intent
+`226aa342-3896-4ad8-81ad-c2b6852a66c9`, with the Job and Attempt both
+`ASSIGNED` and the dispatch intent `COMMITTED`.
+
+After restart, recovery replayed that committed authority instead of creating a
+second Attempt. The Attempt count remained one before and after recovery, and
+Job `16a9a421-4fce-4416-860e-49e3fa5e3d34` ended `SUCCEEDED` with one Visible
+Completion, one posted completion Charge, and two committed Artifacts. The lost
+accepted Job, duplicate Attempt, duplicate completion, duplicate Charge, and
+stale-authority acceptance measurements were all zero.
+
+The successful root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/assignment-post-commit-pre-response-crash-v1`.
+Every file passes `sha256sum --check --strict`; the `SHA256SUMS` file has
+SHA-256 `f0c1a320b396579359921a51f0a1d9d97d6f305dc331d1bed288767818bf6b30`,
+and the executed harness has SHA-256
+`333cb27a399fc03da909a187ae1690b06a50292e8e9fbc317533fc6a1ef1f393`.
+This advances only the non-production matrix to `9/10`; Production Gates remain
+`0/9 PASS`.
+
+## Stale-fence late-completion rehearsal
+
+On 2026-08-30, the tenth live fixed-scenario rehearsal captured the exact
+FINALIZATION Completion Candidate for Attempt 1 on Worker 1, then isolated its
+control path while the control plane advanced authority. The original Attempt
+`937de460-d7b3-4336-9ec2-d4beb2ee8f17` failed at fence 1 with
+`FINALIZATION_TIMEOUT`; its durable RetryDecision recorded Job fence 2 and
+`RETRY_WAIT`. Replacement Attempt
+`e4c6bf87-a43c-46e2-85b6-bd5d43374334` ran on Worker 2 at fence 3 and ended
+`SUCCEEDED`. Replaying the exact old candidate over Worker 1's mTLS identity
+returned `REJECTED_STALE_LEASE`.
+
+Job `3e4be0cc-fcc0-42fa-a502-6080df76c634` retained exactly one Visible
+Completion, one posted completion Charge, one winning ArtifactSet with two
+items, and two committed replacement Artifacts. The two original-fence
+Artifacts remained `VERIFIED` and were not published. All four fixed
+measurements remained zero. The ten-entry scenario matrix now contains ten
+`LAB_REHEARSAL_PASS` rows, while its evidence boundary remains
+`NON_PRODUCTION_MOCK_REHEARSAL` and Production Gates remain `0/9`.
+
+The run used Worker Agent image
+`10.1.200.17:5443/vela-lab/vela-worker-agent@sha256:88dfa73690c3bd78b7d96eae60a4daa1cf1e942497ce276829797e10ad4ee897`
+on both Workers and bootstrap/tool image
+`10.1.200.17:5443/vela-lab/vela-lab-bootstrap@sha256:93a5be4c1ba6a8b81e3d8367672a6963d5a5b5d1d1c04d6e050efbfd2f93aa42`.
+The Worker Agent binary SHA-256 is
+`e377e225ae5b7edcd50e91704b9492c442b6a70cab81614a5075b8f77f060b0b`;
+the smoke binary SHA-256 is
+`3addccdadc0845fcc0f704355fdf43e9ed638bd9f958462cefde91f810cd8392`.
+
+The successful root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/stale-fence-late-completion-v2`.
+Every file passes `sha256sum --check --strict`; the `SHA256SUMS` file has
+SHA-256 `e2bc7e8af1bdfb43ba546d5ef89f9737ff961e812b1be6ddb570f5cc3f18c4cd`,
+and the executed harness has SHA-256
+`2d6f642a20758ac47ee5e397ef9fcb2191dbb853edb90defc0e8f07cb3022909`.
+Two hidden failed runs remain diagnostic only:
+`receipts/.vela-lab-stale-completion.wRJ7jq` records the overwritten candidate
+diagnosis, and `receipts/.vela-lab-stale-completion.UrCWCX` records the smoke
+client's fail-fast behavior during an intentional control restart. Neither is
+counted as a pass.
+
+Independent live postflight then verified zero active Jobs, zero active Leases,
+zero Production Gate receipts, and exactly two `READY/HEALTHY` Workers. All
+three Kubernetes nodes were Ready with allocatable GPUs `0/8/8`; the temporary
+probe, canary, ConfigMap, and NetworkPolicy resources were absent; the control
+fault variables were absent; the application egress policy was at its baseline;
+and the finalization retry ServiceClass was restored to `DRAINING` while the
+base ServiceClass was `ACTIVE`. Both Worker Agent Deployment generations were
+observed and both runtime `imageID` values matched the fixed digest. Both
+persistent Runners were `running/healthy` in `success` mode with the fixed
+Runner digest, and no harness or watchdog process remained. The receipt ledger
+in `authority-after.json` and its checksum manifest both passed independent
+structural validation.
 
 ## Experiment operating rules
 

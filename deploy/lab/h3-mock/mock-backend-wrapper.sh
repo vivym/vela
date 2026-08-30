@@ -15,6 +15,10 @@ mode_file=/etc/vela-runner/mock-mode
 mode=$(sed -n '1p' "$mode_file")
 case "$mode" in
 	success | hang) ;;
+	slow-success)
+		mode=success
+		set -- "$@" --mock-stage-delay 5s
+		;;
 	failure)
 		# The deployed backend predates the empty-array receipt fix. Pin one
 		# deterministic mock GPU so its strict failure receipt remains valid.

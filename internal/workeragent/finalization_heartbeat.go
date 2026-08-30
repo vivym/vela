@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/workercontrol"
 	"github.com/vivym/vela/internal/workerrecovery"
 )
@@ -24,6 +26,7 @@ type finalizationHeartbeatProgress struct {
 	handle      *workerrecovery.Handle
 	assignment  workercontrol.Assignment
 	credentials workercontrol.LeaseCredentials
+	stateMu     sync.Mutex
 	state       localFinalizationState
 	deadline    time.Duration
 }
@@ -128,10 +131,32 @@ func (session *finalizationHeartbeatSession) LeaseDeadline() (time.Duration, err
 	return deadline, nil
 }
 
-func (progress *finalizationHeartbeatProgress) send(ctx context.Context) error {
-	if progress.state.HeartbeatSequence == math.MaxInt64 {
-		return errors.New("finalization Heartbeat sequence is exhausted")
+func (session *finalizationHeartbeatSession) persistCompletionCandidate(
+	ctx context.Context,
+	candidate workercontrol.VisibleCompletionCandidate,
+) (localFinalizationState, error) {
+	if session == nil || session.state == nil {
+		return localFinalizationState{}, errors.New("finalization Heartbeat session is not configured")
 	}
+	progress := session.state
+	progress.stateMu.Lock()
+	defer progress.stateMu.Unlock()
+	if progress.state.CompletionCandidate != nil || progress.state.VisibleCompletion != nil {
+		return localFinalizationState{}, errors.New("local Visible Completion candidate is already persisted")
+	}
+	candidate.ArtifactIDs = append([]uuid.UUID(nil), candidate.ArtifactIDs...)
+	if err := validateCompletionCandidate(candidate, progress.state); err != nil {
+		return localFinalizationState{}, err
+	}
+	progress.state.CompletionCandidate = &candidate
+	if err := writeFinalizationState(ctx, progress.handle, progress.state); err != nil {
+		progress.state.CompletionCandidate = nil
+		return localFinalizationState{}, err
+	}
+	return progress.state, nil
+}
+
+func (progress *finalizationHeartbeatProgress) send(ctx context.Context) error {
 	heartbeatStarted := progress.agent.monotonicNow()
 	if heartbeatStarted < 0 {
 		return errors.New("worker agent monotonic clock returned a negative value")
@@ -147,24 +172,32 @@ func (progress *finalizationHeartbeatProgress) send(ctx context.Context) error {
 		return err
 	}
 	defer cancelOperation()
+	progress.stateMu.Lock()
+	if progress.state.HeartbeatSequence == math.MaxInt64 {
+		progress.stateMu.Unlock()
+		return errors.New("finalization Heartbeat sequence is exhausted")
+	}
 	progress.state.HeartbeatSequence++
-	if err := writeFinalizationState(operationContext, progress.handle, progress.state); err != nil {
+	state := progress.state
+	if err := writeFinalizationState(operationContext, progress.handle, state); err != nil {
+		progress.stateMu.Unlock()
 		return progress.mapLeaseError(ctx, operationContext, err)
 	}
+	progress.stateMu.Unlock()
 	watermark, err := progress.agent.recovery.Watermark(operationContext)
 	if err != nil {
 		return progress.mapLeaseError(ctx, operationContext, err)
 	}
 	observation := workercontrol.HeartbeatObservation{
-		Sequence: progress.state.HeartbeatSequence, BackendStage: "artifact-finalization",
-		GPUHealthSummary:       append(json.RawMessage(nil), progress.state.GPUHealthSummary...),
+		Sequence: state.HeartbeatSequence, BackendStage: "artifact-finalization",
+		GPUHealthSummary:       append(json.RawMessage(nil), state.GPUHealthSummary...),
 		LocalArtifactState:     json.RawMessage(`{"state":"artifact-finalization"}`),
 		ScratchFreeBytes:       watermark.FreeBytes,
 		ArtifactStoreReachable: progress.agent.artifactStoreReachable(operationContext),
 	}
 	if err := progress.agent.persistPendingHeartbeat(
 		operationContext, progress.handle, progress.assignment, observation,
-		workercontrol.ExecutionPhaseFinalizing, progress.state.Outputs,
+		workercontrol.ExecutionPhaseFinalizing, state.Outputs,
 	); err != nil {
 		return progress.mapLeaseError(ctx, operationContext, err)
 	}
@@ -187,7 +220,7 @@ func (progress *finalizationHeartbeatProgress) send(ctx context.Context) error {
 		result.JobID != progress.assignment.JobID || result.WorkerID != progress.assignment.WorkerID ||
 		result.WorkerEpoch != progress.assignment.WorkerEpoch ||
 		result.LeaseFence != progress.assignment.LeaseFence ||
-		result.HeartbeatSequence != progress.state.HeartbeatSequence ||
+		result.HeartbeatSequence != state.HeartbeatSequence ||
 		result.ExecutionPhase != workercontrol.ExecutionPhaseFinalizing ||
 		result.LeaseValidFor <= 0 {
 		return errors.New("control-plane Heartbeat did not continue exact Finalization authority")

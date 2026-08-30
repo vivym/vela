@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"time"
 
@@ -15,7 +16,50 @@ import (
 	"github.com/vivym/vela/internal/workerrecovery"
 )
 
-const pendingControlOperationName = "control-operation.json"
+const (
+	pendingControlOperationName = "control-operation.json"
+	executionHeartbeatStateName = "execution-heartbeat.json"
+)
+
+type executionHeartbeatState struct {
+	SchemaVersion int                   `json:"schema_version"`
+	Authority     localAttemptAuthority `json:"authority"`
+	Sequence      int64                 `json:"sequence"`
+}
+
+type localAttemptAuthority struct {
+	AttemptID   uuid.UUID `json:"attempt_id"`
+	JobID       uuid.UUID `json:"job_id"`
+	WorkerID    uuid.UUID `json:"worker_id"`
+	WorkerEpoch int64     `json:"worker_epoch"`
+	LeaseFence  int64     `json:"lease_fence"`
+}
+
+func localAuthority(assignment workercontrol.Assignment) localAttemptAuthority {
+	return localAttemptAuthority{
+		AttemptID: assignment.AttemptID, JobID: assignment.JobID,
+		WorkerID: assignment.WorkerID, WorkerEpoch: assignment.WorkerEpoch,
+		LeaseFence: assignment.LeaseFence,
+	}
+}
+
+func (authority localAttemptAuthority) valid() bool {
+	return authority.AttemptID != uuid.Nil && authority.JobID != uuid.Nil &&
+		authority.WorkerID != uuid.Nil && authority.WorkerEpoch > 0 && authority.LeaseFence > 0
+}
+
+func (authority localAttemptAuthority) matchesAssignment(
+	assignment workercontrol.Assignment,
+) bool {
+	return authority == localAuthority(assignment)
+}
+
+func (authority localAttemptAuthority) matchesRecoveryIdentity(
+	identity workerrecovery.Identity,
+) bool {
+	return authority.AttemptID == identity.AttemptID && authority.WorkerID == identity.WorkerID &&
+		authority.WorkerEpoch == identity.WorkerEpoch && authority.LeaseFence == identity.Fence
+}
 
 type pendingControlOperation struct {
 	SchemaVersion   int                                `json:"schema_version"`
@@ -48,7 +92,7 @@ func (agent *Agent) resumePendingControlOperation(
 		if readErr != nil {
 			return Result{}, false, readErr
 		}
-		if err := agent.validatePendingControlOperation(handle, operation); err != nil {
+		if err := agent.validatePendingControlOperation(ctx, handle, operation); err != nil {
 			return Result{}, false, err
 		}
 		if pendingHandle != nil {
@@ -167,6 +211,106 @@ func (agent *Agent) persistPendingHeartbeat(
 	return nil
 }
 
+func loadExecutionHeartbeatSequence(
+	ctx context.Context,
+	handle *workerrecovery.Handle,
+	assignment workercontrol.Assignment,
+) (int64, error) {
+	state, err := readExecutionHeartbeatState(ctx, handle)
+	if errors.Is(err, workerrecovery.ErrStateNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !state.Authority.matchesAssignment(assignment) {
+		return 0, errors.New("execution Heartbeat State does not match active Assignment authority")
+	}
+	return state.Sequence, nil
+}
+
+func (agent *Agent) validateExecutionHeartbeatStates(
+	ctx context.Context,
+	allowExhausted bool,
+) error {
+	handles, err := agent.recovery.ActiveHandles(ctx)
+	if err != nil {
+		return err
+	}
+	for _, handle := range handles {
+		state, err := readExecutionHeartbeatState(ctx, handle)
+		if errors.Is(err, workerrecovery.ErrStateNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !allowExhausted && state.Sequence == math.MaxInt64 {
+			return errors.New("execution Heartbeat sequence is exhausted")
+		}
+	}
+	return nil
+}
+
+func readExecutionHeartbeatState(
+	ctx context.Context,
+	handle *workerrecovery.Handle,
+) (executionHeartbeatState, error) {
+	content, err := handle.Read(ctx, workerrecovery.StageUpload, executionHeartbeatStateName)
+	if err != nil {
+		return executionHeartbeatState{}, err
+	}
+	var state executionHeartbeatState
+	if err := strictDecodeJSON(content, &state); err != nil {
+		return executionHeartbeatState{}, fmt.Errorf("decode execution Heartbeat State: %w", err)
+	}
+	identity, err := handle.Identity()
+	if err != nil {
+		return executionHeartbeatState{}, err
+	}
+	if state.SchemaVersion != 1 || state.Sequence <= 0 || !state.Authority.valid() ||
+		!state.Authority.matchesRecoveryIdentity(identity) {
+		return executionHeartbeatState{}, errors.New(
+			"execution Heartbeat State does not match active Worker authority",
+		)
+	}
+	return state, nil
+}
+
+func persistExecutionHeartbeatSequence(
+	ctx context.Context,
+	handle *workerrecovery.Handle,
+	assignment workercontrol.Assignment,
+	sequence int64,
+) error {
+	if sequence <= 0 {
+		return errors.New("execution Heartbeat sequence must be positive")
+	}
+	identity, err := handle.Identity()
+	if err != nil {
+		return err
+	}
+	authority := localAuthority(assignment)
+	if !authority.matchesRecoveryIdentity(identity) {
+		return errors.New("execution Heartbeat State does not match active Assignment authority")
+	}
+	state := executionHeartbeatState{
+		SchemaVersion: 1,
+		Authority:     authority,
+		Sequence:      sequence,
+	}
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("encode execution Heartbeat State: %w", err)
+	}
+	if _, err := handle.Write(
+		ctx, workerrecovery.StageUpload, executionHeartbeatStateName, bytes.NewReader(encoded),
+	); err != nil {
+		return fmt.Errorf("persist execution Heartbeat State: %w", err)
+	}
+	return nil
+}
+
 func (agent *Agent) persistPendingTermination(
 	ctx context.Context,
 	handle *workerrecovery.Handle,
@@ -229,6 +373,7 @@ func readPendingControlOperation(
 }
 
 func (agent *Agent) validatePendingControlOperation(
+	ctx context.Context,
 	handle *workerrecovery.Handle,
 	operation pendingControlOperation,
 ) error {
@@ -237,9 +382,9 @@ func (agent *Agent) validatePendingControlOperation(
 		return err
 	}
 	assignment := operation.Assignment
-	if operation.SchemaVersion != 1 || assignment.AttemptID != identity.AttemptID ||
-		assignment.WorkerID != identity.WorkerID || assignment.WorkerEpoch != identity.WorkerEpoch ||
-		assignment.LeaseFence != identity.Fence || assignment.WorkerID != agent.workerID ||
+	authority := localAuthority(assignment)
+	if operation.SchemaVersion != 1 || !authority.valid() ||
+		!authority.matchesRecoveryIdentity(identity) || assignment.WorkerID != agent.workerID ||
 		assignment.WorkerEpoch != agent.workerEpoch {
 		return errors.New("pending control operation does not match active Worker authority")
 	}
@@ -264,6 +409,15 @@ func (agent *Agent) validatePendingControlOperation(
 				operation.ExpectedPhase != workercontrol.ExecutionPhaseGenerating &&
 				operation.ExpectedPhase != workercontrol.ExecutionPhaseFinalizing) {
 			return errors.New("pending Heartbeat operation is incomplete")
+		}
+		if operation.ExpectedPhase != workercontrol.ExecutionPhaseFinalizing {
+			sequence, err := loadExecutionHeartbeatSequence(ctx, handle, assignment)
+			if err != nil {
+				return fmt.Errorf("pending Heartbeat does not match execution Heartbeat State: %w", err)
+			}
+			if sequence != 0 && sequence != operation.Heartbeat.Sequence {
+				return errors.New("pending Heartbeat does not match execution Heartbeat State sequence")
+			}
 		}
 	case "TERMINATE":
 		if assignment.JobID == uuid.Nil || assignment.LeaseToken == "" {
@@ -527,6 +681,13 @@ func (agent *Agent) replayPendingHeartbeat(
 		result.ExecutionPhase != operation.ExpectedPhase || result.LeaseValidFor <= 0 {
 		return Result{}, false, errors.New("replayed Heartbeat did not continue exact Assignment authority")
 	}
+	if operation.ExpectedPhase != workercontrol.ExecutionPhaseFinalizing {
+		if err := persistExecutionHeartbeatSequence(
+			ctx, handle, assignment, operation.Heartbeat.Sequence,
+		); err != nil {
+			return Result{}, false, err
+		}
+	}
 	if err := clearPendingControlOperation(ctx, handle); err != nil {
 		return Result{}, false, err
 	}
@@ -557,6 +718,7 @@ func (agent *Agent) replayPendingHeartbeat(
 	}
 	continued, err := agent.runExecutionLoop(
 		ctx, handle, identity, assignment, credentials, watermark, deadline,
+		operation.Heartbeat.Sequence,
 	)
 	return continued, true, err
 }
