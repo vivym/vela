@@ -317,6 +317,14 @@ type httpServerShutdown interface {
 var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
 
 func main() {
+	handled, err := runLabOutboxFaultCommand(os.Args[1:], os.Stdout)
+	if err != nil {
+		slog.Error("vela-control command failed", "error", err)
+		os.Exit(1)
+	}
+	if handled {
+		return
+	}
 	if err := run(); err != nil {
 		slog.Error("vela-control stopped", "error", err)
 		os.Exit(1)
@@ -951,7 +959,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	publisher, err := outbox.NewPublisher(internalPool, broker, outbox.Config{
+	publisherBroker, err := configureOutboxPublisherBroker(broker)
+	if err != nil {
+		return fmt.Errorf("configure Outbox Publisher Broker: %w", err)
+	}
+	publisher, err := outbox.NewPublisher(internalPool, publisherBroker, outbox.Config{
 		InstanceID: "vela-control-" + uuid.NewString(),
 		BatchSize:  configuration.publisherBatchSize,
 		ClaimTTL:   30 * time.Second,

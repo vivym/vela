@@ -210,6 +210,44 @@ Cleanup removes the temporary Publisher override, reloads the default interval,
 and removes the fault Pod, warm Pod, and watchdog state. Failed hidden receipts
 remain diagnostic evidence only. They must not be counted as scenario passes.
 
+## Publisher post-PubAck/pre-marker control-crash rehearsal
+
+The fifth fixed-scenario harness requires the lab-only control image built with
+the `vela_lab_fault_injection` tag. Normal control builds reject
+`VELA_LAB_OUTBOX_FAULT_PHASE`. The tagged Publisher writes a private `0600`,
+payload-free marker after NATS returns a PubAck and pauses before returning that
+receipt to the Outbox Publisher. The marker-reader command exists so the
+scratch control image can expose the exact fault boundary through `kubectl
+exec` without adding a shell or another image.
+
+Run
+`deploy/lab/control-plane/publisher-post-puback-pre-mark-crash.sh` as root on
+`marslab-server` with the v19 rendered manifests and the exact deployed control
+image. It pins the preceding `4/10` receipt, verifies the exact ten-scenario
+inventory, requires two `READY/HEALTHY` Workers and an idle control plane, and
+kills only the exact control container process through a pidfd after validating
+the PubAck marker. Recovery is allowed to wait through the 30-second Outbox
+claim TTL.
+
+The passing result is fixed scenarios `5/10`, Production Gates `0/9`. Job
+`930186ea-1abe-4d73-96dc-1dec3c43916a` completed with one Attempt, one Visible
+Completion, one posted completion Charge, and two committed Artifacts. Outbox
+event `bb91b103-9663-4066-b0c4-f6818c1ead83` retained Broker stream
+`VELA_EVENTS` and sequence `262`; `publish_attempts` changed from `1` to `2` as
+the recovered Publisher reclaimed the event. The root-only receipt is
+`receipts/publisher-post-puback-pre-mark-crash-v1`; its `SHA256SUMS` file has
+SHA-256
+`a90dea77c837bbddb2e0cee60510964c41f23644c36723c2bb64f77f92ccb7e3`.
+The executed harness has SHA-256
+`6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
+
+The first diagnostic run checked the database marker before the claim TTL had
+expired and correctly refused to pass. It is retained only as hidden diagnostic
+evidence. The harness now waits up to 90 seconds for convergence and drains the
+Outbox during cleanup. Cleanup also removes the fault variable, fault Pod,
+watchdog state, and marker; diagnostic receipts must not be counted as scenario
+passes.
+
 Rollback removes only the managed container and preserves Runner state:
 
 ```text

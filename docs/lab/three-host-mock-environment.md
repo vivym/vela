@@ -597,28 +597,37 @@ The current immutable application images are:
 | MinIO | `10.1.200.17:5443/vela-lab/minio@sha256:3f97c5651cb6662b880c787a232b6b34fec8d8922e08d6617b25d241a21164bb` |
 | bootstrap and smoke | `10.1.200.17:5443/vela-lab/vela-lab-bootstrap@sha256:3f6a8bc440ee7bd7f9ba263d07435329c0863134217349db565cded2e9df9eac` |
 | Worker Agent | `10.1.200.17:5443/vela-lab/vela-worker-agent@sha256:bf6db207e52dbbaad4bcb0f4aaad739854b6cd3c6ff7088beda90705d6fab9e0` |
-| control | `10.1.200.17:5443/vela-lab/vela-control@sha256:a056d70743a1dfab5ff7fbf01a3c22b789073974ff86ddbc1d781048b666c3b7` |
+| control | `10.1.200.17:5443/vela-lab/vela-control@sha256:b4fd44f2a266522b2cd60e8b62c64efd943b7add487c835802e75eca5d804d0f` |
 
 The current control image is a bounded replacement of the preceding
-`10.1.200.17:5443/vela-lab/vela-control@sha256:1c8e44236019d2ce8061c1e8e257a08c3d0fac5402f101548878372081d65a2d`
-image, which remains available as the rollback image. The local build sent only
-an 11,035,751-byte gzip-compressed Linux binary over SSH; no OCI archive or
-image layer crossed the SSH administration path. The
-uncompressed binary is 34,803,838 bytes with SHA-256
-`13e5cb95d4d1cc25a0d2460ca992b93eef16e53bf3b40e8d8fdd4f3c852fcd10`.
-The control host assembled and pushed the image to the LAN Registry. Its
-Registry config digest is
-`sha256:86ba76444c74da20011181a1f4ccd224d33268cef59306a523b4aab190874df7`,
-and Docker reports an unpacked size of 28,646,065 bytes.
+`10.1.200.17:5443/vela-lab/vela-control@sha256:a056d70743a1dfab5ff7fbf01a3c22b789073974ff86ddbc1d781048b666c3b7`
+image, which remains available as the rollback image. To avoid the constrained
+SSH path, the local build sent only an approximately 11 MiB gzip-compressed
+Linux binary; no OCI archive or image layer crossed that path. The compressed
+transfer has SHA-256
+`e3f8712467f6eb4f3b04db9a34fe439d9cfbc346f8736bc28ec27507b21d8df0`,
+and the uncompressed binary has SHA-256
+`0a24d66ece5f517c52bb8e13165ae5483cced55d8e8ddbbd4a66e5bb66eecbec`.
+The control host assembled and pushed the small scratch image to the LAN
+Registry.
 
-The applied v18 manifests are retained at
-`/root/vela-lab-deploy-bc590e20/rendered-manifests-v18`; they were derived from
-the actually deployed v17 image set and changed only the control image. The
-root-level historical `images.env` is not an authoritative v18 input and must
-not overwrite this set. The root-only rollout receipt is
-`/root/vela-lab-deploy-bc590e20/receipts/control-outbox-rollout-v1`; all files
-pass `sha256sum --check --strict`, and its `SHA256SUMS` file has SHA-256
-`e5da9a552653083164d23634ea596491366348427f83b5deb2dfe97aa51312a9`.
+Post-rehearsal local review additionally made the marker reader reject duplicate
+JSON keys. That source hardening has passed local tagged tests but has not been
+rebuilt or redeployed, so it is not part of the binary digest above and is not
+provenance for the retained live receipt.
+
+The applied v19 manifests are retained at
+`/root/vela-lab-deploy-bc590e20/rendered-manifests-v19`. They were copied from
+the actually deployed v18 set and changed only the control image digest. A
+fresh render from the current repository template would also have deleted the
+live management-port entries from the Service and NetworkPolicy, so that apply
+was rejected and retained only for diagnosis at
+`/root/vela-lab-deploy-bc590e20/rendered-manifests-v19-rejected-template-drift`.
+The root-level historical `images.env` remains non-authoritative. The root-only
+rollout receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/control-publisher-fault-rollout-v1`;
+its `SHA256SUMS` file has SHA-256
+`de8fd06d1f8f57ce4bbf096c7bf399c0defff6869956ea111d0bc4ca375bb338`.
 
 The control Pod remains UID/GID `10001:10001`, drops all outer capabilities,
 disallows privilege escalation, and uses a read-only root filesystem. Ubuntu's
@@ -993,6 +1002,49 @@ Production Gates remain `0/9 PASS`, and six fixed scenarios remain unexecuted.
 The exact nine-gate status and missing external evidence are tracked in
 [`production-gate-gap-matrix.md`](production-gate-gap-matrix.md). Every gate
 remains `NOT PASS`.
+
+## Publisher post-PubAck/pre-marker control-crash rehearsal
+
+On 2026-08-30, the fifth live fixed-scenario rehearsal deployed the tagged v19
+control image and set
+`VELA_LAB_OUTBOX_FAULT_PHASE=publisher-post-puback-pre-mark-crash`. The tagged
+Publisher delegated one `job.ready` publication to NATS, atomically wrote a
+private payload-free marker containing the PubAck, and paused before returning
+the receipt to the database-backed Publisher. The harness validated that exact
+boundary and sent `SIGKILL` through a pidfd to the exact control process.
+
+After the 30-second claim TTL, the restarted Publisher reclaimed the same
+Outbox event and converged the PostgreSQL marker to the original NATS receipt.
+Application Job `930186ea-1abe-4d73-96dc-1dec3c43916a` ended `SUCCEEDED` with
+one Attempt, one Visible Completion, one posted completion Charge, two Artifact
+rows, and two committed Artifacts. Outbox event
+`bb91b103-9663-4066-b0c4-f6818c1ead83` retained Broker stream `VELA_EVENTS` and
+sequence `262`; its `publish_attempts` advanced from `1` before the crash to `2`
+after recovery. This is at-least-once Publisher execution with one visible
+business result, not a Production Gate receipt.
+
+The successful root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/publisher-post-puback-pre-mark-crash-v1`.
+Its `SHA256SUMS` file has SHA-256
+`a90dea77c837bbddb2e0cee60510964c41f23644c36723c2bb64f77f92ccb7e3`,
+and the executed harness has SHA-256
+`6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
+
+The first diagnostic run checked PostgreSQL too early, before the claim TTL
+expired, and correctly refused to emit a passing receipt. Its hidden directory
+`receipts/.vela-lab-publisher-post-puback-pre-mark-crash.sB7skT` remains
+diagnostic evidence only; the same PubAck sequence `256` later converged. The
+harness now waits up to 90 seconds for marker convergence and performs a
+stronger Outbox drain during cleanup.
+
+Postflight found zero active Jobs, unrevoked Leases, pending Outbox events, and
+Production Gate receipts; exactly two Workers remained `READY/HEALTHY`, the
+single control Pod was Ready with zero restarts, and no fault Pod or watchdog
+remained. Both mock Runners were healthy, and all 24 physical GPUs across the
+three hosts reported zero memory use and zero utilization. The fault variable
+and temporary Publisher tick were absent from the ConfigMap. This advances only
+the non-production fixed-scenario matrix to `5/10`; Production Gates remain
+`0/9 PASS`, and five fixed scenarios remain unexecuted.
 
 ## Experiment operating rules
 

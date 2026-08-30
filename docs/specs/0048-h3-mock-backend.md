@@ -6,7 +6,7 @@ Status: Repository implementation complete; three-host lab registry, image
 distribution, ephemeral protocol checks, and persistent two-Worker Runner
 deployment verified; RKE2 GPU integration and one/eight-GPU Pod smoke verified;
 Vela Worker Agents, application control plane, concurrent mock endurance, and
-four fixed fault-scenario rehearsals verified.
+five fixed fault-scenario rehearsals verified.
 
 Implementation commit: `4304fe9`; review closure: `f6cb45b`.
 
@@ -139,7 +139,8 @@ runtime access. Two persistent Vela Worker Agents and the application control
 plane now run a mock-only Catalog through one success path, a balanced ten-Job
 concurrent rehearsal, Worker-control network partition, and retry-budget
 exhaustion, exact Runner process kill, and an Outbox post-commit/pre-claim
-control crash. These remain non-production synthetic receipts; six of the ten
+control crash, followed by an Outbox Publisher post-PubAck/pre-database-marker
+control crash. These remain non-production synthetic receipts; five of the ten
 fixed fault scenarios and every Production Gate remain open.
 
 The retry-budget receipt records zero Artifact rows, including zero committed
@@ -172,6 +173,22 @@ bound to harness SHA-256
 `70dab9231d7f75f49abfc531dfd028a2316ae462ee6dcdb1af865980898034ef`.
 Cleanup removes the override and reloads the default `500ms` Publisher interval.
 This advances only the synthetic matrix to `4/10`; Production Gates remain
+`0/9 PASS`.
+
+The Publisher post-PubAck/pre-marker rehearsal uses a control binary built with
+the `vela_lab_fault_injection` tag. It records a private, payload-free marker
+only after NATS returns a PubAck and then pauses so the harness can kill the
+exact control process through a pidfd before the Publisher records the broker
+receipt in PostgreSQL. A normal build fails closed when the lab fault variable
+is present. After restart and the 30-second claim TTL, the same Outbox event is
+claimed again and converges to the original Broker receipt without duplicating
+the Job result. Job `930186ea-1abe-4d73-96dc-1dec3c43916a` completed with one
+Attempt, one Visible Completion, one Charge, and two committed Artifacts;
+Outbox event `bb91b103-9663-4066-b0c4-f6818c1ead83` retained stream
+`VELA_EVENTS`, sequence `262`, and `publish_attempts` advanced from `1` to `2`.
+The successful receipt is bound to harness SHA-256
+`6100f4d9e8aacc9ce4426df947cd241c0e7649926e3547df39f5c55929188e6b`.
+This advances only the synthetic matrix to `5/10`; Production Gates remain
 `0/9 PASS`.
 
 Mock images may be built and deployed to staging, but they must use a mock
