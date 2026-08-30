@@ -6,7 +6,7 @@ Status: Repository implementation complete; three-host lab registry, image
 distribution, ephemeral protocol checks, and persistent two-Worker Runner
 deployment verified; RKE2 GPU integration and one/eight-GPU Pod smoke verified;
 Vela Worker Agents, application control plane, concurrent mock endurance, and
-seven fixed fault-scenario rehearsals verified.
+eight fixed fault-scenario rehearsals verified.
 
 Implementation commit: `4304fe9`; review closure: `f6cb45b`.
 
@@ -232,6 +232,24 @@ SHA-256
 the root-only receipt `SHA256SUMS` file has SHA-256
 `817edbf165a151d8a2552aadbfcef907a4651484d720cade36bae59a63f873fe`.
 This advances only the synthetic matrix to `7/10`; Production Gates remain
+`0/9 PASS`.
+
+The node-reboot rehearsal pins that `7/10` receipt, starts one hanging Attempt
+on Worker 1, and persists an action intent that binds the exact Kubernetes node
+UID, InternalIP, boot ID, Job, Attempt, and fence. An operator reboot is valid
+only after the harness emits the matching `action_required` line. The harness
+must observe an unavailable Node condition, a changed boot ID with unchanged
+node and Runner identity, eight allocatable GPUs after device-plugin recovery,
+Attempt 1 `LOST/WORKER_LOST`, and one higher-fence Worker 2 replacement. Job
+`827f5a1b-7f85-43d3-b236-adf2ecdae1d1` met that contract with one Visible
+Completion, one Charge, and two committed Artifacts. The executed harness has
+SHA-256
+`cf0633080aacfedbf543290b611f354967b6ef8ad8a0991aa25d5d8520768a84`;
+the root-only receipt `SHA256SUMS` file has SHA-256
+`e6decc92d15d6bf8933c922ab8f9550ec76129e3a74682c757a4ead01aa69c20`.
+One prior run failed closed when kubelet reported `Ready` before the GPU device
+plugin restored eight allocatable GPUs; it remains diagnostic only. This
+advances only the synthetic matrix to `8/10`; Production Gates remain
 `0/9 PASS`.
 
 Mock images may be built and deployed to staging, but they must use a mock

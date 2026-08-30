@@ -330,8 +330,46 @@ The executed harness has SHA-256
 One hidden diagnostic run stopped before creating an application Job or sending
 `SIGKILL` because it read Consumer replica health from the stream leader's
 stale monitor view. It is not counted as a pass. Cleanup removed the fault
-variable, marker, fault Pod, warm Pod, and watchdog. The three remaining fixed
-scenarios are `node-reboot`, `assignment-post-commit-pre-response-crash`, and
+variable, marker, fault Pod, warm Pod, and watchdog.
+
+## Node-reboot rehearsal
+
+The eighth fixed-scenario harness pins the passing `7/10` receipt and binds an
+out-of-band reboot to the exact Worker 1 Kubernetes node UID, InternalIP, boot
+ID, application Job, Attempt, and fence. Worker 2 is held in `DRAINING` until
+Attempt 1 is `RUNNING` on Worker 1, then restored before the action window. The
+harness prints `action_required=NODE_REBOOT` only after it has persisted that
+intent. It must observe Worker 1 become unavailable, return with the same node
+identity and a new boot ID, and stably report all eight GPUs before continuing.
+
+Run `deploy/lab/control-plane/node-reboot.sh` as root on `marslab-server` with
+the v20 rendered manifests. In a separate authenticated terminal, reboot only
+the named Worker after matching every field in the `action_required` line. A
+recovery-only process-kill Pod is available to clear a hanging Attempt if the
+harness exits before the reboot; any use of that recovery path makes a PASS
+receipt impossible.
+
+The passing result is fixed scenarios `8/10`, Production Gates `0/9`. Job
+`827f5a1b-7f85-43d3-b236-adf2ecdae1d1` used Attempt 1
+`bde490b4-18d3-4dec-8e45-5e93e600890f` on Worker 1 at fence 1. Kubernetes
+observed the node `Ready` condition become `Unknown`; its boot ID changed from
+`45d53683-08e0-4a0b-845b-ddb5f8acafde` to
+`1db56fa8-5375-4250-aaf5-0747cd550f01` without changing node UID or managed
+Runner container identity. Attempt 1 became `LOST` with `WORKER_LOST`, and
+Attempt 2 succeeded on Worker 2 at fence 3. The result retained one Visible
+Completion, one posted completion Charge, and two committed Artifacts, with all
+four fixed measurements zero.
+
+The root-only receipt is `receipts/node-reboot-v1`; its `SHA256SUMS` file has
+SHA-256 `e6decc92d15d6bf8933c922ab8f9550ec76129e3a74682c757a4ead01aa69c20`.
+The executed harness has SHA-256
+`cf0633080aacfedbf543290b611f354967b6ef8ad8a0991aa25d5d8520768a84`.
+The first hidden diagnostic run is preserved at
+`receipts/.vela-lab-node-reboot.ygpybI` and is not counted: kubelet first
+returned `Ready` with zero allocatable GPUs before the device plugin restored
+eight. Cleanup completed the Job and restored the idle two-Worker boundary.
+The two remaining fixed scenarios are
+`assignment-post-commit-pre-response-crash` and
 `stale-fence-late-completion`.
 
 Rollback removes only the managed container and preserves Runner state:

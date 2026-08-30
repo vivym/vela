@@ -1175,6 +1175,54 @@ remained. This advances only the non-production fixed-scenario matrix to
 are `node-reboot`, `assignment-post-commit-pre-response-crash`, and
 `stale-fence-late-completion`.
 
+## Node-reboot rehearsal
+
+On 2026-08-30, the eighth live fixed-scenario rehearsal kept
+`marslab-server` as the uninterrupted control/Registry node and rebooted only
+`vela-lab-worker-1`. The root harness pinned the passing `7/10` receipt, required
+an idle authority boundary and two `READY/HEALTHY` Workers, drained Worker 2
+until Attempt 1 was `RUNNING` on Worker 1, then persisted an action intent that
+bound the node UID, InternalIP, boot ID, Job, Attempt, and fence. The separate
+operator terminal executed one reboot only after every field matched the
+`action_required=NODE_REBOOT` line.
+
+The first run failed closed after the reboot because kubelet returned
+`Ready=True` while `nvidia.com/gpu` was still zero; the device plugin restored
+eight allocatable GPUs shortly afterward. The diagnostic directory
+`receipts/.vela-lab-node-reboot.ygpybI` is preserved and is not counted. Its
+cleanup observed the changed boot ID, allowed the replacement Attempt to
+finish, and restored zero active Jobs and Leases plus two `READY/HEALTHY`
+Workers. The harness was then hardened to require the same node identity, a new
+boot ID, eight allocatable GPUs, and five consecutive stable observations
+before continuing.
+
+The passing run used Job `827f5a1b-7f85-43d3-b236-adf2ecdae1d1`. Worker 1
+kept Kubernetes node UID `4068931d-46f8-48b0-ba03-fd6135ea64cd` and managed
+Runner container ID
+`efa8e7ffb1efd5b59adc4cada916f6d715a27ea32f05b1e373dbbea8ca1c3cbc`;
+its boot ID changed from `45d53683-08e0-4a0b-845b-ddb5f8acafde` to
+`1db56fa8-5375-4250-aaf5-0747cd550f01`, with `Ready=Unknown` observed during
+the outage. Attempt 1
+`bde490b4-18d3-4dec-8e45-5e93e600890f` became `LOST` with `WORKER_LOST` at
+fence 1. Attempt 2 `bd500ca8-94cd-42b3-9754-2d3be28fe60b` succeeded on Worker
+2 at fence 3. The Job retained one Visible Completion, one posted completion
+Charge, two committed Artifacts, and four zero-valued fixed measurements.
+
+The successful root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/node-reboot-v1`. Every file passes
+`sha256sum --check --strict`; the `SHA256SUMS` file has SHA-256
+`e6decc92d15d6bf8933c922ab8f9550ec76129e3a74682c757a4ead01aa69c20`,
+and the executed harness has SHA-256
+`cf0633080aacfedbf543290b611f354967b6ef8ad8a0991aa25d5d8520768a84`.
+Postflight found all three nodes Ready, control allocatable GPUs zero, both
+Workers at eight GPUs with healthy persistent Runners and no GPU compute
+process, zero active Jobs, unrevoked Leases, pending Outbox events, or
+Production Gate receipts, and no live harness/watchdog process. This advances
+only the non-production matrix to `8/10`; Production Gates remain `0/9 PASS`.
+The two remaining fixed scenarios are
+`assignment-post-commit-pre-response-crash` and
+`stale-fence-late-completion`.
+
 ## Experiment operating rules
 
 - Build the mock backend with the contract in
