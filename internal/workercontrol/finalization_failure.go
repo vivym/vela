@@ -74,7 +74,8 @@ func (s *Service) RecordUnrecoverableArtifactFinalizationAsReconciler(
 	if err != nil {
 		return RetryDecision{}, fmt.Errorf("lock unrecoverable Artifact finalization authority: %w", err)
 	}
-	if authority.WorkerID != credentials.WorkerID || authority.WorkerEpoch != credentials.WorkerEpoch ||
+	if !authority.WorkerID.Valid || authority.WorkerID.UUID != credentials.WorkerID ||
+		authority.WorkerEpoch == nil || *authority.WorkerEpoch != credentials.WorkerEpoch ||
 		authority.AttemptFence != credentials.Fence || authority.LeasePhase != store.LeasePhaseFINALIZATION ||
 		authority.LeaseOwnerKind != store.LeaseOwnerKindRECONCILER || authority.LeaseOwnerID != reconciler.ID {
 		return rejectedStaleFailure(), nil

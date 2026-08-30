@@ -40,6 +40,10 @@ func (s *Service) applyAttemptFailure(
 	decidedAt time.Time,
 	transition attemptFailureTransition,
 ) (RetryDecision, error) {
+	binding, err := requireLegacyFailureBinding(authority)
+	if err != nil {
+		return RetryDecision{}, err
+	}
 	if err := queries.LockExecutionFailureDecisionWrites(ctx); err != nil {
 		return RetryDecision{}, fmt.Errorf("lock failure decision writes: %w", err)
 	}
@@ -74,8 +78,8 @@ func (s *Service) applyAttemptFailure(
 		certification, lockErr := queries.LockProfileCertificationForFailure(
 			ctx,
 			store.LockProfileCertificationForFailureParams{
-				ProfileCertificationID:     authority.ProfileCertificationID,
-				ExecutionProfileRevisionID: authority.ExecutionProfileRevisionID,
+				ProfileCertificationID:     binding.profileCertificationID,
+				ExecutionProfileRevisionID: binding.executionProfileRevisionID,
 				ModelRevisionID:            authority.ModelRevisionID,
 				GenerationPresetRevisionID: authority.GenerationPresetRevisionID,
 				OutputSpecID:               authority.OutputSpecID,
@@ -96,7 +100,7 @@ func (s *Service) applyAttemptFailure(
 						Valid: true,
 					},
 					DecidedAt:               pgtype.Timestamptz{Time: decidedAt, Valid: true},
-					CurrentWorkerID:         authority.WorkerID,
+					CurrentWorkerID:         binding.workerID,
 					CurrentWorkerWasHealthy: true,
 				},
 			)
@@ -108,7 +112,7 @@ func (s *Service) applyAttemptFailure(
 					ctx,
 					store.InvalidateProfileCertificationForCircuitParams{
 						OpenedAt:               pgtype.Timestamptz{Time: decidedAt, Valid: true},
-						ProfileCertificationID: authority.ProfileCertificationID,
+						ProfileCertificationID: binding.profileCertificationID,
 					},
 				)
 				if invalidateErr != nil || rows != 1 {
@@ -161,8 +165,8 @@ func (s *Service) applyAttemptFailure(
 				ModelRevisionID:            authority.ModelRevisionID,
 				GenerationPresetRevisionID: authority.GenerationPresetRevisionID,
 				OutputSpecID:               authority.OutputSpecID,
-				ProfileCertificationID:     authority.ProfileCertificationID,
-				ExecutionProfileRevisionID: authority.ExecutionProfileRevisionID,
+				ProfileCertificationID:     binding.profileCertificationID,
+				ExecutionProfileRevisionID: binding.executionProfileRevisionID,
 				WorkerPoolID: uuid.NullUUID{
 					UUID: authority.WorkerPoolID, Valid: true,
 				},
@@ -216,8 +220,8 @@ func (s *Service) applyAttemptFailure(
 		DecidedAt:   decidedAtValue,
 		LeaseID:     authority.LeaseID,
 		AttemptID:   authority.AttemptID,
-		WorkerID:    authority.WorkerID,
-		WorkerEpoch: authority.WorkerEpoch,
+		WorkerID:    binding.workerID,
+		WorkerEpoch: binding.workerEpoch,
 		Fence:       authority.AttemptFence,
 	}); updateErr != nil || rows != 1 {
 		return RetryDecision{}, changedRowsError("revoke active Lease for failure", rows, updateErr)
@@ -237,8 +241,8 @@ func (s *Service) applyAttemptFailure(
 	excludedWorkers, err := appendExcludedWorker(
 		authority.ExcludedWorkers,
 		excludedWorkerRecord{
-			WorkerID:    authority.WorkerID,
-			WorkerEpoch: authority.WorkerEpoch,
+			WorkerID:    binding.workerID,
+			WorkerEpoch: binding.workerEpoch,
 			Reason:      normalized.FailureClass,
 			ExpiresAt:   authority.JobExpiresAt.Time,
 		},
@@ -341,8 +345,8 @@ func (s *Service) applyAttemptFailure(
 		ProjectID:                  authority.ProjectID,
 		JobID:                      authority.JobID,
 		AttemptID:                  uuid.NullUUID{UUID: authority.AttemptID, Valid: true},
-		WorkerID:                   uuid.NullUUID{UUID: authority.WorkerID, Valid: true},
-		WorkerEpoch:                &authority.WorkerEpoch,
+		WorkerID:                   authority.WorkerID,
+		WorkerEpoch:                authority.WorkerEpoch,
 		AttemptFence:               &authority.AttemptFence,
 		Source:                     transition.Source,
 		Disposition:                disposition,
@@ -379,13 +383,13 @@ func (s *Service) applyAttemptFailure(
 				ID:                                   uuid.New(),
 				OrganizationID:                       authority.OrganizationID,
 				ProjectID:                            authority.ProjectID,
-				ProfileCertificationID:               authority.ProfileCertificationID,
-				ExecutionProfileRevisionID:           authority.ExecutionProfileRevisionID,
+				ProfileCertificationID:               binding.profileCertificationID,
+				ExecutionProfileRevisionID:           binding.executionProfileRevisionID,
 				TriggeringExecutionFailureDecisionID: decisionID,
 				TriggeringJobID:                      authority.JobID,
 				TriggeringAttemptID:                  authority.AttemptID,
-				TriggeringWorkerID:                   authority.WorkerID,
-				TriggeringWorkerEpoch:                authority.WorkerEpoch,
+				TriggeringWorkerID:                   binding.workerID,
+				TriggeringWorkerEpoch:                binding.workerEpoch,
 				TriggeringAttemptFence:               authority.AttemptFence,
 				FailureClass:                         normalized.FailureClass,
 				FailureFingerprint:                   normalized.FailureFingerprint,
@@ -476,7 +480,7 @@ func updateWorkerForFailureTransition(
 	decidedAt pgtype.Timestamptz,
 	transition workerFailureTransition,
 ) error {
-	if workerRow.Epoch != authority.WorkerEpoch {
+	if authority.WorkerEpoch == nil || workerRow.Epoch != *authority.WorkerEpoch {
 		return nil
 	}
 	if transition == workerFailureReported {

@@ -40,8 +40,8 @@ WHERE worker_pool_id = $1
 `
 
 type CountActiveOrganizationAssignmentsParams struct {
-	WorkerPoolID   uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
-	OrganizationID uuid.UUID `db:"organization_id" json:"organization_id"`
+	WorkerPoolID   uuid.NullUUID `db:"worker_pool_id" json:"worker_pool_id"`
+	OrganizationID uuid.UUID     `db:"organization_id" json:"organization_id"`
 }
 
 func (q *Queries) CountActiveOrganizationAssignments(ctx context.Context, arg CountActiveOrganizationAssignmentsParams) (int64, error) {
@@ -59,7 +59,7 @@ WHERE worker_pool_id = $1
   AND state IN ('ASSIGNED', 'RUNNING', 'FINALIZING')
 `
 
-func (q *Queries) CountActiveRetryAssignments(ctx context.Context, workerPoolID uuid.UUID) (int64, error) {
+func (q *Queries) CountActiveRetryAssignments(ctx context.Context, workerPoolID uuid.NullUUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countActiveRetryAssignments, workerPoolID)
 	var column_1 int64
 	err := row.Scan(&column_1)
@@ -118,9 +118,9 @@ FOR UPDATE OF a, l
 `
 
 type GetActiveWorkerAssignmentParams struct {
-	WorkerID    uuid.UUID `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64     `db:"worker_epoch" json:"worker_epoch"`
-	OwnerID     string    `db:"owner_id" json:"owner_id"`
+	WorkerID    uuid.NullUUID `db:"worker_id" json:"worker_id"`
+	WorkerEpoch *int64        `db:"worker_epoch" json:"worker_epoch"`
+	OwnerID     string        `db:"owner_id" json:"owner_id"`
 }
 
 type GetActiveWorkerAssignmentRow struct {
@@ -128,14 +128,14 @@ type GetActiveWorkerAssignmentRow struct {
 	JobID                           uuid.UUID          `db:"job_id" json:"job_id"`
 	ModelRevisionID                 uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
 	GenerationPresetRevisionID      uuid.UUID          `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
-	ExecutionProfileRevisionID      uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ExecutionProfileRevisionID      uuid.NullUUID      `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
 	OutputSpecID                    uuid.UUID          `db:"output_spec_id" json:"output_spec_id"`
 	RequestContent                  string             `db:"request_content" json:"request_content"`
 	DebugDumpAuthorizationID        uuid.NullUUID      `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
 	DebugDumpAuthorizationExpiresAt pgtype.Timestamptz `db:"debug_dump_authorization_expires_at" json:"debug_dump_authorization_expires_at"`
 	AttemptNumber                   int32              `db:"attempt_number" json:"attempt_number"`
-	WorkerID                        uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                     int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID                        uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                     *int64             `db:"worker_epoch" json:"worker_epoch"`
 	Fence                           int64              `db:"fence" json:"fence"`
 	SchedulerDispatchIntentID       uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
 	SigningKeyID                    string             `db:"signing_key_id" json:"signing_key_id"`
@@ -307,10 +307,10 @@ type InsertAttemptParams struct {
 	ProjectID                       uuid.UUID          `db:"project_id" json:"project_id"`
 	JobID                           uuid.UUID          `db:"job_id" json:"job_id"`
 	AttemptNumber                   int32              `db:"attempt_number" json:"attempt_number"`
-	ExecutionProfileRevisionID      uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
-	WorkerPoolID                    uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
-	WorkerID                        uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                     int64              `db:"worker_epoch" json:"worker_epoch"`
+	ExecutionProfileRevisionID      uuid.NullUUID      `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	WorkerPoolID                    uuid.NullUUID      `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerID                        uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                     *int64             `db:"worker_epoch" json:"worker_epoch"`
 	SchedulerDispatchIntentID       uuid.NullUUID      `db:"scheduler_dispatch_intent_id" json:"scheduler_dispatch_intent_id"`
 	DebugDumpAuthorizationID        uuid.NullUUID      `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
 	DebugDumpAuthorizationExpiresAt pgtype.Timestamptz `db:"debug_dump_authorization_expires_at" json:"debug_dump_authorization_expires_at"`

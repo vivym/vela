@@ -84,8 +84,8 @@ func (s *Service) Start(
 
 	authority, err := queries.LockStartAuthority(ctx, store.LockStartAuthorityParams{
 		AttemptID:   credentials.AttemptID,
-		WorkerID:    worker.ID,
-		WorkerEpoch: credentials.WorkerEpoch,
+		WorkerID:    uuid.NullUUID{UUID: worker.ID, Valid: true},
+		WorkerEpoch: &credentials.WorkerEpoch,
 		Fence:       credentials.Fence,
 		OwnerID:     workerRow.SpiffeID,
 	})
@@ -147,8 +147,8 @@ func (s *Service) Start(
 	if rows, err := queries.MarkAttemptRunning(ctx, store.MarkAttemptRunningParams{
 		StartedAt:   startedAt,
 		AttemptID:   authority.AttemptID,
-		WorkerID:    worker.ID,
-		WorkerEpoch: credentials.WorkerEpoch,
+		WorkerID:    uuid.NullUUID{UUID: worker.ID, Valid: true},
+		WorkerEpoch: &credentials.WorkerEpoch,
 		Fence:       credentials.Fence,
 	}); err != nil || rows != 1 {
 		return StartResult{}, changedRowsError("transition Attempt to RUNNING", rows, err)

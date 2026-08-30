@@ -463,8 +463,8 @@ type LockCancellationAttemptRow struct {
 	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
 	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
 	JobID          uuid.UUID          `db:"job_id" json:"job_id"`
-	WorkerID       uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch    int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID       uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch    *int64             `db:"worker_epoch" json:"worker_epoch"`
 	Fence          int64              `db:"fence" json:"fence"`
 	State          AttemptState       `db:"state" json:"state"`
 	EndedAt        pgtype.Timestamptz `db:"ended_at" json:"ended_at"`

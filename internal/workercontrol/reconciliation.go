@@ -39,11 +39,14 @@ func (s *Service) ReconcileNextExecutionFailure(ctx context.Context) (Reconcilia
 	expiredJob, err := queries.FindExpiredJobFailureCandidate(ctx)
 	if err == nil {
 		if expiredJob.AttemptID != uuid.Nil {
+			if !expiredJob.WorkerID.Valid {
+				return ReconciliationResult{}, errors.New("expired legacy Job Attempt is missing Worker binding")
+			}
 			return s.reconcileAttemptFailure(
 				ctx,
 				expiredJob.JobID,
 				expiredJob.AttemptID,
-				expiredJob.WorkerID,
+				expiredJob.WorkerID.UUID,
 				FailureSourceJobExpired,
 			)
 		}
@@ -54,11 +57,14 @@ func (s *Service) ReconcileNextExecutionFailure(ctx context.Context) (Reconcilia
 	}
 	finalizationDeadline, err := queries.FindExpiredFinalizationDeadlineCandidate(ctx)
 	if err == nil {
+		if !finalizationDeadline.WorkerID.Valid {
+			return ReconciliationResult{}, errors.New("expired finalization Attempt is missing Worker binding")
+		}
 		return s.reconcileAttemptFailure(
 			ctx,
 			finalizationDeadline.JobID,
 			finalizationDeadline.AttemptID,
-			finalizationDeadline.WorkerID,
+			finalizationDeadline.WorkerID.UUID,
 			FailureSourceFinalizationDeadlineExpired,
 		)
 	}
@@ -76,11 +82,14 @@ func (s *Service) ReconcileNextExecutionFailure(ctx context.Context) (Reconcilia
 	if err != nil {
 		return ReconciliationResult{}, fmt.Errorf("find expired EXECUTION Lease candidate: %w", err)
 	}
+	if !expiredLease.WorkerID.Valid {
+		return ReconciliationResult{}, errors.New("expired EXECUTION Lease Attempt is missing Worker binding")
+	}
 	return s.reconcileAttemptFailure(
 		ctx,
 		expiredLease.JobID,
 		expiredLease.AttemptID,
-		expiredLease.WorkerID,
+		expiredLease.WorkerID.UUID,
 		FailureSourceExecutionLeaseExpired,
 	)
 }
@@ -116,7 +125,7 @@ func (s *Service) reconcileAttemptFailure(
 	if err != nil {
 		return ReconciliationResult{}, fmt.Errorf("lock reconciled failure authority: %w", err)
 	}
-	if authority.JobID != jobID || authority.WorkerID != workerID ||
+	if authority.JobID != jobID || !authority.WorkerID.Valid || authority.WorkerID.UUID != workerID ||
 		authority.LeaseRevokedAt.Valid || authority.CurrentFence != authority.AttemptFence ||
 		!authority.LeaseExpiresAt.Valid || !authority.JobExpiresAt.Valid ||
 		!failureAuthorityMatchesSource(authority, source) {

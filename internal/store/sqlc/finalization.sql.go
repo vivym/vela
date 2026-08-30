@@ -296,10 +296,10 @@ LIMIT 1
 `
 
 type FindActiveReconcilerFinalizationCandidateRow struct {
-	AttemptID   uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64     `db:"worker_epoch" json:"worker_epoch"`
-	Fence       int64     `db:"fence" json:"fence"`
+	AttemptID   uuid.UUID     `db:"attempt_id" json:"attempt_id"`
+	WorkerID    uuid.NullUUID `db:"worker_id" json:"worker_id"`
+	WorkerEpoch *int64        `db:"worker_epoch" json:"worker_epoch"`
+	Fence       int64         `db:"fence" json:"fence"`
 }
 
 func (q *Queries) FindActiveReconcilerFinalizationCandidate(ctx context.Context, ownerID string) (FindActiveReconcilerFinalizationCandidateRow, error) {
@@ -361,8 +361,8 @@ LIMIT 1
 
 type FindRecoverableExpiredFinalizationCandidateRow struct {
 	AttemptID   uuid.UUID      `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID      `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64          `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID    uuid.NullUUID  `db:"worker_id" json:"worker_id"`
+	WorkerEpoch *int64         `db:"worker_epoch" json:"worker_epoch"`
 	Fence       int64          `db:"fence" json:"fence"`
 	OwnerKind   LeaseOwnerKind `db:"owner_kind" json:"owner_kind"`
 	OwnerID     string         `db:"owner_id" json:"owner_id"`
@@ -1245,8 +1245,8 @@ type LockFinalizationAuthorityRow struct {
 	AttemptID                                 uuid.UUID              `db:"attempt_id" json:"attempt_id"`
 	JobID                                     uuid.UUID              `db:"job_id" json:"job_id"`
 	AttemptState                              AttemptState           `db:"attempt_state" json:"attempt_state"`
-	WorkerID                                  uuid.UUID              `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                               int64                  `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID                                  uuid.NullUUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                               *int64                 `db:"worker_epoch" json:"worker_epoch"`
 	AttemptFence                              int64                  `db:"attempt_fence" json:"attempt_fence"`
 	FinalizationStartedAt                     pgtype.Timestamptz     `db:"finalization_started_at" json:"finalization_started_at"`
 	FinalizationDeadlineAt                    pgtype.Timestamptz     `db:"finalization_deadline_at" json:"finalization_deadline_at"`
@@ -1388,8 +1388,8 @@ type LockVisibleCompletionAuthorityRow struct {
 	AttemptID                  uuid.UUID              `db:"attempt_id" json:"attempt_id"`
 	JobID                      uuid.UUID              `db:"job_id" json:"job_id"`
 	AttemptState               AttemptState           `db:"attempt_state" json:"attempt_state"`
-	WorkerID                   uuid.UUID              `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                int64                  `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID                   uuid.NullUUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                *int64                 `db:"worker_epoch" json:"worker_epoch"`
 	AttemptFence               int64                  `db:"attempt_fence" json:"attempt_fence"`
 	FinalizationStartedAt      pgtype.Timestamptz     `db:"finalization_started_at" json:"finalization_started_at"`
 	FinalizationDeadlineAt     pgtype.Timestamptz     `db:"finalization_deadline_at" json:"finalization_deadline_at"`
@@ -1613,8 +1613,8 @@ type MarkAttemptFinalizingParams struct {
 	FinalizationStartedAt  pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
 	FinalizationDeadlineAt pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
 	AttemptID              uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID               uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch            int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID               uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch            *int64             `db:"worker_epoch" json:"worker_epoch"`
 	Fence                  int64              `db:"fence" json:"fence"`
 }
 
@@ -1649,8 +1649,8 @@ WHERE id = $2
 type MarkCompletionAttemptSucceededParams struct {
 	CompletedAt pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
 	AttemptID   uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID    uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch *int64             `db:"worker_epoch" json:"worker_epoch"`
 	Fence       int64              `db:"fence" json:"fence"`
 }
 

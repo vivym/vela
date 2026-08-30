@@ -144,7 +144,8 @@ func (s *Service) Fail(
 	if err != nil {
 		return RetryDecision{}, fmt.Errorf("lock Fail authority: %w", err)
 	}
-	if authority.WorkerID != worker.ID || authority.WorkerEpoch != credentials.WorkerEpoch ||
+	if !authority.WorkerID.Valid || authority.WorkerID.UUID != worker.ID ||
+		authority.WorkerEpoch == nil || *authority.WorkerEpoch != credentials.WorkerEpoch ||
 		authority.AttemptFence != credentials.Fence ||
 		authority.LeaseOwnerKind != store.LeaseOwnerKindWORKER ||
 		authority.LeaseOwnerID != workerRow.SpiffeID ||
@@ -231,6 +232,26 @@ func (s *Service) Fail(
 		return RetryDecision{}, fmt.Errorf("commit Fail: %w", err)
 	}
 	return decision, nil
+}
+
+type legacyFailureBinding struct {
+	workerID                   uuid.UUID
+	workerEpoch                int64
+	profileCertificationID     uuid.UUID
+	executionProfileRevisionID uuid.UUID
+}
+
+func requireLegacyFailureBinding(authority store.LockFailureAuthorityRow) (legacyFailureBinding, error) {
+	if !authority.WorkerID.Valid || authority.WorkerEpoch == nil ||
+		!authority.ProfileCertificationID.Valid || !authority.ExecutionProfileRevisionID.Valid {
+		return legacyFailureBinding{}, errors.New("legacy failure authority is missing Worker or Profile binding")
+	}
+	return legacyFailureBinding{
+		workerID:                   authority.WorkerID.UUID,
+		workerEpoch:                *authority.WorkerEpoch,
+		profileCertificationID:     authority.ProfileCertificationID.UUID,
+		executionProfileRevisionID: authority.ExecutionProfileRevisionID.UUID,
+	}, nil
 }
 
 func normalizeFailureObservation(

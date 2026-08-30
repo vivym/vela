@@ -275,8 +275,8 @@ func (s *Service) Acquire(
 		return Assignment{}, failure(FailureStaleWorkerEpoch, "Worker epoch is not current")
 	}
 	existing, err := queries.GetActiveWorkerAssignment(ctx, store.GetActiveWorkerAssignmentParams{
-		WorkerID:    worker.ID,
-		WorkerEpoch: workerEpoch,
+		WorkerID:    uuid.NullUUID{UUID: worker.ID, Valid: true},
+		WorkerEpoch: &workerEpoch,
 		OwnerID:     workerRow.SpiffeID,
 	})
 	if err == nil {
@@ -492,15 +492,21 @@ func (s *Service) Acquire(
 	}
 
 	if err := queries.InsertAttempt(ctx, store.InsertAttemptParams{
-		ID:                              attemptID,
-		OrganizationID:                  job.OrganizationID,
-		ProjectID:                       job.ProjectID,
-		JobID:                           job.ID,
-		AttemptNumber:                   attemptNumber,
-		ExecutionProfileRevisionID:      candidate.ExecutionProfileRevisionID,
-		WorkerPoolID:                    workerRow.WorkerPoolID,
-		WorkerID:                        worker.ID,
-		WorkerEpoch:                     workerEpoch,
+		ID:             attemptID,
+		OrganizationID: job.OrganizationID,
+		ProjectID:      job.ProjectID,
+		JobID:          job.ID,
+		AttemptNumber:  attemptNumber,
+		ExecutionProfileRevisionID: uuid.NullUUID{
+			UUID: candidate.ExecutionProfileRevisionID, Valid: true,
+		},
+		WorkerPoolID: uuid.NullUUID{
+			UUID: workerRow.WorkerPoolID, Valid: true,
+		},
+		WorkerID: uuid.NullUUID{
+			UUID: worker.ID, Valid: true,
+		},
+		WorkerEpoch:                     &workerEpoch,
 		SchedulerDispatchIntentID:       schedulerGuard.nullableIntentID(),
 		DebugDumpAuthorizationID:        debugDumpAuthorizationID,
 		DebugDumpAuthorizationExpiresAt: debugDumpAuthorizationExpiresAt,
@@ -674,7 +680,8 @@ func (guard *scheduledAssignmentGuard) validateReplay(
 	if !existing.SchedulerDispatchIntentID.Valid ||
 		existing.SchedulerDispatchIntentID.UUID != guard.claim.IntentID ||
 		existing.JobID != candidate.JobID ||
-		existing.ExecutionProfileRevisionID != candidate.ExecutionProfileRevisionID {
+		!existing.ExecutionProfileRevisionID.Valid ||
+		existing.ExecutionProfileRevisionID.UUID != candidate.ExecutionProfileRevisionID {
 		return failure(
 			FailureCandidateUnavailable,
 			"active Assignment does not match the Scheduler dispatch claim",
@@ -763,7 +770,9 @@ func (guard *scheduledAssignmentGuard) validateCapacity(
 	organizationRunningCount, err := queries.CountActiveOrganizationAssignments(
 		ctx,
 		store.CountActiveOrganizationAssignmentsParams{
-			WorkerPoolID:   authority.workerRow.WorkerPoolID,
+			WorkerPoolID: uuid.NullUUID{
+				UUID: authority.workerRow.WorkerPoolID, Valid: true,
+			},
 			OrganizationID: job.OrganizationID,
 		},
 	)
@@ -806,7 +815,7 @@ func (guard *scheduledAssignmentGuard) validateRetryCapacity(
 	}
 	retryRunningCount, err := queries.CountActiveRetryAssignments(
 		ctx,
-		authority.workerRow.WorkerPoolID,
+		uuid.NullUUID{UUID: authority.workerRow.WorkerPoolID, Valid: true},
 	)
 	if err != nil {
 		return fmt.Errorf("count active retry Assignments: %w", err)
@@ -835,10 +844,16 @@ func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow)
 	if !row.IssuedAt.Valid || !row.TokenClaimExpiresAt.Valid || !row.ExpiresAt.Valid {
 		return Assignment{}, errors.New("stored Lease timestamps are null")
 	}
+	if !row.WorkerID.Valid || row.WorkerEpoch == nil || !row.ExecutionProfileRevisionID.Valid {
+		return Assignment{}, errors.New("stored legacy Assignment is missing Worker or Profile binding")
+	}
+	workerID := row.WorkerID.UUID
+	workerEpoch := *row.WorkerEpoch
+	executionProfileRevisionID := row.ExecutionProfileRevisionID.UUID
 	token, digest, err := s.issueLeaseToken(leaseTokenClaims{
 		AttemptID: row.AttemptID,
-		WorkerID:  row.WorkerID,
-		Epoch:     row.WorkerEpoch,
+		WorkerID:  workerID,
+		Epoch:     workerEpoch,
 		Fence:     row.Fence,
 		IssuedAt:  row.IssuedAt.Time,
 		ExpiresAt: row.TokenClaimExpiresAt.Time,
@@ -869,11 +884,11 @@ func (s *Service) assignmentFromExisting(row store.GetActiveWorkerAssignmentRow)
 	return Assignment{
 		AttemptID:                  row.AttemptID,
 		JobID:                      row.JobID,
-		WorkerID:                   row.WorkerID,
-		WorkerEpoch:                row.WorkerEpoch,
+		WorkerID:                   workerID,
+		WorkerEpoch:                workerEpoch,
 		ModelRevisionID:            row.ModelRevisionID,
 		GenerationPresetRevisionID: row.GenerationPresetRevisionID,
-		ExecutionProfileRevisionID: row.ExecutionProfileRevisionID,
+		ExecutionProfileRevisionID: executionProfileRevisionID,
 		OutputSpecID:               row.OutputSpecID,
 		RequestContent:             requestContent,
 		DebugDumpAuthorization:     debugDumpAuthorization,

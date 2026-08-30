@@ -342,8 +342,8 @@ type LockDebugDumpUploadAuthorityRow struct {
 	AttemptID                       uuid.UUID          `db:"attempt_id" json:"attempt_id"`
 	JobID                           uuid.UUID          `db:"job_id" json:"job_id"`
 	AttemptState                    AttemptState       `db:"attempt_state" json:"attempt_state"`
-	WorkerID                        uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                     int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID                        uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                     *int64             `db:"worker_epoch" json:"worker_epoch"`
 	AttemptFence                    int64              `db:"attempt_fence" json:"attempt_fence"`
 	DebugDumpAuthorizationID        uuid.NullUUID      `db:"debug_dump_authorization_id" json:"debug_dump_authorization_id"`
 	DebugDumpAuthorizationExpiresAt pgtype.Timestamptz `db:"debug_dump_authorization_expires_at" json:"debug_dump_authorization_expires_at"`

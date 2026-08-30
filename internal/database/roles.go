@@ -47,6 +47,7 @@ const (
 	RoleFleet                      Role = "vela_fleet"
 	RoleAttemptCoordinator         Role = "vela_attempt_coordinator"
 	RoleStageScheduler             Role = "vela_stage_scheduler"
+	RoleStageArtifact              Role = "vela_stage_artifact"
 )
 
 type rowQuerier interface {
@@ -94,6 +95,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleFleet:                      {verifyPrivileges: verifyFleetPrivileges},
 	RoleAttemptCoordinator:         {verifyPrivileges: verifyAttemptCoordinatorPrivileges},
 	RoleStageScheduler:             {verifyPrivileges: verifyStageSchedulerPrivileges},
+	RoleStageArtifact:              {verifyPrivileges: verifyStageArtifactPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -252,6 +254,25 @@ func verifyStageSchedulerPrivileges(
 			"vela_reconcile_expired_stage_scheduler_claims(integer)",
 			"vela_list_stage_scheduler_shadow_snapshots(integer)",
 			"vela_record_stage_scheduler_shadow_replay(jsonb)",
+		},
+	})
+}
+
+func verifyStageArtifactPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "StageArtifact",
+		failureLabel:    "StageArtifact transaction",
+		functions: []string{
+			"vela_seal_stage_output(jsonb)",
+			"vela_commit_stage_artifact(jsonb)",
+			"vela_fail_stage_materialization_source(jsonb)",
+			"vela_issue_stage_transfer_ticket(jsonb)",
+			"vela_resolve_stage_transfer_ticket(jsonb)",
+			"vela_consume_stage_transfer_ticket(jsonb)",
 		},
 	})
 }

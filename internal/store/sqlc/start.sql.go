@@ -99,11 +99,11 @@ FOR UPDATE OF a, l, j, cr
 `
 
 type LockStartAuthorityParams struct {
-	AttemptID   uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64     `db:"worker_epoch" json:"worker_epoch"`
-	Fence       int64     `db:"fence" json:"fence"`
-	OwnerID     string    `db:"owner_id" json:"owner_id"`
+	AttemptID   uuid.UUID     `db:"attempt_id" json:"attempt_id"`
+	WorkerID    uuid.NullUUID `db:"worker_id" json:"worker_id"`
+	WorkerEpoch *int64        `db:"worker_epoch" json:"worker_epoch"`
+	Fence       int64         `db:"fence" json:"fence"`
+	OwnerID     string        `db:"owner_id" json:"owner_id"`
 }
 
 type LockStartAuthorityRow struct {
@@ -171,8 +171,8 @@ WHERE id = $2
 type MarkAttemptRunningParams struct {
 	StartedAt   pgtype.Timestamptz `db:"started_at" json:"started_at"`
 	AttemptID   uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID    uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch *int64             `db:"worker_epoch" json:"worker_epoch"`
 	Fence       int64              `db:"fence" json:"fence"`
 }
 

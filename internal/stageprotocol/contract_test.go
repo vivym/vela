@@ -2,6 +2,7 @@ package stageprotocol_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -91,6 +92,28 @@ func TestTransferTicketAuthorityStopsAtWorkerAgentBoundary(t *testing.T) {
 	runtimeMessage := runtimeInput.(protoreflect.MessageDescriptor)
 	if runtimeMessage.Fields().ByName("transfer_ticket") != nil {
 		t.Fatal("ModelRuntime StageInputArtifact exposes TransferTicket authority")
+	}
+	for _, messageName := range []protoreflect.FullName{
+		"vela.v1.StageInputArtifact",
+		"vela.v1.StageExecutionSpec",
+		"vela.v1.ModelRuntimeServicePrepareStageRequest",
+	} {
+		descriptor, descriptorErr := protoregistry.GlobalFiles.FindDescriptorByName(messageName)
+		if descriptorErr != nil {
+			t.Fatalf("%s descriptor: %v", messageName, descriptorErr)
+		}
+		message := descriptor.(protoreflect.MessageDescriptor)
+		for fieldIndex := 0; fieldIndex < message.Fields().Len(); fieldIndex++ {
+			fieldName := strings.ToLower(string(message.Fields().Get(fieldIndex).Name()))
+			for _, forbidden := range []string{
+				"transfer_ticket", "presigned", "url", "credential", "access_key",
+				"secret", "object_store_token",
+			} {
+				if strings.Contains(fieldName, forbidden) {
+					t.Errorf("ModelRuntime %s exposes forbidden field %s", messageName, fieldName)
+				}
+			}
+		}
 	}
 	assignmentDescriptor, err := protoregistry.GlobalFiles.FindDescriptorByName(
 		"vela.v1.StageAssignment",

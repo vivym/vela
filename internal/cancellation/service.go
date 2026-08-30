@@ -354,7 +354,8 @@ func (s *Service) AcknowledgeCancellationStop(
 		lease.OwnerID != workerRow.SpiffeID || !lease.RevokedAt.Valid ||
 		!hmac.Equal(presentedDigest[:], lease.TokenDigest) ||
 		attempt.ID != credentials.AttemptID || attempt.JobID != authority.JobID ||
-		attempt.WorkerID != worker.ID || attempt.WorkerEpoch != credentials.WorkerEpoch ||
+		!attempt.WorkerID.Valid || attempt.WorkerID.UUID != worker.ID ||
+		attempt.WorkerEpoch == nil || *attempt.WorkerEpoch != credentials.WorkerEpoch ||
 		attempt.Fence != credentials.Fence || attempt.State != store.AttemptStateCANCELED ||
 		!attempt.EndedAt.Valid || authority.AttemptID != credentials.AttemptID ||
 		authority.WorkerID != worker.ID || authority.WorkerEpoch != credentials.WorkerEpoch ||
@@ -463,7 +464,8 @@ func (s *Service) ReconcileNextCancellationStop(ctx context.Context) (StopResult
 		!lease.RevokedAt.Valid || !authority.AuthorityLeaseExpiresAt.Valid ||
 		authority.AuthorityLeaseExpiresAt.Time.After(postgresNow.Time) ||
 		attempt.ID != candidate.AttemptID || attempt.JobID != authority.JobID ||
-		attempt.WorkerID != authority.WorkerID || attempt.WorkerEpoch != authority.WorkerEpoch ||
+		!attempt.WorkerID.Valid || attempt.WorkerID.UUID != authority.WorkerID ||
+		attempt.WorkerEpoch == nil || *attempt.WorkerEpoch != authority.WorkerEpoch ||
 		attempt.Fence != authority.AttemptFence || attempt.State != store.AttemptStateCANCELED ||
 		!attempt.EndedAt.Valid || authority.CancellationID != candidate.CancellationID ||
 		authority.AttemptID != candidate.AttemptID || authority.WorkerID != candidate.WorkerID ||

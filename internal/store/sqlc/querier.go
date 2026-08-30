@@ -24,7 +24,7 @@ type Querier interface {
 	ConfirmDebugDumpUploadAuthorization(ctx context.Context, arg ConfirmDebugDumpUploadAuthorizationParams) (bool, error)
 	ConsumeVisibleCompletionCreditReservation(ctx context.Context, arg ConsumeVisibleCompletionCreditReservationParams) (int64, error)
 	CountActiveOrganizationAssignments(ctx context.Context, arg CountActiveOrganizationAssignmentsParams) (int64, error)
-	CountActiveRetryAssignments(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
+	CountActiveRetryAssignments(ctx context.Context, workerPoolID uuid.NullUUID) (int64, error)
 	CountProfileCircuitHealthyWorkers(ctx context.Context, arg CountProfileCircuitHealthyWorkersParams) (int64, error)
 	DecrementPoolQueuedForAssignment(ctx context.Context, workerPoolID uuid.UUID) (int64, error)
 	DecrementPoolWaitingForFailure(ctx context.Context, arg DecrementPoolWaitingForFailureParams) (int64, error)

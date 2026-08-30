@@ -32,7 +32,7 @@ FROM (
 `
 
 type CountProfileCircuitHealthyWorkersParams struct {
-	ProfileCertificationID  uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+	ProfileCertificationID  uuid.NullUUID      `db:"profile_certification_id" json:"profile_certification_id"`
 	FailureFingerprint      string             `db:"failure_fingerprint" json:"failure_fingerprint"`
 	EvidenceWindowStartedAt pgtype.Timestamptz `db:"evidence_window_started_at" json:"evidence_window_started_at"`
 	DecidedAt               pgtype.Timestamptz `db:"decided_at" json:"decided_at"`
@@ -144,9 +144,9 @@ LIMIT 1
 `
 
 type FindExpiredExecutionLeaseCandidateRow struct {
-	JobID     uuid.UUID `db:"job_id" json:"job_id"`
-	AttemptID uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	WorkerID  uuid.UUID `db:"worker_id" json:"worker_id"`
+	JobID     uuid.UUID     `db:"job_id" json:"job_id"`
+	AttemptID uuid.UUID     `db:"attempt_id" json:"attempt_id"`
+	WorkerID  uuid.NullUUID `db:"worker_id" json:"worker_id"`
 }
 
 func (q *Queries) FindExpiredExecutionLeaseCandidate(ctx context.Context, workerLostGraceSeconds int64) (FindExpiredExecutionLeaseCandidateRow, error) {
@@ -173,9 +173,9 @@ LIMIT 1
 `
 
 type FindExpiredFinalizationDeadlineCandidateRow struct {
-	JobID     uuid.UUID `db:"job_id" json:"job_id"`
-	AttemptID uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	WorkerID  uuid.UUID `db:"worker_id" json:"worker_id"`
+	JobID     uuid.UUID     `db:"job_id" json:"job_id"`
+	AttemptID uuid.UUID     `db:"attempt_id" json:"attempt_id"`
+	WorkerID  uuid.NullUUID `db:"worker_id" json:"worker_id"`
 }
 
 func (q *Queries) FindExpiredFinalizationDeadlineCandidate(ctx context.Context) (FindExpiredFinalizationDeadlineCandidateRow, error) {
@@ -205,9 +205,9 @@ LIMIT 1
 `
 
 type FindExpiredJobFailureCandidateRow struct {
-	JobID     uuid.UUID `db:"job_id" json:"job_id"`
-	AttemptID uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	WorkerID  uuid.UUID `db:"worker_id" json:"worker_id"`
+	JobID     uuid.UUID     `db:"job_id" json:"job_id"`
+	AttemptID uuid.UUID     `db:"attempt_id" json:"attempt_id"`
+	WorkerID  uuid.NullUUID `db:"worker_id" json:"worker_id"`
 }
 
 func (q *Queries) FindExpiredJobFailureCandidate(ctx context.Context) (FindExpiredJobFailureCandidateRow, error) {
@@ -782,14 +782,14 @@ type LockFailureAuthorityRow struct {
 	AttemptID                                 uuid.UUID          `db:"attempt_id" json:"attempt_id"`
 	JobID                                     uuid.UUID          `db:"job_id" json:"job_id"`
 	AttemptNumber                             int32              `db:"attempt_number" json:"attempt_number"`
-	ExecutionProfileRevisionID                uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
-	ProfileCertificationID                    uuid.UUID          `db:"profile_certification_id" json:"profile_certification_id"`
+	ExecutionProfileRevisionID                uuid.NullUUID      `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ProfileCertificationID                    uuid.NullUUID      `db:"profile_certification_id" json:"profile_certification_id"`
 	AttemptState                              AttemptState       `db:"attempt_state" json:"attempt_state"`
 	AttemptStartedAt                          pgtype.Timestamptz `db:"attempt_started_at" json:"attempt_started_at"`
 	FinalizationStartedAt                     pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
 	FinalizationDeadlineAt                    pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
-	WorkerID                                  uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                               int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID                                  uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch                               *int64             `db:"worker_epoch" json:"worker_epoch"`
 	AttemptFence                              int64              `db:"attempt_fence" json:"attempt_fence"`
 	OrganizationID                            uuid.UUID          `db:"organization_id" json:"organization_id"`
 	ProjectID                                 uuid.UUID          `db:"project_id" json:"project_id"`
@@ -1110,8 +1110,8 @@ WHERE id = $2
 type MarkAttemptFailedParams struct {
 	DecidedAt   pgtype.Timestamptz `db:"decided_at" json:"decided_at"`
 	AttemptID   uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID    uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch *int64             `db:"worker_epoch" json:"worker_epoch"`
 	Fence       int64              `db:"fence" json:"fence"`
 }
 
@@ -1145,8 +1145,8 @@ WHERE id = $2
 type MarkAttemptLostParams struct {
 	DecidedAt   pgtype.Timestamptz `db:"decided_at" json:"decided_at"`
 	AttemptID   uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64              `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID    uuid.NullUUID      `db:"worker_id" json:"worker_id"`
+	WorkerEpoch *int64             `db:"worker_epoch" json:"worker_epoch"`
 	Fence       int64              `db:"fence" json:"fence"`
 }
 

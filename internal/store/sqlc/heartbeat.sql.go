@@ -121,8 +121,8 @@ type LockHeartbeatAuthorityRow struct {
 	AttemptID              uuid.UUID              `db:"attempt_id" json:"attempt_id"`
 	JobID                  uuid.UUID              `db:"job_id" json:"job_id"`
 	AttemptState           AttemptState           `db:"attempt_state" json:"attempt_state"`
-	WorkerID               uuid.UUID              `db:"worker_id" json:"worker_id"`
-	WorkerEpoch            int64                  `db:"worker_epoch" json:"worker_epoch"`
+	WorkerID               uuid.NullUUID          `db:"worker_id" json:"worker_id"`
+	WorkerEpoch            *int64                 `db:"worker_epoch" json:"worker_epoch"`
 	Fence                  int64                  `db:"fence" json:"fence"`
 	OrganizationID         uuid.UUID              `db:"organization_id" json:"organization_id"`
 	ProjectID              uuid.UUID              `db:"project_id" json:"project_id"`

@@ -504,8 +504,9 @@ func lockDebugDumpAuthority(
 		}
 	}
 	presentedDigest := sha256.Sum256([]byte(credentials.Token))
-	active := workerRow.Epoch == credentials.WorkerEpoch && row.WorkerID == worker.ID &&
-		row.WorkerEpoch == credentials.WorkerEpoch && row.AttemptFence == credentials.Fence &&
+	active := workerRow.Epoch == credentials.WorkerEpoch && row.WorkerID.Valid &&
+		row.WorkerID.UUID == worker.ID && row.WorkerEpoch != nil &&
+		*row.WorkerEpoch == credentials.WorkerEpoch && row.AttemptFence == credentials.Fence &&
 		row.CurrentFence == credentials.Fence && row.LeaseOwnerKind == store.LeaseOwnerKindWORKER &&
 		row.LeaseOwnerID == workerRow.SpiffeID && row.LeasePhase == store.LeasePhaseEXECUTION &&
 		(row.AttemptState == store.AttemptStateASSIGNED || row.AttemptState == store.AttemptStateRUNNING) &&

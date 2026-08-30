@@ -320,12 +320,13 @@ func (s *Service) BeginFinalization(
 	}
 	startedAt := pgtype.Timestamptz{Time: now, Valid: true}
 	deadlineAt := pgtype.Timestamptz{Time: deadline, Valid: true}
+	workerEpoch := credentials.WorkerEpoch
 	if rows, updateErr := queries.MarkAttemptFinalizing(ctx, store.MarkAttemptFinalizingParams{
 		FinalizationStartedAt:  startedAt,
 		FinalizationDeadlineAt: deadlineAt,
 		AttemptID:              authority.AttemptID,
-		WorkerID:               worker.ID,
-		WorkerEpoch:            credentials.WorkerEpoch,
+		WorkerID:               uuid.NullUUID{UUID: worker.ID, Valid: true},
+		WorkerEpoch:            &workerEpoch,
 		Fence:                  credentials.Fence,
 	}); updateErr != nil || rows != 1 {
 		return FinalizationPlan{}, changedRowsError("transition Attempt to FINALIZING", rows, updateErr)

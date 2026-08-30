@@ -404,8 +404,8 @@ func (s *Service) completeVisibleCompletion(
 		store.MarkCompletionAttemptSucceededParams{
 			CompletedAt: completedAt,
 			AttemptID:   authority.AttemptID,
-			WorkerID:    actor.workerID,
-			WorkerEpoch: credentials.WorkerEpoch,
+			WorkerID:    uuid.NullUUID{UUID: actor.workerID, Valid: true},
+			WorkerEpoch: &credentials.WorkerEpoch,
 			Fence:       credentials.Fence,
 		},
 	); updateErr != nil || changed != 1 {

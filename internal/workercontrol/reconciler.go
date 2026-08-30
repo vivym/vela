@@ -64,10 +64,13 @@ func (s *Service) ReconcileNextFinalization(
 	queries := store.New(s.pool)
 	existing, err := queries.FindActiveReconcilerFinalizationCandidate(ctx, reconciler.ID)
 	if err == nil {
+		if !existing.WorkerID.Valid || existing.WorkerEpoch == nil {
+			return FinalizationTakeover{}, errors.New("active Reconciler finalization is missing Worker binding")
+		}
 		return s.claimFinalizationForReconciler(ctx, reconciler, finalizationTakeoverCandidate{
 			attemptID:   existing.AttemptID,
-			workerID:    existing.WorkerID,
-			workerEpoch: existing.WorkerEpoch,
+			workerID:    existing.WorkerID.UUID,
+			workerEpoch: *existing.WorkerEpoch,
 			fence:       existing.Fence,
 			ownerKind:   store.LeaseOwnerKindRECONCILER,
 			ownerID:     reconciler.ID,
@@ -84,10 +87,13 @@ func (s *Service) ReconcileNextFinalization(
 	if err != nil {
 		return FinalizationTakeover{}, fmt.Errorf("find recoverable Worker finalization: %w", err)
 	}
+	if !candidate.WorkerID.Valid || candidate.WorkerEpoch == nil {
+		return FinalizationTakeover{}, errors.New("recoverable Worker finalization is missing Worker binding")
+	}
 	return s.claimFinalizationForReconciler(ctx, reconciler, finalizationTakeoverCandidate{
 		attemptID:   candidate.AttemptID,
-		workerID:    candidate.WorkerID,
-		workerEpoch: candidate.WorkerEpoch,
+		workerID:    candidate.WorkerID.UUID,
+		workerEpoch: *candidate.WorkerEpoch,
 		fence:       candidate.Fence,
 		ownerKind:   candidate.OwnerKind,
 		ownerID:     candidate.OwnerID,
@@ -142,7 +148,8 @@ func (s *Service) finishFinalizationTakeover(
 	authority store.LockFinalizationAuthorityRow,
 	replay bool,
 ) (FinalizationTakeover, error) {
-	if authority.AttemptState != store.AttemptStateFINALIZING ||
+	if !authority.WorkerID.Valid || authority.WorkerEpoch == nil ||
+		authority.AttemptState != store.AttemptStateFINALIZING ||
 		authority.JobState != store.JobStateFINALIZING ||
 		authority.LeasePhase != store.LeasePhaseFINALIZATION ||
 		authority.CurrentFence != authority.AttemptFence ||
@@ -153,6 +160,8 @@ func (s *Service) finishFinalizationTakeover(
 		!authority.LeaseExpiresAt.Valid {
 		return FinalizationTakeover{Decision: FinalizationTakeoverNoWork}, nil
 	}
+	workerID := authority.WorkerID.UUID
+	workerEpoch := *authority.WorkerEpoch
 	now, err := postgresTime(ctx, queries)
 	if err != nil {
 		return FinalizationTakeover{}, err
@@ -193,8 +202,8 @@ func (s *Service) finishFinalizationTakeover(
 			TakenOverAt:       takenOverAt,
 			LeaseID:           authority.LeaseID,
 			AttemptID:         authority.AttemptID,
-			WorkerID:          authority.WorkerID,
-			WorkerEpoch:       authority.WorkerEpoch,
+			WorkerID:          workerID,
+			WorkerEpoch:       workerEpoch,
 			Fence:             authority.AttemptFence,
 			PreviousOwnerKind: authority.LeaseOwnerKind,
 			PreviousOwnerID:   authority.LeaseOwnerID,
@@ -206,13 +215,13 @@ func (s *Service) finishFinalizationTakeover(
 			revokeErr,
 		)
 	}
-	if authority.LeaseOwnerKind == store.LeaseOwnerKindWORKER && worker.Epoch == authority.WorkerEpoch {
+	if authority.LeaseOwnerKind == store.LeaseOwnerKindWORKER && worker.Epoch == workerEpoch {
 		if rows, updateErr := queries.MarkWorkerDrainingAfterFailure(
 			ctx,
 			store.MarkWorkerDrainingAfterFailureParams{
 				DecidedAt:   takenOverAt,
-				WorkerID:    authority.WorkerID,
-				WorkerEpoch: authority.WorkerEpoch,
+				WorkerID:    workerID,
+				WorkerEpoch: workerEpoch,
 			},
 		); updateErr != nil || rows != 1 {
 			return FinalizationTakeover{}, changedRowsError(
@@ -232,8 +241,8 @@ func (s *Service) finishFinalizationTakeover(
 	leaseID := uuid.New()
 	_, digest, err := s.issueLeaseToken(leaseTokenClaims{
 		AttemptID: authority.AttemptID,
-		WorkerID:  authority.WorkerID,
-		Epoch:     authority.WorkerEpoch,
+		WorkerID:  workerID,
+		Epoch:     workerEpoch,
 		Fence:     authority.AttemptFence,
 		IssuedAt:  now,
 		ExpiresAt: expiresAt,
@@ -248,8 +257,8 @@ func (s *Service) finishFinalizationTakeover(
 			OrganizationID: authority.OrganizationID,
 			ProjectID:      authority.ProjectID,
 			AttemptID:      authority.AttemptID,
-			WorkerID:       authority.WorkerID,
-			WorkerEpoch:    authority.WorkerEpoch,
+			WorkerID:       workerID,
+			WorkerEpoch:    workerEpoch,
 			OwnerID:        reconciler.ID,
 			Fence:          authority.AttemptFence,
 			TokenDigest:    digest,
@@ -288,10 +297,15 @@ func (s *Service) commitReconcilerFinalizationLease(
 	observedAt time.Time,
 	storedDigest []byte,
 ) (FinalizationTakeover, error) {
+	if !authority.WorkerID.Valid || authority.WorkerEpoch == nil {
+		return FinalizationTakeover{}, errors.New("reconciler finalization authority is missing Worker binding")
+	}
+	workerID := authority.WorkerID.UUID
+	workerEpoch := *authority.WorkerEpoch
 	token, digest, err := s.issueLeaseToken(leaseTokenClaims{
 		AttemptID: authority.AttemptID,
-		WorkerID:  authority.WorkerID,
-		Epoch:     authority.WorkerEpoch,
+		WorkerID:  workerID,
+		Epoch:     workerEpoch,
 		Fence:     authority.AttemptFence,
 		IssuedAt:  issuedAt,
 		ExpiresAt: expiresAt,
@@ -323,8 +337,8 @@ func (s *Service) commitReconcilerFinalizationLease(
 		LeaseID:  leaseID,
 		Credentials: ReconcilerFinalizationCredentials{
 			AttemptID:   authority.AttemptID,
-			WorkerID:    authority.WorkerID,
-			WorkerEpoch: authority.WorkerEpoch,
+			WorkerID:    workerID,
+			WorkerEpoch: workerEpoch,
 			Fence:       authority.AttemptFence,
 			Token:       token,
 		},
