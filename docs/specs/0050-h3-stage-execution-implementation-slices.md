@@ -3,9 +3,9 @@
 Date: 2026-08-31
 
 Status: In progress. S49.1-S49.10 have committed repository implementations;
-S49.11-S49.12 are pending. The exact-cache leaf to finalization-output binding
-is an open cross-slice integration defect, so S49.8/S49.9 cache-only completion
-is not yet a closed acceptance path.
+S49.11-S49.12 are pending. Migration `00048` closes the cross-slice exact-cache
+leaf to finalization-output binding with immutable physical or exact-cache
+StageRun output evidence.
 
 ## Delivery rule
 

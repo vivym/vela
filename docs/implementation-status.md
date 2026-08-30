@@ -13,18 +13,22 @@ tests alone do not satisfy a gate.
 The H3 stage-disaggregated architecture is accepted as the replacement target.
 S49.1-S49.10 have committed repository implementations through StageArtifact
 transfer, split H3 execution, exact cache, CPU media stages, and the immutable
-Usage/Cost Ledger. This is not complete acceptance closure: full integration
-revalidation currently fails the cache-only path because a cached leaf output is
-not yet bound into the required finalization output set. The current committed
-legacy Worker Assignment, Attempt Lease, H3 Worker Agent, Runner, and Fleet
-slices remain the active machine-level baseline until cutover and contraction;
-the target implementation is not production evidence or a Launch Receipt.
+Usage/Cost Ledger. Migration `00048` closes the repository-level cache-only leaf
+path by binding a physical or exact-cache StageArtifact to each StageRun output
+used by finalization. This is not complete acceptance closure. Repository-wide
+integration revalidation is still non-green because the older
+`TestArtifactBackupReplicationMigrationBackfillsSchema28Artifacts` fixture runs
+the current Visible Completion query on schema 30, where a migration `00046`
+column does not exist. The current committed legacy Worker Assignment, Attempt
+Lease, H3 Worker Agent, Runner, and Fleet slices remain the active machine-level
+baseline until cutover and contraction; the target implementation is not
+production evidence or a Launch Receipt.
 
 | Design package | Status | Evidence |
 | --- | --- | --- |
-| H3 Stage Execution Architecture | Accepted target; S49.1-S49.10 committed, cache-only finalization closure open | `docs/h3-stage-execution-architecture.md` |
+| H3 Stage Execution Architecture | Accepted target; S49.1-S49.10 and cache-only finalization binding committed | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Expansion through migration `00047`; cache-only finalization closure open | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Schema and protocol migration | Expansion through migration `00048`; cache-only finalization binding closed | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.10 committed; S49.11-S49.12 pending | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Proposed; not implemented or calibrated | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
@@ -91,6 +95,7 @@ unchanged at `0/9 PASS`.
 | BusyBox Linux/amd64 Materializer Image Pinning | `6d916bb`, `9f4063e` | `docs/specs/0047-busybox-linux-amd64-image-pinning.md`, `deploy/vela-control/deployment.yaml`, `deploy/worker-agent/daemonset.yaml`, `deploy/fleet-controller/desired-revisions.yaml`, `internal/deploymentcontract/busybox_image_test.go` |
 | H3 Mock Backend (non-production) | `4304fe9`, `f6cb45b` | `docs/specs/0048-h3-mock-backend.md`, `internal/h3mockbackend`, `cmd/vela-h3-mock-backend` |
 | H3 Stage Usage/Cost Ledger (S49.10) | `a691917` | `db/migrations/00047_usage_cost_ledger.sql`, `internal/usagecostledger` |
+| H3 Cached Stage Output Finalization Binding | `2aa1e9b` | `db/migrations/00048_stage_run_output_binding.sql`, `db/queries/finalization.sql` |
 
 ## ADR Evidence Matrix
 

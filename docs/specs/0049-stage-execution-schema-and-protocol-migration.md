@@ -4,10 +4,9 @@ Date: 2026-08-31
 
 Status: Implementation in progress. S49.1-S49.10 have committed repository
 implementations through the immutable Usage/Cost Ledger. S49.11 capacity
-planning and S49.12 cutover/contraction remain pending. Full integration
-revalidation has also exposed an open cross-slice defect: an exact-cache leaf
-can reach `SUCCEEDED` without binding its cached StageArtifact into the required
-finalization output set, so cache-only graph completion is not yet closed.
+planning and S49.12 cutover/contraction remain pending. Migration `00048` adds an
+immutable StageRun output binding for both physical and exact-cache artifacts,
+closing the repository-level cache-only leaf to finalization-output path.
 Repository evidence does not advance a Production Gate.
 
 ## Purpose
