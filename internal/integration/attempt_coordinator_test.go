@@ -20,6 +20,7 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/stagecache"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -517,7 +518,7 @@ func TestAttemptCoordinatorPhysicalStageLifecycleIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentity(t *testing.T) {
+func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentityWhenCrossJobCacheDisabled(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
@@ -546,6 +547,24 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentity(t 
 	coordinator, err := attemptcoordinator.NewService(coordinatorPool)
 	if err != nil {
 		t.Fatalf("construct AttemptCoordinator: %v", err)
+	}
+	cache, err := stagecache.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
+	))
+	if err != nil {
+		t.Fatalf("construct disabled cross-Job Stage Cache repository: %v", err)
+	}
+	if _, err := cache.SetProjectControl(
+		context.Background(),
+		stagecache.ProjectControlCommand{
+			OrganizationID:        uuid.MustParse(testOrganizationID),
+			ProjectID:             uuid.MustParse(testProjectID),
+			CachePolicyRevisionID: uuid.MustParse(h3CachePolicyID),
+			Enabled:               false, MaxEntries: 100, MaxBytes: 1 << 30,
+			UpdatedAt: time.Now().UTC(),
+		},
+	); err != nil {
+		t.Fatalf("disable cross-Job Stage Cache for retry fixture: %v", err)
 	}
 	attemptID := uuid.MustParse("49300000-0000-0000-0000-000000000042")
 	_, err = coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
