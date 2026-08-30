@@ -139,6 +139,15 @@ type StageDecision struct {
 	Replayed       bool
 }
 
+type ReconcileDecision struct {
+	AttemptID    uuid.UUID
+	StageRunID   uuid.UUID
+	State        string
+	StageFence   int64
+	StageVersion int64
+	Reason       string
+}
+
 type Service struct {
 	pool *pgxpool.Pool
 }
@@ -252,6 +261,46 @@ func (service *Service) Apply(
 		return StageDecision{}, fmt.Errorf("apply Stage command: %w", err)
 	}
 	return result, nil
+}
+
+func (service *Service) Reconcile(
+	ctx context.Context,
+	limit int,
+) ([]ReconcileDecision, error) {
+	if service == nil || service.pool == nil {
+		return nil, errors.New("AttemptCoordinator is not configured")
+	}
+	if limit < 1 || limit > 1000 {
+		return nil, errors.New("AttemptCoordinator reconcile limit must be between 1 and 1000")
+	}
+	rows, err := service.pool.Query(ctx, `
+		SELECT attempt_id, stage_run_id, stage_state, stage_fence,
+		       stage_version, reason
+		FROM vela_reconcile_stage_graphs($1)
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("reconcile Stage graphs: %w", err)
+	}
+	defer rows.Close()
+	decisions := make([]ReconcileDecision, 0)
+	for rows.Next() {
+		var decision ReconcileDecision
+		if err := rows.Scan(
+			&decision.AttemptID,
+			&decision.StageRunID,
+			&decision.State,
+			&decision.StageFence,
+			&decision.StageVersion,
+			&decision.Reason,
+		); err != nil {
+			return nil, fmt.Errorf("scan reconciled Stage graph: %w", err)
+		}
+		decisions = append(decisions, decision)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read reconciled Stage graphs: %w", err)
+	}
+	return decisions, nil
 }
 
 func encodeFail(command FailStageCommand) ([]byte, error) {

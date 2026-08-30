@@ -83,6 +83,98 @@ ALTER TABLE attempts
         END
     );
 
+ALTER TABLE job_cancellation_decisions
+    DROP CONSTRAINT job_cancellation_decisions_check,
+    ADD COLUMN execution_authority_kind execution_authority_kind
+        NOT NULL DEFAULT 'LEGACY_WORKER',
+    ADD COLUMN stage_graph_attempt_id uuid,
+    ADD COLUMN stage_graph_attempt_fence bigint,
+    ADD COLUMN stage_lease_ids uuid[] NOT NULL DEFAULT '{}'::uuid[],
+    ADD CONSTRAINT job_cancellation_decisions_stage_graph_attempt_fk
+        FOREIGN KEY (organization_id, project_id, stage_graph_attempt_id)
+        REFERENCES attempts(organization_id, project_id, id),
+    ADD CONSTRAINT job_cancellation_decisions_authority_shape CHECK (
+        (
+            execution_authority_kind = 'LEGACY_WORKER'
+            AND stage_graph_attempt_id IS NULL
+            AND stage_graph_attempt_fence IS NULL
+            AND cardinality(stage_lease_ids) = 0
+            AND (
+                (
+                    previous_job_state IN ('QUEUED', 'RETRY_WAIT')
+                    AND decision = 'CANCELED'
+                    AND NOT billable
+                    AND attempt_id IS NULL
+                    AND worker_id IS NULL
+                    AND worker_epoch IS NULL
+                    AND attempt_fence IS NULL
+                    AND authority_lease_id IS NULL
+                    AND authority_lease_phase IS NULL
+                    AND authority_lease_owner_kind IS NULL
+                    AND authority_lease_owner_id IS NULL
+                    AND authority_lease_expires_at IS NULL
+                )
+                OR (
+                    previous_job_state = 'ASSIGNED'
+                    AND decision = 'CANCELED'
+                    AND NOT billable
+                    AND attempt_id IS NOT NULL
+                    AND worker_id IS NOT NULL
+                    AND worker_epoch > 0
+                    AND attempt_fence > 0
+                    AND authority_lease_id IS NOT NULL
+                    AND authority_lease_phase = 'EXECUTION'
+                    AND authority_lease_owner_kind = 'WORKER'
+                    AND length(authority_lease_owner_id) BETWEEN 1 AND 500
+                    AND authority_lease_expires_at IS NOT NULL
+                )
+                OR (
+                    previous_job_state IN ('RUNNING', 'FINALIZING')
+                    AND decision = 'CANCELING'
+                    AND billable
+                    AND attempt_id IS NOT NULL
+                    AND worker_id IS NOT NULL
+                    AND worker_epoch > 0
+                    AND attempt_fence > 0
+                    AND authority_lease_id IS NOT NULL
+                    AND length(authority_lease_owner_id) BETWEEN 1 AND 500
+                    AND authority_lease_expires_at IS NOT NULL
+                    AND (
+                        (
+                            previous_job_state = 'RUNNING'
+                            AND authority_lease_phase = 'EXECUTION'
+                            AND authority_lease_owner_kind = 'WORKER'
+                        )
+                        OR (
+                            previous_job_state = 'FINALIZING'
+                            AND authority_lease_phase = 'FINALIZATION'
+                            AND authority_lease_owner_kind IN ('WORKER', 'RECONCILER')
+                        )
+                    )
+                )
+            )
+        )
+        OR (
+            execution_authority_kind = 'STAGE_GRAPH'
+            AND previous_job_state IN (
+                'QUEUED', 'RETRY_WAIT', 'RUNNING', 'FINALIZING'
+            )
+            AND decision = 'CANCELED'
+            AND billable = (previous_job_state IN ('RUNNING', 'FINALIZING'))
+            AND attempt_id IS NULL
+            AND worker_id IS NULL
+            AND worker_epoch IS NULL
+            AND attempt_fence IS NULL
+            AND authority_lease_id IS NULL
+            AND authority_lease_phase IS NULL
+            AND authority_lease_owner_kind IS NULL
+            AND authority_lease_owner_id IS NULL
+            AND authority_lease_expires_at IS NULL
+            AND stage_graph_attempt_id IS NOT NULL
+            AND stage_graph_attempt_fence > 0
+        )
+    );
+
 CREATE TABLE stage_runs (
     id uuid PRIMARY KEY,
     organization_id uuid NOT NULL,
@@ -391,6 +483,201 @@ REVOKE ALL ON FUNCTION vela_reject_attempt_coordinator_immutable_mutation() FROM
 ALTER FUNCTION vela_reject_attempt_coordinator_immutable_mutation()
     OWNER TO vela_attempt_coordinator_owner;
 
+CREATE FUNCTION vela_enforce_stage_run_authority() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+BEGIN
+    IF ROW(
+        NEW.id, NEW.organization_id, NEW.project_id, NEW.attempt_id,
+        NEW.execution_graph_snapshot_id, NEW.execution_graph_revision_id,
+        NEW.stage_key, NEW.stage_definition_revision_id,
+        NEW.allowed_stage_profile_revision_ids, NEW.created_at
+    ) IS DISTINCT FROM ROW(
+        OLD.id, OLD.organization_id, OLD.project_id, OLD.attempt_id,
+        OLD.execution_graph_snapshot_id, OLD.execution_graph_revision_id,
+        OLD.stage_key, OLD.stage_definition_revision_id,
+        OLD.allowed_stage_profile_revision_ids, OLD.created_at
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_run_identity_immutable',
+            MESSAGE = 'StageRun identity is immutable';
+    END IF;
+    IF NEW.state = OLD.state THEN
+        IF ROW(
+            NEW.fence, NEW.retry_count, NEW.next_retry_at,
+            NEW.winner_stage_attempt_id, NEW.winner_output_identity, NEW.version
+        ) IS DISTINCT FROM ROW(
+            OLD.fence, OLD.retry_count, OLD.next_retry_at,
+            OLD.winner_stage_attempt_id, OLD.winner_output_identity, OLD.version
+        ) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '23514',
+                CONSTRAINT = 'stage_run_transition_invalid',
+                MESSAGE = 'StageRun authority changes require a state transition';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF NOT (
+        (OLD.state = 'BLOCKED' AND NEW.state IN ('READY', 'FAILED', 'CANCELED'))
+        OR (OLD.state = 'READY' AND NEW.state IN ('ASSIGNED', 'SUCCEEDED', 'FAILED', 'CANCELED'))
+        OR (OLD.state = 'ASSIGNED' AND NEW.state IN ('RUNNING', 'RETRY_WAIT', 'FAILED', 'CANCELED'))
+        OR (OLD.state = 'RUNNING' AND NEW.state IN (
+            'MATERIALIZING', 'RETRY_WAIT', 'SUCCEEDED', 'FAILED', 'CANCELED'
+        ))
+        OR (OLD.state = 'MATERIALIZING' AND NEW.state IN (
+            'RETRY_WAIT', 'SUCCEEDED', 'FAILED', 'CANCELED'
+        ))
+        OR (OLD.state = 'RETRY_WAIT' AND NEW.state IN ('READY', 'FAILED', 'CANCELED'))
+    ) OR NEW.version <> OLD.version + 1
+      OR NEW.fence <> OLD.fence + (CASE
+            WHEN NEW.state IN ('RETRY_WAIT', 'FAILED', 'CANCELED') THEN 1 ELSE 0
+         END)
+      OR NEW.retry_count <> OLD.retry_count + (CASE
+            WHEN NEW.state = 'RETRY_WAIT' THEN 1 ELSE 0
+         END) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            CONSTRAINT = 'stage_run_transition_invalid',
+            MESSAGE = 'StageRun state, fence, retry count, or version transition is invalid';
+    END IF;
+    RETURN NEW;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_enforce_stage_run_authority() FROM PUBLIC;
+ALTER FUNCTION vela_enforce_stage_run_authority()
+    OWNER TO vela_attempt_coordinator_owner;
+
+CREATE FUNCTION vela_enforce_stage_attempt_authority() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+BEGIN
+    IF ROW(
+        NEW.id, NEW.organization_id, NEW.project_id, NEW.attempt_id,
+        NEW.stage_run_id, NEW.physical_attempt_number,
+        NEW.selected_stage_profile_revision_id, NEW.assigned_at, NEW.created_at
+    ) IS DISTINCT FROM ROW(
+        OLD.id, OLD.organization_id, OLD.project_id, OLD.attempt_id,
+        OLD.stage_run_id, OLD.physical_attempt_number,
+        OLD.selected_stage_profile_revision_id, OLD.assigned_at, OLD.created_at
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_attempt_identity_immutable',
+            MESSAGE = 'StageAttempt identity is immutable';
+    END IF;
+    IF NEW.state = OLD.state THEN
+        IF ROW(
+            NEW.started_at, NEW.output_sealed_at, NEW.ended_at,
+            NEW.failure_class, NEW.failure_fingerprint, NEW.resource_totals
+        ) IS DISTINCT FROM ROW(
+            OLD.started_at, OLD.output_sealed_at, OLD.ended_at,
+            OLD.failure_class, OLD.failure_fingerprint, OLD.resource_totals
+        ) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '23514',
+                CONSTRAINT = 'stage_attempt_transition_invalid',
+                MESSAGE = 'StageAttempt evidence changes require a state transition';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF NOT (
+        (OLD.state = 'ASSIGNED' AND NEW.state IN ('RUNNING', 'FAILED', 'LOST', 'CANCELED'))
+        OR (OLD.state = 'RUNNING' AND NEW.state IN (
+            'OUTPUT_SEALED', 'SUCCEEDED', 'FAILED', 'LOST', 'CANCELED'
+        ))
+        OR (OLD.state = 'OUTPUT_SEALED' AND NEW.state IN (
+            'SUCCEEDED', 'FAILED', 'LOST', 'CANCELED'
+        ))
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            CONSTRAINT = 'stage_attempt_transition_invalid',
+            MESSAGE = 'StageAttempt state transition is invalid';
+    END IF;
+    RETURN NEW;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_enforce_stage_attempt_authority() FROM PUBLIC;
+ALTER FUNCTION vela_enforce_stage_attempt_authority()
+    OWNER TO vela_attempt_coordinator_owner;
+
+CREATE FUNCTION vela_enforce_stage_allocation_authority() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+BEGIN
+    IF ROW(
+        NEW.id, NEW.attempt_id, NEW.stage_run_id, NEW.stage_attempt_id,
+        NEW.worker_instance_id, NEW.worker_instance_epoch, NEW.capacity_pool_id,
+        NEW.device_set_digest, NEW.membership_digest, NEW.model_residency_id,
+        NEW.model_runtime_epoch, NEW.capacity_vector, NEW.allocated_at, NEW.created_at
+    ) IS DISTINCT FROM ROW(
+        OLD.id, OLD.attempt_id, OLD.stage_run_id, OLD.stage_attempt_id,
+        OLD.worker_instance_id, OLD.worker_instance_epoch, OLD.capacity_pool_id,
+        OLD.device_set_digest, OLD.membership_digest, OLD.model_residency_id,
+        OLD.model_runtime_epoch, OLD.capacity_vector, OLD.allocated_at, OLD.created_at
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_allocation_identity_immutable',
+            MESSAGE = 'StageAllocation identity is immutable';
+    END IF;
+    IF OLD.state <> 'ALLOCATED' OR NEW.state <> 'RELEASED' THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            CONSTRAINT = 'stage_allocation_transition_invalid',
+            MESSAGE = 'StageAllocation state transition is invalid';
+    END IF;
+    RETURN NEW;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_enforce_stage_allocation_authority() FROM PUBLIC;
+ALTER FUNCTION vela_enforce_stage_allocation_authority()
+    OWNER TO vela_attempt_coordinator_owner;
+
+CREATE FUNCTION vela_enforce_stage_lease_authority() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+BEGIN
+    IF ROW(
+        NEW.id, NEW.attempt_id, NEW.stage_run_id, NEW.stage_attempt_id,
+        NEW.stage_allocation_id, NEW.attempt_fence, NEW.stage_fence,
+        NEW.worker_instance_id, NEW.worker_instance_epoch,
+        NEW.device_set_digest, NEW.membership_digest, NEW.model_residency_id,
+        NEW.model_runtime_epoch, NEW.token_digest, NEW.signing_key_id,
+        NEW.execution_nonce, NEW.issued_at, NEW.expires_at,
+        NEW.local_deadline_at, NEW.created_at
+    ) IS DISTINCT FROM ROW(
+        OLD.id, OLD.attempt_id, OLD.stage_run_id, OLD.stage_attempt_id,
+        OLD.stage_allocation_id, OLD.attempt_fence, OLD.stage_fence,
+        OLD.worker_instance_id, OLD.worker_instance_epoch,
+        OLD.device_set_digest, OLD.membership_digest, OLD.model_residency_id,
+        OLD.model_runtime_epoch, OLD.token_digest, OLD.signing_key_id,
+        OLD.execution_nonce, OLD.issued_at, OLD.expires_at,
+        OLD.local_deadline_at, OLD.created_at
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_lease_identity_immutable',
+            MESSAGE = 'StageLease identity is immutable';
+    END IF;
+    IF OLD.state <> 'ACTIVE' OR NEW.state NOT IN ('REVOKED', 'EXPIRED') THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            CONSTRAINT = 'stage_lease_transition_invalid',
+            MESSAGE = 'StageLease state transition is invalid';
+    END IF;
+    RETURN NEW;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_enforce_stage_lease_authority() FROM PUBLIC;
+ALTER FUNCTION vela_enforce_stage_lease_authority()
+    OWNER TO vela_attempt_coordinator_owner;
+
 CREATE TRIGGER execution_graph_snapshots_immutable
 BEFORE UPDATE OR DELETE ON execution_graph_snapshots
 FOR EACH ROW EXECUTE FUNCTION vela_reject_attempt_coordinator_immutable_mutation();
@@ -404,18 +691,30 @@ FOR EACH ROW EXECUTE FUNCTION vela_reject_attempt_coordinator_immutable_mutation
 CREATE TRIGGER stage_runs_attempt_coordinator_writer
 BEFORE INSERT OR UPDATE OR DELETE ON stage_runs
 FOR EACH ROW EXECUTE FUNCTION vela_guard_attempt_coordinator_writer();
+CREATE TRIGGER stage_runs_authority
+BEFORE UPDATE ON stage_runs
+FOR EACH ROW EXECUTE FUNCTION vela_enforce_stage_run_authority();
 CREATE TRIGGER stage_dependencies_attempt_coordinator_writer
 BEFORE INSERT OR UPDATE OR DELETE ON stage_dependencies
 FOR EACH ROW EXECUTE FUNCTION vela_guard_attempt_coordinator_writer();
 CREATE TRIGGER stage_attempts_attempt_coordinator_writer
 BEFORE INSERT OR UPDATE OR DELETE ON stage_attempts
 FOR EACH ROW EXECUTE FUNCTION vela_guard_attempt_coordinator_writer();
+CREATE TRIGGER stage_attempts_authority
+BEFORE UPDATE ON stage_attempts
+FOR EACH ROW EXECUTE FUNCTION vela_enforce_stage_attempt_authority();
 CREATE TRIGGER stage_allocations_attempt_coordinator_writer
 BEFORE INSERT OR UPDATE OR DELETE ON stage_allocations
 FOR EACH ROW EXECUTE FUNCTION vela_guard_attempt_coordinator_writer();
+CREATE TRIGGER stage_allocations_authority
+BEFORE UPDATE ON stage_allocations
+FOR EACH ROW EXECUTE FUNCTION vela_enforce_stage_allocation_authority();
 CREATE TRIGGER stage_leases_attempt_coordinator_writer
 BEFORE INSERT OR UPDATE OR DELETE ON stage_leases
 FOR EACH ROW EXECUTE FUNCTION vela_guard_attempt_coordinator_writer();
+CREATE TRIGGER stage_leases_authority
+BEFORE UPDATE ON stage_leases
+FOR EACH ROW EXECUTE FUNCTION vela_enforce_stage_lease_authority();
 CREATE TRIGGER attempt_retry_budgets_attempt_coordinator_writer
 BEFORE INSERT OR UPDATE OR DELETE ON attempt_retry_budgets
 FOR EACH ROW EXECUTE FUNCTION vela_guard_attempt_coordinator_writer();
@@ -2092,6 +2391,713 @@ $$;
 REVOKE ALL ON FUNCTION vela_apply_stage_command(jsonb) FROM PUBLIC;
 ALTER FUNCTION vela_apply_stage_command(jsonb) OWNER TO vela_attempt_coordinator_owner;
 
+CREATE FUNCTION vela_reconcile_stage_graphs(p_limit integer)
+RETURNS TABLE (
+    attempt_id uuid,
+    stage_run_id uuid,
+    stage_state text,
+    stage_fence bigint,
+    stage_version bigint,
+    reason text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 1000 THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '22023',
+            CONSTRAINT = 'stage_reconcile_limit_invalid',
+            MESSAGE = 'Stage graph reconcile limit must be between 1 and 1000';
+    END IF;
+    RETURN QUERY
+    WITH candidates AS MATERIALIZED (
+        SELECT
+            run.id,
+            CASE
+                WHEN run.state = 'RETRY_WAIT'
+                THEN 'RETRY_DUE'::text
+                ELSE 'DEPENDENCIES_SATISFIED'::text
+            END AS reason
+        FROM public.stage_runs AS run
+        JOIN public.attempts AS attempt ON attempt.id = run.attempt_id
+        JOIN public.jobs AS job ON job.id = attempt.job_id
+        WHERE attempt.execution_authority_kind = 'STAGE_GRAPH'
+          AND attempt.graph_state IN ('QUEUED', 'RUNNING')
+          AND attempt.fence = job.current_fence
+          AND job.state IN ('QUEUED', 'RETRY_WAIT', 'RUNNING')
+          AND (
+              (
+                  run.state = 'RETRY_WAIT'
+                  AND run.next_retry_at <= statement_timestamp()
+              )
+              OR (
+                  run.state = 'BLOCKED'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM public.stage_dependencies AS dependency
+                      WHERE dependency.attempt_id = run.attempt_id
+                        AND dependency.destination_stage_run_id = run.id
+                        AND dependency.satisfied_progress_receipt_id IS NULL
+                  )
+              )
+          )
+        ORDER BY
+            COALESCE(run.next_retry_at, run.created_at),
+            run.attempt_id,
+            run.stage_key
+        LIMIT p_limit
+        FOR UPDATE OF run SKIP LOCKED
+    ), advanced AS (
+        UPDATE public.stage_runs AS run
+        SET state = 'READY',
+            next_retry_at = NULL,
+            version = run.version + 1,
+            updated_at = statement_timestamp()
+        FROM candidates AS candidate
+        WHERE run.id = candidate.id
+          AND (
+              (run.state = 'RETRY_WAIT' AND candidate.reason = 'RETRY_DUE')
+              OR (
+                  run.state = 'BLOCKED'
+                  AND candidate.reason = 'DEPENDENCIES_SATISFIED'
+              )
+          )
+        RETURNING
+            run.attempt_id,
+            run.id,
+            run.state::text,
+            run.fence,
+            run.version,
+            candidate.reason
+    )
+    SELECT
+        advanced.attempt_id,
+        advanced.id,
+        advanced.state,
+        advanced.fence,
+        advanced.version,
+        advanced.reason
+    FROM advanced
+    ORDER BY advanced.attempt_id, advanced.id;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_reconcile_stage_graphs(integer) FROM PUBLIC;
+ALTER FUNCTION vela_reconcile_stage_graphs(integer)
+    OWNER TO vela_attempt_coordinator_owner;
+
+CREATE FUNCTION vela_private.vela_insert_stage_graph_cancellation_outbox_events(
+    p_cancellation_id uuid,
+    p_canceled_event_id uuid,
+    p_charge_posted_event_id uuid,
+    p_invoice_export_event_id uuid
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_decision public.job_cancellation_decisions%ROWTYPE;
+    v_charge public.charges%ROWTYPE;
+    v_payload bytea;
+BEGIN
+    SELECT decision.* INTO STRICT v_decision
+    FROM public.job_cancellation_decisions AS decision
+    WHERE decision.id = p_cancellation_id
+      AND decision.execution_authority_kind = 'STAGE_GRAPH';
+    IF v_decision.billable THEN
+        SELECT charge.* INTO STRICT v_charge
+        FROM public.charges AS charge
+        WHERE charge.cancellation_id = v_decision.id;
+    END IF;
+
+    v_payload :=
+        vela_private.vela_proto_string(1, v_decision.organization_id::text)
+        || vela_private.vela_proto_string(2, v_decision.project_id::text)
+        || vela_private.vela_proto_string(3, v_decision.job_id::text)
+        || vela_private.vela_proto_string(4, v_decision.id::text)
+        || vela_private.vela_proto_uint(5, v_decision.cancellation_fence)
+        || CASE WHEN v_decision.billable THEN
+            vela_private.vela_proto_uint(6, 1)
+            || vela_private.vela_proto_string(7, v_charge.id::text)
+           ELSE decode('', 'hex') END
+        || vela_private.vela_proto_bytes(
+            8,
+            vela_private.vela_proto_timestamp(v_decision.decided_at)
+        );
+    PERFORM vela_private.vela_insert_canonical_cancellation_event(
+        p_canceled_event_id,
+        v_decision.organization_id,
+        v_decision.project_id,
+        v_decision.job_id,
+        v_decision.job_version,
+        'job.canceled',
+        v_decision.decided_at,
+        25,
+        v_payload
+    );
+
+    IF v_decision.billable THEN
+        v_payload :=
+            vela_private.vela_proto_string(1, v_decision.organization_id::text)
+            || vela_private.vela_proto_string(2, v_decision.project_id::text)
+            || vela_private.vela_proto_string(3, v_decision.job_id::text)
+            || vela_private.vela_proto_string(4, v_charge.id::text)
+            || vela_private.vela_proto_string(5, v_decision.id::text)
+            || vela_private.vela_proto_uint(6, v_charge.amount_minor)
+            || vela_private.vela_proto_string(7, v_charge.currency)
+            || vela_private.vela_proto_string(8, v_charge.reason::text)
+            || vela_private.vela_proto_bytes(
+                9,
+                vela_private.vela_proto_timestamp(v_charge.posted_at)
+            );
+        PERFORM vela_private.vela_insert_canonical_cancellation_event(
+            p_charge_posted_event_id,
+            v_decision.organization_id,
+            v_decision.project_id,
+            v_decision.job_id,
+            v_decision.job_version,
+            'charge.posted',
+            v_charge.posted_at,
+            28,
+            v_payload
+        );
+
+        v_payload :=
+            vela_private.vela_proto_string(1, v_decision.organization_id::text)
+            || vela_private.vela_proto_string(2, v_decision.project_id::text)
+            || vela_private.vela_proto_string(3, v_decision.job_id::text)
+            || vela_private.vela_proto_string(4, v_charge.id::text)
+            || vela_private.vela_proto_bytes(
+                5,
+                vela_private.vela_proto_timestamp(v_decision.decided_at)
+            );
+        PERFORM vela_private.vela_insert_canonical_cancellation_event(
+            p_invoice_export_event_id,
+            v_decision.organization_id,
+            v_decision.project_id,
+            v_decision.job_id,
+            v_decision.job_version,
+            'invoice.export_requested',
+            v_decision.decided_at,
+            29,
+            v_payload
+        );
+    END IF;
+END
+$$;
+REVOKE ALL ON FUNCTION
+    vela_private.vela_insert_stage_graph_cancellation_outbox_events(
+        uuid, uuid, uuid, uuid
+    ) FROM PUBLIC;
+ALTER FUNCTION vela_private.vela_insert_stage_graph_cancellation_outbox_events(
+    uuid, uuid, uuid, uuid
+) OWNER TO vela_internal;
+
+CREATE FUNCTION vela_cancel_stage_graph(p_command jsonb)
+RETURNS TABLE (
+    cancellation_id uuid,
+    job_id uuid,
+    decision cancellation_decision,
+    job_state job_state,
+    previous_job_state job_state,
+    job_version bigint,
+    cancellation_fence bigint,
+    attempt_id uuid,
+    worker_id uuid,
+    worker_epoch bigint,
+    attempt_fence bigint,
+    authority_lease_id uuid,
+    authority_lease_phase lease_phase,
+    authority_lease_owner_kind lease_owner_kind,
+    authority_lease_owner_id text,
+    authority_lease_expires_at timestamptz,
+    billable boolean,
+    charge_id uuid,
+    charge_amount_minor bigint,
+    charge_currency text,
+    charge_reason charge_reason,
+    charge_posted_at timestamptz,
+    decided_at timestamptz,
+    created boolean
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_organization_id uuid := public.vela_current_organization_id();
+    v_project_id uuid := public.vela_current_project_id();
+    v_principal_id uuid := public.vela_current_principal_id();
+    v_scope text := public.vela_current_request_scope();
+    v_job_id uuid := (p_command ->> 'job_id')::uuid;
+    v_cancellation_id uuid := (p_command ->> 'cancellation_id')::uuid;
+    v_charge_id uuid := (p_command ->> 'charge_id')::uuid;
+    v_cancel_requested_event_id uuid :=
+        (p_command ->> 'cancel_requested_event_id')::uuid;
+    v_canceling_event_id uuid := (p_command ->> 'canceling_event_id')::uuid;
+    v_canceled_event_id uuid := (p_command ->> 'canceled_event_id')::uuid;
+    v_charge_posted_event_id uuid :=
+        (p_command ->> 'charge_posted_event_id')::uuid;
+    v_invoice_export_event_id uuid :=
+        (p_command ->> 'invoice_export_event_id')::uuid;
+    v_job public.jobs%ROWTYPE;
+    v_attempt public.attempts%ROWTYPE;
+    v_decision public.job_cancellation_decisions%ROWTYPE;
+    v_reservation public.credit_reservations%ROWTYPE;
+    v_stage_lease_ids uuid[];
+    v_billable boolean;
+    v_decided_at timestamptz := transaction_timestamp();
+    v_final_job_version bigint;
+    v_rows bigint;
+BEGIN
+    IF p_command IS NULL OR jsonb_typeof(p_command) <> 'object'
+       OR (p_command ->> 'schema_version')::integer <> 1
+       OR v_job_id IS NULL OR v_cancellation_id IS NULL OR v_charge_id IS NULL
+       OR v_cancel_requested_event_id IS NULL OR v_canceling_event_id IS NULL
+       OR v_canceled_event_id IS NULL OR v_charge_posted_event_id IS NULL
+       OR v_invoice_export_event_id IS NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '22023',
+            CONSTRAINT = 'stage_graph_cancellation_command_invalid',
+            MESSAGE = 'Stage graph cancellation command is invalid';
+    END IF;
+    IF v_scope IS DISTINCT FROM 'jobs:cancel'
+       OR v_organization_id IS NULL OR v_project_id IS NULL
+       OR v_principal_id IS NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '28000',
+            CONSTRAINT = 'stage_graph_cancellation_context_invalid',
+            MESSAGE = 'Valid jobs:cancel request context is required';
+    END IF;
+
+    SELECT existing.* INTO v_decision
+    FROM public.job_cancellation_decisions AS existing
+    WHERE existing.job_id = v_job_id
+      AND existing.organization_id = v_organization_id
+      AND existing.project_id = v_project_id;
+    IF FOUND THEN
+        RETURN QUERY
+        SELECT
+            v_decision.id, v_decision.job_id, v_decision.decision,
+            current_job.state, v_decision.previous_job_state,
+            current_job.version, v_decision.cancellation_fence,
+            NULL::uuid, NULL::uuid, NULL::bigint, NULL::bigint,
+            NULL::uuid, NULL::public.lease_phase,
+            NULL::public.lease_owner_kind, NULL::text, NULL::timestamptz,
+            v_decision.billable, charge.id, charge.amount_minor,
+            charge.currency, charge.reason, charge.posted_at,
+            v_decision.decided_at, false
+        FROM public.jobs AS current_job
+        LEFT JOIN public.charges AS charge
+          ON charge.cancellation_id = v_decision.id
+        WHERE current_job.id = v_decision.job_id;
+        RETURN;
+    END IF;
+
+    SELECT candidate.* INTO v_job
+    FROM public.jobs AS candidate
+    WHERE candidate.id = v_job_id
+      AND candidate.organization_id = v_organization_id
+      AND candidate.project_id = v_project_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Job is not visible in this Project' USING ERRCODE = 'P0002';
+    END IF;
+    SELECT existing.* INTO v_decision
+    FROM public.job_cancellation_decisions AS existing
+    WHERE existing.job_id = v_job.id
+      AND existing.organization_id = v_organization_id
+      AND existing.project_id = v_project_id;
+    IF FOUND THEN
+        RETURN QUERY
+        SELECT
+            v_decision.id, v_decision.job_id, v_decision.decision,
+            v_job.state, v_decision.previous_job_state,
+            v_job.version, v_decision.cancellation_fence,
+            NULL::uuid, NULL::uuid, NULL::bigint, NULL::bigint,
+            NULL::uuid, NULL::public.lease_phase,
+            NULL::public.lease_owner_kind, NULL::text, NULL::timestamptz,
+            v_decision.billable, charge.id, charge.amount_minor,
+            charge.currency, charge.reason, charge.posted_at,
+            v_decision.decided_at, false
+        FROM (SELECT 1) AS singleton
+        LEFT JOIN public.charges AS charge
+          ON charge.cancellation_id = v_decision.id;
+        RETURN;
+    END IF;
+    IF v_job.state IN ('SUCCEEDED', 'FAILED', 'CANCELED', 'CANCELING') THEN
+        RETURN QUERY SELECT
+            NULL::uuid,
+            v_job.id,
+            CASE
+                WHEN v_job.state = 'SUCCEEDED'
+                THEN 'ALREADY_SUCCEEDED'::public.cancellation_decision
+                WHEN v_job.state = 'FAILED'
+                THEN 'ALREADY_FAILED'::public.cancellation_decision
+                ELSE v_job.state::text::public.cancellation_decision
+            END,
+            v_job.state, v_job.state, v_job.version, v_job.current_fence,
+            NULL::uuid, NULL::uuid, NULL::bigint, NULL::bigint,
+            NULL::uuid, NULL::public.lease_phase,
+            NULL::public.lease_owner_kind, NULL::text, NULL::timestamptz,
+            false, NULL::uuid, NULL::bigint, NULL::text,
+            NULL::public.charge_reason, NULL::timestamptz,
+            v_job.updated_at, false;
+        RETURN;
+    END IF;
+    IF v_job.state NOT IN ('QUEUED', 'RETRY_WAIT', 'RUNNING', 'FINALIZING') THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_graph_cancellation_state_invalid',
+            MESSAGE = 'Stage graph Job is not cancelable';
+    END IF;
+
+    SELECT candidate.* INTO v_attempt
+    FROM public.attempts AS candidate
+    WHERE candidate.job_id = v_job.id
+      AND candidate.execution_authority_kind = 'STAGE_GRAPH'
+    ORDER BY candidate.attempt_number DESC
+    LIMIT 1
+    FOR UPDATE;
+    IF NOT FOUND OR v_attempt.fence <> v_job.current_fence
+       OR v_attempt.graph_state::text <> (CASE v_job.state
+            WHEN 'QUEUED' THEN 'QUEUED'
+            WHEN 'RETRY_WAIT' THEN 'QUEUED'
+            ELSE v_job.state::text
+          END) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            CONSTRAINT = 'stage_graph_cancellation_authority_stale',
+            MESSAGE = 'Stage graph cancellation authority changed';
+    END IF;
+    v_billable := v_job.state IN ('RUNNING', 'FINALIZING');
+    IF v_billable <> (v_job.billable_started_at IS NOT NULL) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '23514',
+            CONSTRAINT = 'stage_graph_cancellation_billable_start_invalid',
+            MESSAGE = 'Stage graph cancellation Billable Start is inconsistent';
+    END IF;
+
+    PERFORM run.id
+    FROM public.stage_runs AS run
+    WHERE run.attempt_id = v_attempt.id
+    ORDER BY run.id
+    FOR UPDATE;
+    PERFORM physical.id
+    FROM public.stage_attempts AS physical
+    WHERE physical.attempt_id = v_attempt.id
+    ORDER BY physical.id
+    FOR UPDATE;
+    PERFORM lease.id
+    FROM public.stage_leases AS lease
+    WHERE lease.attempt_id = v_attempt.id
+    ORDER BY lease.id
+    FOR UPDATE;
+    SELECT COALESCE(array_agg(lease.id ORDER BY lease.id), '{}'::uuid[])
+    INTO v_stage_lease_ids
+    FROM public.stage_leases AS lease
+    WHERE lease.attempt_id = v_attempt.id AND lease.state = 'ACTIVE';
+
+    PERFORM 1 FROM public.projects
+    WHERE id = v_job.project_id AND organization_id = v_job.organization_id
+    FOR UPDATE;
+    SELECT reservation.* INTO STRICT v_reservation
+    FROM public.credit_reservations AS reservation
+    WHERE reservation.job_id = v_job.id
+    FOR UPDATE;
+    PERFORM 1 FROM public.organization_credit_accounts
+    WHERE organization_id = v_job.organization_id
+      AND currency = v_reservation.currency
+    FOR UPDATE;
+    IF v_reservation.state <> 'RESERVED' THEN
+        RAISE EXCEPTION 'cancelable Job must retain RESERVED credit'
+            USING ERRCODE = '23514';
+    END IF;
+
+    v_final_job_version := v_job.version + CASE WHEN v_billable THEN 2 ELSE 1 END;
+    INSERT INTO public.job_cancellation_decisions (
+        id, organization_id, project_id, job_id,
+        requested_by_principal_id, previous_job_state, decision, billable,
+        cancellation_fence, job_version, decided_at,
+        execution_authority_kind, stage_graph_attempt_id,
+        stage_graph_attempt_fence, stage_lease_ids
+    ) VALUES (
+        v_cancellation_id, v_job.organization_id, v_job.project_id, v_job.id,
+        v_principal_id, v_job.state, 'CANCELED', v_billable,
+        v_job.current_fence + 1, v_final_job_version, v_decided_at,
+        'STAGE_GRAPH', v_attempt.id, v_attempt.fence, v_stage_lease_ids
+    );
+
+    UPDATE public.stage_leases AS lease
+    SET state = 'REVOKED', revoked_at = v_decided_at,
+        revoke_reason = 'CUSTOMER_CANCELLATION'
+    WHERE lease.attempt_id = v_attempt.id AND lease.state = 'ACTIVE';
+    UPDATE public.stage_allocations AS allocation
+    SET state = 'RELEASED', released_at = v_decided_at,
+        release_reason = 'CUSTOMER_CANCELLATION'
+    WHERE allocation.attempt_id = v_attempt.id
+      AND allocation.state = 'ALLOCATED';
+    UPDATE public.stage_attempts AS physical
+    SET state = 'CANCELED', ended_at = v_decided_at,
+        updated_at = v_decided_at
+    WHERE physical.attempt_id = v_attempt.id
+      AND physical.state IN ('ASSIGNED', 'RUNNING', 'OUTPUT_SEALED');
+    UPDATE public.stage_runs AS run
+    SET state = 'CANCELED', fence = run.fence + 1,
+        next_retry_at = NULL, version = run.version + 1,
+        updated_at = v_decided_at
+    WHERE run.attempt_id = v_attempt.id
+      AND run.state NOT IN ('SUCCEEDED', 'FAILED', 'CANCELED');
+    UPDATE public.stage_retry_budgets AS budget
+    SET state = 'CANCELED', version = budget.version + 1,
+        updated_at = v_decided_at
+    FROM public.stage_runs AS run
+    WHERE run.id = budget.stage_run_id
+      AND run.attempt_id = v_attempt.id
+      AND budget.state = 'ACTIVE';
+    UPDATE public.attempt_retry_budgets AS budget
+    SET state = 'CANCELED', version = budget.version + 1,
+        updated_at = v_decided_at
+    WHERE budget.attempt_id = v_attempt.id AND budget.state = 'ACTIVE';
+    UPDATE public.stage_storage_reservations AS reservation
+    SET state = 'RELEASED', updated_at = v_decided_at
+    WHERE reservation.attempt_id = v_attempt.id
+      AND reservation.state = 'RESERVED';
+    UPDATE public.attempts AS attempt
+    SET state = 'CANCELED', graph_state = 'CANCELED',
+        ended_at = v_decided_at, updated_at = v_decided_at
+    WHERE attempt.id = v_attempt.id
+      AND attempt.fence = v_attempt.fence
+      AND attempt.graph_state = v_attempt.graph_state;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 1 THEN
+        RAISE EXCEPTION 'Stage graph Attempt changed during cancellation'
+            USING ERRCODE = '40001';
+    END IF;
+
+    IF v_billable THEN
+        UPDATE public.jobs AS job
+        SET state = 'CANCELING', current_fence = job.current_fence + 1,
+            version = job.version + 1, updated_at = v_decided_at
+        WHERE job.id = v_job.id AND job.version = v_job.version
+          AND job.current_fence = v_job.current_fence
+          AND job.state = v_job.state;
+        GET DIAGNOSTICS v_rows = ROW_COUNT;
+        IF v_rows <> 1 THEN
+            RAISE EXCEPTION 'Stage graph Job changed during cancellation'
+                USING ERRCODE = '40001';
+        END IF;
+        UPDATE public.jobs AS job
+        SET state = 'CANCELED', version = job.version + 1,
+            updated_at = v_decided_at
+        WHERE job.id = v_job.id AND job.version = v_job.version + 1
+          AND job.current_fence = v_job.current_fence + 1
+          AND job.state = 'CANCELING';
+    ELSE
+        UPDATE public.jobs AS job
+        SET state = 'CANCELED', current_fence = job.current_fence + 1,
+            version = job.version + 1, updated_at = v_decided_at
+        WHERE job.id = v_job.id AND job.version = v_job.version
+          AND job.current_fence = v_job.current_fence
+          AND job.state = v_job.state;
+    END IF;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 1 THEN
+        RAISE EXCEPTION 'Stage graph Job terminalization changed during cancellation'
+            USING ERRCODE = '40001';
+    END IF;
+
+    IF v_billable THEN
+        UPDATE public.projects AS project
+        SET running_count = project.running_count - 1
+        WHERE project.id = v_job.project_id
+          AND project.organization_id = v_job.organization_id
+          AND project.running_count > 0;
+        GET DIAGNOSTICS v_rows = ROW_COUNT;
+        IF v_rows <> 1 THEN
+            RAISE EXCEPTION 'Project running counter changed during Stage graph cancellation'
+                USING ERRCODE = '23514';
+        END IF;
+    ELSE
+        UPDATE public.projects AS project
+        SET queued_count = project.queued_count - 1,
+            retry_wait_count = project.retry_wait_count
+                - CASE WHEN v_job.state = 'RETRY_WAIT' THEN 1 ELSE 0 END
+        WHERE project.id = v_job.project_id
+          AND project.organization_id = v_job.organization_id
+          AND project.queued_count > 0
+          AND (v_job.state <> 'RETRY_WAIT' OR project.retry_wait_count > 0);
+        GET DIAGNOSTICS v_rows = ROW_COUNT;
+        IF v_rows <> 1 THEN
+            RAISE EXCEPTION 'Project queue counters changed during Stage graph cancellation'
+                USING ERRCODE = '23514';
+        END IF;
+        UPDATE public.worker_pools AS pool
+        SET queued_count = pool.queued_count - 1,
+            retry_wait_count = pool.retry_wait_count
+                - CASE WHEN v_job.state = 'RETRY_WAIT' THEN 1 ELSE 0 END
+        WHERE pool.id = v_job.worker_pool_id
+          AND pool.queued_count > 0
+          AND (v_job.state <> 'RETRY_WAIT' OR pool.retry_wait_count > 0);
+        GET DIAGNOSTICS v_rows = ROW_COUNT;
+        IF v_rows <> 1 THEN
+            RAISE EXCEPTION 'Worker pool queue counters changed during Stage graph cancellation'
+                USING ERRCODE = '23514';
+        END IF;
+    END IF;
+
+    UPDATE public.credit_reservations AS reservation
+    SET state = CASE WHEN v_billable
+            THEN 'CONSUMED'::public.credit_reservation_state
+            ELSE 'RELEASED'::public.credit_reservation_state END,
+        updated_at = v_decided_at
+    WHERE reservation.id = v_reservation.id AND reservation.state = 'RESERVED';
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 1 THEN
+        RAISE EXCEPTION 'CreditReservation changed during Stage graph cancellation'
+            USING ERRCODE = '23514';
+    END IF;
+    UPDATE public.organization_credit_accounts AS account
+    SET reserved_minor = account.reserved_minor - v_reservation.amount_minor,
+        unsettled_posted_minor = account.unsettled_posted_minor
+            + CASE WHEN v_billable THEN v_reservation.amount_minor ELSE 0 END,
+        version = account.version + 1, updated_at = v_decided_at
+    WHERE account.organization_id = v_job.organization_id
+      AND account.currency = v_reservation.currency
+      AND account.reserved_minor >= v_reservation.amount_minor;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 1 THEN
+        RAISE EXCEPTION 'Organization credit changed during Stage graph cancellation'
+            USING ERRCODE = '23514';
+    END IF;
+    IF v_billable THEN
+        INSERT INTO public.charges (
+            id, organization_id, project_id, job_id,
+            credit_reservation_id, cancellation_id, reason,
+            amount_minor, currency, posted_at
+        ) VALUES (
+            v_charge_id, v_job.organization_id, v_job.project_id, v_job.id,
+            v_reservation.id, v_cancellation_id, 'CUSTOMER_CANCELLATION',
+            v_reservation.amount_minor, v_reservation.currency, v_decided_at
+        );
+    END IF;
+    PERFORM vela_private.vela_insert_stage_graph_cancellation_outbox_events(
+        v_cancellation_id, v_canceled_event_id,
+        v_charge_posted_event_id, v_invoice_export_event_id
+    );
+
+    RETURN QUERY SELECT
+        v_cancellation_id, v_job.id, 'CANCELED'::public.cancellation_decision,
+        'CANCELED'::public.job_state, v_job.state, v_final_job_version,
+        v_job.current_fence + 1,
+        NULL::uuid, NULL::uuid, NULL::bigint, NULL::bigint,
+        NULL::uuid, NULL::public.lease_phase,
+        NULL::public.lease_owner_kind, NULL::text, NULL::timestamptz,
+        v_billable,
+        CASE WHEN v_billable THEN v_charge_id ELSE NULL END::uuid,
+        CASE WHEN v_billable THEN v_reservation.amount_minor ELSE NULL END::bigint,
+        CASE WHEN v_billable THEN v_reservation.currency ELSE NULL END::text,
+        CASE WHEN v_billable THEN
+            'CUSTOMER_CANCELLATION'::public.charge_reason ELSE NULL END,
+        CASE WHEN v_billable THEN v_decided_at ELSE NULL END::timestamptz,
+        v_decided_at, true;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_cancel_stage_graph(jsonb) FROM PUBLIC;
+ALTER FUNCTION vela_cancel_stage_graph(jsonb)
+    OWNER TO vela_attempt_coordinator_owner;
+
+REVOKE EXECUTE ON FUNCTION vela_cancel_job(
+    uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid
+) FROM vela_cancel;
+ALTER FUNCTION vela_cancel_job(
+    uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid
+) RENAME TO vela_cancel_legacy_job;
+
+CREATE FUNCTION vela_cancel_job(
+    p_job_id uuid,
+    p_cancellation_id uuid,
+    p_charge_id uuid,
+    p_cancel_requested_event_id uuid,
+    p_canceling_event_id uuid,
+    p_canceled_event_id uuid,
+    p_charge_posted_event_id uuid,
+    p_invoice_export_event_id uuid
+) RETURNS TABLE (
+    cancellation_id uuid,
+    job_id uuid,
+    decision cancellation_decision,
+    job_state job_state,
+    previous_job_state job_state,
+    job_version bigint,
+    cancellation_fence bigint,
+    attempt_id uuid,
+    worker_id uuid,
+    worker_epoch bigint,
+    attempt_fence bigint,
+    authority_lease_id uuid,
+    authority_lease_phase lease_phase,
+    authority_lease_owner_kind lease_owner_kind,
+    authority_lease_owner_id text,
+    authority_lease_expires_at timestamptz,
+    billable boolean,
+    charge_id uuid,
+    charge_amount_minor bigint,
+    charge_currency text,
+    charge_reason charge_reason,
+    charge_posted_at timestamptz,
+    decided_at timestamptz,
+    created boolean
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_authority public.execution_authority_kind;
+BEGIN
+    SELECT attempt.execution_authority_kind INTO v_authority
+    FROM public.attempts AS attempt
+    WHERE attempt.job_id = p_job_id
+    ORDER BY attempt.attempt_number DESC
+    LIMIT 1;
+    IF v_authority = 'STAGE_GRAPH' THEN
+        RETURN QUERY SELECT *
+        FROM public.vela_cancel_stage_graph(jsonb_build_object(
+            'schema_version', 1,
+            'job_id', p_job_id,
+            'cancellation_id', p_cancellation_id,
+            'charge_id', p_charge_id,
+            'cancel_requested_event_id', p_cancel_requested_event_id,
+            'canceling_event_id', p_canceling_event_id,
+            'canceled_event_id', p_canceled_event_id,
+            'charge_posted_event_id', p_charge_posted_event_id,
+            'invoice_export_event_id', p_invoice_export_event_id
+        ));
+    ELSE
+        RETURN QUERY SELECT *
+        FROM public.vela_cancel_legacy_job(
+            p_job_id, p_cancellation_id, p_charge_id,
+            p_cancel_requested_event_id, p_canceling_event_id,
+            p_canceled_event_id, p_charge_posted_event_id,
+            p_invoice_export_event_id
+        );
+    END IF;
+END
+$$;
+REVOKE ALL ON FUNCTION vela_cancel_job(
+    uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid
+) FROM PUBLIC;
+ALTER FUNCTION vela_cancel_job(
+    uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid
+) OWNER TO vela_internal;
+GRANT EXECUTE ON FUNCTION vela_cancel_job(
+    uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid
+) TO vela_cancel;
+GRANT EXECUTE ON FUNCTION vela_cancel_stage_graph(jsonb) TO vela_internal;
+
 ALTER TABLE execution_graph_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE execution_graph_snapshots FORCE ROW LEVEL SECURITY;
 ALTER TABLE stage_runs ENABLE ROW LEVEL SECURITY;
@@ -2118,6 +3124,8 @@ ALTER TABLE stage_progress_receipts FORCE ROW LEVEL SECURITY;
 GRANT USAGE ON SCHEMA public TO vela_attempt_coordinator;
 GRANT EXECUTE ON FUNCTION vela_instantiate_stage_graph(jsonb) TO vela_attempt_coordinator;
 GRANT EXECUTE ON FUNCTION vela_apply_stage_command(jsonb) TO vela_attempt_coordinator;
+GRANT EXECUTE ON FUNCTION vela_reconcile_stage_graphs(integer)
+    TO vela_attempt_coordinator;
 GRANT SELECT, INSERT, UPDATE, DELETE ON
     execution_graph_snapshots, stage_runs, stage_dependencies, stage_attempts,
     stage_allocations, stage_leases, attempt_retry_budgets, stage_retry_budgets,
@@ -2139,6 +3147,17 @@ TO vela_attempt_coordinator_owner;
 GRANT EXECUTE ON FUNCTION vela_worker_instance_authority_matches(
     uuid, bigint, bytea, bytea, uuid, bigint
 ) TO vela_attempt_coordinator_owner;
+GRANT EXECUTE ON FUNCTION vela_current_organization_id(),
+    vela_current_project_id(), vela_current_principal_id(),
+    vela_current_request_scope()
+TO vela_attempt_coordinator_owner;
+GRANT USAGE ON SCHEMA vela_private TO vela_attempt_coordinator_owner;
+GRANT EXECUTE ON FUNCTION
+    vela_private.vela_insert_stage_graph_cancellation_outbox_events(
+        uuid, uuid, uuid, uuid
+    ) TO vela_attempt_coordinator_owner;
+GRANT SELECT, INSERT ON job_cancellation_decisions, charges
+TO vela_attempt_coordinator_owner;
 -- +goose StatementEnd
 
 -- +goose Down
@@ -2156,6 +3175,33 @@ BEGIN
 END
 $$;
 
+REVOKE EXECUTE ON FUNCTION vela_cancel_job(
+    uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid
+) FROM vela_cancel;
+DROP FUNCTION vela_cancel_job(uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid);
+ALTER FUNCTION vela_cancel_legacy_job(
+    uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid
+) RENAME TO vela_cancel_job;
+GRANT EXECUTE ON FUNCTION vela_cancel_job(
+    uuid, uuid, uuid, uuid, uuid, uuid, uuid, uuid
+) TO vela_cancel;
+REVOKE EXECUTE ON FUNCTION vela_cancel_stage_graph(jsonb) FROM vela_internal;
+DROP FUNCTION vela_cancel_stage_graph(jsonb);
+DROP FUNCTION vela_private.vela_insert_stage_graph_cancellation_outbox_events(
+    uuid, uuid, uuid, uuid
+);
+
+REVOKE SELECT, INSERT ON job_cancellation_decisions, charges
+    FROM vela_attempt_coordinator_owner;
+REVOKE EXECUTE ON FUNCTION vela_current_organization_id(),
+    vela_current_project_id(), vela_current_principal_id(),
+    vela_current_request_scope()
+FROM vela_attempt_coordinator_owner;
+REVOKE USAGE ON SCHEMA vela_private FROM vela_attempt_coordinator_owner;
+
+REVOKE EXECUTE ON FUNCTION vela_reconcile_stage_graphs(integer)
+    FROM vela_attempt_coordinator;
+DROP FUNCTION vela_reconcile_stage_graphs(integer);
 REVOKE EXECUTE ON FUNCTION vela_apply_stage_command(jsonb) FROM vela_attempt_coordinator;
 DROP FUNCTION vela_apply_stage_command(jsonb);
 REVOKE EXECUTE ON FUNCTION vela_instantiate_stage_graph(jsonb) FROM vela_attempt_coordinator;
@@ -2165,15 +3211,23 @@ DROP FUNCTION vela_guard_stage_graph_attempt_writer();
 DROP TRIGGER stage_storage_reservations_attempt_coordinator_writer ON stage_storage_reservations;
 DROP TRIGGER stage_retry_budgets_attempt_coordinator_writer ON stage_retry_budgets;
 DROP TRIGGER attempt_retry_budgets_attempt_coordinator_writer ON attempt_retry_budgets;
+DROP TRIGGER stage_leases_authority ON stage_leases;
 DROP TRIGGER stage_leases_attempt_coordinator_writer ON stage_leases;
+DROP TRIGGER stage_allocations_authority ON stage_allocations;
 DROP TRIGGER stage_allocations_attempt_coordinator_writer ON stage_allocations;
+DROP TRIGGER stage_attempts_authority ON stage_attempts;
 DROP TRIGGER stage_attempts_attempt_coordinator_writer ON stage_attempts;
 DROP TRIGGER stage_dependencies_attempt_coordinator_writer ON stage_dependencies;
+DROP TRIGGER stage_runs_authority ON stage_runs;
 DROP TRIGGER stage_runs_attempt_coordinator_writer ON stage_runs;
 DROP TRIGGER stage_progress_receipts_immutable ON stage_progress_receipts;
 DROP TRIGGER attempt_coordinator_commands_immutable ON attempt_coordinator_commands;
 DROP TRIGGER execution_graph_snapshots_immutable ON execution_graph_snapshots;
 DROP FUNCTION vela_reject_attempt_coordinator_immutable_mutation();
+DROP FUNCTION vela_enforce_stage_lease_authority();
+DROP FUNCTION vela_enforce_stage_allocation_authority();
+DROP FUNCTION vela_enforce_stage_attempt_authority();
+DROP FUNCTION vela_enforce_stage_run_authority();
 DROP FUNCTION vela_guard_attempt_coordinator_writer();
 
 ALTER TABLE stage_runs DROP CONSTRAINT stage_runs_winner_output_fk;
@@ -2190,6 +3244,68 @@ DROP TABLE stage_attempts;
 DROP TABLE stage_dependencies;
 DROP TABLE stage_runs;
 
+ALTER TABLE job_cancellation_decisions
+    DROP CONSTRAINT job_cancellation_decisions_stage_graph_attempt_fk,
+    DROP CONSTRAINT job_cancellation_decisions_authority_shape,
+    DROP COLUMN stage_lease_ids,
+    DROP COLUMN stage_graph_attempt_fence,
+    DROP COLUMN stage_graph_attempt_id,
+    DROP COLUMN execution_authority_kind,
+    ADD CONSTRAINT job_cancellation_decisions_check CHECK (
+        (
+            previous_job_state IN ('QUEUED', 'RETRY_WAIT')
+            AND decision = 'CANCELED'
+            AND NOT billable
+            AND attempt_id IS NULL
+            AND worker_id IS NULL
+            AND worker_epoch IS NULL
+            AND attempt_fence IS NULL
+            AND authority_lease_id IS NULL
+            AND authority_lease_phase IS NULL
+            AND authority_lease_owner_kind IS NULL
+            AND authority_lease_owner_id IS NULL
+            AND authority_lease_expires_at IS NULL
+        )
+        OR (
+            previous_job_state = 'ASSIGNED'
+            AND decision = 'CANCELED'
+            AND NOT billable
+            AND attempt_id IS NOT NULL
+            AND worker_id IS NOT NULL
+            AND worker_epoch > 0
+            AND attempt_fence > 0
+            AND authority_lease_id IS NOT NULL
+            AND authority_lease_phase = 'EXECUTION'
+            AND authority_lease_owner_kind = 'WORKER'
+            AND length(authority_lease_owner_id) BETWEEN 1 AND 500
+            AND authority_lease_expires_at IS NOT NULL
+        )
+        OR (
+            previous_job_state IN ('RUNNING', 'FINALIZING')
+            AND decision = 'CANCELING'
+            AND billable
+            AND attempt_id IS NOT NULL
+            AND worker_id IS NOT NULL
+            AND worker_epoch > 0
+            AND attempt_fence > 0
+            AND authority_lease_id IS NOT NULL
+            AND length(authority_lease_owner_id) BETWEEN 1 AND 500
+            AND authority_lease_expires_at IS NOT NULL
+            AND (
+                (
+                    previous_job_state = 'RUNNING'
+                    AND authority_lease_phase = 'EXECUTION'
+                    AND authority_lease_owner_kind = 'WORKER'
+                )
+                OR (
+                    previous_job_state = 'FINALIZING'
+                    AND authority_lease_phase = 'FINALIZATION'
+                    AND authority_lease_owner_kind IN ('WORKER', 'RECONCILER')
+                )
+            )
+        )
+    );
+
 ALTER TABLE attempts
     DROP CONSTRAINT attempts_graph_state_projection,
     DROP CONSTRAINT attempts_authority_shape,
@@ -2204,6 +3320,156 @@ ALTER TABLE attempts
     ALTER COLUMN assigned_at SET NOT NULL,
     ALTER COLUMN profile_certification_id SET NOT NULL;
 DROP TABLE execution_graph_snapshots;
+
+CREATE OR REPLACE FUNCTION vela_bind_attempt_profile_certification() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_profile_certification_id uuid;
+BEGIN
+    SELECT certification.id INTO v_profile_certification_id
+    FROM public.jobs AS job
+    JOIN public.profile_certifications AS certification
+      ON certification.model_revision_id = job.model_revision_id
+     AND certification.generation_preset_revision_id = job.generation_preset_revision_id
+     AND certification.output_spec_id = job.output_spec_id
+     AND certification.execution_profile_revision_id = NEW.execution_profile_revision_id
+     AND certification.state = 'ACTIVE'
+     AND certification.invalidated_at IS NULL
+    WHERE job.id = NEW.job_id
+    FOR SHARE OF certification;
+    IF NOT FOUND
+       OR (
+           NEW.profile_certification_id IS NOT NULL
+           AND NEW.profile_certification_id <> v_profile_certification_id
+       ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'attempts_profile_certification_active',
+            MESSAGE = 'Attempt requires the exact active ProfileCertification';
+    END IF;
+    NEW.profile_certification_id := v_profile_certification_id;
+    RETURN NEW;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION vela_enforce_scheduler_dispatch_attempt() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_required boolean;
+    v_rows bigint;
+BEGIN
+    SELECT require_dispatch_intent INTO STRICT v_required
+    FROM public.scheduler_dispatch_protocol_state WHERE singleton
+    FOR SHARE;
+    IF NEW.scheduler_dispatch_intent_id IS NULL THEN
+        IF v_required THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '55000',
+                CONSTRAINT = 'attempts_scheduler_dispatch_required',
+                MESSAGE = 'Assignment requires a live Scheduler dispatch claim';
+        END IF;
+        RETURN NEW;
+    END IF;
+    UPDATE public.scheduler_dispatch_intents AS dispatch
+    SET state = 'COMMITTED', committed_at = NEW.assigned_at
+    FROM public.jobs AS job
+    WHERE dispatch.id = NEW.scheduler_dispatch_intent_id
+      AND dispatch.state = 'CLAIMED'
+      AND dispatch.claim_expires_at > clock_timestamp()
+      AND dispatch.organization_id = NEW.organization_id
+      AND dispatch.project_id = NEW.project_id
+      AND dispatch.job_id = NEW.job_id
+      AND dispatch.service_class_revision_id = job.service_class_revision_id
+      AND dispatch.worker_pool_id = NEW.worker_pool_id
+      AND dispatch.execution_profile_revision_id = NEW.execution_profile_revision_id
+      AND dispatch.worker_id = NEW.worker_id
+      AND dispatch.worker_epoch = NEW.worker_epoch
+      AND job.id = NEW.job_id
+      AND job.version = dispatch.expected_job_version;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows <> 1 THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'attempts_scheduler_dispatch_exact_claim',
+            MESSAGE = 'Assignment does not match a live Scheduler dispatch claim';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION vela_guard_fleet_assignment_writer() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_enforced boolean;
+BEGIN
+    SELECT state.enforced INTO STRICT v_enforced
+    FROM public.fleet_assignment_protocol_state AS state
+    WHERE state.singleton
+    FOR SHARE;
+    IF (v_enforced AND NEW.fleet_protocol_version <> 2)
+       OR (NOT v_enforced AND NEW.fleet_protocol_version <> 1) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'attempts_fleet_assignment_protocol',
+            MESSAGE = 'Assignment writer does not match the active Fleet protocol';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION vela_validate_job_state_transition() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.state = OLD.state THEN
+        RETURN NEW;
+    END IF;
+    IF NOT (
+        (OLD.state = 'QUEUED' AND NEW.state IN ('ASSIGNED', 'CANCELED', 'FAILED'))
+        OR (OLD.state = 'ASSIGNED' AND NEW.state IN ('RUNNING', 'RETRY_WAIT', 'CANCELED', 'FAILED'))
+        OR (OLD.state = 'RUNNING' AND NEW.state IN ('FINALIZING', 'RETRY_WAIT', 'CANCELING', 'FAILED'))
+        OR (OLD.state = 'FINALIZING' AND NEW.state IN ('SUCCEEDED', 'RETRY_WAIT', 'CANCELING', 'FAILED'))
+        OR (OLD.state = 'RETRY_WAIT' AND NEW.state IN ('ASSIGNED', 'CANCELED', 'FAILED'))
+        OR (OLD.state = 'CANCELING' AND NEW.state = 'CANCELED')
+    ) THEN
+        RAISE EXCEPTION 'invalid Job state transition from % to %', OLD.state, NEW.state
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION vela_reject_billable_start_mutation() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.billable_started_at IS NOT NULL THEN
+            RAISE EXCEPTION 'Billable Start must be unset when a Job is created';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF OLD.billable_started_at IS NOT NULL
+        AND NEW.billable_started_at IS DISTINCT FROM OLD.billable_started_at THEN
+        RAISE EXCEPTION 'Billable Start cannot be changed or cleared';
+    END IF;
+    IF OLD.billable_started_at IS NULL
+        AND NEW.billable_started_at IS NOT NULL
+        AND (OLD.state <> 'ASSIGNED' OR NEW.state <> 'RUNNING') THEN
+        RAISE EXCEPTION 'Billable Start requires ASSIGNED to RUNNING transition';
+    END IF;
+    RETURN NEW;
+END
+$$;
 
 DROP TYPE stage_storage_reservation_state;
 DROP TYPE stage_retry_budget_state;

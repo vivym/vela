@@ -230,6 +230,7 @@ func verifyAttemptCoordinatorPrivileges(
 		functions: []string{
 			"vela_instantiate_stage_graph(jsonb)",
 			"vela_apply_stage_command(jsonb)",
+			"vela_reconcile_stage_graphs(integer)",
 		},
 	})
 }

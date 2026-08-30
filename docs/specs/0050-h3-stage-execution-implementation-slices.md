@@ -2,7 +2,7 @@
 
 Date: 2026-08-29
 
-Status: In progress. S49.1-S49.2 are implemented; S49.3-S49.12 are pending.
+Status: In progress. S49.1-S49.3 are implemented; S49.4-S49.12 are pending.
 
 ## Delivery rule
 
@@ -78,6 +78,14 @@ Acceptance:
   explicit release path requires approved reason and break-even evidence.
 
 ## S49.3: Parent Attempt and StageRun authority
+
+Status: Implemented in migration `00036_stage_attempt_authority.sql` and the
+`internal/attemptcoordinator` Module. PostgreSQL owns instantiate, assign,
+first progress, completion, retry, cancellation, and bounded reconciliation;
+state-transition and identity triggers reject owner-level authority rewrites.
+Integration coverage includes duplicate replay, same-parent retry, exact-cache
+progress, queued and billable cancellation, cancel/progress serialization,
+late-progress fencing, and empty/durable-authority migration rollback behavior.
 
 Deliver:
 

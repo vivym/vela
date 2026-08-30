@@ -5,10 +5,16 @@ package integration_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/fleet"
 )
@@ -287,6 +293,102 @@ func TestAttemptCoordinatorPhysicalStageLifecycleIsIdempotent(t *testing.T) {
 	assertPostgresConstraint(t, err, "stage_attempts_one_active_per_stage_run_idx")
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("rollback active StageAttempt invariant transaction: %v", err)
+	}
+
+	for _, test := range []struct {
+		name       string
+		statement  string
+		constraint string
+		target     uuid.UUID
+		code       string
+		message    string
+	}{
+		{
+			name: "Graph Attempt fence",
+			statement: `
+				UPDATE attempts
+				SET fence = fence + 1
+				WHERE id = $1
+			`,
+			target:  assign.AttemptID,
+			code:    "P0001",
+			message: "immutable Attempt identity fields cannot be changed",
+		},
+		{
+			name: "Graph Attempt state transition",
+			statement: `
+				UPDATE attempts
+				SET state = 'FINALIZING', graph_state = 'FINALIZING'
+				WHERE id = $1
+			`,
+			target:  assign.AttemptID,
+			code:    "23514",
+			message: "invalid Attempt state transition",
+		},
+		{
+			name: "StageRun state transition",
+			statement: `
+				UPDATE stage_runs
+				SET state = 'BLOCKED', version = version + 1
+				WHERE id = $1
+			`,
+			constraint: "stage_run_transition_invalid",
+			target:     encoderRunID,
+		},
+		{
+			name: "StageAttempt identity",
+			statement: `
+				UPDATE stage_attempts
+				SET physical_attempt_number = physical_attempt_number + 1
+				WHERE id = $1
+			`,
+			constraint: "stage_attempt_identity_immutable",
+			target:     assign.StageAttemptID,
+		},
+		{
+			name: "StageAllocation identity",
+			statement: `
+				UPDATE stage_allocations
+				SET model_runtime_epoch = model_runtime_epoch + 1
+				WHERE stage_attempt_id = $1
+			`,
+			constraint: "stage_allocation_identity_immutable",
+			target:     assign.StageAttemptID,
+		},
+		{
+			name: "StageLease identity",
+			statement: `
+				UPDATE stage_leases
+				SET token_digest = decode(repeat('ab', 32), 'hex')
+				WHERE stage_attempt_id = $1
+			`,
+			constraint: "stage_lease_identity_immutable",
+			target:     assign.StageAttemptID,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tx, err := database.Admin.Begin()
+			if err != nil {
+				t.Fatalf("begin rejected authority mutation: %v", err)
+			}
+			defer func() { _ = tx.Rollback() }()
+			if _, err := tx.Exec(`SET LOCAL ROLE vela_attempt_coordinator_owner`); err != nil {
+				t.Fatalf("assume AttemptCoordinator owner role: %v", err)
+			}
+			_, err = tx.Exec(test.statement, test.target)
+			if test.constraint != "" {
+				assertPostgresConstraint(t, err, test.constraint)
+				return
+			}
+			var postgresError *pgconn.PgError
+			if !errors.As(err, &postgresError) || postgresError.Code != test.code ||
+				!strings.Contains(postgresError.Message, test.message) {
+				t.Fatalf(
+					"PostgreSQL error = %v, want SQLSTATE %s containing %q",
+					err, test.code, test.message,
+				)
+			}
+		})
 	}
 
 	start := attemptcoordinator.StartStageCommand{
@@ -581,7 +683,7 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentity(t 
 		TokenDigest:            bytesOf(0x82, 32),
 		SigningKeyID:           "stage-authority-key-v1",
 		ExecutionNonce:         bytesOf(0x83, 32),
-		IssuedAt:               advancedAt.Add(time.Second),
+		IssuedAt:               advancedAt.Add(time.Millisecond),
 		ExpiresAt:              advancedAt.Add(time.Minute),
 		LocalDeadlineAt:        advancedAt.Add(50 * time.Second),
 	}
@@ -601,7 +703,7 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentity(t 
 		ExpectedAttemptFence: 1,
 		ExpectedStageFence:   1,
 		ExpectedStageVersion: 3,
-		StartedAt:            advancedAt.Add(2 * time.Second),
+		StartedAt:            advancedAt.Add(2 * time.Millisecond),
 	}
 	started, err := coordinator.Apply(context.Background(), start)
 	if err != nil {
@@ -622,8 +724,8 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentity(t 
 		FailureClass:          "TRANSIENT_BACKEND",
 		FailureFingerprint:    bytesOf(0x84, 32),
 		ConsumedResourceUnits: 15,
-		FailedAt:              advancedAt.Add(3 * time.Second),
-		RetryAt:               advancedAt.Add(4 * time.Second),
+		FailedAt:              advancedAt.Add(3 * time.Millisecond),
+		RetryAt:               advancedAt.Add(4 * time.Millisecond),
 	}
 	failed, err := coordinator.Apply(context.Background(), fail)
 	if err != nil {
@@ -665,6 +767,520 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentity(t 
 			retryLeaseState, dependencyReceipt, consumedUnits,
 		)
 	}
+
+	reconciled, err := coordinator.Reconcile(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("reconcile due DiT retry: %v", err)
+	}
+	if len(reconciled) != 1 || reconciled[0].AttemptID != attemptID ||
+		reconciled[0].StageRunID != ditRunID || reconciled[0].State != "READY" ||
+		reconciled[0].StageFence != 2 || reconciled[0].StageVersion != 6 ||
+		reconciled[0].Reason != "RETRY_DUE" {
+		t.Fatalf("reconciled DiT retry = %#v", reconciled)
+	}
+	replayed, err := coordinator.Reconcile(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("replay due DiT retry reconciliation: %v", err)
+	}
+	if len(replayed) != 0 {
+		t.Fatalf("replayed DiT retry reconciliation = %#v", replayed)
+	}
+}
+
+func TestStageGraphRunningCancellationPostsChargeAndFencesLateProgress(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	if _, err := database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant Stage graph cancellation scope: %v", err)
+	}
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, "cancel-stage-graph-running", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"cancel a running durable stage graph"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit Stage graph cancellation Job status = %d, body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode Stage graph cancellation Job: %v", err)
+	}
+	coordinatorPool := newRolePool(
+		t, database.DSN, "vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
+	)
+	coordinator, err := attemptcoordinator.NewService(coordinatorPool)
+	if err != nil {
+		t.Fatalf("construct cancellation AttemptCoordinator: %v", err)
+	}
+	attemptID := uuid.MustParse("49400000-0000-0000-0000-000000000001")
+	_, err = coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
+		CommandID:                  uuid.MustParse("49400000-0000-0000-0000-000000000002"),
+		JobID:                      uuid.MustParse(job.JobID),
+		ExpectedJobVersion:         1,
+		ExpectedJobFence:           0,
+		ExecutionGraphSnapshotID:   uuid.MustParse("49400000-0000-0000-0000-000000000003"),
+		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
+		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
+		AttemptID:                  attemptID,
+		StorageReservationID:       uuid.MustParse("49400000-0000-0000-0000-000000000004"),
+		ReservedStorageBytes:       2 << 30,
+	})
+	if err != nil {
+		t.Fatalf("instantiate cancellable Stage graph: %v", err)
+	}
+	var encoderRunID, ditRunID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'encoder'),
+			(SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'dit')
+	`, attemptID).Scan(&encoderRunID, &ditRunID); err != nil {
+		t.Fatalf("read cancellable StageRuns: %v", err)
+	}
+	advancedAt := time.Now().UTC().Truncate(time.Millisecond)
+	_, err = coordinator.Apply(context.Background(), attemptcoordinator.ExactCacheAdvanceCommand{
+		CommandID:            uuid.MustParse("49400000-0000-0000-0000-000000000005"),
+		AttemptID:            attemptID,
+		StageRunID:           encoderRunID,
+		ExpectedAttemptFence: 1,
+		ExpectedStageFence:   1,
+		ExpectedStageVersion: 1,
+		ProgressReceiptID:    uuid.MustParse("49400000-0000-0000-0000-000000000006"),
+		CacheSourceIdentity:  "stage-cancel/cache/encoder/exact-v1",
+		OutputDigest:         bytesOf(0x91, 32),
+		AdvancedAt:           advancedAt,
+	})
+	if err != nil {
+		t.Fatalf("start cancellable graph with exact cache progress: %v", err)
+	}
+
+	first := cancelJob(t, server.URL, testProjectID, job.JobID, testBearerCredential())
+	if first.StatusCode != http.StatusOK {
+		t.Fatalf("cancel Stage graph status = %d, body=%s", first.StatusCode, first.Body)
+	}
+	replay := cancelJob(t, server.URL, testProjectID, job.JobID, testBearerCredential())
+	if replay.StatusCode != http.StatusOK {
+		t.Fatalf("replay Stage graph cancellation status = %d, body=%s", replay.StatusCode, replay.Body)
+	}
+	var firstResult, replayResult cancelResponse
+	if err := json.Unmarshal(first.Body, &firstResult); err != nil {
+		t.Fatalf("decode Stage graph cancellation: %v", err)
+	}
+	if err := json.Unmarshal(replay.Body, &replayResult); err != nil {
+		t.Fatalf("decode replayed Stage graph cancellation: %v", err)
+	}
+	if firstResult.CancellationID == "" ||
+		firstResult.CancellationID != replayResult.CancellationID ||
+		firstResult.Decision != "CANCELED" || replayResult.Decision != "CANCELED" ||
+		firstResult.State != "CANCELED" || replayResult.State != "CANCELED" ||
+		firstResult.JobVersion != 5 || replayResult.JobVersion != 5 ||
+		!firstResult.Billable || !replayResult.Billable ||
+		firstResult.Charge == nil || replayResult.Charge == nil ||
+		firstResult.Charge.Amount != 1250 || replayResult.Charge.Amount != 1250 ||
+		firstResult.Charge.Currency != "CNY" || replayResult.Charge.Currency != "CNY" ||
+		firstResult.Charge.Reason != "CUSTOMER_CANCELLATION" ||
+		replayResult.Charge.ChargeID != firstResult.Charge.ChargeID {
+		t.Fatalf("Stage graph first/replayed cancellation = %#v / %#v", firstResult, replayResult)
+	}
+
+	_, err = coordinator.Apply(context.Background(), attemptcoordinator.ExactCacheAdvanceCommand{
+		CommandID:            uuid.MustParse("49400000-0000-0000-0000-000000000007"),
+		AttemptID:            attemptID,
+		StageRunID:           ditRunID,
+		ExpectedAttemptFence: 1,
+		ExpectedStageFence:   1,
+		ExpectedStageVersion: 2,
+		ProgressReceiptID:    uuid.MustParse("49400000-0000-0000-0000-000000000008"),
+		CacheSourceIdentity:  "stage-cancel/cache/dit/late-v1",
+		OutputDigest:         bytesOf(0x92, 32),
+		AdvancedAt:           advancedAt.Add(time.Second),
+	})
+	if err == nil {
+		t.Fatal("late Stage progress succeeded after Customer Cancellation fenced the graph")
+	}
+}
+
+func TestStageGraphQueuedCancellationReleasesGraphAuthorityWithoutCharge(t *testing.T) {
+	database, serverURL, coordinator, job, attemptID, _, _ :=
+		newStageGraphCancellationFixture(t, "cancel-stage-graph-queued")
+
+	first := cancelJob(t, serverURL, testProjectID, job.JobID, testBearerCredential())
+	replay := cancelJob(t, serverURL, testProjectID, job.JobID, testBearerCredential())
+	if first.StatusCode != http.StatusOK || replay.StatusCode != http.StatusOK {
+		t.Fatalf(
+			"queued Stage graph cancellation statuses = %d/%d bodies=%s/%s",
+			first.StatusCode, replay.StatusCode, first.Body, replay.Body,
+		)
+	}
+	var firstResult, replayResult cancelResponse
+	if err := json.Unmarshal(first.Body, &firstResult); err != nil {
+		t.Fatalf("decode queued Stage graph cancellation: %v", err)
+	}
+	if err := json.Unmarshal(replay.Body, &replayResult); err != nil {
+		t.Fatalf("decode replayed queued Stage graph cancellation: %v", err)
+	}
+	if firstResult.CancellationID == "" ||
+		firstResult.CancellationID != replayResult.CancellationID ||
+		firstResult.Decision != "CANCELED" || replayResult.Decision != "CANCELED" ||
+		firstResult.State != "CANCELED" || replayResult.State != "CANCELED" ||
+		firstResult.JobVersion != 3 || replayResult.JobVersion != 3 ||
+		firstResult.Billable || replayResult.Billable ||
+		firstResult.Charge != nil || replayResult.Charge != nil {
+		t.Fatalf("queued Stage graph first/replayed cancellation = %#v / %#v", firstResult, replayResult)
+	}
+
+	var jobState, attemptState, storageState, reservationState string
+	var activeRuns, activeLeases, activeAllocations, decisions, charges int64
+	var projectQueued, poolQueued, reservedMinor int64
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, attempt.graph_state::text, storage.state::text,
+		       credit_reservation.state::text,
+		       (SELECT count(*) FROM stage_runs
+		        WHERE attempt_id = attempt.id AND state NOT IN ('SUCCEEDED', 'FAILED', 'CANCELED')),
+		       (SELECT count(*) FROM stage_leases
+		        WHERE attempt_id = attempt.id AND state = 'ACTIVE'),
+		       (SELECT count(*) FROM stage_allocations
+		        WHERE attempt_id = attempt.id AND state = 'ALLOCATED'),
+		       (SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
+		       (SELECT count(*) FROM charges WHERE job_id = job.id),
+		       project.queued_count, pool.queued_count, account.reserved_minor
+		FROM jobs AS job
+		JOIN attempts AS attempt ON attempt.id = $1
+		JOIN stage_storage_reservations AS storage ON storage.attempt_id = attempt.id
+		JOIN credit_reservations AS credit_reservation ON credit_reservation.job_id = job.id
+		JOIN projects AS project ON project.id = job.project_id
+		JOIN worker_pools AS pool ON pool.id = job.worker_pool_id
+		JOIN organization_credit_accounts AS account
+		  ON account.organization_id = job.organization_id
+		WHERE job.id = $2
+	`, attemptID, job.JobID).Scan(
+		&jobState, &attemptState, &storageState, &reservationState,
+		&activeRuns, &activeLeases, &activeAllocations, &decisions, &charges,
+		&projectQueued, &poolQueued, &reservedMinor,
+	); err != nil {
+		t.Fatalf("read queued Stage graph cancellation authority: %v", err)
+	}
+	if jobState != "CANCELED" || attemptState != "CANCELED" ||
+		storageState != "RELEASED" || reservationState != "RELEASED" ||
+		activeRuns != 0 || activeLeases != 0 || activeAllocations != 0 ||
+		decisions != 1 || charges != 0 || projectQueued != 0 || poolQueued != 0 ||
+		reservedMinor != 0 {
+		t.Fatalf(
+			"queued Stage graph cancellation = job/attempt/storage/credit %s/%s/%s/%s active %d/%d/%d decisions/charges %d/%d counters %d/%d/%d",
+			jobState, attemptState, storageState, reservationState,
+			activeRuns, activeLeases, activeAllocations, decisions, charges,
+			projectQueued, poolQueued, reservedMinor,
+		)
+	}
+	if reconciled, err := coordinator.Reconcile(context.Background(), 10); err != nil || len(reconciled) != 0 {
+		t.Fatalf("reconcile canceled queued Stage graph = %#v error=%v", reconciled, err)
+	}
+}
+
+func TestStageGraphCancellationFailsClosedOnQueueCounterDrift(t *testing.T) {
+	database, serverURL, _, job, attemptID, _, _ :=
+		newStageGraphCancellationFixture(t, "cancel-stage-graph-counter-drift")
+	if _, err := database.Admin.Exec(`
+		UPDATE projects SET queued_count = 0 WHERE id = $1
+	`, testProjectID); err != nil {
+		t.Fatalf("inject Stage graph Project counter drift: %v", err)
+	}
+
+	result := cancelJob(t, serverURL, testProjectID, job.JobID, testBearerCredential())
+	if result.StatusCode != http.StatusInternalServerError {
+		t.Fatalf(
+			"Stage graph cancellation with counter drift status = %d body=%s, want 500",
+			result.StatusCode, result.Body,
+		)
+	}
+	var jobState, attemptState, reservationState string
+	var decisions, charges, canceledRuns int64
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, attempt.graph_state::text, reservation.state::text,
+		       (SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
+		       (SELECT count(*) FROM charges WHERE job_id = job.id),
+		       (SELECT count(*) FROM stage_runs
+		        WHERE attempt_id = attempt.id AND state = 'CANCELED')
+		FROM jobs AS job
+		JOIN attempts AS attempt ON attempt.id = $1
+		JOIN credit_reservations AS reservation ON reservation.job_id = job.id
+		WHERE job.id = $2
+	`, attemptID, job.JobID).Scan(
+		&jobState, &attemptState, &reservationState, &decisions, &charges, &canceledRuns,
+	); err != nil {
+		t.Fatalf("read rejected Stage graph cancellation effects: %v", err)
+	}
+	if jobState != "QUEUED" || attemptState != "QUEUED" ||
+		reservationState != "RESERVED" || decisions != 0 || charges != 0 ||
+		canceledRuns != 0 {
+		t.Fatalf(
+			"rejected Stage graph cancellation = job/attempt/reservation %s/%s/%s decisions/charges/runs %d/%d/%d",
+			jobState, attemptState, reservationState, decisions, charges, canceledRuns,
+		)
+	}
+}
+
+func TestStageGraphCancellationAndFirstProgressProduceOneTerminalBillingOutcome(t *testing.T) {
+	database, serverURL, coordinator, job, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "cancel-stage-graph-first-progress-race")
+	advancedAt := time.Now().UTC().Truncate(time.Millisecond)
+	advance := attemptcoordinator.ExactCacheAdvanceCommand{
+		CommandID:            uuid.New(),
+		AttemptID:            attemptID,
+		StageRunID:           encoderRunID,
+		ExpectedAttemptFence: 1,
+		ExpectedStageFence:   1,
+		ExpectedStageVersion: 1,
+		ProgressReceiptID:    uuid.New(),
+		CacheSourceIdentity:  "stage-cancel/cache/encoder/race-v1",
+		OutputDigest:         bytesOf(0x93, 32),
+		AdvancedAt:           advancedAt,
+	}
+	type advanceCall struct {
+		decision attemptcoordinator.StageDecision
+		err      error
+	}
+	type cancelCall struct {
+		result httpResult
+		err    error
+	}
+	start := make(chan struct{})
+	advanceResult := make(chan advanceCall, 1)
+	cancelResult := make(chan cancelCall, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	go func() {
+		<-start
+		decision, err := coordinator.Apply(ctx, advance)
+		advanceResult <- advanceCall{decision: decision, err: err}
+	}()
+	go func() {
+		<-start
+		result, err := doCancelJob(
+			serverURL, testProjectID, job.JobID, testBearerCredential(),
+		)
+		cancelResult <- cancelCall{result: result, err: err}
+	}()
+	close(start)
+	advanced := <-advanceResult
+	canceled := <-cancelResult
+	if canceled.err != nil || canceled.result.StatusCode != http.StatusOK {
+		t.Fatalf(
+			"concurrent Stage graph cancellation = status %d body=%s error=%v",
+			canceled.result.StatusCode, canceled.result.Body, canceled.err,
+		)
+	}
+	var response cancelResponse
+	if err := json.Unmarshal(canceled.result.Body, &response); err != nil {
+		t.Fatalf("decode Stage graph progress race cancellation: %v", err)
+	}
+
+	var jobState, attemptState, reservationState string
+	var jobVersion, decisionCount, chargeCount, receiptCount int64
+	var reservedMinor, unsettledPostedMinor int64
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, job.version, attempt.graph_state::text,
+		       reservation.state::text, account.reserved_minor,
+		       account.unsettled_posted_minor,
+		       (SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
+		       (SELECT count(*) FROM charges WHERE job_id = job.id),
+		       (SELECT count(*) FROM stage_progress_receipts WHERE attempt_id = attempt.id)
+		FROM jobs AS job
+		JOIN attempts AS attempt ON attempt.id = $1
+		JOIN credit_reservations AS reservation ON reservation.job_id = job.id
+		JOIN organization_credit_accounts AS account
+		  ON account.organization_id = job.organization_id
+		WHERE job.id = $2
+	`, attemptID, job.JobID).Scan(
+		&jobState, &jobVersion, &attemptState, &reservationState,
+		&reservedMinor, &unsettledPostedMinor,
+		&decisionCount, &chargeCount, &receiptCount,
+	); err != nil {
+		t.Fatalf("read Stage graph progress race result: %v", err)
+	}
+	if jobState != "CANCELED" || attemptState != "CANCELED" || decisionCount != 1 {
+		t.Fatalf(
+			"Stage graph progress race authority = job %s attempt %s decisions %d",
+			jobState, attemptState, decisionCount,
+		)
+	}
+	if advanced.err == nil {
+		if advanced.decision.State != "SUCCEEDED" || response.JobVersion != 5 ||
+			jobVersion != 5 || !response.Billable || response.Charge == nil ||
+			response.Charge.Amount != 1250 || reservationState != "CONSUMED" ||
+			reservedMinor != 0 || unsettledPostedMinor != 1250 ||
+			chargeCount != 1 || receiptCount != 1 {
+			t.Fatalf(
+				"progress-winning cancellation = advance %#v response %#v jobVersion %d reservation %s credit %d/%d charges/receipts %d/%d",
+				advanced.decision, response, jobVersion, reservationState,
+				reservedMinor, unsettledPostedMinor, chargeCount, receiptCount,
+			)
+		}
+	} else if response.JobVersion != 3 || jobVersion != 3 || response.Billable ||
+		response.Charge != nil || reservationState != "RELEASED" ||
+		reservedMinor != 0 || unsettledPostedMinor != 0 ||
+		chargeCount != 0 || receiptCount != 0 {
+		t.Fatalf(
+			"cancellation-winning progress race = error %v response %#v jobVersion %d reservation %s credit %d/%d charges/receipts %d/%d",
+			advanced.err, response, jobVersion, reservationState,
+			reservedMinor, unsettledPostedMinor, chargeCount, receiptCount,
+		)
+	}
+}
+
+func TestStageAttemptAuthorityMigrationRoundTripAndDurableAuthorityRefusal(t *testing.T) {
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	t.Run("empty Down Up restores legacy cancellation surface", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		if err := goose.DownTo(database.Admin, migrations, 35); err != nil {
+			t.Fatalf("migrate empty Stage Attempt authority down: %v", err)
+		}
+		version, err := goose.GetDBVersion(database.Admin)
+		if err != nil || version != 35 {
+			t.Fatalf("Stage Attempt authority version after Down = %d error=%v", version, err)
+		}
+		var currentCancellation, legacyCancellation, stageRuns bool
+		var stageAwareLegacyTriggers int
+		if err := database.Admin.QueryRow(`
+			SELECT
+				to_regprocedure(
+				  'vela_cancel_job(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid)'
+				) IS NOT NULL,
+				to_regprocedure(
+				  'vela_cancel_legacy_job(uuid,uuid,uuid,uuid,uuid,uuid,uuid,uuid)'
+				) IS NOT NULL,
+				to_regclass('stage_runs') IS NOT NULL,
+				(SELECT count(*)
+				 FROM unnest(ARRAY[
+				   'vela_bind_attempt_profile_certification()'::regprocedure,
+				   'vela_enforce_scheduler_dispatch_attempt()'::regprocedure,
+				   'vela_guard_fleet_assignment_writer()'::regprocedure,
+				   'vela_validate_job_state_transition()'::regprocedure,
+				   'vela_reject_billable_start_mutation()'::regprocedure
+				 ]) AS function_id
+				 WHERE pg_get_functiondef(function_id) LIKE '%execution_authority_kind%')
+		`).Scan(
+			&currentCancellation, &legacyCancellation, &stageRuns, &stageAwareLegacyTriggers,
+		); err != nil {
+			t.Fatalf("inspect schema 35 Stage Attempt rollback surface: %v", err)
+		}
+		if !currentCancellation || legacyCancellation || stageRuns || stageAwareLegacyTriggers != 0 {
+			t.Fatalf(
+				"schema 35 rollback surface = current/legacy/stageRuns %t/%t/%t stage-aware-triggers=%d",
+				currentCancellation, legacyCancellation, stageRuns, stageAwareLegacyTriggers,
+			)
+		}
+		if err := goose.UpTo(database.Admin, migrations, 36); err != nil {
+			t.Fatalf("migrate Stage Attempt authority up again: %v", err)
+		}
+		version, err = goose.GetDBVersion(database.Admin)
+		if err != nil || version != 36 {
+			t.Fatalf("Stage Attempt authority version after Down Up = %d error=%v", version, err)
+		}
+	})
+
+	t.Run("durable Stage graph authority refuses Down", func(t *testing.T) {
+		database, _, _, _, attemptID, _, _ :=
+			newStageGraphCancellationFixture(t, "stage-attempt-migration-refusal")
+		err := goose.DownTo(database.Admin, migrations, 35)
+		assertPostgresConstraint(t, err, "stage_attempt_authority_rollback_is_unsafe")
+		version, versionErr := goose.GetDBVersion(database.Admin)
+		if versionErr != nil || version != 36 {
+			t.Fatalf(
+				"Stage Attempt authority version after refusal = %d error=%v",
+				version, versionErr,
+			)
+		}
+		var attempts, runs int64
+		if err := database.Admin.QueryRow(`
+			SELECT
+				(SELECT count(*) FROM attempts WHERE id = $1),
+				(SELECT count(*) FROM stage_runs WHERE attempt_id = $1)
+		`, attemptID).Scan(&attempts, &runs); err != nil {
+			t.Fatalf("read durable Stage graph authority after refusal: %v", err)
+		}
+		if attempts != 1 || runs != 3 {
+			t.Fatalf("durable Stage graph authority after refusal = attempts/runs %d/%d", attempts, runs)
+		}
+	})
+}
+
+func newStageGraphCancellationFixture(
+	t *testing.T,
+	idempotencyKey string,
+) (testDatabase, string, *attemptcoordinator.Service, jobResponse, uuid.UUID, uuid.UUID, uuid.UUID) {
+	t.Helper()
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	if _, err := database.Admin.Exec(`
+		UPDATE credentials
+		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
+		WHERE id = $1
+	`, testCredentialID); err != nil {
+		t.Fatalf("grant Stage graph cancellation scope: %v", err)
+	}
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, idempotencyKey, []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"race durable stage graph authority"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit cancellable Stage graph status = %d body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode cancellable Stage graph Job: %v", err)
+	}
+	coordinatorPool := newRolePool(
+		t, database.DSN, "vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
+	)
+	coordinator, err := attemptcoordinator.NewService(coordinatorPool)
+	if err != nil {
+		t.Fatalf("construct cancellable AttemptCoordinator: %v", err)
+	}
+	attemptID := uuid.New()
+	_, err = coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
+		CommandID:                  uuid.New(),
+		JobID:                      uuid.MustParse(job.JobID),
+		ExpectedJobVersion:         1,
+		ExpectedJobFence:           0,
+		ExecutionGraphSnapshotID:   uuid.New(),
+		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
+		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
+		AttemptID:                  attemptID,
+		StorageReservationID:       uuid.New(),
+		ReservedStorageBytes:       2 << 30,
+	})
+	if err != nil {
+		t.Fatalf("instantiate cancellable Stage graph: %v", err)
+	}
+	var encoderRunID, ditRunID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'encoder'),
+			(SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'dit')
+	`, attemptID).Scan(&encoderRunID, &ditRunID); err != nil {
+		t.Fatalf("read cancellable StageRuns: %v", err)
+	}
+	return database, server.URL, coordinator, job, attemptID, encoderRunID, ditRunID
 }
 
 func bytesOf(value byte, count int) []byte {
