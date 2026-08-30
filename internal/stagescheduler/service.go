@@ -197,7 +197,9 @@ func (service *Service) Acquire(
 		return Assignment{}, false, nil
 	}
 
-	assignment, command, err := service.newAssignment(authority, evidence)
+	assignment, command, err := service.newAssignment(
+		authority, captured.Snapshot.ObservationSequence, evidence,
+	)
 	if err != nil {
 		return Assignment{}, false, err
 	}
@@ -359,6 +361,7 @@ func deriveShadowReplayReceiptID(
 
 func (service *Service) newAssignment(
 	authority WorkerAuthority,
+	observationSequence int64,
 	evidence DecisionEvidence,
 ) (Assignment, attemptcoordinator.AssignStageCommand, error) {
 	claimID, err := uuid.NewRandomFromReader(service.config.Random)
@@ -420,6 +423,7 @@ func (service *Service) newAssignment(
 		CapacityPoolID:         authority.CapacityPoolID,
 		WorkerInstanceID:       authority.WorkerInstanceID,
 		WorkerInstanceEpoch:    authority.WorkerInstanceEpoch,
+		ObservationSequence:    observationSequence,
 		DeviceSetDigest:        append([]byte(nil), authority.DeviceSetDigest...),
 		MembershipDigest:       append([]byte(nil), authority.MembershipDigest...),
 		ModelResidencyID:       authority.ModelResidencyID,

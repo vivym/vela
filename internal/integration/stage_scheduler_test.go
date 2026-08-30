@@ -353,6 +353,229 @@ func TestStageSchedulerExpiredClaimRecoversWithoutDoubleAssignment(t *testing.T)
 	}
 }
 
+func TestStageSchedulerClaimReplayRequiresExactPayload(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "claim-replay")
+	var captured stagescheduler.ClaimRequest
+	repository := &tamperingStageRepository{
+		PostgresRepository: fixture.repository,
+		tamper: func(request *stagescheduler.ClaimRequest) {
+			captured = *request
+		},
+	}
+	crashing, err := stagescheduler.NewService(
+		repository,
+		panickingStageCoordinator{},
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/claim-replay",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct claim-replay StageScheduler: %v", err)
+	}
+	func() {
+		defer func() {
+			if recovered := recover(); recovered == nil {
+				t.Fatal("StageScheduler claim-replay fixture did not stop after claim")
+			}
+		}()
+		_, _, _ = crashing.Acquire(
+			context.Background(), fixture.authority, fixture.observation,
+		)
+	}()
+	if captured.ClaimID == uuid.Nil {
+		t.Fatal("StageScheduler claim request was not captured")
+	}
+	replayed, err := fixture.repository.Claim(context.Background(), captured)
+	if err != nil || !replayed.Replayed || replayed.ClaimID != captured.ClaimID {
+		t.Fatalf("exact claim replay = %#v error=%v", replayed, err)
+	}
+	mutated := captured
+	mutated.Command.TokenDigest = append([]byte(nil), captured.Command.TokenDigest...)
+	mutated.Command.TokenDigest[0] ^= 0xff
+	_, err = fixture.repository.Claim(context.Background(), mutated)
+	assertPostgresConstraint(t, err, "stage_scheduler_claim_replay_mismatch")
+	competing := captured
+	competing.ClaimID = uuid.New()
+	competing.DecisionID = uuid.New()
+	competing.Command.CommandID = uuid.New()
+	competing.Command.StageAttemptID = uuid.New()
+	competing.Command.StageAllocationID = uuid.New()
+	competing.Command.StageLeaseID = uuid.New()
+	_, err = fixture.repository.Claim(context.Background(), competing)
+	assertPostgresConstraint(t, err, "stage_scheduler_pool_claim_inflight")
+}
+
+func TestStageSchedulerTerminalClaimsCannotReplay(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "terminal-replay")
+	var captured stagescheduler.ClaimRequest
+	repository := &tamperingStageRepository{
+		PostgresRepository: fixture.repository,
+		tamper: func(request *stagescheduler.ClaimRequest) {
+			captured = *request
+		},
+	}
+	crashing, err := stagescheduler.NewService(
+		repository,
+		panickingStageCoordinator{},
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/terminal-replay",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct terminal-replay StageScheduler: %v", err)
+	}
+	acquireUntilClaimCrash(t, crashing, fixture)
+	abandoned := captured
+	if err := fixture.repository.Abandon(
+		context.Background(), abandoned.ClaimID, "SHUTDOWN",
+	); err != nil {
+		t.Fatalf("abandon replay fixture: %v", err)
+	}
+	_, err = fixture.repository.Claim(context.Background(), abandoned)
+	assertPostgresConstraint(t, err, "stage_scheduler_claim_replay_stale")
+
+	captured = stagescheduler.ClaimRequest{}
+	acquireUntilClaimCrash(t, crashing, fixture)
+	expired := captured
+	if err := fixture.database.Admin.QueryRow(`
+		UPDATE stage_scheduler_claims
+		SET claimed_at = clock_timestamp() - interval '2 seconds',
+			claim_expires_at = clock_timestamp() - interval '1 second',
+			updated_at = clock_timestamp()
+		WHERE id = $1
+		RETURNING claim_expires_at
+	`, expired.ClaimID).Scan(&expired.ClaimExpiresAt); err != nil {
+		t.Fatalf("expire replay fixture: %v", err)
+	}
+	if processed, err := fixture.repository.ReconcileExpired(
+		context.Background(), 10,
+	); err != nil || processed != 1 {
+		t.Fatalf("reconcile replay fixture processed=%d error=%v", processed, err)
+	}
+	_, err = fixture.repository.Claim(context.Background(), expired)
+	assertPostgresConstraint(t, err, "stage_scheduler_claim_replay_stale")
+}
+
+func TestStageSchedulerCapacityPoolVersionInvalidatesSnapshot(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "pool-version")
+	repository := &tamperingStageRepository{
+		PostgresRepository: fixture.repository,
+		tamper: func(_ *stagescheduler.ClaimRequest) {
+			if _, err := fixture.database.Admin.Exec(`
+				UPDATE stage_capacity_pool_counters
+				SET version = version + 1, updated_at = clock_timestamp()
+				WHERE capacity_pool_id = $1
+			`, fixture.authority.CapacityPoolID); err != nil {
+				t.Fatalf("advance CapacityPool scheduling version: %v", err)
+			}
+		},
+	}
+	scheduling, err := stagescheduler.NewService(
+		repository,
+		fixture.coordinator,
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/pool-version",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct pool-version StageScheduler: %v", err)
+	}
+	assignment, ok, err := scheduling.Acquire(
+		context.Background(), fixture.authority, fixture.observation,
+	)
+	if err == nil || ok || assignment != (stagescheduler.Assignment{}) {
+		t.Fatalf("Acquire with changed pool version = %#v ok=%t error=%v", assignment, ok, err)
+	}
+	assertPostgresConstraint(t, err, "stage_scheduler_fairness_snapshot_stale")
+}
+
+func TestStageSchedulerDigestsBindCanonicalPayloads(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "digest-binding")
+	repository := &tamperingStageRepository{PostgresRepository: fixture.repository}
+	scheduling, err := stagescheduler.NewService(
+		repository,
+		fixture.coordinator,
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/digest-binding",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct digest-binding StageScheduler: %v", err)
+	}
+	for _, mutate := range []func(*stagescheduler.ClaimRequest){
+		func(request *stagescheduler.ClaimRequest) { request.Evidence.InputDigest[0] ^= 0xff },
+		func(request *stagescheduler.ClaimRequest) { request.Evidence.EvidenceDigest[0] ^= 0xff },
+	} {
+		repository.tamper = mutate
+		assignment, ok, err := scheduling.Acquire(
+			context.Background(), fixture.authority, fixture.observation,
+		)
+		if err == nil || ok || assignment != (stagescheduler.Assignment{}) {
+			t.Fatalf("Acquire with forged digest = %#v ok=%t error=%v", assignment, ok, err)
+		}
+		assertPostgresConstraint(t, err, "stage_scheduler_digest_payload_invalid")
+	}
+}
+
+func TestStageSchedulerApplyRejectsNewerCapacityObservation(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "apply-capacity-race")
+	coordinator := &capacityRacingStageCoordinator{
+		t:        t,
+		database: fixture.database,
+		delegate: fixture.coordinator,
+	}
+	scheduling, err := stagescheduler.NewService(
+		fixture.repository,
+		coordinator,
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/apply-capacity-race",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct apply-capacity-race StageScheduler: %v", err)
+	}
+	assignment, ok, err := scheduling.Acquire(
+		context.Background(), fixture.authority, fixture.observation,
+	)
+	if err == nil || ok || assignment != (stagescheduler.Assignment{}) {
+		t.Fatalf("Acquire with Apply-time capacity race = %#v ok=%t error=%v", assignment, ok, err)
+	}
+	assertPostgresConstraint(t, err, "stage_assign_worker_authority_ineligible")
+	var claimState string
+	var attempts int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT claim.state::text,
+			(SELECT count(*) FROM stage_attempts WHERE stage_run_id = $1)
+		FROM stage_scheduler_claims AS claim
+		WHERE claim.stage_run_id = $1
+	`, fixture.stageRunID).Scan(&claimState, &attempts); err != nil {
+		t.Fatalf("read Apply-time capacity race result: %v", err)
+	}
+	if claimState != "ABANDONED" || attempts != 0 {
+		t.Fatalf("Apply-time capacity race claim=%s attempts=%d", claimState, attempts)
+	}
+}
+
 func TestStageSchedulerShadowReplayPersistsMatchedReceipt(t *testing.T) {
 	fixture := newStageSchedulerFixture(t, "shadow-replay")
 	scheduling, err := stagescheduler.NewService(
@@ -440,12 +663,89 @@ func TestStageSchedulerShadowReplayPersistsMatchedReceipt(t *testing.T) {
 		t.Fatalf("replay identical StageScheduler shadow receipt: %v", err)
 	}
 	receipt.ReplayedEvidenceDigest[0] ^= 0xff
+	receipt.Matched = false
 	err = fixture.repository.RecordShadowReplay(context.Background(), receipt)
 	assertPostgresConstraint(t, err, "stage_scheduler_shadow_receipt_identity_reused")
 
 	second, err := scheduling.ReplayShadow(context.Background(), 10)
 	if err != nil || second != (stagescheduler.ShadowReplaySummary{}) {
 		t.Fatalf("second ReplayShadow = %#v error=%v, want no pending snapshots", second, err)
+	}
+}
+
+func TestStageSchedulerShadowDivergenceStopsFurtherActivation(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "shadow-stop")
+	var captured stagescheduler.ClaimRequest
+	repository := &tamperingStageRepository{
+		PostgresRepository: fixture.repository,
+		tamper: func(request *stagescheduler.ClaimRequest) {
+			captured = *request
+		},
+	}
+	scheduling, err := stagescheduler.NewService(
+		repository,
+		panickingStageCoordinator{},
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/shadow-stop",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct shadow-stop StageScheduler: %v", err)
+	}
+	acquireUntilClaimCrash(t, scheduling, fixture)
+	var snapshotID uuid.UUID
+	var algorithmRevision string
+	var expectedDigest []byte
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT trace.id, trace.algorithm_revision, decision.evidence_digest
+		FROM stage_scheduler_snapshot_traces AS trace
+		JOIN stage_decision_evidence AS decision ON decision.snapshot_trace_id = trace.id
+		WHERE trace.worker_instance_id = $1
+	`, fixture.authority.WorkerInstanceID).Scan(
+		&snapshotID, &algorithmRevision, &expectedDigest,
+	); err != nil {
+		t.Fatalf("read shadow-stop decision: %v", err)
+	}
+	var expectedDigestArray, replayedDigestArray [32]byte
+	copy(expectedDigestArray[:], expectedDigest)
+	copy(replayedDigestArray[:], expectedDigest)
+	replayedDigestArray[0] ^= 0xff
+	if err := fixture.repository.RecordShadowReplay(
+		context.Background(),
+		stagescheduler.ShadowReplayReceipt{
+			ID:                     uuid.New(),
+			SnapshotID:             snapshotID,
+			AlgorithmRevision:      algorithmRevision,
+			ExpectedEvidenceDigest: expectedDigestArray,
+			ReplayedEvidenceDigest: replayedDigestArray,
+			Matched:                false,
+			ReplayedAt:             time.Now().UTC(),
+			ReplayedBy:             "stage-scheduler/shadow-stop",
+		},
+	); err != nil {
+		t.Fatalf("record divergent StageScheduler shadow receipt: %v", err)
+	}
+	_, err = fixture.repository.Claim(context.Background(), captured)
+	assertPostgresConstraint(t, err, "stage_scheduler_activation_stopped")
+	assignment, ok, err := scheduling.Acquire(
+		context.Background(), fixture.authority, fixture.observation,
+	)
+	if err == nil || ok || assignment != (stagescheduler.Assignment{}) {
+		t.Fatalf("Acquire after shadow divergence = %#v ok=%t error=%v", assignment, ok, err)
+	}
+	assertPostgresConstraint(t, err, "stage_scheduler_activation_stopped")
+	var stops int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT count(*) FROM stage_scheduler_activation_stops
+	`).Scan(&stops); err != nil {
+		t.Fatalf("read StageScheduler activation stop: %v", err)
+	}
+	if stops != 1 {
+		t.Fatalf("StageScheduler activation stops = %d, want 1", stops)
 	}
 }
 
@@ -547,6 +847,68 @@ func TestStageSchedulerStaleWorkerEvidenceFailsClosed(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestStageSchedulerNewerCapacityObservationInvalidatesCapturedSnapshot(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "capacity-race")
+	inserted := false
+	repository := &tamperingStageRepository{
+		PostgresRepository: fixture.repository,
+		tamper: func(_ *stagescheduler.ClaimRequest) {
+			if inserted {
+				return
+			}
+			inserted = true
+			if _, err := fixture.database.Admin.Exec(`
+				INSERT INTO capacity_observations (
+					worker_instance_id, worker_instance_epoch, observation_sequence,
+					capacity_vector, observed_at, expires_at, observed_by
+				)
+				SELECT worker_instance_id, worker_instance_epoch,
+					observation_sequence + 1,
+					jsonb_set(capacity_vector, '{concurrency}', '0'::jsonb),
+					clock_timestamp(), clock_timestamp() + interval '1 minute',
+					'integration/capacity-race'
+				FROM capacity_observations
+				WHERE worker_instance_id = $1 AND observation_sequence = $2
+			`, fixture.authority.WorkerInstanceID, fixture.observation.Sequence); err != nil {
+				t.Fatalf("record newer CapacityObservation: %v", err)
+			}
+		},
+	}
+	scheduling, err := stagescheduler.NewService(
+		repository,
+		fixture.coordinator,
+		stagescheduler.Config{
+			SchedulerID:      "stage-scheduler/capacity-race",
+			ClaimTTL:         30 * time.Second,
+			LeaseTTL:         time.Minute,
+			LocalDeadlineTTL: 50 * time.Second,
+			SigningKeyID:     "stage-authority-key-v1",
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct capacity-race StageScheduler: %v", err)
+	}
+	assignment, ok, err := scheduling.Acquire(
+		context.Background(), fixture.authority, fixture.observation,
+	)
+	if err == nil || ok || assignment != (stagescheduler.Assignment{}) {
+		t.Fatalf("Acquire with newer CapacityObservation = %#v ok=%t error=%v", assignment, ok, err)
+	}
+	assertPostgresConstraint(t, err, "stage_scheduler_snapshot_stale")
+	var snapshots, claims, attempts int
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM stage_scheduler_snapshot_traces),
+			(SELECT count(*) FROM stage_scheduler_claims),
+			(SELECT count(*) FROM stage_attempts WHERE stage_run_id = $1)
+	`, fixture.stageRunID).Scan(&snapshots, &claims, &attempts); err != nil {
+		t.Fatalf("read capacity-race side effects: %v", err)
+	}
+	if snapshots != 1 || claims != 0 || attempts != 0 {
+		t.Fatalf("capacity-race side effects snapshots=%d claims=%d attempts=%d", snapshots, claims, attempts)
 	}
 }
 
@@ -666,9 +1028,46 @@ func TestStageSchedulerClaimRejectsForgedFairnessIdentity(t *testing.T) {
 	var postgresError *pgconn.PgError
 	if err == nil || ok || assignment != (stagescheduler.Assignment{}) ||
 		!errors.As(err, &postgresError) ||
-		postgresError.ConstraintName != "stage_scheduler_candidate_identity_stale" {
+		postgresError.ConstraintName != "stage_scheduler_decision_evidence_stale" {
 		t.Fatalf(
 			"Acquire forged fairness identity = %#v ok=%t error=%v constraint=%q",
+			assignment,
+			ok,
+			err,
+			postgresErrorConstraint(postgresError),
+		)
+	}
+	repository.tamper = func(request *stagescheduler.ClaimRequest) {
+		request.Evidence.ResourceMillis++
+	}
+	assignment, ok, err = scheduling.Acquire(
+		context.Background(), fixture.authority, fixture.observation,
+	)
+	postgresError = nil
+	if err == nil || ok || assignment != (stagescheduler.Assignment{}) ||
+		!errors.As(err, &postgresError) ||
+		postgresError.ConstraintName != "stage_scheduler_decision_evidence_stale" {
+		t.Fatalf(
+			"Acquire forged resource evidence = %#v ok=%t error=%v constraint=%q",
+			assignment,
+			ok,
+			err,
+			postgresErrorConstraint(postgresError),
+		)
+	}
+	repository.tamper = func(request *stagescheduler.ClaimRequest) {
+		request.Evidence.Score.PredictedFinishMillis++
+		request.Evidence.ScoreTotalMillis++
+	}
+	assignment, ok, err = scheduling.Acquire(
+		context.Background(), fixture.authority, fixture.observation,
+	)
+	postgresError = nil
+	if err == nil || ok || assignment != (stagescheduler.Assignment{}) ||
+		!errors.As(err, &postgresError) ||
+		postgresError.ConstraintName != "stage_scheduler_decision_evidence_stale" {
+		t.Fatalf(
+			"Acquire forged score evidence = %#v ok=%t error=%v constraint=%q",
 			assignment,
 			ok,
 			err,
@@ -939,6 +1338,58 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 }
 
 type panickingStageCoordinator struct{}
+
+func acquireUntilClaimCrash(
+	t *testing.T,
+	scheduling *stagescheduler.Service,
+	fixture stageSchedulerFixture,
+) {
+	t.Helper()
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatal("StageScheduler fixture did not stop after claim")
+		}
+	}()
+	_, _, _ = scheduling.Acquire(
+		context.Background(), fixture.authority, fixture.observation,
+	)
+}
+
+type capacityRacingStageCoordinator struct {
+	t        *testing.T
+	database testDatabase
+	delegate *attemptcoordinator.Service
+	inserted bool
+}
+
+func (coordinator *capacityRacingStageCoordinator) Apply(
+	ctx context.Context,
+	command attemptcoordinator.StageCommand,
+) (attemptcoordinator.StageDecision, error) {
+	assignment, ok := command.(attemptcoordinator.AssignStageCommand)
+	if !ok {
+		return coordinator.delegate.Apply(ctx, command)
+	}
+	if !coordinator.inserted {
+		coordinator.inserted = true
+		if _, err := coordinator.database.Admin.Exec(`
+			INSERT INTO capacity_observations (
+				worker_instance_id, worker_instance_epoch, observation_sequence,
+				capacity_vector, observed_at, expires_at, observed_by
+			)
+			SELECT worker_instance_id, worker_instance_epoch,
+				observation_sequence + 1,
+				jsonb_set(capacity_vector, '{concurrency}', '0'::jsonb),
+				clock_timestamp(), clock_timestamp() + interval '1 minute',
+				'integration/apply-capacity-race'
+			FROM capacity_observations
+			WHERE worker_instance_id = $1 AND observation_sequence = $2
+		`, assignment.WorkerInstanceID, assignment.ObservationSequence); err != nil {
+			coordinator.t.Fatalf("record Apply-time CapacityObservation: %v", err)
+		}
+	}
+	return coordinator.delegate.Apply(ctx, command)
+}
 
 func (panickingStageCoordinator) Apply(
 	context.Context,

@@ -123,8 +123,13 @@ func metricReasonForError(err error) metricReason {
 		"stage_scheduler_capacity_observation_stale",
 		"stage_scheduler_snapshot_stale",
 		"stage_scheduler_candidate_stale",
-		"stage_scheduler_candidate_identity_stale":
+		"stage_scheduler_candidate_identity_stale",
+		"stage_scheduler_decision_evidence_stale",
+		"stage_scheduler_fairness_snapshot_stale",
+		"stage_scheduler_pool_claim_inflight":
 		return metricReasonStaleAuthority
+	case "stage_scheduler_activation_stopped":
+		return metricReasonReplayDiverged
 	default:
 		return metricReasonInternal
 	}

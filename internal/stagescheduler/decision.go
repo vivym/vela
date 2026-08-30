@@ -3,6 +3,7 @@ package stagescheduler
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const AlgorithmRevisionV1 = "stage-filter-fairness-score-pick-v1"
+const (
+	AlgorithmRevisionV1 = "stage-filter-fairness-score-pick-v1"
+	maxResourceMillis   = int64(604_800_000)
+)
 
 var ErrStaleSnapshot = errors.New("StageScheduler snapshot evidence is stale")
 
@@ -85,6 +89,7 @@ type Snapshot struct {
 	EvaluatedAt         time.Time   `json:"evaluated_at"`
 	ValidUntil          time.Time   `json:"valid_until"`
 	CapacityPoolID      uuid.UUID   `json:"capacity_pool_id"`
+	CapacityPoolVersion int64       `json:"capacity_pool_version"`
 	WorkerInstanceID    uuid.UUID   `json:"worker_instance_id"`
 	WorkerInstanceEpoch int64       `json:"worker_instance_epoch"`
 	ObservationSequence int64       `json:"observation_sequence"`
@@ -121,6 +126,8 @@ type DecisionEvidence struct {
 	ScoreTotalMillis               int64                `json:"score_total_millis"`
 	FilterReasonCounts             map[FilterReason]int `json:"filter_reason_counts"`
 	TieBreak                       TieBreakEvidence     `json:"tie_break"`
+	inputPayload                   []byte
+	evidencePayload                []byte
 }
 
 func Decide(snapshot Snapshot) (DecisionEvidence, bool, error) {
@@ -218,13 +225,42 @@ func Decide(snapshot Snapshot) (DecisionEvidence, bool, error) {
 			StageRunID:             winner.StageRunID,
 			StageProfileRevisionID: winner.StageProfileRevisionID,
 		},
+		inputPayload: append([]byte(nil), encodedSnapshot...),
 	}
-	encodedEvidence, err := json.Marshal(evidence)
+	encodedEvidence, err := json.Marshal(decisionEvidenceDigestPayload(evidence))
 	if err != nil {
 		return DecisionEvidence{}, false, fmt.Errorf("encode StageScheduler evidence: %w", err)
 	}
+	evidence.evidencePayload = append([]byte(nil), encodedEvidence...)
 	evidence.EvidenceDigest = sha256.Sum256(encodedEvidence)
 	return evidence, true, nil
+}
+
+func decisionEvidenceDigestPayload(evidence DecisionEvidence) map[string]any {
+	return map[string]any{
+		"algorithm_revision":                 evidence.AlgorithmRevision,
+		"input_digest":                       hex.EncodeToString(evidence.InputDigest[:]),
+		"capacity_pool_id":                   evidence.CapacityPoolID,
+		"worker_instance_id":                 evidence.WorkerInstanceID,
+		"selected_stage_run_id":              evidence.SelectedStageRunID,
+		"selected_attempt_id":                evidence.SelectedAttemptID,
+		"selected_stage_profile_revision_id": evidence.SelectedStageProfileRevisionID,
+		"organization_id":                    evidence.OrganizationID,
+		"service_class_revision_id":          evidence.ServiceClassRevisionID,
+		"project_id":                         evidence.ProjectID,
+		"attempt_fence":                      evidence.AttemptFence,
+		"stage_fence":                        evidence.StageFence,
+		"stage_version":                      evidence.StageVersion,
+		"lane":                               evidence.Lane,
+		"resource_millis":                    evidence.ResourceMillis,
+		"organization_deficit_millis":        evidence.OrganizationDeficitMillis,
+		"service_class_deficit_millis":       evidence.ServiceClassDeficitMillis,
+		"project_deficit_millis":             evidence.ProjectDeficitMillis,
+		"score":                              evidence.Score,
+		"score_total_millis":                 evidence.ScoreTotalMillis,
+		"filter_reason_counts":               evidence.FilterReasonCounts,
+		"tie_break":                          evidence.TieBreak,
+	}
 }
 
 func canonicalSnapshot(snapshot Snapshot) (Snapshot, error) {
@@ -233,7 +269,8 @@ func canonicalSnapshot(snapshot Snapshot) (Snapshot, error) {
 	}
 	if snapshot.EvaluatedAt.IsZero() || snapshot.ValidUntil.IsZero() ||
 		snapshot.CapacityPoolID == uuid.Nil || snapshot.WorkerInstanceID == uuid.Nil ||
-		snapshot.WorkerInstanceEpoch <= 0 || snapshot.ObservationSequence <= 0 {
+		snapshot.CapacityPoolVersion <= 0 || snapshot.WorkerInstanceEpoch <= 0 ||
+		snapshot.ObservationSequence <= 0 {
 		return Snapshot{}, errors.New("StageScheduler snapshot authority is incomplete")
 	}
 	canonical := snapshot
@@ -265,7 +302,7 @@ func validateCandidate(candidate Candidate) error {
 		candidate.ServiceClassRevisionID == uuid.Nil || candidate.ProjectID == uuid.Nil ||
 		candidate.EnqueuedAt.IsZero() || candidate.AttemptFence <= 0 ||
 		candidate.StageFence <= 0 || candidate.StageVersion <= 0 ||
-		candidate.ResourceMillis <= 0 {
+		candidate.ResourceMillis <= 0 || candidate.ResourceMillis > maxResourceMillis {
 		return errors.New("StageScheduler candidate authority is incomplete")
 	}
 	if lanePriority(candidate.Lane) < 0 {

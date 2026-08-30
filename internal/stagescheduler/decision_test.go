@@ -261,6 +261,12 @@ func TestDecideRejectsUnsupportedRevisionAndFilterReason(t *testing.T) {
 	if _, ok, err := Decide(schedulingSnapshot(now, []Candidate{candidate})); err == nil || ok {
 		t.Fatalf("Decide(unsupported filter reason) ok=%t error=%v, want rejection", ok, err)
 	}
+
+	candidate.FilterReasons = nil
+	candidate.ResourceMillis = maxResourceMillis + 1
+	if _, ok, err := Decide(schedulingSnapshot(now, []Candidate{candidate})); err == nil || ok {
+		t.Fatalf("Decide(unbounded resource) ok=%t error=%v, want rejection", ok, err)
+	}
 }
 
 func schedulingSnapshot(now time.Time, candidates []Candidate) Snapshot {
@@ -269,6 +275,7 @@ func schedulingSnapshot(now time.Time, candidates []Candidate) Snapshot {
 		EvaluatedAt:         now,
 		ValidUntil:          now.Add(time.Minute),
 		CapacityPoolID:      uuid.MustParse("51000000-0000-0000-0000-000000000010"),
+		CapacityPoolVersion: 3,
 		WorkerInstanceID:    uuid.MustParse("51000000-0000-0000-0000-000000000011"),
 		WorkerInstanceEpoch: 7,
 		ObservationSequence: 9,

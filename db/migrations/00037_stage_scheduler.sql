@@ -13,7 +13,7 @@ CREATE TABLE stage_ready_queue_entries (
     project_id uuid NOT NULL,
     stage_profile_revision_id uuid NOT NULL,
     enqueued_at timestamptz NOT NULL,
-    resource_millis bigint NOT NULL CHECK (resource_millis > 0),
+    resource_millis bigint NOT NULL CHECK (resource_millis BETWEEN 1 AND 604800000),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     PRIMARY KEY (capacity_pool_id, stage_run_id),
     FOREIGN KEY (attempt_id, stage_run_id) REFERENCES stage_runs(attempt_id, id),
@@ -76,9 +76,15 @@ CREATE TABLE stage_scheduler_snapshot_traces (
     evaluated_at timestamptz NOT NULL,
     valid_until timestamptz NOT NULL,
     capacity_pool_id uuid NOT NULL REFERENCES capacity_pools(id),
+    capacity_pool_version bigint NOT NULL CHECK (capacity_pool_version > 0),
     worker_instance_id uuid NOT NULL REFERENCES worker_instances(id),
     worker_instance_epoch bigint NOT NULL CHECK (worker_instance_epoch > 0),
+    device_set_digest bytea NOT NULL CHECK (octet_length(device_set_digest) = 32),
+    membership_digest bytea NOT NULL CHECK (octet_length(membership_digest) = 32),
+    model_residency_id uuid NOT NULL REFERENCES model_residencies(id),
+    model_runtime_epoch bigint NOT NULL CHECK (model_runtime_epoch > 0),
     observation_sequence bigint NOT NULL CHECK (observation_sequence > 0),
+    capacity_vector jsonb NOT NULL CHECK (jsonb_typeof(capacity_vector) = 'object'),
     snapshot jsonb NOT NULL CHECK (jsonb_typeof(snapshot) = 'object'),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     CHECK (valid_until > evaluated_at)
@@ -105,7 +111,7 @@ CREATE TABLE stage_decision_evidence (
     stage_fence bigint NOT NULL CHECK (stage_fence > 0),
     stage_version bigint NOT NULL CHECK (stage_version > 0),
     lane scheduler_lane NOT NULL,
-    resource_millis bigint NOT NULL CHECK (resource_millis > 0),
+    resource_millis bigint NOT NULL CHECK (resource_millis BETWEEN 1 AND 604800000),
     organization_deficit_millis bigint NOT NULL,
     service_class_deficit_millis bigint NOT NULL,
     project_deficit_millis bigint NOT NULL,
@@ -129,6 +135,7 @@ CREATE TABLE stage_scheduler_claims (
     stage_attempt_id uuid NOT NULL UNIQUE,
     stage_allocation_id uuid NOT NULL UNIQUE,
     stage_lease_id uuid NOT NULL UNIQUE,
+    evidence_payload jsonb NOT NULL CHECK (jsonb_typeof(evidence_payload) = 'object'),
     command_payload jsonb NOT NULL CHECK (jsonb_typeof(command_payload) = 'object'),
     state stage_scheduler_claim_state NOT NULL DEFAULT 'CLAIMED',
     claimed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -154,6 +161,8 @@ CREATE TABLE stage_scheduler_claims (
 
 CREATE UNIQUE INDEX stage_scheduler_claims_one_live_stage_idx
     ON stage_scheduler_claims(stage_run_id) WHERE state = 'CLAIMED';
+CREATE UNIQUE INDEX stage_scheduler_claims_one_live_pool_idx
+    ON stage_scheduler_claims(capacity_pool_id) WHERE state = 'CLAIMED';
 CREATE INDEX stage_scheduler_claims_expiry_idx
     ON stage_scheduler_claims(claim_expires_at, id) WHERE state = 'CLAIMED';
 
@@ -167,6 +176,15 @@ CREATE TABLE stage_scheduler_shadow_replay_receipts (
     replayed_at timestamptz NOT NULL,
     replayed_by text NOT NULL CHECK (length(replayed_by) BETWEEN 1 AND 200),
     UNIQUE (snapshot_trace_id, algorithm_revision, replayed_by)
+);
+
+CREATE TABLE stage_scheduler_activation_stops (
+    algorithm_revision text PRIMARY KEY CHECK (length(algorithm_revision) BETWEEN 1 AND 100),
+    snapshot_trace_id uuid NOT NULL REFERENCES stage_scheduler_snapshot_traces(id),
+    expected_evidence_digest bytea NOT NULL CHECK (octet_length(expected_evidence_digest) = 32),
+    replayed_evidence_digest bytea NOT NULL CHECK (octet_length(replayed_evidence_digest) = 32),
+    stopped_at timestamptz NOT NULL,
+    stopped_by text NOT NULL CHECK (length(stopped_by) BETWEEN 1 AND 200)
 );
 
 CREATE FUNCTION vela_reject_stage_scheduler_evidence_mutation() RETURNS trigger
@@ -190,6 +208,9 @@ BEFORE UPDATE OR DELETE OR TRUNCATE ON stage_decision_evidence
 FOR EACH STATEMENT EXECUTE FUNCTION vela_reject_stage_scheduler_evidence_mutation();
 CREATE TRIGGER stage_scheduler_shadow_replay_receipts_immutable
 BEFORE UPDATE OR DELETE OR TRUNCATE ON stage_scheduler_shadow_replay_receipts
+FOR EACH STATEMENT EXECUTE FUNCTION vela_reject_stage_scheduler_evidence_mutation();
+CREATE TRIGGER stage_scheduler_activation_stops_immutable
+BEFORE UPDATE OR DELETE OR TRUNCATE ON stage_scheduler_activation_stops
 FOR EACH STATEMENT EXECUTE FUNCTION vela_reject_stage_scheduler_evidence_mutation();
 
 CREATE FUNCTION vela_refresh_stage_capacity_pool_counter(p_capacity_pool_id uuid)
@@ -386,15 +407,9 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
 BEGIN
-    IF TG_TABLE_NAME = 'stage_allocations' THEN
-        PERFORM public.vela_refresh_stage_capacity_pool_counter(
-            COALESCE(NEW.capacity_pool_id, OLD.capacity_pool_id)
-        );
-    ELSE
-        PERFORM public.vela_refresh_stage_capacity_pool_counter(
-            COALESCE(NEW.capacity_pool_id, OLD.capacity_pool_id)
-        );
-    END IF;
+    PERFORM public.vela_refresh_stage_capacity_pool_counter(
+        COALESCE(NEW.capacity_pool_id, OLD.capacity_pool_id)
+    );
     RETURN COALESCE(NEW, OLD);
 END
 $$;
@@ -418,6 +433,7 @@ DECLARE
     v_now timestamptz := clock_timestamp();
     v_snapshot_id uuid;
     v_pool public.capacity_pools%ROWTYPE;
+    v_counter public.stage_capacity_pool_counters%ROWTYPE;
     v_worker public.worker_instances%ROWTYPE;
     v_residency public.model_residencies%ROWTYPE;
     v_observation public.capacity_observations%ROWTYPE;
@@ -440,6 +456,24 @@ BEGIN
         RAISE EXCEPTION USING
             ERRCODE = '55000', CONSTRAINT = 'stage_scheduler_capacity_pool_stale',
             MESSAGE = 'StageScheduler CapacityPool authority is stale';
+    END IF;
+    SELECT counter.* INTO v_counter
+    FROM public.stage_capacity_pool_counters AS counter
+    WHERE counter.capacity_pool_id = v_pool.id
+    FOR SHARE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000', CONSTRAINT = 'stage_scheduler_capacity_pool_stale',
+            MESSAGE = 'StageScheduler CapacityPool counter is missing';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.stage_scheduler_activation_stops AS stop
+        WHERE stop.algorithm_revision = 'stage-filter-fairness-score-pick-v1'
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_scheduler_activation_stopped',
+            MESSAGE = 'StageScheduler activation is stopped after shadow replay divergence';
     END IF;
     SELECT worker.* INTO v_worker
     FROM public.worker_instances AS worker
@@ -575,6 +609,7 @@ BEGIN
         'evaluated_at', v_now,
         'valid_until', v_observation.expires_at,
         'capacity_pool_id', v_pool.id,
+        'capacity_pool_version', v_counter.version,
         'worker_instance_id', v_worker.id,
         'worker_instance_epoch', v_worker.instance_epoch,
         'observation_sequence', v_observation.observation_sequence,
@@ -582,11 +617,17 @@ BEGIN
     );
     INSERT INTO public.stage_scheduler_snapshot_traces (
         id, algorithm_revision, evaluated_at, valid_until, capacity_pool_id,
-        worker_instance_id, worker_instance_epoch, observation_sequence, snapshot
+        capacity_pool_version,
+        worker_instance_id, worker_instance_epoch, device_set_digest,
+        membership_digest, model_residency_id, model_runtime_epoch,
+        observation_sequence, capacity_vector, snapshot
     ) VALUES (
         v_snapshot_id, 'stage-filter-fairness-score-pick-v1', v_now,
-        v_observation.expires_at, v_pool.id, v_worker.id, v_worker.instance_epoch,
-        v_observation.observation_sequence, v_snapshot
+        v_observation.expires_at, v_pool.id, v_counter.version,
+        v_worker.id, v_worker.instance_epoch,
+        v_worker.device_set_digest, v_worker.membership_digest, v_residency.id,
+        v_residency.model_runtime_epoch, v_observation.observation_sequence,
+        v_observation.capacity_vector, v_snapshot
     );
     RETURN QUERY SELECT v_snapshot_id, v_snapshot;
 END
@@ -610,8 +651,19 @@ DECLARE
     v_profile_id uuid := (p_claim #>> '{evidence,selected_stage_profile_revision_id}')::uuid;
     v_existing public.stage_scheduler_claims%ROWTYPE;
     v_trace public.stage_scheduler_snapshot_traces%ROWTYPE;
+    v_counter public.stage_capacity_pool_counters%ROWTYPE;
     v_ready public.stage_ready_queue_entries%ROWTYPE;
     v_run public.stage_runs%ROWTYPE;
+    v_winner jsonb;
+    v_filter_reason_counts jsonb;
+    v_score_total numeric;
+    v_current_organization_deficit bigint;
+    v_current_service_class_deficit bigint;
+    v_current_project_deficit bigint;
+    v_input_payload bytea;
+    v_evidence_payload bytea;
+    v_input_semantics jsonb;
+    v_evidence_semantics jsonb;
     v_now timestamptz := clock_timestamp();
 BEGIN
     IF p_claim IS NULL OR jsonb_typeof(p_claim) <> 'object'
@@ -624,10 +676,52 @@ BEGIN
     FROM public.stage_scheduler_claims AS claim WHERE claim.id = v_claim_id;
     IF FOUND THEN
         IF v_existing.decision_id <> v_decision_id
-           OR v_existing.stage_run_id <> v_stage_run_id THEN
+           OR v_existing.stage_run_id <> v_stage_run_id
+           OR v_existing.scheduler_id IS DISTINCT FROM p_claim ->> 'scheduler_id'
+           OR v_existing.claim_expires_at IS DISTINCT FROM
+              (p_claim ->> 'claim_expires_at')::timestamptz
+           OR v_existing.evidence_payload IS DISTINCT FROM p_claim -> 'evidence'
+           OR v_existing.command_payload IS DISTINCT FROM p_claim -> 'command'
+           OR NOT EXISTS (
+               SELECT 1 FROM public.stage_decision_evidence AS decision
+               WHERE decision.id = v_existing.decision_id
+                 AND decision.snapshot_trace_id = v_snapshot_id
+           ) THEN
             RAISE EXCEPTION USING
                 ERRCODE = '23505', CONSTRAINT = 'stage_scheduler_claim_replay_mismatch',
                 MESSAGE = 'StageScheduler claim identity was reused with different authority';
+        END IF;
+        SELECT trace.* INTO v_trace
+        FROM public.stage_scheduler_snapshot_traces AS trace
+        WHERE trace.id = v_snapshot_id;
+        SELECT counter.* INTO v_counter
+        FROM public.stage_capacity_pool_counters AS counter
+        WHERE counter.capacity_pool_id = v_existing.capacity_pool_id
+        FOR UPDATE;
+        IF NOT FOUND OR v_trace.id IS NULL THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '40001',
+                CONSTRAINT = 'stage_scheduler_claim_replay_stale',
+                MESSAGE = 'StageScheduler claim replay authority is stale';
+        END IF;
+        IF v_existing.state = 'COMMITTED' THEN
+            RETURN QUERY SELECT v_existing.id, true;
+            RETURN;
+        END IF;
+        IF v_existing.state <> 'CLAIMED' OR v_existing.claim_expires_at <= v_now THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '40001',
+                CONSTRAINT = 'stage_scheduler_claim_replay_stale',
+                MESSAGE = 'Terminal or expired StageScheduler claims cannot replay';
+        END IF;
+        IF EXISTS (
+            SELECT 1 FROM public.stage_scheduler_activation_stops AS stop
+            WHERE stop.algorithm_revision = v_trace.algorithm_revision
+        ) THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '55000',
+                CONSTRAINT = 'stage_scheduler_activation_stopped',
+                MESSAGE = 'StageScheduler activation is stopped after shadow replay divergence';
         END IF;
         RETURN QUERY SELECT v_existing.id, true;
         RETURN;
@@ -635,8 +729,8 @@ BEGIN
 
     SELECT trace.* INTO v_trace
     FROM public.stage_scheduler_snapshot_traces AS trace
-    WHERE trace.id = v_snapshot_id FOR SHARE;
-    IF NOT FOUND OR v_trace.valid_until <= v_now
+    WHERE trace.id = v_snapshot_id;
+    IF NOT FOUND
        OR v_trace.capacity_pool_id <> (p_claim #>> '{evidence,capacity_pool_id}')::uuid
        OR v_trace.worker_instance_id <> (p_claim #>> '{evidence,worker_instance_id}')::uuid
        OR v_trace.algorithm_revision <> p_claim #>> '{evidence,algorithm_revision}' THEN
@@ -644,6 +738,184 @@ BEGIN
             ERRCODE = '40001', CONSTRAINT = 'stage_scheduler_snapshot_stale',
             MESSAGE = 'StageScheduler snapshot changed before claim';
     END IF;
+    SELECT counter.* INTO v_counter
+    FROM public.stage_capacity_pool_counters AS counter
+    WHERE counter.capacity_pool_id = v_trace.capacity_pool_id
+    FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            CONSTRAINT = 'stage_scheduler_fairness_snapshot_stale',
+            MESSAGE = 'CapacityPool scheduling state is missing';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.stage_scheduler_activation_stops AS stop
+        WHERE stop.algorithm_revision = v_trace.algorithm_revision
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_scheduler_activation_stopped',
+            MESSAGE = 'StageScheduler activation is stopped after shadow replay divergence';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM public.stage_scheduler_claims AS live
+        WHERE live.capacity_pool_id = v_trace.capacity_pool_id
+          AND live.state = 'CLAIMED'
+    ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            CONSTRAINT = 'stage_scheduler_pool_claim_inflight',
+            MESSAGE = 'CapacityPool already has an in-flight StageScheduler claim';
+    END IF;
+    IF v_counter.version <> v_trace.capacity_pool_version THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            CONSTRAINT = 'stage_scheduler_fairness_snapshot_stale',
+            MESSAGE = 'CapacityPool scheduling state changed before claim';
+    END IF;
+    IF v_trace.valid_until <= v_now
+       OR NOT EXISTS (
+           SELECT 1 FROM public.capacity_observations AS observation
+           WHERE observation.worker_instance_id = v_trace.worker_instance_id
+             AND observation.worker_instance_epoch = v_trace.worker_instance_epoch
+             AND observation.observation_sequence = v_trace.observation_sequence
+             AND observation.capacity_vector = v_trace.capacity_vector
+             AND observation.expires_at > v_now
+       )
+       OR EXISTS (
+           SELECT 1 FROM public.capacity_observations AS observation
+           WHERE observation.worker_instance_id = v_trace.worker_instance_id
+             AND observation.worker_instance_epoch = v_trace.worker_instance_epoch
+             AND observation.observation_sequence > v_trace.observation_sequence
+       )
+       OR NOT public.vela_worker_instance_authority_matches(
+           v_trace.worker_instance_id, v_trace.worker_instance_epoch,
+           v_trace.device_set_digest, v_trace.membership_digest,
+           v_trace.model_residency_id, v_trace.model_runtime_epoch
+       ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001', CONSTRAINT = 'stage_scheduler_snapshot_stale',
+            MESSAGE = 'StageScheduler snapshot changed before claim';
+    END IF;
+    SELECT candidate.value INTO v_winner
+    FROM jsonb_array_elements(v_trace.snapshot -> 'candidates') AS candidate(value)
+    WHERE jsonb_array_length(candidate.value -> 'filter_reasons') = 0
+    ORDER BY
+        CASE candidate.value ->> 'lane'
+            WHEN 'RETRY' THEN 0 WHEN 'PROTECTED' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3
+        END,
+        (candidate.value ->> 'organization_deficit_millis')::bigint DESC,
+        (candidate.value ->> 'organization_id')::uuid,
+        (candidate.value ->> 'service_class_deficit_millis')::bigint DESC,
+        (candidate.value ->> 'service_class_revision_id')::uuid,
+        (candidate.value ->> 'project_deficit_millis')::bigint DESC,
+        (candidate.value ->> 'project_id')::uuid,
+        (
+            (candidate.value #>> '{score,transfer_penalty_millis}')::numeric
+            + (candidate.value #>> '{score,load_penalty_millis}')::numeric
+            + (candidate.value #>> '{score,predicted_finish_millis}')::numeric
+            - (candidate.value #>> '{score,locality_credit_millis}')::numeric
+            - (candidate.value #>> '{score,critical_path_credit_millis}')::numeric
+            - (candidate.value #>> '{score,age_credit_millis}')::numeric
+        ),
+        (candidate.value ->> 'enqueued_at')::timestamptz,
+        (candidate.value ->> 'stage_run_id')::uuid,
+        (candidate.value ->> 'stage_profile_revision_id')::uuid
+    LIMIT 1;
+    SELECT COALESCE(jsonb_object_agg(reason, occurrences), '{}'::jsonb)
+    INTO v_filter_reason_counts
+    FROM (
+        SELECT filter_reason.value AS reason, count(*) AS occurrences
+        FROM jsonb_array_elements(v_trace.snapshot -> 'candidates') AS candidate(value)
+        CROSS JOIN LATERAL jsonb_array_elements_text(
+            candidate.value -> 'filter_reasons'
+        ) AS filter_reason(value)
+        GROUP BY filter_reason.value
+    ) AS counts;
+    IF v_winner IS NOT NULL THEN
+        v_score_total :=
+            (v_winner #>> '{score,transfer_penalty_millis}')::numeric
+            + (v_winner #>> '{score,load_penalty_millis}')::numeric
+            + (v_winner #>> '{score,predicted_finish_millis}')::numeric
+            - (v_winner #>> '{score,locality_credit_millis}')::numeric
+            - (v_winner #>> '{score,critical_path_credit_millis}')::numeric
+            - (v_winner #>> '{score,age_credit_millis}')::numeric;
+    END IF;
+    IF v_winner IS NULL
+       OR (v_winner ->> 'stage_run_id')::uuid <> v_stage_run_id
+       OR (v_winner ->> 'attempt_id')::uuid <> v_attempt_id
+       OR (v_winner ->> 'stage_profile_revision_id')::uuid <> v_profile_id
+       OR (v_winner ->> 'organization_id')::uuid <>
+          (p_claim #>> '{evidence,organization_id}')::uuid
+       OR (v_winner ->> 'service_class_revision_id')::uuid <>
+          (p_claim #>> '{evidence,service_class_revision_id}')::uuid
+       OR (v_winner ->> 'project_id')::uuid <>
+          (p_claim #>> '{evidence,project_id}')::uuid
+       OR v_winner ->> 'lane' <> p_claim #>> '{evidence,lane}'
+       OR (v_winner ->> 'attempt_fence')::bigint <>
+          (p_claim #>> '{evidence,attempt_fence}')::bigint
+       OR (v_winner ->> 'stage_fence')::bigint <>
+          (p_claim #>> '{evidence,stage_fence}')::bigint
+       OR (v_winner ->> 'stage_version')::bigint <>
+          (p_claim #>> '{evidence,stage_version}')::bigint
+       OR (v_winner ->> 'resource_millis')::bigint <>
+          (p_claim #>> '{evidence,resource_millis}')::bigint
+       OR (v_winner ->> 'organization_deficit_millis')::bigint <>
+          (p_claim #>> '{evidence,organization_deficit_millis}')::bigint
+       OR (v_winner ->> 'service_class_deficit_millis')::bigint <>
+          (p_claim #>> '{evidence,service_class_deficit_millis}')::bigint
+       OR (v_winner ->> 'project_deficit_millis')::bigint <>
+          (p_claim #>> '{evidence,project_deficit_millis}')::bigint
+       OR v_winner -> 'score' IS DISTINCT FROM p_claim #> '{evidence,score}'
+       OR v_score_total IS DISTINCT FROM
+          (p_claim #>> '{evidence,score_total_millis}')::numeric
+       OR v_filter_reason_counts IS DISTINCT FROM
+          p_claim #> '{evidence,filter_reason_counts}'
+       OR (v_winner ->> 'enqueued_at')::timestamptz IS DISTINCT FROM
+          (p_claim #>> '{evidence,tie_break,enqueued_at}')::timestamptz
+       OR (v_winner ->> 'stage_run_id')::uuid <>
+          (p_claim #>> '{evidence,tie_break,stage_run_id}')::uuid
+       OR (v_winner ->> 'stage_profile_revision_id')::uuid <>
+          (p_claim #>> '{evidence,tie_break,stage_profile_revision_id}')::uuid THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            CONSTRAINT = 'stage_scheduler_decision_evidence_stale',
+            MESSAGE = 'StageScheduler decision does not match the captured winner';
+    END IF;
+
+    SELECT organization_deficit.deficit_millis,
+           service_deficit.deficit_millis,
+           project_deficit.deficit_millis
+    INTO v_current_organization_deficit,
+         v_current_service_class_deficit,
+         v_current_project_deficit
+    FROM public.stage_scheduler_organization_deficits AS organization_deficit
+    JOIN public.stage_scheduler_service_class_deficits AS service_deficit
+      ON service_deficit.capacity_pool_id = organization_deficit.capacity_pool_id
+     AND service_deficit.organization_id = organization_deficit.organization_id
+    JOIN public.stage_scheduler_project_deficits AS project_deficit
+      ON project_deficit.capacity_pool_id = service_deficit.capacity_pool_id
+     AND project_deficit.organization_id = service_deficit.organization_id
+     AND project_deficit.service_class_revision_id = service_deficit.service_class_revision_id
+    WHERE organization_deficit.capacity_pool_id = v_trace.capacity_pool_id
+      AND organization_deficit.organization_id = (v_winner ->> 'organization_id')::uuid
+      AND service_deficit.service_class_revision_id =
+          (v_winner ->> 'service_class_revision_id')::uuid
+      AND project_deficit.project_id = (v_winner ->> 'project_id')::uuid
+    FOR SHARE OF organization_deficit, service_deficit, project_deficit;
+    IF NOT FOUND
+       OR v_current_organization_deficit <>
+          (v_winner ->> 'organization_deficit_millis')::bigint
+       OR v_current_service_class_deficit <>
+          (v_winner ->> 'service_class_deficit_millis')::bigint
+       OR v_current_project_deficit <>
+          (v_winner ->> 'project_deficit_millis')::bigint THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '40001',
+            CONSTRAINT = 'stage_scheduler_fairness_snapshot_stale',
+            MESSAGE = 'StageScheduler fairness state changed before claim';
+    END IF;
+
     SELECT ready.* INTO v_ready
     FROM public.stage_ready_queue_entries AS ready
     WHERE ready.stage_run_id = v_stage_run_id
@@ -691,16 +963,79 @@ BEGIN
             ERRCODE = '40001', CONSTRAINT = 'stage_scheduler_candidate_stale',
             MESSAGE = 'StageScheduler candidate changed before claim';
     END IF;
+    BEGIN
+        v_input_payload := decode(p_claim #>> '{evidence,input_payload}', 'hex');
+        v_evidence_payload := decode(p_claim #>> '{evidence,evidence_payload}', 'hex');
+        v_input_semantics := convert_from(v_input_payload, 'UTF8')::jsonb;
+        v_evidence_semantics := convert_from(v_evidence_payload, 'UTF8')::jsonb;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '22023',
+            CONSTRAINT = 'stage_scheduler_digest_payload_invalid',
+            MESSAGE = 'StageScheduler digest payload cannot be decoded';
+    END;
+    IF octet_length(decode(p_claim #>> '{evidence,input_digest}', 'hex')) <> 32
+       OR octet_length(decode(p_claim #>> '{evidence,evidence_digest}', 'hex')) <> 32
+       OR sha256(v_input_payload) <>
+          decode(p_claim #>> '{evidence,input_digest}', 'hex')
+       OR sha256(v_evidence_payload) <>
+          decode(p_claim #>> '{evidence,evidence_digest}', 'hex')
+       OR (v_input_semantics - 'evaluated_at' - 'valid_until' - 'candidates')
+          IS DISTINCT FROM
+          (v_trace.snapshot - 'evaluated_at' - 'valid_until' - 'candidates')
+       OR (v_input_semantics ->> 'evaluated_at')::timestamptz IS DISTINCT FROM
+          (v_trace.snapshot ->> 'evaluated_at')::timestamptz
+       OR (v_input_semantics ->> 'valid_until')::timestamptz IS DISTINCT FROM
+          (v_trace.snapshot ->> 'valid_until')::timestamptz
+       OR jsonb_typeof(v_input_semantics -> 'candidates') <> 'array'
+       OR EXISTS (
+           SELECT 1
+           FROM jsonb_array_elements(v_input_semantics -> 'candidates')
+                WITH ORDINALITY AS supplied(value, ordinal)
+           FULL JOIN jsonb_array_elements(v_trace.snapshot -> 'candidates')
+                WITH ORDINALITY AS captured(value, ordinal)
+             USING (ordinal)
+           WHERE (supplied.value - 'enqueued_at') IS DISTINCT FROM
+                 (captured.value - 'enqueued_at')
+              OR (supplied.value ->> 'enqueued_at')::timestamptz IS DISTINCT FROM
+                 (captured.value ->> 'enqueued_at')::timestamptz
+       )
+       OR v_evidence_semantics IS DISTINCT FROM (
+           (((p_claim -> 'evidence') - 'evidence_digest') - 'input_payload')
+               - 'evidence_payload'
+       ) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '22023',
+            CONSTRAINT = 'stage_scheduler_digest_payload_invalid',
+            MESSAGE = 'StageScheduler digests do not bind the captured decision payloads';
+    END IF;
     IF (p_claim ->> 'claim_expires_at')::timestamptz <= v_now
        OR (p_claim ->> 'claim_expires_at')::timestamptz > v_trace.valid_until
-       OR octet_length(decode(p_claim #>> '{evidence,input_digest}', 'hex')) <> 32
-       OR octet_length(decode(p_claim #>> '{evidence,evidence_digest}', 'hex')) <> 32
        OR (p_claim #>> '{command,stage_run_id}')::uuid <> v_stage_run_id
        OR (p_claim #>> '{command,attempt_id}')::uuid <> v_attempt_id
        OR (p_claim #>> '{command,stage_profile_revision_id}')::uuid <> v_profile_id
        OR (p_claim #>> '{command,capacity_pool_id}')::uuid <> v_trace.capacity_pool_id
        OR (p_claim #>> '{command,worker_instance_id}')::uuid <> v_trace.worker_instance_id
-       OR (p_claim #>> '{command,worker_instance_epoch}')::bigint <> v_trace.worker_instance_epoch THEN
+       OR (p_claim #>> '{command,worker_instance_epoch}')::bigint <> v_trace.worker_instance_epoch
+       OR (p_claim #>> '{command,capacity_observation_sequence}')::bigint <>
+          v_trace.observation_sequence
+       OR (p_claim #>> '{command,expected_attempt_fence}')::bigint <>
+          (p_claim #>> '{evidence,attempt_fence}')::bigint
+       OR (p_claim #>> '{command,expected_stage_fence}')::bigint <>
+          (p_claim #>> '{evidence,stage_fence}')::bigint
+       OR (p_claim #>> '{command,expected_stage_version}')::bigint <>
+          (p_claim #>> '{evidence,stage_version}')::bigint
+       OR decode(p_claim #>> '{command,device_set_digest}', 'hex') <>
+          v_trace.device_set_digest
+       OR decode(p_claim #>> '{command,membership_digest}', 'hex') <>
+          v_trace.membership_digest
+       OR (p_claim #>> '{command,model_residency_id}')::uuid <>
+          v_trace.model_residency_id
+       OR (p_claim #>> '{command,model_runtime_epoch}')::bigint <>
+          v_trace.model_runtime_epoch
+       OR p_claim #> '{command,capacity_vector}' IS DISTINCT FROM v_trace.capacity_vector
+       OR octet_length(decode(p_claim #>> '{command,token_digest}', 'hex')) <> 32
+       OR octet_length(decode(p_claim #>> '{command,execution_nonce}', 'hex')) <> 32 THEN
         RAISE EXCEPTION USING
             ERRCODE = '22023', CONSTRAINT = 'stage_scheduler_claim_authority_invalid',
             MESSAGE = 'StageScheduler claim authority is incomplete';
@@ -738,14 +1073,15 @@ BEGIN
     INSERT INTO public.stage_scheduler_claims (
         id, decision_id, scheduler_id, capacity_pool_id, worker_instance_id,
         stage_run_id, stage_attempt_id, stage_allocation_id, stage_lease_id,
-        command_payload, claimed_at, claim_expires_at
+        evidence_payload, command_payload, claimed_at, claim_expires_at
     ) VALUES (
         v_claim_id, v_decision_id, p_claim ->> 'scheduler_id',
         v_trace.capacity_pool_id, v_trace.worker_instance_id, v_stage_run_id,
         (p_claim #>> '{command,stage_attempt_id}')::uuid,
         (p_claim #>> '{command,stage_allocation_id}')::uuid,
         (p_claim #>> '{command,stage_lease_id}')::uuid,
-        p_claim -> 'command', v_now, (p_claim ->> 'claim_expires_at')::timestamptz
+        p_claim -> 'evidence', p_claim -> 'command', v_now,
+        (p_claim ->> 'claim_expires_at')::timestamptz
     );
     RETURN QUERY SELECT v_claim_id, false;
 END
@@ -769,6 +1105,10 @@ DECLARE
 BEGIN
     SELECT claim.* INTO STRICT v_claim
     FROM public.stage_scheduler_claims AS claim WHERE claim.id = p_claim_id FOR UPDATE;
+    PERFORM 1
+    FROM public.stage_capacity_pool_counters AS counter
+    WHERE counter.capacity_pool_id = v_claim.capacity_pool_id
+    FOR UPDATE;
     IF v_claim.fairness_accounted THEN
         RETURN;
     END IF;
@@ -779,7 +1119,10 @@ BEGIN
     v_project_id := v_decision.project_id;
 
     UPDATE public.stage_scheduler_organization_deficits AS deficit
-    SET deficit_millis = LEAST(604800000, deficit.deficit_millis + v_decision.resource_millis),
+    SET deficit_millis = LEAST(
+            604800000::numeric,
+            deficit.deficit_millis::numeric + v_decision.resource_millis::numeric
+        )::bigint,
         version = deficit.version + 1, updated_at = p_selected_at
     WHERE deficit.capacity_pool_id = v_claim.capacity_pool_id
       AND EXISTS (
@@ -795,9 +1138,10 @@ BEGIN
 
     UPDATE public.stage_scheduler_service_class_deficits AS deficit
     SET deficit_millis = LEAST(
-            604800000,
-            deficit.deficit_millis + v_decision.resource_millis * service_class.queue_weight
-        ),
+            604800000::numeric,
+            deficit.deficit_millis::numeric
+                + v_decision.resource_millis::numeric * service_class.queue_weight::numeric
+        )::bigint,
         version = deficit.version + 1, updated_at = p_selected_at
     FROM public.service_class_revisions AS service_class
     WHERE deficit.capacity_pool_id = v_claim.capacity_pool_id
@@ -817,7 +1161,10 @@ BEGIN
       AND service_class_revision_id = v_service_class_id;
 
     UPDATE public.stage_scheduler_project_deficits AS deficit
-    SET deficit_millis = LEAST(604800000, deficit.deficit_millis + v_decision.resource_millis),
+    SET deficit_millis = LEAST(
+            604800000::numeric,
+            deficit.deficit_millis::numeric + v_decision.resource_millis::numeric
+        )::bigint,
         version = deficit.version + 1, updated_at = p_selected_at
     WHERE deficit.capacity_pool_id = v_claim.capacity_pool_id
       AND deficit.organization_id = v_organization_id
@@ -873,6 +1220,10 @@ BEGIN
             ERRCODE = '40001', CONSTRAINT = 'stage_scheduler_claim_commit_stale',
             MESSAGE = 'StageScheduler claim cannot commit without the exact StageAttempt';
     END IF;
+    PERFORM 1
+    FROM public.stage_capacity_pool_counters AS counter
+    WHERE counter.capacity_pool_id = v_claim.capacity_pool_id
+    FOR UPDATE;
     PERFORM public.vela_account_stage_scheduler_fairness(v_claim.id, v_now);
     UPDATE public.stage_scheduler_claims
     SET state = 'COMMITTED', committed_at = v_now, fairness_accounted = true,
@@ -916,6 +1267,10 @@ BEGIN
             ERRCODE = '40001', CONSTRAINT = 'stage_scheduler_claim_abandon_stale',
             MESSAGE = 'StageScheduler claim cannot abandon committed physical authority';
     END IF;
+    PERFORM 1
+    FROM public.stage_capacity_pool_counters AS counter
+    WHERE counter.capacity_pool_id = v_claim.capacity_pool_id
+    FOR UPDATE;
     UPDATE public.stage_scheduler_claims
     SET state = 'ABANDONED', abandoned_at = v_now, abandon_reason = p_reason,
         updated_at = v_now
@@ -946,10 +1301,14 @@ BEGIN
         SELECT claim.*
         FROM public.stage_scheduler_claims AS claim
         WHERE claim.state = 'CLAIMED' AND claim.claim_expires_at <= v_now
-        ORDER BY claim.claim_expires_at, claim.id
+        ORDER BY claim.capacity_pool_id, claim.claim_expires_at, claim.id
         FOR UPDATE SKIP LOCKED
         LIMIT p_limit
     LOOP
+        PERFORM 1
+        FROM public.stage_capacity_pool_counters AS counter
+        WHERE counter.capacity_pool_id = v_claim.capacity_pool_id
+        FOR UPDATE;
         IF EXISTS (
             SELECT 1 FROM public.stage_attempts AS attempt
             WHERE attempt.id = v_claim.stage_attempt_id
@@ -1028,8 +1387,37 @@ DECLARE
     v_matched boolean := (p_receipt ->> 'matched')::boolean;
     v_replayed_at timestamptz := (p_receipt ->> 'replayed_at')::timestamptz;
     v_replayed_by text := p_receipt ->> 'replayed_by';
+    v_trace public.stage_scheduler_snapshot_traces%ROWTYPE;
+    v_persisted_evidence_digest bytea;
     v_existing public.stage_scheduler_shadow_replay_receipts%ROWTYPE;
 BEGIN
+    SELECT trace.* INTO v_trace
+    FROM public.stage_scheduler_snapshot_traces AS trace
+    WHERE trace.id = v_snapshot_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '23503',
+            CONSTRAINT = 'stage_scheduler_shadow_receipt_invalid',
+            MESSAGE = 'Shadow receipt snapshot does not exist';
+    END IF;
+    SELECT decision.evidence_digest INTO v_persisted_evidence_digest
+    FROM public.stage_decision_evidence AS decision
+    WHERE decision.snapshot_trace_id = v_snapshot_id;
+    IF NOT FOUND OR v_algorithm_revision IS DISTINCT FROM v_trace.algorithm_revision
+       OR v_expected_evidence_digest IS DISTINCT FROM v_persisted_evidence_digest
+       OR v_matched IS DISTINCT FROM
+          (v_expected_evidence_digest = v_replayed_evidence_digest) THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '22023',
+            CONSTRAINT = 'stage_scheduler_shadow_receipt_invalid',
+            MESSAGE = 'Shadow receipt does not match persisted decision evidence';
+    END IF;
+    IF NOT v_matched THEN
+        PERFORM counter.capacity_pool_id
+        FROM public.stage_capacity_pool_counters AS counter
+        ORDER BY counter.capacity_pool_id
+        FOR UPDATE;
+    END IF;
     SELECT receipt.* INTO v_existing
     FROM public.stage_scheduler_shadow_replay_receipts AS receipt
     WHERE receipt.id = v_id;
@@ -1057,6 +1445,15 @@ BEGIN
         v_expected_evidence_digest, v_replayed_evidence_digest,
         v_matched, v_replayed_at, v_replayed_by
     );
+    IF NOT v_matched THEN
+        INSERT INTO public.stage_scheduler_activation_stops (
+            algorithm_revision, snapshot_trace_id, expected_evidence_digest,
+            replayed_evidence_digest, stopped_at, stopped_by
+        ) VALUES (
+            v_algorithm_revision, v_snapshot_id, v_expected_evidence_digest,
+            v_replayed_evidence_digest, v_replayed_at, v_replayed_by
+        ) ON CONFLICT (algorithm_revision) DO NOTHING;
+    END IF;
     RETURN QUERY SELECT v_id, false;
 END
 $$;
@@ -1084,6 +1481,8 @@ ALTER TABLE stage_scheduler_claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stage_scheduler_claims FORCE ROW LEVEL SECURITY;
 ALTER TABLE stage_scheduler_shadow_replay_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stage_scheduler_shadow_replay_receipts FORCE ROW LEVEL SECURITY;
+ALTER TABLE stage_scheduler_activation_stops ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stage_scheduler_activation_stops FORCE ROW LEVEL SECURITY;
 
 GRANT USAGE ON SCHEMA public TO vela_stage_scheduler, vela_stage_scheduler_owner;
 GRANT SELECT, INSERT, UPDATE, DELETE ON
@@ -1091,7 +1490,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
     stage_scheduler_organization_deficits, stage_scheduler_service_class_deficits,
     stage_scheduler_project_deficits, stage_scheduler_snapshot_traces,
     stage_decision_evidence, stage_scheduler_claims,
-    stage_scheduler_shadow_replay_receipts
+    stage_scheduler_shadow_replay_receipts, stage_scheduler_activation_stops
 TO vela_stage_scheduler_owner;
 GRANT SELECT ON
     capacity_pools, worker_instances, model_residencies, capacity_observations,
@@ -1116,7 +1515,8 @@ BEGIN
     IF EXISTS (SELECT 1 FROM stage_scheduler_snapshot_traces)
        OR EXISTS (SELECT 1 FROM stage_decision_evidence)
        OR EXISTS (SELECT 1 FROM stage_scheduler_claims)
-       OR EXISTS (SELECT 1 FROM stage_scheduler_shadow_replay_receipts) THEN
+       OR EXISTS (SELECT 1 FROM stage_scheduler_shadow_replay_receipts)
+       OR EXISTS (SELECT 1 FROM stage_scheduler_activation_stops) THEN
         RAISE EXCEPTION USING
             ERRCODE = '55000',
             CONSTRAINT = 'stage_scheduler_rollback_is_unsafe',
@@ -1160,6 +1560,8 @@ DROP FUNCTION vela_refresh_stage_capacity_pool_counter(uuid);
 
 DROP TRIGGER stage_scheduler_shadow_replay_receipts_immutable
     ON stage_scheduler_shadow_replay_receipts;
+DROP TRIGGER stage_scheduler_activation_stops_immutable
+    ON stage_scheduler_activation_stops;
 DROP TRIGGER stage_decision_evidence_immutable ON stage_decision_evidence;
 DROP TRIGGER stage_scheduler_snapshot_traces_immutable ON stage_scheduler_snapshot_traces;
 DROP FUNCTION vela_reject_stage_scheduler_evidence_mutation();
@@ -1174,6 +1576,7 @@ REVOKE EXECUTE ON FUNCTION vela_worker_instance_authority_matches(
     uuid,bigint,bytea,bytea,uuid,bigint
 ) FROM vela_stage_scheduler_owner;
 
+DROP TABLE stage_scheduler_activation_stops;
 DROP TABLE stage_scheduler_shadow_replay_receipts;
 DROP TABLE stage_scheduler_claims;
 DROP TABLE stage_decision_evidence;

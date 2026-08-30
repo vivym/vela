@@ -1323,6 +1323,48 @@ ALTER FUNCTION vela_private.vela_begin_stage_graph_finalization(
     uuid, uuid, timestamptz
 ) OWNER TO vela_attempt_coordinator_owner;
 
+CREATE FUNCTION vela_lock_exact_capacity_observation(
+    p_worker_instance_id uuid,
+    p_worker_instance_epoch bigint,
+    p_observation_sequence bigint,
+    p_capacity_vector jsonb
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    PERFORM 1
+    FROM public.worker_instances AS worker
+    WHERE worker.id = p_worker_instance_id
+      AND worker.instance_epoch = p_worker_instance_epoch
+    FOR SHARE;
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+    RETURN EXISTS (
+        SELECT 1
+        FROM public.capacity_observations AS observation
+        WHERE observation.worker_instance_id = p_worker_instance_id
+          AND observation.worker_instance_epoch = p_worker_instance_epoch
+          AND observation.observation_sequence = p_observation_sequence
+          AND observation.capacity_vector = p_capacity_vector
+          AND observation.expires_at > clock_timestamp()
+    ) AND NOT EXISTS (
+        SELECT 1
+        FROM public.capacity_observations AS observation
+        WHERE observation.worker_instance_id = p_worker_instance_id
+          AND observation.observation_sequence > p_observation_sequence
+    );
+END
+$$;
+REVOKE ALL ON FUNCTION vela_lock_exact_capacity_observation(
+    uuid, bigint, bigint, jsonb
+) FROM PUBLIC;
+ALTER FUNCTION vela_lock_exact_capacity_observation(
+    uuid, bigint, bigint, jsonb
+) OWNER TO vela_fleet_owner;
+
 CREATE FUNCTION vela_apply_stage_command(p_command jsonb)
 RETURNS TABLE (
     stage_run_id uuid,
@@ -1351,6 +1393,7 @@ DECLARE
     v_capacity_pool_id uuid;
     v_worker_id uuid;
     v_worker_epoch bigint;
+    v_capacity_observation_sequence bigint;
     v_device_set_digest bytea;
     v_membership_digest bytea;
     v_residency_id uuid;
@@ -2265,6 +2308,8 @@ BEGIN
     v_capacity_pool_id := (p_command ->> 'capacity_pool_id')::uuid;
     v_worker_id := (p_command ->> 'worker_instance_id')::uuid;
     v_worker_epoch := (p_command ->> 'worker_instance_epoch')::bigint;
+    v_capacity_observation_sequence :=
+        (p_command ->> 'capacity_observation_sequence')::bigint;
     v_device_set_digest := decode(p_command ->> 'device_set_digest', 'hex');
     v_membership_digest := decode(p_command ->> 'membership_digest', 'hex');
     v_residency_id := (p_command ->> 'model_residency_id')::uuid;
@@ -2280,6 +2325,7 @@ BEGIN
        OR v_expected_stage_version <= 0 OR v_stage_attempt_id IS NULL
        OR v_allocation_id IS NULL OR v_lease_id IS NULL OR v_profile_id IS NULL
        OR v_capacity_pool_id IS NULL OR v_worker_id IS NULL OR v_worker_epoch <= 0
+       OR v_capacity_observation_sequence <= 0
        OR octet_length(v_device_set_digest) <> 32
        OR octet_length(v_membership_digest) <> 32 OR v_residency_id IS NULL
        OR v_model_runtime_epoch <= 0 OR octet_length(v_token_digest) <> 32
@@ -2382,6 +2428,10 @@ BEGIN
        OR NOT public.vela_worker_instance_authority_matches(
            v_worker_id, v_worker_epoch, v_device_set_digest, v_membership_digest,
            v_residency_id, v_model_runtime_epoch
+       )
+       OR NOT public.vela_lock_exact_capacity_observation(
+           v_worker_id, v_worker_epoch, v_capacity_observation_sequence,
+           p_command -> 'capacity_vector'
        ) THEN
         RAISE EXCEPTION USING
             ERRCODE = '55000',
@@ -3516,6 +3566,9 @@ TO vela_attempt_coordinator_owner;
 GRANT EXECUTE ON FUNCTION vela_worker_instance_authority_matches(
     uuid, bigint, bytea, bytea, uuid, bigint
 ) TO vela_attempt_coordinator_owner;
+GRANT EXECUTE ON FUNCTION vela_lock_exact_capacity_observation(
+    uuid, bigint, bigint, jsonb
+) TO vela_attempt_coordinator_owner;
 GRANT EXECUTE ON FUNCTION vela_current_organization_id(),
     vela_current_project_id(), vela_current_principal_id(),
     vela_current_request_scope()
@@ -3581,6 +3634,10 @@ DROP FUNCTION vela_private.vela_insert_stage_graph_canceled_event(
 );
 REVOKE EXECUTE ON FUNCTION vela_apply_stage_command(jsonb) FROM vela_attempt_coordinator;
 DROP FUNCTION vela_apply_stage_command(jsonb);
+REVOKE EXECUTE ON FUNCTION vela_lock_exact_capacity_observation(
+    uuid, bigint, bigint, jsonb
+) FROM vela_attempt_coordinator_owner;
+DROP FUNCTION vela_lock_exact_capacity_observation(uuid, bigint, bigint, jsonb);
 DROP FUNCTION vela_private.vela_begin_stage_graph_finalization(
     uuid, uuid, timestamptz
 );

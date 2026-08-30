@@ -51,6 +51,7 @@ type AssignStageCommand struct {
 	CapacityPoolID         uuid.UUID
 	WorkerInstanceID       uuid.UUID
 	WorkerInstanceEpoch    int64
+	ObservationSequence    int64
 	DeviceSetDigest        []byte
 	MembershipDigest       []byte
 	ModelResidencyID       uuid.UUID
@@ -443,7 +444,7 @@ func encodeAssign(command AssignStageCommand) ([]byte, error) {
 	}
 	if command.ExpectedAttemptFence <= 0 || command.ExpectedStageFence <= 0 ||
 		command.ExpectedStageVersion <= 0 || command.WorkerInstanceEpoch <= 0 ||
-		command.ModelRuntimeEpoch <= 0 {
+		command.ObservationSequence <= 0 || command.ModelRuntimeEpoch <= 0 {
 		return nil, errors.New("AttemptCoordinator assignment fences or epochs are invalid")
 	}
 	if len(command.DeviceSetDigest) != 32 || len(command.MembershipDigest) != 32 ||
@@ -457,32 +458,33 @@ func encodeAssign(command AssignStageCommand) ([]byte, error) {
 		return nil, errors.New("AttemptCoordinator assignment deadline is invalid")
 	}
 	return json.Marshal(map[string]any{
-		"schema_version":            1,
-		"command_kind":              "ASSIGN",
-		"command_id":                command.CommandID,
-		"attempt_id":                command.AttemptID,
-		"stage_run_id":              command.StageRunID,
-		"expected_attempt_fence":    command.ExpectedAttemptFence,
-		"expected_stage_fence":      command.ExpectedStageFence,
-		"expected_stage_version":    command.ExpectedStageVersion,
-		"stage_attempt_id":          command.StageAttemptID,
-		"stage_allocation_id":       command.StageAllocationID,
-		"stage_lease_id":            command.StageLeaseID,
-		"stage_profile_revision_id": command.StageProfileRevisionID,
-		"capacity_pool_id":          command.CapacityPoolID,
-		"worker_instance_id":        command.WorkerInstanceID,
-		"worker_instance_epoch":     command.WorkerInstanceEpoch,
-		"device_set_digest":         hex.EncodeToString(command.DeviceSetDigest),
-		"membership_digest":         hex.EncodeToString(command.MembershipDigest),
-		"model_residency_id":        command.ModelResidencyID,
-		"model_runtime_epoch":       command.ModelRuntimeEpoch,
-		"capacity_vector":           command.CapacityVector,
-		"token_digest":              hex.EncodeToString(command.TokenDigest),
-		"signing_key_id":            command.SigningKeyID,
-		"execution_nonce":           hex.EncodeToString(command.ExecutionNonce),
-		"issued_at":                 command.IssuedAt.UTC().Format(time.RFC3339Nano),
-		"expires_at":                command.ExpiresAt.UTC().Format(time.RFC3339Nano),
-		"local_deadline_at":         command.LocalDeadlineAt.UTC().Format(time.RFC3339Nano),
+		"schema_version":                1,
+		"command_kind":                  "ASSIGN",
+		"command_id":                    command.CommandID,
+		"attempt_id":                    command.AttemptID,
+		"stage_run_id":                  command.StageRunID,
+		"expected_attempt_fence":        command.ExpectedAttemptFence,
+		"expected_stage_fence":          command.ExpectedStageFence,
+		"expected_stage_version":        command.ExpectedStageVersion,
+		"stage_attempt_id":              command.StageAttemptID,
+		"stage_allocation_id":           command.StageAllocationID,
+		"stage_lease_id":                command.StageLeaseID,
+		"stage_profile_revision_id":     command.StageProfileRevisionID,
+		"capacity_pool_id":              command.CapacityPoolID,
+		"worker_instance_id":            command.WorkerInstanceID,
+		"worker_instance_epoch":         command.WorkerInstanceEpoch,
+		"capacity_observation_sequence": command.ObservationSequence,
+		"device_set_digest":             hex.EncodeToString(command.DeviceSetDigest),
+		"membership_digest":             hex.EncodeToString(command.MembershipDigest),
+		"model_residency_id":            command.ModelResidencyID,
+		"model_runtime_epoch":           command.ModelRuntimeEpoch,
+		"capacity_vector":               command.CapacityVector,
+		"token_digest":                  hex.EncodeToString(command.TokenDigest),
+		"signing_key_id":                command.SigningKeyID,
+		"execution_nonce":               hex.EncodeToString(command.ExecutionNonce),
+		"issued_at":                     command.IssuedAt.UTC().Format(time.RFC3339Nano),
+		"expires_at":                    command.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		"local_deadline_at":             command.LocalDeadlineAt.UTC().Format(time.RFC3339Nano),
 	})
 }
 

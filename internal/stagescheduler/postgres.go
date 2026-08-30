@@ -240,7 +240,14 @@ func encodeClaimRequest(request ClaimRequest) ([]byte, error) {
 		request.ClaimExpiresAt.IsZero() {
 		return nil, errors.New("StageScheduler claim identity is incomplete")
 	}
+	if len(request.Evidence.inputPayload) == 0 || len(request.Evidence.evidencePayload) == 0 {
+		return nil, errors.New("StageScheduler digest payloads are missing")
+	}
 	command := request.Command
+	evidence := decisionEvidenceDigestPayload(request.Evidence)
+	evidence["evidence_digest"] = hex.EncodeToString(request.Evidence.EvidenceDigest[:])
+	evidence["input_payload"] = hex.EncodeToString(request.Evidence.inputPayload)
+	evidence["evidence_payload"] = hex.EncodeToString(request.Evidence.evidencePayload)
 	payload := map[string]any{
 		"schema_version":       1,
 		"claim_id":             request.ClaimID,
@@ -248,32 +255,8 @@ func encodeClaimRequest(request ClaimRequest) ([]byte, error) {
 		"captured_snapshot_id": request.CapturedSnapshotID,
 		"scheduler_id":         request.SchedulerID,
 		"claim_expires_at":     request.ClaimExpiresAt.UTC().Format(time.RFC3339Nano),
-		"evidence": map[string]any{
-			"algorithm_revision":                 request.Evidence.AlgorithmRevision,
-			"input_digest":                       hex.EncodeToString(request.Evidence.InputDigest[:]),
-			"evidence_digest":                    hex.EncodeToString(request.Evidence.EvidenceDigest[:]),
-			"capacity_pool_id":                   request.Evidence.CapacityPoolID,
-			"worker_instance_id":                 request.Evidence.WorkerInstanceID,
-			"selected_stage_run_id":              request.Evidence.SelectedStageRunID,
-			"selected_attempt_id":                request.Evidence.SelectedAttemptID,
-			"selected_stage_profile_revision_id": request.Evidence.SelectedStageProfileRevisionID,
-			"organization_id":                    request.Evidence.OrganizationID,
-			"service_class_revision_id":          request.Evidence.ServiceClassRevisionID,
-			"project_id":                         request.Evidence.ProjectID,
-			"attempt_fence":                      request.Evidence.AttemptFence,
-			"stage_fence":                        request.Evidence.StageFence,
-			"stage_version":                      request.Evidence.StageVersion,
-			"lane":                               request.Evidence.Lane,
-			"resource_millis":                    request.Evidence.ResourceMillis,
-			"organization_deficit_millis":        request.Evidence.OrganizationDeficitMillis,
-			"service_class_deficit_millis":       request.Evidence.ServiceClassDeficitMillis,
-			"project_deficit_millis":             request.Evidence.ProjectDeficitMillis,
-			"score":                              request.Evidence.Score,
-			"score_total_millis":                 request.Evidence.ScoreTotalMillis,
-			"filter_reason_counts":               request.Evidence.FilterReasonCounts,
-			"tie_break":                          request.Evidence.TieBreak,
-		},
-		"command": encodeAssignmentCommand(command),
+		"evidence":             evidence,
+		"command":              encodeAssignmentCommand(command),
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -284,31 +267,32 @@ func encodeClaimRequest(request ClaimRequest) ([]byte, error) {
 
 func encodeAssignmentCommand(command attemptcoordinator.AssignStageCommand) map[string]any {
 	return map[string]any{
-		"schema_version":            1,
-		"command_kind":              "ASSIGN",
-		"command_id":                command.CommandID,
-		"attempt_id":                command.AttemptID,
-		"stage_run_id":              command.StageRunID,
-		"expected_attempt_fence":    command.ExpectedAttemptFence,
-		"expected_stage_fence":      command.ExpectedStageFence,
-		"expected_stage_version":    command.ExpectedStageVersion,
-		"stage_attempt_id":          command.StageAttemptID,
-		"stage_allocation_id":       command.StageAllocationID,
-		"stage_lease_id":            command.StageLeaseID,
-		"stage_profile_revision_id": command.StageProfileRevisionID,
-		"capacity_pool_id":          command.CapacityPoolID,
-		"worker_instance_id":        command.WorkerInstanceID,
-		"worker_instance_epoch":     command.WorkerInstanceEpoch,
-		"device_set_digest":         hex.EncodeToString(command.DeviceSetDigest),
-		"membership_digest":         hex.EncodeToString(command.MembershipDigest),
-		"model_residency_id":        command.ModelResidencyID,
-		"model_runtime_epoch":       command.ModelRuntimeEpoch,
-		"capacity_vector":           command.CapacityVector,
-		"token_digest":              hex.EncodeToString(command.TokenDigest),
-		"signing_key_id":            command.SigningKeyID,
-		"execution_nonce":           hex.EncodeToString(command.ExecutionNonce),
-		"issued_at":                 command.IssuedAt.UTC().Format(time.RFC3339Nano),
-		"expires_at":                command.ExpiresAt.UTC().Format(time.RFC3339Nano),
-		"local_deadline_at":         command.LocalDeadlineAt.UTC().Format(time.RFC3339Nano),
+		"schema_version":                1,
+		"command_kind":                  "ASSIGN",
+		"command_id":                    command.CommandID,
+		"attempt_id":                    command.AttemptID,
+		"stage_run_id":                  command.StageRunID,
+		"expected_attempt_fence":        command.ExpectedAttemptFence,
+		"expected_stage_fence":          command.ExpectedStageFence,
+		"expected_stage_version":        command.ExpectedStageVersion,
+		"stage_attempt_id":              command.StageAttemptID,
+		"stage_allocation_id":           command.StageAllocationID,
+		"stage_lease_id":                command.StageLeaseID,
+		"stage_profile_revision_id":     command.StageProfileRevisionID,
+		"capacity_pool_id":              command.CapacityPoolID,
+		"worker_instance_id":            command.WorkerInstanceID,
+		"worker_instance_epoch":         command.WorkerInstanceEpoch,
+		"capacity_observation_sequence": command.ObservationSequence,
+		"device_set_digest":             hex.EncodeToString(command.DeviceSetDigest),
+		"membership_digest":             hex.EncodeToString(command.MembershipDigest),
+		"model_residency_id":            command.ModelResidencyID,
+		"model_runtime_epoch":           command.ModelRuntimeEpoch,
+		"capacity_vector":               command.CapacityVector,
+		"token_digest":                  hex.EncodeToString(command.TokenDigest),
+		"signing_key_id":                command.SigningKeyID,
+		"execution_nonce":               hex.EncodeToString(command.ExecutionNonce),
+		"issued_at":                     command.IssuedAt.UTC().Format(time.RFC3339Nano),
+		"expires_at":                    command.ExpiresAt.UTC().Format(time.RFC3339Nano),
+		"local_deadline_at":             command.LocalDeadlineAt.UTC().Format(time.RFC3339Nano),
 	}
 }
