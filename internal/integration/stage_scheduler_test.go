@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -1368,6 +1369,8 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 	}
 	evidence := workerRegistryEvidenceValue(t, workerID, 0xc2)
 	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
+	workerSPIFFEDigest := sha256.Sum256([]byte("spiffe://vela/worker/" + workerID.String()))
+	evidence.Members[0].IdentityDigest = hex.EncodeToString(workerSPIFFEDigest[:])
 	registry, err := fleet.NewService(newRolePool(
 		t, database.DSN, "vela_internal_login", "vela-internal-password",
 	))
