@@ -1,0 +1,211 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-lab-worker-agent-1
+  namespace: vela-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-worker-agent-1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-worker-agent-1
+        app.kubernetes.io/component: worker-agent
+        vela.ai/environment: non-production-lab
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: vela-lab-worker-1
+      tolerations:
+        - key: vela.ai/h3
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker-agent
+          image: __WORKER_AGENT_IMAGE__
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: VELA_WORKER_ID, value: "84000000-0000-0000-0000-000000000101"}
+            - {name: VELA_WORKER_EPOCH, value: "1"}
+            - {name: VELA_WORKER_NODE_IDENTITY, value: "vela-lab-worker-1"}
+            - {name: VELA_WORKER_CONTROL_ADDRESS, value: "vela-lab-control.vela-lab.svc:8443"}
+            - {name: VELA_WORKER_CONTROL_SERVER_NAME, value: "vela-lab-control.vela-lab.svc"}
+            - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-worker/tls.crt"}
+            - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-worker/tls.key"}
+            - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-worker/ca.crt"}
+            - {name: VELA_WORKER_RUNNER_SOCKET, value: "/run/vela-runner/runner.sock"}
+            - {name: VELA_WORKER_RUNNER_EXPECTED_UID, value: "10001"}
+            - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/worker/scratch"}
+            - {name: VELA_WORKER_RECOVERY_ROOT, value: "/var/lib/vela/worker/scratch/agent-recovery"}
+            - {name: VELA_WORKER_OUTPUT_ROOT, value: "/var/lib/vela/worker/scratch/outputs"}
+            - {name: VELA_WORKER_OUTPUT_OWNER_UID, value: "10001"}
+            - {name: VELA_WORKER_OUTPUT_CLEANUP_MIN_BYTES_PER_SECOND, value: "1048576"}
+            - {name: VELA_WORKER_INFERENCE_BACKEND_REVISION, value: "mock-h3-backend@sha256:765077057011f16f852886601235f066dff7a89d3127719a5ae3c38206c7aee6"}
+            - {name: VELA_WORKER_ARTIFACT_STORE_HEALTH_URL, value: "http://vela-lab-minio.vela-lab.svc:9000/minio/health/live"}
+            - {name: VELA_WORKER_SCRATCH_PROBE, value: "statfs-dev"}
+            - {name: VELA_WORKER_ALLOW_DEVELOPMENT_HTTP_UPLOADS, value: "true"}
+            - {name: VELA_WORKER_ATTEMPT_QUOTA_BYTES, value: "2147483648"}
+            - {name: VELA_WORKER_MAX_ENTRY_BYTES, value: "16777216"}
+            - {name: VELA_WORKER_MAX_ENTRIES, value: "4096"}
+            - {name: VELA_WORKER_HIGH_WATERMARK_BYTES, value: "644245094400"}
+            - {name: VELA_WORKER_LOW_WATERMARK_BYTES, value: "536870912000"}
+            - {name: VELA_WORKER_CRITICAL_FREE_BYTES, value: "107374182400"}
+            - {name: VELA_WORKER_TERMINAL_RETENTION, value: "1h"}
+            - {name: VELA_WORKER_HEARTBEAT_INTERVAL, value: "2s"}
+            - {name: VELA_WORKER_CAPACITY_REPORT_INTERVAL, value: "5s"}
+            - {name: VELA_WORKER_POLL_INTERVAL, value: "500ms"}
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/vela-worker
+              readOnly: true
+            - name: runner-socket
+              mountPath: /run/vela-runner
+            - name: scratch
+              mountPath: /var/lib/vela/worker/scratch
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tls
+          secret:
+            secretName: vela-lab-worker-1-tls
+            defaultMode: 0400
+        - name: runner-socket
+          hostPath:
+            path: /var/lib/vela-lab/mock-runner/run
+            type: Directory
+        - name: scratch
+          hostPath:
+            path: /var/lib/vela-lab/mock-runner/scratch
+            type: Directory
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-lab-worker-agent-2
+  namespace: vela-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-worker-agent-2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-worker-agent-2
+        app.kubernetes.io/component: worker-agent
+        vela.ai/environment: non-production-lab
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: vela-lab-worker-2
+      tolerations:
+        - key: vela.ai/h3
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker-agent
+          image: __WORKER_AGENT_IMAGE__
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: VELA_WORKER_ID, value: "84000000-0000-0000-0000-000000000102"}
+            - {name: VELA_WORKER_EPOCH, value: "1"}
+            - {name: VELA_WORKER_NODE_IDENTITY, value: "vela-lab-worker-2"}
+            - {name: VELA_WORKER_CONTROL_ADDRESS, value: "vela-lab-control.vela-lab.svc:8443"}
+            - {name: VELA_WORKER_CONTROL_SERVER_NAME, value: "vela-lab-control.vela-lab.svc"}
+            - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-worker/tls.crt"}
+            - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-worker/tls.key"}
+            - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-worker/ca.crt"}
+            - {name: VELA_WORKER_RUNNER_SOCKET, value: "/run/vela-runner/runner.sock"}
+            - {name: VELA_WORKER_RUNNER_EXPECTED_UID, value: "10001"}
+            - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/worker/scratch"}
+            - {name: VELA_WORKER_RECOVERY_ROOT, value: "/var/lib/vela/worker/scratch/agent-recovery"}
+            - {name: VELA_WORKER_OUTPUT_ROOT, value: "/var/lib/vela/worker/scratch/outputs"}
+            - {name: VELA_WORKER_OUTPUT_OWNER_UID, value: "10001"}
+            - {name: VELA_WORKER_OUTPUT_CLEANUP_MIN_BYTES_PER_SECOND, value: "1048576"}
+            - {name: VELA_WORKER_INFERENCE_BACKEND_REVISION, value: "mock-h3-backend@sha256:765077057011f16f852886601235f066dff7a89d3127719a5ae3c38206c7aee6"}
+            - {name: VELA_WORKER_ARTIFACT_STORE_HEALTH_URL, value: "http://vela-lab-minio.vela-lab.svc:9000/minio/health/live"}
+            - {name: VELA_WORKER_SCRATCH_PROBE, value: "statfs-dev"}
+            - {name: VELA_WORKER_ALLOW_DEVELOPMENT_HTTP_UPLOADS, value: "true"}
+            - {name: VELA_WORKER_ATTEMPT_QUOTA_BYTES, value: "2147483648"}
+            - {name: VELA_WORKER_MAX_ENTRY_BYTES, value: "16777216"}
+            - {name: VELA_WORKER_MAX_ENTRIES, value: "4096"}
+            - {name: VELA_WORKER_HIGH_WATERMARK_BYTES, value: "644245094400"}
+            - {name: VELA_WORKER_LOW_WATERMARK_BYTES, value: "536870912000"}
+            - {name: VELA_WORKER_CRITICAL_FREE_BYTES, value: "107374182400"}
+            - {name: VELA_WORKER_TERMINAL_RETENTION, value: "1h"}
+            - {name: VELA_WORKER_HEARTBEAT_INTERVAL, value: "2s"}
+            - {name: VELA_WORKER_CAPACITY_REPORT_INTERVAL, value: "5s"}
+            - {name: VELA_WORKER_POLL_INTERVAL, value: "500ms"}
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/vela-worker
+              readOnly: true
+            - name: runner-socket
+              mountPath: /run/vela-runner
+            - name: scratch
+              mountPath: /var/lib/vela/worker/scratch
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tls
+          secret:
+            secretName: vela-lab-worker-2-tls
+            defaultMode: 0400
+        - name: runner-socket
+          hostPath:
+            path: /var/lib/vela-lab/mock-runner/run
+            type: Directory
+        - name: scratch
+          hostPath:
+            path: /var/lib/vela-lab/mock-runner/scratch
+            type: Directory
+        - name: tmp
+          emptyDir: {}

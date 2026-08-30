@@ -524,6 +524,7 @@ func TestArtifactUploadClaimAbortsOrphanAndResumesWinningMultipartSession(t *tes
 		workercontrol.LeaseCredentials{
 			AttemptID: uuid.New(), WorkerEpoch: 2, Fence: 3, Token: "lease-token",
 		},
+		uploadID,
 		uuid.New(),
 		workercontrol.ArtifactUploadClaim{
 			Decision: workercontrol.ArtifactUploadClaimGranted,
@@ -542,6 +543,51 @@ func TestArtifactUploadClaimAbortsOrphanAndResumesWinningMultipartSession(t *tes
 		len(uploadStore.aborted) != 1 || uploadStore.aborted[0].UploadID != "orphan-session" ||
 		len(uploadStore.created) != 1 {
 		t.Fatalf("resumed claim = %#v store = %#v", claim, uploadStore)
+	}
+}
+
+func TestArtifactUploadClaimReplaysPersistedUploadReceipt(t *testing.T) {
+	uploadID := uuid.New()
+	artifactID := uuid.New()
+	claimID := uuid.New()
+	partDigest := sha256.Sum256([]byte("persisted-upload-part"))
+	checksum := base64.StdEncoding.EncodeToString(partDigest[:])
+	coordinator := &recordingFinalizationCoordinator{
+		inspection: &workercontrol.ArtifactUploadStatus{
+			Decision: workercontrol.ArtifactUploadStatusFound,
+			UploadID: uploadID, ArtifactID: artifactID, State: workercontrol.ArtifactUploadStateUploaded,
+			ObjectKey:           "artifacts/org/project/job/attempt/artifact/video.mp4",
+			ExpectedContentType: "video/mp4", MultipartUploadID: "completed-session",
+			CompletedParts: []workercontrol.ArtifactUploadPart{{
+				Number: 1, ETag: "persisted-etag", SizeBytes: 21, ChecksumSHA256: checksum,
+			}},
+			ObjectVersionID: "persisted-version",
+			UploadExpiresAt: time.Now().Add(10 * time.Minute), Version: 7,
+		},
+	}
+	uploadStore := &recordingArtifactUploadStore{}
+	server := &Server{coordinator: coordinator, uploadStore: uploadStore}
+	claim, err := server.prepareArtifactUploadClaim(
+		context.Background(),
+		workercontrol.AuthenticatedWorker{ID: uuid.New()},
+		workercontrol.LeaseCredentials{
+			AttemptID: uuid.New(), WorkerEpoch: 2, Fence: 3, Token: "lease-token",
+		},
+		uploadID,
+		claimID,
+		workercontrol.ArtifactUploadClaim{Decision: workercontrol.ArtifactUploadClaimBusy},
+		&artifactUploadPartIntent{number: 1, sizeBytes: 21, digest: partDigest},
+	)
+	if err != nil {
+		t.Fatalf("prepare replayed Artifact upload claim: %v", err)
+	}
+	if claim.GetDecision() != string(workercontrol.ArtifactUploadClaimGranted) ||
+		claim.GetClaimId() != claimID.String() || claim.GetUploadId() != uploadID.String() ||
+		claim.GetArtifactId() != artifactID.String() || claim.GetMultipartUploadId() != "completed-session" ||
+		!claim.GetPartAlreadyUploaded() || claim.GetUploadPart() != nil ||
+		len(claim.GetCompletedParts()) != 1 || claim.GetCompletedParts()[0].GetEtag() != "persisted-etag" ||
+		uploadStore.listed != 0 || len(uploadStore.created) != 0 || len(uploadStore.presigned) != 0 {
+		t.Fatalf("replayed persisted claim = %#v store = %#v", claim, uploadStore)
 	}
 }
 

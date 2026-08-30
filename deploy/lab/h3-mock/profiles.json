@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "backend_revision": "mock-h3-backend@sha256:765077057011f16f852886601235f066dff7a89d3127719a5ae3c38206c7aee6",
+  "profiles": [
+    {
+      "model_revision_id": "84000000-0000-0000-0000-000000000004",
+      "generation_preset_revision_id": "84000000-0000-0000-0000-000000000005",
+      "execution_profile_revision_id": "84000000-0000-0000-0000-000000000006",
+      "output_spec_id": "84000000-0000-0000-0000-000000000007"
+    }
+  ]
+}

@@ -23,6 +23,14 @@ group "vela-all" {
   ]
 }
 
+group "vela-lab" {
+  targets = [
+    "vela-lab-bootstrap",
+    "vela-lab-control",
+    "vela-lab-worker-agent",
+  ]
+}
+
 target "_common" {
   context    = "."
   dockerfile = "Dockerfile"
@@ -52,6 +60,24 @@ target "vela-worker-agent" {
   inherits = ["_common"]
   target   = "vela-worker-agent"
   tags     = ["${RELEASE_IMAGE_PREFIX}/vela-worker-agent:${RELEASE_REVISION}"]
+}
+
+target "vela-lab-control" {
+  inherits = ["_common"]
+  target   = "vela-lab-control"
+  tags     = ["${RELEASE_IMAGE_PREFIX}/vela-control:${RELEASE_REVISION}"]
+}
+
+target "vela-lab-worker-agent" {
+  inherits = ["_common"]
+  target   = "vela-lab-worker-agent"
+  tags     = ["${RELEASE_IMAGE_PREFIX}/vela-worker-agent:${RELEASE_REVISION}"]
+}
+
+target "vela-lab-bootstrap" {
+  inherits = ["_common"]
+  target   = "vela-lab-bootstrap"
+  tags     = ["${RELEASE_IMAGE_PREFIX}/vela-lab-bootstrap:${RELEASE_REVISION}"]
 }
 
 target "vela-h3-runner" {

@@ -330,6 +330,40 @@ func TestRunWritesBoundedInjectedFailureReceipt(t *testing.T) {
 	}
 }
 
+func TestRunWritesEmptyGPUArrayWhenFailureHasNoImplicatedDevice(t *testing.T) {
+	root := t.TempDir()
+	requestPath := filepath.Join(root, "request.json")
+	outputDir := filepath.Join(root, "outputs")
+	if err := os.Mkdir(outputDir, 0o700); err != nil {
+		t.Fatalf("create output directory: %v", err)
+	}
+	writeJSON(t, requestPath, executionRequestPayload([]byte(`{"prompt":"private prompt"}`)))
+	t.Setenv("CUDA_VISIBLE_DEVICES", strings.Join(testGPUs, ","))
+	t.Setenv("VELA_RUNNER_BACKEND_REVISION", testRevision)
+	failurePath := filepath.Join(root, "failure.json")
+
+	err := Run(context.Background(), executionArgumentsForTest(
+		requestPath,
+		outputDir,
+		filepath.Join(root, "status.json"),
+		filepath.Join(root, "manifest.json"),
+		failurePath,
+		testOutputSpecID,
+		false,
+		"--mock-mode", "failure",
+	))
+	if !errors.Is(err, ErrInjectedFailure) {
+		t.Fatalf("injected failure error = %v", err)
+	}
+	var failure struct {
+		GPUUUIDs []string `json:"gpu_uuids"`
+	}
+	readJSON(t, failurePath, &failure)
+	if failure.GPUUUIDs == nil || len(failure.GPUUUIDs) != 0 {
+		t.Fatalf("default failure GPU UUIDs = %#v, want an empty JSON array", failure.GPUUUIDs)
+	}
+}
+
 func TestRunResumeAtomicallyReplacesPartialMockOutput(t *testing.T) {
 	root := t.TempDir()
 	requestPath := filepath.Join(root, "request.json")

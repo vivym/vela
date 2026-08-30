@@ -436,7 +436,7 @@ func (server *Server) dispatch(
 			return nil, err
 		}
 		claim, err := server.prepareArtifactUploadClaim(
-			ctx, worker, credentials, claimID, result, part,
+			ctx, worker, credentials, uploadID, claimID, result, part,
 		)
 		return &velav1.ConnectResponse{
 			RequestId: requestID,
@@ -627,10 +627,16 @@ func (server *Server) prepareArtifactUploadClaim(
 	ctx context.Context,
 	worker workercontrol.AuthenticatedWorker,
 	credentials workercontrol.LeaseCredentials,
+	uploadID uuid.UUID,
 	claimID uuid.UUID,
 	claim workercontrol.ArtifactUploadClaim,
 	part *artifactUploadPartIntent,
 ) (*velav1.ArtifactUploadClaim, error) {
+	if claim.Decision == workercontrol.ArtifactUploadClaimBusy {
+		return server.replayPersistedArtifactUploadClaim(
+			ctx, worker, credentials, uploadID, claimID, claim, part,
+		)
+	}
 	if claim.Decision != workercontrol.ArtifactUploadClaimGranted {
 		return artifactUploadClaim(claim, nil, nil, false)
 	}
@@ -746,6 +752,61 @@ func (server *Server) prepareArtifactUploadClaim(
 		intent: *part,
 		signed: signed,
 	}, false)
+}
+
+func (server *Server) replayPersistedArtifactUploadClaim(
+	ctx context.Context,
+	worker workercontrol.AuthenticatedWorker,
+	credentials workercontrol.LeaseCredentials,
+	uploadID uuid.UUID,
+	claimID uuid.UUID,
+	claim workercontrol.ArtifactUploadClaim,
+	part *artifactUploadPartIntent,
+) (*velav1.ArtifactUploadClaim, error) {
+	status, err := server.coordinator.InspectArtifactUpload(ctx, worker, credentials, uploadID)
+	if err != nil {
+		return nil, err
+	}
+	if status.Decision != workercontrol.ArtifactUploadStatusFound ||
+		(status.State != workercontrol.ArtifactUploadStateUploaded &&
+			status.State != workercontrol.ArtifactUploadStateVerified) {
+		return artifactUploadClaim(claim, nil, nil, false)
+	}
+	if part == nil || status.UploadID != uploadID || status.ArtifactID == uuid.Nil ||
+		status.ObjectKey == "" || status.ExpectedContentType == "" ||
+		status.MultipartUploadID == "" || status.ObjectVersionID == "" ||
+		status.UploadExpiresAt.IsZero() || status.Version <= 0 || len(status.CompletedParts) == 0 {
+		return nil, errors.New("persisted Artifact upload receipt is incomplete")
+	}
+
+	completedParts := make([]artifactstore.CompletedPart, len(status.CompletedParts))
+	wantedChecksum := base64.StdEncoding.EncodeToString(part.digest[:])
+	partAlreadyUploaded := false
+	for index, completed := range status.CompletedParts {
+		completedParts[index] = artifactstore.CompletedPart{
+			Number: completed.Number, ETag: completed.ETag,
+			SizeBytes: completed.SizeBytes, ChecksumSHA256: completed.ChecksumSHA256,
+		}
+		if completed.Number == part.number && completed.SizeBytes == part.sizeBytes &&
+			completed.ChecksumSHA256 == wantedChecksum {
+			partAlreadyUploaded = true
+		}
+	}
+	if _, err := artifactUploadPartReports(completedParts); err != nil {
+		return nil, err
+	}
+	if !partAlreadyUploaded {
+		return nil, errors.New("persisted Artifact upload receipt does not match requested part")
+	}
+
+	claim = workercontrol.ArtifactUploadClaim{
+		Decision: workercontrol.ArtifactUploadClaimGranted,
+		ClaimID:  claimID, UploadID: status.UploadID, ArtifactID: status.ArtifactID,
+		ObjectKey: status.ObjectKey, ExpectedContentType: status.ExpectedContentType,
+		MultipartUploadID: status.MultipartUploadID,
+		UploadExpiresAt:   status.UploadExpiresAt, Version: status.Version,
+	}
+	return artifactUploadClaim(claim, completedParts, nil, true)
 }
 
 func (server *Server) completeArtifactMultipartUpload(

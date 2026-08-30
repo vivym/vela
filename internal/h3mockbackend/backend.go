@@ -222,6 +222,7 @@ func Run(ctx context.Context, arguments []string) error {
 			FailureFingerprint: *failureFingerprint,
 			ErrorSummary:       "mock backend injected a configured failure",
 			BackendStage:       *failureStage,
+			GPUUUIDs:           []string{},
 			RetryRecommended:   retryRecommended,
 			WorkerReusable:     workerReusable,
 		},

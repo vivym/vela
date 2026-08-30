@@ -1,0 +1,224 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-lab-control-runtime
+  namespace: vela-lab
+data:
+  VELA_HTTP_ADDRESS: ":8080"
+  VELA_MANAGEMENT_ADDRESS: ":8081"
+  VELA_WORKER_GRPC_ADDRESS: ":8443"
+  VELA_FLEET_GRPC_ADDRESS: ":8444"
+  VELA_OIDC_ISSUER: "https://customer-idp.vela-lab.invalid/"
+  VELA_OIDC_AUDIENCE: "vela-lab-control"
+  VELA_OIDC_JWKS_URL: "https://customer-idp.vela-lab.invalid/.well-known/jwks.json"
+  VELA_PLATFORM_OIDC_ISSUER: "https://platform-idp.vela-lab.invalid/"
+  VELA_PLATFORM_OIDC_AUDIENCE: "vela-lab-platform"
+  VELA_PLATFORM_OIDC_JWKS_URL: "https://platform-idp.vela-lab.invalid/.well-known/jwks.json"
+  VELA_FLEET_CONTROLLER_SPIFFE_ID: "spiffe://vela.internal/fleet-controller/non-production-lab"
+  VELA_FLEET_CONTROLLER_ACTOR_IDENTITY: "fleet-controller/non-production-lab"
+  VELA_REMEDIATION_ACTOR_IDENTITY: "controller/non-production-lab"
+  VELA_RETENTION_RECONCILER_ID: "retention/non-production-lab"
+  VELA_NON_CONTENT_EXPIRY_RECONCILER_ID: "non-content-expiry/non-production-lab"
+  VELA_ARTIFACT_REPLICATION_ID: "artifact-replication/non-production-lab"
+  VELA_SCHEDULER_ID: "scheduler/non-production-lab"
+  VELA_WEBHOOK_DISPATCHER_ID: "webhook/non-production-lab"
+  VELA_INVOICE_EXPORTER_ID: "invoice/non-production-lab"
+  VELA_ARTIFACT_RECONCILER_ID: "spiffe://vela.internal/reconciler/non-production-lab"
+  VELA_NATS_URL: "tls://vela-lab-nats.vela-lab.svc:4222"
+  VELA_NATS_CREDENTIALS_FILE: "/etc/vela-lab-control/outbox.creds"
+  VELA_NATS_SCHEDULER_CREDENTIALS_FILE: "/etc/vela-lab-control/scheduler.creds"
+  VELA_NATS_ROOT_CA_FILE: "/etc/vela-lab-control/nats-ca.crt"
+  VELA_NATS_CLIENT_CERT_FILE: "/etc/vela-lab-control/nats-tls.crt"
+  VELA_NATS_CLIENT_KEY_FILE: "/etc/vela-lab-control/nats-tls.key"
+  VELA_ARTIFACT_S3_ENDPOINT: "http://vela-lab-minio.vela-lab.svc:9000"
+  VELA_ARTIFACT_S3_REGION: "us-east-1"
+  VELA_ARTIFACT_S3_BUCKET: "vela-lab-artifacts"
+  VELA_ARTIFACT_S3_PATH_STYLE: "true"
+  VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE: "/etc/vela-lab-control/minio-access-key"
+  VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE: "/etc/vela-lab-control/minio-secret-key"
+  VELA_ARTIFACT_BACKUP_S3_ENDPOINT: "http://vela-lab-minio.vela-lab.svc:9000"
+  VELA_ARTIFACT_BACKUP_S3_REGION: "us-east-1"
+  VELA_ARTIFACT_BACKUP_S3_BUCKET: "vela-lab-artifacts-backup"
+  VELA_ARTIFACT_BACKUP_S3_PATH_STYLE: "true"
+  VELA_ARTIFACT_BACKUP_S3_ACCESS_KEY_ID_FILE: "/etc/vela-lab-control/minio-access-key"
+  VELA_ARTIFACT_BACKUP_S3_SECRET_ACCESS_KEY_FILE: "/etc/vela-lab-control/minio-secret-key"
+  VELA_ARTIFACT_REPLICATION_SOURCE_S3_ACCESS_KEY_ID_FILE: "/etc/vela-lab-control/minio-access-key"
+  VELA_ARTIFACT_REPLICATION_SOURCE_S3_SECRET_ACCESS_KEY_FILE: "/etc/vela-lab-control/minio-secret-key"
+  VELA_ARTIFACT_REPLICATION_BACKUP_S3_ACCESS_KEY_ID_FILE: "/etc/vela-lab-control/minio-access-key"
+  VELA_ARTIFACT_REPLICATION_BACKUP_S3_SECRET_ACCESS_KEY_FILE: "/etc/vela-lab-control/minio-secret-key"
+  VELA_WORKER_GRPC_TLS_CERT_FILE: "/etc/vela-lab-control/worker-tls.crt"
+  VELA_WORKER_GRPC_TLS_KEY_FILE: "/etc/vela-lab-control/worker-tls.key"
+  VELA_WORKER_GRPC_CLIENT_CA_FILE: "/etc/vela-lab-control/ca.crt"
+  VELA_FLEET_GRPC_TLS_CERT_FILE: "/etc/vela-lab-control/fleet-tls.crt"
+  VELA_FLEET_GRPC_TLS_KEY_FILE: "/etc/vela-lab-control/fleet-tls.key"
+  VELA_FLEET_GRPC_CLIENT_CA_FILE: "/etc/vela-lab-control/ca.crt"
+  VELA_FINANCE_RECONCILIATION_ADDR: "127.0.0.1:9445"
+  VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE: "/etc/vela-lab-control/finance-tls.crt"
+  VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE: "/etc/vela-lab-control/finance-tls.key"
+  VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE: "/etc/vela-lab-control/ca.crt"
+  VELA_COMPLIANCE_ADDR: "127.0.0.1:9446"
+  VELA_COMPLIANCE_SERVER_CERT_FILE: "/etc/vela-lab-control/compliance-tls.crt"
+  VELA_COMPLIANCE_SERVER_KEY_FILE: "/etc/vela-lab-control/compliance-tls.key"
+  VELA_COMPLIANCE_CLIENT_CA_FILE: "/etc/vela-lab-control/ca.crt"
+  VELA_REMEDIATION_NODE_AGENTS_FILE: "/etc/vela-lab-control/node-agents.json"
+  VELA_REMEDIATION_TLS_CERT_FILE: "/etc/vela-lab-control/remediation-tls.crt"
+  VELA_REMEDIATION_TLS_KEY_FILE: "/etc/vela-lab-control/remediation-tls.key"
+  VELA_REMEDIATION_TLS_ROOT_CA_FILE: "/etc/vela-lab-control/ca.crt"
+  VELA_WEBHOOK_ENCRYPTION_ACTIVE_KEY_ID: "lab-webhook-v1"
+  VELA_WEBHOOK_ENCRYPTION_KEYRING_FILE: "/etc/vela-lab-control/webhook.json"
+  VELA_INVOICE_EXPORT_ENDPOINT: "https://127.0.0.1:1/non-production-lab"
+  VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE: "/etc/vela-lab-control/invoice-bearer-token"
+  VELA_LEASE_ACTIVE_KEY_ID: "lab-lease-v1"
+  VELA_LEASE_KEYRING_FILE: "/etc/vela-lab-control/lease.json"
+  VELA_ARTIFACT_VALIDATOR_HELPER_PATH: "/usr/local/bin/vela-artifact-validator"
+  VELA_ARTIFACT_FFPROBE_PATH: "/usr/bin/ffprobe"
+  VELA_ARTIFACT_SANDBOX_ROOT: "/var/lib/vela-lab/control-plane/artifact-validation/sandboxes"
+  VELA_ARTIFACT_SPOOL_DIRECTORY: "/var/lib/vela-lab/control-plane/artifact-validation/spool"
+  VELA_ARTIFACT_FFPROBE_VERSION: "8.0.1"
+  VELA_ARTIFACT_VALIDATOR_REVISION: "ffprobe-8.0.1-sandbox-v1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-lab-control
+  namespace: vela-lab
+spec:
+  selector:
+    app.kubernetes.io/name: vela-lab-control
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: worker-grpc
+      port: 8443
+      targetPort: worker-grpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-lab-control
+  namespace: vela-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-control
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-control
+        app.kubernetes.io/component: control-plane
+        vela.ai/environment: non-production-lab
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        vela.ai/node-role: control-storage
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: materialize-secrets
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              for source in /projected/*; do
+                [ -f "$source" ]
+                name=${source##*/}
+                temporary=/materialized/.${name}.tmp
+                cp -L -- "$source" "$temporary"
+                chmod 0400 "$temporary"
+                mv -f -- "$temporary" "/materialized/$name"
+              done
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: projected-files
+              mountPath: /projected
+              readOnly: true
+            - name: materialized-files
+              mountPath: /materialized
+      containers:
+        - name: control
+          image: __CONTROL_IMAGE__
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: vela-lab-control-runtime
+            - configMapRef:
+                name: vela-lab-control-generated-public
+            - secretRef:
+                name: vela-lab-control-database-env
+            - secretRef:
+                name: vela-lab-control-secret-env
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 8081
+            - name: worker-grpc
+              containerPort: 8443
+            - name: fleet-grpc
+              containerPort: 8444
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: management
+            periodSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: management
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "8"
+              memory: 12Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            # RuntimeDefault rejects the namespace-bearing clone used by the
+            # inner ffprobe sandbox, while the runtime AppArmor profile rejects
+            # its private mount namespace. These exceptions are lab-only.
+            appArmorProfile:
+              type: Unconfined
+            seccompProfile:
+              type: Unconfined
+          volumeMounts:
+            - name: materialized-files
+              mountPath: /etc/vela-lab-control
+              readOnly: true
+            - name: artifact-validation
+              mountPath: /var/lib/vela-lab/control-plane/artifact-validation
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: projected-files
+          secret:
+            secretName: vela-lab-control-files
+            defaultMode: 0400
+        - name: materialized-files
+          emptyDir: {}
+        - name: artifact-validation
+          hostPath:
+            path: /var/lib/vela-lab/control-plane/artifact-validation
+            type: Directory
+        - name: tmp
+          emptyDir: {}

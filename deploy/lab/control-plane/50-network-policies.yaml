@@ -1,0 +1,136 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: vela-lab
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: vela-lab
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dependency-ingress
+  namespace: vela-lab
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [database, event-stream, object-store]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [bootstrap, control-plane, worker-agent, smoke]
+      ports:
+        - {protocol: TCP, port: 5432}
+        - {protocol: TCP, port: 4222}
+        - {protocol: TCP, port: 9000}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: event-stream
+      ports:
+        - {protocol: TCP, port: 6222}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dependency-egress
+  namespace: vela-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: event-stream
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: event-stream
+      ports:
+        - {protocol: TCP, port: 6222}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: control-ingress
+  namespace: vela-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: control-plane
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: worker-agent
+      ports:
+        - {protocol: TCP, port: 8443}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: smoke
+      ports:
+        - {protocol: TCP, port: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: application-egress
+  namespace: vela-lab
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [bootstrap, control-plane, worker-agent, smoke]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: database
+      ports:
+        - {protocol: TCP, port: 5432}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: event-stream
+      ports:
+        - {protocol: TCP, port: 4222}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: object-store
+      ports:
+        - {protocol: TCP, port: 9000}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: control-plane
+      ports:
+        - {protocol: TCP, port: 8080}
+        - {protocol: TCP, port: 8443}

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -72,6 +73,11 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (ou
 		return nil, fmt.Errorf("create Artifact sandbox root: %w", err)
 	}
 	defer func() {
+		if chmodErr := os.Chmod(sandboxRoot, 0o700); chmodErr != nil &&
+			!errors.Is(chmodErr, os.ErrNotExist) {
+			output = nil
+			err = errors.Join(err, fmt.Errorf("unlock Artifact sandbox root for removal: %w", chmodErr))
+		}
 		if cleanupErr := os.RemoveAll(sandboxRoot); cleanupErr != nil {
 			output = nil
 			err = errors.Join(err, fmt.Errorf("remove Artifact sandbox root: %w", cleanupErr))
@@ -84,6 +90,14 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (ou
 	if err := stageSandboxExecutable(sandbox.helper, helperPath); err != nil {
 		return nil, fmt.Errorf("stage pinned Artifact sandbox helper: %w", err)
 	}
+	ffprobePath := filepath.Join(sandboxRoot, "artifact-ffprobe")
+	if err := stageSandboxExecutable(sandbox.ffprobe, ffprobePath); err != nil {
+		return nil, fmt.Errorf("stage pinned Artifact ffprobe: %w", err)
+	}
+	inputPath := filepath.Join(sandboxRoot, "artifact-input")
+	if err := stageSandboxFile(input, inputPath, 0o400); err != nil {
+		return nil, fmt.Errorf("stage pinned Artifact input: %w", err)
+	}
 
 	command := exec.CommandContext(
 		ctx,
@@ -92,7 +106,9 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (ou
 	)
 	command.Dir = "/"
 	command.Env = []string{"LANG=C", "LC_ALL=C", "TZ=UTC"}
-	command.ExtraFiles = []*os.File{input, sandbox.ffprobe, sandbox.helper}
+	command.ExtraFiles = []*os.File{sandbox.helper}
+	sandboxUID := os.Geteuid()
+	sandboxGID := os.Getegid()
 	command.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags: unix.CLONE_NEWUSER |
 			unix.CLONE_NEWNET |
@@ -101,18 +117,17 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (ou
 			unix.CLONE_NEWIPC |
 			unix.CLONE_NEWUTS,
 		UidMappings: []syscall.SysProcIDMap{{
-			ContainerID: 0,
-			HostID:      os.Geteuid(),
+			ContainerID: sandboxUID,
+			HostID:      sandboxUID,
 			Size:        1,
 		}},
 		GidMappingsEnableSetgroups: false,
 		GidMappings: []syscall.SysProcIDMap{{
-			ContainerID: 0,
-			HostID:      os.Getegid(),
+			ContainerID: sandboxGID,
+			HostID:      sandboxGID,
 			Size:        1,
 		}},
-		Credential: &syscall.Credential{Uid: 0, Gid: 0},
-		Pdeathsig:  syscall.SIGKILL,
+		Pdeathsig: syscall.SIGKILL,
 	}
 	stdout := newBoundedBuffer(sandbox.maxOutputBytes)
 	stderr := newBoundedBuffer(sandbox.maxStderrBytes)
@@ -138,21 +153,28 @@ func (sandbox *productionSandbox) Probe(ctx context.Context, input *os.File) (ou
 }
 
 func stageSandboxExecutable(source *os.File, destination string) (err error) {
+	return stageSandboxFile(source, destination, 0o500)
+}
+
+func stageSandboxFile(source *os.File, destination string, mode os.FileMode) (err error) {
 	info, err := source.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
-		return errors.New("pinned sandbox executable is invalid")
+		return errors.New("pinned sandbox file is invalid")
 	}
-	staged, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o500)
+	if mode != 0o400 && mode != 0o500 {
+		return errors.New("pinned sandbox file mode is invalid")
+	}
+	staged, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if closeErr := staged.Close(); closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("close staged sandbox executable: %w", closeErr))
+			err = errors.Join(err, fmt.Errorf("close staged sandbox file: %w", closeErr))
 		}
 		if err != nil {
 			if removeErr := os.Remove(destination); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-				err = errors.Join(err, fmt.Errorf("remove staged sandbox executable: %w", removeErr))
+				err = errors.Join(err, fmt.Errorf("remove staged sandbox file: %w", removeErr))
 			}
 		}
 	}()
@@ -161,12 +183,34 @@ func stageSandboxExecutable(source *os.File, destination string) (err error) {
 		return err
 	}
 	if written != info.Size() {
-		return errors.New("staged sandbox executable size is incomplete")
+		return errors.New("staged sandbox file size is incomplete")
 	}
-	if err := staged.Chmod(0o500); err != nil {
+	if err := staged.Chmod(mode); err != nil {
 		return err
 	}
 	return staged.Sync()
+}
+
+func openSandboxInput(path string) (*os.File, error) {
+	cleaned := filepath.Clean(path)
+	if !filepath.IsAbs(cleaned) {
+		return nil, errors.New("sandbox input path must be absolute")
+	}
+	descriptor, err := unix.Open(cleaned, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	file := os.NewFile(uintptr(descriptor), cleaned)
+	if file == nil {
+		_ = unix.Close(descriptor)
+		return nil, errors.New("open sandbox input descriptor")
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o400 || info.Size() <= 0 {
+		_ = file.Close()
+		return nil, errors.New("sandbox input descriptor is invalid")
+	}
+	return file, nil
 }
 
 func openSandboxExecutable(path string, requireStatic bool) (*os.File, error) {
@@ -268,74 +312,53 @@ func RunSandboxHelper(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if os.Geteuid() != 0 || os.Getegid() != 0 {
-		return errors.New("artifact sandbox helper did not enter the isolated user namespace")
+	if err := validateSandboxIdentity(); err != nil {
+		return err
 	}
-	input := os.NewFile(uintptr(3), "artifact-input")
-	if err := validateInheritedSandboxDescriptor(input); err != nil {
-		return fmt.Errorf("artifact sandbox input descriptor is invalid: %w", err)
-	}
-	ffprobe := os.NewFile(uintptr(4), "ffprobe")
-	if err := validateInheritedSandboxDescriptor(ffprobe); err != nil {
-		return fmt.Errorf("artifact sandbox ffprobe descriptor is invalid: %w", err)
-	}
-	helper := os.NewFile(uintptr(5), "artifact-validator-helper")
+	helper := os.NewFile(uintptr(3), "artifact-validator-helper")
 	if helper == nil {
 		return errors.New("artifact sandbox helper descriptor is missing")
 	}
 	if err := helper.Close(); err != nil {
 		return fmt.Errorf("close Artifact sandbox helper descriptor: %w", err)
 	}
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
-		return fmt.Errorf("make Artifact sandbox mounts private: %w", err)
+	if err := prepareSandboxRoot(sandboxRoot); err != nil {
+		return err
 	}
-	if err := unix.Mount(
-		"tmpfs",
-		sandboxRoot,
-		"tmpfs",
-		unix.MS_NOSUID|unix.MS_NODEV,
-		"size=8388608,mode=0755",
-	); err != nil {
-		return fmt.Errorf("mount Artifact sandbox root: %w", err)
+	ffprobe, err := openSandboxExecutable(filepath.Join(sandboxRoot, "artifact-ffprobe"), true)
+	if err != nil {
+		return errors.New("staged Artifact ffprobe is invalid")
 	}
-	if err := unix.Chroot(sandboxRoot); err != nil {
-		return fmt.Errorf("enter Artifact sandbox root: %w", err)
+	defer func() { _ = ffprobe.Close() }()
+	input, err := openSandboxInput(filepath.Join(sandboxRoot, "artifact-input"))
+	if err != nil {
+		return errors.New("staged Artifact input is invalid")
 	}
-	if err := os.Chdir("/"); err != nil {
+	defer func() { _ = input.Close() }()
+	if err := os.Chdir(sandboxRoot); err != nil {
 		return fmt.Errorf("set Artifact sandbox directory: %w", err)
 	}
 	if err := applySandboxRlimits(); err != nil {
 		return err
 	}
-	if err := unix.Sethostname([]byte("vela-artifact-validator")); err != nil {
-		return fmt.Errorf("set Artifact sandbox hostname: %w", err)
-	}
-	for capability := 0; capability <= unix.CAP_LAST_CAP; capability++ {
-		if capability == unix.CAP_SETPCAP {
-			continue
-		}
-		if err := unix.Prctl(unix.PR_CAPBSET_DROP, uintptr(capability), 0, 0, 0); err != nil &&
-			!errors.Is(err, unix.EINVAL) {
-			return fmt.Errorf("drop Artifact sandbox capability %d: %w", capability, err)
-		}
-	}
-	if err := unix.Prctl(unix.PR_CAPBSET_DROP, unix.CAP_SETPCAP, 0, 0, 0); err != nil {
-		return fmt.Errorf("drop Artifact sandbox CAP_SETPCAP: %w", err)
-	}
-	capabilities := [2]unix.CapUserData{}
-	if err := unix.Capset(
-		&unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3},
-		&capabilities[0],
-	); err != nil {
-		return fmt.Errorf("clear Artifact sandbox capabilities: %w", err)
+	if err := clearSandboxCapabilities(); err != nil {
+		return err
 	}
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return fmt.Errorf("set Artifact sandbox no_new_privs: %w", err)
 	}
-	unix.CloseOnExec(int(ffprobe.Fd()))
+	if err := restrictSandboxFilesystem(ffprobe, input); err != nil {
+		return err
+	}
+	if err := ffprobe.Close(); err != nil {
+		return fmt.Errorf("close staged Artifact ffprobe descriptor: %w", err)
+	}
+	if err := input.Close(); err != nil {
+		return fmt.Errorf("close staged Artifact input descriptor: %w", err)
+	}
 	err = execSandboxFFprobe(
-		int(ffprobe.Fd()),
-		append([]string{"ffprobe"}, ffprobeDescriptorArguments(int(input.Fd()))...),
+		"./artifact-ffprobe",
+		append([]string{"ffprobe"}, ffprobeArguments("artifact-input")...),
 		[]string{"LANG=C", "LC_ALL=C", "TZ=UTC"},
 	)
 	runtime.KeepAlive(input)
@@ -343,54 +366,208 @@ func RunSandboxHelper(arguments []string) error {
 	return err
 }
 
-func validateInheritedSandboxDescriptor(file *os.File) error {
-	if file == nil {
-		return errors.New("descriptor is missing")
+func prepareSandboxRoot(sandboxRoot string) error {
+	helperPath := filepath.Join(sandboxRoot, "artifact-validator-helper")
+	if err := os.Remove(helperPath); err != nil {
+		return fmt.Errorf("remove staged Artifact sandbox helper: %w", err)
 	}
-	_, err := unix.FcntlInt(file.Fd(), unix.F_GETFD, 0)
+	entries, err := os.ReadDir(sandboxRoot)
 	if err != nil {
-		return fmt.Errorf("inspect descriptor: %w", err)
+		return fmt.Errorf("inspect Artifact sandbox root: %w", err)
+	}
+	if len(entries) != 2 {
+		return errors.New("Artifact sandbox root contains an unexpected entry")
+	}
+	expected := map[string]os.FileMode{"artifact-ffprobe": 0o500, "artifact-input": 0o400}
+	for _, entry := range entries {
+		mode, exists := expected[entry.Name()]
+		info, infoErr := entry.Info()
+		if !exists || infoErr != nil || !info.Mode().IsRegular() || info.Mode().Perm() != mode {
+			return errors.New("Artifact sandbox root contains an unexpected entry")
+		}
+	}
+	if err := os.Chmod(sandboxRoot, 0o500); err != nil {
+		return fmt.Errorf("lock Artifact sandbox root: %w", err)
 	}
 	return nil
 }
 
-func execSandboxFFprobe(fd int, arguments []string, environment []string) error {
-	emptyPath, err := syscall.BytePtrFromString("")
-	if err != nil {
-		return fmt.Errorf("encode Artifact sandbox executable path: %w", err)
+func validateSandboxIdentity() error {
+	uid := os.Geteuid()
+	gid := os.Getegid()
+	if uid <= 0 || gid <= 0 {
+		return errors.New("Artifact sandbox helper must remain non-root")
 	}
-	argumentPointers, err := syscall.SlicePtrFromStrings(arguments)
-	if err != nil {
-		return fmt.Errorf("encode Artifact sandbox arguments: %w", err)
+	for _, identity := range []struct {
+		path string
+		id   int
+	}{
+		{path: "/proc/self/uid_map", id: uid},
+		{path: "/proc/self/gid_map", id: gid},
+	} {
+		mapping, err := os.ReadFile(identity.path)
+		if err != nil {
+			return fmt.Errorf("read Artifact sandbox identity map: %w", err)
+		}
+		if !sandboxIDMapMatches(mapping, identity.id) {
+			return errors.New("Artifact sandbox helper has an unexpected identity map")
+		}
 	}
-	environmentPointers, err := syscall.SlicePtrFromStrings(environment)
-	if err != nil {
-		return fmt.Errorf("encode Artifact sandbox environment: %w", err)
-	}
-	_, _, errno := unix.RawSyscall6(
-		unix.SYS_EXECVEAT,
-		uintptr(fd),
-		uintptr(unsafe.Pointer(emptyPath)),
-		uintptr(unsafe.Pointer(&argumentPointers[0])),
-		uintptr(unsafe.Pointer(&environmentPointers[0])),
-		unix.AT_EMPTY_PATH,
-		0,
-	)
-	runtime.KeepAlive(emptyPath)
-	runtime.KeepAlive(argumentPointers)
-	runtime.KeepAlive(environmentPointers)
-	if errno != 0 {
-		return fmt.Errorf("execute pinned Artifact ffprobe descriptor: %w", errno)
-	}
-	return errors.New("pinned Artifact ffprobe descriptor returned without execution")
+	return nil
 }
 
-func ffprobeDescriptorArguments(fd int) []string {
-	arguments := ffprobeArgumentsWithProtocol("fd:", "fd")
-	return append(
-		arguments[:len(arguments)-1],
-		"-fd", strconv.Itoa(fd), arguments[len(arguments)-1],
+func sandboxIDMapMatches(mapping []byte, id int) bool {
+	fields := strings.Fields(string(mapping))
+	if len(fields) != 3 {
+		return false
+	}
+	containerID, containerErr := strconv.Atoi(fields[0])
+	hostID, hostErr := strconv.Atoi(fields[1])
+	size, sizeErr := strconv.Atoi(fields[2])
+	return containerErr == nil && hostErr == nil && sizeErr == nil &&
+		containerID == id && hostID == id && size == 1
+}
+
+func clearSandboxCapabilities() error {
+	capabilities := [2]unix.CapUserData{}
+	header := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+	if err := unix.Capset(&header, &capabilities[0]); err != nil {
+		return fmt.Errorf("clear Artifact sandbox capabilities: %w", err)
+	}
+	if err := unix.Prctl(unix.PR_CAP_AMBIENT, unix.PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0); err != nil {
+		return fmt.Errorf("clear Artifact sandbox ambient capabilities: %w", err)
+	}
+	if err := unix.Capget(&header, &capabilities[0]); err != nil {
+		return fmt.Errorf("verify cleared Artifact sandbox capabilities: %w", err)
+	}
+	for index, capabilitySet := range capabilities {
+		if capabilitySet.Effective != 0 || capabilitySet.Permitted != 0 || capabilitySet.Inheritable != 0 {
+			return fmt.Errorf("Artifact sandbox capability word %d remains nonzero", index)
+		}
+	}
+	return nil
+}
+
+func restrictSandboxFilesystem(ffprobe *os.File, inputs ...*os.File) error {
+	abi, err := landlockCreateRuleset(nil, 0, unix.LANDLOCK_CREATE_RULESET_VERSION)
+	if err != nil {
+		return fmt.Errorf("query Artifact sandbox Landlock ABI: %w", err)
+	}
+	if abi < 1 {
+		return errors.New("Artifact sandbox Landlock ABI is unavailable")
+	}
+	access := landlockFilesystemAccessMask(abi)
+	ruleset, err := landlockCreateRuleset(
+		&unix.LandlockRulesetAttr{Access_fs: access},
+		unsafe.Sizeof(unix.LandlockRulesetAttr{}),
+		0,
 	)
+	if err != nil {
+		return fmt.Errorf("create Artifact sandbox Landlock ruleset: %w", err)
+	}
+	defer func() { _ = unix.Close(ruleset) }()
+
+	allowed := unix.LandlockPathBeneathAttr{
+		Allowed_access: unix.LANDLOCK_ACCESS_FS_EXECUTE | unix.LANDLOCK_ACCESS_FS_READ_FILE,
+		Parent_fd:      int32(ffprobe.Fd()),
+	}
+	if err := landlockAddPathRule(ruleset, &allowed); err != nil {
+		return fmt.Errorf("allow pinned Artifact ffprobe in Landlock ruleset: %w", err)
+	}
+	for _, input := range inputs {
+		if input == nil {
+			return errors.New("Artifact sandbox input is missing from Landlock ruleset")
+		}
+		allowedInput := unix.LandlockPathBeneathAttr{
+			Allowed_access: unix.LANDLOCK_ACCESS_FS_READ_FILE,
+			Parent_fd:      int32(input.Fd()),
+		}
+		if err := landlockAddPathRule(ruleset, &allowedInput); err != nil {
+			return fmt.Errorf("allow pinned Artifact input in Landlock ruleset: %w", err)
+		}
+	}
+	if err := landlockRestrictSelf(ruleset); err != nil {
+		return fmt.Errorf("enforce Artifact sandbox Landlock ruleset: %w", err)
+	}
+	return nil
+}
+
+func landlockFilesystemAccessMask(abi int) uint64 {
+	access := uint64(
+		unix.LANDLOCK_ACCESS_FS_EXECUTE |
+			unix.LANDLOCK_ACCESS_FS_WRITE_FILE |
+			unix.LANDLOCK_ACCESS_FS_READ_FILE |
+			unix.LANDLOCK_ACCESS_FS_READ_DIR |
+			unix.LANDLOCK_ACCESS_FS_REMOVE_DIR |
+			unix.LANDLOCK_ACCESS_FS_REMOVE_FILE |
+			unix.LANDLOCK_ACCESS_FS_MAKE_CHAR |
+			unix.LANDLOCK_ACCESS_FS_MAKE_DIR |
+			unix.LANDLOCK_ACCESS_FS_MAKE_REG |
+			unix.LANDLOCK_ACCESS_FS_MAKE_SOCK |
+			unix.LANDLOCK_ACCESS_FS_MAKE_FIFO |
+			unix.LANDLOCK_ACCESS_FS_MAKE_BLOCK |
+			unix.LANDLOCK_ACCESS_FS_MAKE_SYM,
+	)
+	if abi >= 2 {
+		access |= unix.LANDLOCK_ACCESS_FS_REFER
+	}
+	if abi >= 3 {
+		access |= unix.LANDLOCK_ACCESS_FS_TRUNCATE
+	}
+	if abi >= 5 {
+		access |= unix.LANDLOCK_ACCESS_FS_IOCTL_DEV
+	}
+	return access
+}
+
+func landlockCreateRuleset(attr *unix.LandlockRulesetAttr, size uintptr, flags int) (int, error) {
+	pointer := uintptr(0)
+	if attr != nil {
+		pointer = uintptr(unsafe.Pointer(attr))
+	}
+	result, _, errno := unix.Syscall(
+		unix.SYS_LANDLOCK_CREATE_RULESET,
+		pointer,
+		size,
+		uintptr(flags),
+	)
+	runtime.KeepAlive(attr)
+	if errno != 0 {
+		return 0, errno
+	}
+	return int(result), nil
+}
+
+func landlockAddPathRule(ruleset int, attr *unix.LandlockPathBeneathAttr) error {
+	_, _, errno := unix.Syscall6(
+		unix.SYS_LANDLOCK_ADD_RULE,
+		uintptr(ruleset),
+		unix.LANDLOCK_RULE_PATH_BENEATH,
+		uintptr(unsafe.Pointer(attr)),
+		0,
+		0,
+		0,
+	)
+	runtime.KeepAlive(attr)
+	if errno != 0 {
+		return errno
+	}
+	return nil
+}
+
+func landlockRestrictSelf(ruleset int) error {
+	_, _, errno := unix.Syscall(unix.SYS_LANDLOCK_RESTRICT_SELF, uintptr(ruleset), 0, 0)
+	if errno != 0 {
+		return errno
+	}
+	return nil
+}
+
+func execSandboxFFprobe(path string, arguments []string, environment []string) error {
+	if err := unix.Exec(path, arguments, environment); err != nil {
+		return fmt.Errorf("execute staged pinned Artifact ffprobe: %w", err)
+	}
+	return errors.New("staged pinned Artifact ffprobe returned without execution")
 }
 
 func parseSandboxHelperArguments(arguments []string) (string, error) {

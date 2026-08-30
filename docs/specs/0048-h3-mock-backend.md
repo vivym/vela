@@ -2,8 +2,11 @@
 
 Date: 2026-08-29
 
-Status: Repository implementation complete; deployment evidence pending target
-server inventory.
+Status: Repository implementation complete; three-host lab registry, image
+distribution, ephemeral protocol checks, and persistent two-Worker Runner
+deployment verified; RKE2 GPU integration and one/eight-GPU Pod smoke verified;
+Vela Worker Agents, application control plane, concurrent mock endurance, and
+two fixed fault-scenario rehearsals verified.
 
 Implementation commit: `4304fe9`; review closure: `f6cb45b`.
 
@@ -93,7 +96,13 @@ exits non-zero. These fixed arguments select the intended branch:
 
 The GPU index is `-1` for no implicated device or `0..7` for the corresponding
 UUID in `CUDA_VISIBLE_DEVICES`. Failure metadata is restricted to safe fixed
-identifiers and never includes prompt or `client_metadata` content.
+identifiers and never includes prompt or `client_metadata` content. When no GPU
+is implicated, `gpu_uuids` is serialized as an empty JSON array, not `null`.
+The Runner treats any other shape as an invalid failure receipt and must fail
+closed. The currently deployed lab image predates this fix, so its host-managed
+wrapper pins `--mock-failure-gpu-index 0` only in deterministic failure mode
+until a future image rebuild. That compatibility wrapper does not change
+success or hang behavior.
 
 `--mock-mode hang` publishes one bounded running status and waits until
 `SIGTERM`, `SIGINT`, or Runner cancellation. It produces neither outputs nor a
@@ -113,9 +122,31 @@ non-production CPU staging while retaining eight synthetic role UUIDs. Such an
 overlay must never be used as hardware readiness, remediation, soak,
 certification, or performance evidence.
 
-The target-specific overlay and mock-only Catalog records are deliberately
-deferred until server inventory is supplied; the repository mock must not guess
-whether a target retains physical GPU resources or uses CPU-only staging.
+The physical lab inventory is now recorded, but target-specific Vela workload
+overlays and mock-only Catalog records remain deliberately deferred. The
+repository mock must not turn the observed eight-GPU lab placement into a
+production hardware, model, or saleable-profile claim.
+
+The current non-production host inventory, private registry configuration,
+security boundary, registry push/pull receipt, and two-Worker ephemeral Runner
+protocol checks are recorded in
+[`three-host-mock-environment.md`](../lab/three-host-mock-environment.md). The
+control host is excluded from GPU workloads; the two target Workers retain all
+eight physical GPUs. A non-Kubernetes persistent Runner deployment verifies
+restart and same-authority recovery on both Workers; RKE2 GPU Operator and
+sequential one/eight-GPU Pods separately verify Kubernetes placement and
+runtime access. Two persistent Vela Worker Agents and the application control
+plane now run a mock-only Catalog through one success path, a balanced ten-Job
+concurrent rehearsal, Worker-control network partition, and retry-budget
+exhaustion. These remain non-production synthetic receipts; eight of the ten
+fixed fault scenarios and every Production Gate remain open.
+
+The retry-budget receipt records zero Artifact rows, including zero committed
+Artifacts. It was produced by harness SHA-256
+`852a7ff868bb2cb88808bd746c74e42ed0186865f4ca19d0b7848954f2a13222`.
+The review-hardened repository harness is
+`b39652e15234f37cf9096f3a7268cfd1b2d830594b4ea4863d9eb9aefbdb132b`
+and has not been rerun, so it is not the provenance of the retained receipt.
 
 Mock images may be built and deployed to staging, but they must use a mock
 backend revision and separate Catalog records. They do not satisfy

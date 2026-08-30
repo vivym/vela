@@ -7,10 +7,12 @@ ARG DEBIAN_BASE=scratch
 ARG UV_BASE=scratch
 
 FROM ${GO_BASE} AS go-builder
+ARG GOPROXY=https://proxy.golang.org,direct
 WORKDIR /src
 ENV CGO_ENABLED=0 \
     GOARCH=amd64 \
     GOOS=linux \
+    GOPROXY="${GOPROXY}" \
     GOTOOLCHAIN=local
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
@@ -20,7 +22,9 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY proto ./proto
 ARG RELEASE_REVISION
-RUN test -n "${RELEASE_REVISION}" && \
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    test -n "${RELEASE_REVISION}" && \
     mkdir -p /out && \
     for binary in \
       vela-control \
@@ -30,6 +34,18 @@ RUN test -n "${RELEASE_REVISION}" && \
       vela-release-artifacts; do \
       go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
         -o "/out/${binary}" "./cmd/${binary}"; \
+    done
+
+FROM go-builder AS lab-go-builder
+RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
+    mkdir -p /out-lab && \
+    for binary in \
+      vela-lab-assets \
+      vela-lab-bootstrap \
+      vela-lab-smoke; do \
+      go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
+        -o "/out-lab/${binary}" "./cmd/${binary}"; \
     done
 
 FROM ${DEBIAN_BASE} AS ffprobe-builder
@@ -123,6 +139,31 @@ COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-cert
 COPY --from=go-builder --chmod=0555 /out/vela-worker-agent /usr/local/bin/vela-worker-agent
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/vela-worker-agent"]
+
+FROM vela-control AS vela-lab-control
+LABEL vela.ai.build-kind="noncanonical-lab" \
+      vela.ai.environment="non-production-lab"
+
+FROM vela-worker-agent AS vela-lab-worker-agent
+LABEL vela.ai.build-kind="noncanonical-lab" \
+      vela.ai.environment="non-production-lab"
+
+FROM ${DEBIAN_BASE} AS vela-lab-bootstrap
+ARG RELEASE_REVISION
+LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
+      org.opencontainers.image.revision="${RELEASE_REVISION}" \
+      org.opencontainers.image.title="vela-lab-bootstrap" \
+      vela.ai.build-kind="noncanonical-lab" \
+      vela.ai.environment="non-production-lab"
+COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=lab-go-builder --chmod=0555 /out-lab/vela-lab-bootstrap /usr/local/bin/vela-lab-bootstrap
+COPY --from=lab-go-builder --chmod=0555 /out-lab/vela-lab-smoke /usr/local/bin/vela-lab-smoke
+COPY --chmod=0444 db/bootstrap/roles.sql /opt/vela/share/db/bootstrap/roles.sql
+COPY --chmod=0444 db/migrations /opt/vela/share/db/migrations
+RUN find /opt/vela -type d -exec chmod 0555 {} + && \
+    find /opt/vela/share/db -type f -exec chmod 0444 {} +
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/vela-lab-bootstrap"]
 
 FROM ${PYTHON_BASE} AS vela-h3-runner
 ARG RELEASE_REVISION
