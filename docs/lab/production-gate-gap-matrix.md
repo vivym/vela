@@ -36,11 +36,17 @@ one Visible Completion, one Charge, and two committed Artifacts. A Publisher
 pre-PubAck scenario then killed the control process after PostgreSQL claimed
 `job.ready` but before any NATS delegation or Broker marker. Recovery published
 a new sequence and again completed with one Attempt, one Visible Completion,
-one Charge, and two committed Artifacts. Both Workers previously passed
-sequential one-GPU and eight-GPU Kubernetes smoke, while the control node
-remained at zero allocatable GPUs. The Runner and application images are
+one Charge, and two committed Artifacts. A Consumer post-DB/pre-Ack scenario
+then killed the control process after the Scheduler handler and Inbox receipt
+completed their separate transactions but before JetStream Ack confirmation.
+The same stream sequence was redelivered with a higher Consumer sequence, the
+existing Inbox receipt suppressed handler reapplication, and the Job again
+completed with one Attempt, one Visible Completion, one Charge, and two
+committed Artifacts. Both Workers
+previously passed sequential one-GPU and eight-GPU Kubernetes smoke, while the
+control node remained at zero allocatable GPUs. The Runner and application images are
 explicitly non-canonical, the backend is synthetic, the concurrent rehearsal
-lasted only 47 seconds, only `6/10` fixed fault scenarios have lab evidence,
+lasted only 47 seconds, only `7/10` fixed fault scenarios have lab evidence,
 and no production receipt file is present. Repository tests and these lab
 observations cannot substitute for the external facts required by ADR 0029.
 
@@ -90,8 +96,16 @@ recorded `VELA_EVENTS` sequence `285` and advanced `publish_attempts` from `1`
 to `2`; all four fixed measurements remained zero. Two failed runs stopped
 before `SIGKILL` and remain diagnostic only.
 
-Four fixed scenarios remain: `node-reboot`,
-`consumer-post-db-pre-ack-crash`,
+The retained Consumer post-DB/pre-Ack receipt was produced by harness SHA-256
+`75331cb29a07a89c3d69c6a166e81772ea36ce8aef23afa84a93fa1687d9a0e8`.
+Its root-only `SHA256SUMS` file has SHA-256
+`817edbf165a151d8a2552aadbfcef907a4651484d720cade36bae59a63f873fe`.
+The exact stream sequence `286` was delivered with Consumer sequences `48`
+and `49`; `num_ack_pending` changed from `1` to `0`, the Inbox receipt and
+Attempt counts remained one, and handler reapplication remained zero. One
+pre-Job diagnostic run stopped before `SIGKILL` and is not counted.
+
+Three fixed scenarios remain: `node-reboot`,
 `assignment-post-commit-pre-response-crash`, and
 `stale-fence-late-completion`.
 
@@ -112,7 +126,7 @@ Four fixed scenarios remain: `node-reboot`,
 | --- | --- | --- | --- |
 | `preset-certification` | One synthetic profile and fixed mock media contract | No real H3 backend, saleable-group snapshot, three independent Preset certifications, quality/performance/cost measurements, or complete RateCard bindings | Keep mock records isolated; wait for the real backend and approved benchmark corpus |
 | `real-h3-soak` | Two persistent Workers expose eight GPUs; success, restart, failure, cancel, one accepted durable control-plane smoke Job, and a balanced five-wave/ten-Job concurrent mock rehearsal with verified Artifacts passed | The backend is mock, the concurrent run lasted 47 seconds, and no real-H3 72-hour mixed-load or reconciliation window exists | Use longer mock cycles only for harness regression; repeat the full 72-hour mixed-load contract on real H3 |
-| `state-event-fault-injection` | Runner cancellation, active-Attempt same-authority recovery after host `SIGKILL`, repository crash/fence conformance tests, one live PostgreSQL/NATS/Scheduler/Worker/Runner success path, a no-fault concurrent rehearsal, and live evidence for six fixed scenarios exist. The Worker-control-network-partition scenario produced one `LOST` Attempt, one higher-fence successful replacement, one Visible Completion, one Charge, two Artifacts, and four zero-valued fixed measurements. The retry-budget-exhaustion scenario produced two Worker-reported `TRANSIENT_BACKEND` failures, `RETRY_WAIT -> FAILED`, a released CreditReservation, and no completion, Charge, or Artifact row. The process-kill scenario used `pidfd_send_signal` against the exact Worker 1 Runner process, observed container-policy restart, persisted `WORKER_LOST`, and accepted one higher-fence replacement on Worker 2 without duplicate completion, Charge, Artifact, or stale-authority acceptance. The Outbox-post-commit scenario killed the exact control process after `job.ready` committed but before claim/publication; restart produced one `VELA_EVENTS` publication, one Attempt, one completion, one Charge, and two committed Artifacts. The Publisher post-PubAck/pre-marker scenario killed the exact control process after the NATS PubAck but before the PostgreSQL marker; recovery reused the same Broker receipt after a second publish attempt and still produced one Attempt, one completion, one Charge, and two committed Artifacts. The Publisher pre-PubAck scenario killed the exact control process after PostgreSQL claim but before broker delegation; recovery published a new sequence and preserved one Attempt, one completion, one Charge, and two committed Artifacts. All six retain base64-preserved raw protobuf events | This is synthetic non-production evidence for only `6/10` fixed scenarios. The remaining four scenarios, real H3 behavior, Fleet reconciliation, broader repeated runs, and Production Gate review remain absent | Execute `node-reboot`, `consumer-post-db-pre-ack-crash`, `assignment-post-commit-pre-response-crash`, and `stale-fence-late-completion` with the same fail-closed receipt boundary, then repeat the applicable matrix against the real H3 backend |
+| `state-event-fault-injection` | Runner cancellation, active-Attempt same-authority recovery after host `SIGKILL`, repository crash/fence conformance tests, one live PostgreSQL/NATS/Scheduler/Worker/Runner success path, a no-fault concurrent rehearsal, and live evidence for seven fixed scenarios exist. The Worker-control-network-partition scenario produced one `LOST` Attempt, one higher-fence successful replacement, one Visible Completion, one Charge, two Artifacts, and four zero-valued fixed measurements. The retry-budget-exhaustion scenario produced two Worker-reported `TRANSIENT_BACKEND` failures, `RETRY_WAIT -> FAILED`, a released CreditReservation, and no completion, Charge, or Artifact row. The process-kill scenario used `pidfd_send_signal` against the exact Worker 1 Runner process, observed container-policy restart, persisted `WORKER_LOST`, and accepted one higher-fence replacement on Worker 2 without duplicate completion, Charge, Artifact, or stale-authority acceptance. The Outbox-post-commit scenario killed the exact control process after `job.ready` committed but before claim/publication; restart produced one `VELA_EVENTS` publication, one Attempt, one completion, one Charge, and two committed Artifacts. The Publisher post-PubAck/pre-marker scenario killed the exact control process after the NATS PubAck but before the PostgreSQL marker; recovery reused the same Broker receipt after a second publish attempt and still produced one Attempt, one completion, one Charge, and two committed Artifacts. The Publisher pre-PubAck scenario killed the exact control process after PostgreSQL claim but before broker delegation; recovery published a new sequence and preserved one Attempt, one completion, one Charge, and two committed Artifacts. The Consumer post-DB/pre-Ack scenario killed the exact control process after the Scheduler handler returned and the separate Inbox receipt transaction committed, but before confirmed Ack; recovery redelivered the same stream sequence, reused the single Inbox receipt, avoided handler reapplication, and preserved one Attempt and one durable result. All seven retain base64-preserved raw protobuf events | This is synthetic non-production evidence for only `7/10` fixed scenarios. The remaining three scenarios, real H3 behavior, Fleet reconciliation, broader repeated runs, and Production Gate review remain absent | Execute `node-reboot`, `assignment-post-commit-pre-response-crash`, and `stale-fence-late-completion` with the same fail-closed receipt boundary, then repeat the applicable matrix against the real H3 backend |
 | `gpu-remediation` | Physical eight-GPU UUID inventories are available | Node Agent is absent, no XFS quota path exists, and L0-L7 actions, approvals, post-checks, canaries, quarantine, and rate limits were not exercised | Provision a non-destructive mock post-check/fence harness first; real remediation still requires approved hardware actions and owners |
 | `organization-isolation-content-safety` | Repository RLS and authorization tests plus one live synthetic tenant path through MinIO signed Artifact download exist | No multi-organization isolation run, real IdP, credential revocation, break-glass workflow, or content-reuse audit exists | Deploy isolated test tenants and external identity dependencies, then run only synthetic non-sensitive probes |
 | `data-disaster-recovery` | Repository CNPG failover/PITR conformance exists; the lab runs one PostgreSQL instance, three co-located NATS replicas, and primary/backup buckets on one MinIO service | One control node cannot prove quorum or independent fault domains; there is no off-cluster WAL/Object Store, failover, restore, or credential-rotation exercise | Add two independent control/storage nodes before attempting the production RPO/RTO matrix |

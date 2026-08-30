@@ -528,7 +528,23 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 	if err != nil {
 		t.Fatalf("create Inbox processor: %v", err)
 	}
-	messageConsumer, err := inbox.NewJetStreamConsumer(processor)
+	postCommitHookCalls := 0
+	messageConsumer, err := inbox.NewJetStreamConsumerWithPostCommitHook(
+		processor,
+		func(_ context.Context, event inbox.Event, message jetstream.Msg) error {
+			postCommitHookCalls++
+			metadata, metadataErr := message.Metadata()
+			if metadataErr != nil {
+				t.Fatalf("read post-commit message metadata: %v", metadataErr)
+			}
+			if event.ID != eventID || metadata.Stream != eventstream.StreamName ||
+				metadata.Consumer != eventstream.SchedulerConsumerName ||
+				metadata.NumDelivered != 1 {
+				t.Fatalf("post-commit boundary = event %s metadata %#v", event.ID, metadata)
+			}
+			return errors.New("simulated process loss before ack")
+		},
+	)
 	if err != nil {
 		t.Fatalf("create JetStream Inbox consumer: %v", err)
 	}
@@ -539,7 +555,7 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 	transitionCalls := 0
 	applied, err := messageConsumer.ProcessMessage(
 		ctx,
-		&unacknowledgedJetStreamMessage{Msg: firstMessage},
+		firstMessage,
 		func(context.Context, pgx.Tx) error {
 			transitionCalls++
 			return nil
@@ -571,6 +587,9 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 	if transitionCalls != 1 {
 		t.Fatalf("aggregate transition calls = %d, want 1", transitionCalls)
 	}
+	if postCommitHookCalls != 1 {
+		t.Fatalf("post-commit hook calls = %d, want 1", postCommitHookCalls)
+	}
 	var jobVersion, receipts int
 	if err := database.Admin.QueryRow(`
 		SELECT
@@ -587,10 +606,6 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 	if err != nil || consumerInfo.NumAckPending != 0 {
 		t.Fatalf("confirmed ack state = %#v error %v", consumerInfo, err)
 	}
-}
-
-type unacknowledgedJetStreamMessage struct {
-	jetstream.Msg
 }
 
 type testJetStreamBroker struct {
@@ -616,10 +631,6 @@ func (b *testJetStreamBroker) Publish(
 	return outbox.Receipt{
 		Stream: acknowledgement.Stream, Sequence: int64(acknowledgement.Sequence),
 	}, nil
-}
-
-func (m *unacknowledgedJetStreamMessage) DoubleAck(context.Context) error {
-	return errors.New("simulated process loss before ack")
 }
 
 type brokerCall struct {

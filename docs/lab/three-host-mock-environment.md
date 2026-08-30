@@ -10,7 +10,8 @@ endurance, one Worker-control-network-partition rehearsal, one bounded
 retry-budget-exhaustion rehearsal, one process-kill rehearsal, and one Outbox
 post-commit/pre-claim control-crash rehearsal, one Publisher
 post-PubAck/pre-marker control-crash rehearsal, and one Publisher pre-PubAck
-control-crash rehearsal are operational.
+control-crash rehearsal, and one Consumer post-DB/pre-Ack control-crash
+rehearsal are operational.
 
 This document records the current non-production lab inventory and the private
 registry used to stage H3 mock experiments. It is an environment receipt, not
@@ -599,11 +600,22 @@ The current immutable application images are:
 | MinIO | `10.1.200.17:5443/vela-lab/minio@sha256:3f97c5651cb6662b880c787a232b6b34fec8d8922e08d6617b25d241a21164bb` |
 | bootstrap and smoke | `10.1.200.17:5443/vela-lab/vela-lab-bootstrap@sha256:3f6a8bc440ee7bd7f9ba263d07435329c0863134217349db565cded2e9df9eac` |
 | Worker Agent | `10.1.200.17:5443/vela-lab/vela-worker-agent@sha256:bf6db207e52dbbaad4bcb0f4aaad739854b6cd3c6ff7088beda90705d6fab9e0` |
-| control | `10.1.200.17:5443/vela-lab/vela-control@sha256:b4fd44f2a266522b2cd60e8b62c64efd943b7add487c835802e75eca5d804d0f` |
+| control | `10.1.200.17:5443/vela-lab/vela-control@sha256:970aca18ba6709406729257fb91131ec87ab3b5f5d200ef338d593b77dc0b198` |
 
-The current control image is a bounded replacement of the preceding
+The current v20 control image is a bounded replacement of v19 digest
+`10.1.200.17:5443/vela-lab/vela-control@sha256:b4fd44f2a266522b2cd60e8b62c64efd943b7add487c835802e75eca5d804d0f`,
+which remains available as the rollback image. Its tagged Linux binary has
+uncompressed SHA-256
+`764a4837b2b716c12a108151c4a011ec4b2c7d52d54acc2c0431b9cecf4d9395`
+at about 33 MiB; the approximately 11 MiB gzip transfer has SHA-256
+`6bb72b76bdd590b49e6b43d44ac309c580f39e08bcbdb668f500589daee714e5`.
+The control host assembled and published the scratch image locally. Existing
+layers were reused and the Registry added only about 11.36 MiB, so no OCI
+archive crossed the SSH path.
+
+The v19 control image was itself a bounded replacement of the preceding
 `10.1.200.17:5443/vela-lab/vela-control@sha256:a056d70743a1dfab5ff7fbf01a3c22b789073974ff86ddbc1d781048b666c3b7`
-image, which remains available as the rollback image. To avoid the constrained
+image. To avoid the constrained
 SSH path, the local build sent only an approximately 11 MiB gzip-compressed
 Linux binary; no OCI archive or image layer crossed that path. The compressed
 transfer has SHA-256
@@ -613,12 +625,22 @@ and the uncompressed binary has SHA-256
 The control host assembled and pushed the small scratch image to the LAN
 Registry.
 
-Post-rehearsal local review additionally made the marker reader reject duplicate
-JSON keys. That source hardening has passed local tagged tests but has not been
-rebuilt or redeployed, so it is not part of the binary digest above and is not
-provenance for the retained live receipt.
+Post-v19 local review additionally made the Outbox marker reader reject
+duplicate JSON keys. That hardening was not part of v19 and is not provenance
+for its retained live receipts. The v20 binary supersedes v19 and includes the
+reviewed marker reader plus the separately gated Consumer fault hook.
 
-The applied v19 manifests are retained at
+The applied v20 manifests are retained at
+`/root/vela-lab-deploy-bc590e20/rendered-manifests-v20`. They were copied from
+the actually deployed v19 set and changed only the control image digest in
+`30-control.yaml` and `images.env`. An API Server dry-run and normalized live
+Deployment diff showed only that image field changing. The rollout retained
+the management port at `8081`, produced one Ready control Pod on
+`vela-lab-control-1`, and the Pod spec plus runtime image ID both matched the
+v20 manifest digest. The preflight and patch evidence is retained under
+`/root/vela-lab-deploy-bc590e20/control-v20-*`.
+
+The preceding v19 manifests remain retained at
 `/root/vela-lab-deploy-bc590e20/rendered-manifests-v19`. They were copied from
 the actually deployed v18 set and changed only the control image digest. A
 fresh render from the current repository template would also have deleted the
@@ -1105,6 +1127,52 @@ This advances only the non-production fixed-scenario matrix to `6/10`;
 Production Gates remain `0/9 PASS`. The four remaining fixed scenarios are
 `node-reboot`, `consumer-post-db-pre-ack-crash`,
 `assignment-post-commit-pre-response-crash`, and
+`stale-fence-late-completion`.
+
+## Consumer post-DB/pre-Ack control-crash rehearsal
+
+On 2026-08-30, the seventh live fixed-scenario rehearsal deployed the tagged
+v20 control image and set
+`VELA_LAB_CONSUMER_FAULT_PHASE=consumer-post-db-pre-ack-crash`. The Scheduler
+Consumer wrote a private marker only after the `job.ready` handler and its
+separate Inbox receipt transaction committed, then paused before `DoubleAck`.
+The Scheduler state transaction and Inbox receipt transaction were not merged.
+The harness proved one Inbox receipt, one Attempt, `num_ack_pending=1`, and an
+AckFloor behind the target stream sequence before sending `SIGKILL` through a
+pidfd to the exact control process.
+
+The harness samples stream Raft state from the stream leader and Consumer Raft
+state from the Consumer leader. Its first hidden diagnostic run stopped before
+creating an application Job or sending `SIGKILL` because the stream leader's
+nested Consumer monitor view was stale. The corrected harness retained the same
+strict three-current-replica requirement and used the Consumer leader as the
+authority. The diagnostic directory
+`receipts/.vela-lab-consumer-post-db-pre-ack-crash.1AF9aE` remains preserved and
+is not counted as a pass.
+
+Application Job `0831b136-2639-4139-ac1d-d6af9186b09c` ended `SUCCEEDED` with
+one Attempt, one Visible Completion, one posted completion Charge, two Artifact
+rows, and two committed Artifacts. Event
+`fa809191-d2e3-421f-a3d5-c4a30574fe2a` retained stream sequence `286` while its
+Consumer sequence advanced from `48` to `49`. The observed delivery count is
+bounded below by two; `num_ack_pending` changed from `1` to `0`; the AckFloor
+stream sequence advanced from `285` to `291`; and the Inbox receipt and Attempt
+counts remained one with `handler_reapply_count=0`. All four fixed measurements
+remained zero.
+
+The successful root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/consumer-post-db-pre-ack-crash-v1`.
+Its files pass `sha256sum --check --strict`; its `SHA256SUMS` file has SHA-256
+`817edbf165a151d8a2552aadbfcef907a4651484d720cade36bae59a63f873fe`,
+and the executed harness has SHA-256
+`75331cb29a07a89c3d69c6a166e81772ea36ce8aef23afa84a93fa1687d9a0e8`.
+Postflight found zero active Jobs, unrevoked Leases, pending Outbox events, and
+Production Gate receipts; exactly two Workers remained `READY/HEALTHY`; and all
+three nodes were Ready with zero allocatable control-node GPUs. No fault
+ConfigMap value, marker, fault Pod, warm Pod, watchdog, or NATS port-forward
+remained. This advances only the non-production fixed-scenario matrix to
+`7/10`; Production Gates remain `0/9 PASS`. The three remaining fixed scenarios
+are `node-reboot`, `assignment-post-commit-pre-response-crash`, and
 `stale-fence-late-completion`.
 
 ## Experiment operating rules

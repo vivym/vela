@@ -6,7 +6,7 @@ Status: Repository implementation complete; three-host lab registry, image
 distribution, ephemeral protocol checks, and persistent two-Worker Runner
 deployment verified; RKE2 GPU integration and one/eight-GPU Pod smoke verified;
 Vela Worker Agents, application control plane, concurrent mock endurance, and
-six fixed fault-scenario rehearsals verified.
+seven fixed fault-scenario rehearsals verified.
 
 Implementation commit: `4304fe9`; review closure: `f6cb45b`.
 
@@ -140,9 +140,9 @@ plane now run a mock-only Catalog through one success path, a balanced ten-Job
 concurrent rehearsal, Worker-control network partition, and retry-budget
 exhaustion, exact Runner process kill, and an Outbox post-commit/pre-claim
 control crash, followed by an Outbox Publisher post-PubAck/pre-database-marker
-control crash and a Publisher pre-PubAck control crash. These remain
-non-production synthetic receipts; four of the ten fixed fault scenarios and
-every Production Gate remain open.
+control crash, a Publisher pre-PubAck control crash, and a Consumer
+post-DB/pre-Ack control crash. These remain non-production synthetic receipts;
+three of the ten fixed fault scenarios and every Production Gate remain open.
 
 The retry-budget receipt records zero Artifact rows, including zero committed
 Artifacts. It was produced by harness SHA-256
@@ -215,6 +215,23 @@ SHA-256
 the root-only receipt `SHA256SUMS` file has SHA-256
 `a05cc044f7b2536cc58604aed95fadc5723806aeb814319d4058c3f4a210c3d9`.
 This advances only the synthetic matrix to `6/10`; Production Gates remain
+`0/9 PASS`.
+
+The Consumer post-DB/pre-Ack rehearsal uses the tagged control binary to pause
+the Scheduler Consumer after the `job.ready` handler returns and the separate
+Inbox receipt transaction commits, but before `DoubleAck`. The harness proves
+the exact stream and Consumer sequence, one pending Ack, one Inbox receipt, and
+one Attempt before killing the exact control process through a pidfd. Recovery redelivered stream sequence
+`286` with Consumer sequence `49` after the first delivery at sequence `48`,
+cleared the pending Ack, advanced the AckFloor, and reused the existing Inbox
+receipt without reapplying the handler. Job
+`0831b136-2639-4139-ac1d-d6af9186b09c` completed with one Attempt, one Visible
+Completion, one Charge, and two committed Artifacts. The executed harness has
+SHA-256
+`75331cb29a07a89c3d69c6a166e81772ea36ce8aef23afa84a93fa1687d9a0e8`;
+the root-only receipt `SHA256SUMS` file has SHA-256
+`817edbf165a151d8a2552aadbfcef907a4651484d720cade36bae59a63f873fe`.
+This advances only the synthetic matrix to `7/10`; Production Gates remain
 `0/9 PASS`.
 
 Mock images may be built and deployed to staging, but they must use a mock

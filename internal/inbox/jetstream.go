@@ -13,14 +13,31 @@ import (
 )
 
 type JetStreamConsumer struct {
-	processor *Processor
+	processor      *Processor
+	postCommitHook PostCommitHook
 }
 
+type PostCommitHook func(context.Context, Event, jetstream.Msg) error
+
 func NewJetStreamConsumer(processor *Processor) (*JetStreamConsumer, error) {
+	return newJetStreamConsumer(processor, nil)
+}
+
+func NewJetStreamConsumerWithPostCommitHook(
+	processor *Processor,
+	hook PostCommitHook,
+) (*JetStreamConsumer, error) {
+	if hook == nil {
+		return nil, errors.New("JetStream consumer post-commit hook is required")
+	}
+	return newJetStreamConsumer(processor, hook)
+}
+
+func newJetStreamConsumer(processor *Processor, hook PostCommitHook) (*JetStreamConsumer, error) {
 	if processor == nil || processor.pool == nil {
 		return nil, errors.New("JetStream consumer Inbox processor is required")
 	}
-	return &JetStreamConsumer{processor: processor}, nil
+	return &JetStreamConsumer{processor: processor, postCommitHook: hook}, nil
 }
 
 func (c *JetStreamConsumer) ProcessMessage(
@@ -41,6 +58,11 @@ func (c *JetStreamConsumer) ProcessMessage(
 	applied, err := c.processor.ProcessOnce(ctx, event, handler)
 	if err != nil {
 		return false, err
+	}
+	if applied && c.postCommitHook != nil {
+		if err := c.postCommitHook(ctx, event, message); err != nil {
+			return true, fmt.Errorf("run JetStream consumer post-commit hook: %w", err)
+		}
 	}
 	if err := message.DoubleAck(ctx); err != nil {
 		return applied, fmt.Errorf("confirm JetStream message after Inbox commit: %w", err)

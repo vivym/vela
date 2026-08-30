@@ -290,9 +290,48 @@ Two hidden failed runs remain diagnostic only. One exposed POSIX shell variable
 collision that truncated captured NATS JSON; the other exposed the invalid
 assumption that the Job must remain `QUEUED` before the Publisher signal. Both
 failed closed before `SIGKILL`. Cleanup removes the fault variable, marker,
-fault Pod, watchdog state, and temporary staging copy. The four remaining fixed
-scenarios are `node-reboot`, `consumer-post-db-pre-ack-crash`,
-`assignment-post-commit-pre-response-crash`, and
+fault Pod, watchdog state, and temporary staging copy.
+
+## Consumer post-DB/pre-Ack control-crash rehearsal
+
+The seventh fixed-scenario harness uses
+`VELA_LAB_CONSUMER_FAULT_PHASE=consumer-post-db-pre-ack-crash`. The tagged
+Scheduler Consumer writes a private payload-free marker only after the
+`job.ready` Scheduler handler returns and the separate Inbox receipt
+transaction commits, but before `DoubleAck` confirms the JetStream delivery.
+A normal control build rejects the fault variable. The harness requires
+exactly one Inbox receipt and one Attempt, `num_ack_pending=1`, and an AckFloor
+behind the target stream sequence before it may signal the exact control
+process through a pidfd.
+
+Run `deploy/lab/control-plane/consumer-post-db-pre-ack-crash.sh` as root on
+`marslab-server` with the v20 rendered manifests and exact deployed control
+image. NATS stream state is read from the stream leader and Consumer Raft state
+from the Consumer leader; monitor data from a non-leader is not accepted as
+the follower-health authority. Recovery must redeliver the same stream
+sequence with a higher Consumer sequence, clear `num_ack_pending`, advance the
+AckFloor beyond the target, and hit the existing Inbox receipt without invoking
+the handler or fault hook again.
+
+The passing result is fixed scenarios `7/10`, Production Gates `0/9`. Job
+`0831b136-2639-4139-ac1d-d6af9186b09c` completed with one Attempt, one Visible
+Completion, one posted completion Charge, and two committed Artifacts. Event
+`fa809191-d2e3-421f-a3d5-c4a30574fe2a` retained stream sequence `286`; its
+Consumer sequence advanced from `48` to `49`, delivery count is bounded below
+by two, `num_ack_pending` changed from `1` to `0`, and the AckFloor stream
+sequence advanced from `285` to `291`. The Inbox receipt and Attempt counts
+remained one and `handler_reapply_count` remained zero.
+
+The root-only receipt is
+`receipts/consumer-post-db-pre-ack-crash-v1`; its `SHA256SUMS` file has SHA-256
+`817edbf165a151d8a2552aadbfcef907a4651484d720cade36bae59a63f873fe`.
+The executed harness has SHA-256
+`75331cb29a07a89c3d69c6a166e81772ea36ce8aef23afa84a93fa1687d9a0e8`.
+One hidden diagnostic run stopped before creating an application Job or sending
+`SIGKILL` because it read Consumer replica health from the stream leader's
+stale monitor view. It is not counted as a pass. Cleanup removed the fault
+variable, marker, fault Pod, warm Pod, and watchdog. The three remaining fixed
+scenarios are `node-reboot`, `assignment-post-commit-pre-response-crash`, and
 `stale-fence-late-completion`.
 
 Rollback removes only the managed container and preserves Runner state:

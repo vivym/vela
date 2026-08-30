@@ -318,6 +318,9 @@ var newProductionArtifactSandbox = artifactvalidator.NewProductionSandbox
 
 func main() {
 	handled, err := runLabOutboxFaultCommand(os.Args[1:], os.Stdout)
+	if !handled && err == nil {
+		handled, err = runLabConsumerFaultCommand(os.Args[1:], os.Stdout)
+	}
 	if err != nil {
 		slog.Error("vela-control command failed", "error", err)
 		os.Exit(1)
@@ -950,7 +953,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Scheduler Inbox processor: %w", err)
 	}
-	schedulerMessageConsumer, err := inbox.NewJetStreamConsumer(schedulerInboxProcessor)
+	schedulerMessageConsumer, err := configureSchedulerMessageConsumer(schedulerInboxProcessor)
 	if err != nil {
 		return fmt.Errorf("configure Scheduler JetStream Inbox consumer: %w", err)
 	}
