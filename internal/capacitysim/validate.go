@@ -43,18 +43,24 @@ func DecodeReceipt(encoded []byte) (SimulationReceipt, error) {
 	if err := decodeStrict(encoded, &receipt); err != nil {
 		return SimulationReceipt{}, fmt.Errorf("decode receipt: %w", err)
 	}
+	if err := validateReceipt(receipt); err != nil {
+		return SimulationReceipt{}, err
+	}
+	return receipt, nil
+}
+
+func validateReceipt(receipt SimulationReceipt) error {
 	if receipt.SchemaVersion != SchemaVersion || receipt.SimulatorRevision != AlgorithmRevision ||
 		!validDigest(receipt.ReceiptDigest) {
-		return SimulationReceipt{}, errors.New("receipt identity is invalid")
+		return errors.New("receipt identity is invalid")
 	}
 	want := receipt.ReceiptDigest
 	receipt.ReceiptDigest = ""
 	digest, err := digestValue(receipt)
 	if err != nil || digest != want {
-		return SimulationReceipt{}, errors.New("receipt digest does not match content")
+		return errors.New("receipt digest does not match content")
 	}
-	receipt.ReceiptDigest = want
-	return receipt, nil
+	return nil
 }
 
 func DecodeTraceNDJSON(encoded []byte) (WorkloadTrace, error) {
@@ -100,6 +106,43 @@ func EncodeReceipt(receipt SimulationReceipt) ([]byte, error) {
 	return json.Marshal(receipt)
 }
 
+func EncodeScenario(scenario ScenarioRevision) ([]byte, error) {
+	return json.Marshal(scenario)
+}
+
+func EncodeCalibration(calibration CalibrationBundle) ([]byte, error) {
+	return json.Marshal(calibration)
+}
+
+func EncodeTraceNDJSON(trace WorkloadTrace) ([]byte, error) {
+	if err := validateTrace(trace); err != nil {
+		return nil, err
+	}
+	var encoded bytes.Buffer
+	header, err := json.Marshal(TraceRecord{
+		RecordKind: "TRACE_HEADER", SchemaVersion: trace.SchemaVersion,
+		Revision: trace.Revision, Provenance: &trace.Provenance,
+	})
+	if err != nil {
+		return nil, err
+	}
+	encoded.Write(header)
+	encoded.WriteByte('\n')
+	for _, record := range trace.Records {
+		line, marshalErr := json.Marshal(record)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		encoded.Write(line)
+		encoded.WriteByte('\n')
+	}
+	return encoded.Bytes(), nil
+}
+
+func EncodeProposal(proposal ResidencyProposal) ([]byte, error) {
+	return json.Marshal(proposal)
+}
+
 func Validate(
 	scenario ScenarioRevision,
 	workload WorkloadTrace,
@@ -143,17 +186,37 @@ func Validate(
 		}
 		models[model.StageID+"\x00"+model.ProfileRevision+"\x00"+model.RequestCohort] = true
 	}
+	pricing := make(map[string]bool, len(scenario.PricingSnapshots))
+	for _, snapshot := range scenario.PricingSnapshots {
+		pricing[pricingKey(
+			snapshot.ServiceClassRevision,
+			snapshot.GenerationPresetRevision,
+			snapshot.OutputSpec,
+		)] = true
+	}
 	for _, record := range workload.Records {
-		if record.RecordKind != "ARRIVAL" {
-			continue
+		if record.RecordKind == "ARRIVAL" {
+			for _, stage := range stageByID {
+				key := stage.ID + "\x00" + stage.ProfileRevision + "\x00" + record.RequestCohort
+				if !models[key] {
+					return fmt.Errorf(
+						"trace %q has no exact stage/profile/cohort model for %s/%s/%s",
+						record.TraceID, stage.ID, stage.ProfileRevision, record.RequestCohort,
+					)
+				}
+			}
+			if !pricing[pricingKey(
+				record.ServiceClassRevision,
+				record.GenerationPresetRevision,
+				record.OutputSpec,
+			)] {
+				return fmt.Errorf("trace %q has no exact PricingSnapshot", record.TraceID)
+			}
 		}
-		for _, stage := range stageByID {
-			key := stage.ID + "\x00" + stage.ProfileRevision + "\x00" + record.RequestCohort
+		for _, observed := range record.ObservedStages {
+			key := modelKey(observed.StageID, observed.ProfileRevision, observed.RequestCohort)
 			if !models[key] {
-				return fmt.Errorf(
-					"trace %q has no exact stage/profile/cohort model for %s/%s/%s",
-					record.TraceID, stage.ID, stage.ProfileRevision, record.RequestCohort,
-				)
+				return fmt.Errorf("trace %q has no exact model for observed stage %s", record.TraceID, key)
 			}
 		}
 	}
@@ -208,6 +271,26 @@ func validateScenario(scenario ScenarioRevision) error {
 	}
 	if err := validateCostModel(scenario.CostModel); err != nil {
 		return err
+	}
+	if len(scenario.PricingSnapshots) == 0 || len(scenario.PricingSnapshots) > 10_000 {
+		return errors.New("pricing snapshot count is invalid")
+	}
+	pricingKeys := make(map[string]bool, len(scenario.PricingSnapshots))
+	for _, snapshot := range scenario.PricingSnapshots {
+		key := pricingKey(
+			snapshot.ServiceClassRevision,
+			snapshot.GenerationPresetRevision,
+			snapshot.OutputSpec,
+		)
+		if !validToken(snapshot.Revision) || !validToken(snapshot.ServiceClassRevision) ||
+			!validToken(snapshot.GenerationPresetRevision) || !validToken(snapshot.OutputSpec) ||
+			snapshot.PriceMicroUnits < 0 || pricingKeys[key] {
+			return fmt.Errorf("PricingSnapshot %q is invalid", snapshot.Revision)
+		}
+		if err := validateProvenance(snapshot.Provenance); err != nil {
+			return fmt.Errorf("PricingSnapshot %q provenance: %w", snapshot.Revision, err)
+		}
+		pricingKeys[key] = true
 	}
 	stageByID := make(map[string]StageSpec, len(scenario.Stages))
 	for _, stage := range scenario.Stages {
@@ -377,7 +460,8 @@ func validateProvenance(provenance Provenance) error {
 func validateCostModel(model CostModelRevision) error {
 	if !validToken(model.Revision) || model.GPUMicroUnitsPerSecond < 0 ||
 		model.CPUMicroUnitsPerSecond < 0 || model.NetworkMicroUnitsPerGB < 0 ||
-		model.StorageMicroUnitsPerGBSecond < 0 || !validToken(model.SharedAllocationMethod) {
+		model.StorageMicroUnitsPerGBSecond < 0 || model.MemoryMicroUnitsPerGBSecond < 0 ||
+		model.ScratchMicroUnitsPerGBSecond < 0 || !validToken(model.SharedAllocationMethod) {
 		return errors.New("cost model is invalid")
 	}
 	if err := validateProvenance(model.Provenance); err != nil {
@@ -464,4 +548,8 @@ func validDigest(value string) bool {
 
 func validToken(value string) bool {
 	return boundedToken.MatchString(value)
+}
+
+func pricingKey(serviceClass, preset, outputSpec string) string {
+	return serviceClass + "\x00" + preset + "\x00" + outputSpec
 }

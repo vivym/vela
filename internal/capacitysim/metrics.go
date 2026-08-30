@@ -2,6 +2,7 @@ package capacitysim
 
 import (
 	"math"
+	"math/big"
 	"sort"
 )
 
@@ -106,4 +107,18 @@ func multiplyDivide(value, multiplier, divisor int64) int64 {
 		return math.MaxInt64
 	}
 	return value * multiplier / divisor
+}
+
+func resourceTimeCost(bytes, durationNS, microUnitsPerGBSecond int64) int64 {
+	if bytes <= 0 || durationNS <= 0 || microUnitsPerGBSecond <= 0 {
+		return 0
+	}
+	value := new(big.Int).SetInt64(bytes)
+	value.Mul(value, new(big.Int).SetInt64(durationNS))
+	value.Mul(value, new(big.Int).SetInt64(microUnitsPerGBSecond))
+	value.Div(value, new(big.Int).SetInt64(1_000_000_000_000_000_000))
+	if !value.IsInt64() {
+		return math.MaxInt64
+	}
+	return value.Int64()
 }

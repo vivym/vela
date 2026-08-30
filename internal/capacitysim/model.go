@@ -35,6 +35,7 @@ type ScenarioRevision struct {
 	Limits            Limits            `json:"limits"`
 	Policy            Policy            `json:"policy"`
 	CostModel         CostModelRevision `json:"cost_model"`
+	PricingSnapshots  []PricingSnapshot `json:"pricing_snapshots"`
 }
 
 type StageSpec struct {
@@ -90,8 +91,19 @@ type CostModelRevision struct {
 	CPUMicroUnitsPerSecond       int64      `json:"cpu_micro_units_per_second"`
 	NetworkMicroUnitsPerGB       int64      `json:"network_micro_units_per_gb"`
 	StorageMicroUnitsPerGBSecond int64      `json:"storage_micro_units_per_gb_second"`
+	MemoryMicroUnitsPerGBSecond  int64      `json:"memory_micro_units_per_gb_second"`
+	ScratchMicroUnitsPerGBSecond int64      `json:"scratch_micro_units_per_gb_second"`
 	SharedAllocationMethod       string     `json:"shared_allocation_method"`
 	Provenance                   Provenance `json:"provenance"`
+}
+
+type PricingSnapshot struct {
+	Revision                 string     `json:"revision"`
+	ServiceClassRevision     string     `json:"service_class_revision"`
+	GenerationPresetRevision string     `json:"generation_preset_revision"`
+	OutputSpec               string     `json:"output_spec"`
+	PriceMicroUnits          int64      `json:"price_micro_units"`
+	Provenance               Provenance `json:"provenance"`
 }
 
 type WorkloadTrace struct {
@@ -187,20 +199,35 @@ type SimulationReceipt struct {
 	CalibrationDigest   string              `json:"calibration_digest"`
 	ReceiptDigest       string              `json:"receipt_digest"`
 	WindowDurationNS    int64               `json:"window_duration_ns"`
+	InputEvidence       []InputEvidence     `json:"input_evidence"`
 	Validation          ValidationResult    `json:"validation"`
 	Admission           AdmissionMetrics    `json:"admission"`
+	Completion          CompletionMetrics   `json:"completion"`
 	Conservation        ConservationChecks  `json:"conservation"`
 	Latency             DurationStats       `json:"end_to_end_latency_ns"`
+	DynamicETA          DynamicETAError     `json:"dynamic_eta"`
 	Stages              []StageMetrics      `json:"stages"`
 	Pools               []PoolMetrics       `json:"pools"`
 	Buffers             BufferMetrics       `json:"buffers"`
 	Cache               CacheMetrics        `json:"cache"`
 	Failures            FailureMetrics      `json:"failures"`
 	Cost                CostMetrics         `json:"cost"`
+	PriceComparisons    []PriceComparison   `json:"price_comparisons"`
 	Fairness            []FairnessMetrics   `json:"fairness"`
 	CalibrationErrors   []CalibrationError  `json:"calibration_errors"`
 	TransferSensitivity []SensitivityResult `json:"transfer_sensitivity"`
 	DroppedInputs       []InputDisposition  `json:"dropped_inputs"`
+}
+
+type InputEvidence struct {
+	Path              string `json:"path"`
+	SourceKind        string `json:"source_kind"`
+	CollectionWindow  string `json:"collection_window"`
+	Units             string `json:"units"`
+	SampleCount       int64  `json:"sample_count"`
+	FreshnessOffsetNS int64  `json:"freshness_offset_ns"`
+	ConfidencePPM     int    `json:"confidence_ppm"`
+	ContentDigest     string `json:"content_digest"`
 }
 
 type ValidationResult struct {
@@ -212,6 +239,20 @@ type AdmissionMetrics struct {
 	Accepted     int           `json:"accepted"`
 	Rejected     int           `json:"rejected"`
 	ReasonCounts []ReasonCount `json:"reason_counts"`
+}
+
+type CompletionMetrics struct {
+	VisibleCompletions     int   `json:"visible_completions"`
+	SuccessRatePPM         int   `json:"success_rate_ppm"`
+	ThroughputPerSecondPPM int64 `json:"throughput_per_second_ppm"`
+}
+
+type DynamicETAError struct {
+	Status         string `json:"status"`
+	SampleCount    int    `json:"sample_count"`
+	AbsoluteP50NS  int64  `json:"absolute_p50_ns"`
+	AbsoluteP95NS  int64  `json:"absolute_p95_ns"`
+	RelativeP95PPM int    `json:"relative_p95_ppm"`
 }
 
 type ReasonCount struct {
@@ -302,6 +343,10 @@ type FailureMetrics struct {
 }
 
 type CostMetrics struct {
+	DirectGPUMicroUnits        int64 `json:"direct_gpu_micro_units"`
+	DirectCPUMicroUnits        int64 `json:"direct_cpu_micro_units"`
+	MemoryMicroUnits           int64 `json:"memory_micro_units"`
+	ScratchMicroUnits          int64 `json:"scratch_micro_units"`
 	DirectStageMicroUnits      int64 `json:"direct_stage_micro_units"`
 	SharedResidencyMicroUnits  int64 `json:"shared_residency_micro_units"`
 	TransferMicroUnits         int64 `json:"transfer_micro_units"`
@@ -312,6 +357,16 @@ type CostMetrics struct {
 	PerVisibleCompletionMicros int64 `json:"per_visible_completion_micro_units"`
 }
 
+type PriceComparison struct {
+	PricingSnapshotRevision      string `json:"pricing_snapshot_revision"`
+	ServiceClassRevision         string `json:"service_class_revision"`
+	GenerationPresetRevision     string `json:"generation_preset_revision"`
+	OutputSpec                   string `json:"output_spec"`
+	JobCount                     int    `json:"job_count"`
+	FixedCustomerPriceMicroUnits int64  `json:"fixed_customer_price_micro_units"`
+	AllocatedInternalMicroUnits  int64  `json:"allocated_internal_micro_units"`
+}
+
 type FairnessMetrics struct {
 	OrganizationCohort  string `json:"organization_cohort"`
 	AttainedServiceNS   int64  `json:"attained_service_ns"`
@@ -320,15 +375,23 @@ type FairnessMetrics struct {
 }
 
 type CalibrationError struct {
-	StageID          string `json:"stage_id"`
-	ProfileRevision  string `json:"profile_revision"`
-	RequestCohort    string `json:"request_cohort"`
-	SampleCount      int    `json:"sample_count"`
-	PredictedP50NS   int64  `json:"predicted_p50_ns"`
-	ObservedP50NS    int64  `json:"observed_p50_ns"`
-	AbsoluteErrorNS  int64  `json:"absolute_error_ns"`
-	RelativeErrorPPM int    `json:"relative_error_ppm"`
-	Status           string `json:"status"`
+	StageID             string `json:"stage_id"`
+	ProfileRevision     string `json:"profile_revision"`
+	RequestCohort       string `json:"request_cohort"`
+	SampleCount         int    `json:"sample_count"`
+	PredictedP50NS      int64  `json:"predicted_p50_ns"`
+	ObservedP50NS       int64  `json:"observed_p50_ns"`
+	AbsoluteErrorNS     int64  `json:"absolute_error_ns"`
+	RelativeErrorPPM    int    `json:"relative_error_ppm"`
+	PredictedP95NS      int64  `json:"predicted_p95_ns"`
+	ObservedP95NS       int64  `json:"observed_p95_ns"`
+	P95AbsoluteErrorNS  int64  `json:"p95_absolute_error_ns"`
+	P95RelativeErrorPPM int    `json:"p95_relative_error_ppm"`
+	PredictedP99NS      int64  `json:"predicted_p99_ns"`
+	ObservedP99NS       int64  `json:"observed_p99_ns"`
+	P99AbsoluteErrorNS  int64  `json:"p99_absolute_error_ns"`
+	P99RelativeErrorPPM int    `json:"p99_relative_error_ppm"`
+	Status              string `json:"status"`
 }
 
 type SensitivityResult struct {
@@ -364,4 +427,26 @@ type ResidencyPoolProposal struct {
 	MinCount     int    `json:"min_count"`
 	DesiredCount int    `json:"desired_count"`
 	MaxCount     int    `json:"max_count"`
+}
+
+type ReceiptComparison struct {
+	SchemaVersion          int                              `json:"schema_version"`
+	BaselineReceiptDigest  string                           `json:"baseline_receipt_digest"`
+	CandidateReceiptDigest string                           `json:"candidate_receipt_digest"`
+	ComparisonDigest       string                           `json:"comparison_digest"`
+	Deltas                 []MetricDelta                    `json:"deltas"`
+	SourceClassifications  []SourceClassificationComparison `json:"source_classifications"`
+}
+
+type MetricDelta struct {
+	Metric         string `json:"metric"`
+	BaselineValue  int64  `json:"baseline_value"`
+	CandidateValue int64  `json:"candidate_value"`
+	Delta          int64  `json:"delta"`
+}
+
+type SourceClassificationComparison struct {
+	Path                string `json:"path"`
+	BaselineSourceKind  string `json:"baseline_source_kind"`
+	CandidateSourceKind string `json:"candidate_source_kind"`
 }

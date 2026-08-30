@@ -12,8 +12,7 @@ func ProposeResidency(
 	if err := validateScenario(scenario); err != nil {
 		return ResidencyProposal{}, err
 	}
-	if receipt.SchemaVersion != SchemaVersion || receipt.SimulatorRevision != AlgorithmRevision ||
-		!validDigest(receipt.ReceiptDigest) || !receipt.Validation.Valid ||
+	if err := validateReceipt(receipt); err != nil || !receipt.Validation.Valid ||
 		!receipt.Conservation.Valid {
 		return ResidencyProposal{}, errors.New("SimulationReceipt is not valid planning evidence")
 	}

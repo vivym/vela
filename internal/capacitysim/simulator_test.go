@@ -241,6 +241,11 @@ func fixedPipelineFixture() (
 			StorageMicroUnitsPerGBSecond: 1_000, SharedAllocationMethod: "DEVICE_TIME",
 			Provenance: provenance,
 		},
+		PricingSnapshots: []capacitysim.PricingSnapshot{{
+			Revision: "price-v1", ServiceClassRevision: "standard-v1",
+			GenerationPresetRevision: "balanced-v1", OutputSpec: "video-1080p-v1",
+			PriceMicroUnits: 1_000_000, Provenance: provenance,
+		}},
 	}
 	workload := capacitysim.WorkloadTrace{
 		SchemaVersion: 1, Revision: "trace-v1", Provenance: provenance,
