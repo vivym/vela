@@ -545,7 +545,11 @@ func newCommittedReplicationFixtureWithSchema(
 	}
 	backup := newAdditionalMinIOStore(t, minio, "vela-artifact-replication-backup")
 	fixture := newStartFixture(t, key, epoch)
+	var visibleCompletionProbe string
 	if contractToSchema30 {
+		visibleCompletionProbe = buildNMinusOneBinaries(
+			t, legalHoldNMinusOneCommit,
+		).VisibleCompletionProbe
 		migrateToSchema30BeforeTerminalEvidence(t, fixture.database)
 	}
 	if started, err := fixture.service.Start(
@@ -639,15 +643,25 @@ func newCommittedReplicationFixtureWithSchema(
 	).Scan(&beforeCommit); err != nil || beforeCommit != 0 {
 		t.Fatalf("replication intents for VERIFIED artifacts = %d error=%v, want 0", beforeCommit, err)
 	}
-	completed, err := completionService.CompleteVisibleCompletion(
-		ctx, fixture.worker, fixture.credentials,
-		workercontrol.VisibleCompletionCandidate{
-			CompletionID: uuid.New(), ExpectedJobVersion: plan.JobVersion,
-			ArtifactIDs: artifactIDs,
-		},
-	)
-	if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
-		t.Fatalf("commit visible Artifact set = %#v error=%v", completed, err)
+	if contractToSchema30 {
+		completed := runNMinusOneVisibleCompletionProbe(
+			t, visibleCompletionProbe, fixture.database.DSN,
+			fixture.worker, fixture.credentials, plan.JobVersion, artifactIDs,
+		)
+		if completed.Decision != string(workercontrol.VisibleCompletionCommitted) {
+			t.Fatalf("commit schema-30 visible Artifact set = %#v", completed)
+		}
+	} else {
+		completed, err := completionService.CompleteVisibleCompletion(
+			ctx, fixture.worker, fixture.credentials,
+			workercontrol.VisibleCompletionCandidate{
+				CompletionID: uuid.New(), ExpectedJobVersion: plan.JobVersion,
+				ArtifactIDs: artifactIDs,
+			},
+		)
+		if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
+			t.Fatalf("commit visible Artifact set = %#v error=%v", completed, err)
+		}
 	}
 	var intentCount int
 	if err := fixture.database.Admin.QueryRow(

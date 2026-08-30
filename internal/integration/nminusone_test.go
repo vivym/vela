@@ -2671,7 +2671,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 		}
 	}
 	var visibleCompletionProbeDirectory string
-	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit {
+	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit ||
+		commit == legalHoldNMinusOneCommit {
 		visibleCompletionProbeSource, err := os.ReadFile(filepath.Join(
 			repositoryRoot(t),
 			"internal",
@@ -2764,7 +2765,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 	if commit == profileCircuitNMinusOneCommit {
 		binaries.FailureProbe = filepath.Join(binaryDirectory, "vela-failure-probe-n-minus-one")
 	}
-	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit {
+	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit ||
+		commit == legalHoldNMinusOneCommit {
 		binaries.VisibleCompletionProbe = filepath.Join(
 			binaryDirectory, "vela-visible-completion-probe-n-minus-one",
 		)
@@ -2874,7 +2876,8 @@ func buildNMinusOneBinaries(t *testing.T, commit string) nMinusOneBinaries {
 			t.Fatalf("build N-1 failure probe: %v\n%s", err, output)
 		}
 	}
-	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit {
+	if commit == retentionNMinusOneCommit || commit == incompleteArtifactNMinusOneCommit ||
+		commit == legalHoldNMinusOneCommit {
 		build = exec.Command(
 			"go",
 			"build",
@@ -3721,6 +3724,29 @@ func runControlStartupProbe(
 			t, adminDSN, "vela_scheduler_inbox_login", "vela-scheduler-inbox-password",
 		),
 		"VELA_SCHEDULER_ID": "n-minus-one-startup-probe",
+		"VELA_ATTEMPT_COORDINATOR_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_attempt_coordinator_login",
+			"vela-attempt-coordinator-password",
+		),
+		"VELA_STAGE_SCHEDULER_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_stage_scheduler_login", "vela-stage-scheduler-password",
+		),
+		"VELA_STAGE_SCHEDULER_ID": "n-minus-one-stage-scheduler-startup-probe",
+		"VELA_STAGE_ARTIFACT_DATABASE_URL": roleDatabaseURL(
+			t, adminDSN, "vela_stage_artifact_login", "vela-stage-artifact-password",
+		),
+		"VELA_STAGE_WORKER_CONTROL_DATABASE_URL": roleDatabaseURL(
+			t,
+			adminDSN,
+			"vela_stage_worker_control_login",
+			"vela-stage-worker-control-password",
+		),
+		"VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE":  "/missing/stage-worker-control.crt",
+		"VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE":   "/missing/stage-worker-control.key",
+		"VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE": "/missing/stage-worker-control-client-ca.crt",
+		"VELA_STAGE_WORKER_IDENTITY_KEY_FILE":      "/missing/stage-worker-identity.key",
 		"VELA_BILLING_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_billing_login", "vela-billing-password",
 		),
