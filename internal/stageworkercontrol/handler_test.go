@@ -3,9 +3,11 @@ package stageworkercontrol_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkercontrol"
 	"github.com/vivym/vela/internal/stageworkertransport"
@@ -35,9 +37,21 @@ func TestHandlerRejectsStaleHeartbeatAndReattachBeforeExecution(t *testing.T) {
 		t.Fatalf("Digest active: %v", err)
 	}
 	authorizer := &exactActiveAuthorizer{digest: activeDigest}
+	materializationKeys := map[string][]byte{
+		"materialization-key-v1": bytes.Repeat([]byte{0x7d}, 32),
+	}
+	materializationValidator, err := materializationauthority.NewValidator(
+		materializationKeys, func() time.Time { return now },
+	)
+	if err != nil {
+		t.Fatalf("New materialization Validator: %v", err)
+	}
 	executor := &recordingControlExecutor{}
 	handler, err := stageworkercontrol.NewHandler(stageworkercontrol.Config{
-		Validator: validator, Authorizer: authorizer, Executor: executor,
+		Validator: validator, Authorizer: authorizer,
+		MaterializationValidator:  materializationValidator,
+		MaterializationAuthorizer: &exactMaterializationAuthorizer{},
+		Executor:                  executor,
 	})
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
@@ -118,8 +132,90 @@ func TestHandlerRejectsStaleHeartbeatAndReattachBeforeExecution(t *testing.T) {
 	}
 }
 
+func TestHandlerAuthorizesCommitWithMaterializationAuthorityAfterStageLeaseRevocation(t *testing.T) {
+	now := time.Date(2026, 8, 30, 14, 0, 0, 0, time.UTC)
+	stageKeys := map[string][]byte{"control-key": bytes.Repeat([]byte{0x7c}, 32)}
+	stageValidator, err := stageauthority.NewValidator(stageKeys, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("New StageAuthority Validator: %v", err)
+	}
+	keys := map[string][]byte{"materialization-key-v1": bytes.Repeat([]byte{0x7d}, 32)}
+	signer, err := materializationauthority.NewSigner(keys)
+	if err != nil {
+		t.Fatalf("New materialization Signer: %v", err)
+	}
+	validator, err := materializationauthority.NewValidator(keys, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("New materialization Validator: %v", err)
+	}
+	signed, err := signer.Sign(controlMaterializationAuthority(now))
+	if err != nil {
+		t.Fatalf("Sign MaterializationAuthority: %v", err)
+	}
+	digest, err := materializationauthority.Digest(signed)
+	if err != nil {
+		t.Fatalf("Digest MaterializationAuthority: %v", err)
+	}
+	stageAuthorizer := &exactActiveAuthorizer{}
+	materializationAuthorizer := &exactMaterializationAuthorizer{digest: digest}
+	executor := &recordingControlExecutor{}
+	handler, err := stageworkercontrol.NewHandler(stageworkercontrol.Config{
+		Validator: stageValidator, Authorizer: stageAuthorizer,
+		MaterializationValidator:  validator,
+		MaterializationAuthorizer: materializationAuthorizer,
+		Executor:                  executor,
+	})
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+	request := &velav1.StageWorkerControlServiceConnectRequest{
+		RequestId: "81000000-0000-0000-0000-000000000010",
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization{
+			CommitStageMaterialization: &velav1.CommitStageMaterializationRequest{
+				MaterializationAuthority: signed,
+				ObjectVersion:            "exact-version-v1",
+			},
+		},
+	}
+	response, err := handler.Handle(
+		context.Background(),
+		stageworkertransport.Identity{SPIFFEID: "spiffe://vela/worker/member-1"},
+		11,
+		request,
+	)
+	if err != nil || response.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("commit Handle = %#v error=%v", response, err)
+	}
+	if stageAuthorizer.calls != 0 || materializationAuthorizer.calls != 1 ||
+		executor.lastAuthorities.Materialization == nil ||
+		executor.lastAuthorities.Stage != nil {
+		t.Fatalf(
+			"authority calls stage=%d materialization=%d executor=%#v",
+			stageAuthorizer.calls, materializationAuthorizer.calls, executor.lastAuthorities,
+		)
+	}
+
+	tampered := proto.Clone(signed).(*velav1.MaterializationAuthority)
+	tampered.ObjectKey += ".forged"
+	request.GetCommitStageMaterialization().MaterializationAuthority = tampered
+	request.RequestId = "81000000-0000-0000-0000-000000000011"
+	response, err = handler.Handle(
+		context.Background(),
+		stageworkertransport.Identity{SPIFFEID: "spiffe://vela/worker/member-1"},
+		11,
+		request,
+	)
+	if err != nil || response.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
+		materializationAuthorizer.calls != 1 || executor.calls != 1 {
+		t.Fatalf("tampered commit Handle = %#v error=%v", response, err)
+	}
+}
+
 type exactActiveAuthorizer struct {
 	digest [32]byte
+	calls  int
 }
 
 func (authorizer *exactActiveAuthorizer) IsActive(
@@ -129,11 +225,28 @@ func (authorizer *exactActiveAuthorizer) IsActive(
 	_ stageworkercontrol.Operation,
 	authority stageauthority.Verified,
 ) (bool, error) {
+	authorizer.calls++
 	return authority.Digest == authorizer.digest, nil
 }
 
+type exactMaterializationAuthorizer struct {
+	digest [32]byte
+	calls  int
+}
+
+func (authorizer *exactMaterializationAuthorizer) IsActive(
+	_ context.Context,
+	_ stageworkertransport.Identity,
+	_ int64,
+	authority materializationauthority.Verified,
+) (bool, error) {
+	authorizer.calls++
+	return authorizer.digest == ([32]byte{}) || authority.Digest == authorizer.digest, nil
+}
+
 type recordingControlExecutor struct {
-	calls int
+	calls           int
+	lastAuthorities stageworkercontrol.VerifiedAuthorities
 }
 
 func (executor *recordingControlExecutor) Execute(
@@ -142,9 +255,10 @@ func (executor *recordingControlExecutor) Execute(
 	_ int64,
 	operation stageworkercontrol.Operation,
 	request *velav1.StageWorkerControlServiceConnectRequest,
-	_ *stageauthority.Verified,
+	authorities stageworkercontrol.VerifiedAuthorities,
 ) (*velav1.StageWorkerControlServiceConnectResponse, error) {
 	executor.calls++
+	executor.lastAuthorities = authorities
 	return &velav1.StageWorkerControlServiceConnectResponse{
 		RequestId: request.GetRequestId(),
 		Result: &velav1.StageWorkerControlServiceConnectResponse_StageCommandResult{
@@ -154,6 +268,30 @@ func (executor *recordingControlExecutor) Execute(
 			},
 		},
 	}, nil
+}
+
+func controlMaterializationAuthority(now time.Time) *velav1.MaterializationAuthority {
+	return &velav1.MaterializationAuthority{
+		SchemaVersion: 1, StageAuthorityDigest: bytes.Repeat([]byte{0x91}, 32),
+		StageMaterializationLeaseId: "49600000-0000-0000-0000-000000000001",
+		StageArtifactId:             "49600000-0000-0000-0000-000000000002",
+		ObjectKey:                   "artifacts/stage/org/project/attempt/encoder/output.bin",
+		ContentType:                 "application/octet-stream", Sha256: bytes.Repeat([]byte{0x92}, 32),
+		SizeBytes: 4096, LocalReceiptId: "encoder-receipt-v1",
+		LocalReceiptDigest: bytes.Repeat([]byte{0x93}, 32),
+		SigningKeyId:       "materialization-key-v1", IssuedAt: timestamppb.New(now),
+		ExpiresAt:                 timestamppb.New(now.Add(30 * time.Minute)),
+		SourceWorkerInstanceId:    "23000000-0000-0000-0000-000000000001",
+		SourceWorkerInstanceEpoch: 5,
+		SourceWorkerMemberId:      "43000000-0000-0000-0000-000000000001",
+		SourceWorkerMemberEpoch:   8,
+		SourceSpiffeIdDigest:      sha256Bytes("spiffe://vela/worker/member-1"),
+	}
+}
+
+func sha256Bytes(value string) []byte {
+	digest := sha256.Sum256([]byte(value))
+	return digest[:]
 }
 
 func controlAuthority(now time.Time) *velav1.StageAuthority {

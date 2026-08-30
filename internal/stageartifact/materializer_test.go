@@ -131,6 +131,7 @@ func testMaterializationLease(
 		ObjectKey:   "artifacts/stage/org/project/attempt/stage/output.bin",
 		ContentType: "application/octet-stream",
 		SHA256:      digest,
+		TokenDigest: sha256.Sum256([]byte("signed materialization authority")),
 		SizeBytes:   size,
 		IssuedAt:    now.Add(-time.Minute),
 		ExpiresAt:   now.Add(time.Hour),

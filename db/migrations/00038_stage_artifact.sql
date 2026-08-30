@@ -84,6 +84,7 @@ CREATE TABLE stage_materialization_leases (
     local_receipt_id text NOT NULL CHECK (length(local_receipt_id) BETWEEN 1 AND 1000),
     local_receipt_digest bytea NOT NULL CHECK (octet_length(local_receipt_digest) = 32),
     manifest_sha256 bytea NOT NULL CHECK (octet_length(manifest_sha256) = 32),
+    token_digest bytea NOT NULL CHECK (octet_length(token_digest) = 32),
     attempt_fence bigint NOT NULL CHECK (attempt_fence > 0),
     stage_fence bigint NOT NULL CHECK (stage_fence > 0),
     stage_version bigint NOT NULL CHECK (stage_version > 0),
@@ -301,6 +302,7 @@ DECLARE
     v_manifest_sha256 bytea := decode(p_command ->> 'manifest_sha256', 'hex');
     v_expected_sha256 bytea := decode(p_command ->> 'sha256', 'hex');
     v_lineage_digest bytea := decode(p_command ->> 'lineage_digest', 'hex');
+    v_token_digest bytea := decode(p_command ->> 'token_digest', 'hex');
     v_size_bytes bigint := (p_command ->> 'size_bytes')::bigint;
     v_object_key text := p_command ->> 'object_key';
     v_content_type text := p_command ->> 'content_type';
@@ -330,6 +332,7 @@ BEGIN
        OR octet_length(v_manifest_sha256) <> 32
        OR octet_length(v_expected_sha256) <> 32
        OR octet_length(v_lineage_digest) <> 32
+       OR octet_length(v_token_digest) <> 32
        OR v_size_bytes <= 0 OR v_object_key NOT LIKE 'artifacts/stage/%'
        OR length(v_object_key) > 1024 OR v_object_key LIKE '%//%'
        OR v_content_type IS NULL OR length(v_content_type) NOT BETWEEN 1 AND 200
@@ -407,13 +410,14 @@ BEGIN
         stage_run_id, stage_attempt_id, output_port, stage_interface_revision_id,
         object_key, content_type, expected_sha256, expected_size_bytes,
         lineage_digest, local_receipt_id, local_receipt_digest, manifest_sha256,
-        attempt_fence, stage_fence, stage_version, issued_at, expires_at
+        token_digest, attempt_fence, stage_fence, stage_version, issued_at, expires_at
     ) VALUES (
         v_materialization_lease_id, v_artifact_id, v_job.organization_id,
         v_job.project_id, v_job.id, v_attempt.id, v_run.id, v_physical.id,
         v_output_port, v_interface_id, v_object_key, v_content_type,
         v_expected_sha256, v_size_bytes, v_lineage_digest, v_local_receipt_id,
-        v_local_receipt_digest, v_manifest_sha256, v_attempt.fence, v_run.fence,
+        v_local_receipt_digest, v_manifest_sha256, v_token_digest,
+        v_attempt.fence, v_run.fence,
         v_run.version + 1, v_sealed_at, v_expires_at
     );
     v_result := jsonb_build_object(
@@ -436,6 +440,61 @@ $$;
 ALTER FUNCTION vela_seal_stage_output(jsonb) OWNER TO vela_attempt_coordinator_owner;
 REVOKE ALL ON FUNCTION vela_seal_stage_output(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION vela_seal_stage_output(jsonb) TO vela_stage_artifact;
+
+CREATE FUNCTION vela_is_stage_materialization_authority_active(p_claim jsonb)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_lease_id uuid := (p_claim ->> 'materialization_lease_id')::uuid;
+    v_artifact_id uuid := (p_claim ->> 'artifact_id')::uuid;
+    v_token_digest bytea := decode(p_claim ->> 'token_digest', 'hex');
+    v_worker_id uuid := (p_claim ->> 'source_worker_instance_id')::uuid;
+    v_worker_epoch bigint := (p_claim ->> 'source_worker_instance_epoch')::bigint;
+    v_member_id uuid := (p_claim ->> 'source_worker_member_id')::uuid;
+    v_member_epoch bigint := (p_claim ->> 'source_worker_member_epoch')::bigint;
+    v_control_session_epoch bigint := (p_claim ->> 'control_session_epoch')::bigint;
+BEGIN
+    IF p_claim IS NULL OR (p_claim ->> 'schema_version')::integer <> 1
+       OR v_lease_id IS NULL OR v_artifact_id IS NULL
+       OR octet_length(v_token_digest) <> 32 OR v_worker_id IS NULL
+       OR v_worker_epoch <= 0 OR v_member_id IS NULL OR v_member_epoch <= 0
+       OR v_control_session_epoch <= 0 THEN
+        RETURN false;
+    END IF;
+    RETURN EXISTS (
+        SELECT 1
+        FROM stage_materialization_leases AS materialization
+        JOIN stage_allocations AS allocation
+          ON allocation.stage_attempt_id = materialization.stage_attempt_id
+        JOIN worker_instances AS worker ON worker.id = allocation.worker_instance_id
+        JOIN worker_members AS member
+          ON member.worker_instance_id = worker.id AND member.id = v_member_id
+        WHERE materialization.id = v_lease_id
+          AND materialization.artifact_id = v_artifact_id
+          AND materialization.token_digest = v_token_digest
+          AND materialization.state = 'ACTIVE'
+          AND statement_timestamp() < materialization.expires_at
+          AND allocation.worker_instance_id = v_worker_id
+          AND allocation.worker_instance_epoch = v_worker_epoch
+          AND worker.instance_epoch = v_worker_epoch
+          AND worker.control_session_epoch = v_control_session_epoch
+          AND worker.lifecycle_state = 'READY'
+          AND worker.reachability_state = 'CONNECTED'
+          AND member.worker_instance_epoch = v_worker_epoch
+          AND member.member_epoch = v_member_epoch
+          AND member.readiness = 'READY'
+    );
+END
+$$;
+ALTER FUNCTION vela_is_stage_materialization_authority_active(jsonb)
+    OWNER TO vela_attempt_coordinator_owner;
+REVOKE ALL ON FUNCTION vela_is_stage_materialization_authority_active(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION vela_is_stage_materialization_authority_active(jsonb)
+    TO vela_stage_artifact;
 
 CREATE FUNCTION vela_commit_stage_artifact(p_command jsonb)
 RETURNS TABLE (
@@ -460,6 +519,7 @@ DECLARE
     v_object_version text := p_command ->> 'object_version';
     v_sha256 bytea := decode(p_command ->> 'sha256', 'hex');
     v_size_bytes bigint := (p_command ->> 'size_bytes')::bigint;
+    v_token_digest bytea := decode(p_command ->> 'token_digest', 'hex');
     v_committed_at timestamptz := (p_command ->> 'committed_at')::timestamptz;
     v_request_digest bytea;
     v_existing stage_artifact_commands%ROWTYPE;
@@ -475,7 +535,8 @@ BEGIN
        OR v_command_id IS NULL OR v_progress_receipt_id IS NULL OR v_lease_id IS NULL
        OR v_artifact_id IS NULL OR v_object_key IS NULL OR v_object_version IS NULL
        OR length(v_object_version) NOT BETWEEN 1 AND 1000
-       OR octet_length(v_sha256) <> 32 OR v_size_bytes <= 0 OR v_committed_at IS NULL THEN
+       OR octet_length(v_sha256) <> 32 OR octet_length(v_token_digest) <> 32
+       OR v_size_bytes <= 0 OR v_committed_at IS NULL THEN
         RAISE EXCEPTION USING
             ERRCODE = '22023', CONSTRAINT = 'stage_artifact_commit_command_invalid',
             MESSAGE = 'StageArtifact commit command fields are invalid';
@@ -515,6 +576,7 @@ BEGIN
        OR v_materialization.object_key <> v_object_key
        OR v_materialization.expected_sha256 <> v_sha256
        OR v_materialization.expected_size_bytes <> v_size_bytes
+       OR v_materialization.token_digest <> v_token_digest
        OR v_committed_at < v_materialization.issued_at
        OR v_committed_at >= v_materialization.expires_at
        OR v_job.state <> 'RUNNING' OR v_job.current_fence <> v_materialization.attempt_fence
@@ -1053,6 +1115,9 @@ REVOKE EXECUTE ON FUNCTION vela_issue_stage_transfer_ticket(jsonb) FROM vela_sta
 DROP FUNCTION vela_issue_stage_transfer_ticket(jsonb);
 REVOKE EXECUTE ON FUNCTION vela_commit_stage_artifact(jsonb) FROM vela_stage_artifact;
 DROP FUNCTION vela_commit_stage_artifact(jsonb);
+REVOKE EXECUTE ON FUNCTION vela_is_stage_materialization_authority_active(jsonb)
+    FROM vela_stage_artifact;
+DROP FUNCTION vela_is_stage_materialization_authority_active(jsonb);
 REVOKE EXECUTE ON FUNCTION vela_fail_stage_materialization_source(jsonb)
     FROM vela_stage_artifact;
 DROP FUNCTION vela_fail_stage_materialization_source(jsonb);

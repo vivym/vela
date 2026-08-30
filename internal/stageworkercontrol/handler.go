@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -34,6 +35,20 @@ type Authorizer interface {
 	) (bool, error)
 }
 
+type MaterializationAuthorizer interface {
+	IsActive(
+		context.Context,
+		stageworkertransport.Identity,
+		int64,
+		materializationauthority.Verified,
+	) (bool, error)
+}
+
+type VerifiedAuthorities struct {
+	Stage           *stageauthority.Verified
+	Materialization *materializationauthority.Verified
+}
+
 type Executor interface {
 	Execute(
 		context.Context,
@@ -41,20 +56,24 @@ type Executor interface {
 		int64,
 		Operation,
 		*velav1.StageWorkerControlServiceConnectRequest,
-		*stageauthority.Verified,
+		VerifiedAuthorities,
 	) (*velav1.StageWorkerControlServiceConnectResponse, error)
 }
 
 type Config struct {
-	Validator  *stageauthority.Validator
-	Authorizer Authorizer
-	Executor   Executor
+	Validator                 *stageauthority.Validator
+	Authorizer                Authorizer
+	MaterializationValidator  *materializationauthority.Validator
+	MaterializationAuthorizer MaterializationAuthorizer
+	Executor                  Executor
 }
 
 type Handler struct {
-	validator  *stageauthority.Validator
-	authorizer Authorizer
-	executor   Executor
+	validator                 *stageauthority.Validator
+	authorizer                Authorizer
+	materializationValidator  *materializationauthority.Validator
+	materializationAuthorizer MaterializationAuthorizer
+	executor                  Executor
 }
 
 func NewHandler(config Config) (*Handler, error) {
@@ -64,11 +83,20 @@ func NewHandler(config Config) (*Handler, error) {
 	if config.Authorizer == nil {
 		return nil, errors.New("missing durable authority checker for Stage Worker control")
 	}
+	if config.MaterializationValidator == nil {
+		return nil, errors.New("missing MaterializationAuthority validator for Stage Worker control")
+	}
+	if config.MaterializationAuthorizer == nil {
+		return nil, errors.New("missing durable materialization authority checker for Stage Worker control")
+	}
 	if config.Executor == nil {
 		return nil, errors.New("missing operation executor for Stage Worker control")
 	}
 	return &Handler{
-		validator: config.Validator, authorizer: config.Authorizer, executor: config.Executor,
+		validator: config.Validator, authorizer: config.Authorizer,
+		materializationValidator:  config.MaterializationValidator,
+		materializationAuthorizer: config.MaterializationAuthorizer,
+		executor:                  config.Executor,
 	}, nil
 }
 
@@ -79,6 +107,7 @@ func (handler *Handler) Handle(
 	request *velav1.StageWorkerControlServiceConnectRequest,
 ) (*velav1.StageWorkerControlServiceConnectResponse, error) {
 	if handler == nil || handler.validator == nil || handler.authorizer == nil ||
+		handler.materializationValidator == nil || handler.materializationAuthorizer == nil ||
 		handler.executor == nil {
 		return nil, errors.New("missing configured Stage Worker control handler")
 	}
@@ -86,12 +115,36 @@ func (handler *Handler) Handle(
 		request.GetRequestId() == "" {
 		return nil, errors.New("incomplete Stage Worker control request context")
 	}
-	operation, authority, requiresAuthority := operationAuthority(request)
+	operation, authority, materializationAuthority, requiresAuthority := operationAuthority(request)
 	if operation == velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_UNSPECIFIED {
 		return rejectedResponse(request.GetRequestId(), operation, "operation is required"), nil
 	}
 	if !requiresAuthority {
-		return handler.execute(ctx, identity, sessionEpoch, operation, request, nil)
+		return handler.execute(
+			ctx, identity, sessionEpoch, operation, request, VerifiedAuthorities{},
+		)
+	}
+	if materializationAuthority != nil || operation == OperationCommitStageMaterialization {
+		verified, err := handler.materializationValidator.Validate(materializationAuthority)
+		if err != nil {
+			return staleResponse(request.GetRequestId(), operation, err.Error()), nil
+		}
+		active, err := handler.materializationAuthorizer.IsActive(
+			ctx, identity, sessionEpoch, verified,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("authorize %s: %w", operation.String(), err)
+		}
+		if !active {
+			return staleResponse(
+				request.GetRequestId(), operation,
+				"MaterializationAuthority no longer matches durable active authority",
+			), nil
+		}
+		return handler.execute(
+			ctx, identity, sessionEpoch, operation, request,
+			VerifiedAuthorities{Materialization: &verified},
+		)
 	}
 	verified, err := handler.validator.ValidateEnvelope(authority)
 	if err != nil {
@@ -108,7 +161,9 @@ func (handler *Handler) Handle(
 			request.GetRequestId(), operation, "StageAuthority no longer matches durable active authority",
 		), nil
 	}
-	return handler.execute(ctx, identity, sessionEpoch, operation, request, &verified)
+	return handler.execute(
+		ctx, identity, sessionEpoch, operation, request, VerifiedAuthorities{Stage: &verified},
+	)
 }
 
 func (handler *Handler) execute(
@@ -117,10 +172,10 @@ func (handler *Handler) execute(
 	sessionEpoch int64,
 	operation Operation,
 	request *velav1.StageWorkerControlServiceConnectRequest,
-	verified *stageauthority.Verified,
+	authorities VerifiedAuthorities,
 ) (*velav1.StageWorkerControlServiceConnectResponse, error) {
 	response, err := handler.executor.Execute(
-		ctx, identity, sessionEpoch, operation, request, verified,
+		ctx, identity, sessionEpoch, operation, request, authorities,
 	)
 	if err != nil {
 		return nil, err
@@ -134,29 +189,29 @@ func (handler *Handler) execute(
 
 func operationAuthority(
 	request *velav1.StageWorkerControlServiceConnectRequest,
-) (Operation, *velav1.StageAuthority, bool) {
+) (Operation, *velav1.StageAuthority, *velav1.MaterializationAuthority, bool) {
 	switch operation := request.GetOperation().(type) {
 	case *velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence:
-		return OperationRegisterWorkerEvidence, nil, false
+		return OperationRegisterWorkerEvidence, nil, nil, false
 	case *velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
-		return OperationReportCapacityObservation, nil, false
+		return OperationReportCapacityObservation, nil, nil, false
 	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
-		return OperationAcquireStage, nil, false
+		return OperationAcquireStage, nil, nil, false
 	case *velav1.StageWorkerControlServiceConnectRequest_StartStage:
-		return OperationStartStage, operation.StartStage.GetAuthority(), true
+		return OperationStartStage, operation.StartStage.GetAuthority(), nil, true
 	case *velav1.StageWorkerControlServiceConnectRequest_HeartbeatStage:
-		return OperationHeartbeatStage, operation.HeartbeatStage.GetAuthority(), true
+		return OperationHeartbeatStage, operation.HeartbeatStage.GetAuthority(), nil, true
 	case *velav1.StageWorkerControlServiceConnectRequest_SealStageOutput:
-		return OperationSealStageOutput, operation.SealStageOutput.GetAuthority(), true
+		return OperationSealStageOutput, operation.SealStageOutput.GetAuthority(), nil, true
 	case *velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization:
-		return OperationCommitStageMaterialization,
-			operation.CommitStageMaterialization.GetAuthority(), true
+		return OperationCommitStageMaterialization, nil,
+			operation.CommitStageMaterialization.GetMaterializationAuthority(), true
 	case *velav1.StageWorkerControlServiceConnectRequest_FailStage:
-		return OperationFailStage, operation.FailStage.GetAuthority(), true
+		return OperationFailStage, operation.FailStage.GetAuthority(), nil, true
 	case *velav1.StageWorkerControlServiceConnectRequest_ReattachStage:
-		return OperationReattachStage, operation.ReattachStage.GetAuthority(), true
+		return OperationReattachStage, operation.ReattachStage.GetAuthority(), nil, true
 	default:
-		return velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_UNSPECIFIED, nil, false
+		return velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_UNSPECIFIED, nil, nil, false
 	}
 }
 

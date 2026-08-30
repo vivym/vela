@@ -975,15 +975,11 @@ func (x *SealStageOutputRequest) GetLocalReceipt() *LocalMaterializationReceipt 
 }
 
 type CommitStageMaterializationRequest struct {
-	state                  protoimpl.MessageState `protogen:"open.v1"`
-	Authority              *StageAuthority        `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	MaterializationLeaseId string                 `protobuf:"bytes,2,opt,name=materialization_lease_id,json=materializationLeaseId,proto3" json:"materialization_lease_id,omitempty"`
-	StageArtifactId        string                 `protobuf:"bytes,3,opt,name=stage_artifact_id,json=stageArtifactId,proto3" json:"stage_artifact_id,omitempty"`
-	ObjectVersion          string                 `protobuf:"bytes,4,opt,name=object_version,json=objectVersion,proto3" json:"object_version,omitempty"`
-	Sha256                 []byte                 `protobuf:"bytes,5,opt,name=sha256,proto3" json:"sha256,omitempty"`
-	SizeBytes              int64                  `protobuf:"varint,6,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	state                    protoimpl.MessageState    `protogen:"open.v1"`
+	MaterializationAuthority *MaterializationAuthority `protobuf:"bytes,1,opt,name=materialization_authority,json=materializationAuthority,proto3" json:"materialization_authority,omitempty"`
+	ObjectVersion            string                    `protobuf:"bytes,2,opt,name=object_version,json=objectVersion,proto3" json:"object_version,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *CommitStageMaterializationRequest) Reset() {
@@ -1016,25 +1012,11 @@ func (*CommitStageMaterializationRequest) Descriptor() ([]byte, []int) {
 	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *CommitStageMaterializationRequest) GetAuthority() *StageAuthority {
+func (x *CommitStageMaterializationRequest) GetMaterializationAuthority() *MaterializationAuthority {
 	if x != nil {
-		return x.Authority
+		return x.MaterializationAuthority
 	}
 	return nil
-}
-
-func (x *CommitStageMaterializationRequest) GetMaterializationLeaseId() string {
-	if x != nil {
-		return x.MaterializationLeaseId
-	}
-	return ""
-}
-
-func (x *CommitStageMaterializationRequest) GetStageArtifactId() string {
-	if x != nil {
-		return x.StageArtifactId
-	}
-	return ""
 }
 
 func (x *CommitStageMaterializationRequest) GetObjectVersion() string {
@@ -1042,20 +1024,6 @@ func (x *CommitStageMaterializationRequest) GetObjectVersion() string {
 		return x.ObjectVersion
 	}
 	return ""
-}
-
-func (x *CommitStageMaterializationRequest) GetSha256() []byte {
-	if x != nil {
-		return x.Sha256
-	}
-	return nil
-}
-
-func (x *CommitStageMaterializationRequest) GetSizeBytes() int64 {
-	if x != nil {
-		return x.SizeBytes
-	}
-	return 0
 }
 
 type FailStageRequest struct {
@@ -1588,10 +1556,25 @@ func (x *StopStage) GetIssuedAt() *timestamppb.Timestamp {
 
 type MaterializationAuthority struct {
 	state                       protoimpl.MessageState `protogen:"open.v1"`
-	StageAuthorityDigest        []byte                 `protobuf:"bytes,1,opt,name=stage_authority_digest,json=stageAuthorityDigest,proto3" json:"stage_authority_digest,omitempty"`
-	StageMaterializationLeaseId string                 `protobuf:"bytes,2,opt,name=stage_materialization_lease_id,json=stageMaterializationLeaseId,proto3" json:"stage_materialization_lease_id,omitempty"`
-	ExpiresAt                   *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	Token                       []byte                 `protobuf:"bytes,4,opt,name=token,proto3" json:"token,omitempty"`
+	SchemaVersion               int32                  `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	StageAuthorityDigest        []byte                 `protobuf:"bytes,2,opt,name=stage_authority_digest,json=stageAuthorityDigest,proto3" json:"stage_authority_digest,omitempty"`
+	StageMaterializationLeaseId string                 `protobuf:"bytes,3,opt,name=stage_materialization_lease_id,json=stageMaterializationLeaseId,proto3" json:"stage_materialization_lease_id,omitempty"`
+	StageArtifactId             string                 `protobuf:"bytes,4,opt,name=stage_artifact_id,json=stageArtifactId,proto3" json:"stage_artifact_id,omitempty"`
+	ObjectKey                   string                 `protobuf:"bytes,5,opt,name=object_key,json=objectKey,proto3" json:"object_key,omitempty"`
+	ContentType                 string                 `protobuf:"bytes,6,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	Sha256                      []byte                 `protobuf:"bytes,7,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	SizeBytes                   int64                  `protobuf:"varint,8,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	LocalReceiptId              string                 `protobuf:"bytes,9,opt,name=local_receipt_id,json=localReceiptId,proto3" json:"local_receipt_id,omitempty"`
+	LocalReceiptDigest          []byte                 `protobuf:"bytes,10,opt,name=local_receipt_digest,json=localReceiptDigest,proto3" json:"local_receipt_digest,omitempty"`
+	SigningKeyId                string                 `protobuf:"bytes,11,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
+	IssuedAt                    *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
+	ExpiresAt                   *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	Token                       []byte                 `protobuf:"bytes,14,opt,name=token,proto3" json:"token,omitempty"`
+	SourceWorkerInstanceId      string                 `protobuf:"bytes,15,opt,name=source_worker_instance_id,json=sourceWorkerInstanceId,proto3" json:"source_worker_instance_id,omitempty"`
+	SourceWorkerInstanceEpoch   int64                  `protobuf:"varint,16,opt,name=source_worker_instance_epoch,json=sourceWorkerInstanceEpoch,proto3" json:"source_worker_instance_epoch,omitempty"`
+	SourceWorkerMemberId        string                 `protobuf:"bytes,18,opt,name=source_worker_member_id,json=sourceWorkerMemberId,proto3" json:"source_worker_member_id,omitempty"`
+	SourceSpiffeIdDigest        []byte                 `protobuf:"bytes,19,opt,name=source_spiffe_id_digest,json=sourceSpiffeIdDigest,proto3" json:"source_spiffe_id_digest,omitempty"`
+	SourceWorkerMemberEpoch     int64                  `protobuf:"varint,20,opt,name=source_worker_member_epoch,json=sourceWorkerMemberEpoch,proto3" json:"source_worker_member_epoch,omitempty"`
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -1626,6 +1609,13 @@ func (*MaterializationAuthority) Descriptor() ([]byte, []int) {
 	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{17}
 }
 
+func (x *MaterializationAuthority) GetSchemaVersion() int32 {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return 0
+}
+
 func (x *MaterializationAuthority) GetStageAuthorityDigest() []byte {
 	if x != nil {
 		return x.StageAuthorityDigest
@@ -1640,6 +1630,69 @@ func (x *MaterializationAuthority) GetStageMaterializationLeaseId() string {
 	return ""
 }
 
+func (x *MaterializationAuthority) GetStageArtifactId() string {
+	if x != nil {
+		return x.StageArtifactId
+	}
+	return ""
+}
+
+func (x *MaterializationAuthority) GetObjectKey() string {
+	if x != nil {
+		return x.ObjectKey
+	}
+	return ""
+}
+
+func (x *MaterializationAuthority) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
+func (x *MaterializationAuthority) GetSha256() []byte {
+	if x != nil {
+		return x.Sha256
+	}
+	return nil
+}
+
+func (x *MaterializationAuthority) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *MaterializationAuthority) GetLocalReceiptId() string {
+	if x != nil {
+		return x.LocalReceiptId
+	}
+	return ""
+}
+
+func (x *MaterializationAuthority) GetLocalReceiptDigest() []byte {
+	if x != nil {
+		return x.LocalReceiptDigest
+	}
+	return nil
+}
+
+func (x *MaterializationAuthority) GetSigningKeyId() string {
+	if x != nil {
+		return x.SigningKeyId
+	}
+	return ""
+}
+
+func (x *MaterializationAuthority) GetIssuedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.IssuedAt
+	}
+	return nil
+}
+
 func (x *MaterializationAuthority) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
@@ -1652,6 +1705,41 @@ func (x *MaterializationAuthority) GetToken() []byte {
 		return x.Token
 	}
 	return nil
+}
+
+func (x *MaterializationAuthority) GetSourceWorkerInstanceId() string {
+	if x != nil {
+		return x.SourceWorkerInstanceId
+	}
+	return ""
+}
+
+func (x *MaterializationAuthority) GetSourceWorkerInstanceEpoch() int64 {
+	if x != nil {
+		return x.SourceWorkerInstanceEpoch
+	}
+	return 0
+}
+
+func (x *MaterializationAuthority) GetSourceWorkerMemberId() string {
+	if x != nil {
+		return x.SourceWorkerMemberId
+	}
+	return ""
+}
+
+func (x *MaterializationAuthority) GetSourceSpiffeIdDigest() []byte {
+	if x != nil {
+		return x.SourceSpiffeIdDigest
+	}
+	return nil
+}
+
+func (x *MaterializationAuthority) GetSourceWorkerMemberEpoch() int64 {
+	if x != nil {
+		return x.SourceWorkerMemberEpoch
+	}
+	return 0
 }
 
 var File_vela_v1_stage_worker_control_proto protoreflect.FileDescriptor
@@ -1719,15 +1807,10 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\x14local_receipt_digest\x18\x06 \x01(\fR\x12localReceiptDigest\"\x9a\x01\n" +
 	"\x16SealStageOutputRequest\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12I\n" +
-	"\rlocal_receipt\x18\x02 \x01(\v2$.vela.v1.LocalMaterializationReceiptR\flocalReceipt\"\x9e\x02\n" +
-	"!CommitStageMaterializationRequest\x125\n" +
-	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x128\n" +
-	"\x18materialization_lease_id\x18\x02 \x01(\tR\x16materializationLeaseId\x12*\n" +
-	"\x11stage_artifact_id\x18\x03 \x01(\tR\x0fstageArtifactId\x12%\n" +
-	"\x0eobject_version\x18\x04 \x01(\tR\robjectVersion\x12\x16\n" +
-	"\x06sha256\x18\x05 \x01(\fR\x06sha256\x12\x1d\n" +
-	"\n" +
-	"size_bytes\x18\x06 \x01(\x03R\tsizeBytes\"\xe0\x01\n" +
+	"\rlocal_receipt\x18\x02 \x01(\v2$.vela.v1.LocalMaterializationReceiptR\flocalReceipt\"\xaa\x01\n" +
+	"!CommitStageMaterializationRequest\x12^\n" +
+	"\x19materialization_authority\x18\x01 \x01(\v2!.vela.v1.MaterializationAuthorityR\x18materializationAuthority\x12%\n" +
+	"\x0eobject_version\x18\x02 \x01(\tR\robjectVersion\"\xe0\x01\n" +
 	"\x10FailStageRequest\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12#\n" +
 	"\rfailure_class\x18\x02 \x01(\tR\ffailureClass\x12/\n" +
@@ -1766,13 +1849,31 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\tStopStage\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x126\n" +
 	"\x06reason\x18\x02 \x01(\x0e2\x1e.vela.v1.StageWorkerStopReasonR\x06reason\x127\n" +
-	"\tissued_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\"\xe6\x01\n" +
-	"\x18MaterializationAuthority\x124\n" +
-	"\x16stage_authority_digest\x18\x01 \x01(\fR\x14stageAuthorityDigest\x12C\n" +
-	"\x1estage_materialization_lease_id\x18\x02 \x01(\tR\x1bstageMaterializationLeaseId\x129\n" +
+	"\tissued_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\"\x9a\a\n" +
+	"\x18MaterializationAuthority\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\x05R\rschemaVersion\x124\n" +
+	"\x16stage_authority_digest\x18\x02 \x01(\fR\x14stageAuthorityDigest\x12C\n" +
+	"\x1estage_materialization_lease_id\x18\x03 \x01(\tR\x1bstageMaterializationLeaseId\x12*\n" +
+	"\x11stage_artifact_id\x18\x04 \x01(\tR\x0fstageArtifactId\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x14\n" +
-	"\x05token\x18\x04 \x01(\fR\x05token*\xf8\x01\n" +
+	"object_key\x18\x05 \x01(\tR\tobjectKey\x12!\n" +
+	"\fcontent_type\x18\x06 \x01(\tR\vcontentType\x12\x16\n" +
+	"\x06sha256\x18\a \x01(\fR\x06sha256\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\b \x01(\x03R\tsizeBytes\x12(\n" +
+	"\x10local_receipt_id\x18\t \x01(\tR\x0elocalReceiptId\x120\n" +
+	"\x14local_receipt_digest\x18\n" +
+	" \x01(\fR\x12localReceiptDigest\x12$\n" +
+	"\x0esigning_key_id\x18\v \x01(\tR\fsigningKeyId\x127\n" +
+	"\tissued_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\bissuedAt\x129\n" +
+	"\n" +
+	"expires_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x14\n" +
+	"\x05token\x18\x0e \x01(\fR\x05token\x129\n" +
+	"\x19source_worker_instance_id\x18\x0f \x01(\tR\x16sourceWorkerInstanceId\x12?\n" +
+	"\x1csource_worker_instance_epoch\x18\x10 \x01(\x03R\x19sourceWorkerInstanceEpoch\x125\n" +
+	"\x17source_worker_member_id\x18\x12 \x01(\tR\x14sourceWorkerMemberId\x125\n" +
+	"\x17source_spiffe_id_digest\x18\x13 \x01(\fR\x14sourceSpiffeIdDigest\x12;\n" +
+	"\x1asource_worker_member_epoch\x18\x14 \x01(\x03R\x17sourceWorkerMemberEpochJ\x04\b\x11\x10\x12*\xf8\x01\n" +
 	"\x1aStageWorkerCommandDecision\x12-\n" +
 	")STAGE_WORKER_COMMAND_DECISION_UNSPECIFIED\x10\x00\x12*\n" +
 	"&STAGE_WORKER_COMMAND_DECISION_ACCEPTED\x10\x01\x12*\n" +
@@ -1872,7 +1973,7 @@ var file_vela_v1_stage_worker_control_proto_depIdxs = []int32{
 	27, // 22: vela.v1.HeartbeatStageRequest.runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
 	26, // 23: vela.v1.SealStageOutputRequest.authority:type_name -> vela.v1.StageAuthority
 	28, // 24: vela.v1.SealStageOutputRequest.local_receipt:type_name -> vela.v1.LocalMaterializationReceipt
-	26, // 25: vela.v1.CommitStageMaterializationRequest.authority:type_name -> vela.v1.StageAuthority
+	20, // 25: vela.v1.CommitStageMaterializationRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
 	26, // 26: vela.v1.FailStageRequest.authority:type_name -> vela.v1.StageAuthority
 	26, // 27: vela.v1.ReattachStageRequest.authority:type_name -> vela.v1.StageAuthority
 	27, // 28: vela.v1.ReattachStageRequest.observed_runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
@@ -1887,14 +1988,15 @@ var file_vela_v1_stage_worker_control_proto_depIdxs = []int32{
 	26, // 37: vela.v1.StopStage.authority:type_name -> vela.v1.StageAuthority
 	1,  // 38: vela.v1.StopStage.reason:type_name -> vela.v1.StageWorkerStopReason
 	25, // 39: vela.v1.StopStage.issued_at:type_name -> google.protobuf.Timestamp
-	25, // 40: vela.v1.MaterializationAuthority.expires_at:type_name -> google.protobuf.Timestamp
-	3,  // 41: vela.v1.StageWorkerControlService.Connect:input_type -> vela.v1.StageWorkerControlServiceConnectRequest
-	4,  // 42: vela.v1.StageWorkerControlService.Connect:output_type -> vela.v1.StageWorkerControlServiceConnectResponse
-	42, // [42:43] is the sub-list for method output_type
-	41, // [41:42] is the sub-list for method input_type
-	41, // [41:41] is the sub-list for extension type_name
-	41, // [41:41] is the sub-list for extension extendee
-	0,  // [0:41] is the sub-list for field type_name
+	25, // 40: vela.v1.MaterializationAuthority.issued_at:type_name -> google.protobuf.Timestamp
+	25, // 41: vela.v1.MaterializationAuthority.expires_at:type_name -> google.protobuf.Timestamp
+	3,  // 42: vela.v1.StageWorkerControlService.Connect:input_type -> vela.v1.StageWorkerControlServiceConnectRequest
+	4,  // 43: vela.v1.StageWorkerControlService.Connect:output_type -> vela.v1.StageWorkerControlServiceConnectResponse
+	43, // [43:44] is the sub-list for method output_type
+	42, // [42:43] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_stage_worker_control_proto_init() }

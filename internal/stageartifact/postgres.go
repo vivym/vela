@@ -1,6 +1,7 @@
 package stageartifact
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/materializationauthority"
+	"github.com/vivym/vela/internal/stageworkertransport"
 )
 
 type SealCommand struct {
@@ -29,6 +32,7 @@ type SealCommand struct {
 	ManifestSHA256         [sha256.Size]byte
 	SHA256                 [sha256.Size]byte
 	LineageDigest          [sha256.Size]byte
+	TokenDigest            [sha256.Size]byte
 	SizeBytes              int64
 	ArtifactID             uuid.UUID
 	MaterializationLeaseID uuid.UUID
@@ -66,6 +70,66 @@ func NewPostgresRepository(pool *pgxpool.Pool) (*PostgresRepository, error) {
 	return &PostgresRepository{pool: pool}, nil
 }
 
+func (repository *PostgresRepository) IsActive(
+	ctx context.Context,
+	identity stageworkertransport.Identity,
+	sessionEpoch int64,
+	verified materializationauthority.Verified,
+) (bool, error) {
+	if repository == nil || repository.pool == nil {
+		return false, errors.New("StageArtifact repository is not configured")
+	}
+	if ctx == nil || identity.SPIFFEID == "" || sessionEpoch <= 0 ||
+		verified.Authority == nil || verified.Digest == [sha256.Size]byte{} {
+		return false, errors.New("MaterializationAuthority check is incomplete")
+	}
+	digest, err := materializationauthority.Digest(verified.Authority)
+	if err != nil || digest != verified.Digest {
+		return false, errors.New("verified MaterializationAuthority digest is inconsistent")
+	}
+	spiffeDigest := sha256.Sum256([]byte(identity.SPIFFEID))
+	if !bytes.Equal(spiffeDigest[:], verified.Authority.GetSourceSpiffeIdDigest()) {
+		return false, nil
+	}
+	leaseID, err := uuid.Parse(verified.Authority.GetStageMaterializationLeaseId())
+	if err != nil {
+		return false, nil
+	}
+	artifactID, err := uuid.Parse(verified.Authority.GetStageArtifactId())
+	if err != nil {
+		return false, nil
+	}
+	workerID, err := uuid.Parse(verified.Authority.GetSourceWorkerInstanceId())
+	if err != nil {
+		return false, nil
+	}
+	memberID, err := uuid.Parse(verified.Authority.GetSourceWorkerMemberId())
+	if err != nil {
+		return false, nil
+	}
+	payload, err := json.Marshal(map[string]any{
+		"schema_version":               1,
+		"materialization_lease_id":     leaseID,
+		"artifact_id":                  artifactID,
+		"token_digest":                 hex.EncodeToString(digest[:]),
+		"source_worker_instance_id":    workerID,
+		"source_worker_instance_epoch": verified.Authority.GetSourceWorkerInstanceEpoch(),
+		"source_worker_member_id":      memberID,
+		"source_worker_member_epoch":   verified.Authority.GetSourceWorkerMemberEpoch(),
+		"control_session_epoch":        sessionEpoch,
+	})
+	if err != nil {
+		return false, fmt.Errorf("encode MaterializationAuthority check: %w", err)
+	}
+	var active bool
+	if err := repository.pool.QueryRow(ctx, `
+		SELECT vela_is_stage_materialization_authority_active($1::jsonb)
+	`, payload).Scan(&active); err != nil {
+		return false, fmt.Errorf("check active MaterializationAuthority: %w", err)
+	}
+	return active, nil
+}
+
 func (repository *PostgresRepository) Seal(
 	ctx context.Context,
 	command SealCommand,
@@ -93,6 +157,7 @@ func (repository *PostgresRepository) Seal(
 		"manifest_sha256":          hex.EncodeToString(command.ManifestSHA256[:]),
 		"sha256":                   hex.EncodeToString(command.SHA256[:]),
 		"lineage_digest":           hex.EncodeToString(command.LineageDigest[:]),
+		"token_digest":             hex.EncodeToString(command.TokenDigest[:]),
 		"size_bytes":               command.SizeBytes,
 		"artifact_id":              command.ArtifactID,
 		"materialization_lease_id": command.MaterializationLeaseID,
@@ -129,6 +194,7 @@ func (repository *PostgresRepository) Seal(
 		return MaterializationLease{}, errors.New("sealed StageMaterializationLease digest is malformed")
 	}
 	copy(lease.SHA256[:], digest)
+	lease.TokenDigest = command.TokenDigest
 	return lease, nil
 }
 
@@ -152,6 +218,7 @@ func (repository *PostgresRepository) Commit(
 		"object_version":           command.ObjectVersion,
 		"sha256":                   hex.EncodeToString(command.SHA256[:]),
 		"size_bytes":               command.SizeBytes,
+		"token_digest":             hex.EncodeToString(command.TokenDigest[:]),
 		"committed_at":             command.CommittedAt.UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
@@ -241,7 +308,8 @@ func validateSealCommand(command SealCommand) error {
 	}
 	if command.LocalReceiptDigest == [sha256.Size]byte{} ||
 		command.ManifestSHA256 == [sha256.Size]byte{} ||
-		command.SHA256 == [sha256.Size]byte{} || command.LineageDigest == [sha256.Size]byte{} {
+		command.SHA256 == [sha256.Size]byte{} || command.LineageDigest == [sha256.Size]byte{} ||
+		command.TokenDigest == [sha256.Size]byte{} {
 		return errors.New("StageArtifact seal integrity evidence is incomplete")
 	}
 	if command.SealedAt.IsZero() || !command.LeaseExpiresAt.After(command.SealedAt) {
@@ -255,6 +323,7 @@ func validateCommitCommand(command CommitCommand) error {
 		command.MaterializationLeaseID == uuid.Nil || command.ArtifactID == uuid.Nil ||
 		command.ObjectKey == "" || command.ObjectVersion == "" ||
 		command.SHA256 == [sha256.Size]byte{} || command.SizeBytes <= 0 ||
+		command.TokenDigest == [sha256.Size]byte{} ||
 		command.CommittedAt.IsZero() {
 		return errors.New("StageArtifact commit authority is incomplete")
 	}

@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"path/filepath"
@@ -12,7 +13,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
 	veladb "github.com/vivym/vela/internal/database"
+	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/stageartifact"
+	"github.com/vivym/vela/internal/stageworkertransport"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T) {
@@ -33,6 +38,49 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 	lineageDigest := sha256.Sum256([]byte("root request lineage"))
 	artifactID := uuid.New()
 	materializationLeaseID := uuid.New()
+	objectKey := "artifacts/stage/org/project/" + attemptID.String() +
+		"/encoder/output.bin"
+	var workerMemberID uuid.UUID
+	var workerMemberEpoch, controlSessionEpoch int64
+	if err := database.Admin.QueryRow(`
+		SELECT member.id, member.member_epoch, worker.control_session_epoch
+		FROM worker_members AS member
+		JOIN worker_instances AS worker ON worker.id = member.worker_instance_id
+		WHERE member.worker_instance_id = $1
+	`, assignment.WorkerInstanceID).Scan(
+		&workerMemberID, &workerMemberEpoch, &controlSessionEpoch,
+	); err != nil {
+		t.Fatalf("read materialization source WorkerMember: %v", err)
+	}
+	materializationKeys := map[string][]byte{
+		"materialization-key-v1": bytes.Repeat([]byte{0xa4}, 32),
+	}
+	materializationSigner, err := materializationauthority.NewSigner(materializationKeys)
+	if err != nil {
+		t.Fatalf("construct MaterializationAuthority signer: %v", err)
+	}
+	spiffeID := "spiffe://vela/worker/member-1"
+	spiffeDigest := sha256.Sum256([]byte(spiffeID))
+	materializationAuthority, err := materializationSigner.Sign(&velav1.MaterializationAuthority{
+		SchemaVersion: 1, StageAuthorityDigest: bytes.Repeat([]byte{0xb1}, 32),
+		StageMaterializationLeaseId: materializationLeaseID.String(),
+		StageArtifactId:             artifactID.String(), ObjectKey: objectKey,
+		ContentType: "application/octet-stream", Sha256: digest[:],
+		SizeBytes: int64(len(output)), LocalReceiptId: "encoder-local-receipt-v1",
+		LocalReceiptDigest: digest[:], SigningKeyId: "materialization-key-v1",
+		IssuedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(30 * time.Minute)),
+		SourceWorkerInstanceId:    assignment.WorkerInstanceID.String(),
+		SourceWorkerInstanceEpoch: assignment.WorkerInstanceEpoch,
+		SourceWorkerMemberId:      workerMemberID.String(), SourceWorkerMemberEpoch: workerMemberEpoch,
+		SourceSpiffeIdDigest: spiffeDigest[:],
+	})
+	if err != nil {
+		t.Fatalf("sign MaterializationAuthority: %v", err)
+	}
+	materializationTokenDigest, err := materializationauthority.Digest(materializationAuthority)
+	if err != nil {
+		t.Fatalf("digest MaterializationAuthority: %v", err)
+	}
 	sealed, err := repository.Seal(context.Background(), stageartifact.SealCommand{
 		CommandID:              uuid.New(),
 		AttemptID:              attemptID,
@@ -49,14 +97,14 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 		ManifestSHA256:         digest,
 		SHA256:                 digest,
 		LineageDigest:          lineageDigest,
+		TokenDigest:            materializationTokenDigest,
 		SizeBytes:              int64(len(output)),
 		ArtifactID:             artifactID,
 		MaterializationLeaseID: materializationLeaseID,
-		ObjectKey: "artifacts/stage/org/project/" + attemptID.String() +
-			"/encoder/output.bin",
-		ContentType:    "application/octet-stream",
-		SealedAt:       now,
-		LeaseExpiresAt: now.Add(30 * time.Minute),
+		ObjectKey:              objectKey,
+		ContentType:            "application/octet-stream",
+		SealedAt:               now,
+		LeaseExpiresAt:         now.Add(30 * time.Minute),
 	})
 	if err != nil {
 		t.Fatalf("seal StageArtifact output: %v", err)
@@ -64,6 +112,41 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 	if sealed.ID != materializationLeaseID || sealed.ArtifactID != artifactID ||
 		sealed.SHA256 != digest || sealed.SizeBytes != int64(len(output)) {
 		t.Fatalf("sealed materialization lease = %#v", sealed)
+	}
+	materializationValidator, err := materializationauthority.NewValidator(
+		materializationKeys, func() time.Time { return now.Add(time.Second) },
+	)
+	if err != nil {
+		t.Fatalf("construct MaterializationAuthority validator: %v", err)
+	}
+	verifiedMaterialization, err := materializationValidator.Validate(materializationAuthority)
+	if err != nil {
+		t.Fatalf("validate MaterializationAuthority: %v", err)
+	}
+	active, err := repository.IsActive(
+		context.Background(), stageworkertransport.Identity{SPIFFEID: spiffeID},
+		controlSessionEpoch, verifiedMaterialization,
+	)
+	if err != nil || !active {
+		t.Fatalf("active MaterializationAuthority = %t error=%v", active, err)
+	}
+	for _, testCase := range []struct {
+		name         string
+		identity     stageworkertransport.Identity
+		sessionEpoch int64
+	}{
+		{"wrong identity", stageworkertransport.Identity{SPIFFEID: spiffeID + "/forged"}, controlSessionEpoch},
+		{"stale session", stageworkertransport.Identity{SPIFFEID: spiffeID}, controlSessionEpoch + 1},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			active, activeErr := repository.IsActive(
+				context.Background(), testCase.identity, testCase.sessionEpoch,
+				verifiedMaterialization,
+			)
+			if activeErr != nil || active {
+				t.Fatalf("IsActive = %t error=%v", active, activeErr)
+			}
+		})
 	}
 
 	var runState, attemptState, allocationState, leaseState, downstreamState string
@@ -96,6 +179,17 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 	}
 
 	committedAt := now.Add(time.Second)
+	forgedTokenDigest := sha256.Sum256([]byte("forged materialization authority"))
+	if _, err := repository.Commit(context.Background(), stageartifact.CommitCommand{
+		CommandID: uuid.New(), ProgressReceiptID: uuid.New(),
+		MaterializationLeaseID: materializationLeaseID,
+		ArtifactID:             artifactID, ObjectKey: sealed.ObjectKey,
+		ObjectVersion: "l2-forged-version", SHA256: digest,
+		SizeBytes: int64(len(output)), TokenDigest: forgedTokenDigest,
+		CommittedAt: committedAt,
+	}); err == nil {
+		t.Fatal("commit accepted a forged MaterializationAuthority token digest")
+	}
 	artifact, err := repository.Commit(context.Background(), stageartifact.CommitCommand{
 		CommandID:              uuid.New(),
 		ProgressReceiptID:      uuid.New(),
@@ -105,6 +199,7 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 		ObjectVersion:          "l2-exact-version-1",
 		SHA256:                 digest,
 		SizeBytes:              int64(len(output)),
+		TokenDigest:            materializationTokenDigest,
 		CommittedAt:            committedAt,
 	})
 	if err != nil {
@@ -223,6 +318,7 @@ func TestStageArtifactLocalSourceLossRetriesComputeWithoutHoldingGPU(t *testing.
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	digest := sha256.Sum256([]byte("sealed output lost with node"))
 	lineage := sha256.Sum256([]byte("source-loss root lineage"))
+	materializationTokenDigest := sha256.Sum256([]byte("source-loss materialization authority"))
 	leaseID := uuid.New()
 	if _, err := repository.Seal(context.Background(), stageartifact.SealCommand{
 		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: encoderRunID,
@@ -232,7 +328,8 @@ func TestStageArtifactLocalSourceLossRetriesComputeWithoutHoldingGPU(t *testing.
 		ExpectedStageFence: 1, ExpectedStageVersion: 3, OutputPort: "conditioning",
 		LocalReceiptID: "lost-local-receipt", LocalReceiptDigest: digest,
 		ManifestSHA256: digest, SHA256: digest, LineageDigest: lineage,
-		SizeBytes: 64, ArtifactID: uuid.New(), MaterializationLeaseID: leaseID,
+		TokenDigest: materializationTokenDigest,
+		SizeBytes:   64, ArtifactID: uuid.New(), MaterializationLeaseID: leaseID,
 		ObjectKey: "artifacts/stage/org/project/" + attemptID.String() +
 			"/encoder/lost-output.bin",
 		ContentType: "application/octet-stream", SealedAt: now,
@@ -345,6 +442,7 @@ func TestStageArtifactMigrationRoundTripAndDurableAuthorityRefusal(t *testing.T)
 		now := time.Now().UTC().Truncate(time.Millisecond)
 		digest := sha256.Sum256([]byte("durable local materialization authority"))
 		lineage := sha256.Sum256([]byte("migration refusal lineage"))
+		tokenDigest := sha256.Sum256([]byte("durable materialization token"))
 		if _, err := repository.Seal(context.Background(), stageartifact.SealCommand{
 			CommandID: uuid.New(), AttemptID: attemptID, StageRunID: encoderRunID,
 			StageAttemptID:    assignment.StageAttemptID,
@@ -353,7 +451,8 @@ func TestStageArtifactMigrationRoundTripAndDurableAuthorityRefusal(t *testing.T)
 			ExpectedStageFence: 1, ExpectedStageVersion: 3,
 			OutputPort: "conditioning", LocalReceiptID: "migration-refusal-receipt",
 			LocalReceiptDigest: digest, ManifestSHA256: digest, SHA256: digest,
-			LineageDigest: lineage, SizeBytes: 128, ArtifactID: uuid.New(),
+			LineageDigest: lineage, TokenDigest: tokenDigest,
+			SizeBytes: 128, ArtifactID: uuid.New(),
 			MaterializationLeaseID: uuid.New(),
 			ObjectKey: "artifacts/stage/org/project/" + attemptID.String() +
 				"/encoder/migration-refusal.bin",

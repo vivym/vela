@@ -25,6 +25,7 @@ type MaterializationLease struct {
 	ObjectKey   string
 	ContentType string
 	SHA256      [sha256.Size]byte
+	TokenDigest [sha256.Size]byte
 	SizeBytes   int64
 	IssuedAt    time.Time
 	ExpiresAt   time.Time
@@ -39,6 +40,7 @@ type CommitCommand struct {
 	ObjectVersion          string
 	SHA256                 [sha256.Size]byte
 	SizeBytes              int64
+	TokenDigest            [sha256.Size]byte
 	CommittedAt            time.Time
 }
 
@@ -118,6 +120,7 @@ func (materializer *Materializer) Materialize(
 		ObjectVersion:          object.VersionID,
 		SHA256:                 lease.SHA256,
 		SizeBytes:              lease.SizeBytes,
+		TokenDigest:            lease.TokenDigest,
 		CommittedAt:            now,
 	})
 	if err != nil {
@@ -186,6 +189,7 @@ func objectMatchesLease(
 func validateMaterializationLease(lease MaterializationLease) error {
 	if lease.ID == uuid.Nil || lease.ArtifactID == uuid.Nil || lease.ObjectKey == "" ||
 		lease.ContentType == "" || lease.SHA256 == [sha256.Size]byte{} ||
+		lease.TokenDigest == [sha256.Size]byte{} ||
 		lease.SizeBytes <= 0 || lease.IssuedAt.IsZero() ||
 		!lease.ExpiresAt.After(lease.IssuedAt) {
 		return errors.New("StageMaterializationLease is incomplete")

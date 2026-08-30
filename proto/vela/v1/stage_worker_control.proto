@@ -112,12 +112,8 @@ message SealStageOutputRequest {
 }
 
 message CommitStageMaterializationRequest {
-  StageAuthority authority = 1;
-  string materialization_lease_id = 2;
-  string stage_artifact_id = 3;
-  string object_version = 4;
-  bytes sha256 = 5;
-  int64 size_bytes = 6;
+  MaterializationAuthority materialization_authority = 1;
+  string object_version = 2;
 }
 
 message FailStageRequest {
@@ -175,8 +171,24 @@ message StopStage {
 }
 
 message MaterializationAuthority {
-  bytes stage_authority_digest = 1;
-  string stage_materialization_lease_id = 2;
-  google.protobuf.Timestamp expires_at = 3;
-  bytes token = 4;
+  int32 schema_version = 1;
+  bytes stage_authority_digest = 2;
+  string stage_materialization_lease_id = 3;
+  string stage_artifact_id = 4;
+  string object_key = 5;
+  string content_type = 6;
+  bytes sha256 = 7;
+  int64 size_bytes = 8;
+  string local_receipt_id = 9;
+  bytes local_receipt_digest = 10;
+  string signing_key_id = 11;
+  google.protobuf.Timestamp issued_at = 12;
+  google.protobuf.Timestamp expires_at = 13;
+  bytes token = 14;
+  string source_worker_instance_id = 15;
+  int64 source_worker_instance_epoch = 16;
+  reserved 17;
+  string source_worker_member_id = 18;
+  bytes source_spiffe_id_digest = 19;
+  int64 source_worker_member_epoch = 20;
 }
