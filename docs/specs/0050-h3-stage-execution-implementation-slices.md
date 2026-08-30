@@ -1,9 +1,11 @@
 # H3 Stage Execution Implementation Slices
 
-Date: 2026-08-29
+Date: 2026-08-31
 
-Status: In progress. S49.1-S49.6 have repository implementations; S49.7-S49.12
-are pending.
+Status: In progress. S49.1-S49.10 have committed repository implementations;
+S49.11-S49.12 are pending. The exact-cache leaf to finalization-output binding
+is an open cross-slice integration defect, so S49.8/S49.9 cache-only completion
+is not yet a closed acceptance path.
 
 ## Delivery rule
 
@@ -241,6 +243,14 @@ Acceptance:
 - required multi-output ArtifactSet remains indivisible.
 
 ## S49.10: Usage/Cost Ledger
+
+Status: Repository implementation committed as `a691917` in migration
+`00047_usage_cost_ledger.sql` and the `internal/usagecostledger` Module. It adds
+append-only direct, shared, and counterfactual usage evidence, versioned rational
+cost allocation, content-free bounded summaries, and an exact-function database
+role. Unit, targeted PostgreSQL integration, role-confusion, migration rollback,
+and generated-code verification pass. This evidence does not change the fixed
+Customer Charge and is not a Launch Receipt.
 
 Deliver:
 

@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-08-30
+Date: 2026-08-31
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -11,20 +11,21 @@ tests alone do not satisfy a gate.
 ## Accepted Target Design, Implementation In Progress
 
 The H3 stage-disaggregated architecture is accepted as the replacement target.
-S49.1-S49.5 implement the immutable Stage Execution Catalog and graph validator,
-per-DeviceSet WorkerInstance/residency inventory, parent Attempt/StageRun
-authority, deterministic StageScheduler, and the signed Stage Worker/local
-ModelRuntime protocol boundary. The current committed legacy Worker Assignment,
-Attempt Lease, H3 Worker Agent, Runner, and Fleet slices below remain evidence
-for the machine-level baseline and must not be read as production evidence for
-StageArtifact transfer/cache, split H3 execution, or cross-node placement.
+S49.1-S49.10 have committed repository implementations through StageArtifact
+transfer, split H3 execution, exact cache, CPU media stages, and the immutable
+Usage/Cost Ledger. This is not complete acceptance closure: full integration
+revalidation currently fails the cache-only path because a cached leaf output is
+not yet bound into the required finalization output set. The current committed
+legacy Worker Assignment, Attempt Lease, H3 Worker Agent, Runner, and Fleet
+slices remain the active machine-level baseline until cutover and contraction;
+the target implementation is not production evidence or a Launch Receipt.
 
 | Design package | Status | Evidence |
 | --- | --- | --- |
-| H3 Stage Execution Architecture | Accepted target; S49.1-S49.5 implemented | `docs/h3-stage-execution-architecture.md` |
+| H3 Stage Execution Architecture | Accepted target; S49.1-S49.10 committed, cache-only finalization closure open | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Expansion in progress; S49.1-S49.5 implemented | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
-| Implementation slices | S49.1-S49.5 implemented; S49.6-S49.12 pending | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Schema and protocol migration | Expansion through migration `00047`; cache-only finalization closure open | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Implementation slices | S49.1-S49.10 committed; S49.11-S49.12 pending | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Proposed; not implemented or calibrated | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
 Until cutover and contraction complete, `db/migrations/00002_worker_assignment.sql`,
@@ -89,6 +90,7 @@ unchanged at `0/9 PASS`.
 | NATS Linux/amd64 Image Pinning | `760cd7a`, `431bf3f` | `docs/specs/0046-nats-linux-amd64-image-pinning.md`, `deploy/control-storage/nats-statefulset.yaml`, `internal/deploymentcontract/jetstream_test.go` |
 | BusyBox Linux/amd64 Materializer Image Pinning | `6d916bb`, `9f4063e` | `docs/specs/0047-busybox-linux-amd64-image-pinning.md`, `deploy/vela-control/deployment.yaml`, `deploy/worker-agent/daemonset.yaml`, `deploy/fleet-controller/desired-revisions.yaml`, `internal/deploymentcontract/busybox_image_test.go` |
 | H3 Mock Backend (non-production) | `4304fe9`, `f6cb45b` | `docs/specs/0048-h3-mock-backend.md`, `internal/h3mockbackend`, `cmd/vela-h3-mock-backend` |
+| H3 Stage Usage/Cost Ledger (S49.10) | `a691917` | `db/migrations/00047_usage_cost_ledger.sql`, `internal/usagecostledger` |
 
 ## ADR Evidence Matrix
 

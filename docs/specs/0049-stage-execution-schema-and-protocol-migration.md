@@ -1,14 +1,14 @@
 # Stage Execution Schema And Protocol Migration
 
-Date: 2026-08-29
+Date: 2026-08-31
 
-Status: Implementation in progress. S49.1-S49.5 implement the immutable Catalog,
-WorkerInstance and residency inventory, parent Attempt and StageRun authority,
-deterministic StageScheduler with durable claim and shadow-replay evidence, and
-the signed Stage Worker/local ModelRuntime protocol boundary. Artifact transfer,
-production split H3 runtime Adapters, cache, CPU media, usage/cost, capacity
-planning, and legacy contraction remain pending. Repository evidence does not
-advance a Production Gate.
+Status: Implementation in progress. S49.1-S49.10 have committed repository
+implementations through the immutable Usage/Cost Ledger. S49.11 capacity
+planning and S49.12 cutover/contraction remain pending. Full integration
+revalidation has also exposed an open cross-slice defect: an exact-cache leaf
+can reach `SUCCEEDED` without binding its cached StageArtifact into the required
+finalization output set, so cache-only graph completion is not yet closed.
+Repository evidence does not advance a Production Gate.
 
 ## Purpose
 
