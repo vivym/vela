@@ -2,7 +2,7 @@
 
 This Kustomize base records the production boundary for the modular
 `vela-control` runtime. It runs two identical replicas on distinct
-Control/Storage nodes and exposes five single-purpose ClusterIP Services. Render
+Control/Storage nodes and exposes six single-purpose ClusterIP Services. Render
 the base locally with:
 
 ```sh
@@ -93,8 +93,11 @@ Pod and must source them from the approved secret manager or PKI workflow.
   PostgreSQL role DSN as a distinct environment key.
 - `vela-control-credential-pepper-<release>` supplies only the base64
   credential pepper.
-- `vela-control-transport-tls-<release>` keeps Worker and Fleet server
-  identities and client CAs separate from public HTTP ingress.
+- `vela-control-transport-tls-<release>` keeps Worker, Stage Worker, and Fleet
+  server identities and client CAs separate from public HTTP ingress.
+- `vela-control-stage-worker-identity-<release>` supplies the assignment
+  identity HMAC key. Its Secret name rolls with the release, but its key bytes
+  must remain stable across N/N-1 replay and rollback windows.
 - `vela-control-privileged-http-tls-<release>` contains independent Finance and
   Compliance server identities and client CAs.
 - The remaining names in `secret-contract.json` are also suffixed by the exact
@@ -138,13 +141,15 @@ Each Service selects the same Pod set but publishes exactly one interface:
 | `vela-control` | 8444 | Fleet maintenance mTLS gRPC; preserves the existing Fleet DNS contract |
 | `vela-finance-reconciliation` | 8445 | Finance Reconciliation mTLS HTTPS |
 | `vela-compliance` | 8446 | Compliance / Legal Hold mTLS HTTPS |
+| `vela-stage-worker-control` | 8447 | Stage Worker execution control mTLS gRPC |
 
 Ingress is default-denied. The repository policies then admit each port from a
 different identity boundary:
 
 - API ingress namespaces require `vela.ai/network-role=api-ingress`, and the
   gateway Pod requires `vela.ai/client-role=api-gateway`;
-- Worker and Fleet traffic requires the exact workload label in `vela-system`;
+- Worker, Stage Worker, and Fleet traffic each require their exact workload
+  label in `vela-system` on separate ports;
 - Finance namespaces and Pods require `vela.ai/network-role=finance` plus
   `vela.ai/client-role=finance-reconciliation`; and
 - Compliance namespaces and Pods require `vela.ai/network-role=compliance`
@@ -177,7 +182,7 @@ under `deploy/observability`.
 
 A production rollout still requires approved Vela image digests, complete
 BusyBox and Vela supply-chain evidence, Secret/PKI rotation, real Control/Storage
-placement, NetworkPolicy observation, authenticated probes for all five
+placement, NetworkPolicy observation, authenticated probes for all six
 interfaces, N/N-1 rollout and rollback, long-running Job drain,
 database/NATS/object-store failure exercises, and the corresponding immutable
 Launch Receipts.

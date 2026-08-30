@@ -298,8 +298,9 @@ func newPostgresAssignmentTestBackendWithScheduler(
 	if err != nil {
 		t.Fatalf("construct StageAuthority signer: %v", err)
 	}
-	transferSigner, err := stageartifact.NewTransferTicketSigner(
-		"stage-transfer-key-v1", bytes.Repeat([]byte{0x9b}, 32),
+	transferSigner, err := stageartifact.NewTransferTicketKeyringSigner(
+		"stage-authority-key-v1",
+		map[string][]byte{"stage-authority-key-v1": bytes.Repeat([]byte{0x9a}, 32)},
 	)
 	if err != nil {
 		t.Fatalf("construct TransferTicket signer: %v", err)

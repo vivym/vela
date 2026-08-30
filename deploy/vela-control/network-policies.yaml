@@ -98,6 +98,33 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: vela-control-allow-stage-worker
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: stage-worker-control
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vela-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vela-stage-worker
+      ports:
+        - protocol: TCP
+          port: 8447
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: vela-control-allow-fleet
   namespace: vela-system
   labels:

@@ -42,13 +42,14 @@ type SignedTransferTicket struct {
 }
 
 type IssueTransferRequest struct {
-	CommandID   uuid.UUID
-	TicketID    uuid.UUID
-	ArtifactID  uuid.UUID
-	PinID       uuid.UUID
-	Destination TransferDestination
-	IssuedAt    time.Time
-	ExpiresAt   time.Time
+	CommandID    uuid.UUID
+	TicketID     uuid.UUID
+	ArtifactID   uuid.UUID
+	PinID        uuid.UUID
+	SigningKeyID string
+	Destination  TransferDestination
+	IssuedAt     time.Time
+	ExpiresAt    time.Time
 }
 
 type IssueTransferCommand struct {
@@ -92,10 +93,17 @@ func (issuer *TransferTicketIssuer) Issue(
 		request.PinID == uuid.Nil {
 		return SignedTransferTicket{}, errors.New("TransferTicket issue identities are required")
 	}
-	ticket, err := issuer.signer.Sign(TransferTicketClaims{
+	claims := TransferTicketClaims{
 		TicketID: request.TicketID, Destination: request.Destination,
 		IssuedAt: request.IssuedAt, ExpiresAt: request.ExpiresAt,
-	})
+	}
+	var ticket SignedTransferTicket
+	var err error
+	if request.SigningKeyID == "" {
+		ticket, err = issuer.signer.Sign(claims)
+	} else {
+		ticket, err = issuer.signer.SignWithKeyID(request.SigningKeyID, claims)
+	}
 	if err != nil {
 		return SignedTransferTicket{}, err
 	}
@@ -119,36 +127,72 @@ type transferTicketEnvelope struct {
 }
 
 type TransferTicketSigner struct {
-	keyID string
-	key   []byte
+	defaultKeyID string
+	keys         map[string][]byte
 }
 
 func NewTransferTicketSigner(keyID string, key []byte) (*TransferTicketSigner, error) {
-	keyID = strings.TrimSpace(keyID)
-	if keyID == "" || len(keyID) > 100 || len(key) < sha256.Size {
+	return NewTransferTicketKeyringSigner(keyID, map[string][]byte{keyID: key})
+}
+
+func NewTransferTicketKeyringSigner(
+	defaultKeyID string,
+	keys map[string][]byte,
+) (*TransferTicketSigner, error) {
+	originalDefaultKeyID := defaultKeyID
+	defaultKeyID = strings.TrimSpace(defaultKeyID)
+	if defaultKeyID == "" || len(defaultKeyID) > 100 ||
+		defaultKeyID != originalDefaultKeyID || len(keys) == 0 {
 		return nil, errors.New("TransferTicket signing configuration is invalid")
 	}
-	return &TransferTicketSigner{keyID: keyID, key: bytes.Clone(key)}, nil
+	validated := make(map[string][]byte, len(keys))
+	for keyID, key := range keys {
+		if strings.TrimSpace(keyID) != keyID || keyID == "" || len(keyID) > 100 ||
+			len(key) < sha256.Size {
+			return nil, errors.New("TransferTicket signing configuration is invalid")
+		}
+		validated[keyID] = bytes.Clone(key)
+	}
+	if _, ok := validated[defaultKeyID]; !ok {
+		return nil, errors.New("TransferTicket default signing key is absent from keyring")
+	}
+	return &TransferTicketSigner{defaultKeyID: defaultKeyID, keys: validated}, nil
 }
 
 func (signer *TransferTicketSigner) Sign(
 	claims TransferTicketClaims,
 ) (SignedTransferTicket, error) {
-	if signer == nil || len(signer.key) < sha256.Size || signer.keyID == "" {
+	if signer == nil {
 		return SignedTransferTicket{}, errors.New("TransferTicket signer is not configured")
+	}
+	return signer.SignWithKeyID(signer.defaultKeyID, claims)
+}
+
+func (signer *TransferTicketSigner) SignWithKeyID(
+	keyID string,
+	claims TransferTicketClaims,
+) (SignedTransferTicket, error) {
+	originalKeyID := keyID
+	keyID = strings.TrimSpace(keyID)
+	if signer == nil || keyID == "" || len(keyID) > 100 || keyID != originalKeyID {
+		return SignedTransferTicket{}, errors.New("TransferTicket signer is not configured")
+	}
+	key, ok := signer.keys[keyID]
+	if !ok {
+		return SignedTransferTicket{}, fmt.Errorf("TransferTicket signing key is unknown: %s", keyID)
 	}
 	if err := validateTransferTicketClaims(claims); err != nil {
 		return SignedTransferTicket{}, err
 	}
 	payload, err := json.Marshal(transferTicketEnvelope{
 		SchemaVersion: 1,
-		KeyID:         signer.keyID,
+		KeyID:         keyID,
 		Claims:        claims,
 	})
 	if err != nil {
 		return SignedTransferTicket{}, fmt.Errorf("encode TransferTicket: %w", err)
 	}
-	mac := hmac.New(sha256.New, signer.key)
+	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write(payload)
 	token := base64.RawURLEncoding.EncodeToString(payload) + "." +
 		base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
@@ -159,7 +203,7 @@ func (signer *TransferTicketSigner) Verify(
 	ticket SignedTransferTicket,
 	now time.Time,
 ) (TransferTicketClaims, error) {
-	if signer == nil || len(signer.key) < sha256.Size || len(ticket.Token) == 0 {
+	if signer == nil || len(signer.keys) == 0 || len(ticket.Token) == 0 {
 		return TransferTicketClaims{}, errors.New("TransferTicket verifier is not configured")
 	}
 	parts := strings.Split(string(ticket.Token), ".")
@@ -174,15 +218,18 @@ func (signer *TransferTicketSigner) Verify(
 	if err != nil || len(signature) != sha256.Size {
 		return TransferTicketClaims{}, errors.New("TransferTicket signature is malformed")
 	}
-	mac := hmac.New(sha256.New, signer.key)
+	var envelope transferTicketEnvelope
+	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.SchemaVersion != 1 {
+		return TransferTicketClaims{}, errors.New("TransferTicket envelope is unsupported")
+	}
+	key, ok := signer.keys[envelope.KeyID]
+	if !ok {
+		return TransferTicketClaims{}, errors.New("TransferTicket signing key is unknown")
+	}
+	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write(payload)
 	if !hmac.Equal(signature, mac.Sum(nil)) {
 		return TransferTicketClaims{}, errors.New("TransferTicket signature is invalid")
-	}
-	var envelope transferTicketEnvelope
-	if err := json.Unmarshal(payload, &envelope); err != nil || envelope.SchemaVersion != 1 ||
-		envelope.KeyID != signer.keyID {
-		return TransferTicketClaims{}, errors.New("TransferTicket envelope is unsupported")
 	}
 	if err := validateTransferTicketClaims(envelope.Claims); err != nil {
 		return TransferTicketClaims{}, err

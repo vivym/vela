@@ -54,7 +54,7 @@ spec:
             - |
               umask 077
               mkdir -p \
-                /materialized/worker /materialized/fleet \
+                /materialized/worker /materialized/fleet /materialized/stage-worker \
                 /materialized/finance /materialized/compliance \
                 /materialized/nats /materialized/artifact \
                 /materialized/keyrings /materialized/invoice \
@@ -66,6 +66,10 @@ spec:
               cp /projected/control-transport/fleet-tls.crt /materialized/fleet/tls.crt
               cp /projected/control-transport/fleet-tls.key /materialized/fleet/tls.key
               cp /projected/control-transport/fleet-client-ca.crt /materialized/fleet/client-ca.crt
+              cp /projected/control-transport/stage-worker-tls.crt /materialized/stage-worker/tls.crt
+              cp /projected/control-transport/stage-worker-tls.key /materialized/stage-worker/tls.key
+              cp /projected/control-transport/stage-worker-client-ca.crt /materialized/stage-worker/client-ca.crt
+              cp /projected/stage-worker-identity/identity-key /materialized/stage-worker/identity-key
               cp /projected/privileged-http/finance-tls.crt /materialized/finance/tls.crt
               cp /projected/privileged-http/finance-tls.key /materialized/finance/tls.key
               cp /projected/privileged-http/finance-client-ca.crt /materialized/finance/client-ca.crt
@@ -125,6 +129,9 @@ spec:
               readOnly: true
             - name: control-transport-tls
               mountPath: /projected/control-transport
+              readOnly: true
+            - name: stage-worker-identity
+              mountPath: /projected/stage-worker-identity
               readOnly: true
             - name: privileged-http-tls
               mountPath: /projected/privileged-http
@@ -209,6 +216,9 @@ spec:
             - name: compliance-https
               containerPort: 8446
               protocol: TCP
+            - name: stage-wkr-grpc
+              containerPort: 8447
+              protocol: TCP
           startupProbe:
             httpGet:
               scheme: HTTP
@@ -286,6 +296,10 @@ spec:
         - name: control-transport-tls
           secret:
             secretName: vela-control-transport-tls-r0-placeholder
+            defaultMode: 0400
+        - name: stage-worker-identity
+          secret:
+            secretName: vela-control-stage-worker-identity-r0-placeholder
             defaultMode: 0400
         - name: privileged-http-tls
           secret:

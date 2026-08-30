@@ -54,6 +54,7 @@ import (
 	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stagescheduler"
+	"github.com/vivym/vela/internal/stageworkertransport"
 	"github.com/vivym/vela/internal/strictjson"
 	"github.com/vivym/vela/internal/telemetry"
 	"github.com/vivym/vela/internal/webhook"
@@ -68,6 +69,7 @@ const (
 	defaultManagementAddress                    = ":8081"
 	defaultWorkerGRPCAddress                    = ":8443"
 	defaultFleetGRPCAddress                     = ":8444"
+	defaultStageWorkerControlAddress            = ":8447"
 	defaultRemediationTick                      = 500 * time.Millisecond
 	defaultRemediationBatch                     = 100
 	defaultPublisherBatch                       = 100
@@ -191,6 +193,13 @@ type config struct {
 	stageSchedulerLeaseTTL                 time.Duration
 	stageSchedulerLocalDeadlineTTL         time.Duration
 	stageSchedulerBatchSize                int
+	stageArtifactDatabaseURL               string
+	stageWorkerControlDatabaseURL          string
+	stageWorkerControlAddress              string
+	stageWorkerControlTLSCertFile          string
+	stageWorkerControlTLSKeyFile           string
+	stageWorkerControlClientCAFile         string
+	stageWorkerIdentityKeyFile             string
 	billingDatabaseURL                     string
 	financeReconciliationDatabaseURL       string
 	financeReconciliationAddress           string
@@ -641,6 +650,26 @@ func run() error {
 		return fmt.Errorf("open StageScheduler database pool: %w", err)
 	}
 	defer stageSchedulerPool.Close()
+	stageArtifactPool, err := openPool(
+		ctx,
+		configuration.stageArtifactDatabaseURL,
+		5,
+		veladb.RoleStageArtifact,
+	)
+	if err != nil {
+		return fmt.Errorf("open StageArtifact database pool: %w", err)
+	}
+	defer stageArtifactPool.Close()
+	stageWorkerControlPool, err := openPool(
+		ctx,
+		configuration.stageWorkerControlDatabaseURL,
+		10,
+		veladb.RoleStageWorkerControl,
+	)
+	if err != nil {
+		return fmt.Errorf("open StageWorkerControl database pool: %w", err)
+	}
+	defer stageWorkerControlPool.Close()
 	billingPool, err := openPool(ctx, configuration.billingDatabaseURL, 5, veladb.RoleBilling)
 	if err != nil {
 		return fmt.Errorf("open billing database pool: %w", err)
@@ -899,6 +928,38 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure StageScheduler: %w", err)
 	}
+	stageWorkerControlAdapter, err := newStageWorkerControlAdapter(
+		configuration,
+		stageWorkerControlPool,
+		stageArtifactPool,
+		stageScheduling,
+		stageAttemptCoordinator,
+	)
+	if err != nil {
+		return fmt.Errorf("configure StageWorkerControl: %w", err)
+	}
+	stageWorkerTransportCredentials, err := stageworkertransport.NewServerTLSCredentials(
+		configuration.stageWorkerControlTLSCertFile,
+		configuration.stageWorkerControlTLSKeyFile,
+		configuration.stageWorkerControlClientCAFile,
+	)
+	if err != nil {
+		return err
+	}
+	stageWorkerGRPCServer := grpc.NewServer(
+		grpc.Creds(stageWorkerTransportCredentials),
+		grpc.MaxRecvMsgSize(4<<20),
+		grpc.MaxSendMsgSize(4<<20),
+	)
+	velav1.RegisterStageWorkerControlServiceServer(
+		stageWorkerGRPCServer,
+		stageWorkerControlAdapter,
+	)
+	stageWorkerListener, err := net.Listen("tcp", configuration.stageWorkerControlAddress)
+	if err != nil {
+		return fmt.Errorf("listen for StageWorkerControl gRPC: %w", err)
+	}
+	defer func() { _ = stageWorkerListener.Close() }()
 	capacityPredictor, err := scheduler.NewCapacityPredictor(schedulerPool)
 	if err != nil {
 		return fmt.Errorf("configure Scheduler capacity predictor: %w", err)
@@ -1307,6 +1368,15 @@ func run() error {
 		)
 		workerServerErrors <- workerGRPCServer.Serve(workerListener)
 	}()
+	stageWorkerServerErrors := make(chan error, 1)
+	go func() {
+		slog.Info(
+			"vela-control StageWorkerControl gRPC server started",
+			"address",
+			configuration.stageWorkerControlAddress,
+		)
+		stageWorkerServerErrors <- stageWorkerGRPCServer.Serve(stageWorkerListener)
+	}()
 	fleetServerErrors := make(chan error, 1)
 	go func() {
 		slog.Info(
@@ -1353,6 +1423,11 @@ func run() error {
 			stop()
 			serveErr = fmt.Errorf("serve Worker gRPC: %w", err)
 		}
+	case err := <-stageWorkerServerErrors:
+		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			stop()
+			serveErr = fmt.Errorf("serve StageWorkerControl gRPC: %w", err)
+		}
 	case err := <-fleetServerErrors:
 		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			stop()
@@ -1398,6 +1473,17 @@ func run() error {
 	case <-shutdownContext.Done():
 		workerGRPCServer.Stop()
 		return errors.New("worker gRPC server did not stop before shutdown deadline")
+	}
+	stageWorkerServerDone := make(chan struct{})
+	go func() {
+		defer close(stageWorkerServerDone)
+		stageWorkerGRPCServer.GracefulStop()
+	}()
+	select {
+	case <-stageWorkerServerDone:
+	case <-shutdownContext.Done():
+		stageWorkerGRPCServer.Stop()
+		return errors.New("StageWorkerControl gRPC server did not stop before shutdown deadline")
 	}
 	stop()
 	select {
@@ -1562,6 +1648,16 @@ func loadConfig() (config, error) {
 		stageSchedulerLeaseTTL:            defaultStageSchedulerLeaseTTL,
 		stageSchedulerLocalDeadlineTTL:    defaultStageSchedulerLocalDeadlineTTL,
 		stageSchedulerBatchSize:           defaultStageSchedulerBatchSize,
+		stageArtifactDatabaseURL:          os.Getenv("VELA_STAGE_ARTIFACT_DATABASE_URL"),
+		stageWorkerControlDatabaseURL:     os.Getenv("VELA_STAGE_WORKER_CONTROL_DATABASE_URL"),
+		stageWorkerControlAddress: envOrDefault(
+			"VELA_STAGE_WORKER_CONTROL_ADDRESS",
+			defaultStageWorkerControlAddress,
+		),
+		stageWorkerControlTLSCertFile:     os.Getenv("VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE"),
+		stageWorkerControlTLSKeyFile:      os.Getenv("VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE"),
+		stageWorkerControlClientCAFile:    os.Getenv("VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE"),
+		stageWorkerIdentityKeyFile:        os.Getenv("VELA_STAGE_WORKER_IDENTITY_KEY_FILE"),
 		billingDatabaseURL:                os.Getenv("VELA_BILLING_DATABASE_URL"),
 		financeReconciliationDatabaseURL:  os.Getenv("VELA_FINANCE_RECONCILIATION_DATABASE_URL"),
 		financeReconciliationAddress:      os.Getenv("VELA_FINANCE_RECONCILIATION_ADDR"),
@@ -1689,6 +1785,12 @@ func loadConfig() (config, error) {
 		"VELA_ATTEMPT_COORDINATOR_DATABASE_URL":                      configuration.attemptCoordinatorDatabaseURL,
 		"VELA_STAGE_SCHEDULER_DATABASE_URL":                          configuration.stageSchedulerDatabaseURL,
 		"VELA_STAGE_SCHEDULER_ID":                                    configuration.stageSchedulerID,
+		"VELA_STAGE_ARTIFACT_DATABASE_URL":                           configuration.stageArtifactDatabaseURL,
+		"VELA_STAGE_WORKER_CONTROL_DATABASE_URL":                     configuration.stageWorkerControlDatabaseURL,
+		"VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE":                    configuration.stageWorkerControlTLSCertFile,
+		"VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE":                     configuration.stageWorkerControlTLSKeyFile,
+		"VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE":                   configuration.stageWorkerControlClientCAFile,
+		"VELA_STAGE_WORKER_IDENTITY_KEY_FILE":                        configuration.stageWorkerIdentityKeyFile,
 		"VELA_BILLING_DATABASE_URL":                                  configuration.billingDatabaseURL,
 		"VELA_FINANCE_RECONCILIATION_DATABASE_URL":                   configuration.financeReconciliationDatabaseURL,
 		"VELA_FINANCE_RECONCILIATION_ADDR":                           configuration.financeReconciliationAddress,

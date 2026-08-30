@@ -463,7 +463,7 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 		ticketExpiry := minTime(
 			snapshot.IssuedAt.Add(backend.transferTicketTTL),
 			snapshot.ExpiresAt,
-			input.ArtifactExpiresAt.Add(-time.Nanosecond),
+			input.ArtifactExpiresAt.Add(-time.Microsecond),
 		)
 		if !ticketExpiry.After(snapshot.IssuedAt) {
 			return nil, errors.New("StageAssignment input TransferTicket deadline is stale")
@@ -472,6 +472,7 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 			CommandID:  backend.deriveUUID("transfer-command/"+input.StageArtifactID.String(), commandID),
 			TicketID:   backend.deriveUUID("transfer-ticket/"+input.StageArtifactID.String(), commandID),
 			ArtifactID: input.StageArtifactID, PinID: input.PinID,
+			SigningKeyID: snapshot.SigningKeyID,
 			Destination: stageartifact.TransferDestination{
 				WorkerInstanceID:    snapshot.WorkerInstanceID,
 				WorkerInstanceEpoch: snapshot.WorkerInstanceEpoch,

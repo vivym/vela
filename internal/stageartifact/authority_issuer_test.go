@@ -13,6 +13,7 @@ import (
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -30,27 +31,32 @@ func TestMaterializationAuthorityIssuerSealsExactLocalOutputContract(t *testing.
 		OutputManifestJson: manifestJSON,
 	}
 	repository := &recordingSealRepository{}
-	keys := map[string][]byte{"materialization-key-v1": bytes.Repeat([]byte{0xa4}, 32)}
+	keys := map[string][]byte{
+		"materialization-key-v1": bytes.Repeat([]byte{0xa4}, 32),
+		"stage-key-v1":           bytes.Repeat([]byte{0x7c}, 32),
+	}
 	signer, err := materializationauthority.NewSigner(keys)
 	if err != nil {
 		t.Fatalf("NewSigner: %v", err)
 	}
 	issuer, err := stageartifact.NewMaterializationAuthorityIssuer(
-		repository, signer, "materialization-key-v1", 30*time.Minute,
+		repository, signer, 30*time.Minute,
 	)
 	if err != nil {
 		t.Fatalf("NewMaterializationAuthorityIssuer: %v", err)
 	}
 
-	issued, err := issuer.Seal(context.Background(), stageartifact.IssueMaterializationRequest{
+	request := stageartifact.IssueMaterializationRequest{
 		Stage: verified, SourceSPIFFEID: "spiffe://vela/worker/member-1",
 		LocalReceipt: receipt,
-	})
+	}
+	issued, err := issuer.Seal(context.Background(), request)
 	if err != nil {
 		t.Fatalf("Seal: %v", err)
 	}
 	if repository.calls != 1 || issued.Lease.ID != repository.command.MaterializationLeaseID ||
 		issued.Authority.GetStageArtifactId() != repository.command.ArtifactID.String() ||
+		issued.Authority.GetSigningKeyId() != verified.Authority.GetSigningKeyId() ||
 		issued.Authority.GetObjectKey() != repository.command.ObjectKey ||
 		issued.Authority.GetSourceWorkerInstanceId() != verified.Authority.GetWorkerInstanceId() ||
 		issued.Authority.GetSourceWorkerMemberId() != verified.Authority.GetMembers()[0].GetWorkerMemberId() ||
@@ -73,6 +79,29 @@ func TestMaterializationAuthorityIssuerSealsExactLocalOutputContract(t *testing.
 	if _, err := validator.Validate(issued.Authority); err != nil {
 		t.Fatalf("Validate issued authority: %v", err)
 	}
+	rotatedKeys := map[string][]byte{
+		"stage-key-v1": bytes.Repeat([]byte{0x7c}, 32),
+		"stage-key-v2": bytes.Repeat([]byte{0x7d}, 32),
+	}
+	rotatedSigner, err := materializationauthority.NewSigner(rotatedKeys)
+	if err != nil {
+		t.Fatalf("construct rotated MaterializationAuthority signer: %v", err)
+	}
+	rotatedRepository := &recordingSealRepository{}
+	rotatedIssuer, err := stageartifact.NewMaterializationAuthorityIssuer(
+		rotatedRepository, rotatedSigner, 30*time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("construct rotated MaterializationAuthority issuer: %v", err)
+	}
+	replayed, err := rotatedIssuer.Seal(context.Background(), request)
+	if err != nil {
+		t.Fatalf("replay MaterializationAuthority after rotation: %v", err)
+	}
+	if !proto.Equal(replayed.Authority, issued.Authority) ||
+		rotatedRepository.command.TokenDigest != repository.command.TokenDigest {
+		t.Fatal("MaterializationAuthority replay changed after active-key rotation")
+	}
 }
 
 func TestMaterializationAuthorityIssuerRejectsReceiptLineageBeforeSeal(t *testing.T) {
@@ -90,9 +119,10 @@ func TestMaterializationAuthorityIssuerRejectsReceiptLineageBeforeSeal(t *testin
 	repository := &recordingSealRepository{}
 	signer, _ := materializationauthority.NewSigner(map[string][]byte{
 		"materialization-key-v1": bytes.Repeat([]byte{0xa4}, 32),
+		"stage-key-v1":           bytes.Repeat([]byte{0x7c}, 32),
 	})
 	issuer, _ := stageartifact.NewMaterializationAuthorityIssuer(
-		repository, signer, "materialization-key-v1", 30*time.Minute,
+		repository, signer, 30*time.Minute,
 	)
 	_, err := issuer.Seal(context.Background(), stageartifact.IssueMaterializationRequest{
 		Stage: verified, SourceSPIFFEID: "spiffe://vela/worker/member-1",

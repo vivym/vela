@@ -68,6 +68,12 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "AttemptCoordinator database", missingEnv: "VELA_ATTEMPT_COORDINATOR_DATABASE_URL"},
 		{name: "StageScheduler database", missingEnv: "VELA_STAGE_SCHEDULER_DATABASE_URL"},
 		{name: "StageScheduler identity", missingEnv: "VELA_STAGE_SCHEDULER_ID"},
+		{name: "StageArtifact database", missingEnv: "VELA_STAGE_ARTIFACT_DATABASE_URL"},
+		{name: "StageWorkerControl database", missingEnv: "VELA_STAGE_WORKER_CONTROL_DATABASE_URL"},
+		{name: "StageWorkerControl identity key", missingEnv: "VELA_STAGE_WORKER_IDENTITY_KEY_FILE"},
+		{name: "StageWorkerControl server certificate", missingEnv: "VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE"},
+		{name: "StageWorkerControl server key", missingEnv: "VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE"},
+		{name: "StageWorkerControl client CA", missingEnv: "VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE"},
 		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
 		{name: "Finance Reconciliation database", missingEnv: "VELA_FINANCE_RECONCILIATION_DATABASE_URL"},
 		{name: "Finance Reconciliation address", missingEnv: "VELA_FINANCE_RECONCILIATION_ADDR"},
@@ -269,6 +275,13 @@ func setValidConfigEnvironment(t *testing.T) {
 	)
 	t.Setenv("VELA_STAGE_SCHEDULER_DATABASE_URL", "postgres://stage-scheduler.example/vela")
 	t.Setenv("VELA_STAGE_SCHEDULER_ID", "vela-control-stage-scheduler-1")
+	t.Setenv("VELA_STAGE_ARTIFACT_DATABASE_URL", "postgres://stage-artifact.example/vela")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_DATABASE_URL", "postgres://stage-worker-control.example/vela")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_ADDRESS", "127.0.0.1:8447")
+	t.Setenv("VELA_STAGE_WORKER_IDENTITY_KEY_FILE", "/run/secrets/stage-worker-identity-key")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE", "/run/tls/stage-worker-control/tls.crt")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE", "/run/tls/stage-worker-control/tls.key")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE", "/run/tls/stage-worker-control/client-ca.crt")
 	t.Setenv("VELA_BILLING_DATABASE_URL", "postgres://billing.example/vela")
 	t.Setenv(
 		"VELA_FINANCE_RECONCILIATION_DATABASE_URL",
@@ -402,6 +415,23 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "")
 	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "")
 	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "")
+}
+
+func TestLoadConfigPreservesIndependentStageWorkerControlBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load StageWorkerControl configuration: %v", err)
+	}
+	if configuration.stageArtifactDatabaseURL != "postgres://stage-artifact.example/vela" ||
+		configuration.stageWorkerControlDatabaseURL != "postgres://stage-worker-control.example/vela" ||
+		configuration.stageWorkerControlAddress != "127.0.0.1:8447" ||
+		configuration.stageWorkerIdentityKeyFile != "/run/secrets/stage-worker-identity-key" ||
+		configuration.stageWorkerControlTLSCertFile != "/run/tls/stage-worker-control/tls.crt" ||
+		configuration.stageWorkerControlTLSKeyFile != "/run/tls/stage-worker-control/tls.key" ||
+		configuration.stageWorkerControlClientCAFile != "/run/tls/stage-worker-control/client-ca.crt" {
+		t.Fatalf("StageWorkerControl configuration = %#v", configuration)
+	}
 }
 
 func TestLoadConfigPreservesIndependentFleetMaintenanceBoundary(t *testing.T) {

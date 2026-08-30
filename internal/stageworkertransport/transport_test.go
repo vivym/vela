@@ -2,7 +2,10 @@ package stageworkertransport_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"net"
+	"net/url"
 	"sync"
 	"testing"
 	"time"
@@ -11,10 +14,90 @@ import (
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestPeerAuthenticatorExtractsSingleVerifiedSPIFFEURI(t *testing.T) {
+	leaf := &x509.Certificate{
+		Raw:  []byte("verified-stage-worker-leaf"),
+		URIs: []*url.URL{{Scheme: "spiffe", Host: "vela.internal", Path: "/stage-worker/member-1"}},
+	}
+	ctx := verifiedStageWorkerPeerContext(leaf)
+
+	identity, err := (stageworkertransport.PeerAuthenticator{}).Authenticate(ctx)
+	if err != nil {
+		t.Fatalf("authenticate verified Stage Worker certificate: %v", err)
+	}
+	if identity.SPIFFEID != "spiffe://vela.internal/stage-worker/member-1" {
+		t.Fatalf("Stage Worker SPIFFE identity = %q", identity.SPIFFEID)
+	}
+}
+
+func TestPeerAuthenticatorRejectsUnverifiedOrAmbiguousIdentity(t *testing.T) {
+	validURI := &url.URL{Scheme: "spiffe", Host: "vela.internal", Path: "/stage-worker/member-1"}
+	for _, test := range []struct {
+		name string
+		ctx  context.Context
+	}{
+		{name: "missing peer", ctx: context.Background()},
+		{
+			name: "unverified certificate",
+			ctx: peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{
+				State: tls.ConnectionState{
+					HandshakeComplete: true,
+					PeerCertificates:  []*x509.Certificate{{Raw: []byte("leaf"), URIs: []*url.URL{validURI}}},
+				},
+			}}),
+		},
+		{
+			name: "multiple URI SANs",
+			ctx: verifiedStageWorkerPeerContext(&x509.Certificate{
+				Raw: []byte("leaf"),
+				URIs: []*url.URL{
+					validURI,
+					{Scheme: "spiffe", Host: "vela.internal", Path: "/stage-worker/member-2"},
+				},
+			}),
+		},
+		{
+			name: "non SPIFFE URI",
+			ctx: verifiedStageWorkerPeerContext(&x509.Certificate{
+				Raw:  []byte("leaf"),
+				URIs: []*url.URL{{Scheme: "https", Host: "vela.internal", Path: "/stage-worker/member-1"}},
+			}),
+		},
+		{
+			name: "SPIFFE URI with query",
+			ctx: verifiedStageWorkerPeerContext(&x509.Certificate{
+				Raw: []byte("leaf"),
+				URIs: []*url.URL{{
+					Scheme: "spiffe", Host: "vela.internal", Path: "/stage-worker/member-1",
+					RawQuery: "role=admin",
+				}},
+			}),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := (stageworkertransport.PeerAuthenticator{}).Authenticate(test.ctx); err == nil {
+				t.Fatal("invalid Stage Worker peer identity was accepted")
+			}
+		})
+	}
+}
+
+func verifiedStageWorkerPeerContext(leaf *x509.Certificate) context.Context {
+	return peer.NewContext(context.Background(), &peer.Peer{AuthInfo: credentials.TLSInfo{
+		State: tls.ConnectionState{
+			HandshakeComplete: true,
+			PeerCertificates:  []*x509.Certificate{leaf},
+			VerifiedChains:    [][]*x509.Certificate{{leaf}},
+		},
+	}})
+}
 
 func TestClientUsesOnePersistentCorrelatedStageWorkerStream(t *testing.T) {
 	handler := &recordingStageHandler{}
@@ -154,6 +237,142 @@ func TestServerPushesStopStageWithoutWaitingForAnotherWorkerRequest(t *testing.T
 	case <-ctx.Done():
 		t.Fatal("StopStage was not pushed without another Worker request")
 	}
+}
+
+func TestServerTracksOnlyAcceptedStageAuthorities(t *testing.T) {
+	assignmentAuthority := &velav1.StageAuthority{StageLeaseId: "assignment-authority"}
+	renewedAuthority := &velav1.StageAuthority{StageLeaseId: "renewed-authority"}
+	reattachedAuthority := &velav1.StageAuthority{StageLeaseId: "reattached-authority"}
+	rejectedAuthority := &velav1.StageAuthority{StageLeaseId: "rejected-authority"}
+	stopSource := &recordingAuthorityStopSource{}
+	server, err := stageworkertransport.NewServer(stageworkertransport.ServerConfig{
+		Authenticator: stageworkertransport.AuthenticatorFunc(func(context.Context) (stageworkertransport.Identity, error) {
+			return stageworkertransport.Identity{SPIFFEID: "spiffe://vela/worker/member-1"}, nil
+		}),
+		Handler: &authoritySequenceHandler{
+			assignment: assignmentAuthority,
+			renewed:    renewedAuthority,
+		},
+		StopSource: stopSource,
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	address := serveStageControl(t, server)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := stageworkertransport.DialClient(ctx, stageworkertransport.ClientConfig{
+		Address: address, TransportCredentials: insecure.NewCredentials(),
+		InitialControlSessionEpoch: 71,
+	})
+	if err != nil {
+		t.Fatalf("DialClient: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	requests := []*velav1.StageWorkerControlServiceConnectRequest{
+		{Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
+			AcquireStage: &velav1.AcquireStageRequest{},
+		}},
+		{Operation: &velav1.StageWorkerControlServiceConnectRequest_HeartbeatStage{
+			HeartbeatStage: &velav1.HeartbeatStageRequest{Authority: assignmentAuthority},
+		}},
+		{Operation: &velav1.StageWorkerControlServiceConnectRequest_ReattachStage{
+			ReattachStage: &velav1.ReattachStageRequest{Authority: reattachedAuthority},
+		}},
+		{Operation: &velav1.StageWorkerControlServiceConnectRequest_StartStage{
+			StartStage: &velav1.StartStageRequest{Authority: rejectedAuthority},
+		}},
+	}
+	for _, request := range requests {
+		if _, err := client.Exchange(ctx, request); err != nil {
+			t.Fatalf("exchange authority command: %v", err)
+		}
+	}
+	if got := stopSource.ObservedLeaseIDs(); got !=
+		"assignment-authority,renewed-authority,reattached-authority" {
+		t.Fatalf("observed StageAuthority leases = %q", got)
+	}
+}
+
+type authoritySequenceHandler struct {
+	assignment *velav1.StageAuthority
+	renewed    *velav1.StageAuthority
+}
+
+func (handler *authoritySequenceHandler) Handle(
+	_ context.Context,
+	_ stageworkertransport.Identity,
+	_ int64,
+	request *velav1.StageWorkerControlServiceConnectRequest,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	response := &velav1.StageWorkerControlServiceConnectResponse{RequestId: request.GetRequestId()}
+	switch {
+	case request.GetAcquireStage() != nil:
+		response.Result = &velav1.StageWorkerControlServiceConnectResponse_StageAssignment{
+			StageAssignment: &velav1.StageAssignment{Authority: handler.assignment},
+		}
+	case request.GetHeartbeatStage() != nil:
+		response.Result = &velav1.StageWorkerControlServiceConnectResponse_StageCommandResult{
+			StageCommandResult: &velav1.StageCommandResult{
+				Decision:         velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
+				Operation:        velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE,
+				RenewedAuthority: handler.renewed,
+			},
+		}
+	case request.GetReattachStage() != nil:
+		response.Result = &velav1.StageWorkerControlServiceConnectResponse_StageCommandResult{
+			StageCommandResult: &velav1.StageCommandResult{
+				Decision:  velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED,
+				Operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE,
+			},
+		}
+	default:
+		response.Result = &velav1.StageWorkerControlServiceConnectResponse_StageCommandResult{
+			StageCommandResult: &velav1.StageCommandResult{
+				Decision:  velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED,
+				Operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE,
+			},
+		}
+	}
+	return response, nil
+}
+
+type recordingAuthorityStopSource struct {
+	mu          sync.Mutex
+	authorities []*velav1.StageAuthority
+}
+
+func (source *recordingAuthorityStopSource) Stops(
+	context.Context,
+	stageworkertransport.Identity,
+	int64,
+) <-chan *velav1.StopStage {
+	return nil
+}
+
+func (source *recordingAuthorityStopSource) ObserveStageAuthority(
+	_ stageworkertransport.Identity,
+	_ int64,
+	authority *velav1.StageAuthority,
+) error {
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	source.authorities = append(source.authorities, authority)
+	return nil
+}
+
+func (source *recordingAuthorityStopSource) ObservedLeaseIDs() string {
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	result := ""
+	for index, authority := range source.authorities {
+		if index != 0 {
+			result += ","
+		}
+		result += authority.GetStageLeaseId()
+	}
+	return result
 }
 
 type recordingStageHandler struct {

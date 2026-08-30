@@ -23,7 +23,6 @@ type SealRepository interface {
 type MaterializationAuthorityIssuer struct {
 	repository SealRepository
 	signer     *materializationauthority.Signer
-	keyID      string
 	ttl        time.Duration
 }
 
@@ -41,16 +40,13 @@ type IssuedMaterialization struct {
 func NewMaterializationAuthorityIssuer(
 	repository SealRepository,
 	signer *materializationauthority.Signer,
-	keyID string,
 	ttl time.Duration,
 ) (*MaterializationAuthorityIssuer, error) {
-	keyID = strings.TrimSpace(keyID)
-	if repository == nil || signer == nil || keyID == "" || len(keyID) > 100 ||
-		ttl <= 0 || ttl > 24*time.Hour {
+	if repository == nil || signer == nil || ttl <= 0 || ttl > 24*time.Hour {
 		return nil, errors.New("MaterializationAuthority issuer configuration is invalid")
 	}
 	return &MaterializationAuthorityIssuer{
-		repository: repository, signer: signer, keyID: keyID, ttl: ttl,
+		repository: repository, signer: signer, ttl: ttl,
 	}, nil
 }
 
@@ -118,7 +114,7 @@ func (issuer *MaterializationAuthorityIssuer) Seal(
 		Sha256: manifest.PayloadSHA256[:], SizeBytes: manifest.SizeBytes,
 		LocalReceiptId:     receipt.GetReceiptId(),
 		LocalReceiptDigest: append([]byte(nil), receipt.GetManifestSha256()...),
-		SigningKeyId:       issuer.keyID, IssuedAt: timestamppb.New(issuedAt),
+		SigningKeyId:       stage.GetSigningKeyId(), IssuedAt: timestamppb.New(issuedAt),
 		ExpiresAt:                 timestamppb.New(issuedAt.Add(issuer.ttl)),
 		SourceWorkerInstanceId:    stage.GetWorkerInstanceId(),
 		SourceWorkerInstanceEpoch: stage.GetWorkerInstanceEpoch(),

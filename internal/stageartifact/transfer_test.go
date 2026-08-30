@@ -140,6 +140,42 @@ func TestTransferTicketContainsNoObjectStoreCredential(t *testing.T) {
 	}
 }
 
+func TestTransferTicketReplayKeepsOriginalSigningKeyAcrossRotation(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 17, 0, 0, 0, time.UTC)
+	keys := map[string][]byte{
+		"stage-key-n-1": bytes.Repeat([]byte{0x71}, 32),
+		"stage-key-n":   bytes.Repeat([]byte{0x72}, 32),
+	}
+	beforeRotation, err := NewTransferTicketKeyringSigner("stage-key-n-1", keys)
+	if err != nil {
+		t.Fatalf("construct N-1 TransferTicket signer: %v", err)
+	}
+	afterRotation, err := NewTransferTicketKeyringSigner("stage-key-n", keys)
+	if err != nil {
+		t.Fatalf("construct N TransferTicket signer: %v", err)
+	}
+	claims := TransferTicketClaims{
+		TicketID:    uuid.MustParse("49600000-0000-0000-0000-000000000141"),
+		Destination: testTransferDestination(),
+		IssuedAt:    now,
+		ExpiresAt:   now.Add(time.Minute),
+	}
+	original, err := beforeRotation.SignWithKeyID("stage-key-n-1", claims)
+	if err != nil {
+		t.Fatalf("sign original TransferTicket: %v", err)
+	}
+	replayed, err := afterRotation.SignWithKeyID("stage-key-n-1", claims)
+	if err != nil {
+		t.Fatalf("replay N-1 TransferTicket after rotation: %v", err)
+	}
+	if !bytes.Equal(original.Token, replayed.Token) {
+		t.Fatal("TransferTicket replay changed token after active-key rotation")
+	}
+	if _, err := afterRotation.Verify(replayed, now.Add(time.Second)); err != nil {
+		t.Fatalf("verify N-1 TransferTicket from rotated keyring: %v", err)
+	}
+}
+
 func testTransferDestination() TransferDestination {
 	return TransferDestination{
 		WorkerInstanceID:    uuid.MustParse("49600000-0000-0000-0000-000000000131"),

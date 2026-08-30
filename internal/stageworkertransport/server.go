@@ -1,14 +1,19 @@
 package stageworkertransport
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"net/url"
+	"strings"
 
 	"github.com/google/uuid"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -26,6 +31,63 @@ func (authenticate AuthenticatorFunc) Authenticate(ctx context.Context) (Identit
 	return authenticate(ctx)
 }
 
+type PeerAuthenticator struct{}
+
+func (PeerAuthenticator) Authenticate(ctx context.Context) (Identity, error) {
+	spiffeID, ok := verifiedPeerSPIFFEID(ctx)
+	if !ok {
+		return Identity{}, errors.New("verified Stage Worker SPIFFE identity is required")
+	}
+	return Identity{SPIFFEID: spiffeID}, nil
+}
+
+func verifiedPeerSPIFFEID(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	connectionPeer, ok := peer.FromContext(ctx)
+	if !ok || connectionPeer.AuthInfo == nil {
+		return "", false
+	}
+	var tlsInfo credentials.TLSInfo
+	switch typed := connectionPeer.AuthInfo.(type) {
+	case credentials.TLSInfo:
+		tlsInfo = typed
+	case *credentials.TLSInfo:
+		if typed == nil {
+			return "", false
+		}
+		tlsInfo = *typed
+	default:
+		return "", false
+	}
+	state := tlsInfo.State
+	if !state.HandshakeComplete || len(state.PeerCertificates) == 0 ||
+		len(state.VerifiedChains) == 0 {
+		return "", false
+	}
+	leaf := state.PeerCertificates[0]
+	verified := false
+	for _, chain := range state.VerifiedChains {
+		if len(chain) != 0 && bytes.Equal(chain[0].Raw, leaf.Raw) {
+			verified = true
+			break
+		}
+	}
+	if !verified || len(leaf.URIs) != 1 || leaf.URIs[0] == nil {
+		return "", false
+	}
+	identity := leaf.URIs[0].String()
+	parsed, err := url.Parse(identity)
+	if err != nil || parsed == nil || parsed.Scheme != "spiffe" || parsed.Host == "" ||
+		parsed.User != nil || parsed.Path == "" || parsed.Opaque != "" || parsed.RawQuery != "" ||
+		parsed.Fragment != "" || len(identity) > 500 || strings.TrimSpace(identity) != identity ||
+		strings.ContainsRune(identity, '\x00') || parsed.String() != identity {
+		return "", false
+	}
+	return identity, true
+}
+
 type Handler interface {
 	Handle(
 		context.Context,
@@ -37,6 +99,10 @@ type Handler interface {
 
 type StopSource interface {
 	Stops(context.Context, Identity, int64) <-chan *velav1.StopStage
+}
+
+type AuthorityObserver interface {
+	ObserveStageAuthority(Identity, int64, *velav1.StageAuthority) error
 }
 
 type StopSourceFunc func(context.Context, Identity, int64) <-chan *velav1.StopStage
@@ -139,6 +205,15 @@ func (server *Server) Connect(
 				response.GetResult() == nil {
 				return status.Error(codes.Internal, "Stage Worker handler returned malformed response")
 			}
+			if observer, ok := server.stopSource.(AuthorityObserver); ok {
+				if authority := acceptedStageAuthority(request, response); authority != nil {
+					if observeErr := observer.ObserveStageAuthority(
+						identity, sessionEpoch, authority,
+					); observeErr != nil {
+						return status.Error(codes.Internal, "track Stage Worker execution authority")
+					}
+				}
+			}
 			if sendErr := stream.Send(response); sendErr != nil {
 				return sendErr
 			}
@@ -159,6 +234,28 @@ func (server *Server) Connect(
 			}
 		}
 	}
+}
+
+func acceptedStageAuthority(
+	request *velav1.StageWorkerControlServiceConnectRequest,
+	response *velav1.StageWorkerControlServiceConnectResponse,
+) *velav1.StageAuthority {
+	if assignment := response.GetStageAssignment(); assignment != nil {
+		return assignment.GetAuthority()
+	}
+	result := response.GetStageCommandResult()
+	if result == nil ||
+		(result.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED &&
+			result.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED) {
+		return nil
+	}
+	if result.GetRenewedAuthority() != nil {
+		return result.GetRenewedAuthority()
+	}
+	if reattach := request.GetReattachStage(); reattach != nil {
+		return reattach.GetAuthority()
+	}
+	return nil
 }
 
 type receivedRequest struct {

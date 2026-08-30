@@ -119,6 +119,7 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	requireVelaControlPort(t, control, "fleet-grpc", 8444)
 	requireVelaControlPort(t, control, "finance-https", 8445)
 	requireVelaControlPort(t, control, "compliance-https", 8446)
+	requireVelaControlPort(t, control, "stage-wkr-grpc", 8447)
 	for name, probe := range map[string]*corev1.Probe{
 		"startup": control.StartupProbe, "readiness": control.ReadinessProbe,
 		"liveness": control.LivenessProbe,
@@ -224,6 +225,7 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	for _, name := range []string{
 		"node-agent-config", "control-transport-tls", "privileged-http-tls", "nats-client",
 		"artifact-credentials", "keyrings", "invoice-export", "remediation-client-tls",
+		"stage-worker-identity",
 	} {
 		if !hasVelaControlVolumeMount(materializer.VolumeMounts, name) {
 			t.Fatalf("vela-control materializer is missing source mount %q", name)
@@ -318,7 +320,7 @@ func TestVelaControlStorageClassReleaseContractIsExplicit(t *testing.T) {
 	}
 }
 
-func TestVelaControlPublishesFiveSinglePurposeServices(t *testing.T) {
+func TestVelaControlPublishesSixSinglePurposeServices(t *testing.T) {
 	services := loadVelaControlServices(t)
 	want := map[string]struct {
 		port        int32
@@ -328,6 +330,7 @@ func TestVelaControlPublishesFiveSinglePurposeServices(t *testing.T) {
 		"vela-api":                    {port: 80, target: "http", appProtocol: "http"},
 		"vela-worker-control":         {port: 8443, target: "worker-grpc", appProtocol: "grpc"},
 		"vela-control":                {port: 8444, target: "fleet-grpc", appProtocol: "grpc"},
+		"vela-stage-worker-control":   {port: 8447, target: "stage-wkr-grpc", appProtocol: "grpc"},
 		"vela-finance-reconciliation": {port: 8445, target: "finance-https", appProtocol: "https"},
 		"vela-compliance":             {port: 8446, target: "compliance-https", appProtocol: "https"},
 	}
@@ -355,7 +358,7 @@ func TestVelaControlPublishesFiveSinglePurposeServices(t *testing.T) {
 
 func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 	policies := loadVelaControlNetworkPolicies(t)
-	if len(policies) != 8 {
+	if len(policies) != 9 {
 		t.Fatalf("vela-control NetworkPolicies = %#v", policies)
 	}
 	defaultDeny, ok := policies["vela-control-default-deny-ingress"]
@@ -400,6 +403,11 @@ func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 			port:            8444,
 			namespaceLabels: map[string]string{"kubernetes.io/metadata.name": "vela-system"},
 			podLabels:       map[string]string{"app.kubernetes.io/name": "vela-fleet-controller"},
+		},
+		"vela-control-allow-stage-worker": {
+			port:            8447,
+			namespaceLabels: map[string]string{"kubernetes.io/metadata.name": "vela-system"},
+			podLabels:       map[string]string{"app.kubernetes.io/name": "vela-stage-worker"},
 		},
 		"vela-control-allow-finance": {
 			port:            8445,
@@ -479,7 +487,8 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 			"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL", "VELA_REMEDIATION_DATABASE_URL",
 			"VELA_REQUEST_DATABASE_URL", "VELA_RETENTION_DATABASE_URL", "VELA_RETENTION_REQUEST_DATABASE_URL",
 			"VELA_SCHEDULER_DATABASE_URL", "VELA_SCHEDULER_INBOX_DATABASE_URL",
-			"VELA_STAGE_SCHEDULER_DATABASE_URL",
+			"VELA_STAGE_SCHEDULER_DATABASE_URL", "VELA_STAGE_ARTIFACT_DATABASE_URL",
+			"VELA_STAGE_WORKER_CONTROL_DATABASE_URL",
 			"VELA_WEBHOOK_DATABASE_URL", "VELA_WEBHOOK_REQUEST_DATABASE_URL",
 		},
 		"vela-control-credential-pepper-r0-placeholder": {"VELA_CREDENTIAL_PEPPER_BASE64"},
@@ -487,8 +496,10 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 	wantFiles := map[string][]string{
 		"vela-control-transport-tls-r0-placeholder": {
 			"fleet-client-ca.crt", "fleet-tls.crt", "fleet-tls.key",
+			"stage-worker-client-ca.crt", "stage-worker-tls.crt", "stage-worker-tls.key",
 			"worker-client-ca.crt", "worker-tls.crt", "worker-tls.key",
 		},
+		"vela-control-stage-worker-identity-r0-placeholder": {"identity-key"},
 		"vela-control-privileged-http-tls-r0-placeholder": {
 			"compliance-client-ca.crt", "compliance-tls.crt", "compliance-tls.key",
 			"finance-client-ca.crt", "finance-tls.crt", "finance-tls.key",

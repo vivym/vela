@@ -12,6 +12,7 @@ data:
   VELA_MANAGEMENT_ADDRESS: ":8081"
   VELA_WORKER_GRPC_ADDRESS: ":8443"
   VELA_FLEET_GRPC_ADDRESS: ":8444"
+  VELA_STAGE_WORKER_CONTROL_ADDRESS: ":8447"
   VELA_OIDC_ISSUER: https://replace-with-customer-idp.example.invalid/
   VELA_OIDC_AUDIENCE: replace-with-customer-audience
   VELA_OIDC_JWKS_URL: https://replace-with-customer-idp.example.invalid/.well-known/jwks.json
@@ -57,6 +58,10 @@ data:
   VELA_FLEET_GRPC_TLS_CERT_FILE: /etc/vela-control/materialized/fleet/tls.crt
   VELA_FLEET_GRPC_TLS_KEY_FILE: /etc/vela-control/materialized/fleet/tls.key
   VELA_FLEET_GRPC_CLIENT_CA_FILE: /etc/vela-control/materialized/fleet/client-ca.crt
+  VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE: /etc/vela-control/materialized/stage-worker/tls.crt
+  VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE: /etc/vela-control/materialized/stage-worker/tls.key
+  VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE: /etc/vela-control/materialized/stage-worker/client-ca.crt
+  VELA_STAGE_WORKER_IDENTITY_KEY_FILE: /etc/vela-control/materialized/stage-worker/identity-key
   VELA_FINANCE_RECONCILIATION_SERVER_CERT_FILE: /etc/vela-control/materialized/finance/tls.crt
   VELA_FINANCE_RECONCILIATION_SERVER_KEY_FILE: /etc/vela-control/materialized/finance/tls.key
   VELA_FINANCE_RECONCILIATION_CLIENT_CA_FILE: /etc/vela-control/materialized/finance/client-ca.crt

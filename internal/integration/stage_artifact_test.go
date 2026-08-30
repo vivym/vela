@@ -210,7 +210,9 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 		t.Fatalf("committed StageArtifact = %#v", artifact)
 	}
 	replayedArtifact, err := repository.Commit(context.Background(), commitCommand)
-	if err != nil || replayedArtifact != artifact {
+	wantReplay := artifact
+	wantReplay.Replayed = true
+	if err != nil || artifact.Replayed || replayedArtifact != wantReplay {
 		t.Fatalf("replay exact StageArtifact commit = %#v error=%v", replayedArtifact, err)
 	}
 
