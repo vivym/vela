@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,6 +18,8 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/fleet"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -782,7 +785,10 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentity(t 
 	if err != nil {
 		t.Fatalf("replay due DiT retry reconciliation: %v", err)
 	}
-	if len(replayed) != 0 {
+	if len(replayed) != 1 || replayed[0].AttemptID != attemptID ||
+		replayed[0].StageRunID != ditRunID || replayed[0].State != "READY" ||
+		replayed[0].StageFence != 2 || replayed[0].StageVersion != 6 ||
+		replayed[0].Reason != "READY_REPLAY" {
 		t.Fatalf("replayed DiT retry reconciliation = %#v", replayed)
 	}
 }
@@ -907,6 +913,434 @@ func TestStageGraphRunningCancellationPostsChargeAndFencesLateProgress(t *testin
 	})
 	if err == nil {
 		t.Fatal("late Stage progress succeeded after Customer Cancellation fenced the graph")
+	}
+}
+
+func TestStageGraphExactCacheLeafBeginsFinalization(t *testing.T) {
+	database, _, coordinator, _, attemptID, encoderRunID, ditRunID :=
+		newStageGraphCancellationFixture(t, "stage-graph-cache-only-finalization")
+	var vaeRunID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT id
+		FROM stage_runs
+		WHERE attempt_id = $1 AND stage_key = 'vae'
+	`, attemptID).Scan(&vaeRunID); err != nil {
+		t.Fatalf("read cache-only VAE StageRun: %v", err)
+	}
+
+	advancedAt := time.Now().UTC().Truncate(time.Millisecond)
+	for index, stage := range []struct {
+		runID   uuid.UUID
+		version int64
+		name    string
+	}{
+		{runID: encoderRunID, version: 1, name: "encoder"},
+		{runID: ditRunID, version: 2, name: "dit"},
+		{runID: vaeRunID, version: 2, name: "vae"},
+	} {
+		decision, err := coordinator.Apply(context.Background(), attemptcoordinator.ExactCacheAdvanceCommand{
+			CommandID:            uuid.New(),
+			AttemptID:            attemptID,
+			StageRunID:           stage.runID,
+			ExpectedAttemptFence: 1,
+			ExpectedStageFence:   1,
+			ExpectedStageVersion: stage.version,
+			ProgressReceiptID:    uuid.New(),
+			CacheSourceIdentity:  "stage-cache-only/" + stage.name + "/exact-v1",
+			OutputDigest:         bytesOf(byte(0xa1+index), 32),
+			AdvancedAt:           advancedAt.Add(time.Duration(index) * time.Millisecond),
+		})
+		if err != nil {
+			t.Fatalf("advance cache-only %s StageRun: %v", stage.name, err)
+		}
+		if decision.State != "SUCCEEDED" {
+			t.Fatalf("cache-only %s decision = %#v", stage.name, decision)
+		}
+	}
+
+	var jobState, attemptState, graphState string
+	var finalizationStartedAt, finalizationDeadlineAt sql.NullTime
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, attempt.state::text, attempt.graph_state::text,
+		       attempt.finalization_started_at, attempt.finalization_deadline_at
+		FROM attempts AS attempt
+		JOIN jobs AS job ON job.id = attempt.job_id
+		WHERE attempt.id = $1
+	`, attemptID).Scan(
+		&jobState, &attemptState, &graphState,
+		&finalizationStartedAt, &finalizationDeadlineAt,
+	); err != nil {
+		t.Fatalf("read cache-only finalization authority: %v", err)
+	}
+	if jobState != "FINALIZING" || attemptState != "FINALIZING" ||
+		graphState != "FINALIZING" || !finalizationStartedAt.Valid ||
+		!finalizationDeadlineAt.Valid ||
+		!finalizationDeadlineAt.Time.After(finalizationStartedAt.Time) {
+		t.Fatalf(
+			"cache-only finalization = job/attempt/graph %s/%s/%s started/deadline %v/%v",
+			jobState, attemptState, graphState,
+			finalizationStartedAt, finalizationDeadlineAt,
+		)
+	}
+}
+
+func TestStageGraphPhysicalCancellationRetainsCapacityUntilLeaseExpiry(t *testing.T) {
+	database, serverURL, coordinator, job, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "stage-graph-physical-cancellation")
+	leaseExpiresAt := time.Now().UTC().Add(2 * time.Second).Truncate(time.Millisecond)
+	assignment := assignAndStartEncoder(
+		t, database, coordinator, attemptID, encoderRunID, leaseExpiresAt,
+	)
+
+	first := cancelJob(t, serverURL, testProjectID, job.JobID, testBearerCredential())
+	replay := cancelJob(t, serverURL, testProjectID, job.JobID, testBearerCredential())
+	if first.StatusCode != http.StatusOK || replay.StatusCode != http.StatusOK {
+		t.Fatalf(
+			"physical Stage cancellation statuses = %d/%d bodies=%s/%s",
+			first.StatusCode, replay.StatusCode, first.Body, replay.Body,
+		)
+	}
+	var firstResult, replayResult cancelResponse
+	if err := json.Unmarshal(first.Body, &firstResult); err != nil {
+		t.Fatalf("decode physical Stage cancellation: %v", err)
+	}
+	if err := json.Unmarshal(replay.Body, &replayResult); err != nil {
+		t.Fatalf("decode replayed physical Stage cancellation: %v", err)
+	}
+	if firstResult.CancellationID == "" ||
+		firstResult.CancellationID != replayResult.CancellationID ||
+		firstResult.Decision != "CANCELING" || replayResult.Decision != "CANCELING" ||
+		firstResult.State != "CANCELING" || replayResult.State != "CANCELING" ||
+		!firstResult.Billable || firstResult.Charge == nil ||
+		replayResult.Charge == nil ||
+		replayResult.Charge.ChargeID != firstResult.Charge.ChargeID {
+		t.Fatalf("physical Stage cancellation = %#v / %#v", firstResult, replayResult)
+	}
+
+	var jobState, attemptState, runState, physicalState, leaseState, allocationState string
+	var requestedEvents, cancelingEvents, canceledEvents, chargeEvents, invoiceEvents int64
+	var requestedPayload []byte
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, attempt.graph_state::text, run.state::text,
+		       physical.state::text, lease.state::text, allocation.state::text,
+		       (SELECT count(*) FROM outbox_events
+		        WHERE aggregate_id = job.id AND event_type = 'job.cancel_requested'),
+		       (SELECT count(*) FROM outbox_events
+		        WHERE aggregate_id = job.id AND event_type = 'job.canceling'),
+		       (SELECT count(*) FROM outbox_events
+		        WHERE aggregate_id = job.id AND event_type = 'job.canceled'),
+		       (SELECT count(*) FROM outbox_events
+		        WHERE aggregate_id = job.id AND event_type = 'charge.posted'),
+		       (SELECT count(*) FROM outbox_events
+		        WHERE aggregate_id = job.id AND event_type = 'invoice.export_requested'),
+		       (SELECT payload FROM outbox_events
+		        WHERE aggregate_id = job.id AND event_type = 'job.cancel_requested'
+		        LIMIT 1)
+		FROM jobs AS job
+		JOIN attempts AS attempt ON attempt.id = $1 AND attempt.job_id = job.id
+		JOIN stage_runs AS run ON run.id = $2 AND run.attempt_id = attempt.id
+		JOIN stage_attempts AS physical ON physical.id = $3
+		JOIN stage_leases AS lease ON lease.id = $4
+		JOIN stage_allocations AS allocation ON allocation.id = $5
+		WHERE job.id = $6
+	`, attemptID, encoderRunID, assignment.StageAttemptID, assignment.StageLeaseID,
+		assignment.StageAllocationID, job.JobID).Scan(
+		&jobState, &attemptState, &runState, &physicalState, &leaseState, &allocationState,
+		&requestedEvents, &cancelingEvents, &canceledEvents, &chargeEvents, &invoiceEvents,
+		&requestedPayload,
+	); err != nil {
+		t.Fatalf("read physical Stage cancellation authority: %v", err)
+	}
+	if jobState != "CANCELING" || attemptState != "CANCELED" || runState != "CANCELED" ||
+		physicalState != "CANCELED" || leaseState != "REVOKED" ||
+		allocationState != "ALLOCATED" || requestedEvents != 1 || cancelingEvents != 1 ||
+		canceledEvents != 0 || chargeEvents != 1 || invoiceEvents != 1 {
+		t.Fatalf(
+			"physical cancellation states=%s/%s/%s/%s/%s/%s events=%d/%d/%d/%d/%d",
+			jobState, attemptState, runState, physicalState, leaseState, allocationState,
+			requestedEvents, cancelingEvents, canceledEvents, chargeEvents, invoiceEvents,
+		)
+	}
+	var envelope velav1.EventEnvelope
+	if err := proto.Unmarshal(requestedPayload, &envelope); err != nil {
+		t.Fatalf("decode Stage cancellation request event: %v", err)
+	}
+	requested := envelope.GetJobCancelRequested()
+	if requested == nil || requested.GetJobId() != job.JobID ||
+		requested.GetCancellationId() != firstResult.CancellationID ||
+		requested.GetAttemptId() != attemptID.String() ||
+		requested.GetWorkerId() != assignment.WorkerInstanceID.String() ||
+		requested.GetWorkerEpoch() != uint64(assignment.WorkerInstanceEpoch) ||
+		requested.GetAttemptFence() != uint64(assignment.ExpectedAttemptFence) ||
+		requested.GetAuthorityLeaseId() != assignment.StageLeaseID.String() {
+		t.Fatalf("Stage cancellation request payload = %#v", requested)
+	}
+
+	secondJob, secondAttemptID, secondEncoderRunID := instantiateAdditionalStageGraphJob(
+		t, database, serverURL, coordinator, "stage-graph-capacity-reuse",
+	)
+	secondAssignment := assignment
+	secondAssignment.CommandID = uuid.New()
+	secondAssignment.AttemptID = secondAttemptID
+	secondAssignment.StageRunID = secondEncoderRunID
+	secondAssignment.StageAttemptID = uuid.New()
+	secondAssignment.StageAllocationID = uuid.New()
+	secondAssignment.StageLeaseID = uuid.New()
+	secondAssignment.TokenDigest = bytesOf(0xb1, 32)
+	secondAssignment.ExecutionNonce = bytesOf(0xb2, 32)
+	secondAssignment.IssuedAt = time.Now().UTC().Truncate(time.Millisecond)
+	secondAssignment.ExpiresAt = secondAssignment.IssuedAt.Add(time.Minute)
+	secondAssignment.LocalDeadlineAt = secondAssignment.IssuedAt.Add(50 * time.Second)
+	if _, err := coordinator.Apply(context.Background(), secondAssignment); err == nil {
+		t.Fatalf("reused WorkerInstance before physical stop proof for Job %s", secondJob.JobID)
+	}
+
+	if wait := time.Until(leaseExpiresAt.Add(50 * time.Millisecond)); wait > 0 {
+		time.Sleep(wait)
+	}
+	reconciled, err := coordinator.Reconcile(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("reconcile expired physical Stage cancellation: %v", err)
+	}
+	var foundStop bool
+	for _, decision := range reconciled {
+		if decision.StageRunID == encoderRunID &&
+			decision.Reason == "CANCELLATION_LEASE_EXPIRED" {
+			foundStop = true
+		}
+	}
+	if !foundStop {
+		t.Fatalf("expired physical Stage cancellation reconcile = %#v", reconciled)
+	}
+	if _, err := coordinator.Apply(context.Background(), secondAssignment); err != nil {
+		t.Fatalf("reuse WorkerInstance after physical stop proof: %v", err)
+	}
+
+	var terminalState, releasedState string
+	var stopReceipts, terminalEvents int64
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, allocation.state::text,
+		       (SELECT count(*) FROM stage_cancellation_stop_receipts
+		        WHERE cancellation_id = $1),
+		       (SELECT count(*) FROM outbox_events
+		        WHERE aggregate_id = job.id AND event_type = 'job.canceled')
+		FROM jobs AS job
+		JOIN stage_allocations AS allocation ON allocation.id = $2
+		WHERE job.id = $3
+	`, firstResult.CancellationID, assignment.StageAllocationID, job.JobID).Scan(
+		&terminalState, &releasedState, &stopReceipts, &terminalEvents,
+	); err != nil {
+		t.Fatalf("read reconciled physical Stage cancellation: %v", err)
+	}
+	if terminalState != "CANCELED" || releasedState != "RELEASED" ||
+		stopReceipts != 1 || terminalEvents != 1 {
+		t.Fatalf(
+			"reconciled physical cancellation = job/allocation %s/%s receipts/events %d/%d",
+			terminalState, releasedState, stopReceipts, terminalEvents,
+		)
+	}
+}
+
+func TestStageGraphCancellationSerializesWithPhysicalStart(t *testing.T) {
+	database, serverURL, coordinator, job, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "stage-graph-cancel-start-race")
+	leaseExpiresAt := time.Now().UTC().Add(2 * time.Second).Truncate(time.Millisecond)
+	assignment := assignEncoder(
+		t, database, coordinator, attemptID, encoderRunID, leaseExpiresAt,
+	)
+	startCommand := attemptcoordinator.StartStageCommand{
+		CommandID:            uuid.New(),
+		AttemptID:            attemptID,
+		StageRunID:           encoderRunID,
+		StageAttemptID:       assignment.StageAttemptID,
+		StageLeaseID:         assignment.StageLeaseID,
+		ExpectedAttemptFence: 1,
+		ExpectedStageFence:   1,
+		ExpectedStageVersion: 2,
+		StartedAt:            assignment.IssuedAt.Add(time.Millisecond),
+	}
+	type startCall struct {
+		decision attemptcoordinator.StageDecision
+		err      error
+	}
+	type cancelCall struct {
+		result httpResult
+		err    error
+	}
+	startGate := make(chan struct{})
+	started := make(chan startCall, 1)
+	canceled := make(chan cancelCall, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	go func() {
+		<-startGate
+		decision, err := coordinator.Apply(ctx, startCommand)
+		started <- startCall{decision: decision, err: err}
+	}()
+	go func() {
+		<-startGate
+		result, err := doCancelJob(
+			serverURL, testProjectID, job.JobID, testBearerCredential(),
+		)
+		canceled <- cancelCall{result: result, err: err}
+	}()
+	close(startGate)
+	startResult := <-started
+	cancelResult := <-canceled
+	if cancelResult.err != nil || cancelResult.result.StatusCode != http.StatusOK {
+		t.Fatalf(
+			"cancel/start race cancellation = status %d body=%s error=%v",
+			cancelResult.result.StatusCode, cancelResult.result.Body, cancelResult.err,
+		)
+	}
+	var response cancelResponse
+	if err := json.Unmarshal(cancelResult.result.Body, &response); err != nil {
+		t.Fatalf("decode cancel/start race cancellation: %v", err)
+	}
+	if startResult.err == nil {
+		if startResult.decision.State != "RUNNING" || response.Decision != "CANCELING" ||
+			response.State != "CANCELING" || !response.Billable || response.Charge == nil {
+			t.Fatalf("physical Start winner = %#v cancellation=%#v", startResult, response)
+		}
+	} else if response.Decision != "CANCELED" || response.State != "CANCELED" ||
+		response.Billable || response.Charge != nil {
+		t.Fatalf("cancellation winner before physical Start = %#v start error=%v", response, startResult.err)
+	}
+
+	if wait := time.Until(leaseExpiresAt.Add(50 * time.Millisecond)); wait > 0 {
+		time.Sleep(wait)
+	}
+	if _, err := coordinator.Reconcile(context.Background(), 10); err != nil {
+		t.Fatalf("reconcile cancel/start race stop: %v", err)
+	}
+	var jobState, allocationState string
+	var receipts, decisions, charges int64
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, allocation.state::text,
+		       (SELECT count(*) FROM stage_cancellation_stop_receipts
+		        WHERE stage_lease_id = $1),
+		       (SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
+		       (SELECT count(*) FROM charges WHERE job_id = job.id)
+		FROM jobs AS job
+		JOIN stage_allocations AS allocation ON allocation.id = $2
+		WHERE job.id = $3
+	`, assignment.StageLeaseID, assignment.StageAllocationID, job.JobID).Scan(
+		&jobState, &allocationState, &receipts, &decisions, &charges,
+	); err != nil {
+		t.Fatalf("read cancel/start race outcome: %v", err)
+	}
+	wantCharges := int64(0)
+	if startResult.err == nil {
+		wantCharges = 1
+	}
+	if jobState != "CANCELED" || allocationState != "RELEASED" || receipts != 1 ||
+		decisions != 1 || charges != wantCharges {
+		t.Fatalf(
+			"cancel/start race outcome job/allocation=%s/%s receipts/decisions/charges=%d/%d/%d",
+			jobState, allocationState, receipts, decisions, charges,
+		)
+	}
+}
+
+func TestStageGraphCancellationSerializesWithPhysicalCompletion(t *testing.T) {
+	database, serverURL, coordinator, job, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "stage-graph-cancel-complete-race")
+	leaseExpiresAt := time.Now().UTC().Add(2 * time.Second).Truncate(time.Millisecond)
+	assignment := assignAndStartEncoder(
+		t, database, coordinator, attemptID, encoderRunID, leaseExpiresAt,
+	)
+	completeCommand := attemptcoordinator.CompleteStageCommand{
+		CommandID:            uuid.New(),
+		AttemptID:            attemptID,
+		StageRunID:           encoderRunID,
+		StageAttemptID:       assignment.StageAttemptID,
+		StageLeaseID:         assignment.StageLeaseID,
+		ExpectedAttemptFence: 1,
+		ExpectedStageFence:   1,
+		ExpectedStageVersion: 3,
+		ProgressReceiptID:    uuid.New(),
+		OutputIdentity:       "stage-output/cancel-complete-race/encoder-v1",
+		OutputDigest:         bytesOf(0xc1, 32),
+		CompletedAt:          assignment.IssuedAt.Add(2 * time.Millisecond),
+	}
+	type completeCall struct {
+		decision attemptcoordinator.StageDecision
+		err      error
+	}
+	type cancelCall struct {
+		result httpResult
+		err    error
+	}
+	startGate := make(chan struct{})
+	completed := make(chan completeCall, 1)
+	canceled := make(chan cancelCall, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	go func() {
+		<-startGate
+		decision, err := coordinator.Apply(ctx, completeCommand)
+		completed <- completeCall{decision: decision, err: err}
+	}()
+	go func() {
+		<-startGate
+		result, err := doCancelJob(
+			serverURL, testProjectID, job.JobID, testBearerCredential(),
+		)
+		canceled <- cancelCall{result: result, err: err}
+	}()
+	close(startGate)
+	completeResult := <-completed
+	cancelResult := <-canceled
+	if cancelResult.err != nil || cancelResult.result.StatusCode != http.StatusOK {
+		t.Fatalf(
+			"cancel/complete race cancellation = status %d body=%s error=%v",
+			cancelResult.result.StatusCode, cancelResult.result.Body, cancelResult.err,
+		)
+	}
+	var response cancelResponse
+	if err := json.Unmarshal(cancelResult.result.Body, &response); err != nil {
+		t.Fatalf("decode cancel/complete race cancellation: %v", err)
+	}
+	if !response.Billable || response.Charge == nil {
+		t.Fatalf("cancel/complete race did not preserve Billable Start: %#v", response)
+	}
+	if completeResult.err == nil {
+		if completeResult.decision.State != "SUCCEEDED" ||
+			response.Decision != "CANCELED" || response.State != "CANCELED" {
+			t.Fatalf("physical Complete winner = %#v cancellation=%#v", completeResult, response)
+		}
+	} else if response.Decision != "CANCELING" || response.State != "CANCELING" {
+		t.Fatalf("cancellation winner before physical Complete = %#v complete error=%v", response, completeResult.err)
+	}
+
+	if response.State == "CANCELING" {
+		if wait := time.Until(leaseExpiresAt.Add(50 * time.Millisecond)); wait > 0 {
+			time.Sleep(wait)
+		}
+		if _, err := coordinator.Reconcile(context.Background(), 10); err != nil {
+			t.Fatalf("reconcile cancel/complete race stop: %v", err)
+		}
+	}
+	var jobState, allocationState string
+	var decisions, charges int64
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, allocation.state::text,
+		       (SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
+		       (SELECT count(*) FROM charges WHERE job_id = job.id)
+		FROM jobs AS job
+		JOIN stage_allocations AS allocation ON allocation.id = $1
+		WHERE job.id = $2
+	`, assignment.StageAllocationID, job.JobID).Scan(
+		&jobState, &allocationState, &decisions, &charges,
+	); err != nil {
+		t.Fatalf("read cancel/complete race outcome: %v", err)
+	}
+	if jobState != "CANCELED" || allocationState != "RELEASED" ||
+		decisions != 1 || charges != 1 {
+		t.Fatalf(
+			"cancel/complete race outcome job/allocation=%s/%s decisions/charges=%d/%d",
+			jobState, allocationState, decisions, charges,
+		)
 	}
 }
 
@@ -1225,6 +1659,7 @@ func newStageGraphCancellationFixture(
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
+	seedEncoderAssignmentProfile(t, database)
 	activateH3StageGraph(t, database)
 	if _, err := database.Admin.Exec(`
 		UPDATE credentials
@@ -1281,6 +1716,165 @@ func newStageGraphCancellationFixture(
 		t.Fatalf("read cancellable StageRuns: %v", err)
 	}
 	return database, server.URL, coordinator, job, attemptID, encoderRunID, ditRunID
+}
+
+func assignAndStartEncoder(
+	t *testing.T,
+	database testDatabase,
+	coordinator *attemptcoordinator.Service,
+	attemptID, encoderRunID uuid.UUID,
+	leaseExpiresAt time.Time,
+) attemptcoordinator.AssignStageCommand {
+	t.Helper()
+	assignment := assignEncoder(
+		t, database, coordinator, attemptID, encoderRunID, leaseExpiresAt,
+	)
+	started, err := coordinator.Apply(context.Background(), attemptcoordinator.StartStageCommand{
+		CommandID:            uuid.New(),
+		AttemptID:            attemptID,
+		StageRunID:           encoderRunID,
+		StageAttemptID:       assignment.StageAttemptID,
+		StageLeaseID:         assignment.StageLeaseID,
+		ExpectedAttemptFence: 1,
+		ExpectedStageFence:   1,
+		ExpectedStageVersion: 2,
+		StartedAt:            assignment.IssuedAt.Add(time.Millisecond),
+	})
+	if err != nil {
+		t.Fatalf("start physical cancellation Encoder: %v", err)
+	}
+	if started.State != "RUNNING" || started.StageVersion != 3 {
+		t.Fatalf("physical cancellation Encoder start = %#v", started)
+	}
+	return assignment
+}
+
+func assignEncoder(
+	t *testing.T,
+	database testDatabase,
+	coordinator *attemptcoordinator.Service,
+	attemptID, encoderRunID uuid.UUID,
+	leaseExpiresAt time.Time,
+) attemptcoordinator.AssignStageCommand {
+	t.Helper()
+	seedWorkerRegistryPlan(t, database.Admin)
+	poolID := uuid.New()
+	workerID := uuid.New()
+	if _, err := database.Admin.Exec(`
+		INSERT INTO capacity_pools (
+			id, stable_id, stage_profile_revision_id, resource_class,
+			security_class, region, max_ready_queue_depth, state
+		) VALUES ($1, $2, $3, 'GPU', 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE')
+	`, poolID, "h3-encoder-physical-cancel", encoderStageProfileID); err != nil {
+		t.Fatalf("seed physical cancellation Encoder CapacityPool: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO worker_instances (
+			id, worker_profile_revision_id, capacity_pool_id, worker_bundle_id,
+			lifecycle_state, reachability_state, instance_epoch,
+			control_session_epoch, desired_member_count, desired_device_count
+		) VALUES ($1, $2, $3, $4, 'PROVISIONING', 'DISCONNECTED', 1, 1, 1, 1)
+	`, workerID, encoderWorkerProfileID, poolID, workerRegistryBundleID); err != nil {
+		t.Fatalf("seed physical cancellation Encoder WorkerInstance: %v", err)
+	}
+	evidence := workerRegistryEvidenceValue(t, workerID, 0xb0)
+	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	registry, err := fleet.NewService(fleetPool)
+	if err != nil {
+		t.Fatalf("construct physical cancellation Worker Registry: %v", err)
+	}
+	if _, err := registry.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("observe physical cancellation Encoder WorkerInstance: %v", err)
+	}
+	authority := workerAuthority(t, evidence)
+	issuedAt := time.Now().UTC().Truncate(time.Millisecond)
+	if !leaseExpiresAt.After(issuedAt.Add(100 * time.Millisecond)) {
+		t.Fatalf("physical cancellation Lease deadline %s is too close to issue time %s", leaseExpiresAt, issuedAt)
+	}
+	assignment := attemptcoordinator.AssignStageCommand{
+		CommandID:              uuid.New(),
+		AttemptID:              attemptID,
+		StageRunID:             encoderRunID,
+		ExpectedAttemptFence:   1,
+		ExpectedStageFence:     1,
+		ExpectedStageVersion:   1,
+		StageAttemptID:         uuid.New(),
+		StageAllocationID:      uuid.New(),
+		StageLeaseID:           uuid.New(),
+		StageProfileRevisionID: uuid.MustParse(encoderStageProfileID),
+		CapacityPoolID:         poolID,
+		WorkerInstanceID:       workerID,
+		WorkerInstanceEpoch:    authority.InstanceEpoch,
+		DeviceSetDigest:        authority.DeviceSetDigest,
+		MembershipDigest:       authority.MembershipDigest,
+		ModelResidencyID:       authority.ModelResidencyID,
+		ModelRuntimeEpoch:      authority.ModelRuntimeEpoch,
+		CapacityVector:         map[string]int64{"concurrency": 1},
+		TokenDigest:            bytesOf(0xb3, 32),
+		SigningKeyID:           "stage-authority-key-v1",
+		ExecutionNonce:         bytesOf(0xb4, 32),
+		IssuedAt:               issuedAt,
+		ExpiresAt:              leaseExpiresAt,
+		LocalDeadlineAt:        leaseExpiresAt.Add(-50 * time.Millisecond),
+	}
+	assigned, err := coordinator.Apply(context.Background(), assignment)
+	if err != nil {
+		t.Fatalf("assign physical cancellation Encoder: %v", err)
+	}
+	if assigned.State != "ASSIGNED" || assigned.StageVersion != 2 {
+		t.Fatalf("physical cancellation Encoder assignment = %#v", assigned)
+	}
+	return assignment
+}
+
+func instantiateAdditionalStageGraphJob(
+	t *testing.T,
+	database testDatabase,
+	serverURL string,
+	coordinator *attemptcoordinator.Service,
+	idempotencyKey string,
+) (jobResponse, uuid.UUID, uuid.UUID) {
+	t.Helper()
+	accepted := submitJob(t, serverURL, idempotencyKey, []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"prove physical Stage capacity fencing"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit capacity reuse Stage graph status = %d body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode capacity reuse Stage graph Job: %v", err)
+	}
+	attemptID := uuid.New()
+	if _, err := coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
+		CommandID:                  uuid.New(),
+		JobID:                      uuid.MustParse(job.JobID),
+		ExpectedJobVersion:         1,
+		ExpectedJobFence:           0,
+		ExecutionGraphSnapshotID:   uuid.New(),
+		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
+		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
+		AttemptID:                  attemptID,
+		StorageReservationID:       uuid.New(),
+		ReservedStorageBytes:       2 << 30,
+	}); err != nil {
+		t.Fatalf("instantiate capacity reuse Stage graph: %v", err)
+	}
+	var encoderRunID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT id
+		FROM stage_runs
+		WHERE attempt_id = $1 AND stage_key = 'encoder'
+	`, attemptID).Scan(&encoderRunID); err != nil {
+		t.Fatalf("read capacity reuse Encoder StageRun: %v", err)
+	}
+	return job, attemptID, encoderRunID
 }
 
 func bytesOf(value byte, count int) []byte {

@@ -49,6 +49,7 @@ type Config struct {
 	DebugDumps             *debugdump.Service
 	Admission              *admission.Service
 	Cancellation           *cancellation.Service
+	StageGraphCancellation stageGraphCanceler
 	Artifacts              *artifactaccess.Service
 	Webhooks               *webhook.Service
 }
@@ -64,8 +65,18 @@ type server struct {
 	debugDumps             *debugdump.Service
 	admission              *admission.Service
 	cancellation           *cancellation.Service
+	stageGraphCancellation stageGraphCanceler
 	artifacts              *artifactaccess.Service
 	webhooks               *webhook.Service
+}
+
+type stageGraphCanceler interface {
+	Cancel(
+		context.Context,
+		identity.Principal,
+		uuid.UUID,
+		uuid.UUID,
+	) (cancellation.Result, bool, error)
 }
 
 type principalContextKey struct{}
@@ -114,6 +125,7 @@ func NewHandler(config Config) (http.Handler, error) {
 		debugDumps:             config.DebugDumps,
 		admission:              config.Admission,
 		cancellation:           config.Cancellation,
+		stageGraphCancellation: config.StageGraphCancellation,
 		artifacts:              config.Artifacts,
 		webhooks:               config.Webhooks,
 	}
@@ -978,7 +990,17 @@ func (s *server) CancelJob(
 			},
 		}, nil
 	}
-	result, err := s.cancellation.Cancel(ctx, principal, request.ProjectId, request.JobId)
+	var result cancellation.Result
+	var err error
+	handled := false
+	if s.stageGraphCancellation != nil {
+		result, handled, err = s.stageGraphCancellation.Cancel(
+			ctx, principal, request.ProjectId, request.JobId,
+		)
+	}
+	if !handled && err == nil {
+		result, err = s.cancellation.Cancel(ctx, principal, request.ProjectId, request.JobId)
+	}
 	if err != nil {
 		var failure *cancellation.Failure
 		if errors.As(err, &failure) {

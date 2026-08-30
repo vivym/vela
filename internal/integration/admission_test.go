@@ -30,6 +30,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/admission"
+	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
@@ -1733,6 +1734,10 @@ func admissionServerForDatabaseWithPredictor(
 	if predictor != nil {
 		admissionService = admission.NewService(requestPool, predictor)
 	}
+	stageGraphCancellation, err := attemptcoordinator.NewCancellationService(internalPool)
+	if err != nil {
+		t.Fatalf("create Stage graph cancellation service: %v", err)
+	}
 	handler, err := httpapi.NewHandler(httpapi.Config{
 		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
 		IdentityAdministration: &identity.AdministrationService{},
@@ -1740,6 +1745,7 @@ func admissionServerForDatabaseWithPredictor(
 		Retention:              &retention.Service{},
 		Admission:              admissionService,
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		StageGraphCancellation: stageGraphCancellation,
 		Artifacts:              testArtifactAccessService(artifactPool),
 		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
 	})

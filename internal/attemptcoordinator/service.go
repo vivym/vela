@@ -149,14 +149,30 @@ type ReconcileDecision struct {
 }
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool             *pgxpool.Pool
+	cancellationPool *pgxpool.Pool
 }
 
-func NewService(pool *pgxpool.Pool) (*Service, error) {
+func NewService(pool *pgxpool.Pool, cancellationPools ...*pgxpool.Pool) (*Service, error) {
 	if pool == nil {
 		return nil, errors.New("AttemptCoordinator database pool is required")
 	}
-	return &Service{pool: pool}, nil
+	if len(cancellationPools) > 1 ||
+		(len(cancellationPools) == 1 && cancellationPools[0] == nil) {
+		return nil, errors.New("AttemptCoordinator cancellation pool is invalid")
+	}
+	service := &Service{pool: pool}
+	if len(cancellationPools) == 1 {
+		service.cancellationPool = cancellationPools[0]
+	}
+	return service, nil
+}
+
+func NewCancellationService(pool *pgxpool.Pool) (*Service, error) {
+	if pool == nil {
+		return nil, errors.New("AttemptCoordinator cancellation pool is required")
+	}
+	return &Service{cancellationPool: pool}, nil
 }
 
 func (service *Service) Instantiate(

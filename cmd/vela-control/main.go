@@ -30,6 +30,7 @@ import (
 	"github.com/vivym/vela/internal/artifactreplication"
 	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/artifactvalidator"
+	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
@@ -964,6 +965,10 @@ func run() error {
 	}
 
 	cancellationService := cancellation.NewService(cancelPool, internalPool)
+	stageGraphCancellationService, err := attemptcoordinator.NewCancellationService(internalPool)
+	if err != nil {
+		return fmt.Errorf("configure Stage graph cancellation service: %w", err)
+	}
 	identityAdministration, err := identity.NewAdministrationServiceWithHumanMembership(
 		identityRequestPool,
 		humanMembershipRequestPool,
@@ -1020,6 +1025,7 @@ func run() error {
 		DebugDumps:             debugDumpService,
 		Admission:              admission.NewService(requestPool, capacityPredictor),
 		Cancellation:           cancellationService,
+		StageGraphCancellation: stageGraphCancellationService,
 		Artifacts:              artifactaccess.NewService(artifactRequestPool, artifactStore),
 		Webhooks:               webhookService,
 	})
