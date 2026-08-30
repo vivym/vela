@@ -167,6 +167,61 @@ func TestStageAuthoritySignatureAndDigestAreCanonical(t *testing.T) {
 	}
 }
 
+func TestStageAuthorityRenewalRequiresStableIdentityAndMonotonicAuthority(t *testing.T) {
+	now := time.Date(2026, 8, 30, 5, 30, 0, 0, time.UTC)
+	key := bytes.Repeat([]byte{0x28}, 32)
+	signer, err := stageauthority.NewSigner(map[string][]byte{"stage-key-7": key})
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	current, err := signer.Sign(validAuthority(now))
+	if err != nil {
+		t.Fatalf("Sign current: %v", err)
+	}
+	renewal := proto.Clone(current).(*velav1.StageAuthority)
+	renewal.StageVersion++
+	renewal.IssuedAt = timestamppb.New(now.Add(10 * time.Second))
+	renewal.ExpiresAt = timestamppb.New(now.Add(time.Minute))
+	renewal.MonotonicValidFor = durationpb.New(50 * time.Second)
+	renewal, err = signer.Sign(renewal)
+	if err != nil {
+		t.Fatalf("Sign renewal: %v", err)
+	}
+	if err := stageauthority.ValidateRenewal(current, renewal); err != nil {
+		t.Fatalf("ValidateRenewal: %v", err)
+	}
+
+	tests := map[string]func(*velav1.StageAuthority){
+		"execution identity": func(authority *velav1.StageAuthority) {
+			authority.StageLeaseId = "10000000-0000-0000-0000-000000000099"
+		},
+		"stage version": func(authority *velav1.StageAuthority) {
+			authority.StageVersion = current.GetStageVersion() - 1
+		},
+		"issued at": func(authority *velav1.StageAuthority) {
+			authority.IssuedAt = current.GetIssuedAt()
+			authority.MonotonicValidFor = durationpb.New(time.Minute)
+		},
+		"expires at": func(authority *velav1.StageAuthority) {
+			authority.ExpiresAt = current.GetExpiresAt()
+			authority.MonotonicValidFor = durationpb.New(20 * time.Second)
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			candidate := proto.Clone(renewal).(*velav1.StageAuthority)
+			mutate(candidate)
+			candidate, signErr := signer.Sign(candidate)
+			if signErr != nil {
+				t.Fatalf("Sign candidate: %v", signErr)
+			}
+			if renewalErr := stageauthority.ValidateRenewal(current, candidate); !errors.Is(renewalErr, stageauthority.ErrRenewalMismatch) {
+				t.Fatalf("ValidateRenewal error = %v, want renewal mismatch", renewalErr)
+			}
+		})
+	}
+}
+
 func validAuthority(now time.Time) *velav1.StageAuthority {
 	return &velav1.StageAuthority{
 		SchemaVersion:       1,

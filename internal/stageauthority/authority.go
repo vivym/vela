@@ -28,6 +28,7 @@ var (
 	ErrUnknownKey       = errors.New("StageAuthority signing key is unknown")
 	ErrStale            = errors.New("StageAuthority is stale")
 	ErrRuntimeMismatch  = errors.New("StageAuthority does not match resident runtime")
+	ErrRenewalMismatch  = errors.New("StageAuthority renewal does not match active execution")
 )
 
 type DeviceEpoch struct {
@@ -206,6 +207,40 @@ func ExecutionSpecDigest(spec *velav1.StageExecutionSpec) ([32]byte, error) {
 		return [32]byte{}, fmt.Errorf("encode StageExecutionSpec digest: %w", err)
 	}
 	return sha256.Sum256(payload), nil
+}
+
+func ValidateRenewal(current, renewed *velav1.StageAuthority) error {
+	currentCanonical, err := canonicalize(current)
+	if err != nil {
+		return err
+	}
+	if err := validateShape(currentCanonical, true); err != nil {
+		return err
+	}
+	renewedCanonical, err := canonicalize(renewed)
+	if err != nil {
+		return err
+	}
+	if err := validateShape(renewedCanonical, true); err != nil {
+		return err
+	}
+	if renewedCanonical.GetStageVersion() < currentCanonical.GetStageVersion() ||
+		!renewedCanonical.GetIssuedAt().AsTime().After(currentCanonical.GetIssuedAt().AsTime()) ||
+		!renewedCanonical.GetExpiresAt().AsTime().After(currentCanonical.GetExpiresAt().AsTime()) {
+		return ErrRenewalMismatch
+	}
+	for _, authority := range []*velav1.StageAuthority{currentCanonical, renewedCanonical} {
+		authority.StageVersion = 0
+		authority.SigningKeyId = ""
+		authority.IssuedAt = nil
+		authority.ExpiresAt = nil
+		authority.MonotonicValidFor = nil
+		authority.Signature = nil
+	}
+	if !proto.Equal(currentCanonical, renewedCanonical) {
+		return ErrRenewalMismatch
+	}
+	return nil
 }
 
 func validateKeyring(keys map[string][]byte) (map[string][]byte, error) {

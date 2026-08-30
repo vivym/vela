@@ -1,0 +1,523 @@
+package stageworkercontrol
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/materializationauthority"
+	"github.com/vivym/vela/internal/stageassignment"
+	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stageworkertransport"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/types/known/durationpb"
+)
+
+const (
+	maxControlDetailBytes     = 1000
+	maxReadinessEvidenceBytes = 64 << 10
+	maxBoundedStatusBytes     = 64 << 10
+	maxNoWorkRetry            = time.Hour
+)
+
+type CommandContext struct {
+	CommandID           uuid.UUID
+	Identity            stageworkertransport.Identity
+	ControlSessionEpoch int64
+}
+
+type ReadinessResult struct {
+	WorkerInstanceID    uuid.UUID
+	WorkerInstanceEpoch int64
+	Ready               bool
+	Reason              string
+}
+
+type AcquireResult struct {
+	Assignment *velav1.StageAssignment
+	RetryAfter time.Duration
+	Command    *CommandResult
+}
+
+type CommandResult struct {
+	Decision         velav1.StageWorkerCommandDecision
+	RenewedAuthority *velav1.StageAuthority
+	Detail           string
+}
+
+type SealResult struct {
+	Authority *velav1.MaterializationAuthority
+	Command   *CommandResult
+}
+
+type OperationBackend interface {
+	RegisterWorkerEvidence(
+		context.Context,
+		CommandContext,
+		*velav1.RegisterWorkerEvidenceRequest,
+	) (ReadinessResult, error)
+	ReportCapacityObservation(
+		context.Context,
+		CommandContext,
+		*velav1.ReportStageCapacityObservationRequest,
+	) (ReadinessResult, error)
+	AcquireStage(
+		context.Context,
+		CommandContext,
+		*velav1.AcquireStageRequest,
+	) (AcquireResult, error)
+	StartStage(
+		context.Context,
+		CommandContext,
+		*velav1.StartStageRequest,
+		VerifiedAuthorities,
+	) (CommandResult, error)
+	HeartbeatStage(
+		context.Context,
+		CommandContext,
+		*velav1.HeartbeatStageRequest,
+		VerifiedAuthorities,
+	) (CommandResult, error)
+	SealStageOutput(
+		context.Context,
+		CommandContext,
+		*velav1.SealStageOutputRequest,
+		VerifiedAuthorities,
+	) (SealResult, error)
+	CommitStageMaterialization(
+		context.Context,
+		CommandContext,
+		*velav1.CommitStageMaterializationRequest,
+		VerifiedAuthorities,
+	) (CommandResult, error)
+	FailStage(
+		context.Context,
+		CommandContext,
+		*velav1.FailStageRequest,
+		VerifiedAuthorities,
+	) (CommandResult, error)
+	ReattachStage(
+		context.Context,
+		CommandContext,
+		*velav1.ReattachStageRequest,
+		VerifiedAuthorities,
+	) (CommandResult, error)
+	ReportMaterializationSourceLost(
+		context.Context,
+		CommandContext,
+		*velav1.ReportMaterializationSourceLostRequest,
+		VerifiedAuthorities,
+	) (CommandResult, error)
+}
+
+type ProductionExecutor struct {
+	backend OperationBackend
+}
+
+func NewProductionExecutor(backend OperationBackend) (*ProductionExecutor, error) {
+	if backend == nil {
+		return nil, errors.New("Stage Worker operation backend is required")
+	}
+	return &ProductionExecutor{backend: backend}, nil
+}
+
+func (executor *ProductionExecutor) Execute(
+	ctx context.Context,
+	identity stageworkertransport.Identity,
+	sessionEpoch int64,
+	operation Operation,
+	request *velav1.StageWorkerControlServiceConnectRequest,
+	authorities VerifiedAuthorities,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if executor == nil || executor.backend == nil {
+		return nil, errors.New("Stage Worker production executor is not configured")
+	}
+	commandID, err := uuid.Parse(request.GetRequestId())
+	if ctx == nil || err != nil || strings.TrimSpace(identity.SPIFFEID) == "" || sessionEpoch <= 0 {
+		return nil, errors.New("Stage Worker command context is invalid")
+	}
+	command := CommandContext{
+		CommandID: commandID, Identity: identity, ControlSessionEpoch: sessionEpoch,
+	}
+	if err := validateOperationRequest(operation, request, authorities); err != nil {
+		return rejectedResponse(request.GetRequestId(), operation, err.Error()), nil
+	}
+
+	switch operation {
+	case OperationRegisterWorkerEvidence:
+		result, err := executor.backend.RegisterWorkerEvidence(
+			ctx, command, request.GetRegisterWorkerEvidence(),
+		)
+		return readinessResponse(request.GetRequestId(), result, err)
+	case OperationReportCapacityObservation:
+		result, err := executor.backend.ReportCapacityObservation(
+			ctx, command, request.GetReportCapacityObservation(),
+		)
+		return readinessResponse(request.GetRequestId(), result, err)
+	case OperationAcquireStage:
+		result, err := executor.backend.AcquireStage(ctx, command, request.GetAcquireStage())
+		return acquireResponse(request.GetRequestId(), result, err)
+	case OperationStartStage:
+		result, err := executor.backend.StartStage(
+			ctx, command, request.GetStartStage(), authorities,
+		)
+		return commandResultResponse(request.GetRequestId(), operation, result, authorities, err)
+	case OperationHeartbeatStage:
+		result, err := executor.backend.HeartbeatStage(
+			ctx, command, request.GetHeartbeatStage(), authorities,
+		)
+		return commandResultResponse(request.GetRequestId(), operation, result, authorities, err)
+	case OperationSealStageOutput:
+		result, err := executor.backend.SealStageOutput(
+			ctx, command, request.GetSealStageOutput(), authorities,
+		)
+		return sealResponse(request.GetRequestId(), result, authorities, err)
+	case OperationCommitStageMaterialization:
+		result, err := executor.backend.CommitStageMaterialization(
+			ctx, command, request.GetCommitStageMaterialization(), authorities,
+		)
+		return commandResultResponse(request.GetRequestId(), operation, result, authorities, err)
+	case OperationFailStage:
+		result, err := executor.backend.FailStage(
+			ctx, command, request.GetFailStage(), authorities,
+		)
+		return commandResultResponse(request.GetRequestId(), operation, result, authorities, err)
+	case OperationReattachStage:
+		result, err := executor.backend.ReattachStage(
+			ctx, command, request.GetReattachStage(), authorities,
+		)
+		return commandResultResponse(request.GetRequestId(), operation, result, authorities, err)
+	case OperationReportMaterializationSourceLost:
+		result, err := executor.backend.ReportMaterializationSourceLost(
+			ctx, command, request.GetReportMaterializationSourceLost(), authorities,
+		)
+		return commandResultResponse(request.GetRequestId(), operation, result, authorities, err)
+	default:
+		return rejectedResponse(
+			request.GetRequestId(), operation, "Stage Worker operation is unsupported",
+		), nil
+	}
+}
+
+func readinessResponse(
+	requestID string,
+	result ReadinessResult,
+	err error,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if err != nil {
+		return nil, fmt.Errorf("execute Stage Worker readiness operation: %w", err)
+	}
+	if result.WorkerInstanceID == uuid.Nil || result.WorkerInstanceEpoch <= 0 ||
+		len(result.Reason) > maxControlDetailBytes {
+		return nil, errors.New("Stage Worker readiness backend returned a malformed result")
+	}
+	return &velav1.StageWorkerControlServiceConnectResponse{
+		RequestId: requestID,
+		Result: &velav1.StageWorkerControlServiceConnectResponse_WorkerReadinessDecision{
+			WorkerReadinessDecision: &velav1.WorkerReadinessDecision{
+				WorkerInstanceId:    result.WorkerInstanceID.String(),
+				WorkerInstanceEpoch: result.WorkerInstanceEpoch,
+				Ready:               result.Ready, Reason: result.Reason,
+			},
+		},
+	}, nil
+}
+
+func acquireResponse(
+	requestID string,
+	result AcquireResult,
+	err error,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if err != nil {
+		return nil, fmt.Errorf("execute Stage Worker acquire: %w", err)
+	}
+	if result.Command != nil {
+		if result.Assignment != nil || result.RetryAfter != 0 || result.Command.RenewedAuthority != nil ||
+			(result.Command.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE &&
+				result.Command.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED) ||
+			strings.TrimSpace(result.Command.Detail) == "" ||
+			len(result.Command.Detail) > maxControlDetailBytes {
+			return nil, errors.New("Stage Worker acquire backend returned a malformed negative decision")
+		}
+		return commandResponse(
+			requestID, OperationAcquireStage, result.Command.Decision, result.Command.Detail,
+		), nil
+	}
+	response := &velav1.StageWorkerControlServiceConnectResponse{RequestId: requestID}
+	if result.Assignment != nil {
+		if result.RetryAfter != 0 {
+			return nil, errors.New("Stage Worker acquire backend returned Assignment with no-work retry")
+		}
+		if _, validateErr := stageassignment.Validate(result.Assignment); validateErr != nil {
+			return nil, errors.New("Stage Worker acquire backend returned a malformed Assignment")
+		}
+		response.Result = &velav1.StageWorkerControlServiceConnectResponse_StageAssignment{
+			StageAssignment: result.Assignment,
+		}
+		return response, nil
+	}
+	if result.RetryAfter <= 0 || result.RetryAfter > maxNoWorkRetry {
+		return nil, errors.New("Stage Worker acquire backend returned an invalid no-work retry")
+	}
+	response.Result = &velav1.StageWorkerControlServiceConnectResponse_NoWork{
+		NoWork: &velav1.NoStageWork{RetryAfter: durationpb.New(result.RetryAfter)},
+	}
+	return response, nil
+}
+
+func sealResponse(
+	requestID string,
+	result SealResult,
+	authorities VerifiedAuthorities,
+	err error,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if err != nil {
+		return nil, fmt.Errorf("execute %s: %w", OperationSealStageOutput.String(), err)
+	}
+	if (result.Authority == nil) == (result.Command == nil) {
+		return nil, errors.New("Stage Worker seal backend returned a malformed result")
+	}
+	if result.Command != nil {
+		if result.Command.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE &&
+			result.Command.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED {
+			return nil, errors.New("Stage Worker seal backend returned an invalid negative decision")
+		}
+		return commandResultResponse(
+			requestID, OperationSealStageOutput, *result.Command, authorities, nil,
+		)
+	}
+	stageDigest, digestErr := commandAuthorityDigest(OperationSealStageOutput, authorities)
+	if digestErr != nil {
+		return nil, digestErr
+	}
+	if _, digestErr = materializationauthority.Digest(result.Authority); digestErr != nil ||
+		!bytes.Equal(result.Authority.GetStageAuthorityDigest(), stageDigest[:]) {
+		return nil, errors.New("Stage Worker seal backend returned a malformed MaterializationAuthority")
+	}
+	return &velav1.StageWorkerControlServiceConnectResponse{
+		RequestId: requestID,
+		Result: &velav1.StageWorkerControlServiceConnectResponse_MaterializationAuthority{
+			MaterializationAuthority: result.Authority,
+		},
+	}, nil
+}
+
+func commandResultResponse(
+	requestID string,
+	operation Operation,
+	result CommandResult,
+	authorities VerifiedAuthorities,
+	err error,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if err != nil {
+		return nil, fmt.Errorf("execute %s: %w", operation.String(), err)
+	}
+	if !terminalCommandDecision(result.Decision) {
+		return nil, errors.New("Stage Worker backend returned an invalid command decision")
+	}
+	if len(result.Detail) > maxControlDetailBytes {
+		return nil, errors.New("Stage Worker backend returned an oversized command detail")
+	}
+	if (result.Decision == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
+		result.Decision == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED) &&
+		strings.TrimSpace(result.Detail) == "" {
+		return nil, errors.New("Stage Worker negative command result lacks detail")
+	}
+	digest, digestErr := commandAuthorityDigest(operation, authorities)
+	if digestErr != nil {
+		return nil, digestErr
+	}
+	if result.RenewedAuthority != nil {
+		if result.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED &&
+			result.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED {
+			return nil, errors.New("Stage Worker negative command result contains renewed authority")
+		}
+		if operation != OperationStartStage && operation != OperationHeartbeatStage {
+			return nil, errors.New("Stage Worker operation cannot renew StageAuthority")
+		}
+		if authorities.Stage == nil || stageauthority.ValidateRenewal(
+			authorities.Stage.Authority, result.RenewedAuthority,
+		) != nil {
+			return nil, errors.New("Stage Worker backend returned a malformed renewed StageAuthority")
+		}
+	}
+	return &velav1.StageWorkerControlServiceConnectResponse{
+		RequestId: requestID,
+		Result: &velav1.StageWorkerControlServiceConnectResponse_StageCommandResult{
+			StageCommandResult: &velav1.StageCommandResult{
+				AuthorityDigest: digest[:], Decision: result.Decision,
+				Operation: operation, Detail: result.Detail,
+				RenewedAuthority: result.RenewedAuthority,
+			},
+		},
+	}, nil
+}
+
+func terminalCommandDecision(decision velav1.StageWorkerCommandDecision) bool {
+	switch decision {
+	case velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED,
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE,
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED:
+		return true
+	default:
+		return false
+	}
+}
+
+func commandAuthorityDigest(
+	operation Operation,
+	authorities VerifiedAuthorities,
+) ([sha256.Size]byte, error) {
+	switch operation {
+	case OperationStartStage, OperationHeartbeatStage, OperationSealStageOutput,
+		OperationFailStage, OperationReattachStage:
+		if authorities.Stage == nil || authorities.Materialization != nil ||
+			authorities.Stage.Digest == ([sha256.Size]byte{}) || authorities.Stage.Authority == nil {
+			return [sha256.Size]byte{}, errors.New("Stage Worker command lacks exact StageAuthority evidence")
+		}
+		digest, err := stageauthority.Digest(authorities.Stage.Authority)
+		if err != nil || digest != authorities.Stage.Digest {
+			return [sha256.Size]byte{}, errors.New("Stage Worker command has mismatched StageAuthority evidence")
+		}
+		return authorities.Stage.Digest, nil
+	case OperationCommitStageMaterialization, OperationReportMaterializationSourceLost:
+		if authorities.Materialization == nil || authorities.Stage != nil ||
+			authorities.Materialization.Digest == ([sha256.Size]byte{}) ||
+			authorities.Materialization.Authority == nil {
+			return [sha256.Size]byte{}, errors.New("Stage Worker command lacks exact MaterializationAuthority evidence")
+		}
+		digest, err := materializationauthority.Digest(authorities.Materialization.Authority)
+		if err != nil || digest != authorities.Materialization.Digest {
+			return [sha256.Size]byte{}, errors.New("Stage Worker command has mismatched MaterializationAuthority evidence")
+		}
+		return authorities.Materialization.Digest, nil
+	default:
+		return [sha256.Size]byte{}, errors.New("Stage Worker operation has no command authority evidence")
+	}
+}
+
+func validateOperationRequest(
+	operation Operation,
+	request *velav1.StageWorkerControlServiceConnectRequest,
+	authorities VerifiedAuthorities,
+) error {
+	if request == nil || request.GetOperation() == nil {
+		return errors.New("Stage Worker operation request is missing")
+	}
+	switch operation {
+	case OperationRegisterWorkerEvidence:
+		value := request.GetRegisterWorkerEvidence()
+		if value == nil || value.GetRuntimeIdentity() == nil ||
+			value.GetCapacityObservationSequence() <= 0 || len(value.GetDevices()) == 0 ||
+			len(value.GetMembers()) == 0 || len(value.GetReadinessEvidence()) == 0 ||
+			len(value.GetReadinessEvidence()) > maxReadinessEvidenceBytes {
+			return errors.New("Worker registration evidence is incomplete")
+		}
+	case OperationReportCapacityObservation:
+		value := request.GetReportCapacityObservation()
+		if value == nil || parseUUID(value.GetWorkerInstanceId()) == uuid.Nil ||
+			value.GetWorkerInstanceEpoch() <= 0 || value.GetObservationSequence() <= 0 ||
+			!validCapacityVector(value.GetCapacityVector()) ||
+			!validTimestamp(value.GetObservedAt()) || !validTimestamp(value.GetExpiresAt()) ||
+			!value.GetExpiresAt().AsTime().After(value.GetObservedAt().AsTime()) {
+			return errors.New("Stage capacity observation is invalid")
+		}
+	case OperationAcquireStage:
+		value := request.GetAcquireStage()
+		if value == nil || parseUUID(value.GetWorkerInstanceId()) == uuid.Nil ||
+			parseUUID(value.GetModelResidencyId()) == uuid.Nil ||
+			parseUUID(value.GetStageProfileRevisionId()) == uuid.Nil ||
+			value.GetWorkerInstanceEpoch() <= 0 || value.GetCapacityObservationSequence() <= 0 ||
+			value.GetModelRuntimeEpoch() <= 0 {
+			return errors.New("Stage acquire authority is incomplete")
+		}
+	case OperationStartStage:
+		if authorities.Stage == nil || !validTimestamp(request.GetStartStage().GetStartedAt()) {
+			return errors.New("Stage start evidence is invalid")
+		}
+	case OperationHeartbeatStage:
+		value := request.GetHeartbeatStage()
+		if authorities.Stage == nil || value.GetSequence() <= 0 ||
+			value.GetRuntimeState() == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED ||
+			len(value.GetBoundedStatusJson()) == 0 || len(value.GetBoundedStatusJson()) > maxBoundedStatusBytes ||
+			!json.Valid(value.GetBoundedStatusJson()) || !validTimestamp(value.GetObservedAt()) ||
+			(value.GetLocalReceiptId() == "") != (len(value.GetLocalReceiptDigest()) == 0) ||
+			(len(value.GetLocalReceiptDigest()) != 0 && len(value.GetLocalReceiptDigest()) != sha256.Size) {
+			return errors.New("Stage heartbeat evidence is invalid")
+		}
+	case OperationSealStageOutput:
+		if authorities.Stage == nil || request.GetSealStageOutput().GetLocalReceipt() == nil {
+			return errors.New("Stage seal evidence is invalid")
+		}
+	case OperationCommitStageMaterialization:
+		value := request.GetCommitStageMaterialization()
+		if authorities.Materialization == nil || strings.TrimSpace(value.GetObjectVersion()) == "" ||
+			!validTimestamp(value.GetCommittedAt()) {
+			return errors.New("Stage materialization commit evidence is invalid")
+		}
+	case OperationFailStage:
+		value := request.GetFailStage()
+		if authorities.Stage == nil || strings.TrimSpace(value.GetFailureClass()) == "" ||
+			len(value.GetFailureClass()) > 100 || len(value.GetFailureFingerprint()) != sha256.Size ||
+			value.GetConsumedResourceUnits() <= 0 || !validTimestamp(value.GetFailedAt()) ||
+			!validTimestamp(value.GetRetryAt()) ||
+			!value.GetRetryAt().AsTime().After(value.GetFailedAt().AsTime()) ||
+			len(value.GetDetail()) > maxControlDetailBytes {
+			return errors.New("Stage failure evidence is invalid")
+		}
+	case OperationReattachStage:
+		value := request.GetReattachStage()
+		if authorities.Stage == nil ||
+			value.GetObservedRuntimeState() == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED ||
+			(value.GetLocalReceiptId() == "") != (len(value.GetLocalReceiptDigest()) == 0) ||
+			(len(value.GetLocalReceiptDigest()) != 0 && len(value.GetLocalReceiptDigest()) != sha256.Size) {
+			return errors.New("Stage reattach evidence is invalid")
+		}
+	case OperationReportMaterializationSourceLost:
+		value := request.GetReportMaterializationSourceLost()
+		if authorities.Materialization == nil || len(value.GetFailureFingerprint()) != sha256.Size ||
+			value.GetConsumedResourceUnits() <= 0 || !validTimestamp(value.GetLostAt()) ||
+			!validTimestamp(value.GetRetryAt()) ||
+			!value.GetRetryAt().AsTime().After(value.GetLostAt().AsTime()) {
+			return errors.New("Stage materialization source-loss evidence is invalid")
+		}
+	default:
+		return errors.New("Stage Worker operation is unsupported")
+	}
+	return nil
+}
+
+func validCapacityVector(vector map[string]int64) bool {
+	if len(vector) == 0 || len(vector) > 100 {
+		return false
+	}
+	for key, value := range vector {
+		if strings.TrimSpace(key) == "" || len(key) > 100 || value < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func validTimestamp(value interface {
+	CheckValid() error
+}) bool {
+	return value != nil && value.CheckValid() == nil
+}
+
+func parseUUID(value string) uuid.UUID {
+	parsed, err := uuid.Parse(value)
+	if err != nil {
+		return uuid.Nil
+	}
+	return parsed
+}
+
+var _ Executor = (*ProductionExecutor)(nil)

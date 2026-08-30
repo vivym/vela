@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/stageassignment"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
@@ -18,7 +19,6 @@ import (
 )
 
 const (
-	maxExecutionSpecBytes = 64 * 1024
 	maxRuntimeStatusBytes = 16 * 1024
 	maxRuntimeDetailRunes = 1000
 	maxSealedOutputBytes  = 64 * 1024
@@ -178,7 +178,7 @@ func (service *Service) PrepareStage(
 		return response, nil
 	}
 	response.AuthorityDigest = verified.Digest[:]
-	if err := validateExecutionSpec(request.GetExecutionSpec()); err != nil {
+	if err := stageassignment.ValidateExecutionSpec(request.GetExecutionSpec()); err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED
 		response.Detail = boundedDetail(err.Error())
 		return response, nil
@@ -519,11 +519,10 @@ func (service *Service) renewActiveLocked(
 	if service.active.verified.Digest == verified.Digest {
 		return true, nil
 	}
-	if !allowRenewal || !sameExecution(service.active.verified.Authority, verified.Authority) ||
-		terminalState(service.active.state) ||
-		verified.Authority.GetStageVersion() < service.active.verified.Authority.GetStageVersion() ||
-		!verified.Authority.GetIssuedAt().AsTime().After(service.active.verified.Authority.GetIssuedAt().AsTime()) ||
-		!verified.Authority.GetExpiresAt().AsTime().After(service.active.verified.Authority.GetExpiresAt().AsTime()) {
+	if !allowRenewal || terminalState(service.active.state) ||
+		stageauthority.ValidateRenewal(
+			service.active.verified.Authority, verified.Authority,
+		) != nil {
 		return false, errActiveAuthorityMismatch
 	}
 	service.active.verified = verified
@@ -690,23 +689,6 @@ func (service *Service) stopWatchdog(digest [32]byte) {
 	}
 }
 
-func sameExecution(left, right *velav1.StageAuthority) bool {
-	if left == nil || right == nil || right.GetStageVersion() < left.GetStageVersion() {
-		return false
-	}
-	leftStable := proto.Clone(left).(*velav1.StageAuthority)
-	rightStable := proto.Clone(right).(*velav1.StageAuthority)
-	for _, authority := range []*velav1.StageAuthority{leftStable, rightStable} {
-		authority.StageVersion = 0
-		authority.SigningKeyId = ""
-		authority.IssuedAt = nil
-		authority.ExpiresAt = nil
-		authority.MonotonicValidFor = nil
-		authority.Signature = nil
-	}
-	return proto.Equal(leftStable, rightStable)
-}
-
 func validateBindingTemplate(binding stageauthority.RuntimeBinding) error {
 	if binding.WorkerInstanceID == "" || binding.WorkerInstanceEpoch <= 0 ||
 		binding.WorkerMemberID == "" || binding.WorkerMemberEpoch <= 0 ||
@@ -754,27 +736,6 @@ func matchesRuntimeIdentity(
 		identity.GetStageProfileRevisionId() == binding.StageProfileRevisionID &&
 		identity.GetWorkerMemberId() == binding.WorkerMemberID &&
 		identity.GetWorkerMemberEpoch() == binding.WorkerMemberEpoch
-}
-
-func validateExecutionSpec(spec *velav1.StageExecutionSpec) error {
-	if spec == nil {
-		return nil
-	}
-	encoded, err := proto.Marshal(spec)
-	if err != nil {
-		return fmt.Errorf("encode StageExecutionSpec: %w", err)
-	}
-	if len(encoded) > maxExecutionSpecBytes || len(spec.GetInputs()) > 64 {
-		return errors.New("StageExecutionSpec exceeds runtime bound")
-	}
-	for _, input := range spec.GetInputs() {
-		if input == nil || input.GetStageArtifactId() == "" || input.GetObjectVersion() == "" ||
-			len(input.GetSha256()) != sha256.Size || input.GetSizeBytes() < 0 ||
-			input.GetStageInterfaceRevisionId() == "" {
-			return errors.New("StageExecutionSpec input Artifact is incomplete")
-		}
-	}
-	return nil
 }
 
 func validateBackendStatus(status BackendStatus) error {

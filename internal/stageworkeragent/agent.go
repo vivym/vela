@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/stageassignment"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 )
 
 const (
-	maxMemberStartTimeout            = 10 * time.Minute
 	defaultMemberCancellationTimeout = 30 * time.Second
 	maxMemberCancellationTimeout     = time.Minute
 )
@@ -64,7 +64,7 @@ type LocalReceipt struct {
 }
 
 func New(config Config) (*Agent, error) {
-	if len(config.Members) == 0 || len(config.Members) > 64 {
+	if len(config.Members) == 0 || len(config.Members) > stageassignment.MaxRequiredMembers {
 		return nil, errors.New("invalid Stage Worker Agent member set")
 	}
 	if config.CancellationTimeout == 0 {
@@ -302,89 +302,14 @@ func (agent *Agent) validateAssignment(
 	if agent == nil || len(agent.ids) == 0 {
 		return nil, 0, errors.New("missing configured Stage Worker Agent")
 	}
-	if assignment == nil || assignment.GetAuthority() == nil || assignment.GetMemberStartTimeout() == nil {
-		return nil, 0, errors.New("StageAssignment member barrier is incomplete")
-	}
-	if err := assignment.GetMemberStartTimeout().CheckValid(); err != nil {
-		return nil, 0, fmt.Errorf("StageAssignment member start timeout: %w", err)
-	}
-	timeout := assignment.GetMemberStartTimeout().AsDuration()
-	if timeout <= 0 || timeout > maxMemberStartTimeout {
-		return nil, 0, errors.New("StageAssignment member start timeout is invalid")
-	}
-	required := append([]string(nil), assignment.GetRequiredWorkerMemberIds()...)
-	slices.Sort(required)
-	if len(required) == 0 || !slices.Equal(required, agent.ids) {
-		return nil, 0, errors.New("StageAssignment required member set is missing or mismatched")
-	}
-	authorityMembers := make([]string, 0, len(assignment.GetAuthority().GetMembers()))
-	for _, member := range assignment.GetAuthority().GetMembers() {
-		if member == nil {
-			return nil, 0, errors.New("StageAuthority member set is invalid")
-		}
-		authorityMembers = append(authorityMembers, member.GetWorkerMemberId())
-	}
-	slices.Sort(authorityMembers)
-	if !slices.Equal(required, authorityMembers) {
-		return nil, 0, errors.New("StageAssignment member barrier does not match signed authority")
-	}
-	executionSpecDigest, err := stageauthority.ExecutionSpecDigest(assignment.GetExecutionSpec())
-	if err != nil || !bytes.Equal(
-		executionSpecDigest[:], assignment.GetAuthority().GetExecutionSpecDigest(),
-	) {
-		return nil, 0, errors.New("StageAssignment execution spec does not match signed authority")
-	}
-	if err := validateInputTransferTickets(assignment); err != nil {
+	contract, err := stageassignment.Validate(assignment)
+	if err != nil {
 		return nil, 0, err
 	}
-	return required, timeout, nil
-}
-
-func validateInputTransferTickets(assignment *velav1.StageAssignment) error {
-	inputs := assignment.GetExecutionSpec().GetInputs()
-	tickets := assignment.GetInputTransferTickets()
-	if len(inputs) != len(tickets) {
-		return errors.New("StageAssignment input TransferTicket set is incomplete")
+	if !slices.Equal(contract.RequiredMemberIDs, agent.ids) {
+		return nil, 0, errors.New("StageAssignment required member set is missing or mismatched")
 	}
-	type artifactVersion struct {
-		artifactID    string
-		objectVersion string
-	}
-	expected := make(map[artifactVersion]struct{}, len(inputs))
-	for _, input := range inputs {
-		if input == nil {
-			return errors.New("StageAssignment input Artifact is invalid")
-		}
-		if _, err := uuid.Parse(input.GetStageArtifactId()); err != nil || input.GetObjectVersion() == "" {
-			return errors.New("StageAssignment input Artifact version identity is invalid")
-		}
-		key := artifactVersion{
-			artifactID: input.GetStageArtifactId(), objectVersion: input.GetObjectVersion(),
-		}
-		if _, duplicated := expected[key]; duplicated {
-			return errors.New("StageAssignment input Artifact version is duplicated")
-		}
-		expected[key] = struct{}{}
-	}
-	for _, ticket := range tickets {
-		if ticket == nil || len(ticket.GetTransferTicket()) == 0 {
-			return errors.New("StageAssignment input TransferTicket is invalid")
-		}
-		if _, err := uuid.Parse(ticket.GetStageArtifactId()); err != nil || ticket.GetObjectVersion() == "" {
-			return errors.New("StageAssignment input TransferTicket version identity is invalid")
-		}
-		key := artifactVersion{
-			artifactID: ticket.GetStageArtifactId(), objectVersion: ticket.GetObjectVersion(),
-		}
-		if _, ok := expected[key]; !ok {
-			return errors.New("StageAssignment input TransferTicket does not match an exact input version")
-		}
-		delete(expected, key)
-	}
-	if len(expected) != 0 {
-		return errors.New("StageAssignment input TransferTicket set is incomplete")
-	}
-	return nil
+	return contract.RequiredMemberIDs, contract.MemberStartTimeout, nil
 }
 
 func (agent *Agent) prepareMembers(
