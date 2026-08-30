@@ -45,6 +45,7 @@ const (
 	RoleWebhook                    Role = "vela_webhook"
 	RoleRemediation                Role = "vela_remediation"
 	RoleFleet                      Role = "vela_fleet"
+	RoleAttemptCoordinator         Role = "vela_attempt_coordinator"
 )
 
 type rowQuerier interface {
@@ -90,6 +91,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
 	RoleFleet:                      {verifyPrivileges: verifyFleetPrivileges},
+	RoleAttemptCoordinator:         {verifyPrivileges: verifyAttemptCoordinatorPrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -213,6 +215,21 @@ func verifySchedulerPrivileges(ctx context.Context, database rowQuerier, current
 			"vela_reconcile_expired_scheduler_dispatches()",
 			"vela_predict_admission_capacity(uuid,uuid,uuid,uuid,uuid,integer)",
 			"vela_predict_job_dynamic_eta(uuid)",
+		},
+	})
+}
+
+func verifyAttemptCoordinatorPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "AttemptCoordinator",
+		failureLabel:    "AttemptCoordinator command",
+		functions: []string{
+			"vela_instantiate_stage_graph(jsonb)",
+			"vela_apply_stage_command(jsonb)",
 		},
 	})
 }
@@ -378,6 +395,7 @@ func verifyFleetPrivileges(ctx context.Context, database rowQuerier, currentUser
 			"vela_begin_worker_instance_drain(uuid,bigint,text,text)",
 			"vela_approve_model_residency_release(uuid,uuid,bigint,model_residency_release_reason,text,text,bigint,bigint,bytea)",
 			"vela_complete_model_residency_release(uuid,bigint,bytea,text)",
+			"vela_authorize_worker_instance_pod_mutation(text,text,fleet_mutation_operation,text,text,text,uuid,bigint,uuid,uuid,uuid,bytea)",
 			"vela_configure_worker_pool_capacity(uuid,text,bigint,bigint,bigint,bigint,bigint,bigint,text)",
 			"vela_observe_worker_capacity(uuid,uuid,bigint,bigint,timestamp with time zone,fleet_scratch_watermark_state,bigint,bigint,bigint,bigint,bigint,boolean,text)",
 			"vela_get_worker_pool_capacity(uuid)",

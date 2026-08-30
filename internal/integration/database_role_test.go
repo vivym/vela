@@ -155,6 +155,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
 	)
 	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	attemptCoordinatorPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_attempt_coordinator_login",
+		"vela-attempt-coordinator-password",
+	)
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	for _, login := range []string{
 		"vela_internal_login",
@@ -169,6 +175,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_webhook_login",
 		"vela_remediation_login",
 		"vela_fleet_login",
+		"vela_attempt_coordinator_login",
 		"vela_identity_request_login",
 		"vela_human_membership_request_login",
 		"vela_organization_billing_request_login",
@@ -194,6 +201,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_artifact_replication_owner",
 			"vela_break_glass_owner",
 			"vela_fleet_owner",
+			"vela_attempt_coordinator_owner",
 			"vela_quorum_guard_owner",
 		} {
 			var inheritsOwner bool
@@ -289,6 +297,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "webhook", pool: webhookPool, role: veladb.RoleWebhook},
 		{name: "remediation", pool: remediationPool, role: veladb.RoleRemediation},
 		{name: "Fleet", pool: fleetPool, role: veladb.RoleFleet},
+		{
+			name: "AttemptCoordinator", pool: attemptCoordinatorPool,
+			role: veladb.RoleAttemptCoordinator,
+		},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -324,6 +336,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_remediation_owner", bypassRLS: true},
 		{name: "vela_fleet", bypassRLS: false},
 		{name: "vela_fleet_owner", bypassRLS: true},
+		{name: "vela_attempt_coordinator", bypassRLS: false},
+		{name: "vela_attempt_coordinator_owner", bypassRLS: true},
 		{name: "vela_quorum_guard_owner", bypassRLS: false},
 	} {
 		var canLogin, bypassRLS, superuser bool
