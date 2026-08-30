@@ -8,13 +8,15 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
 
 MAX_API_BYTES = 1 << 20
 MAX_ARTIFACT_BYTES = 64 << 20
 MAX_SOURCE_BYTES = 1 << 20
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
 
 
 class ProbeError(Exception):
@@ -170,13 +172,17 @@ def verify_signed_artifact(artifact, signed_host):
         ("path", tampered_path(url), "GET"),
         ("version", tampered_version(url), "GET"),
     )
+    negative_probes = []
     for boundary, negative_url, method in negative_urls:
         status, _ = request_bytes(negative_url, method, limit=MAX_ARTIFACT_BYTES)
         if status != 403:
             raise ProbeError(
                 f"signed Artifact {boundary} probe returned HTTP {status}, expected 403"
             )
-    return 3
+        negative_probes.append(
+            f"signed-artifact-{artifact['artifact_id']}-{boundary}-tamper-rejected"
+        )
+    return negative_probes
 
 
 def run_probe():
@@ -185,11 +191,20 @@ def run_probe():
     same_org_project = required_environment("VELA_PROBE_SAME_ORG_PROJECT_ID")
     other_org_project = required_environment("VELA_PROBE_OTHER_ORG_PROJECT_ID")
     job_id = required_environment("VELA_PROBE_JOB_ID")
+    same_org_job_id = required_environment("VELA_PROBE_SAME_ORG_JOB_ID")
+    other_org_job_id = required_environment("VELA_PROBE_OTHER_ORG_JOB_ID")
     signed_host = required_environment("VELA_PROBE_SIGNED_HOST")
     credential_file = required_environment("VELA_PROBE_CREDENTIAL_FILE")
     expected_source_sha256 = required_environment("VELA_PROBE_SOURCE_SHA256")
     if SHA256_PATTERN.fullmatch(expected_source_sha256) is None:
         raise ProbeError("VELA_PROBE_SOURCE_SHA256 was invalid")
+    if any(
+        UUID_PATTERN.fullmatch(value) is None
+        for value in (job_id, same_org_job_id, other_org_job_id)
+    ):
+        raise ProbeError("probe Job identity was invalid")
+    if len({job_id, same_org_job_id, other_org_job_id}) != 3:
+        raise ProbeError("probe Job identities were not distinct")
     observed_source_sha256 = file_sha256(__file__)
     if observed_source_sha256 != expected_source_sha256:
         raise ProbeError("executed probe source did not match the expected SHA-256")
@@ -204,7 +219,7 @@ def run_probe():
         or parsed_base.fragment
     ):
         raise ProbeError("VELA_PROBE_BASE_URL must be one plain HTTP origin")
-    with open(credential_file, "r", encoding="utf-8") as credential_input:
+    with open(credential_file, encoding="utf-8") as credential_input:
         bearer = credential_input.read(1025).strip()
     if not bearer.startswith("vla_") or len(bearer) > 1024:
         raise ProbeError("probe bearer credential was invalid")
@@ -215,37 +230,51 @@ def run_probe():
     if job.get("job_id") != job_id or job.get("project_id") != own_project:
         raise ProbeError("authorized Job response identity was invalid")
 
-    negative_probe_count = 0
-    for project in (same_org_project, other_org_project):
-        hidden_job = f"{base_url}/v1/projects/{project}/jobs/{job_id}"
+    negative_probes = []
+    foreign_jobs = (
+        ("same-organization-foreign-project", same_org_project, same_org_job_id),
+        ("foreign-organization", other_org_project, other_org_job_id),
+    )
+    for scope, project, foreign_job_id in foreign_jobs:
+        hidden_job = f"{base_url}/v1/projects/{project}/jobs/{foreign_job_id}"
         expect_hidden(hidden_job, bearer)
+        negative_probes.append(f"{scope}-fixture-job-hidden")
         expect_hidden(hidden_job + "/artifacts", bearer)
-        negative_probe_count += 2
+        negative_probes.append(f"{scope}-fixture-artifact-set-hidden")
 
     artifact_set = request_json(own_artifacts_url, 200, bearer)
     artifacts = artifact_set.get("artifacts")
-    if artifact_set.get("job_id") != job_id or not isinstance(artifacts, list) or len(artifacts) != 2:
+    if (
+        artifact_set.get("job_id") != job_id
+        or not isinstance(artifacts, list)
+        or len(artifacts) != 2
+    ):
         raise ProbeError("authorized ArtifactSet response was invalid")
     kinds = []
     for artifact in artifacts:
         if not isinstance(artifact, dict):
             raise ProbeError("ArtifactSet contained a non-object Artifact")
         kinds.append(artifact.get("kind"))
-        negative_probe_count += verify_signed_artifact(artifact, signed_host)
+        negative_probes.extend(verify_signed_artifact(artifact, signed_host))
     if sorted(kinds) != ["THUMBNAIL", "VIDEO"]:
         raise ProbeError("ArtifactSet kinds were invalid")
 
     return {
-        "schema": "vela-lab-organization-isolation-http-probe-v1",
+        "schema": "vela-lab-organization-isolation-http-probe-v2",
         "status": "LAB_REHEARSAL_PASS",
         "evidence_boundary": "NON_PRODUCTION_MOCK_REHEARSAL",
         "production_gates": "0/9",
-        "captured_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "captured_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "job_id": job_id,
+        "foreign_job_ids": {
+            "same_organization_foreign_project": same_org_job_id,
+            "foreign_organization": other_org_job_id,
+        },
         "probe_sha256": observed_source_sha256,
         "authorized_artifact_count": len(artifacts),
         "authorized_signed_get_count": len(artifacts),
-        "negative_probe_count": negative_probe_count,
+        "negative_probe_count": len(negative_probes),
+        "negative_probes": negative_probes,
         "unexpected_allow_count": 0,
         "cross_project_hidden": True,
         "cross_organization_hidden": True,

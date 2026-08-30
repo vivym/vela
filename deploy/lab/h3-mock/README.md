@@ -420,25 +420,40 @@ a Launch Receipt.
 
 From `marslab-server`, run the separate isolation harness only at the idle
 two-Worker boundary. It creates one immutable ConfigMap and one short-lived Pod
-on Worker 1, plus exact synthetic database fixture IDs. The harness binds the
-executed probe source SHA-256, Runner image digest, Pod runtime `imageID`,
-database before/after snapshot, and checksum manifest. It deletes only the Pod
-and ConfigMap UIDs it created and rolls back synthetic Credential probes so
-actor-session audit rows are not added.
+on Worker 1, plus exact synthetic database fixture IDs. The v3 fixture includes
+one persisted synthetic same-Organization/foreign-Project Job and one persisted
+synthetic foreign-Organization Job, each with an Attempt, two Artifact rows, one
+ArtifactSet, and one access grant. The harness binds all 30 configured database
+URL keys to exact login/group roles, compares direct and effective table,
+column, and routine privileges, and inventories forced RLS on every physical
+public table carrying `organization_id`. It binds the executed probe source
+SHA-256, Runner image digest, Pod runtime `imageID`, database before/after
+snapshot, and checksum manifest. It deletes only the Pod and ConfigMap UIDs it
+created and rolls back synthetic Credential probes so actor-session audit rows
+are not added.
 
 ```text
 sudo deploy/lab/control-plane/organization-isolation-content-safety.sh \
   /absolute/path/to/deploy/lab/control-plane/organization_isolation_probe.py \
   10.1.200.17:5443/vela-lab/vela-h3-runner@sha256:71af1330eefdfff2a33d68e5f8c53c66ebe5b402dc28c35b3ff7516357ec4ca3 \
-  /root/vela-lab-deploy-bc590e20/receipts/organization-isolation-content-safety-v1 \
+  /root/vela-lab-deploy-bc590e20/receipts/organization-isolation-content-safety-v3 \
   --apply
 ```
 
-The retained result is `LAB_REHEARSAL_PARTIAL`, scenarios `7/9`, 20 negative
-probes, and Production Gates `0/9`. The real Platform IdP and Break-glass audit
-workflow are absent, and customer-content non-reuse is not measurable without
-an independent audit sink. These two rows remain `NOT_RUN`; do not reinterpret
+The retained v3 result is `LAB_REHEARSAL_PARTIAL`, scenarios `6/9`, 20 negative
+probes, and Production Gates `0/9`. All 28 manifest files pass
+`sha256sum --check --strict`; the 29-file receipt has `SHA256SUMS` SHA-256
+`5277940ff6fb2f9b82bfa4383014a2823671a13fb4c3653dde46d4b410318b68`.
+The executed harness SHA-256 is
+`856f759d50c4164735b34cb09edbdf4b9be6cc5cd3ebb66df3dc71fc24774d7d`
+and the executed probe SHA-256 is
+`3025380dffe056f100f4673d4830d5f4924e65f64556e056513edc7b652b16c0`.
+Request-correlated database-role telemetry, the real Platform IdP and
+Break-glass audit workflow, and an independent customer-content reuse audit
+sink are absent. These rows remain partial or `NOT_RUN`; do not reinterpret
 them as zero failures or create a Production Gate receipt from this output.
+The retained historical v2 receipt remains
+`organization-isolation-content-safety-v2` with its emitted `7/9` result.
 
 Rollback removes only the managed container and preserves Runner state:
 

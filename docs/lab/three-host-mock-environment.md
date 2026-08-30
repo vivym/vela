@@ -283,9 +283,9 @@ shared control node remains a lab exception and cannot satisfy a production
 control-plane gate.
 
 A fresh run of the strict `verify-cluster.sh gpu` at
-`2026-08-30T22:07:31Z` passed API, node identity, version, labels, taints, all
+`2026-08-30T23:15:27Z` passed API, node identity, version, labels, taints, all
 three `NoSwap` observations, DaemonSet, Deployment, Canal, and GPU capacity
-checks, but returned `FAIL failures=1`. The only failed check covers 22 retained
+checks, but returned `FAIL failures=1`. The only failed check covers 21 retained
 historical failed lab Pods. The organization-isolation harness deleted each of
 its own temporary Pods by exact UID, so it did not increase that count. The
 historical Pods remain available for diagnosis because deleting them was not
@@ -1304,14 +1304,22 @@ structural validation.
 
 On 2026-08-30, the live non-production isolation harness exercised seven of the
 nine fixed `organization-isolation-content-safety` scenarios. It passed
-cross-Organization and cross-Project invisibility, the fixed non-superuser and
-non-`BYPASSRLS` request-role matrix, forced RLS with private request context,
-credential revocation, composite foreign-key rejection, and exact-version
-signed URL scope. The HTTP probe read both committed Artifacts for Job
+cross-Organization and cross-Project invisibility against two actual synthetic
+foreign-scope Jobs, four Artifact rows, two ArtifactSets, and two access grants.
+The fixed role evidence now binds all 30 runtime database URLs in the live
+control Deployment Secret to 30 distinct login roles and their exact singleton
+group memberships. It records all 60 login/group role attributes, rejects
+direct login grants, verifies the exact table and routine privileges of the
+three public HTTP roles, and observes live connections for their restricted
+pools. A catalog inventory independently reports all 72 physical public tables
+with an `organization_id` column and proves `relrowsecurity=true` and
+`relforcerowsecurity=true` for every one. Private request context, credential
+revocation, composite foreign-key rejection, and exact-version signed URL scope
+also passed. The HTTP probe read both committed Artifacts for Job
 `3e4be0cc-fcc0-42fa-a502-6080df76c634`, verified their sizes and SHA-256
 digests, and rejected method, path, and syntactically valid version tampering.
-The final evidence contains ten database and ten HTTP negative probes, zero
-unexpected allows, and zero credential-revocation bypasses.
+The executed ledgers derive ten database and ten HTTP negative probes, with
+zero unexpected allows and zero credential-revocation bypasses.
 
 The two unexecuted scenarios remain explicit `NOT_RUN` entries:
 `break-glass-audit` requires the absent real Platform IdP and approval workflow,
@@ -1321,15 +1329,18 @@ measurements are `NOT_MEASURED`, not zero. The result is therefore
 `NON_PRODUCTION_MOCK_REHEARSAL`, and Production Gates `0/9`.
 
 The root-only receipt is
-`/root/vela-lab-deploy-bc590e20/receipts/organization-isolation-content-safety-v1`.
-All 21 listed files pass `sha256sum --check --strict`; the `SHA256SUMS` file has
-SHA-256 `39efd866e74cce62010e173d01532d53626b11cac794ea8a28cc730f99ed256f`.
+`/root/vela-lab-deploy-bc590e20/receipts/organization-isolation-content-safety-v2`.
+All 28 files listed by its manifest pass `sha256sum --check --strict`; the
+receipt contains 29 files including `SHA256SUMS`, whose SHA-256 is
+`ba0e6784ce2bcc9d477bc3737ef3479a78043bfaff0e90f799d2e9835f812943`.
 The executed harness has SHA-256
-`9563d42809513d59b4ff7b1b4b98c567d7ee8e7ab6bc2d562854ada7d5b78549`,
+`69006f29401a3fbc64f3e88b9448fe3b11bde76c77e9b7bae1435304c6822a5e`,
 the executed Python probe has SHA-256
-`47deea009391215df063eee4066b186f410b6b99d7fbe991e43b207d4507f6d4`,
+`3f812ca892226c7254f7c5d1d6217190df8c8c0af9ed1d85441e02597c925ccc`,
 and the Pod runtime used the pinned Runner digest
 `sha256:71af1330eefdfff2a33d68e5f8c53c66ebe5b402dc28c35b3ff7516357ec4ca3`.
+The v1 and v2 receipts are retained as historical evidence; the reviewed v3
+receipt below supersedes them for the current mock rehearsal.
 
 Independent postflight matched the complete before/after database snapshot:
 zero active Jobs, zero active Leases, zero Production Gate receipts, zero active
@@ -1344,6 +1355,61 @@ resources and removable fixture rows, and is not counted as a pass. The
 diagnostic actor-session attribution was not deleted; it is retained as part of
 the before/after count of two. The successful transaction-scoped Credential
 probe added no further attribution.
+
+The v2 run additionally retained
+`receipts/.organization-isolation-content-safety.p1N6QF`: its validator rejected
+an invalid local `jq` expression before database fixture creation. It contains
+no PASS receipt and is not counted as evidence. The corrected rerun returned the
+database to the same boundary, removed its temporary Pod and ConfigMap, and a
+fresh strict cluster postflight at `2026-08-30T22:43:09Z` again failed only on
+the 22 separately retained historical failed Pods; all node, GPU, DaemonSet,
+Deployment, Canal, and explicit `NoSwap` checks passed.
+
+Post-review, the v2 `7/9` value above is retained only as the result emitted by
+those historical bytes. The configured database URLs, exact role memberships,
+and connected restricted pools do not request-correlate each public HTTP path
+to its database role, so the fixed-role scenario is no longer counted as a
+complete rehearsal PASS.
+
+The reviewed v3 rerun records that limitation explicitly and reports
+`LAB_REHEARSAL_PARTIAL`, scenarios `6/9`, evidence boundary
+`NON_PRODUCTION_MOCK_REHEARSAL`, and Production Gates `0/9`. Its fixed-role
+scenario is `LAB_REHEARSAL_PARTIAL_REQUEST_CORRELATION_ABSENT`; Break-glass and
+content reuse remain `NOT_RUN`/`NOT_MEASURED`. The other six scenarios passed,
+with ten database and ten HTTP negative probes, zero unexpected allows, and
+zero credential-revocation bypasses.
+
+The v3 role snapshot binds all 30 configured database URLs to exact singleton
+login/group pairs and records 60 roles. It compares direct and effective
+privileges rather than only ACL rows: table sets are `22/22`, explicit
+column-only sets are `6/6`, and routine sets are `13/13`. Direct login grants,
+sequence privileges, unsafe schema privileges, and effective expansion through
+`PUBLIC` or inherited roles are absent. The forced-RLS inventory contains all
+72 physical public relations carrying `organization_id`, with zero unprotected
+relations. The persisted synthetic foreign-resource fixture again contained
+two Jobs, four Artifacts, two ArtifactSets, and two access grants.
+
+The root-only receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/organization-isolation-content-safety-v3`.
+All 28 manifest files pass `sha256sum --check --strict`; the receipt contains 29
+files including `SHA256SUMS`, whose SHA-256 is
+`5277940ff6fb2f9b82bfa4383014a2823671a13fb4c3653dde46d4b410318b68`.
+The executed harness SHA-256 is
+`856f759d50c4164735b34cb09edbdf4b9be6cc5cd3ebb66df3dc71fc24774d7d`,
+the executed Python probe SHA-256 is
+`3025380dffe056f100f4673d4830d5f4924e65f64556e056513edc7b652b16c0`,
+and the Pod runtime retained the pinned Runner digest
+`sha256:71af1330eefdfff2a33d68e5f8c53c66ebe5b402dc28c35b3ff7516357ec4ca3`.
+
+Independent postflight matched the receipt's exact before/after database
+snapshot and a fresh live boundary: zero active Jobs, Leases, Production Gate
+receipts, active Break-glass grants, and fixture rows; two `READY/HEALTHY`
+Workers; and two unchanged actor-session attributions. The temporary Pod and
+ConfigMap and the harness process were absent. The strict cluster verifier at
+`2026-08-30T23:15:27Z` passed every API, node, `NoSwap`, DaemonSet, Deployment,
+Canal, and GPU `0/8/8` check, but correctly returned `FAIL failures=1` because
+21 retained historical failed Pods remain. No historical Pod or diagnostic
+receipt was deleted by the v3 run.
 
 ## Experiment operating rules
 
