@@ -57,10 +57,14 @@ type Service struct {
 	operationMu sync.Mutex
 	mu          sync.Mutex
 	active      *activeExecution
+	sealed      map[[sha256.Size]byte]*velav1.LocalMaterializationReceipt
+	sealedOrder [][sha256.Size]byte
 	generation  uint64
 	closed      chan struct{}
 	closeOnce   sync.Once
 }
+
+const maxSealedReceiptReplay = 256
 
 type activeExecution struct {
 	verified  stageauthority.Verified
@@ -106,6 +110,7 @@ func NewService(config Config) (*Service, error) {
 		backend:       config.Backend,
 		clock:         config.Clock,
 		cancelTimeout: config.CancelTimeout,
+		sealed:        make(map[[sha256.Size]byte]*velav1.LocalMaterializationReceipt),
 		closed:        make(chan struct{}),
 	}, nil
 }
@@ -339,6 +344,14 @@ func (service *Service) Status(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
+	if receipt := service.sealedReceipt(verified.Digest); receipt != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
+		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
+		response.LocalReceiptId = receipt.GetReceiptId()
+		response.LocalReceiptDigest = append([]byte(nil), receipt.GetManifestSha256()...)
+		response.Detail = "sealed output retained for local materialization replay"
+		return response, nil
+	}
 	if _, _, err := service.requireActive(verified, true); err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
 		response.Detail = boundedDetail(err.Error())
@@ -398,6 +411,13 @@ func (service *Service) SealOutput(
 	response.AuthorityDigest = verified.Digest[:]
 	service.operationMu.Lock()
 	defer service.operationMu.Unlock()
+	if receipt := service.sealedReceipt(verified.Digest); receipt != nil {
+		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED
+		response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
+		response.Receipt = receipt
+		response.Detail = "output already sealed"
+		return response, nil
+	}
 	state, _, err := service.requireActive(verified, true)
 	if err != nil {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE
@@ -407,6 +427,7 @@ func (service *Service) SealOutput(
 	if state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED {
 		response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED
 		response.State = state
+		response.Receipt = service.activeReceipt(verified.Digest)
 		response.Detail = "output already sealed"
 		return response, nil
 	}
@@ -441,9 +462,8 @@ func (service *Service) SealOutput(
 		TotalSizeBytes: sealed.TotalSizeBytes, SealedAt: timestamppb.New(service.clock.Now()),
 		OutputManifestJson: append([]byte(nil), sealed.OutputManifestJSON...),
 	}
-	service.setActiveReceipt(verified.Digest, receipt)
-	service.setActiveState(verified.Digest, velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED)
-	service.stopWatchdog(verified.Digest)
+	service.rememberSealedReceipt(verified.Digest, receipt)
+	service.clearActive(verified.Digest)
 	response.Decision = velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED
 	response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED
 	response.Receipt = receipt
@@ -587,6 +607,38 @@ func (service *Service) activeReceipt(digest [32]byte) *velav1.LocalMaterializat
 		return nil
 	}
 	return proto.Clone(service.active.receipt).(*velav1.LocalMaterializationReceipt)
+}
+
+func (service *Service) rememberSealedReceipt(
+	digest [sha256.Size]byte,
+	receipt *velav1.LocalMaterializationReceipt,
+) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if receipt == nil {
+		return
+	}
+	if _, exists := service.sealed[digest]; !exists {
+		service.sealedOrder = append(service.sealedOrder, digest)
+	}
+	service.sealed[digest] = proto.Clone(receipt).(*velav1.LocalMaterializationReceipt)
+	for len(service.sealedOrder) > maxSealedReceiptReplay {
+		oldest := service.sealedOrder[0]
+		service.sealedOrder = service.sealedOrder[1:]
+		delete(service.sealed, oldest)
+	}
+}
+
+func (service *Service) sealedReceipt(
+	digest [sha256.Size]byte,
+) *velav1.LocalMaterializationReceipt {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	receipt := service.sealed[digest]
+	if receipt == nil {
+		return nil
+	}
+	return proto.Clone(receipt).(*velav1.LocalMaterializationReceipt)
 }
 
 func (service *Service) markStarted(digest [32]byte, startedAt time.Time) {

@@ -3,6 +3,7 @@ package stageworkeragent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -244,6 +246,49 @@ func (agent *Agent) Status(
 		}
 	}
 	return result, joined
+}
+
+func (agent *Agent) SealOutput(
+	ctx context.Context,
+	authority *velav1.StageAuthority,
+) (*velav1.LocalMaterializationReceipt, error) {
+	if agent == nil || len(agent.ids) != 1 || ctx == nil {
+		return nil, errors.New("single-output seal requires exactly one configured ModelRuntime")
+	}
+	digest, err := stageauthority.Digest(authority)
+	if err != nil {
+		return nil, err
+	}
+	memberID := agent.ids[0]
+	response, err := agent.members[memberID].SealOutput(
+		ctx,
+		&velav1.ModelRuntimeServiceSealOutputRequest{Authority: authority},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("seal ModelRuntime member %s: %w", memberID, err)
+	}
+	if response == nil ||
+		(response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED &&
+			response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED) ||
+		!bytes.Equal(response.GetAuthorityDigest(), digest[:]) ||
+		!runtimeIdentityMatchesMember(response.GetRuntimeIdentity(), authority, memberID) {
+		return nil, errors.New("ModelRuntime rejected output seal authority")
+	}
+	receipt := response.GetReceipt()
+	if receipt == nil || receipt.GetReceiptId() == "" ||
+		len(receipt.GetManifestSha256()) != sha256.Size || receipt.GetTotalSizeBytes() <= 0 ||
+		receipt.GetSealedAt() == nil || receipt.GetSealedAt().CheckValid() != nil ||
+		len(receipt.GetOutputManifestJson()) == 0 ||
+		sha256.Sum256(receipt.GetOutputManifestJson()) != [sha256.Size]byte(receiptDigest(receipt)) {
+		return nil, errors.New("ModelRuntime returned malformed local materialization receipt")
+	}
+	return proto.Clone(receipt).(*velav1.LocalMaterializationReceipt), nil
+}
+
+func receiptDigest(receipt *velav1.LocalMaterializationReceipt) [sha256.Size]byte {
+	var digest [sha256.Size]byte
+	copy(digest[:], receipt.GetManifestSha256())
+	return digest
 }
 
 func (agent *Agent) validateAssignment(

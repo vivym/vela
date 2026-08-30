@@ -41,6 +41,7 @@ enum StageWorkerOperation {
   STAGE_WORKER_OPERATION_COMMIT_STAGE_MATERIALIZATION = 7;
   STAGE_WORKER_OPERATION_FAIL_STAGE = 8;
   STAGE_WORKER_OPERATION_REATTACH_STAGE = 9;
+  STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST = 10;
 }
 
 message StageWorkerControlServiceConnectRequest {
@@ -56,6 +57,7 @@ message StageWorkerControlServiceConnectRequest {
     CommitStageMaterializationRequest commit_stage_materialization = 16;
     FailStageRequest fail_stage = 17;
     ReattachStageRequest reattach_stage = 18;
+    ReportMaterializationSourceLostRequest report_materialization_source_lost = 19;
   }
 }
 
@@ -114,6 +116,14 @@ message SealStageOutputRequest {
 message CommitStageMaterializationRequest {
   MaterializationAuthority materialization_authority = 1;
   string object_version = 2;
+}
+
+message ReportMaterializationSourceLostRequest {
+  MaterializationAuthority materialization_authority = 1;
+  bytes failure_fingerprint = 2;
+  int64 consumed_resource_units = 3;
+  google.protobuf.Timestamp lost_at = 4;
+  google.protobuf.Timestamp retry_at = 5;
 }
 
 message FailStageRequest {

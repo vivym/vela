@@ -1,0 +1,58 @@
+package stageworkeragent_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"testing"
+
+	"github.com/vivym/vela/internal/stageworkeragent"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	manifestDigest := sha256.Sum256(fixture.manifest)
+	record := stageworkeragent.PendingMaterialization{
+		ID:             "92000000-0000-0000-0000-000000000001",
+		StageAuthority: fixture.authority,
+		LocalReceipt: &velav1.LocalMaterializationReceipt{
+			ReceiptId:          "92000000-0000-0000-0000-000000000001",
+			ManifestSha256:     manifestDigest[:],
+			TotalSizeBytes:     int64(len(fixture.payload)),
+			SealedAt:           timestamppb.Now(),
+			OutputManifestJson: fixture.manifest,
+		},
+	}
+	root := t.TempDir()
+	journal, err := stageworkeragent.NewFileMaterializationJournal(root, 4)
+	if err != nil {
+		t.Fatalf("NewFileMaterializationJournal: %v", err)
+	}
+	if err := journal.Put(context.Background(), record); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	restarted, err := stageworkeragent.NewFileMaterializationJournal(root, 4)
+	if err != nil {
+		t.Fatalf("restart FileMaterializationJournal: %v", err)
+	}
+	records, err := restarted.List(context.Background())
+	if err != nil || len(records) != 1 || records[0].ID != record.ID ||
+		!proto.Equal(records[0].StageAuthority, record.StageAuthority) ||
+		!proto.Equal(records[0].LocalReceipt, record.LocalReceipt) {
+		t.Fatalf("restarted List = %#v error=%v", records, err)
+	}
+	if err := restarted.Delete(context.Background(), record.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	empty, err := stageworkeragent.NewFileMaterializationJournal(root, 4)
+	if err != nil {
+		t.Fatalf("restart empty FileMaterializationJournal: %v", err)
+	}
+	records, err = empty.List(context.Background())
+	if err != nil || len(records) != 0 {
+		t.Fatalf("List after durable delete = %#v error=%v", records, err)
+	}
+}

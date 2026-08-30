@@ -49,6 +49,7 @@ type PostgresRepository struct {
 type SourceLostCommand struct {
 	CommandID              uuid.UUID
 	MaterializationLeaseID uuid.UUID
+	TokenDigest            [sha256.Size]byte
 	FailureFingerprint     [sha256.Size]byte
 	ConsumedResourceUnits  int64
 	LostAt                 time.Time
@@ -258,6 +259,7 @@ func (repository *PostgresRepository) FailSourceLost(
 		return SourceLostDecision{}, errors.New("StageArtifact repository is not configured")
 	}
 	if command.CommandID == uuid.Nil || command.MaterializationLeaseID == uuid.Nil ||
+		command.TokenDigest == [sha256.Size]byte{} ||
 		command.FailureFingerprint == [sha256.Size]byte{} ||
 		command.ConsumedResourceUnits <= 0 || command.LostAt.IsZero() ||
 		!command.RetryAt.After(command.LostAt) {
@@ -267,6 +269,7 @@ func (repository *PostgresRepository) FailSourceLost(
 		"schema_version":           1,
 		"command_id":               command.CommandID,
 		"materialization_lease_id": command.MaterializationLeaseID,
+		"token_digest":             hex.EncodeToString(command.TokenDigest[:]),
 		"failure_fingerprint":      hex.EncodeToString(command.FailureFingerprint[:]),
 		"consumed_resource_units":  command.ConsumedResourceUnits,
 		"lost_at":                  command.LostAt.UTC().Format(time.RFC3339Nano),

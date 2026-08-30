@@ -51,6 +51,7 @@ type FakeRuntime struct {
 	activeDigest    [32]byte
 	cancelRequested bool
 	outputManifest  []byte
+	outputSize      int64
 }
 
 func NewFakeEncoderRuntime() *FakeRuntime {
@@ -103,10 +104,14 @@ func (runtime *FakeRuntime) Prepare(
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.activeDigest != ([32]byte{}) && runtime.activeDigest != authority.Digest {
+	if runtime.activeDigest != ([32]byte{}) && runtime.activeDigest != authority.Digest &&
+		runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED {
 		return errors.New("fake ModelRuntime already owns another StageAttempt")
 	}
 	runtime.activeDigest = authority.Digest
+	runtime.cancelRequested = false
+	runtime.outputManifest = nil
+	runtime.outputSize = 0
 	runtime.state = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED
 	runtime.sequence++
 	return nil
@@ -190,20 +195,26 @@ func (runtime *FakeRuntime) Seal(
 	runtime.sequence++
 	return SealedOutput{
 		OutputManifestJSON: append([]byte(nil), runtime.outputManifest...),
-		TotalSizeBytes:     int64(len(runtime.outputManifest)),
+		TotalSizeBytes:     runtime.outputSize,
 	}, nil
 }
 
 func (runtime *FakeRuntime) MarkOutputReady(outputManifestJSON []byte) {
+	runtime.MarkOutputReadyWithSize(outputManifestJSON, int64(len(outputManifestJSON)))
+}
+
+func (runtime *FakeRuntime) MarkOutputReadyWithSize(outputManifestJSON []byte, sizeBytes int64) {
 	if runtime == nil {
 		return
 	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING {
+	if runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING ||
+		sizeBytes <= 0 {
 		return
 	}
 	runtime.outputManifest = append([]byte(nil), outputManifestJSON...)
+	runtime.outputSize = sizeBytes
 	runtime.state = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_READY
 	runtime.sequence++
 }

@@ -213,6 +213,72 @@ func TestHandlerAuthorizesCommitWithMaterializationAuthorityAfterStageLeaseRevoc
 	}
 }
 
+func TestHandlerAuthorizesSourceLossWithMaterializationAuthorityNotStageAuthority(t *testing.T) {
+	now := time.Date(2026, 8, 30, 14, 30, 0, 0, time.UTC)
+	stageValidator, err := stageauthority.NewValidator(
+		map[string][]byte{"control-key": bytes.Repeat([]byte{0x7c}, 32)},
+		func() time.Time { return now },
+	)
+	if err != nil {
+		t.Fatalf("New StageAuthority Validator: %v", err)
+	}
+	keys := map[string][]byte{"materialization-key-v1": bytes.Repeat([]byte{0x7d}, 32)}
+	signer, err := materializationauthority.NewSigner(keys)
+	if err != nil {
+		t.Fatalf("New materialization Signer: %v", err)
+	}
+	validator, err := materializationauthority.NewValidator(keys, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("New materialization Validator: %v", err)
+	}
+	signed, err := signer.Sign(controlMaterializationAuthority(now))
+	if err != nil {
+		t.Fatalf("Sign MaterializationAuthority: %v", err)
+	}
+	digest, err := materializationauthority.Digest(signed)
+	if err != nil {
+		t.Fatalf("Digest MaterializationAuthority: %v", err)
+	}
+	stageAuthorizer := &exactActiveAuthorizer{}
+	materializationAuthorizer := &exactMaterializationAuthorizer{digest: digest}
+	executor := &recordingControlExecutor{}
+	handler, err := stageworkercontrol.NewHandler(stageworkercontrol.Config{
+		Validator: stageValidator, Authorizer: stageAuthorizer,
+		MaterializationValidator: validator, MaterializationAuthorizer: materializationAuthorizer,
+		Executor: executor,
+	})
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+	response, err := handler.Handle(
+		context.Background(),
+		stageworkertransport.Identity{SPIFFEID: "spiffe://vela/worker/member-1"},
+		12,
+		&velav1.StageWorkerControlServiceConnectRequest{
+			RequestId: "81000000-0000-0000-0000-000000000020",
+			Operation: &velav1.StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost{
+				ReportMaterializationSourceLost: &velav1.ReportMaterializationSourceLostRequest{
+					MaterializationAuthority: signed,
+					FailureFingerprint:       bytes.Repeat([]byte{0xa1}, 32),
+					ConsumedResourceUnits:    100,
+					LostAt:                   timestamppb.New(now.Add(time.Second)),
+					RetryAt:                  timestamppb.New(now.Add(2 * time.Second)),
+				},
+			},
+		},
+	)
+	if err != nil || response.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED ||
+		stageAuthorizer.calls != 0 || materializationAuthorizer.calls != 1 ||
+		executor.lastAuthorities.Materialization == nil || executor.lastAuthorities.Stage != nil {
+		t.Fatalf(
+			"source-loss Handle = %#v error=%v stage_calls=%d materialization_calls=%d authorities=%#v",
+			response, err, stageAuthorizer.calls, materializationAuthorizer.calls,
+			executor.lastAuthorities,
+		)
+	}
+}
+
 type exactActiveAuthorizer struct {
 	digest [32]byte
 	calls  int

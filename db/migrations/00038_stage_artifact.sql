@@ -712,6 +712,66 @@ ALTER FUNCTION vela_commit_stage_artifact(jsonb) OWNER TO vela_attempt_coordinat
 REVOKE ALL ON FUNCTION vela_commit_stage_artifact(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION vela_commit_stage_artifact(jsonb) TO vela_stage_artifact;
 
+CREATE FUNCTION vela_private.vela_insert_stage_materialization_source_lost_event(
+    p_event_id uuid,
+    p_organization_id uuid,
+    p_project_id uuid,
+    p_job_id uuid,
+    p_job_version bigint,
+    p_attempt_id uuid,
+    p_attempt_number integer,
+    p_attempt_fence bigint,
+    p_job_fence bigint,
+    p_occurred_at timestamptz
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+    v_payload bytea;
+BEGIN
+    v_payload :=
+        vela_private.vela_proto_string(1, p_organization_id::text)
+        || vela_private.vela_proto_string(2, p_project_id::text)
+        || vela_private.vela_proto_string(3, p_job_id::text)
+        || vela_private.vela_proto_string(4, p_attempt_id::text)
+        || vela_private.vela_proto_uint(5, p_attempt_number)
+        || vela_private.vela_proto_uint(6, p_attempt_fence)
+        || vela_private.vela_proto_uint(7, p_job_fence)
+        || vela_private.vela_proto_string(8, 'LOCAL_MATERIALIZATION_SOURCE_LOST')
+        || vela_private.vela_proto_string(9, 'FAILED')
+        || vela_private.vela_proto_uint(10, 0)
+        || vela_private.vela_proto_uint(11, 0)
+        || vela_private.vela_proto_bytes(
+            12,
+            vela_private.vela_proto_timestamp(p_occurred_at)
+        )
+        || vela_private.vela_proto_uint(13, 0)
+        || vela_private.vela_proto_uint(14, 0);
+    PERFORM vela_private.vela_insert_canonical_cancellation_event(
+        p_event_id,
+        p_organization_id,
+        p_project_id,
+        p_job_id,
+        p_job_version,
+        'job.failed',
+        p_occurred_at,
+        24,
+        v_payload
+    );
+END
+$$;
+ALTER FUNCTION vela_private.vela_insert_stage_materialization_source_lost_event(
+    uuid, uuid, uuid, uuid, bigint, uuid, integer, bigint, bigint, timestamptz
+) OWNER TO vela_internal;
+REVOKE ALL ON FUNCTION vela_private.vela_insert_stage_materialization_source_lost_event(
+    uuid, uuid, uuid, uuid, bigint, uuid, integer, bigint, bigint, timestamptz
+) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION vela_private.vela_insert_stage_materialization_source_lost_event(
+    uuid, uuid, uuid, uuid, bigint, uuid, integer, bigint, bigint, timestamptz
+) TO vela_attempt_coordinator_owner;
+
 CREATE FUNCTION vela_fail_stage_materialization_source(p_command jsonb)
 RETURNS TABLE (
     stage_run_id uuid,
@@ -727,6 +787,7 @@ AS $$
 DECLARE
     v_command_id uuid := (p_command ->> 'command_id')::uuid;
     v_lease_id uuid := (p_command ->> 'materialization_lease_id')::uuid;
+    v_token_digest bytea := decode(p_command ->> 'token_digest', 'hex');
     v_failure_fingerprint bytea := decode(p_command ->> 'failure_fingerprint', 'hex');
     v_consumed_resource_units bigint := (p_command ->> 'consumed_resource_units')::bigint;
     v_lost_at timestamptz := (p_command ->> 'lost_at')::timestamptz;
@@ -741,8 +802,11 @@ DECLARE
     v_stage_budget stage_retry_budgets%ROWTYPE;
     v_attempt_budget attempt_retry_budgets%ROWTYPE;
     v_result jsonb;
+    v_retry_allowed boolean;
+    v_failure_event_id uuid;
 BEGIN
     IF v_command_id IS NULL OR v_lease_id IS NULL
+       OR octet_length(v_token_digest) <> 32
        OR octet_length(v_failure_fingerprint) <> 32 OR v_consumed_resource_units <= 0
        OR v_lost_at IS NULL OR v_retry_at <= v_lost_at THEN
         RAISE EXCEPTION USING
@@ -780,22 +844,26 @@ BEGIN
     WHERE budget.stage_run_id = v_run.id FOR UPDATE;
     SELECT budget.* INTO v_attempt_budget FROM attempt_retry_budgets AS budget
     WHERE budget.attempt_id = v_attempt.id FOR UPDATE;
-    IF v_materialization.state <> 'ACTIVE'
+    IF v_materialization.id IS NULL OR v_materialization.state <> 'ACTIVE'
+       OR v_materialization.token_digest <> v_token_digest
        OR v_job.state <> 'RUNNING' OR v_job.current_fence <> v_materialization.attempt_fence
        OR v_attempt.graph_state <> 'RUNNING' OR v_attempt.fence <> v_materialization.attempt_fence
        OR v_run.state <> 'MATERIALIZING' OR v_run.fence <> v_materialization.stage_fence
        OR v_run.version <> v_materialization.stage_version
        OR v_physical.state <> 'OUTPUT_SEALED'
-       OR v_stage_budget.state <> 'ACTIVE'
-       OR v_stage_budget.attempts_consumed >= v_stage_budget.max_attempts
-       OR v_attempt_budget.state <> 'ACTIVE'
-       OR v_attempt_budget.consumed_resource_units + v_consumed_resource_units
-          > v_attempt_budget.max_resource_units
-       OR v_lost_at < v_materialization.issued_at OR v_retry_at >= v_job.job_expires_at THEN
+       OR v_stage_budget.stage_run_id IS NULL
+       OR v_attempt_budget.attempt_id IS NULL
+       OR v_lost_at < v_materialization.issued_at THEN
         RAISE EXCEPTION USING
             ERRCODE = '40001', CONSTRAINT = 'stage_materialization_source_lost_stale',
             MESSAGE = 'Stage materialization source-loss authority or retry budget is stale';
     END IF;
+    v_retry_allowed := v_stage_budget.state = 'ACTIVE'
+        AND v_stage_budget.attempts_consumed < v_stage_budget.max_attempts
+        AND v_attempt_budget.state = 'ACTIVE'
+        AND v_attempt_budget.consumed_resource_units + v_consumed_resource_units
+            < v_attempt_budget.max_resource_units
+        AND v_retry_at < v_job.job_expires_at;
     UPDATE stage_materialization_leases SET state = 'REVOKED', revoked_at = v_lost_at,
         revoke_reason = 'LOCAL_SOURCE_LOST'
     WHERE id = v_materialization.id AND state = 'ACTIVE';
@@ -804,17 +872,79 @@ BEGIN
         failure_fingerprint = v_failure_fingerprint, updated_at = v_lost_at
     WHERE id = v_physical.id AND state = 'OUTPUT_SEALED';
     UPDATE attempt_retry_budgets SET
-        consumed_resource_units = consumed_resource_units + v_consumed_resource_units,
+        consumed_resource_units = LEAST(
+            max_resource_units,
+            consumed_resource_units + v_consumed_resource_units
+        ),
+        state = CASE WHEN v_retry_allowed
+            THEN 'ACTIVE'::stage_retry_budget_state
+            WHEN consumed_resource_units + v_consumed_resource_units >= max_resource_units
+            THEN 'EXHAUSTED'::stage_retry_budget_state
+            ELSE 'CANCELED'::stage_retry_budget_state END,
+        version = version + 1,
         updated_at = v_lost_at
-    WHERE attempt_id = v_attempt.id AND state = 'ACTIVE';
-    UPDATE stage_runs SET state = 'RETRY_WAIT', fence = fence + 1,
-        retry_count = retry_count + 1, next_retry_at = v_retry_at,
-        version = version + 1, updated_at = v_lost_at
-    WHERE id = v_run.id AND state = 'MATERIALIZING' AND version = v_run.version;
-    v_result := jsonb_build_object(
-        'stage_run_id', v_run.id, 'stage_state', 'RETRY_WAIT',
-        'stage_fence', v_run.fence + 1, 'stage_version', v_run.version + 1
-    );
+    WHERE attempt_id = v_attempt.id;
+    IF v_retry_allowed THEN
+        UPDATE stage_runs SET state = 'RETRY_WAIT', fence = fence + 1,
+            retry_count = retry_count + 1, next_retry_at = v_retry_at,
+            version = version + 1, updated_at = v_lost_at
+        WHERE id = v_run.id AND state = 'MATERIALIZING' AND version = v_run.version;
+        v_result := jsonb_build_object(
+            'stage_run_id', v_run.id, 'stage_state', 'RETRY_WAIT',
+            'stage_fence', v_run.fence + 1, 'stage_version', v_run.version + 1
+        );
+    ELSE
+        UPDATE stage_retry_budgets AS budget SET state = CASE
+                WHEN budget.attempts_consumed = budget.max_attempts
+                THEN 'EXHAUSTED'::stage_retry_budget_state
+                ELSE 'CANCELED'::stage_retry_budget_state END,
+            version = budget.version + 1, updated_at = v_lost_at
+        WHERE budget.stage_run_id = v_run.id;
+        UPDATE stage_runs AS run SET
+            state = CASE WHEN run.id = v_run.id
+                THEN 'FAILED'::stage_run_state
+                ELSE 'CANCELED'::stage_run_state END,
+            fence = run.fence + 1, next_retry_at = NULL,
+            version = run.version + 1, updated_at = v_lost_at
+        WHERE run.attempt_id = v_attempt.id
+          AND run.state NOT IN ('SUCCEEDED', 'FAILED', 'CANCELED');
+        UPDATE stage_storage_reservations SET state = 'RELEASED', updated_at = v_lost_at
+        WHERE attempt_id = v_attempt.id AND state = 'RESERVED';
+        UPDATE attempts SET state = 'FAILED', graph_state = 'FAILED', ended_at = v_lost_at,
+            updated_at = v_lost_at
+        WHERE id = v_attempt.id AND graph_state = 'RUNNING';
+        v_failure_event_id := gen_random_uuid();
+        PERFORM vela_private.vela_insert_stage_materialization_source_lost_event(
+            v_failure_event_id,
+            v_job.organization_id,
+            v_job.project_id,
+            v_job.id,
+            v_job.version + 1,
+            v_attempt.id,
+            v_attempt.attempt_number,
+            v_attempt.fence,
+            v_job.current_fence,
+            v_lost_at
+        );
+        UPDATE jobs SET state = 'FAILED', version = version + 1, updated_at = v_lost_at
+        WHERE id = v_job.id AND state = 'RUNNING'
+          AND current_fence = v_attempt.fence;
+        UPDATE projects SET running_count = running_count - 1
+        WHERE id = v_job.project_id AND organization_id = v_job.organization_id
+          AND running_count > 0;
+        UPDATE credit_reservations SET state = 'RELEASED', updated_at = v_lost_at
+        WHERE job_id = v_job.id AND state = 'RESERVED';
+        UPDATE organization_credit_accounts SET
+            reserved_minor = reserved_minor - v_job.pricing_quoted_amount_minor,
+            version = version + 1, updated_at = v_lost_at
+        WHERE organization_id = v_job.organization_id
+          AND currency = v_job.pricing_currency
+          AND reserved_minor >= v_job.pricing_quoted_amount_minor;
+        v_result := jsonb_build_object(
+            'stage_run_id', v_run.id, 'stage_state', 'FAILED',
+            'stage_fence', v_run.fence + 1, 'stage_version', v_run.version + 1
+        );
+    END IF;
     INSERT INTO stage_artifact_commands (
         command_id, command_kind, attempt_id, stage_run_id, stage_attempt_id,
         request_digest, result
@@ -822,8 +952,12 @@ BEGIN
         v_command_id, 'SOURCE_LOST', v_attempt.id, v_run.id, v_physical.id,
         v_request_digest, v_result
     );
-    RETURN QUERY SELECT v_run.id, 'RETRY_WAIT'::text,
-        v_run.fence + 1, v_run.version + 1, false;
+    RETURN QUERY SELECT
+        v_run.id,
+        v_result ->> 'stage_state',
+        (v_result ->> 'stage_fence')::bigint,
+        (v_result ->> 'stage_version')::bigint,
+        false;
 END
 $$;
 ALTER FUNCTION vela_fail_stage_materialization_source(jsonb)
@@ -1121,6 +1255,12 @@ DROP FUNCTION vela_is_stage_materialization_authority_active(jsonb);
 REVOKE EXECUTE ON FUNCTION vela_fail_stage_materialization_source(jsonb)
     FROM vela_stage_artifact;
 DROP FUNCTION vela_fail_stage_materialization_source(jsonb);
+REVOKE EXECUTE ON FUNCTION vela_private.vela_insert_stage_materialization_source_lost_event(
+    uuid, uuid, uuid, uuid, bigint, uuid, integer, bigint, bigint, timestamptz
+) FROM vela_attempt_coordinator_owner;
+DROP FUNCTION vela_private.vela_insert_stage_materialization_source_lost_event(
+    uuid, uuid, uuid, uuid, bigint, uuid, integer, bigint, bigint, timestamptz
+);
 REVOKE EXECUTE ON FUNCTION vela_seal_stage_output(jsonb) FROM vela_stage_artifact;
 DROP FUNCTION vela_seal_stage_output(jsonb);
 REVOKE USAGE ON SCHEMA public FROM vela_stage_artifact;

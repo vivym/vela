@@ -268,6 +268,7 @@ func verifyStageArtifactPrivileges(
 		failureLabel:    "StageArtifact transaction",
 		functions: []string{
 			"vela_seal_stage_output(jsonb)",
+			"vela_is_stage_materialization_authority_active(jsonb)",
 			"vela_commit_stage_artifact(jsonb)",
 			"vela_fail_stage_materialization_source(jsonb)",
 			"vela_issue_stage_transfer_ticket(jsonb)",

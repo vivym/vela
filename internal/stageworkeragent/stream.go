@@ -22,10 +22,12 @@ type ControlClient interface {
 }
 
 type StreamAgent struct {
-	runtime *Agent
-	control ControlClient
-	mu      sync.Mutex
-	active  *velav1.StageAuthority
+	runtime           *Agent
+	control           ControlClient
+	materialization   *streamMaterialization
+	materializationMu sync.Mutex
+	mu                sync.Mutex
+	active            *velav1.StageAuthority
 }
 
 type AssignmentExecutionResult struct {
@@ -46,6 +48,27 @@ func NewStreamAgent(runtime *Agent, control ControlClient) (*StreamAgent, error)
 		return nil, errors.New("missing Stage Worker control stream")
 	}
 	return &StreamAgent{runtime: runtime, control: control}, nil
+}
+
+func NewMaterializingStreamAgent(
+	runtime *Agent,
+	control ControlClient,
+	config MaterializationConfig,
+) (*StreamAgent, error) {
+	agent, err := NewStreamAgent(runtime, control)
+	if err != nil {
+		return nil, err
+	}
+	if config.Validator == nil || config.Source == nil || config.Publisher == nil ||
+		config.Journal == nil || config.SourceLossEvidence == nil {
+		return nil, errors.New("Stage Worker materialization configuration is incomplete")
+	}
+	agent.materialization = &streamMaterialization{
+		validator: config.Validator, source: config.Source,
+		publisher: config.Publisher, journal: config.Journal,
+		sourceLossEvidence: config.SourceLossEvidence,
+	}
+	return agent, nil
 }
 
 func (agent *StreamAgent) RunControlCommands(ctx context.Context) error {
@@ -284,6 +307,25 @@ func (agent *StreamAgent) activeAuthority() *velav1.StageAuthority {
 		return nil
 	}
 	return proto.Clone(agent.active).(*velav1.StageAuthority)
+}
+
+func (agent *StreamAgent) clearActive(authority *velav1.StageAuthority) {
+	if authority == nil {
+		return
+	}
+	digest, err := stageauthority.Digest(authority)
+	if err != nil {
+		return
+	}
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	if agent.active == nil {
+		return
+	}
+	activeDigest, err := stageauthority.Digest(agent.active)
+	if err == nil && activeDigest == digest {
+		agent.active = nil
+	}
 }
 
 func aggregateRuntimeState(status AggregateStatus) velav1.ModelRuntimeExecutionState {

@@ -342,6 +342,7 @@ func TestStageArtifactLocalSourceLossRetriesComputeWithoutHoldingGPU(t *testing.
 		context.Background(),
 		stageartifact.SourceLostCommand{
 			CommandID: uuid.New(), MaterializationLeaseID: leaseID,
+			TokenDigest:        materializationTokenDigest,
 			FailureFingerprint: fingerprint, ConsumedResourceUnits: 100,
 			LostAt: now.Add(time.Second), RetryAt: now.Add(2 * time.Second),
 		},
@@ -377,6 +378,97 @@ func TestStageArtifactLocalSourceLossRetriesComputeWithoutHoldingGPU(t *testing.
 			"source-loss states run=%s attempt=%s allocation=%s materialization=%s retry=%d artifacts=%d",
 			runState, attemptState, allocationState, materializationState,
 			retryCount, artifactCount,
+		)
+	}
+}
+
+func TestStageArtifactLocalSourceLossExhaustedBudgetFailsParentGraph(t *testing.T) {
+	database, _, coordinator, _, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "stage-artifact-source-lost-terminal")
+	assignment := assignAndStartEncoder(
+		t, database, coordinator, attemptID, encoderRunID, time.Now().Add(time.Hour),
+	)
+	repository, err := stageartifact.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_stage_artifact_login", "vela-stage-artifact-password",
+	))
+	if err != nil {
+		t.Fatalf("construct terminal source-loss repository: %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	digest := sha256.Sum256([]byte("last-attempt output lost before L2"))
+	lineage := sha256.Sum256([]byte("terminal source-loss lineage"))
+	tokenDigest := sha256.Sum256([]byte("terminal source-loss authority"))
+	leaseID := uuid.New()
+	if _, err := repository.Seal(context.Background(), stageartifact.SealCommand{
+		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: encoderRunID,
+		StageAttemptID: assignment.StageAttemptID, StageAllocationID: assignment.StageAllocationID,
+		StageLeaseID: assignment.StageLeaseID, ExpectedAttemptFence: 1,
+		ExpectedStageFence: 1, ExpectedStageVersion: 3, OutputPort: "conditioning",
+		LocalReceiptID: "terminal-lost-local-receipt", LocalReceiptDigest: digest,
+		ManifestSHA256: digest, SHA256: digest, LineageDigest: lineage,
+		TokenDigest: tokenDigest, SizeBytes: 64, ArtifactID: uuid.New(),
+		MaterializationLeaseID: leaseID,
+		ObjectKey: "artifacts/stage/org/project/" + attemptID.String() +
+			"/encoder/terminal-lost-output.bin",
+		ContentType: "application/octet-stream", SealedAt: now,
+		LeaseExpiresAt: now.Add(30 * time.Minute),
+	}); err != nil {
+		t.Fatalf("seal terminal source-loss StageArtifact: %v", err)
+	}
+	tx, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin stage retry budget exhaustion: %v", err)
+	}
+	if _, err := tx.Exec(`SET LOCAL ROLE vela_attempt_coordinator_owner`); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("assume AttemptCoordinator owner role: %v", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE stage_retry_budgets
+		SET attempts_consumed = max_attempts, state = 'EXHAUSTED'
+		WHERE stage_run_id = $1
+	`, encoderRunID); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("exhaust stage retry budget: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit stage retry budget exhaustion: %v", err)
+	}
+	fingerprint := sha256.Sum256([]byte("last local source vanished"))
+	decision, err := repository.FailSourceLost(
+		context.Background(),
+		stageartifact.SourceLostCommand{
+			CommandID: uuid.New(), MaterializationLeaseID: leaseID, TokenDigest: tokenDigest,
+			FailureFingerprint: fingerprint, ConsumedResourceUnits: 100,
+			LostAt: now.Add(time.Second), RetryAt: now.Add(2 * time.Second),
+		},
+	)
+	if err != nil {
+		t.Fatalf("terminal source loss: %v", err)
+	}
+	if decision.State != "FAILED" || decision.StageFence != 2 || decision.StageVersion != 5 {
+		t.Fatalf("terminal source-loss decision = %#v", decision)
+	}
+	var jobState, attemptState, graphState, runState, materializationState string
+	if err := database.Admin.QueryRow(`
+		SELECT job.state::text, attempt.state::text, attempt.graph_state::text,
+		       run.state::text, materialization.state::text
+		FROM attempts AS attempt
+		JOIN jobs AS job ON job.id = attempt.job_id
+		JOIN stage_runs AS run ON run.attempt_id = attempt.id AND run.id = $2
+		JOIN stage_materialization_leases AS materialization
+		  ON materialization.stage_run_id = run.id AND materialization.id = $3
+		WHERE attempt.id = $1
+	`, attemptID, encoderRunID, leaseID).Scan(
+		&jobState, &attemptState, &graphState, &runState, &materializationState,
+	); err != nil {
+		t.Fatalf("inspect terminal source-loss graph: %v", err)
+	}
+	if jobState != "FAILED" || attemptState != "FAILED" || graphState != "FAILED" ||
+		runState != "FAILED" || materializationState != "REVOKED" {
+		t.Fatalf(
+			"terminal source-loss states job=%s attempt=%s graph=%s run=%s materialization=%s",
+			jobState, attemptState, graphState, runState, materializationState,
 		)
 	}
 }

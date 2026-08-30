@@ -53,12 +53,73 @@ type Artifact struct {
 	CommittedAt   time.Time
 }
 
+type PublishedObject struct {
+	ObjectKey     string
+	ObjectVersion string
+}
+
+type Publisher interface {
+	Publish(context.Context, MaterializationLease, io.Reader) (PublishedObject, error)
+}
+
+type ObjectStorePublisher struct {
+	store artifactstore.VersionedStore
+	now   func() time.Time
+}
+
+func NewObjectStorePublisher(
+	store artifactstore.VersionedStore,
+	now func() time.Time,
+) (*ObjectStorePublisher, error) {
+	if store == nil || now == nil {
+		return nil, errors.New("StageArtifact Publisher configuration is incomplete")
+	}
+	return &ObjectStorePublisher{store: store, now: now}, nil
+}
+
+func (publisher *ObjectStorePublisher) Publish(
+	ctx context.Context,
+	lease MaterializationLease,
+	source io.Reader,
+) (PublishedObject, error) {
+	if publisher == nil || publisher.store == nil || publisher.now == nil {
+		return PublishedObject{}, errors.New("StageArtifact Publisher is not configured")
+	}
+	if err := validateMaterializationLease(lease); err != nil {
+		return PublishedObject{}, err
+	}
+	if ctx == nil || source == nil {
+		return PublishedObject{}, errors.New("StageArtifact materialization source is required")
+	}
+	if !publisher.now().UTC().Before(lease.ExpiresAt) {
+		return PublishedObject{}, ErrMaterializationLeaseExpired
+	}
+	object, err := publisher.store.PutIfAbsent(
+		ctx,
+		lease.ObjectKey,
+		lease.ContentType,
+		source,
+		lease.SizeBytes,
+		lease.SHA256,
+	)
+	if errors.Is(err, artifactstore.ErrObjectAlreadyExists) {
+		object, err = publisher.reconcileExisting(ctx, lease)
+	}
+	if err != nil {
+		return PublishedObject{}, fmt.Errorf("publish sealed StageArtifact: %w", err)
+	}
+	if err := publisher.verifyExact(ctx, lease, object); err != nil {
+		return PublishedObject{}, err
+	}
+	return PublishedObject{ObjectKey: object.ObjectKey, ObjectVersion: object.VersionID}, nil
+}
+
 type Committer interface {
 	Commit(context.Context, CommitCommand) (Artifact, error)
 }
 
 type Materializer struct {
-	store     artifactstore.VersionedStore
+	publisher Publisher
 	committer Committer
 	now       func() time.Time
 }
@@ -71,7 +132,11 @@ func NewMaterializer(
 	if store == nil || committer == nil || now == nil {
 		return nil, errors.New("StageArtifact Materializer configuration is incomplete")
 	}
-	return &Materializer{store: store, committer: committer, now: now}, nil
+	publisher, err := NewObjectStorePublisher(store, now)
+	if err != nil {
+		return nil, err
+	}
+	return &Materializer{publisher: publisher, committer: committer, now: now}, nil
 }
 
 func (materializer *Materializer) Materialize(
@@ -79,36 +144,13 @@ func (materializer *Materializer) Materialize(
 	lease MaterializationLease,
 	source io.Reader,
 ) (Artifact, error) {
-	if materializer == nil || materializer.store == nil || materializer.committer == nil ||
+	if materializer == nil || materializer.publisher == nil || materializer.committer == nil ||
 		materializer.now == nil {
 		return Artifact{}, errors.New("StageArtifact Materializer is not configured")
 	}
-	if err := validateMaterializationLease(lease); err != nil {
-		return Artifact{}, err
-	}
-	if ctx == nil || source == nil {
-		return Artifact{}, errors.New("StageArtifact materialization source is required")
-	}
 	now := materializer.now().UTC()
-	if !now.Before(lease.ExpiresAt) {
-		return Artifact{}, ErrMaterializationLeaseExpired
-	}
-
-	object, err := materializer.store.PutIfAbsent(
-		ctx,
-		lease.ObjectKey,
-		lease.ContentType,
-		source,
-		lease.SizeBytes,
-		lease.SHA256,
-	)
-	if errors.Is(err, artifactstore.ErrObjectAlreadyExists) {
-		object, err = materializer.reconcileExisting(ctx, lease)
-	}
+	object, err := materializer.publisher.Publish(ctx, lease, source)
 	if err != nil {
-		return Artifact{}, fmt.Errorf("publish sealed StageArtifact: %w", err)
-	}
-	if err := materializer.verifyExact(ctx, lease, object); err != nil {
 		return Artifact{}, err
 	}
 	artifact, err := materializer.committer.Commit(ctx, CommitCommand{
@@ -117,7 +159,7 @@ func (materializer *Materializer) Materialize(
 		MaterializationLeaseID: lease.ID,
 		ArtifactID:             lease.ArtifactID,
 		ObjectKey:              object.ObjectKey,
-		ObjectVersion:          object.VersionID,
+		ObjectVersion:          object.ObjectVersion,
 		SHA256:                 lease.SHA256,
 		SizeBytes:              lease.SizeBytes,
 		TokenDigest:            lease.TokenDigest,
@@ -127,7 +169,7 @@ func (materializer *Materializer) Materialize(
 		return Artifact{}, fmt.Errorf("commit durable StageArtifact metadata: %w", err)
 	}
 	if artifact.ID != lease.ArtifactID || artifact.ObjectKey != object.ObjectKey ||
-		artifact.ObjectVersion != object.VersionID || artifact.SHA256 != lease.SHA256 ||
+		artifact.ObjectVersion != object.ObjectVersion || artifact.SHA256 != lease.SHA256 ||
 		artifact.SizeBytes != lease.SizeBytes {
 		return Artifact{}, errors.New("StageArtifact commit returned mismatched immutable identity")
 	}
@@ -138,11 +180,11 @@ func deterministicCommandID(kind string, leaseID uuid.UUID) uuid.UUID {
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("vela/stage-artifact/"+kind+"/"+leaseID.String()))
 }
 
-func (materializer *Materializer) reconcileExisting(
+func (publisher *ObjectStorePublisher) reconcileExisting(
 	ctx context.Context,
 	lease MaterializationLease,
 ) (artifactstore.ObjectVersion, error) {
-	object, exists, err := materializer.store.ResolveCurrentVersion(ctx, lease.ObjectKey)
+	object, exists, err := publisher.store.ResolveCurrentVersion(ctx, lease.ObjectKey)
 	if err != nil {
 		return artifactstore.ObjectVersion{}, err
 	}
@@ -152,7 +194,7 @@ func (materializer *Materializer) reconcileExisting(
 	return object, nil
 }
 
-func (materializer *Materializer) verifyExact(
+func (publisher *ObjectStorePublisher) verifyExact(
 	ctx context.Context,
 	lease MaterializationLease,
 	object artifactstore.ObjectVersion,
@@ -160,7 +202,7 @@ func (materializer *Materializer) verifyExact(
 	if !objectMatchesLease(object, lease) {
 		return ErrConditionalPublicationConflict
 	}
-	reader, err := materializer.store.ReadExactVersion(ctx, object.ObjectKey, object.VersionID)
+	reader, err := publisher.store.ReadExactVersion(ctx, object.ObjectKey, object.VersionID)
 	if err != nil {
 		return fmt.Errorf("read published StageArtifact exact version: %w", err)
 	}

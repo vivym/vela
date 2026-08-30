@@ -14,15 +14,16 @@ import (
 type Operation = velav1.StageWorkerOperation
 
 const (
-	OperationRegisterWorkerEvidence     = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REGISTER_WORKER_EVIDENCE
-	OperationReportCapacityObservation  = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REPORT_CAPACITY_OBSERVATION
-	OperationAcquireStage               = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_ACQUIRE_STAGE
-	OperationStartStage                 = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE
-	OperationHeartbeatStage             = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE
-	OperationSealStageOutput            = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_SEAL_STAGE_OUTPUT
-	OperationCommitStageMaterialization = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_COMMIT_STAGE_MATERIALIZATION
-	OperationFailStage                  = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_FAIL_STAGE
-	OperationReattachStage              = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE
+	OperationRegisterWorkerEvidence          = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REGISTER_WORKER_EVIDENCE
+	OperationReportCapacityObservation       = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REPORT_CAPACITY_OBSERVATION
+	OperationAcquireStage                    = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_ACQUIRE_STAGE
+	OperationStartStage                      = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE
+	OperationHeartbeatStage                  = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE
+	OperationSealStageOutput                 = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_SEAL_STAGE_OUTPUT
+	OperationCommitStageMaterialization      = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_COMMIT_STAGE_MATERIALIZATION
+	OperationFailStage                       = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_FAIL_STAGE
+	OperationReattachStage                   = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE
+	OperationReportMaterializationSourceLost = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST
 )
 
 type Authorizer interface {
@@ -124,7 +125,8 @@ func (handler *Handler) Handle(
 			ctx, identity, sessionEpoch, operation, request, VerifiedAuthorities{},
 		)
 	}
-	if materializationAuthority != nil || operation == OperationCommitStageMaterialization {
+	if materializationAuthority != nil || operation == OperationCommitStageMaterialization ||
+		operation == OperationReportMaterializationSourceLost {
 		verified, err := handler.materializationValidator.Validate(materializationAuthority)
 		if err != nil {
 			return staleResponse(request.GetRequestId(), operation, err.Error()), nil
@@ -210,6 +212,9 @@ func operationAuthority(
 		return OperationFailStage, operation.FailStage.GetAuthority(), nil, true
 	case *velav1.StageWorkerControlServiceConnectRequest_ReattachStage:
 		return OperationReattachStage, operation.ReattachStage.GetAuthority(), nil, true
+	case *velav1.StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost:
+		return OperationReportMaterializationSourceLost, nil,
+			operation.ReportMaterializationSourceLost.GetMaterializationAuthority(), true
 	default:
 		return velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_UNSPECIFIED, nil, nil, false
 	}

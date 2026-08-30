@@ -275,6 +275,50 @@ func TestModelRuntimeSealsOnlyTheExactActiveAuthority(t *testing.T) {
 	}
 }
 
+func TestModelRuntimeSealReplayReturnsReceiptAfterComputeAuthorityRelease(t *testing.T) {
+	clock := newManualClock(time.Date(2026, 8, 30, 7, 30, 0, 0, time.UTC))
+	signer, validator := runtimeAuthorityCrypto(t, clock)
+	first := signRuntimeAuthority(t, signer, clock.Now())
+	backend := modelruntime.NewFakeDiTRuntime()
+	service := newRuntimeService(t, clock, validator, runtimeBinding(), backend)
+	client, _ := serveRuntime(t, service)
+	prepareAndStart(t, client, first)
+	backend.MarkOutputReady([]byte(`{"kind":"LATENT","path":"/local/dit.bin"}`))
+
+	sealed, err := client.SealOutput(context.Background(), &velav1.ModelRuntimeServiceSealOutputRequest{
+		Authority: first,
+	})
+	if err != nil || sealed.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED ||
+		sealed.GetReceipt() == nil {
+		t.Fatalf("first SealOutput = %#v error=%v", sealed, err)
+	}
+	replayed, err := client.SealOutput(
+		context.Background(),
+		&velav1.ModelRuntimeServiceSealOutputRequest{Authority: first},
+	)
+	if err != nil || replayed.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED ||
+		!proto.Equal(replayed.GetReceipt(), sealed.GetReceipt()) {
+		t.Fatalf("replayed SealOutput = %#v error=%v want receipt=%#v", replayed, err, sealed.GetReceipt())
+	}
+
+	secondUnsigned := proto.Clone(first).(*velav1.StageAuthority)
+	secondUnsigned.StageRunId = "11000000-0000-0000-0000-000000000013"
+	secondUnsigned.StageAttemptId = "11000000-0000-0000-0000-000000000014"
+	secondUnsigned.StageAllocationId = "11000000-0000-0000-0000-000000000015"
+	secondUnsigned.StageLeaseId = "11000000-0000-0000-0000-000000000016"
+	secondUnsigned.StageFence++
+	secondUnsigned.StageVersion++
+	secondUnsigned.ExecutionNonce = bytes.Repeat([]byte{0x74}, 32)
+	secondUnsigned.Signature = nil
+	second, err := signer.Sign(secondUnsigned)
+	if err != nil {
+		t.Fatalf("sign second StageAuthority: %v", err)
+	}
+	prepareAndStart(t, client, second)
+}
+
 func newRuntimeService(
 	t *testing.T,
 	clock *manualClock,
