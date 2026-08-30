@@ -2,7 +2,8 @@
 
 Date: 2026-08-29
 
-Status: In progress. S49.1-S49.5 are implemented; S49.6-S49.12 are pending.
+Status: In progress. S49.1-S49.6 have repository implementations; S49.7-S49.12
+are pending.
 
 ## Delivery rule
 
@@ -154,6 +155,16 @@ Acceptance:
 - cancellation signal acknowledgement and actual runtime stop are distinct.
 
 ## S49.6: L2 StageArtifact and transfer
+
+Status: Repository implementation complete in migration
+`00038_stage_artifact.sql` and the `internal/stageartifact`,
+`internal/stageworkeragent`, and `internal/stageworkercontrol` Modules. Sealed
+output replay, durable local recovery journal, source-loss reporting, immutable
+conditional publication, exact-version transfer, storage-reservation checks,
+and edge-credit release have unit and PostgreSQL integration coverage. Local
+journal saturation rejects new Assignment before ModelRuntime execution. This
+repository evidence does not activate split H3 production traffic and is not a
+Launch Receipt.
 
 Deliver:
 

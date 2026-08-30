@@ -190,7 +190,7 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 	}); err == nil {
 		t.Fatal("commit accepted a forged MaterializationAuthority token digest")
 	}
-	artifact, err := repository.Commit(context.Background(), stageartifact.CommitCommand{
+	commitCommand := stageartifact.CommitCommand{
 		CommandID:              uuid.New(),
 		ProgressReceiptID:      uuid.New(),
 		MaterializationLeaseID: materializationLeaseID,
@@ -201,12 +201,17 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 		SizeBytes:              int64(len(output)),
 		TokenDigest:            materializationTokenDigest,
 		CommittedAt:            committedAt,
-	})
+	}
+	artifact, err := repository.Commit(context.Background(), commitCommand)
 	if err != nil {
 		t.Fatalf("commit StageArtifact: %v", err)
 	}
 	if artifact.ID != artifactID || artifact.ObjectVersion != "l2-exact-version-1" {
 		t.Fatalf("committed StageArtifact = %#v", artifact)
+	}
+	replayedArtifact, err := repository.Commit(context.Background(), commitCommand)
+	if err != nil || replayedArtifact != artifact {
+		t.Fatalf("replay exact StageArtifact commit = %#v error=%v", replayedArtifact, err)
 	}
 
 	var sourceState, committedAttemptState, committedDownstreamState string
@@ -292,14 +297,103 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 	}); err != nil {
 		t.Fatalf("consume downstream TransferTicket: %v", err)
 	}
-	var ticketState string
+	var ticketState, bufferCreditState string
+	var bufferCreditReleased bool
 	if err := database.Admin.QueryRow(`
-		SELECT state::text FROM transfer_tickets WHERE id = $1
-	`, ticketID).Scan(&ticketState); err != nil {
+		SELECT ticket.state::text, credit.state::text, credit.released_at IS NOT NULL
+		FROM transfer_tickets AS ticket
+		JOIN stage_artifact_pins AS pin ON pin.id = ticket.stage_artifact_pin_id
+		JOIN edge_buffer_credits AS credit
+		  ON credit.stage_artifact_id = ticket.stage_artifact_id
+		 AND credit.destination_stage_run_id = pin.owner_stage_run_id
+		WHERE ticket.id = $1
+	`, ticketID).Scan(&ticketState, &bufferCreditState, &bufferCreditReleased); err != nil {
 		t.Fatalf("read consumed TransferTicket: %v", err)
 	}
-	if ticketState != "CONSUMED" {
-		t.Fatalf("consumed TransferTicket state = %s", ticketState)
+	if ticketState != "CONSUMED" || bufferCreditState != "RELEASED" ||
+		!bufferCreditReleased {
+		t.Fatalf(
+			"consumed TransferTicket state=%s buffer_credit=%s released=%t",
+			ticketState, bufferCreditState, bufferCreditReleased,
+		)
+	}
+}
+
+func TestStageArtifactSealRefusesStorageReservationOverflowBeforeGPURelease(t *testing.T) {
+	database, _, coordinator, _, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "stage-artifact-storage-bound")
+	assignment := assignAndStartEncoder(
+		t, database, coordinator, attemptID, encoderRunID, time.Now().Add(time.Hour),
+	)
+	repository, err := stageartifact.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_stage_artifact_login", "vela-stage-artifact-password",
+	))
+	if err != nil {
+		t.Fatalf("construct storage-bound StageArtifact repository: %v", err)
+	}
+	tx, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin storage reservation bound: %v", err)
+	}
+	if _, err := tx.Exec(`SET LOCAL ROLE vela_attempt_coordinator_owner`); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("assume AttemptCoordinator owner role: %v", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE stage_storage_reservations SET reserved_bytes = 1 WHERE attempt_id = $1
+	`, attemptID); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("shrink storage reservation: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit storage reservation bound: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	digest := sha256.Sum256([]byte("two-byte sealed output"))
+	lineage := sha256.Sum256([]byte("storage-bound lineage"))
+	tokenDigest := sha256.Sum256([]byte("storage-bound materialization authority"))
+	leaseID := uuid.New()
+	if _, err := repository.Seal(context.Background(), stageartifact.SealCommand{
+		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: encoderRunID,
+		StageAttemptID: assignment.StageAttemptID, StageAllocationID: assignment.StageAllocationID,
+		StageLeaseID: assignment.StageLeaseID, ExpectedAttemptFence: 1,
+		ExpectedStageFence: 1, ExpectedStageVersion: 3, OutputPort: "conditioning",
+		LocalReceiptID: "storage-bound-local-receipt", LocalReceiptDigest: digest,
+		ManifestSHA256: digest, SHA256: digest, LineageDigest: lineage,
+		TokenDigest: tokenDigest, SizeBytes: 2, ArtifactID: uuid.New(),
+		MaterializationLeaseID: leaseID,
+		ObjectKey: "artifacts/stage/org/project/" + attemptID.String() +
+			"/encoder/storage-bound-output.bin",
+		ContentType: "application/octet-stream", SealedAt: now,
+		LeaseExpiresAt: now.Add(30 * time.Minute),
+	}); err == nil {
+		t.Fatal("seal issued MaterializationAuthority beyond reserved storage capacity")
+	}
+
+	var runState, attemptState, allocationState, leaseState string
+	var materializationCount int
+	if err := database.Admin.QueryRow(`
+		SELECT run.state::text, physical.state::text, allocation.state::text,
+		       lease.state::text,
+		       (SELECT count(*) FROM stage_materialization_leases WHERE id = $5)
+		FROM stage_runs AS run
+		JOIN stage_attempts AS physical ON physical.id = $2
+		JOIN stage_allocations AS allocation ON allocation.id = $3
+		JOIN stage_leases AS lease ON lease.id = $4
+		WHERE run.id = $1
+	`, encoderRunID, assignment.StageAttemptID, assignment.StageAllocationID,
+		assignment.StageLeaseID, leaseID).Scan(
+		&runState, &attemptState, &allocationState, &leaseState, &materializationCount,
+	); err != nil {
+		t.Fatalf("inspect storage-bound seal rejection: %v", err)
+	}
+	if runState != "RUNNING" || attemptState != "RUNNING" || allocationState != "ALLOCATED" ||
+		leaseState != "ACTIVE" || materializationCount != 0 {
+		t.Fatalf(
+			"storage-bound seal mutated authority run=%s attempt=%s allocation=%s lease=%s materializations=%d",
+			runState, attemptState, allocationState, leaseState, materializationCount,
+		)
 	}
 }
 
@@ -338,6 +432,38 @@ func TestStageArtifactLocalSourceLossRetriesComputeWithoutHoldingGPU(t *testing.
 		t.Fatalf("seal source-loss StageArtifact: %v", err)
 	}
 	fingerprint := sha256.Sum256([]byte("node epoch disappeared before durable commit"))
+	forgedTokenDigest := sha256.Sum256([]byte("forged materialization authority"))
+	if _, err := repository.FailSourceLost(
+		context.Background(),
+		stageartifact.SourceLostCommand{
+			CommandID: uuid.New(), MaterializationLeaseID: leaseID,
+			TokenDigest:        forgedTokenDigest,
+			FailureFingerprint: fingerprint, ConsumedResourceUnits: 100,
+			LostAt: now.Add(time.Second), RetryAt: now.Add(2 * time.Second),
+		},
+	); err == nil {
+		t.Fatal("forged materialization token authorized source loss")
+	}
+	var preflightRunState, preflightMaterializationState string
+	var preflightAttemptsConsumed int
+	if err := database.Admin.QueryRow(`
+		SELECT run.state::text, materialization.state::text, budget.attempts_consumed
+		FROM stage_runs AS run
+		JOIN stage_materialization_leases AS materialization ON materialization.id = $2
+		JOIN stage_retry_budgets AS budget ON budget.stage_run_id = run.id
+		WHERE run.id = $1
+	`, encoderRunID, leaseID).Scan(
+		&preflightRunState, &preflightMaterializationState, &preflightAttemptsConsumed,
+	); err != nil {
+		t.Fatalf("inspect forged source-loss rejection: %v", err)
+	}
+	if preflightRunState != "MATERIALIZING" || preflightMaterializationState != "ACTIVE" ||
+		preflightAttemptsConsumed != 1 {
+		t.Fatalf(
+			"forged source-loss mutated authority run=%s materialization=%s attempts=%d",
+			preflightRunState, preflightMaterializationState, preflightAttemptsConsumed,
+		)
+	}
 	decision, err := repository.FailSourceLost(
 		context.Background(),
 		stageartifact.SourceLostCommand{

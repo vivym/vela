@@ -44,6 +44,11 @@ func TestStreamAgentStartsControlAuthorityOnlyAfterRuntimeBarrier(t *testing.T) 
 		control.lastRequest.GetStartStage() == nil {
 		t.Fatalf("ExecuteAssignment = %#v error=%v request=%#v", result, err, control.lastRequest)
 	}
+	second, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment)
+	if !errors.Is(err, stageworkeragent.ErrStageWorkerBusy) || second.PreparedMembers != 0 ||
+		control.calls != 1 {
+		t.Fatalf("busy ExecuteAssignment = %#v error=%v control_calls=%d", second, err, control.calls)
+	}
 }
 
 func TestStreamAgentCancelsRuntimeWhenControlStartRejects(t *testing.T) {
@@ -265,6 +270,53 @@ func TestStreamAgentRetriesMaterializationWithoutHoldingOrRerunningGPU(t *testin
 	}
 }
 
+func TestStreamAgentRejectsAssignmentBeforeRuntimeWhenMaterializationJournalIsFull(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	control := newMaterializingStreamControl(t, fixture.authority)
+	publisher := &outageOncePublisher{failures: 1, objectVersion: "l2-version-after-backpressure"}
+	source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
+	if err != nil {
+		t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
+	}
+	journal, err := stageworkeragent.NewMemoryMaterializationJournal(1)
+	if err != nil {
+		t.Fatalf("NewMemoryMaterializationJournal: %v", err)
+	}
+	streamAgent, err := stageworkeragent.NewMaterializingStreamAgent(
+		runtimeAgent,
+		control,
+		stageworkeragent.MaterializationConfig{
+			Validator: control.validator, Source: source, Publisher: publisher, Journal: journal,
+			SourceLossEvidence: testSourceLossEvidenceProvider(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewMaterializingStreamAgent: %v", err)
+	}
+	if _, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatalf("ExecuteAssignment: %v", err)
+	}
+	fixture.backend.MarkOutputReadyWithSize(fixture.manifest, int64(len(fixture.payload)))
+	if _, err := streamAgent.SealAndMaterialize(context.Background()); err == nil {
+		t.Fatal("injected L2 outage did not retain pending materialization")
+	}
+
+	result, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment)
+	if !errors.Is(err, stageworkeragent.ErrMaterializationJournalFull) ||
+		result.PreparedMembers != 0 || result.StartedMembers != 0 || control.startCalls != 1 {
+		t.Fatalf(
+			"full-journal assignment result=%#v error=%v control_starts=%d",
+			result, err, control.startCalls,
+		)
+	}
+}
+
 func TestStreamAgentRetriesCommitFromExactPublishedVersionAfterReconnect(t *testing.T) {
 	fixture := newSingleMemberMaterializationFixture(t)
 	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
@@ -384,6 +436,88 @@ func TestStreamAgentReportsLocalSourceLossWithMaterializationAuthority(t *testin
 	pending, err := journal.List(context.Background())
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("journal after accepted source loss = %#v error=%v", pending, err)
+	}
+}
+
+func TestStreamAgentReplaysIdenticalSourceLossEvidenceAfterControlReconnect(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	control := newMaterializingStreamControl(t, fixture.authority)
+	control.sourceLossFailures = 1
+	publisher := &outageOncePublisher{objectVersion: "must-not-publish"}
+	source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
+	if err != nil {
+		t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
+	}
+	journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
+	if err != nil {
+		t.Fatalf("NewMemoryMaterializationJournal: %v", err)
+	}
+	evidenceCalls := 0
+	lostAt := time.Now().UTC().Add(time.Second)
+	config := stageworkeragent.MaterializationConfig{
+		Validator: control.validator, Source: source, Publisher: publisher, Journal: journal,
+		SourceLossEvidence: stageworkeragent.MaterializationSourceLossEvidenceFunc(
+			func(context.Context, stageworkeragent.PendingMaterialization) (
+				stageworkeragent.MaterializationSourceLossEvidence, error,
+			) {
+				evidenceCalls++
+				return stageworkeragent.MaterializationSourceLossEvidence{
+					FailureFingerprint:    sha256.Sum256([]byte(fmt.Sprintf("source-loss-%d", evidenceCalls))),
+					ConsumedResourceUnits: int64(100 + evidenceCalls),
+					LostAt:                lostAt.Add(time.Duration(evidenceCalls) * time.Second),
+					RetryAt:               lostAt.Add(time.Duration(evidenceCalls+1) * time.Second),
+				}, nil
+			},
+		),
+	}
+	streamAgent, err := stageworkeragent.NewMaterializingStreamAgent(runtimeAgent, control, config)
+	if err != nil {
+		t.Fatalf("NewMaterializingStreamAgent: %v", err)
+	}
+	if _, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatalf("ExecuteAssignment: %v", err)
+	}
+	fixture.backend.MarkOutputReadyWithSize(fixture.manifest, int64(len(fixture.payload)))
+	if err := os.Remove(fixture.localRoot + "/dit.bin"); err != nil {
+		t.Fatalf("remove local source: %v", err)
+	}
+
+	first, firstErr := streamAgent.SealAndMaterialize(context.Background())
+	if firstErr == nil || !first.GPUReleased || first.SourceLostReported ||
+		evidenceCalls != 1 || control.sourceLossCalls != 1 || len(control.sourceLossReports) != 1 {
+		t.Fatalf(
+			"first source-loss report=%#v error=%v evidence=%d reports=%d calls=%d",
+			first, firstErr, evidenceCalls, len(control.sourceLossReports), control.sourceLossCalls,
+		)
+	}
+	pending, err := journal.List(context.Background())
+	if err != nil || len(pending) != 1 || pending[0].SourceLoss == nil {
+		t.Fatalf("journaled source-loss evidence = %#v error=%v", pending, err)
+	}
+
+	reconnected, err := stageworkeragent.NewMaterializingStreamAgent(runtimeAgent, control, config)
+	if err != nil {
+		t.Fatalf("reconnect StreamAgent: %v", err)
+	}
+	resumed, resumeErr := reconnected.ResumeMaterializations(context.Background())
+	if !errors.Is(resumeErr, stageworkeragent.ErrMaterializationSourceLostReported) ||
+		!resumed.SourceLostReported || evidenceCalls != 1 || control.sourceLossCalls != 2 ||
+		len(control.sourceLossReports) != 2 ||
+		!proto.Equal(control.sourceLossReports[0], control.sourceLossReports[1]) {
+		t.Fatalf(
+			"resumed source-loss report=%#v error=%v evidence=%d reports=%#v",
+			resumed, resumeErr, evidenceCalls, control.sourceLossReports,
+		)
+	}
+	pending, err = journal.List(context.Background())
+	if err != nil || len(pending) != 0 {
+		t.Fatalf("journal after replayed source loss = %#v error=%v", pending, err)
 	}
 }
 
@@ -552,15 +686,18 @@ func (publisher *outageOncePublisher) Publish(
 }
 
 type materializingStreamControl struct {
-	t               *testing.T
-	signer          *materializationauthority.Signer
-	validator       *materializationauthority.Validator
-	authority       *velav1.StageAuthority
-	sealCalls       int
-	commitCalls     int
-	commitFailures  int
-	sourceLossCalls int
-	materialization *velav1.MaterializationAuthority
+	t                  *testing.T
+	signer             *materializationauthority.Signer
+	validator          *materializationauthority.Validator
+	authority          *velav1.StageAuthority
+	startCalls         int
+	sealCalls          int
+	commitCalls        int
+	commitFailures     int
+	sourceLossCalls    int
+	sourceLossFailures int
+	sourceLossReports  []*velav1.ReportMaterializationSourceLostRequest
+	materialization    *velav1.MaterializationAuthority
 }
 
 func newMaterializingStreamControl(
@@ -592,6 +729,7 @@ func (control *materializingStreamControl) Exchange(
 ) (*velav1.StageWorkerControlServiceConnectResponse, error) {
 	switch operation := request.GetOperation().(type) {
 	case *velav1.StageWorkerControlServiceConnectRequest_StartStage:
+		control.startCalls++
 		return commandResultResponse(
 			velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_START_STAGE,
 			velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
@@ -650,6 +788,14 @@ func (control *materializingStreamControl) Exchange(
 	case *velav1.StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost:
 		control.sourceLossCalls++
 		report := operation.ReportMaterializationSourceLost
+		control.sourceLossReports = append(
+			control.sourceLossReports,
+			proto.Clone(report).(*velav1.ReportMaterializationSourceLostRequest),
+		)
+		if control.sourceLossFailures > 0 {
+			control.sourceLossFailures--
+			return nil, errors.New("injected ReportMaterializationSourceLost outage")
+		}
 		if _, err := control.validator.Validate(report.GetMaterializationAuthority()); err != nil {
 			return nil, err
 		}

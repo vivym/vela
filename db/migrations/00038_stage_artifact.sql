@@ -316,6 +316,7 @@ DECLARE
     v_physical stage_attempts%ROWTYPE;
     v_allocation stage_allocations%ROWTYPE;
     v_lease stage_leases%ROWTYPE;
+    v_reservation stage_storage_reservations%ROWTYPE;
     v_interface_id uuid;
     v_interface_max_bytes bigint;
     v_result jsonb;
@@ -372,6 +373,9 @@ BEGIN
     WHERE allocation.id = v_allocation_id AND allocation.stage_attempt_id = v_stage_attempt_id FOR UPDATE;
     SELECT lease.* INTO v_lease FROM stage_leases AS lease
     WHERE lease.id = v_stage_lease_id AND lease.stage_attempt_id = v_stage_attempt_id FOR UPDATE;
+    SELECT reservation.* INTO v_reservation
+    FROM stage_storage_reservations AS reservation
+    WHERE reservation.attempt_id = v_attempt_id FOR UPDATE;
     SELECT (definition.output_ports ->> v_output_port)::uuid, interface.max_bytes
     INTO v_interface_id, v_interface_max_bytes
     FROM stage_definition_revisions AS definition
@@ -387,7 +391,11 @@ BEGIN
        OR v_lease.stage_allocation_id <> v_allocation.id
        OR v_lease.attempt_fence <> v_attempt.fence OR v_lease.stage_fence <> v_run.fence
        OR v_sealed_at < v_physical.started_at OR v_sealed_at >= v_lease.expires_at
-       OR v_interface_id IS NULL OR v_size_bytes > v_interface_max_bytes THEN
+       OR v_interface_id IS NULL OR v_size_bytes > v_interface_max_bytes
+       OR v_reservation.id IS NULL OR v_reservation.state <> 'RESERVED'
+       OR v_reservation.expires_at <= v_sealed_at
+       OR v_expires_at > v_reservation.expires_at
+       OR v_reservation.consumed_bytes + v_size_bytes > v_reservation.reserved_bytes THEN
         RAISE EXCEPTION USING
             ERRCODE = '40001', CONSTRAINT = 'stage_output_seal_authority_stale',
             MESSAGE = 'Stage output seal authority, interface, or bounds are stale';
@@ -1147,6 +1155,7 @@ DECLARE
     v_existing stage_artifact_commands%ROWTYPE;
     v_ticket transfer_tickets%ROWTYPE;
     v_artifact stage_artifacts%ROWTYPE;
+    v_pin stage_artifact_pins%ROWTYPE;
 BEGIN
     IF v_command_id IS NULL OR v_ticket_id IS NULL
        OR octet_length(v_token_digest) <> 32 OR octet_length(v_outcome_digest) <> 32
@@ -1173,16 +1182,24 @@ BEGIN
     WHERE ticket.id = v_ticket_id FOR UPDATE;
     SELECT artifact.* INTO v_artifact FROM stage_artifacts AS artifact
     WHERE artifact.id = v_ticket.stage_artifact_id FOR SHARE;
+    SELECT pin.* INTO v_pin FROM stage_artifact_pins AS pin
+    WHERE pin.id = v_ticket.stage_artifact_pin_id FOR UPDATE;
     IF v_ticket.state <> 'ACTIVE' OR v_ticket.token_digest <> v_token_digest
        OR v_consumed_at < v_ticket.issued_at OR v_consumed_at >= v_ticket.expires_at
        OR v_artifact.state <> 'COMMITTED'
-       OR v_artifact.object_version <> v_ticket.exact_object_version THEN
+       OR v_artifact.object_version <> v_ticket.exact_object_version
+       OR v_pin.state <> 'ACTIVE' OR v_pin.stage_artifact_id <> v_artifact.id
+       OR v_pin.exact_object_version <> v_artifact.object_version THEN
         RAISE EXCEPTION USING
             ERRCODE = '40001', CONSTRAINT = 'stage_transfer_ticket_consume_stale',
             MESSAGE = 'Stage TransferTicket is stale, expired, or revoked';
     END IF;
     UPDATE transfer_tickets SET state = 'CONSUMED', consumed_at = v_consumed_at,
         outcome_digest = v_outcome_digest WHERE id = v_ticket.id AND state = 'ACTIVE';
+    UPDATE edge_buffer_credits SET state = 'RELEASED', released_at = v_consumed_at
+    WHERE stage_artifact_id = v_artifact.id
+      AND destination_stage_run_id = v_pin.owner_stage_run_id
+      AND state = 'HELD';
     INSERT INTO stage_artifact_commands (
         command_id, command_kind, attempt_id, stage_run_id, request_digest, result
     ) VALUES (

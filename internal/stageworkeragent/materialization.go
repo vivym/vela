@@ -63,6 +63,7 @@ type PendingMaterialization struct {
 }
 
 type MaterializationJournal interface {
+	EnsureCapacity(context.Context) error
 	Put(context.Context, PendingMaterialization) error
 	List(context.Context) ([]PendingMaterialization, error)
 	Delete(context.Context, string) error
@@ -82,6 +83,21 @@ func NewMemoryMaterializationJournal(limit int) (*MemoryMaterializationJournal, 
 	return &MemoryMaterializationJournal{
 		limit: limit, records: make(map[string]PendingMaterialization, limit),
 	}, nil
+}
+
+func (journal *MemoryMaterializationJournal) EnsureCapacity(ctx context.Context) error {
+	if journal == nil || journal.records == nil || ctx == nil {
+		return errors.New("materialization journal is not configured")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	if len(journal.records) >= journal.limit {
+		return ErrMaterializationJournalFull
+	}
+	return nil
 }
 
 func (journal *MemoryMaterializationJournal) Put(

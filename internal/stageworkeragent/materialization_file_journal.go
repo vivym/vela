@@ -75,6 +75,25 @@ func NewFileMaterializationJournal(
 	return journal, nil
 }
 
+func (journal *FileMaterializationJournal) EnsureCapacity(ctx context.Context) error {
+	if journal == nil || journal.root == "" || ctx == nil {
+		return errors.New("file materialization journal is not configured")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+	records, err := journal.loadLocked()
+	if err != nil {
+		return err
+	}
+	if len(records) >= journal.limit {
+		return ErrMaterializationJournalFull
+	}
+	return nil
+}
+
 func (journal *FileMaterializationJournal) Put(
 	ctx context.Context,
 	record PendingMaterialization,

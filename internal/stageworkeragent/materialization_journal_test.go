@@ -3,6 +3,7 @@ package stageworkeragent_test
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"testing"
 
 	"github.com/vivym/vela/internal/stageworkeragent"
@@ -26,15 +27,18 @@ func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 		},
 	}
 	root := t.TempDir()
-	journal, err := stageworkeragent.NewFileMaterializationJournal(root, 4)
+	journal, err := stageworkeragent.NewFileMaterializationJournal(root, 1)
 	if err != nil {
 		t.Fatalf("NewFileMaterializationJournal: %v", err)
 	}
 	if err := journal.Put(context.Background(), record); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
+	if err := journal.EnsureCapacity(context.Background()); !errors.Is(err, stageworkeragent.ErrMaterializationJournalFull) {
+		t.Fatalf("full file journal capacity error = %v", err)
+	}
 
-	restarted, err := stageworkeragent.NewFileMaterializationJournal(root, 4)
+	restarted, err := stageworkeragent.NewFileMaterializationJournal(root, 1)
 	if err != nil {
 		t.Fatalf("restart FileMaterializationJournal: %v", err)
 	}
@@ -44,15 +48,21 @@ func TestFileMaterializationJournalSurvivesAgentProcessRestart(t *testing.T) {
 		!proto.Equal(records[0].LocalReceipt, record.LocalReceipt) {
 		t.Fatalf("restarted List = %#v error=%v", records, err)
 	}
+	if err := restarted.EnsureCapacity(context.Background()); !errors.Is(err, stageworkeragent.ErrMaterializationJournalFull) {
+		t.Fatalf("restarted full file journal capacity error = %v", err)
+	}
 	if err := restarted.Delete(context.Background(), record.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	empty, err := stageworkeragent.NewFileMaterializationJournal(root, 4)
+	empty, err := stageworkeragent.NewFileMaterializationJournal(root, 1)
 	if err != nil {
 		t.Fatalf("restart empty FileMaterializationJournal: %v", err)
 	}
 	records, err = empty.List(context.Background())
 	if err != nil || len(records) != 0 {
 		t.Fatalf("List after durable delete = %#v error=%v", records, err)
+	}
+	if err := empty.EnsureCapacity(context.Background()); err != nil {
+		t.Fatalf("empty file journal capacity: %v", err)
 	}
 }

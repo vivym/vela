@@ -38,6 +38,7 @@ func TestStageWorkerControlProtocolIsIndependentAndClosed(t *testing.T) {
 		"commit_stage_materialization",
 		"fail_stage",
 		"reattach_stage",
+		"report_materialization_source_lost",
 	})
 	assertOneofFields(t, connect.Output(), "result", []protoreflect.Name{
 		"worker_readiness_decision",
@@ -126,6 +127,17 @@ func TestTransferTicketAuthorityStopsAtWorkerAgentBoundary(t *testing.T) {
 	if tickets == nil || !tickets.IsList() || tickets.Message() == nil ||
 		tickets.Message().FullName() != "vela.v1.StageInputTransferTicket" {
 		t.Fatalf("StageAssignment input_transfer_tickets = %#v", tickets)
+	}
+	runtimeServiceDescriptor, err := protoregistry.GlobalFiles.FindDescriptorByName(
+		"vela.v1.ModelRuntimeService",
+	)
+	if err != nil {
+		t.Fatalf("ModelRuntimeService descriptor: %v", err)
+	}
+	runtimeService := runtimeServiceDescriptor.(protoreflect.ServiceDescriptor)
+	seen := make(map[protoreflect.FullName]struct{})
+	for methodIndex := 0; methodIndex < runtimeService.Methods().Len(); methodIndex++ {
+		assertNoObjectStoreAuthorityFields(t, runtimeService.Methods().Get(methodIndex).Input(), seen)
 	}
 }
 
@@ -234,5 +246,32 @@ func assertOneofFields(
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("%s.%s fields = %v, want %v", message.FullName(), oneofName, got, want)
+	}
+}
+
+func assertNoObjectStoreAuthorityFields(
+	t *testing.T,
+	message protoreflect.MessageDescriptor,
+	seen map[protoreflect.FullName]struct{},
+) {
+	t.Helper()
+	if _, exists := seen[message.FullName()]; exists {
+		return
+	}
+	seen[message.FullName()] = struct{}{}
+	for fieldIndex := 0; fieldIndex < message.Fields().Len(); fieldIndex++ {
+		field := message.Fields().Get(fieldIndex)
+		fieldName := strings.ToLower(string(field.Name()))
+		for _, forbidden := range []string{
+			"transfer_ticket", "presigned", "object_key", "object_store", "bucket",
+			"endpoint", "credential", "access_key", "secret_key",
+		} {
+			if strings.Contains(fieldName, forbidden) {
+				t.Errorf("ModelRuntime %s exposes object-store authority field %s", message.FullName(), fieldName)
+			}
+		}
+		if field.Message() != nil && !field.IsMap() {
+			assertNoObjectStoreAuthorityFields(t, field.Message(), seen)
+		}
 	}
 }

@@ -13,6 +13,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+var ErrStageWorkerBusy = errors.New("Stage Worker already has active compute authority")
+
 type ControlClient interface {
 	Exchange(
 		context.Context,
@@ -26,6 +28,7 @@ type StreamAgent struct {
 	control           ControlClient
 	materialization   *streamMaterialization
 	materializationMu sync.Mutex
+	assignmentMu      sync.Mutex
 	mu                sync.Mutex
 	active            *velav1.StageAuthority
 }
@@ -104,6 +107,16 @@ func (agent *StreamAgent) ExecuteAssignment(
 	result := AssignmentExecutionResult{}
 	if agent == nil || agent.runtime == nil || agent.control == nil {
 		return result, errors.New("missing configured Stage Worker stream Agent")
+	}
+	agent.assignmentMu.Lock()
+	defer agent.assignmentMu.Unlock()
+	if agent.activeAuthority() != nil {
+		return result, ErrStageWorkerBusy
+	}
+	if agent.materialization != nil {
+		if err := agent.materialization.journal.EnsureCapacity(ctx); err != nil {
+			return result, fmt.Errorf("reserve local materialization recovery capacity: %w", err)
+		}
 	}
 	barrier, err := agent.runtime.PrepareAndStart(ctx, assignment)
 	result.StartBarrierResult = barrier
