@@ -7,9 +7,9 @@ eight-GPU Workers, non-canonical mock Runner distribution, Kubernetes GPU
 smoke, Vela control-plane deployment, two Worker Agents, an end-to-end mock Job
 with verified Artifacts, concurrent mock endurance, all ten fixed
 non-production fault rehearsals, and a control-only observability overlay have
-live lab evidence. The durable authority boundary remains idle, but both
-persistent mock Runner containers currently restart on a terminal-state cleanup
-defect described below and are not available for new experiments.
+live lab evidence. The durable authority boundary remains idle, and both
+persistent mock Runner containers are healthy on the fixed non-canonical lab
+digest after the state-preserving rollout described below.
 
 This document records the current non-production lab inventory and the private
 registry used to stage H3 mock experiments. It is an environment receipt, not
@@ -1636,10 +1636,10 @@ there is exactly one Visible Completion, one ArtifactSet, two committed
 Artifacts, and one Charge. No Runner state directory was moved or deleted
 during this work.
 
-This is an unresolved Runner/Worker ownership-contract defect and an
-operational blocker for new mock Jobs.
+This was a Runner/Worker ownership-contract defect and an operational blocker
+for new mock Jobs until the fixed-image rollout below.
 
-The repository now carries a regression-tested candidate fix: Runner restart
+The repository carries a regression-tested fix: Runner restart
 accepts only complete absence of a `SUCCEEDED` Attempt output directory as
 authoritative terminal cleanup, preserves the immutable terminal state, exposes
 no collectable outputs, and never reexecutes the backend. An existing directory
@@ -1658,13 +1658,73 @@ three observability Pods remain Ready on control, node GPU allocatable remains
 `0/8/8`, the Registry remains 4.6 GiB, and the control root retains 529 GiB
 free. Sixteen historical Failed Pods remain under their existing TTL policy.
 
-This is repository and read-only diagnosis evidence only. The preferred live
-recovery now preserves both state roots: publish the rebuilt fixed digest, drain
-and replace only one exact Runner container at a time without `--purge`, prove
-terminal replay plus a fresh smoke Attempt, and then repeat on the second
-Worker. State quarantine is only a separately approved fallback if the fixed
-image cannot be deployed. No live container, state, image, or Worker record was
-changed by this diagnosis.
+That preflight was repository and read-only diagnosis evidence only. It changed
+no live container, state, image, or Worker record.
+
+## Terminal-cleanup fixed-image rollout
+
+At `2026-08-31T06:42:01Z`, both Workers completed an approved, one-at-a-time,
+state-preserving rollout to:
+
+```text
+10.1.200.17:5443/vela-lab/vela-h3-runner@sha256:33cdb7a765d35cc9b80910c5ff378e2f178e63220f423db594ffba24d5abc427
+```
+
+The image is a non-canonical derivative of the preceding lab digest. It adds
+only `runtime.py` SHA-256
+`71a2a4b086db11f71c81369ed4044d452d5f85ef30e82644764d5b4680be0baf`
+from Runner revision `dfd504e99b043ca0397294cc60ee8941d70306bb`; all
+base layers, the mock backend, entrypoint, user, and lab labels remain fixed.
+The unpacked Docker size is 52,980,714 bytes, 14,288 bytes above the old image.
+Worker 2 reused its local base layers and fetched the derivative over the lab
+LAN. SSH carried only the staged scripts, Dockerfile, and 71 KiB source file.
+The Registry data root was 4,823,148,572 bytes after rollout.
+
+The rollout used repository guards from `0f4550f` plus the relative-path
+receipt fix in `a2f5214`. The first image receipts on Worker 1 at
+`fixed-runner-image-worker1-20260831T062830Z` and Worker 2 at
+`fixed-runner-image-worker2-20260831T062927Z` contain temporary absolute paths
+in `SHA256SUMS` and are retained diagnostic output, not passing evidence. The
+fixed v2 image-validation receipts and live rollout receipts are:
+
+| Host | Receipt | `SHA256SUMS` SHA-256 |
+| --- | --- | --- |
+| Worker 1 | `/var/lib/vela-lab/mock-runner/receipts/fixed-runner-image-worker1-v2-20260831T063300Z` | `6515809e3b1ba29bd9a70192d0d2261db6f61672cfae6c12a82a88b75e1fbb80` |
+| Worker 1 | `/var/lib/vela-lab/mock-runner/receipts/fixed-runner-rollout-worker1-20260831T063628Z` | `8a15dcd2e3bd3d99cd570c8ae7c65b772dbaef28cc9ca82d67bc4d2e2f263f78` |
+| Worker 2 | `/var/lib/vela-lab/mock-runner/receipts/fixed-runner-image-worker2-v2-20260831T063300Z` | `6ffae462e513ca2c24f9210ba6fedc4fb7b585d9ea077a256dc38ea129bd1c7c` |
+| Worker 2 | `/var/lib/vela-lab/mock-runner/receipts/fixed-runner-rollout-worker2-20260831T064020Z` | `4b32fbf8d7854014fb7006158238e72d9712ec8845dc30570b27efa312fe6fcf` |
+
+Control-plane receipts under `/root/vela-lab-deploy-bc590e20/receipts` bind
+Worker 1 drain/restore to SHA-256
+`d931f357d8c7279dd4e2330cfb4d2fc3440605ba55d9f475e83cb2233bbfabbd` /
+`abf8f5ef59d30afb0229b03ebaf45fbc2c457d7873af220a5363f871256c3c68`
+and Worker 2 drain/restore to
+`464f2934a4d69a23d1773ce14d90e5fbb5e199e94974f5fb5113829860a27b6b` /
+`f647ccfecf02bf12b097425006f6880742e6416d43f8cf3bb9a1edcb86f1e1ce`.
+Each drain required `0|0|0|2`, changed one exact epoch-1 Worker to
+`DRAINING/HEALTHY`, and each restore ran only after an independent postflight.
+
+Worker 1 replaced container `f23ab14ca77c798489bcfdb8a0b9cbcda7442a8d05c370b9db8cfb765b9af794`
+with `cb28c28f9956bc65176a948100196e5fcb8691805e42c81e60ed81c18bcbb306`.
+Worker 2 replaced `d0a477e08d7bed9b2881fd1b218c0151aa019b3bc227221acadfca2d97d7497c`
+with `47b9af559d6ac521b16442e35ca20d17a6093c381f8e065be50c5ef8d23b235a`.
+Both retained cleaned terminal states replayed as immutable `SUCCEEDED`, exposed
+no collectable outputs, did not recreate output directories, and left zero GPU
+compute processes. A fresh smoke then succeeded with two verified outputs and
+retired only the preceding terminal state. No operator state quarantine, manual
+state deletion, `--purge`, Docker/Registry restart, or image prune occurred, and
+no GPU compute process was observed.
+
+The final independent postflight found both containers `running/healthy` with
+restart count zero, matching container-identity receipts, validators at
+`checked_states=1 retired_success_states=0`, root free space of 805 GiB and 813
+GiB, and zero GPU compute processes. The database boundary is again
+`0|0|0|2`; nodes are Ready with GPU allocatable `0/8/8`; all three observability
+Pods are Ready; Registry is running with zero restarts; and 16 historical Failed
+Pods remain under their existing TTL policy. This closes the live mock Runner
+blocker only. It is not real H3 backend, sustained-load, rollout-compatibility,
+SLO, supply-chain, or Production Gate evidence; Production Gates remain
+`0/9 PASS`.
 
 ## Experiment operating rules
 

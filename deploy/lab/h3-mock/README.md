@@ -91,6 +91,20 @@ cannot be deployed, and requires its own exact-target approval and receipt. The
 old image cannot restart against a cleaned successful state, so it is not a
 valid rollback target until that state has been retired by a fresh Attempt.
 
+The retained 2026-08-31 lab rollout used `build-fixed-runner-layer.sh` to add
+only the fixed `runtime.py` to the existing digest, and
+`set-lab-worker-rollout-state.sh` plus `rollout-fixed-runner.sh` to guard each
+drain, replacement, replay, smoke, and restore. Both Workers now use:
+
+```text
+10.1.200.17:5443/vela-lab/vela-h3-runner@sha256:33cdb7a765d35cc9b80910c5ff378e2f178e63220f423db594ffba24d5abc427
+```
+
+The live receipts and the two non-counting diagnostic image receipts are
+indexed in
+[`three-host-mock-environment.md`](../../../docs/lab/three-host-mock-environment.md).
+This remains a `noncanonical-lab` image and Production Gates remain `0/9 PASS`.
+
 ## Replacement-budget lab profile
 
 The Worker-control-network-partition rehearsal uses a second immutable mock
