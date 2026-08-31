@@ -462,9 +462,9 @@ func TestStageWorkerExecutionMigrationRoundTripAndDurableEvidenceRefusal(t *test
 		}
 
 		err = goose.DownTo(database.Admin, migrations, 39)
-		assertPostgresConstraint(t, err, "stage_worker_execution_rollback_is_unsafe")
+		assertPostgresConstraint(t, err, "atomic_stage_graph_admission_rollback_is_unsafe")
 		version, versionErr := goose.GetDBVersion(database.Admin)
-		if versionErr != nil || version != 40 {
+		if versionErr != nil || version != 51 {
 			t.Fatalf(
 				"Stage Worker execution version after refusal = %d error=%v",
 				version, versionErr,
@@ -746,9 +746,9 @@ func TestPostgresReattachmentBackendPersistsReplayAndFencesSupersededAuthority(t
 	}
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	err = goose.DownTo(database.Admin, migrations, 40)
-	assertPostgresConstraint(t, err, "stage_worker_operations_rollback_is_unsafe")
+	assertPostgresConstraint(t, err, "atomic_stage_graph_admission_rollback_is_unsafe")
 	version, versionErr := goose.GetDBVersion(database.Admin)
-	if versionErr != nil || version != 41 {
+	if versionErr != nil || version != 51 {
 		t.Fatalf(
 			"Stage Worker operations version after refusal = %d error=%v",
 			version, versionErr,

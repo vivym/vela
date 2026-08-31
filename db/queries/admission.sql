@@ -82,6 +82,15 @@ FROM vela_resolve_job_execution_route(
     sqlc.arg(model_revision_id)
 ) AS route;
 
+-- name: LockStageGraphReadyCapacityPath :one
+SELECT
+    capacity.ready::boolean AS ready,
+    capacity.retry_after_seconds::integer AS retry_after_seconds
+FROM vela_lock_stage_graph_ready_capacity_path(
+    sqlc.arg(execution_graph_revision_id),
+    sqlc.arg(execution_profile_revision_id)
+) AS capacity;
+
 -- name: LockCompatiblePool :one
 SELECT
 	pool.id::uuid AS id,
@@ -257,6 +266,20 @@ INSERT INTO credit_reservations (
     sqlc.arg(currency)
 );
 
+-- name: InstantiateAdmittedStageGraph :one
+SELECT
+    instantiated.aggregate_version::bigint AS aggregate_version,
+    instantiated.current_fence::bigint AS current_fence,
+    instantiated.snapshot_id::uuid AS snapshot_id,
+    instantiated.attempt_id::uuid AS attempt_id,
+    instantiated.attempt_fence::bigint AS attempt_fence,
+    instantiated.stage_run_count::integer AS stage_run_count
+FROM vela_instantiate_admitted_stage_graph(
+    sqlc.arg(organization_id),
+    sqlc.arg(project_id),
+    sqlc.arg(job_id)
+) AS instantiated;
+
 -- name: InsertIdempotencyResult :exec
 INSERT INTO idempotency_results (
     organization_id, project_id, idempotency_key, request_hash, job_id
@@ -286,7 +309,7 @@ INSERT INTO outbox_events (
     sqlc.arg(project_id),
     'Job',
     sqlc.arg(job_id),
-    1,
+    sqlc.arg(aggregate_version),
     'job.ready',
     1,
     sqlc.arg(payload),

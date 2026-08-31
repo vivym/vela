@@ -407,21 +407,22 @@ INSERT INTO outbox_events (
     $3,
     'Job',
     $4,
-    1,
+    $5,
     'job.ready',
     1,
-    $5,
-    $6
+    $6,
+    $7
 )
 `
 
 type InsertOutboxEventParams struct {
-	EventID        uuid.UUID          `db:"event_id" json:"event_id"`
-	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
-	JobID          uuid.UUID          `db:"job_id" json:"job_id"`
-	Payload        []byte             `db:"payload" json:"payload"`
-	OccurredAt     pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+	EventID          uuid.UUID          `db:"event_id" json:"event_id"`
+	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID        uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID            uuid.UUID          `db:"job_id" json:"job_id"`
+	AggregateVersion int64              `db:"aggregate_version" json:"aggregate_version"`
+	Payload          []byte             `db:"payload" json:"payload"`
+	OccurredAt       pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
 }
 
 func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error {
@@ -430,6 +431,7 @@ func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventPa
 		arg.OrganizationID,
 		arg.ProjectID,
 		arg.JobID,
+		arg.AggregateVersion,
 		arg.Payload,
 		arg.OccurredAt,
 	)
@@ -450,6 +452,50 @@ type InsertRetryRuntimeStateParams struct {
 func (q *Queries) InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRuntimeStateParams) error {
 	_, err := q.db.Exec(ctx, insertRetryRuntimeState, arg.JobID, arg.OrganizationID, arg.ProjectID)
 	return err
+}
+
+const instantiateAdmittedStageGraph = `-- name: InstantiateAdmittedStageGraph :one
+SELECT
+    instantiated.aggregate_version::bigint AS aggregate_version,
+    instantiated.current_fence::bigint AS current_fence,
+    instantiated.snapshot_id::uuid AS snapshot_id,
+    instantiated.attempt_id::uuid AS attempt_id,
+    instantiated.attempt_fence::bigint AS attempt_fence,
+    instantiated.stage_run_count::integer AS stage_run_count
+FROM vela_instantiate_admitted_stage_graph(
+    $1,
+    $2,
+    $3
+) AS instantiated
+`
+
+type InstantiateAdmittedStageGraphParams struct {
+	OrganizationID uuid.UUID `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.UUID `db:"project_id" json:"project_id"`
+	JobID          uuid.UUID `db:"job_id" json:"job_id"`
+}
+
+type InstantiateAdmittedStageGraphRow struct {
+	AggregateVersion int64     `db:"aggregate_version" json:"aggregate_version"`
+	CurrentFence     int64     `db:"current_fence" json:"current_fence"`
+	SnapshotID       uuid.UUID `db:"snapshot_id" json:"snapshot_id"`
+	AttemptID        uuid.UUID `db:"attempt_id" json:"attempt_id"`
+	AttemptFence     int64     `db:"attempt_fence" json:"attempt_fence"`
+	StageRunCount    int32     `db:"stage_run_count" json:"stage_run_count"`
+}
+
+func (q *Queries) InstantiateAdmittedStageGraph(ctx context.Context, arg InstantiateAdmittedStageGraphParams) (InstantiateAdmittedStageGraphRow, error) {
+	row := q.db.QueryRow(ctx, instantiateAdmittedStageGraph, arg.OrganizationID, arg.ProjectID, arg.JobID)
+	var i InstantiateAdmittedStageGraphRow
+	err := row.Scan(
+		&i.AggregateVersion,
+		&i.CurrentFence,
+		&i.SnapshotID,
+		&i.AttemptID,
+		&i.AttemptFence,
+		&i.StageRunCount,
+	)
+	return i, err
 }
 
 const lockCompatiblePool = `-- name: LockCompatiblePool :one
@@ -606,6 +652,33 @@ func (q *Queries) LockProjectForAdmission(ctx context.Context, arg LockProjectFo
 		&i.MetadataRetentionDays,
 		&i.FinancialRetentionDays,
 	)
+	return i, err
+}
+
+const lockStageGraphReadyCapacityPath = `-- name: LockStageGraphReadyCapacityPath :one
+SELECT
+    capacity.ready::boolean AS ready,
+    capacity.retry_after_seconds::integer AS retry_after_seconds
+FROM vela_lock_stage_graph_ready_capacity_path(
+    $1,
+    $2
+) AS capacity
+`
+
+type LockStageGraphReadyCapacityPathParams struct {
+	ExecutionGraphRevisionID   uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+}
+
+type LockStageGraphReadyCapacityPathRow struct {
+	Ready             bool  `db:"ready" json:"ready"`
+	RetryAfterSeconds int32 `db:"retry_after_seconds" json:"retry_after_seconds"`
+}
+
+func (q *Queries) LockStageGraphReadyCapacityPath(ctx context.Context, arg LockStageGraphReadyCapacityPathParams) (LockStageGraphReadyCapacityPathRow, error) {
+	row := q.db.QueryRow(ctx, lockStageGraphReadyCapacityPath, arg.ExecutionGraphRevisionID, arg.ExecutionProfileRevisionID)
+	var i LockStageGraphReadyCapacityPathRow
+	err := row.Scan(&i.Ready, &i.RetryAfterSeconds)
 	return i, err
 }
 

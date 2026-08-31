@@ -3,13 +3,13 @@
 Date: 2026-08-31
 
 Status: In progress. S49.1-S49.11 have committed repository implementations.
-S49.12 has started with migrations `00049` and `00050` and remains partial: cutover routing,
+S49.12 has started with migrations `00049` through `00051` and remains partial: cutover routing,
 immutable execution authority, scoped internal rollout, Production Launch
 Receipt gating, legacy database inventory, and rollback protection exist;
-automatic Stage Job instantiation now has durable multi-replica claims, expiry
-takeover, exact replay, crash reconciliation, and `vela-control` wiring. External
-drain evidence, zero-inventory seal, contraction, legacy-path deletion, and
-production evidence remain pending.
+automatic Accepted STAGE_GRAPH Job instantiation now has durable multi-replica claims, expiry
+takeover, exact replay, crash reconciliation, `vela-control` wiring, and atomic
+Admission instantiation. External drain evidence, zero-inventory seal,
+contraction, legacy-path deletion, and production evidence remain pending.
 
 ## Delivery rule
 
@@ -89,18 +89,22 @@ Acceptance:
 Status: Runtime authority is implemented in migration
 `00036_stage_attempt_authority.sql` and the
 `internal/attemptcoordinator` Module, with automatic dispatch added by migration
-`00050_stage_graph_instantiation_dispatch.sql`. PostgreSQL owns instantiate, assign,
-first progress, completion, retry, cancellation, and bounded reconciliation;
+`00050_stage_graph_instantiation_dispatch.sql`, with the Admission transaction
+closed by `00051_atomic_stage_graph_admission.sql`. PostgreSQL owns instantiate,
+assign, first progress, completion, retry, cancellation, and bounded reconciliation;
 state-transition and identity triggers reject owner-level authority rewrites.
 Integration coverage includes duplicate replay, same-parent retry, exact-cache
 progress, queued and billable cancellation, cancel/progress serialization,
 late-progress fencing, Admission-triggered automatic instantiation, concurrent
 replica exclusion, expired-claim takeover, post-commit crash reconciliation,
-v49 backfill/resume, and empty/durable-authority migration rollback behavior.
-The production Admission requirement to create the graph snapshot, initial
-Attempt/StageRuns, and storage reservation in the Admission transaction remains
-an explicit S49.12 blocker; migration `00050` persists exact work in that
-transaction and materializes those rows in a later claimed transaction.
+v49 backfill/resume, atomic Admission rollback, deferred commit enforcement, and
+empty/durable-authority migration rollback behavior. Migration `00051` closes
+the prior S49.12 Admission blocker by creating the graph snapshot, initial
+Attempt/StageRuns, storage reservation, command evidence, and completed work in
+the same transaction as the Accepted Job and Credit Reservation. Admission also
+locks and validates one complete READY capacity path across every required stage;
+missing Worker/residency/latest-capacity evidence or a bounded initial READY queue returns
+retryable `503 capacity_unavailable` without creating durable Job authority.
 
 Deliver:
 
@@ -310,12 +314,12 @@ Acceptance:
 
 ## S49.12: Cutover, contraction, and evidence campaign
 
-Current repository boundary: migrations `00049` and `00050`, Admission, and the
+Current repository boundary: migrations `00049` through `00051`, Admission, and the
 AttemptCoordinator maintenance loop implement the pre-contraction control and
-automatic-instantiation surfaces. They
-do not authorize production activation, prove real Worker-local or N-1 drain,
-make the monolithic path unreachable, or close the target single-transaction
-Admission graph-instantiation boundary.
+automatic-instantiation surfaces, including the target single-transaction
+Admission graph-instantiation boundary. They do not authorize production
+activation, prove real Worker-local or N-1 drain, or make the monolithic path
+unreachable.
 
 Deliver:
 

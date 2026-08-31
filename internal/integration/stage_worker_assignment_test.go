@@ -250,7 +250,7 @@ func TestStageWorkerAssignmentMigrationRoundTripAndDurableEvidenceRefusal(t *tes
 			t.Fatalf("create durable acquire evidence = %#v error=%v", result, err)
 		}
 		err := goose.DownTo(fixture.database.Admin, migrations, 41)
-		assertPostgresConstraint(t, err, "stage_worker_assignment_rollback_is_unsafe")
+		assertPostgresConstraint(t, err, "atomic_stage_graph_admission_rollback_is_unsafe")
 	})
 }
 

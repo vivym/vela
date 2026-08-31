@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/attemptcoordinator"
+	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/stagecache"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -33,22 +35,23 @@ const (
 	ditWorkerProfileID      = "49300000-0000-0000-0000-000000000032"
 	ditStageProfileID       = "49300000-0000-0000-0000-000000000033"
 	stageCutoverRevisionID  = "49300000-0000-0000-0000-000000000049"
+	admissionCapacityBundle = "49300000-0000-0000-0000-000000000090"
 )
 
-func TestAttemptCoordinatorAutomaticallyInstantiatesAcceptedStageJob(t *testing.T) {
+func TestAdmissionAtomicallyInstantiatesAcceptedStageJob(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
 	server := admissionServerForDatabase(t, database)
-	accepted := submitJob(t, server.URL, "attempt-coordinator-automatic", []byte(`{
+	accepted := submitJob(t, server.URL, "admission-atomic-instantiation", []byte(`{
 		"model":"minimax-h3",
 		"generation_preset":"balanced",
 		"service_class":"standard",
 		"output_spec":"video-1080p-5s-24fps",
 		"generation_count":1,
-		"prompt":"automatic stage graph authority"
+		"prompt":"atomic stage graph authority"
 	}`))
 	if accepted.StatusCode != http.StatusAccepted {
 		t.Fatalf("submit graph Job status = %d, body=%s", accepted.StatusCode, accepted.Body)
@@ -56,6 +59,92 @@ func TestAttemptCoordinatorAutomaticallyInstantiatesAcceptedStageJob(t *testing.
 	var job jobResponse
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode graph Job: %v", err)
+	}
+	if job.AttemptsStarted != 1 {
+		t.Fatalf("Accepted Stage Job attempts_started = %d, want 1", job.AttemptsStarted)
+	}
+
+	var (
+		workState        string
+		completionReason string
+		jobVersion       int64
+		jobFence         int64
+		snapshotCount    int
+		attemptCount     int
+		stageRunCount    int
+		reservationCount int
+		commandCount     int
+		aggregateVersion int64
+		payload          []byte
+	)
+	if err := database.Admin.QueryRow(`
+		SELECT
+			work.state::text,
+			work.completion_reason,
+			accepted.version,
+			accepted.current_fence,
+			(SELECT count(*) FROM execution_graph_snapshots
+			 WHERE job_id = work.job_id),
+			(SELECT count(*) FROM attempts
+			 WHERE id = work.attempt_id AND job_id = work.job_id),
+			(SELECT count(*) FROM stage_runs
+			 WHERE attempt_id = work.attempt_id),
+			(SELECT count(*) FROM stage_storage_reservations
+			 WHERE id = work.storage_reservation_id
+			   AND job_id = work.job_id
+			   AND attempt_id = work.attempt_id),
+			(SELECT count(*) FROM attempt_coordinator_commands
+			 WHERE command_id = work.command_id
+			   AND job_id = work.job_id
+			   AND attempt_id = work.attempt_id
+			   AND command_kind = 'INSTANTIATE'),
+			ready.aggregate_version,
+			ready.payload
+		FROM stage_graph_instantiation_work AS work
+		JOIN jobs AS accepted ON accepted.id = work.job_id
+		JOIN outbox_events AS ready
+		  ON ready.aggregate_id = work.job_id
+		 AND ready.event_type = 'job.ready'
+		WHERE work.job_id = $1
+	`, job.JobID).Scan(
+		&workState,
+		&completionReason,
+		&jobVersion,
+		&jobFence,
+		&snapshotCount,
+		&attemptCount,
+		&stageRunCount,
+		&reservationCount,
+		&commandCount,
+		&aggregateVersion,
+		&payload,
+	); err != nil {
+		t.Fatalf("read atomic Stage graph Admission authority: %v", err)
+	}
+	var ready velav1.EventEnvelope
+	if err := proto.Unmarshal(payload, &ready); err != nil {
+		t.Fatalf("decode atomic job.ready envelope: %v", err)
+	}
+	if workState != "COMPLETED" ||
+		completionReason != "ADMISSION_TRANSACTION_INSTANTIATED" ||
+		jobVersion != 2 || jobFence != 1 || snapshotCount != 1 ||
+		attemptCount != 1 || stageRunCount != 3 || reservationCount != 1 ||
+		commandCount != 1 || aggregateVersion != jobVersion ||
+		ready.GetAggregateVersion() != uint64(jobVersion) {
+		t.Fatalf(
+			"atomic authority = state/reason %s/%s job %d/%d snapshot/attempt/stages/reservation/command %d/%d/%d/%d/%d outbox %d/%d",
+			workState,
+			completionReason,
+			jobVersion,
+			jobFence,
+			snapshotCount,
+			attemptCount,
+			stageRunCount,
+			reservationCount,
+			commandCount,
+			aggregateVersion,
+			ready.GetAggregateVersion(),
+		)
 	}
 
 	coordinatorPool := newRolePool(
@@ -80,7 +169,7 @@ func TestAttemptCoordinatorAutomaticallyInstantiatesAcceptedStageJob(t *testing.
 		StorageReservationID:       uuid.New(),
 		ReservedStorageBytes:       2 << 30,
 	})
-	assertPostgresConstraint(t, err, "stage_graph_instantiate_requires_exact_claim")
+	assertPostgresConstraint(t, err, "stage_graph_job_fence_stale")
 	coordinator, err := attemptcoordinator.NewAutomatedService(
 		coordinatorPool,
 		attemptcoordinator.AutomationConfig{
@@ -97,28 +186,182 @@ func TestAttemptCoordinatorAutomaticallyInstantiatesAcceptedStageJob(t *testing.
 	if err != nil {
 		t.Fatalf("run automatic AttemptCoordinator: %v", err)
 	}
-	if result.Claims != 1 || result.Instantiated != 1 || result.Replayed != 0 {
-		t.Fatalf("automatic AttemptCoordinator result = %#v", result)
+	if result.Reconciled != 0 || result.Discarded != 0 || result.Claims != 0 ||
+		result.Reclaimed != 0 || result.Instantiated != 0 || result.Replayed != 0 {
+		t.Fatalf("automatic cycle observed newly Accepted work = %#v", result)
 	}
+}
 
-	var workState string
-	var attemptCount, stageRunCount int
+func TestAdmissionRejectsIncompleteStageCapacityPathWithoutEffects(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	if _, err := database.Admin.Exec(`
+		UPDATE worker_instances
+		SET reachability_state = 'UNREACHABLE'
+		WHERE id = '49300000-0000-0000-0000-000000000096'
+	`); err != nil {
+		t.Fatalf("remove VAE READY capacity from Admission path: %v", err)
+	}
+	assertStageAdmissionCapacityRejectedWithoutEffects(
+		t,
+		database,
+		"admission-incomplete-ready-path",
+		"reject an incomplete Stage capacity path",
+	)
+}
+
+func TestAdmissionRejectsSupersededStageCapacityObservationWithoutEffects(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	result, err := database.Admin.Exec(`
+		INSERT INTO capacity_observations (
+			worker_instance_id, worker_instance_epoch, observation_sequence,
+			capacity_vector, observed_at, expires_at, observed_by
+		)
+		SELECT worker_instance_id, worker_instance_epoch,
+			observation_sequence + 1,
+			jsonb_set(capacity_vector, '{concurrency}', '0'::jsonb),
+			clock_timestamp(), clock_timestamp() + interval '1 minute',
+			'integration/admission-superseded-capacity'
+		FROM capacity_observations
+		WHERE worker_instance_id = '49300000-0000-0000-0000-000000000096'
+		ORDER BY observation_sequence DESC
+		LIMIT 1
+	`)
+	if err != nil {
+		t.Fatalf("supersede VAE CapacityObservation: %v", err)
+	}
+	if rows, rowsErr := result.RowsAffected(); rowsErr != nil || rows != 1 {
+		t.Fatalf("superseded VAE CapacityObservation rows = %d error=%v", rows, rowsErr)
+	}
+	assertStageAdmissionCapacityRejectedWithoutEffects(
+		t,
+		database,
+		"admission-superseded-capacity",
+		"reject superseded positive Stage capacity",
+	)
+}
+
+func assertStageAdmissionCapacityRejectedWithoutEffects(
+	t *testing.T,
+	database testDatabase,
+	idempotencyKey string,
+	prompt string,
+) {
+	t.Helper()
+	server := admissionServerForDatabase(t, database)
+	requestBody := fmt.Sprintf(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":%q
+	}`, prompt)
+	rejected := submitJob(t, server.URL, idempotencyKey, []byte(requestBody))
+	if rejected.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf(
+			"Stage capacity rejection status = %d, want 503; body=%s",
+			rejected.StatusCode,
+			rejected.Body,
+		)
+	}
+	var responseError struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(rejected.Body, &responseError); err != nil {
+		t.Fatalf("decode Stage capacity rejection: %v", err)
+	}
+	if responseError.Code != "capacity_unavailable" ||
+		rejected.Header.Get("Retry-After") == "" {
+		t.Fatalf(
+			"Stage capacity rejection code=%q Retry-After=%q",
+			responseError.Code,
+			rejected.Header.Get("Retry-After"),
+		)
+	}
+	assertNoAdmissionEffects(t, database.Admin)
+	var work, snapshots, attempts, runs, reservations, commands int
 	if err := database.Admin.QueryRow(`
 		SELECT
-			work.state::text,
-			(SELECT count(*) FROM attempts WHERE job_id = work.job_id),
-			(SELECT count(*) FROM stage_runs WHERE attempt_id = work.attempt_id)
-		FROM stage_graph_instantiation_work AS work
-		WHERE work.job_id = $1
-	`, job.JobID).Scan(&workState, &attemptCount, &stageRunCount); err != nil {
-		t.Fatalf("read automatic Stage graph authority: %v", err)
+			(SELECT count(*) FROM stage_graph_instantiation_work),
+			(SELECT count(*) FROM execution_graph_snapshots),
+			(SELECT count(*) FROM attempts),
+			(SELECT count(*) FROM stage_runs),
+			(SELECT count(*) FROM stage_storage_reservations),
+			(SELECT count(*) FROM attempt_coordinator_commands)
+	`).Scan(&work, &snapshots, &attempts, &runs, &reservations, &commands); err != nil {
+		t.Fatalf("read Stage capacity rejection side effects: %v", err)
 	}
-	if workState != "COMPLETED" || attemptCount != 1 || stageRunCount != 3 {
+	if work != 0 || snapshots != 0 || attempts != 0 || runs != 0 ||
+		reservations != 0 || commands != 0 {
 		t.Fatalf(
-			"automatic authority state=%s attempts=%d stage_runs=%d",
-			workState,
-			attemptCount,
-			stageRunCount,
+			"Stage capacity rejection left work/snapshot/attempt/run/reservation/command = %d/%d/%d/%d/%d/%d",
+			work, snapshots, attempts, runs, reservations, commands,
+		)
+	}
+}
+
+func TestAdmissionStageInstantiationFailureRollsBackEveryEffect(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	if _, err := database.Admin.Exec(`
+		CREATE FUNCTION vela_test_reject_admission_stage_run() RETURNS trigger
+		LANGUAGE plpgsql
+		AS $$
+		BEGIN
+			RAISE EXCEPTION USING
+				ERRCODE = '55000',
+				CONSTRAINT = 'test_admission_stage_instantiation_failure',
+				MESSAGE = 'injected StageRun insertion failure';
+		END
+		$$;
+		CREATE TRIGGER test_reject_admission_stage_run
+		BEFORE INSERT ON stage_runs
+		FOR EACH ROW EXECUTE FUNCTION vela_test_reject_admission_stage_run();
+	`); err != nil {
+		t.Fatalf("install Admission instantiation failure injection: %v", err)
+	}
+	server := admissionServerForDatabase(t, database)
+	result := submitJob(t, server.URL, "admission-atomic-rollback", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"rollback every Admission effect"
+	}`))
+	if result.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("failed atomic Admission status = %d, want 500; body=%s", result.StatusCode, result.Body)
+	}
+	assertNoAdmissionEffects(t, database.Admin)
+	var work, snapshots, attempts, runs, reservations, commands int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM stage_graph_instantiation_work),
+			(SELECT count(*) FROM execution_graph_snapshots),
+			(SELECT count(*) FROM attempts),
+			(SELECT count(*) FROM stage_runs),
+			(SELECT count(*) FROM stage_storage_reservations),
+			(SELECT count(*) FROM attempt_coordinator_commands
+			 WHERE command_kind = 'INSTANTIATE')
+	`).Scan(&work, &snapshots, &attempts, &runs, &reservations, &commands); err != nil {
+		t.Fatalf("read rolled-back Stage graph Admission effects: %v", err)
+	}
+	if work != 0 || snapshots != 0 || attempts != 0 || runs != 0 ||
+		reservations != 0 || commands != 0 {
+		t.Fatalf(
+			"failed Admission left work/snapshot/attempt/run/reservation/command = %d/%d/%d/%d/%d/%d",
+			work, snapshots, attempts, runs, reservations, commands,
 		)
 	}
 }
@@ -145,6 +388,7 @@ func TestAttemptCoordinatorAutomaticClaimIsExclusiveAcrossReplicas(t *testing.T)
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode graph Job: %v", err)
 	}
+	rewindAtomicAdmissionToPendingDispatch(t, database.Admin, job.JobID)
 
 	newCoordinator := func(instanceID string) *attemptcoordinator.Service {
 		pool := newRolePool(
@@ -233,6 +477,7 @@ func TestAttemptCoordinatorExpiredClaimKeepsStableInstantiationIdentity(t *testi
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode graph Job: %v", err)
 	}
+	rewindAtomicAdmissionToPendingDispatch(t, database.Admin, job.JobID)
 
 	claimToken := uuid.New()
 	claimed := claimStageGraphInstantiation(
@@ -321,6 +566,7 @@ func TestAttemptCoordinatorReconcilesCommittedInstantiationAfterCrash(t *testing
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode graph Job: %v", err)
 	}
+	rewindAtomicAdmissionToPendingDispatch(t, database.Admin, job.JobID)
 
 	claim := claimStageGraphInstantiation(
 		t,
@@ -420,6 +666,243 @@ func claimStageGraphInstantiation(
 	return claim
 }
 
+func readStageGraphInstantiation(
+	t *testing.T,
+	database *sql.DB,
+	jobID string,
+) claimedStageGraphInstantiation {
+	t.Helper()
+	var command claimedStageGraphInstantiation
+	if err := database.QueryRow(`
+		SELECT
+			job_id,
+			command_id,
+			expected_job_version,
+			expected_job_fence,
+			execution_graph_snapshot_id,
+			execution_graph_revision_id,
+			execution_profile_revision_id,
+			attempt_id,
+			storage_reservation_id,
+			reserved_storage_bytes
+		FROM stage_graph_instantiation_work
+		WHERE job_id = $1 AND state = 'COMPLETED'
+	`, jobID).Scan(
+		&command.JobID,
+		&command.CommandID,
+		&command.ExpectedJobVersion,
+		&command.ExpectedJobFence,
+		&command.ExecutionGraphSnapshotID,
+		&command.ExecutionGraphRevisionID,
+		&command.ExecutionProfileRevisionID,
+		&command.AttemptID,
+		&command.StorageReservationID,
+		&command.ReservedStorageBytes,
+	); err != nil {
+		t.Fatalf("read completed Admission Stage graph instantiation: %v", err)
+	}
+	return command
+}
+
+func rewindAtomicAdmissionToPendingDispatch(t *testing.T, database *sql.DB, jobID string) {
+	t.Helper()
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatalf("begin historical pending-instantiation fixture: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(`SET LOCAL session_replication_role = replica`); err != nil {
+		t.Fatalf("disable constraint triggers for historical pending-instantiation fixture: %v", err)
+	}
+	statements := []string{
+		`DELETE FROM stage_dependencies
+		WHERE attempt_id = (
+			SELECT attempt_id FROM stage_graph_instantiation_work WHERE job_id = $1
+		)`,
+		`DELETE FROM stage_retry_budgets
+		WHERE stage_run_id IN (
+			SELECT id FROM stage_runs
+			WHERE attempt_id = (
+				SELECT attempt_id FROM stage_graph_instantiation_work WHERE job_id = $1
+			)
+		)`,
+		`DELETE FROM stage_runs
+		WHERE attempt_id = (
+			SELECT attempt_id FROM stage_graph_instantiation_work WHERE job_id = $1
+		)`,
+		`DELETE FROM stage_storage_reservations
+		WHERE attempt_id = (
+			SELECT attempt_id FROM stage_graph_instantiation_work WHERE job_id = $1
+		)`,
+		`DELETE FROM attempt_retry_budgets
+		WHERE attempt_id = (
+			SELECT attempt_id FROM stage_graph_instantiation_work WHERE job_id = $1
+		)`,
+		`DELETE FROM attempt_coordinator_commands
+		WHERE command_id = (
+			SELECT command_id FROM stage_graph_instantiation_work WHERE job_id = $1
+		)`,
+		`DELETE FROM non_content_attempt_roots
+		WHERE id = (
+			SELECT attempt_id FROM stage_graph_instantiation_work WHERE job_id = $1
+		)`,
+		`DELETE FROM attempts
+		WHERE id = (
+			SELECT attempt_id FROM stage_graph_instantiation_work WHERE job_id = $1
+		)`,
+		`DELETE FROM execution_graph_snapshots
+		WHERE id = (
+			SELECT execution_graph_snapshot_id
+			FROM stage_graph_instantiation_work WHERE job_id = $1
+		)`,
+		`UPDATE retry_runtime_states
+		SET attempts_started = 0, version = 1, updated_at = transaction_timestamp()
+		WHERE job_id = $1`,
+		`UPDATE jobs
+		SET version = 1, current_fence = 0, updated_at = transaction_timestamp()
+		WHERE id = $1`,
+		`UPDATE stage_graph_instantiation_work
+		SET state = 'PENDING', available_at = clock_timestamp(),
+			claim_owner = NULL, claim_token = NULL, claimed_at = NULL,
+			claim_expires_at = NULL, claim_count = 0, last_error = NULL,
+			completed_at = NULL, completion_reason = NULL,
+			updated_at = clock_timestamp()
+		WHERE job_id = $1`,
+	}
+	for _, statement := range statements {
+		if _, err := tx.Exec(statement, jobID); err != nil {
+			t.Fatalf("rewind atomic Admission to migration-50 pending work: %v", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit historical pending-instantiation fixture: %v", err)
+	}
+}
+
+func insertPreDispatchStageJob(t *testing.T, database *sql.DB, fixtureName string) jobResponse {
+	t.Helper()
+	tx, job := beginPreDispatchStageJob(t, database, fixtureName)
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit pre-dispatch Stage Job fixture: %v", err)
+	}
+	return job
+}
+
+func beginPreDispatchStageJob(
+	t *testing.T,
+	database *sql.DB,
+	fixtureName string,
+) (*sql.Tx, jobResponse) {
+	t.Helper()
+	jobID := uuid.New()
+	reservationID := uuid.New()
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatalf("begin pre-dispatch Stage Job fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	if _, err := tx.Exec(`
+		INSERT INTO jobs (
+			id, organization_id, project_id, created_by_principal_id,
+			model_revision_id, generation_preset_revision_id,
+			service_class_revision_id, output_spec_id,
+			execution_authority_kind, stage_cutover_revision_id,
+			execution_graph_revision_id, stage_execution_profile_revision_id,
+			worker_pool_id, request_hash, request_content,
+			request_content_expires_at, retention_policy_revision_id,
+			retention_artifact_days, retention_request_content_days,
+			retention_incomplete_content_hours, retention_scratch_hours,
+			retention_debug_hours, retention_metadata_days,
+			retention_financial_days, pricing_rate_card_revision_id,
+			pricing_rate_line_id, pricing_unit_amount_minor, pricing_quantity,
+			pricing_quoted_amount_minor, pricing_currency,
+			execution_max_attempts, execution_max_total_compute_seconds,
+			execution_max_finalization_seconds_per_attempt,
+			execution_retry_backoff_policy, execution_retryable_failure_classes,
+			execution_circuit_breaker_policy,
+			execution_circuit_fingerprint_window_seconds,
+			execution_circuit_min_distinct_healthy_workers, job_expires_at
+		)
+		SELECT
+				$1::uuid, project.organization_id, project.id, $2,
+			'00000000-0000-0000-0000-000000000010'::uuid,
+			'00000000-0000-0000-0000-000000000011'::uuid,
+			service.id,
+			'00000000-0000-0000-0000-000000000013'::uuid,
+			'STAGE_GRAPH', $3,
+			$4, $5, NULL,
+				sha256(convert_to($1::uuid::text, 'UTF8')),
+			jsonb_build_object('model', 'minimax-h3', 'prompt', $6::text),
+			transaction_timestamp() + interval '2 days',
+			project.retention_policy_revision_id,
+			project.retention_artifact_days,
+			project.retention_request_content_days,
+			project.retention_incomplete_content_hours,
+			project.retention_scratch_hours,
+			project.retention_debug_hours,
+			project.retention_metadata_days,
+			project.retention_financial_days,
+			'00000000-0000-0000-0000-000000000016'::uuid,
+			'00000000-0000-0000-0000-000000000017'::uuid,
+			1250, 1, 1250, 'CNY',
+			service.max_attempts,
+			2400,
+			service.max_finalization_seconds_per_attempt,
+			service.retry_backoff_policy,
+			service.retryable_failure_classes,
+			service.circuit_breaker_policy,
+			service.circuit_fingerprint_window_seconds,
+			service.circuit_min_distinct_healthy_workers,
+			transaction_timestamp() + interval '1 day'
+		FROM projects AS project
+		JOIN service_class_revisions AS service
+		  ON service.id = '00000000-0000-0000-0000-000000000012'
+		WHERE project.organization_id = $7
+		  AND project.id = $8
+	`,
+		jobID,
+		testPrincipalID,
+		stageCutoverRevisionID,
+		stageGraphID,
+		graphExecutionProfileID,
+		fixtureName,
+		testOrganizationID,
+		testProjectID,
+	); err != nil {
+		t.Fatalf("insert pre-dispatch Stage Job fixture: %v", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO credit_reservations (
+			id, organization_id, project_id, job_id, amount_minor, currency
+		) VALUES ($1, $2, $3, $4, 1250, 'CNY')
+	`, reservationID, testOrganizationID, testProjectID, jobID); err != nil {
+		t.Fatalf("insert pre-dispatch CreditReservation fixture: %v", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
+		VALUES ($1, $2, $3)
+	`, jobID, testOrganizationID, testProjectID); err != nil {
+		t.Fatalf("insert pre-dispatch retry runtime state fixture: %v", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE organization_credit_accounts
+		SET reserved_minor = reserved_minor + 1250,
+			version = version + 1,
+			updated_at = clock_timestamp()
+		WHERE organization_id = $1
+	`, testOrganizationID); err != nil {
+		t.Fatalf("reserve pre-dispatch Job credit fixture: %v", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE projects
+		SET queued_count = queued_count + 1
+		WHERE organization_id = $1 AND id = $2
+	`, testOrganizationID, testProjectID); err != nil {
+		t.Fatalf("increment pre-dispatch Project queue fixture: %v", err)
+	}
+	return tx, jobResponse{JobID: jobID.String(), ProjectID: testProjectID, State: "QUEUED"}
+}
+
 func TestAttemptCoordinatorInstantiateIsDurableAndIdempotent(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -442,6 +925,7 @@ func TestAttemptCoordinatorInstantiateIsDurableAndIdempotent(t *testing.T) {
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode graph Job: %v", err)
 	}
+	rewindAtomicAdmissionToPendingDispatch(t, database.Admin, job.JobID)
 
 	coordinatorPool := newRolePool(
 		t,
@@ -549,13 +1033,7 @@ func TestAttemptCoordinatorPhysicalStageLifecycleIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("construct AttemptCoordinator: %v", err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "attempt-coordinator-assign", uuid.New(),
-	)
-	_, err = coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
-	if err != nil {
-		t.Fatalf("instantiate assign fixture: %v", err)
-	}
+	claim := readStageGraphInstantiation(t, database.Admin, job.JobID)
 	var encoderRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
 		SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'encoder'
@@ -933,14 +1411,8 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentityWhe
 	); err != nil {
 		t.Fatalf("disable cross-Job Stage Cache for retry fixture: %v", err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "attempt-coordinator-exact-cache", uuid.New(),
-	)
+	claim := readStageGraphInstantiation(t, database.Admin, job.JobID)
 	attemptID := claim.AttemptID
-	_, err = coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
-	if err != nil {
-		t.Fatalf("instantiate exact cache fixture: %v", err)
-	}
 	var encoderRunID, ditRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
 		SELECT
@@ -1211,14 +1683,8 @@ func TestStageGraphRunningCancellationPostsChargeAndFencesLateProgress(t *testin
 	if err != nil {
 		t.Fatalf("construct cancellation AttemptCoordinator: %v", err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "attempt-coordinator-cancellation", uuid.New(),
-	)
+	claim := readStageGraphInstantiation(t, database.Admin, job.JobID)
 	attemptID := claim.AttemptID
-	_, err = coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
-	if err != nil {
-		t.Fatalf("instantiate cancellable Stage graph: %v", err)
-	}
 	var encoderRunID, ditRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
 		SELECT
@@ -1958,38 +2424,12 @@ func TestStageGraphInstantiationDispatchMigrationBackfillsAndResumes(t *testing.
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
-	server := admissionServerForDatabase(t, database)
-	completedResponse := submitJob(t, server.URL, "instantiation-backfill-completed", []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"completed before migration"
-	}`))
-	pendingResponse := submitJob(t, server.URL, "instantiation-backfill-pending", []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"pending before migration"
-	}`))
-	if completedResponse.StatusCode != http.StatusAccepted ||
-		pendingResponse.StatusCode != http.StatusAccepted {
-		t.Fatalf(
-			"pre-migration Admission statuses completed=%d pending=%d",
-			completedResponse.StatusCode,
-			pendingResponse.StatusCode,
-		)
-	}
-	var completedJob, pendingJob jobResponse
-	if err := json.Unmarshal(completedResponse.Body, &completedJob); err != nil {
-		t.Fatalf("decode completed pre-migration Job: %v", err)
-	}
-	if err := json.Unmarshal(pendingResponse.Body, &pendingJob); err != nil {
-		t.Fatalf("decode pending pre-migration Job: %v", err)
-	}
+	completedJob := insertPreDispatchStageJob(
+		t, database.Admin, "completed before migration",
+	)
+	pendingJob := insertPreDispatchStageJob(
+		t, database.Admin, "pending before migration",
+	)
 
 	coordinatorPool := newRolePool(
 		t,
@@ -2092,22 +2532,9 @@ func TestStageGraphInstantiationDispatchMigrationRejectsStorageMismatch(t *testi
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
-	server := admissionServerForDatabase(t, database)
-	accepted := submitJob(t, server.URL, "instantiation-backfill-storage-mismatch", []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"mismatched pre-migration storage authority"
-	}`))
-	if accepted.StatusCode != http.StatusAccepted {
-		t.Fatalf("submit storage-mismatch Job status=%d body=%s", accepted.StatusCode, accepted.Body)
-	}
-	var job jobResponse
-	if err := json.Unmarshal(accepted.Body, &job); err != nil {
-		t.Fatalf("decode storage-mismatch Job: %v", err)
-	}
+	job := insertPreDispatchStageJob(
+		t, database.Admin, "mismatched pre-migration storage authority",
+	)
 	manual, err := attemptcoordinator.NewService(newRolePool(
 		t,
 		database.DSN,
@@ -2138,6 +2565,263 @@ func TestStageGraphInstantiationDispatchMigrationRejectsStorageMismatch(t *testi
 	version, versionErr := goose.GetDBVersion(database.Admin)
 	if versionErr != nil || version != 49 {
 		t.Fatalf("migration version after storage mismatch = %d error=%v", version, versionErr)
+	}
+}
+
+func TestAtomicStageGraphAdmissionMigrationBoundary(t *testing.T) {
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+
+	t.Run("empty Down Up restores exact request authority", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		assertAtomicStageAdmissionRequestSurface(t, database.Admin, true)
+
+		if err := goose.DownTo(database.Admin, migrations, 50); err != nil {
+			t.Fatalf("migrate empty atomic Stage graph Admission down: %v", err)
+		}
+		version, err := goose.GetDBVersion(database.Admin)
+		if err != nil || version != 50 {
+			t.Fatalf("atomic Stage graph Admission version after Down = %d error=%v", version, err)
+		}
+		assertAtomicStageAdmissionRequestSurface(t, database.Admin, false)
+		requestPool := newRolePool(
+			t, database.DSN, "vela_request_login", "vela-request-password",
+		)
+		if err := veladb.VerifyRole(context.Background(), requestPool, veladb.RoleRequest); err == nil {
+			t.Fatal("current request role verification accepted schema 50 without atomic Admission")
+		}
+
+		if err := goose.UpTo(database.Admin, migrations, 51); err != nil {
+			t.Fatalf("migrate atomic Stage graph Admission up again: %v", err)
+		}
+		version, err = goose.GetDBVersion(database.Admin)
+		if err != nil || version != 51 {
+			t.Fatalf("atomic Stage graph Admission version after Down Up = %d error=%v", version, err)
+		}
+		assertAtomicStageAdmissionRequestSurface(t, database.Admin, true)
+		if err := veladb.VerifyRole(
+			context.Background(), requestPool, veladb.RoleRequest,
+		); err != nil {
+			t.Fatalf("verify request role after atomic Admission Down Up: %v", err)
+		}
+	})
+
+	t.Run("current Admission fails closed on schema 50", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		if err := goose.DownTo(database.Admin, migrations, 50); err != nil {
+			t.Fatalf("contract atomic Admission schema for current-service probe: %v", err)
+		}
+		seedAdmissionFixture(t, database.Admin)
+		seedStageExecutionCatalog(t, database.Admin)
+		activateH3StageGraph(t, database)
+		server := admissionServerForDatabase(t, database)
+		result := submitJob(t, server.URL, "atomic-admission-schema-50", []byte(`{
+			"model":"minimax-h3",
+			"generation_preset":"balanced",
+			"service_class":"standard",
+			"output_spec":"video-1080p-5s-24fps",
+			"generation_count":1,
+			"prompt":"current Admission must fail closed on schema 50"
+		}`))
+		if result.StatusCode != http.StatusInternalServerError {
+			t.Fatalf(
+				"current Admission against schema 50 status = %d, want 500; body=%s",
+				result.StatusCode,
+				result.Body,
+			)
+		}
+		assertNoAdmissionEffects(t, database.Admin)
+	})
+
+	t.Run("deferred trigger rejects non-atomic Stage Job", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		seedAdmissionFixture(t, database.Admin)
+		seedStageExecutionCatalog(t, database.Admin)
+		activateH3StageGraph(t, database)
+		tx, job := beginPreDispatchStageJob(
+			t, database.Admin, "schema 51 non-atomic Stage Job",
+		)
+		_, err := tx.Exec("SET CONSTRAINTS jobs_require_atomic_stage_graph_admission IMMEDIATE")
+		assertPostgresConstraint(t, err, "stage_graph_admission_requires_atomic_instantiation")
+		_ = tx.Rollback()
+
+		var jobs, work int
+		if err := database.Admin.QueryRow(`
+			SELECT
+				(SELECT count(*) FROM jobs WHERE id = $1),
+				(SELECT count(*) FROM stage_graph_instantiation_work WHERE job_id = $1)
+		`, job.JobID).Scan(&jobs, &work); err != nil {
+			t.Fatalf("inspect rejected non-atomic Stage Job: %v", err)
+		}
+		if jobs != 0 || work != 0 {
+			t.Fatalf("rejected non-atomic Stage Job left job/work = %d/%d", jobs, work)
+		}
+	})
+
+	t.Run("request context is exact", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		seedAdmissionFixture(t, database.Admin)
+		requestPool := newRolePool(
+			t, database.DSN, "vela_request_login", "vela-request-password",
+		)
+		for _, test := range []struct {
+			name           string
+			organizationID uuid.UUID
+			projectID      uuid.UUID
+		}{
+			{
+				name:           "cross organization",
+				organizationID: uuid.New(),
+				projectID:      uuid.MustParse(testProjectID),
+			},
+			{
+				name:           "cross Project",
+				organizationID: uuid.MustParse(testOrganizationID),
+				projectID:      uuid.New(),
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				tx, err := requestPool.Begin(context.Background())
+				if err != nil {
+					t.Fatalf("begin mismatched atomic Admission transaction: %v", err)
+				}
+				defer func() { _ = tx.Rollback(context.Background()) }()
+				if _, err := tx.Exec(
+					context.Background(),
+					"SELECT * FROM vela_set_request_context($1, $2, $3)",
+					testCredentialID,
+					credentialDigest([]byte(testCredentialSecret)),
+					"jobs:submit",
+				); err != nil {
+					t.Fatalf("establish atomic Admission request context: %v", err)
+				}
+				_, err = tx.Exec(
+					context.Background(),
+					"SELECT * FROM vela_instantiate_admitted_stage_graph($1, $2, $3)",
+					test.organizationID,
+					test.projectID,
+					uuid.New(),
+				)
+				assertPostgresConstraint(t, err, "stage_graph_admission_context_mismatch")
+			})
+		}
+	})
+
+	t.Run("durable Admission evidence refuses Down", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		seedAdmissionFixture(t, database.Admin)
+		seedStageExecutionCatalog(t, database.Admin)
+		activateH3StageGraph(t, database)
+		server := admissionServerForDatabase(t, database)
+		accepted := submitJob(t, server.URL, "atomic-admission-down-refusal", []byte(`{
+			"model":"minimax-h3",
+			"generation_preset":"balanced",
+			"service_class":"standard",
+			"output_spec":"video-1080p-5s-24fps",
+			"generation_count":1,
+			"prompt":"durable atomic Admission evidence"
+		}`))
+		if accepted.StatusCode != http.StatusAccepted {
+			t.Fatalf("submit atomic Admission evidence status = %d, body=%s", accepted.StatusCode, accepted.Body)
+		}
+
+		err := goose.DownTo(database.Admin, migrations, 50)
+		assertPostgresConstraint(t, err, "atomic_stage_graph_admission_rollback_is_unsafe")
+		version, versionErr := goose.GetDBVersion(database.Admin)
+		if versionErr != nil || version != 51 {
+			t.Fatalf("atomic Admission version after refused Down = %d error=%v", version, versionErr)
+		}
+	})
+}
+
+func assertAtomicStageAdmissionRequestSurface(t *testing.T, database *sql.DB, want bool) {
+	t.Helper()
+	const signature = "vela_instantiate_admitted_stage_graph(uuid,uuid,uuid)"
+	const capacitySignature = "vela_lock_stage_graph_ready_capacity_path(uuid,uuid)"
+	const guardSignature = "vela_require_atomic_stage_graph_admission()"
+	var functionExists, requestCanExecute, capacityExists, requestCanCheckCapacity bool
+	var authCanExecute, requestCanExecuteGuard bool
+	var directAuthorityRelations int
+	if err := database.QueryRow(`
+		SELECT
+			to_regprocedure($1) IS NOT NULL,
+			COALESCE(
+				has_function_privilege(
+					'vela_request_login', to_regprocedure($1), 'EXECUTE'
+				),
+				false
+			),
+			COALESCE(
+				has_function_privilege(
+					'vela_auth_login', to_regprocedure($1), 'EXECUTE'
+				),
+				false
+			),
+			COALESCE(
+				to_regprocedure($2) IS NOT NULL,
+				false
+			),
+			COALESCE(
+				has_function_privilege(
+					'vela_request_login', to_regprocedure($2), 'EXECUTE'
+				),
+				false
+			),
+			COALESCE(
+				has_function_privilege(
+					'vela_request_login', to_regprocedure($3), 'EXECUTE'
+				),
+				false
+			),
+			(
+				SELECT count(*)
+				FROM unnest(ARRAY[
+					'stage_graph_instantiation_work',
+					'execution_graph_snapshots',
+					'attempts',
+					'stage_runs',
+					'stage_storage_reservations'
+				]) AS relation(name)
+				WHERE has_table_privilege(
+					'vela_request_login', relation.name,
+					'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+				) OR has_any_column_privilege(
+					'vela_request_login', relation.name,
+					'SELECT,INSERT,UPDATE,REFERENCES'
+				)
+			)
+	`, signature, capacitySignature, guardSignature).Scan(
+		&functionExists,
+		&requestCanExecute,
+		&authCanExecute,
+		&capacityExists,
+		&requestCanCheckCapacity,
+		&requestCanExecuteGuard,
+		&directAuthorityRelations,
+	); err != nil {
+		t.Fatalf("inspect atomic Stage graph Admission request surface: %v", err)
+	}
+	if functionExists != want || requestCanExecute != want || capacityExists != want ||
+		requestCanCheckCapacity != want || authCanExecute ||
+		requestCanExecuteGuard || directAuthorityRelations != 0 {
+		t.Fatalf(
+			"atomic Stage graph Admission request surface = function/request/capacity/request-capacity/auth/guard/direct %t/%t/%t/%t/%t/%t/%d, want %t/%t/%t/%t/false/false/0",
+			functionExists,
+			requestCanExecute,
+			capacityExists,
+			requestCanCheckCapacity,
+			authCanExecute,
+			requestCanExecuteGuard,
+			directAuthorityRelations,
+			want,
+			want,
+			want,
+			want,
+		)
 	}
 }
 
@@ -2200,10 +2884,10 @@ func TestStageAttemptAuthorityMigrationRoundTripAndDurableAuthorityRefusal(t *te
 		assertPostgresConstraint(
 			t,
 			err,
-			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+			"atomic_stage_graph_admission_rollback_is_unsafe",
 		)
 		version, versionErr := goose.GetDBVersion(database.Admin)
-		if versionErr != nil || version != 50 {
+		if versionErr != nil || version != 51 {
 			t.Fatalf(
 				"Stage Attempt authority version after refusal = %d error=%v",
 				version, versionErr,
@@ -2264,14 +2948,8 @@ func newStageGraphCancellationFixture(
 	if err != nil {
 		t.Fatalf("construct cancellable AttemptCoordinator: %v", err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "attempt-coordinator-cancellable", uuid.New(),
-	)
+	claim := readStageGraphInstantiation(t, database.Admin, job.JobID)
 	attemptID := claim.AttemptID
-	_, err = coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
-	if err != nil {
-		t.Fatalf("instantiate cancellable Stage graph: %v", err)
-	}
 	var encoderRunID, ditRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
 		SELECT
@@ -2422,13 +3100,8 @@ func instantiateAdditionalStageGraphJob(
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode capacity reuse Stage graph Job: %v", err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "attempt-coordinator-capacity-reuse", uuid.New(),
-	)
+	claim := readStageGraphInstantiation(t, database.Admin, job.JobID)
 	attemptID := claim.AttemptID
-	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
-		t.Fatalf("instantiate capacity reuse Stage graph: %v", err)
-	}
 	var encoderRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
 		SELECT id
@@ -2538,6 +3211,7 @@ func seedDiTAssignmentProfile(t *testing.T, database testDatabase) {
 
 func activateH3StageGraph(t *testing.T, database testDatabase) {
 	t.Helper()
+	seedH3AdmissionCapacityPath(t, database)
 	activateH3ExecutionGraph(t, database)
 	activateStageCutoverRevision(
 		t, database, uuid.MustParse(stageCutoverRevisionID), 2,
@@ -2545,6 +3219,105 @@ func activateH3StageGraph(t *testing.T, database testDatabase) {
 		uuid.MustParse(stageGraphID), uuid.MustParse(graphExecutionProfileID),
 		2<<30, "integration-stage-cutover",
 	)
+}
+
+func seedH3AdmissionCapacityPath(t *testing.T, database testDatabase) {
+	t.Helper()
+	stages := []struct {
+		key          string
+		profileID    string
+		component    string
+		poolID       uuid.UUID
+		workerID     uuid.UUID
+		identityByte byte
+	}{
+		{
+			key: "encoder", profileID: "49000000-0000-0000-0000-000000000040",
+			component:    "h3-encoder-v1",
+			poolID:       uuid.MustParse("49300000-0000-0000-0000-000000000091"),
+			workerID:     uuid.MustParse("49300000-0000-0000-0000-000000000094"),
+			identityByte: 0x91,
+		},
+		{
+			key: "dit", profileID: "49000000-0000-0000-0000-000000000041",
+			component:    "h3-dit-v1",
+			poolID:       uuid.MustParse("49300000-0000-0000-0000-000000000092"),
+			workerID:     uuid.MustParse("49300000-0000-0000-0000-000000000095"),
+			identityByte: 0x92,
+		},
+		{
+			key: "vae", profileID: "49000000-0000-0000-0000-000000000042",
+			component:    "h3-vae-v1",
+			poolID:       uuid.MustParse("49300000-0000-0000-0000-000000000093"),
+			workerID:     uuid.MustParse("49300000-0000-0000-0000-000000000096"),
+			identityByte: 0x93,
+		},
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO worker_bundles (
+			id, stable_id, plan_revision, desired_generation, observed_generation,
+			lifecycle_state, layout_digest, approved_by
+		) VALUES (
+			$1, 'h3-admission-capacity-path', 'integration-ready-path-v1',
+			1, 0, 'APPLYING', decode(repeat('90', 32), 'hex'), 'integration-fixture'
+		)
+	`, admissionCapacityBundle); err != nil {
+		t.Fatalf("seed Admission capacity WorkerBundle: %v", err)
+	}
+	for _, stage := range stages {
+		if _, err := database.Admin.Exec(`
+			INSERT INTO capacity_pools (
+				id, stable_id, stage_profile_revision_id, resource_class,
+				security_class, region, max_ready_queue_depth, state
+			) VALUES ($1, $2, $3, 'GPU', 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE')
+		`, stage.poolID, "h3-admission-ready-"+stage.key, stage.profileID); err != nil {
+			t.Fatalf("seed %s Admission CapacityPool: %v", stage.key, err)
+		}
+		if _, err := database.Admin.Exec(`
+			INSERT INTO worker_instances (
+				id, worker_profile_revision_id, capacity_pool_id, worker_bundle_id,
+				lifecycle_state, reachability_state, instance_epoch,
+				control_session_epoch, desired_member_count, desired_device_count
+			) VALUES (
+				$1, $2, $3, $4, 'PROVISIONING', 'DISCONNECTED', 1, 1, 1, 1
+			)
+		`,
+			stage.workerID,
+			workerRegistryProfileID,
+			stage.poolID,
+			admissionCapacityBundle,
+		); err != nil {
+			t.Fatalf("seed %s Admission WorkerInstance: %v", stage.key, err)
+		}
+	}
+
+	registry, err := fleet.NewService(newRolePool(
+		t, database.DSN, "vela_internal_login", "vela-internal-password",
+	))
+	if err != nil {
+		t.Fatalf("construct Admission capacity Worker Registry: %v", err)
+	}
+	for _, stage := range stages {
+		evidence := workerRegistryEvidenceValue(t, stage.workerID, stage.identityByte)
+		nodeID := uuid.NewSHA1(stage.workerID, []byte("admission-node"))
+		deviceID := uuid.NewSHA1(stage.workerID, []byte("admission-device"))
+		evidence.DeviceSet.Devices[0].ID = deviceID
+		evidence.DeviceSet.Devices[0].ComputeNodeID = nodeID
+		evidence.DeviceSet.Devices[0].NodeIdentity = "h3-admission-" + stage.key
+		evidence.DeviceSet.Devices[0].GPUUUID = "GPU-" + stage.workerID.String()
+		evidence.DeviceSet.Devices[0].PCIBDF = fmt.Sprintf(
+			"0000:%02x:00.0", stage.identityByte,
+		)
+		evidence.Members[0].ComputeNodeID = nodeID
+		evidence.Members[0].DeviceIDs = []uuid.UUID{deviceID}
+		evidence.Residencies[0].ModelComponentRevision = stage.component
+		evidence.Residencies[0].RuntimeIdentity =
+			stage.key + "@sha256:admission-capacity"
+		evidence.ObservedBy = "node-agent/h3-admission-" + stage.key
+		if _, err := registry.Observe(context.Background(), evidence); err != nil {
+			t.Fatalf("observe %s Admission READY capacity: %v", stage.key, err)
+		}
+	}
 }
 
 func activateH3ExecutionGraph(t *testing.T, database testDatabase) {

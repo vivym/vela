@@ -14,18 +14,25 @@ The H3 stage-disaggregated architecture is accepted as the replacement target.
 S49.1-S49.11 have committed repository implementations through StageArtifact
 transfer, split H3 execution, exact cache, CPU media stages, and the immutable
 Usage/Cost Ledger, plus the deterministic capacity simulator and advisory
-planning boundary. Migrations `00049` and `00050` continue S49.12 with ModelRevision-scoped
+planning boundary. Migrations `00049` through `00051` continue S49.12 with ModelRevision-scoped
 cutover routing, an explicit internal-Project allowlist, Production Launch
 Receipt gating, immutable Accepted Job authority, legacy database inventory,
-guarded rollback, and automatic multi-replica Stage Job instantiation. Durable
+guarded rollback, and automatic multi-replica Accepted STAGE_GRAPH Job
+instantiation. Durable
 claim expiry, exact-command replay, committed-work reconciliation, and the
-`vela-control` maintenance loop are implemented. This is not complete
-acceptance closure. Single-transaction Admission graph instantiation, external
-drain evidence, a zero-inventory seal, contraction, monolithic-path deletion,
-and production evidence are still pending. Repository-wide
-integration shards `0` through `9` are green after restoring historical-schema
-Visible Completion compatibility and version-specific role-surface checks. The
-current committed legacy Worker Assignment, Attempt Lease, H3 Worker Agent,
+`vela-control` maintenance loop are implemented. Migration `00051` also creates
+the graph snapshot, initial Attempt/StageRuns, storage reservation, and completed
+command/work evidence in the Accepted Job's Admission transaction, after locking
+and validating complete READY Worker/residency/capacity authority across every
+required stage. Missing path capacity is a retryable zero-side-effect Capacity
+Rejection. This is not
+complete acceptance closure. External drain evidence, a zero-inventory seal,
+contraction, monolithic-path deletion, and production evidence are still pending.
+Targeted atomic Admission, rollback-precedence, and version-specific role-surface
+integration coverage is green. Repository-wide shards retain pre-existing
+historical-schema and N-1 compatibility failures reproduced at `37e0235`; this
+slice does not claim suite-wide green. The current committed legacy Worker
+Assignment, Attempt Lease, H3 Worker Agent,
 Runner, and Fleet slices remain the active machine-level baseline until cutover
 and contraction; the target implementation and repository tests are not
 production evidence or a Launch Receipt.
@@ -34,7 +41,7 @@ production evidence or a Launch Receipt.
 | --- | --- | --- |
 | H3 Stage Execution Architecture | Accepted target; S49.1-S49.11 complete and S49.12 cutover/automatic-instantiation work started | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Expansion through migration `00050`; cutover authority and automatic graph instantiation added, contraction pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Schema and protocol migration | Expansion through migration `00051`; cutover authority and atomic Admission graph instantiation added, contraction pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.11 complete; S49.12 partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 

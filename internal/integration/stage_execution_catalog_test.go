@@ -812,7 +812,8 @@ func seedStageExecutionCatalog(t *testing.T, database *sql.DB) {
 			readiness_checks, content_digest
 		) VALUES (
 			'49000000-0000-0000-0000-000000000022', 'h3-single-gpu', 1, 'CERTIFIED',
-			1, 1, '{"kind":"single-gpu"}', '["h3-component-v1"]',
+				1, 1, '{"kind":"single-gpu"}',
+				'["h3-component-v1","h3-encoder-v1","h3-dit-v1","h3-vae-v1"]',
 			'{"concurrency":1}', '{"warmup":true}', decode(repeat('33', 32), 'hex')
 		);
 		INSERT INTO stage_result_equivalence_revisions (

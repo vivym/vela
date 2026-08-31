@@ -228,7 +228,7 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 			t.Fatalf("migrate Stage graph Visible Completion back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 50 {
+		if err != nil || version != 51 {
 			t.Fatalf("Stage graph Visible Completion version after Up = %d error=%v", version, err)
 		}
 	})
@@ -256,10 +256,10 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 		assertPostgresConstraint(
 			t,
 			err,
-			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+			"atomic_stage_graph_admission_rollback_is_unsafe",
 		)
 		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 50 {
+		if versionErr != nil || version != 51 {
 			t.Fatalf(
 				"Stage graph Visible Completion version after refused Down = %d error=%v",
 				version, versionErr,
@@ -346,13 +346,8 @@ func runCPUMediaH3Graph(t *testing.T) cpuMediaGraphOutcome {
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode CPU media Job: %v", err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "cpu-media-stage-execution", uuid.New(),
-	)
-	attemptID := claim.AttemptID
-	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
-		t.Fatalf("instantiate CPU media graph: %v", err)
-	}
+	instantiation := readStageGraphInstantiation(t, database.Admin, job.JobID)
+	attemptID := instantiation.AttemptID
 
 	seedWorkerRegistryPlan(t, database.Admin)
 	registry, err := fleet.NewService(newRolePool(

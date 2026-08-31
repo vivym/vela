@@ -4,15 +4,16 @@ Date: 2026-08-31
 
 Status: Implementation in progress. S49.1-S49.11 have committed repository
 implementations through the capacity simulator and advisory planning boundary.
-Migrations `00049` and `00050` implement the current S49.12 expansion boundary:
+Migrations `00049` through `00051` implement the current S49.12 expansion boundary:
 ModelRevision-scoped cohort routing,
 immutable Job/Attempt/ExecutionGraphSnapshot authority, rollback that affects
 only later Jobs, an explicit internal-Project allowlist, Production Launch
 Receipt gating, legacy-authority database inventory, and a schema rollback
-guard, plus automatic Stage Job instantiation with durable multi-replica claim,
-expiry takeover, exact replay, and crash reconciliation. External drain evidence,
-a zero-inventory seal, contraction, legacy-path deletion, and production evidence
-remain pending. Repository evidence does not advance a Production Gate.
+guard, plus automatic Accepted STAGE_GRAPH Job instantiation with durable multi-replica claim,
+expiry takeover, exact replay, crash reconciliation, and atomic graph authority in
+the Admission transaction. External drain evidence, a zero-inventory seal,
+contraction, legacy-path deletion, and production evidence remain pending.
+Repository evidence does not advance a Production Gate.
 
 ## Purpose
 
@@ -97,9 +98,10 @@ Activation validates graph acyclicity, stable topological order, connected
 required outputs, interface compatibility on every edge, bounded fan-out,
 complete certified profile alternatives, connector fallback, and final output
 compatibility. The dedicated `vela_stage_catalog_activation` role can execute
-only that activation function; the existing five-function
-`vela_catalog_promotion` boundary remains unchanged for exact N-1 startup.
-Runtime code never reinterprets malformed active JSON.
+only that activation function. Migration `00049` adds four explicit cutover and
+inventory functions to the five-function `vela_catalog_promotion` boundary;
+trigger guards remain non-executable by that login. Runtime code never
+reinterprets malformed active JSON.
 
 The existing `execution_profile_revisions.worker_pool_id` remains populated for
 legacy profiles during expansion. A target profile instead references one
@@ -134,12 +136,17 @@ replace those business-policy fields.
 The production target requires Admission to validate at least one complete READY
 capacity path and create one `stage_storage_reservations` row in the same
 transaction as Job, Credit Reservation, queue counters, graph snapshot, and
-initial Attempt/StageRuns. Migration `00050` is a pre-production M4 expansion:
-the Admission transaction instead persists the exact reservation bytes and fixed
-graph identities in durable instantiation work, while a later PostgreSQL-claimed
-transaction creates the graph rows before StageScheduler can observe READY work.
-Production activation remains blocked until the target single-transaction
-Admission boundary is implemented and verified.
+initial Attempt/StageRuns. Migration `00050` first introduced durable claimed
+work and asynchronous reconciliation. Migration `00051` closes the target
+transaction boundary: Accepted STAGE_GRAPH Jobs instantiate the snapshot, initial
+Attempt, three StageRuns, storage reservation, command evidence, and completed
+work before `job.ready` is committed. The same transaction locks every matching
+CapacityPool, requires a READY WorkerInstance, READY ModelResidency, and fresh
+positive-capacity highest-sequence observation for the current Worker epoch for
+every required stage, and returns retryable
+`503 capacity_unavailable` with no durable Admission effects when the complete
+path or an initial READY queue slot is absent. The asynchronous coordinator remains for
+historical pending work, backfill, and crash reconciliation.
 
 ## Runtime execution schema
 
@@ -384,9 +391,10 @@ renewal is unavailable.
   and backfills v49 Jobs. Fixed command/snapshot/Attempt/reservation identities,
   expiring multi-replica claims, exact replay, and PostgreSQL reconciliation
   close the crash windows before StageScheduler sees READY work.
-- This M4 dispatch boundary is deliberately pre-production: the durable work row
-  precedes the graph snapshot and storage-reservation rows. M5 activation cannot
-  proceed until Admission creates those rows in its own transaction.
+- Migration `00051` instantiates and completes that exact work in the Admission
+  transaction. A deferred constraint trigger prevents any Accepted STAGE_GRAPH Job
+  from committing without its graph authority, and any instantiation failure
+  rolls back all Admission effects.
 
 ### M5: full cutover and drain
 
@@ -409,8 +417,8 @@ renewal is unavailable.
 - Add a permanent negative test proving no machine-level H3 Assignment can be
   formed.
 
-M6 is not implemented by migrations `00049` or `00050`. Their rollback guards
-protect the expanded schema and durable dispatch authority; neither is the
+M6 is not implemented by migrations `00049` through `00051`. Their rollback
+guards protect the expanded schema and durable dispatch authority; none is the
 contraction migration or removes a legacy protocol or deployment surface.
 
 ## Failure and compatibility rules

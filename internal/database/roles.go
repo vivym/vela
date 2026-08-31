@@ -211,6 +211,20 @@ type exactPrivilegeBoundary struct {
 	functions       []string
 }
 
+func databaseFunctionExists(
+	ctx context.Context,
+	database rowQuerier,
+	signature string,
+) (bool, error) {
+	var exists bool
+	if err := database.QueryRow(ctx, `
+		SELECT to_regprocedure($1) IS NOT NULL
+	`, signature).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 func verifySchedulerPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
 	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
 		inspectionLabel: "Scheduler",
@@ -406,7 +420,7 @@ func verifyCatalogPromotionPrivileges(
 	database rowQuerier,
 	currentUser string,
 ) error {
-	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+	boundary := exactPrivilegeBoundary{
 		inspectionLabel: "Catalog Promotion",
 		failureLabel:    "Catalog Promotion transaction",
 		functions: []string{
@@ -416,7 +430,24 @@ func verifyCatalogPromotionPrivileges(
 			"vela_promote_rate_card(uuid,uuid,uuid)",
 			"vela_enable_evidenced_catalog(uuid)",
 		},
-	})
+	}
+	stageCutoverPrivilegesPresent, err := databaseFunctionExists(
+		ctx,
+		database,
+		"vela_execution_profile_connector_set_digest(uuid,uuid)",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect Catalog Promotion Stage cutover surface: %w", err)
+	}
+	if stageCutoverPrivilegesPresent {
+		boundary.functions = append(boundary.functions,
+			"vela_execution_profile_connector_set_digest(uuid,uuid)",
+			"vela_activate_stage_cutover(uuid,bigint,uuid,stage_cutover_scope,stage_cutover_mode,integer,uuid,uuid,bigint,integer,bytea,text,bytea,bytea,bytea,text,text)",
+			"vela_authorize_stage_cutover_internal_project(uuid,uuid,uuid,text)",
+			"vela_capture_legacy_authority_inventory(uuid,text)",
+		)
+	}
+	return verifyExactPrivileges(ctx, database, currentUser, boundary)
 }
 
 func verifyStageCatalogActivationPrivileges(
@@ -1013,6 +1044,21 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			"vela_resolve_active_sku(text,text,text,text)",
 			"vela_lock_compatible_pool(uuid,uuid,uuid)",
 		},
+	}
+	stageRoutePrivilegesPresent, err := databaseFunctionExists(
+		ctx,
+		database,
+		"vela_resolve_job_execution_route(uuid,uuid,uuid)",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect request Stage route surface: %w", err)
+	}
+	if stageRoutePrivilegesPresent {
+		boundary.functions = append(boundary.functions,
+			"vela_resolve_job_execution_route(uuid,uuid,uuid)",
+			"vela_lock_stage_graph_ready_capacity_path(uuid,uuid)",
+			"vela_instantiate_admitted_stage_graph(uuid,uuid,uuid)",
+		)
 	}
 	var leaseRenewalProtocolEnabled bool
 	if err := database.QueryRow(ctx, `

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -87,13 +88,8 @@ func TestStageSchedulerAcquirePersistsDecisionAndAssignsExactlyOnce(t *testing.T
 	if err != nil {
 		t.Fatalf("construct StageScheduler AttemptCoordinator: %v", err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "stage-scheduler-acquire", uuid.New(),
-	)
-	attemptID := claim.AttemptID
-	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
-		t.Fatalf("instantiate StageScheduler graph: %v", err)
-	}
+	instantiation := readStageGraphInstantiation(t, database.Admin, job.JobID)
+	attemptID := instantiation.AttemptID
 	var functionOwner string
 	var securityDefiner, ownerCanReadPool bool
 	if err := database.Admin.QueryRow(`
@@ -1019,6 +1015,7 @@ func TestStageSchedulerNewerCapacityObservationInvalidatesCapturedSnapshot(t *te
 
 func TestStageSchedulerReadyQueueEnforcesCapacityPoolDepth(t *testing.T) {
 	fixture := newStageSchedulerFixture(t, "queue-depth")
+	before := readStageAdmissionEffectCounts(t, fixture.database.Admin)
 	if _, err := fixture.database.Admin.Exec(`
 		UPDATE capacity_pools
 		SET max_ready_queue_depth = 1
@@ -1028,7 +1025,7 @@ func TestStageSchedulerReadyQueueEnforcesCapacityPoolDepth(t *testing.T) {
 	}
 
 	server := admissionServerForDatabase(t, fixture.database)
-	accepted := submitJob(t, server.URL, "stage-scheduler-queue-depth-overflow", []byte(`{
+	rejected := submitJob(t, server.URL, "stage-scheduler-queue-depth-overflow", []byte(`{
 		"model":"minimax-h3",
 		"generation_preset":"balanced",
 		"service_class":"standard",
@@ -1036,25 +1033,26 @@ func TestStageSchedulerReadyQueueEnforcesCapacityPoolDepth(t *testing.T) {
 		"generation_count":1,
 		"prompt":"overflow the bounded stage queue"
 	}`))
-	if accepted.StatusCode != 202 {
-		t.Fatalf("submit queue-depth Job status=%d body=%s", accepted.StatusCode, accepted.Body)
+	if rejected.StatusCode != 503 {
+		t.Fatalf("submit queue-depth overflow status=%d body=%s", rejected.StatusCode, rejected.Body)
 	}
-	var job jobResponse
-	if err := json.Unmarshal(accepted.Body, &job); err != nil {
-		t.Fatalf("decode queue-depth Job: %v", err)
+	var responseError struct {
+		Code string `json:"code"`
 	}
-	claim := claimStageGraphInstantiation(
-		t, fixture.database.Admin, "stage-scheduler-queue-overflow", uuid.New(),
-	)
-	_, err := fixture.coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
-	var postgresError *pgconn.PgError
-	if !errors.As(err, &postgresError) ||
-		postgresError.ConstraintName != "stage_ready_queue_depth_exceeded" {
+	if err := json.Unmarshal(rejected.Body, &responseError); err != nil {
+		t.Fatalf("decode queue-depth Capacity Rejection: %v", err)
+	}
+	if responseError.Code != "capacity_unavailable" ||
+		rejected.Header.Get("Retry-After") == "" {
 		t.Fatalf(
-			"Instantiate overflowing Stage queue error=%v constraint=%q",
-			err,
-			postgresErrorConstraint(postgresError),
+			"queue-depth Capacity Rejection code=%q Retry-After=%q",
+			responseError.Code,
+			rejected.Header.Get("Retry-After"),
 		)
+	}
+	after := readStageAdmissionEffectCounts(t, fixture.database.Admin)
+	if after != before {
+		t.Fatalf("queue-depth Capacity Rejection effects changed from %v to %v", before, after)
 	}
 
 	var readyCount, counterCount int
@@ -1071,6 +1069,36 @@ func TestStageSchedulerReadyQueueEnforcesCapacityPoolDepth(t *testing.T) {
 	if readyCount != 1 || counterCount != 1 {
 		t.Fatalf("bounded Stage queue rows/counter = %d/%d, want 1/1", readyCount, counterCount)
 	}
+}
+
+func readStageAdmissionEffectCounts(t *testing.T, database *sql.DB) [14]int64 {
+	t.Helper()
+	var counts [14]int64
+	if err := database.QueryRow(`
+		SELECT
+			(SELECT queued_count FROM projects WHERE id = $1),
+			(SELECT reserved_minor FROM organization_credit_accounts
+			 WHERE organization_id = $2),
+			(SELECT count(*) FROM jobs),
+			(SELECT count(*) FROM retry_runtime_states),
+			(SELECT count(*) FROM credit_reservations),
+			(SELECT count(*) FROM idempotency_results),
+			(SELECT count(*) FROM outbox_events),
+			(SELECT count(*) FROM stage_graph_instantiation_work),
+			(SELECT count(*) FROM execution_graph_snapshots),
+			(SELECT count(*) FROM attempts),
+			(SELECT count(*) FROM stage_runs),
+			(SELECT count(*) FROM stage_storage_reservations),
+			(SELECT count(*) FROM attempt_coordinator_commands),
+			(SELECT count(*) FROM stage_ready_queue_entries)
+	`, testProjectID, testOrganizationID).Scan(
+		&counts[0], &counts[1], &counts[2], &counts[3], &counts[4],
+		&counts[5], &counts[6], &counts[7], &counts[8], &counts[9],
+		&counts[10], &counts[11], &counts[12], &counts[13],
+	); err != nil {
+		t.Fatalf("read Stage Admission effect counts: %v", err)
+	}
+	return counts
 }
 
 func TestStageSchedulerClaimRejectsForgedFairnessIdentity(t *testing.T) {
@@ -1284,10 +1312,10 @@ func TestStageSchedulerMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T)
 		assertPostgresConstraint(
 			t,
 			err,
-			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+			"atomic_stage_graph_admission_rollback_is_unsafe",
 		)
 		version, versionErr := goose.GetDBVersion(fixture.database.Admin)
-		if versionErr != nil || version != 50 {
+		if versionErr != nil || version != 51 {
 			t.Fatalf(
 				"StageScheduler version after refused Down = %d error=%v",
 				version,
@@ -1411,13 +1439,8 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 	if err != nil {
 		t.Fatalf("construct %s AttemptCoordinator: %v", suffix, err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "stage-scheduler-"+suffix, uuid.New(),
-	)
-	attemptID := claim.AttemptID
-	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
-		t.Fatalf("instantiate %s graph: %v", suffix, err)
-	}
+	instantiation := readStageGraphInstantiation(t, database.Admin, job.JobID)
+	attemptID := instantiation.AttemptID
 	var stageRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
 		SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'encoder'

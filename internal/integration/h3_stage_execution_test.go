@@ -259,7 +259,7 @@ func TestOneOfSevenSameNodeDiTFailuresDoesNotFenceUnrelatedWorkers(t *testing.T)
 	running := make([]runningH3DiT, 0, 7)
 	for index := 0; index < 7; index++ {
 		job, attemptID := instantiateH3IntegrationGraph(
-			t, database, coordinator, serverURL, fmt.Sprintf("seven-dit-%d", index),
+			t, database, serverURL, fmt.Sprintf("seven-dit-%d", index),
 		)
 		var encoderRunID, ditRunID uuid.UUID
 		if err := database.Admin.QueryRow(`
@@ -376,7 +376,7 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("migrate Stage graph finalization back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 50 {
+		if err != nil || version != 51 {
 			t.Fatalf("Stage graph finalization version after Up = %d error=%v", version, err)
 		}
 	})
@@ -399,10 +399,10 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 		assertPostgresConstraint(
 			t,
 			err,
-			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+			"atomic_stage_graph_admission_rollback_is_unsafe",
 		)
 		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 50 {
+		if versionErr != nil || version != 51 {
 			t.Fatalf(
 				"Stage graph finalization version after refused Down = %d error=%v",
 				version, versionErr,
@@ -701,7 +701,7 @@ func newH3IntegrationGraphFixture(
 	t.Helper()
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
 	job, attemptID := instantiateH3IntegrationGraph(
-		t, database, coordinator, serverURL, idempotencyKey,
+		t, database, serverURL, idempotencyKey,
 	)
 	return database, coordinator, job, attemptID
 }
@@ -732,7 +732,6 @@ func newH3IntegrationEnvironment(
 func instantiateH3IntegrationGraph(
 	t *testing.T,
 	database testDatabase,
-	coordinator *attemptcoordinator.Service,
 	serverURL string,
 	idempotencyKey string,
 ) (jobResponse, uuid.UUID) {
@@ -752,14 +751,8 @@ func instantiateH3IntegrationGraph(
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode split H3 Job: %v", err)
 	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "h3-stage-execution", uuid.New(),
-	)
-	attemptID := claim.AttemptID
-	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
-		t.Fatalf("instantiate split H3 graph: %v", err)
-	}
-	return job, attemptID
+	instantiation := readStageGraphInstantiation(t, database.Admin, job.JobID)
+	return job, instantiation.AttemptID
 }
 
 func seedVAEIntegrationProfile(t *testing.T, database testDatabase) {

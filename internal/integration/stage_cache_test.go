@@ -51,7 +51,7 @@ func TestStageCacheAdmitAndHitPinsExactArtifactAtBillableStart(t *testing.T) {
 	}
 
 	sourceJob, sourceAttemptID := instantiateH3IntegrationGraph(
-		t, database, coordinator, serverURL, "stage-cache-source",
+		t, database, serverURL, "stage-cache-source",
 	)
 	var sourceRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
@@ -115,7 +115,7 @@ func TestStageCacheAdmitAndHitPinsExactArtifactAtBillableStart(t *testing.T) {
 	}
 
 	targetJob, targetAttemptID := instantiateH3IntegrationGraph(
-		t, database, coordinator, serverURL, "stage-cache-target",
+		t, database, serverURL, "stage-cache-target",
 	)
 	var targetRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
@@ -202,7 +202,7 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 	}
 
 	sourceJob, sourceAttemptID := instantiateH3IntegrationGraph(
-		t, database, coordinator, serverURL, "stage-cache-leaf-source",
+		t, database, serverURL, "stage-cache-leaf-source",
 	)
 	advanceUnboundIntegrationCacheStage(t, database, coordinator, sourceAttemptID, "encoder", 1, 0xe1)
 	advanceUnboundIntegrationCacheStage(t, database, coordinator, sourceAttemptID, "dit", 2, 0xe2)
@@ -253,7 +253,7 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 	}
 
 	_, targetAttemptID := instantiateH3IntegrationGraph(
-		t, database, coordinator, serverURL, "stage-cache-leaf-target",
+		t, database, serverURL, "stage-cache-leaf-target",
 	)
 	advanceUnboundIntegrationCacheStage(t, database, coordinator, targetAttemptID, "encoder", 1, 0xe4)
 	advanceUnboundIntegrationCacheStage(t, database, coordinator, targetAttemptID, "dit", 2, 0xe5)
@@ -335,10 +335,10 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 	assertPostgresConstraint(
 		t,
 		err,
-		"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+		"atomic_stage_graph_admission_rollback_is_unsafe",
 	)
 	version, versionErr := goose.GetDBVersion(database.Admin)
-	if versionErr != nil || version != 50 {
+	if versionErr != nil || version != 51 {
 		t.Fatalf("StageRun output binding version after refused Down = %d error=%v", version, versionErr)
 	}
 }
@@ -383,7 +383,7 @@ func TestStageCacheDeletionWaitsForExactExecutionPin(t *testing.T) {
 	}
 
 	lateJob, lateAttemptID := instantiateH3IntegrationGraph(
-		t, fixture.database, fixture.coordinator, fixture.serverURL,
+		t, fixture.database, fixture.serverURL,
 		"stage-cache-late-hit-after-deletion",
 	)
 	var lateRunID uuid.UUID
@@ -499,7 +499,7 @@ func TestStageCacheScopeAndPolicyFailClosed(t *testing.T) {
 		t.Fatalf("disable Project Stage Cache lookup: %v", err)
 	}
 	disabledJob, disabledAttemptID := instantiateH3IntegrationGraph(
-		t, fixture.database, fixture.coordinator, fixture.serverURL,
+		t, fixture.database, fixture.serverURL,
 		"stage-cache-disabled-target",
 	)
 	var disabledRunID uuid.UUID
@@ -568,7 +568,7 @@ func TestStageCacheScopeAndPolicyFailClosed(t *testing.T) {
 	}
 
 	_, isolatedAttemptID := instantiateH3IntegrationGraph(
-		t, fixture.database, fixture.coordinator, fixture.serverURL,
+		t, fixture.database, fixture.serverURL,
 		"stage-cache-forged-organization",
 	)
 	var isolatedRunID uuid.UUID
@@ -755,10 +755,10 @@ func TestStageCacheMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
 		assertPostgresConstraint(
 			t,
 			err,
-			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+			"atomic_stage_graph_admission_rollback_is_unsafe",
 		)
 		version, versionErr := goose.GetDBVersion(fixture.database.Admin)
-		if versionErr != nil || version != 50 {
+		if versionErr != nil || version != 51 {
 			t.Fatalf(
 				"Stage Cache version after refused Down = %d error=%v",
 				version, versionErr,
@@ -857,7 +857,7 @@ func newPinnedStageCacheFixture(t *testing.T, idempotencyPrefix string) pinnedSt
 		t.Fatalf("construct pinned Stage Cache repository: %v", err)
 	}
 	sourceJob, sourceAttemptID := instantiateH3IntegrationGraph(
-		t, database, coordinator, serverURL, idempotencyPrefix+"-source",
+		t, database, serverURL, idempotencyPrefix+"-source",
 	)
 	var sourceRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
@@ -906,7 +906,7 @@ func newPinnedStageCacheFixture(t *testing.T, idempotencyPrefix string) pinnedSt
 		t.Fatalf("admit pinned Stage Cache entry: %v", err)
 	}
 	targetJob, targetAttemptID := instantiateH3IntegrationGraph(
-		t, database, coordinator, serverURL, idempotencyPrefix+"-target",
+		t, database, serverURL, idempotencyPrefix+"-target",
 	)
 	var targetRunID uuid.UUID
 	if err := database.Admin.QueryRow(`

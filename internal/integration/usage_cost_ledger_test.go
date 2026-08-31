@@ -26,7 +26,7 @@ func TestUsageCostLedgerIsIdempotentRevaluableAndContentFree(t *testing.T) {
 		t.Fatalf("construct Usage/Cost fixture Worker Registry: %v", err)
 	}
 	job, attemptID := instantiateH3IntegrationGraph(
-		t, database, coordinator, serverURL, "usage-cost-ledger",
+		t, database, serverURL, "usage-cost-ledger",
 	)
 	jobID := uuid.MustParse(job.JobID)
 	var encoderRunID uuid.UUID

@@ -72,20 +72,8 @@ func TestStageCutoverRollbackChangesOnlySubsequentJobs(t *testing.T) {
 		t.Fatalf("legacy WorkerPool queued count after Stage Admission = %d, want 0", stagePoolQueued)
 	}
 
-	coordinator, err := attemptcoordinator.NewService(newRolePool(
-		t, database.DSN,
-		"vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
-	))
-	if err != nil {
-		t.Fatalf("construct cutover AttemptCoordinator: %v", err)
-	}
-	claim := claimStageGraphInstantiation(
-		t, database.Admin, "stage-cutover-before-rollback", uuid.New(),
-	)
-	attemptID := claim.AttemptID
-	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
-		t.Fatalf("instantiate Stage-routed Job before rollback: %v", err)
-	}
+	instantiation := readStageGraphInstantiation(t, database.Admin, stageJob.JobID)
+	attemptID := instantiation.AttemptID
 
 	activateLegacyRollback(t, database, 3, uuid.MustParse(stageCutoverRevisionID))
 	legacyJob := submitCutoverJob(t, server.URL, "stage-cutover-after-rollback")
@@ -122,7 +110,7 @@ func TestStageCutoverRollbackChangesOnlySubsequentJobs(t *testing.T) {
 		t.Fatalf("in-flight authority after rollback = %s/%s", frozenJobAuthority, frozenAttemptAuthority)
 	}
 
-	_, err = database.Admin.Exec(`
+	_, err := database.Admin.Exec(`
 		UPDATE jobs
 		SET execution_authority_kind = 'LEGACY_WORKER',
 		    worker_pool_id = $2,

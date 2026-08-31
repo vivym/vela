@@ -683,9 +683,9 @@ func TestStageArtifactMigrationRoundTripAndDurableAuthorityRefusal(t *testing.T)
 		}
 
 		err = goose.DownTo(database.Admin, migrations, 37)
-		assertPostgresConstraint(t, err, "stage_artifact_rollback_is_unsafe")
+		assertPostgresConstraint(t, err, "atomic_stage_graph_admission_rollback_is_unsafe")
 		version, versionErr := goose.GetDBVersion(database.Admin)
-		if versionErr != nil || version != 38 {
+		if versionErr != nil || version != 51 {
 			t.Fatalf(
 				"StageArtifact version after refused Down = %d error=%v", version, versionErr,
 			)

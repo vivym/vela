@@ -326,6 +326,23 @@ func (s *Service) Submit(
 			route.ReservedStorageBytes <= 0 {
 			return Job{}, errors.New("resolved Stage execution route is incomplete")
 		}
+		capacity, capacityErr := queries.LockStageGraphReadyCapacityPath(
+			ctx,
+			store.LockStageGraphReadyCapacityPathParams{
+				ExecutionGraphRevisionID:   route.ExecutionGraphRevisionID,
+				ExecutionProfileRevisionID: route.ExecutionProfileRevisionID,
+			},
+		)
+		if capacityErr != nil {
+			return Job{}, fmt.Errorf("lock Stage graph READY capacity path: %w", capacityErr)
+		}
+		if !capacity.Ready {
+			return Job{}, failure(
+				FailureCodeCapacityUnavailable,
+				"no complete READY Stage capacity path is available",
+				int(capacity.RetryAfterSeconds),
+			)
+		}
 	default:
 		return Job{}, fmt.Errorf(
 			"resolved Job execution route has unsupported authority %q",
@@ -477,6 +494,31 @@ func (s *Service) Submit(
 	}); err != nil {
 		return Job{}, fmt.Errorf("insert Credit Reservation: %w", err)
 	}
+	aggregateVersion := int64(1)
+	if route.ExecutionAuthorityKind == store.ExecutionAuthorityKindSTAGEGRAPH {
+		instantiation, instantiateErr := queries.InstantiateAdmittedStageGraph(
+			ctx,
+			store.InstantiateAdmittedStageGraphParams{
+				OrganizationID: principal.OrganizationID,
+				ProjectID:      projectID,
+				JobID:          jobID,
+			},
+		)
+		if instantiateErr != nil {
+			var postgresError *pgconn.PgError
+			if errors.As(instantiateErr, &postgresError) &&
+				(postgresError.ConstraintName == "stage_graph_ready_capacity_unavailable" ||
+					postgresError.ConstraintName == "stage_ready_queue_depth_exceeded") {
+				return Job{}, failure(
+					FailureCodeCapacityUnavailable,
+					"no complete READY Stage capacity path is available",
+					defaultCapacityRetryAfter,
+				)
+			}
+			return Job{}, fmt.Errorf("instantiate Accepted Stage graph: %w", instantiateErr)
+		}
+		aggregateVersion = instantiation.AggregateVersion
+	}
 	if err := queries.InsertIdempotencyResult(ctx, store.InsertIdempotencyResultParams{
 		OrganizationID: principal.OrganizationID,
 		ProjectID:      projectID,
@@ -492,7 +534,7 @@ func (s *Service) Submit(
 		EventId:          eventID.String(),
 		AggregateType:    "Job",
 		AggregateId:      jobID.String(),
-		AggregateVersion: 1,
+		AggregateVersion: uint64(aggregateVersion),
 		EventType:        "job.ready",
 		SchemaVersion:    1,
 		OccurredAt:       timestamppb.New(requestContext.TransactionTime.Time),
@@ -511,12 +553,13 @@ func (s *Service) Submit(
 		return Job{}, fmt.Errorf("marshal job.ready event: %w", err)
 	}
 	if err := queries.InsertOutboxEvent(ctx, store.InsertOutboxEventParams{
-		EventID:        eventID,
-		OrganizationID: principal.OrganizationID,
-		ProjectID:      projectID,
-		JobID:          jobID,
-		Payload:        payload,
-		OccurredAt:     requestContext.TransactionTime,
+		EventID:          eventID,
+		OrganizationID:   principal.OrganizationID,
+		ProjectID:        projectID,
+		JobID:            jobID,
+		AggregateVersion: aggregateVersion,
+		Payload:          payload,
+		OccurredAt:       requestContext.TransactionTime,
 	}); err != nil {
 		return Job{}, fmt.Errorf("insert job.ready Outbox event: %w", err)
 	}

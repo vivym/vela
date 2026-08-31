@@ -86,6 +86,7 @@ type Querier interface {
 	InsertVisibleCompletion(ctx context.Context, arg InsertVisibleCompletionParams) error
 	InsertVisibleCompletionCharge(ctx context.Context, arg InsertVisibleCompletionChargeParams) error
 	InsertVisibleCompletionOutboxEvent(ctx context.Context, arg InsertVisibleCompletionOutboxEventParams) error
+	InstantiateAdmittedStageGraph(ctx context.Context, arg InstantiateAdmittedStageGraphParams) (InstantiateAdmittedStageGraphRow, error)
 	InvalidateProfileCertificationForCircuit(ctx context.Context, arg InvalidateProfileCertificationForCircuitParams) (int64, error)
 	IsArtifactMultipartUploadRecorded(ctx context.Context, arg IsArtifactMultipartUploadRecordedParams) (bool, error)
 	ListActiveLeaseSigningKeyIDs(ctx context.Context) ([]string, error)
@@ -126,6 +127,7 @@ type Querier interface {
 	LockProjectForAssignment(ctx context.Context, arg LockProjectForAssignmentParams) (LockProjectForAssignmentRow, error)
 	LockSchedulerDispatchForAssignment(ctx context.Context, intentID uuid.UUID) (LockSchedulerDispatchForAssignmentRow, error)
 	LockStageGraphFinalizationCompletionAuthority(ctx context.Context, arg LockStageGraphFinalizationCompletionAuthorityParams) (LockStageGraphFinalizationCompletionAuthorityRow, error)
+	LockStageGraphReadyCapacityPath(ctx context.Context, arg LockStageGraphReadyCapacityPathParams) (LockStageGraphReadyCapacityPathRow, error)
 	LockStartAuthority(ctx context.Context, arg LockStartAuthorityParams) (LockStartAuthorityRow, error)
 	LockVisibleCompletionAuthority(ctx context.Context, arg LockVisibleCompletionAuthorityParams) (LockVisibleCompletionAuthorityRow, error)
 	LockVisibleCompletionCreditReservation(ctx context.Context, arg LockVisibleCompletionCreditReservationParams) (LockVisibleCompletionCreditReservationRow, error)
