@@ -94,6 +94,10 @@ case "$1" in
 		;;
 	is-enabled) printf 'enabled\n' ;;
 	show)
+		if [ -e "$VELA_RKE2_NOSWAP_TEST_RESTART_MARKER" ] &&
+			[ "${VELA_NOSWAP_STUB_AFTER_SHOW_FAIL:-0}" = 1 ]; then
+			exit 55
+		fi
 		printf '%s\n' \
 			'Id=rke2-agent.service' \
 			'ActiveState=active' \
@@ -138,6 +142,7 @@ run_helper() {
 		VELA_NOSWAP_STUB_IP=${VELA_NOSWAP_STUB_IP:-10.1.200.19} \
 		VELA_NOSWAP_STUB_BEFORE_STATE=${VELA_NOSWAP_STUB_BEFORE_STATE:-active} \
 		VELA_NOSWAP_STUB_AFTER_STATE=${VELA_NOSWAP_STUB_AFTER_STATE:-active} \
+		VELA_NOSWAP_STUB_AFTER_SHOW_FAIL=${VELA_NOSWAP_STUB_AFTER_SHOW_FAIL:-0} \
 		VELA_NOSWAP_STUB_LN_COLLISION=${VELA_NOSWAP_STUB_LN_COLLISION:-0} \
 		VELA_NOSWAP_REAL_LN=$real_ln \
 		"$helper" "$@"
@@ -281,4 +286,28 @@ grep -Eq '^sha256=[0-9a-f]{64}$' "$unhealthy_receipt/target.after.txt" ||
 (cd "$unhealthy_receipt" && sha256sum --check --strict SHA256SUMS >/dev/null) ||
 	fail "unhealthy restart receipt manifest did not verify"
 
-printf 'result=PASS tests=9\n'
+prepare_root post-restart-evidence-failure
+evidence_target=$case_config_dir/99-vela-noswap.conf
+evidence_receipt=$case_root/receipts/post-restart-evidence-failure
+evidence_stderr=$temporary/post-restart-evidence-failure.stderr
+VELA_NOSWAP_STUB_AFTER_SHOW_FAIL=1
+if run_helper "$case_root" worker-1 "$evidence_receipt" \
+	--swap-exception-approved --restart-approved --apply 2>"$evidence_stderr"; then
+	fail "helper reported success after post-restart evidence capture failed"
+fi
+unset VELA_NOSWAP_STUB_AFTER_SHOW_FAIL
+[ -f "$evidence_target" ] || fail "post-restart evidence failure lost the published target"
+grep -Fxq 'status=FAIL role=worker-1 service=rke2-agent changed=true reason=unexpected-exit-status-55' \
+	"$evidence_receipt/STATUS" || fail "EXIT trap did not seal the post-restart failure"
+grep -Fxq 'state=regular' "$evidence_receipt/target.after.txt" ||
+	fail "EXIT trap omitted post-restart target state"
+grep -Eq '^sha256=[0-9a-f]{64}$' "$evidence_receipt/target.after.txt" ||
+	fail "EXIT trap omitted post-restart target digest"
+grep -Fq "rm -- $evidence_target" "$evidence_receipt/ROLLBACK.txt" ||
+	fail "EXIT trap receipt omitted helper-owned rollback instructions"
+[ "$(cat "$case_root/systemctl.log")" = 'restart rke2-agent' ] ||
+	fail "post-restart evidence failure called an unexpected service"
+(cd "$evidence_receipt" && sha256sum --check --strict SHA256SUMS >/dev/null) ||
+	fail "post-restart evidence failure manifest did not verify"
+
+printf 'result=PASS tests=10\n'

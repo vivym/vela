@@ -14,6 +14,9 @@ target_name=99-vela-noswap.conf
 base_name=00-rke2-defaults.conf
 target_tmp=
 desired_tmp=
+receipt_started=false
+receipt_sealed=false
+failure_reason=
 
 fail() {
 	printf 'configure-kubelet-noswap: %s\n' "$*" >&2
@@ -23,6 +26,32 @@ fail() {
 cleanup() {
 	[ -z "$target_tmp" ] || rm -f -- "$target_tmp"
 	[ -z "$desired_tmp" ] || rm -f -- "$desired_tmp"
+}
+
+seal_failed_receipt() {
+	reason=$1
+	printf 'status=FAIL role=%s service=%s changed=%s reason=%s\n' \
+		"$role" "$service" "$changed" "$reason" >"$receipt_dir/STATUS"
+	write_target_after
+	"$systemctl_cmd" show "$service" \
+		--property=Id,ActiveState,SubState,UnitFileState,MainPID,NRestarts \
+		--no-pager >"$receipt_dir/service.after.txt" 2>&1 || true
+	write_manifest
+	receipt_sealed=true
+}
+
+on_exit() {
+	exit_status=$?
+	trap - EXIT HUP INT TERM
+	set +e
+	if [ "$receipt_started" = true ] && [ "$receipt_sealed" != true ]; then
+		if [ -z "$failure_reason" ]; then
+			failure_reason=unexpected-exit-status-$exit_status
+		fi
+		seal_failed_receipt "$failure_reason"
+	fi
+	cleanup
+	exit "$exit_status"
 }
 
 write_manifest() {
@@ -56,15 +85,9 @@ write_target_after() {
 }
 
 fail_after_write() {
-	reason=$1
-	printf 'status=FAIL role=%s service=%s changed=%s reason=%s\n' \
-		"$role" "$service" "$changed" "$reason" >"$receipt_dir/STATUS"
-	write_target_after
-	"$systemctl_cmd" show "$service" \
-		--property=Id,ActiveState,SubState,UnitFileState,MainPID,NRestarts \
-		--no-pager >"$receipt_dir/service.after.txt" 2>&1 || true
-	write_manifest
-	fail "$reason; preserve $receipt_dir and follow its separately approved rollback instructions"
+	failure_reason=$1
+	seal_failed_receipt "$failure_reason"
+	fail "$failure_reason; preserve $receipt_dir and follow its separately approved rollback instructions"
 }
 
 case "$role" in
@@ -159,7 +182,10 @@ base=$config_dir/$base_name
 
 target=$config_dir/$target_name
 desired_tmp=$(mktemp "${TMPDIR:-/tmp}/vela-noswap-desired.XXXXXX")
-trap cleanup EXIT HUP INT TERM
+trap on_exit EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 printf '%s\n' \
 	'apiVersion: kubelet.config.k8s.io/v1beta1' \
 	'kind: KubeletConfiguration' \
@@ -222,6 +248,7 @@ parent_permissions=$($stat_cmd -c '%A' "$receipt_parent")
 	fail "receipt directory already exists"
 
 mkdir -m 0700 "$receipt_dir"
+receipt_started=true
 printf 'vela-rke2-kubelet-noswap-receipt-v1\n' >"$receipt_dir/SCHEMA"
 printf 'status=in_progress role=%s service=%s changed=%s\n' \
 	"$role" "$service" "$changed" >"$receipt_dir/STATUS"
@@ -268,6 +295,8 @@ if [ "$write_required" = true ]; then
 		fail_after_write "temporary drop-in ownership or mode changed"
 	ln "$target_tmp" "$target" || fail_after_write "target appeared during atomic publication"
 	changed=true
+	printf 'status=in_progress role=%s service=%s changed=true\n' \
+		"$role" "$service" >"$receipt_dir/STATUS"
 	rm -f -- "$target_tmp"
 	target_tmp=
 fi
@@ -307,8 +336,8 @@ write_target_after
 printf 'status=PASS role=%s service=%s changed=%s\n' \
 	"$role" "$service" "$changed" >"$receipt_dir/STATUS"
 write_manifest
-trap - EXIT HUP INT TERM
-cleanup
+receipt_sealed=true
+cleanup || true
 
 printf 'result=PASS role=%s service=%s changed=%s receipt=%s follow_up=strict-cluster-verification-required\n' \
 	"$role" "$service" "$changed" "$receipt_dir"

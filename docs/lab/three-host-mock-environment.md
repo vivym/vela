@@ -1475,12 +1475,13 @@ responses, and 17 exact historical Failed Pods remain. No cluster mutation or
 historical cleanup was performed by this postflight.
 
 Repository HEAD now contains a guarded
-`deploy/lab/rke2-airgap/configure-kubelet-noswap.sh` candidate and a nine-case
+`deploy/lab/rke2-airgap/configure-kubelet-noswap.sh` candidate and a ten-case
 CLI/stub test covering missing confirmations, first apply, idempotent recovery,
 wrong host identity, a symlink target, a concurrent publication collision, an
-inactive service, and an unhealthy post-restart service. The helper is not
-deployed and has not restarted any lab node. A fresh read-only node inventory
-confirmed that all three live drop-in
+inactive service, an unhealthy post-restart service, and an unexpected
+post-restart evidence-capture failure. The helper is not deployed and has not
+restarted any lab node. A fresh read-only node inventory confirmed that all
+three live drop-in
 directories are `root:root 0700`, contain only a `root:root 0600`
 `00-rke2-defaults.conf`, and have the expected active/enabled role-matched RKE2
 service. The raw three-node `configz` boundary remains unchanged at
