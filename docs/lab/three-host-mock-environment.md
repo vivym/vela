@@ -1477,12 +1477,12 @@ The retained result is `LAB_VERIFICATION_PARTIAL`, `FAIL failures=4`: explicit
 responses, and 17 exact historical Failed Pods were live at capture time. No
 cluster mutation or historical cleanup was performed by this postflight.
 
-Repository HEAD now contains a guarded
+Before the approved rollout, repository HEAD contained a guarded
 `deploy/lab/rke2-airgap/configure-kubelet-noswap.sh` candidate and a ten-case
 CLI/stub test covering missing confirmations, first apply, idempotent recovery,
 wrong host identity, a symlink target, a concurrent publication collision, an
 inactive service, an unhealthy post-restart service, and an unexpected
-post-restart evidence-capture failure. The helper is not deployed and has not
+post-restart evidence-capture failure. The helper had not yet been deployed or
 restarted any lab node. A fresh read-only node inventory confirmed that all
 three live drop-in
 directories are `root:root 0700`, contain only a `root:root 0600`
@@ -1496,19 +1496,71 @@ It found 16 rather than 17 Failed Pods. The missing object was
 `vela-lab-smoke-7lqm6-vckcq`; no delete was issued by this work. All 16
 remaining Pods are owned by failed `vela-lab-smoke-*` Jobs with
 `ttlSecondsAfterFinished=86400`, so the live count will continue to decay under
-the existing TTL controller. This changes only the transient cleanliness
-count: the strict result still has four failures while all three explicit
-NoSwap observations are absent and at least one Failed Pod remains.
+the existing TTL controller. At that preflight, this changed only the transient
+cleanliness count: the strict result still had four failures while all three
+explicit NoSwap observations were absent and at least one Failed Pod remained.
 
 The retained remote verifier at
 `/root/vela-rke2-ops/gpu-operator-v26.3.2/verify-cluster.sh` is not the strict
 current repository version: it uses `.memorySwap.swapBehavior // "NoSwap"` and
 therefore reported only the then-live historical Pods as one failure in an
 earlier fresh read-only run. That is a false default, not evidence that the
-live kubelets have `NoSwap` configured. Before any approved rollout, stage and
-hash the current fail-closed verifier, then apply Worker 1, Worker 2, and the
-shared control host one at a time with node/GPU/workload recovery checks
-between restarts. A separate restart approval is still required.
+live kubelets have `NoSwap` configured. This established the rollout
+requirement: stage and hash the current fail-closed verifier, then apply Worker
+1, Worker 2, and the shared control host one at a time with
+node/GPU/workload recovery checks between restarts.
+
+### Explicit NoSwap rollout
+
+Starting at `2026-08-31T04:32:08Z`, a fresh preflight reconfirmed all three
+nodes Ready, GPU allocatable `0/8/8`, zero unavailable Deployments and
+StatefulSets, zero nonterminal unready Pods, and the exact database idle
+boundary `0|0|0|2` (active Leases, Production Gate receipts, active Jobs,
+READY/HEALTHY Workers). All 16 historical Failed Pods were still owned by
+failed Jobs with `ttlSecondsAfterFinished=86400`. No Pod deletion was issued.
+
+The approved helper and strict verifier were staged on all three hosts under
+`/root/vela-rke2-ops/noswap-rollout-2129a22/`, with root-only mode `0700` and
+the following fixed SHA-256 values:
+
+- `configure-kubelet-noswap.sh`:
+  `e991f253072422382a3fa02d05d078378e1c6b0aac251e361193cef171eda1d8`
+- `verify-cluster.sh`:
+  `10b7dae8395f2d1ca1bd9fb4f8d5a73e4a98af64fb105cd24e8981f1599af24a`
+
+The rollout ran in the approved Worker 1, Worker 2, shared control order. Each
+helper returned `PASS changed=true`; each receipt manifest passes
+`sha256sum --check --strict`:
+
+| Role | Receipt | `SHA256SUMS` SHA-256 |
+| --- | --- | --- |
+| Worker 1 | `/root/vela-rke2-receipts/20260831T043755Z-worker-1-noswap` | `de52620b0f4dab40a048391d5ae8e5da7b6510436442bf55ce51f430d73270a1` |
+| Worker 2 | `/root/vela-rke2-receipts/20260831T043959Z-worker-2-noswap` | `1c9ebcda125b6043311a15d7963bd167799c6cc22ce2978c9ba8943d61dccad7` |
+| Shared control | `/root/vela-rke2-receipts/20260831T044213Z-server-noswap` | `3f409650537fe39e8a1cb099c4a15f239851ca8e305940cc9ff97dfb7ff99751` |
+
+After every restart, the matching RKE2 service was active/enabled, the node was
+Ready, the Worker retained `8/8` GPUs, workloads were available, the database
+returned to `0|0|0|2`, and the service journal had no error-priority entries in
+the rollout window. The final raw `configz` responses all report
+`failSwapOn=false` and explicit `memorySwap.swapBehavior=NoSwap`. The control
+node remains at GPU allocatable `0`; no GPU workload was scheduled there.
+
+The control restart did not restart Docker. The private Registry container ID
+remained `2bd86fd8f7db`, the excluded shared experiment container ID remained
+`b0a653da3926`, and the unauthenticated Registry `/v2/` check remained `401`.
+No Docker, Registry, host swap, `/etc/fstab`, cgroup, Worker ZFS, or historical
+Pod cleanup action was performed.
+
+The retained postflight is
+`/root/vela-rke2-receipts/20260831T044634Z-cluster-strict-post-noswap`; its
+`SHA256SUMS` file has SHA-256
+`66ce07ecff3a29fae97eefff1666f5003bec1e87d6717a0a98696c06bf0a4e07`.
+The current strict result is `LAB_VERIFICATION_PARTIAL`, `FAIL failures=1`:
+every explicit NoSwap check now passes, and the only failure is `pods-ready`
+for the 16 retained historical Failed Pods. Their 16 owning Jobs all retain
+`ttlSecondsAfterFinished=86400`; cleanup remains TTL-only. This closes the
+explicit NoSwap verification gap but is not a Production Gate receipt.
+Production Gates remain `0/9 PASS`.
 
 ## Experiment operating rules
 
