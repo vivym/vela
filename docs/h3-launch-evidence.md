@@ -60,3 +60,33 @@ when assembling the real H3 Production Gate evidence. The full campaign must
 still provide mixed-load soak, cross-node StageArtifact lineage, cache and
 fencing checks, fault injection, N/N-1 drain, rollback, dashboards, alerts,
 runbooks and ownership evidence.
+
+## Stage execution campaign evidence
+
+`internal/h3campaignevidence` implements the repository-side capture and strict
+verification boundary for one H3 Stage execution campaign. It accepts a sealed
+release binding only after `releasebundle.LoadResidencyPlanRollouts` has
+validated the canonical bundle and selected exactly one embedded ResidencyPlan.
+It then double-reads PostgreSQL through independent read-only repeatable-read
+transactions and rejects any business-authority drift between the two reads.
+
+The accepted campaign contains exactly:
+
+- one successful same-node Encoder -> DiT -> VAE Job;
+- one successful three-node Encoder -> DiT -> VAE Job with the same root input,
+  graph, ordered StageProfile, StageInterface, connector, and final digest;
+- two consumed adjacent-edge TransferTickets per physical Job;
+- one successful Job with exact Encoder and DiT cache hits and a physical VAE;
+- Project-scoped cache entries bound to source Artifacts, exact object versions,
+  equivalence revisions, active references, execution pins, and output bindings;
+  and
+- one ArtifactSet, Visible Completion, and Charge for every completed campaign
+  Job, with every physical source and target Worker bound to the selected
+  ResidencyPlan revision.
+
+The resulting JSON records truthful provenance for both database reads. The
+integration fixture proves these fail-closed contracts against PostgreSQL, but
+it uses synthetic local execution and storage. There is not yet a
+`capture-campaign` operator command, dedicated evidence database role, real H3
+GPU execution, production network/storage fault exercise, or Launch Receipt.
+This repository evidence does not advance `0/9 PASS`.

@@ -51,10 +51,12 @@ type h3IntegrationStage struct {
 	resourceClass   string
 	capacityVector  map[string]int64
 	contentType     string
+	residencyPlanID uuid.UUID
 }
 
 type splitH3GraphOutcome struct {
 	database      testDatabase
+	jobID         uuid.UUID
 	attemptID     uuid.UUID
 	finalArtifact stageartifact.Artifact
 }
@@ -416,10 +418,45 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 	if len(nodes) != 3 {
 		t.Fatalf("H3 placement nodes = %v, want Encoder/DiT/VAE", nodes)
 	}
-	database, coordinator, job, attemptID := newH3IntegrationGraphFixture(
-		t, "split-h3-"+nodes[0]+nodes[1]+nodes[2],
-	)
+	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
 	seedWorkerRegistryPlan(t, database.Admin)
+	return runSplitH3StageGraphInEnvironment(
+		t, database, coordinator, serverURL, nodes,
+		"split-h3-"+nodes[0]+nodes[1]+nodes[2],
+	)
+}
+
+func runSplitH3StageGraphInEnvironment(
+	t *testing.T,
+	database testDatabase,
+	coordinator *attemptcoordinator.Service,
+	serverURL string,
+	nodes []string,
+	idempotencyKey string,
+) splitH3GraphOutcome {
+	return runSplitH3StageGraphInEnvironmentWithContentTypes(
+		t, database, coordinator, serverURL, nodes, idempotencyKey, nil, 0xc0, uuid.Nil,
+	)
+}
+
+func runSplitH3StageGraphInEnvironmentWithContentTypes(
+	t *testing.T,
+	database testDatabase,
+	coordinator *attemptcoordinator.Service,
+	serverURL string,
+	nodes []string,
+	idempotencyKey string,
+	contentTypes map[string]string,
+	identityBase byte,
+	residencyPlanID uuid.UUID,
+) splitH3GraphOutcome {
+	t.Helper()
+	if len(nodes) != 3 {
+		t.Fatalf("H3 placement nodes = %v, want Encoder/DiT/VAE", nodes)
+	}
+	job, attemptID := instantiateH3IntegrationGraph(
+		t, database, serverURL, idempotencyKey,
+	)
 	registry, err := fleet.NewService(newRolePool(
 		t, database.DSN, "vela_internal_login", "vela-internal-password",
 	))
@@ -444,34 +481,9 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 		t.Fatalf("construct split H3 TransferTicket issuer: %v", err)
 	}
 
-	stages := []h3IntegrationStage{
-		{
-			key: "encoder", stage: h3stage.StageEncoder,
-			profileStableID: h3stage.EncoderSingleGPUProfile,
-			profileID:       encoderStageProfileID,
-			workerProfileID: encoderWorkerProfileID,
-			component:       "h3-encoder-v1", outputPort: "conditioning",
-			outputInterface: "49000000-0000-0000-0000-000000000011",
-			nodeIdentity:    nodes[0],
-		},
-		{
-			key: "dit", stage: h3stage.StageDiT,
-			profileStableID: h3stage.DiTSingleGPUProfile,
-			profileID:       ditStageProfileID,
-			workerProfileID: ditWorkerProfileID,
-			component:       "h3-dit-v1", outputPort: "latent",
-			outputInterface: "49000000-0000-0000-0000-000000000012",
-			nodeIdentity:    nodes[1],
-		},
-		{
-			key: "vae", stage: h3stage.StageVAEDecoder,
-			profileStableID: h3stage.VAESingleGPUProfile,
-			profileID:       h3VAEStageProfileID,
-			workerProfileID: h3VAEWorkerProfileID,
-			component:       "h3-vae-v1", outputPort: "video",
-			outputInterface: "49000000-0000-0000-0000-000000000013",
-			nodeIdentity:    nodes[2],
-		},
+	stages := h3IntegrationStages(nodes, contentTypes)
+	for index := range stages {
+		stages[index].residencyPlanID = residencyPlanID
 	}
 
 	root := sha256.Sum256([]byte("certified-h3-input-v1"))
@@ -494,7 +506,7 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 		}
 		assignment := assignH3IntegrationStage(
 			t, database, coordinator, registry, attemptID, stageRunID, stageVersion,
-			stage, byte(0xc0+index),
+			stage, identityBase+byte(index),
 		)
 		if inputArtifact != nil {
 			connectorID := uuid.MustParse("49000000-0000-0000-0000-000000000050")
@@ -596,8 +608,45 @@ func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {
 		)
 	}
 	return splitH3GraphOutcome{
-		database: database, attemptID: attemptID, finalArtifact: finalArtifact,
+		database: database, jobID: uuid.MustParse(job.JobID),
+		attemptID: attemptID, finalArtifact: finalArtifact,
 	}
+}
+
+func h3IntegrationStages(nodes []string, contentTypes map[string]string) []h3IntegrationStage {
+	stages := []h3IntegrationStage{
+		{
+			key: "encoder", stage: h3stage.StageEncoder,
+			profileStableID: h3stage.EncoderSingleGPUProfile,
+			profileID:       encoderStageProfileID,
+			workerProfileID: encoderWorkerProfileID,
+			component:       "h3-encoder-v1", outputPort: "conditioning",
+			outputInterface: "49000000-0000-0000-0000-000000000011",
+			nodeIdentity:    nodes[0], contentType: contentTypes["encoder"],
+		},
+		{
+			key: "dit", stage: h3stage.StageDiT,
+			profileStableID: h3stage.DiTSingleGPUProfile,
+			profileID:       ditStageProfileID,
+			workerProfileID: ditWorkerProfileID,
+			component:       "h3-dit-v1", outputPort: "latent",
+			outputInterface: "49000000-0000-0000-0000-000000000012",
+			nodeIdentity:    nodes[1], contentType: contentTypes["dit"],
+		},
+		{
+			key: "vae", stage: h3stage.StageVAEDecoder,
+			profileStableID: h3stage.VAESingleGPUProfile,
+			profileID:       h3VAEStageProfileID,
+			workerProfileID: h3VAEWorkerProfileID,
+			component:       "h3-vae-v1", outputPort: "video",
+			outputInterface: "49000000-0000-0000-0000-000000000013",
+			nodeIdentity:    nodes[2], contentType: "video/mp4",
+		},
+	}
+	if contentTypes["vae"] != "" {
+		stages[2].contentType = contentTypes["vae"]
+	}
+	return stages
 }
 
 func assignH3IntegrationStage(
@@ -622,22 +671,28 @@ func assignH3IntegrationStage(
 	if capacityVector == nil {
 		capacityVector = map[string]int64{"concurrency": 1}
 	}
+	var residencyPlanID *uuid.UUID
+	if stage.residencyPlanID != uuid.Nil {
+		residencyPlanID = &stage.residencyPlanID
+	}
 	if _, err := database.Admin.Exec(`
 		INSERT INTO capacity_pools (
 			id, stable_id, stage_profile_revision_id, resource_class,
-			security_class, region, max_ready_queue_depth, state
-		) VALUES ($1, $2, $3, $4, 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE')
+			security_class, region, max_ready_queue_depth, state,
+			residency_plan_revision_id
+		) VALUES ($1, $2, $3, $4, 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE', $5)
 	`, poolID, "h3-integration-"+stage.key+"-"+workerID.String(), stage.profileID,
-		resourceClass); err != nil {
+		resourceClass, residencyPlanID); err != nil {
 		t.Fatalf("seed %s CapacityPool: %v", stage.key, err)
 	}
 	if _, err := database.Admin.Exec(`
 		INSERT INTO worker_instances (
 			id, worker_profile_revision_id, capacity_pool_id, worker_bundle_id,
 			lifecycle_state, reachability_state, instance_epoch,
-			control_session_epoch, desired_member_count, desired_device_count
-		) VALUES ($1, $2, $3, $4, 'PROVISIONING', 'DISCONNECTED', 1, 1, 1, 1)
-	`, workerID, stage.workerProfileID, poolID, workerRegistryBundleID); err != nil {
+			control_session_epoch, desired_member_count, desired_device_count,
+			residency_plan_revision_id
+		) VALUES ($1, $2, $3, $4, 'PROVISIONING', 'DISCONNECTED', 1, 1, 1, 1, $5)
+	`, workerID, stage.workerProfileID, poolID, workerRegistryBundleID, residencyPlanID); err != nil {
 		t.Fatalf("seed %s WorkerInstance: %v", stage.key, err)
 	}
 	evidence := workerRegistryEvidenceValue(t, workerID, identityByte)
@@ -709,6 +764,13 @@ func newH3IntegrationGraphFixture(
 func newH3IntegrationEnvironment(
 	t *testing.T,
 ) (testDatabase, *attemptcoordinator.Service, string) {
+	return newH3IntegrationEnvironmentWithCatalogSetup(t, nil)
+}
+
+func newH3IntegrationEnvironmentWithCatalogSetup(
+	t *testing.T,
+	setup func(*testing.T, testDatabase),
+) (testDatabase, *attemptcoordinator.Service, string) {
 	t.Helper()
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -717,6 +779,9 @@ func newH3IntegrationEnvironment(
 	seedEncoderAssignmentProfile(t, database)
 	seedDiTAssignmentProfile(t, database)
 	seedVAEIntegrationProfile(t, database)
+	if setup != nil {
+		setup(t, database)
+	}
 	activateH3StageGraph(t, database)
 	server := admissionServerForDatabase(t, database)
 	coordinator, err := attemptcoordinator.NewService(newRolePool(

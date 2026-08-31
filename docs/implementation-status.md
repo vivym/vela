@@ -37,6 +37,13 @@ cross-node, or model execution. This is not complete
 acceptance closure. Real cluster evidence, the release-coupled schema and
 monolithic-path deletion, permanent reachability closure, and production
 evidence are still pending.
+The repository now also captures a synthetic same-node/cross-node/cache Stage
+campaign from PostgreSQL with a canonical-release-sealed ResidencyPlan binding,
+two stable read-only snapshots, exact StageArtifact lineage, ordered
+profile/interface/connector equivalence, consumed TransferTickets, cache
+reference/pin/output bindings, and exactly-once completion/charge checks. This
+is repository integration evidence only; it does not prove physical cross-node
+transport or create a Launch Receipt.
 Targeted atomic Admission, rollback-precedence, and version-specific role-surface
 integration coverage is green. Repository-wide shards retain pre-existing
 historical-schema and N-1 compatibility failures reproduced at `37e0235`; this
@@ -51,7 +58,7 @@ production evidence or a Launch Receipt.
 | H3 Stage Execution Architecture | Accepted target; S49.1-S49.11 complete and S49.12 cutover/automatic-instantiation work started | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
 | Schema and protocol migration | Expansion through migration `00053`; M5 evidence/seal and guarded contraction readiness archive added; release-coupled schema and legacy-path deletion pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
-| Implementation slices | S49.1-S49.11 complete; S49.12 partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Implementation slices | S49.1-S49.11 complete; S49.12 partial, including repository campaign capture/verification | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
 Until the release-coupled contraction and repository deletion land,

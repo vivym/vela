@@ -340,6 +340,17 @@ but Fleet neither reads Secret values nor verifies live resource UID/content.
 Kubernetes admission control and secret-manager evidence must prevent deletion and
 same-name recreation of immutable rollout resources before activation.
 
+The repository campaign-evidence slice now validates a canonical release bundle
+and seals its exact release/configuration/ResidencyPlan binding before capture.
+It double-reads PostgreSQL, preserves both read provenances, rejects authority
+drift, and closes synthetic same-node/cross-node/cache evidence over exact root
+input, graph, ordered profiles/interfaces/connectors, StageArtifact lineage,
+consumed TransferTickets, source/target Worker plan ownership, cache
+reference/pin/output binding, ArtifactSet, Visible Completion, and Charge. The
+fixture still uses local synthetic payloads and storage. It does not prove real
+GPU execution, physical cross-node transport, Kubernetes/DRA actuation, fault
+behavior, SLOs, or any Production Gate.
+
 Deliver:
 
 - staged cohort cutover and rollback-before-contraction controls;
