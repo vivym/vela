@@ -3,8 +3,10 @@
 Status: applied three-node lab receipt. RKE2 `v1.35.7+rke2r1`, Canal, and GPU
 Operator `v26.3.2` are running on the approved one-control/two-Worker topology.
 Base and GPU postflight plus four sequential GPU smoke probes passed on
-2026-08-29. Mutating helpers still require the literal `--apply` argument; this
-lab result is not production, HA, DR, or H3 certification evidence.
+2026-08-29. The stricter current postflight additionally rejects an omitted
+`memorySwap.swapBehavior` and the retained historical Failed Pods. Mutating
+helpers still require the literal `--apply` argument; this lab result is not
+production, HA, DR, or H3 certification evidence.
 
 The lab candidate is the RKE2 stable-channel release observed on 2026-08-29:
 
@@ -132,6 +134,7 @@ binary installation so that no step implicitly starts RKE2 or Canal:
 | `publish-rke2-images.sh` | One root-only publication state file, Docker source/target tags, and the existing private Registry | Does not prune, restart Docker/Registry, install RKE2, or copy the archive to Workers |
 | `capture-node-state.sh` | One new root-owned `0700` receipt directory | Does not change host, Docker, GPU, CNI, firewall, or RKE2 state |
 | `install-node.sh` | `/usr/local` RKE2 payload and root-only `/etc/rancher/rke2` inputs | Does not copy an image archive, enable, or start the RKE2 service |
+| `configure-kubelet-noswap.sh` | One exact kubelet drop-in, one new root-only receipt, and one approved restart of the role-matched RKE2 service | Does not disable host swap, edit `/etc/fstab`, clean Pods, change another service, or assert cluster recovery |
 | `publish-gpu-operator-bundle.sh` | Root-only GPU bundle state plus four private Registry tags | Does not manage host drivers/toolkit, install the chart, or prune source images |
 | `mirror-gpu-operator-images-worker.sh` | Worker 1 mirror state, exact public source images, and four private Registry tags | Restricted to the idle selected Worker; does not change RKE2, GPU state, or Docker configuration |
 
@@ -405,6 +408,53 @@ convert that missing observation into `NoSwap`; it fails closed until an
 approved kubelet configuration makes `memorySwap.swapBehavior=NoSwap`
 explicit and a fresh post-start receipt observes it. Applying that change and
 restarting RKE2 are separate operations on the shared control host.
+
+`configure-kubelet-noswap.sh` prepares that exact change but has not been run
+on any lab node. It requires the exact role, hostname, LAN interface/address,
+an active and enabled role-matched RKE2 service, the observed root-owned
+`0700` kubelet drop-in directory, its sole root-owned `0600`
+`00-rke2-defaults.conf`, one active `/swap.img`, and all three literal
+confirmations. It refuses a symlink, conflicting target, extra drop-in, unsafe
+receipt parent, inactive service, or pre-existing receipt. The installed file
+is exactly `99-vela-noswap.conf`, ends in the upstream-required `.conf`
+suffix, and contains a partial `KubeletConfiguration` with `apiVersion`,
+`kind`, and `memorySwap.swapBehavior: NoSwap`.
+
+Each run records the exact node/service/swap and target-before state, applied
+drop-in, resulting target digest, service after-state, rollback instructions,
+and a strict SHA-256 manifest. It atomically publishes an absent target, accepts
+only an identical root-owned `0600` target for recovery/idempotency, and
+restarts only `rke2-agent` for a Worker or `rke2-server` for the control host.
+If restart or the post-restart service check fails, it leaves a `FAIL` receipt
+and the target in place for diagnosis; rollback is never automatic.
+
+After a separate restart approval, roll one node at a time in this exact order:
+
+```text
+sudo ./configure-kubelet-noswap.sh worker-1 \
+  /root/vela-rke2-receipts/<timestamp>-worker-1-noswap \
+  --swap-exception-approved --restart-approved --apply
+
+sudo ./configure-kubelet-noswap.sh worker-2 \
+  /root/vela-rke2-receipts/<timestamp>-worker-2-noswap \
+  --swap-exception-approved --restart-approved --apply
+
+sudo ./configure-kubelet-noswap.sh server \
+  /root/vela-rke2-receipts/<timestamp>-server-noswap \
+  --swap-exception-approved --restart-approved --apply
+```
+
+Do not start the next node until the current node is Ready, its expected GPU
+capacity/allocatable value has recovered, all non-retained workloads are Ready,
+and the current strict verifier has been run from the control node. The shared
+control host is last. The copy currently retained at
+`/root/vela-rke2-ops/gpu-operator-v26.3.2/verify-cluster.sh` is obsolete: it
+uses `// "NoSwap"` and therefore converts a missing field into a false PASS.
+Stage and hash the current repository verifier, whose fallback is
+`// "__MISSING__"`, before this rollout. Even after all three explicit fields
+pass, the 17 intentionally retained historical Failed Pods keep the strict
+cluster cleanliness result at one failure unless their disposition receives a
+separate approval.
 
 `preflight-node.sh` emits that read-only receipt and requires root so firewall
 and ownership hashes are authoritative. It deliberately returns `FAIL` until

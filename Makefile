@@ -22,7 +22,7 @@ TOOLS_BIN := $(CURDIR)/bin
 VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" \
 	"$(RELEASE_IMAGE_PREFIX)" "$(H3_BACKEND_CONTEXT)" "$(H3_BACKEND_SHA256)"
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle verify-launch lint test test-lab-scripts test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-runner-proto generate-sql
 
@@ -51,9 +51,12 @@ lint:
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
 	cd runner && uv run --frozen ruff check .
 
-test:
+test: test-lab-scripts
 	go test ./...
 	cd runner && uv run --frozen pytest
+
+test-lab-scripts:
+	./deploy/lab/rke2-airgap/test-configure-kubelet-noswap.sh
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)

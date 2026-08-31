@@ -1474,6 +1474,27 @@ The current result is `LAB_VERIFICATION_PARTIAL`, `FAIL failures=4`: explicit
 responses, and 17 exact historical Failed Pods remain. No cluster mutation or
 historical cleanup was performed by this postflight.
 
+Repository HEAD now contains a guarded
+`deploy/lab/rke2-airgap/configure-kubelet-noswap.sh` candidate and an eight-case
+CLI/stub test covering missing confirmations, first apply, idempotent recovery,
+wrong host identity, a symlink target, an inactive service, and an unhealthy
+post-restart service. The helper is not deployed and has not restarted any lab
+node. A fresh read-only node inventory confirmed that all three live drop-in
+directories are `root:root 0700`, contain only a `root:root 0600`
+`00-rke2-defaults.conf`, and have the expected active/enabled role-matched RKE2
+service. The raw three-node `configz` boundary remains unchanged at
+`memorySwap: {}`.
+
+The retained remote verifier at
+`/root/vela-rke2-ops/gpu-operator-v26.3.2/verify-cluster.sh` is not the strict
+current repository version: it uses `.memorySwap.swapBehavior // "NoSwap"` and
+therefore reported only the 17 historical Pods as one failure in a fresh
+read-only run. That is a false default, not evidence that the live kubelets
+have `NoSwap` configured. Before any approved rollout, stage and hash the
+current fail-closed verifier, then apply Worker 1, Worker 2, and the shared
+control host one at a time with node/GPU/workload recovery checks between
+restarts. A separate restart approval is still required.
+
 ## Experiment operating rules
 
 - Build the mock backend with the contract in
