@@ -276,18 +276,23 @@ default and recommends control-plane nodes without swap. Disabling host swap is
 not authorized on this shared machine. The lab candidate therefore preserves
 host swap and sets `fail-swap-on=false`, with `NoSwap` as the requested Pod
 policy. The initial live `configz` responses reported `failSwapOn=false` but
-only `memorySwap: {}`. A fresh 2026-08-31 read-only postflight now reports
-`memorySwap.swapBehavior=NoSwap` on all three nodes. The verifier therefore no
-longer fails the explicit Pod swap-policy checks. Active host swap on the
-shared control node remains a lab exception and cannot satisfy a production
-control-plane gate.
+only `memorySwap: {}`. A retained 2026-08-31T02:41:14Z read-only postflight
+again reports that exact state on all three nodes; it does not expose an
+explicit `memorySwap.swapBehavior=NoSwap`. The verifier intentionally fails
+closed on the missing field. Applying a kubelet configuration drop-in and
+restarting RKE2 on the shared control host and both Workers remains a separate
+operation requiring explicit approval. Active host swap on the shared control
+node remains a lab exception and cannot satisfy a production control-plane
+gate.
 
 A fresh run of the strict `verify-cluster.sh gpu` at
-`2026-08-30T23:15:27Z` passed API, node identity, version, labels, taints, all
-three `NoSwap` observations, DaemonSet, Deployment, Canal, and GPU capacity
-checks, but returned `FAIL failures=1`. The only failed check covers 21 retained
-historical failed lab Pods. The organization-isolation harness deleted each of
-its own temporary Pods by exact UID, so it did not increase that count. The
+`2026-08-31T02:41:14Z` passed API, node identity, version, labels, taints,
+DaemonSet, Deployment, Canal, and GPU `0/8/8` checks, but returned
+`FAIL failures=4`. Three failures are the missing explicit `NoSwap` field; the
+fourth covers 17 retained historical failed lab Pods. This current retained
+receipt supersedes the earlier unretained claim that the same verifier failed
+only on cluster cleanliness. The organization-isolation harness deleted each
+of its own temporary Pods by exact UID, so it did not increase that count. The
 historical Pods remain available for diagnosis because deleting them was not
 authorized. A clean strict postflight therefore remains pending.
 
@@ -1361,9 +1366,10 @@ The v2 run additionally retained
 an invalid local `jq` expression before database fixture creation. It contains
 no PASS receipt and is not counted as evidence. The corrected rerun returned the
 database to the same boundary, removed its temporary Pod and ConfigMap, and a
-fresh strict cluster postflight at `2026-08-30T22:43:09Z` again failed only on
-the 22 separately retained historical failed Pods; all node, GPU, DaemonSet,
-Deployment, Canal, and explicit `NoSwap` checks passed.
+terminal observation at `2026-08-30T22:43:09Z` was recorded as failing only on
+the 22 separately retained historical failed Pods. That observation did not
+retain the raw kubelet `configz` files and is not current swap-policy evidence;
+the retained postflight below supersedes it for current cluster state.
 
 Post-review, the v2 `7/9` value above is retained only as the result emitted by
 those historical bytes. The configured database URLs, exact role memberships,
@@ -1406,10 +1412,67 @@ snapshot and a fresh live boundary: zero active Jobs, Leases, Production Gate
 receipts, active Break-glass grants, and fixture rows; two `READY/HEALTHY`
 Workers; and two unchanged actor-session attributions. The temporary Pod and
 ConfigMap and the harness process were absent. The strict cluster verifier at
-`2026-08-30T23:15:27Z` passed every API, node, `NoSwap`, DaemonSet, Deployment,
-Canal, and GPU `0/8/8` check, but correctly returned `FAIL failures=1` because
-21 retained historical failed Pods remain. No historical Pod or diagnostic
-receipt was deleted by the v3 run.
+`2026-08-30T23:15:27Z` was recorded in terminal output as `FAIL failures=1`
+because 21 retained historical failed Pods remained. It did not retain the raw
+kubelet `configz` responses and is not used as current evidence for explicit
+`NoSwap`. No historical Pod or diagnostic receipt was deleted by the v3 run.
+
+Commit `b5752572fc3e9fe733daaa3aa32831a2253a7a1b` added request-correlated
+database-role observations for service authentication, Job submit/read, and
+Artifact read. The control image
+`10.1.200.17:5443/vela-lab/vela-control@sha256:4870b579c499c5d07b53a1442bb43083dff9ce2c178e610b80a932155c6adbab`
+was rolled out from the rollback digest
+`sha256:257fefb1207a19e7023171d2cc73773fa2d0e4e03d30f337abeda70c78bc5985`.
+The new control Pod UID is `619cf099-2b51-45bc-9e6f-932e046ae6d3`, with the
+new digest as its runtime image ID and zero restarts. All three nodes and both
+Worker Agent Deployments were Ready, while the database remained at zero active
+Jobs, zero active Leases, zero Production Gate receipts, zero active
+Break-glass grants, and two `READY/HEALTHY` Workers. The root-only rollout
+receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/control-request-role-rollout-v1`.
+All files in its manifest pass `sha256sum --check --strict`; the SHA-256 of its
+`SHA256SUMS` file is
+`ebc21396b34b6a9a67430c2c31857bfad1b826b53fb1403b6094f5901b284cd9`.
+Its two-minute control-log postflight contained 240 expected retries against
+the unavailable non-production Invoice sink, with zero fatal or panic lines.
+
+The v4 organization-isolation rerun used harness SHA-256
+`4d2ca2dfe807984a3aeaead365d3e717d6a6296469b9a03ca489f7fcf6bed1b9`,
+probe SHA-256
+`7b86d79b2f87428bac63e95e2f28fe37feb6e7505679720019c32e6855bf45ac`,
+and the unchanged pinned Runner digest
+`sha256:71af1330eefdfff2a33d68e5f8c53c66ebe5b402dc28c35b3ff7516357ec4ca3`.
+It remains `LAB_REHEARSAL_PARTIAL`, scenarios `6/9`, evidence boundary
+`NON_PRODUCTION_MOCK_REHEARSAL`, and Production Gates `0/9`. The six API
+requests carried six unique server-generated request IDs and produced eight
+exact correlated observations: six `vela_auth_login -> vela_auth` service
+authentication observations, one `vela_request_login -> vela_request` Job-read
+observation, and one
+`vela_artifact_request_login -> vela_artifact_request` Artifact-read
+observation. The fixed-role scenario advances from telemetry absent to
+`LAB_REHEARSAL_PARTIAL_PUBLIC_PATH_INVENTORY_INCOMPLETE`; it is not a PASS
+because the complete public HTTP path inventory was not exercised. The real
+Customer and Platform IdPs, Break-glass workflow, and customer-content reuse
+audit sink also remain absent.
+
+The root-only v4 receipt is
+`/root/vela-lab-deploy-bc590e20/receipts/organization-isolation-content-safety-v4`.
+All files in its manifest pass `sha256sum --check --strict`; the SHA-256 of its
+`SHA256SUMS` file is
+`5efb9895f4fda791088076a82b1bbc229f44b0d42bdcd32f3be2d40738cce460`.
+Its before/after database snapshots have the same SHA-256
+`5c10d1d50a3a3335f761b8ed7cd0764737d0582c6680f182f788223ea9847039`.
+The temporary Pod and ConfigMap are absent, and no Launch Receipt or database
+Production Gate receipt was created.
+
+The independent strict postflight is retained at
+`/root/vela-lab-deploy-bc590e20/receipts/cluster-strict-postflight-request-role-v1`.
+Its `SHA256SUMS` file has SHA-256
+`1fa3337cf10e26e22fc50304291c10602f93c73c1395a13b1ed92f6d87d2b1e4`.
+The current result is `LAB_VERIFICATION_PARTIAL`, `FAIL failures=4`: explicit
+`memorySwap.swapBehavior=NoSwap` is missing from all three raw `configz`
+responses, and 17 exact historical Failed Pods remain. No cluster mutation or
+historical cleanup was performed by this postflight.
 
 ## Experiment operating rules
 
