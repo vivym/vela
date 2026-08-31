@@ -41,6 +41,10 @@ fixture_owned=false
 probe_uid=
 configmap_uid=
 committed=false
+control_pod_name=
+control_pod_uid=
+control_pod_restart_count=
+request_role_log_since=
 
 fail() {
 	printf 'organization-isolation-content-safety: %s\n' "$*" >&2
@@ -929,6 +933,16 @@ jq -e \
   and any(.jobs[]; .organization_id == $other_organization and .project_id == $other_project and .job_id == $other_job)
 ' "$temporary/foreign-resource-fixture.json" >/dev/null || fail "foreign-resource fixture evidence is invalid"
 probe_sha256=$(sha256sum "$probe_source" | awk '{print $1}')
+control_pod_name=$(jq -er '.items[] | select(.status.phase == "Running") | .metadata.name' \
+	"$temporary/control-pods-runtime.json")
+control_pod_uid=$(jq -er --arg name "$control_pod_name" \
+	'.items[] | select(.metadata.name == $name) | .metadata.uid' \
+	"$temporary/control-pods-runtime.json")
+control_pod_restart_count=$(jq -er --arg name "$control_pod_name" \
+	'.items[] | select(.metadata.name == $name)
+  | .status.containerStatuses[] | select(.name == "control") | .restartCount' \
+	"$temporary/control-pods-runtime.json")
+request_role_log_since=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 $kubectl_bin create configmap "$probe_configmap" --namespace "$namespace" \
 	--from-file=probe.py="$probe_source" --dry-run=client -o json |
@@ -1020,14 +1034,28 @@ $kubectl_bin logs --namespace "$namespace" "$probe_name" >"$temporary/http-probe
 		--arg same_org_job_id "$same_org_job_id" \
 		--arg other_org_job_id "$other_org_job_id" \
 		--arg probe_sha256 "$probe_sha256" '
-  select(.schema == "vela-lab-organization-isolation-http-probe-v2"
+	  select(.schema == "vela-lab-organization-isolation-http-probe-v3"
   and .status == "LAB_REHEARSAL_PASS"
   and .evidence_boundary == "NON_PRODUCTION_MOCK_REHEARSAL"
   and .production_gates == "0/9" and .job_id == $job_id
   and .foreign_job_ids == {
     same_organization_foreign_project:$same_org_job_id,
     foreign_organization:$other_org_job_id}
-  and .probe_sha256 == $probe_sha256
+	  and .probe_sha256 == $probe_sha256
+	  and (.api_request_correlations | length) == 6
+	  and ([.api_request_correlations[].operation] | sort) == [
+	    "authorized-artifact-read","authorized-job-read",
+	    "foreign-organization-fixture-artifact-set-hidden",
+	    "foreign-organization-fixture-job-hidden",
+	    "same-organization-foreign-project-fixture-artifact-set-hidden",
+	    "same-organization-foreign-project-fixture-job-hidden"]
+	  and ([.api_request_correlations[].request_id] | unique | length) == 6
+	  and all(.api_request_correlations[];
+	    (.request_id | test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")))
+	  and .role_evidence_request_ids.job_read ==
+	    (.api_request_correlations[] | select(.operation == "authorized-job-read") | .request_id)
+	  and .role_evidence_request_ids.artifact_read ==
+	    (.api_request_correlations[] | select(.operation == "authorized-artifact-read") | .request_id)
   and .authorized_artifact_count == 2 and .authorized_signed_get_count == 2
   and .negative_probe_count == (.negative_probes | length)
   and .negative_probe_count == (4 + (.authorized_artifact_count * 3))
@@ -1041,7 +1069,71 @@ $kubectl_bin logs --namespace "$namespace" "$probe_name" >"$temporary/http-probe
   and .signed_url_method_bound == true and .signed_url_path_bound == true
   and .signed_url_version_bound == true
   )
-' "$temporary/http-probe.log" >"$temporary/http-probe.json" || fail "HTTP probe receipt is invalid"
+	' "$temporary/http-probe.log" >"$temporary/http-probe.json" || fail "HTTP probe receipt is invalid"
+
+current_control_pod=$($kubectl_bin get pod --namespace "$namespace" "$control_pod_name" -o json)
+[ "$(printf '%s' "$current_control_pod" | jq -er '.metadata.uid')" = "$control_pod_uid" ] ||
+	fail "control Pod changed during request-role measurement"
+[ "$(printf '%s' "$current_control_pod" | jq -er '.status.containerStatuses[]
+  | select(.name == "control") | .restartCount')" = "$control_pod_restart_count" ] ||
+	fail "control container restarted during request-role measurement"
+if ! $kubectl_bin logs --namespace "$namespace" "$control_pod_name" --container control \
+	--since-time "$request_role_log_since" | grep -F 'database request role verified' \
+	>"$temporary/request-role.log"; then
+	fail "request-correlated database-role log is absent"
+fi
+jq -Rn '[inputs | capture(
+  "database request role verified request_id=(?<request_id>[0-9a-f-]{36}) surface=(?<surface>[a-z_]+) database_login=(?<database_login>vela_[a-z_]+_login) database_role=(?<database_role>vela_[a-z_]+)$"
+)]' <"$temporary/request-role.log" >"$temporary/request-role-observations.json"
+[ "$(jq -r 'length' "$temporary/request-role-observations.json")" = \
+  "$(wc -l <"$temporary/request-role.log" | tr -d ' ')" ] ||
+	fail "one or more database-role log lines were not parseable"
+request_role_log_sha256=$(sha256sum "$temporary/request-role.log" | awk '{print $1}')
+jq -n \
+	--arg control_pod_name "$control_pod_name" \
+	--arg control_pod_uid "$control_pod_uid" \
+	--argjson control_pod_restart_count "$control_pod_restart_count" \
+	--arg request_role_log_since "$request_role_log_since" \
+	--arg request_role_log_sha256 "$request_role_log_sha256" \
+	--slurpfile http "$temporary/http-probe.json" \
+	--slurpfile observed "$temporary/request-role-observations.json" '
+  ($http[0].api_request_correlations
+    | map({request_id:.request_id,surface:"service_authentication",
+      database_login:"vela_auth_login",database_role:"vela_auth"})) as $authentication |
+  ($authentication + [
+    {request_id:$http[0].role_evidence_request_ids.job_read,surface:"job_read",
+      database_login:"vela_request_login",database_role:"vela_request"},
+    {request_id:$http[0].role_evidence_request_ids.artifact_read,surface:"artifact_read",
+      database_login:"vela_artifact_request_login",database_role:"vela_artifact_request"}
+  ]) as $expected |
+  ([ $observed[0][] as $observation
+    | select(any($http[0].api_request_correlations[];
+        .request_id == $observation.request_id))
+    | $observation ]) as $correlated |
+  {
+    schema:"vela-lab-request-correlated-database-role-evidence-v1",
+    evidence_boundary:"NON_PRODUCTION_MOCK_REHEARSAL",production_gates:"0/9",
+    control_pod:{name:$control_pod_name,uid:$control_pod_uid,
+      restart_count:$control_pod_restart_count},
+    log_since:$request_role_log_since,log_sha256:$request_role_log_sha256,
+    api_request_count:($http[0].api_request_correlations|length),
+    role_observation_count:($correlated|length),
+    expected_observations:($expected|sort_by(.request_id,.surface)),
+    observations:($correlated|sort_by(.request_id,.surface))
+  }
+' >"$temporary/request-role-evidence.json"
+jq -e '
+  .schema == "vela-lab-request-correlated-database-role-evidence-v1"
+  and .evidence_boundary == "NON_PRODUCTION_MOCK_REHEARSAL"
+  and .production_gates == "0/9"
+  and .control_pod.name != "" and .control_pod.uid != ""
+  and .control_pod.restart_count >= 0
+  and (.log_sha256 | test("^[0-9a-f]{64}$"))
+  and .api_request_count == 6 and .role_observation_count == 8
+  and (.expected_observations | length) == 8
+  and .observations == .expected_observations
+' "$temporary/request-role-evidence.json" >/dev/null ||
+	fail "request-correlated database-role evidence is invalid"
 
 $kubectl_bin get pod --namespace "$namespace" "$probe_name" -o json >"$temporary/probe-pod-runtime.json"
 digest=${runner_image##*@}
@@ -1083,7 +1175,7 @@ jq -n '
 def scenarios: [
   {id:"cross-organization",status:"LAB_REHEARSAL_PASS"},
   {id:"cross-project",status:"LAB_REHEARSAL_PASS"},
-	  {id:"fixed-role-matrix",status:"LAB_REHEARSAL_PARTIAL_REQUEST_CORRELATION_ABSENT"},
+	  {id:"fixed-role-matrix",status:"LAB_REHEARSAL_PARTIAL_PUBLIC_PATH_INVENTORY_INCOMPLETE"},
   {id:"credential-revocation",status:"LAB_REHEARSAL_PASS"},
   {id:"signed-url-scope",status:"LAB_REHEARSAL_PASS"},
   {id:"rls",status:"LAB_REHEARSAL_PASS"},
@@ -1092,7 +1184,7 @@ def scenarios: [
   {id:"customer-content-no-reuse",status:"NOT_RUN_AUDIT_SINK_ABSENT"}
 ];
 scenarios as $scenarios | {
-	  schema:"vela-lab-organization-isolation-scenario-matrix-v2",
+	  schema:"vela-lab-organization-isolation-scenario-matrix-v3",
   evidence_boundary:"NON_PRODUCTION_MOCK_REHEARSAL",production_gates:"0/9",
   scenarios:$scenarios,
   completed:([$scenarios[] | select(.status == "LAB_REHEARSAL_PASS")] | length),
@@ -1110,6 +1202,8 @@ forced_rls_relation_count=$(jq -r '.organization_scoped_relation_count' \
 	"$temporary/forced-rls-inventory.json")
 foreign_job_count=$(jq -r '.jobs | length' "$temporary/foreign-resource-fixture.json")
 foreign_artifact_count=$(jq -r '[.jobs[].artifact_rows] | add' "$temporary/foreign-resource-fixture.json")
+request_role_request_count=$(jq -r '.api_request_count' "$temporary/request-role-evidence.json")
+request_role_observation_count=$(jq -r '.role_observation_count' "$temporary/request-role-evidence.json")
 jq -n \
 	--arg captured_at "$captured_at" \
 	--arg job_id "$job_id" \
@@ -1123,9 +1217,11 @@ jq -n \
 		--argjson database_binding_count "$database_binding_count" \
 	--argjson forced_rls_relation_count "$forced_rls_relation_count" \
 	--argjson foreign_job_count "$foreign_job_count" \
-	--argjson foreign_artifact_count "$foreign_artifact_count" '
+	--argjson foreign_artifact_count "$foreign_artifact_count" \
+	--argjson request_role_request_count "$request_role_request_count" \
+	--argjson request_role_observation_count "$request_role_observation_count" '
 {
-	  schema:"vela-lab-organization-isolation-content-safety-v2",
+	  schema:"vela-lab-organization-isolation-content-safety-v3",
   status:"LAB_REHEARSAL_PARTIAL",evidence_boundary:"NON_PRODUCTION_MOCK_REHEARSAL",
   production_gates:"0/9",captured_at:$captured_at,job_id:$job_id,
   runner_image:$runner_image,harness_sha256:$harness_sha256,probe_sha256:$probe_sha256,
@@ -1135,12 +1231,17 @@ jq -n \
 	  configured_database_binding_count:$database_binding_count,
 	  forced_rls_relation_count:$forced_rls_relation_count,
 	  foreign_resource_fixture:{jobs:$foreign_job_count,artifacts:$foreign_artifact_count},
-	  request_correlated_role_measurement:{state:"NOT_MEASURED",
-	    reason:"REQUEST_CORRELATION_TELEMETRY_ABSENT",count:null},
+	  request_correlated_role_measurement:{state:"PARTIALLY_MEASURED",
+	    request_count:$request_role_request_count,
+	    observation_count:$request_role_observation_count,
+	    evidence_file:"request-role-evidence.json",
+	    covered_surfaces:["service_authentication","job_read","artifact_read"],
+	    reason:"COMPLETE_PUBLIC_HTTP_PATH_INVENTORY_NOT_EXERCISED"},
 	  customer_content_reuse_measurement:{state:"NOT_MEASURED",reason:"AUDIT_SINK_ABSENT",count:null},
 	  unaudited_break_glass_measurement:{state:"NOT_MEASURED",reason:"REAL_PLATFORM_IDP_ABSENT",count:null},
-	  missing_dependencies:["request-correlated-database-role-telemetry","real-customer-idp",
-	    "real-platform-idp","break-glass-approval-workflow","customer-content-reuse-audit-sink"]
+	  missing_dependencies:["complete-public-http-request-role-path-inventory",
+	    "real-customer-idp","real-platform-idp",
+	    "break-glass-approval-workflow","customer-content-reuse-audit-sink"]
 }' >"$temporary/summary.json"
 printf 'status=LAB_REHEARSAL_PARTIAL evidence_boundary=NON_PRODUCTION_MOCK_REHEARSAL production_gates=0/9 scenarios=%s/%s\n' \
 	"$scenarios_completed" "$scenarios_required" >"$temporary/STATUS"
@@ -1156,5 +1257,5 @@ mv "$temporary" "$output"
 temporary=
 committed=true
 trap - EXIT HUP INT TERM
-printf 'schema=vela-lab-organization-isolation-content-safety-wrapper-v2 output=%s result=LAB_REHEARSAL_PARTIAL scenarios=%s/%s production_gates=0/9\n' \
+printf 'schema=vela-lab-organization-isolation-content-safety-wrapper-v3 output=%s result=LAB_REHEARSAL_PARTIAL scenarios=%s/%s production_gates=0/9\n' \
 	"$output" "$scenarios_completed" "$scenarios_required"

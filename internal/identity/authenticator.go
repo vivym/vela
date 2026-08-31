@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	veladb "github.com/vivym/vela/internal/database"
 )
 
 const (
@@ -140,12 +141,18 @@ type Authenticator struct {
 	humanMembershipPool *pgxpool.Pool
 	pepper              []byte
 	oidcVerifier        OIDCTokenVerifier
+	roleObserver        veladb.RequestRoleObserver
 }
 
-func NewAuthenticator(pool *pgxpool.Pool, pepper []byte) *Authenticator {
+func NewAuthenticator(
+	pool *pgxpool.Pool,
+	pepper []byte,
+	roleObservers ...veladb.RequestRoleObserver,
+) *Authenticator {
 	return &Authenticator{
-		servicePool: pool,
-		pepper:      append([]byte(nil), pepper...),
+		servicePool:  pool,
+		pepper:       append([]byte(nil), pepper...),
+		roleObserver: veladb.CombineRequestRoleObservers(roleObservers...),
 	}
 }
 
@@ -154,12 +161,14 @@ func NewAuthenticatorWithOIDC(
 	humanPool *pgxpool.Pool,
 	pepper []byte,
 	verifier OIDCTokenVerifier,
+	roleObservers ...veladb.RequestRoleObserver,
 ) *Authenticator {
 	return &Authenticator{
 		servicePool:  servicePool,
 		humanPool:    humanPool,
 		pepper:       append([]byte(nil), pepper...),
 		oidcVerifier: verifier,
+		roleObserver: veladb.CombineRequestRoleObservers(roleObservers...),
 	}
 }
 
@@ -169,6 +178,7 @@ func NewAuthenticatorWithHumanMembershipOIDC(
 	humanMembershipPool *pgxpool.Pool,
 	pepper []byte,
 	verifier OIDCTokenVerifier,
+	roleObservers ...veladb.RequestRoleObserver,
 ) *Authenticator {
 	return &Authenticator{
 		servicePool:         servicePool,
@@ -176,6 +186,7 @@ func NewAuthenticatorWithHumanMembershipOIDC(
 		humanMembershipPool: humanMembershipPool,
 		pepper:              append([]byte(nil), pepper...),
 		oidcVerifier:        verifier,
+		roleObserver:        veladb.CombineRequestRoleObservers(roleObservers...),
 	}
 }
 
@@ -200,13 +211,19 @@ func (a *Authenticator) authenticateServiceCredential(
 	}
 
 	var principal Principal
+	var databaseLogin string
+	var databaseRoleMember bool
 	var expectedDigest []byte
 	var expiresAt pgtype.Timestamptz
 	var revokedAt pgtype.Timestamptz
 	err = a.servicePool.QueryRow(ctx, `
-        SELECT organization_id, project_id, principal_id, secret_digest, scopes, expires_at, revoked_at
-        FROM vela_authenticate_service_credential($1)
-    `, credentialID).Scan(
+	        SELECT current_user::text, pg_has_role(current_user, 'vela_auth', 'MEMBER'),
+	            credential.organization_id, credential.project_id, credential.principal_id,
+	            credential.secret_digest, credential.scopes, credential.expires_at, credential.revoked_at
+	        FROM vela_authenticate_service_credential($1) AS credential
+	    `, credentialID).Scan(
+		&databaseLogin,
+		&databaseRoleMember,
 		&principal.OrganizationID,
 		&principal.ProjectID,
 		&principal.PrincipalID,
@@ -221,6 +238,9 @@ func (a *Authenticator) authenticateServiceCredential(
 	if err != nil {
 		return Principal{}, fmt.Errorf("look up service principal credential: %w", err)
 	}
+	if err := veladb.VerifyRequestRole(databaseLogin, veladb.RoleAuth, databaseRoleMember); err != nil {
+		return Principal{}, fmt.Errorf("verify service authentication database role: %w", err)
+	}
 	defer clear(expectedDigest)
 
 	digest := hmac.New(sha256.New, a.pepper)
@@ -229,6 +249,13 @@ func (a *Authenticator) authenticateServiceCredential(
 	defer clear(actualDigest)
 	if !hmac.Equal(actualDigest, expectedDigest) {
 		return Principal{}, ErrInvalidCredential
+	}
+	if a.roleObserver != nil {
+		a.roleObserver.ObserveRequestRole(ctx, veladb.RequestRoleObservation{
+			Surface:       veladb.RequestRoleSurfaceServiceAuthentication,
+			DatabaseLogin: databaseLogin,
+			DatabaseRole:  veladb.RoleAuth,
+		})
 	}
 	principal.CredentialID = credentialID
 	principal.Kind = PrincipalKindService

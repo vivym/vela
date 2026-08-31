@@ -66,19 +66,26 @@ def request_bytes(url, method, bearer=None, limit=MAX_API_BYTES):
         request.add_header("Authorization", "Bearer " + bearer)
     try:
         with OPENER.open(request, timeout=30) as response:
-            return response.status, read_bounded(response, limit)
+            return response.status, read_bounded(response, limit), response.headers
     except urllib.error.HTTPError as error:
         try:
             body = read_bounded(error, limit)
         finally:
             error.close()
-        return error.code, body
+        return error.code, body, error.headers
     except (OSError, urllib.error.URLError) as error:
         raise ProbeError("HTTP request failed") from error
 
 
+def response_request_id(headers):
+    request_ids = headers.get_all("X-Request-ID", [])
+    if len(request_ids) != 1 or UUID_PATTERN.fullmatch(request_ids[0]) is None:
+        raise ProbeError("Vela API response request correlation was invalid")
+    return request_ids[0]
+
+
 def request_json(url, expected_status, bearer):
-    status, body = request_bytes(url, "GET", bearer)
+    status, body, headers = request_bytes(url, "GET", bearer)
     if status != expected_status:
         raise ProbeError(f"API request returned HTTP {status}, expected {expected_status}")
     try:
@@ -87,13 +94,14 @@ def request_json(url, expected_status, bearer):
         raise ProbeError("API response was not one JSON document") from error
     if not isinstance(value, dict):
         raise ProbeError("API response was not a JSON object")
-    return value
+    return value, response_request_id(headers)
 
 
 def expect_hidden(url, bearer):
-    status, _ = request_bytes(url, "GET", bearer)
+    status, _, headers = request_bytes(url, "GET", bearer)
     if status != 404:
         raise ProbeError(f"cross-scope API request returned HTTP {status}, expected 404")
+    return response_request_id(headers)
 
 
 def tampered_path(url):
@@ -161,7 +169,7 @@ def verify_signed_artifact(artifact, signed_host):
     if query.get("versionId") != [artifact["object_version_id"]]:
         raise ProbeError("signed Artifact URL was not bound to the exact object version")
 
-    status, body = request_bytes(url, "GET", limit=MAX_ARTIFACT_BYTES)
+    status, body, _ = request_bytes(url, "GET", limit=MAX_ARTIFACT_BYTES)
     if status != 200:
         raise ProbeError(f"authorized signed Artifact GET returned HTTP {status}")
     if len(body) != size_bytes or hashlib.sha256(body).hexdigest() != artifact["sha256"]:
@@ -174,7 +182,7 @@ def verify_signed_artifact(artifact, signed_host):
     )
     negative_probes = []
     for boundary, negative_url, method in negative_urls:
-        status, _ = request_bytes(negative_url, method, limit=MAX_ARTIFACT_BYTES)
+        status, _, _ = request_bytes(negative_url, method, limit=MAX_ARTIFACT_BYTES)
         if status != 403:
             raise ProbeError(
                 f"signed Artifact {boundary} probe returned HTTP {status}, expected 403"
@@ -226,10 +234,13 @@ def run_probe():
 
     own_job_url = f"{base_url}/v1/projects/{own_project}/jobs/{job_id}"
     own_artifacts_url = own_job_url + "/artifacts"
-    job = request_json(own_job_url, 200, bearer)
+    job, own_job_request_id = request_json(own_job_url, 200, bearer)
     if job.get("job_id") != job_id or job.get("project_id") != own_project:
         raise ProbeError("authorized Job response identity was invalid")
 
+    api_request_correlations = [
+        {"operation": "authorized-job-read", "request_id": own_job_request_id}
+    ]
     negative_probes = []
     foreign_jobs = (
         ("same-organization-foreign-project", same_org_project, same_org_job_id),
@@ -237,12 +248,28 @@ def run_probe():
     )
     for scope, project, foreign_job_id in foreign_jobs:
         hidden_job = f"{base_url}/v1/projects/{project}/jobs/{foreign_job_id}"
-        expect_hidden(hidden_job, bearer)
+        hidden_job_request_id = expect_hidden(hidden_job, bearer)
+        api_request_correlations.append(
+            {"operation": f"{scope}-fixture-job-hidden", "request_id": hidden_job_request_id}
+        )
         negative_probes.append(f"{scope}-fixture-job-hidden")
-        expect_hidden(hidden_job + "/artifacts", bearer)
+        hidden_artifact_request_id = expect_hidden(hidden_job + "/artifacts", bearer)
+        api_request_correlations.append(
+            {
+                "operation": f"{scope}-fixture-artifact-set-hidden",
+                "request_id": hidden_artifact_request_id,
+            }
+        )
         negative_probes.append(f"{scope}-fixture-artifact-set-hidden")
 
-    artifact_set = request_json(own_artifacts_url, 200, bearer)
+    artifact_set, own_artifact_request_id = request_json(own_artifacts_url, 200, bearer)
+    api_request_correlations.append(
+        {"operation": "authorized-artifact-read", "request_id": own_artifact_request_id}
+    )
+    if len({item["request_id"] for item in api_request_correlations}) != len(
+        api_request_correlations
+    ):
+        raise ProbeError("Vela API response request correlations were not unique")
     artifacts = artifact_set.get("artifacts")
     if (
         artifact_set.get("job_id") != job_id
@@ -260,7 +287,7 @@ def run_probe():
         raise ProbeError("ArtifactSet kinds were invalid")
 
     return {
-        "schema": "vela-lab-organization-isolation-http-probe-v2",
+        "schema": "vela-lab-organization-isolation-http-probe-v3",
         "status": "LAB_REHEARSAL_PASS",
         "evidence_boundary": "NON_PRODUCTION_MOCK_REHEARSAL",
         "production_gates": "0/9",
@@ -271,6 +298,11 @@ def run_probe():
             "foreign_organization": other_org_job_id,
         },
         "probe_sha256": observed_source_sha256,
+        "api_request_correlations": api_request_correlations,
+        "role_evidence_request_ids": {
+            "job_read": own_job_request_id,
+            "artifact_read": own_artifact_request_id,
+        },
         "authorized_artifact_count": len(artifacts),
         "authorized_signed_get_count": len(artifacts),
         "negative_probe_count": len(negative_probes),

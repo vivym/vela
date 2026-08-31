@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/execution"
 	"github.com/vivym/vela/internal/identity"
 	store "github.com/vivym/vela/internal/store/sqlc"
@@ -125,14 +126,28 @@ type Service struct {
 	pool                         *pgxpool.Pool
 	capacityPredictor            CapacityPredictor
 	allowLegacyWithoutPrediction bool
+	roleObserver                 veladb.RequestRoleObserver
 }
 
-func NewService(pool *pgxpool.Pool, capacityPredictor CapacityPredictor) *Service {
-	return &Service{pool: pool, capacityPredictor: capacityPredictor}
+func NewService(
+	pool *pgxpool.Pool,
+	capacityPredictor CapacityPredictor,
+	roleObservers ...veladb.RequestRoleObserver,
+) *Service {
+	return &Service{
+		pool: pool, capacityPredictor: capacityPredictor,
+		roleObserver: veladb.CombineRequestRoleObservers(roleObservers...),
+	}
 }
 
-func NewLegacyService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool, allowLegacyWithoutPrediction: true}
+func NewLegacyService(
+	pool *pgxpool.Pool,
+	roleObservers ...veladb.RequestRoleObserver,
+) *Service {
+	return &Service{
+		pool: pool, allowLegacyWithoutPrediction: true,
+		roleObserver: veladb.CombineRequestRoleObservers(roleObservers...),
+	}
 }
 
 func (s *Service) Submit(
@@ -172,6 +187,13 @@ func (s *Service) Submit(
 	)
 	if err != nil {
 		return Job{}, err
+	}
+	if s.roleObserver != nil {
+		s.roleObserver.ObserveRequestRole(ctx, veladb.RequestRoleObservation{
+			Surface:       veladb.RequestRoleSurfaceJobSubmit,
+			DatabaseLogin: requestContext.DatabaseLogin,
+			DatabaseRole:  veladb.RoleRequest,
+		})
 	}
 	if _, err := queries.LockIdempotencyKey(ctx, store.LockIdempotencyKeyParams{
 		ProjectID:      projectID.String(),
@@ -515,9 +537,18 @@ func (s *Service) Get(
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := store.New(tx)
-	_, err = establishRequestContext(ctx, queries, principal, projectID, identity.ScopeJobsRead)
+	requestContext, err := establishRequestContext(
+		ctx, queries, principal, projectID, identity.ScopeJobsRead,
+	)
 	if err != nil {
 		return Job{}, err
+	}
+	if s.roleObserver != nil {
+		s.roleObserver.ObserveRequestRole(ctx, veladb.RequestRoleObservation{
+			Surface:       veladb.RequestRoleSurfaceJobRead,
+			DatabaseLogin: requestContext.DatabaseLogin,
+			DatabaseRole:  veladb.RoleRequest,
+		})
 	}
 	row, err := queries.GetJob(ctx, store.GetJobParams{
 		OrganizationID: principal.OrganizationID,
@@ -594,6 +625,13 @@ func establishRequestContext(
 	}
 	if !requestContext.TransactionTime.Valid {
 		return store.SetRequestContextRow{}, errors.New("transaction time is unavailable from PostgreSQL")
+	}
+	if err := veladb.VerifyRequestRole(
+		requestContext.DatabaseLogin,
+		veladb.RoleRequest,
+		requestContext.DatabaseRoleMember,
+	); err != nil {
+		return store.SetRequestContextRow{}, fmt.Errorf("verify request database role: %w", err)
 	}
 	return requestContext, nil
 }

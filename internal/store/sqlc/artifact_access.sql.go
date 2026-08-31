@@ -107,6 +107,8 @@ func (q *Queries) ListReadableArtifactSet(ctx context.Context, arg ListReadableA
 
 const setArtifactRequestContext = `-- name: SetArtifactRequestContext :one
 SELECT
+	current_user::text AS database_login,
+	pg_has_role(current_user, 'vela_artifact_request', 'MEMBER') AS database_role_member,
     organization_id::uuid,
     project_id::uuid,
     principal_id::uuid,
@@ -123,16 +125,20 @@ type SetArtifactRequestContextParams struct {
 }
 
 type SetArtifactRequestContextRow struct {
-	OrganizationID  uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID       uuid.UUID          `db:"project_id" json:"project_id"`
-	PrincipalID     uuid.UUID          `db:"principal_id" json:"principal_id"`
-	TransactionTime pgtype.Timestamptz `db:"transaction_time" json:"transaction_time"`
+	DatabaseLogin      string             `db:"database_login" json:"database_login"`
+	DatabaseRoleMember bool               `db:"database_role_member" json:"database_role_member"`
+	OrganizationID     uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID          uuid.UUID          `db:"project_id" json:"project_id"`
+	PrincipalID        uuid.UUID          `db:"principal_id" json:"principal_id"`
+	TransactionTime    pgtype.Timestamptz `db:"transaction_time" json:"transaction_time"`
 }
 
 func (q *Queries) SetArtifactRequestContext(ctx context.Context, arg SetArtifactRequestContextParams) (SetArtifactRequestContextRow, error) {
 	row := q.db.QueryRow(ctx, setArtifactRequestContext, arg.CredentialID, arg.CredentialProof)
 	var i SetArtifactRequestContextRow
 	err := row.Scan(
+		&i.DatabaseLogin,
+		&i.DatabaseRoleMember,
 		&i.OrganizationID,
 		&i.ProjectID,
 		&i.PrincipalID,

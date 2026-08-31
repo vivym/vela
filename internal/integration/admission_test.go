@@ -36,6 +36,7 @@ import (
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/scheduler"
+	"github.com/vivym/vela/internal/telemetry"
 )
 
 const (
@@ -167,6 +168,107 @@ func TestServicePrincipalCanSubmitAndGetAcceptedJob(t *testing.T) {
 			maxAttempts,
 			maxTotalComputeSeconds,
 		)
+	}
+}
+
+func TestPublicJobReadRecordsRequestCorrelatedDatabaseRoles(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
+	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
+	artifactPool := newRolePool(
+		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
+	)
+	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
+	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+	metrics := telemetry.NewHTTPMetrics()
+	handler, err := httpapi.NewHandler(httpapi.Config{
+		Observer:               metrics.Middleware,
+		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper, metrics),
+		IdentityAdministration: &identity.AdministrationService{},
+		OrganizationReporting:  &organizationreporting.Service{},
+		Retention:              &retention.Service{},
+		Admission:              admission.NewService(requestPool, &capacityPredictorStub{}, metrics),
+		Cancellation:           cancellation.NewService(cancelPool, internalPool),
+		Artifacts:              testArtifactAccessService(artifactPool),
+		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
+	})
+	if err != nil {
+		t.Fatalf("create request-role HTTP handler: %v", err)
+	}
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	invalidRequest, err := http.NewRequest(
+		http.MethodGet,
+		server.URL+"/v1/projects/"+testProjectID+"/jobs/"+uuid.NewString(),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create invalid-credential request: %v", err)
+	}
+	invalidRequest.Header.Set(
+		"Authorization",
+		"Bearer "+bearerCredential(testCredentialID, "fedcba9876543210fedcba9876543210"),
+	)
+	invalidResponse, err := http.DefaultClient.Do(invalidRequest)
+	if err != nil {
+		t.Fatalf("send invalid-credential request: %v", err)
+	}
+	defer invalidResponse.Body.Close()
+	if invalidResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("invalid-credential status = %d, want 401", invalidResponse.StatusCode)
+	}
+
+	submitted := submitJob(t, server.URL, "request-role-evidence", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"bind the public request to its database roles"
+	}`))
+	if submitted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit status = %d, want 202; body=%s", submitted.StatusCode, submitted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(submitted.Body, &job); err != nil {
+		t.Fatalf("decode submitted Job: %v", err)
+	}
+
+	request, err := http.NewRequest(
+		http.MethodGet,
+		server.URL+"/v1/projects/"+testProjectID+"/jobs/"+job.JobID,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create Job read request: %v", err)
+	}
+	request.Header.Set("Authorization", "Bearer "+testBearerCredential())
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatalf("read Job: %v", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("Job read status = %d, want 200", response.StatusCode)
+	}
+	if _, err := uuid.Parse(response.Header.Get("X-Request-ID")); err != nil {
+		t.Fatalf("Job read X-Request-ID = %q: %v", response.Header.Get("X-Request-ID"), err)
+	}
+
+	metricsResponse := httptest.NewRecorder()
+	metrics.Handler().ServeHTTP(metricsResponse, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	metricText := metricsResponse.Body.String()
+	for _, expected := range []string{
+		`vela_database_request_role_transactions_total{database_login="vela_auth_login",database_role="vela_auth",surface="service_authentication"} 2`,
+		`vela_database_request_role_transactions_total{database_login="vela_request_login",database_role="vela_request",surface="job_submit"} 1`,
+		`vela_database_request_role_transactions_total{database_login="vela_request_login",database_role="vela_request",surface="job_read"} 1`,
+	} {
+		if !strings.Contains(metricText, expected) {
+			t.Fatalf("request-role metric %q missing:\n%s", expected, metricText)
+		}
 	}
 }
 

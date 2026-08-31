@@ -1,5 +1,6 @@
 import hashlib
 import importlib.util
+from email.message import Message
 from pathlib import Path
 
 import pytest
@@ -31,8 +32,8 @@ def test_verify_signed_artifact_returns_complete_negative_ledger(monkeypatch):
     def request_bytes(url, method, bearer=None, limit=probe.MAX_API_BYTES):
         del bearer, limit
         if method == "GET" and url == artifact["download_url"]:
-            return 200, body
-        return 403, b""
+            return 200, body, Message()
+        return 403, b"", Message()
 
     monkeypatch.setattr(probe, "request_bytes", request_bytes)
 
@@ -68,10 +69,12 @@ def test_run_probe_targets_persisted_fixture_job_ids(monkeypatch, tmp_path):
         monkeypatch.setenv(name, value)
 
     hidden_urls = []
+    request_ids = iter([f"00000000-0000-4000-8000-{index:012d}" for index in range(1, 7)])
 
     def expect_hidden(url, bearer):
         assert bearer == "vla_synthetic"
         hidden_urls.append(url)
+        return next(request_ids)
 
     def request_json(url, expected_status, bearer):
         assert expected_status == 200
@@ -83,14 +86,13 @@ def test_run_probe_targets_persisted_fixture_job_ids(monkeypatch, tmp_path):
                     {"artifact_id": "video", "kind": "VIDEO"},
                     {"artifact_id": "thumbnail", "kind": "THUMBNAIL"},
                 ],
-            }
-        return {"job_id": own_job, "project_id": own_project}
+            }, next(request_ids)
+        return {"job_id": own_job, "project_id": own_project}, next(request_ids)
 
     def verify_signed_artifact(artifact, signed_host):
         assert signed_host == "minio.example"
         return [
-            f"{artifact['artifact_id']}-{boundary}"
-            for boundary in ("method", "path", "version")
+            f"{artifact['artifact_id']}-{boundary}" for boundary in ("method", "path", "version")
         ]
 
     monkeypatch.setattr(probe, "expect_hidden", expect_hidden)
@@ -109,7 +111,52 @@ def test_run_probe_targets_persisted_fixture_job_ids(monkeypatch, tmp_path):
         "same_organization_foreign_project": same_org_job,
         "foreign_organization": other_org_job,
     }
+    assert receipt["schema"] == "vela-lab-organization-isolation-http-probe-v3"
+    assert receipt["api_request_correlations"] == [
+        {
+            "operation": "authorized-job-read",
+            "request_id": "00000000-0000-4000-8000-000000000001",
+        },
+        {
+            "operation": "same-organization-foreign-project-fixture-job-hidden",
+            "request_id": "00000000-0000-4000-8000-000000000002",
+        },
+        {
+            "operation": "same-organization-foreign-project-fixture-artifact-set-hidden",
+            "request_id": "00000000-0000-4000-8000-000000000003",
+        },
+        {
+            "operation": "foreign-organization-fixture-job-hidden",
+            "request_id": "00000000-0000-4000-8000-000000000004",
+        },
+        {
+            "operation": "foreign-organization-fixture-artifact-set-hidden",
+            "request_id": "00000000-0000-4000-8000-000000000005",
+        },
+        {
+            "operation": "authorized-artifact-read",
+            "request_id": "00000000-0000-4000-8000-000000000006",
+        },
+    ]
+    assert receipt["role_evidence_request_ids"] == {
+        "job_read": "00000000-0000-4000-8000-000000000001",
+        "artifact_read": "00000000-0000-4000-8000-000000000006",
+    }
     assert receipt["negative_probe_count"] == len(receipt["negative_probes"]) == 10
+
+
+def test_response_request_id_requires_one_server_uuid():
+    headers = Message()
+    headers.add_header("X-Request-ID", "00000000-0000-4000-8000-000000000001")
+    assert probe.response_request_id(headers) == "00000000-0000-4000-8000-000000000001"
+
+    with pytest.raises(probe.ProbeError, match="correlation was invalid"):
+        probe.response_request_id(Message())
+    duplicate = Message()
+    duplicate.add_header("X-Request-ID", "00000000-0000-4000-8000-000000000001")
+    duplicate.add_header("X-Request-ID", "00000000-0000-4000-8000-000000000002")
+    with pytest.raises(probe.ProbeError, match="correlation was invalid"):
+        probe.response_request_id(duplicate)
 
 
 def test_run_probe_rejects_duplicate_job_identities(monkeypatch):

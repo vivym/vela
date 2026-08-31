@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vivym/vela/internal/artifactstore"
+	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/identity"
 	store "github.com/vivym/vela/internal/store/sqlc"
 )
@@ -38,8 +39,9 @@ type ExactVersionSigner interface {
 }
 
 type Service struct {
-	pool   *pgxpool.Pool
-	signer ExactVersionSigner
+	pool         *pgxpool.Pool
+	signer       ExactVersionSigner
+	roleObserver veladb.RequestRoleObserver
 }
 
 type ArtifactSet struct {
@@ -63,8 +65,15 @@ type Artifact struct {
 	DownloadURLExpiresAt time.Time
 }
 
-func NewService(pool *pgxpool.Pool, signer ExactVersionSigner) *Service {
-	return &Service{pool: pool, signer: signer}
+func NewService(
+	pool *pgxpool.Pool,
+	signer ExactVersionSigner,
+	roleObservers ...veladb.RequestRoleObserver,
+) *Service {
+	return &Service{
+		pool: pool, signer: signer,
+		roleObserver: veladb.CombineRequestRoleObservers(roleObservers...),
+	}
 }
 
 func (service *Service) Get(
@@ -109,6 +118,20 @@ func (service *Service) Get(
 	}
 	if !requestContext.TransactionTime.Valid {
 		return ArtifactSet{}, errors.New("Artifact access transaction time is unavailable")
+	}
+	if err := veladb.VerifyRequestRole(
+		requestContext.DatabaseLogin,
+		veladb.RoleArtifactRequest,
+		requestContext.DatabaseRoleMember,
+	); err != nil {
+		return ArtifactSet{}, fmt.Errorf("verify Artifact request database role: %w", err)
+	}
+	if service.roleObserver != nil {
+		service.roleObserver.ObserveRequestRole(ctx, veladb.RequestRoleObservation{
+			Surface:       veladb.RequestRoleSurfaceArtifactRead,
+			DatabaseLogin: requestContext.DatabaseLogin,
+			DatabaseRole:  veladb.RoleArtifactRequest,
+		})
 	}
 	rows, err := queries.ListReadableArtifactSet(ctx, store.ListReadableArtifactSetParams{
 		OrganizationID: principal.OrganizationID,

@@ -725,6 +725,8 @@ func (q *Queries) ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUPara
 
 const setRequestContext = `-- name: SetRequestContext :one
 SELECT
+	current_user::text AS database_login,
+	pg_has_role(current_user, 'vela_request', 'MEMBER') AS database_role_member,
     context.organization_id::uuid AS organization_id,
     context.project_id::uuid AS project_id,
     context.principal_id::uuid AS principal_id,
@@ -743,16 +745,20 @@ type SetRequestContextParams struct {
 }
 
 type SetRequestContextRow struct {
-	OrganizationID  uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID       uuid.UUID          `db:"project_id" json:"project_id"`
-	PrincipalID     uuid.UUID          `db:"principal_id" json:"principal_id"`
-	TransactionTime pgtype.Timestamptz `db:"transaction_time" json:"transaction_time"`
+	DatabaseLogin      string             `db:"database_login" json:"database_login"`
+	DatabaseRoleMember bool               `db:"database_role_member" json:"database_role_member"`
+	OrganizationID     uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID          uuid.UUID          `db:"project_id" json:"project_id"`
+	PrincipalID        uuid.UUID          `db:"principal_id" json:"principal_id"`
+	TransactionTime    pgtype.Timestamptz `db:"transaction_time" json:"transaction_time"`
 }
 
 func (q *Queries) SetRequestContext(ctx context.Context, arg SetRequestContextParams) (SetRequestContextRow, error) {
 	row := q.db.QueryRow(ctx, setRequestContext, arg.CredentialID, arg.CredentialProof, arg.RequiredScope)
 	var i SetRequestContextRow
 	err := row.Scan(
+		&i.DatabaseLogin,
+		&i.DatabaseRoleMember,
 		&i.OrganizationID,
 		&i.ProjectID,
 		&i.PrincipalID,

@@ -1037,6 +1037,7 @@ func run() error {
 			humanMembershipAuthPool,
 			configuration.credentialPepper,
 			oidcVerifier,
+			httpMetrics,
 		),
 		PlatformAuthenticator: breakglass.NewAuthenticator(
 			platformOperatorAuthPool,
@@ -1048,9 +1049,9 @@ func run() error {
 		OrganizationReporting:  organizationReporting,
 		Retention:              retentionService,
 		DebugDumps:             debugDumpService,
-		Admission:              admission.NewService(requestPool, capacityPredictor),
+		Admission:              admission.NewService(requestPool, capacityPredictor, httpMetrics),
 		Cancellation:           cancellationService,
-		Artifacts:              artifactaccess.NewService(artifactRequestPool, artifactStore),
+		Artifacts:              artifactaccess.NewService(artifactRequestPool, artifactStore, httpMetrics),
 		Webhooks:               webhookService,
 	})
 	if err != nil {

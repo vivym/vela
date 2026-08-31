@@ -31,6 +31,7 @@ import (
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/retention"
+	"github.com/vivym/vela/internal/telemetry"
 	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
@@ -2479,6 +2480,7 @@ func TestProjectArtifactHTTPReturnsCommittedExactVersionsWithShortLivedURLs(t *t
 	}
 
 	signer := &recordingArtifactSigner{}
+	metrics := telemetry.NewHTTPMetrics()
 	authPool := newRolePool(
 		t, fixture.database.DSN, "vela_auth_login", "vela-auth-password",
 	)
@@ -2504,13 +2506,14 @@ func TestProjectArtifactHTTPReturnsCommittedExactVersionsWithShortLivedURLs(t *t
 		t, fixture.database.DSN, "vela_internal_login", "vela-internal-password",
 	)
 	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
+		Observer:               metrics.Middleware,
+		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper, metrics),
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},
 		Admission:              admission.NewLegacyService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
-		Artifacts:              artifactaccess.NewService(artifactPool, signer),
+		Artifacts:              artifactaccess.NewService(artifactPool, signer, metrics),
 		Webhooks:               testWebhookService(t, webhookRequestPool),
 	})
 	if err != nil {
@@ -2540,6 +2543,20 @@ func TestProjectArtifactHTTPReturnsCommittedExactVersionsWithShortLivedURLs(t *t
 	}
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("ArtifactSet status = %d, want 200; body=%s", response.StatusCode, body)
+	}
+	if _, err := uuid.Parse(response.Header.Get("X-Request-ID")); err != nil {
+		t.Fatalf("Artifact read X-Request-ID = %q: %v", response.Header.Get("X-Request-ID"), err)
+	}
+	metricsResponse := httptest.NewRecorder()
+	metrics.Handler().ServeHTTP(metricsResponse, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	metricText := metricsResponse.Body.String()
+	for _, expected := range []string{
+		`vela_database_request_role_transactions_total{database_login="vela_auth_login",database_role="vela_auth",surface="service_authentication"} 1`,
+		`vela_database_request_role_transactions_total{database_login="vela_artifact_request_login",database_role="vela_artifact_request",surface="artifact_read"} 1`,
+	} {
+		if !strings.Contains(metricText, expected) {
+			t.Fatalf("request-role metric %q missing:\n%s", expected, metricText)
+		}
 	}
 	var payload struct {
 		ArtifactSetID      uuid.UUID `json:"artifact_set_id"`

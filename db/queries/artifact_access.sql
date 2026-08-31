@@ -1,5 +1,7 @@
 -- name: SetArtifactRequestContext :one
 SELECT
+	current_user::text AS database_login,
+	pg_has_role(current_user, 'vela_artifact_request', 'MEMBER') AS database_role_member,
     organization_id::uuid,
     project_id::uuid,
     principal_id::uuid,

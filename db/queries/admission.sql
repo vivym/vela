@@ -1,5 +1,7 @@
 -- name: SetRequestContext :one
 SELECT
+	current_user::text AS database_login,
+	pg_has_role(current_user, 'vela_request', 'MEMBER') AS database_role_member,
     context.organization_id::uuid AS organization_id,
     context.project_id::uuid AS project_id,
     context.principal_id::uuid AS principal_id,
