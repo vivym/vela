@@ -121,3 +121,9 @@ and approval, real Secret and PKI material, production node materialization,
 and the nine real exercises remain external release responsibilities. A
 repository bundle, validator, or fixture is not a Launch Receipt and does not
 advance `0/9 PASS`.
+
+The read-only H3 launch inventory collector is documented in
+`docs/h3-launch-evidence.md`. Its output binds live Kubernetes/DRA and Fleet
+ModelResidency identities for a release-bound ResidencyPlan, but remains only
+one campaign input. It is not a Launch Receipt and cannot advance `0/9 PASS`
+without the complete real exercise and typed evidence contract.

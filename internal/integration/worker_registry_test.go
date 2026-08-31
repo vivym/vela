@@ -24,6 +24,7 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleettransport"
+	"github.com/vivym/vela/internal/h3launchevidence"
 	"github.com/vivym/vela/internal/nodeagent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
@@ -182,6 +183,59 @@ func TestWorkerRegistryRefreshesExistingWorkerInstanceEvidence(t *testing.T) {
 	}
 	if runtimeIdentity != evidence.Residencies[0].RuntimeIdentity || observations != 2 {
 		t.Fatalf("failed refresh changed runtime=%q observations=%d", runtimeIdentity, observations)
+	}
+}
+
+func TestH3LaunchEvidenceCapturesAuthoritativeRegistrySnapshot(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+	service, err := fleet.NewService(fleetPool)
+	if err != nil {
+		t.Fatalf("construct Worker Registry service: %v", err)
+	}
+	proposalID := uuid.MustParse("49200000-0000-0000-0000-000000000260")
+	if _, err := service.Propose(context.Background(), fleet.ResidencyPlanInputs{
+		ProposalID: proposalID, InputDigest: mustDigestBytes(t, digestHex(0xa0)),
+		ConfidencePPM: 900000, ExpiresAt: time.Now().UTC().Add(time.Hour),
+		MinCapacity: map[string]int64{"dit": 1}, DesiredCapacity: map[string]int64{"dit": 1},
+		MaxCapacity: map[string]int64{"dit": 1}, Cooldown: time.Hour,
+		BudgetMicroUnits: 1000000, ReasonCodes: []string{"LAUNCH_EVIDENCE"},
+		ProposedBy: "capacity-simulator/launch-evidence",
+	}); err != nil {
+		t.Fatalf("record launch evidence ResidencyProposal: %v", err)
+	}
+	encodedPlan, err := json.Marshal(approvedResidencyPlanFixture(proposalID))
+	if err != nil {
+		t.Fatalf("encode launch evidence ResidencyPlan: %v", err)
+	}
+	var plan fleet.ApprovedResidencyPlan
+	if err := json.Unmarshal(encodedPlan, &plan); err != nil {
+		t.Fatalf("decode launch evidence ResidencyPlan: %v", err)
+	}
+	if _, err := service.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("apply launch evidence ResidencyPlan: %v", err)
+	}
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000204")
+	evidence := workerRegistryEvidenceValue(t, workerID, 0xa1)
+	if _, err := service.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("observe launch evidence WorkerInstance: %v", err)
+	}
+	reader, err := h3launchevidence.NewPostgresRegistryReader(fleetPool)
+	if err != nil {
+		t.Fatalf("construct launch evidence Registry reader: %v", err)
+	}
+	snapshot, err := reader.Capture(context.Background(), plan.ID)
+	if err != nil {
+		t.Fatalf("capture launch evidence Registry snapshot: %v", err)
+	}
+	if snapshot.DatabaseTime.IsZero() || snapshot.TransactionID == "" || snapshot.SnapshotID == "" ||
+		len(snapshot.Workers) != 1 || snapshot.Workers[0].ID != workerID ||
+		len(snapshot.Workers[0].Members) != 1 || len(snapshot.Workers[0].Members[0].Devices) != 1 ||
+		len(snapshot.Workers[0].Residencies) != 1 || snapshot.Workers[0].Residencies[0].State != "READY" {
+		t.Fatalf("authoritative Registry snapshot = %#v", snapshot)
 	}
 }
 

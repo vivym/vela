@@ -181,13 +181,20 @@ func TestBuildBindsTargetResidencyPlanStageWorkerAndSecrets(t *testing.T) {
 	)
 	fixture.writePlan(t)
 
-	bundle, _, err := Build(fixture.planPath)
+	bundle, bundleBytes, err := Build(fixture.planPath)
 	if err != nil {
 		t.Fatalf("build target ResidencyPlan release bundle: %v", err)
 	}
 	if len(bundle.ConfigurationManifest.FinalRenders) != 6 ||
 		len(bundle.ConfigurationManifest.WorkerMaterializations) != 0 || len(bundle.OCIImages) != 4 {
 		t.Fatalf("target ResidencyPlan release bundle = %#v", bundle.ConfigurationManifest)
+	}
+	bundlePath := filepath.Join(fixture.directory, "release-bundle.json")
+	writeTestFile(t, bundlePath, bundleBytes)
+	loadedBundle, loadedRollouts, err := LoadResidencyPlanRollouts(bundlePath)
+	if err != nil || loadedBundle.ReleaseDigest != bundle.ReleaseDigest ||
+		len(loadedRollouts) != 1 || loadedRollouts[0].ApprovedPlan.ID != planID {
+		t.Fatalf("load canonical ResidencyPlan rollouts bundle=%#v rollouts=%#v error=%v", loadedBundle, loadedRollouts, err)
 	}
 
 	rewriteTarget := func(runtimeImage string) {

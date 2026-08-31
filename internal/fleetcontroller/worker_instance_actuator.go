@@ -548,6 +548,27 @@ func materializeWorkerInstancePods(bundle WorkerBundleActuation) ([]corev1.Pod, 
 	return pods, nil
 }
 
+// MaterializeWorkerInstanceLaunchResources returns the exact Pod and DRA claim
+// templates authorized by a validated WorkerBundle. It is shared with launch
+// evidence collection so evidence is compared with the same contract used for
+// actuation.
+func MaterializeWorkerInstanceLaunchResources(
+	bundle WorkerBundleActuation,
+) ([]corev1.Pod, []resourcev1.ResourceClaimTemplate, error) {
+	if err := ValidateWorkerBundleActuation(bundle); err != nil {
+		return nil, nil, err
+	}
+	pods, err := materializeWorkerInstancePods(bundle)
+	if err != nil {
+		return nil, nil, err
+	}
+	claims, err := materializeWorkerInstanceGPUClaimTemplates(bundle)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pods, claims, nil
+}
+
 func materializeWorkerInstanceGPUClaimTemplates(
 	bundle WorkerBundleActuation,
 ) ([]resourcev1.ResourceClaimTemplate, error) {
@@ -993,6 +1014,16 @@ func workerInstanceGPUClaimTemplateMatches(
 	return reflect.DeepEqual(normalize(live), normalize(desired))
 }
 
+// WorkerInstanceGPUClaimTemplateMatches reports whether a live claim template
+// has the exact actuation-owned content of the desired template. Kubernetes
+// server-assigned metadata is excluded from the comparison.
+func WorkerInstanceGPUClaimTemplateMatches(
+	live resourcev1.ResourceClaimTemplate,
+	desired resourcev1.ResourceClaimTemplate,
+) bool {
+	return workerInstanceGPUClaimTemplateMatches(live, desired)
+}
+
 func mustEncodeDeviceConstraints(constraints []DeviceConstraint) string {
 	encoded, err := json.Marshal(constraints)
 	if err != nil {
@@ -1049,5 +1080,20 @@ func workerInstancePodMatches(live, desired corev1.Pod) bool {
 		copy.Status = corev1.PodStatus{}
 		return copy
 	}
-	return reflect.DeepEqual(normalize(live), normalize(desired))
+	normalizedLive := normalize(live)
+	normalizedDesired := normalize(desired)
+	if normalizedDesired.Spec.NodeName == "" &&
+		normalizedDesired.Spec.NodeSelector[corev1.LabelHostname] != "" &&
+		normalizedLive.Spec.NodeName == normalizedDesired.Spec.NodeSelector[corev1.LabelHostname] {
+		normalizedLive.Spec.NodeName = ""
+	}
+	return reflect.DeepEqual(normalizedLive, normalizedDesired)
+}
+
+// WorkerInstancePodMatches reports whether a live Pod has the exact
+// actuation-owned content of the desired Pod. Kubernetes server-assigned
+// metadata, status, and the scheduler's exact approved node binding are
+// excluded from the comparison.
+func WorkerInstancePodMatches(live, desired corev1.Pod) bool {
+	return workerInstancePodMatches(live, desired)
 }
