@@ -142,6 +142,7 @@ func TestProductionAgentRunsAssignmentsAndHonorsNoWorkRetry(t *testing.T) {
 		Devices:         fixture.authority.GetDevices(), Members: fixture.authority.GetMembers(),
 		CapacityVector: fixture.authority.GetCapacityVector(), CapacityTTL: 2 * time.Minute,
 		HeartbeatInterval: 10 * time.Second, Now: time.Now,
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{41, 53}},
 		Wait: func(_ context.Context, delay time.Duration) error {
 			waits = append(waits, delay)
 			switch delay {
@@ -170,6 +171,9 @@ func TestProductionAgentRunsAssignmentsAndHonorsNoWorkRetry(t *testing.T) {
 			"acquire=%d start=%d commit=%d waits=%v",
 			control.acquireCalls, control.startCalls, control.commitCalls, waits,
 		)
+	}
+	if !reflect.DeepEqual(control.observationSequences, []int64{41, 53}) {
+		t.Fatalf("observation sequences = %v, want durable source values", control.observationSequences)
 	}
 }
 
@@ -220,7 +224,8 @@ func TestProductionAgentReattachesAfterControlReconnectWithoutRerunning(t *testi
 		CapacityVector: fixture.authority.GetCapacityVector(), CapacityTTL: 2 * time.Minute,
 		HeartbeatInterval: 10 * time.Second,
 		RetryMinimum:      time.Second, RetryMaximum: 8 * time.Second,
-		Now: time.Now,
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{61, 72, 95}},
+		Now:                       time.Now,
 		Wait: func(_ context.Context, delay time.Duration) error {
 			waits = append(waits, delay)
 			switch delay {
@@ -319,6 +324,59 @@ func TestProductionAgentRegistersCapacityBeforeAcquiringWork(t *testing.T) {
 	}
 }
 
+func TestDiscoverRuntimeIdentityBindsResidentRuntimeToConfiguredWorkerMember(t *testing.T) {
+	identity := productionRuntimeIdentity()
+	runtime := &identityDiscoveryRuntime{identity: identity}
+	discovered, err := stageworkeragent.DiscoverRuntimeIdentity(
+		context.Background(),
+		runtime,
+		stageworkeragent.RuntimeIdentityExpectation{
+			WorkerInstanceID:    identity.GetWorkerInstanceId(),
+			WorkerInstanceEpoch: identity.GetWorkerInstanceEpoch(),
+			WorkerMemberID:      identity.GetWorkerMemberId(),
+			WorkerMemberEpoch:   identity.GetWorkerMemberEpoch(),
+		},
+	)
+	if err != nil || !proto.Equal(discovered, identity) {
+		t.Fatalf("DiscoverRuntimeIdentity = %#v, error=%v", discovered, err)
+	}
+	if runtime.request.GetIdentity() != nil || runtime.request.GetCheck() !=
+		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_DEVICE {
+		t.Fatalf("identity discovery request = %#v", runtime.request)
+	}
+
+	_, err = stageworkeragent.DiscoverRuntimeIdentity(
+		context.Background(),
+		runtime,
+		stageworkeragent.RuntimeIdentityExpectation{
+			WorkerInstanceID:    identity.GetWorkerInstanceId(),
+			WorkerInstanceEpoch: identity.GetWorkerInstanceEpoch() + 1,
+			WorkerMemberID:      identity.GetWorkerMemberId(),
+			WorkerMemberEpoch:   identity.GetWorkerMemberEpoch(),
+		},
+	)
+	if err == nil {
+		t.Fatal("DiscoverRuntimeIdentity accepted a different WorkerInstance epoch")
+	}
+}
+
+type identityDiscoveryRuntime struct {
+	identity *velav1.ModelRuntimeIdentity
+	request  *velav1.ModelRuntimeServiceProbeReadinessRequest
+}
+
+func (runtime *identityDiscoveryRuntime) ProbeReadiness(
+	_ context.Context,
+	request *velav1.ModelRuntimeServiceProbeReadinessRequest,
+	_ ...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceProbeReadinessResponse, error) {
+	runtime.request = proto.Clone(request).(*velav1.ModelRuntimeServiceProbeReadinessRequest)
+	return &velav1.ModelRuntimeServiceProbeReadinessResponse{
+		Identity: proto.Clone(runtime.identity).(*velav1.ModelRuntimeIdentity),
+		Check:    request.GetCheck(), Detail: "resident identity disclosed; expectation required",
+	}, nil
+}
+
 type readinessRuntime struct {
 	identity *velav1.ModelRuntimeIdentity
 	checks   []velav1.ModelRuntimeReadinessCheck
@@ -351,13 +409,14 @@ type productionControl struct {
 
 type productionExecutionControl struct {
 	*materializingStreamControl
-	identity          *velav1.ModelRuntimeIdentity
-	heartbeatCalls    int
-	heartbeatFailures int
-	reattachCalls     int
-	assignment        *velav1.StageAssignment
-	acquireCalls      int
-	commands          <-chan *velav1.StageWorkerControlServiceConnectResponse
+	identity             *velav1.ModelRuntimeIdentity
+	heartbeatCalls       int
+	heartbeatFailures    int
+	reattachCalls        int
+	assignment           *velav1.StageAssignment
+	acquireCalls         int
+	commands             <-chan *velav1.StageWorkerControlServiceConnectResponse
+	observationSequences []int64
 }
 
 func (control *productionExecutionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
@@ -369,8 +428,13 @@ func (control *productionExecutionControl) Exchange(
 	request *velav1.StageWorkerControlServiceConnectRequest,
 ) (*velav1.StageWorkerControlServiceConnectResponse, error) {
 	switch request.GetOperation().(type) {
-	case *velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence,
-		*velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
+	case *velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence:
+		control.observationSequences = append(
+			control.observationSequences,
+			request.GetRegisterWorkerEvidence().GetCapacityObservationSequence(),
+		)
+		return productionReadinessResponse(control.identity), nil
+	case *velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
 		return productionReadinessResponse(control.identity), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
 		control.acquireCalls++
@@ -406,6 +470,22 @@ func (control *productionExecutionControl) Exchange(
 		), nil
 	}
 	return control.materializingStreamControl.Exchange(ctx, request)
+}
+
+type capacitySequenceSource struct {
+	values []int64
+	index  int
+}
+
+func (source *capacitySequenceSource) NextCapacityObservationSequence(
+	context.Context,
+) (int64, error) {
+	if source.index >= len(source.values) {
+		return 0, errors.New("test capacity sequences exhausted")
+	}
+	value := source.values[source.index]
+	source.index++
+	return value, nil
 }
 
 func (control *productionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {

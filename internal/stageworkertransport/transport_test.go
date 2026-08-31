@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"net"
 	"net/url"
 	"sync"
@@ -186,6 +187,55 @@ func TestClientReconnectIncrementsSessionEpochAndCarriesReattach(t *testing.T) {
 	if got := server.Epochs(); got != "50,51" {
 		t.Fatalf("control session epochs = %s, want 50,51", got)
 	}
+}
+
+func TestClientObtainsEveryStreamEpochFromDurableSource(t *testing.T) {
+	server := &reconnectingStageServer{}
+	address := serveStageControl(t, server)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	epochs := &sequenceEpochSource{values: []int64{80, 94}}
+	client, err := stageworkertransport.DialClient(ctx, stageworkertransport.ClientConfig{
+		Address: address, TransportCredentials: insecure.NewCredentials(),
+		ControlSessionEpochSource: epochs,
+	})
+	if err != nil {
+		t.Fatalf("DialClient: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	_, err = client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
+			AcquireStage: &velav1.AcquireStageRequest{},
+		},
+	})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("first Exchange error = %v, want Unavailable", err)
+	}
+	if _, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReattachStage{
+			ReattachStage: &velav1.ReattachStageRequest{Authority: &velav1.StageAuthority{}},
+		},
+	}); err != nil {
+		t.Fatalf("reattach Exchange: %v", err)
+	}
+	if got := server.Epochs(); got != "80,94" {
+		t.Fatalf("control session epochs = %s, want durable values 80,94", got)
+	}
+}
+
+type sequenceEpochSource struct {
+	values []int64
+	index  int
+}
+
+func (source *sequenceEpochSource) NextControlSessionEpoch(context.Context) (int64, error) {
+	if source.index >= len(source.values) {
+		return 0, errors.New("test control session epochs exhausted")
+	}
+	value := source.values[source.index]
+	source.index++
+	return value, nil
 }
 
 func TestServerPushesStopStageWithoutWaitingForAnotherWorkerRequest(t *testing.T) {

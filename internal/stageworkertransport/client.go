@@ -20,6 +20,11 @@ type ClientConfig struct {
 	Address                    string
 	TransportCredentials       credentials.TransportCredentials
 	InitialControlSessionEpoch int64
+	ControlSessionEpochSource  ControlSessionEpochSource
+}
+
+type ControlSessionEpochSource interface {
+	NextControlSessionEpoch(context.Context) (int64, error)
 }
 
 type exchangeResult struct {
@@ -39,6 +44,7 @@ type Client struct {
 		velav1.StageWorkerControlServiceConnectResponse,
 	]
 	streamEpoch int64
+	epochSource ControlSessionEpochSource
 	generation  uint64
 	pending     map[string]chan exchangeResult
 	closed      bool
@@ -48,7 +54,9 @@ type Client struct {
 }
 
 func DialClient(ctx context.Context, config ClientConfig) (*Client, error) {
-	if ctx == nil || config.TransportCredentials == nil || config.InitialControlSessionEpoch <= 0 {
+	hasInitialEpoch := config.InitialControlSessionEpoch > 0
+	hasEpochSource := config.ControlSessionEpochSource != nil
+	if ctx == nil || config.TransportCredentials == nil || hasInitialEpoch == hasEpochSource {
 		return nil, errors.New("incomplete Stage Worker control client configuration")
 	}
 	host, port, err := net.SplitHostPort(config.Address)
@@ -84,6 +92,7 @@ func DialClient(ctx context.Context, config ClientConfig) (*Client, error) {
 		ctx:         clientContext,
 		cancel:      cancel,
 		streamEpoch: config.InitialControlSessionEpoch,
+		epochSource: config.ControlSessionEpochSource,
 		pending:     make(map[string]chan exchangeResult),
 		commands:    make(chan *velav1.StageWorkerControlServiceConnectResponse, 64),
 	}, nil
@@ -189,6 +198,16 @@ func (client *Client) ensureStream() (
 	if client.stream != nil {
 		return client.stream, client.streamEpoch, client.generation, nil
 	}
+	if client.epochSource != nil {
+		nextEpoch, err := client.epochSource.NextControlSessionEpoch(client.ctx)
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("allocate Stage Worker control session epoch: %w", err)
+		}
+		if nextEpoch <= client.streamEpoch {
+			return nil, 0, 0, errors.New("Stage Worker control session epoch did not advance")
+		}
+		client.streamEpoch = nextEpoch
+	}
 	stream, err := client.service.Connect(client.ctx)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("open Stage Worker control stream: %w", err)
@@ -254,7 +273,9 @@ func (client *Client) failStream(
 		return
 	}
 	client.stream = nil
-	client.streamEpoch++
+	if client.epochSource == nil {
+		client.streamEpoch++
+	}
 	pending := client.pending
 	client.pending = make(map[string]chan exchangeResult)
 	client.mu.Unlock()

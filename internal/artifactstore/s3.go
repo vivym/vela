@@ -3,6 +3,8 @@ package artifactstore
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -49,6 +51,7 @@ type S3Config struct {
 	SecretAccessKey string
 	UsePathStyle    bool
 	SignedGETTTL    time.Duration
+	RootCAPEM       []byte
 }
 
 type S3 struct {
@@ -161,6 +164,21 @@ func NewS3(config S3Config) (*S3, error) {
 			config.SecretAccessKey,
 			"",
 		),
+	}
+	if len(config.RootCAPEM) != 0 {
+		rootCAs, err := x509.SystemCertPool()
+		if err != nil || rootCAs == nil {
+			rootCAs = x509.NewCertPool()
+		}
+		if !rootCAs.AppendCertsFromPEM(config.RootCAPEM) {
+			return nil, errors.New("invalid S3 Artifact Store root CA")
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    rootCAs,
+		}
+		awsConfig.HTTPClient = &http.Client{Transport: transport}
 	}
 	client := s3.NewFromConfig(awsConfig, func(options *s3.Options) {
 		options.BaseEndpoint = aws.String(strings.TrimRight(endpoint, "/"))

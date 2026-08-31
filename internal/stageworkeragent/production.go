@@ -42,36 +42,83 @@ type RuntimeReadinessClient interface {
 	) (*velav1.ModelRuntimeServiceProbeReadinessResponse, error)
 }
 
+type CapacityObservationSequenceSource interface {
+	NextCapacityObservationSequence(context.Context) (int64, error)
+}
+
+type RuntimeIdentityExpectation struct {
+	WorkerInstanceID    string
+	WorkerInstanceEpoch int64
+	WorkerMemberID      string
+	WorkerMemberEpoch   int64
+}
+
+func DiscoverRuntimeIdentity(
+	ctx context.Context,
+	runtime RuntimeReadinessClient,
+	expected RuntimeIdentityExpectation,
+) (*velav1.ModelRuntimeIdentity, error) {
+	if ctx == nil || runtime == nil || uuid.Validate(expected.WorkerInstanceID) != nil ||
+		expected.WorkerInstanceEpoch <= 0 || uuid.Validate(expected.WorkerMemberID) != nil ||
+		expected.WorkerMemberEpoch <= 0 {
+		return nil, errors.New("ModelRuntime identity discovery configuration is invalid")
+	}
+	response, err := runtime.ProbeReadiness(
+		ctx,
+		&velav1.ModelRuntimeServiceProbeReadinessRequest{
+			Check: velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_DEVICE,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("discover resident ModelRuntime identity: %w", err)
+	}
+	identity := response.GetIdentity()
+	if response == nil || response.GetCheck() !=
+		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_DEVICE ||
+		validateProductionRuntimeIdentity(identity) != nil {
+		return nil, errors.New("resident ModelRuntime returned an invalid identity")
+	}
+	if identity.GetWorkerInstanceId() != expected.WorkerInstanceID ||
+		identity.GetWorkerInstanceEpoch() != expected.WorkerInstanceEpoch ||
+		identity.GetWorkerMemberId() != expected.WorkerMemberID ||
+		identity.GetWorkerMemberEpoch() != expected.WorkerMemberEpoch {
+		return nil, errors.New("resident ModelRuntime identity does not match configured WorkerInstance member")
+	}
+	return proto.Clone(identity).(*velav1.ModelRuntimeIdentity), nil
+}
+
 type ProductionConfig struct {
-	Control           ControlClient
-	Runtime           RuntimeReadinessClient
-	Stream            *StreamAgent
-	RuntimeIdentity   *velav1.ModelRuntimeIdentity
-	Devices           []*velav1.StageAuthorityDeviceEpoch
-	Members           []*velav1.StageAuthorityMemberEpoch
-	CapacityVector    map[string]int64
-	CapacityTTL       time.Duration
-	HeartbeatInterval time.Duration
-	RetryMinimum      time.Duration
-	RetryMaximum      time.Duration
-	Now               func() time.Time
-	Wait              func(context.Context, time.Duration) error
+	Control                   ControlClient
+	Runtime                   RuntimeReadinessClient
+	Stream                    *StreamAgent
+	RuntimeIdentity           *velav1.ModelRuntimeIdentity
+	Devices                   []*velav1.StageAuthorityDeviceEpoch
+	Members                   []*velav1.StageAuthorityMemberEpoch
+	CapacityVector            map[string]int64
+	CapacityTTL               time.Duration
+	HeartbeatInterval         time.Duration
+	RetryMinimum              time.Duration
+	RetryMaximum              time.Duration
+	ObservationSequenceSource CapacityObservationSequenceSource
+	Now                       func() time.Time
+	Wait                      func(context.Context, time.Duration) error
 }
 
 type ProductionAgent struct {
-	control           ControlClient
-	runtime           RuntimeReadinessClient
-	stream            *StreamAgent
-	runtimeIdentity   *velav1.ModelRuntimeIdentity
-	devices           []*velav1.StageAuthorityDeviceEpoch
-	members           []*velav1.StageAuthorityMemberEpoch
-	capacityVector    map[string]int64
-	capacityTTL       time.Duration
-	heartbeatInterval time.Duration
-	retryMinimum      time.Duration
-	retryMaximum      time.Duration
-	now               func() time.Time
-	wait              func(context.Context, time.Duration) error
+	control                   ControlClient
+	runtime                   RuntimeReadinessClient
+	stream                    *StreamAgent
+	runtimeIdentity           *velav1.ModelRuntimeIdentity
+	devices                   []*velav1.StageAuthorityDeviceEpoch
+	members                   []*velav1.StageAuthorityMemberEpoch
+	capacityVector            map[string]int64
+	capacityTTL               time.Duration
+	heartbeatInterval         time.Duration
+	retryMinimum              time.Duration
+	retryMaximum              time.Duration
+	observationSequenceSource CapacityObservationSequenceSource
+	now                       func() time.Time
+	wait                      func(context.Context, time.Duration) error
 }
 
 type DiscoveryResult struct {
@@ -122,21 +169,23 @@ func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 	}
 	return &ProductionAgent{
 		control: config.Control, runtime: config.Runtime, stream: config.Stream,
-		runtimeIdentity:   proto.Clone(config.RuntimeIdentity).(*velav1.ModelRuntimeIdentity),
-		devices:           cloneDevices(config.Devices),
-		members:           cloneMembers(config.Members),
-		capacityVector:    maps.Clone(config.CapacityVector),
-		capacityTTL:       config.CapacityTTL,
-		heartbeatInterval: config.HeartbeatInterval,
-		retryMinimum:      config.RetryMinimum,
-		retryMaximum:      config.RetryMaximum,
-		now:               config.Now,
-		wait:              config.Wait,
+		runtimeIdentity:           proto.Clone(config.RuntimeIdentity).(*velav1.ModelRuntimeIdentity),
+		devices:                   cloneDevices(config.Devices),
+		members:                   cloneMembers(config.Members),
+		capacityVector:            maps.Clone(config.CapacityVector),
+		capacityTTL:               config.CapacityTTL,
+		heartbeatInterval:         config.HeartbeatInterval,
+		retryMinimum:              config.RetryMinimum,
+		retryMaximum:              config.RetryMaximum,
+		observationSequenceSource: config.ObservationSequenceSource,
+		now:                       config.Now,
+		wait:                      config.Wait,
 	}, nil
 }
 
 func (agent *ProductionAgent) Run(ctx context.Context) error {
-	if agent == nil || agent.stream == nil || agent.wait == nil || ctx == nil {
+	if agent == nil || agent.stream == nil || agent.wait == nil ||
+		agent.observationSequenceSource == nil || ctx == nil {
 		return errors.New("Stage Worker production service is not configured")
 	}
 	commandErrors := make(chan error, 1)
@@ -146,10 +195,6 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 	go func() {
 		commandErrors <- agent.stream.RunControlCommands(ctx)
 	}()
-	sequence := agent.now().UTC().UnixNano()
-	if sequence <= 0 {
-		return errors.New("Stage Worker capacity observation clock is invalid")
-	}
 	backoff := agent.retryMinimum
 	for {
 		if ctx.Err() != nil {
@@ -176,8 +221,21 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			backoff = nextBackoff(backoff, agent.retryMaximum)
 			continue
 		}
+		sequence, err := agent.nextObservationSequence(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			if err := agent.wait(ctx, backoff); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return err
+			}
+			backoff = nextBackoff(backoff, agent.retryMaximum)
+			continue
+		}
 		discovery, err := agent.Discover(ctx, sequence)
-		sequence++
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -210,11 +268,13 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 				return err
 			}
 			backoff = nextBackoff(backoff, agent.retryMaximum)
-			if err = agent.refreshEvidence(ctx, sequence); err != nil {
-				sequence++
+			sequence, err = agent.nextObservationSequence(ctx)
+			if err != nil {
 				continue
 			}
-			sequence++
+			if err = agent.refreshEvidence(ctx, sequence); err != nil {
+				continue
+			}
 			if err = agent.reattachActive(ctx); err != nil {
 				continue
 			}
@@ -231,6 +291,20 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			return err
 		}
 	}
+}
+
+func (agent *ProductionAgent) nextObservationSequence(ctx context.Context) (int64, error) {
+	if agent == nil || agent.observationSequenceSource == nil || ctx == nil {
+		return 0, errors.New("Stage Worker capacity observation sequencer is not configured")
+	}
+	sequence, err := agent.observationSequenceSource.NextCapacityObservationSequence(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("allocate Stage Worker capacity observation sequence: %w", err)
+	}
+	if sequence <= 0 {
+		return 0, errors.New("Stage Worker capacity observation sequencer returned an invalid sequence")
+	}
+	return sequence, nil
 }
 
 func (agent *ProductionAgent) RunAssignment(
