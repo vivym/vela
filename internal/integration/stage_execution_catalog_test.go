@@ -852,7 +852,7 @@ func seedStageExecutionCatalog(t *testing.T, database *sql.DB) {
 			 '49000000-0000-0000-0000-000000000020', '49000000-0000-0000-0000-000000000021',
 			 'GENERATING', decode(repeat('41', 32), 'hex')),
 			('49000000-0000-0000-0000-000000000032', 'h3-vae', 1, 'CERTIFIED',
-			 'VAE', jsonb_build_object('latent', '49000000-0000-0000-0000-000000000012'),
+			 'VAE_DECODER', jsonb_build_object('latent', '49000000-0000-0000-0000-000000000012'),
 			 jsonb_build_object(
 				'video', '49000000-0000-0000-0000-000000000013',
 				'cycle', '49000000-0000-0000-0000-000000000010'

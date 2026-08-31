@@ -53,3 +53,70 @@ tests:
               generation_count: "2"
             exp_annotations:
               runbook: docs/runbooks/statistical-slo-breach.md
+  - name: Missing Stage authority exporter pages
+    interval: 1m
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VelaStageAuthorityExporterFailed
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              runbook: docs/runbooks/h3-stage-campaign.md
+  - name: Old READY StageRun pages
+    interval: 1m
+    input_series:
+      - series: 'vela_stage_ready_oldest_age_seconds{stage_kind="DIT"}'
+        values: '901x25'
+    alert_rule_test:
+      - eval_time: 21m
+        alertname: VelaStageReadyQueueStalled
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stage_kind: DIT
+            exp_annotations:
+              runbook: docs/runbooks/h3-stage-campaign.md
+  - name: StageScheduler replay divergence pages
+    interval: 1m
+    input_series:
+      - series: 'vela_stage_scheduler_shadow_replay_total{outcome="DIVERGED",reason="REPLAY_DIVERGED",algorithm_revision="stage-scheduler-v1"}'
+        values: '0+1x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VelaStageSchedulerReplayDiverged
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              runbook: docs/runbooks/h3-stage-campaign.md
+  - name: Old ACTIVE TransferTicket pages
+    interval: 1m
+    input_series:
+      - series: 'vela_stage_transfer_active_oldest_age_seconds'
+        values: '301x12'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: VelaStageTransferTicketStuck
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              runbook: docs/runbooks/h3-stage-campaign.md
+  - name: Missing H3 residency pages
+    interval: 1m
+    input_series:
+      - series: 'vela_stage_model_residency_state_count{stage_kind="DIT",state="READY"}'
+        values: '7x10'
+      - series: 'vela_stage_model_residency_state_count{stage_kind="VAE_DECODER",state="READY"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: VelaStageModelResidencyCoverageMissing
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              stage_kind: ENCODER
+              state: READY
+            exp_annotations:
+              runbook: docs/runbooks/h3-stage-campaign.md

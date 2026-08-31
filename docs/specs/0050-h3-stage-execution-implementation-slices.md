@@ -364,6 +364,14 @@ publication, and V2 canonical source projections with actual digest-verified
 raw JSON payloads. These are repository mechanisms for capturing a real
 external exercise, not evidence that an exercise has occurred.
 
+The repository observability slice adds a PostgreSQL-authoritative Stage
+collector to the management `/metrics` surface, bounded recording rules and
+alerts for queue age, transfer age, cache corruption, residency loss, and
+exporter failure, a dashboard, Prometheus rule tests, and the Stage campaign
+runbook. The reader uses a read-only `vela_internal` privilege extension with a
+Down/Up and no-escalation integration contract. It does not prove a deployed
+Prometheus/Grafana/Alertmanager path or page acknowledgement.
+
 Deliver:
 
 - staged cohort cutover and rollback-before-contraction controls;

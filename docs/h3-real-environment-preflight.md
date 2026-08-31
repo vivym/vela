@@ -2,8 +2,8 @@
 
 Date: 2026-09-01 05:09 Asia/Shanghai
 
-Status: blocked before any mutating action. This is a read-only local preflight,
-not production evidence and not a Launch Receipt.
+Status: blocked before any mutating action. This is a read-only local and remote
+candidate preflight, not production evidence and not a Launch Receipt.
 
 ## Required environment
 
@@ -39,10 +39,27 @@ actuation, physical cross-node transfer, production network/storage faults, or
 model N/N-1 drain. Repository fixtures must not be substituted for those facts,
 and Production Gate status remains `0/9 PASS`.
 
+## Observed `marslab-server` candidate state
+
+The reachable `marslab-server` host exposes eight NVIDIA GPUs with 64 GiB of
+memory each and driver `580.159.03`. NVIDIA container runtime support is present,
+and the RKE2 server service is active. This inventory is enough to nominate the
+host for a future same-node 8-GPU campaign after the remaining inputs and
+mutation approval are available.
+
+The current SSH identity cannot read the RKE2 kubeconfig through passwordless
+`sudo`, so it cannot yet establish Kubernetes API, DRA, live ResourceClaim, or
+Fleet-to-GPU identity closure. Only this one physical GPU host is currently
+visible. It therefore cannot satisfy the required three-node Encoder -> DiT ->
+VAE campaign or any cross-node fault claim. No deployment, model load/unload, or
+other remote mutation was performed.
+
 ## Resume condition
 
-Resume the external campaign only after selecting a reachable real H3 context
-and a host with NVIDIA visibility. Re-run the read-only inventory first, then
-capture launch evidence and the same-node/cross-node/cache Job IDs before any
-fault injection. Do not unload healthy resident models merely to create
-scheduling capacity.
+Resume the same-node campaign on `marslab-server` only after obtaining an
+authorized kubeconfig, registry/model/backend access, the canonical release and
+evidence inputs, and explicit approval for remote writes. Resume the cross-node
+campaign only after at least three schedulable physical GPU nodes are visible.
+Re-run the read-only inventory first, then capture launch evidence and the
+same-node/cross-node/cache Job IDs before any fault injection. Do not unload
+healthy resident models merely to create scheduling capacity.

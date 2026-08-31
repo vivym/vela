@@ -1149,6 +1149,11 @@ func run() error {
 	)); err != nil {
 		return fmt.Errorf("register statistical SLO metrics: %w", err)
 	}
+	if err := httpMetrics.Register(telemetry.NewStageCollector(
+		telemetry.NewPostgresStageSnapshotReader(internalPool),
+	)); err != nil {
+		return fmt.Errorf("register Stage authority metrics: %w", err)
+	}
 	if err := httpMetrics.Register(stageSchedulerMetrics); err != nil {
 		return fmt.Errorf("register StageScheduler metrics: %w", err)
 	}

@@ -21,7 +21,12 @@
     "service_class_revision",
     "output_spec",
     "generation_count",
-    "result"
+    "result",
+    "stage_kind",
+    "state",
+    "outcome",
+    "reason",
+    "algorithm_revision"
   ],
   "forbidden_metric_labels": [
     "organization_id",
@@ -35,7 +40,10 @@
     "vela:api_availability:ratio_30d",
     "vela:api_error_budget_remaining:ratio_30d",
     "vela:slo_report_p95_ratio",
-    "vela:slo_report_success_margin"
+    "vela:slo_report_success_margin",
+    "vela:stage_ready_oldest_age_seconds:max",
+    "vela:stage_transfer_active_oldest_age_seconds:max",
+    "vela:stage_scheduler_divergence:increase_5m"
   ],
   "required_alerts": [
     "VelaAPIErrorBudgetFastBurn",
@@ -45,7 +53,12 @@
     "VelaPresetSuccessSLOBreach",
     "VelaSLOContractCoverageMissing",
     "VelaSLOTelemetryStale",
-    "VelaSLOExporterFailed"
+    "VelaSLOExporterFailed",
+    "VelaStageAuthorityExporterFailed",
+    "VelaStageReadyQueueStalled",
+    "VelaStageSchedulerReplayDiverged",
+    "VelaStageTransferTicketStuck",
+    "VelaStageModelResidencyCoverageMissing"
   ],
   "required_evidence_artifacts": [
     "gateway-observations",

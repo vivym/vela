@@ -213,7 +213,7 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 		t.Fatalf("read source VAE StageRun: %v", err)
 	}
 	vae := h3IntegrationStage{
-		key: "vae", stage: "VAE", profileStableID: "h3-vae-single-gpu",
+		key: "vae", stage: "VAE_DECODER", profileStableID: "h3-vae-single-gpu",
 		profileID: h3VAEStageProfileID, workerProfileID: h3VAEWorkerProfileID,
 		component: "h3-vae-v1", outputPort: "video",
 		outputInterface: "49000000-0000-0000-0000-000000000013",

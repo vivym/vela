@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
@@ -22,6 +23,7 @@ import (
 	"github.com/vivym/vela/internal/releasebundle"
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stagecache"
+	"github.com/vivym/vela/internal/telemetry"
 	"github.com/vivym/vela/internal/workercontrol"
 )
 
@@ -65,6 +67,111 @@ func TestH3CampaignEvidenceCapturesAuthoritativeLineageTransferAndCache(t *testi
 	if len(evidence.Runs) != 2 || len(evidence.CacheRun.Hits) != 2 {
 		t.Fatalf("captured H3 Campaign evidence = %#v", evidence)
 	}
+}
+
+func TestStageTelemetryReadsAuthoritativeCampaignState(t *testing.T) {
+	fixture := runH3CampaignEvidenceFixture(t)
+	pool := newRolePool(t, fixture.database.DSN, "vela_internal_login", "vela-internal-password")
+	reader := telemetry.NewPostgresStageSnapshotReader(pool)
+
+	snapshot, err := reader.LatestStageSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("read Stage telemetry snapshot: %v", err)
+	}
+	if stageStateCount(snapshot.RunStates, "ENCODER", "SUCCEEDED") < 4 ||
+		stageStateCount(snapshot.RunStates, "DIT", "SUCCEEDED") < 4 ||
+		stageStateCount(snapshot.RunStates, "VAE_DECODER", "SUCCEEDED") < 3 ||
+		stageStateCount(snapshot.CacheStates, "ENCODER", "LIVE") != 1 ||
+		stageStateCount(snapshot.CacheStates, "DIT", "LIVE") != 1 ||
+		stateCount(snapshot.TransferStates, "CONSUMED") != 4 ||
+		stageStateCount(snapshot.ResidencyStates, "ENCODER", "READY") == 0 ||
+		stageStateCount(snapshot.ResidencyStates, "DIT", "READY") == 0 ||
+		stageStateCount(snapshot.ResidencyStates, "VAE_DECODER", "READY") == 0 {
+		t.Fatalf("Stage telemetry snapshot does not close campaign authority: %#v", snapshot)
+	}
+}
+
+func TestStageTelemetryMigrationPreservesReadOnlyPrivilegeBoundary(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	pool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+
+	assertStageTelemetryPrivileges(t, pool, map[string]bool{
+		"stage_runs":          true,
+		"transfer_tickets":    true,
+		"stage_cache_entries": true,
+	})
+	if _, err := pool.Exec(context.Background(), "SET ROLE vela_attempt_coordinator_owner"); err == nil {
+		t.Fatal("Stage telemetry login can SET ROLE to the Stage authority owner")
+	}
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 55); err != nil {
+		t.Fatalf("contract Stage telemetry reader migration: %v", err)
+	}
+	assertStageTelemetryPrivileges(t, pool, map[string]bool{
+		"stage_runs":          true,
+		"transfer_tickets":    false,
+		"stage_cache_entries": false,
+	})
+
+	if err := goose.UpTo(database.Admin, migrations, 56); err != nil {
+		t.Fatalf("re-expand Stage telemetry reader migration: %v", err)
+	}
+	assertStageTelemetryPrivileges(t, pool, map[string]bool{
+		"stage_runs":          true,
+		"transfer_tickets":    true,
+		"stage_cache_entries": true,
+	})
+}
+
+func assertStageTelemetryPrivileges(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	selectPrivileges map[string]bool,
+) {
+	t.Helper()
+	for table, wantSelect := range selectPrivileges {
+		for _, privilege := range []string{"SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"} {
+			var allowed bool
+			if err := pool.QueryRow(
+				context.Background(),
+				"SELECT has_table_privilege(current_user, $1, $2)",
+				table,
+				privilege,
+			).Scan(&allowed); err != nil {
+				t.Fatalf("inspect Stage telemetry %s privilege on %s: %v", privilege, table, err)
+			}
+			want := privilege == "SELECT" && wantSelect
+			if allowed != want {
+				t.Fatalf(
+					"Stage telemetry %s privilege on %s = %t, want %t",
+					privilege,
+					table,
+					allowed,
+					want,
+				)
+			}
+		}
+	}
+}
+
+func stageStateCount(metrics []telemetry.StageStateCount, stageKind, state string) float64 {
+	for _, metric := range metrics {
+		if metric.StageKind == stageKind && metric.State == state {
+			return metric.Count
+		}
+	}
+	return 0
+}
+
+func stateCount(metrics []telemetry.StateCount, state string) float64 {
+	for _, metric := range metrics {
+		if metric.State == state {
+			return metric.Count
+		}
+	}
+	return 0
 }
 
 func writeH3CampaignReleaseBundle(t *testing.T) string {

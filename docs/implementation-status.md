@@ -14,7 +14,7 @@ The H3 stage-disaggregated architecture is accepted as the replacement target.
 S49.1-S49.11 have committed repository implementations through StageArtifact
 transfer, split H3 execution, exact cache, CPU media stages, and the immutable
 Usage/Cost Ledger, plus the deterministic capacity simulator and advisory
-planning boundary. Migrations `00049` through `00053` continue S49.12 with ModelRevision-scoped
+planning boundary. Migrations `00049` through `00056` continue S49.12 with ModelRevision-scoped
 cutover routing, an explicit internal-Project allowlist, Production Launch
 Receipt gating, immutable Accepted Job authority, legacy database inventory,
 guarded rollback, and automatic multi-replica Accepted STAGE_GRAPH Job
@@ -50,6 +50,13 @@ rejected member/device/ModelRuntime/StageLease stale probes; it atomically emits
 the three candidate typed artifacts without replacing earlier evidence. This is
 repository integration and capture machinery only; it does not prove physical
 cross-node transport, a real fault exercise, or create a Launch Receipt.
+The management `/metrics` surface now also reads one PostgreSQL-authoritative
+Stage snapshot and exports only bounded stage-kind/state counts and oldest-age
+gauges for StageRuns, TransferTickets, exact cache entries, and ModelResidency.
+Migration `00056` adds only the missing read privileges; its integration contract
+proves no write or authority-owner escalation and preserves prior grants across
+Down/Up. The dashboard, recording rules, alerts, rule tests, and campaign runbook
+remain repository observability machinery, not deployed alert-delivery evidence.
 Targeted atomic Admission, rollback-precedence, and version-specific role-surface
 integration coverage is green. Repository-wide shards retain pre-existing
 historical-schema and N-1 compatibility failures reproduced at `37e0235`; this
@@ -63,8 +70,8 @@ production evidence or a Launch Receipt.
 | --- | --- | --- |
 | H3 Stage Execution Architecture | Accepted target; S49.1-S49.11 complete and S49.12 cutover/automatic-instantiation work started | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Expansion through migration `00053`; M5 evidence/seal and guarded contraction readiness archive added; release-coupled schema and legacy-path deletion pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
-| Implementation slices | S49.1-S49.11 complete; S49.12 partial, including repository campaign capture/verification | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Schema and protocol migration | Expansion through migration `00056`; M5 evidence/seal, guarded contraction readiness, campaign evidence, and read-only Stage observability added; release-coupled schema and legacy-path deletion pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Implementation slices | S49.1-S49.11 complete; S49.12 partial, including repository campaign capture, verification, and observability | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
 Until the release-coupled contraction and repository deletion land,

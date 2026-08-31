@@ -264,6 +264,20 @@ byte-nanoseconds, bytes, and object operations.
 inputs. Revaluation inserts a successor allocation; it cannot update Charge,
 PricingSnapshot, or source usage.
 
+## Operational observability
+
+The management `/metrics` reader takes one PostgreSQL MVCC snapshot across
+StageRun, TransferTicket, exact cache-entry, and ModelResidency authority. It
+exports only bounded `stage_kind` and state labels plus oldest READY/ACTIVE age;
+Organization, Project, Job, Attempt, Worker, device, and model revision identity
+remain outside Prometheus labels. A failed authority read exports a failed-scrape
+gauge and no stale Stage samples.
+
+Migration `00056` grants `vela_internal` only the missing SELECT privileges for
+`transfer_tickets` and `stage_cache_entries`; `stage_runs` SELECT remains owned by
+the earlier finalization-reader contract. Down/Up verification must preserve that
+prior grant and must not add table mutation or Stage authority-owner membership.
+
 ## Authoritative transactions
 
 Only narrow command functions or repositories may perform these multi-row
