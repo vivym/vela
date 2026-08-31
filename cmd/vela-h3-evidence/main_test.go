@@ -2,12 +2,19 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
+	"github.com/vivym/vela/internal/h3campaignevidence"
+	"github.com/vivym/vela/internal/h3faultevidence"
+	"github.com/vivym/vela/internal/productiongates"
 )
 
 func TestRunRequiresLiveCaptureConfiguration(t *testing.T) {
@@ -38,5 +45,214 @@ func TestSelectRolloutRequiresOneExactPlanFromRelease(t *testing.T) {
 	rollouts = append(rollouts, rollouts[1])
 	if _, err := selectRollout(rollouts, secondID); err == nil {
 		t.Fatal("duplicate release-bound rollout was accepted")
+	}
+}
+
+func TestRunCampaignRequiresStrictDistinctJobSelection(t *testing.T) {
+	planID := "49350000-0000-0000-0000-000000000010"
+	sameID := "49350000-0000-0000-0000-000000000011"
+	crossID := "49350000-0000-0000-0000-000000000012"
+	cacheID := "49350000-0000-0000-0000-000000000013"
+	configured := func(name string) string {
+		switch name {
+		case campaignDatabaseURLEnvironment:
+			return "postgres://campaign.example/vela"
+		case validationEnvironmentKey:
+			return "h3-campaign-test"
+		case collectorIdentityKey:
+			return "spiffe://vela/test/campaign-reader"
+		default:
+			return ""
+		}
+	}
+	for _, test := range []struct {
+		name      string
+		arguments []string
+	}{
+		{name: "invalid plan", arguments: []string{"bundle.json", "bad", sameID, crossID, cacheID}},
+		{name: "invalid same-node", arguments: []string{"bundle.json", planID, "bad", crossID, cacheID}},
+		{name: "invalid cross-node", arguments: []string{"bundle.json", planID, sameID, "bad", cacheID}},
+		{name: "invalid cache", arguments: []string{"bundle.json", planID, sameID, crossID, "bad"}},
+		{name: "same equals cross", arguments: []string{"bundle.json", planID, sameID, sameID, cacheID}},
+		{name: "same equals cache", arguments: []string{"bundle.json", planID, sameID, crossID, sameID}},
+		{name: "cross equals cache", arguments: []string{"bundle.json", planID, sameID, crossID, crossID}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			called := false
+			code := runCampaign(
+				test.arguments, configured, &stdout, &stderr,
+				func(
+					context.Context,
+					string,
+					uuid.UUID,
+					h3campaignevidence.Selection,
+					campaignConfiguration,
+				) (h3campaignevidence.Evidence, error) {
+					called = true
+					return h3campaignevidence.Evidence{}, nil
+				},
+			)
+			if code != 2 || called || stdout.Len() != 0 {
+				t.Fatalf(
+					"runCampaign = code %d called %t stdout %q stderr %q",
+					code, called, stdout.String(), stderr.String(),
+				)
+			}
+		})
+	}
+}
+
+func TestRunCampaignUsesDedicatedConfigurationAndEmitsJSON(t *testing.T) {
+	planID := uuid.MustParse("49350000-0000-0000-0000-000000000020")
+	selection := h3campaignevidence.Selection{
+		SameNodeJobID:  uuid.MustParse("49350000-0000-0000-0000-000000000021"),
+		CrossNodeJobID: uuid.MustParse("49350000-0000-0000-0000-000000000022"),
+		CacheJobID:     uuid.MustParse("49350000-0000-0000-0000-000000000023"),
+	}
+	getenv := func(name string) string {
+		switch name {
+		case campaignDatabaseURLEnvironment:
+			return "postgres://campaign.example/vela"
+		case databaseURLEnvironment:
+			return "postgres://fleet.example/vela"
+		case validationEnvironmentKey:
+			return "h3-campaign-test"
+		case collectorIdentityKey:
+			return "spiffe://vela/test/campaign-reader"
+		default:
+			return ""
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	code := runCampaign(
+		[]string{
+			"bundle.json", planID.String(), selection.SameNodeJobID.String(),
+			selection.CrossNodeJobID.String(), selection.CacheJobID.String(),
+		},
+		getenv,
+		&stdout,
+		&stderr,
+		func(
+			_ context.Context,
+			bundlePath string,
+			actualPlanID uuid.UUID,
+			actualSelection h3campaignevidence.Selection,
+			config campaignConfiguration,
+		) (h3campaignevidence.Evidence, error) {
+			if bundlePath != "bundle.json" || actualPlanID != planID || actualSelection != selection {
+				t.Fatalf("campaign selector = %q %s %#v", bundlePath, actualPlanID, actualSelection)
+			}
+			if config.databaseURL != "postgres://campaign.example/vela" ||
+				config.validationEnvironment != "h3-campaign-test" ||
+				config.collectorIdentity != "spiffe://vela/test/campaign-reader" {
+				t.Fatalf("campaign config = %#v", config)
+			}
+			return h3campaignevidence.Evidence{
+				SchemaVersion: h3campaignevidence.SchemaVersion,
+				MediaType:     h3campaignevidence.MediaType,
+			}, nil
+		},
+	)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("runCampaign = code %d stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+	var evidence h3campaignevidence.Evidence
+	decoder := json.NewDecoder(&stdout)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&evidence); err != nil {
+		t.Fatalf("decode campaign evidence JSON: %v", err)
+	}
+	if evidence.SchemaVersion != h3campaignevidence.SchemaVersion ||
+		evidence.MediaType != h3campaignevidence.MediaType {
+		t.Fatalf("campaign evidence = %#v", evidence)
+	}
+}
+
+func TestRunCampaignRejectsMissingDedicatedDatabaseURL(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runCampaign(
+		[]string{
+			"bundle.json",
+			"49350000-0000-0000-0000-000000000030",
+			"49350000-0000-0000-0000-000000000031",
+			"49350000-0000-0000-0000-000000000032",
+			"49350000-0000-0000-0000-000000000033",
+		},
+		func(name string) string {
+			if name == databaseURLEnvironment {
+				return "postgres://fleet.example/vela"
+			}
+			if name == validationEnvironmentKey {
+				return "h3-campaign-test"
+			}
+			if name == collectorIdentityKey {
+				return "spiffe://vela/test/campaign-reader"
+			}
+			return ""
+		},
+		&stdout,
+		&stderr,
+		nil,
+	)
+	if code != 2 || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), campaignDatabaseURLEnvironment) {
+		t.Fatalf("runCampaign = code %d stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunFaultCampaignPublishesNewDirectory(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "fault-evidence")
+	bundle := h3faultevidence.Bundle{
+		Evidence: productiongates.TypedEvidence{
+			SchemaVersion: 1, Gate: productiongates.GateStateEventFaultInjection,
+			CriteriaRevision: "vela.production-gates/state-event-fault-injection/v1",
+			ReleaseDigest:    strings.Repeat("a", 71), ConfigurationRevision: "config-r1",
+			ValidationEnvironment: "repository-conformance",
+		},
+		EvidenceBytes: []byte("{\"schema_version\":1}\n"),
+		ArtifactBytes: map[string][]byte{
+			"scenario-matrix":        []byte("{\"kind\":\"scenario-matrix\"}\n"),
+			"authority-before-after": []byte("{\"kind\":\"authority-before-after\"}\n"),
+			"raw-event-payloads":     []byte("{\"kind\":\"raw-event-payloads\"}\n"),
+		},
+	}
+	var stdout, stderr bytes.Buffer
+	code := runFaultCampaign(
+		[]string{"manifest.json", output}, &stdout, &stderr,
+		func(path string) (h3faultevidence.Bundle, error) {
+			if path != "manifest.json" {
+				t.Fatalf("fault manifest path = %q", path)
+			}
+			return bundle, nil
+		},
+	)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("runFaultCampaign = %d stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+	for _, name := range []string{
+		h3faultevidence.EvidenceFileName,
+		"scenario-matrix.json",
+		"authority-before-after.json",
+		"raw-event-payloads.json",
+	} {
+		if information, err := os.Stat(filepath.Join(output, name)); err != nil || information.Size() == 0 {
+			t.Fatalf("fault output %s = %#v error=%v", name, information, err)
+		}
+	}
+	var summary faultCampaignSummary
+	if err := json.Unmarshal(stdout.Bytes(), &summary); err != nil {
+		t.Fatalf("decode fault campaign summary: %v", err)
+	}
+	if summary.EvidenceRef != h3faultevidence.EvidenceFileName || len(summary.Artifacts) != 3 {
+		t.Fatalf("fault campaign summary = %#v", summary)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := runFaultCampaign(
+		[]string{"manifest.json", output}, &stdout, &stderr,
+		func(string) (h3faultevidence.Bundle, error) { return bundle, nil },
+	); code != 1 || !strings.Contains(stderr.String(), "already exists") {
+		t.Fatalf("replacement runFaultCampaign = %d stderr %q", code, stderr.String())
 	}
 }

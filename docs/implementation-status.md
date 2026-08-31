@@ -42,8 +42,14 @@ campaign from PostgreSQL with a canonical-release-sealed ResidencyPlan binding,
 two stable read-only snapshots, exact StageArtifact lineage, ordered
 profile/interface/connector equivalence, consumed TransferTickets, cache
 reference/pin/output bindings, and exactly-once completion/charge checks. This
-is repository integration evidence only; it does not prove physical cross-node
-transport or create a Launch Receipt.
+capture is exposed through a strict operator command and a dedicated exact-SELECT
+database role that rejects admin, mixed-role, and over-privileged DSNs. A
+digest-bound fault-campaign verifier requires the fixed ten state/event fault
+scenarios, reconciled authority ledgers and raw event identities, plus explicit
+rejected member/device/ModelRuntime/StageLease stale probes; it atomically emits
+the three candidate typed artifacts without replacing earlier evidence. This is
+repository integration and capture machinery only; it does not prove physical
+cross-node transport, a real fault exercise, or create a Launch Receipt.
 Targeted atomic Admission, rollback-precedence, and version-specific role-surface
 integration coverage is green. Repository-wide shards retain pre-existing
 historical-schema and N-1 compatibility failures reproduced at `37e0235`; this

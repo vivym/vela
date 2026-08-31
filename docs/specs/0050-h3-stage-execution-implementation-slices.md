@@ -351,6 +351,15 @@ fixture still uses local synthetic payloads and storage. It does not prove real
 GPU execution, physical cross-node transport, Kubernetes/DRA actuation, fault
 behavior, SLOs, or any Production Gate.
 
+The operator surface now exposes strict `capture-campaign` selection through a
+dedicated exact-SELECT PostgreSQL role. A separate fault-campaign verifier
+requires all ten versioned state/event fault scenarios, reconciled authority
+before/after ledgers, raw event identities, zero loss/duplicate/stale-accept
+measurements, and explicit rejected member/device/ModelRuntime/StageLease stale
+probes before it assembles the three candidate typed artifacts. These are
+repository mechanisms for capturing a real external exercise, not evidence
+that an exercise has occurred.
+
 Deliver:
 
 - staged cohort cutover and rollback-before-contraction controls;

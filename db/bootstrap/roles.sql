@@ -171,6 +171,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_usage_cost') THEN
         CREATE ROLE vela_usage_cost NOLOGIN;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_h3_campaign_evidence') THEN
+        CREATE ROLE vela_h3_campaign_evidence NOLOGIN;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_usage_cost_owner') THEN
         CREATE ROLE vela_usage_cost_owner NOLOGIN BYPASSRLS;
     END IF;
@@ -265,6 +268,8 @@ ALTER ROLE vela_stage_artifact
 ALTER ROLE vela_stage_worker_control
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_usage_cost
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_h3_campaign_evidence
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_usage_cost_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;

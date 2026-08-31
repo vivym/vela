@@ -37,7 +37,10 @@ func TestH3CampaignEvidenceCapturesAuthoritativeLineageTransferAndCache(t *testi
 	if err != nil {
 		t.Fatalf("load H3 Campaign release binding: %v", err)
 	}
-	pool, err := pgxpool.New(context.Background(), fixture.database.DSN)
+	pool, err := pgxpool.New(context.Background(), roleDatabaseURL(
+		t, fixture.database.DSN,
+		"vela_h3_campaign_evidence_login", "vela-h3-campaign-evidence-password",
+	))
 	if err != nil {
 		t.Fatalf("open H3 Campaign evidence database: %v", err)
 	}

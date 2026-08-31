@@ -50,6 +50,7 @@ const (
 	RoleStageArtifact              Role = "vela_stage_artifact"
 	RoleStageWorkerControl         Role = "vela_stage_worker_control"
 	RoleUsageCost                  Role = "vela_usage_cost"
+	RoleH3CampaignEvidence         Role = "vela_h3_campaign_evidence"
 )
 
 type rowQuerier interface {
@@ -100,6 +101,7 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleStageArtifact:              {verifyPrivileges: verifyStageArtifactPrivileges},
 	RoleStageWorkerControl:         {verifyPrivileges: verifyStageWorkerControlPrivileges},
 	RoleUsageCost:                  {verifyPrivileges: verifyUsageCostPrivileges},
+	RoleH3CampaignEvidence:         {verifyPrivileges: verifyH3CampaignEvidencePrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -344,6 +346,45 @@ func verifyUsageCostPrivileges(
 			"vela_value_resource_usage(jsonb)",
 			"vela_summarize_usage_cost(uuid,timestamp with time zone,timestamp with time zone)",
 		},
+	})
+}
+
+func verifyH3CampaignEvidencePrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	relations := []string{
+		"artifact_sets",
+		"attempts",
+		"charges",
+		"compute_nodes",
+		"devices",
+		"jobs",
+		"stage_allocations",
+		"stage_artifact_inputs",
+		"stage_artifact_pins",
+		"stage_artifacts",
+		"stage_attempts",
+		"stage_cache_entries",
+		"stage_cache_references",
+		"stage_dependencies",
+		"stage_run_output_bindings",
+		"stage_runs",
+		"transfer_tickets",
+		"visible_completions",
+		"worker_instances",
+		"worker_member_devices",
+		"worker_members",
+	}
+	tables := make([]relationPrivilege, 0, len(relations))
+	for _, relation := range relations {
+		tables = append(tables, relationPrivilege{Relation: relation, Privilege: "SELECT"})
+	}
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "H3 campaign evidence",
+		failureLabel:    "H3 campaign evidence read-only capture",
+		tables:          tables,
 	})
 }
 

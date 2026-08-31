@@ -185,6 +185,12 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_usage_cost_login",
 		"vela-usage-cost-password",
 	)
+	h3CampaignEvidencePool := newRolePool(
+		t,
+		database.DSN,
+		"vela_h3_campaign_evidence_login",
+		"vela-h3-campaign-evidence-password",
+	)
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	for _, login := range []string{
 		"vela_internal_login",
@@ -204,6 +210,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		"vela_stage_artifact_login",
 		"vela_stage_worker_control_login",
 		"vela_usage_cost_login",
+		"vela_h3_campaign_evidence_login",
 		"vela_identity_request_login",
 		"vela_human_membership_request_login",
 		"vela_organization_billing_request_login",
@@ -338,6 +345,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			role: veladb.RoleStageWorkerControl,
 		},
 		{name: "Usage/Cost Ledger", pool: usageCostPool, role: veladb.RoleUsageCost},
+		{
+			name: "H3 campaign evidence", pool: h3CampaignEvidencePool,
+			role: veladb.RoleH3CampaignEvidence,
+		},
 		{name: "internal", pool: internalPool, role: veladb.RoleInternal},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -379,6 +390,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_stage_artifact", bypassRLS: false},
 		{name: "vela_stage_worker_control", bypassRLS: false},
 		{name: "vela_usage_cost", bypassRLS: false},
+		{name: "vela_h3_campaign_evidence", bypassRLS: false},
 		{name: "vela_usage_cost_owner", bypassRLS: true},
 		{name: "vela_stage_scheduler_owner", bypassRLS: true},
 		{name: "vela_quorum_guard_owner", bypassRLS: false},
@@ -400,6 +412,24 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 				superuser,
 			)
 		}
+	}
+	for _, privilege := range []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE"} {
+		var allowed bool
+		if err := h3CampaignEvidencePool.QueryRow(
+			context.Background(),
+			"SELECT has_table_privilege(current_user, 'jobs', $1)",
+			privilege,
+		).Scan(&allowed); err != nil {
+			t.Fatalf("inspect H3 campaign evidence %s privilege: %v", privilege, err)
+		}
+		if allowed {
+			t.Fatalf("H3 campaign evidence login has forbidden %s privilege", privilege)
+		}
+	}
+	if _, err := h3CampaignEvidencePool.Exec(
+		context.Background(), "SET ROLE vela_internal",
+	); err == nil {
+		t.Fatal("H3 campaign evidence login can SET ROLE to vela_internal")
 	}
 
 	for _, function := range []struct {
