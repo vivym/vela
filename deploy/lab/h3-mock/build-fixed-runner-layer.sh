@@ -126,7 +126,13 @@ docker --config "$auth_dir" pull "$digest" >"$temporary/digest-pull.txt" 2>&1 ||
 docker image inspect "$digest" >"$temporary/image-inspect.json"
 printf 'schema=vela-lab-fixed-runner-image-v1\nresult=PASS\npreexisting=%s\nimage=%s\nruntime_sha256=%s\ncompleted_at=%s\nproduction_gates=0/9\n' \
 	"$published" "$digest" "$runtime_sha256" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$temporary/result.txt"
-find "$temporary" -maxdepth 1 -type f ! -name SHA256SUMS -print | sort | xargs sha256sum >"$temporary/SHA256SUMS"
+(
+	cd "$temporary"
+	checksum_files=$(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' | sort)
+	# Receipt file names are fixed and contain no whitespace.
+	# shellcheck disable=SC2086
+	sha256sum $checksum_files >SHA256SUMS
+)
 mv "$temporary" "$output"
 temporary=
 committed=true

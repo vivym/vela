@@ -113,7 +113,13 @@ printf '%s\n' "$state_after" >"$temporary/worker-after.txt"
 [ "$state_after" = "$expected_state" ] || fail "target Worker did not reach the expected state"
 printf 'schema=vela-lab-worker-rollout-state-v1\nresult=PASS\nworker_id=%s\naction=%s\ncompleted_at=%s\nproduction_gates=0/9\n' \
 	"$worker_id" "$action" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >"$temporary/result.txt"
-find "$temporary" -maxdepth 1 -type f ! -name SHA256SUMS -print | sort | xargs sha256sum >"$temporary/SHA256SUMS"
+(
+	cd "$temporary"
+	checksum_files=$(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%P\n' | sort)
+	# Receipt file names are fixed and contain no whitespace.
+	# shellcheck disable=SC2086
+	sha256sum $checksum_files >SHA256SUMS
+)
 mv "$temporary" "$output"
 temporary=
 committed=true
