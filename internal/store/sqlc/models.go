@@ -5932,6 +5932,31 @@ type LegacyAuthorityInventorySnapshot struct {
 	ContentDigest                 []byte             `db:"content_digest" json:"content_digest"`
 }
 
+type LegacyH3ContractionReadinessReceipt struct {
+	ZeroBacklogReceiptID uuid.UUID          `db:"zero_backlog_receipt_id" json:"zero_backlog_receipt_id"`
+	CutoverRevisionID    uuid.UUID          `db:"cutover_revision_id" json:"cutover_revision_id"`
+	PreparedAt           pgtype.Timestamptz `db:"prepared_at" json:"prepared_at"`
+	PreparedBy           string             `db:"prepared_by" json:"prepared_by"`
+	ArchiveDigest        []byte             `db:"archive_digest" json:"archive_digest"`
+	ContentDigest        []byte             `db:"content_digest" json:"content_digest"`
+}
+
+type LegacyH3ContractionV52FunctionRestore struct {
+	Signature  string `db:"signature" json:"signature"`
+	Definition string `db:"definition" json:"definition"`
+}
+
+type LegacyH3ExecutionArchive struct {
+	ZeroBacklogReceiptID uuid.UUID          `db:"zero_backlog_receipt_id" json:"zero_backlog_receipt_id"`
+	RecordKind           string             `db:"record_kind" json:"record_kind"`
+	RecordID             uuid.UUID          `db:"record_id" json:"record_id"`
+	ParentID             uuid.NullUUID      `db:"parent_id" json:"parent_id"`
+	TerminalState        string             `db:"terminal_state" json:"terminal_state"`
+	MachineAuthority     []byte             `db:"machine_authority" json:"machine_authority"`
+	ArchivedAt           pgtype.Timestamptz `db:"archived_at" json:"archived_at"`
+	ContentDigest        []byte             `db:"content_digest" json:"content_digest"`
+}
+
 type LegalHold struct {
 	ID                         uuid.UUID              `db:"id" json:"id"`
 	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
@@ -6897,6 +6922,28 @@ type StageCutoverControl struct {
 	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type StageCutoverExternalDrainEvidence struct {
+	ID                         uuid.UUID          `db:"id" json:"id"`
+	CutoverRevisionID          uuid.UUID          `db:"cutover_revision_id" json:"cutover_revision_id"`
+	ObservedAt                 pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ObservedBy                 string             `db:"observed_by" json:"observed_by"`
+	ReleaseDigest              []byte             `db:"release_digest" json:"release_digest"`
+	ConfigurationRevision      string             `db:"configuration_revision" json:"configuration_revision"`
+	ConfigurationDigest        []byte             `db:"configuration_digest" json:"configuration_digest"`
+	ExecutionGraphRevisionID   uuid.UUID          `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionProfileRevisionID uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ConnectorSetDigest         []byte             `db:"connector_set_digest" json:"connector_set_digest"`
+	LaunchManifestDigest       []byte             `db:"launch_manifest_digest" json:"launch_manifest_digest"`
+	WorkerLocalRecoveryBacklog int64              `db:"worker_local_recovery_backlog" json:"worker_local_recovery_backlog"`
+	NminusoneDeploymentBacklog int64              `db:"nminusone_deployment_backlog" json:"nminusone_deployment_backlog"`
+	ExternalSchedulerBacklog   int64              `db:"external_scheduler_backlog" json:"external_scheduler_backlog"`
+	ExternalEventBacklog       int64              `db:"external_event_backlog" json:"external_event_backlog"`
+	ExternalArtifactBacklog    int64              `db:"external_artifact_backlog" json:"external_artifact_backlog"`
+	TotalCount                 int64              `db:"total_count" json:"total_count"`
+	EvidenceManifestDigest     []byte             `db:"evidence_manifest_digest" json:"evidence_manifest_digest"`
+	ContentDigest              []byte             `db:"content_digest" json:"content_digest"`
+}
+
 type StageCutoverInternalProject struct {
 	CutoverRevisionID uuid.UUID          `db:"cutover_revision_id" json:"cutover_revision_id"`
 	OrganizationID    uuid.UUID          `db:"organization_id" json:"organization_id"`
@@ -6926,6 +6973,31 @@ type StageCutoverRevision struct {
 	ActivatedAt                pgtype.Timestamptz `db:"activated_at" json:"activated_at"`
 	ActivatedBy                string             `db:"activated_by" json:"activated_by"`
 	Reason                     string             `db:"reason" json:"reason"`
+}
+
+type StageCutoverZeroBacklogReceipt struct {
+	ID                          uuid.UUID          `db:"id" json:"id"`
+	CutoverRevisionID           uuid.UUID          `db:"cutover_revision_id" json:"cutover_revision_id"`
+	StartInventorySnapshotID    uuid.UUID          `db:"start_inventory_snapshot_id" json:"start_inventory_snapshot_id"`
+	EndInventorySnapshotID      uuid.UUID          `db:"end_inventory_snapshot_id" json:"end_inventory_snapshot_id"`
+	StartExternalEvidenceID     uuid.UUID          `db:"start_external_evidence_id" json:"start_external_evidence_id"`
+	EndExternalEvidenceID       uuid.UUID          `db:"end_external_evidence_id" json:"end_external_evidence_id"`
+	WindowStartedAt             pgtype.Timestamptz `db:"window_started_at" json:"window_started_at"`
+	WindowEndedAt               pgtype.Timestamptz `db:"window_ended_at" json:"window_ended_at"`
+	SealedAt                    pgtype.Timestamptz `db:"sealed_at" json:"sealed_at"`
+	SealedBy                    string             `db:"sealed_by" json:"sealed_by"`
+	ReleaseDigest               []byte             `db:"release_digest" json:"release_digest"`
+	ConfigurationRevision       string             `db:"configuration_revision" json:"configuration_revision"`
+	ConfigurationDigest         []byte             `db:"configuration_digest" json:"configuration_digest"`
+	ExecutionGraphRevisionID    uuid.UUID          `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionProfileRevisionID  uuid.UUID          `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ConnectorSetDigest          []byte             `db:"connector_set_digest" json:"connector_set_digest"`
+	LaunchManifestDigest        []byte             `db:"launch_manifest_digest" json:"launch_manifest_digest"`
+	StartInventoryDigest        []byte             `db:"start_inventory_digest" json:"start_inventory_digest"`
+	EndInventoryDigest          []byte             `db:"end_inventory_digest" json:"end_inventory_digest"`
+	StartExternalEvidenceDigest []byte             `db:"start_external_evidence_digest" json:"start_external_evidence_digest"`
+	EndExternalEvidenceDigest   []byte             `db:"end_external_evidence_digest" json:"end_external_evidence_digest"`
+	ContentDigest               []byte             `db:"content_digest" json:"content_digest"`
 }
 
 type StageDecisionEvidence struct {
