@@ -39,10 +39,27 @@ write_manifest() {
 	mv "$manifest_tmp" "$receipt_dir/SHA256SUMS"
 }
 
+write_target_after() {
+	if [ -L "$target" ]; then
+		printf 'state=symlink\n' >"$receipt_dir/target.after.txt"
+	elif [ -f "$target" ]; then
+		{
+			printf 'state=regular\n'
+			printf 'owner_mode=%s\n' "$($stat_cmd -c '%u:%g:%a' "$target")"
+			printf 'sha256=%s\n' "$(sha256sum "$target" | awk '{print $1}')"
+		} >"$receipt_dir/target.after.txt"
+	elif [ -e "$target" ]; then
+		printf 'state=non-regular\n' >"$receipt_dir/target.after.txt"
+	else
+		printf 'state=absent\n' >"$receipt_dir/target.after.txt"
+	fi
+}
+
 fail_after_write() {
 	reason=$1
 	printf 'status=FAIL role=%s service=%s changed=%s reason=%s\n' \
 		"$role" "$service" "$changed" "$reason" >"$receipt_dir/STATUS"
+	write_target_after
 	"$systemctl_cmd" show "$service" \
 		--property=Id,ActiveState,SubState,UnitFileState,MainPID,NRestarts \
 		--no-pager >"$receipt_dir/service.after.txt" 2>&1 || true
@@ -162,13 +179,14 @@ if [ -e "$target" ] || [ -L "$target" ]; then
 	[ "$entries" = "$expected_entries" ] ||
 		fail "$config_dir contains entries outside $base_name and $target_name"
 	target_before=present-identical
-	changed=false
+	write_required=false
 else
 	[ "$entries" = "$base_name" ] ||
 		fail "$config_dir must contain only $base_name before the first apply"
 	target_before=absent
-	changed=true
+	write_required=true
 fi
+changed=false
 
 active_state=$("$systemctl_cmd" is-active "$service" 2>/dev/null || true)
 [ "$active_state" = active ] || fail "$service must be active before restart"
@@ -235,21 +253,21 @@ After an approved restart, run the strict cluster verifier from the control node
 EOF
 else
 	cat >"$receipt_dir/ROLLBACK.txt" <<EOF
-Rollback is not automatic and requires separate approval plus a fresh node/cluster preflight.
-Verify this receipt and confirm that $target still matches drop-in.applied.conf.
-Then remove only the helper-owned target and restart only the matching service:
-rm -- $target
-systemctl restart $service
-After restart, require the node, GPU inventory, workloads, and strict cluster verifier to recover.
+The target was absent during preflight, but this receipt does not yet prove that this run published it.
+Do not remove any file at $target from this state: a file there may belong to a concurrent actor.
+Inspect STATUS and target.after.txt. Removal is allowed only when STATUS records changed=true
+and target.after.txt proves the exact digest and mode of drop-in.applied.conf.
+Rollback remains separately approved and is never automatic.
 EOF
 fi
 
-if [ "$changed" = true ]; then
+if [ "$write_required" = true ]; then
 	target_tmp=$(mktemp "$config_dir/.$target_name.XXXXXX")
 	"$install_cmd" -m 0600 "$desired_tmp" "$target_tmp"
 	[ "$($stat_cmd -c '%u:%g:%a' "$target_tmp")" = "$owner_uid:$owner_gid:600" ] ||
 		fail_after_write "temporary drop-in ownership or mode changed"
 	ln "$target_tmp" "$target" || fail_after_write "target appeared during atomic publication"
+	changed=true
 	rm -f -- "$target_tmp"
 	target_tmp=
 fi
@@ -258,6 +276,16 @@ fi
 	fail_after_write "published target digest mismatch"
 [ "$($stat_cmd -c '%u:%g:%a' "$target")" = "$owner_uid:$owner_gid:600" ] ||
 	fail_after_write "published target ownership or mode mismatch"
+if [ "$changed" = true ]; then
+	cat >"$receipt_dir/ROLLBACK.txt" <<EOF
+Rollback is not automatic and requires separate approval plus a fresh node/cluster preflight.
+Verify this receipt and confirm that $target still matches drop-in.applied.conf and target.after.txt.
+Then remove only the helper-owned target and restart only the matching service:
+rm -- $target
+systemctl restart $service
+After restart, require the node, GPU inventory, workloads, and strict cluster verifier to recover.
+EOF
+fi
 
 if ! "$systemctl_cmd" restart "$service"; then
 	fail_after_write "$service restart command failed"
@@ -275,7 +303,7 @@ enabled_state=$("$systemctl_cmd" is-enabled "$service" 2>/dev/null || true)
 "$systemctl_cmd" show "$service" \
 	--property=Id,ActiveState,SubState,UnitFileState,MainPID,NRestarts \
 	--no-pager >"$receipt_dir/service.after.txt"
-printf '%s  %s\n' "$(sha256sum "$target" | awk '{print $1}')" "$target" >"$receipt_dir/target.after.sha256"
+write_target_after
 printf 'status=PASS role=%s service=%s changed=%s\n' \
 	"$role" "$service" "$changed" >"$receipt_dir/STATUS"
 write_manifest

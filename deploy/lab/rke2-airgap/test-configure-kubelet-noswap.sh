@@ -19,6 +19,7 @@ else
 	[ -n "$test_stat" ] || fail "GNU stat or gstat is required"
 fi
 test_install=$(command -v install)
+real_ln=$(command -v ln)
 
 test_root=$temporary/root
 mkdir -p "$test_root/receipts"
@@ -112,7 +113,16 @@ cat >"$stub_dir/sleep" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
-chmod +x "$stub_dir/hostname" "$stub_dir/ip" "$stub_dir/swapon" "$stub_dir/systemctl" "$stub_dir/sleep"
+cat >"$stub_dir/ln" <<'EOF'
+#!/bin/sh
+if [ "${VELA_NOSWAP_STUB_LN_COLLISION:-0}" = 1 ]; then
+	printf 'concurrent-owner\n' >"$2"
+	chmod 0600 "$2"
+	exit 1
+fi
+exec "$VELA_NOSWAP_REAL_LN" "$@"
+EOF
+chmod +x "$stub_dir/hostname" "$stub_dir/ip" "$stub_dir/swapon" "$stub_dir/systemctl" "$stub_dir/sleep" "$stub_dir/ln"
 
 run_helper() {
 	root=$1
@@ -128,6 +138,8 @@ run_helper() {
 		VELA_NOSWAP_STUB_IP=${VELA_NOSWAP_STUB_IP:-10.1.200.19} \
 		VELA_NOSWAP_STUB_BEFORE_STATE=${VELA_NOSWAP_STUB_BEFORE_STATE:-active} \
 		VELA_NOSWAP_STUB_AFTER_STATE=${VELA_NOSWAP_STUB_AFTER_STATE:-active} \
+		VELA_NOSWAP_STUB_LN_COLLISION=${VELA_NOSWAP_STUB_LN_COLLISION:-0} \
+		VELA_NOSWAP_REAL_LN=$real_ln \
 		"$helper" "$@"
 }
 
@@ -161,6 +173,10 @@ grep -Fxq 'status=PASS role=worker-1 service=rke2-agent changed=true' "$positive
 	fail "helper did not complete the receipt"
 grep -Fq "rm -- $target" "$positive_receipt/ROLLBACK.txt" ||
 	fail "helper did not record the exact rollback target"
+grep -Fxq 'state=regular' "$positive_receipt/target.after.txt" ||
+	fail "helper did not record the successful target state"
+grep -Fxq "sha256=$(sha256sum "$expected" | awk '{print $1}')" "$positive_receipt/target.after.txt" ||
+	fail "helper did not record the successful target digest"
 (cd "$positive_receipt" && sha256sum --check --strict SHA256SUMS >/dev/null) ||
 	fail "helper receipt manifest did not verify"
 
@@ -203,6 +219,31 @@ grep -Fq 'exists but is not a regular non-symlink file' "$symlink_stderr" ||
 [ ! -e "$symlink_receipt" ] || fail "unsafe target created a receipt"
 [ ! -e "$case_root/systemctl.log" ] || fail "unsafe target restarted a service"
 
+prepare_root publication-collision
+collision_target=$case_config_dir/99-vela-noswap.conf
+collision_receipt=$case_root/receipts/publication-collision
+collision_stderr=$temporary/publication-collision.stderr
+VELA_NOSWAP_STUB_LN_COLLISION=1
+if run_helper "$case_root" worker-1 "$collision_receipt" \
+	--swap-exception-approved --restart-approved --apply 2>"$collision_stderr"; then
+	fail "helper reported success after a publication collision"
+fi
+unset VELA_NOSWAP_STUB_LN_COLLISION
+[ "$(cat "$collision_target")" = concurrent-owner ] ||
+	fail "collision test did not preserve the concurrent actor's target"
+grep -Fq 'status=FAIL role=worker-1 service=rke2-agent changed=false reason=target appeared during atomic publication' \
+	"$collision_receipt/STATUS" || fail "collision receipt claimed target ownership"
+grep -Fq 'Do not remove any file' "$collision_receipt/ROLLBACK.txt" ||
+	fail "collision receipt did not prohibit unsafe rollback"
+if grep -Fq "rm -- $collision_target" "$collision_receipt/ROLLBACK.txt"; then
+	fail "collision receipt instructed removal of another actor's target"
+fi
+grep -Fxq 'state=regular' "$collision_receipt/target.after.txt" ||
+	fail "collision receipt omitted resulting target state"
+[ ! -e "$case_root/systemctl.log" ] || fail "publication collision restarted a service"
+(cd "$collision_receipt" && sha256sum --check --strict SHA256SUMS >/dev/null) ||
+	fail "publication collision receipt manifest did not verify"
+
 prepare_root inactive-service
 inactive_receipt=$case_root/receipts/inactive-service
 inactive_stderr=$temporary/inactive-service.stderr
@@ -233,7 +274,11 @@ grep -Fq 'status=FAIL role=worker-1 service=rke2-agent changed=true reason=rke2-
 	"$unhealthy_receipt/STATUS" || fail "unhealthy restart did not leave a FAIL receipt"
 [ "$(cat "$case_root/systemctl.log")" = 'restart rke2-agent' ] ||
 	fail "unhealthy restart called an unexpected service"
+grep -Fxq 'state=regular' "$unhealthy_receipt/target.after.txt" ||
+	fail "unhealthy restart receipt omitted resulting target state"
+grep -Eq '^sha256=[0-9a-f]{64}$' "$unhealthy_receipt/target.after.txt" ||
+	fail "unhealthy restart receipt omitted resulting target digest"
 (cd "$unhealthy_receipt" && sha256sum --check --strict SHA256SUMS >/dev/null) ||
 	fail "unhealthy restart receipt manifest did not verify"
 
-printf 'result=PASS tests=8\n'
+printf 'result=PASS tests=9\n'
