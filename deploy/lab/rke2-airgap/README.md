@@ -451,10 +451,13 @@ control host is last. The copy currently retained at
 `/root/vela-rke2-ops/gpu-operator-v26.3.2/verify-cluster.sh` is obsolete: it
 uses `// "NoSwap"` and therefore converts a missing field into a false PASS.
 Stage and hash the current repository verifier, whose fallback is
-`// "__MISSING__"`, before this rollout. Even after all three explicit fields
-pass, the 17 intentionally retained historical Failed Pods keep the strict
-cluster cleanliness result at one failure unless their disposition receives a
-separate approval.
+`// "__MISSING__"`, before this rollout. The retained strict receipt captured
+17 historical Failed Pods, while a later read-only preflight found 16 because
+their owning Jobs already have `ttlSecondsAfterFinished=86400`. No manual
+delete is part of this rollout. If TTL cleanup has removed all failed Job Pods
+by the time all three explicit fields pass, strict cluster cleanliness may pass
+without a separate deletion operation; the retained receipts remain the
+diagnostic evidence.
 
 `preflight-node.sh` emits that read-only receipt and requires root so firewall
 and ownership hashes are authoritative. It deliberately returns `FAIL` until

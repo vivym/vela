@@ -289,12 +289,15 @@ A fresh run of the strict `verify-cluster.sh gpu` at
 `2026-08-31T02:41:14Z` passed API, node identity, version, labels, taints,
 DaemonSet, Deployment, Canal, and GPU `0/8/8` checks, but returned
 `FAIL failures=4`. Three failures are the missing explicit `NoSwap` field; the
-fourth covers 17 retained historical failed lab Pods. This current retained
-receipt supersedes the earlier unretained claim that the same verifier failed
-only on cluster cleanliness. The organization-isolation harness deleted each
-of its own temporary Pods by exact UID, so it did not increase that count. The
-historical Pods remain available for diagnosis because deleting them was not
-authorized. A clean strict postflight therefore remains pending.
+fourth covers the 17 historical failed lab Pods present at receipt time. This
+retained receipt supersedes the earlier unretained claim that the same verifier
+failed only on cluster cleanliness. The organization-isolation harness deleted
+each of its own temporary Pods by exact UID, so it did not increase that count.
+Their owning Jobs already carry `ttlSecondsAfterFinished=86400`; the receipt
+preserves their evidence, but the live Kubernetes objects are eligible for
+automatic TTL cleanup without a manual delete. A clean strict postflight
+therefore remains pending until both the explicit NoSwap field and live Pod
+cleanliness pass together.
 
 The GPU smoke helper also passed its two mutation guards: without literal
 `--apply` it failed before privilege or cluster access, and a root test with a
@@ -1469,10 +1472,10 @@ The independent strict postflight is retained at
 `/root/vela-lab-deploy-bc590e20/receipts/cluster-strict-postflight-request-role-v1`.
 Its `SHA256SUMS` file has SHA-256
 `1fa3337cf10e26e22fc50304291c10602f93c73c1395a13b1ed92f6d87d2b1e4`.
-The current result is `LAB_VERIFICATION_PARTIAL`, `FAIL failures=4`: explicit
+The retained result is `LAB_VERIFICATION_PARTIAL`, `FAIL failures=4`: explicit
 `memorySwap.swapBehavior=NoSwap` is missing from all three raw `configz`
-responses, and 17 exact historical Failed Pods remain. No cluster mutation or
-historical cleanup was performed by this postflight.
+responses, and 17 exact historical Failed Pods were live at capture time. No
+cluster mutation or historical cleanup was performed by this postflight.
 
 Repository HEAD now contains a guarded
 `deploy/lab/rke2-airgap/configure-kubelet-noswap.sh` candidate and a ten-case
@@ -1487,15 +1490,25 @@ directories are `root:root 0700`, contain only a `root:root 0600`
 service. The raw three-node `configz` boundary remains unchanged at
 `memorySwap: {}`.
 
+At `2026-08-31T03:58:31Z`, a new unretained read-only preflight again found all
+three nodes Ready, GPU allocatable `0/8/8`, and zero unavailable Deployments.
+It found 16 rather than 17 Failed Pods. The missing object was
+`vela-lab-smoke-7lqm6-vckcq`; no delete was issued by this work. All 16
+remaining Pods are owned by failed `vela-lab-smoke-*` Jobs with
+`ttlSecondsAfterFinished=86400`, so the live count will continue to decay under
+the existing TTL controller. This changes only the transient cleanliness
+count: the strict result still has four failures while all three explicit
+NoSwap observations are absent and at least one Failed Pod remains.
+
 The retained remote verifier at
 `/root/vela-rke2-ops/gpu-operator-v26.3.2/verify-cluster.sh` is not the strict
 current repository version: it uses `.memorySwap.swapBehavior // "NoSwap"` and
-therefore reported only the 17 historical Pods as one failure in a fresh
-read-only run. That is a false default, not evidence that the live kubelets
-have `NoSwap` configured. Before any approved rollout, stage and hash the
-current fail-closed verifier, then apply Worker 1, Worker 2, and the shared
-control host one at a time with node/GPU/workload recovery checks between
-restarts. A separate restart approval is still required.
+therefore reported only the then-live historical Pods as one failure in an
+earlier fresh read-only run. That is a false default, not evidence that the
+live kubelets have `NoSwap` configured. Before any approved rollout, stage and
+hash the current fail-closed verifier, then apply Worker 1, Worker 2, and the
+shared control host one at a time with node/GPU/workload recovery checks
+between restarts. A separate restart approval is still required.
 
 ## Experiment operating rules
 
