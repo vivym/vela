@@ -376,7 +376,7 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("migrate Stage graph finalization back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 48 {
+		if err != nil || version != 49 {
 			t.Fatalf("Stage graph finalization version after Up = %d error=%v", version, err)
 		}
 	})
@@ -396,9 +396,9 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("seed durable Stage graph finalization claim = %#v error=%v", claim, err)
 		}
 		err = goose.DownTo(outcome.database.Admin, migrations, 42)
-		assertPostgresConstraint(t, err, "stage_graph_finalization_outputs_rollback_is_unsafe")
+		assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
 		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 45 {
+		if versionErr != nil || version != 49 {
 			t.Fatalf(
 				"Stage graph finalization version after refused Down = %d error=%v",
 				version, versionErr,

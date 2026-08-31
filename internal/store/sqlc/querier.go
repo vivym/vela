@@ -178,6 +178,7 @@ type Querier interface {
 	RenewExecutionLease(ctx context.Context, arg RenewExecutionLeaseParams) (int64, error)
 	ReserveOrganizationCredit(ctx context.Context, arg ReserveOrganizationCreditParams) (int64, error)
 	ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUParams) (ResolveActiveSKURow, error)
+	ResolveJobExecutionRoute(ctx context.Context, arg ResolveJobExecutionRouteParams) (ResolveJobExecutionRouteRow, error)
 	ResolveWorkerBySPIFFEID(ctx context.Context, spiffeID string) (ResolveWorkerBySPIFFEIDRow, error)
 	RevokeCompletionLease(ctx context.Context, arg RevokeCompletionLeaseParams) (int64, error)
 	RevokeExecutionLeaseForFailure(ctx context.Context, arg RevokeExecutionLeaseForFailureParams) (int64, error)

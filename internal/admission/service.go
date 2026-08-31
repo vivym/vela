@@ -229,6 +229,14 @@ func (s *Service) Submit(
 	if err != nil {
 		return Job{}, fmt.Errorf("resolve ACTIVE SKU: %w", err)
 	}
+	route, err := queries.ResolveJobExecutionRoute(ctx, store.ResolveJobExecutionRouteParams{
+		OrganizationID:  principal.OrganizationID,
+		ProjectID:       projectID,
+		ModelRevisionID: sku.ModelRevisionID,
+	})
+	if err != nil {
+		return Job{}, fmt.Errorf("resolve Job execution route: %w", err)
+	}
 
 	project, err := queries.LockProjectForAdmission(ctx, store.LockProjectForAdmissionParams{
 		OrganizationID: principal.OrganizationID,
@@ -251,60 +259,78 @@ func (s *Service) Submit(
 		)
 	}
 
-	pool, err := queries.LockCompatiblePool(ctx, store.LockCompatiblePoolParams{
-		ModelRevisionID:            sku.ModelRevisionID,
-		GenerationPresetRevisionID: sku.GenerationPresetRevisionID,
-		OutputSpecID:               sku.OutputSpecID,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Job{}, failure(
-			FailureCodeCapacityUnavailable,
-			"no compatible certified Worker pool is available",
-			defaultCapacityRetryAfter,
-		)
-	}
-	if err != nil {
-		return Job{}, fmt.Errorf("lock compatible Worker pool: %w", err)
-	}
-	if !pool.AdmissionOpen || pool.QueuedCount >= pool.QueuedLimit {
-		return Job{}, failure(
-			FailureCodeCapacityUnavailable,
-			"compatible Worker pool Admission is closed or bounded",
-			int(pool.RetryAfterSeconds),
-		)
-	}
+	var workerPoolID uuid.NullUUID
 	var capacityPrediction *CapacityPrediction
-	if s.capacityPredictor != nil {
-		prediction, predictErr := s.capacityPredictor.PredictCapacity(
-			ctx,
-			CapacityPredictionRequest{
-				WorkerPoolID:               pool.ID,
-				ModelRevisionID:            sku.ModelRevisionID,
-				GenerationPresetRevisionID: sku.GenerationPresetRevisionID,
-				ServiceClassRevisionID:     sku.ServiceClassRevisionID,
-				OutputSpecID:               sku.OutputSpecID,
-				GenerationCount:            request.GenerationCount,
-			},
+	var pool store.LockCompatiblePoolRow
+	switch route.ExecutionAuthorityKind {
+	case store.ExecutionAuthorityKindLEGACYWORKER:
+		pool, err = queries.LockCompatiblePool(ctx, store.LockCompatiblePoolParams{
+			ModelRevisionID:            sku.ModelRevisionID,
+			GenerationPresetRevisionID: sku.GenerationPresetRevisionID,
+			OutputSpecID:               sku.OutputSpecID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Job{}, failure(
+				FailureCodeCapacityUnavailable,
+				"no compatible certified Worker pool is available",
+				defaultCapacityRetryAfter,
+			)
+		}
+		if err != nil {
+			return Job{}, fmt.Errorf("lock compatible Worker pool: %w", err)
+		}
+		if !pool.AdmissionOpen || pool.QueuedCount >= pool.QueuedLimit {
+			return Job{}, failure(
+				FailureCodeCapacityUnavailable,
+				"compatible Worker pool Admission is closed or bounded",
+				int(pool.RetryAfterSeconds),
+			)
+		}
+		workerPoolID = uuid.NullUUID{UUID: pool.ID, Valid: true}
+		if s.capacityPredictor != nil {
+			prediction, predictErr := s.capacityPredictor.PredictCapacity(
+				ctx,
+				CapacityPredictionRequest{
+					WorkerPoolID:               pool.ID,
+					ModelRevisionID:            sku.ModelRevisionID,
+					GenerationPresetRevisionID: sku.GenerationPresetRevisionID,
+					ServiceClassRevisionID:     sku.ServiceClassRevisionID,
+					OutputSpecID:               sku.OutputSpecID,
+					GenerationCount:            request.GenerationCount,
+				},
+			)
+			if errors.Is(predictErr, pgx.ErrNoRows) {
+				return Job{}, failure(
+					FailureCodeCapacityUnavailable,
+					"no compatible projected Worker capacity is available",
+					int(pool.RetryAfterSeconds),
+				)
+			}
+			if predictErr != nil {
+				return Job{}, fmt.Errorf("predict Worker pool capacity: %w", predictErr)
+			}
+			admissionBudget := time.Duration(sku.QueueRetryAllowanceSeconds) * time.Second
+			if prediction.QueueWait > admissionBudget {
+				return Job{}, failure(
+					FailureCodeCapacityUnavailable,
+					"predicted queue wait exceeds the Service Class Admission budget",
+					int(pool.RetryAfterSeconds),
+				)
+			}
+			capacityPrediction = &prediction
+		}
+	case store.ExecutionAuthorityKindSTAGEGRAPH:
+		if route.StageCutoverRevisionID == uuid.Nil ||
+			route.ExecutionGraphRevisionID == uuid.Nil ||
+			route.ExecutionProfileRevisionID == uuid.Nil ||
+			route.ReservedStorageBytes <= 0 {
+			return Job{}, errors.New("resolved Stage execution route is incomplete")
+		}
+	default:
+		return Job{}, fmt.Errorf(
+			"resolved Job execution route has unsupported authority %q",
+			route.ExecutionAuthorityKind,
 		)
-		if errors.Is(predictErr, pgx.ErrNoRows) {
-			return Job{}, failure(
-				FailureCodeCapacityUnavailable,
-				"no compatible projected Worker capacity is available",
-				int(pool.RetryAfterSeconds),
-			)
-		}
-		if predictErr != nil {
-			return Job{}, fmt.Errorf("predict Worker pool capacity: %w", predictErr)
-		}
-		admissionBudget := time.Duration(sku.QueueRetryAllowanceSeconds) * time.Second
-		if prediction.QueueWait > admissionBudget {
-			return Job{}, failure(
-				FailureCodeCapacityUnavailable,
-				"predicted queue wait exceeds the Service Class Admission budget",
-				int(pool.RetryAfterSeconds),
-			)
-		}
-		capacityPrediction = &prediction
 	}
 
 	quotedAmount, ok := checkedMultiply(sku.UnitAmountMinor, int64(request.GenerationCount))
@@ -357,11 +383,13 @@ func (s *Service) Submit(
 		}
 		return Job{}, failure(FailureCodeProjectLimitExceeded, "Project Admission limit is exhausted", int(project.RetryAfterSeconds))
 	}
-	if rows, updateErr := queries.IncrementPoolQueued(ctx, pool.ID); updateErr != nil || rows != 1 {
-		if updateErr != nil {
-			return Job{}, fmt.Errorf("increment Worker pool queue counter: %w", updateErr)
+	if workerPoolID.Valid {
+		if rows, updateErr := queries.IncrementPoolQueued(ctx, workerPoolID.UUID); updateErr != nil || rows != 1 {
+			if updateErr != nil {
+				return Job{}, fmt.Errorf("increment Worker pool queue counter: %w", updateErr)
+			}
+			return Job{}, failure(FailureCodeCapacityUnavailable, "compatible Worker pool Admission is bounded", int(pool.RetryAfterSeconds))
 		}
-		return Job{}, failure(FailureCodeCapacityUnavailable, "compatible Worker pool Admission is bounded", int(pool.RetryAfterSeconds))
 	}
 	if rows, updateErr := queries.ReserveOrganizationCredit(ctx, store.ReserveOrganizationCreditParams{
 		AmountMinor:    quotedAmount,
@@ -375,6 +403,20 @@ func (s *Service) Submit(
 	}
 
 	jobID := uuid.New()
+	stageCutoverRevisionID := uuid.NullUUID{}
+	executionGraphRevisionID := uuid.NullUUID{}
+	stageExecutionProfileRevisionID := uuid.NullUUID{}
+	if route.ExecutionAuthorityKind == store.ExecutionAuthorityKindSTAGEGRAPH {
+		stageCutoverRevisionID = uuid.NullUUID{
+			UUID: route.StageCutoverRevisionID, Valid: true,
+		}
+		executionGraphRevisionID = uuid.NullUUID{
+			UUID: route.ExecutionGraphRevisionID, Valid: true,
+		}
+		stageExecutionProfileRevisionID = uuid.NullUUID{
+			UUID: route.ExecutionProfileRevisionID, Valid: true,
+		}
+	}
 	err = queries.InsertJob(ctx, store.InsertJobParams{
 		ID:                                        jobID,
 		OrganizationID:                            principal.OrganizationID,
@@ -384,7 +426,11 @@ func (s *Service) Submit(
 		GenerationPresetRevisionID:                sku.GenerationPresetRevisionID,
 		ServiceClassRevisionID:                    sku.ServiceClassRevisionID,
 		OutputSpecID:                              sku.OutputSpecID,
-		WorkerPoolID:                              pool.ID,
+		ExecutionAuthorityKind:                    route.ExecutionAuthorityKind,
+		StageCutoverRevisionID:                    stageCutoverRevisionID,
+		ExecutionGraphRevisionID:                  executionGraphRevisionID,
+		StageExecutionProfileRevisionID:           stageExecutionProfileRevisionID,
+		WorkerPoolID:                              workerPoolID,
 		RequestHash:                               requestHash[:],
 		RequestContent:                            requestContent,
 		RetentionPolicyRevisionID:                 project.RetentionPolicyRevisionID,

@@ -62,6 +62,26 @@ FROM vela_resolve_active_sku(
 	circuit_min_distinct_healthy_workers
 );
 
+-- name: ResolveJobExecutionRoute :one
+SELECT
+    route.execution_authority_kind::execution_authority_kind
+        AS execution_authority_kind,
+    route.stage_cutover_revision_id::uuid AS stage_cutover_revision_id,
+    COALESCE(
+        route.execution_graph_revision_id,
+        '00000000-0000-0000-0000-000000000000'::uuid
+    )::uuid AS execution_graph_revision_id,
+    COALESCE(
+        route.execution_profile_revision_id,
+        '00000000-0000-0000-0000-000000000000'::uuid
+    )::uuid AS execution_profile_revision_id,
+    route.reserved_storage_bytes::bigint AS reserved_storage_bytes
+FROM vela_resolve_job_execution_route(
+    sqlc.arg(organization_id),
+    sqlc.arg(project_id),
+    sqlc.arg(model_revision_id)
+) AS route;
+
 -- name: LockCompatiblePool :one
 SELECT
 	pool.id::uuid AS id,
@@ -147,6 +167,10 @@ INSERT INTO jobs (
     generation_preset_revision_id,
     service_class_revision_id,
     output_spec_id,
+    execution_authority_kind,
+    stage_cutover_revision_id,
+    execution_graph_revision_id,
+    stage_execution_profile_revision_id,
     worker_pool_id,
     request_hash,
     request_content,
@@ -183,7 +207,11 @@ INSERT INTO jobs (
     sqlc.arg(generation_preset_revision_id),
     sqlc.arg(service_class_revision_id),
     sqlc.arg(output_spec_id),
-    sqlc.arg(worker_pool_id),
+    sqlc.arg(execution_authority_kind),
+    sqlc.narg(stage_cutover_revision_id),
+    sqlc.narg(execution_graph_revision_id),
+    sqlc.narg(stage_execution_profile_revision_id),
+    sqlc.narg(worker_pool_id),
     sqlc.arg(request_hash),
     sqlc.arg(request_content),
     transaction_timestamp()

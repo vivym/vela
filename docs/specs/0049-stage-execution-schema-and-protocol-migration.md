@@ -4,10 +4,14 @@ Date: 2026-08-31
 
 Status: Implementation in progress. S49.1-S49.11 have committed repository
 implementations through the capacity simulator and advisory planning boundary.
-S49.12 cutover/contraction remains pending. Migration `00048` adds an
-immutable StageRun output binding for both physical and exact-cache artifacts,
-closing the repository-level cache-only leaf to finalization-output path.
-Repository evidence does not advance a Production Gate.
+Migration `00049` starts S49.12 with ModelRevision-scoped cohort routing,
+immutable Job/Attempt/ExecutionGraphSnapshot authority, rollback that affects
+only later Jobs, an explicit internal-Project allowlist, Production Launch
+Receipt gating, legacy-authority database inventory, and a schema rollback
+guard. Automatic Stage Job instantiation and reconciliation, external drain
+evidence, a zero-inventory seal, contraction, legacy-path deletion, and
+production evidence remain pending. Repository evidence does not advance a
+Production Gate.
 
 ## Purpose
 
@@ -365,6 +369,10 @@ renewal is unavailable.
 - Legacy Jobs keep legacy binaries and frozen authority until terminal.
 - Rollback may change only the path for new Jobs; in-flight authority is never
   converted.
+- Migration `00049` implements the revisioned `LEGACY_ONLY`, `COHORT`, and
+  `STAGE_ONLY` routing authority. A revision is bound to one ModelRevision,
+  graph, profile, connector set, release, and configuration; non-target models
+  remain on the legacy path.
 
 ### M5: full cutover and drain
 
@@ -373,6 +381,10 @@ renewal is unavailable.
   retention, recovery, and N-1 backlog.
 - Seal a cutover receipt with zero legacy authority and a bounded observation
   window.
+- Migration `00049` supplies an immutable database inventory primitive,
+  including retained published Outbox events. It intentionally does not seal a
+  cutover receipt: a repository fixture is not evidence that Worker-local
+  recovery state, an actual N-1 deployment, or an external backlog is drained.
 
 ### M6: contract and delete
 
@@ -382,6 +394,10 @@ renewal is unavailable.
   after the contraction guard rechecks the sealed receipt and live database.
 - Add a permanent negative test proving no machine-level H3 Assignment can be
   formed.
+
+M6 is not implemented by migration `00049`. Its rollback guard protects the
+expanded schema; it is not the contraction migration and removes no legacy
+protocol or deployment surface.
 
 ## Failure and compatibility rules
 

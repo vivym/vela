@@ -50,6 +50,7 @@ JOIN jobs AS j ON j.id = a.job_id
 JOIN retry_runtime_states AS rts ON rts.job_id = j.id
 JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 WHERE l.attempt_id = sqlc.arg(attempt_id)
+  AND a.execution_authority_kind = 'LEGACY_WORKER'
 ORDER BY (l.revoked_at IS NULL) DESC, l.issued_at DESC, l.id DESC
 LIMIT 1
 FOR UPDATE OF l, a, j, rts, ere;
@@ -189,6 +190,7 @@ FROM jobs AS j
 JOIN retry_runtime_states AS rts ON rts.job_id = j.id
 JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 WHERE j.id = sqlc.arg(job_id)
+  AND j.execution_authority_kind = 'LEGACY_WORKER'
   AND j.state IN ('QUEUED', 'RETRY_WAIT')
   AND j.job_expires_at <= clock_timestamp()
   AND NOT EXISTS (

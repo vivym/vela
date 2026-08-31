@@ -515,6 +515,7 @@ JOIN retry_runtime_states AS rts ON rts.job_id = j.id
 JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 JOIN service_class_revisions AS scr ON scr.id = j.service_class_revision_id
 WHERE j.id = $1
+  AND j.execution_authority_kind = 'LEGACY_WORKER'
 FOR UPDATE OF j, cr, rts, ere
 FOR SHARE OF scr
 `
@@ -531,7 +532,7 @@ type LockJobForAssignmentRow struct {
 	ServiceClassRevisionState       CatalogState           `db:"service_class_revision_state" json:"service_class_revision_state"`
 	OutputSpecID                    uuid.UUID              `db:"output_spec_id" json:"output_spec_id"`
 	RequestContent                  string                 `db:"request_content" json:"request_content"`
-	WorkerPoolID                    uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerPoolID                    uuid.NullUUID          `db:"worker_pool_id" json:"worker_pool_id"`
 	ExecutionMaxAttempts            int32                  `db:"execution_max_attempts" json:"execution_max_attempts"`
 	ExecutionMaxTotalComputeSeconds int64                  `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
 	JobExpiresAt                    pgtype.Timestamptz     `db:"job_expires_at" json:"job_expires_at"`

@@ -2,10 +2,13 @@
 
 Date: 2026-08-31
 
-Status: In progress. S49.1-S49.11 have committed repository implementations;
-S49.12 is pending. Migration `00048` closes the cross-slice exact-cache
-leaf to finalization-output binding with immutable physical or exact-cache
-StageRun output evidence.
+Status: In progress. S49.1-S49.11 have committed repository implementations.
+S49.12 has started with migration `00049` and remains partial: cutover routing,
+immutable execution authority, scoped internal rollout, Production Launch
+Receipt gating, legacy database inventory, and rollback protection exist;
+automatic Stage Job instantiation, external drain evidence, zero-inventory
+seal, contraction, legacy-path deletion, and production evidence remain
+pending.
 
 ## Delivery rule
 
@@ -297,6 +300,11 @@ Acceptance:
   transfer is expected not to dominate.
 
 ## S49.12: Cutover, contraction, and evidence campaign
+
+Current repository boundary: migration `00049` and Admission implement the
+first two deliverables only through the pre-contraction control surface. They
+do not authorize production activation, prove real Worker-local or N-1 drain,
+or make the monolithic path unreachable.
 
 Deliver:
 

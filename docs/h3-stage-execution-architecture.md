@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 | --- | --- |
-| Status | Accepted target; repository implementation through S49.11; cutover/contraction pending |
+| Status | Accepted target; S49.12 cutover control started; automatic instantiation and contraction pending |
 | Date | 2026-08-29 |
 | Workload | MiniMax H3 asynchronous video generation |
 | Baseline commit | `bc590e20b3e81ee54651ac7766c8ecd82b394097` |

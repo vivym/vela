@@ -44,6 +44,10 @@ func (s *Service) applyAttemptFailure(
 	if err != nil {
 		return RetryDecision{}, err
 	}
+	if !authority.WorkerPoolID.Valid {
+		return RetryDecision{}, errors.New("legacy failure authority has no Worker pool")
+	}
+	workerPoolID := authority.WorkerPoolID.UUID
 	if err := queries.LockExecutionFailureDecisionWrites(ctx); err != nil {
 		return RetryDecision{}, fmt.Errorf("lock failure decision writes: %w", err)
 	}
@@ -61,7 +65,7 @@ func (s *Service) applyAttemptFailure(
 	if project.RunningCount <= 0 {
 		return RetryDecision{}, errors.New("project running counter is inconsistent with active Attempt")
 	}
-	if _, err := queries.LockFailurePoolCounters(ctx, authority.WorkerPoolID); err != nil {
+	if _, err := queries.LockFailurePoolCounters(ctx, workerPoolID); err != nil {
 		return RetryDecision{}, fmt.Errorf("lock Worker pool failure counters: %w", err)
 	}
 	workerWasHealthy := protocol.RequireCircuitAggregation &&
@@ -167,9 +171,7 @@ func (s *Service) applyAttemptFailure(
 				OutputSpecID:               authority.OutputSpecID,
 				ProfileCertificationID:     binding.profileCertificationID,
 				ExecutionProfileRevisionID: binding.executionProfileRevisionID,
-				WorkerPoolID: uuid.NullUUID{
-					UUID: authority.WorkerPoolID, Valid: true,
-				},
+				WorkerPoolID:               authority.WorkerPoolID,
 			},
 		)
 		if err != nil {
@@ -299,7 +301,7 @@ func (s *Service) applyAttemptFailure(
 		}); updateErr != nil || rows != 1 {
 			return RetryDecision{}, changedRowsError("move Project running counter to retry wait", rows, updateErr)
 		}
-		if rows, updateErr := queries.IncrementPoolRetryWait(ctx, authority.WorkerPoolID); updateErr != nil || rows != 1 {
+		if rows, updateErr := queries.IncrementPoolRetryWait(ctx, workerPoolID); updateErr != nil || rows != 1 {
 			return RetryDecision{}, changedRowsError("increment Worker pool retry-wait counter", rows, updateErr)
 		}
 		jobVersion, err = queries.MarkJobRetryWait(ctx, store.MarkJobRetryWaitParams{

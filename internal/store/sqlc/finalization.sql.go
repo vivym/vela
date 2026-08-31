@@ -2050,7 +2050,7 @@ type LockStageGraphFinalizationCompletionAuthorityRow struct {
 	FinalizationDeadlineAt                           pgtype.Timestamptz               `db:"finalization_deadline_at" json:"finalization_deadline_at"`
 	OrganizationID                                   uuid.UUID                        `db:"organization_id" json:"organization_id"`
 	ProjectID                                        uuid.UUID                        `db:"project_id" json:"project_id"`
-	WorkerPoolID                                     uuid.UUID                        `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerPoolID                                     uuid.NullUUID                    `db:"worker_pool_id" json:"worker_pool_id"`
 	JobState                                         JobState                         `db:"job_state" json:"job_state"`
 	JobVersion                                       int64                            `db:"job_version" json:"job_version"`
 	CurrentFence                                     int64                            `db:"current_fence" json:"current_fence"`
@@ -2197,6 +2197,7 @@ WHERE lease.attempt_id = $1
   AND attempt.worker_id = $2
   AND attempt.worker_epoch = $3
   AND attempt.fence = $4
+  AND attempt.execution_authority_kind = 'LEGACY_WORKER'
 LIMIT 1
 FOR UPDATE OF lease, attempt, job
 `
@@ -2229,7 +2230,7 @@ type LockVisibleCompletionAuthorityRow struct {
 	AttemptEndedAt             pgtype.Timestamptz     `db:"attempt_ended_at" json:"attempt_ended_at"`
 	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
 	ProjectID                  uuid.UUID              `db:"project_id" json:"project_id"`
-	WorkerPoolID               uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerPoolID               uuid.NullUUID          `db:"worker_pool_id" json:"worker_pool_id"`
 	JobState                   JobState               `db:"job_state" json:"job_state"`
 	JobVersion                 int64                  `db:"job_version" json:"job_version"`
 	CurrentFence               int64                  `db:"current_fence" json:"current_fence"`

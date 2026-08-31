@@ -229,6 +229,10 @@ INSERT INTO jobs (
     generation_preset_revision_id,
     service_class_revision_id,
     output_spec_id,
+    execution_authority_kind,
+    stage_cutover_revision_id,
+    execution_graph_revision_id,
+    stage_execution_profile_revision_id,
     worker_pool_id,
     request_hash,
     request_content,
@@ -268,15 +272,15 @@ INSERT INTO jobs (
     $9,
     $10,
     $11,
-    transaction_timestamp()
-        + $12::bigint * interval '1 day',
+    $12,
     $13,
     $14,
-    $12,
     $15,
-    $16,
+    transaction_timestamp()
+        + $16::bigint * interval '1 day',
     $17,
     $18,
+    $16,
     $19,
     $20,
     $21,
@@ -290,47 +294,55 @@ INSERT INTO jobs (
     $29,
     $30,
     $31,
-	$32,
-	$33,
-	transaction_timestamp() + $34::bigint * interval '1 second'
+    $32,
+    $33,
+    $34,
+    $35,
+	$36,
+	$37,
+	transaction_timestamp() + $38::bigint * interval '1 second'
 )
 `
 
 type InsertJobParams struct {
-	ID                                        uuid.UUID `db:"id" json:"id"`
-	OrganizationID                            uuid.UUID `db:"organization_id" json:"organization_id"`
-	ProjectID                                 uuid.UUID `db:"project_id" json:"project_id"`
-	CreatedByPrincipalID                      uuid.UUID `db:"created_by_principal_id" json:"created_by_principal_id"`
-	ModelRevisionID                           uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
-	GenerationPresetRevisionID                uuid.UUID `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
-	ServiceClassRevisionID                    uuid.UUID `db:"service_class_revision_id" json:"service_class_revision_id"`
-	OutputSpecID                              uuid.UUID `db:"output_spec_id" json:"output_spec_id"`
-	WorkerPoolID                              uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
-	RequestHash                               []byte    `db:"request_hash" json:"request_hash"`
-	RequestContent                            []byte    `db:"request_content" json:"request_content"`
-	RetentionRequestContentDays               int32     `db:"retention_request_content_days" json:"retention_request_content_days"`
-	RetentionPolicyRevisionID                 uuid.UUID `db:"retention_policy_revision_id" json:"retention_policy_revision_id"`
-	RetentionArtifactDays                     int32     `db:"retention_artifact_days" json:"retention_artifact_days"`
-	RetentionIncompleteContentHours           int32     `db:"retention_incomplete_content_hours" json:"retention_incomplete_content_hours"`
-	RetentionScratchHours                     int32     `db:"retention_scratch_hours" json:"retention_scratch_hours"`
-	RetentionDebugHours                       int32     `db:"retention_debug_hours" json:"retention_debug_hours"`
-	RetentionMetadataDays                     int32     `db:"retention_metadata_days" json:"retention_metadata_days"`
-	RetentionFinancialDays                    int32     `db:"retention_financial_days" json:"retention_financial_days"`
-	PricingRateCardRevisionID                 uuid.UUID `db:"pricing_rate_card_revision_id" json:"pricing_rate_card_revision_id"`
-	PricingRateLineID                         uuid.UUID `db:"pricing_rate_line_id" json:"pricing_rate_line_id"`
-	PricingUnitAmountMinor                    int64     `db:"pricing_unit_amount_minor" json:"pricing_unit_amount_minor"`
-	PricingQuantity                           int32     `db:"pricing_quantity" json:"pricing_quantity"`
-	PricingQuotedAmountMinor                  int64     `db:"pricing_quoted_amount_minor" json:"pricing_quoted_amount_minor"`
-	PricingCurrency                           string    `db:"pricing_currency" json:"pricing_currency"`
-	ExecutionMaxAttempts                      int32     `db:"execution_max_attempts" json:"execution_max_attempts"`
-	ExecutionMaxTotalComputeSeconds           int64     `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
-	ExecutionMaxFinalizationSecondsPerAttempt int32     `db:"execution_max_finalization_seconds_per_attempt" json:"execution_max_finalization_seconds_per_attempt"`
-	ExecutionRetryBackoffPolicy               []byte    `db:"execution_retry_backoff_policy" json:"execution_retry_backoff_policy"`
-	ExecutionRetryableFailureClasses          []string  `db:"execution_retryable_failure_classes" json:"execution_retryable_failure_classes"`
-	ExecutionCircuitBreakerPolicy             []byte    `db:"execution_circuit_breaker_policy" json:"execution_circuit_breaker_policy"`
-	ExecutionCircuitFingerprintWindowSeconds  int32     `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
-	ExecutionCircuitMinDistinctHealthyWorkers int32     `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
-	JobLifetimeSeconds                        int64     `db:"job_lifetime_seconds" json:"job_lifetime_seconds"`
+	ID                                        uuid.UUID              `db:"id" json:"id"`
+	OrganizationID                            uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ProjectID                                 uuid.UUID              `db:"project_id" json:"project_id"`
+	CreatedByPrincipalID                      uuid.UUID              `db:"created_by_principal_id" json:"created_by_principal_id"`
+	ModelRevisionID                           uuid.UUID              `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID                uuid.UUID              `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	ServiceClassRevisionID                    uuid.UUID              `db:"service_class_revision_id" json:"service_class_revision_id"`
+	OutputSpecID                              uuid.UUID              `db:"output_spec_id" json:"output_spec_id"`
+	ExecutionAuthorityKind                    ExecutionAuthorityKind `db:"execution_authority_kind" json:"execution_authority_kind"`
+	StageCutoverRevisionID                    uuid.NullUUID          `db:"stage_cutover_revision_id" json:"stage_cutover_revision_id"`
+	ExecutionGraphRevisionID                  uuid.NullUUID          `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	StageExecutionProfileRevisionID           uuid.NullUUID          `db:"stage_execution_profile_revision_id" json:"stage_execution_profile_revision_id"`
+	WorkerPoolID                              uuid.NullUUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	RequestHash                               []byte                 `db:"request_hash" json:"request_hash"`
+	RequestContent                            []byte                 `db:"request_content" json:"request_content"`
+	RetentionRequestContentDays               int32                  `db:"retention_request_content_days" json:"retention_request_content_days"`
+	RetentionPolicyRevisionID                 uuid.UUID              `db:"retention_policy_revision_id" json:"retention_policy_revision_id"`
+	RetentionArtifactDays                     int32                  `db:"retention_artifact_days" json:"retention_artifact_days"`
+	RetentionIncompleteContentHours           int32                  `db:"retention_incomplete_content_hours" json:"retention_incomplete_content_hours"`
+	RetentionScratchHours                     int32                  `db:"retention_scratch_hours" json:"retention_scratch_hours"`
+	RetentionDebugHours                       int32                  `db:"retention_debug_hours" json:"retention_debug_hours"`
+	RetentionMetadataDays                     int32                  `db:"retention_metadata_days" json:"retention_metadata_days"`
+	RetentionFinancialDays                    int32                  `db:"retention_financial_days" json:"retention_financial_days"`
+	PricingRateCardRevisionID                 uuid.UUID              `db:"pricing_rate_card_revision_id" json:"pricing_rate_card_revision_id"`
+	PricingRateLineID                         uuid.UUID              `db:"pricing_rate_line_id" json:"pricing_rate_line_id"`
+	PricingUnitAmountMinor                    int64                  `db:"pricing_unit_amount_minor" json:"pricing_unit_amount_minor"`
+	PricingQuantity                           int32                  `db:"pricing_quantity" json:"pricing_quantity"`
+	PricingQuotedAmountMinor                  int64                  `db:"pricing_quoted_amount_minor" json:"pricing_quoted_amount_minor"`
+	PricingCurrency                           string                 `db:"pricing_currency" json:"pricing_currency"`
+	ExecutionMaxAttempts                      int32                  `db:"execution_max_attempts" json:"execution_max_attempts"`
+	ExecutionMaxTotalComputeSeconds           int64                  `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
+	ExecutionMaxFinalizationSecondsPerAttempt int32                  `db:"execution_max_finalization_seconds_per_attempt" json:"execution_max_finalization_seconds_per_attempt"`
+	ExecutionRetryBackoffPolicy               []byte                 `db:"execution_retry_backoff_policy" json:"execution_retry_backoff_policy"`
+	ExecutionRetryableFailureClasses          []string               `db:"execution_retryable_failure_classes" json:"execution_retryable_failure_classes"`
+	ExecutionCircuitBreakerPolicy             []byte                 `db:"execution_circuit_breaker_policy" json:"execution_circuit_breaker_policy"`
+	ExecutionCircuitFingerprintWindowSeconds  int32                  `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
+	ExecutionCircuitMinDistinctHealthyWorkers int32                  `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
+	JobLifetimeSeconds                        int64                  `db:"job_lifetime_seconds" json:"job_lifetime_seconds"`
 }
 
 func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
@@ -343,6 +355,10 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.GenerationPresetRevisionID,
 		arg.ServiceClassRevisionID,
 		arg.OutputSpecID,
+		arg.ExecutionAuthorityKind,
+		arg.StageCutoverRevisionID,
+		arg.ExecutionGraphRevisionID,
+		arg.StageExecutionProfileRevisionID,
 		arg.WorkerPoolID,
 		arg.RequestHash,
 		arg.RequestContent,
@@ -719,6 +735,54 @@ func (q *Queries) ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUPara
 		&i.Currency,
 		&i.CircuitFingerprintWindowSeconds,
 		&i.CircuitMinDistinctHealthyWorkers,
+	)
+	return i, err
+}
+
+const resolveJobExecutionRoute = `-- name: ResolveJobExecutionRoute :one
+SELECT
+    route.execution_authority_kind::execution_authority_kind
+        AS execution_authority_kind,
+    route.stage_cutover_revision_id::uuid AS stage_cutover_revision_id,
+    COALESCE(
+        route.execution_graph_revision_id,
+        '00000000-0000-0000-0000-000000000000'::uuid
+    )::uuid AS execution_graph_revision_id,
+    COALESCE(
+        route.execution_profile_revision_id,
+        '00000000-0000-0000-0000-000000000000'::uuid
+    )::uuid AS execution_profile_revision_id,
+    route.reserved_storage_bytes::bigint AS reserved_storage_bytes
+FROM vela_resolve_job_execution_route(
+    $1,
+    $2,
+    $3
+) AS route
+`
+
+type ResolveJobExecutionRouteParams struct {
+	OrganizationID  uuid.UUID `db:"organization_id" json:"organization_id"`
+	ProjectID       uuid.UUID `db:"project_id" json:"project_id"`
+	ModelRevisionID uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
+}
+
+type ResolveJobExecutionRouteRow struct {
+	ExecutionAuthorityKind     ExecutionAuthorityKind `db:"execution_authority_kind" json:"execution_authority_kind"`
+	StageCutoverRevisionID     uuid.UUID              `db:"stage_cutover_revision_id" json:"stage_cutover_revision_id"`
+	ExecutionGraphRevisionID   uuid.UUID              `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionProfileRevisionID uuid.UUID              `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ReservedStorageBytes       int64                  `db:"reserved_storage_bytes" json:"reserved_storage_bytes"`
+}
+
+func (q *Queries) ResolveJobExecutionRoute(ctx context.Context, arg ResolveJobExecutionRouteParams) (ResolveJobExecutionRouteRow, error) {
+	row := q.db.QueryRow(ctx, resolveJobExecutionRoute, arg.OrganizationID, arg.ProjectID, arg.ModelRevisionID)
+	var i ResolveJobExecutionRouteRow
+	err := row.Scan(
+		&i.ExecutionAuthorityKind,
+		&i.StageCutoverRevisionID,
+		&i.ExecutionGraphRevisionID,
+		&i.ExecutionProfileRevisionID,
+		&i.ReservedStorageBytes,
 	)
 	return i, err
 }

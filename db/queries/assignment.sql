@@ -84,6 +84,7 @@ JOIN retry_runtime_states AS rts ON rts.job_id = j.id
 JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 JOIN service_class_revisions AS scr ON scr.id = j.service_class_revision_id
 WHERE j.id = sqlc.arg(job_id)
+  AND j.execution_authority_kind = 'LEGACY_WORKER'
 FOR UPDATE OF j, cr, rts, ere
 FOR SHARE OF scr;
 

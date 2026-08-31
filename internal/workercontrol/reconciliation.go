@@ -266,6 +266,10 @@ func (s *Service) reconcileJobExpiryWithoutAttempt(
 	if !authority.JobExpiresAt.Valid || authority.JobExpiresAt.Time.After(decidedAt) {
 		return ReconciliationResult{}, nil
 	}
+	if !authority.WorkerPoolID.Valid {
+		return ReconciliationResult{}, errors.New("legacy Job Expiry authority has no Worker pool")
+	}
+	workerPoolID := authority.WorkerPoolID.UUID
 	project, err := queries.LockFailureProjectCounters(ctx, store.LockFailureProjectCountersParams{
 		OrganizationID: authority.OrganizationID,
 		ProjectID:      authority.ProjectID,
@@ -277,7 +281,7 @@ func (s *Service) reconcileJobExpiryWithoutAttempt(
 	if (fromRetry && project.RetryWaitCount <= 0) || (!fromRetry && project.QueuedCount <= 0) {
 		return ReconciliationResult{}, errors.New("project waiting counter is inconsistent with expired Job")
 	}
-	poolCounters, err := queries.LockFailurePoolCounters(ctx, authority.WorkerPoolID)
+	poolCounters, err := queries.LockFailurePoolCounters(ctx, workerPoolID)
 	if err != nil {
 		return ReconciliationResult{}, fmt.Errorf("lock Worker pool Job Expiry counters: %w", err)
 	}
@@ -347,7 +351,7 @@ func (s *Service) reconcileJobExpiryWithoutAttempt(
 	}
 	if rows, updateErr := queries.DecrementPoolWaitingForFailure(ctx, store.DecrementPoolWaitingForFailureParams{
 		FromRetry:    fromRetry,
-		WorkerPoolID: authority.WorkerPoolID,
+		WorkerPoolID: workerPoolID,
 	}); updateErr != nil || rows != 1 {
 		return ReconciliationResult{}, changedRowsError("decrement Worker pool waiting counter for Job Expiry", rows, updateErr)
 	}

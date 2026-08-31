@@ -345,7 +345,8 @@ func (s *Service) Acquire(
 		job.ServiceClassRevisionState != store.CatalogStateACTIVE ||
 		!job.JobExpiresAt.Valid ||
 		job.CreditReservationState != store.CreditReservationStateRESERVED ||
-		job.WorkerPoolID != workerRow.WorkerPoolID {
+		!job.WorkerPoolID.Valid ||
+		job.WorkerPoolID.UUID != workerRow.WorkerPoolID {
 		return Assignment{}, failure(FailureCandidateUnavailable, "candidate Job no longer satisfies Assignment preconditions")
 	}
 	if job.AttemptsStarted >= job.ExecutionMaxAttempts ||

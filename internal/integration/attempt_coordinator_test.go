@@ -34,6 +34,7 @@ const (
 	encoderStageProfileID   = "49300000-0000-0000-0000-000000000031"
 	ditWorkerProfileID      = "49300000-0000-0000-0000-000000000032"
 	ditStageProfileID       = "49300000-0000-0000-0000-000000000033"
+	stageCutoverRevisionID  = "49300000-0000-0000-0000-000000000049"
 )
 
 func TestAttemptCoordinatorInstantiateIsDurableAndIdempotent(t *testing.T) {
@@ -1418,7 +1419,7 @@ func TestStageGraphQueuedCancellationReleasesGraphAuthorityWithoutCharge(t *test
 		JOIN stage_storage_reservations AS storage ON storage.attempt_id = attempt.id
 		JOIN credit_reservations AS credit_reservation ON credit_reservation.job_id = job.id
 		JOIN projects AS project ON project.id = job.project_id
-		JOIN worker_pools AS pool ON pool.id = job.worker_pool_id
+			JOIN worker_pools AS pool ON pool.stable_id = 'h3-primary'
 		JOIN organization_credit_accounts AS account
 		  ON account.organization_id = job.organization_id
 		WHERE job.id = $2
@@ -1649,13 +1650,13 @@ func TestStageAttemptAuthorityMigrationRoundTripAndDurableAuthorityRefusal(t *te
 		}
 	})
 
-	t.Run("durable Stage graph authority refuses Down", func(t *testing.T) {
+	t.Run("durable Stage graph authority refuses Down at cutover boundary", func(t *testing.T) {
 		database, _, _, _, attemptID, _, _ :=
 			newStageGraphCancellationFixture(t, "stage-attempt-migration-refusal")
 		err := goose.DownTo(database.Admin, migrations, 35)
-		assertPostgresConstraint(t, err, "stage_attempt_authority_rollback_is_unsafe")
+		assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
 		version, versionErr := goose.GetDBVersion(database.Admin)
-		if versionErr != nil || version != 36 {
+		if versionErr != nil || version != 49 {
 			t.Fatalf(
 				"Stage Attempt authority version after refusal = %d error=%v",
 				version, versionErr,
@@ -2006,6 +2007,17 @@ func seedDiTAssignmentProfile(t *testing.T, database testDatabase) {
 
 func activateH3StageGraph(t *testing.T, database testDatabase) {
 	t.Helper()
+	activateH3ExecutionGraph(t, database)
+	activateStageCutoverRevision(
+		t, database, uuid.MustParse(stageCutoverRevisionID), 2,
+		uuid.MustParse("00000000-0000-0000-0000-000000000049"),
+		uuid.MustParse(stageGraphID), uuid.MustParse(graphExecutionProfileID),
+		2<<30, "integration-stage-cutover",
+	)
+}
+
+func activateH3ExecutionGraph(t *testing.T, database testDatabase) {
+	t.Helper()
 	if _, err := database.Admin.Exec(`
 		UPDATE connector_revisions
 		SET state = 'CERTIFIED'
@@ -2043,4 +2055,48 @@ func activateH3StageGraph(t *testing.T, database testDatabase) {
 	if state != "ACTIVE" || len(order) != 3 {
 		t.Fatalf("activated H3 Stage graph state/order = %s/%v", state, order)
 	}
+}
+
+func activateStageCutoverRevision(
+	t *testing.T,
+	database testDatabase,
+	cutoverID uuid.UUID,
+	revision int64,
+	previousRevisionID uuid.UUID,
+	graphID uuid.UUID,
+	profileID uuid.UUID,
+	reservedStorageBytes int64,
+	configurationRevision string,
+) {
+	t.Helper()
+	var connectorSetDigest []byte
+	if err := database.Admin.QueryRow(`
+		SELECT vela_execution_profile_connector_set_digest($1, $2)
+	`, profileID, graphID).Scan(&connectorSetDigest); err != nil {
+		t.Fatalf("read Stage connector-set digest: %v", err)
+	}
+	promotion := newRolePool(
+		t,
+		database.DSN,
+		"vela_catalog_promotion_login",
+		"vela-catalog-promotion-password",
+	)
+	var activatedID uuid.UUID
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT (vela_activate_stage_cutover(
+			$1, $2, $3,
+			'INTERNAL', 'STAGE_ONLY', 10000, $4, $5, $6, 1,
+			decode(repeat('a1', 32), 'hex'), $7,
+			sha256(convert_to($7, 'UTF8')),
+			$8, NULL, 'integration-catalog-promotion',
+			'activate the integration Stage graph'
+		)).id
+	`, cutoverID, revision, previousRevisionID, graphID, profileID,
+		reservedStorageBytes, configurationRevision, connectorSetDigest).Scan(&activatedID); err != nil {
+		t.Fatalf("activate Stage cutover: %v", err)
+	}
+	if activatedID != cutoverID {
+		t.Fatalf("activated Stage cutover id = %s, want %s", activatedID, cutoverID)
+	}
+	authorizeInternalCutoverProject(t, promotion, cutoverID)
 }

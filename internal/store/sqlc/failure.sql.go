@@ -766,6 +766,7 @@ JOIN jobs AS j ON j.id = a.job_id
 JOIN retry_runtime_states AS rts ON rts.job_id = j.id
 JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 WHERE l.attempt_id = $1
+  AND a.execution_authority_kind = 'LEGACY_WORKER'
 ORDER BY (l.revoked_at IS NULL) DESC, l.issued_at DESC, l.id DESC
 LIMIT 1
 FOR UPDATE OF l, a, j, rts, ere
@@ -793,7 +794,7 @@ type LockFailureAuthorityRow struct {
 	AttemptFence                              int64              `db:"attempt_fence" json:"attempt_fence"`
 	OrganizationID                            uuid.UUID          `db:"organization_id" json:"organization_id"`
 	ProjectID                                 uuid.UUID          `db:"project_id" json:"project_id"`
-	WorkerPoolID                              uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerPoolID                              uuid.NullUUID      `db:"worker_pool_id" json:"worker_pool_id"`
 	JobState                                  JobState           `db:"job_state" json:"job_state"`
 	JobVersion                                int64              `db:"job_version" json:"job_version"`
 	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
@@ -987,6 +988,7 @@ FROM jobs AS j
 JOIN retry_runtime_states AS rts ON rts.job_id = j.id
 JOIN execution_retry_evidence AS ere ON ere.job_id = j.id
 WHERE j.id = $1
+  AND j.execution_authority_kind = 'LEGACY_WORKER'
   AND j.state IN ('QUEUED', 'RETRY_WAIT')
   AND j.job_expires_at <= clock_timestamp()
   AND NOT EXISTS (
@@ -1001,7 +1003,7 @@ FOR UPDATE OF j, rts, ere
 type LockJobExpiryWithoutAttemptRow struct {
 	OrganizationID              uuid.UUID          `db:"organization_id" json:"organization_id"`
 	ProjectID                   uuid.UUID          `db:"project_id" json:"project_id"`
-	WorkerPoolID                uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	WorkerPoolID                uuid.NullUUID      `db:"worker_pool_id" json:"worker_pool_id"`
 	JobState                    JobState           `db:"job_state" json:"job_state"`
 	JobVersion                  int64              `db:"job_version" json:"job_version"`
 	CurrentFence                int64              `db:"current_fence" json:"current_fence"`

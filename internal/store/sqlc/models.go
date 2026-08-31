@@ -3487,6 +3487,91 @@ func (ns NullStageCacheScope) Value() (driver.Value, error) {
 	return string(ns.StageCacheScope), nil
 }
 
+type StageCutoverMode string
+
+const (
+	StageCutoverModeLEGACYONLY StageCutoverMode = "LEGACY_ONLY"
+	StageCutoverModeCOHORT     StageCutoverMode = "COHORT"
+	StageCutoverModeSTAGEONLY  StageCutoverMode = "STAGE_ONLY"
+)
+
+func (e *StageCutoverMode) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StageCutoverMode(s)
+	case string:
+		*e = StageCutoverMode(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StageCutoverMode: %T", src)
+	}
+	return nil
+}
+
+type NullStageCutoverMode struct {
+	StageCutoverMode StageCutoverMode `json:"stage_cutover_mode"`
+	Valid            bool             `json:"valid"` // Valid is true if StageCutoverMode is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStageCutoverMode) Scan(value interface{}) error {
+	if value == nil {
+		ns.StageCutoverMode, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StageCutoverMode.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStageCutoverMode) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StageCutoverMode), nil
+}
+
+type StageCutoverScope string
+
+const (
+	StageCutoverScopeINTERNAL   StageCutoverScope = "INTERNAL"
+	StageCutoverScopePRODUCTION StageCutoverScope = "PRODUCTION"
+)
+
+func (e *StageCutoverScope) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StageCutoverScope(s)
+	case string:
+		*e = StageCutoverScope(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StageCutoverScope: %T", src)
+	}
+	return nil
+}
+
+type NullStageCutoverScope struct {
+	StageCutoverScope StageCutoverScope `json:"stage_cutover_scope"`
+	Valid             bool              `json:"valid"` // Valid is true if StageCutoverScope is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStageCutoverScope) Scan(value interface{}) error {
+	if value == nil {
+		ns.StageCutoverScope, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StageCutoverScope.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStageCutoverScope) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StageCutoverScope), nil
+}
+
 type StageGraphFinalizationClaimState string
 
 const (
@@ -5670,50 +5755,54 @@ type InvoiceExportReceipt struct {
 }
 
 type Job struct {
-	ID                                        uuid.UUID          `db:"id" json:"id"`
-	OrganizationID                            uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID                                 uuid.UUID          `db:"project_id" json:"project_id"`
-	CreatedByPrincipalID                      uuid.UUID          `db:"created_by_principal_id" json:"created_by_principal_id"`
-	State                                     JobState           `db:"state" json:"state"`
-	Version                                   int64              `db:"version" json:"version"`
-	ModelRevisionID                           uuid.UUID          `db:"model_revision_id" json:"model_revision_id"`
-	GenerationPresetRevisionID                uuid.UUID          `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
-	ServiceClassRevisionID                    uuid.UUID          `db:"service_class_revision_id" json:"service_class_revision_id"`
-	OutputSpecID                              uuid.UUID          `db:"output_spec_id" json:"output_spec_id"`
-	WorkerPoolID                              uuid.UUID          `db:"worker_pool_id" json:"worker_pool_id"`
-	RequestHash                               []byte             `db:"request_hash" json:"request_hash"`
-	RequestContent                            []byte             `db:"request_content" json:"request_content"`
-	RequestContentExpiresAt                   pgtype.Timestamptz `db:"request_content_expires_at" json:"request_content_expires_at"`
-	PricingRateCardRevisionID                 uuid.UUID          `db:"pricing_rate_card_revision_id" json:"pricing_rate_card_revision_id"`
-	PricingRateLineID                         uuid.UUID          `db:"pricing_rate_line_id" json:"pricing_rate_line_id"`
-	PricingUnitAmountMinor                    int64              `db:"pricing_unit_amount_minor" json:"pricing_unit_amount_minor"`
-	PricingQuantity                           int32              `db:"pricing_quantity" json:"pricing_quantity"`
-	PricingQuotedAmountMinor                  int64              `db:"pricing_quoted_amount_minor" json:"pricing_quoted_amount_minor"`
-	PricingCurrency                           string             `db:"pricing_currency" json:"pricing_currency"`
-	ExecutionMaxAttempts                      int32              `db:"execution_max_attempts" json:"execution_max_attempts"`
-	ExecutionMaxTotalComputeSeconds           int64              `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
-	ExecutionMaxFinalizationSecondsPerAttempt int32              `db:"execution_max_finalization_seconds_per_attempt" json:"execution_max_finalization_seconds_per_attempt"`
-	ExecutionRetryBackoffPolicy               []byte             `db:"execution_retry_backoff_policy" json:"execution_retry_backoff_policy"`
-	ExecutionRetryableFailureClasses          []string           `db:"execution_retryable_failure_classes" json:"execution_retryable_failure_classes"`
-	ExecutionCircuitBreakerPolicy             []byte             `db:"execution_circuit_breaker_policy" json:"execution_circuit_breaker_policy"`
-	JobExpiresAt                              pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
-	CreatedAt                                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt                                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	CurrentFence                              int64              `db:"current_fence" json:"current_fence"`
-	BillableStartedAt                         pgtype.Timestamptz `db:"billable_started_at" json:"billable_started_at"`
-	ExecutionPhase                            *execution.Phase   `db:"execution_phase" json:"execution_phase"`
-	ResultArtifactSetID                       uuid.NullUUID      `db:"result_artifact_set_id" json:"result_artifact_set_id"`
-	ExecutionCircuitFingerprintWindowSeconds  int32              `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
-	ExecutionCircuitMinDistinctHealthyWorkers int32              `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
-	RetentionPolicyRevisionID                 uuid.UUID          `db:"retention_policy_revision_id" json:"retention_policy_revision_id"`
-	RetentionArtifactDays                     int32              `db:"retention_artifact_days" json:"retention_artifact_days"`
-	RetentionRequestContentDays               int32              `db:"retention_request_content_days" json:"retention_request_content_days"`
-	RetentionIncompleteContentHours           int32              `db:"retention_incomplete_content_hours" json:"retention_incomplete_content_hours"`
-	RetentionScratchHours                     int32              `db:"retention_scratch_hours" json:"retention_scratch_hours"`
-	RetentionDebugHours                       int32              `db:"retention_debug_hours" json:"retention_debug_hours"`
-	RetentionMetadataDays                     int32              `db:"retention_metadata_days" json:"retention_metadata_days"`
-	RetentionFinancialDays                    int32              `db:"retention_financial_days" json:"retention_financial_days"`
-	RequestContentDeletedAt                   pgtype.Timestamptz `db:"request_content_deleted_at" json:"request_content_deleted_at"`
+	ID                                        uuid.UUID              `db:"id" json:"id"`
+	OrganizationID                            uuid.UUID              `db:"organization_id" json:"organization_id"`
+	ProjectID                                 uuid.UUID              `db:"project_id" json:"project_id"`
+	CreatedByPrincipalID                      uuid.UUID              `db:"created_by_principal_id" json:"created_by_principal_id"`
+	State                                     JobState               `db:"state" json:"state"`
+	Version                                   int64                  `db:"version" json:"version"`
+	ModelRevisionID                           uuid.UUID              `db:"model_revision_id" json:"model_revision_id"`
+	GenerationPresetRevisionID                uuid.UUID              `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
+	ServiceClassRevisionID                    uuid.UUID              `db:"service_class_revision_id" json:"service_class_revision_id"`
+	OutputSpecID                              uuid.UUID              `db:"output_spec_id" json:"output_spec_id"`
+	WorkerPoolID                              uuid.NullUUID          `db:"worker_pool_id" json:"worker_pool_id"`
+	RequestHash                               []byte                 `db:"request_hash" json:"request_hash"`
+	RequestContent                            []byte                 `db:"request_content" json:"request_content"`
+	RequestContentExpiresAt                   pgtype.Timestamptz     `db:"request_content_expires_at" json:"request_content_expires_at"`
+	PricingRateCardRevisionID                 uuid.UUID              `db:"pricing_rate_card_revision_id" json:"pricing_rate_card_revision_id"`
+	PricingRateLineID                         uuid.UUID              `db:"pricing_rate_line_id" json:"pricing_rate_line_id"`
+	PricingUnitAmountMinor                    int64                  `db:"pricing_unit_amount_minor" json:"pricing_unit_amount_minor"`
+	PricingQuantity                           int32                  `db:"pricing_quantity" json:"pricing_quantity"`
+	PricingQuotedAmountMinor                  int64                  `db:"pricing_quoted_amount_minor" json:"pricing_quoted_amount_minor"`
+	PricingCurrency                           string                 `db:"pricing_currency" json:"pricing_currency"`
+	ExecutionMaxAttempts                      int32                  `db:"execution_max_attempts" json:"execution_max_attempts"`
+	ExecutionMaxTotalComputeSeconds           int64                  `db:"execution_max_total_compute_seconds" json:"execution_max_total_compute_seconds"`
+	ExecutionMaxFinalizationSecondsPerAttempt int32                  `db:"execution_max_finalization_seconds_per_attempt" json:"execution_max_finalization_seconds_per_attempt"`
+	ExecutionRetryBackoffPolicy               []byte                 `db:"execution_retry_backoff_policy" json:"execution_retry_backoff_policy"`
+	ExecutionRetryableFailureClasses          []string               `db:"execution_retryable_failure_classes" json:"execution_retryable_failure_classes"`
+	ExecutionCircuitBreakerPolicy             []byte                 `db:"execution_circuit_breaker_policy" json:"execution_circuit_breaker_policy"`
+	JobExpiresAt                              pgtype.Timestamptz     `db:"job_expires_at" json:"job_expires_at"`
+	CreatedAt                                 pgtype.Timestamptz     `db:"created_at" json:"created_at"`
+	UpdatedAt                                 pgtype.Timestamptz     `db:"updated_at" json:"updated_at"`
+	CurrentFence                              int64                  `db:"current_fence" json:"current_fence"`
+	BillableStartedAt                         pgtype.Timestamptz     `db:"billable_started_at" json:"billable_started_at"`
+	ExecutionPhase                            *execution.Phase       `db:"execution_phase" json:"execution_phase"`
+	ResultArtifactSetID                       uuid.NullUUID          `db:"result_artifact_set_id" json:"result_artifact_set_id"`
+	ExecutionCircuitFingerprintWindowSeconds  int32                  `db:"execution_circuit_fingerprint_window_seconds" json:"execution_circuit_fingerprint_window_seconds"`
+	ExecutionCircuitMinDistinctHealthyWorkers int32                  `db:"execution_circuit_min_distinct_healthy_workers" json:"execution_circuit_min_distinct_healthy_workers"`
+	RetentionPolicyRevisionID                 uuid.UUID              `db:"retention_policy_revision_id" json:"retention_policy_revision_id"`
+	RetentionArtifactDays                     int32                  `db:"retention_artifact_days" json:"retention_artifact_days"`
+	RetentionRequestContentDays               int32                  `db:"retention_request_content_days" json:"retention_request_content_days"`
+	RetentionIncompleteContentHours           int32                  `db:"retention_incomplete_content_hours" json:"retention_incomplete_content_hours"`
+	RetentionScratchHours                     int32                  `db:"retention_scratch_hours" json:"retention_scratch_hours"`
+	RetentionDebugHours                       int32                  `db:"retention_debug_hours" json:"retention_debug_hours"`
+	RetentionMetadataDays                     int32                  `db:"retention_metadata_days" json:"retention_metadata_days"`
+	RetentionFinancialDays                    int32                  `db:"retention_financial_days" json:"retention_financial_days"`
+	RequestContentDeletedAt                   pgtype.Timestamptz     `db:"request_content_deleted_at" json:"request_content_deleted_at"`
+	ExecutionAuthorityKind                    ExecutionAuthorityKind `db:"execution_authority_kind" json:"execution_authority_kind"`
+	StageCutoverRevisionID                    uuid.NullUUID          `db:"stage_cutover_revision_id" json:"stage_cutover_revision_id"`
+	ExecutionGraphRevisionID                  uuid.NullUUID          `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	StageExecutionProfileRevisionID           uuid.NullUUID          `db:"stage_execution_profile_revision_id" json:"stage_execution_profile_revision_id"`
 }
 
 type JobCancellationDecision struct {
@@ -5779,6 +5868,24 @@ type JobSloOutcome struct {
 	TerminalAt         pgtype.Timestamptz `db:"terminal_at" json:"terminal_at"`
 	VisibleCompletedAt pgtype.Timestamptz `db:"visible_completed_at" json:"visible_completed_at"`
 	RecordedAt         pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
+}
+
+type LegacyAuthorityInventorySnapshot struct {
+	ID                            uuid.UUID          `db:"id" json:"id"`
+	CutoverRevisionID             uuid.UUID          `db:"cutover_revision_id" json:"cutover_revision_id"`
+	ObservedAt                    pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ObservedBy                    string             `db:"observed_by" json:"observed_by"`
+	NonterminalJobs               int64              `db:"nonterminal_jobs" json:"nonterminal_jobs"`
+	NonterminalAttempts           int64              `db:"nonterminal_attempts" json:"nonterminal_attempts"`
+	ActiveExecutionLeases         int64              `db:"active_execution_leases" json:"active_execution_leases"`
+	ActiveFinalizationLeases      int64              `db:"active_finalization_leases" json:"active_finalization_leases"`
+	ActiveArtifactUploads         int64              `db:"active_artifact_uploads" json:"active_artifact_uploads"`
+	UnpublishedOutboxEvents       int64              `db:"unpublished_outbox_events" json:"unpublished_outbox_events"`
+	RetainedPublishedOutboxEvents int64              `db:"retained_published_outbox_events" json:"retained_published_outbox_events"`
+	SchedulerInboxBacklog         int64              `db:"scheduler_inbox_backlog" json:"scheduler_inbox_backlog"`
+	RetryRecoveryBacklog          int64              `db:"retry_recovery_backlog" json:"retry_recovery_backlog"`
+	TotalCount                    int64              `db:"total_count" json:"total_count"`
+	ContentDigest                 []byte             `db:"content_digest" json:"content_digest"`
 }
 
 type LegalHold struct {
@@ -6738,6 +6845,43 @@ type StageCapacityPoolCounter struct {
 	ActiveAllocationCount int32              `db:"active_allocation_count" json:"active_allocation_count"`
 	Version               int64              `db:"version" json:"version"`
 	UpdatedAt             pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type StageCutoverControl struct {
+	Singleton         bool               `db:"singleton" json:"singleton"`
+	CurrentRevisionID uuid.UUID          `db:"current_revision_id" json:"current_revision_id"`
+	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type StageCutoverInternalProject struct {
+	CutoverRevisionID uuid.UUID          `db:"cutover_revision_id" json:"cutover_revision_id"`
+	OrganizationID    uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID         uuid.UUID          `db:"project_id" json:"project_id"`
+	AuthorizedAt      pgtype.Timestamptz `db:"authorized_at" json:"authorized_at"`
+	AuthorizedBy      string             `db:"authorized_by" json:"authorized_by"`
+}
+
+type StageCutoverRevision struct {
+	ID                         uuid.UUID          `db:"id" json:"id"`
+	Revision                   int64              `db:"revision" json:"revision"`
+	PreviousRevisionID         uuid.NullUUID      `db:"previous_revision_id" json:"previous_revision_id"`
+	RollbackOfRevisionID       uuid.NullUUID      `db:"rollback_of_revision_id" json:"rollback_of_revision_id"`
+	Scope                      StageCutoverScope  `db:"scope" json:"scope"`
+	Mode                       StageCutoverMode   `db:"mode" json:"mode"`
+	ModelRevisionID            uuid.NullUUID      `db:"model_revision_id" json:"model_revision_id"`
+	StageCohortBasisPoints     int32              `db:"stage_cohort_basis_points" json:"stage_cohort_basis_points"`
+	ExecutionGraphRevisionID   uuid.NullUUID      `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionProfileRevisionID uuid.NullUUID      `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ReservedStorageBytes       int64              `db:"reserved_storage_bytes" json:"reserved_storage_bytes"`
+	MinimumObservationSeconds  int32              `db:"minimum_observation_seconds" json:"minimum_observation_seconds"`
+	ReleaseDigest              []byte             `db:"release_digest" json:"release_digest"`
+	ConfigurationRevision      string             `db:"configuration_revision" json:"configuration_revision"`
+	ConfigurationDigest        []byte             `db:"configuration_digest" json:"configuration_digest"`
+	ConnectorSetDigest         []byte             `db:"connector_set_digest" json:"connector_set_digest"`
+	LaunchManifestDigest       []byte             `db:"launch_manifest_digest" json:"launch_manifest_digest"`
+	ActivatedAt                pgtype.Timestamptz `db:"activated_at" json:"activated_at"`
+	ActivatedBy                string             `db:"activated_by" json:"activated_by"`
+	Reason                     string             `db:"reason" json:"reason"`
 }
 
 type StageDecisionEvidence struct {

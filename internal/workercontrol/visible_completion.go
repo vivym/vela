@@ -149,7 +149,7 @@ type visibleCompletionAuthority struct {
 	FinalizationDeadlineAt                           pgtype.Timestamptz
 	OrganizationID                                   uuid.UUID
 	ProjectID                                        uuid.UUID
-	WorkerPoolID                                     uuid.UUID
+	WorkerPoolID                                     uuid.NullUUID
 	JobState                                         store.JobState
 	JobVersion                                       int64
 	CurrentFence                                     int64
@@ -385,6 +385,12 @@ func commitVisibleCompletion(
 	if (actor.lease == nil) == (actor.stageGraph == nil) {
 		return VisibleCompletionResult{}, errors.New("Visible Completion authority is ambiguous")
 	}
+	if actor.lease != nil && !authority.WorkerPoolID.Valid {
+		return VisibleCompletionResult{}, errors.New("legacy Visible Completion has no Worker pool")
+	}
+	if actor.stageGraph != nil && authority.WorkerPoolID.Valid {
+		return VisibleCompletionResult{}, errors.New("Stage graph Visible Completion has legacy Worker pool authority")
+	}
 	runningCount, err := queries.LockVisibleCompletionProject(
 		ctx,
 		store.LockVisibleCompletionProjectParams{
@@ -398,8 +404,10 @@ func commitVisibleCompletion(
 	if runningCount <= 0 {
 		return VisibleCompletionResult{}, errors.New("visible Completion Project running counter is empty")
 	}
-	if _, err := queries.LockVisibleCompletionPool(ctx, authority.WorkerPoolID); err != nil {
-		return VisibleCompletionResult{}, fmt.Errorf("lock pool for Visible Completion: %w", err)
+	if authority.WorkerPoolID.Valid {
+		if _, err := queries.LockVisibleCompletionPool(ctx, authority.WorkerPoolID.UUID); err != nil {
+			return VisibleCompletionResult{}, fmt.Errorf("lock pool for Visible Completion: %w", err)
+		}
 	}
 	reservation, err := queries.LockVisibleCompletionCreditReservation(
 		ctx,

@@ -229,7 +229,7 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 			t.Fatalf("migrate Stage graph Visible Completion back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 48 {
+		if err != nil || version != 49 {
 			t.Fatalf("Stage graph Visible Completion version after Up = %d error=%v", version, err)
 		}
 	})
@@ -254,9 +254,9 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 			t.Fatalf("complete migration guard Stage graph = %#v error=%v", completed, err)
 		}
 		err = goose.DownTo(outcome.database.Admin, migrations, 45)
-		assertPostgresConstraint(t, err, "stage_graph_visible_completion_rollback_is_unsafe")
+		assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
 		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 46 {
+		if versionErr != nil || version != 49 {
 			t.Fatalf(
 				"Stage graph Visible Completion version after refused Down = %d error=%v",
 				version, versionErr,
@@ -322,6 +322,12 @@ func runCPUMediaH3Graph(t *testing.T) cpuMediaGraphOutcome {
 	t.Helper()
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
 	seedCPUMediaExecutionGraph(t, database)
+	activateStageCutoverRevision(
+		t, database, uuid.MustParse("49700000-0000-0000-0000-000000000049"), 3,
+		uuid.MustParse(stageCutoverRevisionID), uuid.MustParse(cpuMediaGraphID),
+		uuid.MustParse(cpuMediaExecutionProfileID), 4<<30,
+		"integration-cpu-media-stage-cutover",
+	)
 	accepted := submitJob(t, serverURL, "cpu-media-stage-graph", []byte(`{
 		"model":"minimax-h3",
 		"generation_preset":"balanced",

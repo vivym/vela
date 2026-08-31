@@ -922,6 +922,7 @@ WHERE lease.attempt_id = sqlc.arg(attempt_id)
   AND attempt.worker_id = sqlc.arg(worker_id)
   AND attempt.worker_epoch = sqlc.arg(worker_epoch)
   AND attempt.fence = sqlc.arg(fence)
+  AND attempt.execution_authority_kind = 'LEGACY_WORKER'
 LIMIT 1
 FOR UPDATE OF lease, attempt, job;
 
