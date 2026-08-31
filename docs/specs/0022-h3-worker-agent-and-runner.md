@@ -106,10 +106,14 @@ documents before any control or Runner operation.
 A successful backend supplies a bounded manifest of direct-child output paths.
 The Runner accepts only owned regular files, fixes their private mode, computes
 their size and SHA-256, enforces the same Fleet-supplied aggregate logical-byte
-quota used by Agent cleanup before hashing, and persists the exact successful receipt. Restart
-revalidates both the files and every persisted receipt field. Invalid manifests,
-symlinks, malformed failure receipts, changed outputs, unknown GPU evidence, and
-conflicting state fail closed. The Agent independently reopens each exact
+quota used by Agent cleanup before hashing, and persists the exact successful
+receipt. While the Attempt output directory exists, restart revalidates both the
+files and every persisted receipt field. After authoritative terminal cleanup
+removes the complete Attempt output directory, restart preserves the immutable
+`SUCCEEDED` state without exposing collectable outputs or reexecuting the
+backend. An existing but incomplete output directory, invalid manifest,
+symlink, malformed failure receipt, changed output, unknown GPU evidence, or
+conflicting state still fails closed. The Agent independently reopens each exact
 Attempt output, rechecks inode, UID, `0600` mode, size, and SHA-256, and uploads
 through signed multipart part intents before requesting Artifact verification
 and Visible Completion.

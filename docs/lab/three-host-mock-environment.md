@@ -1640,9 +1640,15 @@ This is an unresolved Runner/Worker ownership-contract defect and an
 operational blocker for new mock Jobs. Recovery should first checksum and move
 only these exact terminal state directories to root-only, same-host quarantine
 receipts under separate approval; the existing restart policy can then recover.
-The code contract must also stop Runner startup from requiring terminal outputs
-that the Worker Agent is allowed to remove, or coordinate cleanup with explicit
-Runner state retirement.
+The repository now carries a regression-tested candidate fix: Runner restart
+accepts only complete absence of a `SUCCEEDED` Attempt output directory as
+authoritative terminal cleanup, preserves the immutable terminal state, exposes
+no collectable outputs, and never reexecutes the backend. An existing directory
+with one missing or changed output still fails closed. All 50 Runner tests,
+Ruff, and the Worker Agent/Local Recovery Go tests pass. This is repository
+evidence only; the live Workers still require the separately approved state
+quarantine, rebuilt image publication, rollout, and postflight before the
+operational blocker is closed.
 
 ## Experiment operating rules
 

@@ -1110,12 +1110,10 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
         self._resume = resume
         self._failure = failure
         if state == runner_pb2.RUNNER_EXECUTION_STATE_SUCCEEDED:
-            self._outputs = self._load_outputs()
             persisted_outputs = _outputs_from_dicts(
                 state_payload["outputs"], self._attempt_output_dir()
             )
-            if self._outputs != persisted_outputs:
-                raise ValueError("runner successful output receipt changed")
+            self._outputs = self._load_recoverable_outputs(persisted_outputs)
         elif state not in terminal_states:
             if state_payload["outputs"] != []:
                 raise ValueError("non-successful runner state contains output receipts")
@@ -1124,6 +1122,26 @@ class RunnerRuntime(runner_pb2_grpc.RunnerServiceServicer):
             self._resume = True
         elif state_payload["outputs"] != []:
             raise ValueError("non-successful runner state contains output receipts")
+
+    def _load_recoverable_outputs(
+        self, persisted_outputs: tuple[_Output, ...]
+    ) -> tuple[_Output, ...]:
+        attempt_output_dir = self._attempt_output_dir()
+        try:
+            _validate_directory(attempt_output_dir)
+        except FileNotFoundError:
+            return ()
+        try:
+            outputs = self._load_outputs()
+        except FileNotFoundError as error:
+            try:
+                _validate_directory(attempt_output_dir)
+            except FileNotFoundError:
+                return ()
+            raise ValueError("runner successful output receipt is incomplete") from error
+        if outputs != persisted_outputs:
+            raise ValueError("runner successful output receipt changed")
+        return outputs
 
     def _discard_terminal_state(self) -> None:
         self._stop_process()

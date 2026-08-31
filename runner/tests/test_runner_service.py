@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -852,6 +853,62 @@ def test_runner_restart_after_success_reuses_outputs_without_reexecution(tmp_pat
     recovered.close()
 
 
+def test_runner_restart_after_agent_cleanup_restores_terminal_state_without_outputs(
+    tmp_path: Path,
+) -> None:
+    config = runtime_config(tmp_path, single_execution_backend(tmp_path))
+    identity = attempt_identity()
+    runtime = RunnerRuntime(config)
+    runtime.Prepare(
+        runner_pb2.PrepareRequest(identity=identity, execution_spec=execution_spec()), None
+    )
+    runtime.Start(runner_pb2.StartRequest(identity=identity), None)
+    assert wait_for_terminal(runtime, identity).state == (
+        runner_pb2.RUNNER_EXECUTION_STATE_SUCCEEDED
+    )
+    runtime.close()
+
+    shutil.rmtree(config.output_root / identity.attempt_id)
+
+    recovered = RunnerRuntime(config)
+    replayed = recovered.Prepare(
+        runner_pb2.PrepareRequest(
+            identity=identity,
+            execution_spec=execution_spec(),
+            same_authority_local_recovery=True,
+        ),
+        None,
+    )
+    started = recovered.Start(runner_pb2.StartRequest(identity=identity), None)
+    collected = recovered.CollectOutputs(
+        runner_pb2.CollectOutputsRequest(identity=identity), None
+    )
+
+    assert replayed.decision == runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED
+    assert replayed.resumed_local_state is False
+    assert started.decision == runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED
+    assert recovered.Status(runner_pb2.StatusRequest(identity=identity), None).state == (
+        runner_pb2.RUNNER_EXECUTION_STATE_SUCCEEDED
+    )
+    assert collected.decision == runner_pb2.RUNNER_COMMAND_DECISION_REJECTED
+    assert (tmp_path / "backend-runs").read_text(encoding="utf-8") == "1"
+
+    next_identity = attempt_identity()
+    next_identity.attempt_id = "84000000-0000-0000-0000-000000000009"
+    next_prepared = recovered.Prepare(
+        runner_pb2.PrepareRequest(
+            identity=next_identity,
+            execution_spec=execution_spec(),
+        ),
+        None,
+    )
+
+    assert next_prepared.decision == runner_pb2.RUNNER_COMMAND_DECISION_ACCEPTED
+    assert not (config.state_root / identity.attempt_id).exists()
+    assert (tmp_path / "backend-runs").read_text(encoding="utf-8") == "1"
+    recovered.close()
+
+
 def test_runner_restart_rejects_changed_successful_output(tmp_path: Path) -> None:
     config = runtime_config(tmp_path, successful_backend(tmp_path))
     identity = attempt_identity()
@@ -871,6 +928,28 @@ def test_runner_restart_rejects_changed_successful_output(tmp_path: Path) -> Non
     Path(outputs[0].path).write_bytes(b"changed-after-success")
 
     with pytest.raises(ValueError, match="successful output receipt changed"):
+        RunnerRuntime(config)
+
+
+def test_runner_restart_rejects_partially_missing_successful_outputs(tmp_path: Path) -> None:
+    config = runtime_config(tmp_path, successful_backend(tmp_path))
+    identity = attempt_identity()
+    runtime = RunnerRuntime(config)
+    runtime.Prepare(
+        runner_pb2.PrepareRequest(identity=identity, execution_spec=execution_spec()), None
+    )
+    runtime.Start(runner_pb2.StartRequest(identity=identity), None)
+    assert wait_for_terminal(runtime, identity).state == (
+        runner_pb2.RUNNER_EXECUTION_STATE_SUCCEEDED
+    )
+    outputs = runtime.CollectOutputs(
+        runner_pb2.CollectOutputsRequest(identity=identity), None
+    ).outputs
+    runtime.close()
+
+    Path(outputs[0].path).unlink()
+
+    with pytest.raises(ValueError, match="successful output receipt is incomplete"):
         RunnerRuntime(config)
 
 
