@@ -3615,6 +3615,50 @@ func (ns NullStageGraphFinalizationClaimState) Value() (driver.Value, error) {
 	return string(ns.StageGraphFinalizationClaimState), nil
 }
 
+type StageGraphInstantiationState string
+
+const (
+	StageGraphInstantiationStatePENDING   StageGraphInstantiationState = "PENDING"
+	StageGraphInstantiationStateCLAIMED   StageGraphInstantiationState = "CLAIMED"
+	StageGraphInstantiationStateCOMPLETED StageGraphInstantiationState = "COMPLETED"
+	StageGraphInstantiationStateDISCARDED StageGraphInstantiationState = "DISCARDED"
+)
+
+func (e *StageGraphInstantiationState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = StageGraphInstantiationState(s)
+	case string:
+		*e = StageGraphInstantiationState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for StageGraphInstantiationState: %T", src)
+	}
+	return nil
+}
+
+type NullStageGraphInstantiationState struct {
+	StageGraphInstantiationState StageGraphInstantiationState `json:"stage_graph_instantiation_state"`
+	Valid                        bool                         `json:"valid"` // Valid is true if StageGraphInstantiationState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullStageGraphInstantiationState) Scan(value interface{}) error {
+	if value == nil {
+		ns.StageGraphInstantiationState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.StageGraphInstantiationState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullStageGraphInstantiationState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.StageGraphInstantiationState), nil
+}
+
 type StageLeaseState string
 
 const (
@@ -6978,6 +7022,35 @@ type StageGraphFinalizationClaimOutput struct {
 	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
 	ExactObjectVersion       string             `db:"exact_object_version" json:"exact_object_version"`
 	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type StageGraphInstantiationWork struct {
+	JobID                      uuid.UUID                    `db:"job_id" json:"job_id"`
+	OrganizationID             uuid.UUID                    `db:"organization_id" json:"organization_id"`
+	ProjectID                  uuid.UUID                    `db:"project_id" json:"project_id"`
+	StageCutoverRevisionID     uuid.UUID                    `db:"stage_cutover_revision_id" json:"stage_cutover_revision_id"`
+	CommandID                  uuid.UUID                    `db:"command_id" json:"command_id"`
+	ExpectedJobVersion         int64                        `db:"expected_job_version" json:"expected_job_version"`
+	ExpectedJobFence           int64                        `db:"expected_job_fence" json:"expected_job_fence"`
+	ExecutionGraphSnapshotID   uuid.UUID                    `db:"execution_graph_snapshot_id" json:"execution_graph_snapshot_id"`
+	ExecutionGraphRevisionID   uuid.UUID                    `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionProfileRevisionID uuid.UUID                    `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	AttemptID                  uuid.UUID                    `db:"attempt_id" json:"attempt_id"`
+	StorageReservationID       uuid.UUID                    `db:"storage_reservation_id" json:"storage_reservation_id"`
+	ReservedStorageBytes       int64                        `db:"reserved_storage_bytes" json:"reserved_storage_bytes"`
+	Source                     string                       `db:"source" json:"source"`
+	State                      StageGraphInstantiationState `db:"state" json:"state"`
+	AvailableAt                pgtype.Timestamptz           `db:"available_at" json:"available_at"`
+	ClaimOwner                 *string                      `db:"claim_owner" json:"claim_owner"`
+	ClaimToken                 uuid.NullUUID                `db:"claim_token" json:"claim_token"`
+	ClaimedAt                  pgtype.Timestamptz           `db:"claimed_at" json:"claimed_at"`
+	ClaimExpiresAt             pgtype.Timestamptz           `db:"claim_expires_at" json:"claim_expires_at"`
+	ClaimCount                 int32                        `db:"claim_count" json:"claim_count"`
+	LastError                  *string                      `db:"last_error" json:"last_error"`
+	CompletedAt                pgtype.Timestamptz           `db:"completed_at" json:"completed_at"`
+	CompletionReason           *string                      `db:"completion_reason" json:"completion_reason"`
+	CreatedAt                  pgtype.Timestamptz           `db:"created_at" json:"created_at"`
+	UpdatedAt                  pgtype.Timestamptz           `db:"updated_at" json:"updated_at"`
 }
 
 type StageInterfaceRevision struct {

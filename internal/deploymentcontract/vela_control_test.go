@@ -182,6 +182,7 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	}
 	wantPodBound := map[string]string{
 		"VELA_SCHEDULER_ID":                     "scheduler/$(VELA_POD_UID)",
+		"VELA_ATTEMPT_COORDINATOR_ID":           "attempt-coordinator/$(VELA_POD_UID)",
 		"VELA_STAGE_SCHEDULER_ID":               "stage-scheduler/$(VELA_POD_UID)",
 		"VELA_ARTIFACT_RECONCILER_ID":           "artifact-reconciler/$(VELA_POD_UID)",
 		"VELA_RETENTION_RECONCILER_ID":          "retention-reconciler/$(VELA_POD_UID)",

@@ -80,6 +80,10 @@ const (
 	defaultSchedulerTick                        = 500 * time.Millisecond
 	defaultSchedulerClaimTTL                    = 30 * time.Second
 	defaultSchedulerCandidateAttempts           = 5
+	defaultAttemptCoordinatorTick               = 500 * time.Millisecond
+	defaultAttemptCoordinatorClaimTTL           = 30 * time.Second
+	defaultAttemptCoordinatorRetryDelay         = time.Second
+	defaultAttemptCoordinatorBatchSize          = 100
 	defaultStageSchedulerTick                   = 500 * time.Millisecond
 	defaultStageSchedulerClaimTTL               = 30 * time.Second
 	defaultStageSchedulerLeaseTTL               = 2 * time.Minute
@@ -186,6 +190,11 @@ type config struct {
 	schedulerClaimTTL                      time.Duration
 	schedulerCandidateAttempts             int
 	attemptCoordinatorDatabaseURL          string
+	attemptCoordinatorID                   string
+	attemptCoordinatorTick                 time.Duration
+	attemptCoordinatorClaimTTL             time.Duration
+	attemptCoordinatorRetryDelay           time.Duration
+	attemptCoordinatorBatchSize            int
 	stageSchedulerDatabaseURL              string
 	stageSchedulerID                       string
 	stageSchedulerTick                     time.Duration
@@ -310,6 +319,10 @@ type hierarchicalScheduler interface {
 type stageSchedulerMaintenance interface {
 	ReconcileExpired(context.Context, int) (int64, error)
 	ReplayShadow(context.Context, int) (stagescheduler.ShadowReplaySummary, error)
+}
+
+type attemptCoordinatorAutomation interface {
+	RunCycle(context.Context) (attemptcoordinator.AutomationResult, error)
 }
 
 type invoiceExporter interface {
@@ -904,7 +917,15 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Scheduler: %w", err)
 	}
-	stageAttemptCoordinator, err := attemptcoordinator.NewService(attemptCoordinatorPool)
+	stageAttemptCoordinator, err := attemptcoordinator.NewAutomatedService(
+		attemptCoordinatorPool,
+		attemptcoordinator.AutomationConfig{
+			InstanceID: configuration.attemptCoordinatorID,
+			ClaimTTL:   configuration.attemptCoordinatorClaimTTL,
+			RetryDelay: configuration.attemptCoordinatorRetryDelay,
+			BatchSize:  configuration.attemptCoordinatorBatchSize,
+		},
+	)
 	if err != nil {
 		return fmt.Errorf("configure StageScheduler AttemptCoordinator: %w", err)
 	}
@@ -1274,6 +1295,15 @@ func run() error {
 			configuration.stageSchedulerBatchSize,
 		)
 	}()
+	attemptCoordinatorDone := make(chan struct{})
+	go func() {
+		defer close(attemptCoordinatorDone)
+		runAttemptCoordinatorAutomation(
+			ctx,
+			stageAttemptCoordinator,
+			configuration.attemptCoordinatorTick,
+		)
+	}()
 	reconcilerDone := make(chan struct{})
 	go func() {
 		defer close(reconcilerDone)
@@ -1497,6 +1527,11 @@ func run() error {
 		return errors.New("StageScheduler maintenance did not stop before shutdown deadline")
 	}
 	select {
+	case <-attemptCoordinatorDone:
+	case <-shutdownContext.Done():
+		return errors.New("AttemptCoordinator automation did not stop before shutdown deadline")
+	}
+	select {
 	case <-schedulerWakeupDone:
 	case <-shutdownContext.Done():
 		return errors.New("scheduler JetStream wakeup consumer did not stop before shutdown deadline")
@@ -1641,6 +1676,11 @@ func loadConfig() (config, error) {
 		schedulerClaimTTL:                 defaultSchedulerClaimTTL,
 		schedulerCandidateAttempts:        defaultSchedulerCandidateAttempts,
 		attemptCoordinatorDatabaseURL:     os.Getenv("VELA_ATTEMPT_COORDINATOR_DATABASE_URL"),
+		attemptCoordinatorID:              os.Getenv("VELA_ATTEMPT_COORDINATOR_ID"),
+		attemptCoordinatorTick:            defaultAttemptCoordinatorTick,
+		attemptCoordinatorClaimTTL:        defaultAttemptCoordinatorClaimTTL,
+		attemptCoordinatorRetryDelay:      defaultAttemptCoordinatorRetryDelay,
+		attemptCoordinatorBatchSize:       defaultAttemptCoordinatorBatchSize,
 		stageSchedulerDatabaseURL:         os.Getenv("VELA_STAGE_SCHEDULER_DATABASE_URL"),
 		stageSchedulerID:                  os.Getenv("VELA_STAGE_SCHEDULER_ID"),
 		stageSchedulerTick:                defaultStageSchedulerTick,
@@ -1783,6 +1823,7 @@ func loadConfig() (config, error) {
 		"VELA_SCHEDULER_INBOX_DATABASE_URL":                          configuration.schedulerInboxDatabaseURL,
 		"VELA_SCHEDULER_ID":                                          configuration.schedulerID,
 		"VELA_ATTEMPT_COORDINATOR_DATABASE_URL":                      configuration.attemptCoordinatorDatabaseURL,
+		"VELA_ATTEMPT_COORDINATOR_ID":                                configuration.attemptCoordinatorID,
 		"VELA_STAGE_SCHEDULER_DATABASE_URL":                          configuration.stageSchedulerDatabaseURL,
 		"VELA_STAGE_SCHEDULER_ID":                                    configuration.stageSchedulerID,
 		"VELA_STAGE_ARTIFACT_DATABASE_URL":                           configuration.stageArtifactDatabaseURL,
@@ -2049,6 +2090,35 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_SCHEDULER_CANDIDATE_ATTEMPTS must be in 1..20")
 		}
 		configuration.schedulerCandidateAttempts = candidateAttempts
+	}
+	if value := os.Getenv("VELA_ATTEMPT_COORDINATOR_TICK"); value != "" {
+		tick, err := time.ParseDuration(value)
+		if err != nil || tick <= 0 || tick > time.Minute {
+			return config{}, errors.New("environment variable VELA_ATTEMPT_COORDINATOR_TICK must be in (0, 1m]")
+		}
+		configuration.attemptCoordinatorTick = tick
+	}
+	if value := os.Getenv("VELA_ATTEMPT_COORDINATOR_CLAIM_TTL"); value != "" {
+		claimTTL, err := time.ParseDuration(value)
+		if err != nil || claimTTL <= 0 || claimTTL > 5*time.Minute || claimTTL%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_ATTEMPT_COORDINATOR_CLAIM_TTL must be whole seconds in (0, 5m]")
+		}
+		configuration.attemptCoordinatorClaimTTL = claimTTL
+	}
+	if value := os.Getenv("VELA_ATTEMPT_COORDINATOR_RETRY_DELAY"); value != "" {
+		retryDelay, err := time.ParseDuration(value)
+		if err != nil || retryDelay < 0 || retryDelay > 24*time.Hour ||
+			retryDelay%time.Second != 0 {
+			return config{}, errors.New("environment variable VELA_ATTEMPT_COORDINATOR_RETRY_DELAY must be whole seconds in [0, 24h]")
+		}
+		configuration.attemptCoordinatorRetryDelay = retryDelay
+	}
+	if value := os.Getenv("VELA_ATTEMPT_COORDINATOR_BATCH_SIZE"); value != "" {
+		batchSize, err := strconv.Atoi(value)
+		if err != nil || batchSize < 1 || batchSize > 1000 {
+			return config{}, errors.New("environment variable VELA_ATTEMPT_COORDINATOR_BATCH_SIZE must be in 1..1000")
+		}
+		configuration.attemptCoordinatorBatchSize = batchSize
 	}
 	if value := os.Getenv("VELA_STAGE_SCHEDULER_TICK"); value != "" {
 		tick, err := time.ParseDuration(value)
@@ -2780,6 +2850,48 @@ func runStageSchedulerMaintenance(
 		case <-ticker.C:
 			runStageSchedulerMaintenanceCycle(ctx, maintenance, batchSize)
 		}
+	}
+}
+
+func runAttemptCoordinatorAutomation(
+	ctx context.Context,
+	automation attemptCoordinatorAutomation,
+	interval time.Duration,
+) {
+	runAttemptCoordinatorAutomationCycle(ctx, automation)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runAttemptCoordinatorAutomationCycle(ctx, automation)
+		}
+	}
+}
+
+func runAttemptCoordinatorAutomationCycle(
+	ctx context.Context,
+	automation attemptCoordinatorAutomation,
+) {
+	result, err := automation.RunCycle(ctx)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		slog.Error("AttemptCoordinator automation cycle incomplete", "error", err)
+		return
+	}
+	if err == nil && (result.Reconciled > 0 || result.Discarded > 0 ||
+		result.Claims > 0 || result.StageTransitions > 0) {
+		slog.Info(
+			"AttemptCoordinator automation cycle completed",
+			"reconciled", result.Reconciled,
+			"discarded", result.Discarded,
+			"claims", result.Claims,
+			"reclaimed", result.Reclaimed,
+			"instantiated", result.Instantiated,
+			"replayed", result.Replayed,
+			"stage_transitions", result.StageTransitions,
+		)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/vivym/vela/internal/artifactreplication"
+	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/noncontentexpiry"
@@ -66,6 +67,7 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Scheduler Inbox database", missingEnv: "VELA_SCHEDULER_INBOX_DATABASE_URL"},
 		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
 		{name: "AttemptCoordinator database", missingEnv: "VELA_ATTEMPT_COORDINATOR_DATABASE_URL"},
+		{name: "AttemptCoordinator identity", missingEnv: "VELA_ATTEMPT_COORDINATOR_ID"},
 		{name: "StageScheduler database", missingEnv: "VELA_STAGE_SCHEDULER_DATABASE_URL"},
 		{name: "StageScheduler identity", missingEnv: "VELA_STAGE_SCHEDULER_ID"},
 		{name: "StageArtifact database", missingEnv: "VELA_STAGE_ARTIFACT_DATABASE_URL"},
@@ -273,6 +275,7 @@ func setValidConfigEnvironment(t *testing.T) {
 		"VELA_ATTEMPT_COORDINATOR_DATABASE_URL",
 		"postgres://attempt-coordinator.example/vela",
 	)
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_ID", "vela-control-attempt-coordinator-1")
 	t.Setenv("VELA_STAGE_SCHEDULER_DATABASE_URL", "postgres://stage-scheduler.example/vela")
 	t.Setenv("VELA_STAGE_SCHEDULER_ID", "vela-control-stage-scheduler-1")
 	t.Setenv("VELA_STAGE_ARTIFACT_DATABASE_URL", "postgres://stage-artifact.example/vela")
@@ -401,6 +404,10 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_SCHEDULER_TICK", "")
 	t.Setenv("VELA_SCHEDULER_CLAIM_TTL", "")
 	t.Setenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS", "")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_TICK", "")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_CLAIM_TTL", "")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_RETRY_DELAY", "")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_BATCH_SIZE", "")
 	t.Setenv("VELA_STAGE_SCHEDULER_TICK", "")
 	t.Setenv("VELA_STAGE_SCHEDULER_CLAIM_TTL", "")
 	t.Setenv("VELA_STAGE_SCHEDULER_LEASE_TTL", "")
@@ -520,6 +527,61 @@ func TestLoadConfigPreservesIndependentStageSchedulerBoundary(t *testing.T) {
 		"VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL must not exceed VELA_STAGE_SCHEDULER_LEASE_TTL",
 	) {
 		t.Fatalf("load invalid StageScheduler deadline ordering error = %v", err)
+	}
+}
+
+func TestLoadConfigPreservesAttemptCoordinatorAutomationBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load AttemptCoordinator configuration: %v", err)
+	}
+	if configuration.attemptCoordinatorDatabaseURL !=
+		"postgres://attempt-coordinator.example/vela" ||
+		configuration.attemptCoordinatorID != "vela-control-attempt-coordinator-1" ||
+		configuration.attemptCoordinatorTick != 500*time.Millisecond ||
+		configuration.attemptCoordinatorClaimTTL != 30*time.Second ||
+		configuration.attemptCoordinatorRetryDelay != time.Second ||
+		configuration.attemptCoordinatorBatchSize != 100 {
+		t.Fatalf("AttemptCoordinator configuration = %#v", configuration)
+	}
+
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_TICK", "250ms")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_CLAIM_TTL", "20s")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_RETRY_DELAY", "3s")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_BATCH_SIZE", "25")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit AttemptCoordinator configuration: %v", err)
+	}
+	if configuration.attemptCoordinatorTick != 250*time.Millisecond ||
+		configuration.attemptCoordinatorClaimTTL != 20*time.Second ||
+		configuration.attemptCoordinatorRetryDelay != 3*time.Second ||
+		configuration.attemptCoordinatorBatchSize != 25 {
+		t.Fatalf("explicit AttemptCoordinator controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_ATTEMPT_COORDINATOR_TICK", value: "0s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_TICK", value: "1m1s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_CLAIM_TTL", value: "500ms"},
+		{env: "VELA_ATTEMPT_COORDINATOR_CLAIM_TTL", value: "5m1s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_RETRY_DELAY", value: "-1s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_RETRY_DELAY", value: "24h1s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_BATCH_SIZE", value: "0"},
+		{env: "VELA_ATTEMPT_COORDINATOR_BATCH_SIZE", value: "1001"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil ||
+				!strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
 	}
 }
 
@@ -1252,6 +1314,30 @@ func TestStageSchedulerMaintenanceRetriesAndStopsWithContext(t *testing.T) {
 	}
 }
 
+func TestAttemptCoordinatorAutomationRetriesAndStopsWithContext(t *testing.T) {
+	automation := &testAttemptCoordinatorAutomation{calls: make(chan struct{}, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runAttemptCoordinatorAutomation(ctx, automation, time.Millisecond)
+	}()
+
+	for range 2 {
+		select {
+		case <-automation.calls:
+		case <-time.After(time.Second):
+			t.Fatal("AttemptCoordinator automation did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("AttemptCoordinator automation did not stop with context")
+	}
+}
+
 func TestInvoiceExporterRetriesTransientFailureAndStopsWithContext(t *testing.T) {
 	exporter := &testInvoiceExporter{calls: make(chan struct{}, 2)}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1543,6 +1629,24 @@ type testStageSchedulerMaintenance struct {
 	lastLimit            atomic.Int32
 	reconciles           chan struct{}
 	replays              chan struct{}
+}
+
+type testAttemptCoordinatorAutomation struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+}
+
+func (automation *testAttemptCoordinatorAutomation) RunCycle(
+	context.Context,
+) (attemptcoordinator.AutomationResult, error) {
+	invocation := automation.invocations.Add(1)
+	automation.calls <- struct{}{}
+	if invocation == 1 {
+		return attemptcoordinator.AutomationResult{}, errors.New(
+			"transient AttemptCoordinator automation failure",
+		)
+	}
+	return attemptcoordinator.AutomationResult{Claims: 1, Instantiated: 1}, nil
 }
 
 func (maintenance *testStageSchedulerMaintenance) ReconcileExpired(

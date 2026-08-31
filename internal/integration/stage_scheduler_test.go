@@ -87,19 +87,11 @@ func TestStageSchedulerAcquirePersistsDecisionAndAssignsExactlyOnce(t *testing.T
 	if err != nil {
 		t.Fatalf("construct StageScheduler AttemptCoordinator: %v", err)
 	}
-	attemptID := uuid.MustParse("49400000-0000-0000-0000-000000000003")
-	if _, err := coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID:                  uuid.MustParse("49400000-0000-0000-0000-000000000004"),
-		JobID:                      uuid.MustParse(job.JobID),
-		ExpectedJobVersion:         1,
-		ExpectedJobFence:           0,
-		ExecutionGraphSnapshotID:   uuid.MustParse("49400000-0000-0000-0000-000000000005"),
-		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-		AttemptID:                  attemptID,
-		StorageReservationID:       uuid.MustParse("49400000-0000-0000-0000-000000000006"),
-		ReservedStorageBytes:       2 << 30,
-	}); err != nil {
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "stage-scheduler-acquire", uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
 		t.Fatalf("instantiate StageScheduler graph: %v", err)
 	}
 	var functionOwner string
@@ -1051,21 +1043,10 @@ func TestStageSchedulerReadyQueueEnforcesCapacityPoolDepth(t *testing.T) {
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode queue-depth Job: %v", err)
 	}
-	_, err := fixture.coordinator.Instantiate(
-		context.Background(),
-		attemptcoordinator.InstantiateCommand{
-			CommandID:                  uuid.New(),
-			JobID:                      uuid.MustParse(job.JobID),
-			ExpectedJobVersion:         1,
-			ExpectedJobFence:           0,
-			ExecutionGraphSnapshotID:   uuid.New(),
-			ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-			ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-			AttemptID:                  uuid.New(),
-			StorageReservationID:       uuid.New(),
-			ReservedStorageBytes:       2 << 30,
-		},
+	claim := claimStageGraphInstantiation(
+		t, fixture.database.Admin, "stage-scheduler-queue-overflow", uuid.New(),
 	)
+	_, err := fixture.coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
 	var postgresError *pgconn.PgError
 	if !errors.As(err, &postgresError) ||
 		postgresError.ConstraintName != "stage_ready_queue_depth_exceeded" {
@@ -1300,9 +1281,13 @@ func TestStageSchedulerMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T)
 		}
 
 		err = goose.DownTo(fixture.database.Admin, migrations, 36)
-		assertPostgresConstraint(t, err, "stage_scheduler_rollback_is_unsafe")
+		assertPostgresConstraint(
+			t,
+			err,
+			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+		)
 		version, versionErr := goose.GetDBVersion(fixture.database.Admin)
-		if versionErr != nil || version != 37 {
+		if versionErr != nil || version != 50 {
 			t.Fatalf(
 				"StageScheduler version after refused Down = %d error=%v",
 				version,
@@ -1426,19 +1411,11 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 	if err != nil {
 		t.Fatalf("construct %s AttemptCoordinator: %v", suffix, err)
 	}
-	attemptID := uuid.New()
-	if _, err := coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID:                  uuid.New(),
-		JobID:                      uuid.MustParse(job.JobID),
-		ExpectedJobVersion:         1,
-		ExpectedJobFence:           0,
-		ExecutionGraphSnapshotID:   uuid.New(),
-		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-		AttemptID:                  attemptID,
-		StorageReservationID:       uuid.New(),
-		ReservedStorageBytes:       2 << 30,
-	}); err != nil {
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "stage-scheduler-"+suffix, uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
 		t.Fatalf("instantiate %s graph: %v", suffix, err)
 	}
 	var stageRunID uuid.UUID

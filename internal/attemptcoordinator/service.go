@@ -149,9 +149,27 @@ type ReconcileDecision struct {
 	Reason       string
 }
 
+type AutomationConfig struct {
+	InstanceID string
+	ClaimTTL   time.Duration
+	RetryDelay time.Duration
+	BatchSize  int
+}
+
+type AutomationResult struct {
+	Reconciled       int
+	Discarded        int
+	Claims           int
+	Reclaimed        int
+	Instantiated     int
+	Replayed         int
+	StageTransitions int
+}
+
 type Service struct {
 	pool             *pgxpool.Pool
 	cancellationPool *pgxpool.Pool
+	automation       *automationConfig
 }
 
 func NewService(pool *pgxpool.Pool, cancellationPools ...*pgxpool.Pool) (*Service, error) {
@@ -174,6 +192,22 @@ func NewCancellationService(pool *pgxpool.Pool) (*Service, error) {
 		return nil, errors.New("AttemptCoordinator cancellation pool is required")
 	}
 	return &Service{cancellationPool: pool}, nil
+}
+
+func NewAutomatedService(
+	pool *pgxpool.Pool,
+	config AutomationConfig,
+) (*Service, error) {
+	service, err := NewService(pool)
+	if err != nil {
+		return nil, err
+	}
+	automation, err := newAutomationConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	service.automation = &automation
+	return service, nil
 }
 
 func (service *Service) Instantiate(

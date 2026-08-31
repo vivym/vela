@@ -3730,6 +3730,7 @@ func runControlStartupProbe(
 			"vela_attempt_coordinator_login",
 			"vela-attempt-coordinator-password",
 		),
+		"VELA_ATTEMPT_COORDINATOR_ID": "n-minus-one-attempt-coordinator-startup-probe",
 		"VELA_STAGE_SCHEDULER_DATABASE_URL": roleDatabaseURL(
 			t, adminDSN, "vela_stage_scheduler_login", "vela-stage-scheduler-password",
 		),

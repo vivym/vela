@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,15 +28,397 @@ import (
 
 const (
 	graphExecutionProfileID = "49000000-0000-0000-0000-000000000070"
-	graphSnapshotID         = "49300000-0000-0000-0000-000000000001"
-	graphAttemptID          = "49300000-0000-0000-0000-000000000002"
-	graphReservationID      = "49300000-0000-0000-0000-000000000003"
 	encoderWorkerProfileID  = "49300000-0000-0000-0000-000000000030"
 	encoderStageProfileID   = "49300000-0000-0000-0000-000000000031"
 	ditWorkerProfileID      = "49300000-0000-0000-0000-000000000032"
 	ditStageProfileID       = "49300000-0000-0000-0000-000000000033"
 	stageCutoverRevisionID  = "49300000-0000-0000-0000-000000000049"
 )
+
+func TestAttemptCoordinatorAutomaticallyInstantiatesAcceptedStageJob(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, "attempt-coordinator-automatic", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"automatic stage graph authority"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit graph Job status = %d, body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode graph Job: %v", err)
+	}
+
+	coordinatorPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_attempt_coordinator_login",
+		"vela-attempt-coordinator-password",
+	)
+	manual, err := attemptcoordinator.NewService(coordinatorPool)
+	if err != nil {
+		t.Fatalf("construct manual AttemptCoordinator: %v", err)
+	}
+	_, err = manual.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
+		CommandID:                  uuid.New(),
+		JobID:                      uuid.MustParse(job.JobID),
+		ExpectedJobVersion:         1,
+		ExpectedJobFence:           0,
+		ExecutionGraphSnapshotID:   uuid.New(),
+		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
+		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
+		AttemptID:                  uuid.New(),
+		StorageReservationID:       uuid.New(),
+		ReservedStorageBytes:       2 << 30,
+	})
+	assertPostgresConstraint(t, err, "stage_graph_instantiate_requires_exact_claim")
+	coordinator, err := attemptcoordinator.NewAutomatedService(
+		coordinatorPool,
+		attemptcoordinator.AutomationConfig{
+			InstanceID: "attempt-coordinator-automatic-1",
+			ClaimTTL:   30 * time.Second,
+			RetryDelay: time.Second,
+			BatchSize:  10,
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct automatic AttemptCoordinator: %v", err)
+	}
+	result, err := coordinator.RunCycle(context.Background())
+	if err != nil {
+		t.Fatalf("run automatic AttemptCoordinator: %v", err)
+	}
+	if result.Claims != 1 || result.Instantiated != 1 || result.Replayed != 0 {
+		t.Fatalf("automatic AttemptCoordinator result = %#v", result)
+	}
+
+	var workState string
+	var attemptCount, stageRunCount int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			work.state::text,
+			(SELECT count(*) FROM attempts WHERE job_id = work.job_id),
+			(SELECT count(*) FROM stage_runs WHERE attempt_id = work.attempt_id)
+		FROM stage_graph_instantiation_work AS work
+		WHERE work.job_id = $1
+	`, job.JobID).Scan(&workState, &attemptCount, &stageRunCount); err != nil {
+		t.Fatalf("read automatic Stage graph authority: %v", err)
+	}
+	if workState != "COMPLETED" || attemptCount != 1 || stageRunCount != 3 {
+		t.Fatalf(
+			"automatic authority state=%s attempts=%d stage_runs=%d",
+			workState,
+			attemptCount,
+			stageRunCount,
+		)
+	}
+}
+
+func TestAttemptCoordinatorAutomaticClaimIsExclusiveAcrossReplicas(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, "attempt-coordinator-exclusive", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"exclusive automatic claim"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit graph Job status = %d, body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode graph Job: %v", err)
+	}
+
+	newCoordinator := func(instanceID string) *attemptcoordinator.Service {
+		pool := newRolePool(
+			t,
+			database.DSN,
+			"vela_attempt_coordinator_login",
+			"vela-attempt-coordinator-password",
+		)
+		coordinator, err := attemptcoordinator.NewAutomatedService(
+			pool,
+			attemptcoordinator.AutomationConfig{
+				InstanceID: instanceID,
+				ClaimTTL:   30 * time.Second,
+				RetryDelay: time.Second,
+				BatchSize:  10,
+			},
+		)
+		if err != nil {
+			t.Fatalf("construct automatic AttemptCoordinator %s: %v", instanceID, err)
+		}
+		return coordinator
+	}
+	coordinators := []*attemptcoordinator.Service{
+		newCoordinator("attempt-coordinator-replica-a"),
+		newCoordinator("attempt-coordinator-replica-b"),
+	}
+	results := make([]attemptcoordinator.AutomationResult, len(coordinators))
+	errorsByReplica := make([]error, len(coordinators))
+	ready := make(chan struct{})
+	var workers sync.WaitGroup
+	for index, coordinator := range coordinators {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-ready
+			results[index], errorsByReplica[index] = coordinator.RunCycle(context.Background())
+		}()
+	}
+	close(ready)
+	workers.Wait()
+
+	claimed := 0
+	instantiated := 0
+	for index, err := range errorsByReplica {
+		if err != nil {
+			t.Fatalf("replica %d automatic cycle: %v", index, err)
+		}
+		claimed += results[index].Claims
+		instantiated += results[index].Instantiated + results[index].Replayed
+	}
+	if claimed != 1 || instantiated != 1 {
+		t.Fatalf("replica results = %#v", results)
+	}
+	var workCount, attemptCount int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM stage_graph_instantiation_work WHERE job_id = $1),
+			(SELECT count(*) FROM attempts WHERE job_id = $1)
+	`, job.JobID).Scan(&workCount, &attemptCount); err != nil {
+		t.Fatalf("read exclusive automatic authority: %v", err)
+	}
+	if workCount != 1 || attemptCount != 1 {
+		t.Fatalf("exclusive automatic counts work=%d attempts=%d", workCount, attemptCount)
+	}
+}
+
+func TestAttemptCoordinatorExpiredClaimKeepsStableInstantiationIdentity(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, "attempt-coordinator-expired-claim", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"expired automatic claim"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit graph Job status = %d, body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode graph Job: %v", err)
+	}
+
+	claimToken := uuid.New()
+	claimed := claimStageGraphInstantiation(
+		t,
+		database.Admin,
+		"attempt-coordinator-crashed",
+		claimToken,
+	)
+	if claimed.JobID.String() != job.JobID {
+		t.Fatalf("claimed Job = %s, want %s", claimed.JobID, job.JobID)
+	}
+	if _, err := database.Admin.Exec(`
+		UPDATE stage_graph_instantiation_work
+		SET claimed_at = clock_timestamp() - interval '2 seconds',
+			claim_expires_at = clock_timestamp() - interval '1 second'
+		WHERE job_id = $1 AND claim_token = $2
+	`, claimed.JobID, claimToken); err != nil {
+		t.Fatalf("expire crashed automatic claim: %v", err)
+	}
+
+	coordinatorPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_attempt_coordinator_login",
+		"vela-attempt-coordinator-password",
+	)
+	coordinator, err := attemptcoordinator.NewAutomatedService(
+		coordinatorPool,
+		attemptcoordinator.AutomationConfig{
+			InstanceID: "attempt-coordinator-takeover",
+			ClaimTTL:   30 * time.Second,
+			RetryDelay: time.Second,
+			BatchSize:  10,
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct takeover AttemptCoordinator: %v", err)
+	}
+	result, err := coordinator.RunCycle(context.Background())
+	if err != nil {
+		t.Fatalf("run takeover AttemptCoordinator: %v", err)
+	}
+	if result.Claims != 1 || result.Reclaimed != 1 || result.Instantiated != 1 {
+		t.Fatalf("takeover result = %#v", result)
+	}
+	var commandID, snapshotID, attemptID, reservationID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT command_id, execution_graph_snapshot_id, attempt_id, storage_reservation_id
+		FROM stage_graph_instantiation_work
+		WHERE job_id = $1 AND state = 'COMPLETED'
+	`, claimed.JobID).Scan(&commandID, &snapshotID, &attemptID, &reservationID); err != nil {
+		t.Fatalf("read takeover authority: %v", err)
+	}
+	if commandID != claimed.CommandID || snapshotID != claimed.ExecutionGraphSnapshotID ||
+		attemptID != claimed.AttemptID || reservationID != claimed.StorageReservationID {
+		t.Fatalf(
+			"takeover identities command=%s snapshot=%s attempt=%s reservation=%s, claimed=%#v",
+			commandID,
+			snapshotID,
+			attemptID,
+			reservationID,
+			claimed,
+		)
+	}
+}
+
+func TestAttemptCoordinatorReconcilesCommittedInstantiationAfterCrash(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, "attempt-coordinator-commit-crash", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"committed automatic claim"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit graph Job status = %d, body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode graph Job: %v", err)
+	}
+
+	claim := claimStageGraphInstantiation(
+		t,
+		database.Admin,
+		"attempt-coordinator-before-commit-crash",
+		uuid.New(),
+	)
+	coordinatorPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_attempt_coordinator_login",
+		"vela-attempt-coordinator-password",
+	)
+	manual, err := attemptcoordinator.NewService(coordinatorPool)
+	if err != nil {
+		t.Fatalf("construct manual AttemptCoordinator: %v", err)
+	}
+	if _, err := manual.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
+		t.Fatalf("commit instantiation before simulated crash: %v", err)
+	}
+	automatic, err := attemptcoordinator.NewAutomatedService(
+		coordinatorPool,
+		attemptcoordinator.AutomationConfig{
+			InstanceID: "attempt-coordinator-after-commit-crash",
+			ClaimTTL:   30 * time.Second,
+			RetryDelay: time.Second,
+			BatchSize:  10,
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct recovering AttemptCoordinator: %v", err)
+	}
+	result, err := automatic.RunCycle(context.Background())
+	if err != nil {
+		t.Fatalf("reconcile committed instantiation: %v", err)
+	}
+	if result.Reconciled != 1 || result.Claims != 0 || result.Instantiated != 0 {
+		t.Fatalf("committed crash reconciliation = %#v", result)
+	}
+	var state string
+	if err := database.Admin.QueryRow(`
+		SELECT state::text FROM stage_graph_instantiation_work WHERE job_id = $1
+	`, job.JobID).Scan(&state); err != nil {
+		t.Fatalf("read reconciled work: %v", err)
+	}
+	if state != "COMPLETED" {
+		t.Fatalf("reconciled work state = %s", state)
+	}
+}
+
+type claimedStageGraphInstantiation struct {
+	attemptcoordinator.InstantiateCommand
+}
+
+func claimStageGraphInstantiation(
+	t *testing.T,
+	database *sql.DB,
+	instanceID string,
+	claimToken uuid.UUID,
+) claimedStageGraphInstantiation {
+	t.Helper()
+	var claim claimedStageGraphInstantiation
+	var reclaimed bool
+	err := database.QueryRow(`
+		SELECT
+			job_id,
+			command_id,
+			expected_job_version,
+			expected_job_fence,
+			execution_graph_snapshot_id,
+			execution_graph_revision_id,
+			execution_profile_revision_id,
+			attempt_id,
+			storage_reservation_id,
+			reserved_storage_bytes,
+			reclaimed
+		FROM vela_claim_stage_graph_instantiations($1, $2, 30, 1)
+	`, instanceID, claimToken).Scan(
+		&claim.JobID,
+		&claim.CommandID,
+		&claim.ExpectedJobVersion,
+		&claim.ExpectedJobFence,
+		&claim.ExecutionGraphSnapshotID,
+		&claim.ExecutionGraphRevisionID,
+		&claim.ExecutionProfileRevisionID,
+		&claim.AttemptID,
+		&claim.StorageReservationID,
+		&claim.ReservedStorageBytes,
+		&reclaimed,
+	)
+	if err != nil {
+		t.Fatalf("claim automatic Stage graph instantiation: %v", err)
+	}
+	if reclaimed {
+		t.Fatal("initial automatic claim was reported as reclaimed")
+	}
+	return claim
+}
 
 func TestAttemptCoordinatorInstantiateIsDurableAndIdempotent(t *testing.T) {
 	database := newPostgres(t)
@@ -70,18 +453,9 @@ func TestAttemptCoordinatorInstantiateIsDurableAndIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("construct AttemptCoordinator: %v", err)
 	}
-	command := attemptcoordinator.InstantiateCommand{
-		CommandID:                  uuid.MustParse("49300000-0000-0000-0000-000000000004"),
-		JobID:                      uuid.MustParse(job.JobID),
-		ExpectedJobVersion:         1,
-		ExpectedJobFence:           0,
-		ExecutionGraphSnapshotID:   uuid.MustParse(graphSnapshotID),
-		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-		AttemptID:                  uuid.MustParse(graphAttemptID),
-		StorageReservationID:       uuid.MustParse(graphReservationID),
-		ReservedStorageBytes:       2 << 30,
-	}
+	command := claimStageGraphInstantiation(
+		t, database.Admin, "attempt-coordinator-idempotent", uuid.New(),
+	).InstantiateCommand
 	first, err := coordinator.Instantiate(context.Background(), command)
 	if err != nil {
 		t.Fatalf("instantiate Stage graph: %v", err)
@@ -175,25 +549,17 @@ func TestAttemptCoordinatorPhysicalStageLifecycleIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("construct AttemptCoordinator: %v", err)
 	}
-	_, err = coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID:                  uuid.MustParse("49300000-0000-0000-0000-000000000014"),
-		JobID:                      uuid.MustParse(job.JobID),
-		ExpectedJobVersion:         1,
-		ExpectedJobFence:           0,
-		ExecutionGraphSnapshotID:   uuid.MustParse("49300000-0000-0000-0000-000000000011"),
-		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-		AttemptID:                  uuid.MustParse("49300000-0000-0000-0000-000000000012"),
-		StorageReservationID:       uuid.MustParse("49300000-0000-0000-0000-000000000013"),
-		ReservedStorageBytes:       2 << 30,
-	})
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "attempt-coordinator-assign", uuid.New(),
+	)
+	_, err = coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
 	if err != nil {
 		t.Fatalf("instantiate assign fixture: %v", err)
 	}
 	var encoderRunID uuid.UUID
 	if err := database.Admin.QueryRow(`
 		SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'encoder'
-	`, "49300000-0000-0000-0000-000000000012").Scan(&encoderRunID); err != nil {
+	`, claim.AttemptID).Scan(&encoderRunID); err != nil {
 		t.Fatalf("read Encoder StageRun: %v", err)
 	}
 
@@ -230,7 +596,7 @@ func TestAttemptCoordinatorPhysicalStageLifecycleIsIdempotent(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	assign := attemptcoordinator.AssignStageCommand{
 		CommandID:              uuid.MustParse("49300000-0000-0000-0000-000000000022"),
-		AttemptID:              uuid.MustParse("49300000-0000-0000-0000-000000000012"),
+		AttemptID:              claim.AttemptID,
 		StageRunID:             encoderRunID,
 		ExpectedAttemptFence:   1,
 		ExpectedStageFence:     1,
@@ -567,19 +933,11 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentityWhe
 	); err != nil {
 		t.Fatalf("disable cross-Job Stage Cache for retry fixture: %v", err)
 	}
-	attemptID := uuid.MustParse("49300000-0000-0000-0000-000000000042")
-	_, err = coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID:                  uuid.MustParse("49300000-0000-0000-0000-000000000044"),
-		JobID:                      uuid.MustParse(job.JobID),
-		ExpectedJobVersion:         1,
-		ExpectedJobFence:           0,
-		ExecutionGraphSnapshotID:   uuid.MustParse("49300000-0000-0000-0000-000000000041"),
-		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-		AttemptID:                  attemptID,
-		StorageReservationID:       uuid.MustParse("49300000-0000-0000-0000-000000000043"),
-		ReservedStorageBytes:       2 << 30,
-	})
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "attempt-coordinator-exact-cache", uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	_, err = coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
 	if err != nil {
 		t.Fatalf("instantiate exact cache fixture: %v", err)
 	}
@@ -853,19 +1211,11 @@ func TestStageGraphRunningCancellationPostsChargeAndFencesLateProgress(t *testin
 	if err != nil {
 		t.Fatalf("construct cancellation AttemptCoordinator: %v", err)
 	}
-	attemptID := uuid.MustParse("49400000-0000-0000-0000-000000000001")
-	_, err = coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID:                  uuid.MustParse("49400000-0000-0000-0000-000000000002"),
-		JobID:                      uuid.MustParse(job.JobID),
-		ExpectedJobVersion:         1,
-		ExpectedJobFence:           0,
-		ExecutionGraphSnapshotID:   uuid.MustParse("49400000-0000-0000-0000-000000000003"),
-		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-		AttemptID:                  attemptID,
-		StorageReservationID:       uuid.MustParse("49400000-0000-0000-0000-000000000004"),
-		ReservedStorageBytes:       2 << 30,
-	})
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "attempt-coordinator-cancellation", uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	_, err = coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
 	if err != nil {
 		t.Fatalf("instantiate cancellable Stage graph: %v", err)
 	}
@@ -1598,6 +1948,199 @@ func TestStageGraphCancellationAndFirstProgressProduceOneTerminalBillingOutcome(
 	}
 }
 
+func TestStageGraphInstantiationDispatchMigrationBackfillsAndResumes(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 49); err != nil {
+		t.Fatalf("migrate empty instantiation dispatch down: %v", err)
+	}
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	server := admissionServerForDatabase(t, database)
+	completedResponse := submitJob(t, server.URL, "instantiation-backfill-completed", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"completed before migration"
+	}`))
+	pendingResponse := submitJob(t, server.URL, "instantiation-backfill-pending", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"pending before migration"
+	}`))
+	if completedResponse.StatusCode != http.StatusAccepted ||
+		pendingResponse.StatusCode != http.StatusAccepted {
+		t.Fatalf(
+			"pre-migration Admission statuses completed=%d pending=%d",
+			completedResponse.StatusCode,
+			pendingResponse.StatusCode,
+		)
+	}
+	var completedJob, pendingJob jobResponse
+	if err := json.Unmarshal(completedResponse.Body, &completedJob); err != nil {
+		t.Fatalf("decode completed pre-migration Job: %v", err)
+	}
+	if err := json.Unmarshal(pendingResponse.Body, &pendingJob); err != nil {
+		t.Fatalf("decode pending pre-migration Job: %v", err)
+	}
+
+	coordinatorPool := newRolePool(
+		t,
+		database.DSN,
+		"vela_attempt_coordinator_login",
+		"vela-attempt-coordinator-password",
+	)
+	manual, err := attemptcoordinator.NewService(coordinatorPool)
+	if err != nil {
+		t.Fatalf("construct pre-migration AttemptCoordinator: %v", err)
+	}
+	completedCommand := attemptcoordinator.InstantiateCommand{
+		CommandID:                  uuid.MustParse("49300000-0000-0000-0000-00000000f004"),
+		JobID:                      uuid.MustParse(completedJob.JobID),
+		ExpectedJobVersion:         1,
+		ExpectedJobFence:           0,
+		ExecutionGraphSnapshotID:   uuid.MustParse("49300000-0000-0000-0000-00000000f001"),
+		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
+		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
+		AttemptID:                  uuid.MustParse("49300000-0000-0000-0000-00000000f002"),
+		StorageReservationID:       uuid.MustParse("49300000-0000-0000-0000-00000000f003"),
+		ReservedStorageBytes:       2 << 30,
+	}
+	if _, err := manual.Instantiate(context.Background(), completedCommand); err != nil {
+		t.Fatalf("instantiate pre-migration Stage graph: %v", err)
+	}
+
+	if err := goose.UpTo(database.Admin, migrations, 50); err != nil {
+		t.Fatalf("upgrade Stage graph instantiation dispatch: %v", err)
+	}
+	rows, err := database.Admin.Query(`
+		SELECT job_id::text, state::text, source
+		FROM stage_graph_instantiation_work
+		ORDER BY job_id
+	`)
+	if err != nil {
+		t.Fatalf("read backfilled instantiation work: %v", err)
+	}
+	defer rows.Close()
+	states := map[string]string{}
+	for rows.Next() {
+		var jobID, state, source string
+		if err := rows.Scan(&jobID, &state, &source); err != nil {
+			t.Fatalf("scan backfilled instantiation work: %v", err)
+		}
+		if source != "MIGRATION_BACKFILL" {
+			t.Fatalf("backfilled work %s source = %s", jobID, source)
+		}
+		states[jobID] = state
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate backfilled instantiation work: %v", err)
+	}
+	if states[completedJob.JobID] != "COMPLETED" || states[pendingJob.JobID] != "PENDING" {
+		t.Fatalf("backfilled instantiation states = %#v", states)
+	}
+
+	automatic, err := attemptcoordinator.NewAutomatedService(
+		coordinatorPool,
+		attemptcoordinator.AutomationConfig{
+			InstanceID: "attempt-coordinator-migration-resume",
+			ClaimTTL:   30 * time.Second,
+			RetryDelay: time.Second,
+			BatchSize:  10,
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct resumed AttemptCoordinator: %v", err)
+	}
+	result, err := automatic.RunCycle(context.Background())
+	if err != nil {
+		t.Fatalf("resume backfilled instantiation work: %v", err)
+	}
+	if result.Claims != 1 || result.Instantiated != 1 {
+		t.Fatalf("resumed instantiation result = %#v", result)
+	}
+	var pendingState string
+	var pendingAttempts int
+	if err := database.Admin.QueryRow(`
+		SELECT
+			work.state::text,
+			(SELECT count(*) FROM attempts WHERE job_id = work.job_id)
+		FROM stage_graph_instantiation_work AS work
+		WHERE work.job_id = $1
+	`, pendingJob.JobID).Scan(&pendingState, &pendingAttempts); err != nil {
+		t.Fatalf("read resumed instantiation work: %v", err)
+	}
+	if pendingState != "COMPLETED" || pendingAttempts != 1 {
+		t.Fatalf("resumed work state=%s attempts=%d", pendingState, pendingAttempts)
+	}
+}
+
+func TestStageGraphInstantiationDispatchMigrationRejectsStorageMismatch(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 49); err != nil {
+		t.Fatalf("migrate empty instantiation dispatch down: %v", err)
+	}
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	server := admissionServerForDatabase(t, database)
+	accepted := submitJob(t, server.URL, "instantiation-backfill-storage-mismatch", []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"mismatched pre-migration storage authority"
+	}`))
+	if accepted.StatusCode != http.StatusAccepted {
+		t.Fatalf("submit storage-mismatch Job status=%d body=%s", accepted.StatusCode, accepted.Body)
+	}
+	var job jobResponse
+	if err := json.Unmarshal(accepted.Body, &job); err != nil {
+		t.Fatalf("decode storage-mismatch Job: %v", err)
+	}
+	manual, err := attemptcoordinator.NewService(newRolePool(
+		t,
+		database.DSN,
+		"vela_attempt_coordinator_login",
+		"vela-attempt-coordinator-password",
+	))
+	if err != nil {
+		t.Fatalf("construct pre-migration AttemptCoordinator: %v", err)
+	}
+	_, err = manual.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
+		CommandID:                  uuid.New(),
+		JobID:                      uuid.MustParse(job.JobID),
+		ExpectedJobVersion:         1,
+		ExpectedJobFence:           0,
+		ExecutionGraphSnapshotID:   uuid.New(),
+		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
+		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
+		AttemptID:                  uuid.New(),
+		StorageReservationID:       uuid.New(),
+		ReservedStorageBytes:       1 << 30,
+	})
+	if err != nil {
+		t.Fatalf("instantiate mismatched pre-migration Stage graph: %v", err)
+	}
+
+	err = goose.UpTo(database.Admin, migrations, 50)
+	assertPostgresConstraint(t, err, "stage_graph_instantiation_backfill_storage_mismatch")
+	version, versionErr := goose.GetDBVersion(database.Admin)
+	if versionErr != nil || version != 49 {
+		t.Fatalf("migration version after storage mismatch = %d error=%v", version, versionErr)
+	}
+}
+
 func TestStageAttemptAuthorityMigrationRoundTripAndDurableAuthorityRefusal(t *testing.T) {
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up restores legacy cancellation surface", func(t *testing.T) {
@@ -1654,9 +2197,13 @@ func TestStageAttemptAuthorityMigrationRoundTripAndDurableAuthorityRefusal(t *te
 		database, _, _, _, attemptID, _, _ :=
 			newStageGraphCancellationFixture(t, "stage-attempt-migration-refusal")
 		err := goose.DownTo(database.Admin, migrations, 35)
-		assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
+		assertPostgresConstraint(
+			t,
+			err,
+			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+		)
 		version, versionErr := goose.GetDBVersion(database.Admin)
-		if versionErr != nil || version != 49 {
+		if versionErr != nil || version != 50 {
 			t.Fatalf(
 				"Stage Attempt authority version after refusal = %d error=%v",
 				version, versionErr,
@@ -1717,19 +2264,11 @@ func newStageGraphCancellationFixture(
 	if err != nil {
 		t.Fatalf("construct cancellable AttemptCoordinator: %v", err)
 	}
-	attemptID := uuid.New()
-	_, err = coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID:                  uuid.New(),
-		JobID:                      uuid.MustParse(job.JobID),
-		ExpectedJobVersion:         1,
-		ExpectedJobFence:           0,
-		ExecutionGraphSnapshotID:   uuid.New(),
-		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-		AttemptID:                  attemptID,
-		StorageReservationID:       uuid.New(),
-		ReservedStorageBytes:       2 << 30,
-	})
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "attempt-coordinator-cancellable", uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	_, err = coordinator.Instantiate(context.Background(), claim.InstantiateCommand)
 	if err != nil {
 		t.Fatalf("instantiate cancellable Stage graph: %v", err)
 	}
@@ -1883,19 +2422,11 @@ func instantiateAdditionalStageGraphJob(
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode capacity reuse Stage graph Job: %v", err)
 	}
-	attemptID := uuid.New()
-	if _, err := coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID:                  uuid.New(),
-		JobID:                      uuid.MustParse(job.JobID),
-		ExpectedJobVersion:         1,
-		ExpectedJobFence:           0,
-		ExecutionGraphSnapshotID:   uuid.New(),
-		ExecutionGraphRevisionID:   uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID),
-		AttemptID:                  attemptID,
-		StorageReservationID:       uuid.New(),
-		ReservedStorageBytes:       2 << 30,
-	}); err != nil {
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "attempt-coordinator-capacity-reuse", uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
 		t.Fatalf("instantiate capacity reuse Stage graph: %v", err)
 	}
 	var encoderRunID uuid.UUID

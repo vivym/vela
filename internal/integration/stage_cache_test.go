@@ -332,9 +332,13 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	err = goose.DownTo(database.Admin, migrations, 47)
-	assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
+	assertPostgresConstraint(
+		t,
+		err,
+		"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+	)
 	version, versionErr := goose.GetDBVersion(database.Admin)
-	if versionErr != nil || version != 49 {
+	if versionErr != nil || version != 50 {
 		t.Fatalf("StageRun output binding version after refused Down = %d error=%v", version, versionErr)
 	}
 }
@@ -748,9 +752,13 @@ func TestStageCacheMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
 	t.Run("durable evidence refuses Down", func(t *testing.T) {
 		fixture := newPinnedStageCacheFixture(t, "stage-cache-migration-refusal")
 		err := goose.DownTo(fixture.database.Admin, migrations, 43)
-		assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
+		assertPostgresConstraint(
+			t,
+			err,
+			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+		)
 		version, versionErr := goose.GetDBVersion(fixture.database.Admin)
-		if versionErr != nil || version != 49 {
+		if versionErr != nil || version != 50 {
 			t.Fatalf(
 				"Stage Cache version after refused Down = %d error=%v",
 				version, versionErr,

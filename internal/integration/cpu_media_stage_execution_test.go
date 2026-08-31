@@ -17,7 +17,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/artifactstore"
-	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/cpumedia"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/h3stage"
@@ -229,7 +228,7 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 			t.Fatalf("migrate Stage graph Visible Completion back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 49 {
+		if err != nil || version != 50 {
 			t.Fatalf("Stage graph Visible Completion version after Up = %d error=%v", version, err)
 		}
 	})
@@ -254,9 +253,13 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 			t.Fatalf("complete migration guard Stage graph = %#v error=%v", completed, err)
 		}
 		err = goose.DownTo(outcome.database.Admin, migrations, 45)
-		assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
+		assertPostgresConstraint(
+			t,
+			err,
+			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+		)
 		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 49 {
+		if versionErr != nil || version != 50 {
 			t.Fatalf(
 				"Stage graph Visible Completion version after refused Down = %d error=%v",
 				version, versionErr,
@@ -343,15 +346,11 @@ func runCPUMediaH3Graph(t *testing.T) cpuMediaGraphOutcome {
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode CPU media Job: %v", err)
 	}
-	attemptID := uuid.New()
-	if _, err := coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID: uuid.New(), JobID: uuid.MustParse(job.JobID),
-		ExpectedJobVersion: 1, ExpectedJobFence: 0,
-		ExecutionGraphSnapshotID:   uuid.New(),
-		ExecutionGraphRevisionID:   uuid.MustParse(cpuMediaGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(cpuMediaExecutionProfileID),
-		AttemptID:                  attemptID, StorageReservationID: uuid.New(), ReservedStorageBytes: 4 << 30,
-	}); err != nil {
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "cpu-media-stage-execution", uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
 		t.Fatalf("instantiate CPU media graph: %v", err)
 	}
 

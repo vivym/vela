@@ -376,7 +376,7 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("migrate Stage graph finalization back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 49 {
+		if err != nil || version != 50 {
 			t.Fatalf("Stage graph finalization version after Up = %d error=%v", version, err)
 		}
 	})
@@ -396,9 +396,13 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 			t.Fatalf("seed durable Stage graph finalization claim = %#v error=%v", claim, err)
 		}
 		err = goose.DownTo(outcome.database.Admin, migrations, 42)
-		assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
+		assertPostgresConstraint(
+			t,
+			err,
+			"stage_graph_instantiation_dispatch_rollback_is_unsafe",
+		)
 		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 49 {
+		if versionErr != nil || version != 50 {
 			t.Fatalf(
 				"Stage graph finalization version after refused Down = %d error=%v",
 				version, versionErr,
@@ -748,14 +752,11 @@ func instantiateH3IntegrationGraph(
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode split H3 Job: %v", err)
 	}
-	attemptID := uuid.New()
-	if _, err := coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID: uuid.New(), JobID: uuid.MustParse(job.JobID),
-		ExpectedJobVersion: 1, ExpectedJobFence: 0,
-		ExecutionGraphSnapshotID: uuid.New(), ExecutionGraphRevisionID: uuid.MustParse(stageGraphID),
-		ExecutionProfileRevisionID: uuid.MustParse(graphExecutionProfileID), AttemptID: attemptID,
-		StorageReservationID: uuid.New(), ReservedStorageBytes: 2 << 30,
-	}); err != nil {
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "h3-stage-execution", uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
 		t.Fatalf("instantiate split H3 graph: %v", err)
 	}
 	return job, attemptID

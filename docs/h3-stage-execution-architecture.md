@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 | --- | --- |
-| Status | Accepted target; S49.12 cutover control started; automatic instantiation and contraction pending |
+| Status | Accepted target; S49.12 cutover control and automatic instantiation implemented; contraction pending |
 | Date | 2026-08-29 |
 | Workload | MiniMax H3 asynchronous video generation |
 | Baseline commit | `bc590e20b3e81ee54651ac7766c8ecd82b394097` |
@@ -219,6 +219,14 @@ apply(stage_command)                          -> StageDecision
 cancel(job_id, expected_version)              -> CancelResult
 reconcile(limit)                              -> ReconcileSummary
 ```
+
+Admission of a `STAGE_GRAPH` Job also creates one durable instantiation work
+record in the same PostgreSQL transaction. `vela-control` replicas claim those
+records with bounded owner/token/expiry authority and replay the fixed command
+identity after claim expiry. Reconciliation confirms a committed instantiate
+transaction even when the claiming process died before recording completion,
+or discards uninstantiated work after the Job becomes terminal. JetStream is
+not required for correctness or claim ownership.
 
 `stage_command` is a closed command family for acquire, start, heartbeat,
 failure, local materialization receipt, durable StageArtifact commit, and

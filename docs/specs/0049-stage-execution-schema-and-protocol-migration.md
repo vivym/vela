@@ -4,14 +4,15 @@ Date: 2026-08-31
 
 Status: Implementation in progress. S49.1-S49.11 have committed repository
 implementations through the capacity simulator and advisory planning boundary.
-Migration `00049` starts S49.12 with ModelRevision-scoped cohort routing,
+Migrations `00049` and `00050` implement the current S49.12 expansion boundary:
+ModelRevision-scoped cohort routing,
 immutable Job/Attempt/ExecutionGraphSnapshot authority, rollback that affects
 only later Jobs, an explicit internal-Project allowlist, Production Launch
 Receipt gating, legacy-authority database inventory, and a schema rollback
-guard. Automatic Stage Job instantiation and reconciliation, external drain
-evidence, a zero-inventory seal, contraction, legacy-path deletion, and
-production evidence remain pending. Repository evidence does not advance a
-Production Gate.
+guard, plus automatic Stage Job instantiation with durable multi-replica claim,
+expiry takeover, exact replay, and crash reconciliation. External drain evidence,
+a zero-inventory seal, contraction, legacy-path deletion, and production evidence
+remain pending. Repository evidence does not advance a Production Gate.
 
 ## Purpose
 
@@ -130,9 +131,15 @@ for retry, expiry, customer-visible contract, and related controls. It reference
 the resolved ExecutionGraphSnapshot; the graph snapshot does not duplicate or
 replace those business-policy fields.
 
-Admission validates at least one complete READY capacity path and creates one
-`stage_storage_reservations` row in the same transaction as Job, Credit
-Reservation, queue counters, graph snapshot, and initial Attempt/StageRuns.
+The production target requires Admission to validate at least one complete READY
+capacity path and create one `stage_storage_reservations` row in the same
+transaction as Job, Credit Reservation, queue counters, graph snapshot, and
+initial Attempt/StageRuns. Migration `00050` is a pre-production M4 expansion:
+the Admission transaction instead persists the exact reservation bytes and fixed
+graph identities in durable instantiation work, while a later PostgreSQL-claimed
+transaction creates the graph rows before StageScheduler can observe READY work.
+Production activation remains blocked until the target single-transaction
+Admission boundary is implemented and verified.
 
 ## Runtime execution schema
 
@@ -373,6 +380,13 @@ renewal is unavailable.
   `STAGE_ONLY` routing authority. A revision is bound to one ModelRevision,
   graph, profile, connector set, release, and configuration; non-target models
   remain on the legacy path.
+- Migration `00050` atomically enqueues every newly Accepted `STAGE_GRAPH` Job
+  and backfills v49 Jobs. Fixed command/snapshot/Attempt/reservation identities,
+  expiring multi-replica claims, exact replay, and PostgreSQL reconciliation
+  close the crash windows before StageScheduler sees READY work.
+- This M4 dispatch boundary is deliberately pre-production: the durable work row
+  precedes the graph snapshot and storage-reservation rows. M5 activation cannot
+  proceed until Admission creates those rows in its own transaction.
 
 ### M5: full cutover and drain
 
@@ -395,9 +409,9 @@ renewal is unavailable.
 - Add a permanent negative test proving no machine-level H3 Assignment can be
   formed.
 
-M6 is not implemented by migration `00049`. Its rollback guard protects the
-expanded schema; it is not the contraction migration and removes no legacy
-protocol or deployment surface.
+M6 is not implemented by migrations `00049` or `00050`. Their rollback guards
+protect the expanded schema and durable dispatch authority; neither is the
+contraction migration or removes a legacy protocol or deployment surface.
 
 ## Failure and compatibility rules
 

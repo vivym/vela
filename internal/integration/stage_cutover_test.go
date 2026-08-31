@@ -79,14 +79,11 @@ func TestStageCutoverRollbackChangesOnlySubsequentJobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("construct cutover AttemptCoordinator: %v", err)
 	}
-	attemptID := uuid.New()
-	if _, err := coordinator.Instantiate(context.Background(), attemptcoordinator.InstantiateCommand{
-		CommandID: uuid.New(), JobID: uuid.MustParse(stageJob.JobID),
-		ExpectedJobVersion: 1, ExpectedJobFence: 0,
-		ExecutionGraphSnapshotID: uuid.New(), ExecutionGraphRevisionID: graphID.UUID,
-		ExecutionProfileRevisionID: profileID.UUID, AttemptID: attemptID,
-		StorageReservationID: uuid.New(), ReservedStorageBytes: 2 << 30,
-	}); err != nil {
+	claim := claimStageGraphInstantiation(
+		t, database.Admin, "stage-cutover-before-rollback", uuid.New(),
+	)
+	attemptID := claim.AttemptID
+	if _, err := coordinator.Instantiate(context.Background(), claim.InstantiateCommand); err != nil {
 		t.Fatalf("instantiate Stage-routed Job before rollback: %v", err)
 	}
 
