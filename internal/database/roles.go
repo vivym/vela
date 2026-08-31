@@ -447,6 +447,20 @@ func verifyCatalogPromotionPrivileges(
 			"vela_capture_legacy_authority_inventory(uuid,text)",
 		)
 	}
+	zeroBacklogPrivilegesPresent, err := databaseFunctionExists(
+		ctx,
+		database,
+		"vela_record_stage_cutover_external_drain_evidence(uuid,bigint,bigint,bigint,bigint,bigint,bytea,text)",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect Catalog Promotion zero-backlog surface: %w", err)
+	}
+	if zeroBacklogPrivilegesPresent {
+		boundary.functions = append(boundary.functions,
+			"vela_record_stage_cutover_external_drain_evidence(uuid,bigint,bigint,bigint,bigint,bigint,bytea,text)",
+			"vela_seal_stage_cutover_zero_backlog(uuid,uuid,uuid,uuid,uuid,text)",
+		)
+	}
 	return verifyExactPrivileges(ctx, database, currentUser, boundary)
 }
 

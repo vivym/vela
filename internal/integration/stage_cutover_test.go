@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/attemptcoordinator"
+	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/identity"
 )
 
@@ -196,6 +198,511 @@ func TestStageCutoverInventoryIsFunctionOwnedAndDurable(t *testing.T) {
 	version, versionErr := goose.GetDBVersion(database.Admin)
 	if versionErr != nil || version != 49 {
 		t.Fatalf("Stage cutover version after refused Down = %d error=%v", version, versionErr)
+	}
+}
+
+func TestStageCutoverZeroBacklogSealRejectsNonzeroExternalDrainEvidence(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	promotion := stageCutoverPromotionPool(t, database)
+	cutoverID := activateProductionStageOnlyCutover(t, database, promotion)
+
+	startInventoryID := captureLegacyAuthorityInventory(t, promotion, "zero-window-start")
+	startEvidenceID := recordStageCutoverExternalDrainEvidence(
+		t,
+		promotion,
+		[5]int64{1, 0, 0, 0, 0},
+		"external-zero-window-start",
+	)
+	time.Sleep(1100 * time.Millisecond)
+	endInventoryID := captureLegacyAuthorityInventory(t, promotion, "zero-window-end")
+	endEvidenceID := recordStageCutoverExternalDrainEvidence(
+		t,
+		promotion,
+		[5]int64{},
+		"external-zero-window-end",
+	)
+
+	_, err := promotion.Exec(context.Background(), `
+		SELECT * FROM vela_seal_stage_cutover_zero_backlog(
+			$1, $2, $3, $4, $5, $6
+		)
+	`, uuid.New(), startInventoryID, endInventoryID, startEvidenceID,
+		endEvidenceID, "integration-cutover-sealer")
+	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_external_nonzero")
+
+	var receipts int
+	if err := database.Admin.QueryRow(`
+		SELECT count(*) FROM stage_cutover_zero_backlog_receipts
+		WHERE cutover_revision_id = $1
+	`, cutoverID).Scan(&receipts); err != nil {
+		t.Fatalf("count rejected zero-backlog receipts: %v", err)
+	}
+	if receipts != 0 {
+		t.Fatalf("nonzero external drain evidence created %d zero-backlog receipts", receipts)
+	}
+}
+
+func TestStageCutoverExternalDrainEvidenceRejectsNullBacklogs(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	promotion := stageCutoverPromotionPool(t, database)
+	activateProductionStageOnlyCutover(t, database, promotion)
+
+	manifestDigest := make([]byte, 32)
+	manifestDigest[0] = 1
+	for backlogIndex := range 5 {
+		_, err := promotion.Exec(context.Background(), `
+			SELECT * FROM vela_record_stage_cutover_external_drain_evidence(
+				$1,
+				CASE WHEN $2 = 0 THEN NULL ELSE 0 END,
+				CASE WHEN $2 = 1 THEN NULL ELSE 0 END,
+				CASE WHEN $2 = 2 THEN NULL ELSE 0 END,
+				CASE WHEN $2 = 3 THEN NULL ELSE 0 END,
+				CASE WHEN $2 = 4 THEN NULL ELSE 0 END,
+				$3,
+				'null-backlog-new-evidence'
+			)
+		`, uuid.New(), backlogIndex, manifestDigest)
+		assertPostgresConstraint(
+			t, err, "stage_cutover_external_drain_evidence_invalid",
+		)
+	}
+
+	evidenceID := recordStageCutoverExternalDrainEvidence(
+		t, promotion, [5]int64{}, "null-backlog-replay",
+	)
+	for backlogIndex := range 5 {
+		_, err := promotion.Exec(context.Background(), `
+			SELECT * FROM vela_record_stage_cutover_external_drain_evidence(
+				$1,
+				CASE WHEN $2 = 0 THEN NULL ELSE 0 END,
+				CASE WHEN $2 = 1 THEN NULL ELSE 0 END,
+				CASE WHEN $2 = 2 THEN NULL ELSE 0 END,
+				CASE WHEN $2 = 3 THEN NULL ELSE 0 END,
+				CASE WHEN $2 = 4 THEN NULL ELSE 0 END,
+				$3,
+				'null-backlog-replay'
+			)
+		`, evidenceID, backlogIndex, manifestDigest)
+		assertPostgresConstraint(
+			t, err, "stage_cutover_external_drain_evidence_invalid",
+		)
+	}
+}
+
+func TestStageCutoverZeroBacklogSealBindsEvidenceAndFencesCutover(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	promotion := stageCutoverPromotionPool(t, database)
+	cutoverID := activateProductionStageOnlyCutover(t, database, promotion)
+
+	startInventoryID := captureLegacyAuthorityInventory(t, promotion, "seal-window-start")
+	startEvidenceID := recordStageCutoverExternalDrainEvidence(
+		t, promotion, [5]int64{}, "seal-external-start",
+	)
+	manifestDigest := make([]byte, 32)
+	manifestDigest[0] = 1
+	var evidenceReplayed bool
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT replayed
+		FROM vela_record_stage_cutover_external_drain_evidence(
+			$1, 0, 0, 0, 0, 0, $2, 'seal-external-start'
+		)
+	`, startEvidenceID, manifestDigest).Scan(&evidenceReplayed); err != nil {
+		t.Fatalf("replay external drain evidence: %v", err)
+	}
+	if !evidenceReplayed {
+		t.Fatal("exact external drain evidence replay was not identified")
+	}
+	_, err := promotion.Exec(context.Background(), `
+		SELECT * FROM vela_record_stage_cutover_external_drain_evidence(
+			$1, 1, 0, 0, 0, 0, $2, 'seal-external-start'
+		)
+	`, startEvidenceID, manifestDigest)
+	assertPostgresConstraint(
+		t, err, "stage_cutover_external_drain_evidence_replay_mismatch",
+	)
+
+	time.Sleep(1100 * time.Millisecond)
+	endInventoryID := captureLegacyAuthorityInventory(t, promotion, "seal-window-end")
+	endEvidenceID := recordStageCutoverExternalDrainEvidence(
+		t, promotion, [5]int64{}, "seal-external-end",
+	)
+	receiptID := uuid.New()
+	type sealResult struct {
+		receiptID                      uuid.UUID
+		windowStartedAt, windowEndedAt time.Time
+		digest                         []byte
+		replayed                       bool
+		err                            error
+	}
+	sealResults := make(chan sealResult, 2)
+	for range 2 {
+		go func() {
+			var result sealResult
+			result.err = promotion.QueryRow(context.Background(), `
+				SELECT receipt_id, window_started_at, window_ended_at,
+				       content_digest, replayed
+				FROM vela_seal_stage_cutover_zero_backlog($1, $2, $3, $4, $5, $6)
+			`, receiptID, startInventoryID, endInventoryID, startEvidenceID,
+				endEvidenceID, "integration-zero-backlog-sealer").Scan(
+				&result.receiptID,
+				&result.windowStartedAt,
+				&result.windowEndedAt,
+				&result.digest,
+				&result.replayed,
+			)
+			sealResults <- result
+		}()
+	}
+	var created sealResult
+	replayCount := 0
+	for range 2 {
+		result := <-sealResults
+		if result.err != nil {
+			t.Fatalf("concurrent seal Stage cutover zero backlog: %v", result.err)
+		}
+		if result.replayed {
+			replayCount++
+		} else {
+			created = result
+		}
+	}
+	if replayCount != 1 || created.receiptID != receiptID || len(created.digest) != 32 ||
+		created.windowEndedAt.Sub(created.windowStartedAt) < time.Second {
+		t.Fatalf(
+			"concurrent zero-backlog seal replay=%d id=%s digest=%d window=%s",
+			replayCount, created.receiptID, len(created.digest),
+			created.windowEndedAt.Sub(created.windowStartedAt),
+		)
+	}
+
+	var boundCutoverID, boundStartInventoryID, boundEndInventoryID uuid.UUID
+	var boundStartEvidenceID, boundEndEvidenceID uuid.UUID
+	var revisionBindingMatches bool
+	if err := database.Admin.QueryRow(`
+		SELECT receipt.cutover_revision_id,
+		       receipt.start_inventory_snapshot_id,
+		       receipt.end_inventory_snapshot_id,
+		       receipt.start_external_evidence_id,
+		       receipt.end_external_evidence_id,
+		       receipt.release_digest = revision.release_digest
+		       AND receipt.configuration_revision = revision.configuration_revision
+		       AND receipt.configuration_digest = revision.configuration_digest
+		       AND receipt.execution_graph_revision_id = revision.execution_graph_revision_id
+		       AND receipt.execution_profile_revision_id = revision.execution_profile_revision_id
+		       AND receipt.connector_set_digest = revision.connector_set_digest
+		       AND receipt.launch_manifest_digest = revision.launch_manifest_digest
+		FROM stage_cutover_zero_backlog_receipts AS receipt
+		JOIN stage_cutover_revisions AS revision
+		  ON revision.id = receipt.cutover_revision_id
+		WHERE receipt.id = $1
+	`, receiptID).Scan(
+		&boundCutoverID,
+		&boundStartInventoryID,
+		&boundEndInventoryID,
+		&boundStartEvidenceID,
+		&boundEndEvidenceID,
+		&revisionBindingMatches,
+	); err != nil {
+		t.Fatalf("read zero-backlog receipt bindings: %v", err)
+	}
+	if boundCutoverID != cutoverID || boundStartInventoryID != startInventoryID ||
+		boundEndInventoryID != endInventoryID || boundStartEvidenceID != startEvidenceID ||
+		boundEndEvidenceID != endEvidenceID || !revisionBindingMatches {
+		t.Fatalf(
+			"zero-backlog receipt bindings cutover=%s inventories=%s/%s evidence=%s/%s revision=%t",
+			boundCutoverID, boundStartInventoryID, boundEndInventoryID,
+			boundStartEvidenceID, boundEndEvidenceID, revisionBindingMatches,
+		)
+	}
+
+	var replayed bool
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT replayed
+		FROM vela_seal_stage_cutover_zero_backlog($1, $2, $3, $4, $5, $6)
+	`, receiptID, startInventoryID, endInventoryID, startEvidenceID,
+		endEvidenceID, "integration-zero-backlog-sealer").Scan(&replayed); err != nil {
+		t.Fatalf("replay zero-backlog seal: %v", err)
+	}
+	if !replayed {
+		t.Fatal("exact zero-backlog seal replay was not identified")
+	}
+	_, err = promotion.Exec(context.Background(), `
+		SELECT * FROM vela_seal_stage_cutover_zero_backlog($1, $2, $3, $4, $5, $6)
+	`, receiptID, startInventoryID, endInventoryID, startEvidenceID,
+		endEvidenceID, "different-zero-backlog-sealer")
+	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_replay_mismatch")
+
+	if _, err := promotion.Exec(context.Background(), `
+		UPDATE stage_cutover_external_drain_evidence SET observed_by = 'forged'
+		WHERE id = $1
+	`, startEvidenceID); err == nil {
+		t.Fatal("Catalog Promotion directly mutated external drain evidence")
+	}
+	if _, err := promotion.Exec(context.Background(), `
+		UPDATE stage_cutover_zero_backlog_receipts SET sealed_by = 'forged'
+		WHERE id = $1
+	`, receiptID); err == nil {
+		t.Fatal("Catalog Promotion directly mutated zero-backlog receipt")
+	}
+
+	server := admissionServerForDatabase(t, database)
+	stageJob := submitCutoverJob(t, server.URL, "stage-job-after-zero-backlog-seal")
+	if _, err := database.Admin.Exec(`
+		CREATE FUNCTION pg_temp.insert_legacy_job_clone(
+			p_job_id uuid,
+			p_source_job_id uuid
+		) RETURNS void
+		LANGUAGE plpgsql
+		AS $$
+		DECLARE
+			v_columns text;
+			v_job jsonb;
+		BEGIN
+			SELECT to_jsonb(source) || jsonb_build_object(
+				'id', p_job_id,
+				'execution_authority_kind', 'LEGACY_WORKER',
+				'worker_pool_id', '00000000-0000-0000-0000-000000000005',
+				'stage_cutover_revision_id', NULL,
+				'execution_graph_revision_id', NULL,
+				'stage_execution_profile_revision_id', NULL
+			) INTO v_job
+			FROM public.jobs AS source
+			WHERE source.id = p_source_job_id;
+			SELECT string_agg(format('%I', attribute.attname), ', '
+			                  ORDER BY attribute.attnum)
+			INTO v_columns
+			FROM pg_catalog.pg_attribute AS attribute
+			WHERE attribute.attrelid = 'public.jobs'::regclass
+			  AND attribute.attnum > 0
+			  AND NOT attribute.attisdropped
+			  AND attribute.attgenerated = '';
+			EXECUTE format(
+				'INSERT INTO public.jobs (%1$s) '
+				|| 'SELECT %1$s FROM jsonb_populate_record(NULL::public.jobs, $1) AS cloned',
+				v_columns
+			) USING v_job;
+		END
+		$$
+	`); err != nil {
+		t.Fatalf("create sealed legacy Job fixture function: %v", err)
+	}
+	_, err = database.Admin.Exec(`
+		SELECT pg_temp.insert_legacy_job_clone($1, $2)
+	`, uuid.New(), stageJob.JobID)
+	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_legacy_authority_sealed")
+
+	_, err = promotion.Exec(context.Background(), `
+		SELECT vela_activate_stage_cutover(
+			$1, 4, $2, 'INTERNAL', 'LEGACY_ONLY', 0,
+			NULL, NULL, 0, 1, decode(repeat('a2', 32), 'hex'),
+			'integration-sealed-rollback',
+			sha256(convert_to('integration-sealed-rollback', 'UTF8')),
+			sha256(convert_to('', 'UTF8')), NULL,
+			'integration-catalog-promotion', 'forbidden rollback after seal'
+		)
+	`, uuid.New(), cutoverID)
+	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_sealed")
+
+	var revisionCount int
+	if err := database.Admin.QueryRow(`
+		SELECT count(*) FROM stage_cutover_revisions WHERE revision = 4
+	`).Scan(&revisionCount); err != nil {
+		t.Fatalf("count rejected post-seal cutover revisions: %v", err)
+	}
+	if revisionCount != 0 {
+		t.Fatalf("post-seal mutation retained %d cutover revisions", revisionCount)
+	}
+
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err = goose.DownTo(database.Admin, migrations, 51)
+	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_rollback_is_unsafe")
+}
+
+func TestStageCutoverZeroBacklogSealRejectsDatabaseAndLiveBacklog(t *testing.T) {
+	t.Run("database evidence is nonzero", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		seedAdmissionFixture(t, database.Admin)
+		seedStageExecutionCatalog(t, database.Admin)
+		activateH3StageGraph(t, database)
+		activateLegacyRollback(t, database, 3, uuid.MustParse(stageCutoverRevisionID))
+		server := admissionServerForDatabase(t, database)
+		submitCutoverJob(t, server.URL, "legacy-zero-backlog-evidence")
+		promotion := stageCutoverPromotionPool(t, database)
+		activateProductionStageOnlyCutover(t, database, promotion)
+
+		startInventoryID, startTotal := captureLegacyAuthorityInventoryTotal(
+			t, promotion, "nonzero-database-start",
+		)
+		endInventoryID, endTotal := captureLegacyAuthorityInventoryTotal(
+			t, promotion, "nonzero-database-end",
+		)
+		if startTotal == 0 || endTotal == 0 {
+			t.Fatalf("legacy database evidence totals = %d/%d, want nonzero", startTotal, endTotal)
+		}
+		startEvidenceID := recordStageCutoverExternalDrainEvidence(
+			t, promotion, [5]int64{}, "nonzero-database-external-start",
+		)
+		endEvidenceID := recordStageCutoverExternalDrainEvidence(
+			t, promotion, [5]int64{}, "nonzero-database-external-end",
+		)
+		_, err := promotion.Exec(context.Background(), `
+			SELECT * FROM vela_seal_stage_cutover_zero_backlog($1, $2, $3, $4, $5, $6)
+		`, uuid.New(), startInventoryID, endInventoryID, startEvidenceID,
+			endEvidenceID, "integration-database-backlog-sealer")
+		assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_inventory_nonzero")
+	})
+
+	t.Run("live database inventory changed after evidence", func(t *testing.T) {
+		database := newPostgres(t)
+		applyFoundation(t, database.Admin)
+		seedAdmissionFixture(t, database.Admin)
+		seedStageExecutionCatalog(t, database.Admin)
+		activateH3StageGraph(t, database)
+		promotion := stageCutoverPromotionPool(t, database)
+		activateProductionStageOnlyCutover(t, database, promotion)
+
+		startInventoryID := captureLegacyAuthorityInventory(t, promotion, "live-window-start")
+		startEvidenceID := recordStageCutoverExternalDrainEvidence(
+			t, promotion, [5]int64{}, "live-external-start",
+		)
+		time.Sleep(1100 * time.Millisecond)
+		endInventoryID := captureLegacyAuthorityInventory(t, promotion, "live-window-end")
+		endEvidenceID := recordStageCutoverExternalDrainEvidence(
+			t, promotion, [5]int64{}, "live-external-end",
+		)
+
+		server := admissionServerForDatabase(t, database)
+		stageJob := submitCutoverJob(t, server.URL, "live-backlog-after-evidence")
+		if _, err := database.Admin.Exec(`
+			ALTER TABLE jobs DISABLE TRIGGER jobs_execution_authority_immutable;
+			ALTER TABLE jobs DISABLE TRIGGER jobs_snapshot_immutable;
+			ALTER TABLE jobs DISABLE TRIGGER jobs_zero_backlog_legacy_authority_guard
+		`); err != nil {
+			t.Fatalf("disable Job immutable triggers for live backlog fixture: %v", err)
+		}
+		legacyWriter, err := database.Admin.Begin()
+		if err != nil {
+			t.Fatalf("begin concurrent legacy backlog write: %v", err)
+		}
+		if _, err := legacyWriter.Exec(`
+			UPDATE jobs
+			SET execution_authority_kind = 'LEGACY_WORKER',
+			    worker_pool_id = '00000000-0000-0000-0000-000000000005',
+			    stage_cutover_revision_id = NULL,
+			    execution_graph_revision_id = NULL,
+			    stage_execution_profile_revision_id = NULL
+			WHERE id = $1
+		`, stageJob.JobID); err != nil {
+			_ = legacyWriter.Rollback()
+			t.Fatalf("seed live legacy backlog after evidence: %v", err)
+		}
+
+		sealResult := make(chan error, 1)
+		go func() {
+			_, sealErr := promotion.Exec(context.Background(), `
+				SELECT * FROM vela_seal_stage_cutover_zero_backlog(
+					$1, $2, $3, $4, $5, $6
+				)
+			`, uuid.New(), startInventoryID, endInventoryID, startEvidenceID,
+				endEvidenceID, "integration-live-backlog-sealer")
+			sealResult <- sealErr
+		}()
+		select {
+		case sealErr := <-sealResult:
+			_ = legacyWriter.Rollback()
+			t.Fatalf("zero-backlog seal did not wait for concurrent legacy write: %v", sealErr)
+		case <-time.After(200 * time.Millisecond):
+		}
+		if err := legacyWriter.Commit(); err != nil {
+			t.Fatalf("commit concurrent legacy backlog write: %v", err)
+		}
+		if _, err := database.Admin.Exec(`
+			ALTER TABLE jobs ENABLE TRIGGER jobs_zero_backlog_legacy_authority_guard;
+			ALTER TABLE jobs ENABLE TRIGGER jobs_snapshot_immutable;
+			ALTER TABLE jobs ENABLE TRIGGER jobs_execution_authority_immutable
+		`); err != nil {
+			t.Fatalf("restore Job immutable triggers after live backlog fixture: %v", err)
+		}
+
+		assertPostgresConstraint(
+			t,
+			<-sealResult,
+			"stage_cutover_zero_backlog_live_inventory_nonzero",
+		)
+	})
+}
+
+func TestStageCutoverZeroBacklogSealRejectsInvalidObservationWindow(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
+	promotion := stageCutoverPromotionPool(t, database)
+	activateProductionStageOnlyCutover(t, database, promotion)
+
+	startInventoryID := captureLegacyAuthorityInventory(t, promotion, "invalid-window-start")
+	startEvidenceID := recordStageCutoverExternalDrainEvidence(
+		t, promotion, [5]int64{}, "invalid-window-external-start",
+	)
+	endInventoryID := captureLegacyAuthorityInventory(t, promotion, "invalid-window-end")
+	endEvidenceID := recordStageCutoverExternalDrainEvidence(
+		t, promotion, [5]int64{}, "invalid-window-external-end",
+	)
+	_, err := promotion.Exec(context.Background(), `
+		SELECT * FROM vela_seal_stage_cutover_zero_backlog($1, $2, $3, $4, $5, $6)
+	`, uuid.New(), startInventoryID, endInventoryID, startEvidenceID,
+		uuid.New(), "integration-missing-evidence-sealer")
+	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_external_missing")
+
+	_, err = promotion.Exec(context.Background(), `
+		SELECT * FROM vela_seal_stage_cutover_zero_backlog($1, $2, $3, $4, $5, $6)
+	`, uuid.New(), startInventoryID, endInventoryID, startEvidenceID,
+		endEvidenceID, "integration-short-window-sealer")
+	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_window_too_short")
+
+	activateNextProductionStageOnlyCutover(t, database, promotion)
+	_, err = promotion.Exec(context.Background(), `
+		SELECT * FROM vela_seal_stage_cutover_zero_backlog($1, $2, $3, $4, $5, $6)
+	`, uuid.New(), startInventoryID, endInventoryID, startEvidenceID,
+		endEvidenceID, "integration-revision-mismatch-sealer")
+	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_revision_mismatch")
+}
+
+func TestStageCutoverZeroBacklogMigrationEmptyDownUp(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	if err := goose.DownTo(database.Admin, migrations, 51); err != nil {
+		t.Fatalf("migrate empty zero-backlog schema down: %v", err)
+	}
+	assertTableDoesNotExist(t, database.Admin, "stage_cutover_external_drain_evidence")
+	assertTableDoesNotExist(t, database.Admin, "stage_cutover_zero_backlog_receipts")
+	if err := goose.UpTo(database.Admin, migrations, 52); err != nil {
+		t.Fatalf("migrate zero-backlog schema up again: %v", err)
+	}
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 52 {
+		t.Fatalf("zero-backlog migration version after Down Up = %d error=%v", version, err)
+	}
+	promotion := stageCutoverPromotionPool(t, database)
+	if err := veladb.VerifyRole(
+		context.Background(), promotion, veladb.RoleCatalogPromotion,
+	); err != nil {
+		t.Fatalf("verify Catalog Promotion role after zero-backlog Down Up: %v", err)
 	}
 }
 
@@ -507,6 +1014,163 @@ func stageCutoverPromotionPool(t *testing.T, database testDatabase) *pgxpool.Poo
 		t, database.DSN,
 		"vela_catalog_promotion_login", "vela-catalog-promotion-password",
 	)
+}
+
+func activateProductionStageOnlyCutover(
+	t *testing.T,
+	database testDatabase,
+	promotion *pgxpool.Pool,
+) uuid.UUID {
+	t.Helper()
+	recordAndSealLaunchManifest(t, promotion)
+	var manifestDigest, releaseDigest, connectorSetDigest []byte
+	var currentRevision int64
+	var previousID uuid.UUID
+	var configurationRevision string
+	if err := database.Admin.QueryRow(`
+		SELECT revision.revision, revision.id,
+		       manifest.manifest_digest, manifest.release_digest,
+		       manifest.configuration_revision,
+		       vela_execution_profile_connector_set_digest($1, $2)
+		FROM production_gate_manifests AS manifest
+		CROSS JOIN stage_cutover_control AS control
+		JOIN stage_cutover_revisions AS revision
+		  ON revision.id = control.current_revision_id
+		WHERE manifest.sealed_at IS NOT NULL
+	`, graphExecutionProfileID, stageGraphID).Scan(
+		&currentRevision,
+		&previousID,
+		&manifestDigest,
+		&releaseDigest,
+		&configurationRevision,
+		&connectorSetDigest,
+	); err != nil {
+		t.Fatalf("read production Stage cutover evidence binding: %v", err)
+	}
+	cutoverID := uuid.New()
+	var activatedID uuid.UUID
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT (vela_activate_stage_cutover(
+			$1, $2, $3, 'PRODUCTION', 'STAGE_ONLY', 10000,
+			$4, $5, 2147483648, 1, $6, $7,
+			sha256(convert_to($7, 'UTF8')), $8, $9,
+			'integration-catalog-promotion',
+			'activate production Stage-only drain observation'
+		)).id
+	`, cutoverID, currentRevision+1, previousID, stageGraphID,
+		graphExecutionProfileID, releaseDigest, configurationRevision,
+		connectorSetDigest, manifestDigest).Scan(&activatedID); err != nil {
+		t.Fatalf("activate production Stage-only cutover: %v", err)
+	}
+	if activatedID != cutoverID {
+		t.Fatalf("production Stage-only cutover id = %s, want %s", activatedID, cutoverID)
+	}
+	return cutoverID
+}
+
+func activateNextProductionStageOnlyCutover(
+	t *testing.T,
+	database testDatabase,
+	promotion *pgxpool.Pool,
+) uuid.UUID {
+	t.Helper()
+	var revision int64
+	var previousID uuid.UUID
+	var releaseDigest, configurationDigest, connectorSetDigest, manifestDigest []byte
+	var configurationRevision string
+	if err := database.Admin.QueryRow(`
+		SELECT revision.revision, revision.id, revision.release_digest,
+		       revision.configuration_revision, revision.configuration_digest,
+		       revision.connector_set_digest, revision.launch_manifest_digest
+		FROM stage_cutover_control AS control
+		JOIN stage_cutover_revisions AS revision
+		  ON revision.id = control.current_revision_id
+		WHERE control.singleton
+	`).Scan(
+		&revision,
+		&previousID,
+		&releaseDigest,
+		&configurationRevision,
+		&configurationDigest,
+		&connectorSetDigest,
+		&manifestDigest,
+	); err != nil {
+		t.Fatalf("read current production Stage-only cutover: %v", err)
+	}
+	cutoverID := uuid.New()
+	var activatedID uuid.UUID
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT (vela_activate_stage_cutover(
+			$1, $2, $3, 'PRODUCTION', 'STAGE_ONLY', 10000,
+			$4, $5, 2147483648, 1, $6, $7, $8, $9, $10,
+			'integration-catalog-promotion',
+			'advance production Stage-only drain observation revision'
+		)).id
+	`, cutoverID, revision+1, previousID, stageGraphID,
+		graphExecutionProfileID, releaseDigest, configurationRevision,
+		configurationDigest, connectorSetDigest, manifestDigest).Scan(&activatedID); err != nil {
+		t.Fatalf("advance production Stage-only cutover: %v", err)
+	}
+	if activatedID != cutoverID {
+		t.Fatalf("next production Stage-only cutover id = %s, want %s", activatedID, cutoverID)
+	}
+	return cutoverID
+}
+
+func captureLegacyAuthorityInventory(
+	t *testing.T,
+	promotion *pgxpool.Pool,
+	observedBy string,
+) uuid.UUID {
+	t.Helper()
+	snapshotID, total := captureLegacyAuthorityInventoryTotal(t, promotion, observedBy)
+	if total != 0 {
+		t.Fatalf("%s legacy authority inventory total = %d, want zero", observedBy, total)
+	}
+	return snapshotID
+}
+
+func captureLegacyAuthorityInventoryTotal(
+	t *testing.T,
+	promotion *pgxpool.Pool,
+	observedBy string,
+) (uuid.UUID, int64) {
+	t.Helper()
+	snapshotID := uuid.New()
+	var total int64
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT total_count
+		FROM vela_capture_legacy_authority_inventory($1, $2)
+	`, snapshotID, observedBy).Scan(&total); err != nil {
+		t.Fatalf("capture %s legacy authority inventory: %v", observedBy, err)
+	}
+	return snapshotID, total
+}
+
+func recordStageCutoverExternalDrainEvidence(
+	t *testing.T,
+	promotion *pgxpool.Pool,
+	backlog [5]int64,
+	observedBy string,
+) uuid.UUID {
+	t.Helper()
+	evidenceID := uuid.New()
+	manifestDigest := make([]byte, 32)
+	manifestDigest[0] = byte(backlog[0] + backlog[1] + backlog[2] + backlog[3] + backlog[4] + 1)
+	var returnedID uuid.UUID
+	if err := promotion.QueryRow(context.Background(), `
+		SELECT evidence_id
+		FROM vela_record_stage_cutover_external_drain_evidence(
+			$1, $2, $3, $4, $5, $6, $7, $8
+		)
+	`, evidenceID, backlog[0], backlog[1], backlog[2], backlog[3], backlog[4],
+		manifestDigest, observedBy).Scan(&returnedID); err != nil {
+		t.Fatalf("record %s external Stage cutover drain evidence: %v", observedBy, err)
+	}
+	if returnedID != evidenceID {
+		t.Fatalf("external Stage cutover drain evidence id = %s, want %s", returnedID, evidenceID)
+	}
+	return evidenceID
 }
 
 func authorizeInternalCutoverProject(
