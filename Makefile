@@ -57,6 +57,7 @@ test: test-lab-scripts
 
 test-lab-scripts:
 	./deploy/lab/rke2-airgap/test-configure-kubelet-noswap.sh
+	./deploy/lab/observability/test.sh
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)

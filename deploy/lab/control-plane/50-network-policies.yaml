@@ -95,6 +95,15 @@ spec:
               app.kubernetes.io/component: smoke
       ports:
         - {protocol: TCP, port: 8080}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              vela.ai/network-role: observability
+          podSelector:
+            matchLabels:
+              vela.ai/client-role: otel-collector
+      ports:
+        - {protocol: TCP, port: 8081}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

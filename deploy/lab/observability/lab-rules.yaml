@@ -1,0 +1,12 @@
+groups:
+  - name: vela-lab-observability-smoke
+    interval: 15s
+    rules:
+      - alert: VelaLabObservabilityHeartbeat
+        expr: vector(1)
+        for: 15s
+        labels:
+          severity: test
+          evidence_boundary: NON_PRODUCTION_MOCK_REHEARSAL
+        annotations:
+          summary: Vela lab-only alert delivery heartbeat

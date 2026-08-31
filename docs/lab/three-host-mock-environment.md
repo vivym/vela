@@ -3,12 +3,13 @@
 Date: 2026-08-31
 
 Status: Private registry, RKE2/Canal, host-lifecycle-off GPU Operator, two
-eight-GPU Workers, non-canonical mock Runner distribution, persistent Runner
-recovery, Kubernetes GPU smoke, Vela control-plane deployment, two Worker
-Agents, an end-to-end mock Job with verified Artifacts, concurrent mock
-endurance, and all ten fixed non-production fault rehearsals are operational.
-The final independent live postflight restored and verified the idle two-Worker
-authority boundary.
+eight-GPU Workers, non-canonical mock Runner distribution, Kubernetes GPU
+smoke, Vela control-plane deployment, two Worker Agents, an end-to-end mock Job
+with verified Artifacts, concurrent mock endurance, all ten fixed
+non-production fault rehearsals, and a control-only observability overlay have
+live lab evidence. The durable authority boundary remains idle, but both
+persistent mock Runner containers currently restart on a terminal-state cleanup
+defect described below and are not available for new experiments.
 
 This document records the current non-production lab inventory and the private
 registry used to stage H3 mock experiments. It is an environment receipt, not
@@ -81,8 +82,10 @@ and remained running; the control Docker daemon was not restarted. Both Worker
 Runners remained `running/healthy`, had zero GPU compute processes after smoke,
 and both ZFS `data` pools remained `ONLINE`.
 
-The private Registry data root now occupies about 3.4 GiB and the control root
-filesystem had about 547 GiB free at postflight. These results are lab
+At this GPU postflight, the private Registry data root occupied about 3.4 GiB
+and the control root filesystem had about 547 GiB free. Later observability
+publication increased the Registry data root to 4.6 GiB and left 529 GiB free;
+that current storage receipt is recorded below. These results are lab
 deployment evidence only; Production Gates remain `0/9 PASS`.
 
 After a final successful GPU verifier run, Worker 1 removed only the four
@@ -1561,6 +1564,85 @@ for the 16 retained historical Failed Pods. Their 16 owning Jobs all retain
 `ttlSecondsAfterFinished=86400`; cleanup remains TTL-only. This closes the
 explicit NoSwap verification gap but is not a Production Gate receipt.
 Production Gates remain `0/9 PASS`.
+
+## Control-only observability receipt
+
+On 2026-08-31, the lab deployed the bounded overlay maintained under
+[`deploy/lab/observability`](../../deploy/lab/observability/README.md). It uses
+Prometheus `v3.14.0`, Alertmanager `v0.34.0`, and Grafana `13.2.0`, published by
+immutable digest to the private Registry:
+
+| Component | Private image |
+| --- | --- |
+| Prometheus | `10.1.200.17:5443/observability/prometheus:v3.14.0@sha256:e906cef998316bbe319f98711e1b4d8613ad37e14b08ff831d7036e77b7464f9` |
+| Alertmanager | `10.1.200.17:5443/observability/alertmanager:v0.34.0@sha256:268d4bf0e4bc0fe6dbdef6a59ce81a2918c88458bf8edf7dd0572ad372a093e6` |
+| Grafana | `10.1.200.17:5443/observability/grafana:13.2.0@sha256:95a8098fb092130e111b0264a9be4d3a2bd5405e5dba88d4b8f1f630b389614e` |
+
+The three source manifests total 624,172,137 compressed bytes. Prometheus,
+Alertmanager, and nearly all Grafana content arrived through the control host's
+existing Docker mirror; only one missing 3,846,391-byte Grafana blob crossed
+the SSH administration path. The guarded helper verified that blob's exact
+size and SHA-256 before completing its Registry V2 upload. No whole image
+archive crossed SSH, and no Docker or Registry restart or prune ran.
+
+All three Pods are Ready on `vela-lab-control-1`, request no GPUs, use bounded
+`emptyDir` storage, and expose only ClusterIP Services. The control-plane
+NetworkPolicy admits management port `8081` only when the source namespace has
+`vela.ai/network-role=observability` and the source Pod has
+`vela.ai/client-role=otel-collector`. Verification passed the Prometheus target,
+SLO exporter gauge, canonical rule groups, Grafana datasource/dashboard,
+private image digests, control-only placement, and delivery of
+`VelaLabObservabilityHeartbeat` to Alertmanager receiver `lab-null`. The
+database authority boundary remained `0|0|0|2`.
+
+The root-only deployment receipt is
+`/root/vela-rke2-receipts/20260831T052308Z-observability`; its `SHA256SUMS` file
+has SHA-256
+`2b8bf5eddc738a760629a5ff0e70826f8e91408cf12a9543e03b5b89b485298a`.
+The independent postflight is
+`/root/vela-rke2-receipts/20260831T052308Z-observability-independent-postflight`;
+its `SHA256SUMS` file has SHA-256
+`875b7a601409d2522884e5cd00df185515220a4e0d080731bfcbc9da0549cceb`.
+Both report `LAB_REHEARSAL_PASS` and `production_gates=0/9`. Publication state
+is `complete`; its state-file SHA-256 is
+`89ca327da13ac37431ac471788db3a8d50ca7d55d464d96ae1edf4dfb86a39bf`.
+The Registry data root occupies 4.6 GiB, and the control root filesystem has
+529 GiB free at 38% use.
+
+This is basic observability-path evidence only. The external gateway SLI series
+count is zero, the heartbeat receiver deliberately discards notifications, and
+there is no external paging integration, named and verified 24x7 owner, timed
+P1 drill, acknowledgement evidence, or production retention/HA. It therefore
+does not pass `observability-on-call` or any other Production Gate.
+
+## Current mock Runner lifecycle defect
+
+After the observability postflight, both host-managed mock Runner containers
+were observed `restarting/unhealthy`. This condition predates and is unrelated
+to the control-only observability deployment. Worker 1 container
+`f23ab14ca77c` retains Attempt
+`937de460-d7b3-4336-9ec2-d4beb2ee8f17`; Worker 2 container
+`d0a477e08d7b` retains Attempt
+`e4c6bf87-a43c-46e2-85b6-bd5d43374334`. Each retained Runner state says
+`SUCCEEDED`, `resume=false`, and contains two output records. Normal Worker
+Agent terminal cleanup already removed the corresponding output directory, so
+Runner startup exits when it requires the deleted path under
+`/var/lib/vela/worker/scratch/outputs/<attempt>`.
+
+The durable control-plane authority for Job
+`3e4be0cc-fcc0-42fa-a502-6080df76c634` remains consistent: the fence-1 Attempt
+is `FAILED`, the fence-3 Attempt is `SUCCEEDED`, active Leases are zero, and
+there is exactly one Visible Completion, one ArtifactSet, two committed
+Artifacts, and one Charge. No Runner state directory was moved or deleted
+during this work.
+
+This is an unresolved Runner/Worker ownership-contract defect and an
+operational blocker for new mock Jobs. Recovery should first checksum and move
+only these exact terminal state directories to root-only, same-host quarantine
+receipts under separate approval; the existing restart policy can then recover.
+The code contract must also stop Runner startup from requiring terminal outputs
+that the Worker Agent is allowed to remove, or coordinate cleanup with explicit
+Runner state retirement.
 
 ## Experiment operating rules
 
