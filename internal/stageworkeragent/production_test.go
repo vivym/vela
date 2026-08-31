@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestProductionAgentExecutesHeartbeatsAndMaterializesAssignment(t *testing.T) {
@@ -94,6 +95,60 @@ func TestProductionAgentExecutesHeartbeatsAndMaterializesAssignment(t *testing.T
 			result, waits, control.startCalls, control.heartbeatCalls,
 			control.sealCalls, control.commitCalls,
 		)
+	}
+}
+
+func TestProductionAgentReportsStructuredRuntimeFailureBeforeReleasingAuthority(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	failedAt := time.Date(2026, 8, 30, 11, 0, 0, 0, time.UTC)
+	fingerprint := bytes.Repeat([]byte{0xa1}, sha256.Size)
+	runtimeClient := &failureStatusRuntimeClient{
+		ModelRuntimeServiceClient: fixture.client,
+		failure: &velav1.ModelRuntimeFailureEvidence{
+			FailureClass: "backend_oom", FailureFingerprint: fingerprint,
+			Detail: "resident DiT process exhausted device memory", WorkerReusable: true,
+			ConsumedResourceUnits: 43, FailedAt: timestamppb.New(failedAt),
+			RetryAt: timestamppb.New(failedAt.Add(time.Minute)),
+		},
+	}
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: runtimeClient}},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	control := &productionExecutionControl{
+		materializingStreamControl: newMaterializingStreamControl(t, fixture.authority),
+		identity:                   runtimeIdentityFromAuthority(fixture.authority),
+	}
+	stream, err := stageworkeragent.NewStreamAgent(runtimeAgent, control)
+	if err != nil {
+		t.Fatalf("NewStreamAgent: %v", err)
+	}
+	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+		Control: control, Runtime: runtimeClient, Stream: stream,
+		RuntimeIdentity: control.identity,
+		Devices:         fixture.authority.GetDevices(), Members: fixture.authority.GetMembers(),
+		CapacityVector: fixture.authority.GetCapacityVector(), CapacityTTL: 2 * time.Minute,
+		HeartbeatInterval: time.Second, Now: time.Now,
+		Wait: func(context.Context, time.Duration) error {
+			t.Fatal("failed runtime must not return to the monitor wait loop")
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProductionAgent: %v", err)
+	}
+
+	result, err := agent.RunAssignment(context.Background(), fixture.assignment)
+	failure := control.failure
+	if err == nil || !result.GPUReleased || control.failCalls != 1 || failure == nil ||
+		failure.GetFailureClass() != "backend_oom" ||
+		!bytes.Equal(failure.GetFailureFingerprint(), fingerprint) ||
+		!failure.GetWorkerReusable() || failure.GetConsumedResourceUnits() != 43 ||
+		!failure.GetFailedAt().AsTime().Equal(failedAt) ||
+		!failure.GetRetryAt().AsTime().Equal(failedAt.Add(time.Minute)) {
+		t.Fatalf("RunAssignment = %#v failure=%#v error=%v", result, failure, err)
 	}
 }
 
@@ -417,6 +472,8 @@ type productionExecutionControl struct {
 	acquireCalls         int
 	commands             <-chan *velav1.StageWorkerControlServiceConnectResponse
 	observationSequences []int64
+	failCalls            int
+	failure              *velav1.FailStageRequest
 }
 
 func (control *productionExecutionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
@@ -468,8 +525,35 @@ func (control *productionExecutionControl) Exchange(
 			velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE,
 			velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
 		), nil
+	case *velav1.StageWorkerControlServiceConnectRequest_FailStage:
+		control.failCalls++
+		control.failure = proto.Clone(request.GetFailStage()).(*velav1.FailStageRequest)
+		return commandResultResponse(
+			velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_FAIL_STAGE,
+			velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
+		), nil
 	}
 	return control.materializingStreamControl.Exchange(ctx, request)
+}
+
+type failureStatusRuntimeClient struct {
+	velav1.ModelRuntimeServiceClient
+	failure *velav1.ModelRuntimeFailureEvidence
+}
+
+func (client *failureStatusRuntimeClient) Status(
+	ctx context.Context,
+	request *velav1.ModelRuntimeServiceStatusRequest,
+	options ...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceStatusResponse, error) {
+	response, err := client.ModelRuntimeServiceClient.Status(ctx, request, options...)
+	if err != nil || response == nil {
+		return response, err
+	}
+	response = proto.Clone(response).(*velav1.ModelRuntimeServiceStatusResponse)
+	response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED
+	response.FailureEvidence = proto.Clone(client.failure).(*velav1.ModelRuntimeFailureEvidence)
+	return response, nil
 }
 
 type capacitySequenceSource struct {

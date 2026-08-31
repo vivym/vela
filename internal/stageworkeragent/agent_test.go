@@ -108,6 +108,53 @@ func TestMultiMemberCancellationAckAndActuallyStoppedRemainDistinct(t *testing.T
 	}
 }
 
+func TestMultiMemberStatusCollectsStructuredFailureEvidenceByMember(t *testing.T) {
+	fixture := newBarrierFixture(t, false)
+	digest, err := stageauthority.Digest(fixture.authority)
+	if err != nil {
+		t.Fatalf("Digest StageAuthority: %v", err)
+	}
+	failedAt := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+	clients := make([]stageworkeragent.RuntimeMember, 0, len(fixture.memberIDs))
+	for index, memberID := range fixture.memberIDs {
+		clients = append(clients, stageworkeragent.RuntimeMember{
+			ID: memberID,
+			Client: fixedStatusRuntimeClient{response: &velav1.ModelRuntimeServiceStatusResponse{
+				AuthorityDigest: digest[:],
+				Decision:        velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED,
+				State:           velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED,
+				RuntimeIdentity: runtimeIdentityForMember(fixture.authority, memberID),
+				FailureEvidence: &velav1.ModelRuntimeFailureEvidence{
+					FailureClass:          "backend_failure",
+					FailureFingerprint:    bytes.Repeat([]byte{byte(0x91 + index)}, 32),
+					Detail:                "rank failed",
+					WorkerReusable:        index == 0,
+					ConsumedResourceUnits: int64(10 + index),
+					FailedAt:              timestamppb.New(failedAt.Add(time.Duration(index) * time.Second)),
+					RetryAt:               timestamppb.New(failedAt.Add(time.Minute)),
+				},
+			}},
+		})
+	}
+	agent, err := stageworkeragent.New(stageworkeragent.Config{Members: clients})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+
+	status, err := agent.Status(context.Background(), fixture.authority)
+	if err != nil || status.ReportingMembers != 2 || len(status.Failures) != 2 {
+		t.Fatalf("Status = %#v error=%v", status, err)
+	}
+	for index, memberID := range fixture.memberIDs {
+		failure := status.Failures[memberID]
+		if failure.GetFailureClass() != "backend_failure" ||
+			failure.GetConsumedResourceUnits() != int64(10+index) ||
+			failure.GetWorkerReusable() != (index == 0) {
+			t.Fatalf("member %s failure = %#v", memberID, failure)
+		}
+	}
+}
+
 func TestMultiMemberStartBarrierRejectsMissingMemberBeforePreparing(t *testing.T) {
 	fixture := newBarrierFixture(t, false)
 	agent, err := stageworkeragent.New(stageworkeragent.Config{
@@ -349,6 +396,43 @@ type failingStartBackend struct {
 
 type unreachableRuntimeClient struct {
 	velav1.ModelRuntimeServiceClient
+}
+
+type fixedStatusRuntimeClient struct {
+	velav1.ModelRuntimeServiceClient
+	response *velav1.ModelRuntimeServiceStatusResponse
+}
+
+func (client fixedStatusRuntimeClient) Status(
+	context.Context,
+	*velav1.ModelRuntimeServiceStatusRequest,
+	...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceStatusResponse, error) {
+	return client.response, nil
+}
+
+func runtimeIdentityForMember(
+	authority *velav1.StageAuthority,
+	memberID string,
+) *velav1.ModelRuntimeIdentity {
+	identity := &velav1.ModelRuntimeIdentity{
+		WorkerInstanceId:       authority.GetWorkerInstanceId(),
+		WorkerInstanceEpoch:    authority.GetWorkerInstanceEpoch(),
+		DeviceSetDigest:        append([]byte(nil), authority.GetDeviceSetDigest()...),
+		MembershipDigest:       append([]byte(nil), authority.GetMembershipDigest()...),
+		ModelResidencyId:       authority.GetModelResidencyId(),
+		RuntimeIdentity:        authority.GetModelRuntimeIdentity(),
+		StageProfileRevisionId: authority.GetStageProfileRevisionId(),
+		WorkerMemberId:         memberID,
+	}
+	for _, member := range authority.GetMembers() {
+		if member.GetWorkerMemberId() == memberID {
+			identity.WorkerMemberEpoch = member.GetMemberEpoch()
+			identity.ModelRuntimeEpoch = member.GetModelRuntimeEpoch()
+			break
+		}
+	}
+	return identity
 }
 
 func (unreachableRuntimeClient) PrepareStage(

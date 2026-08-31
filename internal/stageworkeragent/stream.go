@@ -3,11 +3,19 @@ package stageworkeragent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
+	"strings"
 	"sync"
+	"time"
+	"unicode/utf8"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
@@ -227,6 +235,136 @@ func (agent *StreamAgent) Heartbeat(
 		agent.setActive(renewed)
 	}
 	return command, nil
+}
+
+func (agent *StreamAgent) Fail(
+	ctx context.Context,
+	status AggregateStatus,
+) (*velav1.StageCommandResult, error) {
+	if agent == nil || agent.runtime == nil || agent.control == nil || ctx == nil {
+		return nil, errors.New("missing configured Stage Worker failure reporter")
+	}
+	authority := agent.activeAuthority()
+	if authority == nil {
+		return nil, errors.New("missing active StageAuthority on Stage Worker")
+	}
+	failure, err := aggregateFailureEvidence(status)
+	if err != nil {
+		return nil, err
+	}
+	failure.Authority = authority
+	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_FailStage{FailStage: failure},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if stop := response.GetStopStage(); stop != nil {
+		_, cancelErr := agent.handleStop(ctx, stop)
+		return nil, errors.Join(errors.New("control stopped StageAttempt during failure report"), cancelErr)
+	}
+	command := response.GetStageCommandResult()
+	if command == nil || command.GetOperation() !=
+		velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_FAIL_STAGE ||
+		(command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED &&
+			command.GetDecision() != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED) {
+		return command, errors.New("control rejected Stage Worker failure evidence")
+	}
+	agent.clearActive(authority)
+	return command, nil
+}
+
+func aggregateFailureEvidence(status AggregateStatus) (*velav1.FailStageRequest, error) {
+	if status.ReportingMembers <= 0 || status.ReportingMembers != len(status.States) ||
+		len(status.Failures) == 0 {
+		return nil, errors.New("incomplete ModelRuntime failure evidence")
+	}
+	memberIDs := make([]string, 0, len(status.Failures))
+	failedStates := 0
+	for memberID, state := range status.States {
+		if state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED {
+			failedStates++
+			if status.Failures[memberID] == nil {
+				return nil, errors.New("failed ModelRuntime member omitted failure evidence")
+			}
+		} else if status.Failures[memberID] != nil {
+			return nil, errors.New("non-failed ModelRuntime member returned failure evidence")
+		}
+	}
+	if failedStates != len(status.Failures) {
+		return nil, errors.New("ModelRuntime failure evidence references an unknown member")
+	}
+	for memberID, evidence := range status.Failures {
+		if uuid.Validate(memberID) != nil || !validRuntimeFailureEvidence(evidence) {
+			return nil, errors.New("invalid ModelRuntime member failure evidence")
+		}
+		memberIDs = append(memberIDs, memberID)
+	}
+	slices.Sort(memberIDs)
+
+	type fingerprintMember struct {
+		MemberID    string `json:"member_id"`
+		Class       string `json:"failure_class"`
+		Fingerprint string `json:"failure_fingerprint"`
+	}
+	canonical := make([]fingerprintMember, 0, len(memberIDs))
+	detailParts := make([]string, 0, len(memberIDs))
+	failureClass := status.Failures[memberIDs[0]].GetFailureClass()
+	workerReusable := true
+	var consumedResourceUnits int64
+	var failedAt time.Time
+	var retryAt time.Time
+	for _, memberID := range memberIDs {
+		evidence := status.Failures[memberID]
+		if evidence.GetFailureClass() != failureClass {
+			failureClass = "multi_member_failure"
+		}
+		if consumedResourceUnits > math.MaxInt64-evidence.GetConsumedResourceUnits() {
+			return nil, errors.New("ModelRuntime failure resource units overflow")
+		}
+		consumedResourceUnits += evidence.GetConsumedResourceUnits()
+		workerReusable = workerReusable && evidence.GetWorkerReusable()
+		memberFailedAt := evidence.GetFailedAt().AsTime().UTC()
+		memberRetryAt := evidence.GetRetryAt().AsTime().UTC()
+		if failedAt.IsZero() || memberFailedAt.Before(failedAt) {
+			failedAt = memberFailedAt
+		}
+		if retryAt.IsZero() || memberRetryAt.After(retryAt) {
+			retryAt = memberRetryAt
+		}
+		canonical = append(canonical, fingerprintMember{
+			MemberID: memberID, Class: evidence.GetFailureClass(),
+			Fingerprint: hex.EncodeToString(evidence.GetFailureFingerprint()),
+		})
+		detailParts = append(detailParts, fmt.Sprintf(
+			"%s[%s]: %s", memberID, evidence.GetFailureClass(), evidence.GetDetail(),
+		))
+	}
+	fingerprint := append([]byte(nil), status.Failures[memberIDs[0]].GetFailureFingerprint()...)
+	if len(memberIDs) > 1 {
+		encoded, err := json.Marshal(canonical)
+		if err != nil {
+			return nil, fmt.Errorf("encode aggregate ModelRuntime failure fingerprint: %w", err)
+		}
+		digest := sha256.Sum256(append([]byte("vela-stage-failure-v1\x00"), encoded...))
+		fingerprint = digest[:]
+	}
+	return &velav1.FailStageRequest{
+		FailureClass: failureClass, FailureFingerprint: fingerprint,
+		Detail:         boundedUTF8Bytes(strings.Join(detailParts, "; "), 1000),
+		WorkerReusable: workerReusable, ConsumedResourceUnits: consumedResourceUnits,
+		FailedAt: timestamppb.New(failedAt), RetryAt: timestamppb.New(retryAt),
+	}, nil
+}
+
+func boundedUTF8Bytes(value string, limit int) string {
+	if len(value) <= limit {
+		return value
+	}
+	for limit > 0 && !utf8.ValidString(value[:limit]) {
+		limit--
+	}
+	return value[:limit]
 }
 
 func (agent *StreamAgent) Reattach(

@@ -354,7 +354,13 @@ func (agent *ProductionAgent) monitorActive(
 			}
 			return result, sequence + 1, nil
 		case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED:
-			return MaterializationResult{}, sequence + 1, errors.New("ModelRuntime reported failed StageAssignment")
+			if _, err := agent.stream.Fail(ctx, status); err != nil {
+				return MaterializationResult{}, sequence + 1, fmt.Errorf(
+					"%w: report failed StageAssignment: %v", errControlReconnect, err,
+				)
+			}
+			return MaterializationResult{GPUReleased: true}, sequence + 1,
+				errors.New("ModelRuntime failure accepted by control")
 		case velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING,
 			velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED:
 			return MaterializationResult{}, sequence + 1, errors.New("ModelRuntime stopped StageAssignment before output")

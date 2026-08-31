@@ -238,6 +238,74 @@ func TestModelRuntimeCancellationAcknowledgementPrecedesActualStop(t *testing.T)
 	}
 }
 
+func TestModelRuntimeRejectsFailedStatusWithoutStructuredEvidence(t *testing.T) {
+	clock := newManualClock(time.Date(2026, 8, 30, 7, 15, 0, 0, time.UTC))
+	signer, validator := runtimeAuthorityCrypto(t, clock)
+	authority := signRuntimeAuthority(t, signer, clock.Now())
+	backend := &fixedStatusBackend{
+		Backend: modelruntime.NewFakeDiTRuntime(),
+		status: modelruntime.BackendStatus{
+			State:             velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED,
+			Sequence:          3,
+			BackendStage:      "dit",
+			BoundedStatusJSON: []byte(`{"state":"failed"}`),
+		},
+	}
+	client, _ := serveRuntime(t, newRuntimeService(t, clock, validator, runtimeBinding(), backend))
+	prepareAndStart(t, client, authority)
+
+	response, err := client.Status(
+		context.Background(),
+		&velav1.ModelRuntimeServiceStatusRequest{Authority: authority},
+	)
+	if err != nil || response.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED {
+		t.Fatalf("Status without failure evidence = %#v error=%v", response, err)
+	}
+}
+
+func TestModelRuntimeReturnsStructuredFailureEvidence(t *testing.T) {
+	clock := newManualClock(time.Date(2026, 8, 30, 7, 20, 0, 0, time.UTC))
+	signer, validator := runtimeAuthorityCrypto(t, clock)
+	authority := signRuntimeAuthority(t, signer, clock.Now())
+	failedAt := clock.Now().Add(5 * time.Second)
+	retryAt := failedAt.Add(30 * time.Second)
+	fingerprint := bytes.Repeat([]byte{0x91}, 32)
+	backend := &fixedStatusBackend{
+		Backend: modelruntime.NewFakeDiTRuntime(),
+		status: modelruntime.BackendStatus{
+			State:             velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED,
+			Sequence:          3,
+			BackendStage:      "dit",
+			BoundedStatusJSON: []byte(`{"state":"failed"}`),
+			FailureEvidence: &modelruntime.FailureEvidence{
+				FailureClass: "backend_oom", FailureFingerprint: fingerprint,
+				Detail: "DiT allocation failed", WorkerReusable: true,
+				ConsumedResourceUnits: 87, FailedAt: failedAt, RetryAt: retryAt,
+			},
+		},
+	}
+	client, _ := serveRuntime(t, newRuntimeService(t, clock, validator, runtimeBinding(), backend))
+	prepareAndStart(t, client, authority)
+
+	response, err := client.Status(
+		context.Background(),
+		&velav1.ModelRuntimeServiceStatusRequest{Authority: authority},
+	)
+	evidence := response.GetFailureEvidence()
+	if err != nil || response.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED ||
+		response.GetState() != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED ||
+		evidence.GetFailureClass() != "backend_oom" ||
+		!bytes.Equal(evidence.GetFailureFingerprint(), fingerprint) ||
+		evidence.GetDetail() != "DiT allocation failed" || !evidence.GetWorkerReusable() ||
+		evidence.GetConsumedResourceUnits() != 87 ||
+		!evidence.GetFailedAt().AsTime().Equal(failedAt) ||
+		!evidence.GetRetryAt().AsTime().Equal(retryAt) {
+		t.Fatalf("Status failure evidence = %#v response=%#v error=%v", evidence, response, err)
+	}
+}
+
 func TestModelRuntimeSealsOnlyTheExactActiveAuthority(t *testing.T) {
 	clock := newManualClock(time.Date(2026, 8, 30, 7, 30, 0, 0, time.UTC))
 	signer, validator := runtimeAuthorityCrypto(t, clock)
@@ -346,6 +414,18 @@ func newRuntimeService(
 	}
 	t.Cleanup(service.Close)
 	return service
+}
+
+type fixedStatusBackend struct {
+	modelruntime.Backend
+	status modelruntime.BackendStatus
+}
+
+func (backend *fixedStatusBackend) Status(
+	context.Context,
+	stageauthority.Verified,
+) (modelruntime.BackendStatus, error) {
+	return backend.status, nil
 }
 
 func serveRuntime(

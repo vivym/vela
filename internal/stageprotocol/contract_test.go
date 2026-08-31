@@ -173,6 +173,35 @@ func TestModelRuntimeResponsesCarryIndependentMemberIdentity(t *testing.T) {
 	}
 }
 
+func TestModelRuntimeFailedStatusCarriesStructuredFailureEvidence(t *testing.T) {
+	statusDescriptor, err := protoregistry.GlobalFiles.FindDescriptorByName(
+		"vela.v1.ModelRuntimeServiceStatusResponse",
+	)
+	if err != nil {
+		t.Fatalf("ModelRuntimeServiceStatusResponse descriptor: %v", err)
+	}
+	status := statusDescriptor.(protoreflect.MessageDescriptor)
+	failureField := status.Fields().ByName("failure_evidence")
+	if failureField == nil || failureField.Message() == nil ||
+		failureField.Message().FullName() != "vela.v1.ModelRuntimeFailureEvidence" {
+		t.Fatalf("ModelRuntimeServiceStatusResponse.failure_evidence = %#v", failureField)
+	}
+	failure := failureField.Message()
+	for _, name := range []protoreflect.Name{
+		"failure_class",
+		"failure_fingerprint",
+		"detail",
+		"worker_reusable",
+		"consumed_resource_units",
+		"failed_at",
+		"retry_at",
+	} {
+		if failure.Fields().ByName(name) == nil {
+			t.Errorf("ModelRuntimeFailureEvidence.%s is missing", name)
+		}
+	}
+}
+
 func TestStageAuthorityBindsEveryExecutionFenceAndRuntimeEpoch(t *testing.T) {
 	descriptor, err := protoregistry.GlobalFiles.FindDescriptorByName("vela.v1.StageAuthority")
 	if err != nil {

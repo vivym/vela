@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageassignment"
@@ -56,6 +57,7 @@ type AggregateStatus struct {
 	AllStopped       bool
 	States           map[string]velav1.ModelRuntimeExecutionState
 	LocalReceipts    map[string]LocalReceipt
+	Failures         map[string]*velav1.ModelRuntimeFailureEvidence
 }
 
 type LocalReceipt struct {
@@ -191,6 +193,7 @@ func (agent *Agent) Status(
 	result := AggregateStatus{
 		States:        make(map[string]velav1.ModelRuntimeExecutionState),
 		LocalReceipts: make(map[string]LocalReceipt),
+		Failures:      make(map[string]*velav1.ModelRuntimeFailureEvidence),
 	}
 	if agent == nil || len(agent.ids) == 0 {
 		return result, errors.New("missing Stage Worker Agent configuration")
@@ -235,6 +238,18 @@ func (agent *Agent) Status(
 		}
 		result.ReportingMembers++
 		result.States[memberResult.id] = response.GetState()
+		failure := response.GetFailureEvidence()
+		if (response.GetState() == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED) !=
+			(failure != nil) || (failure != nil && !validRuntimeFailureEvidence(failure)) {
+			joined = errors.Join(joined, fmt.Errorf(
+				"status member %s returned malformed failure evidence", memberResult.id,
+			))
+			result.AllStopped = false
+			continue
+		}
+		if failure != nil {
+			result.Failures[memberResult.id] = proto.Clone(failure).(*velav1.ModelRuntimeFailureEvidence)
+		}
 		if response.GetLocalReceiptId() != "" || len(response.GetLocalReceiptDigest()) != 0 {
 			if response.GetLocalReceiptId() == "" || len(response.GetLocalReceiptDigest()) != 32 {
 				joined = errors.Join(joined, fmt.Errorf("status member %s returned malformed local receipt", memberResult.id))
@@ -251,6 +266,20 @@ func (agent *Agent) Status(
 		}
 	}
 	return result, joined
+}
+
+func validRuntimeFailureEvidence(evidence *velav1.ModelRuntimeFailureEvidence) bool {
+	if evidence == nil || strings.TrimSpace(evidence.GetFailureClass()) == "" ||
+		evidence.GetFailureClass() != strings.TrimSpace(evidence.GetFailureClass()) ||
+		len(evidence.GetFailureClass()) > 100 || !utf8.ValidString(evidence.GetFailureClass()) ||
+		len(evidence.GetFailureFingerprint()) != sha256.Size ||
+		!utf8.ValidString(evidence.GetDetail()) || utf8.RuneCountInString(evidence.GetDetail()) > 1000 ||
+		evidence.GetConsumedResourceUnits() <= 0 || evidence.GetFailedAt() == nil ||
+		evidence.GetRetryAt() == nil || evidence.GetFailedAt().CheckValid() != nil ||
+		evidence.GetRetryAt().CheckValid() != nil {
+		return false
+	}
+	return evidence.GetRetryAt().AsTime().After(evidence.GetFailedAt().AsTime())
 }
 
 func (agent *Agent) SealOutput(

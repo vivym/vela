@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -392,6 +393,17 @@ func (service *Service) Status(
 	response.LocalReceiptId = status.LocalReceiptID
 	response.LocalReceiptDigest = append([]byte(nil), status.LocalReceiptDigest...)
 	response.Detail = boundedDetail(status.Detail)
+	if status.FailureEvidence != nil {
+		response.FailureEvidence = &velav1.ModelRuntimeFailureEvidence{
+			FailureClass:          status.FailureEvidence.FailureClass,
+			FailureFingerprint:    append([]byte(nil), status.FailureEvidence.FailureFingerprint...),
+			Detail:                status.FailureEvidence.Detail,
+			WorkerReusable:        status.FailureEvidence.WorkerReusable,
+			ConsumedResourceUnits: status.FailureEvidence.ConsumedResourceUnits,
+			FailedAt:              timestamppb.New(status.FailureEvidence.FailedAt.UTC()),
+			RetryAt:               timestamppb.New(status.FailureEvidence.RetryAt.UTC()),
+		}
+	}
 	return response, nil
 }
 
@@ -747,6 +759,34 @@ func validateBackendStatus(status BackendStatus) error {
 	}
 	if status.Progress != nil && (*status.Progress < 0 || *status.Progress > 1) {
 		return errors.New("ModelRuntime backend progress is invalid")
+	}
+	if (status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED) !=
+		(status.FailureEvidence != nil) {
+		return errors.New("ModelRuntime backend failure evidence does not match execution state")
+	}
+	if status.FailureEvidence != nil {
+		if err := validateFailureEvidence(status.FailureEvidence); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateFailureEvidence(evidence *FailureEvidence) error {
+	if evidence == nil || strings.TrimSpace(evidence.FailureClass) == "" ||
+		evidence.FailureClass != strings.TrimSpace(evidence.FailureClass) ||
+		len(evidence.FailureClass) > 100 || !utf8.ValidString(evidence.FailureClass) ||
+		len(evidence.FailureFingerprint) != sha256.Size ||
+		!utf8.ValidString(evidence.Detail) || utf8.RuneCountInString(evidence.Detail) > maxRuntimeDetailRunes ||
+		evidence.ConsumedResourceUnits <= 0 || evidence.FailedAt.IsZero() || evidence.RetryAt.IsZero() ||
+		!evidence.RetryAt.After(evidence.FailedAt) {
+		return errors.New("ModelRuntime backend failure evidence is invalid")
+	}
+	if err := timestamppb.New(evidence.FailedAt).CheckValid(); err != nil {
+		return errors.New("ModelRuntime backend failed_at is invalid")
+	}
+	if err := timestamppb.New(evidence.RetryAt).CheckValid(); err != nil {
+		return errors.New("ModelRuntime backend retry_at is invalid")
 	}
 	return nil
 }

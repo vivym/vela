@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -27,6 +28,17 @@ type BackendStatus struct {
 	LocalReceiptID     string
 	LocalReceiptDigest []byte
 	Detail             string
+	FailureEvidence    *FailureEvidence
+}
+
+type FailureEvidence struct {
+	FailureClass          string
+	FailureFingerprint    []byte
+	Detail                string
+	WorkerReusable        bool
+	ConsumedResourceUnits int64
+	FailedAt              time.Time
+	RetryAt               time.Time
 }
 
 type SealedOutput struct {

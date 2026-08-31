@@ -107,6 +107,70 @@ func TestStreamAgentCancelsRuntimeWhenControlStartRejects(t *testing.T) {
 	}
 }
 
+func TestStreamAgentAggregatesMemberFailureAndClearsAuthorityOnlyAfterControlAccepts(t *testing.T) {
+	fixture := newBarrierFixture(t, false)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{
+			{ID: fixture.memberIDs[0], Client: fixture.clients[0]},
+			{ID: fixture.memberIDs[1], Client: fixture.clients[1]},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	control := &recordingStreamControl{
+		decision: velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
+	}
+	streamAgent, err := stageworkeragent.NewStreamAgent(runtimeAgent, control)
+	if err != nil {
+		t.Fatalf("NewStreamAgent: %v", err)
+	}
+	if _, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatalf("ExecuteAssignment: %v", err)
+	}
+	failedAt := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	status := stageworkeragent.AggregateStatus{
+		ReportingMembers: 2,
+		States: map[string]velav1.ModelRuntimeExecutionState{
+			fixture.memberIDs[0]: velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED,
+			fixture.memberIDs[1]: velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED,
+		},
+		Failures: map[string]*velav1.ModelRuntimeFailureEvidence{
+			fixture.memberIDs[0]: {
+				FailureClass: "backend_oom", FailureFingerprint: bytes.Repeat([]byte{0x91}, 32),
+				Detail: "rank 0 exhausted memory", WorkerReusable: true,
+				ConsumedResourceUnits: 12, FailedAt: timestamppb.New(failedAt.Add(time.Second)),
+				RetryAt: timestamppb.New(failedAt.Add(time.Minute)),
+			},
+			fixture.memberIDs[1]: {
+				FailureClass: "backend_oom", FailureFingerprint: bytes.Repeat([]byte{0x92}, 32),
+				Detail: "rank 1 exhausted memory", WorkerReusable: false,
+				ConsumedResourceUnits: 19, FailedAt: timestamppb.New(failedAt),
+				RetryAt: timestamppb.New(failedAt.Add(2 * time.Minute)),
+			},
+		},
+	}
+
+	result, err := streamAgent.Fail(context.Background(), status)
+	failure := control.lastRequest.GetFailStage()
+	if err != nil || result.GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED ||
+		failure == nil || failure.GetFailureClass() != "backend_oom" ||
+		len(failure.GetFailureFingerprint()) != sha256.Size ||
+		bytes.Equal(failure.GetFailureFingerprint(), status.Failures[fixture.memberIDs[0]].GetFailureFingerprint()) ||
+		bytes.Equal(failure.GetFailureFingerprint(), status.Failures[fixture.memberIDs[1]].GetFailureFingerprint()) ||
+		failure.GetWorkerReusable() || failure.GetConsumedResourceUnits() != 31 ||
+		!failure.GetFailedAt().AsTime().Equal(failedAt) ||
+		!failure.GetRetryAt().AsTime().Equal(failedAt.Add(2*time.Minute)) ||
+		!bytes.Contains([]byte(failure.GetDetail()), []byte(fixture.memberIDs[0])) ||
+		!bytes.Contains([]byte(failure.GetDetail()), []byte(fixture.memberIDs[1])) {
+		t.Fatalf("Fail = %#v request=%#v error=%v", result, failure, err)
+	}
+	if _, err := streamAgent.Heartbeat(context.Background(), 2); err == nil {
+		t.Fatal("Heartbeat retained active authority after accepted FailStage")
+	}
+}
+
 func TestStreamAgentReattachesOnlyAfterSameRuntimeConfirmsAuthority(t *testing.T) {
 	fixture := newBarrierFixture(t, false)
 	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
@@ -911,6 +975,8 @@ func (control *recordingStreamControl) Exchange(
 		operation = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_HEARTBEAT_STAGE
 	case *velav1.StageWorkerControlServiceConnectRequest_ReattachStage:
 		operation = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE
+	case *velav1.StageWorkerControlServiceConnectRequest_FailStage:
+		operation = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_FAIL_STAGE
 	default:
 		return nil, errors.New("unexpected Stage Worker operation")
 	}
