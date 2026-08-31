@@ -27,6 +27,7 @@ var velaImageArtifactTargets = [...]velaImageArtifactTarget{
 	{name: "vela-control", entrypoint: "/usr/local/bin/vela-control"},
 	{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
 	{name: "vela-h3-runner", entrypoint: "/opt/vela/venv/bin/vela-h3-runner"},
+	{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 	{name: "vela-worker-agent", entrypoint: "/usr/local/bin/vela-worker-agent"},
 }
 
@@ -99,7 +100,7 @@ func TestBuildVelaImageArtifactsProducesReleaseBundleInputs(t *testing.T) {
 
 func TestBuildVelaImageArtifactsRejectsInvalidLayerDescriptor(t *testing.T) {
 	fixture := newVelaImageArtifactFixture(t)
-	rewriteOCILayoutManifest(t, filepath.Join(fixture.layoutRoot, "vela-worker-agent"), func(manifest *ociv1.Manifest) {
+	rewriteOCILayoutManifest(t, filepath.Join(fixture.layoutRoot, "vela-stage-worker-agent"), func(manifest *ociv1.Manifest) {
 		manifest.Layers[0].MediaType = ""
 	})
 	assertVelaImageArtifactBuildRejected(t, fixture, copyOCILayoutsFakeDocker, "invalid OCI layer descriptor")

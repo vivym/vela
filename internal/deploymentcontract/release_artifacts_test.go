@@ -388,7 +388,8 @@ func TestPrintVelaImageBuildDefinesExactPinnedTargets(t *testing.T) {
 		t.Fatalf("decode Vela image build definition: %v\n%s", err, encoded)
 	}
 	expectedTargets := []string{
-		"vela-control", "vela-fleet-controller", "vela-h3-runner", "vela-worker-agent",
+		"vela-control", "vela-fleet-controller", "vela-h3-runner",
+		"vela-stage-worker-agent", "vela-worker-agent",
 	}
 	slices.Sort(definition.Group["vela-all"].Targets)
 	if !slices.Equal(definition.Group["vela-all"].Targets, expectedTargets) {
@@ -618,6 +619,7 @@ func TestVelaImageDockerfilePinsRuntimeContract(t *testing.T) {
 			},
 		},
 		{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
+		{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 		{name: "vela-worker-agent", entrypoint: "/usr/local/bin/vela-worker-agent"},
 		{
 			name:       "vela-h3-runner",

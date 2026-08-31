@@ -324,6 +324,20 @@ seal, and explicit M6 contraction-readiness archive/freeze command. They do not
 authorize production activation, prove real Worker-local or N-1 drain, remove
 legacy schema/code, or make the monolithic path unreachable in the repository.
 
+The repository also contains the production `vela-stage-worker-agent` image,
+target-only default Fleet rollout input, dynamic one-member/one-GPU Pod and DRA
+claim materialization, the explicit one-slot Encoder/VAE AUX exception, and a
+canonical release bundle that binds the Stage Worker render, configuration,
+Secret contracts, actuation, and external ModelRuntime image entrypoint. A
+future multi-member/multi-node actuation fixture preserves the LLM shape without
+changing H3 DiT from single-GPU. The composition smoke uses fake local gRPC
+control/ModelRuntime and an in-process S3-compatible endpoint; it is not a real
+GPU, DRA, Kubernetes, cross-node, model-residency, or Launch Receipt test.
+The release graph binds external Secret/ConfigMap names and declared revisions,
+but Fleet neither reads Secret values nor verifies live resource UID/content.
+Production admission and secret-manager evidence must prevent deletion and
+same-name recreation of immutable rollout resources before activation.
+
 Deliver:
 
 - staged cohort cutover and rollback-before-contraction controls;

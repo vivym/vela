@@ -22,7 +22,7 @@ import (
 
 const (
 	velaImageArtifactSchemaVersion = 1
-	velaImageCount                 = 4
+	velaImageCount                 = 5
 	maximumOCIImageLayoutBytes     = int64(8 << 30)
 )
 
@@ -146,6 +146,7 @@ func velaImageSpecifications() [velaImageCount]velaImageSpecification {
 		{name: "vela-control", entrypoint: "/usr/local/bin/vela-control"},
 		{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
 		{name: "vela-h3-runner", entrypoint: "/opt/vela/venv/bin/vela-h3-runner"},
+		{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 		{name: "vela-worker-agent", entrypoint: "/usr/local/bin/vela-worker-agent"},
 	}
 }

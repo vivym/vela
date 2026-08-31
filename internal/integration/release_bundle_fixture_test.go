@@ -58,6 +58,11 @@ var catalogReleaseInventory = map[string][]catalogReleaseResource{
 		{apiVersion: "v1", kind: "ConfigMap", namespace: "vela-observability", name: "vela-slo-dashboard-r1"},
 		{apiVersion: "monitoring.coreos.com/v1", kind: "PodMonitor", namespace: "vela-observability", name: "vela-control"},
 	},
+	"stage-worker": {
+		{apiVersion: "v1", kind: "Namespace", name: "vela-system"},
+		{apiVersion: "v1", kind: "ServiceAccount", namespace: "vela-system", name: "vela-worker"},
+		{apiVersion: "v1", kind: "ConfigMap", namespace: "vela-system", name: "vela-stage-worker-runtime-r1"},
+	},
 	"vela-control": {
 		{apiVersion: "v1", kind: "Namespace", name: "vela-system"},
 		{apiVersion: "v1", kind: "ServiceAccount", namespace: "vela-system", name: "vela-control"},
@@ -95,7 +100,7 @@ func writeCatalogReleaseBundleFixture(t *testing.T, directory, variant string) r
 		"ghcr.io/vivym/vela-control@" + controlManifest.digest,
 		"ghcr.io/vivym/vela-worker-agent@" + workerManifest.digest,
 	}
-	for index, name := range []string{"control-storage", "fleet-controller", "observability", "vela-control", "worker-agent"} {
+	for index, name := range []string{"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control", "worker-agent"} {
 		writeCatalogReleaseFile(
 			t,
 			filepath.Join(directory, "render-"+name+".yaml"),
@@ -214,7 +219,7 @@ WantedBy=multi-user.target
 			{Image: images[1], Ref: workerManifest.ref, ConfigRef: workerManifest.configRef},
 		},
 	}
-	for _, name := range []string{"control-storage", "fleet-controller", "observability", "vela-control", "worker-agent"} {
+	for _, name := range []string{"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control", "worker-agent"} {
 		plan.FinalRenders = append(plan.FinalRenders, releasebundle.ArtifactInput{Name: name, Ref: "render-" + name + ".yaml"})
 	}
 	planPath := filepath.Join(directory, "release-bundle-plan.json")
@@ -340,6 +345,7 @@ func writeCatalogOCIManifest(t *testing.T, directory, name string) catalogOCIMan
 	config, err := json.Marshal(map[string]any{
 		"architecture": "amd64",
 		"os":           "linux",
+		"config":       map[string]any{"Entrypoint": []string{"/usr/local/bin/" + name}},
 		"rootfs":       map[string]any{"type": "layers", "diff_ids": []string{}},
 	})
 	if err != nil {

@@ -12,6 +12,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/fleetcontroller"
 )
 
 func TestBuildAndLoadCanonicalReleaseBundle(t *testing.T) {
@@ -24,7 +29,7 @@ func TestBuildAndLoadCanonicalReleaseBundle(t *testing.T) {
 		!validDigest(bundle.ConfigurationRevision) ||
 		bundle.ReleaseDescriptor.MediaType != ReleaseDescriptorMediaType ||
 		bundle.ReleaseDescriptor.Config.Digest != bundle.ConfigurationRevision ||
-		len(bundle.ConfigurationManifest.FinalRenders) != 5 ||
+		len(bundle.ConfigurationManifest.FinalRenders) != 6 ||
 		len(bundle.ConfigurationManifest.Packages) != 2 ||
 		len(bundle.ConfigurationManifest.WorkerMaterializations) != 1 || len(bundle.OCIImages) != 2 {
 		t.Fatalf("built bundle = %#v", bundle)
@@ -52,6 +57,166 @@ func TestBuildAndLoadCanonicalReleaseBundle(t *testing.T) {
 	if err != nil || loaded.ReleaseDigest != bundle.ReleaseDigest ||
 		loaded.ConfigurationRevision != bundle.ConfigurationRevision {
 		t.Fatalf("load bundle = %#v error=%v", loaded, err)
+	}
+}
+
+func TestBuildBindsTargetResidencyPlanStageWorkerAndSecrets(t *testing.T) {
+	fixture := newBundleFixture(t)
+	stageManifest := testOCIManifest(t, fixture.directory, "stage-worker")
+	runtimeManifest := testOCIManifest(t, fixture.directory, "h3-stage-runtime")
+	stageImage := "ghcr.io/vivym/vela-stage-worker-agent@" + stageManifest.digest
+	runtimeImage := "ghcr.io/vivym/vela-h3-stage-runtime@" + runtimeManifest.digest
+	fixture.plan.OCIManifests = append(fixture.plan.OCIManifests,
+		OCIManifestInput{
+			Image: stageImage, Ref: stageManifest.ref, ConfigRef: stageManifest.configRef,
+		},
+		OCIManifestInput{
+			Image: runtimeImage, Ref: runtimeManifest.ref, ConfigRef: runtimeManifest.configRef,
+		},
+	)
+
+	planID := uuid.MustParse("49330000-0000-0000-0000-000000000001")
+	bundleID := uuid.MustParse("49330000-0000-0000-0000-000000000002")
+	poolID := uuid.MustParse("49330000-0000-0000-0000-000000000003")
+	workerID := uuid.MustParse("49330000-0000-0000-0000-000000000004")
+	profileID := uuid.MustParse("49330000-0000-0000-0000-000000000005")
+	actuation := fleetcontroller.WorkerBundleActuation{
+		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
+		Namespace: "vela-system", InitImage: fixture.images[0],
+		StageWorkerAgentImage:          stageImage,
+		RuntimeImage:                   runtimeImage,
+		StageWorkerConfigMap:           "vela-stage-worker-runtime-r1",
+		StageWorkerControlTLSSecret:    "stage-worker-control-r1",
+		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
+		ArtifactStoreCredentialsSecret: "stage-worker-artifact-credentials-r1",
+		ArtifactStoreCASecret:          "stage-worker-artifact-ca-r1",
+		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
+			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
+			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
+				Component: "DIT", ModelComponentRevision: "h3-dit-r1",
+				RuntimeIdentity: "h3-dit-runtime-r1", Command: []string{"/opt/vela/bin/h3-dit"},
+			}},
+			Members: []fleetcontroller.WorkerMemberActuation{{
+				ID: uuid.MustParse("49330000-0000-0000-0000-000000000006"), MemberEpoch: 1,
+				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
+				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
+					DeviceID: uuid.MustParse("49330000-0000-0000-0000-000000000007"), DeviceEpoch: 1,
+					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
+				}},
+			}},
+		}},
+	}
+	var err error
+	actuation.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(actuation)
+	if err != nil {
+		t.Fatalf("digest target WorkerBundle: %v", err)
+	}
+	rollout := fleetcontroller.ResidencyPlanRollout{
+		ApprovedPlan: fleet.ApprovedResidencyPlan{
+			SchemaVersion: 1, ID: planID, StableID: "h3-stage-target-r1", Revision: 1,
+			ContentDigest: actuation.RevisionDigest, ApprovalEvidenceDigest: strings.Repeat("e", 64),
+			ApprovedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), ApprovedBy: "fleet/operator-1",
+			CapacityPools: []fleet.PlannedCapacityPool{{
+				ID: poolID, StableID: "h3-dit", StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
+				ResourceClass: "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai", MaxReadyQueueDepth: 128,
+			}},
+			WorkerBundles: []fleet.PlannedWorkerBundle{{
+				ID: bundleID, StableID: "h3-node-01", DesiredGeneration: 1, LayoutDigest: actuation.RevisionDigest,
+			}},
+			WorkerInstances: []fleet.PlannedWorkerInstance{{
+				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
+				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
+			}},
+		},
+		WorkerBundles: []fleetcontroller.WorkerBundleActuation{actuation},
+	}
+	encoded, err := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"rollouts":       []fleetcontroller.ResidencyPlanRollout{rollout},
+	})
+	if err != nil {
+		t.Fatalf("encode target ResidencyPlan: %v", err)
+	}
+	writeFleetResidencyPlanRender(t, fixture, encoded)
+	fixture.plan.WorkerMaterializations = nil
+	findExternalResource(t, fixture, "vela-system", "artifact-store-ca-r1").Consumers =
+		[]string{"DaemonSet/vela-system/vela-h3-worker"}
+	findExternalResource(t, fixture, "vela-system", "worker-control-tls-node-1").Consumers =
+		[]string{"DaemonSet/vela-system/vela-h3-worker"}
+	consumer := "ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-r1"
+	fixture.plan.ExternalResources = append(fixture.plan.ExternalResources,
+		ExternalResource{
+			Kind: "ConfigMap", Namespace: "vela-system", Name: "worker-runtime-node-1",
+			Revision: testDigest("legacy worker runtime"),
+		},
+		ExternalResource{
+			Kind: "ConfigMap", Namespace: "vela-system", Name: "runner-profiles-node-1",
+			Revision: testDigest("legacy runner profiles"),
+		},
+		ExternalResource{
+			Kind: "ConfigMap", Namespace: "vela-system", Name: "runner-gpu-roles-node-1",
+			Revision: testDigest("legacy runner gpu roles"),
+		},
+		ExternalResource{
+			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1",
+			Revision: testDigest("stage control"), RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
+			Consumers: []string{consumer},
+		},
+		ExternalResource{
+			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-authority-r1",
+			Revision: testDigest("stage authority"), RequiredKeys: []string{"keyring.json"},
+			Consumers: []string{consumer},
+		},
+		ExternalResource{
+			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-credentials-r1",
+			Revision:     testDigest("stage artifact credentials"),
+			RequiredKeys: []string{"access-key-id", "secret-access-key"}, Consumers: []string{consumer},
+		},
+		ExternalResource{
+			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-ca-r1",
+			Revision: testDigest("stage artifact ca"), RequiredKeys: []string{"ca.crt"},
+			Consumers: []string{consumer},
+		},
+	)
+	fixture.writePlan(t)
+
+	bundle, _, err := Build(fixture.planPath)
+	if err != nil {
+		t.Fatalf("build target ResidencyPlan release bundle: %v", err)
+	}
+	if len(bundle.ConfigurationManifest.FinalRenders) != 6 ||
+		len(bundle.ConfigurationManifest.WorkerMaterializations) != 0 || len(bundle.OCIImages) != 4 {
+		t.Fatalf("target ResidencyPlan release bundle = %#v", bundle.ConfigurationManifest)
+	}
+}
+
+func TestValidateModelRuntimeOCIConfigRequiresAbsoluteEntrypoint(t *testing.T) {
+	image := "ghcr.io/vivym/vela-h3-stage-runtime@" + testDigest("runtime")
+	for _, test := range []struct {
+		name       string
+		entrypoint []string
+		wantError  bool
+	}{
+		{name: "absolute", entrypoint: []string{"/opt/vela/bin/h3-stage-runtime"}},
+		{name: "absolute with arguments", entrypoint: []string{"/opt/vela/bin/h3-stage-runtime", "--serve"}},
+		{name: "missing", wantError: true},
+		{name: "relative", entrypoint: []string{"bin/h3-stage-runtime"}, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			encoded, err := json.Marshal(map[string]any{
+				"architecture": "amd64", "os": "linux",
+				"config": map[string]any{"Entrypoint": test.entrypoint},
+				"rootfs": map[string]any{"type": "layers", "diff_ids": []string{}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = validateModelRuntimeOCIConfig(image, encoded)
+			if (err != nil) != test.wantError {
+				t.Fatalf("validateModelRuntimeOCIConfig error = %v, wantError=%t", err, test.wantError)
+			}
+		})
 	}
 }
 
@@ -1392,6 +1557,24 @@ func writeFleetDesiredRender(
 	)
 }
 
+func writeFleetResidencyPlanRender(t *testing.T, fixture *bundleFixture, encoded []byte) {
+	t.Helper()
+	render := testFinalRender("fleet-controller", fixture.images[1], fixture.images)
+	legacyIdentity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-desired-r1\n  namespace: vela-system\n"
+	target := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
+		"  name: vela-fleet-residency-plan-rollouts-r1\n  namespace: vela-system\n" +
+		"immutable: true\ndata:\n  rollouts.json: |-\n    " +
+		strings.ReplaceAll(string(encoded), "\n", "\n    ") + "\n"
+	if !strings.Contains(render, legacyIdentity) {
+		t.Fatal("Fleet release fixture lacks legacy ConfigMap replacement point")
+	}
+	writeTestFile(
+		t,
+		filepath.Join(fixture.directory, "render-fleet-controller.yaml"),
+		[]byte(strings.Replace(render, legacyIdentity, target, 1)),
+	)
+}
+
 func fleetDesiredConfiguration(workers []WorkerMaterializationInput, images []string) string {
 	var desired strings.Builder
 	desired.WriteString("apiVersion: fleet.vela.ai/v1alpha1\nkind: FleetDesiredRevisions\nrevisions:\n")
@@ -1527,6 +1710,7 @@ func testOCIManifest(t *testing.T, directory, name string) manifestFixture {
 	config := map[string]any{
 		"architecture": "amd64",
 		"os":           "linux",
+		"config":       map[string]any{"Entrypoint": []string{"/usr/local/bin/" + name}},
 		"rootfs":       map[string]any{"type": "layers", "diff_ids": []string{}},
 	}
 	configEncoded, err := json.Marshal(config)

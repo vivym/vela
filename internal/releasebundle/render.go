@@ -20,12 +20,13 @@ import (
 )
 
 type renderedResourceContract struct {
-	APIVersion    string
-	Kind          string
-	Namespace     string
-	Name          string
-	NamePrefix    string
-	ClusterScoped bool
+	APIVersion          string
+	Kind                string
+	Namespace           string
+	Name                string
+	NamePrefix          string
+	AlternateNamePrefix string
+	ClusterScoped       bool
 }
 
 var finalRenderInventory = map[string][]renderedResourceContract{
@@ -51,7 +52,7 @@ var finalRenderInventory = map[string][]renderedResourceContract{
 		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRole", Name: "vela-fleet-controller-node-reader", ClusterScoped: true},
 		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "RoleBinding", Namespace: "vela-system", Name: "vela-fleet-controller"},
 		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRoleBinding", Name: "vela-fleet-controller-node-reader", ClusterScoped: true},
-		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-fleet-desired-"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-fleet-desired-", AlternateNamePrefix: "vela-fleet-residency-plan-rollouts-"},
 		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-fleet-admission"},
 		{APIVersion: "apps/v1", Kind: "Deployment", Namespace: "vela-system", Name: "vela-fleet-controller"},
 		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "vela-fleet-controller"},
@@ -62,6 +63,11 @@ var finalRenderInventory = map[string][]renderedResourceContract{
 		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-observability", NamePrefix: "vela-slo-contract-"},
 		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-observability", NamePrefix: "vela-slo-dashboard-"},
 		{APIVersion: "monitoring.coreos.com/v1", Kind: "PodMonitor", Namespace: "vela-observability", Name: "vela-control"},
+	},
+	"stage-worker": {
+		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
+		{APIVersion: "v1", Kind: "ServiceAccount", Namespace: "vela-system", Name: "vela-worker"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-stage-worker-runtime-"},
 	},
 	"vela-control": {
 		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
@@ -146,6 +152,14 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 			}
 			inventory.fleetDesired = append(inventory.fleetDesired, desired...)
 		}
+		if kind == "ConfigMap" && namespace == "vela-system" &&
+			strings.HasPrefix(resourceName, "vela-fleet-residency-plan-rollouts-") {
+			rollouts, err := decodeFleetResidencyPlanConfigMap(document, namespace)
+			if err != nil {
+				return invalidf("Fleet ResidencyPlan ConfigMap %s/%s: %v", namespace, resourceName, err)
+			}
+			inventory.residencyRollouts = append(inventory.residencyRollouts, rollouts...)
+		}
 	}
 	for index, present := range found {
 		if !present {
@@ -154,6 +168,22 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 		}
 	}
 	return nil
+}
+
+func decodeFleetResidencyPlanConfigMap(
+	document map[string]any,
+	namespace string,
+) ([]fleetcontroller.ResidencyPlanRollout, error) {
+	immutable, _ := document["immutable"].(bool)
+	data, ok := document["data"].(map[string]any)
+	if !immutable || !ok || len(data) != 1 {
+		return nil, errors.New("immutable data must contain only rollouts.json")
+	}
+	encoded, ok := data["rollouts.json"].(string)
+	if !ok || encoded == "" {
+		return nil, errors.New("data must contain rollouts.json")
+	}
+	return fleetcontroller.DecodeResidencyPlanRollouts([]byte(encoded), namespace)
 }
 
 func decodeFleetDesiredConfigMap(
@@ -236,13 +266,23 @@ func (contract renderedResourceContract) matches(apiVersion, kind, namespace, na
 	if contract.Name != "" {
 		return name == contract.Name
 	}
-	return contract.Kind == "ConfigMap" && strings.HasPrefix(name, contract.NamePrefix) &&
-		len(name) > len(contract.NamePrefix) && !containsTemplateValue(name)
+	if contract.Kind != "ConfigMap" || containsTemplateValue(name) {
+		return false
+	}
+	for _, prefix := range []string{contract.NamePrefix, contract.AlternateNamePrefix} {
+		if prefix != "" && strings.HasPrefix(name, prefix) && len(name) > len(prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (contract renderedResourceContract) displayName() string {
 	if contract.Name != "" {
 		return contract.Name
+	}
+	if contract.AlternateNamePrefix != "" {
+		return contract.NamePrefix + "* or " + contract.AlternateNamePrefix + "*"
 	}
 	return contract.NamePrefix + "*"
 }
@@ -270,6 +310,9 @@ func scanRenderedValue(
 						return fmt.Errorf("field %s contains an unpinned or invalid OCI image %q", key, stringValue)
 					}
 					inventory.images[stringValue] = struct{}{}
+					if key == "runtime_image" {
+						inventory.modelRuntimeImages[stringValue] = struct{}{}
+					}
 				}
 				if kind := directReferenceKind(key); kind != "" {
 					resource := resourceKey{Kind: kind, Namespace: namespace, Name: stringValue}
@@ -391,10 +434,14 @@ func recordReference(inventory *renderInventory, resource resourceKey, consumer 
 
 func directSecretKeys(key string) []string {
 	switch key {
-	case "workerControlTLSSecret":
+	case "workerControlTLSSecret", "stage_worker_control_tls_secret":
 		return []string{"ca.crt", "tls.crt", "tls.key"}
-	case "artifactStoreTLSSecret":
+	case "artifactStoreTLSSecret", "artifact_store_ca_secret":
 		return []string{"ca.crt"}
+	case "stage_worker_authority_secret":
+		return []string{"keyring.json"}
+	case "artifact_store_credentials_secret":
+		return []string{"access-key-id", "secret-access-key"}
 	default:
 		return nil
 	}
@@ -434,7 +481,8 @@ func selectorSecretKeys(kind string, selector map[string]any) ([]string, error) 
 
 func isImageField(key, parent string) bool {
 	switch key {
-	case "imageName", "operatorImage", "operator_image", "initImage", "workerAgentImage", "runnerImage":
+	case "imageName", "operatorImage", "operator_image", "initImage", "workerAgentImage", "runnerImage",
+		"init_image", "stage_worker_agent_image", "runtime_image":
 		return true
 	case "image":
 		return parent == "containers" || parent == "initContainers" || parent == "ephemeralContainers"
@@ -449,9 +497,12 @@ func validImage(value string) bool {
 
 func directReferenceKind(key string) string {
 	switch key {
-	case "secretName", "workerControlTLSSecret", "artifactStoreTLSSecret":
+	case "secretName", "workerControlTLSSecret", "artifactStoreTLSSecret",
+		"stage_worker_control_tls_secret", "stage_worker_authority_secret",
+		"artifact_store_credentials_secret", "artifact_store_ca_secret":
 		return "Secret"
-	case "workerRuntimeConfigMap", "runnerProfilesConfigMap", "runnerGPURolesConfigMap":
+	case "workerRuntimeConfigMap", "runnerProfilesConfigMap", "runnerGPURolesConfigMap",
+		"stage_worker_config_map":
 		return "ConfigMap"
 	default:
 		return ""
@@ -918,6 +969,23 @@ func validateOCIManifest(
 		return "", Platform{}, invalidf("OCI config for %s must bind linux/amd64", input.Image)
 	}
 	return manifest.MediaType, Platform{OS: config.OS, Architecture: config.Architecture}, nil
+}
+
+func validateModelRuntimeOCIConfig(image string, encoded []byte) error {
+	var config ociv1.Image
+	if err := decodeStrictJSON(encoded, &config); err != nil {
+		return invalidf("decode ModelRuntime OCI config for %s: %v", image, err)
+	}
+	entrypoint := config.Config.Entrypoint
+	if len(entrypoint) == 0 || len(entrypoint) > 64 || !strings.HasPrefix(entrypoint[0], "/") {
+		return invalidf("ModelRuntime OCI config for %s must bind an absolute entrypoint", image)
+	}
+	for _, argument := range entrypoint {
+		if !ValidRevision(argument) {
+			return invalidf("ModelRuntime OCI config for %s contains an invalid entrypoint", image)
+		}
+	}
+	return nil
 }
 
 func validOCIBlobDescriptor(descriptor ociBlobDescriptor) bool {

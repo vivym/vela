@@ -22,7 +22,7 @@ import (
 
 var (
 	fixedRenderNames = []string{
-		"control-storage", "fleet-controller", "observability", "vela-control", "worker-agent",
+		"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control", "worker-agent",
 	}
 	fixedPackageNames  = []string{"h3-runner", "node-agent"}
 	gpuPattern         = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -63,29 +63,32 @@ type resourceKey struct {
 }
 
 type renderInventory struct {
-	declared         map[resourceKey]struct{}
-	referred         map[resourceKey]struct{}
-	expectedRevision map[resourceKey]string
-	secretKeys       map[resourceKey]map[string]struct{}
-	secretConsumers  map[resourceKey]map[string]struct{}
-	images           map[string]struct{}
-	fleetDesired     []fleetcontroller.DesiredRevision
+	declared           map[resourceKey]struct{}
+	referred           map[resourceKey]struct{}
+	expectedRevision   map[resourceKey]string
+	secretKeys         map[resourceKey]map[string]struct{}
+	secretConsumers    map[resourceKey]map[string]struct{}
+	images             map[string]struct{}
+	modelRuntimeImages map[string]struct{}
+	fleetDesired       []fleetcontroller.DesiredRevision
+	residencyRollouts  []fleetcontroller.ResidencyPlanRollout
 }
 
 func newRenderInventory() renderInventory {
 	return renderInventory{
-		declared:         make(map[resourceKey]struct{}),
-		referred:         make(map[resourceKey]struct{}),
-		expectedRevision: make(map[resourceKey]string),
-		secretKeys:       make(map[resourceKey]map[string]struct{}),
-		secretConsumers:  make(map[resourceKey]map[string]struct{}),
-		images:           make(map[string]struct{}),
+		declared:           make(map[resourceKey]struct{}),
+		referred:           make(map[resourceKey]struct{}),
+		expectedRevision:   make(map[resourceKey]string),
+		secretKeys:         make(map[resourceKey]map[string]struct{}),
+		secretConsumers:    make(map[resourceKey]map[string]struct{}),
+		images:             make(map[string]struct{}),
+		modelRuntimeImages: make(map[string]struct{}),
 	}
 }
 
 func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 	if plan.SchemaVersion != SchemaVersion || len(plan.FinalRenders) != len(fixedRenderNames) ||
-		len(plan.Packages) != len(fixedPackageNames) || len(plan.WorkerMaterializations) == 0 ||
+		len(plan.Packages) != len(fixedPackageNames) ||
 		len(plan.WorkerMaterializations) > maxWorkerNodeCount || len(plan.OCIManifests) == 0 ||
 		len(plan.OCIManifests) > maxArtifactCount {
 		return Bundle{}, invalid("build plan graph cardinality is invalid")
@@ -176,7 +179,14 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 		}
 		configuration.WorkerMaterializations = append(configuration.WorkerMaterializations, materialization)
 	}
-	if err := validateFleetDesiredMaterializations(inventory.fleetDesired, plan.WorkerMaterializations); err != nil {
+	if len(inventory.residencyRollouts) != 0 {
+		if len(inventory.fleetDesired) != 0 || len(plan.WorkerMaterializations) != 0 {
+			return Bundle{}, invalid("target ResidencyPlan render cannot retain legacy desired revisions or Worker materializations")
+		}
+	} else if err := validateFleetDesiredMaterializations(
+		inventory.fleetDesired,
+		plan.WorkerMaterializations,
+	); err != nil {
 		return Bundle{}, err
 	}
 	if err := validateExternalResources(plan.ExternalResources, inventory); err != nil {
@@ -201,6 +211,11 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 		mediaType, platform, err := validateOCIManifest(input, artifact, content, configArtifact, configContent)
 		if err != nil {
 			return Bundle{}, err
+		}
+		if _, modelRuntime := inventory.modelRuntimeImages[input.Image]; modelRuntime {
+			if err := validateModelRuntimeOCIConfig(input.Image, configContent); err != nil {
+				return Bundle{}, err
+			}
 		}
 		artifact.MediaType = mediaType
 		ociImages = append(ociImages, OCIImage{Image: input.Image, Descriptor: artifact, Config: configArtifact, Platform: platform})

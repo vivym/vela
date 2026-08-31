@@ -1361,7 +1361,7 @@ Slice 46 将 Control/Storage JetStream workload 固定到 NATS `2.10.22` 的
 exact `linux/amd64` OCI manifest，并通过最终 Kustomize render 验证该身份；
 它不提供 registry/supply-chain evidence，也不替代 release-specific Vela、
 PKI/Secret 与目标集群输入。Slice 47 将 `vela-control` secret materializer、
-静态 Worker root initializer 和 Fleet desired input 的共享 BusyBox `1.37.0`
+静态 Worker root initializer 和 target Fleet ResidencyPlan init input 的共享 BusyBox `1.37.0`
 固定到同一个 exact `linux/amd64` OCI manifest，并通过三个最终 Kustomize
 render 验证该身份；实际 registry publication、signature、SBOM、scan、
 vulnerability approval 和部署证据仍属于 release responsibility。

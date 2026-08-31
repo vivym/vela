@@ -6,7 +6,7 @@ Status: Repository conformance implemented by Slice 42.
 
 Implementation: `eeddbaa`.
 
-This slice adds the repository-owned build boundary for the four Vela OCI
+This slice adds the repository-owned build boundary for the five Vela OCI
 images required by the canonical release bundle. It builds real `linux/amd64`
 runtime images from the committed control, fleet, Worker, and Runner sources,
 while treating the proprietary H3 backend as an external digest-bound input.
@@ -16,10 +16,11 @@ signature evidence, or change the current `0/9 PASS` Production Gate result.
 ## Build interface
 
 `make print-vela-image-build` prints the resolved Buildx Bake definition and
-`make build-vela-images` builds and loads the exact four revision-tagged images:
+`make build-vela-images` builds and loads the exact five revision-tagged images:
 
 - `vela-control`;
 - `vela-fleet-controller`;
+- `vela-stage-worker-agent`;
 - `vela-worker-agent`;
 - `vela-h3-runner`.
 
@@ -57,8 +58,8 @@ artifact identity that Slice 43 must capture.
   and backend verification path;
 - negative tests reject a missing backend context or file, digest mismatch,
   non-ELF input, and symbolic-link input before Buildx;
-- BuildKit Dockerfile checks complete for all four targets without warnings;
-- a local `linux/amd64` smoke build assembles all four images, confirms their
+- BuildKit Dockerfile checks complete for all five targets without warnings;
+- a local `linux/amd64` smoke build assembles all five images, confirms their
   OCI labels and entrypoints, executes FFprobe 8.0.1 and the two embedded helper
   binaries, and uses only a temporary non-production backend for assembly
   validation.

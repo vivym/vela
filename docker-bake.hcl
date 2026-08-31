@@ -19,6 +19,7 @@ group "vela-all" {
     "vela-control",
     "vela-fleet-controller",
     "vela-h3-runner",
+    "vela-stage-worker-agent",
     "vela-worker-agent",
   ]
 }
@@ -52,6 +53,12 @@ target "vela-worker-agent" {
   inherits = ["_common"]
   target   = "vela-worker-agent"
   tags     = ["${RELEASE_IMAGE_PREFIX}/vela-worker-agent:${RELEASE_REVISION}"]
+}
+
+target "vela-stage-worker-agent" {
+  inherits = ["_common"]
+  target   = "vela-stage-worker-agent"
+  tags     = ["${RELEASE_IMAGE_PREFIX}/vela-stage-worker-agent:${RELEASE_REVISION}"]
 }
 
 target "vela-h3-runner" {
