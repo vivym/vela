@@ -72,6 +72,7 @@ func DecodeResidencyPlanRollouts(encoded []byte, namespace string) ([]ResidencyP
 		return nil, errors.New("ResidencyPlan rollout input is invalid")
 	}
 	planIDs := make(map[uuid.UUID]struct{}, len(input.Rollouts))
+	configuredDevices := newDeviceOwnership()
 	for _, rollout := range input.Rollouts {
 		if err := ValidateResidencyPlanRollout(rollout); err != nil {
 			return nil, err
@@ -83,6 +84,9 @@ func DecodeResidencyPlanRollouts(encoded []byte, namespace string) ([]ResidencyP
 		for _, bundle := range rollout.WorkerBundles {
 			if bundle.Namespace != namespace {
 				return nil, errors.New("ResidencyPlan rollout namespace does not match Fleet namespace")
+			}
+			if err := reserveWorkerBundleDevices(configuredDevices, bundle); err != nil {
+				return nil, fmt.Errorf("ResidencyPlan rollout input reuses device ownership across plans: %w", err)
 			}
 		}
 	}
@@ -160,6 +164,7 @@ func ValidateResidencyPlanRollout(rollout ResidencyPlanRollout) error {
 	}
 	seenBundles := make(map[uuid.UUID]struct{}, len(rollout.WorkerBundles))
 	seenWorkers := make(map[uuid.UUID]struct{}, len(plan.WorkerInstances))
+	rolloutDevices := newDeviceOwnership()
 	for _, bundle := range rollout.WorkerBundles {
 		if err := ValidateWorkerBundleActuation(bundle); err != nil {
 			return err
@@ -175,6 +180,9 @@ func ValidateResidencyPlanRollout(rollout ResidencyPlanRollout) error {
 			return errors.New("ResidencyPlan rollout actuates one WorkerBundle more than once")
 		}
 		seenBundles[bundle.WorkerBundleID] = struct{}{}
+		if err := reserveWorkerBundleDevices(rolloutDevices, bundle); err != nil {
+			return fmt.Errorf("ResidencyPlan rollout reuses device ownership across WorkerBundles: %w", err)
+		}
 		for _, worker := range bundle.WorkerInstances {
 			planned, exists := plannedWorkers[worker.ID]
 			if !exists || planned.WorkerBundleID != bundle.WorkerBundleID ||

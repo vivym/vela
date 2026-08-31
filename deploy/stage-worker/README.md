@@ -29,7 +29,7 @@ The render is a configuration contract, not a ResidencyPlan approval,
 ModelResidency receipt, GPU isolation receipt, or Production Launch Receipt.
 The canonical release bundle binds each external resource name and declared
 revision, but Fleet deliberately has no permission to read Secret values and
-does not bind a live Kubernetes UID or content digest. Production admission and
-secret-manager policy must therefore prevent deletion and same-name recreation
-of an immutable ConfigMap or Secret for the lifetime of a rollout; that receipt
-remains an external launch gate.
+does not bind a live Kubernetes UID or content digest. Kubernetes admission
+control and secret-manager policy must therefore prevent deletion and same-name
+recreation of an immutable ConfigMap or Secret for the lifetime of a rollout;
+that receipt remains an external launch gate.

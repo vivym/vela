@@ -164,6 +164,7 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 		expected, exists := expectedConstraints[workerID]
 		requests := claim.Spec.Spec.Devices.Requests
 		if !exists || len(requests) != 1 || requests[0].Exactly == nil ||
+			claim.Annotations["vela.ai/worker-node-identity"] != "h3-node-01" ||
 			requests[0].Exactly.DeviceClassName != "gpu.nvidia.com" ||
 			requests[0].Exactly.Count != 1 || len(requests[0].Exactly.Selectors) != 1 ||
 			requests[0].Exactly.Selectors[0].CEL == nil {
@@ -284,7 +285,7 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		},
 		"member-1": {
 			{DeviceID: uuid.MustParse("49300000-0000-0000-0000-000000000043"), DeviceEpoch: 13,
-				GPUUUID: "GPU-00000000-0000-0000-0000-000000000003", PCIBDF: "0000:43:00.0"},
+				GPUUUID: "GPU-00000000-0000-0000-0000-000000000003", PCIBDF: "0000:41:00.0"},
 			{DeviceID: uuid.MustParse("49300000-0000-0000-0000-000000000044"), DeviceEpoch: 14,
 				GPUUUID: "GPU-00000000-0000-0000-0000-000000000004", PCIBDF: "0000:44:00.0"},
 		},
@@ -378,7 +379,9 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		}
 		memberKey := claim.Labels["vela.ai/worker-member-key"]
 		requests := claim.Spec.Spec.Devices.Requests
-		if len(memberDevices[memberKey]) != 2 || len(requests) != 2 {
+		expectedNode := map[string]string{"member-0": "llm-node-a", "member-1": "llm-node-b"}[memberKey]
+		if len(memberDevices[memberKey]) != 2 || len(requests) != 2 ||
+			claim.Annotations["vela.ai/worker-node-identity"] != expectedNode {
 			t.Fatalf("member %q exact GPU requests = %#v", memberKey, requests)
 		}
 		for deviceIndex, expected := range memberDevices[memberKey] {
@@ -402,6 +405,13 @@ func TestWorkerBundleActuationRejectsDuplicateDeviceAuthorityAndInvalidH3Shapes(
 			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
 				bundle.WorkerInstances[1].Members[0].DeviceConstraints[0].DeviceID =
 					bundle.WorkerInstances[0].Members[0].DeviceConstraints[0].DeviceID
+			},
+		},
+		{
+			name: "duplicate PCI BDF on one node",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				bundle.WorkerInstances[1].Members[0].DeviceConstraints[0].PCIBDF =
+					bundle.WorkerInstances[0].Members[0].DeviceConstraints[0].PCIBDF
 			},
 		},
 		{
@@ -448,10 +458,55 @@ func TestWorkerBundleActuationRejectsDuplicateDeviceAuthorityAndInvalidH3Shapes(
 	}
 }
 
+func TestKubernetesActuatorRejectsGPUOwnedByLiveClaimFromAnotherPlan(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("register core Kubernetes scheme: %v", err)
+	}
+	if err := resourcev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("register resource Kubernetes scheme: %v", err)
+	}
+	client := dynamicfake.NewSimpleDynamicClient(scheme)
+	resources, err := fleetcontroller.NewKubernetesResources(client, "vela-system")
+	if err != nil {
+		t.Fatalf("create Kubernetes resources: %v", err)
+	}
+	actuator, err := fleetcontroller.NewWorkerInstanceActuator(resources)
+	if err != nil {
+		t.Fatalf("create WorkerInstance actuator: %v", err)
+	}
+	first, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())
+	if err != nil {
+		t.Fatalf("build first H3 WorkerBundle actuation: %v", err)
+	}
+	if _, err := actuator.Actuate(context.Background(), first); err != nil {
+		t.Fatalf("actuate first H3 WorkerBundle: %v", err)
+	}
+	secondSpec := h3BundleSpec()
+	secondSpec.PlanRevisionID = uuid.MustParse("49300000-0000-0000-0000-000000000201")
+	secondSpec.WorkerBundleID = uuid.MustParse("49300000-0000-0000-0000-000000000202")
+	second, err := fleetcontroller.BuildH3WorkerBundleActuation(secondSpec)
+	if err != nil {
+		t.Fatalf("build second H3 WorkerBundle actuation: %v", err)
+	}
+	if _, err := actuator.Actuate(context.Background(), second); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
+		t.Fatalf("actuate conflicting H3 WorkerBundle error=%v, want ErrProtectedResourceDrift", err)
+	}
+	claims, err := client.Resource(schema.GroupVersionResource{
+		Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates",
+	}).Namespace("vela-system").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(claims.Items) != 8 {
+		t.Fatalf("live GPU claims after conflict count=%d error=%v, want 8", len(claims.Items), err)
+	}
+}
+
 func TestKubernetesActuatorFailsClosedOnImmutablePodDrift(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("register core Kubernetes scheme: %v", err)
+	}
+	if err := resourcev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("register resource Kubernetes scheme: %v", err)
 	}
 	client := dynamicfake.NewSimpleDynamicClient(scheme)
 	resources, err := fleetcontroller.NewKubernetesResources(client, "vela-system")

@@ -11,6 +11,7 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	corev1 "k8s.io/api/core/v1"
+	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -130,6 +131,9 @@ func TestWorkerInstancePodAdmissionRequiresExactApprovedPlanPod(t *testing.T) {
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("register core Kubernetes scheme: %v", err)
 	}
+	if err := resourcev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("register resource Kubernetes scheme: %v", err)
+	}
 	client := dynamicfake.NewSimpleDynamicClient(scheme)
 	resources, err := fleetcontroller.NewKubernetesResources(client, "vela-system")
 	if err != nil {
@@ -199,15 +203,59 @@ func TestDecodeResidencyPlanRolloutsRejectsUnknownAndCrossNamespaceInput(t *test
 	}
 }
 
+func TestResidencyPlanRolloutRejectsGPUReusedAcrossWorkerBundles(t *testing.T) {
+	rollout := h3ResidencyPlanRollout(t)
+	secondSpec := h3BundleSpec()
+	secondSpec.WorkerBundleID = uuid.MustParse("49300000-0000-0000-0000-000000000202")
+	secondBundle, err := fleetcontroller.BuildH3WorkerBundleActuation(secondSpec)
+	if err != nil {
+		t.Fatalf("build second H3 WorkerBundle: %v", err)
+	}
+	appendWorkerBundleAuthority(&rollout, secondBundle, "h3-node-02")
+	if err := fleetcontroller.ValidateResidencyPlanRollout(rollout); err == nil {
+		t.Fatal("ResidencyPlan rollout accepted one GPU in multiple WorkerBundles")
+	}
+}
+
+func TestDecodeResidencyPlanRolloutsRejectsGPUReusedAcrossPlans(t *testing.T) {
+	first := h3ResidencyPlanRollout(t)
+	secondSpec := h3BundleSpec()
+	secondSpec.PlanRevisionID = uuid.MustParse("49300000-0000-0000-0000-000000000201")
+	secondSpec.WorkerBundleID = uuid.MustParse("49300000-0000-0000-0000-000000000202")
+	secondBundle, err := fleetcontroller.BuildH3WorkerBundleActuation(secondSpec)
+	if err != nil {
+		t.Fatalf("build second H3 WorkerBundle: %v", err)
+	}
+	second := residencyPlanRolloutForBundle(secondBundle, "h3-stage-workers-r2", "h3-node-02")
+	encoded, err := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"rollouts":       []fleetcontroller.ResidencyPlanRollout{first, second},
+	})
+	if err != nil {
+		t.Fatalf("encode conflicting ResidencyPlan rollouts: %v", err)
+	}
+	if _, err := fleetcontroller.DecodeResidencyPlanRollouts(encoded, "vela-system"); err == nil {
+		t.Fatal("ResidencyPlan rollout decoder accepted one GPU in multiple plans")
+	}
+}
+
 func h3ResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRollout {
 	t.Helper()
 	bundle, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())
 	if err != nil {
 		t.Fatalf("build H3 WorkerBundle: %v", err)
 	}
+	return residencyPlanRolloutForBundle(bundle, "h3-stage-workers", "h3-node-01")
+}
+
+func residencyPlanRolloutForBundle(
+	bundle fleetcontroller.WorkerBundleActuation,
+	stableID string,
+	bundleStableID string,
+) fleetcontroller.ResidencyPlanRollout {
 	plan := fleet.ApprovedResidencyPlan{
 		SchemaVersion: 1,
-		ID:            bundle.PlanRevisionID, StableID: "h3-stage-workers", Revision: 1,
+		ID:            bundle.PlanRevisionID, StableID: stableID, Revision: 1,
 		ContentDigest: bundle.RevisionDigest, ApprovalEvidenceDigest: digestString('e'),
 		ApprovedAt: h3RolloutApprovalTime, ApprovedBy: "fleet/operator-1",
 		CapacityPools: []fleet.PlannedCapacityPool{
@@ -225,7 +273,7 @@ func h3ResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRollout {
 			},
 		},
 		WorkerBundles: []fleet.PlannedWorkerBundle{{
-			ID: bundle.WorkerBundleID, StableID: "h3-node-01",
+			ID: bundle.WorkerBundleID, StableID: bundleStableID,
 			DesiredGeneration: 1, LayoutDigest: bundle.RevisionDigest,
 		}},
 		WorkerInstances: make([]fleet.PlannedWorkerInstance, 0, len(bundle.WorkerInstances)),
@@ -244,6 +292,39 @@ func h3ResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRollout {
 	return fleetcontroller.ResidencyPlanRollout{
 		ApprovedPlan: plan, WorkerBundles: []fleetcontroller.WorkerBundleActuation{bundle},
 	}
+}
+
+func appendWorkerBundleAuthority(
+	rollout *fleetcontroller.ResidencyPlanRollout,
+	bundle fleetcontroller.WorkerBundleActuation,
+	stableID string,
+) {
+	rollout.ApprovedPlan.WorkerBundles = append(
+		rollout.ApprovedPlan.WorkerBundles,
+		fleet.PlannedWorkerBundle{
+			ID: bundle.WorkerBundleID, StableID: stableID,
+			DesiredGeneration: 1, LayoutDigest: bundle.RevisionDigest,
+		},
+	)
+	for _, worker := range bundle.WorkerInstances {
+		rollout.ApprovedPlan.WorkerInstances = append(
+			rollout.ApprovedPlan.WorkerInstances,
+			fleet.PlannedWorkerInstance{
+				ID: worker.ID, WorkerProfileRevisionID: worker.WorkerProfileRevisionID,
+				CapacityPoolID: worker.CapacityPoolID, WorkerBundleID: bundle.WorkerBundleID,
+				DesiredMemberCount: len(worker.Members), DesiredDeviceCount: workerDeviceCountForTest(worker),
+			},
+		)
+	}
+	rollout.WorkerBundles = append(rollout.WorkerBundles, bundle)
+}
+
+func workerDeviceCountForTest(worker fleetcontroller.WorkerInstanceActuation) int {
+	count := 0
+	for _, member := range worker.Members {
+		count += member.DeviceCount
+	}
+	return count
 }
 
 var h3RolloutApprovalTime = mustRolloutTime()

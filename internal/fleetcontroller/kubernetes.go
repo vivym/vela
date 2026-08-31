@@ -185,6 +185,33 @@ func (resources *KubernetesResources) GetWorkerInstanceGPUClaimTemplate(
 	return claim, nil
 }
 
+func (resources *KubernetesResources) ListWorkerInstanceGPUClaimTemplates(
+	ctx context.Context,
+) ([]resourcev1.ResourceClaimTemplate, error) {
+	if resources == nil || resources.client == nil {
+		return nil, errors.New("fleet Kubernetes resources are not configured")
+	}
+	objects, err := resources.client.Resource(resourceClaimTemplateResource).
+		Namespace(resources.namespace).
+		List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, mapKubernetesResourceError(err)
+	}
+	claims := make([]resourcev1.ResourceClaimTemplate, 0, len(objects.Items))
+	for index := range objects.Items {
+		if objects.Items[index].GetAnnotations()["vela.ai/fleet-controller-owned"] != "true" {
+			continue
+		}
+		var claim resourcev1.ResourceClaimTemplate
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(objects.Items[index].Object, &claim); err != nil {
+			return nil, fmt.Errorf("decode WorkerInstance GPU ResourceClaimTemplate: %w", err)
+		}
+		claims = append(claims, claim)
+	}
+	sort.Slice(claims, func(left, right int) bool { return claims[left].Name < claims[right].Name })
+	return claims, nil
+}
+
 func (resources *KubernetesResources) CreateWorkerInstanceGPUClaimTemplate(
 	ctx context.Context,
 	claim resourcev1.ResourceClaimTemplate,

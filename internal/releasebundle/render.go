@@ -29,6 +29,45 @@ type renderedResourceContract struct {
 	ClusterScoped       bool
 }
 
+type renderedImageRole uint8
+
+const (
+	renderedImageRoleNone renderedImageRole = iota
+	renderedImageRoleSupport
+	renderedImageRoleModelRuntime
+)
+
+type renderedFieldContract struct {
+	ImageRole     renderedImageRole
+	ReferenceKind string
+	RequiredKeys  []string
+}
+
+var renderedFieldContracts = map[string]renderedFieldContract{
+	"imageName":                       {ImageRole: renderedImageRoleSupport},
+	"operatorImage":                   {ImageRole: renderedImageRoleSupport},
+	"operator_image":                  {ImageRole: renderedImageRoleSupport},
+	"initImage":                       {ImageRole: renderedImageRoleSupport},
+	"workerAgentImage":                {ImageRole: renderedImageRoleSupport},
+	"runnerImage":                     {ImageRole: renderedImageRoleSupport},
+	"init_image":                      {ImageRole: renderedImageRoleSupport},
+	"stage_worker_agent_image":        {ImageRole: renderedImageRoleSupport},
+	"runtime_image":                   {ImageRole: renderedImageRoleModelRuntime},
+	"secretName":                      {ReferenceKind: "Secret"},
+	"workerControlTLSSecret":          {ReferenceKind: "Secret", RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"}},
+	"artifactStoreTLSSecret":          {ReferenceKind: "Secret", RequiredKeys: []string{"ca.crt"}},
+	"stage_worker_control_tls_secret": {ReferenceKind: "Secret", RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"}},
+	"stage_worker_authority_secret":   {ReferenceKind: "Secret", RequiredKeys: []string{"keyring.json"}},
+	"artifact_store_credentials_secret": {
+		ReferenceKind: "Secret", RequiredKeys: []string{"access-key-id", "secret-access-key"},
+	},
+	"artifact_store_ca_secret": {ReferenceKind: "Secret", RequiredKeys: []string{"ca.crt"}},
+	"workerRuntimeConfigMap":   {ReferenceKind: "ConfigMap"},
+	"runnerProfilesConfigMap":  {ReferenceKind: "ConfigMap"},
+	"runnerGPURolesConfigMap":  {ReferenceKind: "ConfigMap"},
+	"stage_worker_config_map":  {ReferenceKind: "ConfigMap"},
+}
+
 var finalRenderInventory = map[string][]renderedResourceContract{
 	"control-storage": {
 		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
@@ -305,13 +344,15 @@ func scanRenderedValue(
 				if containsTemplateValue(stringValue) {
 					return fmt.Errorf("field %s contains a template or invalid production value", key)
 				}
-				if isImageField(key, parentKey) {
+				if role, imageField := imageRoleForField(key, parentKey); imageField {
 					if !validImage(stringValue) {
 						return fmt.Errorf("field %s contains an unpinned or invalid OCI image %q", key, stringValue)
 					}
 					inventory.images[stringValue] = struct{}{}
-					if key == "runtime_image" {
+					if role == renderedImageRoleModelRuntime {
 						inventory.modelRuntimeImages[stringValue] = struct{}{}
+					} else {
+						inventory.supportImages[stringValue] = struct{}{}
 					}
 				}
 				if kind := directReferenceKind(key); kind != "" {
@@ -433,18 +474,7 @@ func recordReference(inventory *renderInventory, resource resourceKey, consumer 
 }
 
 func directSecretKeys(key string) []string {
-	switch key {
-	case "workerControlTLSSecret", "stage_worker_control_tls_secret":
-		return []string{"ca.crt", "tls.crt", "tls.key"}
-	case "artifactStoreTLSSecret", "artifact_store_ca_secret":
-		return []string{"ca.crt"}
-	case "stage_worker_authority_secret":
-		return []string{"keyring.json"}
-	case "artifact_store_credentials_secret":
-		return []string{"access-key-id", "secret-access-key"}
-	default:
-		return nil
-	}
+	return renderedFieldContracts[key].RequiredKeys
 }
 
 func selectorSecretKeys(kind string, selector map[string]any) ([]string, error) {
@@ -479,16 +509,14 @@ func selectorSecretKeys(kind string, selector map[string]any) ([]string, error) 
 	return keys, nil
 }
 
-func isImageField(key, parent string) bool {
-	switch key {
-	case "imageName", "operatorImage", "operator_image", "initImage", "workerAgentImage", "runnerImage",
-		"init_image", "stage_worker_agent_image", "runtime_image":
-		return true
-	case "image":
-		return parent == "containers" || parent == "initContainers" || parent == "ephemeralContainers"
-	default:
-		return false
+func imageRoleForField(key, parent string) (renderedImageRole, bool) {
+	if contract, exists := renderedFieldContracts[key]; exists && contract.ImageRole != renderedImageRoleNone {
+		return contract.ImageRole, true
 	}
+	if key == "image" && (parent == "containers" || parent == "initContainers" || parent == "ephemeralContainers") {
+		return renderedImageRoleSupport, true
+	}
+	return renderedImageRoleNone, false
 }
 
 func validImage(value string) bool {
@@ -496,17 +524,7 @@ func validImage(value string) bool {
 }
 
 func directReferenceKind(key string) string {
-	switch key {
-	case "secretName", "workerControlTLSSecret", "artifactStoreTLSSecret",
-		"stage_worker_control_tls_secret", "stage_worker_authority_secret",
-		"artifact_store_credentials_secret", "artifact_store_ca_secret":
-		return "Secret"
-	case "workerRuntimeConfigMap", "runnerProfilesConfigMap", "runnerGPURolesConfigMap",
-		"stage_worker_config_map":
-		return "ConfigMap"
-	default:
-		return ""
-	}
+	return renderedFieldContracts[key].ReferenceKind
 }
 
 func selectorReferenceKind(key string) string {

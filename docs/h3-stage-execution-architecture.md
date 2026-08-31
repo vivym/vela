@@ -513,6 +513,10 @@ WorkerInstances cannot reference the same GPU. Kubernetes device allocation,
 Node Agent attestation, unique database constraints, and runtime identity all
 enforce the same ownership fact.
 
+Device authority IDs and GPU UUIDs are cluster-wide identities. PCI BDF is a
+node-local slot identity and is unique only within one NodeIdentity; different
+nodes may legitimately expose the same BDF.
+
 The standard H3 WorkerProfile owns one GPU and one resident model component. A
 multi-model WorkerProfile is an explicit exception with one shared capacity
 slot. It does not create multiple Worker identities for one GPU.

@@ -69,6 +69,7 @@ type renderInventory struct {
 	secretKeys         map[resourceKey]map[string]struct{}
 	secretConsumers    map[resourceKey]map[string]struct{}
 	images             map[string]struct{}
+	supportImages      map[string]struct{}
 	modelRuntimeImages map[string]struct{}
 	fleetDesired       []fleetcontroller.DesiredRevision
 	residencyRollouts  []fleetcontroller.ResidencyPlanRollout
@@ -82,6 +83,7 @@ func newRenderInventory() renderInventory {
 		secretKeys:         make(map[resourceKey]map[string]struct{}),
 		secretConsumers:    make(map[resourceKey]map[string]struct{}),
 		images:             make(map[string]struct{}),
+		supportImages:      make(map[string]struct{}),
 		modelRuntimeImages: make(map[string]struct{}),
 	}
 }
@@ -192,6 +194,9 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 	if err := validateExternalResources(plan.ExternalResources, inventory); err != nil {
 		return Bundle{}, err
 	}
+	if err := validateImageRoleSeparation(inventory); err != nil {
+		return Bundle{}, err
+	}
 
 	ociImages := make([]OCIImage, 0, len(plan.OCIManifests))
 	seenImages := make(map[string]struct{}, len(plan.OCIManifests))
@@ -249,6 +254,30 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 		ConfigurationRevision: configurationRevision, ConfigurationManifest: configuration,
 		ReleaseDescriptor: release, OCIImages: ociImages,
 	}, nil
+}
+
+func validateImageRoleSeparation(inventory renderInventory) error {
+	runtimeDigests := make(map[string]string, len(inventory.modelRuntimeImages))
+	for image := range inventory.modelRuntimeImages {
+		if _, reused := inventory.supportImages[image]; reused {
+			return invalidf("ModelRuntime image %q is also used by a non-ModelRuntime container", image)
+		}
+		runtimeDigests[imageManifestDigest(image)] = image
+	}
+	for image := range inventory.supportImages {
+		if runtimeImage, reused := runtimeDigests[imageManifestDigest(image)]; reused {
+			return invalidf(
+				"ModelRuntime image %q and non-ModelRuntime image %q resolve to the same OCI manifest",
+				runtimeImage,
+				image,
+			)
+		}
+	}
+	return nil
+}
+
+func imageManifestDigest(image string) string {
+	return image[strings.LastIndex(image, "@")+1:]
 }
 
 func verify(root *rootedFS, bundle Bundle) error {

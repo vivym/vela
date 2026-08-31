@@ -21,21 +21,22 @@ import (
 )
 
 const (
-	workerInstanceIDLabel       = fleetcontract.WorkerInstanceIDLabel
-	workerInstanceEpochLabel    = fleetcontract.WorkerInstanceEpochLabel
-	workerMemberIDLabel         = fleetcontract.WorkerMemberIDLabel
-	workerMemberKeyLabel        = fleetcontract.WorkerMemberKeyLabel
-	workerBundleIDLabel         = fleetcontract.WorkerBundleIDLabel
-	workerProfileRevisionLabel  = fleetcontract.WorkerProfileRevisionIDLabel
-	capacityPoolIDLabel         = fleetcontract.CapacityPoolIDLabel
-	residencyPlanRevisionLabel  = fleetcontract.ResidencyPlanRevisionIDLabel
-	workerRoleLabel             = fleetcontract.WorkerRoleLabel
-	deviceConstraintsAnnotation = fleetcontract.DeviceConstraintsAnnotation
-	actuationRevisionAnnotation = fleetcontract.ActuationRevisionAnnotation
-	h3AUXSharedSlotException    = "H3_AUX_ENCODER_VAE"
-	stageWorkerScratchRoot      = "/var/lib/vela/stage-worker/scratch"
-	modelRuntimeSocketRoot      = "/run/vela-model-runtime"
-	modelRuntimeSocketPath      = modelRuntimeSocketRoot + "/private/runtime.sock"
+	workerInstanceIDLabel        = fleetcontract.WorkerInstanceIDLabel
+	workerInstanceEpochLabel     = fleetcontract.WorkerInstanceEpochLabel
+	workerMemberIDLabel          = fleetcontract.WorkerMemberIDLabel
+	workerMemberKeyLabel         = fleetcontract.WorkerMemberKeyLabel
+	workerBundleIDLabel          = fleetcontract.WorkerBundleIDLabel
+	workerProfileRevisionLabel   = fleetcontract.WorkerProfileRevisionIDLabel
+	capacityPoolIDLabel          = fleetcontract.CapacityPoolIDLabel
+	residencyPlanRevisionLabel   = fleetcontract.ResidencyPlanRevisionIDLabel
+	workerRoleLabel              = fleetcontract.WorkerRoleLabel
+	deviceConstraintsAnnotation  = fleetcontract.DeviceConstraintsAnnotation
+	workerNodeIdentityAnnotation = fleetcontract.WorkerNodeIdentityAnnotation
+	actuationRevisionAnnotation  = fleetcontract.ActuationRevisionAnnotation
+	h3AUXSharedSlotException     = "H3_AUX_ENCODER_VAE"
+	stageWorkerScratchRoot       = "/var/lib/vela/stage-worker/scratch"
+	modelRuntimeSocketRoot       = "/run/vela-model-runtime"
+	modelRuntimeSocketPath       = modelRuntimeSocketRoot + "/private/runtime.sock"
 )
 
 var (
@@ -46,6 +47,7 @@ var (
 )
 
 type WorkerInstancePodResources interface {
+	ListWorkerInstanceGPUClaimTemplates(context.Context) ([]resourcev1.ResourceClaimTemplate, error)
 	GetWorkerInstanceGPUClaimTemplate(
 		context.Context,
 		ResourceKey,
@@ -142,6 +144,57 @@ type WorkerInstanceActuationResult struct {
 	CreatedGPUClaims int
 	CreatedPods      int
 	Converged        bool
+}
+
+type deviceOwnership struct {
+	deviceIDs map[uuid.UUID]struct{}
+	gpuUUIDs  map[string]struct{}
+	pciSlots  map[string]struct{}
+}
+
+func newDeviceOwnership() *deviceOwnership {
+	return &deviceOwnership{
+		deviceIDs: make(map[uuid.UUID]struct{}),
+		gpuUUIDs:  make(map[string]struct{}),
+		pciSlots:  make(map[string]struct{}),
+	}
+}
+
+func (ownership *deviceOwnership) reserve(nodeIdentity string, constraint DeviceConstraint) error {
+	if _, exists := ownership.deviceIDs[constraint.DeviceID]; exists {
+		return errors.New("one Device authority is assigned more than once")
+	}
+	if _, exists := ownership.gpuUUIDs[constraint.GPUUUID]; exists {
+		return errors.New("one GPU is assigned to multiple WorkerInstances")
+	}
+	pciSlot := nodeIdentity + "\x00" + constraint.PCIBDF
+	if _, exists := ownership.pciSlots[pciSlot]; exists {
+		return errors.New("one node PCI device is assigned to multiple WorkerInstances")
+	}
+	ownership.deviceIDs[constraint.DeviceID] = struct{}{}
+	ownership.gpuUUIDs[constraint.GPUUUID] = struct{}{}
+	ownership.pciSlots[pciSlot] = struct{}{}
+	return nil
+}
+
+func (ownership *deviceOwnership) conflicts(nodeIdentity string, constraint DeviceConstraint) bool {
+	_, deviceConflict := ownership.deviceIDs[constraint.DeviceID]
+	_, gpuConflict := ownership.gpuUUIDs[constraint.GPUUUID]
+	_, pciConflict := ownership.pciSlots[nodeIdentity+"\x00"+constraint.PCIBDF]
+	return deviceConflict || gpuConflict || pciConflict
+}
+
+func reserveWorkerBundleDevices(ownership *deviceOwnership, bundle WorkerBundleActuation) error {
+	for _, worker := range bundle.WorkerInstances {
+		for _, member := range worker.Members {
+			for _, constraint := range member.DeviceConstraints {
+				if err := ownership.reserve(member.NodeIdentity, constraint); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func NewWorkerInstanceActuator(
@@ -253,6 +306,13 @@ func (actuator *WorkerInstanceActuator) Actuate(
 	if err != nil {
 		return WorkerInstanceActuationResult{}, err
 	}
+	liveClaims, err := actuator.resources.ListWorkerInstanceGPUClaimTemplates(ctx)
+	if err != nil {
+		return WorkerInstanceActuationResult{}, fmt.Errorf("list WorkerInstance GPU ResourceClaimTemplates: %w", err)
+	}
+	if err := validateLiveGPUClaimOwnership(liveClaims, desiredClaims); err != nil {
+		return WorkerInstanceActuationResult{}, err
+	}
 	desiredPods, err := materializeWorkerInstancePods(bundle)
 	if err != nil {
 		return WorkerInstanceActuationResult{}, err
@@ -333,9 +393,7 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 	workers := make(map[uuid.UUID]struct{}, len(bundle.WorkerInstances))
 	members := make(map[uuid.UUID]struct{})
 	podNames := make(map[string]struct{})
-	deviceIDs := make(map[uuid.UUID]struct{})
-	gpuUUIDs := make(map[string]struct{})
-	pciBDFs := make(map[string]struct{})
+	deviceOwnership := newDeviceOwnership()
 	for _, worker := range bundle.WorkerInstances {
 		if worker.ID == uuid.Nil || worker.InstanceEpoch <= 0 ||
 			worker.WorkerProfileRevisionID == uuid.Nil || worker.CapacityPoolID == uuid.Nil ||
@@ -389,18 +447,9 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 				if !validDeviceConstraint(constraint) {
 					return errors.New("WorkerMember device constraint is invalid")
 				}
-				if _, exists := deviceIDs[constraint.DeviceID]; exists {
-					return errors.New("WorkerBundle actuation assigns one Device authority more than once")
+				if err := deviceOwnership.reserve(member.NodeIdentity, constraint); err != nil {
+					return fmt.Errorf("WorkerBundle actuation %w", err)
 				}
-				if _, exists := gpuUUIDs[constraint.GPUUUID]; exists {
-					return errors.New("WorkerBundle actuation assigns one GPU to multiple WorkerInstances")
-				}
-				if _, exists := pciBDFs[constraint.PCIBDF]; exists {
-					return errors.New("WorkerBundle actuation assigns one PCI device to multiple WorkerInstances")
-				}
-				deviceIDs[constraint.DeviceID] = struct{}{}
-				gpuUUIDs[constraint.GPUUUID] = struct{}{}
-				pciBDFs[constraint.PCIBDF] = struct{}{}
 			}
 		}
 	}
@@ -539,6 +588,7 @@ func materializeWorkerInstanceGPUClaimTemplates(
 			annotations := map[string]string{
 				"vela.ai/fleet-controller-owned": "true",
 				deviceConstraintsAnnotation:      mustEncodeDeviceConstraints(member.DeviceConstraints),
+				workerNodeIdentityAnnotation:     member.NodeIdentity,
 				actuationRevisionAnnotation:      bundle.RevisionDigest,
 			}
 			claims = append(claims, resourcev1.ResourceClaimTemplate{
@@ -566,6 +616,62 @@ func materializeWorkerInstanceGPUClaimTemplates(
 	}
 	sort.Slice(claims, func(left, right int) bool { return claims[left].Name < claims[right].Name })
 	return claims, nil
+}
+
+func validateLiveGPUClaimOwnership(
+	liveClaims []resourcev1.ResourceClaimTemplate,
+	desiredClaims []resourcev1.ResourceClaimTemplate,
+) error {
+	desiredNames := make(map[string]struct{}, len(desiredClaims))
+	desiredOwnership := newDeviceOwnership()
+	for _, claim := range desiredClaims {
+		desiredNames[claim.Name] = struct{}{}
+		nodeIdentity, constraints, ok := gpuClaimOwnership(claim)
+		if !ok {
+			return ErrProtectedResourceDrift
+		}
+		for _, constraint := range constraints {
+			if err := desiredOwnership.reserve(nodeIdentity, constraint); err != nil {
+				return ErrProtectedResourceDrift
+			}
+		}
+	}
+	for _, claim := range liveClaims {
+		if _, desired := desiredNames[claim.Name]; desired {
+			continue
+		}
+		if claim.Annotations["vela.ai/fleet-controller-owned"] != "true" {
+			continue
+		}
+		nodeIdentity, constraints, ok := gpuClaimOwnership(claim)
+		if !ok {
+			return ErrProtectedResourceDrift
+		}
+		for _, constraint := range constraints {
+			if desiredOwnership.conflicts(nodeIdentity, constraint) {
+				return ErrProtectedResourceDrift
+			}
+		}
+	}
+	return nil
+}
+
+func gpuClaimOwnership(claim resourcev1.ResourceClaimTemplate) (string, []DeviceConstraint, bool) {
+	nodeIdentity := claim.Annotations[workerNodeIdentityAnnotation]
+	if !validResourceName(nodeIdentity) {
+		return "", nil, false
+	}
+	var constraints []DeviceConstraint
+	if err := json.Unmarshal([]byte(claim.Annotations[deviceConstraintsAnnotation]), &constraints); err != nil ||
+		len(constraints) == 0 || len(constraints) != len(claim.Spec.Spec.Devices.Requests) {
+		return "", nil, false
+	}
+	for _, constraint := range constraints {
+		if !validDeviceConstraint(constraint) {
+			return "", nil, false
+		}
+	}
+	return nodeIdentity, constraints, true
 }
 
 func materializeWorkerInstancePod(

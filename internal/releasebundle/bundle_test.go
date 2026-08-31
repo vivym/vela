@@ -189,6 +189,46 @@ func TestBuildBindsTargetResidencyPlanStageWorkerAndSecrets(t *testing.T) {
 		len(bundle.ConfigurationManifest.WorkerMaterializations) != 0 || len(bundle.OCIImages) != 4 {
 		t.Fatalf("target ResidencyPlan release bundle = %#v", bundle.ConfigurationManifest)
 	}
+
+	rewriteTarget := func(runtimeImage string) {
+		t.Helper()
+		actuation.RuntimeImage = runtimeImage
+		actuation.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(actuation)
+		if err != nil {
+			t.Fatalf("digest aliased target WorkerBundle: %v", err)
+		}
+		rollout.WorkerBundles[0] = actuation
+		rollout.ApprovedPlan.ContentDigest = actuation.RevisionDigest
+		rollout.ApprovedPlan.WorkerBundles[0].LayoutDigest = actuation.RevisionDigest
+		encoded, err = json.Marshal(map[string]any{
+			"schema_version": 1,
+			"rollouts":       []fleetcontroller.ResidencyPlanRollout{rollout},
+		})
+		if err != nil {
+			t.Fatalf("encode aliased target ResidencyPlan: %v", err)
+		}
+		writeFleetResidencyPlanRender(t, fixture, encoded)
+	}
+
+	rewriteTarget(stageImage)
+	fixture.plan.OCIManifests = slices.DeleteFunc(
+		fixture.plan.OCIManifests,
+		func(input OCIManifestInput) bool { return input.Image == runtimeImage },
+	)
+	fixture.writePlan(t)
+	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+		t.Fatalf("Build with exact ModelRuntime image alias error=%v, want ErrInvalidBundle", err)
+	}
+
+	digestAlias := "ghcr.io/vivym/vela-h3-stage-runtime@" + stageManifest.digest
+	rewriteTarget(digestAlias)
+	fixture.plan.OCIManifests = append(fixture.plan.OCIManifests, OCIManifestInput{
+		Image: digestAlias, Ref: stageManifest.ref, ConfigRef: stageManifest.configRef,
+	})
+	fixture.writePlan(t)
+	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+		t.Fatalf("Build with cross-repository ModelRuntime manifest alias error=%v, want ErrInvalidBundle", err)
+	}
 }
 
 func TestValidateModelRuntimeOCIConfigRequiresAbsoluteEntrypoint(t *testing.T) {

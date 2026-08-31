@@ -16,6 +16,7 @@ const (
 	ResidencyPlanRevisionIDLabel  = "vela.ai/residency-plan-revision-id"
 	WorkerRoleLabel               = "vela.ai/worker-role"
 	DeviceConstraintsAnnotation   = "vela.ai/device-constraints"
+	WorkerNodeIdentityAnnotation  = "vela.ai/worker-node-identity"
 	ActuationRevisionAnnotation   = "vela.ai/actuation-revision"
 	DrainOperationIDsAnnotation   = "vela.ai/drain-operation-ids"
 	ProtectionFinalizer           = "fleet.vela.ai/drain-protection"

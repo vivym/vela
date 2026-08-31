@@ -78,6 +78,8 @@ Deliver:
 Acceptance:
 
 - concurrent attempts to bind one GPU to two WorkerInstances fail;
+- Device authority and GPU UUID ownership is global, while PCI BDF uniqueness
+  is scoped to one NodeIdentity;
 - normal Scheduler roles cannot mutate residency;
 - Agent reconnect preserves ModelRuntime epoch, while runtime/device/model
   changes invalidate old authority;
@@ -332,10 +334,10 @@ Secret contracts, actuation, and external ModelRuntime image entrypoint. A
 future multi-member/multi-node actuation fixture preserves the LLM shape without
 changing H3 DiT from single-GPU. The composition smoke uses fake local gRPC
 control/ModelRuntime and an in-process S3-compatible endpoint; it is not a real
-GPU, DRA, Kubernetes, cross-node, model-residency, or Launch Receipt test.
+GPU, DRA, Kubernetes, cross-node, ModelResidency, or Launch Receipt test.
 The release graph binds external Secret/ConfigMap names and declared revisions,
 but Fleet neither reads Secret values nor verifies live resource UID/content.
-Production admission and secret-manager evidence must prevent deletion and
+Kubernetes admission control and secret-manager evidence must prevent deletion and
 same-name recreation of immutable rollout resources before activation.
 
 Deliver:
