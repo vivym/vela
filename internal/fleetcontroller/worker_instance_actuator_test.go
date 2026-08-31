@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -67,6 +69,10 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 		t.Fatalf("list H3 WorkerInstance Pods count=%d error=%v", len(pods.Items), err)
 	}
 	seenWorkers := make(map[string]struct{}, 8)
+	expectedMembers := make(map[string]fleetcontroller.WorkerMemberActuation, 8)
+	for _, worker := range bundle.WorkerInstances {
+		expectedMembers[worker.ID.String()] = worker.Members[0]
+	}
 	var auxPod corev1.Pod
 	for index := range pods.Items {
 		var pod corev1.Pod
@@ -84,7 +90,42 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 			t.Fatalf("H3 standard layout duplicated WorkerInstance %s", workerID)
 		}
 		seenWorkers[workerID] = struct{}{}
+		stageAgent := requireContainer(t, pod.Spec.Containers, "stage-worker-agent")
+		expectedMember := expectedMembers[workerID]
+		if requireEnvironment(t, stageAgent, "VELA_WORKER_MEMBER_EPOCH") !=
+			strconv.FormatInt(expectedMember.MemberEpoch, 10) {
+			t.Fatalf("WorkerInstance Pod %q Stage Worker member epoch = %#v", pod.Name, stageAgent.Env)
+		}
+		var devices []struct {
+			DeviceID    string `json:"device_id"`
+			DeviceEpoch int64  `json:"device_epoch"`
+		}
+		if err := json.Unmarshal(
+			[]byte(requireEnvironment(t, stageAgent, "VELA_STAGE_WORKER_DEVICES_JSON")),
+			&devices,
+		); err != nil || len(devices) != 1 ||
+			devices[0].DeviceID != expectedMember.DeviceConstraints[0].DeviceID.String() ||
+			devices[0].DeviceEpoch != expectedMember.DeviceConstraints[0].DeviceEpoch {
+			t.Fatalf("WorkerInstance Pod %q Stage Worker devices = %#v error=%v", pod.Name, devices, err)
+		}
+		if requireEnvironment(t, stageAgent, "VELA_MODEL_RUNTIME_SOCKET") !=
+			"/run/vela-model-runtime/private/runtime.sock" {
+			t.Fatalf("WorkerInstance Pod %q Stage Worker ModelRuntime socket = %#v", pod.Name, stageAgent.Env)
+		}
 		runtimeContainer := requireContainer(t, pod.Spec.Containers, "model-runtime")
+		if len(runtimeContainer.Command) != 0 {
+			t.Fatalf("WorkerInstance Pod %q overrides the ModelRuntime image entrypoint: %v", pod.Name, runtimeContainer.Command)
+		}
+		if requireEnvironment(t, runtimeContainer, "VELA_WORKER_MEMBER_EPOCH") !=
+			strconv.FormatInt(expectedMember.MemberEpoch, 10) ||
+			requireEnvironment(t, runtimeContainer, "VELA_MODEL_RUNTIME_DEVICES_JSON") !=
+				requireEnvironment(t, stageAgent, "VELA_STAGE_WORKER_DEVICES_JSON") {
+			t.Fatalf("WorkerInstance Pod %q ModelRuntime authority = %#v", pod.Name, runtimeContainer.Env)
+		}
+		if requireEnvironment(t, runtimeContainer, "VELA_MODEL_RUNTIME_SOCKET") !=
+			"/run/vela-model-runtime/private/runtime.sock" {
+			t.Fatalf("WorkerInstance Pod %q ModelRuntime socket = %#v", pod.Name, runtimeContainer.Env)
+		}
 		if _, exists := runtimeContainer.Resources.Limits["nvidia.com/gpu"]; exists {
 			t.Fatalf("WorkerInstance Pod %q retained generic nvidia.com/gpu allocation", pod.Name)
 		}
@@ -143,6 +184,71 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 		runtimes[1].Component != "VAE_DECODER" {
 		t.Fatalf("AUX runtime processes = %#v error=%v", runtimes, err)
 	}
+	stageAgent := requireContainer(t, auxPod.Spec.Containers, "stage-worker-agent")
+	for name, value := range map[string]string{
+		"VELA_WORKER_TLS_CERT_FILE":                      "/etc/vela-stage-worker/private/control/tls.crt",
+		"VELA_WORKER_TLS_KEY_FILE":                       "/etc/vela-stage-worker/private/control/tls.key",
+		"VELA_WORKER_CONTROL_CA_FILE":                    "/etc/vela-stage-worker/private/control/ca.crt",
+		"VELA_STAGE_WORKER_AUTHORITY_KEYRING_FILE":       "/etc/vela-stage-worker/private/authority/keyring.json",
+		"VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE":            "/etc/vela-stage-worker/private/artifact/access-key-id",
+		"VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE":        "/etc/vela-stage-worker/private/artifact/secret-access-key",
+		"VELA_ARTIFACT_S3_CA_FILE":                       "/etc/vela-stage-worker/private/artifact/ca.crt",
+		"VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT":        "/var/lib/vela/stage-worker/scratch/production-state",
+		"VELA_STAGE_WORKER_INPUT_ROOT":                   "/var/lib/vela/stage-worker/scratch/inputs",
+		"VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT":  "/var/lib/vela/stage-worker/scratch/input-transfer-journal",
+		"VELA_STAGE_WORKER_OUTPUT_ROOT":                  "/var/lib/vela/stage-worker/scratch/outputs",
+		"VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT": "/var/lib/vela/stage-worker/scratch/materialization-journal",
+		"VELA_MODEL_RUNTIME_SOCKET":                      "/run/vela-model-runtime/private/runtime.sock",
+		"VELA_MODEL_RUNTIME_EXPECTED_UID":                "10001",
+	} {
+		if got := requireEnvironment(t, stageAgent, name); got != value {
+			t.Fatalf("Stage Worker environment %s = %q, want %q", name, got, value)
+		}
+	}
+	for name, key := range map[string]string{
+		"VELA_WORKER_CONTROL_ADDRESS":                           "control-address",
+		"VELA_WORKER_CONTROL_SERVER_NAME":                       "control-server-name",
+		"VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID":             "authority-active-key-id",
+		"VELA_STAGE_WORKER_CONNECTOR_REVISION_ID":               "connector-revision-id",
+		"VELA_STAGE_WORKER_CAPACITY_TTL":                        "capacity-ttl",
+		"VELA_STAGE_WORKER_HEARTBEAT_INTERVAL":                  "heartbeat-interval",
+		"VELA_STAGE_WORKER_RETRY_MINIMUM":                       "retry-minimum",
+		"VELA_STAGE_WORKER_RETRY_MAXIMUM":                       "retry-maximum",
+		"VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT":       "materialization-journal-limit",
+		"VELA_ARTIFACT_S3_ENDPOINT":                             "artifact-s3-endpoint",
+		"VELA_ARTIFACT_S3_REGION":                               "artifact-s3-region",
+		"VELA_ARTIFACT_S3_BUCKET":                               "artifact-s3-bucket",
+		"VELA_ARTIFACT_S3_PATH_STYLE":                           "artifact-s3-path-style",
+		"VELA_ARTIFACT_S3_SIGNED_GET_TTL":                       "artifact-s3-signed-get-ttl",
+		"VELA_STAGE_WORKER_SOURCE_LOSS_RETRY":                   "source-loss-retry",
+		"VELA_STAGE_WORKER_SOURCE_LOSS_CONSUMED_RESOURCE_UNITS": "source-loss-consumed-resource-units",
+	} {
+		requireConfigMapEnvironment(t, stageAgent, name, "stage-worker-runtime-r1", key)
+	}
+	initializer := requireContainer(t, auxPod.Spec.InitContainers, "stage-worker-private-materialization")
+	if initializer.SecurityContext == nil || initializer.SecurityContext.RunAsUser == nil ||
+		*initializer.SecurityContext.RunAsUser != 0 {
+		t.Fatalf("Stage Worker private materialization security = %#v", initializer.SecurityContext)
+	}
+	for _, name := range []string{
+		"stage-worker-control-projected", "stage-worker-authority-projected",
+		"artifact-store-credentials-projected", "artifact-store-ca-projected",
+		"stage-worker-private",
+	} {
+		requireVolumeMount(t, initializer, name)
+	}
+	requireVolumeMount(t, stageAgent, "stage-worker-private")
+	for _, name := range []string{
+		"stage-worker-control-projected", "stage-worker-authority-projected",
+		"artifact-store-credentials-projected", "artifact-store-ca-projected",
+	} {
+		if hasVolumeMount(stageAgent, name) {
+			t.Fatalf("Stage Worker directly mounts projected Secret %q", name)
+		}
+	}
+	if volume := requireVolume(t, auxPod.Spec.Volumes, "stage-worker-private"); volume.EmptyDir == nil || volume.EmptyDir.Medium != corev1.StorageMediumMemory {
+		t.Fatalf("Stage Worker private volume = %#v", volume)
+	}
 
 	replayed, err := actuator.Actuate(context.Background(), bundle)
 	if err != nil || !replayed.Converged || replayed.CreatedGPUClaims != 0 ||
@@ -171,25 +277,31 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 	workerID := uuid.MustParse("49300000-0000-0000-0000-000000000030")
 	memberDevices := map[string][]fleetcontroller.DeviceConstraint{
 		"member-0": {
-			{GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0"},
-			{GPUUUID: "GPU-00000000-0000-0000-0000-000000000002", PCIBDF: "0000:42:00.0"},
+			{DeviceID: uuid.MustParse("49300000-0000-0000-0000-000000000041"), DeviceEpoch: 11,
+				GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0"},
+			{DeviceID: uuid.MustParse("49300000-0000-0000-0000-000000000042"), DeviceEpoch: 12,
+				GPUUUID: "GPU-00000000-0000-0000-0000-000000000002", PCIBDF: "0000:42:00.0"},
 		},
 		"member-1": {
-			{GPUUUID: "GPU-00000000-0000-0000-0000-000000000003", PCIBDF: "0000:43:00.0"},
-			{GPUUUID: "GPU-00000000-0000-0000-0000-000000000004", PCIBDF: "0000:44:00.0"},
+			{DeviceID: uuid.MustParse("49300000-0000-0000-0000-000000000043"), DeviceEpoch: 13,
+				GPUUUID: "GPU-00000000-0000-0000-0000-000000000003", PCIBDF: "0000:43:00.0"},
+			{DeviceID: uuid.MustParse("49300000-0000-0000-0000-000000000044"), DeviceEpoch: 14,
+				GPUUUID: "GPU-00000000-0000-0000-0000-000000000004", PCIBDF: "0000:44:00.0"},
 		},
 	}
 	bundle := fleetcontroller.WorkerBundleActuation{
-		SchemaVersion:          1,
-		PlanRevisionID:         uuid.MustParse("49300000-0000-0000-0000-000000000001"),
-		WorkerBundleID:         uuid.MustParse("49300000-0000-0000-0000-000000000002"),
-		Namespace:              "vela-system",
-		InitImage:              pinnedImage("busybox", 'b'),
-		WorkerAgentImage:       pinnedImage("vela-worker-agent", 'c'),
-		RuntimeImage:           pinnedImage("vela-stage-runtime", 'd'),
-		ArtifactStoreTLSSecret: "artifact-store-ca-r1",
-		WorkerRuntimeConfigMap: "worker-runtime-r1",
-		WorkerControlTLSSecret: "worker-control-tls-r1",
+		SchemaVersion:                  1,
+		PlanRevisionID:                 uuid.MustParse("49300000-0000-0000-0000-000000000001"),
+		WorkerBundleID:                 uuid.MustParse("49300000-0000-0000-0000-000000000002"),
+		Namespace:                      "vela-system",
+		InitImage:                      pinnedImage("busybox", 'b'),
+		StageWorkerAgentImage:          pinnedImage("vela-stage-worker-agent", 'c'),
+		RuntimeImage:                   pinnedImage("vela-stage-runtime", 'd'),
+		StageWorkerConfigMap:           "stage-worker-runtime-r1",
+		StageWorkerControlTLSSecret:    "stage-worker-control-tls-r1",
+		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
+		ArtifactStoreCredentialsSecret: "artifact-store-credentials-r1",
+		ArtifactStoreCASecret:          "artifact-store-ca-r1",
 		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
 			ID:                      workerID,
 			InstanceEpoch:           1,
@@ -203,12 +315,12 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{
 				{
-					ID:  uuid.MustParse("49300000-0000-0000-0000-000000000033"),
+					ID: uuid.MustParse("49300000-0000-0000-0000-000000000033"), MemberEpoch: 21,
 					Key: "member-0", NodeIdentity: "llm-node-a", ResourceClass: "GPU",
 					DeviceCount: 2, DeviceConstraints: memberDevices["member-0"],
 				},
 				{
-					ID:  uuid.MustParse("49300000-0000-0000-0000-000000000034"),
+					ID: uuid.MustParse("49300000-0000-0000-0000-000000000034"), MemberEpoch: 22,
 					Key: "member-1", NodeIdentity: "llm-node-b", ResourceClass: "GPU",
 					DeviceCount: 2, DeviceConstraints: memberDevices["member-1"],
 				},
@@ -277,6 +389,62 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 					memberKey, deviceIndex, expression, expected)
 			}
 		}
+	}
+}
+
+func TestWorkerBundleActuationRejectsDuplicateDeviceAuthorityAndInvalidH3Shapes(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*fleetcontroller.WorkerBundleActuation)
+	}{
+		{
+			name: "duplicate device id",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				bundle.WorkerInstances[1].Members[0].DeviceConstraints[0].DeviceID =
+					bundle.WorkerInstances[0].Members[0].DeviceConstraints[0].DeviceID
+			},
+		},
+		{
+			name: "multi gpu dit",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				member := &bundle.WorkerInstances[1].Members[0]
+				member.DeviceCount = 2
+				member.DeviceConstraints = append(member.DeviceConstraints, fleetcontroller.DeviceConstraint{
+					DeviceID:    uuid.MustParse("49300000-0000-0000-0000-000000000199"),
+					DeviceEpoch: 1,
+					GPUUUID:     "GPU-00000000-0000-0000-0000-000000000099",
+					PCIBDF:      "0000:99:00.0",
+				})
+			},
+		},
+		{
+			name: "shared slot exception on non aux role",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				bundle.WorkerInstances[0].Role = "custom"
+			},
+		},
+		{
+			name: "shared slot exception on single runtime",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				bundle.WorkerInstances[1].SharedSlotException = "H3_AUX_ENCODER_VAE"
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			bundle, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())
+			if err != nil {
+				t.Fatalf("build H3 WorkerBundle actuation: %v", err)
+			}
+			test.mutate(&bundle)
+			bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+			if err != nil {
+				t.Fatalf("digest invalid WorkerBundle fixture: %v", err)
+			}
+			if err := fleetcontroller.ValidateWorkerBundleActuation(bundle); err == nil {
+				t.Fatal("invalid WorkerBundle actuation was accepted")
+			}
+		})
 	}
 }
 
@@ -406,28 +574,37 @@ func TestKubernetesActuatorFailsClosedOnMissingOrDriftedExactGPUClaim(t *testing
 
 func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 	devices := [8]fleetcontroller.DeviceConstraint{}
+	memberEpochs := [8]int64{}
 	for index := range devices {
 		devices[index] = fleetcontroller.DeviceConstraint{
-			GPUUUID: "GPU-00000000-0000-0000-0000-00000000000" + string(rune('0'+index)),
-			PCIBDF:  "0000:4" + string(rune('1'+index)) + ":00.0",
+			DeviceID: uuid.MustParse(
+				"49300000-0000-0000-0000-0000000001" + fmt.Sprintf("%02d", index),
+			),
+			DeviceEpoch: int64(index + 11),
+			GPUUUID:     "GPU-00000000-0000-0000-0000-00000000000" + string(rune('0'+index)),
+			PCIBDF:      "0000:4" + string(rune('1'+index)) + ":00.0",
 		}
+		memberEpochs[index] = int64(index + 21)
 	}
 	return fleetcontroller.H3WorkerBundleSpec{
 		SchemaVersion:  1,
 		PlanRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000001"),
 		WorkerBundleID: uuid.MustParse("49300000-0000-0000-0000-000000000002"),
 		Namespace:      "vela-system", NodeIdentity: "h3-node-01",
-		AuxCapacityPoolID:          uuid.MustParse("49300000-0000-0000-0000-000000000003"),
-		DiTCapacityPoolID:          uuid.MustParse("49300000-0000-0000-0000-000000000004"),
-		AuxWorkerProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000005"),
-		DiTWorkerProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000006"),
-		InitImage:                  pinnedImage("busybox", 'b'),
-		WorkerAgentImage:           pinnedImage("vela-worker-agent", 'c'),
-		RuntimeImage:               pinnedImage("vela-h3-stage-runtime", 'd'),
-		ArtifactStoreTLSSecret:     "artifact-store-ca-r1",
-		WorkerRuntimeConfigMap:     "worker-runtime-r1",
-		WorkerControlTLSSecret:     "worker-control-tls-r1",
-		Devices:                    devices,
+		AuxCapacityPoolID:              uuid.MustParse("49300000-0000-0000-0000-000000000003"),
+		DiTCapacityPoolID:              uuid.MustParse("49300000-0000-0000-0000-000000000004"),
+		AuxWorkerProfileRevisionID:     uuid.MustParse("49300000-0000-0000-0000-000000000005"),
+		DiTWorkerProfileRevisionID:     uuid.MustParse("49300000-0000-0000-0000-000000000006"),
+		InitImage:                      pinnedImage("busybox", 'b'),
+		StageWorkerAgentImage:          pinnedImage("vela-stage-worker-agent", 'c'),
+		RuntimeImage:                   pinnedImage("vela-h3-stage-runtime", 'd'),
+		StageWorkerConfigMap:           "stage-worker-runtime-r1",
+		StageWorkerControlTLSSecret:    "stage-worker-control-tls-r1",
+		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
+		ArtifactStoreCredentialsSecret: "artifact-store-credentials-r1",
+		ArtifactStoreCASecret:          "artifact-store-ca-r1",
+		Devices:                        devices,
+		MemberEpochs:                   memberEpochs,
 		Encoder: fleetcontroller.ModelRuntimeProcess{
 			Component: "ENCODER", ModelComponentRevision: "h3-encoder-v1",
 			RuntimeIdentity: "h3-encoder-runtime-v1", Command: []string{"/opt/vela/bin/h3-encoder"},
@@ -463,6 +640,59 @@ func requireEnvironment(t *testing.T, container corev1.Container, name string) s
 	}
 	t.Fatalf("container %q environment %q is missing", container.Name, name)
 	return ""
+}
+
+func requireConfigMapEnvironment(
+	t *testing.T,
+	container corev1.Container,
+	name string,
+	configMap string,
+	key string,
+) {
+	t.Helper()
+	for _, variable := range container.Env {
+		if variable.Name != name {
+			continue
+		}
+		if variable.ValueFrom == nil || variable.ValueFrom.ConfigMapKeyRef == nil ||
+			variable.ValueFrom.ConfigMapKeyRef.Name != configMap ||
+			variable.ValueFrom.ConfigMapKeyRef.Key != key {
+			t.Fatalf("container %q environment %q = %#v", container.Name, name, variable)
+		}
+		return
+	}
+	t.Fatalf("container %q environment %q is missing", container.Name, name)
+}
+
+func requireVolumeMount(t *testing.T, container corev1.Container, name string) corev1.VolumeMount {
+	t.Helper()
+	for _, mount := range container.VolumeMounts {
+		if mount.Name == name {
+			return mount
+		}
+	}
+	t.Fatalf("container %q volume mount %q is missing", container.Name, name)
+	return corev1.VolumeMount{}
+}
+
+func hasVolumeMount(container corev1.Container, name string) bool {
+	for _, mount := range container.VolumeMounts {
+		if mount.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func requireVolume(t *testing.T, volumes []corev1.Volume, name string) corev1.VolumeSource {
+	t.Helper()
+	for _, volume := range volumes {
+		if volume.Name == name {
+			return volume.VolumeSource
+		}
+	}
+	t.Fatalf("volume %q is missing", name)
+	return corev1.VolumeSource{}
 }
 
 func pinnedImage(name string, digit rune) string {

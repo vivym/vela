@@ -1,6 +1,7 @@
 package deploymentcontract
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivym/vela/internal/fleetcontroller"
 	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -356,8 +358,8 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	namespace := requireFleetEnvironment(t, controller, "VELA_FLEET_NAMESPACE")
 	if namespace.ValueFrom == nil || namespace.ValueFrom.FieldRef == nil ||
 		namespace.ValueFrom.FieldRef.FieldPath != "metadata.namespace" ||
-		requireFleetEnvironment(t, controller, "VELA_FLEET_DESIRED_INPUT_FILE").Value !=
-			"/etc/vela-fleet/desired/desired.yaml" ||
+		requireFleetEnvironment(t, controller, "VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE").Value !=
+			"/etc/vela-fleet/residency-plan-rollouts/rollouts.json" ||
 		requireFleetEnvironment(t, controller, "VELA_FLEET_ADMISSION_ADDRESS").Value != ":9443" ||
 		requireFleetEnvironment(t, controller, "VELA_FLEET_ADMISSION_CLIENT_CA_FILE").Value !=
 			"/etc/vela-fleet/admission-client-ca/ca.crt" ||
@@ -366,7 +368,7 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 		t.Fatalf("Fleet controller environment = %#v", controller.Env)
 	}
 	for _, name := range []string{
-		"desired-revisions", "control-tls", "admission-tls", "admission-client-ca",
+		"residency-plan-rollouts", "control-tls", "admission-tls", "admission-client-ca",
 	} {
 		if !hasFleetVolume(pod.Volumes, name) || !hasFleetVolumeMount(controller.VolumeMounts, name) {
 			t.Fatalf("Fleet controller is missing volume %q", name)
@@ -389,7 +391,46 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	}
 }
 
-func TestFleetDesiredInputIsImmutableAndExplicitlyPlaceholderBound(t *testing.T) {
+func TestFleetDefaultRenderUsesTargetOnlySingleGPUResidencyPlan(t *testing.T) {
+	var config corev1.ConfigMap
+	if err := k8syaml.Unmarshal(
+		readFleetManifest(t, "residency-plan-rollouts.yaml"),
+		&config,
+	); err != nil {
+		t.Fatalf("parse Fleet ResidencyPlan ConfigMap: %v", err)
+	}
+	payload := config.Data["rollouts.json"]
+	var input struct {
+		SchemaVersion int                                    `json:"schema_version"`
+		Rollouts      []fleetcontroller.ResidencyPlanRollout `json:"rollouts"`
+	}
+	if err := json.Unmarshal([]byte(payload), &input); err != nil {
+		t.Fatalf("decode Fleet ResidencyPlan placeholder JSON: %v", err)
+	}
+	if config.Immutable == nil || !*config.Immutable || input.SchemaVersion != 1 ||
+		len(input.Rollouts) != 1 || len(input.Rollouts[0].WorkerBundles) != 1 ||
+		len(input.Rollouts[0].WorkerBundles[0].WorkerInstances) != 1 {
+		t.Fatalf("Fleet ResidencyPlan placeholder = %#v input=%#v", config, input)
+	}
+	bundle := input.Rollouts[0].WorkerBundles[0]
+	digest, err := fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil || digest != bundle.RevisionDigest {
+		t.Fatalf("Fleet ResidencyPlan placeholder digest=%q want=%q error=%v", digest, bundle.RevisionDigest, err)
+	}
+	worker := bundle.WorkerInstances[0]
+	if worker.Role != "dit" || worker.CapacitySlots != 1 || len(worker.ModelRuntimes) != 1 ||
+		worker.ModelRuntimes[0].Component != "DIT" || len(worker.Members) != 1 ||
+		worker.Members[0].DeviceCount != 1 || len(worker.Members[0].DeviceConstraints) != 1 {
+		t.Fatalf("Fleet single-GPU placeholder WorkerInstance = %#v", worker)
+	}
+	kustomization := string(readFleetManifest(t, "kustomization.yaml"))
+	if !strings.Contains(kustomization, "residency-plan-rollouts.yaml") ||
+		strings.Contains(kustomization, "desired-revisions.yaml") {
+		t.Fatalf("Fleet default Kustomization is not target-only:\n%s", kustomization)
+	}
+}
+
+func TestFleetLegacyDesiredInputRemainsExplicitRollbackOnly(t *testing.T) {
 	var desiredConfig corev1.ConfigMap
 	if err := k8syaml.Unmarshal(
 		readFleetManifest(t, "desired-revisions.yaml"),

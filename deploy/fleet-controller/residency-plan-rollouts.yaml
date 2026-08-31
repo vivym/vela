@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-fleet-residency-plan-rollouts-placeholder
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-fleet-controller
+    app.kubernetes.io/part-of: vela
+immutable: true
+data:
+  rollouts.json: |
+    {
+      "rollouts": [
+        {
+          "approved_plan": {
+            "schema_version": 1,
+            "id": "49320000-0000-0000-0000-000000000001",
+            "stable_id": "replace-with-approved-single-gpu-rollout",
+            "revision": 1,
+            "content_digest": "53b8c8ede2f4e8f2a55e76b3ccfa7c311efc81a9d9ba26313b86c75c2205c323",
+            "approval_evidence_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+            "approved_at": "2026-08-31T00:00:00Z",
+            "approved_by": "replace-with-production-fleet-operator",
+            "capacity_pools": [
+              {
+                "id": "49320000-0000-0000-0000-000000000003",
+                "stable_id": "replace-with-h3-dit-capacity-pool",
+                "stage_profile_revision_id": "49320000-0000-0000-0000-000000000008",
+                "resource_class": "GPU",
+                "security_class": "INTERNAL",
+                "region": "replace-with-region",
+                "max_ready_queue_depth": 128
+              }
+            ],
+            "worker_bundles": [
+              {
+                "id": "49320000-0000-0000-0000-000000000002",
+                "stable_id": "replace-with-worker-bundle",
+                "desired_generation": 1,
+                "layout_digest": "53b8c8ede2f4e8f2a55e76b3ccfa7c311efc81a9d9ba26313b86c75c2205c323"
+              }
+            ],
+            "worker_instances": [
+              {
+                "id": "49320000-0000-0000-0000-000000000004",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000005",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000003",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1
+              }
+            ]
+          },
+          "worker_bundles": [
+            {
+              "schema_version": 1,
+              "plan_revision_id": "49320000-0000-0000-0000-000000000001",
+              "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+              "revision_digest": "53b8c8ede2f4e8f2a55e76b3ccfa7c311efc81a9d9ba26313b86c75c2205c323",
+              "namespace": "vela-system",
+              "init_image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+              "stage_worker_agent_image": "ghcr.io/vivym/vela-stage-worker-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "runtime_image": "ghcr.io/replace-with-approved/vela-h3-stage-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "stage_worker_config_map": "vela-stage-worker-runtime-placeholder",
+              "stage_worker_control_tls_secret": "vela-stage-worker-control-mtls-r0-placeholder",
+              "stage_worker_authority_secret": "vela-stage-worker-authority-r0-placeholder",
+              "artifact_store_credentials_secret": "vela-stage-worker-artifact-credentials-r0-placeholder",
+              "artifact_store_ca_secret": "vela-stage-worker-artifact-ca-r0-placeholder",
+              "worker_instances": [
+                {
+                  "id": "49320000-0000-0000-0000-000000000004",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000005",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000003",
+                  "role": "dit",
+                  "capacity_slots": 1,
+                  "model_runtimes": [
+                    {
+                      "component": "DIT",
+                      "model_component_revision": "replace-with-certified-h3-dit-revision",
+                      "runtime_identity": "replace-with-certified-h3-dit-runtime-identity",
+                      "command": ["/opt/vela/bin/h3-dit"]
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "49320000-0000-0000-0000-000000000006",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "replace-with-registered-node-identity",
+                      "resource_class": "GPU",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000007",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000001",
+                          "pci_bdf": "0000:41:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "schema_version": 1
+    }

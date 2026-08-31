@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-stage-worker-runtime-placeholder
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-stage-worker
+    app.kubernetes.io/part-of: vela
+immutable: true
+data:
+  control-address: vela-control.vela-system.svc:9444
+  control-server-name: vela-control.vela-system.svc
+  authority-active-key-id: stage-authority-r0-placeholder
+  connector-revision-id: 00000000-0000-0000-0000-000000000001
+  capacity-ttl: 2m
+  heartbeat-interval: 20s
+  retry-minimum: 1s
+  retry-maximum: 30s
+  materialization-journal-limit: "4096"
+  artifact-s3-endpoint: https://replace-with-artifact-store:9000
+  artifact-s3-region: us-east-1
+  artifact-s3-bucket: vela-stage-artifacts
+  artifact-s3-path-style: "true"
+  artifact-s3-signed-get-ttl: 5m
+  source-loss-retry: 30s
+  source-loss-consumed-resource-units: "1"

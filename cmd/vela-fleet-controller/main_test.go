@@ -236,11 +236,13 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 	bundle := fleetcontroller.WorkerBundleActuation{
 		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
 		Namespace: "vela-system", InitImage: pinnedTestImage("busybox", 'a'),
-		WorkerAgentImage:       pinnedTestImage("vela-worker-agent", 'b'),
-		RuntimeImage:           pinnedTestImage("vela-h3-stage-runtime", 'c'),
-		ArtifactStoreTLSSecret: "artifact-store-ca-r1",
-		WorkerRuntimeConfigMap: "worker-runtime-r1",
-		WorkerControlTLSSecret: "worker-control-tls-r1",
+		StageWorkerAgentImage:          pinnedTestImage("vela-stage-worker-agent", 'b'),
+		RuntimeImage:                   pinnedTestImage("vela-h3-stage-runtime", 'c'),
+		StageWorkerConfigMap:           "stage-worker-runtime-r1",
+		StageWorkerControlTLSSecret:    "stage-worker-control-tls-r1",
+		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
+		ArtifactStoreCredentialsSecret: "artifact-store-credentials-r1",
+		ArtifactStoreCASecret:          "artifact-store-ca-r1",
 		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
 			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
 			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
@@ -249,9 +251,10 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 				RuntimeIdentity: "h3-dit-runtime-v1", Command: []string{"/opt/vela/bin/h3-dit"},
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{{
-				ID:  uuid.MustParse("49310000-0000-0000-0000-000000000006"),
+				ID: uuid.MustParse("49310000-0000-0000-0000-000000000006"), MemberEpoch: 11,
 				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
+					DeviceID: uuid.MustParse("49310000-0000-0000-0000-000000000008"), DeviceEpoch: 3,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
 				}},
 			}},

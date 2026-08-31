@@ -33,6 +33,9 @@ const (
 	deviceConstraintsAnnotation = fleetcontract.DeviceConstraintsAnnotation
 	actuationRevisionAnnotation = fleetcontract.ActuationRevisionAnnotation
 	h3AUXSharedSlotException    = "H3_AUX_ENCODER_VAE"
+	stageWorkerScratchRoot      = "/var/lib/vela/stage-worker/scratch"
+	modelRuntimeSocketRoot      = "/run/vela-model-runtime"
+	modelRuntimeSocketPath      = modelRuntimeSocketRoot + "/private/runtime.sock"
 )
 
 var (
@@ -57,18 +60,20 @@ type WorkerInstanceActuator struct {
 }
 
 type WorkerBundleActuation struct {
-	SchemaVersion          int                       `json:"schema_version"`
-	PlanRevisionID         uuid.UUID                 `json:"plan_revision_id"`
-	WorkerBundleID         uuid.UUID                 `json:"worker_bundle_id"`
-	RevisionDigest         string                    `json:"revision_digest"`
-	Namespace              string                    `json:"namespace"`
-	InitImage              string                    `json:"init_image"`
-	WorkerAgentImage       string                    `json:"worker_agent_image"`
-	RuntimeImage           string                    `json:"runtime_image"`
-	ArtifactStoreTLSSecret string                    `json:"artifact_store_tls_secret"`
-	WorkerRuntimeConfigMap string                    `json:"worker_runtime_config_map"`
-	WorkerControlTLSSecret string                    `json:"worker_control_tls_secret"`
-	WorkerInstances        []WorkerInstanceActuation `json:"worker_instances"`
+	SchemaVersion                  int                       `json:"schema_version"`
+	PlanRevisionID                 uuid.UUID                 `json:"plan_revision_id"`
+	WorkerBundleID                 uuid.UUID                 `json:"worker_bundle_id"`
+	RevisionDigest                 string                    `json:"revision_digest"`
+	Namespace                      string                    `json:"namespace"`
+	InitImage                      string                    `json:"init_image"`
+	StageWorkerAgentImage          string                    `json:"stage_worker_agent_image"`
+	RuntimeImage                   string                    `json:"runtime_image"`
+	StageWorkerConfigMap           string                    `json:"stage_worker_config_map"`
+	StageWorkerControlTLSSecret    string                    `json:"stage_worker_control_tls_secret"`
+	StageWorkerAuthoritySecret     string                    `json:"stage_worker_authority_secret"`
+	ArtifactStoreCredentialsSecret string                    `json:"artifact_store_credentials_secret"`
+	ArtifactStoreCASecret          string                    `json:"artifact_store_ca_secret"`
+	WorkerInstances                []WorkerInstanceActuation `json:"worker_instances"`
 }
 
 type WorkerInstanceActuation struct {
@@ -85,6 +90,7 @@ type WorkerInstanceActuation struct {
 
 type WorkerMemberActuation struct {
 	ID                uuid.UUID          `json:"id"`
+	MemberEpoch       int64              `json:"member_epoch"`
 	Key               string             `json:"key"`
 	NodeIdentity      string             `json:"node_identity"`
 	ResourceClass     string             `json:"resource_class"`
@@ -93,8 +99,10 @@ type WorkerMemberActuation struct {
 }
 
 type DeviceConstraint struct {
-	GPUUUID string `json:"gpu_uuid"`
-	PCIBDF  string `json:"pci_bdf"`
+	DeviceID    uuid.UUID `json:"device_id"`
+	DeviceEpoch int64     `json:"device_epoch"`
+	GPUUUID     string    `json:"gpu_uuid"`
+	PCIBDF      string    `json:"pci_bdf"`
 }
 
 type ModelRuntimeProcess struct {
@@ -105,26 +113,29 @@ type ModelRuntimeProcess struct {
 }
 
 type H3WorkerBundleSpec struct {
-	SchemaVersion              int
-	PlanRevisionID             uuid.UUID
-	WorkerBundleID             uuid.UUID
-	RevisionDigest             string
-	Namespace                  string
-	NodeIdentity               string
-	AuxCapacityPoolID          uuid.UUID
-	DiTCapacityPoolID          uuid.UUID
-	AuxWorkerProfileRevisionID uuid.UUID
-	DiTWorkerProfileRevisionID uuid.UUID
-	InitImage                  string
-	WorkerAgentImage           string
-	RuntimeImage               string
-	ArtifactStoreTLSSecret     string
-	WorkerRuntimeConfigMap     string
-	WorkerControlTLSSecret     string
-	Devices                    [8]DeviceConstraint
-	Encoder                    ModelRuntimeProcess
-	DiT                        ModelRuntimeProcess
-	VAEDecoder                 ModelRuntimeProcess
+	SchemaVersion                  int
+	PlanRevisionID                 uuid.UUID
+	WorkerBundleID                 uuid.UUID
+	RevisionDigest                 string
+	Namespace                      string
+	NodeIdentity                   string
+	AuxCapacityPoolID              uuid.UUID
+	DiTCapacityPoolID              uuid.UUID
+	AuxWorkerProfileRevisionID     uuid.UUID
+	DiTWorkerProfileRevisionID     uuid.UUID
+	InitImage                      string
+	StageWorkerAgentImage          string
+	RuntimeImage                   string
+	StageWorkerConfigMap           string
+	StageWorkerControlTLSSecret    string
+	StageWorkerAuthoritySecret     string
+	ArtifactStoreCredentialsSecret string
+	ArtifactStoreCASecret          string
+	Devices                        [8]DeviceConstraint
+	MemberEpochs                   [8]int64
+	Encoder                        ModelRuntimeProcess
+	DiT                            ModelRuntimeProcess
+	VAEDecoder                     ModelRuntimeProcess
 }
 
 type WorkerInstanceActuationResult struct {
@@ -149,17 +160,19 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		!validResourceName(spec.Namespace) || !validResourceName(spec.NodeIdentity) ||
 		spec.AuxCapacityPoolID == uuid.Nil || spec.DiTCapacityPoolID == uuid.Nil ||
 		spec.AuxWorkerProfileRevisionID == uuid.Nil || spec.DiTWorkerProfileRevisionID == uuid.Nil ||
-		!validPinnedImage(spec.InitImage) || !validPinnedImage(spec.WorkerAgentImage) ||
-		!validPinnedImage(spec.RuntimeImage) || !validResourceName(spec.ArtifactStoreTLSSecret) ||
-		!validResourceName(spec.WorkerRuntimeConfigMap) ||
-		!validResourceName(spec.WorkerControlTLSSecret) ||
+		!validPinnedImage(spec.InitImage) || !validPinnedImage(spec.StageWorkerAgentImage) ||
+		!validPinnedImage(spec.RuntimeImage) || !validResourceName(spec.StageWorkerConfigMap) ||
+		!validResourceName(spec.StageWorkerControlTLSSecret) ||
+		!validResourceName(spec.StageWorkerAuthoritySecret) ||
+		!validResourceName(spec.ArtifactStoreCredentialsSecret) ||
+		!validResourceName(spec.ArtifactStoreCASecret) ||
 		!validModelRuntimeProcess(spec.Encoder) || spec.Encoder.Component != "ENCODER" ||
 		!validModelRuntimeProcess(spec.DiT) || spec.DiT.Component != "DIT" ||
 		!validModelRuntimeProcess(spec.VAEDecoder) || spec.VAEDecoder.Component != "VAE_DECODER" {
 		return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle specification is invalid")
 	}
-	for _, device := range spec.Devices {
-		if !validDeviceConstraint(device) {
+	for index, device := range spec.Devices {
+		if !validDeviceConstraint(device) || spec.MemberEpochs[index] <= 0 {
 			return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle device constraint is invalid")
 		}
 	}
@@ -168,11 +181,13 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		SchemaVersion: 1, PlanRevisionID: spec.PlanRevisionID,
 		WorkerBundleID: spec.WorkerBundleID,
 		Namespace:      spec.Namespace, InitImage: spec.InitImage,
-		WorkerAgentImage: spec.WorkerAgentImage, RuntimeImage: spec.RuntimeImage,
-		ArtifactStoreTLSSecret: spec.ArtifactStoreTLSSecret,
-		WorkerRuntimeConfigMap: spec.WorkerRuntimeConfigMap,
-		WorkerControlTLSSecret: spec.WorkerControlTLSSecret,
-		WorkerInstances:        make([]WorkerInstanceActuation, 0, 8),
+		StageWorkerAgentImage: spec.StageWorkerAgentImage, RuntimeImage: spec.RuntimeImage,
+		StageWorkerConfigMap:           spec.StageWorkerConfigMap,
+		StageWorkerControlTLSSecret:    spec.StageWorkerControlTLSSecret,
+		StageWorkerAuthoritySecret:     spec.StageWorkerAuthoritySecret,
+		ArtifactStoreCredentialsSecret: spec.ArtifactStoreCredentialsSecret,
+		ArtifactStoreCASecret:          spec.ArtifactStoreCASecret,
+		WorkerInstances:                make([]WorkerInstanceActuation, 0, 8),
 	}
 	auxID := uuid.NewSHA1(spec.WorkerBundleID, []byte("h3/aux"))
 	bundle.WorkerInstances = append(bundle.WorkerInstances, WorkerInstanceActuation{
@@ -181,7 +196,9 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		CapacityPoolID:          spec.AuxCapacityPoolID, Role: "aux", CapacitySlots: 1,
 		SharedSlotException: h3AUXSharedSlotException,
 		ModelRuntimes:       []ModelRuntimeProcess{spec.Encoder, spec.VAEDecoder},
-		Members:             []WorkerMemberActuation{h3Member(auxID, spec.NodeIdentity, spec.Devices[0])},
+		Members: []WorkerMemberActuation{
+			h3Member(auxID, spec.MemberEpochs[0], spec.NodeIdentity, spec.Devices[0]),
+		},
 	})
 	for index := range 7 {
 		workerID := uuid.NewSHA1(spec.WorkerBundleID, []byte("h3/dit/"+strconv.Itoa(index)))
@@ -190,7 +207,9 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 			WorkerProfileRevisionID: spec.DiTWorkerProfileRevisionID,
 			CapacityPoolID:          spec.DiTCapacityPoolID, Role: "dit", CapacitySlots: 1,
 			ModelRuntimes: []ModelRuntimeProcess{spec.DiT},
-			Members:       []WorkerMemberActuation{h3Member(workerID, spec.NodeIdentity, spec.Devices[index+1])},
+			Members: []WorkerMemberActuation{
+				h3Member(workerID, spec.MemberEpochs[index+1], spec.NodeIdentity, spec.Devices[index+1]),
+			},
 		})
 	}
 	computedDigest, err := ComputeWorkerBundleActuationDigest(bundle)
@@ -209,11 +228,12 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 
 func h3Member(
 	workerID uuid.UUID,
+	memberEpoch int64,
 	nodeIdentity string,
 	device DeviceConstraint,
 ) WorkerMemberActuation {
 	return WorkerMemberActuation{
-		ID: uuid.NewSHA1(workerID, []byte("member-0")), Key: "member-0",
+		ID: uuid.NewSHA1(workerID, []byte("member-0")), MemberEpoch: memberEpoch, Key: "member-0",
 		NodeIdentity: nodeIdentity, ResourceClass: "GPU", DeviceCount: 1,
 		DeviceConstraints: []DeviceConstraint{device},
 	}
@@ -301,16 +321,19 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 	if bundle.SchemaVersion != 1 || bundle.PlanRevisionID == uuid.Nil ||
 		bundle.WorkerBundleID == uuid.Nil || !validSHA256(bundle.RevisionDigest) ||
 		!validResourceName(bundle.Namespace) || !validPinnedImage(bundle.InitImage) ||
-		!validPinnedImage(bundle.WorkerAgentImage) || !validPinnedImage(bundle.RuntimeImage) ||
-		!validResourceName(bundle.ArtifactStoreTLSSecret) ||
-		!validResourceName(bundle.WorkerRuntimeConfigMap) ||
-		!validResourceName(bundle.WorkerControlTLSSecret) ||
+		!validPinnedImage(bundle.StageWorkerAgentImage) || !validPinnedImage(bundle.RuntimeImage) ||
+		!validResourceName(bundle.StageWorkerConfigMap) ||
+		!validResourceName(bundle.StageWorkerControlTLSSecret) ||
+		!validResourceName(bundle.StageWorkerAuthoritySecret) ||
+		!validResourceName(bundle.ArtifactStoreCredentialsSecret) ||
+		!validResourceName(bundle.ArtifactStoreCASecret) ||
 		len(bundle.WorkerInstances) == 0 || len(bundle.WorkerInstances) > 4096 {
 		return errors.New("WorkerBundle actuation is invalid")
 	}
 	workers := make(map[uuid.UUID]struct{}, len(bundle.WorkerInstances))
 	members := make(map[uuid.UUID]struct{})
 	podNames := make(map[string]struct{})
+	deviceIDs := make(map[uuid.UUID]struct{})
 	gpuUUIDs := make(map[string]struct{})
 	pciBDFs := make(map[string]struct{})
 	for _, worker := range bundle.WorkerInstances {
@@ -324,8 +347,17 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 			return errors.New("WorkerBundle actuation reuses a WorkerInstance id")
 		}
 		workers[worker.ID] = struct{}{}
+		if worker.SharedSlotException != "" && !validSharedSlotException(worker) {
+			return errors.New("WorkerInstance shared-slot exception is invalid")
+		}
 		if len(worker.ModelRuntimes) > 1 && !validSharedSlotException(worker) {
 			return errors.New("multi-model WorkerInstance is not an approved shared-slot exception")
+		}
+		if worker.Role == "aux" && !validSharedSlotException(worker) {
+			return errors.New("H3 AUX WorkerInstance is not the approved shared-slot shape")
+		}
+		if worker.Role == "dit" && !validSingleGPUH3Worker(worker, "DIT") {
+			return errors.New("H3 DiT WorkerInstance must own one GPU and one DiT runtime")
 		}
 		for _, runtime := range worker.ModelRuntimes {
 			if !validModelRuntimeProcess(runtime) {
@@ -334,7 +366,7 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 		}
 		memberKeys := make(map[string]struct{}, len(worker.Members))
 		for _, member := range worker.Members {
-			if member.ID == uuid.Nil || !validMemberKey(member.Key) ||
+			if member.ID == uuid.Nil || member.MemberEpoch <= 0 || !validMemberKey(member.Key) ||
 				!validResourceName(member.NodeIdentity) || member.DeviceCount <= 0 || member.DeviceCount > 64 ||
 				(member.ResourceClass != "" && member.ResourceClass != "GPU") ||
 				(len(member.DeviceConstraints) != 0 && len(member.DeviceConstraints) != member.DeviceCount) {
@@ -357,12 +389,16 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 				if !validDeviceConstraint(constraint) {
 					return errors.New("WorkerMember device constraint is invalid")
 				}
+				if _, exists := deviceIDs[constraint.DeviceID]; exists {
+					return errors.New("WorkerBundle actuation assigns one Device authority more than once")
+				}
 				if _, exists := gpuUUIDs[constraint.GPUUUID]; exists {
 					return errors.New("WorkerBundle actuation assigns one GPU to multiple WorkerInstances")
 				}
 				if _, exists := pciBDFs[constraint.PCIBDF]; exists {
 					return errors.New("WorkerBundle actuation assigns one PCI device to multiple WorkerInstances")
 				}
+				deviceIDs[constraint.DeviceID] = struct{}{}
 				gpuUUIDs[constraint.GPUUUID] = struct{}{}
 				pciBDFs[constraint.PCIBDF] = struct{}{}
 			}
@@ -393,10 +429,17 @@ func ComputeWorkerBundleActuationDigest(bundle WorkerBundleActuation) (string, e
 }
 
 func validSharedSlotException(worker WorkerInstanceActuation) bool {
-	return worker.SharedSlotException == h3AUXSharedSlotException && worker.CapacitySlots == 1 &&
+	return worker.Role == "aux" && worker.SharedSlotException == h3AUXSharedSlotException &&
+		worker.CapacitySlots == 1 &&
 		len(worker.ModelRuntimes) == 2 && worker.ModelRuntimes[0].Component == "ENCODER" &&
 		worker.ModelRuntimes[1].Component == "VAE_DECODER" && len(worker.Members) == 1 &&
 		worker.Members[0].DeviceCount == 1
+}
+
+func validSingleGPUH3Worker(worker WorkerInstanceActuation, component string) bool {
+	return worker.SharedSlotException == "" && worker.CapacitySlots == 1 &&
+		len(worker.ModelRuntimes) == 1 && worker.ModelRuntimes[0].Component == component &&
+		len(worker.Members) == 1 && worker.Members[0].DeviceCount == 1
 }
 
 func validModelRuntimeProcess(runtime ModelRuntimeProcess) bool {
@@ -436,7 +479,8 @@ func validMemberKey(value string) bool {
 }
 
 func validDeviceConstraint(constraint DeviceConstraint) bool {
-	return actuatorGPUUUIDPattern.MatchString(constraint.GPUUUID) &&
+	return constraint.DeviceID != uuid.Nil && constraint.DeviceEpoch > 0 &&
+		actuatorGPUUUIDPattern.MatchString(constraint.GPUUUID) &&
 		actuatorPCIBDFPattern.MatchString(constraint.PCIBDF)
 }
 
@@ -585,7 +629,7 @@ func materializeWorkerInstancePod(
 				FSGroup: &fsGroup, FSGroupChangePolicy: valuePointer(corev1.FSGroupChangeOnRootMismatch),
 				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 			},
-			InitContainers: []corev1.Container{h3SocketInitializer(bundle.InitImage)},
+			InitContainers: []corev1.Container{stageWorkerPrivateInitializer(bundle.InitImage)},
 			Containers: []corev1.Container{
 				workerInstanceAgentContainer(bundle, worker, member),
 				workerInstanceRuntimeContainer(bundle, worker, member, string(runtimes)),
@@ -607,22 +651,51 @@ func workerInstanceAgentContainer(
 	worker WorkerInstanceActuation,
 	member WorkerMemberActuation,
 ) corev1.Container {
+	devicesJSON := mustEncodeStageWorkerDevices(member.DeviceConstraints)
+	capacityVectorJSON := mustEncodeCapacityVector(worker.CapacitySlots, member.DeviceCount)
 	return withKubernetesContainerDefaults(corev1.Container{
-		Name: "worker-agent", Image: bundle.WorkerAgentImage,
+		Name: "stage-worker-agent", Image: bundle.StageWorkerAgentImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env: []corev1.EnvVar{
 			literalEnvironment("VELA_WORKER_INSTANCE_ID", worker.ID.String()),
 			literalEnvironment("VELA_WORKER_INSTANCE_EPOCH", strconv.FormatInt(worker.InstanceEpoch, 10)),
 			literalEnvironment("VELA_WORKER_MEMBER_ID", member.ID.String()),
+			literalEnvironment("VELA_WORKER_MEMBER_EPOCH", strconv.FormatInt(member.MemberEpoch, 10)),
 			literalEnvironment("VELA_WORKER_MEMBER_KEY", member.Key),
+			literalEnvironment("VELA_STAGE_WORKER_DEVICES_JSON", devicesJSON),
+			literalEnvironment("VELA_STAGE_WORKER_CAPACITY_VECTOR_JSON", capacityVectorJSON),
 			fieldEnvironment("VELA_WORKER_NODE_IDENTITY", "spec.nodeName"),
-			configMapEnvironment("VELA_WORKER_CONTROL_ADDRESS", bundle.WorkerRuntimeConfigMap, "control-address"),
-			configMapEnvironment("VELA_WORKER_CONTROL_SERVER_NAME", bundle.WorkerRuntimeConfigMap, "control-server-name"),
-			literalEnvironment("VELA_WORKER_TLS_CERT_FILE", "/etc/vela-worker-tls/tls.crt"),
-			literalEnvironment("VELA_WORKER_TLS_KEY_FILE", "/etc/vela-worker-tls/tls.key"),
-			literalEnvironment("VELA_WORKER_CONTROL_CA_FILE", "/etc/vela-worker-tls/ca.crt"),
-			literalEnvironment("VELA_WORKER_RUNNER_SOCKET", "/run/vela-runner/private/runner.sock"),
-			literalEnvironment("VELA_WORKER_SCRATCH_ROOT", workerScratchRoot),
+			configMapEnvironment("VELA_WORKER_CONTROL_ADDRESS", bundle.StageWorkerConfigMap, "control-address"),
+			configMapEnvironment("VELA_WORKER_CONTROL_SERVER_NAME", bundle.StageWorkerConfigMap, "control-server-name"),
+			literalEnvironment("VELA_WORKER_TLS_CERT_FILE", "/etc/vela-stage-worker/private/control/tls.crt"),
+			literalEnvironment("VELA_WORKER_TLS_KEY_FILE", "/etc/vela-stage-worker/private/control/tls.key"),
+			literalEnvironment("VELA_WORKER_CONTROL_CA_FILE", "/etc/vela-stage-worker/private/control/ca.crt"),
+			literalEnvironment("VELA_MODEL_RUNTIME_SOCKET", modelRuntimeSocketPath),
+			literalEnvironment("VELA_MODEL_RUNTIME_EXPECTED_UID", "10001"),
+			literalEnvironment("VELA_WORKER_SCRATCH_ROOT", stageWorkerScratchRoot),
+			literalEnvironment("VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT", stageWorkerScratchRoot+"/production-state"),
+			literalEnvironment("VELA_STAGE_WORKER_INPUT_ROOT", stageWorkerScratchRoot+"/inputs"),
+			literalEnvironment("VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT", stageWorkerScratchRoot+"/input-transfer-journal"),
+			literalEnvironment("VELA_STAGE_WORKER_OUTPUT_ROOT", stageWorkerScratchRoot+"/outputs"),
+			literalEnvironment("VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT", stageWorkerScratchRoot+"/materialization-journal"),
+			literalEnvironment("VELA_STAGE_WORKER_AUTHORITY_KEYRING_FILE", "/etc/vela-stage-worker/private/authority/keyring.json"),
+			literalEnvironment("VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE", "/etc/vela-stage-worker/private/artifact/access-key-id"),
+			literalEnvironment("VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE", "/etc/vela-stage-worker/private/artifact/secret-access-key"),
+			literalEnvironment("VELA_ARTIFACT_S3_CA_FILE", "/etc/vela-stage-worker/private/artifact/ca.crt"),
+			configMapEnvironment("VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", bundle.StageWorkerConfigMap, "authority-active-key-id"),
+			configMapEnvironment("VELA_STAGE_WORKER_CONNECTOR_REVISION_ID", bundle.StageWorkerConfigMap, "connector-revision-id"),
+			configMapEnvironment("VELA_STAGE_WORKER_CAPACITY_TTL", bundle.StageWorkerConfigMap, "capacity-ttl"),
+			configMapEnvironment("VELA_STAGE_WORKER_HEARTBEAT_INTERVAL", bundle.StageWorkerConfigMap, "heartbeat-interval"),
+			configMapEnvironment("VELA_STAGE_WORKER_RETRY_MINIMUM", bundle.StageWorkerConfigMap, "retry-minimum"),
+			configMapEnvironment("VELA_STAGE_WORKER_RETRY_MAXIMUM", bundle.StageWorkerConfigMap, "retry-maximum"),
+			configMapEnvironment("VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT", bundle.StageWorkerConfigMap, "materialization-journal-limit"),
+			configMapEnvironment("VELA_ARTIFACT_S3_ENDPOINT", bundle.StageWorkerConfigMap, "artifact-s3-endpoint"),
+			configMapEnvironment("VELA_ARTIFACT_S3_REGION", bundle.StageWorkerConfigMap, "artifact-s3-region"),
+			configMapEnvironment("VELA_ARTIFACT_S3_BUCKET", bundle.StageWorkerConfigMap, "artifact-s3-bucket"),
+			configMapEnvironment("VELA_ARTIFACT_S3_PATH_STYLE", bundle.StageWorkerConfigMap, "artifact-s3-path-style"),
+			configMapEnvironment("VELA_ARTIFACT_S3_SIGNED_GET_TTL", bundle.StageWorkerConfigMap, "artifact-s3-signed-get-ttl"),
+			configMapEnvironment("VELA_STAGE_WORKER_SOURCE_LOSS_RETRY", bundle.StageWorkerConfigMap, "source-loss-retry"),
+			configMapEnvironment("VELA_STAGE_WORKER_SOURCE_LOSS_CONSUMED_RESOURCE_UNITS", bundle.StageWorkerConfigMap, "source-loss-consumed-resource-units"),
 		},
 		Resources: corev1.ResourceRequirements{
 			Requests: resourceList(map[corev1.ResourceName]string{
@@ -634,10 +707,9 @@ func workerInstanceAgentContainer(
 		},
 		SecurityContext: unprivilegedContainerSecurityContext(),
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: "runner-socket", MountPath: runnerSocketRoot},
-			{Name: "scratch", MountPath: workerScratchRoot},
-			{Name: "worker-control-tls", MountPath: "/etc/vela-worker-tls", ReadOnly: true},
-			{Name: "artifact-store-tls", MountPath: "/etc/vela-artifact-store-tls", ReadOnly: true},
+			{Name: "model-runtime-socket", MountPath: modelRuntimeSocketRoot},
+			{Name: "scratch", MountPath: stageWorkerScratchRoot},
+			{Name: "stage-worker-private", MountPath: "/etc/vela-stage-worker/private", ReadOnly: true},
 		},
 	})
 }
@@ -648,19 +720,21 @@ func workerInstanceRuntimeContainer(
 	member WorkerMemberActuation,
 	modelRuntimesJSON string,
 ) corev1.Container {
+	devicesJSON := mustEncodeStageWorkerDevices(member.DeviceConstraints)
 	return withKubernetesContainerDefaults(corev1.Container{
 		Name: "model-runtime", Image: bundle.RuntimeImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command:         []string{"/opt/vela/bin/stage-runtime-supervisor"},
 		Env: []corev1.EnvVar{
 			literalEnvironment("VELA_WORKER_INSTANCE_ID", worker.ID.String()),
 			literalEnvironment("VELA_WORKER_INSTANCE_EPOCH", strconv.FormatInt(worker.InstanceEpoch, 10)),
 			literalEnvironment("VELA_WORKER_MEMBER_ID", member.ID.String()),
+			literalEnvironment("VELA_WORKER_MEMBER_EPOCH", strconv.FormatInt(member.MemberEpoch, 10)),
 			literalEnvironment("VELA_WORKER_MEMBER_KEY", member.Key),
+			literalEnvironment("VELA_MODEL_RUNTIME_DEVICES_JSON", devicesJSON),
 			literalEnvironment("VELA_MODEL_RUNTIMES_JSON", modelRuntimesJSON),
 			literalEnvironment("VELA_CAPACITY_SLOTS", strconv.Itoa(worker.CapacitySlots)),
-			literalEnvironment("VELA_RUNNER_SOCKET", "/run/vela-runner/private/runner.sock"),
-			literalEnvironment("VELA_RUNNER_SCRATCH_ROOT", workerScratchRoot),
+			literalEnvironment("VELA_MODEL_RUNTIME_SOCKET", modelRuntimeSocketPath),
+			literalEnvironment("VELA_MODEL_RUNTIME_SCRATCH_ROOT", stageWorkerScratchRoot),
 		},
 		Resources: corev1.ResourceRequirements{
 			Requests: resourceList(map[corev1.ResourceName]string{
@@ -673,8 +747,8 @@ func workerInstanceRuntimeContainer(
 		},
 		SecurityContext: unprivilegedContainerSecurityContext(),
 		VolumeMounts: []corev1.VolumeMount{
-			{Name: "runner-socket", MountPath: runnerSocketRoot},
-			{Name: "scratch", MountPath: workerScratchRoot},
+			{Name: "model-runtime-socket", MountPath: modelRuntimeSocketRoot},
+			{Name: "scratch", MountPath: stageWorkerScratchRoot},
 			{Name: "model-weights", MountPath: "/var/lib/vela/models", ReadOnly: true},
 		},
 	})
@@ -686,14 +760,10 @@ func workerInstanceVolumes(
 	member WorkerMemberActuation,
 ) []corev1.Volume {
 	mode0400 := int32(0o400)
-	mode0440 := int32(0o440)
 	scratchPath := "/var/lib/vela/worker-instances/" + worker.ID.String() + "/" + member.Key
 	return []corev1.Volume{
-		{Name: "runner-socket", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
+		{Name: "model-runtime-socket", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
 			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("16Mi"),
-		}}},
-		{Name: "runner-scratch-view", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
-			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("1Mi"),
 		}}},
 		{Name: "scratch", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
 			Path: scratchPath, Type: valuePointer(corev1.HostPathDirectoryOrCreate),
@@ -701,14 +771,86 @@ func workerInstanceVolumes(
 		{Name: "model-weights", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
 			Path: "/var/lib/vela/models", Type: valuePointer(corev1.HostPathDirectory),
 		}}},
-		{Name: "worker-control-tls", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
-			SecretName: bundle.WorkerControlTLSSecret, DefaultMode: &mode0400,
+		{Name: "stage-worker-control-projected", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+			SecretName: bundle.StageWorkerControlTLSSecret, DefaultMode: &mode0400,
 		}}},
-		{Name: "artifact-store-tls", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
-			SecretName: bundle.ArtifactStoreTLSSecret, DefaultMode: &mode0440,
+		{Name: "stage-worker-authority-projected", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+			SecretName: bundle.StageWorkerAuthoritySecret, DefaultMode: &mode0400,
+			Items: []corev1.KeyToPath{{Key: "keyring.json", Path: "keyring.json"}},
+		}}},
+		{Name: "artifact-store-credentials-projected", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+			SecretName: bundle.ArtifactStoreCredentialsSecret, DefaultMode: &mode0400,
+			Items: []corev1.KeyToPath{
+				{Key: "access-key-id", Path: "access-key-id"},
+				{Key: "secret-access-key", Path: "secret-access-key"},
+			},
+		}}},
+		{Name: "artifact-store-ca-projected", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+			SecretName: bundle.ArtifactStoreCASecret, DefaultMode: &mode0400,
 			Items: []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}},
 		}}},
+		{Name: "stage-worker-private", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
+			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("1Mi"),
+		}}},
 	}
+}
+
+func stageWorkerPrivateInitializer(image string) corev1.Container {
+	runAsNonRoot := false
+	runAsUser := int64(0)
+	runAsGroup := int64(0)
+	allowPrivilegeEscalation := false
+	readOnlyRootFilesystem := true
+	return withKubernetesContainerDefaults(corev1.Container{
+		Name: "stage-worker-private-materialization", Image: image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{"/bin/sh", "-ec", `mkdir -p /run/vela-model-runtime/private
+mkdir -p /var/lib/vela/stage-worker/scratch/production-state
+mkdir -p /var/lib/vela/stage-worker/scratch/inputs
+mkdir -p /var/lib/vela/stage-worker/scratch/input-transfer-journal
+mkdir -p /var/lib/vela/stage-worker/scratch/outputs
+mkdir -p /var/lib/vela/stage-worker/scratch/materialization-journal
+mkdir -p /private/control /private/authority /private/artifact
+cp /projected/control/tls.crt /private/control/tls.crt
+cp /projected/control/tls.key /private/control/tls.key
+cp /projected/control/ca.crt /private/control/ca.crt
+cp /projected/authority/keyring.json /private/authority/keyring.json
+cp /projected/artifact-credentials/access-key-id /private/artifact/access-key-id
+cp /projected/artifact-credentials/secret-access-key /private/artifact/secret-access-key
+cp /projected/artifact-ca/ca.crt /private/artifact/ca.crt
+chmod 0700 /run/vela-model-runtime /run/vela-model-runtime/private
+chmod 0700 /var/lib/vela/stage-worker/scratch /var/lib/vela/stage-worker/scratch/*
+chmod 0700 /private /private/control /private/authority /private/artifact
+chmod 0400 /private/control/* /private/authority/* /private/artifact/*
+chown 10001:10001 /run/vela-model-runtime /run/vela-model-runtime/private
+chown -R 10001:10001 /var/lib/vela/stage-worker/scratch /private
+`},
+		Resources: corev1.ResourceRequirements{
+			Requests: resourceList(map[corev1.ResourceName]string{
+				corev1.ResourceCPU: "10m", corev1.ResourceMemory: "8Mi",
+			}),
+			Limits: resourceList(map[corev1.ResourceName]string{
+				corev1.ResourceCPU: "100m", corev1.ResourceMemory: "16Mi",
+			}),
+		},
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot: &runAsNonRoot, RunAsUser: &runAsUser, RunAsGroup: &runAsGroup,
+			AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+			ReadOnlyRootFilesystem:   &readOnlyRootFilesystem,
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"CHOWN"},
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: "model-runtime-socket", MountPath: modelRuntimeSocketRoot},
+			{Name: "scratch", MountPath: stageWorkerScratchRoot},
+			{Name: "stage-worker-control-projected", MountPath: "/projected/control", ReadOnly: true},
+			{Name: "stage-worker-authority-projected", MountPath: "/projected/authority", ReadOnly: true},
+			{Name: "artifact-store-credentials-projected", MountPath: "/projected/artifact-credentials", ReadOnly: true},
+			{Name: "artifact-store-ca-projected", MountPath: "/projected/artifact-ca", ReadOnly: true},
+			{Name: "stage-worker-private", MountPath: "/private"},
+		},
+	})
 }
 
 func workerInstancePodName(workerID uuid.UUID, memberKey string) string {
@@ -747,6 +889,35 @@ func workerInstanceGPUClaimTemplateMatches(
 
 func mustEncodeDeviceConstraints(constraints []DeviceConstraint) string {
 	encoded, err := json.Marshal(constraints)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
+}
+
+func mustEncodeStageWorkerDevices(constraints []DeviceConstraint) string {
+	devices := make([]struct {
+		DeviceID    string `json:"device_id"`
+		DeviceEpoch int64  `json:"device_epoch"`
+	}, 0, len(constraints))
+	for _, constraint := range constraints {
+		devices = append(devices, struct {
+			DeviceID    string `json:"device_id"`
+			DeviceEpoch int64  `json:"device_epoch"`
+		}{DeviceID: constraint.DeviceID.String(), DeviceEpoch: constraint.DeviceEpoch})
+	}
+	encoded, err := json.Marshal(devices)
+	if err != nil {
+		panic(err)
+	}
+	return string(encoded)
+}
+
+func mustEncodeCapacityVector(capacitySlots, deviceCount int) string {
+	encoded, err := json.Marshal(map[string]int64{
+		"active_stage_slots": int64(capacitySlots),
+		"gpu_count":          int64(deviceCount),
+	})
 	if err != nil {
 		panic(err)
 	}

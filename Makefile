@@ -137,6 +137,7 @@ test-cross:
 validate-deployment:
 	kubectl kustomize deploy/control-storage >/dev/null
 	kubectl kustomize deploy/vela-control >/dev/null
+	kubectl kustomize deploy/stage-worker >/dev/null
 	kubectl kustomize deploy/worker-agent >/dev/null
 	kubectl kustomize deploy/fleet-controller >/dev/null
 	kubectl kustomize deploy/observability >/dev/null
@@ -161,6 +162,7 @@ validate-deployment:
 	@! rg -q "CAP_SYS_ADMIN|privileged: true" deploy/worker-agent/*.yaml
 	@go test ./internal/deploymentcontract -run TestWorkerAgentManifestExcludesRecoveryQuarantineFromRunnerMountNamespace -count=1
 	@go test ./internal/deploymentcontract -run 'TestVelaControl' -count=1
+	@go test ./internal/deploymentcontract -run 'TestStageWorker' -count=1
 	@go test ./internal/deploymentcontract -run 'TestFleet' -count=1
 	@go test ./internal/deploymentcontract -run '^TestRenderedRootMaterializersUsePinnedBusyBoxImage$$' -count=1
 	@go test ./internal/deploymentcontract -run 'TestObservability' -count=1

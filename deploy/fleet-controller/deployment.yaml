@@ -52,8 +52,8 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: metadata.namespace
-            - name: VELA_FLEET_DESIRED_INPUT_FILE
-              value: /etc/vela-fleet/desired/desired.yaml
+            - name: VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE
+              value: /etc/vela-fleet/residency-plan-rollouts/rollouts.json
             - name: VELA_FLEET_MAINTENANCE_ADDRESS
               value: vela-control.vela-system.svc:8444
             - name: VELA_FLEET_MAINTENANCE_SERVER_NAME
@@ -113,8 +113,8 @@ spec:
             capabilities:
               drop: [ALL]
           volumeMounts:
-            - name: desired-revisions
-              mountPath: /etc/vela-fleet/desired
+            - name: residency-plan-rollouts
+              mountPath: /etc/vela-fleet/residency-plan-rollouts
               readOnly: true
             - name: control-tls
               mountPath: /etc/vela-fleet/control-tls
@@ -126,13 +126,13 @@ spec:
               mountPath: /etc/vela-fleet/admission-client-ca
               readOnly: true
       volumes:
-        - name: desired-revisions
+        - name: residency-plan-rollouts
           configMap:
-            name: vela-fleet-desired-placeholder
+            name: vela-fleet-residency-plan-rollouts-placeholder
             defaultMode: 0440
             items:
-              - key: desired.yaml
-                path: desired.yaml
+              - key: rollouts.json
+                path: rollouts.json
         - name: control-tls
           secret:
             secretName: vela-fleet-control-mtls
