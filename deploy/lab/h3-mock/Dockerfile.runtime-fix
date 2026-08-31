@@ -1,0 +1,10 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG RUNNER_REVISION
+ARG RUNTIME_SHA256
+LABEL org.opencontainers.image.revision="${RUNNER_REVISION}" \
+      vela.ai.lab-parent-digest="sha256:71af1330eefdfff2a33d68e5f8c53c66ebe5b402dc28c35b3ff7516357ec4ca3" \
+      vela.ai.lab-runtime-sha256="${RUNTIME_SHA256}"
+
+COPY --chmod=0444 runtime.py /opt/vela/venv/lib/python3.13/site-packages/vela_h3_runner/runtime.py
