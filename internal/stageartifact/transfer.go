@@ -262,8 +262,15 @@ type ConsumeTransferCommand struct {
 	CommandID     uuid.UUID
 	TicketID      uuid.UUID
 	TokenDigest   [sha256.Size]byte
+	Destination   TransferDestination
 	OutcomeDigest [sha256.Size]byte
 	ConsumedAt    time.Time
+}
+
+type ConsumedTransferTicket struct {
+	TicketID   uuid.UUID
+	ConsumedAt time.Time
+	Replayed   bool
 }
 
 type TransferAuthority interface {
@@ -377,7 +384,7 @@ func (connector *ObjectStorePullConnector) Pull(
 	if err := connector.authority.Consume(ctx, ConsumeTransferCommand{
 		CommandID: deterministicCommandID("transfer-consume", claims.TicketID),
 		TicketID:  claims.TicketID, TokenDigest: tokenDigest,
-		OutcomeDigest: descriptor.SHA256, ConsumedAt: now,
+		Destination: destination, OutcomeDigest: descriptor.SHA256, ConsumedAt: now,
 	}); err != nil {
 		return PullReceipt{}, fmt.Errorf("record TransferTicket outcome: %w", err)
 	}

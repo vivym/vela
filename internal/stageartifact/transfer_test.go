@@ -78,6 +78,9 @@ func TestObjectStorePullConnectorReadsOnlyResolvedExactVersion(t *testing.T) {
 	if authority.lastTokenDigest != sha256.Sum256(ticket.Token) {
 		t.Fatal("Connector did not bind PostgreSQL authority to the signed token digest")
 	}
+	if authority.lastConsume.Destination != destination {
+		t.Fatalf("consume destination = %#v, want %#v", authority.lastConsume.Destination, destination)
+	}
 }
 
 func TestObjectStorePullConnectorRejectsAnotherDestinationBeforeResolve(t *testing.T) {
@@ -191,6 +194,7 @@ type recordingTransferAuthority struct {
 	resolveCalls    int
 	consumeCalls    int
 	lastTokenDigest [sha256.Size]byte
+	lastConsume     ConsumeTransferCommand
 }
 
 func (authority *recordingTransferAuthority) Resolve(
@@ -208,5 +212,6 @@ func (authority *recordingTransferAuthority) Consume(
 ) error {
 	authority.consumeCalls++
 	authority.lastTokenDigest = command.TokenDigest
+	authority.lastConsume = command
 	return nil
 }

@@ -42,6 +42,8 @@ enum StageWorkerOperation {
   STAGE_WORKER_OPERATION_FAIL_STAGE = 8;
   STAGE_WORKER_OPERATION_REATTACH_STAGE = 9;
   STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST = 10;
+  STAGE_WORKER_OPERATION_RESOLVE_INPUT_TRANSFER = 11;
+  STAGE_WORKER_OPERATION_CONSUME_INPUT_TRANSFER = 12;
 }
 
 message StageWorkerControlServiceConnectRequest {
@@ -58,6 +60,8 @@ message StageWorkerControlServiceConnectRequest {
     FailStageRequest fail_stage = 17;
     ReattachStageRequest reattach_stage = 18;
     ReportMaterializationSourceLostRequest report_materialization_source_lost = 19;
+    ResolveInputTransferRequest resolve_input_transfer = 20;
+    ConsumeInputTransferRequest consume_input_transfer = 21;
   }
 }
 
@@ -70,6 +74,7 @@ message StageWorkerControlServiceConnectResponse {
     StageCommandResult stage_command_result = 13;
     StopStage stop_stage = 14;
     MaterializationAuthority materialization_authority = 15;
+    ResolvedInputTransfer resolved_input_transfer = 16;
   }
 }
 
@@ -149,6 +154,41 @@ message ReattachStageRequest {
   string local_receipt_id = 2;
   bytes local_receipt_digest = 3;
   ModelRuntimeExecutionState observed_runtime_state = 4;
+}
+
+message ResolveInputTransferRequest {
+  StageAuthority authority = 1;
+  string ticket_id = 2;
+  bytes token_digest = 3;
+  string worker_instance_id = 4;
+  int64 worker_instance_epoch = 5;
+  string model_residency_id = 6;
+  int64 model_runtime_epoch = 7;
+  string connector_revision_id = 8;
+  google.protobuf.Timestamp resolved_at = 9;
+}
+
+message ConsumeInputTransferRequest {
+  StageAuthority authority = 1;
+  string ticket_id = 2;
+  bytes token_digest = 3;
+  bytes outcome_digest = 4;
+  google.protobuf.Timestamp consumed_at = 5;
+  string worker_instance_id = 6;
+  int64 worker_instance_epoch = 7;
+  string model_residency_id = 8;
+  int64 model_runtime_epoch = 9;
+  string connector_revision_id = 10;
+}
+
+message ResolvedInputTransfer {
+  string ticket_id = 1;
+  string stage_artifact_id = 2;
+  string object_key = 3;
+  string object_version = 4;
+  bytes sha256 = 5;
+  int64 size_bytes = 6;
+  string content_type = 7;
 }
 
 message WorkerReadinessDecision {

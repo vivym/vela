@@ -312,6 +312,9 @@ func activeOperationState(operation Operation, snapshot durableStageAuthority) b
 		return (snapshot.stageAttemptState == "ASSIGNED" || snapshot.stageAttemptState == "RUNNING") &&
 			(snapshot.stageRunState == "ASSIGNED" || snapshot.stageRunState == "RUNNING") &&
 			(snapshot.attemptState == "ASSIGNED" || snapshot.attemptState == "RUNNING")
+	case OperationResolveInputTransfer, OperationConsumeInputTransfer:
+		return snapshot.stageAttemptState == "ASSIGNED" && snapshot.stageRunState == "ASSIGNED" &&
+			(snapshot.attemptState == "ASSIGNED" || snapshot.attemptState == "RUNNING")
 	default:
 		return false
 	}
@@ -320,7 +323,8 @@ func activeOperationState(operation Operation, snapshot durableStageAuthority) b
 func operationRequiresStageAuthority(operation Operation) bool {
 	switch operation {
 	case OperationStartStage, OperationHeartbeatStage, OperationSealStageOutput,
-		OperationFailStage, OperationReattachStage:
+		OperationFailStage, OperationReattachStage, OperationResolveInputTransfer,
+		OperationConsumeInputTransfer:
 		return true
 	default:
 		return false

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/materializationauthority"
+	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageassignment"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkertransport"
@@ -42,6 +43,11 @@ type ReadinessResult struct {
 type AcquireResult struct {
 	Assignment *velav1.StageAssignment
 	RetryAfter time.Duration
+	Command    *CommandResult
+}
+
+type ResolveInputTransferResult struct {
+	Descriptor *stageartifact.TransferDescriptor
 	Command    *CommandResult
 }
 
@@ -112,6 +118,18 @@ type OperationBackend interface {
 		context.Context,
 		CommandContext,
 		*velav1.ReportMaterializationSourceLostRequest,
+		VerifiedAuthorities,
+	) (CommandResult, error)
+	ResolveInputTransfer(
+		context.Context,
+		CommandContext,
+		*velav1.ResolveInputTransferRequest,
+		VerifiedAuthorities,
+	) (ResolveInputTransferResult, error)
+	ConsumeInputTransfer(
+		context.Context,
+		CommandContext,
+		*velav1.ConsumeInputTransferRequest,
 		VerifiedAuthorities,
 	) (CommandResult, error)
 }
@@ -198,11 +216,63 @@ func (executor *ProductionExecutor) Execute(
 			ctx, command, request.GetReportMaterializationSourceLost(), authorities,
 		)
 		return commandResultResponse(request.GetRequestId(), operation, result, authorities, err)
+	case OperationResolveInputTransfer:
+		result, err := executor.backend.ResolveInputTransfer(
+			ctx, command, request.GetResolveInputTransfer(), authorities,
+		)
+		return resolvedInputTransferResponse(
+			request.GetRequestId(), request.GetResolveInputTransfer().GetTicketId(),
+			result, authorities, err,
+		)
+	case OperationConsumeInputTransfer:
+		result, err := executor.backend.ConsumeInputTransfer(
+			ctx, command, request.GetConsumeInputTransfer(), authorities,
+		)
+		return commandResultResponse(request.GetRequestId(), operation, result, authorities, err)
 	default:
 		return rejectedResponse(
 			request.GetRequestId(), operation, "Stage Worker operation is unsupported",
 		), nil
 	}
+}
+
+func resolvedInputTransferResponse(
+	requestID string,
+	ticketID string,
+	result ResolveInputTransferResult,
+	authorities VerifiedAuthorities,
+	err error,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if err != nil {
+		return nil, fmt.Errorf("execute %s: %w", OperationResolveInputTransfer.String(), err)
+	}
+	if (result.Descriptor == nil) == (result.Command == nil) {
+		return nil, errors.New("Stage Worker transfer backend must return exactly one result")
+	}
+	if result.Command != nil {
+		return commandResultResponse(
+			requestID, OperationResolveInputTransfer, *result.Command, authorities, nil,
+		)
+	}
+	descriptor := *result.Descriptor
+	if descriptor.TicketID == uuid.Nil || descriptor.TicketID.String() != ticketID ||
+		descriptor.ArtifactID == uuid.Nil || strings.TrimSpace(descriptor.ObjectKey) == "" ||
+		strings.TrimSpace(descriptor.ObjectVersion) == "" ||
+		descriptor.SHA256 == ([sha256.Size]byte{}) || descriptor.SizeBytes <= 0 ||
+		strings.TrimSpace(descriptor.ContentType) == "" || len(descriptor.ContentType) > 200 {
+		return nil, errors.New("Stage Worker transfer backend returned a malformed descriptor")
+	}
+	return &velav1.StageWorkerControlServiceConnectResponse{
+		RequestId: requestID,
+		Result: &velav1.StageWorkerControlServiceConnectResponse_ResolvedInputTransfer{
+			ResolvedInputTransfer: &velav1.ResolvedInputTransfer{
+				TicketId: descriptor.TicketID.String(), StageArtifactId: descriptor.ArtifactID.String(),
+				ObjectKey: descriptor.ObjectKey, ObjectVersion: descriptor.ObjectVersion,
+				Sha256: append([]byte(nil), descriptor.SHA256[:]...), SizeBytes: descriptor.SizeBytes,
+				ContentType: descriptor.ContentType,
+			},
+		},
+	}, nil
 }
 
 func readinessResponse(
@@ -377,7 +447,8 @@ func commandAuthorityDigest(
 ) ([sha256.Size]byte, error) {
 	switch operation {
 	case OperationStartStage, OperationHeartbeatStage, OperationSealStageOutput,
-		OperationFailStage, OperationReattachStage:
+		OperationFailStage, OperationReattachStage, OperationResolveInputTransfer,
+		OperationConsumeInputTransfer:
 		if authorities.Stage == nil || authorities.Materialization != nil ||
 			authorities.Stage.Digest == ([sha256.Size]byte{}) || authorities.Stage.Authority == nil {
 			return [sha256.Size]byte{}, errors.New("Stage Worker command lacks exact StageAuthority evidence")
@@ -488,10 +559,52 @@ func validateOperationRequest(
 			!value.GetRetryAt().AsTime().After(value.GetLostAt().AsTime()) {
 			return errors.New("Stage materialization source-loss evidence is invalid")
 		}
+	case OperationResolveInputTransfer:
+		value := request.GetResolveInputTransfer()
+		stage := authorities.Stage
+		if stage == nil || value == nil || parseUUID(value.GetTicketId()) == uuid.Nil ||
+			len(value.GetTokenDigest()) != sha256.Size ||
+			parseUUID(value.GetConnectorRevisionId()) == uuid.Nil ||
+			parseUUID(value.GetWorkerInstanceId()) == uuid.Nil ||
+			parseUUID(value.GetModelResidencyId()) == uuid.Nil || value.GetWorkerInstanceEpoch() <= 0 ||
+			value.GetModelRuntimeEpoch() <= 0 || !validTimestamp(value.GetResolvedAt()) ||
+			value.GetWorkerInstanceId() != stage.Authority.GetWorkerInstanceId() ||
+			value.GetWorkerInstanceEpoch() != stage.Authority.GetWorkerInstanceEpoch() ||
+			value.GetModelResidencyId() != stage.Authority.GetModelResidencyId() ||
+			!stageAuthorityHasRuntimeEpoch(stage.Authority, value.GetModelRuntimeEpoch()) {
+			return errors.New("Stage input transfer resolve authority is invalid")
+		}
+	case OperationConsumeInputTransfer:
+		value := request.GetConsumeInputTransfer()
+		stage := authorities.Stage
+		if stage == nil || value == nil || parseUUID(value.GetTicketId()) == uuid.Nil ||
+			len(value.GetTokenDigest()) != sha256.Size || len(value.GetOutcomeDigest()) != sha256.Size ||
+			parseUUID(value.GetConnectorRevisionId()) == uuid.Nil ||
+			parseUUID(value.GetWorkerInstanceId()) == uuid.Nil ||
+			parseUUID(value.GetModelResidencyId()) == uuid.Nil || value.GetWorkerInstanceEpoch() <= 0 ||
+			value.GetModelRuntimeEpoch() <= 0 || !validTimestamp(value.GetConsumedAt()) ||
+			value.GetWorkerInstanceId() != stage.Authority.GetWorkerInstanceId() ||
+			value.GetWorkerInstanceEpoch() != stage.Authority.GetWorkerInstanceEpoch() ||
+			value.GetModelResidencyId() != stage.Authority.GetModelResidencyId() ||
+			!stageAuthorityHasRuntimeEpoch(stage.Authority, value.GetModelRuntimeEpoch()) {
+			return errors.New("Stage input transfer consume evidence is invalid")
+		}
 	default:
 		return errors.New("Stage Worker operation is unsupported")
 	}
 	return nil
+}
+
+func stageAuthorityHasRuntimeEpoch(authority *velav1.StageAuthority, epoch int64) bool {
+	if authority == nil || epoch <= 0 {
+		return false
+	}
+	for _, member := range authority.GetMembers() {
+		if member.GetModelRuntimeEpoch() == epoch {
+			return true
+		}
+	}
+	return false
 }
 
 func validCapacityVector(vector map[string]int64) bool {

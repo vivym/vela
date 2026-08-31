@@ -24,6 +24,8 @@ const (
 	OperationFailStage                       = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_FAIL_STAGE
 	OperationReattachStage                   = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE
 	OperationReportMaterializationSourceLost = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST
+	OperationResolveInputTransfer            = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_RESOLVE_INPUT_TRANSFER
+	OperationConsumeInputTransfer            = velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_CONSUME_INPUT_TRANSFER
 )
 
 type Authorizer interface {
@@ -215,6 +217,10 @@ func operationAuthority(
 	case *velav1.StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost:
 		return OperationReportMaterializationSourceLost, nil,
 			operation.ReportMaterializationSourceLost.GetMaterializationAuthority(), true
+	case *velav1.StageWorkerControlServiceConnectRequest_ResolveInputTransfer:
+		return OperationResolveInputTransfer, operation.ResolveInputTransfer.GetAuthority(), nil, true
+	case *velav1.StageWorkerControlServiceConnectRequest_ConsumeInputTransfer:
+		return OperationConsumeInputTransfer, operation.ConsumeInputTransfer.GetAuthority(), nil, true
 	default:
 		return velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_UNSPECIFIED, nil, nil, false
 	}

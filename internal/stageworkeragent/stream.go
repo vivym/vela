@@ -35,6 +35,7 @@ type ControlClient interface {
 type StreamAgent struct {
 	runtime           *Agent
 	control           ControlClient
+	inputResolver     InputResolver
 	materialization   *streamMaterialization
 	materializationMu sync.Mutex
 	assignmentMu      sync.Mutex
@@ -62,6 +63,22 @@ func NewStreamAgent(runtime *Agent, control ControlClient) (*StreamAgent, error)
 	return &StreamAgent{runtime: runtime, control: control}, nil
 }
 
+func NewInputResolvingStreamAgent(
+	runtime *Agent,
+	control ControlClient,
+	resolver InputResolver,
+) (*StreamAgent, error) {
+	if resolver == nil {
+		return nil, errors.New("missing Stage Worker input resolver")
+	}
+	agent, err := NewStreamAgent(runtime, control)
+	if err != nil {
+		return nil, err
+	}
+	agent.inputResolver = resolver
+	return agent, nil
+}
+
 func NewMaterializingStreamAgent(
 	runtime *Agent,
 	control ControlClient,
@@ -80,6 +97,23 @@ func NewMaterializingStreamAgent(
 		publisher: config.Publisher, journal: config.Journal,
 		sourceLossEvidence: config.SourceLossEvidence,
 	}
+	return agent, nil
+}
+
+func NewInputResolvingMaterializingStreamAgent(
+	runtime *Agent,
+	control ControlClient,
+	materializationConfig MaterializationConfig,
+	resolver InputResolver,
+) (*StreamAgent, error) {
+	if resolver == nil {
+		return nil, errors.New("missing Stage Worker input resolver")
+	}
+	agent, err := NewMaterializingStreamAgent(runtime, control, materializationConfig)
+	if err != nil {
+		return nil, err
+	}
+	agent.inputResolver = resolver
 	return agent, nil
 }
 
@@ -125,6 +159,14 @@ func (agent *StreamAgent) ExecuteAssignment(
 	if agent.materialization != nil {
 		if err := agent.materialization.journal.EnsureCapacity(ctx); err != nil {
 			return result, fmt.Errorf("reserve local materialization recovery capacity: %w", err)
+		}
+	}
+	if len(assignment.GetExecutionSpec().GetInputs()) != 0 {
+		if agent.inputResolver == nil {
+			return result, errors.New("StageAssignment inputs require a configured input resolver")
+		}
+		if err := agent.inputResolver.Resolve(ctx, assignment); err != nil {
+			return result, fmt.Errorf("resolve StageAssignment inputs: %w", err)
 		}
 	}
 	barrier, err := agent.runtime.PrepareAndStart(ctx, assignment)

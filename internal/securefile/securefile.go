@@ -92,6 +92,37 @@ func OpenTrustedDirectory(path string) (*os.File, error) {
 	return openTrustedDirectory(path)
 }
 
+// OpenTrustedRoot binds path-based operations to the same directory inode that
+// passed the trusted-owner and trusted-ancestor checks.
+func OpenTrustedRoot(path string) (*os.Root, error) {
+	cleaned := filepath.Clean(path)
+	if !filepath.IsAbs(cleaned) || cleaned != path {
+		return nil, errors.New("secure directory path is invalid")
+	}
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		return nil, err
+	}
+	directory, err := openTrustedDirectory(resolved)
+	if err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(resolved)
+	if err != nil {
+		_ = directory.Close()
+		return nil, err
+	}
+	directoryInfo, directoryErr := directory.Stat()
+	rootInfo, rootErr := root.Stat(".")
+	closeErr := directory.Close()
+	if directoryErr != nil || rootErr != nil || closeErr != nil ||
+		!os.SameFile(directoryInfo, rootInfo) {
+		_ = root.Close()
+		return nil, errors.New("secure directory changed while it was opened")
+	}
+	return root, nil
+}
+
 func ValidateExecutable(path string) error {
 	file, err := OpenExecutable(path)
 	if err != nil {

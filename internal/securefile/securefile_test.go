@@ -117,6 +117,36 @@ func TestOpenExecutableKeepsValidatedInodeAfterPathReplacement(t *testing.T) {
 	}
 }
 
+func TestOpenTrustedRootKeepsValidatedDirectoryAfterPathReplacement(t *testing.T) {
+	parent := t.TempDir()
+	directory := filepath.Join(parent, "state")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatalf("create trusted directory: %v", err)
+	}
+	root, err := OpenTrustedRoot(directory)
+	if err != nil {
+		t.Fatalf("OpenTrustedRoot: %v", err)
+	}
+	defer func() { _ = root.Close() }()
+	original := directory + ".original"
+	if err := os.Rename(directory, original); err != nil {
+		t.Fatalf("move trusted directory: %v", err)
+	}
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatalf("create replacement directory: %v", err)
+	}
+	if err := root.WriteFile("record", []byte("original inode"), 0o600); err != nil {
+		t.Fatalf("write through trusted root: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(original, "record"))
+	if err != nil || string(content) != "original inode" {
+		t.Fatalf("original root content = %q error=%v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(directory, "record")); !os.IsNotExist(err) {
+		t.Fatalf("replacement directory received trusted-root write: %v", err)
+	}
+}
+
 func TestOpenExecutableRejectsWritableAncestorDirectory(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "writable")
 	if err := os.Mkdir(directory, 0o700); err != nil {

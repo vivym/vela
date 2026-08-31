@@ -293,11 +293,44 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 		descriptor.ObjectVersion != "l2-exact-version-1" || descriptor.SHA256 != digest {
 		t.Fatalf("resolved downstream TransferTicket = %#v", descriptor)
 	}
-	if err := repository.Consume(context.Background(), stageartifact.ConsumeTransferCommand{
+	wrongDestination := destination
+	wrongDestination.WorkerInstanceEpoch++
+	_, err = repository.ConsumeWithResult(context.Background(), stageartifact.ConsumeTransferCommand{
 		CommandID: uuid.New(), TicketID: ticketID, TokenDigest: tokenDigest,
-		OutcomeDigest: digest, ConsumedAt: committedAt.Add(2 * time.Second),
-	}); err != nil {
+		Destination: wrongDestination, OutcomeDigest: digest,
+		ConsumedAt: committedAt.Add(2 * time.Second),
+	})
+	assertPostgresConstraint(t, err, "stage_transfer_ticket_consume_stale")
+	if _, err := database.Admin.Exec(`
+		UPDATE model_residencies SET state = 'DRAINING'
+		WHERE id = $1
+	`, destination.ModelResidencyID); err != nil {
+		t.Fatalf("make TransferTicket destination stale: %v", err)
+	}
+	_, err = repository.ConsumeWithResult(context.Background(), stageartifact.ConsumeTransferCommand{
+		CommandID: uuid.New(), TicketID: ticketID, TokenDigest: tokenDigest,
+		Destination: destination, OutcomeDigest: digest,
+		ConsumedAt: committedAt.Add(2 * time.Second),
+	})
+	assertPostgresConstraint(t, err, "stage_transfer_ticket_consume_stale")
+	if _, err := database.Admin.Exec(`
+		UPDATE model_residencies SET state = 'READY'
+		WHERE id = $1
+	`, destination.ModelResidencyID); err != nil {
+		t.Fatalf("restore TransferTicket destination authority: %v", err)
+	}
+	consumeCommand := stageartifact.ConsumeTransferCommand{
+		CommandID: uuid.New(), TicketID: ticketID, TokenDigest: tokenDigest,
+		Destination: destination, OutcomeDigest: digest,
+		ConsumedAt: committedAt.Add(2 * time.Second),
+	}
+	consumed, err := repository.ConsumeWithResult(context.Background(), consumeCommand)
+	if err != nil || consumed.Replayed {
 		t.Fatalf("consume downstream TransferTicket: %v", err)
+	}
+	replayed, err := repository.ConsumeWithResult(context.Background(), consumeCommand)
+	if err != nil || !replayed.Replayed || replayed.TicketID != ticketID {
+		t.Fatalf("replay downstream TransferTicket = %#v error=%v", replayed, err)
 	}
 	var ticketState, bufferCreditState string
 	var bufferCreditReleased bool
@@ -318,6 +351,13 @@ func TestStageArtifactSealAndCommitReleaseGPUThenUnblockDownstream(t *testing.T)
 			"consumed TransferTicket state=%s buffer_credit=%s released=%t",
 			ticketState, bufferCreditState, bufferCreditReleased,
 		)
+	}
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	err = goose.DownTo(database.Admin, migrations, 53)
+	assertPostgresConstraint(t, err, "stage_transfer_consume_destination_rollback_is_unsafe")
+	version, versionErr := goose.GetDBVersion(database.Admin)
+	if versionErr != nil || version != 54 {
+		t.Fatalf("destination fence version after refused Down = %d error=%v", version, versionErr)
 	}
 }
 

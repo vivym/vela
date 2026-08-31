@@ -153,6 +153,48 @@ func TestClientUsesOnePersistentCorrelatedStageWorkerStream(t *testing.T) {
 	}
 }
 
+func TestClientPreservesCanonicalCallerRequestIDForDurableReplay(t *testing.T) {
+	handler := &recordingStageHandler{}
+	server, err := stageworkertransport.NewServer(stageworkertransport.ServerConfig{
+		Authenticator: stageworkertransport.AuthenticatorFunc(func(context.Context) (stageworkertransport.Identity, error) {
+			return stageworkertransport.Identity{SPIFFEID: "spiffe://vela/worker/member-1"}, nil
+		}),
+		Handler: handler, StopSource: noStops,
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	address := serveStageControl(t, server)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := stageworkertransport.DialClient(ctx, stageworkertransport.ClientConfig{
+		Address: address, TransportCredentials: insecure.NewCredentials(),
+		InitialControlSessionEpoch: 42,
+	})
+	if err != nil {
+		t.Fatalf("DialClient: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	requestID := "24000000-0000-0000-0000-000000000001"
+	response, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		RequestId: requestID,
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
+			AcquireStage: &velav1.AcquireStageRequest{},
+		},
+	})
+	if err != nil || response.GetRequestId() != requestID || handler.LastRequestID() != requestID {
+		t.Fatalf("Exchange response=%#v handler_request_id=%q error=%v", response, handler.LastRequestID(), err)
+	}
+	if _, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		RequestId: "not-a-canonical-uuid",
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
+			AcquireStage: &velav1.AcquireStageRequest{},
+		},
+	}); err == nil {
+		t.Fatal("Exchange accepted a non-canonical caller request ID")
+	}
+}
+
 func TestClientReconnectIncrementsSessionEpochAndCarriesReattach(t *testing.T) {
 	server := &reconnectingStageServer{}
 	address := serveStageControl(t, server)
@@ -426,9 +468,10 @@ func (source *recordingAuthorityStopSource) ObservedLeaseIDs() string {
 }
 
 type recordingStageHandler struct {
-	mu       sync.Mutex
-	requests int
-	epochs   []int64
+	mu         sync.Mutex
+	requests   int
+	epochs     []int64
+	requestIDs []string
 }
 
 func (handler *recordingStageHandler) Handle(
@@ -443,6 +486,7 @@ func (handler *recordingStageHandler) Handle(
 	handler.mu.Lock()
 	handler.requests++
 	handler.epochs = append(handler.epochs, sessionEpoch)
+	handler.requestIDs = append(handler.requestIDs, request.GetRequestId())
 	handler.mu.Unlock()
 	response := &velav1.StageWorkerControlServiceConnectResponse{RequestId: request.GetRequestId()}
 	switch request.GetOperation().(type) {
@@ -463,6 +507,15 @@ func (handler *recordingStageHandler) Handle(
 		}
 	}
 	return response, nil
+}
+
+func (handler *recordingStageHandler) LastRequestID() string {
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
+	if len(handler.requestIDs) == 0 {
+		return ""
+	}
+	return handler.requestIDs[len(handler.requestIDs)-1]
 }
 
 func (handler *recordingStageHandler) RequestCount() int {

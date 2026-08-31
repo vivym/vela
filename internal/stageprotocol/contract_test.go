@@ -39,6 +39,8 @@ func TestStageWorkerControlProtocolIsIndependentAndClosed(t *testing.T) {
 		"fail_stage",
 		"reattach_stage",
 		"report_materialization_source_lost",
+		"resolve_input_transfer",
+		"consume_input_transfer",
 	})
 	assertOneofFields(t, connect.Output(), "result", []protoreflect.Name{
 		"worker_readiness_decision",
@@ -47,6 +49,7 @@ func TestStageWorkerControlProtocolIsIndependentAndClosed(t *testing.T) {
 		"stage_command_result",
 		"stop_stage",
 		"materialization_authority",
+		"resolved_input_transfer",
 	})
 }
 

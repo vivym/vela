@@ -436,37 +436,53 @@ func (repository *PostgresRepository) Consume(
 	ctx context.Context,
 	command ConsumeTransferCommand,
 ) error {
+	_, err := repository.ConsumeWithResult(ctx, command)
+	return err
+}
+
+func (repository *PostgresRepository) ConsumeWithResult(
+	ctx context.Context,
+	command ConsumeTransferCommand,
+) (ConsumedTransferTicket, error) {
 	if repository == nil || repository.pool == nil {
-		return errors.New("StageArtifact repository is not configured")
+		return ConsumedTransferTicket{}, errors.New("StageArtifact repository is not configured")
 	}
 	if command.CommandID == uuid.Nil || command.TicketID == uuid.Nil ||
 		command.TokenDigest == [sha256.Size]byte{} ||
+		command.Destination.WorkerInstanceID == uuid.Nil ||
+		command.Destination.WorkerInstanceEpoch <= 0 ||
+		command.Destination.ModelResidencyID == uuid.Nil ||
+		command.Destination.ModelRuntimeEpoch <= 0 ||
+		command.Destination.ConnectorRevisionID == uuid.Nil ||
 		command.OutcomeDigest == [sha256.Size]byte{} || command.ConsumedAt.IsZero() {
-		return errors.New("TransferTicket consume authority is incomplete")
+		return ConsumedTransferTicket{}, errors.New("TransferTicket consume authority is incomplete")
 	}
 	payload, err := json.Marshal(map[string]any{
-		"schema_version": 1,
-		"command_id":     command.CommandID,
-		"ticket_id":      command.TicketID,
-		"token_digest":   hex.EncodeToString(command.TokenDigest[:]),
-		"outcome_digest": hex.EncodeToString(command.OutcomeDigest[:]),
-		"consumed_at":    command.ConsumedAt.UTC().Format(time.RFC3339Nano),
+		"schema_version":                    1,
+		"command_id":                        command.CommandID,
+		"ticket_id":                         command.TicketID,
+		"token_digest":                      hex.EncodeToString(command.TokenDigest[:]),
+		"destination_worker_instance_id":    command.Destination.WorkerInstanceID,
+		"destination_worker_instance_epoch": command.Destination.WorkerInstanceEpoch,
+		"destination_model_residency_id":    command.Destination.ModelResidencyID,
+		"destination_model_runtime_epoch":   command.Destination.ModelRuntimeEpoch,
+		"connector_revision_id":             command.Destination.ConnectorRevisionID,
+		"outcome_digest":                    hex.EncodeToString(command.OutcomeDigest[:]),
+		"consumed_at":                       command.ConsumedAt.UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
-		return fmt.Errorf("encode TransferTicket consume command: %w", err)
+		return ConsumedTransferTicket{}, fmt.Errorf("encode TransferTicket consume command: %w", err)
 	}
-	var ticketID uuid.UUID
-	var consumedAt time.Time
-	var replayed bool
+	var consumed ConsumedTransferTicket
 	err = repository.pool.QueryRow(ctx, `
 		SELECT ticket_id, consumed_at, replayed
 		FROM vela_consume_stage_transfer_ticket($1::jsonb)
-	`, payload).Scan(&ticketID, &consumedAt, &replayed)
+	`, payload).Scan(&consumed.TicketID, &consumed.ConsumedAt, &consumed.Replayed)
 	if err != nil {
-		return fmt.Errorf("consume TransferTicket: %w", err)
+		return ConsumedTransferTicket{}, fmt.Errorf("consume TransferTicket: %w", err)
 	}
-	if ticketID != command.TicketID || !consumedAt.Equal(command.ConsumedAt) {
-		return errors.New("consumed TransferTicket identity is mismatched")
+	if consumed.TicketID != command.TicketID || !consumed.ConsumedAt.Equal(command.ConsumedAt) {
+		return ConsumedTransferTicket{}, errors.New("consumed TransferTicket identity is mismatched")
 	}
-	return nil
+	return consumed, nil
 }

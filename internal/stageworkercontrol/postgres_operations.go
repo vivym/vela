@@ -67,6 +67,14 @@ type StageArtifactOperations interface {
 	) (stageartifact.SourceLostDecision, error)
 }
 
+type TransferOperations interface {
+	Resolve(context.Context, stageartifact.ResolveTransferCommand) (stageartifact.TransferDescriptor, error)
+	ConsumeWithResult(
+		context.Context,
+		stageartifact.ConsumeTransferCommand,
+	) (stageartifact.ConsumedTransferTicket, error)
+}
+
 type StageAttemptOperations interface {
 	Apply(
 		context.Context,
@@ -91,6 +99,7 @@ type PostgresOperationConfig struct {
 	StageArtifacts        StageArtifactOperations
 	StageAttempts         StageAttemptOperations
 	Reattachments         ReattachmentOperations
+	Transfers             TransferOperations
 }
 
 // PostgresOperationBackend composes the database-authoritative implementations
@@ -104,19 +113,20 @@ type PostgresOperationBackend struct {
 	stageArtifacts        StageArtifactOperations
 	stageAttempts         StageAttemptOperations
 	reattachments         ReattachmentOperations
+	transfers             TransferOperations
 }
 
 func NewPostgresOperationBackend(config PostgresOperationConfig) (*PostgresOperationBackend, error) {
 	if config.WorkerEvidence == nil || config.Assignments == nil || config.Execution == nil ||
 		config.MaterializationIssuer == nil || config.StageArtifacts == nil ||
-		config.StageAttempts == nil || config.Reattachments == nil {
+		config.StageAttempts == nil || config.Reattachments == nil || config.Transfers == nil {
 		return nil, errors.New("PostgreSQL Stage Worker operation dependencies are incomplete")
 	}
 	return &PostgresOperationBackend{
 		workerEvidence: config.WorkerEvidence, assignments: config.Assignments,
 		execution: config.Execution, materializationIssuer: config.MaterializationIssuer,
 		stageArtifacts: config.StageArtifacts, stageAttempts: config.StageAttempts,
-		reattachments: config.Reattachments,
+		reattachments: config.Reattachments, transfers: config.Transfers,
 	}, nil
 }
 
@@ -332,6 +342,81 @@ func (backend *PostgresOperationBackend) ReportMaterializationSourceLost(
 		return CommandResult{}, errors.New("StageArtifact repository returned mismatched source-loss decision")
 	}
 	return acceptedCommandResult(decision.Replayed), nil
+}
+
+func (backend *PostgresOperationBackend) ResolveInputTransfer(
+	ctx context.Context,
+	command CommandContext,
+	request *velav1.ResolveInputTransferRequest,
+	authorities VerifiedAuthorities,
+) (ResolveInputTransferResult, error) {
+	if backend == nil || backend.transfers == nil {
+		return ResolveInputTransferResult{}, errors.New(
+			"PostgreSQL Stage Worker transfer backend is not configured",
+		)
+	}
+	if _, err := exactStageAuthority(command, request.GetAuthority(), authorities); err != nil {
+		return ResolveInputTransferResult{}, err
+	}
+	var tokenDigest [sha256.Size]byte
+	copy(tokenDigest[:], request.GetTokenDigest())
+	descriptor, err := backend.transfers.Resolve(ctx, stageartifact.ResolveTransferCommand{
+		TicketID: uuid.MustParse(request.GetTicketId()), TokenDigest: tokenDigest,
+		Destination: stageartifact.TransferDestination{
+			WorkerInstanceID:    uuid.MustParse(request.GetWorkerInstanceId()),
+			WorkerInstanceEpoch: request.GetWorkerInstanceEpoch(),
+			ModelResidencyID:    uuid.MustParse(request.GetModelResidencyId()),
+			ModelRuntimeEpoch:   request.GetModelRuntimeEpoch(),
+			ConnectorRevisionID: uuid.MustParse(request.GetConnectorRevisionId()),
+		},
+		ResolvedAt: request.GetResolvedAt().AsTime().UTC(),
+	})
+	if err != nil {
+		if decision, mapped := mapOperationCommandError(err); mapped {
+			return ResolveInputTransferResult{Command: &decision}, nil
+		}
+		return ResolveInputTransferResult{}, fmt.Errorf("resolve Stage input transfer: %w", err)
+	}
+	if descriptor.TicketID.String() != request.GetTicketId() {
+		return ResolveInputTransferResult{}, errors.New("resolved input transfer changed ticket identity")
+	}
+	return ResolveInputTransferResult{Descriptor: &descriptor}, nil
+}
+
+func (backend *PostgresOperationBackend) ConsumeInputTransfer(
+	ctx context.Context,
+	command CommandContext,
+	request *velav1.ConsumeInputTransferRequest,
+	authorities VerifiedAuthorities,
+) (CommandResult, error) {
+	if backend == nil || backend.transfers == nil {
+		return CommandResult{}, errors.New("PostgreSQL Stage Worker transfer backend is not configured")
+	}
+	if _, err := exactStageAuthority(command, request.GetAuthority(), authorities); err != nil {
+		return CommandResult{}, err
+	}
+	var tokenDigest, outcomeDigest [sha256.Size]byte
+	copy(tokenDigest[:], request.GetTokenDigest())
+	copy(outcomeDigest[:], request.GetOutcomeDigest())
+	consumed, err := backend.transfers.ConsumeWithResult(ctx, stageartifact.ConsumeTransferCommand{
+		CommandID: command.CommandID, TicketID: uuid.MustParse(request.GetTicketId()),
+		TokenDigest: tokenDigest, OutcomeDigest: outcomeDigest,
+		Destination: stageartifact.TransferDestination{
+			WorkerInstanceID:    uuid.MustParse(request.GetWorkerInstanceId()),
+			WorkerInstanceEpoch: request.GetWorkerInstanceEpoch(),
+			ModelResidencyID:    uuid.MustParse(request.GetModelResidencyId()),
+			ModelRuntimeEpoch:   request.GetModelRuntimeEpoch(),
+			ConnectorRevisionID: uuid.MustParse(request.GetConnectorRevisionId()),
+		},
+		ConsumedAt: request.GetConsumedAt().AsTime().UTC(),
+	})
+	if err != nil {
+		if decision, mapped := mapOperationCommandError(err); mapped {
+			return decision, nil
+		}
+		return CommandResult{}, fmt.Errorf("consume Stage input transfer: %w", err)
+	}
+	return acceptedCommandResult(consumed.Replayed), nil
 }
 
 func exactStageCommand(

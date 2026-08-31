@@ -133,6 +133,7 @@ func newStageWorkerControlAdapter(
 			StageArtifacts:        artifactRepository,
 			StageAttempts:         stageAttempts,
 			Reattachments:         reattachments,
+			Transfers:             artifactRepository,
 		},
 	)
 	if err != nil {

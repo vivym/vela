@@ -147,6 +147,8 @@ const (
 	StageWorkerOperation_STAGE_WORKER_OPERATION_FAIL_STAGE                         StageWorkerOperation = 8
 	StageWorkerOperation_STAGE_WORKER_OPERATION_REATTACH_STAGE                     StageWorkerOperation = 9
 	StageWorkerOperation_STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST StageWorkerOperation = 10
+	StageWorkerOperation_STAGE_WORKER_OPERATION_RESOLVE_INPUT_TRANSFER             StageWorkerOperation = 11
+	StageWorkerOperation_STAGE_WORKER_OPERATION_CONSUME_INPUT_TRANSFER             StageWorkerOperation = 12
 )
 
 // Enum value maps for StageWorkerOperation.
@@ -163,6 +165,8 @@ var (
 		8:  "STAGE_WORKER_OPERATION_FAIL_STAGE",
 		9:  "STAGE_WORKER_OPERATION_REATTACH_STAGE",
 		10: "STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST",
+		11: "STAGE_WORKER_OPERATION_RESOLVE_INPUT_TRANSFER",
+		12: "STAGE_WORKER_OPERATION_CONSUME_INPUT_TRANSFER",
 	}
 	StageWorkerOperation_value = map[string]int32{
 		"STAGE_WORKER_OPERATION_UNSPECIFIED":                        0,
@@ -176,6 +180,8 @@ var (
 		"STAGE_WORKER_OPERATION_FAIL_STAGE":                         8,
 		"STAGE_WORKER_OPERATION_REATTACH_STAGE":                     9,
 		"STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST": 10,
+		"STAGE_WORKER_OPERATION_RESOLVE_INPUT_TRANSFER":             11,
+		"STAGE_WORKER_OPERATION_CONSUME_INPUT_TRANSFER":             12,
 	}
 )
 
@@ -222,6 +228,8 @@ type StageWorkerControlServiceConnectRequest struct {
 	//	*StageWorkerControlServiceConnectRequest_FailStage
 	//	*StageWorkerControlServiceConnectRequest_ReattachStage
 	//	*StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost
+	//	*StageWorkerControlServiceConnectRequest_ResolveInputTransfer
+	//	*StageWorkerControlServiceConnectRequest_ConsumeInputTransfer
 	Operation     isStageWorkerControlServiceConnectRequest_Operation `protobuf_oneof:"operation"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -368,6 +376,24 @@ func (x *StageWorkerControlServiceConnectRequest) GetReportMaterializationSource
 	return nil
 }
 
+func (x *StageWorkerControlServiceConnectRequest) GetResolveInputTransfer() *ResolveInputTransferRequest {
+	if x != nil {
+		if x, ok := x.Operation.(*StageWorkerControlServiceConnectRequest_ResolveInputTransfer); ok {
+			return x.ResolveInputTransfer
+		}
+	}
+	return nil
+}
+
+func (x *StageWorkerControlServiceConnectRequest) GetConsumeInputTransfer() *ConsumeInputTransferRequest {
+	if x != nil {
+		if x, ok := x.Operation.(*StageWorkerControlServiceConnectRequest_ConsumeInputTransfer); ok {
+			return x.ConsumeInputTransfer
+		}
+	}
+	return nil
+}
+
 type isStageWorkerControlServiceConnectRequest_Operation interface {
 	isStageWorkerControlServiceConnectRequest_Operation()
 }
@@ -412,6 +438,14 @@ type StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost str
 	ReportMaterializationSourceLost *ReportMaterializationSourceLostRequest `protobuf:"bytes,19,opt,name=report_materialization_source_lost,json=reportMaterializationSourceLost,proto3,oneof"`
 }
 
+type StageWorkerControlServiceConnectRequest_ResolveInputTransfer struct {
+	ResolveInputTransfer *ResolveInputTransferRequest `protobuf:"bytes,20,opt,name=resolve_input_transfer,json=resolveInputTransfer,proto3,oneof"`
+}
+
+type StageWorkerControlServiceConnectRequest_ConsumeInputTransfer struct {
+	ConsumeInputTransfer *ConsumeInputTransferRequest `protobuf:"bytes,21,opt,name=consume_input_transfer,json=consumeInputTransfer,proto3,oneof"`
+}
+
 func (*StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence) isStageWorkerControlServiceConnectRequest_Operation() {
 }
 
@@ -442,6 +476,12 @@ func (*StageWorkerControlServiceConnectRequest_ReattachStage) isStageWorkerContr
 func (*StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost) isStageWorkerControlServiceConnectRequest_Operation() {
 }
 
+func (*StageWorkerControlServiceConnectRequest_ResolveInputTransfer) isStageWorkerControlServiceConnectRequest_Operation() {
+}
+
+func (*StageWorkerControlServiceConnectRequest_ConsumeInputTransfer) isStageWorkerControlServiceConnectRequest_Operation() {
+}
+
 type StageWorkerControlServiceConnectResponse struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	RequestId string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -453,6 +493,7 @@ type StageWorkerControlServiceConnectResponse struct {
 	//	*StageWorkerControlServiceConnectResponse_StageCommandResult
 	//	*StageWorkerControlServiceConnectResponse_StopStage
 	//	*StageWorkerControlServiceConnectResponse_MaterializationAuthority
+	//	*StageWorkerControlServiceConnectResponse_ResolvedInputTransfer
 	Result        isStageWorkerControlServiceConnectResponse_Result `protobuf_oneof:"result"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -556,6 +597,15 @@ func (x *StageWorkerControlServiceConnectResponse) GetMaterializationAuthority()
 	return nil
 }
 
+func (x *StageWorkerControlServiceConnectResponse) GetResolvedInputTransfer() *ResolvedInputTransfer {
+	if x != nil {
+		if x, ok := x.Result.(*StageWorkerControlServiceConnectResponse_ResolvedInputTransfer); ok {
+			return x.ResolvedInputTransfer
+		}
+	}
+	return nil
+}
+
 type isStageWorkerControlServiceConnectResponse_Result interface {
 	isStageWorkerControlServiceConnectResponse_Result()
 }
@@ -584,6 +634,10 @@ type StageWorkerControlServiceConnectResponse_MaterializationAuthority struct {
 	MaterializationAuthority *MaterializationAuthority `protobuf:"bytes,15,opt,name=materialization_authority,json=materializationAuthority,proto3,oneof"`
 }
 
+type StageWorkerControlServiceConnectResponse_ResolvedInputTransfer struct {
+	ResolvedInputTransfer *ResolvedInputTransfer `protobuf:"bytes,16,opt,name=resolved_input_transfer,json=resolvedInputTransfer,proto3,oneof"`
+}
+
 func (*StageWorkerControlServiceConnectResponse_WorkerReadinessDecision) isStageWorkerControlServiceConnectResponse_Result() {
 }
 
@@ -600,6 +654,9 @@ func (*StageWorkerControlServiceConnectResponse_StopStage) isStageWorkerControlS
 }
 
 func (*StageWorkerControlServiceConnectResponse_MaterializationAuthority) isStageWorkerControlServiceConnectResponse_Result() {
+}
+
+func (*StageWorkerControlServiceConnectResponse_ResolvedInputTransfer) isStageWorkerControlServiceConnectResponse_Result() {
 }
 
 type RegisterWorkerEvidenceRequest struct {
@@ -1346,6 +1403,322 @@ func (x *ReattachStageRequest) GetObservedRuntimeState() ModelRuntimeExecutionSt
 	return ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED
 }
 
+type ResolveInputTransferRequest struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Authority           *StageAuthority        `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+	TicketId            string                 `protobuf:"bytes,2,opt,name=ticket_id,json=ticketId,proto3" json:"ticket_id,omitempty"`
+	TokenDigest         []byte                 `protobuf:"bytes,3,opt,name=token_digest,json=tokenDigest,proto3" json:"token_digest,omitempty"`
+	WorkerInstanceId    string                 `protobuf:"bytes,4,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
+	WorkerInstanceEpoch int64                  `protobuf:"varint,5,opt,name=worker_instance_epoch,json=workerInstanceEpoch,proto3" json:"worker_instance_epoch,omitempty"`
+	ModelResidencyId    string                 `protobuf:"bytes,6,opt,name=model_residency_id,json=modelResidencyId,proto3" json:"model_residency_id,omitempty"`
+	ModelRuntimeEpoch   int64                  `protobuf:"varint,7,opt,name=model_runtime_epoch,json=modelRuntimeEpoch,proto3" json:"model_runtime_epoch,omitempty"`
+	ConnectorRevisionId string                 `protobuf:"bytes,8,opt,name=connector_revision_id,json=connectorRevisionId,proto3" json:"connector_revision_id,omitempty"`
+	ResolvedAt          *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=resolved_at,json=resolvedAt,proto3" json:"resolved_at,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ResolveInputTransferRequest) Reset() {
+	*x = ResolveInputTransferRequest{}
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveInputTransferRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveInputTransferRequest) ProtoMessage() {}
+
+func (x *ResolveInputTransferRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveInputTransferRequest.ProtoReflect.Descriptor instead.
+func (*ResolveInputTransferRequest) Descriptor() ([]byte, []int) {
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ResolveInputTransferRequest) GetAuthority() *StageAuthority {
+	if x != nil {
+		return x.Authority
+	}
+	return nil
+}
+
+func (x *ResolveInputTransferRequest) GetTicketId() string {
+	if x != nil {
+		return x.TicketId
+	}
+	return ""
+}
+
+func (x *ResolveInputTransferRequest) GetTokenDigest() []byte {
+	if x != nil {
+		return x.TokenDigest
+	}
+	return nil
+}
+
+func (x *ResolveInputTransferRequest) GetWorkerInstanceId() string {
+	if x != nil {
+		return x.WorkerInstanceId
+	}
+	return ""
+}
+
+func (x *ResolveInputTransferRequest) GetWorkerInstanceEpoch() int64 {
+	if x != nil {
+		return x.WorkerInstanceEpoch
+	}
+	return 0
+}
+
+func (x *ResolveInputTransferRequest) GetModelResidencyId() string {
+	if x != nil {
+		return x.ModelResidencyId
+	}
+	return ""
+}
+
+func (x *ResolveInputTransferRequest) GetModelRuntimeEpoch() int64 {
+	if x != nil {
+		return x.ModelRuntimeEpoch
+	}
+	return 0
+}
+
+func (x *ResolveInputTransferRequest) GetConnectorRevisionId() string {
+	if x != nil {
+		return x.ConnectorRevisionId
+	}
+	return ""
+}
+
+func (x *ResolveInputTransferRequest) GetResolvedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ResolvedAt
+	}
+	return nil
+}
+
+type ConsumeInputTransferRequest struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	Authority           *StageAuthority        `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+	TicketId            string                 `protobuf:"bytes,2,opt,name=ticket_id,json=ticketId,proto3" json:"ticket_id,omitempty"`
+	TokenDigest         []byte                 `protobuf:"bytes,3,opt,name=token_digest,json=tokenDigest,proto3" json:"token_digest,omitempty"`
+	OutcomeDigest       []byte                 `protobuf:"bytes,4,opt,name=outcome_digest,json=outcomeDigest,proto3" json:"outcome_digest,omitempty"`
+	ConsumedAt          *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=consumed_at,json=consumedAt,proto3" json:"consumed_at,omitempty"`
+	WorkerInstanceId    string                 `protobuf:"bytes,6,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
+	WorkerInstanceEpoch int64                  `protobuf:"varint,7,opt,name=worker_instance_epoch,json=workerInstanceEpoch,proto3" json:"worker_instance_epoch,omitempty"`
+	ModelResidencyId    string                 `protobuf:"bytes,8,opt,name=model_residency_id,json=modelResidencyId,proto3" json:"model_residency_id,omitempty"`
+	ModelRuntimeEpoch   int64                  `protobuf:"varint,9,opt,name=model_runtime_epoch,json=modelRuntimeEpoch,proto3" json:"model_runtime_epoch,omitempty"`
+	ConnectorRevisionId string                 `protobuf:"bytes,10,opt,name=connector_revision_id,json=connectorRevisionId,proto3" json:"connector_revision_id,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *ConsumeInputTransferRequest) Reset() {
+	*x = ConsumeInputTransferRequest{}
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConsumeInputTransferRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConsumeInputTransferRequest) ProtoMessage() {}
+
+func (x *ConsumeInputTransferRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConsumeInputTransferRequest.ProtoReflect.Descriptor instead.
+func (*ConsumeInputTransferRequest) Descriptor() ([]byte, []int) {
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ConsumeInputTransferRequest) GetAuthority() *StageAuthority {
+	if x != nil {
+		return x.Authority
+	}
+	return nil
+}
+
+func (x *ConsumeInputTransferRequest) GetTicketId() string {
+	if x != nil {
+		return x.TicketId
+	}
+	return ""
+}
+
+func (x *ConsumeInputTransferRequest) GetTokenDigest() []byte {
+	if x != nil {
+		return x.TokenDigest
+	}
+	return nil
+}
+
+func (x *ConsumeInputTransferRequest) GetOutcomeDigest() []byte {
+	if x != nil {
+		return x.OutcomeDigest
+	}
+	return nil
+}
+
+func (x *ConsumeInputTransferRequest) GetConsumedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ConsumedAt
+	}
+	return nil
+}
+
+func (x *ConsumeInputTransferRequest) GetWorkerInstanceId() string {
+	if x != nil {
+		return x.WorkerInstanceId
+	}
+	return ""
+}
+
+func (x *ConsumeInputTransferRequest) GetWorkerInstanceEpoch() int64 {
+	if x != nil {
+		return x.WorkerInstanceEpoch
+	}
+	return 0
+}
+
+func (x *ConsumeInputTransferRequest) GetModelResidencyId() string {
+	if x != nil {
+		return x.ModelResidencyId
+	}
+	return ""
+}
+
+func (x *ConsumeInputTransferRequest) GetModelRuntimeEpoch() int64 {
+	if x != nil {
+		return x.ModelRuntimeEpoch
+	}
+	return 0
+}
+
+func (x *ConsumeInputTransferRequest) GetConnectorRevisionId() string {
+	if x != nil {
+		return x.ConnectorRevisionId
+	}
+	return ""
+}
+
+type ResolvedInputTransfer struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	TicketId        string                 `protobuf:"bytes,1,opt,name=ticket_id,json=ticketId,proto3" json:"ticket_id,omitempty"`
+	StageArtifactId string                 `protobuf:"bytes,2,opt,name=stage_artifact_id,json=stageArtifactId,proto3" json:"stage_artifact_id,omitempty"`
+	ObjectKey       string                 `protobuf:"bytes,3,opt,name=object_key,json=objectKey,proto3" json:"object_key,omitempty"`
+	ObjectVersion   string                 `protobuf:"bytes,4,opt,name=object_version,json=objectVersion,proto3" json:"object_version,omitempty"`
+	Sha256          []byte                 `protobuf:"bytes,5,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	SizeBytes       int64                  `protobuf:"varint,6,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	ContentType     string                 `protobuf:"bytes,7,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ResolvedInputTransfer) Reset() {
+	*x = ResolvedInputTransfer{}
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolvedInputTransfer) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolvedInputTransfer) ProtoMessage() {}
+
+func (x *ResolvedInputTransfer) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolvedInputTransfer.ProtoReflect.Descriptor instead.
+func (*ResolvedInputTransfer) Descriptor() ([]byte, []int) {
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ResolvedInputTransfer) GetTicketId() string {
+	if x != nil {
+		return x.TicketId
+	}
+	return ""
+}
+
+func (x *ResolvedInputTransfer) GetStageArtifactId() string {
+	if x != nil {
+		return x.StageArtifactId
+	}
+	return ""
+}
+
+func (x *ResolvedInputTransfer) GetObjectKey() string {
+	if x != nil {
+		return x.ObjectKey
+	}
+	return ""
+}
+
+func (x *ResolvedInputTransfer) GetObjectVersion() string {
+	if x != nil {
+		return x.ObjectVersion
+	}
+	return ""
+}
+
+func (x *ResolvedInputTransfer) GetSha256() []byte {
+	if x != nil {
+		return x.Sha256
+	}
+	return nil
+}
+
+func (x *ResolvedInputTransfer) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *ResolvedInputTransfer) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
 type WorkerReadinessDecision struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	WorkerInstanceId    string                 `protobuf:"bytes,1,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
@@ -1358,7 +1731,7 @@ type WorkerReadinessDecision struct {
 
 func (x *WorkerReadinessDecision) Reset() {
 	*x = WorkerReadinessDecision{}
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[12]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1370,7 +1743,7 @@ func (x *WorkerReadinessDecision) String() string {
 func (*WorkerReadinessDecision) ProtoMessage() {}
 
 func (x *WorkerReadinessDecision) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[12]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1383,7 +1756,7 @@ func (x *WorkerReadinessDecision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerReadinessDecision.ProtoReflect.Descriptor instead.
 func (*WorkerReadinessDecision) Descriptor() ([]byte, []int) {
-	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{12}
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *WorkerReadinessDecision) GetWorkerInstanceId() string {
@@ -1427,7 +1800,7 @@ type StageAssignment struct {
 
 func (x *StageAssignment) Reset() {
 	*x = StageAssignment{}
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[13]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1439,7 +1812,7 @@ func (x *StageAssignment) String() string {
 func (*StageAssignment) ProtoMessage() {}
 
 func (x *StageAssignment) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[13]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1452,7 +1825,7 @@ func (x *StageAssignment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StageAssignment.ProtoReflect.Descriptor instead.
 func (*StageAssignment) Descriptor() ([]byte, []int) {
-	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{13}
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *StageAssignment) GetAuthority() *StageAuthority {
@@ -1501,7 +1874,7 @@ type StageInputTransferTicket struct {
 
 func (x *StageInputTransferTicket) Reset() {
 	*x = StageInputTransferTicket{}
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[14]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1513,7 +1886,7 @@ func (x *StageInputTransferTicket) String() string {
 func (*StageInputTransferTicket) ProtoMessage() {}
 
 func (x *StageInputTransferTicket) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[14]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1526,7 +1899,7 @@ func (x *StageInputTransferTicket) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StageInputTransferTicket.ProtoReflect.Descriptor instead.
 func (*StageInputTransferTicket) Descriptor() ([]byte, []int) {
-	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{14}
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *StageInputTransferTicket) GetStageArtifactId() string {
@@ -1559,7 +1932,7 @@ type NoStageWork struct {
 
 func (x *NoStageWork) Reset() {
 	*x = NoStageWork{}
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[15]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1571,7 +1944,7 @@ func (x *NoStageWork) String() string {
 func (*NoStageWork) ProtoMessage() {}
 
 func (x *NoStageWork) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[15]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1584,7 +1957,7 @@ func (x *NoStageWork) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoStageWork.ProtoReflect.Descriptor instead.
 func (*NoStageWork) Descriptor() ([]byte, []int) {
-	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{15}
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *NoStageWork) GetRetryAfter() *durationpb.Duration {
@@ -1607,7 +1980,7 @@ type StageCommandResult struct {
 
 func (x *StageCommandResult) Reset() {
 	*x = StageCommandResult{}
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[16]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1619,7 +1992,7 @@ func (x *StageCommandResult) String() string {
 func (*StageCommandResult) ProtoMessage() {}
 
 func (x *StageCommandResult) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[16]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1632,7 +2005,7 @@ func (x *StageCommandResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StageCommandResult.ProtoReflect.Descriptor instead.
 func (*StageCommandResult) Descriptor() ([]byte, []int) {
-	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{16}
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *StageCommandResult) GetAuthorityDigest() []byte {
@@ -1681,7 +2054,7 @@ type StopStage struct {
 
 func (x *StopStage) Reset() {
 	*x = StopStage{}
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[17]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1693,7 +2066,7 @@ func (x *StopStage) String() string {
 func (*StopStage) ProtoMessage() {}
 
 func (x *StopStage) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[17]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1706,7 +2079,7 @@ func (x *StopStage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopStage.ProtoReflect.Descriptor instead.
 func (*StopStage) Descriptor() ([]byte, []int) {
-	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{17}
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *StopStage) GetAuthority() *StageAuthority {
@@ -1757,7 +2130,7 @@ type MaterializationAuthority struct {
 
 func (x *MaterializationAuthority) Reset() {
 	*x = MaterializationAuthority{}
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[18]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1769,7 +2142,7 @@ func (x *MaterializationAuthority) String() string {
 func (*MaterializationAuthority) ProtoMessage() {}
 
 func (x *MaterializationAuthority) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[18]
+	mi := &file_vela_v1_stage_worker_control_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1782,7 +2155,7 @@ func (x *MaterializationAuthority) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MaterializationAuthority.ProtoReflect.Descriptor instead.
 func (*MaterializationAuthority) Descriptor() ([]byte, []int) {
-	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{18}
+	return file_vela_v1_stage_worker_control_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *MaterializationAuthority) GetSchemaVersion() int32 {
@@ -1922,7 +2295,7 @@ var File_vela_v1_stage_worker_control_proto protoreflect.FileDescriptor
 
 const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\n" +
-	"\"vela/v1/stage_worker_control.proto\x12\avela.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bvela/v1/model_runtime.proto\x1a\x1dvela/v1/stage_authority.proto\"\xf1\a\n" +
+	"\"vela/v1/stage_worker_control.proto\x12\avela.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bvela/v1/model_runtime.proto\x1a\x1dvela/v1/stage_authority.proto\"\xad\t\n" +
 	"'StageWorkerControlServiceConnectRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x122\n" +
@@ -1939,8 +2312,10 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\n" +
 	"fail_stage\x18\x11 \x01(\v2\x19.vela.v1.FailStageRequestH\x00R\tfailStage\x12F\n" +
 	"\x0ereattach_stage\x18\x12 \x01(\v2\x1d.vela.v1.ReattachStageRequestH\x00R\rreattachStage\x12~\n" +
-	"\"report_materialization_source_lost\x18\x13 \x01(\v2/.vela.v1.ReportMaterializationSourceLostRequestH\x00R\x1freportMaterializationSourceLostB\v\n" +
-	"\toperation\"\x93\x04\n" +
+	"\"report_materialization_source_lost\x18\x13 \x01(\v2/.vela.v1.ReportMaterializationSourceLostRequestH\x00R\x1freportMaterializationSourceLost\x12\\\n" +
+	"\x16resolve_input_transfer\x18\x14 \x01(\v2$.vela.v1.ResolveInputTransferRequestH\x00R\x14resolveInputTransfer\x12\\\n" +
+	"\x16consume_input_transfer\x18\x15 \x01(\v2$.vela.v1.ConsumeInputTransferRequestH\x00R\x14consumeInputTransferB\v\n" +
+	"\toperation\"\xed\x04\n" +
 	"(StageWorkerControlServiceConnectResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12^\n" +
@@ -1951,7 +2326,8 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\x14stage_command_result\x18\r \x01(\v2\x1b.vela.v1.StageCommandResultH\x00R\x12stageCommandResult\x123\n" +
 	"\n" +
 	"stop_stage\x18\x0e \x01(\v2\x12.vela.v1.StopStageH\x00R\tstopStage\x12`\n" +
-	"\x19materialization_authority\x18\x0f \x01(\v2!.vela.v1.MaterializationAuthorityH\x00R\x18materializationAuthorityB\b\n" +
+	"\x19materialization_authority\x18\x0f \x01(\v2!.vela.v1.MaterializationAuthorityH\x00R\x18materializationAuthority\x12X\n" +
+	"\x17resolved_input_transfer\x18\x10 \x01(\v2\x1e.vela.v1.ResolvedInputTransferH\x00R\x15resolvedInputTransferB\b\n" +
 	"\x06result\"\xd8\x02\n" +
 	"\x1dRegisterWorkerEvidenceRequest\x12H\n" +
 	"\x10runtime_identity\x18\x01 \x01(\v2\x1d.vela.v1.ModelRuntimeIdentityR\x0fruntimeIdentity\x12B\n" +
@@ -2017,7 +2393,41 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12(\n" +
 	"\x10local_receipt_id\x18\x02 \x01(\tR\x0elocalReceiptId\x120\n" +
 	"\x14local_receipt_digest\x18\x03 \x01(\fR\x12localReceiptDigest\x12Y\n" +
-	"\x16observed_runtime_state\x18\x04 \x01(\x0e2#.vela.v1.ModelRuntimeExecutionStateR\x14observedRuntimeState\"\xa9\x01\n" +
+	"\x16observed_runtime_state\x18\x04 \x01(\x0e2#.vela.v1.ModelRuntimeExecutionStateR\x14observedRuntimeState\"\xc5\x03\n" +
+	"\x1bResolveInputTransferRequest\x125\n" +
+	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12\x1b\n" +
+	"\tticket_id\x18\x02 \x01(\tR\bticketId\x12!\n" +
+	"\ftoken_digest\x18\x03 \x01(\fR\vtokenDigest\x12,\n" +
+	"\x12worker_instance_id\x18\x04 \x01(\tR\x10workerInstanceId\x122\n" +
+	"\x15worker_instance_epoch\x18\x05 \x01(\x03R\x13workerInstanceEpoch\x12,\n" +
+	"\x12model_residency_id\x18\x06 \x01(\tR\x10modelResidencyId\x12.\n" +
+	"\x13model_runtime_epoch\x18\a \x01(\x03R\x11modelRuntimeEpoch\x122\n" +
+	"\x15connector_revision_id\x18\b \x01(\tR\x13connectorRevisionId\x12;\n" +
+	"\vresolved_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"resolvedAt\"\xec\x03\n" +
+	"\x1bConsumeInputTransferRequest\x125\n" +
+	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12\x1b\n" +
+	"\tticket_id\x18\x02 \x01(\tR\bticketId\x12!\n" +
+	"\ftoken_digest\x18\x03 \x01(\fR\vtokenDigest\x12%\n" +
+	"\x0eoutcome_digest\x18\x04 \x01(\fR\routcomeDigest\x12;\n" +
+	"\vconsumed_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"consumedAt\x12,\n" +
+	"\x12worker_instance_id\x18\x06 \x01(\tR\x10workerInstanceId\x122\n" +
+	"\x15worker_instance_epoch\x18\a \x01(\x03R\x13workerInstanceEpoch\x12,\n" +
+	"\x12model_residency_id\x18\b \x01(\tR\x10modelResidencyId\x12.\n" +
+	"\x13model_runtime_epoch\x18\t \x01(\x03R\x11modelRuntimeEpoch\x122\n" +
+	"\x15connector_revision_id\x18\n" +
+	" \x01(\tR\x13connectorRevisionId\"\x80\x02\n" +
+	"\x15ResolvedInputTransfer\x12\x1b\n" +
+	"\tticket_id\x18\x01 \x01(\tR\bticketId\x12*\n" +
+	"\x11stage_artifact_id\x18\x02 \x01(\tR\x0fstageArtifactId\x12\x1d\n" +
+	"\n" +
+	"object_key\x18\x03 \x01(\tR\tobjectKey\x12%\n" +
+	"\x0eobject_version\x18\x04 \x01(\tR\robjectVersion\x12\x16\n" +
+	"\x06sha256\x18\x05 \x01(\fR\x06sha256\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x06 \x01(\x03R\tsizeBytes\x12!\n" +
+	"\fcontent_type\x18\a \x01(\tR\vcontentType\"\xa9\x01\n" +
 	"\x17WorkerReadinessDecision\x12,\n" +
 	"\x12worker_instance_id\x18\x01 \x01(\tR\x10workerInstanceId\x122\n" +
 	"\x15worker_instance_epoch\x18\x02 \x01(\x03R\x13workerInstanceEpoch\x12\x14\n" +
@@ -2081,7 +2491,7 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"*STAGE_WORKER_STOP_REASON_AUTHORITY_REVOKED\x10\x01\x12*\n" +
 	"&STAGE_WORKER_STOP_REASON_LEASE_EXPIRED\x10\x02\x12,\n" +
 	"(STAGE_WORKER_STOP_REASON_PARENT_CANCELED\x10\x03\x122\n" +
-	".STAGE_WORKER_STOP_REASON_MEMBER_BARRIER_FAILED\x10\x04*\xa1\x04\n" +
+	".STAGE_WORKER_STOP_REASON_MEMBER_BARRIER_FAILED\x10\x04*\x87\x05\n" +
 	"\x14StageWorkerOperation\x12&\n" +
 	"\"STAGE_WORKER_OPERATION_UNSPECIFIED\x10\x00\x123\n" +
 	"/STAGE_WORKER_OPERATION_REGISTER_WORKER_EVIDENCE\x10\x01\x126\n" +
@@ -2094,7 +2504,9 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"!STAGE_WORKER_OPERATION_FAIL_STAGE\x10\b\x12)\n" +
 	"%STAGE_WORKER_OPERATION_REATTACH_STAGE\x10\t\x12=\n" +
 	"9STAGE_WORKER_OPERATION_REPORT_MATERIALIZATION_SOURCE_LOST\x10\n" +
-	"2\x8f\x01\n" +
+	"\x121\n" +
+	"-STAGE_WORKER_OPERATION_RESOLVE_INPUT_TRANSFER\x10\v\x121\n" +
+	"-STAGE_WORKER_OPERATION_CONSUME_INPUT_TRANSFER\x10\f2\x8f\x01\n" +
 	"\x19StageWorkerControlService\x12r\n" +
 	"\aConnect\x120.vela.v1.StageWorkerControlServiceConnectRequest\x1a1.vela.v1.StageWorkerControlServiceConnectResponse(\x010\x01B0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"
 
@@ -2111,7 +2523,7 @@ func file_vela_v1_stage_worker_control_proto_rawDescGZIP() []byte {
 }
 
 var file_vela_v1_stage_worker_control_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_vela_v1_stage_worker_control_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_vela_v1_stage_worker_control_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_vela_v1_stage_worker_control_proto_goTypes = []any{
 	(StageWorkerCommandDecision)(0),                  // 0: vela.v1.StageWorkerCommandDecision
 	(StageWorkerStopReason)(0),                       // 1: vela.v1.StageWorkerStopReason
@@ -2128,23 +2540,26 @@ var file_vela_v1_stage_worker_control_proto_goTypes = []any{
 	(*ReportMaterializationSourceLostRequest)(nil),   // 12: vela.v1.ReportMaterializationSourceLostRequest
 	(*FailStageRequest)(nil),                         // 13: vela.v1.FailStageRequest
 	(*ReattachStageRequest)(nil),                     // 14: vela.v1.ReattachStageRequest
-	(*WorkerReadinessDecision)(nil),                  // 15: vela.v1.WorkerReadinessDecision
-	(*StageAssignment)(nil),                          // 16: vela.v1.StageAssignment
-	(*StageInputTransferTicket)(nil),                 // 17: vela.v1.StageInputTransferTicket
-	(*NoStageWork)(nil),                              // 18: vela.v1.NoStageWork
-	(*StageCommandResult)(nil),                       // 19: vela.v1.StageCommandResult
-	(*StopStage)(nil),                                // 20: vela.v1.StopStage
-	(*MaterializationAuthority)(nil),                 // 21: vela.v1.MaterializationAuthority
-	nil,                                              // 22: vela.v1.ReportStageCapacityObservationRequest.CapacityVectorEntry
-	(*ModelRuntimeIdentity)(nil),                     // 23: vela.v1.ModelRuntimeIdentity
-	(*StageAuthorityDeviceEpoch)(nil),                // 24: vela.v1.StageAuthorityDeviceEpoch
-	(*StageAuthorityMemberEpoch)(nil),                // 25: vela.v1.StageAuthorityMemberEpoch
-	(*timestamppb.Timestamp)(nil),                    // 26: google.protobuf.Timestamp
-	(*StageAuthority)(nil),                           // 27: vela.v1.StageAuthority
-	(ModelRuntimeExecutionState)(0),                  // 28: vela.v1.ModelRuntimeExecutionState
-	(*LocalMaterializationReceipt)(nil),              // 29: vela.v1.LocalMaterializationReceipt
-	(*StageExecutionSpec)(nil),                       // 30: vela.v1.StageExecutionSpec
-	(*durationpb.Duration)(nil),                      // 31: google.protobuf.Duration
+	(*ResolveInputTransferRequest)(nil),              // 15: vela.v1.ResolveInputTransferRequest
+	(*ConsumeInputTransferRequest)(nil),              // 16: vela.v1.ConsumeInputTransferRequest
+	(*ResolvedInputTransfer)(nil),                    // 17: vela.v1.ResolvedInputTransfer
+	(*WorkerReadinessDecision)(nil),                  // 18: vela.v1.WorkerReadinessDecision
+	(*StageAssignment)(nil),                          // 19: vela.v1.StageAssignment
+	(*StageInputTransferTicket)(nil),                 // 20: vela.v1.StageInputTransferTicket
+	(*NoStageWork)(nil),                              // 21: vela.v1.NoStageWork
+	(*StageCommandResult)(nil),                       // 22: vela.v1.StageCommandResult
+	(*StopStage)(nil),                                // 23: vela.v1.StopStage
+	(*MaterializationAuthority)(nil),                 // 24: vela.v1.MaterializationAuthority
+	nil,                                              // 25: vela.v1.ReportStageCapacityObservationRequest.CapacityVectorEntry
+	(*ModelRuntimeIdentity)(nil),                     // 26: vela.v1.ModelRuntimeIdentity
+	(*StageAuthorityDeviceEpoch)(nil),                // 27: vela.v1.StageAuthorityDeviceEpoch
+	(*StageAuthorityMemberEpoch)(nil),                // 28: vela.v1.StageAuthorityMemberEpoch
+	(*timestamppb.Timestamp)(nil),                    // 29: google.protobuf.Timestamp
+	(*StageAuthority)(nil),                           // 30: vela.v1.StageAuthority
+	(ModelRuntimeExecutionState)(0),                  // 31: vela.v1.ModelRuntimeExecutionState
+	(*LocalMaterializationReceipt)(nil),              // 32: vela.v1.LocalMaterializationReceipt
+	(*StageExecutionSpec)(nil),                       // 33: vela.v1.StageExecutionSpec
+	(*durationpb.Duration)(nil),                      // 34: google.protobuf.Duration
 }
 var file_vela_v1_stage_worker_control_proto_depIdxs = []int32{
 	5,  // 0: vela.v1.StageWorkerControlServiceConnectRequest.register_worker_evidence:type_name -> vela.v1.RegisterWorkerEvidenceRequest
@@ -2157,55 +2572,62 @@ var file_vela_v1_stage_worker_control_proto_depIdxs = []int32{
 	13, // 7: vela.v1.StageWorkerControlServiceConnectRequest.fail_stage:type_name -> vela.v1.FailStageRequest
 	14, // 8: vela.v1.StageWorkerControlServiceConnectRequest.reattach_stage:type_name -> vela.v1.ReattachStageRequest
 	12, // 9: vela.v1.StageWorkerControlServiceConnectRequest.report_materialization_source_lost:type_name -> vela.v1.ReportMaterializationSourceLostRequest
-	15, // 10: vela.v1.StageWorkerControlServiceConnectResponse.worker_readiness_decision:type_name -> vela.v1.WorkerReadinessDecision
-	16, // 11: vela.v1.StageWorkerControlServiceConnectResponse.stage_assignment:type_name -> vela.v1.StageAssignment
-	18, // 12: vela.v1.StageWorkerControlServiceConnectResponse.no_work:type_name -> vela.v1.NoStageWork
-	19, // 13: vela.v1.StageWorkerControlServiceConnectResponse.stage_command_result:type_name -> vela.v1.StageCommandResult
-	20, // 14: vela.v1.StageWorkerControlServiceConnectResponse.stop_stage:type_name -> vela.v1.StopStage
-	21, // 15: vela.v1.StageWorkerControlServiceConnectResponse.materialization_authority:type_name -> vela.v1.MaterializationAuthority
-	23, // 16: vela.v1.RegisterWorkerEvidenceRequest.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	24, // 17: vela.v1.RegisterWorkerEvidenceRequest.devices:type_name -> vela.v1.StageAuthorityDeviceEpoch
-	25, // 18: vela.v1.RegisterWorkerEvidenceRequest.members:type_name -> vela.v1.StageAuthorityMemberEpoch
-	22, // 19: vela.v1.ReportStageCapacityObservationRequest.capacity_vector:type_name -> vela.v1.ReportStageCapacityObservationRequest.CapacityVectorEntry
-	26, // 20: vela.v1.ReportStageCapacityObservationRequest.observed_at:type_name -> google.protobuf.Timestamp
-	26, // 21: vela.v1.ReportStageCapacityObservationRequest.expires_at:type_name -> google.protobuf.Timestamp
-	27, // 22: vela.v1.StartStageRequest.authority:type_name -> vela.v1.StageAuthority
-	26, // 23: vela.v1.StartStageRequest.started_at:type_name -> google.protobuf.Timestamp
-	27, // 24: vela.v1.HeartbeatStageRequest.authority:type_name -> vela.v1.StageAuthority
-	28, // 25: vela.v1.HeartbeatStageRequest.runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
-	26, // 26: vela.v1.HeartbeatStageRequest.observed_at:type_name -> google.protobuf.Timestamp
-	27, // 27: vela.v1.SealStageOutputRequest.authority:type_name -> vela.v1.StageAuthority
-	29, // 28: vela.v1.SealStageOutputRequest.local_receipt:type_name -> vela.v1.LocalMaterializationReceipt
-	21, // 29: vela.v1.CommitStageMaterializationRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
-	26, // 30: vela.v1.CommitStageMaterializationRequest.committed_at:type_name -> google.protobuf.Timestamp
-	21, // 31: vela.v1.ReportMaterializationSourceLostRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
-	26, // 32: vela.v1.ReportMaterializationSourceLostRequest.lost_at:type_name -> google.protobuf.Timestamp
-	26, // 33: vela.v1.ReportMaterializationSourceLostRequest.retry_at:type_name -> google.protobuf.Timestamp
-	27, // 34: vela.v1.FailStageRequest.authority:type_name -> vela.v1.StageAuthority
-	26, // 35: vela.v1.FailStageRequest.failed_at:type_name -> google.protobuf.Timestamp
-	26, // 36: vela.v1.FailStageRequest.retry_at:type_name -> google.protobuf.Timestamp
-	27, // 37: vela.v1.ReattachStageRequest.authority:type_name -> vela.v1.StageAuthority
-	28, // 38: vela.v1.ReattachStageRequest.observed_runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
-	27, // 39: vela.v1.StageAssignment.authority:type_name -> vela.v1.StageAuthority
-	30, // 40: vela.v1.StageAssignment.execution_spec:type_name -> vela.v1.StageExecutionSpec
-	31, // 41: vela.v1.StageAssignment.member_start_timeout:type_name -> google.protobuf.Duration
-	17, // 42: vela.v1.StageAssignment.input_transfer_tickets:type_name -> vela.v1.StageInputTransferTicket
-	31, // 43: vela.v1.NoStageWork.retry_after:type_name -> google.protobuf.Duration
-	0,  // 44: vela.v1.StageCommandResult.decision:type_name -> vela.v1.StageWorkerCommandDecision
-	2,  // 45: vela.v1.StageCommandResult.operation:type_name -> vela.v1.StageWorkerOperation
-	27, // 46: vela.v1.StageCommandResult.renewed_authority:type_name -> vela.v1.StageAuthority
-	27, // 47: vela.v1.StopStage.authority:type_name -> vela.v1.StageAuthority
-	1,  // 48: vela.v1.StopStage.reason:type_name -> vela.v1.StageWorkerStopReason
-	26, // 49: vela.v1.StopStage.issued_at:type_name -> google.protobuf.Timestamp
-	26, // 50: vela.v1.MaterializationAuthority.issued_at:type_name -> google.protobuf.Timestamp
-	26, // 51: vela.v1.MaterializationAuthority.expires_at:type_name -> google.protobuf.Timestamp
-	3,  // 52: vela.v1.StageWorkerControlService.Connect:input_type -> vela.v1.StageWorkerControlServiceConnectRequest
-	4,  // 53: vela.v1.StageWorkerControlService.Connect:output_type -> vela.v1.StageWorkerControlServiceConnectResponse
-	53, // [53:54] is the sub-list for method output_type
-	52, // [52:53] is the sub-list for method input_type
-	52, // [52:52] is the sub-list for extension type_name
-	52, // [52:52] is the sub-list for extension extendee
-	0,  // [0:52] is the sub-list for field type_name
+	15, // 10: vela.v1.StageWorkerControlServiceConnectRequest.resolve_input_transfer:type_name -> vela.v1.ResolveInputTransferRequest
+	16, // 11: vela.v1.StageWorkerControlServiceConnectRequest.consume_input_transfer:type_name -> vela.v1.ConsumeInputTransferRequest
+	18, // 12: vela.v1.StageWorkerControlServiceConnectResponse.worker_readiness_decision:type_name -> vela.v1.WorkerReadinessDecision
+	19, // 13: vela.v1.StageWorkerControlServiceConnectResponse.stage_assignment:type_name -> vela.v1.StageAssignment
+	21, // 14: vela.v1.StageWorkerControlServiceConnectResponse.no_work:type_name -> vela.v1.NoStageWork
+	22, // 15: vela.v1.StageWorkerControlServiceConnectResponse.stage_command_result:type_name -> vela.v1.StageCommandResult
+	23, // 16: vela.v1.StageWorkerControlServiceConnectResponse.stop_stage:type_name -> vela.v1.StopStage
+	24, // 17: vela.v1.StageWorkerControlServiceConnectResponse.materialization_authority:type_name -> vela.v1.MaterializationAuthority
+	17, // 18: vela.v1.StageWorkerControlServiceConnectResponse.resolved_input_transfer:type_name -> vela.v1.ResolvedInputTransfer
+	26, // 19: vela.v1.RegisterWorkerEvidenceRequest.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	27, // 20: vela.v1.RegisterWorkerEvidenceRequest.devices:type_name -> vela.v1.StageAuthorityDeviceEpoch
+	28, // 21: vela.v1.RegisterWorkerEvidenceRequest.members:type_name -> vela.v1.StageAuthorityMemberEpoch
+	25, // 22: vela.v1.ReportStageCapacityObservationRequest.capacity_vector:type_name -> vela.v1.ReportStageCapacityObservationRequest.CapacityVectorEntry
+	29, // 23: vela.v1.ReportStageCapacityObservationRequest.observed_at:type_name -> google.protobuf.Timestamp
+	29, // 24: vela.v1.ReportStageCapacityObservationRequest.expires_at:type_name -> google.protobuf.Timestamp
+	30, // 25: vela.v1.StartStageRequest.authority:type_name -> vela.v1.StageAuthority
+	29, // 26: vela.v1.StartStageRequest.started_at:type_name -> google.protobuf.Timestamp
+	30, // 27: vela.v1.HeartbeatStageRequest.authority:type_name -> vela.v1.StageAuthority
+	31, // 28: vela.v1.HeartbeatStageRequest.runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
+	29, // 29: vela.v1.HeartbeatStageRequest.observed_at:type_name -> google.protobuf.Timestamp
+	30, // 30: vela.v1.SealStageOutputRequest.authority:type_name -> vela.v1.StageAuthority
+	32, // 31: vela.v1.SealStageOutputRequest.local_receipt:type_name -> vela.v1.LocalMaterializationReceipt
+	24, // 32: vela.v1.CommitStageMaterializationRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
+	29, // 33: vela.v1.CommitStageMaterializationRequest.committed_at:type_name -> google.protobuf.Timestamp
+	24, // 34: vela.v1.ReportMaterializationSourceLostRequest.materialization_authority:type_name -> vela.v1.MaterializationAuthority
+	29, // 35: vela.v1.ReportMaterializationSourceLostRequest.lost_at:type_name -> google.protobuf.Timestamp
+	29, // 36: vela.v1.ReportMaterializationSourceLostRequest.retry_at:type_name -> google.protobuf.Timestamp
+	30, // 37: vela.v1.FailStageRequest.authority:type_name -> vela.v1.StageAuthority
+	29, // 38: vela.v1.FailStageRequest.failed_at:type_name -> google.protobuf.Timestamp
+	29, // 39: vela.v1.FailStageRequest.retry_at:type_name -> google.protobuf.Timestamp
+	30, // 40: vela.v1.ReattachStageRequest.authority:type_name -> vela.v1.StageAuthority
+	31, // 41: vela.v1.ReattachStageRequest.observed_runtime_state:type_name -> vela.v1.ModelRuntimeExecutionState
+	30, // 42: vela.v1.ResolveInputTransferRequest.authority:type_name -> vela.v1.StageAuthority
+	29, // 43: vela.v1.ResolveInputTransferRequest.resolved_at:type_name -> google.protobuf.Timestamp
+	30, // 44: vela.v1.ConsumeInputTransferRequest.authority:type_name -> vela.v1.StageAuthority
+	29, // 45: vela.v1.ConsumeInputTransferRequest.consumed_at:type_name -> google.protobuf.Timestamp
+	30, // 46: vela.v1.StageAssignment.authority:type_name -> vela.v1.StageAuthority
+	33, // 47: vela.v1.StageAssignment.execution_spec:type_name -> vela.v1.StageExecutionSpec
+	34, // 48: vela.v1.StageAssignment.member_start_timeout:type_name -> google.protobuf.Duration
+	20, // 49: vela.v1.StageAssignment.input_transfer_tickets:type_name -> vela.v1.StageInputTransferTicket
+	34, // 50: vela.v1.NoStageWork.retry_after:type_name -> google.protobuf.Duration
+	0,  // 51: vela.v1.StageCommandResult.decision:type_name -> vela.v1.StageWorkerCommandDecision
+	2,  // 52: vela.v1.StageCommandResult.operation:type_name -> vela.v1.StageWorkerOperation
+	30, // 53: vela.v1.StageCommandResult.renewed_authority:type_name -> vela.v1.StageAuthority
+	30, // 54: vela.v1.StopStage.authority:type_name -> vela.v1.StageAuthority
+	1,  // 55: vela.v1.StopStage.reason:type_name -> vela.v1.StageWorkerStopReason
+	29, // 56: vela.v1.StopStage.issued_at:type_name -> google.protobuf.Timestamp
+	29, // 57: vela.v1.MaterializationAuthority.issued_at:type_name -> google.protobuf.Timestamp
+	29, // 58: vela.v1.MaterializationAuthority.expires_at:type_name -> google.protobuf.Timestamp
+	3,  // 59: vela.v1.StageWorkerControlService.Connect:input_type -> vela.v1.StageWorkerControlServiceConnectRequest
+	4,  // 60: vela.v1.StageWorkerControlService.Connect:output_type -> vela.v1.StageWorkerControlServiceConnectResponse
+	60, // [60:61] is the sub-list for method output_type
+	59, // [59:60] is the sub-list for method input_type
+	59, // [59:59] is the sub-list for extension type_name
+	59, // [59:59] is the sub-list for extension extendee
+	0,  // [0:59] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_stage_worker_control_proto_init() }
@@ -2226,6 +2648,8 @@ func file_vela_v1_stage_worker_control_proto_init() {
 		(*StageWorkerControlServiceConnectRequest_FailStage)(nil),
 		(*StageWorkerControlServiceConnectRequest_ReattachStage)(nil),
 		(*StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost)(nil),
+		(*StageWorkerControlServiceConnectRequest_ResolveInputTransfer)(nil),
+		(*StageWorkerControlServiceConnectRequest_ConsumeInputTransfer)(nil),
 	}
 	file_vela_v1_stage_worker_control_proto_msgTypes[1].OneofWrappers = []any{
 		(*StageWorkerControlServiceConnectResponse_WorkerReadinessDecision)(nil),
@@ -2234,6 +2658,7 @@ func file_vela_v1_stage_worker_control_proto_init() {
 		(*StageWorkerControlServiceConnectResponse_StageCommandResult)(nil),
 		(*StageWorkerControlServiceConnectResponse_StopStage)(nil),
 		(*StageWorkerControlServiceConnectResponse_MaterializationAuthority)(nil),
+		(*StageWorkerControlServiceConnectResponse_ResolvedInputTransfer)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -2241,7 +2666,7 @@ func file_vela_v1_stage_worker_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_stage_worker_control_proto_rawDesc), len(file_vela_v1_stage_worker_control_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   20,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

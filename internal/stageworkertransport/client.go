@@ -146,7 +146,14 @@ func (client *Client) Exchange(
 	default:
 	}
 	message := proto.Clone(request).(*velav1.StageWorkerControlServiceConnectRequest)
-	message.RequestId = uuid.NewString()
+	if message.GetRequestId() == "" {
+		message.RequestId = uuid.NewString()
+	} else {
+		requestID, err := uuid.Parse(message.GetRequestId())
+		if err != nil || requestID == uuid.Nil || requestID.String() != message.GetRequestId() {
+			return nil, errors.New("Stage Worker control request ID is not a canonical UUID")
+		}
+	}
 	stream, epoch, generation, err := client.ensureStream()
 	if err != nil {
 		return nil, err
@@ -157,6 +164,10 @@ func (client *Client) Exchange(
 	if client.closed || client.stream != stream || client.generation != generation {
 		client.mu.Unlock()
 		return nil, errors.New("changed Stage Worker control stream before send")
+	}
+	if _, exists := client.pending[message.GetRequestId()]; exists {
+		client.mu.Unlock()
+		return nil, errors.New("duplicate in-flight Stage Worker control request ID")
 	}
 	client.pending[message.GetRequestId()] = waiter
 	client.mu.Unlock()

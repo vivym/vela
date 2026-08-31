@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/materializationauthority"
+	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkercontrol"
 	"github.com/vivym/vela/internal/stageworkertransport"
@@ -47,6 +48,15 @@ func TestProductionExecutorDispatchesEveryStageWorkerOperation(t *testing.T) {
 		},
 		seal: stageworkercontrol.SealResult{
 			Authority: materializationAuthority,
+		},
+		resolve: stageworkercontrol.ResolveInputTransferResult{
+			Descriptor: &stageartifact.TransferDescriptor{
+				TicketID:   uuid.MustParse("a3000000-0000-0000-0000-000000000001"),
+				ArtifactID: uuid.MustParse("a3000000-0000-0000-0000-000000000002"),
+				ObjectKey:  "stages/input.bin", ObjectVersion: "version-1",
+				SHA256: sha256.Sum256([]byte("input")), SizeBytes: 5,
+				ContentType: "application/octet-stream",
+			},
 		},
 	}
 	executor, err := stageworkercontrol.NewProductionExecutor(backend)
@@ -169,6 +179,41 @@ func TestProductionExecutorDispatchesEveryStageWorkerOperation(t *testing.T) {
 			}),
 			authorities: materializationAuthorities, wantResult: "command-materialization",
 		},
+		{
+			name: "resolve input", operation: stageworkercontrol.OperationResolveInputTransfer,
+			request: controlRequest(requestID, &velav1.StageWorkerControlServiceConnectRequest_ResolveInputTransfer{
+				ResolveInputTransfer: &velav1.ResolveInputTransferRequest{
+					Authority:           stageAuthority,
+					TicketId:            "a3000000-0000-0000-0000-000000000001",
+					TokenDigest:         bytes.Repeat([]byte{0x52}, sha256.Size),
+					WorkerInstanceId:    stageAuthority.GetWorkerInstanceId(),
+					WorkerInstanceEpoch: stageAuthority.GetWorkerInstanceEpoch(),
+					ModelResidencyId:    stageAuthority.GetModelResidencyId(),
+					ModelRuntimeEpoch:   stageAuthority.GetMembers()[0].GetModelRuntimeEpoch(),
+					ConnectorRevisionId: "a3000000-0000-0000-0000-000000000003",
+					ResolvedAt:          timestamppb.New(now),
+				},
+			}),
+			authorities: stageAuthorities, wantResult: "transfer",
+		},
+		{
+			name: "consume input", operation: stageworkercontrol.OperationConsumeInputTransfer,
+			request: controlRequest(requestID, &velav1.StageWorkerControlServiceConnectRequest_ConsumeInputTransfer{
+				ConsumeInputTransfer: &velav1.ConsumeInputTransferRequest{
+					Authority:           stageAuthority,
+					TicketId:            "a3000000-0000-0000-0000-000000000001",
+					TokenDigest:         bytes.Repeat([]byte{0x52}, sha256.Size),
+					OutcomeDigest:       bytes.Repeat([]byte{0x53}, sha256.Size),
+					ConsumedAt:          timestamppb.New(now),
+					WorkerInstanceId:    stageAuthority.GetWorkerInstanceId(),
+					WorkerInstanceEpoch: stageAuthority.GetWorkerInstanceEpoch(),
+					ModelResidencyId:    stageAuthority.GetModelResidencyId(),
+					ModelRuntimeEpoch:   stageAuthority.GetMembers()[0].GetModelRuntimeEpoch(),
+					ConnectorRevisionId: "a3000000-0000-0000-0000-000000000003",
+				},
+			}),
+			authorities: stageAuthorities, wantResult: "command-stage",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -208,6 +253,41 @@ func TestProductionExecutorRejectsMalformedEvidenceBeforeBackend(t *testing.T) {
 	if err != nil || response.GetStageCommandResult().GetDecision() !=
 		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED || backend.calls != 0 {
 		t.Fatalf("malformed Execute = %#v error=%v calls=%d", response, err, backend.calls)
+	}
+}
+
+func TestProductionExecutorRejectsInputConsumeForAnotherDestination(t *testing.T) {
+	now := time.Now().UTC()
+	authority, digest := verifiedExecutorStageAuthority(t, now)
+	backend := &recordingOperationBackend{}
+	executor, err := stageworkercontrol.NewProductionExecutor(backend)
+	if err != nil {
+		t.Fatalf("NewProductionExecutor: %v", err)
+	}
+	request := controlRequest(uuid.NewString(), &velav1.StageWorkerControlServiceConnectRequest_ConsumeInputTransfer{
+		ConsumeInputTransfer: &velav1.ConsumeInputTransferRequest{
+			Authority: authority, TicketId: "a3000000-0000-0000-0000-000000000001",
+			TokenDigest:         bytes.Repeat([]byte{0x52}, sha256.Size),
+			OutcomeDigest:       bytes.Repeat([]byte{0x53}, sha256.Size),
+			ConsumedAt:          timestamppb.New(now),
+			WorkerInstanceId:    authority.GetWorkerInstanceId(),
+			WorkerInstanceEpoch: authority.GetWorkerInstanceEpoch() + 1,
+			ModelResidencyId:    authority.GetModelResidencyId(),
+			ModelRuntimeEpoch:   authority.GetMembers()[0].GetModelRuntimeEpoch(),
+			ConnectorRevisionId: "a3000000-0000-0000-0000-000000000003",
+		},
+	})
+	response, err := executor.Execute(
+		context.Background(),
+		stageworkertransport.Identity{SPIFFEID: "spiffe://vela.test/stage-worker"},
+		1, stageworkercontrol.OperationConsumeInputTransfer, request,
+		stageworkercontrol.VerifiedAuthorities{Stage: &stageauthority.Verified{
+			Authority: authority, Digest: digest,
+		}},
+	)
+	if err != nil || response.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED || backend.calls != 0 {
+		t.Fatalf("cross-destination consume = %#v error=%v calls=%d", response, err, backend.calls)
 	}
 }
 
@@ -276,6 +356,50 @@ func TestProductionExecutorReturnsTerminalDatabaseRaceDecisions(t *testing.T) {
 		if executeErr != nil || response.GetStageCommandResult().GetDecision() != decision ||
 			!bytes.Equal(response.GetStageCommandResult().GetAuthorityDigest(), stageDigest[:]) {
 			t.Fatalf("terminal decision %s response=%#v error=%v", decision, response, executeErr)
+		}
+	}
+}
+
+func TestProductionExecutorReturnsResolveDatabaseRaceDecisions(t *testing.T) {
+	now := time.Now().UTC()
+	stageAuthority, stageDigest := verifiedExecutorStageAuthority(t, now)
+	backend := &recordingOperationBackend{}
+	executor, err := stageworkercontrol.NewProductionExecutor(backend)
+	if err != nil {
+		t.Fatalf("NewProductionExecutor: %v", err)
+	}
+	request := controlRequest(uuid.NewString(), &velav1.StageWorkerControlServiceConnectRequest_ResolveInputTransfer{
+		ResolveInputTransfer: &velav1.ResolveInputTransferRequest{
+			Authority: stageAuthority, TicketId: uuid.NewString(),
+			TokenDigest:         bytes.Repeat([]byte{0x52}, sha256.Size),
+			WorkerInstanceId:    stageAuthority.GetWorkerInstanceId(),
+			WorkerInstanceEpoch: stageAuthority.GetWorkerInstanceEpoch(),
+			ModelResidencyId:    stageAuthority.GetModelResidencyId(),
+			ModelRuntimeEpoch:   stageAuthority.GetMembers()[0].GetModelRuntimeEpoch(),
+			ConnectorRevisionId: uuid.NewString(), ResolvedAt: timestamppb.New(now),
+		},
+	})
+	for _, decision := range []velav1.StageWorkerCommandDecision{
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE,
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED,
+	} {
+		backend.resolve = stageworkercontrol.ResolveInputTransferResult{
+			Command: &stageworkercontrol.CommandResult{
+				Decision: decision, Detail: "transfer authority changed during resolve",
+			},
+		}
+		response, executeErr := executor.Execute(
+			context.Background(),
+			stageworkertransport.Identity{SPIFFEID: "spiffe://vela.test/stage-worker"},
+			1, stageworkercontrol.OperationResolveInputTransfer, request,
+			stageworkercontrol.VerifiedAuthorities{Stage: &stageauthority.Verified{
+				Authority: stageAuthority, Digest: stageDigest,
+			}},
+		)
+		if executeErr != nil || response.GetStageCommandResult().GetDecision() != decision ||
+			response.GetStageCommandResult().GetOperation() != stageworkercontrol.OperationResolveInputTransfer ||
+			!bytes.Equal(response.GetStageCommandResult().GetAuthorityDigest(), stageDigest[:]) {
+			t.Fatalf("resolve terminal decision %s response=%#v error=%v", decision, response, executeErr)
 		}
 	}
 }
@@ -605,6 +729,10 @@ func controlRequest(
 		request.Operation = typed
 	case *velav1.StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost:
 		request.Operation = typed
+	case *velav1.StageWorkerControlServiceConnectRequest_ResolveInputTransfer:
+		request.Operation = typed
+	case *velav1.StageWorkerControlServiceConnectRequest_ConsumeInputTransfer:
+		request.Operation = typed
 	}
 	return request
 }
@@ -630,6 +758,12 @@ func assertExecutorResult(
 		if response.GetMaterializationAuthority() == nil {
 			t.Fatalf("materialization response = %#v", response)
 		}
+	case "transfer":
+		transfer := response.GetResolvedInputTransfer()
+		if transfer.GetTicketId() == "" || transfer.GetObjectVersion() == "" ||
+			len(transfer.GetSha256()) != sha256.Size {
+			t.Fatalf("resolved transfer response = %#v", response)
+		}
 	case "command-stage":
 		if !bytes.Equal(response.GetStageCommandResult().GetAuthorityDigest(), stageDigest[:]) {
 			t.Fatalf("stage command response = %#v", response)
@@ -651,6 +785,7 @@ type recordingOperationBackend struct {
 	acquire   stageworkercontrol.AcquireResult
 	command   stageworkercontrol.CommandResult
 	seal      stageworkercontrol.SealResult
+	resolve   stageworkercontrol.ResolveInputTransferResult
 	err       error
 }
 
@@ -757,6 +892,26 @@ func (backend *recordingOperationBackend) ReportMaterializationSourceLost(
 	_ stageworkercontrol.VerifiedAuthorities,
 ) (stageworkercontrol.CommandResult, error) {
 	backend.record(command, stageworkercontrol.OperationReportMaterializationSourceLost)
+	return backend.command, backend.err
+}
+
+func (backend *recordingOperationBackend) ResolveInputTransfer(
+	_ context.Context,
+	command stageworkercontrol.CommandContext,
+	_ *velav1.ResolveInputTransferRequest,
+	_ stageworkercontrol.VerifiedAuthorities,
+) (stageworkercontrol.ResolveInputTransferResult, error) {
+	backend.record(command, stageworkercontrol.OperationResolveInputTransfer)
+	return backend.resolve, backend.err
+}
+
+func (backend *recordingOperationBackend) ConsumeInputTransfer(
+	_ context.Context,
+	command stageworkercontrol.CommandContext,
+	_ *velav1.ConsumeInputTransferRequest,
+	_ stageworkercontrol.VerifiedAuthorities,
+) (stageworkercontrol.CommandResult, error) {
+	backend.record(command, stageworkercontrol.OperationConsumeInputTransfer)
 	return backend.command, backend.err
 }
 
