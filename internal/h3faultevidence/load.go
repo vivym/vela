@@ -77,7 +77,11 @@ func LoadWithin(directory, reference string) (Campaign, error) {
 		}
 		receipts[scenario.Scenario] = receipt
 	}
-	return Campaign{Manifest: manifest, Receipts: receipts}, nil
+	manifestDigest := sha256.Sum256(encoded)
+	return Campaign{
+		Manifest: manifest, ManifestDigest: "sha256:" + hex.EncodeToString(manifestDigest[:]),
+		Receipts: receipts,
+	}, nil
 }
 
 func readRegularFile(root *os.Root, reference string, maximum int64) ([]byte, error) {

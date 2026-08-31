@@ -206,15 +206,15 @@ func TestRunFaultCampaignPublishesNewDirectory(t *testing.T) {
 	bundle := h3faultevidence.Bundle{
 		Evidence: productiongates.TypedEvidence{
 			SchemaVersion: 1, Gate: productiongates.GateStateEventFaultInjection,
-			CriteriaRevision: "vela.production-gates/state-event-fault-injection/v1",
+			CriteriaRevision: "vela.production-gates/state-event-fault-injection/v2",
 			ReleaseDigest:    strings.Repeat("a", 71), ConfigurationRevision: "config-r1",
 			ValidationEnvironment: "repository-conformance",
 		},
 		EvidenceBytes: []byte("{\"schema_version\":1}\n"),
-		ArtifactBytes: map[string][]byte{
-			"scenario-matrix":        []byte("{\"kind\":\"scenario-matrix\"}\n"),
-			"authority-before-after": []byte("{\"kind\":\"authority-before-after\"}\n"),
-			"raw-event-payloads":     []byte("{\"kind\":\"raw-event-payloads\"}\n"),
+		ArtifactBytes: map[h3faultevidence.ArtifactKind][]byte{
+			h3faultevidence.ArtifactScenarioMatrix:       []byte("{\"kind\":\"scenario-matrix\"}\n"),
+			h3faultevidence.ArtifactAuthorityBeforeAfter: []byte("{\"kind\":\"authority-before-after\"}\n"),
+			h3faultevidence.ArtifactRawEventPayloads:     []byte("{\"kind\":\"raw-event-payloads\"}\n"),
 		},
 	}
 	var stdout, stderr bytes.Buffer

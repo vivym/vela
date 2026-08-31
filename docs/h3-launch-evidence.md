@@ -119,10 +119,24 @@ fixed ten state/event fault scenarios. The stale-fence scenario requires
 durable negative-probe records for member epoch, device epoch, ModelRuntime
 epoch, and StageLease authority, each with different presented/current
 authority digests and an exact rejection reason. It rejects missing scenarios,
-nonzero loss/duplicate/stale-acceptance measurements, ledger mismatch, raw
-event identity duplication, path escape, receipt tamper, and ambiguous JSON.
-It can assemble candidate `scenario-matrix`, `authority-before-after`, and
-`raw-event-payloads` typed artifacts from real externally executed receipts.
+nonzero loss/duplicate/stale-acceptance measurements, non-monotonic ledgers,
+missing Accepted Job event coverage, campaign-global raw-event identity
+duplication, path escape, receipt tamper, and ambiguous JSON. Every scenario
+has an exact target kind, action, injection point, and trigger-event contract;
+the Assignment crash window is explicitly a Stage Assignment window. A
+`MODEL_RUNTIME_PROCESS` target is accepted only with a digest-bound maintenance
+approval for that exact target and exercise window.
+
+The command emits the
+`vela.production-gates/state-event-fault-injection/v2` contract. Its candidate
+`scenario-matrix`, `authority-before-after`, and `raw-event-payloads` artifacts
+contain canonical projections of every source receipt rather than PASS-only
+summaries. The projections preserve the source manifest digest, receipt
+reference and digest, Exercise and Accepted Job identities, fault window,
+before/after ledger observations, measurements, stale probes, and actual strict
+JSON raw-event payloads. Payload digests are recomputed after whitespace-only
+JSON canonicalization, and the Production Gate artifact loader independently
+revalidates the three-artifact source and scenario closure.
 
 ```text
 make build-h3-fault-campaign-evidence \
@@ -133,7 +147,10 @@ make build-h3-fault-campaign-evidence \
 The output directory must not already exist. The command validates every
 digest-bound receipt first, writes the envelope and three artifacts in one
 private temporary directory, fsyncs each file, and atomically renames the
-directory into place. It never replaces prior evidence.
+directory into place with an OS no-replace primitive. It fsyncs both the
+candidate and parent directories and never replaces prior evidence, including
+when another publisher creates the destination after the initial existence
+check.
 
 `process-kill` targets a stateless control-plane or Worker Agent process by
 default. Killing or unloading a healthy resident ModelRuntime is not a normal

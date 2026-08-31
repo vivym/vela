@@ -144,8 +144,8 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 	                SELECT 1
 	                FROM pg_catalog.pg_roles AS inherited
 	                WHERE inherited.rolname <> current_user
-	                  AND inherited.rolname <> ALL($1::text[])
-	                  AND pg_has_role(current_user, inherited.oid, 'SET')
+		                  AND inherited.rolname <> ALL($1::text[])
+		                  AND pg_has_role(current_user, inherited.oid, 'MEMBER')
             )
         FROM pg_catalog.pg_roles AS role
         WHERE role.rolname = current_user

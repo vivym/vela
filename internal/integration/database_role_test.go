@@ -1421,6 +1421,23 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	`); err != nil {
 		t.Fatalf("remove rogue data-reading role: %v", err)
 	}
+	if _, err := database.Admin.Exec(`
+		CREATE ROLE vela_rogue_no_set NOLOGIN;
+		GRANT vela_rogue_no_set TO vela_h3_campaign_evidence_login WITH SET FALSE;
+	`); err != nil {
+		t.Fatalf("grant rogue non-SET membership: %v", err)
+	}
+	if err := veladb.VerifyRole(
+		context.Background(), h3CampaignEvidencePool, veladb.RoleH3CampaignEvidence,
+	); err == nil {
+		t.Fatal("H3 campaign evidence login with an unexpected non-SET membership was accepted")
+	}
+	if _, err := database.Admin.Exec(`
+		REVOKE vela_rogue_no_set FROM vela_h3_campaign_evidence_login;
+		DROP ROLE vela_rogue_no_set;
+	`); err != nil {
+		t.Fatalf("remove rogue non-SET membership: %v", err)
+	}
 
 	if _, err := database.Admin.Exec("GRANT DELETE ON jobs TO vela_request_login"); err != nil {
 		t.Fatalf("grant unexpected request table privilege: %v", err)

@@ -39,3 +39,27 @@ func TestWriteBundlePublishesAllEvidenceAtomicallyWithoutReplacement(t *testing.
 		t.Fatalf("replacement WriteBundle error = %v", err)
 	}
 }
+
+func TestRenameNoReplacePreservesConcurrentDestination(t *testing.T) {
+	parent := t.TempDir()
+	source := filepath.Join(parent, "source")
+	destination := filepath.Join(parent, "destination")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	if err := os.Mkdir(destination, 0o700); err != nil {
+		t.Fatalf("create destination: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(destination, "owner"), []byte("concurrent\n"), 0o600); err != nil {
+		t.Fatalf("write destination owner: %v", err)
+	}
+	if err := renameNoReplace(source, destination); err == nil {
+		t.Fatal("renameNoReplace replaced a concurrent destination")
+	}
+	if encoded, err := os.ReadFile(filepath.Join(destination, "owner")); err != nil || string(encoded) != "concurrent\n" {
+		t.Fatalf("destination owner = %q error=%v", encoded, err)
+	}
+	if _, err := os.Stat(source); err != nil {
+		t.Fatalf("source removed after rejected publication: %v", err)
+	}
+}

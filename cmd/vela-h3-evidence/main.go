@@ -33,17 +33,19 @@ const (
 	captureTimeout                 = 2 * time.Minute
 )
 
-type configuration struct {
+type evidenceConfiguration struct {
 	databaseURL           string
 	validationEnvironment string
 	collectorIdentity     string
-	kubeconfig            string
+}
+
+type configuration struct {
+	evidenceConfiguration
+	kubeconfig string
 }
 
 type campaignConfiguration struct {
-	databaseURL           string
-	validationEnvironment string
-	collectorIdentity     string
+	evidenceConfiguration
 }
 
 type campaignCaptureFunc func(
@@ -277,26 +279,11 @@ func parseRequiredUUID(value, label string) (uuid.UUID, error) {
 }
 
 func loadCampaignConfiguration(getenv func(string) string) (campaignConfiguration, error) {
-	config := campaignConfiguration{
-		databaseURL:           getenv(campaignDatabaseURLEnvironment),
-		validationEnvironment: getenv(validationEnvironmentKey),
-		collectorIdentity:     getenv(collectorIdentityKey),
+	config, err := loadEvidenceConfiguration(getenv, campaignDatabaseURLEnvironment)
+	if err != nil {
+		return campaignConfiguration{}, err
 	}
-	for _, required := range []struct {
-		name  string
-		value string
-	}{
-		{name: campaignDatabaseURLEnvironment, value: config.databaseURL},
-		{name: validationEnvironmentKey, value: config.validationEnvironment},
-		{name: collectorIdentityKey, value: config.collectorIdentity},
-	} {
-		if required.value == "" || strings.TrimSpace(required.value) != required.value {
-			return campaignConfiguration{}, fmt.Errorf(
-				"%s is required and must not contain surrounding whitespace", required.name,
-			)
-		}
-	}
-	return config, nil
+	return campaignConfiguration{evidenceConfiguration: config}, nil
 }
 
 func captureCampaign(
@@ -340,26 +327,42 @@ func encodeJSON(writer io.Writer, value any) error {
 }
 
 func loadConfiguration(getenv func(string) string) (configuration, error) {
+	evidence, err := loadEvidenceConfiguration(getenv, databaseURLEnvironment)
+	if err != nil {
+		return configuration{}, err
+	}
 	config := configuration{
-		databaseURL:           getenv(databaseURLEnvironment),
+		evidenceConfiguration: evidence,
+		kubeconfig:            getenv(kubeconfigKey),
+	}
+	if config.kubeconfig != "" && strings.TrimSpace(config.kubeconfig) != config.kubeconfig {
+		return configuration{}, fmt.Errorf("%s must not contain surrounding whitespace", kubeconfigKey)
+	}
+	return config, nil
+}
+
+func loadEvidenceConfiguration(
+	getenv func(string) string,
+	databaseEnvironment string,
+) (evidenceConfiguration, error) {
+	config := evidenceConfiguration{
+		databaseURL:           getenv(databaseEnvironment),
 		validationEnvironment: getenv(validationEnvironmentKey),
 		collectorIdentity:     getenv(collectorIdentityKey),
-		kubeconfig:            getenv(kubeconfigKey),
 	}
 	for _, required := range []struct {
 		name  string
 		value string
 	}{
-		{name: databaseURLEnvironment, value: config.databaseURL},
+		{name: databaseEnvironment, value: config.databaseURL},
 		{name: validationEnvironmentKey, value: config.validationEnvironment},
 		{name: collectorIdentityKey, value: config.collectorIdentity},
 	} {
 		if required.value == "" || strings.TrimSpace(required.value) != required.value {
-			return configuration{}, fmt.Errorf("%s is required and must not contain surrounding whitespace", required.name)
+			return evidenceConfiguration{}, fmt.Errorf(
+				"%s is required and must not contain surrounding whitespace", required.name,
+			)
 		}
-	}
-	if config.kubeconfig != "" && strings.TrimSpace(config.kubeconfig) != config.kubeconfig {
-		return configuration{}, fmt.Errorf("%s must not contain surrounding whitespace", kubeconfigKey)
 	}
 	return config, nil
 }

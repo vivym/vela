@@ -356,9 +356,13 @@ dedicated exact-SELECT PostgreSQL role. A separate fault-campaign verifier
 requires all ten versioned state/event fault scenarios, reconciled authority
 before/after ledgers, raw event identities, zero loss/duplicate/stale-accept
 measurements, and explicit rejected member/device/ModelRuntime/StageLease stale
-probes before it assembles the three candidate typed artifacts. These are
-repository mechanisms for capturing a real external exercise, not evidence
-that an exercise has occurred.
+probes before it assembles the three candidate typed artifacts. Review closure
+adds per-scenario target/action/injection/trigger contracts, campaign-global
+event uniqueness, monotonic ledger and Accepted Job event coverage, exact
+maintenance approval for a ModelRuntime process target, atomic no-replace
+publication, and V2 canonical source projections with actual digest-verified
+raw JSON payloads. These are repository mechanisms for capturing a real
+external exercise, not evidence that an exercise has occurred.
 
 Deliver:
 

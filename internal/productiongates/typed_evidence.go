@@ -118,6 +118,7 @@ type TypedEvidenceArtifact struct {
 	Checks                []EvidenceCheck            `json:"checks"`
 	Measurements          []EvidenceMeasurement      `json:"measurements"`
 	PresetCertification   *PresetCertificationClaims `json:"preset_certification,omitempty"`
+	StateEventFault       *StateEventFaultArtifact   `json:"state_event_fault,omitempty"`
 }
 
 type EvidenceMeasurementRequirement struct {
@@ -266,7 +267,8 @@ func (artifact TypedEvidenceArtifact) validate(
 		!artifact.CompletedAt.Equal(evidence.CompletedAt) {
 		return fmt.Errorf("%w: artifact %s binding is invalid", ErrInvalidTypedEvidence, reference.Kind)
 	}
-	if len(artifact.Checks) == 0 && len(artifact.Measurements) == 0 && artifact.PresetCertification == nil {
+	if len(artifact.Checks) == 0 && len(artifact.Measurements) == 0 &&
+		artifact.PresetCertification == nil && artifact.StateEventFault == nil {
 		return fmt.Errorf("%w: artifact %s has no semantic observations", ErrInvalidTypedEvidence, reference.Kind)
 	}
 	if err := validateEvidenceCheckSubset(artifact.Checks, contract.CheckIDs); err != nil {
@@ -283,6 +285,18 @@ func (artifact TypedEvidenceArtifact) validate(
 		}
 	} else if artifact.PresetCertification != nil {
 		return fmt.Errorf("%w: artifact %s contains forbidden preset claims", ErrInvalidTypedEvidence, reference.Kind)
+	}
+	if evidence.Gate == GateStateEventFaultInjection {
+		if artifact.StateEventFault == nil {
+			return fmt.Errorf("%w: artifact %s lacks state/event fault observations", ErrInvalidTypedEvidence, reference.Kind)
+		}
+		if err := artifact.StateEventFault.validate(
+			reference.Kind, artifact.StartedAt, artifact.CompletedAt,
+		); err != nil {
+			return fmt.Errorf("%w: artifact %s: %v", ErrInvalidTypedEvidence, reference.Kind, err)
+		}
+	} else if artifact.StateEventFault != nil {
+		return fmt.Errorf("%w: artifact %s contains forbidden state/event fault observations", ErrInvalidTypedEvidence, reference.Kind)
 	}
 	return nil
 }
@@ -325,6 +339,11 @@ func ValidateTypedEvidenceArtifacts(
 	for _, expected := range evidence.Measurements {
 		if actual, present := measurements[expected.ID]; !present || actual != expected {
 			return fmt.Errorf("%w: artifact measurement %s does not match the evidence envelope", ErrInvalidTypedEvidence, expected.ID)
+		}
+	}
+	if evidence.Gate == GateStateEventFaultInjection {
+		if err := validateStateEventFaultArtifactSet(artifacts); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -643,9 +662,10 @@ func typedEvidenceContracts() map[Gate]TypedEvidenceContract {
 			},
 			[]string{"hardware-inventory", "saleable-sku-snapshot", "soak-observations", "job-ledger-reconciliation", "mixed-version-inventory"},
 		),
-		GateStateEventFaultInjection: evidenceContract(
+		GateStateEventFaultInjection: evidenceContractAtRevision(
 			GateStateEventFaultInjection,
-			[]string{"process-kill", "worker-control-network-partition", "node-reboot", "outbox-post-commit-crash", "publisher-pre-puback-crash", "publisher-post-puback-pre-mark-crash", "consumer-post-db-pre-ack-crash", "assignment-post-commit-pre-response-crash", "retry-budget-exhaustion", "stale-fence-late-completion"},
+			2,
+			[]string{"process-kill", "worker-control-network-partition", "node-reboot", "outbox-post-commit-crash", "publisher-pre-puback-crash", "publisher-post-puback-pre-mark-crash", "consumer-post-db-pre-ack-crash", "stage-assignment-post-commit-pre-response-crash", "retry-budget-exhaustion", "stale-fence-late-completion"},
 			[]EvidenceMeasurementRequirement{
 				measurementRequirement("lost-accepted-job-count", "count", EvidenceEqual, 0),
 				measurementRequirement("duplicate-visible-completion-count", "count", EvidenceEqual, 0),
@@ -726,8 +746,18 @@ func evidenceContract(
 	measurements []EvidenceMeasurementRequirement,
 	artifacts []string,
 ) TypedEvidenceContract {
+	return evidenceContractAtRevision(gate, 1, checks, measurements, artifacts)
+}
+
+func evidenceContractAtRevision(
+	gate Gate,
+	revision int,
+	checks []string,
+	measurements []EvidenceMeasurementRequirement,
+	artifacts []string,
+) TypedEvidenceContract {
 	return TypedEvidenceContract{
-		CriteriaRevision: "vela.production-gates/" + string(gate) + "/v1",
+		CriteriaRevision: fmt.Sprintf("vela.production-gates/%s/v%d", gate, revision),
 		CheckIDs:         checks,
 		Measurements:     measurements,
 		ArtifactKinds:    artifacts,

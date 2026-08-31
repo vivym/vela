@@ -1,6 +1,7 @@
 package h3faultevidence
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -73,6 +74,9 @@ func validateScenarioReceipt(manifest Manifest, expected Scenario, receipt Scena
 	if len(receipt.AcceptedJobIDs) == 0 || len(receipt.AcceptedJobIDs) > 10000 {
 		return invalid("scenario %s Accepted Job inventory is invalid", expected)
 	}
+	if err := validateFaultExercise(expected, receipt); err != nil {
+		return invalid("scenario %s fault exercise: %v", expected, err)
+	}
 	jobs := make(map[uuid.UUID]struct{}, len(receipt.AcceptedJobIDs))
 	for _, jobID := range receipt.AcceptedJobIDs {
 		if jobID == uuid.Nil {
@@ -96,6 +100,22 @@ func validateScenarioReceipt(manifest Manifest, expected Scenario, receipt Scena
 		receipt.AuthorityAfter.ChargeCount != jobCount {
 		return invalid("scenario %s authority ledgers do not reconcile Accepted Jobs", expected)
 	}
+	if receipt.AuthorityBefore.VisibleCompletionCount > jobCount ||
+		receipt.AuthorityBefore.ChargeCount > jobCount ||
+		receipt.AuthorityAfter.VisibleCompletionCount < receipt.AuthorityBefore.VisibleCompletionCount ||
+		receipt.AuthorityAfter.ChargeCount < receipt.AuthorityBefore.ChargeCount {
+		return invalid("scenario %s authority ledgers are not monotonic", expected)
+	}
+	if receipt.AuthorityBefore.CapturedAt.After(receipt.FaultWindow.OpenedAt) ||
+		receipt.AuthorityAfter.CapturedAt.Before(receipt.FaultWindow.RecoveryConfirmedAt) {
+		return invalid("scenario %s authority snapshots do not bracket the fault window", expected)
+	}
+	if receipt.AuthorityBefore.VisibleCompletionCount != receipt.AuthorityAfter.VisibleCompletionCount &&
+		receipt.AuthorityBefore.CompletionLedgerDigest == receipt.AuthorityAfter.CompletionLedgerDigest ||
+		receipt.AuthorityBefore.ChargeCount != receipt.AuthorityAfter.ChargeCount &&
+			receipt.AuthorityBefore.ChargeLedgerDigest == receipt.AuthorityAfter.ChargeLedgerDigest {
+		return invalid("scenario %s changed authority counts without changing ledger digests", expected)
+	}
 	if receipt.Measurements != (Measurements{}) {
 		return invalid("scenario %s contains a nonzero failure measurement", expected)
 	}
@@ -103,10 +123,13 @@ func validateScenarioReceipt(manifest Manifest, expected Scenario, receipt Scena
 		return invalid("scenario %s raw event inventory is invalid", expected)
 	}
 	events := make(map[uuid.UUID]struct{}, len(receipt.RawEvents))
+	coveredJobs := make(map[uuid.UUID]struct{}, len(jobs))
+	triggerEventFound := false
+	contract, _ := productiongates.StateEventFaultScenarioContractForID(string(expected))
 	for _, event := range receipt.RawEvents {
 		if event.EventID == uuid.Nil || event.AggregateID == uuid.Nil ||
 			event.AggregateVersion <= 0 || !validText(event.AggregateType, 100) ||
-			!validText(event.EventType, 200) || !digestPattern.MatchString(event.PayloadDigest) ||
+			!validText(event.EventType, 200) || !validRawEventPayload(event.Payload, event.PayloadDigest) ||
 			event.PublishedCount <= 0 || event.ConsumedCount <= 0 {
 			return invalid("scenario %s contains an invalid raw event observation", expected)
 		}
@@ -114,6 +137,22 @@ func validateScenarioReceipt(manifest Manifest, expected Scenario, receipt Scena
 			return invalid("scenario %s contains duplicate raw event identity", expected)
 		}
 		events[event.EventID] = struct{}{}
+		if event.AggregateType == "Job" {
+			if _, accepted := jobs[event.AggregateID]; !accepted {
+				return invalid("scenario %s contains a Job event outside the Accepted Job inventory", expected)
+			}
+			coveredJobs[event.AggregateID] = struct{}{}
+		}
+		if event.EventID == receipt.FaultWindow.TriggerEventID && event.EventType == contract.TriggerEventType &&
+			event.AggregateType == "FaultExercise" && event.AggregateID == receipt.ExerciseID {
+			triggerEventFound = true
+		}
+	}
+	if len(coveredJobs) != len(jobs) {
+		return invalid("scenario %s raw events do not cover every Accepted Job", expected)
+	}
+	if !triggerEventFound {
+		return invalid("scenario %s raw events do not contain the exact fault trigger", expected)
 	}
 	if expected == ScenarioStaleFenceLateCompletion {
 		if err := validateStaleAuthorityProbes(receipt, jobs); err != nil {
@@ -123,6 +162,62 @@ func validateScenarioReceipt(manifest Manifest, expected Scenario, receipt Scena
 		return invalid("scenario %s contains unexpected stale-authority probes", expected)
 	}
 	return nil
+}
+
+func validRawEventPayload(encoded json.RawMessage, expectedDigest string) bool {
+	if len(encoded) == 0 || len(encoded) > MaxReceiptBytes || !digestPattern.MatchString(expectedDigest) {
+		return false
+	}
+	var payload any
+	if decodeStrict(encoded, &payload) != nil || payload == nil {
+		return false
+	}
+	var canonical bytes.Buffer
+	if json.Compact(&canonical, encoded) != nil {
+		return false
+	}
+	digest := sha256.Sum256(canonical.Bytes())
+	return "sha256:"+hex.EncodeToString(digest[:]) == expectedDigest
+}
+
+func validateFaultExercise(expected Scenario, receipt ScenarioReceipt) error {
+	contract, known := productiongates.StateEventFaultScenarioContractForID(string(expected))
+	if !known || !contains(contract.TargetKinds, receipt.Target.Kind) ||
+		receipt.FaultWindow.Action != contract.Action ||
+		receipt.FaultWindow.InjectionPoint != contract.InjectionPoint ||
+		receipt.FaultWindow.TriggerEventID == uuid.Nil ||
+		receipt.FaultWindow.OpenedAt.Before(receipt.StartedAt) ||
+		!receipt.FaultWindow.TriggeredAt.After(receipt.FaultWindow.OpenedAt) ||
+		!receipt.FaultWindow.RecoveryConfirmedAt.After(receipt.FaultWindow.TriggeredAt) ||
+		receipt.FaultWindow.RecoveryConfirmedAt.After(receipt.CompletedAt) ||
+		!receipt.FaultWindow.OpenedAt.Equal(receipt.FaultWindow.OpenedAt.UTC()) ||
+		!receipt.FaultWindow.TriggeredAt.Equal(receipt.FaultWindow.TriggeredAt.UTC()) ||
+		!receipt.FaultWindow.RecoveryConfirmedAt.Equal(receipt.FaultWindow.RecoveryConfirmedAt.UTC()) {
+		return fmt.Errorf("target, action, injection point, or time window is invalid")
+	}
+	if receipt.Target.Kind == "MODEL_RUNTIME_PROCESS" {
+		approval := receipt.MaintenanceApproval
+		if approval == nil || !filepath.IsLocal(filepath.FromSlash(approval.Ref)) ||
+			!digestPattern.MatchString(approval.Digest) || !validText(approval.ApprovedBy, 500) ||
+			!validText(approval.Reason, 1000) || approval.TargetID != receipt.Target.ID ||
+			approval.ApprovedAt.Before(receipt.StartedAt) ||
+			approval.ApprovedAt.After(receipt.FaultWindow.TriggeredAt) ||
+			!approval.ApprovedAt.Equal(approval.ApprovedAt.UTC()) {
+			return fmt.Errorf("ModelRuntime process target lacks exact maintenance approval")
+		}
+	} else if receipt.MaintenanceApproval != nil {
+		return fmt.Errorf("maintenance approval is allowed only for a ModelRuntime process target")
+	}
+	return nil
+}
+
+func contains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAuthorityObservation(
@@ -197,9 +292,13 @@ func (campaign Campaign) BuildBundle() (Bundle, error) {
 	if err := validateManifest(campaign.Manifest); err != nil {
 		return Bundle{}, err
 	}
+	if !digestPattern.MatchString(campaign.ManifestDigest) {
+		return Bundle{}, invalid("source manifest digest is invalid")
+	}
 	if len(campaign.Receipts) != len(AllScenarios()) {
 		return Bundle{}, invalid("loaded scenario receipt set is incomplete")
 	}
+	globalEvents := make(map[uuid.UUID]Scenario)
 	for _, scenario := range AllScenarios() {
 		receipt, present := campaign.Receipts[scenario]
 		if !present {
@@ -208,36 +307,38 @@ func (campaign Campaign) BuildBundle() (Bundle, error) {
 		if err := validateScenarioReceipt(campaign.Manifest, scenario, receipt); err != nil {
 			return Bundle{}, err
 		}
+		for _, event := range receipt.RawEvents {
+			if prior, duplicate := globalEvents[event.EventID]; duplicate {
+				return Bundle{}, invalid(
+					"raw event %s occurs in scenarios %s and %s", event.EventID, prior, scenario,
+				)
+			}
+			globalEvents[event.EventID] = scenario
+		}
 	}
 
-	checks := make([]productiongates.EvidenceCheck, 0, len(AllScenarios()))
-	for _, scenario := range AllScenarios() {
-		checks = append(checks, productiongates.EvidenceCheck{ID: string(scenario), Passed: true})
+	claims, err := projectCampaign(campaign)
+	if err != nil {
+		return Bundle{}, err
 	}
-	measurements := []productiongates.EvidenceMeasurement{
-		{ID: "lost-accepted-job-count", Unit: "count", Comparator: productiongates.EvidenceEqual, Threshold: 0},
-		{ID: "duplicate-visible-completion-count", Unit: "count", Comparator: productiongates.EvidenceEqual, Threshold: 0},
-		{ID: "duplicate-charge-count", Unit: "count", Comparator: productiongates.EvidenceEqual, Threshold: 0},
-		{ID: "stale-authority-acceptance-count", Unit: "count", Comparator: productiongates.EvidenceEqual, Threshold: 0},
-	}
+	checks, measurements := claims.envelopeObservations()
 	manifest := campaign.Manifest
-	artifacts := map[string]productiongates.TypedEvidenceArtifact{
-		"scenario-matrix":        typedArtifact(manifest, "scenario-matrix", checks[:9], nil),
-		"authority-before-after": typedArtifact(manifest, "authority-before-after", nil, measurements),
-		"raw-event-payloads":     typedArtifact(manifest, "raw-event-payloads", checks[9:], nil),
-	}
-	artifactBytes := make(map[string][]byte, len(artifacts))
+	artifacts := claims.typedArtifacts(manifest, checks, measurements)
+	artifactBytes := make(map[ArtifactKind][]byte, len(artifacts))
 	references := make([]productiongates.EvidenceArtifact, 0, len(artifacts))
-	for _, kind := range []string{"scenario-matrix", "authority-before-after", "raw-event-payloads"} {
-		encoded, err := json.MarshalIndent(artifacts[kind], "", "  ")
+	verifiedArtifacts := make(map[string]productiongates.TypedEvidenceArtifact, len(artifacts))
+	for _, item := range artifactContract {
+		artifact := artifacts[item.Kind]
+		encoded, err := json.MarshalIndent(artifact, "", "  ")
 		if err != nil {
-			return Bundle{}, invalid("encode %s artifact: %v", kind, err)
+			return Bundle{}, invalid("encode %s artifact: %v", item.Kind, err)
 		}
 		encoded = append(encoded, '\n')
 		digest := sha256.Sum256(encoded)
-		artifactBytes[kind] = encoded
+		artifactBytes[item.Kind] = encoded
+		verifiedArtifacts[string(item.Kind)] = artifact
 		references = append(references, productiongates.EvidenceArtifact{
-			Kind: kind, Ref: kind + ".json", Digest: "sha256:" + hex.EncodeToString(digest[:]),
+			Kind: string(item.Kind), Ref: item.Ref, Digest: "sha256:" + hex.EncodeToString(digest[:]),
 		})
 	}
 	contract, ok := productiongates.TypedEvidenceContractForGate(
@@ -268,7 +369,7 @@ func (campaign Campaign) BuildBundle() (Bundle, error) {
 	if err := evidence.Validate(receipt); err != nil {
 		return Bundle{}, invalid("validate typed evidence: %v", err)
 	}
-	if err := productiongates.ValidateTypedEvidenceArtifacts(evidence, artifacts); err != nil {
+	if err := productiongates.ValidateTypedEvidenceArtifacts(evidence, verifiedArtifacts); err != nil {
 		return Bundle{}, invalid("validate typed artifacts: %v", err)
 	}
 	evidenceBytes, err := json.MarshalIndent(evidence, "", "  ")
@@ -284,18 +385,20 @@ func (campaign Campaign) BuildBundle() (Bundle, error) {
 
 func typedArtifact(
 	manifest Manifest,
-	kind string,
+	kind ArtifactKind,
 	checks []productiongates.EvidenceCheck,
 	measurements []productiongates.EvidenceMeasurement,
+	fault *productiongates.StateEventFaultArtifact,
 ) productiongates.TypedEvidenceArtifact {
 	return productiongates.TypedEvidenceArtifact{
 		SchemaVersion: SchemaVersion, Gate: productiongates.GateStateEventFaultInjection,
-		Kind: kind, ReleaseDigest: manifest.ReleaseDigest,
+		Kind: string(kind), ReleaseDigest: manifest.ReleaseDigest,
 		ConfigurationRevision: manifest.ConfigurationRevision,
 		ValidationEnvironment: manifest.ValidationEnvironment, Owner: manifest.Owner,
 		StartedAt: manifest.StartedAt, CompletedAt: manifest.CompletedAt,
-		Checks:       append([]productiongates.EvidenceCheck(nil), checks...),
-		Measurements: append([]productiongates.EvidenceMeasurement(nil), measurements...),
+		Checks:          append([]productiongates.EvidenceCheck(nil), checks...),
+		Measurements:    append([]productiongates.EvidenceMeasurement(nil), measurements...),
+		StateEventFault: fault,
 	}
 }
 

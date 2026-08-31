@@ -55,7 +55,7 @@ func TestLoadAndBuildBundleRequiresAllFaultAndStaleAuthorityEvidence(t *testing.
 	}
 	verifiedArtifacts := make(map[string]productiongates.TypedEvidenceArtifact, 3)
 	for _, reference := range decoded.Artifacts {
-		encoded := bundle.ArtifactBytes[reference.Kind]
+		encoded := bundle.ArtifactBytes[ArtifactKind(reference.Kind)]
 		if digestBytes(encoded) != reference.Digest {
 			t.Fatalf("artifact %s digest mismatch", reference.Kind)
 		}
@@ -64,6 +64,24 @@ func TestLoadAndBuildBundleRequiresAllFaultAndStaleAuthorityEvidence(t *testing.
 		)
 		if decodeErr != nil {
 			t.Fatalf("decode assembled artifact %s: %v", reference.Kind, decodeErr)
+		}
+		if artifact.StateEventFault == nil || artifact.StateEventFault.SourceManifestDigest != campaign.ManifestDigest {
+			t.Fatalf("artifact %s source binding = %#v", reference.Kind, artifact.StateEventFault)
+		}
+		switch ArtifactKind(reference.Kind) {
+		case ArtifactScenarioMatrix:
+			if len(artifact.StateEventFault.Scenarios) != len(AllScenarios()) {
+				t.Fatalf("scenario projection count = %d", len(artifact.StateEventFault.Scenarios))
+			}
+		case ArtifactAuthorityBeforeAfter:
+			if len(artifact.StateEventFault.Authorities) != len(AllScenarios()) {
+				t.Fatalf("authority projection count = %d", len(artifact.StateEventFault.Authorities))
+			}
+		case ArtifactRawEventPayloads:
+			if len(artifact.StateEventFault.RawEventSets) != len(AllScenarios()) ||
+				len(artifact.StateEventFault.RawEventSets[0].Events[0].Payload) == 0 {
+				t.Fatalf("raw event projection = %#v", artifact.StateEventFault.RawEventSets)
+			}
 		}
 		verifiedArtifacts[reference.Kind] = artifact
 	}
@@ -115,6 +133,43 @@ func TestFaultCampaignRejectsIncompleteOrContradictoryReceipts(t *testing.T) {
 				receipts[ScenarioConsumerPostDBPreAckCrash].AuthorityAfter.VisibleCompletionCount = 0
 			},
 		},
+		{
+			name: "authority ledger regresses",
+			mutate: func(_ *Manifest, receipts map[Scenario]*ScenarioReceipt) {
+				receipts[ScenarioProcessKill].AuthorityBefore.VisibleCompletionCount = 2
+			},
+		},
+		{
+			name: "wrong target for scenario",
+			mutate: func(_ *Manifest, receipts map[Scenario]*ScenarioReceipt) {
+				receipts[ScenarioNodeReboot].Target.Kind = "CONTROL_PLANE_PROCESS"
+			},
+		},
+		{
+			name: "wrong fault injection point",
+			mutate: func(_ *Manifest, receipts map[Scenario]*ScenarioReceipt) {
+				receipts[ScenarioPublisherPrePubAckCrash].FaultWindow.InjectionPoint = "PUBLISH_POST_PUBACK"
+			},
+		},
+		{
+			name: "ModelRuntime process without maintenance approval",
+			mutate: func(_ *Manifest, receipts map[Scenario]*ScenarioReceipt) {
+				receipts[ScenarioProcessKill].Target.Kind = "MODEL_RUNTIME_PROCESS"
+			},
+		},
+		{
+			name: "missing Accepted Job event coverage",
+			mutate: func(_ *Manifest, receipts map[Scenario]*ScenarioReceipt) {
+				receipt := receipts[ScenarioRetryBudgetExhaustion]
+				receipt.RawEvents = receipt.RawEvents[:1]
+			},
+		},
+		{
+			name: "raw payload digest mismatch",
+			mutate: func(_ *Manifest, receipts map[Scenario]*ScenarioReceipt) {
+				receipts[ScenarioConsumerPostDBPreAckCrash].RawEvents[0].Payload = json.RawMessage(`{"tampered":true}`)
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -123,6 +178,40 @@ func TestFaultCampaignRejectsIncompleteOrContradictoryReceipts(t *testing.T) {
 				t.Fatalf("Load error = %v, want ErrInvalidCampaign", err)
 			}
 		})
+	}
+}
+
+func TestFaultCampaignRejectsRawEventIdentityReusedAcrossScenarios(t *testing.T) {
+	path := writeCampaignFixture(t, func(_ *Manifest, receipts map[Scenario]*ScenarioReceipt) {
+		reused := receipts[ScenarioProcessKill].RawEvents[1].EventID
+		receipts[ScenarioNodeReboot].RawEvents[1].EventID = reused
+	})
+	campaign, err := Load(path)
+	if err != nil {
+		t.Fatalf("load individually valid scenario receipts: %v", err)
+	}
+	if _, err := campaign.BuildBundle(); !errors.Is(err, ErrInvalidCampaign) {
+		t.Fatalf("BuildBundle duplicate cross-scenario event error = %v", err)
+	}
+}
+
+func TestFaultCampaignRequiresApprovalForModelRuntimeProcessExercise(t *testing.T) {
+	path := writeCampaignFixture(t, func(_ *Manifest, receipts map[Scenario]*ScenarioReceipt) {
+		receipt := receipts[ScenarioProcessKill]
+		receipt.Target.Kind = "MODEL_RUNTIME_PROCESS"
+		receipt.MaintenanceApproval = &MaintenanceApproval{
+			Ref: "approvals/model-runtime-maintenance.json", Digest: digest('9'),
+			ApprovedBy: "platform-maintenance/approver-1",
+			ApprovedAt: receipt.StartedAt.Add(time.Second), Reason: "approved fault campaign exercise",
+			TargetID: receipt.Target.ID,
+		}
+	})
+	campaign, err := Load(path)
+	if err != nil {
+		t.Fatalf("load approved ModelRuntime process exercise: %v", err)
+	}
+	if _, err := campaign.BuildBundle(); err != nil {
+		t.Fatalf("build approved ModelRuntime process exercise: %v", err)
 	}
 }
 
@@ -181,15 +270,30 @@ func writeCampaignFixture(
 	receipts := make(map[Scenario]*ScenarioReceipt, len(AllScenarios()))
 	for index, scenario := range AllScenarios() {
 		jobID := uuid.New()
+		exerciseID := uuid.New()
+		triggerEventID := uuid.New()
 		scenarioStarted := started.Add(time.Duration(index) * time.Minute)
+		contract, ok := productiongates.StateEventFaultScenarioContractForID(string(scenario))
+		if !ok {
+			t.Fatalf("missing fault scenario contract %s", scenario)
+		}
+		triggerPayload := json.RawMessage(`{"kind":"fault-trigger"}`)
+		jobPayload := json.RawMessage(`{"kind":"job-terminal"}`)
 		receipt := &ScenarioReceipt{
 			SchemaVersion: 1, Scenario: scenario,
 			ReleaseDigest:         manifest.ReleaseDigest,
 			ConfigurationRevision: manifest.ConfigurationRevision,
 			ValidationEnvironment: manifest.ValidationEnvironment, Owner: manifest.Owner,
 			StartedAt: scenarioStarted, CompletedAt: scenarioStarted.Add(30 * time.Second),
-			ExerciseID: uuid.New(), ControllerIdentity: "spiffe://vela/test/fault-controller",
-			Target:         FaultTarget{Kind: "PROCESS", ID: "target-" + string(scenario)},
+			ExerciseID: exerciseID, ControllerIdentity: "spiffe://vela/test/fault-controller",
+			Target: FaultTarget{Kind: contract.TargetKinds[0], ID: "target-" + string(scenario)},
+			FaultWindow: FaultWindow{
+				Action: contract.Action, InjectionPoint: contract.InjectionPoint,
+				OpenedAt:            scenarioStarted.Add(2 * time.Second),
+				TriggeredAt:         scenarioStarted.Add(3 * time.Second),
+				RecoveryConfirmedAt: scenarioStarted.Add(28 * time.Second),
+				TriggerEventID:      triggerEventID,
+			},
 			AcceptedJobIDs: []uuid.UUID{jobID},
 			AuthorityBefore: AuthorityObservation{
 				CapturedAt: scenarioStarted.Add(time.Second), DatabaseSnapshotID: "10:20:",
@@ -202,11 +306,21 @@ func writeCampaignFixture(
 				ChargeLedgerDigest: digest('1'), AcceptedJobCount: 1,
 				VisibleCompletionCount: 1, ChargeCount: 1,
 			},
-			RawEvents: []RawEventObservation{{
-				EventID: uuid.New(), AggregateType: "Job", AggregateID: jobID,
-				AggregateVersion: 1, EventType: "job.succeeded", PayloadDigest: digest('2'),
-				PublishedCount: 1, ConsumedCount: 1,
-			}},
+			RawEvents: []RawEventObservation{
+				{
+					EventID: triggerEventID, AggregateType: "FaultExercise",
+					AggregateID: exerciseID, AggregateVersion: 1,
+					EventType: contract.TriggerEventType, PayloadDigest: digestBytes(triggerPayload),
+					Payload:        triggerPayload,
+					PublishedCount: 1, ConsumedCount: 1,
+				},
+				{
+					EventID: uuid.New(), AggregateType: "Job", AggregateID: jobID,
+					AggregateVersion: 1, EventType: "job.succeeded",
+					PayloadDigest: digestBytes(jobPayload), Payload: jobPayload,
+					PublishedCount: 1, ConsumedCount: 1,
+				},
+			},
 		}
 		if scenario == ScenarioStaleFenceLateCompletion {
 			for _, kind := range AllStaleAuthorityKinds() {

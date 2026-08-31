@@ -59,6 +59,14 @@ The check IDs and artifact kinds are versioned under
 `vela.production-gates/<gate>/v1`. A changed criterion requires a new criteria
 revision rather than a waiver or an in-place semantic reinterpretation.
 
+The H3 fault-campaign closure advances only
+`state-event-fault-injection` to
+`vela.production-gates/state-event-fault-injection/v2`. V2 renames the
+ambiguous Assignment crash check to the Stage Assignment crash window and
+requires independently reloadable scenario, authority, stale-probe, and raw
+event payload projections bound to their source manifest and receipts. Other
+gate criteria remain at V1.
+
 ## Catalog promotion
 
 `productiongates.LoadManifestWithin` exposes verified typed evidence only after

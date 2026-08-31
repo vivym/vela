@@ -1,6 +1,7 @@
 package h3faultevidence
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,16 +17,16 @@ const (
 type Scenario string
 
 const (
-	ScenarioProcessKill                     Scenario = "process-kill"
-	ScenarioWorkerControlNetworkPartition   Scenario = "worker-control-network-partition"
-	ScenarioNodeReboot                      Scenario = "node-reboot"
-	ScenarioOutboxPostCommitCrash           Scenario = "outbox-post-commit-crash"
-	ScenarioPublisherPrePubAckCrash         Scenario = "publisher-pre-puback-crash"
-	ScenarioPublisherPostPubAckPreMarkCrash Scenario = "publisher-post-puback-pre-mark-crash"
-	ScenarioConsumerPostDBPreAckCrash       Scenario = "consumer-post-db-pre-ack-crash"
-	ScenarioAssignmentPostCommitPreResponse Scenario = "assignment-post-commit-pre-response-crash"
-	ScenarioRetryBudgetExhaustion           Scenario = "retry-budget-exhaustion"
-	ScenarioStaleFenceLateCompletion        Scenario = "stale-fence-late-completion"
+	ScenarioProcessKill                          Scenario = "process-kill"
+	ScenarioWorkerControlNetworkPartition        Scenario = "worker-control-network-partition"
+	ScenarioNodeReboot                           Scenario = "node-reboot"
+	ScenarioOutboxPostCommitCrash                Scenario = "outbox-post-commit-crash"
+	ScenarioPublisherPrePubAckCrash              Scenario = "publisher-pre-puback-crash"
+	ScenarioPublisherPostPubAckPreMarkCrash      Scenario = "publisher-post-puback-pre-mark-crash"
+	ScenarioConsumerPostDBPreAckCrash            Scenario = "consumer-post-db-pre-ack-crash"
+	ScenarioStageAssignmentPostCommitPreResponse Scenario = "stage-assignment-post-commit-pre-response-crash"
+	ScenarioRetryBudgetExhaustion                Scenario = "retry-budget-exhaustion"
+	ScenarioStaleFenceLateCompletion             Scenario = "stale-fence-late-completion"
 )
 
 func AllScenarios() []Scenario {
@@ -37,7 +38,7 @@ func AllScenarios() []Scenario {
 		ScenarioPublisherPrePubAckCrash,
 		ScenarioPublisherPostPubAckPreMarkCrash,
 		ScenarioConsumerPostDBPreAckCrash,
-		ScenarioAssignmentPostCommitPreResponse,
+		ScenarioStageAssignmentPostCommitPreResponse,
 		ScenarioRetryBudgetExhaustion,
 		ScenarioStaleFenceLateCompletion,
 	}
@@ -90,6 +91,8 @@ type ScenarioReceipt struct {
 	ExerciseID            uuid.UUID             `json:"exercise_id"`
 	ControllerIdentity    string                `json:"controller_identity"`
 	Target                FaultTarget           `json:"target"`
+	FaultWindow           FaultWindow           `json:"fault_window"`
+	MaintenanceApproval   *MaintenanceApproval  `json:"maintenance_approval,omitempty"`
 	AcceptedJobIDs        []uuid.UUID           `json:"accepted_job_ids"`
 	AuthorityBefore       AuthorityObservation  `json:"authority_before"`
 	AuthorityAfter        AuthorityObservation  `json:"authority_after"`
@@ -101,6 +104,24 @@ type ScenarioReceipt struct {
 type FaultTarget struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
+}
+
+type FaultWindow struct {
+	Action              string    `json:"action"`
+	InjectionPoint      string    `json:"injection_point"`
+	OpenedAt            time.Time `json:"opened_at"`
+	TriggeredAt         time.Time `json:"triggered_at"`
+	RecoveryConfirmedAt time.Time `json:"recovery_confirmed_at"`
+	TriggerEventID      uuid.UUID `json:"trigger_event_id"`
+}
+
+type MaintenanceApproval struct {
+	Ref        string    `json:"ref"`
+	Digest     string    `json:"digest"`
+	ApprovedBy string    `json:"approved_by"`
+	ApprovedAt time.Time `json:"approved_at"`
+	Reason     string    `json:"reason"`
+	TargetID   string    `json:"target_id"`
 }
 
 type AuthorityObservation struct {
@@ -115,14 +136,15 @@ type AuthorityObservation struct {
 }
 
 type RawEventObservation struct {
-	EventID          uuid.UUID `json:"event_id"`
-	AggregateType    string    `json:"aggregate_type"`
-	AggregateID      uuid.UUID `json:"aggregate_id"`
-	AggregateVersion int64     `json:"aggregate_version"`
-	EventType        string    `json:"event_type"`
-	PayloadDigest    string    `json:"payload_digest"`
-	PublishedCount   int64     `json:"published_count"`
-	ConsumedCount    int64     `json:"consumed_count"`
+	EventID          uuid.UUID       `json:"event_id"`
+	AggregateType    string          `json:"aggregate_type"`
+	AggregateID      uuid.UUID       `json:"aggregate_id"`
+	AggregateVersion int64           `json:"aggregate_version"`
+	EventType        string          `json:"event_type"`
+	PayloadDigest    string          `json:"payload_digest"`
+	Payload          json.RawMessage `json:"payload"`
+	PublishedCount   int64           `json:"published_count"`
+	ConsumedCount    int64           `json:"consumed_count"`
 }
 
 type Measurements struct {
@@ -146,13 +168,33 @@ type StaleAuthorityProbe struct {
 }
 
 type Campaign struct {
-	Manifest Manifest
-	Receipts map[Scenario]ScenarioReceipt
+	Manifest       Manifest
+	ManifestDigest string
+	Receipts       map[Scenario]ScenarioReceipt
+}
+
+type ArtifactKind string
+
+const (
+	ArtifactScenarioMatrix       ArtifactKind = "scenario-matrix"
+	ArtifactAuthorityBeforeAfter ArtifactKind = "authority-before-after"
+	ArtifactRawEventPayloads     ArtifactKind = "raw-event-payloads"
+)
+
+type artifactContractEntry struct {
+	Kind ArtifactKind
+	Ref  string
+}
+
+var artifactContract = [...]artifactContractEntry{
+	{Kind: ArtifactScenarioMatrix, Ref: "scenario-matrix.json"},
+	{Kind: ArtifactAuthorityBeforeAfter, Ref: "authority-before-after.json"},
+	{Kind: ArtifactRawEventPayloads, Ref: "raw-event-payloads.json"},
 }
 
 type Bundle struct {
 	Evidence      productiongates.TypedEvidence
 	EvidenceBytes []byte
-	Artifacts     map[string]productiongates.TypedEvidenceArtifact
-	ArtifactBytes map[string][]byte
+	Artifacts     map[ArtifactKind]productiongates.TypedEvidenceArtifact
+	ArtifactBytes map[ArtifactKind][]byte
 }

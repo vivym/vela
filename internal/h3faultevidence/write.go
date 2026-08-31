@@ -11,14 +11,14 @@ import (
 const EvidenceFileName = "state-event-fault-injection.json"
 
 type OutputArtifact struct {
-	Kind   string `json:"kind"`
-	Ref    string `json:"ref"`
-	Digest string `json:"digest"`
+	Kind   ArtifactKind `json:"kind"`
+	Ref    string       `json:"ref"`
+	Digest string       `json:"digest"`
 }
 
 func WriteBundle(outputDirectory string, bundle Bundle) ([]OutputArtifact, error) {
 	if outputDirectory == "" || !filepath.IsLocal(outputDirectory) && !filepath.IsAbs(outputDirectory) ||
-		len(bundle.EvidenceBytes) == 0 || len(bundle.ArtifactBytes) != 3 {
+		len(bundle.EvidenceBytes) == 0 || len(bundle.ArtifactBytes) != len(artifactContract) {
 		return nil, invalid("fault campaign output or bundle is invalid")
 	}
 	if _, err := os.Lstat(outputDirectory); err == nil {
@@ -47,25 +47,30 @@ func WriteBundle(outputDirectory string, bundle Bundle) ([]OutputArtifact, error
 	if err := writeEvidenceFile(temporary, EvidenceFileName, bundle.EvidenceBytes); err != nil {
 		return nil, err
 	}
-	artifacts := make([]OutputArtifact, 0, 3)
-	for _, kind := range []string{"scenario-matrix", "authority-before-after", "raw-event-payloads"} {
-		encoded, present := bundle.ArtifactBytes[kind]
+	artifacts := make([]OutputArtifact, 0, len(artifactContract))
+	for _, item := range artifactContract {
+		encoded, present := bundle.ArtifactBytes[item.Kind]
 		if !present || len(encoded) == 0 {
-			return nil, invalid("bundle artifact %s is missing", kind)
+			return nil, invalid("bundle artifact %s is missing", item.Kind)
 		}
-		name := kind + ".json"
-		if err := writeEvidenceFile(temporary, name, encoded); err != nil {
+		if err := writeEvidenceFile(temporary, item.Ref, encoded); err != nil {
 			return nil, err
 		}
 		digest := sha256.Sum256(encoded)
 		artifacts = append(artifacts, OutputArtifact{
-			Kind: kind, Ref: name, Digest: "sha256:" + hex.EncodeToString(digest[:]),
+			Kind: item.Kind, Ref: item.Ref, Digest: "sha256:" + hex.EncodeToString(digest[:]),
 		})
 	}
-	if err := os.Rename(temporary, outputDirectory); err != nil {
+	if err := syncDirectory(temporary); err != nil {
+		return nil, invalid("sync output candidate directory: %v", err)
+	}
+	if err := renameNoReplace(temporary, outputDirectory); err != nil {
 		return nil, invalid("publish output directory atomically: %v", err)
 	}
 	published = true
+	if err := syncDirectory(parent); err != nil {
+		return nil, invalid("sync output parent directory: %v", err)
+	}
 	return artifacts, nil
 }
 
@@ -87,4 +92,13 @@ func writeEvidenceFile(directory, name string, encoded []byte) error {
 		return invalid("close evidence file %s: %v", name, err)
 	}
 	return nil
+}
+
+func syncDirectory(path string) error {
+	directory, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = directory.Close() }()
+	return directory.Sync()
 }
