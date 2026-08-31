@@ -4,15 +4,20 @@ Date: 2026-08-31
 
 Status: Implementation in progress. S49.1-S49.11 have committed repository
 implementations through the capacity simulator and advisory planning boundary.
-Migrations `00049` through `00051` implement the current S49.12 expansion boundary:
+Migrations `00049` through `00053` implement the current S49.12 expansion and
+contraction-readiness boundary:
 ModelRevision-scoped cohort routing,
 immutable Job/Attempt/ExecutionGraphSnapshot authority, rollback that affects
 only later Jobs, an explicit internal-Project allowlist, Production Launch
 Receipt gating, legacy-authority database inventory, and a schema rollback
 guard, plus automatic Accepted STAGE_GRAPH Job instantiation with durable multi-replica claim,
 expiry takeover, exact replay, crash reconciliation, and atomic graph authority in
-the Admission transaction. External drain evidence, a zero-inventory seal,
-contraction, legacy-path deletion, and production evidence remain pending.
+the Admission transaction. Migration `00052` adds typed external drain evidence
+and the immutable zero-inventory seal; migration `00053` adds the explicit
+live-zero preparation operation, terminal machine-authority archive, immutable
+readiness receipt, and legacy-row freeze. It performs no DDL. The
+release-coupled schema and legacy-path deletion, permanent reachability closure,
+and production evidence remain pending.
 Repository evidence does not advance a Production Gate.
 
 ## Purpose
@@ -417,9 +422,15 @@ renewal is unavailable.
 - Add a permanent negative test proving no machine-level H3 Assignment can be
   formed.
 
-M6 is not implemented by migrations `00049` through `00051`. Their rollback
-guards protect the expanded schema and durable dispatch authority; none is the
-contraction migration or removes a legacy protocol or deployment surface.
+Migration `00053` implements guarded contraction preparation. Production must
+explicitly supply the current M5 receipt; the function rechecks live zero while
+holding the source relations, archives terminal machine authority, writes an
+immutable readiness receipt, and freezes those legacy rows. It does not issue
+DDL. The actual contraction migration must ship with legacy protocol, runtime,
+deployment, generated-query, and test deletion so no release can expose a
+schema that its Stage runtime cannot execute. That migration must use an
+explicit reviewed dependency list and `RESTRICT`; the permanent reachability
+gate remains required before S49.12 closes.
 
 ## Failure and compatibility rules
 

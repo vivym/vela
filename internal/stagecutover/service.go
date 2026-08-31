@@ -78,9 +78,23 @@ type ZeroBacklogReceiptResult struct {
 	Replayed        bool      `json:"replayed"`
 }
 
+type PrepareLegacyH3ContractionRequest struct {
+	ZeroBacklogReceiptID uuid.UUID `json:"zero_backlog_receipt_id"`
+	PreparedBy           string    `json:"prepared_by"`
+}
+
+type LegacyH3ContractionPreparationResult struct {
+	ZeroBacklogReceiptID uuid.UUID `json:"zero_backlog_receipt_id"`
+	CutoverRevisionID    uuid.UUID `json:"cutover_revision_id"`
+	PreparedAt           time.Time `json:"prepared_at"`
+	ArchiveDigest        string    `json:"archive_digest"`
+	ContentDigest        string    `json:"content_digest"`
+	Replayed             bool      `json:"replayed"`
+}
+
 func New(ctx context.Context, pool *pgxpool.Pool) (*Service, error) {
 	if pool == nil {
-		return nil, errors.New("Stage cutover database pool is required")
+		return nil, errors.New("stage cutover database pool is required")
 	}
 	if err := veladb.VerifyRole(ctx, pool, veladb.RoleCatalogPromotion); err != nil {
 		return nil, fmt.Errorf("verify Stage cutover Catalog Promotion role: %w", err)
@@ -190,6 +204,35 @@ func (service *Service) SealZeroBacklog(
 	if err != nil {
 		return ZeroBacklogReceiptResult{}, fmt.Errorf("seal Stage cutover zero backlog: %w", err)
 	}
+	result.ContentDigest = hex.EncodeToString(contentDigest)
+	return result, nil
+}
+
+func (service *Service) PrepareLegacyH3Contraction(
+	ctx context.Context,
+	request PrepareLegacyH3ContractionRequest,
+) (LegacyH3ContractionPreparationResult, error) {
+	var result LegacyH3ContractionPreparationResult
+	var archiveDigest, contentDigest []byte
+	err := service.pool.QueryRow(ctx, `
+		SELECT zero_backlog_receipt_id, cutover_revision_id, prepared_at,
+		       archive_digest, content_digest, replayed
+		FROM vela_prepare_legacy_h3_contraction($1, $2)
+	`, request.ZeroBacklogReceiptID, request.PreparedBy).Scan(
+		&result.ZeroBacklogReceiptID,
+		&result.CutoverRevisionID,
+		&result.PreparedAt,
+		&archiveDigest,
+		&contentDigest,
+		&result.Replayed,
+	)
+	if err != nil {
+		return LegacyH3ContractionPreparationResult{}, fmt.Errorf(
+			"prepare Legacy H3 contraction: %w",
+			err,
+		)
+	}
+	result.ArchiveDigest = hex.EncodeToString(archiveDigest)
 	result.ContentDigest = hex.EncodeToString(contentDigest)
 	return result, nil
 }

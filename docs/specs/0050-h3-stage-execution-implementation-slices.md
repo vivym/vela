@@ -3,13 +3,15 @@
 Date: 2026-08-31
 
 Status: In progress. S49.1-S49.11 have committed repository implementations.
-S49.12 has started with migrations `00049` through `00051` and remains partial: cutover routing,
+S49.12 has started with migrations `00049` through `00053` and remains partial: cutover routing,
 immutable execution authority, scoped internal rollout, Production Launch
 Receipt gating, legacy database inventory, and rollback protection exist;
 automatic Accepted STAGE_GRAPH Job instantiation now has durable multi-replica claims, expiry
 takeover, exact replay, crash reconciliation, `vela-control` wiring, and atomic
-Admission instantiation. External drain evidence, zero-inventory seal,
-contraction, legacy-path deletion, and production evidence remain pending.
+Admission instantiation. Typed external drain evidence, zero-inventory sealing,
+and an explicit live-zero contraction-readiness archive/freeze are implemented.
+Release-coupled schema and legacy-path deletion, permanent reachability closure,
+and production evidence remain pending.
 
 ## Delivery rule
 
@@ -314,12 +316,13 @@ Acceptance:
 
 ## S49.12: Cutover, contraction, and evidence campaign
 
-Current repository boundary: migrations `00049` through `00051`, Admission, and the
+Current repository boundary: migrations `00049` through `00053`, Admission, and the
 AttemptCoordinator maintenance loop implement the pre-contraction control and
 automatic-instantiation surfaces, including the target single-transaction
-Admission graph-instantiation boundary. They do not authorize production
-activation, prove real Worker-local or N-1 drain, or make the monolithic path
-unreachable.
+Admission graph-instantiation boundary, typed M5 operator evidence, zero-backlog
+seal, and explicit M6 contraction-readiness archive/freeze command. They do not
+authorize production activation, prove real Worker-local or N-1 drain, remove
+legacy schema/code, or make the monolithic path unreachable in the repository.
 
 Deliver:
 

@@ -114,6 +114,42 @@ func TestStageCutoverOperatorCLISealsTypedEvidence(t *testing.T) {
 			receipt,
 		)
 	}
+	contractionRequest := stagecutover.PrepareLegacyH3ContractionRequest{
+		ZeroBacklogReceiptID: receiptID,
+		PreparedBy:           operator,
+	}
+	var contraction stagecutover.LegacyH3ContractionPreparationResult
+	runStageCutoverCLI(
+		t,
+		binary,
+		databaseURL,
+		"prepare-legacy-h3-contraction",
+		contractionRequest,
+		&contraction,
+	)
+	if contraction.ZeroBacklogReceiptID != receiptID ||
+		contraction.CutoverRevisionID == uuid.Nil || contraction.PreparedAt.IsZero() ||
+		len(contraction.ArchiveDigest) != 64 || len(contraction.ContentDigest) != 64 ||
+		contraction.Replayed {
+		t.Fatalf("CLI Legacy H3 contraction = %#v", contraction)
+	}
+	var replayedContraction stagecutover.LegacyH3ContractionPreparationResult
+	runStageCutoverCLI(
+		t,
+		binary,
+		databaseURL,
+		"prepare-legacy-h3-contraction",
+		contractionRequest,
+		&replayedContraction,
+	)
+	if !replayedContraction.Replayed ||
+		replayedContraction.ZeroBacklogReceiptID != contraction.ZeroBacklogReceiptID ||
+		replayedContraction.CutoverRevisionID != contraction.CutoverRevisionID ||
+		!replayedContraction.PreparedAt.Equal(contraction.PreparedAt) ||
+		replayedContraction.ArchiveDigest != contraction.ArchiveDigest ||
+		replayedContraction.ContentDigest != contraction.ContentDigest {
+		t.Fatalf("CLI replayed Legacy H3 contraction = %#v", replayedContraction)
+	}
 }
 
 func TestStageCutoverOperatorCapturesEvidenceAndSealsZeroBacklog(t *testing.T) {

@@ -461,6 +461,20 @@ func verifyCatalogPromotionPrivileges(
 			"vela_seal_stage_cutover_zero_backlog(uuid,uuid,uuid,uuid,uuid,text)",
 		)
 	}
+	contractionPreparationPresent, err := databaseFunctionExists(
+		ctx,
+		database,
+		"vela_prepare_legacy_h3_contraction(uuid,text)",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect Catalog Promotion Legacy H3 contraction surface: %w", err)
+	}
+	if contractionPreparationPresent {
+		boundary.functions = append(
+			boundary.functions,
+			"vela_prepare_legacy_h3_contraction(uuid,text)",
+		)
+	}
 	return verifyExactPrivileges(ctx, database, currentUser, boundary)
 }
 

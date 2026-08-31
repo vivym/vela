@@ -95,7 +95,8 @@ func parseCommand(arguments []string) (string, string, bool) {
 	}
 	command := arguments[0]
 	switch command {
-	case "capture-inventory", "record-external-evidence", "seal-zero-backlog":
+	case "capture-inventory", "record-external-evidence", "seal-zero-backlog",
+		"prepare-legacy-h3-contraction":
 	default:
 		return "", "", false
 	}
@@ -133,6 +134,12 @@ func execute(
 			return nil, err
 		}
 		return service.SealZeroBacklog(ctx, request)
+	case "prepare-legacy-h3-contraction":
+		var request stagecutover.PrepareLegacyH3ContractionRequest
+		if err := loadRequest(requestPath, &request); err != nil {
+			return nil, err
+		}
+		return service.PrepareLegacyH3Contraction(ctx, request)
 	default:
 		return nil, errors.New("unsupported Stage cutover command")
 	}
@@ -160,6 +167,6 @@ func loadRequest(path string, target any) error {
 func writeUsage(writer io.Writer) {
 	_, _ = fmt.Fprintln(
 		writer,
-		"usage: vela-stage-cutover <capture-inventory|record-external-evidence|seal-zero-backlog> --request <request.json>",
+		"usage: vela-stage-cutover <capture-inventory|record-external-evidence|seal-zero-backlog|prepare-legacy-h3-contraction> --request <request.json>",
 	)
 }
