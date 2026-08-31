@@ -57,6 +57,7 @@ test: test-lab-scripts
 
 test-lab-scripts:
 	./deploy/lab/rke2-airgap/test-configure-kubelet-noswap.sh
+	./deploy/lab/h3-mock/test-validate-runner-restart-state.sh
 	./deploy/lab/observability/test.sh
 
 test-integration:

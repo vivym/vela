@@ -1637,18 +1637,34 @@ Artifacts, and one Charge. No Runner state directory was moved or deleted
 during this work.
 
 This is an unresolved Runner/Worker ownership-contract defect and an
-operational blocker for new mock Jobs. Recovery should first checksum and move
-only these exact terminal state directories to root-only, same-host quarantine
-receipts under separate approval; the existing restart policy can then recover.
+operational blocker for new mock Jobs.
+
 The repository now carries a regression-tested candidate fix: Runner restart
 accepts only complete absence of a `SUCCEEDED` Attempt output directory as
 authoritative terminal cleanup, preserves the immutable terminal state, exposes
 no collectable outputs, and never reexecutes the backend. An existing directory
 with one missing or changed output still fails closed. All 50 Runner tests,
-Ruff, and the Worker Agent/Local Recovery Go tests pass. This is repository
-evidence only; the live Workers still require the separately approved state
-quarantine, rebuilt image publication, rollout, and postflight before the
-operational blocker is closed.
+Ruff, and the Worker Agent/Local Recovery Go tests pass. The restart-state
+validator now accepts only this whole-directory cleanup shape and has six
+passing shell cases; partial loss, unexpected paths, and symlinks remain
+rejected.
+
+A fresh read-only preflight at `2026-08-31T06:08:21Z` reconfirmed both exact
+container IDs, `restart_count=164`, the same immutable old image digest, one
+`SUCCEEDED`/non-resumable/two-output state per Worker, absent complete output
+directories, and zero GPU compute processes. Worker root filesystems have 805
+GiB and 813 GiB free. The control authority boundary remains `0|0|0|2`, all
+three observability Pods remain Ready on control, node GPU allocatable remains
+`0/8/8`, the Registry remains 4.6 GiB, and the control root retains 529 GiB
+free. Sixteen historical Failed Pods remain under their existing TTL policy.
+
+This is repository and read-only diagnosis evidence only. The preferred live
+recovery now preserves both state roots: publish the rebuilt fixed digest, drain
+and replace only one exact Runner container at a time without `--purge`, prove
+terminal replay plus a fresh smoke Attempt, and then repeat on the second
+Worker. State quarantine is only a separately approved fallback if the fixed
+image cannot be deployed. No live container, state, image, or Worker record was
+changed by this diagnosis.
 
 ## Experiment operating rules
 

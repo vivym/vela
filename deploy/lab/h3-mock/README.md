@@ -55,6 +55,42 @@ This is a non-production Runner-process exercise. It does not exercise Worker
 Agent fencing, Node loss, a stale Lease, PostgreSQL/NATS authority, or any fixed
 Production Gate fault scenario.
 
+## Terminal-cleanup restart and fixed-image rollout
+
+After the Worker Agent has received an authoritative terminal result, it may
+remove the complete Attempt output directory while the Runner retains its
+immutable `SUCCEEDED` receipt. A fixed Runner restores that terminal state
+without exposing outputs or reexecuting the backend. It still fails closed when
+the Attempt output directory exists but any recorded output is absent, changed,
+or unsafe.
+
+`validate-runner-restart-state.sh` enforces the same boundary before container
+start. Its `retired_success_states` count includes only successful receipts
+whose complete Attempt output directory is absent. The six-case local test
+covers an empty state root, intact successful outputs, complete terminal
+cleanup, partial loss, an unexpected path, and a symlinked output directory:
+
+```text
+./test-validate-runner-restart-state.sh
+```
+
+A live image replacement requires a separately approved, one-Worker-at-a-time
+rollout. First prove the control-plane boundary has zero active Leases, zero
+Production Gate receipts, zero active Jobs, and two READY/HEALTHY Worker
+records, then drain the exact target Worker. Stage and checksum the fixed
+Runner image and current helpers, and require the updated validator to report
+the expected retained state and `retired_success_states=1`. Remove only the
+managed container without `--purge`, start the new digest against the preserved
+root, verify terminal replay and a fresh smoke Attempt, and restore the Worker
+only after an independent postflight. Repeat on the second Worker only after
+the first has recovered.
+
+Do not delete, move, or rewrite retained state as part of the preferred fixed
+image rollout. State quarantine remains a fallback only when the fixed image
+cannot be deployed, and requires its own exact-target approval and receipt. The
+old image cannot restart against a cleaned successful state, so it is not a
+valid rollback target until that state has been retired by a fresh Attempt.
+
 ## Replacement-budget lab profile
 
 The Worker-control-network-partition rehearsal uses a second immutable mock

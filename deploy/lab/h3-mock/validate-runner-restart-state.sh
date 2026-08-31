@@ -4,18 +4,20 @@ set -eu
 
 root=${VELA_LAB_RUNNER_ROOT:-/var/lib/vela-lab/mock-runner}
 state_root=$root/scratch/runner-state
+test_only=${VELA_LAB_RUNNER_TEST_ONLY:-}
 
 fail() {
 	printf 'validate-runner-restart-state: %s\n' "$*" >&2
 	exit 1
 }
 
-[ "$root" = /var/lib/vela-lab/mock-runner ] ||
+[ "$root" = /var/lib/vela-lab/mock-runner ] || [ "$test_only" = 1 ] ||
 	fail "VELA_LAB_RUNNER_ROOT must remain /var/lib/vela-lab/mock-runner"
 [ -d "$state_root" ] && [ ! -L "$state_root" ] || fail "Runner state root is missing or unsafe"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 
 checked=0
+retired_success_states=0
 for state_file in "$state_root"/*/state.json; do
 	[ -f "$state_file" ] || continue
 	[ ! -L "$state_file" ] || fail "Runner state file is a symbolic link"
@@ -35,6 +37,19 @@ for state_file in "$state_root"/*/state.json; do
 				/var/lib/vela/worker/scratch/outputs/"$attempt_id"/*) ;;
 				*) fail "successful Runner state $attempt_id contains an unexpected output path" ;;
 			esac
+		done
+		attempt_output_root=$root/scratch/outputs/$attempt_id
+		[ ! -L "$attempt_output_root" ] ||
+			fail "successful Runner state $attempt_id has an unsafe output directory"
+		if [ ! -e "$attempt_output_root" ]; then
+			retired_success_states=$((retired_success_states + 1))
+			IFS=$old_ifs
+			checked=$((checked + 1))
+			continue
+		fi
+		[ -d "$attempt_output_root" ] ||
+			fail "successful Runner state $attempt_id has an unsafe output directory"
+		for output in $outputs; do
 			host_output=$root/scratch/${output#/var/lib/vela/worker/scratch/}
 			[ -f "$host_output" ] && [ ! -L "$host_output" ] ||
 				fail "successful Runner state $attempt_id references missing output $output"
@@ -44,4 +59,5 @@ for state_file in "$state_root"/*/state.json; do
 	checked=$((checked + 1))
 done
 
-printf 'schema=vela-lab-runner-restart-state-v1 result=READY checked_states=%s production_gates=0/9\n' "$checked"
+printf 'schema=vela-lab-runner-restart-state-v1 result=READY checked_states=%s retired_success_states=%s production_gates=0/9\n' \
+	"$checked" "$retired_success_states"
