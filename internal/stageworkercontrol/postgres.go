@@ -25,49 +25,50 @@ type PostgresAuthorizer struct {
 }
 
 type durableStageAuthority struct {
-	jobID                 uuid.UUID
-	attemptID             uuid.UUID
-	attemptFence          int64
-	attemptState          string
-	stageRunID            uuid.UUID
-	stageFence            int64
-	stageVersion          int64
-	stageRunState         string
-	stageAttemptID        uuid.UUID
-	stageAttemptState     string
-	stageProfileID        uuid.UUID
-	stageAllocationID     uuid.UUID
-	allocationState       string
-	capacityVector        map[string]int64
-	stageLeaseID          uuid.UUID
-	leaseState            string
-	workerInstanceID      uuid.UUID
-	workerInstanceEpoch   int64
-	deviceSetDigest       []byte
-	membershipDigest      []byte
-	modelResidencyID      uuid.UUID
-	modelRuntimeEpoch     int64
-	tokenDigest           []byte
-	signingKeyID          string
-	executionNonce        []byte
-	issuedAt              time.Time
-	expiresAt             time.Time
-	localDeadlineAt       time.Time
-	controlSessionEpoch   int64
-	workerLifecycle       string
-	workerReachability    string
-	runtimeIdentity       string
-	residencyState        string
-	capacityObservationOK bool
-	members               []durableMember
-	devices               []durableDevice
+	jobID                         uuid.UUID
+	attemptID                     uuid.UUID
+	attemptFence                  int64
+	attemptState                  string
+	stageRunID                    uuid.UUID
+	stageFence                    int64
+	stageVersion                  int64
+	stageRunState                 string
+	stageAttemptID                uuid.UUID
+	stageAttemptState             string
+	stageProfileID                uuid.UUID
+	stageAllocationID             uuid.UUID
+	allocationState               string
+	capacityVector                map[string]int64
+	stageLeaseID                  uuid.UUID
+	leaseState                    string
+	workerInstanceID              uuid.UUID
+	workerInstanceEpoch           int64
+	deviceSetDigest               []byte
+	membershipDigest              []byte
+	modelResidencyID              uuid.UUID
+	modelRuntimeBarrierGeneration int64
+	tokenDigest                   []byte
+	signingKeyID                  string
+	executionNonce                []byte
+	issuedAt                      time.Time
+	expiresAt                     time.Time
+	localDeadlineAt               time.Time
+	controlSessionEpoch           int64
+	workerLifecycle               string
+	workerReachability            string
+	runtimeIdentity               string
+	residencyState                string
+	capacityObservationOK         bool
+	members                       []durableMember
+	devices                       []durableDevice
 }
 
 type durableMember struct {
-	id             uuid.UUID
-	epoch          int64
-	identityDigest []byte
-	readiness      string
+	id                uuid.UUID
+	epoch             int64
+	identityDigest    []byte
+	readiness         string
+	modelRuntimeEpoch int64
 }
 
 type durableDevice struct {
@@ -134,7 +135,7 @@ func readDurableStageAuthority(
 	observationSequence int64,
 ) (durableStageAuthority, error) {
 	var snapshot durableStageAuthority
-	var capacityJSON, membersJSON, devicesJSON []byte
+	var capacityJSON, ignoredMembersJSON, devicesJSON []byte
 	err := tx.QueryRow(ctx, `
 		SELECT * FROM vela_read_stage_authority_snapshot($1, $2)
 	`, leaseID, observationSequence).Scan(
@@ -145,13 +146,13 @@ func readDurableStageAuthority(
 		&snapshot.stageLeaseID, &snapshot.leaseState,
 		&snapshot.workerInstanceID, &snapshot.workerInstanceEpoch,
 		&snapshot.deviceSetDigest, &snapshot.membershipDigest,
-		&snapshot.modelResidencyID, &snapshot.modelRuntimeEpoch,
+		&snapshot.modelResidencyID, &snapshot.modelRuntimeBarrierGeneration,
 		&snapshot.tokenDigest, &snapshot.signingKeyID, &snapshot.executionNonce,
 		&snapshot.issuedAt, &snapshot.expiresAt, &snapshot.localDeadlineAt,
 		&snapshot.controlSessionEpoch, &snapshot.workerLifecycle,
 		&snapshot.workerReachability, &snapshot.runtimeIdentity,
 		&snapshot.residencyState, &snapshot.capacityObservationOK,
-		&membersJSON, &devicesJSON,
+		&ignoredMembersJSON, &devicesJSON,
 	)
 	if err != nil {
 		return durableStageAuthority{}, fmt.Errorf("read durable StageAuthority: %w", err)
@@ -159,23 +160,31 @@ func readDurableStageAuthority(
 	if err := json.Unmarshal(capacityJSON, &snapshot.capacityVector); err != nil {
 		return durableStageAuthority{}, fmt.Errorf("decode durable Stage capacity: %w", err)
 	}
+	var membersJSON []byte
+	if err := tx.QueryRow(ctx, `
+		SELECT members FROM vela_read_stage_authority_member_epochs($1)
+	`, leaseID).Scan(&membersJSON); err != nil {
+		return durableStageAuthority{}, fmt.Errorf("read durable ModelRuntime member epochs: %w", err)
+	}
 	var encodedMembers []struct {
-		ID             uuid.UUID `json:"id"`
-		Epoch          int64     `json:"epoch"`
-		IdentityDigest string    `json:"identity_digest"`
-		Readiness      string    `json:"readiness"`
+		ID                uuid.UUID `json:"id"`
+		Epoch             int64     `json:"epoch"`
+		IdentityDigest    string    `json:"identity_digest"`
+		Readiness         string    `json:"readiness"`
+		ModelRuntimeEpoch int64     `json:"model_runtime_epoch"`
 	}
 	if err := json.Unmarshal(membersJSON, &encodedMembers); err != nil {
 		return durableStageAuthority{}, fmt.Errorf("decode durable WorkerMembers: %w", err)
 	}
 	for _, encoded := range encodedMembers {
 		identityDigest, err := hex.DecodeString(encoded.IdentityDigest)
-		if err != nil || len(identityDigest) != sha256.Size {
+		if err != nil || len(identityDigest) != sha256.Size || encoded.ModelRuntimeEpoch <= 0 {
 			return durableStageAuthority{}, errors.New("durable WorkerMember identity digest is malformed")
 		}
 		snapshot.members = append(snapshot.members, durableMember{
 			id: encoded.ID, epoch: encoded.Epoch,
 			identityDigest: identityDigest, readiness: encoded.Readiness,
+			modelRuntimeEpoch: encoded.ModelRuntimeEpoch,
 		})
 	}
 	var encodedDevices []struct {
@@ -228,8 +237,8 @@ func matchesDurableStageAuthority(
 		snapshot.stageFence != authority.GetStageFence() ||
 		snapshot.stageVersion != authority.GetStageVersion() ||
 		snapshot.workerInstanceEpoch != authority.GetWorkerInstanceEpoch() ||
-		snapshot.modelRuntimeEpoch != authority.GetMembers()[0].GetModelRuntimeEpoch() ||
-		snapshot.modelRuntimeEpoch <= 0 || snapshot.controlSessionEpoch != sessionEpoch ||
+		snapshot.modelRuntimeBarrierGeneration != authority.GetModelRuntimeBarrierGeneration() ||
+		snapshot.modelRuntimeBarrierGeneration <= 0 || snapshot.controlSessionEpoch != sessionEpoch ||
 		!bytes.Equal(snapshot.deviceSetDigest, authority.GetDeviceSetDigest()) ||
 		!bytes.Equal(snapshot.membershipDigest, authority.GetMembershipDigest()) ||
 		!bytes.Equal(snapshot.tokenDigest, leaseTokenDigest[:]) ||
@@ -246,7 +255,7 @@ func matchesDurableStageAuthority(
 		!activeOperationState(operation, snapshot) {
 		return false
 	}
-	if !matchesMembers(snapshot.members, authority.GetMembers(), identity.SPIFFEID, snapshot.modelRuntimeEpoch) ||
+	if !matchesMembers(snapshot.members, authority.GetMembers(), identity.SPIFFEID) ||
 		!matchesDevices(snapshot.devices, authority.GetDevices()) {
 		return false
 	}
@@ -257,7 +266,6 @@ func matchesMembers(
 	durable []durableMember,
 	signed []*velav1.StageAuthorityMemberEpoch,
 	spiffeID string,
-	modelRuntimeEpoch int64,
 ) bool {
 	if len(durable) == 0 || len(durable) != len(signed) {
 		return false
@@ -271,7 +279,7 @@ func matchesMembers(
 	for index, member := range durable {
 		if canonical[index] == nil || canonical[index].GetWorkerMemberId() != member.id.String() ||
 			canonical[index].GetMemberEpoch() != member.epoch ||
-			canonical[index].GetModelRuntimeEpoch() != modelRuntimeEpoch ||
+			canonical[index].GetModelRuntimeEpoch() != member.modelRuntimeEpoch ||
 			member.readiness != "READY" {
 			return false
 		}

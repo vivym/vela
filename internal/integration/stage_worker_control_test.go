@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -690,7 +691,9 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 	assignment := assignEncoder(
 		t, database, coordinator, attemptID, encoderRunID, time.Now().Add(time.Hour),
 	)
-	authority := signedAssignedStageAuthority(t, database, job, assignment, 2).Authority
+	authority := signedAssignedStageAuthorityWithoutRuntimeBarrier(
+		t, database, job, assignment, 2,
+	).Authority
 	readinessEvidence := []byte("certified encoder readiness receipt")
 	readinessDigest := sha256.Sum256(readinessEvidence)
 	if _, err := database.Admin.Exec(`
@@ -874,7 +877,7 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 	}
 }
 
-func TestModelRuntimeEpochRegistrationRejectsMultiMemberWithoutGangCoordinator(t *testing.T) {
+func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
@@ -924,11 +927,12 @@ func TestModelRuntimeEpochRegistrationRejectsMultiMemberWithoutGangCoordinator(t
 		},
 		{
 			"worker_member_id": "49200000-0000-0000-0000-000000000121",
-			"member_epoch":     1, "model_runtime_epoch": 2,
+			"member_epoch":     1, "model_runtime_epoch": 7,
 		},
 	}
-	registration := func(memberID string, identityByte byte) []byte {
+	registration := func(memberIndex int, identityByte byte) []byte {
 		t.Helper()
+		member := members[memberIndex]
 		payload, err := json.Marshal(map[string]any{
 			"schema_version": 1, "worker_instance_id": workerID,
 			"worker_instance_epoch": 1, "control_session_epoch": 1,
@@ -936,13 +940,14 @@ func TestModelRuntimeEpochRegistrationRejectsMultiMemberWithoutGangCoordinator(t
 			"membership_digest":         hex.EncodeToString(membershipDigest),
 			"model_residency_id":        "49200000-0000-0000-0000-000000000123",
 			"runtime_identity":          "future-llm-runtime@sha256:runtime-v1",
-			"model_runtime_epoch":       2,
+			"model_runtime_epoch":       member["model_runtime_epoch"],
 			"stage_profile_revision_id": multiStageProfileID,
-			"worker_member_id":          memberID, "worker_member_epoch": 1,
+			"worker_member_id":          member["worker_member_id"], "worker_member_epoch": 1,
 			"capacity_observation_sequence": 1,
 			"spiffe_id_digest":              hex.EncodeToString(bytes.Repeat([]byte{identityByte}, 32)),
 			"readiness_evidence_digest":     hex.EncodeToString(canaryDigest),
-			"devices":                       devices, "members": members,
+			"devices":                       devices[memberIndex*2 : memberIndex*2+2],
+			"members":                       []map[string]any{member},
 		})
 		if err != nil {
 			t.Fatalf("encode multi-member registration: %v", err)
@@ -962,38 +967,134 @@ func TestModelRuntimeEpochRegistrationRejectsMultiMemberWithoutGangCoordinator(t
 		return ready, reason, err
 	}
 
-	firstReady, firstReason, err := register(registration(members[0]["worker_member_id"].(string), 0xa1))
-	if err != nil || firstReady || !strings.Contains(firstReason, "gang coordinator") {
+	firstReady, firstReason, err := register(registration(0, 0xa1))
+	if err != nil || firstReady || !strings.Contains(firstReason, "waiting") {
 		t.Fatalf("first multi-member registration ready=%t reason=%q error=%v", firstReady, firstReason, err)
 	}
-	var durableEpoch int64
+	var durableEpoch, barrierGeneration, registrationCount int64
+	var residencyState, barrierState string
 	if err := database.Admin.QueryRow(`
-		SELECT model_runtime_epoch FROM model_residencies
-		WHERE id = '49200000-0000-0000-0000-000000000123'
-	`).Scan(&durableEpoch); err != nil || durableEpoch != 1 {
-		t.Fatalf("partial registration durable epoch=%d error=%v, want 1", durableEpoch, err)
+		SELECT residency.model_runtime_epoch, residency.state::text,
+		       barrier.barrier_generation, barrier.state::text,
+		       count(registration.worker_member_id)
+		FROM model_residencies AS residency
+		JOIN model_runtime_barriers AS barrier
+		  ON barrier.model_residency_id = residency.id
+		LEFT JOIN model_runtime_epoch_registrations AS registration
+		  ON registration.model_residency_id = barrier.model_residency_id
+		 AND registration.barrier_generation = barrier.barrier_generation
+		WHERE residency.id = '49200000-0000-0000-0000-000000000123'
+		GROUP BY residency.model_runtime_epoch, residency.state,
+		         barrier.barrier_generation, barrier.state
+	`).Scan(
+		&durableEpoch, &residencyState, &barrierGeneration, &barrierState,
+		&registrationCount,
+	); err != nil {
+		t.Fatalf("read partial multi-member barrier: %v", err)
+	}
+	if durableEpoch != 1 || residencyState != "WARMING" || barrierGeneration != 2 ||
+		barrierState != "WAITING" || registrationCount != 1 {
+		t.Fatalf(
+			"partial registration epoch/state=%d/%s barrier=%d/%s registrations=%d",
+			durableEpoch, residencyState, barrierGeneration, barrierState, registrationCount,
+		)
 	}
 
-	secondReady, secondReason, err := register(registration(members[1]["worker_member_id"].(string), 0xa3))
-	if err != nil || secondReady || !strings.Contains(secondReason, "gang coordinator") {
+	secondReady, secondReason, err := register(registration(1, 0xa3))
+	if err != nil || !secondReady || !strings.Contains(secondReason, "complete") {
 		t.Fatalf("second multi-member registration ready=%t reason=%q error=%v", secondReady, secondReason, err)
 	}
-	var registrationCount int64
+	var localEpochs []int64
+	var localEpochsJSON []byte
 	if err := database.Admin.QueryRow(`
-		SELECT residency.model_runtime_epoch,
-		       (SELECT count(*) FROM model_runtime_epoch_registrations AS registration
-		        WHERE registration.model_residency_id = residency.id
-		          AND registration.model_runtime_epoch = 2)
+		SELECT residency.model_runtime_epoch, residency.state::text,
+		       barrier.state::text,
+		       jsonb_agg(registration.local_model_runtime_epoch
+		                 ORDER BY registration.worker_member_id)
 		FROM model_residencies AS residency
+		JOIN model_runtime_barriers AS barrier
+		  ON barrier.model_residency_id = residency.id
+		 AND barrier.barrier_generation = residency.model_runtime_epoch
+		JOIN model_runtime_epoch_registrations AS registration
+		  ON registration.model_residency_id = barrier.model_residency_id
+		 AND registration.barrier_generation = barrier.barrier_generation
 		WHERE residency.id = '49200000-0000-0000-0000-000000000123'
-	`).Scan(&durableEpoch, &registrationCount); err != nil {
-		t.Fatalf("read rejected multi-member epoch: %v", err)
+		GROUP BY residency.model_runtime_epoch, residency.state, barrier.state
+	`).Scan(&durableEpoch, &residencyState, &barrierState, &localEpochsJSON); err != nil {
+		t.Fatalf("read ready multi-member barrier: %v", err)
 	}
-	if durableEpoch != 1 || registrationCount != 0 {
-		t.Fatalf("rejected multi-member epoch=%d registrations=%d", durableEpoch, registrationCount)
+	if err := json.Unmarshal(localEpochsJSON, &localEpochs); err != nil {
+		t.Fatalf("decode ready multi-member local epochs: %v", err)
+	}
+	if durableEpoch != 2 || residencyState != "READY" || barrierState != "READY" ||
+		!slices.Equal(localEpochs, []int64{2, 7}) {
+		t.Fatalf(
+			"ready registration epoch/state=%d/%s barrier=%s local epochs=%v",
+			durableEpoch, residencyState, barrierState, localEpochs,
+		)
 	}
 
-	duplicate := registration(members[0]["worker_member_id"].(string), 0xa1)
+	beginAcquire := func(spiffeByte byte) uuid.UUID {
+		t.Helper()
+		commandID := uuid.New()
+		payload, err := json.Marshal(map[string]any{
+			"schema_version": 1, "command_id": commandID,
+			"worker_instance_id": workerID, "worker_instance_epoch": 1,
+			"control_session_epoch": 1, "capacity_observation_sequence": 1,
+			"model_residency_id":  "49200000-0000-0000-0000-000000000123",
+			"model_runtime_epoch": 2, "stage_profile_revision_id": multiStageProfileID,
+			"spiffe_id_digest": hex.EncodeToString(bytes.Repeat([]byte{spiffeByte}, 32)),
+		})
+		if err != nil {
+			t.Fatalf("encode multi-member acquire command: %v", err)
+		}
+		if _, err := workerPool.Exec(
+			context.Background(), "SELECT * FROM vela_begin_stage_worker_acquire($1::jsonb)", payload,
+		); err != nil {
+			t.Fatalf("begin multi-member acquire: %v", err)
+		}
+		return commandID
+	}
+	leaderCommandID := beginAcquire(0xa1)
+	var acquireDecision, acquireReason string
+	var acquireAuthority []byte
+	if err := workerPool.QueryRow(context.Background(), `
+		SELECT decision, reason, authority
+		FROM vela_read_stage_worker_acquire_authority($1)
+	`, leaderCommandID).Scan(&acquireDecision, &acquireReason, &acquireAuthority); err != nil {
+		t.Fatalf("read leader multi-member acquire authority: %v", err)
+	}
+	var authoritySnapshot struct {
+		Members []struct {
+			WorkerMemberID    string `json:"worker_member_id"`
+			ModelRuntimeEpoch int64  `json:"model_runtime_epoch"`
+		} `json:"members"`
+	}
+	if err := json.Unmarshal(acquireAuthority, &authoritySnapshot); err != nil {
+		t.Fatalf("decode leader multi-member acquire authority: %v", err)
+	}
+	if acquireDecision != "AUTHORIZED" || acquireReason == "" ||
+		len(authoritySnapshot.Members) != 2 ||
+		authoritySnapshot.Members[0].WorkerMemberID != members[0]["worker_member_id"] ||
+		authoritySnapshot.Members[0].ModelRuntimeEpoch != 2 ||
+		authoritySnapshot.Members[1].WorkerMemberID != members[1]["worker_member_id"] ||
+		authoritySnapshot.Members[1].ModelRuntimeEpoch != 7 {
+		t.Fatalf(
+			"leader acquire decision/reason=%s/%q members=%#v",
+			acquireDecision, acquireReason, authoritySnapshot.Members,
+		)
+	}
+	nonLeaderCommandID := beginAcquire(0xa3)
+	if err := workerPool.QueryRow(context.Background(), `
+		SELECT decision, reason FROM vela_read_stage_worker_acquire_authority($1)
+	`, nonLeaderCommandID).Scan(&acquireDecision, &acquireReason); err != nil {
+		t.Fatalf("read non-leader multi-member acquire authority: %v", err)
+	}
+	if acquireDecision != "REJECTED" || !strings.Contains(acquireReason, "leader") {
+		t.Fatalf("non-leader acquire decision/reason=%s/%q", acquireDecision, acquireReason)
+	}
+
+	duplicate := registration(0, 0xa1)
 	var duplicatePayload map[string]any
 	if err := json.Unmarshal(duplicate, &duplicatePayload); err != nil {
 		t.Fatalf("decode duplicate-member registration fixture: %v", err)
@@ -1271,6 +1372,20 @@ func signedAssignedStageAuthority(
 	stageVersion int64,
 ) stageauthority.Verified {
 	t.Helper()
+	registerAssignedStageRuntimeBarrier(t, database, assignment)
+	return signedAssignedStageAuthorityWithoutRuntimeBarrier(
+		t, database, job, assignment, stageVersion,
+	)
+}
+
+func signedAssignedStageAuthorityWithoutRuntimeBarrier(
+	t *testing.T,
+	database testDatabase,
+	job jobResponse,
+	assignment attemptcoordinator.AssignStageCommand,
+	stageVersion int64,
+) stageauthority.Verified {
+	t.Helper()
 	var runtimeIdentity string
 	var memberID, deviceID uuid.UUID
 	var memberEpoch, deviceEpoch int64
@@ -1311,20 +1426,125 @@ func signedAssignedStageAuthority(
 			WorkerMemberId: memberID.String(), MemberEpoch: memberEpoch,
 			ModelRuntimeEpoch: assignment.ModelRuntimeEpoch,
 		}},
-		ModelResidencyId:            assignment.ModelResidencyID.String(),
-		ModelRuntimeIdentity:        runtimeIdentity,
-		StageProfileRevisionId:      assignment.StageProfileRevisionID.String(),
-		CapacityObservationSequence: assignment.ObservationSequence,
-		CapacityVector:              assignment.CapacityVector,
-		LeaseToken:                  bytes.Repeat([]byte{0xb3}, 32),
-		ExecutionNonce:              append([]byte(nil), assignment.ExecutionNonce...),
-		SigningKeyId:                assignment.SigningKeyID,
-		IssuedAt:                    timestamppb.New(assignment.IssuedAt),
-		ExpiresAt:                   timestamppb.New(assignment.ExpiresAt),
-		MonotonicValidFor:           durationpb.New(assignment.LocalDeadlineAt.Sub(assignment.IssuedAt)),
-		ExecutionSpecDigest:         executionSpecDigest[:],
+		ModelResidencyId:              assignment.ModelResidencyID.String(),
+		ModelRuntimeIdentity:          runtimeIdentity,
+		ModelRuntimeBarrierGeneration: assignment.ModelRuntimeEpoch,
+		StageProfileRevisionId:        assignment.StageProfileRevisionID.String(),
+		CapacityObservationSequence:   assignment.ObservationSequence,
+		CapacityVector:                assignment.CapacityVector,
+		LeaseToken:                    bytes.Repeat([]byte{0xb3}, 32),
+		ExecutionNonce:                append([]byte(nil), assignment.ExecutionNonce...),
+		SigningKeyId:                  assignment.SigningKeyID,
+		IssuedAt:                      timestamppb.New(assignment.IssuedAt),
+		ExpiresAt:                     timestamppb.New(assignment.ExpiresAt),
+		MonotonicValidFor:             durationpb.New(assignment.LocalDeadlineAt.Sub(assignment.IssuedAt)),
+		ExecutionSpecDigest:           executionSpecDigest[:],
 	}
 	return signAndVerifyStageAuthority(t, envelope, assignment.IssuedAt.Add(time.Millisecond))
+}
+
+func registerAssignedStageRuntimeBarrier(
+	t *testing.T,
+	database testDatabase,
+	assignment attemptcoordinator.AssignStageCommand,
+) {
+	t.Helper()
+	transaction, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin assigned Stage runtime barrier fixture: %v", err)
+	}
+	defer func() { _ = transaction.Rollback() }()
+
+	var workerID, memberID uuid.UUID
+	var workerEpoch, memberEpoch, desiredMemberCount int64
+	var deviceSubsetDigest, identityDigest, readinessDigest []byte
+	if err := transaction.QueryRow(`
+		SELECT residency.worker_instance_id, residency.worker_instance_epoch,
+		       worker.desired_member_count, member.id, member.member_epoch,
+		       member.device_subset_digest, member.identity_digest,
+		       COALESCE(residency.canary_evidence_digest, residency.warmup_evidence_digest)
+		FROM model_residencies AS residency
+		JOIN worker_instances AS worker ON worker.id = residency.worker_instance_id
+		JOIN worker_members AS member
+		  ON member.worker_instance_id = residency.worker_instance_id
+		 AND member.worker_instance_epoch = residency.worker_instance_epoch
+		WHERE residency.id = $1
+	`, assignment.ModelResidencyID).Scan(
+		&workerID, &workerEpoch, &desiredMemberCount, &memberID, &memberEpoch,
+		&deviceSubsetDigest, &identityDigest, &readinessDigest,
+	); err != nil {
+		t.Fatalf("read assigned Stage runtime barrier evidence: %v", err)
+	}
+	if workerID != assignment.WorkerInstanceID ||
+		workerEpoch != assignment.WorkerInstanceEpoch || desiredMemberCount != 1 ||
+		len(deviceSubsetDigest) != sha256.Size || len(identityDigest) != sha256.Size ||
+		len(readinessDigest) != sha256.Size {
+		t.Fatalf(
+			"assigned Stage runtime barrier evidence is inconsistent: worker=%s/%d members=%d digests=%d/%d/%d",
+			workerID, workerEpoch, desiredMemberCount, len(deviceSubsetDigest),
+			len(identityDigest), len(readinessDigest),
+		)
+	}
+	if _, err := transaction.Exec(`
+		INSERT INTO model_runtime_barriers (
+			model_residency_id, barrier_generation,
+			worker_instance_id, worker_instance_epoch,
+			expected_member_count, leader_worker_member_id,
+			state, created_at, ready_at
+		) VALUES ($1, $2, $3, $4, 1, $5, 'READY', $6, $6)
+		ON CONFLICT (model_residency_id, barrier_generation) DO NOTHING
+	`, assignment.ModelResidencyID, assignment.ModelRuntimeEpoch,
+		workerID, workerEpoch, memberID, assignment.IssuedAt); err != nil {
+		t.Fatalf("seed assigned Stage runtime barrier: %v", err)
+	}
+	if _, err := transaction.Exec(`
+		INSERT INTO model_runtime_epoch_registrations (
+			model_residency_id, barrier_generation,
+			worker_instance_id, worker_instance_epoch,
+			worker_member_id, worker_member_epoch,
+			local_model_runtime_epoch, device_subset_digest,
+			readiness_evidence_digest, spiffe_id_digest, registered_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $2, $7, $8, $9, $10)
+		ON CONFLICT (model_residency_id, barrier_generation, worker_member_id)
+		DO NOTHING
+	`, assignment.ModelResidencyID, assignment.ModelRuntimeEpoch,
+		workerID, workerEpoch, memberID, memberEpoch, deviceSubsetDigest,
+		readinessDigest, identityDigest, assignment.IssuedAt); err != nil {
+		t.Fatalf("seed assigned Stage runtime member registration: %v", err)
+	}
+	var exact bool
+	if err := transaction.QueryRow(`
+		SELECT EXISTS (
+			SELECT 1
+			FROM model_runtime_barriers AS barrier
+			JOIN model_runtime_epoch_registrations AS registration
+			  ON registration.model_residency_id = barrier.model_residency_id
+			 AND registration.barrier_generation = barrier.barrier_generation
+			WHERE barrier.model_residency_id = $1
+			  AND barrier.barrier_generation = $2
+			  AND barrier.worker_instance_id = $3
+			  AND barrier.worker_instance_epoch = $4
+			  AND barrier.expected_member_count = 1
+			  AND barrier.leader_worker_member_id = $5
+			  AND barrier.state = 'READY'
+			  AND registration.worker_member_id = $5
+			  AND registration.worker_member_epoch = $6
+			  AND registration.local_model_runtime_epoch = $2
+			  AND registration.device_subset_digest = $7
+			  AND registration.readiness_evidence_digest = $8
+			  AND registration.spiffe_id_digest = $9
+		)
+	`, assignment.ModelResidencyID, assignment.ModelRuntimeEpoch,
+		workerID, workerEpoch, memberID, memberEpoch, deviceSubsetDigest,
+		readinessDigest, identityDigest).Scan(&exact); err != nil {
+		t.Fatalf("verify assigned Stage runtime barrier fixture: %v", err)
+	}
+	if !exact {
+		t.Fatal("assigned Stage runtime barrier fixture does not match durable Fleet evidence")
+	}
+	if err := transaction.Commit(); err != nil {
+		t.Fatalf("commit assigned Stage runtime barrier fixture: %v", err)
+	}
 }
 
 func signAndVerifyStageAuthority(

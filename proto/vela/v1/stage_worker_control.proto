@@ -196,6 +196,8 @@ message WorkerReadinessDecision {
   int64 worker_instance_epoch = 2;
   bool ready = 3;
   string reason = 4;
+  int64 model_runtime_barrier_generation = 5;
+  string leader_worker_member_id = 6;
 }
 
 message StageAssignment {

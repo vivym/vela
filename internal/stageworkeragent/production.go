@@ -175,6 +175,7 @@ type ProductionAgent struct {
 	runtime                   RuntimeReadinessClient
 	stream                    *StreamAgent
 	runtimeIdentities         []*velav1.ModelRuntimeIdentity
+	runtimeBarrierGenerations map[string]int64
 	acquireCursor             int
 	devices                   []*velav1.StageAuthorityDeviceEpoch
 	members                   []*velav1.StageAuthorityMemberEpoch
@@ -240,6 +241,7 @@ func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 	return &ProductionAgent{
 		control: config.Control, runtime: config.Runtime, stream: config.Stream,
 		runtimeIdentities:         identities,
+		runtimeBarrierGenerations: make(map[string]int64, len(identities)),
 		devices:                   cloneDevices(config.Devices),
 		members:                   cloneMembers(config.Members),
 		capacityVector:            maps.Clone(config.CapacityVector),
@@ -342,7 +344,13 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			if err != nil {
 				continue
 			}
-			if err = agent.refreshEvidence(ctx, sequence); err != nil {
+			leader, refreshErr := agent.refreshEvidence(ctx, sequence)
+			if refreshErr != nil {
+				err = refreshErr
+				continue
+			}
+			if !leader {
+				err = errors.New("active Stage Worker is no longer the gang leader")
 				continue
 			}
 			if err = agent.reattachActive(ctx); err != nil {
@@ -472,8 +480,12 @@ func (agent *ProductionAgent) Discover(
 		ctx == nil || observationSequence <= 0 {
 		return DiscoveryResult{}, errors.New("Stage Worker production discovery is not configured")
 	}
-	if err := agent.refreshEvidence(ctx, observationSequence); err != nil {
+	leader, err := agent.refreshEvidence(ctx, observationSequence)
+	if err != nil {
 		return DiscoveryResult{}, err
+	}
+	if !leader {
+		return DiscoveryResult{RetryAfter: agent.retryMinimum}, nil
 	}
 	return agent.acquire(ctx, observationSequence)
 }
@@ -481,11 +493,13 @@ func (agent *ProductionAgent) Discover(
 func (agent *ProductionAgent) refreshEvidence(
 	ctx context.Context,
 	observationSequence int64,
-) error {
+) (bool, error) {
+	barrierGenerations := make(map[string]int64, len(agent.runtimeIdentities))
+	leaderMemberID := ""
 	for _, identity := range agent.runtimeIdentities {
 		evidence, err := agent.probeReadiness(ctx, identity)
 		if err != nil {
-			return err
+			return false, err
 		}
 		registered, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 			Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
@@ -499,13 +513,26 @@ func (agent *ProductionAgent) refreshEvidence(
 			},
 		})
 		if err != nil {
-			return fmt.Errorf("register Stage Worker evidence: %w", err)
+			return false, fmt.Errorf("register Stage Worker evidence: %w", err)
 		}
-		if err := agent.requireReady(registered, "registration"); err != nil {
-			return err
+		decision, err := agent.requireReady(registered, "registration")
+		if err != nil {
+			return false, err
 		}
+		if decision.GetModelRuntimeBarrierGeneration() <= 0 ||
+			uuid.Validate(decision.GetLeaderWorkerMemberId()) != nil ||
+			(leaderMemberID != "" && leaderMemberID != decision.GetLeaderWorkerMemberId()) {
+			return false, errors.New("Stage Worker registration returned an inconsistent gang barrier")
+		}
+		leaderMemberID = decision.GetLeaderWorkerMemberId()
+		barrierGenerations[identity.GetModelResidencyId()] =
+			decision.GetModelRuntimeBarrierGeneration()
 	}
 	primary := agent.primaryRuntimeIdentity()
+	agent.runtimeBarrierGenerations = barrierGenerations
+	if primary.GetWorkerMemberId() != leaderMemberID {
+		return false, nil
+	}
 	now := agent.now().UTC()
 	reported, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation{
@@ -519,12 +546,12 @@ func (agent *ProductionAgent) refreshEvidence(
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("report Stage Worker capacity: %w", err)
+		return false, fmt.Errorf("report Stage Worker capacity: %w", err)
 	}
-	if err := agent.requireReady(reported, "capacity"); err != nil {
-		return err
+	if _, err := agent.requireReady(reported, "capacity"); err != nil {
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 func (agent *ProductionAgent) acquire(
@@ -535,6 +562,10 @@ func (agent *ProductionAgent) acquire(
 	for offset := range len(agent.runtimeIdentities) {
 		index := (agent.acquireCursor + offset) % len(agent.runtimeIdentities)
 		identity := agent.runtimeIdentities[index]
+		barrierGeneration := agent.runtimeBarrierGenerations[identity.GetModelResidencyId()]
+		if barrierGeneration <= 0 {
+			return DiscoveryResult{}, errors.New("Stage Worker acquire has no ready ModelRuntime barrier")
+		}
 		response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 			Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
 				AcquireStage: &velav1.AcquireStageRequest{
@@ -542,7 +573,7 @@ func (agent *ProductionAgent) acquire(
 					WorkerInstanceEpoch:         identity.GetWorkerInstanceEpoch(),
 					CapacityObservationSequence: observationSequence,
 					ModelResidencyId:            identity.GetModelResidencyId(),
-					ModelRuntimeEpoch:           identity.GetModelRuntimeEpoch(),
+					ModelRuntimeEpoch:           barrierGeneration,
 					StageProfileRevisionId:      identity.GetStageProfileRevisionId(),
 				},
 			},
@@ -617,7 +648,7 @@ func (agent *ProductionAgent) probeReadiness(
 func (agent *ProductionAgent) requireReady(
 	response *velav1.StageWorkerControlServiceConnectResponse,
 	operation string,
-) error {
+) (*velav1.WorkerReadinessDecision, error) {
 	decision := response.GetWorkerReadinessDecision()
 	identity := agent.primaryRuntimeIdentity()
 	if decision == nil || decision.GetWorkerInstanceId() != identity.GetWorkerInstanceId() ||
@@ -627,9 +658,9 @@ func (agent *ProductionAgent) requireReady(
 		if decision != nil && strings.TrimSpace(decision.GetReason()) != "" {
 			reason = decision.GetReason()
 		}
-		return fmt.Errorf("Stage Worker %s is not ready: %s", operation, reason)
+		return nil, fmt.Errorf("Stage Worker %s is not ready: %s", operation, reason)
 	}
-	return nil
+	return decision, nil
 }
 
 func normalizeProductionRuntimeIdentities(
@@ -677,11 +708,16 @@ func membersForRuntimeIdentity(
 	members []*velav1.StageAuthorityMemberEpoch,
 	identity *velav1.ModelRuntimeIdentity,
 ) []*velav1.StageAuthorityMemberEpoch {
-	cloned := cloneMembers(members)
-	for _, member := range cloned {
-		member.ModelRuntimeEpoch = identity.GetModelRuntimeEpoch()
+	for _, member := range members {
+		if member == nil || member.GetWorkerMemberId() != identity.GetWorkerMemberId() ||
+			member.GetMemberEpoch() != identity.GetWorkerMemberEpoch() {
+			continue
+		}
+		local := proto.Clone(member).(*velav1.StageAuthorityMemberEpoch)
+		local.ModelRuntimeEpoch = identity.GetModelRuntimeEpoch()
+		return []*velav1.StageAuthorityMemberEpoch{local}
 	}
-	return cloned
+	return nil
 }
 
 func (agent *ProductionAgent) primaryRuntimeIdentity() *velav1.ModelRuntimeIdentity {

@@ -37,9 +37,8 @@ func (backend *PostgresReattachmentBackend) ReattachStage(
 		return CommandResult{}, err
 	}
 	authority := current.Authority
-	modelRuntimeEpoch, err := commonModelRuntimeEpoch(authority.GetMembers())
-	if err != nil {
-		return CommandResult{}, err
+	if authority.GetModelRuntimeBarrierGeneration() <= 0 {
+		return CommandResult{}, errors.New("Stage Worker authority has no ModelRuntime barrier generation")
 	}
 	leaseTokenDigest := sha256.Sum256(authority.GetLeaseToken())
 	spiffeDigest := sha256.Sum256([]byte(command.Identity.SPIFFEID))
@@ -60,7 +59,7 @@ func (backend *PostgresReattachmentBackend) ReattachStage(
 		"device_set_digest":             hex.EncodeToString(authority.GetDeviceSetDigest()),
 		"membership_digest":             hex.EncodeToString(authority.GetMembershipDigest()),
 		"model_residency_id":            authority.GetModelResidencyId(),
-		"model_runtime_epoch":           modelRuntimeEpoch,
+		"model_runtime_epoch":           authority.GetModelRuntimeBarrierGeneration(),
 		"capacity_observation_sequence": authority.GetCapacityObservationSequence(),
 		"capacity_vector":               authority.GetCapacityVector(),
 		"lease_token_digest":            hex.EncodeToString(leaseTokenDigest[:]),
@@ -97,19 +96,6 @@ func (backend *PostgresReattachmentBackend) ReattachStage(
 		return CommandResult{}, errors.New("durable Stage Worker Reattach changed Stage version")
 	}
 	return acceptedCommandResult(replayed), nil
-}
-
-func commonModelRuntimeEpoch(members []*velav1.StageAuthorityMemberEpoch) (int64, error) {
-	if len(members) == 0 || members[0] == nil || members[0].GetModelRuntimeEpoch() <= 0 {
-		return 0, errors.New("Stage Worker authority has no ModelRuntime epoch")
-	}
-	epoch := members[0].GetModelRuntimeEpoch()
-	for _, member := range members[1:] {
-		if member == nil || member.GetModelRuntimeEpoch() != epoch {
-			return 0, errors.New("Stage Worker authority has inconsistent ModelRuntime epochs")
-		}
-	}
-	return epoch, nil
 }
 
 func runtimeStateName(state velav1.ModelRuntimeExecutionState) string {

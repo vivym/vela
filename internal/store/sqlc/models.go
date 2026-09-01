@@ -2088,6 +2088,49 @@ func (ns NullModelResidencyState) Value() (driver.Value, error) {
 	return string(ns.ModelResidencyState), nil
 }
 
+type ModelRuntimeBarrierState string
+
+const (
+	ModelRuntimeBarrierStateWAITING    ModelRuntimeBarrierState = "WAITING"
+	ModelRuntimeBarrierStateREADY      ModelRuntimeBarrierState = "READY"
+	ModelRuntimeBarrierStateSUPERSEDED ModelRuntimeBarrierState = "SUPERSEDED"
+)
+
+func (e *ModelRuntimeBarrierState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ModelRuntimeBarrierState(s)
+	case string:
+		*e = ModelRuntimeBarrierState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ModelRuntimeBarrierState: %T", src)
+	}
+	return nil
+}
+
+type NullModelRuntimeBarrierState struct {
+	ModelRuntimeBarrierState ModelRuntimeBarrierState `json:"model_runtime_barrier_state"`
+	Valid                    bool                     `json:"valid"` // Valid is true if ModelRuntimeBarrierState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullModelRuntimeBarrierState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ModelRuntimeBarrierState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ModelRuntimeBarrierState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullModelRuntimeBarrierState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ModelRuntimeBarrierState), nil
+}
+
 type NonContentExpiryKind string
 
 const (
@@ -5478,9 +5521,22 @@ type ModelRevision struct {
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type ModelRuntimeBarrier struct {
+	ModelResidencyID     uuid.UUID                `db:"model_residency_id" json:"model_residency_id"`
+	BarrierGeneration    int64                    `db:"barrier_generation" json:"barrier_generation"`
+	WorkerInstanceID     uuid.UUID                `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch  int64                    `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	ExpectedMemberCount  int32                    `db:"expected_member_count" json:"expected_member_count"`
+	LeaderWorkerMemberID uuid.UUID                `db:"leader_worker_member_id" json:"leader_worker_member_id"`
+	State                ModelRuntimeBarrierState `db:"state" json:"state"`
+	CreatedAt            pgtype.Timestamptz       `db:"created_at" json:"created_at"`
+	ReadyAt              pgtype.Timestamptz       `db:"ready_at" json:"ready_at"`
+	SupersededAt         pgtype.Timestamptz       `db:"superseded_at" json:"superseded_at"`
+}
+
 type ModelRuntimeEpochRegistration struct {
 	ModelResidencyID        uuid.UUID          `db:"model_residency_id" json:"model_residency_id"`
-	ModelRuntimeEpoch       int64              `db:"model_runtime_epoch" json:"model_runtime_epoch"`
+	BarrierGeneration       int64              `db:"barrier_generation" json:"barrier_generation"`
 	WorkerInstanceID        uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
 	WorkerInstanceEpoch     int64              `db:"worker_instance_epoch" json:"worker_instance_epoch"`
 	WorkerMemberID          uuid.UUID          `db:"worker_member_id" json:"worker_member_id"`
@@ -5488,6 +5544,8 @@ type ModelRuntimeEpochRegistration struct {
 	ReadinessEvidenceDigest []byte             `db:"readiness_evidence_digest" json:"readiness_evidence_digest"`
 	SpiffeIDDigest          []byte             `db:"spiffe_id_digest" json:"spiffe_id_digest"`
 	RegisteredAt            pgtype.Timestamptz `db:"registered_at" json:"registered_at"`
+	LocalModelRuntimeEpoch  int64              `db:"local_model_runtime_epoch" json:"local_model_runtime_epoch"`
+	DeviceSubsetDigest      []byte             `db:"device_subset_digest" json:"device_subset_digest"`
 }
 
 type NonContentAttemptRoot struct {

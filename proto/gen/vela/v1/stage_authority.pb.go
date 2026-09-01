@@ -136,38 +136,39 @@ func (x *StageAuthorityMemberEpoch) GetModelRuntimeEpoch() int64 {
 }
 
 type StageAuthority struct {
-	state                       protoimpl.MessageState       `protogen:"open.v1"`
-	SchemaVersion               uint32                       `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
-	JobId                       string                       `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	AttemptId                   string                       `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
-	StageRunId                  string                       `protobuf:"bytes,4,opt,name=stage_run_id,json=stageRunId,proto3" json:"stage_run_id,omitempty"`
-	StageAttemptId              string                       `protobuf:"bytes,5,opt,name=stage_attempt_id,json=stageAttemptId,proto3" json:"stage_attempt_id,omitempty"`
-	StageAllocationId           string                       `protobuf:"bytes,6,opt,name=stage_allocation_id,json=stageAllocationId,proto3" json:"stage_allocation_id,omitempty"`
-	StageLeaseId                string                       `protobuf:"bytes,7,opt,name=stage_lease_id,json=stageLeaseId,proto3" json:"stage_lease_id,omitempty"`
-	AttemptFence                int64                        `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
-	StageFence                  int64                        `protobuf:"varint,9,opt,name=stage_fence,json=stageFence,proto3" json:"stage_fence,omitempty"`
-	StageVersion                int64                        `protobuf:"varint,10,opt,name=stage_version,json=stageVersion,proto3" json:"stage_version,omitempty"`
-	WorkerInstanceId            string                       `protobuf:"bytes,11,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
-	WorkerInstanceEpoch         int64                        `protobuf:"varint,12,opt,name=worker_instance_epoch,json=workerInstanceEpoch,proto3" json:"worker_instance_epoch,omitempty"`
-	DeviceSetDigest             []byte                       `protobuf:"bytes,13,opt,name=device_set_digest,json=deviceSetDigest,proto3" json:"device_set_digest,omitempty"`
-	Devices                     []*StageAuthorityDeviceEpoch `protobuf:"bytes,14,rep,name=devices,proto3" json:"devices,omitempty"`
-	MembershipDigest            []byte                       `protobuf:"bytes,15,opt,name=membership_digest,json=membershipDigest,proto3" json:"membership_digest,omitempty"`
-	Members                     []*StageAuthorityMemberEpoch `protobuf:"bytes,16,rep,name=members,proto3" json:"members,omitempty"`
-	ModelResidencyId            string                       `protobuf:"bytes,17,opt,name=model_residency_id,json=modelResidencyId,proto3" json:"model_residency_id,omitempty"`
-	ModelRuntimeIdentity        string                       `protobuf:"bytes,18,opt,name=model_runtime_identity,json=modelRuntimeIdentity,proto3" json:"model_runtime_identity,omitempty"`
-	StageProfileRevisionId      string                       `protobuf:"bytes,20,opt,name=stage_profile_revision_id,json=stageProfileRevisionId,proto3" json:"stage_profile_revision_id,omitempty"`
-	CapacityObservationSequence int64                        `protobuf:"varint,21,opt,name=capacity_observation_sequence,json=capacityObservationSequence,proto3" json:"capacity_observation_sequence,omitempty"`
-	CapacityVector              map[string]int64             `protobuf:"bytes,22,rep,name=capacity_vector,json=capacityVector,proto3" json:"capacity_vector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	LeaseToken                  []byte                       `protobuf:"bytes,23,opt,name=lease_token,json=leaseToken,proto3" json:"lease_token,omitempty"`
-	ExecutionNonce              []byte                       `protobuf:"bytes,24,opt,name=execution_nonce,json=executionNonce,proto3" json:"execution_nonce,omitempty"`
-	SigningKeyId                string                       `protobuf:"bytes,25,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
-	IssuedAt                    *timestamppb.Timestamp       `protobuf:"bytes,26,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
-	ExpiresAt                   *timestamppb.Timestamp       `protobuf:"bytes,27,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	MonotonicValidFor           *durationpb.Duration         `protobuf:"bytes,28,opt,name=monotonic_valid_for,json=monotonicValidFor,proto3" json:"monotonic_valid_for,omitempty"`
-	Signature                   []byte                       `protobuf:"bytes,29,opt,name=signature,proto3" json:"signature,omitempty"`
-	ExecutionSpecDigest         []byte                       `protobuf:"bytes,30,opt,name=execution_spec_digest,json=executionSpecDigest,proto3" json:"execution_spec_digest,omitempty"`
-	unknownFields               protoimpl.UnknownFields
-	sizeCache                   protoimpl.SizeCache
+	state                         protoimpl.MessageState       `protogen:"open.v1"`
+	SchemaVersion                 uint32                       `protobuf:"varint,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	JobId                         string                       `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	AttemptId                     string                       `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	StageRunId                    string                       `protobuf:"bytes,4,opt,name=stage_run_id,json=stageRunId,proto3" json:"stage_run_id,omitempty"`
+	StageAttemptId                string                       `protobuf:"bytes,5,opt,name=stage_attempt_id,json=stageAttemptId,proto3" json:"stage_attempt_id,omitempty"`
+	StageAllocationId             string                       `protobuf:"bytes,6,opt,name=stage_allocation_id,json=stageAllocationId,proto3" json:"stage_allocation_id,omitempty"`
+	StageLeaseId                  string                       `protobuf:"bytes,7,opt,name=stage_lease_id,json=stageLeaseId,proto3" json:"stage_lease_id,omitempty"`
+	AttemptFence                  int64                        `protobuf:"varint,8,opt,name=attempt_fence,json=attemptFence,proto3" json:"attempt_fence,omitempty"`
+	StageFence                    int64                        `protobuf:"varint,9,opt,name=stage_fence,json=stageFence,proto3" json:"stage_fence,omitempty"`
+	StageVersion                  int64                        `protobuf:"varint,10,opt,name=stage_version,json=stageVersion,proto3" json:"stage_version,omitempty"`
+	WorkerInstanceId              string                       `protobuf:"bytes,11,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
+	WorkerInstanceEpoch           int64                        `protobuf:"varint,12,opt,name=worker_instance_epoch,json=workerInstanceEpoch,proto3" json:"worker_instance_epoch,omitempty"`
+	DeviceSetDigest               []byte                       `protobuf:"bytes,13,opt,name=device_set_digest,json=deviceSetDigest,proto3" json:"device_set_digest,omitempty"`
+	Devices                       []*StageAuthorityDeviceEpoch `protobuf:"bytes,14,rep,name=devices,proto3" json:"devices,omitempty"`
+	MembershipDigest              []byte                       `protobuf:"bytes,15,opt,name=membership_digest,json=membershipDigest,proto3" json:"membership_digest,omitempty"`
+	Members                       []*StageAuthorityMemberEpoch `protobuf:"bytes,16,rep,name=members,proto3" json:"members,omitempty"`
+	ModelResidencyId              string                       `protobuf:"bytes,17,opt,name=model_residency_id,json=modelResidencyId,proto3" json:"model_residency_id,omitempty"`
+	ModelRuntimeIdentity          string                       `protobuf:"bytes,18,opt,name=model_runtime_identity,json=modelRuntimeIdentity,proto3" json:"model_runtime_identity,omitempty"`
+	StageProfileRevisionId        string                       `protobuf:"bytes,20,opt,name=stage_profile_revision_id,json=stageProfileRevisionId,proto3" json:"stage_profile_revision_id,omitempty"`
+	CapacityObservationSequence   int64                        `protobuf:"varint,21,opt,name=capacity_observation_sequence,json=capacityObservationSequence,proto3" json:"capacity_observation_sequence,omitempty"`
+	CapacityVector                map[string]int64             `protobuf:"bytes,22,rep,name=capacity_vector,json=capacityVector,proto3" json:"capacity_vector,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	LeaseToken                    []byte                       `protobuf:"bytes,23,opt,name=lease_token,json=leaseToken,proto3" json:"lease_token,omitempty"`
+	ExecutionNonce                []byte                       `protobuf:"bytes,24,opt,name=execution_nonce,json=executionNonce,proto3" json:"execution_nonce,omitempty"`
+	SigningKeyId                  string                       `protobuf:"bytes,25,opt,name=signing_key_id,json=signingKeyId,proto3" json:"signing_key_id,omitempty"`
+	IssuedAt                      *timestamppb.Timestamp       `protobuf:"bytes,26,opt,name=issued_at,json=issuedAt,proto3" json:"issued_at,omitempty"`
+	ExpiresAt                     *timestamppb.Timestamp       `protobuf:"bytes,27,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	MonotonicValidFor             *durationpb.Duration         `protobuf:"bytes,28,opt,name=monotonic_valid_for,json=monotonicValidFor,proto3" json:"monotonic_valid_for,omitempty"`
+	Signature                     []byte                       `protobuf:"bytes,29,opt,name=signature,proto3" json:"signature,omitempty"`
+	ExecutionSpecDigest           []byte                       `protobuf:"bytes,30,opt,name=execution_spec_digest,json=executionSpecDigest,proto3" json:"execution_spec_digest,omitempty"`
+	ModelRuntimeBarrierGeneration int64                        `protobuf:"varint,31,opt,name=model_runtime_barrier_generation,json=modelRuntimeBarrierGeneration,proto3" json:"model_runtime_barrier_generation,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
 }
 
 func (x *StageAuthority) Reset() {
@@ -403,6 +404,13 @@ func (x *StageAuthority) GetExecutionSpecDigest() []byte {
 	return nil
 }
 
+func (x *StageAuthority) GetModelRuntimeBarrierGeneration() int64 {
+	if x != nil {
+		return x.ModelRuntimeBarrierGeneration
+	}
+	return 0
+}
+
 var File_vela_v1_stage_authority_proto protoreflect.FileDescriptor
 
 const file_vela_v1_stage_authority_proto_rawDesc = "" +
@@ -414,7 +422,7 @@ const file_vela_v1_stage_authority_proto_rawDesc = "" +
 	"\x19StageAuthorityMemberEpoch\x12(\n" +
 	"\x10worker_member_id\x18\x01 \x01(\tR\x0eworkerMemberId\x12!\n" +
 	"\fmember_epoch\x18\x02 \x01(\x03R\vmemberEpoch\x12.\n" +
-	"\x13model_runtime_epoch\x18\x03 \x01(\x03R\x11modelRuntimeEpoch\"\xb4\v\n" +
+	"\x13model_runtime_epoch\x18\x03 \x01(\x03R\x11modelRuntimeEpoch\"\xfd\v\n" +
 	"\x0eStageAuthority\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x1d\n" +
@@ -450,7 +458,8 @@ const file_vela_v1_stage_authority_proto_rawDesc = "" +
 	"expires_at\x18\x1b \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12I\n" +
 	"\x13monotonic_valid_for\x18\x1c \x01(\v2\x19.google.protobuf.DurationR\x11monotonicValidFor\x12\x1c\n" +
 	"\tsignature\x18\x1d \x01(\fR\tsignature\x122\n" +
-	"\x15execution_spec_digest\x18\x1e \x01(\fR\x13executionSpecDigest\x1aA\n" +
+	"\x15execution_spec_digest\x18\x1e \x01(\fR\x13executionSpecDigest\x12G\n" +
+	" model_runtime_barrier_generation\x18\x1f \x01(\x03R\x1dmodelRuntimeBarrierGeneration\x1aA\n" +
 	"\x13CapacityVectorEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x03R\x05value:\x028\x01J\x04\b\x13\x10\x14B0Z.github.com/vivym/vela/proto/gen/vela/v1;velav1b\x06proto3"

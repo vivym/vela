@@ -307,6 +307,8 @@ func (handler *smokeControlHandler) readiness() *velav1.WorkerReadinessDecision 
 	return &velav1.WorkerReadinessDecision{
 		WorkerInstanceId:    handler.identity.GetWorkerInstanceId(),
 		WorkerInstanceEpoch: handler.identity.GetWorkerInstanceEpoch(), Ready: true, Reason: "READY",
+		ModelRuntimeBarrierGeneration: handler.identity.GetModelRuntimeEpoch(),
+		LeaderWorkerMemberId:          handler.identity.GetWorkerMemberId(),
 	}
 }
 

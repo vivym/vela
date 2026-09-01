@@ -153,22 +153,15 @@ func (resolver *AssignmentInputResolver) destination(
 	workerID, workerErr := uuid.Parse(authority.GetWorkerInstanceId())
 	residencyID, residencyErr := uuid.Parse(authority.GetModelResidencyId())
 	if workerErr != nil || residencyErr != nil || authority.GetWorkerInstanceEpoch() <= 0 ||
-		len(authority.GetMembers()) == 0 {
+		authority.GetModelRuntimeBarrierGeneration() <= 0 {
 		return stageartifact.TransferDestination{}, errors.New(
 			"StageAssignment TransferTicket destination is invalid",
 		)
 	}
-	runtimeEpoch := authority.GetMembers()[0].GetModelRuntimeEpoch()
-	for _, member := range authority.GetMembers() {
-		if runtimeEpoch <= 0 || member.GetModelRuntimeEpoch() != runtimeEpoch {
-			return stageartifact.TransferDestination{}, errors.New(
-				"StageAssignment TransferTicket does not bind one certified runtime epoch",
-			)
-		}
-	}
 	return stageartifact.TransferDestination{
 		WorkerInstanceID: workerID, WorkerInstanceEpoch: authority.GetWorkerInstanceEpoch(),
-		ModelResidencyID: residencyID, ModelRuntimeEpoch: runtimeEpoch,
+		ModelResidencyID:    residencyID,
+		ModelRuntimeEpoch:   authority.GetModelRuntimeBarrierGeneration(),
 		ConnectorRevisionID: resolver.connectorRevisionID,
 	}, nil
 }

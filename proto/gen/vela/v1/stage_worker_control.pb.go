@@ -1720,13 +1720,15 @@ func (x *ResolvedInputTransfer) GetContentType() string {
 }
 
 type WorkerReadinessDecision struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	WorkerInstanceId    string                 `protobuf:"bytes,1,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
-	WorkerInstanceEpoch int64                  `protobuf:"varint,2,opt,name=worker_instance_epoch,json=workerInstanceEpoch,proto3" json:"worker_instance_epoch,omitempty"`
-	Ready               bool                   `protobuf:"varint,3,opt,name=ready,proto3" json:"ready,omitempty"`
-	Reason              string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state                         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerInstanceId              string                 `protobuf:"bytes,1,opt,name=worker_instance_id,json=workerInstanceId,proto3" json:"worker_instance_id,omitempty"`
+	WorkerInstanceEpoch           int64                  `protobuf:"varint,2,opt,name=worker_instance_epoch,json=workerInstanceEpoch,proto3" json:"worker_instance_epoch,omitempty"`
+	Ready                         bool                   `protobuf:"varint,3,opt,name=ready,proto3" json:"ready,omitempty"`
+	Reason                        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	ModelRuntimeBarrierGeneration int64                  `protobuf:"varint,5,opt,name=model_runtime_barrier_generation,json=modelRuntimeBarrierGeneration,proto3" json:"model_runtime_barrier_generation,omitempty"`
+	LeaderWorkerMemberId          string                 `protobuf:"bytes,6,opt,name=leader_worker_member_id,json=leaderWorkerMemberId,proto3" json:"leader_worker_member_id,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
 }
 
 func (x *WorkerReadinessDecision) Reset() {
@@ -1783,6 +1785,20 @@ func (x *WorkerReadinessDecision) GetReady() bool {
 func (x *WorkerReadinessDecision) GetReason() string {
 	if x != nil {
 		return x.Reason
+	}
+	return ""
+}
+
+func (x *WorkerReadinessDecision) GetModelRuntimeBarrierGeneration() int64 {
+	if x != nil {
+		return x.ModelRuntimeBarrierGeneration
+	}
+	return 0
+}
+
+func (x *WorkerReadinessDecision) GetLeaderWorkerMemberId() string {
+	if x != nil {
+		return x.LeaderWorkerMemberId
 	}
 	return ""
 }
@@ -2427,12 +2443,14 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\x06sha256\x18\x05 \x01(\fR\x06sha256\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x06 \x01(\x03R\tsizeBytes\x12!\n" +
-	"\fcontent_type\x18\a \x01(\tR\vcontentType\"\xa9\x01\n" +
+	"\fcontent_type\x18\a \x01(\tR\vcontentType\"\xa9\x02\n" +
 	"\x17WorkerReadinessDecision\x12,\n" +
 	"\x12worker_instance_id\x18\x01 \x01(\tR\x10workerInstanceId\x122\n" +
 	"\x15worker_instance_epoch\x18\x02 \x01(\x03R\x13workerInstanceEpoch\x12\x14\n" +
 	"\x05ready\x18\x03 \x01(\bR\x05ready\x12\x16\n" +
-	"\x06reason\x18\x04 \x01(\tR\x06reason\"\xef\x02\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x12G\n" +
+	" model_runtime_barrier_generation\x18\x05 \x01(\x03R\x1dmodelRuntimeBarrierGeneration\x125\n" +
+	"\x17leader_worker_member_id\x18\x06 \x01(\tR\x14leaderWorkerMemberId\"\xef\x02\n" +
 	"\x0fStageAssignment\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12B\n" +
 	"\x0eexecution_spec\x18\x02 \x01(\v2\x1b.vela.v1.StageExecutionSpecR\rexecutionSpec\x12;\n" +

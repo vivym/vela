@@ -270,8 +270,8 @@ func executionCommandPayload(
 	renewed *velav1.StageAuthority,
 ) (map[string]any, error) {
 	authority := current.Authority
-	if authority == nil || renewed == nil || len(authority.GetMembers()) == 0 ||
-		authority.GetMembers()[0] == nil {
+	if authority == nil || renewed == nil ||
+		authority.GetModelRuntimeBarrierGeneration() <= 0 {
 		return nil, errors.New("Stage Worker execution authority binding is incomplete")
 	}
 	currentWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(authority)
@@ -311,7 +311,7 @@ func executionCommandPayload(
 		"device_set_digest":             hex.EncodeToString(authority.GetDeviceSetDigest()),
 		"membership_digest":             hex.EncodeToString(authority.GetMembershipDigest()),
 		"model_residency_id":            authority.GetModelResidencyId(),
-		"model_runtime_epoch":           authority.GetMembers()[0].GetModelRuntimeEpoch(),
+		"model_runtime_epoch":           authority.GetModelRuntimeBarrierGeneration(),
 		"capacity_observation_sequence": authority.GetCapacityObservationSequence(),
 		"capacity_vector":               authority.GetCapacityVector(),
 		"lease_token_digest":            hex.EncodeToString(leaseTokenDigest[:]),

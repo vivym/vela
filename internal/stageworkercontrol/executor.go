@@ -34,10 +34,12 @@ type CommandContext struct {
 }
 
 type ReadinessResult struct {
-	WorkerInstanceID    uuid.UUID
-	WorkerInstanceEpoch int64
-	Ready               bool
-	Reason              string
+	WorkerInstanceID              uuid.UUID
+	WorkerInstanceEpoch           int64
+	Ready                         bool
+	Reason                        string
+	ModelRuntimeBarrierGeneration int64
+	LeaderWorkerMemberID          uuid.UUID
 }
 
 type AcquireResult struct {
@@ -287,6 +289,10 @@ func readinessResponse(
 		len(result.Reason) > maxControlDetailBytes {
 		return nil, errors.New("Stage Worker readiness backend returned a malformed result")
 	}
+	leaderMemberID := ""
+	if result.LeaderWorkerMemberID != uuid.Nil {
+		leaderMemberID = result.LeaderWorkerMemberID.String()
+	}
 	return &velav1.StageWorkerControlServiceConnectResponse{
 		RequestId: requestID,
 		Result: &velav1.StageWorkerControlServiceConnectResponse_WorkerReadinessDecision{
@@ -294,6 +300,8 @@ func readinessResponse(
 				WorkerInstanceId:    result.WorkerInstanceID.String(),
 				WorkerInstanceEpoch: result.WorkerInstanceEpoch,
 				Ready:               result.Ready, Reason: result.Reason,
+				ModelRuntimeBarrierGeneration: result.ModelRuntimeBarrierGeneration,
+				LeaderWorkerMemberId:          leaderMemberID,
 			},
 		},
 	}, nil
@@ -571,7 +579,7 @@ func validateOperationRequest(
 			value.GetWorkerInstanceId() != stage.Authority.GetWorkerInstanceId() ||
 			value.GetWorkerInstanceEpoch() != stage.Authority.GetWorkerInstanceEpoch() ||
 			value.GetModelResidencyId() != stage.Authority.GetModelResidencyId() ||
-			!stageAuthorityHasRuntimeEpoch(stage.Authority, value.GetModelRuntimeEpoch()) {
+			!stageAuthorityHasBarrierGeneration(stage.Authority, value.GetModelRuntimeEpoch()) {
 			return errors.New("Stage input transfer resolve authority is invalid")
 		}
 	case OperationConsumeInputTransfer:
@@ -586,7 +594,7 @@ func validateOperationRequest(
 			value.GetWorkerInstanceId() != stage.Authority.GetWorkerInstanceId() ||
 			value.GetWorkerInstanceEpoch() != stage.Authority.GetWorkerInstanceEpoch() ||
 			value.GetModelResidencyId() != stage.Authority.GetModelResidencyId() ||
-			!stageAuthorityHasRuntimeEpoch(stage.Authority, value.GetModelRuntimeEpoch()) {
+			!stageAuthorityHasBarrierGeneration(stage.Authority, value.GetModelRuntimeEpoch()) {
 			return errors.New("Stage input transfer consume evidence is invalid")
 		}
 	default:
@@ -595,16 +603,9 @@ func validateOperationRequest(
 	return nil
 }
 
-func stageAuthorityHasRuntimeEpoch(authority *velav1.StageAuthority, epoch int64) bool {
-	if authority == nil || epoch <= 0 {
-		return false
-	}
-	for _, member := range authority.GetMembers() {
-		if member.GetModelRuntimeEpoch() == epoch {
-			return true
-		}
-	}
-	return false
+func stageAuthorityHasBarrierGeneration(authority *velav1.StageAuthority, generation int64) bool {
+	return authority != nil && generation > 0 &&
+		authority.GetModelRuntimeBarrierGeneration() == generation
 }
 
 func validCapacityVector(vector map[string]int64) bool {

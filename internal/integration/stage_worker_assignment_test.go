@@ -34,6 +34,39 @@ func TestPostgresAssignmentBackendReplaysExactAssignment(t *testing.T) {
 	if _, err := stageassignment.Validate(first.Assignment); err != nil {
 		t.Fatalf("validate first StageAssignment: %v", err)
 	}
+	if first.Assignment.GetAuthority().GetModelRuntimeBarrierGeneration() !=
+		request.GetModelRuntimeEpoch() {
+		t.Fatalf(
+			"StageAssignment barrier generation = %d, want %d",
+			first.Assignment.GetAuthority().GetModelRuntimeBarrierGeneration(),
+			request.GetModelRuntimeEpoch(),
+		)
+	}
+	validator, err := stageauthority.NewValidator(
+		map[string][]byte{"stage-authority-key-v1": bytes.Repeat([]byte{0x9a}, 32)},
+		func() time.Time { return first.Assignment.GetAuthority().GetIssuedAt().AsTime().Add(time.Millisecond) },
+	)
+	if err != nil {
+		t.Fatalf("construct StageAuthority validator: %v", err)
+	}
+	verified, err := validator.ValidateEnvelope(first.Assignment.GetAuthority())
+	if err != nil {
+		t.Fatalf("verify StageAssignment authority: %v", err)
+	}
+	authorizer, err := stageworkercontrol.NewPostgresAuthorizer(newRolePool(
+		t, fixture.database.DSN,
+		"vela_stage_worker_control_login", "vela-stage-worker-control-password",
+	))
+	if err != nil {
+		t.Fatalf("construct StageAuthority durable authorizer: %v", err)
+	}
+	active, err := authorizer.IsActive(
+		context.Background(), command.Identity, command.ControlSessionEpoch,
+		stageworkercontrol.OperationStartStage, verified,
+	)
+	if err != nil || !active {
+		t.Fatalf("authorize StageAssignment barrier = %t error=%v", active, err)
+	}
 	firstWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(first.Assignment)
 	if err != nil {
 		t.Fatalf("marshal first StageAssignment: %v", err)

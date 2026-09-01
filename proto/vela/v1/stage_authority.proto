@@ -49,4 +49,5 @@ message StageAuthority {
   google.protobuf.Duration monotonic_valid_for = 28;
   bytes signature = 29;
   bytes execution_spec_digest = 30;
+  int64 model_runtime_barrier_generation = 31;
 }

@@ -20,6 +20,9 @@ import (
 	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/stagescheduler"
+	"github.com/vivym/vela/internal/stageworkercontrol"
+	"github.com/vivym/vela/internal/stageworkertransport"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
 func TestStageSchedulerAcquirePersistsDecisionAndAssignsExactlyOnce(t *testing.T) {
@@ -1350,7 +1353,16 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 		t.Fatalf("seed %s WorkerInstance: %v", suffix, err)
 	}
 	evidence := workerRegistryEvidenceValue(t, workerID, 0xc2)
-	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
+	if err := database.Admin.QueryRow(`
+		SELECT model_component_revision, runtime_image_digest
+		FROM stage_profile_revisions
+		WHERE id = $1
+	`, encoderStageProfileID).Scan(
+		&evidence.Residencies[0].ModelComponentRevision,
+		&evidence.Residencies[0].RuntimeImageDigest,
+	); err != nil {
+		t.Fatalf("read %s StageProfile runtime identity: %v", suffix, err)
+	}
 	workerSPIFFEDigest := sha256.Sum256([]byte("spiffe://vela/worker/" + workerID.String()))
 	evidence.Members[0].IdentityDigest = hex.EncodeToString(workerSPIFFEDigest[:])
 	registry, err := fleet.NewService(newRolePool(
@@ -1402,6 +1414,7 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 		t.Fatalf("construct %s StageScheduler repository: %v", suffix, err)
 	}
 	worker := workerAuthority(t, evidence)
+	registerStageSchedulerRuntime(t, database, evidence, worker)
 	return stageSchedulerFixture{
 		database:    database,
 		repository:  repository,
@@ -1419,6 +1432,70 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 		},
 		observation: stagescheduler.CapacityObservation{Sequence: evidence.Capacity.Sequence},
 		stageRunID:  stageRunID,
+	}
+}
+
+func registerStageSchedulerRuntime(
+	t *testing.T,
+	database testDatabase,
+	evidence fleet.WorkerInstanceEvidence,
+	worker fleet.WorkerInstanceAuthority,
+) {
+	t.Helper()
+	readinessEvidence := []byte("stage-scheduler-runtime-ready")
+	readinessDigest := sha256.Sum256(readinessEvidence)
+	if _, err := database.Admin.Exec(`
+		UPDATE model_residencies
+		SET canary_evidence_digest = $2
+		WHERE id = $1
+	`, worker.ModelResidencyID, readinessDigest[:]); err != nil {
+		t.Fatalf("bind StageScheduler runtime readiness evidence: %v", err)
+	}
+	backend, err := stageworkercontrol.NewPostgresWorkerEvidenceBackend(newRolePool(
+		t, database.DSN,
+		"vela_stage_worker_control_login", "vela-stage-worker-control-password",
+	))
+	if err != nil {
+		t.Fatalf("construct StageScheduler runtime evidence backend: %v", err)
+	}
+	member := evidence.Members[0]
+	device := evidence.DeviceSet.Devices[0]
+	result, err := backend.RegisterWorkerEvidence(
+		context.Background(),
+		stageworkercontrol.CommandContext{
+			CommandID: uuid.New(),
+			Identity: stageworkertransport.Identity{
+				SPIFFEID: "spiffe://vela/worker/" + evidence.WorkerInstanceID.String(),
+			},
+			ControlSessionEpoch: evidence.ControlSessionEpoch,
+		},
+		&velav1.RegisterWorkerEvidenceRequest{
+			RuntimeIdentity: &velav1.ModelRuntimeIdentity{
+				WorkerInstanceId:       evidence.WorkerInstanceID.String(),
+				WorkerInstanceEpoch:    evidence.InstanceEpoch,
+				DeviceSetDigest:        worker.DeviceSetDigest,
+				MembershipDigest:       worker.MembershipDigest,
+				ModelResidencyId:       worker.ModelResidencyID.String(),
+				RuntimeIdentity:        evidence.Residencies[0].RuntimeIdentity,
+				ModelRuntimeEpoch:      evidence.Residencies[0].ModelRuntimeEpoch,
+				StageProfileRevisionId: encoderStageProfileID,
+				WorkerMemberId:         member.ID.String(),
+				WorkerMemberEpoch:      member.MemberEpoch,
+			},
+			CapacityObservationSequence: evidence.Capacity.Sequence,
+			Devices: []*velav1.StageAuthorityDeviceEpoch{{
+				DeviceId: device.ID.String(), DeviceEpoch: device.DeviceEpoch,
+			}},
+			Members: []*velav1.StageAuthorityMemberEpoch{{
+				WorkerMemberId: member.ID.String(), MemberEpoch: member.MemberEpoch,
+				ModelRuntimeEpoch: evidence.Residencies[0].ModelRuntimeEpoch,
+			}},
+			ReadinessEvidence: readinessEvidence,
+		},
+	)
+	if err != nil || !result.Ready ||
+		result.ModelRuntimeBarrierGeneration != worker.ModelRuntimeEpoch {
+		t.Fatalf("register StageScheduler runtime barrier = %#v error=%v", result, err)
 	}
 }
 

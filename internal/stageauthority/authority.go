@@ -383,6 +383,7 @@ func validateShape(authority *velav1.StageAuthority, requireSignature bool) erro
 	}
 	if authority.GetAttemptFence() <= 0 || authority.GetStageFence() <= 0 ||
 		authority.GetStageVersion() <= 0 || authority.GetWorkerInstanceEpoch() <= 0 ||
+		authority.GetModelRuntimeBarrierGeneration() <= 0 ||
 		authority.GetCapacityObservationSequence() <= 0 {
 		return fmt.Errorf("%w: fence, version, or epoch is invalid", ErrInvalid)
 	}

@@ -21,6 +21,19 @@ import (
 
 func TestControlTransferAuthorityResolvesAndConsumesExactTicket(t *testing.T) {
 	fixture := newSingleMemberMaterializationFixture(t)
+	unsigned := proto.Clone(fixture.authority).(*velav1.StageAuthority)
+	unsigned.ModelRuntimeBarrierGeneration = 12
+	unsigned.Signature = nil
+	signer, err := stageauthority.NewSigner(map[string][]byte{
+		"single-stage-key": bytes.Repeat([]byte{0x7b}, 32),
+	})
+	if err != nil {
+		t.Fatalf("New StageAuthority signer: %v", err)
+	}
+	fixture.authority, err = signer.Sign(unsigned)
+	if err != nil {
+		t.Fatalf("sign StageAuthority with independent barrier generation: %v", err)
+	}
 	ticketID := uuid.MustParse("85000000-0000-0000-0000-000000000001")
 	artifactID := uuid.MustParse("85000000-0000-0000-0000-000000000002")
 	connectorID := uuid.MustParse("85000000-0000-0000-0000-000000000003")
@@ -43,7 +56,7 @@ func TestControlTransferAuthorityResolvesAndConsumesExactTicket(t *testing.T) {
 		WorkerInstanceID:    uuid.MustParse(fixture.authority.GetWorkerInstanceId()),
 		WorkerInstanceEpoch: fixture.authority.GetWorkerInstanceEpoch(),
 		ModelResidencyID:    uuid.MustParse(fixture.authority.GetModelResidencyId()),
-		ModelRuntimeEpoch:   fixture.authority.GetMembers()[0].GetModelRuntimeEpoch(),
+		ModelRuntimeEpoch:   fixture.authority.GetModelRuntimeBarrierGeneration(),
 		ConnectorRevisionID: connectorID,
 	}
 	resolvedAt := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
@@ -55,6 +68,14 @@ func TestControlTransferAuthorityResolvesAndConsumesExactTicket(t *testing.T) {
 		descriptor.ObjectVersion != "object-version-7" || descriptor.SHA256 != digest ||
 		descriptor.SizeBytes != 17 {
 		t.Fatalf("Resolve = %#v error=%v", descriptor, err)
+	}
+	memberLocalDestination := destination
+	memberLocalDestination.ModelRuntimeEpoch = fixture.authority.GetMembers()[0].GetModelRuntimeEpoch()
+	if _, err := authority.Resolve(context.Background(), stageartifact.ResolveTransferCommand{
+		TicketID: ticketID, TokenDigest: tokenDigest, Destination: memberLocalDestination,
+		ResolvedAt: resolvedAt,
+	}); err == nil {
+		t.Fatal("Resolve accepted a member-local epoch in place of the barrier generation")
 	}
 	resolve := control.requests[0].GetResolveInputTransfer()
 	if resolve == nil || !proto.Equal(resolve.GetAuthority(), fixture.authority) ||
@@ -238,7 +259,7 @@ func TestStreamAgentPullsExactInputsBeforePreparingRuntime(t *testing.T) {
 		WorkerInstanceID:    uuid.MustParse(assignment.Authority.GetWorkerInstanceId()),
 		WorkerInstanceEpoch: assignment.Authority.GetWorkerInstanceEpoch(),
 		ModelResidencyID:    uuid.MustParse(assignment.Authority.GetModelResidencyId()),
-		ModelRuntimeEpoch:   assignment.Authority.GetMembers()[0].GetModelRuntimeEpoch(),
+		ModelRuntimeEpoch:   assignment.Authority.GetModelRuntimeBarrierGeneration(),
 		ConnectorRevisionID: connectorID,
 	}
 	ticketSigner, err := stageartifact.NewTransferTicketSigner(

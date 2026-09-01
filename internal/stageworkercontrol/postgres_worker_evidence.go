@@ -82,7 +82,7 @@ func (backend *PostgresWorkerEvidenceBackend) RegisterWorkerEvidence(
 	if err != nil {
 		return ReadinessResult{}, fmt.Errorf("encode Stage Worker registration evidence: %w", err)
 	}
-	return backend.readReadiness(ctx, "vela_register_stage_worker_runtime", payload)
+	return backend.readRegistrationReadiness(ctx, payload)
 }
 
 func (backend *PostgresWorkerEvidenceBackend) ReportCapacityObservation(
@@ -143,6 +143,40 @@ func (backend *PostgresWorkerEvidenceBackend) readReadiness(
 	if result.WorkerInstanceID == uuid.Nil || result.WorkerInstanceEpoch <= 0 ||
 		strings.TrimSpace(result.Reason) == "" || len(result.Reason) > maxControlDetailBytes {
 		return ReadinessResult{}, errors.New("durable Stage Worker readiness result is malformed")
+	}
+	return result, nil
+}
+
+func (backend *PostgresWorkerEvidenceBackend) readRegistrationReadiness(
+	ctx context.Context,
+	payload []byte,
+) (ReadinessResult, error) {
+	var result ReadinessResult
+	var leaderMemberID string
+	if err := backend.pool.QueryRow(ctx, `
+		SELECT worker_instance_id, worker_instance_epoch, ready, reason,
+		       COALESCE(barrier_generation, 0),
+		       COALESCE(leader_worker_member_id::text, '')
+		FROM vela_register_stage_worker_runtime($1::jsonb)
+	`, payload).Scan(
+		&result.WorkerInstanceID, &result.WorkerInstanceEpoch,
+		&result.Ready, &result.Reason,
+		&result.ModelRuntimeBarrierGeneration, &leaderMemberID,
+	); err != nil {
+		return ReadinessResult{}, fmt.Errorf("register durable ModelRuntime barrier: %w", err)
+	}
+	if leaderMemberID != "" {
+		parsed, err := uuid.Parse(leaderMemberID)
+		if err != nil {
+			return ReadinessResult{}, errors.New("durable ModelRuntime barrier leader is malformed")
+		}
+		result.LeaderWorkerMemberID = parsed
+	}
+	if result.WorkerInstanceID == uuid.Nil || result.WorkerInstanceEpoch <= 0 ||
+		strings.TrimSpace(result.Reason) == "" ||
+		(result.Ready && (result.ModelRuntimeBarrierGeneration <= 0 ||
+			result.LeaderWorkerMemberID == uuid.Nil)) {
+		return ReadinessResult{}, errors.New("durable ModelRuntime barrier result is malformed")
 	}
 	return result, nil
 }

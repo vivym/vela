@@ -224,21 +224,22 @@ func (backend *PostgresAssignmentBackend) begin(
 }
 
 type acquireAuthoritySnapshot struct {
-	CapacityPoolID              uuid.UUID         `json:"capacity_pool_id"`
-	StageProfileRevisionID      uuid.UUID         `json:"stage_profile_revision_id"`
-	WorkerInstanceID            uuid.UUID         `json:"worker_instance_id"`
-	WorkerInstanceEpoch         int64             `json:"worker_instance_epoch"`
-	DeviceSetDigestHex          string            `json:"device_set_digest"`
-	MembershipDigestHex         string            `json:"membership_digest"`
-	ModelResidencyID            uuid.UUID         `json:"model_residency_id"`
-	ModelRuntimeIdentity        string            `json:"model_runtime_identity"`
-	ModelRuntimeEpoch           int64             `json:"model_runtime_epoch"`
-	CapacityObservationSequence int64             `json:"capacity_observation_sequence"`
-	CapacityVector              map[string]int64  `json:"capacity_vector"`
-	Members                     []authorityMember `json:"members"`
-	Devices                     []authorityDevice `json:"devices"`
-	DeviceSetDigest             []byte            `json:"-"`
-	MembershipDigest            []byte            `json:"-"`
+	CapacityPoolID                uuid.UUID         `json:"capacity_pool_id"`
+	StageProfileRevisionID        uuid.UUID         `json:"stage_profile_revision_id"`
+	WorkerInstanceID              uuid.UUID         `json:"worker_instance_id"`
+	WorkerInstanceEpoch           int64             `json:"worker_instance_epoch"`
+	DeviceSetDigestHex            string            `json:"device_set_digest"`
+	MembershipDigestHex           string            `json:"membership_digest"`
+	ModelResidencyID              uuid.UUID         `json:"model_residency_id"`
+	ModelRuntimeIdentity          string            `json:"model_runtime_identity"`
+	ModelRuntimeEpoch             int64             `json:"model_runtime_epoch"`
+	ModelRuntimeBarrierGeneration int64             `json:"model_runtime_barrier_generation"`
+	CapacityObservationSequence   int64             `json:"capacity_observation_sequence"`
+	CapacityVector                map[string]int64  `json:"capacity_vector"`
+	Members                       []authorityMember `json:"members"`
+	Devices                       []authorityDevice `json:"devices"`
+	DeviceSetDigest               []byte            `json:"-"`
+	MembershipDigest              []byte            `json:"-"`
 }
 
 type authorityMember struct {
@@ -308,36 +309,37 @@ type assignmentInputSnapshot struct {
 }
 
 type assignmentExecutionSnapshot struct {
-	JobID                       uuid.UUID                 `json:"job_id"`
-	AttemptID                   uuid.UUID                 `json:"attempt_id"`
-	AttemptFence                int64                     `json:"attempt_fence"`
-	StageRunID                  uuid.UUID                 `json:"stage_run_id"`
-	StageFence                  int64                     `json:"stage_fence"`
-	StageVersion                int64                     `json:"stage_version"`
-	StageAttemptID              uuid.UUID                 `json:"stage_attempt_id"`
-	StageAllocationID           uuid.UUID                 `json:"stage_allocation_id"`
-	StageLeaseID                uuid.UUID                 `json:"stage_lease_id"`
-	StageProfileRevisionID      uuid.UUID                 `json:"stage_profile_revision_id"`
-	WorkerInstanceID            uuid.UUID                 `json:"worker_instance_id"`
-	WorkerInstanceEpoch         int64                     `json:"worker_instance_epoch"`
-	DeviceSetDigestHex          string                    `json:"device_set_digest"`
-	MembershipDigestHex         string                    `json:"membership_digest"`
-	ModelResidencyID            uuid.UUID                 `json:"model_residency_id"`
-	ModelRuntimeIdentity        string                    `json:"model_runtime_identity"`
-	ModelRuntimeEpoch           int64                     `json:"model_runtime_epoch"`
-	CapacityObservationSequence int64                     `json:"capacity_observation_sequence"`
-	CapacityVector              map[string]int64          `json:"capacity_vector"`
-	LeaseTokenDigestHex         string                    `json:"lease_token_digest"`
-	ExecutionNonceHex           string                    `json:"execution_nonce"`
-	SigningKeyID                string                    `json:"signing_key_id"`
-	IssuedAt                    time.Time                 `json:"issued_at"`
-	ExpiresAt                   time.Time                 `json:"expires_at"`
-	LocalDeadlineAt             time.Time                 `json:"local_deadline_at"`
-	Parameters                  json.RawMessage           `json:"parameters"`
-	ExpectedOutputManifest      json.RawMessage           `json:"expected_output_manifest"`
-	Members                     []authorityMember         `json:"members"`
-	Devices                     []authorityDevice         `json:"devices"`
-	Inputs                      []assignmentInputSnapshot `json:"inputs"`
+	JobID                         uuid.UUID                 `json:"job_id"`
+	AttemptID                     uuid.UUID                 `json:"attempt_id"`
+	AttemptFence                  int64                     `json:"attempt_fence"`
+	StageRunID                    uuid.UUID                 `json:"stage_run_id"`
+	StageFence                    int64                     `json:"stage_fence"`
+	StageVersion                  int64                     `json:"stage_version"`
+	StageAttemptID                uuid.UUID                 `json:"stage_attempt_id"`
+	StageAllocationID             uuid.UUID                 `json:"stage_allocation_id"`
+	StageLeaseID                  uuid.UUID                 `json:"stage_lease_id"`
+	StageProfileRevisionID        uuid.UUID                 `json:"stage_profile_revision_id"`
+	WorkerInstanceID              uuid.UUID                 `json:"worker_instance_id"`
+	WorkerInstanceEpoch           int64                     `json:"worker_instance_epoch"`
+	DeviceSetDigestHex            string                    `json:"device_set_digest"`
+	MembershipDigestHex           string                    `json:"membership_digest"`
+	ModelResidencyID              uuid.UUID                 `json:"model_residency_id"`
+	ModelRuntimeIdentity          string                    `json:"model_runtime_identity"`
+	ModelRuntimeEpoch             int64                     `json:"model_runtime_epoch"`
+	ModelRuntimeBarrierGeneration int64                     `json:"model_runtime_barrier_generation"`
+	CapacityObservationSequence   int64                     `json:"capacity_observation_sequence"`
+	CapacityVector                map[string]int64          `json:"capacity_vector"`
+	LeaseTokenDigestHex           string                    `json:"lease_token_digest"`
+	ExecutionNonceHex             string                    `json:"execution_nonce"`
+	SigningKeyID                  string                    `json:"signing_key_id"`
+	IssuedAt                      time.Time                 `json:"issued_at"`
+	ExpiresAt                     time.Time                 `json:"expires_at"`
+	LocalDeadlineAt               time.Time                 `json:"local_deadline_at"`
+	Parameters                    json.RawMessage           `json:"parameters"`
+	ExpectedOutputManifest        json.RawMessage           `json:"expected_output_manifest"`
+	Members                       []authorityMember         `json:"members"`
+	Devices                       []authorityDevice         `json:"devices"`
+	Inputs                        []assignmentInputSnapshot `json:"inputs"`
 }
 
 func (backend *PostgresAssignmentBackend) readExecution(
@@ -442,9 +444,10 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 		DeviceSetDigest: deviceDigest, Devices: devices,
 		MembershipDigest: membershipDigest, Members: members,
 		ModelResidencyId: snapshot.ModelResidencyID.String(), ModelRuntimeIdentity: snapshot.ModelRuntimeIdentity,
-		StageProfileRevisionId:      snapshot.StageProfileRevisionID.String(),
-		CapacityObservationSequence: snapshot.CapacityObservationSequence,
-		CapacityVector:              snapshot.CapacityVector, LeaseToken: identity.LeaseToken[:],
+		ModelRuntimeBarrierGeneration: snapshot.ModelRuntimeBarrierGeneration,
+		StageProfileRevisionId:        snapshot.StageProfileRevisionID.String(),
+		CapacityObservationSequence:   snapshot.CapacityObservationSequence,
+		CapacityVector:                snapshot.CapacityVector, LeaseToken: identity.LeaseToken[:],
 		ExecutionNonce: executionNonce, SigningKeyId: snapshot.SigningKeyID,
 		IssuedAt: timestamppb.New(snapshot.IssuedAt), ExpiresAt: timestamppb.New(snapshot.ExpiresAt),
 		MonotonicValidFor:   durationpb.New(snapshot.LocalDeadlineAt.Sub(snapshot.IssuedAt)),
@@ -477,7 +480,7 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 				WorkerInstanceID:    snapshot.WorkerInstanceID,
 				WorkerInstanceEpoch: snapshot.WorkerInstanceEpoch,
 				ModelResidencyID:    snapshot.ModelResidencyID,
-				ModelRuntimeEpoch:   snapshot.ModelRuntimeEpoch,
+				ModelRuntimeEpoch:   snapshot.ModelRuntimeBarrierGeneration,
 				ConnectorRevisionID: input.ConnectorRevisionID,
 			},
 			IssuedAt: snapshot.IssuedAt, ExpiresAt: ticketExpiry,
@@ -592,6 +595,8 @@ func validateAcquireAuthority(authority acquireAuthoritySnapshot) error {
 	if authority.CapacityPoolID == uuid.Nil || authority.StageProfileRevisionID == uuid.Nil ||
 		authority.WorkerInstanceID == uuid.Nil || authority.ModelResidencyID == uuid.Nil ||
 		authority.WorkerInstanceEpoch <= 0 || authority.ModelRuntimeEpoch <= 0 ||
+		authority.ModelRuntimeBarrierGeneration <= 0 ||
+		authority.ModelRuntimeBarrierGeneration != authority.ModelRuntimeEpoch ||
 		authority.CapacityObservationSequence <= 0 || len(authority.DeviceSetDigest) != sha256.Size ||
 		len(authority.MembershipDigest) != sha256.Size || len(authority.CapacityVector) == 0 ||
 		len(authority.Members) == 0 || len(authority.Devices) == 0 ||
@@ -608,6 +613,8 @@ func validateExecutionSnapshot(snapshot assignmentExecutionSnapshot) error {
 		snapshot.WorkerInstanceID == uuid.Nil || snapshot.ModelResidencyID == uuid.Nil ||
 		snapshot.AttemptFence <= 0 || snapshot.StageFence <= 0 || snapshot.StageVersion <= 0 ||
 		snapshot.WorkerInstanceEpoch <= 0 || snapshot.ModelRuntimeEpoch <= 0 ||
+		snapshot.ModelRuntimeBarrierGeneration <= 0 ||
+		snapshot.ModelRuntimeBarrierGeneration != snapshot.ModelRuntimeEpoch ||
 		snapshot.CapacityObservationSequence <= 0 || len(snapshot.CapacityVector) == 0 ||
 		len(snapshot.Members) == 0 || len(snapshot.Devices) == 0 ||
 		strings.TrimSpace(snapshot.SigningKeyID) == "" ||

@@ -145,15 +145,11 @@ func (authority *ControlTransferAuthority) matchesDestination(
 		destination.WorkerInstanceID.String() != authority.authority.GetWorkerInstanceId() ||
 		destination.WorkerInstanceEpoch != authority.authority.GetWorkerInstanceEpoch() ||
 		destination.ModelResidencyID.String() != authority.authority.GetModelResidencyId() ||
-		destination.ConnectorRevisionID == uuid.Nil || destination.ModelRuntimeEpoch <= 0 {
+		destination.ConnectorRevisionID == uuid.Nil ||
+		destination.ModelRuntimeEpoch != authority.authority.GetModelRuntimeBarrierGeneration() {
 		return false
 	}
-	for _, member := range authority.authority.GetMembers() {
-		if member.GetModelRuntimeEpoch() == destination.ModelRuntimeEpoch {
-			return true
-		}
-	}
-	return false
+	return destination.ModelRuntimeEpoch > 0
 }
 
 func transferControlRejection(
