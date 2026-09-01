@@ -99,6 +99,8 @@ type commandConfig struct {
 }
 
 type capabilityConfig struct {
+	DeviceID              string   `json:"device_id"`
+	DeviceEpoch           int64    `json:"device_epoch"`
 	CertificationRevision string   `json:"certification_revision"`
 	PCIBDF                string   `json:"pci_bdf"`
 	FailureClasses        []string `json:"failure_classes"`
@@ -255,7 +257,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	policy, err := nodeagent.NewStaticCapabilityPolicy(capabilities)
+	policy, err := nodeagent.NewStaticCapabilityPolicy(capabilities, epochStore)
 	if err != nil {
 		return fmt.Errorf("configure device capability policy: %w", err)
 	}
@@ -665,6 +667,10 @@ func loadCapabilities(path string) (map[string]nodeagent.DeviceCapability, error
 	}
 	capabilities := make(map[string]nodeagent.DeviceCapability, len(configured))
 	for device, capability := range configured {
+		deviceID, err := uuid.Parse(capability.DeviceID)
+		if err != nil || deviceID == uuid.Nil || capability.DeviceEpoch <= 0 {
+			return nil, fmt.Errorf("device capability %q has invalid Device authority", device)
+		}
 		actions := make(map[remediation.ActionLevel]bool, len(capability.Actions))
 		for _, actionText := range capability.Actions {
 			actions[remediation.ActionLevel(actionText)] = true
@@ -674,6 +680,7 @@ func loadCapabilities(path string) (map[string]nodeagent.DeviceCapability, error
 			failureClasses[failureClass] = true
 		}
 		capabilities[device] = nodeagent.DeviceCapability{
+			DeviceID: deviceID, DeviceEpoch: capability.DeviceEpoch,
 			GPUUUID: device, PCIBDF: capability.PCIBDF,
 			CertificationRevision: capability.CertificationRevision,
 			FailureClasses:        failureClasses, Actions: actions,

@@ -314,7 +314,7 @@ paths:
   /v1/platform/remediation/operations:
     post:
       operationId: createRemediationOperation
-      summary: Request an identity-bound certified Worker remediation operation
+      summary: Request an identity-bound certified WorkerInstance remediation operation
       parameters:
         - $ref: '#/components/parameters/RemediationIdempotencyKey'
       requestBody:
@@ -1693,10 +1693,10 @@ components:
       additionalProperties: false
       required:
         - operation_id
-        - worker_id
-        - worker_epoch
+        - worker_instance_id
+        - worker_instance_epoch
         - node_identity
-        - gpu_uuid
+        - device_identity
         - failure_class
         - evidence_sha256
         - certification_revision
@@ -1705,10 +1705,10 @@ components:
         operation_id:
           type: string
           format: uuid
-        worker_id:
+        worker_instance_id:
           type: string
           format: uuid
-        worker_epoch:
+        worker_instance_epoch:
           type: integer
           format: int64
           minimum: 1
@@ -1716,9 +1716,10 @@ components:
           type: string
           minLength: 1
           maxLength: 500
-        gpu_uuid:
+        device_identity:
           type: string
-          pattern: '^GPU-[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
+          minLength: 1
+          maxLength: 500
         failure_class:
           type: string
           minLength: 1
@@ -1736,10 +1737,10 @@ components:
       additionalProperties: false
       required:
         - operation_id
-        - worker_id
-        - worker_epoch
+        - worker_instance_id
+        - worker_instance_epoch
         - node_identity
-        - gpu_uuid
+        - device_identity
         - failure_class
         - evidence_sha256
         - certification_revision
@@ -1752,15 +1753,15 @@ components:
         operation_id:
           type: string
           format: uuid
-        worker_id:
+        worker_instance_id:
           type: string
           format: uuid
-        worker_epoch:
+        worker_instance_epoch:
           type: integer
           format: int64
         node_identity:
           type: string
-        gpu_uuid:
+        device_identity:
           type: string
         failure_class:
           type: string

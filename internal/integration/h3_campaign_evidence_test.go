@@ -274,7 +274,7 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 
 	planPath := filepath.Join(directory, "campaign-release-bundle-plan.json")
 	writeJSONFixture(t, planPath, plan)
-	_, bundleBytes, err := releasebundle.Build(planPath)
+	_, bundleBytes, err := releasebundle.BuildFromSource(newCatalogReleaseSource(t), planPath)
 	if err != nil {
 		t.Fatalf("build campaign release bundle: %v", err)
 	}
@@ -326,7 +326,7 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 	completeH3CampaignGraph(t, finalizer, cross.jobID)
 
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct campaign cache Worker Registry: %v", err)

@@ -82,6 +82,24 @@ func TestProjectAdminAuthorizesQueuedJobDebugDumpIdempotently(t *testing.T) {
 		t.Fatalf("decode debug dump Job: %v", err)
 	}
 	jobID := uuid.MustParse(job.JobID)
+	var graphState string
+	var physicalAttempts int
+	if err := database.Admin.QueryRow(`
+		SELECT attempt.graph_state::text,
+			(SELECT count(*) FROM stage_attempts AS physical
+			 WHERE physical.attempt_id = attempt.id)
+		FROM attempts AS attempt
+		WHERE attempt.job_id = $1
+	`, jobID).Scan(&graphState, &physicalAttempts); err != nil {
+		t.Fatalf("read admitted debug dump Stage graph: %v", err)
+	}
+	if graphState != "QUEUED" || physicalAttempts != 0 {
+		t.Fatalf(
+			"admitted debug dump Stage graph state/physical attempts = %s/%d, want QUEUED/0",
+			graphState,
+			physicalAttempts,
+		)
+	}
 	service, err := debugdump.NewService(newRolePool(
 		t,
 		database.DSN,

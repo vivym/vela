@@ -49,6 +49,7 @@ type WorkerInstanceEpochStore interface {
 		context.Context,
 		[]WorkerInstanceDeviceEpochBinding,
 	) (WorkerInstanceEpochSnapshot, error)
+	DeviceEpochSource
 }
 
 type WorkerInstanceObservationSequencer interface {
@@ -312,6 +313,22 @@ func (store *FileWorkerInstanceEpochStore) BindWorkerInstanceDevices(
 	}, nil
 }
 
+func (store *FileWorkerInstanceEpochStore) CurrentDeviceEpoch(gpuUUID string) (int64, bool) {
+	if store == nil || !validGPUUUID(gpuUUID) {
+		return 0, false
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.lock == nil {
+		return 0, false
+	}
+	device, ok := store.state.Devices[gpuUUID]
+	if !ok || device.Epoch <= 0 {
+		return 0, false
+	}
+	return device.Epoch, true
+}
+
 func (store *FileWorkerInstanceEpochStore) persist(state fileWorkerInstanceEpochState) error {
 	encoded, err := json.Marshal(state)
 	if err != nil {
@@ -422,3 +439,4 @@ func cloneFileWorkerInstanceEpochState(
 
 var _ WorkerInstanceEpochStore = (*FileWorkerInstanceEpochStore)(nil)
 var _ WorkerInstanceObservationSequencer = (*FileWorkerInstanceEpochStore)(nil)
+var _ DeviceEpochSource = (*FileWorkerInstanceEpochStore)(nil)

@@ -54,7 +54,7 @@ func TestStageSchedulerAcquirePersistsDecisionAndAssignsExactlyOnce(t *testing.T
 	evidence := workerRegistryEvidenceValue(t, workerID, 0xc1)
 	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct StageScheduler Worker Registry: %v", err)
@@ -286,11 +286,14 @@ func TestStageSchedulerExpiredClaimRecoversWithoutDoubleAssignment(t *testing.T)
 	var queued, attempts int
 	if err := fixture.database.Admin.QueryRow(`
 		SELECT claim.state::text,
-			(SELECT count(*) FROM stage_ready_queue_entries WHERE stage_run_id = $2),
+			(SELECT count(*) FROM stage_ready_queue_entries
+			 WHERE stage_run_id = $2 AND capacity_pool_id = $3),
 			(SELECT count(*) FROM stage_attempts WHERE stage_run_id = $2)
 		FROM stage_scheduler_claims AS claim
 		WHERE claim.id = $1
-	`, crashedClaimID, fixture.stageRunID).Scan(&expiredState, &queued, &attempts); err != nil {
+	`, crashedClaimID, fixture.stageRunID, fixture.authority.CapacityPoolID).Scan(
+		&expiredState, &queued, &attempts,
+	); err != nil {
 		t.Fatalf("read expired StageScheduler claim result: %v", err)
 	}
 	if expiredState != "EXPIRED" || queued != 1 || attempts != 0 {
@@ -1321,7 +1324,7 @@ func (repository *tamperingStageRepository) Claim(
 func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture {
 	t.Helper()
 	database := newPostgres(t)
-	applyFoundationTo(t, database.Admin, 37)
+	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	seedEncoderAssignmentProfile(t, database)
@@ -1351,7 +1354,7 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 	workerSPIFFEDigest := sha256.Sum256([]byte("spiffe://vela/worker/" + workerID.String()))
 	evidence.Members[0].IdentityDigest = hex.EncodeToString(workerSPIFFEDigest[:])
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct %s Worker Registry: %v", suffix, err)

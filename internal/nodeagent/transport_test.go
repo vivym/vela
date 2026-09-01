@@ -44,7 +44,7 @@ func TestNodeAgentServerBindsControllerIdentityAndLocalNodeTarget(t *testing.T) 
 	if !response.GetSuccess() || response.GetResultCode() != "POSTCHECK_OK" || len(response.GetPostcheckSha256()) != sha256.Size {
 		t.Fatalf("Node Agent response = %#v", response)
 	}
-	if executor.plan.OperationID != uuid.MustParse(request.GetOperationId()) || executor.plan.ExecutionClaimID != uuid.MustParse(request.GetExecutionClaimId()) || executor.plan.WorkerInstanceID != workerID || executor.plan.WorkerInstanceEpoch != 1 || executor.plan.FailureClass != request.GetFailureClass() || executor.plan.DeadlineAt != request.GetDeadlineAt().AsTime() || !bytes.Equal(executor.plan.FailureEvidenceDigest, evidence[:]) {
+	if executor.plan.OperationID != uuid.MustParse(request.GetOperationId()) || executor.plan.ExecutionClaimID != uuid.MustParse(request.GetExecutionClaimId()) || executor.plan.WorkerInstanceID != workerID || executor.plan.WorkerInstanceEpoch != 1 || executor.plan.DeviceID != testDeviceID0 || executor.plan.DeviceEpoch != 1 || executor.plan.FailureClass != request.GetFailureClass() || executor.plan.DeadlineAt != request.GetDeadlineAt().AsTime() || !bytes.Equal(executor.plan.FailureEvidenceDigest, evidence[:]) {
 		t.Fatalf("executor plan = %#v", executor.plan)
 	}
 }
@@ -242,7 +242,7 @@ func (ledger *memoryLedger) Begin(_ context.Context, intent ExecutionIntent) (Ex
 
 func validAgentRequest(workerID uuid.UUID, now time.Time) *velav1.ExecuteRemediationRequest {
 	evidence := sha256.Sum256([]byte("failure"))
-	return &velav1.ExecuteRemediationRequest{OperationId: uuid.NewString(), WorkerInstanceId: workerID.String(), WorkerInstanceEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: testGPUUUID0, FailureClass: "process_failure", ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1", FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)), ExecutionClaimId: uuid.NewString()}
+	return &velav1.ExecuteRemediationRequest{OperationId: uuid.NewString(), WorkerInstanceId: workerID.String(), WorkerInstanceEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: testGPUUUID0, FailureClass: "process_failure", ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1", FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)), ExecutionClaimId: uuid.NewString(), DeviceId: testDeviceID0.String(), DeviceEpoch: 1}
 }
 
 func mustControllerResolver(t *testing.T) *StaticControllerIdentityResolver {

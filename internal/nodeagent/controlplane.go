@@ -76,6 +76,7 @@ func (executor *RemoteExecutor) Execute(ctx context.Context, plan remediation.Pl
 	request := Request{
 		OperationID: plan.OperationID, ExecutionClaimID: plan.ExecutionClaimID,
 		WorkerInstanceID: plan.WorkerInstanceID, WorkerInstanceEpoch: plan.WorkerInstanceEpoch,
+		DeviceID: plan.DeviceID, DeviceEpoch: plan.DeviceEpoch,
 		NodeIdentity: plan.NodeIdentity, DeviceIdentity: plan.DeviceIdentity,
 		FailureClass: plan.FailureClass,
 		ActionLevel:  plan.ActionLevel, CertificationRevision: plan.CertificationRevision,
@@ -145,7 +146,8 @@ func (authorizer *ControlPlaneAuthorizer) Authorize(ctx context.Context, request
 	}
 	if operation.ID != request.OperationID || operation.WorkerInstanceID != request.WorkerInstanceID ||
 		operation.WorkerInstanceEpoch != request.WorkerInstanceEpoch || operation.NodeIdentity != request.NodeIdentity ||
-		operation.DeviceIdentity != request.DeviceIdentity || operation.ActionLevel != request.ActionLevel ||
+		operation.DeviceIdentity != request.DeviceIdentity || operation.DeviceID != request.DeviceID ||
+		operation.DeviceEpoch != request.DeviceEpoch || operation.ActionLevel != request.ActionLevel ||
 		operation.FailureClass != request.FailureClass ||
 		operation.CertificationRevision != request.CertificationRevision ||
 		!equalDigest(operation.EvidenceDigest, request.FailureEvidenceDigest) {
@@ -263,14 +265,14 @@ func (ledger *ControlPlaneLedger) Save(ctx context.Context, receipt Receipt) err
 		return errors.New("node Agent receipt result is invalid")
 	}
 	_, err = ledger.writer.Complete(ctx, remediation.Completion{
-		OperationID:   operation.ID,
-		WorkerInstanceID:      operation.WorkerInstanceID,
-		WorkerInstanceEpoch:   operation.WorkerInstanceEpoch,
-		Success:       receipt.Result.Success,
-		ResultCode:    receipt.Result.ResultCode,
-		ResultDetail:  receipt.Result.ResultDetail,
-		PostcheckHash: append([]byte(nil), receipt.Result.PostcheckHash...),
-		ActorIdentity: ledger.actorIdentity,
+		OperationID:         operation.ID,
+		WorkerInstanceID:    operation.WorkerInstanceID,
+		WorkerInstanceEpoch: operation.WorkerInstanceEpoch,
+		Success:             receipt.Result.Success,
+		ResultCode:          receipt.Result.ResultCode,
+		ResultDetail:        receipt.Result.ResultDetail,
+		PostcheckHash:       append([]byte(nil), receipt.Result.PostcheckHash...),
+		ActorIdentity:       ledger.actorIdentity,
 	})
 	return err
 }
@@ -279,8 +281,10 @@ func requestFromOperation(operation remediation.Operation, actorIdentity string)
 	return Request{
 		OperationID:           operation.ID,
 		ExecutionClaimID:      stableExecutionClaimID(operation.ID, actorIdentity),
-		WorkerInstanceID:              operation.WorkerInstanceID,
-		WorkerInstanceEpoch:           operation.WorkerInstanceEpoch,
+		WorkerInstanceID:      operation.WorkerInstanceID,
+		WorkerInstanceEpoch:   operation.WorkerInstanceEpoch,
+		DeviceID:              operation.DeviceID,
+		DeviceEpoch:           operation.DeviceEpoch,
 		NodeIdentity:          operation.NodeIdentity,
 		DeviceIdentity:        operation.DeviceIdentity,
 		FailureClass:          operation.FailureClass,

@@ -327,7 +327,7 @@ func runCPUMediaH3GraphWithKey(t *testing.T, idempotencyKey string) cpuMediaGrap
 
 	seedWorkerRegistryPlan(t, database.Admin)
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct CPU media Worker Registry: %v", err)
@@ -567,7 +567,7 @@ func seedCPUMediaAdmissionCapacityPath(t *testing.T, database testDatabase) {
 		}
 	}
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct CPU media Admission Worker Registry: %v", err)

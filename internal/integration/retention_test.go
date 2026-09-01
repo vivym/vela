@@ -39,6 +39,8 @@ func TestProjectAdminManagesRetentionPolicyOverProductionHTTP(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	seedOtherOrganization(t, database.Admin)
 	seedHumanRoleFixture(
 		t,
@@ -314,6 +316,8 @@ func TestServicePrincipalAcceptsQueuedJobContentDeletionOverProductionHTTP(t *te
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	if _, err := database.Admin.Exec(`
 		UPDATE credentials
 		SET scopes = array_append(scopes, 'content_deletion:manage')
@@ -665,6 +669,8 @@ func TestProjectAdminContentDeletionAuthorityIsRevokedForDeveloperOverProduction
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	adminID := uuid.New()
 	seedHumanRoleFixture(
 		t,

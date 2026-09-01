@@ -225,7 +225,7 @@ func TestOneOfSevenSameNodeDiTFailuresDoesNotFenceUnrelatedWorkers(t *testing.T)
 	}
 	seedWorkerRegistryPlan(t, database.Admin)
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct seven-DiT Worker Registry: %v", err)
@@ -270,7 +270,7 @@ func TestOneOfSevenSameNodeDiTFailuresDoesNotFenceUnrelatedWorkers(t *testing.T)
 		}
 		encoderAssignment := assignH3IntegrationStage(
 			t, database, coordinator, registry, attemptID, encoderRunID, 1,
-			encoderStage, byte(0x80+index),
+			encoderStage, byte(0xa0+index),
 		)
 		encoderAuthority := signedAssignedStageAuthority(t, database, job, encoderAssignment, 2)
 		_ = startH3IntegrationStage(t, database, encoderAssignment, encoderAuthority)
@@ -283,7 +283,7 @@ func TestOneOfSevenSameNodeDiTFailuresDoesNotFenceUnrelatedWorkers(t *testing.T)
 
 		ditAssignment := assignH3IntegrationStage(
 			t, database, coordinator, registry, attemptID, ditRunID, 2,
-			ditStage, byte(0x90+index),
+			ditStage, byte(0xb0+index),
 		)
 		ditAuthority := signedAssignedStageAuthority(t, database, job, ditAssignment, 3)
 		_ = startH3IntegrationStage(t, database, ditAssignment, ditAuthority)
@@ -427,7 +427,7 @@ func runSplitH3StageGraphInEnvironmentWithContentTypes(
 		t, database, serverURL, idempotencyKey,
 	)
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct split H3 Worker Registry: %v", err)

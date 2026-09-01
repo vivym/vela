@@ -187,10 +187,10 @@ func (s *server) CreateRemediationOperation(
 	}
 	created, err := s.remediation.Request(ctx, remediation.Request{
 		OperationID:           uuid.UUID(request.Body.OperationId),
-		WorkerInstanceID:      uuid.UUID(request.Body.WorkerId),
-		WorkerInstanceEpoch:   request.Body.WorkerEpoch,
+		WorkerInstanceID:      uuid.UUID(request.Body.WorkerInstanceId),
+		WorkerInstanceEpoch:   request.Body.WorkerInstanceEpoch,
 		NodeIdentity:          request.Body.NodeIdentity,
-		DeviceIdentity:        request.Body.GpuUuid,
+		DeviceIdentity:        request.Body.DeviceIdentity,
 		FailureClass:          request.Body.FailureClass,
 		EvidenceDigest:        evidence,
 		CertificationRevision: request.Body.CertificationRevision,
@@ -3723,9 +3723,9 @@ func toAPIOrganizationAuditEvent(
 
 func toAPIRemediationOperation(operation remediation.Operation) api.RemediationOperation {
 	result := api.RemediationOperation{
-		OperationId: uuid.UUID(operation.ID), WorkerId: uuid.UUID(operation.WorkerInstanceID),
-		WorkerEpoch: operation.WorkerInstanceEpoch, NodeIdentity: operation.NodeIdentity,
-		GpuUuid: operation.DeviceIdentity, FailureClass: operation.FailureClass,
+		OperationId: uuid.UUID(operation.ID), WorkerInstanceId: uuid.UUID(operation.WorkerInstanceID),
+		WorkerInstanceEpoch: operation.WorkerInstanceEpoch, NodeIdentity: operation.NodeIdentity,
+		DeviceIdentity: operation.DeviceIdentity, FailureClass: operation.FailureClass,
 		EvidenceSha256:        hex.EncodeToString(operation.EvidenceDigest),
 		CertificationRevision: operation.CertificationRevision,
 		ActionLevel:           api.RemediationActionLevel(operation.ActionLevel),

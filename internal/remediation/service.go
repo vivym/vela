@@ -124,6 +124,8 @@ type Operation struct {
 	WorkerInstanceEpoch   int64
 	NodeIdentity          string
 	DeviceIdentity        string
+	DeviceID              uuid.UUID
+	DeviceEpoch           int64
 	FailureClass          string
 	EvidenceDigest        []byte
 	CertificationRevision string
@@ -149,6 +151,8 @@ type operationRow struct {
 	WorkerInstanceEpoch   int64
 	NodeIdentity          string
 	DeviceIdentity        string
+	DeviceID              uuid.UUID
+	DeviceEpoch           int64
 	FailureClass          string
 	EvidenceDigest        []byte
 	CertificationRevision string
@@ -332,13 +336,14 @@ func (s *Service) Get(ctx context.Context, operationID uuid.UUID) (Operation, er
 	var row operationRow
 	err := s.pool.QueryRow(ctx, `
 		SELECT operation_id, worker_instance_id, worker_instance_epoch, node_identity, device_identity,
-				failure_class, evidence_digest, certification_revision, action_level,
+				device_id, device_epoch, failure_class, evidence_digest, certification_revision, action_level,
 			idempotency_key, requested_by, state, requested_at, deadline_at, started_at, finished_at,
 				result_code, result_detail, postcheck_digest, first_approver, second_approver,
 			approved_at
 		FROM vela_get_remediation_operation($1)
 	`, operationID).Scan(
 		&row.ID, &row.WorkerInstanceID, &row.WorkerInstanceEpoch, &row.NodeIdentity, &row.DeviceIdentity,
+		&row.DeviceID, &row.DeviceEpoch,
 		&row.FailureClass, &row.EvidenceDigest, &row.CertificationRevision, &row.ActionLevel,
 		&row.IdempotencyKey, &row.RequestedBy, &row.State, &row.RequestedAt, &row.DeadlineAt,
 		&row.StartedAt, &row.FinishedAt, &row.ResultCode, &row.ResultDetail, &row.PostcheckDigest,
@@ -362,7 +367,7 @@ func (s *Service) ListExecuting(ctx context.Context, limit int) ([]Operation, er
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT operation_id, worker_instance_id, worker_instance_epoch, node_identity, device_identity,
-			failure_class, evidence_digest, certification_revision, action_level,
+			device_id, device_epoch, failure_class, evidence_digest, certification_revision, action_level,
 			idempotency_key, requested_by, state, requested_at, deadline_at, started_at, finished_at,
 			result_code, result_detail, postcheck_digest, first_approver, second_approver,
 			approved_at
@@ -377,6 +382,7 @@ func (s *Service) ListExecuting(ctx context.Context, limit int) ([]Operation, er
 		var row operationRow
 		if err := rows.Scan(
 			&row.ID, &row.WorkerInstanceID, &row.WorkerInstanceEpoch, &row.NodeIdentity, &row.DeviceIdentity,
+			&row.DeviceID, &row.DeviceEpoch,
 			&row.FailureClass, &row.EvidenceDigest, &row.CertificationRevision, &row.ActionLevel,
 			&row.IdempotencyKey, &row.RequestedBy, &row.State, &row.RequestedAt, &row.DeadlineAt,
 			&row.StartedAt, &row.FinishedAt, &row.ResultCode, &row.ResultDetail, &row.PostcheckDigest,
@@ -450,6 +456,7 @@ func operationFromRow(row operationRow) Operation {
 	return Operation{
 		ID: row.ID, WorkerInstanceID: row.WorkerInstanceID, WorkerInstanceEpoch: row.WorkerInstanceEpoch,
 		NodeIdentity: row.NodeIdentity, DeviceIdentity: row.DeviceIdentity,
+		DeviceID: row.DeviceID, DeviceEpoch: row.DeviceEpoch,
 		FailureClass: row.FailureClass, EvidenceDigest: append([]byte(nil), row.EvidenceDigest...),
 		CertificationRevision: row.CertificationRevision, ActionLevel: row.ActionLevel,
 		IdempotencyKey: row.IdempotencyKey, RequestedBy: row.RequestedBy, State: row.State,

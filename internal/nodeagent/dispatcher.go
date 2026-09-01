@@ -193,11 +193,14 @@ func (dispatcher *ExecutionDispatcher) RunOnce(ctx context.Context) (DispatchRes
 			return result, remoteErr
 		}
 		_, executeErr := remote.Execute(ctx, remediation.Plan{
-			OperationID:      operation.ID,
-			ExecutionClaimID: stableExecutionClaimID(operation.ID, dispatcher.actorIdentity),
-			WorkerInstanceID:         operation.WorkerInstanceID,
-			WorkerInstanceEpoch:      operation.WorkerInstanceEpoch, DeadlineAt: operation.DeadlineAt,
-			NodeIdentity: operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
+			OperationID:         operation.ID,
+			ExecutionClaimID:    stableExecutionClaimID(operation.ID, dispatcher.actorIdentity),
+			WorkerInstanceID:    operation.WorkerInstanceID,
+			WorkerInstanceEpoch: operation.WorkerInstanceEpoch,
+			DeviceID:            operation.DeviceID,
+			DeviceEpoch:         operation.DeviceEpoch,
+			DeadlineAt:          operation.DeadlineAt,
+			NodeIdentity:        operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
 			FailureClass: operation.FailureClass,
 			ActionLevel:  operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
 			FailureEvidenceDigest: append([]byte(nil), operation.EvidenceDigest...),

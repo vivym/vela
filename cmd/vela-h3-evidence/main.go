@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	databaseURLEnvironment         = "VELA_H3_EVIDENCE_FLEET_DATABASE_URL"
+	databaseURLEnvironment         = "VELA_H3_EVIDENCE_DATABASE_URL"
 	campaignDatabaseURLEnvironment = "VELA_H3_CAMPAIGN_EVIDENCE_DATABASE_URL"
 	validationEnvironmentKey       = "VELA_H3_EVIDENCE_VALIDATION_ENVIRONMENT"
 	collectorIdentityKey           = "VELA_H3_EVIDENCE_COLLECTOR_IDENTITY"
@@ -116,6 +116,10 @@ func run(arguments []string, getenv func(string) string, stdout, stderr io.Write
 		return 1
 	}
 	defer pool.Close()
+	if err := veladb.VerifyRole(ctx, pool, veladb.RoleH3CampaignEvidence); err != nil {
+		_, _ = fmt.Fprintf(stderr, "verify H3 launch evidence database role: %v\n", err)
+		return 1
+	}
 	registry, err := h3launchevidence.NewPostgresRegistryReader(pool)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "configure Fleet Registry reader: %v\n", err)

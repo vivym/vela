@@ -99,6 +99,8 @@ func TestCatalogAndRateRevisionDefinitionsAreImmutable(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	seedH3ProfileCertification(t, database.Admin)
 
 	for _, test := range []struct {
 		name      string
@@ -180,7 +182,8 @@ func TestJobCannotCommitWithoutRequiredChildRows(t *testing.T) {
 		INSERT INTO jobs (
 			id, organization_id, project_id, created_by_principal_id,
 			model_revision_id, generation_preset_revision_id, service_class_revision_id,
-			output_spec_id, worker_pool_id, request_hash, request_content,
+			output_spec_id, stage_cutover_revision_id, execution_graph_revision_id,
+			stage_execution_profile_revision_id, request_hash, request_content,
 			request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
 			pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
 			pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
@@ -191,7 +194,8 @@ func TestJobCannotCommitWithoutRequiredChildRows(t *testing.T) {
 		SELECT
 			'10000000-0000-0000-0000-000000000090', organization_id, project_id,
 			created_by_principal_id, model_revision_id, generation_preset_revision_id,
-			service_class_revision_id, output_spec_id, worker_pool_id, request_hash,
+			service_class_revision_id, output_spec_id, stage_cutover_revision_id,
+			execution_graph_revision_id, stage_execution_profile_revision_id, request_hash,
 			request_content, request_content_expires_at, pricing_rate_card_revision_id,
 			pricing_rate_line_id, pricing_unit_amount_minor, pricing_quantity,
 			pricing_quoted_amount_minor, pricing_currency, execution_max_attempts,
@@ -205,8 +209,9 @@ func TestJobCannotCommitWithoutRequiredChildRows(t *testing.T) {
 	}
 	err = transaction.Commit()
 	var postgresError *pgconn.PgError
-	if !errors.As(err, &postgresError) || postgresError.Code != "23514" {
-		t.Fatalf("bare Job commit error = %v, want SQLSTATE 23514", err)
+	if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
+		postgresError.ConstraintName != "stage_graph_admission_requires_atomic_instantiation" {
+		t.Fatalf("bare Job commit error = %v, want atomic Stage graph rejection", err)
 	}
 }
 

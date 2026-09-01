@@ -23,6 +23,8 @@ message ExecuteRemediationRequest {
   google.protobuf.Timestamp deadline_at = 9;
   string execution_claim_id = 10;
   string failure_class = 11;
+  string device_id = 12;
+  int64 device_epoch = 13;
 }
 
 message ExecuteRemediationResponse {

@@ -35,6 +35,8 @@ type ExecuteRemediationRequest struct {
 	DeadlineAt            *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=deadline_at,json=deadlineAt,proto3" json:"deadline_at,omitempty"`
 	ExecutionClaimId      string                 `protobuf:"bytes,10,opt,name=execution_claim_id,json=executionClaimId,proto3" json:"execution_claim_id,omitempty"`
 	FailureClass          string                 `protobuf:"bytes,11,opt,name=failure_class,json=failureClass,proto3" json:"failure_class,omitempty"`
+	DeviceId              string                 `protobuf:"bytes,12,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	DeviceEpoch           int64                  `protobuf:"varint,13,opt,name=device_epoch,json=deviceEpoch,proto3" json:"device_epoch,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -146,6 +148,20 @@ func (x *ExecuteRemediationRequest) GetFailureClass() string {
 	return ""
 }
 
+func (x *ExecuteRemediationRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *ExecuteRemediationRequest) GetDeviceEpoch() int64 {
+	if x != nil {
+		return x.DeviceEpoch
+	}
+	return 0
+}
+
 type ExecuteRemediationResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	OperationId     string                 `protobuf:"bytes,1,opt,name=operation_id,json=operationId,proto3" json:"operation_id,omitempty"`
@@ -242,7 +258,7 @@ var File_vela_v1_node_agent_proto protoreflect.FileDescriptor
 
 const file_vela_v1_node_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x18vela/v1/node_agent.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x90\x04\n" +
+	"\x18vela/v1/node_agent.proto\x12\avela.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd0\x04\n" +
 	"\x19ExecuteRemediationRequest\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12,\n" +
 	"\x12worker_instance_id\x18\x02 \x01(\tR\x10workerInstanceId\x122\n" +
@@ -256,7 +272,9 @@ const file_vela_v1_node_agent_proto_rawDesc = "" +
 	"deadlineAt\x12,\n" +
 	"\x12execution_claim_id\x18\n" +
 	" \x01(\tR\x10executionClaimId\x12#\n" +
-	"\rfailure_class\x18\v \x01(\tR\ffailureClass\"\xc2\x02\n" +
+	"\rfailure_class\x18\v \x01(\tR\ffailureClass\x12\x1b\n" +
+	"\tdevice_id\x18\f \x01(\tR\bdeviceId\x12!\n" +
+	"\fdevice_epoch\x18\r \x01(\x03R\vdeviceEpoch\"\xc2\x02\n" +
 	"\x1aExecuteRemediationResponse\x12!\n" +
 	"\foperation_id\x18\x01 \x01(\tR\voperationId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x1f\n" +

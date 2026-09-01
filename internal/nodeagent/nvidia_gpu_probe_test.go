@@ -79,6 +79,9 @@ func TestNVIDIAGPUProbePersistsNodeSessionAndDeviceEpochs(t *testing.T) {
 	writePrivateFixture(t, firstRevision, "0xa2\n")
 	deviceChanged := attestDevices(t, probe, expected)
 	assertDeviceEpochs(t, deviceChanged, 1, 2, map[string]int64{firstUUID: 2, secondUUID: 1})
+	if epoch, ok := store.CurrentDeviceEpoch(firstUUID); !ok || epoch != 2 {
+		t.Fatalf("current Device epoch=%d present=%t want=2,true", epoch, ok)
+	}
 	if deviceChanged[0].NodeAttestationDigest != firstNodeDigest ||
 		deviceChanged[0].DeviceAttestationDigest == firstDeviceDigests[firstUUID] ||
 		deviceChanged[1].DeviceAttestationDigest != firstDeviceDigests[secondUUID] {

@@ -94,8 +94,10 @@ type HostLedger interface {
 type Request struct {
 	OperationID           uuid.UUID
 	ExecutionClaimID      uuid.UUID
-	WorkerInstanceID              uuid.UUID
-	WorkerInstanceEpoch           int64
+	WorkerInstanceID      uuid.UUID
+	WorkerInstanceEpoch   int64
+	DeviceID              uuid.UUID
+	DeviceEpoch           int64
 	NodeIdentity          string
 	DeviceIdentity        string
 	FailureClass          string
@@ -230,12 +232,14 @@ func (server *Server) ExecuteRemediation(
 	executionResult, executionErr := server.executor.Execute(executionContext, remediation.Plan{
 		OperationID:           parsed.OperationID,
 		ExecutionClaimID:      parsed.ExecutionClaimID,
-		WorkerInstanceID:              parsed.WorkerInstanceID,
+		WorkerInstanceID:      parsed.WorkerInstanceID,
+		WorkerInstanceEpoch:   parsed.WorkerInstanceEpoch,
+		DeviceID:              parsed.DeviceID,
+		DeviceEpoch:           parsed.DeviceEpoch,
 		ActionLevel:           parsed.ActionLevel,
 		NodeIdentity:          parsed.NodeIdentity,
 		DeviceIdentity:        parsed.DeviceIdentity,
 		FailureClass:          parsed.FailureClass,
-		WorkerInstanceEpoch:           parsed.WorkerInstanceEpoch,
 		DeadlineAt:            parsed.DeadlineAt,
 		CertificationRevision: parsed.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), parsed.FailureEvidenceDigest...),
@@ -322,7 +326,8 @@ func (client *Client) Execute(ctx context.Context, request Request) (Result, err
 	response, err := client.client.ExecuteRemediation(ctx, &velav1.ExecuteRemediationRequest{
 		OperationId: request.OperationID.String(), WorkerInstanceId: request.WorkerInstanceID.String(),
 		WorkerInstanceEpoch: request.WorkerInstanceEpoch, NodeIdentity: request.NodeIdentity,
-		DeviceIdentity: request.DeviceIdentity, FailureClass: request.FailureClass,
+		DeviceIdentity: request.DeviceIdentity, DeviceId: request.DeviceID.String(),
+		DeviceEpoch: request.DeviceEpoch, FailureClass: request.FailureClass,
 		ActionLevel:           string(request.ActionLevel),
 		CertificationRevision: request.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), request.FailureEvidenceDigest...),
@@ -354,12 +359,18 @@ func parseRequest(
 	if err != nil || workerID == uuid.Nil {
 		return Request{}, time.Time{}, errors.New("node Agent Worker id is invalid")
 	}
+	deviceID, err := uuid.Parse(request.GetDeviceId())
+	if err != nil || deviceID == uuid.Nil {
+		return Request{}, time.Time{}, errors.New("node Agent Device id is invalid")
+	}
 	deadline, err := parseDeadline(request.GetDeadlineAt(), now)
 	if err != nil {
 		return Request{}, time.Time{}, err
 	}
 	parsed := Request{
-		OperationID: operationID, ExecutionClaimID: claimID, WorkerInstanceID: workerID, WorkerInstanceEpoch: request.GetWorkerInstanceEpoch(),
+		OperationID: operationID, ExecutionClaimID: claimID,
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: request.GetWorkerInstanceEpoch(),
+		DeviceID: deviceID, DeviceEpoch: request.GetDeviceEpoch(),
 		NodeIdentity: request.GetNodeIdentity(), DeviceIdentity: request.GetDeviceIdentity(),
 		FailureClass:          request.GetFailureClass(),
 		ActionLevel:           remediation.ActionLevel(request.GetActionLevel()),
@@ -405,7 +416,9 @@ func parseResponse(response *velav1.ExecuteRemediationResponse, operationID uuid
 }
 
 func validateRequest(request Request) error {
-	if request.OperationID == uuid.Nil || request.ExecutionClaimID == uuid.Nil || request.WorkerInstanceID == uuid.Nil || request.WorkerInstanceEpoch <= 0 ||
+	if request.OperationID == uuid.Nil || request.ExecutionClaimID == uuid.Nil ||
+		request.WorkerInstanceID == uuid.Nil || request.WorkerInstanceEpoch <= 0 ||
+		request.DeviceID == uuid.Nil || request.DeviceEpoch <= 0 ||
 		!validText(request.NodeIdentity, maxIdentityText) || !validText(request.DeviceIdentity, maxIdentityText) ||
 		!validText(request.FailureClass, 200) ||
 		!remediation.IsActionLevel(request.ActionLevel) ||
@@ -436,8 +449,10 @@ func hashRequest(request Request) [sha256.Size]byte {
 	canonical := struct {
 		OperationID           string `json:"operation_id"`
 		ExecutionClaimID      string `json:"execution_claim_id"`
-		WorkerInstanceID              string `json:"worker_instance_id"`
-		WorkerInstanceEpoch           int64  `json:"worker_instance_epoch"`
+		WorkerInstanceID      string `json:"worker_instance_id"`
+		WorkerInstanceEpoch   int64  `json:"worker_instance_epoch"`
+		DeviceID              string `json:"device_id"`
+		DeviceEpoch           int64  `json:"device_epoch"`
 		NodeIdentity          string `json:"node_identity"`
 		DeviceIdentity        string `json:"device_identity"`
 		FailureClass          string `json:"failure_class"`
@@ -448,8 +463,10 @@ func hashRequest(request Request) [sha256.Size]byte {
 	}{
 		OperationID:           request.OperationID.String(),
 		ExecutionClaimID:      request.ExecutionClaimID.String(),
-		WorkerInstanceID:              request.WorkerInstanceID.String(),
-		WorkerInstanceEpoch:           request.WorkerInstanceEpoch,
+		WorkerInstanceID:      request.WorkerInstanceID.String(),
+		WorkerInstanceEpoch:   request.WorkerInstanceEpoch,
+		DeviceID:              request.DeviceID.String(),
+		DeviceEpoch:           request.DeviceEpoch,
 		NodeIdentity:          request.NodeIdentity,
 		DeviceIdentity:        request.DeviceIdentity,
 		FailureClass:          request.FailureClass,

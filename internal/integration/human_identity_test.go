@@ -225,6 +225,8 @@ func TestHumanDeveloperCanSubmitJobThroughProductionHTTPPath(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	if _, err := database.Admin.Exec(`
 		INSERT INTO principals (id, organization_id, kind, display_name)
 		VALUES ($1, $2, 'HUMAN', 'Human Developer')
@@ -362,6 +364,8 @@ func TestHumanProjectAdminCanManageWebhooksThroughProductionHTTPPath(t *testing.
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	if _, err := database.Admin.Exec(`
 		INSERT INTO principals (id, organization_id, kind, display_name)
 		VALUES ($1, $2, 'HUMAN', 'Human Project Admin')

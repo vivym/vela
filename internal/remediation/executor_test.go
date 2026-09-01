@@ -38,13 +38,15 @@ func TestAllowlistedExecutorRunsOnlyRegisteredAction(t *testing.T) {
 	}
 	operationID := uuid.New()
 	workerID := uuid.New()
+	deviceID := uuid.New()
 	result, err := executor.Execute(context.Background(), Plan{
-		OperationID: operationID, WorkerInstanceID: workerID,
+		OperationID: operationID, WorkerInstanceID: workerID, DeviceID: deviceID,
 		ActionLevel:           ActionL0ProcessRestart,
 		NodeIdentity:          "node-1",
 		DeviceIdentity:        "gpu-0",
 		FailureClass:          "process_failure",
-		WorkerInstanceEpoch:           3,
+		WorkerInstanceEpoch:   3,
+		DeviceEpoch:           7,
 		CertificationRevision: "matrix-v1",
 	})
 	if err != nil {
@@ -57,11 +59,15 @@ func TestAllowlistedExecutorRunsOnlyRegisteredAction(t *testing.T) {
 	}
 
 	_, err = executor.Execute(context.Background(), Plan{
+		OperationID:           operationID,
+		WorkerInstanceID:      workerID,
+		DeviceID:              deviceID,
 		ActionLevel:           ActionL5NodeReboot,
 		NodeIdentity:          "node-1",
 		DeviceIdentity:        "gpu-0",
 		FailureClass:          "process_failure",
-		WorkerInstanceEpoch:           3,
+		WorkerInstanceEpoch:   3,
+		DeviceEpoch:           7,
 		CertificationRevision: "matrix-v1",
 	})
 	var failure *Failure

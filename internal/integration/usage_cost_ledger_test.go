@@ -20,7 +20,7 @@ func TestUsageCostLedgerIsIdempotentRevaluableAndContentFree(t *testing.T) {
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
 	seedWorkerRegistryPlan(t, database.Admin)
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct Usage/Cost fixture Worker Registry: %v", err)

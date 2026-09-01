@@ -308,6 +308,33 @@ BEGIN
                 E'    IF v_attempt.id IS NULL\n       OR '
             ),
             (
+                'public.vela_authorize_worker_instance_pod_mutation(text,text,fleet_mutation_operation,text,text,text,uuid,bigint,uuid,uuid,uuid,bytea)',
+                E'    IF EXISTS (\n'
+                    || E'        SELECT 1 FROM public.fleet_mutation_authorizations AS receipt\n'
+                    || E'        WHERE receipt.request_uid = p_request_uid\n'
+                    || E'    ) THEN\n'
+                    || E'        RAISE EXCEPTION USING\n'
+                    || E'            ERRCODE = ''55000'',\n'
+                    || E'            CONSTRAINT = ''worker_instance_pod_mutation_authorization_conflict'',\n'
+                    || E'            MESSAGE = ''WorkerInstance Pod mutation request UID conflicts with legacy authorization'';\n'
+                    || E'    END IF;\n',
+                ''
+            ),
+            (
+                'public.vela_authorize_debug_dump(uuid,uuid,uuid,text,bytea,debug_dump_purpose)',
+                E'        FROM public.attempts AS attempt\n'
+                    || E'        WHERE attempt.organization_id = v_organization_id\n'
+                    || E'          AND attempt.project_id = p_project_id\n'
+                    || E'          AND attempt.job_id = p_job_id\n'
+                    || E'          AND attempt.state IN (''ASSIGNED'', ''RUNNING'', ''FINALIZING'')\n',
+                E'        FROM public.stage_attempts AS physical\n'
+                    || E'        JOIN public.attempts AS attempt ON attempt.id = physical.attempt_id\n'
+                    || E'        WHERE physical.organization_id = v_organization_id\n'
+                    || E'          AND physical.project_id = p_project_id\n'
+                    || E'          AND attempt.job_id = p_job_id\n'
+                    || E'          AND physical.state IN (''ASSIGNED'', ''RUNNING'', ''OUTPUT_SEALED'')\n'
+            ),
+            (
                 'vela_private.vela_insert_stage_graph_canceled_event(uuid,timestamptz,bigint)',
                 E'      AND decision.execution_authority_kind = ''STAGE_GRAPH'';\n',
                 E';\n'
@@ -557,6 +584,91 @@ DROP FUNCTION vela_check_worker_pool_normal_queue_bound();
 DROP FUNCTION vela_record_worker_epoch();
 DROP FUNCTION vela_transition_execution_lease_renewal_protocol(boolean, text);
 
+-- The Legacy Scheduler and Scheduler Inbox roles remain only as login
+-- tombstones during credential retirement. They retain no current-schema
+-- authority, and vela-control no longer opens pools for them.
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public
+    FROM vela_scheduler, vela_scheduler_inbox;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public
+    FROM vela_scheduler, vela_scheduler_inbox;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public
+    FROM vela_scheduler, vela_scheduler_inbox;
+REVOKE ALL PRIVILEGES ON SCHEMA public
+    FROM vela_scheduler, vela_scheduler_inbox;
+
+-- WorkerInstance and ModelResidency are Fleet authority. The broad internal
+-- runtime must not be able to mutate resident model or device ownership.
+REVOKE EXECUTE ON FUNCTION vela_observe_worker_instance(jsonb)
+    FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_record_residency_proposal(jsonb)
+    FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_apply_residency_plan(jsonb)
+    FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_worker_instance_authority_matches(
+    uuid, bigint, bytea, bytea, uuid, bigint
+) FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_reconnect_worker_instance(
+    uuid, bigint, bigint, text, timestamptz, text
+) FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_fence_worker_instance(uuid, bigint, text, text)
+    FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_begin_worker_instance_drain(uuid, bigint, text, text)
+    FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_approve_model_residency_release(
+    uuid, uuid, bigint, model_residency_release_reason, text, text,
+    bigint, bigint, bytea
+) FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_complete_model_residency_release(
+    uuid, bigint, bytea, text
+) FROM vela_internal;
+REVOKE EXECUTE ON FUNCTION vela_authorize_worker_instance_pod_mutation(
+    text, text, fleet_mutation_operation, text, text, text,
+    uuid, bigint, uuid, uuid, uuid, bytea
+) FROM vela_internal;
+
+GRANT USAGE ON SCHEMA public TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_observe_worker_instance(jsonb)
+    TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_record_residency_proposal(jsonb)
+    TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_apply_residency_plan(jsonb)
+    TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_worker_instance_authority_matches(
+    uuid, bigint, bytea, bytea, uuid, bigint
+) TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_reconnect_worker_instance(
+    uuid, bigint, bigint, text, timestamptz, text
+) TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_fence_worker_instance(uuid, bigint, text, text)
+    TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_begin_worker_instance_drain(uuid, bigint, text, text)
+    TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_approve_model_residency_release(
+    uuid, uuid, bigint, model_residency_release_reason, text, text,
+    bigint, bigint, bytea
+) TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_complete_model_residency_release(
+    uuid, bigint, bytea, text
+) TO vela_fleet;
+GRANT EXECUTE ON FUNCTION vela_authorize_worker_instance_pod_mutation(
+    text, text, fleet_mutation_operation, text, text, text,
+    uuid, bigint, uuid, uuid, uuid, bytea
+) TO vela_fleet;
+
+-- Launch evidence extends the existing H3 campaign reader with the final
+-- Registry projection required to prove resident model readiness.
+GRANT SELECT ON model_residencies TO vela_h3_campaign_evidence;
+
+-- Debug dump authorization is established before physical Stage execution.
+-- The retention owner needs only the columns required to detect an active
+-- physical attempt; the parent Stage graph Attempt may already exist.
+GRANT SELECT (organization_id, project_id, attempt_id, state)
+    ON stage_attempts TO vela_retention_owner;
+
+-- Stage admission no longer reads RetryRuntimeState through the retired Lease
+-- renewal protocol. Request retains INSERT for admission bookkeeping only.
+REVOKE SELECT ON retry_runtime_states FROM vela_request;
+
 -- Remediation history is preserved. Historical terminal operations retain their
 -- old identity in explicitly named archive columns; all new/active operations
 -- must target a WorkerInstance epoch.
@@ -607,14 +719,21 @@ ALTER TABLE remediation_operations
     ALTER COLUMN legacy_worker_epoch DROP NOT NULL,
     ADD COLUMN worker_instance_id uuid,
     ADD COLUMN worker_instance_epoch bigint CHECK (worker_instance_epoch > 0),
+    ADD COLUMN device_id uuid,
+    ADD COLUMN device_epoch bigint CHECK (device_epoch > 0),
     ADD CONSTRAINT remediation_operations_worker_instance_epoch_fk
         FOREIGN KEY (worker_instance_id, worker_instance_epoch)
         REFERENCES worker_instance_epochs(worker_instance_id, epoch),
+    ADD CONSTRAINT remediation_operations_device_epoch_fk
+        FOREIGN KEY (device_id, device_epoch)
+        REFERENCES devices(id, device_epoch),
     ADD CONSTRAINT remediation_operations_target_shape CHECK (
         (worker_instance_id IS NOT NULL AND worker_instance_epoch IS NOT NULL
+            AND device_id IS NOT NULL AND device_epoch IS NOT NULL
             AND legacy_worker_id IS NULL AND legacy_worker_epoch IS NULL)
         OR
         (worker_instance_id IS NULL AND worker_instance_epoch IS NULL
+            AND device_id IS NULL AND device_epoch IS NULL
             AND legacy_worker_id IS NOT NULL AND legacy_worker_epoch IS NOT NULL
             AND state IN ('SUCCEEDED', 'QUARANTINED'))
     );
@@ -697,6 +816,123 @@ DROP TABLE attempt_leases;
 DROP TABLE worker_epochs;
 DROP TABLE workers;
 DROP TABLE worker_pools;
+
+-- Stage execution was added after the non-content roots. Preserve physical
+-- execution, cache, usage, and finalization evidence after live Job/Attempt
+-- metadata expiry by binding every later foreign key to the immutable roots.
+ALTER TABLE non_content_attempt_roots
+    ADD CONSTRAINT non_content_attempt_roots_job_id_id_key UNIQUE (job_id, id);
+
+ALTER TABLE attempt_coordinator_commands
+    DROP CONSTRAINT attempt_coordinator_commands_attempt_id_fkey,
+    DROP CONSTRAINT attempt_coordinator_commands_job_id_fkey,
+    ADD CONSTRAINT attempt_coordinator_commands_attempt_id_fkey
+        FOREIGN KEY (attempt_id) REFERENCES non_content_attempt_roots(id),
+    ADD CONSTRAINT attempt_coordinator_commands_job_id_fkey
+        FOREIGN KEY (job_id) REFERENCES non_content_job_roots(id);
+ALTER TABLE attempt_retry_budgets
+    DROP CONSTRAINT attempt_retry_budgets_attempt_id_fkey,
+    ADD CONSTRAINT attempt_retry_budgets_attempt_id_fkey
+        FOREIGN KEY (attempt_id) REFERENCES non_content_attempt_roots(id);
+ALTER TABLE edge_buffer_credits
+    DROP CONSTRAINT edge_buffer_credits_attempt_id_fkey,
+    ADD CONSTRAINT edge_buffer_credits_attempt_id_fkey
+        FOREIGN KEY (attempt_id) REFERENCES non_content_attempt_roots(id);
+ALTER TABLE job_cancellation_decisions
+    DROP CONSTRAINT job_cancellation_decisions_stage_graph_attempt_fk,
+    ADD CONSTRAINT job_cancellation_decisions_stage_graph_attempt_fk
+        FOREIGN KEY (organization_id, project_id, stage_graph_attempt_id)
+        REFERENCES non_content_attempt_roots(organization_id, project_id, id);
+ALTER TABLE execution_graph_snapshots
+    DROP CONSTRAINT execution_graph_snapshots_organization_id_project_id_job_i_fkey,
+    ADD CONSTRAINT execution_graph_snapshots_organization_id_project_id_job_i_fkey
+        FOREIGN KEY (organization_id, project_id, job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id);
+ALTER TABLE resource_usage_records
+    DROP CONSTRAINT resource_usage_records_organization_id_project_id_job_id_fkey,
+    DROP CONSTRAINT resource_usage_records_organization_id_project_id_attempt__fkey,
+    DROP CONSTRAINT resource_usage_records_job_id_attempt_id_fkey,
+    ADD CONSTRAINT resource_usage_records_organization_id_project_id_job_id_fkey
+        FOREIGN KEY (organization_id, project_id, job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id),
+    ADD CONSTRAINT resource_usage_records_organization_id_project_id_attempt__fkey
+        FOREIGN KEY (organization_id, project_id, attempt_id)
+        REFERENCES non_content_attempt_roots(organization_id, project_id, id),
+    ADD CONSTRAINT resource_usage_records_job_id_attempt_id_fkey
+        FOREIGN KEY (job_id, attempt_id)
+        REFERENCES non_content_attempt_roots(job_id, id);
+ALTER TABLE stage_artifact_pins
+    DROP CONSTRAINT stage_artifact_pins_owner_job_id_fkey,
+    ADD CONSTRAINT stage_artifact_pins_owner_job_id_fkey
+        FOREIGN KEY (owner_job_id) REFERENCES non_content_job_roots(id);
+ALTER TABLE stage_artifacts
+    DROP CONSTRAINT stage_artifacts_organization_id_project_id_job_id_fkey,
+    DROP CONSTRAINT stage_artifacts_organization_id_project_id_attempt_id_fkey,
+    ADD CONSTRAINT stage_artifacts_organization_id_project_id_job_id_fkey
+        FOREIGN KEY (organization_id, project_id, job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id),
+    ADD CONSTRAINT stage_artifacts_organization_id_project_id_attempt_id_fkey
+        FOREIGN KEY (organization_id, project_id, attempt_id)
+        REFERENCES non_content_attempt_roots(organization_id, project_id, id);
+ALTER TABLE stage_attempts
+    DROP CONSTRAINT stage_attempts_organization_id_project_id_attempt_id_fkey,
+    ADD CONSTRAINT stage_attempts_organization_id_project_id_attempt_id_fkey
+        FOREIGN KEY (organization_id, project_id, attempt_id)
+        REFERENCES non_content_attempt_roots(organization_id, project_id, id);
+ALTER TABLE stage_cache_entries
+    DROP CONSTRAINT stage_cache_entries_organization_id_source_project_id_sour_fkey,
+    ADD CONSTRAINT stage_cache_entries_organization_id_source_project_id_sour_fkey
+        FOREIGN KEY (organization_id, source_project_id, source_job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id);
+ALTER TABLE stage_cache_references
+    DROP CONSTRAINT stage_cache_references_owner_job_id_fkey,
+    ADD CONSTRAINT stage_cache_references_owner_job_id_fkey
+        FOREIGN KEY (owner_job_id) REFERENCES non_content_job_roots(id);
+ALTER TABLE stage_graph_finalization_claims
+    DROP CONSTRAINT stage_graph_finalization_clai_organization_id_project_id_j_fkey,
+    DROP CONSTRAINT stage_graph_finalization_clai_organization_id_project_id_a_fkey,
+    ADD CONSTRAINT stage_graph_finalization_clai_organization_id_project_id_j_fkey
+        FOREIGN KEY (organization_id, project_id, job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id),
+    ADD CONSTRAINT stage_graph_finalization_clai_organization_id_project_id_a_fkey
+        FOREIGN KEY (organization_id, project_id, attempt_id)
+        REFERENCES non_content_attempt_roots(organization_id, project_id, id);
+ALTER TABLE stage_graph_instantiation_work
+    DROP CONSTRAINT stage_graph_instantiation_wor_organization_id_project_id_j_fkey,
+    ADD CONSTRAINT stage_graph_instantiation_wor_organization_id_project_id_j_fkey
+        FOREIGN KEY (organization_id, project_id, job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id);
+ALTER TABLE stage_materialization_leases
+    DROP CONSTRAINT stage_materialization_leases_organization_id_project_id_jo_fkey,
+    DROP CONSTRAINT stage_materialization_leases_organization_id_project_id_at_fkey,
+    ADD CONSTRAINT stage_materialization_leases_organization_id_project_id_jo_fkey
+        FOREIGN KEY (organization_id, project_id, job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id),
+    ADD CONSTRAINT stage_materialization_leases_organization_id_project_id_at_fkey
+        FOREIGN KEY (organization_id, project_id, attempt_id)
+        REFERENCES non_content_attempt_roots(organization_id, project_id, id);
+ALTER TABLE stage_run_output_bindings
+    DROP CONSTRAINT stage_run_output_bindings_organization_id_project_id_job_i_fkey,
+    DROP CONSTRAINT stage_run_output_bindings_organization_id_project_id_attem_fkey,
+    ADD CONSTRAINT stage_run_output_bindings_organization_id_project_id_job_i_fkey
+        FOREIGN KEY (organization_id, project_id, job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id),
+    ADD CONSTRAINT stage_run_output_bindings_organization_id_project_id_attem_fkey
+        FOREIGN KEY (organization_id, project_id, attempt_id)
+        REFERENCES non_content_attempt_roots(organization_id, project_id, id);
+ALTER TABLE stage_runs
+    DROP CONSTRAINT stage_runs_organization_id_project_id_attempt_id_fkey,
+    ADD CONSTRAINT stage_runs_organization_id_project_id_attempt_id_fkey
+        FOREIGN KEY (organization_id, project_id, attempt_id)
+        REFERENCES non_content_attempt_roots(organization_id, project_id, id);
+ALTER TABLE stage_storage_reservations
+    DROP CONSTRAINT stage_storage_reservations_organization_id_project_id_job__fkey,
+    DROP CONSTRAINT stage_storage_reservations_attempt_id_fkey,
+    ADD CONSTRAINT stage_storage_reservations_organization_id_project_id_job__fkey
+        FOREIGN KEY (organization_id, project_id, job_id)
+        REFERENCES non_content_job_roots(organization_id, project_id, id),
+    ADD CONSTRAINT stage_storage_reservations_attempt_id_fkey
+        FOREIGN KEY (attempt_id) REFERENCES non_content_attempt_roots(id);
 
 DROP TYPE execution_authority_kind;
 DROP TYPE worker_profile_readiness_state;
@@ -789,6 +1025,8 @@ BEGIN
         OR NEW.legacy_worker_epoch IS DISTINCT FROM OLD.legacy_worker_epoch
         OR NEW.worker_instance_id IS DISTINCT FROM OLD.worker_instance_id
         OR NEW.worker_instance_epoch IS DISTINCT FROM OLD.worker_instance_epoch
+        OR NEW.device_id IS DISTINCT FROM OLD.device_id
+        OR NEW.device_epoch IS DISTINCT FROM OLD.device_epoch
         OR NEW.node_identity IS DISTINCT FROM OLD.node_identity
         OR NEW.device_identity IS DISTINCT FROM OLD.device_identity
         OR NEW.failure_class IS DISTINCT FROM OLD.failure_class
@@ -895,6 +1133,23 @@ ALTER FUNCTION vela_fence_remediation_target(uuid, bigint, text, text)
 REVOKE ALL ON FUNCTION vela_fence_remediation_target(uuid, bigint, text, text)
     FROM PUBLIC;
 
+-- The SECURITY DEFINER request function resolves an immutable Device binding.
+-- Grant its owner only the Fleet columns required for that join; the runtime
+-- login retains no direct access to these relations.
+GRANT SELECT (
+    device_id, device_epoch, device_set_id,
+    worker_instance_id, worker_instance_epoch
+) ON active_device_bindings TO vela_remediation_owner;
+GRANT SELECT (id, device_epoch, compute_node_id, gpu_uuid)
+    ON devices TO vela_remediation_owner;
+GRANT SELECT (
+    worker_instance_id, worker_member_id, device_set_id, device_id, device_epoch
+) ON worker_member_devices TO vela_remediation_owner;
+GRANT SELECT (id, worker_instance_id, worker_instance_epoch, compute_node_id)
+    ON worker_members TO vela_remediation_owner;
+GRANT SELECT (id, node_identity)
+    ON compute_nodes TO vela_remediation_owner;
+
 CREATE FUNCTION vela_request_remediation(
     p_operation_id uuid,
     p_worker_instance_id uuid,
@@ -923,6 +1178,8 @@ AS $$
 DECLARE
     v_worker public.worker_instances%ROWTYPE;
     v_existing public.remediation_operations%ROWTYPE;
+    v_device_id uuid;
+    v_device_epoch bigint;
     v_state remediation_operation_state;
     v_now timestamptz := clock_timestamp();
     v_deadline timestamptz;
@@ -979,18 +1236,41 @@ BEGIN
         RETURN;
     END IF;
     IF v_worker.instance_epoch <> p_worker_instance_epoch
-       OR v_worker.lifecycle_state IN ('FENCED', 'RETIRED')
-       OR NOT EXISTS (
-            SELECT 1
-            FROM public.worker_members AS member
-            JOIN public.compute_nodes AS node ON node.id = member.compute_node_id
-            WHERE member.worker_instance_id = p_worker_instance_id
-              AND member.worker_instance_epoch = p_worker_instance_epoch
-              AND node.node_identity = p_node_identity
-       ) THEN
+       OR v_worker.lifecycle_state IN ('FENCED', 'RETIRED') THEN
         RAISE EXCEPTION 'Remediation WorkerInstance identity or epoch does not match current authority'
             USING ERRCODE = 'P0001',
                   CONSTRAINT = 'remediation_worker_instance_identity_mismatch';
+    END IF;
+    SELECT binding.device_id, binding.device_epoch
+    INTO v_device_id, v_device_epoch
+    FROM public.active_device_bindings AS binding
+    JOIN public.devices AS device
+      ON device.id = binding.device_id
+     AND device.device_epoch = binding.device_epoch
+    JOIN public.worker_member_devices AS member_device
+      ON member_device.worker_instance_id = binding.worker_instance_id
+     AND member_device.device_set_id = binding.device_set_id
+     AND member_device.device_id = binding.device_id
+     AND member_device.device_epoch = binding.device_epoch
+    JOIN public.worker_members AS member
+      ON member.worker_instance_id = member_device.worker_instance_id
+     AND member.id = member_device.worker_member_id
+     AND member.worker_instance_epoch = binding.worker_instance_epoch
+    JOIN public.compute_nodes AS node
+      ON node.id = member.compute_node_id
+     AND node.id = device.compute_node_id
+    WHERE binding.worker_instance_id = p_worker_instance_id
+      AND binding.worker_instance_epoch = p_worker_instance_epoch
+      AND binding.device_set_id = v_worker.device_set_id
+      AND node.node_identity = p_node_identity
+      AND (
+          device.gpu_uuid = p_device_identity
+          OR (device.gpu_uuid IS NULL AND device.id::text = p_device_identity)
+      );
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Remediation device does not belong to the current WorkerInstance authority'
+            USING ERRCODE = 'P0001',
+                  CONSTRAINT = 'remediation_worker_instance_device_mismatch';
     END IF;
     IF EXISTS (
         SELECT 1 FROM public.remediation_operations AS operation
@@ -1018,13 +1298,13 @@ BEGIN
     END IF;
     INSERT INTO public.remediation_operations (
         id, worker_instance_id, worker_instance_epoch,
-        node_identity, device_identity, failure_class,
+        device_id, device_epoch, node_identity, device_identity, failure_class,
         evidence_digest, certification_revision, action_level, idempotency_key,
         requested_by, state, requested_at, deadline_at,
         started_at, finished_at, result_code
     ) VALUES (
         p_operation_id, p_worker_instance_id, p_worker_instance_epoch,
-        p_node_identity, p_device_identity, p_failure_class,
+        v_device_id, v_device_epoch, p_node_identity, p_device_identity, p_failure_class,
         p_evidence_digest, p_certification_revision, p_action_level,
         p_idempotency_key, p_requested_by, v_state, v_now, v_deadline,
         CASE WHEN v_state = 'QUARANTINED' THEN v_now END,
@@ -1479,12 +1759,6 @@ BEGIN
     END IF;
     IF p_success THEN
         v_final_state := 'SUCCEEDED';
-        UPDATE public.worker_instances AS worker
-        SET lifecycle_state = 'READY',
-            reachability_state = 'CONNECTED',
-            observed_at = v_now,
-            observed_by = p_actor_identity
-        WHERE worker.id = p_worker_instance_id;
     ELSE
         v_final_state := 'QUARANTINED';
     END IF;
@@ -1495,12 +1769,17 @@ BEGIN
         result_detail = p_result_detail,
         postcheck_digest = p_postcheck_digest
     WHERE id = p_operation_id;
-    IF NOT p_success THEN
-        PERFORM public.vela_fence_remediation_target(
-            p_worker_instance_id, p_worker_instance_epoch,
-            v_result_code, p_actor_identity
-        );
-    END IF;
+    -- A successful host action does not recertify the model runtime, DeviceSet,
+    -- or membership. Advance/fence the old authority in every terminal path;
+    -- Fleet must observe a fresh epoch before StageScheduler can assign work.
+    PERFORM public.vela_fence_remediation_target(
+        p_worker_instance_id, p_worker_instance_epoch,
+        CASE WHEN p_success
+            THEN 'REMEDIATION_RECERTIFICATION_REQUIRED:' || p_operation_id::text
+            ELSE v_result_code
+        END,
+        p_actor_identity
+    );
     SELECT COALESCE(max(sequence), 0) + 1 INTO v_sequence
     FROM public.remediation_operation_events AS event
     WHERE event.operation_id = p_operation_id;
@@ -1510,10 +1789,8 @@ BEGIN
     );
     RETURN QUERY SELECT p_operation_id, false, v_final_state,
         v_operation.action_level,
-        CASE WHEN p_success THEN 'READY'::worker_instance_lifecycle_state
-             ELSE 'FENCED'::worker_instance_lifecycle_state END,
-        CASE WHEN p_success THEN 'CONNECTED'::worker_instance_reachability_state
-             ELSE 'UNREACHABLE'::worker_instance_reachability_state END,
+        'FENCED'::worker_instance_lifecycle_state,
+        'UNREACHABLE'::worker_instance_reachability_state,
         v_result_code;
 END
 $$;
@@ -1608,6 +1885,8 @@ RETURNS TABLE (
     worker_instance_epoch bigint,
     node_identity text,
     device_identity text,
+    device_id uuid,
+    device_epoch bigint,
     failure_class text,
     evidence_digest bytea,
     certification_revision text,
@@ -1632,7 +1911,8 @@ SET search_path = pg_catalog, public
 AS $$
     SELECT operation.id, operation.worker_instance_id,
         operation.worker_instance_epoch, operation.node_identity,
-        operation.device_identity, operation.failure_class,
+        operation.device_identity, operation.device_id, operation.device_epoch,
+        operation.failure_class,
         operation.evidence_digest, operation.certification_revision,
         operation.action_level, operation.idempotency_key,
         operation.requested_by, operation.state, operation.requested_at,
@@ -1652,6 +1932,8 @@ RETURNS TABLE (
     worker_instance_epoch bigint,
     node_identity text,
     device_identity text,
+    device_id uuid,
+    device_epoch bigint,
     failure_class text,
     evidence_digest bytea,
     certification_revision text,
@@ -1682,7 +1964,8 @@ BEGIN
     RETURN QUERY
     SELECT operation.id, operation.worker_instance_id,
         operation.worker_instance_epoch, operation.node_identity,
-        operation.device_identity, operation.failure_class,
+        operation.device_identity, operation.device_id, operation.device_epoch,
+        operation.failure_class,
         operation.evidence_digest, operation.certification_revision,
         operation.action_level, operation.idempotency_key,
         operation.requested_by, operation.state, operation.requested_at,
@@ -1758,14 +2041,27 @@ GRANT SELECT ON worker_instance_epochs, worker_members, compute_nodes, stage_lea
 CREATE FUNCTION vela_reject_job_snapshot_mutation() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    v_content_tombstoned boolean;
 BEGIN
+
+    v_content_tombstoned :=
+        current_user = 'vela_retention_owner'
+        AND OLD.request_content_deleted_at IS NULL
+        AND NEW.request_content_deleted_at IS NOT NULL
+        AND NEW.request_content = '{"deleted":true}'::jsonb;
+
     IF ROW(
         NEW.organization_id, NEW.project_id, NEW.created_by_principal_id,
         NEW.model_revision_id, NEW.generation_preset_revision_id,
         NEW.service_class_revision_id, NEW.output_spec_id,
         NEW.stage_cutover_revision_id, NEW.execution_graph_revision_id,
         NEW.stage_execution_profile_revision_id, NEW.request_hash,
-        NEW.request_content, NEW.request_content_expires_at,
+        NEW.request_content_expires_at,
+        NEW.retention_policy_revision_id, NEW.retention_artifact_days,
+        NEW.retention_request_content_days, NEW.retention_incomplete_content_hours,
+        NEW.retention_scratch_hours, NEW.retention_debug_hours,
+        NEW.retention_metadata_days, NEW.retention_financial_days,
         NEW.pricing_rate_card_revision_id, NEW.pricing_rate_line_id,
         NEW.pricing_unit_amount_minor, NEW.pricing_quantity,
         NEW.pricing_quoted_amount_minor, NEW.pricing_currency,
@@ -1777,18 +2073,29 @@ BEGIN
     ) IS DISTINCT FROM ROW(
         OLD.organization_id, OLD.project_id, OLD.created_by_principal_id,
         OLD.model_revision_id, OLD.generation_preset_revision_id,
+
         OLD.service_class_revision_id, OLD.output_spec_id,
         OLD.stage_cutover_revision_id, OLD.execution_graph_revision_id,
         OLD.stage_execution_profile_revision_id, OLD.request_hash,
-        OLD.request_content, OLD.request_content_expires_at,
+        OLD.request_content_expires_at,
+        OLD.retention_policy_revision_id, OLD.retention_artifact_days,
+        OLD.retention_request_content_days, OLD.retention_incomplete_content_hours,
+        OLD.retention_scratch_hours, OLD.retention_debug_hours,
+        OLD.retention_metadata_days, OLD.retention_financial_days,
         OLD.pricing_rate_card_revision_id, OLD.pricing_rate_line_id,
         OLD.pricing_unit_amount_minor, OLD.pricing_quantity,
         OLD.pricing_quoted_amount_minor, OLD.pricing_currency,
         OLD.execution_max_attempts, OLD.execution_max_total_compute_seconds,
         OLD.execution_max_finalization_seconds_per_attempt,
+
         OLD.execution_retry_backoff_policy,
         OLD.execution_retryable_failure_classes,
         OLD.execution_circuit_breaker_policy, OLD.job_expires_at
+    )
+    OR (NEW.request_content IS DISTINCT FROM OLD.request_content AND NOT v_content_tombstoned)
+    OR (
+        NEW.request_content_deleted_at IS DISTINCT FROM OLD.request_content_deleted_at
+        AND NOT v_content_tombstoned
     ) THEN
         RAISE EXCEPTION 'immutable Job snapshot fields cannot be changed';
     END IF;
@@ -1828,6 +2135,13 @@ LANGUAGE plpgsql
 SET search_path = pg_catalog
 AS $$
 BEGIN
+    IF TG_OP = 'DELETE'
+       AND current_user = 'vela_non_content_expiry_owner'
+       AND current_setting('vela.non_content_expiry_kind', true) = 'JOB_METADATA'
+       AND current_setting('vela.non_content_expiry_source_id', true) = OLD.job_id::text
+    THEN
+        RETURN OLD;
+    END IF;
     IF current_user <> 'vela_attempt_coordinator_owner' THEN
         RAISE EXCEPTION USING
             ERRCODE = '42501',

@@ -59,12 +59,16 @@ An absent or invalid capability, fence, rate-limit, or post-check configuration
 causes startup failure or a fail-closed operation result.
 
 The capability matrix is keyed by canonical NVIDIA GPU UUID. Each entry binds
-that UUID to one lowercase canonical PCI BDF, one certification revision, an
-explicit failure-class set, and an explicit L0-L5 action set. For example:
+that UUID to one authoritative Device ID and epoch, one lowercase canonical PCI
+BDF, one certification revision, an explicit failure-class set, and an explicit
+L0-L5 action set. The Device authority must match the current Fleet observation;
+a stale epoch fails closed. For example:
 
 ```json
 {
   "GPU-00000000-0000-0000-0000-000000000001": {
+    "device_id": "49440000-0000-0000-0000-000000000003",
+    "device_epoch": 1,
     "certification_revision": "gpu-remediation-matrix-v1",
     "pci_bdf": "0000:41:00.0",
     "failure_classes": ["PROCESS_FAILURE"],

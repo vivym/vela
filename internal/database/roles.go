@@ -32,8 +32,6 @@ const (
 	RoleInternal                   Role = "vela_internal"
 	RoleCancel                     Role = "vela_cancel"
 	RoleArtifactRequest            Role = "vela_artifact_request"
-	RoleScheduler                  Role = "vela_scheduler"
-	RoleSchedulerInbox             Role = "vela_scheduler_inbox"
 	RoleBilling                    Role = "vela_billing"
 	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
 	RoleCompliance                 Role = "vela_compliance"
@@ -83,8 +81,6 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleInternal:                   {requiresBypassRLS: true},
 	RoleCancel:                     {verifyPrivileges: verifyCancelPrivileges},
 	RoleArtifactRequest:            {verifyPrivileges: verifyArtifactRequestPrivileges},
-	RoleScheduler:                  {verifyPrivileges: verifySchedulerPrivileges},
-	RoleSchedulerInbox:             {verifyPrivileges: verifySchedulerInboxPrivileges},
 	RoleBilling:                    {verifyPrivileges: verifyBillingPrivileges},
 	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
 	RoleCompliance:                 {verifyPrivileges: verifyCompliancePrivileges},
@@ -227,19 +223,18 @@ func databaseFunctionExists(
 	return exists, nil
 }
 
-func verifySchedulerPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
-	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
-		inspectionLabel: "Scheduler",
-		failureLabel:    "Scheduler transaction",
-		functions: []string{
-			"vela_list_schedulable_worker_pools()",
-			"vela_claim_scheduler_dispatch(uuid,text,integer)",
-			"vela_abandon_scheduler_dispatch(uuid,text,text)",
-			"vela_reconcile_expired_scheduler_dispatches()",
-			"vela_predict_admission_capacity(uuid,uuid,uuid,uuid,uuid,integer)",
-			"vela_predict_job_dynamic_eta(uuid)",
-		},
-	})
+func databaseRelationExists(
+	ctx context.Context,
+	database rowQuerier,
+	relation string,
+) (bool, error) {
+	var exists bool
+	if err := database.QueryRow(ctx, `
+		SELECT to_regclass($1) IS NOT NULL
+	`, relation).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func verifyAttemptCoordinatorPrivileges(
@@ -377,6 +372,13 @@ func verifyH3CampaignEvidencePrivileges(
 		"worker_member_devices",
 		"worker_members",
 	}
+	legacyWorkersPresent, err := databaseRelationExists(ctx, database, "public.workers")
+	if err != nil {
+		return fmt.Errorf("inspect H3 campaign evidence Legacy Worker surface: %w", err)
+	}
+	if !legacyWorkersPresent {
+		relations = append(relations, "model_residencies")
+	}
 	tables := make([]relationPrivilege, 0, len(relations))
 	for _, relation := range relations {
 		tables = append(tables, relationPrivilege{Relation: relation, Privilege: "SELECT"})
@@ -385,17 +387,6 @@ func verifyH3CampaignEvidencePrivileges(
 		inspectionLabel: "H3 campaign evidence",
 		failureLabel:    "H3 campaign evidence read-only capture",
 		tables:          tables,
-	})
-}
-
-func verifySchedulerInboxPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
-	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
-		inspectionLabel: "Scheduler Inbox",
-		failureLabel:    "Scheduler Inbox receipt",
-		functions: []string{
-			"vela_prepare_scheduler_inbox_receipt(uuid,uuid,uuid,uuid,bigint)",
-			"vela_record_scheduler_inbox_receipt(uuid,uuid,uuid,uuid,bigint)",
-		},
 	})
 }
 
@@ -596,21 +587,16 @@ func verifyFleetPrivileges(ctx context.Context, database rowQuerier, currentUser
 		inspectionLabel: "Fleet",
 		failureLabel:    "Fleet transaction",
 		functions: []string{
-			"vela_resolve_worker_identity(text,uuid,text,text,text)",
-			"vela_configure_worker_pool_capacity(uuid,text,bigint,bigint,bigint,bigint,bigint,bigint,text)",
-			"vela_observe_worker_capacity(uuid,uuid,bigint,bigint,timestamp with time zone,fleet_scratch_watermark_state,bigint,bigint,bigint,bigint,bigint,boolean,text)",
-			"vela_get_worker_pool_capacity(uuid)",
-			"vela_begin_worker_readiness(uuid,uuid,uuid,bigint,text,uuid,text,text,timestamptz)",
-			"vela_report_worker_readiness(uuid,fleet_readiness_check,boolean,bytea,text)",
-			"vela_get_worker_readiness(uuid)",
-			"vela_get_worker_readiness_work(uuid,bigint)",
-			"vela_request_worker_drain(uuid,uuid,bigint,text,timestamptz,text)",
-			"vela_reconcile_worker_drain(uuid,text)",
-			"vela_get_worker_drain(uuid)",
-			"vela_authorize_fleet_mutation(text,text,fleet_protected_resource_kind,fleet_mutation_operation,text,text,text,uuid,uuid,bigint,uuid[],bytea)",
-			"vela_has_fleet_retirement_authorization(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[])",
-			"vela_record_fleet_retirement_completion(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[],text)",
-			"vela_has_fleet_retirement_completion(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[])",
+			"vela_observe_worker_instance(jsonb)",
+			"vela_record_residency_proposal(jsonb)",
+			"vela_apply_residency_plan(jsonb)",
+			"vela_worker_instance_authority_matches(uuid,bigint,bytea,bytea,uuid,bigint)",
+			"vela_reconnect_worker_instance(uuid,bigint,bigint,text,timestamp with time zone,text)",
+			"vela_fence_worker_instance(uuid,bigint,text,text)",
+			"vela_begin_worker_instance_drain(uuid,bigint,text,text)",
+			"vela_approve_model_residency_release(uuid,uuid,bigint,model_residency_release_reason,text,text,bigint,bigint,bytea)",
+			"vela_complete_model_residency_release(uuid,bigint,bytea,text)",
+			"vela_authorize_worker_instance_pod_mutation(text,text,fleet_mutation_operation,text,text,text,uuid,bigint,uuid,uuid,uuid,bytea)",
 		},
 	})
 }
@@ -1089,7 +1075,6 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 		inspectionLabel: "request",
 		failureLabel:    "request transaction",
 		tables: []relationPrivilege{
-			{Relation: "worker_pools", Privilege: "SELECT"},
 			{Relation: "customer_organizations", Privilege: "SELECT"},
 			{Relation: "projects", Privilege: "SELECT"},
 			{Relation: "principals", Privilege: "SELECT"},
@@ -1099,7 +1084,6 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			{Relation: "credit_reservations", Privilege: "SELECT"},
 			{Relation: "idempotency_results", Privilege: "SELECT"},
 			{Relation: "outbox_events", Privilege: "SELECT"},
-			{Relation: "vela_request_execution_lease_renewal_protocol", Privilege: "SELECT"},
 			{Relation: "vela_request_job_runtime", Privilege: "SELECT"},
 			{Relation: "vela_request_job_progress", Privilege: "SELECT"},
 			{Relation: "jobs", Privilege: "INSERT"},
@@ -1109,7 +1093,6 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			{Relation: "outbox_events", Privilege: "INSERT"},
 		},
 		columns: []columnPrivilege{
-			{Relation: "worker_pools", Column: "queued_count", Privilege: "UPDATE"},
 			{Relation: "projects", Column: "queued_count", Privilege: "UPDATE"},
 			{Relation: "projects", Column: "running_count", Privilege: "UPDATE"},
 			{Relation: "organization_credit_accounts", Column: "reserved_minor", Privilege: "UPDATE"},
@@ -1123,35 +1106,60 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			"vela_current_request_scope()",
 			"vela_set_request_context(uuid,bytea,text)",
 			"vela_resolve_active_sku(text,text,text,text)",
-			"vela_lock_compatible_pool(uuid,uuid,uuid)",
 		},
 	}
-	stageRoutePrivilegesPresent, err := databaseFunctionExists(
-		ctx,
-		database,
-		"vela_resolve_job_execution_route(uuid,uuid,uuid)",
-	)
+	legacyWorkerPoolsPresent, err := databaseRelationExists(ctx, database, "public.worker_pools")
 	if err != nil {
-		return fmt.Errorf("inspect request Stage route surface: %w", err)
+		return fmt.Errorf("inspect request Legacy WorkerPool surface: %w", err)
 	}
-	if stageRoutePrivilegesPresent {
-		boundary.functions = append(boundary.functions,
-			"vela_resolve_job_execution_route(uuid,uuid,uuid)",
-			"vela_lock_stage_graph_ready_capacity_path(uuid,uuid)",
-			"vela_instantiate_admitted_stage_graph(uuid,uuid,uuid)",
+	if legacyWorkerPoolsPresent {
+		boundary.tables = append(boundary.tables,
+			relationPrivilege{Relation: "worker_pools", Privilege: "SELECT"},
+		)
+		boundary.columns = append(boundary.columns,
+			columnPrivilege{Relation: "worker_pools", Column: "queued_count", Privilege: "UPDATE"},
 		)
 	}
-	var leaseRenewalProtocolEnabled bool
-	if err := database.QueryRow(ctx, `
-		SELECT enabled FROM vela_request_execution_lease_renewal_protocol
-	`).Scan(&leaseRenewalProtocolEnabled); err != nil {
-		return fmt.Errorf("inspect request execution Lease renewal protocol: %w", err)
+	for _, function := range []string{
+		"vela_lock_compatible_pool(uuid,uuid,uuid)",
+		"vela_resolve_job_execution_route(uuid,uuid,uuid)",
+		"vela_resolve_stage_job_execution_route(uuid,uuid,uuid)",
+		"vela_lock_stage_graph_ready_capacity_path(uuid,uuid)",
+		"vela_instantiate_admitted_stage_graph(uuid,uuid,uuid)",
+	} {
+		present, err := databaseFunctionExists(ctx, database, function)
+		if err != nil {
+			return fmt.Errorf("inspect request execution route function %s: %w", function, err)
+		}
+		if present {
+			boundary.functions = append(boundary.functions, function)
+		}
 	}
-	if !leaseRenewalProtocolEnabled {
+	leaseProtocolPresent, err := databaseRelationExists(
+		ctx,
+		database,
+		"public.vela_request_execution_lease_renewal_protocol",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect request execution Lease renewal protocol surface: %w", err)
+	}
+	if leaseProtocolPresent {
 		boundary.tables = append(boundary.tables, relationPrivilege{
-			Relation:  "retry_runtime_states",
+			Relation:  "vela_request_execution_lease_renewal_protocol",
 			Privilege: "SELECT",
 		})
+		var leaseRenewalProtocolEnabled bool
+		if err := database.QueryRow(ctx, `
+			SELECT enabled FROM vela_request_execution_lease_renewal_protocol
+		`).Scan(&leaseRenewalProtocolEnabled); err != nil {
+			return fmt.Errorf("inspect request execution Lease renewal protocol: %w", err)
+		}
+		if !leaseRenewalProtocolEnabled {
+			boundary.tables = append(boundary.tables, relationPrivilege{
+				Relation:  "retry_runtime_states",
+				Privilege: "SELECT",
+			})
+		}
 	}
 	return verifyExactPrivileges(ctx, database, currentUser, boundary)
 }

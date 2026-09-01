@@ -1062,7 +1062,7 @@ func TestAttemptCoordinatorPhysicalStageLifecycleIsIdempotent(t *testing.T) {
 	}
 	evidence := workerRegistryEvidenceValue(t, workerID, 0x31)
 	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
-	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
 	registry, err := fleet.NewService(fleetPool)
 	if err != nil {
 		t.Fatalf("construct Worker Registry: %v", err)
@@ -1508,7 +1508,7 @@ func TestAttemptCoordinatorCacheProgressAndStageRetryPreserveUpstreamIdentityWhe
 	}
 	ditEvidence := workerRegistryEvidenceValue(t, ditWorkerID, 0x41)
 	ditEvidence.Residencies[0].ModelComponentRevision = "h3-dit-v1"
-	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
 	registry, err := fleet.NewService(fleetPool)
 	if err != nil {
 		t.Fatalf("construct Worker Registry for DiT retry: %v", err)
@@ -3132,7 +3132,7 @@ func assignEncoder(
 	workerSPIFFEID := "spiffe://vela/worker/" + workerID.String()
 	workerSPIFFEDigest := sha256.Sum256([]byte(workerSPIFFEID))
 	evidence.Members[0].IdentityDigest = hex.EncodeToString(workerSPIFFEDigest[:])
-	fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
 	registry, err := fleet.NewService(fleetPool)
 	if err != nil {
 		t.Fatalf("construct physical cancellation Worker Registry: %v", err)
@@ -3399,9 +3399,7 @@ func seedH3AdmissionCapacityPath(t *testing.T, database testDatabase) {
 		}
 	}
 
-	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
-	))
+	registry, err := fleet.NewService(workerRegistryPoolForSchema(t, database))
 	if err != nil {
 		t.Fatalf("construct Admission capacity Worker Registry: %v", err)
 	}

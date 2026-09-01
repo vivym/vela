@@ -198,6 +198,8 @@ func TestWebhookHTTPManagementCommandsAndDeliveryVisibility(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	if _, err := database.Admin.Exec(`
 		UPDATE credentials
 		SET scopes = ARRAY[
@@ -469,7 +471,7 @@ func TestWebhookTerminalEventCreatesSafeProjectDelivery(t *testing.T) {
 		t.Fatalf("read terminal webhook Delivery: %v", err)
 	}
 	if deliveryID == "" || eventID == "" || deliveryJobID != job.JobID ||
-		eventType != "job.canceled" || jobVersion != 2 || state != "PENDING" ||
+		eventType != "job.canceled" || jobVersion != 3 || state != "PENDING" ||
 		retryWindowSeconds != int64((72*time.Hour)/time.Second) {
 		t.Fatalf(
 			"Delivery id=%s event=%s type=%s job=%s version=%d state=%s window=%ds",
@@ -484,7 +486,7 @@ func TestWebhookTerminalEventCreatesSafeProjectDelivery(t *testing.T) {
 	if len(body) != 9 || body["schema_version"] != float64(1) ||
 		body["event_id"] != eventID || body["event_type"] != "job.canceled" ||
 		body["organization_id"] != testOrganizationID || body["project_id"] != testProjectID ||
-		body["job_id"] != job.JobID || body["job_version"] != float64(2) ||
+		body["job_id"] != job.JobID || body["job_version"] != float64(3) ||
 		body["job_state"] != "CANCELED" || !occurredAtOK || occurredAt == "" ||
 		bytes.Contains(payload, []byte("Customer Content")) ||
 		bytes.Contains(payload, []byte("vwhsec_")) {

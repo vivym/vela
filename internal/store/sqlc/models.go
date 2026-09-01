@@ -5900,6 +5900,8 @@ type RemediationOperation struct {
 	ApprovedAt            pgtype.Timestamptz        `db:"approved_at" json:"approved_at"`
 	WorkerInstanceID      uuid.NullUUID             `db:"worker_instance_id" json:"worker_instance_id"`
 	WorkerInstanceEpoch   *int64                    `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	DeviceID              uuid.NullUUID             `db:"device_id" json:"device_id"`
+	DeviceEpoch           *int64                    `db:"device_epoch" json:"device_epoch"`
 }
 
 type RemediationOperationEvent struct {

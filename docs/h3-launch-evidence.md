@@ -36,13 +36,15 @@ mismatched value fails closed without output.
 
 ## Capture
 
-Configure a dedicated read-only Fleet login and a Kubernetes identity with
-`get` access to the target Namespace, Pods, Nodes, ResourceClaims and
+Configure a login that belongs only to the `vela_h3_campaign_evidence` NOLOGIN
+group role. The command rejects admin, Fleet, mixed-role, or over-privileged
+database identities before it reads Registry state. The Kubernetes identity
+needs `get` access to the target Namespace, Pods, Nodes, ResourceClaims and
 ResourceClaimTemplates, plus `list` access to ResourceSlices. Outside the
 cluster, set an explicit kubeconfig path.
 
 ```text
-export VELA_H3_EVIDENCE_FLEET_DATABASE_URL='postgres://...'
+export VELA_H3_EVIDENCE_DATABASE_URL='postgres://...'
 export VELA_H3_EVIDENCE_VALIDATION_ENVIRONMENT='h3-production-cn-north-1'
 export VELA_H3_EVIDENCE_COLLECTOR_IDENTITY='spiffe://vela/launch-evidence/collector'
 export VELA_H3_EVIDENCE_KUBECONFIG='/secure/path/kubeconfig'
@@ -89,11 +91,12 @@ integration fixture proves these fail-closed contracts against PostgreSQL, but
 it uses synthetic local execution and storage.
 
 Configure a login that is a member of only the `vela_h3_campaign_evidence`
-NOLOGIN group role. Migration `00055_h3_campaign_evidence_reader.sql` grants
-that role `SELECT` only on the exact campaign-reader relation set and gives it
-no mutation, owner, `BYPASSRLS`, or role-escalation authority. The command
-verifies this exact privilege boundary before reading any campaign rows; an
-admin, Fleet, mixed-role, or over-privileged DSN fails closed.
+NOLOGIN group role. Migrations `00055_h3_campaign_evidence_reader.sql` and
+`00058_legacy_h3_schema_contraction.sql` grant that role `SELECT` only on the
+exact campaign and launch-evidence relation set and give it no mutation, owner,
+`BYPASSRLS`, or role-escalation authority. The command verifies this exact
+privilege boundary before reading any campaign rows; an admin, Fleet,
+mixed-role, or over-privileged DSN fails closed.
 
 ```text
 export VELA_H3_CAMPAIGN_EVIDENCE_DATABASE_URL='postgres://...'

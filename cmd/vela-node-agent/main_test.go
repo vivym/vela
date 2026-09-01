@@ -17,6 +17,13 @@ import (
 	"google.golang.org/grpc"
 )
 
+type testDeviceEpochSource map[string]int64
+
+func (source testDeviceEpochSource) CurrentDeviceEpoch(gpuUUID string) (int64, bool) {
+	epoch, ok := source[gpuUUID]
+	return epoch, ok
+}
+
 func TestLoadConfigRequiresHostAgentBoundaries(t *testing.T) {
 	t.Setenv("VELA_NODE_AGENT_ID", "")
 	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_NODE_AGENT_ID") {
@@ -36,8 +43,10 @@ func TestLoadCapabilitiesBindsGPUUUIDPCIBDFFailureAndAction(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "capabilities.json")
 	const gpuUUID = "GPU-00000000-0000-0000-0000-000000000001"
+	deviceID := uuid.MustParse("49440000-0000-0000-0000-000000000003")
 	encoded, err := json.Marshal(map[string]capabilityConfig{
 		gpuUUID: {
+			DeviceID: deviceID.String(), DeviceEpoch: 3,
 			CertificationRevision: "matrix-v1", PCIBDF: "0000:41:00.0",
 			FailureClasses: []string{"PROCESS_FAILURE"}, Actions: []string{"L0_PROCESS_RESTART"},
 		},
@@ -52,13 +61,17 @@ func TestLoadCapabilitiesBindsGPUUUIDPCIBDFFailureAndAction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadCapabilities: %v", err)
 	}
-	policy, err := nodeagent.NewStaticCapabilityPolicy(capabilities)
+	policy, err := nodeagent.NewStaticCapabilityPolicy(
+		capabilities,
+		testDeviceEpochSource{gpuUUID: 3},
+	)
 	if err != nil {
 		t.Fatalf("NewStaticCapabilityPolicy: %v", err)
 	}
 	binding, err := policy.Authorize(remediation.Plan{
-		DeviceIdentity: gpuUUID, FailureClass: "PROCESS_FAILURE",
-		ActionLevel: remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1",
+		DeviceIdentity: gpuUUID, DeviceID: deviceID, DeviceEpoch: 3,
+		FailureClass: "PROCESS_FAILURE",
+		ActionLevel:  remediation.ActionL0ProcessRestart, CertificationRevision: "matrix-v1",
 	})
 	if err != nil || binding.GPUUUID != gpuUUID || binding.PCIBDF != "0000:41:00.0" {
 		t.Fatalf("capability binding = %#v error=%v", binding, err)

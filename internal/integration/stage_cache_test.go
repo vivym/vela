@@ -32,7 +32,7 @@ func TestStageCacheAdmitAndHitPinsExactArtifactAtBillableStart(t *testing.T) {
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
 	seedWorkerRegistryPlan(t, database.Admin)
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct cache fixture Worker Registry: %v", err)
@@ -183,7 +183,7 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
 	seedWorkerRegistryPlan(t, database.Admin)
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct cache-leaf Worker Registry: %v", err)
@@ -792,7 +792,7 @@ func newPinnedStageCacheFixture(t *testing.T, idempotencyPrefix string) pinnedSt
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
 	seedWorkerRegistryPlan(t, database.Admin)
 	registry, err := fleet.NewService(newRolePool(
-		t, database.DSN, "vela_internal_login", "vela-internal-password",
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct pinned-cache Worker Registry: %v", err)

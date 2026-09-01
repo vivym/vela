@@ -109,13 +109,6 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	artifactPool := newRolePool(
 		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
 	)
-	schedulerPool := newRolePool(t, database.DSN, "vela_scheduler_login", "vela-scheduler-password")
-	schedulerInboxPool := newRolePool(
-		t,
-		database.DSN,
-		"vela_scheduler_inbox_login",
-		"vela-scheduler-inbox-password",
-	)
 	billingPool := newRolePool(t, database.DSN, "vela_billing_login", "vela-billing-password")
 	financeReconciliationPool := newRolePool(
 		t,
@@ -307,11 +300,6 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request", pool: requestPool, role: veladb.RoleRequest},
 		{name: "cancel", pool: cancelPool, role: veladb.RoleCancel},
 		{name: "Artifact request", pool: artifactPool, role: veladb.RoleArtifactRequest},
-		{name: "Scheduler", pool: schedulerPool, role: veladb.RoleScheduler},
-		{
-			name: "Scheduler Inbox", pool: schedulerInboxPool,
-			role: veladb.RoleSchedulerInbox,
-		},
 		{name: "billing", pool: billingPool, role: veladb.RoleBilling},
 		{
 			name: "Finance Reconciliation", pool: financeReconciliationPool,
@@ -851,12 +839,11 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		FROM pg_catalog.pg_trigger AS trigger
 		JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
 		JOIN pg_catalog.pg_proc AS procedure ON procedure.oid = trigger.tgfoid
-		WHERE trigger.tgname IN (
-			'jobs_require_synchronous_quorum',
-			'scheduler_dispatch_intents_require_synchronous_quorum',
-			'attempts_require_synchronous_quorum'
-		)
-		  AND relation.relname IN ('jobs', 'scheduler_dispatch_intents', 'attempts')
+			WHERE trigger.tgname IN (
+				'jobs_require_synchronous_quorum',
+				'attempts_require_synchronous_quorum'
+			)
+			  AND relation.relname IN ('jobs', 'attempts')
 		  AND procedure.oid = 'vela_enforce_synchronous_quorum()'::regprocedure
 		  AND trigger.tgdeferrable
 		  AND trigger.tginitdeferred
@@ -864,8 +851,8 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 	`).Scan(&deferredQuorumGuards); err != nil {
 		t.Fatalf("inspect deferred synchronous quorum guards: %v", err)
 	}
-	if deferredQuorumGuards != 3 {
-		t.Fatalf("deferred synchronous quorum guards = %d, want 3", deferredQuorumGuards)
+	if deferredQuorumGuards != 2 {
+		t.Fatalf("deferred synchronous quorum guards = %d, want 2", deferredQuorumGuards)
 	}
 	var breakGlassOwnerCanLock, breakGlassRuntimeCanLock bool
 	if err := database.Admin.QueryRow(`
@@ -1284,30 +1271,10 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "request as Artifact request", pool: requestPool, role: veladb.RoleArtifactRequest},
 		{name: "Artifact request as request", pool: artifactPool, role: veladb.RoleRequest},
 		{name: "internal as Artifact request", pool: internalPool, role: veladb.RoleArtifactRequest},
-		{name: "Scheduler as request", pool: schedulerPool, role: veladb.RoleRequest},
-		{name: "Scheduler as internal", pool: schedulerPool, role: veladb.RoleInternal},
-		{
-			name: "Scheduler as Scheduler Inbox", pool: schedulerPool,
-			role: veladb.RoleSchedulerInbox,
-		},
-		{
-			name: "Scheduler Inbox as Scheduler", pool: schedulerInboxPool,
-			role: veladb.RoleScheduler,
-		},
-		{
-			name: "Scheduler Inbox as internal", pool: schedulerInboxPool,
-			role: veladb.RoleInternal,
-		},
-		{name: "internal as Scheduler", pool: internalPool, role: veladb.RoleScheduler},
-		{
-			name: "internal as Scheduler Inbox", pool: internalPool,
-			role: veladb.RoleSchedulerInbox,
-		},
-		{name: "request as Scheduler", pool: requestPool, role: veladb.RoleScheduler},
-		{
-			name: "request as Scheduler Inbox", pool: requestPool,
-			role: veladb.RoleSchedulerInbox,
-		},
+		{name: "StageScheduler as request", pool: stageSchedulerPool, role: veladb.RoleRequest},
+		{name: "StageScheduler as internal", pool: stageSchedulerPool, role: veladb.RoleInternal},
+		{name: "internal as StageScheduler", pool: internalPool, role: veladb.RoleStageScheduler},
+		{name: "request as StageScheduler", pool: requestPool, role: veladb.RoleStageScheduler},
 		{name: "billing as internal", pool: billingPool, role: veladb.RoleInternal},
 		{name: "internal as billing", pool: internalPool, role: veladb.RoleBilling},
 		{name: "request as billing", pool: requestPool, role: veladb.RoleBilling},
@@ -1459,25 +1426,16 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		t.Fatalf("revoke unexpected Artifact staging privilege: %v", err)
 	}
 
-	if _, err := database.Admin.Exec("GRANT SELECT ON jobs TO vela_scheduler_login"); err != nil {
-		t.Fatalf("grant unexpected Scheduler table privilege: %v", err)
-	}
-	if err := veladb.VerifyRole(context.Background(), schedulerPool, veladb.RoleScheduler); err == nil {
-		t.Fatal("Scheduler login with direct Job access was accepted")
-	}
-	if _, err := database.Admin.Exec("REVOKE SELECT ON jobs FROM vela_scheduler_login"); err != nil {
-		t.Fatalf("revoke unexpected Scheduler table privilege: %v", err)
-	}
-	if _, err := database.Admin.Exec("GRANT SELECT ON inbox_receipts TO vela_scheduler_inbox_login"); err != nil {
-		t.Fatalf("grant unexpected Scheduler Inbox table privilege: %v", err)
+	if _, err := database.Admin.Exec("GRANT SELECT ON jobs TO vela_stage_scheduler_login"); err != nil {
+		t.Fatalf("grant unexpected StageScheduler table privilege: %v", err)
 	}
 	if err := veladb.VerifyRole(
-		context.Background(), schedulerInboxPool, veladb.RoleSchedulerInbox,
+		context.Background(), stageSchedulerPool, veladb.RoleStageScheduler,
 	); err == nil {
-		t.Fatal("Scheduler Inbox login with direct receipt access was accepted")
+		t.Fatal("StageScheduler login with direct Job access was accepted")
 	}
-	if _, err := database.Admin.Exec("REVOKE SELECT ON inbox_receipts FROM vela_scheduler_inbox_login"); err != nil {
-		t.Fatalf("revoke unexpected Scheduler Inbox table privilege: %v", err)
+	if _, err := database.Admin.Exec("REVOKE SELECT ON jobs FROM vela_stage_scheduler_login"); err != nil {
+		t.Fatalf("revoke unexpected StageScheduler table privilege: %v", err)
 	}
 	if _, err := database.Admin.Exec("GRANT SELECT ON charges TO vela_billing_login"); err != nil {
 		t.Fatalf("grant unexpected billing Charge privilege: %v", err)
@@ -1528,42 +1486,29 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		t.Fatalf("revoke unexpected remediation operation privilege: %v", err)
 	}
 	if _, err := database.Admin.Exec(`
-		GRANT EXECUTE ON FUNCTION vela_transition_scheduler_dispatch_protocol(boolean, text)
-		TO vela_scheduler_login
+		GRANT EXECUTE ON FUNCTION vela_instantiate_stage_graph(jsonb)
+		TO vela_stage_scheduler_login
 	`); err != nil {
-		t.Fatalf("grant unexpected Scheduler protocol-transition privilege: %v", err)
+		t.Fatalf("grant unexpected AttemptCoordinator privilege to StageScheduler: %v", err)
 	}
-	if err := veladb.VerifyRole(context.Background(), schedulerPool, veladb.RoleScheduler); err == nil {
-		t.Fatal("Scheduler login with protocol-transition privilege was accepted")
+	if err := veladb.VerifyRole(
+		context.Background(), stageSchedulerPool, veladb.RoleStageScheduler,
+	); err == nil {
+		t.Fatal("StageScheduler login with AttemptCoordinator privilege was accepted")
 	}
-	if _, err := internalPool.Exec(context.Background(), `
-		SELECT require_dispatch_intent
-		FROM scheduler_dispatch_protocol_state
-		WHERE singleton
-	`); !isPermissionDenied(err) {
-		t.Fatalf("internal runtime Scheduler protocol read error = %v, want permission denied", err)
+	if _, err := database.Admin.Exec(`
+		REVOKE EXECUTE ON FUNCTION vela_instantiate_stage_graph(jsonb)
+		FROM vela_stage_scheduler_login
+	`); err != nil {
+		t.Fatalf("revoke unexpected AttemptCoordinator privilege from StageScheduler: %v", err)
 	}
-	if _, err := internalPool.Exec(context.Background(), `
-		SELECT protocol_version
-		FROM scheduler_dispatch_protocol_transitions
-		LIMIT 1
-	`); !isPermissionDenied(err) {
-		t.Fatalf("internal runtime Scheduler protocol history read error = %v, want permission denied", err)
-	}
-	if _, err := internalPool.Exec(context.Background(), `
-		UPDATE scheduler_dispatch_protocol_state
-		SET require_dispatch_intent = false
-		WHERE singleton
-	`); !isPermissionDenied(err) {
-		t.Fatalf("internal runtime direct Scheduler protocol update error = %v, want permission denied", err)
-	}
-	if _, err := internalPool.Exec(context.Background(), `
-		SELECT vela_transition_scheduler_dispatch_protocol(
-			true,
-			'internal runtime must not own the operator switch'
-		)
-	`); !isPermissionDenied(err) {
-		t.Fatalf("internal runtime Scheduler protocol transition error = %v, want permission denied", err)
+	for _, relation := range []string{"stage_scheduler_snapshot_traces", "stage_scheduler_claims"} {
+		var count int64
+		if err := internalPool.QueryRow(
+			context.Background(), "SELECT count(*) FROM "+relation,
+		).Scan(&count); !isPermissionDenied(err) {
+			t.Fatalf("internal runtime direct %s read error = %v, want permission denied", relation, err)
+		}
 	}
 
 	if _, err := database.Admin.Exec(`
@@ -1618,7 +1563,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		name string
 		pool *pgxpool.Pool
 	}{
-		{name: "Scheduler", pool: schedulerPool},
+		{name: "StageScheduler", pool: stageSchedulerPool},
 		{name: "cancel", pool: cancelPool},
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
@@ -1662,7 +1607,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		name string
 		pool *pgxpool.Pool
 	}{
-		{name: "Scheduler", pool: schedulerPool},
+		{name: "StageScheduler", pool: stageSchedulerPool},
 		{name: "cancel", pool: cancelPool},
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
@@ -1685,7 +1630,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		name string
 		pool *pgxpool.Pool
 	}{
-		{name: "Scheduler", pool: schedulerPool},
+		{name: "StageScheduler", pool: stageSchedulerPool},
 		{name: "cancel", pool: cancelPool},
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
@@ -1707,7 +1652,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		name string
 		pool *pgxpool.Pool
 	}{
-		{name: "Scheduler", pool: schedulerPool},
+		{name: "StageScheduler", pool: stageSchedulerPool},
 		{name: "cancel", pool: cancelPool},
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
@@ -1730,7 +1675,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		name string
 		pool *pgxpool.Pool
 	}{
-		{name: "Scheduler", pool: schedulerPool},
+		{name: "StageScheduler", pool: stageSchedulerPool},
 		{name: "cancel", pool: cancelPool},
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
@@ -1738,16 +1683,16 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "billing", pool: billingPool},
 	} {
 		for _, relation := range []string{
-			"organization_capacity_shares",
-			"project_capacity_shares",
-			"worker_profile_readiness",
-			"job_runtime_predictions",
-			"scheduler_organization_deficits",
-			"scheduler_service_class_deficits",
-			"scheduler_project_deficits",
-			"scheduler_dispatch_intents",
-			"scheduler_dispatch_protocol_state",
-			"scheduler_dispatch_protocol_transitions",
+			"stage_ready_queue_entries",
+			"stage_capacity_pool_counters",
+			"stage_scheduler_organization_deficits",
+			"stage_scheduler_service_class_deficits",
+			"stage_scheduler_project_deficits",
+			"stage_scheduler_snapshot_traces",
+			"stage_decision_evidence",
+			"stage_scheduler_claims",
+			"stage_scheduler_shadow_replay_receipts",
+			"stage_scheduler_activation_stops",
 		} {
 			var count int64
 			err := pool.pool.QueryRow(
@@ -1769,7 +1714,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		name string
 		pool *pgxpool.Pool
 	}{
-		{name: "Scheduler", pool: schedulerPool},
+		{name: "StageScheduler", pool: stageSchedulerPool},
 		{name: "cancel", pool: cancelPool},
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
@@ -1797,7 +1742,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		name string
 		pool *pgxpool.Pool
 	}{
-		{name: "Scheduler", pool: schedulerPool},
+		{name: "StageScheduler", pool: stageSchedulerPool},
 		{name: "cancel", pool: cancelPool},
 		{name: "request", pool: requestPool},
 		{name: "auth", pool: authPool},
@@ -1826,10 +1771,13 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "auth", pool: authPool},
 		{name: "Artifact request", pool: artifactPool},
 	} {
-		_, err := pool.pool.Exec(context.Background(), "SELECT * FROM vela_list_schedulable_worker_pools()")
+		_, err := pool.pool.Exec(
+			context.Background(),
+			"SELECT * FROM vela_list_stage_scheduler_shadow_snapshots(1)",
+		)
 		var permissionError *pgconn.PgError
 		if !errors.As(err, &permissionError) || permissionError.Code != "42501" {
-			t.Fatalf("%s Scheduler discovery error = %v, want SQLSTATE 42501", pool.name, err)
+			t.Fatalf("%s StageScheduler read error = %v, want SQLSTATE 42501", pool.name, err)
 		}
 	}
 
