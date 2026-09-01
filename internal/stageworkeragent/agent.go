@@ -286,13 +286,16 @@ func (agent *Agent) SealOutput(
 	ctx context.Context,
 	authority *velav1.StageAuthority,
 ) (*velav1.LocalMaterializationReceipt, error) {
-	if agent == nil || len(agent.ids) != 1 || ctx == nil {
-		return nil, errors.New("single-output seal requires exactly one configured ModelRuntime")
+	if agent == nil || len(agent.ids) == 0 || ctx == nil {
+		return nil, errors.New("single-output seal requires a configured ModelRuntime leader")
 	}
 	digest, err := stageauthority.Digest(authority)
 	if err != nil {
 		return nil, err
 	}
+	// Fleet and durable gang authority select the lexicographically smallest
+	// WorkerMember UUID as leader. One logical distributed stage still publishes
+	// exactly one output through that member.
 	memberID := agent.ids[0]
 	response, err := agent.members[memberID].SealOutput(
 		ctx,

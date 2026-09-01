@@ -682,6 +682,7 @@ func newSingleMemberMaterializationFixture(t *testing.T) singleMemberMaterializa
 		MembershipDigest: bytes.Repeat([]byte{0x82}, 32),
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: memberID, MemberEpoch: 8, ModelRuntimeEpoch: 9,
+			IdentityDigest: bytes.Repeat([]byte{0x86}, 32),
 		}},
 		ModelResidencyId:              "52000000-0000-0000-0000-000000000011",
 		ModelRuntimeIdentity:          "h3-dit-runtime-1",

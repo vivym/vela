@@ -15,6 +15,7 @@ import (
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/h3campaignevidence"
+	"github.com/vivym/vela/internal/h3campaignrunner"
 	"github.com/vivym/vela/internal/h3faultevidence"
 	"github.com/vivym/vela/internal/h3launchevidence"
 	"github.com/vivym/vela/internal/h3preflight"
@@ -30,6 +31,8 @@ import (
 const (
 	databaseURLEnvironment         = "VELA_H3_EVIDENCE_DATABASE_URL"
 	campaignDatabaseURLEnvironment = "VELA_H3_CAMPAIGN_EVIDENCE_DATABASE_URL"
+	campaignAPIURLEnvironment      = "VELA_H3_CAMPAIGN_API_URL"
+	campaignAPITokenEnvironment    = "VELA_H3_CAMPAIGN_API_BEARER_TOKEN"
 	validationEnvironmentKey       = "VELA_H3_EVIDENCE_VALIDATION_ENVIRONMENT"
 	collectorIdentityKey           = "VELA_H3_EVIDENCE_COLLECTOR_IDENTITY"
 	kubeconfigKey                  = "VELA_H3_EVIDENCE_KUBECONFIG"
@@ -61,12 +64,26 @@ type campaignConfiguration struct {
 	evidenceConfiguration
 }
 
+type campaignExecutionConfiguration struct {
+	campaignConfiguration
+	apiURL      string
+	bearerToken string
+}
+
 type campaignCaptureFunc func(
 	context.Context,
 	string,
 	uuid.UUID,
 	h3campaignevidence.Selection,
 	campaignConfiguration,
+) (h3campaignevidence.Evidence, error)
+
+type campaignExecuteFunc func(
+	context.Context,
+	string,
+	uuid.UUID,
+	h3campaignrunner.Manifest,
+	campaignExecutionConfiguration,
 ) (h3campaignevidence.Evidence, error)
 
 type faultCampaignBuildFunc func(string) (h3faultevidence.Bundle, error)
@@ -103,6 +120,11 @@ func run(arguments []string, getenv func(string) string, stdout, stderr io.Write
 	}
 	if len(arguments) == 6 && arguments[0] == "capture-campaign" {
 		return runCampaign(arguments[1:], getenv, stdout, stderr, captureCampaign)
+	}
+	if len(arguments) == 4 && arguments[0] == "run-campaign" {
+		return runCampaignExecution(
+			arguments[1:], getenv, stdout, stderr, executeCampaign,
+		)
 	}
 	if len(arguments) != 3 || arguments[0] != "capture" {
 		writeUsage(stderr)
@@ -346,6 +368,97 @@ func loadFaultCampaignBundle(path string) (h3faultevidence.Bundle, error) {
 	return campaign.BuildBundle()
 }
 
+func runCampaignExecution(
+	arguments []string,
+	getenv func(string) string,
+	stdout io.Writer,
+	stderr io.Writer,
+	execute campaignExecuteFunc,
+) int {
+	if len(arguments) != 3 || getenv == nil || stdout == nil || stderr == nil || execute == nil {
+		writeUsage(stderr)
+		return 2
+	}
+	planID, err := parseRequiredUUID(arguments[1], "ResidencyPlan revision id")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+	manifest, err := h3campaignrunner.LoadManifest(arguments[2])
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "load H3 campaign manifest: %v\n", err)
+		return 2
+	}
+	config, err := loadCampaignExecutionConfiguration(getenv)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+	_, jobTimeout, err := h3campaignrunner.ValidateManifest(manifest)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "validate H3 campaign manifest: %v\n", err)
+		return 2
+	}
+	totalTimeout := 3*jobTimeout + captureTimeout
+	ctx, cancel := context.WithTimeout(context.Background(), totalTimeout)
+	defer cancel()
+	evidence, err := execute(ctx, arguments[0], planID, manifest, config)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "run H3 stage campaign: %v\n", err)
+		return 1
+	}
+	if err := encodeJSON(stdout, evidence); err != nil {
+		_, _ = fmt.Fprintf(stderr, "encode H3 campaign evidence: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func executeCampaign(
+	ctx context.Context,
+	bundlePath string,
+	planID uuid.UUID,
+	manifest h3campaignrunner.Manifest,
+	config campaignExecutionConfiguration,
+) (h3campaignevidence.Evidence, error) {
+	binding, err := h3campaignevidence.LoadEvidenceBinding(
+		bundlePath, planID, config.validationEnvironment, config.collectorIdentity,
+	)
+	if err != nil {
+		return h3campaignevidence.Evidence{}, fmt.Errorf("verify campaign release binding: %w", err)
+	}
+	pool, err := pgxpool.New(ctx, config.databaseURL)
+	if err != nil {
+		return h3campaignevidence.Evidence{}, fmt.Errorf("configure campaign evidence reader: %w", err)
+	}
+	defer pool.Close()
+	if err := veladb.VerifyRole(ctx, pool, veladb.RoleH3CampaignEvidence); err != nil {
+		return h3campaignevidence.Evidence{}, fmt.Errorf(
+			"verify campaign evidence database role: %w", err,
+		)
+	}
+	reader, err := h3campaignevidence.NewPostgresReader(pool)
+	if err != nil {
+		return h3campaignevidence.Evidence{}, fmt.Errorf("configure campaign evidence reader: %w", err)
+	}
+	client, err := h3campaignrunner.NewHTTPClient(config.apiURL, config.bearerToken, nil)
+	if err != nil {
+		return h3campaignevidence.Evidence{}, fmt.Errorf("configure campaign API client: %w", err)
+	}
+	return h3campaignrunner.Run(ctx, h3campaignrunner.Runner{
+		Client: client,
+		Capture: func(
+			ctx context.Context,
+			selection h3campaignevidence.Selection,
+		) (h3campaignevidence.Evidence, error) {
+			return h3campaignevidence.Capture(ctx, reader, h3campaignevidence.CaptureRequest{
+				EvidenceBinding: binding,
+				Selection:       selection,
+			})
+		},
+	}, manifest)
+}
+
 func runCampaign(
 	arguments []string,
 	getenv func(string) string,
@@ -428,6 +541,35 @@ func loadCampaignConfiguration(getenv func(string) string) (campaignConfiguratio
 		return campaignConfiguration{}, err
 	}
 	return campaignConfiguration{evidenceConfiguration: config}, nil
+}
+
+func loadCampaignExecutionConfiguration(
+	getenv func(string) string,
+) (campaignExecutionConfiguration, error) {
+	campaign, err := loadCampaignConfiguration(getenv)
+	if err != nil {
+		return campaignExecutionConfiguration{}, err
+	}
+	config := campaignExecutionConfiguration{
+		campaignConfiguration: campaign,
+		apiURL:                getenv(campaignAPIURLEnvironment),
+		bearerToken:           getenv(campaignAPITokenEnvironment),
+	}
+	for _, required := range []struct {
+		name  string
+		value string
+	}{
+		{name: campaignAPIURLEnvironment, value: config.apiURL},
+		{name: campaignAPITokenEnvironment, value: config.bearerToken},
+	} {
+		if required.value == "" || strings.TrimSpace(required.value) != required.value ||
+			strings.ContainsAny(required.value, "\x00\r\n") {
+			return campaignExecutionConfiguration{}, fmt.Errorf(
+				"%s is required and must not contain whitespace or control delimiters", required.name,
+			)
+		}
+	}
+	return config, nil
 }
 
 func captureCampaign(
@@ -596,6 +738,10 @@ func writeUsage(writer io.Writer) {
 	_, _ = fmt.Fprintln(
 		writer,
 		"       vela-h3-evidence capture-campaign <release-bundle.json> <residency-plan-revision-id> <same-node-job-id> <cross-node-job-id> <cache-job-id>",
+	)
+	_, _ = fmt.Fprintln(
+		writer,
+		"       vela-h3-evidence run-campaign <release-bundle.json> <residency-plan-revision-id> <campaign-manifest.json>",
 	)
 	_, _ = fmt.Fprintln(
 		writer,

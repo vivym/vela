@@ -283,8 +283,10 @@ func validAuthority(now time.Time) *velav1.StageAuthority {
 		},
 		MembershipDigest: bytes.Repeat([]byte{0xb2}, 32),
 		Members: []*velav1.StageAuthorityMemberEpoch{
-			{WorkerMemberId: "40000000-0000-0000-0000-000000000002", MemberEpoch: 14, ModelRuntimeEpoch: 18},
-			{WorkerMemberId: "40000000-0000-0000-0000-000000000001", MemberEpoch: 13, ModelRuntimeEpoch: 17},
+			{WorkerMemberId: "40000000-0000-0000-0000-000000000002", MemberEpoch: 14, ModelRuntimeEpoch: 18,
+				IdentityDigest: bytes.Repeat([]byte{0xb3}, 32)},
+			{WorkerMemberId: "40000000-0000-0000-0000-000000000001", MemberEpoch: 13, ModelRuntimeEpoch: 17,
+				IdentityDigest: bytes.Repeat([]byte{0xb4}, 32)},
 		},
 		ModelResidencyId:              "50000000-0000-0000-0000-000000000001",
 		ModelRuntimeIdentity:          "dit-runtime-7",

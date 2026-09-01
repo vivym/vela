@@ -10,9 +10,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	api "github.com/vivym/vela/api/gen"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/h3campaignevidence"
+	"github.com/vivym/vela/internal/h3campaignrunner"
 	"github.com/vivym/vela/internal/h3faultevidence"
 	"github.com/vivym/vela/internal/h3preflight"
 	"github.com/vivym/vela/internal/productiongates"
@@ -244,6 +246,128 @@ func TestRunCampaignRequiresStrictDistinctJobSelection(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestRunCampaignExecutionLoadsManifestAndEmitsEvidence(t *testing.T) {
+	manifest := h3campaignrunner.Manifest{
+		SchemaVersion: h3campaignrunner.SchemaVersion,
+		ProjectID:     uuid.MustParse("49350000-0000-0000-0000-000000000101"),
+		Request: api.SubmitJobRequest{
+			Model: "minimax-h3", GenerationPreset: api.Quality,
+			ServiceClass: api.Standard, OutputSpec: "video-1080p-5s-24fps",
+			GenerationCount: 1, Prompt: "fixed certified campaign input",
+		},
+		SameNodeIdempotencyKey: "h3-same-v1", CrossNodeIdempotencyKey: "h3-cross-v1",
+		CacheIdempotencyKey: "h3-cache-v1", PollIntervalMilliseconds: 100,
+		JobTimeoutSeconds: 3600,
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode campaign manifest: %v", err)
+	}
+	manifestPath := filepath.Join(t.TempDir(), "campaign.json")
+	if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+		t.Fatalf("write campaign manifest: %v", err)
+	}
+	planID := uuid.MustParse("49350000-0000-0000-0000-000000000102")
+	getenv := func(name string) string {
+		switch name {
+		case campaignDatabaseURLEnvironment:
+			return "postgres://campaign.example/vela"
+		case validationEnvironmentKey:
+			return "h3-campaign-test"
+		case collectorIdentityKey:
+			return "spiffe://vela/test/campaign-runner"
+		case campaignAPIURLEnvironment:
+			return "https://vela.example"
+		case campaignAPITokenEnvironment:
+			return "secret-token"
+		default:
+			return ""
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	code := runCampaignExecution(
+		[]string{"bundle.json", planID.String(), manifestPath}, getenv, &stdout, &stderr,
+		func(
+			_ context.Context,
+			bundlePath string,
+			actualPlanID uuid.UUID,
+			actualManifest h3campaignrunner.Manifest,
+			config campaignExecutionConfiguration,
+		) (h3campaignevidence.Evidence, error) {
+			if bundlePath != "bundle.json" || actualPlanID != planID ||
+				actualManifest.ProjectID != manifest.ProjectID ||
+				config.databaseURL != "postgres://campaign.example/vela" ||
+				config.apiURL != "https://vela.example" || config.bearerToken != "secret-token" {
+				t.Fatalf("campaign execution input = %q %s %#v %#v", bundlePath, actualPlanID, actualManifest, config)
+			}
+			return h3campaignevidence.Evidence{
+				SchemaVersion: h3campaignevidence.SchemaVersion,
+				MediaType:     h3campaignevidence.MediaType,
+			}, nil
+		},
+	)
+	if code != 0 || stderr.Len() != 0 {
+		t.Fatalf("runCampaignExecution = %d stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+	var evidence h3campaignevidence.Evidence
+	if err := json.Unmarshal(stdout.Bytes(), &evidence); err != nil ||
+		evidence.MediaType != h3campaignevidence.MediaType {
+		t.Fatalf("campaign evidence = %#v error=%v", evidence, err)
+	}
+}
+
+func TestRunCampaignExecutionRequiresAPISecretBeforeExecution(t *testing.T) {
+	manifest := h3campaignrunner.Manifest{
+		SchemaVersion: h3campaignrunner.SchemaVersion,
+		ProjectID:     uuid.MustParse("49350000-0000-0000-0000-000000000101"),
+		Request: api.SubmitJobRequest{
+			Model: "minimax-h3", GenerationPreset: api.Quality,
+			ServiceClass: api.Standard, OutputSpec: "video-1080p-5s-24fps",
+			GenerationCount: 1, Prompt: "fixed certified campaign input",
+		},
+		SameNodeIdempotencyKey: "h3-same-v1", CrossNodeIdempotencyKey: "h3-cross-v1",
+		CacheIdempotencyKey: "h3-cache-v1", PollIntervalMilliseconds: 100,
+		JobTimeoutSeconds: 3600,
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("encode campaign manifest: %v", err)
+	}
+	manifestPath := filepath.Join(t.TempDir(), "campaign.json")
+	if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+		t.Fatalf("write campaign manifest: %v", err)
+	}
+	called := false
+	var stdout, stderr bytes.Buffer
+	code := runCampaignExecution(
+		[]string{"bundle.json", "49350000-0000-0000-0000-000000000102", manifestPath},
+		func(name string) string {
+			switch name {
+			case campaignDatabaseURLEnvironment:
+				return "postgres://campaign.example/vela"
+			case validationEnvironmentKey:
+				return "h3-campaign-test"
+			case collectorIdentityKey:
+				return "spiffe://vela/test/campaign-runner"
+			case campaignAPIURLEnvironment:
+				return "https://vela.example"
+			default:
+				return ""
+			}
+		},
+		&stdout,
+		&stderr,
+		func(context.Context, string, uuid.UUID, h3campaignrunner.Manifest, campaignExecutionConfiguration) (h3campaignevidence.Evidence, error) {
+			called = true
+			return h3campaignevidence.Evidence{}, nil
+		},
+	)
+	if code != 2 || called || stdout.Len() != 0 ||
+		!strings.Contains(stderr.String(), campaignAPITokenEnvironment) {
+		t.Fatalf("missing API token = code %d called=%t stdout=%q stderr=%q", code, called, stdout.String(), stderr.String())
 	}
 }
 

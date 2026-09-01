@@ -461,7 +461,8 @@ func validateAuthorityMembers(members []*velav1.StageAuthorityMemberEpoch) error
 	}
 	lastID := ""
 	for _, member := range members {
-		if member == nil || member.GetMemberEpoch() <= 0 || member.GetModelRuntimeEpoch() <= 0 {
+		if member == nil || member.GetMemberEpoch() <= 0 || member.GetModelRuntimeEpoch() <= 0 ||
+			len(member.GetIdentityDigest()) != sha256.Size {
 			return fmt.Errorf("%w: member epoch is invalid", ErrInvalid)
 		}
 		if _, err := uuid.Parse(member.GetWorkerMemberId()); err != nil ||

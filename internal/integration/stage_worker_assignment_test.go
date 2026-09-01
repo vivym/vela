@@ -5,6 +5,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"path/filepath"
 	"testing"
 	"time"
@@ -41,6 +42,11 @@ func TestPostgresAssignmentBackendReplaysExactAssignment(t *testing.T) {
 			first.Assignment.GetAuthority().GetModelRuntimeBarrierGeneration(),
 			request.GetModelRuntimeEpoch(),
 		)
+	}
+	members := first.Assignment.GetAuthority().GetMembers()
+	identityDigest := sha256.Sum256([]byte(command.Identity.SPIFFEID))
+	if len(members) != 1 || !bytes.Equal(members[0].GetIdentityDigest(), identityDigest[:]) {
+		t.Fatalf("StageAssignment signed member identity digest = %#v", members)
 	}
 	validator, err := stageauthority.NewValidator(
 		map[string][]byte{"stage-authority-key-v1": bytes.Repeat([]byte{0x9a}, 32)},

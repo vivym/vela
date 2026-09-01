@@ -1460,6 +1460,10 @@ func registerStageSchedulerRuntime(
 	}
 	member := evidence.Members[0]
 	device := evidence.DeviceSet.Devices[0]
+	identityDigest, err := hex.DecodeString(member.IdentityDigest)
+	if err != nil || len(identityDigest) != sha256.Size {
+		t.Fatalf("decode StageScheduler member identity digest: %v", err)
+	}
 	result, err := backend.RegisterWorkerEvidence(
 		context.Background(),
 		stageworkercontrol.CommandContext{
@@ -1489,6 +1493,7 @@ func registerStageSchedulerRuntime(
 			Members: []*velav1.StageAuthorityMemberEpoch{{
 				WorkerMemberId: member.ID.String(), MemberEpoch: member.MemberEpoch,
 				ModelRuntimeEpoch: evidence.Residencies[0].ModelRuntimeEpoch,
+				IdentityDigest:    identityDigest,
 			}},
 			ReadinessEvidence: readinessEvidence,
 		},

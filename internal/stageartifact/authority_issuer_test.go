@@ -203,6 +203,7 @@ func verifiedStageAuthority(t *testing.T, now time.Time) stageauthority.Verified
 		MembershipDigest: bytes.Repeat([]byte{0x82}, 32),
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: "43000000-0000-0000-0000-000000000001", MemberEpoch: 8, ModelRuntimeEpoch: 9,
+			IdentityDigest: bytes.Repeat([]byte{0x86}, 32),
 		}},
 		ModelResidencyId: "53000000-0000-0000-0000-000000000001", ModelRuntimeIdentity: "encoder-runtime-1",
 		ModelRuntimeBarrierGeneration: 9,

@@ -1,6 +1,7 @@
 package cpumedia_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -139,6 +140,7 @@ func verifiedCPUAuthority(profileRevisionID string) stageauthority.Verified {
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: "49700000-0000-0000-0000-000000000003",
 			MemberEpoch:    1, ModelRuntimeEpoch: 1,
+			IdentityDigest: bytes.Repeat([]byte{0x73}, 32),
 		}},
 		StageLeaseId:   "49700000-0000-0000-0000-000000000004",
 		StageRunId:     "49700000-0000-0000-0000-000000000005",

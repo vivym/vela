@@ -647,7 +647,7 @@ func signRuntimeAuthorityForEpoch(
 		MembershipDigest: bytes.Repeat([]byte{0x62}, 32),
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: "41000000-0000-0000-0000-000000000001", MemberEpoch: 8,
-			ModelRuntimeEpoch: epoch,
+			ModelRuntimeEpoch: epoch, IdentityDigest: bytes.Repeat([]byte{0x66}, 32),
 		}},
 		ModelResidencyId:              "51000000-0000-0000-0000-000000000001",
 		ModelRuntimeIdentity:          "h3-runtime-1",

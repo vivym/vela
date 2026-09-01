@@ -16,6 +16,7 @@ message StageAuthorityMemberEpoch {
   string worker_member_id = 1;
   int64 member_epoch = 2;
   int64 model_runtime_epoch = 3;
+  bytes identity_digest = 4;
 }
 
 message StageAuthority {

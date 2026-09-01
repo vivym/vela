@@ -78,8 +78,11 @@ func TestProductionExecutorDispatchesEveryStageWorkerOperation(t *testing.T) {
 			request: controlRequest(requestID, &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
 				RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{
 					RuntimeIdentity: &velav1.ModelRuntimeIdentity{}, CapacityObservationSequence: 1,
-					Devices:           []*velav1.StageAuthorityDeviceEpoch{{DeviceId: uuid.NewString(), DeviceEpoch: 1}},
-					Members:           []*velav1.StageAuthorityMemberEpoch{{WorkerMemberId: uuid.NewString(), MemberEpoch: 1, ModelRuntimeEpoch: 1}},
+					Devices: []*velav1.StageAuthorityDeviceEpoch{{DeviceId: uuid.NewString(), DeviceEpoch: 1}},
+					Members: []*velav1.StageAuthorityMemberEpoch{{
+						WorkerMemberId: uuid.NewString(), MemberEpoch: 1, ModelRuntimeEpoch: 1,
+						IdentityDigest: bytes.Repeat([]byte{0x86}, 32),
+					}},
 					ReadinessEvidence: []byte("ready"),
 				},
 			}),

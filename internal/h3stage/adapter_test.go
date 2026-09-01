@@ -162,6 +162,7 @@ func ditAuthority(deviceCount int) *velav1.StageAuthority {
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: "43000000-0000-0000-0000-000000000001",
 			MemberEpoch:    1, ModelRuntimeEpoch: 1,
+			IdentityDigest: bytes.Repeat([]byte{0x73}, 32),
 		}},
 		StageLeaseId:   "49500000-0000-0000-0000-000000000001",
 		StageRunId:     "49300000-0000-0000-0000-000000000001",

@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package vela.v1;
+
+import "vela/v1/model_runtime.proto";
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+service StageWorkerMemberService {
+  rpc PrepareStage(StageWorkerMemberServicePrepareStageRequest)
+      returns (StageWorkerMemberServicePrepareStageResponse);
+  rpc StartStage(StageWorkerMemberServiceStartStageRequest)
+      returns (StageWorkerMemberServiceStartStageResponse);
+  rpc CancelStage(StageWorkerMemberServiceCancelStageRequest)
+      returns (StageWorkerMemberServiceCancelStageResponse);
+  rpc Status(StageWorkerMemberServiceStatusRequest)
+      returns (StageWorkerMemberServiceStatusResponse);
+}
+
+message StageWorkerMemberServicePrepareStageRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServicePrepareStageRequest command = 2;
+}
+
+message StageWorkerMemberServicePrepareStageResponse {
+  ModelRuntimeServicePrepareStageResponse result = 1;
+}
+
+message StageWorkerMemberServiceStartStageRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceStartStageRequest command = 2;
+}
+
+message StageWorkerMemberServiceStartStageResponse {
+  ModelRuntimeServiceStartStageResponse result = 1;
+}
+
+message StageWorkerMemberServiceCancelStageRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceCancelStageRequest command = 2;
+}
+
+message StageWorkerMemberServiceCancelStageResponse {
+  ModelRuntimeServiceCancelStageResponse result = 1;
+}
+
+message StageWorkerMemberServiceStatusRequest {
+  string target_worker_member_id = 1;
+  ModelRuntimeServiceStatusRequest command = 2;
+}
+
+message StageWorkerMemberServiceStatusResponse {
+  ModelRuntimeServiceStatusResponse result = 1;
+}

@@ -22,12 +22,13 @@ H3_ENCODER_SHA256 ?=
 H3_DIT_SHA256 ?=
 H3_VAE_DECODER_SHA256 ?=
 H3_EVIDENCE_PLAN_REVISION ?=
+H3_CAMPAIGN_MANIFEST ?=
 TOOLS_BIN := $(CURDIR)/bin
 VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_IMAGE_PREFIX)" \
 	"$(H3_RUNTIME_BASE)" "$(H3_RUNTIME_COMMAND_CONTEXT)" \
 	"$(H3_ENCODER_SHA256)" "$(H3_DIT_SHA256)" "$(H3_VAE_DECODER_SHA256)"
 
-.PHONY: generate generate-openapi generate-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle preflight-h3-real-environment capture-h3-launch-evidence capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle preflight-h3-real-environment capture-h3-launch-evidence run-h3-campaign capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-sql
 
@@ -124,6 +125,17 @@ capture-h3-launch-evidence:
 		(echo "H3_EVIDENCE_PLAN_REVISION is required" >&2; exit 2)
 	go run ./cmd/vela-h3-evidence capture \
 		"$(RELEASE_BUNDLE)" "$(H3_EVIDENCE_PLAN_REVISION)"
+
+run-h3-campaign:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	@test -n "$(H3_EVIDENCE_PLAN_REVISION)" || \
+		(echo "H3_EVIDENCE_PLAN_REVISION is required" >&2; exit 2)
+	@test -n "$(H3_CAMPAIGN_MANIFEST)" || \
+		(echo "H3_CAMPAIGN_MANIFEST is required" >&2; exit 2)
+	go run ./cmd/vela-h3-evidence run-campaign \
+		"$(RELEASE_BUNDLE)" "$(H3_EVIDENCE_PLAN_REVISION)" \
+		"$(H3_CAMPAIGN_MANIFEST)"
 
 capture-h3-campaign-evidence:
 	@test -n "$(RELEASE_BUNDLE)" || \

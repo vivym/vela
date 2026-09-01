@@ -19,8 +19,10 @@ func TestGangAuthorityMatchesIndependentMemberRuntimeEpochs(t *testing.T) {
 		{id: memberID, epoch: 1, identityDigest: memberDigest[:], readiness: "READY", modelRuntimeEpoch: 8},
 	}
 	signed := []*velav1.StageAuthorityMemberEpoch{
-		{WorkerMemberId: memberID.String(), MemberEpoch: 1, ModelRuntimeEpoch: 8},
-		{WorkerMemberId: leaderID.String(), MemberEpoch: 1, ModelRuntimeEpoch: 2},
+		{WorkerMemberId: memberID.String(), MemberEpoch: 1, ModelRuntimeEpoch: 8,
+			IdentityDigest: memberDigest[:]},
+		{WorkerMemberId: leaderID.String(), MemberEpoch: 1, ModelRuntimeEpoch: 2,
+			IdentityDigest: leaderDigest[:]},
 	}
 	if !matchesMembers(durable, signed, leaderSPIFFE) {
 		t.Fatal("durable authorizer rejected independent local ModelRuntime epochs")
@@ -29,6 +31,11 @@ func TestGangAuthorityMatchesIndependentMemberRuntimeEpochs(t *testing.T) {
 	tampered[0].ModelRuntimeEpoch++
 	if matchesMembers(durable, tampered, leaderSPIFFE) {
 		t.Fatal("durable authorizer accepted a changed member-local ModelRuntime epoch")
+	}
+	tampered = cloneAuthorityMembers(signed)
+	tampered[0].IdentityDigest[0] ^= 0xff
+	if matchesMembers(durable, tampered, leaderSPIFFE) {
+		t.Fatal("durable authorizer accepted a changed signed member identity digest")
 	}
 }
 
@@ -52,6 +59,7 @@ func cloneAuthorityMembers(
 			WorkerMemberId:    value.GetWorkerMemberId(),
 			MemberEpoch:       value.GetMemberEpoch(),
 			ModelRuntimeEpoch: value.GetModelRuntimeEpoch(),
+			IdentityDigest:    append([]byte(nil), value.GetIdentityDigest()...),
 		}
 	}
 	return cloned

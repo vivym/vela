@@ -280,6 +280,7 @@ func matchesMembers(
 		if canonical[index] == nil || canonical[index].GetWorkerMemberId() != member.id.String() ||
 			canonical[index].GetMemberEpoch() != member.epoch ||
 			canonical[index].GetModelRuntimeEpoch() != member.modelRuntimeEpoch ||
+			!bytes.Equal(canonical[index].GetIdentityDigest(), member.identityDigest) ||
 			member.readiness != "READY" {
 			return false
 		}

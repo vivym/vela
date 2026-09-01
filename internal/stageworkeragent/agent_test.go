@@ -3,6 +3,7 @@ package stageworkeragent_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"net"
 	"testing"
@@ -152,6 +153,39 @@ func TestMultiMemberStatusCollectsStructuredFailureEvidenceByMember(t *testing.T
 			failure.GetWorkerReusable() != (index == 0) {
 			t.Fatalf("member %s failure = %#v", memberID, failure)
 		}
+	}
+}
+
+func TestMultiMemberOutputIsSealedOnlyByDeterministicLeader(t *testing.T) {
+	fixture := newBarrierFixture(t, false)
+	digest, err := stageauthority.Digest(fixture.authority)
+	if err != nil {
+		t.Fatalf("Digest StageAuthority: %v", err)
+	}
+	manifest := []byte(`{"output":"logical-llm-result"}`)
+	manifestDigest := sha256.Sum256(manifest)
+	leader := &fixedSealRuntimeClient{response: &velav1.ModelRuntimeServiceSealOutputResponse{
+		AuthorityDigest: digest[:],
+		Decision:        velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED,
+		State:           velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED,
+		RuntimeIdentity: runtimeIdentityForMember(fixture.authority, fixture.memberIDs[0]),
+		Receipt: &velav1.LocalMaterializationReceipt{
+			ReceiptId: "logical-output", ManifestSha256: manifestDigest[:], TotalSizeBytes: 4096,
+			SealedAt: timestamppb.Now(), OutputManifestJson: manifest,
+		},
+	}}
+	follower := &fixedSealRuntimeClient{response: leader.response}
+	agent, err := stageworkeragent.New(stageworkeragent.Config{Members: []stageworkeragent.RuntimeMember{
+		{ID: fixture.memberIDs[1], Client: follower},
+		{ID: fixture.memberIDs[0], Client: leader},
+	}})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	receipt, err := agent.SealOutput(context.Background(), fixture.authority)
+	if err != nil || receipt.GetReceiptId() != "logical-output" ||
+		leader.calls != 1 || follower.calls != 0 {
+		t.Fatalf("SealOutput = %#v leader=%d follower=%d error=%v", receipt, leader.calls, follower.calls, err)
 	}
 }
 
@@ -376,8 +410,10 @@ func barrierAuthority(
 		},
 		MembershipDigest: bytes.Repeat([]byte{0x72}, 32),
 		Members: []*velav1.StageAuthorityMemberEpoch{
-			{WorkerMemberId: memberIDs[0], MemberEpoch: 8, ModelRuntimeEpoch: 9},
-			{WorkerMemberId: memberIDs[1], MemberEpoch: 8, ModelRuntimeEpoch: 9},
+			{WorkerMemberId: memberIDs[0], MemberEpoch: 8, ModelRuntimeEpoch: 9,
+				IdentityDigest: bytes.Repeat([]byte{0x75}, 32)},
+			{WorkerMemberId: memberIDs[1], MemberEpoch: 8, ModelRuntimeEpoch: 9,
+				IdentityDigest: bytes.Repeat([]byte{0x76}, 32)},
 		},
 		ModelResidencyId: "52000000-0000-0000-0000-000000000001", ModelRuntimeIdentity: "llm-runtime-1",
 		ModelRuntimeBarrierGeneration: 9,
@@ -402,6 +438,21 @@ type unreachableRuntimeClient struct {
 type fixedStatusRuntimeClient struct {
 	velav1.ModelRuntimeServiceClient
 	response *velav1.ModelRuntimeServiceStatusResponse
+}
+
+type fixedSealRuntimeClient struct {
+	velav1.ModelRuntimeServiceClient
+	response *velav1.ModelRuntimeServiceSealOutputResponse
+	calls    int
+}
+
+func (client *fixedSealRuntimeClient) SealOutput(
+	context.Context,
+	*velav1.ModelRuntimeServiceSealOutputRequest,
+	...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceSealOutputResponse, error) {
+	client.calls++
+	return client.response, nil
 }
 
 func (client fixedStatusRuntimeClient) Status(

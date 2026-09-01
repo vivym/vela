@@ -246,6 +246,8 @@ type authorityMember struct {
 	WorkerMemberID    uuid.UUID `json:"worker_member_id"`
 	MemberEpoch       int64     `json:"member_epoch"`
 	ModelRuntimeEpoch int64     `json:"model_runtime_epoch"`
+	IdentityDigestHex string    `json:"identity_digest"`
+	IdentityDigest    []byte    `json:"-"`
 }
 
 type authorityDevice struct {
@@ -280,6 +282,9 @@ func (backend *PostgresAssignmentBackend) readWorkerAuthority(
 		return acquireAuthoritySnapshot{}, "", "", fmt.Errorf(
 			"decode durable Stage Worker authority: %w", err,
 		)
+	}
+	if err := decodeAuthorityMemberDigests(authority.Members); err != nil {
+		return acquireAuthoritySnapshot{}, "", "", err
 	}
 	deviceDigest, err := hex.DecodeString(authority.DeviceSetDigestHex)
 	if err != nil {
@@ -361,6 +366,9 @@ func (backend *PostgresAssignmentBackend) readExecution(
 			"decode durable StageAssignment execution: %w", err,
 		)
 	}
+	if err := decodeAuthorityMemberDigests(snapshot.Members); err != nil {
+		return assignmentExecutionSnapshot{}, err
+	}
 	if err := validateExecutionSnapshot(snapshot); err != nil {
 		return assignmentExecutionSnapshot{}, err
 	}
@@ -425,6 +433,7 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 		members = append(members, &velav1.StageAuthorityMemberEpoch{
 			WorkerMemberId: member.WorkerMemberID.String(), MemberEpoch: member.MemberEpoch,
 			ModelRuntimeEpoch: member.ModelRuntimeEpoch,
+			IdentityDigest:    bytes.Clone(member.IdentityDigest),
 		})
 		requiredMembers = append(requiredMembers, member.WorkerMemberID.String())
 	}
@@ -603,6 +612,11 @@ func validateAcquireAuthority(authority acquireAuthoritySnapshot) error {
 		strings.TrimSpace(authority.ModelRuntimeIdentity) == "" {
 		return errors.New("durable Stage Worker authority is incomplete")
 	}
+	for _, member := range authority.Members {
+		if len(member.IdentityDigest) != sha256.Size {
+			return errors.New("durable Stage Worker member identity digest is malformed")
+		}
+	}
 	return nil
 }
 
@@ -623,6 +637,22 @@ func validateExecutionSnapshot(snapshot assignmentExecutionSnapshot) error {
 		snapshot.LocalDeadlineAt.After(snapshot.ExpiresAt) ||
 		len(snapshot.Parameters) == 0 || len(snapshot.ExpectedOutputManifest) == 0 {
 		return errors.New("durable StageAssignment execution snapshot is incomplete")
+	}
+	for _, member := range snapshot.Members {
+		if len(member.IdentityDigest) != sha256.Size {
+			return errors.New("durable StageAssignment member identity digest is malformed")
+		}
+	}
+	return nil
+}
+
+func decodeAuthorityMemberDigests(members []authorityMember) error {
+	for index := range members {
+		digest, err := hex.DecodeString(members[index].IdentityDigestHex)
+		if err != nil || len(digest) != sha256.Size {
+			return errors.New("durable Stage Worker member identity digest is malformed")
+		}
+		members[index].IdentityDigest = digest
 	}
 	return nil
 }

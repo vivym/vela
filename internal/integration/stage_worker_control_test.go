@@ -486,6 +486,13 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 		started.RenewedAuthority == nil || started.RenewedAuthority.GetStageVersion() != 3 {
 		t.Fatalf("PostgresExecutionBackend Start result = %#v", started)
 	}
+	if len(started.RenewedAuthority.GetMembers()) != len(assigned.Authority.GetMembers()) ||
+		!bytes.Equal(
+			started.RenewedAuthority.GetMembers()[0].GetIdentityDigest(),
+			assigned.Authority.GetMembers()[0].GetIdentityDigest(),
+		) {
+		t.Fatal("Start renewal changed the signed WorkerMember identity digest")
+	}
 	startReplay, err := backend.StartStage(
 		context.Background(), command,
 		&velav1.StartStageRequest{
@@ -532,6 +539,10 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED ||
 		heartbeatResult.RenewedAuthority == nil ||
 		heartbeatResult.RenewedAuthority.GetStageVersion() != 3 ||
+		!bytes.Equal(
+			heartbeatResult.RenewedAuthority.GetMembers()[0].GetIdentityDigest(),
+			started.RenewedAuthority.GetMembers()[0].GetIdentityDigest(),
+		) ||
 		!heartbeatResult.RenewedAuthority.GetIssuedAt().AsTime().After(
 			started.RenewedAuthority.GetIssuedAt().AsTime(),
 		) {
@@ -597,6 +608,10 @@ func TestPostgresReattachmentBackendPersistsReplayAndFencesSupersededAuthority(t
 	)
 	if err != nil || started.RenewedAuthority == nil {
 		t.Fatalf("start before Reattach = %#v error=%v", started, err)
+	}
+	if len(started.RenewedAuthority.GetMembers()) != 1 ||
+		len(started.RenewedAuthority.GetMembers()[0].GetIdentityDigest()) != sha256.Size {
+		t.Fatal("Reattach fixture lost the signed WorkerMember identity digest")
 	}
 	startedDigest, err := stageauthority.Digest(started.RenewedAuthority)
 	if err != nil {
@@ -1389,8 +1404,10 @@ func signedAssignedStageAuthorityWithoutRuntimeBarrier(
 	var runtimeIdentity string
 	var memberID, deviceID uuid.UUID
 	var memberEpoch, deviceEpoch int64
+	var memberIdentityDigest []byte
 	if err := database.Admin.QueryRow(`
 		SELECT residency.runtime_identity, member.id, member.member_epoch,
+		       member.identity_digest,
 		       device.id, device.device_epoch
 		FROM model_residencies AS residency
 		JOIN worker_members AS member
@@ -1401,7 +1418,8 @@ func signedAssignedStageAuthorityWithoutRuntimeBarrier(
 		JOIN devices AS device ON device.id = binding.device_id
 		WHERE residency.id = $1
 	`, assignment.ModelResidencyID).Scan(
-		&runtimeIdentity, &memberID, &memberEpoch, &deviceID, &deviceEpoch,
+		&runtimeIdentity, &memberID, &memberEpoch, &memberIdentityDigest,
+		&deviceID, &deviceEpoch,
 	); err != nil {
 		t.Fatalf("read assigned Stage runtime evidence: %v", err)
 	}
@@ -1425,6 +1443,7 @@ func signedAssignedStageAuthorityWithoutRuntimeBarrier(
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: memberID.String(), MemberEpoch: memberEpoch,
 			ModelRuntimeEpoch: assignment.ModelRuntimeEpoch,
+			IdentityDigest:    memberIdentityDigest,
 		}},
 		ModelResidencyId:              assignment.ModelResidencyID.String(),
 		ModelRuntimeIdentity:          runtimeIdentity,

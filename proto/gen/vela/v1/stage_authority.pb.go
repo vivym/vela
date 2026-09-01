@@ -80,6 +80,7 @@ type StageAuthorityMemberEpoch struct {
 	WorkerMemberId    string                 `protobuf:"bytes,1,opt,name=worker_member_id,json=workerMemberId,proto3" json:"worker_member_id,omitempty"`
 	MemberEpoch       int64                  `protobuf:"varint,2,opt,name=member_epoch,json=memberEpoch,proto3" json:"member_epoch,omitempty"`
 	ModelRuntimeEpoch int64                  `protobuf:"varint,3,opt,name=model_runtime_epoch,json=modelRuntimeEpoch,proto3" json:"model_runtime_epoch,omitempty"`
+	IdentityDigest    []byte                 `protobuf:"bytes,4,opt,name=identity_digest,json=identityDigest,proto3" json:"identity_digest,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -133,6 +134,13 @@ func (x *StageAuthorityMemberEpoch) GetModelRuntimeEpoch() int64 {
 		return x.ModelRuntimeEpoch
 	}
 	return 0
+}
+
+func (x *StageAuthorityMemberEpoch) GetIdentityDigest() []byte {
+	if x != nil {
+		return x.IdentityDigest
+	}
+	return nil
 }
 
 type StageAuthority struct {
@@ -418,11 +426,12 @@ const file_vela_v1_stage_authority_proto_rawDesc = "" +
 	"\x1dvela/v1/stage_authority.proto\x12\avela.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"[\n" +
 	"\x19StageAuthorityDeviceEpoch\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12!\n" +
-	"\fdevice_epoch\x18\x02 \x01(\x03R\vdeviceEpoch\"\x98\x01\n" +
+	"\fdevice_epoch\x18\x02 \x01(\x03R\vdeviceEpoch\"\xc1\x01\n" +
 	"\x19StageAuthorityMemberEpoch\x12(\n" +
 	"\x10worker_member_id\x18\x01 \x01(\tR\x0eworkerMemberId\x12!\n" +
 	"\fmember_epoch\x18\x02 \x01(\x03R\vmemberEpoch\x12.\n" +
-	"\x13model_runtime_epoch\x18\x03 \x01(\x03R\x11modelRuntimeEpoch\"\xfd\v\n" +
+	"\x13model_runtime_epoch\x18\x03 \x01(\x03R\x11modelRuntimeEpoch\x12'\n" +
+	"\x0fidentity_digest\x18\x04 \x01(\fR\x0eidentityDigest\"\xfd\v\n" +
 	"\x0eStageAuthority\x12%\n" +
 	"\x0eschema_version\x18\x01 \x01(\rR\rschemaVersion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x1d\n" +

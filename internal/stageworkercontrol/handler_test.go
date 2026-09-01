@@ -375,6 +375,7 @@ func controlAuthority(now time.Time) *velav1.StageAuthority {
 		MembershipDigest: bytes.Repeat([]byte{0x82}, 32),
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: "43000000-0000-0000-0000-000000000001", MemberEpoch: 8, ModelRuntimeEpoch: 9,
+			IdentityDigest: bytes.Repeat([]byte{0x86}, 32),
 		}},
 		ModelResidencyId: "53000000-0000-0000-0000-000000000001", ModelRuntimeIdentity: "dit-runtime-3",
 		ModelRuntimeBarrierGeneration: 9,
