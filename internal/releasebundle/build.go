@@ -67,6 +67,7 @@ type renderInventory struct {
 	images             map[string]struct{}
 	supportImages      map[string]struct{}
 	modelRuntimeImages map[string]struct{}
+	h3RuntimeImages    map[string]struct{}
 	residencyRollouts  []fleetcontroller.ResidencyPlanRollout
 }
 
@@ -80,6 +81,7 @@ func newRenderInventory() renderInventory {
 		images:             make(map[string]struct{}),
 		supportImages:      make(map[string]struct{}),
 		modelRuntimeImages: make(map[string]struct{}),
+		h3RuntimeImages:    make(map[string]struct{}),
 	}
 }
 
@@ -196,7 +198,8 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 			return Bundle{}, err
 		}
 		if _, modelRuntime := inventory.modelRuntimeImages[input.Image]; modelRuntime {
-			if err := validateModelRuntimeOCIConfig(input.Image, configContent); err != nil {
+			_, h3Runtime := inventory.h3RuntimeImages[input.Image]
+			if err := validateModelRuntimeOCIConfig(input.Image, configContent, h3Runtime); err != nil {
 				return Bundle{}, err
 			}
 		}

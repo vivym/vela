@@ -113,9 +113,16 @@ func TestBuildBindsTargetResidencyPlanStageWorkerAndSecrets(t *testing.T) {
 
 func TestValidateModelRuntimeOCIConfigRequiresExactEntrypoint(t *testing.T) {
 	image := "ghcr.io/vivym/vela-h3-stage-runtime@" + testDigest("runtime")
+	validLabels := map[string]string{
+		"vela.ai.h3-runtime-base":       "ghcr.io/minimax/h3-runtime-base@" + testDigest("runtime base"),
+		"vela.ai.h3-encoder.sha256":     strings.TrimPrefix(testDigest("encoder"), "sha256:"),
+		"vela.ai.h3-dit.sha256":         strings.TrimPrefix(testDigest("dit"), "sha256:"),
+		"vela.ai.h3-vae-decoder.sha256": strings.TrimPrefix(testDigest("vae decoder"), "sha256:"),
+	}
 	for _, test := range []struct {
 		name       string
 		entrypoint []string
+		mutate     func(map[string]string)
 		wantError  bool
 	}{
 		{name: "exact", entrypoint: []string{"/usr/local/bin/vela-model-runtime"}},
@@ -123,21 +130,85 @@ func TestValidateModelRuntimeOCIConfigRequiresExactEntrypoint(t *testing.T) {
 		{name: "arguments", entrypoint: []string{"/usr/local/bin/vela-model-runtime", "--serve"}, wantError: true},
 		{name: "missing", wantError: true},
 		{name: "relative", entrypoint: []string{"bin/h3-stage-runtime"}, wantError: true},
+		{
+			name: "missing DiT digest", entrypoint: []string{"/usr/local/bin/vela-model-runtime"},
+			mutate:    func(labels map[string]string) { delete(labels, "vela.ai.h3-dit.sha256") },
+			wantError: true,
+		},
+		{
+			name: "tagged runtime base", entrypoint: []string{"/usr/local/bin/vela-model-runtime"},
+			mutate: func(labels map[string]string) {
+				labels["vela.ai.h3-runtime-base"] = "ghcr.io/minimax/h3-runtime-base:latest"
+			},
+			wantError: true,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			labels := make(map[string]string, len(validLabels))
+			for name, value := range validLabels {
+				labels[name] = value
+			}
+			if test.mutate != nil {
+				test.mutate(labels)
+			}
 			encoded, err := json.Marshal(map[string]any{
 				"architecture": "amd64", "os": "linux",
-				"config": map[string]any{"Entrypoint": test.entrypoint},
+				"config": map[string]any{"Entrypoint": test.entrypoint, "Labels": labels},
 				"rootfs": map[string]any{"type": "layers", "diff_ids": []string{}},
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = validateModelRuntimeOCIConfig(image, encoded)
+			err = validateModelRuntimeOCIConfig(image, encoded, true)
 			if (err != nil) != test.wantError {
 				t.Fatalf("validateModelRuntimeOCIConfig error = %v, wantError=%t", err, test.wantError)
 			}
 		})
+	}
+}
+
+func TestValidateModelRuntimeOCIConfigDoesNotRequireH3LabelsForOtherComponents(t *testing.T) {
+	image := "ghcr.io/vivym/vela-llm-stage-runtime@" + testDigest("llm runtime")
+	encoded, err := json.Marshal(map[string]any{
+		"architecture": "amd64", "os": "linux",
+		"config": map[string]any{
+			"Entrypoint": []string{"/usr/local/bin/vela-model-runtime"},
+		},
+		"rootfs": map[string]any{"type": "layers", "diff_ids": []string{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateModelRuntimeOCIConfig(image, encoded, false); err != nil {
+		t.Fatalf("validate non-H3 ModelRuntime OCI config: %v", err)
+	}
+}
+
+func TestRecordH3RuntimeImagesUsesRolloutComponentContract(t *testing.T) {
+	h3Image := "ghcr.io/vivym/vela-h3-stage-runtime@" + testDigest("h3")
+	llmImage := "ghcr.io/vivym/vela-llm-stage-runtime@" + testDigest("llm")
+	inventory := newRenderInventory()
+	recordH3RuntimeImages(&inventory, []fleetcontroller.ResidencyPlanRollout{{
+		WorkerBundles: []fleetcontroller.WorkerBundleActuation{
+			{
+				RuntimeImage: h3Image,
+				WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
+					ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{Component: "DIT"}},
+				}},
+			},
+			{
+				RuntimeImage: llmImage,
+				WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
+					ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{Component: "LLM"}},
+				}},
+			},
+		},
+	}})
+	if _, exists := inventory.h3RuntimeImages[h3Image]; !exists {
+		t.Fatal("H3 runtime image was not classified from the DiT component")
+	}
+	if _, exists := inventory.h3RuntimeImages[llmImage]; exists {
+		t.Fatal("LLM runtime image was incorrectly classified as H3")
 	}
 }
 
@@ -1298,10 +1369,19 @@ func testOCIManifest(t *testing.T, directory, name string) manifestFixture {
 	if name == "h3-stage-runtime" {
 		entrypoint = "/usr/local/bin/vela-model-runtime"
 	}
+	imageConfig := map[string]any{"Entrypoint": []string{entrypoint}}
+	if name == "h3-stage-runtime" {
+		imageConfig["Labels"] = map[string]string{
+			"vela.ai.h3-runtime-base":       "ghcr.io/minimax/h3-runtime-base@" + testDigest("runtime base"),
+			"vela.ai.h3-encoder.sha256":     strings.TrimPrefix(testDigest("encoder"), "sha256:"),
+			"vela.ai.h3-dit.sha256":         strings.TrimPrefix(testDigest("dit"), "sha256:"),
+			"vela.ai.h3-vae-decoder.sha256": strings.TrimPrefix(testDigest("vae decoder"), "sha256:"),
+		}
+	}
 	config := map[string]any{
 		"architecture": "amd64",
 		"os":           "linux",
-		"config":       map[string]any{"Entrypoint": []string{entrypoint}},
+		"config":       imageConfig,
 		"rootfs":       map[string]any{"type": "layers", "diff_ids": []string{}},
 	}
 	configEncoded, err := json.Marshal(config)

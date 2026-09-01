@@ -17,7 +17,10 @@ import (
 	"github.com/vivym/vela/internal/h3campaignevidence"
 	"github.com/vivym/vela/internal/h3faultevidence"
 	"github.com/vivym/vela/internal/h3launchevidence"
+	"github.com/vivym/vela/internal/h3preflight"
 	"github.com/vivym/vela/internal/releasebundle"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	discoveryclient "k8s.io/client-go/discovery"
 	coreclient "k8s.io/client-go/kubernetes/typed/core/v1"
 	resourceclient "k8s.io/client-go/kubernetes/typed/resource/v1"
 	"k8s.io/client-go/rest"
@@ -30,8 +33,12 @@ const (
 	validationEnvironmentKey       = "VELA_H3_EVIDENCE_VALIDATION_ENVIRONMENT"
 	collectorIdentityKey           = "VELA_H3_EVIDENCE_COLLECTOR_IDENTITY"
 	kubeconfigKey                  = "VELA_H3_EVIDENCE_KUBECONFIG"
+	kubernetesClusterUIDKey        = "VELA_H3_EVIDENCE_KUBERNETES_CLUSTER_UID"
+	kubernetesNamespaceUIDKey      = "VELA_H3_EVIDENCE_KUBERNETES_NAMESPACE_UID"
 	captureTimeout                 = 2 * time.Minute
 )
+
+var errInvalidPreflightInput = errors.New("invalid H3 preflight input")
 
 type evidenceConfiguration struct {
 	databaseURL           string
@@ -42,6 +49,12 @@ type evidenceConfiguration struct {
 type configuration struct {
 	evidenceConfiguration
 	kubeconfig string
+}
+
+type preflightConfiguration struct {
+	configuration
+	kubernetesClusterUID   string
+	kubernetesNamespaceUID string
 }
 
 type campaignConfiguration struct {
@@ -57,6 +70,13 @@ type campaignCaptureFunc func(
 ) (h3campaignevidence.Evidence, error)
 
 type faultCampaignBuildFunc func(string) (h3faultevidence.Bundle, error)
+
+type preflightCaptureFunc func(
+	context.Context,
+	string,
+	uuid.UUID,
+	preflightConfiguration,
+) (h3preflight.Report, error)
 
 type faultCampaignSummary struct {
 	SchemaVersion         int                              `json:"schema_version"`
@@ -75,6 +95,9 @@ func main() {
 }
 
 func run(arguments []string, getenv func(string) string, stdout, stderr io.Writer) int {
+	if len(arguments) == 3 && arguments[0] == "preflight" {
+		return runPreflight(arguments[1:], getenv, stdout, stderr, capturePreflight)
+	}
 	if len(arguments) == 3 && arguments[0] == "build-fault-campaign" {
 		return runFaultCampaign(arguments[1:], stdout, stderr, loadFaultCampaignBundle)
 	}
@@ -159,6 +182,123 @@ func run(arguments []string, getenv func(string) string, stdout, stderr io.Write
 		return 1
 	}
 	return 0
+}
+
+func runPreflight(
+	arguments []string,
+	getenv func(string) string,
+	stdout io.Writer,
+	stderr io.Writer,
+	capture preflightCaptureFunc,
+) int {
+	if len(arguments) != 2 || getenv == nil || stdout == nil || stderr == nil || capture == nil {
+		writeUsage(stderr)
+		return 2
+	}
+	planID, err := parseRequiredUUID(arguments[1], "ResidencyPlan revision id")
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+	config, err := loadPreflightConfiguration(getenv)
+	if err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 2
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), captureTimeout)
+	defer cancel()
+	report, err := capture(ctx, arguments[0], planID, config)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "run H3 real-environment preflight: %v\n", err)
+		if errors.Is(err, errInvalidPreflightInput) {
+			return 2
+		}
+		return 1
+	}
+	if err := encodeJSON(stdout, report); err != nil {
+		_, _ = fmt.Fprintf(stderr, "encode H3 real-environment preflight: %v\n", err)
+		return 1
+	}
+	if !report.Ready {
+		return 1
+	}
+	return 0
+}
+
+func capturePreflight(
+	ctx context.Context,
+	bundlePath string,
+	planID uuid.UUID,
+	config preflightConfiguration,
+) (h3preflight.Report, error) {
+	bundle, rollouts, err := releasebundle.LoadResidencyPlanRollouts(bundlePath)
+	if err != nil {
+		return h3preflight.Report{}, fmt.Errorf(
+			"%w: verify release-bound ResidencyPlan: %v", errInvalidPreflightInput, err,
+		)
+	}
+	rollout, err := selectRollout(rollouts, planID)
+	if err != nil {
+		return h3preflight.Report{}, fmt.Errorf("%w: %v", errInvalidPreflightInput, err)
+	}
+	observation := h3preflight.Observation{}
+	pool, err := pgxpool.New(ctx, config.databaseURL)
+	if err == nil {
+		defer pool.Close()
+		observation.EvidenceRoleVerified = veladb.VerifyRole(
+			ctx, pool, veladb.RoleH3CampaignEvidence,
+		) == nil
+	}
+	kubernetesConfig, err := loadKubernetesConfig(config.kubeconfig)
+	if err == nil {
+		discovery, discoveryErr := discoveryclient.NewDiscoveryClientForConfig(kubernetesConfig)
+		if discoveryErr == nil {
+			version, versionErr := discovery.ServerVersion()
+			if versionErr == nil && version != nil {
+				observation.KubernetesVersion = version.GitVersion
+			}
+		}
+		core, coreErr := coreclient.NewForConfig(kubernetesConfig)
+		if coreErr == nil {
+			clusterNamespace, clusterErr := core.Namespaces().Get(ctx, "kube-system", metav1.GetOptions{})
+			if clusterErr == nil && clusterNamespace != nil {
+				observation.KubernetesClusterUID = string(clusterNamespace.UID)
+			}
+			rolloutNamespace := residencyRolloutNamespace(rollout)
+			if rolloutNamespace != "" {
+				namespace, namespaceErr := core.Namespaces().Get(ctx, rolloutNamespace, metav1.GetOptions{})
+				if namespaceErr == nil && namespace != nil {
+					observation.KubernetesNamespaceUID = string(namespace.UID)
+				}
+			}
+			nodes, nodesErr := core.Nodes().List(ctx, metav1.ListOptions{})
+			if nodesErr == nil && nodes != nil {
+				observation.Nodes = nodes.Items
+			}
+		}
+		resource, resourceErr := resourceclient.NewForConfig(kubernetesConfig)
+		if resourceErr == nil {
+			classes, classesErr := resource.DeviceClasses().List(ctx, metav1.ListOptions{})
+			if classesErr == nil && classes != nil {
+				observation.DeviceClasses = classes.Items
+			}
+			slices, slicesErr := resource.ResourceSlices().List(ctx, metav1.ListOptions{})
+			if slicesErr == nil && slices != nil {
+				observation.ResourceSlices = slices.Items
+			}
+		}
+	}
+	report, err := h3preflight.Evaluate(h3preflight.Request{
+		ReleaseDigest: bundle.ReleaseDigest, ConfigurationRevision: bundle.ConfigurationRevision,
+		ValidationEnvironment: config.validationEnvironment, CheckedAt: time.Now().UTC(),
+		KubernetesClusterUID:   config.kubernetesClusterUID,
+		KubernetesNamespaceUID: config.kubernetesNamespaceUID,
+		Rollout:                rollout,
+	}, observation)
+	if err != nil {
+		return h3preflight.Report{}, fmt.Errorf("%w: %v", errInvalidPreflightInput, err)
+	}
+	return report, nil
 }
 
 func runFaultCampaign(
@@ -345,6 +485,34 @@ func loadConfiguration(getenv func(string) string) (configuration, error) {
 	return config, nil
 }
 
+func loadPreflightConfiguration(getenv func(string) string) (preflightConfiguration, error) {
+	config, err := loadConfiguration(getenv)
+	if err != nil {
+		return preflightConfiguration{}, err
+	}
+	preflight := preflightConfiguration{
+		configuration:          config,
+		kubernetesClusterUID:   getenv(kubernetesClusterUIDKey),
+		kubernetesNamespaceUID: getenv(kubernetesNamespaceUIDKey),
+	}
+	for _, required := range []struct {
+		name  string
+		value string
+	}{
+		{name: kubernetesClusterUIDKey, value: preflight.kubernetesClusterUID},
+		{name: kubernetesNamespaceUIDKey, value: preflight.kubernetesNamespaceUID},
+	} {
+		if required.value == "" || len(required.value) > 200 ||
+			strings.TrimSpace(required.value) != required.value ||
+			strings.ContainsAny(required.value, "\x00\r\n") {
+			return preflightConfiguration{}, fmt.Errorf(
+				"%s is required and must be a bounded Kubernetes UID", required.name,
+			)
+		}
+	}
+	return preflight, nil
+}
+
 func loadEvidenceConfiguration(
 	getenv func(string) string,
 	databaseEnvironment string,
@@ -400,6 +568,19 @@ func selectRollout(
 	return selected, nil
 }
 
+func residencyRolloutNamespace(rollout fleetcontroller.ResidencyPlanRollout) string {
+	if len(rollout.WorkerBundles) == 0 {
+		return ""
+	}
+	namespace := rollout.WorkerBundles[0].Namespace
+	for _, bundle := range rollout.WorkerBundles[1:] {
+		if bundle.Namespace != namespace {
+			return ""
+		}
+	}
+	return namespace
+}
+
 func writeUsage(writer io.Writer) {
 	if writer == nil {
 		return
@@ -407,6 +588,10 @@ func writeUsage(writer io.Writer) {
 	_, _ = fmt.Fprintln(
 		writer,
 		"usage: vela-h3-evidence capture <release-bundle.json> <residency-plan-revision-id>",
+	)
+	_, _ = fmt.Fprintln(
+		writer,
+		"       vela-h3-evidence preflight <release-bundle.json> <residency-plan-revision-id>",
 	)
 	_, _ = fmt.Fprintln(
 		writer,

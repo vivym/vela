@@ -14,8 +14,152 @@ import (
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/h3campaignevidence"
 	"github.com/vivym/vela/internal/h3faultevidence"
+	"github.com/vivym/vela/internal/h3preflight"
 	"github.com/vivym/vela/internal/productiongates"
 )
+
+func TestRunPreflightEmitsTypedReadinessResult(t *testing.T) {
+	planID := uuid.MustParse("49350000-0000-0000-0000-000000000040")
+	configured := func(name string) string {
+		switch name {
+		case databaseURLEnvironment:
+			return "postgres://evidence.example/vela"
+		case validationEnvironmentKey:
+			return "h3-preflight-test"
+		case collectorIdentityKey:
+			return "spiffe://vela/test/preflight"
+		case kubeconfigKey:
+			return "/secure/kubeconfig"
+		case kubernetesClusterUIDKey:
+			return "cluster-uid-1"
+		case kubernetesNamespaceUIDKey:
+			return "namespace-uid-1"
+		default:
+			return ""
+		}
+	}
+	for _, test := range []struct {
+		name     string
+		ready    bool
+		wantCode int
+	}{
+		{name: "ready", ready: true, wantCode: 0},
+		{name: "fail closed", ready: false, wantCode: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			code := runPreflight(
+				[]string{"release-bundle.json", planID.String()},
+				configured,
+				&stdout,
+				&stderr,
+				func(
+					_ context.Context,
+					bundlePath string,
+					actualPlanID uuid.UUID,
+					config preflightConfiguration,
+				) (h3preflight.Report, error) {
+					if bundlePath != "release-bundle.json" || actualPlanID != planID ||
+						config.databaseURL != "postgres://evidence.example/vela" ||
+						config.validationEnvironment != "h3-preflight-test" ||
+						config.collectorIdentity != "spiffe://vela/test/preflight" ||
+						config.kubeconfig != "/secure/kubeconfig" ||
+						config.kubernetesClusterUID != "cluster-uid-1" ||
+						config.kubernetesNamespaceUID != "namespace-uid-1" {
+						t.Fatalf("preflight inputs = %q %s %#v", bundlePath, actualPlanID, config)
+					}
+					return h3preflight.Report{
+						SchemaVersion:           h3preflight.SchemaVersion,
+						MediaType:               h3preflight.MediaType,
+						ResidencyPlanRevisionID: planID,
+						Ready:                   test.ready,
+					}, nil
+				},
+			)
+			if code != test.wantCode || stderr.Len() != 0 {
+				t.Fatalf("runPreflight = code %d stdout %q stderr %q", code, stdout.String(), stderr.String())
+			}
+			var report h3preflight.Report
+			decoder := json.NewDecoder(&stdout)
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&report); err != nil || report.Ready != test.ready ||
+				report.ResidencyPlanRevisionID != planID {
+				t.Fatalf("preflight report = %#v error=%v", report, err)
+			}
+		})
+	}
+}
+
+func TestRunPreflightRequiresExpectedKubernetesIdentity(t *testing.T) {
+	for _, missing := range []string{kubernetesClusterUIDKey, kubernetesNamespaceUIDKey} {
+		t.Run(missing, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			called := false
+			code := runPreflight(
+				[]string{"release-bundle.json", "49350000-0000-0000-0000-000000000040"},
+				func(name string) string {
+					if name == missing {
+						return ""
+					}
+					switch name {
+					case databaseURLEnvironment:
+						return "postgres://evidence.example/vela"
+					case validationEnvironmentKey:
+						return "h3-preflight-test"
+					case collectorIdentityKey:
+						return "spiffe://vela/test/preflight"
+					case kubernetesClusterUIDKey:
+						return "cluster-uid-1"
+					case kubernetesNamespaceUIDKey:
+						return "namespace-uid-1"
+					default:
+						return ""
+					}
+				},
+				&stdout,
+				&stderr,
+				func(context.Context, string, uuid.UUID, preflightConfiguration) (h3preflight.Report, error) {
+					called = true
+					return h3preflight.Report{}, nil
+				},
+			)
+			if code != 2 || called || stdout.Len() != 0 || !strings.Contains(stderr.String(), missing) {
+				t.Fatalf("runPreflight = code %d called %t stdout %q stderr %q", code, called, stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
+func TestRunPreflightClassifiesInvalidReleaseInput(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runPreflight(
+		[]string{"missing-release-bundle.json", "49350000-0000-0000-0000-000000000040"},
+		func(name string) string {
+			switch name {
+			case databaseURLEnvironment:
+				return "postgres://evidence.example/vela"
+			case validationEnvironmentKey:
+				return "h3-preflight-test"
+			case collectorIdentityKey:
+				return "spiffe://vela/test/preflight"
+			case kubernetesClusterUIDKey:
+				return "cluster-uid-1"
+			case kubernetesNamespaceUIDKey:
+				return "namespace-uid-1"
+			default:
+				return ""
+			}
+		},
+		&stdout,
+		&stderr,
+		func(context.Context, string, uuid.UUID, preflightConfiguration) (h3preflight.Report, error) {
+			return h3preflight.Report{}, errInvalidPreflightInput
+		},
+	)
+	if code != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), errInvalidPreflightInput.Error()) {
+		t.Fatalf("runPreflight = code %d stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+}
 
 func TestRunRequiresLiveCaptureConfiguration(t *testing.T) {
 	var stdout, stderr bytes.Buffer

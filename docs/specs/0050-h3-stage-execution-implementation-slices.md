@@ -339,9 +339,13 @@ They do not
 authorize production activation, prove real Worker-local or N-1 drain, remove
 legacy schema/code, or make the monolithic path unreachable in the repository.
 
-The repository also contains the production `vela-stage-worker-agent` and
-`vela-model-runtime` base images,
-target-only default Fleet rollout input, dynamic one-member/one-GPU Pod and DRA
+The repository also contains the production `vela-stage-worker-agent` image and
+the composed `vela-h3-stage-runtime` image build seam. The latter inherits a
+digest-pinned external dependency/model base, independently verifies exact
+Encoder, DiT, and VAE decoder command contexts and digests, installs the Vela
+ModelRuntime wrapper, and binds the composition into the OCI config and release
+bundle. Production commands, models, and weights remain external. The repository
+contains target-only default Fleet rollout input, dynamic one-member/one-GPU Pod and DRA
 claim materialization, the explicit one-slot Encoder/VAE AUX exception, and a
 canonical release bundle that binds the Stage Worker render, configuration,
 Secret contracts, per-runtime Residency/Profile/epoch-floor actuation, public
@@ -358,6 +362,17 @@ The release graph binds external Secret/ConfigMap names and declared revisions,
 but Fleet neither reads Secret values nor verifies live resource UID/content.
 Kubernetes admission control and secret-manager evidence must prevent deletion and
 same-name recreation of immutable rollout resources before activation.
+
+A typed read-only `vela-h3-evidence preflight` command now checks the canonical
+release/ResidencyPlan, dedicated evidence role, Kubernetes API bound to the
+expected cluster and namespace UIDs, exact one-AUX plus seven-DiT deployment
+unit, three-node placement, schedulable Nodes under the Worker Pod selector and
+toleration contract,
+NVIDIA DeviceClass/current ResourceSlices, and exact planned node/GPU UUID/PCI
+BDF closure. It emits fixed PASS/FAIL reason codes and has no Fleet or model
+mutation authority. No current canonical production bundle or reachable local
+GPU/DRA environment exists, so this mechanism is not a successful environment
+receipt.
 
 The repository campaign-evidence slice now validates a canonical release bundle
 and seals its exact release/configuration/ResidencyPlan binding before capture.

@@ -24,6 +24,44 @@ Healthy resident models remain loaded during normal placement and drain.
 Preflight is read-only. A fault action that would terminate a ModelRuntime is a
 separate, explicit maintenance decision rather than an implicit scheduler step.
 
+## Typed command
+
+`vela-h3-evidence preflight` validates one canonical release-bound
+ResidencyPlan before any deployment or fault action. Configure the same
+dedicated evidence database role and read-only Kubernetes identity used by
+launch capture, then run:
+
+```text
+export VELA_H3_EVIDENCE_DATABASE_URL='postgres://...'
+export VELA_H3_EVIDENCE_VALIDATION_ENVIRONMENT='h3-production-cn-north-1'
+export VELA_H3_EVIDENCE_COLLECTOR_IDENTITY='spiffe://vela/launch-evidence/preflight'
+export VELA_H3_EVIDENCE_KUBECONFIG='/secure/path/kubeconfig'
+export VELA_H3_EVIDENCE_KUBERNETES_CLUSTER_UID='<kube-system namespace UID>'
+export VELA_H3_EVIDENCE_KUBERNETES_NAMESPACE_UID='<vela-system namespace UID>'
+
+make preflight-h3-real-environment \
+  RELEASE_BUNDLE=/absolute/path/to/release-bundle.json \
+  H3_EVIDENCE_PLAN_REVISION=49320000-0000-0000-0000-000000000001 \
+  > /absolute/path/to/campaign/h3-real-environment-preflight.json
+```
+
+The strict V1 report contains nine fixed checks: canonical release bundle,
+dedicated evidence role, Kubernetes API bound to the expected cluster and Vela
+namespace UIDs, exact `1 AUX + 7 single-GPU DiT`
+deployment unit, three-node rollout, schedulable READY nodes, NVIDIA
+`DeviceClass`, complete current NVIDIA `ResourceSlice` generations, and exact
+node/GPU UUID/PCI BDF closure for all eight planned GPUs. External failures use
+bounded reason codes and never copy DSNs, kubeconfig paths, credentials, or raw
+client errors into JSON. Exit status is `0` only when `ready=true`, `1` for a
+typed fail-closed report, and `2` for invalid command/configuration input,
+including a missing or invalid release bundle or plan selector. Node
+schedulability uses the actual Worker Pod hostname selector and toleration
+contract, not only the Node `Ready` condition.
+
+This report is a precondition, not a Launch Receipt. It does not actuate Fleet,
+load or unload a model, prove model readiness, run a Job, or exercise failure
+recovery.
+
 ## Observed local state
 
 The configured context is `k3d-heimdall-staging`. Its API endpoint is
@@ -63,3 +101,7 @@ campaign only after at least three schedulable physical GPU nodes are visible.
 Re-run the read-only inventory first, then capture launch evidence and the
 same-node/cross-node/cache Job IDs before any fault injection. Do not unload
 healthy resident models merely to create scheduling capacity.
+
+The current repository checkout has no canonical production release bundle, so
+the typed command cannot yet be run against a truthful release/environment
+pair. Repository unit fixtures prove only report behavior.

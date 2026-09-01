@@ -26,7 +26,7 @@ type velaImageArtifactTarget struct {
 var velaImageArtifactTargets = [...]velaImageArtifactTarget{
 	{name: "vela-control", entrypoint: "/usr/local/bin/vela-control"},
 	{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
-	{name: "vela-model-runtime", entrypoint: "/usr/local/bin/vela-model-runtime"},
+	{name: "vela-h3-stage-runtime", entrypoint: "/usr/local/bin/vela-model-runtime"},
 	{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 }
 
@@ -189,14 +189,33 @@ func TestBuildVelaImageArtifactsRejectsUnexpectedDefaultCommand(t *testing.T) {
 	assertVelaImageArtifactBuildRejected(t, fixture, copyOCILayoutsFakeDocker, "unexpected default command")
 }
 
+func TestBuildVelaImageArtifactsRejectsMissingH3RuntimeCommandDigest(t *testing.T) {
+	fixture := newVelaImageArtifactFixture(t)
+	rewriteOCILayoutConfig(
+		t,
+		filepath.Join(fixture.layoutRoot, "vela-h3-stage-runtime"),
+		func(config *ociv1.Image) { delete(config.Config.Labels, "vela.ai.h3-dit.sha256") },
+	)
+	assertVelaImageArtifactBuildRejected(
+		t,
+		fixture,
+		copyOCILayoutsFakeDocker,
+		"missing H3 DiT command digest label",
+	)
+}
+
 func writeOCIImageLayoutFixture(
 	t *testing.T,
 	directory, title, revision, entrypoint string,
+	additionalLabels map[string]string,
 ) string {
 	t.Helper()
 	labels := map[string]string{
 		"org.opencontainers.image.revision": revision,
 		"org.opencontainers.image.title":    title,
+	}
+	for name, value := range additionalLabels {
+		labels[name] = value
 	}
 	config := ociv1.Image{
 		Platform: ociv1.Platform{OS: "linux", Architecture: "amd64"},
@@ -335,6 +354,9 @@ type velaImageArtifactFixture struct {
 	revision        string
 	imagePrefix     string
 	manifestDigests map[string]string
+	runtimeBase     string
+	commandContext  string
+	commandDigests  map[string]string
 }
 
 func newVelaImageArtifactFixture(t *testing.T) velaImageArtifactFixture {
@@ -345,15 +367,26 @@ func newVelaImageArtifactFixture(t *testing.T) velaImageArtifactFixture {
 		revision:        "release-test-r3",
 		imagePrefix:     "registry.example.com/vela",
 		manifestDigests: make(map[string]string, len(velaImageArtifactTargets)),
+		runtimeBase:     "registry.example.com/minimax/h3-runtime-base@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 	}
+	fixture.commandContext, fixture.commandDigests = newH3RuntimeCommandFixture(t)
 	fixture.layoutRoot = filepath.Join(fixture.temporary, "layouts")
 	if err := os.Mkdir(fixture.layoutRoot, 0o700); err != nil {
 		t.Fatalf("create OCI fixture root: %v", err)
 	}
 	for _, target := range velaImageArtifactTargets {
+		labels := map[string]string(nil)
+		if target.name == "vela-h3-stage-runtime" {
+			labels = map[string]string{
+				"vela.ai.h3-runtime-base":       fixture.runtimeBase,
+				"vela.ai.h3-encoder.sha256":     fixture.commandDigests["h3-encoder"],
+				"vela.ai.h3-dit.sha256":         fixture.commandDigests["h3-dit"],
+				"vela.ai.h3-vae-decoder.sha256": fixture.commandDigests["h3-vae-decoder"],
+			}
+		}
 		fixture.manifestDigests[target.name] = writeOCIImageLayoutFixture(
 			t, filepath.Join(fixture.layoutRoot, target.name), target.name,
-			fixture.revision, target.entrypoint,
+			fixture.revision, target.entrypoint, labels,
 		)
 	}
 	return fixture
@@ -378,6 +411,11 @@ func (fixture velaImageArtifactFixture) run(
 		"RELEASE_REVISION="+fixture.revision,
 		"RELEASE_IMAGE_PREFIX="+fixture.imagePrefix,
 		"RELEASE_ARTIFACT_DIR="+output,
+		"H3_RUNTIME_BASE="+fixture.runtimeBase,
+		"H3_RUNTIME_COMMAND_CONTEXT="+fixture.commandContext,
+		"H3_ENCODER_SHA256="+fixture.commandDigests["h3-encoder"],
+		"H3_DIT_SHA256="+fixture.commandDigests["h3-dit"],
+		"H3_VAE_DECODER_SHA256="+fixture.commandDigests["h3-vae-decoder"],
 		"VELA_TEST_OCI_LAYOUTS="+fixture.layoutRoot,
 	)
 	return command.CombinedOutput()

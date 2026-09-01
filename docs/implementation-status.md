@@ -294,12 +294,16 @@ and Catalog promotion rebuild that bundle and require exact receipt bindings
 before any database mutation. It does not publish or sign registry artifacts,
 provision production PKI/Secrets or nodes, deploy real infrastructure, or create
 a Launch Receipt.
-Slice 42 (`eeddbaa`) provides the repository-owned `linux/amd64` build seam for
-the five Vela runtime images, including pinned build inputs, exact runtime
-entrypoints, and a private digest-bound H3 backend context. It does not provide
-the production backend, publish or sign registry artifacts, approve
-vulnerabilities, deploy RKE2/H3, or create a Launch Receipt.
-Slice 43 (`32718ac`) converts those five local Buildx layouts into exact
+Slice 42 (`eeddbaa`, extended here for split-runtime composition) provides
+the repository-owned `linux/amd64` build seam for four final Vela runtime
+images, including pinned build inputs, exact runtime entrypoints, a
+digest-pinned external H3 dependency/model base, and an exact private
+three-command context whose Encoder, DiT, and VAE decoder ELF identities are
+independently verified and bound into the final OCI config. It does not provide
+the production base, commands, models or weights, publish or sign registry
+artifacts, approve vulnerabilities, deploy RKE2/H3, or create a Launch Receipt.
+Slice 43 (`32718ac`, extended here for split-runtime composition) converts
+those four local Buildx layouts into exact
 manifest/config inputs for the canonical release bundle, with streamed blob
 verification, strict runtime contracts, fixed inventory, and atomic
 no-replace publication. It does not publish a registry image, sign or attach an
@@ -318,6 +322,14 @@ database identity, raw scanner output, and exact vulnerability policy approval
 under a process-configured, digest-pinned external trust root.
 Repository fixtures prove fail-closed validation and pre-transaction rejection;
 they do not provide any actual production evidence or Launch Receipt.
+A typed H3 real-environment preflight now binds one canonical release and
+ResidencyPlan to a dedicated evidence database role, Kubernetes API and expected
+cluster/namespace UIDs, exact one-AUX plus seven-DiT three-node topology, READY
+schedulable Nodes under the Worker Pod selector/toleration contract, NVIDIA DRA
+class/current slices, and all eight planned node/GPU UUID/PCI BDF identities.
+It emits only bounded PASS/FAIL reason codes and performs no actuation. The
+current checkout has no canonical production release bundle or reachable local
+GPU/DRA environment, so no successful live report exists.
 Slice 46 (`760cd7a`, review closure `431bf3f`) pins the Control/Storage
 JetStream workload to the exact NATS `2.10.22` `linux/amd64` OCI manifest and
 verifies that identity through the final Kustomize render. It does not provide

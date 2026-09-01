@@ -6,11 +6,31 @@ variable "RELEASE_IMAGE_PREFIX" {
   default = ""
 }
 
+variable "H3_RUNTIME_BASE" {
+  default = ""
+}
+
+variable "H3_RUNTIME_COMMAND_CONTEXT" {
+  default = ""
+}
+
+variable "H3_ENCODER_SHA256" {
+  default = ""
+}
+
+variable "H3_DIT_SHA256" {
+  default = ""
+}
+
+variable "H3_VAE_DECODER_SHA256" {
+  default = ""
+}
+
 group "vela-all" {
   targets = [
     "vela-control",
     "vela-fleet-controller",
-    "vela-model-runtime",
+    "vela-h3-stage-runtime",
     "vela-stage-worker-agent",
   ]
 }
@@ -44,8 +64,17 @@ target "vela-stage-worker-agent" {
   tags     = ["${RELEASE_IMAGE_PREFIX}/vela-stage-worker-agent:${RELEASE_REVISION}"]
 }
 
-target "vela-model-runtime" {
+target "vela-h3-stage-runtime" {
   inherits = ["_common"]
-  target   = "vela-model-runtime"
-  tags     = ["${RELEASE_IMAGE_PREFIX}/vela-model-runtime:${RELEASE_REVISION}"]
+  target   = "vela-h3-stage-runtime"
+  tags     = ["${RELEASE_IMAGE_PREFIX}/vela-h3-stage-runtime:${RELEASE_REVISION}"]
+  contexts = {
+    h3_runtime_commands = H3_RUNTIME_COMMAND_CONTEXT
+  }
+  args = {
+    H3_RUNTIME_BASE          = H3_RUNTIME_BASE
+    H3_ENCODER_SHA256        = H3_ENCODER_SHA256
+    H3_DIT_SHA256            = H3_DIT_SHA256
+    H3_VAE_DECODER_SHA256    = H3_VAE_DECODER_SHA256
+  }
 }

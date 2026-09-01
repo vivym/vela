@@ -173,6 +173,7 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 				return invalidf("Fleet ResidencyPlan ConfigMap %s/%s: %v", namespace, resourceName, err)
 			}
 			inventory.residencyRollouts = append(inventory.residencyRollouts, rollouts...)
+			recordH3RuntimeImages(inventory, rollouts)
 		}
 	}
 	for index, present := range found {
@@ -182,6 +183,24 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 		}
 	}
 	return nil
+}
+
+func recordH3RuntimeImages(
+	inventory *renderInventory,
+	rollouts []fleetcontroller.ResidencyPlanRollout,
+) {
+	for _, rollout := range rollouts {
+		for _, bundle := range rollout.WorkerBundles {
+			for _, worker := range bundle.WorkerInstances {
+				for _, runtime := range worker.ModelRuntimes {
+					switch runtime.Component {
+					case "ENCODER", "DIT", "VAE_DECODER":
+						inventory.h3RuntimeImages[bundle.RuntimeImage] = struct{}{}
+					}
+				}
+			}
+		}
+	}
 }
 
 func decodeFleetResidencyPlanConfigMap(
@@ -609,7 +628,7 @@ func validateOCIManifest(
 	return manifest.MediaType, Platform{OS: config.OS, Architecture: config.Architecture}, nil
 }
 
-func validateModelRuntimeOCIConfig(image string, encoded []byte) error {
+func validateModelRuntimeOCIConfig(image string, encoded []byte, requireH3Composition bool) error {
 	var config ociv1.Image
 	if err := decodeStrictJSON(encoded, &config); err != nil {
 		return invalidf("decode ModelRuntime OCI config for %s: %v", image, err)
@@ -620,6 +639,29 @@ func validateModelRuntimeOCIConfig(image string, encoded []byte) error {
 			"ModelRuntime OCI config for %s must bind the exact vela-model-runtime entrypoint",
 			image,
 		)
+	}
+	if !requireH3Composition {
+		return nil
+	}
+	if !imageref.ValidPinned(config.Config.Labels["vela.ai.h3-runtime-base"]) {
+		return invalidf(
+			"ModelRuntime OCI config for %s must bind a digest-pinned H3 runtime base",
+			image,
+		)
+	}
+	for _, label := range []string{
+		"vela.ai.h3-encoder.sha256",
+		"vela.ai.h3-dit.sha256",
+		"vela.ai.h3-vae-decoder.sha256",
+	} {
+		value := config.Config.Labels[label]
+		if len(value) != 64 || value == strings.Repeat("0", 64) || !isLowerHex(value) {
+			return invalidf(
+				"ModelRuntime OCI config for %s must bind a valid %s label",
+				image,
+				label,
+			)
+		}
 	}
 	return nil
 }

@@ -97,6 +97,54 @@ func TestBuildH3MockBackendProducesExactVerifiedContext(t *testing.T) {
 	}
 }
 
+func TestVerifyH3RuntimeCommandsRequiresExactDigestBoundInventory(t *testing.T) {
+	repository := deploymentRepositoryRoot(t)
+	mockContext := filepath.Join(canonicalTemporaryDirectory(t), "h3-mock-context")
+	command := exec.Command("make", "-s", "build-h3-mock-backend")
+	command.Dir = repository
+	command.Env = append(os.Environ(), "H3_MOCK_BACKEND_CONTEXT="+mockContext)
+	if encoded, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build H3 mock backend: %v\n%s", err, encoded)
+	}
+	backend, err := os.ReadFile(filepath.Join(mockContext, "h3-backend"))
+	if err != nil {
+		t.Fatalf("read mock backend: %v", err)
+	}
+	runtimeContext := filepath.Join(canonicalTemporaryDirectory(t), "h3-runtime-commands")
+	if err := os.Mkdir(runtimeContext, 0o700); err != nil {
+		t.Fatalf("create runtime command context: %v", err)
+	}
+	digests := make(map[string]string, 3)
+	for _, name := range []string{"h3-encoder", "h3-dit", "h3-vae-decoder"} {
+		path := filepath.Join(runtimeContext, name)
+		if err := os.WriteFile(path, backend, 0o555); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		digest := sha256.Sum256(backend)
+		digests[name] = hex.EncodeToString(digest[:])
+	}
+	if err := releaseartifacts.VerifyH3RuntimeCommands(
+		runtimeContext,
+		digests["h3-encoder"],
+		digests["h3-dit"],
+		digests["h3-vae-decoder"],
+	); err != nil {
+		t.Fatalf("verify H3 runtime commands: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(runtimeContext, "unexpected"), backend, 0o555); err != nil {
+		t.Fatalf("write unexpected runtime command: %v", err)
+	}
+	if err := releaseartifacts.VerifyH3RuntimeCommands(
+		runtimeContext,
+		digests["h3-encoder"],
+		digests["h3-dit"],
+		digests["h3-vae-decoder"],
+	); err == nil {
+		t.Fatal("H3 runtime command verifier accepted an unexpected file")
+	}
+}
+
 func TestBuildHostPackagesRejectsSymlinkOutputParent(t *testing.T) {
 	repository := deploymentRepositoryRoot(t)
 	temporary := canonicalTemporaryDirectory(t)
@@ -354,11 +402,20 @@ exec "$VELA_TEST_REAL_GO" "$@"
 
 func TestPrintVelaImageBuildDefinesExactPinnedTargets(t *testing.T) {
 	repository := deploymentRepositoryRoot(t)
+	commandContext, commandDigests := newH3RuntimeCommandFixture(t)
 	const (
 		revision    = "release-test-r2"
 		imagePrefix = "registry.example.com/vela"
+		runtimeBase = "docker.io/library/debian@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	)
-	encoded, err := runPrintVelaImageBuild(repository, revision, imagePrefix)
+	encoded, err := runPrintVelaImageBuild(
+		repository,
+		revision,
+		imagePrefix,
+		runtimeBase,
+		commandContext,
+		commandDigests,
+	)
 	if err != nil {
 		t.Fatalf("print Vela image build: %v\n%s", err, encoded)
 	}
@@ -379,7 +436,7 @@ func TestPrintVelaImageBuildDefinesExactPinnedTargets(t *testing.T) {
 		t.Fatalf("decode Vela image build definition: %v\n%s", err, encoded)
 	}
 	expectedTargets := []string{
-		"vela-control", "vela-fleet-controller", "vela-model-runtime", "vela-stage-worker-agent",
+		"vela-control", "vela-fleet-controller", "vela-h3-stage-runtime", "vela-stage-worker-agent",
 	}
 	slices.Sort(definition.Group["vela-all"].Targets)
 	if !slices.Equal(definition.Group["vela-all"].Targets, expectedTargets) {
@@ -398,8 +455,20 @@ func TestPrintVelaImageBuildDefinesExactPinnedTargets(t *testing.T) {
 			!slices.Equal(target.Platforms, []string{"linux/amd64"}) ||
 			!slices.Equal(target.Tags, []string{imagePrefix + "/" + name + ":" + revision}) ||
 			target.Args["RELEASE_REVISION"] != revision || target.Args["GO_BASE"] != goBase ||
-			target.Args["DEBIAN_BASE"] != debianBase || len(target.Args) != 3 || len(target.Contexts) != 0 {
+			target.Args["DEBIAN_BASE"] != debianBase {
 			t.Fatalf("Vela image target %q = %#v", name, target)
+		}
+		if name == "vela-h3-stage-runtime" {
+			if target.Args["H3_RUNTIME_BASE"] != runtimeBase ||
+				target.Args["H3_ENCODER_SHA256"] != commandDigests["h3-encoder"] ||
+				target.Args["H3_DIT_SHA256"] != commandDigests["h3-dit"] ||
+				target.Args["H3_VAE_DECODER_SHA256"] != commandDigests["h3-vae-decoder"] ||
+				target.Contexts["h3_runtime_commands"] != commandContext ||
+				len(target.Args) != 7 || len(target.Contexts) != 1 {
+				t.Fatalf("H3 stage runtime target = %#v", target)
+			}
+		} else if len(target.Args) != 3 || len(target.Contexts) != 0 {
+			t.Fatalf("non-H3 Vela image target %q carries H3 composition inputs: %#v", name, target)
 		}
 	}
 }
@@ -413,6 +482,47 @@ func TestPrintVelaImageBuildRequiresExplicitImagePrefix(t *testing.T) {
 	)
 	if encoded, err := command.CombinedOutput(); err == nil {
 		t.Fatalf("print image build without image prefix unexpectedly succeeded:\n%s", encoded)
+	}
+}
+
+func TestBuildVelaImagesGrantsExactRuntimeCommandContextRead(t *testing.T) {
+	repository := deploymentRepositoryRoot(t)
+	commandContext, commandDigests := newH3RuntimeCommandFixture(t)
+	temporary := canonicalTemporaryDirectory(t)
+	fakeBin := filepath.Join(temporary, "bin")
+	if err := os.Mkdir(fakeBin, 0o700); err != nil {
+		t.Fatalf("create fake Docker directory: %v", err)
+	}
+	const fakeDocker = `#!/bin/sh
+set -eu
+printf '%s\n' "$@" >"$VELA_TEST_DOCKER_ARGUMENTS"
+`
+	if err := os.WriteFile(filepath.Join(fakeBin, "docker"), []byte(fakeDocker), 0o700); err != nil {
+		t.Fatalf("write fake Docker: %v", err)
+	}
+	argumentsFile := filepath.Join(temporary, "docker-arguments")
+	command := exec.Command("make", "-s", "--no-print-directory", "build-vela-images")
+	command.Dir = repository
+	command.Env = append(os.Environ(),
+		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"VELA_TEST_DOCKER_ARGUMENTS="+argumentsFile,
+		"RELEASE_REVISION=release-test-r2",
+		"RELEASE_IMAGE_PREFIX=registry.example.com/vela",
+		"H3_RUNTIME_BASE=docker.io/library/debian@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"H3_RUNTIME_COMMAND_CONTEXT="+commandContext,
+		"H3_ENCODER_SHA256="+commandDigests["h3-encoder"],
+		"H3_DIT_SHA256="+commandDigests["h3-dit"],
+		"H3_VAE_DECODER_SHA256="+commandDigests["h3-vae-decoder"],
+	)
+	if encoded, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build Vela images with fake Docker: %v\n%s", err, encoded)
+	}
+	encoded, err := os.ReadFile(argumentsFile)
+	if err != nil {
+		t.Fatalf("read Docker arguments: %v", err)
+	}
+	if !strings.Contains(string(encoded), "--allow=fs.read="+commandContext+"\n") {
+		t.Fatalf("Docker arguments do not grant exact command context read:\n%s", encoded)
 	}
 }
 
@@ -451,7 +561,20 @@ func TestVelaImageDockerfilePinsRuntimeContract(t *testing.T) {
 			},
 		},
 		{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
-		{name: "vela-model-runtime", entrypoint: "/usr/local/bin/vela-model-runtime"},
+		{
+			name:       "vela-h3-stage-runtime",
+			entrypoint: "/usr/local/bin/vela-model-runtime",
+			required: []string{
+				"vela.ai.h3-runtime-base=\"${H3_RUNTIME_BASE}\"",
+				"vela.ai.h3-encoder.sha256=\"${H3_ENCODER_SHA256}\"",
+				"vela.ai.h3-dit.sha256=\"${H3_DIT_SHA256}\"",
+				"vela.ai.h3-vae-decoder.sha256=\"${H3_VAE_DECODER_SHA256}\"",
+				"/opt/vela/bin/h3-encoder",
+				"/opt/vela/bin/h3-dit",
+				"/opt/vela/bin/h3-vae-decoder",
+				"CMD []",
+			},
+		},
 		{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 	} {
 		stage := finalDockerfileStage(t, dockerfile, expected.name)
@@ -547,17 +670,36 @@ func runHostPackageMake(repository, revision, output string) ([]byte, error) {
 }
 
 func runPrintVelaImageBuild(
-	repository, revision, imagePrefix string,
+	repository, revision, imagePrefix, runtimeBase, commandContext string,
+	commandDigests map[string]string,
 ) ([]byte, error) {
 	command := exec.Command("make", "-s", "--no-print-directory", "print-vela-image-build")
 	command.Dir = repository
 	command.Env = append(os.Environ(),
 		"RELEASE_REVISION="+revision,
 		"RELEASE_IMAGE_PREFIX="+imagePrefix,
+		"H3_RUNTIME_BASE="+runtimeBase,
+		"H3_RUNTIME_COMMAND_CONTEXT="+commandContext,
+		"H3_ENCODER_SHA256="+commandDigests["h3-encoder"],
+		"H3_DIT_SHA256="+commandDigests["h3-dit"],
+		"H3_VAE_DECODER_SHA256="+commandDigests["h3-vae-decoder"],
 		"GO_BASE=docker.io/library/golang:latest",
 		"DEBIAN_BASE=docker.io/library/debian:latest",
 	)
 	return command.CombinedOutput()
+}
+
+func newH3RuntimeCommandFixture(t *testing.T) (string, map[string]string) {
+	t.Helper()
+	directory := filepath.Join(canonicalTemporaryDirectory(t), "h3-runtime-commands")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatalf("create H3 runtime command fixture: %v", err)
+	}
+	digests := make(map[string]string, 3)
+	for _, name := range []string{"h3-encoder", "h3-dit", "h3-vae-decoder"} {
+		digests[name] = writeTestELF64AMD64(t, filepath.Join(directory, name))
+	}
+	return directory, digests
 }
 
 func writeTestELF64AMD64(t *testing.T, path string) string {

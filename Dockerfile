@@ -3,6 +3,7 @@
 # Bake owns the pinned identities; scratch is only a valid lint sentinel.
 ARG GO_BASE=scratch
 ARG DEBIAN_BASE=scratch
+ARG H3_RUNTIME_BASE=scratch
 
 FROM ${GO_BASE} AS go-builder
 WORKDIR /src
@@ -25,6 +26,7 @@ RUN test -n "${RELEASE_REVISION}" && \
 	      vela-artifact-validator \
 	      vela-fleet-controller \
 	      vela-model-runtime \
+	      vela-release-artifacts \
 	      vela-stage-worker-agent; do \
       go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
         -o "/out/${binary}" "./cmd/${binary}"; \
@@ -100,7 +102,7 @@ COPY --from=go-builder --chmod=0555 /out/vela-stage-worker-agent /usr/local/bin/
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/vela-stage-worker-agent"]
 
-FROM scratch AS vela-model-runtime
+FROM scratch AS vela-model-runtime-base
 ARG RELEASE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
       org.opencontainers.image.revision="${RELEASE_REVISION}" \
@@ -109,3 +111,38 @@ COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-cert
 COPY --from=go-builder --chmod=0555 /out/vela-model-runtime /usr/local/bin/vela-model-runtime
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/vela-model-runtime"]
+
+FROM go-builder AS h3-runtime-command-verifier
+ARG H3_ENCODER_SHA256
+ARG H3_DIT_SHA256
+ARG H3_VAE_DECODER_SHA256
+COPY --from=h3_runtime_commands --chmod=0555 /h3-encoder /h3-runtime-commands/h3-encoder
+COPY --from=h3_runtime_commands --chmod=0555 /h3-dit /h3-runtime-commands/h3-dit
+COPY --from=h3_runtime_commands --chmod=0555 /h3-vae-decoder /h3-runtime-commands/h3-vae-decoder
+RUN /out/vela-release-artifacts verify-h3-runtime-commands \
+      /h3-runtime-commands \
+      "${H3_ENCODER_SHA256}" \
+      "${H3_DIT_SHA256}" \
+      "${H3_VAE_DECODER_SHA256}"
+
+FROM ${H3_RUNTIME_BASE} AS vela-h3-stage-runtime
+ARG RELEASE_REVISION
+ARG H3_RUNTIME_BASE
+ARG H3_ENCODER_SHA256
+ARG H3_DIT_SHA256
+ARG H3_VAE_DECODER_SHA256
+LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
+      org.opencontainers.image.revision="${RELEASE_REVISION}" \
+      org.opencontainers.image.title="vela-h3-stage-runtime" \
+      vela.ai.h3-runtime-base="${H3_RUNTIME_BASE}" \
+      vela.ai.h3-encoder.sha256="${H3_ENCODER_SHA256}" \
+      vela.ai.h3-dit.sha256="${H3_DIT_SHA256}" \
+      vela.ai.h3-vae-decoder.sha256="${H3_VAE_DECODER_SHA256}"
+COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=go-builder --chmod=0555 /out/vela-model-runtime /usr/local/bin/vela-model-runtime
+COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-encoder /opt/vela/bin/h3-encoder
+COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-dit /opt/vela/bin/h3-dit
+COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-vae-decoder /opt/vela/bin/h3-vae-decoder
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/vela-model-runtime"]
+CMD []

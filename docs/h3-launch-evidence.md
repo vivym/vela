@@ -36,6 +36,11 @@ mismatched value fails closed without output.
 
 ## Capture
 
+Run `make preflight-h3-real-environment` first with the same release bundle,
+ResidencyPlan revision, dedicated database identity, and kubeconfig. Continue
+to capture only when its typed report has `ready=true`; the preflight report is
+not itself launch evidence.
+
 Configure a login that belongs only to the `vela_h3_campaign_evidence` NOLOGIN
 group role. The command rejects admin, Fleet, mixed-role, or over-privileged
 database identities before it reads Registry state. The Kubernetes identity
