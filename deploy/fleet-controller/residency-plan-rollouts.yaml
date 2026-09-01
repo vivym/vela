@@ -17,7 +17,7 @@ data:
             "id": "49320000-0000-0000-0000-000000000001",
             "stable_id": "replace-with-approved-single-gpu-rollout",
             "revision": 1,
-            "content_digest": "8b84fd2764ad261d93674c6d0a4e6dcde16ff14268b9abc044c04a72809df39a",
+            "content_digest": "36a2572ffc54be46ff88e03e4c24e7ffb7113d38ead7d1c317fc0ed9ff5e9c54",
             "approval_evidence_digest": "0000000000000000000000000000000000000000000000000000000000000000",
             "approved_at": "2026-08-31T00:00:00Z",
             "approved_by": "replace-with-production-fleet-operator",
@@ -37,7 +37,7 @@ data:
                 "id": "49320000-0000-0000-0000-000000000002",
                 "stable_id": "replace-with-worker-bundle",
                 "desired_generation": 1,
-                "layout_digest": "8b84fd2764ad261d93674c6d0a4e6dcde16ff14268b9abc044c04a72809df39a"
+                "layout_digest": "36a2572ffc54be46ff88e03e4c24e7ffb7113d38ead7d1c317fc0ed9ff5e9c54"
               }
             ],
             "worker_instances": [
@@ -56,7 +56,7 @@ data:
               "schema_version": 1,
               "plan_revision_id": "49320000-0000-0000-0000-000000000001",
               "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
-              "revision_digest": "8b84fd2764ad261d93674c6d0a4e6dcde16ff14268b9abc044c04a72809df39a",
+              "revision_digest": "36a2572ffc54be46ff88e03e4c24e7ffb7113d38ead7d1c317fc0ed9ff5e9c54",
               "namespace": "vela-system",
               "init_image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
               "stage_worker_agent_image": "ghcr.io/vivym/vela-stage-worker-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000",
@@ -97,6 +97,7 @@ data:
                       "key": "member-0",
                       "node_identity": "replace-with-registered-node-identity",
                       "resource_class": "GPU",
+                      "identity_digest": "7e5eba74e8016c5147f1cc30fb3bbd9a3c6ebf139a0cb9865628accdc235766e",
                       "device_count": 1,
                       "device_constraints": [
                         {

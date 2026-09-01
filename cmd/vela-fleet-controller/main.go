@@ -125,7 +125,7 @@ func runWithContext(ctx context.Context, configuration config) error {
 	}
 	defer func() { _ = maintenanceClient.Close() }()
 	var workerInstanceController *fleetcontroller.ResidencyPlanRolloutController
-	var podCreateValidator fleetadmission.ProtectedPodCreateValidator
+	var createValidator fleetadmission.ProtectedResourceCreateValidator
 	if len(configuration.residencyPlanRollouts) != 0 {
 		actuator, err := fleetcontroller.NewWorkerInstanceActuator(resources)
 		if err != nil {
@@ -138,8 +138,9 @@ func runWithContext(ctx context.Context, configuration config) error {
 		if err != nil {
 			return err
 		}
-		podCreateValidator, err = fleetcontroller.NewWorkerInstancePodAdmissionValidator(
+		createValidator, err = fleetcontroller.NewWorkerInstanceAdmissionValidator(
 			configuration.residencyPlanRollouts,
+			resources,
 		)
 		if err != nil {
 			return err
@@ -161,8 +162,8 @@ func runWithContext(ctx context.Context, configuration config) error {
 	admissionHandler, err := fleetadmission.NewHandler(
 		maintenanceClient,
 		fleetadmission.Config{
-			FleetUsername:      configuration.kubernetesUsername,
-			PodCreateValidator: podCreateValidator,
+			FleetUsername:   configuration.kubernetesUsername,
+			CreateValidator: createValidator,
 		},
 	)
 	if err != nil {

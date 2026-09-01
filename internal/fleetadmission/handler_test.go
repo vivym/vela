@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/vivym/vela/internal/fleet"
@@ -33,12 +34,28 @@ func (authorizer *recordingAuthorizer) AuthorizeMutation(
 }
 
 type exactPodValidator struct {
-	want corev1.Pod
+	wantPod     corev1.Pod
+	wantService corev1.Service
+	wantSecret  corev1.Secret
 }
 
 func (validator exactPodValidator) ValidateProtectedPodCreate(_ context.Context, pod corev1.Pod) error {
-	if validator.want.Name != "" && pod.Name != validator.want.Name {
+	if validator.wantPod.Name != "" && !reflect.DeepEqual(pod, validator.wantPod) {
 		return errors.New("unexpected Pod")
+	}
+	return nil
+}
+
+func (validator exactPodValidator) ValidateProtectedServiceCreate(_ context.Context, service corev1.Service) error {
+	if validator.wantService.Name != "" && !reflect.DeepEqual(service, validator.wantService) {
+		return errors.New("unexpected Service")
+	}
+	return nil
+}
+
+func (validator exactPodValidator) ValidateProtectedSecretCreate(_ context.Context, secret corev1.Secret) error {
+	if validator.wantSecret.Name != "" && !reflect.DeepEqual(secret, validator.wantSecret) {
+		return errors.New("unexpected Secret")
 	}
 	return nil
 }
@@ -46,7 +63,7 @@ func (validator exactPodValidator) ValidateProtectedPodCreate(_ context.Context,
 func TestWorkerInstancePodCreateRequiresFleetActorAndAuthoritativeShape(t *testing.T) {
 	pod := workerInstancePod(false)
 	handler, err := NewHandler(&recordingAuthorizer{}, Config{
-		FleetUsername: fleetUsername, PodCreateValidator: exactPodValidator{want: pod},
+		FleetUsername: fleetUsername, CreateValidator: exactPodValidator{wantPod: pod},
 	})
 	if err != nil {
 		t.Fatalf("create handler: %v", err)
@@ -64,7 +81,7 @@ func TestWorkerInstancePodCreateRequiresFleetActorAndAuthoritativeShape(t *testi
 func TestWorkerInstancePodDeleteRequiresExactRegistryAuthorization(t *testing.T) {
 	authorizer := &recordingAuthorizer{}
 	handler, err := NewHandler(authorizer, Config{
-		FleetUsername: fleetUsername, PodCreateValidator: exactPodValidator{},
+		FleetUsername: fleetUsername, CreateValidator: exactPodValidator{},
 	})
 	if err != nil {
 		t.Fatalf("create handler: %v", err)
@@ -89,7 +106,7 @@ func TestWorkerInstancePodDeleteRequiresExactRegistryAuthorization(t *testing.T)
 func TestWorkerInstancePodFinalizerRemovalRejectsAdditionalMutation(t *testing.T) {
 	authorizer := &recordingAuthorizer{}
 	handler, err := NewHandler(authorizer, Config{
-		FleetUsername: fleetUsername, PodCreateValidator: exactPodValidator{},
+		FleetUsername: fleetUsername, CreateValidator: exactPodValidator{},
 	})
 	if err != nil {
 		t.Fatalf("create handler: %v", err)
@@ -111,7 +128,7 @@ func TestWorkerInstancePodFinalizerRemovalRejectsAdditionalMutation(t *testing.T
 func TestWorkerInstanceMutationDigestIgnoresJSONFormatting(t *testing.T) {
 	authorizer := &recordingAuthorizer{}
 	handler, err := NewHandler(authorizer, Config{
-		FleetUsername: fleetUsername, PodCreateValidator: exactPodValidator{},
+		FleetUsername: fleetUsername, CreateValidator: exactPodValidator{},
 	})
 	if err != nil {
 		t.Fatalf("create handler: %v", err)
@@ -131,6 +148,50 @@ func TestWorkerInstanceMutationDigestIgnoresJSONFormatting(t *testing.T) {
 	serveAdmission(t, handler, reformatted)
 	if !bytes.Equal(firstDigest, authorizer.request.RequestDigest) {
 		t.Fatal("semantic replay changed the mutation digest")
+	}
+}
+
+func TestWorkerMemberServiceAndSecretRequireAuthoritativeCreateAndRemainImmutable(t *testing.T) {
+	service := workerMemberService()
+	secret := workerMemberSecret()
+	handler, err := NewHandler(&recordingAuthorizer{}, Config{
+		FleetUsername:   fleetUsername,
+		CreateValidator: exactPodValidator{wantService: service, wantSecret: secret},
+	})
+	if err != nil {
+		t.Fatalf("create handler: %v", err)
+	}
+	for _, resource := range []struct {
+		kind  string
+		name  string
+		value any
+	}{
+		{kind: "Service", name: service.Name, value: service},
+		{kind: "Secret", name: secret.Name, value: secret},
+	} {
+		response := serveAdmission(t, handler, resourceReview(
+			"create-"+resource.kind, "CREATE", fleetUsername,
+			resource.kind, resource.name, nil, resource.value,
+		))
+		if !response.Response.Allowed {
+			t.Fatalf("exact %s create denied: %#v", resource.kind, response.Response.Status)
+		}
+		response = serveAdmission(t, handler, resourceReview(
+			"delete-"+resource.kind, "DELETE", fleetUsername,
+			resource.kind, resource.name, resource.value, nil,
+		))
+		if response.Response.Allowed {
+			t.Fatalf("protected %s delete was allowed without a resource cleanup protocol", resource.kind)
+		}
+	}
+	drifted := service.DeepCopy()
+	drifted.Spec.Ports = nil
+	response := serveAdmission(t, handler, resourceReview(
+		"create-drifted-service", "CREATE", fleetUsername,
+		"Service", drifted.Name, nil, drifted,
+	))
+	if response.Response.Allowed {
+		t.Fatal("drifted protected member Service create was allowed")
 	}
 }
 
@@ -155,18 +216,60 @@ func workerInstancePod(withUID bool) corev1.Pod {
 	return pod
 }
 
+func workerMemberService() corev1.Service {
+	service := corev1.Service{}
+	service.APIVersion = "v1"
+	service.Kind = "Service"
+	service.Namespace = "vela-system"
+	service.Name = "worker-instance-1-member-0-member"
+	service.Labels = workerMemberLabels()
+	service.Finalizers = []string{fleetcontract.ProtectionFinalizer}
+	service.Spec.Ports = []corev1.ServicePort{{Name: "grpc-member", Port: 7444}}
+	return service
+}
+
+func workerMemberSecret() corev1.Secret {
+	immutable := true
+	secret := corev1.Secret{}
+	secret.APIVersion = "v1"
+	secret.Kind = "Secret"
+	secret.Namespace = "vela-system"
+	secret.Name = "worker-instance-1-member-0-member-tls"
+	secret.Labels = workerMemberLabels()
+	secret.Finalizers = []string{fleetcontract.ProtectionFinalizer}
+	secret.Immutable = &immutable
+	secret.Type = corev1.SecretTypeOpaque
+	secret.Data = map[string][]byte{"client.crt": []byte("certificate")}
+	return secret
+}
+
+func workerMemberLabels() map[string]string {
+	return map[string]string{
+		fleetcontract.ProtectedLabel:               "true",
+		fleetcontract.WorkerInstanceIDLabel:        "10000000-0000-0000-0000-000000000001",
+		fleetcontract.WorkerInstanceEpochLabel:     "7",
+		fleetcontract.ResidencyPlanRevisionIDLabel: "20000000-0000-0000-0000-000000000001",
+		fleetcontract.WorkerBundleIDLabel:          "30000000-0000-0000-0000-000000000001",
+		fleetcontract.WorkerMemberIDLabel:          "40000000-0000-0000-0000-000000000001",
+	}
+}
+
 func review(uid, operation, username string, oldPod, pod any) []byte {
+	return resourceReview(uid, operation, username, "Pod", "worker-instance-1-member-0", oldPod, pod)
+}
+
+func resourceReview(uid, operation, username, kind, name string, oldObject, object any) []byte {
 	request := admissionRequest{
 		UID: uid, Operation: operation,
-		Kind:      groupVersionKind{Version: "v1", Kind: "Pod"},
-		Namespace: "vela-system", Name: "worker-instance-1-member-0",
+		Kind:      groupVersionKind{Version: "v1", Kind: kind},
+		Namespace: "vela-system", Name: name,
 		UserInfo: userInfo{Username: username},
 	}
-	if oldPod != nil {
-		request.OldObject, _ = json.Marshal(oldPod)
+	if oldObject != nil {
+		request.OldObject, _ = json.Marshal(oldObject)
 	}
-	if pod != nil {
-		request.Object, _ = json.Marshal(pod)
+	if object != nil {
+		request.Object, _ = json.Marshal(object)
 	}
 	encoded, _ := json.Marshal(admissionReview{
 		APIVersion: "admission.k8s.io/v1", Kind: "AdmissionReview", Request: &request,

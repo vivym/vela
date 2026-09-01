@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +30,7 @@ type config struct {
 	workerInstanceEpoch             int64
 	workerMemberID                  uuid.UUID
 	workerMemberEpoch               int64
+	members                         []memberConfig
 	devices                         []*velav1.StageAuthorityDeviceEpoch
 	capacityVector                  map[string]int64
 	controlAddress                  string
@@ -61,11 +64,36 @@ type config struct {
 	artifactSignedGETTTL            time.Duration
 	sourceLossRetry                 time.Duration
 	sourceLossConsumedResourceUnits int64
+	memberListenAddress             string
+	memberClientCertificateFile     string
+	memberClientPrivateKeyFile      string
+	memberServerCAFile              string
+	memberServerCertificateFile     string
+	memberServerPrivateKeyFile      string
+	memberClientCAFile              string
+	memberDialTimeout               time.Duration
+	memberShutdownTimeout           time.Duration
 }
 
 type deviceInput struct {
 	DeviceID    string `json:"device_id"`
 	DeviceEpoch int64  `json:"device_epoch"`
+}
+
+type memberInput struct {
+	WorkerMemberID string `json:"worker_member_id"`
+	MemberEpoch    int64  `json:"member_epoch"`
+	IdentityDigest string `json:"identity_digest"`
+	Address        string `json:"address,omitempty"`
+	ServerName     string `json:"server_name,omitempty"`
+}
+
+type memberConfig struct {
+	workerMemberID uuid.UUID
+	memberEpoch    int64
+	identityDigest [sha256.Size]byte
+	address        string
+	serverName     string
 }
 
 func main() {
@@ -99,6 +127,14 @@ func loadConfig() (config, error) {
 		return config{}, err
 	}
 	workerMemberEpoch, err := requiredPositiveInt64("VELA_WORKER_MEMBER_EPOCH")
+	if err != nil {
+		return config{}, err
+	}
+	members, err := parseMembers(
+		os.Getenv("VELA_STAGE_WORKER_MEMBERS_JSON"),
+		workerMemberID,
+		workerMemberEpoch,
+	)
 	if err != nil {
 		return config{}, err
 	}
@@ -209,7 +245,7 @@ func loadConfig() (config, error) {
 	}
 	configuration := config{
 		workerInstanceID: workerInstanceID, workerInstanceEpoch: workerInstanceEpoch,
-		workerMemberID: workerMemberID, workerMemberEpoch: workerMemberEpoch,
+		workerMemberID: workerMemberID, workerMemberEpoch: workerMemberEpoch, members: members,
 		devices: devices, capacityVector: capacityVector,
 		controlAddress: controlAddress, controlServerName: controlServerName,
 		runtimeExpectedUID: uint32(runtimeExpectedUIDValue), scratchRoot: scratchRoot,
@@ -224,6 +260,56 @@ func loadConfig() (config, error) {
 		artifactSignedGETTTL:            artifactSignedGETTTL,
 		sourceLossRetry:                 sourceLossRetry,
 		sourceLossConsumedResourceUnits: sourceLossConsumedResourceUnits,
+	}
+	if len(members) > 1 {
+		listenAddress := strings.TrimSpace(os.Getenv("VELA_STAGE_WORKER_MEMBER_LISTEN_ADDRESS"))
+		listenHost, listenPort, listenErr := net.SplitHostPort(listenAddress)
+		if listenErr != nil || listenHost == "" || listenPort == "" || listenAddress != os.Getenv("VELA_STAGE_WORKER_MEMBER_LISTEN_ADDRESS") {
+			return config{}, errors.New("VELA_STAGE_WORKER_MEMBER_LISTEN_ADDRESS must contain a canonical host and port")
+		}
+		configuration.memberListenAddress = listenAddress
+		for name, target := range map[string]*string{
+			"VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_CERT_FILE": &configuration.memberClientCertificateFile,
+			"VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_KEY_FILE":  &configuration.memberClientPrivateKeyFile,
+			"VELA_STAGE_WORKER_MEMBER_SERVER_CA_FILE":       &configuration.memberServerCAFile,
+			"VELA_STAGE_WORKER_MEMBER_SERVER_TLS_CERT_FILE": &configuration.memberServerCertificateFile,
+			"VELA_STAGE_WORKER_MEMBER_SERVER_TLS_KEY_FILE":  &configuration.memberServerPrivateKeyFile,
+			"VELA_STAGE_WORKER_MEMBER_CLIENT_CA_FILE":       &configuration.memberClientCAFile,
+		} {
+			value, pathErr := requiredAbsolutePath(name)
+			if pathErr != nil {
+				return config{}, pathErr
+			}
+			*target = value
+		}
+		configuration.memberDialTimeout, err = requiredDuration(
+			"VELA_STAGE_WORKER_MEMBER_DIAL_TIMEOUT", time.Second, time.Minute,
+		)
+		if err != nil {
+			return config{}, err
+		}
+		configuration.memberShutdownTimeout, err = requiredDuration(
+			"VELA_STAGE_WORKER_MEMBER_SHUTDOWN_TIMEOUT", time.Second, time.Minute,
+		)
+		if err != nil {
+			return config{}, err
+		}
+	} else {
+		for _, name := range []string{
+			"VELA_STAGE_WORKER_MEMBER_LISTEN_ADDRESS",
+			"VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_CERT_FILE",
+			"VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_KEY_FILE",
+			"VELA_STAGE_WORKER_MEMBER_SERVER_CA_FILE",
+			"VELA_STAGE_WORKER_MEMBER_SERVER_TLS_CERT_FILE",
+			"VELA_STAGE_WORKER_MEMBER_SERVER_TLS_KEY_FILE",
+			"VELA_STAGE_WORKER_MEMBER_CLIENT_CA_FILE",
+			"VELA_STAGE_WORKER_MEMBER_DIAL_TIMEOUT",
+			"VELA_STAGE_WORKER_MEMBER_SHUTDOWN_TIMEOUT",
+		} {
+			if os.Getenv(name) != "" {
+				return config{}, fmt.Errorf("%s must be unset for a single-member WorkerInstance", name)
+			}
+		}
 	}
 	for name, target := range map[string]*string{
 		"VELA_WORKER_TLS_CERT_FILE":                &configuration.tlsCertificateFile,
@@ -361,6 +447,66 @@ func parseDevices(encoded string) ([]*velav1.StageAuthorityDeviceEpoch, error) {
 		})
 	}
 	return devices, nil
+}
+
+func parseMembers(encoded string, localID uuid.UUID, localEpoch int64) ([]memberConfig, error) {
+	var inputs []memberInput
+	if err := decodeBoundedJSON(encoded, &inputs); err != nil || len(inputs) == 0 || len(inputs) > 64 {
+		return nil, errors.New("VELA_STAGE_WORKER_MEMBERS_JSON is invalid")
+	}
+	members := make([]memberConfig, 0, len(inputs))
+	seenIDs := make(map[uuid.UUID]struct{}, len(inputs))
+	seenAddresses := make(map[string]struct{}, len(inputs))
+	localFound := false
+	previousID := ""
+	for _, input := range inputs {
+		id, err := uuid.Parse(input.WorkerMemberID)
+		digest, digestErr := hex.DecodeString(input.IdentityDigest)
+		if err != nil || id == uuid.Nil || input.MemberEpoch <= 0 ||
+			digestErr != nil || len(digest) != sha256.Size || hex.EncodeToString(digest) != input.IdentityDigest ||
+			(previousID != "" && input.WorkerMemberID <= previousID) {
+			return nil, errors.New("VELA_STAGE_WORKER_MEMBERS_JSON is invalid")
+		}
+		if _, duplicate := seenIDs[id]; duplicate {
+			return nil, errors.New("VELA_STAGE_WORKER_MEMBERS_JSON contains duplicate members")
+		}
+		seenIDs[id] = struct{}{}
+		member := memberConfig{
+			workerMemberID: id,
+			memberEpoch:    input.MemberEpoch,
+			identityDigest: [sha256.Size]byte(digest),
+			address:        input.Address,
+			serverName:     input.ServerName,
+		}
+		if len(inputs) == 1 {
+			if input.Address != "" || input.ServerName != "" {
+				return nil, errors.New("single-member WorkerInstance must not expose a member endpoint")
+			}
+		} else {
+			host, port, addressErr := net.SplitHostPort(input.Address)
+			if addressErr != nil || host == "" || port == "" || strings.TrimSpace(input.Address) != input.Address ||
+				input.ServerName == "" || strings.TrimSpace(input.ServerName) != input.ServerName ||
+				len(input.ServerName) > 253 || strings.ContainsRune(input.ServerName, '\x00') {
+				return nil, errors.New("VELA_STAGE_WORKER_MEMBERS_JSON contains an invalid member endpoint")
+			}
+			if _, duplicate := seenAddresses[input.Address]; duplicate {
+				return nil, errors.New("VELA_STAGE_WORKER_MEMBERS_JSON contains duplicate member endpoints")
+			}
+			seenAddresses[input.Address] = struct{}{}
+		}
+		if id == localID {
+			if localFound || input.MemberEpoch != localEpoch {
+				return nil, errors.New("VELA_STAGE_WORKER_MEMBERS_JSON does not match the local WorkerMember")
+			}
+			localFound = true
+		}
+		members = append(members, member)
+		previousID = input.WorkerMemberID
+	}
+	if !localFound {
+		return nil, errors.New("VELA_STAGE_WORKER_MEMBERS_JSON omits the local WorkerMember")
+	}
+	return members, nil
 }
 
 func parseCapacityVector(encoded string) (map[string]int64, error) {

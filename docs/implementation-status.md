@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-09-01
+Date: 2026-09-02
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -43,10 +43,13 @@ production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release
 bundle are implemented with a production-shaped fake-runtime composition smoke.
-They intentionally perform no DDL and do not prove real GPU, Kubernetes, DRA,
-cross-node, or model execution. Runtime registration is intentionally fail-closed
-for multi-member Workers until a gang coordinator owns per-member epochs and the
-complete registration barrier. This is not complete
+The multi-member path now materializes an independent mTLS identity, immutable
+derived Secret, and cluster-internal Service per WorkerMember. Every member
+registers its local runtime epoch while only the deterministic smallest-UUID
+leader acquires one logical StageLease and coordinates the complete remote
+runtime barrier. Standard H3 remains one member and one GPU per WorkerInstance
+and creates no member network surface. These paths intentionally perform no DDL
+and do not prove real GPU, Kubernetes, DRA, cross-node, or model execution. This is not complete
 acceptance closure. Real cluster evidence, the release-coupled schema and
 monolithic-path deletion, permanent reachability closure, and production
 evidence are still pending.
@@ -84,7 +87,7 @@ production evidence or a Launch Receipt.
 | H3 Stage Execution Architecture | Accepted target; S49.1-S49.11 complete and S49.12 cutover/automatic-instantiation work started | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
 | Schema and protocol migration | Expansion through migration `00057`; M5 evidence/seal, guarded contraction readiness, typed fail-closed release authorization, campaign evidence, and read-only Stage observability added; schema-v2 release and legacy-path deletion pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
-| Implementation slices | S49.1-S49.11 complete; S49.12 partial, including repository campaign capture, verification, observability, and the pre-contraction release gate | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Implementation slices | S49.1-S49.11 complete; S49.12 partial, including multi-member runtime coordination, repository campaign capture, verification, observability, and the pre-contraction release gate | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
 Until the release-coupled contraction and repository deletion land,

@@ -2,14 +2,24 @@ package fleetcontroller_test
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/modelruntime"
 	corev1 "k8s.io/api/core/v1"
@@ -60,8 +70,21 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 	}
 
 	result, err := actuator.Actuate(context.Background(), bundle)
-	if err != nil || result.CreatedGPUClaims != 8 || result.CreatedPods != 8 || result.Converged {
+	if err != nil || result.CreatedGPUClaims != 8 || result.CreatedPods != 8 ||
+		result.CreatedMemberServices != 0 || result.CreatedMemberSecrets != 0 || result.Converged {
 		t.Fatalf("actuate H3 WorkerBundle = %#v error=%v", result, err)
+	}
+	services, err := client.Resource(schema.GroupVersionResource{
+		Group: "", Version: "v1", Resource: "services",
+	}).Namespace("vela-system").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(services.Items) != 0 {
+		t.Fatalf("single-member H3 Service count=%d error=%v", len(services.Items), err)
+	}
+	secrets, err := client.Resource(schema.GroupVersionResource{
+		Group: "", Version: "v1", Resource: "secrets",
+	}).Namespace("vela-system").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(secrets.Items) != 0 {
+		t.Fatalf("single-member H3 derived Secret count=%d error=%v", len(secrets.Items), err)
 	}
 	pods, err := client.Resource(schema.GroupVersionResource{
 		Group: "", Version: "v1", Resource: "pods",
@@ -94,6 +117,23 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 		}
 		seenWorkers[workerID] = struct{}{}
 		stageAgent := requireContainer(t, pod.Spec.Containers, "stage-worker-agent")
+		controlVolume := requireVolume(t, pod.Spec.Volumes, "stage-worker-control-projected")
+		if controlVolume.Secret == nil || len(controlVolume.Secret.Items) != 3 ||
+			controlVolume.Secret.Items[0].Key != "ca.crt" ||
+			controlVolume.Secret.Items[1].Key != expectedMembers[workerID].ID.String()+".tls.crt" ||
+			controlVolume.Secret.Items[1].Path != "tls.crt" ||
+			controlVolume.Secret.Items[2].Key != expectedMembers[workerID].ID.String()+".tls.key" ||
+			controlVolume.Secret.Items[2].Path != "tls.key" {
+			t.Fatalf("WorkerInstance Pod %q control identity projection = %#v", pod.Name, controlVolume.Secret)
+		}
+		for _, variable := range stageAgent.Env {
+			if strings.HasPrefix(variable.Name, "VELA_STAGE_WORKER_MEMBER_") {
+				t.Fatalf("single-member Pod %q exposes member transport environment %q", pod.Name, variable.Name)
+			}
+		}
+		if len(stageAgent.Ports) != 0 {
+			t.Fatalf("single-member Pod %q exposes member transport ports %#v", pod.Name, stageAgent.Ports)
+		}
 		expectedMember := expectedMembers[workerID]
 		if requireEnvironment(t, stageAgent, "VELA_WORKER_MEMBER_EPOCH") !=
 			strconv.FormatInt(expectedMember.MemberEpoch, 10) {
@@ -302,7 +342,8 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 
 	replayed, err := actuator.Actuate(context.Background(), bundle)
 	if err != nil || !replayed.Converged || replayed.CreatedGPUClaims != 0 ||
-		replayed.CreatedPods != 0 {
+		replayed.CreatedPods != 0 || replayed.CreatedMemberServices != 0 ||
+		replayed.CreatedMemberSecrets != 0 {
 		t.Fatalf("replay H3 WorkerBundle actuation = %#v error=%v", replayed, err)
 	}
 }
@@ -325,6 +366,36 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		t.Fatalf("create WorkerInstance actuator: %v", err)
 	}
 	workerID := uuid.MustParse("49300000-0000-0000-0000-000000000030")
+	memberIDs := []uuid.UUID{
+		uuid.MustParse("49300000-0000-0000-0000-000000000033"),
+		uuid.MustParse("49300000-0000-0000-0000-000000000034"),
+	}
+	memberPKIData, memberIdentityDigests := issueMemberPKISource(t, "vela-system", memberIDs)
+	immutable := true
+	memberPKISecret := corev1.Secret{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Secret"},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "vela-system", Name: "stage-worker-member-pki-r1",
+		},
+		Immutable: &immutable,
+		Type:      corev1.SecretTypeOpaque,
+		Data:      memberPKIData,
+	}
+	encodedMemberPKI, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&memberPKISecret)
+	if err != nil {
+		t.Fatalf("encode member PKI source Secret: %v", err)
+	}
+	sourceSecrets := client.Resource(schema.GroupVersionResource{
+		Group: "", Version: "v1", Resource: "secrets",
+	}).Namespace("vela-system")
+	liveSource, err := sourceSecrets.Create(
+		context.Background(),
+		&unstructured.Unstructured{Object: encodedMemberPKI},
+		metav1.CreateOptions{},
+	)
+	if err != nil {
+		t.Fatalf("create member PKI source Secret: %v", err)
+	}
 	memberDevices := map[string][]fleetcontroller.DeviceConstraint{
 		"member-0": {
 			{DeviceID: uuid.MustParse("49300000-0000-0000-0000-000000000041"), DeviceEpoch: 11,
@@ -353,6 +424,7 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
 		ArtifactStoreCredentialsSecret: "artifact-store-credentials-r1",
 		ArtifactStoreCASecret:          "artifact-store-ca-r1",
+		StageWorkerMemberPKISecret:     "stage-worker-member-pki-r1",
 		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
 			ID:                      workerID,
 			InstanceEpoch:           1,
@@ -372,14 +444,16 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{
 				{
-					ID: uuid.MustParse("49300000-0000-0000-0000-000000000033"), MemberEpoch: 21,
+					ID: memberIDs[0], MemberEpoch: 21,
 					Key: "member-0", NodeIdentity: "llm-node-a", ResourceClass: "GPU",
-					DeviceCount: 2, DeviceConstraints: memberDevices["member-0"],
+					IdentityDigest: memberIdentityDigests[memberIDs[0]],
+					DeviceCount:    2, DeviceConstraints: memberDevices["member-0"],
 				},
 				{
-					ID: uuid.MustParse("49300000-0000-0000-0000-000000000034"), MemberEpoch: 22,
+					ID: memberIDs[1], MemberEpoch: 22,
 					Key: "member-1", NodeIdentity: "llm-node-b", ResourceClass: "GPU",
-					DeviceCount: 2, DeviceConstraints: memberDevices["member-1"],
+					IdentityDigest: memberIdentityDigests[memberIDs[1]],
+					DeviceCount:    2, DeviceConstraints: memberDevices["member-1"],
 				},
 			},
 		}},
@@ -388,9 +462,74 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("digest multi-member WorkerBundle actuation: %v", err)
 	}
+	mutableSource := liveSource.DeepCopy()
+	if err := unstructured.SetNestedField(mutableSource.Object, false, "immutable"); err != nil {
+		t.Fatalf("mark member PKI source mutable: %v", err)
+	}
+	if _, err := sourceSecrets.Update(context.Background(), mutableSource, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("store mutable member PKI source: %v", err)
+	}
+	if _, err := actuator.Actuate(context.Background(), bundle); err == nil ||
+		!strings.Contains(err.Error(), "invalid or mutable") {
+		t.Fatalf("mutable member PKI source error=%v", err)
+	}
+	if err := unstructured.SetNestedField(mutableSource.Object, true, "immutable"); err != nil {
+		t.Fatalf("restore member PKI source immutability: %v", err)
+	}
+	if _, err := sourceSecrets.Update(context.Background(), mutableSource, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("store immutable member PKI source: %v", err)
+	}
+	validIdentityDigest := bundle.WorkerInstances[0].Members[0].IdentityDigest
+	bundle.WorkerInstances[0].Members[0].IdentityDigest = strings.Repeat("a", 64)
+	bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil {
+		t.Fatalf("digest mismatched member identity actuation: %v", err)
+	}
+	if _, err := actuator.Actuate(context.Background(), bundle); err == nil ||
+		!strings.Contains(err.Error(), "identity digest does not match") {
+		t.Fatalf("mismatched member identity digest error=%v", err)
+	}
+	bundle.WorkerInstances[0].Members[0].IdentityDigest = validIdentityDigest
+	bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil {
+		t.Fatalf("restore multi-member WorkerBundle digest: %v", err)
+	}
 	result, err := actuator.Actuate(context.Background(), bundle)
-	if err != nil || result.CreatedGPUClaims != 2 || result.CreatedPods != 2 {
+	if err != nil || result.CreatedGPUClaims != 2 || result.CreatedPods != 2 ||
+		result.CreatedMemberServices != 2 || result.CreatedMemberSecrets != 2 {
 		t.Fatalf("actuate multi-member WorkerInstance = %#v error=%v", result, err)
+	}
+	rollout := fleetcontroller.ResidencyPlanRollout{
+		ApprovedPlan: fleet.ApprovedResidencyPlan{
+			SchemaVersion: 1, ID: bundle.PlanRevisionID, StableID: "llm-gang-r1", Revision: 1,
+			ContentDigest: bundle.RevisionDigest, ApprovalEvidenceDigest: strings.Repeat("e", 64),
+			ApprovedAt: time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC), ApprovedBy: "fleet/operator-1",
+			CapacityPools: []fleet.PlannedCapacityPool{{
+				ID: bundle.WorkerInstances[0].CapacityPoolID, StableID: "llm-gang",
+				StageProfileRevisionID: bundle.WorkerInstances[0].ModelRuntimes[0].StageProfileRevisionID,
+				ResourceClass:          "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai",
+				MaxReadyQueueDepth: 128,
+			}},
+			WorkerBundles: []fleet.PlannedWorkerBundle{{
+				ID: bundle.WorkerBundleID, StableID: "llm-gang-bundle", DesiredGeneration: 1,
+				LayoutDigest: bundle.RevisionDigest,
+			}},
+			WorkerInstances: []fleet.PlannedWorkerInstance{{
+				ID:                      bundle.WorkerInstances[0].ID,
+				WorkerProfileRevisionID: bundle.WorkerInstances[0].WorkerProfileRevisionID,
+				CapacityPoolID:          bundle.WorkerInstances[0].CapacityPoolID,
+				WorkerBundleID:          bundle.WorkerBundleID,
+				DesiredMemberCount:      2,
+				DesiredDeviceCount:      4,
+			}},
+		},
+		WorkerBundles: []fleetcontroller.WorkerBundleActuation{bundle},
+	}
+	validator, err := fleetcontroller.NewWorkerInstanceAdmissionValidator(
+		[]fleetcontroller.ResidencyPlanRollout{rollout}, resources,
+	)
+	if err != nil {
+		t.Fatalf("create multi-member admission validator: %v", err)
 	}
 	pods, err := client.Resource(schema.GroupVersionResource{
 		Group: "", Version: "v1", Resource: "pods",
@@ -410,6 +549,59 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 			t.Fatalf("decode member Pod: %v", err)
 		}
 		runtimeContainer := requireContainer(t, pod.Spec.Containers, "model-runtime")
+		stageAgent := requireContainer(t, pod.Spec.Containers, "stage-worker-agent")
+		var capacity map[string]int64
+		if err := json.Unmarshal(
+			[]byte(requireEnvironment(t, stageAgent, "VELA_STAGE_WORKER_CAPACITY_VECTOR_JSON")),
+			&capacity,
+		); err != nil || capacity["active_stage_slots"] != 1 || capacity["gpu_count"] != 4 {
+			t.Fatalf("member Pod %q gang capacity = %#v error=%v", pod.Name, capacity, err)
+		}
+		var endpoints []struct {
+			WorkerMemberID string `json:"worker_member_id"`
+			MemberEpoch    int64  `json:"member_epoch"`
+			IdentityDigest string `json:"identity_digest"`
+			Address        string `json:"address"`
+			ServerName     string `json:"server_name"`
+		}
+		if err := json.Unmarshal(
+			[]byte(requireEnvironment(t, stageAgent, "VELA_STAGE_WORKER_MEMBERS_JSON")),
+			&endpoints,
+		); err != nil || len(endpoints) != 2 || endpoints[0].WorkerMemberID != memberIDs[0].String() ||
+			endpoints[1].WorkerMemberID != memberIDs[1].String() ||
+			endpoints[0].Address == endpoints[1].Address ||
+			endpoints[0].ServerName == endpoints[1].ServerName {
+			t.Fatalf("member Pod %q endpoints = %#v error=%v", pod.Name, endpoints, err)
+		}
+		for name, expected := range map[string]string{
+			"VELA_STAGE_WORKER_MEMBER_LISTEN_ADDRESS":       "0.0.0.0:7444",
+			"VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_CERT_FILE": "/etc/vela-stage-worker/private/member/client/tls.crt",
+			"VELA_STAGE_WORKER_MEMBER_SERVER_TLS_CERT_FILE": "/etc/vela-stage-worker/private/member/server/tls.crt",
+		} {
+			if got := requireEnvironment(t, stageAgent, name); got != expected {
+				t.Fatalf("member Pod %q environment %s=%q, want %q", pod.Name, name, got, expected)
+			}
+		}
+		memberPKIVolume := requireVolume(t, pod.Spec.Volumes, "stage-worker-member-pki-projected")
+		controlVolume := requireVolume(t, pod.Spec.Volumes, "stage-worker-control-projected")
+		if len(stageAgent.Ports) != 1 || stageAgent.Ports[0].ContainerPort != 7444 ||
+			memberPKIVolume.Secret == nil ||
+			memberPKIVolume.Secret.SecretName == bundle.StageWorkerMemberPKISecret ||
+			controlVolume.Secret == nil || len(controlVolume.Secret.Items) != 3 ||
+			controlVolume.Secret.Items[0].Key != "ca.crt" ||
+			controlVolume.Secret.Items[1].Key != object.GetLabels()["vela.ai/worker-member-id"]+".tls.crt" ||
+			controlVolume.Secret.Items[1].Path != "tls.crt" ||
+			controlVolume.Secret.Items[2].Key != object.GetLabels()["vela.ai/worker-member-id"]+".tls.key" ||
+			controlVolume.Secret.Items[2].Path != "tls.key" {
+			t.Fatalf("member Pod %q transport port/volume = %#v/%#v", pod.Name, stageAgent.Ports, pod.Spec.Volumes)
+		}
+		initializer := requireContainer(t, pod.Spec.InitContainers, "stage-worker-private-materialization")
+		if len(initializer.Command) != 3 ||
+			!strings.Contains(initializer.Command[2], "cp /projected/control/tls.crt /private/control/tls.crt") ||
+			!strings.Contains(initializer.Command[2], "cp /projected/control/tls.key /private/control/tls.key") ||
+			strings.Contains(initializer.Command[2], "cp /projected/member-pki/client.crt /private/control/tls.crt") {
+			t.Fatalf("member Pod %q does not isolate control and peer identities", pod.Name)
+		}
 		if _, exists := runtimeContainer.Resources.Limits["nvidia.com/gpu"]; exists ||
 			len(runtimeContainer.Resources.Claims) != 1 || len(pod.Spec.ResourceClaims) != 1 {
 			t.Fatalf("member Pod %q GPU claim = %#v/%#v", pod.Name,
@@ -448,6 +640,103 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 					memberKey, deviceIndex, expression, expected)
 			}
 		}
+	}
+	services, err := client.Resource(schema.GroupVersionResource{
+		Group: "", Version: "v1", Resource: "services",
+	}).Namespace("vela-system").List(context.Background(), metav1.ListOptions{})
+	if err != nil || len(services.Items) != 2 {
+		t.Fatalf("multi-member Service count=%d error=%v", len(services.Items), err)
+	}
+	for _, serviceObject := range services.Items {
+		var service corev1.Service
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(serviceObject.Object, &service); err != nil ||
+			service.Spec.Type != corev1.ServiceTypeClusterIP || !service.Spec.PublishNotReadyAddresses ||
+			service.Spec.SessionAffinity != corev1.ServiceAffinityNone ||
+			service.Spec.InternalTrafficPolicy == nil ||
+			*service.Spec.InternalTrafficPolicy != corev1.ServiceInternalTrafficPolicyCluster ||
+			len(service.Spec.Ports) != 1 || service.Spec.Ports[0].Port != 7444 {
+			t.Fatalf("decode multi-member Service %q = %#v error=%v", serviceObject.GetName(), service, err)
+		}
+		if err := validator.ValidateProtectedServiceCreate(context.Background(), service); err != nil {
+			t.Fatalf("validate exact member Service %q: %v", service.Name, err)
+		}
+	}
+	secrets, err := client.Resource(schema.GroupVersionResource{
+		Group: "", Version: "v1", Resource: "secrets",
+	}).Namespace("vela-system").List(context.Background(), metav1.ListOptions{
+		LabelSelector: "vela.ai/fleet-controller-owned=true",
+	})
+	if err != nil || len(secrets.Items) != 2 {
+		t.Fatalf("derived member Secret count=%d error=%v", len(secrets.Items), err)
+	}
+	for _, secretObject := range secrets.Items {
+		var secret corev1.Secret
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(secretObject.Object, &secret); err != nil ||
+			secret.Immutable == nil || !*secret.Immutable || len(secret.Data) != 6 {
+			t.Fatalf("decode derived member Secret %q = %#v error=%v", secretObject.GetName(), secret, err)
+		}
+		if err := validator.ValidateProtectedSecretCreate(context.Background(), secret); err != nil {
+			t.Fatalf("validate exact member Secret %q: %v", secret.Name, err)
+		}
+	}
+	replayed, err := actuator.Actuate(context.Background(), bundle)
+	if err != nil || !replayed.Converged || replayed.CreatedGPUClaims != 0 || replayed.CreatedPods != 0 ||
+		replayed.CreatedMemberServices != 0 || replayed.CreatedMemberSecrets != 0 {
+		t.Fatalf("replay multi-member WorkerBundle actuation = %#v error=%v", replayed, err)
+	}
+	serviceResources := client.Resource(schema.GroupVersionResource{
+		Group: "", Version: "v1", Resource: "services",
+	}).Namespace("vela-system")
+	originalService := services.Items[0].DeepCopy()
+	var driftedService corev1.Service
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(originalService.Object, &driftedService); err != nil {
+		t.Fatalf("decode member Service for drift: %v", err)
+	}
+	driftedService.Spec.Ports[0].Port++
+	if err := validator.ValidateProtectedServiceCreate(
+		context.Background(), driftedService,
+	); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
+		t.Fatalf("drifted member Service admission error=%v, want ErrProtectedResourceDrift", err)
+	}
+	encodedDriftedService, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&driftedService)
+	if err != nil {
+		t.Fatalf("encode drifted member Service: %v", err)
+	}
+	if _, err := serviceResources.Update(
+		context.Background(), &unstructured.Unstructured{Object: encodedDriftedService}, metav1.UpdateOptions{},
+	); err != nil {
+		t.Fatalf("store drifted member Service: %v", err)
+	}
+	if _, err := actuator.Actuate(context.Background(), bundle); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
+		t.Fatalf("drifted member Service error=%v, want ErrProtectedResourceDrift", err)
+	}
+	if _, err := serviceResources.Update(context.Background(), originalService, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("restore member Service: %v", err)
+	}
+	derivedSecrets := client.Resource(schema.GroupVersionResource{
+		Group: "", Version: "v1", Resource: "secrets",
+	}).Namespace("vela-system")
+	var driftedSecret corev1.Secret
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(secrets.Items[0].Object, &driftedSecret); err != nil {
+		t.Fatalf("decode member Secret for drift: %v", err)
+	}
+	driftedSecret.Data["client.crt"] = []byte("drifted")
+	if err := validator.ValidateProtectedSecretCreate(
+		context.Background(), driftedSecret,
+	); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
+		t.Fatalf("drifted member Secret admission error=%v, want ErrProtectedResourceDrift", err)
+	}
+	encodedDriftedSecret, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&driftedSecret)
+	if err != nil {
+		t.Fatalf("encode drifted member Secret: %v", err)
+	}
+	if _, err := derivedSecrets.Update(
+		context.Background(), &unstructured.Unstructured{Object: encodedDriftedSecret}, metav1.UpdateOptions{},
+	); err != nil {
+		t.Fatalf("store drifted member Secret: %v", err)
+	}
+	if _, err := actuator.Actuate(context.Background(), bundle); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
+		t.Fatalf("drifted member Secret error=%v, want ErrProtectedResourceDrift", err)
 	}
 }
 
@@ -772,6 +1061,95 @@ func requireContainer(t *testing.T, containers []corev1.Container, name string) 
 	}
 	t.Fatalf("container %q is missing", name)
 	return corev1.Container{}
+}
+
+func issueMemberPKISource(
+	t *testing.T,
+	namespace string,
+	members []uuid.UUID,
+) (map[string][]byte, map[uuid.UUID]string) {
+	t.Helper()
+	_, caKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate member PKI CA key: %v", err)
+	}
+	caTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Vela member test CA"},
+		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
+		IsCA: true, BasicConstraintsValid: true,
+		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, caKey.Public(), caKey)
+	if err != nil {
+		t.Fatalf("issue member PKI CA: %v", err)
+	}
+	ca, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatalf("parse member PKI CA: %v", err)
+	}
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER})
+	data := make(map[string][]byte, len(members)*6)
+	digests := make(map[uuid.UUID]string, len(members))
+	for _, memberID := range members {
+		identity, err := url.Parse("spiffe://vela.internal/stage-worker/" + memberID.String())
+		if err != nil {
+			t.Fatalf("parse member SPIFFE identity: %v", err)
+		}
+		digest := sha256.Sum256([]byte(identity.String()))
+		digests[memberID] = fmt.Sprintf("%x", digest)
+		clientCertificate, clientKey := issueMemberCertificate(
+			t, ca, caKey, memberID.String()+"-client", nil, []*url.URL{identity},
+			[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		)
+		serverCertificate, serverKey := issueMemberCertificate(
+			t, ca, caKey, memberID.String()+"-server", []string{"*." + namespace + ".svc"},
+			[]*url.URL{identity}, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		)
+		prefix := memberID.String() + "."
+		data[prefix+"client.crt"] = clientCertificate
+		data[prefix+"client.key"] = clientKey
+		data[prefix+"server-ca.crt"] = caPEM
+		data[prefix+"server.crt"] = serverCertificate
+		data[prefix+"server.key"] = serverKey
+		data[prefix+"client-ca.crt"] = caPEM
+	}
+	return data, digests
+}
+
+func issueMemberCertificate(
+	t *testing.T,
+	ca *x509.Certificate,
+	caKey ed25519.PrivateKey,
+	commonName string,
+	dnsNames []string,
+	identities []*url.URL,
+	usage []x509.ExtKeyUsage,
+) ([]byte, []byte) {
+	t.Helper()
+	_, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate member certificate key: %v", err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 120))
+	if err != nil {
+		t.Fatalf("generate member certificate serial: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: serial, Subject: pkix.Name{CommonName: commonName},
+		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
+		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: usage,
+		DNSNames: dnsNames, URIs: identities,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, ca, key.Public(), caKey)
+	if err != nil {
+		t.Fatalf("issue member certificate: %v", err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatalf("marshal member certificate key: %v", err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 }
 
 func requireEnvironment(t *testing.T, container corev1.Container, name string) string {

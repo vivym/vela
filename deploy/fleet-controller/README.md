@@ -25,6 +25,17 @@ Delivery must also inject the serving-certificate CA into the webhook
 `caBundle`. Applying the placeholders is not a successful deployment and cannot
 produce a Launch Receipt.
 
+For a multi-member WorkerInstance, the approved WorkerBundle also names one
+immutable aggregate member-PKI source Secret. The controller has namespaced
+`get` and `create` authority for Secrets and Services so it can validate that
+source and materialize one protected Service and one immutable derived Secret
+per member. It has no update or delete authority for those resources. Standard
+single-member H3 WorkerInstances do not use this permission path and expose no
+member Service. The fail-closed webhook reconstructs exact member Services and
+derived Secrets from the release-bound rollout and source PKI before allowing
+Fleet `CREATE`; it rejects their `UPDATE` and `DELETE` until a separate cleanup
+authority is implemented.
+
 The legacy `desired-revisions.yaml` remains in the repository only as an
 explicit rollback-before-contraction input. It is not part of the default
 Kustomize render and the production Deployment does not mount it. Re-enabling

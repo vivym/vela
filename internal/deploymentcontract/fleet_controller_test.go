@@ -242,6 +242,8 @@ func TestFleetControllerRBACIsNamespaceBoundAndNodeReadOnly(t *testing.T) {
 		"fleet.vela.ai|workerpools/status":       {"get", "update", "patch"},
 		"apps|daemonsets":                        {"get", "list", "watch", "create", "update", "patch", "delete"},
 		"|pods":                                  {"get", "list", "watch", "create", "update", "patch", "delete"},
+		"|services":                              {"get", "create"},
+		"|secrets":                               {"get", "create"},
 		"resource.k8s.io|resourceclaimtemplates": {"get", "list", "watch", "create"},
 	}
 	if len(role.Rules) != len(wantRoleRules) {
@@ -295,7 +297,7 @@ func TestFleetAdmissionWebhookFailsClosedForEveryProtectedResource(t *testing.T)
 		t.Fatalf("Fleet webhook contract = %#v", webhook)
 	}
 	wantRules := map[string][]string{
-		"/v1":                    {"pods"},
+		"/v1":                    {"pods", "secrets", "services"},
 		"apps/v1":                {"daemonsets"},
 		"fleet.vela.ai/v1alpha1": {"workerpools"},
 	}

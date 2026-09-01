@@ -40,10 +40,11 @@ type stageWorkerSecretContract struct {
 	Kind            string `json:"kind"`
 	ReleaseRevision string `json:"releaseRevision"`
 	FileSecrets     []struct {
-		Name              string            `json:"name"`
-		RequiredKeys      []string          `json:"requiredKeys"`
-		ProjectedPath     string            `json:"projectedPath"`
-		MaterializedPaths map[string]string `json:"materializedPaths"`
+		Name                        string            `json:"name"`
+		RequiredKeys                []string          `json:"requiredKeys"`
+		RequiredPerWorkerMemberKeys []string          `json:"requiredPerWorkerMemberKeys"`
+		ProjectedPath               string            `json:"projectedPath"`
+		MaterializedPaths           map[string]string `json:"materializedPaths"`
 	} `json:"fileSecrets"`
 }
 
@@ -63,6 +64,8 @@ func TestStageWorkerRuntimeConfigDefinesProductionCompositionInputs(t *testing.T
 		"control-server-name",
 		"heartbeat-interval",
 		"materialization-journal-limit",
+		"member-dial-timeout",
+		"member-shutdown-timeout",
 		"model-runtime-cancel-timeout",
 		"model-runtime-shutdown-timeout",
 		"retry-maximum",
@@ -153,6 +156,16 @@ func TestStageWorkerSecretContractSeparatesAndMaterializesPrivateInputs(t *testi
 			expectedKeys = append(expectedKeys, key)
 		}
 		sort.Strings(expectedKeys)
+		if secret.Name == "vela-stage-worker-control-mtls-r0-placeholder" {
+			expectedKeys = []string{"ca.crt"}
+			if !reflect.DeepEqual(secret.RequiredPerWorkerMemberKeys, []string{
+				"<worker-member-uuid>.tls.crt", "<worker-member-uuid>.tls.key",
+			}) {
+				t.Fatalf("Stage Worker control member key templates=%#v", secret.RequiredPerWorkerMemberKeys)
+			}
+		} else if len(secret.RequiredPerWorkerMemberKeys) != 0 {
+			t.Fatalf("Stage Worker Secret %q has unexpected member key templates", secret.Name)
+		}
 		if !reflect.DeepEqual(keys, expectedKeys) {
 			t.Fatalf("Stage Worker Secret %q keys=%#v want=%#v", secret.Name, keys, expectedKeys)
 		}

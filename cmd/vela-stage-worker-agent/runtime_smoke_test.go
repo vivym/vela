@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -65,6 +66,11 @@ func TestSingleGPUProductionCompositionSmoke(t *testing.T) {
 		workerInstanceEpoch: identity.GetWorkerInstanceEpoch(),
 		workerMemberID:      uuid.MustParse(identity.GetWorkerMemberId()),
 		workerMemberEpoch:   identity.GetWorkerMemberEpoch(),
+		members: []memberConfig{{
+			workerMemberID: uuid.MustParse(identity.GetWorkerMemberId()),
+			memberEpoch:    identity.GetWorkerMemberEpoch(),
+			identityDigest: sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/smoke-member")),
+		}},
 		devices: []*velav1.StageAuthorityDeviceEpoch{{
 			DeviceId: "49800000-0000-0000-0000-000000000005", DeviceEpoch: 3,
 		}},
@@ -162,6 +168,199 @@ func TestSingleGPUProductionCompositionSmoke(t *testing.T) {
 	if err := journal.Close(); err != nil {
 		t.Fatalf("close reopened input transfer journal: %v", err)
 	}
+}
+
+func TestMultiMemberFollowerStartsServerWithoutDialingLeader(t *testing.T) {
+	identity := productionSmokeIdentity("49800000-0000-0000-0000-000000000004", 11)
+	configuration := productionSmokeConfig(t, identity)
+	listenAddress := unusedSmokeTCPAddress(t)
+	configureMemberTransportSmoke(
+		t,
+		&configuration,
+		"49800000-0000-0000-0000-000000000003",
+		9,
+		"127.0.0.1:1",
+		listenAddress,
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	runtime, err := newProductionRuntime(ctx, configuration)
+	if err != nil {
+		t.Fatalf("build follower production runtime: %v", err)
+	}
+	defer func() {
+		if closeErr := runtime.Close(); closeErr != nil {
+			t.Errorf("close follower production runtime: %v", closeErr)
+		}
+	}()
+	connection, err := net.DialTimeout("tcp", listenAddress, time.Second)
+	if err != nil {
+		t.Fatalf("follower member server was not listening before peer dial: %v", err)
+	}
+	_ = connection.Close()
+}
+
+func TestMultiMemberLeaderRequiresReachableFollower(t *testing.T) {
+	identity := productionSmokeIdentity("49800000-0000-0000-0000-000000000003", 9)
+	configuration := productionSmokeConfig(t, identity)
+	configureMemberTransportSmoke(
+		t,
+		&configuration,
+		"49800000-0000-0000-0000-000000000004",
+		11,
+		"127.0.0.1:1",
+		unusedSmokeTCPAddress(t),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started := time.Now()
+	runtime, err := newProductionRuntime(ctx, configuration)
+	if runtime != nil || err == nil || !strings.Contains(err.Error(), "connect to Stage Worker member") {
+		t.Fatalf("unreachable follower runtime=%T error=%v", runtime, err)
+	}
+	if elapsed := time.Since(started); elapsed > 3*time.Second {
+		t.Fatalf("member dial was not bounded: %s", elapsed)
+	}
+}
+
+func productionSmokeIdentity(memberID string, memberEpoch int64) *velav1.ModelRuntimeIdentity {
+	return &velav1.ModelRuntimeIdentity{
+		WorkerInstanceId:       "49800000-0000-0000-0000-000000000001",
+		WorkerInstanceEpoch:    5,
+		DeviceSetDigest:        bytes.Repeat([]byte{0x41}, sha256.Size),
+		MembershipDigest:       bytes.Repeat([]byte{0x42}, sha256.Size),
+		ModelResidencyId:       "49800000-0000-0000-0000-000000000002",
+		RuntimeIdentity:        "h3-distributed-runtime-smoke-v1",
+		ModelRuntimeEpoch:      7,
+		StageProfileRevisionId: "49800000-0000-0000-0000-000000000003",
+		WorkerMemberId:         memberID,
+		WorkerMemberEpoch:      memberEpoch,
+	}
+}
+
+func productionSmokeConfig(t *testing.T, identity *velav1.ModelRuntimeIdentity) config {
+	t.Helper()
+	runtimeSocket, _ := serveSingleGPUModelRuntime(t, identity)
+	controlAddress, controlFiles, _ := serveStageWorkerControlSmoke(t, identity)
+	artifactEndpoint, artifactCA := serveArtifactStoreSmoke(t)
+	directory := t.TempDir()
+	authorityKeyring := []byte(fmt.Sprintf(
+		`{"stage-authority-smoke-v1":%q}`,
+		base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x71}, 32)),
+	))
+	scratchRoot := filepath.Join(directory, "scratch")
+	return config{
+		workerInstanceID:    uuid.MustParse(identity.GetWorkerInstanceId()),
+		workerInstanceEpoch: identity.GetWorkerInstanceEpoch(),
+		workerMemberID:      uuid.MustParse(identity.GetWorkerMemberId()),
+		workerMemberEpoch:   identity.GetWorkerMemberEpoch(),
+		devices: []*velav1.StageAuthorityDeviceEpoch{{
+			DeviceId: "49800000-0000-0000-0000-000000000005", DeviceEpoch: 3,
+		}},
+		capacityVector:                  map[string]int64{"active_stage_slots": 1, "gpu_count": 1},
+		controlAddress:                  controlAddress,
+		controlServerName:               "stage-worker-control.internal",
+		tlsCertificateFile:              controlFiles.clientCertificate,
+		tlsPrivateKeyFile:               controlFiles.clientPrivateKey,
+		controlCAFile:                   controlFiles.ca,
+		runtimeSocket:                   runtimeSocket,
+		runtimeExpectedUID:              uint32(os.Geteuid()),
+		scratchRoot:                     scratchRoot,
+		productionStateRoot:             filepath.Join(scratchRoot, "production-state"),
+		inputRoot:                       filepath.Join(scratchRoot, "inputs"),
+		inputTransferJournalRoot:        filepath.Join(scratchRoot, "input-transfer-journal"),
+		outputRoot:                      filepath.Join(scratchRoot, "outputs"),
+		materializationJournalRoot:      filepath.Join(scratchRoot, "materialization-journal"),
+		materializationJournalLimit:     16,
+		authorityKeyringFile:            writeSmokeSecret(t, directory, "authority-keyring.json", authorityKeyring),
+		authorityActiveKeyID:            "stage-authority-smoke-v1",
+		connectorRevisionID:             uuid.MustParse("49800000-0000-0000-0000-000000000006"),
+		capacityTTL:                     2 * time.Minute,
+		heartbeatInterval:               20 * time.Second,
+		retryMinimum:                    time.Second,
+		retryMaximum:                    30 * time.Second,
+		artifactS3Endpoint:              artifactEndpoint,
+		artifactS3Region:                "us-smoke-1",
+		artifactS3Bucket:                "vela-stage-artifacts",
+		artifactS3AccessKeyFile:         writeSmokeSecret(t, directory, "access-key-id", []byte("stage-smoke-access")),
+		artifactS3SecretKeyFile:         writeSmokeSecret(t, directory, "secret-access-key", []byte("stage-smoke-secret")),
+		artifactS3CAFile:                writeSmokeSecret(t, directory, "artifact-ca.crt", artifactCA),
+		artifactS3PathStyle:             true,
+		artifactSignedGETTTL:            5 * time.Minute,
+		sourceLossRetry:                 30 * time.Second,
+		sourceLossConsumedResourceUnits: 1,
+	}
+}
+
+func configureMemberTransportSmoke(
+	t *testing.T,
+	configuration *config,
+	peerID string,
+	peerEpoch int64,
+	peerAddress string,
+	localAddress string,
+) {
+	t.Helper()
+	ca, caKey, caPEM := issueSmokeCA(t)
+	localSPIFFE, err := url.Parse("spiffe://vela.internal/stage-worker/" + configuration.workerMemberID.String())
+	if err != nil {
+		t.Fatalf("parse local member SPIFFE identity: %v", err)
+	}
+	localDigest := sha256.Sum256([]byte(localSPIFFE.String()))
+	peerSPIFFE := "spiffe://vela.internal/stage-worker/" + peerID
+	peerDigest := sha256.Sum256([]byte(peerSPIFFE))
+	serverName := "local-member.internal"
+	serverCertificate, serverKey := issueSmokeCertificate(
+		t, ca, caKey, serverName, []string{serverName}, []*url.URL{localSPIFFE},
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	)
+	clientCertificate, clientKey := issueSmokeCertificate(
+		t, ca, caKey, configuration.workerMemberID.String(), nil, []*url.URL{localSPIFFE},
+		[]x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	)
+	directory := t.TempDir()
+	configuration.memberListenAddress = localAddress
+	configuration.memberClientCertificateFile = writeSmokeSecret(t, directory, "client.crt", clientCertificate)
+	configuration.memberClientPrivateKeyFile = writeSmokeSecret(t, directory, "client.key", clientKey)
+	configuration.memberServerCAFile = writeSmokeSecret(t, directory, "server-ca.crt", caPEM)
+	configuration.memberServerCertificateFile = writeSmokeSecret(t, directory, "server.crt", serverCertificate)
+	configuration.memberServerPrivateKeyFile = writeSmokeSecret(t, directory, "server.key", serverKey)
+	configuration.memberClientCAFile = writeSmokeSecret(t, directory, "client-ca.crt", caPEM)
+	configuration.memberDialTimeout = time.Second
+	configuration.memberShutdownTimeout = time.Second
+	local := memberConfig{
+		workerMemberID: configuration.workerMemberID,
+		memberEpoch:    configuration.workerMemberEpoch,
+		identityDigest: localDigest,
+		address:        localAddress,
+		serverName:     serverName,
+	}
+	peer := memberConfig{
+		workerMemberID: uuid.MustParse(peerID),
+		memberEpoch:    peerEpoch,
+		identityDigest: peerDigest,
+		address:        peerAddress,
+		serverName:     "peer-member.internal",
+	}
+	configuration.members = []memberConfig{local, peer}
+	if peer.workerMemberID.String() < local.workerMemberID.String() {
+		configuration.members[0], configuration.members[1] = peer, local
+	}
+}
+
+func unusedSmokeTCPAddress(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve smoke TCP address: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("release smoke TCP address: %v", err)
+	}
+	return address
 }
 
 type smokeRuntimeProbe struct {

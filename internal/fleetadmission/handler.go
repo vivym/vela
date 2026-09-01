@@ -25,19 +25,21 @@ type MutationAuthorizer interface {
 	) (fleet.MutationAuthorizationResult, error)
 }
 
-type ProtectedPodCreateValidator interface {
+type ProtectedResourceCreateValidator interface {
 	ValidateProtectedPodCreate(context.Context, corev1.Pod) error
+	ValidateProtectedServiceCreate(context.Context, corev1.Service) error
+	ValidateProtectedSecretCreate(context.Context, corev1.Secret) error
 }
 
 type Config struct {
-	FleetUsername      string
-	PodCreateValidator ProtectedPodCreateValidator
+	FleetUsername   string
+	CreateValidator ProtectedResourceCreateValidator
 }
 
 type Handler struct {
-	authorizer         MutationAuthorizer
-	fleetUsername      string
-	podCreateValidator ProtectedPodCreateValidator
+	authorizer      MutationAuthorizer
+	fleetUsername   string
+	createValidator ProtectedResourceCreateValidator
 }
 
 type admissionReview struct {
@@ -110,12 +112,12 @@ func NewHandler(authorizer MutationAuthorizer, config Config) (*Handler, error) 
 	if config.FleetUsername == "" || strings.TrimSpace(config.FleetUsername) != config.FleetUsername {
 		return nil, errors.New("fleet Kubernetes username is required")
 	}
-	if config.PodCreateValidator == nil {
-		return nil, errors.New("WorkerInstance Pod create validator is required")
+	if config.CreateValidator == nil {
+		return nil, errors.New("Fleet protected resource create validator is required")
 	}
 	return &Handler{
 		authorizer: authorizer, fleetUsername: config.FleetUsername,
-		podCreateValidator: config.PodCreateValidator,
+		createValidator: config.CreateValidator,
 	}, nil
 }
 
@@ -155,18 +157,45 @@ func (handler *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Requ
 		writeAdmissionReview(writer, review.Request.UID, false, "protected resources are owned by the Fleet Controller")
 		return
 	}
-	if !isWorkerInstancePod(review.Request, object) {
-		writeAdmissionReview(writer, review.Request.UID, false, "only WorkerInstance Pods may be Fleet protected")
+	resourceKind := protectedWorkerResourceKind(review.Request, object)
+	if resourceKind == "" {
+		writeAdmissionReview(writer, review.Request.UID, false, "Fleet protected resource kind or authority is invalid")
 		return
 	}
 	if review.Request.Operation == "CREATE" {
-		var pod corev1.Pod
-		if err := json.Unmarshal(review.Request.Object, &pod); err != nil ||
-			handler.podCreateValidator.ValidateProtectedPodCreate(request.Context(), pod) != nil {
-			writeAdmissionReview(writer, review.Request.UID, false, "protected WorkerInstance Pod create shape is invalid")
+		var validationErr error
+		switch resourceKind {
+		case "Pod":
+			var pod corev1.Pod
+			if err := json.Unmarshal(review.Request.Object, &pod); err != nil {
+				validationErr = err
+			} else {
+				validationErr = handler.createValidator.ValidateProtectedPodCreate(request.Context(), pod)
+			}
+		case "Service":
+			var service corev1.Service
+			if err := json.Unmarshal(review.Request.Object, &service); err != nil {
+				validationErr = err
+			} else {
+				validationErr = handler.createValidator.ValidateProtectedServiceCreate(request.Context(), service)
+			}
+		case "Secret":
+			var secret corev1.Secret
+			if err := json.Unmarshal(review.Request.Object, &secret); err != nil {
+				validationErr = err
+			} else {
+				validationErr = handler.createValidator.ValidateProtectedSecretCreate(request.Context(), secret)
+			}
+		}
+		if validationErr != nil {
+			writeAdmissionReview(writer, review.Request.UID, false, "protected resource create shape is invalid")
 			return
 		}
 		writeAdmissionReview(writer, review.Request.UID, true, "")
+		return
+	}
+	if resourceKind != "Pod" {
+		writeAdmissionReview(writer, review.Request.UID, false, "protected member Services and Secrets are immutable")
 		return
 	}
 	mutation, err := protectedWorkerInstancePodMutationRequest(review.Request, object)
@@ -201,15 +230,20 @@ func decodeObject(raw json.RawMessage) (objectMetadata, error) {
 	return object, nil
 }
 
-func isWorkerInstancePod(request *admissionRequest, object objectMetadata) bool {
-	return request.Kind.Group == "" && request.Kind.Version == "v1" && request.Kind.Kind == "Pod" &&
-		object.APIVersion == "v1" && object.Kind == "Pod" &&
-		object.Metadata.Namespace == request.Namespace && object.Metadata.Name == request.Name &&
-		object.Metadata.Namespace != "" && object.Metadata.Name != "" &&
-		object.Metadata.Labels[fleetcontract.WorkerInstanceIDLabel] != "" &&
-		object.Metadata.Labels[fleetcontract.WorkerIDLabel] == "" &&
-		object.Metadata.Labels[fleetcontract.WorkerEpochLabel] == "" &&
-		object.Metadata.Labels[fleetcontract.WorkerPoolIDLabel] == ""
+func protectedWorkerResourceKind(request *admissionRequest, object objectMetadata) string {
+	if request.Kind.Group != "" || request.Kind.Version != "v1" ||
+		(request.Kind.Kind != "Pod" && request.Kind.Kind != "Service" && request.Kind.Kind != "Secret") ||
+		object.APIVersion != "v1" || object.Kind != request.Kind.Kind ||
+		object.Metadata.Namespace != request.Namespace || object.Metadata.Name != request.Name ||
+		object.Metadata.Namespace == "" || object.Metadata.Name == "" ||
+		object.Metadata.Labels[fleetcontract.WorkerInstanceIDLabel] == "" ||
+		object.Metadata.Labels[fleetcontract.WorkerMemberIDLabel] == "" ||
+		object.Metadata.Labels[fleetcontract.WorkerIDLabel] != "" ||
+		object.Metadata.Labels[fleetcontract.WorkerEpochLabel] != "" ||
+		object.Metadata.Labels[fleetcontract.WorkerPoolIDLabel] != "" {
+		return ""
+	}
+	return request.Kind.Kind
 }
 
 func protectedWorkerInstancePodMutationRequest(

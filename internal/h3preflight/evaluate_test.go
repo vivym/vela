@@ -1,6 +1,7 @@
 package h3preflight
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"testing"
 	"time"
@@ -155,9 +156,12 @@ func passingFixture() (Request, Observation) {
 		node := []string{"node-a", "node-b", "node-c"}[index%3]
 		gpuUUID := fmt.Sprintf("GPU-49360000-0000-0000-0000-%012d", index+1)
 		pciBDF := fmt.Sprintf("0000:%02x:00.0", 0x40+index)
+		memberID := uuid.MustParse(fmt.Sprintf("49360000-0000-0000-0001-%012d", index+1))
+		identityDigest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/" + memberID.String()))
 		member := fleetcontroller.WorkerMemberActuation{
-			ID:  uuid.MustParse(fmt.Sprintf("49360000-0000-0000-0001-%012d", index+1)),
+			ID:  memberID,
 			Key: "member-0", NodeIdentity: node, ResourceClass: "GPU", DeviceCount: 1,
+			IdentityDigest: fmt.Sprintf("%x", identityDigest),
 			DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 				DeviceID:    uuid.MustParse(fmt.Sprintf("49360000-0000-0000-0002-%012d", index+1)),
 				DeviceEpoch: 1, GPUUUID: gpuUUID, PCIBDF: pciBDF,

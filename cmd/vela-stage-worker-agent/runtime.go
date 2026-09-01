@@ -1,13 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/artifactstore"
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/modelruntimetransport"
@@ -15,8 +22,10 @@ import (
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkeragent"
+	"github.com/vivym/vela/internal/stageworkermembertransport"
 	"github.com/vivym/vela/internal/stageworkertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/grpc"
 )
 
 const maxArtifactRootCABytes = 4 << 20
@@ -29,11 +38,16 @@ type stageWorkerRuntime interface {
 type stageWorkerRuntimeBuilder func(context.Context, config) (stageWorkerRuntime, error)
 
 type productionRuntime struct {
-	agent        *stageworkeragent.ProductionAgent
-	inputJournal *stageworkeragent.FileInputTransferJournal
-	control      *stageworkertransport.Client
-	modelRuntime *modelruntimetransport.Client
-	state        *stageworkeragent.FileProductionState
+	agent                 *stageworkeragent.ProductionAgent
+	inputJournal          *stageworkeragent.FileInputTransferJournal
+	control               *stageworkertransport.Client
+	modelRuntime          *modelruntimetransport.Client
+	memberClients         []*stageworkermembertransport.Client
+	memberServer          *grpc.Server
+	memberListener        net.Listener
+	memberServeErrors     chan error
+	memberShutdownTimeout time.Duration
+	state                 *stageworkeragent.FileProductionState
 }
 
 func runWithContext(ctx context.Context, configuration config) error {
@@ -78,6 +92,10 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 	materializationValidator, err := materializationauthority.NewValidator(keyring, time.Now)
 	if err != nil {
 		return nil, fmt.Errorf("configure MaterializationAuthority validator: %w", err)
+	}
+	stageAuthorityValidator, err := stageauthority.NewValidator(keyring, time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("configure StageAuthority validator: %w", err)
 	}
 	transferTicketSigner, err := stageartifact.NewTransferTicketKeyringSigner(
 		configuration.authorityActiveKeyID,
@@ -173,6 +191,103 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 	if err != nil {
 		return fail(err)
 	}
+	authorityMembers, memberBindings, localMember, err := configuredRuntimeMembers(configuration)
+	if err != nil {
+		return fail(err)
+	}
+	runtimeMembers := []stageworkeragent.RuntimeMember{{
+		ID: configuration.workerMemberID.String(), Client: runtime.modelRuntime,
+	}}
+	if len(configuration.members) > 1 {
+		if err := validateLocalMemberCertificateIdentity(
+			configuration.memberClientCertificateFile,
+			localMember.identityDigest,
+		); err != nil {
+			return fail(fmt.Errorf("validate Stage Worker member client identity: %w", err))
+		}
+		if err := validateLocalMemberCertificateIdentity(
+			configuration.memberServerCertificateFile,
+			localMember.identityDigest,
+		); err != nil {
+			return fail(fmt.Errorf("validate Stage Worker member server identity: %w", err))
+		}
+		serverCredentials, credentialsErr := stageworkertransport.NewServerTLSCredentials(
+			configuration.memberServerCertificateFile,
+			configuration.memberServerPrivateKeyFile,
+			configuration.memberClientCAFile,
+		)
+		if credentialsErr != nil {
+			return fail(fmt.Errorf("configure Stage Worker member server mTLS: %w", credentialsErr))
+		}
+		memberService, serviceErr := stageworkermembertransport.NewServer(
+			stageworkermembertransport.ServerConfig{
+				Authenticator:   stageworkertransport.PeerAuthenticator{},
+				Validator:       stageAuthorityValidator,
+				Runtime:         runtime.modelRuntime,
+				LocalIdentities: runtimeIdentities,
+				Members:         memberBindings,
+			},
+		)
+		if serviceErr != nil {
+			return fail(fmt.Errorf("configure Stage Worker member service: %w", serviceErr))
+		}
+		runtime.memberListener, err = net.Listen("tcp", configuration.memberListenAddress)
+		if err != nil {
+			return fail(fmt.Errorf("listen for Stage Worker member service: %w", err))
+		}
+		runtime.memberServer = grpc.NewServer(
+			grpc.Creds(serverCredentials),
+			grpc.MaxRecvMsgSize(4<<20),
+			grpc.MaxSendMsgSize(4<<20),
+		)
+		velav1.RegisterStageWorkerMemberServiceServer(runtime.memberServer, memberService)
+		runtime.memberServeErrors = make(chan error, 1)
+		runtime.memberShutdownTimeout = configuration.memberShutdownTimeout
+		go func() {
+			runtime.memberServeErrors <- runtime.memberServer.Serve(runtime.memberListener)
+		}()
+
+		if configuration.workerMemberID == configuration.members[0].workerMemberID {
+			for _, member := range configuration.members[1:] {
+				clientCredentials, credentialsErr := stageworkertransport.NewClientTLSCredentials(
+					configuration.memberClientCertificateFile,
+					configuration.memberClientPrivateKeyFile,
+					configuration.memberServerCAFile,
+					member.serverName,
+				)
+				if credentialsErr != nil {
+					return fail(fmt.Errorf("configure Stage Worker member client mTLS: %w", credentialsErr))
+				}
+				dialContext, cancel := context.WithTimeout(ctx, configuration.memberDialTimeout)
+				client, dialErr := stageworkermembertransport.Dial(
+					dialContext,
+					stageworkermembertransport.ClientConfig{
+						Address:              member.address,
+						TargetWorkerMemberID: member.workerMemberID.String(),
+						TargetIdentityDigest: member.identityDigest[:],
+						TransportCredentials: clientCredentials,
+					},
+				)
+				cancel()
+				if dialErr != nil {
+					return fail(fmt.Errorf(
+						"connect to Stage Worker member %s: %w",
+						member.workerMemberID,
+						dialErr,
+					))
+				}
+				runtime.memberClients = append(runtime.memberClients, client)
+				runtimeMembers = append(runtimeMembers, stageworkeragent.RuntimeMember{
+					ID: member.workerMemberID.String(), Client: client,
+				})
+			}
+		}
+		select {
+		case serveErr := <-runtime.memberServeErrors:
+			return fail(fmt.Errorf("serve Stage Worker member service during startup: %w", serveErr))
+		default:
+		}
+	}
 	runtime.control, err = stageworkertransport.DialClient(
 		ctx,
 		stageworkertransport.ClientConfig{
@@ -185,10 +300,7 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 		return fail(err)
 	}
 	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
-		Members: []stageworkeragent.RuntimeMember{{
-			ID:     configuration.workerMemberID.String(),
-			Client: runtime.modelRuntime,
-		}},
+		Members: runtimeMembers,
 	})
 	if err != nil {
 		return fail(err)
@@ -244,15 +356,12 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 		return fail(err)
 	}
 	runtime.agent, err = stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
-		Control:           runtime.control,
-		Runtime:           runtime.modelRuntime,
-		Stream:            stream,
-		RuntimeIdentities: runtimeIdentities,
-		Devices:           configuration.devices,
-		Members: []*velav1.StageAuthorityMemberEpoch{{
-			WorkerMemberId: configuration.workerMemberID.String(),
-			MemberEpoch:    configuration.workerMemberEpoch,
-		}},
+		Control:                   runtime.control,
+		Runtime:                   runtime.modelRuntime,
+		Stream:                    stream,
+		RuntimeIdentities:         runtimeIdentities,
+		Devices:                   configuration.devices,
+		Members:                   authorityMembers,
 		CapacityVector:            configuration.capacityVector,
 		CapacityTTL:               configuration.capacityTTL,
 		HeartbeatInterval:         configuration.heartbeatInterval,
@@ -272,7 +381,27 @@ func (runtime *productionRuntime) Run(ctx context.Context) error {
 	if runtime == nil || runtime.agent == nil {
 		return errors.New("Stage Worker production runtime is incomplete")
 	}
-	return runtime.agent.Run(ctx)
+	if runtime.memberServer == nil {
+		return runtime.agent.Run(ctx)
+	}
+	runContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	agentErrors := make(chan error, 1)
+	go func() { agentErrors <- runtime.agent.Run(runContext) }()
+	select {
+	case err := <-agentErrors:
+		return err
+	case err := <-runtime.memberServeErrors:
+		cancel()
+		agentErr := <-agentErrors
+		if err == nil || errors.Is(err, grpc.ErrServerStopped) {
+			return errors.Join(errors.New("Stage Worker member service stopped unexpectedly"), agentErr)
+		}
+		return errors.Join(fmt.Errorf("serve Stage Worker member service: %w", err), agentErr)
+	case <-ctx.Done():
+		cancel()
+		return <-agentErrors
+	}
 }
 
 func (runtime *productionRuntime) Close() error {
@@ -280,6 +409,38 @@ func (runtime *productionRuntime) Close() error {
 		return nil
 	}
 	var closeErr error
+	for index := len(runtime.memberClients) - 1; index >= 0; index-- {
+		closeErr = errors.Join(closeErr, runtime.memberClients[index].Close())
+	}
+	runtime.memberClients = nil
+	if runtime.memberServer != nil {
+		stopped := make(chan struct{})
+		go func() {
+			runtime.memberServer.GracefulStop()
+			close(stopped)
+		}()
+		timeout := runtime.memberShutdownTimeout
+		if timeout <= 0 {
+			timeout = time.Second
+		}
+		timer := time.NewTimer(timeout)
+		select {
+		case <-stopped:
+			if !timer.Stop() {
+				<-timer.C
+			}
+		case <-timer.C:
+			runtime.memberServer.Stop()
+			<-stopped
+		}
+		runtime.memberServer = nil
+	}
+	if runtime.memberListener != nil {
+		if err := runtime.memberListener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			closeErr = errors.Join(closeErr, err)
+		}
+		runtime.memberListener = nil
+	}
 	if runtime.inputJournal != nil {
 		closeErr = errors.Join(closeErr, runtime.inputJournal.Close())
 		runtime.inputJournal = nil
@@ -297,6 +458,81 @@ func (runtime *productionRuntime) Close() error {
 		runtime.state = nil
 	}
 	return closeErr
+}
+
+func configuredRuntimeMembers(
+	configuration config,
+) (
+	[]*velav1.StageAuthorityMemberEpoch,
+	[]stageworkermembertransport.MemberBinding,
+	memberConfig,
+	error,
+) {
+	if len(configuration.members) == 0 || len(configuration.members) > 64 {
+		return nil, nil, memberConfig{}, errors.New("Stage Worker member topology is incomplete")
+	}
+	authorityMembers := make([]*velav1.StageAuthorityMemberEpoch, 0, len(configuration.members))
+	bindings := make([]stageworkermembertransport.MemberBinding, 0, len(configuration.members))
+	var local memberConfig
+	previousID := ""
+	for _, member := range configuration.members {
+		id := member.workerMemberID.String()
+		if member.workerMemberID == uuid.Nil || member.memberEpoch <= 0 ||
+			len(member.identityDigest) != sha256.Size ||
+			(previousID != "" && id <= previousID) {
+			return nil, nil, memberConfig{}, errors.New("Stage Worker member topology is invalid")
+		}
+		authorityMembers = append(authorityMembers, &velav1.StageAuthorityMemberEpoch{
+			WorkerMemberId: id,
+			MemberEpoch:    member.memberEpoch,
+			IdentityDigest: append([]byte(nil), member.identityDigest[:]...),
+		})
+		bindings = append(bindings, stageworkermembertransport.MemberBinding{
+			ID: id, Epoch: member.memberEpoch,
+		})
+		if member.workerMemberID == configuration.workerMemberID {
+			if local.workerMemberID != uuid.Nil || member.memberEpoch != configuration.workerMemberEpoch {
+				return nil, nil, memberConfig{}, errors.New("Stage Worker member topology does not match local member")
+			}
+			local = member
+		}
+		previousID = id
+	}
+	if local.workerMemberID == uuid.Nil {
+		return nil, nil, memberConfig{}, errors.New("Stage Worker member topology omits local member")
+	}
+	return authorityMembers, bindings, local, nil
+}
+
+func validateLocalMemberCertificateIdentity(path string, expected [sha256.Size]byte) error {
+	certificatePEM, err := securefile.Read(path, 1<<20, false)
+	if err != nil {
+		return err
+	}
+	block, _ := pem.Decode(certificatePEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return errors.New("Stage Worker member certificate contains no leaf certificate")
+	}
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	if err != nil || len(certificate.URIs) != 1 || !validMemberSPIFFEURI(certificate.URIs[0]) {
+		return errors.New("Stage Worker member certificate has no unique SPIFFE identity")
+	}
+	digest := sha256.Sum256([]byte(certificate.URIs[0].String()))
+	if !bytes.Equal(digest[:], expected[:]) {
+		return errors.New("Stage Worker member certificate identity digest does not match topology")
+	}
+	return nil
+}
+
+func validMemberSPIFFEURI(identity *url.URL) bool {
+	if identity == nil {
+		return false
+	}
+	value := identity.String()
+	return identity.Scheme == "spiffe" && identity.Host != "" && identity.User == nil &&
+		identity.Path != "" && identity.Opaque == "" && identity.RawQuery == "" &&
+		identity.Fragment == "" && len(value) <= 500 && strings.TrimSpace(value) == value &&
+		!strings.ContainsRune(value, '\x00') && identity.String() == value
 }
 
 func ensureStageWorkerDirectories(configuration config) error {

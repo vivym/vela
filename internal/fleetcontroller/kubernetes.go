@@ -18,6 +18,8 @@ import (
 
 var (
 	podResource                   = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+	serviceResource               = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "services"}
+	secretResource                = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}
 	resourceClaimTemplateResource = schema.GroupVersionResource{
 		Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates",
 	}
@@ -83,6 +85,102 @@ func (resources *KubernetesResources) CreateWorkerInstancePod(
 	}
 	_, err = resources.client.Resource(podResource).
 		Namespace(resources.namespace).
+		Create(ctx, &unstructured.Unstructured{Object: encoded}, metav1.CreateOptions{})
+	return mapKubernetesWriteError(err)
+}
+
+func (resources *KubernetesResources) GetWorkerInstanceMemberService(
+	ctx context.Context,
+	key ResourceKey,
+) (corev1.Service, error) {
+	if err := resources.validateKey(key); err != nil {
+		return corev1.Service{}, err
+	}
+	object, err := resources.client.Resource(serviceResource).Namespace(resources.namespace).
+		Get(ctx, key.Name, metav1.GetOptions{})
+	if err != nil {
+		return corev1.Service{}, mapKubernetesResourceError(err)
+	}
+	var service corev1.Service
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(object.Object, &service); err != nil {
+		return corev1.Service{}, fmt.Errorf("decode WorkerInstance member Service: %w", err)
+	}
+	return service, nil
+}
+
+func (resources *KubernetesResources) CreateWorkerInstanceMemberService(
+	ctx context.Context,
+	service corev1.Service,
+) error {
+	if resources == nil || resources.client == nil || service.APIVersion != "v1" ||
+		service.Kind != "Service" || service.Namespace != resources.namespace ||
+		!validResourceName(service.Name) || service.Labels[protectedLabel] != "true" ||
+		service.Labels[workerInstanceIDLabel] == "" || service.Labels[workerMemberIDLabel] == "" ||
+		!containsString(service.Finalizers, protectionFinalizer) ||
+		service.Spec.Type != corev1.ServiceTypeClusterIP || len(service.Spec.Ports) != 1 {
+		return errors.New("WorkerInstance member Service is invalid")
+	}
+	encoded, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&service)
+	if err != nil {
+		return fmt.Errorf("encode WorkerInstance member Service: %w", err)
+	}
+	_, err = resources.client.Resource(serviceResource).Namespace(resources.namespace).
+		Create(ctx, &unstructured.Unstructured{Object: encoded}, metav1.CreateOptions{})
+	return mapKubernetesWriteError(err)
+}
+
+func (resources *KubernetesResources) GetWorkerInstanceMemberSecret(
+	ctx context.Context,
+	key ResourceKey,
+) (corev1.Secret, error) {
+	return resources.getSecret(ctx, key, "WorkerInstance member")
+}
+
+func (resources *KubernetesResources) GetStageWorkerMemberPKISecret(
+	ctx context.Context,
+	key ResourceKey,
+) (corev1.Secret, error) {
+	return resources.getSecret(ctx, key, "Stage Worker member PKI source")
+}
+
+func (resources *KubernetesResources) getSecret(
+	ctx context.Context,
+	key ResourceKey,
+	kind string,
+) (corev1.Secret, error) {
+	if err := resources.validateKey(key); err != nil {
+		return corev1.Secret{}, err
+	}
+	object, err := resources.client.Resource(secretResource).Namespace(resources.namespace).
+		Get(ctx, key.Name, metav1.GetOptions{})
+	if err != nil {
+		return corev1.Secret{}, mapKubernetesResourceError(err)
+	}
+	var secret corev1.Secret
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(object.Object, &secret); err != nil {
+		return corev1.Secret{}, fmt.Errorf("decode %s Secret: %w", kind, err)
+	}
+	return secret, nil
+}
+
+func (resources *KubernetesResources) CreateWorkerInstanceMemberSecret(
+	ctx context.Context,
+	secret corev1.Secret,
+) error {
+	if resources == nil || resources.client == nil || secret.APIVersion != "v1" ||
+		secret.Kind != "Secret" || secret.Namespace != resources.namespace ||
+		!validResourceName(secret.Name) || secret.Labels[protectedLabel] != "true" ||
+		secret.Labels[workerInstanceIDLabel] == "" || secret.Labels[workerMemberIDLabel] == "" ||
+		!containsString(secret.Finalizers, protectionFinalizer) ||
+		secret.Immutable == nil || !*secret.Immutable || secret.Type != corev1.SecretTypeOpaque ||
+		len(secret.Data) != 6 {
+		return errors.New("WorkerInstance member Secret is invalid")
+	}
+	encoded, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&secret)
+	if err != nil {
+		return fmt.Errorf("encode WorkerInstance member Secret: %w", err)
+	}
+	_, err = resources.client.Resource(secretResource).Namespace(resources.namespace).
 		Create(ctx, &unstructured.Unstructured{Object: encoded}, metav1.CreateOptions{})
 	return mapKubernetesWriteError(err)
 }

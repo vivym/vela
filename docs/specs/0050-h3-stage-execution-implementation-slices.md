@@ -345,23 +345,30 @@ digest-pinned external dependency/model base, independently verifies exact
 Encoder, DiT, and VAE decoder command contexts and digests, installs the Vela
 ModelRuntime wrapper, and binds the composition into the OCI config and release
 bundle. Production commands, models, and weights remain external. The repository
-contains target-only default Fleet rollout input, dynamic one-member/one-GPU Pod and DRA
+contains target-only default Fleet rollout input, dynamic per-member Pod and DRA
 claim materialization, the explicit one-slot Encoder/VAE AUX exception, and a
 canonical release bundle that binds the Stage Worker render, configuration,
 Secret contracts, per-runtime Residency/Profile/epoch-floor actuation, public
 verifier/private-UDS materialization, and the exact external ModelRuntime image
 entrypoint. Dynamic authenticated epoch registration advances Fleet residency
 authority, fences assigned work without inventing Billable Start, and fails
-running leases that retain the old epoch. A future multi-member/multi-node
-actuation fixture preserves the LLM Pod/DRA shape without changing H3 DiT from
-single-GPU, but runtime registration rejects that shape until a gang coordinator
-owns per-member epochs and the complete registration barrier. The composition smoke uses fake local gRPC
+running leases that retain the old epoch. Multi-member/multi-node actuation
+preserves the LLM Pod/DRA shape without changing H3 DiT from single-GPU. Fleet
+derives one immutable member PKI Secret and one cluster-internal Service per
+member; every member registers its local runtime epoch, while the deterministic
+smallest-UUID leader owns the single StageLease, reports capacity for the full
+DeviceSet, and coordinates the complete remote runtime barrier. The composition smoke uses fake local gRPC
 control/ModelRuntime and an in-process S3-compatible endpoint; it is not a real
 GPU, DRA, Kubernetes, cross-node, ModelResidency, or Launch Receipt test.
-The release graph binds external Secret/ConfigMap names and declared revisions,
-but Fleet neither reads Secret values nor verifies live resource UID/content.
-Kubernetes admission control and secret-manager evidence must prevent deletion and
-same-name recreation of immutable rollout resources before activation.
+The release graph binds external Secret/ConfigMap names and declared revisions.
+For multi-member actuation Fleet reads the named aggregate member-PKI source and
+validates each certificate/key binding before deriving per-member Secrets, but
+does not verify a release-bound live resource UID/content digest.
+The control Secret is keyed by WorkerMember UUID so every single- or
+multi-member Pod receives a distinct control identity. Admission reconstructs
+exact Fleet-derived member Services and Secrets and rejects later mutation;
+secret-manager evidence must prevent deletion and same-name recreation of the
+external immutable rollout resources before activation.
 
 A typed read-only `vela-h3-evidence preflight` command now checks the canonical
 release/ResidencyPlan, dedicated evidence role, Kubernetes API bound to the

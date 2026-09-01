@@ -47,7 +47,8 @@ var renderedFieldContracts = map[string]renderedFieldContract{
 	"stage_worker_agent_image":        {ImageRole: renderedImageRoleSupport},
 	"runtime_image":                   {ImageRole: renderedImageRoleModelRuntime},
 	"secretName":                      {ReferenceKind: "Secret"},
-	"stage_worker_control_tls_secret": {ReferenceKind: "Secret", RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"}},
+	"stage_worker_control_tls_secret": {ReferenceKind: "Secret"},
+	"stage_worker_member_pki_secret":  {ReferenceKind: "Secret"},
 	"stage_worker_authority_secret":   {ReferenceKind: "Secret", RequiredKeys: []string{"keyring.json"}},
 	"artifact_store_credentials_secret": {
 		ReferenceKind: "Secret", RequiredKeys: []string{"access-key-id", "secret-access-key"},
@@ -173,6 +174,7 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 				return invalidf("Fleet ResidencyPlan ConfigMap %s/%s: %v", namespace, resourceName, err)
 			}
 			inventory.residencyRollouts = append(inventory.residencyRollouts, rollouts...)
+			recordResidencyPlanSecretReferences(inventory, namespace, consumer, rollouts)
 			recordH3RuntimeImages(inventory, rollouts)
 		}
 	}
@@ -183,6 +185,42 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 		}
 	}
 	return nil
+}
+
+func recordResidencyPlanSecretReferences(
+	inventory *renderInventory,
+	namespace,
+	consumer string,
+	rollouts []fleetcontroller.ResidencyPlanRollout,
+) {
+	for _, rollout := range rollouts {
+		for _, bundle := range rollout.WorkerBundles {
+			controlKeys := []string{"ca.crt"}
+			memberPKIKeys := make([]string, 0)
+			for _, worker := range bundle.WorkerInstances {
+				for _, member := range worker.Members {
+					prefix := member.ID.String() + "."
+					controlKeys = append(controlKeys, prefix+"tls.crt", prefix+"tls.key")
+					if len(worker.Members) > 1 {
+						for _, suffix := range []string{
+							"client.crt", "client.key", "server-ca.crt",
+							"server.crt", "server.key", "client-ca.crt",
+						} {
+							memberPKIKeys = append(memberPKIKeys, prefix+suffix)
+						}
+					}
+				}
+			}
+			recordReference(inventory, resourceKey{
+				Kind: "Secret", Namespace: namespace, Name: bundle.StageWorkerControlTLSSecret,
+			}, consumer, controlKeys)
+			if bundle.StageWorkerMemberPKISecret != "" {
+				recordReference(inventory, resourceKey{
+					Kind: "Secret", Namespace: namespace, Name: bundle.StageWorkerMemberPKISecret,
+				}, consumer, memberPKIKeys)
+			}
+		}
+	}
 }
 
 func recordH3RuntimeImages(

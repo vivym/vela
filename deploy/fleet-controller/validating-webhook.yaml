@@ -35,6 +35,8 @@ webhooks:
           - v1
         resources:
           - pods
+          - services
+          - secrets
         scope: Namespaced
       - operations:
           - CREATE

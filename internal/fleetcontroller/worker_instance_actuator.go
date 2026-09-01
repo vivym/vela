@@ -61,6 +61,11 @@ type WorkerInstancePodResources interface {
 	CreateWorkerInstanceGPUClaimTemplate(context.Context, resourcev1.ResourceClaimTemplate) error
 	GetWorkerInstancePod(context.Context, ResourceKey) (corev1.Pod, error)
 	CreateWorkerInstancePod(context.Context, corev1.Pod) error
+	GetWorkerInstanceMemberService(context.Context, ResourceKey) (corev1.Service, error)
+	CreateWorkerInstanceMemberService(context.Context, corev1.Service) error
+	GetWorkerInstanceMemberSecret(context.Context, ResourceKey) (corev1.Secret, error)
+	CreateWorkerInstanceMemberSecret(context.Context, corev1.Secret) error
+	GetStageWorkerMemberPKISecret(context.Context, ResourceKey) (corev1.Secret, error)
 }
 
 type WorkerInstanceActuator struct {
@@ -82,6 +87,7 @@ type WorkerBundleActuation struct {
 	StageWorkerAuthoritySecret     string                    `json:"stage_worker_authority_secret"`
 	ArtifactStoreCredentialsSecret string                    `json:"artifact_store_credentials_secret"`
 	ArtifactStoreCASecret          string                    `json:"artifact_store_ca_secret"`
+	StageWorkerMemberPKISecret     string                    `json:"stage_worker_member_pki_secret,omitempty"`
 	WorkerInstances                []WorkerInstanceActuation `json:"worker_instances"`
 }
 
@@ -105,6 +111,7 @@ type WorkerMemberActuation struct {
 	Key               string             `json:"key"`
 	NodeIdentity      string             `json:"node_identity"`
 	ResourceClass     string             `json:"resource_class"`
+	IdentityDigest    string             `json:"identity_digest"`
 	DeviceCount       int                `json:"device_count"`
 	DeviceConstraints []DeviceConstraint `json:"device_constraints,omitempty"`
 }
@@ -159,9 +166,11 @@ type H3WorkerBundleSpec struct {
 }
 
 type WorkerInstanceActuationResult struct {
-	CreatedGPUClaims int
-	CreatedPods      int
-	Converged        bool
+	CreatedGPUClaims      int
+	CreatedPods           int
+	CreatedMemberServices int
+	CreatedMemberSecrets  int
+	Converged             bool
 }
 
 type deviceOwnership struct {
@@ -314,9 +323,12 @@ func h3Member(
 	nodeIdentity string,
 	device DeviceConstraint,
 ) WorkerMemberActuation {
+	memberID := uuid.NewSHA1(workerID, []byte("member-0"))
+	identityDigest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/" + memberID.String()))
 	return WorkerMemberActuation{
-		ID: uuid.NewSHA1(workerID, []byte("member-0")), MemberEpoch: memberEpoch, Key: "member-0",
+		ID: memberID, MemberEpoch: memberEpoch, Key: "member-0",
 		NodeIdentity: nodeIdentity, ResourceClass: "GPU", DeviceCount: 1,
+		IdentityDigest:    hex.EncodeToString(identityDigest[:]),
 		DeviceConstraints: []DeviceConstraint{device},
 	}
 }
@@ -330,6 +342,20 @@ func (actuator *WorkerInstanceActuator) Actuate(
 	}
 	if err := ValidateWorkerBundleActuation(bundle); err != nil {
 		return WorkerInstanceActuationResult{}, err
+	}
+	desiredServices := materializeWorkerInstanceMemberServices(bundle)
+	desiredSecrets := []corev1.Secret(nil)
+	if len(desiredServices) != 0 {
+		source, err := actuator.resources.GetStageWorkerMemberPKISecret(ctx, ResourceKey{
+			Namespace: bundle.Namespace, Name: bundle.StageWorkerMemberPKISecret,
+		})
+		if err != nil {
+			return WorkerInstanceActuationResult{}, fmt.Errorf("get Stage Worker member PKI source Secret: %w", err)
+		}
+		desiredSecrets, err = materializeWorkerInstanceMemberSecrets(bundle, source)
+		if err != nil {
+			return WorkerInstanceActuationResult{}, err
+		}
 	}
 	desiredClaims, err := materializeWorkerInstanceGPUClaimTemplates(bundle)
 	if err != nil {
@@ -345,6 +371,46 @@ func (actuator *WorkerInstanceActuator) Actuate(
 	desiredPods, err := materializeWorkerInstancePods(bundle)
 	if err != nil {
 		return WorkerInstanceActuationResult{}, err
+	}
+	missingServices := make([]corev1.Service, 0, len(desiredServices))
+	missingServiceMembers := make(map[string]struct{}, len(desiredServices))
+	for _, desired := range desiredServices {
+		live, err := actuator.resources.GetWorkerInstanceMemberService(ctx, ResourceKey{
+			Namespace: bundle.Namespace, Name: desired.Name,
+		})
+		if errors.Is(err, ErrResourceNotFound) {
+			missingServices = append(missingServices, desired)
+			missingServiceMembers[desired.Labels[workerMemberIDLabel]] = struct{}{}
+			continue
+		}
+		if err != nil {
+			return WorkerInstanceActuationResult{}, fmt.Errorf(
+				"get WorkerInstance member Service %q: %w", desired.Name, err,
+			)
+		}
+		if !workerInstanceMemberServiceMatches(live, desired) {
+			return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
+		}
+	}
+	missingSecrets := make([]corev1.Secret, 0, len(desiredSecrets))
+	missingSecretMembers := make(map[string]struct{}, len(desiredSecrets))
+	for _, desired := range desiredSecrets {
+		live, err := actuator.resources.GetWorkerInstanceMemberSecret(ctx, ResourceKey{
+			Namespace: bundle.Namespace, Name: desired.Name,
+		})
+		if errors.Is(err, ErrResourceNotFound) {
+			missingSecrets = append(missingSecrets, desired)
+			missingSecretMembers[desired.Labels[workerMemberIDLabel]] = struct{}{}
+			continue
+		}
+		if err != nil {
+			return WorkerInstanceActuationResult{}, fmt.Errorf(
+				"get WorkerInstance member Secret %q: %w", desired.Name, err,
+			)
+		}
+		if !workerInstanceMemberSecretMatches(live, desired) {
+			return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
+		}
 	}
 	missingClaims := make([]resourcev1.ResourceClaimTemplate, 0, len(desiredClaims))
 	missingClaimNames := make(map[string]struct{}, len(desiredClaims))
@@ -383,8 +449,29 @@ func (actuator *WorkerInstanceActuator) Actuate(
 				return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
 			}
 		}
+		memberID := desired.Labels[workerMemberIDLabel]
+		if _, missing := missingServiceMembers[memberID]; missing {
+			return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
+		}
+		if _, missing := missingSecretMembers[memberID]; missing {
+			return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
+		}
 		if !workerInstancePodMatches(live, desired) {
 			return WorkerInstanceActuationResult{}, ErrProtectedResourceDrift
+		}
+	}
+	for _, secret := range missingSecrets {
+		if err := actuator.resources.CreateWorkerInstanceMemberSecret(ctx, secret); err != nil {
+			return WorkerInstanceActuationResult{}, fmt.Errorf(
+				"create WorkerInstance member Secret %q: %w", secret.Name, err,
+			)
+		}
+	}
+	for _, service := range missingServices {
+		if err := actuator.resources.CreateWorkerInstanceMemberService(ctx, service); err != nil {
+			return WorkerInstanceActuationResult{}, fmt.Errorf(
+				"create WorkerInstance member Service %q: %w", service.Name, err,
+			)
 		}
 	}
 	for _, claim := range missingClaims {
@@ -400,9 +487,12 @@ func (actuator *WorkerInstanceActuator) Actuate(
 		}
 	}
 	return WorkerInstanceActuationResult{
-		CreatedGPUClaims: len(missingClaims),
-		CreatedPods:      len(missingPods),
-		Converged:        len(missingClaims) == 0 && len(missingPods) == 0,
+		CreatedGPUClaims:      len(missingClaims),
+		CreatedPods:           len(missingPods),
+		CreatedMemberServices: len(missingServices),
+		CreatedMemberSecrets:  len(missingSecrets),
+		Converged: len(missingClaims) == 0 && len(missingPods) == 0 &&
+			len(missingServices) == 0 && len(missingSecrets) == 0,
 	}, nil
 }
 
@@ -422,9 +512,11 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 	}
 	workers := make(map[uuid.UUID]struct{}, len(bundle.WorkerInstances))
 	members := make(map[uuid.UUID]struct{})
+	memberIdentityDigests := make(map[string]struct{})
 	residencies := make(map[uuid.UUID]struct{})
 	podNames := make(map[string]struct{})
 	deviceOwnership := newDeviceOwnership()
+	hasMultiMemberWorker := false
 	for _, worker := range bundle.WorkerInstances {
 		if worker.ID == uuid.Nil || worker.InstanceEpoch <= 0 ||
 			worker.WorkerProfileRevisionID == uuid.Nil || worker.CapacityPoolID == uuid.Nil ||
@@ -459,8 +551,10 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 			residencies[runtime.ModelResidencyID] = struct{}{}
 		}
 		memberKeys := make(map[string]struct{}, len(worker.Members))
+		hasMultiMemberWorker = hasMultiMemberWorker || len(worker.Members) > 1
 		for _, member := range worker.Members {
 			if member.ID == uuid.Nil || member.MemberEpoch <= 0 || !validMemberKey(member.Key) ||
+				!validSHA256(member.IdentityDigest) ||
 				!validResourceName(member.NodeIdentity) || member.DeviceCount <= 0 || member.DeviceCount > 64 ||
 				(member.ResourceClass != "" && member.ResourceClass != "GPU") ||
 				(len(member.DeviceConstraints) != 0 && len(member.DeviceConstraints) != member.DeviceCount) {
@@ -472,7 +566,11 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 			if _, exists := memberKeys[member.Key]; exists {
 				return errors.New("WorkerInstance actuation reuses a WorkerMember key")
 			}
+			if _, exists := memberIdentityDigests[member.IdentityDigest]; exists {
+				return errors.New("WorkerBundle actuation reuses a WorkerMember identity digest")
+			}
 			members[member.ID] = struct{}{}
+			memberIdentityDigests[member.IdentityDigest] = struct{}{}
 			memberKeys[member.Key] = struct{}{}
 			podName := workerInstancePodName(worker.ID, member.Key)
 			if _, exists := podNames[podName]; exists {
@@ -488,6 +586,9 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 				}
 			}
 		}
+	}
+	if hasMultiMemberWorker != validResourceName(bundle.StageWorkerMemberPKISecret) {
+		return errors.New("WorkerBundle member PKI source Secret does not match its topology")
 	}
 	digest, err := ComputeWorkerBundleActuationDigest(bundle)
 	if err != nil || digest != bundle.RevisionDigest {
@@ -898,7 +999,7 @@ func materializeWorkerInstancePod(
 				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 			},
 			InitContainers: []corev1.Container{
-				stageWorkerPrivateInitializer(bundle.InitImage),
+				stageWorkerPrivateInitializer(bundle.InitImage, len(worker.Members) > 1),
 				modelRuntimePrivateInitializer(
 					bundle.InitImage, launchManifest, modelRuntimeDirectories(worker),
 				),
@@ -925,8 +1026,8 @@ func workerInstanceAgentContainer(
 	member WorkerMemberActuation,
 ) corev1.Container {
 	devicesJSON := mustEncodeStageWorkerDevices(member.DeviceConstraints)
-	capacityVectorJSON := mustEncodeCapacityVector(worker.CapacitySlots, member.DeviceCount)
-	return withKubernetesContainerDefaults(corev1.Container{
+	capacityVectorJSON := mustEncodeCapacityVector(worker.CapacitySlots, workerInstanceDeviceCount(worker))
+	container := withKubernetesContainerDefaults(corev1.Container{
 		Name: "stage-worker-agent", Image: bundle.StageWorkerAgentImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env: []corev1.EnvVar{
@@ -937,6 +1038,7 @@ func workerInstanceAgentContainer(
 			literalEnvironment("VELA_WORKER_MEMBER_KEY", member.Key),
 			literalEnvironment("VELA_STAGE_WORKER_DEVICES_JSON", devicesJSON),
 			literalEnvironment("VELA_STAGE_WORKER_CAPACITY_VECTOR_JSON", capacityVectorJSON),
+			literalEnvironment("VELA_STAGE_WORKER_MEMBERS_JSON", mustEncodeStageWorkerMembers(bundle, worker)),
 			fieldEnvironment("VELA_WORKER_NODE_IDENTITY", "spec.nodeName"),
 			configMapEnvironment("VELA_WORKER_CONTROL_ADDRESS", bundle.StageWorkerConfigMap, "control-address"),
 			configMapEnvironment("VELA_WORKER_CONTROL_SERVER_NAME", bundle.StageWorkerConfigMap, "control-server-name"),
@@ -985,6 +1087,23 @@ func workerInstanceAgentContainer(
 			{Name: "stage-worker-private", MountPath: "/etc/vela-stage-worker/private", ReadOnly: true},
 		},
 	})
+	if len(worker.Members) > 1 {
+		container.Env = append(container.Env,
+			literalEnvironment("VELA_STAGE_WORKER_MEMBER_LISTEN_ADDRESS", "0.0.0.0:7444"),
+			literalEnvironment("VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_CERT_FILE", "/etc/vela-stage-worker/private/member/client/tls.crt"),
+			literalEnvironment("VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_KEY_FILE", "/etc/vela-stage-worker/private/member/client/tls.key"),
+			literalEnvironment("VELA_STAGE_WORKER_MEMBER_SERVER_CA_FILE", "/etc/vela-stage-worker/private/member/client/ca.crt"),
+			literalEnvironment("VELA_STAGE_WORKER_MEMBER_SERVER_TLS_CERT_FILE", "/etc/vela-stage-worker/private/member/server/tls.crt"),
+			literalEnvironment("VELA_STAGE_WORKER_MEMBER_SERVER_TLS_KEY_FILE", "/etc/vela-stage-worker/private/member/server/tls.key"),
+			literalEnvironment("VELA_STAGE_WORKER_MEMBER_CLIENT_CA_FILE", "/etc/vela-stage-worker/private/member/server/ca.crt"),
+			configMapEnvironment("VELA_STAGE_WORKER_MEMBER_DIAL_TIMEOUT", bundle.StageWorkerConfigMap, "member-dial-timeout"),
+			configMapEnvironment("VELA_STAGE_WORKER_MEMBER_SHUTDOWN_TIMEOUT", bundle.StageWorkerConfigMap, "member-shutdown-timeout"),
+		)
+		container.Ports = []corev1.ContainerPort{{
+			Name: "grpc-member", ContainerPort: stageWorkerMemberPort, Protocol: corev1.ProtocolTCP,
+		}}
+	}
+	return container
 }
 
 func workerInstanceRuntimeContainer(
@@ -1027,7 +1146,15 @@ func workerInstanceVolumes(
 ) []corev1.Volume {
 	mode0400 := int32(0o400)
 	scratchPath := "/var/lib/vela/worker-instances/" + worker.ID.String() + "/" + member.Key
-	return []corev1.Volume{
+	controlSecret := &corev1.SecretVolumeSource{
+		SecretName: bundle.StageWorkerControlTLSSecret, DefaultMode: &mode0400,
+		Items: []corev1.KeyToPath{
+			{Key: "ca.crt", Path: "ca.crt"},
+			{Key: member.ID.String() + ".tls.crt", Path: "tls.crt"},
+			{Key: member.ID.String() + ".tls.key", Path: "tls.key"},
+		},
+	}
+	volumes := []corev1.Volume{
 		{Name: "model-runtime-socket", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
 			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("16Mi"),
 		}}},
@@ -1044,9 +1171,7 @@ func workerInstanceVolumes(
 				Items:                []corev1.KeyToPath{{Key: "verifier-keyring.json", Path: "verifier-keyring.json"}},
 			},
 		}},
-		{Name: "stage-worker-control-projected", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
-			SecretName: bundle.StageWorkerControlTLSSecret, DefaultMode: &mode0400,
-		}}},
+		{Name: "stage-worker-control-projected", VolumeSource: corev1.VolumeSource{Secret: controlSecret}},
 		{Name: "stage-worker-authority-projected", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
 			SecretName: bundle.StageWorkerAuthoritySecret, DefaultMode: &mode0400,
 			Items: []corev1.KeyToPath{{Key: "keyring.json", Path: "keyring.json"}},
@@ -1069,6 +1194,16 @@ func workerInstanceVolumes(
 			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("2Mi"),
 		}}},
 	}
+	if len(worker.Members) > 1 {
+		volumes = append(volumes, corev1.Volume{
+			Name: "stage-worker-member-pki-projected",
+			VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
+				SecretName:  workerInstanceMemberSecretName(worker.ID, member.Key),
+				DefaultMode: &mode0400,
+			}},
+		})
+	}
+	return volumes
 }
 
 func modelRuntimePrivateInitializer(image, launchManifest, directories string) corev1.Container {
@@ -1122,13 +1257,13 @@ chown -R 10001:10001 /private /var/lib/vela/stage-worker/scratch/model-runtime-e
 	})
 }
 
-func stageWorkerPrivateInitializer(image string) corev1.Container {
+func stageWorkerPrivateInitializer(image string, multiMember bool) corev1.Container {
 	runAsNonRoot := false
 	runAsUser := int64(0)
 	runAsGroup := int64(0)
 	allowPrivilegeEscalation := false
 	readOnlyRootFilesystem := true
-	return withKubernetesContainerDefaults(corev1.Container{
+	container := withKubernetesContainerDefaults(corev1.Container{
 		Name: "stage-worker-private-materialization", Image: image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command: []string{"/bin/sh", "-ec", `mkdir -p /run/vela-model-runtime/private
@@ -1138,13 +1273,24 @@ mkdir -p /var/lib/vela/stage-worker/scratch/input-transfer-journal
 mkdir -p /var/lib/vela/stage-worker/scratch/outputs
 mkdir -p /var/lib/vela/stage-worker/scratch/materialization-journal
 mkdir -p /private/control /private/authority /private/artifact
+cp /projected/control/ca.crt /private/control/ca.crt
 cp /projected/control/tls.crt /private/control/tls.crt
 cp /projected/control/tls.key /private/control/tls.key
-cp /projected/control/ca.crt /private/control/ca.crt
 cp /projected/authority/keyring.json /private/authority/keyring.json
 cp /projected/artifact-credentials/access-key-id /private/artifact/access-key-id
 cp /projected/artifact-credentials/secret-access-key /private/artifact/secret-access-key
 cp /projected/artifact-ca/ca.crt /private/artifact/ca.crt
+if [ -d /projected/member-pki ]; then
+  mkdir -p /private/member/client /private/member/server
+  cp /projected/member-pki/client.crt /private/member/client/tls.crt
+  cp /projected/member-pki/client.key /private/member/client/tls.key
+  cp /projected/member-pki/server-ca.crt /private/member/client/ca.crt
+  cp /projected/member-pki/server.crt /private/member/server/tls.crt
+  cp /projected/member-pki/server.key /private/member/server/tls.key
+  cp /projected/member-pki/client-ca.crt /private/member/server/ca.crt
+  chmod 0700 /private/member /private/member/client /private/member/server
+  chmod 0400 /private/member/client/* /private/member/server/*
+fi
 chmod 0700 /run/vela-model-runtime /run/vela-model-runtime/private
 chmod 0700 /var/lib/vela/stage-worker/scratch /var/lib/vela/stage-worker/scratch/*
 chmod 0700 /private /private/control /private/authority /private/artifact
@@ -1178,6 +1324,12 @@ chown -R 10001:10001 /var/lib/vela/stage-worker/scratch /private
 			{Name: "stage-worker-private", MountPath: "/private"},
 		},
 	})
+	if multiMember {
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name: "stage-worker-member-pki-projected", MountPath: "/projected/member-pki", ReadOnly: true,
+		})
+	}
+	return container
 }
 
 func workerInstancePodName(workerID uuid.UUID, memberKey string) string {
@@ -1259,6 +1411,14 @@ func mustEncodeCapacityVector(capacitySlots, deviceCount int) string {
 		panic(err)
 	}
 	return string(encoded)
+}
+
+func workerInstanceDeviceCount(worker WorkerInstanceActuation) int {
+	count := 0
+	for _, member := range worker.Members {
+		count += member.DeviceCount
+	}
+	return count
 }
 
 func cloneStringMap(values map[string]string) map[string]string {

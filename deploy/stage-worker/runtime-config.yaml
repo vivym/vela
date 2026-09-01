@@ -26,3 +26,5 @@ data:
   source-loss-consumed-resource-units: "1"
   model-runtime-cancel-timeout: 30s
   model-runtime-shutdown-timeout: 2m
+  member-dial-timeout: 15s
+  member-shutdown-timeout: 20s

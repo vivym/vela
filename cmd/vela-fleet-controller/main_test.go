@@ -176,6 +176,7 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49310000-0000-0000-0000-000000000006"), MemberEpoch: 11,
 				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
+				IdentityDigest: "796332ebf0c5ea66d59e3e6ae5c4e01a189755b174250479bdd7b01dcd2d4fbc",
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID: uuid.MustParse("49310000-0000-0000-0000-000000000008"), DeviceEpoch: 3,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",

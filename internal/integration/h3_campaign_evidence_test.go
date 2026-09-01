@@ -200,6 +200,17 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 	poolID := uuid.MustParse("49200000-0000-0000-0000-000000000203")
 	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000204")
 	profileID := uuid.MustParse(ditWorkerProfileID)
+	for index := range plan.ExternalResources {
+		resource := &plan.ExternalResources[index]
+		if resource.Kind == "Secret" && resource.Namespace == "vela-system" &&
+			resource.Name == "stage-worker-control-r1" {
+			resource.RequiredKeys = []string{
+				"49200000-0000-0000-0000-000000000205.tls.crt",
+				"49200000-0000-0000-0000-000000000205.tls.key",
+				"ca.crt",
+			}
+		}
+	}
 	actuation := fleetcontroller.WorkerBundleActuation{
 		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
 		Namespace: "vela-system", InitImage: images[0],
@@ -226,6 +237,7 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49200000-0000-0000-0000-000000000205"), MemberEpoch: 1,
 				Key: "member-0", NodeIdentity: "campaign-node-a", ResourceClass: "GPU", DeviceCount: 1,
+				IdentityDigest: "c4e4970f516c8e4cb61c23d077f071afec0dcd82110cfcb70c9031b410e23089",
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID: uuid.MustParse("49200000-0000-0000-0000-000000000206"), DeviceEpoch: 1,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000201", PCIBDF: "0000:41:00.0",

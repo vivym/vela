@@ -188,7 +188,11 @@ WantedBy=multi-user.target
 			},
 			{
 				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1",
-				Revision: catalogReleaseDigest("stage control"), RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
+				Revision: catalogReleaseDigest("stage control"), RequiredKeys: []string{
+					"49330000-0000-0000-0000-000000000006.tls.crt",
+					"49330000-0000-0000-0000-000000000006.tls.key",
+					"ca.crt",
+				},
 				Consumers: []string{consumer},
 			},
 			{
@@ -281,6 +285,7 @@ func catalogResidencyPlanRollout(
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49330000-0000-0000-0000-000000000006"), MemberEpoch: 1,
 				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
+				IdentityDigest: "0f2afefa5711edb6538b2e58335c7a3bbc40502f4bffa7f0d4eaa175961ae85c",
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID: uuid.MustParse("49330000-0000-0000-0000-000000000007"), DeviceEpoch: 1,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
@@ -371,10 +376,19 @@ func writeCatalogOCIManifest(t *testing.T, directory, name string) catalogOCIMan
 	if name == "h3-stage-runtime" {
 		entrypoint = "/usr/local/bin/vela-model-runtime"
 	}
+	imageConfig := map[string]any{"Entrypoint": []string{entrypoint}}
+	if name == "h3-stage-runtime" {
+		imageConfig["Labels"] = map[string]string{
+			"vela.ai.h3-runtime-base":       "ghcr.io/minimax/h3-runtime-base@" + catalogReleaseDigest("runtime base"),
+			"vela.ai.h3-encoder.sha256":     strings.TrimPrefix(catalogReleaseDigest("encoder"), "sha256:"),
+			"vela.ai.h3-dit.sha256":         strings.TrimPrefix(catalogReleaseDigest("dit"), "sha256:"),
+			"vela.ai.h3-vae-decoder.sha256": strings.TrimPrefix(catalogReleaseDigest("vae decoder"), "sha256:"),
+		}
+	}
 	config, err := json.Marshal(map[string]any{
 		"architecture": "amd64",
 		"os":           "linux",
-		"config":       map[string]any{"Entrypoint": []string{entrypoint}},
+		"config":       imageConfig,
 		"rootfs":       map[string]any{"type": "layers", "diff_ids": []string{}},
 	})
 	if err != nil {

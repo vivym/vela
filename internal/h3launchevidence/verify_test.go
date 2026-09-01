@@ -173,6 +173,7 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: memberID, MemberEpoch: 11, Key: "member-0", NodeIdentity: "gpu-node-01",
 				ResourceClass: "GPU", DeviceCount: 1,
+				IdentityDigest: "7e5eba74e8016c5147f1cc30fb3bbd9a3c6ebf139a0cb9865628accdc235766e",
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID: deviceID, DeviceEpoch: 13,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000007",
@@ -307,7 +308,8 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 				Members: []h3launchevidence.RegistryMember{{
 					ID: memberID, Key: "member-0", MemberEpoch: 11, ComputeNodeID: computeNodeID,
 					NodeIdentity: "gpu-node-01", Readiness: "READY",
-					DeviceSubsetDigest: digestHex('8'), IdentityDigest: digestHex('9'),
+					DeviceSubsetDigest: digestHex('8'),
+					IdentityDigest:     "7e5eba74e8016c5147f1cc30fb3bbd9a3c6ebf139a0cb9865628accdc235766e",
 					Devices: []h3launchevidence.RegistryDevice{{
 						ID: deviceID, DeviceEpoch: 13, ComputeNodeID: computeNodeID,
 						NodeIdentity: "gpu-node-01", NodeEpoch: 19, AgentSessionEpoch: 23,

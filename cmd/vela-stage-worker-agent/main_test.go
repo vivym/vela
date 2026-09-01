@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -82,9 +84,55 @@ func TestLoadConfigBindsSingleMemberRuntimeAndDurableMaterialization(t *testing.
 		filepath.Dir(configuration.inputTransferJournalRoot) != configuration.scratchRoot ||
 		!reflect.DeepEqual(configuration.capacityVector, map[string]int64{"gpu": 1, "slots": 1}) ||
 		len(configuration.devices) != 1 ||
+		len(configuration.members) != 1 ||
+		configuration.members[0].workerMemberID != configuration.workerMemberID ||
+		configuration.members[0].memberEpoch != configuration.workerMemberEpoch ||
 		configuration.devices[0].GetDeviceId() != "49000000-0000-0000-0000-000000000001" ||
 		configuration.devices[0].GetDeviceEpoch() != 3 || !configuration.artifactS3PathStyle {
 		t.Fatalf("configuration = %#v", configuration)
+	}
+}
+
+func TestLoadConfigBindsMultiMemberRuntimeTransport(t *testing.T) {
+	setValidStageWorkerEnv(t)
+	root := t.TempDir()
+	localDigest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/member-1"))
+	remoteDigest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/member-0"))
+	t.Setenv("VELA_STAGE_WORKER_MEMBERS_JSON", `[`+
+		`{"worker_member_id":"48000000-0000-0000-0000-000000000003","member_epoch":9,`+
+		`"identity_digest":"`+fmt.Sprintf("%x", remoteDigest)+`",`+
+		`"address":"worker-0.vela-system.svc:7444","server_name":"worker-0.vela-system.svc"},`+
+		`{"worker_member_id":"48000000-0000-0000-0000-000000000004","member_epoch":11,`+
+		`"identity_digest":"`+fmt.Sprintf("%x", localDigest)+`",`+
+		`"address":"worker-1.vela-system.svc:7444","server_name":"worker-1.vela-system.svc"}]`)
+	for name, value := range map[string]string{
+		"VELA_STAGE_WORKER_MEMBER_LISTEN_ADDRESS":       "0.0.0.0:7444",
+		"VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_CERT_FILE": filepath.Join(root, "client", "tls.crt"),
+		"VELA_STAGE_WORKER_MEMBER_CLIENT_TLS_KEY_FILE":  filepath.Join(root, "client", "tls.key"),
+		"VELA_STAGE_WORKER_MEMBER_SERVER_CA_FILE":       filepath.Join(root, "client", "ca.crt"),
+		"VELA_STAGE_WORKER_MEMBER_SERVER_TLS_CERT_FILE": filepath.Join(root, "server", "tls.crt"),
+		"VELA_STAGE_WORKER_MEMBER_SERVER_TLS_KEY_FILE":  filepath.Join(root, "server", "tls.key"),
+		"VELA_STAGE_WORKER_MEMBER_CLIENT_CA_FILE":       filepath.Join(root, "server", "ca.crt"),
+		"VELA_STAGE_WORKER_MEMBER_DIAL_TIMEOUT":         "15s",
+		"VELA_STAGE_WORKER_MEMBER_SHUTDOWN_TIMEOUT":     "20s",
+	} {
+		t.Setenv(name, value)
+	}
+
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if len(configuration.members) != 2 ||
+		configuration.members[0].workerMemberID.String() != "48000000-0000-0000-0000-000000000003" ||
+		configuration.members[0].memberEpoch != 9 ||
+		configuration.members[0].address != "worker-0.vela-system.svc:7444" ||
+		configuration.members[1].workerMemberID != configuration.workerMemberID ||
+		configuration.members[1].identityDigest != localDigest ||
+		configuration.memberListenAddress != "0.0.0.0:7444" ||
+		configuration.memberDialTimeout != 15*time.Second ||
+		configuration.memberShutdownTimeout != 20*time.Second {
+		t.Fatalf("multi-member configuration = %#v", configuration)
 	}
 }
 
@@ -116,6 +164,7 @@ func setValidStageWorkerEnv(t *testing.T) {
 		"VELA_WORKER_MEMBER_EPOCH":                              "11",
 		"VELA_STAGE_WORKER_DEVICES_JSON":                        `[{"device_id":"49000000-0000-0000-0000-000000000001","device_epoch":3}]`,
 		"VELA_STAGE_WORKER_CAPACITY_VECTOR_JSON":                `{"gpu":1,"slots":1}`,
+		"VELA_STAGE_WORKER_MEMBERS_JSON":                        `[{"worker_member_id":"48000000-0000-0000-0000-000000000004","member_epoch":11,"identity_digest":"cb5c0ed488b244036e02dc438bf95fd5d65c3d5c78db20dddfebf602f2474314"}]`,
 		"VELA_WORKER_CONTROL_ADDRESS":                           "vela-control.vela-system.svc:9444",
 		"VELA_WORKER_CONTROL_SERVER_NAME":                       "vela-control.vela-system.svc",
 		"VELA_WORKER_TLS_CERT_FILE":                             filepath.Join(root, "tls.crt"),

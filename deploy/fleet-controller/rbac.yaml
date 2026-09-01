@@ -52,6 +52,20 @@ rules:
       - patch
       - delete
   - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - create
+  - apiGroups:
       - resource.k8s.io
     resources:
       - resourceclaimtemplates

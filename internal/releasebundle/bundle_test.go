@@ -212,6 +212,49 @@ func TestRecordH3RuntimeImagesUsesRolloutComponentContract(t *testing.T) {
 	}
 }
 
+func TestResidencyPlanSecretReferencesBindPerMemberControlAndPeerPKIKeys(t *testing.T) {
+	inventory := newRenderInventory()
+	members := []fleetcontroller.WorkerMemberActuation{
+		{ID: uuid.MustParse("49370000-0000-0000-0000-000000000001")},
+		{ID: uuid.MustParse("49370000-0000-0000-0000-000000000002")},
+	}
+	recordResidencyPlanSecretReferences(
+		&inventory,
+		"vela-system",
+		"ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-r1",
+		[]fleetcontroller.ResidencyPlanRollout{{
+			WorkerBundles: []fleetcontroller.WorkerBundleActuation{{
+				StageWorkerControlTLSSecret: "stage-worker-control-r1",
+				StageWorkerMemberPKISecret:  "stage-worker-member-pki-r1",
+				WorkerInstances:             []fleetcontroller.WorkerInstanceActuation{{Members: members}},
+			}},
+		}},
+	)
+	control := resourceKey{Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1"}
+	peer := resourceKey{Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-member-pki-r1"}
+	wantControl := []string{
+		"49370000-0000-0000-0000-000000000001.tls.crt",
+		"49370000-0000-0000-0000-000000000001.tls.key",
+		"49370000-0000-0000-0000-000000000002.tls.crt",
+		"49370000-0000-0000-0000-000000000002.tls.key",
+		"ca.crt",
+	}
+	if got := sortedSet(inventory.secretKeys[control]); strings.Join(got, "\n") != strings.Join(wantControl, "\n") {
+		t.Fatalf("control Secret keys = %#v, want %#v", got, wantControl)
+	}
+	wantPeer := make([]string, 0, 12)
+	for _, member := range members {
+		for _, suffix := range []string{
+			"client-ca.crt", "client.crt", "client.key", "server-ca.crt", "server.crt", "server.key",
+		} {
+			wantPeer = append(wantPeer, member.ID.String()+"."+suffix)
+		}
+	}
+	if got := sortedSet(inventory.secretKeys[peer]); strings.Join(got, "\n") != strings.Join(wantPeer, "\n") {
+		t.Fatalf("member PKI Secret keys = %#v, want %#v", got, wantPeer)
+	}
+}
+
 func TestBuildRejectsInvalidSecretContracts(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -1181,7 +1224,11 @@ WantedBy=multi-user.target
 			},
 			{
 				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1",
-				Revision: testDigest("stage control"), RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
+				Revision: testDigest("stage control"), RequiredKeys: []string{
+					"49330000-0000-0000-0000-000000000006.tls.crt",
+					"49330000-0000-0000-0000-000000000006.tls.key",
+					"ca.crt",
+				},
 				Consumers: []string{consumer},
 			},
 			{
@@ -1256,6 +1303,7 @@ func testResidencyPlanRollout(t *testing.T, images []string) fleetcontroller.Res
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49330000-0000-0000-0000-000000000006"), MemberEpoch: 1,
 				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
+				IdentityDigest: "0f2afefa5711edb6538b2e58335c7a3bbc40502f4bffa7f0d4eaa175961ae85c",
 				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
 					DeviceID: uuid.MustParse("49330000-0000-0000-0000-000000000007"), DeviceEpoch: 1,
 					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
