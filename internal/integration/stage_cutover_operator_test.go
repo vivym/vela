@@ -18,7 +18,7 @@ import (
 
 func TestStageCutoverOperatorCLISealsTypedEvidence(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
@@ -154,7 +154,7 @@ func TestStageCutoverOperatorCLISealsTypedEvidence(t *testing.T) {
 
 func TestStageCutoverOperatorCapturesEvidenceAndSealsZeroBacklog(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)

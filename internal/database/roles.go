@@ -472,21 +472,19 @@ func verifyCatalogPromotionPrivileges(
 			"vela_enable_evidenced_catalog(uuid)",
 		},
 	}
-	stageCutoverPrivilegesPresent, err := databaseFunctionExists(
-		ctx,
-		database,
+	for _, function := range []string{
 		"vela_execution_profile_connector_set_digest(uuid,uuid)",
-	)
-	if err != nil {
-		return fmt.Errorf("inspect Catalog Promotion Stage cutover surface: %w", err)
-	}
-	if stageCutoverPrivilegesPresent {
-		boundary.functions = append(boundary.functions,
-			"vela_execution_profile_connector_set_digest(uuid,uuid)",
-			"vela_activate_stage_cutover(uuid,bigint,uuid,stage_cutover_scope,stage_cutover_mode,integer,uuid,uuid,bigint,integer,bytea,text,bytea,bytea,bytea,text,text)",
-			"vela_authorize_stage_cutover_internal_project(uuid,uuid,uuid,text)",
-			"vela_capture_legacy_authority_inventory(uuid,text)",
-		)
+		"vela_activate_stage_cutover(uuid,bigint,uuid,stage_cutover_scope,stage_cutover_mode,integer,uuid,uuid,bigint,integer,bytea,text,bytea,bytea,bytea,text,text)",
+		"vela_authorize_stage_cutover_internal_project(uuid,uuid,uuid,text)",
+		"vela_capture_legacy_authority_inventory(uuid,text)",
+	} {
+		present, err := databaseFunctionExists(ctx, database, function)
+		if err != nil {
+			return fmt.Errorf("inspect Catalog Promotion Stage cutover function %s: %w", function, err)
+		}
+		if present {
+			boundary.functions = append(boundary.functions, function)
+		}
 	}
 	zeroBacklogPrivilegesPresent, err := databaseFunctionExists(
 		ctx,

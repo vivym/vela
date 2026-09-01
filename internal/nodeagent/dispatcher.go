@@ -26,8 +26,8 @@ type ExecutionSource interface {
 type AgentEndpoint struct {
 	Address        string    `json:"address"`
 	ServerName     string    `json:"server_name"`
-	WorkerID       uuid.UUID `json:"worker_id"`
-	WorkerEpoch    int64     `json:"worker_epoch"`
+	AgentID        uuid.UUID `json:"agent_id"`
+	AgentEpoch     int64     `json:"agent_epoch"`
 	SPIFFEIdentity string    `json:"spiffe_identity"`
 }
 
@@ -47,7 +47,7 @@ type StaticAgentResolver struct {
 }
 
 type AgentResolver interface {
-	Resolve(context.Context, NodeAgentIdentity) (*Client, error)
+	Resolve(context.Context, string) (*Client, error)
 }
 
 func NewStaticAgentResolver(endpoints map[string]AgentEndpoint, tlsConfig ClientTLSConfig, actorIdentity string) (*StaticAgentResolver, error) {
@@ -73,26 +73,23 @@ func NewStaticAgentResolver(endpoints map[string]AgentEndpoint, tlsConfig Client
 	}, nil
 }
 
-func (resolver *StaticAgentResolver) Resolve(ctx context.Context, identity NodeAgentIdentity) (*Client, error) {
+func (resolver *StaticAgentResolver) Resolve(ctx context.Context, nodeIdentity string) (*Client, error) {
 	if resolver == nil {
 		return nil, errors.New("node Agent resolver is not configured")
 	}
 	if ctx == nil {
 		return nil, errors.New("node Agent resolver context is required")
 	}
-	if !validIdentity(identity) {
-		return nil, errors.New("node Agent resolver target identity is invalid")
+	if !validText(nodeIdentity, maxIdentityText) {
+		return nil, errors.New("node Agent resolver target Node identity is invalid")
 	}
-	endpoint, ok := resolver.endpoints[identity.NodeIdentity]
-	if !ok || endpoint.WorkerID != identity.WorkerID {
-		return nil, fmt.Errorf("node Agent endpoint for %q is not registered", identity.NodeIdentity)
-	}
-	if endpoint.WorkerEpoch != identity.WorkerEpoch {
-		return nil, fmt.Errorf("node Agent endpoint for %q has a stale Worker epoch", identity.NodeIdentity)
+	endpoint, ok := resolver.endpoints[nodeIdentity]
+	if !ok {
+		return nil, fmt.Errorf("node Agent endpoint for %q is not registered", nodeIdentity)
 	}
 	resolver.mu.Lock()
 	defer resolver.mu.Unlock()
-	if client := resolver.clients[identity.NodeIdentity]; client != nil {
+	if client := resolver.clients[nodeIdentity]; client != nil {
 		return client, nil
 	}
 	transportCredentials, err := NewClientTLSCredentials(
@@ -104,15 +101,15 @@ func (resolver *StaticAgentResolver) Resolve(ctx context.Context, identity NodeA
 	}
 	connection, err := grpc.NewClient(endpoint.Address, grpc.WithTransportCredentials(transportCredentials))
 	if err != nil {
-		return nil, fmt.Errorf("dial Node Agent %q: %w", identity.NodeIdentity, err)
+		return nil, fmt.Errorf("dial Node Agent %q: %w", nodeIdentity, err)
 	}
 	client, err := NewClient(velav1.NewNodeAgentServiceClient(connection), resolver.actor)
 	if err != nil {
 		_ = connection.Close()
 		return nil, err
 	}
-	resolver.connections[identity.NodeIdentity] = connection
-	resolver.clients[identity.NodeIdentity] = client
+	resolver.connections[nodeIdentity] = connection
+	resolver.clients[nodeIdentity] = client
 	return client, nil
 }
 
@@ -186,11 +183,7 @@ func (dispatcher *ExecutionDispatcher) RunOnce(ctx context.Context) (DispatchRes
 			result.Recovered++
 			continue
 		}
-		client, resolveErr := dispatcher.agents.Resolve(ctx, NodeAgentIdentity{
-			NodeIdentity: operation.NodeIdentity,
-			WorkerID:     operation.WorkerID,
-			WorkerEpoch:  operation.WorkerEpoch,
-		})
+		client, resolveErr := dispatcher.agents.Resolve(ctx, operation.NodeIdentity)
 		if resolveErr != nil {
 			result.Deferred++
 			continue
@@ -202,8 +195,8 @@ func (dispatcher *ExecutionDispatcher) RunOnce(ctx context.Context) (DispatchRes
 		_, executeErr := remote.Execute(ctx, remediation.Plan{
 			OperationID:      operation.ID,
 			ExecutionClaimID: stableExecutionClaimID(operation.ID, dispatcher.actorIdentity),
-			WorkerID:         operation.WorkerID,
-			WorkerEpoch:      operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
+			WorkerInstanceID:         operation.WorkerInstanceID,
+			WorkerInstanceEpoch:      operation.WorkerInstanceEpoch, DeadlineAt: operation.DeadlineAt,
 			NodeIdentity: operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
 			FailureClass: operation.FailureClass,
 			ActionLevel:  operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
@@ -247,8 +240,8 @@ func validAgentEndpoint(nodeIdentity string, endpoint AgentEndpoint) bool {
 	}
 	identity := NodeAgentIdentity{
 		NodeIdentity: nodeIdentity,
-		WorkerID:     endpoint.WorkerID,
-		WorkerEpoch:  endpoint.WorkerEpoch,
+		AgentID:      endpoint.AgentID,
+		AgentEpoch:   endpoint.AgentEpoch,
 	}
 	if !validIdentity(identity) || endpoint.SPIFFEIdentity != NodeAgentSPIFFEIdentity(identity) {
 		return false

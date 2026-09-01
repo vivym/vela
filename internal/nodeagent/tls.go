@@ -36,7 +36,7 @@ func NewServerTLSCredentials(certificatePath, privateKeyPath, clientCAPath strin
 	}
 	leaf, err := certificateLeaf(certificate)
 	if err != nil || !certificateHasNodeAgentIdentity(leaf, expectedSPIFFEIdentity) {
-		return nil, errors.New("node Agent server certificate does not match its Node and Worker identity")
+		return nil, errors.New("node Agent server certificate does not match its Node and Agent identity")
 	}
 	clientCAPEM, err := readTLSFile(clientCAPath, maxTLSCABytes, false)
 	if err != nil {

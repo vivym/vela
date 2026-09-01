@@ -25,8 +25,6 @@ import (
 	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/strictjson"
-	"github.com/vivym/vela/internal/workerhost"
-	"github.com/vivym/vela/internal/workerrecovery"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
@@ -59,8 +57,8 @@ var (
 type config struct {
 	address                      string
 	nodeIdentity                 string
-	workerID                     uuid.UUID
-	workerEpoch                  int64
+	agentID                      uuid.UUID
+	agentEpoch                   int64
 	serverCertificate            string
 	serverPrivateKey             string
 	controllerCA                 string
@@ -75,12 +73,6 @@ type config struct {
 	rateMinimumInterval          time.Duration
 	rateWindow                   time.Duration
 	rateMax                      int
-	workerQuotaSocket            string
-	workerUID                    uint32
-	workerGID                    uint32
-	workerScratchRoot            string
-	workerXFSDevice              string
-	workerXFSProjectID           uint32
 	fleetAddress                 string
 	fleetServerName              string
 	fleetCA                      string
@@ -180,12 +172,12 @@ func run() error {
 		return err
 	}
 	if os.Geteuid() != 0 {
-		return errors.New("vela-node-agent must run as root for certified remediation and XFS project quota observation")
+		return errors.New("vela-node-agent must run as root for certified remediation and device attestation")
 	}
 	localIdentity := nodeagent.NodeAgentIdentity{
 		NodeIdentity: configuration.nodeIdentity,
-		WorkerID:     configuration.workerID,
-		WorkerEpoch:  configuration.workerEpoch,
+		AgentID:      configuration.agentID,
+		AgentEpoch:   configuration.agentEpoch,
 	}
 	templates, err := loadWorkerInstanceTemplates(configuration.workerInstancesFile, localIdentity)
 	if err != nil {
@@ -298,35 +290,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Node Agent service: %w", err)
 	}
-	quotaProbe := func(ctx context.Context) (workerhost.QuotaObservation, error) {
-		if err := ctx.Err(); err != nil {
-			return workerhost.QuotaObservation{}, err
-		}
-		observation, err := probeWorkerXFSProjectQuota(
-			configuration.workerScratchRoot,
-			workerrecovery.XFSProjectQuotaConfig{
-				DevicePath: configuration.workerXFSDevice,
-				ProjectID:  configuration.workerXFSProjectID,
-			},
-		)
-		if err != nil {
-			return workerhost.QuotaObservation{}, err
-		}
-		return workerhost.QuotaObservation{
-			RootDevice: observation.RootDevice, RootInode: observation.RootInode,
-			TotalBytes: observation.TotalBytes, FreeBytes: observation.FreeBytes,
-		}, nil
-	}
-	if _, err := quotaProbe(context.Background()); err != nil {
-		return fmt.Errorf("preflight Worker scratch XFS project quota: %w", err)
-	}
-	quotaService, err := workerhost.NewServer(workerhost.ServerConfig{
-		WorkerID: configuration.workerID, RootPath: configuration.workerScratchRoot,
-		DevicePath: configuration.workerXFSDevice, ProjectID: configuration.workerXFSProjectID,
-	}, quotaProbe)
-	if err != nil {
-		return fmt.Errorf("configure Worker host quota service: %w", err)
-	}
 	credentials, err := nodeagent.NewServerTLSCredentials(
 		configuration.serverCertificate, configuration.serverPrivateKey, configuration.controllerCA,
 		localIdentity,
@@ -339,28 +302,15 @@ func run() error {
 		return fmt.Errorf("listen for Node Agent gRPC: %w", err)
 	}
 	defer func() { _ = listener.Close() }()
-	quotaListener, err := workerhost.ListenUnix(workerhost.UnixListenerConfig{
-		SocketPath: configuration.workerQuotaSocket, SocketOwnerUID: 0,
-		SocketOwnerGID: configuration.workerGID, ExpectedPeerUID: configuration.workerUID,
-	})
-	if err != nil {
-		return fmt.Errorf("listen for Worker host quota gRPC: %w", err)
-	}
-	defer func() { _ = quotaListener.Close() }()
 	grpcServer := grpc.NewServer(
 		grpc.Creds(credentials), grpc.MaxRecvMsgSize(1<<20), grpc.MaxSendMsgSize(4<<20),
 	)
 	velav1.RegisterNodeAgentServiceServer(grpcServer, server)
-	quotaGRPCServer := grpc.NewServer(grpc.MaxRecvMsgSize(64<<10), grpc.MaxSendMsgSize(64<<10))
-	velav1.RegisterWorkerHostServiceServer(quotaGRPCServer, quotaService)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return serveGRPCUntilCanceled(
 		ctx,
-		[]grpcEndpoint{
-			{name: "Node Agent", server: grpcServer, listener: listener},
-			{name: "Worker host quota", server: quotaGRPCServer, listener: quotaListener},
-		},
+		[]grpcEndpoint{{name: "Node Agent", server: grpcServer, listener: listener}},
 		nodeAgentProcess{
 			name: "WorkerInstance evidence reporting",
 			run: func(ctx context.Context) error {
@@ -400,8 +350,6 @@ type nodeAgentProcess struct {
 	name string
 	run  func(context.Context) error
 }
-
-var probeWorkerXFSProjectQuota = workerrecovery.ProbeXFSProjectQuota
 
 func serveGRPCUntilCanceled(
 	ctx context.Context,
@@ -500,14 +448,14 @@ func serveGRPCUntilCanceled(
 }
 
 func loadConfig() (config, error) {
-	workerID, err := uuid.Parse(os.Getenv("VELA_NODE_AGENT_WORKER_ID"))
-	if err != nil || workerID == uuid.Nil {
-		return config{}, errors.New("VELA_NODE_AGENT_WORKER_ID must be a UUID")
+	agentID, err := uuid.Parse(os.Getenv("VELA_NODE_AGENT_ID"))
+	if err != nil || agentID == uuid.Nil {
+		return config{}, errors.New("VELA_NODE_AGENT_ID must be a UUID")
 	}
 	configuration := config{
 		address:           envOrDefault("VELA_NODE_AGENT_ADDRESS", defaultAddress),
 		nodeIdentity:      os.Getenv("VELA_NODE_AGENT_NODE_IDENTITY"),
-		workerID:          workerID,
+		agentID:           agentID,
 		serverCertificate: os.Getenv("VELA_NODE_AGENT_TLS_CERT_FILE"),
 		serverPrivateKey:  os.Getenv("VELA_NODE_AGENT_TLS_KEY_FILE"),
 		controllerCA:      os.Getenv("VELA_NODE_AGENT_CONTROLLER_CA_FILE"),
@@ -517,9 +465,6 @@ func loadConfig() (config, error) {
 		capabilitiesFile:  os.Getenv("VELA_NODE_AGENT_CAPABILITIES_FILE"),
 		postcheckPath:     os.Getenv("VELA_NODE_AGENT_POSTCHECK_PATH"),
 		fencePath:         os.Getenv("VELA_NODE_AGENT_FENCE_PATH"),
-		workerQuotaSocket: os.Getenv("VELA_NODE_AGENT_WORKER_QUOTA_SOCKET"),
-		workerScratchRoot: os.Getenv("VELA_NODE_AGENT_WORKER_SCRATCH_ROOT"),
-		workerXFSDevice:   os.Getenv("VELA_NODE_AGENT_WORKER_XFS_DEVICE"),
 		fleetAddress:      os.Getenv("VELA_NODE_AGENT_FLEET_ADDRESS"),
 		fleetServerName:   os.Getenv("VELA_NODE_AGENT_FLEET_SERVER_NAME"),
 		fleetCA:           os.Getenv("VELA_NODE_AGENT_FLEET_CA_FILE"),
@@ -544,7 +489,7 @@ func loadConfig() (config, error) {
 		workerInstanceEvidenceTTL:    defaultWorkerInstanceEvidenceTTL,
 		fleetDialTimeout:             defaultFleetDialTimeout,
 	}
-	configuration.workerEpoch, err = positiveInt64Env("VELA_NODE_AGENT_WORKER_EPOCH")
+	configuration.agentEpoch, err = positiveInt64Env("VELA_NODE_AGENT_EPOCH")
 	if err != nil {
 		return config{}, err
 	}
@@ -559,9 +504,6 @@ func loadConfig() (config, error) {
 		"VELA_NODE_AGENT_CAPABILITIES_FILE":               configuration.capabilitiesFile,
 		"VELA_NODE_AGENT_POSTCHECK_PATH":                  configuration.postcheckPath,
 		"VELA_NODE_AGENT_FENCE_PATH":                      configuration.fencePath,
-		"VELA_NODE_AGENT_WORKER_QUOTA_SOCKET":             configuration.workerQuotaSocket,
-		"VELA_NODE_AGENT_WORKER_SCRATCH_ROOT":             configuration.workerScratchRoot,
-		"VELA_NODE_AGENT_WORKER_XFS_DEVICE":               configuration.workerXFSDevice,
 		"VELA_NODE_AGENT_FLEET_ADDRESS":                   configuration.fleetAddress,
 		"VELA_NODE_AGENT_FLEET_SERVER_NAME":               configuration.fleetServerName,
 		"VELA_NODE_AGENT_FLEET_CA_FILE":                   configuration.fleetCA,
@@ -587,9 +529,6 @@ func loadConfig() (config, error) {
 		"VELA_NODE_AGENT_CONTROLLERS_FILE":                configuration.controllersFile,
 		"VELA_NODE_AGENT_COMMANDS_FILE":                   configuration.commandsFile,
 		"VELA_NODE_AGENT_CAPABILITIES_FILE":               configuration.capabilitiesFile,
-		"VELA_NODE_AGENT_WORKER_QUOTA_SOCKET":             configuration.workerQuotaSocket,
-		"VELA_NODE_AGENT_WORKER_SCRATCH_ROOT":             configuration.workerScratchRoot,
-		"VELA_NODE_AGENT_WORKER_XFS_DEVICE":               configuration.workerXFSDevice,
 		"VELA_NODE_AGENT_FLEET_CA_FILE":                   configuration.fleetCA,
 		"VELA_NODE_AGENT_FLEET_CLIENT_CERT_FILE":          configuration.fleetClientCertificate,
 		"VELA_NODE_AGENT_FLEET_CLIENT_KEY_FILE":           configuration.fleetClientPrivateKey,
@@ -615,18 +554,6 @@ func loadConfig() (config, error) {
 	}
 	if !validWorkerInstanceText(configuration.fleetServerName, 253) {
 		return config{}, errors.New("VELA_NODE_AGENT_FLEET_SERVER_NAME is invalid")
-	}
-	configuration.workerUID, err = positiveUint32Env("VELA_NODE_AGENT_WORKER_UID")
-	if err != nil {
-		return config{}, err
-	}
-	configuration.workerGID, err = positiveUint32Env("VELA_NODE_AGENT_WORKER_GID")
-	if err != nil {
-		return config{}, err
-	}
-	configuration.workerXFSProjectID, err = positiveUint32Env("VELA_NODE_AGENT_WORKER_XFS_PROJECT_ID")
-	if err != nil {
-		return config{}, err
 	}
 	configuration.postcheckArgs, err = parseArgsEnv("VELA_NODE_AGENT_POSTCHECK_ARGS_JSON")
 	if err != nil {
@@ -688,14 +615,6 @@ func loadConfig() (config, error) {
 		return config{}, errors.New("WorkerInstance outbound reporting durations are invalid")
 	}
 	return configuration, nil
-}
-
-func positiveUint32Env(name string) (uint32, error) {
-	value, err := strconv.ParseUint(os.Getenv(name), 10, 32)
-	if err != nil || value == 0 {
-		return 0, fmt.Errorf("%s must be a positive uint32", name)
-	}
-	return uint32(value), nil
 }
 
 func positiveInt64Env(name string) (int64, error) {

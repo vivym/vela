@@ -33,7 +33,6 @@ import (
 	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
-	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -95,7 +94,7 @@ func TestRemediationPlatformAPIRequiresDistinctL6ApprovalBeforeExecution(t *test
 	operationID := uuid.New()
 	evidence := sha256.Sum256([]byte("L6 hardware fault"))
 	body, err := json.Marshal(map[string]any{
-		"operation_id": operationID, "worker_id": workerID, "worker_epoch": 1,
+		"operation_id": operationID, "worker_instance_id": workerID, "worker_instance_epoch": 1,
 		"node_identity": "node-remediation-1",
 		"gpu_uuid":      "GPU-00000000-0000-0000-0000-000000000018",
 		"failure_class": "GPU_UNRECOVERABLE", "evidence_sha256": hex.EncodeToString(evidence[:]),
@@ -170,7 +169,7 @@ func TestRemediationDispatcherQuarantinesFailedCertifiedPostcheck(t *testing.T) 
 	)
 	evidence := sha256.Sum256([]byte("GPU process failure"))
 	request := remediation.Request{
-		OperationID: uuid.New(), WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: uuid.New(), WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		NodeIdentity: "node-remediation-1", DeviceIdentity: gpuUUID,
 		FailureClass: "PROCESS_FAILURE", EvidenceDigest: evidence[:],
 		CertificationRevision: "matrix-v1", ActionLevel: remediation.ActionL0ProcessRestart,
@@ -227,7 +226,7 @@ func TestRemediationDispatcherQuarantinesFailedCertifiedPostcheck(t *testing.T) 
 		t.Fatalf("configure runtime host ledger: %v", err)
 	}
 	host, err := nodeagent.NewServer(nodeagent.NodeAgentIdentity{
-		NodeIdentity: "node-remediation-1", WorkerID: workerID, WorkerEpoch: 1,
+		NodeIdentity: "node-remediation-1", AgentID: uuid.New(), AgentEpoch: 1,
 	}, resolver, executor, hostLedger)
 	if err != nil {
 		t.Fatalf("configure runtime Node Agent: %v", err)
@@ -264,8 +263,8 @@ func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 	evidence := sha256.Sum256([]byte("worker fault evidence"))
 	request := remediation.Request{
 		OperationID:           uuid.MustParse("10000000-0000-0000-0000-000000001920"),
-		WorkerID:              workerID,
-		WorkerEpoch:           1,
+		WorkerInstanceID:      workerID,
+		WorkerInstanceEpoch:   1,
 		NodeIdentity:          "node-remediation-1",
 		DeviceIdentity:        "GPU-REM-0",
 		FailureClass:          "CUDA_CONTEXT_STALE",
@@ -310,7 +309,7 @@ func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 	assertRemediationFailure(t, err, remediation.FailureConflict)
 	postcheck := sha256.Sum256([]byte("post-check"))
 	completed, err := service.Complete(context.Background(), remediation.Completion{
-		OperationID: request.OperationID, WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: request.OperationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "process restarted and checks passed",
 		PostcheckHash: postcheck[:], ActorIdentity: "node-agent-1",
 	})
@@ -375,7 +374,7 @@ func TestRemediationExecutionClaimSerializesConcurrentProcesses(t *testing.T) {
 	}
 	evidence := sha256.Sum256([]byte("concurrent execution claim"))
 	request := remediation.Request{
-		OperationID: uuid.New(), WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: uuid.New(), WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		NodeIdentity: "node-remediation-1", DeviceIdentity: "GPU-REM-0",
 		FailureClass: "GPU_FAULT", EvidenceDigest: evidence[:], CertificationRevision: "matrix-v1",
 		ActionLevel: remediation.ActionL2GPUReset, IdempotencyKey: "concurrent-execution-claim",
@@ -457,8 +456,8 @@ func TestRemediationL6RequiresTwoApproversAndQuarantinesOnFailure(t *testing.T) 
 	evidence := sha256.Sum256([]byte("BMC evidence"))
 	request := remediation.Request{
 		OperationID:           uuid.MustParse("10000000-0000-0000-0000-000000001922"),
-		WorkerID:              workerID,
-		WorkerEpoch:           1,
+		WorkerInstanceID:      workerID,
+		WorkerInstanceEpoch:   1,
 		NodeIdentity:          "node-remediation-1",
 		DeviceIdentity:        "PCI-0000:01:00.0",
 		FailureClass:          "NODE_UNRESPONSIVE",
@@ -492,7 +491,7 @@ func TestRemediationL6RequiresTwoApproversAndQuarantinesOnFailure(t *testing.T) 
 		t.Fatalf("start approved L6 Remediation: %v", err)
 	}
 	completed, err := service.Complete(context.Background(), remediation.Completion{
-		OperationID: request.OperationID, WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: request.OperationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		Success: false, ResultCode: "BMC_POSTCHECK_FAILED", ResultDetail: "node identity did not return",
 		ActorIdentity: "node-agent-1",
 	})
@@ -524,8 +523,8 @@ func TestRemediationL7QuarantineIsImmediateAndEpochBound(t *testing.T) {
 	evidence := sha256.Sum256([]byte("quarantine evidence"))
 	request := remediation.Request{
 		OperationID:           uuid.MustParse("10000000-0000-0000-0000-000000001923"),
-		WorkerID:              workerID,
-		WorkerEpoch:           9,
+		WorkerInstanceID:      workerID,
+		WorkerInstanceEpoch:   9,
 		NodeIdentity:          "node-remediation-1",
 		DeviceIdentity:        "GPU-REM-0",
 		FailureClass:          "IDENTITY_AMBIGUOUS",
@@ -537,7 +536,7 @@ func TestRemediationL7QuarantineIsImmediateAndEpochBound(t *testing.T) {
 	}
 	_, err = service.Request(context.Background(), request)
 	assertRemediationFailure(t, err, remediation.FailureConflict)
-	request.WorkerEpoch = 1
+	request.WorkerInstanceEpoch = 1
 	request.IdempotencyKey = "remediation-l7-1"
 	request.CertificationRevision = ""
 	result, err := service.Request(context.Background(), request)
@@ -559,8 +558,8 @@ func TestRemediationL7QuarantineIsImmediateAndEpochBound(t *testing.T) {
 		)
 	}
 	if _, err := service.Request(context.Background(), remediation.Request{
-		OperationID: uuid.MustParse("10000000-0000-0000-0000-000000001929"),
-		WorkerID:    workerID, WorkerEpoch: 1, NodeIdentity: request.NodeIdentity,
+		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000001929"),
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: 1, NodeIdentity: request.NodeIdentity,
 		DeviceIdentity: request.DeviceIdentity, FailureClass: "NEW_FAULT",
 		EvidenceDigest: evidence[:], CertificationRevision: "matrix-v1",
 		ActionLevel:    remediation.ActionL0ProcessRestart,
@@ -575,68 +574,6 @@ func TestRemediationL7QuarantineIsImmediateAndEpochBound(t *testing.T) {
 	`, workerID, "55000")
 }
 
-func TestRemediationRequestFencesActiveLease(t *testing.T) {
-	fixture := newAssignmentFixture(t, "remediation-fence-active-lease", 1)
-	assignment, err := fixture.service.Acquire(
-		context.Background(), fixture.worker, 1, &fixture.candidate,
-	)
-	if err != nil {
-		t.Fatalf("create active Assignment: %v", err)
-	}
-	var nodeIdentity string
-	if err := fixture.database.Admin.QueryRow(
-		"SELECT node_identity FROM workers WHERE id = $1", assignment.WorkerID,
-	).Scan(&nodeIdentity); err != nil {
-		t.Fatalf("read Worker node identity: %v", err)
-	}
-	service, err := remediation.NewService(newRolePool(
-		t, fixture.database.DSN, "vela_remediation_login", "vela-remediation-password",
-	))
-	if err != nil {
-		t.Fatalf("create Remediation service: %v", err)
-	}
-	evidence := sha256.Sum256([]byte("active lease evidence"))
-	request := remediation.Request{
-		OperationID: uuid.MustParse("10000000-0000-0000-0000-000000001930"),
-		WorkerID:    assignment.WorkerID, WorkerEpoch: 1, NodeIdentity: nodeIdentity,
-		DeviceIdentity: "GPU-LEASE-0", FailureClass: "WORKER_LOST",
-		EvidenceDigest: evidence[:], CertificationRevision: "matrix-lease-v1",
-		ActionLevel:    remediation.ActionL0ProcessRestart,
-		IdempotencyKey: "remediation-fence-active-lease-1", RequestedBy: "node-agent-lease",
-	}
-	if _, err := service.Request(context.Background(), request); err != nil {
-		t.Fatalf("request Remediation with active Lease: %v", err)
-	}
-	var revokedAt sql.NullTime
-	if err := fixture.database.Admin.QueryRow(
-		"SELECT revoked_at FROM attempt_leases WHERE attempt_id = $1", assignment.AttemptID,
-	).Scan(&revokedAt); err != nil {
-		t.Fatalf("read fenced Lease: %v", err)
-	}
-	if !revokedAt.Valid {
-		t.Fatal("Remediation request left the active Worker Lease unfenced")
-	}
-	heartbeat, err := fixture.service.Heartbeat(
-		context.Background(), fixture.worker, leaseCredentials(assignment), validHeartbeatObservation(2),
-	)
-	if err != nil || heartbeat.Decision != workercontrol.HeartbeatStop ||
-		heartbeat.StopReason != workercontrol.StopInvalidAuthority {
-		t.Fatalf("heartbeat after Remediation fencing = %#v error=%v", heartbeat, err)
-	}
-	if _, err := service.Start(context.Background(), request.OperationID, assignment.WorkerID, 1, request.RequestedBy); err != nil {
-		t.Fatalf("start fenced Remediation: %v", err)
-	}
-	postcheck := sha256.Sum256([]byte("post-check-active-lease"))
-	completed, err := service.Complete(context.Background(), remediation.Completion{
-		OperationID: request.OperationID, WorkerID: assignment.WorkerID, WorkerEpoch: 1,
-		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "active Attempt remains",
-		PostcheckHash: postcheck[:], ActorIdentity: request.RequestedBy,
-	})
-	if err != nil || completed.State != remediation.StateQuarantined {
-		t.Fatalf("active Lease completion = %#v error=%v", completed, err)
-	}
-}
-
 func TestRemediationRecoveryQuarantinesExpiredExecutingOperation(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -649,8 +586,8 @@ func TestRemediationRecoveryQuarantinesExpiredExecutingOperation(t *testing.T) {
 	}
 	evidence := sha256.Sum256([]byte("orphaned execution evidence"))
 	request := remediation.Request{
-		OperationID: uuid.MustParse("10000000-0000-0000-0000-000000001931"),
-		WorkerID:    workerID, WorkerEpoch: 1, NodeIdentity: "node-remediation-1",
+		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000001931"),
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: 1, NodeIdentity: "node-remediation-1",
 		DeviceIdentity: "GPU-ORPHAN-0", FailureClass: "NODE_AGENT_LOST",
 		EvidenceDigest: evidence[:], CertificationRevision: "matrix-orphan-v1",
 		ActionLevel:    remediation.ActionL0ProcessRestart,
@@ -707,8 +644,8 @@ func TestRemediationMutationsShareWorkerLockOrder(t *testing.T) {
 	}
 	evidence := sha256.Sum256([]byte("lock order evidence"))
 	request := remediation.Request{
-		OperationID: uuid.MustParse("10000000-0000-0000-0000-000000001932"),
-		WorkerID:    workerID, WorkerEpoch: 1, NodeIdentity: "node-remediation-1",
+		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000001932"),
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: 1, NodeIdentity: "node-remediation-1",
 		DeviceIdentity: "GPU-LOCK-0", FailureClass: "LOCK_ORDER_TEST",
 		EvidenceDigest: evidence[:], CertificationRevision: "matrix-lock-v1",
 		ActionLevel:    remediation.ActionL0ProcessRestart,
@@ -745,7 +682,7 @@ func TestRemediationMutationsShareWorkerLockOrder(t *testing.T) {
 	}
 	postcheck := sha256.Sum256([]byte("lock order post-check"))
 	completed, err := service.Complete(ctx, remediation.Completion{
-		OperationID: request.OperationID, WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: request.OperationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "lock order complete",
 		PostcheckHash: postcheck[:], ActorIdentity: request.RequestedBy,
 	})
@@ -789,7 +726,7 @@ func TestRemediationCompletionQuarantinesWorkerWithActiveAttempt(t *testing.T) {
 	if _, err := database.Admin.Exec(`
 		INSERT INTO attempts (
 			id, organization_id, project_id, job_id, attempt_number,
-			execution_profile_revision_id, worker_pool_id, worker_id, worker_epoch,
+			execution_profile_revision_id, worker_pool_id, worker_instance_id, worker_instance_epoch,
 			state, fence, assigned_at
 		)
 		SELECT '10000000-0000-0000-0000-000000001927', organization_id, project_id, id, 1,
@@ -808,8 +745,8 @@ func TestRemediationCompletionQuarantinesWorkerWithActiveAttempt(t *testing.T) {
 	evidence := sha256.Sum256([]byte("active Attempt evidence"))
 	request := remediation.Request{
 		OperationID:           uuid.MustParse("10000000-0000-0000-0000-000000001928"),
-		WorkerID:              workerID,
-		WorkerEpoch:           1,
+		WorkerInstanceID:      workerID,
+		WorkerInstanceEpoch:   1,
 		NodeIdentity:          "node-remediation-active-1",
 		DeviceIdentity:        "GPU-REM-ACTIVE-0",
 		FailureClass:          "WORKER_LOST",
@@ -827,7 +764,7 @@ func TestRemediationCompletionQuarantinesWorkerWithActiveAttempt(t *testing.T) {
 	}
 	postcheck := sha256.Sum256([]byte("post-check-with-active-attempt"))
 	completed, err := service.Complete(context.Background(), remediation.Completion{
-		OperationID: request.OperationID, WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: request.OperationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "post-check passed but Attempt remains active",
 		PostcheckHash: postcheck[:], ActorIdentity: request.RequestedBy,
 	})
@@ -847,7 +784,7 @@ func TestRemediationCompletionQuarantinesWorkerWithActiveAttempt(t *testing.T) {
 
 func TestRemediationMigrationDownAndUpPreservesRoles(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 19)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 18); err != nil {
 		t.Fatalf("Remediation migration down: %v", err)
@@ -912,7 +849,7 @@ func (runner remediationRuntimeCommandRunner) Run(
 	}
 	evidence := map[string]any{
 		"operation_id": plan.OperationID.String(), "execution_claim_id": plan.ExecutionClaimID.String(),
-		"worker_id": plan.WorkerID.String(), "worker_epoch": plan.WorkerEpoch,
+		"worker_instance_id": plan.WorkerInstanceID.String(), "worker_instance_epoch": plan.WorkerInstanceEpoch,
 		"node_identity": plan.NodeIdentity, "device_identity": plan.DeviceIdentity,
 		"gpu_uuid": plan.GPUUUID, "pci_bdf": plan.PCIBDF,
 		"failure_class": plan.FailureClass, "action_level": string(plan.ActionLevel),
@@ -965,7 +902,7 @@ type integrationAgentResolver struct {
 
 func (resolver integrationAgentResolver) Resolve(
 	context.Context,
-	nodeagent.NodeAgentIdentity,
+	string,
 ) (*nodeagent.Client, error) {
 	return resolver.client, nil
 }

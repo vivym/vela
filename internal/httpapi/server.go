@@ -187,8 +187,8 @@ func (s *server) CreateRemediationOperation(
 	}
 	created, err := s.remediation.Request(ctx, remediation.Request{
 		OperationID:           uuid.UUID(request.Body.OperationId),
-		WorkerID:              uuid.UUID(request.Body.WorkerId),
-		WorkerEpoch:           request.Body.WorkerEpoch,
+		WorkerInstanceID:      uuid.UUID(request.Body.WorkerId),
+		WorkerInstanceEpoch:   request.Body.WorkerEpoch,
 		NodeIdentity:          request.Body.NodeIdentity,
 		DeviceIdentity:        request.Body.GpuUuid,
 		FailureClass:          request.Body.FailureClass,
@@ -288,8 +288,8 @@ func (s *server) StartRemediationOperation(
 	if _, err := s.remediation.Start(
 		ctx,
 		operationID,
-		operation.WorkerID,
-		operation.WorkerEpoch,
+		operation.WorkerInstanceID,
+		operation.WorkerInstanceEpoch,
 		remediationOperatorIdentity(operator),
 	); err != nil {
 		return startRemediationOperationFailure(err)
@@ -3723,8 +3723,8 @@ func toAPIOrganizationAuditEvent(
 
 func toAPIRemediationOperation(operation remediation.Operation) api.RemediationOperation {
 	result := api.RemediationOperation{
-		OperationId: uuid.UUID(operation.ID), WorkerId: uuid.UUID(operation.WorkerID),
-		WorkerEpoch: operation.WorkerEpoch, NodeIdentity: operation.NodeIdentity,
+		OperationId: uuid.UUID(operation.ID), WorkerId: uuid.UUID(operation.WorkerInstanceID),
+		WorkerEpoch: operation.WorkerInstanceEpoch, NodeIdentity: operation.NodeIdentity,
 		GpuUuid: operation.DeviceIdentity, FailureClass: operation.FailureClass,
 		EvidenceSha256:        hex.EncodeToString(operation.EvidenceDigest),
 		CertificationRevision: operation.CertificationRevision,

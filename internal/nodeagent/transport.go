@@ -31,8 +31,8 @@ const (
 
 type NodeAgentIdentity struct {
 	NodeIdentity string
-	WorkerID     uuid.UUID
-	WorkerEpoch  int64
+	AgentID      uuid.UUID
+	AgentEpoch   int64
 }
 
 type ControllerIdentity struct {
@@ -94,8 +94,8 @@ type HostLedger interface {
 type Request struct {
 	OperationID           uuid.UUID
 	ExecutionClaimID      uuid.UUID
-	WorkerID              uuid.UUID
-	WorkerEpoch           int64
+	WorkerInstanceID              uuid.UUID
+	WorkerInstanceEpoch           int64
 	NodeIdentity          string
 	DeviceIdentity        string
 	FailureClass          string
@@ -171,10 +171,8 @@ func (server *Server) ExecuteRemediation(
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if server.localIdentity.NodeIdentity != parsed.NodeIdentity ||
-		server.localIdentity.WorkerID != parsed.WorkerID ||
-		server.localIdentity.WorkerEpoch != parsed.WorkerEpoch {
-		return nil, status.Error(codes.PermissionDenied, "remediation target does not match local node Agent identity")
+	if server.localIdentity.NodeIdentity != parsed.NodeIdentity {
+		return nil, status.Error(codes.PermissionDenied, "remediation target does not belong to the local node Agent")
 	}
 	if parsed.ActionLevel == remediation.ActionL6BMCPowerCycle ||
 		parsed.ActionLevel == remediation.ActionL7Quarantine {
@@ -232,12 +230,12 @@ func (server *Server) ExecuteRemediation(
 	executionResult, executionErr := server.executor.Execute(executionContext, remediation.Plan{
 		OperationID:           parsed.OperationID,
 		ExecutionClaimID:      parsed.ExecutionClaimID,
-		WorkerID:              parsed.WorkerID,
+		WorkerInstanceID:              parsed.WorkerInstanceID,
 		ActionLevel:           parsed.ActionLevel,
 		NodeIdentity:          parsed.NodeIdentity,
 		DeviceIdentity:        parsed.DeviceIdentity,
 		FailureClass:          parsed.FailureClass,
-		WorkerEpoch:           parsed.WorkerEpoch,
+		WorkerInstanceEpoch:           parsed.WorkerInstanceEpoch,
 		DeadlineAt:            parsed.DeadlineAt,
 		CertificationRevision: parsed.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), parsed.FailureEvidenceDigest...),
@@ -322,8 +320,8 @@ func (client *Client) Execute(ctx context.Context, request Request) (Result, err
 		return Result{}, err
 	}
 	response, err := client.client.ExecuteRemediation(ctx, &velav1.ExecuteRemediationRequest{
-		OperationId: request.OperationID.String(), WorkerId: request.WorkerID.String(),
-		WorkerEpoch: request.WorkerEpoch, NodeIdentity: request.NodeIdentity,
+		OperationId: request.OperationID.String(), WorkerInstanceId: request.WorkerInstanceID.String(),
+		WorkerInstanceEpoch: request.WorkerInstanceEpoch, NodeIdentity: request.NodeIdentity,
 		DeviceIdentity: request.DeviceIdentity, FailureClass: request.FailureClass,
 		ActionLevel:           string(request.ActionLevel),
 		CertificationRevision: request.CertificationRevision,
@@ -352,7 +350,7 @@ func parseRequest(
 	if err != nil || claimID == uuid.Nil {
 		return Request{}, time.Time{}, errors.New("node Agent execution claim id is invalid")
 	}
-	workerID, err := uuid.Parse(request.GetWorkerId())
+	workerID, err := uuid.Parse(request.GetWorkerInstanceId())
 	if err != nil || workerID == uuid.Nil {
 		return Request{}, time.Time{}, errors.New("node Agent Worker id is invalid")
 	}
@@ -361,7 +359,7 @@ func parseRequest(
 		return Request{}, time.Time{}, err
 	}
 	parsed := Request{
-		OperationID: operationID, ExecutionClaimID: claimID, WorkerID: workerID, WorkerEpoch: request.GetWorkerEpoch(),
+		OperationID: operationID, ExecutionClaimID: claimID, WorkerInstanceID: workerID, WorkerInstanceEpoch: request.GetWorkerInstanceEpoch(),
 		NodeIdentity: request.GetNodeIdentity(), DeviceIdentity: request.GetDeviceIdentity(),
 		FailureClass:          request.GetFailureClass(),
 		ActionLevel:           remediation.ActionLevel(request.GetActionLevel()),
@@ -407,7 +405,7 @@ func parseResponse(response *velav1.ExecuteRemediationResponse, operationID uuid
 }
 
 func validateRequest(request Request) error {
-	if request.OperationID == uuid.Nil || request.ExecutionClaimID == uuid.Nil || request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 ||
+	if request.OperationID == uuid.Nil || request.ExecutionClaimID == uuid.Nil || request.WorkerInstanceID == uuid.Nil || request.WorkerInstanceEpoch <= 0 ||
 		!validText(request.NodeIdentity, maxIdentityText) || !validText(request.DeviceIdentity, maxIdentityText) ||
 		!validText(request.FailureClass, 200) ||
 		!remediation.IsActionLevel(request.ActionLevel) ||
@@ -438,8 +436,8 @@ func hashRequest(request Request) [sha256.Size]byte {
 	canonical := struct {
 		OperationID           string `json:"operation_id"`
 		ExecutionClaimID      string `json:"execution_claim_id"`
-		WorkerID              string `json:"worker_id"`
-		WorkerEpoch           int64  `json:"worker_epoch"`
+		WorkerInstanceID              string `json:"worker_instance_id"`
+		WorkerInstanceEpoch           int64  `json:"worker_instance_epoch"`
 		NodeIdentity          string `json:"node_identity"`
 		DeviceIdentity        string `json:"device_identity"`
 		FailureClass          string `json:"failure_class"`
@@ -450,8 +448,8 @@ func hashRequest(request Request) [sha256.Size]byte {
 	}{
 		OperationID:           request.OperationID.String(),
 		ExecutionClaimID:      request.ExecutionClaimID.String(),
-		WorkerID:              request.WorkerID.String(),
-		WorkerEpoch:           request.WorkerEpoch,
+		WorkerInstanceID:              request.WorkerInstanceID.String(),
+		WorkerInstanceEpoch:           request.WorkerInstanceEpoch,
 		NodeIdentity:          request.NodeIdentity,
 		DeviceIdentity:        request.DeviceIdentity,
 		FailureClass:          request.FailureClass,
@@ -530,7 +528,7 @@ func authenticatedController(ctx context.Context, resolver ControllerIdentityRes
 }
 
 func validIdentity(identity NodeAgentIdentity) bool {
-	return identity.WorkerID != uuid.Nil && identity.WorkerEpoch > 0 &&
+	return identity.AgentID != uuid.Nil && identity.AgentEpoch > 0 &&
 		validText(identity.NodeIdentity, maxIdentityText)
 }
 

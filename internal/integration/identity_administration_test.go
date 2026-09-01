@@ -994,7 +994,7 @@ func TestCredentialValidationAndIdentityAuditKeepBearerMaterialOutOfStorage(t *t
 
 func TestServicePrincipalAdministrationMigrationAllowsLegacyRowsAndEmptyDownUp(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 13)
 	seedAdmissionFixture(t, database.Admin)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 
@@ -1073,7 +1073,7 @@ func TestServicePrincipalAdministrationMigrationAllowsLegacyRowsAndEmptyDownUp(t
 }
 
 func TestServicePrincipalAdministrationMigrationDownRefusesDurableEvidence(t *testing.T) {
-	fixture := newIdentityAdministrationFixture(t, "identity-migration-admin")
+	fixture := newIdentityAdministrationFixtureAt(t, "identity-migration-admin", 13)
 	target, err := fixture.service.CreateServicePrincipal(
 		context.Background(),
 		fixture.actor,
@@ -1475,9 +1475,21 @@ type identityAdministrationFixture struct {
 }
 
 func newIdentityAdministrationFixture(t *testing.T, subject string) identityAdministrationFixture {
+	return newIdentityAdministrationFixtureAt(t, subject, 0)
+}
+
+func newIdentityAdministrationFixtureAt(
+	t *testing.T,
+	subject string,
+	version int64,
+) identityAdministrationFixture {
 	t.Helper()
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	if version == 0 {
+		applyFoundation(t, database.Admin)
+	} else {
+		applyFoundationTo(t, database.Admin, version)
+	}
 	seedAdmissionFixture(t, database.Admin)
 	projectID := uuid.MustParse(testProjectID)
 	seedHumanRoleFixture(

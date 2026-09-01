@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  generated_runner:
+  generated_contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,28 +25,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.8.22"
-          enable-cache: true
-          cache-dependency-glob: runner/uv.lock
-
-      - name: Install locked H3 runner environment
-        working-directory: runner
-        run: uv sync --frozen
-
       - name: Verify generated contracts
         run: make verify-generated
-
-      - name: Verify H3 runner
-        working-directory: runner
-        run: |
-          uv run --frozen ruff check .
-          uv run --frozen pytest
 
   go_quality:
     runs-on: ubuntu-latest
@@ -58,20 +38,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.8.22"
-          enable-cache: true
-          cache-dependency-glob: runner/uv.lock
-
-      - name: Install locked H3 runner environment
-        working-directory: runner
-        run: uv sync --frozen
 
       - name: Install deployment validation dependency
         run: |
@@ -212,14 +178,14 @@ jobs:
 
   verify:
     if: always()
-    needs: [generated_runner, go_quality, sandbox, integration, contracts]
+    needs: [generated_contracts, go_quality, sandbox, integration, contracts]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require every CI lane
         shell: bash
         run: |
-          test "${{ needs.generated_runner.result }}" = success
+          test "${{ needs.generated_contracts.result }}" = success
           test "${{ needs.go_quality.result }}" = success
           test "${{ needs.sandbox.result }}" = success
           test "${{ needs.integration.result }}" = success

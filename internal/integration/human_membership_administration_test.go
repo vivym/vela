@@ -1914,7 +1914,7 @@ func TestConcurrentLastOrganizationOwnerTransitionsPreserveOneActiveOwner(t *tes
 
 func TestHumanMembershipAdministrationMigrationAllowsEmptyDownUp(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 14)
 	seedAdmissionFixture(t, database.Admin)
 	developerID := uuid.New()
 	seedHumanRoleFixture(
@@ -2014,7 +2014,7 @@ func TestHumanMembershipAdministrationMigrationAllowsEmptyDownUp(t *testing.T) {
 
 func TestHumanMembershipAdministrationMigrationDownRefusesDurableEvidence(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 14)
 	seedAdmissionFixture(t, database.Admin)
 	organizationID := uuid.MustParse(testOrganizationID)
 	ownerID := uuid.New()

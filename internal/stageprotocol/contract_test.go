@@ -12,7 +12,7 @@ import (
 
 func TestStageWorkerControlProtocolIsIndependentAndClosed(t *testing.T) {
 	// Keep the generated vela.v1 file descriptors linked into the test binary.
-	_ = (&velav1.ConnectRequest{}).ProtoReflect()
+	_ = (&velav1.StageWorkerControlServiceConnectRequest{}).ProtoReflect()
 
 	descriptor, err := protoregistry.GlobalFiles.FindDescriptorByName(
 		"vela.v1.StageWorkerControlService",

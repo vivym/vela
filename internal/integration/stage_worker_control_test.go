@@ -315,11 +315,11 @@ func TestStageWorkerControlHeartbeatRenewsAuthorityAndFencesPreviousEnvelope(t *
 	}
 }
 
-func TestStageWorkerExecutionMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
+func TestStageWorkerExecutionMigrationEmptyDownUp(t *testing.T) {
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty operations Down Up restores exact role surface", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 41)
 		if err := goose.DownTo(database.Admin, migrations, 40); err != nil {
 			t.Fatalf("migrate empty Stage Worker operations down: %v", err)
 		}
@@ -385,7 +385,7 @@ func TestStageWorkerExecutionMigrationRoundTripAndDurableEvidenceRefusal(t *test
 	})
 	t.Run("empty Down Up preserves Stage authority snapshot", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 40)
 		if err := goose.DownTo(database.Admin, migrations, 39); err != nil {
 			t.Fatalf("migrate empty Stage Worker execution down: %v", err)
 		}
@@ -416,69 +416,6 @@ func TestStageWorkerExecutionMigrationRoundTripAndDurableEvidenceRefusal(t *test
 		version, err = goose.GetDBVersion(database.Admin)
 		if err != nil || version != 40 {
 			t.Fatalf("Stage Worker execution version after Down Up = %d error=%v", version, err)
-		}
-	})
-
-	t.Run("durable Stage Worker evidence refuses Down", func(t *testing.T) {
-		database, _, _, job, attemptID, encoderRunID, _ :=
-			newStageGraphCancellationFixture(t, "stage-worker-migration-refusal")
-		coordinatorPool := newRolePool(
-			t, database.DSN,
-			"vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
-		)
-		coordinator, err := attemptcoordinator.NewService(coordinatorPool)
-		if err != nil {
-			t.Fatalf("NewService: %v", err)
-		}
-		assignment := assignEncoder(
-			t, database, coordinator, attemptID, encoderRunID, time.Now().Add(time.Hour),
-		)
-		current := signedAssignedStageAuthority(t, database, job, assignment, 2)
-		renewedEnvelope := proto.Clone(current.Authority).(*velav1.StageAuthority)
-		renewedEnvelope.StageVersion = 3
-		renewedEnvelope.IssuedAt = timestamppb.New(assignment.IssuedAt.Add(10 * time.Millisecond))
-		renewedEnvelope.ExpiresAt = timestamppb.New(assignment.ExpiresAt.Add(time.Minute))
-		renewedEnvelope.MonotonicValidFor = durationpb.New(90 * time.Second)
-		renewedEnvelope.Signature = nil
-		renewed := signAndVerifyStageAuthority(
-			t, renewedEnvelope, assignment.IssuedAt.Add(11*time.Millisecond),
-		)
-		renewedWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(renewed.Authority)
-		if err != nil {
-			t.Fatalf("marshal migration-refusal renewal: %v", err)
-		}
-		payload := stageWorkerStartPayload(
-			t, uuid.New(), assignment, current, renewed, renewedWire,
-			assignment.IssuedAt.Add(5*time.Millisecond),
-		)
-		workerPool := newRolePool(
-			t, database.DSN,
-			"vela_stage_worker_control_login", "vela-stage-worker-control-password",
-		)
-		if _, err := workerPool.Exec(context.Background(), `
-			SELECT * FROM vela_start_stage_worker_command($1::jsonb)
-		`, payload); err != nil {
-			t.Fatalf("create durable Stage Worker evidence: %v", err)
-		}
-
-		err = goose.DownTo(database.Admin, migrations, 39)
-		assertPostgresConstraint(t, err, "atomic_stage_graph_admission_rollback_is_unsafe")
-		version, versionErr := goose.GetDBVersion(database.Admin)
-		if versionErr != nil || version != 51 {
-			t.Fatalf(
-				"Stage Worker execution version after refusal = %d error=%v",
-				version, versionErr,
-			)
-		}
-		var commands, renewals int64
-		if err := database.Admin.QueryRow(`
-			SELECT count(*), (SELECT count(*) FROM stage_authority_renewals)
-			FROM stage_worker_commands
-		`).Scan(&commands, &renewals); err != nil {
-			t.Fatalf("read Stage Worker evidence after refusal: %v", err)
-		}
-		if commands != 1 || renewals != 1 {
-			t.Fatalf("durable Stage Worker evidence after refusal = %d/%d", commands, renewals)
 		}
 	})
 }
@@ -743,16 +680,6 @@ func TestPostgresReattachmentBackendPersistsReplayAndFencesSupersededAuthority(t
 	}
 	if reattachmentCount != 1 {
 		t.Fatalf("durable Reattach evidence count = %d, want 1", reattachmentCount)
-	}
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
-	err = goose.DownTo(database.Admin, migrations, 40)
-	assertPostgresConstraint(t, err, "atomic_stage_graph_admission_rollback_is_unsafe")
-	version, versionErr := goose.GetDBVersion(database.Admin)
-	if versionErr != nil || version != 51 {
-		t.Fatalf(
-			"Stage Worker operations version after refusal = %d error=%v",
-			version, versionErr,
-		)
 	}
 }
 

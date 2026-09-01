@@ -430,47 +430,6 @@ func TestFleetDefaultRenderUsesTargetOnlySingleGPUResidencyPlan(t *testing.T) {
 	}
 }
 
-func TestFleetLegacyDesiredInputRemainsExplicitRollbackOnly(t *testing.T) {
-	var desiredConfig corev1.ConfigMap
-	if err := k8syaml.Unmarshal(
-		readFleetManifest(t, "desired-revisions.yaml"),
-		&desiredConfig,
-	); err != nil {
-		t.Fatalf("parse Fleet desired ConfigMap: %v", err)
-	}
-	payload := desiredConfig.Data["desired.yaml"]
-	if desiredConfig.Immutable == nil || !*desiredConfig.Immutable || payload == "" {
-		t.Fatalf("Fleet desired ConfigMap = %#v", desiredConfig)
-	}
-	for _, required := range []string{
-		"kind: FleetDesiredRevisions",
-		"revision: 0000000000000000000000000000000000000000000000000000000000000000",
-		"initImage: docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
-		"workerRuntimeConfigMap: vela-worker-runtime-placeholder",
-		"placements:",
-		"nodeIdentity: replace-with-registered-node-identity",
-		"daemonSetName: h3-worker-pool-primary-node-placeholder",
-		"runnerProfilesConfigMap: vela-runner-profiles-placeholder",
-		"runnerGPURolesConfigMap: vela-runner-gpu-roles-placeholder",
-		"workerControlTLSSecret: vela-worker-control-mtls-placeholder",
-		"artifactStoreTLSSecret: vela-artifact-store-ca-placeholder",
-		"workerHighWatermarkBytes: 800000000000",
-		"workerLowWatermarkBytes: 700000000000",
-		"workerCriticalFreeBytes: 100000000000",
-		"poolHighWatermarkBytes: 5600000000000",
-		"poolLowWatermarkBytes: 4900000000000",
-		"observationMaxAge: 2m",
-		"retirements: []",
-	} {
-		if !strings.Contains(payload, required) {
-			t.Fatalf("Fleet desired input omitted %q", required)
-		}
-	}
-	if strings.Contains(payload, "workerProfile: h3\n        daemonSetName:") {
-		t.Fatal("Fleet desired input still uses the obsolete pool-wide daemonSetName")
-	}
-}
-
 func schemaMinimum(schema fleetSchema) int64 {
 	if schema.Minimum == nil {
 		return -1

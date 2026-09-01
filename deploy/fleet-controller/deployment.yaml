@@ -76,8 +76,6 @@ spec:
               value: spiffe://vela.internal/kube-apiserver/admission
             - name: VELA_FLEET_KUBERNETES_USERNAME
               value: system:serviceaccount:vela-system:vela-fleet-controller
-            - name: VELA_FLEET_POD_CONTROLLER_USERNAME
-              value: system:kube-controller-manager
             - name: VELA_FLEET_POLL_INTERVAL
               value: 2s
           ports:

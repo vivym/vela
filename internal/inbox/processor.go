@@ -47,17 +47,6 @@ func NewProcessor(pool *pgxpool.Pool, consumerName string) (*Processor, error) {
 	}, nil
 }
 
-func NewSchedulerProcessor(pool *pgxpool.Pool) (*Processor, error) {
-	if pool == nil {
-		return nil, errors.New("scheduler Inbox database pool is required")
-	}
-	return &Processor{
-		pool:           pool,
-		prepareReceipt: prepareSchedulerReceipt,
-		recordReceipt:  recordSchedulerReceipt,
-	}, nil
-}
-
 func (p *Processor) ProcessOnce(ctx context.Context, event Event, handler Handler) (bool, error) {
 	if p == nil || p.pool == nil {
 		return false, errors.New("inbox Processor is not configured")
@@ -111,19 +100,6 @@ func (p *Processor) ProcessOnce(ctx context.Context, event Event, handler Handle
 	return true, nil
 }
 
-func prepareSchedulerReceipt(ctx context.Context, queries *store.Queries, event Event) (bool, error) {
-	if event.AggregateType != "Job" || event.Type != "job.ready" {
-		return false, errors.New("scheduler Inbox event contract is invalid")
-	}
-	return queries.PrepareSchedulerInboxReceipt(ctx, store.PrepareSchedulerInboxReceiptParams{
-		EventID:          event.ID,
-		OrganizationID:   event.OrganizationID,
-		ProjectID:        event.ProjectID,
-		AggregateID:      event.AggregateID,
-		AggregateVersion: event.AggregateVersion,
-	})
-}
-
 func recordGenericReceipt(
 	ctx context.Context,
 	queries *store.Queries,
@@ -144,19 +120,6 @@ func recordGenericReceipt(
 		return false, nil
 	}
 	return err == nil, err
-}
-
-func recordSchedulerReceipt(ctx context.Context, queries *store.Queries, event Event) (bool, error) {
-	if event.AggregateType != "Job" || event.Type != "job.ready" {
-		return false, errors.New("scheduler Inbox event contract is invalid")
-	}
-	return queries.RecordSchedulerInboxReceipt(ctx, store.RecordSchedulerInboxReceiptParams{
-		EventID:          event.ID,
-		OrganizationID:   event.OrganizationID,
-		ProjectID:        event.ProjectID,
-		AggregateID:      event.AggregateID,
-		AggregateVersion: event.AggregateVersion,
-	})
 }
 
 func validateEvent(event Event) error {

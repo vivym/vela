@@ -263,12 +263,12 @@ func TestUsageCostLedgerIsIdempotentRevaluableAndContentFree(t *testing.T) {
 
 func TestUsageCostLedgerMigrationAllowsEmptyRoundTrip(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 47)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 46); err != nil {
 		t.Fatalf("remove empty Usage/Cost Ledger migration: %v", err)
 	}
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 47); err != nil {
 		t.Fatalf("restore Usage/Cost Ledger migration: %v", err)
 	}
 	var tablesReady bool

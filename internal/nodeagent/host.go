@@ -34,8 +34,8 @@ var (
 type hostEvidenceIdentity struct {
 	OperationID           string `json:"operation_id"`
 	ExecutionClaimID      string `json:"execution_claim_id"`
-	WorkerID              string `json:"worker_id"`
-	WorkerEpoch           int64  `json:"worker_epoch"`
+	WorkerInstanceID              string `json:"worker_instance_id"`
+	WorkerInstanceEpoch           int64  `json:"worker_instance_epoch"`
 	NodeIdentity          string `json:"node_identity"`
 	DeviceIdentity        string `json:"device_identity"`
 	GPUUUID               string `json:"gpu_uuid"`
@@ -198,8 +198,8 @@ func stageDarwinExecutable(executable *os.File) (string, func() error, error) {
 }
 
 func planArguments(plan remediation.Plan) ([]string, error) {
-	if plan.OperationID == uuid.Nil || plan.ExecutionClaimID == uuid.Nil || plan.WorkerID == uuid.Nil ||
-		plan.WorkerEpoch <= 0 || !validText(plan.NodeIdentity, maxIdentityText) ||
+	if plan.OperationID == uuid.Nil || plan.ExecutionClaimID == uuid.Nil || plan.WorkerInstanceID == uuid.Nil ||
+		plan.WorkerInstanceEpoch <= 0 || !validText(plan.NodeIdentity, maxIdentityText) ||
 		!validText(plan.DeviceIdentity, maxIdentityText) || !validGPUUUID(plan.GPUUUID) ||
 		!validPCIBDF(plan.PCIBDF) || !validText(plan.FailureClass, 200) ||
 		!remediation.IsActionLevel(plan.ActionLevel) ||
@@ -210,8 +210,8 @@ func planArguments(plan remediation.Plan) ([]string, error) {
 	return []string{
 		"--vela-operation-id=" + plan.OperationID.String(),
 		"--vela-execution-claim-id=" + plan.ExecutionClaimID.String(),
-		"--vela-worker-id=" + plan.WorkerID.String(),
-		fmt.Sprintf("--vela-worker-epoch=%d", plan.WorkerEpoch),
+		"--vela-worker-instance-id=" + plan.WorkerInstanceID.String(),
+		fmt.Sprintf("--vela-worker-instance-epoch=%d", plan.WorkerInstanceEpoch),
 		"--vela-node-identity=" + plan.NodeIdentity,
 		"--vela-device-identity=" + plan.DeviceIdentity,
 		"--vela-gpu-uuid=" + plan.GPUUUID,
@@ -363,7 +363,7 @@ func decodeHostEvidence(output []byte, target any) error {
 func (identity hostEvidenceIdentity) matches(plan remediation.Plan) bool {
 	return identity.OperationID == plan.OperationID.String() &&
 		identity.ExecutionClaimID == plan.ExecutionClaimID.String() &&
-		identity.WorkerID == plan.WorkerID.String() && identity.WorkerEpoch == plan.WorkerEpoch &&
+		identity.WorkerInstanceID == plan.WorkerInstanceID.String() && identity.WorkerInstanceEpoch == plan.WorkerInstanceEpoch &&
 		identity.NodeIdentity == plan.NodeIdentity && identity.DeviceIdentity == plan.DeviceIdentity &&
 		identity.GPUUUID == plan.GPUUUID && identity.PCIBDF == plan.PCIBDF &&
 		identity.FailureClass == plan.FailureClass &&

@@ -253,16 +253,16 @@ func TestNodeAgentWorkerInstanceReporterPersistsThroughMutualTLS(t *testing.T) {
 	workerInstanceID := uuid.MustParse("49200000-0000-0000-0000-000000000013")
 	seedWorkerInstance(t, database.Admin, workerInstanceID, workerRegistryProfileID, 1, 1)
 
-	legacyWorkerID := uuid.MustParse("49200000-0000-0000-0000-000000000014")
+	agentID := uuid.MustParse("49200000-0000-0000-0000-000000000014")
 	localIdentity := nodeagent.NodeAgentIdentity{
-		NodeIdentity: "h3-node-01", WorkerID: legacyWorkerID, WorkerEpoch: 7,
+		NodeIdentity: "h3-node-01", AgentID: agentID, AgentEpoch: 7,
 	}
 	nodeAgentSPIFFE := nodeagent.NodeAgentSPIFFEIdentity(localIdentity)
 	transportServer, err := fleettransport.NewServer(service, fleettransport.Config{
 		SPIFFEIdentity: "spiffe://vela.internal/fleet-controller/primary",
 		ActorIdentity:  "fleet-controller/primary",
 		NodeAgentRegistrations: []fleettransport.NodeAgentRegistration{{
-			NodeIdentity: localIdentity.NodeIdentity, WorkerID: localIdentity.WorkerID,
+			NodeIdentity: localIdentity.NodeIdentity, AgentID: localIdentity.AgentID,
 			SPIFFEIdentity: nodeAgentSPIFFE,
 		}},
 	})
@@ -640,7 +640,7 @@ func TestWorkerRegistryAuthorizesPodMutationOnlyAfterExactResidencyRelease(t *te
 	}
 	request := fleet.MutationAuthorizationRequest{
 		RequestUID: "worker-instance-pod-delete-1", ActorIdentity: "fleet/controller",
-		ResourceKind: fleet.ProtectedPod, Operation: fleet.MutationDelete,
+		Operation:     fleet.MutationDelete,
 		KubernetesUID: "worker-instance-pod-uid-1", Namespace: "vela-system",
 		Name:                    "wi-49200000000000000000000000000204-ba3790e0",
 		WorkerInstanceID:        workerID,
@@ -808,7 +808,7 @@ func TestWorkerRegistryAuthorizesFencedOldEpochPodCleanup(t *testing.T) {
 	}
 	request := fleet.MutationAuthorizationRequest{
 		RequestUID: "worker-instance-fenced-pod-delete-1", ActorIdentity: "fleet/controller",
-		ResourceKind: fleet.ProtectedPod, Operation: fleet.MutationDelete,
+		Operation:     fleet.MutationDelete,
 		KubernetesUID: "worker-instance-fenced-pod-uid-1", Namespace: "vela-system",
 		Name:                    "wi-49200000000000000000000000000204-ba3790e0",
 		WorkerInstanceID:        workerID,
@@ -828,6 +828,14 @@ func TestWorkerRegistryAuthorizesFencedOldEpochPodCleanup(t *testing.T) {
 	currentEpoch.RequestDigest = mustDigestBytes(t, digestHex(0xfa))
 	_, err = service.AuthorizeMutation(context.Background(), currentEpoch)
 	assertFleetFailure(t, err, fleet.FailureConflict)
+}
+
+func assertFleetFailure(t *testing.T, err error, code fleet.FailureCode) {
+	t.Helper()
+	var failure *fleet.Failure
+	if !errors.As(err, &failure) || failure.Code != code {
+		t.Fatalf("Fleet error = %v, want %s", err, code)
+	}
 }
 
 func TestWorkerRegistryRequiresCompleteMultiMemberIdentity(t *testing.T) {
@@ -1115,7 +1123,7 @@ func TestWorkerRegistryAuthorityFailsClosedWithoutFreshCapacityObservation(t *te
 func TestWorkerRegistryMigrationRollbackRequiresEmptyAuthority(t *testing.T) {
 	t.Run("empty registry rolls back", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 35)
 		migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 		if err := goose.DownTo(database.Admin, migrations, 34); err != nil {
 			t.Fatalf("roll back empty Worker Registry: %v", err)
@@ -1124,7 +1132,7 @@ func TestWorkerRegistryMigrationRollbackRequiresEmptyAuthority(t *testing.T) {
 
 	t.Run("proposal authority refuses rollback", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 35)
 		migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 		fleetPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 		proposal := map[string]any{

@@ -4,8 +4,7 @@ package integration_test
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -18,133 +17,11 @@ import (
 	"github.com/vivym/vela/internal/identity"
 )
 
-func TestStageCutoverRollbackChangesOnlySubsequentJobs(t *testing.T) {
-	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
-	seedAdmissionFixture(t, database.Admin)
-	seedStageExecutionCatalog(t, database.Admin)
-	activateH3StageGraph(t, database)
-	server := admissionServerForDatabase(t, database)
-
-	stageJob := submitCutoverJob(t, server.URL, "stage-cutover-before-rollback")
-	var stageAuthority string
-	var stagePoolID, stageRevisionID, graphID, profileID uuid.NullUUID
-	if err := database.Admin.QueryRow(`
-		SELECT execution_authority_kind::text, worker_pool_id,
-		       stage_cutover_revision_id, execution_graph_revision_id,
-		       stage_execution_profile_revision_id
-		FROM jobs WHERE id = $1
-	`, stageJob.JobID).Scan(
-		&stageAuthority, &stagePoolID, &stageRevisionID, &graphID, &profileID,
-	); err != nil {
-		t.Fatalf("read Stage-routed Job authority: %v", err)
-	}
-	if stageAuthority != "STAGE_GRAPH" || stagePoolID.Valid ||
-		!stageRevisionID.Valid || stageRevisionID.UUID.String() != stageCutoverRevisionID ||
-		!graphID.Valid || graphID.UUID.String() != stageGraphID ||
-		!profileID.Valid || profileID.UUID.String() != graphExecutionProfileID {
-		t.Fatalf(
-			"Stage Job authority=%s pool=%v cutover=%v graph=%v profile=%v",
-			stageAuthority, stagePoolID, stageRevisionID, graphID, profileID,
-		)
-	}
-	if _, err := database.Admin.Exec(`
-		ALTER TABLE jobs DISABLE TRIGGER jobs_execution_authority_immutable
-	`); err != nil {
-		t.Fatalf("disable Job authority trigger for relational constraint test: %v", err)
-	}
-	_, mismatchErr := database.Admin.Exec(`
-		UPDATE jobs
-		SET stage_cutover_revision_id = '00000000-0000-0000-0000-000000000049'
-		WHERE id = $1
-	`, stageJob.JobID)
-	assertPostgresConstraint(t, mismatchErr, "jobs_stage_cutover_authority")
-	if _, err := database.Admin.Exec(`
-		ALTER TABLE jobs ENABLE TRIGGER jobs_execution_authority_immutable
-	`); err != nil {
-		t.Fatalf("restore Job authority trigger after relational constraint test: %v", err)
-	}
-	var stagePoolQueued int
-	if err := database.Admin.QueryRow(`
-		SELECT queued_count FROM worker_pools WHERE stable_id = 'h3-primary'
-	`).Scan(&stagePoolQueued); err != nil {
-		t.Fatalf("read legacy WorkerPool counter after Stage Admission: %v", err)
-	}
-	if stagePoolQueued != 0 {
-		t.Fatalf("legacy WorkerPool queued count after Stage Admission = %d, want 0", stagePoolQueued)
-	}
-
-	instantiation := readStageGraphInstantiation(t, database.Admin, stageJob.JobID)
-	attemptID := instantiation.AttemptID
-
-	activateLegacyRollback(t, database, 3, uuid.MustParse(stageCutoverRevisionID))
-	legacyJob := submitCutoverJob(t, server.URL, "stage-cutover-after-rollback")
-	var legacyAuthority string
-	var legacyPoolID, legacyRevisionID, legacyGraphID, legacyProfileID uuid.NullUUID
-	if err := database.Admin.QueryRow(`
-		SELECT execution_authority_kind::text, worker_pool_id,
-		       stage_cutover_revision_id, execution_graph_revision_id,
-		       stage_execution_profile_revision_id
-		FROM jobs WHERE id = $1
-	`, legacyJob.JobID).Scan(
-		&legacyAuthority, &legacyPoolID, &legacyRevisionID, &legacyGraphID, &legacyProfileID,
-	); err != nil {
-		t.Fatalf("read legacy-routed Job authority: %v", err)
-	}
-	if legacyAuthority != "LEGACY_WORKER" || !legacyPoolID.Valid ||
-		legacyRevisionID.Valid || legacyGraphID.Valid || legacyProfileID.Valid {
-		t.Fatalf(
-			"legacy Job authority=%s pool=%v cutover=%v graph=%v profile=%v",
-			legacyAuthority, legacyPoolID, legacyRevisionID, legacyGraphID, legacyProfileID,
-		)
-	}
-
-	var frozenJobAuthority, frozenAttemptAuthority string
-	if err := database.Admin.QueryRow(`
-		SELECT job.execution_authority_kind::text, attempt.execution_authority_kind::text
-		FROM jobs AS job
-		JOIN attempts AS attempt ON attempt.job_id = job.id
-		WHERE job.id = $1 AND attempt.id = $2
-	`, stageJob.JobID, attemptID).Scan(&frozenJobAuthority, &frozenAttemptAuthority); err != nil {
-		t.Fatalf("read in-flight authority after rollback: %v", err)
-	}
-	if frozenJobAuthority != "STAGE_GRAPH" || frozenAttemptAuthority != "STAGE_GRAPH" {
-		t.Fatalf("in-flight authority after rollback = %s/%s", frozenJobAuthority, frozenAttemptAuthority)
-	}
-
-	_, err := database.Admin.Exec(`
-		UPDATE jobs
-		SET execution_authority_kind = 'LEGACY_WORKER',
-		    worker_pool_id = $2,
-		    stage_cutover_revision_id = NULL,
-		    execution_graph_revision_id = NULL,
-		    stage_execution_profile_revision_id = NULL
-		WHERE id = $1
-	`, stageJob.JobID, legacyPoolID.UUID)
-	assertPostgresConstraint(t, err, "job_execution_authority_immutable")
-	_, err = database.Admin.Exec(`
-		UPDATE attempts SET execution_authority_kind = 'LEGACY_WORKER' WHERE id = $1
-	`, attemptID)
-	assertPostgresConstraint(t, err, "attempt_coordinator_writer_required")
-	_, err = database.Admin.Exec(`
-		INSERT INTO execution_graph_snapshots (
-			id, organization_id, project_id, job_id,
-			execution_graph_revision_id, execution_profile_revision_id,
-			graph_content_digest, topological_order, snapshot_contract
-		)
-		SELECT gen_random_uuid(), job.organization_id, job.project_id, job.id,
-		       graph.id, $2, graph.content_digest, graph.topological_order,
-		       '{}'::jsonb
-		FROM jobs AS job
-		JOIN execution_graph_revisions AS graph ON graph.id = $3
-		WHERE job.id = $1
-	`, legacyJob.JobID, profileID.UUID, graphID.UUID)
-	assertPostgresConstraint(t, err, "graph_snapshot_job_execution_authority_mismatch")
-}
+const legacyH3CutoverSchemaVersion = 57
 
 func TestStageCutoverInventoryIsFunctionOwnedAndDurable(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
@@ -192,18 +69,11 @@ func TestStageCutoverInventoryIsFunctionOwnedAndDurable(t *testing.T) {
 		t.Fatal("catalog promotion role mutated immutable legacy inventory")
 	}
 
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
-	err = goose.DownTo(database.Admin, migrations, 48)
-	assertPostgresConstraint(t, err, "stage_cutover_control_rollback_is_unsafe")
-	version, versionErr := goose.GetDBVersion(database.Admin)
-	if versionErr != nil || version != 49 {
-		t.Fatalf("Stage cutover version after refused Down = %d error=%v", version, versionErr)
-	}
 }
 
 func TestStageCutoverZeroBacklogSealRejectsNonzeroExternalDrainEvidence(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
@@ -248,7 +118,7 @@ func TestStageCutoverZeroBacklogSealRejectsNonzeroExternalDrainEvidence(t *testi
 
 func TestStageCutoverExternalDrainEvidenceRejectsNullBacklogs(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
@@ -299,7 +169,7 @@ func TestStageCutoverExternalDrainEvidenceRejectsNullBacklogs(t *testing.T) {
 
 func TestStageCutoverZeroBacklogSealBindsEvidenceAndFencesCutover(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
@@ -457,50 +327,9 @@ func TestStageCutoverZeroBacklogSealBindsEvidenceAndFencesCutover(t *testing.T) 
 		t.Fatal("Catalog Promotion directly mutated zero-backlog receipt")
 	}
 
-	server := admissionServerForDatabase(t, database)
-	stageJob := submitCutoverJob(t, server.URL, "stage-job-after-zero-backlog-seal")
-	if _, err := database.Admin.Exec(`
-		CREATE FUNCTION pg_temp.insert_legacy_job_clone(
-			p_job_id uuid,
-			p_source_job_id uuid
-		) RETURNS void
-		LANGUAGE plpgsql
-		AS $$
-		DECLARE
-			v_columns text;
-			v_job jsonb;
-		BEGIN
-			SELECT to_jsonb(source) || jsonb_build_object(
-				'id', p_job_id,
-				'execution_authority_kind', 'LEGACY_WORKER',
-				'worker_pool_id', '00000000-0000-0000-0000-000000000005',
-				'stage_cutover_revision_id', NULL,
-				'execution_graph_revision_id', NULL,
-				'stage_execution_profile_revision_id', NULL
-			) INTO v_job
-			FROM public.jobs AS source
-			WHERE source.id = p_source_job_id;
-			SELECT string_agg(format('%I', attribute.attname), ', '
-			                  ORDER BY attribute.attnum)
-			INTO v_columns
-			FROM pg_catalog.pg_attribute AS attribute
-			WHERE attribute.attrelid = 'public.jobs'::regclass
-			  AND attribute.attnum > 0
-			  AND NOT attribute.attisdropped
-			  AND attribute.attgenerated = '';
-			EXECUTE format(
-				'INSERT INTO public.jobs (%1$s) '
-				|| 'SELECT %1$s FROM jsonb_populate_record(NULL::public.jobs, $1) AS cloned',
-				v_columns
-			) USING v_job;
-		END
-		$$
-	`); err != nil {
-		t.Fatalf("create sealed legacy Job fixture function: %v", err)
-	}
-	_, err = database.Admin.Exec(`
-		SELECT pg_temp.insert_legacy_job_clone($1, $2)
-	`, uuid.New(), stageJob.JobID)
+	_, err = insertLegacyCutoverJobFixture(
+		database.Admin, "stage-job-after-zero-backlog-seal",
+	)
 	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_legacy_authority_sealed")
 
 	_, err = promotion.Exec(context.Background(), `
@@ -525,21 +354,28 @@ func TestStageCutoverZeroBacklogSealBindsEvidenceAndFencesCutover(t *testing.T) 
 		t.Fatalf("post-seal mutation retained %d cutover revisions", revisionCount)
 	}
 
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
-	err = goose.DownTo(database.Admin, migrations, 51)
-	assertPostgresConstraint(t, err, "stage_cutover_zero_backlog_rollback_is_unsafe")
 }
 
 func TestStageCutoverZeroBacklogSealRejectsDatabaseAndLiveBacklog(t *testing.T) {
 	t.Run("database evidence is nonzero", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 		seedAdmissionFixture(t, database.Admin)
 		seedStageExecutionCatalog(t, database.Admin)
 		activateH3StageGraph(t, database)
-		activateLegacyRollback(t, database, 3, uuid.MustParse(stageCutoverRevisionID))
-		server := admissionServerForDatabase(t, database)
-		submitCutoverJob(t, server.URL, "legacy-zero-backlog-evidence")
+		legacyWriter, err := database.Admin.Begin()
+		if err != nil {
+			t.Fatalf("begin nonzero Legacy H3 inventory fixture: %v", err)
+		}
+		if _, err := insertLegacyCutoverJobFixture(
+			legacyWriter, "legacy-zero-backlog-evidence",
+		); err != nil {
+			_ = legacyWriter.Rollback()
+			t.Fatalf("insert nonzero Legacy H3 inventory fixture: %v", err)
+		}
+		if err := legacyWriter.Commit(); err != nil {
+			t.Fatalf("commit nonzero Legacy H3 inventory fixture: %v", err)
+		}
 		promotion := stageCutoverPromotionPool(t, database)
 		activateProductionStageOnlyCutover(t, database, promotion)
 
@@ -558,7 +394,7 @@ func TestStageCutoverZeroBacklogSealRejectsDatabaseAndLiveBacklog(t *testing.T) 
 		endEvidenceID := recordStageCutoverExternalDrainEvidence(
 			t, promotion, [5]int64{}, "nonzero-database-external-end",
 		)
-		_, err := promotion.Exec(context.Background(), `
+		_, err = promotion.Exec(context.Background(), `
 			SELECT * FROM vela_seal_stage_cutover_zero_backlog($1, $2, $3, $4, $5, $6)
 		`, uuid.New(), startInventoryID, endInventoryID, startEvidenceID,
 			endEvidenceID, "integration-database-backlog-sealer")
@@ -567,7 +403,7 @@ func TestStageCutoverZeroBacklogSealRejectsDatabaseAndLiveBacklog(t *testing.T) 
 
 	t.Run("live database inventory changed after evidence", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 		seedAdmissionFixture(t, database.Admin)
 		seedStageExecutionCatalog(t, database.Admin)
 		activateH3StageGraph(t, database)
@@ -584,28 +420,13 @@ func TestStageCutoverZeroBacklogSealRejectsDatabaseAndLiveBacklog(t *testing.T) 
 			t, promotion, [5]int64{}, "live-external-end",
 		)
 
-		server := admissionServerForDatabase(t, database)
-		stageJob := submitCutoverJob(t, server.URL, "live-backlog-after-evidence")
-		if _, err := database.Admin.Exec(`
-			ALTER TABLE jobs DISABLE TRIGGER jobs_execution_authority_immutable;
-			ALTER TABLE jobs DISABLE TRIGGER jobs_snapshot_immutable;
-			ALTER TABLE jobs DISABLE TRIGGER jobs_zero_backlog_legacy_authority_guard
-		`); err != nil {
-			t.Fatalf("disable Job immutable triggers for live backlog fixture: %v", err)
-		}
 		legacyWriter, err := database.Admin.Begin()
 		if err != nil {
 			t.Fatalf("begin concurrent legacy backlog write: %v", err)
 		}
-		if _, err := legacyWriter.Exec(`
-			UPDATE jobs
-			SET execution_authority_kind = 'LEGACY_WORKER',
-			    worker_pool_id = '00000000-0000-0000-0000-000000000005',
-			    stage_cutover_revision_id = NULL,
-			    execution_graph_revision_id = NULL,
-			    stage_execution_profile_revision_id = NULL
-			WHERE id = $1
-		`, stageJob.JobID); err != nil {
+		if _, err := insertLegacyCutoverJobFixture(
+			legacyWriter, "live-backlog-after-evidence",
+		); err != nil {
 			_ = legacyWriter.Rollback()
 			t.Fatalf("seed live legacy backlog after evidence: %v", err)
 		}
@@ -629,13 +450,6 @@ func TestStageCutoverZeroBacklogSealRejectsDatabaseAndLiveBacklog(t *testing.T) 
 		if err := legacyWriter.Commit(); err != nil {
 			t.Fatalf("commit concurrent legacy backlog write: %v", err)
 		}
-		if _, err := database.Admin.Exec(`
-			ALTER TABLE jobs ENABLE TRIGGER jobs_zero_backlog_legacy_authority_guard;
-			ALTER TABLE jobs ENABLE TRIGGER jobs_snapshot_immutable;
-			ALTER TABLE jobs ENABLE TRIGGER jobs_execution_authority_immutable
-		`); err != nil {
-			t.Fatalf("restore Job immutable triggers after live backlog fixture: %v", err)
-		}
 
 		assertPostgresConstraint(
 			t,
@@ -647,7 +461,7 @@ func TestStageCutoverZeroBacklogSealRejectsDatabaseAndLiveBacklog(t *testing.T) 
 
 func TestStageCutoverZeroBacklogSealRejectsInvalidObservationWindow(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
@@ -684,7 +498,7 @@ func TestStageCutoverZeroBacklogSealRejectsInvalidObservationWindow(t *testing.T
 
 func TestStageCutoverZeroBacklogMigrationEmptyDownUp(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 52)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 51); err != nil {
 		t.Fatalf("migrate empty zero-backlog schema down: %v", err)
@@ -710,7 +524,7 @@ func TestStageCutoverActivationAndModelScopeFailClosed(t *testing.T) {
 	const h3ModelRevisionID = "00000000-0000-0000-0000-000000000010"
 
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, legacyH3CutoverSchemaVersion)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
@@ -843,7 +657,7 @@ func TestStageCutoverActivationAndModelScopeFailClosed(t *testing.T) {
 
 func TestStageCutoverMigrationEmptyDownUp(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 49)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 48); err != nil {
 		t.Fatalf("migrate empty Stage cutover control down: %v", err)
@@ -860,7 +674,7 @@ func TestStageCutoverMigrationEmptyDownUp(t *testing.T) {
 
 func TestStageCutoverMigrationRejectsPreCutoverStageAttempts(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 49)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 48); err != nil {
 		t.Fatalf("migrate to pre-cutover schema: %v", err)
@@ -966,46 +780,85 @@ func TestStageCutoverMigrationRejectsPreCutoverStageAttempts(t *testing.T) {
 	}
 }
 
-func submitCutoverJob(t *testing.T, serverURL, idempotencyKey string) jobResponse {
-	t.Helper()
-	accepted := submitJob(t, serverURL, idempotencyKey, []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"stage cutover authority"
-	}`))
-	if accepted.StatusCode != http.StatusAccepted {
-		t.Fatalf("submit cutover Job status = %d body=%s", accepted.StatusCode, accepted.Body)
-	}
-	var job jobResponse
-	if err := json.Unmarshal(accepted.Body, &job); err != nil {
-		t.Fatalf("decode cutover Job: %v", err)
-	}
-	return job
+type cutoverJobFixtureExecer interface {
+	Exec(string, ...any) (sql.Result, error)
 }
 
-func activateLegacyRollback(
-	t *testing.T,
-	database testDatabase,
-	revision int64,
-	previousRevisionID uuid.UUID,
-) {
-	t.Helper()
-	promotion := stageCutoverPromotionPool(t, database)
-	if _, err := promotion.Exec(context.Background(), `
-		SELECT vela_activate_stage_cutover(
-			$1, $2, $3, 'INTERNAL', 'LEGACY_ONLY', 0,
-			NULL, NULL, 0, 1, decode(repeat('a2', 32), 'hex'),
-			'integration-stage-rollback',
-			sha256(convert_to('integration-stage-rollback', 'UTF8')),
-			sha256(convert_to('', 'UTF8')), NULL,
-			'integration-catalog-promotion', 'route only subsequent Jobs to legacy'
+func insertLegacyCutoverJobFixture(
+	database cutoverJobFixtureExecer,
+	fixtureKey string,
+) (uuid.UUID, error) {
+	jobID := uuid.New()
+	reservationID := uuid.New()
+	_, err := database.Exec(`
+		INSERT INTO jobs (
+			id, organization_id, project_id, created_by_principal_id,
+			model_revision_id, generation_preset_revision_id,
+			service_class_revision_id, output_spec_id,
+			worker_pool_id, execution_authority_kind,
+			request_hash, request_content, request_content_expires_at,
+			retention_policy_revision_id, retention_artifact_days,
+			retention_request_content_days, retention_incomplete_content_hours,
+			retention_scratch_hours, retention_debug_hours,
+			retention_metadata_days, retention_financial_days,
+			pricing_rate_card_revision_id, pricing_rate_line_id,
+			pricing_unit_amount_minor, pricing_quantity,
+			pricing_quoted_amount_minor, pricing_currency,
+			execution_max_attempts, execution_max_total_compute_seconds,
+			execution_max_finalization_seconds_per_attempt,
+			execution_retry_backoff_policy,
+			execution_retryable_failure_classes,
+			execution_circuit_breaker_policy,
+			execution_circuit_fingerprint_window_seconds,
+			execution_circuit_min_distinct_healthy_workers,
+			job_expires_at
 		)
-	`, uuid.New(), revision, previousRevisionID); err != nil {
-		t.Fatalf("activate legacy routing rollback: %v", err)
+		SELECT
+			$1, project.organization_id, project.id, $2,
+			'00000000-0000-0000-0000-000000000010',
+			'00000000-0000-0000-0000-000000000011', service.id,
+			'00000000-0000-0000-0000-000000000013',
+			'00000000-0000-0000-0000-000000000005', 'LEGACY_WORKER',
+			sha256(convert_to($1::uuid::text, 'UTF8')),
+			jsonb_build_object('model', 'minimax-h3', 'prompt', $5::text),
+			transaction_timestamp() + interval '2 days',
+			project.retention_policy_revision_id,
+			project.retention_artifact_days,
+			project.retention_request_content_days,
+			project.retention_incomplete_content_hours,
+			project.retention_scratch_hours,
+			project.retention_debug_hours,
+			project.retention_metadata_days,
+			project.retention_financial_days,
+			'00000000-0000-0000-0000-000000000016',
+			'00000000-0000-0000-0000-000000000017',
+			1250, 1, 1250, 'CNY', service.max_attempts, 2400,
+			service.max_finalization_seconds_per_attempt,
+			service.retry_backoff_policy, service.retryable_failure_classes,
+			service.circuit_breaker_policy,
+			service.circuit_fingerprint_window_seconds,
+			service.circuit_min_distinct_healthy_workers,
+			transaction_timestamp() + interval '1 day'
+		FROM projects AS project
+		JOIN service_class_revisions AS service
+		  ON service.id = '00000000-0000-0000-0000-000000000012'
+		WHERE project.organization_id = $3 AND project.id = $4
+	`, jobID, testPrincipalID, testOrganizationID, testProjectID, fixtureKey)
+	if err != nil {
+		return jobID, err
 	}
+	if _, err := database.Exec(`
+		INSERT INTO credit_reservations (
+			id, organization_id, project_id, job_id, amount_minor, currency
+		) VALUES ($1, $2, $3, $4, 1250, 'CNY')
+	`, reservationID, testOrganizationID, testProjectID, jobID); err != nil {
+		return jobID, err
+	}
+	_, err = database.Exec(`
+		INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
+		VALUES ($1, $2, $3)
+	`, jobID, testOrganizationID, testProjectID)
+	return jobID, err
 }
 
 func stageCutoverPromotionPool(t *testing.T, database testDatabase) *pgxpool.Pool {

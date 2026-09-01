@@ -5,10 +5,12 @@ package integration_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
 	veladb "github.com/vivym/vela/internal/database"
 )
@@ -109,41 +111,29 @@ func TestStageExecutionCatalogExecutionProfileAuthorityShape(t *testing.T) {
 
 	if _, err := database.Admin.Exec(`
 		INSERT INTO execution_profile_revisions (
-			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			id, model_revision_id, execution_graph_revision_id,
 			stable_id, revision, state
 		) VALUES (
 			'49000000-0000-0000-0000-000000000071',
-			'00000000-0000-0000-0000-000000000010', NULL, $1,
+			'00000000-0000-0000-0000-000000000010', $1,
 			'h3-stage-graph-alt', 1, 'CERTIFIED'
 		)
 	`, stageGraphID); err != nil {
 		t.Fatalf("insert graph-only ExecutionProfile: %v", err)
 	}
 
-	for _, test := range []struct {
-		name       string
-		workerPool any
-		graph      any
-	}{
-		{name: "neither authority", workerPool: nil, graph: nil},
-		{
-			name:       "mixed authority",
-			workerPool: "00000000-0000-0000-0000-000000000005",
-			graph:      stageGraphID,
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := database.Admin.Exec(`
-				INSERT INTO execution_profile_revisions (
-					id, model_revision_id, worker_pool_id, execution_graph_revision_id,
-					stable_id, revision, state
-				) VALUES (
-					gen_random_uuid(), '00000000-0000-0000-0000-000000000010', $1, $2,
-					$3, 1, 'CERTIFIED'
-				)
-			`, test.workerPool, test.graph, "invalid-"+test.name)
-			assertPostgresConstraint(t, err, "execution_profile_revisions_authority_shape")
-		})
+	_, err := database.Admin.Exec(`
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, stable_id, revision, state
+		) VALUES (
+			gen_random_uuid(), '00000000-0000-0000-0000-000000000010',
+			'missing-stage-graph', 1, 'CERTIFIED'
+		)
+	`)
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || postgresError.Code != "23502" ||
+		postgresError.ColumnName != "execution_graph_revision_id" {
+		t.Fatalf("missing graph ExecutionProfile error = %v, want 23502 on execution_graph_revision_id", err)
 	}
 }
 
@@ -155,11 +145,11 @@ func TestStageExecutionCatalogProfileOptionsCannotCrossGraphs(t *testing.T) {
 
 	if _, err := database.Admin.Exec(`
 		INSERT INTO execution_profile_revisions (
-			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			id, model_revision_id, execution_graph_revision_id,
 			stable_id, revision, state
 		) VALUES (
 			'49000000-0000-0000-0000-000000000072',
-			'00000000-0000-0000-0000-000000000010', NULL, $1,
+			'00000000-0000-0000-0000-000000000010', $1,
 			'h3-stage-graph-cross-check', 1, 'CERTIFIED'
 		)
 	`, stageGraphID); err != nil {
@@ -235,11 +225,11 @@ func TestStageExecutionCatalogStageOptionDefinitionMustMatch(t *testing.T) {
 
 	if _, err := database.Admin.Exec(`
 		INSERT INTO execution_profile_revisions (
-			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			id, model_revision_id, execution_graph_revision_id,
 			stable_id, revision, state
 		) VALUES (
 			'49000000-0000-0000-0000-000000000073',
-			'00000000-0000-0000-0000-000000000010', NULL, $1,
+			'00000000-0000-0000-0000-000000000010', $1,
 			'h3-stage-definition-check', 1, 'CERTIFIED'
 		)
 	`, stageGraphID); err != nil {
@@ -664,7 +654,7 @@ func TestStageExecutionCatalogMigrationEmptyDownUpAndAuthorityRefusal(t *testing
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 34)
 		if err := goose.DownTo(database.Admin, migrations, 33); err != nil {
 			t.Fatalf("migrate empty Stage Execution Catalog down: %v", err)
 		}
@@ -713,7 +703,7 @@ func TestStageExecutionCatalogMigrationEmptyDownUpAndAuthorityRefusal(t *testing
 
 	t.Run("Catalog authority refuses Down", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 34)
 		seedAdmissionFixture(t, database.Admin)
 		seedStageExecutionCatalog(t, database.Admin)
 		err := goose.DownTo(database.Admin, migrations, 33)
@@ -727,7 +717,7 @@ func TestStageExecutionCatalogMigrationEmptyDownUpAndAuthorityRefusal(t *testing
 
 func TestStageExecutionCatalogDownWaitsForConcurrentCatalogInsert(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 34)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 
 	mutation, err := database.Admin.Begin()
@@ -935,11 +925,11 @@ func seedStageExecutionCatalog(t *testing.T, database *sql.DB) {
 		);
 
 		INSERT INTO execution_profile_revisions (
-			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			id, model_revision_id, execution_graph_revision_id,
 			stable_id, revision, state
 		) VALUES (
 			'49000000-0000-0000-0000-000000000070',
-			'00000000-0000-0000-0000-000000000010', NULL,
+			'00000000-0000-0000-0000-000000000010',
 			'49000000-0000-0000-0000-000000000001',
 			'h3-stage-graph', 1, 'CERTIFIED'
 		);
@@ -979,5 +969,25 @@ func seedStageExecutionCatalog(t *testing.T, database *sql.DB) {
 		WHERE id = '49000000-0000-0000-0000-000000000001';
 	`); err != nil {
 		t.Fatalf("seed H3 Stage Execution Catalog: %v", err)
+	}
+}
+
+func seedH3ProfileCertification(t *testing.T, database *sql.DB) {
+	t.Helper()
+	if _, err := database.Exec(`
+		INSERT INTO profile_certifications (
+			id, model_revision_id, generation_preset_revision_id, output_spec_id,
+			execution_profile_revision_id, state, evidence_digest, certified_at
+		) VALUES (
+			'00000000-0000-0000-0000-000000000015',
+			'00000000-0000-0000-0000-000000000010',
+			'00000000-0000-0000-0000-000000000011',
+			'00000000-0000-0000-0000-000000000013',
+			'49000000-0000-0000-0000-000000000070', 'ACTIVE',
+			'abcdef0123456789abcdef0123456789', clock_timestamp()
+		)
+		ON CONFLICT (id) DO NOTHING
+	`); err != nil {
+		t.Fatalf("seed H3 Stage profile certification: %v", err)
 	}
 }

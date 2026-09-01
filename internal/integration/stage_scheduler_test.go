@@ -1215,11 +1215,11 @@ func TestStageSchedulerClaimRejectsForgedFairnessIdentity(t *testing.T) {
 	}
 }
 
-func TestStageSchedulerMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
+func TestStageSchedulerMigrationEmptyDownUpRestoresExactRoleSurface(t *testing.T) {
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up restores exact role surface", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 37)
 		if err := goose.DownTo(database.Admin, migrations, 36); err != nil {
 			t.Fatalf("migrate empty StageScheduler down: %v", err)
 		}
@@ -1285,61 +1285,6 @@ func TestStageSchedulerMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T)
 			t.Fatal("schema 37 StageScheduler function privileges differ after Down Up")
 		}
 	})
-
-	t.Run("durable evidence refuses Down", func(t *testing.T) {
-		fixture := newStageSchedulerFixture(t, "migration-refusal")
-		scheduling, err := stagescheduler.NewService(
-			fixture.repository,
-			fixture.coordinator,
-			stagescheduler.Config{
-				SchedulerID:      "stage-scheduler/migration-refusal",
-				ClaimTTL:         30 * time.Second,
-				LeaseTTL:         time.Minute,
-				LocalDeadlineTTL: 50 * time.Second,
-				SigningKeyID:     "stage-authority-key-v1",
-			},
-		)
-		if err != nil {
-			t.Fatalf("construct migration-refusal StageScheduler: %v", err)
-		}
-		if _, ok, err := scheduling.Acquire(
-			context.Background(), fixture.authority, fixture.observation,
-		); err != nil || !ok {
-			t.Fatalf("Acquire migration-refusal fixture ok=%t error=%v", ok, err)
-		}
-
-		err = goose.DownTo(fixture.database.Admin, migrations, 36)
-		assertPostgresConstraint(
-			t,
-			err,
-			"atomic_stage_graph_admission_rollback_is_unsafe",
-		)
-		version, versionErr := goose.GetDBVersion(fixture.database.Admin)
-		if versionErr != nil || version != 51 {
-			t.Fatalf(
-				"StageScheduler version after refused Down = %d error=%v",
-				version,
-				versionErr,
-			)
-		}
-		var snapshots, decisions, claims int
-		if err := fixture.database.Admin.QueryRow(`
-			SELECT
-				(SELECT count(*) FROM stage_scheduler_snapshot_traces),
-				(SELECT count(*) FROM stage_decision_evidence),
-				(SELECT count(*) FROM stage_scheduler_claims)
-		`).Scan(&snapshots, &decisions, &claims); err != nil {
-			t.Fatalf("read StageScheduler evidence after refused Down: %v", err)
-		}
-		if snapshots != 1 || decisions != 1 || claims != 1 {
-			t.Fatalf(
-				"StageScheduler evidence after refused Down = %d/%d/%d",
-				snapshots,
-				decisions,
-				claims,
-			)
-		}
-	})
 }
 
 func postgresErrorConstraint(postgresError *pgconn.PgError) string {
@@ -1376,7 +1321,7 @@ func (repository *tamperingStageRepository) Claim(
 func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture {
 	t.Helper()
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 37)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	seedEncoderAssignmentProfile(t, database)

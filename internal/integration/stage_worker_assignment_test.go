@@ -212,11 +212,11 @@ func TestPostgresAssignmentBackendRecoversAfterCommittedSchedulerBeforeResult(t 
 	assertSingleDurableAssignment(t, fixture, command.CommandID)
 }
 
-func TestStageWorkerAssignmentMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
+func TestStageWorkerAssignmentMigrationEmptyDownUp(t *testing.T) {
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 42)
 		if err := goose.DownTo(database.Admin, migrations, 41); err != nil {
 			t.Fatalf("migrate empty Stage Worker assignment down: %v", err)
 		}
@@ -237,20 +237,6 @@ func TestStageWorkerAssignmentMigrationRoundTripAndDurableEvidenceRefusal(t *tes
 		if err != nil || version != 42 {
 			t.Fatalf("Stage Worker assignment version after Up = %d error=%v", version, err)
 		}
-	})
-
-	t.Run("durable evidence refuses Down", func(t *testing.T) {
-		fixture := newStageSchedulerFixture(t, "stage-worker-migration-refusal")
-		backend := newPostgresAssignmentTestBackend(t, fixture)
-		command := stageWorkerAcquireCommand(fixture)
-		command.Identity.SPIFFEID += "/forged"
-		if result, err := backend.AcquireStage(
-			context.Background(), command, stageWorkerAcquireRequest(fixture),
-		); err != nil || result.Command == nil {
-			t.Fatalf("create durable acquire evidence = %#v error=%v", result, err)
-		}
-		err := goose.DownTo(fixture.database.Admin, migrations, 41)
-		assertPostgresConstraint(t, err, "atomic_stage_graph_admission_rollback_is_unsafe")
 	})
 }
 

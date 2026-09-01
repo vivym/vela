@@ -18,17 +18,17 @@ import (
 )
 
 func TestLoadConfigRequiresHostAgentBoundaries(t *testing.T) {
-	t.Setenv("VELA_NODE_AGENT_WORKER_ID", "")
-	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_NODE_AGENT_WORKER_ID") {
-		t.Fatalf("missing Worker identity error = %v", err)
+	t.Setenv("VELA_NODE_AGENT_ID", "")
+	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_NODE_AGENT_ID") {
+		t.Fatalf("missing Agent identity error = %v", err)
 	}
 }
 
-func TestLoadConfigRequiresCurrentWorkerEpoch(t *testing.T) {
+func TestLoadConfigRequiresCurrentAgentEpoch(t *testing.T) {
 	setValidNodeAgentEnv(t)
-	t.Setenv("VELA_NODE_AGENT_WORKER_EPOCH", "")
-	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_NODE_AGENT_WORKER_EPOCH") {
-		t.Fatalf("missing Worker epoch error = %v", err)
+	t.Setenv("VELA_NODE_AGENT_EPOCH", "")
+	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_NODE_AGENT_EPOCH") {
+		t.Fatalf("missing Agent epoch error = %v", err)
 	}
 }
 
@@ -62,24 +62,6 @@ func TestLoadCapabilitiesBindsGPUUUIDPCIBDFFailureAndAction(t *testing.T) {
 	})
 	if err != nil || binding.GPUUUID != gpuUUID || binding.PCIBDF != "0000:41:00.0" {
 		t.Fatalf("capability binding = %#v error=%v", binding, err)
-	}
-}
-
-func TestLoadConfigRequiresWorkerHostQuotaBoundary(t *testing.T) {
-	setValidNodeAgentEnv(t)
-	t.Setenv("VELA_NODE_AGENT_WORKER_QUOTA_SOCKET", "")
-	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "VELA_NODE_AGENT_WORKER_QUOTA_SOCKET") {
-		t.Fatalf("missing Worker host quota socket error = %v", err)
-	}
-	setValidNodeAgentEnv(t)
-	configuration, err := loadConfig()
-	if err != nil {
-		t.Fatalf("loadConfig: %v", err)
-	}
-	if configuration.workerUID != 10001 || configuration.workerGID != 10001 ||
-		configuration.workerXFSProjectID != 7001 ||
-		configuration.workerQuotaSocket == "" || configuration.workerScratchRoot == "" {
-		t.Fatalf("Worker host quota configuration = %#v", configuration)
 	}
 }
 
@@ -170,8 +152,8 @@ func TestLoadWorkerInstanceTemplatesInjectsCanonicalNodeAgentIdentity(t *testing
 	}
 	identity := nodeagent.NodeAgentIdentity{
 		NodeIdentity: "node-1",
-		WorkerID:     uuid.MustParse("83000000-0000-0000-0000-000000000001"),
-		WorkerEpoch:  7,
+		AgentID:      uuid.MustParse("83000000-0000-0000-0000-000000000001"),
+		AgentEpoch:   7,
 	}
 	templates, err := loadWorkerInstanceTemplates(path, identity)
 	if err != nil {
@@ -191,8 +173,8 @@ func TestLoadWorkerInstanceTemplatesInjectsCanonicalNodeAgentIdentity(t *testing
 func TestLoadWorkerInstanceTemplatesRejectsRuntimeFieldsDuplicateKeysAndCrossNode(t *testing.T) {
 	identity := nodeagent.NodeAgentIdentity{
 		NodeIdentity: "node-1",
-		WorkerID:     uuid.MustParse("83000000-0000-0000-0000-000000000001"),
-		WorkerEpoch:  7,
+		AgentID:      uuid.MustParse("83000000-0000-0000-0000-000000000001"),
+		AgentEpoch:   7,
 	}
 	cases := map[string]string{
 		"top-level runtime field": strings.Replace(
@@ -419,30 +401,24 @@ func setValidNodeAgentEnv(t *testing.T) {
 	t.Helper()
 	root := t.TempDir()
 	values := map[string]string{
-		"VELA_NODE_AGENT_ADDRESS":               "127.0.0.1:9443",
-		"VELA_NODE_AGENT_NODE_IDENTITY":         "node-1",
-		"VELA_NODE_AGENT_WORKER_ID":             "83000000-0000-0000-0000-000000000001",
-		"VELA_NODE_AGENT_WORKER_EPOCH":          "7",
-		"VELA_NODE_AGENT_TLS_CERT_FILE":         filepath.Join(root, "tls.crt"),
-		"VELA_NODE_AGENT_TLS_KEY_FILE":          filepath.Join(root, "tls.key"),
-		"VELA_NODE_AGENT_CONTROLLER_CA_FILE":    filepath.Join(root, "ca.crt"),
-		"VELA_NODE_AGENT_RECEIPT_DIRECTORY":     filepath.Join(root, "receipts"),
-		"VELA_NODE_AGENT_CONTROLLERS_FILE":      filepath.Join(root, "controllers.json"),
-		"VELA_NODE_AGENT_COMMANDS_FILE":         filepath.Join(root, "commands.json"),
-		"VELA_NODE_AGENT_CAPABILITIES_FILE":     filepath.Join(root, "capabilities.json"),
-		"VELA_NODE_AGENT_POSTCHECK_PATH":        "/usr/local/libexec/vela-postcheck",
-		"VELA_NODE_AGENT_FENCE_PATH":            "/usr/local/libexec/vela-fence",
-		"VELA_NODE_AGENT_WORKER_QUOTA_SOCKET":   filepath.Join(root, "worker-quota.sock"),
-		"VELA_NODE_AGENT_WORKER_UID":            "10001",
-		"VELA_NODE_AGENT_WORKER_GID":            "10001",
-		"VELA_NODE_AGENT_WORKER_SCRATCH_ROOT":   filepath.Join(root, "scratch"),
-		"VELA_NODE_AGENT_WORKER_XFS_DEVICE":     "/dev/nvme1n1",
-		"VELA_NODE_AGENT_WORKER_XFS_PROJECT_ID": "7001",
-		"VELA_NODE_AGENT_POSTCHECK_ARGS_JSON":   "[]",
-		"VELA_NODE_AGENT_FENCE_ARGS_JSON":       "[]",
-		"VELA_NODE_AGENT_FLEET_ADDRESS":         "fleet.vela-system.svc:8444",
-		"VELA_NODE_AGENT_FLEET_SERVER_NAME":     "fleet.vela-system.svc",
-		"VELA_NODE_AGENT_FLEET_CA_FILE":         filepath.Join(root, "fleet-ca.crt"),
+		"VELA_NODE_AGENT_ADDRESS":             "127.0.0.1:9443",
+		"VELA_NODE_AGENT_NODE_IDENTITY":       "node-1",
+		"VELA_NODE_AGENT_ID":                  "83000000-0000-0000-0000-000000000001",
+		"VELA_NODE_AGENT_EPOCH":               "7",
+		"VELA_NODE_AGENT_TLS_CERT_FILE":       filepath.Join(root, "tls.crt"),
+		"VELA_NODE_AGENT_TLS_KEY_FILE":        filepath.Join(root, "tls.key"),
+		"VELA_NODE_AGENT_CONTROLLER_CA_FILE":  filepath.Join(root, "ca.crt"),
+		"VELA_NODE_AGENT_RECEIPT_DIRECTORY":   filepath.Join(root, "receipts"),
+		"VELA_NODE_AGENT_CONTROLLERS_FILE":    filepath.Join(root, "controllers.json"),
+		"VELA_NODE_AGENT_COMMANDS_FILE":       filepath.Join(root, "commands.json"),
+		"VELA_NODE_AGENT_CAPABILITIES_FILE":   filepath.Join(root, "capabilities.json"),
+		"VELA_NODE_AGENT_POSTCHECK_PATH":      "/usr/local/libexec/vela-postcheck",
+		"VELA_NODE_AGENT_FENCE_PATH":          "/usr/local/libexec/vela-fence",
+		"VELA_NODE_AGENT_POSTCHECK_ARGS_JSON": "[]",
+		"VELA_NODE_AGENT_FENCE_ARGS_JSON":     "[]",
+		"VELA_NODE_AGENT_FLEET_ADDRESS":       "fleet.vela-system.svc:8444",
+		"VELA_NODE_AGENT_FLEET_SERVER_NAME":   "fleet.vela-system.svc",
+		"VELA_NODE_AGENT_FLEET_CA_FILE":       filepath.Join(root, "fleet-ca.crt"),
 		"VELA_NODE_AGENT_FLEET_CLIENT_CERT_FILE": filepath.Join(
 			root,
 			"fleet-client.crt",

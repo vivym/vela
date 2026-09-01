@@ -20,9 +20,9 @@ H3_EVIDENCE_PLAN_REVISION ?=
 TOOLS_BIN := $(CURDIR)/bin
 VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_IMAGE_PREFIX)"
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle capture-h3-launch-evidence capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle capture-h3-launch-evidence capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
-generate: generate-openapi generate-proto generate-runner-proto generate-sql
+generate: generate-openapi generate-proto generate-sql
 
 generate-openapi:
 	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) --config api/openapi/oapi-codegen.yaml api/openapi/vela.yaml
@@ -34,24 +34,15 @@ generate-proto:
 	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) lint
 	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) generate
 
-generate-runner-proto:
-	cd runner && uv run --frozen python -m grpc_tools.protoc \
-		-I ../proto \
-		--python_out=src \
-		--grpc_python_out=src \
-		../proto/vela/v1/runner.proto
-
 generate-sql:
 	go run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate
 
 lint:
 	go vet ./...
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
-	cd runner && uv run --frozen ruff check .
 
 test:
 	go test ./...
-	cd runner && uv run --frozen pytest
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
@@ -167,29 +158,12 @@ validate-deployment:
 	kubectl kustomize deploy/control-storage >/dev/null
 	kubectl kustomize deploy/vela-control >/dev/null
 	kubectl kustomize deploy/stage-worker >/dev/null
-	kubectl kustomize deploy/worker-agent >/dev/null
 	kubectl kustomize deploy/fleet-controller >/dev/null
 	kubectl kustomize deploy/observability >/dev/null
 	@test -s deploy/node-agent/vela-node-agent.service
 	@test -s deploy/node-agent/README.md
 	@rg -q "VELA_NODE_AGENT_CONTROLLERS_FILE" deploy/node-agent/README.md cmd/vela-node-agent/main.go
 	@rg -q "VELA_NODE_AGENT_WORKER_QUOTA_SOCKET" deploy/node-agent/README.md cmd/vela-node-agent/main.go
-	@rg -q "nvidia.com/gpu: \"8\"" deploy/worker-agent/daemonset.yaml
-	@for name in VELA_RUNNER_SOCKET VELA_RUNNER_SCRATCH_ROOT VELA_RUNNER_STATE_ROOT \
-		VELA_RUNNER_OUTPUT_ROOT VELA_RUNNER_BACKEND_REVISION VELA_RUNNER_BACKEND_COMMAND \
-		VELA_RUNNER_BACKEND_ARGS_JSON VELA_RUNNER_PROFILES_FILE \
-		VELA_RUNNER_GPU_ROLES_FILE VELA_RUNNER_STOP_TIMEOUT \
-		VELA_RUNNER_MAX_OUTPUT_BYTES; do \
-		rg -q "name: $$name" deploy/worker-agent/daemonset.yaml || exit 1; \
-	done
-	@test "$$(rg -c 'value: /run/vela-runner/private/runner.sock' deploy/worker-agent/daemonset.yaml)" -eq 2
-	@rg -q "name: runner-socket-permissions" deploy/worker-agent/daemonset.yaml
-	@rg -q "chmod 0700 /run/vela-runner /run/vela-runner/private" deploy/worker-agent/daemonset.yaml
-	@test "$$(rg -c 'runAsUser: 0' deploy/worker-agent/daemonset.yaml)" -eq 1
-	@rg -q "name: vela-runner-profiles" deploy/worker-agent/daemonset.yaml
-	@rg -q "name: vela-runner-gpu-roles" deploy/worker-agent/daemonset.yaml
-	@! rg -q "CAP_SYS_ADMIN|privileged: true" deploy/worker-agent/*.yaml
-	@go test ./internal/deploymentcontract -run TestWorkerAgentManifestExcludesRecoveryQuarantineFromRunnerMountNamespace -count=1
 	@go test ./internal/deploymentcontract -run 'TestVelaControl' -count=1
 	@go test ./internal/deploymentcontract -run 'TestStageWorker' -count=1
 	@go test ./internal/deploymentcontract -run 'TestFleet' -count=1
@@ -197,9 +171,9 @@ validate-deployment:
 	@go test ./internal/deploymentcontract -run 'TestObservability' -count=1
 
 verify-generated: generate
-	git diff --exit-code -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1
-	@test -z "$$(git status --porcelain --untracked-files=all -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1)" || \
-		(git status --short --untracked-files=all -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1; exit 1)
+	git diff --exit-code -- api/gen internal/store/sqlc proto/gen
+	@test -z "$$(git status --porcelain --untracked-files=all -- api/gen internal/store/sqlc proto/gen)" || \
+		(git status --short --untracked-files=all -- api/gen internal/store/sqlc proto/gen; exit 1)
 
 verify: verify-generated
 	$(MAKE) lint

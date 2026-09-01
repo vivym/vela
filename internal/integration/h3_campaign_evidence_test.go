@@ -23,8 +23,8 @@ import (
 	"github.com/vivym/vela/internal/releasebundle"
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stagecache"
+	"github.com/vivym/vela/internal/stagefinalization"
 	"github.com/vivym/vela/internal/telemetry"
-	"github.com/vivym/vela/internal/workercontrol"
 )
 
 const campaignResidencyPlanID = "49200000-0000-0000-0000-000000000201"
@@ -93,7 +93,7 @@ func TestStageTelemetryReadsAuthoritativeCampaignState(t *testing.T) {
 
 func TestStageTelemetryMigrationPreservesReadOnlyPrivilegeBoundary(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 56)
 	pool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 
 	assertStageTelemetryPrivileges(t, pool, map[string]bool{
@@ -178,8 +178,8 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 	t.Helper()
 	directory := t.TempDir()
 	base := writeCatalogReleaseBundleFixture(t, directory, "h3-campaign")
-	if len(base.OCIImages) != 2 {
-		t.Fatalf("campaign base OCI images = %d, want 2", len(base.OCIImages))
+	if len(base.OCIImages) != 3 {
+		t.Fatalf("campaign base OCI images = %d, want 3", len(base.OCIImages))
 	}
 	planBytes, err := os.ReadFile(filepath.Join(directory, "release-bundle-plan.json"))
 	if err != nil {
@@ -190,23 +190,10 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 		t.Fatalf("decode campaign release build plan: %v", err)
 	}
 
-	stageManifest := writeCatalogOCIManifest(t, directory, "h3-stage-worker")
-	runtimeManifest := writeCatalogOCIManifest(t, directory, "h3-stage-runtime")
-	stageImage := "ghcr.io/vivym/vela-stage-worker-agent@" + stageManifest.digest
-	runtimeImage := "ghcr.io/vivym/vela-h3-stage-runtime@" + runtimeManifest.digest
-	plan.OCIManifests = append(plan.OCIManifests,
-		releasebundle.OCIManifestInput{
-			Image: stageImage, Ref: stageManifest.ref, ConfigRef: stageManifest.configRef,
-		},
-		releasebundle.OCIManifestInput{
-			Image: runtimeImage, Ref: runtimeManifest.ref, ConfigRef: runtimeManifest.configRef,
-		},
-	)
-	images := []string{base.OCIImages[0].Image, base.OCIImages[1].Image, stageImage, runtimeImage}
-	writeCatalogReleaseFile(
-		t, filepath.Join(directory, "render-stage-worker.yaml"),
-		[]byte(catalogReleaseRender("stage-worker", stageImage, images)),
-	)
+	controlImage := bundleImageWithName(t, base, "/vela-control@")
+	stageImage := bundleImageWithName(t, base, "/vela-stage-worker-agent@")
+	runtimeImage := bundleImageWithName(t, base, "/vela-h3-stage-runtime@")
+	images := []string{controlImage, stageImage, runtimeImage}
 
 	planID := uuid.MustParse(campaignResidencyPlanID)
 	bundleID := uuid.MustParse("49200000-0000-0000-0000-000000000202")
@@ -272,10 +259,9 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("encode campaign ResidencyPlan rollout: %v", err)
 	}
-	render := catalogReleaseRender("fleet-controller", images[1], images)
-	identity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-desired-r1\n  namespace: vela-system\n"
-	target := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
-		"  name: vela-fleet-residency-plan-rollouts-r1\n  namespace: vela-system\n" +
+	render := catalogReleaseRender("fleet-controller", controlImage, images)
+	identity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-residency-plan-rollouts-r1\n  namespace: vela-system\n"
+	target := identity +
 		"immutable: true\ndata:\n  rollouts.json: |-\n    " +
 		strings.ReplaceAll(string(encoded), "\n", "\n    ") + "\n"
 	if !strings.Contains(render, identity) {
@@ -286,51 +272,6 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 		[]byte(strings.Replace(render, identity, target, 1)),
 	)
 
-	plan.WorkerMaterializations = nil
-	for index := range plan.ExternalResources {
-		resource := &plan.ExternalResources[index]
-		switch resource.Name {
-		case "artifact-store-ca-r1":
-			resource.Consumers = []string{"DaemonSet/vela-system/vela-h3-worker"}
-		case "worker-control-tls-node-1":
-			resource.Consumers = []string{"DaemonSet/vela-system/vela-h3-worker"}
-		}
-	}
-	consumer := "ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-r1"
-	plan.ExternalResources = append(plan.ExternalResources,
-		releasebundle.ExternalResource{
-			Kind: "ConfigMap", Namespace: "vela-system", Name: "worker-runtime-node-1",
-			Revision: catalogReleaseDigest("legacy worker runtime"),
-		},
-		releasebundle.ExternalResource{
-			Kind: "ConfigMap", Namespace: "vela-system", Name: "runner-profiles-node-1",
-			Revision: catalogReleaseDigest("legacy runner profiles"),
-		},
-		releasebundle.ExternalResource{
-			Kind: "ConfigMap", Namespace: "vela-system", Name: "runner-gpu-roles-node-1",
-			Revision: catalogReleaseDigest("legacy runner gpu roles"),
-		},
-		releasebundle.ExternalResource{
-			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1",
-			Revision:     catalogReleaseDigest("stage control"),
-			RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"}, Consumers: []string{consumer},
-		},
-		releasebundle.ExternalResource{
-			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-authority-r1",
-			Revision:     catalogReleaseDigest("stage authority"),
-			RequiredKeys: []string{"keyring.json"}, Consumers: []string{consumer},
-		},
-		releasebundle.ExternalResource{
-			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-credentials-r1",
-			Revision:     catalogReleaseDigest("stage artifact credentials"),
-			RequiredKeys: []string{"access-key-id", "secret-access-key"}, Consumers: []string{consumer},
-		},
-		releasebundle.ExternalResource{
-			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-ca-r1",
-			Revision:     catalogReleaseDigest("stage artifact ca"),
-			RequiredKeys: []string{"ca.crt"}, Consumers: []string{consumer},
-		},
-	)
 	planPath := filepath.Join(directory, "campaign-release-bundle-plan.json")
 	writeJSONFixture(t, planPath, plan)
 	_, bundleBytes, err := releasebundle.Build(planPath)
@@ -340,6 +281,17 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 	bundlePath := filepath.Join(directory, "campaign-release-bundle.json")
 	writeCatalogReleaseFile(t, bundlePath, bundleBytes)
 	return bundlePath
+}
+
+func bundleImageWithName(t *testing.T, bundle releasebundle.Bundle, marker string) string {
+	t.Helper()
+	for _, image := range bundle.OCIImages {
+		if strings.Contains(image.Image, marker) {
+			return image.Image
+		}
+	}
+	t.Fatalf("release bundle omitted image matching %q", marker)
+	return ""
 }
 
 type h3CampaignEvidenceFixture struct {
@@ -577,27 +529,27 @@ func seedH3CampaignThumbnailOutput(t *testing.T, database testDatabase) {
 
 func completeH3CampaignGraph(
 	t *testing.T,
-	service *workercontrol.Service,
+	service *stagefinalization.Service,
 	jobID uuid.UUID,
 ) {
 	t.Helper()
-	finalizer := workercontrol.AuthenticatedFinalizer{
+	finalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-campaign-" + jobID.String(),
 	}
 	claim, err := service.ClaimNextStageGraphFinalization(context.Background(), finalizer)
 	if err != nil {
 		t.Fatalf("claim campaign Stage graph finalization for %s: %v", jobID, err)
 	}
-	if claim.Decision != workercontrol.StageGraphFinalizationGranted || claim.JobID != jobID {
+	if claim.Decision != stagefinalization.StageGraphFinalizationGranted || claim.JobID != jobID {
 		t.Fatalf("campaign finalization claim for %s = %#v", jobID, claim)
 	}
 	completed, err := service.CompleteStageGraphVisibleCompletion(
 		context.Background(), finalizer, claim.Credentials,
-		workercontrol.StageGraphVisibleCompletionCandidate{
+		stagefinalization.StageGraphVisibleCompletionCandidate{
 			CompletionID: uuid.New(), ExpectedJobVersion: claim.JobVersion,
 		},
 	)
-	if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
+	if err != nil || completed.Decision != stagefinalization.VisibleCompletionCommitted {
 		t.Fatalf("complete campaign Stage graph %s = %#v error=%v", jobID, completed, err)
 	}
 }

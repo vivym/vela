@@ -278,7 +278,7 @@ func TestLegacyH3ContractionAuthorizationRejectsUnverifiedOrMismatchedEvidence(t
 
 func TestLegacyH3ContractionAuthorizationMigrationRoundTripBeforeAuthorization(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 57)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 
 	if err := goose.DownTo(database.Admin, migrations, 56); err != nil {
@@ -298,7 +298,7 @@ func TestLegacyH3ContractionAuthorizationMigrationRoundTripBeforeAuthorization(t
 func newLegacyH3ReleaseGateFixture(t *testing.T) legacyH3ReleaseGateFixture {
 	t.Helper()
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 57)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)

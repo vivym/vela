@@ -36,7 +36,6 @@ import (
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/retention"
-	"github.com/vivym/vela/internal/scheduler"
 )
 
 const (
@@ -104,7 +103,7 @@ func TestServicePrincipalCanSubmitAndGetAcceptedJob(t *testing.T) {
 		t.Fatalf("submitted Job identity/state = %#v", submitted)
 	}
 	if submitted.Phase == nil || *submitted.Phase != "QUEUED" ||
-		submitted.AttemptsStarted != 0 || submitted.PhaseProgress != nil ||
+		submitted.AttemptsStarted != 1 || submitted.PhaseProgress != nil ||
 		submitted.NextRetryAt != nil || submitted.EstimatedFinishAt != nil ||
 		submitted.ProgressUpdatedAt != nil {
 		t.Fatalf("submitted Job execution view = %#v", submitted)
@@ -135,7 +134,7 @@ func TestServicePrincipalCanSubmitAndGetAcceptedJob(t *testing.T) {
 		t.Fatalf("decode get response: %v", err)
 	}
 	if fetched.JobID != submitted.JobID || fetched.Pricing.QuotedAmountMinor != 2500 ||
-		fetched.Phase == nil || *fetched.Phase != "QUEUED" || fetched.AttemptsStarted != 0 {
+		fetched.Phase == nil || *fetched.Phase != "QUEUED" || fetched.AttemptsStarted != 1 {
 		t.Fatalf("fetched Job = %#v, want submitted Job", fetched)
 	}
 	var runtimeStates, reservations, events int
@@ -346,12 +345,11 @@ func TestAdmissionRejectionsHaveNoDurableEffects(t *testing.T) {
         "prompt":"rejection must be side-effect free"
     }`)
 	tests := []struct {
-		name               string
-		prepare            func(*testing.T, *sql.DB)
-		wantStatus         int
-		wantCode           string
-		wantRetryAfter     bool
-		retryAfterRecovery bool
+		name           string
+		prepare        func(*testing.T, *sql.DB)
+		wantStatus     int
+		wantCode       string
+		wantRetryAfter bool
 	}{
 		{
 			name: "credit limit",
@@ -382,19 +380,6 @@ func TestAdmissionRejectionsHaveNoDurableEffects(t *testing.T) {
 			wantCode:       "project_limit_exceeded",
 			wantRetryAfter: true,
 		},
-		{
-			name: "Worker pool closed",
-			prepare: func(t *testing.T, db *sql.DB) {
-				t.Helper()
-				if _, err := db.Exec("UPDATE worker_pools SET admission_open = false"); err != nil {
-					t.Fatalf("close Worker pool: %v", err)
-				}
-			},
-			wantStatus:         http.StatusServiceUnavailable,
-			wantCode:           "capacity_unavailable",
-			wantRetryAfter:     true,
-			retryAfterRecovery: true,
-		},
 	}
 
 	for _, test := range tests {
@@ -418,166 +403,8 @@ func TestAdmissionRejectionsHaveNoDurableEffects(t *testing.T) {
 				t.Fatal("Retry-After header is missing")
 			}
 			assertNoAdmissionEffects(t, admin)
-			if test.retryAfterRecovery {
-				if _, err := admin.Exec("UPDATE worker_pools SET admission_open = true"); err != nil {
-					t.Fatalf("reopen Worker pool: %v", err)
-				}
-				recovered := submitJob(t, server.URL, "retryable-rejection", requestBody)
-				if recovered.StatusCode != http.StatusAccepted {
-					t.Fatalf("recovered status = %d, want 202; body=%s", recovered.StatusCode, recovered.Body)
-				}
-			}
 		})
 	}
-}
-
-func TestAdmissionPredictionRejectsExcessQueueWaitWithoutDurableEffects(t *testing.T) {
-	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
-	seedAdmissionFixture(t, database.Admin)
-	predictor := &capacityPredictorStub{wait: 7201 * time.Second}
-
-	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
-	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
-	artifactPool := newRolePool(
-		t, database.DSN, "vela_artifact_request_login", "vela-artifact-request-password",
-	)
-	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
-	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
-	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator:          identity.NewAuthenticator(authPool, testCredentialPepper),
-		IdentityAdministration: &identity.AdministrationService{},
-		OrganizationReporting:  &organizationreporting.Service{},
-		Retention:              &retention.Service{},
-		Admission:              admission.NewService(requestPool, predictor),
-		Cancellation:           cancellation.NewService(cancelPool, internalPool),
-		Artifacts:              testArtifactAccessService(artifactPool),
-		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
-	})
-	if err != nil {
-		t.Fatalf("create predicted Admission HTTP handler: %v", err)
-	}
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-
-	requestBody := []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"prediction rejection must be side-effect free"
-	}`)
-	result := submitJob(t, server.URL, "predicted-capacity-rejection", requestBody)
-	if result.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("predicted Admission status = %d, want 503; body=%s", result.StatusCode, result.Body)
-	}
-	var responseError struct {
-		Code string `json:"code"`
-	}
-	if err := json.Unmarshal(result.Body, &responseError); err != nil {
-		t.Fatalf("decode predicted Admission rejection: %v", err)
-	}
-	if responseError.Code != "capacity_unavailable" || result.Header.Get("Retry-After") == "" {
-		t.Fatalf(
-			"predicted Admission response code=%q Retry-After=%q",
-			responseError.Code,
-			result.Header.Get("Retry-After"),
-		)
-	}
-	if predictor.calls != 1 {
-		t.Fatalf("capacity predictor calls = %d, want 1", predictor.calls)
-	}
-	assertNoAdmissionEffects(t, database.Admin)
-
-	predictor.wait = 0
-	accepted := submitJob(t, server.URL, "predicted-capacity-rejection", requestBody)
-	if accepted.StatusCode != http.StatusAccepted {
-		t.Fatalf("recovered predicted Admission status = %d, want 202; body=%s", accepted.StatusCode, accepted.Body)
-	}
-	var acceptedJob jobResponse
-	if err := json.Unmarshal(accepted.Body, &acceptedJob); err != nil {
-		t.Fatalf("decode recovered predicted Admission: %v", err)
-	}
-	if predictor.calls != 2 {
-		t.Fatalf("capacity predictor calls after recovery = %d, want 2", predictor.calls)
-	}
-
-	predictor.wait = 7201 * time.Second
-	replayed := submitJob(t, server.URL, "predicted-capacity-rejection", requestBody)
-	if replayed.StatusCode != http.StatusAccepted {
-		t.Fatalf("idempotent predicted Admission replay status = %d, want 202; body=%s", replayed.StatusCode, replayed.Body)
-	}
-	var replayedJob jobResponse
-	if err := json.Unmarshal(replayed.Body, &replayedJob); err != nil {
-		t.Fatalf("decode idempotent predicted Admission replay: %v", err)
-	}
-	if replayedJob.JobID != acceptedJob.JobID || predictor.calls != 2 {
-		t.Fatalf(
-			"idempotent predicted Admission replay Job=%s calls=%d, want Job=%s calls=2",
-			replayedJob.JobID,
-			predictor.calls,
-			acceptedJob.JobID,
-		)
-	}
-}
-
-func TestAdmissionProductionConstructorRequiresCapacityPredictor(t *testing.T) {
-	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
-	seedAdmissionFixture(t, database.Admin)
-	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
-
-	_, err := admission.NewService(requestPool, nil).Submit(
-		context.Background(),
-		identity.Principal{},
-		uuid.Nil,
-		"missing-capacity-predictor",
-		admission.Request{},
-	)
-	if err == nil || err.Error() != "admission capacity predictor is not configured" {
-		t.Fatalf("missing production Capacity Predictor error = %v", err)
-	}
-	assertNoAdmissionEffects(t, database.Admin)
-}
-
-type capacityPredictorStub struct {
-	wait      time.Duration
-	finishAt  time.Time
-	err       error
-	jobFinish time.Time
-	jobErr    error
-	calls     int
-	jobCalls  int
-}
-
-func (predictor *capacityPredictorStub) PredictCapacity(
-	_ context.Context,
-	_ admission.CapacityPredictionRequest,
-) (admission.CapacityPrediction, error) {
-	predictor.calls++
-	finishAt := predictor.finishAt
-	if finishAt.IsZero() {
-		finishAt = time.Now().UTC().Add(predictor.wait + 20*time.Minute)
-	}
-	return admission.CapacityPrediction{
-		QueueWait:         predictor.wait,
-		EstimatedFinishAt: finishAt,
-	}, predictor.err
-}
-
-func (predictor *capacityPredictorStub) PredictJobDynamicETA(
-	_ context.Context,
-	_ uuid.UUID,
-) (time.Time, error) {
-	predictor.jobCalls++
-	if predictor.jobErr != nil {
-		return time.Time{}, predictor.jobErr
-	}
-	if predictor.jobFinish.IsZero() {
-		return time.Time{}, pgx.ErrNoRows
-	}
-	return predictor.jobFinish, nil
 }
 
 func TestOpenAPIValidationReturnsContractErrorJSON(t *testing.T) {
@@ -1031,7 +858,7 @@ func TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys(t *testing.
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},
-		Admission:              admission.NewLegacyService(requestPool),
+		Admission:              admission.NewService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
 		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
@@ -1436,7 +1263,7 @@ func TestScopeRemovalAfterAuthenticationFailsClosedAtRequestTransaction(t *testi
 		t.Fatalf("remove jobs:submit scope: %v", err)
 	}
 
-	_, err = admission.NewLegacyService(requestPool).Submit(
+	_, err = admission.NewService(requestPool).Submit(
 		context.Background(),
 		principal,
 		uuid.MustParse(testProjectID),
@@ -1625,7 +1452,7 @@ func TestCredentialLookupScopeAndRevocationFailClosed(t *testing.T) {
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},
-		Admission:              admission.NewLegacyService(requestPool),
+		Admission:              admission.NewService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
 		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
@@ -1698,30 +1525,12 @@ func newAdmissionServer(t *testing.T) (*httptest.Server, *sql.DB) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	return admissionServerForDatabase(t, database), database.Admin
 }
 
 func admissionServerForDatabase(t *testing.T, database testDatabase) *httptest.Server {
-	return admissionServerForDatabaseWithPredictor(t, database, nil)
-}
-
-func schedulerAdmissionServerForDatabase(t *testing.T, database testDatabase) *httptest.Server {
-	t.Helper()
-	schedulerPool := newRolePool(
-		t, database.DSN, "vela_scheduler_login", "vela-scheduler-password",
-	)
-	predictor, err := scheduler.NewCapacityPredictor(schedulerPool)
-	if err != nil {
-		t.Fatalf("create Scheduler-aware Admission predictor: %v", err)
-	}
-	return admissionServerForDatabaseWithPredictor(t, database, predictor)
-}
-
-func admissionServerForDatabaseWithPredictor(
-	t *testing.T,
-	database testDatabase,
-	predictor admission.CapacityPredictor,
-) *httptest.Server {
 	t.Helper()
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
@@ -1730,10 +1539,7 @@ func admissionServerForDatabaseWithPredictor(
 	)
 	cancelPool := newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password")
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
-	admissionService := admission.NewLegacyService(requestPool)
-	if predictor != nil {
-		admissionService = admission.NewService(requestPool, predictor)
-	}
+	admissionService := admission.NewService(requestPool)
 	stageGraphCancellation, err := attemptcoordinator.NewCancellationService(internalPool)
 	if err != nil {
 		t.Fatalf("create Stage graph cancellation service: %v", err)
@@ -1840,11 +1646,10 @@ func concurrentSubmissions(
 
 func assertNoAdmissionEffects(t *testing.T, db *sql.DB) {
 	t.Helper()
-	var values [8]int64
+	var values [7]int64
 	if err := db.QueryRow(`
         SELECT
             (SELECT queued_count FROM projects WHERE id = $1),
-            (SELECT queued_count FROM worker_pools WHERE stable_id = 'h3-primary'),
             (SELECT reserved_minor FROM organization_credit_accounts WHERE organization_id = $2),
             (SELECT count(*) FROM jobs),
             (SELECT count(*) FROM retry_runtime_states),
@@ -1853,16 +1658,28 @@ func assertNoAdmissionEffects(t *testing.T, db *sql.DB) {
             (SELECT count(*) FROM outbox_events)
     `, testProjectID, testOrganizationID).Scan(
 		&values[0], &values[1], &values[2], &values[3],
-		&values[4], &values[5], &values[6], &values[7],
+		&values[4], &values[5], &values[6],
 	); err != nil {
 		t.Fatalf("read rejected Admission effects: %v", err)
 	}
-	if values != [8]int64{} {
+	if values != [7]int64{} {
 		t.Fatalf("rejected Admission left durable effects: %v", values)
 	}
 }
 
 func applyFoundation(t *testing.T, db *sql.DB) {
+	applyFoundationVersion(t, db, 0)
+}
+
+func applyFoundationTo(t *testing.T, db *sql.DB, version int64) {
+	t.Helper()
+	if version <= 0 {
+		t.Fatalf("historical foundation version must be positive: %d", version)
+	}
+	applyFoundationVersion(t, db, version)
+}
+
+func applyFoundationVersion(t *testing.T, db *sql.DB, version int64) {
 	t.Helper()
 	root := repositoryRoot(t)
 	bootstrapSQL, err := os.ReadFile(filepath.Join(root, "db", "bootstrap", "roles.sql"))
@@ -1875,8 +1692,15 @@ func applyFoundation(t *testing.T, db *sql.DB) {
 	if err := goose.SetDialect("postgres"); err != nil {
 		t.Fatalf("set goose dialect: %v", err)
 	}
-	if err := goose.Up(db, filepath.Join(root, "db", "migrations")); err != nil {
-		t.Fatalf("migrate foundation: %v", err)
+	migrations := filepath.Join(root, "db", "migrations")
+	var migrationErr error
+	if version == 0 {
+		migrationErr = goose.Up(db, migrations)
+	} else {
+		migrationErr = goose.UpTo(db, migrations, version)
+	}
+	if migrationErr != nil {
+		t.Fatalf("migrate foundation: %v", migrationErr)
 	}
 
 	if _, err := db.Exec(`
@@ -1946,8 +1770,6 @@ func seedAdmissionFixture(t *testing.T, db *sql.DB) {
         INSERT INTO organization_credit_accounts (
             organization_id, currency, contract_credit_limit_minor
         ) VALUES ('%[1]s', 'CNY', 100000);
-        INSERT INTO worker_pools (id, stable_id, queued_limit)
-        VALUES ('00000000-0000-0000-0000-000000000005', 'h3-primary', 10);
         INSERT INTO model_revisions (id, stable_id, revision, state, content_hash)
         VALUES (
             '00000000-0000-0000-0000-000000000010', 'minimax-h3', 1, 'ACTIVE',
@@ -1976,24 +1798,6 @@ func seedAdmissionFixture(t *testing.T, db *sql.DB) {
             '00000000-0000-0000-0000-000000000013', 'video-1080p-5s-24fps', 1,
             'ACTIVE', 1920, 1080, 5000, 24000, 'h264'
         );
-        INSERT INTO execution_profile_revisions (
-            id, model_revision_id, worker_pool_id, stable_id, revision, state
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000014',
-            '00000000-0000-0000-0000-000000000010',
-            '00000000-0000-0000-0000-000000000005', 'h3-balanced', 1, 'ACTIVE'
-        );
-        INSERT INTO profile_certifications (
-            id, model_revision_id, generation_preset_revision_id, output_spec_id,
-            execution_profile_revision_id, state, evidence_digest, certified_at
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000015',
-            '00000000-0000-0000-0000-000000000010',
-            '00000000-0000-0000-0000-000000000011',
-            '00000000-0000-0000-0000-000000000013',
-            '00000000-0000-0000-0000-000000000014', 'ACTIVE',
-            'abcdef0123456789abcdef0123456789', clock_timestamp()
-        );
         INSERT INTO rate_card_revisions (id, revision, state, effective_at)
         VALUES (
             '00000000-0000-0000-0000-000000000016', 1, 'ACTIVE',
@@ -2010,8 +1814,41 @@ func seedAdmissionFixture(t *testing.T, db *sql.DB) {
             '00000000-0000-0000-0000-000000000012',
             '00000000-0000-0000-0000-000000000013', 1250, 'CNY'
         );
-    `, testOrganizationID, testProjectID, testPrincipalID, testCredentialID, hex.EncodeToString(digest))); err != nil {
+	`, testOrganizationID, testProjectID, testPrincipalID, testCredentialID, hex.EncodeToString(digest))); err != nil {
 		t.Fatalf("seed Admission fixture: %v", err)
+	}
+
+	var legacyAuthoritySchema bool
+	if err := db.QueryRow(`SELECT to_regclass('public.worker_pools') IS NOT NULL`).Scan(
+		&legacyAuthoritySchema,
+	); err != nil {
+		t.Fatalf("inspect Admission fixture schema: %v", err)
+	}
+	if legacyAuthoritySchema {
+		if _, err := db.Exec(`
+			INSERT INTO worker_pools (id, stable_id, queued_limit)
+			VALUES ('00000000-0000-0000-0000-000000000005', 'h3-primary', 10);
+			INSERT INTO execution_profile_revisions (
+				id, model_revision_id, worker_pool_id, stable_id, revision, state
+			) VALUES (
+				'00000000-0000-0000-0000-000000000014',
+				'00000000-0000-0000-0000-000000000010',
+				'00000000-0000-0000-0000-000000000005', 'h3-balanced', 1, 'ACTIVE'
+			);
+			INSERT INTO profile_certifications (
+				id, model_revision_id, generation_preset_revision_id, output_spec_id,
+				execution_profile_revision_id, state, evidence_digest, certified_at
+			) VALUES (
+				'00000000-0000-0000-0000-000000000015',
+				'00000000-0000-0000-0000-000000000010',
+				'00000000-0000-0000-0000-000000000011',
+				'00000000-0000-0000-0000-000000000013',
+				'00000000-0000-0000-0000-000000000014', 'ACTIVE',
+				'abcdef0123456789abcdef0123456789', clock_timestamp()
+			)
+		`); err != nil {
+			t.Fatalf("seed historical Admission authority fixture: %v", err)
+		}
 	}
 }
 

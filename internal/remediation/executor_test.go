@@ -39,18 +39,18 @@ func TestAllowlistedExecutorRunsOnlyRegisteredAction(t *testing.T) {
 	operationID := uuid.New()
 	workerID := uuid.New()
 	result, err := executor.Execute(context.Background(), Plan{
-		OperationID: operationID, WorkerID: workerID,
+		OperationID: operationID, WorkerInstanceID: workerID,
 		ActionLevel:           ActionL0ProcessRestart,
 		NodeIdentity:          "node-1",
 		DeviceIdentity:        "gpu-0",
 		FailureClass:          "process_failure",
-		WorkerEpoch:           3,
+		WorkerInstanceEpoch:           3,
 		CertificationRevision: "matrix-v1",
 	})
 	if err != nil {
 		t.Fatalf("execute allowlisted Remediation: %v", err)
 	}
-	if runner.plan.OperationID != operationID || runner.plan.WorkerID != workerID ||
+	if runner.plan.OperationID != operationID || runner.plan.WorkerInstanceID != workerID ||
 		runner.plan.DeviceIdentity != "gpu-0" || runner.path != "/usr/local/bin/vela-process-restart" || len(runner.args) != 2 ||
 		result.Detail == "" {
 		t.Fatalf("allowlisted execution = runner %#v result %#v", runner, result)
@@ -61,7 +61,7 @@ func TestAllowlistedExecutorRunsOnlyRegisteredAction(t *testing.T) {
 		NodeIdentity:          "node-1",
 		DeviceIdentity:        "gpu-0",
 		FailureClass:          "process_failure",
-		WorkerEpoch:           3,
+		WorkerInstanceEpoch:           3,
 		CertificationRevision: "matrix-v1",
 	})
 	var failure *Failure

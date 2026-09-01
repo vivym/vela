@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package vela.v1;
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+import "google/protobuf/timestamp.proto";
+
+service NodeAgentService {
+  rpc ExecuteRemediation(ExecuteRemediationRequest)
+      returns (ExecuteRemediationResponse);
+}
+
+message ExecuteRemediationRequest {
+  string operation_id = 1;
+  string worker_instance_id = 2;
+  int64 worker_instance_epoch = 3;
+  string node_identity = 4;
+  string device_identity = 5;
+  string action_level = 6;
+  string certification_revision = 7;
+  bytes failure_evidence_digest = 8;
+  google.protobuf.Timestamp deadline_at = 9;
+  string execution_claim_id = 10;
+  string failure_class = 11;
+}
+
+message ExecuteRemediationResponse {
+  string operation_id = 1;
+  bool success = 2;
+  string result_code = 3;
+  string result_detail = 4;
+  bytes postcheck_sha256 = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp finished_at = 7;
+}

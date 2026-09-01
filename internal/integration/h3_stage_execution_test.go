@@ -26,9 +26,9 @@ import (
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageauthority"
+	"github.com/vivym/vela/internal/stagefinalization"
 	"github.com/vivym/vela/internal/stageworkercontrol"
 	"github.com/vivym/vela/internal/stageworkertransport"
-	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -110,7 +110,7 @@ func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testi
 		[]string{"encoder-node-01", "dit-node-09", "vae-node-03"},
 	)
 	service := visibleCompletionService(t, outcome.database.DSN)
-	firstFinalizer := workercontrol.AuthenticatedFinalizer{
+	firstFinalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-primary",
 	}
 	first, err := service.ClaimNextStageGraphFinalization(
@@ -119,11 +119,11 @@ func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testi
 	if err != nil {
 		t.Fatalf("claim Stage graph finalization: %v", err)
 	}
-	if first.Decision != workercontrol.StageGraphFinalizationGranted ||
+	if first.Decision != stagefinalization.StageGraphFinalizationGranted ||
 		first.ClaimID == uuid.Nil || first.Credentials.Token == "" ||
 		first.Credentials.AttemptID != outcome.attemptID ||
 		len(first.Sources) != 1 || first.Sources[0].OutputKey != "video" ||
-		first.Sources[0].ArtifactKind != workercontrol.ArtifactKindVideo ||
+		first.Sources[0].ArtifactKind != stagefinalization.ArtifactKindVideo ||
 		first.Sources[0].Ordinal != 0 ||
 		first.Source.StageArtifactID != outcome.finalArtifact.ID ||
 		first.Source.ObjectKey != outcome.finalArtifact.ObjectKey ||
@@ -145,32 +145,29 @@ func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testi
 	}
 	incomplete, err := service.CompleteStageGraphVisibleCompletion(
 		context.Background(), firstFinalizer, first.Credentials,
-		workercontrol.StageGraphVisibleCompletionCandidate{
+		stagefinalization.StageGraphVisibleCompletionCandidate{
 			CompletionID: uuid.New(), ExpectedJobVersion: first.JobVersion,
 		},
 	)
 	if err != nil {
 		t.Fatalf("reject incomplete Stage graph Visible Completion: %v", err)
 	}
-	if incomplete.Decision != workercontrol.VisibleCompletionIncompleteArtifact {
+	if incomplete.Decision != stagefinalization.VisibleCompletionIncompleteArtifact {
 		t.Fatalf("incomplete Stage graph Visible Completion = %#v", incomplete)
 	}
-	var workerID *uuid.UUID
-	var leases, artifactSets, charges int
+	var artifactSets, charges int
 	if err := outcome.database.Admin.QueryRow(`
-		SELECT attempt.worker_id,
-		       (SELECT count(*) FROM attempt_leases WHERE attempt_id = attempt.id),
-		       (SELECT count(*) FROM artifact_sets WHERE attempt_id = attempt.id),
+		SELECT (SELECT count(*) FROM artifact_sets WHERE attempt_id = attempt.id),
 		       (SELECT count(*) FROM charges WHERE job_id = attempt.job_id)
 		FROM attempts AS attempt
 		WHERE attempt.id = $1
-	`, outcome.attemptID).Scan(&workerID, &leases, &artifactSets, &charges); err != nil {
+	`, outcome.attemptID).Scan(&artifactSets, &charges); err != nil {
 		t.Fatalf("inspect incomplete Stage graph Finalizer state: %v", err)
 	}
-	if workerID != nil || leases != 0 || artifactSets != 0 || charges != 0 {
+	if artifactSets != 0 || charges != 0 {
 		t.Fatalf(
-			"incomplete Stage graph Finalizer worker=%v leases=%d sets=%d charges=%d",
-			workerID, leases, artifactSets, charges,
+			"incomplete Stage graph Finalizer sets=%d charges=%d",
+			artifactSets, charges,
 		)
 	}
 
@@ -192,14 +189,14 @@ func TestStageGraphFinalizerReclaimsExactVAEArtifactWithoutRerunningVAE(t *testi
 		t.Fatalf("expire Stage graph finalization claim: %v", err)
 	}
 	second, err := service.ClaimNextStageGraphFinalization(
-		context.Background(), workercontrol.AuthenticatedFinalizer{
+		context.Background(), stagefinalization.AuthenticatedFinalizer{
 			ID: "spiffe://vela.internal/finalizer/h3-recovery",
 		},
 	)
 	if err != nil {
 		t.Fatalf("reclaim Stage graph finalization: %v", err)
 	}
-	if second.Decision != workercontrol.StageGraphFinalizationGranted ||
+	if second.Decision != stagefinalization.StageGraphFinalizationGranted ||
 		second.ClaimID == first.ClaimID || second.Credentials.Token == "" ||
 		second.Source != first.Source {
 		t.Fatalf("reclaimed Stage graph finalization = %#v, first %#v", second, first)
@@ -361,7 +358,7 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 43)
 		if err := goose.DownTo(database.Admin, migrations, 42); err != nil {
 			t.Fatalf("migrate empty Stage graph finalization down: %v", err)
 		}
@@ -374,43 +371,15 @@ func TestStageGraphFinalizationMigrationRoundTripAndDurableClaimRefusal(t *testi
 		if !removed {
 			t.Fatal("Stage graph finalization claim table survived empty Down")
 		}
-		if err := goose.Up(database.Admin, migrations); err != nil {
+		if err := goose.UpTo(database.Admin, migrations, 43); err != nil {
 			t.Fatalf("migrate Stage graph finalization back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 51 {
+		if err != nil || version != 43 {
 			t.Fatalf("Stage graph finalization version after Up = %d error=%v", version, err)
 		}
 	})
 
-	t.Run("durable claim refuses Down", func(t *testing.T) {
-		outcome := runSplitH3StageGraph(
-			t,
-			[]string{"encoder-node-01", "dit-node-09", "vae-node-03"},
-		)
-		service := visibleCompletionService(t, outcome.database.DSN)
-		claim, err := service.ClaimNextStageGraphFinalization(
-			context.Background(), workercontrol.AuthenticatedFinalizer{
-				ID: "spiffe://vela.internal/finalizer/migration-guard",
-			},
-		)
-		if err != nil || claim.Decision != workercontrol.StageGraphFinalizationGranted {
-			t.Fatalf("seed durable Stage graph finalization claim = %#v error=%v", claim, err)
-		}
-		err = goose.DownTo(outcome.database.Admin, migrations, 42)
-		assertPostgresConstraint(
-			t,
-			err,
-			"atomic_stage_graph_admission_rollback_is_unsafe",
-		)
-		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 51 {
-			t.Fatalf(
-				"Stage graph finalization version after refused Down = %d error=%v",
-				version, versionErr,
-			)
-		}
-	})
 }
 
 func runSplitH3StageGraph(t *testing.T, nodes []string) splitH3GraphOutcome {

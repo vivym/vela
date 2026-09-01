@@ -62,21 +62,13 @@ FROM vela_resolve_active_sku(
 	circuit_min_distinct_healthy_workers
 );
 
--- name: ResolveJobExecutionRoute :one
+-- name: ResolveStageJobExecutionRoute :one
 SELECT
-    route.execution_authority_kind::execution_authority_kind
-        AS execution_authority_kind,
     route.stage_cutover_revision_id::uuid AS stage_cutover_revision_id,
-    COALESCE(
-        route.execution_graph_revision_id,
-        '00000000-0000-0000-0000-000000000000'::uuid
-    )::uuid AS execution_graph_revision_id,
-    COALESCE(
-        route.execution_profile_revision_id,
-        '00000000-0000-0000-0000-000000000000'::uuid
-    )::uuid AS execution_profile_revision_id,
+    route.execution_graph_revision_id::uuid AS execution_graph_revision_id,
+    route.execution_profile_revision_id::uuid AS execution_profile_revision_id,
     route.reserved_storage_bytes::bigint AS reserved_storage_bytes
-FROM vela_resolve_job_execution_route(
+FROM vela_resolve_stage_job_execution_route(
     sqlc.arg(organization_id),
     sqlc.arg(project_id),
     sqlc.arg(model_revision_id)
@@ -90,19 +82,6 @@ FROM vela_lock_stage_graph_ready_capacity_path(
     sqlc.arg(execution_graph_revision_id),
     sqlc.arg(execution_profile_revision_id)
 ) AS capacity;
-
--- name: LockCompatiblePool :one
-SELECT
-	pool.id::uuid AS id,
-	pool.admission_open::boolean AS admission_open,
-	pool.queued_count::integer AS queued_count,
-	pool.queued_limit::integer AS queued_limit,
-	pool.retry_after_seconds::integer AS retry_after_seconds
-FROM vela_lock_compatible_pool(
-	sqlc.arg(model_revision_id),
-	sqlc.arg(generation_preset_revision_id),
-	sqlc.arg(output_spec_id)
-) AS pool(id, admission_open, queued_count, queued_limit, retry_after_seconds);
 
 -- name: GetIdempotencyResult :one
 SELECT request_hash, job_id
@@ -150,13 +129,6 @@ WHERE organization_id = sqlc.arg(organization_id)
   AND id = sqlc.arg(project_id)
   AND queued_count - retry_wait_count < queued_limit;
 
--- name: IncrementPoolQueued :execrows
-UPDATE worker_pools
-SET queued_count = queued_count + 1
-WHERE id = sqlc.arg(worker_pool_id)
-  AND admission_open
-  AND queued_count - retry_wait_count < queued_limit;
-
 -- name: ReserveOrganizationCredit :execrows
 UPDATE organization_credit_accounts
 SET reserved_minor = reserved_minor + sqlc.arg(amount_minor),
@@ -176,11 +148,9 @@ INSERT INTO jobs (
     generation_preset_revision_id,
     service_class_revision_id,
     output_spec_id,
-    execution_authority_kind,
     stage_cutover_revision_id,
     execution_graph_revision_id,
     stage_execution_profile_revision_id,
-    worker_pool_id,
     request_hash,
     request_content,
     request_content_expires_at,
@@ -216,11 +186,9 @@ INSERT INTO jobs (
     sqlc.arg(generation_preset_revision_id),
     sqlc.arg(service_class_revision_id),
     sqlc.arg(output_spec_id),
-    sqlc.arg(execution_authority_kind),
-    sqlc.narg(stage_cutover_revision_id),
-    sqlc.narg(execution_graph_revision_id),
-    sqlc.narg(stage_execution_profile_revision_id),
-    sqlc.narg(worker_pool_id),
+    sqlc.arg(stage_cutover_revision_id),
+    sqlc.arg(execution_graph_revision_id),
+    sqlc.arg(stage_execution_profile_revision_id),
     sqlc.arg(request_hash),
     sqlc.arg(request_content),
     transaction_timestamp()

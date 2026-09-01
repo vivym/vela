@@ -556,63 +556,6 @@ func TestFinanceReconciliationRejectsInvalidLedgerEffectsWithoutDurableChange(t 
 	}
 }
 
-func TestFinanceReconciliationCannotConsumeActiveReservations(t *testing.T) {
-	fixture := newStartFixture(t, "finance-active-reservation", 7)
-	service := newFinanceReconciliationService(t, fixture.database)
-	debitMinor := int64(-99000)
-	tooLowLimit := int64(1000)
-	requests := []financereconciliation.Request{
-		{
-			IdempotencyKey:        "active-reservation-debit",
-			SourceSequence:        1,
-			OrganizationID:        uuid.MustParse(testOrganizationID),
-			Kind:                  financereconciliation.KindCreditAdjustmentPosted,
-			Currency:              "CNY",
-			CreditAdjustmentMinor: &debitMinor,
-			ExternalReference:     "active-reservation-debit-reference",
-			EffectiveAt:           time.Date(2026, 8, 24, 13, 20, 0, 0, time.UTC),
-		},
-		{
-			IdempotencyKey:           "active-reservation-limit",
-			SourceSequence:           1,
-			OrganizationID:           uuid.MustParse(testOrganizationID),
-			Kind:                     financereconciliation.KindContractCreditLimitChanged,
-			Currency:                 "CNY",
-			ContractCreditLimitMinor: &tooLowLimit,
-			ExternalReference:        "active-reservation-limit-reference",
-			EffectiveAt:              time.Date(2026, 8, 24, 13, 21, 0, 0, time.UTC),
-		},
-	}
-	for _, request := range requests {
-		_, err := service.Apply(context.Background(), request)
-		assertFinanceReconciliationFailure(t, err, financereconciliation.FailureConflict)
-	}
-
-	var limit, reserved, unsettled, records, cursors int64
-	if err := fixture.database.Admin.QueryRow(`
-		SELECT account.contract_credit_limit_minor, account.reserved_minor,
-			account.unsettled_posted_minor,
-			(SELECT count(*) FROM finance_reconciliation_records),
-			(SELECT count(*) FROM finance_reconciliation_cursors)
-		FROM organization_credit_accounts AS account
-		WHERE account.organization_id = $1
-	`, testOrganizationID).Scan(
-		&limit, &reserved, &unsettled, &records, &cursors,
-	); err != nil {
-		t.Fatalf("read active-reservation Finance effects: %v", err)
-	}
-	if limit != 100000 || reserved != 1250 || unsettled != 0 || records != 0 || cursors != 0 {
-		t.Fatalf(
-			"active-reservation Finance effects = limit %d reserved %d unsettled %d records %d cursors %d",
-			limit,
-			reserved,
-			unsettled,
-			records,
-			cursors,
-		)
-	}
-}
-
 func TestFinanceReconciliationRejectsCommittedKeySequenceAndReferenceConflicts(t *testing.T) {
 	fixture := newInvoiceExportChargeFixture(t, "finance-reconciliation-conflicts")
 	service := newFinanceReconciliationService(t, fixture.database)
@@ -911,7 +854,7 @@ func TestFinanceReconciliationProvisioningIdentityIsImmutableAndDisablementPerma
 
 func TestFinanceReconciliationMigrationDownUpAndProvisioningRefusal(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 18)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 
 	if err := goose.DownTo(database.Admin, migrations, 17); err != nil {

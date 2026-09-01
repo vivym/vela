@@ -41,13 +41,6 @@ func TestRenderedRootMaterializersUsePinnedBusyBoxImage(t *testing.T) {
 		}
 	})
 
-	t.Run("worker-agent", func(t *testing.T) {
-		document := requireRenderedMaterializerDocument(t, "worker-agent", "DaemonSet", "vela-h3-worker")
-		if image := requireRenderedInitImage(t, document, "runner-socket-permissions"); image != pinnedBusyBoxLinuxAMD64Image {
-			t.Fatalf("rendered Worker materializer image = %q, want %q", image, pinnedBusyBoxLinuxAMD64Image)
-		}
-	})
-
 	t.Run("fleet-controller", func(t *testing.T) {
 		document := requireRenderedMaterializerDocument(
 			t, "fleet-controller", "ConfigMap", "vela-fleet-residency-plan-rollouts-placeholder",

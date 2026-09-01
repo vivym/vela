@@ -75,7 +75,7 @@ func (executor *RemoteExecutor) Execute(ctx context.Context, plan remediation.Pl
 	}
 	request := Request{
 		OperationID: plan.OperationID, ExecutionClaimID: plan.ExecutionClaimID,
-		WorkerID: plan.WorkerID, WorkerEpoch: plan.WorkerEpoch,
+		WorkerInstanceID: plan.WorkerInstanceID, WorkerInstanceEpoch: plan.WorkerInstanceEpoch,
 		NodeIdentity: plan.NodeIdentity, DeviceIdentity: plan.DeviceIdentity,
 		FailureClass: plan.FailureClass,
 		ActionLevel:  plan.ActionLevel, CertificationRevision: plan.CertificationRevision,
@@ -143,8 +143,8 @@ func (authorizer *ControlPlaneAuthorizer) Authorize(ctx context.Context, request
 	if err != nil {
 		return fmt.Errorf("load remediation operation: %w", err)
 	}
-	if operation.ID != request.OperationID || operation.WorkerID != request.WorkerID ||
-		operation.WorkerEpoch != request.WorkerEpoch || operation.NodeIdentity != request.NodeIdentity ||
+	if operation.ID != request.OperationID || operation.WorkerInstanceID != request.WorkerInstanceID ||
+		operation.WorkerInstanceEpoch != request.WorkerInstanceEpoch || operation.NodeIdentity != request.NodeIdentity ||
 		operation.DeviceIdentity != request.DeviceIdentity || operation.ActionLevel != request.ActionLevel ||
 		operation.FailureClass != request.FailureClass ||
 		operation.CertificationRevision != request.CertificationRevision ||
@@ -164,7 +164,7 @@ func (authorizer *ControlPlaneAuthorizer) Authorize(ctx context.Context, request
 		return errors.New("remediation operation deadline has expired")
 	}
 	if _, err := authorizer.claimer.ClaimExecution(
-		ctx, operation.ID, operation.WorkerID, operation.WorkerEpoch,
+		ctx, operation.ID, operation.WorkerInstanceID, operation.WorkerInstanceEpoch,
 		request.ExecutionClaimID, authorizer.actorIdentity,
 	); err != nil {
 		return fmt.Errorf("claim remediation execution: %w", err)
@@ -264,8 +264,8 @@ func (ledger *ControlPlaneLedger) Save(ctx context.Context, receipt Receipt) err
 	}
 	_, err = ledger.writer.Complete(ctx, remediation.Completion{
 		OperationID:   operation.ID,
-		WorkerID:      operation.WorkerID,
-		WorkerEpoch:   operation.WorkerEpoch,
+		WorkerInstanceID:      operation.WorkerInstanceID,
+		WorkerInstanceEpoch:   operation.WorkerInstanceEpoch,
 		Success:       receipt.Result.Success,
 		ResultCode:    receipt.Result.ResultCode,
 		ResultDetail:  receipt.Result.ResultDetail,
@@ -279,8 +279,8 @@ func requestFromOperation(operation remediation.Operation, actorIdentity string)
 	return Request{
 		OperationID:           operation.ID,
 		ExecutionClaimID:      stableExecutionClaimID(operation.ID, actorIdentity),
-		WorkerID:              operation.WorkerID,
-		WorkerEpoch:           operation.WorkerEpoch,
+		WorkerInstanceID:              operation.WorkerInstanceID,
+		WorkerInstanceEpoch:           operation.WorkerInstanceEpoch,
 		NodeIdentity:          operation.NodeIdentity,
 		DeviceIdentity:        operation.DeviceIdentity,
 		FailureClass:          operation.FailureClass,

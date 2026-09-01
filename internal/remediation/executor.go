@@ -17,14 +17,14 @@ var ErrUncertifiedAction = errors.New("remediation action is not certified")
 type Plan struct {
 	OperationID           uuid.UUID
 	ExecutionClaimID      uuid.UUID
-	WorkerID              uuid.UUID
+	WorkerInstanceID              uuid.UUID
 	ActionLevel           ActionLevel
 	NodeIdentity          string
 	DeviceIdentity        string
 	GPUUUID               string
 	PCIBDF                string
 	FailureClass          string
-	WorkerEpoch           int64
+	WorkerInstanceEpoch           int64
 	DeadlineAt            time.Time
 	CertificationRevision string
 	FailureEvidenceDigest []byte
@@ -85,7 +85,7 @@ func (e *AllowlistedExecutor) Execute(ctx context.Context, plan Plan) (Execution
 	if e == nil || e.runner == nil {
 		return ExecutionResult{}, errors.New("remediation executor is not configured")
 	}
-	if plan.WorkerEpoch <= 0 || !validText(plan.NodeIdentity, 500) ||
+	if plan.WorkerInstanceEpoch <= 0 || !validText(plan.NodeIdentity, 500) ||
 		!validText(plan.DeviceIdentity, 500) || !validText(plan.FailureClass, 200) ||
 		!validText(plan.CertificationRevision, 200) {
 		return ExecutionResult{}, &Failure{Code: FailureInvalid, Message: "Remediation execution identity is invalid"}

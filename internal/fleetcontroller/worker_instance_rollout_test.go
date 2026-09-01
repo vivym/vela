@@ -107,7 +107,7 @@ func TestRuntimeReconcilesTargetOnlyResidencyPlanWithoutLegacyWorkerPool(t *test
 	if err != nil {
 		t.Fatalf("create ResidencyPlan rollout controller: %v", err)
 	}
-	runtimeController, err := fleetcontroller.NewRuntime(nil, nil, fleetcontroller.RuntimeConfig{
+	runtimeController, err := fleetcontroller.NewRuntime(fleetcontroller.RuntimeConfig{
 		ResidencyPlanRollouts:    []fleetcontroller.ResidencyPlanRollout{rollout},
 		WorkerInstanceController: controller,
 		PollInterval:             time.Second,
@@ -120,7 +120,7 @@ func TestRuntimeReconcilesTargetOnlyResidencyPlanWithoutLegacyWorkerPool(t *test
 		t.Fatalf("reconcile target-only Fleet runtime: %v", err)
 	}
 	if result.ResidencyPlansConverged != 1 || result.WorkerInstancePodsCreated != 8 ||
-		result.DesiredRevisionsConverged != 0 || !runtimeController.Converged() {
+		!runtimeController.Converged() {
 		t.Fatalf("target-only Fleet runtime result=%#v converged=%t", result, runtimeController.Converged())
 	}
 }
@@ -140,7 +140,6 @@ func TestWorkerInstancePodAdmissionRequiresExactApprovedPlanPod(t *testing.T) {
 		t.Fatalf("create Kubernetes resources: %v", err)
 	}
 	validator, err := fleetcontroller.NewWorkerInstancePodAdmissionValidator(
-		resources,
 		[]fleetcontroller.ResidencyPlanRollout{rollout},
 	)
 	if err != nil {

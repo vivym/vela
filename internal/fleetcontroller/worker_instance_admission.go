@@ -7,21 +7,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-type protectedPodCreateValidator interface {
-	ValidateProtectedPodCreate(context.Context, corev1.Pod) error
-}
-
 type WorkerInstancePodAdmissionValidator struct {
-	legacy  protectedPodCreateValidator
 	desired map[string]corev1.Pod
 }
 
 func NewWorkerInstancePodAdmissionValidator(
-	legacy protectedPodCreateValidator,
 	rollouts []ResidencyPlanRollout,
 ) (*WorkerInstancePodAdmissionValidator, error) {
-	if legacy == nil || len(rollouts) == 0 {
-		return nil, errors.New("legacy Pod validator and ResidencyPlan rollouts are required")
+	if len(rollouts) == 0 {
+		return nil, errors.New("ResidencyPlan rollouts are required")
 	}
 	desired := make(map[string]corev1.Pod)
 	for _, rollout := range rollouts {
@@ -42,20 +36,18 @@ func NewWorkerInstancePodAdmissionValidator(
 			}
 		}
 	}
-	return &WorkerInstancePodAdmissionValidator{legacy: legacy, desired: desired}, nil
+	return &WorkerInstancePodAdmissionValidator{desired: desired}, nil
 }
 
 func (validator *WorkerInstancePodAdmissionValidator) ValidateProtectedPodCreate(
 	ctx context.Context,
 	pod corev1.Pod,
 ) error {
-	if validator == nil || validator.legacy == nil {
+	if validator == nil {
 		return ErrProtectedResourceDrift
 	}
-	if pod.Labels[workerInstanceIDLabel] == "" {
-		return validator.legacy.ValidateProtectedPodCreate(ctx, pod)
-	}
 	if ctx == nil || pod.UID != "" || len(pod.OwnerReferences) != 0 ||
+		pod.Labels[workerInstanceIDLabel] == "" ||
 		pod.Labels[workerIDLabel] != "" || pod.Labels[workerEpochLabel] != "" {
 		return ErrProtectedResourceDrift
 	}

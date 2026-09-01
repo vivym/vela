@@ -47,7 +47,7 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},
-		Admission:              admission.NewLegacyService(requestPool),
+		Admission:              admission.NewService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
 		Webhooks:               testWebhookService(t, webhookRequestPool),
@@ -517,13 +517,14 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 		t.Fatalf("publish Scheduler wakeup: %v", err)
 	}
 
-	processor, err := inbox.NewSchedulerProcessor(
+	processor, err := inbox.NewProcessor(
 		newRolePool(
 			t,
 			database.DSN,
-			"vela_scheduler_inbox_login",
-			"vela-scheduler-inbox-password",
+			"vela_internal_login",
+			"vela-internal-password",
 		),
+		"scheduler",
 	)
 	if err != nil {
 		t.Fatalf("create Inbox processor: %v", err)

@@ -17,7 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/vivym/vela/internal/artifactstore"
-	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/stagefinalization"
 )
 
 type ExactVersionSource interface {
@@ -48,7 +48,7 @@ type Inspector struct {
 	spoolDirectory         string
 }
 
-var _ workercontrol.ArtifactInspector = (*Inspector)(nil)
+var _ stagefinalization.ArtifactInspector = (*Inspector)(nil)
 
 func NewInspector(source ExactVersionSource, sandbox Sandbox, config Config) (*Inspector, error) {
 	if source == nil || sandbox == nil || config.MaxInputBytes <= 0 ||
@@ -80,18 +80,18 @@ func NewInspector(source ExactVersionSource, sandbox Sandbox, config Config) (*I
 
 func (inspector *Inspector) Inspect(
 	ctx context.Context,
-	request workercontrol.ArtifactInspectionRequest,
-) (workercontrol.ArtifactInspection, error) {
+	request stagefinalization.ArtifactInspectionRequest,
+) (stagefinalization.ArtifactInspection, error) {
 	if inspector == nil || inspector.source == nil || inspector.sandbox == nil {
-		return workercontrol.ArtifactInspection{}, errors.New("artifact inspector is not configured")
+		return stagefinalization.ArtifactInspection{}, errors.New("artifact inspector is not configured")
 	}
 	if ctx == nil {
-		return workercontrol.ArtifactInspection{}, errors.New("artifact inspection context is required")
+		return stagefinalization.ArtifactInspection{}, errors.New("artifact inspection context is required")
 	}
 	if request.ExpectedSizeBytes <= 0 || request.ExpectedSizeBytes > inspector.maxInputBytes ||
 		request.ExpectedSHA256 == [sha256.Size]byte{} || request.ObjectKey == "" ||
 		request.ObjectVersionID == "" || request.ExpectedContentType == "" {
-		return workercontrol.ArtifactInspection{}, errors.New("artifact inspection request exceeds configured bounds")
+		return stagefinalization.ArtifactInspection{}, errors.New("artifact inspection request exceeds configured bounds")
 	}
 
 	exact, err := inspector.source.ReadExactVersion(
@@ -100,21 +100,21 @@ func (inspector *Inspector) Inspect(
 		request.ObjectVersionID,
 	)
 	if err != nil {
-		return workercontrol.ArtifactInspection{}, fmt.Errorf("read exact Artifact version: %w", err)
+		return stagefinalization.ArtifactInspection{}, fmt.Errorf("read exact Artifact version: %w", err)
 	}
 	if exact == nil || exact.ReadCloser == nil {
-		return workercontrol.ArtifactInspection{}, errors.New("exact Artifact version reader is incomplete")
+		return stagefinalization.ArtifactInspection{}, errors.New("exact Artifact version reader is incomplete")
 	}
 	defer func() { _ = exact.Close() }()
 	if exact.ObjectKey != request.ObjectKey || exact.VersionID != request.ObjectVersionID ||
 		exact.SizeBytes != request.ExpectedSizeBytes ||
 		exact.ContentType != request.ExpectedContentType {
-		return workercontrol.ArtifactInspection{}, errors.New("exact Artifact version metadata does not match publication evidence")
+		return stagefinalization.ArtifactInspection{}, errors.New("exact Artifact version metadata does not match publication evidence")
 	}
 
 	spool, err := os.CreateTemp(inspector.spoolDirectory, ".vela-artifact-inspection-*")
 	if err != nil {
-		return workercontrol.ArtifactInspection{}, fmt.Errorf("create Artifact inspection spool: %w", err)
+		return stagefinalization.ArtifactInspection{}, fmt.Errorf("create Artifact inspection spool: %w", err)
 	}
 	spoolPath := spool.Name()
 	defer func() {
@@ -122,7 +122,7 @@ func (inspector *Inspector) Inspect(
 		_ = os.Remove(spoolPath)
 	}()
 	if err := spool.Chmod(0o600); err != nil {
-		return workercontrol.ArtifactInspection{}, fmt.Errorf("restrict Artifact inspection spool: %w", err)
+		return stagefinalization.ArtifactInspection{}, fmt.Errorf("restrict Artifact inspection spool: %w", err)
 	}
 	digest := sha256.New()
 	written, err := io.Copy(
@@ -130,40 +130,40 @@ func (inspector *Inspector) Inspect(
 		io.LimitReader(exact, inspector.maxInputBytes+1),
 	)
 	if err != nil {
-		return workercontrol.ArtifactInspection{}, fmt.Errorf("spool exact Artifact version: %w", err)
+		return stagefinalization.ArtifactInspection{}, fmt.Errorf("spool exact Artifact version: %w", err)
 	}
 	if written != request.ExpectedSizeBytes || written > inspector.maxInputBytes {
-		return workercontrol.ArtifactInspection{}, errors.New("exact Artifact version size does not match publication evidence")
+		return stagefinalization.ArtifactInspection{}, errors.New("exact Artifact version size does not match publication evidence")
 	}
 	var observedDigest [sha256.Size]byte
 	copy(observedDigest[:], digest.Sum(nil))
 	if observedDigest != request.ExpectedSHA256 {
-		return workercontrol.ArtifactInspection{}, errors.New("exact Artifact version SHA-256 does not match publication evidence")
+		return stagefinalization.ArtifactInspection{}, errors.New("exact Artifact version SHA-256 does not match publication evidence")
 	}
 	if err := spool.Sync(); err != nil {
-		return workercontrol.ArtifactInspection{}, fmt.Errorf("sync Artifact inspection spool: %w", err)
+		return stagefinalization.ArtifactInspection{}, fmt.Errorf("sync Artifact inspection spool: %w", err)
 	}
 	if _, err := spool.Seek(0, io.SeekStart); err != nil {
-		return workercontrol.ArtifactInspection{}, fmt.Errorf("rewind Artifact inspection spool: %w", err)
+		return stagefinalization.ArtifactInspection{}, fmt.Errorf("rewind Artifact inspection spool: %w", err)
 	}
 
 	probeContext, cancel := context.WithTimeout(ctx, inspector.timeout)
 	defer cancel()
 	output, err := inspector.sandbox.Probe(probeContext, spool)
 	if err != nil {
-		return workercontrol.ArtifactInspection{}, fmt.Errorf("run sandboxed ffprobe: %w", err)
+		return stagefinalization.ArtifactInspection{}, fmt.Errorf("run sandboxed ffprobe: %w", err)
 	}
 	if len(output) == 0 || int64(len(output)) > inspector.maxProbeOutputBytes {
-		return workercontrol.ArtifactInspection{}, errors.New("ffprobe output is absent or exceeds configured bounds")
+		return stagefinalization.ArtifactInspection{}, errors.New("ffprobe output is absent or exceeds configured bounds")
 	}
 	media, err := parseFFprobeOutput(output, request.Kind, inspector.expectedFFprobeVersion)
 	if err != nil {
-		return workercontrol.ArtifactInspection{}, err
+		return stagefinalization.ArtifactInspection{}, err
 	}
 	if media.SizeBytes != request.ExpectedSizeBytes {
-		return workercontrol.ArtifactInspection{}, errors.New("ffprobe size does not match exact Artifact version")
+		return stagefinalization.ArtifactInspection{}, errors.New("ffprobe size does not match exact Artifact version")
 	}
-	return workercontrol.ArtifactInspection{
+	return stagefinalization.ArtifactInspection{
 		ObjectVersionID:   request.ObjectVersionID,
 		SizeBytes:         written,
 		SHA256:            observedDigest,
@@ -214,7 +214,7 @@ type mediaFacts struct {
 
 func parseFFprobeOutput(
 	output []byte,
-	kind workercontrol.ArtifactKind,
+	kind stagefinalization.ArtifactKind,
 	expectedVersion string,
 ) (mediaFacts, error) {
 	decoder := json.NewDecoder(strings.NewReader(string(output)))
@@ -246,7 +246,7 @@ func parseFFprobeOutput(
 	var durationMillis int32
 	var frameRateMilli int32
 	var frameCount64 int64
-	if kind == workercontrol.ArtifactKindThumbnail {
+	if kind == stagefinalization.ArtifactKindThumbnail {
 		frameCount64 = 1
 		if stream.FrameCount != "" {
 			parsedFrameCount, frameCountErr := strconv.ParseInt(stream.FrameCount, 10, 32)
@@ -322,7 +322,7 @@ func parseFrameRateMilli(value string) (int32, error) {
 func canonicalContainer(
 	formatName string,
 	codec string,
-	kind workercontrol.ArtifactKind,
+	kind stagefinalization.ArtifactKind,
 ) (string, error) {
 	formats := strings.Split(formatName, ",")
 	for _, format := range formats {
@@ -330,7 +330,7 @@ func canonicalContainer(
 			return "mp4", nil
 		}
 	}
-	if kind == workercontrol.ArtifactKindThumbnail && codec == "webp" {
+	if kind == stagefinalization.ArtifactKindThumbnail && codec == "webp" {
 		for _, format := range formats {
 			if format == "webp" || format == "webp_pipe" || format == "image2" {
 				return "webp", nil

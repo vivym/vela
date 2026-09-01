@@ -22,7 +22,7 @@ import (
 	"github.com/vivym/vela/internal/h3stage"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageartifact"
-	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/stagefinalization"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
@@ -39,6 +39,7 @@ const (
 
 type cpuMediaGraphOutcome struct {
 	database  testDatabase
+	jobID     uuid.UUID
 	attemptID uuid.UUID
 	video     stageartifact.Artifact
 	thumbnail stageartifact.Artifact
@@ -47,32 +48,32 @@ type cpuMediaGraphOutcome struct {
 func TestCPUMediaStageWorkersProduceAtomicVisibleCompletionWithoutLegacyLease(t *testing.T) {
 	outcome := runCPUMediaH3Graph(t)
 	service := visibleCompletionService(t, outcome.database.DSN)
-	finalizer := workercontrol.AuthenticatedFinalizer{
+	finalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-cpu-media",
 	}
 	claim, err := service.ClaimNextStageGraphFinalization(context.Background(), finalizer)
 	if err != nil {
 		t.Fatalf("claim CPU media graph finalization: %v", err)
 	}
-	if claim.Decision != workercontrol.StageGraphFinalizationGranted ||
+	if claim.Decision != stagefinalization.StageGraphFinalizationGranted ||
 		len(claim.Sources) != 2 ||
-		claim.Sources[0].ArtifactKind != workercontrol.ArtifactKindThumbnail ||
+		claim.Sources[0].ArtifactKind != stagefinalization.ArtifactKindThumbnail ||
 		claim.Sources[0].StageArtifactID != outcome.thumbnail.ID ||
-		claim.Sources[1].ArtifactKind != workercontrol.ArtifactKindVideo ||
+		claim.Sources[1].ArtifactKind != stagefinalization.ArtifactKindVideo ||
 		claim.Sources[1].StageArtifactID != outcome.video.ID {
 		t.Fatalf("CPU media graph finalization claim = %#v", claim)
 	}
 	completionID := uuid.New()
 	completed, err := service.CompleteStageGraphVisibleCompletion(
 		context.Background(), finalizer, claim.Credentials,
-		workercontrol.StageGraphVisibleCompletionCandidate{
+		stagefinalization.StageGraphVisibleCompletionCandidate{
 			CompletionID: completionID, ExpectedJobVersion: claim.JobVersion,
 		},
 	)
 	if err != nil {
 		t.Fatalf("complete CPU media graph Visible Completion: %v", err)
 	}
-	if completed.Decision != workercontrol.VisibleCompletionCommitted ||
+	if completed.Decision != stagefinalization.VisibleCompletionCommitted ||
 		completed.CompletionID != completionID || completed.ArtifactSetID == uuid.Nil ||
 		completed.ChargeID == uuid.Nil || len(completed.Artifacts) != 2 {
 		t.Fatalf("CPU media graph Visible Completion = %#v", completed)
@@ -80,26 +81,24 @@ func TestCPUMediaStageWorkersProduceAtomicVisibleCompletionWithoutLegacyLease(t 
 
 	replayed, err := service.CompleteStageGraphVisibleCompletion(
 		context.Background(), finalizer, claim.Credentials,
-		workercontrol.StageGraphVisibleCompletionCandidate{
+		stagefinalization.StageGraphVisibleCompletionCandidate{
 			CompletionID: completionID, ExpectedJobVersion: claim.JobVersion,
 		},
 	)
-	if err != nil || replayed.Decision != workercontrol.VisibleCompletionCommitted ||
+	if err != nil || replayed.Decision != stagefinalization.VisibleCompletionCommitted ||
 		replayed.ArtifactSetID != completed.ArtifactSetID || replayed.ChargeID != completed.ChargeID {
 		t.Fatalf("replay CPU media graph Visible Completion = %#v error=%v", replayed, err)
 	}
 
 	var (
 		jobState, attemptState, graphState, claimState string
-		workerID                                       *uuid.UUID
 		authorityLeaseID, authorityClaimID             *uuid.UUID
-		leases, sets, charges, grants, completions     int
+		sets, charges, grants, completions             int
 		sourcedArtifacts                               int
 	)
 	if err := outcome.database.Admin.QueryRow(`
 		SELECT job.state::text, attempt.state::text, attempt.graph_state::text,
-		       claim.state::text, attempt.worker_id,
-		       (SELECT count(*) FROM attempt_leases WHERE attempt_id = attempt.id),
+		       claim.state::text,
 		       (SELECT count(*) FROM artifact_sets WHERE attempt_id = attempt.id),
 		       (SELECT count(*) FROM charges WHERE job_id = job.id),
 		       (SELECT count(*) FROM artifact_access_grants WHERE job_id = job.id),
@@ -114,19 +113,19 @@ func TestCPUMediaStageWorkersProduceAtomicVisibleCompletionWithoutLegacyLease(t 
 		JOIN stage_graph_finalization_claims AS claim ON claim.attempt_id = attempt.id
 		WHERE attempt.id = $1
 	`, outcome.attemptID).Scan(
-		&jobState, &attemptState, &graphState, &claimState, &workerID,
-		&leases, &sets, &charges, &grants, &completions,
+		&jobState, &attemptState, &graphState, &claimState,
+		&sets, &charges, &grants, &completions,
 		&authorityLeaseID, &authorityClaimID, &sourcedArtifacts,
 	); err != nil {
 		t.Fatalf("inspect CPU media Visible Completion: %v", err)
 	}
 	if jobState != "SUCCEEDED" || attemptState != "SUCCEEDED" || graphState != "SUCCEEDED" ||
-		claimState != "COMPLETED" || workerID != nil || leases != 0 || sets != 1 ||
+		claimState != "COMPLETED" || sets != 1 ||
 		charges != 1 || grants != 1 || completions != 1 || authorityLeaseID != nil ||
 		authorityClaimID == nil || *authorityClaimID != claim.ClaimID || sourcedArtifacts != 2 {
 		t.Fatalf(
-			"CPU media completion state job=%s attempt=%s graph=%s claim=%s worker=%v leases=%d sets=%d charges=%d grants=%d completions=%d authority=%v/%v sourced=%d",
-			jobState, attemptState, graphState, claimState, workerID, leases,
+			"CPU media completion state job=%s attempt=%s graph=%s claim=%s sets=%d charges=%d grants=%d completions=%d authority=%v/%v sourced=%d",
+			jobState, attemptState, graphState, claimState,
 			sets, charges, grants, completions, authorityLeaseID, authorityClaimID,
 			sourcedArtifacts,
 		)
@@ -147,23 +146,23 @@ func TestStageGraphVisibleCompletionRejectsInspectionMismatchAtomically(t *testi
 	service := stageGraphVisibleCompletionService(t, outcome.database.DSN,
 		artifactInspectorFunc(func(
 			_ context.Context,
-			request workercontrol.ArtifactInspectionRequest,
-		) (workercontrol.ArtifactInspection, error) {
+			request stagefinalization.ArtifactInspectionRequest,
+		) (stagefinalization.ArtifactInspection, error) {
 			inspection := validInspectionForRequest(request)
 			inspection.SHA256[0] ^= 0xff
 			return inspection, nil
 		}),
 	)
-	finalizer := workercontrol.AuthenticatedFinalizer{
+	finalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-inspection-mismatch",
 	}
 	claim, err := service.ClaimNextStageGraphFinalization(context.Background(), finalizer)
-	if err != nil || claim.Decision != workercontrol.StageGraphFinalizationGranted {
+	if err != nil || claim.Decision != stagefinalization.StageGraphFinalizationGranted {
 		t.Fatalf("claim mismatched Stage graph finalization = %#v error=%v", claim, err)
 	}
 	_, err = service.CompleteStageGraphVisibleCompletion(
 		context.Background(), finalizer, claim.Credentials,
-		workercontrol.StageGraphVisibleCompletionCandidate{
+		stagefinalization.StageGraphVisibleCompletionCandidate{
 			CompletionID: uuid.New(), ExpectedJobVersion: claim.JobVersion,
 		},
 	)
@@ -176,11 +175,11 @@ func TestStageGraphVisibleCompletionRejectsInspectionMismatchAtomically(t *testi
 func TestStageGraphVisibleCompletionRejectsExpiredClaim(t *testing.T) {
 	outcome := runCPUMediaH3Graph(t)
 	service := visibleCompletionService(t, outcome.database.DSN)
-	finalizer := workercontrol.AuthenticatedFinalizer{
+	finalizer := stagefinalization.AuthenticatedFinalizer{
 		ID: "spiffe://vela.internal/finalizer/h3-expired-claim",
 	}
 	claim, err := service.ClaimNextStageGraphFinalization(context.Background(), finalizer)
-	if err != nil || claim.Decision != workercontrol.StageGraphFinalizationGranted {
+	if err != nil || claim.Decision != stagefinalization.StageGraphFinalizationGranted {
 		t.Fatalf("claim expiring Stage graph finalization = %#v error=%v", claim, err)
 	}
 	if _, err := outcome.database.Admin.Exec(`
@@ -192,11 +191,11 @@ func TestStageGraphVisibleCompletionRejectsExpiredClaim(t *testing.T) {
 	}
 	result, err := service.CompleteStageGraphVisibleCompletion(
 		context.Background(), finalizer, claim.Credentials,
-		workercontrol.StageGraphVisibleCompletionCandidate{
+		stagefinalization.StageGraphVisibleCompletionCandidate{
 			CompletionID: uuid.New(), ExpectedJobVersion: claim.JobVersion,
 		},
 	)
-	if err != nil || result.Decision != workercontrol.VisibleCompletionRejectedStaleLease {
+	if err != nil || result.Decision != stagefinalization.VisibleCompletionRejectedStaleLease {
 		t.Fatalf("expired Stage graph Visible Completion = %#v error=%v", result, err)
 	}
 	assertNoStageGraphVisibleCompletionWrites(t, outcome)
@@ -206,7 +205,7 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 46)
 		if err := goose.DownTo(database.Admin, migrations, 45); err != nil {
 			t.Fatalf("migrate empty Stage graph Visible Completion down: %v", err)
 		}
@@ -224,60 +223,27 @@ func TestStageGraphVisibleCompletionMigrationRoundTripAndEvidenceRefusal(t *test
 		`).Scan(&removed); err != nil || !removed {
 			t.Fatalf("inspect Stage graph Visible Completion rollback = %t error=%v", removed, err)
 		}
-		if err := goose.Up(database.Admin, migrations); err != nil {
+		if err := goose.UpTo(database.Admin, migrations, 46); err != nil {
 			t.Fatalf("migrate Stage graph Visible Completion back up: %v", err)
 		}
 		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 51 {
+		if err != nil || version != 46 {
 			t.Fatalf("Stage graph Visible Completion version after Up = %d error=%v", version, err)
 		}
 	})
 
-	t.Run("durable completion refuses Down", func(t *testing.T) {
-		outcome := runCPUMediaH3Graph(t)
-		service := visibleCompletionService(t, outcome.database.DSN)
-		finalizer := workercontrol.AuthenticatedFinalizer{
-			ID: "spiffe://vela.internal/finalizer/h3-migration-guard",
-		}
-		claim, err := service.ClaimNextStageGraphFinalization(context.Background(), finalizer)
-		if err != nil || claim.Decision != workercontrol.StageGraphFinalizationGranted {
-			t.Fatalf("claim migration guard Stage graph = %#v error=%v", claim, err)
-		}
-		completed, err := service.CompleteStageGraphVisibleCompletion(
-			context.Background(), finalizer, claim.Credentials,
-			workercontrol.StageGraphVisibleCompletionCandidate{
-				CompletionID: uuid.New(), ExpectedJobVersion: claim.JobVersion,
-			},
-		)
-		if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
-			t.Fatalf("complete migration guard Stage graph = %#v error=%v", completed, err)
-		}
-		err = goose.DownTo(outcome.database.Admin, migrations, 45)
-		assertPostgresConstraint(
-			t,
-			err,
-			"atomic_stage_graph_admission_rollback_is_unsafe",
-		)
-		version, versionErr := goose.GetDBVersion(outcome.database.Admin)
-		if versionErr != nil || version != 51 {
-			t.Fatalf(
-				"Stage graph Visible Completion version after refused Down = %d error=%v",
-				version, versionErr,
-			)
-		}
-	})
 }
 
 func stageGraphVisibleCompletionService(
 	t *testing.T,
 	dsn string,
-	inspector workercontrol.ArtifactInspector,
-) *workercontrol.Service {
+	inspector stagefinalization.ArtifactInspector,
+) *stagefinalization.Service {
 	t.Helper()
-	service, err := workercontrol.NewService(
+	service, err := stagefinalization.NewService(
 		context.Background(),
 		newRolePool(t, dsn, "vela_internal_login", "vela-internal-password"),
-		workercontrol.Config{
+		stagefinalization.Config{
 			LeaseTTL: 2 * time.Minute, ActiveLeaseKeyID: "lease-key-v1",
 			LeaseKeys: map[string][]byte{
 				"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
@@ -323,15 +289,21 @@ func assertNoStageGraphVisibleCompletionWrites(t *testing.T, outcome cpuMediaGra
 
 func runCPUMediaH3Graph(t *testing.T) cpuMediaGraphOutcome {
 	t.Helper()
+	return runCPUMediaH3GraphWithKey(t, "cpu-media-stage-graph")
+}
+
+func runCPUMediaH3GraphWithKey(t *testing.T, idempotencyKey string) cpuMediaGraphOutcome {
+	t.Helper()
 	database, coordinator, serverURL := newH3IntegrationEnvironment(t)
 	seedCPUMediaExecutionGraph(t, database)
+	seedCPUMediaAdmissionCapacityPath(t, database)
 	activateStageCutoverRevision(
 		t, database, uuid.MustParse("49700000-0000-0000-0000-000000000049"), 3,
 		uuid.MustParse(stageCutoverRevisionID), uuid.MustParse(cpuMediaGraphID),
 		uuid.MustParse(cpuMediaExecutionProfileID), 4<<30,
 		"integration-cpu-media-stage-cutover",
 	)
-	accepted := submitJob(t, serverURL, "cpu-media-stage-graph", []byte(`{
+	accepted := submitJob(t, serverURL, idempotencyKey, []byte(`{
 		"model":"minimax-h3",
 		"generation_preset":"balanced",
 		"service_class":"standard",
@@ -345,6 +317,10 @@ func runCPUMediaH3Graph(t *testing.T) cpuMediaGraphOutcome {
 	var job jobResponse
 	if err := json.Unmarshal(accepted.Body, &job); err != nil {
 		t.Fatalf("decode CPU media Job: %v", err)
+	}
+	jobID, err := uuid.Parse(job.JobID)
+	if err != nil {
+		t.Fatalf("parse CPU media Job ID: %v", err)
 	}
 	instantiation := readStageGraphInstantiation(t, database.Admin, job.JobID)
 	attemptID := instantiation.AttemptID
@@ -484,8 +460,144 @@ func runCPUMediaH3Graph(t *testing.T) cpuMediaGraphOutcome {
 		payloads[key] = append([]byte(nil), payload[:]...)
 	}
 	return cpuMediaGraphOutcome{
-		database: database, attemptID: attemptID,
+		database: database, jobID: jobID, attemptID: attemptID,
 		video: artifacts["mux"], thumbnail: artifacts["thumbnail"],
+	}
+}
+
+func seedCPUMediaAdmissionCapacityPath(t *testing.T, database testDatabase) {
+	t.Helper()
+	type stageCapacity struct {
+		key             string
+		resourceClass   string
+		profileID       string
+		workerProfileID string
+		component       string
+		poolID          uuid.UUID
+		workerID        uuid.UUID
+		identityByte    byte
+		capacity        map[string]int64
+	}
+	stages := []stageCapacity{
+		{
+			key: "encoder", resourceClass: "GPU", profileID: encoderStageProfileID,
+			workerProfileID: encoderWorkerProfileID, component: "h3-encoder-v1",
+			poolID:       uuid.MustParse("49700000-0000-0000-0000-000000000081"),
+			workerID:     uuid.MustParse("49700000-0000-0000-0000-000000000084"),
+			identityByte: 0x81, capacity: map[string]int64{"concurrency": 1},
+		},
+		{
+			key: "dit", resourceClass: "GPU", profileID: ditStageProfileID,
+			workerProfileID: ditWorkerProfileID, component: "h3-dit-v1",
+			poolID:       uuid.MustParse("49700000-0000-0000-0000-000000000082"),
+			workerID:     uuid.MustParse("49700000-0000-0000-0000-000000000085"),
+			identityByte: 0x82, capacity: map[string]int64{"concurrency": 1},
+		},
+		{
+			key: "vae", resourceClass: "GPU", profileID: h3VAEStageProfileID,
+			workerProfileID: h3VAEWorkerProfileID, component: "h3-vae-v1",
+			poolID:       uuid.MustParse("49700000-0000-0000-0000-000000000083"),
+			workerID:     uuid.MustParse("49700000-0000-0000-0000-000000000086"),
+			identityByte: 0x83, capacity: map[string]int64{"concurrency": 1},
+		},
+		{
+			key: "encode", resourceClass: "CPU", profileID: cpuEncodeStageProfileID,
+			workerProfileID: cpuEncodeWorkerProfileID, component: "ffmpeg-encode-v1",
+			poolID:       uuid.MustParse("49700000-0000-0000-0000-000000000091"),
+			workerID:     uuid.MustParse("49700000-0000-0000-0000-000000000094"),
+			identityByte: 0x94,
+			capacity: map[string]int64{
+				"cpu_milli": 4000, "memory_bytes": 8 << 30,
+				"scratch_bytes": 128 << 30, "concurrency": 1,
+			},
+		},
+		{
+			key: "mux", resourceClass: "CPU", profileID: cpuMuxStageProfileID,
+			workerProfileID: cpuMuxWorkerProfileID, component: "ffmpeg-mux-v1",
+			poolID:       uuid.MustParse("49700000-0000-0000-0000-000000000092"),
+			workerID:     uuid.MustParse("49700000-0000-0000-0000-000000000095"),
+			identityByte: 0x95,
+			capacity: map[string]int64{
+				"cpu_milli": 2000, "memory_bytes": 4 << 30,
+				"scratch_bytes": 128 << 30, "concurrency": 1,
+			},
+		},
+		{
+			key: "thumbnail", resourceClass: "CPU", profileID: cpuThumbnailStageProfileID,
+			workerProfileID: cpuThumbnailWorkerProfileID, component: "ffmpeg-thumbnail-v1",
+			poolID:       uuid.MustParse("49700000-0000-0000-0000-000000000093"),
+			workerID:     uuid.MustParse("49700000-0000-0000-0000-000000000096"),
+			identityByte: 0x96,
+			capacity: map[string]int64{
+				"cpu_milli": 2000, "memory_bytes": 4 << 30,
+				"scratch_bytes": 32 << 30, "concurrency": 1,
+			},
+		},
+	}
+	bundleID := uuid.MustParse("49700000-0000-0000-0000-000000000090")
+	if _, err := database.Admin.Exec(`
+		INSERT INTO worker_bundles (
+			id, stable_id, plan_revision, desired_generation, observed_generation,
+			lifecycle_state, layout_digest, approved_by
+		) VALUES (
+			$1, 'h3-cpu-media-admission-capacity', 'integration-ready-path-v1',
+			1, 0, 'APPLYING', decode(repeat('97', 32), 'hex'), 'integration-fixture'
+		)
+	`, bundleID); err != nil {
+		t.Fatalf("seed CPU media Admission WorkerBundle: %v", err)
+	}
+	for _, stage := range stages {
+		if _, err := database.Admin.Exec(`
+			INSERT INTO capacity_pools (
+				id, stable_id, stage_profile_revision_id, resource_class,
+				security_class, region, max_ready_queue_depth, state
+			) VALUES ($1, $2, $3, $4, 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE')
+		`, stage.poolID, "h3-cpu-media-admission-"+stage.key, stage.profileID,
+			stage.resourceClass); err != nil {
+			t.Fatalf("seed %s CPU media Admission CapacityPool: %v", stage.key, err)
+		}
+		if _, err := database.Admin.Exec(`
+			INSERT INTO worker_instances (
+				id, worker_profile_revision_id, capacity_pool_id, worker_bundle_id,
+				lifecycle_state, reachability_state, instance_epoch,
+				control_session_epoch, desired_member_count, desired_device_count
+			) VALUES ($1, $2, $3, $4, 'PROVISIONING', 'DISCONNECTED', 1, 1, 1, 1)
+		`, stage.workerID, stage.workerProfileID, stage.poolID, bundleID); err != nil {
+			t.Fatalf("seed %s CPU media Admission WorkerInstance: %v", stage.key, err)
+		}
+	}
+	registry, err := fleet.NewService(newRolePool(
+		t, database.DSN, "vela_internal_login", "vela-internal-password",
+	))
+	if err != nil {
+		t.Fatalf("construct CPU media Admission Worker Registry: %v", err)
+	}
+	for _, stage := range stages {
+		evidence := workerRegistryEvidenceValue(t, stage.workerID, stage.identityByte)
+		nodeID := uuid.NewSHA1(stage.workerID, []byte("cpu-media-admission-node"))
+		deviceID := uuid.NewSHA1(stage.workerID, []byte("cpu-media-admission-device"))
+		evidence.DeviceSet.Devices[0].ID = deviceID
+		evidence.DeviceSet.Devices[0].ComputeNodeID = nodeID
+		evidence.DeviceSet.Devices[0].NodeIdentity = "h3-cpu-media-admission-" + stage.key
+		if stage.resourceClass == "CPU" {
+			evidence.DeviceSet.Devices[0].Kind = "CPU"
+			evidence.DeviceSet.Devices[0].GPUUUID = ""
+			evidence.DeviceSet.Devices[0].PCIBDF = ""
+		} else {
+			evidence.DeviceSet.Devices[0].GPUUUID = "GPU-" + stage.workerID.String()
+			evidence.DeviceSet.Devices[0].PCIBDF = fmt.Sprintf(
+				"0000:%02x:00.0", stage.identityByte,
+			)
+		}
+		evidence.Members[0].ComputeNodeID = nodeID
+		evidence.Members[0].DeviceIDs = []uuid.UUID{deviceID}
+		evidence.Residencies[0].ModelComponentRevision = stage.component
+		evidence.Residencies[0].RuntimeIdentity = stage.key + "@sha256:cpu-media-admission"
+		evidence.Capacity.Vector = stage.capacity
+		evidence.ObservedBy = "node-agent/h3-cpu-media-admission-" + stage.key
+		if _, err := registry.Observe(context.Background(), evidence); err != nil {
+			t.Fatalf("observe %s CPU media Admission READY capacity: %v", stage.key, err)
+		}
 	}
 }
 
@@ -816,11 +928,11 @@ func seedCPUMediaExecutionGraph(t *testing.T, database testDatabase) {
 			 '49700000-0000-0000-0000-000000000016', 'thumbnail', 'thumbnail', true);
 
 		INSERT INTO execution_profile_revisions (
-			id, model_revision_id, worker_pool_id, execution_graph_revision_id,
+			id, model_revision_id, execution_graph_revision_id,
 			stable_id, revision, state
 		) VALUES (
 			'49700000-0000-0000-0000-000000000070',
-			'00000000-0000-0000-0000-000000000010', NULL,
+			'00000000-0000-0000-0000-000000000010',
 			'49700000-0000-0000-0000-000000000001', 'h3-cpu-media-stage-graph', 1, 'CERTIFIED'
 		);
 		INSERT INTO execution_profile_stage_options (

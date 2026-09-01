@@ -261,7 +261,7 @@ func TestScanReportsKnownResidualLegacyOwnershipSurfaces(t *testing.T) {
 	}
 }
 
-func TestCurrentRepositoryDoesNotYetSatisfyPermanentReachability(t *testing.T) {
+func TestCurrentRepositorySatisfiesPermanentReachability(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve reachability test path")
@@ -271,24 +271,29 @@ func TestCurrentRepositoryDoesNotYetSatisfyPermanentReachability(t *testing.T) {
 	evidence, _, _, err := scanVerified(
 		root,
 		bundle,
-		"current-worktree",
+		bundle.ConfigurationManifest.SourceRevision,
 		"repository-test",
 		time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
 	)
 	if err != nil {
 		t.Fatalf("scan current repository: %v", err)
 	}
-	if evidence.Result != ResultFail {
-		t.Fatal("transition test must be inverted only after Legacy H3 source deletion")
+	if evidence.Result != ResultPass {
+		var failed []Check
+		for _, check := range evidence.Checks {
+			if !check.Passed {
+				failed = append(failed, check)
+			}
+		}
+		t.Fatalf("permanent Legacy H3 reachability failed: %#v", failed)
 	}
-	failed := 0
 	for _, check := range evidence.Checks {
 		if !check.Passed {
-			failed++
+			t.Fatalf("permanent reachability check failed: %#v", check)
 		}
 	}
-	if failed < 5 {
-		t.Fatalf("current repository exposes only %d failed reachability checks", failed)
+	if err := ValidatePass(evidence, bundle); err != nil {
+		t.Fatalf("validate permanent reachability PASS: %v", err)
 	}
 }
 

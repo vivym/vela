@@ -18,7 +18,7 @@ import (
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stagecache"
-	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/stagefinalization"
 )
 
 const (
@@ -309,14 +309,14 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 	}
 
 	finalizerService := visibleCompletionService(t, database.DSN)
-	var targetClaim workercontrol.StageGraphFinalizationClaim
+	var targetClaim stagefinalization.StageGraphFinalizationClaim
 	for index := 0; index < 2; index++ {
 		claim, err := finalizerService.ClaimNextStageGraphFinalization(
-			context.Background(), workercontrol.AuthenticatedFinalizer{
+			context.Background(), stagefinalization.AuthenticatedFinalizer{
 				ID: "spiffe://vela.internal/finalizer/cache-leaf-" + string(rune('a'+index)),
 			},
 		)
-		if err != nil || claim.Decision != workercontrol.StageGraphFinalizationGranted {
+		if err != nil || claim.Decision != stagefinalization.StageGraphFinalizationGranted {
 			t.Fatalf("claim cache-leaf finalization %d = %#v error=%v", index, claim, err)
 		}
 		if claim.Credentials.AttemptID == targetAttemptID {
@@ -330,22 +330,11 @@ func TestStageCacheLeafBindsExactArtifactForFinalization(t *testing.T) {
 		t.Fatalf("target cache-leaf finalization claim = %#v", targetClaim)
 	}
 
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
-	err = goose.DownTo(database.Admin, migrations, 47)
-	assertPostgresConstraint(
-		t,
-		err,
-		"atomic_stage_graph_admission_rollback_is_unsafe",
-	)
-	version, versionErr := goose.GetDBVersion(database.Admin)
-	if versionErr != nil || version != 51 {
-		t.Fatalf("StageRun output binding version after refused Down = %d error=%v", version, versionErr)
-	}
 }
 
 func TestStageRunOutputBindingMigrationRoundTrip(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 48)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 
 	if err := goose.DownTo(database.Admin, migrations, 47); err != nil {
@@ -730,11 +719,11 @@ func TestStageCacheRejectsProfileEquivalenceMismatch(t *testing.T) {
 	assertPostgresConstraint(t, err, "stage_cache_admit_authority_stale")
 }
 
-func TestStageCacheMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
+func TestStageCacheMigrationEmptyDownUp(t *testing.T) {
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 44)
 		if err := goose.DownTo(database.Admin, migrations, 43); err != nil {
 			t.Fatalf("migrate empty Stage Cache down: %v", err)
 		}
@@ -746,42 +735,6 @@ func TestStageCacheMigrationRoundTripAndDurableEvidenceRefusal(t *testing.T) {
 		version, err := goose.GetDBVersion(database.Admin)
 		if err != nil || version != 44 {
 			t.Fatalf("Stage Cache version after Down Up = %d error=%v", version, err)
-		}
-	})
-
-	t.Run("durable evidence refuses Down", func(t *testing.T) {
-		fixture := newPinnedStageCacheFixture(t, "stage-cache-migration-refusal")
-		err := goose.DownTo(fixture.database.Admin, migrations, 43)
-		assertPostgresConstraint(
-			t,
-			err,
-			"atomic_stage_graph_admission_rollback_is_unsafe",
-		)
-		version, versionErr := goose.GetDBVersion(fixture.database.Admin)
-		if versionErr != nil || version != 51 {
-			t.Fatalf(
-				"Stage Cache version after refused Down = %d error=%v",
-				version, versionErr,
-			)
-		}
-		var entries, commands, pins, bindings int
-		if err := fixture.database.Admin.QueryRow(`
-			SELECT
-				(SELECT count(*) FROM stage_cache_entries),
-				(SELECT count(*) FROM stage_cache_commands),
-				(SELECT count(*) FROM stage_artifact_pins WHERE id = $1),
-				(SELECT count(*) FROM stage_run_output_bindings
-				 WHERE stage_run_id = $2 AND stage_artifact_id = $3)
-		`, fixture.hit.PinID, fixture.targetRunID, fixture.hit.ArtifactID).Scan(
-			&entries, &commands, &pins, &bindings,
-		); err != nil {
-			t.Fatalf("read Stage Cache evidence after refused Down: %v", err)
-		}
-		if entries != 1 || commands != 2 || pins != 1 || bindings != 1 {
-			t.Fatalf(
-				"Stage Cache evidence after refused Down entries/commands/pins/bindings = %d/%d/%d/%d",
-				entries, commands, pins, bindings,
-			)
 		}
 	})
 }

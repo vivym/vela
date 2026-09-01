@@ -20,21 +20,3 @@ INSERT INTO inbox_receipts (
 )
 ON CONFLICT DO NOTHING
 RETURNING event_id;
-
--- name: PrepareSchedulerInboxReceipt :one
-SELECT vela_prepare_scheduler_inbox_receipt(
-    sqlc.arg(event_id),
-    sqlc.arg(organization_id),
-    sqlc.arg(project_id),
-    sqlc.arg(aggregate_id),
-    sqlc.arg(aggregate_version)
-);
-
--- name: RecordSchedulerInboxReceipt :one
-SELECT vela_record_scheduler_inbox_receipt(
-    sqlc.arg(event_id),
-    sqlc.arg(organization_id),
-    sqlc.arg(project_id),
-    sqlc.arg(aggregate_id),
-    sqlc.arg(aggregate_version)
-);

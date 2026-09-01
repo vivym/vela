@@ -10,7 +10,7 @@ import (
 func TestValidateRequestAllowsEmptyCertificationOnlyForQuarantine(t *testing.T) {
 	evidence := sha256.Sum256([]byte("validation"))
 	request := Request{
-		OperationID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 1,
+		OperationID: uuid.New(), WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 1,
 		NodeIdentity: "node", DeviceIdentity: "device", FailureClass: "fault",
 		EvidenceDigest: evidence[:], ActionLevel: ActionL7Quarantine,
 		IdempotencyKey: "idempotency", RequestedBy: "actor",

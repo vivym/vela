@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	"github.com/vivym/vela/internal/admission"
@@ -36,13 +35,11 @@ import (
 	"github.com/vivym/vela/internal/cancellation"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/debugdump"
-	"github.com/vivym/vela/internal/finalizationreconciler"
 	"github.com/vivym/vela/internal/financereconciliation"
 	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/fleettransport"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
-	"github.com/vivym/vela/internal/inbox"
 	"github.com/vivym/vela/internal/legalhold"
 	"github.com/vivym/vela/internal/natsauth"
 	"github.com/vivym/vela/internal/nodeagent"
@@ -51,15 +48,13 @@ import (
 	"github.com/vivym/vela/internal/outbox"
 	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
-	"github.com/vivym/vela/internal/scheduler"
 	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/stagefinalization"
 	"github.com/vivym/vela/internal/stagescheduler"
 	"github.com/vivym/vela/internal/stageworkertransport"
 	"github.com/vivym/vela/internal/strictjson"
 	"github.com/vivym/vela/internal/telemetry"
 	"github.com/vivym/vela/internal/webhook"
-	"github.com/vivym/vela/internal/workercontrol"
-	"github.com/vivym/vela/internal/workertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 )
@@ -67,19 +62,13 @@ import (
 const (
 	defaultHTTPAddress                          = ":8080"
 	defaultManagementAddress                    = ":8081"
-	defaultWorkerGRPCAddress                    = ":8443"
 	defaultFleetGRPCAddress                     = ":8444"
 	defaultStageWorkerControlAddress            = ":8447"
 	defaultRemediationTick                      = 500 * time.Millisecond
 	defaultRemediationBatch                     = 100
 	defaultPublisherBatch                       = 100
 	defaultPublisherTick                        = 500 * time.Millisecond
-	defaultCancellationReconciliationTick       = 500 * time.Millisecond
-	defaultFinalizationReconciliationTick       = 500 * time.Millisecond
-	defaultFailureReconciliationTick            = 500 * time.Millisecond
-	defaultSchedulerTick                        = 500 * time.Millisecond
-	defaultSchedulerClaimTTL                    = 30 * time.Second
-	defaultSchedulerCandidateAttempts           = 5
+	defaultStageFinalizationTick                = 500 * time.Millisecond
 	defaultAttemptCoordinatorTick               = 500 * time.Millisecond
 	defaultAttemptCoordinatorClaimTTL           = 30 * time.Second
 	defaultAttemptCoordinatorRetryDelay         = time.Second
@@ -115,7 +104,6 @@ const (
 	defaultArtifactReplicationBatchSize         = 10
 	defaultShutdownTimeout                      = 20 * time.Second
 	defaultExecutionLeaseTTL                    = 2 * time.Minute
-	defaultWorkerLostGrace                      = 30 * time.Second
 	defaultArtifactInspectionTimeout            = 30 * time.Second
 	defaultArtifactOrphanMinimumAge             = 10 * time.Minute
 	defaultArtifactMaxInputBytes          int64 = 100 * 1024 * 1024 * 1024
@@ -127,10 +115,6 @@ const (
 type config struct {
 	httpAddress                            string
 	managementAddress                      string
-	workerGRPCAddress                      string
-	workerGRPCTLSCertFile                  string
-	workerGRPCTLSKeyFile                   string
-	workerGRPCClientCAFile                 string
 	fleetGRPCAddress                       string
 	fleetGRPCTLSCertFile                   string
 	fleetGRPCTLSKeyFile                    string
@@ -183,12 +167,6 @@ type config struct {
 	remediationTLSRootCAFile               string
 	remediationTick                        time.Duration
 	remediationBatch                       int
-	schedulerDatabaseURL                   string
-	schedulerInboxDatabaseURL              string
-	schedulerID                            string
-	schedulerTick                          time.Duration
-	schedulerClaimTTL                      time.Duration
-	schedulerCandidateAttempts             int
 	attemptCoordinatorDatabaseURL          string
 	attemptCoordinatorID                   string
 	attemptCoordinatorTick                 time.Duration
@@ -250,15 +228,11 @@ type config struct {
 	natsOutboxAccountPublicKey             string
 	natsOutboxAccountSignerPublicKeys      string
 	natsOutboxUserPublicKeys               string
-	natsSchedulerCredentials               string
-	natsSchedulerUserPublicKeys            string
 	natsClientCert                         string
 	natsClientKey                          string
 	publisherBatchSize                     int32
 	publisherTick                          time.Duration
-	cancellationTick                       time.Duration
-	finalizationTick                       time.Duration
-	failureTick                            time.Duration
+	stageFinalizationTick                  time.Duration
 	artifactCleanupTick                    time.Duration
 	artifactS3Endpoint                     string
 	artifactS3Region                       string
@@ -279,7 +253,6 @@ type config struct {
 	leaseActiveKeyID                       string
 	leaseKeyringFile                       string
 	executionLeaseTTL                      time.Duration
-	workerLostGrace                        time.Duration
 	artifactValidatorHelper                string
 	artifactFFprobePath                    string
 	artifactSandboxRoot                    string
@@ -290,30 +263,20 @@ type config struct {
 	artifactMaxInputBytes                  int64
 	artifactMaxProbeBytes                  int64
 	artifactMaxStderrBytes                 int64
-	artifactReconcilerID                   string
+	stageFinalizerID                       string
 	artifactOrphanMinimumAge               time.Duration
 	artifactCleanupBatch                   int
 }
 
-type cancellationStopReconciler interface {
-	ReconcileNextCancellationStop(context.Context) (cancellation.StopResult, error)
-}
-
-type artifactFinalizationReconciler interface {
-	ReconcileNext(context.Context) (finalizationreconciler.Result, error)
-}
-
-type executionFailureReconciler interface {
-	ReconcileNextExecutionFailure(context.Context) (workercontrol.ReconciliationResult, error)
+type stageFinalizationReconciler interface {
+	ReconcileNext(
+		context.Context,
+		stagefinalization.AuthenticatedFinalizer,
+	) (stagefinalization.ReconcileResult, error)
 }
 
 type artifactMultipartCleaner interface {
 	Reconcile(context.Context) (artifactcleanup.Result, error)
-}
-
-type hierarchicalScheduler interface {
-	ReconcileExpired(context.Context) (int64, error)
-	RunCycle(context.Context) ([]scheduler.Dispatch, error)
 }
 
 type stageSchedulerMaintenance interface {
@@ -628,21 +591,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure Remediation dispatcher: %w", err)
 	}
-	schedulerPool, err := openPool(ctx, configuration.schedulerDatabaseURL, 5, veladb.RoleScheduler)
-	if err != nil {
-		return fmt.Errorf("open Scheduler database pool: %w", err)
-	}
-	defer schedulerPool.Close()
-	schedulerInboxPool, err := openPool(
-		ctx,
-		configuration.schedulerInboxDatabaseURL,
-		5,
-		veladb.RoleSchedulerInbox,
-	)
-	if err != nil {
-		return fmt.Errorf("open Scheduler Inbox database pool: %w", err)
-	}
-	defer schedulerInboxPool.Close()
 	attemptCoordinatorPool, err := openPool(
 		ctx,
 		configuration.attemptCoordinatorDatabaseURL,
@@ -900,7 +848,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure non-content expiry Reconciler: %w", err)
 	}
-	workerCoordinator, err := openWorkerCoordinator(
+	stageFinalizer, err := openStageFinalizer(
 		ctx,
 		internalPool,
 		artifactStore,
@@ -908,14 +856,6 @@ func run() error {
 	)
 	if err != nil {
 		return err
-	}
-	scheduling, err := scheduler.NewService(schedulerPool, workerCoordinator, scheduler.Config{
-		SchedulerID:       configuration.schedulerID,
-		ClaimTTL:          configuration.schedulerClaimTTL,
-		CandidateAttempts: configuration.schedulerCandidateAttempts,
-	})
-	if err != nil {
-		return fmt.Errorf("configure Scheduler: %w", err)
 	}
 	stageAttemptCoordinator, err := attemptcoordinator.NewAutomatedService(
 		attemptCoordinatorPool,
@@ -981,46 +921,10 @@ func run() error {
 		return fmt.Errorf("listen for StageWorkerControl gRPC: %w", err)
 	}
 	defer func() { _ = stageWorkerListener.Close() }()
-	capacityPredictor, err := scheduler.NewCapacityPredictor(schedulerPool)
-	if err != nil {
-		return fmt.Errorf("configure Scheduler capacity predictor: %w", err)
-	}
-	workerIdentityResolver, err := workertransport.NewPostgresIdentityResolver(internalPool)
-	if err != nil {
-		return err
-	}
-	fleetService, err := fleet.NewService(fleetPool, internalPool)
+	fleetService, err := fleet.NewService(fleetPool)
 	if err != nil {
 		return fmt.Errorf("configure Fleet service: %w", err)
 	}
-	workerControlAdapter, err := workertransport.NewServer(
-		workerIdentityResolver,
-		workerCoordinator,
-		artifactStore,
-		fleetService,
-	)
-	if err != nil {
-		return err
-	}
-	workerTransportCredentials, err := workertransport.NewServerTLSCredentials(
-		configuration.workerGRPCTLSCertFile,
-		configuration.workerGRPCTLSKeyFile,
-		configuration.workerGRPCClientCAFile,
-	)
-	if err != nil {
-		return err
-	}
-	workerGRPCServer := grpc.NewServer(
-		grpc.Creds(workerTransportCredentials),
-		grpc.MaxRecvMsgSize(1<<20),
-		grpc.MaxSendMsgSize(4<<20),
-	)
-	velav1.RegisterWorkerControlServiceServer(workerGRPCServer, workerControlAdapter)
-	workerListener, err := net.Listen("tcp", configuration.workerGRPCAddress)
-	if err != nil {
-		return fmt.Errorf("listen for Worker gRPC: %w", err)
-	}
-	defer func() { _ = workerListener.Close() }()
 	fleetMaintenanceAdapter, err := fleettransport.NewServer(
 		fleetService,
 		fleettransport.Config{
@@ -1051,14 +955,6 @@ func run() error {
 		return fmt.Errorf("listen for Fleet maintenance gRPC: %w", err)
 	}
 	defer func() { _ = fleetListener.Close() }()
-	artifactReconciler, err := finalizationreconciler.New(
-		workerCoordinator,
-		artifactStore,
-		workercontrol.AuthenticatedReconciler{ID: configuration.artifactReconcilerID},
-	)
-	if err != nil {
-		return err
-	}
 	multipartRegistry, err := artifactcleanup.NewPostgresRegistry(internalPool)
 	if err != nil {
 		return err
@@ -1081,20 +977,6 @@ func run() error {
 		return err
 	}
 	defer natsConnection.Close()
-	schedulerNATSConnection, err := connectSchedulerNATS(configuration)
-	if err != nil {
-		return err
-	}
-	defer schedulerNATSConnection.Close()
-	schedulerInboxProcessor, err := inbox.NewSchedulerProcessor(schedulerInboxPool)
-	if err != nil {
-		return fmt.Errorf("configure Scheduler Inbox processor: %w", err)
-	}
-	schedulerMessageConsumer, err := inbox.NewJetStreamConsumer(schedulerInboxProcessor)
-	if err != nil {
-		return fmt.Errorf("configure Scheduler JetStream Inbox consumer: %w", err)
-	}
-	schedulerWakeups := make(chan schedulerCycleRequest, 1)
 	broker, err := outbox.NewJetStreamBroker(natsConnection.Conn)
 	if err != nil {
 		return err
@@ -1176,7 +1058,7 @@ func run() error {
 		OrganizationReporting:  organizationReporting,
 		Retention:              retentionService,
 		DebugDumps:             debugDumpService,
-		Admission:              admission.NewService(requestPool, capacityPredictor),
+		Admission:              admission.NewService(requestPool),
 		Cancellation:           cancellationService,
 		StageGraphCancellation: stageGraphCancellationService,
 		Artifacts:              artifactaccess.NewService(artifactRequestPool, artifactStore),
@@ -1209,8 +1091,6 @@ func run() error {
 			cancelPool,
 			internalPool,
 			fleetPool,
-			schedulerPool,
-			schedulerInboxPool,
 			attemptCoordinatorPool,
 			stageSchedulerPool,
 			billingPool,
@@ -1270,26 +1150,6 @@ func run() error {
 		<-publisherDone
 		return err
 	}
-	if err := schedulerNATSConnection.Activate(); err != nil {
-		stop()
-		<-publisherDone
-		return err
-	}
-	schedulerWakeupDone := make(chan struct{})
-	go func() {
-		defer close(schedulerWakeupDone)
-		runSchedulerWakeupConsumer(
-			ctx,
-			schedulerNATSConnection.Conn,
-			schedulerMessageConsumer,
-			schedulerWakeups,
-		)
-	}()
-	schedulerDone := make(chan struct{})
-	go func() {
-		defer close(schedulerDone)
-		runScheduler(ctx, scheduling, configuration.schedulerTick, schedulerWakeups)
-	}()
 	stageSchedulerDone := make(chan struct{})
 	go func() {
 		defer close(stageSchedulerDone)
@@ -1309,24 +1169,15 @@ func run() error {
 			configuration.attemptCoordinatorTick,
 		)
 	}()
-	reconcilerDone := make(chan struct{})
+	stageFinalizationDone := make(chan struct{})
 	go func() {
-		defer close(reconcilerDone)
-		runCancellationStopReconciler(ctx, cancellationService, configuration.cancellationTick)
-	}()
-	finalizationDone := make(chan struct{})
-	go func() {
-		defer close(finalizationDone)
-		runArtifactFinalizationReconciler(
+		defer close(stageFinalizationDone)
+		runStageFinalizationReconciler(
 			ctx,
-			artifactReconciler,
-			configuration.finalizationTick,
+			stageFinalizer,
+			stagefinalization.AuthenticatedFinalizer{ID: configuration.stageFinalizerID},
+			configuration.stageFinalizationTick,
 		)
-	}()
-	failureDone := make(chan struct{})
-	go func() {
-		defer close(failureDone)
-		runExecutionFailureReconciler(ctx, workerCoordinator, configuration.failureTick)
 	}()
 	cleanupDone := make(chan struct{})
 	go func() {
@@ -1394,15 +1245,6 @@ func run() error {
 		)
 		managementServerErrors <- managementServer.ListenAndServe()
 	}()
-	workerServerErrors := make(chan error, 1)
-	go func() {
-		slog.Info(
-			"vela-control Worker gRPC server started",
-			"address",
-			configuration.workerGRPCAddress,
-		)
-		workerServerErrors <- workerGRPCServer.Serve(workerListener)
-	}()
 	stageWorkerServerErrors := make(chan error, 1)
 	go func() {
 		slog.Info(
@@ -1453,11 +1295,6 @@ func run() error {
 			stop()
 			serveErr = fmt.Errorf("serve management HTTP: %w", err)
 		}
-	case err := <-workerServerErrors:
-		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			stop()
-			serveErr = fmt.Errorf("serve Worker gRPC: %w", err)
-		}
 	case err := <-stageWorkerServerErrors:
 		if err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			stop()
@@ -1498,17 +1335,6 @@ func run() error {
 		fleetGRPCServer.Stop()
 		return errors.New("fleet maintenance gRPC server did not stop before shutdown deadline")
 	}
-	workerServerDone := make(chan struct{})
-	go func() {
-		defer close(workerServerDone)
-		workerGRPCServer.GracefulStop()
-	}()
-	select {
-	case <-workerServerDone:
-	case <-shutdownContext.Done():
-		workerGRPCServer.Stop()
-		return errors.New("worker gRPC server did not stop before shutdown deadline")
-	}
 	stageWorkerServerDone := make(chan struct{})
 	go func() {
 		defer close(stageWorkerServerDone)
@@ -1522,11 +1348,6 @@ func run() error {
 	}
 	stop()
 	select {
-	case <-schedulerDone:
-	case <-shutdownContext.Done():
-		return errors.New("scheduler did not stop before shutdown deadline")
-	}
-	select {
 	case <-stageSchedulerDone:
 	case <-shutdownContext.Done():
 		return errors.New("StageScheduler maintenance did not stop before shutdown deadline")
@@ -1537,29 +1358,14 @@ func run() error {
 		return errors.New("AttemptCoordinator automation did not stop before shutdown deadline")
 	}
 	select {
-	case <-schedulerWakeupDone:
-	case <-shutdownContext.Done():
-		return errors.New("scheduler JetStream wakeup consumer did not stop before shutdown deadline")
-	}
-	select {
 	case <-publisherDone:
 	case <-shutdownContext.Done():
 		return errors.New("outbox Publisher did not stop before shutdown deadline")
 	}
 	select {
-	case <-reconcilerDone:
+	case <-stageFinalizationDone:
 	case <-shutdownContext.Done():
-		return errors.New("cancellation stop reconciler did not stop before shutdown deadline")
-	}
-	select {
-	case <-finalizationDone:
-	case <-shutdownContext.Done():
-		return errors.New("artifact finalization reconciler did not stop before shutdown deadline")
-	}
-	select {
-	case <-failureDone:
-	case <-shutdownContext.Done():
-		return errors.New("execution failure reconciler did not stop before shutdown deadline")
+		return errors.New("stage finalization reconciler did not stop before shutdown deadline")
 	}
 	select {
 	case <-cleanupDone:
@@ -1599,9 +1405,6 @@ func run() error {
 	if err := natsConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
 		return fmt.Errorf("drain NATS connection: %w", err)
 	}
-	if err := schedulerNATSConnection.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
-		return fmt.Errorf("drain NATS Scheduler connection: %w", err)
-	}
 	if serveErr != nil {
 		return serveErr
 	}
@@ -1612,10 +1415,6 @@ func loadConfig() (config, error) {
 	configuration := config{
 		httpAddress:                       envOrDefault("VELA_HTTP_ADDRESS", defaultHTTPAddress),
 		managementAddress:                 envOrDefault("VELA_MANAGEMENT_ADDRESS", defaultManagementAddress),
-		workerGRPCAddress:                 envOrDefault("VELA_WORKER_GRPC_ADDRESS", defaultWorkerGRPCAddress),
-		workerGRPCTLSCertFile:             os.Getenv("VELA_WORKER_GRPC_TLS_CERT_FILE"),
-		workerGRPCTLSKeyFile:              os.Getenv("VELA_WORKER_GRPC_TLS_KEY_FILE"),
-		workerGRPCClientCAFile:            os.Getenv("VELA_WORKER_GRPC_CLIENT_CA_FILE"),
 		fleetGRPCAddress:                  envOrDefault("VELA_FLEET_GRPC_ADDRESS", defaultFleetGRPCAddress),
 		fleetGRPCTLSCertFile:              os.Getenv("VELA_FLEET_GRPC_TLS_CERT_FILE"),
 		fleetGRPCTLSKeyFile:               os.Getenv("VELA_FLEET_GRPC_TLS_KEY_FILE"),
@@ -1674,12 +1473,6 @@ func loadConfig() (config, error) {
 		remediationTLSRootCAFile:          os.Getenv("VELA_REMEDIATION_TLS_ROOT_CA_FILE"),
 		remediationTick:                   defaultRemediationTick,
 		remediationBatch:                  defaultRemediationBatch,
-		schedulerDatabaseURL:              os.Getenv("VELA_SCHEDULER_DATABASE_URL"),
-		schedulerInboxDatabaseURL:         os.Getenv("VELA_SCHEDULER_INBOX_DATABASE_URL"),
-		schedulerID:                       os.Getenv("VELA_SCHEDULER_ID"),
-		schedulerTick:                     defaultSchedulerTick,
-		schedulerClaimTTL:                 defaultSchedulerClaimTTL,
-		schedulerCandidateAttempts:        defaultSchedulerCandidateAttempts,
 		attemptCoordinatorDatabaseURL:     os.Getenv("VELA_ATTEMPT_COORDINATOR_DATABASE_URL"),
 		attemptCoordinatorID:              os.Getenv("VELA_ATTEMPT_COORDINATOR_ID"),
 		attemptCoordinatorTick:            defaultAttemptCoordinatorTick,
@@ -1737,8 +1530,6 @@ func loadConfig() (config, error) {
 		natsOutboxAccountPublicKey:        os.Getenv("VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY"),
 		natsOutboxAccountSignerPublicKeys: os.Getenv("VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS"),
 		natsOutboxUserPublicKeys:          os.Getenv("VELA_NATS_OUTBOX_USER_PUBLIC_KEYS"),
-		natsSchedulerCredentials:          os.Getenv("VELA_NATS_SCHEDULER_CREDENTIALS_FILE"),
-		natsSchedulerUserPublicKeys:       os.Getenv("VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS"),
 		natsClientCert:                    os.Getenv("VELA_NATS_CLIENT_CERT_FILE"),
 		natsClientKey:                     os.Getenv("VELA_NATS_CLIENT_KEY_FILE"),
 		artifactS3Endpoint:                os.Getenv("VELA_ARTIFACT_S3_ENDPOINT"),
@@ -1765,14 +1556,11 @@ func loadConfig() (config, error) {
 		),
 		publisherBatchSize:        defaultPublisherBatch,
 		publisherTick:             defaultPublisherTick,
-		cancellationTick:          defaultCancellationReconciliationTick,
-		finalizationTick:          defaultFinalizationReconciliationTick,
-		failureTick:               defaultFailureReconciliationTick,
+		stageFinalizationTick:     defaultStageFinalizationTick,
 		artifactCleanupTick:       defaultArtifactCleanupTick,
 		leaseActiveKeyID:          os.Getenv("VELA_LEASE_ACTIVE_KEY_ID"),
 		leaseKeyringFile:          os.Getenv("VELA_LEASE_KEYRING_FILE"),
 		executionLeaseTTL:         defaultExecutionLeaseTTL,
-		workerLostGrace:           defaultWorkerLostGrace,
 		artifactValidatorHelper:   os.Getenv("VELA_ARTIFACT_VALIDATOR_HELPER_PATH"),
 		artifactFFprobePath:       os.Getenv("VELA_ARTIFACT_FFPROBE_PATH"),
 		artifactSandboxRoot:       os.Getenv("VELA_ARTIFACT_SANDBOX_ROOT"),
@@ -1783,7 +1571,7 @@ func loadConfig() (config, error) {
 		artifactMaxInputBytes:     defaultArtifactMaxInputBytes,
 		artifactMaxProbeBytes:     defaultArtifactMaxProbeBytes,
 		artifactMaxStderrBytes:    defaultArtifactMaxStderrBytes,
-		artifactReconcilerID:      os.Getenv("VELA_ARTIFACT_RECONCILER_ID"),
+		stageFinalizerID:          os.Getenv("VELA_STAGE_FINALIZER_ID"),
 		artifactOrphanMinimumAge:  defaultArtifactOrphanMinimumAge,
 		artifactCleanupBatch:      defaultArtifactCleanupBatch,
 	}
@@ -1824,9 +1612,6 @@ func loadConfig() (config, error) {
 		"VELA_REMEDIATION_TLS_CERT_FILE":                             configuration.remediationTLSCertFile,
 		"VELA_REMEDIATION_TLS_KEY_FILE":                              configuration.remediationTLSKeyFile,
 		"VELA_REMEDIATION_TLS_ROOT_CA_FILE":                          configuration.remediationTLSRootCAFile,
-		"VELA_SCHEDULER_DATABASE_URL":                                configuration.schedulerDatabaseURL,
-		"VELA_SCHEDULER_INBOX_DATABASE_URL":                          configuration.schedulerInboxDatabaseURL,
-		"VELA_SCHEDULER_ID":                                          configuration.schedulerID,
 		"VELA_ATTEMPT_COORDINATOR_DATABASE_URL":                      configuration.attemptCoordinatorDatabaseURL,
 		"VELA_ATTEMPT_COORDINATOR_ID":                                configuration.attemptCoordinatorID,
 		"VELA_STAGE_SCHEDULER_DATABASE_URL":                          configuration.stageSchedulerDatabaseURL,
@@ -1862,8 +1647,6 @@ func loadConfig() (config, error) {
 		"VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY":                        configuration.natsOutboxAccountPublicKey,
 		"VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS":                configuration.natsOutboxAccountSignerPublicKeys,
 		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS":                          configuration.natsOutboxUserPublicKeys,
-		"VELA_NATS_SCHEDULER_CREDENTIALS_FILE":                       configuration.natsSchedulerCredentials,
-		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS":                       configuration.natsSchedulerUserPublicKeys,
 		"VELA_ARTIFACT_S3_ENDPOINT":                                  configuration.artifactS3Endpoint,
 		"VELA_ARTIFACT_S3_REGION":                                    configuration.artifactS3Region,
 		"VELA_ARTIFACT_S3_BUCKET":                                    configuration.artifactS3Bucket,
@@ -1886,10 +1669,7 @@ func loadConfig() (config, error) {
 		"VELA_ARTIFACT_SPOOL_DIRECTORY":                              configuration.artifactSpoolDirectory,
 		"VELA_ARTIFACT_FFPROBE_VERSION":                              configuration.artifactFFprobeVersion,
 		"VELA_ARTIFACT_VALIDATOR_REVISION":                           configuration.artifactValidatorRevision,
-		"VELA_ARTIFACT_RECONCILER_ID":                                configuration.artifactReconcilerID,
-		"VELA_WORKER_GRPC_TLS_CERT_FILE":                             configuration.workerGRPCTLSCertFile,
-		"VELA_WORKER_GRPC_TLS_KEY_FILE":                              configuration.workerGRPCTLSKeyFile,
-		"VELA_WORKER_GRPC_CLIENT_CA_FILE":                            configuration.workerGRPCClientCAFile,
+		"VELA_STAGE_FINALIZER_ID":                                    configuration.stageFinalizerID,
 		"VELA_FLEET_DATABASE_URL":                                    configuration.fleetDatabaseURL,
 		"VELA_FLEET_GRPC_TLS_CERT_FILE":                              configuration.fleetGRPCTLSCertFile,
 		"VELA_FLEET_GRPC_TLS_KEY_FILE":                               configuration.fleetGRPCTLSKeyFile,
@@ -2074,27 +1854,6 @@ func loadConfig() (config, error) {
 			return config{}, errors.New("environment variable VELA_ARTIFACT_REPLICATION_BATCH_SIZE must be in 1..1000")
 		}
 		configuration.artifactReplicationBatchSize = batchSize
-	}
-	if value := os.Getenv("VELA_SCHEDULER_TICK"); value != "" {
-		tick, err := time.ParseDuration(value)
-		if err != nil || tick <= 0 || tick > time.Minute {
-			return config{}, errors.New("environment variable VELA_SCHEDULER_TICK must be in (0, 1m]")
-		}
-		configuration.schedulerTick = tick
-	}
-	if value := os.Getenv("VELA_SCHEDULER_CLAIM_TTL"); value != "" {
-		claimTTL, err := time.ParseDuration(value)
-		if err != nil || claimTTL <= 0 || claimTTL > 5*time.Minute {
-			return config{}, errors.New("environment variable VELA_SCHEDULER_CLAIM_TTL must be in (0, 5m]")
-		}
-		configuration.schedulerClaimTTL = claimTTL
-	}
-	if value := os.Getenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS"); value != "" {
-		candidateAttempts, err := strconv.Atoi(value)
-		if err != nil || candidateAttempts < 1 || candidateAttempts > 20 {
-			return config{}, errors.New("environment variable VELA_SCHEDULER_CANDIDATE_ATTEMPTS must be in 1..20")
-		}
-		configuration.schedulerCandidateAttempts = candidateAttempts
 	}
 	if value := os.Getenv("VELA_ATTEMPT_COORDINATOR_TICK"); value != "" {
 		tick, err := time.ParseDuration(value)
@@ -2301,53 +2060,6 @@ func connectNATS(configuration config) (*natsauth.OutboxConnection, error) {
 	return connection, nil
 }
 
-func connectSchedulerNATS(configuration config) (*natsauth.SchedulerConnection, error) {
-	connection, err := natsauth.ConnectScheduler(
-		natsauth.SchedulerConfig{
-			URL:                      configuration.natsURL,
-			CredentialsFile:          configuration.natsSchedulerCredentials,
-			RootCAFile:               configuration.natsRootCA,
-			ExpectedAccountPublicKey: configuration.natsOutboxAccountPublicKey,
-			ExpectedAccountSignerPublicKeys: splitCommaSeparated(
-				configuration.natsOutboxAccountSignerPublicKeys,
-			),
-			ExpectedUserPublicKeys: splitCommaSeparated(
-				configuration.natsSchedulerUserPublicKeys,
-			),
-			ClientCertificateFile: configuration.natsClientCert,
-			ClientKeyFile:         configuration.natsClientKey,
-		},
-		natsauth.Handlers{
-			Disconnect: func(err error) {
-				if err != nil {
-					slog.Warn(
-						"NATS Scheduler consumer disconnected; PostgreSQL reconciliation remains authoritative",
-						"error",
-						err,
-					)
-				}
-			},
-			Reconnect: func(connectedURL string) {
-				slog.Info("NATS Scheduler consumer reconnected", "url", connectedURL)
-			},
-			AsyncError: func(err error) {
-				if err != nil {
-					slog.Warn("NATS Scheduler consumer asynchronous error", "error", err)
-				}
-			},
-			Closed: func(err error) {
-				if err != nil {
-					slog.Error("NATS Scheduler consumer connection closed", "error", err)
-				}
-			},
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("connect NATS Scheduler workload: %w", err)
-	}
-	return connection, nil
-}
-
 func splitCommaSeparated(value string) []string {
 	parts := strings.Split(value, ",")
 	values := make([]string, 0, len(parts))
@@ -2388,7 +2100,7 @@ func nodeAgentRegistrations(
 	for nodeIdentity, endpoint := range endpoints {
 		registrations = append(registrations, fleettransport.NodeAgentRegistration{
 			NodeIdentity:   nodeIdentity,
-			WorkerID:       endpoint.WorkerID,
+			AgentID:        endpoint.AgentID,
 			SPIFFEIdentity: endpoint.SPIFFEIdentity,
 		})
 	}
@@ -2534,12 +2246,12 @@ func openArtifactReplicationStores(
 	return source, backup, nil
 }
 
-func openWorkerCoordinator(
+func openStageFinalizer(
 	ctx context.Context,
 	pool *pgxpool.Pool,
 	artifactStore *artifactstore.S3,
 	configuration config,
-) (*workercontrol.Service, error) {
+) (*stagefinalization.Service, error) {
 	sandbox, err := newProductionArtifactSandbox(artifactvalidator.SandboxConfig{
 		HelperPath:     configuration.artifactValidatorHelper,
 		FFprobePath:    configuration.artifactFFprobePath,
@@ -2570,17 +2282,16 @@ func openWorkerCoordinator(
 		return nil, err
 	}
 	defer clearLeaseKeyring(keyring)
-	coordinator, err := workercontrol.NewService(ctx, pool, workercontrol.Config{
+	finalizer, err := stagefinalization.NewService(ctx, pool, stagefinalization.Config{
 		LeaseTTL:          configuration.executionLeaseTTL,
-		WorkerLostGrace:   configuration.workerLostGrace,
 		ActiveLeaseKeyID:  configuration.leaseActiveKeyID,
 		LeaseKeys:         keyring,
 		ArtifactInspector: inspector,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("configure Worker coordinator: %w", err)
+		return nil, fmt.Errorf("configure Stage finalizer: %w", err)
 	}
-	return coordinator, nil
+	return finalizer, nil
 }
 
 func readSecretFile(path string, description string, maxBytes int64) (string, error) {
@@ -2774,71 +2485,6 @@ func runPublisher(ctx context.Context, publisher *outbox.Publisher, interval tim
 	}
 }
 
-func runScheduler(
-	ctx context.Context,
-	scheduling hierarchicalScheduler,
-	interval time.Duration,
-	wakeups <-chan schedulerCycleRequest,
-) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	if ctx.Err() != nil {
-		return
-	}
-	_ = runSchedulerCycle(ctx, scheduling, true)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			_ = runSchedulerCycle(ctx, scheduling, true)
-		case request, open := <-wakeups:
-			if !open {
-				wakeups = nil
-				continue
-			}
-			cycleErr := runSchedulerCycle(ctx, scheduling, false)
-			if request.result == nil {
-				continue
-			}
-			select {
-			case request.result <- cycleErr:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}
-}
-
-type schedulerCycleRequest struct {
-	result chan<- error
-}
-
-func runSchedulerCycle(
-	ctx context.Context,
-	scheduling hierarchicalScheduler,
-	reconcileExpired bool,
-) error {
-	if reconcileExpired {
-		reconciled, err := scheduling.ReconcileExpired(ctx)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("Scheduler claim reconciliation incomplete", "error", err)
-		} else if err == nil && reconciled > 0 {
-			slog.Info("Scheduler expired claims reconciled", "claims", reconciled)
-		}
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	dispatches, err := scheduling.RunCycle(ctx)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		slog.Warn("Scheduler cycle incomplete", "error", err)
-	} else if err == nil && len(dispatches) > 0 {
-		slog.Info("Scheduler cycle dispatched Assignments", "dispatches", len(dispatches))
-	}
-	return err
-}
-
 func runStageSchedulerMaintenance(
 	ctx context.Context,
 	maintenance stageSchedulerMaintenance,
@@ -2924,76 +2570,6 @@ func runStageSchedulerMaintenanceCycle(
 	}
 }
 
-func runSchedulerWakeupConsumer(
-	ctx context.Context,
-	connection *nats.Conn,
-	messages *inbox.JetStreamConsumer,
-	wakeups chan<- schedulerCycleRequest,
-) {
-	const retryDelay = time.Second
-	for ctx.Err() == nil {
-		bindContext, cancelBind := context.WithTimeout(ctx, 5*time.Second)
-		consumer, err := scheduler.BindJetStreamWakeupConsumer(
-			bindContext,
-			connection,
-			messages,
-			func(handlerContext context.Context, _ pgx.Tx) error {
-				return requestSchedulerCycle(handlerContext, wakeups)
-			},
-		)
-		cancelBind()
-		if err == nil {
-			err = consumer.Run(ctx, func(processErr error) {
-				slog.Warn(
-					"Scheduler JetStream wakeup remains unacknowledged",
-					"error",
-					processErr,
-				)
-			})
-		}
-		if ctx.Err() != nil {
-			return
-		}
-		if err != nil {
-			slog.Warn(
-				"Scheduler JetStream wakeup binding unavailable; PostgreSQL reconciliation remains authoritative",
-				"error",
-				err,
-			)
-		}
-		timer := time.NewTimer(retryDelay)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
-			return
-		case <-timer.C:
-		}
-	}
-}
-
-func requestSchedulerCycle(
-	ctx context.Context,
-	wakeups chan<- schedulerCycleRequest,
-) error {
-	if wakeups == nil {
-		return errors.New("scheduler cycle request channel is required")
-	}
-	result := make(chan error, 1)
-	select {
-	case wakeups <- schedulerCycleRequest{result: result}:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	select {
-	case err := <-result:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
 func runInvoiceExporter(ctx context.Context, exporter invoiceExporter, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -3055,9 +2631,10 @@ func runWebhookDispatcher(ctx context.Context, dispatcher webhookDispatcher, int
 	}
 }
 
-func runCancellationStopReconciler(
+func runStageFinalizationReconciler(
 	ctx context.Context,
-	reconciler cancellationStopReconciler,
+	reconciler stageFinalizationReconciler,
+	finalizer stagefinalization.AuthenticatedFinalizer,
 	interval time.Duration,
 ) {
 	ticker := time.NewTicker(interval)
@@ -3068,83 +2645,16 @@ func runCancellationStopReconciler(
 			return
 		default:
 		}
-		result, err := reconciler.ReconcileNextCancellationStop(ctx)
+		result, err := reconciler.ReconcileNext(ctx, finalizer)
 		if err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("Cancellation stop reconciliation incomplete", "error", err)
-		} else if err == nil && result.Decision != cancellation.StopNoWork {
+			slog.Warn("Stage finalization reconciliation incomplete", "error", err)
+		} else if err == nil && result.Claim.Decision != stagefinalization.StageGraphFinalizationNoWork {
 			slog.Info(
-				"Cancellation stop reconciled",
-				"decision", result.Decision,
-				"cancellation_id", result.CancellationID,
-				"job_id", result.JobID,
-				"receipt_id", result.ReceiptID,
-			)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func runArtifactFinalizationReconciler(
-	ctx context.Context,
-	reconciler artifactFinalizationReconciler,
-	interval time.Duration,
-) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		result, err := reconciler.ReconcileNext(ctx)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("Artifact finalization reconciliation incomplete", "error", err)
-		} else if err == nil && result.Takeover != workercontrol.FinalizationTakeoverNoWork {
-			slog.Info(
-				"Artifact finalization reconciled",
-				"takeover", result.Takeover,
-				"attempt_id", result.AttemptID,
-				"job_id", result.JobID,
-				"verified_artifacts", result.Verified,
+				"Stage finalization reconciled",
+				"decision", result.Claim.Decision,
+				"attempt_id", result.Claim.Credentials.AttemptID,
+				"job_id", result.Claim.JobID,
 				"completion", result.Completion.Decision,
-			)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
-func runExecutionFailureReconciler(
-	ctx context.Context,
-	reconciler executionFailureReconciler,
-	interval time.Duration,
-) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-		result, err := reconciler.ReconcileNextExecutionFailure(ctx)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			slog.Warn("Execution failure reconciliation incomplete", "error", err)
-		} else if err == nil && result.Processed {
-			slog.Info(
-				"Execution failure reconciled",
-				"source", result.Source,
-				"job_id", result.Decision.JobID,
-				"attempt_id", result.Decision.AttemptID,
-				"disposition", result.Decision.Disposition,
 			)
 		}
 		select {

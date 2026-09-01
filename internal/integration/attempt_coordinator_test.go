@@ -2416,7 +2416,7 @@ func TestStageGraphCancellationAndFirstProgressProduceOneTerminalBillingOutcome(
 
 func TestStageGraphInstantiationDispatchMigrationBackfillsAndResumes(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 50)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 49); err != nil {
 		t.Fatalf("migrate empty instantiation dispatch down: %v", err)
@@ -2524,7 +2524,7 @@ func TestStageGraphInstantiationDispatchMigrationBackfillsAndResumes(t *testing.
 
 func TestStageGraphInstantiationDispatchMigrationRejectsStorageMismatch(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 50)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 49); err != nil {
 		t.Fatalf("migrate empty instantiation dispatch down: %v", err)
@@ -2573,7 +2573,7 @@ func TestAtomicStageGraphAdmissionMigrationBoundary(t *testing.T) {
 
 	t.Run("empty Down Up restores exact request authority", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 51)
 		assertAtomicStageAdmissionRequestSurface(t, database.Admin, true)
 
 		if err := goose.DownTo(database.Admin, migrations, 50); err != nil {
@@ -2608,7 +2608,7 @@ func TestAtomicStageGraphAdmissionMigrationBoundary(t *testing.T) {
 
 	t.Run("current Admission fails closed on schema 50", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 51)
 		if err := goose.DownTo(database.Admin, migrations, 50); err != nil {
 			t.Fatalf("contract atomic Admission schema for current-service probe: %v", err)
 		}
@@ -2636,7 +2636,7 @@ func TestAtomicStageGraphAdmissionMigrationBoundary(t *testing.T) {
 
 	t.Run("deferred trigger rejects non-atomic Stage Job", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 51)
 		seedAdmissionFixture(t, database.Admin)
 		seedStageExecutionCatalog(t, database.Admin)
 		activateH3StageGraph(t, database)
@@ -2662,7 +2662,7 @@ func TestAtomicStageGraphAdmissionMigrationBoundary(t *testing.T) {
 
 	t.Run("request context is exact", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 51)
 		seedAdmissionFixture(t, database.Admin)
 		requestPool := newRolePool(
 			t, database.DSN, "vela_request_login", "vela-request-password",
@@ -2712,21 +2712,25 @@ func TestAtomicStageGraphAdmissionMigrationBoundary(t *testing.T) {
 
 	t.Run("durable Admission evidence refuses Down", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 51)
 		seedAdmissionFixture(t, database.Admin)
 		seedStageExecutionCatalog(t, database.Admin)
 		activateH3StageGraph(t, database)
-		server := admissionServerForDatabase(t, database)
-		accepted := submitJob(t, server.URL, "atomic-admission-down-refusal", []byte(`{
-			"model":"minimax-h3",
-			"generation_preset":"balanced",
-			"service_class":"standard",
-			"output_spec":"video-1080p-5s-24fps",
-			"generation_count":1,
-			"prompt":"durable atomic Admission evidence"
-		}`))
-		if accepted.StatusCode != http.StatusAccepted {
-			t.Fatalf("submit atomic Admission evidence status = %d, body=%s", accepted.StatusCode, accepted.Body)
+		tx, job := beginPreDispatchStageJob(
+			t, database.Admin, "atomic Admission rollback evidence",
+		)
+		if _, err := tx.Exec(`
+			UPDATE stage_graph_instantiation_work
+			SET state = 'COMPLETED',
+				completed_at = clock_timestamp(),
+				completion_reason = 'ADMISSION_TRANSACTION_INSTANTIATED',
+				updated_at = clock_timestamp()
+			WHERE job_id = $1
+		`, job.JobID); err != nil {
+			t.Fatalf("record atomic Admission rollback evidence: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("commit atomic Admission rollback evidence: %v", err)
 		}
 
 		err := goose.DownTo(database.Admin, migrations, 50)
@@ -2829,7 +2833,7 @@ func TestStageAttemptAuthorityMigrationRoundTripAndDurableAuthorityRefusal(t *te
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up restores legacy cancellation surface", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 36)
 		if err := goose.DownTo(database.Admin, migrations, 35); err != nil {
 			t.Fatalf("migrate empty Stage Attempt authority down: %v", err)
 		}
@@ -2878,31 +2882,129 @@ func TestStageAttemptAuthorityMigrationRoundTripAndDurableAuthorityRefusal(t *te
 	})
 
 	t.Run("durable Stage graph authority refuses Down at cutover boundary", func(t *testing.T) {
-		database, _, _, _, attemptID, _, _ :=
-			newStageGraphCancellationFixture(t, "stage-attempt-migration-refusal")
-		err := goose.DownTo(database.Admin, migrations, 35)
+		database := newPostgres(t)
+		applyFoundationTo(t, database.Admin, 36)
+		seedAdmissionFixture(t, database.Admin)
+		seedStageExecutionCatalog(t, database.Admin)
+		jobID := uuid.New()
+		snapshotID := uuid.New()
+		tx, err := database.Admin.Begin()
+		if err != nil {
+			t.Fatalf("begin historical Stage authority fixture: %v", err)
+		}
+		t.Cleanup(func() { _ = tx.Rollback() })
+		if _, err := tx.Exec(`
+			INSERT INTO jobs (
+				id, organization_id, project_id, created_by_principal_id,
+				model_revision_id, generation_preset_revision_id,
+				service_class_revision_id, output_spec_id, worker_pool_id,
+				request_hash, request_content, request_content_expires_at,
+				retention_policy_revision_id, retention_artifact_days,
+				retention_request_content_days, retention_incomplete_content_hours,
+				retention_scratch_hours, retention_debug_hours,
+				retention_metadata_days, retention_financial_days,
+				pricing_rate_card_revision_id, pricing_rate_line_id,
+				pricing_unit_amount_minor, pricing_quantity,
+				pricing_quoted_amount_minor, pricing_currency,
+				execution_max_attempts, execution_max_total_compute_seconds,
+				execution_max_finalization_seconds_per_attempt,
+				execution_retry_backoff_policy,
+				execution_retryable_failure_classes,
+				execution_circuit_breaker_policy,
+				execution_circuit_fingerprint_window_seconds,
+				execution_circuit_min_distinct_healthy_workers,
+				job_expires_at
+			)
+			SELECT
+				$1::uuid, project.organization_id, project.id, $2,
+				'00000000-0000-0000-0000-000000000010',
+				'00000000-0000-0000-0000-000000000011', service.id,
+				'00000000-0000-0000-0000-000000000013',
+				'00000000-0000-0000-0000-000000000005',
+				sha256(convert_to($1::uuid::text, 'UTF8')),
+				'{"model":"minimax-h3","prompt":"historical Stage authority"}'::jsonb,
+				transaction_timestamp() + interval '2 days',
+				project.retention_policy_revision_id,
+				project.retention_artifact_days,
+				project.retention_request_content_days,
+				project.retention_incomplete_content_hours,
+				project.retention_scratch_hours,
+				project.retention_debug_hours,
+				project.retention_metadata_days,
+				project.retention_financial_days,
+				'00000000-0000-0000-0000-000000000016',
+				'00000000-0000-0000-0000-000000000017',
+				1250, 1, 1250, 'CNY', service.max_attempts, 2400,
+				service.max_finalization_seconds_per_attempt,
+				service.retry_backoff_policy, service.retryable_failure_classes,
+				service.circuit_breaker_policy,
+				service.circuit_fingerprint_window_seconds,
+				service.circuit_min_distinct_healthy_workers,
+				transaction_timestamp() + interval '1 day'
+			FROM projects AS project
+			JOIN service_class_revisions AS service
+			  ON service.id = '00000000-0000-0000-0000-000000000012'
+			WHERE project.organization_id = $3 AND project.id = $4
+		`, jobID, testPrincipalID, testOrganizationID, testProjectID); err != nil {
+			t.Fatalf("insert historical Stage authority Job: %v", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO credit_reservations (
+				id, organization_id, project_id, job_id, amount_minor, currency
+			) VALUES ($1, $2, $3, $4, 1250, 'CNY')
+		`, uuid.New(), testOrganizationID, testProjectID, jobID); err != nil {
+			t.Fatalf("insert historical Stage authority CreditReservation: %v", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
+			VALUES ($1, $2, $3)
+		`, jobID, testOrganizationID, testProjectID); err != nil {
+			t.Fatalf("insert historical Stage authority RetryRuntimeState: %v", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO execution_graph_snapshots (
+				id, organization_id, project_id, job_id,
+				execution_graph_revision_id, execution_profile_revision_id,
+				graph_content_digest, topological_order, snapshot_contract
+			)
+			SELECT
+				$1, $2, $3, $4, graph.id, profile.id,
+				graph.content_digest, ARRAY['encoder', 'dit', 'vae'],
+				jsonb_build_object('source', 'schema-36-rollback-fixture')
+			FROM execution_graph_revisions AS graph
+			JOIN execution_profile_revisions AS profile
+			  ON profile.id = $5
+			 AND profile.execution_graph_revision_id = graph.id
+			WHERE graph.id = $6
+		`, snapshotID, testOrganizationID, testProjectID, jobID,
+			graphExecutionProfileID, stageGraphID); err != nil {
+			t.Fatalf("insert historical Stage authority snapshot: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("commit historical Stage authority fixture: %v", err)
+		}
+
+		err = goose.DownTo(database.Admin, migrations, 35)
 		assertPostgresConstraint(
 			t,
 			err,
-			"atomic_stage_graph_admission_rollback_is_unsafe",
+			"stage_attempt_authority_rollback_is_unsafe",
 		)
 		version, versionErr := goose.GetDBVersion(database.Admin)
-		if versionErr != nil || version != 51 {
+		if versionErr != nil || version != 36 {
 			t.Fatalf(
 				"Stage Attempt authority version after refusal = %d error=%v",
 				version, versionErr,
 			)
 		}
-		var attempts, runs int64
+		var snapshots int64
 		if err := database.Admin.QueryRow(`
-			SELECT
-				(SELECT count(*) FROM attempts WHERE id = $1),
-				(SELECT count(*) FROM stage_runs WHERE attempt_id = $1)
-		`, attemptID).Scan(&attempts, &runs); err != nil {
+			SELECT count(*) FROM execution_graph_snapshots WHERE id = $1
+		`, snapshotID).Scan(&snapshots); err != nil {
 			t.Fatalf("read durable Stage graph authority after refusal: %v", err)
 		}
-		if attempts != 1 || runs != 3 {
-			t.Fatalf("durable Stage graph authority after refusal = attempts/runs %d/%d", attempts, runs)
+		if snapshots != 1 {
+			t.Fatalf("durable Stage graph authority snapshots after refusal = %d, want 1", snapshots)
 		}
 	})
 }
@@ -3211,6 +3313,7 @@ func seedDiTAssignmentProfile(t *testing.T, database testDatabase) {
 
 func activateH3StageGraph(t *testing.T, database testDatabase) {
 	t.Helper()
+	seedH3ProfileCertification(t, database.Admin)
 	seedH3AdmissionCapacityPath(t, database)
 	activateH3ExecutionGraph(t, database)
 	activateStageCutoverRevision(
