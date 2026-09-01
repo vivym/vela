@@ -63,6 +63,8 @@ func TestStageWorkerRuntimeConfigDefinesProductionCompositionInputs(t *testing.T
 		"control-server-name",
 		"heartbeat-interval",
 		"materialization-journal-limit",
+		"model-runtime-cancel-timeout",
+		"model-runtime-shutdown-timeout",
 		"retry-maximum",
 		"retry-minimum",
 		"source-loss-consumed-resource-units",
@@ -81,6 +83,21 @@ func TestStageWorkerRuntimeConfigDefinesProductionCompositionInputs(t *testing.T
 		config.Metadata.Namespace != "vela-system" || !config.Immutable ||
 		!reflect.DeepEqual(gotKeys, wantKeys) {
 		t.Fatalf("Stage Worker runtime ConfigMap = %#v keys=%#v", config, gotKeys)
+	}
+}
+
+func TestModelRuntimeVerifierConfigContainsOnlyImmutablePublicAuthority(t *testing.T) {
+	var config stageWorkerConfigMap
+	loadStageWorkerYAML(t, "model-runtime-verifier.yaml", &config)
+	var keyring map[string]string
+	if err := json.Unmarshal([]byte(config.Data["verifier-keyring.json"]), &keyring); err != nil {
+		t.Fatalf("decode ModelRuntime verifier keyring: %v", err)
+	}
+	if config.APIVersion != "v1" || config.Kind != "ConfigMap" ||
+		config.Metadata.Name != "vela-model-runtime-verifier-placeholder" ||
+		config.Metadata.Namespace != "vela-system" || !config.Immutable || len(config.Data) != 1 ||
+		len(keyring) != 1 || keyring["stage-authority-r0-placeholder"] == "" {
+		t.Fatalf("ModelRuntime verifier ConfigMap = %#v keyring=%#v", config, keyring)
 	}
 }
 
@@ -169,7 +186,7 @@ func TestRenderedStageWorkerBaseContainsNoStaticWorkload(t *testing.T) {
 			kinds = append(kinds, document.Kind)
 		}
 	}
-	if !reflect.DeepEqual(kinds, []string{"Namespace", "ServiceAccount", "ConfigMap"}) {
+	if !reflect.DeepEqual(kinds, []string{"Namespace", "ServiceAccount", "ConfigMap", "ConfigMap"}) {
 		t.Fatalf("rendered Stage Worker kinds = %v", kinds)
 	}
 }

@@ -614,14 +614,12 @@ func validateModelRuntimeOCIConfig(image string, encoded []byte) error {
 	if err := decodeStrictJSON(encoded, &config); err != nil {
 		return invalidf("decode ModelRuntime OCI config for %s: %v", image, err)
 	}
-	entrypoint := config.Config.Entrypoint
-	if len(entrypoint) == 0 || len(entrypoint) > 64 || !strings.HasPrefix(entrypoint[0], "/") {
-		return invalidf("ModelRuntime OCI config for %s must bind an absolute entrypoint", image)
-	}
-	for _, argument := range entrypoint {
-		if !ValidRevision(argument) {
-			return invalidf("ModelRuntime OCI config for %s contains an invalid entrypoint", image)
-		}
+	if !reflect.DeepEqual(config.Config.Entrypoint, []string{"/usr/local/bin/vela-model-runtime"}) ||
+		len(config.Config.Cmd) != 0 {
+		return invalidf(
+			"ModelRuntime OCI config for %s must bind the exact vela-model-runtime entrypoint",
+			image,
+		)
 	}
 	return nil
 }

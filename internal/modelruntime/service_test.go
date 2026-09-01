@@ -141,6 +141,100 @@ func TestFileEpochStoreAdvancesEpochAndRejectsPreRestartAuthority(t *testing.T) 
 	}
 }
 
+func TestFileEpochStoreAdvancesPastDurableEpochFloor(t *testing.T) {
+	store, err := modelruntime.NewFileEpochStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFileEpochStore: %v", err)
+	}
+	binding := runtimeBinding()
+	binding.ModelRuntimeEpoch = 0
+	first, err := modelruntime.NewService(modelruntime.Config{
+		Binding: binding, EpochStore: store, EpochFloor: 41,
+		Validator: mustRuntimeValidator(t), Backend: modelruntime.NewFakeDiTRuntime(),
+		CancelTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewService above floor: %v", err)
+	}
+	t.Cleanup(first.Close)
+	identity, err := first.ProbeReadiness(
+		context.Background(), &velav1.ModelRuntimeServiceProbeReadinessRequest{},
+	)
+	if err != nil || identity.GetIdentity().GetModelRuntimeEpoch() != 42 {
+		t.Fatalf("allocated epoch = %#v error=%v, want 42", identity, err)
+	}
+	second, err := modelruntime.NewService(modelruntime.Config{
+		Binding: binding, EpochStore: store, EpochFloor: 41,
+		Validator: mustRuntimeValidator(t), Backend: modelruntime.NewFakeDiTRuntime(),
+		CancelTimeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewService after persisted epoch: %v", err)
+	}
+	t.Cleanup(second.Close)
+	identity, err = second.ProbeReadiness(
+		context.Background(), &velav1.ModelRuntimeServiceProbeReadinessRequest{},
+	)
+	if err != nil || identity.GetIdentity().GetModelRuntimeEpoch() != 43 {
+		t.Fatalf("allocated epoch = %#v error=%v, want 43", identity, err)
+	}
+}
+
+func TestFileEpochStoreKeepsAUXResidencyEpochsIndependent(t *testing.T) {
+	store, err := modelruntime.NewFileEpochStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFileEpochStore: %v", err)
+	}
+	validator := mustRuntimeValidator(t)
+	encoderBinding := runtimeBinding()
+	encoderBinding.ModelResidencyID = "51000000-0000-0000-0000-000000000011"
+	encoderBinding.ModelRuntimeIdentity = "h3-encoder-runtime-1"
+	encoderBinding.ModelRuntimeEpoch = 0
+	vaeBinding := runtimeBinding()
+	vaeBinding.ModelResidencyID = "51000000-0000-0000-0000-000000000012"
+	vaeBinding.ModelRuntimeIdentity = "h3-vae-runtime-1"
+	vaeBinding.ModelRuntimeEpoch = 0
+	for _, test := range []struct {
+		name    string
+		binding stageauthority.RuntimeBinding
+		floor   int64
+		want    int64
+	}{
+		{name: "encoder", binding: encoderBinding, floor: 40, want: 41},
+		{name: "vae", binding: vaeBinding, floor: 90, want: 91},
+		{name: "encoder restart", binding: encoderBinding, floor: 40, want: 42},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service, serviceErr := modelruntime.NewService(modelruntime.Config{
+				Binding: test.binding, EpochStore: store, EpochFloor: test.floor,
+				Validator: validator, Backend: modelruntime.NewFakeEncoderRuntime(),
+				CancelTimeout: time.Second,
+			})
+			if serviceErr != nil {
+				t.Fatalf("NewService: %v", serviceErr)
+			}
+			t.Cleanup(service.Close)
+			identity, probeErr := service.ProbeReadiness(
+				context.Background(), &velav1.ModelRuntimeServiceProbeReadinessRequest{},
+			)
+			if probeErr != nil || identity.GetIdentity().GetModelRuntimeEpoch() != test.want {
+				t.Fatalf("allocated epoch = %#v error=%v, want %d", identity, probeErr, test.want)
+			}
+		})
+	}
+}
+
+func mustRuntimeValidator(t *testing.T) *stageauthority.Validator {
+	t.Helper()
+	validator, err := stageauthority.NewValidator(
+		map[string][]byte{"stage-key-9": bytes.Repeat([]byte{0x5a}, 32)}, time.Now,
+	)
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	return validator
+}
+
 func TestModelRuntimeStartCannotInstallAuthorityBeforePrepare(t *testing.T) {
 	clock := newManualClock(time.Date(2026, 8, 30, 6, 15, 0, 0, time.UTC))
 	signer, validator := runtimeAuthorityCrypto(t, clock)

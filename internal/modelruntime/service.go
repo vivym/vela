@@ -45,6 +45,7 @@ type Config struct {
 	BackendFactory func(stageauthority.RuntimeBinding) (Backend, error)
 	Clock          Clock
 	CancelTimeout  time.Duration
+	EpochFloor     int64
 }
 
 type Service struct {
@@ -99,11 +100,22 @@ func NewService(config Config) (*Service, error) {
 	if err := validateBindingTemplate(config.Binding); err != nil {
 		return nil, err
 	}
-	epoch, err := config.EpochStore.Next(cloneBinding(config.Binding))
+	if config.EpochFloor < 0 {
+		return nil, errors.New("ModelRuntime epoch floor is invalid")
+	}
+	var (
+		epoch int64
+		err   error
+	)
+	if floorStore, ok := config.EpochStore.(EpochFloorStore); ok {
+		epoch, err = floorStore.NextAfter(cloneBinding(config.Binding), config.EpochFloor)
+	} else {
+		epoch, err = config.EpochStore.Next(cloneBinding(config.Binding))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("allocate ModelRuntime epoch: %w", err)
 	}
-	if epoch <= 0 {
+	if epoch <= config.EpochFloor {
 		return nil, errors.New("ModelRuntime epoch store returned an invalid epoch")
 	}
 	config.Binding.ModelRuntimeEpoch = epoch

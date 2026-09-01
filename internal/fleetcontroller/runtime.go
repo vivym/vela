@@ -89,6 +89,9 @@ func cloneWorkerBundleActuation(bundle WorkerBundleActuation) WorkerBundleActuat
 			cloned.WorkerInstances[index].ModelRuntimes[runtimeIndex].Command = append(
 				[]string(nil), modelRuntime.Command...,
 			)
+			cloned.WorkerInstances[index].ModelRuntimes[runtimeIndex].Environment = append(
+				[]string(nil), modelRuntime.Environment...,
+			)
 		}
 		cloned.WorkerInstances[index].Members = make([]WorkerMemberActuation, len(worker.Members))
 		for memberIndex, member := range worker.Members {

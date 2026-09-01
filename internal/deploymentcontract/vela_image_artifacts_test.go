@@ -26,6 +26,7 @@ type velaImageArtifactTarget struct {
 var velaImageArtifactTargets = [...]velaImageArtifactTarget{
 	{name: "vela-control", entrypoint: "/usr/local/bin/vela-control"},
 	{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
+	{name: "vela-model-runtime", entrypoint: "/usr/local/bin/vela-model-runtime"},
 	{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 }
 

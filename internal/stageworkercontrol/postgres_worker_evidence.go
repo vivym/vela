@@ -47,8 +47,7 @@ func (backend *PostgresWorkerEvidenceBackend) RegisterWorkerEvidence(
 		len(identity.GetDeviceSetDigest()) != sha256.Size ||
 		len(identity.GetMembershipDigest()) != sha256.Size ||
 		len(request.GetReadinessEvidence()) == 0 || len(request.GetDevices()) == 0 ||
-		len(request.GetDevices()) > 64 || len(request.GetMembers()) == 0 ||
-		len(request.GetMembers()) > 64 {
+		len(request.GetDevices()) > 64 || len(request.GetMembers()) != 1 {
 		return ReadinessResult{}, errors.New("Stage Worker registration evidence is incomplete")
 	}
 	devices, err := registrationDevices(request.GetDevices())
@@ -83,7 +82,7 @@ func (backend *PostgresWorkerEvidenceBackend) RegisterWorkerEvidence(
 	if err != nil {
 		return ReadinessResult{}, fmt.Errorf("encode Stage Worker registration evidence: %w", err)
 	}
-	return backend.readReadiness(ctx, "vela_verify_stage_worker_registration", payload)
+	return backend.readReadiness(ctx, "vela_register_stage_worker_runtime", payload)
 }
 
 func (backend *PostgresWorkerEvidenceBackend) ReportCapacityObservation(

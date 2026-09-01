@@ -5478,6 +5478,18 @@ type ModelRevision struct {
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type ModelRuntimeEpochRegistration struct {
+	ModelResidencyID        uuid.UUID          `db:"model_residency_id" json:"model_residency_id"`
+	ModelRuntimeEpoch       int64              `db:"model_runtime_epoch" json:"model_runtime_epoch"`
+	WorkerInstanceID        uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch     int64              `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	WorkerMemberID          uuid.UUID          `db:"worker_member_id" json:"worker_member_id"`
+	WorkerMemberEpoch       int64              `db:"worker_member_epoch" json:"worker_member_epoch"`
+	ReadinessEvidenceDigest []byte             `db:"readiness_evidence_digest" json:"readiness_evidence_digest"`
+	SpiffeIDDigest          []byte             `db:"spiffe_id_digest" json:"spiffe_id_digest"`
+	RegisteredAt            pgtype.Timestamptz `db:"registered_at" json:"registered_at"`
+}
+
 type NonContentAttemptRoot struct {
 	ID             uuid.UUID          `db:"id" json:"id"`
 	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`

@@ -322,6 +322,7 @@ func verifyStageWorkerControlPrivileges(
 			"vela_start_stage_worker_command(jsonb)",
 			"vela_heartbeat_stage_worker_command(jsonb)",
 			"vela_reattach_stage_worker_command(jsonb)",
+			"vela_register_stage_worker_runtime(jsonb)",
 			"vela_verify_stage_worker_registration(jsonb)",
 			"vela_verify_stage_capacity_observation(jsonb)",
 		},

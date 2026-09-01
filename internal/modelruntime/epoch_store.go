@@ -18,6 +18,10 @@ type EpochStore interface {
 	Next(stageauthority.RuntimeBinding) (int64, error)
 }
 
+type EpochFloorStore interface {
+	NextAfter(stageauthority.RuntimeBinding, int64) (int64, error)
+}
+
 type EpochStoreFunc func(stageauthority.RuntimeBinding) (int64, error)
 
 func (allocate EpochStoreFunc) Next(binding stageauthority.RuntimeBinding) (int64, error) {
@@ -39,8 +43,18 @@ func NewFileEpochStore(directory string) (*FileEpochStore, error) {
 }
 
 func (store *FileEpochStore) Next(binding stageauthority.RuntimeBinding) (int64, error) {
+	return store.NextAfter(binding, 0)
+}
+
+func (store *FileEpochStore) NextAfter(
+	binding stageauthority.RuntimeBinding,
+	minimumExclusive int64,
+) (int64, error) {
 	if store == nil || store.directory == "" {
 		return 0, errors.New("ModelRuntime epoch store is not configured")
+	}
+	if minimumExclusive < 0 {
+		return 0, errors.New("ModelRuntime epoch floor is invalid")
 	}
 	key := strings.Join([]string{
 		binding.WorkerInstanceID,
@@ -64,6 +78,9 @@ func (store *FileEpochStore) Next(binding stageauthority.RuntimeBinding) (int64,
 	current, err := readEpoch(epochPath)
 	if err != nil {
 		return 0, err
+	}
+	if current < minimumExclusive {
+		current = minimumExclusive
 	}
 	if current == int64(^uint64(0)>>1) {
 		return 0, errors.New("ModelRuntime epoch is exhausted")

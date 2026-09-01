@@ -206,6 +206,7 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 		StageWorkerAgentImage:          stageImage,
 		RuntimeImage:                   runtimeImage,
 		StageWorkerConfigMap:           "vela-stage-worker-runtime-r1",
+		ModelRuntimeVerifierConfigMap:  "model-runtime-verifier-r1",
 		StageWorkerControlTLSSecret:    "stage-worker-control-r1",
 		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
 		ArtifactStoreCredentialsSecret: "stage-worker-artifact-credentials-r1",
@@ -213,9 +214,14 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
 			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
 			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			DeviceSetDigest: strings.Repeat("1", 64), MembershipDigest: strings.Repeat("2", 64),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
-				Component: "DIT", ModelComponentRevision: "h3-dit-v1",
+				ModelResidencyID:       uuid.MustParse("49200000-0000-0000-0000-000000000207"),
+				StageProfileRevisionID: uuid.MustParse(ditStageProfileID),
+				ModelRuntimeEpochFloor: 1,
+				Component:              "DIT", ModelComponentRevision: "h3-dit-v1",
 				RuntimeIdentity: "h3-dit-runtime-r1", Command: []string{"/opt/vela/bin/h3-dit"},
+				InitializationTimeout: "2h", ShutdownTimeout: "2m",
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49200000-0000-0000-0000-000000000205"), MemberEpoch: 1,

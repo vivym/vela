@@ -5,3 +5,4 @@ resources:
   - namespace.yaml
   - service-account.yaml
   - runtime-config.yaml
+  - model-runtime-verifier.yaml

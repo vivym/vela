@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
+	"github.com/vivym/vela/internal/modelruntime"
 	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,8 +71,10 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 	}
 	seenWorkers := make(map[string]struct{}, 8)
 	expectedMembers := make(map[string]fleetcontroller.WorkerMemberActuation, 8)
+	expectedWorkers := make(map[string]fleetcontroller.WorkerInstanceActuation, 8)
 	for _, worker := range bundle.WorkerInstances {
 		expectedMembers[worker.ID.String()] = worker.Members[0]
+		expectedWorkers[worker.ID.String()] = worker
 	}
 	var auxPod corev1.Pod
 	for index := range pods.Items {
@@ -113,18 +116,40 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 			t.Fatalf("WorkerInstance Pod %q Stage Worker ModelRuntime socket = %#v", pod.Name, stageAgent.Env)
 		}
 		runtimeContainer := requireContainer(t, pod.Spec.Containers, "model-runtime")
+		if pod.Spec.TerminationGracePeriodSeconds == nil ||
+			*pod.Spec.TerminationGracePeriodSeconds != 150 {
+			t.Fatalf("WorkerInstance Pod %q termination grace = %v, want 150s", pod.Name, pod.Spec.TerminationGracePeriodSeconds)
+		}
 		if len(runtimeContainer.Command) != 0 {
 			t.Fatalf("WorkerInstance Pod %q overrides the ModelRuntime image entrypoint: %v", pod.Name, runtimeContainer.Command)
 		}
-		if requireEnvironment(t, runtimeContainer, "VELA_WORKER_MEMBER_EPOCH") !=
-			strconv.FormatInt(expectedMember.MemberEpoch, 10) ||
-			requireEnvironment(t, runtimeContainer, "VELA_MODEL_RUNTIME_DEVICES_JSON") !=
-				requireEnvironment(t, stageAgent, "VELA_STAGE_WORKER_DEVICES_JSON") {
-			t.Fatalf("WorkerInstance Pod %q ModelRuntime authority = %#v", pod.Name, runtimeContainer.Env)
+		for name, value := range map[string]string{
+			"VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE":            "/etc/vela-model-runtime/private/launch.json",
+			"VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE": "/etc/vela-model-runtime/private/authority/verifier-keyring.json",
+			"VELA_MODEL_RUNTIME_EPOCH_DIRECTORY":                 "/var/lib/vela/stage-worker/scratch/model-runtime-epochs",
+			"VELA_MODEL_RUNTIME_SOCKET":                          "/run/vela-model-runtime/private/runtime.sock",
+		} {
+			if got := requireEnvironment(t, runtimeContainer, name); got != value {
+				t.Fatalf("WorkerInstance Pod %q ModelRuntime environment %s = %q", pod.Name, name, got)
+			}
 		}
-		if requireEnvironment(t, runtimeContainer, "VELA_MODEL_RUNTIME_SOCKET") !=
-			"/run/vela-model-runtime/private/runtime.sock" {
-			t.Fatalf("WorkerInstance Pod %q ModelRuntime socket = %#v", pod.Name, runtimeContainer.Env)
+		requireConfigMapEnvironment(t, runtimeContainer, "VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", "stage-worker-runtime-r1", "model-runtime-cancel-timeout")
+		requireConfigMapEnvironment(t, runtimeContainer, "VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT", "stage-worker-runtime-r1", "model-runtime-shutdown-timeout")
+		initializer := requireContainer(t, pod.Spec.InitContainers, "model-runtime-private-materialization")
+		var launch modelruntime.LaunchManifest
+		if err := json.Unmarshal(
+			[]byte(requireEnvironment(t, initializer, "VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON")),
+			&launch,
+		); err != nil {
+			t.Fatalf("decode WorkerInstance Pod %q launch manifest: %v", pod.Name, err)
+		}
+		if _, err := launch.RuntimeBindings(); err != nil || launch.WorkerInstanceID != workerID ||
+			launch.WorkerMemberID != expectedMember.ID.String() ||
+			launch.DeviceSetDigest != expectedWorkers[workerID].DeviceSetDigest ||
+			launch.MembershipDigest != expectedWorkers[workerID].MembershipDigest ||
+			len(launch.LocalDevices) != 1 ||
+			launch.LocalDevices[0].GPUUUID != expectedMember.DeviceConstraints[0].GPUUUID {
+			t.Fatalf("WorkerInstance Pod %q launch manifest = %#v error=%v", pod.Name, launch, err)
 		}
 		if _, exists := runtimeContainer.Resources.Limits["nvidia.com/gpu"]; exists {
 			t.Fatalf("WorkerInstance Pod %q retained generic nvidia.com/gpu allocation", pod.Name)
@@ -177,13 +202,18 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 			t.Fatalf("exact GPU claim %q selector %q misses %#v", claim.Name, expression, expected)
 		}
 	}
-	var runtimes []fleetcontroller.ModelRuntimeProcess
+	var auxLaunch modelruntime.LaunchManifest
 	if err := json.Unmarshal(
-		[]byte(requireEnvironment(t, requireContainer(t, auxPod.Spec.Containers, "model-runtime"), "VELA_MODEL_RUNTIMES_JSON")),
-		&runtimes,
-	); err != nil || len(runtimes) != 2 || runtimes[0].Component != "ENCODER" ||
-		runtimes[1].Component != "VAE_DECODER" {
-		t.Fatalf("AUX runtime processes = %#v error=%v", runtimes, err)
+		[]byte(requireEnvironment(
+			t, requireContainer(t, auxPod.Spec.InitContainers, "model-runtime-private-materialization"),
+			"VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON",
+		)),
+		&auxLaunch,
+	); err != nil || len(auxLaunch.Runtimes) != 2 || auxLaunch.Runtimes[0].Component != "ENCODER" ||
+		auxLaunch.Runtimes[1].Component != "VAE_DECODER" ||
+		auxLaunch.Runtimes[0].ModelResidencyID == auxLaunch.Runtimes[1].ModelResidencyID ||
+		auxLaunch.Runtimes[0].ModelRuntimeEpochFloor == auxLaunch.Runtimes[1].ModelRuntimeEpochFloor {
+		t.Fatalf("AUX launch runtimes = %#v error=%v", auxLaunch.Runtimes, err)
 	}
 	stageAgent := requireContainer(t, auxPod.Spec.Containers, "stage-worker-agent")
 	for name, value := range map[string]string{
@@ -250,6 +280,25 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 	if volume := requireVolume(t, auxPod.Spec.Volumes, "stage-worker-private"); volume.EmptyDir == nil || volume.EmptyDir.Medium != corev1.StorageMediumMemory {
 		t.Fatalf("Stage Worker private volume = %#v", volume)
 	}
+	runtimeContainer := requireContainer(t, auxPod.Spec.Containers, "model-runtime")
+	runtimeInitializer := requireContainer(t, auxPod.Spec.InitContainers, "model-runtime-private-materialization")
+	for _, name := range []string{"model-runtime-verifier-projected", "model-runtime-private", "scratch"} {
+		requireVolumeMount(t, runtimeInitializer, name)
+	}
+	for _, name := range []string{"model-runtime-private", "model-runtime-socket", "scratch", "model-weights"} {
+		requireVolumeMount(t, runtimeContainer, name)
+	}
+	for _, forbidden := range []string{
+		"stage-worker-control-projected", "stage-worker-authority-projected",
+		"artifact-store-credentials-projected", "artifact-store-ca-projected", "stage-worker-private",
+	} {
+		if hasVolumeMount(runtimeContainer, forbidden) || hasVolumeMount(runtimeInitializer, forbidden) {
+			t.Fatalf("ModelRuntime materialization mounts private Stage Worker authority %q", forbidden)
+		}
+	}
+	if volume := requireVolume(t, auxPod.Spec.Volumes, "model-runtime-private"); volume.EmptyDir == nil || volume.EmptyDir.Medium != corev1.StorageMediumMemory {
+		t.Fatalf("ModelRuntime private volume = %#v", volume)
+	}
 
 	replayed, err := actuator.Actuate(context.Background(), bundle)
 	if err != nil || !replayed.Converged || replayed.CreatedGPUClaims != 0 ||
@@ -299,6 +348,7 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 		StageWorkerAgentImage:          pinnedImage("vela-stage-worker-agent", 'c'),
 		RuntimeImage:                   pinnedImage("vela-stage-runtime", 'd'),
 		StageWorkerConfigMap:           "stage-worker-runtime-r1",
+		ModelRuntimeVerifierConfigMap:  "model-runtime-verifier-r1",
 		StageWorkerControlTLSSecret:    "stage-worker-control-tls-r1",
 		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
 		ArtifactStoreCredentialsSecret: "artifact-store-credentials-r1",
@@ -310,9 +360,15 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 			CapacityPoolID:          uuid.MustParse("49300000-0000-0000-0000-000000000032"),
 			Role:                    "llm",
 			CapacitySlots:           1,
+			DeviceSetDigest:         strings.Repeat("1", 64),
+			MembershipDigest:        strings.Repeat("2", 64),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
-				Component: "LLM", ModelComponentRevision: "future-llm-v1",
+				ModelResidencyID:       uuid.MustParse("49300000-0000-0000-0000-000000000035"),
+				StageProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000036"),
+				ModelRuntimeEpochFloor: 1,
+				Component:              "LLM", ModelComponentRevision: "future-llm-v1",
 				RuntimeIdentity: "future-llm-runtime-v1", Command: []string{"/opt/vela/bin/llm-runtime"},
+				InitializationTimeout: "2h", ShutdownTimeout: "2m",
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{
 				{
@@ -412,6 +468,13 @@ func TestWorkerBundleActuationRejectsDuplicateDeviceAuthorityAndInvalidH3Shapes(
 			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
 				bundle.WorkerInstances[1].Members[0].DeviceConstraints[0].PCIBDF =
 					bundle.WorkerInstances[0].Members[0].DeviceConstraints[0].PCIBDF
+			},
+		},
+		{
+			name: "duplicate model residency",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				bundle.WorkerInstances[1].ModelRuntimes[0].ModelResidencyID =
+					bundle.WorkerInstances[0].ModelRuntimes[0].ModelResidencyID
 			},
 		},
 		{
@@ -630,6 +693,9 @@ func TestKubernetesActuatorFailsClosedOnMissingOrDriftedExactGPUClaim(t *testing
 func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 	devices := [8]fleetcontroller.DeviceConstraint{}
 	memberEpochs := [8]int64{}
+	deviceSetDigests := [8]string{}
+	membershipDigests := [8]string{}
+	ditRuntimes := [7]fleetcontroller.ModelRuntimeProcess{}
 	for index := range devices {
 		devices[index] = fleetcontroller.DeviceConstraint{
 			DeviceID: uuid.MustParse(
@@ -640,6 +706,20 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 			PCIBDF:      "0000:4" + string(rune('1'+index)) + ":00.0",
 		}
 		memberEpochs[index] = int64(index + 21)
+		deviceSetDigests[index] = strings.Repeat(string(rune('1'+index)), 64)
+		membershipDigests[index] = strings.Repeat(string("89abcdef"[index]), 64)
+		if index > 0 {
+			ditRuntimes[index-1] = fleetcontroller.ModelRuntimeProcess{
+				ModelResidencyID: uuid.MustParse(
+					"49300000-0000-0000-0000-0000000004" + fmt.Sprintf("%02d", index),
+				),
+				StageProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000302"),
+				ModelRuntimeEpochFloor: int64(index + 30),
+				Component:              "DIT", ModelComponentRevision: "h3-dit-v1",
+				RuntimeIdentity: "h3-dit-runtime-v1", Command: []string{"/opt/vela/bin/h3-dit"},
+				InitializationTimeout: "2h", ShutdownTimeout: "2m",
+			}
+		}
 	}
 	return fleetcontroller.H3WorkerBundleSpec{
 		SchemaVersion:  1,
@@ -654,23 +734,31 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 		StageWorkerAgentImage:          pinnedImage("vela-stage-worker-agent", 'c'),
 		RuntimeImage:                   pinnedImage("vela-h3-stage-runtime", 'd'),
 		StageWorkerConfigMap:           "stage-worker-runtime-r1",
+		ModelRuntimeVerifierConfigMap:  "model-runtime-verifier-r1",
 		StageWorkerControlTLSSecret:    "stage-worker-control-tls-r1",
 		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
 		ArtifactStoreCredentialsSecret: "artifact-store-credentials-r1",
 		ArtifactStoreCASecret:          "artifact-store-ca-r1",
 		Devices:                        devices,
 		MemberEpochs:                   memberEpochs,
+		DeviceSetDigests:               deviceSetDigests,
+		MembershipDigests:              membershipDigests,
 		Encoder: fleetcontroller.ModelRuntimeProcess{
-			Component: "ENCODER", ModelComponentRevision: "h3-encoder-v1",
+			ModelResidencyID:       uuid.MustParse("49300000-0000-0000-0000-000000000201"),
+			StageProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000301"),
+			ModelRuntimeEpochFloor: 31,
+			Component:              "ENCODER", ModelComponentRevision: "h3-encoder-v1",
 			RuntimeIdentity: "h3-encoder-runtime-v1", Command: []string{"/opt/vela/bin/h3-encoder"},
+			InitializationTimeout: "2h", ShutdownTimeout: "2m",
 		},
-		DiT: fleetcontroller.ModelRuntimeProcess{
-			Component: "DIT", ModelComponentRevision: "h3-dit-v1",
-			RuntimeIdentity: "h3-dit-runtime-v1", Command: []string{"/opt/vela/bin/h3-dit"},
-		},
+		DiT: ditRuntimes,
 		VAEDecoder: fleetcontroller.ModelRuntimeProcess{
-			Component: "VAE_DECODER", ModelComponentRevision: "h3-vae-decoder-v1",
+			ModelResidencyID:       uuid.MustParse("49300000-0000-0000-0000-000000000209"),
+			StageProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000309"),
+			ModelRuntimeEpochFloor: 39,
+			Component:              "VAE_DECODER", ModelComponentRevision: "h3-vae-decoder-v1",
 			RuntimeIdentity: "h3-vae-decoder-runtime-v1", Command: []string{"/opt/vela/bin/h3-vae-decoder"},
+			InitializationTimeout: "2h", ShutdownTimeout: "2m",
 		},
 	}
 }

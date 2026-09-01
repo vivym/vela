@@ -129,6 +129,7 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 		var startedBackend Backend
 		service, serviceErr := NewService(Config{
 			Binding: binding, EpochStore: config.EpochStore, Validator: config.Validator,
+			EpochFloor: runtime.ModelRuntimeEpochFloor,
 			BackendFactory: func(allocated stageauthority.RuntimeBinding) (Backend, error) {
 				backend, backendErr := backendFactory(runtimeCtx, runtime, allocated, backendConfig)
 				startedBackend = backend

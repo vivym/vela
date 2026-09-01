@@ -14,7 +14,7 @@ The H3 stage-disaggregated architecture is accepted as the replacement target.
 S49.1-S49.11 have committed repository implementations through StageArtifact
 transfer, split H3 execution, exact cache, CPU media stages, and the immutable
 Usage/Cost Ledger, plus the deterministic capacity simulator and advisory
-planning boundary. Migrations `00049` through `00057` continue S49.12 with ModelRevision-scoped
+planning boundary. Migrations `00049` through `00059` continue S49.12 with ModelRevision-scoped
 cutover routing, an explicit internal-Project allowlist, Production Launch
 Receipt gating, immutable Accepted Job authority, legacy database inventory,
 guarded rollback, and automatic multi-replica Accepted STAGE_GRAPH Job
@@ -39,11 +39,14 @@ validates the exact PASS check set. The public operator request contains evidenc
 and bundle paths rather than a caller-asserted digest. The current schema-v1
 bundle and repository necessarily produce FAIL, so no authorization or
 contraction has been claimed. The
-production Stage Worker image, target-only default Fleet
-rollout, dynamic per-member Pod/DRA actuation, and six-render canonical release
+production Stage Worker and ModelRuntime base images, target-only default Fleet
+rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
+advancement with old active-lease fencing, and six-render canonical release
 bundle are implemented with a production-shaped fake-runtime composition smoke.
 They intentionally perform no DDL and do not prove real GPU, Kubernetes, DRA,
-cross-node, or model execution. This is not complete
+cross-node, or model execution. Runtime registration is intentionally fail-closed
+for multi-member Workers until a gang coordinator owns per-member epochs and the
+complete registration barrier. This is not complete
 acceptance closure. Real cluster evidence, the release-coupled schema and
 monolithic-path deletion, permanent reachability closure, and production
 evidence are still pending.

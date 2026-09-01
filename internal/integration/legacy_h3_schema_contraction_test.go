@@ -14,8 +14,8 @@ func TestLegacyH3SchemaContractionFreshInstallNeedsNoProductionAuthorization(t *
 	applyFoundation(t, database.Admin)
 
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 58 {
-		t.Fatalf("fresh Stage-only schema version = %d error=%v, want 58", version, err)
+	if err != nil || version != 59 {
+		t.Fatalf("fresh Stage-only schema version = %d error=%v, want 59", version, err)
 	}
 
 	for _, table := range []string{

@@ -6,41 +6,38 @@ Status: Repository conformance implemented by Slice 42.
 
 Implementation: `eeddbaa`.
 
-This slice adds the repository-owned build boundary for the five Vela OCI
-images required by the canonical release bundle. It builds real `linux/amd64`
-runtime images from the committed control, fleet, Worker, and Runner sources,
-while treating the proprietary H3 backend as an external digest-bound input.
+This slice adds the repository-owned build boundary for four Vela OCI base
+images. It builds real `linux/amd64` runtime images from the committed control,
+fleet, Stage Worker, and ModelRuntime wrapper sources, while treating the
+proprietary H3 drivers as external digest-bound image content.
 It does not publish an image, supply a production backend, create registry or
 signature evidence, or change the current `0/9 PASS` Production Gate result.
 
 ## Build interface
 
 `make print-vela-image-build` prints the resolved Buildx Bake definition and
-`make build-vela-images` builds and loads the exact five revision-tagged images:
+`make build-vela-images` builds and loads the exact four revision-tagged images:
 
 - `vela-control`;
 - `vela-fleet-controller`;
+- `vela-model-runtime`;
 - `vela-stage-worker-agent`;
-- `vela-worker-agent`;
-- `vela-h3-runner`.
 
-Both targets require `RELEASE_REVISION`, `RELEASE_IMAGE_PREFIX`, an absolute
-canonical `H3_BACKEND_CONTEXT`, and a lowercase `H3_BACKEND_SHA256`. The backend
-context may contain exactly one non-symlink regular file named `h3-backend`.
-Before Buildx receives it, repository code streams and verifies its digest and
-requires a little-endian `ELF64 x86-64` executable. Buildx receives only that
-explicitly allowed external context. The Docker build independently rechecks
-the digest and ELF identity before installing the backend.
+Both targets require `RELEASE_REVISION` and `RELEASE_IMAGE_PREFIX`. A deployable
+H3 runtime image is produced downstream by adding the certified driver binaries
+to the `vela-model-runtime` base while preserving the exact
+`/usr/local/bin/vela-model-runtime` entrypoint. The canonical release bundle
+binds the final external image by digest and rejects any other entrypoint.
 
 ## Pinned build and runtime contract
 
-The Dockerfile frontend and the Go, Python, Debian, and uv base images are
+The Dockerfile frontend and the Go and Debian base images are
 digest-pinned. All targets are fixed to `linux/amd64`, carry the supplied OCI
 revision label, run as numeric `10001:10001`, and use exact absolute
 entrypoints. Go binaries use read-only modules, trimmed paths, disabled VCS
-embedding, and an empty build ID. The Runner environment is produced from the
-locked Python project with the exact console entrypoint and includes the
-verified backend at `/opt/vela/bin/h3-backend`.
+embedding, and an empty build ID. The ModelRuntime base contains no model driver;
+the actuation launch manifest names the exact driver command in the final H3
+image.
 
 The control image includes `vela-control`, the separate Artifact Validator
 sandbox helper, CA roots, and a static FFprobe 8.0.1 at `/usr/bin/ffprobe`.
@@ -55,14 +52,9 @@ artifact identity that Slice 43 must capture.
 
 - deployment-contract tests validate the exact Bake group, platforms, tags,
   base digests, runtime stages, non-root users, entrypoints, FFmpeg identity,
-  and backend verification path;
-- negative tests reject a missing backend context or file, digest mismatch,
-  non-ELF input, and symbolic-link input before Buildx;
-- BuildKit Dockerfile checks complete for all five targets without warnings;
-- a local `linux/amd64` smoke build assembles all five images, confirms their
-  OCI labels and entrypoints, executes FFprobe 8.0.1 and the two embedded helper
-  binaries, and uses only a temporary non-production backend for assembly
-  validation.
+  and ModelRuntime entrypoint;
+- BuildKit Dockerfile checks cover all four targets;
+- OCI artifact tests capture and reload all four exact manifest/config pairs.
 
 ## Evidence boundary
 

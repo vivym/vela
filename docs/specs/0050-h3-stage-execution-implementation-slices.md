@@ -339,13 +339,19 @@ They do not
 authorize production activation, prove real Worker-local or N-1 drain, remove
 legacy schema/code, or make the monolithic path unreachable in the repository.
 
-The repository also contains the production `vela-stage-worker-agent` image,
+The repository also contains the production `vela-stage-worker-agent` and
+`vela-model-runtime` base images,
 target-only default Fleet rollout input, dynamic one-member/one-GPU Pod and DRA
 claim materialization, the explicit one-slot Encoder/VAE AUX exception, and a
 canonical release bundle that binds the Stage Worker render, configuration,
-Secret contracts, actuation, and external ModelRuntime image entrypoint. A
-future multi-member/multi-node actuation fixture preserves the LLM shape without
-changing H3 DiT from single-GPU. The composition smoke uses fake local gRPC
+Secret contracts, per-runtime Residency/Profile/epoch-floor actuation, public
+verifier/private-UDS materialization, and the exact external ModelRuntime image
+entrypoint. Dynamic authenticated epoch registration advances Fleet residency
+authority, fences assigned work without inventing Billable Start, and fails
+running leases that retain the old epoch. A future multi-member/multi-node
+actuation fixture preserves the LLM Pod/DRA shape without changing H3 DiT from
+single-GPU, but runtime registration rejects that shape until a gang coordinator
+owns per-member epochs and the complete registration barrier. The composition smoke uses fake local gRPC
 control/ModelRuntime and an in-process S3-compatible endpoint; it is not a real
 GPU, DRA, Kubernetes, cross-node, ModelResidency, or Launch Receipt test.
 The release graph binds external Secret/ConfigMap names and declared revisions,

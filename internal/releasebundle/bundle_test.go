@@ -111,15 +111,16 @@ func TestBuildBindsTargetResidencyPlanStageWorkerAndSecrets(t *testing.T) {
 	}
 }
 
-func TestValidateModelRuntimeOCIConfigRequiresAbsoluteEntrypoint(t *testing.T) {
+func TestValidateModelRuntimeOCIConfigRequiresExactEntrypoint(t *testing.T) {
 	image := "ghcr.io/vivym/vela-h3-stage-runtime@" + testDigest("runtime")
 	for _, test := range []struct {
 		name       string
 		entrypoint []string
 		wantError  bool
 	}{
-		{name: "absolute", entrypoint: []string{"/opt/vela/bin/h3-stage-runtime"}},
-		{name: "absolute with arguments", entrypoint: []string{"/opt/vela/bin/h3-stage-runtime", "--serve"}},
+		{name: "exact", entrypoint: []string{"/usr/local/bin/vela-model-runtime"}},
+		{name: "other absolute", entrypoint: []string{"/opt/vela/bin/h3-stage-runtime"}, wantError: true},
+		{name: "arguments", entrypoint: []string{"/usr/local/bin/vela-model-runtime", "--serve"}, wantError: true},
 		{name: "missing", wantError: true},
 		{name: "relative", entrypoint: []string{"bin/h3-stage-runtime"}, wantError: true},
 	} {
@@ -1164,6 +1165,7 @@ func testResidencyPlanRollout(t *testing.T, images []string) fleetcontroller.Res
 		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
 		Namespace: "vela-system", InitImage: images[0], StageWorkerAgentImage: images[1], RuntimeImage: images[2],
 		StageWorkerConfigMap:           "vela-stage-worker-runtime-r1",
+		ModelRuntimeVerifierConfigMap:  "model-runtime-verifier-r1",
 		StageWorkerControlTLSSecret:    "stage-worker-control-r1",
 		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
 		ArtifactStoreCredentialsSecret: "stage-worker-artifact-credentials-r1",
@@ -1171,9 +1173,14 @@ func testResidencyPlanRollout(t *testing.T, images []string) fleetcontroller.Res
 		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
 			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
 			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			DeviceSetDigest: strings.Repeat("1", 64), MembershipDigest: strings.Repeat("2", 64),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
-				Component: "DIT", ModelComponentRevision: "h3-dit-r1",
+				ModelResidencyID:       uuid.MustParse("49330000-0000-0000-0000-000000000009"),
+				StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
+				ModelRuntimeEpochFloor: 1,
+				Component:              "DIT", ModelComponentRevision: "h3-dit-r1",
 				RuntimeIdentity: "h3-dit-runtime-r1", Command: []string{"/opt/vela/bin/h3-dit"},
+				InitializationTimeout: "2h", ShutdownTimeout: "2m",
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49330000-0000-0000-0000-000000000006"), MemberEpoch: 1,
@@ -1287,10 +1294,14 @@ type manifestFixture struct {
 
 func testOCIManifest(t *testing.T, directory, name string) manifestFixture {
 	t.Helper()
+	entrypoint := "/usr/local/bin/" + name
+	if name == "h3-stage-runtime" {
+		entrypoint = "/usr/local/bin/vela-model-runtime"
+	}
 	config := map[string]any{
 		"architecture": "amd64",
 		"os":           "linux",
-		"config":       map[string]any{"Entrypoint": []string{"/usr/local/bin/" + name}},
+		"config":       map[string]any{"Entrypoint": []string{entrypoint}},
 		"rootfs":       map[string]any{"type": "layers", "diff_ids": []string{}},
 	}
 	configEncoded, err := json.Marshal(config)

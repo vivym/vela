@@ -25,6 +25,8 @@ const (
 	maxLaunchDevices            = 64
 	maxLaunchMembers            = 64
 	maxLaunchRuntimes           = 2
+	maxLaunchEnvironmentEntries = 128
+	maxLaunchEnvironmentBytes   = 4096
 	h3AUXSharedSlotException    = "H3_AUX_ENCODER_VAE"
 )
 
@@ -62,6 +64,7 @@ type LaunchRuntime struct {
 	ModelResidencyID       string   `json:"model_residency_id"`
 	RuntimeIdentity        string   `json:"runtime_identity"`
 	StageProfileRevisionID string   `json:"stage_profile_revision_id"`
+	ModelRuntimeEpochFloor int64    `json:"model_runtime_epoch_floor"`
 	Component              string   `json:"component"`
 	ModelComponentRevision string   `json:"model_component_revision"`
 	RuntimeImageDigest     string   `json:"runtime_image_digest"`
@@ -94,6 +97,20 @@ func LoadLaunchManifest(path string) (LaunchManifest, error) {
 		return LaunchManifest{}, err
 	}
 	return cloneLaunchManifest(manifest), nil
+}
+
+func EncodeLaunchManifest(manifest LaunchManifest) ([]byte, error) {
+	if err := validateLaunchManifest(manifest); err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("encode ModelRuntime launch manifest: %w", err)
+	}
+	if len(encoded) > maxLaunchManifestBytes {
+		return nil, errors.New("ModelRuntime launch manifest exceeds the size limit")
+	}
+	return encoded, nil
 }
 
 func (manifest LaunchManifest) RuntimeBindings() ([]stageauthority.RuntimeBinding, error) {
@@ -258,6 +275,7 @@ func validateLaunchTopology(manifest LaunchManifest) error {
 
 func validateLaunchRuntime(runtime LaunchRuntime) error {
 	if uuid.Validate(runtime.ModelResidencyID) != nil || uuid.Validate(runtime.StageProfileRevisionID) != nil ||
+		runtime.ModelRuntimeEpochFloor < 0 ||
 		!validDriverText(runtime.RuntimeIdentity, 300) || !launchComponentPattern.MatchString(runtime.Component) ||
 		!validDriverText(runtime.ModelComponentRevision, 300) || !validLaunchDigest(runtime.RuntimeImageDigest) ||
 		len(runtime.Command) == 0 || len(runtime.Command) > 128 || !filepath.IsAbs(runtime.Command[0]) ||
@@ -275,10 +293,14 @@ func validateLaunchRuntime(runtime LaunchRuntime) error {
 		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return errors.New("ModelRuntime output root must be below its scratch root")
 	}
+	if len(runtime.Environment) > maxLaunchEnvironmentEntries {
+		return errors.New("ModelRuntime launch manifest environment is too large")
+	}
 	seenEnvironment := make(map[string]struct{}, len(runtime.Environment))
 	for _, entry := range runtime.Environment {
 		name, _, found := strings.Cut(entry, "=")
-		if !found || name == "" || strings.ContainsAny(name, "\x00=") || strings.ContainsRune(entry, '\x00') {
+		if !found || name == "" || len(entry) > maxLaunchEnvironmentBytes ||
+			strings.ContainsAny(name, "\x00=") || strings.ContainsRune(entry, '\x00') {
 			return errors.New("ModelRuntime launch manifest environment is invalid")
 		}
 		if _, duplicate := seenEnvironment[name]; duplicate || name == "VELA_MODEL_DRIVER_PROTOCOL" {

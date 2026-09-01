@@ -24,6 +24,7 @@ RUN test -n "${RELEASE_REVISION}" && \
       vela-control \
 	      vela-artifact-validator \
 	      vela-fleet-controller \
+	      vela-model-runtime \
 	      vela-stage-worker-agent; do \
       go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
         -o "/out/${binary}" "./cmd/${binary}"; \
@@ -98,3 +99,13 @@ COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-cert
 COPY --from=go-builder --chmod=0555 /out/vela-stage-worker-agent /usr/local/bin/vela-stage-worker-agent
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/vela-stage-worker-agent"]
+
+FROM scratch AS vela-model-runtime
+ARG RELEASE_REVISION
+LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
+      org.opencontainers.image.revision="${RELEASE_REVISION}" \
+      org.opencontainers.image.title="vela-model-runtime"
+COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=go-builder --chmod=0555 /out/vela-model-runtime /usr/local/bin/vela-model-runtime
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/vela-model-runtime"]

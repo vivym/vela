@@ -2,6 +2,7 @@ package modelruntime_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -144,6 +145,29 @@ func TestLoadLaunchManifestAcceptsCertifiedMultiMemberLLMTopology(t *testing.T) 
 	bindings, err := loaded.RuntimeBindings()
 	if err != nil || len(bindings) != 1 || len(bindings[0].Devices) != 2 || len(bindings[0].Members) != 2 {
 		t.Fatalf("multi-member LLM bindings = %#v error=%v", bindings, err)
+	}
+}
+
+func TestEncodeLaunchManifestRejectsManifestLargerThanLoaderLimit(t *testing.T) {
+	root := t.TempDir()
+	encoded, err := json.Marshal(launchManifestFixture(root))
+	if err != nil {
+		t.Fatalf("encode launch manifest fixture: %v", err)
+	}
+	var manifest modelruntime.LaunchManifest
+	if err := json.Unmarshal(encoded, &manifest); err != nil {
+		t.Fatalf("decode typed launch manifest fixture: %v", err)
+	}
+	environment := make([]string, 0, 128)
+	for index := range 128 {
+		prefix := fmt.Sprintf("BOUND_%03d=", index)
+		environment = append(environment, prefix+strings.Repeat("x", 4096-len(prefix)))
+	}
+	for index := range manifest.Runtimes {
+		manifest.Runtimes[index].Environment = append([]string(nil), environment...)
+	}
+	if _, err := modelruntime.EncodeLaunchManifest(manifest); err == nil {
+		t.Fatal("EncodeLaunchManifest accepted a manifest larger than its loader limit")
 	}
 }
 

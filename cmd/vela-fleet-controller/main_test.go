@@ -156,6 +156,7 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 		StageWorkerAgentImage:          pinnedTestImage("vela-stage-worker-agent", 'b'),
 		RuntimeImage:                   pinnedTestImage("vela-h3-stage-runtime", 'c'),
 		StageWorkerConfigMap:           "stage-worker-runtime-r1",
+		ModelRuntimeVerifierConfigMap:  "model-runtime-verifier-r1",
 		StageWorkerControlTLSSecret:    "stage-worker-control-tls-r1",
 		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
 		ArtifactStoreCredentialsSecret: "artifact-store-credentials-r1",
@@ -163,9 +164,14 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
 			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
 			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			DeviceSetDigest: testDigest('1'), MembershipDigest: testDigest('2'),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
-				Component: "DIT", ModelComponentRevision: "h3-dit-v1",
+				ModelResidencyID:       uuid.MustParse("49310000-0000-0000-0000-000000000009"),
+				StageProfileRevisionID: uuid.MustParse("49310000-0000-0000-0000-000000000007"),
+				ModelRuntimeEpochFloor: 1,
+				Component:              "DIT", ModelComponentRevision: "h3-dit-v1",
 				RuntimeIdentity: "h3-dit-runtime-v1", Command: []string{"/opt/vela/bin/h3-dit"},
+				InitializationTimeout: "2h", ShutdownTimeout: "2m",
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49310000-0000-0000-0000-000000000006"), MemberEpoch: 11,

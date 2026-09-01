@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -756,6 +757,81 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		t.Fatalf("registered durable Worker evidence = %#v error=%v", registered, err)
 	}
 
+	restarted := proto.Clone(registration).(*velav1.RegisterWorkerEvidenceRequest)
+	restarted.RuntimeIdentity.ModelRuntimeEpoch++
+	for _, member := range restarted.Members {
+		member.ModelRuntimeEpoch = restarted.RuntimeIdentity.ModelRuntimeEpoch
+	}
+	restartedResult, err := backend.RegisterWorkerEvidence(
+		context.Background(), stageworkercontrol.CommandContext{
+			CommandID: uuid.New(), Identity: identity, ControlSessionEpoch: 1,
+		}, restarted,
+	)
+	if err != nil || !restartedResult.Ready {
+		t.Fatalf("register restarted ModelRuntime = %#v error=%v", restartedResult, err)
+	}
+	var durableEpoch, registrationCount int64
+	var durableCanaryDigest []byte
+	var leaseState, allocationState, stageState, physicalState, jobState string
+	var billableStarted, emptyResourceTotals bool
+	var consumedResourceUnits int64
+	var oldAuthorityMatches bool
+	if err := database.Admin.QueryRow(`
+		SELECT residency.model_runtime_epoch,
+		       (SELECT count(*) FROM model_runtime_epoch_registrations
+		        WHERE model_residency_id = residency.id),
+		       residency.canary_evidence_digest,
+		       lease.state::text,
+		       allocation.state::text,
+		       run.state::text,
+		       physical.state::text,
+		       job.state::text,
+		       job.billable_started_at IS NOT NULL,
+		       physical.resource_totals = '{}'::jsonb,
+		       attempt_budget.consumed_resource_units,
+		       vela_worker_instance_authority_matches($2, $3, $4, $5, $1, $6)
+		FROM model_residencies AS residency
+		JOIN stage_leases AS lease ON lease.id = $7
+		JOIN stage_allocations AS allocation ON allocation.id = lease.stage_allocation_id
+		JOIN stage_runs AS run ON run.id = lease.stage_run_id
+		JOIN stage_attempts AS physical ON physical.id = lease.stage_attempt_id
+		JOIN attempts AS attempt ON attempt.id = lease.attempt_id
+		JOIN jobs AS job ON job.id = attempt.job_id
+		JOIN attempt_retry_budgets AS attempt_budget ON attempt_budget.attempt_id = attempt.id
+		WHERE residency.id = $1
+	`, assignment.ModelResidencyID, assignment.WorkerInstanceID,
+		assignment.WorkerInstanceEpoch, authority.GetDeviceSetDigest(),
+		authority.GetMembershipDigest(), registration.RuntimeIdentity.GetModelRuntimeEpoch(),
+		assignment.StageLeaseID,
+	).Scan(
+		&durableEpoch, &registrationCount, &durableCanaryDigest,
+		&leaseState, &allocationState, &stageState, &physicalState, &jobState,
+		&billableStarted, &emptyResourceTotals, &consumedResourceUnits,
+		&oldAuthorityMatches,
+	); err != nil {
+		t.Fatalf("read restarted ModelRuntime authority: %v", err)
+	}
+	if durableEpoch != restarted.RuntimeIdentity.GetModelRuntimeEpoch() || registrationCount != 2 ||
+		!bytes.Equal(durableCanaryDigest, readinessDigest[:]) || leaseState != "REVOKED" ||
+		allocationState != "RELEASED" || stageState != "RETRY_WAIT" || physicalState != "LOST" ||
+		jobState != "QUEUED" || billableStarted || !emptyResourceTotals ||
+		consumedResourceUnits != 0 || oldAuthorityMatches {
+		t.Fatalf(
+			"restarted ModelRuntime authority = epoch %d registrations %d lease/allocation/stage/physical/job %s/%s/%s/%s/%s billable=%t empty-resources=%t consumed=%d old-match=%t",
+			durableEpoch, registrationCount, leaseState, allocationState,
+			stageState, physicalState, jobState, billableStarted,
+			emptyResourceTotals, consumedResourceUnits, oldAuthorityMatches,
+		)
+	}
+	staleRegistration, err := backend.RegisterWorkerEvidence(
+		context.Background(), stageworkercontrol.CommandContext{
+			CommandID: uuid.New(), Identity: identity, ControlSessionEpoch: 1,
+		}, registration,
+	)
+	if err != nil || staleRegistration.Ready {
+		t.Fatalf("stale ModelRuntime epoch registration = %#v error=%v", staleRegistration, err)
+	}
+
 	wrongProfile := proto.Clone(registration).(*velav1.RegisterWorkerEvidenceRequest)
 	wrongProfile.RuntimeIdentity.StageProfileRevisionId = uuid.NewString()
 	rejected, err := backend.RegisterWorkerEvidence(
@@ -796,6 +872,139 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 	if observationCount != 1 {
 		t.Fatalf("StageWorkerControl mutated Fleet observations: count=%d", observationCount)
 	}
+}
+
+func TestModelRuntimeEpochRegistrationRejectsMultiMemberWithoutGangCoordinator(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	seedWorkerRegistryPlan(t, database.Admin)
+	seedMultiMemberProfile(t, database.Admin)
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000103")
+	if _, err := database.Admin.Exec(`
+		INSERT INTO worker_instances (
+			id, worker_profile_revision_id, capacity_pool_id, worker_bundle_id,
+			lifecycle_state, reachability_state, instance_epoch,
+			control_session_epoch, desired_member_count, desired_device_count
+		) VALUES ($1, $2, $3, $4, 'PROVISIONING', 'DISCONNECTED', 1, 1, 2, 4)
+	`, workerID, multiWorkerProfileID, multiCapacityPoolID, workerRegistryBundleID); err != nil {
+		t.Fatalf("seed multi-member WorkerInstance: %v", err)
+	}
+	fleetPool := newRolePool(t, database.DSN, "vela_fleet_login", "vela-fleet-password")
+	if _, err := fleetPool.Exec(
+		context.Background(),
+		"SELECT * FROM vela_observe_worker_instance($1::jsonb)",
+		multiMemberWorkerEvidence(workerID, true),
+	); err != nil {
+		t.Fatalf("observe multi-member WorkerInstance: %v", err)
+	}
+
+	var deviceSetDigest, membershipDigest, canaryDigest []byte
+	if err := database.Admin.QueryRow(`
+		SELECT worker.device_set_digest, worker.membership_digest,
+		       residency.canary_evidence_digest
+		FROM worker_instances AS worker
+		JOIN model_residencies AS residency ON residency.worker_instance_id = worker.id
+		WHERE worker.id = $1
+	`, workerID).Scan(&deviceSetDigest, &membershipDigest, &canaryDigest); err != nil {
+		t.Fatalf("read multi-member runtime authority: %v", err)
+	}
+	devices := []map[string]any{}
+	for suffix := 2; suffix <= 5; suffix++ {
+		devices = append(devices, map[string]any{
+			"device_id":    "49200000-0000-0000-0000-00000000011" + string(rune('0'+suffix)),
+			"device_epoch": 1,
+		})
+	}
+	members := []map[string]any{
+		{
+			"worker_member_id": "49200000-0000-0000-0000-000000000120",
+			"member_epoch":     1, "model_runtime_epoch": 2,
+		},
+		{
+			"worker_member_id": "49200000-0000-0000-0000-000000000121",
+			"member_epoch":     1, "model_runtime_epoch": 2,
+		},
+	}
+	registration := func(memberID string, identityByte byte) []byte {
+		t.Helper()
+		payload, err := json.Marshal(map[string]any{
+			"schema_version": 1, "worker_instance_id": workerID,
+			"worker_instance_epoch": 1, "control_session_epoch": 1,
+			"device_set_digest":         hex.EncodeToString(deviceSetDigest),
+			"membership_digest":         hex.EncodeToString(membershipDigest),
+			"model_residency_id":        "49200000-0000-0000-0000-000000000123",
+			"runtime_identity":          "future-llm-runtime@sha256:runtime-v1",
+			"model_runtime_epoch":       2,
+			"stage_profile_revision_id": multiStageProfileID,
+			"worker_member_id":          memberID, "worker_member_epoch": 1,
+			"capacity_observation_sequence": 1,
+			"spiffe_id_digest":              hex.EncodeToString(bytes.Repeat([]byte{identityByte}, 32)),
+			"readiness_evidence_digest":     hex.EncodeToString(canaryDigest),
+			"devices":                       devices, "members": members,
+		})
+		if err != nil {
+			t.Fatalf("encode multi-member registration: %v", err)
+		}
+		return payload
+	}
+	workerPool := newRolePool(
+		t, database.DSN,
+		"vela_stage_worker_control_login", "vela-stage-worker-control-password",
+	)
+	register := func(payload []byte) (bool, string, error) {
+		var ready bool
+		var reason string
+		err := workerPool.QueryRow(context.Background(), `
+			SELECT ready, reason FROM vela_register_stage_worker_runtime($1::jsonb)
+		`, payload).Scan(&ready, &reason)
+		return ready, reason, err
+	}
+
+	firstReady, firstReason, err := register(registration(members[0]["worker_member_id"].(string), 0xa1))
+	if err != nil || firstReady || !strings.Contains(firstReason, "gang coordinator") {
+		t.Fatalf("first multi-member registration ready=%t reason=%q error=%v", firstReady, firstReason, err)
+	}
+	var durableEpoch int64
+	if err := database.Admin.QueryRow(`
+		SELECT model_runtime_epoch FROM model_residencies
+		WHERE id = '49200000-0000-0000-0000-000000000123'
+	`).Scan(&durableEpoch); err != nil || durableEpoch != 1 {
+		t.Fatalf("partial registration durable epoch=%d error=%v, want 1", durableEpoch, err)
+	}
+
+	secondReady, secondReason, err := register(registration(members[1]["worker_member_id"].(string), 0xa3))
+	if err != nil || secondReady || !strings.Contains(secondReason, "gang coordinator") {
+		t.Fatalf("second multi-member registration ready=%t reason=%q error=%v", secondReady, secondReason, err)
+	}
+	var registrationCount int64
+	if err := database.Admin.QueryRow(`
+		SELECT residency.model_runtime_epoch,
+		       (SELECT count(*) FROM model_runtime_epoch_registrations AS registration
+		        WHERE registration.model_residency_id = residency.id
+		          AND registration.model_runtime_epoch = 2)
+		FROM model_residencies AS residency
+		WHERE residency.id = '49200000-0000-0000-0000-000000000123'
+	`).Scan(&durableEpoch, &registrationCount); err != nil {
+		t.Fatalf("read rejected multi-member epoch: %v", err)
+	}
+	if durableEpoch != 1 || registrationCount != 0 {
+		t.Fatalf("rejected multi-member epoch=%d registrations=%d", durableEpoch, registrationCount)
+	}
+
+	duplicate := registration(members[0]["worker_member_id"].(string), 0xa1)
+	var duplicatePayload map[string]any
+	if err := json.Unmarshal(duplicate, &duplicatePayload); err != nil {
+		t.Fatalf("decode duplicate-member registration fixture: %v", err)
+	}
+	duplicatePayload["members"] = []map[string]any{members[0], members[0]}
+	duplicate, err = json.Marshal(duplicatePayload)
+	if err != nil {
+		t.Fatalf("encode duplicate-member registration fixture: %v", err)
+	}
+	_, _, err = register(duplicate)
+	assertPostgresConstraint(t, err, "model_runtime_epoch_registration_invalid")
 }
 
 func TestStageWorkerControlDurableAuthorizerRejectsStaleExecutionEvidence(t *testing.T) {

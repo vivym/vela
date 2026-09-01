@@ -261,6 +261,7 @@ func catalogResidencyPlanRollout(
 		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
 		Namespace: "vela-system", InitImage: images[0], StageWorkerAgentImage: images[1], RuntimeImage: images[2],
 		StageWorkerConfigMap:           "vela-stage-worker-runtime-r1",
+		ModelRuntimeVerifierConfigMap:  "model-runtime-verifier-r1",
 		StageWorkerControlTLSSecret:    "stage-worker-control-r1",
 		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
 		ArtifactStoreCredentialsSecret: "stage-worker-artifact-credentials-r1",
@@ -268,9 +269,14 @@ func catalogResidencyPlanRollout(
 		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
 			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
 			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			DeviceSetDigest: strings.Repeat("1", 64), MembershipDigest: strings.Repeat("2", 64),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
-				Component: "DIT", ModelComponentRevision: "h3-dit-r1",
+				ModelResidencyID:       uuid.MustParse("49330000-0000-0000-0000-000000000009"),
+				StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
+				ModelRuntimeEpochFloor: 1,
+				Component:              "DIT", ModelComponentRevision: "h3-dit-r1",
 				RuntimeIdentity: "h3-dit-runtime-r1", Command: []string{"/opt/vela/bin/h3-dit"},
+				InitializationTimeout: "2h", ShutdownTimeout: "2m",
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: uuid.MustParse("49330000-0000-0000-0000-000000000006"), MemberEpoch: 1,
@@ -361,10 +367,14 @@ type catalogOCIManifest struct {
 
 func writeCatalogOCIManifest(t *testing.T, directory, name string) catalogOCIManifest {
 	t.Helper()
+	entrypoint := "/usr/local/bin/" + name
+	if name == "h3-stage-runtime" {
+		entrypoint = "/usr/local/bin/vela-model-runtime"
+	}
 	config, err := json.Marshal(map[string]any{
 		"architecture": "amd64",
 		"os":           "linux",
-		"config":       map[string]any{"Entrypoint": []string{"/usr/local/bin/" + name}},
+		"config":       map[string]any{"Entrypoint": []string{entrypoint}},
 		"rootfs":       map[string]any{"type": "layers", "diff_ids": []string{}},
 	})
 	if err != nil {

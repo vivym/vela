@@ -145,6 +145,7 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 	computeNodeID := uuid.MustParse("49320000-0000-0000-0000-000000000008")
 	deviceSetID := uuid.MustParse("49320000-0000-0000-0000-000000000009")
 	residencyID := uuid.MustParse("49320000-0000-0000-0000-00000000000a")
+	stageProfileID := uuid.MustParse("49320000-0000-0000-0000-00000000000b")
 	runtimeDigest := digest('3')
 	bundle := fleetcontroller.WorkerBundleActuation{
 		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
@@ -153,6 +154,7 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 		StageWorkerAgentImage:          "ghcr.io/vivym/vela-stage-worker-agent@" + digest('2'),
 		RuntimeImage:                   "ghcr.io/vivym/vela-h3-stage-runtime@" + runtimeDigest,
 		StageWorkerConfigMap:           "stage-worker-r1",
+		ModelRuntimeVerifierConfigMap:  "model-runtime-verifier-r1",
 		StageWorkerControlTLSSecret:    "stage-worker-control-r1",
 		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
 		ArtifactStoreCredentialsSecret: "artifact-credentials-r1",
@@ -160,9 +162,13 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
 			ID: workerID, InstanceEpoch: 7, WorkerProfileRevisionID: profileID,
 			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			DeviceSetDigest: digestHex('8'), MembershipDigest: digestHex('9'),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
-				Component: "DIT", ModelComponentRevision: "h3-dit-r17",
+				ModelResidencyID: residencyID, StageProfileRevisionID: stageProfileID,
+				ModelRuntimeEpochFloor: 17,
+				Component:              "DIT", ModelComponentRevision: "h3-dit-r17",
 				RuntimeIdentity: "h3-dit-runtime-r4", Command: []string{"/opt/vela/bin/h3-dit"},
+				InitializationTimeout: "2h", ShutdownTimeout: "2m",
 			}},
 			Members: []fleetcontroller.WorkerMemberActuation{{
 				ID: memberID, MemberEpoch: 11, Key: "member-0", NodeIdentity: "gpu-node-01",
@@ -186,7 +192,7 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 			ContentDigest: digestHex('4'), ApprovalEvidenceDigest: digestHex('5'),
 			ApprovedAt: now.Add(-time.Hour), ApprovedBy: "spiffe://vela/fleet-approver",
 			CapacityPools: []fleet.PlannedCapacityPool{{
-				ID: poolID, StableID: "h3-dit", StageProfileRevisionID: uuid.New(),
+				ID: poolID, StableID: "h3-dit", StageProfileRevisionID: stageProfileID,
 				ResourceClass: "GPU", SecurityClass: "INTERNAL", Region: "cn-north-1",
 				MaxReadyQueueDepth: 16,
 			}},
@@ -213,11 +219,18 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 	pod.Status = corev1.PodStatus{
 		Phase:      corev1.PodRunning,
 		Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
-		InitContainerStatuses: []corev1.ContainerStatus{{
-			Name: "stage-worker-private-materialization", Image: bundle.InitImage,
-			ImageID: "docker-pullable://docker.io/library/busybox@" + digest('1'), Ready: true,
-			State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}},
-		}},
+		InitContainerStatuses: []corev1.ContainerStatus{
+			{
+				Name: "stage-worker-private-materialization", Image: bundle.InitImage,
+				ImageID: "docker-pullable://docker.io/library/busybox@" + digest('1'), Ready: true,
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}},
+			},
+			{
+				Name: "model-runtime-private-materialization", Image: bundle.InitImage,
+				ImageID: "docker-pullable://docker.io/library/busybox@" + digest('1'), Ready: true,
+				State: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{ExitCode: 0}},
+			},
+		},
 		ContainerStatuses: []corev1.ContainerStatus{
 			{Name: "stage-worker-agent", Image: bundle.StageWorkerAgentImage,
 				ImageID: "docker-pullable://ghcr.io/vivym/vela-stage-worker-agent@" + digest('2'), Ready: true,

@@ -12,9 +12,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontract"
+	"github.com/vivym/vela/internal/modelruntime"
 	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +39,10 @@ const (
 	stageWorkerScratchRoot       = "/var/lib/vela/stage-worker/scratch"
 	modelRuntimeSocketRoot       = "/run/vela-model-runtime"
 	modelRuntimeSocketPath       = modelRuntimeSocketRoot + "/private/runtime.sock"
+	modelRuntimePrivateRoot      = "/etc/vela-model-runtime/private"
+	modelRuntimeLaunchManifest   = modelRuntimePrivateRoot + "/launch.json"
+	modelRuntimeVerifierKeyring  = modelRuntimePrivateRoot + "/authority/verifier-keyring.json"
+	modelRuntimeEpochDirectory   = stageWorkerScratchRoot + "/model-runtime-epochs"
 )
 
 var (
@@ -71,6 +77,7 @@ type WorkerBundleActuation struct {
 	StageWorkerAgentImage          string                    `json:"stage_worker_agent_image"`
 	RuntimeImage                   string                    `json:"runtime_image"`
 	StageWorkerConfigMap           string                    `json:"stage_worker_config_map"`
+	ModelRuntimeVerifierConfigMap  string                    `json:"model_runtime_verifier_config_map"`
 	StageWorkerControlTLSSecret    string                    `json:"stage_worker_control_tls_secret"`
 	StageWorkerAuthoritySecret     string                    `json:"stage_worker_authority_secret"`
 	ArtifactStoreCredentialsSecret string                    `json:"artifact_store_credentials_secret"`
@@ -86,6 +93,8 @@ type WorkerInstanceActuation struct {
 	Role                    string                  `json:"role"`
 	CapacitySlots           int                     `json:"capacity_slots"`
 	SharedSlotException     string                  `json:"shared_slot_exception,omitempty"`
+	DeviceSetDigest         string                  `json:"device_set_digest"`
+	MembershipDigest        string                  `json:"membership_digest"`
 	ModelRuntimes           []ModelRuntimeProcess   `json:"model_runtimes"`
 	Members                 []WorkerMemberActuation `json:"members"`
 }
@@ -108,10 +117,16 @@ type DeviceConstraint struct {
 }
 
 type ModelRuntimeProcess struct {
-	Component              string   `json:"component"`
-	ModelComponentRevision string   `json:"model_component_revision"`
-	RuntimeIdentity        string   `json:"runtime_identity"`
-	Command                []string `json:"command"`
+	ModelResidencyID       uuid.UUID `json:"model_residency_id"`
+	StageProfileRevisionID uuid.UUID `json:"stage_profile_revision_id"`
+	ModelRuntimeEpochFloor int64     `json:"model_runtime_epoch_floor"`
+	Component              string    `json:"component"`
+	ModelComponentRevision string    `json:"model_component_revision"`
+	RuntimeIdentity        string    `json:"runtime_identity"`
+	Command                []string  `json:"command"`
+	Environment            []string  `json:"environment,omitempty"`
+	InitializationTimeout  string    `json:"initialization_timeout"`
+	ShutdownTimeout        string    `json:"shutdown_timeout"`
 }
 
 type H3WorkerBundleSpec struct {
@@ -129,14 +144,17 @@ type H3WorkerBundleSpec struct {
 	StageWorkerAgentImage          string
 	RuntimeImage                   string
 	StageWorkerConfigMap           string
+	ModelRuntimeVerifierConfigMap  string
 	StageWorkerControlTLSSecret    string
 	StageWorkerAuthoritySecret     string
 	ArtifactStoreCredentialsSecret string
 	ArtifactStoreCASecret          string
 	Devices                        [8]DeviceConstraint
 	MemberEpochs                   [8]int64
+	DeviceSetDigests               [8]string
+	MembershipDigests              [8]string
 	Encoder                        ModelRuntimeProcess
-	DiT                            ModelRuntimeProcess
+	DiT                            [7]ModelRuntimeProcess
 	VAEDecoder                     ModelRuntimeProcess
 }
 
@@ -215,18 +233,24 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		spec.AuxWorkerProfileRevisionID == uuid.Nil || spec.DiTWorkerProfileRevisionID == uuid.Nil ||
 		!validPinnedImage(spec.InitImage) || !validPinnedImage(spec.StageWorkerAgentImage) ||
 		!validPinnedImage(spec.RuntimeImage) || !validResourceName(spec.StageWorkerConfigMap) ||
+		!validResourceName(spec.ModelRuntimeVerifierConfigMap) ||
 		!validResourceName(spec.StageWorkerControlTLSSecret) ||
 		!validResourceName(spec.StageWorkerAuthoritySecret) ||
 		!validResourceName(spec.ArtifactStoreCredentialsSecret) ||
 		!validResourceName(spec.ArtifactStoreCASecret) ||
 		!validModelRuntimeProcess(spec.Encoder) || spec.Encoder.Component != "ENCODER" ||
-		!validModelRuntimeProcess(spec.DiT) || spec.DiT.Component != "DIT" ||
 		!validModelRuntimeProcess(spec.VAEDecoder) || spec.VAEDecoder.Component != "VAE_DECODER" {
 		return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle specification is invalid")
 	}
 	for index, device := range spec.Devices {
-		if !validDeviceConstraint(device) || spec.MemberEpochs[index] <= 0 {
+		if !validDeviceConstraint(device) || spec.MemberEpochs[index] <= 0 ||
+			!validSHA256(spec.DeviceSetDigests[index]) || !validSHA256(spec.MembershipDigests[index]) {
 			return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle device constraint is invalid")
+		}
+	}
+	for _, runtime := range spec.DiT {
+		if !validModelRuntimeProcess(runtime) || runtime.Component != "DIT" {
+			return WorkerBundleActuation{}, errors.New("certified H3 DiT runtime specification is invalid")
 		}
 	}
 	expectedDigest := spec.RevisionDigest
@@ -236,6 +260,7 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		Namespace:      spec.Namespace, InitImage: spec.InitImage,
 		StageWorkerAgentImage: spec.StageWorkerAgentImage, RuntimeImage: spec.RuntimeImage,
 		StageWorkerConfigMap:           spec.StageWorkerConfigMap,
+		ModelRuntimeVerifierConfigMap:  spec.ModelRuntimeVerifierConfigMap,
 		StageWorkerControlTLSSecret:    spec.StageWorkerControlTLSSecret,
 		StageWorkerAuthoritySecret:     spec.StageWorkerAuthoritySecret,
 		ArtifactStoreCredentialsSecret: spec.ArtifactStoreCredentialsSecret,
@@ -248,6 +273,8 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		WorkerProfileRevisionID: spec.AuxWorkerProfileRevisionID,
 		CapacityPoolID:          spec.AuxCapacityPoolID, Role: "aux", CapacitySlots: 1,
 		SharedSlotException: h3AUXSharedSlotException,
+		DeviceSetDigest:     spec.DeviceSetDigests[0],
+		MembershipDigest:    spec.MembershipDigests[0],
 		ModelRuntimes:       []ModelRuntimeProcess{spec.Encoder, spec.VAEDecoder},
 		Members: []WorkerMemberActuation{
 			h3Member(auxID, spec.MemberEpochs[0], spec.NodeIdentity, spec.Devices[0]),
@@ -259,7 +286,9 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 			ID: workerID, InstanceEpoch: 1,
 			WorkerProfileRevisionID: spec.DiTWorkerProfileRevisionID,
 			CapacityPoolID:          spec.DiTCapacityPoolID, Role: "dit", CapacitySlots: 1,
-			ModelRuntimes: []ModelRuntimeProcess{spec.DiT},
+			DeviceSetDigest:  spec.DeviceSetDigests[index+1],
+			MembershipDigest: spec.MembershipDigests[index+1],
+			ModelRuntimes:    []ModelRuntimeProcess{spec.DiT[index]},
 			Members: []WorkerMemberActuation{
 				h3Member(workerID, spec.MemberEpochs[index+1], spec.NodeIdentity, spec.Devices[index+1]),
 			},
@@ -383,6 +412,7 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 		!validResourceName(bundle.Namespace) || !validPinnedImage(bundle.InitImage) ||
 		!validPinnedImage(bundle.StageWorkerAgentImage) || !validPinnedImage(bundle.RuntimeImage) ||
 		!validResourceName(bundle.StageWorkerConfigMap) ||
+		!validResourceName(bundle.ModelRuntimeVerifierConfigMap) ||
 		!validResourceName(bundle.StageWorkerControlTLSSecret) ||
 		!validResourceName(bundle.StageWorkerAuthoritySecret) ||
 		!validResourceName(bundle.ArtifactStoreCredentialsSecret) ||
@@ -392,12 +422,14 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 	}
 	workers := make(map[uuid.UUID]struct{}, len(bundle.WorkerInstances))
 	members := make(map[uuid.UUID]struct{})
+	residencies := make(map[uuid.UUID]struct{})
 	podNames := make(map[string]struct{})
 	deviceOwnership := newDeviceOwnership()
 	for _, worker := range bundle.WorkerInstances {
 		if worker.ID == uuid.Nil || worker.InstanceEpoch <= 0 ||
 			worker.WorkerProfileRevisionID == uuid.Nil || worker.CapacityPoolID == uuid.Nil ||
 			!validWorkerRole(worker.Role) || worker.CapacitySlots <= 0 ||
+			!validSHA256(worker.DeviceSetDigest) || !validSHA256(worker.MembershipDigest) ||
 			len(worker.ModelRuntimes) == 0 || len(worker.Members) == 0 || len(worker.Members) > 64 {
 			return errors.New("WorkerInstance actuation is invalid")
 		}
@@ -421,6 +453,10 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 			if !validModelRuntimeProcess(runtime) {
 				return errors.New("WorkerInstance ModelRuntime process is invalid")
 			}
+			if _, exists := residencies[runtime.ModelResidencyID]; exists {
+				return errors.New("WorkerBundle actuation reuses a ModelResidency id")
+			}
+			residencies[runtime.ModelResidencyID] = struct{}{}
 		}
 		memberKeys := make(map[string]struct{}, len(worker.Members))
 		for _, member := range worker.Members {
@@ -497,7 +533,8 @@ func validModelRuntimeProcess(runtime ModelRuntimeProcess) bool {
 		runtime.Component != "CPU_MEDIA" {
 		return false
 	}
-	if !validBoundedText(runtime.ModelComponentRevision, 300) ||
+	if runtime.ModelResidencyID == uuid.Nil || runtime.StageProfileRevisionID == uuid.Nil ||
+		runtime.ModelRuntimeEpochFloor <= 0 || !validBoundedText(runtime.ModelComponentRevision, 300) ||
 		!validBoundedText(runtime.RuntimeIdentity, 500) || len(runtime.Command) == 0 ||
 		len(runtime.Command) > 128 || !strings.HasPrefix(runtime.Command[0], "/") {
 		return false
@@ -506,6 +543,27 @@ func validModelRuntimeProcess(runtime ModelRuntimeProcess) bool {
 		if !validBoundedText(argument, 4096) {
 			return false
 		}
+	}
+	if len(runtime.Environment) > 128 {
+		return false
+	}
+	seenEnvironment := make(map[string]struct{}, len(runtime.Environment))
+	for _, entry := range runtime.Environment {
+		name, _, found := strings.Cut(entry, "=")
+		if !found || name == "" || len(entry) > 4096 || strings.ContainsAny(name, "\x00=") ||
+			strings.ContainsRune(entry, '\x00') || name == "VELA_MODEL_DRIVER_PROTOCOL" {
+			return false
+		}
+		if _, duplicate := seenEnvironment[name]; duplicate {
+			return false
+		}
+		seenEnvironment[name] = struct{}{}
+	}
+	initializationTimeout, initializationErr := time.ParseDuration(runtime.InitializationTimeout)
+	shutdownTimeout, shutdownErr := time.ParseDuration(runtime.ShutdownTimeout)
+	if initializationErr != nil || initializationTimeout <= 0 || initializationTimeout > 24*time.Hour ||
+		shutdownErr != nil || shutdownTimeout <= 0 || shutdownTimeout > 10*time.Minute {
+		return false
 	}
 	return true
 }
@@ -546,6 +604,89 @@ func materializeWorkerInstancePods(bundle WorkerBundleActuation) ([]corev1.Pod, 
 	}
 	sort.Slice(pods, func(left, right int) bool { return pods[left].Name < pods[right].Name })
 	return pods, nil
+}
+
+func encodeModelRuntimeLaunchManifest(
+	bundle WorkerBundleActuation,
+	worker WorkerInstanceActuation,
+	localMember WorkerMemberActuation,
+) (string, error) {
+	runtimeImageDigest, ok := strings.CutPrefix(
+		bundle.RuntimeImage[strings.LastIndex(bundle.RuntimeImage, "@")+1:], "sha256:",
+	)
+	if !ok || !validSHA256(runtimeImageDigest) {
+		return "", errors.New("ModelRuntime image digest is invalid")
+	}
+	manifest := modelruntime.LaunchManifest{
+		SchemaVersion: 1, WorkerProfileRevisionID: worker.WorkerProfileRevisionID.String(),
+		WorkerRole: worker.Role, CapacitySlots: worker.CapacitySlots,
+		SharedSlotException: worker.SharedSlotException,
+		WorkerInstanceID:    worker.ID.String(), WorkerInstanceEpoch: worker.InstanceEpoch,
+		WorkerMemberID: localMember.ID.String(), WorkerMemberEpoch: localMember.MemberEpoch,
+		DeviceSetDigest: worker.DeviceSetDigest, MembershipDigest: worker.MembershipDigest,
+	}
+	for _, member := range worker.Members {
+		manifest.Members = append(manifest.Members, modelruntime.LaunchMemberEpoch{
+			ID: member.ID.String(), Epoch: member.MemberEpoch,
+		})
+		for _, device := range member.DeviceConstraints {
+			manifest.Devices = append(manifest.Devices, modelruntime.LaunchDeviceEpoch{
+				ID: device.DeviceID.String(), Epoch: device.DeviceEpoch,
+			})
+		}
+	}
+	for _, device := range localMember.DeviceConstraints {
+		manifest.LocalDevices = append(manifest.LocalDevices, modelruntime.DriverDevice{
+			DeviceID: device.DeviceID.String(), DeviceEpoch: device.DeviceEpoch,
+			GPUUUID: device.GPUUUID, PCIBDF: device.PCIBDF,
+		})
+	}
+	for _, runtime := range worker.ModelRuntimes {
+		scratchRoot := modelRuntimeScratchRoot(runtime.Component)
+		manifest.Runtimes = append(manifest.Runtimes, modelruntime.LaunchRuntime{
+			ModelResidencyID:       runtime.ModelResidencyID.String(),
+			RuntimeIdentity:        runtime.RuntimeIdentity,
+			StageProfileRevisionID: runtime.StageProfileRevisionID.String(),
+			ModelRuntimeEpochFloor: runtime.ModelRuntimeEpochFloor,
+			Component:              runtime.Component,
+			ModelComponentRevision: runtime.ModelComponentRevision,
+			RuntimeImageDigest:     runtimeImageDigest,
+			Command:                append([]string(nil), runtime.Command...),
+			Environment:            append([]string(nil), runtime.Environment...),
+			ScratchRoot:            scratchRoot, OutputRoot: scratchRoot + "/outputs",
+			InitializationTimeout: runtime.InitializationTimeout,
+			ShutdownTimeout:       runtime.ShutdownTimeout,
+		})
+	}
+	encoded, err := modelruntime.EncodeLaunchManifest(manifest)
+	if err != nil {
+		return "", fmt.Errorf("validate and encode ModelRuntime launch manifest: %w", err)
+	}
+	return string(encoded), nil
+}
+
+func modelRuntimeScratchRoot(component string) string {
+	return stageWorkerScratchRoot + "/model-runtime/" + strings.ToLower(component)
+}
+
+func modelRuntimeTerminationGraceSeconds(worker WorkerInstanceActuation) int64 {
+	maximum := time.Duration(0)
+	for _, runtime := range worker.ModelRuntimes {
+		shutdown, err := time.ParseDuration(runtime.ShutdownTimeout)
+		if err == nil && shutdown > maximum {
+			maximum = shutdown
+		}
+	}
+	return int64((maximum + 30*time.Second + time.Second - 1) / time.Second)
+}
+
+func modelRuntimeDirectories(worker WorkerInstanceActuation) string {
+	directories := []string{modelRuntimeEpochDirectory}
+	for _, runtime := range worker.ModelRuntimes {
+		scratchRoot := modelRuntimeScratchRoot(runtime.Component)
+		directories = append(directories, scratchRoot, scratchRoot+"/outputs")
+	}
+	return strings.Join(directories, " ")
 }
 
 // MaterializeWorkerInstanceLaunchResources returns the exact Pod and DRA claim
@@ -704,9 +845,9 @@ func materializeWorkerInstancePod(
 	if err != nil {
 		return corev1.Pod{}, fmt.Errorf("encode WorkerMember device constraints: %w", err)
 	}
-	runtimes, err := json.Marshal(worker.ModelRuntimes)
+	launchManifest, err := encodeModelRuntimeLaunchManifest(bundle, worker, member)
 	if err != nil {
-		return corev1.Pod{}, fmt.Errorf("encode WorkerInstance ModelRuntimes: %w", err)
+		return corev1.Pod{}, err
 	}
 	automount := false
 	shareProcessNamespace := false
@@ -743,7 +884,7 @@ func materializeWorkerInstancePod(
 		Spec: corev1.PodSpec{
 			ServiceAccountName: "vela-worker", AutomountServiceAccountToken: &automount,
 			ShareProcessNamespace:         &shareProcessNamespace,
-			TerminationGracePeriodSeconds: int64Pointer(120),
+			TerminationGracePeriodSeconds: int64Pointer(modelRuntimeTerminationGraceSeconds(worker)),
 			RestartPolicy:                 corev1.RestartPolicyAlways, DNSPolicy: corev1.DNSClusterFirst,
 			SchedulerName: corev1.DefaultSchedulerName, EnableServiceLinks: &enableServiceLinks,
 			NodeSelector: map[string]string{corev1.LabelHostname: member.NodeIdentity},
@@ -756,10 +897,15 @@ func materializeWorkerInstancePod(
 				FSGroup: &fsGroup, FSGroupChangePolicy: valuePointer(corev1.FSGroupChangeOnRootMismatch),
 				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 			},
-			InitContainers: []corev1.Container{stageWorkerPrivateInitializer(bundle.InitImage)},
+			InitContainers: []corev1.Container{
+				stageWorkerPrivateInitializer(bundle.InitImage),
+				modelRuntimePrivateInitializer(
+					bundle.InitImage, launchManifest, modelRuntimeDirectories(worker),
+				),
+			},
 			Containers: []corev1.Container{
 				workerInstanceAgentContainer(bundle, worker, member),
-				workerInstanceRuntimeContainer(bundle, worker, member, string(runtimes)),
+				workerInstanceRuntimeContainer(bundle),
 			},
 			ResourceClaims: []corev1.PodResourceClaim{{
 				Name: "gpu",
@@ -843,25 +989,17 @@ func workerInstanceAgentContainer(
 
 func workerInstanceRuntimeContainer(
 	bundle WorkerBundleActuation,
-	worker WorkerInstanceActuation,
-	member WorkerMemberActuation,
-	modelRuntimesJSON string,
 ) corev1.Container {
-	devicesJSON := mustEncodeStageWorkerDevices(member.DeviceConstraints)
 	return withKubernetesContainerDefaults(corev1.Container{
 		Name: "model-runtime", Image: bundle.RuntimeImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Env: []corev1.EnvVar{
-			literalEnvironment("VELA_WORKER_INSTANCE_ID", worker.ID.String()),
-			literalEnvironment("VELA_WORKER_INSTANCE_EPOCH", strconv.FormatInt(worker.InstanceEpoch, 10)),
-			literalEnvironment("VELA_WORKER_MEMBER_ID", member.ID.String()),
-			literalEnvironment("VELA_WORKER_MEMBER_EPOCH", strconv.FormatInt(member.MemberEpoch, 10)),
-			literalEnvironment("VELA_WORKER_MEMBER_KEY", member.Key),
-			literalEnvironment("VELA_MODEL_RUNTIME_DEVICES_JSON", devicesJSON),
-			literalEnvironment("VELA_MODEL_RUNTIMES_JSON", modelRuntimesJSON),
-			literalEnvironment("VELA_CAPACITY_SLOTS", strconv.Itoa(worker.CapacitySlots)),
+			literalEnvironment("VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE", modelRuntimeLaunchManifest),
+			literalEnvironment("VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE", modelRuntimeVerifierKeyring),
+			literalEnvironment("VELA_MODEL_RUNTIME_EPOCH_DIRECTORY", modelRuntimeEpochDirectory),
 			literalEnvironment("VELA_MODEL_RUNTIME_SOCKET", modelRuntimeSocketPath),
-			literalEnvironment("VELA_MODEL_RUNTIME_SCRATCH_ROOT", stageWorkerScratchRoot),
+			configMapEnvironment("VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", bundle.StageWorkerConfigMap, "model-runtime-cancel-timeout"),
+			configMapEnvironment("VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT", bundle.StageWorkerConfigMap, "model-runtime-shutdown-timeout"),
 		},
 		Resources: corev1.ResourceRequirements{
 			Requests: resourceList(map[corev1.ResourceName]string{
@@ -876,6 +1014,7 @@ func workerInstanceRuntimeContainer(
 		VolumeMounts: []corev1.VolumeMount{
 			{Name: "model-runtime-socket", MountPath: modelRuntimeSocketRoot},
 			{Name: "scratch", MountPath: stageWorkerScratchRoot},
+			{Name: "model-runtime-private", MountPath: modelRuntimePrivateRoot, ReadOnly: true},
 			{Name: "model-weights", MountPath: "/var/lib/vela/models", ReadOnly: true},
 		},
 	})
@@ -898,6 +1037,13 @@ func workerInstanceVolumes(
 		{Name: "model-weights", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
 			Path: "/var/lib/vela/models", Type: valuePointer(corev1.HostPathDirectory),
 		}}},
+		{Name: "model-runtime-verifier-projected", VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: bundle.ModelRuntimeVerifierConfigMap},
+				DefaultMode:          &mode0400,
+				Items:                []corev1.KeyToPath{{Key: "verifier-keyring.json", Path: "verifier-keyring.json"}},
+			},
+		}},
 		{Name: "stage-worker-control-projected", VolumeSource: corev1.VolumeSource{Secret: &corev1.SecretVolumeSource{
 			SecretName: bundle.StageWorkerControlTLSSecret, DefaultMode: &mode0400,
 		}}},
@@ -919,7 +1065,61 @@ func workerInstanceVolumes(
 		{Name: "stage-worker-private", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
 			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("1Mi"),
 		}}},
+		{Name: "model-runtime-private", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
+			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("2Mi"),
+		}}},
 	}
+}
+
+func modelRuntimePrivateInitializer(image, launchManifest, directories string) corev1.Container {
+	runAsNonRoot := false
+	runAsUser := int64(0)
+	runAsGroup := int64(0)
+	allowPrivilegeEscalation := false
+	readOnlyRootFilesystem := true
+	return withKubernetesContainerDefaults(corev1.Container{
+		Name: "model-runtime-private-materialization", Image: image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command: []string{"/bin/sh", "-ec", `mkdir -p /private/authority
+for directory in ${VELA_MODEL_RUNTIME_DIRECTORIES}; do
+  mkdir -p "${directory}"
+done
+printf '%s' "${VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON}" > /private/launch.json
+cp /projected/model-runtime-authority/verifier-keyring.json /private/authority/verifier-keyring.json
+test -f /private/launch.json
+test -f /private/authority/verifier-keyring.json
+chmod 0700 /private /private/authority
+chmod 0400 /private/launch.json /private/authority/verifier-keyring.json
+chmod 0700 /var/lib/vela/stage-worker/scratch/model-runtime-epochs
+chmod 0700 /var/lib/vela/stage-worker/scratch/model-runtime/*
+chown -R 10001:10001 /private /var/lib/vela/stage-worker/scratch/model-runtime-epochs /var/lib/vela/stage-worker/scratch/model-runtime
+`},
+		Env: []corev1.EnvVar{
+			literalEnvironment("VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON", launchManifest),
+			literalEnvironment("VELA_MODEL_RUNTIME_DIRECTORIES", directories),
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: resourceList(map[corev1.ResourceName]string{
+				corev1.ResourceCPU: "10m", corev1.ResourceMemory: "8Mi",
+			}),
+			Limits: resourceList(map[corev1.ResourceName]string{
+				corev1.ResourceCPU: "100m", corev1.ResourceMemory: "16Mi",
+			}),
+		},
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot: &runAsNonRoot, RunAsUser: &runAsUser, RunAsGroup: &runAsGroup,
+			AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+			ReadOnlyRootFilesystem:   &readOnlyRootFilesystem,
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"CHOWN"},
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: "model-runtime-verifier-projected", MountPath: "/projected/model-runtime-authority", ReadOnly: true},
+			{Name: "model-runtime-private", MountPath: "/private"},
+			{Name: "scratch", MountPath: stageWorkerScratchRoot},
+		},
+	})
 }
 
 func stageWorkerPrivateInitializer(image string) corev1.Container {
