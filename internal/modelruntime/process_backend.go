@@ -367,6 +367,28 @@ func (backend *ProcessBackend) Close() error {
 	return backend.closeErr
 }
 
+func (backend *ProcessBackend) Done() <-chan struct{} {
+	if backend == nil {
+		return nil
+	}
+	return backend.done
+}
+
+func (backend *ProcessBackend) Err() error {
+	if backend == nil {
+		return errors.New("ModelRuntime driver is not configured")
+	}
+	select {
+	case <-backend.done:
+		if err := backend.processWaitError(); err != nil {
+			return err
+		}
+		return errors.New("ModelRuntime driver exited")
+	default:
+		return nil
+	}
+}
+
 func (backend *ProcessBackend) callWithTimeout(request driverRequestV1) (driverResponseV1, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), backend.shutdownTimeout)
 	defer cancel()
@@ -686,3 +708,4 @@ func validDriverText(value string, maximum int) bool {
 }
 
 var _ Backend = (*ProcessBackend)(nil)
+var _ BackendLifecycle = (*ProcessBackend)(nil)

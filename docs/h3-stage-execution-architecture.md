@@ -528,6 +528,11 @@ loaded across many StageAttempts. The Worker Agent and ModelRuntime use a local,
 versioned Interface; the Agent controls StageLease authority while the runtime
 owns backend execution.
 
+StageAuthority uses Ed25519 signatures. Control and Agent authority paths may
+hold signing material; ModelRuntime receives only the rotated public verifier
+keyring and cannot mint an accepted StageAuthority. A signing-key or signature
+algorithm cutover fences envelopes from the previous verifier set.
+
 Normal StageScheduler behavior cannot load, evict, or replace a model. A model
 change requires an approved ResidencyPlanRevision, drain, load, warm-up,
 readiness, canary, and rollback evidence. Initial Residency Planner operation is
@@ -886,10 +891,11 @@ aggregates membership but members do not share private identity. Fleet and Node
 Agent attest Node, GPU UUID, PCI BDF, DeviceSet, model, runtime, and member
 epochs. StageLease binds the membership and DeviceSet digests.
 
-ModelRuntime receives neither PostgreSQL credentials nor general object-store
-credentials. Worker Agent or Data Mover receives short-lived, exact-version
-TransferTicket authority. StageArtifact object names do not expose raw content
-hashes, and cache keys use scoped HMACs.
+ModelRuntime receives neither PostgreSQL credentials, StageAuthority signing
+material, nor general object-store credentials. It receives only the public
+StageAuthority verifier keyring. Worker Agent or Data Mover receives short-lived,
+exact-version TransferTicket authority. StageArtifact object names do not expose
+raw content hashes, and cache keys use scoped HMACs.
 
 The first release permits same-region cross-node and cross-network-domain
 placement only when connector and security constraints are certified. A graph

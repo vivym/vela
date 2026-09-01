@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -15,9 +16,10 @@ import (
 type Supervisor struct {
 	velav1.UnimplementedModelRuntimeServiceServer
 
-	services   []*Service
-	identities []*velav1.ModelRuntimeIdentity
-	routes     map[runtimeRoute]*Service
+	services    []*Service
+	identities  []*velav1.ModelRuntimeIdentity
+	routes      map[runtimeRoute]*Service
+	admissionMu sync.Mutex
 }
 
 type runtimeRoute struct {
@@ -28,7 +30,7 @@ type runtimeRoute struct {
 }
 
 func NewSupervisor(services ...*Service) (*Supervisor, error) {
-	if len(services) == 0 || len(services) > 16 {
+	if len(services) == 0 || len(services) > maxLaunchRuntimes {
 		return nil, errors.New("ModelRuntime supervisor service set is invalid")
 	}
 	ordered := append([]*Service(nil), services...)
@@ -60,12 +62,18 @@ func NewSupervisor(services ...*Service) (*Supervisor, error) {
 }
 
 func (supervisor *Supervisor) Close() {
+	_ = supervisor.Shutdown()
+}
+
+func (supervisor *Supervisor) Shutdown() error {
 	if supervisor == nil {
-		return
+		return nil
 	}
+	var shutdownErr error
 	for _, service := range supervisor.services {
-		service.Close()
+		shutdownErr = errors.Join(shutdownErr, service.Shutdown())
 	}
+	return shutdownErr
 }
 
 func (supervisor *Supervisor) DiscoverRuntimeIdentities(
@@ -114,13 +122,25 @@ func (supervisor *Supervisor) PrepareStage(
 	ctx context.Context,
 	request *velav1.ModelRuntimeServicePrepareStageRequest,
 ) (*velav1.ModelRuntimeServicePrepareStageResponse, error) {
-	if service := supervisor.routeAuthority(request.GetAuthority()); service != nil {
-		return service.PrepareStage(ctx, request)
+	service := supervisor.routeAuthority(request.GetAuthority())
+	if service == nil {
+		return &velav1.ModelRuntimeServicePrepareStageResponse{
+			Decision: velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE,
+			Detail:   "StageAuthority does not name a resident runtime",
+		}, nil
 	}
-	return &velav1.ModelRuntimeServicePrepareStageResponse{
-		Decision: velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE,
-		Detail:   "StageAuthority does not name a resident runtime",
-	}, nil
+	supervisor.admissionMu.Lock()
+	defer supervisor.admissionMu.Unlock()
+	for _, resident := range supervisor.services {
+		if resident != service && resident.hasActiveExecution() {
+			return &velav1.ModelRuntimeServicePrepareStageResponse{
+				RuntimeIdentity: runtimeIdentityProto(service.binding),
+				Decision:        velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REJECTED,
+				Detail:          "WorkerInstance member shared slot is held by another resident runtime",
+			}, nil
+		}
+	}
+	return service.PrepareStage(ctx, request)
 }
 
 func (supervisor *Supervisor) StartStage(

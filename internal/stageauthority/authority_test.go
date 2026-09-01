@@ -54,6 +54,46 @@ func TestSignedStageAuthorityValidatesOnlyForExactResidentRuntime(t *testing.T) 
 	}
 }
 
+func TestVerifierKeyringCannotMintAcceptedStageAuthority(t *testing.T) {
+	now := time.Date(2026, 8, 30, 4, 15, 0, 0, time.UTC)
+	signingKeys := map[string][]byte{"stage-key-7": bytes.Repeat([]byte{0x52}, 32)}
+	verifierKeys, err := stageauthority.DeriveVerifierKeyring(signingKeys)
+	if err != nil {
+		t.Fatalf("DeriveVerifierKeyring: %v", err)
+	}
+	defer stageauthority.ClearKeyring(verifierKeys)
+	validator, err := stageauthority.NewVerifier(
+		verifierKeys,
+		func() time.Time { return now.Add(time.Second) },
+	)
+	if err != nil {
+		t.Fatalf("NewVerifier: %v", err)
+	}
+	signer, err := stageauthority.NewSigner(signingKeys)
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	signed, err := signer.Sign(validAuthority(now))
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	if _, err := validator.Validate(signed, validBinding()); err != nil {
+		t.Fatalf("Validate with public verifier keyring: %v", err)
+	}
+
+	forger, err := stageauthority.NewSigner(verifierKeys)
+	if err != nil {
+		t.Fatalf("NewSigner with public bytes: %v", err)
+	}
+	forged, err := forger.Sign(validAuthority(now))
+	if err != nil {
+		t.Fatalf("forge with public bytes: %v", err)
+	}
+	if _, err := validator.Validate(forged, validBinding()); !errors.Is(err, stageauthority.ErrInvalidSignature) {
+		t.Fatalf("forged authority error = %v, want invalid signature", err)
+	}
+}
+
 func TestStageAuthorityRejectsStaleOrMismatchedEpochs(t *testing.T) {
 	now := time.Date(2026, 8, 30, 4, 30, 0, 0, time.UTC)
 	key := bytes.Repeat([]byte{0x24}, 32)

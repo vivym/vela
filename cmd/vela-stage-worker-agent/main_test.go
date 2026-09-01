@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -51,40 +49,6 @@ func (runtime *recordingStageWorkerRuntime) Run(context.Context) error {
 func (runtime *recordingStageWorkerRuntime) Close() error {
 	runtime.closeCalls++
 	return runtime.closeError
-}
-
-func TestReadAuthorityKeyringPreservesRotationSetAndRejectsDuplicateKeys(t *testing.T) {
-	directory := t.TempDir()
-	path := filepath.Join(directory, "authority-keyring.json")
-	keyOne := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
-	keyTwo := base64.StdEncoding.EncodeToString([]byte("abcdef0123456789abcdef0123456789"))
-	if err := os.WriteFile(
-		path,
-		[]byte(`{"stage-key-v1":"`+keyOne+`","stage-key-v2":"`+keyTwo+`"}`),
-		0o600,
-	); err != nil {
-		t.Fatalf("write authority keyring: %v", err)
-	}
-	keyring, err := readAuthorityKeyring(path)
-	if err != nil {
-		t.Fatalf("readAuthorityKeyring: %v", err)
-	}
-	defer clearAuthorityKeyring(keyring)
-	if string(keyring["stage-key-v1"]) != "0123456789abcdef0123456789abcdef" ||
-		string(keyring["stage-key-v2"]) != "abcdef0123456789abcdef0123456789" || len(keyring) != 2 {
-		t.Fatalf("authority keyring = %#v", keyring)
-	}
-
-	if err := os.WriteFile(
-		path,
-		[]byte(`{"stage-key-v1":"`+keyOne+`","stage-key-v1":"`+keyTwo+`"}`),
-		0o600,
-	); err != nil {
-		t.Fatalf("write duplicate authority keyring: %v", err)
-	}
-	if _, err := readAuthorityKeyring(path); err == nil || !strings.Contains(err.Error(), "duplicate") {
-		t.Fatalf("duplicate authority keyring error = %v", err)
-	}
 }
 
 func TestLoadConfigRequiresStageWorkerRuntimeBoundary(t *testing.T) {

@@ -64,6 +64,7 @@ type Service struct {
 	generation  uint64
 	closed      chan struct{}
 	closeOnce   sync.Once
+	closeErr    error
 }
 
 const maxSealedReceiptReplay = 256
@@ -127,8 +128,12 @@ func NewService(config Config) (*Service, error) {
 }
 
 func (service *Service) Close() {
+	_ = service.Shutdown()
+}
+
+func (service *Service) Shutdown() error {
 	if service == nil {
-		return
+		return nil
 	}
 	service.closeOnce.Do(func() {
 		close(service.closed)
@@ -138,9 +143,10 @@ func (service *Service) Close() {
 		}
 		service.mu.Unlock()
 		if closer, ok := service.backend.(interface{ Close() error }); ok {
-			_ = closer.Close()
+			service.closeErr = closer.Close()
 		}
 	})
+	return service.closeErr
 }
 
 func (service *Service) ProbeReadiness(
@@ -690,6 +696,12 @@ func (service *Service) activeState() velav1.ModelRuntimeExecutionState {
 		return velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED
 	}
 	return service.active.state
+}
+
+func (service *Service) hasActiveExecution() bool {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	return service.active != nil
 }
 
 func (service *Service) clearActive(digest [32]byte) {

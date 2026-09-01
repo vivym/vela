@@ -3,6 +3,7 @@ package stageworkercontrol_test
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"errors"
 	"testing"
@@ -447,7 +448,7 @@ func TestProductionExecutorValidatesRenewedAuthorityContract(t *testing.T) {
 	validRenewal.IssuedAt = timestamppb.New(now.Add(30 * time.Second))
 	validRenewal.ExpiresAt = timestamppb.New(now.Add(2 * time.Minute))
 	validRenewal.MonotonicValidFor = durationpb.New(90 * time.Second)
-	validRenewal.Signature = bytes.Repeat([]byte{0x87}, sha256.Size)
+	validRenewal.Signature = bytes.Repeat([]byte{0x87}, ed25519.SignatureSize)
 	backend := &recordingOperationBackend{command: stageworkercontrol.CommandResult{
 		Decision:         velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
 		RenewedAuthority: validRenewal,
@@ -644,7 +645,7 @@ func validExecutorAssignment(t *testing.T, now time.Time) *velav1.StageAssignmen
 	}
 	authority := controlAuthority(now)
 	authority.ExecutionSpecDigest = executionSpecDigest[:]
-	authority.Signature = bytes.Repeat([]byte{0x86}, sha256.Size)
+	authority.Signature = bytes.Repeat([]byte{0x86}, ed25519.SignatureSize)
 	return &velav1.StageAssignment{
 		Authority: authority, ExecutionSpec: executionSpec,
 		RequiredWorkerMemberIds: []string{authority.GetMembers()[0].GetWorkerMemberId()},
@@ -685,7 +686,7 @@ func verifiedExecutorStageAuthority(
 ) (*velav1.StageAuthority, [sha256.Size]byte) {
 	t.Helper()
 	authority := controlAuthority(now)
-	authority.Signature = bytes.Repeat([]byte{0x86}, sha256.Size)
+	authority.Signature = bytes.Repeat([]byte{0x86}, ed25519.SignatureSize)
 	digest, err := stageauthority.Digest(authority)
 	if err != nil {
 		t.Fatalf("StageAuthority digest: %v", err)

@@ -55,6 +55,12 @@ type Backend interface {
 	Seal(context.Context, stageauthority.Verified) (SealedOutput, error)
 }
 
+type BackendLifecycle interface {
+	Close() error
+	Done() <-chan struct{}
+	Err() error
+}
+
 type FakeRuntime struct {
 	mu              sync.Mutex
 	component       string

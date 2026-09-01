@@ -2,7 +2,7 @@ package stageauthority
 
 import (
 	"bytes"
-	"crypto/hmac"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -63,11 +63,11 @@ type Verified struct {
 }
 
 type Signer struct {
-	keys map[string][]byte
+	keys map[string]ed25519.PrivateKey
 }
 
 type Validator struct {
-	keys map[string][]byte
+	keys map[string]ed25519.PublicKey
 	now  func() time.Time
 }
 
@@ -76,11 +76,26 @@ func NewSigner(keys map[string][]byte) (*Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Signer{keys: validated}, nil
+	defer ClearKeyring(validated)
+	privateKeys := make(map[string]ed25519.PrivateKey, len(validated))
+	for id, key := range validated {
+		seed := stageAuthoritySigningSeed(key)
+		privateKeys[id] = ed25519.NewKeyFromSeed(seed[:])
+	}
+	return &Signer{keys: privateKeys}, nil
 }
 
 func NewValidator(keys map[string][]byte, now func() time.Time) (*Validator, error) {
-	validated, err := validateKeyring(keys)
+	verifierKeys, err := DeriveVerifierKeyring(keys)
+	if err != nil {
+		return nil, err
+	}
+	defer ClearKeyring(verifierKeys)
+	return NewVerifier(verifierKeys, now)
+}
+
+func NewVerifier(keys map[string][]byte, now func() time.Time) (*Validator, error) {
+	validated, err := validateVerifierKeyring(keys)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +103,22 @@ func NewValidator(keys map[string][]byte, now func() time.Time) (*Validator, err
 		now = time.Now
 	}
 	return &Validator{keys: validated, now: now}, nil
+}
+
+func DeriveVerifierKeyring(keys map[string][]byte) (map[string][]byte, error) {
+	validated, err := validateKeyring(keys)
+	if err != nil {
+		return nil, err
+	}
+	defer ClearKeyring(validated)
+	verifierKeys := make(map[string][]byte, len(validated))
+	for id, key := range validated {
+		seed := stageAuthoritySigningSeed(key)
+		privateKey := ed25519.NewKeyFromSeed(seed[:])
+		verifierKeys[id] = slices.Clone(privateKey.Public().(ed25519.PublicKey))
+		clear(privateKey)
+	}
+	return verifierKeys, nil
 }
 
 func (signer *Signer) Sign(authority *velav1.StageAuthority) (*velav1.StageAuthority, error) {
@@ -110,9 +141,7 @@ func (signer *Signer) Sign(authority *velav1.StageAuthority) (*velav1.StageAutho
 	if err != nil {
 		return nil, fmt.Errorf("%w: encode signature payload: %v", ErrInvalid, err)
 	}
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write(payload)
-	canonical.Signature = mac.Sum(nil)
+	canonical.Signature = ed25519.Sign(key, payload)
 	return canonical, nil
 }
 
@@ -153,9 +182,7 @@ func (validator *Validator) ValidateEnvelope(
 	if err != nil {
 		return Verified{}, fmt.Errorf("%w: encode signature payload: %v", ErrInvalid, err)
 	}
-	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write(payload)
-	if !hmac.Equal(signature, mac.Sum(nil)) {
+	if !ed25519.Verify(key, payload, signature) {
 		return Verified{}, ErrInvalidSignature
 	}
 	canonical.Signature = signature
@@ -250,14 +277,50 @@ func validateKeyring(keys map[string][]byte) (map[string][]byte, error) {
 	validated := make(map[string][]byte, len(keys))
 	for id, key := range keys {
 		if strings.TrimSpace(id) != id || id == "" || len(id) > 100 {
+			ClearKeyring(validated)
 			return nil, errors.New("StageAuthority signing key identity is invalid")
 		}
-		if len(key) < minSigningKeyBytes {
-			return nil, fmt.Errorf("StageAuthority signing key %s is too short", id)
+		if len(key) < minSigningKeyBytes || len(key) > maxSigningKeyBytes {
+			ClearKeyring(validated)
+			return nil, fmt.Errorf("StageAuthority signing key %s has invalid length", id)
 		}
 		validated[id] = slices.Clone(key)
 	}
 	return validated, nil
+}
+
+func validateVerifierKeyring(keys map[string][]byte) (map[string]ed25519.PublicKey, error) {
+	if len(keys) == 0 {
+		return nil, errors.New("StageAuthority verifier keyring is required")
+	}
+	validated := make(map[string]ed25519.PublicKey, len(keys))
+	for id, key := range keys {
+		if strings.TrimSpace(id) != id || id == "" || len(id) > 100 {
+			for keyID := range validated {
+				clear(validated[keyID])
+				delete(validated, keyID)
+			}
+			return nil, errors.New("StageAuthority verifier key identity is invalid")
+		}
+		if len(key) != ed25519.PublicKeySize {
+			for keyID := range validated {
+				clear(validated[keyID])
+				delete(validated, keyID)
+			}
+			return nil, fmt.Errorf("StageAuthority verifier key %s has invalid length", id)
+		}
+		validated[id] = slices.Clone(key)
+	}
+	return validated, nil
+}
+
+func stageAuthoritySigningSeed(key []byte) [sha256.Size]byte {
+	payload := make([]byte, 0, len("vela-stage-authority-ed25519-v1\x00")+len(key))
+	payload = append(payload, "vela-stage-authority-ed25519-v1\x00"...)
+	payload = append(payload, key...)
+	seed := sha256.Sum256(payload)
+	clear(payload)
+	return seed
 }
 
 func canonicalize(authority *velav1.StageAuthority) (*velav1.StageAuthority, error) {
@@ -368,7 +431,7 @@ func validateShape(authority *velav1.StageAuthority, requireSignature bool) erro
 		validFor > expiresAt.Sub(issuedAt) {
 		return fmt.Errorf("%w: authority deadline interval is invalid", ErrInvalid)
 	}
-	if requireSignature && len(authority.GetSignature()) != sha256.Size {
+	if requireSignature && len(authority.GetSignature()) != ed25519.SignatureSize {
 		return fmt.Errorf("%w: signature length is invalid", ErrInvalidSignature)
 	}
 	return nil

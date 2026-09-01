@@ -67,11 +67,11 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 	if err := ensureStageWorkerDirectories(configuration); err != nil {
 		return nil, err
 	}
-	keyring, err := readAuthorityKeyring(configuration.authorityKeyringFile)
+	keyring, err := stageauthority.ReadKeyringFile(configuration.authorityKeyringFile)
 	if err != nil {
 		return nil, err
 	}
-	defer clearAuthorityKeyring(keyring)
+	defer stageauthority.ClearKeyring(keyring)
 	if _, ok := keyring[configuration.authorityActiveKeyID]; !ok {
 		return nil, errors.New("Stage Worker active authority key is absent from keyring")
 	}
