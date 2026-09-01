@@ -16,6 +16,7 @@ RELEASE_REVISION ?=
 RELEASE_ARTIFACT_DIR ?=
 RELEASE_IMAGE_PREFIX ?=
 H3_MOCK_BACKEND_CONTEXT ?=
+H3_DISPOSABLE_IMAGE ?= vela-h3-member-campaign:disposable
 H3_RUNTIME_BASE ?=
 H3_RUNTIME_COMMAND_CONTEXT ?=
 H3_ENCODER_SHA256 ?=
@@ -28,7 +29,7 @@ VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_IMAGE_
 	"$(H3_RUNTIME_BASE)" "$(H3_RUNTIME_COMMAND_CONTEXT)" \
 	"$(H3_ENCODER_SHA256)" "$(H3_DIT_SHA256)" "$(H3_VAE_DECODER_SHA256)"
 
-.PHONY: generate generate-openapi generate-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle preflight-h3-real-environment capture-h3-launch-evidence run-h3-campaign capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-sql verify-generated build-h3-mock-backend build-h3-disposable-member-campaign-image test-h3-disposable-member-campaign build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle preflight-h3-real-environment capture-h3-launch-evidence run-h3-campaign capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
 generate: generate-openapi generate-proto generate-sql
 
@@ -69,6 +70,16 @@ build-h3-mock-backend:
 		(echo "H3_MOCK_BACKEND_CONTEXT is required" >&2; exit 2)
 	go run ./cmd/vela-release-artifacts build-h3-mock-backend \
 		"$(CURDIR)" "$(H3_MOCK_BACKEND_CONTEXT)"
+
+build-h3-disposable-member-campaign-image:
+	docker build \
+		--build-arg RELEASE_REVISION="$$(git rev-parse HEAD)" \
+		--file deploy/h3-disposable-campaign/Dockerfile \
+		--tag "$(H3_DISPOSABLE_IMAGE)" \
+		.
+
+test-h3-disposable-member-campaign:
+	H3_DISPOSABLE_IMAGE="$(H3_DISPOSABLE_IMAGE)" ./hack/run-h3-disposable-member-campaign.sh
 
 build-host-packages:
 	@test -n "$(RELEASE_REVISION)" || \

@@ -78,6 +78,9 @@ func run(
 			return 2
 		}
 		defer clear(config.AuthorityKey)
+		config.Logf = func(format string, arguments ...any) {
+			_, _ = fmt.Fprintf(stderr, "campaign event: "+format+"\n", arguments...)
+		}
 		if err := serve(ctx, config); err != nil {
 			_, _ = io.WriteString(stderr, "member campaign server failed\n")
 			return 1

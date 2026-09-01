@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: member-campaign-fault
+  namespace: vela-h3-disposable
+  labels:
+    app.kubernetes.io/name: vela-h3-member-campaign
+    app.kubernetes.io/component: leader
+    vela.ai/campaign-phase: fault
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 90
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-h3-member-campaign
+        app.kubernetes.io/component: leader
+        vela.ai/campaign-phase: fault
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        vela.ai/h3-campaign-role: leader
+      restartPolicy: Never
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: campaign
+          image: vela-h3-member-campaign:disposable
+          imagePullPolicy: Never
+          args:
+            - run-fault
+          env:
+            - name: VELA_H3_MEMBER_CAMPAIGN_ADDRESS
+              value: follower.vela-h3-disposable.svc:7444
+            - name: VELA_H3_MEMBER_CAMPAIGN_SERVER_NAME
+              value: follower.vela-h3-disposable.svc
+            - name: VELA_H3_MEMBER_CAMPAIGN_CLIENT_TLS_CERT_FILE
+              value: /run/campaign/client.crt
+            - name: VELA_H3_MEMBER_CAMPAIGN_CLIENT_TLS_KEY_FILE
+              value: /run/campaign/client.key
+            - name: VELA_H3_MEMBER_CAMPAIGN_SERVER_CA_FILE
+              value: /run/campaign/ca.crt
+            - name: VELA_H3_MEMBER_CAMPAIGN_AUTHORITY_KEY_FILE
+              value: /run/campaign/authority.key
+            - name: VELA_H3_MEMBER_CAMPAIGN_DIAL_TIMEOUT
+              value: 20s
+            - name: VELA_H3_MEMBER_CAMPAIGN_COMMAND_TIMEOUT
+              value: 45s
+            - name: VELA_H3_MEMBER_CAMPAIGN_REMOTE_START_DELAY
+              value: 15s
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 1
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: credentials
+              mountPath: /run/campaign
+              readOnly: true
+      volumes:
+        - name: credentials
+          secret:
+            secretName: vela-h3-member-campaign-credentials
+            defaultMode: 0400

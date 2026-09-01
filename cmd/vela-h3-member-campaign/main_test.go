@@ -91,3 +91,37 @@ func TestRunFaultRequiresBoundedRemoteStartDelay(t *testing.T) {
 		t.Fatalf("run fault code=%d called=%t stdout=%q stderr=%q", code, called, stdout.String(), stderr.String())
 	}
 }
+
+func TestServeEmitsPreparedMemberEventWithoutSecretMaterial(t *testing.T) {
+	directory := t.TempDir()
+	key := []byte("0123456789abcdef0123456789abcdef")
+	keyPath := filepath.Join(directory, "authority.key")
+	if err := os.WriteFile(keyPath, key, 0o600); err != nil {
+		t.Fatalf("write authority key: %v", err)
+	}
+	values := map[string]string{
+		campaignListenAddressEnvironment:     "0.0.0.0:7444",
+		campaignServerCertificateEnvironment: "/run/campaign/server.crt",
+		campaignServerPrivateKeyEnvironment:  "/run/campaign/server.key",
+		campaignClientCAEnvironment:          "/run/campaign/ca.crt",
+		campaignAuthorityKeyFileEnvironment:  keyPath,
+	}
+	var stdout, stderr bytes.Buffer
+	code := run(
+		context.Background(), []string{"serve"},
+		func(name string) string { return values[name] },
+		&stdout, &stderr,
+		func(_ context.Context, config h3membercampaign.ServerConfig) error {
+			config.Logf("prepared member %s", h3membercampaign.FixedTopology().Follower.ID)
+			return nil
+		},
+		func(context.Context, h3membercampaign.ClientConfig) (h3membercampaign.Receipt, error) {
+			return h3membercampaign.Receipt{}, nil
+		},
+	)
+	if code != 0 || stdout.Len() != 0 ||
+		!bytes.Contains(stderr.Bytes(), []byte("prepared member "+h3membercampaign.FixedTopology().Follower.ID)) ||
+		bytes.Contains(stderr.Bytes(), key) {
+		t.Fatalf("serve code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+}
