@@ -471,33 +471,35 @@ func TestConcurrentAdmissionsCannotExceedProjectBound(t *testing.T) {
 		t.Fatalf("concurrent results = %d accepted, %d rejected; want 2 and %d", accepted, rejected, requestCount-2)
 	}
 
-	var projectQueued, poolQueued, jobs int
+	var projectQueued, readyStages, jobs int
 	var reserved int64
 	if err := admin.QueryRow(`
         SELECT
             (SELECT queued_count FROM projects WHERE id = $1),
-            (SELECT queued_count FROM worker_pools WHERE stable_id = 'h3-primary'),
+            (SELECT count(*) FROM stage_ready_queue_entries WHERE project_id = $1),
             (SELECT count(*) FROM jobs),
             (SELECT reserved_minor FROM organization_credit_accounts WHERE organization_id = $2)
     `, testProjectID, testOrganizationID).Scan(
-		&projectQueued, &poolQueued, &jobs, &reserved,
+		&projectQueued, &readyStages, &jobs, &reserved,
 	); err != nil {
 		t.Fatalf("read concurrent Admission effects: %v", err)
 	}
-	if projectQueued != 2 || poolQueued != 2 || jobs != 2 || reserved != 2500 {
+	if projectQueued != 2 || readyStages != 2 || jobs != 2 || reserved != 2500 {
 		t.Fatalf(
-			"concurrent durable state = project %d, pool %d, jobs %d, reserved %d; want 2, 2, 2, 2500",
-			projectQueued, poolQueued, jobs, reserved,
+			"concurrent durable state = project %d, READY stages %d, jobs %d, reserved %d; want 2, 2, 2, 2500",
+			projectQueued, readyStages, jobs, reserved,
 		)
 	}
 }
 
-func TestConcurrentAdmissionsCannotExceedPoolBound(t *testing.T) {
+func TestConcurrentAdmissionsCannotExceedStageCapacityBound(t *testing.T) {
 	server, admin := newAdmissionServer(t)
 	if _, err := admin.Exec(
-		"UPDATE worker_pools SET queued_limit = 2 WHERE stable_id = 'h3-primary'",
+		`UPDATE capacity_pools
+		 SET max_ready_queue_depth = 2
+		 WHERE stage_profile_revision_id = '49000000-0000-0000-0000-000000000040'`,
 	); err != nil {
-		t.Fatalf("set Worker pool queue bound: %v", err)
+		t.Fatalf("set Encoder Stage capacity bound: %v", err)
 	}
 	body := []byte(`{
         "model":"minimax-h3",
@@ -529,222 +531,33 @@ func TestConcurrentAdmissionsCannotExceedPoolBound(t *testing.T) {
 		t.Fatalf("pool results = %d accepted, %d rejected; want 2 and %d", accepted, rejected, requestCount-2)
 	}
 
-	var projectQueued, poolQueued, jobs int
+	var projectQueued, readyStages, jobs int
 	var reserved int64
 	if err := admin.QueryRow(`
         SELECT
             (SELECT queued_count FROM projects WHERE id = $1),
-            (SELECT queued_count FROM worker_pools WHERE stable_id = 'h3-primary'),
+            (SELECT count(*) FROM stage_ready_queue_entries WHERE project_id = $1),
             (SELECT count(*) FROM jobs),
             (SELECT reserved_minor FROM organization_credit_accounts WHERE organization_id = $2)
     `, testProjectID, testOrganizationID).Scan(
-		&projectQueued, &poolQueued, &jobs, &reserved,
+		&projectQueued, &readyStages, &jobs, &reserved,
 	); err != nil {
-		t.Fatalf("read pool-concurrent Admission effects: %v", err)
+		t.Fatalf("read Stage-capacity concurrent Admission effects: %v", err)
 	}
-	if projectQueued != 2 || poolQueued != 2 || jobs != 2 || reserved != 2500 {
+	if projectQueued != 2 || readyStages != 2 || jobs != 2 || reserved != 2500 {
 		t.Fatalf(
-			"pool-concurrent state = project %d, pool %d, jobs %d, reserved %d; want 2, 2, 2, 2500",
+			"Stage-capacity state = project %d, READY stages %d, jobs %d, reserved %d; want 2, 2, 2, 2500",
 			projectQueued,
-			poolQueued,
+			readyStages,
 			jobs,
 			reserved,
 		)
 	}
 }
 
-func TestCompatiblePoolLockStabilizesCertificationUntilAdmissionCommits(t *testing.T) {
-	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
-	seedAdmissionFixture(t, database.Admin)
-	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
-
-	requestTx, err := requestPool.Begin(context.Background())
-	if err != nil {
-		t.Fatalf("begin request transaction: %v", err)
-	}
-	defer func() { _ = requestTx.Rollback(context.Background()) }()
-	if _, err := requestTx.Exec(
-		context.Background(),
-		"SELECT * FROM vela_set_request_context($1, $2, $3)",
-		testCredentialID,
-		credentialDigest([]byte(testCredentialSecret)),
-		identity.ScopeJobsSubmit,
-	); err != nil {
-		t.Fatalf("establish request context: %v", err)
-	}
-	lockedPool, err := selectCompatiblePool(context.Background(), requestTx)
-	if err != nil {
-		t.Fatalf("lock compatible Worker pool: %v", err)
-	}
-	if lockedPool.ID == uuid.Nil {
-		t.Fatal("compatible Worker pool lock returned no pool")
-	}
-
-	mutationTx, err := database.Admin.Begin()
-	if err != nil {
-		t.Fatalf("begin certification mutation: %v", err)
-	}
-	defer func() { _ = mutationTx.Rollback() }()
-	if _, err := mutationTx.Exec("SET LOCAL lock_timeout = '100ms'"); err != nil {
-		t.Fatalf("set certification lock timeout: %v", err)
-	}
-	_, err = mutationTx.Exec(`
-        UPDATE profile_certifications
-        SET state = 'INVALID', invalidated_at = clock_timestamp()
-        WHERE id = '00000000-0000-0000-0000-000000000015'
-    `)
-	var postgresError *pgconn.PgError
-	if !errors.As(err, &postgresError) || postgresError.Code != "55P03" {
-		t.Fatalf("concurrent certification mutation error = %v, want SQLSTATE 55P03", err)
-	}
-	if err := mutationTx.Rollback(); err != nil {
-		t.Fatalf("roll back blocked certification mutation: %v", err)
-	}
-	if err := requestTx.Commit(context.Background()); err != nil {
-		t.Fatalf("commit request transaction: %v", err)
-	}
-	if _, err := database.Admin.Exec(`
-        UPDATE profile_certifications
-        SET state = 'INVALID', invalidated_at = clock_timestamp()
-        WHERE id = '00000000-0000-0000-0000-000000000015'
-    `); err != nil {
-		t.Fatalf("mutate certification after Admission commit: %v", err)
-	}
-}
-
-func TestCompatiblePoolSelectionContinuesAfterWaitedCandidateFills(t *testing.T) {
-	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
-	seedAdmissionFixture(t, database.Admin)
-	seedSecondProjectAndPool(t, database.Admin)
-	if _, err := database.Admin.Exec("UPDATE worker_pools SET queued_limit = 1"); err != nil {
-		t.Fatalf("set pool limits: %v", err)
-	}
-	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
-
-	first, err := requestPool.Begin(context.Background())
-	if err != nil {
-		t.Fatalf("begin first pool-selection transaction: %v", err)
-	}
-	defer func() { _ = first.Rollback(context.Background()) }()
-	if _, err := first.Exec(
-		context.Background(),
-		"SELECT * FROM vela_set_request_context($1, $2, $3)",
-		testCredentialID,
-		credentialDigest([]byte(testCredentialSecret)),
-		identity.ScopeJobsSubmit,
-	); err != nil {
-		t.Fatalf("establish first pool-selection context: %v", err)
-	}
-	if _, err := selectCompatiblePool(context.Background(), first); err != nil {
-		t.Fatalf("lock first compatible pool: %v", err)
-	}
-
-	type poolResult struct {
-		pool compatiblePoolRow
-		err  error
-	}
-	backendPID := make(chan int, 1)
-	result := make(chan poolResult, 1)
-	go func() {
-		second, beginErr := requestPool.Begin(context.Background())
-		if beginErr != nil {
-			result <- poolResult{err: beginErr}
-			return
-		}
-		defer func() { _ = second.Rollback(context.Background()) }()
-		if _, contextErr := second.Exec(
-			context.Background(),
-			"SELECT * FROM vela_set_request_context($1, $2, $3)",
-			testCredentialID,
-			credentialDigest([]byte(testCredentialSecret)),
-			identity.ScopeJobsSubmit,
-		); contextErr != nil {
-			result <- poolResult{err: contextErr}
-			return
-		}
-		var pid int
-		if queryErr := second.QueryRow(context.Background(), "SELECT pg_backend_pid()").Scan(&pid); queryErr != nil {
-			result <- poolResult{err: queryErr}
-			return
-		}
-		backendPID <- pid
-		selected, queryErr := selectCompatiblePool(context.Background(), second)
-		result <- poolResult{pool: selected, err: queryErr}
-	}()
-
-	pid := <-backendPID
-	waitForDatabaseLock(t, database.Admin, pid)
-	if _, err := first.Exec(context.Background(), `
-        UPDATE worker_pools
-        SET queued_count = queued_limit
-        WHERE id = '00000000-0000-0000-0000-000000000005'
-    `); err != nil {
-		t.Fatalf("fill first compatible pool: %v", err)
-	}
-	if err := first.Commit(context.Background()); err != nil {
-		t.Fatalf("commit first pool-selection transaction: %v", err)
-	}
-
-	secondResult := <-result
-	if secondResult.err != nil {
-		t.Fatalf("select next compatible pool: %v", secondResult.err)
-	}
-	if secondResult.pool.ID.String() != "00000000-0000-0000-0000-000000000105" {
-		t.Fatalf("selected pool = %s, want available secondary pool", secondResult.pool.ID)
-	}
-}
-
-type compatiblePoolRow struct {
-	ID                uuid.UUID
-	AdmissionOpen     bool
-	QueuedCount       int32
-	QueuedLimit       int32
-	RetryAfterSeconds int32
-}
-
-func selectCompatiblePool(ctx context.Context, tx pgx.Tx) (compatiblePoolRow, error) {
-	var pool compatiblePoolRow
-	err := tx.QueryRow(ctx, `
-        SELECT * FROM vela_lock_compatible_pool($1, $2, $3)
-    `,
-		uuid.MustParse("00000000-0000-0000-0000-000000000010"),
-		uuid.MustParse("00000000-0000-0000-0000-000000000011"),
-		uuid.MustParse("00000000-0000-0000-0000-000000000013"),
-	).Scan(
-		&pool.ID,
-		&pool.AdmissionOpen,
-		&pool.QueuedCount,
-		&pool.QueuedLimit,
-		&pool.RetryAfterSeconds,
-	)
-	return pool, err
-}
-
-func waitForDatabaseLock(t *testing.T, db *sql.DB, backendPID int) {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		var waiting bool
-		if err := db.QueryRow(`
-            SELECT COALESCE(wait_event_type = 'Lock', false)
-            FROM pg_stat_activity
-            WHERE pid = $1
-        `, backendPID).Scan(&waiting); err != nil {
-			t.Fatalf("inspect waiting database backend: %v", err)
-		}
-		if waiting {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("second pool-selection transaction did not wait for the first pool lock")
-}
-
 func TestConcurrentProjectsCannotExceedOrganizationCredit(t *testing.T) {
 	server, admin := newAdmissionServer(t)
-	seedSecondProjectAndPool(t, admin)
+	seedSecondProject(t, admin)
 	if _, err := admin.Exec(
 		"UPDATE organization_credit_accounts SET contract_credit_limit_minor = 5000 WHERE organization_id = $1",
 		testOrganizationID,
@@ -820,23 +633,23 @@ func TestConcurrentProjectsCannotExceedOrganizationCredit(t *testing.T) {
 	}
 
 	var reserved int64
-	var jobs, projectQueued, poolQueued int
+	var jobs, projectQueued, readyStages int
 	if err := admin.QueryRow(`
         SELECT
             (SELECT reserved_minor FROM organization_credit_accounts WHERE organization_id = $1),
             (SELECT count(*) FROM jobs),
             (SELECT sum(queued_count) FROM projects WHERE organization_id = $1),
-            (SELECT sum(queued_count) FROM worker_pools)
-    `, testOrganizationID).Scan(&reserved, &jobs, &projectQueued, &poolQueued); err != nil {
+			(SELECT count(*) FROM stage_ready_queue_entries WHERE organization_id = $1)
+	`, testOrganizationID).Scan(&reserved, &jobs, &projectQueued, &readyStages); err != nil {
 		t.Fatalf("read shared-credit durable state: %v", err)
 	}
-	if reserved != 5000 || jobs != 2 || projectQueued != 2 || poolQueued != 2 {
+	if reserved != 5000 || jobs != 2 || projectQueued != 2 || readyStages != 2 {
 		t.Fatalf(
-			"shared-credit state = reserved %d, jobs %d, Project queued %d, pool queued %d; want 5000, 2, 2, 2",
+			"shared-credit state = reserved %d, jobs %d, Project queued %d, READY stages %d; want 5000, 2, 2, 2",
 			reserved,
 			jobs,
 			projectQueued,
-			poolQueued,
+			readyStages,
 		)
 	}
 }
@@ -846,6 +659,7 @@ func TestOrganizationIsolationFailsClosedAcrossHTTPRLSAndForeignKeys(t *testing.
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedOtherOrganization(t, database.Admin)
+	ensureH3StageAdmissionRoute(t, database)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	artifactPool := newRolePool(
@@ -989,7 +803,7 @@ func TestJobAttributionIsBoundToAuthenticatedProjectServicePrincipal(t *testing.
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
-	seedSecondProjectAndPool(t, database.Admin)
+	seedSecondProject(t, database.Admin)
 	server := admissionServerForDatabase(t, database)
 
 	accepted := submitJob(t, server.URL, "job-attribution-source", []byte(`{
@@ -1012,7 +826,8 @@ func TestJobAttributionIsBoundToAuthenticatedProjectServicePrincipal(t *testing.
         INSERT INTO jobs (
             id, organization_id, project_id, created_by_principal_id, state, version,
             model_revision_id, generation_preset_revision_id, service_class_revision_id,
-            output_spec_id, worker_pool_id, request_hash, request_content,
+            output_spec_id, stage_cutover_revision_id, execution_graph_revision_id,
+			stage_execution_profile_revision_id, request_hash, request_content,
             request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
             pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
             pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
@@ -1023,7 +838,8 @@ func TestJobAttributionIsBoundToAuthenticatedProjectServicePrincipal(t *testing.
         SELECT
             $1, organization_id, project_id, $2, state, version,
             model_revision_id, generation_preset_revision_id, service_class_revision_id,
-            output_spec_id, worker_pool_id, request_hash, request_content,
+            output_spec_id, stage_cutover_revision_id, execution_graph_revision_id,
+			stage_execution_profile_revision_id, request_hash, request_content,
             request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
             pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
             pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
@@ -1323,15 +1139,16 @@ func TestReadScopeRequestContextCannotMutateAdmissionState(t *testing.T) {
 		t.Fatalf("jobs:read context updated %d Project rows, want 0", projectUpdate.RowsAffected())
 	}
 
-	poolUpdate, err := tx.Exec(
+	capacityUpdate, err := tx.Exec(
 		context.Background(),
-		"UPDATE worker_pools SET queued_count = queued_count + 1 WHERE stable_id = 'h3-primary'",
+		"UPDATE stage_capacity_pool_counters SET ready_count = ready_count + 1",
 	)
-	if err != nil {
-		t.Fatalf("attempt Worker pool mutation with jobs:read context: %v", err)
+	var permissionError *pgconn.PgError
+	if err != nil && (!errors.As(err, &permissionError) || permissionError.Code != "42501") {
+		t.Fatalf("attempt Stage capacity mutation with jobs:read context: %v", err)
 	}
-	if poolUpdate.RowsAffected() != 0 {
-		t.Fatalf("jobs:read context updated %d Worker pool rows, want 0", poolUpdate.RowsAffected())
+	if err == nil && capacityUpdate.RowsAffected() != 0 {
+		t.Fatalf("jobs:read context updated %d Stage capacity rows, want 0", capacityUpdate.RowsAffected())
 	}
 }
 
@@ -1532,6 +1349,7 @@ func newAdmissionServer(t *testing.T) (*httptest.Server, *sql.DB) {
 
 func admissionServerForDatabase(t *testing.T, database testDatabase) *httptest.Server {
 	t.Helper()
+	ensureH3StageAdmissionRoute(t, database)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	artifactPool := newRolePool(
@@ -1561,6 +1379,54 @@ func admissionServerForDatabase(t *testing.T, database testDatabase) *httptest.S
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return server
+}
+
+func ensureH3StageAdmissionRoute(t *testing.T, database testDatabase) {
+	t.Helper()
+	var modelExists, graphExists bool
+	if err := database.Admin.QueryRow(`
+		SELECT
+			to_regclass('public.execution_graph_revisions') IS NOT NULL
+			AND EXISTS (
+				SELECT 1 FROM model_revisions
+				WHERE id = '00000000-0000-0000-0000-000000000010'
+			),
+			to_regclass('public.execution_graph_revisions') IS NOT NULL
+			AND EXISTS (
+				SELECT 1 FROM execution_graph_revisions
+				WHERE id = '49000000-0000-0000-0000-000000000001'
+			)
+	`).Scan(&modelExists, &graphExists); err != nil {
+		t.Fatalf("inspect H3 Stage Admission route fixture: %v", err)
+	}
+	if !modelExists {
+		return
+	}
+	if !graphExists {
+		seedStageExecutionCatalog(t, database.Admin)
+		activateH3StageGraph(t, database)
+	}
+	if _, err := database.Admin.Exec(`
+		SELECT vela_authorize_stage_cutover_internal_project(
+			control.current_revision_id,
+			project.organization_id,
+			project.id,
+			'integration-admission-server'
+		)
+		FROM stage_cutover_control AS control
+		CROSS JOIN projects AS project
+		WHERE control.singleton
+		  AND control.current_revision_id IS NOT NULL
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM stage_cutover_internal_projects AS binding
+			WHERE binding.cutover_revision_id = control.current_revision_id
+			  AND binding.organization_id = project.organization_id
+			  AND binding.project_id = project.id
+		  )
+	`); err != nil {
+		t.Fatalf("authorize Stage Admission fixture projects: %v", err)
+	}
 }
 
 func submitJob(t *testing.T, serverURL, idempotencyKey string, body []byte) httpResult {
@@ -1852,7 +1718,7 @@ func seedAdmissionFixture(t *testing.T, db *sql.DB) {
 	}
 }
 
-func seedSecondProjectAndPool(t *testing.T, db *sql.DB) {
+func seedSecondProject(t *testing.T, db *sql.DB) {
 	t.Helper()
 	digest := credentialDigest([]byte(testCredentialTwoSecret))
 	if _, err := db.Exec(fmt.Sprintf(`
@@ -1870,28 +1736,45 @@ func seedSecondProjectAndPool(t *testing.T, db *sql.DB) {
             '%[4]s', '%[2]s', '%[1]s', '%[3]s', decode('%[5]s', 'hex'),
             ARRAY['jobs:submit', 'jobs:read'], clock_timestamp() + interval '1 day', '%[3]s'
         );
-        INSERT INTO worker_pools (id, stable_id, queued_limit)
-        VALUES ('00000000-0000-0000-0000-000000000105', 'h3-secondary', 10);
-        INSERT INTO execution_profile_revisions (
-            id, model_revision_id, worker_pool_id, stable_id, revision, state
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000106',
-            '00000000-0000-0000-0000-000000000010',
-            '00000000-0000-0000-0000-000000000105', 'h3-balanced-secondary', 1, 'ACTIVE'
-        );
-        INSERT INTO profile_certifications (
-            id, model_revision_id, generation_preset_revision_id, output_spec_id,
-            execution_profile_revision_id, state, evidence_digest, certified_at
-        ) VALUES (
-            '00000000-0000-0000-0000-000000000107',
-            '00000000-0000-0000-0000-000000000010',
-            '00000000-0000-0000-0000-000000000011',
-            '00000000-0000-0000-0000-000000000013',
-            '00000000-0000-0000-0000-000000000106', 'ACTIVE',
-            '123456789abcdef0123456789abcdef0', clock_timestamp()
-        );
-    `, testProjectTwoID, testOrganizationID, testPrincipalTwoID, testCredentialTwoID, hex.EncodeToString(digest))); err != nil {
-		t.Fatalf("seed second Project and pool: %v", err)
+	`, testProjectTwoID, testOrganizationID, testPrincipalTwoID, testCredentialTwoID, hex.EncodeToString(digest))); err != nil {
+		t.Fatalf("seed second Project: %v", err)
+	}
+	authorizeCurrentStageCutoverProject(t, db, testOrganizationID, testProjectTwoID)
+}
+
+func authorizeCurrentStageCutoverProject(t *testing.T, db *sql.DB, organizationID, projectID string) {
+	t.Helper()
+	var functionExists bool
+	if err := db.QueryRow(`
+		SELECT to_regprocedure(
+			'public.vela_authorize_stage_cutover_internal_project(uuid,uuid,uuid,text)'
+		) IS NOT NULL
+	`).Scan(&functionExists); err != nil {
+		t.Fatalf("inspect Stage cutover project authorization function: %v", err)
+	}
+	if !functionExists {
+		return
+	}
+	if _, err := db.Exec(`
+		SELECT vela_authorize_stage_cutover_internal_project(
+			control.current_revision_id, $1, $2, 'integration-admission-server'
+		)
+		FROM stage_cutover_control AS control
+		JOIN stage_cutover_revisions AS revision
+		  ON revision.id = control.current_revision_id
+		WHERE control.singleton
+		  AND control.current_revision_id IS NOT NULL
+		  AND revision.scope = 'INTERNAL'
+		  AND revision.mode <> 'LEGACY_ONLY'
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM stage_cutover_internal_projects AS binding
+			WHERE binding.cutover_revision_id = control.current_revision_id
+			  AND binding.organization_id = $1
+			  AND binding.project_id = $2
+		  )
+	`, organizationID, projectID); err != nil {
+		t.Fatalf("authorize current Stage cutover project: %v", err)
 	}
 }
 
