@@ -140,6 +140,7 @@ type OCIImage struct {
 type ConfigurationManifest struct {
 	SchemaVersion          int                     `json:"schema_version"`
 	MediaType              string                  `json:"media_type"`
+	SourceRevision         string                  `json:"source_revision,omitempty"`
 	FinalRenders           []NamedArtifact         `json:"final_renders"`
 	NodeAgentUnit          NamedArtifact           `json:"node_agent_unit"`
 	Packages               []Package               `json:"packages"`

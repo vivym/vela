@@ -3,13 +3,17 @@ package stagecutover
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	veladb "github.com/vivym/vela/internal/database"
+	"github.com/vivym/vela/internal/legacyh3reachability"
+	"github.com/vivym/vela/internal/releasebundle"
 )
 
 type Service struct {
@@ -90,6 +94,27 @@ type LegacyH3ContractionPreparationResult struct {
 	ArchiveDigest        string    `json:"archive_digest"`
 	ContentDigest        string    `json:"content_digest"`
 	Replayed             bool      `json:"replayed"`
+}
+
+type AuthorizeLegacyH3ContractionRequest struct {
+	ZeroBacklogReceiptID     uuid.UUID `json:"zero_backlog_receipt_id"`
+	LaunchManifestDigest     string    `json:"launch_manifest_digest"`
+	ReleaseBundlePath        string    `json:"release_bundle_path"`
+	ReachabilityEvidencePath string    `json:"reachability_evidence_path"`
+	AuthorizedBy             string    `json:"authorized_by"`
+}
+
+type LegacyH3ContractionAuthorizationResult struct {
+	ZeroBacklogReceiptID       uuid.UUID `json:"zero_backlog_receipt_id"`
+	CutoverRevisionID          uuid.UUID `json:"cutover_revision_id"`
+	LaunchManifestDigest       string    `json:"launch_manifest_digest"`
+	ReleaseDigest              string    `json:"release_digest"`
+	ConfigurationRevision      string    `json:"configuration_revision"`
+	SourceRevision             string    `json:"source_revision"`
+	ReachabilityEvidenceDigest string    `json:"reachability_evidence_digest"`
+	AuthorizedAt               time.Time `json:"authorized_at"`
+	ContentDigest              string    `json:"content_digest"`
+	Replayed                   bool      `json:"replayed"`
 }
 
 func New(ctx context.Context, pool *pgxpool.Pool) (*Service, error) {
@@ -233,6 +258,85 @@ func (service *Service) PrepareLegacyH3Contraction(
 		)
 	}
 	result.ArchiveDigest = hex.EncodeToString(archiveDigest)
+	result.ContentDigest = hex.EncodeToString(contentDigest)
+	return result, nil
+}
+
+func (service *Service) AuthorizeLegacyH3Contraction(
+	ctx context.Context,
+	request AuthorizeLegacyH3ContractionRequest,
+) (LegacyH3ContractionAuthorizationResult, error) {
+	bundle, err := releasebundle.Load(request.ReleaseBundlePath)
+	if err != nil {
+		return LegacyH3ContractionAuthorizationResult{}, fmt.Errorf(
+			"load contraction release bundle: %w",
+			err,
+		)
+	}
+	_, reachabilityBytes, _, err := legacyh3reachability.Load(
+		request.ReachabilityEvidencePath,
+		bundle,
+	)
+	if err != nil {
+		return LegacyH3ContractionAuthorizationResult{}, fmt.Errorf(
+			"load release-bound Legacy H3 reachability evidence: %w",
+			err,
+		)
+	}
+	launchManifestDigest, err := decodeSHA256(request.LaunchManifestDigest)
+	if err != nil {
+		return LegacyH3ContractionAuthorizationResult{}, fmt.Errorf(
+			"decode Launch manifest digest: %w",
+			err,
+		)
+	}
+	releaseDigest, err := decodeSHA256(strings.TrimPrefix(bundle.ReleaseDigest, "sha256:"))
+	if err != nil {
+		return LegacyH3ContractionAuthorizationResult{}, fmt.Errorf(
+			"decode release bundle digest: %w",
+			err,
+		)
+	}
+	configurationManifest, err := json.Marshal(bundle.ConfigurationManifest)
+	if err != nil {
+		return LegacyH3ContractionAuthorizationResult{}, fmt.Errorf(
+			"encode release configuration manifest: %w",
+			err,
+		)
+	}
+	var result LegacyH3ContractionAuthorizationResult
+	var returnedLaunchManifestDigest, returnedReleaseDigest, returnedReachabilityDigest []byte
+	var contentDigest []byte
+	err = service.pool.QueryRow(ctx, `
+		SELECT zero_backlog_receipt_id, cutover_revision_id,
+		       launch_manifest_digest, release_digest,
+		       configuration_revision, source_revision,
+		       reachability_evidence_digest,
+		       authorized_at, content_digest, replayed
+		FROM vela_authorize_legacy_h3_contraction($1, $2, $3, $4, $5, $6, $7)
+	`, request.ZeroBacklogReceiptID, launchManifestDigest, releaseDigest,
+		bundle.ConfigurationRevision, configurationManifest,
+		reachabilityBytes, request.AuthorizedBy).Scan(
+		&result.ZeroBacklogReceiptID,
+		&result.CutoverRevisionID,
+		&returnedLaunchManifestDigest,
+		&returnedReleaseDigest,
+		&result.ConfigurationRevision,
+		&result.SourceRevision,
+		&returnedReachabilityDigest,
+		&result.AuthorizedAt,
+		&contentDigest,
+		&result.Replayed,
+	)
+	if err != nil {
+		return LegacyH3ContractionAuthorizationResult{}, fmt.Errorf(
+			"authorize Legacy H3 contraction: %w",
+			err,
+		)
+	}
+	result.LaunchManifestDigest = hex.EncodeToString(returnedLaunchManifestDigest)
+	result.ReleaseDigest = hex.EncodeToString(returnedReleaseDigest)
+	result.ReachabilityEvidenceDigest = hex.EncodeToString(returnedReachabilityDigest)
 	result.ContentDigest = hex.EncodeToString(contentDigest)
 	return result, nil
 }

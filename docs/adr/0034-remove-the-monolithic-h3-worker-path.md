@@ -2,7 +2,8 @@
 
 Date: 2026-08-29
 
-Status: Accepted target architecture; removal not started.
+Status: Accepted target architecture; pre-contraction authorization gate
+implemented, removal not started.
 
 ## Context
 
@@ -68,5 +69,8 @@ mode.
 ## Evidence boundary
 
 This ADR authorizes eventual deletion, not immediate destructive removal. The
-current worktree changes documentation only. Spec 0049 defines the migration
+repository now contains a fail-closed release-bound reachability scanner and an
+immutable authorization gate, but the current schema-v1 release and source tree
+still evaluate as FAIL because the legacy surfaces remain. No contraction DDL or
+legacy source deletion has occurred. Spec 0049 defines the migration
 preconditions and spec 0050 defines the implementation slices.

@@ -88,6 +88,23 @@ func TestLoadRequestRejectsAmbiguousJSON(t *testing.T) {
 	}
 }
 
+func TestAuthorizationRequestRejectsCallerAssertedReachabilityDigest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "request.json")
+	if err := os.WriteFile(path, []byte(`{
+		"zero_backlog_receipt_id":"52000000-0000-0000-0000-000000000005",
+		"launch_manifest_digest":"5700000000000000000000000000000000000000000000000000000000000000",
+		"reachability_evidence_digest":"5800000000000000000000000000000000000000000000000000000000000000",
+		"authorized_by":"operator-test"
+	}`), 0o600); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	var request stagecutover.AuthorizeLegacyH3ContractionRequest
+	if err := loadRequest(path, &request); err == nil ||
+		!strings.Contains(err.Error(), "reachability_evidence_digest") {
+		t.Fatalf("caller-asserted reachability digest error = %v", err)
+	}
+}
+
 func TestWriteOperationErrorEmitsPostgresConstraintAsJSON(t *testing.T) {
 	var stderr bytes.Buffer
 	writeOperationError(

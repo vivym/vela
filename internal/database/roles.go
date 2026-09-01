@@ -516,6 +516,20 @@ func verifyCatalogPromotionPrivileges(
 			"vela_prepare_legacy_h3_contraction(uuid,text)",
 		)
 	}
+	contractionAuthorizationPresent, err := databaseFunctionExists(
+		ctx,
+		database,
+		"vela_authorize_legacy_h3_contraction(uuid,bytea,bytea,text,bytea,bytea,text)",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect Catalog Promotion Legacy H3 release gate surface: %w", err)
+	}
+	if contractionAuthorizationPresent {
+		boundary.functions = append(
+			boundary.functions,
+			"vela_authorize_legacy_h3_contraction(uuid,bytea,bytea,text,bytea,bytea,text)",
+		)
+	}
 	return verifyExactPrivileges(ctx, database, currentUser, boundary)
 }
 

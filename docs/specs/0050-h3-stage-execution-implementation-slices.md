@@ -3,15 +3,17 @@
 Date: 2026-08-31
 
 Status: In progress. S49.1-S49.11 have committed repository implementations.
-S49.12 has started with migrations `00049` through `00053` and remains partial: cutover routing,
+S49.12 has started with migrations `00049` through `00057` and remains partial: cutover routing,
 immutable execution authority, scoped internal rollout, Production Launch
 Receipt gating, legacy database inventory, and rollback protection exist;
 automatic Accepted STAGE_GRAPH Job instantiation now has durable multi-replica claims, expiry
 takeover, exact replay, crash reconciliation, `vela-control` wiring, and atomic
 Admission instantiation. Typed external drain evidence, zero-inventory sealing,
 and an explicit live-zero contraction-readiness archive/freeze are implemented.
-Release-coupled schema and legacy-path deletion, permanent reachability closure,
-and production evidence remain pending.
+A fail-closed exact-release authorization and typed reachability scanner confirm
+that the current schema-v1 release and repository remain FAIL. Schema-v2 release
+generation, legacy-path deletion, permanent reachability closure, and production
+evidence remain pending.
 
 ## Delivery rule
 
@@ -318,11 +320,22 @@ Acceptance:
 
 ## S49.12: Cutover, contraction, and evidence campaign
 
-Current repository boundary: migrations `00049` through `00053`, Admission, and the
+Current repository boundary: migrations `00049` through `00057`, Admission, and the
 AttemptCoordinator maintenance loop implement the pre-contraction control and
 automatic-instantiation surfaces, including the target single-transaction
 Admission graph-instantiation boundary, typed M5 operator evidence, zero-backlog
-seal, and explicit M6 contraction-readiness archive/freeze command. They do not
+seal, explicit M6 contraction-readiness archive/freeze command, and an immutable
+release authorization gate. `vela-h3-reachability` binds strict source checks to
+one verified release bundle and the exact clean Git toplevel, publishes evidence
+atomically without replacement, and rejects subdirectory roots, symlinks,
+malformed evidence, residual Fleet/query/release surfaces, or a non-contracted
+release graph. `vela-stage-cutover` no longer accepts an arbitrary reachability
+digest: it validates the exact bundle and typed PASS evidence before the
+database independently parses the complete evidence bytes, recomputes their
+digest, verifies the canonical manifest's source/configuration binding, and
+atomically rechecks all nine Launch Receipts and live-zero inventory. The current
+schema-v1 release cannot pass this gate.
+They do not
 authorize production activation, prove real Worker-local or N-1 drain, remove
 legacy schema/code, or make the monolithic path unreachable in the repository.
 

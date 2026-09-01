@@ -86,13 +86,64 @@ created legacy authority.
 
 ## Release Contraction
 
-The next release must remove the monolithic Worker Assignment, Runner,
-scheduler, finalization, recovery, protobuf, deployment, and generated query
-surfaces. Its migration must recheck the readiness receipt and live-zero state,
-drop an explicit reviewed dependency list with `RESTRICT`, rebuild Stage-only
-constraints and triggers, and add permanent schema/protocol/runtime/deployment
-reachability tests. Do not issue those drops from a runtime
-`SECURITY DEFINER` function.
+The contraction candidate must use release-bundle schema v2 and remove the
+monolithic Worker Assignment, Runner, scheduler, finalization, recovery,
+protobuf, deployment, generated query, package, and image surfaces. From the
+exact source revision used to build that release, create a new evidence file:
+
+```bash
+umask 077
+go build -o ./bin/vela-h3-reachability ./cmd/vela-h3-reachability
+
+./bin/vela-h3-reachability scan \
+  --root . \
+  --release-bundle ./release/release-bundle.json \
+  --source-revision "$(git rev-parse HEAD)" \
+  --observed-by 'ci/legacy-h3-reachability' \
+  --output ./evidence/legacy-h3-reachability.json
+```
+
+`--root` must resolve to the Git repository toplevel; a committed subdirectory
+is rejected. The command also requires that exact `HEAD`, index, worktree, and
+all untracked files are clean. It atomically creates the output without
+replacement and exits nonzero for FAIL. The current schema-v1 release and
+current repository must return FAIL; do not edit the evidence to force PASS.
+Verify a candidate PASS independently:
+
+```bash
+./bin/vela-h3-reachability verify \
+  --release-bundle ./release/release-bundle.json \
+  --evidence ./evidence/legacy-h3-reachability.json
+```
+
+Only after the exact release has all nine sealed PASS Launch Receipts and the
+live inventory remains zero, create this owner-only request:
+
+```json
+{
+  "zero_backlog_receipt_id": "52000000-0000-0000-0000-000000000005",
+  "launch_manifest_digest": "64-lowercase-hex-characters",
+  "release_bundle_path": "./release/release-bundle.json",
+  "reachability_evidence_path": "./evidence/legacy-h3-reachability.json",
+  "authorized_by": "stage-cutover-operator"
+}
+```
+
+```bash
+./bin/vela-stage-cutover authorize-legacy-h3-contraction \
+  --request ./evidence/authorize-legacy-h3-contraction-request.json \
+  >./evidence/authorize-legacy-h3-contraction-result.json
+```
+
+Migration `00057` stores the immutable authorization and refuses rollback after
+it exists. The operator does not submit a trusted evidence digest: the database
+receives the canonical schema-v2 configuration manifest and complete evidence
+bytes, verifies their release/configuration/source binding and exact PASS check
+set, and computes the stored evidence digest itself. It does not drop schema.
+The subsequent contraction migration must recheck the authorization and
+live-zero state, drop an explicit reviewed dependency list with `RESTRICT`, and
+rebuild Stage-only constraints and triggers. Do not issue those drops from a
+runtime `SECURITY DEFINER` function.
 
 ## Failure Handling
 
@@ -105,6 +156,17 @@ reachability tests. Do not issue those drops from a runtime
   changed.
 - `legacy_h3_contraction_preparation_frozen` means a writer tried to mutate
   prepared legacy authority. Preserve the failed command as incident evidence.
+- `legacy_h3_contraction_release_binding_mismatch` means the typed evidence
+  bundle does not match the active cutover release/configuration.
+- `legacy_h3_contraction_configuration_manifest_invalid` or
+  `legacy_h3_contraction_reachability_evidence_invalid` means the supplied bytes
+  are malformed, digest-mismatched, unbound, or do not encode the exact PASS
+  contract.
+- `legacy_h3_contraction_sealed_release_required` or
+  `legacy_h3_contraction_launch_receipts_incomplete` means the exact release
+  does not have a sealed all-PASS Production Gate manifest.
+- `legacy_h3_contraction_authorization_live_inventory_nonzero` means legacy
+  authority reappeared before final authorization; investigate the source.
 - After a readiness receipt exists, migration Down is forbidden. Use the
   approved forward repair or database restore procedure.
 

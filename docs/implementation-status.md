@@ -14,7 +14,7 @@ The H3 stage-disaggregated architecture is accepted as the replacement target.
 S49.1-S49.11 have committed repository implementations through StageArtifact
 transfer, split H3 execution, exact cache, CPU media stages, and the immutable
 Usage/Cost Ledger, plus the deterministic capacity simulator and advisory
-planning boundary. Migrations `00049` through `00056` continue S49.12 with ModelRevision-scoped
+planning boundary. Migrations `00049` through `00057` continue S49.12 with ModelRevision-scoped
 cutover routing, an explicit internal-Project allowlist, Production Launch
 Receipt gating, immutable Accepted Job authority, legacy database inventory,
 guarded rollback, and automatic multi-replica Accepted STAGE_GRAPH Job
@@ -29,7 +29,17 @@ Rejection. Migration `00052` and `vela-stage-cutover` capture typed external
 drain evidence and seal an immutable zero-backlog receipt. Migration `00053`
 installs the live-zero guarded contraction preparation: terminal
 machine-authority archive, immutable readiness receipt, legacy-row freeze, and
-operator command. The production Stage Worker image, target-only default Fleet
+operator command. Migration `00057` and `vela-h3-reachability` add the separate
+exact-release contraction authorization boundary: typed source/release evidence,
+atomic no-replace publication, exact release/configuration binding, all-nine
+Launch Receipt closure, and a fresh live-zero database recheck. The database
+accepts the canonical configuration manifest and complete evidence bytes,
+recomputes both digests, extracts the source revision from the manifest, and
+validates the exact PASS check set. The public operator request contains evidence
+and bundle paths rather than a caller-asserted digest. The current schema-v1
+bundle and repository necessarily produce FAIL, so no authorization or
+contraction has been claimed. The
+production Stage Worker image, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, and six-render canonical release
 bundle are implemented with a production-shaped fake-runtime composition smoke.
 They intentionally perform no DDL and do not prove real GPU, Kubernetes, DRA,
@@ -70,8 +80,8 @@ production evidence or a Launch Receipt.
 | --- | --- | --- |
 | H3 Stage Execution Architecture | Accepted target; S49.1-S49.11 complete and S49.12 cutover/automatic-instantiation work started | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Expansion through migration `00056`; M5 evidence/seal, guarded contraction readiness, campaign evidence, and read-only Stage observability added; release-coupled schema and legacy-path deletion pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
-| Implementation slices | S49.1-S49.11 complete; S49.12 partial, including repository campaign capture, verification, and observability | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Schema and protocol migration | Expansion through migration `00057`; M5 evidence/seal, guarded contraction readiness, typed fail-closed release authorization, campaign evidence, and read-only Stage observability added; schema-v2 release and legacy-path deletion pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Implementation slices | S49.1-S49.11 complete; S49.12 partial, including repository campaign capture, verification, observability, and the pre-contraction release gate | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
 Until the release-coupled contraction and repository deletion land,

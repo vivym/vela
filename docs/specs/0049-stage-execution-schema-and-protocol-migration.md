@@ -4,7 +4,7 @@ Date: 2026-08-31
 
 Status: Implementation in progress. S49.1-S49.11 have committed repository
 implementations through the capacity simulator and advisory planning boundary.
-Migrations `00049` through `00053` implement the current S49.12 expansion and
+Migrations `00049` through `00057` implement the current S49.12 expansion and
 contraction-readiness boundary:
 ModelRevision-scoped cohort routing,
 immutable Job/Attempt/ExecutionGraphSnapshot authority, rollback that affects
@@ -15,9 +15,14 @@ expiry takeover, exact replay, crash reconciliation, and atomic graph authority 
 the Admission transaction. Migration `00052` adds typed external drain evidence
 and the immutable zero-inventory seal; migration `00053` adds the explicit
 live-zero preparation operation, terminal machine-authority archive, immutable
-readiness receipt, and legacy-row freeze. It performs no DDL. The
-release-coupled schema and legacy-path deletion, permanent reachability closure,
-and production evidence remain pending.
+readiness receipt, and legacy-row freeze. Migration `00057` adds a separate,
+immutable release-contraction authorization that rechecks the exact sealed
+Launch manifest, all nine exact-release PASS receipts, the current live-zero
+inventory, and a release-bound typed reachability evidence digest. The current
+schema-v1 release and repository intentionally evaluate reachability as FAIL.
+These migrations perform no contraction DDL. The schema-v2 release graph,
+legacy-path deletion, permanent reachability closure, and production evidence
+remain pending.
 Repository evidence does not advance a Production Gate.
 
 ## Purpose
@@ -440,7 +445,24 @@ Migration `00053` implements guarded contraction preparation. Production must
 explicitly supply the current M5 receipt; the function rechecks live zero while
 holding the source relations, archives terminal machine authority, writes an
 immutable readiness receipt, and freezes those legacy rows. It does not issue
-DDL. The actual contraction migration must ship with legacy protocol, runtime,
+DDL. Migration `00057` installs the distinct point-of-no-return authorization
+record. `vela-h3-reachability` emits strict source/release evidence, and
+`vela-stage-cutover authorize-legacy-h3-contraction` accepts only a verified
+contracted release bundle plus typed PASS evidence; arbitrary evidence digests
+are not an operator input. The authoritative database function receives the
+canonical configuration manifest and complete evidence bytes, binds the
+manifest digest to `configuration_revision`, extracts its full source revision,
+validates the exact PASS check set, and derives the stored evidence digest.
+Authorization also requires the current
+`PRODUCTION`, `STAGE_ONLY`, 100% cutover, its readiness receipt, a sealed exact
+release manifest with all nine PASS Launch Receipts, and a fresh live-zero
+recheck. Current schema-v1 releases fail this reachability contract by design.
+The scanner rejects a source root below the Git repository toplevel, requires a
+clean exact `HEAD`, and covers residual Fleet rendering, failure queries,
+generated protocol/query types, release builders, packages, and image
+publishers in addition to the legacy runtime directories.
+
+The actual contraction migration must ship with legacy protocol, runtime,
 deployment, generated-query, and test deletion so no release can expose a
 schema that its Stage runtime cannot execute. That migration must use an
 explicit reviewed dependency list and `RESTRICT`; the permanent reachability
