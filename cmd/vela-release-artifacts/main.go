@@ -46,7 +46,7 @@ func run(arguments []string) int {
 		}
 		return 0
 	}
-	if len(arguments) == 6 &&
+	if len(arguments) == 4 &&
 		(arguments[0] == "print-vela-image-build" || arguments[0] == "build-vela-images") {
 		request := velaImageBuildRequest(arguments)
 		operation := releaseartifacts.BuildVelaImages
@@ -59,17 +59,17 @@ func run(arguments []string) int {
 		}
 		return 0
 	}
-	if len(arguments) == 7 &&
+	if len(arguments) == 5 &&
 		(arguments[0] == "build-vela-image-artifacts" || arguments[0] == "publish-vela-images") {
 		request := releaseartifacts.VelaImageArtifactBuildRequest{
 			VelaImageBuildRequest: velaImageBuildRequest(arguments),
-			OutputDirectory:       arguments[6],
+			OutputDirectory:       arguments[4],
 		}
 		operation := releaseartifacts.BuildVelaImageArtifacts
-		output := arguments[6] + "/vela-images.json"
+		output := arguments[4] + "/vela-images.json"
 		if arguments[0] == "publish-vela-images" {
 			operation = releaseartifacts.PublishVelaImageArtifacts
-			output = arguments[6] + "/vela-registry-publication.json"
+			output = arguments[4] + "/vela-registry-publication.json"
 		}
 		if err := operation(context.Background(), request); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", arguments[0], err)
@@ -84,10 +84,8 @@ func run(arguments []string) int {
 
 func velaImageBuildRequest(arguments []string) releaseartifacts.VelaImageBuildRequest {
 	return releaseartifacts.VelaImageBuildRequest{
-		SourceRoot:     arguments[1],
-		Revision:       arguments[2],
-		ImagePrefix:    arguments[3],
-		BackendContext: arguments[4],
-		BackendSHA256:  arguments[5],
+		SourceRoot:  arguments[1],
+		Revision:    arguments[2],
+		ImagePrefix: arguments[3],
 	}
 }

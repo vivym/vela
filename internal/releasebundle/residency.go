@@ -50,7 +50,7 @@ func LoadResidencyPlanRollouts(
 	if err := validateFinalRender("fleet-controller", encoded, &inventory, &yamlGraphBudget{}); err != nil {
 		return Bundle{}, nil, fmt.Errorf("%w: reload Fleet final render: %v", ErrInvalidBundle, err)
 	}
-	if len(inventory.residencyRollouts) == 0 || len(inventory.fleetDesired) != 0 {
+	if len(inventory.residencyRollouts) == 0 {
 		return Bundle{}, nil, invalid("release bundle does not contain target ResidencyPlan rollout authority")
 	}
 	return bundle, inventory.residencyRollouts, nil

@@ -82,7 +82,7 @@ func TestPublishVelaImageLayoutsRetriesAfterPartialFailure(t *testing.T) {
 	registryHandler := registry.New(registry.Logger(log.New(io.Discard, "", 0)))
 	handler := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if reject.Load() && request.Method == http.MethodPut &&
-			strings.Contains(request.URL.Path, "/vela-h3-runner/manifests/") {
+			strings.Contains(request.URL.Path, "/vela-stage-worker-agent/manifests/") {
 			http.Error(response, "publication disabled", http.StatusBadRequest)
 			return
 		}

@@ -15,13 +15,10 @@ RELEASE_BUNDLE ?=
 RELEASE_REVISION ?=
 RELEASE_ARTIFACT_DIR ?=
 RELEASE_IMAGE_PREFIX ?=
-H3_BACKEND_CONTEXT ?=
-H3_BACKEND_SHA256 ?=
 H3_MOCK_BACKEND_CONTEXT ?=
 H3_EVIDENCE_PLAN_REVISION ?=
 TOOLS_BIN := $(CURDIR)/bin
-VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" \
-	"$(RELEASE_IMAGE_PREFIX)" "$(H3_BACKEND_CONTEXT)" "$(H3_BACKEND_SHA256)"
+VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_IMAGE_PREFIX)"
 
 .PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle capture-h3-launch-evidence capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 

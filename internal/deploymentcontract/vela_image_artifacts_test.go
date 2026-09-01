@@ -26,9 +26,7 @@ type velaImageArtifactTarget struct {
 var velaImageArtifactTargets = [...]velaImageArtifactTarget{
 	{name: "vela-control", entrypoint: "/usr/local/bin/vela-control"},
 	{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
-	{name: "vela-h3-runner", entrypoint: "/opt/vela/venv/bin/vela-h3-runner"},
 	{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
-	{name: "vela-worker-agent", entrypoint: "/usr/local/bin/vela-worker-agent"},
 }
 
 func TestBuildVelaImageArtifactsProducesReleaseBundleInputs(t *testing.T) {
@@ -192,15 +190,12 @@ func TestBuildVelaImageArtifactsRejectsUnexpectedDefaultCommand(t *testing.T) {
 
 func writeOCIImageLayoutFixture(
 	t *testing.T,
-	directory, title, revision, entrypoint, backendSHA string,
+	directory, title, revision, entrypoint string,
 ) string {
 	t.Helper()
 	labels := map[string]string{
 		"org.opencontainers.image.revision": revision,
 		"org.opencontainers.image.title":    title,
-	}
-	if title == "vela-h3-runner" {
-		labels["vela.ai.h3-backend.sha256"] = backendSHA
 	}
 	config := ociv1.Image{
 		Platform: ociv1.Platform{OS: "linux", Architecture: "amd64"},
@@ -335,8 +330,6 @@ func rewriteOCILayoutConfig(
 type velaImageArtifactFixture struct {
 	repository      string
 	temporary       string
-	backendContext  string
-	backendSHA      string
 	layoutRoot      string
 	revision        string
 	imagePrefix     string
@@ -352,11 +345,6 @@ func newVelaImageArtifactFixture(t *testing.T) velaImageArtifactFixture {
 		imagePrefix:     "registry.example.com/vela",
 		manifestDigests: make(map[string]string, len(velaImageArtifactTargets)),
 	}
-	fixture.backendContext = filepath.Join(fixture.temporary, "backend")
-	if err := os.Mkdir(fixture.backendContext, 0o700); err != nil {
-		t.Fatalf("create backend context: %v", err)
-	}
-	fixture.backendSHA = writeTestELF64AMD64(t, filepath.Join(fixture.backendContext, "h3-backend"))
 	fixture.layoutRoot = filepath.Join(fixture.temporary, "layouts")
 	if err := os.Mkdir(fixture.layoutRoot, 0o700); err != nil {
 		t.Fatalf("create OCI fixture root: %v", err)
@@ -364,7 +352,7 @@ func newVelaImageArtifactFixture(t *testing.T) velaImageArtifactFixture {
 	for _, target := range velaImageArtifactTargets {
 		fixture.manifestDigests[target.name] = writeOCIImageLayoutFixture(
 			t, filepath.Join(fixture.layoutRoot, target.name), target.name,
-			fixture.revision, target.entrypoint, fixture.backendSHA,
+			fixture.revision, target.entrypoint,
 		)
 	}
 	return fixture
@@ -388,8 +376,6 @@ func (fixture velaImageArtifactFixture) run(
 		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"RELEASE_REVISION="+fixture.revision,
 		"RELEASE_IMAGE_PREFIX="+fixture.imagePrefix,
-		"H3_BACKEND_CONTEXT="+fixture.backendContext,
-		"H3_BACKEND_SHA256="+fixture.backendSHA,
 		"RELEASE_ARTIFACT_DIR="+output,
 		"VELA_TEST_OCI_LAYOUTS="+fixture.layoutRoot,
 	)

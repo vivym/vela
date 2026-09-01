@@ -2,14 +2,11 @@ package releasebundle
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -22,10 +19,9 @@ import (
 
 var (
 	fixedRenderNames = []string{
-		"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control", "worker-agent",
+		"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control",
 	}
-	fixedPackageNames  = []string{"h3-runner", "node-agent"}
-	gpuPattern         = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	fixedPackageNames  = []string{"node-agent"}
 	nodeAgentSystemdV1 = map[string]map[string]string{
 		"Unit": {
 			"Description": "Vela host remediation Node Agent",
@@ -71,7 +67,6 @@ type renderInventory struct {
 	images             map[string]struct{}
 	supportImages      map[string]struct{}
 	modelRuntimeImages map[string]struct{}
-	fleetDesired       []fleetcontroller.DesiredRevision
 	residencyRollouts  []fleetcontroller.ResidencyPlanRollout
 }
 
@@ -88,10 +83,12 @@ func newRenderInventory() renderInventory {
 	}
 }
 
-func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
+func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error) {
+	if !sourceRevisionPattern.MatchString(sourceRevision) {
+		return Bundle{}, invalid("source revision must be a full Git object ID")
+	}
 	if plan.SchemaVersion != SchemaVersion || len(plan.FinalRenders) != len(fixedRenderNames) ||
-		len(plan.Packages) != len(fixedPackageNames) ||
-		len(plan.WorkerMaterializations) > maxWorkerNodeCount || len(plan.OCIManifests) == 0 ||
+		len(plan.Packages) != len(fixedPackageNames) || len(plan.OCIManifests) == 0 ||
 		len(plan.OCIManifests) > maxArtifactCount {
 		return Bundle{}, invalid("build plan graph cardinality is invalid")
 	}
@@ -106,9 +103,6 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 	slices.SortFunc(plan.Packages, func(left, right PackageInput) int {
 		return strings.Compare(left.Name, right.Name)
 	})
-	slices.SortFunc(plan.WorkerMaterializations, func(left, right WorkerMaterializationInput) int {
-		return strings.Compare(left.NodeIdentity, right.NodeIdentity)
-	})
 	slices.SortFunc(plan.ExternalResources, compareExternalResources)
 	slices.SortFunc(plan.OCIManifests, func(left, right OCIManifestInput) int {
 		return strings.Compare(left.Image, right.Image)
@@ -116,11 +110,10 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 
 	inventory := newRenderInventory()
 	configuration := ConfigurationManifest{
-		SchemaVersion: SchemaVersion, MediaType: ConfigurationMediaType,
-		FinalRenders:           make([]NamedArtifact, 0, len(plan.FinalRenders)),
-		Packages:               make([]Package, 0, len(plan.Packages)),
-		WorkerMaterializations: make([]WorkerMaterialization, 0, len(plan.WorkerMaterializations)),
-		ExternalResources:      append([]ExternalResource(nil), plan.ExternalResources...),
+		SchemaVersion: SchemaVersion, MediaType: ConfigurationMediaType, SourceRevision: sourceRevision,
+		FinalRenders:      make([]NamedArtifact, 0, len(plan.FinalRenders)),
+		Packages:          make([]Package, 0, len(plan.Packages)),
+		ExternalResources: append([]ExternalResource(nil), plan.ExternalResources...),
 	}
 	for index, input := range plan.FinalRenders {
 		if input.Name != fixedRenderNames[index] {
@@ -173,23 +166,8 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 		return Bundle{}, err
 	}
 
-	materialKeys := make(map[string]struct{})
-	for _, input := range plan.WorkerMaterializations {
-		materialization, err := buildWorkerMaterialization(artifacts, input, &inventory, materialKeys, yamlBudget)
-		if err != nil {
-			return Bundle{}, err
-		}
-		configuration.WorkerMaterializations = append(configuration.WorkerMaterializations, materialization)
-	}
-	if len(inventory.residencyRollouts) != 0 {
-		if len(inventory.fleetDesired) != 0 || len(plan.WorkerMaterializations) != 0 {
-			return Bundle{}, invalid("target ResidencyPlan render cannot retain legacy desired revisions or Worker materializations")
-		}
-	} else if err := validateFleetDesiredMaterializations(
-		inventory.fleetDesired,
-		plan.WorkerMaterializations,
-	); err != nil {
-		return Bundle{}, err
+	if len(inventory.residencyRollouts) == 0 {
+		return Bundle{}, invalid("Fleet final render must contain target ResidencyPlan rollout authority")
 	}
 	if err := validateExternalResources(plan.ExternalResources, inventory); err != nil {
 		return Bundle{}, err
@@ -282,7 +260,10 @@ func imageManifestDigest(image string) string {
 
 func verify(root *rootedFS, bundle Bundle) error {
 	if bundle.SchemaVersion != SchemaVersion || !validDigest(bundle.ReleaseDigest) ||
-		!validDigest(bundle.ConfigurationRevision) {
+		!validDigest(bundle.ConfigurationRevision) ||
+		bundle.ConfigurationManifest.SchemaVersion != SchemaVersion ||
+		bundle.ConfigurationManifest.MediaType != ConfigurationMediaType ||
+		!sourceRevisionPattern.MatchString(bundle.ConfigurationManifest.SourceRevision) {
 		return invalid("bundle header is invalid")
 	}
 	plan := BuildPlan{
@@ -301,26 +282,12 @@ func verify(root *rootedFS, bundle Bundle) error {
 			Name: item.Name, ContractRef: item.Contract.Ref, ArtifactRef: item.Artifact.Ref,
 		})
 	}
-	for _, item := range bundle.ConfigurationManifest.WorkerMaterializations {
-		plan.WorkerMaterializations = append(plan.WorkerMaterializations, WorkerMaterializationInput{
-			NodeIdentity: item.NodeIdentity, Namespace: item.Namespace, WorkerID: item.WorkerID,
-			WorkerEpoch: item.WorkerEpoch, WorkerPoolID: item.WorkerPoolID, FleetRevision: item.FleetRevision,
-			NodeAgentIdentity:      item.NodeAgentIdentity,
-			WorkerRuntimeConfigMap: item.WorkerRuntimeConfigMap, WorkerRuntimeRef: item.WorkerRuntime.Ref,
-			RunnerProfilesConfigMap: item.RunnerProfilesConfigMap, RunnerProfilesRef: item.RunnerProfiles.Ref,
-			RunnerGPURolesConfigMap: item.RunnerGPURolesConfigMap, RunnerGPURolesRef: item.RunnerGPURoles.Ref,
-			WorkerControlTLSSecret:         item.WorkerControlTLSSecret,
-			WorkerControlTLSSecretRevision: item.WorkerControlTLSSecretRevision,
-			ExecutionProfileRevisionID:     item.ExecutionProfileRevisionID,
-			InferenceBackendRevision:       item.InferenceBackendRevision, ModelRevisionID: item.ModelRevisionID,
-		})
-	}
 	for _, image := range bundle.OCIImages {
 		plan.OCIManifests = append(plan.OCIManifests, OCIManifestInput{
 			Image: image.Image, Ref: image.Descriptor.Ref, ConfigRef: image.Config.Ref,
 		})
 	}
-	rebuilt, err := build(root, plan)
+	rebuilt, err := build(root, plan, bundle.ConfigurationManifest.SourceRevision)
 	if err != nil {
 		return err
 	}
@@ -391,25 +358,6 @@ func isLowerHex(value string) bool {
 func canonicalUUID(value string) bool {
 	parsed, err := uuid.Parse(value)
 	return err == nil && parsed != uuid.Nil && parsed.String() == value
-}
-
-func expectedNodeAgentIdentity(nodeIdentity, workerID string) string {
-	return "spiffe://vela.internal/node-agent/" +
-		base64.RawURLEncoding.EncodeToString([]byte(nodeIdentity)) + "/" + workerID
-}
-
-func validSPIFFE(value string) bool {
-	parsed, err := url.Parse(value)
-	return err == nil && parsed.Scheme == "spiffe" && parsed.Host == "vela.internal" &&
-		parsed.RawQuery == "" && parsed.Fragment == "" && ValidRevision(value)
-}
-
-func canonicalGPUUUID(value string) bool {
-	if !gpuPattern.MatchString(value) {
-		return false
-	}
-	parsed, err := uuid.Parse(strings.TrimPrefix(value, "GPU-"))
-	return err == nil && parsed != uuid.Nil && "GPU-"+parsed.String() == value
 }
 
 // ValidatePackageContract strictly validates one host package contract against its artifact.

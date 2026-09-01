@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,17 +20,20 @@ import (
 
 func TestBuildAndLoadCanonicalReleaseBundle(t *testing.T) {
 	fixture := newBundleFixture(t)
-	bundle, first, err := Build(fixture.planPath)
+	sourceRoot := newCleanGitSource(t)
+	sourceRevision := gitHead(t, sourceRoot)
+	bundle, first, err := BuildFromSource(sourceRoot, fixture.planPath)
 	if err != nil {
 		t.Fatalf("build release bundle: %v", err)
 	}
-	if bundle.SchemaVersion != 1 || !validDigest(bundle.ReleaseDigest) ||
+	if bundle.SchemaVersion != 2 || bundle.ConfigurationManifest.SchemaVersion != 2 ||
+		bundle.ConfigurationManifest.SourceRevision != sourceRevision ||
+		!validDigest(bundle.ReleaseDigest) ||
 		!validDigest(bundle.ConfigurationRevision) ||
 		bundle.ReleaseDescriptor.MediaType != ReleaseDescriptorMediaType ||
 		bundle.ReleaseDescriptor.Config.Digest != bundle.ConfigurationRevision ||
-		len(bundle.ConfigurationManifest.FinalRenders) != 6 ||
-		len(bundle.ConfigurationManifest.Packages) != 2 ||
-		len(bundle.ConfigurationManifest.WorkerMaterializations) != 1 || len(bundle.OCIImages) != 2 {
+		len(bundle.ConfigurationManifest.FinalRenders) != 5 ||
+		len(bundle.ConfigurationManifest.Packages) != 1 || len(bundle.OCIImages) != 3 {
 		t.Fatalf("built bundle = %#v", bundle)
 	}
 	for _, image := range bundle.OCIImages {
@@ -47,7 +49,7 @@ func TestBuildAndLoadCanonicalReleaseBundle(t *testing.T) {
 	if err != nil || releaseDigest != bundle.ReleaseDigest {
 		t.Fatalf("release digest = %q error=%v", releaseDigest, err)
 	}
-	_, second, err := Build(fixture.planPath)
+	_, second, err := BuildFromSource(sourceRoot, fixture.planPath)
 	if err != nil || string(first) != string(second) {
 		t.Fatalf("deterministic build differs: error=%v\nfirst=%s\nsecond=%s", err, first, second)
 	}
@@ -60,181 +62,52 @@ func TestBuildAndLoadCanonicalReleaseBundle(t *testing.T) {
 	}
 }
 
+func TestBuildBindsSourceRevisionIntoCanonicalIdentities(t *testing.T) {
+	fixture := newBundleFixture(t)
+	firstSource := newCleanGitSource(t)
+	secondSource := newCleanGitSource(t)
+	writeTestFile(t, filepath.Join(secondSource, "second.txt"), []byte("second source"))
+	gitRun(t, secondSource, "add", "second.txt")
+	gitRun(t, secondSource, "commit", "--quiet", "-m", "second source")
+
+	first, _, err := BuildFromSource(firstSource, fixture.planPath)
+	if err != nil {
+		t.Fatalf("build first source release: %v", err)
+	}
+	second, _, err := BuildFromSource(secondSource, fixture.planPath)
+	if err != nil {
+		t.Fatalf("build second source release: %v", err)
+	}
+	if first.ConfigurationManifest.SourceRevision != gitHead(t, firstSource) ||
+		second.ConfigurationManifest.SourceRevision != gitHead(t, secondSource) {
+		t.Fatalf("source revisions = %q and %q", first.ConfigurationManifest.SourceRevision, second.ConfigurationManifest.SourceRevision)
+	}
+	if first.ConfigurationRevision == second.ConfigurationRevision || first.ReleaseDigest == second.ReleaseDigest {
+		t.Fatalf("source revision is absent from canonical identities: first=%#v second=%#v", first, second)
+	}
+}
+
 func TestBuildBindsTargetResidencyPlanStageWorkerAndSecrets(t *testing.T) {
 	fixture := newBundleFixture(t)
-	stageManifest := testOCIManifest(t, fixture.directory, "stage-worker")
-	runtimeManifest := testOCIManifest(t, fixture.directory, "h3-stage-runtime")
-	stageImage := "ghcr.io/vivym/vela-stage-worker-agent@" + stageManifest.digest
-	runtimeImage := "ghcr.io/vivym/vela-h3-stage-runtime@" + runtimeManifest.digest
-	fixture.plan.OCIManifests = append(fixture.plan.OCIManifests,
-		OCIManifestInput{
-			Image: stageImage, Ref: stageManifest.ref, ConfigRef: stageManifest.configRef,
-		},
-		OCIManifestInput{
-			Image: runtimeImage, Ref: runtimeManifest.ref, ConfigRef: runtimeManifest.configRef,
-		},
-	)
-
-	planID := uuid.MustParse("49330000-0000-0000-0000-000000000001")
-	bundleID := uuid.MustParse("49330000-0000-0000-0000-000000000002")
-	poolID := uuid.MustParse("49330000-0000-0000-0000-000000000003")
-	workerID := uuid.MustParse("49330000-0000-0000-0000-000000000004")
-	profileID := uuid.MustParse("49330000-0000-0000-0000-000000000005")
-	actuation := fleetcontroller.WorkerBundleActuation{
-		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
-		Namespace: "vela-system", InitImage: fixture.images[0],
-		StageWorkerAgentImage:          stageImage,
-		RuntimeImage:                   runtimeImage,
-		StageWorkerConfigMap:           "vela-stage-worker-runtime-r1",
-		StageWorkerControlTLSSecret:    "stage-worker-control-r1",
-		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
-		ArtifactStoreCredentialsSecret: "stage-worker-artifact-credentials-r1",
-		ArtifactStoreCASecret:          "stage-worker-artifact-ca-r1",
-		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
-			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
-			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
-			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
-				Component: "DIT", ModelComponentRevision: "h3-dit-r1",
-				RuntimeIdentity: "h3-dit-runtime-r1", Command: []string{"/opt/vela/bin/h3-dit"},
-			}},
-			Members: []fleetcontroller.WorkerMemberActuation{{
-				ID: uuid.MustParse("49330000-0000-0000-0000-000000000006"), MemberEpoch: 1,
-				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
-				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
-					DeviceID: uuid.MustParse("49330000-0000-0000-0000-000000000007"), DeviceEpoch: 1,
-					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
-				}},
-			}},
-		}},
-	}
-	var err error
-	actuation.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(actuation)
-	if err != nil {
-		t.Fatalf("digest target WorkerBundle: %v", err)
-	}
-	rollout := fleetcontroller.ResidencyPlanRollout{
-		ApprovedPlan: fleet.ApprovedResidencyPlan{
-			SchemaVersion: 1, ID: planID, StableID: "h3-stage-target-r1", Revision: 1,
-			ContentDigest: actuation.RevisionDigest, ApprovalEvidenceDigest: strings.Repeat("e", 64),
-			ApprovedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), ApprovedBy: "fleet/operator-1",
-			CapacityPools: []fleet.PlannedCapacityPool{{
-				ID: poolID, StableID: "h3-dit", StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
-				ResourceClass: "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai", MaxReadyQueueDepth: 128,
-			}},
-			WorkerBundles: []fleet.PlannedWorkerBundle{{
-				ID: bundleID, StableID: "h3-node-01", DesiredGeneration: 1, LayoutDigest: actuation.RevisionDigest,
-			}},
-			WorkerInstances: []fleet.PlannedWorkerInstance{{
-				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
-				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
-			}},
-		},
-		WorkerBundles: []fleetcontroller.WorkerBundleActuation{actuation},
-	}
-	encoded, err := json.Marshal(map[string]any{
-		"schema_version": 1,
-		"rollouts":       []fleetcontroller.ResidencyPlanRollout{rollout},
-	})
-	if err != nil {
-		t.Fatalf("encode target ResidencyPlan: %v", err)
-	}
-	writeFleetResidencyPlanRender(t, fixture, encoded)
-	fixture.plan.WorkerMaterializations = nil
-	findExternalResource(t, fixture, "vela-system", "artifact-store-ca-r1").Consumers =
-		[]string{"DaemonSet/vela-system/vela-h3-worker"}
-	findExternalResource(t, fixture, "vela-system", "worker-control-tls-node-1").Consumers =
-		[]string{"DaemonSet/vela-system/vela-h3-worker"}
-	consumer := "ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-r1"
-	fixture.plan.ExternalResources = append(fixture.plan.ExternalResources,
-		ExternalResource{
-			Kind: "ConfigMap", Namespace: "vela-system", Name: "worker-runtime-node-1",
-			Revision: testDigest("legacy worker runtime"),
-		},
-		ExternalResource{
-			Kind: "ConfigMap", Namespace: "vela-system", Name: "runner-profiles-node-1",
-			Revision: testDigest("legacy runner profiles"),
-		},
-		ExternalResource{
-			Kind: "ConfigMap", Namespace: "vela-system", Name: "runner-gpu-roles-node-1",
-			Revision: testDigest("legacy runner gpu roles"),
-		},
-		ExternalResource{
-			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1",
-			Revision: testDigest("stage control"), RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
-			Consumers: []string{consumer},
-		},
-		ExternalResource{
-			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-authority-r1",
-			Revision: testDigest("stage authority"), RequiredKeys: []string{"keyring.json"},
-			Consumers: []string{consumer},
-		},
-		ExternalResource{
-			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-credentials-r1",
-			Revision:     testDigest("stage artifact credentials"),
-			RequiredKeys: []string{"access-key-id", "secret-access-key"}, Consumers: []string{consumer},
-		},
-		ExternalResource{
-			Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-ca-r1",
-			Revision: testDigest("stage artifact ca"), RequiredKeys: []string{"ca.crt"},
-			Consumers: []string{consumer},
-		},
-	)
-	fixture.writePlan(t)
-
-	bundle, bundleBytes, err := Build(fixture.planPath)
+	bundle, bundleBytes, err := buildTestBundle(fixture.planPath)
 	if err != nil {
 		t.Fatalf("build target ResidencyPlan release bundle: %v", err)
 	}
-	if len(bundle.ConfigurationManifest.FinalRenders) != 6 ||
-		len(bundle.ConfigurationManifest.WorkerMaterializations) != 0 || len(bundle.OCIImages) != 4 {
+	if len(bundle.ConfigurationManifest.FinalRenders) != 5 ||
+		len(bundle.ConfigurationManifest.Packages) != 1 || len(bundle.OCIImages) != 3 {
 		t.Fatalf("target ResidencyPlan release bundle = %#v", bundle.ConfigurationManifest)
+	}
+	for _, legacy := range []string{"worker_materializations", `"worker-agent"`, `"h3-runner"`} {
+		if bytes.Contains(bundleBytes, []byte(legacy)) {
+			t.Fatalf("schema v2 bundle retains legacy release token %q", legacy)
+		}
 	}
 	bundlePath := filepath.Join(fixture.directory, "release-bundle.json")
 	writeTestFile(t, bundlePath, bundleBytes)
-	loadedBundle, loadedRollouts, err := LoadResidencyPlanRollouts(bundlePath)
-	if err != nil || loadedBundle.ReleaseDigest != bundle.ReleaseDigest ||
-		len(loadedRollouts) != 1 || loadedRollouts[0].ApprovedPlan.ID != planID {
-		t.Fatalf("load canonical ResidencyPlan rollouts bundle=%#v rollouts=%#v error=%v", loadedBundle, loadedRollouts, err)
-	}
-
-	rewriteTarget := func(runtimeImage string) {
-		t.Helper()
-		actuation.RuntimeImage = runtimeImage
-		actuation.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(actuation)
-		if err != nil {
-			t.Fatalf("digest aliased target WorkerBundle: %v", err)
-		}
-		rollout.WorkerBundles[0] = actuation
-		rollout.ApprovedPlan.ContentDigest = actuation.RevisionDigest
-		rollout.ApprovedPlan.WorkerBundles[0].LayoutDigest = actuation.RevisionDigest
-		encoded, err = json.Marshal(map[string]any{
-			"schema_version": 1,
-			"rollouts":       []fleetcontroller.ResidencyPlanRollout{rollout},
-		})
-		if err != nil {
-			t.Fatalf("encode aliased target ResidencyPlan: %v", err)
-		}
-		writeFleetResidencyPlanRender(t, fixture, encoded)
-	}
-
-	rewriteTarget(stageImage)
-	fixture.plan.OCIManifests = slices.DeleteFunc(
-		fixture.plan.OCIManifests,
-		func(input OCIManifestInput) bool { return input.Image == runtimeImage },
-	)
-	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
-		t.Fatalf("Build with exact ModelRuntime image alias error=%v, want ErrInvalidBundle", err)
-	}
-
-	digestAlias := "ghcr.io/vivym/vela-h3-stage-runtime@" + stageManifest.digest
-	rewriteTarget(digestAlias)
-	fixture.plan.OCIManifests = append(fixture.plan.OCIManifests, OCIManifestInput{
-		Image: digestAlias, Ref: stageManifest.ref, ConfigRef: stageManifest.configRef,
-	})
-	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
-		t.Fatalf("Build with cross-repository ModelRuntime manifest alias error=%v, want ErrInvalidBundle", err)
+	loadedBundle, rollouts, err := LoadResidencyPlanRollouts(bundlePath)
+	if err != nil || loadedBundle.ReleaseDigest != bundle.ReleaseDigest || len(rollouts) != 1 ||
+		rollouts[0].ApprovedPlan.ID != uuid.MustParse("49330000-0000-0000-0000-000000000001") {
+		t.Fatalf("load canonical ResidencyPlan bundle=%#v rollouts=%#v error=%v", loadedBundle, rollouts, err)
 	}
 }
 
@@ -267,220 +140,6 @@ func TestValidateModelRuntimeOCIConfigRequiresAbsoluteEntrypoint(t *testing.T) {
 	}
 }
 
-func TestBuildIsDeterministicForTwoPlacementsInOneWorkerPool(t *testing.T) {
-	fixture := newBundleFixture(t)
-	addSecondWorker(t, fixture)
-	fixture.writePlan(t)
-	firstBundle, first, err := Build(fixture.planPath)
-	if err != nil {
-		t.Fatalf("build two-Worker bundle: %v", err)
-	}
-	if len(firstBundle.ConfigurationManifest.WorkerMaterializations) != 2 {
-		t.Fatalf("Worker materializations = %#v", firstBundle.ConfigurationManifest.WorkerMaterializations)
-	}
-	if firstBundle.ConfigurationManifest.WorkerMaterializations[0].WorkerPoolID !=
-		firstBundle.ConfigurationManifest.WorkerMaterializations[1].WorkerPoolID {
-		t.Fatalf("materializations do not share one WorkerPool: %#v", firstBundle.ConfigurationManifest.WorkerMaterializations)
-	}
-	slices.Reverse(fixture.plan.WorkerMaterializations)
-	slices.Reverse(fixture.plan.ExternalResources)
-	fixture.writePlan(t)
-	secondBundle, second, err := Build(fixture.planPath)
-	if err != nil || string(first) != string(second) || firstBundle.ReleaseDigest != secondBundle.ReleaseDigest {
-		t.Fatalf("two-Worker deterministic build mismatch: error=%v", err)
-	}
-}
-
-func TestBuildRejectsWorkerMaterializationAliasing(t *testing.T) {
-	tests := []struct {
-		name   string
-		mutate func(*testing.T, *bundleFixture, *WorkerMaterializationInput, WorkerMaterializationInput)
-	}{
-		{name: "node", mutate: func(_ *testing.T, _ *bundleFixture, second *WorkerMaterializationInput, first WorkerMaterializationInput) {
-			second.NodeIdentity = first.NodeIdentity
-			second.NodeAgentIdentity = expectedNodeAgentIdentity(second.NodeIdentity, second.WorkerID)
-		}},
-		{name: "worker", mutate: func(_ *testing.T, _ *bundleFixture, second *WorkerMaterializationInput, first WorkerMaterializationInput) {
-			second.WorkerID = first.WorkerID
-			second.NodeAgentIdentity = expectedNodeAgentIdentity(second.NodeIdentity, second.WorkerID)
-		}},
-		{name: "agent", mutate: func(_ *testing.T, _ *bundleFixture, second *WorkerMaterializationInput, first WorkerMaterializationInput) {
-			second.NodeAgentIdentity = first.NodeAgentIdentity
-		}},
-		{name: "config", mutate: func(_ *testing.T, _ *bundleFixture, second *WorkerMaterializationInput, first WorkerMaterializationInput) {
-			second.WorkerRuntimeConfigMap = first.WorkerRuntimeConfigMap
-		}},
-		{name: "artifact", mutate: func(_ *testing.T, _ *bundleFixture, second *WorkerMaterializationInput, first WorkerMaterializationInput) {
-			second.WorkerRuntimeRef = first.WorkerRuntimeRef
-		}},
-		{name: "TLS name", mutate: func(_ *testing.T, _ *bundleFixture, second *WorkerMaterializationInput, first WorkerMaterializationInput) {
-			second.WorkerControlTLSSecret = first.WorkerControlTLSSecret
-		}},
-		{name: "TLS revision", mutate: func(_ *testing.T, _ *bundleFixture, second *WorkerMaterializationInput, first WorkerMaterializationInput) {
-			second.WorkerControlTLSSecretRevision = first.WorkerControlTLSSecretRevision
-		}},
-		{name: "GPU", mutate: func(t *testing.T, fixture *bundleFixture, second *WorkerMaterializationInput, _ WorkerMaterializationInput) {
-			writeWorkerMaterializationWithGPUOffset(t, fixture.directory, *second, 0)
-		}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			fixture := newBundleFixture(t)
-			addSecondWorker(t, fixture)
-			first := fixture.plan.WorkerMaterializations[0]
-			second := &fixture.plan.WorkerMaterializations[1]
-			test.mutate(t, fixture, second, first)
-			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
-				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
-			}
-		})
-	}
-}
-
-func TestBuildRejectsInvalidFleetDesiredConfiguration(t *testing.T) {
-	fixture := newBundleFixture(t)
-	path := filepath.Join(fixture.directory, "render-fleet-controller.yaml")
-	content := strings.Replace(
-		string(readTestFile(t, path)),
-		"    kind: FleetDesiredRevisions\n",
-		"    kind: FleetDesiredRevisions\n    unknown: value\n",
-		1,
-	)
-	writeTestFile(t, path, []byte(content))
-	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
-		!strings.Contains(err.Error(), "Fleet desired ConfigMap") {
-		t.Fatalf("Build error = %v, want strict Fleet desired rejection", err)
-	}
-}
-
-func TestBuildBoundsFleetDesiredBeforeStrictDecode(t *testing.T) {
-	fixture := newBundleFixture(t)
-	path := filepath.Join(fixture.directory, "render-fleet-controller.yaml")
-	content := strings.Replace(
-		string(readTestFile(t, path)),
-		"    kind: FleetDesiredRevisions\n",
-		"    kind: FleetDesiredRevisions\n    padding: ["+strings.Repeat("a,", maxYAMLNodes)+"a]\n",
-		1,
-	)
-	writeTestFile(t, path, []byte(content))
-	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
-		!strings.Contains(err.Error(), "YAML input exceeds 100000 nodes") {
-		t.Fatalf("Build error = %v, want Fleet desired YAML bound before strict decode", err)
-	}
-}
-
-func TestBuildRejectsFleetDesiredMaterializationMismatch(t *testing.T) {
-	tests := []struct {
-		name        string
-		oldValue    func(WorkerMaterializationInput) string
-		replacement string
-	}{
-		{
-			name: "NodeIdentity", oldValue: func(worker WorkerMaterializationInput) string { return worker.NodeIdentity },
-			replacement: "h3-node-09",
-		},
-		{
-			name: "WorkerPoolID", oldValue: func(worker WorkerMaterializationInput) string { return worker.WorkerPoolID },
-			replacement: "20000000-0000-0000-0000-000000000009",
-		},
-		{
-			name: "Fleet revision", oldValue: func(worker WorkerMaterializationInput) string { return worker.FleetRevision },
-			replacement: strings.Repeat("c", 64),
-		},
-		{
-			name: "runtime ConfigMap", oldValue: func(worker WorkerMaterializationInput) string { return worker.WorkerRuntimeConfigMap },
-			replacement: "worker-runtime-other",
-		},
-		{
-			name: "profiles ConfigMap", oldValue: func(worker WorkerMaterializationInput) string { return worker.RunnerProfilesConfigMap },
-			replacement: "runner-profiles-other",
-		},
-		{
-			name: "GPU roles ConfigMap", oldValue: func(worker WorkerMaterializationInput) string { return worker.RunnerGPURolesConfigMap },
-			replacement: "runner-gpu-roles-other",
-		},
-		{
-			name: "Worker TLS Secret", oldValue: func(worker WorkerMaterializationInput) string { return worker.WorkerControlTLSSecret },
-			replacement: "worker-control-tls-other",
-		},
-		{
-			name: "ExecutionProfileRevision", oldValue: func(worker WorkerMaterializationInput) string { return worker.ExecutionProfileRevisionID },
-			replacement: "30000000-0000-0000-0000-000000000009",
-		},
-		{
-			name: "InferenceBackendRevision", oldValue: func(worker WorkerMaterializationInput) string { return worker.InferenceBackendRevision },
-			replacement: "h3-backend-r9",
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			fixture := newBundleFixture(t)
-			worker := fixture.plan.WorkerMaterializations[0]
-			path := filepath.Join(fixture.directory, "render-fleet-controller.yaml")
-			content := strings.Replace(
-				string(readTestFile(t, path)),
-				test.oldValue(worker),
-				test.replacement,
-				1,
-			)
-			writeTestFile(t, path, []byte(content))
-			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
-				!strings.Contains(err.Error(), "Fleet desired revision does not match Worker materialization") {
-				t.Fatalf("Build error = %v, want Fleet desired mismatch rejection", err)
-			}
-		})
-	}
-}
-
-func TestBuildRejectsNonExactFleetDesiredCoverage(t *testing.T) {
-	t.Run("materialization without desired placement", func(t *testing.T) {
-		fixture := newBundleFixture(t)
-		addSecondWorker(t, fixture)
-		writeFleetDesiredRender(t, fixture.directory, fixture.plan.WorkerMaterializations[:1], fixture.images)
-		fixture.writePlan(t)
-		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
-			!strings.Contains(err.Error(), "Fleet desired and Worker materialization coverage is not exact") {
-			t.Fatalf("Build error = %v, want missing desired coverage rejection", err)
-		}
-	})
-
-	t.Run("desired placement without materialization", func(t *testing.T) {
-		fixture := newBundleFixture(t)
-		addSecondWorker(t, fixture)
-		fixture.plan.WorkerMaterializations = fixture.plan.WorkerMaterializations[:1]
-		fixture.writePlan(t)
-		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
-			!strings.Contains(err.Error(), "Fleet desired and Worker materialization coverage is not exact") {
-			t.Fatalf("Build error = %v, want extra desired coverage rejection", err)
-		}
-	})
-}
-
-func TestBuildRejectsInvalidNodeIdentity(t *testing.T) {
-	for _, identity := range []string{
-		"H3-node-01",
-		"h3 node 01",
-		"rack/h3-node-01",
-		strings.Repeat("a", 254),
-	} {
-		t.Run(identity, func(t *testing.T) {
-			fixture := newBundleFixture(t)
-			worker := &fixture.plan.WorkerMaterializations[0]
-			worker.NodeIdentity = identity
-			worker.NodeAgentIdentity = expectedNodeAgentIdentity(worker.NodeIdentity, worker.WorkerID)
-			writeWorkerMaterialization(t, fixture.directory, *worker)
-			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
-				t.Fatalf("Build error = %v, want invalid NodeIdentity rejection", err)
-			}
-		})
-	}
-}
-
 func TestBuildRejectsInvalidSecretContracts(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -502,10 +161,10 @@ func TestBuildRejectsInvalidSecretContracts(t *testing.T) {
 			secret.Consumers = secret.Consumers[1:]
 		}},
 		{name: "consumer extra", mutate: func(_ *bundleFixture, secret *ExternalResource) {
-			secret.Consumers = append(secret.Consumers, "WorkerMaterialization/vela-system/h3-node-99/10000000-0000-0000-0000-000000000099")
+			secret.Consumers = append(secret.Consumers, "ConfigMap/vela-system/unexpected-consumer")
 		}},
 		{name: "consumer duplicate", mutate: func(_ *bundleFixture, secret *ExternalResource) {
-			secret.Consumers = []string{secret.Consumers[0], secret.Consumers[0], secret.Consumers[1]}
+			secret.Consumers = []string{secret.Consumers[0], secret.Consumers[0]}
 		}},
 		{name: "consumer mismatch", mutate: func(_ *bundleFixture, secret *ExternalResource) {
 			secret.Consumers[0] = "ConfigMap/vela-system/wrong-consumer"
@@ -514,10 +173,10 @@ func TestBuildRejectsInvalidSecretContracts(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newBundleFixture(t)
-			secret := findExternalResource(t, fixture, "vela-system", "worker-control-tls-node-1")
+			secret := findExternalResource(t, fixture, "vela-system", "stage-worker-control-r1")
 			test.mutate(fixture, secret)
 			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 			}
 		})
@@ -530,7 +189,7 @@ func TestBuildRejectsInvalidSecretContracts(t *testing.T) {
 			Consumers: []string{"Deployment/vela-system/vela-control"},
 		})
 		fixture.writePlan(t)
-		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+		if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 			t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 		}
 	})
@@ -572,7 +231,7 @@ func TestBuildRejectsUnkeyedSecretSelectors(t *testing.T) {
 			})
 			appendToRenderedResource(t, fixture, "control-storage", "apps/v1", "StatefulSet", "nats", test.selector)
 			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 			}
 		})
@@ -591,7 +250,7 @@ func TestBuildRequiresDockerConfigJSONForImagePullSecrets(t *testing.T) {
 		selector := "imagePullSecrets:\n  - name: registry-auth-r1\n"
 		appendToRenderedResource(t, fixture, "control-storage", "apps/v1", "StatefulSet", "nats", selector)
 		fixture.writePlan(t)
-		_, _, err := Build(fixture.planPath)
+		_, _, err := buildTestBundle(fixture.planPath)
 		return err
 	}
 	if err := build(t, []string{".dockerconfigjson"}); err != nil {
@@ -615,7 +274,7 @@ func TestBuildRequiresExactKeysForKeyedSecretSelectors(t *testing.T) {
 			"projectedProbe:\n  secret:\n    name: keyed-secret-r1\n    items:\n      - key: certificate\n        path: certificate\n"
 		appendToRenderedResource(t, fixture, "control-storage", "apps/v1", "StatefulSet", "nats", selector)
 		fixture.writePlan(t)
-		_, _, err := Build(fixture.planPath)
+		_, _, err := buildTestBundle(fixture.planPath)
 		return err
 	}
 	if err := build(t, []string{"certificate", "token"}); err != nil {
@@ -670,7 +329,7 @@ func TestBuildRejectsInvalidFinalRenderIdentity(t *testing.T) {
 			path := filepath.Join(fixture.directory, fixture.plan.FinalRenders[1].Ref)
 			content := readTestFile(t, path)
 			writeTestFile(t, path, []byte(strings.Replace(string(content),
-				"vela-fleet-desired-r1", "vela-fleet-candidate-r1", 1)))
+				"vela-fleet-residency-plan-rollouts-r1", "vela-fleet-candidate-r1", 1)))
 		}},
 	}
 	for _, test := range tests {
@@ -678,7 +337,7 @@ func TestBuildRejectsInvalidFinalRenderIdentity(t *testing.T) {
 			fixture := newBundleFixture(t)
 			test.mutate(t, fixture)
 			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 			}
 		})
@@ -691,10 +350,10 @@ func TestBuildPlanStrictJSON(t *testing.T) {
 		mutate func([]byte) []byte
 	}{
 		{name: "duplicate key", mutate: func(encoded []byte) []byte {
-			return []byte(strings.Replace(string(encoded), `"schema_version": 1,`, `"schema_version": 1, "schema_version": 1,`, 1))
+			return []byte(strings.Replace(string(encoded), `"schema_version": 2,`, `"schema_version": 2, "schema_version": 2,`, 1))
 		}},
 		{name: "unknown field", mutate: func(encoded []byte) []byte {
-			return []byte(strings.Replace(string(encoded), `"schema_version": 1,`, `"schema_version": 1, "unknown": true,`, 1))
+			return []byte(strings.Replace(string(encoded), `"schema_version": 2,`, `"schema_version": 2, "unknown": true,`, 1))
 		}},
 		{name: "trailing data", mutate: func(encoded []byte) []byte {
 			return append(encoded, []byte(` {}`)...)
@@ -704,7 +363,7 @@ func TestBuildPlanStrictJSON(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newBundleFixture(t)
 			writeTestFile(t, fixture.planPath, test.mutate(readTestFile(t, fixture.planPath)))
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 			}
 		})
@@ -714,16 +373,7 @@ func TestBuildPlanStrictJSON(t *testing.T) {
 func TestBuildPreflightsArtifactGraphLimits(t *testing.T) {
 	t.Run("reference count", func(t *testing.T) {
 		fixture := newBundleFixture(t)
-		fixture.plan.WorkerMaterializations = make([]WorkerMaterializationInput, maxWorkerNodeCount)
-		for index := range fixture.plan.WorkerMaterializations {
-			fixture.plan.WorkerMaterializations[index] = WorkerMaterializationInput{
-				NodeIdentity:      fmt.Sprintf("count-worker-%04d", index),
-				WorkerRuntimeRef:  fmt.Sprintf("count-worker-%04d-runtime.yaml", index),
-				RunnerProfilesRef: fmt.Sprintf("count-worker-%04d-profiles.yaml", index),
-				RunnerGPURolesRef: fmt.Sprintf("count-worker-%04d-gpus.yaml", index),
-			}
-		}
-		fixture.plan.OCIManifests = make([]OCIManifestInput, 513)
+		fixture.plan.OCIManifests = make([]OCIManifestInput, 2045)
 		for index := range fixture.plan.OCIManifests {
 			fixture.plan.OCIManifests[index] = OCIManifestInput{
 				Image:     fmt.Sprintf("registry.example.com/release/image-%04d@%s", index, testDigest(fmt.Sprintf("image-%04d", index))),
@@ -732,7 +382,7 @@ func TestBuildPreflightsArtifactGraphLimits(t *testing.T) {
 			}
 		}
 		fixture.writePlan(t)
-		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+		if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
 			!strings.Contains(err.Error(), "exceeds 4096 entries") {
 			t.Fatalf("Build error = %v, want artifact count rejection", err)
 		}
@@ -743,23 +393,19 @@ func TestBuildPreflightsArtifactGraphLimits(t *testing.T) {
 		for _, item := range fixture.plan.Packages {
 			writeSparseTestFile(t, filepath.Join(fixture.directory, item.ArtifactRef), maxPackageBytes)
 		}
-		for index := 0; index < 700; index++ {
-			worker := fixture.plan.WorkerMaterializations[0]
-			worker.NodeIdentity = fmt.Sprintf("size-worker-%02d", index)
-			worker.WorkerRuntimeRef = fmt.Sprintf("size-worker-%02d-runtime.yaml", index)
-			worker.RunnerProfilesRef = fmt.Sprintf("size-worker-%02d-profiles.yaml", index)
-			worker.RunnerGPURolesRef = fmt.Sprintf("size-worker-%02d-gpus.yaml", index)
-			fixture.plan.WorkerMaterializations = append(fixture.plan.WorkerMaterializations, worker)
-			for _, reference := range []string{
-				worker.WorkerRuntimeRef,
-				worker.RunnerProfilesRef,
-				worker.RunnerGPURolesRef,
-			} {
-				writeSparseTestFile(t, filepath.Join(fixture.directory, reference), maxYAMLArtifactBytes)
-			}
+		fixture.plan.OCIManifests = nil
+		for index := 0; index < 40; index++ {
+			manifestRef := fmt.Sprintf("size-image-%02d.json", index)
+			configRef := fmt.Sprintf("size-image-%02d-config.json", index)
+			fixture.plan.OCIManifests = append(fixture.plan.OCIManifests, OCIManifestInput{
+				Image: fmt.Sprintf("registry.example.com/release/image-%02d@%s", index, testDigest(fmt.Sprintf("size-image-%02d", index))),
+				Ref:   manifestRef, ConfigRef: configRef,
+			})
+			writeSparseTestFile(t, filepath.Join(fixture.directory, manifestRef), maxMetadataBytes)
+			writeSparseTestFile(t, filepath.Join(fixture.directory, configRef), maxMetadataBytes)
 		}
 		fixture.writePlan(t)
-		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+		if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
 			!strings.Contains(err.Error(), "exceeds 1073741824 bytes") {
 			t.Fatalf("Build error = %v, want aggregate byte rejection", err)
 		}
@@ -866,7 +512,7 @@ func TestBuildRejectsUnboundedYAMLStructures(t *testing.T) {
 				test.content(),
 			)
 			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
 				!strings.Contains(err.Error(), "YAML input exceeds") {
 				t.Fatalf("Build error = %v, want bounded YAML rejection", err)
 			}
@@ -882,7 +528,7 @@ func TestBuildRejectsOversizedYAMLArtifact(t *testing.T) {
 		bytes.Repeat([]byte("x"), maxYAMLArtifactBytes+1),
 	)
 	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+	if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
 		!strings.Contains(err.Error(), "1..262144 bytes") {
 		t.Fatalf("Build error = %v, want YAML artifact size rejection", err)
 	}
@@ -900,7 +546,7 @@ func TestBuildRejectsAggregateEmbeddedYAMLDocuments(t *testing.T) {
 	}
 	writeTestFile(t, path, []byte(strings.Replace(content, identity, identity+data.String(), 1)))
 	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+	if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
 		!strings.Contains(err.Error(), "YAML graph exceeds 4096 documents") {
 		t.Fatalf("Build error = %v, want aggregate YAML document rejection", err)
 	}
@@ -915,38 +561,9 @@ func TestBuildRejectsAggregateYAMLNodes(t *testing.T) {
 		writeTestFile(t, path, []byte(strings.Replace(content, "---\n", padding, 1)))
 	}
 	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+	if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
 		!strings.Contains(err.Error(), "YAML graph exceeds 400000 nodes") {
 		t.Fatalf("Build error = %v, want aggregate YAML node rejection", err)
-	}
-}
-
-func TestBuildRejectsDuplicateProfileTypedKey(t *testing.T) {
-	fixture := newBundleFixture(t)
-	worker := fixture.plan.WorkerMaterializations[0]
-	profile := map[string]any{
-		"model_revision_id":             worker.ModelRevisionID,
-		"generation_preset_revision_id": "50000000-0000-0000-0000-000000000001",
-		"execution_profile_revision_id": worker.ExecutionProfileRevisionID,
-		"output_spec_id":                "60000000-0000-0000-0000-000000000001",
-	}
-	profiles, err := json.Marshal(map[string]any{
-		"schema_version":   1,
-		"backend_revision": worker.InferenceBackendRevision,
-		"profiles":         []any{profile, profile},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeTestFile(
-		t,
-		filepath.Join(fixture.directory, worker.RunnerProfilesRef),
-		[]byte(configMapWithJSON(worker.Namespace, worker.RunnerProfilesConfigMap, "profiles.json", string(profiles))),
-	)
-	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
-		!strings.Contains(err.Error(), "duplicate entry") {
-		t.Fatalf("Build error = %v, want duplicate profile rejection", err)
 	}
 }
 
@@ -1014,34 +631,9 @@ func TestBuildRejectsInvalidArtifactGraph(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid GPU role count",
-			mutate: func(t *testing.T, fixture *bundleFixture) {
-				path := filepath.Join(fixture.directory, fixture.plan.WorkerMaterializations[0].RunnerGPURolesRef)
-				content := readTestFile(t, path)
-				writeTestFile(t, path, []byte(strings.Replace(string(content),
-					`,"GPU-00000000-0000-0000-0000-000000000008"]`, `]`, 1)))
-			},
-		},
-		{
-			name: "zero Fleet revision",
-			mutate: func(t *testing.T, fixture *bundleFixture) {
-				fixture.plan.WorkerMaterializations[0].FleetRevision = strings.Repeat("0", 64)
-			},
-		},
-		{
-			name: "TLS revision mismatch",
-			mutate: func(t *testing.T, fixture *bundleFixture) {
-				for index := range fixture.plan.ExternalResources {
-					if fixture.plan.ExternalResources[index].Name == "worker-control-tls-node-1" {
-						fixture.plan.ExternalResources[index].Revision = testDigest("wrong tls material")
-					}
-				}
-			},
-		},
-		{
 			name: "shared artifact reference",
 			mutate: func(t *testing.T, fixture *bundleFixture) {
-				fixture.plan.Packages[1].ContractRef = fixture.plan.Packages[0].ContractRef
+				fixture.plan.Packages[0].ArtifactRef = fixture.plan.Packages[0].ContractRef
 			},
 		},
 	}
@@ -1050,7 +642,7 @@ func TestBuildRejectsInvalidArtifactGraph(t *testing.T) {
 			fixture := newBundleFixture(t)
 			test.mutate(t, fixture)
 			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 			}
 		})
@@ -1123,7 +715,7 @@ func TestBuildRejectsInvalidOCIConfigBinding(t *testing.T) {
 			fixture := newBundleFixture(t)
 			test.mutate(t, fixture)
 			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 			}
 		})
@@ -1193,7 +785,7 @@ func TestBuildRejectsOptionalResourceReferences(t *testing.T) {
 				content := test.mutate(string(readTestFile(t, path)), optional)
 				writeTestFile(t, path, []byte(content))
 				fixture.writePlan(t)
-				if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
+				if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) ||
 					!strings.Contains(err.Error(), "optional must be absent or false") {
 					t.Fatalf("Build error = %v, want optional reference rejection", err)
 				}
@@ -1213,7 +805,7 @@ func TestBuildAllowsFalseOptionalResourceReference(t *testing.T) {
 	)
 	writeTestFile(t, path, []byte(content))
 	fixture.writePlan(t)
-	if _, _, err := Build(fixture.planPath); err != nil {
+	if _, _, err := buildTestBundle(fixture.planPath); err != nil {
 		t.Fatalf("Build with optional false: %v", err)
 	}
 }
@@ -1224,7 +816,7 @@ func TestBuildRejectsEscapesAndSymlinks(t *testing.T) {
 			fixture := newBundleFixture(t)
 			fixture.plan.NodeAgentUnit.Ref = reference
 			fixture.writePlan(t)
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 			}
 		})
@@ -1238,7 +830,7 @@ func TestBuildRejectsEscapesAndSymlinks(t *testing.T) {
 		}
 		fixture.plan.NodeAgentUnit.Ref = filepath.Base(link)
 		fixture.writePlan(t)
-		if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+		if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 			t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 		}
 	})
@@ -1269,7 +861,7 @@ func TestBuildRejectsNonCanonicalSystemdUnit(t *testing.T) {
 				content = strings.Replace(content, "RestartSec=5s\nUMask=0077\n", "RestartSec=5s\n", 1)
 			}
 			writeTestFile(t, path, []byte(content))
-			if _, _, err := Build(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
+			if _, _, err := buildTestBundle(fixture.planPath); !errors.Is(err, ErrInvalidBundle) {
 				t.Fatalf("Build error = %v, want ErrInvalidBundle", err)
 			}
 		})
@@ -1279,13 +871,13 @@ func TestBuildRejectsNonCanonicalSystemdUnit(t *testing.T) {
 func TestLoadRejectsTamperAndNonCanonicalJSON(t *testing.T) {
 	t.Run("referenced artifact tamper", func(t *testing.T) {
 		fixture := newBundleFixture(t)
-		_, encoded, err := Build(fixture.planPath)
+		_, encoded, err := buildTestBundle(fixture.planPath)
 		if err != nil {
 			t.Fatal(err)
 		}
 		bundlePath := filepath.Join(fixture.directory, "release-bundle.json")
 		writeTestFile(t, bundlePath, encoded)
-		writeTestFile(t, filepath.Join(fixture.directory, fixture.plan.Packages[1].ArtifactRef), []byte("tampered"))
+		writeTestFile(t, filepath.Join(fixture.directory, fixture.plan.Packages[0].ArtifactRef), []byte("tampered"))
 		if _, err := Load(bundlePath); !errors.Is(err, ErrInvalidBundle) {
 			t.Fatalf("Load error = %v, want ErrInvalidBundle", err)
 		}
@@ -1300,11 +892,11 @@ func TestLoadRejectsTamperAndNonCanonicalJSON(t *testing.T) {
 	})
 	t.Run("unknown field", func(t *testing.T) {
 		fixture := newBundleFixture(t)
-		_, encoded, err := Build(fixture.planPath)
+		_, encoded, err := buildTestBundle(fixture.planPath)
 		if err != nil {
 			t.Fatal(err)
 		}
-		encoded = []byte(strings.Replace(string(encoded), `"schema_version": 1,`, `"schema_version": 1, "unknown": true,`, 1))
+		encoded = []byte(strings.Replace(string(encoded), `"schema_version": 2,`, `"schema_version": 2, "unknown": true,`, 1))
 		path := filepath.Join(fixture.directory, "bundle.json")
 		writeTestFile(t, path, encoded)
 		if _, err := Load(path); !errors.Is(err, ErrInvalidBundle) {
@@ -1313,7 +905,7 @@ func TestLoadRejectsTamperAndNonCanonicalJSON(t *testing.T) {
 	})
 	t.Run("derived digest tamper", func(t *testing.T) {
 		fixture := newBundleFixture(t)
-		bundle, _, err := Build(fixture.planPath)
+		bundle, _, err := buildTestBundle(fixture.planPath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1330,7 +922,7 @@ func TestLoadRejectsTamperAndNonCanonicalJSON(t *testing.T) {
 	})
 	t.Run("trailing data", func(t *testing.T) {
 		fixture := newBundleFixture(t)
-		_, encoded, err := Build(fixture.planPath)
+		_, encoded, err := buildTestBundle(fixture.planPath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1344,7 +936,7 @@ func TestLoadRejectsTamperAndNonCanonicalJSON(t *testing.T) {
 
 func TestLoadWithinResolvesArtifactsFromBundleDirectory(t *testing.T) {
 	fixture := newBundleFixture(t)
-	_, encoded, err := Build(fixture.planPath)
+	_, encoded, err := buildTestBundle(fixture.planPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1370,7 +962,7 @@ func TestLoadWithinResolvesArtifactsFromBundleDirectory(t *testing.T) {
 
 func TestLoadWithinRejectsSymlinkedBundleDirectory(t *testing.T) {
 	fixture := newBundleFixture(t)
-	_, encoded, err := Build(fixture.planPath)
+	_, encoded, err := buildTestBundle(fixture.planPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1390,6 +982,11 @@ type bundleFixture struct {
 	planPath  string
 	plan      BuildPlan
 	images    []string
+}
+
+func (fixture *bundleFixture) writePlan(t *testing.T) {
+	t.Helper()
+	writeTestJSON(t, fixture.planPath, fixture.plan)
 }
 
 func findExternalResource(t *testing.T, fixture *bundleFixture, namespace, name string) *ExternalResource {
@@ -1438,15 +1035,20 @@ func appendToRenderedResource(
 func newBundleFixture(t *testing.T) *bundleFixture {
 	t.Helper()
 	directory := t.TempDir()
-	manifestOne := testOCIManifest(t, directory, "control")
-	manifestTwo := testOCIManifest(t, directory, "worker")
+	controlManifest := testOCIManifest(t, directory, "control")
+	stageManifest := testOCIManifest(t, directory, "stage-worker")
+	runtimeManifest := testOCIManifest(t, directory, "h3-stage-runtime")
 	images := []string{
-		"ghcr.io/vivym/vela-control@" + manifestOne.digest,
-		"ghcr.io/vivym/vela-worker-agent@" + manifestTwo.digest,
+		"ghcr.io/vivym/vela-control@" + controlManifest.digest,
+		"ghcr.io/vivym/vela-stage-worker-agent@" + stageManifest.digest,
+		"ghcr.io/vivym/vela-h3-stage-runtime@" + runtimeManifest.digest,
 	}
-	for index, name := range fixedRenderNames {
-		render := testFinalRender(name, images[index%len(images)], images)
-		writeTestFile(t, filepath.Join(directory, "render-"+name+".yaml"), []byte(render))
+	for _, name := range fixedRenderNames {
+		writeTestFile(
+			t,
+			filepath.Join(directory, "render-"+name+".yaml"),
+			[]byte(testFinalRender(name, images[0], images)),
+		)
 	}
 
 	writeTestFile(t, filepath.Join(directory, "node-agent.service"), []byte(`[Unit]
@@ -1475,213 +1077,156 @@ LimitNOFILE=4096
 [Install]
 WantedBy=multi-user.target
 `))
-	packageInputs := make([]PackageInput, 0, 2)
-	for _, name := range fixedPackageNames {
-		artifactName := name + ".tar"
-		artifactContent := []byte("production package for " + name)
-		writeTestFile(t, filepath.Join(directory, artifactName), artifactContent)
-		entrypoint := "/opt/vela/bin/vela-h3-runner"
-		if name == "node-agent" {
-			entrypoint = "/usr/local/bin/vela-node-agent"
-		}
-		contract := PackageContract{
-			SchemaVersion: 1, Name: "vela-" + name, OS: "linux", Architecture: "amd64",
-			Revision: "release-r1", Entrypoint: entrypoint,
-			ArtifactDigest: testContentDigest(artifactContent), ArtifactSizeBytes: int64(len(artifactContent)),
-		}
-		writeTestJSON(t, filepath.Join(directory, name+"-contract.json"), contract)
-		packageInputs = append(packageInputs, PackageInput{
-			Name: name, ContractRef: name + "-contract.json", ArtifactRef: artifactName,
-		})
-	}
+	artifactContent := []byte("production package for node-agent")
+	writeTestFile(t, filepath.Join(directory, "node-agent.tar"), artifactContent)
+	writeTestJSON(t, filepath.Join(directory, "node-agent-contract.json"), PackageContract{
+		SchemaVersion: 1, Name: "vela-node-agent", OS: "linux", Architecture: "amd64",
+		Revision: "release-r1", Entrypoint: "/usr/local/bin/vela-node-agent",
+		ArtifactDigest: testContentDigest(artifactContent), ArtifactSizeBytes: int64(len(artifactContent)),
+	})
 
-	worker := WorkerMaterializationInput{
-		NodeIdentity: "h3-node-01", Namespace: "vela-system",
-		WorkerID: "10000000-0000-0000-0000-000000000001", WorkerEpoch: 7,
-		WorkerPoolID: "20000000-0000-0000-0000-000000000001", FleetRevision: strings.Repeat("a", 64),
-		WorkerRuntimeConfigMap: "worker-runtime-node-1", WorkerRuntimeRef: "worker-runtime.yaml",
-		RunnerProfilesConfigMap: "runner-profiles-node-1", RunnerProfilesRef: "runner-profiles.yaml",
-		RunnerGPURolesConfigMap: "runner-gpu-roles-node-1", RunnerGPURolesRef: "runner-gpu-roles.yaml",
-		WorkerControlTLSSecret: "worker-control-tls-node-1", WorkerControlTLSSecretRevision: testDigest("worker tls"),
-		ExecutionProfileRevisionID: "30000000-0000-0000-0000-000000000001",
-		InferenceBackendRevision:   "h3-backend-r1", ModelRevisionID: "40000000-0000-0000-0000-000000000001",
-	}
-	worker.NodeAgentIdentity = expectedNodeAgentIdentity(worker.NodeIdentity, worker.WorkerID)
-	writeWorkerMaterialization(t, directory, worker)
-	writeFleetDesiredRender(t, directory, []WorkerMaterializationInput{worker}, images)
-
+	consumer := "ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-r1"
 	plan := BuildPlan{
-		SchemaVersion:          1,
-		NodeAgentUnit:          ArtifactInput{Name: "node-agent-systemd-unit", Ref: "node-agent.service"},
-		Packages:               packageInputs,
-		WorkerMaterializations: []WorkerMaterializationInput{worker},
+		SchemaVersion: SchemaVersion,
+		NodeAgentUnit: ArtifactInput{Name: "node-agent-systemd-unit", Ref: "node-agent.service"},
+		Packages: []PackageInput{{
+			Name: "node-agent", ContractRef: "node-agent-contract.json", ArtifactRef: "node-agent.tar",
+		}},
 		ExternalResources: []ExternalResource{
 			{
-				Kind: "Secret", Namespace: "vela-system", Name: "artifact-store-ca-r1", Revision: testDigest("artifact ca"),
-				RequiredKeys: []string{"ca.crt"}, Consumers: []string{
-					"ConfigMap/vela-system/vela-fleet-desired-r1",
-					"DaemonSet/vela-system/vela-h3-worker",
-				},
+				Kind: "Secret", Namespace: "vela-observability", Name: "shared-secret-r1",
+				Revision: testDigest("observability shared"), RequiredKeys: []string{"token"},
+				Consumers: []string{"PodMonitor/vela-observability/vela-control"},
 			},
 			{
-				Kind: "Secret", Namespace: "vela-observability", Name: "shared-secret-r1", Revision: testDigest("observability shared"),
-				RequiredKeys: []string{"token"}, Consumers: []string{"PodMonitor/vela-observability/vela-control"},
-			},
-			{
-				Kind: "Secret", Namespace: "vela-system", Name: "shared-secret-r1", Revision: testDigest("shared"),
-				RequiredKeys: []string{"token"}, Consumers: []string{
-					"DaemonSet/vela-system/vela-h3-worker",
+				Kind: "Secret", Namespace: "vela-system", Name: "shared-secret-r1",
+				Revision: testDigest("shared"), RequiredKeys: []string{"token"},
+				Consumers: []string{
 					"Deployment/vela-system/vela-control",
 					"Deployment/vela-system/vela-fleet-controller",
 					"StatefulSet/vela-system/nats",
 				},
 			},
 			{
-				Kind: "Secret", Namespace: "vela-system", Name: "worker-control-tls-node-1", Revision: worker.WorkerControlTLSSecretRevision,
-				RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"}, Consumers: []string{
-					"ConfigMap/vela-system/vela-fleet-desired-r1",
-					"DaemonSet/vela-system/vela-h3-worker",
-					workerConsumerIdentity(worker),
-				},
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1",
+				Revision: testDigest("stage control"), RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
+				Consumers: []string{consumer},
+			},
+			{
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-authority-r1",
+				Revision: testDigest("stage authority"), RequiredKeys: []string{"keyring.json"},
+				Consumers: []string{consumer},
+			},
+			{
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-credentials-r1",
+				Revision:     testDigest("stage artifact credentials"),
+				RequiredKeys: []string{"access-key-id", "secret-access-key"}, Consumers: []string{consumer},
+			},
+			{
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-ca-r1",
+				Revision: testDigest("stage artifact ca"), RequiredKeys: []string{"ca.crt"},
+				Consumers: []string{consumer},
 			},
 		},
 		OCIManifests: []OCIManifestInput{
-			{Image: images[0], Ref: manifestOne.ref, ConfigRef: manifestOne.configRef},
-			{Image: images[1], Ref: manifestTwo.ref, ConfigRef: manifestTwo.configRef},
+			{Image: images[0], Ref: controlManifest.ref, ConfigRef: controlManifest.configRef},
+			{Image: images[1], Ref: stageManifest.ref, ConfigRef: stageManifest.configRef},
+			{Image: images[2], Ref: runtimeManifest.ref, ConfigRef: runtimeManifest.configRef},
 		},
 	}
 	for _, name := range fixedRenderNames {
 		plan.FinalRenders = append(plan.FinalRenders, ArtifactInput{Name: name, Ref: "render-" + name + ".yaml"})
 	}
-	fixture := &bundleFixture{directory: directory, planPath: filepath.Join(directory, "bundle-plan.json"), plan: plan, images: images}
+	fixture := &bundleFixture{
+		directory: directory, planPath: filepath.Join(directory, "bundle-plan.json"), plan: plan, images: images,
+	}
+	rollout := testResidencyPlanRollout(t, images)
+	encoded, err := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"rollouts":       []fleetcontroller.ResidencyPlanRollout{rollout},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFleetResidencyPlanRender(t, fixture, encoded)
 	fixture.writePlan(t)
 	return fixture
 }
 
-func addSecondWorker(t *testing.T, fixture *bundleFixture) {
+func testResidencyPlanRollout(t *testing.T, images []string) fleetcontroller.ResidencyPlanRollout {
 	t.Helper()
-	second := WorkerMaterializationInput{
-		NodeIdentity: "h3-node-02", Namespace: "vela-system",
-		WorkerID: "10000000-0000-0000-0000-000000000002", WorkerEpoch: 8,
-		WorkerPoolID: "20000000-0000-0000-0000-000000000001", FleetRevision: strings.Repeat("a", 64),
-		WorkerRuntimeConfigMap: "worker-runtime-node-2", WorkerRuntimeRef: "worker-runtime-node-2.yaml",
-		RunnerProfilesConfigMap: "runner-profiles-node-2", RunnerProfilesRef: "runner-profiles-node-2.yaml",
-		RunnerGPURolesConfigMap: "runner-gpu-roles-node-2", RunnerGPURolesRef: "runner-gpu-roles-node-2.yaml",
-		WorkerControlTLSSecret: "worker-control-tls-node-2", WorkerControlTLSSecretRevision: testDigest("worker tls node 2"),
-		ExecutionProfileRevisionID: "30000000-0000-0000-0000-000000000001",
-		InferenceBackendRevision:   "h3-backend-r1", ModelRevisionID: "40000000-0000-0000-0000-000000000001",
+	planID := uuid.MustParse("49330000-0000-0000-0000-000000000001")
+	bundleID := uuid.MustParse("49330000-0000-0000-0000-000000000002")
+	poolID := uuid.MustParse("49330000-0000-0000-0000-000000000003")
+	workerID := uuid.MustParse("49330000-0000-0000-0000-000000000004")
+	profileID := uuid.MustParse("49330000-0000-0000-0000-000000000005")
+	actuation := fleetcontroller.WorkerBundleActuation{
+		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
+		Namespace: "vela-system", InitImage: images[0], StageWorkerAgentImage: images[1], RuntimeImage: images[2],
+		StageWorkerConfigMap:           "vela-stage-worker-runtime-r1",
+		StageWorkerControlTLSSecret:    "stage-worker-control-r1",
+		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
+		ArtifactStoreCredentialsSecret: "stage-worker-artifact-credentials-r1",
+		ArtifactStoreCASecret:          "stage-worker-artifact-ca-r1",
+		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
+			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
+			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
+				Component: "DIT", ModelComponentRevision: "h3-dit-r1",
+				RuntimeIdentity: "h3-dit-runtime-r1", Command: []string{"/opt/vela/bin/h3-dit"},
+			}},
+			Members: []fleetcontroller.WorkerMemberActuation{{
+				ID: uuid.MustParse("49330000-0000-0000-0000-000000000006"), MemberEpoch: 1,
+				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
+				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
+					DeviceID: uuid.MustParse("49330000-0000-0000-0000-000000000007"), DeviceEpoch: 1,
+					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
+				}},
+			}},
+		}},
 	}
-	second.NodeAgentIdentity = expectedNodeAgentIdentity(second.NodeIdentity, second.WorkerID)
-	writeWorkerMaterializationWithGPUOffset(t, fixture.directory, second, 8)
-	fixture.plan.WorkerMaterializations = append(fixture.plan.WorkerMaterializations, second)
-	writeFleetDesiredRender(t, fixture.directory, fixture.plan.WorkerMaterializations, fixture.images)
-	fixture.plan.ExternalResources = append(fixture.plan.ExternalResources, ExternalResource{
-		Kind: "Secret", Namespace: second.Namespace, Name: second.WorkerControlTLSSecret,
-		Revision:     second.WorkerControlTLSSecretRevision,
-		RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
-		Consumers: []string{
-			"ConfigMap/vela-system/vela-fleet-desired-r1",
-			workerConsumerIdentity(second),
+	var err error
+	actuation.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(actuation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fleetcontroller.ResidencyPlanRollout{
+		ApprovedPlan: fleet.ApprovedResidencyPlan{
+			SchemaVersion: 1, ID: planID, StableID: "h3-stage-target-r1", Revision: 1,
+			ContentDigest: actuation.RevisionDigest, ApprovalEvidenceDigest: strings.Repeat("e", 64),
+			ApprovedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), ApprovedBy: "fleet/operator-1",
+			CapacityPools: []fleet.PlannedCapacityPool{{
+				ID: poolID, StableID: "h3-dit",
+				StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
+				ResourceClass:          "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai", MaxReadyQueueDepth: 128,
+			}},
+			WorkerBundles: []fleet.PlannedWorkerBundle{{
+				ID: bundleID, StableID: "h3-node-01", DesiredGeneration: 1, LayoutDigest: actuation.RevisionDigest,
+			}},
+			WorkerInstances: []fleet.PlannedWorkerInstance{{
+				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
+				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
+			}},
 		},
-	})
-}
-
-func writeFleetDesiredRender(
-	t *testing.T,
-	directory string,
-	workers []WorkerMaterializationInput,
-	images []string,
-) {
-	t.Helper()
-	render := testFinalRender("fleet-controller", images[1], images)
-	identity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-desired-r1\n  namespace: vela-system\n"
-	desired := fleetDesiredConfiguration(workers, images)
-	data := "data:\n  desired.yaml: |\n    " + strings.ReplaceAll(strings.TrimSuffix(desired, "\n"), "\n", "\n    ") + "\n"
-	writeTestFile(
-		t,
-		filepath.Join(directory, "render-fleet-controller.yaml"),
-		[]byte(strings.Replace(render, identity, identity+data, 1)),
-	)
+		WorkerBundles: []fleetcontroller.WorkerBundleActuation{actuation},
+	}
 }
 
 func writeFleetResidencyPlanRender(t *testing.T, fixture *bundleFixture, encoded []byte) {
 	t.Helper()
-	render := testFinalRender("fleet-controller", fixture.images[1], fixture.images)
-	legacyIdentity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-desired-r1\n  namespace: vela-system\n"
-	target := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n" +
-		"  name: vela-fleet-residency-plan-rollouts-r1\n  namespace: vela-system\n" +
+	render := testFinalRender("fleet-controller", fixture.images[0], fixture.images)
+	identity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-residency-plan-rollouts-r1\n  namespace: vela-system\n"
+	target := identity +
 		"immutable: true\ndata:\n  rollouts.json: |-\n    " +
 		strings.ReplaceAll(string(encoded), "\n", "\n    ") + "\n"
-	if !strings.Contains(render, legacyIdentity) {
-		t.Fatal("Fleet release fixture lacks legacy ConfigMap replacement point")
+	if !strings.Contains(render, identity) {
+		t.Fatal("Fleet release fixture lacks ResidencyPlan ConfigMap replacement point")
 	}
 	writeTestFile(
 		t,
 		filepath.Join(fixture.directory, "render-fleet-controller.yaml"),
-		[]byte(strings.Replace(render, legacyIdentity, target, 1)),
+		[]byte(strings.Replace(render, identity, target, 1)),
 	)
-}
-
-func fleetDesiredConfiguration(workers []WorkerMaterializationInput, images []string) string {
-	var desired strings.Builder
-	desired.WriteString("apiVersion: fleet.vela.ai/v1alpha1\nkind: FleetDesiredRevisions\nrevisions:\n")
-	type desiredPool struct {
-		first      WorkerMaterializationInput
-		placements []WorkerMaterializationInput
-	}
-	pools := make([]desiredPool, 0, len(workers))
-	poolIndexes := make(map[string]int, len(workers))
-	for _, worker := range workers {
-		key := worker.Namespace + "/" + worker.WorkerPoolID
-		index, present := poolIndexes[key]
-		if !present {
-			index = len(pools)
-			poolIndexes[key] = index
-			pools = append(pools, desiredPool{first: worker})
-		}
-		pools[index].placements = append(pools[index].placements, worker)
-	}
-	for poolIndex, pool := range pools {
-		worker := pool.first
-		_, _ = fmt.Fprintf(&desired, `  - workerPoolID: %s
-    name: h3-worker-pool-%02d
-    revision: %s
-    workerProfile: h3
-    nodeSelector:
-      vela.ai/worker-profile: h3
-      vela.ai/worker-pool: launch-%02d
-    initImage: %s
-    workerAgentImage: %s
-    runnerImage: %s
-    artifactStoreTLSSecret: artifact-store-ca-r1
-    executionProfileRevisionID: %s
-    inferenceBackendRevision: %s
-    readinessTimeout: 30m
-    capacityPolicy:
-      workerHighWatermarkBytes: 800
-      workerLowWatermarkBytes: 400
-      workerCriticalFreeBytes: 100
-      poolHighWatermarkBytes: 5600
-      poolLowWatermarkBytes: 2800
-      observationMaxAge: 2m
-    placements:
-`, worker.WorkerPoolID, poolIndex+1, worker.FleetRevision, poolIndex+1,
-			images[0], images[1], images[1], worker.ExecutionProfileRevisionID,
-			worker.InferenceBackendRevision)
-		for placementIndex, placement := range pool.placements {
-			_, _ = fmt.Fprintf(&desired, `      - nodeIdentity: %s
-        daemonSetName: h3-worker-pool-%02d-node-%02d
-        workerRuntimeConfigMap: %s
-        runnerProfilesConfigMap: %s
-        runnerGPURolesConfigMap: %s
-        workerControlTLSSecret: %s
-`, placement.NodeIdentity, poolIndex+1, placementIndex+1,
-				placement.WorkerRuntimeConfigMap, placement.RunnerProfilesConfigMap,
-				placement.RunnerGPURolesConfigMap, placement.WorkerControlTLSSecret)
-		}
-	}
-	desired.WriteString("retirements: []\n")
-	return desired.String()
 }
 
 func testFinalRender(name, image string, images []string) string {
@@ -1696,24 +1241,12 @@ func testFinalRender(name, image string, images []string) string {
 			resourceName = contract.NamePrefix + "r1"
 		}
 		isWorkload := contract.Kind == "StatefulSet" || contract.Kind == "Deployment" ||
-			contract.Kind == "DaemonSet" || (name == "observability" && contract.Kind == "PodMonitor")
+			(name == "observability" && contract.Kind == "PodMonitor")
 		if !isWorkload {
 			rendered.WriteString(testObject(contract.APIVersion, contract.Kind, contract.Namespace, resourceName))
 			continue
 		}
-		document := testWorkload(contract.APIVersion, contract.Kind, contract.Namespace, resourceName, image)
-		if name == "worker-agent" && contract.Kind == "DaemonSet" {
-			document = strings.Replace(document, "spec:\n", "spec:\n"+
-				"  workerRuntimeConfigMap: worker-runtime-node-1\n"+
-				"  runnerProfilesConfigMap: runner-profiles-node-1\n"+
-				"  runnerGPURolesConfigMap: runner-gpu-roles-node-1\n"+
-				"  workerControlTLSSecret: worker-control-tls-node-1\n"+
-				"  artifactStoreTLSSecret: artifact-store-ca-r1\n"+
-				"  initImage: "+images[0]+"\n"+
-				"  workerAgentImage: "+images[1]+"\n"+
-				"  runnerImage: "+images[1]+"\n", 1)
-		}
-		rendered.WriteString(document)
+		rendered.WriteString(testWorkload(contract.APIVersion, contract.Kind, contract.Namespace, resourceName, image))
 	}
 	return rendered.String()
 }
@@ -1828,74 +1361,6 @@ func rewriteOCIManifest(
 		content := strings.ReplaceAll(string(readTestFile(t, path)), oldImage, input.Image)
 		writeTestFile(t, path, []byte(content))
 	}
-}
-
-func writeWorkerMaterialization(t *testing.T, directory string, worker WorkerMaterializationInput) {
-	t.Helper()
-	writeWorkerMaterializationWithGPUOffset(t, directory, worker, 0)
-}
-
-func writeWorkerMaterializationWithGPUOffset(
-	t *testing.T,
-	directory string,
-	worker WorkerMaterializationInput,
-	gpuOffset int,
-) {
-	t.Helper()
-	runtime := `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ` + worker.WorkerRuntimeConfigMap + `
-  namespace: ` + worker.Namespace + `
-immutable: true
-data:
-  artifact-store-health-url: https://artifacts.example.com/healthz
-  attempt-quota-bytes: "1000000"
-  control-address: control.vela-system.svc:9443
-  control-server-name: control.vela-system.svc
-  critical-free-bytes: "100"
-  high-watermark-bytes: "800"
-  low-watermark-bytes: "700"
-  max-entries: "1000"
-  max-entry-bytes: "1000000"
-  output-cleanup-min-bytes-per-second: "100000"
-  xfs-device: /dev/nvme0n1
-  xfs-project-id: "1001"
-`
-	writeTestFile(t, filepath.Join(directory, worker.WorkerRuntimeRef), []byte(runtime))
-	profiles := map[string]any{
-		"schema_version": 1, "backend_revision": worker.InferenceBackendRevision,
-		"profiles": []any{map[string]any{
-			"model_revision_id":             worker.ModelRevisionID,
-			"generation_preset_revision_id": "50000000-0000-0000-0000-000000000001",
-			"execution_profile_revision_id": worker.ExecutionProfileRevisionID,
-			"output_spec_id":                "60000000-0000-0000-0000-000000000001",
-		}},
-	}
-	profilesJSON, _ := json.Marshal(profiles)
-	profilesConfig := configMapWithJSON(worker.Namespace, worker.RunnerProfilesConfigMap, "profiles.json", string(profilesJSON))
-	writeTestFile(t, filepath.Join(directory, worker.RunnerProfilesRef), []byte(profilesConfig))
-	gpuID := func(index int) string {
-		return fmt.Sprintf("GPU-00000000-0000-0000-0000-%012d", gpuOffset+index)
-	}
-	roles := map[string]any{
-		"schema_version": 1,
-		"encoder_vae":    gpuID(1),
-		"dit":            []string{gpuID(2), gpuID(3), gpuID(4), gpuID(5), gpuID(6), gpuID(7), gpuID(8)},
-	}
-	rolesJSON, _ := json.Marshal(roles)
-	rolesConfig := configMapWithJSON(worker.Namespace, worker.RunnerGPURolesConfigMap, "gpu-roles.json", string(rolesJSON))
-	writeTestFile(t, filepath.Join(directory, worker.RunnerGPURolesRef), []byte(rolesConfig))
-}
-
-func configMapWithJSON(namespace, name, key, value string) string {
-	return "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: " + name + "\n  namespace: " + namespace +
-		"\nimmutable: true\ndata:\n  " + key + ": |-\n    " + strings.ReplaceAll(value, "\n", "\n    ") + "\n"
-}
-
-func (fixture *bundleFixture) writePlan(t *testing.T) {
-	t.Helper()
-	writeTestJSON(t, fixture.planPath, fixture.plan)
 }
 
 func writeTestJSON(t *testing.T, path string, value any) {

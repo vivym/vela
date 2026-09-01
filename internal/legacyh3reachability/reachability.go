@@ -532,9 +532,6 @@ func legacyBundleMatches(bundle releasebundle.Bundle) []string {
 			matches = append(matches, "bundle:package/h3-runner")
 		}
 	}
-	if len(bundle.ConfigurationManifest.WorkerMaterializations) != 0 {
-		matches = append(matches, "bundle:worker-materializations")
-	}
 	for _, image := range bundle.OCIImages {
 		if strings.Contains(image.Image, "/vela-worker-agent@") ||
 			strings.Contains(image.Image, "/vela-h3-runner@") {
@@ -548,8 +545,7 @@ func legacyBundleMatches(bundle releasebundle.Bundle) []string {
 func stageBundleMatches(bundle releasebundle.Bundle) []string {
 	if bundle.SchemaVersion != ContractedReleaseSchemaVersion ||
 		bundle.ConfigurationManifest.SchemaVersion != ContractedReleaseSchemaVersion ||
-		!sourceRevisionPattern.MatchString(bundle.ConfigurationManifest.SourceRevision) ||
-		len(bundle.ConfigurationManifest.WorkerMaterializations) != 0 {
+		!sourceRevisionPattern.MatchString(bundle.ConfigurationManifest.SourceRevision) {
 		return nil
 	}
 	hasStageRender := false

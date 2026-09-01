@@ -1,7 +1,6 @@
 package releaseartifacts
 
 import (
-	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -13,7 +12,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -25,11 +23,8 @@ import (
 
 const (
 	hostPackageSchemaVersion = 1
-	runnerArtifactName       = "vela_h3_runner-0.1.0-py3-none-any.whl"
 	nodeAgentArtifactName    = "vela-node-agent"
-	minimumSourceDateEpoch   = "315532800"
 	maximumMetadataBytes     = 64 << 10
-	runnerEntrypoint         = "/opt/vela/bin/vela-h3-runner"
 	nodeAgentEntrypoint      = "/usr/local/bin/vela-node-agent"
 )
 
@@ -70,9 +65,6 @@ func BuildHostPackages(ctx context.Context, sourceRoot, revision, outputDirector
 	}
 
 	if err := buildNodeAgent(ctx, sourceRoot, filepath.Join(candidate, nodeAgentArtifactName)); err != nil {
-		return err
-	}
-	if err := buildRunnerWheel(ctx, sourceRoot, candidate); err != nil {
 		return err
 	}
 	specifications := hostPackageSpecifications()
@@ -121,14 +113,8 @@ func BuildHostPackages(ctx context.Context, sourceRoot, revision, outputDirector
 	return nil
 }
 
-func hostPackageSpecifications() [2]hostPackageSpec {
-	return [2]hostPackageSpec{
-		{
-			input: releasebundle.PackageInput{
-				Name: "h3-runner", ContractRef: "h3-runner-contract.json", ArtifactRef: runnerArtifactName,
-			},
-			entrypoint: runnerEntrypoint,
-		},
+func hostPackageSpecifications() [1]hostPackageSpec {
+	return [1]hostPackageSpec{
 		{
 			input: releasebundle.PackageInput{
 				Name: "node-agent", ContractRef: "node-agent-contract.json", ArtifactRef: nodeAgentArtifactName,
@@ -164,40 +150,6 @@ func buildNodeAgent(ctx context.Context, sourceRoot, output string) error {
 		return fmt.Errorf("set Node Agent package mode: %w", err)
 	}
 	return syncFile(output)
-}
-
-func buildRunnerWheel(ctx context.Context, sourceRoot, outputDirectory string) error {
-	command := exec.CommandContext(
-		ctx,
-		"uv",
-		"build",
-		"--wheel",
-		"--no-build-logs",
-		"--no-sources",
-		"--out-dir",
-		outputDirectory,
-		filepath.Join(sourceRoot, "runner"),
-	)
-	command.Dir = sourceRoot
-	command.Env = buildEnvironment(map[string]string{
-		"SOURCE_DATE_EPOCH": minimumSourceDateEpoch,
-		"UV_NO_PROGRESS":    "true",
-	})
-	if encoded, err := command.CombinedOutput(); err != nil {
-		return fmt.Errorf("build H3 Runner wheel: %w: %s", err, strings.TrimSpace(string(encoded)))
-	}
-	if err := os.Remove(filepath.Join(outputDirectory, ".gitignore")); err != nil {
-		return fmt.Errorf("remove uv build metadata: %w", err)
-	}
-	wheel := filepath.Join(outputDirectory, runnerArtifactName)
-	information, err := os.Stat(wheel)
-	if err != nil || !information.Mode().IsRegular() || information.Size() <= 0 {
-		return errors.New("H3 Runner build did not produce the exact release wheel")
-	}
-	if err := os.Chmod(wheel, 0o644); err != nil {
-		return fmt.Errorf("set H3 Runner package mode: %w", err)
-	}
-	return syncFile(wheel)
 }
 
 func canonicalExistingDirectory(name string) (string, error) {
@@ -348,10 +300,7 @@ func verifyHostPackageCandidate(directory, revision string) error {
 			return fmt.Errorf("%s contract does not bind the requested revision and entrypoint", item.input.Name)
 		}
 	}
-	if err := verifyNodeAgentArtifact(filepath.Join(directory, nodeAgentArtifactName)); err != nil {
-		return err
-	}
-	return verifyRunnerArtifact(filepath.Join(directory, runnerArtifactName))
+	return verifyNodeAgentArtifact(filepath.Join(directory, nodeAgentArtifactName))
 }
 
 func readRegularMetadata(name string) ([]byte, error) {
@@ -408,82 +357,6 @@ func verifyNodeAgentArtifact(name string) error {
 		return errors.New("node Agent must be a linux/amd64 ELF64 binary")
 	}
 	return nil
-}
-
-func verifyRunnerArtifact(name string) error {
-	information, err := os.Lstat(name)
-	if err != nil {
-		return fmt.Errorf("stat Runner wheel: %w", err)
-	}
-	if information.Mode().Perm() != 0o644 {
-		return errors.New("runner wheel mode must be 0644")
-	}
-	wheel, err := zip.OpenReader(name)
-	if err != nil {
-		return fmt.Errorf("open Runner wheel: %w", err)
-	}
-	defer func() { _ = wheel.Close() }()
-	required := map[string]bool{
-		"vela/v1/runner_pb2.py":                           false,
-		"vela/v1/runner_pb2_grpc.py":                      false,
-		"vela_h3_runner/main.py":                          false,
-		"vela_h3_runner/runtime.py":                       false,
-		"vela_h3_runner/server.py":                        false,
-		"vela_h3_runner-0.1.0.dist-info/entry_points.txt": false,
-	}
-	seen := make(map[string]struct{}, len(wheel.File))
-	for _, file := range wheel.File {
-		trimmed := strings.TrimSuffix(file.Name, "/")
-		if trimmed == "" || path.IsAbs(trimmed) || path.Clean(trimmed) != trimmed ||
-			strings.Contains(trimmed, `\`) || file.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("runner wheel member %q is unsafe", file.Name)
-		}
-		if _, duplicate := seen[file.Name]; duplicate {
-			return fmt.Errorf("runner wheel member %q is duplicated", file.Name)
-		}
-		seen[file.Name] = struct{}{}
-		if _, needed := required[file.Name]; needed {
-			required[file.Name] = true
-		}
-	}
-	for member, present := range required {
-		if !present {
-			return fmt.Errorf("runner wheel is missing %q", member)
-		}
-	}
-	entryPoints, err := readWheelMember(wheel.File, "vela_h3_runner-0.1.0.dist-info/entry_points.txt")
-	if err != nil {
-		return err
-	}
-	if entryPoints != "[console_scripts]\nvela-h3-runner = vela_h3_runner.main:main\n" {
-		return errors.New("runner wheel console entrypoint is invalid")
-	}
-	return nil
-}
-
-func readWheelMember(files []*zip.File, name string) (string, error) {
-	for _, file := range files {
-		if file.Name != name {
-			continue
-		}
-		if file.UncompressedSize64 > maximumMetadataBytes {
-			return "", errors.New("runner wheel metadata is too large")
-		}
-		reader, err := file.Open()
-		if err != nil {
-			return "", err
-		}
-		encoded, readErr := io.ReadAll(reader)
-		closeErr := reader.Close()
-		if readErr != nil {
-			return "", readErr
-		}
-		if closeErr != nil {
-			return "", closeErr
-		}
-		return string(encoded), nil
-	}
-	return "", fmt.Errorf("runner wheel is missing %q", name)
 }
 
 func syncFile(path string) error {
