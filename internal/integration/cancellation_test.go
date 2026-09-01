@@ -54,14 +54,14 @@ func TestQueuedJobCancellationReleasesCreditWithoutCharge(t *testing.T) {
 	}
 	if result.CancellationID == "" || result.JobID != job.JobID ||
 		result.Decision != "CANCELED" || result.State != "CANCELED" ||
-		result.JobVersion != 2 || result.Billable || result.Charge != nil ||
+		result.JobVersion != 3 || result.Billable || result.Charge != nil ||
 		result.DecidedAt.IsZero() {
 		t.Fatalf("cancellation result = %#v", result)
 	}
 
 	var (
 		state                                          string
-		jobVersion, projectQueued, poolQueued          int64
+		jobVersion, projectQueued, readyQueue          int64
 		reservedMinor, unsettledPostedMinor            int64
 		reservationState                               string
 		cancellationCount, chargeCount, canceledEvents int64
@@ -71,7 +71,8 @@ func TestQueuedJobCancellationReleasesCreditWithoutCharge(t *testing.T) {
 			j.state,
 			j.version,
 			p.queued_count,
-			wp.queued_count,
+			(SELECT count(*) FROM stage_ready_queue_entries
+			 WHERE project_id = j.project_id),
 			oca.reserved_minor,
 			oca.unsettled_posted_minor,
 			cr.state,
@@ -81,7 +82,6 @@ func TestQueuedJobCancellationReleasesCreditWithoutCharge(t *testing.T) {
 			 WHERE aggregate_id = j.id AND event_type = 'job.canceled')
 		FROM jobs AS j
 		JOIN projects AS p ON p.id = j.project_id
-		JOIN worker_pools AS wp ON wp.id = j.worker_pool_id
 		JOIN organization_credit_accounts AS oca ON oca.organization_id = j.organization_id
 		JOIN credit_reservations AS cr ON cr.job_id = j.id
 		WHERE j.id = $1
@@ -89,7 +89,7 @@ func TestQueuedJobCancellationReleasesCreditWithoutCharge(t *testing.T) {
 		&state,
 		&jobVersion,
 		&projectQueued,
-		&poolQueued,
+		&readyQueue,
 		&reservedMinor,
 		&unsettledPostedMinor,
 		&reservationState,
@@ -99,15 +99,15 @@ func TestQueuedJobCancellationReleasesCreditWithoutCharge(t *testing.T) {
 	); err != nil {
 		t.Fatalf("read queued cancellation state: %v", err)
 	}
-	if state != "CANCELED" || jobVersion != 2 || projectQueued != 0 || poolQueued != 0 ||
+	if state != "CANCELED" || jobVersion != 3 || projectQueued != 0 || readyQueue != 0 ||
 		reservedMinor != 0 || unsettledPostedMinor != 0 || reservationState != "RELEASED" ||
 		cancellationCount != 1 || chargeCount != 0 || canceledEvents != 1 {
 		t.Fatalf(
-			"queued cancellation state = state %s version %d project/pool %d/%d credit %d/%d reservation %s decisions/charges/events %d/%d/%d",
+			"queued cancellation state = state %s version %d project/ready %d/%d credit %d/%d reservation %s decisions/charges/events %d/%d/%d",
 			state,
 			jobVersion,
 			projectQueued,
-			poolQueued,
+			readyQueue,
 			reservedMinor,
 			unsettledPostedMinor,
 			reservationState,
@@ -194,15 +194,16 @@ func TestCancellationCredentialChangeAfterAuthenticationFailsClosedWithoutMutati
 			}
 
 			var jobState, reservationState string
-			var jobVersion, projectQueued, poolQueued int64
+			var jobVersion, projectQueued, readyQueue int64
 			var reservedMinor, unsettledPostedMinor int64
 			var decisionCount, chargeCount, outboxCount int64
 			if err := database.Admin.QueryRow(`
 				SELECT
-					job.state,
-					job.version,
-					project.queued_count,
-					pool.queued_count,
+						job.state,
+						job.version,
+						project.queued_count,
+						(SELECT count(*) FROM stage_ready_queue_entries
+						 WHERE project_id = job.project_id),
 					reservation.state,
 					credit.reserved_minor,
 					credit.unsettled_posted_minor,
@@ -211,7 +212,6 @@ func TestCancellationCredentialChangeAfterAuthenticationFailsClosedWithoutMutati
 					(SELECT count(*) FROM outbox_events WHERE aggregate_id = job.id)
 				FROM jobs AS job
 				JOIN projects AS project ON project.id = job.project_id
-				JOIN worker_pools AS pool ON pool.id = job.worker_pool_id
 				JOIN credit_reservations AS reservation ON reservation.job_id = job.id
 				JOIN organization_credit_accounts AS credit
 				  ON credit.organization_id = job.organization_id
@@ -220,7 +220,7 @@ func TestCancellationCredentialChangeAfterAuthenticationFailsClosedWithoutMutati
 				&jobState,
 				&jobVersion,
 				&projectQueued,
-				&poolQueued,
+				&readyQueue,
 				&reservationState,
 				&reservedMinor,
 				&unsettledPostedMinor,
@@ -230,15 +230,15 @@ func TestCancellationCredentialChangeAfterAuthenticationFailsClosedWithoutMutati
 			); err != nil {
 				t.Fatalf("read rejected cancellation state: %v", err)
 			}
-			if jobState != "QUEUED" || jobVersion != 1 || projectQueued != 1 || poolQueued != 1 ||
+			if jobState != "QUEUED" || jobVersion != 2 || projectQueued != 1 || readyQueue != 1 ||
 				reservationState != "RESERVED" || reservedMinor != 1250 || unsettledPostedMinor != 0 ||
 				decisionCount != 0 || chargeCount != 0 || outboxCount != 1 {
 				t.Fatalf(
-					"rejected cancellation state = job %s/%d queued %d/%d reservation %s credit %d/%d decisions/charges/outbox %d/%d/%d",
+					"rejected cancellation state = job %s/%d queued project/ready %d/%d reservation %s credit %d/%d decisions/charges/outbox %d/%d/%d",
 					jobState,
 					jobVersion,
 					projectQueued,
-					poolQueued,
+					readyQueue,
 					reservationState,
 					reservedMinor,
 					unsettledPostedMinor,
@@ -391,15 +391,16 @@ func TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed(t *testi
 			}
 
 			var jobState, reservationState string
-			var jobVersion, projectQueued, poolQueued int64
+			var jobVersion, projectQueued, readyQueue int64
 			var reservedMinor, unsettledPostedMinor int64
 			var decisionCount, chargeCount, outboxCount int64
 			if err := database.Admin.QueryRow(`
 				SELECT
-					job.state,
-					job.version,
-					project.queued_count,
-					pool.queued_count,
+						job.state,
+						job.version,
+						project.queued_count,
+						(SELECT count(*) FROM stage_ready_queue_entries
+						 WHERE project_id = job.project_id),
 					reservation.state,
 					credit.reserved_minor,
 					credit.unsettled_posted_minor,
@@ -408,7 +409,6 @@ func TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed(t *testi
 					(SELECT count(*) FROM outbox_events WHERE aggregate_id = job.id)
 				FROM jobs AS job
 				JOIN projects AS project ON project.id = job.project_id
-				JOIN worker_pools AS pool ON pool.id = job.worker_pool_id
 				JOIN credit_reservations AS reservation ON reservation.job_id = job.id
 				JOIN organization_credit_accounts AS credit
 				  ON credit.organization_id = job.organization_id
@@ -417,7 +417,7 @@ func TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed(t *testi
 				&jobState,
 				&jobVersion,
 				&projectQueued,
-				&poolQueued,
+				&readyQueue,
 				&reservationState,
 				&reservedMinor,
 				&unsettledPostedMinor,
@@ -427,15 +427,15 @@ func TestCancellationHTTPCredentialChangeAfterAuthenticationFailsClosed(t *testi
 			); err != nil {
 				t.Fatalf("read HTTP credential mutation state: %v", err)
 			}
-			if jobState != "QUEUED" || jobVersion != 1 || projectQueued != 1 || poolQueued != 1 ||
+			if jobState != "QUEUED" || jobVersion != 2 || projectQueued != 1 || readyQueue != 1 ||
 				reservationState != "RESERVED" || reservedMinor != 1250 || unsettledPostedMinor != 0 ||
 				decisionCount != 0 || chargeCount != 0 || outboxCount != 1 {
 				t.Fatalf(
-					"HTTP credential mutation state = job %s/%d queued %d/%d reservation %s credit %d/%d decisions/charges/outbox %d/%d/%d",
+					"HTTP credential mutation state = job %s/%d queued project/ready %d/%d reservation %s credit %d/%d decisions/charges/outbox %d/%d/%d",
 					jobState,
 					jobVersion,
 					projectQueued,
-					poolQueued,
+					readyQueue,
 					reservationState,
 					reservedMinor,
 					unsettledPostedMinor,
@@ -629,8 +629,10 @@ func installPausedCredentialAuthenticator(t *testing.T, db *sql.DB, advisoryLock
 	}
 }
 
-func TestLegacyCanceledJobCancellationReturnsTerminalWithoutDecisionHistory(t *testing.T) {
-	server, admin := newAdmissionServer(t)
+func TestSucceededStageGraphCancellationReturnsTerminalWithoutDecisionHistory(t *testing.T) {
+	fixture := newInvoiceExportChargeFixture(t, "cancel-stage-graph-succeeded-replay")
+	server := admissionServerForDatabase(t, fixture.database)
+	admin := fixture.database.Admin
 	if _, err := admin.Exec(`
 		UPDATE credentials
 		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
@@ -638,66 +640,13 @@ func TestLegacyCanceledJobCancellationReturnsTerminalWithoutDecisionHistory(t *t
 	`, testCredentialID); err != nil {
 		t.Fatalf("grant cancellation scope: %v", err)
 	}
-	accepted := submitJob(t, server.URL, "cancel-legacy-canceled", []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"return an already canceled legacy Job without rewriting history"
-	}`))
-	if accepted.StatusCode != http.StatusAccepted {
-		t.Fatalf("Admission status = %d, want 202; body=%s", accepted.StatusCode, accepted.Body)
-	}
-	var job jobResponse
-	if err := json.Unmarshal(accepted.Body, &job); err != nil {
-		t.Fatalf("decode legacy CANCELED Job: %v", err)
-	}
-	jobID := uuid.MustParse(job.JobID)
+	jobID := fixture.assignment.JobID
 
-	tx, err := admin.Begin()
-	if err != nil {
-		t.Fatalf("begin legacy CANCELED fixture: %v", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	terminalizeJobWithCanonicalEvent(t, tx, jobID, "CANCELED", nil)
-	if _, err := tx.Exec(`
-		UPDATE credit_reservations
-		SET state = 'RELEASED', updated_at = clock_timestamp()
-		WHERE job_id = $1
-	`, jobID); err != nil {
-		t.Fatalf("release legacy CANCELED reservation: %v", err)
-	}
-	if _, err := tx.Exec(`
-		UPDATE projects SET queued_count = queued_count - 1
-		WHERE id = $1
-	`, testProjectID); err != nil {
-		t.Fatalf("release legacy CANCELED Project queue count: %v", err)
-	}
-	if _, err := tx.Exec(`
-		UPDATE worker_pools SET queued_count = queued_count - 1
-		WHERE id = (SELECT worker_pool_id FROM jobs WHERE id = $1)
-	`, jobID); err != nil {
-		t.Fatalf("release legacy CANCELED pool queue count: %v", err)
-	}
-	if _, err := tx.Exec(`
-		UPDATE organization_credit_accounts
-		SET reserved_minor = reserved_minor - 1250,
-			version = version + 1,
-			updated_at = clock_timestamp()
-		WHERE organization_id = $1
-	`, testOrganizationID); err != nil {
-		t.Fatalf("release legacy CANCELED organization credit: %v", err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("commit legacy CANCELED fixture: %v", err)
-	}
-
-	first := cancelJob(t, server.URL, testProjectID, job.JobID, testBearerCredential())
-	replayed := cancelJob(t, server.URL, testProjectID, job.JobID, testBearerCredential())
+	first := cancelJob(t, server.URL, testProjectID, jobID.String(), testBearerCredential())
+	replayed := cancelJob(t, server.URL, testProjectID, jobID.String(), testBearerCredential())
 	if first.StatusCode != http.StatusOK || replayed.StatusCode != http.StatusOK {
 		t.Fatalf(
-			"legacy CANCELED cancellation statuses = %d/%d, want 200/200; bodies=%s / %s",
+			"succeeded Stage graph cancellation statuses = %d/%d, want 200/200; bodies=%s / %s",
 			first.StatusCode,
 			replayed.StatusCode,
 			first.Body,
@@ -706,70 +655,50 @@ func TestLegacyCanceledJobCancellationReturnsTerminalWithoutDecisionHistory(t *t
 	}
 	var firstResult, replayedResult cancelResponse
 	if err := json.Unmarshal(first.Body, &firstResult); err != nil {
-		t.Fatalf("decode legacy CANCELED response: %v", err)
+		t.Fatalf("decode succeeded Stage graph response: %v", err)
 	}
 	if err := json.Unmarshal(replayed.Body, &replayedResult); err != nil {
-		t.Fatalf("decode replayed legacy CANCELED response: %v", err)
+		t.Fatalf("decode replayed succeeded Stage graph response: %v", err)
 	}
 	if firstResult.CancellationID != uuid.Nil.String() ||
 		replayedResult.CancellationID != uuid.Nil.String() ||
-		firstResult.Decision != "CANCELED" || replayedResult.Decision != "CANCELED" ||
-		firstResult.State != "CANCELED" || replayedResult.State != "CANCELED" ||
-		firstResult.JobVersion != 2 || replayedResult.JobVersion != 2 ||
+		firstResult.Decision != "ALREADY_SUCCEEDED" || replayedResult.Decision != "ALREADY_SUCCEEDED" ||
+		firstResult.State != "SUCCEEDED" || replayedResult.State != "SUCCEEDED" ||
+		firstResult.JobVersion <= 0 || replayedResult.JobVersion != firstResult.JobVersion ||
 		firstResult.Billable || replayedResult.Billable ||
 		firstResult.Charge != nil || replayedResult.Charge != nil ||
 		firstResult.DecidedAt.IsZero() || !firstResult.DecidedAt.Equal(replayedResult.DecidedAt) {
-		t.Fatalf("legacy CANCELED first/replayed response = %#v / %#v", firstResult, replayedResult)
+		t.Fatalf("succeeded Stage graph first/replayed response = %#v / %#v", firstResult, replayedResult)
 	}
 
-	var (
-		state, reservationState                           string
-		version, projectQueued, poolQueued, reservedMinor int64
-		decisions, charges, cancellationEvents            int64
-	)
+	var state string
+	var version, decisions, charges, cancellationEvents int64
 	if err := admin.QueryRow(`
 		SELECT
 			j.state,
 			j.version,
-			cr.state,
-			p.queued_count,
-			wp.queued_count,
-			oca.reserved_minor,
 			(SELECT count(*) FROM job_cancellation_decisions WHERE job_id = j.id),
 			(SELECT count(*) FROM charges WHERE job_id = j.id),
 			(SELECT count(*) FROM outbox_events
 			 WHERE aggregate_id = j.id
 			   AND event_type IN ('job.cancel_requested', 'job.canceling', 'job.canceled'))
 		FROM jobs AS j
-		JOIN credit_reservations AS cr ON cr.job_id = j.id
-		JOIN projects AS p ON p.id = j.project_id
-		JOIN worker_pools AS wp ON wp.id = j.worker_pool_id
-		JOIN organization_credit_accounts AS oca ON oca.organization_id = j.organization_id
 		WHERE j.id = $1
 	`, jobID).Scan(
 		&state,
 		&version,
-		&reservationState,
-		&projectQueued,
-		&poolQueued,
-		&reservedMinor,
 		&decisions,
 		&charges,
 		&cancellationEvents,
 	); err != nil {
-		t.Fatalf("read legacy CANCELED state: %v", err)
+		t.Fatalf("read succeeded Stage graph terminal state: %v", err)
 	}
-	if state != "CANCELED" || version != 2 || reservationState != "RELEASED" ||
-		projectQueued != 0 || poolQueued != 0 || reservedMinor != 0 ||
-		decisions != 0 || charges != 0 || cancellationEvents != 1 {
+	if state != "SUCCEEDED" || version != firstResult.JobVersion ||
+		decisions != 0 || charges != 1 || cancellationEvents != 0 {
 		t.Fatalf(
-			"legacy CANCELED state = %s/%d reservation %s queue %d/%d credit %d history %d/%d/%d",
+			"succeeded Stage graph state = %s/%d history decisions/charges/cancel-events %d/%d/%d",
 			state,
 			version,
-			reservationState,
-			projectQueued,
-			poolQueued,
-			reservedMinor,
 			decisions,
 			charges,
 			cancellationEvents,
@@ -845,7 +774,7 @@ func TestConcurrentQueuedCancellationReplaysOneDecision(t *testing.T) {
 	if len(responses) != 2 || responses[0].CancellationID == "" ||
 		responses[0].CancellationID != responses[1].CancellationID ||
 		responses[0].Decision != "CANCELED" || responses[1].Decision != "CANCELED" ||
-		responses[0].JobVersion != 2 || responses[1].JobVersion != 2 ||
+		responses[0].JobVersion != 3 || responses[1].JobVersion != 3 ||
 		!responses[0].DecidedAt.Equal(responses[1].DecidedAt) {
 		t.Fatalf("concurrent queued cancellation responses = %#v", responses)
 	}
@@ -875,217 +804,6 @@ func TestConcurrentQueuedCancellationReplaysOneDecision(t *testing.T) {
 			reservedMinor,
 		)
 	}
-}
-
-type cancellationMutationState struct {
-	JobState            string
-	JobVersion          int64
-	JobFence            int64
-	AttemptState        string
-	AttemptEnded        bool
-	LeaseRevoked        bool
-	WorkerState         string
-	ProjectRunning      int64
-	ReservationState    string
-	ReservedMinor       int64
-	UnsettledPosted     int64
-	CancellationRecords int64
-	Charges             int64
-	CancellationEvents  int64
-}
-
-type queueCancellationMutationState struct {
-	JobState            string
-	JobVersion          int64
-	JobFence            int64
-	ProjectQueued       int64
-	ProjectRetryWait    int64
-	PoolQueued          int64
-	PoolRetryWait       int64
-	ReservationState    string
-	ReservedMinor       int64
-	UnsettledPosted     int64
-	CancellationRecords int64
-	Charges             int64
-	CancellationEvents  int64
-}
-
-type cancellationStopMutationState struct {
-	JobState         string
-	JobVersion       int64
-	WorkerState      string
-	ReservationState string
-	ReservedMinor    int64
-	UnsettledPosted  int64
-	Receipts         int64
-	Charges          int64
-	CanceledEvents   int64
-}
-
-func readQueueCancellationMutationState(
-	t *testing.T,
-	db interface {
-		QueryRow(query string, args ...any) *sql.Row
-	},
-	jobID uuid.UUID,
-) queueCancellationMutationState {
-	t.Helper()
-	var state queueCancellationMutationState
-	if err := db.QueryRow(`
-		SELECT
-			job.state,
-			job.version,
-			job.current_fence,
-			project.queued_count,
-			project.retry_wait_count,
-			pool.queued_count,
-			pool.retry_wait_count,
-			reservation.state,
-			credit.reserved_minor,
-			credit.unsettled_posted_minor,
-			(SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
-			(SELECT count(*) FROM charges WHERE job_id = job.id),
-			(SELECT count(*) FROM outbox_events
-			 WHERE aggregate_id = job.id
-			   AND event_type IN (
-				'job.cancel_requested',
-				'job.canceling',
-				'charge.posted',
-				'invoice.export_requested',
-				'job.canceled'
-			   ))
-		FROM jobs AS job
-		JOIN projects AS project ON project.id = job.project_id
-		JOIN worker_pools AS pool ON pool.id = job.worker_pool_id
-		JOIN credit_reservations AS reservation ON reservation.job_id = job.id
-		JOIN organization_credit_accounts AS credit
-		  ON credit.organization_id = job.organization_id
-		WHERE job.id = $1
-	`, jobID).Scan(
-		&state.JobState,
-		&state.JobVersion,
-		&state.JobFence,
-		&state.ProjectQueued,
-		&state.ProjectRetryWait,
-		&state.PoolQueued,
-		&state.PoolRetryWait,
-		&state.ReservationState,
-		&state.ReservedMinor,
-		&state.UnsettledPosted,
-		&state.CancellationRecords,
-		&state.Charges,
-		&state.CancellationEvents,
-	); err != nil {
-		t.Fatalf("read queue cancellation mutation state: %v", err)
-	}
-	return state
-}
-
-func readCancellationStopMutationState(
-	t *testing.T,
-	db interface {
-		QueryRow(query string, args ...any) *sql.Row
-	},
-	jobID uuid.UUID,
-) cancellationStopMutationState {
-	t.Helper()
-	var state cancellationStopMutationState
-	if err := db.QueryRow(`
-		SELECT
-			job.state,
-			job.version,
-			worker.lifecycle_state,
-			reservation.state,
-			credit.reserved_minor,
-			credit.unsettled_posted_minor,
-			(SELECT count(*) FROM cancellation_stop_receipts WHERE job_id = job.id),
-			(SELECT count(*) FROM charges WHERE job_id = job.id),
-			(SELECT count(*) FROM outbox_events
-			 WHERE aggregate_id = job.id AND event_type = 'job.canceled')
-		FROM jobs AS job
-		JOIN job_cancellation_decisions AS decision ON decision.job_id = job.id
-		JOIN workers AS worker ON worker.id = decision.worker_id
-		JOIN credit_reservations AS reservation ON reservation.job_id = job.id
-		JOIN organization_credit_accounts AS credit
-		  ON credit.organization_id = job.organization_id
-		WHERE job.id = $1
-	`, jobID).Scan(
-		&state.JobState,
-		&state.JobVersion,
-		&state.WorkerState,
-		&state.ReservationState,
-		&state.ReservedMinor,
-		&state.UnsettledPosted,
-		&state.Receipts,
-		&state.Charges,
-		&state.CanceledEvents,
-	); err != nil {
-		t.Fatalf("read cancellation stop mutation state: %v", err)
-	}
-	return state
-}
-
-func readCancellationMutationState(
-	t *testing.T,
-	db interface {
-		QueryRow(query string, args ...any) *sql.Row
-	},
-	jobID, attemptID uuid.UUID,
-) cancellationMutationState {
-	t.Helper()
-	var state cancellationMutationState
-	if err := db.QueryRow(`
-		SELECT
-			job.state,
-			job.version,
-			job.current_fence,
-			attempt.state,
-			attempt.ended_at IS NOT NULL,
-			lease.revoked_at IS NOT NULL,
-			worker.lifecycle_state,
-			project.running_count,
-			reservation.state,
-			credit.reserved_minor,
-			credit.unsettled_posted_minor,
-			(SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
-			(SELECT count(*) FROM charges WHERE job_id = job.id),
-			(SELECT count(*) FROM outbox_events
-			 WHERE aggregate_id = job.id
-			   AND event_type IN (
-				'job.cancel_requested',
-				'job.canceling',
-				'charge.posted',
-				'invoice.export_requested',
-				'job.canceled'
-			   ))
-		FROM jobs AS job
-		JOIN attempts AS attempt ON attempt.id = $2
-		JOIN attempt_leases AS lease ON lease.attempt_id = attempt.id
-		JOIN workers AS worker ON worker.id = attempt.worker_id
-		JOIN projects AS project ON project.id = job.project_id
-		JOIN credit_reservations AS reservation ON reservation.job_id = job.id
-		JOIN organization_credit_accounts AS credit
-		  ON credit.organization_id = job.organization_id
-		WHERE job.id = $1
-	`, jobID, attemptID).Scan(
-		&state.JobState,
-		&state.JobVersion,
-		&state.JobFence,
-		&state.AttemptState,
-		&state.AttemptEnded,
-		&state.LeaseRevoked,
-		&state.WorkerState,
-		&state.ProjectRunning,
-		&state.ReservationState,
-		&state.ReservedMinor,
-		&state.UnsettledPosted,
-		&state.CancellationRecords,
-		&state.Charges,
-		&state.CancellationEvents,
-	); err != nil {
-		t.Fatalf("read cancellation mutation state: %v", err)
-	}
-	return state
 }
 
 type cancelResponse struct {

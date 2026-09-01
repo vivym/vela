@@ -2217,7 +2217,7 @@ func TestStageGraphQueuedCancellationReleasesGraphAuthorityWithoutCharge(t *test
 
 	var jobState, attemptState, storageState, reservationState string
 	var activeRuns, activeLeases, activeAllocations, decisions, charges int64
-	var projectQueued, poolQueued, reservedMinor int64
+	var projectQueued, readyQueue, capacityReady, reservedMinor int64
 	if err := database.Admin.QueryRow(`
 		SELECT job.state::text, attempt.graph_state::text, storage.state::text,
 		       credit_reservation.state::text,
@@ -2229,33 +2229,38 @@ func TestStageGraphQueuedCancellationReleasesGraphAuthorityWithoutCharge(t *test
 		        WHERE attempt_id = attempt.id AND state = 'ALLOCATED'),
 		       (SELECT count(*) FROM job_cancellation_decisions WHERE job_id = job.id),
 		       (SELECT count(*) FROM charges WHERE job_id = job.id),
-		       project.queued_count, pool.queued_count, account.reserved_minor
+		       project.queued_count,
+		       (SELECT count(*) FROM stage_ready_queue_entries
+		        WHERE project_id = job.project_id),
+		       (SELECT COALESCE(sum(ready_count), 0)
+		        FROM stage_capacity_pool_counters),
+		       account.reserved_minor
 		FROM jobs AS job
 		JOIN attempts AS attempt ON attempt.id = $1
 		JOIN stage_storage_reservations AS storage ON storage.attempt_id = attempt.id
 		JOIN credit_reservations AS credit_reservation ON credit_reservation.job_id = job.id
 		JOIN projects AS project ON project.id = job.project_id
-			JOIN worker_pools AS pool ON pool.stable_id = 'h3-primary'
 		JOIN organization_credit_accounts AS account
 		  ON account.organization_id = job.organization_id
 		WHERE job.id = $2
-	`, attemptID, job.JobID).Scan(
+		`, attemptID, job.JobID).Scan(
 		&jobState, &attemptState, &storageState, &reservationState,
 		&activeRuns, &activeLeases, &activeAllocations, &decisions, &charges,
-		&projectQueued, &poolQueued, &reservedMinor,
+		&projectQueued, &readyQueue, &capacityReady, &reservedMinor,
 	); err != nil {
 		t.Fatalf("read queued Stage graph cancellation authority: %v", err)
 	}
 	if jobState != "CANCELED" || attemptState != "CANCELED" ||
 		storageState != "RELEASED" || reservationState != "RELEASED" ||
 		activeRuns != 0 || activeLeases != 0 || activeAllocations != 0 ||
-		decisions != 1 || charges != 0 || projectQueued != 0 || poolQueued != 0 ||
+		decisions != 1 || charges != 0 || projectQueued != 0 || readyQueue != 0 ||
+		capacityReady != 0 ||
 		reservedMinor != 0 {
 		t.Fatalf(
-			"queued Stage graph cancellation = job/attempt/storage/credit %s/%s/%s/%s active %d/%d/%d decisions/charges %d/%d counters %d/%d/%d",
+			"queued Stage graph cancellation = job/attempt/storage/credit %s/%s/%s/%s active %d/%d/%d decisions/charges %d/%d counters project/ready/capacity/reserved %d/%d/%d/%d",
 			jobState, attemptState, storageState, reservationState,
 			activeRuns, activeLeases, activeAllocations, decisions, charges,
-			projectQueued, poolQueued, reservedMinor,
+			projectQueued, readyQueue, capacityReady, reservedMinor,
 		)
 	}
 	if reconciled, err := coordinator.Reconcile(context.Background(), 10); err != nil || len(reconciled) != 0 {
