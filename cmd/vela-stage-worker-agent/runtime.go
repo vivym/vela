@@ -160,7 +160,7 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 	if err != nil {
 		return fail(fmt.Errorf("connect to resident ModelRuntime: %w", err))
 	}
-	runtimeIdentity, err := stageworkeragent.DiscoverRuntimeIdentity(
+	runtimeIdentities, err := stageworkeragent.DiscoverRuntimeIdentities(
 		ctx,
 		runtime.modelRuntime,
 		stageworkeragent.RuntimeIdentityExpectation{
@@ -244,15 +244,14 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 		return fail(err)
 	}
 	runtime.agent, err = stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
-		Control:         runtime.control,
-		Runtime:         runtime.modelRuntime,
-		Stream:          stream,
-		RuntimeIdentity: runtimeIdentity,
-		Devices:         configuration.devices,
+		Control:           runtime.control,
+		Runtime:           runtime.modelRuntime,
+		Stream:            stream,
+		RuntimeIdentities: runtimeIdentities,
+		Devices:           configuration.devices,
 		Members: []*velav1.StageAuthorityMemberEpoch{{
-			WorkerMemberId:    configuration.workerMemberID.String(),
-			MemberEpoch:       configuration.workerMemberEpoch,
-			ModelRuntimeEpoch: runtimeIdentity.GetModelRuntimeEpoch(),
+			WorkerMemberId: configuration.workerMemberID.String(),
+			MemberEpoch:    configuration.workerMemberEpoch,
 		}},
 		CapacityVector:            configuration.capacityVector,
 		CapacityTTL:               configuration.capacityTTL,

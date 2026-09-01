@@ -432,6 +432,13 @@ func serveRuntime(
 	t *testing.T,
 	service *modelruntime.Service,
 ) (velav1.ModelRuntimeServiceClient, func() velav1.ModelRuntimeServiceClient) {
+	return serveRuntimeServer(t, service)
+}
+
+func serveRuntimeServer(
+	t *testing.T,
+	service velav1.ModelRuntimeServiceServer,
+) (velav1.ModelRuntimeServiceClient, func() velav1.ModelRuntimeServiceClient) {
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()

@@ -38,12 +38,13 @@ type Clock interface {
 }
 
 type Config struct {
-	Binding       stageauthority.RuntimeBinding
-	EpochStore    EpochStore
-	Validator     *stageauthority.Validator
-	Backend       Backend
-	Clock         Clock
-	CancelTimeout time.Duration
+	Binding        stageauthority.RuntimeBinding
+	EpochStore     EpochStore
+	Validator      *stageauthority.Validator
+	Backend        Backend
+	BackendFactory func(stageauthority.RuntimeBinding) (Backend, error)
+	Clock          Clock
+	CancelTimeout  time.Duration
 }
 
 type Service struct {
@@ -79,8 +80,8 @@ func NewService(config Config) (*Service, error) {
 	if config.Validator == nil {
 		return nil, errors.New("ModelRuntime StageAuthority validator is required")
 	}
-	if config.Backend == nil {
-		return nil, errors.New("ModelRuntime backend is required")
+	if (config.Backend == nil) == (config.BackendFactory == nil) {
+		return nil, errors.New("exactly one ModelRuntime backend or backend factory is required")
 	}
 	if config.EpochStore == nil {
 		return nil, errors.New("ModelRuntime epoch store is required")
@@ -105,6 +106,15 @@ func NewService(config Config) (*Service, error) {
 		return nil, errors.New("ModelRuntime epoch store returned an invalid epoch")
 	}
 	config.Binding.ModelRuntimeEpoch = epoch
+	if config.BackendFactory != nil {
+		config.Backend, err = config.BackendFactory(cloneBinding(config.Binding))
+		if err != nil {
+			return nil, fmt.Errorf("start resident ModelRuntime backend: %w", err)
+		}
+		if config.Backend == nil {
+			return nil, errors.New("ModelRuntime backend factory returned no backend")
+		}
+	}
 	return &Service{
 		binding:       cloneBinding(config.Binding),
 		validator:     config.Validator,
@@ -127,6 +137,9 @@ func (service *Service) Close() {
 			service.active.timer.Stop()
 		}
 		service.mu.Unlock()
+		if closer, ok := service.backend.(interface{ Close() error }); ok {
+			_ = closer.Close()
+		}
 	})
 }
 

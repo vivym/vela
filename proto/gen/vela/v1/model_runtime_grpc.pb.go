@@ -19,18 +19,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ModelRuntimeService_ProbeReadiness_FullMethodName = "/vela.v1.ModelRuntimeService/ProbeReadiness"
-	ModelRuntimeService_PrepareStage_FullMethodName   = "/vela.v1.ModelRuntimeService/PrepareStage"
-	ModelRuntimeService_StartStage_FullMethodName     = "/vela.v1.ModelRuntimeService/StartStage"
-	ModelRuntimeService_CancelStage_FullMethodName    = "/vela.v1.ModelRuntimeService/CancelStage"
-	ModelRuntimeService_Status_FullMethodName         = "/vela.v1.ModelRuntimeService/Status"
-	ModelRuntimeService_SealOutput_FullMethodName     = "/vela.v1.ModelRuntimeService/SealOutput"
+	ModelRuntimeService_DiscoverRuntimeIdentities_FullMethodName = "/vela.v1.ModelRuntimeService/DiscoverRuntimeIdentities"
+	ModelRuntimeService_ProbeReadiness_FullMethodName            = "/vela.v1.ModelRuntimeService/ProbeReadiness"
+	ModelRuntimeService_PrepareStage_FullMethodName              = "/vela.v1.ModelRuntimeService/PrepareStage"
+	ModelRuntimeService_StartStage_FullMethodName                = "/vela.v1.ModelRuntimeService/StartStage"
+	ModelRuntimeService_CancelStage_FullMethodName               = "/vela.v1.ModelRuntimeService/CancelStage"
+	ModelRuntimeService_Status_FullMethodName                    = "/vela.v1.ModelRuntimeService/Status"
+	ModelRuntimeService_SealOutput_FullMethodName                = "/vela.v1.ModelRuntimeService/SealOutput"
 )
 
 // ModelRuntimeServiceClient is the client API for ModelRuntimeService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ModelRuntimeServiceClient interface {
+	DiscoverRuntimeIdentities(ctx context.Context, in *ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error)
 	ProbeReadiness(ctx context.Context, in *ModelRuntimeServiceProbeReadinessRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceProbeReadinessResponse, error)
 	PrepareStage(ctx context.Context, in *ModelRuntimeServicePrepareStageRequest, opts ...grpc.CallOption) (*ModelRuntimeServicePrepareStageResponse, error)
 	StartStage(ctx context.Context, in *ModelRuntimeServiceStartStageRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceStartStageResponse, error)
@@ -45,6 +47,16 @@ type modelRuntimeServiceClient struct {
 
 func NewModelRuntimeServiceClient(cc grpc.ClientConnInterface) ModelRuntimeServiceClient {
 	return &modelRuntimeServiceClient{cc}
+}
+
+func (c *modelRuntimeServiceClient) DiscoverRuntimeIdentities(ctx context.Context, in *ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse)
+	err := c.cc.Invoke(ctx, ModelRuntimeService_DiscoverRuntimeIdentities_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *modelRuntimeServiceClient) ProbeReadiness(ctx context.Context, in *ModelRuntimeServiceProbeReadinessRequest, opts ...grpc.CallOption) (*ModelRuntimeServiceProbeReadinessResponse, error) {
@@ -111,6 +123,7 @@ func (c *modelRuntimeServiceClient) SealOutput(ctx context.Context, in *ModelRun
 // All implementations must embed UnimplementedModelRuntimeServiceServer
 // for forward compatibility.
 type ModelRuntimeServiceServer interface {
+	DiscoverRuntimeIdentities(context.Context, *ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest) (*ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error)
 	ProbeReadiness(context.Context, *ModelRuntimeServiceProbeReadinessRequest) (*ModelRuntimeServiceProbeReadinessResponse, error)
 	PrepareStage(context.Context, *ModelRuntimeServicePrepareStageRequest) (*ModelRuntimeServicePrepareStageResponse, error)
 	StartStage(context.Context, *ModelRuntimeServiceStartStageRequest) (*ModelRuntimeServiceStartStageResponse, error)
@@ -127,6 +140,9 @@ type ModelRuntimeServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedModelRuntimeServiceServer struct{}
 
+func (UnimplementedModelRuntimeServiceServer) DiscoverRuntimeIdentities(context.Context, *ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest) (*ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DiscoverRuntimeIdentities not implemented")
+}
 func (UnimplementedModelRuntimeServiceServer) ProbeReadiness(context.Context, *ModelRuntimeServiceProbeReadinessRequest) (*ModelRuntimeServiceProbeReadinessResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProbeReadiness not implemented")
 }
@@ -164,6 +180,24 @@ func RegisterModelRuntimeServiceServer(s grpc.ServiceRegistrar, srv ModelRuntime
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&ModelRuntimeService_ServiceDesc, srv)
+}
+
+func _ModelRuntimeService_DiscoverRuntimeIdentities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ModelRuntimeServiceServer).DiscoverRuntimeIdentities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ModelRuntimeService_DiscoverRuntimeIdentities_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ModelRuntimeServiceServer).DiscoverRuntimeIdentities(ctx, req.(*ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _ModelRuntimeService_ProbeReadiness_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -281,6 +315,10 @@ var ModelRuntimeService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "vela.v1.ModelRuntimeService",
 	HandlerType: (*ModelRuntimeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "DiscoverRuntimeIdentities",
+			Handler:    _ModelRuntimeService_DiscoverRuntimeIdentities_Handler,
+		},
 		{
 			MethodName: "ProbeReadiness",
 			Handler:    _ModelRuntimeService_ProbeReadiness_Handler,

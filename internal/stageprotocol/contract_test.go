@@ -69,6 +69,7 @@ func TestModelRuntimeProtocolHasOnlyLongLivedRuntimeOperations(t *testing.T) {
 		got = append(got, string(service.Methods().Get(index).Name()))
 	}
 	want := []string{
+		"DiscoverRuntimeIdentities",
 		"ProbeReadiness",
 		"PrepareStage",
 		"StartStage",

@@ -42,6 +42,14 @@ type RuntimeReadinessClient interface {
 	) (*velav1.ModelRuntimeServiceProbeReadinessResponse, error)
 }
 
+type RuntimeIdentityDiscoveryClient interface {
+	DiscoverRuntimeIdentities(
+		context.Context,
+		*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest,
+		...grpc.CallOption,
+	) (*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error)
+}
+
 type CapacityObservationSequenceSource interface {
 	NextCapacityObservationSequence(context.Context) (int64, error)
 }
@@ -87,11 +95,69 @@ func DiscoverRuntimeIdentity(
 	return proto.Clone(identity).(*velav1.ModelRuntimeIdentity), nil
 }
 
+func DiscoverRuntimeIdentities(
+	ctx context.Context,
+	runtime RuntimeIdentityDiscoveryClient,
+	expected RuntimeIdentityExpectation,
+) ([]*velav1.ModelRuntimeIdentity, error) {
+	if ctx == nil || runtime == nil || uuid.Validate(expected.WorkerInstanceID) != nil ||
+		expected.WorkerInstanceEpoch <= 0 || uuid.Validate(expected.WorkerMemberID) != nil ||
+		expected.WorkerMemberEpoch <= 0 {
+		return nil, errors.New("ModelRuntime identity discovery configuration is invalid")
+	}
+	response, err := runtime.DiscoverRuntimeIdentities(
+		ctx,
+		&velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
+			WorkerInstanceId:    expected.WorkerInstanceID,
+			WorkerInstanceEpoch: expected.WorkerInstanceEpoch,
+			WorkerMemberId:      expected.WorkerMemberID,
+			WorkerMemberEpoch:   expected.WorkerMemberEpoch,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("discover resident ModelRuntime identities: %w", err)
+	}
+	if response == nil || len(response.GetIdentities()) == 0 || len(response.GetIdentities()) > 16 {
+		return nil, errors.New("resident ModelRuntime returned no bounded identity set")
+	}
+	identities := make([]*velav1.ModelRuntimeIdentity, 0, len(response.GetIdentities()))
+	seen := make(map[string]struct{}, len(response.GetIdentities()))
+	var deviceSetDigest []byte
+	var membershipDigest []byte
+	for _, identity := range response.GetIdentities() {
+		if validateProductionRuntimeIdentity(identity) != nil ||
+			identity.GetWorkerInstanceId() != expected.WorkerInstanceID ||
+			identity.GetWorkerInstanceEpoch() != expected.WorkerInstanceEpoch ||
+			identity.GetWorkerMemberId() != expected.WorkerMemberID ||
+			identity.GetWorkerMemberEpoch() != expected.WorkerMemberEpoch {
+			return nil, errors.New("resident ModelRuntime identity set does not match configured WorkerInstance member")
+		}
+		key := strings.Join([]string{
+			identity.GetModelResidencyId(), identity.GetRuntimeIdentity(),
+			identity.GetStageProfileRevisionId(), fmt.Sprintf("%d", identity.GetModelRuntimeEpoch()),
+		}, "\x00")
+		if _, duplicate := seen[key]; duplicate {
+			return nil, errors.New("resident ModelRuntime identity set is duplicated")
+		}
+		seen[key] = struct{}{}
+		if len(deviceSetDigest) == 0 {
+			deviceSetDigest = append([]byte(nil), identity.GetDeviceSetDigest()...)
+			membershipDigest = append([]byte(nil), identity.GetMembershipDigest()...)
+		} else if !slices.Equal(deviceSetDigest, identity.GetDeviceSetDigest()) ||
+			!slices.Equal(membershipDigest, identity.GetMembershipDigest()) {
+			return nil, errors.New("resident ModelRuntime identities disagree on WorkerInstance topology")
+		}
+		identities = append(identities, proto.Clone(identity).(*velav1.ModelRuntimeIdentity))
+	}
+	return identities, nil
+}
+
 type ProductionConfig struct {
 	Control                   ControlClient
 	Runtime                   RuntimeReadinessClient
 	Stream                    *StreamAgent
 	RuntimeIdentity           *velav1.ModelRuntimeIdentity
+	RuntimeIdentities         []*velav1.ModelRuntimeIdentity
 	Devices                   []*velav1.StageAuthorityDeviceEpoch
 	Members                   []*velav1.StageAuthorityMemberEpoch
 	CapacityVector            map[string]int64
@@ -108,7 +174,8 @@ type ProductionAgent struct {
 	control                   ControlClient
 	runtime                   RuntimeReadinessClient
 	stream                    *StreamAgent
-	runtimeIdentity           *velav1.ModelRuntimeIdentity
+	runtimeIdentities         []*velav1.ModelRuntimeIdentity
+	acquireCursor             int
 	devices                   []*velav1.StageAuthorityDeviceEpoch
 	members                   []*velav1.StageAuthorityMemberEpoch
 	capacityVector            map[string]int64
@@ -142,13 +209,16 @@ func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 		config.CapacityTTL <= 0 || config.CapacityTTL > maxCapacityTTL {
 		return nil, errors.New("Stage Worker production Agent configuration is incomplete")
 	}
-	if err := validateProductionRuntimeIdentity(config.RuntimeIdentity); err != nil {
+	identities, err := normalizeProductionRuntimeIdentities(config)
+	if err != nil {
 		return nil, err
 	}
-	if err := validateProductionTopology(
-		config.RuntimeIdentity, config.Devices, config.Members,
-	); err != nil {
-		return nil, err
+	for _, identity := range identities {
+		if err := validateProductionTopology(
+			identity, config.Devices, membersForRuntimeIdentity(config.Members, identity),
+		); err != nil {
+			return nil, err
+		}
 	}
 	if err := validateProductionCapacity(config.CapacityVector); err != nil {
 		return nil, err
@@ -169,7 +239,7 @@ func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 	}
 	return &ProductionAgent{
 		control: config.Control, runtime: config.Runtime, stream: config.Stream,
-		runtimeIdentity:           proto.Clone(config.RuntimeIdentity).(*velav1.ModelRuntimeIdentity),
+		runtimeIdentities:         identities,
 		devices:                   cloneDevices(config.Devices),
 		members:                   cloneMembers(config.Members),
 		capacityVector:            maps.Clone(config.CapacityVector),
@@ -412,32 +482,36 @@ func (agent *ProductionAgent) refreshEvidence(
 	ctx context.Context,
 	observationSequence int64,
 ) error {
-	evidence, err := agent.probeReadiness(ctx)
-	if err != nil {
-		return err
-	}
-	registered, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
-		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
-			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{
-				RuntimeIdentity:             proto.Clone(agent.runtimeIdentity).(*velav1.ModelRuntimeIdentity),
-				CapacityObservationSequence: observationSequence,
-				Devices:                     cloneDevices(agent.devices), Members: cloneMembers(agent.members),
-				ReadinessEvidence: evidence,
+	for _, identity := range agent.runtimeIdentities {
+		evidence, err := agent.probeReadiness(ctx, identity)
+		if err != nil {
+			return err
+		}
+		registered, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+			Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+				RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{
+					RuntimeIdentity:             proto.Clone(identity).(*velav1.ModelRuntimeIdentity),
+					CapacityObservationSequence: observationSequence,
+					Devices:                     cloneDevices(agent.devices),
+					Members:                     membersForRuntimeIdentity(agent.members, identity),
+					ReadinessEvidence:           evidence,
+				},
 			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("register Stage Worker evidence: %w", err)
+		})
+		if err != nil {
+			return fmt.Errorf("register Stage Worker evidence: %w", err)
+		}
+		if err := agent.requireReady(registered, "registration"); err != nil {
+			return err
+		}
 	}
-	if err := agent.requireReady(registered, "registration"); err != nil {
-		return err
-	}
+	primary := agent.primaryRuntimeIdentity()
 	now := agent.now().UTC()
 	reported, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation{
 			ReportCapacityObservation: &velav1.ReportStageCapacityObservationRequest{
-				WorkerInstanceId:    agent.runtimeIdentity.GetWorkerInstanceId(),
-				WorkerInstanceEpoch: agent.runtimeIdentity.GetWorkerInstanceEpoch(),
+				WorkerInstanceId:    primary.GetWorkerInstanceId(),
+				WorkerInstanceEpoch: primary.GetWorkerInstanceEpoch(),
 				ObservationSequence: observationSequence,
 				CapacityVector:      maps.Clone(agent.capacityVector),
 				ObservedAt:          timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(agent.capacityTTL)),
@@ -457,47 +531,63 @@ func (agent *ProductionAgent) acquire(
 	ctx context.Context,
 	observationSequence int64,
 ) (DiscoveryResult, error) {
-	response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
-		Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
-			AcquireStage: &velav1.AcquireStageRequest{
-				WorkerInstanceId:            agent.runtimeIdentity.GetWorkerInstanceId(),
-				WorkerInstanceEpoch:         agent.runtimeIdentity.GetWorkerInstanceEpoch(),
-				CapacityObservationSequence: observationSequence,
-				ModelResidencyId:            agent.runtimeIdentity.GetModelResidencyId(),
-				ModelRuntimeEpoch:           agent.runtimeIdentity.GetModelRuntimeEpoch(),
-				StageProfileRevisionId:      agent.runtimeIdentity.GetStageProfileRevisionId(),
+	minimumRetry := time.Duration(0)
+	for offset := range len(agent.runtimeIdentities) {
+		index := (agent.acquireCursor + offset) % len(agent.runtimeIdentities)
+		identity := agent.runtimeIdentities[index]
+		response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+			Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
+				AcquireStage: &velav1.AcquireStageRequest{
+					WorkerInstanceId:            identity.GetWorkerInstanceId(),
+					WorkerInstanceEpoch:         identity.GetWorkerInstanceEpoch(),
+					CapacityObservationSequence: observationSequence,
+					ModelResidencyId:            identity.GetModelResidencyId(),
+					ModelRuntimeEpoch:           identity.GetModelRuntimeEpoch(),
+					StageProfileRevisionId:      identity.GetStageProfileRevisionId(),
+				},
 			},
-		},
-	})
-	if err != nil {
-		return DiscoveryResult{}, fmt.Errorf("acquire StageAssignment: %w", err)
-	}
-	if assignment := response.GetStageAssignment(); assignment != nil {
-		return DiscoveryResult{
-			Assignment: proto.Clone(assignment).(*velav1.StageAssignment),
-		}, nil
-	}
-	if noWork := response.GetNoWork(); noWork != nil && noWork.GetRetryAfter() != nil {
-		retryAfter := noWork.GetRetryAfter().AsDuration()
-		if retryAfter > 0 && retryAfter <= maxNoWorkRetry {
-			return DiscoveryResult{RetryAfter: retryAfter}, nil
+		})
+		if err != nil {
+			return DiscoveryResult{}, fmt.Errorf("acquire StageAssignment: %w", err)
 		}
+		if assignment := response.GetStageAssignment(); assignment != nil {
+			agent.acquireCursor = (index + 1) % len(agent.runtimeIdentities)
+			return DiscoveryResult{
+				Assignment: proto.Clone(assignment).(*velav1.StageAssignment),
+			}, nil
+		}
+		if noWork := response.GetNoWork(); noWork != nil && noWork.GetRetryAfter() != nil {
+			retryAfter := noWork.GetRetryAfter().AsDuration()
+			if retryAfter > 0 && retryAfter <= maxNoWorkRetry &&
+				(minimumRetry == 0 || retryAfter < minimumRetry) {
+				minimumRetry = retryAfter
+			}
+			continue
+		}
+		if command := response.GetStageCommandResult(); command != nil &&
+			(command.GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
+				command.GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED) {
+			return DiscoveryResult{}, fmt.Errorf("Stage Worker acquire rejected: %s", command.GetDetail())
+		}
+		return DiscoveryResult{}, errors.New("Stage Worker acquire returned a malformed result")
 	}
-	if command := response.GetStageCommandResult(); command != nil &&
-		(command.GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
-			command.GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED) {
-		return DiscoveryResult{}, fmt.Errorf("Stage Worker acquire rejected: %s", command.GetDetail())
+	if minimumRetry == 0 {
+		return DiscoveryResult{}, errors.New("Stage Worker acquire returned no valid retry interval")
 	}
-	return DiscoveryResult{}, errors.New("Stage Worker acquire returned a malformed result")
+	agent.acquireCursor = (agent.acquireCursor + 1) % len(agent.runtimeIdentities)
+	return DiscoveryResult{RetryAfter: minimumRetry}, nil
 }
 
-func (agent *ProductionAgent) probeReadiness(ctx context.Context) ([]byte, error) {
+func (agent *ProductionAgent) probeReadiness(
+	ctx context.Context,
+	identity *velav1.ModelRuntimeIdentity,
+) ([]byte, error) {
 	document := readinessEvidenceV1{SchemaVersion: 1}
 	for _, check := range productionReadinessChecks {
 		response, err := agent.runtime.ProbeReadiness(
 			ctx,
 			&velav1.ModelRuntimeServiceProbeReadinessRequest{
-				Identity: proto.Clone(agent.runtimeIdentity).(*velav1.ModelRuntimeIdentity),
+				Identity: proto.Clone(identity).(*velav1.ModelRuntimeIdentity),
 				Check:    check,
 			},
 		)
@@ -505,7 +595,7 @@ func (agent *ProductionAgent) probeReadiness(ctx context.Context) ([]byte, error
 			return nil, fmt.Errorf("probe ModelRuntime %s readiness: %w", check.String(), err)
 		}
 		if response == nil || response.GetCheck() != check || !response.GetReady() ||
-			!proto.Equal(response.GetIdentity(), agent.runtimeIdentity) || len(response.GetEvidence()) == 0 ||
+			!proto.Equal(response.GetIdentity(), identity) || len(response.GetEvidence()) == 0 ||
 			len(response.GetEvidence()) > maxReadinessEvidenceBytes {
 			return nil, fmt.Errorf("ModelRuntime %s readiness evidence is invalid", check.String())
 		}
@@ -529,8 +619,9 @@ func (agent *ProductionAgent) requireReady(
 	operation string,
 ) error {
 	decision := response.GetWorkerReadinessDecision()
-	if decision == nil || decision.GetWorkerInstanceId() != agent.runtimeIdentity.GetWorkerInstanceId() ||
-		decision.GetWorkerInstanceEpoch() != agent.runtimeIdentity.GetWorkerInstanceEpoch() ||
+	identity := agent.primaryRuntimeIdentity()
+	if decision == nil || decision.GetWorkerInstanceId() != identity.GetWorkerInstanceId() ||
+		decision.GetWorkerInstanceEpoch() != identity.GetWorkerInstanceEpoch() ||
 		!decision.GetReady() {
 		reason := "malformed readiness decision"
 		if decision != nil && strings.TrimSpace(decision.GetReason()) != "" {
@@ -539,6 +630,65 @@ func (agent *ProductionAgent) requireReady(
 		return fmt.Errorf("Stage Worker %s is not ready: %s", operation, reason)
 	}
 	return nil
+}
+
+func normalizeProductionRuntimeIdentities(
+	config ProductionConfig,
+) ([]*velav1.ModelRuntimeIdentity, error) {
+	values := config.RuntimeIdentities
+	if len(values) == 0 && config.RuntimeIdentity != nil {
+		values = []*velav1.ModelRuntimeIdentity{config.RuntimeIdentity}
+	}
+	if len(values) == 0 || len(values) > 16 ||
+		(config.RuntimeIdentity != nil && len(config.RuntimeIdentities) != 0) {
+		return nil, errors.New("Stage Worker production runtime identity set is invalid")
+	}
+	identities := make([]*velav1.ModelRuntimeIdentity, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, identity := range values {
+		if err := validateProductionRuntimeIdentity(identity); err != nil {
+			return nil, err
+		}
+		key := strings.Join([]string{
+			identity.GetModelResidencyId(), identity.GetRuntimeIdentity(),
+			identity.GetStageProfileRevisionId(), fmt.Sprintf("%d", identity.GetModelRuntimeEpoch()),
+		}, "\x00")
+		if _, duplicate := seen[key]; duplicate {
+			return nil, errors.New("Stage Worker production runtime identity set is duplicated")
+		}
+		seen[key] = struct{}{}
+		identities = append(identities, proto.Clone(identity).(*velav1.ModelRuntimeIdentity))
+	}
+	primary := identities[0]
+	for _, identity := range identities[1:] {
+		if identity.GetWorkerInstanceId() != primary.GetWorkerInstanceId() ||
+			identity.GetWorkerInstanceEpoch() != primary.GetWorkerInstanceEpoch() ||
+			identity.GetWorkerMemberId() != primary.GetWorkerMemberId() ||
+			identity.GetWorkerMemberEpoch() != primary.GetWorkerMemberEpoch() ||
+			!slices.Equal(identity.GetDeviceSetDigest(), primary.GetDeviceSetDigest()) ||
+			!slices.Equal(identity.GetMembershipDigest(), primary.GetMembershipDigest()) {
+			return nil, errors.New("Stage Worker production runtime identities do not share one WorkerInstance member")
+		}
+	}
+	return identities, nil
+}
+
+func membersForRuntimeIdentity(
+	members []*velav1.StageAuthorityMemberEpoch,
+	identity *velav1.ModelRuntimeIdentity,
+) []*velav1.StageAuthorityMemberEpoch {
+	cloned := cloneMembers(members)
+	for _, member := range cloned {
+		member.ModelRuntimeEpoch = identity.GetModelRuntimeEpoch()
+	}
+	return cloned
+}
+
+func (agent *ProductionAgent) primaryRuntimeIdentity() *velav1.ModelRuntimeIdentity {
+	if agent == nil || len(agent.runtimeIdentities) == 0 {
+		return nil
+	}
+	return agent.runtimeIdentities[0]
 }
 
 func aggregateReattachReceipt(status AggregateStatus) (string, []byte, error) {

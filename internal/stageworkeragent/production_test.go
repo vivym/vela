@@ -415,6 +415,135 @@ func TestDiscoverRuntimeIdentityBindsResidentRuntimeToConfiguredWorkerMember(t *
 	}
 }
 
+func TestProductionAgentDiscoversRegistersAndPollsAUXResidentRuntimes(t *testing.T) {
+	now := time.Date(2026, 9, 1, 18, 0, 0, 0, time.UTC)
+	encoder := productionRuntimeIdentity()
+	encoder.RuntimeIdentity = "h3-encoder-runtime-v1"
+	encoder.ModelResidencyId = "48000000-0000-0000-0000-000000000012"
+	encoder.StageProfileRevisionId = "48000000-0000-0000-0000-000000000013"
+	vae := proto.Clone(encoder).(*velav1.ModelRuntimeIdentity)
+	vae.RuntimeIdentity = "h3-vae-runtime-v1"
+	vae.ModelResidencyId = "48000000-0000-0000-0000-000000000022"
+	vae.StageProfileRevisionId = "48000000-0000-0000-0000-000000000023"
+	vae.ModelRuntimeEpoch = 8
+	runtime := &auxRuntime{identities: []*velav1.ModelRuntimeIdentity{encoder, vae}}
+
+	discovered, err := stageworkeragent.DiscoverRuntimeIdentities(
+		context.Background(), runtime,
+		stageworkeragent.RuntimeIdentityExpectation{
+			WorkerInstanceID:    encoder.GetWorkerInstanceId(),
+			WorkerInstanceEpoch: encoder.GetWorkerInstanceEpoch(),
+			WorkerMemberID:      encoder.GetWorkerMemberId(),
+			WorkerMemberEpoch:   encoder.GetWorkerMemberEpoch(),
+		},
+	)
+	if err != nil || len(discovered) != 2 {
+		t.Fatalf("DiscoverRuntimeIdentities = %#v error=%v", discovered, err)
+	}
+	control := &auxProductionControl{primary: encoder}
+	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+		Control: control, Runtime: runtime, RuntimeIdentities: discovered,
+		Devices: []*velav1.StageAuthorityDeviceEpoch{{
+			DeviceId: "49000000-0000-0000-0000-000000000001", DeviceEpoch: 3,
+		}},
+		Members: []*velav1.StageAuthorityMemberEpoch{{
+			WorkerMemberId: encoder.GetWorkerMemberId(), MemberEpoch: encoder.GetWorkerMemberEpoch(),
+		}},
+		CapacityVector: map[string]int64{"gpu": 1, "slots": 1},
+		CapacityTTL:    2 * time.Minute, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewProductionAgent: %v", err)
+	}
+	cycle, err := agent.Discover(context.Background(), 19)
+	if err != nil || cycle.Assignment != nil || cycle.RetryAfter != 250*time.Millisecond {
+		t.Fatalf("AUX Discover = %#v error=%v", cycle, err)
+	}
+	if len(control.registrations) != 2 || len(control.acquires) != 2 ||
+		control.capacityCalls != 1 ||
+		control.registrations[0].GetMembers()[0].GetModelRuntimeEpoch() != 7 ||
+		control.registrations[1].GetMembers()[0].GetModelRuntimeEpoch() != 8 ||
+		control.acquires[0].GetStageProfileRevisionId() != encoder.GetStageProfileRevisionId() ||
+		control.acquires[1].GetStageProfileRevisionId() != vae.GetStageProfileRevisionId() {
+		t.Fatalf("AUX registration/acquire = %#v/%#v capacity=%d",
+			control.registrations, control.acquires, control.capacityCalls)
+	}
+}
+
+type auxRuntime struct {
+	identities []*velav1.ModelRuntimeIdentity
+}
+
+func (runtime *auxRuntime) DiscoverRuntimeIdentities(
+	_ context.Context,
+	_ *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest,
+	_ ...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error) {
+	response := &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse{}
+	for _, identity := range runtime.identities {
+		response.Identities = append(
+			response.Identities, proto.Clone(identity).(*velav1.ModelRuntimeIdentity),
+		)
+	}
+	return response, nil
+}
+
+func (runtime *auxRuntime) ProbeReadiness(
+	_ context.Context,
+	request *velav1.ModelRuntimeServiceProbeReadinessRequest,
+	_ ...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceProbeReadinessResponse, error) {
+	for _, identity := range runtime.identities {
+		if proto.Equal(identity, request.GetIdentity()) {
+			return &velav1.ModelRuntimeServiceProbeReadinessResponse{
+				Identity: proto.Clone(identity).(*velav1.ModelRuntimeIdentity),
+				Check:    request.GetCheck(), Ready: true, Evidence: []byte("ready"),
+			}, nil
+		}
+	}
+	return nil, errors.New("unknown AUX runtime identity")
+}
+
+type auxProductionControl struct {
+	primary       *velav1.ModelRuntimeIdentity
+	registrations []*velav1.RegisterWorkerEvidenceRequest
+	acquires      []*velav1.AcquireStageRequest
+	capacityCalls int
+}
+
+func (control *auxProductionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
+	return make(chan *velav1.StageWorkerControlServiceConnectResponse)
+}
+
+func (control *auxProductionControl) Exchange(
+	_ context.Context,
+	request *velav1.StageWorkerControlServiceConnectRequest,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	switch operation := request.GetOperation().(type) {
+	case *velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence:
+		control.registrations = append(control.registrations,
+			proto.Clone(operation.RegisterWorkerEvidence).(*velav1.RegisterWorkerEvidenceRequest))
+		return productionReadinessResponse(control.primary), nil
+	case *velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
+		control.capacityCalls++
+		return productionReadinessResponse(control.primary), nil
+	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
+		control.acquires = append(control.acquires,
+			proto.Clone(operation.AcquireStage).(*velav1.AcquireStageRequest))
+		retry := 500 * time.Millisecond
+		if len(control.acquires) == 2 {
+			retry = 250 * time.Millisecond
+		}
+		return &velav1.StageWorkerControlServiceConnectResponse{
+			Result: &velav1.StageWorkerControlServiceConnectResponse_NoWork{
+				NoWork: &velav1.NoStageWork{RetryAfter: duration(retry)},
+			},
+		}, nil
+	default:
+		return nil, errors.New("unexpected AUX production control operation")
+	}
+}
+
 type identityDiscoveryRuntime struct {
 	identity *velav1.ModelRuntimeIdentity
 	request  *velav1.ModelRuntimeServiceProbeReadinessRequest

@@ -138,7 +138,6 @@ func TestSingleGPUProductionCompositionSmoke(t *testing.T) {
 	}
 	if checks := runtimeProbe.snapshot(); !reflect.DeepEqual(checks, []velav1.ModelRuntimeReadinessCheck{
 		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_DEVICE,
-		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_DEVICE,
 		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_BACKEND,
 		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
 		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_CANARY,
@@ -170,6 +169,26 @@ type smokeRuntimeProbe struct {
 	identity *velav1.ModelRuntimeIdentity
 	mu       sync.Mutex
 	checks   []velav1.ModelRuntimeReadinessCheck
+}
+
+func (server *smokeRuntimeProbe) DiscoverRuntimeIdentities(
+	_ context.Context,
+	request *velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest,
+) (*velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse, error) {
+	if request.GetWorkerInstanceId() != server.identity.GetWorkerInstanceId() ||
+		request.GetWorkerInstanceEpoch() != server.identity.GetWorkerInstanceEpoch() ||
+		request.GetWorkerMemberId() != server.identity.GetWorkerMemberId() ||
+		request.GetWorkerMemberEpoch() != server.identity.GetWorkerMemberEpoch() {
+		return &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse{
+			Detail: "runtime identity expectation mismatch",
+		}, nil
+	}
+	return &velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse{
+		Identities: []*velav1.ModelRuntimeIdentity{
+			proto.Clone(server.identity).(*velav1.ModelRuntimeIdentity),
+		},
+		Detail: "runtime identity discovered",
+	}, nil
 }
 
 func (server *smokeRuntimeProbe) ProbeReadiness(
