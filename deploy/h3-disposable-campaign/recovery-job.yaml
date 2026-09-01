@@ -37,13 +37,13 @@ spec:
             - name: VELA_H3_MEMBER_CAMPAIGN_SERVER_NAME
               value: follower.vela-h3-disposable.svc
             - name: VELA_H3_MEMBER_CAMPAIGN_CLIENT_TLS_CERT_FILE
-              value: /run/campaign/client.crt
+              value: /run/campaign-client.crt
             - name: VELA_H3_MEMBER_CAMPAIGN_CLIENT_TLS_KEY_FILE
-              value: /run/campaign/client.key
+              value: /run/campaign-client.key
             - name: VELA_H3_MEMBER_CAMPAIGN_SERVER_CA_FILE
-              value: /run/campaign/ca.crt
+              value: /run/campaign-ca.crt
             - name: VELA_H3_MEMBER_CAMPAIGN_AUTHORITY_KEY_FILE
-              value: /run/campaign/authority.key
+              value: /run/campaign-authority.key
             - name: VELA_H3_MEMBER_CAMPAIGN_DIAL_TIMEOUT
               value: 20s
             - name: VELA_H3_MEMBER_CAMPAIGN_COMMAND_TIMEOUT
@@ -63,7 +63,20 @@ spec:
             readOnlyRootFilesystem: true
           volumeMounts:
             - name: credentials
-              mountPath: /run/campaign
+              mountPath: /run/campaign-ca.crt
+              subPath: ca.crt
+              readOnly: true
+            - name: credentials
+              mountPath: /run/campaign-client.crt
+              subPath: client.crt
+              readOnly: true
+            - name: credentials
+              mountPath: /run/campaign-client.key
+              subPath: client.key
+              readOnly: true
+            - name: credentials
+              mountPath: /run/campaign-authority.key
+              subPath: authority.key
               readOnly: true
       volumes:
         - name: credentials

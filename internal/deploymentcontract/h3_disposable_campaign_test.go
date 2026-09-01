@@ -47,12 +47,26 @@ func TestH3DisposableCampaignManifestsPinCrossNodeNormalFaultAndRecoveryWorkload
 		!containsDisposableObject(base, "Deployment", "follower") {
 		t.Fatalf("disposable campaign base object inventory = %#v", objectInventory(base))
 	}
+	requireDisposableCredentialMounts(t, findDisposableObject(t, base, "Deployment", "follower"), map[string]disposableCredentialMount{
+		"VELA_H3_MEMBER_CAMPAIGN_CLIENT_CA_FILE":       {path: "/run/campaign-ca.crt", subPath: "ca.crt"},
+		"VELA_H3_MEMBER_CAMPAIGN_SERVER_TLS_CERT_FILE": {path: "/run/campaign-server.crt", subPath: "server.crt"},
+		"VELA_H3_MEMBER_CAMPAIGN_SERVER_TLS_KEY_FILE":  {path: "/run/campaign-server.key", subPath: "server.key"},
+		"VELA_H3_MEMBER_CAMPAIGN_AUTHORITY_KEY_FILE":   {path: "/run/campaign-authority.key", subPath: "authority.key"},
+	})
 	baseText := string(readDisposableCampaignFile(t, root, "campaign.yaml"))
 	for _, required := range []string{
 		"vela.ai/h3-campaign-role: follower",
 		"image: vela-h3-member-campaign:disposable",
 		"imagePullPolicy: Never",
 		"VELA_H3_MEMBER_CAMPAIGN_LISTEN_ADDRESS",
+		"value: /run/campaign-ca.crt",
+		"subPath: ca.crt",
+		"value: /run/campaign-server.crt",
+		"subPath: server.crt",
+		"value: /run/campaign-server.key",
+		"subPath: server.key",
+		"value: /run/campaign-authority.key",
+		"subPath: authority.key",
 		"readOnlyRootFilesystem: true",
 	} {
 		if !strings.Contains(baseText, required) {
@@ -73,11 +87,25 @@ func TestH3DisposableCampaignManifestsPinCrossNodeNormalFaultAndRecoveryWorkload
 		if len(documents) != 1 || documents[0].Kind != "Job" {
 			t.Fatalf("%s inventory = %#v", name, objectInventory(documents))
 		}
+		requireDisposableCredentialMounts(t, &documents[0], map[string]disposableCredentialMount{
+			"VELA_H3_MEMBER_CAMPAIGN_SERVER_CA_FILE":       {path: "/run/campaign-ca.crt", subPath: "ca.crt"},
+			"VELA_H3_MEMBER_CAMPAIGN_CLIENT_TLS_CERT_FILE": {path: "/run/campaign-client.crt", subPath: "client.crt"},
+			"VELA_H3_MEMBER_CAMPAIGN_CLIENT_TLS_KEY_FILE":  {path: "/run/campaign-client.key", subPath: "client.key"},
+			"VELA_H3_MEMBER_CAMPAIGN_AUTHORITY_KEY_FILE":   {path: "/run/campaign-authority.key", subPath: "authority.key"},
+		})
 		text := string(readDisposableCampaignFile(t, root, name))
 		for _, required := range []string{
 			"vela.ai/h3-campaign-role: leader",
 			"image: vela-h3-member-campaign:disposable",
 			"imagePullPolicy: Never",
+			"value: /run/campaign-ca.crt",
+			"subPath: ca.crt",
+			"value: /run/campaign-client.crt",
+			"subPath: client.crt",
+			"value: /run/campaign-client.key",
+			"subPath: client.key",
+			"value: /run/campaign-authority.key",
+			"subPath: authority.key",
 			"- " + expectation.command,
 		} {
 			if !strings.Contains(text, required) {
@@ -104,10 +132,13 @@ func TestH3DisposableCampaignHarnessIsSyntaxValidAndFailClosed(t *testing.T) {
 	text := string(content)
 	for _, required := range []string{
 		"vela-h3-disposable-",
+		"H3_DISPOSABLE_CLUSTER_NAME must be at most 32 characters for k3d",
 		"refusing to reuse existing k3d cluster",
 		"--servers 1",
 		"--agents 3",
 		"--kubeconfig-update-default=false",
+		"localhost,127.0.0.1,::1,0.0.0.0",
+		"export NO_PROXY no_proxy",
 		"k3d-heimdall-staging",
 		"prepared member",
 		"scale deployment/follower --replicas=0",
@@ -115,11 +146,32 @@ func TestH3DisposableCampaignHarnessIsSyntaxValidAndFailClosed(t *testing.T) {
 		"scale deployment/follower --replicas=1",
 		"recovery-job.yaml",
 		"pod-inventory.json",
+		"workload-final-or-failure.log",
+		"workload-previous-final-or-failure.log",
+		"cluster-list-before-create.txt",
+		"docker-build.log",
+		"cluster-create.log",
+		"cluster-list-after-cleanup.txt",
+		"disposable H3 member campaign cleanup failed",
+		"work-directory-cleanup-error.log",
+		"preflight-error.log",
+		"handle_exit",
+		"TIMEOUT_BIN",
+		"--tail=-1",
+		"--request-timeout=10s",
+		"cleaned=true",
+		"trap handle_exit EXIT",
 		"H3_DISPOSABLE_RETAIN_CLUSTER",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("disposable campaign harness omitted guard/evidence %q", required)
 		}
+	}
+	command := exec.Command(script)
+	command.Env = append(os.Environ(), "H3_DISPOSABLE_CLUSTER_NAME=vela-h3-disposable-name-that-exceeds-k3d-limit")
+	output, err := command.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "must be at most 32 characters for k3d") {
+		t.Fatalf("overlong cluster name error = %v, output = %q", err, output)
 	}
 }
 
@@ -128,6 +180,66 @@ type disposableCampaignDocument struct {
 	Metadata struct {
 		Name string `yaml:"name"`
 	} `yaml:"metadata"`
+	Spec struct {
+		Template struct {
+			Spec struct {
+				Containers []struct {
+					Env []struct {
+						Name  string `yaml:"name"`
+						Value string `yaml:"value"`
+					} `yaml:"env"`
+					VolumeMounts []struct {
+						Name      string `yaml:"name"`
+						MountPath string `yaml:"mountPath"`
+						SubPath   string `yaml:"subPath"`
+						ReadOnly  bool   `yaml:"readOnly"`
+					} `yaml:"volumeMounts"`
+				} `yaml:"containers"`
+			} `yaml:"spec"`
+		} `yaml:"template"`
+	} `yaml:"spec"`
+}
+
+type disposableCredentialMount struct {
+	path    string
+	subPath string
+}
+
+func requireDisposableCredentialMounts(
+	t *testing.T,
+	document *disposableCampaignDocument,
+	expected map[string]disposableCredentialMount,
+) {
+	t.Helper()
+	containers := document.Spec.Template.Spec.Containers
+	if len(containers) != 1 {
+		t.Fatalf("%s/%s containers = %d, want 1", document.Kind, document.Metadata.Name, len(containers))
+	}
+	environment := make(map[string]string, len(containers[0].Env))
+	for _, variable := range containers[0].Env {
+		environment[variable.Name] = variable.Value
+	}
+	mounts := make(map[string]struct {
+		name     string
+		subPath  string
+		readOnly bool
+	}, len(containers[0].VolumeMounts))
+	for _, mount := range containers[0].VolumeMounts {
+		mounts[mount.MountPath] = struct {
+			name     string
+			subPath  string
+			readOnly bool
+		}{name: mount.Name, subPath: mount.SubPath, readOnly: mount.ReadOnly}
+	}
+	for variable, credential := range expected {
+		if environment[variable] != credential.path {
+			t.Fatalf("%s/%s %s = %q, want %q", document.Kind, document.Metadata.Name, variable, environment[variable], credential.path)
+		}
+		mount, ok := mounts[credential.path]
+		if !ok || mount.name != "credentials" || mount.subPath != credential.subPath || !mount.readOnly {
+			t.Fatalf("%s/%s credential mount %q = %#v", document.Kind, document.Metadata.Name, credential.path, mount)
+		}
+	}
 }
 
 func loadDisposableCampaignDocuments(t *testing.T, root, name string) []disposableCampaignDocument {
@@ -167,6 +279,22 @@ func containsDisposableObject(documents []disposableCampaignDocument, kind, name
 		}
 	}
 	return false
+}
+
+func findDisposableObject(
+	t *testing.T,
+	documents []disposableCampaignDocument,
+	kind string,
+	name string,
+) *disposableCampaignDocument {
+	t.Helper()
+	for index := range documents {
+		if documents[index].Kind == kind && documents[index].Metadata.Name == name {
+			return &documents[index]
+		}
+	}
+	t.Fatalf("disposable campaign omitted %s/%s", kind, name)
+	return nil
 }
 
 func objectInventory(documents []disposableCampaignDocument) []string {

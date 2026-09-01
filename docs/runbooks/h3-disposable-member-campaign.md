@@ -21,8 +21,8 @@ certificates, leaf private keys, CA certificate, and campaign authority key.
 
 ## Run
 
-Docker, k3d, kubectl, and OpenSSL must be installed. When image pulls require the
-local proxy, export it before running:
+Docker, k3d, kubectl, OpenSSL, and the coreutils `timeout` command must be
+installed. When image pulls require the local proxy, export it before running:
 
 ```sh
 export HTTPS_PROXY=http://127.0.0.1:7897
@@ -47,7 +47,11 @@ H3_DISPOSABLE_EVIDENCE_DIR=/absolute/new/evidence-directory \
 The printed evidence directory contains all three receipts, Pod UID/node/restart
 inventory, follower logs around the injected fault, node inventory, exact image
 inspection, tool versions, and a scope-limited `summary.json`. A failed run
-retains partial evidence and still removes the disposable cluster by default.
+retains partial evidence. After `k3d cluster create` succeeds, cleanup deletes
+and verifies the disposable cluster by default before writing a `PASS` summary.
+If `k3d cluster create` itself fails, the harness retains its log but does not
+delete an ambiguously owned cluster; inspect the printed evidence and cluster
+inventory before removing any exact `vela-h3-disposable-*` name manually.
 
 ## Interpretation
 
