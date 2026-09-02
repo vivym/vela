@@ -1,6 +1,6 @@
 # Stage Execution Schema And Protocol Migration
 
-Date: 2026-08-31
+Date: 2026-09-03
 
 Status: Repository implementation complete; production acceptance remains
 partial. S49.1-S49.11 have committed repository implementations through the
@@ -23,7 +23,11 @@ inventory, and release-bound typed reachability evidence. Migration `00058`
 performs the irreversible schema-v2 contraction and ships with the legacy
 runtime/protocol/query/deployment/release deletion. Migrations `00059` through
 `00062` add runtime epoch registration, multi-member barriers, gang authority,
-and member identity. The clean current repository satisfies the permanent
+and member identity. Post-contraction migrations `00063` through `00065` bind
+the frozen H3 execution/root-input snapshot, replace Worker-level capacity
+routing with exact ModelRuntime-to-CapacityPool authority, and add durable,
+fair exact-cache admission/hit reconciliation. The clean current schema is
+therefore version `00065`, and the repository satisfies the permanent
 reachability contract. Repository evidence does not advance a Production Gate;
 real cluster, N/N-1, performance, fault, and Launch Receipt evidence remains
 pending at `0/9 PASS`.
@@ -478,6 +482,14 @@ bootstrap rows do not count as production history. Its Down path is deliberately
 irreversible. Source, protocol, deployment, generated-query, package, image, and
 release deletion ships in the same repository boundary, and the permanent
 reachability test prevents their reintroduction.
+
+The same boundary intentionally contracts the versioned legacy Protobuf and
+Platform remediation OpenAPI identities. Pull-request compatibility checks use
+`9ea90da9c3969474240562f791984769348ef87b` as a one-time post-contraction
+contract epoch only when the PR base predates that commit and the candidate
+contains it. After the boundary lands, comparisons continue against the actual
+PR base. The OpenAPI check fails on `ERR`; the epoch does not become a permanent
+file, field, or endpoint exclusion.
 
 ## Failure and compatibility rules
 

@@ -1,6 +1,6 @@
 # Vela Implementation Status
 
-Date: 2026-09-02
+Date: 2026-09-03
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
@@ -47,7 +47,11 @@ with `RESTRICT`, and refuses Down. The same repository boundary deletes legacy
 Worker/Runner runtime, protocol, scheduler, query, deployment, image, and release
 surfaces; the permanent reachability test passes. Migrations `00059` through
 `00062` add runtime epoch registration, the multi-member barrier, gang authority,
-and member identity. The
+and member identity. Migrations `00063` through `00065` freeze exact H3
+execution/root-input snapshots, bind each resident ModelRuntime to its exact
+CapacityPool/StageProfile route, and add immutable exact-cache admission
+receipts plus bounded fair hit reconciliation. The current schema is version
+`00065`. The
 production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release
@@ -98,7 +102,7 @@ Receipt.
 | --- | --- | --- |
 | H3 Stage Execution Architecture | Repository implementation complete through S49.12; production acceptance partial | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Schema-v2 through migration `00062`; guarded contraction, legacy-path deletion, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Schema and protocol migration | Schema-v2 through migration `00065`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
