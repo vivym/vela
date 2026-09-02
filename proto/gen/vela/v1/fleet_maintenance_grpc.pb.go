@@ -19,38 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	FleetMaintenanceService_ResolveWorkerIdentity_FullMethodName      = "/vela.v1.FleetMaintenanceService/ResolveWorkerIdentity"
-	FleetMaintenanceService_ConfigureCapacityPolicy_FullMethodName    = "/vela.v1.FleetMaintenanceService/ConfigureCapacityPolicy"
-	FleetMaintenanceService_ObserveCapacity_FullMethodName            = "/vela.v1.FleetMaintenanceService/ObserveCapacity"
-	FleetMaintenanceService_BeginReadiness_FullMethodName             = "/vela.v1.FleetMaintenanceService/BeginReadiness"
-	FleetMaintenanceService_ReportReadiness_FullMethodName            = "/vela.v1.FleetMaintenanceService/ReportReadiness"
-	FleetMaintenanceService_GetReadiness_FullMethodName               = "/vela.v1.FleetMaintenanceService/GetReadiness"
-	FleetMaintenanceService_RequestDrain_FullMethodName               = "/vela.v1.FleetMaintenanceService/RequestDrain"
-	FleetMaintenanceService_ReconcileDrain_FullMethodName             = "/vela.v1.FleetMaintenanceService/ReconcileDrain"
-	FleetMaintenanceService_GetDrain_FullMethodName                   = "/vela.v1.FleetMaintenanceService/GetDrain"
-	FleetMaintenanceService_AuthorizeMutation_FullMethodName          = "/vela.v1.FleetMaintenanceService/AuthorizeMutation"
-	FleetMaintenanceService_HasRetirementAuthorization_FullMethodName = "/vela.v1.FleetMaintenanceService/HasRetirementAuthorization"
-	FleetMaintenanceService_RecordRetirementCompletion_FullMethodName = "/vela.v1.FleetMaintenanceService/RecordRetirementCompletion"
-	FleetMaintenanceService_HasRetirementCompletion_FullMethodName    = "/vela.v1.FleetMaintenanceService/HasRetirementCompletion"
+	FleetMaintenanceService_ApplyResidencyPlan_FullMethodName    = "/vela.v1.FleetMaintenanceService/ApplyResidencyPlan"
+	FleetMaintenanceService_ObserveWorkerInstance_FullMethodName = "/vela.v1.FleetMaintenanceService/ObserveWorkerInstance"
+	FleetMaintenanceService_AuthorizeMutation_FullMethodName     = "/vela.v1.FleetMaintenanceService/AuthorizeMutation"
 )
 
 // FleetMaintenanceServiceClient is the client API for FleetMaintenanceService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FleetMaintenanceServiceClient interface {
-	ResolveWorkerIdentity(ctx context.Context, in *ResolveWorkerIdentityRequest, opts ...grpc.CallOption) (*ResolveWorkerIdentityResponse, error)
-	ConfigureCapacityPolicy(ctx context.Context, in *ConfigureCapacityPolicyRequest, opts ...grpc.CallOption) (*ConfigureCapacityPolicyResponse, error)
-	ObserveCapacity(ctx context.Context, in *ObserveCapacityRequest, opts ...grpc.CallOption) (*ObserveCapacityResponse, error)
-	BeginReadiness(ctx context.Context, in *BeginReadinessRequest, opts ...grpc.CallOption) (*BeginReadinessResponse, error)
-	ReportReadiness(ctx context.Context, in *ReportReadinessRequest, opts ...grpc.CallOption) (*ReportReadinessResponse, error)
-	GetReadiness(ctx context.Context, in *GetReadinessRequest, opts ...grpc.CallOption) (*GetReadinessResponse, error)
-	RequestDrain(ctx context.Context, in *RequestDrainRequest, opts ...grpc.CallOption) (*RequestDrainResponse, error)
-	ReconcileDrain(ctx context.Context, in *ReconcileDrainRequest, opts ...grpc.CallOption) (*ReconcileDrainResponse, error)
-	GetDrain(ctx context.Context, in *GetDrainRequest, opts ...grpc.CallOption) (*GetDrainResponse, error)
+	ApplyResidencyPlan(ctx context.Context, in *ApplyResidencyPlanRequest, opts ...grpc.CallOption) (*ApplyResidencyPlanResponse, error)
+	ObserveWorkerInstance(ctx context.Context, in *ObserveWorkerInstanceRequest, opts ...grpc.CallOption) (*ObserveWorkerInstanceResponse, error)
 	AuthorizeMutation(ctx context.Context, in *AuthorizeMutationRequest, opts ...grpc.CallOption) (*AuthorizeMutationResponse, error)
-	HasRetirementAuthorization(ctx context.Context, in *HasRetirementAuthorizationRequest, opts ...grpc.CallOption) (*HasRetirementAuthorizationResponse, error)
-	RecordRetirementCompletion(ctx context.Context, in *RecordRetirementCompletionRequest, opts ...grpc.CallOption) (*RecordRetirementCompletionResponse, error)
-	HasRetirementCompletion(ctx context.Context, in *HasRetirementCompletionRequest, opts ...grpc.CallOption) (*HasRetirementCompletionResponse, error)
 }
 
 type fleetMaintenanceServiceClient struct {
@@ -61,90 +41,20 @@ func NewFleetMaintenanceServiceClient(cc grpc.ClientConnInterface) FleetMaintena
 	return &fleetMaintenanceServiceClient{cc}
 }
 
-func (c *fleetMaintenanceServiceClient) ResolveWorkerIdentity(ctx context.Context, in *ResolveWorkerIdentityRequest, opts ...grpc.CallOption) (*ResolveWorkerIdentityResponse, error) {
+func (c *fleetMaintenanceServiceClient) ApplyResidencyPlan(ctx context.Context, in *ApplyResidencyPlanRequest, opts ...grpc.CallOption) (*ApplyResidencyPlanResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ResolveWorkerIdentityResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_ResolveWorkerIdentity_FullMethodName, in, out, cOpts...)
+	out := new(ApplyResidencyPlanResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_ApplyResidencyPlan_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *fleetMaintenanceServiceClient) ConfigureCapacityPolicy(ctx context.Context, in *ConfigureCapacityPolicyRequest, opts ...grpc.CallOption) (*ConfigureCapacityPolicyResponse, error) {
+func (c *fleetMaintenanceServiceClient) ObserveWorkerInstance(ctx context.Context, in *ObserveWorkerInstanceRequest, opts ...grpc.CallOption) (*ObserveWorkerInstanceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ConfigureCapacityPolicyResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_ConfigureCapacityPolicy_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) ObserveCapacity(ctx context.Context, in *ObserveCapacityRequest, opts ...grpc.CallOption) (*ObserveCapacityResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ObserveCapacityResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_ObserveCapacity_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) BeginReadiness(ctx context.Context, in *BeginReadinessRequest, opts ...grpc.CallOption) (*BeginReadinessResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(BeginReadinessResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_BeginReadiness_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) ReportReadiness(ctx context.Context, in *ReportReadinessRequest, opts ...grpc.CallOption) (*ReportReadinessResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReportReadinessResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_ReportReadiness_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) GetReadiness(ctx context.Context, in *GetReadinessRequest, opts ...grpc.CallOption) (*GetReadinessResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetReadinessResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_GetReadiness_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) RequestDrain(ctx context.Context, in *RequestDrainRequest, opts ...grpc.CallOption) (*RequestDrainResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RequestDrainResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_RequestDrain_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) ReconcileDrain(ctx context.Context, in *ReconcileDrainRequest, opts ...grpc.CallOption) (*ReconcileDrainResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ReconcileDrainResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_ReconcileDrain_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) GetDrain(ctx context.Context, in *GetDrainRequest, opts ...grpc.CallOption) (*GetDrainResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetDrainResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_GetDrain_FullMethodName, in, out, cOpts...)
+	out := new(ObserveWorkerInstanceResponse)
+	err := c.cc.Invoke(ctx, FleetMaintenanceService_ObserveWorkerInstance_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -161,53 +71,13 @@ func (c *fleetMaintenanceServiceClient) AuthorizeMutation(ctx context.Context, i
 	return out, nil
 }
 
-func (c *fleetMaintenanceServiceClient) HasRetirementAuthorization(ctx context.Context, in *HasRetirementAuthorizationRequest, opts ...grpc.CallOption) (*HasRetirementAuthorizationResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(HasRetirementAuthorizationResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_HasRetirementAuthorization_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) RecordRetirementCompletion(ctx context.Context, in *RecordRetirementCompletionRequest, opts ...grpc.CallOption) (*RecordRetirementCompletionResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(RecordRetirementCompletionResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_RecordRetirementCompletion_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *fleetMaintenanceServiceClient) HasRetirementCompletion(ctx context.Context, in *HasRetirementCompletionRequest, opts ...grpc.CallOption) (*HasRetirementCompletionResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(HasRetirementCompletionResponse)
-	err := c.cc.Invoke(ctx, FleetMaintenanceService_HasRetirementCompletion_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // FleetMaintenanceServiceServer is the server API for FleetMaintenanceService service.
 // All implementations must embed UnimplementedFleetMaintenanceServiceServer
 // for forward compatibility.
 type FleetMaintenanceServiceServer interface {
-	ResolveWorkerIdentity(context.Context, *ResolveWorkerIdentityRequest) (*ResolveWorkerIdentityResponse, error)
-	ConfigureCapacityPolicy(context.Context, *ConfigureCapacityPolicyRequest) (*ConfigureCapacityPolicyResponse, error)
-	ObserveCapacity(context.Context, *ObserveCapacityRequest) (*ObserveCapacityResponse, error)
-	BeginReadiness(context.Context, *BeginReadinessRequest) (*BeginReadinessResponse, error)
-	ReportReadiness(context.Context, *ReportReadinessRequest) (*ReportReadinessResponse, error)
-	GetReadiness(context.Context, *GetReadinessRequest) (*GetReadinessResponse, error)
-	RequestDrain(context.Context, *RequestDrainRequest) (*RequestDrainResponse, error)
-	ReconcileDrain(context.Context, *ReconcileDrainRequest) (*ReconcileDrainResponse, error)
-	GetDrain(context.Context, *GetDrainRequest) (*GetDrainResponse, error)
+	ApplyResidencyPlan(context.Context, *ApplyResidencyPlanRequest) (*ApplyResidencyPlanResponse, error)
+	ObserveWorkerInstance(context.Context, *ObserveWorkerInstanceRequest) (*ObserveWorkerInstanceResponse, error)
 	AuthorizeMutation(context.Context, *AuthorizeMutationRequest) (*AuthorizeMutationResponse, error)
-	HasRetirementAuthorization(context.Context, *HasRetirementAuthorizationRequest) (*HasRetirementAuthorizationResponse, error)
-	RecordRetirementCompletion(context.Context, *RecordRetirementCompletionRequest) (*RecordRetirementCompletionResponse, error)
-	HasRetirementCompletion(context.Context, *HasRetirementCompletionRequest) (*HasRetirementCompletionResponse, error)
 	mustEmbedUnimplementedFleetMaintenanceServiceServer()
 }
 
@@ -218,44 +88,14 @@ type FleetMaintenanceServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedFleetMaintenanceServiceServer struct{}
 
-func (UnimplementedFleetMaintenanceServiceServer) ResolveWorkerIdentity(context.Context, *ResolveWorkerIdentityRequest) (*ResolveWorkerIdentityResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ResolveWorkerIdentity not implemented")
+func (UnimplementedFleetMaintenanceServiceServer) ApplyResidencyPlan(context.Context, *ApplyResidencyPlanRequest) (*ApplyResidencyPlanResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyResidencyPlan not implemented")
 }
-func (UnimplementedFleetMaintenanceServiceServer) ConfigureCapacityPolicy(context.Context, *ConfigureCapacityPolicyRequest) (*ConfigureCapacityPolicyResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ConfigureCapacityPolicy not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) ObserveCapacity(context.Context, *ObserveCapacityRequest) (*ObserveCapacityResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ObserveCapacity not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) BeginReadiness(context.Context, *BeginReadinessRequest) (*BeginReadinessResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method BeginReadiness not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) ReportReadiness(context.Context, *ReportReadinessRequest) (*ReportReadinessResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReportReadiness not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) GetReadiness(context.Context, *GetReadinessRequest) (*GetReadinessResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetReadiness not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) RequestDrain(context.Context, *RequestDrainRequest) (*RequestDrainResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method RequestDrain not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) ReconcileDrain(context.Context, *ReconcileDrainRequest) (*ReconcileDrainResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReconcileDrain not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) GetDrain(context.Context, *GetDrainRequest) (*GetDrainResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetDrain not implemented")
+func (UnimplementedFleetMaintenanceServiceServer) ObserveWorkerInstance(context.Context, *ObserveWorkerInstanceRequest) (*ObserveWorkerInstanceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ObserveWorkerInstance not implemented")
 }
 func (UnimplementedFleetMaintenanceServiceServer) AuthorizeMutation(context.Context, *AuthorizeMutationRequest) (*AuthorizeMutationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AuthorizeMutation not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) HasRetirementAuthorization(context.Context, *HasRetirementAuthorizationRequest) (*HasRetirementAuthorizationResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method HasRetirementAuthorization not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) RecordRetirementCompletion(context.Context, *RecordRetirementCompletionRequest) (*RecordRetirementCompletionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method RecordRetirementCompletion not implemented")
-}
-func (UnimplementedFleetMaintenanceServiceServer) HasRetirementCompletion(context.Context, *HasRetirementCompletionRequest) (*HasRetirementCompletionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method HasRetirementCompletion not implemented")
 }
 func (UnimplementedFleetMaintenanceServiceServer) mustEmbedUnimplementedFleetMaintenanceServiceServer() {
 }
@@ -279,164 +119,38 @@ func RegisterFleetMaintenanceServiceServer(s grpc.ServiceRegistrar, srv FleetMai
 	s.RegisterService(&FleetMaintenanceService_ServiceDesc, srv)
 }
 
-func _FleetMaintenanceService_ResolveWorkerIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ResolveWorkerIdentityRequest)
+func _FleetMaintenanceService_ApplyResidencyPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyResidencyPlanRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).ResolveWorkerIdentity(ctx, in)
+		return srv.(FleetMaintenanceServiceServer).ApplyResidencyPlan(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: FleetMaintenanceService_ResolveWorkerIdentity_FullMethodName,
+		FullMethod: FleetMaintenanceService_ApplyResidencyPlan_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).ResolveWorkerIdentity(ctx, req.(*ResolveWorkerIdentityRequest))
+		return srv.(FleetMaintenanceServiceServer).ApplyResidencyPlan(ctx, req.(*ApplyResidencyPlanRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _FleetMaintenanceService_ConfigureCapacityPolicy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ConfigureCapacityPolicyRequest)
+func _FleetMaintenanceService_ObserveWorkerInstance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ObserveWorkerInstanceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).ConfigureCapacityPolicy(ctx, in)
+		return srv.(FleetMaintenanceServiceServer).ObserveWorkerInstance(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: FleetMaintenanceService_ConfigureCapacityPolicy_FullMethodName,
+		FullMethod: FleetMaintenanceService_ObserveWorkerInstance_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).ConfigureCapacityPolicy(ctx, req.(*ConfigureCapacityPolicyRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_ObserveCapacity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ObserveCapacityRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).ObserveCapacity(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_ObserveCapacity_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).ObserveCapacity(ctx, req.(*ObserveCapacityRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_BeginReadiness_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(BeginReadinessRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).BeginReadiness(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_BeginReadiness_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).BeginReadiness(ctx, req.(*BeginReadinessRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_ReportReadiness_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReportReadinessRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).ReportReadiness(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_ReportReadiness_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).ReportReadiness(ctx, req.(*ReportReadinessRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_GetReadiness_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetReadinessRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).GetReadiness(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_GetReadiness_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).GetReadiness(ctx, req.(*GetReadinessRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_RequestDrain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RequestDrainRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).RequestDrain(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_RequestDrain_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).RequestDrain(ctx, req.(*RequestDrainRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_ReconcileDrain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReconcileDrainRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).ReconcileDrain(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_ReconcileDrain_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).ReconcileDrain(ctx, req.(*ReconcileDrainRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_GetDrain_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetDrainRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).GetDrain(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_GetDrain_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).GetDrain(ctx, req.(*GetDrainRequest))
+		return srv.(FleetMaintenanceServiceServer).ObserveWorkerInstance(ctx, req.(*ObserveWorkerInstanceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -459,60 +173,6 @@ func _FleetMaintenanceService_AuthorizeMutation_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _FleetMaintenanceService_HasRetirementAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HasRetirementAuthorizationRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).HasRetirementAuthorization(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_HasRetirementAuthorization_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).HasRetirementAuthorization(ctx, req.(*HasRetirementAuthorizationRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_RecordRetirementCompletion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RecordRetirementCompletionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).RecordRetirementCompletion(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_RecordRetirementCompletion_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).RecordRetirementCompletion(ctx, req.(*RecordRetirementCompletionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _FleetMaintenanceService_HasRetirementCompletion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HasRetirementCompletionRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(FleetMaintenanceServiceServer).HasRetirementCompletion(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: FleetMaintenanceService_HasRetirementCompletion_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(FleetMaintenanceServiceServer).HasRetirementCompletion(ctx, req.(*HasRetirementCompletionRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // FleetMaintenanceService_ServiceDesc is the grpc.ServiceDesc for FleetMaintenanceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -521,56 +181,16 @@ var FleetMaintenanceService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*FleetMaintenanceServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ResolveWorkerIdentity",
-			Handler:    _FleetMaintenanceService_ResolveWorkerIdentity_Handler,
+			MethodName: "ApplyResidencyPlan",
+			Handler:    _FleetMaintenanceService_ApplyResidencyPlan_Handler,
 		},
 		{
-			MethodName: "ConfigureCapacityPolicy",
-			Handler:    _FleetMaintenanceService_ConfigureCapacityPolicy_Handler,
-		},
-		{
-			MethodName: "ObserveCapacity",
-			Handler:    _FleetMaintenanceService_ObserveCapacity_Handler,
-		},
-		{
-			MethodName: "BeginReadiness",
-			Handler:    _FleetMaintenanceService_BeginReadiness_Handler,
-		},
-		{
-			MethodName: "ReportReadiness",
-			Handler:    _FleetMaintenanceService_ReportReadiness_Handler,
-		},
-		{
-			MethodName: "GetReadiness",
-			Handler:    _FleetMaintenanceService_GetReadiness_Handler,
-		},
-		{
-			MethodName: "RequestDrain",
-			Handler:    _FleetMaintenanceService_RequestDrain_Handler,
-		},
-		{
-			MethodName: "ReconcileDrain",
-			Handler:    _FleetMaintenanceService_ReconcileDrain_Handler,
-		},
-		{
-			MethodName: "GetDrain",
-			Handler:    _FleetMaintenanceService_GetDrain_Handler,
+			MethodName: "ObserveWorkerInstance",
+			Handler:    _FleetMaintenanceService_ObserveWorkerInstance_Handler,
 		},
 		{
 			MethodName: "AuthorizeMutation",
 			Handler:    _FleetMaintenanceService_AuthorizeMutation_Handler,
-		},
-		{
-			MethodName: "HasRetirementAuthorization",
-			Handler:    _FleetMaintenanceService_HasRetirementAuthorization_Handler,
-		},
-		{
-			MethodName: "RecordRetirementCompletion",
-			Handler:    _FleetMaintenanceService_RecordRetirementCompletion_Handler,
-		},
-		{
-			MethodName: "HasRetirementCompletion",
-			Handler:    _FleetMaintenanceService_HasRetirementCompletion_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

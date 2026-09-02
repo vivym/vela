@@ -4,15 +4,17 @@ package integration_test
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleet"
+	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/releasebundle"
 )
 
@@ -40,13 +42,12 @@ var catalogReleaseInventory = map[string][]catalogReleaseResource{
 	},
 	"fleet-controller": {
 		{apiVersion: "v1", kind: "Namespace", name: "vela-system"},
-		{apiVersion: "apiextensions.k8s.io/v1", kind: "CustomResourceDefinition", name: "workerpools.fleet.vela.ai"},
 		{apiVersion: "v1", kind: "ServiceAccount", namespace: "vela-system", name: "vela-fleet-controller"},
 		{apiVersion: "rbac.authorization.k8s.io/v1", kind: "Role", namespace: "vela-system", name: "vela-fleet-controller"},
 		{apiVersion: "rbac.authorization.k8s.io/v1", kind: "ClusterRole", name: "vela-fleet-controller-node-reader"},
 		{apiVersion: "rbac.authorization.k8s.io/v1", kind: "RoleBinding", namespace: "vela-system", name: "vela-fleet-controller"},
 		{apiVersion: "rbac.authorization.k8s.io/v1", kind: "ClusterRoleBinding", name: "vela-fleet-controller-node-reader"},
-		{apiVersion: "v1", kind: "ConfigMap", namespace: "vela-system", name: "vela-fleet-desired-r1"},
+		{apiVersion: "v1", kind: "ConfigMap", namespace: "vela-system", name: "vela-fleet-residency-plan-rollouts-r1"},
 		{apiVersion: "v1", kind: "Service", namespace: "vela-system", name: "vela-fleet-admission"},
 		{apiVersion: "apps/v1", kind: "Deployment", namespace: "vela-system", name: "vela-fleet-controller"},
 		{apiVersion: "policy/v1", kind: "PodDisruptionBudget", namespace: "vela-system", name: "vela-fleet-controller"},
@@ -58,6 +59,11 @@ var catalogReleaseInventory = map[string][]catalogReleaseResource{
 		{apiVersion: "v1", kind: "ConfigMap", namespace: "vela-observability", name: "vela-slo-dashboard-r1"},
 		{apiVersion: "monitoring.coreos.com/v1", kind: "PodMonitor", namespace: "vela-observability", name: "vela-control"},
 	},
+	"stage-worker": {
+		{apiVersion: "v1", kind: "Namespace", name: "vela-system"},
+		{apiVersion: "v1", kind: "ServiceAccount", namespace: "vela-system", name: "vela-worker"},
+		{apiVersion: "v1", kind: "ConfigMap", namespace: "vela-system", name: "vela-stage-worker-runtime-r1"},
+	},
 	"vela-control": {
 		{apiVersion: "v1", kind: "Namespace", name: "vela-system"},
 		{apiVersion: "v1", kind: "ServiceAccount", namespace: "vela-system", name: "vela-control"},
@@ -67,7 +73,7 @@ var catalogReleaseInventory = map[string][]catalogReleaseResource{
 		{apiVersion: "v1", kind: "Service", namespace: "vela-system", name: "vela-compliance"},
 		{apiVersion: "v1", kind: "Service", namespace: "vela-system", name: "vela-control"},
 		{apiVersion: "v1", kind: "Service", namespace: "vela-system", name: "vela-finance-reconciliation"},
-		{apiVersion: "v1", kind: "Service", namespace: "vela-system", name: "vela-worker-control"},
+		{apiVersion: "v1", kind: "Service", namespace: "vela-system", name: "vela-stage-worker-control"},
 		{apiVersion: "scheduling.k8s.io/v1", kind: "PriorityClass", name: "vela-control-critical"},
 		{apiVersion: "apps/v1", kind: "Deployment", namespace: "vela-system", name: "vela-control"},
 		{apiVersion: "policy/v1", kind: "PodDisruptionBudget", namespace: "vela-system", name: "vela-control"},
@@ -76,32 +82,53 @@ var catalogReleaseInventory = map[string][]catalogReleaseResource{
 		{apiVersion: "networking.k8s.io/v1", kind: "NetworkPolicy", namespace: "vela-system", name: "vela-control-allow-finance"},
 		{apiVersion: "networking.k8s.io/v1", kind: "NetworkPolicy", namespace: "vela-system", name: "vela-control-allow-fleet"},
 		{apiVersion: "networking.k8s.io/v1", kind: "NetworkPolicy", namespace: "vela-system", name: "vela-control-allow-observability"},
-		{apiVersion: "networking.k8s.io/v1", kind: "NetworkPolicy", namespace: "vela-system", name: "vela-control-allow-worker"},
+		{apiVersion: "networking.k8s.io/v1", kind: "NetworkPolicy", namespace: "vela-system", name: "vela-control-allow-stage-worker"},
 		{apiVersion: "networking.k8s.io/v1", kind: "NetworkPolicy", namespace: "vela-system", name: "vela-control-default-deny-ingress"},
-	},
-	"worker-agent": {
-		{apiVersion: "v1", kind: "Namespace", name: "vela-system"},
-		{apiVersion: "v1", kind: "ServiceAccount", namespace: "vela-system", name: "vela-worker"},
-		{apiVersion: "policy/v1", kind: "PodDisruptionBudget", namespace: "vela-system", name: "vela-h3-worker"},
-		{apiVersion: "apps/v1", kind: "DaemonSet", namespace: "vela-system", name: "vela-h3-worker"},
 	},
 }
 
 func writeCatalogReleaseBundleFixture(t *testing.T, directory, variant string) releasebundle.Bundle {
 	t.Helper()
 	controlManifest := writeCatalogOCIManifest(t, directory, "control")
-	workerManifest := writeCatalogOCIManifest(t, directory, "worker")
+	stageManifest := writeCatalogOCIManifest(t, directory, "stage-worker")
+	runtimeManifest := writeCatalogOCIManifest(t, directory, "h3-stage-runtime")
 	images := []string{
 		"ghcr.io/vivym/vela-control@" + controlManifest.digest,
-		"ghcr.io/vivym/vela-worker-agent@" + workerManifest.digest,
+		"ghcr.io/vivym/vela-stage-worker-agent@" + stageManifest.digest,
+		"ghcr.io/vivym/vela-h3-stage-runtime@" + runtimeManifest.digest,
 	}
-	for index, name := range []string{"control-storage", "fleet-controller", "observability", "vela-control", "worker-agent"} {
+	for _, name := range []string{
+		"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control",
+	} {
 		writeCatalogReleaseFile(
 			t,
 			filepath.Join(directory, "render-"+name+".yaml"),
-			[]byte(catalogReleaseRender(name, images[index%len(images)], images)),
+			[]byte(catalogReleaseRender(name, images[0])),
 		)
 	}
+	rollout := catalogResidencyPlanRollout(t, images)
+	rollouts, err := json.Marshal(map[string]any{
+		"schema_version": 1,
+		"rollouts":       []fleetcontroller.ResidencyPlanRollout{rollout},
+	})
+	if err != nil {
+		t.Fatalf("encode Catalog ResidencyPlan rollout: %v", err)
+	}
+	fleetRenderPath := filepath.Join(directory, "render-fleet-controller.yaml")
+	fleetRender, err := os.ReadFile(fleetRenderPath)
+	if err != nil {
+		t.Fatalf("read Catalog Fleet render: %v", err)
+	}
+	identity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-residency-plan-rollouts-r1\n  namespace: vela-system\n"
+	replacement := identity + "immutable: true\ndata:\n  rollouts.json: |-\n    " +
+		strings.ReplaceAll(string(rollouts), "\n", "\n    ") + "\n"
+	if !strings.Contains(string(fleetRender), identity) {
+		t.Fatal("Catalog Fleet render lacks ResidencyPlan ConfigMap")
+	}
+	writeCatalogReleaseFile(
+		t, fleetRenderPath, []byte(strings.Replace(string(fleetRender), identity, replacement, 1)),
+	)
+
 	writeCatalogReleaseFile(t, filepath.Join(directory, "node-agent.service"), []byte(`[Unit]
 Description=Vela host remediation Node Agent
 Wants=network-online.target
@@ -128,98 +155,77 @@ LimitNOFILE=4096
 [Install]
 WantedBy=multi-user.target
 `))
+	packageArtifact := []byte("production package for node-agent" + variant)
+	writeCatalogReleaseFile(t, filepath.Join(directory, "node-agent.tar"), packageArtifact)
+	writeJSONFixture(t, filepath.Join(directory, "node-agent-contract.json"), releasebundle.PackageContract{
+		SchemaVersion: 1, Name: "vela-node-agent", OS: "linux", Architecture: "amd64",
+		Revision: "release-r1", Entrypoint: "/usr/local/bin/vela-node-agent",
+		ArtifactDigest: catalogReleaseContentDigest(packageArtifact), ArtifactSizeBytes: int64(len(packageArtifact)),
+	})
 
-	packages := make([]releasebundle.PackageInput, 0, 2)
-	for _, name := range []string{"h3-runner", "node-agent"} {
-		artifactRef := name + ".tar"
-		artifact := []byte("production package for " + name + variant)
-		writeCatalogReleaseFile(t, filepath.Join(directory, artifactRef), artifact)
-		entrypoint := "/opt/vela/bin/vela-h3-runner"
-		if name == "node-agent" {
-			entrypoint = "/usr/local/bin/vela-node-agent"
-		}
-		contractRef := name + "-contract.json"
-		writeJSONFixture(t, filepath.Join(directory, contractRef), releasebundle.PackageContract{
-			SchemaVersion:     1,
-			Name:              "vela-" + name,
-			OS:                "linux",
-			Architecture:      "amd64",
-			Revision:          "release-r1",
-			Entrypoint:        entrypoint,
-			ArtifactDigest:    catalogReleaseContentDigest(artifact),
-			ArtifactSizeBytes: int64(len(artifact)),
-		})
-		packages = append(packages, releasebundle.PackageInput{
-			Name: name, ContractRef: contractRef, ArtifactRef: artifactRef,
-		})
-	}
-
-	worker := releasebundle.WorkerMaterializationInput{
-		NodeIdentity: "h3-node-01", Namespace: "vela-system",
-		WorkerID: "10000000-0000-0000-0000-000000000001", WorkerEpoch: 7,
-		WorkerPoolID: "20000000-0000-0000-0000-000000000001", FleetRevision: strings.Repeat("a", 64),
-		WorkerRuntimeConfigMap: "worker-runtime-node-1", WorkerRuntimeRef: "worker-runtime.yaml",
-		RunnerProfilesConfigMap: "runner-profiles-node-1", RunnerProfilesRef: "runner-profiles.yaml",
-		RunnerGPURolesConfigMap: "runner-gpu-roles-node-1", RunnerGPURolesRef: "runner-gpu-roles.yaml",
-		WorkerControlTLSSecret: "worker-control-tls-node-1", WorkerControlTLSSecretRevision: catalogReleaseDigest("worker tls"),
-		ExecutionProfileRevisionID: "30000000-0000-0000-0000-000000000001",
-		InferenceBackendRevision:   "h3-backend-r1", ModelRevisionID: "40000000-0000-0000-0000-000000000001",
-	}
-	worker.NodeAgentIdentity = "spiffe://vela.internal/node-agent/" +
-		base64.RawURLEncoding.EncodeToString([]byte(worker.NodeIdentity)) + "/" + worker.WorkerID
-	writeCatalogWorkerMaterialization(t, directory, worker)
-	writeCatalogFleetDesiredRender(t, directory, worker, images)
-
+	consumer := "ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-r1"
 	plan := releasebundle.BuildPlan{
-		SchemaVersion: 1,
-		NodeAgentUnit: releasebundle.ArtifactInput{
-			Name: "node-agent-systemd-unit", Ref: "node-agent.service",
-		},
-		Packages:               packages,
-		WorkerMaterializations: []releasebundle.WorkerMaterializationInput{worker},
+		SchemaVersion: releasebundle.SchemaVersion,
+		NodeAgentUnit: releasebundle.ArtifactInput{Name: "node-agent-systemd-unit", Ref: "node-agent.service"},
+		Packages: []releasebundle.PackageInput{{
+			Name: "node-agent", ContractRef: "node-agent-contract.json", ArtifactRef: "node-agent.tar",
+		}},
 		ExternalResources: []releasebundle.ExternalResource{
 			{
-				Kind: "Secret", Namespace: "vela-system", Name: "artifact-store-ca-r1", Revision: catalogReleaseDigest("artifact ca"),
-				RequiredKeys: []string{"ca.crt"}, Consumers: []string{
-					"ConfigMap/vela-system/vela-fleet-desired-r1",
-					"DaemonSet/vela-system/vela-h3-worker",
-				},
+				Kind: "Secret", Namespace: "vela-observability", Name: "shared-secret-r1",
+				Revision: catalogReleaseDigest("observability shared"), RequiredKeys: []string{"token"},
+				Consumers: []string{"PodMonitor/vela-observability/vela-control"},
 			},
 			{
-				Kind: "Secret", Namespace: "vela-observability", Name: "shared-secret-r1", Revision: catalogReleaseDigest("observability shared"),
-				RequiredKeys: []string{"token"}, Consumers: []string{"PodMonitor/vela-observability/vela-control"},
-			},
-			{
-				Kind: "Secret", Namespace: "vela-system", Name: "shared-secret-r1", Revision: catalogReleaseDigest("shared"),
-				RequiredKeys: []string{"token"}, Consumers: []string{
-					"DaemonSet/vela-system/vela-h3-worker",
+				Kind: "Secret", Namespace: "vela-system", Name: "shared-secret-r1",
+				Revision: catalogReleaseDigest("shared"), RequiredKeys: []string{"token"},
+				Consumers: []string{
 					"Deployment/vela-system/vela-control",
 					"Deployment/vela-system/vela-fleet-controller",
 					"StatefulSet/vela-system/nats",
 				},
 			},
 			{
-				Kind: "Secret", Namespace: "vela-system", Name: worker.WorkerControlTLSSecret,
-				Revision:     worker.WorkerControlTLSSecretRevision,
-				RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
-				Consumers: []string{
-					"ConfigMap/vela-system/vela-fleet-desired-r1",
-					"DaemonSet/vela-system/vela-h3-worker",
-					"WorkerMaterialization/vela-system/" + worker.NodeIdentity + "/" + worker.WorkerID,
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1",
+				Revision: catalogReleaseDigest("stage control"), RequiredKeys: []string{
+					"49330000-0000-0000-0000-000000000006.tls.crt",
+					"49330000-0000-0000-0000-000000000006.tls.key",
+					"ca.crt",
 				},
+				Consumers: []string{consumer},
+			},
+			{
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-authority-r1",
+				Revision: catalogReleaseDigest("stage authority"), RequiredKeys: []string{"keyring.json"},
+				Consumers: []string{consumer},
+			},
+			{
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-credentials-r1",
+				Revision:     catalogReleaseDigest("stage artifact credentials"),
+				RequiredKeys: []string{"access-key-id", "secret-access-key"}, Consumers: []string{consumer},
+			},
+			{
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-artifact-ca-r1",
+				Revision: catalogReleaseDigest("stage artifact ca"), RequiredKeys: []string{"ca.crt"},
+				Consumers: []string{consumer},
 			},
 		},
 		OCIManifests: []releasebundle.OCIManifestInput{
 			{Image: images[0], Ref: controlManifest.ref, ConfigRef: controlManifest.configRef},
-			{Image: images[1], Ref: workerManifest.ref, ConfigRef: workerManifest.configRef},
+			{Image: images[1], Ref: stageManifest.ref, ConfigRef: stageManifest.configRef},
+			{Image: images[2], Ref: runtimeManifest.ref, ConfigRef: runtimeManifest.configRef},
 		},
 	}
-	for _, name := range []string{"control-storage", "fleet-controller", "observability", "vela-control", "worker-agent"} {
-		plan.FinalRenders = append(plan.FinalRenders, releasebundle.ArtifactInput{Name: name, Ref: "render-" + name + ".yaml"})
+	for _, name := range []string{
+		"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control",
+	} {
+		plan.FinalRenders = append(plan.FinalRenders, releasebundle.ArtifactInput{
+			Name: name, Ref: "render-" + name + ".yaml",
+		})
 	}
 	planPath := filepath.Join(directory, "release-bundle-plan.json")
 	writeJSONFixture(t, planPath, plan)
-	bundle, encoded, err := releasebundle.Build(planPath)
+	bundle, encoded, err := releasebundle.BuildFromSource(newCatalogReleaseSource(t), planPath)
 	if err != nil {
 		t.Fatalf("build Catalog release bundle fixture: %v", err)
 	}
@@ -227,57 +233,96 @@ WantedBy=multi-user.target
 	return bundle
 }
 
-func writeCatalogFleetDesiredRender(
-	t *testing.T,
-	directory string,
-	worker releasebundle.WorkerMaterializationInput,
-	images []string,
-) {
+func newCatalogReleaseSource(t *testing.T) string {
 	t.Helper()
-	render := catalogReleaseRender("fleet-controller", images[1], images)
-	identity := "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vela-fleet-desired-r1\n  namespace: vela-system\n"
-	desired := fmt.Sprintf(`apiVersion: fleet.vela.ai/v1alpha1
-kind: FleetDesiredRevisions
-revisions:
-  - workerPoolID: %s
-    name: h3-worker-pool-primary
-    revision: %s
-    workerProfile: h3
-    nodeSelector:
-      vela.ai/worker-profile: h3
-      vela.ai/worker-pool: launch
-    initImage: %s
-    workerAgentImage: %s
-    runnerImage: %s
-    artifactStoreTLSSecret: artifact-store-ca-r1
-    executionProfileRevisionID: %s
-    inferenceBackendRevision: %s
-    readinessTimeout: 30m
-    capacityPolicy:
-      workerHighWatermarkBytes: 800
-      workerLowWatermarkBytes: 400
-      workerCriticalFreeBytes: 100
-      poolHighWatermarkBytes: 5600
-      poolLowWatermarkBytes: 2800
-      observationMaxAge: 2m
-    placements:
-      - nodeIdentity: %s
-        daemonSetName: h3-worker-pool-primary-node-01
-        workerRuntimeConfigMap: %s
-        runnerProfilesConfigMap: %s
-        runnerGPURolesConfigMap: %s
-        workerControlTLSSecret: %s
-retirements: []
-`, worker.WorkerPoolID, worker.FleetRevision, images[0], images[1], images[1],
-		worker.ExecutionProfileRevisionID, worker.InferenceBackendRevision,
-		worker.NodeIdentity, worker.WorkerRuntimeConfigMap, worker.RunnerProfilesConfigMap,
-		worker.RunnerGPURolesConfigMap, worker.WorkerControlTLSSecret)
-	data := "data:\n  desired.yaml: |\n    " + strings.ReplaceAll(strings.TrimSuffix(desired, "\n"), "\n", "\n    ") + "\n"
-	writeCatalogReleaseFile(
-		t,
-		filepath.Join(directory, "render-fleet-controller.yaml"),
-		[]byte(strings.Replace(render, identity, identity+data, 1)),
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve Catalog release source checkout: %v", err)
+	}
+	writeCatalogReleaseFile(t, filepath.Join(directory, "source.txt"), []byte("catalog release source"))
+	runLegacyH3FixtureGit(t, directory, "init", "--quiet")
+	runLegacyH3FixtureGit(t, directory, "add", "source.txt")
+	runLegacyH3FixtureGit(
+		t, directory,
+		"-c", "user.name=Vela Test", "-c", "user.email=vela-test@example.invalid",
+		"commit", "--quiet", "-m", "test source",
 	)
+	return directory
+}
+
+func catalogResidencyPlanRollout(
+	t *testing.T,
+	images []string,
+) fleetcontroller.ResidencyPlanRollout {
+	t.Helper()
+	planID := uuid.MustParse("49330000-0000-0000-0000-000000000001")
+	bundleID := uuid.MustParse("49330000-0000-0000-0000-000000000002")
+	poolID := uuid.MustParse("49330000-0000-0000-0000-000000000003")
+	workerID := uuid.MustParse("49330000-0000-0000-0000-000000000004")
+	profileID := uuid.MustParse("49330000-0000-0000-0000-000000000005")
+	actuation := fleetcontroller.WorkerBundleActuation{
+		SchemaVersion: 1, PlanRevisionID: planID, WorkerBundleID: bundleID,
+		Namespace: "vela-system", InitImage: images[0], StageWorkerAgentImage: images[1], RuntimeImage: images[2],
+		StageWorkerConfigMap:           "vela-stage-worker-runtime-r1",
+		ModelRuntimeVerifierConfigMap:  "model-runtime-verifier-r1",
+		StageWorkerControlTLSSecret:    "stage-worker-control-r1",
+		StageWorkerAuthoritySecret:     "stage-worker-authority-r1",
+		ArtifactStoreCredentialsSecret: "stage-worker-artifact-credentials-r1",
+		ArtifactStoreCASecret:          "stage-worker-artifact-ca-r1",
+		WorkerInstances: []fleetcontroller.WorkerInstanceActuation{{
+			ID: workerID, InstanceEpoch: 1, WorkerProfileRevisionID: profileID,
+			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
+			DeviceSetDigest: strings.Repeat("1", 64), MembershipDigest: strings.Repeat("2", 64),
+			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
+				ModelResidencyID:       uuid.MustParse("49330000-0000-0000-0000-000000000009"),
+				CapacityPoolID:         poolID,
+				StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
+				ModelRuntimeEpochFloor: 1,
+				Component:              "DIT", ModelComponentRevision: "h3-dit-r1",
+				RuntimeIdentity: "h3-dit-runtime-r1", Command: []string{"/opt/vela/bin/h3-dit"},
+				InitializationTimeout: "2h", ShutdownTimeout: "2m",
+			}},
+			Members: []fleetcontroller.WorkerMemberActuation{{
+				ID: uuid.MustParse("49330000-0000-0000-0000-000000000006"), MemberEpoch: 1,
+				Key: "member-0", NodeIdentity: "h3-node-01", ResourceClass: "GPU", DeviceCount: 1,
+				IdentityDigest: "0f2afefa5711edb6538b2e58335c7a3bbc40502f4bffa7f0d4eaa175961ae85c",
+				DeviceConstraints: []fleetcontroller.DeviceConstraint{{
+					DeviceID: uuid.MustParse("49330000-0000-0000-0000-000000000007"), DeviceEpoch: 1,
+					GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
+				}},
+			}},
+		}},
+	}
+	var err error
+	actuation.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(actuation)
+	if err != nil {
+		t.Fatalf("compute Catalog WorkerBundle digest: %v", err)
+	}
+	return fleetcontroller.ResidencyPlanRollout{
+		ApprovedPlan: fleet.ApprovedResidencyPlan{
+			SchemaVersion: 1, ID: planID, StableID: "h3-stage-target-r1", Revision: 1,
+			ContentDigest: actuation.RevisionDigest, ApprovalEvidenceDigest: strings.Repeat("e", 64),
+			ApprovedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC), ApprovedBy: "fleet/operator-1",
+			CapacityPools: []fleet.PlannedCapacityPool{{
+				ID: poolID, StableID: "h3-dit",
+				StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
+				ResourceClass:          "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai", MaxReadyQueueDepth: 128,
+			}},
+			WorkerBundles: []fleet.PlannedWorkerBundle{{
+				ID: bundleID, StableID: "h3-node-01", DesiredGeneration: 1, LayoutDigest: actuation.RevisionDigest,
+			}},
+			WorkerInstances: []fleet.PlannedWorkerInstance{{
+				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
+				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
+				ModelRuntimeRoutes: []fleet.PlannedModelRuntimeRoute{{
+					ModelResidencyID:       uuid.MustParse("49330000-0000-0000-0000-000000000009"),
+					CapacityPoolID:         poolID,
+					StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
+				}},
+			}},
+		},
+		WorkerBundles: []fleetcontroller.WorkerBundleActuation{actuation},
+	}
 }
 
 func relocateCatalogReleaseBundleFixture(
@@ -299,11 +344,6 @@ func relocateCatalogReleaseBundleFixture(
 	for _, item := range bundle.ConfigurationManifest.Packages {
 		references[item.Contract.Ref] = struct{}{}
 		references[item.Artifact.Ref] = struct{}{}
-	}
-	for _, item := range bundle.ConfigurationManifest.WorkerMaterializations {
-		references[item.WorkerRuntime.Ref] = struct{}{}
-		references[item.RunnerProfiles.Ref] = struct{}{}
-		references[item.RunnerGPURoles.Ref] = struct{}{}
 	}
 	for _, image := range bundle.OCIImages {
 		references[image.Descriptor.Ref] = struct{}{}
@@ -337,9 +377,23 @@ type catalogOCIManifest struct {
 
 func writeCatalogOCIManifest(t *testing.T, directory, name string) catalogOCIManifest {
 	t.Helper()
+	entrypoint := "/usr/local/bin/" + name
+	if name == "h3-stage-runtime" {
+		entrypoint = "/usr/local/bin/vela-model-runtime"
+	}
+	imageConfig := map[string]any{"Entrypoint": []string{entrypoint}}
+	if name == "h3-stage-runtime" {
+		imageConfig["Labels"] = map[string]string{
+			"vela.ai.h3-runtime-base":       "ghcr.io/minimax/h3-runtime-base@" + catalogReleaseDigest("runtime base"),
+			"vela.ai.h3-encoder.sha256":     strings.TrimPrefix(catalogReleaseDigest("encoder"), "sha256:"),
+			"vela.ai.h3-dit.sha256":         strings.TrimPrefix(catalogReleaseDigest("dit"), "sha256:"),
+			"vela.ai.h3-vae-decoder.sha256": strings.TrimPrefix(catalogReleaseDigest("vae decoder"), "sha256:"),
+		}
+	}
 	config, err := json.Marshal(map[string]any{
 		"architecture": "amd64",
 		"os":           "linux",
+		"config":       imageConfig,
 		"rootfs":       map[string]any{"type": "layers", "diff_ids": []string{}},
 	})
 	if err != nil {
@@ -369,28 +423,16 @@ func writeCatalogOCIManifest(t *testing.T, directory, name string) catalogOCIMan
 	return catalogOCIManifest{ref: ref, configRef: configRef, digest: catalogReleaseContentDigest(manifest)}
 }
 
-func catalogReleaseRender(name, image string, images []string) string {
+func catalogReleaseRender(name, image string) string {
 	var rendered strings.Builder
 	for _, resource := range catalogReleaseInventory[name] {
 		isWorkload := resource.kind == "StatefulSet" || resource.kind == "Deployment" ||
-			resource.kind == "DaemonSet" || (name == "observability" && resource.kind == "PodMonitor")
+			(name == "observability" && resource.kind == "PodMonitor")
 		if !isWorkload {
 			rendered.WriteString(catalogReleaseObject(resource))
 			continue
 		}
-		document := catalogReleaseWorkload(resource, image)
-		if name == "worker-agent" && resource.kind == "DaemonSet" {
-			document = strings.Replace(document, "spec:\n", "spec:\n"+
-				"  workerRuntimeConfigMap: worker-runtime-node-1\n"+
-				"  runnerProfilesConfigMap: runner-profiles-node-1\n"+
-				"  runnerGPURolesConfigMap: runner-gpu-roles-node-1\n"+
-				"  workerControlTLSSecret: worker-control-tls-node-1\n"+
-				"  artifactStoreTLSSecret: artifact-store-ca-r1\n"+
-				"  initImage: "+images[0]+"\n"+
-				"  workerAgentImage: "+images[1]+"\n"+
-				"  runnerImage: "+images[1]+"\n", 1)
-		}
-		rendered.WriteString(document)
+		rendered.WriteString(catalogReleaseWorkload(resource, image))
 	}
 	return rendered.String()
 }
@@ -422,70 +464,6 @@ spec:
                 path: token
 ---
 `
-}
-
-func writeCatalogWorkerMaterialization(
-	t *testing.T,
-	directory string,
-	worker releasebundle.WorkerMaterializationInput,
-) {
-	t.Helper()
-	runtime := `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ` + worker.WorkerRuntimeConfigMap + `
-  namespace: ` + worker.Namespace + `
-immutable: true
-data:
-  artifact-store-health-url: https://artifacts.example.com/healthz
-  attempt-quota-bytes: "1000000"
-  control-address: control.vela-system.svc:9443
-  control-server-name: control.vela-system.svc
-  critical-free-bytes: "100"
-  high-watermark-bytes: "800"
-  low-watermark-bytes: "700"
-  max-entries: "1000"
-  max-entry-bytes: "1000000"
-  output-cleanup-min-bytes-per-second: "100000"
-  xfs-device: /dev/nvme0n1
-  xfs-project-id: "1001"
-`
-	writeCatalogReleaseFile(t, filepath.Join(directory, worker.WorkerRuntimeRef), []byte(runtime))
-	profiles, err := json.Marshal(map[string]any{
-		"schema_version":   1,
-		"backend_revision": worker.InferenceBackendRevision,
-		"profiles": []any{map[string]any{
-			"model_revision_id":             worker.ModelRevisionID,
-			"generation_preset_revision_id": "50000000-0000-0000-0000-000000000001",
-			"execution_profile_revision_id": worker.ExecutionProfileRevisionID,
-			"output_spec_id":                "60000000-0000-0000-0000-000000000001",
-		}},
-	})
-	if err != nil {
-		t.Fatalf("encode Catalog runner profiles: %v", err)
-	}
-	writeCatalogReleaseFile(t, filepath.Join(directory, worker.RunnerProfilesRef), []byte(
-		catalogReleaseConfigMap(worker.Namespace, worker.RunnerProfilesConfigMap, "profiles.json", string(profiles)),
-	))
-	roles, err := json.Marshal(map[string]any{
-		"schema_version": 1,
-		"encoder_vae":    "GPU-00000000-0000-0000-0000-000000000001",
-		"dit": []string{
-			"GPU-00000000-0000-0000-0000-000000000002",
-			"GPU-00000000-0000-0000-0000-000000000003",
-			"GPU-00000000-0000-0000-0000-000000000004",
-			"GPU-00000000-0000-0000-0000-000000000005",
-			"GPU-00000000-0000-0000-0000-000000000006",
-			"GPU-00000000-0000-0000-0000-000000000007",
-			"GPU-00000000-0000-0000-0000-000000000008",
-		},
-	})
-	if err != nil {
-		t.Fatalf("encode Catalog runner GPU roles: %v", err)
-	}
-	writeCatalogReleaseFile(t, filepath.Join(directory, worker.RunnerGPURolesRef), []byte(
-		catalogReleaseConfigMap(worker.Namespace, worker.RunnerGPURolesConfigMap, "gpu-roles.json", string(roles)),
-	))
 }
 
 func catalogReleaseConfigMap(namespace, name, key, value string) string {

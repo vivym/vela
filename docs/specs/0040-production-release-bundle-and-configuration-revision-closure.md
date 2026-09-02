@@ -14,21 +14,21 @@ or change the current `0/9 PASS` result.
 
 ## Canonical identity
 
-1. A strict `schema_version: 1` build plan names every input beneath one rooted
+1. A strict `schema_version: 2` build plan names every input beneath one rooted
    directory. References must be canonical local paths to regular files and may
    not escape through an absolute path, `..`, backslash, or symbolic link.
-2. The configuration manifest contains the exact five final Kubernetes renders
-   (`control-storage`, `fleet-controller`, `observability`, `vela-control`, and
-   `worker-agent`), the exact `h3-runner` and `node-agent` packages, the
-   Node Agent systemd unit, every Worker materialization, and the declared
-   external Secret/ConfigMap revisions.
+2. The configuration manifest contains the exact six final Kubernetes renders
+   (`control-storage`, `fleet-controller`, `observability`, `stage-worker`,
+   `vela-control`, and `worker-agent`), the exact `h3-runner` and `node-agent`
+   packages, the Node Agent systemd unit, the selected Fleet authority input,
+   and the declared external Secret/ConfigMap canonical content digests.
 3. Every OCI image is canonical, lowercase, tag-free, and pinned by a non-zero
    `sha256` digest. Its manifest and referenced OCI config blob are read from
    rooted artifacts; digest and size are recomputed, and the config must derive
    the production platform `linux/amd64`.
 4. Canonical JSON of the configuration manifest derives the configuration
    revision. A Vela release descriptor with media type
-   `application/vnd.vela.release.descriptor.v1+json` binds that configuration
+   `application/vnd.vela.release.descriptor.v2+json` binds that configuration
    descriptor to the ordered OCI manifest descriptors and derives the release
    digest. The Vela descriptor is an internal identity contract, not a claim of
    OCI Index interoperability.
@@ -45,21 +45,27 @@ resource references, revision annotations, Secret keys, and consumer identities
 must be complete exact sets. A whole-Secret selector is not accepted where the
 release contract requires named keys.
 
-A Fleet desired revision represents one logical `WorkerPool` and contains one
-or more node placements. Each placement is hostname-pinned and owns one
-`OnDelete` DaemonSet plus versioned runtime/profiles/GPU-role ConfigMaps and a
-Worker TLS Secret. The logical pool continues to own the shared
-ExecutionProfileRevision, backend revision, images, capacity policy, and
-scheduler/circuit authority; it is not split into per-node pools.
+The H3 preflight and launch-evidence boundary resolves those external
+declarations against Kubernetes. It requires `immutable=true`, a live UID and
+resource version, the exact revision annotation and Secret key set, and a
+recomputed `ExternalResourceContentV1` digest equal to the declared revision.
+It emits no Secret or ConfigMap payload and double-reads launch objects to reject
+same-name recreation or content drift during capture.
 
-Each Worker materialization binds exactly one placement to a registered Node
-identity, Worker UUID and epoch, WorkerPool, Fleet revision, canonical Node
-Agent SPIFFE identity, the placement materials, TLS Secret revision,
-ExecutionProfileRevision, InferenceBackendRevision, and ModelRevision. Every
-desired placement must have exactly one materialization and every
-materialization must resolve to one desired placement. Node, Worker, placement,
-TLS, ConfigMap, material digest, and GPU UUID identities may not alias across
-placements in the same or different pools.
+The production target mode embeds one immutable approved `ResidencyPlan`
+rollout in the Fleet render. It binds every per-member Stage Worker Pod
+actuation, Stage Worker Agent and external ModelRuntime image, exact device and
+member epochs, Stage Worker ConfigMap, and four Secret contracts. The external
+ModelRuntime image digest transitively binds an OCI config with an absolute
+`ENTRYPOINT`; Fleet does not override that entrypoint. Target mode rejects
+legacy desired revisions and Worker materializations.
+
+The legacy desired-revision plus Worker-materialization graph remains accepted
+only for rollback before S49.12 contraction. It is absent from the default Fleet
+render and must not be combined with target mode. In that compatibility graph,
+every desired placement still requires exactly one materialization and all
+Node, Worker, placement, TLS, ConfigMap, material-digest, and GPU identities
+remain non-aliasing.
 
 The two host packages use strict contracts that bind `linux/amd64`, revision,
 absolute entrypoint, artifact digest, and artifact size. The privileged Node

@@ -19,6 +19,7 @@ import (
 	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/debugdump"
+	"github.com/vivym/vela/internal/h3request"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/remediation"
@@ -49,6 +50,7 @@ type Config struct {
 	DebugDumps             *debugdump.Service
 	Admission              *admission.Service
 	Cancellation           *cancellation.Service
+	StageGraphCancellation stageGraphCanceler
 	Artifacts              *artifactaccess.Service
 	Webhooks               *webhook.Service
 }
@@ -64,8 +66,18 @@ type server struct {
 	debugDumps             *debugdump.Service
 	admission              *admission.Service
 	cancellation           *cancellation.Service
+	stageGraphCancellation stageGraphCanceler
 	artifacts              *artifactaccess.Service
 	webhooks               *webhook.Service
+}
+
+type stageGraphCanceler interface {
+	Cancel(
+		context.Context,
+		identity.Principal,
+		uuid.UUID,
+		uuid.UUID,
+	) (cancellation.Result, bool, error)
 }
 
 type principalContextKey struct{}
@@ -114,6 +126,7 @@ func NewHandler(config Config) (http.Handler, error) {
 		debugDumps:             config.DebugDumps,
 		admission:              config.Admission,
 		cancellation:           config.Cancellation,
+		stageGraphCancellation: config.StageGraphCancellation,
 		artifacts:              config.Artifacts,
 		webhooks:               config.Webhooks,
 	}
@@ -175,10 +188,10 @@ func (s *server) CreateRemediationOperation(
 	}
 	created, err := s.remediation.Request(ctx, remediation.Request{
 		OperationID:           uuid.UUID(request.Body.OperationId),
-		WorkerID:              uuid.UUID(request.Body.WorkerId),
-		WorkerEpoch:           request.Body.WorkerEpoch,
+		WorkerInstanceID:      uuid.UUID(request.Body.WorkerInstanceId),
+		WorkerInstanceEpoch:   request.Body.WorkerInstanceEpoch,
 		NodeIdentity:          request.Body.NodeIdentity,
-		DeviceIdentity:        request.Body.GpuUuid,
+		DeviceIdentity:        request.Body.DeviceIdentity,
 		FailureClass:          request.Body.FailureClass,
 		EvidenceDigest:        evidence,
 		CertificationRevision: request.Body.CertificationRevision,
@@ -276,8 +289,8 @@ func (s *server) StartRemediationOperation(
 	if _, err := s.remediation.Start(
 		ctx,
 		operationID,
-		operation.WorkerID,
-		operation.WorkerEpoch,
+		operation.WorkerInstanceID,
+		operation.WorkerInstanceEpoch,
 		remediationOperatorIdentity(operator),
 	); err != nil {
 		return startRemediationOperationFailure(err)
@@ -909,11 +922,55 @@ func (s *server) SubmitJob(
 		GenerationCount:  int32(request.Body.GenerationCount),
 		Prompt:           request.Body.Prompt,
 		ClientMetadata:   clientMetadata,
+		H3:               admissionH3Request(request.Body.H3),
 	})
 	if err != nil {
 		return submitFailure(err)
 	}
 	return api.SubmitJob202JSONResponse(toAPIJob(job)), nil
+}
+
+func admissionH3Request(input *api.H3Request) *h3request.Request {
+	if input == nil {
+		return nil
+	}
+	request := &h3request.Request{Seed: input.Seed}
+	if input.Task != nil {
+		request.Task = string(*input.Task)
+	}
+	if input.Conditions != nil {
+		request.Conditions = make([]h3request.Condition, 0, len(*input.Conditions))
+		for _, condition := range *input.Conditions {
+			request.Conditions = append(request.Conditions, h3request.Condition{
+				Role: condition.Role, Type: condition.Type, URI: condition.Uri,
+				DownloadURL: condition.DownloadUrl, SHA256: condition.Sha256,
+				SizeBytes: condition.SizeBytes, FrameIndex: condition.FrameIndex,
+				StartTimeSeconds: condition.StartTimeSeconds,
+			})
+		}
+	}
+	if input.Target != nil {
+		if input.Target.ShortEdge != nil {
+			request.Target.ShortEdge = *input.Target.ShortEdge
+		}
+		if input.Target.AspectRatio != nil {
+			request.Target.AspectRatio = *input.Target.AspectRatio
+		}
+		request.Target.DurationSeconds = input.Target.DurationSeconds
+	}
+	if input.Sampling != nil {
+		if input.Sampling.NumInferenceSteps != nil {
+			request.Sampling.NumInferenceSteps = *input.Sampling.NumInferenceSteps
+		}
+		if input.Sampling.Quality != nil {
+			request.Sampling.Quality = string(*input.Sampling.Quality)
+		}
+		request.Sampling.ImageVideoConditionNoiseAugmentation =
+			input.Sampling.ImgvidCondNoiseAugForInference
+		request.Sampling.AudioConditionNoiseAugmentation =
+			input.Sampling.AudioCondNoiseAugForInference
+	}
+	return request
 }
 
 func (s *server) GetJob(
@@ -978,7 +1035,17 @@ func (s *server) CancelJob(
 			},
 		}, nil
 	}
-	result, err := s.cancellation.Cancel(ctx, principal, request.ProjectId, request.JobId)
+	var result cancellation.Result
+	var err error
+	handled := false
+	if s.stageGraphCancellation != nil {
+		result, handled, err = s.stageGraphCancellation.Cancel(
+			ctx, principal, request.ProjectId, request.JobId,
+		)
+	}
+	if !handled && err == nil {
+		result, err = s.cancellation.Cancel(ctx, principal, request.ProjectId, request.JobId)
+	}
 	if err != nil {
 		var failure *cancellation.Failure
 		if errors.As(err, &failure) {
@@ -3701,9 +3768,9 @@ func toAPIOrganizationAuditEvent(
 
 func toAPIRemediationOperation(operation remediation.Operation) api.RemediationOperation {
 	result := api.RemediationOperation{
-		OperationId: uuid.UUID(operation.ID), WorkerId: uuid.UUID(operation.WorkerID),
-		WorkerEpoch: operation.WorkerEpoch, NodeIdentity: operation.NodeIdentity,
-		GpuUuid: operation.DeviceIdentity, FailureClass: operation.FailureClass,
+		OperationId: uuid.UUID(operation.ID), WorkerInstanceId: uuid.UUID(operation.WorkerInstanceID),
+		WorkerInstanceEpoch: operation.WorkerInstanceEpoch, NodeIdentity: operation.NodeIdentity,
+		DeviceIdentity: operation.DeviceIdentity, FailureClass: operation.FailureClass,
 		EvidenceSha256:        hex.EncodeToString(operation.EvidenceDigest),
 		CertificationRevision: operation.CertificationRevision,
 		ActionLevel:           api.RemediationActionLevel(operation.ActionLevel),

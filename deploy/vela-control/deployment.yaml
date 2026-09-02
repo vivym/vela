@@ -54,18 +54,19 @@ spec:
             - |
               umask 077
               mkdir -p \
-                /materialized/worker /materialized/fleet \
+                /materialized/worker /materialized/fleet /materialized/stage-worker \
                 /materialized/finance /materialized/compliance \
                 /materialized/nats /materialized/artifact \
                 /materialized/keyrings /materialized/invoice \
-                /materialized/remediation
+                /materialized/remediation /materialized/h3-cache
               mkdir -p /artifact-validation/sandboxes /artifact-validation/spool
-              cp /projected/control-transport/worker-tls.crt /materialized/worker/tls.crt
-              cp /projected/control-transport/worker-tls.key /materialized/worker/tls.key
-              cp /projected/control-transport/worker-client-ca.crt /materialized/worker/client-ca.crt
               cp /projected/control-transport/fleet-tls.crt /materialized/fleet/tls.crt
               cp /projected/control-transport/fleet-tls.key /materialized/fleet/tls.key
               cp /projected/control-transport/fleet-client-ca.crt /materialized/fleet/client-ca.crt
+              cp /projected/control-transport/stage-worker-tls.crt /materialized/stage-worker/tls.crt
+              cp /projected/control-transport/stage-worker-tls.key /materialized/stage-worker/tls.key
+              cp /projected/control-transport/stage-worker-client-ca.crt /materialized/stage-worker/client-ca.crt
+              cp /projected/stage-worker-identity/identity-key /materialized/stage-worker/identity-key
               cp /projected/privileged-http/finance-tls.crt /materialized/finance/tls.crt
               cp /projected/privileged-http/finance-tls.key /materialized/finance/tls.key
               cp /projected/privileged-http/finance-client-ca.crt /materialized/finance/client-ca.crt
@@ -87,6 +88,7 @@ spec:
               cp /projected/artifact/replication-backup-secret-access-key /materialized/artifact/replication-backup-secret-access-key
               cp /projected/keyrings/lease.json /materialized/keyrings/lease.json
               cp /projected/keyrings/webhook.json /materialized/keyrings/webhook.json
+              cp /projected/h3-cache/projects.json /materialized/h3-cache/projects.json
               cp /projected/invoice/bearer-token /materialized/invoice/bearer-token
               cp /projected/remediation-tls/tls.crt /materialized/remediation/tls.crt
               cp /projected/remediation-tls/tls.key /materialized/remediation/tls.key
@@ -126,6 +128,9 @@ spec:
             - name: control-transport-tls
               mountPath: /projected/control-transport
               readOnly: true
+            - name: stage-worker-identity
+              mountPath: /projected/stage-worker-identity
+              readOnly: true
             - name: privileged-http-tls
               mountPath: /projected/privileged-http
               readOnly: true
@@ -137,6 +142,9 @@ spec:
               readOnly: true
             - name: keyrings
               mountPath: /projected/keyrings
+              readOnly: true
+            - name: h3-exact-cache-keyring
+              mountPath: /projected/h3-cache
               readOnly: true
             - name: invoice-export
               mountPath: /projected/invoice
@@ -170,6 +178,10 @@ spec:
                   fieldPath: metadata.name
             - name: VELA_SCHEDULER_ID
               value: scheduler/$(VELA_POD_UID)
+            - name: VELA_ATTEMPT_COORDINATOR_ID
+              value: attempt-coordinator/$(VELA_POD_UID)
+            - name: VELA_STAGE_SCHEDULER_ID
+              value: stage-scheduler/$(VELA_POD_UID)
             - name: VELA_ARTIFACT_RECONCILER_ID
               value: artifact-reconciler/$(VELA_POD_UID)
             - name: VELA_RETENTION_RECONCILER_ID
@@ -195,9 +207,6 @@ spec:
             - name: management
               containerPort: 8081
               protocol: TCP
-            - name: worker-grpc
-              containerPort: 8443
-              protocol: TCP
             - name: fleet-grpc
               containerPort: 8444
               protocol: TCP
@@ -206,6 +215,9 @@ spec:
               protocol: TCP
             - name: compliance-https
               containerPort: 8446
+              protocol: TCP
+            - name: stage-wkr-grpc
+              containerPort: 8447
               protocol: TCP
           startupProbe:
             httpGet:
@@ -285,6 +297,10 @@ spec:
           secret:
             secretName: vela-control-transport-tls-r0-placeholder
             defaultMode: 0400
+        - name: stage-worker-identity
+          secret:
+            secretName: vela-control-stage-worker-identity-r0-placeholder
+            defaultMode: 0400
         - name: privileged-http-tls
           secret:
             secretName: vela-control-privileged-http-tls-r0-placeholder
@@ -300,6 +316,10 @@ spec:
         - name: keyrings
           secret:
             secretName: vela-control-keyrings-r0-placeholder
+            defaultMode: 0400
+        - name: h3-exact-cache-keyring
+          secret:
+            secretName: vela-control-h3-exact-cache-keyring-r0-placeholder
             defaultMode: 0400
         - name: invoice-export
           secret:

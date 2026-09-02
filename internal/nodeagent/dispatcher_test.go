@@ -3,7 +3,6 @@ package nodeagent
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +16,8 @@ import (
 func TestExecutionDispatcherClaimsExecutesAndCompletes(t *testing.T) {
 	now := time.Now().UTC()
 	operation := remediation.Operation{
-		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 3,
+		ID: uuid.New(), WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 3,
+		DeviceID: testDeviceID0, DeviceEpoch: 1,
 		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "process_failure",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v1",
 		ActionLevel: remediation.ActionL0ProcessRestart, State: remediation.StateExecuting,
@@ -45,7 +45,8 @@ func TestExecutionDispatcherClaimsExecutesAndCompletes(t *testing.T) {
 func TestExecutionDispatcherReusesClaimAfterLostRPCResponse(t *testing.T) {
 	now := time.Now().UTC()
 	operation := remediation.Operation{
-		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 4,
+		ID: uuid.New(), WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 4,
+		DeviceID: testDeviceID1, DeviceEpoch: 2,
 		NodeIdentity: "node-2", DeviceIdentity: "gpu-1", FailureClass: "gpu_fault",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v2",
 		ActionLevel: remediation.ActionL2GPUReset, State: remediation.StateExecuting,
@@ -78,33 +79,26 @@ func TestExecutionDispatcherReusesClaimAfterLostRPCResponse(t *testing.T) {
 	}
 }
 
-func TestStaticAgentResolverRequiresEndpointWorkerAndSPIFFEIdentity(t *testing.T) {
-	identity := NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: uuid.New(), WorkerEpoch: 3}
+func TestStaticAgentResolverRequiresEndpointAgentAndSPIFFEIdentity(t *testing.T) {
+	identity := NodeAgentIdentity{NodeIdentity: "node-1", AgentID: uuid.New(), AgentEpoch: 3}
 	endpoint := AgentEndpoint{
 		Address: "127.0.0.1:9443", ServerName: "node-agent.internal",
-		WorkerID: identity.WorkerID, WorkerEpoch: identity.WorkerEpoch,
+		AgentID: identity.AgentID, AgentEpoch: identity.AgentEpoch,
 		SPIFFEIdentity: NodeAgentSPIFFEIdentity(identity),
 	}
 	tlsConfig := ClientTLSConfig{CertificatePath: "/client.crt", PrivateKeyPath: "/client.key", RootCAPath: "/ca.crt"}
 	if _, err := NewStaticAgentResolver(map[string]AgentEndpoint{identity.NodeIdentity: endpoint}, tlsConfig, "controller/control-1"); err != nil {
 		t.Fatalf("NewStaticAgentResolver: %v", err)
 	}
-	endpoint.WorkerID = uuid.New()
+	endpoint.AgentID = uuid.New()
 	if _, err := NewStaticAgentResolver(map[string]AgentEndpoint{identity.NodeIdentity: endpoint}, tlsConfig, "controller/control-1"); err == nil {
-		t.Fatal("endpoint with mismatched Worker and SPIFFE identity was accepted")
+		t.Fatal("endpoint with mismatched Agent and SPIFFE identity was accepted")
 	}
-	endpoint.WorkerID = identity.WorkerID
-	endpoint.WorkerEpoch = identity.WorkerEpoch - 1
+	endpoint.AgentID = identity.AgentID
+	endpoint.AgentEpoch = identity.AgentEpoch - 1
 	endpoint.SPIFFEIdentity = NodeAgentSPIFFEIdentity(identity)
 	if _, err := NewStaticAgentResolver(map[string]AgentEndpoint{identity.NodeIdentity: endpoint}, tlsConfig, "controller/control-1"); err != nil {
-		t.Fatalf("static resolver rejected structurally valid stale endpoint: %v", err)
-	}
-	resolver, err := NewStaticAgentResolver(map[string]AgentEndpoint{identity.NodeIdentity: endpoint}, tlsConfig, "controller/control-1")
-	if err != nil {
-		t.Fatalf("NewStaticAgentResolver: %v", err)
-	}
-	if _, err := resolver.Resolve(context.Background(), identity); err == nil || !strings.Contains(err.Error(), "stale Worker epoch") {
-		t.Fatalf("stale endpoint resolution error = %v", err)
+		t.Fatalf("static resolver rejected structurally valid Agent epoch: %v", err)
 	}
 }
 
@@ -124,7 +118,7 @@ func (client *lostResponseNodeAgentClient) ExecuteRemediation(context.Context, *
 
 type fakeAgentResolver struct{ client *Client }
 
-func (resolver fakeAgentResolver) Resolve(context.Context, NodeAgentIdentity) (*Client, error) {
+func (resolver fakeAgentResolver) Resolve(context.Context, string) (*Client, error) {
 	return resolver.client, nil
 }
 
@@ -151,7 +145,7 @@ func (source *dispatchSource) Get(_ context.Context, operationID uuid.UUID) (rem
 }
 
 func (source *dispatchSource) ClaimExecution(_ context.Context, operationID, workerID uuid.UUID, epoch int64, claimID uuid.UUID, actor string) (remediation.ClaimResult, error) {
-	claim := recordedExecutionClaim{OperationID: operationID, WorkerID: workerID, WorkerEpoch: epoch, ClaimID: claimID, Actor: actor}
+	claim := recordedExecutionClaim{OperationID: operationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: epoch, ClaimID: claimID, Actor: actor}
 	if source.enforceExactClaimReplay && len(source.claims) > 0 {
 		prior := source.claims[0]
 		source.claims = append(source.claims, claim)

@@ -21,26 +21,6 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: vela-worker-control
-  namespace: vela-system
-  labels:
-    app.kubernetes.io/name: vela-control
-    app.kubernetes.io/component: worker-control
-    app.kubernetes.io/part-of: vela
-spec:
-  type: ClusterIP
-  selector:
-    app.kubernetes.io/name: vela-control
-  ports:
-    - name: grpc
-      port: 8443
-      targetPort: worker-grpc
-      protocol: TCP
-      appProtocol: grpc
----
-apiVersion: v1
-kind: Service
-metadata:
   name: vela-control
   namespace: vela-system
   labels:
@@ -55,6 +35,26 @@ spec:
     - name: grpc
       port: 8444
       targetPort: fleet-grpc
+      protocol: TCP
+      appProtocol: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-stage-worker-control
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: stage-worker-control
+    app.kubernetes.io/part-of: vela
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: vela-control
+  ports:
+    - name: grpc
+      port: 8447
+      targetPort: stage-wkr-grpc
       protocol: TCP
       appProtocol: grpc
 ---

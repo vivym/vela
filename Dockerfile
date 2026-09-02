@@ -2,9 +2,8 @@
 
 # Bake owns the pinned identities; scratch is only a valid lint sentinel.
 ARG GO_BASE=scratch
-ARG PYTHON_BASE=scratch
 ARG DEBIAN_BASE=scratch
-ARG UV_BASE=scratch
+ARG H3_RUNTIME_BASE=scratch
 
 FROM ${GO_BASE} AS go-builder
 ARG GOPROXY=https://proxy.golang.org,direct
@@ -28,24 +27,13 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     mkdir -p /out && \
     for binary in \
       vela-control \
-      vela-artifact-validator \
-      vela-fleet-controller \
-      vela-worker-agent \
-      vela-release-artifacts; do \
+	      vela-artifact-validator \
+	      vela-fleet-controller \
+	      vela-model-runtime \
+	      vela-release-artifacts \
+	      vela-stage-worker-agent; do \
       go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
         -o "/out/${binary}" "./cmd/${binary}"; \
-    done
-
-FROM go-builder AS lab-go-builder
-RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
-    --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
-    mkdir -p /out-lab && \
-    for binary in \
-      vela-lab-assets \
-      vela-lab-bootstrap \
-      vela-lab-smoke; do \
-      go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
-        -o "/out-lab/${binary}" "./cmd/${binary}"; \
     done
 
 FROM ${DEBIAN_BASE} AS ffprobe-builder
@@ -86,28 +74,6 @@ RUN printf '%s  %s\n' \
     make --jobs="$(nproc)" ffprobe && \
     install --mode=0555 ffprobe /out-ffprobe
 
-FROM ${UV_BASE} AS uv-binary
-
-FROM ${PYTHON_BASE} AS runner-builder
-COPY --from=uv-binary /uv /usr/local/bin/uv
-WORKDIR /src/runner
-ENV SOURCE_DATE_EPOCH=315532800 \
-    UV_NO_PROGRESS=true \
-    UV_PROJECT_ENVIRONMENT=/opt/vela/venv
-COPY runner/pyproject.toml runner/uv.lock ./
-COPY runner/src ./src
-RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
-    uv sync --frozen --no-dev --no-editable && \
-    test -x /opt/vela/venv/bin/vela-h3-runner
-
-FROM ${DEBIAN_BASE} AS h3-backend-verifier
-ARG H3_BACKEND_SHA256
-COPY --from=go-builder --chmod=0555 /out/vela-release-artifacts /usr/local/bin/vela-release-artifacts
-COPY --from=h3_backend --chmod=0555 /h3-backend /backend-context/h3-backend
-RUN /usr/local/bin/vela-release-artifacts verify-h3-backend \
-      /backend-context "${H3_BACKEND_SHA256}" && \
-    install --mode=0555 /backend-context/h3-backend /verified-h3-backend
-
 FROM scratch AS vela-control
 ARG RELEASE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
@@ -130,52 +96,57 @@ COPY --from=go-builder --chmod=0555 /out/vela-fleet-controller /usr/local/bin/ve
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/vela-fleet-controller"]
 
-FROM scratch AS vela-worker-agent
+FROM scratch AS vela-stage-worker-agent
 ARG RELEASE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
       org.opencontainers.image.revision="${RELEASE_REVISION}" \
-      org.opencontainers.image.title="vela-worker-agent"
+      org.opencontainers.image.title="vela-stage-worker-agent"
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=go-builder --chmod=0555 /out/vela-worker-agent /usr/local/bin/vela-worker-agent
+COPY --from=go-builder --chmod=0555 /out/vela-stage-worker-agent /usr/local/bin/vela-stage-worker-agent
 USER 10001:10001
-ENTRYPOINT ["/usr/local/bin/vela-worker-agent"]
+ENTRYPOINT ["/usr/local/bin/vela-stage-worker-agent"]
 
-FROM vela-control AS vela-lab-control
-LABEL vela.ai.build-kind="noncanonical-lab" \
-      vela.ai.environment="non-production-lab"
-
-FROM vela-worker-agent AS vela-lab-worker-agent
-LABEL vela.ai.build-kind="noncanonical-lab" \
-      vela.ai.environment="non-production-lab"
-
-FROM ${DEBIAN_BASE} AS vela-lab-bootstrap
+FROM scratch AS vela-model-runtime-base
 ARG RELEASE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
       org.opencontainers.image.revision="${RELEASE_REVISION}" \
-      org.opencontainers.image.title="vela-lab-bootstrap" \
-      vela.ai.build-kind="noncanonical-lab" \
-      vela.ai.environment="non-production-lab"
+      org.opencontainers.image.title="vela-model-runtime"
 COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=lab-go-builder --chmod=0555 /out-lab/vela-lab-bootstrap /usr/local/bin/vela-lab-bootstrap
-COPY --from=lab-go-builder --chmod=0555 /out-lab/vela-lab-smoke /usr/local/bin/vela-lab-smoke
-COPY --chmod=0444 db/bootstrap/roles.sql /opt/vela/share/db/bootstrap/roles.sql
-COPY --chmod=0444 db/migrations /opt/vela/share/db/migrations
-RUN find /opt/vela -type d -exec chmod 0555 {} + && \
-    find /opt/vela/share/db -type f -exec chmod 0444 {} +
+COPY --from=go-builder --chmod=0555 /out/vela-model-runtime /usr/local/bin/vela-model-runtime
 USER 10001:10001
-ENTRYPOINT ["/usr/local/bin/vela-lab-bootstrap"]
+ENTRYPOINT ["/usr/local/bin/vela-model-runtime"]
 
-FROM ${PYTHON_BASE} AS vela-h3-runner
+FROM go-builder AS h3-runtime-command-verifier
+ARG H3_ENCODER_SHA256
+ARG H3_DIT_SHA256
+ARG H3_VAE_DECODER_SHA256
+COPY --from=h3_runtime_commands --chmod=0555 /h3-encoder /h3-runtime-commands/h3-encoder
+COPY --from=h3_runtime_commands --chmod=0555 /h3-dit /h3-runtime-commands/h3-dit
+COPY --from=h3_runtime_commands --chmod=0555 /h3-vae-decoder /h3-runtime-commands/h3-vae-decoder
+RUN /out/vela-release-artifacts verify-h3-runtime-commands \
+      /h3-runtime-commands \
+      "${H3_ENCODER_SHA256}" \
+      "${H3_DIT_SHA256}" \
+      "${H3_VAE_DECODER_SHA256}"
+
+FROM ${H3_RUNTIME_BASE} AS vela-h3-stage-runtime
 ARG RELEASE_REVISION
-ARG H3_BACKEND_SHA256
+ARG H3_RUNTIME_BASE
+ARG H3_ENCODER_SHA256
+ARG H3_DIT_SHA256
+ARG H3_VAE_DECODER_SHA256
 LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
       org.opencontainers.image.revision="${RELEASE_REVISION}" \
-      org.opencontainers.image.title="vela-h3-runner" \
-      vela.ai.h3-backend.sha256="${H3_BACKEND_SHA256}"
-ENV PATH="/opt/vela/venv/bin:${PATH}" \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-COPY --from=runner-builder /opt/vela/venv /opt/vela/venv
-COPY --from=h3-backend-verifier --chmod=0555 /verified-h3-backend /opt/vela/bin/h3-backend
+      org.opencontainers.image.title="vela-h3-stage-runtime" \
+      vela.ai.h3-runtime-base="${H3_RUNTIME_BASE}" \
+      vela.ai.h3-encoder.sha256="${H3_ENCODER_SHA256}" \
+      vela.ai.h3-dit.sha256="${H3_DIT_SHA256}" \
+      vela.ai.h3-vae-decoder.sha256="${H3_VAE_DECODER_SHA256}"
+COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=go-builder --chmod=0555 /out/vela-model-runtime /usr/local/bin/vela-model-runtime
+COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-encoder /opt/vela/bin/h3-encoder
+COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-dit /opt/vela/bin/h3-dit
+COPY --from=h3-runtime-command-verifier --chmod=0555 /h3-runtime-commands/h3-vae-decoder /opt/vela/bin/h3-vae-decoder
 USER 10001:10001
-ENTRYPOINT ["/opt/vela/venv/bin/vela-h3-runner"]
+ENTRYPOINT ["/usr/local/bin/vela-model-runtime"]
+CMD []

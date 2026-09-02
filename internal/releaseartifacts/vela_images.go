@@ -4,21 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
+	"github.com/distribution/reference"
 	"github.com/vivym/vela/internal/releasebundle"
 )
 
+type H3RuntimeComposition struct {
+	BaseImage        string
+	CommandContext   string
+	EncoderSHA256    string
+	DiTSHA256        string
+	VAEDecoderSHA256 string
+}
+
 type VelaImageBuildRequest struct {
-	SourceRoot     string
-	Revision       string
-	ImagePrefix    string
-	BackendContext string
-	BackendSHA256  string
+	SourceRoot  string
+	Revision    string
+	ImagePrefix string
+	H3Runtime   H3RuntimeComposition
 }
 
 func PrintVelaImageBuild(ctx context.Context, request VelaImageBuildRequest) error {
@@ -34,12 +40,6 @@ func BuildVelaImages(ctx context.Context, request VelaImageBuildRequest) error {
 	if err != nil {
 		return err
 	}
-	stagedContext, err := stageH3Backend(request.BackendContext, request.BackendSHA256)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(stagedContext) }()
-	request.BackendContext = stagedContext
 	return runVelaImageBake(ctx, request, false)
 }
 
@@ -61,65 +61,40 @@ func validateVelaImageBuildInputs(
 	if request.ImagePrefix == "" || request.ImagePrefix != strings.TrimSpace(request.ImagePrefix) {
 		return VelaImageBuildRequest{}, errors.New("release image prefix is required")
 	}
-	if err := VerifyH3Backend(request.BackendContext, request.BackendSHA256); err != nil {
+	if err := validatePinnedH3RuntimeBase(request.H3Runtime.BaseImage); err != nil {
 		return VelaImageBuildRequest{}, err
+	}
+	commandContext, err := canonicalExistingDirectory(request.H3Runtime.CommandContext)
+	if err != nil {
+		return VelaImageBuildRequest{}, fmt.Errorf("resolve H3 runtime command context: %w", err)
+	}
+	request.H3Runtime.CommandContext = commandContext
+	if err := VerifyH3RuntimeCommands(
+		commandContext,
+		request.H3Runtime.EncoderSHA256,
+		request.H3Runtime.DiTSHA256,
+		request.H3Runtime.VAEDecoderSHA256,
+	); err != nil {
+		return VelaImageBuildRequest{}, fmt.Errorf("verify H3 runtime commands: %w", err)
 	}
 	return request, nil
 }
 
-func stageH3Backend(sourceContext, expectedSHA256 string) (string, error) {
-	candidate, err := os.MkdirTemp("", ".vela-h3-backend-*")
-	if err != nil {
-		return "", fmt.Errorf("create private H3 backend context: %w", err)
+func validatePinnedH3RuntimeBase(image string) error {
+	named, err := reference.ParseNormalizedNamed(image)
+	if err != nil || named.String() != image {
+		return errors.New("H3 runtime base must be a canonical image reference")
 	}
-	cleanup := func(err error) (string, error) {
-		_ = os.RemoveAll(candidate)
-		return "", err
+	if _, tagged := named.(reference.NamedTagged); tagged {
+		return errors.New("H3 runtime base must not contain a tag")
 	}
-	if err := os.Chmod(candidate, 0o700); err != nil {
-		return cleanup(fmt.Errorf("protect private H3 backend context: %w", err))
+	canonical, pinned := named.(reference.Canonical)
+	if !pinned || canonical.Digest().Algorithm().String() != "sha256" ||
+		len(canonical.Digest().Encoded()) != 64 ||
+		canonical.Digest().Encoded() == strings.Repeat("0", 64) {
+		return errors.New("H3 runtime base must be pinned by a nonzero SHA-256 digest")
 	}
-	resolved, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return cleanup(fmt.Errorf("resolve private H3 backend context: %w", err))
-	}
-	candidate = resolved
-
-	source, err := os.Open(filepath.Join(sourceContext, h3BackendArtifactName))
-	if err != nil {
-		return cleanup(fmt.Errorf("open H3 backend for staging: %w", err))
-	}
-	destinationPath := filepath.Join(candidate, h3BackendArtifactName)
-	destination, err := os.OpenFile(destinationPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o555)
-	if err != nil {
-		_ = source.Close()
-		return cleanup(fmt.Errorf("create staged H3 backend: %w", err))
-	}
-	_, copyErr := io.Copy(destination, source)
-	sourceCloseErr := source.Close()
-	destinationCloseErr := destination.Close()
-	if copyErr != nil {
-		return cleanup(fmt.Errorf("copy H3 backend: %w", copyErr))
-	}
-	if sourceCloseErr != nil {
-		return cleanup(fmt.Errorf("close H3 backend source: %w", sourceCloseErr))
-	}
-	if destinationCloseErr != nil {
-		return cleanup(fmt.Errorf("close staged H3 backend: %w", destinationCloseErr))
-	}
-	if err := os.Chmod(destinationPath, 0o555); err != nil {
-		return cleanup(fmt.Errorf("set staged H3 backend mode: %w", err))
-	}
-	if err := syncFile(destinationPath); err != nil {
-		return cleanup(fmt.Errorf("sync staged H3 backend: %w", err))
-	}
-	if err := syncDirectory(candidate); err != nil {
-		return cleanup(fmt.Errorf("sync private H3 backend context: %w", err))
-	}
-	if err := VerifyH3Backend(candidate, expectedSHA256); err != nil {
-		return cleanup(fmt.Errorf("verify staged H3 backend: %w", err))
-	}
-	return candidate, nil
+	return nil
 }
 
 func runVelaImageBake(
@@ -127,9 +102,9 @@ func runVelaImageBake(
 	request VelaImageBuildRequest,
 	printDefinition bool,
 ) error {
-	arguments := []string{"buildx", "bake"}
-	if !printDefinition {
-		arguments = append(arguments, "--allow=fs.read="+request.BackendContext)
+	arguments := []string{
+		"buildx", "bake",
+		"--allow=fs.read=" + request.H3Runtime.CommandContext,
 	}
 	arguments = append(arguments, "--file", "docker-bake.hcl", "vela-all")
 	if printDefinition {
@@ -149,10 +124,13 @@ func runVelaImageBakeCommand(
 	command := exec.CommandContext(ctx, "docker", arguments...)
 	command.Dir = request.SourceRoot
 	command.Env = buildEnvironment(map[string]string{
-		"RELEASE_REVISION":     request.Revision,
-		"RELEASE_IMAGE_PREFIX": request.ImagePrefix,
-		"H3_BACKEND_CONTEXT":   request.BackendContext,
-		"H3_BACKEND_SHA256":    request.BackendSHA256,
+		"RELEASE_REVISION":           request.Revision,
+		"RELEASE_IMAGE_PREFIX":       request.ImagePrefix,
+		"H3_RUNTIME_BASE":            request.H3Runtime.BaseImage,
+		"H3_RUNTIME_COMMAND_CONTEXT": request.H3Runtime.CommandContext,
+		"H3_ENCODER_SHA256":          request.H3Runtime.EncoderSHA256,
+		"H3_DIT_SHA256":              request.H3Runtime.DiTSHA256,
+		"H3_VAE_DECODER_SHA256":      request.H3Runtime.VAEDecoderSHA256,
 	})
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr

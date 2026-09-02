@@ -4,9 +4,7 @@ package integration_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -15,345 +13,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
-	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/billingexport"
-	"github.com/vivym/vela/internal/identity"
-	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/stagefinalization"
 )
 
-func TestInvoiceFailureDoesNotBlockVisibleCompletionOrArtifactAccess(t *testing.T) {
-	fixture := newStartFixture(t, "invoice-failure-visible-completion", 7)
-	started, err := fixture.service.Start(
-		context.Background(), fixture.worker, fixture.credentials,
-	)
-	if err != nil || started.Decision != workercontrol.StartGranted {
-		t.Fatalf("start Visible Completion Invoice fixture = %#v error=%v", started, err)
+type startFixture struct {
+	database   testDatabase
+	assignment struct {
+		JobID     uuid.UUID
+		AttemptID uuid.UUID
 	}
-	plan, err := fixture.service.BeginFinalization(
-		context.Background(), fixture.worker, fixture.credentials,
-	)
-	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
-		t.Fatalf("begin Visible Completion Invoice fixture = %#v error=%v", plan, err)
-	}
-	internalPool := newRolePool(
-		t,
-		fixture.database.DSN,
-		"vela_internal_login",
-		"vela-internal-password",
-	)
-	completionService, err := workercontrol.NewService(
-		context.Background(),
-		internalPool,
-		workercontrol.Config{
-			LeaseTTL:         2 * time.Minute,
-			ActiveLeaseKeyID: "lease-key-v1",
-			LeaseKeys: map[string][]byte{
-				"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
-			},
-			ArtifactInspector: artifactInspectorFunc(func(
-				_ context.Context,
-				request workercontrol.ArtifactInspectionRequest,
-			) (workercontrol.ArtifactInspection, error) {
-				return validInspectionForRequest(request), nil
-			}),
-		},
-	)
-	if err != nil {
-		t.Fatalf("configure Visible Completion Invoice fixture: %v", err)
-	}
-	artifactIDs := uploadAndVerifyFinalizationPlan(
-		t,
-		completionService,
-		fixture.worker,
-		fixture.credentials,
-		plan,
-	)
-	completed, err := completionService.CompleteVisibleCompletion(
-		context.Background(),
-		fixture.worker,
-		fixture.credentials,
-		workercontrol.VisibleCompletionCandidate{
-			CompletionID:       uuid.New(),
-			ExpectedJobVersion: plan.JobVersion,
-			ArtifactIDs:        artifactIDs,
-		},
-	)
-	if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted ||
-		completed.ChargeID == uuid.Nil || completed.ArtifactSetID == uuid.Nil {
-		t.Fatalf("Visible Completion before Invoice outage = %#v error=%v", completed, err)
-	}
-
-	adapter := &recordingInvoiceAdapter{err: errors.New("external Invoice outage")}
-	exporter, err := billingexport.NewService(
-		newRolePool(t, fixture.database.DSN, "vela_billing_login", "vela-billing-password"),
-		adapter,
-		billingexport.Config{
-			ExporterID: "invoice-exporter-visible-completion-outage",
-			BatchSize:  1,
-			ClaimTTL:   30 * time.Second,
-			RetryDelay: time.Minute,
-		},
-	)
-	if err != nil {
-		t.Fatalf("configure unavailable Invoice exporter: %v", err)
-	}
-	if result, err := exporter.ExportBatch(context.Background()); err == nil ||
-		result.Claimed != 1 || result.Exported != 0 {
-		t.Fatalf("unavailable Invoice export = %#v error=%v", result, err)
-	}
-
-	if _, err := fixture.database.Admin.Exec(`
-		UPDATE credentials
-		SET scopes = array_append(scopes, 'artifacts:read')
-		WHERE id = $1
-	`, testCredentialID); err != nil {
-		t.Fatalf("grant Artifact read after Invoice outage: %v", err)
-	}
-	principal, err := identity.NewAuthenticator(
-		newRolePool(t, fixture.database.DSN, "vela_auth_login", "vela-auth-password"),
-		testCredentialPepper,
-	).Authenticate(context.Background(), testBearerCredential())
-	if err != nil {
-		t.Fatalf("authenticate Artifact reader after Invoice outage: %v", err)
-	}
-	artifactSet, err := artifactaccess.NewService(
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_artifact_request_login",
-			"vela-artifact-request-password",
-		),
-		&recordingArtifactSigner{},
-	).Get(
-		context.Background(),
-		principal,
-		principal.ProjectID,
-		fixture.assignment.JobID,
-	)
-	if err != nil || artifactSet.ID != completed.ArtifactSetID || len(artifactSet.Artifacts) == 0 {
-		t.Fatalf("Artifact access after Invoice outage = %#v error=%v", artifactSet, err)
-	}
-	var jobState string
-	if err := fixture.database.Admin.QueryRow(
-		"SELECT state FROM jobs WHERE id = $1",
-		fixture.assignment.JobID,
-	).Scan(&jobState); err != nil {
-		t.Fatalf("read Job after Invoice outage: %v", err)
-	}
-	if jobState != "SUCCEEDED" {
-		t.Fatalf("Job state after Invoice outage = %s", jobState)
-	}
-}
-
-func TestChargeCommitRequiresMatchingInvoiceExportIntent(t *testing.T) {
-	fixture := newStartFixture(t, "charge-without-invoice-intent", 7)
-	if _, err := fixture.database.Admin.Exec(`
-		UPDATE credentials
-		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
-		WHERE id = $1
-	`, testCredentialID); err != nil {
-		t.Fatalf("grant cancellation scope: %v", err)
-	}
-	started, err := fixture.service.Start(
-		context.Background(), fixture.worker, fixture.credentials,
-	)
-	if err != nil || started.Decision != workercontrol.StartGranted {
-		t.Fatalf("start missing Invoice intent fixture = %#v error=%v", started, err)
-	}
-	if _, err := fixture.database.Admin.Exec(`
-		CREATE FUNCTION vela_test_drop_invoice_export_intent() RETURNS trigger
-		LANGUAGE plpgsql
-		AS $$
-		BEGIN
-			IF NEW.event_type = 'invoice.export_requested' THEN
-				RETURN NULL;
-			END IF;
-			RETURN NEW;
-		END
-		$$;
-		CREATE TRIGGER vela_test_drop_invoice_export_intent
-		BEFORE INSERT ON outbox_events
-		FOR EACH ROW EXECUTE FUNCTION vela_test_drop_invoice_export_intent();
-	`); err != nil {
-		t.Fatalf("install missing Invoice intent fault: %v", err)
-	}
-	server := admissionServerForDatabase(t, fixture.database)
-	canceled := cancelJob(
-		t,
-		server.URL,
-		testProjectID,
-		fixture.assignment.JobID.String(),
-		testBearerCredential(),
-	)
-	if canceled.StatusCode != http.StatusInternalServerError {
-		t.Fatalf(
-			"cancel without Invoice intent status = %d, want 500; body=%s",
-			canceled.StatusCode,
-			canceled.Body,
-		)
-	}
-	var decisions, charges, exports, invoiceEvents int
-	if err := fixture.database.Admin.QueryRow(`
-		SELECT
-			(SELECT count(*) FROM job_cancellation_decisions WHERE job_id = $1),
-			(SELECT count(*) FROM charges WHERE job_id = $1),
-			(SELECT count(*) FROM invoice_exports WHERE job_id = $1),
-			(SELECT count(*) FROM outbox_events
-			 WHERE aggregate_id = $1 AND event_type = 'invoice.export_requested')
-	`, fixture.assignment.JobID).Scan(&decisions, &charges, &exports, &invoiceEvents); err != nil {
-		t.Fatalf("read rejected Charge effects: %v", err)
-	}
-	if decisions != 0 || charges != 0 || exports != 0 || invoiceEvents != 0 {
-		t.Fatalf(
-			"rejected Charge left decisions/charges/exports/events = %d/%d/%d/%d",
-			decisions,
-			charges,
-			exports,
-			invoiceEvents,
-		)
-	}
-}
-
-func TestChargeCommitRejectsNoncanonicalInvoiceExportPayload(t *testing.T) {
-	fixture := newStartFixture(t, "charge-noncanonical-invoice-intent", 7)
-	if _, err := fixture.database.Admin.Exec(`
-		UPDATE credentials
-		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
-		WHERE id = $1
-	`, testCredentialID); err != nil {
-		t.Fatalf("grant cancellation scope: %v", err)
-	}
-	started, err := fixture.service.Start(
-		context.Background(), fixture.worker, fixture.credentials,
-	)
-	if err != nil || started.Decision != workercontrol.StartGranted {
-		t.Fatalf("start noncanonical Invoice intent fixture = %#v error=%v", started, err)
-	}
-	if _, err := fixture.database.Admin.Exec(`
-		CREATE FUNCTION vela_test_corrupt_invoice_export_intent() RETURNS trigger
-		LANGUAGE plpgsql
-		SECURITY DEFINER
-		SET search_path = pg_catalog, public
-		AS $$
-		DECLARE
-			v_charge_id uuid;
-		BEGIN
-			IF NEW.event_type = 'invoice.export_requested' THEN
-				SELECT charge.id INTO STRICT v_charge_id
-				FROM public.charges AS charge
-				WHERE charge.organization_id = NEW.organization_id
-				  AND charge.project_id = NEW.project_id
-				  AND charge.job_id = NEW.aggregate_id;
-				NEW.payload := vela_private.vela_cancellation_event_envelope(
-					NEW.event_id,
-					NEW.aggregate_id,
-					NEW.aggregate_version,
-					NEW.event_type,
-					NEW.occurred_at,
-					29,
-					vela_private.vela_proto_string(1, NEW.organization_id::text)
-						|| vela_private.vela_proto_string(2, NEW.project_id::text)
-						|| vela_private.vela_proto_string(3, NEW.aggregate_id::text)
-						|| vela_private.vela_proto_string(6, v_charge_id::text)
-						|| vela_private.vela_proto_bytes(
-							5,
-							vela_private.vela_proto_timestamp(NEW.occurred_at)
-						)
-				);
-			END IF;
-			RETURN NEW;
-		END
-		$$;
-		CREATE TRIGGER vela_test_corrupt_invoice_export_intent
-		BEFORE INSERT ON outbox_events
-		FOR EACH ROW EXECUTE FUNCTION vela_test_corrupt_invoice_export_intent();
-	`); err != nil {
-		t.Fatalf("install noncanonical Invoice intent fault: %v", err)
-	}
-	server := admissionServerForDatabase(t, fixture.database)
-	canceled := cancelJob(
-		t,
-		server.URL,
-		testProjectID,
-		fixture.assignment.JobID.String(),
-		testBearerCredential(),
-	)
-	if canceled.StatusCode != http.StatusInternalServerError {
-		t.Fatalf(
-			"cancel with noncanonical Invoice intent status = %d, want 500; body=%s",
-			canceled.StatusCode,
-			canceled.Body,
-		)
-	}
-	assertRejectedInvoiceChargeEffects(t, fixture, "noncanonical Invoice intent")
-}
-
-func TestChargeCommitRejectsPreexistingInvoiceExportAuthority(t *testing.T) {
-	fixture := newStartFixture(t, "charge-preexisting-invoice-authority", 7)
-	if _, err := fixture.database.Admin.Exec(`
-		UPDATE credentials
-		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
-		WHERE id = $1
-	`, testCredentialID); err != nil {
-		t.Fatalf("grant cancellation scope: %v", err)
-	}
-	started, err := fixture.service.Start(
-		context.Background(), fixture.worker, fixture.credentials,
-	)
-	if err != nil || started.Decision != workercontrol.StartGranted {
-		t.Fatalf("start preexisting Invoice authority fixture = %#v error=%v", started, err)
-	}
-	if _, err := fixture.database.Admin.Exec(`
-		CREATE FUNCTION vela_test_preinsert_invoice_export_authority() RETURNS trigger
-		LANGUAGE plpgsql
-		SECURITY DEFINER
-		SET search_path = pg_catalog, public
-		AS $$
-		BEGIN
-			IF NEW.event_type = 'invoice.export_requested' THEN
-				INSERT INTO public.invoice_exports (
-					charge_id,
-					organization_id,
-					project_id,
-					job_id,
-					requested_event_id
-				)
-				SELECT
-					charge.id,
-					charge.organization_id,
-					charge.project_id,
-					charge.job_id,
-					NEW.event_id
-				FROM public.charges AS charge
-				WHERE charge.organization_id = NEW.organization_id
-				  AND charge.project_id = NEW.project_id
-				  AND charge.job_id = NEW.aggregate_id;
-			END IF;
-			RETURN NULL;
-		END
-		$$;
-		CREATE TRIGGER vela_test_preinsert_invoice_export_authority
-		AFTER INSERT ON outbox_events
-		FOR EACH ROW EXECUTE FUNCTION vela_test_preinsert_invoice_export_authority();
-	`); err != nil {
-		t.Fatalf("install preexisting Invoice authority fault: %v", err)
-	}
-	server := admissionServerForDatabase(t, fixture.database)
-	canceled := cancelJob(
-		t,
-		server.URL,
-		testProjectID,
-		fixture.assignment.JobID.String(),
-		testBearerCredential(),
-	)
-	if canceled.StatusCode != http.StatusInternalServerError {
-		t.Fatalf(
-			"cancel with preexisting Invoice authority status = %d, want 500; body=%s",
-			canceled.StatusCode,
-			canceled.Body,
-		)
-	}
-	assertRejectedInvoiceChargeEffects(t, fixture, "preexisting Invoice authority")
 }
 
 func assertRejectedInvoiceChargeEffects(t *testing.T, fixture startFixture, label string) {
@@ -382,13 +51,13 @@ func assertRejectedInvoiceChargeEffects(t *testing.T, fixture startFixture, labe
 }
 
 func TestInvoiceExportMigrationDownUpReconstructsPendingAuthority(t *testing.T) {
-	fixture := newInvoiceExportChargeFixture(t, "invoice-export-down-up-pending")
+	fixture := newInvoiceExportMigrationFixture(t, "invoice-export-down-up-pending")
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(fixture.database.Admin, migrations, 8); err != nil {
 		t.Fatalf("migrate pending Invoice authority down: %v", err)
 	}
 	assertTableDoesNotExist(t, fixture.database.Admin, "invoice_exports")
-	if err := goose.Up(fixture.database.Admin, migrations); err != nil {
+	if err := goose.UpTo(fixture.database.Admin, migrations, 9); err != nil {
 		t.Fatalf("migrate pending Invoice authority back up: %v", err)
 	}
 	var state string
@@ -406,7 +75,7 @@ func TestInvoiceExportMigrationDownUpReconstructsPendingAuthority(t *testing.T) 
 }
 
 func TestInvoiceExportMigrationDownRefusesDurableEvidence(t *testing.T) {
-	fixture := newInvoiceExportChargeFixture(t, "invoice-export-down-refuses-receipt")
+	fixture := newInvoiceExportMigrationFixture(t, "invoice-export-down-refuses-receipt")
 	adapter := &recordingInvoiceAdapter{receipt: billingexport.Receipt{
 		InvoiceReference: "invoice-down-refusal",
 		LineReference:    "line-down-refusal",
@@ -858,7 +527,7 @@ func TestInvoiceExporterPersistsReceiptAndUsesChargeIDAsIdempotencyKey(t *testin
 		line.ProjectID != uuid.MustParse(testProjectID) ||
 		line.JobID != fixture.assignment.JobID ||
 		line.AmountMinor != 1250 || line.Currency != "CNY" ||
-		line.Reason != "CUSTOMER_CANCELLATION" || line.PostedAt.IsZero() {
+		line.Reason != "VISIBLE_COMPLETION" || line.PostedAt.IsZero() {
 		t.Fatalf("exported Invoice line = %#v", line)
 	}
 
@@ -919,57 +588,167 @@ func TestInvoiceExporterPersistsReceiptAndUsesChargeIDAsIdempotencyKey(t *testin
 
 type invoiceExportFixture struct {
 	startFixture
-	chargeID       uuid.UUID
-	cancellationID uuid.UUID
+	chargeID uuid.UUID
+}
+
+type invoiceExportMigrationFixture struct {
+	database testDatabase
+	jobID    uuid.UUID
+	chargeID uuid.UUID
+}
+
+func newInvoiceExportMigrationFixture(t *testing.T, key string) invoiceExportMigrationFixture {
+	t.Helper()
+	database := newPostgres(t)
+	applyFoundationTo(t, database.Admin, 9)
+	seedAdmissionFixture(t, database.Admin)
+
+	jobID := uuid.New()
+	reservationID := uuid.New()
+	cancellationID := uuid.New()
+	chargeID := uuid.New()
+	eventID := uuid.New()
+	postedAt := time.Now().UTC().Truncate(time.Microsecond)
+	tx, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin historical Invoice export fixture: %v", err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	if _, err := tx.Exec(`
+		INSERT INTO jobs (
+			id, organization_id, project_id, created_by_principal_id,
+			model_revision_id, generation_preset_revision_id,
+			service_class_revision_id, output_spec_id, worker_pool_id,
+			request_hash, request_content, request_content_expires_at,
+			pricing_rate_card_revision_id, pricing_rate_line_id,
+			pricing_unit_amount_minor, pricing_quantity,
+			pricing_quoted_amount_minor, pricing_currency,
+			execution_max_attempts, execution_max_total_compute_seconds,
+			execution_max_finalization_seconds_per_attempt,
+			execution_retry_backoff_policy,
+			execution_retryable_failure_classes,
+			execution_circuit_breaker_policy, job_expires_at
+		) VALUES (
+			$1, $2, $3, $4,
+			'00000000-0000-0000-0000-000000000010',
+			'00000000-0000-0000-0000-000000000011',
+			'00000000-0000-0000-0000-000000000012',
+			'00000000-0000-0000-0000-000000000013',
+			'00000000-0000-0000-0000-000000000005',
+			sha256(convert_to($1::uuid::text, 'UTF8')),
+			jsonb_build_object('model', 'minimax-h3', 'prompt', $5::text),
+			$6::timestamptz + interval '2 days',
+			'00000000-0000-0000-0000-000000000016',
+			'00000000-0000-0000-0000-000000000017',
+			1250, 1, 1250, 'CNY', 3, 2400, 600,
+			'{"kind":"exponential","initial_seconds":30,"max_seconds":300}'::jsonb,
+			ARRAY['WORKER_LOST', 'TRANSIENT_BACKEND'],
+			'{"policy_revision":"h3-standard-v1"}'::jsonb,
+			$6::timestamptz + interval '1 day'
+		)
+	`, jobID, testOrganizationID, testProjectID, testPrincipalID, key, postedAt); err != nil {
+		t.Fatalf("insert historical Invoice export Job: %v", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO credit_reservations (
+			id, organization_id, project_id, job_id, amount_minor, currency
+		) VALUES ($1, $2, $3, $4, 1250, 'CNY')
+	`, reservationID, testOrganizationID, testProjectID, jobID); err != nil {
+		t.Fatalf("insert historical Invoice export CreditReservation: %v", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
+		VALUES ($1, $2, $3)
+	`, jobID, testOrganizationID, testProjectID); err != nil {
+		t.Fatalf("insert historical Invoice export RetryRuntimeState: %v", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO job_cancellation_decisions (
+			id, organization_id, project_id, job_id, requested_by_principal_id,
+			previous_job_state, decision, billable, cancellation_fence,
+			job_version, decided_at
+		) VALUES (
+			$1, $2, $3, $4, $5, 'QUEUED', 'CANCELED', false, 0, 1, $6
+		)
+	`, cancellationID, testOrganizationID, testProjectID, jobID, testPrincipalID, postedAt); err != nil {
+		t.Fatalf("insert historical Invoice export cancellation decision: %v", err)
+	}
+	if _, err := tx.Exec(`
+		SELECT vela_private.vela_insert_canonical_cancellation_event(
+			$1::uuid, $2::uuid, $3::uuid, $4::uuid, 1,
+			'invoice.export_requested', $5::timestamptz, 29,
+			vela_private.vela_proto_string(1, $2::uuid::text)
+				|| vela_private.vela_proto_string(2, $3::uuid::text)
+				|| vela_private.vela_proto_string(3, $4::uuid::text)
+				|| vela_private.vela_proto_string(4, $6::uuid::text)
+				|| vela_private.vela_proto_bytes(
+					5, vela_private.vela_proto_timestamp($5::timestamptz)
+				)
+		)
+	`, eventID, testOrganizationID, testProjectID, jobID, postedAt, chargeID); err != nil {
+		t.Fatalf("insert historical Invoice export intent: %v", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO charges (
+			id, organization_id, project_id, job_id, credit_reservation_id,
+			cancellation_id, reason, amount_minor, currency, posted_at
+		) VALUES ($1, $2, $3, $4, $5, $6, 'CUSTOMER_CANCELLATION', 1250, 'CNY', $7)
+	`,
+		chargeID,
+		testOrganizationID,
+		testProjectID,
+		jobID,
+		reservationID,
+		cancellationID,
+		postedAt,
+	); err != nil {
+		t.Fatalf("insert historical Invoice export Charge: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit historical Invoice export fixture: %v", err)
+	}
+	return invoiceExportMigrationFixture{
+		database: database,
+		jobID:    jobID,
+		chargeID: chargeID,
+	}
 }
 
 func newInvoiceExportChargeFixture(t *testing.T, key string) invoiceExportFixture {
 	t.Helper()
-	fixture := newStartFixture(t, key, 7)
-	if _, err := fixture.database.Admin.Exec(`
-		UPDATE credentials
-		SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
-		WHERE id = $1
-	`, testCredentialID); err != nil {
-		t.Fatalf("grant cancellation scope: %v", err)
+	outcome := runCPUMediaH3GraphWithKey(t, key)
+	service := visibleCompletionService(t, outcome.database.DSN)
+	finalizer := stagefinalization.AuthenticatedFinalizer{
+		ID: "spiffe://vela.internal/finalizer/invoice-" + outcome.jobID.String(),
 	}
-	started, err := fixture.service.Start(
-		context.Background(), fixture.worker, fixture.credentials,
+	claim, err := service.ClaimNextStageGraphFinalization(context.Background(), finalizer)
+	if err != nil || claim.Decision != stagefinalization.StageGraphFinalizationGranted ||
+		claim.JobID != outcome.jobID {
+		t.Fatalf("claim Invoice Stage graph finalization = %#v error=%v", claim, err)
+	}
+	completed, err := service.CompleteStageGraphVisibleCompletion(
+		context.Background(),
+		finalizer,
+		claim.Credentials,
+		stagefinalization.StageGraphVisibleCompletionCandidate{
+			CompletionID: uuid.New(), ExpectedJobVersion: claim.JobVersion,
+		},
 	)
-	if err != nil || started.Decision != workercontrol.StartGranted {
-		t.Fatalf("start billable Invoice fixture = %#v error=%v", started, err)
+	if err != nil || completed.Decision != stagefinalization.VisibleCompletionCommitted {
+		t.Fatalf("complete Invoice Stage graph = %#v error=%v", completed, err)
 	}
-	server := admissionServerForDatabase(t, fixture.database)
-	canceled := cancelJob(
-		t,
-		server.URL,
-		testProjectID,
-		fixture.assignment.JobID.String(),
-		testBearerCredential(),
-	)
-	if canceled.StatusCode != http.StatusOK {
-		t.Fatalf("cancel Invoice fixture status = %d; body=%s", canceled.StatusCode, canceled.Body)
+	var chargeID uuid.UUID
+	if err := outcome.database.Admin.QueryRow(
+		"SELECT id FROM charges WHERE job_id = $1",
+		outcome.jobID,
+	).Scan(&chargeID); err != nil {
+		t.Fatalf("read Invoice Stage graph Charge: %v", err)
 	}
-	var response cancelResponse
-	if err := json.Unmarshal(canceled.Body, &response); err != nil {
-		t.Fatalf("decode Invoice fixture cancellation: %v", err)
-	}
-	if response.Charge == nil {
-		t.Fatal("Invoice fixture cancellation created no Charge")
-	}
-	chargeID, err := uuid.Parse(response.Charge.ChargeID)
-	if err != nil {
-		t.Fatalf("parse Invoice fixture Charge id: %v", err)
-	}
-	cancellationID, err := uuid.Parse(response.CancellationID)
-	if err != nil {
-		t.Fatalf("parse Invoice fixture Cancellation id: %v", err)
-	}
-	return invoiceExportFixture{
-		startFixture:   fixture,
-		chargeID:       chargeID,
-		cancellationID: cancellationID,
-	}
+	fixture := invoiceExportFixture{chargeID: chargeID}
+	fixture.database = outcome.database
+	fixture.assignment.JobID = outcome.jobID
+	fixture.assignment.AttemptID = outcome.attemptID
+	return fixture
 }
 
 type recordingInvoiceAdapter struct {

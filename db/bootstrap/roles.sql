@@ -30,6 +30,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_internal') THEN
         CREATE ROLE vela_internal NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = 'vela_profile_certification_authority_owner'
+    ) THEN
+        CREATE ROLE vela_profile_certification_authority_owner NOLOGIN;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_quorum_guard_owner') THEN
         CREATE ROLE vela_quorum_guard_owner NOLOGIN;
     END IF;
@@ -75,6 +81,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_catalog_promotion') THEN
         CREATE ROLE vela_catalog_promotion NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_catalog_activation') THEN
+        CREATE ROLE vela_stage_catalog_activation NOLOGIN;
     END IF;
     IF NOT EXISTS (
         SELECT 1 FROM pg_roles WHERE rolname = 'vela_catalog_promotion_owner'
@@ -148,6 +157,37 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_fleet_owner') THEN
         CREATE ROLE vela_fleet_owner NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_attempt_coordinator') THEN
+        CREATE ROLE vela_attempt_coordinator NOLOGIN;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'vela_attempt_coordinator_owner'
+    ) THEN
+        CREATE ROLE vela_attempt_coordinator_owner NOLOGIN BYPASSRLS;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_scheduler') THEN
+        CREATE ROLE vela_stage_scheduler NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_artifact') THEN
+        CREATE ROLE vela_stage_artifact NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_worker_control') THEN
+        CREATE ROLE vela_stage_worker_control NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_usage_cost') THEN
+        CREATE ROLE vela_usage_cost NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_h3_campaign_evidence') THEN
+        CREATE ROLE vela_h3_campaign_evidence NOLOGIN;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_usage_cost_owner') THEN
+        CREATE ROLE vela_usage_cost_owner NOLOGIN BYPASSRLS;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = 'vela_stage_scheduler_owner'
+    ) THEN
+        CREATE ROLE vela_stage_scheduler_owner NOLOGIN BYPASSRLS;
+    END IF;
 END
 $$;
 
@@ -162,6 +202,8 @@ ALTER ROLE vela_organization_audit_request NOLOGIN NOSUPERUSER NOCREATEDB NOCREA
 ALTER ROLE vela_break_glass_audit_request
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_internal NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_profile_certification_authority_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_quorum_guard_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_cancel NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
@@ -183,6 +225,8 @@ ALTER ROLE vela_non_content_expiry
 ALTER ROLE vela_non_content_expiry_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_catalog_promotion
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_stage_catalog_activation
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_catalog_promotion_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
@@ -221,5 +265,23 @@ ALTER ROLE vela_remediation NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLIC
 ALTER ROLE vela_remediation_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 ALTER ROLE vela_fleet NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_fleet_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_attempt_coordinator
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_attempt_coordinator_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_stage_scheduler
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_stage_artifact
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_stage_worker_control
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_usage_cost
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_h3_campaign_evidence
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+ALTER ROLE vela_usage_cost_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_stage_scheduler_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
 
 GRANT pg_read_all_stats TO vela_quorum_guard_owner;

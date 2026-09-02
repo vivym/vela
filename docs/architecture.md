@@ -9,13 +9,21 @@
 | 首发客户 | 通过邀请和线下合同接入的 Customer Organization |
 | 长期定位 | 通用 AI 推理集群控制面 |
 
+> **H3 execution supersession (2026-08-29):**
+> `docs/h3-stage-execution-architecture.md` replaces this document's H3
+> execution, placement, Worker, retry, and intermediate-data assumptions. This
+> document remains authoritative for the commercial, identity, retention, DR,
+> and Visible Completion baseline. The repository now implements the Stage
+> Worker / WorkerInstance replacement and has removed the legacy machine-level
+> Runner, WorkerPool CRD, and DaemonSet execution path.
+
 ## 1. 摘要
 
 Vela 是面向大规模 AI 推理集群的正式 B2B 控制面。它接收耗时从数分钟到数十分钟的异步推理任务，根据模型、生成质量档位、Service Class、执行拓扑、机器健康度和队列负载选择 Worker，并负责重试、产物发布、合同信用计费和故障恢复。首发客户范围受控，但其请求、数据和账单适用完整生产可靠性、隔离和审计要求，不视为 beta 或测试流量。
 
 Vela 不实现模型内部的张量并行或流水线执行。具体推理由 SGLang fork、vLLM 或其他 Inference Backend 完成；Vela 决定什么任务应当放在哪个 Worker 上、以哪个 ExecutionProfileRevision 执行，以及执行失败后如何恢复。
 
-MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Inference Backend。每台 H3 机器有 8 张 GPU，其中 1 张负责 Encoder 和 VAE Decoder，另外 7 张负责 DiT。由于 PCIe 带宽低，8 张卡对 serving plane 是不可拆分的整体。Kubernetes 管理长期运行并已预热的 Worker，Vela Scheduler 管理单个推理 Job，SGLang fork 管理节点内部的 8 卡执行。
+MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Inference Backend。已确认的当前布局是：一张 GPU 运行 Encoder 与 VAE Decoder 两个独立进程，另外七张 GPU 各运行一个独立的单卡 DiT 进程；DiT 不是七卡 gang。目标架构允许这些 stage 独立调度到不同机器，并以 durable StageArtifact 连接，同时保持模型长期驻留。未来 LLM 的单机或跨节点多卡执行封装在一个 WorkerInstance 内部。
 
 系统的核心可靠性语义是：
 
@@ -31,7 +39,7 @@ MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Infere
 
 - 提供异步 AI 推理接口，支持最长 40 到 50 分钟或更久的任务。
 - 支持 Customer Organization 下的多个 Project、Human Principal、Service Principal、固定 RBAC 和强制 Organization Isolation。
-- 将一台机器或多机拓扑抽象成一个可调度的 Worker / ExecutionProfileRevision。
+- 将一个独占 DeviceSet 的单卡或多卡拓扑抽象成 WorkerInstance，并允许 Job 的不同 StageRun 独立选择 CapacityPool。
 - 根据 Dynamic ETA、ServiceClassRevision、Organization / Project Capacity Share、模型预热状态和硬件风险进行调度。
 - 在 Worker、GPU、驱动或网络故障后自动重试，并避免重复发布和重复计费。
 - 将视频、缩略图和 checkpoint 等 Artifact 可靠写入对象存储。
@@ -44,8 +52,8 @@ MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Infere
 ### 2.2 非目标
 
 - Vela 不替代 SGLang、vLLM 或模型专用推理引擎。
-- Kubernetes 不感知 Encoder、DiT、VAE 等模型内部阶段。
-- 首发不支持任意 DiT step 的跨 Worker Durable Checkpoint；节点丢失后从头重算。
+- Kubernetes 只负责 WorkerInstance/WorkerBundle 的 actuation；Vela Catalog 和 Coordinator 拥有 Encoder、DiT、VAE 等 StageDefinition 与执行 authority。
+- 首发不支持任意 DiT step 的跨 Worker Durable Checkpoint；节点丢失后从最近的 durable StageArtifact 边界重跑失败 Stage。
 - 首发不承诺跨地域强一致调度、自动 failover 或 Artifact 同步复制。
 - 首发不要求构建通用 GPU 云、训练调度平台、支付网关或发票系统。
 
@@ -54,23 +62,20 @@ MiniMax H3 是第一个 Model / Workload，SGLang fork 是它的第一种 Infere
 ### 3.1 H3 硬件约束
 
 ```text
-8-GPU H3 Worker
+8-GPU node (current co-located layout)
 
-GPU-E:   Encoder + VAE Decoder
-           |
-           | embedding / latent
-           v
-GPU-D0 --+
-GPU-D1   |
-GPU-D2   |
-GPU-D3   +-- 7-GPU DiT
-GPU-D4   |
-GPU-D5   |
-GPU-D6 --+
+GPU-0: Encoder process + VAE Decoder process (certified AUX exception)
+GPU-1: independent single-GPU DiT process
+GPU-2: independent single-GPU DiT process
+GPU-3: independent single-GPU DiT process
+GPU-4: independent single-GPU DiT process
+GPU-5: independent single-GPU DiT process
+GPU-6: independent single-GPU DiT process
+GPU-7: independent single-GPU DiT process
 ```
 
-- PCIe 带宽很低，必须尽量减少跨 GPU tensor movement。
-- 一张 GPU 失效就会使整个 H3 Worker 无法继续 serving。
+- 组件传输成本必须实测，但各组件执行时间很长，目标架构允许以 durable StageArtifact 换取独立扩缩容和故障隔离。
+- 一张 GPU 失效只 fencing 其 WorkerInstance/DeviceSet；已提交的上游 StageArtifact 可被其他兼容 WorkerInstance 复用。
 - GPU 可能需要 process restart、GPU reset、PCIe FLR、driver reload、reboot 或 BMC power cycle。
 - GPU role 必须通过 GPU UUID 或 PCI BDF 绑定，不能依赖可能变化的 CUDA index。
 - Host kernel、GPU driver、firmware/VBIOS 和 container toolkit 在早期应锁定版本。
@@ -94,13 +99,13 @@ GPU-D6 --+
 
 ## 4. 核心设计原则
 
-1. **Worker 是 serving 资源。** H3 首发中，一台 8-GPU 机器等于一个 Worker。
-2. **Kubernetes 只管理 Worker 生命周期。** 单个 Job 由 Vela Scheduler 调度。
+1. **WorkerInstance 是 serving 资源。** 标准 H3 WorkerInstance 独占一张 GPU；未来 LLM profile 可以拥有单机多卡或跨节点 DeviceSet。
+2. **Kubernetes 只管理 WorkerMember 生命周期。** 单个 StageRun 由 Vela StageScheduler 调度。
 3. **Inference Backend 封装节点内部执行。** Vela 不理解 Inference Backend 内部 tensor movement。
-4. **Job、Attempt 和 Lease 分离。** Job 表示用户意图，Attempt 表示一次物理执行，Lease 表示限时执行权。
+4. **Job、Attempt、StageRun 和 StageLease 分离。** Attempt 是端到端 graph epoch；每个 stage 的物理执行由 StageAttempt 与 StageLease 独立约束。
 5. **状态存储是事实源。** 队列用于唤醒和传递事件，不能成为唯一事实源。
-6. **计算允许重复，发布只能一次。** 使用 fencing token 和 compare-and-swap 选择唯一获胜 Attempt。
-7. **Serving domain 与 fault domain 分离。** 单张 GPU 是 fault domain，整台 8-GPU 机器是 H3 serving domain。
+6. **计算允许重复，发布只能一次。** 使用 attempt/stage fencing token 和 compare-and-swap 选择每个 StageRun 的唯一 StageArtifact winner，并最终只形成一次 Visible Completion。
+7. **Serving domain 与 fault domain 分离。** 单卡 H3 WorkerInstance 与 machine placement 分离；同机实例故障相关性不能被当成同一调度资源。
 8. **恢复逻辑不依赖被恢复对象。** 特权 Node Agent 运行在 host systemd 下，不依赖 GPU Pod 或 container runtime。
 9. **GenerationPresetRevision 是用户承诺，ExecutionProfileRevision 是内部手段。** 重试不得静默降低用户购买的质量档位。
 10. **用户计费与内部成本分离。** 平台重试增加内部 COGS，但不重复向用户收费。
@@ -121,26 +126,26 @@ API Gateway
 Organization / Project Access Control
   |
   v
-Job Coordinator -------- PostgreSQL + Outbox
+Job / Attempt Coordinators -------- PostgreSQL + Outbox
   |       |
   |       +------------- Billing Ledger -------- Monthly Invoice Export
   +<-------------------> Model Catalog
   ^
   | state-transition requests
-Scheduler <------------- Model Catalog
+StageScheduler --------- Model Catalog
   ^
   +--------------------- Worker Registry
                               ^
-                              | heartbeat / health / warm state
+                              | readiness / capacity / residency
                               |
-H3 Worker Pod ----------------+-----------------------> Job Coordinator
-  |                                   acquire / heartbeat / complete
-  +-- Inference Backend --> 8-GPU H3 Worker
+Stage Worker Pod -------------+-----------------------> Attempt Coordinator
+  |                                   AcquireStage / heartbeat / seal
+  +-- ModelRuntime -------> StageAssignment / StageLease
   |
-  +-- Artifact Store -------- Object Storage
+  +-- StageArtifact --------- Object Storage
             ^
             |
-     Artifact Validator / Reconciler -----------------> Job Coordinator
+     Artifact Finalizer / Reconciler -----------------> Visible Completion
 
 PostgreSQL Outbox ----> Outbox Dispatcher ----> NATS JetStream
                                                    |
@@ -148,7 +153,7 @@ PostgreSQL Outbox ----> Outbox Dispatcher ----> NATS JetStream
 
 Webhook Dispatcher -------------------------------> Project endpoints
 
-Fleet Controller ------> Kubernetes Worker Pool ------> H3 Worker Pod
+Fleet Controller ------> ResidencyPlan / WorkerBundle ------> WorkerMember Pods
 
 Node Health Controller
   |
@@ -179,9 +184,9 @@ POST   /v1/projects/{project_id}/webhook-subscriptions
 
 Human Principal 使用 OIDC，Project-owned Service Principal 使用可轮换、可过期和可吊销的 scoped credential；服务端只保存 credential hash。`POST .../jobs` 必须接受 Project-scoped `Idempotency-Key`。Admission 成功返回 `202 Accepted`、`job_id`、`QUEUED`、PricingSnapshot 和 `job_expires_at`；信用不足返回 `402 credit_limit_exceeded`，Project 限额返回 `429`，容量不足返回 `503 capacity_unavailable`，后两者携带 `Retry-After` 且不创建 Job。
 
-### 6.2 Job Coordinator
+### 6.2 Job 与 Attempt Coordinator
 
-Job Coordinator 是异步执行语义的核心模块。它是唯一可以改变 Job、Attempt、Lease、RetryRuntimeState、CreditReservation、Charge 和获胜 ArtifactSet 指针的模块，并封装 Admission、取消竞争和 Visible Completion。Scheduler、Worker、Billing exporter 和 reconciler 只能向它提交带预期版本的命令，不能直接更新这些状态。
+Job Coordinator 拥有面向客户的 Admission、Job/parent Attempt 生命周期、取消竞争、CreditReservation/Charge 和最终 ArtifactSet/Visible Completion 业务边界。AttemptCoordinator 拥有 ExecutionGraphSnapshot、StageRun、StageAttempt、StageAllocation、StageLease、retry budget、StageArtifact winner 与 graph advancement。StageScheduler、Stage Worker、Billing exporter 和 reconciler 只能调用带 expected version/fence 的窄 command，不能直接更新这些权威状态。
 
 客户端接口保持较小：
 
@@ -191,60 +196,62 @@ get(project_id, job_id)                                  -> JobView
 cancel(project_id, job_id)                               -> CancelResult
 ```
 
-Worker 协议：
+Stage Worker 协议：
 
 ```text
-acquire(worker_epoch, capacity)                 -> Assignment?
-start(lease_credentials)                        -> StartGranted | Stop
-heartbeat(lease_credentials, progress)          -> Continue | Stop
-complete(lease_credentials, artifact_set_candidate) -> Accepted
-                                                      | RejectedStaleLease
-                                                      | RejectedJobTerminal
-fail(lease_credentials, failure)                -> RetryDecision
+register_worker_evidence(runtime_identity, devices, members) -> ReadinessDecision
+report_stage_capacity(worker_instance_epoch, observation)    -> Accepted | Stale
+acquire_stage(worker_authority, capacity_observation)        -> StageAssignment | NoWork
+start_stage(stage_authority)                                -> Accepted | Replay | Stop
+heartbeat_stage(stage_authority, runtime_state)              -> Continue | Stop
+seal_stage_output(stage_authority, local_receipt)            -> MaterializationAuthority
+commit_stage_materialization(authority, object_version)      -> Accepted | Replay
+fail_stage(stage_authority, failure)                         -> RetryDecision
+reattach_stage(stage_authority, local_receipt)               -> Accepted | Stop
 ```
 
-首发 Worker transport adapter 固定为 Protobuf / gRPC 双向流。Worker 主动建立 mTLS 连接，只在本地 capacity 可用时调用 `acquire()`；服务端从 mTLS 身份解析 `worker_id`，请求显式携带在本进程生命周期固定的 `worker_epoch`。Coordinator 通过同一流或 heartbeat 响应返回 `Continue`、`Stop`、`Drain` 和 Lease 更新。`acquire()` 是 read-or-create 操作：同一 `(worker_id, worker_epoch)` 已有未终结 Assignment 时，必须先重放原 `attempt_id`、Lease token、fence 和原始 `expires_at`，不能创建第二个 Attempt 或因重放延长 Lease。Assignment 一旦在 PostgreSQL 提交即可确认传输事件，40 到 50 分钟的执行所有权由 Lease / fence 保证，不能依赖一条长期 unacked 的 NATS 消息。
+首发 Stage Worker transport adapter 固定为 Protobuf / gRPC 双向流。WorkerInstance leader 主动建立 mTLS 连接，只在持久 capacity observation 有余量时调用 `AcquireStage`；服务端从 mTLS 身份和请求共同校验 `worker_instance_id`、`worker_instance_epoch`、`model_residency_id` 与 `model_runtime_epoch`。Coordinator 通过同一流返回 `StageAssignment`、`NoWork`、`StopStage` 和续期后的 StageAuthority。Acquire 是 read-or-create 操作：同一有效 WorkerInstance/runtime authority 已有未终结 StageAssignment 时必须重放原 StageAttempt 与 StageLease，不能创建第二个物理 try 或因重放延长 authority。StageAssignment 一旦在 PostgreSQL 提交即可确认唤醒事件，长时间执行所有权由 StageLease、attempt fence 和 stage fence 保证，不能依赖一条长期 unacked 的 NATS 消息。
 
-Job Coordinator 对内暴露上述小 Interface，生产使用 gRPC adapter，状态机测试使用 in-memory adapter。HTTP、gRPC 和 NATS transport 都不能绕过 Job Coordinator 直接修改持久状态。
+Job/Attempt Coordinator 对内暴露上述小 Interface；生产 authority adapter 使用 PostgreSQL command transactions，Stage Worker 使用 gRPC transport，状态机测试使用同一 seam 下的 in-memory/mock adapter。HTTP、gRPC 和 NATS transport 都不能绕过 Coordinator 直接修改持久状态。
 
 ### 6.3 Scheduler
 
-Scheduler 从持久状态中选择可运行 Job 和符合条件的 Worker。它不拥有 Job 状态，只能通过 Job Coordinator 的事务操作创建 Attempt 和 Lease。
+StageScheduler 从持久状态中选择依赖满足的 StageRun 和符合条件的 WorkerInstance。它不拥有 Job/Attempt 状态，只能通过 Attempt Coordinator 的事务操作创建 StageAttempt、StageAllocation 和 StageLease。
 
 Scheduler 负责：
 
 - 有界 Admission 和 Organization / Project 限额。
 - Service Class、hierarchical fairness、Protected Lane、retry lane 和 aging。
-- ExecutionProfileRevision 与 Worker capability 匹配。
+- StageProfileRevision 与 WorkerInstance/DeviceSet/model residency capability 匹配。
 - 模型预热和数据 locality。
 - 预计运行时间和队列完成时间计算。
-- 重试时避开已知故障 Worker 或 fault domain。
+- 重试时避开已知故障 WorkerInstance、device 或 fault domain。
 - 防止失败任务引发 retry storm。
 
-H3 首发使用中央队列，每个 Worker 同时最多运行一个 Job，BUSY Worker 不接受预派任务。Scheduler 不维护 per-Worker queue，也不保留硬空闲 Worker。
+H3 首发使用中央 StageRun 队列，每个标准 WorkerInstance 同时最多持有一个 active StageLease，AUX 的 Encoder/VAE route 共享一个 active slot。BUSY WorkerInstance 不接受预派任务；StageScheduler 不维护 per-WorkerInstance queue，也不保留硬空闲实例。
 
 ### 6.4 Worker Registry
 
-Worker Registry 保存 Worker 的身份、epoch、capability、模型预热状态、当前 Assignment、GPU 拓扑、Lifecycle State 和 Reachability Condition。
+Worker Registry 保存 WorkerInstance/WorkerMember 身份、epochs、DeviceSet、capability、模型驻留与预热状态、capacity observation、Lifecycle State 和 Reachability Condition。当前 StageAssignment 属于 Attempt Coordinator authority，不存放在 Registry 的可变字段中。
 
-Worker 重启后必须递增 `worker_epoch`。旧 epoch 签发的 Lease 不能在新进程中继续使用。
+WorkerInstance 重新物化后必须递增 `worker_instance_epoch`；控制连接重启递增 `control_session_epoch`，模型进程、GPU context、DeviceSet 或驻留模型变化递增 `model_runtime_epoch`。任一相关 epoch 变化都使旧 StageLease 失效。
 
 ### 6.5 Inference Worker
 
-Inference Worker 是长期运行并已预热的进程。H3 首发中，一个 Pod 独占整台 8-GPU 节点，并拆成两个职责明确的进程：Go `vela-worker-agent` 管理 Assignment、Lease、heartbeat、ArtifactUpload 和 finalization；Python H3 runner 封装 SGLang fork，并协调 Encoder、DiT 和 VAE 进程。
+当前已实现的 Inference Worker 是长期运行并已预热的 `WorkerInstance`。Fleet 根据批准的 `ResidencyPlanRevision` 为每个 `WorkerMemberActuation` 创建一个 Stage Worker Pod；标准 H3 `WorkerInstance` 拥有一张 GPU，AUX 例外在同一张 GPU 上驻留 Encoder 与 VAE 两个独立 `ModelRuntimeProcess`，七个 DiT 则是七个可独立调度的单卡 `WorkerInstance`。Go `vela-stage-worker-agent` 管理 StageAssignment、StageLease、heartbeat，以及 StageArtifact 的本地 seal 与 materialization；非 GPU finalization 由独立的 `StageGraphFinalizationClaim` authority 执行。`vela-model-runtime` 监督长期驻留的 backend driver 进程。
 
-二者通过 Pod 内 Unix domain socket 上的 Protobuf / gRPC Interface 通信，最小方法为 `prepare()`、`start()`、`cancel()`、`status()` 和 `collect_outputs()`。未来的 LLM runner 是该 Interface 的另一个 adapter，不把 backend-specific tensor 或进程细节暴露给 Worker Agent。
+Stage Worker 与 ModelRuntime 通过 Pod 内受保护的 Unix domain socket 上的 Protobuf / gRPC Interface 通信。未来的 LLM backend 是该 Interface 的另一个 driver；多卡或跨节点成员仍封装在一个 `WorkerInstance` 内，不把 backend-specific tensor、rank 或进程细节暴露给 StageScheduler。
 
-Worker 负责：
+Stage Worker 负责：
 
-- 验证 Assignment 与 ExecutionProfileRevision。
-- 按 GPU UUID / PCI BDF 绑定角色。
-- 周期性 heartbeat 并上报阶段进度。
-- 将生成结果写入本地 NVMe scratch。
-- 上传全部必需 Artifact 并提交 ArtifactSetCandidate。
-- 在 Lease 被拒绝或收到 Stop 后终止执行并清理临时资源。
+- 验证 StageAssignment、StageAuthority、StageProfileRevision 与精确输入版本。
+- 按 DeviceSet 中的 GPU UUID / PCI BDF 绑定 ModelRuntime。
+- 周期性 `HeartbeatStage` 并上报 bounded runtime state。
+- 将 stage 输出写入 per-StageAttempt NVMe scratch 并 seal 本地 receipt。
+- 在 materialization authority 下提交 durable StageArtifact；最终 ArtifactSet 由非 GPU Finalizer 处理。
+- 在 StageLease 被拒绝或收到 `StopStage` 后终止执行并清理临时资源。
 
-Coordinator 的 Assignment / heartbeat 响应除持久化的 `expires_at` 外，还必须携带按 PostgreSQL 当前时间计算的 `lease_valid_for`。Worker 在发出对应请求前记录 monotonic timestamp，并以 `request_started_monotonic + lease_valid_for` 作为本地 fail-closed deadline；网络往返时间因此会缩短而不会延长可执行窗口。Worker 不使用本地 wall clock 比较 `expires_at`，收不到续租响应时必须在本地 monotonic deadline 前停止推进和提交。
+Coordinator 的 StageAssignment / heartbeat 响应除持久化的 `expires_at` 外，还必须提供可映射到本地 monotonic watchdog 的剩余 authority。Stage Worker 在发出对应请求前记录 monotonic timestamp，并使网络往返时间只能缩短、不能延长可执行窗口；它不使用本地 wall clock 延长 StageLease，收不到续租响应时必须在本地 deadline 前停止推进和提交。
 
 ### 6.6 Node Health Controller 与 vela-node-agent
 
@@ -284,23 +291,23 @@ Legal Hold 不拥有 Prompt、输入、Artifact、debug dump、Worker scratch �
 
 ### 6.11 Fleet Controller
 
-Fleet Controller 将 Catalog 中的 ExecutionProfileRevision 实现为 Kubernetes Worker pool，并负责 warm-up、canary、planned drain、rollout 和 retirement。它只能通过 Job Coordinator 请求 drain/fence，不能直接终止仍拥有有效 Lease 的 Worker。
+Fleet Controller 将批准的 `ResidencyPlanRevision` 实现为 Kubernetes WorkerBundle、WorkerInstance 和 WorkerMember Pod，并负责 warm-up、canary、planned drain、rollout 和 retirement。它只能通过 AttemptCoordinator/Worker Registry 请求 drain/fence，不能直接终止仍拥有有效 StageLease 的 WorkerInstance。
 
 由于 Fleet Controller / Node Health Controller 与 `vela-control` 是不同进程，`vela-control` 提供仅供其 service identity 调用的 mTLS gRPC maintenance Interface：
 
 ```text
-request_drain(operation_id, worker_id, expected_epoch, reason, deadline) -> DrainOperation
+request_drain(operation_id, worker_instance_id, expected_instance_epoch, reason, deadline) -> DrainOperation
 get_drain(operation_id)                                                  -> DrainStatus
-request_fence(operation_id, worker_id, expected_epoch, reason)          -> FenceResult
+request_fence(operation_id, worker_instance_id, expected_instance_epoch, reason)          -> FenceResult
 ```
 
-`operation_id` 是幂等键；Job Coordinator 在 PostgreSQL 事务中完成 Lifecycle State 转换、停止新 Assignment 和 Lease fencing。Controller 只有得到持久化的完成状态后才能要求 Kubernetes 删除 Pod 或要求 Node Agent 执行恢复动作，不能直写 Job / Worker 表。
+`operation_id` 是幂等键；Attempt Coordinator 与 Worker Registry 在 PostgreSQL 事务中完成 Lifecycle State 转换、停止新 StageAssignment 和 StageLease fencing。Controller 只有得到持久化的完成状态后才能要求 Kubernetes 删除 Pod 或要求 Node Agent 执行恢复动作，不能直写 Job / StageRun / WorkerInstance 表。
 
 ### 6.12 Artifact Validator / Reconciler
 
-Artifact Validator 验证对象身份、checksum、媒体规格和完整结果集。Artifact Reconciler 修复 Worker 在 multipart upload 完成后、ArtifactSet commit 前失联留下的中间状态，并清理无法恢复的 upload session 和孤儿对象。二者通过 Artifact Store interface 工作，不直接依赖具体对象存储产品。
+Artifact Validator 验证对象身份、checksum、媒体规格和完整结果集。Artifact Reconciler 修复 StageArtifact 或最终对象在 multipart upload/copy 完成后、durable commit 前失联留下的中间状态，并清理无法恢复的 upload session 和孤儿对象。二者通过 Artifact Store interface 工作，不直接依赖具体对象存储产品。
 
-Artifact Reconciler 不持有 Worker 的执行凭据。Job Coordinator 只能在原 Attempt 尚未被替代、ArtifactUpload 可恢复且 finalization budget 未耗尽时，为它签发同一 fence 的 FINALIZATION Lease。该 Lease 只能上传、验证和提交既有结果，不能重新运行推理。
+Artifact Reconciler 不持有 StageLease 或 ModelRuntime 执行凭据。最终发布只在原 Attempt fence 仍有效、源 StageArtifact 已 durable commit、`StageGraphFinalizationClaim` 可恢复且 finalization budget 未耗尽时接管；claim 只能 upload/copy、验证和提交既有结果，不能重新运行推理或重新占用 GPU。
 
 ### 6.13 Webhook Dispatcher
 
@@ -312,10 +319,10 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 
 | 部署单元 | 语言 | 包含的 Module | 拆分原因 |
 | --- | --- | --- | --- |
-| `vela-control` | Go | HTTP adapter、Organization / Project / Identity、Compliance / Legal Hold、Job Coordinator、Scheduler、Worker Registry、Model Catalog、Billing Ledger、Artifact Validator / Reconciler、Webhook / Outbox dispatcher | 共享 PostgreSQL 事务和领域不变量，保持模块化单体；Compliance 使用独立 listener 与数据库 pool |
+| `vela-control` | Go | HTTP adapter、Organization / Project / Identity、Compliance / Legal Hold、Job/Attempt Coordinator、StageScheduler、Worker Registry、Model Catalog、Billing Ledger、Artifact Validator / Reconciler、Webhook / Outbox dispatcher | 共享 PostgreSQL 事务和领域不变量，保持模块化单体；Compliance 使用独立 listener 与数据库 pool |
 | `vela-fleet-controller` | Go | Fleet Controller、Node Health Controller | 独立 Kubernetes RBAC 与 rollout 生命周期 |
-| `vela-worker-agent` | Go | Worker protocol、Lease client、Artifact upload / validation client | 与推理 runner 分离，保持长连接和恢复语义稳定 |
-| H3 runner | Python | SGLang fork、GPU role binding、模型执行 | 保留 Python / CUDA 推理生态 |
+| `vela-stage-worker-agent` | Go | Stage Worker protocol、StageLease client、StageArtifact materialization / upload | 与模型进程分离，保持调度、长连接和恢复语义稳定 |
+| `vela-model-runtime` + backend driver | Go + backend language | resident process supervision、GPU binding、模型执行 | 模型长期驻留；H3 与未来 LLM driver 复用同一控制接口 |
 | `vela-node-agent` | Go | allowlisted remediation executor | host systemd 高权限进程，不依赖 Kubernetes 或 container runtime |
 
 `vela-control` 可以运行多个相同 replica；后台循环使用 row claim、advisory lock 或唯一约束竞争，不为同进程内的 Scheduler、Catalog 和 Billing 增加网络 Interface。对象存储、OIDC、Invoice export、Kubernetes、Worker、Inference Backend，以及跨进程的 Fleet / Node Health maintenance command 这些真实变化点定义 adapter seam。
@@ -331,9 +338,11 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 | Principal / Credential | 行为主体及其可轮换身份凭据 | Human Principal 使用 OIDC；Service Principal 属于一个 Project；审计归因不随 credential 轮换丢失 |
 | CompliancePrincipal / LegalHold | 独立合规主体及其非内容保留指令 | 只能覆盖确切 Organization / Project / Job 的 METADATA / FINANCIAL；不能保留 Customer Content |
 | Job | 用户的一次推理意图 | 请求、报价和执行策略快照创建后不可变 |
-| Attempt | Job 的一次物理执行 | 一个 Job 可有多个 Attempt |
-| Lease | Worker 对 Attempt 的限时执行权 | 区分 EXECUTION / FINALIZATION phase，包含鉴权 token、单调 fence、owner epoch 和 expiry |
-| Worker | 对外可调度的执行实体 | H3 中为完整 8-GPU appliance |
+| Attempt | Job 的一次端到端 ExecutionGraph epoch | 一个 Job 可有多个 Attempt；attempt fence 约束整张 graph |
+| StageRun | Attempt 中一个逻辑 stage 的运行状态 | 依赖、重试、cache 与输出 authority 独立持久化 |
+| StageAttempt | StageRun 的一次物理执行 | 可在同一 Attempt 内独立重试，不自动重跑已完成 stage |
+| StageLease | WorkerInstance 对 StageAttempt 的限时计算权 | 绑定 attempt/stage fence、Worker/Device/model epochs、token 和 expiry |
+| WorkerInstance | 当前可调度的 resident model executor | 独占 DeviceSet；H3 通常单卡，未来 LLM 可多卡多成员 |
 | ModelRevision | 确切的模型权重和配置版本 | 可复现，不使用浮动 latest |
 | InferenceBackendRevision | 推理引擎及其适配代码版本 | 与 ModelRevision 的兼容性已验证 |
 | ExecutionProfileRevision | 内部执行拓扑和加速方法 | 必须具有有效 ProfileCertification |
@@ -345,11 +354,12 @@ Webhook Dispatcher 从 Outbox-backed delivery queue 向 Project Webhook Subscrip
 | PricingSnapshot | Admission 时锁定的 SKU 报价 | 排队期间调价不影响既有 Job，金额使用 integer minor unit / Decimal |
 | CreditReservation | 从组织合同信用额度中为 Job 占用的金额 | 与 Accepted Job 同事务创建，只能转为 Charge 或释放 |
 | ExecutionPolicySnapshot | Job 接纳时锁定的执行策略 | Retry Budget、Job Expiry、Service Class 和取消语义不随配置漂移 |
-| RetryRuntimeState | Job 当前的动态重试状态 | 与 Attempt 终态在同一事务更新 |
-| Artifact | 视频、缩略图、checkpoint 或 debug dump | 每个 Attempt 写独立不可变对象 |
+| StageRetryBudget / AttemptRetryBudget | Stage 物理尝试次数与 parent graph 全局资源预算 | fail/retry transaction 同时消费适用预算并递增 StageRun fence |
+| StageArtifact | StageRun 的 durable intermediate output | 固定 exact object version、digest、lineage 和 interface；同一 StageRun 只有一个 winner |
+| StageGraphFinalizationClaim | 非 GPU Finalizer 的限时 authority | 绑定 parent Attempt fence、精确 StageArtifact output set、owner、token 和不可延长的 deadline |
+| Artifact | 视频、缩略图、checkpoint 或 debug dump | current Stage path 的正式输出绑定不可变 source StageArtifact |
 | ArtifactSet | 一个成功 Job 对外发布的完整 Artifact manifest | 所有必需输出一起发布，不允许部分可见 |
-| ArtifactUpload | 一次可恢复的对象上传会话 | 记录 multipart、校验和验证状态 |
-| UsageRecord | 一次 Attempt 的实际资源消耗 | 用于内部 COGS，不等于用户 Charge |
+| UsageRecord | 一次 StageAttempt/materialization/finalization 的实际资源消耗 | 用于内部 COGS，不等于用户 Charge |
 | Charge | 进入月度结算的不可变应收记录 | Visible Completion 或 Billable Start 后取消最多生成一次；Failed Job 不收费 |
 | WebhookSubscription / Delivery | Project 外部通知配置与一次投递 | at-least-once、可重放，不能作为 Job 状态事实源 |
 
@@ -430,16 +440,16 @@ invalidated_at: null
 PostgreSQL 是以下数据的权威事实源：
 
 - Customer Organization、Project、Principal binding、Credential hash、role 和 scope。
-- Job、Attempt 和 Lease。
-- RetryRuntimeState、Worker epoch 和 Assignment。
-- Artifact、ArtifactSet、ArtifactUpload 和获胜 ArtifactSet 指针。
+- Job、parent Attempt、ExecutionGraphSnapshot、StageRun、StageAttempt、StageAllocation、StageLease、StageScheduler claim 和 decision evidence。
+- stage/attempt retry budget、WorkerInstance/WorkerMember/DeviceSet/ModelRuntime epochs、ModelResidency、capacity observation 和 ResidencyPlan actuation。
+- StageArtifact、StageArtifact pin/cache/transfer/materialization authority、Artifact、ArtifactSet、StageGraphFinalizationClaim 和获胜 ArtifactSet 指针。
 - Model Catalog revision、ServiceClassRevision、OutputSpec、RateCardRevision、ProfileCertification 和 rollout 状态。
 - Contract Credit Limit、CreditReservation、PricingSnapshot、ExecutionPolicySnapshot、UsageRecord、Charge、Invoice export receipt 和 settlement / credit-adjustment reference。
 - WebhookSubscription、WebhookDelivery、Outbox 事件、Retention / deletion 和恢复审计记录。
 
-首发 Scheduler Job claim 使用按 Worker pool scoped 的 PostgreSQL advisory transaction lock 串行化短暂的公平性决策，并从一个有硬上限的 point-in-time candidate snapshot 创建 durable dispatch intent；partial unique index 禁止同一 Job 或 Worker 同时存在多个 live claim。Scheduler 不把该锁延伸到 Assignment，`Acquire` 在独立事务中锁定并重新检查 dispatch intent、Job、Worker epoch、认证、额度和重试 authority。每个业务 row 显式带 `organization_id`；Project-owned row 同时带 `project_id`，composite foreign key 禁止跨 Organization 关联。客户请求使用受限数据库 role、transaction-local identity context 和 `FORCE ROW LEVEL SECURITY`，Scheduler / Reconciler 使用独立内部 role 和连接池，客户请求路径不得借用该 privileged pool。
+StageScheduler 从有硬上限的 point-in-time READY StageRun/WorkerInstance snapshot 计算 `Filter -> Fairness -> Score -> Pick`，并将 decision evidence 与 `stage_scheduler_claims` 持久化。partial unique index 限制每个 StageRun 和 CapacityPool 的 live claim；`AcquireStage` 在同一 authority transaction 中重新检查 Job/Attempt/StageRun fences、WorkerInstance/DeviceSet/ModelRuntime epochs、ProfileCertification、capacity、retry budget 与输入 StageArtifact pins，再创建 StageAttempt、StageAllocation 和 StageLease。claim response loss 只能按精确 identity replay，过期 claim 由 reconciliation 回收。每个业务 row 显式带 `organization_id`；Project-owned row 同时带 `project_id`，composite foreign key 禁止跨 Organization 关联。客户请求使用受限数据库 role、transaction-local identity context 和 `FORCE ROW LEVEL SECURITY`，Scheduler / Reconciler 使用独立内部 role 和连接池，客户请求路径不得借用该 privileged pool。
 
-控制面所有 Lease expiry、Job Expiry 和重试时间比较以 PostgreSQL 时间为准，不能依赖各 Pod 的 wall clock。Worker 只使用服务端返回的 `lease_valid_for` 和本地 monotonic clock 做保守的 fail-closed 倒计时，不能自行延长 Lease。CloudNativePG 在三个 Control/Storage Node 上使用同步提交、跨节点副本和自动 failover，并通过 Barman Cloud Plugin 把 WAL 与 base backup 写入独立故障域以支持 PITR；数据库不可用时系统停止 Admission 和新 Assignment。
+控制面所有 StageLease/materialization/finalization claim expiry、Job Expiry 和 StageRun retry 时间比较以 PostgreSQL 时间为准，不能依赖各 Pod 的 wall clock。Stage Worker 和 ModelRuntime 只使用服务端返回的剩余 authority 与本地 monotonic clock 做保守的 fail-closed 倒计时，不能自行延长 StageLease。CloudNativePG 在三个 Control/Storage Node 上使用同步提交、跨节点副本和自动 failover，并通过 Barman Cloud Plugin 把 WAL 与 base backup 写入独立故障域以支持 PITR；数据库不可用时系统停止 Admission 和新的 `AcquireStage`。
 
 ### 8.2 队列语义
 
@@ -447,9 +457,9 @@ PostgreSQL 是以下数据的权威事实源：
 
 所有关键状态变更与 outbox event 必须在同一 PostgreSQL 事务中提交。Dispatcher 以 `event_id` 作为 `Nats-Msg-Id` 发布，并且只有收到目标 replicated stream 的 quorum-committed `PubAck` 后，才能在独立 PostgreSQL 事务中标记 outbox row 为 published，同时记录 stream 和 sequence receipt。publish timeout、negative ack 或连接中断都视为未发布，以同一 `Nats-Msg-Id` 重试；JetStream duplicate window 必须覆盖 dispatcher 的最大重试间隔，但 broker 去重只用于减少重复，正确性仍由消费者幂等保证。若在 `PubAck` 成功、标记前崩溃，会产生重复消息而不是丢消息。消费者必须先读取 PostgreSQL 当前状态，再以 `event_id`、aggregate version、唯一约束或 compare-and-swap 幂等处理，并且只在本地事务提交后 ack。
 
-Scheduler 和其他关键 consumer 必须有周期性 reconciliation scan，即使 JetStream 整体不可用、消息过期或 consumer state 丢失，也能从 PostgreSQL 重新发现可调度 Job、过期 Lease、待完成 ArtifactSet、待导出 Invoice line 和待投递 Webhook。JetStream 恢复后，outbox dispatcher 继续发布积压事件。
+Scheduler 和其他关键 consumer 必须有周期性 reconciliation scan，即使 JetStream 整体不可用、消息过期或 consumer state 丢失，也能从 PostgreSQL 重新发现 READY/RETRY_WAIT StageRun、过期 StageScheduler claim/StageLease、待 materialize StageArtifact、待执行 StageGraphFinalizationClaim、待导出 Invoice line 和待投递 Webhook。JetStream 恢复后，outbox dispatcher 继续发布积压事件。
 
-JetStream 只缩短发现延迟并隔离 consumer，不取代持久 Job 队列。Assignment 落库后即 ack 对应 wakeup；Worker 通过 gRPC pull 获取 Assignment，长时间执行由 Lease 续租，不在 Broker 中保留 40 到 50 分钟的 pending delivery。
+JetStream 只缩短发现延迟并隔离 consumer，不取代 PostgreSQL 中的 StageRun 队列或 claim authority。StageScheduler claim/StageAttempt/StageLease 提交后即可 ack 对应 wakeup；Stage Worker 通过 gRPC `AcquireStage` 获得 StageAssignment，长时间执行由 StageLease 续租，不在 Broker 中保留 40 到 50 分钟的 pending delivery。
 
 ### 8.3 事件故障语义
 
@@ -461,44 +471,33 @@ JetStream 只缩短发现延迟并隔离 consumer，不取代持久 Job 队列�
 | consumer 提交本地事务、ack 前崩溃 | event 重投，aggregate version / CAS 拒绝重复转换 |
 | JetStream 集群不可用 | outbox 积压，PostgreSQL reconciliation 维持最终恢复 |
 | Scheduler 收到事件后崩溃 | durable consumer 重投或 reconciliation 重新 claim |
-| PostgreSQL 不可用 | 停止新 Assignment；不能退化为仅凭 JetStream 消息推进状态 |
+| PostgreSQL 不可用 | 停止 Admission 和新的 `AcquireStage`/finalization claim；不能退化为仅凭 JetStream 消息推进状态 |
 
 ## 9. Job 与 Attempt 状态机
 
 ### 9.1 Job 状态
 
 ```text
-QUEUED -> ASSIGNED -> RUNNING -> FINALIZING -> SUCCEEDED
-   ^          |          |           |
-   |          +----------+-----------+
-   |                     |
-   +------ RETRY_WAIT <---+
-
-QUEUED / RETRY_WAIT -------------------------> CANCELED
-ASSIGNED -- cancel wins CAS -----------------> CANCELED
-RUNNING / FINALIZING -- cancel wins CAS -----> CANCELING -> CANCELED
-
-QUEUED / RETRY_WAIT 超过 Retry Budget 或 Job Expiry -> FAILED
-ASSIGNED / RUNNING / FINALIZING 超过预算或 Job Expiry -> fence Attempt -> FAILED
+QUEUED -> RUNNING -> FINALIZING -> SUCCEEDED
+   |         |            |
+   +---------+------------+--> FAILED | CANCELED
 ```
 
-Admission 失败是 HTTP 层的 Capacity / Credit / Validation Rejection，不创建 Job；Accepted Job 的初始状态固定为 `QUEUED`。终态为 `SUCCEEDED`、`FAILED` 和 `CANCELED`，终态 Job 不得重新进入执行态。`CANCELING` 只表示 Billable Start 后的 Customer Cancellation 已持久化、Charge 已形成且执行权已 fenced，但 Worker 停止尚未确认。
+Admission 失败是 HTTP 层的 Capacity / Credit / Validation Rejection，不创建 Job；Accepted Job 的初始状态固定为 `QUEUED`。StageAssignment 是 StageRun 的物理执行 authority，不是 Job state。第一个有效 Stage progress 使 Job/parent Attempt 进入 `RUNNING`，所有 required final StageArtifacts 就绪后进入 `FINALIZING`。Stage retry 保存在 StageRun 的 `RETRY_WAIT`，不会把 Job 退回队列态。终态为 `SUCCEEDED`、`FAILED` 和 `CANCELED`，终态 Job 不得重新进入执行态；Customer Cancellation 以一次 transaction fence graph 并结算，异步 Stop acknowledgement 不拥有业务终态。
 
 ### 9.2 Attempt 状态
 
 ```text
-ASSIGNED -> RUNNING -> FINALIZING -> SUCCEEDED
-    |          |           |
-    +----------+-----------+--> FAILED
-    +----------+-----------+--> LOST
-    +----------+-----------+--> CANCELED
+QUEUED -> RUNNING -> FINALIZING -> SUCCEEDED
+   |         |            |
+   +---------+------------+--> FAILED | CANCELED
 ```
 
-Attempt 终态不得相互转换。EXECUTION Lease 过期且超过 Worker Lost grace period 后，Attempt 持久化为 `LOST`；它随后提交完成时，`complete()` 返回 `RejectedStaleLease`，但 Attempt 仍保持 `LOST`。FINALIZATION Lease 的 owner 失联时，若 ArtifactUpload 可恢复且 finalization budget 未耗尽，Attempt 保持 `FINALIZING`，由 Artifact Reconciler 使用同一 fence 的新 Lease 接管；只有确认不可恢复或预算耗尽后才进入 `FAILED` 或 `LOST`。未来若启用 speculative execution，应新增明确的 `SUPERSEDED` 终态，而不是复用 stale 响应。
+Parent Attempt 终态不得相互转换，也没有 current `LOST` state。某个 StageLease 过期且超过 lost grace period 后，对应 StageAttempt 持久化为 `LOST`；它随后提交结果时返回 stale operation result，但已完成的其他 StageRun 和 parent Attempt 本身不自动回滚。StageScheduler 可在同一 parent Attempt 下以更大 stage fence 重试该 StageRun；只有 graph-level authority、所需上游 StageArtifacts 或累计预算无法继续时才结束或重建整个 parent Attempt。Finalizer owner 失联时，若 source StageArtifacts durable、claim 可恢复且 finalization budget 未耗尽，parent Attempt 保持 `FINALIZING`，由 Finalization Reconciler replay/expire/reclaim `StageGraphFinalizationClaim`；只有确认 graph 无法恢复或预算耗尽后才进入 `FAILED`。未来若启用 speculative execution，应为 StageAttempt 新增明确的 `SUPERSEDED` 终态，而不是复用 stale 响应。
 
-### 9.3 Worker 状态
+### 9.3 WorkerInstance 状态
 
-Worker 状态分成两个正交维度，避免把运行阶段与网络可达性混为一个枚举：
+WorkerInstance 状态分成两个正交维度，避免把运行阶段与网络可达性混为一个枚举：
 
 ```text
 Lifecycle State:
@@ -515,7 +514,7 @@ Reachability Condition:
 HEALTHY <-> SUSPECT <-> OFFLINE
 ```
 
-短暂 heartbeat 缺失首先进入 `SUSPECT`；超过 grace period 后进入 `OFFLINE`。EXECUTION Lease 的 Attempt 随后标记为 `LOST`；FINALIZATION Lease 则先撤销失联 owner，由 Artifact Reconciler 在 finalization budget 内判断是否可接管，只有无法恢复时才结束 Attempt。BUSY Worker 可以同时是 SUSPECT。OFFLINE Worker 恢复 heartbeat 后先进入 `SUSPECT`，完成设备、Inference Backend 和 canary health check 后才回到 `HEALTHY`；Lifecycle State 不因网络恢复自动改变。
+短暂 heartbeat 缺失首先进入 `SUSPECT`；超过 grace period 后进入 `OFFLINE`。该 WorkerInstance 上 active StageLease 对应的 StageAttempt 随后标记为 `LOST`，StageScheduler 在同一 Attempt 内按 stage retry budget 重新选择实例。最终发布不绑定该 WorkerInstance；Artifact Reconciler 只依据 durable StageArtifact 和 `StageGraphFinalizationClaim` 决定是否接管。BUSY WorkerInstance 可以同时是 SUSPECT。OFFLINE WorkerInstance 恢复 heartbeat 后先进入 `SUSPECT`，完成 DeviceSet、ModelRuntime residency 和 canary health check 后才回到 `HEALTHY`；Lifecycle State 不因网络恢复自动改变。
 
 ## 10. 提交、执行与完成流程
 
@@ -525,69 +524,69 @@ HEALTHY <-> SUSPECT <-> OFFLINE
 2. API Gateway 验证 Principal、Organization / Project ownership、scope、限流、请求大小和基础 schema。
 3. Job Coordinator 解析 immutable ModelRevision、GenerationPresetRevision、ServiceClassRevision、OutputSpec、RateCardRevision、PricingSnapshot、ExecutionPolicySnapshot 和 `job_expires_at`。
 4. Scheduler 基于 ACTIVE ProfileCertification、风险修正后的 pool queue budget、Artifact Store circuit、scratch 水位和预计排队时间形成 Admission candidate；这一步只做预测，不能占用额度或返回 `202`。
-5. Job Coordinator 在一个 PostgreSQL 事务中锁定 Project / pool admission counter 和 Customer Organization credit row，重新检查 Catalog revision、Project queued / running limit、pool queue bound、circuit、Job Expiry policy 和可用 Contract Credit Limit。全部满足时才更新计数，并创建 `QUEUED` Job、CreditReservation、PricingSnapshot、ExecutionPolicySnapshot、空 RetryRuntimeState、Project-scoped idempotency result 和 Job-ready Outbox event。信用不足返回 `402 credit_limit_exceeded`，Project 限额返回 `429`，容量不足返回 `503 capacity_unavailable`；拒绝事务不更新计数，也不创建 Job 或 CreditReservation。
+5. Job/Attempt Coordinator 在一个 PostgreSQL transaction 中锁定 Project/pool admission counter 和 Customer Organization credit row，重新检查 Catalog revision、Project queued/running limit、pool queue bound、circuit、Job Expiry policy、StageArtifact storage reservation 和可用 Contract Credit Limit。全部满足时才更新计数，并原子创建 `QUEUED` Job、CreditReservation、PricingSnapshot、ExecutionPolicySnapshot、ExecutionGraphSnapshot、parent Attempt、全部 StageRuns/dependencies、stage/attempt retry budgets、storage reservation、command evidence、Project-scoped idempotency result 和 graph-instantiation wakeup。信用不足返回 `402 credit_limit_exceeded`，Project 限额返回 `429`，容量不足返回 `503 capacity_unavailable`；拒绝 transaction 不留下任何部分 graph、Job 或 CreditReservation。
 6. 事务提交后返回 `202 Accepted`、`job_id`、锁定报价、`QUEUED` 和 `job_expires_at`。普通队列拥塞不能再将 Accepted Job 改成 REJECTED。
 
 同一 Project 下，相同 Idempotency-Key 和相同 request hash 在 Admission 成功后返回原 Accepted Job；相同 key 但 request hash 不同返回 `409 Conflict`。Admission 前的 402 / 429 / 503 拒绝不缓存为永久业务结果，条件变化后可以用同一 key 重新评估。
 
 ### 10.2 Assignment 与 Lease
 
-1. Scheduler 从中央队列选择 Job，并选择具有有效 ProfileCertification 的 ExecutionProfileRevision。
-2. Scheduler 只考虑 Lifecycle 为 READY、Reachability 为 HEALTHY 的 Worker，并过滤 capability、模型版本、拓扑、健康和维护状态不匹配的节点。
-3. Job Coordinator 在一个事务中锁定 Job 和 Worker，并重新检查 Job version / QUEUED 状态、CreditReservation 为 RESERVED、Job Expiry、Worker epoch / READY capacity、ServiceClassRevision 和 ProfileCertification 有效性；全部满足时才创建 Attempt、占用 Worker capacity 并签发 Lease。唯一约束保证一个 H3 Worker 同时最多有一个 active Assignment，校验失败则不产生 Attempt并重新调度。
-4. EXECUTION Lease 至少包含 `attempt_id`、`worker_id`、`worker_epoch`、不可伪造的 `lease_token`、对该 Job 单调递增的 `fence` 和 `expires_at`。
-5. `acquire()` 在同一事务中先按 mTLS `worker_id` 和请求 `worker_epoch` 查找未终结 Assignment；存在时返回原 Assignment，不重新 claim Job。只有不存在时才执行步骤 3 的创建逻辑。响应丢失后，同一 Worker epoch 重连会得到完全相同的 `attempt_id`、Lease token、fence 和原始 `expires_at`；返回动作本身不续租。
-6. Worker 完成 prepare 后调用 `start()`；Job Coordinator 以 Lease / Job version 执行 `ASSIGNED -> RUNNING` CAS。该持久转换是 Billable Start，Worker 只有收到 `StartGranted` 才开始模型计算；丢失响应时以同一 Lease 重放，不产生第二次转换。
-7. Worker 执行并通过 heartbeat 续租。
+1. StageScheduler 从已实例化的 ExecutionGraph 中选择依赖满足的 READY StageRun，并选择具有有效 ProfileCertification 的 StageProfileRevision 与 CapacityPool。
+2. StageScheduler 只考虑 Lifecycle/Readiness 合格且 capacity observation 未过期的 WorkerInstance，并过滤 DeviceSet、驻留模型、runtime/member epoch、security class、region、connector、drain 和健康状态不匹配的候选。
+3. Attempt Coordinator 在一个事务中锁定 Job/Attempt/StageRun 与 WorkerInstance capacity，重新检查 graph/attempt/stage fence、Job Expiry、CreditReservation、ProfileCertification 和全部 authority；满足后创建 StageAttempt、StageAllocation 和 StageLease。标准 H3 WorkerInstance 同时最多有一个 active StageLease，AUX 的 Encoder/VAE route 也共享这一 active slot。
+4. StageLease 至少绑定 `attempt_id`、`stage_run_id`、`stage_attempt_id`、attempt/stage fence、`worker_instance_id`/epoch、membership/DeviceSet digest、`model_residency_id`/runtime epoch、精确输入 StageArtifact version、签名 token 与 `expires_at`。
+5. `AcquireStage` 在同一事务中重放与当前 WorkerInstance/runtime authority 匹配的 active StageAssignment；不存在时才执行步骤 3。响应丢失后重试得到同一 StageAttempt、StageLease 和原始 expiry，返回动作本身不续租。
+6. Stage Worker 解析精确输入并完成 ModelRuntime/member prepare barrier 后调用 `StartStage`。第一个有效 StageAttempt start 或 exact-cache hit 是 Billable Start；命令重放不产生第二次状态转换。
+7. Stage Worker 执行并通过 `HeartbeatStage` 续租；输出先 seal 为本地 receipt，再以独立 StageMaterializationLease 提交 durable StageArtifact。
 
-同一 Job 在逻辑上只有一个有效执行权。网络分区时可能有多个物理计算，但只有当前 `fence` 和 Lease token 能推进 Job 和提交 Artifact。后创建 Attempt 的 fence 必须严格大于此前所有 Attempt。
+同一 StageRun 首发最多有一个 active StageAttempt/StageLease；同一 Job 的多个依赖已满足 StageRun 可以并行执行。网络分区时某个 StageRun 可能存在重复物理计算，但只有当前 attempt fence、stage fence 和 Lease token 能推进该 StageRun 并提交 StageArtifact。Stage retry 必须递增 stage fence；只有 graph-level authority 重建时才递增 Job/parent Attempt fence。
 
 ### 10.3 Heartbeat 与进度
 
-Worker heartbeat 至少上报：
+Stage Worker heartbeat 至少上报：
 
 ```text
 attempt_id
-worker_epoch
-lease_token
-lease_fence
-backend_stage
-backend_stage_progress
-estimated_remaining_seconds
-gpu_health_summary
-local_artifact_state
-scratch_free_bytes
-artifact_store_reachable
+stage_run_id
+stage_attempt_id
+worker_instance_id
+worker_instance_epoch
+model_residency_id
+model_runtime_epoch
+attempt_fence
+stage_fence
+heartbeat_sequence
+runtime_state
+bounded_status_json
+local_receipt_id
+local_receipt_digest
+observed_at
 ```
 
-backend progress 是观测和预测信息，不作为恢复正确性的唯一依据。Job API 将其映射为 backend-neutral `phase`、attempt-scoped `phase_progress`、`attempts_started`、`next_retry_at`、`estimated_finish_at` 和 `progress_updated_at`。Phase Progress 可以在 retry 后重置，更新过期时返回 null；只有 Visible Completion 表示 100%。续租失败、Lease 被撤销或 Worker epoch 变化时，Worker 必须停止当前 Attempt。
+runtime progress 是观测和预测信息，不作为恢复正确性的唯一依据。Job API 将各 StageRun 进度映射为 backend-neutral `phase`、attempt-scoped `phase_progress`、`attempts_started`、`next_retry_at`、`estimated_finish_at` 和 `progress_updated_at`。Phase Progress 可以在 retry 后重置，更新过期时返回 null；只有 Visible Completion 表示 100%。续租失败、StageLease 被撤销或 WorkerInstance/ModelRuntime epoch 变化时，Stage Worker 必须停止当前 StageAttempt。
 
 ### 10.4 完成与 ArtifactSet commit
 
-1. Worker 在本地 NVMe 完成编码和封装。
-2. Worker 调用 `begin_finalization()`。Job Coordinator 在一个数据库事务中将 Lease phase 原子切换为 FINALIZATION、固定 Attempt 的 `finalization_started_at` / `finalization_deadline_at`，并按 output spec 幂等创建所有必需的 `STAGING` Artifact 和 ArtifactUpload；唯一约束保证崩溃重放不会创建第二组记录。
-3. 事务提交后，Artifact Store claim 对应 ArtifactUpload：已有 `multipart_upload_id` 时恢复 session；没有时创建 multipart session，再用 row version CAS 保存 upload id。若在外部创建成功、CAS 落库前崩溃，session 可能成为 orphan，由 Reconciler / bucket incomplete-multipart lifecycle 清理；不能假设 S3 `CreateMultipartUpload` 自带幂等语义。
-4. Worker 完成或恢复每个必需 Artifact 的 multipart upload，ArtifactUpload 持久化 upload id、已完成 parts、object version 和 checksum。
-5. Artifact Validator 验证每个对象的 object version、checksum、content type、duration、resolution、frame count 和 codec，并验证必需输出的 kind、ordinal 和数量符合 output spec / `generation_count`。
-6. Worker 使用当前 FINALIZATION Lease 提交包含全部必需输出的 ArtifactSetCandidate。Worker 失联后，Artifact Reconciler 只能在 Job Coordinator 重新签发同一 fence 的 FINALIZATION Lease 后接管。
-7. Job Coordinator 使用 Lease token、单调 fence 和 Job version 执行 compare-and-swap，在同一 PostgreSQL 事务中创建不可变 ArtifactSet manifest、标记其所有 Artifact 为 `COMMITTED`、更新 `jobs.result_artifact_set_id`、将 Job 置为 `SUCCEEDED`、把 CreditReservation 转为唯一 `POSTED` Charge，并开放 Artifact 访问资格。
-8. 同一事务写入 Visible Completion、Invoice export 和 Webhook Outbox event；缺少任一必需输出时整个事务回滚，Job 保持 `FINALIZING`，ArtifactSet 不可见且不能计费。
-9. Worker 收到 `Accepted` 后清理本地 scratch。
-
-旧 Attempt 晚到时返回 `RejectedStaleLease`，其对象进入短期清理策略。对象已经上传但 Worker 在提交前失联时，Artifact Reconciler 根据 ArtifactUpload 和对象存储状态继续恢复已有必需输出的上传、验证、提交整个 ArtifactSet 或清理，不重新运行推理。只要可恢复的 FINALIZATION Lease 仍在预算内，Scheduler 就不能启动新的计算 Attempt。
+1. 最终 compute 或 CPU media StageRun 先提交 durable StageArtifact，并释放 GPU/CPU StageAllocation；Stage Worker 不持有最终 ArtifactSet authority。
+2. 非 GPU Artifact Finalizer 以持久 `StageGraphFinalizationClaim` 竞争同一 Attempt/fence。claim、token、owner、expiry 和 retry budget 均由 PostgreSQL 管理，响应丢失时重放同一 claim。
+3. Finalizer 在 special finalization authority 下将最终 StageArtifact server-side copy 或 multipart materialize 为 OutputSpec 要求的全部 `STAGING` Artifact；已有 upload session 时只续传缺失 parts。
+4. Artifact Validator 验证每个 exact object version 的 checksum、content type、duration、resolution、frame count 和 codec，并验证 kind、ordinal 与 `generation_count` 的完整集合。
+5. Attempt Coordinator 使用 finalization claim、attempt fence 和 Job version 执行 compare-and-swap，在同一 PostgreSQL 事务中创建不可变 ArtifactSet manifest、标记 Artifact `COMMITTED`、更新 Job 结果与 `SUCCEEDED`、把 CreditReservation 转为唯一 `POSTED` Charge，并开放访问资格。
+6. 同一事务写入 Visible Completion、Invoice export 和 Webhook Outbox event；缺少任一必需输出时整个事务回滚，ArtifactSet 不可见且不能计费。
+7. Finalizer 崩溃或对象存储短暂失败只重试 upload/copy、validation 或 commit，不重新运行 VAE 或其他已完成 StageRun；orphan multipart session 由 Reconciler 和 bucket lifecycle 清理。
+8. 旧 Attempt/fence 或过期 claim 的晚到提交被拒绝，其对象进入短期清理策略。Finalizer 成功后，各 Stage Worker 的 per-StageAttempt scratch 按 retention authority 清理。
 
 ### 10.5 取消与完成竞争
 
-所有取消、完成和 Job Expiry 事件都通过 Job Coordinator 的 versioned compare-and-swap：
+所有取消、完成和 Job Expiry 事件都通过 Job/Attempt Coordinator 的 versioned compare-and-swap：
 
-- `QUEUED` / `RETRY_WAIT` Job 取消时直接进入 `CANCELED` 并释放 CreditReservation。
-- `ASSIGNED` Job 取消赢得 CAS 时，在同一事务中递增 fence、直接进入 `CANCELED`、释放 CreditReservation 并写 Stop / Webhook Outbox event；不等待 Worker 确认且不产生 Charge。
-- `RUNNING` / `FINALIZING` Job 的 Customer Cancellation 赢得 CAS 时，在同一事务中递增 fence、进入 `CANCELING`、把 CreditReservation 转为完整报价 Charge，并写 Stop 与 Invoice export Outbox event；不等待 Worker 真正停机。
+- `QUEUED` Job 取消时递增 graph fence、取消所有 nonterminal StageRuns，直接进入 `CANCELED` 并释放 CreditReservation。
+- `RUNNING` / `FINALIZING` Job 的 Customer Cancellation 赢得 CAS 时，在同一 transaction 中递增 graph fence、撤销 active StageLeases/materialization/finalization claims、取消 nonterminal StageRuns、进入 `CANCELING`、把 CreditReservation 转为完整报价 Charge，并写异步 Stop 与 Invoice export Outbox event；不等待 Worker 真正停机，也不卸载 resident model。
 - Visible Completion CAS 先成功时，Job 进入 `SUCCEEDED`，随后 cancel 返回 `AlreadySucceeded` 并保留 Artifact 访问。
-- cancel fencing 先成功时，complete 返回 `RejectedStaleLease`，Artifact 不得发布或生成第二个 Charge。
-- `job_expires_at` 到期时，Job Coordinator 在一个事务中递增 fence、结束当前 Attempt、将 Job 置为 `FAILED` 并释放 CreditReservation；晚到的 heartbeat 或 complete 只能得到 stale 响应。Job Expiry 是系统停止上限，不是 Hard Deadline。
+- cancel fencing 先成功时，任何 late StageArtifact/cache/finalization completion 都返回 stale/rejected operation result，不得发布或生成第二个 Charge。
+- `job_expires_at` 到期时，Job/Attempt Coordinator 在一个 transaction 中递增 graph fence、结束 parent Attempt 和 nonterminal StageRuns、将 Job 置为 `FAILED` 并释放 CreditReservation；晚到的 heartbeat、materialization 或 final completion 只能得到 stale 响应。Job Expiry 是系统停止上限，不是 Hard Deadline。
 
-只有 Worker 停止确认或 Lease 过期使 `CANCELING -> CANCELED` 提交时，才写 `job.canceled` Webhook Outbox event；Webhook Dispatcher 不得把中间状态伪装成终态通知。
+只有所有 Stage execution/materialization/finalization authority 被确认停止或过期、使 `CANCELING -> CANCELED` 提交时，才写 `job.canceled` Webhook Outbox event；Webhook Dispatcher 不得把中间状态伪装成终态通知。
 
 ## 11. 调度策略
 
@@ -595,43 +594,43 @@ backend progress 是观测和预测信息，不作为恢复正确性的唯一依
 
 Scheduler 首先执行硬约束过滤：
 
-- Worker Lifecycle 为 READY、Reachability 为 HEALTHY，且没有维护或隔离 condition。
-- Worker capability 满足 ExecutionProfileRevision。
-- ModelRevision 和 InferenceBackendRevision 已加载，或允许在 Assignment 前预热。
+- WorkerInstance Lifecycle 为 READY、Reachability 为 HEALTHY，capacity observation 未过期，且没有维护或隔离 condition。
+- WorkerInstance/DeviceSet capability 满足 StageProfileRevision 和精确 StageInterface。
+- 所需 ModelResidency 已经 READY，ModelRuntime epoch、warm-up/canary 和 backend identity 均有效；调度路径不按请求加载或换模。
 - GPU UUID / PCI BDF 拓扑符合要求。
 - Customer Organization、Project、地域、数据驻留和安全策略允许。
-- GenerationPresetRevision 与 ExecutionProfileRevision 之间存在当前有效的 ProfileCertification。
+- GenerationPresetRevision/ExecutionProfileRevision 与候选 StageProfileRevision 之间存在当前有效的 certification。
 
 ### 11.2 排序模型
 
-H3 首发不向 BUSY Worker 预派任务，也不维护 per-Worker queue。选择顺序固定为 Customer Organization、Service Class、Project、Job、compatible Worker。Organization 和 Project 分别使用 weighted deficit fairness 与硬 queued / running limit；请求不能携带绕过 ServiceClassRevision 的任意 `priority`。
+H3 首发不向无空闲 capacity slot 的 WorkerInstance 预派任务，也不维护 per-WorkerInstance queue。选择顺序固定为 `Filter -> Fairness -> Score -> Pick`：Customer Organization、Service Class、Project、READY StageRun、compatible WorkerInstance。Organization 和 Project 分别使用 weighted deficit fairness 与硬 queued/running limit；请求不能携带绕过 ServiceClassRevision 的任意 `priority`。
 
-中央队列中的 Job 排序可以使用：
+中央队列中的 StageRun 排序可以使用：
 
 ```text
-job_order_score =
-    predicted_runtime_seconds
+stage_order_score =
+    predicted_stage_runtime_seconds
   + bounded_retry_risk_penalty
   - bounded_expiry_urgency_credit
   - bounded_aging_credit
 ```
 
-`job_order_score` 越小越先运行。`bounded_retry_risk_penalty` 是带 source revision 的 per-Job 调度预测，并受 ServiceClassRevision 的不可变上限约束；缺失预测时为 0。各 credit 必须有上限；Job Expiry 越近，`bounded_expiry_urgency_credit` 越大，避免把高风险 Job 反向排到后面。Organization / Project 公平性在前置层级执行，不依赖把所有因素压进一个全局分数。
+`stage_order_score` 越小越先运行。`bounded_retry_risk_penalty` 是带 source revision 的 StageRun/Job 风险预测，并受 ServiceClassRevision 的不可变上限约束；缺失预测时为 0。各 credit 必须有上限；Job Expiry 越近，`bounded_expiry_urgency_credit` 越大。Organization / Project 公平性在 score 之前执行，不依赖把所有因素压进一个全局分数。
 
-为保证 aging 真正防止饥饿，等待超过 `max_queue_wait_before_protection` 的 Job 进入 Protected Lane 并按 Job Expiry / FIFO 排序，不再与持续到来的短 Job 竞争上述分数；Protected Lane 仍受 Organization / Project 并发配额约束。Retry 保留原 Job 等待年龄，但进入有独立并发上限的 retry lane，防止 retry storm。
+为保证 aging 真正防止饥饿，等待超过 `max_queue_wait_before_protection` 的 READY StageRun 进入 Protected Lane 并按 Job Expiry/FIFO 排序，不再与持续到来的短 StageRun 竞争上述分数；Protected Lane 仍受 Organization/Project 并发配额约束。Stage retry 保留所属 Job 的等待年龄，但进入有独立并发上限的 retry lane，防止 retry storm。
 
 从 READY Worker 中选择执行位置时使用：
 
 ```text
 worker_score =
-    model_cold_start_penalty
-  + locality_penalty
+    locality_and_transfer_penalty
   + worker_health_risk_penalty
+  + internal_cost_penalty
 ```
 
-`predicted_runtime_seconds` 可以由输出时长、分辨率、帧数、denoise steps、ModelRevision、GenerationPresetRevision 和历史 telemetry 拟合。模型必须持续用实际 Attempt 数据校准。
+模型未驻留是 hard filter，不是 cold-start score；Vela 不为一次 StageAssignment 临时卸载/加载模型。`predicted_stage_runtime_seconds` 可以由 stage kind、输出时长、分辨率、帧数、denoise steps、ModelRevision、GenerationPresetRevision 和历史 telemetry 拟合，并持续用实际 StageAttempt 数据校准。
 
-Scheduler 还要用 READY Worker 的即时容量和 BUSY Worker 上报的 `estimated_remaining_seconds` 构造全池容量时间线，计算 Job 的 `predicted_start_at`、`predicted_finish_at` 和 expiry urgency。该时间线只用于排序、Admission 和 Dynamic ETA，会在每次 heartbeat / Assignment 后重算，不形成对 BUSY Worker 的 CapacityReservation 或预派绑定。
+Scheduler 还要用 READY WorkerInstance 的 epoch-bound capacity observations 与 active StageLease 的 `estimated_remaining_seconds` 构造各 Stage CapacityPool 时间线，再聚合 Job 的 `predicted_start_at`、`predicted_finish_at` 和 expiry urgency。该时间线只用于排序、Admission 和 Dynamic ETA，会在 observation/StageLease 变化后重算，不形成 CapacityReservation 或预派绑定。
 
 ### 11.3 公平性与 admission control
 
@@ -647,11 +646,11 @@ Scheduler 还要用 READY Worker 的即时容量和 BUSY Worker 上报的 `estim
 
 ### 12.1 Retry Budget
 
-每个 Job 的 ExecutionPolicySnapshot 必须固化以下重试参数：
+每个 Job 的 ExecutionPolicySnapshot 固化 Job 级上限与 retry/circuit policy；Admission 将这些不可变输入解析为每个 StageRun 的 `stage_retry_budgets` 和 parent Attempt 的 `attempt_retry_budgets`：
 
 ```text
-max_attempts
-max_total_compute_seconds
+max_attempts -> each StageRun max_attempts
+max_total_compute_seconds -> parent Attempt max_resource_units
 max_finalization_seconds_per_attempt
 job_expires_at
 retry_backoff_policy
@@ -659,78 +658,76 @@ retryable_failure_classes
 circuit_breaker_policy
 ```
 
-首发 ExecutionPolicy template 允许最多 3 个 compute Attempt，并将 `max_total_compute_seconds` 初始设为所选 Preset 认证 p95 inference runtime 的 2 倍；早期失败可能到达第三个 Attempt，晚期失败通常只剩一次重试机会。具体值必须在 ACTIVE 前由故障注入和实测 runtime 校准，策略更新只影响新 Job。
+首发 template 可将每个 StageRun 的物理 StageAttempt 上限设为 3，并把 Job 级 compute ceiling 转换为 device-count-weighted GPU-seconds/CPU resource-seconds budget；一个 Stage 有剩余次数并不意味着 parent Attempt 仍有全局资源。具体值必须在 ACTIVE 前由真实故障注入和 runtime 校准，策略更新只影响新 Job。
 
-动态信息保存在 RetryRuntimeState：
+动态 authority 不再由 whole-Job `RetryRuntimeState` 决定，而由 `stage_runs`、`stage_retry_budgets`、`attempt_retry_budgets` 和 scoped circuit evidence 保存：
 
 ```text
-attempts_started
-compute_seconds_consumed
+stage_run.retry_count / next_retry_at / fence
+stage_retry_budget.attempts_consumed
+attempt_retry_budget.consumed_resource_units
 finalization_seconds_consumed
-finalization_retry_count
-next_retry_at
-excluded_workers_with_reason_and_expiry
-failure_fingerprints
-circuit_breaker_state
-last_failure_class
+failure_class / failure_fingerprint
+device_or_worker_instance_exclusion
+stage_profile_or_connector_circuit_state
 ```
 
-Attempt 首次进入 FINALIZING 时，Job Coordinator 从 `max_finalization_seconds_per_attempt` 计算并持久化不可延后的 `finalization_deadline_at`；更换 Lease owner 或 Reconciler 接管不得重置该时间。ArtifactUpload 的 `expires_at` 不得晚于它。Attempt 进入任何终态时，Job Coordinator 在同一事务中累计实际或保守估算的 compute / finalization seconds、更新 exclusion 和 fingerprint，并据此选择 `RETRY_WAIT`、`FAILED` 或 circuit open。`next_retry_at` 是 Scheduler 重新取出 Job 的权威时间。
+StageAttempt 失败时，AttemptCoordinator 在一个 transaction 中终止物理 authority、累计 per-stage attempt 与 parent resource budget、更新 scoped failure/circuit evidence，并使该 StageRun 进入 `RETRY_WAIT` 或使 graph 失败；retry 会递增 StageRun fence，而不是默认创建新的 parent Attempt。`stage_runs.next_retry_at` 是 StageScheduler 重新考虑该 StageRun 的权威时间。最终 StageArtifact 就绪后，parent Attempt 首次进入 FINALIZING 时持久化不可延后的 `finalization_deadline_at`；更换 Finalizer owner、claim expiry 或 Reconciler 接管都不得重置该时间。
 
 ### 12.2 失败分类
 
-| 失败类型 | Job 处理 | Worker 处理 | 用户计费 |
+| 失败类型 | Stage/graph 处理 | WorkerInstance 处理 | 用户计费 |
 | --- | --- | --- | --- |
 | 同步可判定的参数或 OutputSpec 非法 | Admission 拒绝，不创建 Job | 无 | 无 CreditReservation |
-| 执行期才能判定的输入内容不支持 | FAILED | 无 | 释放 CreditReservation，不收费 |
-| ModelRevision 或 GenerationPresetRevision 配置错误 | 当前 Job FAILED | 打开相关 revision circuit | 释放 CreditReservation，不收费 |
-| Worker heartbeat 丢失 | RETRY_WAIT | SUSPECT，随后恢复 | 保留 CreditReservation，不重复计费 |
-| GPU Xid / fallen off bus | RETRY_WAIT | DRAINING / RECOVERING | 保留 CreditReservation，不重复计费 |
-| 临时进程崩溃 | 按下方规则 5 进入 RETRY_WAIT 或 FAILED | process restart | 最终失败释放 CreditReservation |
-| 确定性 OOM | 按下方规则 3 进入 RETRY_WAIT 或 FAILED | 无或降载 | 最终失败释放 CreditReservation |
-| Artifact upload 失败 | 保持 FINALIZING | resume multipart upload | 不重新计算或重复计费 |
-| 多 Worker 相同错误 | 按下方规则 4 进入 RETRY_WAIT 或 FAILED | 打开 revision circuit 并调查 | 最终失败释放 CreditReservation |
-| Customer Cancellation | CANCELING / CANCELED | Stop + cleanup | Billable Start 前释放，之后生成完整报价 Charge |
+| 执行期才能判定的输入内容不支持 | 当前 StageRun/graph FAILED | 无 | 释放 CreditReservation，不收费 |
+| ModelRevision 或 GenerationPresetRevision 配置错误 | graph FAILED | 打开相关 StageProfile revision circuit | 释放 CreditReservation，不收费 |
+| Stage heartbeat 丢失 | 当前 StageAttempt LOST，StageRun `RETRY_WAIT` | SUSPECT；模型未丢失时可经精确 epoch reattach | 保留 CreditReservation，不重复计费 |
+| GPU Xid / fallen off bus | 当前 StageAttempt LOST，StageRun `RETRY_WAIT` | DRAINING / RECOVERING；ModelRuntime epoch 失效 | 保留 CreditReservation，不重复计费 |
+| 临时 backend 进程崩溃 | 当前 StageAttempt 按规则 5 retry 或使 graph FAILED | 恢复并重新 warm-up/canary 后才 READY | 最终失败释放 CreditReservation |
+| 确定性 OOM | 当前 StageRun 按规则 3 retry 或 graph FAILED | 不按请求换模；可选已冻结的更大认证 StageProfile | 最终失败释放 CreditReservation |
+| L2 StageArtifact materialization 失败 | 保持 `MATERIALIZING` 并重试，不重跑 compute | GPU allocation 已释放，ModelRuntime 保持驻留 | 不重新计算或重复计费 |
+| 多 WorkerInstance 相同错误 | 按规则 4 retry 或 graph FAILED | 打开 StageProfile revision circuit 并调查 | 最终失败释放 CreditReservation |
+| Customer Cancellation | fence graph，StageRuns CANCELED | 异步 Stop + cleanup，不卸载模型 | Billable Start 前释放，之后生成完整报价 Charge |
 
-失败必须携带稳定的 `failure_class`、原始错误摘要、stage、Worker、GPU UUID、InferenceBackendRevision 和是否建议重试。不要让 Scheduler 解析自由文本日志决定重试。
+失败必须携带稳定的 `failure_class`、原始错误摘要、StageRun/StageAttempt、WorkerInstance、GPU UUID、ModelRuntime/StageProfile revision 和是否建议重试。不要让 StageScheduler 解析自由文本日志决定重试。
 
-Job 的唯一重试决策者仍是 Job Coordinator，决策顺序固定为：
+AttemptCoordinator 是 Stage/graph retry 的唯一决策者，决策顺序固定为：
 
-1. 非 retryable failure、`job_expires_at` 到期或 Retry Budget 耗尽时进入 `FAILED` 并释放 CreditReservation。
-2. ArtifactUpload 可恢复且 `finalization_deadline_at` 未到期时保持 `FINALIZING`，只重试上传、验证或 commit。
-3. 确定性 OOM 只有在 Catalog 存在满足原 GenerationPresetRevision、资源更充足且认证有效的 ExecutionProfileRevision 时才进入 `RETRY_WAIT`，否则进入 `FAILED`。
-4. 同一 revision 的 failure fingerprint 在配置阈值内跨多个健康 Worker 重现时，先使相关 ProfileCertification 失效并打开 revision circuit；当前 Job 只有存在其他合格 ExecutionProfileRevision 且预算允许时才重试，否则失败。
-5. 其余 retryable failure 根据退避策略设置 `next_retry_at` 和动态 Worker exclusion 后进入 `RETRY_WAIT`。
+1. 非 retryable failure、`job_expires_at` 到期、per-stage attempt budget 或 parent resource budget 耗尽时，使 StageRun/graph `FAILED` 并按唯一终态结算 CreditReservation。
+2. 已 seal 的本地输出仍可 materialize 时保持 StageRun `MATERIALIZING`；最终 StageArtifact 已 durable 时，Finalizer 只重试 claim、验证或 Visible Completion commit，不重跑 GPU Stage。
+3. 确定性 OOM 只有在 Admission 已冻结的 compatible StageProfile 集合中存在资源更充足且认证仍有效的选项时才使该 StageRun 进入 `RETRY_WAIT`，否则使 graph `FAILED`。
+4. 同一 StageProfile revision 的 failure fingerprint 在配置阈值内跨多个健康 WorkerInstance 重现时，先使相关 certification 失效并打开 scoped circuit；Accepted Job 只有在冻结集合中仍有合格选项且预算允许时才 retry。
+5. 其余 retryable failure 按退避策略设置 `stage_runs.next_retry_at` 和 scoped WorkerInstance/device exclusion 后，使当前 StageRun 进入 `RETRY_WAIT` 并递增 fence。
 
 ### 12.3 重试放置
 
-- 默认避开上一个失败 Worker。
+- 默认避开上一个失败 WorkerInstance，并复用所有仍 pinned 的上游 StageArtifact。
 - GPU 或 PCIe fault 后避开同一节点，直到恢复验证完成。
-- 新 Attempt 必须继续满足原 GenerationPresetRevision，不能静默降级。
-- 新 Attempt 必须保持原 ServiceClassRevision，不能因 retry 降低 Capacity Share 或 SLO 统计范围。
-- 相同 failure fingerprint 在多个 Worker 重复出现时应触发 Job 或 ModelRevision circuit breaker。
+- 新 StageAttempt 必须来自 Admission 冻结的 compatible StageProfile 集合，继续满足原 GenerationPresetRevision 和 StageInterface，不能静默降级。
+- parent Attempt 必须保持原 ServiceClassRevision，不能因 retry 降低 Capacity Share 或 SLO 统计范围。
+- 相同 failure fingerprint 在多个 WorkerInstance 重复出现时应触发 StageProfile 或 ModelRevision circuit breaker。
 - 默认不启用 speculative duplicate execution；只有明确的高价值 SLA 才允许 hedging。
 
 ### 12.4 Checkpoint
 
-首发按阶段考虑恢复：
+Stage 边界本身已经是 durable 恢复边界：
 
 ```text
 Encoder -> DiT -> VAE -> Upload
 ```
 
-Encoder / DiT / VAE 的 Local Recovery State 只保存在当前 Worker 的 NVMe，用于同节点进程重启。Artifact upload 失败只恢复上传；Worker 节点或其 NVMe 丢失时 Attempt 进入 LOST，新 Worker 从头重算。首发不创建跨 Worker Durable Checkpoint。只有故障阶段分布、latent 大小、I/O 开销和恢复成功率证明总成本低于重算时，才引入 DiT checkpoint。
+每个成功 StageRun 都先提交 exact-version durable StageArtifact，所以下游 WorkerInstance 或节点丢失时只重跑失败 Stage，并复用仍有效的上游 StageArtifacts；不会默认重跑整个 Job。L1 Local Recovery State 只用于相同 StageAttempt、相同 DeviceSet/ModelRuntime epochs 的精确 reattach，节点或 NVMe 丢失时不能作为恢复依据。额外的 `DurableCheckpoint` 是 same-Job 的 stage 内恢复点，首发默认关闭；只有故障阶段分布、DiT state 大小、I/O 开销、correctness 与恢复成功率证明总成本低于重算时才为认证 StageProfile 启用，且不变成 cross-Job approximate cache。
 
 ## 13. Artifact 设计
 
 ### 13.1 存储职责
 
-- PostgreSQL 保存 Artifact / ArtifactSet metadata 和 Job 的最终 ArtifactSet 指针。
-- 对象存储保存视频、缩略图、checkpoint 和采样 debug dump。
-- Worker 本地 NVMe 只作为有配额、可清理的 scratch 空间。
+- PostgreSQL 保存 StageArtifact、Artifact / ArtifactSet metadata、StageGraphFinalizationClaim 和 Job 的最终 ArtifactSet 指针。
+- 对象存储以隔离的 L2/L3 namespace 保存 durable 中间结果、正式视频/缩略图、checkpoint 和采样 debug dump。
+- Stage Worker 本地 NVMe 只作为有配额、可清理的 L1 scratch 与 sealed materialization source。
 - API Gateway 不转发大文件内容。
-- Artifact Validator 校验媒体内容是否符合 Job 的 output spec。
-- Artifact Reconciler 恢复或清理中断的 multipart upload 和未完成 commit。
+- 非 GPU Artifact Finalizer 在 StageGraphFinalizationClaim 下读取精确 StageArtifact versions，Artifact Validator 校验媒体内容是否符合 Job 的 output spec。
+- StageArtifact/Finalization Reconciler 恢复 materialization 或 claim/commit，清理过期 L1/L2 对象和未完成的受控 copy；它不取得模型或 GPU execution authority。
 
 ### 13.2 Object key
 
@@ -796,35 +793,34 @@ retention_until
 committed_at
 ```
 
-ArtifactSet item 固定每个 Artifact 的 `artifact_id`、kind、ordinal、object key、object version、size 和 checksum；manifest 内容在创建后不可变，只有生命周期 status 可以变化。只有 output spec 要求的所有 item 都达到 `VERIFIED`，Job Coordinator 才能在一个事务中创建 ArtifactSet、更新所有 item 的 `artifact_set_id` / `COMMITTED` 状态和 Job 结果指针。checkpoint 与 debug dump 默认不属于对外结果集，不阻塞正式视频发布。
+ArtifactSet item 固定每个 Artifact 的 `artifact_id`、kind、ordinal、object key、object version、size 和 checksum；每个 current Stage-path Artifact 还绑定不可变的 `source_stage_artifact_id`。manifest 内容在创建后不可变，只有生命周期 status 可以变化。只有 output spec 要求的所有 item 都达到 `VERIFIED`，Finalizer 才能在一个 transaction 中创建 ArtifactSet、更新所有 item 的 `artifact_set_id` / `COMMITTED` 状态、Job 结果指针、Charge 和 Visible Completion。checkpoint 与 debug dump 默认不属于对外结果集，不阻塞正式视频发布。
 
-ArtifactUpload 独立记录可恢复上传状态：
+`StageGraphFinalizationClaim` 独立记录非 GPU finalization authority：
 
 ```text
-artifact_upload_id
-artifact_id
+claim_id
+owner_id
 attempt_id
 attempt_fence
-multipart_upload_id
-completed_parts
-object_version_id
-expected_size_bytes
-expected_sha256
+final_stage_run_id
+final_stage_artifact_id
+exact_object_version
+output_set_digest
+token_digest / signing_key_id
 state
-retry_count
-next_retry_at
-expires_at
-updated_at
+issued_at / expires_at
+finalization_deadline_at
 ```
 
-上传状态至少包括 `INITIATED`、`UPLOADING`、`UPLOADED`、`VERIFIED`、`ABORTED` 和 `EXPIRED`。Worker 进程重启可以基于本地文件和 ArtifactUpload 恢复 multipart；跨 Worker 接管只有在源文件或 checkpoint 已位于共享持久存储时才允许。finalization budget 到期且结果无法恢复时，Job Coordinator 才结束当前 Attempt 并依据 RetryRuntimeState 决定是否重新计算。
+claim 状态为 `ACTIVE`、`EXPIRED` 或 `COMPLETED`。同一 owner 的 response-loss replay 返回同一 claim；owner 失联后只能在 claim expiry 后由另一个 Finalizer 领取，且不得延长 parent `finalization_deadline_at`。所有 source 都必须是已提交、仍在 retention 内的精确 StageArtifact versions；因此 claim retry、媒体验证或 final transaction retry 不需要 Stage Worker、本地 scratch 或模型重算。若 L3 adapter 需要 server-side copy 或 multipart，只有 Finalizer/Data Mover 在 claim 下持有精确 source/destination 的最小权限，恢复状态也绑定该 claim。
 
 Artifact Validator 必须核对 object version、size、checksum 和 content type，并使用媒体探测验证 duration、resolution、frame count 和 codec。验证结果、必需 kind / ordinal 或 generation count 与 Job 的 output spec 不一致时，ArtifactSet 不得 COMMITTED 或触发 Charge。
 
 ### 13.4 访问与安全
 
 - Bucket 保持 private。
-- Worker 使用绑定当前 Artifact object key、method、size 和 checksum constraint 的短期 multipart upload 权限。
+- Stage materializer 只获得绑定当前 StageMaterializationLease、L2 object key、method、size 和 checksum 的短期写权限；Stage Worker 不持有 L3 customer Artifact 的通用写权限。
+- Finalizer 只获得绑定当前 StageGraphFinalizationClaim 的精确 L2 source-version 读取和必要的 L3 destination 写权限。
 - Visible Completion 事务提交后即可按需签发 15 分钟 signed GET URL；外部 Invoice settlement 不阻塞访问。
 - 对公网高流量下载可以在 COMMITTED Artifact 前增加 CDN。
 - 对象存储与计算集群保持同地域；首发不提供 Vela 跨地域复制。
@@ -850,21 +846,22 @@ Retention Policy 版本锁定并由控制面与存储 lifecycle 共同执行，�
 
 ### 13.6 存储故障与背压
 
-Worker heartbeat 上报 scratch 剩余容量和 Artifact Store 可达性。控制面维护 Artifact Store circuit，并采用 high / low watermark 避免抖动：
+每个 WorkerInstance 的 epoch-bound CapacityObservation 上报 scratch 剩余容量；独立 storage probe 上报 L2/L3 Artifact Store 可达性。控制面维护 scoped store circuit，并采用 high / low watermark 避免抖动：
 
 ```text
 Artifact Store unhealthy
-  -> 停止受影响 pool 的新 Assignment
-单个 Worker scratch 达到 high watermark
-  -> 将该 Worker 移出 READY 候选集
+  -> 停止受影响 graph 的新 Admission 和依赖该 store 的 AcquireStage
+  -> 已 seal 输出释放 GPU，并在 Job Expiry/budget 内重试 materialization
+单个 WorkerInstance scratch 达到 high watermark
+  -> 将该 WorkerInstance 移出新 AcquireStage 候选集
 pool 可用 scratch 容量低于 pool watermark
-  -> 停止该 pool 的新 Assignment
-  -> 允许运行中 Job 结束并优先恢复上传
+  -> 停止该 pool 的新 AcquireStage
+  -> 允许运行中 StageAttempt 在 authority 内 seal，并优先 materialize
   -> scratch 回落到 low watermark 且存储探测通过
-  -> 恢复 Assignment
+  -> 恢复 AcquireStage
 ```
 
-本地 Artifact 在 COMMITTED 或明确终止前不得因普通空间压力被静默删除。达到 critical watermark 时必须停止推理并触发运维告警；如何处置无法上传的结果属于显式恢复动作。
+本地 sealed output 在 StageArtifact durable commit 或明确终止前不得因普通空间压力被静默删除。达到 critical watermark 时必须停止领取新 Stage，并对仍占用空间的 StageAttempt 执行显式 fence/recovery 与运维告警；不得把卸载常驻模型当作普通空间回收手段，无法 materialize 的结果必须走显式恢复动作。
 
 ## 14. 计费设计
 
@@ -966,7 +963,7 @@ VALIDATING -> INVALID
 CANARY     -> INVALID
 ```
 
-只有 `ACTIVE` ExecutionProfileRevision 可以接收普通 Job；`CANARY` 只接收隔离的内部 canary 流量，不能靠首发客户承担验证。验证或 canary 失败时进入 `INVALID`。生产 telemetry 低于质量门槛时，Catalog 先使相关 ProfileCertification 失效，再将 `ACTIVE` ExecutionProfileRevision 转为 `DRAINING`，从而阻止新 Assignment；引用归零后才进入 `RETIRED`。
+只有 `ACTIVE` ExecutionProfileRevision 及其认证 StageProfile set 可以接收普通 Job/StageRun；`CANARY` 只接收隔离的内部 canary 流量，不能靠首发客户承担验证。验证或 canary 失败时进入 `INVALID`。生产 telemetry 低于质量门槛时，Catalog 先使相关 certification 失效，再将 revision 转为 `DRAINING`，从而阻止新的 StageAssignment；引用归零后才进入 `RETIRED`。
 
 ProfileCertification 至少绑定 ModelRevision、InferenceBackendRevision、ExecutionProfileRevision、GenerationPresetRevision、OutputSpec、硬件 / driver 基线、benchmark corpus revision 和证据 digest。首发三个 Generation Preset 的每个可售 OutputSpec 都必须分别取得质量、成功率、端到端 p95、成本和统计置信证据；没有认证的组合不能出现在 ACTIVE RateCardRevision 中。首发 Service Class 固定为 `standard`，其 SLO matrix 同样按 GenerationPresetRevision 和 OutputSpec 版本化。
 
@@ -977,25 +974,25 @@ register immutable revisions
   -> verify ModelRevision / InferenceBackendRevision compatibility
   -> run quality and performance benchmark
   -> issue ProfileCertification
-  -> Fleet Controller warm canary Worker pool
+  -> Fleet Controller materialize and warm canary WorkerInstances
   -> admit bounded canary traffic
   -> promote ACTIVE
   -> drain old ExecutionProfileRevision
   -> retire after references reach zero
 ```
 
-Fleet Controller 执行 planned rollout，并与硬件维护共用 DRAINING 语义：停止新 Assignment，等待当前 Job 完成或达到显式 grace period，再替换 Worker。不能依赖 Kubernetes 直接终止一个仍在执行 40 分钟 Job 的 Pod。
+Fleet Controller 通过新的 ResidencyPlanRevision 执行 planned rollout，并与硬件维护共用 DRAINING 语义：先停止目标 WorkerInstance 的新 StageAssignment，等待 active StageLease 结束或由显式 operation fence，再替换 WorkerMember Pod。不能依赖 Kubernetes 直接终止仍持有 StageLease 或 sealed materialization source 的 Pod，也不能为普通 rollout 卸载未被替换实例的常驻模型。
 
-普通 release 不得中断 Accepted Job。控制面和 Worker protocol、Protobuf event、数据库 schema 必须支持 N/N-1 版本共存；数据库迁移采用 expand -> backfill -> switch -> contract，contract 只能在旧 binary、旧 event backlog 和旧 Worker 引用归零后执行。消费者必须忽略未知的可选字段，禁止在同一 field number 或 event type 上改变既有语义。若变化无法满足兼容窗口，必须建立显式 migration operation，先 drain 受影响 revision，再执行升级。
+普通 release 不得中断 Accepted Job。控制面、Stage Worker/ModelRuntime protocol、Protobuf event 和数据库 schema 的兼容窗口必须由明确 release contract 定义；数据库迁移采用 expand -> backfill -> switch -> contract，contract 只能在旧 binary、旧 event backlog 和旧 Stage authority 引用归零后执行。消费者必须忽略未知的可选字段，禁止在同一 field number 或 event type 上改变既有语义。已经永久 contraction 的 monolithic Runner/Worker path 不再作为 rollback target；无法满足 current Stage compatibility window 的变化必须建立显式 migration operation，先 drain 受影响 ResidencyPlan revision，再升级。
 
-每次 release 先升级无状态 `vela-control` replica，再 canary 新 Worker pool。回滚不得回退已提交的数据库 schema，而是切回 N-1 binary / configuration；发布前必须用真实长任务验证升级、回滚、Worker drain 和旧 event backlog 消费。
+每次 release 先升级无状态 `vela-control` replica，再以新 ResidencyPlanRevision canary WorkerInstances。回滚不得回退已提交的数据库 schema，也不得恢复已 contraction 的 legacy runtime；只能切回仍在兼容窗口内的 current Stage binary/configuration/ResidencyPlan revision。发布前必须用真实长任务验证升级、回滚、StageLease drain 和 event backlog 消费。
 
 `vela-control` 的 repository base 使用两个 replica、`maxUnavailable: 0`、`maxSurge: 1`、required hostname anti-affinity 和 `minAvailable: 1` PDB。它只保证 release manifest 不主动同时移除两个 replica；只有真实集群中的旧/新 binary coexistence、readiness、连接 drain、long-running Job 和 retained backlog receipt 才能证明 non-interrupting release。
 
 ### 15.3 Revision 保留
 
-- QUEUED、ASSIGNED、RUNNING、FINALIZING 或 RETRY_WAIT Job 引用的 ModelRevision、GenerationPresetRevision、ExecutionPolicySnapshot 和 PricingSnapshot 必须保留；非终态 Attempt 引用的 InferenceBackendRevision、ExecutionProfileRevision 和 ProfileCertification 同样必须保留。
-- Retry 可以选择另一个具有有效 ProfileCertification 的 ExecutionProfileRevision，但 ModelRevision 和 GenerationPresetRevision 不变。
+- QUEUED、RUNNING 或 FINALIZING Job/parent Attempt 引用的 ModelRevision、GenerationPresetRevision、ExecutionPolicySnapshot、ExecutionGraphSnapshot 和 PricingSnapshot 必须保留；非终态 StageRun/StageAttempt 引用的 StageProfileRevision、InferenceBackendRevision、ExecutionProfileRevision、StageInterface 和 certification 同样必须保留。
+- Stage retry 只能从 Admission 冻结的 compatible StageProfile set 中选择另一个认证有效的 option；ModelRevision、GenerationPresetRevision、ServiceClassRevision 和接口语义不变。
 - Model weights、Inference Backend image 和配置只有在引用计数为零且审计保留期满足后才能删除。
 - 强制迁移必须创建显式 migration record，重新验证质量、价格和用户承诺，不能静默修改 Job snapshot。
 
@@ -1018,18 +1015,19 @@ Fleet Controller 执行 planned rollout，并与硬件维护共用 DRAINING 语�
 
 ```text
 detect fault
-  -> mark Worker DRAINING
-  -> stop new Assignment
+  -> mark affected WorkerInstance DRAINING
+  -> stop new StageAssignment for that instance
   -> wait grace period or hard-stop severe fault
-  -> fence current Lease
+  -> fence active StageLease(s)
   -> execute selected remediation
-  -> run device and Inference Backend health tests
-  -> warm model
+  -> increment affected device/WorkerInstance/ModelRuntime epochs as required
+  -> run device and ModelRuntime health tests
+  -> restore resident model only when remediation invalidated it
   -> canary admission
   -> return READY or QUARANTINED
 ```
 
-不能对所有错误无条件执行 FLR，也不能默认逐级尝试到最高等级。每次 Remediation Operation 必须持久化 `operation_id`，绑定 node identity、GPU UUID / PCI BDF、Worker epoch、故障证据、认证矩阵 revision、动作和结果。Node Agent 根据 error class、设备 reset capability、拓扑限制和当前使用状态选择已认证动作；身份不匹配、重复失败、超出限频或 post-check 失败直接 Quarantine。
+不能对所有错误无条件执行 FLR，也不能默认逐级尝试到最高等级。每次 Remediation Operation 必须持久化 `operation_id`，绑定 node identity、GPU UUID / PCI BDF、WorkerInstance epoch、device epoch、故障证据、认证矩阵 revision、动作和结果。Node Agent 根据 error class、设备 reset capability、拓扑限制和当前使用状态选择已认证动作；身份不匹配、重复失败、超出限频或 post-check 失败直接 Quarantine。
 
 ### 16.2 Kubernetes 与 driver
 
@@ -1039,58 +1037,37 @@ detect fault
 
 GPU Worker 由主机镜像、PXE 或 Ansible 管理固定 kernel、driver、firmware 和 container toolkit。若使用 NVIDIA GPU Operator，关闭其 driver 和 toolkit 生命周期管理，只启用经验证的 NVIDIA Device Plugin、DCGM Exporter 和必要的 metrics 能力。
 
-H3 首发 Worker Pod 请求：
+Fleet Controller 不部署静态 Worker Deployment、DaemonSet 或 WorkerPool CRD。它根据批准且 release-bound 的 `ResidencyPlanRevision`，为每个 `WorkerMemberActuation` 创建一个 hostname-pinned Stage Worker Pod，并绑定完整 `DeviceSet`、模型驻留、镜像、配置和身份摘要。标准 H3 `WorkerInstance` 独占一张 GPU；AUX WorkerInstance 在同一张 GPU 上驻留 Encoder 与 VAE 两个独立进程，但同一时刻只允许一个 active StageLease；七个 DiT WorkerInstance 分别占用一张 GPU。未来 LLM profile 可以让一个逻辑 WorkerInstance 拥有单机多卡或跨节点多个 WorkerMember。
 
-```yaml
-resources:
-  limits:
-    nvidia.com/gpu: 8
-```
+Kubernetes 的 Device Plugin 或 DRA claim 必须与 `DeviceSet` 的 GPU UUID / PCI BDF 一致，并保证一张 GPU 只有一个 active WorkerInstance owner；Vela profile、node label 或 `CUDA_VISIBLE_DEVICES` 都不能单独替代真实设备 claim。专用 node label、taint/toleration 用于隔离普通 GPU workload，host `vela-node-agent` 仍可与 Stage Worker Pod 共存。
 
-同时使用专用 node label、taint/toleration 和 Worker pool，阻止普通 GPU workload 进入 H3 节点。`nvidia.com/gpu: 8` 保证 GPU 独占，但系统 DaemonSet 和 host `vela-node-agent` 仍可共存，因此不要把它误解为 CPU 和主机资源的完全独占。
+Live WorkerMember Pod 及多成员场景派生的 Service / Secret 由 Fleet Controller 独占管理。Argo CD 只交付 controller、Stage Worker 静态前置配置和版本化 ResidencyPlan 输入，不直接创建、prune 或 patch live WorkerMember。Kubernetes RBAC 与 validating admission webhook 拒绝其他 service account 修改受保护对象；Fleet Controller 只有携带 AttemptCoordinator/Worker Registry 已完成的 `DrainOperation` 引用才能解除 finalizer 并执行删除。节点突然失效仍由 StageLease/fence 和 Stage retry 恢复，不能由 Kubernetes guard 保证。
 
-不能单独使用下面的扩展资源代替实际 GPU claim：
+Fleet Controller 只有在 Worker Registry 确认 WorkerInstance 已 DRAINING、所有 StageLease 已结束或 fenced、sealed outputs 已 materialize/移交后才删除 Pod；不能依赖默认滚动更新自动终止长任务。PodDisruptionBudget、较长 `terminationGracePeriodSeconds` 和 preStop drain 只能作为额外保护，不能代替 Vela StageLease 语义。
 
-```yaml
-resources:
-  limits:
-    vela.ai/h3-worker: 1
-```
-
-Kubernetes 将 `vela.ai/h3-worker` 与 `nvidia.com/gpu` 视为独立资源；仅请求前者不会自动占用 8 张 GPU。长期若引入自定义资源，只能选择一个权威分配机制：
-
-- 自定义 Device Plugin 或 DRA driver 真正声明整组设备、注入所需 device，并确保同一 GPU 不再由另一插件重复分配；或
-- 继续请求 `nvidia.com/gpu: 8`，将 Vela profile 只作为 node label / scheduling metadata，而不是可独立消费的资源。
-
-H3 首发采用第二种方案，不实现 `vela.ai/h3-worker` 扩展资源。
-
-Fleet Controller 为每个 ACTIVE / CANARY ExecutionProfileRevision 管理带专用 node selector 的 Worker pool。H3 baseline 使用 `OnDelete` DaemonSet，但 `OnDelete` 本身不是安全边界。Live WorkerPool / DaemonSet / Worker Pod 由 Fleet Controller 独占管理，Argo CD 只交付 controller、CRD 和版本化期望配置，不 prune 或直接 patch live pool resource。Kubernetes RBAC 与 validating admission webhook / policy 拒绝其他 service account 删除 Worker Pod / pool、修改 DaemonSet selector / image 或移除保护 finalizer；Fleet Controller 只有携带 Job Coordinator 已完成的 `DrainOperation` 引用才能解除 finalizer并执行这些动作。节点突然失效仍由 Lease / fence 恢复，不能由 Kubernetes guard 保证。
-
-Fleet Controller 只有在 Job Coordinator 确认 Worker 已 DRAINING、Lease 已结束或 fenced 后才删除 Pod；不能依赖默认滚动更新自动终止长任务。PodDisruptionBudget、较长 `terminationGracePeriodSeconds` 和 preStop drain 只能作为额外保护，不能代替 Vela Lease 语义。
-
-每个 GPU 节点提供独立 NVMe scratch，使用 XFS project quota 或等价硬配额，并挂载到 H3 Worker Pod。Worker Agent 为每个 Attempt 创建独立目录；配额、high / low / critical watermark 和终态清理由 Vela 管理，不能把 Kubernetes ephemeral-storage eviction 当作 Artifact 恢复机制。
+每个 GPU 节点提供独立 NVMe scratch，使用 XFS project quota 或等价硬配额，并挂载到 Stage Worker Pod。Stage Worker 为每个 StageAttempt 创建独立目录；配额、high / low / critical watermark 和终态清理由 Vela 管理，不能把 Kubernetes ephemeral-storage eviction 当作 Artifact 恢复机制。
 
 ## 17. 一致性与高可用
 
 ### 17.1 Scheduler 高可用
 
-可以运行多个 Scheduler replica，但 Assignment 必须通过数据库事务竞争。Scheduler 进程本身不持有不可恢复内存状态。
+可以运行多个 StageScheduler replica，但 StageAssignment 必须通过数据库事务竞争。Scheduler 进程本身不持有不可恢复内存状态。
 
-一个 Worker pool 的 claim、counter drift 或 Assignment 错误只结束该 pool 当前调度 tick，并携带 pool identity 返回告警；它不能阻止同一 cycle 中其他健康 pool 继续调度。共享 context 被取消或超时才停止整个 cycle。
+一个 CapacityPool 的 claim、counter drift 或 StageAssignment 错误只结束该 pool 当前调度 tick，并携带 pool identity 返回告警；它不能阻止同一 cycle 中其他健康 pool 继续调度。共享 context 被取消或超时才停止整个 cycle。
 
 Scheduler 崩溃后：
 
-- 未提交事务不会产生 Assignment。
-- Assignment 已提交但 gRPC acquire 响应未送达时，同一 mTLS `worker_id` 和 `worker_epoch` 重试 `acquire()` 会先读到并重放同一 active Assignment；该路径不创建新 Attempt、不签发新 fence，也不延长 `expires_at`。若 Worker 始终没有取得响应或续租，则 Lease 过期后由 reconciliation 结束 Attempt。新进程必须使用递增的 epoch，不能继承旧 Lease。Outbox 只重发状态事件，不传递执行所有权。
-- Worker 未续租时 Lease 最终过期，Job 进入重试判断。
+- 未提交事务不会产生 StageAssignment。
+- StageAssignment 已提交但 gRPC `AcquireStage` 响应未送达时，同一 mTLS WorkerInstance/runtime authority 重试会先读到并重放同一 active StageAssignment；该路径不创建新 StageAttempt、不签发新 fence，也不延长 `expires_at`。若 Stage Worker 始终没有取得响应或续租，则 StageLease 过期后由 reconciliation 结束 StageAttempt。重建的 WorkerInstance 或 ModelRuntime 必须使用递增 epoch，不能继承旧 StageLease。Outbox 只重发状态事件，不传递执行所有权。
+- Stage Worker 未续租时 StageLease 最终过期，StageRun 进入重试判断；Attempt 只在 graph-level policy 要求时整体重建。
 
 ### 17.2 网络分区
 
-Worker 与控制面失联时，旧 Worker 可能仍继续计算。控制面可以在 grace period 后签发具有更大 fence 的新 Attempt，但旧 Attempt 已失效，不能推进 Job、发布 Artifact 或触发 Charge。
+Stage Worker 与控制面失联时，旧 ModelRuntime 可能仍继续计算。控制面在 grace period 后使原 StageLease 过期，并可为同一 StageRun 创建具有更大 stage fence 的新 StageAttempt；只有 graph-level policy 失效时才提升整个 Attempt fence。旧 authority 不能推进 StageRun、发布 StageArtifact、进入 cache、形成 Visible Completion 或触发 Charge。
 
 ### 17.3 数据与恢复目标
 
-- 任一 Control/Storage Node、单盘或单个控制面实例失效时，已提交 PostgreSQL 事务的目标是 RPO 0，控制面恢复目标是 RTO 不超过 5 分钟；Admission 和新 Assignment 在无法证明 quorum 时 fail closed。
+- 任一 Control/Storage Node、单盘或单个控制面实例失效时，已提交 PostgreSQL transaction 的目标是 RPO 0，控制面恢复目标是 RTO 不超过 5 分钟；Admission、新的 `AcquireStage` 和 finalization claim 在无法证明 quorum 时 fail closed。
 - 整个主站点或三节点集群丢失时，不做自动跨地域 failover。PostgreSQL WAL、Catalog / 配置和密钥恢复材料写入独立故障域，控制面 metadata 的站点恢复目标为 RPO 不超过 15 分钟、RTO 不超过 4 小时。Committed Artifact 另做 off-cluster backup 和抽样恢复验证，但全站点 Artifact 恢复与 GPU serving capacity 恢复不从 metadata 目标外推，必须在客户合同中单独披露。
 - JetStream 是可重建的投递设施，不是灾备事实源。恢复顺序为 PostgreSQL / Catalog -> Artifact Store -> JetStream -> Outbox replay -> Reconciler；恢复不能制造第二个 Visible Completion、Charge 或 Webhook event id。
 - PostgreSQL restore、JetStream rebuild、Outbox replay、Artifact 抽样恢复和 secret rotation 至少每季度实演一次。备份任务成功不等于恢复通过。
@@ -1107,8 +1084,8 @@ Launch Receipt 仍是外部 Production Gate。
 
 ### 17.4 外部依赖故障
 
-- PostgreSQL 不可用时停止新 Assignment，Worker 可以在有限 Lease 内继续当前 Attempt。
-- 对象存储不可用时已完成推理停留在 FINALIZING，并保留本地 Artifact 后恢复上传；Artifact Store circuit 阻止受影响 pool 的新 Assignment，scratch high watermark 只阻止对应 Worker 或 pool 的新 Assignment。
+- PostgreSQL 不可用时停止 Admission、新的 `AcquireStage` 和 finalization claim；Stage Worker 只可在本地 monotonic watchdog 给出的有限 StageLease 内继续当前 StageAttempt，并且不能在失联后提交新 authority。
+- L2 对象存储不可用时，已 seal StageAttempt 释放 GPU、保持 `MATERIALIZING` 并从 L1 source retry；store circuit 阻止受影响 graph 的 Admission/AcquireStage，scratch watermark 只影响对应 WorkerInstance/pool。L3 或 Finalizer 不可用时，durable final StageArtifacts 保持不变，由 `StageGraphFinalizationClaim` 在 deadline 内恢复，不重跑模型。
 - Invoice export 不可用时 PostgreSQL 保留由 POSTED Charge 和 canonical Outbox intent 建立的 export authority；周期 reconciliation 以同一 `charge_id` 重试，不阻塞 Visible Completion、Artifact access，也不重新执行 Job。
 - JetStream 不可用时 outbox 保留事件，并依靠 PostgreSQL reconciliation 保证最终恢复。
 
@@ -1136,7 +1113,7 @@ Vela 不持有硬空闲故障 Worker。故障后立即收紧风险修正 Admissi
 - 长期 secret 存放在 Vault 或现有企业 KMS / Secret Manager，通过 External Secrets 注入；对象存储上传和下载使用短期凭据，BMC credential 不写入普通 ConfigMap 或日志。
 - Node Agent 具有高权限，其命令接口必须最小化并限制到已登记设备和动作。
 - Node Agent 不接受任意 shell command，不把 PCI sysfs path 直接暴露给远端调用者。
-- Worker 只能上传当前 Artifact 的确切 object key，不能覆盖、删除或列举其他对象。
+- Stage materializer 只能在有效 StageMaterializationLease 下写当前 L2 StageArtifact 的确切 object key；Finalizer 只访问 claim-bound L2 source/L3 destination，二者都不能覆盖、删除或列举其他对象。
 - Artifact Validator 将媒体视为不可信输入；`ffprobe` 在无网络、非特权且有 CPU、内存、文件大小和超时限制的 sandbox 中运行。
 - signed URL 具有短 TTL，并绑定 method、object key 和 content constraints。
 - Customer Content 默认只用于执行和交付 Job，不用于训练、benchmark、共享质量数据集或例行人工抽检。日志禁止记录 prompt 正文、对象凭据和 signed URL。
@@ -1145,15 +1122,15 @@ Vela 不持有硬空闲故障 Worker。故障后立即收紧风险修正 Admissi
 
 ## 19. 可观测性
 
-所有 Go / Python 进程使用 OpenTelemetry SDK，将 trace、metric 和结构化日志发送到 OpenTelemetry Collector。首发 backend 使用 Prometheus + Alertmanager、Grafana、Loki 和 Tempo；GPU 指标来自 DCGM Exporter。生产告警必须覆盖 API 99.9% 月度 SLO、各 Preset p95 / success-rate error budget、PostgreSQL replication / failover、JetStream replica / consumer lag、outbox age、reconciliation backlog、Webhook backlog 和 object-store circuit。
+所有 Vela 进程使用 OpenTelemetry SDK；外部 ModelRuntime backend 必须满足同一 telemetry contract，将 trace、metric 和结构化日志发送到 OpenTelemetry Collector。首发 backend 使用 Prometheus + Alertmanager、Grafana、Loki 和 Tempo；GPU 指标来自 DCGM Exporter。生产告警必须覆盖 API 99.9% 月度 SLO、各 Preset p95 / success-rate error budget、PostgreSQL replication/failover、JetStream replica/consumer lag、outbox age、Stage reconciliation backlog、Webhook backlog 和 L2/L3 object-store circuit。
 
 ### 19.1 Job 指标
 
 - 接纳率、队列长度和 queue wait time。
 - 按 ModelRevision、GenerationPresetRevision、ServiceClassRevision、OutputSpec 和受控 customer cohort 统计 queue wait、端到端完成时间与成功率；单个 `organization_id` 或 `project_id` 不作为常规 metric label。
 - Job success、failure、cancel 和 retry rate。
-- 每个 Job 的 Attempt 数量和累计 compute seconds。
-- Artifact upload latency、失败率和 orphan bytes。
+- 每个 Job 的 StageAttempt 数量、retry waste、累计 GPU/CPU resource-seconds 和 finalization time。
+- StageArtifact materialization/transfer/finalization latency、失败率、orphan bytes 和 cache hit/eviction reason。
 - Admission rejection reason、CreditReservation create / release / consume、Charge post 和 Invoice export 成功率。
 
 ### 19.2 Worker 与硬件指标
@@ -1162,7 +1139,7 @@ Vela 不持有硬空闲故障 Worker。故障后立即收紧风险修正 Admissi
 - GPU utilization、memory、temperature、power 和 Xid。
 - PCIe AER、fallen off bus 和 heartbeat loss。
 - 各 remediation level 的执行次数、成功率和恢复耗时。
-- ModelRevision / ExecutionProfileRevision warm 状态和 cold-start 时间。
+- ModelResidency/ModelRuntime epoch、warm-up/canary 状态、planned reload 次数和耗时；不把按请求 cold-start 当成正常调度指标。
 
 ### 19.3 追踪标识
 
@@ -1174,8 +1151,12 @@ project_id
 principal_id
 job_id
 attempt_id
-worker_id
-worker_epoch
+stage_run_id
+stage_attempt_id
+worker_instance_id
+worker_instance_epoch
+model_residency_id
+model_runtime_epoch
 model_revision
 generation_preset_revision
 execution_profile_revision
@@ -1189,15 +1170,15 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 | 领域 | 选择 | 约束 |
 | --- | --- | --- |
-| 控制面、Worker Agent、Node Agent | Go | 使用同一 Go module；并发状态机、gRPC、Kubernetes controller 和静态 host binary 共用工具链 |
-| Inference Backend | Python + SGLang fork | Python 只拥有模型和 GPU 执行，通过 runner Interface 与 Go Worker Agent 隔离 |
+| 控制面、Stage Worker、Node Agent | Go | 使用同一 Go module；并发状态机、gRPC、Kubernetes controller 和静态 host binary 共用工具链 |
+| ModelRuntime backend | 外部、版本化的 backend driver | 语言和框架不进入 Vela 调度契约；只通过固定的本地 ModelRuntime Interface 暴露长期驻留模型的能力与执行 |
 | 外部请求 | REST / JSON + OpenAPI | Envoy Gateway 路由；Go 使用 `oapi-codegen` 生成类型，不手写漂移的 request struct |
 | 内部协议和事件 schema | Protobuf | gRPC 和 JetStream event 共用版本化 schema，使用 `buf` lint / breaking check |
 | PostgreSQL access | `pgx` + `sqlc` | 保留显式 SQL、row lock、CAS 和数据库约束，不使用隐藏事务语义的重型 ORM |
 | Schema migration | `goose` | migration 随 release 版本化，生产执行前备份并验证向前兼容 |
-| Python environment | `uv` + lockfile | runner 依赖、CUDA / SGLang fork revision 和镜像 digest 一起固定 |
+| Backend release inputs | OCI digest + artifact checksum | backend driver、CUDA/runtime、模型组件和命令身份作为外部 release inputs 独立固定和验证 |
 
-所有具体版本在实现 bootstrap 时锁定到当期稳定版本，并通过镜像 digest、Go/Python lockfile 和 SBOM 进入 release receipt；架构文档不跟随每次 patch version 更新。
+所有具体版本在实现 bootstrap 时锁定到当期稳定版本，并通过镜像 digest、Go module checksum、外部 backend artifact inventory 和 SBOM 进入 release receipt；架构文档不跟随每次 patch version 更新。
 
 ### 20.2 数据与可靠事件
 
@@ -1215,12 +1196,12 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 | 领域 | 选择 | 生产基线 |
 | --- | --- | --- |
-| 集群 | Kubernetes + Vela Scheduler | Kubernetes 管 Worker 生命周期，Vela 管 Job placement；裸金属 baseline 为 Ubuntu LTS + RKE2 / containerd |
-| GPU | NVIDIA Device Plugin + DCGM Exporter | H3 请求 `nvidia.com/gpu: 8`；host driver / toolkit 版本锁定，不由 Operator 自动升级 |
-| Worker rollout | Fleet Controller + `OnDelete` DaemonSet | planned drain / fence 后才删除 Pod；profile 用 node label 和 pool 表达 |
+| 集群 | Kubernetes + Vela StageScheduler | Kubernetes 管 WorkerMember Pod 生命周期，Vela 管 StageRun placement；裸金属 baseline 为 Ubuntu LTS + RKE2 / containerd |
+| GPU | NVIDIA Device Plugin / DRA + DCGM Exporter | H3 标准 WorkerInstance 独占一张 GPU，DeviceSet 与实际 claim 精确绑定；host driver / toolkit 版本锁定，不由 Operator 自动升级 |
+| Worker rollout | Fleet Controller + ResidencyPlanRevision | materialize WorkerBundle/WorkerInstance；planned drain / fence 后才删除受保护 Pod，无 WorkerPool CRD 或静态 DaemonSet |
 | Artifact | 三节点分布式 S3-compatible store | 运行在 Control/Storage Node 的独立数据盘；private bucket、versioning、conditional create、固定 object version、checksum 和 off-cluster backup；磁盘拓扑不足时切换到已有外部 S3 store |
 | 本地对象存储 | MinIO 或 local adapter | 只用于开发和 conformance test，不能把本地通过当作生产 durability / restore 证据 |
-| Scratch | 本地 NVMe + XFS project quota | per-Attempt 目录、watermark 背压、明确终态后清理 |
+| Scratch | 本地 NVMe + XFS project quota | per-StageAttempt 目录、watermark 背压、明确终态后清理 |
 | 镜像与模型 | OCI registry + S3 | 镜像固定 digest；模型权重固定 checksum，Catalog 只保存 revision 和位置 metadata |
 | 媒体探测 | FFmpeg `ffprobe` | 固定版本和探测参数，输出解析为结构化 metadata 后再执行 output-spec validation |
 
@@ -1235,7 +1216,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 | Telemetry | OpenTelemetry SDK / Collector + Prometheus / Alertmanager + Grafana + Loki + Tempo |
 | GPU telemetry | DCGM Exporter + NVML / PCIe AER host probe |
 | Deployment | Helm + Argo CD；GPU host image / driver 使用 Ansible 或 PXE 管理 |
-| 本地集成测试 | `testcontainers-go` 启动 PostgreSQL、NATS、S3 fixture；fake Worker / OIDC / Invoice exporter；Python runner 使用 `pytest` |
+| 本地集成测试 | `testcontainers-go` 启动 PostgreSQL、NATS、S3 fixture；使用 mock ModelRuntime、fake Worker/OIDC/Invoice exporter 和本地小字节 Artifact；不得下载、加载或运行真实模型 |
 | 硬件验收 | 独立 H3 staging pool 执行 process kill、网络分区、GPU fault、reboot 和对象存储故障注入 |
 
 ### 20.5 明确不采用
@@ -1246,7 +1227,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 | Kafka | 不采用；当前不需要长期事件历史和超高吞吐 replay，JetStream 运维面更小 |
 | Redis Streams | 不承担关键事件或状态；只有出现有测量依据的缓存需求时再引入 Redis |
 | K8s + Ray Serve | 不采用，避免 Kubernetes、Ray、Vela 和 SGLang 四层重复调度 |
-| Kubernetes Job per inference | 不采用，避免每个请求重新调度、启动和加载 8-GPU 模型 |
+| Kubernetes Job per inference | 不采用，避免每个请求重新调度、启动和加载 H3 resident models |
 | Slurm | 不作为互联网在线 serving 主框架 |
 | 纯 systemd + 自研集群管理 | 仅适合很小规模，不能替代 Kubernetes rollout、service discovery 和 declarative lifecycle |
 | Nomad | 可行，但当前没有足够收益替换 Kubernetes 生态 |
@@ -1257,13 +1238,13 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 - 单地域、单 RKE2 集群；三台 Control/Storage Node 承载 etcd、CloudNativePG、3-replica JetStream 和分布式 S3-compatible storage，GPU Worker 独立部署。
 - MiniMax H3 Model / Workload、SGLang fork Inference Backend，以及 `quality`、`balanced`、`fast` 三个已认证 Generation Preset；首发 Service Class 为 `standard`。
-- Go 模块化 `vela-control`、Fleet Controller、Worker Agent、host Node Agent 与 Python H3 runner；一台 8-GPU 节点对应一个长期运行的 Worker Pod。
+- 当前基线使用 Go 模块化 `vela-control`、Fleet Controller、`vela-stage-worker-agent`、`vela-model-runtime` 和 host Node Agent；一台 8-GPU 节点可承载 AUX 与七个 DiT 单卡 WorkerInstance，StageRun 可跨机器调度，未来多卡或多节点 LLM 封装为一个多成员 WorkerInstance。
 - Customer Organization、Project、企业 OIDC Human Principal、Project Service Principal、固定 RBAC、Organization Isolation、审计和 Break-glass Access。
 - REST / OpenAPI 的异步 submit / get / cancel / Artifact / Content Deletion / Webhook Interface，Project-scoped Idempotency-Key 和明确的 402 / 429 / 503 Admission 结果。
-- Job、Attempt、Lease、fencing、ExecutionPolicySnapshot、RetryRuntimeState、Job Expiry、Attempt-scoped phase progress、最多 3 次 Attempt 和累计 compute budget。
+- Job、parent Attempt、ExecutionGraphSnapshot、StageRun/StageAttempt/StageLease fencing、StageArtifact、ExecutionPolicySnapshot、per-stage attempt budget、parent resource budget、Job Expiry 和 Stage-scoped progress/retry。
 - 分层公平、Protected Lane、bounded retry lane、风险修正 Admission 和 work-conserving Worker capacity；不向 BUSY Worker 预派任务。
 - PostgreSQL 唯一事实源、transactional outbox、JetStream at-least-once wakeup、幂等 consumer 和周期 reconciliation。
-- S3 multipart upload、不可变 object version、完整 ArtifactSet validation、Visible Completion 原子提交、signed download、Retention Policy 和 Content Deletion。
+- L2 StageArtifact materialization、不可变 object version、exact cache/pin/transfer、非 GPU StageGraphFinalizationClaim、完整 ArtifactSet validation、Visible Completion 原子提交、signed download、Retention Policy 和 Content Deletion。
 - Contract Credit Limit、Admission 时 CreditReservation、离散 OutputSpec SKU、不可变 PricingSnapshot、POSTED Charge、UsageRecord 和月度 Invoice export。
 - Project Webhook 的 HMAC 签名、secret 轮换、72 小时重试、dead-letter 可见性和人工重放；GET Job 始终是权威查询。
 - Catalog benchmark / certification、N/N-1 兼容发布、warm canary、planned drain、rollback、revision retention，以及 L0-L5 自动恢复、L6 人工审批和自动 Quarantine。
@@ -1271,7 +1252,7 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 正式首发明确不包含：
 
-- 跨 Worker Durable Checkpoint；节点或 NVMe 丢失后从头重算。
+- 任意 DiT step 的跨 Worker Durable Checkpoint；节点或 NVMe 丢失后从最近的 durable StageArtifact 边界重跑失败 Stage。
 - 自动跨地域 failover、跨地域 active-active 或 Vela 管理的跨地域 Artifact 复制。
 - 多节点 LLM ExecutionProfileRevision。
 - 无人审批的 BMC power cycle。
@@ -1282,6 +1263,27 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 
 ## 22. 验收场景
 
+### 22.1 当前 Stage 执行验收清单
+
+以下清单是当前实现的 repository acceptance authority；每项通过只证明对应的 mock/fixture/Testcontainers conformance，不构成真实 H3 性能、可靠性或 Production Gate 证据。
+
+1. Admission 在一个 PostgreSQL transaction 内固定执行图、初始 Attempt/StageRuns、storage reservation 和 command evidence；幂等 replay 不重复创建 authority，容量或 catalog 不兼容时不留下部分图。
+2. 一个 GPU 只能有一个活跃 WorkerInstance owner；H3 AUX 的 Encoder/VAE ModelRuntimeProcess 与七个单卡 DiT WorkerInstance 可按批准的 ResidencyPlan 跨机器放置。未来多 GPU 或多节点 LLM 仍封装为一个经过认证的 WorkerInstance/DeviceSet，不把 rank 暴露给 StageScheduler。
+3. WorkerInstance、WorkerMember、DeviceSet 和 ModelRuntime epochs 精确进入 StageAuthority；任一 identity、device、member、runtime 或 lease fence 过期时，start、progress、seal、materialize 和 completion 都 fail closed。
+4. StageScheduler 只按 `Filter -> Fairness -> Score -> Pick` 从 READY StageRun 和合格的 warm WorkerInstance 中选择；cache/locality 只能参与 score，不能绕过隔离、认证、公平或 capacity eligibility。
+5. StageScheduler 在一个 authority transaction 中创建独立 StageAttempt、StageAllocation 和 StageLease，再向 Worker 返回 StageAssignment；response loss/replay 不产生第二份执行 authority，同一 StageRun 的 retry 使用更高 fence 且受父 Attempt budget 与 Job Expiry 约束。
+6. ModelRuntime 在 Assignment 之间保持加载；正常调度、空闲或 cache 命中不得卸载模型。Residency 变更必须通过显式 ResidencyPlan rollout、drain、fence、warm-up 和 canary，不能走按请求换模。
+7. StageArtifact 以 exact version、checksum、lineage 和 seal/materialization receipt 发布；downstream execution 只能消费已绑定的版本，ExecutionPin 阻止使用中删除，transfer consume 只能由精确 destination authority 完成。
+8. exact cache lookup 与 ExecutionPin acquisition 在同一 transaction 内完成；scope、equivalence revision、input versions、deletion authority 与 TTL 全部匹配才可推进 StageRun。corrupt/stale entry fail closed，分页 reconciliation 不能长期饿死候选项。
+9. 取消、late completion、cache insertion、retry 与 artifact commit 并发时，由 PostgreSQL CAS/fence 选出唯一业务结果；固定报价和 Charge 不因 placement、transfer 或 cache 命中而改变，内部 usage/cost 单独记账。
+10. 最终 StageArtifact 由 CPU/non-GPU finalizer 通过唯一、可过期和可重放的 `StageGraphFinalizationClaim` 转为 Visible Completion；Stage Worker 不拥有 graph finalization authority，claim response loss 不产生第二个 ArtifactSet 或 Charge。
+11. legacy Runner/Worker/WorkerPool schema、protocol、binary 和 deployment 不再形成运行路径；cutover/contraction 检查必须拒绝 legacy backlog 或残余 authority，不能靠旧兼容路径继续服务。
+12. 本地验证只允许 mock ModelRuntime、fixture、本地小字节 Artifact 和 Testcontainers PostgreSQL/NATS/S3；真实模型、GPU 性能、跨机传输、真实故障与长期 soak 必须在受控环境生成版本化 Launch Receipt，当前仍为 `0/9 PASS`。
+
+### 22.2 历史验收来源（已废止）
+
+以下 30 项是 Stage contraction 之前的验收来源，仅用于追溯仍然适用的 Admission、计费、隔离、保留和可靠事件不变量。凡涉及 monolithic Assignment、旧 Worker epoch、legacy finalization-start API、Runner/Worker binary、Worker drain 或 N-1 Worker probe 的描述均已被 22.1 和 Stage contracts 取代；这些历史场景及其旧测试不能授权当前 release 或 Production Gate。
+
 1. 相同 Project 与 Idempotency-Key 的重复提交只原子创建一个 QUEUED Job、CreditReservation、PricingSnapshot、ExecutionPolicySnapshot 和 Outbox event；相同 key 搭配不同请求返回冲突。
 2. 信用不足、Project 限额、容量不足分别返回 402、429、503；任何 Admission 失败都不创建 Job 或 CreditReservation。
 3. 多个 Project 并发 Admission 锁定同一 Organization credit row，不能让 reserved 加 posted 超过 Contract Credit Limit。
@@ -1291,18 +1293,18 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 7. Scheduler 在 Assignment 事务前后崩溃，Job 不会卡死；BUSY Worker 不接收预派任务，Organization -> Service Class -> Project -> Job 的公平性、aging、Protected Lane 和 retry lane 仍有界。
 8. Worker 网络分区后旧 Attempt 完成返回 `RejectedStaleLease`；最多 3 个 Attempt、累计 compute / finalization budget 和 Job Expiry 中任一耗尽都会停止重试。
 9. Progress 只描述当前 Attempt 的当前 Execution Phase；重试后允许重置，`job_expires_at` 和 Dynamic ETA 均不会被呈现为 Hard Deadline。统计 SLO 必须按 UTC 月度 Accepted/QUEUED cohort，对 exact ModelRevision、GenerationPresetRevision、ServiceClassRevision、OutputSpec 和 generation count 独立计算；p95 从 `jobs.created_at` 到 Visible Completion，FAILED/expiry 进入成功率分母，Customer Cancellation 单列，open/低样本/缺 target/mixed revision 一律不能 PASS。Slice 37 用 migration 00033、统一 Go evaluator、strict typed evidence、Pod-private metrics、burn-rate rules/dashboard/runbook 和复合迁移测试建立 repository conformance；真实月度流量、H3 结果、paging/P1 演练和 Launch Receipt 仍属于 Production Gate。
-10. multipart upload 中断后，同一 Worker 节点且本地源仍存在时可继续上传；节点或 NVMe 丢失时不声称跨 Worker 恢复，而是按 Retry Budget 从头重算。Slice 30 已通过 production Worker Agent、mTLS WorkerControl、PostgreSQL 和 versioned MinIO 直接证明：同 Worker/epoch/Attempt/fence 的进程丢失只续传剩余 multipart parts，不重跑 Runner；首个 Worker 的本地恢复根不可访问并被判定为 `LOST` 后，不同 Worker 以 higher-fence Attempt 2 从空本地根重算，最终仍只有一个 Visible Completion、ArtifactSet 和 Charge（`864c134`，review closure `5a9bad6`）。真实 H3/XFS/NVMe 故障注入与 Launch Receipt 仍属于 Production Gate。
+10. multipart upload 中断后，同一 Worker 节点且本地源仍存在时可继续上传；节点或 NVMe 丢失时不声称跨 Worker 恢复，而是按 Retry Budget 从头重算。Slice 30 的迁移前 runtime conformance 曾证明同 epoch / Attempt / fence 续传与 higher-fence 重算语义（`864c134`，review closure `5a9bad6`），但该证据不替代当前 Stage Worker / StageArtifact 路径的生产验证。真实 H3/XFS/NVMe 故障注入与 Launch Receipt 仍属于 Production Gate。
 11. Worker 在对象上传完成、ArtifactSet commit 前失联时，Artifact Reconciler 可验证并提交已上传对象或安全清理；同一 object key 覆盖写被拒绝，COMMITTED Artifact 固定到不可变 object version。
 12. duration、resolution、frame count、codec、generation count 或任一必需缩略图不符合 OutputSpec 时，整个 ArtifactSet 不能发布或计费。
 13. 两个 Attempt 同时完成时，只有一个能原子形成 Visible Completion 和一条 Charge；未获胜 Attempt 的对象按 Retention Policy 清理。
 14. RateCardRevision 在 Job 排队期间更新，既有 Job 仍使用原 PricingSnapshot；Retry 可以更换 ExecutionProfileRevision，但必须保持原 Model、Generation Preset、Service Class 和 OutputSpec，并持有有效 ProfileCertification。
 15. ProfileCertification 因质量回归失效后立即阻止新 Assignment；旧 revision 在所有 Job、Attempt、Artifact 和审计引用归零前不会删除。
 16. Artifact Store 故障停止受影响 pool 的新 Assignment；scratch high watermark 只停止对应 Worker / pool，存储探测和 low watermark 同时恢复后才重新接纳。
-17. H3 Worker 请求 `nvidia.com/gpu: 8` 并受专用 taint / label 约束；Fleet Controller 之外的 Pod / pool delete、selector / image patch 和 Argo prune 被 RBAC、admission 和 finalizer 拒绝。
+17. H3 标准 WorkerInstance 的单卡 DeviceSet 与实际 GPU claim 精确一致，AUX 和七个 DiT 实例可按 ResidencyPlan 分布到不同机器；Fleet Controller 之外的受保护 WorkerMember Pod / Service / Secret mutation 和 Argo prune 被 RBAC、admission 与 finalizer 拒绝。
 18. Remediation Operation 的 node identity、GPU UUID / PCI BDF 或 Worker epoch 不匹配时拒绝执行；L0-L5 只按认证矩阵自动执行，L6 没有人工审批不得执行，失败验证自动 Quarantine。
 19. 失败对象 24 小时、scratch 最多 24 小时、授权 debug dump 最多 72 小时、成功 Artifact / prompt 30 天后按策略删除；Content Deletion 提前删除内容但保留法定 Charge 和审计记录。Slice 31 已用独立最小权限角色、versioned MinIO 双 bucket 和真实 PostgreSQL dump/restore 证明：只为 COMMITTED Artifact 创建 off-cluster backup target，删除覆盖 backup key 的全部 versions/delete markers，恢复点位于 deletion authority 之后时可重放 PRIMARY 与 OFF_CLUSTER_BACKUP targets 而不复活对象，并保留 prompt tombstone、Charge 与 actor attribution。Slice 32 为每个 COMMITTED Artifact 将冻结的 PRIMARY exact version 复制到 versioned backup，记录不可变证据，并通过同一 PostgreSQL row lock 串行化复制与删除。Slice 33 增加独立 Compliance Principal，以不可变事件在精确 Organization、Project 或 Job 范围放置/释放只覆盖 `METADATA`/`FINANCIAL` 的 Legal Hold，且不能保存 Customer Content。Slice 34 从 canonical terminal event 或 Finance Reconciliation `posted_at` 建立 365/2557 天时钟，与 active hold 串行化后物理删除 Job、Attempt 和 financial source row，并以最小 root 保留独立证据。Slice 38 用 Barman Cloud Plugin 在 fresh kind/MinIO 环境完成 local base backup、目标 WAL 归档和 timestamp restore。真实 provider/network 故障证据、早于 deletion authority 的恢复点、生产独立故障域 PITR、expiry/failover/observability 与 Launch Receipt 仍属于 Production Gate。
 20. JetStream 短暂或整体不可用后，Outbox 保留发布意图，reconciliation 从 PostgreSQL 恢复待调度 Job；Invoice exporter 不可用不阻塞 Visible Completion 或 Artifact access，恢复重试以 `charge_id` 幂等且不产生重复 Invoice line。
-21. `begin_finalization()` 在事务提交前后崩溃，重放仍只得到一组 Artifact / ArtifactUpload，并保留原 `finalization_deadline_at`。
+21. 迁移前 finalization-start transaction 在提交前后崩溃，重放仍只得到一组 Artifact / ArtifactUpload，并保留原 `finalization_deadline_at`。
 22. OFFLINE Worker 恢复后必须经过身份、设备、Inference Backend、model warm-up 和 canary 检查，达到 HEALTHY + READY 才重新接收 Assignment。
 23. Outbox dispatcher 只有收到 3-replica stream 的 quorum `PubAck` 才标记 published；在 `PubAck` 前失败保留 row，在 `PubAck` 后标记前崩溃以同一 `Nats-Msg-Id` 重试，consumer 通过 event id、aggregate version 和 CAS 幂等处理。
 24. Assignment wakeup 被 ack 后 Worker 执行 40 到 50 分钟，JetStream 不保留长期 pending delivery；Assignment gRPC response 丢失时，同一 Worker epoch 重放原 Assignment，不产生第二个 Attempt、fence 或 Lease 延期。
@@ -1323,10 +1325,10 @@ Prometheus metric 只使用数量受控的 label，例如 ModelRevision、Genera
 - Billing 使用 Contract Credit Ledger 和月度 Invoice export，外部收款不属于 Job 生命周期。Admission、Visible Completion 和 Customer Cancellation 的计费边界均在单一数据库事务内确定。
 - 三个 Generation Preset 与 `standard` Service Class 分离，价格由 certified OutputSpec SKU 决定；SLO 是统计承诺，Job Expiry 不是 Hard Deadline。
 - Scheduler 使用分层公平、Protected Lane 和 bounded retry lane，同时保持 Worker capacity work-conserving，不保留硬空闲故障备用。
-- Artifact 存入 S3-compatible store并以完整 ArtifactSet 原子发布；首发没有跨 Worker Durable Checkpoint，节点丢失后从头重算。
+- StageArtifact/Artifact 存入 S3-compatible store 并以完整 ArtifactSet 原子发布；首发没有任意 DiT step 的跨 Worker Durable Checkpoint，节点丢失后从最近 durable StageArtifact 边界重跑失败 Stage。
 - 三台 Control/Storage Node 提供基本单节点容错；站点级恢复依赖 off-cluster backup 和人工 runbook，不建设跨地域 active-active。
 - 普通 release 不中断 Accepted Job，使用 N/N-1 compatibility、expand / backfill / switch / contract、canary、drain 和可验证 rollback。
-- 控制面使用 Go 模块化单体，Python 只保留在 Inference Backend runner；首发不引入 Temporal、Kafka、Redis 或 Ray 调度层。
+- 控制面使用 Go 模块化单体；模型执行保留在通过版本化 ModelRuntime Interface 隔离的外部 backend driver 中；首发不引入 Temporal、Kafka、Redis 或 Ray 调度层。
 
 ### 23.2 硬 Production Gates
 
@@ -1338,8 +1340,8 @@ RateCard 与 `ACTIVE` Catalog promotion authority。它只闭合 repository
 enforcement。Slice 39 为八个非 observability Gate 增加固定 typed semantic
 contract、typed artifact aggregate 和 Catalog plan/evidence 精确绑定；现有
 observability schema 保持独立版本。Slice 40 再以一个 canonical release
-bundle 从 exact final renders、host packages、Node Agent unit、per-Worker
-materialization、logical WorkerPool 下 hostname-pinned placement、external
+bundle 从 exact final renders、host packages、Node Agent unit、per-WorkerMember
+materialization、ResidencyPlan 下 hostname-pinned placement、external
 Secret/ConfigMap revisions 和 OCI manifest/config bytes 推导 release digest 与
 configuration revision；`vela-verify-launch` 与
 Catalog promotion 都必须重新验证该 bundle，并在数据库 transaction 前精确匹配
@@ -1356,7 +1358,7 @@ Slice 46 将 Control/Storage JetStream workload 固定到 NATS `2.10.22` 的
 exact `linux/amd64` OCI manifest，并通过最终 Kustomize render 验证该身份；
 它不提供 registry/supply-chain evidence，也不替代 release-specific Vela、
 PKI/Secret 与目标集群输入。Slice 47 将 `vela-control` secret materializer、
-静态 Worker root initializer 和 Fleet desired input 的共享 BusyBox `1.37.0`
+静态 Worker root initializer 和 target Fleet ResidencyPlan init input 的共享 BusyBox `1.37.0`
 固定到同一个 exact `linux/amd64` OCI manifest，并通过三个最终 Kustomize
 render 验证该身份；实际 registry publication、signature、SBOM、scan、
 vulnerability approval 和部署证据仍属于 release responsibility。

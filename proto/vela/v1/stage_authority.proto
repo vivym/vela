@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package vela.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+message StageAuthorityDeviceEpoch {
+  string device_id = 1;
+  int64 device_epoch = 2;
+}
+
+message StageAuthorityMemberEpoch {
+  string worker_member_id = 1;
+  int64 member_epoch = 2;
+  int64 model_runtime_epoch = 3;
+  bytes identity_digest = 4;
+}
+
+message StageAuthority {
+  uint32 schema_version = 1;
+  string job_id = 2;
+  string attempt_id = 3;
+  string stage_run_id = 4;
+  string stage_attempt_id = 5;
+  string stage_allocation_id = 6;
+  string stage_lease_id = 7;
+  int64 attempt_fence = 8;
+  int64 stage_fence = 9;
+  int64 stage_version = 10;
+  string worker_instance_id = 11;
+  int64 worker_instance_epoch = 12;
+  bytes device_set_digest = 13;
+  repeated StageAuthorityDeviceEpoch devices = 14;
+  bytes membership_digest = 15;
+  repeated StageAuthorityMemberEpoch members = 16;
+  string model_residency_id = 17;
+  string model_runtime_identity = 18;
+  reserved 19;
+  string stage_profile_revision_id = 20;
+  int64 capacity_observation_sequence = 21;
+  map<string, int64> capacity_vector = 22;
+  bytes lease_token = 23;
+  bytes execution_nonce = 24;
+  string signing_key_id = 25;
+  google.protobuf.Timestamp issued_at = 26;
+  google.protobuf.Timestamp expires_at = 27;
+  google.protobuf.Duration monotonic_valid_for = 28;
+  bytes signature = 29;
+  bytes execution_spec_digest = 30;
+  int64 model_runtime_barrier_generation = 31;
+}

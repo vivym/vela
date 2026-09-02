@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/artifactstore"
-	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/stagefinalization"
 )
 
 func TestInspectorReadsAndHashesExactVersionBeforeFixedFFprobe(t *testing.T) {
@@ -59,10 +59,10 @@ func TestInspectorReadsAndHashesExactVersionBeforeFixedFFprobe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewInspector: %v", err)
 	}
-	request := workercontrol.ArtifactInspectionRequest{
+	request := stagefinalization.ArtifactInspectionRequest{
 		ArtifactID:             uuid.New(),
 		UploadID:               uuid.New(),
-		Kind:                   workercontrol.ArtifactKindVideo,
+		Kind:                   stagefinalization.ArtifactKindVideo,
 		Ordinal:                0,
 		ObjectKey:              source.reader.ObjectKey,
 		ObjectVersionID:        source.reader.VersionID,
@@ -114,10 +114,10 @@ func TestInspectorRejectsChangedExactVersionBytesBeforeSandbox(t *testing.T) {
 	}
 	sandbox := &recordingSandbox{output: []byte(`{"not":"reachable"}`)}
 	inspector := newTestInspector(t, source, sandbox, 64*1024)
-	_, err := inspector.Inspect(context.Background(), workercontrol.ArtifactInspectionRequest{
+	_, err := inspector.Inspect(context.Background(), stagefinalization.ArtifactInspectionRequest{
 		ArtifactID:          uuid.New(),
 		UploadID:            uuid.New(),
-		Kind:                workercontrol.ArtifactKindVideo,
+		Kind:                stagefinalization.ArtifactKindVideo,
 		ObjectKey:           source.reader.ObjectKey,
 		ObjectVersionID:     source.reader.VersionID,
 		ExpectedSizeBytes:   int64(len(media)),
@@ -169,10 +169,10 @@ func TestInspectorRejectsFFprobeVersionDriftAndOversizeOutput(t *testing.T) {
 			}
 			sandbox := &recordingSandbox{output: test.probeOutput}
 			inspector := newTestInspector(t, source, sandbox, test.maxOutputBytes)
-			_, err := inspector.Inspect(context.Background(), workercontrol.ArtifactInspectionRequest{
+			_, err := inspector.Inspect(context.Background(), stagefinalization.ArtifactInspectionRequest{
 				ArtifactID:          uuid.New(),
 				UploadID:            uuid.New(),
-				Kind:                workercontrol.ArtifactKindVideo,
+				Kind:                stagefinalization.ArtifactKindVideo,
 				ObjectKey:           source.reader.ObjectKey,
 				ObjectVersionID:     source.reader.VersionID,
 				ExpectedSizeBytes:   int64(len(media)),
@@ -212,10 +212,10 @@ func TestInspectorEnforcesProbeTimeout(t *testing.T) {
 		t.Fatalf("NewInspector: %v", err)
 	}
 	startedAt := time.Now()
-	_, err = inspector.Inspect(context.Background(), workercontrol.ArtifactInspectionRequest{
+	_, err = inspector.Inspect(context.Background(), stagefinalization.ArtifactInspectionRequest{
 		ArtifactID:          uuid.New(),
 		UploadID:            uuid.New(),
-		Kind:                workercontrol.ArtifactKindVideo,
+		Kind:                stagefinalization.ArtifactKindVideo,
 		ObjectKey:           source.reader.ObjectKey,
 		ObjectVersionID:     source.reader.VersionID,
 		ExpectedSizeBytes:   int64(len(media)),

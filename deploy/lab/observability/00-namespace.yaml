@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: vela-observability
-  labels:
-    app.kubernetes.io/part-of: vela
-    vela.ai/environment: non-production-lab
-    vela.ai/network-role: observability

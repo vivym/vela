@@ -2,6 +2,7 @@ package deploymentcontract
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"os/exec"
@@ -40,31 +41,31 @@ func TestRenderedRootMaterializersUsePinnedBusyBoxImage(t *testing.T) {
 		}
 	})
 
-	t.Run("worker-agent", func(t *testing.T) {
-		document := requireRenderedMaterializerDocument(t, "worker-agent", "DaemonSet", "vela-h3-worker")
-		if image := requireRenderedInitImage(t, document, "runner-socket-permissions"); image != pinnedBusyBoxLinuxAMD64Image {
-			t.Fatalf("rendered Worker materializer image = %q, want %q", image, pinnedBusyBoxLinuxAMD64Image)
-		}
-	})
-
 	t.Run("fleet-controller", func(t *testing.T) {
 		document := requireRenderedMaterializerDocument(
-			t, "fleet-controller", "ConfigMap", "vela-fleet-desired-placeholder",
+			t, "fleet-controller", "ConfigMap", "vela-fleet-residency-plan-rollouts-placeholder",
 		)
 		var desired struct {
-			Revisions []struct {
-				InitImage string `yaml:"initImage"`
-			} `yaml:"revisions"`
+			Rollouts []struct {
+				WorkerBundles []struct {
+					InitImage string `json:"init_image"`
+				} `json:"worker_bundles"`
+			} `json:"rollouts"`
 		}
-		payload := document.Data["desired.yaml"]
+		payload := document.Data["rollouts.json"]
 		if payload == "" {
-			t.Fatal("rendered Fleet desired ConfigMap omitted desired.yaml")
+			t.Fatal("rendered Fleet ResidencyPlan ConfigMap omitted rollouts.json")
 		}
-		if err := yaml.Unmarshal([]byte(payload), &desired); err != nil {
-			t.Fatalf("parse rendered Fleet desired input: %v", err)
+		if err := json.Unmarshal([]byte(payload), &desired); err != nil {
+			t.Fatalf("parse rendered Fleet ResidencyPlan input: %v", err)
 		}
-		if len(desired.Revisions) != 1 || desired.Revisions[0].InitImage != pinnedBusyBoxLinuxAMD64Image {
-			t.Fatalf("rendered Fleet desired materializer images = %#v, want %q", desired.Revisions, pinnedBusyBoxLinuxAMD64Image)
+		if len(desired.Rollouts) != 1 || len(desired.Rollouts[0].WorkerBundles) != 2 {
+			t.Fatalf("rendered Fleet ResidencyPlan materializer images = %#v, want %q", desired.Rollouts, pinnedBusyBoxLinuxAMD64Image)
+		}
+		for _, bundle := range desired.Rollouts[0].WorkerBundles {
+			if bundle.InitImage != pinnedBusyBoxLinuxAMD64Image {
+				t.Fatalf("rendered Fleet ResidencyPlan materializer images = %#v, want %q", desired.Rollouts, pinnedBusyBoxLinuxAMD64Image)
+			}
 		}
 	})
 }

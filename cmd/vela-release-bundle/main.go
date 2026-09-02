@@ -119,9 +119,6 @@ func bundleArtifactReferences(bundle releasebundle.Bundle) []string {
 	for _, item := range bundle.ConfigurationManifest.Packages {
 		references = append(references, item.Contract.Ref, item.Artifact.Ref)
 	}
-	for _, item := range bundle.ConfigurationManifest.WorkerMaterializations {
-		references = append(references, item.WorkerRuntime.Ref, item.RunnerProfiles.Ref, item.RunnerGPURoles.Ref)
-	}
 	for _, image := range bundle.OCIImages {
 		references = append(references, image.Descriptor.Ref, image.Config.Ref)
 	}

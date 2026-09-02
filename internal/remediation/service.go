@@ -64,8 +64,8 @@ func (e *Failure) Error() string {
 
 type Request struct {
 	OperationID           uuid.UUID
-	WorkerID              uuid.UUID
-	WorkerEpoch           int64
+	WorkerInstanceID      uuid.UUID
+	WorkerInstanceEpoch   int64
 	NodeIdentity          string
 	DeviceIdentity        string
 	FailureClass          string
@@ -81,8 +81,8 @@ type Result struct {
 	Replayed             bool
 	State                OperationState
 	ActionLevel          ActionLevel
-	WorkerLifecycleState store.WorkerLifecycleState
-	WorkerReachability   store.WorkerReachabilityCondition
+	WorkerLifecycleState store.WorkerInstanceLifecycleState
+	WorkerReachability   store.WorkerInstanceReachabilityState
 	RequiresApproval     bool
 	ResultCode           string
 }
@@ -103,14 +103,14 @@ type ClaimResult struct {
 }
 
 type Completion struct {
-	OperationID   uuid.UUID
-	WorkerID      uuid.UUID
-	WorkerEpoch   int64
-	Success       bool
-	ResultCode    string
-	ResultDetail  string
-	PostcheckHash []byte
-	ActorIdentity string
+	OperationID         uuid.UUID
+	WorkerInstanceID    uuid.UUID
+	WorkerInstanceEpoch int64
+	Success             bool
+	ResultCode          string
+	ResultDetail        string
+	PostcheckHash       []byte
+	ActorIdentity       string
 }
 
 type Recovery struct {
@@ -120,10 +120,12 @@ type Recovery struct {
 
 type Operation struct {
 	ID                    uuid.UUID
-	WorkerID              uuid.UUID
-	WorkerEpoch           int64
+	WorkerInstanceID      uuid.UUID
+	WorkerInstanceEpoch   int64
 	NodeIdentity          string
 	DeviceIdentity        string
+	DeviceID              uuid.UUID
+	DeviceEpoch           int64
 	FailureClass          string
 	EvidenceDigest        []byte
 	CertificationRevision string
@@ -141,6 +143,33 @@ type Operation struct {
 	FirstApprover         string
 	SecondApprover        string
 	ApprovedAt            *time.Time
+}
+
+type operationRow struct {
+	ID                    uuid.UUID
+	WorkerInstanceID      uuid.UUID
+	WorkerInstanceEpoch   int64
+	NodeIdentity          string
+	DeviceIdentity        string
+	DeviceID              uuid.UUID
+	DeviceEpoch           int64
+	FailureClass          string
+	EvidenceDigest        []byte
+	CertificationRevision string
+	ActionLevel           ActionLevel
+	IdempotencyKey        string
+	RequestedBy           string
+	State                 OperationState
+	RequestedAt           pgtype.Timestamptz
+	DeadlineAt            pgtype.Timestamptz
+	StartedAt             pgtype.Timestamptz
+	FinishedAt            pgtype.Timestamptz
+	ResultCode            *string
+	ResultDetail          *string
+	PostcheckDigest       []byte
+	FirstApprover         *string
+	SecondApprover        *string
+	ApprovedAt            pgtype.Timestamptz
 }
 
 type Service struct {
@@ -166,7 +195,7 @@ func (s *Service) Request(ctx context.Context, request Request) (Result, error) 
 		SELECT operation_id, replayed, state, action_level,
 			worker_lifecycle_state, worker_reachability_condition, requires_approval
 		FROM vela_request_remediation($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-	`, request.OperationID, request.WorkerID, request.WorkerEpoch, request.NodeIdentity,
+	`, request.OperationID, request.WorkerInstanceID, request.WorkerInstanceEpoch, request.NodeIdentity,
 		request.DeviceIdentity, request.FailureClass, request.EvidenceDigest,
 		request.CertificationRevision, request.ActionLevel, request.IdempotencyKey,
 		request.RequestedBy,
@@ -262,7 +291,7 @@ func (s *Service) Complete(ctx context.Context, completion Completion) (Result, 
 		SELECT operation_id, replayed, state, action_level,
 			worker_lifecycle_state, worker_reachability_condition, result_code
 		FROM vela_complete_remediation($1, $2, $3, $4, $5, $6, $7, $8)
-	`, completion.OperationID, completion.WorkerID, completion.WorkerEpoch,
+	`, completion.OperationID, completion.WorkerInstanceID, completion.WorkerInstanceEpoch,
 		completion.Success, completion.ResultCode, completion.ResultDetail,
 		completion.PostcheckHash, completion.ActorIdentity,
 	).Scan(
@@ -304,16 +333,17 @@ func (s *Service) Get(ctx context.Context, operationID uuid.UUID) (Operation, er
 	if operationID == uuid.Nil {
 		return Operation{}, &Failure{Code: FailureInvalid, Message: "Remediation operation id is required"}
 	}
-	var row store.RemediationOperation
+	var row operationRow
 	err := s.pool.QueryRow(ctx, `
-		SELECT operation_id, worker_id, worker_epoch, node_identity, device_identity,
-				failure_class, evidence_digest, certification_revision, action_level,
+		SELECT operation_id, worker_instance_id, worker_instance_epoch, node_identity, device_identity,
+				device_id, device_epoch, failure_class, evidence_digest, certification_revision, action_level,
 			idempotency_key, requested_by, state, requested_at, deadline_at, started_at, finished_at,
 				result_code, result_detail, postcheck_digest, first_approver, second_approver,
 			approved_at
 		FROM vela_get_remediation_operation($1)
 	`, operationID).Scan(
-		&row.ID, &row.WorkerID, &row.WorkerEpoch, &row.NodeIdentity, &row.DeviceIdentity,
+		&row.ID, &row.WorkerInstanceID, &row.WorkerInstanceEpoch, &row.NodeIdentity, &row.DeviceIdentity,
+		&row.DeviceID, &row.DeviceEpoch,
 		&row.FailureClass, &row.EvidenceDigest, &row.CertificationRevision, &row.ActionLevel,
 		&row.IdempotencyKey, &row.RequestedBy, &row.State, &row.RequestedAt, &row.DeadlineAt,
 		&row.StartedAt, &row.FinishedAt, &row.ResultCode, &row.ResultDetail, &row.PostcheckDigest,
@@ -336,8 +366,8 @@ func (s *Service) ListExecuting(ctx context.Context, limit int) ([]Operation, er
 		return nil, &Failure{Code: FailureInvalid, Message: "Remediation execution dispatch limit is invalid"}
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT operation_id, worker_id, worker_epoch, node_identity, device_identity,
-			failure_class, evidence_digest, certification_revision, action_level,
+		SELECT operation_id, worker_instance_id, worker_instance_epoch, node_identity, device_identity,
+			device_id, device_epoch, failure_class, evidence_digest, certification_revision, action_level,
 			idempotency_key, requested_by, state, requested_at, deadline_at, started_at, finished_at,
 			result_code, result_detail, postcheck_digest, first_approver, second_approver,
 			approved_at
@@ -349,9 +379,10 @@ func (s *Service) ListExecuting(ctx context.Context, limit int) ([]Operation, er
 	defer rows.Close()
 	operations := make([]Operation, 0, limit)
 	for rows.Next() {
-		var row store.RemediationOperation
+		var row operationRow
 		if err := rows.Scan(
-			&row.ID, &row.WorkerID, &row.WorkerEpoch, &row.NodeIdentity, &row.DeviceIdentity,
+			&row.ID, &row.WorkerInstanceID, &row.WorkerInstanceEpoch, &row.NodeIdentity, &row.DeviceIdentity,
+			&row.DeviceID, &row.DeviceEpoch,
 			&row.FailureClass, &row.EvidenceDigest, &row.CertificationRevision, &row.ActionLevel,
 			&row.IdempotencyKey, &row.RequestedBy, &row.State, &row.RequestedAt, &row.DeadlineAt,
 			&row.StartedAt, &row.FinishedAt, &row.ResultCode, &row.ResultDetail, &row.PostcheckDigest,
@@ -368,7 +399,7 @@ func (s *Service) ListExecuting(ctx context.Context, limit int) ([]Operation, er
 }
 
 func validateRequest(request Request) error {
-	if request.OperationID == uuid.Nil || request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 {
+	if request.OperationID == uuid.Nil || request.WorkerInstanceID == uuid.Nil || request.WorkerInstanceEpoch <= 0 {
 		return errors.New("remediation operation and Worker identity are required")
 	}
 	if !validText(request.NodeIdentity, 500) || !validText(request.DeviceIdentity, 500) ||
@@ -389,7 +420,7 @@ func validateRequest(request Request) error {
 }
 
 func validateCompletion(completion Completion) error {
-	if completion.OperationID == uuid.Nil || completion.WorkerID == uuid.Nil || completion.WorkerEpoch <= 0 ||
+	if completion.OperationID == uuid.Nil || completion.WorkerInstanceID == uuid.Nil || completion.WorkerInstanceEpoch <= 0 ||
 		!validText(completion.ResultCode, 200) || !validText(completion.ResultDetail, 2000) ||
 		!validText(completion.ActorIdentity, 500) {
 		return errors.New("remediation completion fields are invalid")
@@ -421,10 +452,11 @@ func validOptionalText(value string, max int) bool {
 	return len(value) <= max && strings.TrimSpace(value) == value && !strings.ContainsRune(value, '\x00')
 }
 
-func operationFromRow(row store.RemediationOperation) Operation {
+func operationFromRow(row operationRow) Operation {
 	return Operation{
-		ID: row.ID, WorkerID: row.WorkerID, WorkerEpoch: row.WorkerEpoch,
+		ID: row.ID, WorkerInstanceID: row.WorkerInstanceID, WorkerInstanceEpoch: row.WorkerInstanceEpoch,
 		NodeIdentity: row.NodeIdentity, DeviceIdentity: row.DeviceIdentity,
+		DeviceID: row.DeviceID, DeviceEpoch: row.DeviceEpoch,
 		FailureClass: row.FailureClass, EvidenceDigest: append([]byte(nil), row.EvidenceDigest...),
 		CertificationRevision: row.CertificationRevision, ActionLevel: row.ActionLevel,
 		IdempotencyKey: row.IdempotencyKey, RequestedBy: row.RequestedBy, State: row.State,

@@ -1,0 +1,212 @@
+syntax = "proto3";
+
+package vela.v1;
+
+import "google/protobuf/timestamp.proto";
+import "vela/v1/stage_authority.proto";
+
+option go_package = "github.com/vivym/vela/proto/gen/vela/v1;velav1";
+
+service ModelRuntimeService {
+  rpc DiscoverRuntimeIdentities(ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest)
+      returns (ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse);
+  rpc ProbeReadiness(ModelRuntimeServiceProbeReadinessRequest)
+      returns (ModelRuntimeServiceProbeReadinessResponse);
+  rpc PrepareStage(ModelRuntimeServicePrepareStageRequest)
+      returns (ModelRuntimeServicePrepareStageResponse);
+  rpc StartStage(ModelRuntimeServiceStartStageRequest)
+      returns (ModelRuntimeServiceStartStageResponse);
+  rpc CancelStage(ModelRuntimeServiceCancelStageRequest)
+      returns (ModelRuntimeServiceCancelStageResponse);
+  rpc Status(ModelRuntimeServiceStatusRequest)
+      returns (ModelRuntimeServiceStatusResponse);
+  rpc SealOutput(ModelRuntimeServiceSealOutputRequest)
+      returns (ModelRuntimeServiceSealOutputResponse);
+}
+
+message ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest {
+  string worker_instance_id = 1;
+  int64 worker_instance_epoch = 2;
+  string worker_member_id = 3;
+  int64 worker_member_epoch = 4;
+}
+
+message ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse {
+  repeated ModelRuntimeIdentity identities = 1;
+  string detail = 2;
+}
+
+enum ModelRuntimeReadinessCheck {
+  MODEL_RUNTIME_READINESS_CHECK_UNSPECIFIED = 0;
+  MODEL_RUNTIME_READINESS_CHECK_DEVICE = 1;
+  MODEL_RUNTIME_READINESS_CHECK_BACKEND = 2;
+  MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP = 3;
+  MODEL_RUNTIME_READINESS_CHECK_CANARY = 4;
+}
+
+enum ModelRuntimeCommandDecision {
+  MODEL_RUNTIME_COMMAND_DECISION_UNSPECIFIED = 0;
+  MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED = 1;
+  MODEL_RUNTIME_COMMAND_DECISION_REPLAYED = 2;
+  MODEL_RUNTIME_COMMAND_DECISION_STALE = 3;
+  MODEL_RUNTIME_COMMAND_DECISION_REJECTED = 4;
+}
+
+enum ModelRuntimeExecutionState {
+  MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED = 0;
+  MODEL_RUNTIME_EXECUTION_STATE_PREPARING = 1;
+  MODEL_RUNTIME_EXECUTION_STATE_PREPARED = 2;
+  MODEL_RUNTIME_EXECUTION_STATE_RUNNING = 3;
+  MODEL_RUNTIME_EXECUTION_STATE_CANCELING = 4;
+  MODEL_RUNTIME_EXECUTION_STATE_STOPPED = 5;
+  MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_READY = 6;
+  MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED = 7;
+  MODEL_RUNTIME_EXECUTION_STATE_FAILED = 8;
+}
+
+enum ModelRuntimeCancelReason {
+  MODEL_RUNTIME_CANCEL_REASON_UNSPECIFIED = 0;
+  MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP = 1;
+  MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE = 2;
+  MODEL_RUNTIME_CANCEL_REASON_AGENT_SHUTDOWN = 3;
+  MODEL_RUNTIME_CANCEL_REASON_MEMBER_BARRIER_FAILED = 4;
+}
+
+message ModelRuntimeIdentity {
+  string worker_instance_id = 1;
+  int64 worker_instance_epoch = 2;
+  bytes device_set_digest = 3;
+  bytes membership_digest = 4;
+  string model_residency_id = 5;
+  string runtime_identity = 6;
+  int64 model_runtime_epoch = 7;
+  string stage_profile_revision_id = 8;
+  string worker_member_id = 9;
+  int64 worker_member_epoch = 10;
+}
+
+message ModelRuntimeServiceProbeReadinessRequest {
+  ModelRuntimeIdentity identity = 1;
+  ModelRuntimeReadinessCheck check = 2;
+}
+
+message ModelRuntimeServiceProbeReadinessResponse {
+  ModelRuntimeIdentity identity = 1;
+  ModelRuntimeReadinessCheck check = 2;
+  bool ready = 3;
+  bytes evidence = 4;
+  string detail = 5;
+}
+
+message StageInputArtifact {
+  string stage_artifact_id = 1;
+  string object_version = 2;
+  bytes sha256 = 3;
+  int64 size_bytes = 4;
+  string stage_interface_revision_id = 5;
+  reserved 6;
+}
+
+message StageRootInputMaterial {
+  int32 condition_index = 1;
+  string uri = 2;
+  bytes sha256 = 3;
+  int64 size_bytes = 4;
+}
+
+message StageExecutionSpec {
+  repeated StageInputArtifact inputs = 1;
+  bytes parameters_json = 2;
+  bytes expected_output_manifest_json = 3;
+  repeated StageRootInputMaterial root_inputs = 4;
+}
+
+message ModelRuntimeServicePrepareStageRequest {
+  StageAuthority authority = 1;
+  StageExecutionSpec execution_spec = 2;
+}
+
+message ModelRuntimeServicePrepareStageResponse {
+  bytes authority_digest = 1;
+  ModelRuntimeCommandDecision decision = 2;
+  ModelRuntimeExecutionState state = 3;
+  string detail = 4;
+  ModelRuntimeIdentity runtime_identity = 5;
+}
+
+message ModelRuntimeServiceStartStageRequest {
+  StageAuthority authority = 1;
+}
+
+message ModelRuntimeServiceStartStageResponse {
+  bytes authority_digest = 1;
+  ModelRuntimeCommandDecision decision = 2;
+  ModelRuntimeExecutionState state = 3;
+  google.protobuf.Timestamp started_at = 4;
+  string detail = 5;
+  ModelRuntimeIdentity runtime_identity = 6;
+}
+
+message ModelRuntimeServiceCancelStageRequest {
+  StageAuthority authority = 1;
+  ModelRuntimeCancelReason reason = 2;
+}
+
+message ModelRuntimeServiceCancelStageResponse {
+  bytes authority_digest = 1;
+  ModelRuntimeCommandDecision decision = 2;
+  bool cancellation_acknowledged = 3;
+  ModelRuntimeExecutionState state = 4;
+  string detail = 5;
+  ModelRuntimeIdentity runtime_identity = 6;
+}
+
+message ModelRuntimeServiceStatusRequest {
+  StageAuthority authority = 1;
+}
+
+message ModelRuntimeFailureEvidence {
+  string failure_class = 1;
+  bytes failure_fingerprint = 2;
+  string detail = 3;
+  bool worker_reusable = 4;
+  int64 consumed_resource_units = 5;
+  google.protobuf.Timestamp failed_at = 6;
+  google.protobuf.Timestamp retry_at = 7;
+}
+
+message ModelRuntimeServiceStatusResponse {
+  bytes authority_digest = 1;
+  ModelRuntimeCommandDecision decision = 2;
+  ModelRuntimeExecutionState state = 3;
+  int64 sequence = 4;
+  string backend_stage = 5;
+  optional double progress = 6;
+  bytes bounded_status_json = 7;
+  string local_receipt_id = 8;
+  bytes local_receipt_digest = 9;
+  string detail = 10;
+  ModelRuntimeIdentity runtime_identity = 11;
+  ModelRuntimeFailureEvidence failure_evidence = 12;
+}
+
+message ModelRuntimeServiceSealOutputRequest {
+  StageAuthority authority = 1;
+}
+
+message LocalMaterializationReceipt {
+  string receipt_id = 1;
+  bytes manifest_sha256 = 2;
+  int64 total_size_bytes = 3;
+  google.protobuf.Timestamp sealed_at = 4;
+  bytes output_manifest_json = 5;
+}
+
+message ModelRuntimeServiceSealOutputResponse {
+  bytes authority_digest = 1;
+  ModelRuntimeCommandDecision decision = 2;
+  ModelRuntimeExecutionState state = 3;
+  LocalMaterializationReceipt receipt = 4;
+  string detail = 5;
+  ModelRuntimeIdentity runtime_identity = 6;
+}

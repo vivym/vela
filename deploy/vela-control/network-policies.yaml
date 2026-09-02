@@ -71,11 +71,11 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: vela-control-allow-worker
+  name: vela-control-allow-stage-worker
   namespace: vela-system
   labels:
     app.kubernetes.io/name: vela-control
-    app.kubernetes.io/component: worker-control
+    app.kubernetes.io/component: stage-worker-control
     app.kubernetes.io/part-of: vela
 spec:
   podSelector:
@@ -90,10 +90,10 @@ spec:
               kubernetes.io/metadata.name: vela-system
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: vela-h3-worker
+              app.kubernetes.io/name: vela-stage-worker
       ports:
         - protocol: TCP
-          port: 8443
+          port: 8447
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -118,6 +118,31 @@ spec:
           podSelector:
             matchLabels:
               app.kubernetes.io/name: vela-fleet-controller
+      ports:
+        - protocol: TCP
+          port: 8444
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vela-control-allow-node-agent-placeholder
+  namespace: vela-system
+  annotations:
+    vela.ai/release-placeholder: replace-entire-resource
+  labels:
+    app.kubernetes.io/name: vela-control
+    app.kubernetes.io/component: fleet-maintenance
+    app.kubernetes.io/part-of: vela
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vela-control
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 192.0.2.0/32
       ports:
         - protocol: TCP
           port: 8444

@@ -177,19 +177,14 @@ PostgreSQL Scheduler scan continues; it must not be repaired by lowering
 replicas, changing storage to memory, broadening the subject filter, or replacing
 explicit ack.
 
-The Outbox and Scheduler use separate NKey credentials. In addition to the
-existing Outbox variables, the application release must provide:
+The Outbox and Scheduler transport identities use separate NKey credentials.
+In addition to the existing Outbox variables, the application release must
+provide:
 
 ```text
-VELA_SCHEDULER_INBOX_DATABASE_URL=<login bound only to vela_scheduler_inbox>
 VELA_NATS_SCHEDULER_CREDENTIALS_FILE=/run/secrets/nats/scheduler.creds
 VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS=<current[,overlap] Scheduler user NKey public keys>
 ```
-
-The Scheduler Inbox database URL must not reuse the `vela_scheduler` or
-`vela_internal` login. Its login inherits only the `vela_scheduler_inbox`
-NOLOGIN role, whose exact runtime surface is the SECURITY DEFINER receipt
-function introduced by migration 00025. Readiness probes both Scheduler pools.
 
 The Outbox credential may publish only `vela.events.>` and the exact
 `$JS.API.STREAM.INFO.VELA_EVENTS` request needed to reject contract drift; it may

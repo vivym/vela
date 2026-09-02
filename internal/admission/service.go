@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/execution"
+	"github.com/vivym/vela/internal/h3request"
 	"github.com/vivym/vela/internal/identity"
 	store "github.com/vivym/vela/internal/store/sqlc"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -32,13 +33,25 @@ const defaultCapacityRetryAfter = 30
 var idempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
 type Request struct {
-	Model            string          `json:"model"`
-	GenerationPreset string          `json:"generation_preset"`
-	ServiceClass     string          `json:"service_class"`
-	OutputSpec       string          `json:"output_spec"`
-	GenerationCount  int32           `json:"generation_count"`
-	Prompt           string          `json:"prompt"`
-	ClientMetadata   json.RawMessage `json:"client_metadata,omitempty"`
+	Model            string             `json:"model"`
+	GenerationPreset string             `json:"generation_preset"`
+	ServiceClass     string             `json:"service_class"`
+	OutputSpec       string             `json:"output_spec"`
+	GenerationCount  int32              `json:"generation_count"`
+	Prompt           string             `json:"prompt"`
+	ClientMetadata   json.RawMessage    `json:"client_metadata,omitempty"`
+	H3               *h3request.Request `json:"h3,omitempty"`
+}
+
+type frozenRequestContent struct {
+	Model            string                  `json:"model"`
+	GenerationPreset string                  `json:"generation_preset"`
+	ServiceClass     string                  `json:"service_class"`
+	OutputSpec       string                  `json:"output_spec"`
+	GenerationCount  int32                   `json:"generation_count"`
+	Prompt           string                  `json:"prompt"`
+	ClientMetadata   json.RawMessage         `json:"client_metadata,omitempty"`
+	H3               h3request.FrozenRequest `json:"h3"`
 }
 
 type PricingSnapshot struct {
@@ -103,49 +116,17 @@ func (e *Failure) Error() string {
 	return string(e.Code) + ": " + e.Message
 }
 
-type CapacityPredictionRequest struct {
-	WorkerPoolID               uuid.UUID
-	ModelRevisionID            uuid.UUID
-	GenerationPresetRevisionID uuid.UUID
-	ServiceClassRevisionID     uuid.UUID
-	OutputSpecID               uuid.UUID
-	GenerationCount            int32
-}
-
-type CapacityPrediction struct {
-	QueueWait         time.Duration
-	EstimatedFinishAt time.Time
-}
-
-type CapacityPredictor interface {
-	PredictCapacity(context.Context, CapacityPredictionRequest) (CapacityPrediction, error)
-	PredictJobDynamicETA(context.Context, uuid.UUID) (time.Time, error)
-}
-
 type Service struct {
-	pool                         *pgxpool.Pool
-	capacityPredictor            CapacityPredictor
-	allowLegacyWithoutPrediction bool
-	roleObserver                 veladb.RequestRoleObserver
+	pool         *pgxpool.Pool
+	roleObserver veladb.RequestRoleObserver
 }
 
 func NewService(
 	pool *pgxpool.Pool,
-	capacityPredictor CapacityPredictor,
 	roleObservers ...veladb.RequestRoleObserver,
 ) *Service {
 	return &Service{
-		pool: pool, capacityPredictor: capacityPredictor,
-		roleObserver: veladb.CombineRequestRoleObservers(roleObservers...),
-	}
-}
-
-func NewLegacyService(
-	pool *pgxpool.Pool,
-	roleObservers ...veladb.RequestRoleObserver,
-) *Service {
-	return &Service{
-		pool: pool, allowLegacyWithoutPrediction: true,
+		pool:         pool,
 		roleObserver: veladb.CombineRequestRoleObservers(roleObservers...),
 	}
 }
@@ -159,9 +140,6 @@ func (s *Service) Submit(
 ) (Job, error) {
 	if s == nil || s.pool == nil {
 		return Job{}, errors.New("admission service is not configured")
-	}
-	if s.capacityPredictor == nil && !s.allowLegacyWithoutPrediction {
-		return Job{}, errors.New("admission capacity predictor is not configured")
 	}
 	if principal.ProjectID != projectID {
 		return Job{}, failure(FailureCodeForbidden, "credential is not authorized for this Project", 0)
@@ -227,9 +205,6 @@ func (s *Service) Submit(
 		if mapErr != nil {
 			return Job{}, mapErr
 		}
-		if enrichErr := s.enrichDynamicETA(ctx, &job); enrichErr != nil {
-			return Job{}, enrichErr
-		}
 		if err := tx.Commit(ctx); err != nil {
 			return Job{}, fmt.Errorf("commit idempotent Admission replay: %w", err)
 		}
@@ -250,6 +225,21 @@ func (s *Service) Submit(
 	}
 	if err != nil {
 		return Job{}, fmt.Errorf("resolve ACTIVE SKU: %w", err)
+	}
+	route, err := queries.ResolveStageJobExecutionRoute(ctx, store.ResolveStageJobExecutionRouteParams{
+		OrganizationID:  principal.OrganizationID,
+		ProjectID:       projectID,
+		ModelRevisionID: sku.ModelRevisionID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Job{}, failure(
+			FailureCodeCapacityUnavailable,
+			"no active Stage execution route is available",
+			defaultCapacityRetryAfter,
+		)
+	}
+	if err != nil {
+		return Job{}, fmt.Errorf("resolve Stage Job execution route: %w", err)
 	}
 
 	project, err := queries.LockProjectForAdmission(ctx, store.LockProjectForAdmissionParams{
@@ -273,60 +263,28 @@ func (s *Service) Submit(
 		)
 	}
 
-	pool, err := queries.LockCompatiblePool(ctx, store.LockCompatiblePoolParams{
-		ModelRevisionID:            sku.ModelRevisionID,
-		GenerationPresetRevisionID: sku.GenerationPresetRevisionID,
-		OutputSpecID:               sku.OutputSpecID,
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
+	if route.StageCutoverRevisionID == uuid.Nil ||
+		route.ExecutionGraphRevisionID == uuid.Nil ||
+		route.ExecutionProfileRevisionID == uuid.Nil ||
+		route.ReservedStorageBytes <= 0 {
+		return Job{}, errors.New("resolved Stage execution route is incomplete")
+	}
+	capacity, capacityErr := queries.LockStageGraphReadyCapacityPath(
+		ctx,
+		store.LockStageGraphReadyCapacityPathParams{
+			ExecutionGraphRevisionID:   route.ExecutionGraphRevisionID,
+			ExecutionProfileRevisionID: route.ExecutionProfileRevisionID,
+		},
+	)
+	if capacityErr != nil {
+		return Job{}, fmt.Errorf("lock Stage graph READY capacity path: %w", capacityErr)
+	}
+	if !capacity.Ready {
 		return Job{}, failure(
 			FailureCodeCapacityUnavailable,
-			"no compatible certified Worker pool is available",
-			defaultCapacityRetryAfter,
+			"no complete READY Stage capacity path is available",
+			int(capacity.RetryAfterSeconds),
 		)
-	}
-	if err != nil {
-		return Job{}, fmt.Errorf("lock compatible Worker pool: %w", err)
-	}
-	if !pool.AdmissionOpen || pool.QueuedCount >= pool.QueuedLimit {
-		return Job{}, failure(
-			FailureCodeCapacityUnavailable,
-			"compatible Worker pool Admission is closed or bounded",
-			int(pool.RetryAfterSeconds),
-		)
-	}
-	var capacityPrediction *CapacityPrediction
-	if s.capacityPredictor != nil {
-		prediction, predictErr := s.capacityPredictor.PredictCapacity(
-			ctx,
-			CapacityPredictionRequest{
-				WorkerPoolID:               pool.ID,
-				ModelRevisionID:            sku.ModelRevisionID,
-				GenerationPresetRevisionID: sku.GenerationPresetRevisionID,
-				ServiceClassRevisionID:     sku.ServiceClassRevisionID,
-				OutputSpecID:               sku.OutputSpecID,
-				GenerationCount:            request.GenerationCount,
-			},
-		)
-		if errors.Is(predictErr, pgx.ErrNoRows) {
-			return Job{}, failure(
-				FailureCodeCapacityUnavailable,
-				"no compatible projected Worker capacity is available",
-				int(pool.RetryAfterSeconds),
-			)
-		}
-		if predictErr != nil {
-			return Job{}, fmt.Errorf("predict Worker pool capacity: %w", predictErr)
-		}
-		admissionBudget := time.Duration(sku.QueueRetryAllowanceSeconds) * time.Second
-		if prediction.QueueWait > admissionBudget {
-			return Job{}, failure(
-				FailureCodeCapacityUnavailable,
-				"predicted queue wait exceeds the Service Class Admission budget",
-				int(pool.RetryAfterSeconds),
-			)
-		}
-		capacityPrediction = &prediction
 	}
 
 	quotedAmount, ok := checkedMultiply(sku.UnitAmountMinor, int64(request.GenerationCount))
@@ -379,12 +337,6 @@ func (s *Service) Submit(
 		}
 		return Job{}, failure(FailureCodeProjectLimitExceeded, "Project Admission limit is exhausted", int(project.RetryAfterSeconds))
 	}
-	if rows, updateErr := queries.IncrementPoolQueued(ctx, pool.ID); updateErr != nil || rows != 1 {
-		if updateErr != nil {
-			return Job{}, fmt.Errorf("increment Worker pool queue counter: %w", updateErr)
-		}
-		return Job{}, failure(FailureCodeCapacityUnavailable, "compatible Worker pool Admission is bounded", int(pool.RetryAfterSeconds))
-	}
 	if rows, updateErr := queries.ReserveOrganizationCredit(ctx, store.ReserveOrganizationCreditParams{
 		AmountMinor:    quotedAmount,
 		OrganizationID: principal.OrganizationID,
@@ -406,7 +358,9 @@ func (s *Service) Submit(
 		GenerationPresetRevisionID:                sku.GenerationPresetRevisionID,
 		ServiceClassRevisionID:                    sku.ServiceClassRevisionID,
 		OutputSpecID:                              sku.OutputSpecID,
-		WorkerPoolID:                              pool.ID,
+		StageCutoverRevisionID:                    route.StageCutoverRevisionID,
+		ExecutionGraphRevisionID:                  route.ExecutionGraphRevisionID,
+		StageExecutionProfileRevisionID:           route.ExecutionProfileRevisionID,
 		RequestHash:                               requestHash[:],
 		RequestContent:                            requestContent,
 		RetentionPolicyRevisionID:                 project.RetentionPolicyRevisionID,
@@ -453,6 +407,28 @@ func (s *Service) Submit(
 	}); err != nil {
 		return Job{}, fmt.Errorf("insert Credit Reservation: %w", err)
 	}
+	instantiation, instantiateErr := queries.InstantiateAdmittedStageGraph(
+		ctx,
+		store.InstantiateAdmittedStageGraphParams{
+			OrganizationID: principal.OrganizationID,
+			ProjectID:      projectID,
+			JobID:          jobID,
+		},
+	)
+	if instantiateErr != nil {
+		var postgresError *pgconn.PgError
+		if errors.As(instantiateErr, &postgresError) &&
+			(postgresError.ConstraintName == "stage_graph_ready_capacity_unavailable" ||
+				postgresError.ConstraintName == "stage_ready_queue_depth_exceeded") {
+			return Job{}, failure(
+				FailureCodeCapacityUnavailable,
+				"no complete READY Stage capacity path is available",
+				defaultCapacityRetryAfter,
+			)
+		}
+		return Job{}, fmt.Errorf("instantiate Accepted Stage graph: %w", instantiateErr)
+	}
+	aggregateVersion := instantiation.AggregateVersion
 	if err := queries.InsertIdempotencyResult(ctx, store.InsertIdempotencyResultParams{
 		OrganizationID: principal.OrganizationID,
 		ProjectID:      projectID,
@@ -468,7 +444,7 @@ func (s *Service) Submit(
 		EventId:          eventID.String(),
 		AggregateType:    "Job",
 		AggregateId:      jobID.String(),
-		AggregateVersion: 1,
+		AggregateVersion: uint64(aggregateVersion),
 		EventType:        "job.ready",
 		SchemaVersion:    1,
 		OccurredAt:       timestamppb.New(requestContext.TransactionTime.Time),
@@ -487,12 +463,13 @@ func (s *Service) Submit(
 		return Job{}, fmt.Errorf("marshal job.ready event: %w", err)
 	}
 	if err := queries.InsertOutboxEvent(ctx, store.InsertOutboxEventParams{
-		EventID:        eventID,
-		OrganizationID: principal.OrganizationID,
-		ProjectID:      projectID,
-		JobID:          jobID,
-		Payload:        payload,
-		OccurredAt:     requestContext.TransactionTime,
+		EventID:          eventID,
+		OrganizationID:   principal.OrganizationID,
+		ProjectID:        projectID,
+		JobID:            jobID,
+		AggregateVersion: aggregateVersion,
+		Payload:          payload,
+		OccurredAt:       requestContext.TransactionTime,
 	}); err != nil {
 		return Job{}, fmt.Errorf("insert job.ready Outbox event: %w", err)
 	}
@@ -508,10 +485,6 @@ func (s *Service) Submit(
 	job, err := jobFromGetRow(row)
 	if err != nil {
 		return Job{}, err
-	}
-	if capacityPrediction != nil {
-		predictedFinish := capacityPrediction.EstimatedFinishAt
-		job.EstimatedFinishAt = &predictedFinish
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Job{}, fmt.Errorf("commit Admission: %w", err)
@@ -565,30 +538,10 @@ func (s *Service) Get(
 	if err != nil {
 		return Job{}, err
 	}
-	if err := s.enrichDynamicETA(ctx, &job); err != nil {
-		return Job{}, err
-	}
 	if err := tx.Commit(ctx); err != nil {
 		return Job{}, fmt.Errorf("commit Job read: %w", err)
 	}
 	return job, nil
-}
-
-func (s *Service) enrichDynamicETA(ctx context.Context, job *Job) error {
-	if s.capacityPredictor == nil || job == nil ||
-		(job.State != JobStateQueued && job.State != JobStateRetryWait) {
-		return nil
-	}
-	predictedFinish, err := s.capacityPredictor.PredictJobDynamicETA(ctx, job.ID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		job.EstimatedFinishAt = nil
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("predict Job Dynamic ETA: %w", err)
-	}
-	job.EstimatedFinishAt = &predictedFinish
-	return nil
 }
 
 func establishRequestContext(
@@ -663,7 +616,25 @@ func canonicalRequest(request Request, idempotencyKey string) ([]byte, [sha256.S
 		}
 		request.ClientMetadata = metadata
 	}
-	content, err := json.Marshal(request)
+	h3Input := h3request.Request{}
+	if request.H3 != nil {
+		h3Input = *request.H3
+	}
+	frozenH3, err := h3request.Freeze(
+		request.Prompt,
+		request.GenerationPreset,
+		idempotencyKey,
+		h3Input,
+	)
+	if err != nil {
+		return nil, [sha256.Size]byte{}, failure(FailureCodeInvalidRequest, err.Error(), 0)
+	}
+	content, err := json.Marshal(frozenRequestContent{
+		Model: request.Model, GenerationPreset: request.GenerationPreset,
+		ServiceClass: request.ServiceClass, OutputSpec: request.OutputSpec,
+		GenerationCount: request.GenerationCount, Prompt: request.Prompt,
+		ClientMetadata: request.ClientMetadata, H3: frozenH3,
+	})
 	if err != nil {
 		return nil, [sha256.Size]byte{}, failure(FailureCodeInvalidRequest, "client_metadata cannot be encoded", 0)
 	}

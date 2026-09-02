@@ -117,22 +117,6 @@ func (q *Queries) GetJob(ctx context.Context, arg GetJobParams) (GetJobRow, erro
 	return i, err
 }
 
-const incrementPoolQueued = `-- name: IncrementPoolQueued :execrows
-UPDATE worker_pools
-SET queued_count = queued_count + 1
-WHERE id = $1
-  AND admission_open
-  AND queued_count - retry_wait_count < queued_limit
-`
-
-func (q *Queries) IncrementPoolQueued(ctx context.Context, workerPoolID uuid.UUID) (int64, error) {
-	result, err := q.db.Exec(ctx, incrementPoolQueued, workerPoolID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const incrementProjectQueued = `-- name: IncrementProjectQueued :execrows
 UPDATE projects
 SET queued_count = queued_count + 1
@@ -229,7 +213,9 @@ INSERT INTO jobs (
     generation_preset_revision_id,
     service_class_revision_id,
     output_spec_id,
-    worker_pool_id,
+    stage_cutover_revision_id,
+    execution_graph_revision_id,
+    stage_execution_profile_revision_id,
     request_hash,
     request_content,
     request_content_expires_at,
@@ -268,13 +254,13 @@ INSERT INTO jobs (
     $9,
     $10,
     $11,
-    transaction_timestamp()
-        + $12::bigint * interval '1 day',
-    $13,
-    $14,
     $12,
+    $13,
+    transaction_timestamp()
+        + $14::bigint * interval '1 day',
     $15,
     $16,
+    $14,
     $17,
     $18,
     $19,
@@ -290,9 +276,11 @@ INSERT INTO jobs (
     $29,
     $30,
     $31,
-	$32,
-	$33,
-	transaction_timestamp() + $34::bigint * interval '1 second'
+    $32,
+    $33,
+	$34,
+	$35,
+	transaction_timestamp() + $36::bigint * interval '1 second'
 )
 `
 
@@ -305,7 +293,9 @@ type InsertJobParams struct {
 	GenerationPresetRevisionID                uuid.UUID `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
 	ServiceClassRevisionID                    uuid.UUID `db:"service_class_revision_id" json:"service_class_revision_id"`
 	OutputSpecID                              uuid.UUID `db:"output_spec_id" json:"output_spec_id"`
-	WorkerPoolID                              uuid.UUID `db:"worker_pool_id" json:"worker_pool_id"`
+	StageCutoverRevisionID                    uuid.UUID `db:"stage_cutover_revision_id" json:"stage_cutover_revision_id"`
+	ExecutionGraphRevisionID                  uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	StageExecutionProfileRevisionID           uuid.UUID `db:"stage_execution_profile_revision_id" json:"stage_execution_profile_revision_id"`
 	RequestHash                               []byte    `db:"request_hash" json:"request_hash"`
 	RequestContent                            []byte    `db:"request_content" json:"request_content"`
 	RetentionRequestContentDays               int32     `db:"retention_request_content_days" json:"retention_request_content_days"`
@@ -343,7 +333,9 @@ func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
 		arg.GenerationPresetRevisionID,
 		arg.ServiceClassRevisionID,
 		arg.OutputSpecID,
-		arg.WorkerPoolID,
+		arg.StageCutoverRevisionID,
+		arg.ExecutionGraphRevisionID,
+		arg.StageExecutionProfileRevisionID,
 		arg.RequestHash,
 		arg.RequestContent,
 		arg.RetentionRequestContentDays,
@@ -391,21 +383,22 @@ INSERT INTO outbox_events (
     $3,
     'Job',
     $4,
-    1,
+    $5,
     'job.ready',
     1,
-    $5,
-    $6
+    $6,
+    $7
 )
 `
 
 type InsertOutboxEventParams struct {
-	EventID        uuid.UUID          `db:"event_id" json:"event_id"`
-	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
-	JobID          uuid.UUID          `db:"job_id" json:"job_id"`
-	Payload        []byte             `db:"payload" json:"payload"`
-	OccurredAt     pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
+	EventID          uuid.UUID          `db:"event_id" json:"event_id"`
+	OrganizationID   uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID        uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID            uuid.UUID          `db:"job_id" json:"job_id"`
+	AggregateVersion int64              `db:"aggregate_version" json:"aggregate_version"`
+	Payload          []byte             `db:"payload" json:"payload"`
+	OccurredAt       pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
 }
 
 func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventParams) error {
@@ -414,6 +407,7 @@ func (q *Queries) InsertOutboxEvent(ctx context.Context, arg InsertOutboxEventPa
 		arg.OrganizationID,
 		arg.ProjectID,
 		arg.JobID,
+		arg.AggregateVersion,
 		arg.Payload,
 		arg.OccurredAt,
 	)
@@ -436,43 +430,46 @@ func (q *Queries) InsertRetryRuntimeState(ctx context.Context, arg InsertRetryRu
 	return err
 }
 
-const lockCompatiblePool = `-- name: LockCompatiblePool :one
+const instantiateAdmittedStageGraph = `-- name: InstantiateAdmittedStageGraph :one
 SELECT
-	pool.id::uuid AS id,
-	pool.admission_open::boolean AS admission_open,
-	pool.queued_count::integer AS queued_count,
-	pool.queued_limit::integer AS queued_limit,
-	pool.retry_after_seconds::integer AS retry_after_seconds
-FROM vela_lock_compatible_pool(
-	$1,
-	$2,
-	$3
-) AS pool(id, admission_open, queued_count, queued_limit, retry_after_seconds)
+    instantiated.aggregate_version::bigint AS aggregate_version,
+    instantiated.current_fence::bigint AS current_fence,
+    instantiated.snapshot_id::uuid AS snapshot_id,
+    instantiated.attempt_id::uuid AS attempt_id,
+    instantiated.attempt_fence::bigint AS attempt_fence,
+    instantiated.stage_run_count::integer AS stage_run_count
+FROM vela_instantiate_admitted_stage_graph(
+    $1,
+    $2,
+    $3
+) AS instantiated
 `
 
-type LockCompatiblePoolParams struct {
-	ModelRevisionID            uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
-	GenerationPresetRevisionID uuid.UUID `db:"generation_preset_revision_id" json:"generation_preset_revision_id"`
-	OutputSpecID               uuid.UUID `db:"output_spec_id" json:"output_spec_id"`
+type InstantiateAdmittedStageGraphParams struct {
+	OrganizationID uuid.UUID `db:"organization_id" json:"organization_id"`
+	ProjectID      uuid.UUID `db:"project_id" json:"project_id"`
+	JobID          uuid.UUID `db:"job_id" json:"job_id"`
 }
 
-type LockCompatiblePoolRow struct {
-	ID                uuid.UUID `db:"id" json:"id"`
-	AdmissionOpen     bool      `db:"admission_open" json:"admission_open"`
-	QueuedCount       int32     `db:"queued_count" json:"queued_count"`
-	QueuedLimit       int32     `db:"queued_limit" json:"queued_limit"`
-	RetryAfterSeconds int32     `db:"retry_after_seconds" json:"retry_after_seconds"`
+type InstantiateAdmittedStageGraphRow struct {
+	AggregateVersion int64     `db:"aggregate_version" json:"aggregate_version"`
+	CurrentFence     int64     `db:"current_fence" json:"current_fence"`
+	SnapshotID       uuid.UUID `db:"snapshot_id" json:"snapshot_id"`
+	AttemptID        uuid.UUID `db:"attempt_id" json:"attempt_id"`
+	AttemptFence     int64     `db:"attempt_fence" json:"attempt_fence"`
+	StageRunCount    int32     `db:"stage_run_count" json:"stage_run_count"`
 }
 
-func (q *Queries) LockCompatiblePool(ctx context.Context, arg LockCompatiblePoolParams) (LockCompatiblePoolRow, error) {
-	row := q.db.QueryRow(ctx, lockCompatiblePool, arg.ModelRevisionID, arg.GenerationPresetRevisionID, arg.OutputSpecID)
-	var i LockCompatiblePoolRow
+func (q *Queries) InstantiateAdmittedStageGraph(ctx context.Context, arg InstantiateAdmittedStageGraphParams) (InstantiateAdmittedStageGraphRow, error) {
+	row := q.db.QueryRow(ctx, instantiateAdmittedStageGraph, arg.OrganizationID, arg.ProjectID, arg.JobID)
+	var i InstantiateAdmittedStageGraphRow
 	err := row.Scan(
-		&i.ID,
-		&i.AdmissionOpen,
-		&i.QueuedCount,
-		&i.QueuedLimit,
-		&i.RetryAfterSeconds,
+		&i.AggregateVersion,
+		&i.CurrentFence,
+		&i.SnapshotID,
+		&i.AttemptID,
+		&i.AttemptFence,
+		&i.StageRunCount,
 	)
 	return i, err
 }
@@ -590,6 +587,33 @@ func (q *Queries) LockProjectForAdmission(ctx context.Context, arg LockProjectFo
 		&i.MetadataRetentionDays,
 		&i.FinancialRetentionDays,
 	)
+	return i, err
+}
+
+const lockStageGraphReadyCapacityPath = `-- name: LockStageGraphReadyCapacityPath :one
+SELECT
+    capacity.ready::boolean AS ready,
+    capacity.retry_after_seconds::integer AS retry_after_seconds
+FROM vela_lock_stage_graph_ready_capacity_path(
+    $1,
+    $2
+) AS capacity
+`
+
+type LockStageGraphReadyCapacityPathParams struct {
+	ExecutionGraphRevisionID   uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+}
+
+type LockStageGraphReadyCapacityPathRow struct {
+	Ready             bool  `db:"ready" json:"ready"`
+	RetryAfterSeconds int32 `db:"retry_after_seconds" json:"retry_after_seconds"`
+}
+
+func (q *Queries) LockStageGraphReadyCapacityPath(ctx context.Context, arg LockStageGraphReadyCapacityPathParams) (LockStageGraphReadyCapacityPathRow, error) {
+	row := q.db.QueryRow(ctx, lockStageGraphReadyCapacityPath, arg.ExecutionGraphRevisionID, arg.ExecutionProfileRevisionID)
+	var i LockStageGraphReadyCapacityPathRow
+	err := row.Scan(&i.Ready, &i.RetryAfterSeconds)
 	return i, err
 }
 
@@ -719,6 +743,44 @@ func (q *Queries) ResolveActiveSKU(ctx context.Context, arg ResolveActiveSKUPara
 		&i.Currency,
 		&i.CircuitFingerprintWindowSeconds,
 		&i.CircuitMinDistinctHealthyWorkers,
+	)
+	return i, err
+}
+
+const resolveStageJobExecutionRoute = `-- name: ResolveStageJobExecutionRoute :one
+SELECT
+    route.stage_cutover_revision_id::uuid AS stage_cutover_revision_id,
+    route.execution_graph_revision_id::uuid AS execution_graph_revision_id,
+    route.execution_profile_revision_id::uuid AS execution_profile_revision_id,
+    route.reserved_storage_bytes::bigint AS reserved_storage_bytes
+FROM vela_resolve_stage_job_execution_route(
+    $1,
+    $2,
+    $3
+) AS route
+`
+
+type ResolveStageJobExecutionRouteParams struct {
+	OrganizationID  uuid.UUID `db:"organization_id" json:"organization_id"`
+	ProjectID       uuid.UUID `db:"project_id" json:"project_id"`
+	ModelRevisionID uuid.UUID `db:"model_revision_id" json:"model_revision_id"`
+}
+
+type ResolveStageJobExecutionRouteRow struct {
+	StageCutoverRevisionID     uuid.UUID `db:"stage_cutover_revision_id" json:"stage_cutover_revision_id"`
+	ExecutionGraphRevisionID   uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	ReservedStorageBytes       int64     `db:"reserved_storage_bytes" json:"reserved_storage_bytes"`
+}
+
+func (q *Queries) ResolveStageJobExecutionRoute(ctx context.Context, arg ResolveStageJobExecutionRouteParams) (ResolveStageJobExecutionRouteRow, error) {
+	row := q.db.QueryRow(ctx, resolveStageJobExecutionRoute, arg.OrganizationID, arg.ProjectID, arg.ModelRevisionID)
+	var i ResolveStageJobExecutionRouteRow
+	err := row.Scan(
+		&i.StageCutoverRevisionID,
+		&i.ExecutionGraphRevisionID,
+		&i.ExecutionProfileRevisionID,
+		&i.ReservedStorageBytes,
 	)
 	return i, err
 }

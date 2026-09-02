@@ -19,7 +19,7 @@ import (
 
 const maxLedgerRecordBytes = 64 * 1024
 
-var errExecutionInProgress = errors.New("node Agent execution is already in progress")
+var errExecutionInProgress = errors.New("node agent execution is already in progress")
 
 // FileLedger is the host-local durable receipt authority. It stores only
 // operation metadata and result digests, never command output or Customer
@@ -33,13 +33,13 @@ type FileLedger struct {
 
 func NewFileLedger(directory string) (*FileLedger, error) {
 	if directory == "" || !filepath.IsAbs(directory) {
-		return nil, errors.New("node Agent receipt directory must be absolute")
+		return nil, errors.New("node agent receipt directory must be absolute")
 	}
 	if err := os.MkdirAll(directory, 0o750); err != nil {
 		return nil, fmt.Errorf("create node Agent receipt directory: %w", err)
 	}
 	if err := securefile.ValidateDirectory(directory); err != nil {
-		return nil, errors.New("node Agent receipt directory does not satisfy the security contract")
+		return nil, errors.New("node agent receipt directory does not satisfy the security contract")
 	}
 	ledger := &FileLedger{directory: directory, executionLocks: make(map[uuid.UUID]*os.File)}
 	ledger.syncDirectory = func() error { return syncDirectory(directory) }
@@ -61,11 +61,11 @@ type fileExecutionIntent struct {
 
 func (ledger *FileLedger) Begin(ctx context.Context, intent ExecutionIntent) (ExecutionIntentResult, error) {
 	if ledger == nil || ledger.directory == "" {
-		return ExecutionIntentResult{}, errors.New("node Agent file ledger is not configured")
+		return ExecutionIntentResult{}, errors.New("node agent file ledger is not configured")
 	}
 	if intent.OperationID == uuid.Nil || intent.RequestHash == [sha256.Size]byte{} ||
 		!validText(intent.ActorIdentity, maxIdentityText) || intent.StartedAt.IsZero() {
-		return ExecutionIntentResult{}, errors.New("node Agent execution intent is invalid")
+		return ExecutionIntentResult{}, errors.New("node agent execution intent is invalid")
 	}
 	if err := contextError(ctx); err != nil {
 		return ExecutionIntentResult{}, err
@@ -84,7 +84,7 @@ func (ledger *FileLedger) Begin(ctx context.Context, intent ExecutionIntent) (Ex
 		return ExecutionIntentResult{}, err
 	} else if found {
 		if prior.RequestHash != intent.RequestHash || prior.ActorIdentity != intent.ActorIdentity {
-			return ExecutionIntentResult{}, errors.New("node Agent execution intent conflicts with an existing operation")
+			return ExecutionIntentResult{}, errors.New("node agent execution intent conflicts with an existing operation")
 		}
 		keepLock = true
 		return ExecutionIntentResult{StartedAt: prior.StartedAt, release: func() error {
@@ -138,7 +138,7 @@ func (ledger *FileLedger) loadIntent(ctx context.Context, operationID uuid.UUID)
 	requestHash, err := hex.DecodeString(stored.RequestHash)
 	if err != nil || len(requestHash) != sha256.Size || stored.OperationID != operationID ||
 		!validText(stored.ActorIdentity, maxIdentityText) || stored.StartedAt.IsZero() {
-		return ExecutionIntent{}, false, errors.New("node Agent execution intent is invalid")
+		return ExecutionIntent{}, false, errors.New("node agent execution intent is invalid")
 	}
 	var result ExecutionIntent
 	result.OperationID = stored.OperationID
@@ -150,7 +150,7 @@ func (ledger *FileLedger) loadIntent(ctx context.Context, operationID uuid.UUID)
 
 func (ledger *FileLedger) Load(ctx context.Context, operationID uuid.UUID) (Receipt, bool, error) {
 	if ledger == nil || ledger.directory == "" {
-		return Receipt{}, false, errors.New("node Agent file ledger is not configured")
+		return Receipt{}, false, errors.New("node agent file ledger is not configured")
 	}
 	if err := contextError(ctx); err != nil {
 		return Receipt{}, false, err
@@ -172,21 +172,21 @@ func (ledger *FileLedger) Load(ctx context.Context, operationID uuid.UUID) (Rece
 	}
 	requestHash, err := hex.DecodeString(stored.RequestHash)
 	if err != nil || len(requestHash) != len(Receipt{}.RequestHash) {
-		return Receipt{}, false, errors.New("node Agent receipt request hash is invalid")
+		return Receipt{}, false, errors.New("node agent receipt request hash is invalid")
 	}
 	var receipt Receipt
 	copy(receipt.RequestHash[:], requestHash)
 	receipt.ActorIdentity = stored.ActorIdentity
 	receipt.Result = stored.Result
 	if !validReceipt(receipt) {
-		return Receipt{}, false, errors.New("node Agent receipt is invalid")
+		return Receipt{}, false, errors.New("node agent receipt is invalid")
 	}
 	return receipt, true, nil
 }
 
 func (ledger *FileLedger) confirmDirectoryDurability() error {
 	if ledger.syncDirectory == nil {
-		return errors.New("node Agent ledger directory sync is not configured")
+		return errors.New("node agent ledger directory sync is not configured")
 	}
 	if err := ledger.syncDirectory(); err != nil {
 		return fmt.Errorf("confirm node Agent ledger directory durability: %w", err)
@@ -196,11 +196,11 @@ func (ledger *FileLedger) confirmDirectoryDurability() error {
 
 func (ledger *FileLedger) Save(ctx context.Context, receipt Receipt) error {
 	if ledger == nil || ledger.directory == "" {
-		return errors.New("node Agent file ledger is not configured")
+		return errors.New("node agent file ledger is not configured")
 	}
 	defer func() { _ = ledger.releaseExecutionLock(receipt.Result.OperationID) }()
 	if !validReceipt(receipt) {
-		return errors.New("node Agent receipt is invalid")
+		return errors.New("node agent receipt is invalid")
 	}
 	if err := contextError(ctx); err != nil {
 		return err
@@ -213,7 +213,7 @@ func (ledger *FileLedger) Save(ctx context.Context, receipt Receipt) error {
 			equalResult(prior.Result, receipt.Result) {
 			return nil
 		}
-		return errors.New("node Agent receipt conflicts with an existing operation")
+		return errors.New("node agent receipt conflicts with an existing operation")
 	}
 	encoded, err := json.Marshal(fileReceipt{
 		RequestHash:   hex.EncodeToString(receipt.RequestHash[:]),
@@ -278,7 +278,7 @@ func (ledger *FileLedger) publish(path, pattern string, encoded []byte) error {
 		return err
 	}
 	if ledger.syncDirectory == nil {
-		return errors.New("node Agent ledger directory sync is not configured")
+		return errors.New("node agent ledger directory sync is not configured")
 	}
 	return ledger.syncDirectory()
 }

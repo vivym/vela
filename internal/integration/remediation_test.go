@@ -26,6 +26,7 @@ import (
 	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
+	"github.com/vivym/vela/internal/fleet"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/nodeagent"
@@ -33,12 +34,20 @@ import (
 	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
-	"github.com/vivym/vela/internal/workercontrol"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 )
+
+const remediationGPUUUID = "GPU-00000000-0000-0000-0000-000000000004"
+
+type remediationDeviceEpochSource map[string]int64
+
+func (source remediationDeviceEpochSource) CurrentDeviceEpoch(gpuUUID string) (int64, bool) {
+	epoch, ok := source[gpuUUID]
+	return epoch, ok
+}
 
 func TestRemediationPlatformAPIRequiresDistinctL6ApprovalBeforeExecution(t *testing.T) {
 	database := newPostgres(t)
@@ -95,10 +104,10 @@ func TestRemediationPlatformAPIRequiresDistinctL6ApprovalBeforeExecution(t *test
 	operationID := uuid.New()
 	evidence := sha256.Sum256([]byte("L6 hardware fault"))
 	body, err := json.Marshal(map[string]any{
-		"operation_id": operationID, "worker_id": workerID, "worker_epoch": 1,
-		"node_identity": "node-remediation-1",
-		"gpu_uuid":      "GPU-00000000-0000-0000-0000-000000000018",
-		"failure_class": "GPU_UNRECOVERABLE", "evidence_sha256": hex.EncodeToString(evidence[:]),
+		"operation_id": operationID, "worker_instance_id": workerID, "worker_instance_epoch": 1,
+		"node_identity":   "node-remediation-1",
+		"device_identity": remediationGPUUUID,
+		"failure_class":   "GPU_UNRECOVERABLE", "evidence_sha256": hex.EncodeToString(evidence[:]),
 		"certification_revision": "matrix-l6-v1", "action_level": "L6_BMC_POWER_CYCLE",
 	})
 	if err != nil {
@@ -163,14 +172,14 @@ func TestRemediationDispatcherQuarantinesFailedCertifiedPostcheck(t *testing.T) 
 		t.Fatalf("create remediation runtime service: %v", err)
 	}
 	const (
-		gpuUUID = "GPU-00000000-0000-0000-0000-000000000018"
+		gpuUUID = remediationGPUUUID
 		pciBDF  = "0000:41:00.0"
 		actor   = "controller/remediation-dispatcher"
 		spiffe  = "spiffe://vela.internal/controller/remediation-dispatcher"
 	)
 	evidence := sha256.Sum256([]byte("GPU process failure"))
 	request := remediation.Request{
-		OperationID: uuid.New(), WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: uuid.New(), WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		NodeIdentity: "node-remediation-1", DeviceIdentity: gpuUUID,
 		FailureClass: "PROCESS_FAILURE", EvidenceDigest: evidence[:],
 		CertificationRevision: "matrix-v1", ActionLevel: remediation.ActionL0ProcessRestart,
@@ -192,11 +201,12 @@ func TestRemediationDispatcherQuarantinesFailedCertifiedPostcheck(t *testing.T) 
 	}
 	policy, err := nodeagent.NewStaticCapabilityPolicy(map[string]nodeagent.DeviceCapability{
 		gpuUUID: {
+			DeviceID: uuid.MustParse(workerRegistryDeviceID), DeviceEpoch: 1,
 			GPUUUID: gpuUUID, PCIBDF: pciBDF, CertificationRevision: "matrix-v1",
 			FailureClasses: map[string]bool{"PROCESS_FAILURE": true},
 			Actions:        map[remediation.ActionLevel]bool{remediation.ActionL0ProcessRestart: true},
 		},
-	})
+	}, remediationDeviceEpochSource{gpuUUID: 1})
 	if err != nil {
 		t.Fatalf("configure runtime remediation capability matrix: %v", err)
 	}
@@ -227,7 +237,7 @@ func TestRemediationDispatcherQuarantinesFailedCertifiedPostcheck(t *testing.T) 
 		t.Fatalf("configure runtime host ledger: %v", err)
 	}
 	host, err := nodeagent.NewServer(nodeagent.NodeAgentIdentity{
-		NodeIdentity: "node-remediation-1", WorkerID: workerID, WorkerEpoch: 1,
+		NodeIdentity: "node-remediation-1", AgentID: uuid.New(), AgentEpoch: 1,
 	}, resolver, executor, hostLedger)
 	if err != nil {
 		t.Fatalf("configure runtime Node Agent: %v", err)
@@ -264,10 +274,10 @@ func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 	evidence := sha256.Sum256([]byte("worker fault evidence"))
 	request := remediation.Request{
 		OperationID:           uuid.MustParse("10000000-0000-0000-0000-000000001920"),
-		WorkerID:              workerID,
-		WorkerEpoch:           1,
+		WorkerInstanceID:      workerID,
+		WorkerInstanceEpoch:   1,
 		NodeIdentity:          "node-remediation-1",
-		DeviceIdentity:        "GPU-REM-0",
+		DeviceIdentity:        remediationGPUUUID,
 		FailureClass:          "CUDA_CONTEXT_STALE",
 		EvidenceDigest:        evidence[:],
 		CertificationRevision: "matrix-v1",
@@ -310,17 +320,35 @@ func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 	assertRemediationFailure(t, err, remediation.FailureConflict)
 	postcheck := sha256.Sum256([]byte("post-check"))
 	completed, err := service.Complete(context.Background(), remediation.Completion{
-		OperationID: request.OperationID, WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: request.OperationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "process restarted and checks passed",
 		PostcheckHash: postcheck[:], ActorIdentity: "node-agent-1",
 	})
 	if err != nil || completed.State != remediation.StateSucceeded ||
-		string(completed.WorkerLifecycleState) != "WARMING" || string(completed.WorkerReachability) != "SUSPECT" {
+		string(completed.WorkerLifecycleState) != "FENCED" || string(completed.WorkerReachability) != "UNREACHABLE" {
 		t.Fatalf("complete Remediation = %#v error=%v", completed, err)
 	}
 	operation, err := service.Get(context.Background(), request.OperationID)
 	if err != nil || operation.State != remediation.StateSucceeded || operation.ResultCode != "POSTCHECK_OK" {
 		t.Fatalf("get Remediation operation = %#v error=%v", operation, err)
+	}
+	if operation.DeviceID != uuid.MustParse(workerRegistryDeviceID) || operation.DeviceEpoch != 1 {
+		t.Fatalf("Remediation exact Device authority = %s/%d", operation.DeviceID, operation.DeviceEpoch)
+	}
+	var workerEpoch int64
+	var lifecycle, reachability string
+	var activeBindings int
+	if err := database.Admin.QueryRow(`
+		SELECT worker.instance_epoch, worker.lifecycle_state, worker.reachability_state,
+			(SELECT count(*) FROM active_device_bindings AS binding
+			 WHERE binding.worker_instance_id = worker.id)
+		FROM worker_instances AS worker
+		WHERE worker.id = $1
+	`, workerID).Scan(&workerEpoch, &lifecycle, &reachability, &activeBindings); err != nil {
+		t.Fatalf("read post-Remediation WorkerInstance authority: %v", err)
+	}
+	if workerEpoch != 2 || lifecycle != "FENCED" || reachability != "UNREACHABLE" || activeBindings != 0 {
+		t.Fatalf("post-Remediation WorkerInstance authority = epoch %d %s/%s bindings=%d", workerEpoch, lifecycle, reachability, activeBindings)
 	}
 	var events int
 	if err := database.Admin.QueryRow(
@@ -357,6 +385,39 @@ func TestRemediationOperationIsBoundedIdempotentAndAudited(t *testing.T) {
 	assertRemediationFailure(t, err, remediation.FailureConflict)
 }
 
+func TestRemediationRequestRequiresExactWorkerInstanceDeviceBinding(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	workerID := seedRemediationWorker(t, database)
+	service, err := remediation.NewService(newRolePool(
+		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
+	))
+	if err != nil {
+		t.Fatalf("create Device-bound Remediation service: %v", err)
+	}
+	evidence := sha256.Sum256([]byte("wrong Device binding evidence"))
+	request := remediation.Request{
+		OperationID: uuid.New(), WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
+		NodeIdentity:   "node-remediation-1",
+		DeviceIdentity: "GPU-11111111-1111-1111-1111-111111111111",
+		FailureClass:   "GPU_FAULT", EvidenceDigest: evidence[:],
+		CertificationRevision: "matrix-v1", ActionLevel: remediation.ActionL2GPUReset,
+		IdempotencyKey: "wrong-device-binding", RequestedBy: "node-agent-1",
+	}
+	_, err = service.Request(context.Background(), request)
+	assertRemediationFailure(t, err, remediation.FailureConflict)
+	var operations int
+	if err := database.Admin.QueryRow(
+		"SELECT count(*) FROM remediation_operations WHERE worker_instance_id = $1",
+		workerID,
+	).Scan(&operations); err != nil {
+		t.Fatalf("count rejected Device-bound Remediation operations: %v", err)
+	}
+	if operations != 0 {
+		t.Fatalf("rejected Device-bound Remediation persisted %d operations", operations)
+	}
+}
+
 func TestRemediationExecutionClaimSerializesConcurrentProcesses(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -375,8 +436,8 @@ func TestRemediationExecutionClaimSerializesConcurrentProcesses(t *testing.T) {
 	}
 	evidence := sha256.Sum256([]byte("concurrent execution claim"))
 	request := remediation.Request{
-		OperationID: uuid.New(), WorkerID: workerID, WorkerEpoch: 1,
-		NodeIdentity: "node-remediation-1", DeviceIdentity: "GPU-REM-0",
+		OperationID: uuid.New(), WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
+		NodeIdentity: "node-remediation-1", DeviceIdentity: remediationGPUUUID,
 		FailureClass: "GPU_FAULT", EvidenceDigest: evidence[:], CertificationRevision: "matrix-v1",
 		ActionLevel: remediation.ActionL2GPUReset, IdempotencyKey: "concurrent-execution-claim",
 		RequestedBy: "controller/setup",
@@ -457,10 +518,10 @@ func TestRemediationL6RequiresTwoApproversAndQuarantinesOnFailure(t *testing.T) 
 	evidence := sha256.Sum256([]byte("BMC evidence"))
 	request := remediation.Request{
 		OperationID:           uuid.MustParse("10000000-0000-0000-0000-000000001922"),
-		WorkerID:              workerID,
-		WorkerEpoch:           1,
+		WorkerInstanceID:      workerID,
+		WorkerInstanceEpoch:   1,
 		NodeIdentity:          "node-remediation-1",
-		DeviceIdentity:        "PCI-0000:01:00.0",
+		DeviceIdentity:        remediationGPUUUID,
 		FailureClass:          "NODE_UNRESPONSIVE",
 		EvidenceDigest:        evidence[:],
 		CertificationRevision: "matrix-v2",
@@ -492,22 +553,22 @@ func TestRemediationL6RequiresTwoApproversAndQuarantinesOnFailure(t *testing.T) 
 		t.Fatalf("start approved L6 Remediation: %v", err)
 	}
 	completed, err := service.Complete(context.Background(), remediation.Completion{
-		OperationID: request.OperationID, WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: request.OperationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		Success: false, ResultCode: "BMC_POSTCHECK_FAILED", ResultDetail: "node identity did not return",
 		ActorIdentity: "node-agent-1",
 	})
 	if err != nil || completed.State != remediation.StateQuarantined ||
-		string(completed.WorkerLifecycleState) != "QUARANTINED" || string(completed.WorkerReachability) != "OFFLINE" {
+		string(completed.WorkerLifecycleState) != "FENCED" || string(completed.WorkerReachability) != "UNREACHABLE" {
 		t.Fatalf("failed L6 Remediation = %#v error=%v", completed, err)
 	}
 	var lifecycle, reachability string
 	if err := database.Admin.QueryRow(
-		"SELECT lifecycle_state, reachability_condition FROM workers WHERE id = $1", workerID,
+		"SELECT lifecycle_state, reachability_state FROM worker_instances WHERE id = $1", workerID,
 	).Scan(&lifecycle, &reachability); err != nil {
-		t.Fatalf("read quarantined Worker: %v", err)
+		t.Fatalf("read fenced WorkerInstance: %v", err)
 	}
-	if lifecycle != "QUARANTINED" || reachability != "OFFLINE" {
-		t.Fatalf("quarantined Worker = %s/%s", lifecycle, reachability)
+	if lifecycle != "FENCED" || reachability != "UNREACHABLE" {
+		t.Fatalf("fenced WorkerInstance = %s/%s", lifecycle, reachability)
 	}
 }
 
@@ -524,10 +585,10 @@ func TestRemediationL7QuarantineIsImmediateAndEpochBound(t *testing.T) {
 	evidence := sha256.Sum256([]byte("quarantine evidence"))
 	request := remediation.Request{
 		OperationID:           uuid.MustParse("10000000-0000-0000-0000-000000001923"),
-		WorkerID:              workerID,
-		WorkerEpoch:           9,
+		WorkerInstanceID:      workerID,
+		WorkerInstanceEpoch:   9,
 		NodeIdentity:          "node-remediation-1",
-		DeviceIdentity:        "GPU-REM-0",
+		DeviceIdentity:        remediationGPUUUID,
 		FailureClass:          "IDENTITY_AMBIGUOUS",
 		EvidenceDigest:        evidence[:],
 		CertificationRevision: "fail-closed-v1",
@@ -537,7 +598,7 @@ func TestRemediationL7QuarantineIsImmediateAndEpochBound(t *testing.T) {
 	}
 	_, err = service.Request(context.Background(), request)
 	assertRemediationFailure(t, err, remediation.FailureConflict)
-	request.WorkerEpoch = 1
+	request.WorkerInstanceEpoch = 1
 	request.IdempotencyKey = "remediation-l7-1"
 	request.CertificationRevision = ""
 	result, err := service.Request(context.Background(), request)
@@ -559,8 +620,8 @@ func TestRemediationL7QuarantineIsImmediateAndEpochBound(t *testing.T) {
 		)
 	}
 	if _, err := service.Request(context.Background(), remediation.Request{
-		OperationID: uuid.MustParse("10000000-0000-0000-0000-000000001929"),
-		WorkerID:    workerID, WorkerEpoch: 1, NodeIdentity: request.NodeIdentity,
+		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000001929"),
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: 1, NodeIdentity: request.NodeIdentity,
 		DeviceIdentity: request.DeviceIdentity, FailureClass: "NEW_FAULT",
 		EvidenceDigest: evidence[:], CertificationRevision: "matrix-v1",
 		ActionLevel:    remediation.ActionL0ProcessRestart,
@@ -571,70 +632,8 @@ func TestRemediationL7QuarantineIsImmediateAndEpochBound(t *testing.T) {
 		assertRemediationFailure(t, err, remediation.FailureConflict)
 	}
 	assertRemediationSQLState(t, database.Admin, `
-		UPDATE workers SET lifecycle_state = 'READY' WHERE id = $1
-	`, workerID, "55000")
-}
-
-func TestRemediationRequestFencesActiveLease(t *testing.T) {
-	fixture := newAssignmentFixture(t, "remediation-fence-active-lease", 1)
-	assignment, err := fixture.service.Acquire(
-		context.Background(), fixture.worker, 1, &fixture.candidate,
-	)
-	if err != nil {
-		t.Fatalf("create active Assignment: %v", err)
-	}
-	var nodeIdentity string
-	if err := fixture.database.Admin.QueryRow(
-		"SELECT node_identity FROM workers WHERE id = $1", assignment.WorkerID,
-	).Scan(&nodeIdentity); err != nil {
-		t.Fatalf("read Worker node identity: %v", err)
-	}
-	service, err := remediation.NewService(newRolePool(
-		t, fixture.database.DSN, "vela_remediation_login", "vela-remediation-password",
-	))
-	if err != nil {
-		t.Fatalf("create Remediation service: %v", err)
-	}
-	evidence := sha256.Sum256([]byte("active lease evidence"))
-	request := remediation.Request{
-		OperationID: uuid.MustParse("10000000-0000-0000-0000-000000001930"),
-		WorkerID:    assignment.WorkerID, WorkerEpoch: 1, NodeIdentity: nodeIdentity,
-		DeviceIdentity: "GPU-LEASE-0", FailureClass: "WORKER_LOST",
-		EvidenceDigest: evidence[:], CertificationRevision: "matrix-lease-v1",
-		ActionLevel:    remediation.ActionL0ProcessRestart,
-		IdempotencyKey: "remediation-fence-active-lease-1", RequestedBy: "node-agent-lease",
-	}
-	if _, err := service.Request(context.Background(), request); err != nil {
-		t.Fatalf("request Remediation with active Lease: %v", err)
-	}
-	var revokedAt sql.NullTime
-	if err := fixture.database.Admin.QueryRow(
-		"SELECT revoked_at FROM attempt_leases WHERE attempt_id = $1", assignment.AttemptID,
-	).Scan(&revokedAt); err != nil {
-		t.Fatalf("read fenced Lease: %v", err)
-	}
-	if !revokedAt.Valid {
-		t.Fatal("Remediation request left the active Worker Lease unfenced")
-	}
-	heartbeat, err := fixture.service.Heartbeat(
-		context.Background(), fixture.worker, leaseCredentials(assignment), validHeartbeatObservation(2),
-	)
-	if err != nil || heartbeat.Decision != workercontrol.HeartbeatStop ||
-		heartbeat.StopReason != workercontrol.StopInvalidAuthority {
-		t.Fatalf("heartbeat after Remediation fencing = %#v error=%v", heartbeat, err)
-	}
-	if _, err := service.Start(context.Background(), request.OperationID, assignment.WorkerID, 1, request.RequestedBy); err != nil {
-		t.Fatalf("start fenced Remediation: %v", err)
-	}
-	postcheck := sha256.Sum256([]byte("post-check-active-lease"))
-	completed, err := service.Complete(context.Background(), remediation.Completion{
-		OperationID: request.OperationID, WorkerID: assignment.WorkerID, WorkerEpoch: 1,
-		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "active Attempt remains",
-		PostcheckHash: postcheck[:], ActorIdentity: request.RequestedBy,
-	})
-	if err != nil || completed.State != remediation.StateQuarantined {
-		t.Fatalf("active Lease completion = %#v error=%v", completed, err)
-	}
+		UPDATE worker_instances SET lifecycle_state = 'READY' WHERE id = $1
+	`, workerID, "23514")
 }
 
 func TestRemediationRecoveryQuarantinesExpiredExecutingOperation(t *testing.T) {
@@ -649,9 +648,9 @@ func TestRemediationRecoveryQuarantinesExpiredExecutingOperation(t *testing.T) {
 	}
 	evidence := sha256.Sum256([]byte("orphaned execution evidence"))
 	request := remediation.Request{
-		OperationID: uuid.MustParse("10000000-0000-0000-0000-000000001931"),
-		WorkerID:    workerID, WorkerEpoch: 1, NodeIdentity: "node-remediation-1",
-		DeviceIdentity: "GPU-ORPHAN-0", FailureClass: "NODE_AGENT_LOST",
+		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000001931"),
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: 1, NodeIdentity: "node-remediation-1",
+		DeviceIdentity: remediationGPUUUID, FailureClass: "NODE_AGENT_LOST",
 		EvidenceDigest: evidence[:], CertificationRevision: "matrix-orphan-v1",
 		ActionLevel:    remediation.ActionL0ProcessRestart,
 		IdempotencyKey: "remediation-orphaned-execution-1", RequestedBy: "node-agent-orphan",
@@ -707,9 +706,9 @@ func TestRemediationMutationsShareWorkerLockOrder(t *testing.T) {
 	}
 	evidence := sha256.Sum256([]byte("lock order evidence"))
 	request := remediation.Request{
-		OperationID: uuid.MustParse("10000000-0000-0000-0000-000000001932"),
-		WorkerID:    workerID, WorkerEpoch: 1, NodeIdentity: "node-remediation-1",
-		DeviceIdentity: "GPU-LOCK-0", FailureClass: "LOCK_ORDER_TEST",
+		OperationID:      uuid.MustParse("10000000-0000-0000-0000-000000001932"),
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: 1, NodeIdentity: "node-remediation-1",
+		DeviceIdentity: remediationGPUUUID, FailureClass: "LOCK_ORDER_TEST",
 		EvidenceDigest: evidence[:], CertificationRevision: "matrix-lock-v1",
 		ActionLevel:    remediation.ActionL0ProcessRestart,
 		IdempotencyKey: "remediation-lock-order-1", RequestedBy: "node-agent-lock",
@@ -745,7 +744,7 @@ func TestRemediationMutationsShareWorkerLockOrder(t *testing.T) {
 	}
 	postcheck := sha256.Sum256([]byte("lock order post-check"))
 	completed, err := service.Complete(ctx, remediation.Completion{
-		OperationID: request.OperationID, WorkerID: workerID, WorkerEpoch: 1,
+		OperationID: request.OperationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
 		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "lock order complete",
 		PostcheckHash: postcheck[:], ActorIdentity: request.RequestedBy,
 	})
@@ -754,100 +753,81 @@ func TestRemediationMutationsShareWorkerLockOrder(t *testing.T) {
 	}
 }
 
-func TestRemediationCompletionQuarantinesWorkerWithActiveAttempt(t *testing.T) {
-	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
-	seedAdmissionFixture(t, database.Admin)
-	server := admissionServerForDatabase(t, database)
-	accepted := submitJob(t, server.URL, "remediation-active-attempt", []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"keep this Attempt active during remediation"
-	}`))
-	if accepted.StatusCode != 202 {
-		t.Fatalf("submit active Attempt Job status = %d body=%s", accepted.StatusCode, accepted.Body)
-	}
-	var jobID uuid.UUID
-	if err := database.Admin.QueryRow("SELECT id FROM jobs LIMIT 1").Scan(&jobID); err != nil {
-		t.Fatalf("read active Attempt Job: %v", err)
-	}
-	workerID := uuid.MustParse("10000000-0000-0000-0000-000000001926")
-	if _, err := database.Admin.Exec(`
-		INSERT INTO workers (
-			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition, node_identity
-		) VALUES (
-			$1, '00000000-0000-0000-0000-000000000005',
-			'spiffe://vela.example/worker/remediation-active-1', 1, 'READY', 'HEALTHY',
-			'node-remediation-active-1'
-		)
-	`, workerID); err != nil {
-		t.Fatalf("seed active Attempt Worker: %v", err)
-	}
-	if _, err := database.Admin.Exec(`
-		INSERT INTO attempts (
-			id, organization_id, project_id, job_id, attempt_number,
-			execution_profile_revision_id, worker_pool_id, worker_id, worker_epoch,
-			state, fence, assigned_at
-		)
-		SELECT '10000000-0000-0000-0000-000000001927', organization_id, project_id, id, 1,
-			'00000000-0000-0000-0000-000000000014', worker_pool_id, $1, 1,
-			'ASSIGNED', 1, clock_timestamp()
-		FROM jobs WHERE id = $2
-	`, workerID, jobID); err != nil {
-		t.Fatalf("seed active Attempt: %v", err)
-	}
+func TestRemediationCompletionQuarantinesWorkerInstanceWithActiveStageLease(t *testing.T) {
+	database, _, coordinator, _, attemptID, encoderRunID, _ :=
+		newStageGraphCancellationFixture(t, "remediation-active-stage-lease")
+	assignment := assignEncoder(
+		t, database, coordinator, attemptID, encoderRunID, time.Now().UTC().Add(time.Minute),
+	)
+	workerID := assignment.WorkerInstanceID
 	service, err := remediation.NewService(newRolePool(
 		t, database.DSN, "vela_remediation_login", "vela-remediation-password",
 	))
 	if err != nil {
-		t.Fatalf("create active Attempt Remediation service: %v", err)
+		t.Fatalf("create active StageLease Remediation service: %v", err)
 	}
-	evidence := sha256.Sum256([]byte("active Attempt evidence"))
+	evidence := sha256.Sum256([]byte("active StageLease evidence"))
 	request := remediation.Request{
 		OperationID:           uuid.MustParse("10000000-0000-0000-0000-000000001928"),
-		WorkerID:              workerID,
-		WorkerEpoch:           1,
-		NodeIdentity:          "node-remediation-active-1",
-		DeviceIdentity:        "GPU-REM-ACTIVE-0",
-		FailureClass:          "WORKER_LOST",
+		WorkerInstanceID:      workerID,
+		WorkerInstanceEpoch:   1,
+		NodeIdentity:          "h3-node-01",
+		DeviceIdentity:        remediationGPUUUID,
+		FailureClass:          "STAGE_LEASE_STUCK",
 		EvidenceDigest:        evidence[:],
-		CertificationRevision: "matrix-active-attempt-v1",
+		CertificationRevision: "matrix-active-stage-lease-v1",
 		ActionLevel:           remediation.ActionL0ProcessRestart,
-		IdempotencyKey:        "remediation-active-attempt-1",
+		IdempotencyKey:        "remediation-active-stage-lease-1",
 		RequestedBy:           "node-agent-active-1",
 	}
 	if _, err := service.Request(context.Background(), request); err != nil {
-		t.Fatalf("request active Attempt Remediation: %v", err)
+		t.Fatalf("request active StageLease Remediation: %v", err)
 	}
 	if _, err := service.Start(context.Background(), request.OperationID, workerID, 1, request.RequestedBy); err != nil {
-		t.Fatalf("start active Attempt Remediation: %v", err)
+		t.Fatalf("start active StageLease Remediation: %v", err)
 	}
-	postcheck := sha256.Sum256([]byte("post-check-with-active-attempt"))
+	tx, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin active StageLease invariant fixture: %v", err)
+	}
+	if _, err := tx.Exec("SET LOCAL session_replication_role = 'replica'"); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("disable StageLease authority triggers for invariant fixture: %v", err)
+	}
+	if _, err := tx.Exec(`
+		UPDATE stage_leases
+		SET state = 'ACTIVE', revoked_at = NULL, revoke_reason = NULL
+		WHERE id = $1
+	`, assignment.StageLeaseID); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("restore active StageLease invariant fixture: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit active StageLease invariant fixture: %v", err)
+	}
+	postcheck := sha256.Sum256([]byte("post-check-with-active-stage-lease"))
 	completed, err := service.Complete(context.Background(), remediation.Completion{
-		OperationID: request.OperationID, WorkerID: workerID, WorkerEpoch: 1,
-		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "post-check passed but Attempt remains active",
+		OperationID: request.OperationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: 1,
+		Success: true, ResultCode: "POSTCHECK_OK", ResultDetail: "post-check passed but StageLease remains active",
 		PostcheckHash: postcheck[:], ActorIdentity: request.RequestedBy,
 	})
-	if err != nil || completed.State != remediation.StateQuarantined || completed.ResultCode != "ACTIVE_ATTEMPT_REMAINS" {
-		t.Fatalf("active Attempt completion = %#v error=%v", completed, err)
+	if err != nil || completed.State != remediation.StateQuarantined || completed.ResultCode != "ACTIVE_STAGE_LEASE_REMAINS" {
+		t.Fatalf("active StageLease completion = %#v error=%v", completed, err)
 	}
 	var lifecycle, reachability string
 	if err := database.Admin.QueryRow(
-		"SELECT lifecycle_state, reachability_condition FROM workers WHERE id = $1", workerID,
+		"SELECT lifecycle_state, reachability_state FROM worker_instances WHERE id = $1", workerID,
 	).Scan(&lifecycle, &reachability); err != nil {
-		t.Fatalf("read active Attempt quarantined Worker: %v", err)
+		t.Fatalf("read active StageLease fenced WorkerInstance: %v", err)
 	}
-	if lifecycle != "QUARANTINED" || reachability != "OFFLINE" {
-		t.Fatalf("active Attempt Worker = %s/%s", lifecycle, reachability)
+	if lifecycle != "FENCED" || reachability != "UNREACHABLE" {
+		t.Fatalf("active StageLease WorkerInstance = %s/%s", lifecycle, reachability)
 	}
 }
 
 func TestRemediationMigrationDownAndUpPreservesRoles(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 19)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 18); err != nil {
 		t.Fatalf("Remediation migration down: %v", err)
@@ -912,7 +892,8 @@ func (runner remediationRuntimeCommandRunner) Run(
 	}
 	evidence := map[string]any{
 		"operation_id": plan.OperationID.String(), "execution_claim_id": plan.ExecutionClaimID.String(),
-		"worker_id": plan.WorkerID.String(), "worker_epoch": plan.WorkerEpoch,
+		"worker_instance_id": plan.WorkerInstanceID.String(), "worker_instance_epoch": plan.WorkerInstanceEpoch,
+		"device_id": plan.DeviceID.String(), "device_epoch": plan.DeviceEpoch,
 		"node_identity": plan.NodeIdentity, "device_identity": plan.DeviceIdentity,
 		"gpu_uuid": plan.GPUUUID, "pci_bdf": plan.PCIBDF,
 		"failure_class": plan.FailureClass, "action_level": string(plan.ActionLevel),
@@ -965,7 +946,7 @@ type integrationAgentResolver struct {
 
 func (resolver integrationAgentResolver) Resolve(
 	context.Context,
-	nodeagent.NodeAgentIdentity,
+	string,
 ) (*nodeagent.Client, error) {
 	return resolver.client, nil
 }
@@ -973,21 +954,20 @@ func (resolver integrationAgentResolver) Resolve(
 func seedRemediationWorker(t *testing.T, database testDatabase) uuid.UUID {
 	t.Helper()
 	workerID := uuid.MustParse("10000000-0000-0000-0000-000000001925")
-	if _, err := database.Admin.Exec(`
-		INSERT INTO worker_pools (id, stable_id, queued_limit)
-		VALUES ('10000000-0000-0000-0000-000000001924', 'remediation-pool', 10)
-	`); err != nil {
-		t.Fatalf("seed Remediation Worker pool: %v", err)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	seedWorkerRegistryPlan(t, database.Admin)
+	seedWorkerInstance(t, database.Admin, workerID, workerRegistryProfileID, 1, 1)
+	evidence := workerRegistryEvidenceValue(t, workerID, 0xe8)
+	evidence.DeviceSet.Devices[0].NodeIdentity = "node-remediation-1"
+	registry, err := fleet.NewService(newRolePool(
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
+	))
+	if err != nil {
+		t.Fatalf("construct Remediation Worker Registry: %v", err)
 	}
-	if _, err := database.Admin.Exec(`
-		INSERT INTO workers (
-			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition, node_identity
-		) VALUES (
-			$1, '10000000-0000-0000-0000-000000001924',
-			'spiffe://vela.example/worker/remediation-1', 1, 'READY', 'HEALTHY', 'node-remediation-1'
-		)
-	`, workerID); err != nil {
-		t.Fatalf("seed Remediation Worker: %v", err)
+	if _, err := registry.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("observe Remediation WorkerInstance: %v", err)
 	}
 	return workerID
 }

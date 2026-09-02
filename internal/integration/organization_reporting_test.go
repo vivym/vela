@@ -31,7 +31,6 @@ import (
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/webhook"
-	"github.com/vivym/vela/internal/workercontrol"
 )
 
 func newOrganizationReportingService(
@@ -228,7 +227,7 @@ func TestBillingAdminListsChargeWithAvailableInvoiceReference(t *testing.T) {
 	if charge.ChargeID != fixture.chargeID ||
 		charge.ProjectID != uuid.MustParse(testProjectID) ||
 		charge.JobID != fixture.assignment.JobID ||
-		charge.Reason != "CUSTOMER_CANCELLATION" ||
+		charge.Reason != "VISIBLE_COMPLETION" ||
 		charge.AmountMinor != 1250 || charge.Currency != "CNY" ||
 		charge.PostedAt.IsZero() ||
 		charge.InvoiceReference == nil ||
@@ -1003,7 +1002,7 @@ func TestSettlementContactIdentityAndEvidenceAreImmutable(t *testing.T) {
 
 func TestOrganizationReportingMigrationAllowsEmptyDownUp(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 15)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 14); err != nil {
 		t.Fatalf("contract empty Organization reporting migration: %v", err)
@@ -1115,7 +1114,7 @@ func TestOrganizationReportingMigrationAllowsEmptyDownUp(t *testing.T) {
 
 func TestOrganizationReportingMigrationDownRefusesDurableEvidence(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 15)
 	seedAdmissionFixture(t, database.Admin)
 	organizationID := uuid.MustParse(testOrganizationID)
 	actorID := uuid.New()
@@ -1196,95 +1195,70 @@ func TestOrganizationReportingMigrationDownRefusesDurableEvidence(t *testing.T) 
 
 func TestOrganizationAuditorReadsBoundedNonContentUsageByProject(t *testing.T) {
 	fixture := newInvoiceExportChargeFixture(t, "organization-reporting-usage")
-	seedSecondProjectAndPool(t, fixture.database.Admin)
-	to := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
-	from := to.Add(-2 * time.Hour)
-	insideSecondProjectJobID := uuid.New()
-	outsideJobID := uuid.New()
+	seedSecondProject(t, fixture.database.Admin)
+	from := time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
+	server := admissionServerForDatabase(t, fixture.database)
+	requestBody := []byte(`{
+		"model":"minimax-h3",
+		"generation_preset":"balanced",
+		"service_class":"standard",
+		"output_spec":"video-1080p-5s-24fps",
+		"generation_count":1,
+		"prompt":"organization reporting usage boundary"
+	}`)
+	insideResult, err := doSubmitJob(
+		server.URL,
+		testProjectTwoID,
+		bearerCredential(testCredentialTwoID, testCredentialTwoSecret),
+		"organization-reporting-usage-second-project",
+		requestBody,
+	)
+	if err != nil {
+		t.Fatalf("submit second-Project usage Job: %v", err)
+	}
+	if insideResult.StatusCode != http.StatusAccepted {
+		t.Fatalf(
+			"submit second-Project usage Job status = %d body=%s",
+			insideResult.StatusCode,
+			insideResult.Body,
+		)
+	}
+	outsideResult := submitJob(
+		t,
+		server.URL,
+		"organization-reporting-usage-upper-bound",
+		requestBody,
+	)
+	if outsideResult.StatusCode != http.StatusAccepted {
+		t.Fatalf(
+			"submit upper-bound usage Job status = %d body=%s",
+			outsideResult.StatusCode,
+			outsideResult.Body,
+		)
+	}
+	var insideJob, outsideJob jobResponse
+	if err := json.Unmarshal(insideResult.Body, &insideJob); err != nil {
+		t.Fatalf("decode second-Project usage Job: %v", err)
+	}
+	if err := json.Unmarshal(outsideResult.Body, &outsideJob); err != nil {
+		t.Fatalf("decode upper-bound usage Job: %v", err)
+	}
+	_ = uuid.MustParse(insideJob.JobID)
+	outsideJobID := uuid.MustParse(outsideJob.JobID)
+	var to time.Time
+	if err := fixture.database.Admin.QueryRow(
+		"SELECT created_at FROM jobs WHERE id = $1",
+		outsideJobID,
+	).Scan(&to); err != nil {
+		t.Fatalf("read upper-bound usage Job timestamp: %v", err)
+	}
+	to = to.UTC()
 	fixtureTx, err := fixture.database.Admin.Begin()
 	if err != nil {
 		t.Fatalf("begin usage fixture transaction: %v", err)
 	}
 	defer func() { _ = fixtureTx.Rollback() }()
-	if _, err := fixtureTx.Exec(`
-		INSERT INTO jobs (
-			id, organization_id, project_id, created_by_principal_id, state, version,
-			model_revision_id, generation_preset_revision_id, service_class_revision_id,
-			output_spec_id, worker_pool_id, request_hash, request_content,
-			request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
-			pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
-			pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
-			execution_max_finalization_seconds_per_attempt, execution_retry_backoff_policy,
-			execution_retryable_failure_classes, execution_circuit_breaker_policy,
-			job_expires_at, created_at, updated_at
-		)
-		SELECT
-			$1::uuid, organization_id, $2, $3, 'QUEUED', 1,
-			model_revision_id, generation_preset_revision_id, service_class_revision_id,
-			output_spec_id, $4, sha256(convert_to(($1::uuid)::text, 'UTF8')), request_content,
-			request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
-			pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
-			pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
-			execution_max_finalization_seconds_per_attempt, execution_retry_backoff_policy,
-			execution_retryable_failure_classes, execution_circuit_breaker_policy,
-			job_expires_at, $5, $5
-		FROM jobs WHERE id = $6
-	`,
-		insideSecondProjectJobID,
-		uuid.MustParse(testProjectTwoID),
-		uuid.MustParse(testPrincipalTwoID),
-		uuid.MustParse("00000000-0000-0000-0000-000000000105"),
-		from,
-		fixture.assignment.JobID,
-	); err != nil {
-		t.Fatalf("seed second-Project usage Job: %v", err)
-	}
-	if _, err := fixtureTx.Exec(`
-		INSERT INTO jobs (
-			id, organization_id, project_id, created_by_principal_id, state, version,
-			model_revision_id, generation_preset_revision_id, service_class_revision_id,
-			output_spec_id, worker_pool_id, request_hash, request_content,
-			request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
-			pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
-			pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
-			execution_max_finalization_seconds_per_attempt, execution_retry_backoff_policy,
-			execution_retryable_failure_classes, execution_circuit_breaker_policy,
-			job_expires_at, created_at, updated_at
-		)
-		SELECT
-			$1::uuid, organization_id, project_id, created_by_principal_id, 'FAILED', 1,
-			model_revision_id, generation_preset_revision_id, service_class_revision_id,
-			output_spec_id, worker_pool_id,
-			sha256(convert_to(($1::uuid)::text, 'UTF8')), request_content,
-			request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
-			pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
-			pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
-			execution_max_finalization_seconds_per_attempt, execution_retry_backoff_policy,
-			execution_retryable_failure_classes, execution_circuit_breaker_policy,
-			job_expires_at, $2, $2
-		FROM jobs WHERE id = $3
-	`, outsideJobID, to, fixture.assignment.JobID); err != nil {
-		t.Fatalf("seed upper-bound usage Job: %v", err)
-	}
-	insertCanonicalTerminalJobEvent(t, fixtureTx, outsideJobID, "FAILED", &to)
-	for _, jobID := range []uuid.UUID{insideSecondProjectJobID, outsideJobID} {
-		if _, err := fixtureTx.Exec(`
-			INSERT INTO credit_reservations (
-				id, organization_id, project_id, job_id, amount_minor, currency
-			)
-			SELECT $1, organization_id, project_id, id,
-				pricing_quoted_amount_minor, pricing_currency
-			FROM jobs WHERE id = $2
-		`, uuid.New(), jobID); err != nil {
-			t.Fatalf("seed usage Job CreditReservation: %v", err)
-		}
-		if _, err := fixtureTx.Exec(`
-			INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
-			SELECT id, organization_id, project_id FROM jobs WHERE id = $1
-		`, jobID); err != nil {
-			t.Fatalf("seed usage Job RetryRuntimeState: %v", err)
-		}
-	}
+	terminalizeJobWithCanonicalEvent(t, fixtureTx, outsideJobID, "FAILED", &to)
 	if err := fixtureTx.Commit(); err != nil {
 		t.Fatalf("commit usage fixture: %v", err)
 	}
@@ -1342,7 +1316,8 @@ func TestOrganizationAuditorReadsBoundedNonContentUsageByProject(t *testing.T) {
 	if usage.OrganizationID != organizationID || !usage.From.Equal(from) ||
 		!usage.To.Equal(to) || usage.Currency != "CNY" ||
 		usage.Total.TotalJobs != 2 || usage.Total.QueuedJobs != 1 ||
-		usage.Total.CancelingJobs != 1 || usage.Total.FailedJobs != 0 ||
+		usage.Total.CancelingJobs != 0 || usage.Total.SucceededJobs != 1 ||
+		usage.Total.FailedJobs != 0 ||
 		usage.Total.QuotedAmountMinor != 2500 ||
 		usage.Total.PostedChargeAmountMinor != 1250 || len(usage.Projects) != 2 {
 		t.Fatalf("Organization usage = %#v", usage)
@@ -1351,245 +1326,14 @@ func TestOrganizationAuditorReadsBoundedNonContentUsageByProject(t *testing.T) {
 	for _, project := range usage.Projects {
 		byProject[project.ProjectID] = project.UsageAggregate
 	}
-	if first := byProject[uuid.MustParse(testProjectID)]; first.TotalJobs != 1 || first.CancelingJobs != 1 ||
+	if first := byProject[uuid.MustParse(testProjectID)]; first.TotalJobs != 1 ||
+		first.CancelingJobs != 0 || first.SucceededJobs != 1 ||
 		first.QuotedAmountMinor != 1250 || first.PostedChargeAmountMinor != 1250 {
 		t.Fatalf("first Project usage = %#v", first)
 	}
 	if second := byProject[uuid.MustParse(testProjectTwoID)]; second.TotalJobs != 1 || second.QueuedJobs != 1 ||
 		second.QuotedAmountMinor != 1250 || second.PostedChargeAmountMinor != 0 {
 		t.Fatalf("second Project usage = %#v", second)
-	}
-}
-
-func TestOrganizationUsageCountsEveryExplicitJobState(t *testing.T) {
-	fixture := newInvoiceExportChargeFixture(t, "organization-reporting-all-states")
-	from := time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
-	to := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
-	server := admissionServerForDatabase(t, fixture.database)
-	accepted := submitJob(t, server.URL, "organization-reporting-all-states-succeeded", []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"produce a real Visible Completion usage fact"
-	}`))
-	if accepted.StatusCode != http.StatusAccepted {
-		t.Fatalf("submit SUCCEEDED usage Job status = %d; body=%s", accepted.StatusCode, accepted.Body)
-	}
-	var succeededJob jobResponse
-	if err := json.Unmarshal(accepted.Body, &succeededJob); err != nil {
-		t.Fatalf("decode SUCCEEDED usage Job: %v", err)
-	}
-	succeededJobID := uuid.MustParse(succeededJob.JobID)
-	succeededWorkerID := uuid.New()
-	const succeededWorkerEpoch = int64(8)
-	if _, err := fixture.database.Admin.Exec(`
-		INSERT INTO workers (
-			id, worker_pool_id, spiffe_id, epoch, lifecycle_state, reachability_condition
-		) VALUES (
-			$1, '00000000-0000-0000-0000-000000000005',
-			'spiffe://vela.internal/worker/organization-reporting-all-states-succeeded',
-			$2, 'READY', 'HEALTHY'
-		)
-	`, succeededWorkerID, succeededWorkerEpoch); err != nil {
-		t.Fatalf("seed SUCCEEDED usage Worker: %v", err)
-	}
-	succeededWorker := workercontrol.AuthenticatedWorker{ID: succeededWorkerID}
-	succeededAssignment, err := fixture.service.Acquire(
-		context.Background(),
-		succeededWorker,
-		succeededWorkerEpoch,
-		&workercontrol.AssignmentCandidate{
-			JobID:                      succeededJobID,
-			ExpectedJobVersion:         1,
-			ExecutionProfileRevisionID: fixture.candidate.ExecutionProfileRevisionID,
-		},
-	)
-	if err != nil {
-		t.Fatalf("assign SUCCEEDED usage Job = %#v error=%v", succeededAssignment, err)
-	}
-	succeededCredentials := leaseCredentials(succeededAssignment)
-	started, err := fixture.service.Start(
-		context.Background(), succeededWorker, succeededCredentials,
-	)
-	if err != nil || started.Decision != workercontrol.StartGranted {
-		t.Fatalf("start SUCCEEDED usage Job = %#v error=%v", started, err)
-	}
-	plan, err := fixture.service.BeginFinalization(
-		context.Background(), succeededWorker, succeededCredentials,
-	)
-	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
-		t.Fatalf("begin SUCCEEDED usage Job finalization = %#v error=%v", plan, err)
-	}
-	completionService := visibleCompletionService(t, fixture.database.DSN)
-	artifactIDs := uploadAndVerifyFinalizationPlan(
-		t, completionService, succeededWorker, succeededCredentials, plan,
-	)
-	completed, err := completionService.CompleteVisibleCompletion(
-		context.Background(),
-		succeededWorker,
-		succeededCredentials,
-		workercontrol.VisibleCompletionCandidate{
-			CompletionID:       uuid.New(),
-			ExpectedJobVersion: plan.JobVersion,
-			ArtifactIDs:        artifactIDs,
-		},
-	)
-	if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
-		t.Fatalf("complete SUCCEEDED usage Job = %#v error=%v", completed, err)
-	}
-	states := []string{
-		"QUEUED",
-		"ASSIGNED",
-		"RUNNING",
-		"FINALIZING",
-		"RETRY_WAIT",
-		"FAILED",
-		"CANCELED",
-	}
-	tx, err := fixture.database.Admin.Begin()
-	if err != nil {
-		t.Fatalf("begin all-state usage fixture: %v", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	for index, state := range states {
-		jobID := uuid.New()
-		createdAt := from.Add(time.Duration(index+1) * time.Minute)
-		insertedState := state
-		if state == "RUNNING" {
-			insertedState = "ASSIGNED"
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO jobs (
-				id, organization_id, project_id, created_by_principal_id, state, version,
-				model_revision_id, generation_preset_revision_id, service_class_revision_id,
-				output_spec_id, worker_pool_id, request_hash, request_content,
-				request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
-				pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
-				pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
-				execution_max_finalization_seconds_per_attempt, execution_retry_backoff_policy,
-				execution_retryable_failure_classes, execution_circuit_breaker_policy,
-				job_expires_at, created_at, updated_at
-			)
-			SELECT
-				$1, organization_id, project_id, created_by_principal_id,
-				$2::job_state, 1,
-				model_revision_id, generation_preset_revision_id, service_class_revision_id,
-				output_spec_id, worker_pool_id,
-				sha256(convert_to(($1::uuid)::text, 'UTF8')), request_content,
-				request_content_expires_at, pricing_rate_card_revision_id, pricing_rate_line_id,
-				pricing_unit_amount_minor, pricing_quantity, pricing_quoted_amount_minor,
-				pricing_currency, execution_max_attempts, execution_max_total_compute_seconds,
-				execution_max_finalization_seconds_per_attempt, execution_retry_backoff_policy,
-				execution_retryable_failure_classes, execution_circuit_breaker_policy,
-				job_expires_at, $3, $3
-			FROM jobs WHERE id = $4
-			`, jobID, insertedState, createdAt, fixture.assignment.JobID); err != nil {
-			t.Fatalf("seed %s usage Job: %v", state, err)
-		}
-		if state == "RUNNING" {
-			if _, err := tx.Exec(`
-				UPDATE jobs
-				SET state = 'RUNNING', billable_started_at = $2, updated_at = $2
-				WHERE id = $1
-			`, jobID, createdAt); err != nil {
-				t.Fatalf("transition RUNNING usage Job: %v", err)
-			}
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO credit_reservations (
-				id, organization_id, project_id, job_id, amount_minor, currency
-			)
-			SELECT $1, organization_id, project_id, id,
-				pricing_quoted_amount_minor, pricing_currency
-			FROM jobs WHERE id = $2
-		`, uuid.New(), jobID); err != nil {
-			t.Fatalf("seed %s usage CreditReservation: %v", state, err)
-		}
-		if _, err := tx.Exec(`
-			INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
-			SELECT id, organization_id, project_id FROM jobs WHERE id = $1
-		`, jobID); err != nil {
-			t.Fatalf("seed %s usage RetryRuntimeState: %v", state, err)
-		}
-		if state == "FAILED" || state == "CANCELED" {
-			insertCanonicalTerminalJobEvent(t, tx, jobID, state, &createdAt)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("commit all-state usage fixture: %v", err)
-	}
-
-	organizationID := uuid.MustParse(testOrganizationID)
-	auditorID := uuid.New()
-	seedHumanRoleFixture(
-		t,
-		fixture.database.Admin,
-		auditorID,
-		"organization-reporting-all-states-auditor",
-		[]string{"OrganizationAuditor"},
-		nil,
-	)
-	authenticator := newHumanMembershipAuthenticator(
-		t,
-		fixture.database,
-		newRolePool(t, fixture.database.DSN, "vela_auth_login", "vela-auth-password"),
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_human_auth_login",
-			"vela-human-auth-password",
-		),
-		testCredentialPepper,
-		staticOIDCTokenVerifier{identity: identity.OIDCIdentity{
-			Issuer:    "https://identity.example.com",
-			Subject:   "organization-reporting-all-states-auditor",
-			ExpiresAt: time.Now().UTC().Add(time.Hour),
-		}},
-	)
-	actor, err := authenticator.Authenticate(
-		context.Background(), "organization-reporting-all-states-auditor-token",
-	)
-	if err != nil {
-		t.Fatalf("authenticate all-state OrganizationAuditor: %v", err)
-	}
-	actor, ok := actor.ForOrganization(organizationID)
-	if !ok {
-		t.Fatal("all-state OrganizationAuditor lacks Organization authorization")
-	}
-	service, err := newOrganizationReportingService(t, fixture.database.DSN)
-	if err != nil {
-		t.Fatalf("create all-state usage reporting service: %v", err)
-	}
-	before := readOrganizationReportingAuthoritySnapshot(t, fixture.database.Admin, organizationID)
-	usage, err := service.GetUsage(context.Background(), actor, organizationID, from, to)
-	if err != nil {
-		t.Fatalf("get all-state Organization usage: %v", err)
-	}
-	want := organizationreporting.UsageAggregate{
-		TotalJobs:               9,
-		QueuedJobs:              1,
-		AssignedJobs:            1,
-		RunningJobs:             1,
-		FinalizingJobs:          1,
-		RetryWaitJobs:           1,
-		CancelingJobs:           1,
-		SucceededJobs:           1,
-		FailedJobs:              1,
-		CanceledJobs:            1,
-		QuotedAmountMinor:       11250,
-		PostedChargeAmountMinor: 2500,
-	}
-	if usage.Total != want || len(usage.Projects) != 1 ||
-		usage.Projects[0].ProjectID != uuid.MustParse(testProjectID) ||
-		usage.Projects[0].UsageAggregate != want {
-		t.Fatalf("all-state Organization usage = %#v, want %#v", usage, want)
-	}
-	if after := readOrganizationReportingAuthoritySnapshot(
-		t, fixture.database.Admin, organizationID,
-	); after != before {
-		t.Fatal("Organization usage read mutated billing or execution authority")
 	}
 }
 

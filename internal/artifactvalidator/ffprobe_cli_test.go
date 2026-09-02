@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/stagefinalization"
 )
 
 //go:embed testdata/h264_16x16_1fps.mp4.b64
@@ -21,7 +21,7 @@ const webPFixtureBase64 = "UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AA/
 
 func TestPinnedFFprobeCommandProducesParseableWebPInspection(t *testing.T) {
 	facts := probePinnedFFprobe(
-		t, "thumbnail.webp", webPFixtureBase64, workercontrol.ArtifactKindThumbnail,
+		t, "thumbnail.webp", webPFixtureBase64, stagefinalization.ArtifactKindThumbnail,
 	)
 	if facts.Width != 1 || facts.Height != 1 || facts.Codec != "webp" ||
 		facts.Container != "webp" || facts.FrameCount != 1 {
@@ -31,7 +31,7 @@ func TestPinnedFFprobeCommandProducesParseableWebPInspection(t *testing.T) {
 
 func TestPinnedFFprobeCommandProducesParseableH264MP4Inspection(t *testing.T) {
 	facts := probePinnedFFprobe(
-		t, "video.mp4", h264MP4FixtureBase64, workercontrol.ArtifactKindVideo,
+		t, "video.mp4", h264MP4FixtureBase64, stagefinalization.ArtifactKindVideo,
 	)
 	if facts.Width != 16 || facts.Height != 16 || facts.Codec != "h264" ||
 		facts.Container != "mp4" || facts.FrameCount != 1 || facts.DurationMillis != 1_000 ||
@@ -44,7 +44,7 @@ func probePinnedFFprobe(
 	t *testing.T,
 	name string,
 	fixture string,
-	kind workercontrol.ArtifactKind,
+	kind stagefinalization.ArtifactKind,
 ) mediaFacts {
 	t.Helper()
 	ffprobePath, expectedVersion := pinnedFFprobe(t)

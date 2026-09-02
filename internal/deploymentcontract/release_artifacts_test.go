@@ -1,7 +1,6 @@
 package deploymentcontract
 
 import (
-	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -9,7 +8,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,14 +33,12 @@ func TestBuildHostPackagesProducesReleaseBundleInputs(t *testing.T) {
 	manifest := loadHostPackageManifest(t, filepath.Join(output, "host-packages.json"))
 	if manifest.SchemaVersion != 1 || manifest.Revision != revision ||
 		!reflect.DeepEqual(manifest.Packages, []releasebundle.PackageInput{
-			{Name: "h3-runner", ContractRef: "h3-runner-contract.json", ArtifactRef: "vela_h3_runner-0.1.0-py3-none-any.whl"},
 			{Name: "node-agent", ContractRef: "node-agent-contract.json", ArtifactRef: "vela-node-agent"},
 		}) {
 		t.Fatalf("host package manifest = %#v", manifest)
 	}
 
 	expectedEntrypoints := map[string]string{
-		"h3-runner":  "/opt/vela/bin/vela-h3-runner",
 		"node-agent": "/usr/local/bin/vela-node-agent",
 	}
 	for _, item := range manifest.Packages {
@@ -64,7 +60,6 @@ func TestBuildHostPackagesProducesReleaseBundleInputs(t *testing.T) {
 	}
 
 	assertLinuxAMD64NodeAgent(t, filepath.Join(output, "vela-node-agent"))
-	assertRunnerWheel(t, filepath.Join(output, "vela_h3_runner-0.1.0-py3-none-any.whl"))
 }
 
 func TestBuildH3MockBackendProducesExactVerifiedContext(t *testing.T) {
@@ -99,6 +94,54 @@ func TestBuildH3MockBackendProducesExactVerifiedContext(t *testing.T) {
 	}
 	if information.Mode().Perm() != 0o555 {
 		t.Fatalf("mock backend mode = %04o, want 0555", information.Mode().Perm())
+	}
+}
+
+func TestVerifyH3RuntimeCommandsRequiresExactDigestBoundInventory(t *testing.T) {
+	repository := deploymentRepositoryRoot(t)
+	mockContext := filepath.Join(canonicalTemporaryDirectory(t), "h3-mock-context")
+	command := exec.Command("make", "-s", "build-h3-mock-backend")
+	command.Dir = repository
+	command.Env = append(os.Environ(), "H3_MOCK_BACKEND_CONTEXT="+mockContext)
+	if encoded, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build H3 mock backend: %v\n%s", err, encoded)
+	}
+	backend, err := os.ReadFile(filepath.Join(mockContext, "h3-backend"))
+	if err != nil {
+		t.Fatalf("read mock backend: %v", err)
+	}
+	runtimeContext := filepath.Join(canonicalTemporaryDirectory(t), "h3-runtime-commands")
+	if err := os.Mkdir(runtimeContext, 0o700); err != nil {
+		t.Fatalf("create runtime command context: %v", err)
+	}
+	digests := make(map[string]string, 3)
+	for _, name := range []string{"h3-encoder", "h3-dit", "h3-vae-decoder"} {
+		path := filepath.Join(runtimeContext, name)
+		if err := os.WriteFile(path, backend, 0o555); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		digest := sha256.Sum256(backend)
+		digests[name] = hex.EncodeToString(digest[:])
+	}
+	if err := releaseartifacts.VerifyH3RuntimeCommands(
+		runtimeContext,
+		digests["h3-encoder"],
+		digests["h3-dit"],
+		digests["h3-vae-decoder"],
+	); err != nil {
+		t.Fatalf("verify H3 runtime commands: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(runtimeContext, "unexpected"), backend, 0o555); err != nil {
+		t.Fatalf("write unexpected runtime command: %v", err)
+	}
+	if err := releaseartifacts.VerifyH3RuntimeCommands(
+		runtimeContext,
+		digests["h3-encoder"],
+		digests["h3-dit"],
+		digests["h3-vae-decoder"],
+	); err == nil {
+		t.Fatal("H3 runtime command verifier accepted an unexpected file")
 	}
 }
 
@@ -154,7 +197,7 @@ func TestBuildHostPackagesProducesReproducibleFixedInventory(t *testing.T) {
 		}
 	}
 
-	const expectedInventory = "h3-runner-contract.json\nhost-packages.json\nnode-agent-contract.json\nvela-node-agent\nvela_h3_runner-0.1.0-py3-none-any.whl\n"
+	const expectedInventory = "host-packages.json\nnode-agent-contract.json\nvela-node-agent\n"
 	for _, output := range outputs {
 		entries, err := os.ReadDir(output)
 		if err != nil {
@@ -262,26 +305,26 @@ func TestBuildHostPackagesVerifiesCandidateBeforePublication(t *testing.T) {
 	if err := os.Mkdir(fakeBin, 0o700); err != nil {
 		t.Fatalf("create fake build tool directory: %v", err)
 	}
-	fakeUV := `#!/bin/sh
+	fakeGo := `#!/bin/sh
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = "--out-dir" ]; then
+  if [ "$1" = "-o" ]; then
     shift
-    printf 'not a wheel\n' > "$1/vela_h3_runner-0.1.0-py3-none-any.whl"
+    printf 'not an ELF binary\n' > "$1"
     exit 0
   fi
   shift
 done
 exit 2
 `
-	if err := os.WriteFile(filepath.Join(fakeBin, "uv"), []byte(fakeUV), 0o700); err != nil {
-		t.Fatalf("write fake uv: %v", err)
+	if err := os.WriteFile(filepath.Join(fakeBin, "go"), []byte(fakeGo), 0o700); err != nil {
+		t.Fatalf("write fake go: %v", err)
 	}
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	output := filepath.Join(temporary, "artifacts")
 	if err := releaseartifacts.BuildHostPackages(
 		context.Background(), repository, "release-test-r1", output,
 	); err == nil {
-		t.Fatal("host package build published an invalid Runner wheel")
+		t.Fatal("host package build published an invalid Node Agent")
 	}
 	if _, err := os.Lstat(output); !os.IsNotExist(err) {
 		t.Fatalf("published output after candidate verification failure: %v", err)
@@ -359,14 +402,19 @@ exec "$VELA_TEST_REAL_GO" "$@"
 
 func TestPrintVelaImageBuildDefinesExactPinnedTargets(t *testing.T) {
 	repository := deploymentRepositoryRoot(t)
-	backendContext := canonicalTemporaryDirectory(t)
+	commandContext, commandDigests := newH3RuntimeCommandFixture(t)
 	const (
 		revision    = "release-test-r2"
 		imagePrefix = "registry.example.com/vela"
+		runtimeBase = "docker.io/library/debian@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	)
-	backendSHA := writeTestELF64AMD64(t, filepath.Join(backendContext, "h3-backend"))
 	encoded, err := runPrintVelaImageBuild(
-		repository, revision, imagePrefix, backendContext, backendSHA,
+		repository,
+		revision,
+		imagePrefix,
+		runtimeBase,
+		commandContext,
+		commandDigests,
 	)
 	if err != nil {
 		t.Fatalf("print Vela image build: %v\n%s", err, encoded)
@@ -388,7 +436,7 @@ func TestPrintVelaImageBuildDefinesExactPinnedTargets(t *testing.T) {
 		t.Fatalf("decode Vela image build definition: %v\n%s", err, encoded)
 	}
 	expectedTargets := []string{
-		"vela-control", "vela-fleet-controller", "vela-h3-runner", "vela-worker-agent",
+		"vela-control", "vela-fleet-controller", "vela-h3-stage-runtime", "vela-stage-worker-agent",
 	}
 	slices.Sort(definition.Group["vela-all"].Targets)
 	if !slices.Equal(definition.Group["vela-all"].Targets, expectedTargets) {
@@ -396,9 +444,7 @@ func TestPrintVelaImageBuildDefinesExactPinnedTargets(t *testing.T) {
 	}
 	const (
 		goBase     = "docker.io/library/golang:1.26.7-bookworm@sha256:6ef6e30f0ea5c384f6d111cf856e024e3086bbdcb1779da3f3b3fbba0aea53d2"
-		pythonBase = "docker.io/library/python:3.13.11-slim-bookworm@sha256:20080e807bfc404f8450b185cf0fc95d553462673598549613735f70a5b4d5d0"
 		debianBase = "docker.io/library/debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171"
-		uvBase     = "ghcr.io/astral-sh/uv:0.8.22@sha256:9874eb7afe5ca16c363fe80b294fe700e460df29a55532bbfea234a0f12eddb1"
 	)
 	for _, name := range expectedTargets {
 		target, present := definition.Target[name]
@@ -409,175 +455,74 @@ func TestPrintVelaImageBuildDefinesExactPinnedTargets(t *testing.T) {
 			!slices.Equal(target.Platforms, []string{"linux/amd64"}) ||
 			!slices.Equal(target.Tags, []string{imagePrefix + "/" + name + ":" + revision}) ||
 			target.Args["RELEASE_REVISION"] != revision || target.Args["GO_BASE"] != goBase ||
-			target.Args["PYTHON_BASE"] != pythonBase || target.Args["DEBIAN_BASE"] != debianBase ||
-			target.Args["UV_BASE"] != uvBase {
+			target.Args["DEBIAN_BASE"] != debianBase {
 			t.Fatalf("Vela image target %q = %#v", name, target)
 		}
-	}
-	runner := definition.Target["vela-h3-runner"]
-	if runner.Contexts["h3_backend"] != backendContext ||
-		runner.Args["H3_BACKEND_SHA256"] != backendSHA {
-		t.Fatalf("H3 Runner external backend inputs = %#v", runner)
+		if name == "vela-h3-stage-runtime" {
+			if target.Args["H3_RUNTIME_BASE"] != runtimeBase ||
+				target.Args["H3_ENCODER_SHA256"] != commandDigests["h3-encoder"] ||
+				target.Args["H3_DIT_SHA256"] != commandDigests["h3-dit"] ||
+				target.Args["H3_VAE_DECODER_SHA256"] != commandDigests["h3-vae-decoder"] ||
+				target.Contexts["h3_runtime_commands"] != commandContext ||
+				len(target.Args) != 7 || len(target.Contexts) != 1 {
+				t.Fatalf("H3 stage runtime target = %#v", target)
+			}
+		} else if len(target.Args) != 3 || len(target.Contexts) != 0 {
+			t.Fatalf("non-H3 Vela image target %q carries H3 composition inputs: %#v", name, target)
+		}
 	}
 }
 
 func TestPrintVelaImageBuildRequiresExplicitImagePrefix(t *testing.T) {
 	repository := deploymentRepositoryRoot(t)
-	backendContext := canonicalTemporaryDirectory(t)
-	backendSHA := writeTestELF64AMD64(t, filepath.Join(backendContext, "h3-backend"))
 	command := exec.Command("make", "-s", "print-vela-image-build")
 	command.Dir = repository
 	command.Env = append(environmentWithout(os.Environ(), "RELEASE_IMAGE_PREFIX"),
 		"RELEASE_REVISION=release-test-r2",
-		"H3_BACKEND_CONTEXT="+backendContext,
-		"H3_BACKEND_SHA256="+backendSHA,
 	)
 	if encoded, err := command.CombinedOutput(); err == nil {
 		t.Fatalf("print image build without image prefix unexpectedly succeeded:\n%s", encoded)
 	}
 }
 
-func TestPrintVelaImageBuildRejectsInvalidH3BackendInputs(t *testing.T) {
+func TestBuildVelaImagesGrantsExactRuntimeCommandContextRead(t *testing.T) {
 	repository := deploymentRepositoryRoot(t)
-	const validSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	for _, test := range []struct {
-		name    string
-		prepare func(t *testing.T) (string, string)
-	}{
-		{
-			name: "missing context",
-			prepare: func(t *testing.T) (string, string) {
-				t.Helper()
-				return filepath.Join(canonicalTemporaryDirectory(t), "absent"), validSHA
-			},
-		},
-		{
-			name: "missing backend",
-			prepare: func(t *testing.T) (string, string) {
-				t.Helper()
-				return canonicalTemporaryDirectory(t), validSHA
-			},
-		},
-		{
-			name: "wrong digest",
-			prepare: func(t *testing.T) (string, string) {
-				t.Helper()
-				context := canonicalTemporaryDirectory(t)
-				writeTestELF64AMD64(t, filepath.Join(context, "h3-backend"))
-				return context, validSHA
-			},
-		},
-		{
-			name: "non ELF backend",
-			prepare: func(t *testing.T) (string, string) {
-				t.Helper()
-				context := canonicalTemporaryDirectory(t)
-				backend := filepath.Join(context, "h3-backend")
-				if err := os.WriteFile(backend, []byte("not an ELF binary\n"), 0o755); err != nil {
-					t.Fatalf("write non-ELF backend: %v", err)
-				}
-				digest := sha256.Sum256([]byte("not an ELF binary\n"))
-				return context, hex.EncodeToString(digest[:])
-			},
-		},
-		{
-			name: "non executable backend",
-			prepare: func(t *testing.T) (string, string) {
-				t.Helper()
-				context := canonicalTemporaryDirectory(t)
-				backend := filepath.Join(context, "h3-backend")
-				digest := writeTestELF64AMD64(t, backend)
-				if err := os.Chmod(backend, 0o644); err != nil {
-					t.Fatalf("remove backend execute permission: %v", err)
-				}
-				return context, digest
-			},
-		},
-		{
-			name: "header only backend",
-			prepare: func(t *testing.T) (string, string) {
-				t.Helper()
-				context := canonicalTemporaryDirectory(t)
-				backend := filepath.Join(context, "h3-backend")
-				header := testELF64AMD64Header(0)
-				if err := os.WriteFile(backend, header, 0o755); err != nil {
-					t.Fatalf("write header-only backend: %v", err)
-				}
-				digest := sha256.Sum256(header)
-				return context, hex.EncodeToString(digest[:])
-			},
-		},
-		{
-			name: "symlink backend",
-			prepare: func(t *testing.T) (string, string) {
-				t.Helper()
-				context := canonicalTemporaryDirectory(t)
-				target := filepath.Join(context, "target")
-				digest := writeTestELF64AMD64(t, target)
-				if err := os.Symlink(target, filepath.Join(context, "h3-backend")); err != nil {
-					t.Fatalf("create backend symlink: %v", err)
-				}
-				return context, digest
-			},
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			context, digest := test.prepare(t)
-			if encoded, err := runPrintVelaImageBuild(
-				repository, "release-test-r2", "registry.example.com/vela", context, digest,
-			); err == nil {
-				t.Fatalf("print image build with invalid H3 backend unexpectedly succeeded:\n%s", encoded)
-			}
-		})
-	}
-}
-
-func TestBuildVelaImagesStagesVerifiedPrivateBackendContext(t *testing.T) {
-	repository := deploymentRepositoryRoot(t)
-	backendContext := canonicalTemporaryDirectory(t)
-	backend := filepath.Join(backendContext, "h3-backend")
-	backendSHA := writeTestELF64AMD64(t, backend)
+	commandContext, commandDigests := newH3RuntimeCommandFixture(t)
 	temporary := canonicalTemporaryDirectory(t)
 	fakeBin := filepath.Join(temporary, "bin")
 	if err := os.Mkdir(fakeBin, 0o700); err != nil {
 		t.Fatalf("create fake Docker directory: %v", err)
 	}
-	capture := filepath.Join(temporary, "staged-context")
-	fakeDocker := `#!/bin/sh
+	const fakeDocker = `#!/bin/sh
 set -eu
-printf '%s\n' "$H3_BACKEND_CONTEXT" > "$VELA_TEST_STAGED_CONTEXT_CAPTURE"
-test "$H3_BACKEND_CONTEXT" != "$VELA_TEST_SOURCE_CONTEXT"
-test "$(find "$H3_BACKEND_CONTEXT" -mindepth 1 -maxdepth 1 -type f -name h3-backend | wc -l | tr -d ' ')" = 1
-test "$(find "$H3_BACKEND_CONTEXT" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" = 1
-cmp "$VELA_TEST_SOURCE_CONTEXT/h3-backend" "$H3_BACKEND_CONTEXT/h3-backend"
+printf '%s\n' "$@" >"$VELA_TEST_DOCKER_ARGUMENTS"
 `
 	if err := os.WriteFile(filepath.Join(fakeBin, "docker"), []byte(fakeDocker), 0o700); err != nil {
 		t.Fatalf("write fake Docker: %v", err)
 	}
-	command := exec.Command("make", "-s", "build-vela-images")
+	argumentsFile := filepath.Join(temporary, "docker-arguments")
+	command := exec.Command("make", "-s", "--no-print-directory", "build-vela-images")
 	command.Dir = repository
 	command.Env = append(os.Environ(),
 		"PATH="+fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"VELA_TEST_DOCKER_ARGUMENTS="+argumentsFile,
 		"RELEASE_REVISION=release-test-r2",
 		"RELEASE_IMAGE_PREFIX=registry.example.com/vela",
-		"H3_BACKEND_CONTEXT="+backendContext,
-		"H3_BACKEND_SHA256="+backendSHA,
-		"VELA_TEST_SOURCE_CONTEXT="+backendContext,
-		"VELA_TEST_STAGED_CONTEXT_CAPTURE="+capture,
+		"H3_RUNTIME_BASE=docker.io/library/debian@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"H3_RUNTIME_COMMAND_CONTEXT="+commandContext,
+		"H3_ENCODER_SHA256="+commandDigests["h3-encoder"],
+		"H3_DIT_SHA256="+commandDigests["h3-dit"],
+		"H3_VAE_DECODER_SHA256="+commandDigests["h3-vae-decoder"],
 	)
 	if encoded, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("build Vela images through staged backend context: %v\n%s", err, encoded)
+		t.Fatalf("build Vela images with fake Docker: %v\n%s", err, encoded)
 	}
-	staged, err := os.ReadFile(capture)
+	encoded, err := os.ReadFile(argumentsFile)
 	if err != nil {
-		t.Fatalf("read staged backend context capture: %v", err)
+		t.Fatalf("read Docker arguments: %v", err)
 	}
-	stagedPath := strings.TrimSpace(string(staged))
-	if stagedPath == "" || stagedPath == backendContext {
-		t.Fatalf("staged backend context = %q", stagedPath)
-	}
-	if _, err := os.Lstat(stagedPath); !os.IsNotExist(err) {
-		t.Fatalf("staged backend context remains after build: %v", err)
+	if !strings.Contains(string(encoded), "--allow=fs.read="+commandContext+"\n") {
+		t.Fatalf("Docker arguments do not grant exact command context read:\n%s", encoded)
 	}
 }
 
@@ -596,8 +541,6 @@ func TestVelaImageDockerfilePinsRuntimeContract(t *testing.T) {
 		"xz-utils=5.4.1-1+deb12u1",
 		"ADD --checksum=sha256:05ee0b03119b45c0bdb4df654b96802e909e0a752f72e4fe3794f487229e5a41",
 		"https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz",
-		"/usr/local/bin/vela-release-artifacts verify-h3-backend \\",
-		"/backend-context \"${H3_BACKEND_SHA256}\"",
 	} {
 		if !strings.Contains(dockerfile, required) {
 			t.Fatalf("Vela image Dockerfile is missing %q", required)
@@ -618,12 +561,21 @@ func TestVelaImageDockerfilePinsRuntimeContract(t *testing.T) {
 			},
 		},
 		{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
-		{name: "vela-worker-agent", entrypoint: "/usr/local/bin/vela-worker-agent"},
 		{
-			name:       "vela-h3-runner",
-			entrypoint: "/opt/vela/venv/bin/vela-h3-runner",
-			required:   []string{"/opt/vela/bin/h3-backend"},
+			name:       "vela-h3-stage-runtime",
+			entrypoint: "/usr/local/bin/vela-model-runtime",
+			required: []string{
+				"vela.ai.h3-runtime-base=\"${H3_RUNTIME_BASE}\"",
+				"vela.ai.h3-encoder.sha256=\"${H3_ENCODER_SHA256}\"",
+				"vela.ai.h3-dit.sha256=\"${H3_DIT_SHA256}\"",
+				"vela.ai.h3-vae-decoder.sha256=\"${H3_VAE_DECODER_SHA256}\"",
+				"/opt/vela/bin/h3-encoder",
+				"/opt/vela/bin/h3-dit",
+				"/opt/vela/bin/h3-vae-decoder",
+				"CMD []",
+			},
 		},
+		{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 	} {
 		stage := finalDockerfileStage(t, dockerfile, expected.name)
 		for _, required := range append([]string{
@@ -689,56 +641,6 @@ func assertLinuxAMD64NodeAgent(t *testing.T, path string) {
 	}
 }
 
-func assertRunnerWheel(t *testing.T, path string) {
-	t.Helper()
-	wheel, err := zip.OpenReader(path)
-	if err != nil {
-		t.Fatalf("open Runner wheel: %v", err)
-	}
-	defer func() { _ = wheel.Close() }()
-	names := make([]string, 0, len(wheel.File))
-	for _, file := range wheel.File {
-		names = append(names, file.Name)
-	}
-	slices.Sort(names)
-	for _, required := range []string{
-		"vela/v1/runner_pb2.py",
-		"vela/v1/runner_pb2_grpc.py",
-		"vela_h3_runner/main.py",
-		"vela_h3_runner/runtime.py",
-		"vela_h3_runner/server.py",
-	} {
-		if !slices.Contains(names, required) {
-			t.Fatalf("Runner wheel is missing %q: %v", required, names)
-		}
-	}
-	entryPoints := readWheelFile(t, wheel.File, "vela_h3_runner-0.1.0.dist-info/entry_points.txt")
-	if !strings.Contains(entryPoints, "vela-h3-runner = vela_h3_runner.main:main") {
-		t.Fatalf("Runner wheel entry points = %q", entryPoints)
-	}
-}
-
-func readWheelFile(t *testing.T, files []*zip.File, name string) string {
-	t.Helper()
-	for _, file := range files {
-		if file.Name != name {
-			continue
-		}
-		reader, err := file.Open()
-		if err != nil {
-			t.Fatalf("open Runner wheel file %q: %v", name, err)
-		}
-		defer func() { _ = reader.Close() }()
-		content, err := io.ReadAll(reader)
-		if err != nil {
-			t.Fatalf("read Runner wheel file %q: %v", name, err)
-		}
-		return string(content)
-	}
-	t.Fatalf("Runner wheel is missing %q", name)
-	return ""
-}
-
 func deploymentRepositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -768,21 +670,36 @@ func runHostPackageMake(repository, revision, output string) ([]byte, error) {
 }
 
 func runPrintVelaImageBuild(
-	repository, revision, imagePrefix, backendContext, backendSHA string,
+	repository, revision, imagePrefix, runtimeBase, commandContext string,
+	commandDigests map[string]string,
 ) ([]byte, error) {
 	command := exec.Command("make", "-s", "--no-print-directory", "print-vela-image-build")
 	command.Dir = repository
 	command.Env = append(os.Environ(),
 		"RELEASE_REVISION="+revision,
 		"RELEASE_IMAGE_PREFIX="+imagePrefix,
-		"H3_BACKEND_CONTEXT="+backendContext,
-		"H3_BACKEND_SHA256="+backendSHA,
+		"H3_RUNTIME_BASE="+runtimeBase,
+		"H3_RUNTIME_COMMAND_CONTEXT="+commandContext,
+		"H3_ENCODER_SHA256="+commandDigests["h3-encoder"],
+		"H3_DIT_SHA256="+commandDigests["h3-dit"],
+		"H3_VAE_DECODER_SHA256="+commandDigests["h3-vae-decoder"],
 		"GO_BASE=docker.io/library/golang:latest",
-		"PYTHON_BASE=docker.io/library/python:latest",
 		"DEBIAN_BASE=docker.io/library/debian:latest",
-		"UV_BASE=ghcr.io/astral-sh/uv:latest",
 	)
 	return command.CombinedOutput()
+}
+
+func newH3RuntimeCommandFixture(t *testing.T) (string, map[string]string) {
+	t.Helper()
+	directory := filepath.Join(canonicalTemporaryDirectory(t), "h3-runtime-commands")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatalf("create H3 runtime command fixture: %v", err)
+	}
+	digests := make(map[string]string, 3)
+	for _, name := range []string{"h3-encoder", "h3-dit", "h3-vae-decoder"} {
+		digests[name] = writeTestELF64AMD64(t, filepath.Join(directory, name))
+	}
+	return directory, digests
 }
 
 func writeTestELF64AMD64(t *testing.T, path string) string {

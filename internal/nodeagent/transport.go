@@ -31,8 +31,8 @@ const (
 
 type NodeAgentIdentity struct {
 	NodeIdentity string
-	WorkerID     uuid.UUID
-	WorkerEpoch  int64
+	AgentID      uuid.UUID
+	AgentEpoch   int64
 }
 
 type ControllerIdentity struct {
@@ -94,8 +94,10 @@ type HostLedger interface {
 type Request struct {
 	OperationID           uuid.UUID
 	ExecutionClaimID      uuid.UUID
-	WorkerID              uuid.UUID
-	WorkerEpoch           int64
+	WorkerInstanceID      uuid.UUID
+	WorkerInstanceEpoch   int64
+	DeviceID              uuid.UUID
+	DeviceEpoch           int64
 	NodeIdentity          string
 	DeviceIdentity        string
 	FailureClass          string
@@ -132,16 +134,16 @@ func NewServer(
 	ledger HostLedger,
 ) (*Server, error) {
 	if !validIdentity(localIdentity) {
-		return nil, errors.New("node Agent local identity is invalid")
+		return nil, errors.New("node agent local identity is invalid")
 	}
 	if controllerResolver == nil {
-		return nil, errors.New("node Agent controller identity resolver is required")
+		return nil, errors.New("node agent controller identity resolver is required")
 	}
 	if executor == nil {
-		return nil, errors.New("node Agent executor is required")
+		return nil, errors.New("node agent executor is required")
 	}
 	if ledger == nil {
-		return nil, errors.New("node Agent receipt ledger is required")
+		return nil, errors.New("node agent receipt ledger is required")
 	}
 	return &Server{
 		localIdentity:      localIdentity,
@@ -158,10 +160,10 @@ func (server *Server) ExecuteRemediation(
 ) (*velav1.ExecuteRemediationResponse, error) {
 	if server == nil || !validIdentity(server.localIdentity) || server.controllerResolver == nil ||
 		server.executor == nil || server.ledger == nil {
-		return nil, status.Error(codes.FailedPrecondition, "node Agent server is not configured")
+		return nil, status.Error(codes.FailedPrecondition, "node agent server is not configured")
 	}
 	if ctx == nil {
-		return nil, status.Error(codes.InvalidArgument, "node Agent context is required")
+		return nil, status.Error(codes.InvalidArgument, "node agent context is required")
 	}
 	controller, err := authenticatedController(ctx, server.controllerResolver)
 	if err != nil {
@@ -171,25 +173,23 @@ func (server *Server) ExecuteRemediation(
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if server.localIdentity.NodeIdentity != parsed.NodeIdentity ||
-		server.localIdentity.WorkerID != parsed.WorkerID ||
-		server.localIdentity.WorkerEpoch != parsed.WorkerEpoch {
-		return nil, status.Error(codes.PermissionDenied, "remediation target does not match local node Agent identity")
+	if server.localIdentity.NodeIdentity != parsed.NodeIdentity {
+		return nil, status.Error(codes.PermissionDenied, "remediation target does not belong to the local node Agent")
 	}
 	if parsed.ActionLevel == remediation.ActionL6BMCPowerCycle ||
 		parsed.ActionLevel == remediation.ActionL7Quarantine {
-		return nil, status.Error(codes.PermissionDenied, "node Agent cannot directly execute privileged remediation")
+		return nil, status.Error(codes.PermissionDenied, "node agent cannot directly execute privileged remediation")
 	}
 	server.mu.Lock()
 	defer server.mu.Unlock()
 	requestHash := hashRequest(parsed)
 	prior, found, err := server.ledger.Load(ctx, parsed.OperationID)
 	if err != nil {
-		return nil, status.Error(codes.Internal, "node Agent receipt lookup failed")
+		return nil, status.Error(codes.Internal, "node agent receipt lookup failed")
 	}
 	if found {
 		if prior.RequestHash != requestHash || prior.ActorIdentity != controller.ActorIdentity {
-			return nil, status.Error(codes.AlreadyExists, "node Agent operation id was reused with different input")
+			return nil, status.Error(codes.AlreadyExists, "node agent operation id was reused with different input")
 		}
 		return responseFromResult(prior.Result), nil
 	}
@@ -199,7 +199,7 @@ func (server *Server) ExecuteRemediation(
 		ActorIdentity: controller.ActorIdentity, StartedAt: startedAt,
 	})
 	if err != nil || intent.StartedAt.IsZero() {
-		return nil, status.Error(codes.Internal, "node Agent execution intent write failed")
+		return nil, status.Error(codes.Internal, "node agent execution intent write failed")
 	}
 	defer func() { _ = intent.releaseExecution() }()
 	startedAt = intent.StartedAt
@@ -208,11 +208,11 @@ func (server *Server) ExecuteRemediation(
 		// lookup and acquisition of the durable execution lock.
 		prior, found, loadErr := server.ledger.Load(ctx, parsed.OperationID)
 		if loadErr != nil {
-			return nil, status.Error(codes.Internal, "node Agent receipt recheck failed")
+			return nil, status.Error(codes.Internal, "node agent receipt recheck failed")
 		}
 		if found {
 			if prior.RequestHash != requestHash || prior.ActorIdentity != controller.ActorIdentity {
-				return nil, status.Error(codes.AlreadyExists, "node Agent operation id was reused with different input")
+				return nil, status.Error(codes.AlreadyExists, "node agent operation id was reused with different input")
 			}
 			return responseFromResult(prior.Result), nil
 		}
@@ -223,7 +223,7 @@ func (server *Server) ExecuteRemediation(
 			StartedAt:    startedAt, FinishedAt: server.clock().UTC(),
 		}
 		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
-			return nil, status.Error(codes.Internal, "node Agent interrupted execution receipt write failed")
+			return nil, status.Error(codes.Internal, "node agent interrupted execution receipt write failed")
 		}
 		return responseFromResult(result), nil
 	}
@@ -232,12 +232,14 @@ func (server *Server) ExecuteRemediation(
 	executionResult, executionErr := server.executor.Execute(executionContext, remediation.Plan{
 		OperationID:           parsed.OperationID,
 		ExecutionClaimID:      parsed.ExecutionClaimID,
-		WorkerID:              parsed.WorkerID,
+		WorkerInstanceID:      parsed.WorkerInstanceID,
+		WorkerInstanceEpoch:   parsed.WorkerInstanceEpoch,
+		DeviceID:              parsed.DeviceID,
+		DeviceEpoch:           parsed.DeviceEpoch,
 		ActionLevel:           parsed.ActionLevel,
 		NodeIdentity:          parsed.NodeIdentity,
 		DeviceIdentity:        parsed.DeviceIdentity,
 		FailureClass:          parsed.FailureClass,
-		WorkerEpoch:           parsed.WorkerEpoch,
 		DeadlineAt:            parsed.DeadlineAt,
 		CertificationRevision: parsed.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), parsed.FailureEvidenceDigest...),
@@ -246,11 +248,11 @@ func (server *Server) ExecuteRemediation(
 	if finishedAt.After(deadline) || errors.Is(executionErr, context.DeadlineExceeded) {
 		result := Result{
 			OperationID: parsed.OperationID, Success: false,
-			ResultCode: "DEADLINE_EXCEEDED", ResultDetail: "node Agent remediation exceeded its deadline",
+			ResultCode: "DEADLINE_EXCEEDED", ResultDetail: "node agent remediation exceeded its deadline",
 			StartedAt: startedAt, FinishedAt: finishedAt,
 		}
 		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
-			return nil, status.Error(codes.Internal, "node Agent receipt write failed")
+			return nil, status.Error(codes.Internal, "node agent receipt write failed")
 		}
 		return responseFromResult(result), nil
 	}
@@ -261,7 +263,7 @@ func (server *Server) ExecuteRemediation(
 			StartedAt: startedAt, FinishedAt: finishedAt,
 		}
 		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
-			return nil, status.Error(codes.Internal, "node Agent receipt write failed")
+			return nil, status.Error(codes.Internal, "node agent receipt write failed")
 		}
 		return responseFromResult(result), nil
 	}
@@ -271,7 +273,7 @@ func (server *Server) ExecuteRemediation(
 			resultCode = "INVALID_POSTCHECK"
 		}
 		resultDetail := boundedDetail(executionResult.Detail)
-		if resultDetail == "node Agent executor failed" {
+		if resultDetail == "node agent executor failed" {
 			resultDetail = "executor returned no certified post-check"
 		}
 		result := Result{
@@ -280,7 +282,7 @@ func (server *Server) ExecuteRemediation(
 			StartedAt: startedAt, FinishedAt: finishedAt,
 		}
 		if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
-			return nil, status.Error(codes.Internal, "node Agent receipt write failed")
+			return nil, status.Error(codes.Internal, "node agent receipt write failed")
 		}
 		return responseFromResult(result), nil
 	}
@@ -291,7 +293,7 @@ func (server *Server) ExecuteRemediation(
 		StartedAt:     startedAt, FinishedAt: finishedAt,
 	}
 	if saveErr := saveReceipt(server.ledger, ctx, Receipt{RequestHash: requestHash, ActorIdentity: controller.ActorIdentity, Result: result}); saveErr != nil {
-		return nil, status.Error(codes.Internal, "node Agent receipt write failed")
+		return nil, status.Error(codes.Internal, "node agent receipt write failed")
 	}
 	return responseFromResult(result), nil
 }
@@ -303,7 +305,7 @@ type Client struct {
 
 func NewClient(client velav1.NodeAgentServiceClient, actorIdentity string) (*Client, error) {
 	if client == nil {
-		return nil, errors.New("node Agent gRPC client is required")
+		return nil, errors.New("node agent gRPC client is required")
 	}
 	if !validText(actorIdentity, maxIdentityText) {
 		return nil, errors.New("control-plane actor identity is invalid")
@@ -313,18 +315,19 @@ func NewClient(client velav1.NodeAgentServiceClient, actorIdentity string) (*Cli
 
 func (client *Client) Execute(ctx context.Context, request Request) (Result, error) {
 	if client == nil || client.client == nil {
-		return Result{}, errors.New("node Agent client is not configured")
+		return Result{}, errors.New("node agent client is not configured")
 	}
 	if ctx == nil {
-		return Result{}, errors.New("node Agent execution context is required")
+		return Result{}, errors.New("node agent execution context is required")
 	}
 	if err := validateClientRequest(request); err != nil {
 		return Result{}, err
 	}
 	response, err := client.client.ExecuteRemediation(ctx, &velav1.ExecuteRemediationRequest{
-		OperationId: request.OperationID.String(), WorkerId: request.WorkerID.String(),
-		WorkerEpoch: request.WorkerEpoch, NodeIdentity: request.NodeIdentity,
-		DeviceIdentity: request.DeviceIdentity, FailureClass: request.FailureClass,
+		OperationId: request.OperationID.String(), WorkerInstanceId: request.WorkerInstanceID.String(),
+		WorkerInstanceEpoch: request.WorkerInstanceEpoch, NodeIdentity: request.NodeIdentity,
+		DeviceIdentity: request.DeviceIdentity, DeviceId: request.DeviceID.String(),
+		DeviceEpoch: request.DeviceEpoch, FailureClass: request.FailureClass,
 		ActionLevel:           string(request.ActionLevel),
 		CertificationRevision: request.CertificationRevision,
 		FailureEvidenceDigest: append([]byte(nil), request.FailureEvidenceDigest...),
@@ -342,26 +345,32 @@ func parseRequest(
 	now time.Time,
 ) (Request, time.Time, error) {
 	if request == nil {
-		return Request{}, time.Time{}, errors.New("node Agent remediation request is required")
+		return Request{}, time.Time{}, errors.New("node agent remediation request is required")
 	}
 	operationID, err := uuid.Parse(request.GetOperationId())
 	if err != nil || operationID == uuid.Nil {
-		return Request{}, time.Time{}, errors.New("node Agent operation id is invalid")
+		return Request{}, time.Time{}, errors.New("node agent operation id is invalid")
 	}
 	claimID, err := uuid.Parse(request.GetExecutionClaimId())
 	if err != nil || claimID == uuid.Nil {
-		return Request{}, time.Time{}, errors.New("node Agent execution claim id is invalid")
+		return Request{}, time.Time{}, errors.New("node agent execution claim id is invalid")
 	}
-	workerID, err := uuid.Parse(request.GetWorkerId())
+	workerID, err := uuid.Parse(request.GetWorkerInstanceId())
 	if err != nil || workerID == uuid.Nil {
-		return Request{}, time.Time{}, errors.New("node Agent Worker id is invalid")
+		return Request{}, time.Time{}, errors.New("node agent Worker id is invalid")
+	}
+	deviceID, err := uuid.Parse(request.GetDeviceId())
+	if err != nil || deviceID == uuid.Nil {
+		return Request{}, time.Time{}, errors.New("node agent Device id is invalid")
 	}
 	deadline, err := parseDeadline(request.GetDeadlineAt(), now)
 	if err != nil {
 		return Request{}, time.Time{}, err
 	}
 	parsed := Request{
-		OperationID: operationID, ExecutionClaimID: claimID, WorkerID: workerID, WorkerEpoch: request.GetWorkerEpoch(),
+		OperationID: operationID, ExecutionClaimID: claimID,
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: request.GetWorkerInstanceEpoch(),
+		DeviceID: deviceID, DeviceEpoch: request.GetDeviceEpoch(),
 		NodeIdentity: request.GetNodeIdentity(), DeviceIdentity: request.GetDeviceIdentity(),
 		FailureClass:          request.GetFailureClass(),
 		ActionLevel:           remediation.ActionLevel(request.GetActionLevel()),
@@ -377,12 +386,12 @@ func parseRequest(
 
 func parseResponse(response *velav1.ExecuteRemediationResponse, operationID uuid.UUID) (Result, error) {
 	if response == nil {
-		return Result{}, errors.New("node Agent returned no remediation response")
+		return Result{}, errors.New("node agent returned no remediation response")
 	}
 	returnedID, err := uuid.Parse(response.GetOperationId())
 	if err != nil || returnedID != operationID || !validText(response.GetResultCode(), 200) ||
 		!validText(response.GetResultDetail(), maxDetailText) {
-		return Result{}, errors.New("node Agent remediation response is invalid")
+		return Result{}, errors.New("node agent remediation response is invalid")
 	}
 	startedAt, err := validTimestamp(response.GetStartedAt())
 	if err != nil {
@@ -390,14 +399,14 @@ func parseResponse(response *velav1.ExecuteRemediationResponse, operationID uuid
 	}
 	finishedAt, err := validTimestamp(response.GetFinishedAt())
 	if err != nil || finishedAt.Before(startedAt) {
-		return Result{}, errors.New("node Agent remediation response timestamps are invalid")
+		return Result{}, errors.New("node agent remediation response timestamps are invalid")
 	}
 	postcheck := append([]byte(nil), response.GetPostcheckSha256()...)
 	if response.GetSuccess() && len(postcheck) != sha256.Size {
 		return Result{}, errors.New("successful node Agent remediation lacks post-check digest")
 	}
 	if len(postcheck) != 0 && len(postcheck) != sha256.Size {
-		return Result{}, errors.New("node Agent post-check digest is invalid")
+		return Result{}, errors.New("node agent post-check digest is invalid")
 	}
 	return Result{
 		OperationID: operationID, Success: response.GetSuccess(), ResultCode: response.GetResultCode(),
@@ -407,14 +416,16 @@ func parseResponse(response *velav1.ExecuteRemediationResponse, operationID uuid
 }
 
 func validateRequest(request Request) error {
-	if request.OperationID == uuid.Nil || request.ExecutionClaimID == uuid.Nil || request.WorkerID == uuid.Nil || request.WorkerEpoch <= 0 ||
+	if request.OperationID == uuid.Nil || request.ExecutionClaimID == uuid.Nil ||
+		request.WorkerInstanceID == uuid.Nil || request.WorkerInstanceEpoch <= 0 ||
+		request.DeviceID == uuid.Nil || request.DeviceEpoch <= 0 ||
 		!validText(request.NodeIdentity, maxIdentityText) || !validText(request.DeviceIdentity, maxIdentityText) ||
 		!validText(request.FailureClass, 200) ||
 		!remediation.IsActionLevel(request.ActionLevel) ||
 		(request.ActionLevel != remediation.ActionL7Quarantine && !validText(request.CertificationRevision, 200)) ||
 		len(request.FailureEvidenceDigest) != sha256.Size ||
 		request.DeadlineAt.IsZero() {
-		return errors.New("node Agent remediation request is invalid")
+		return errors.New("node agent remediation request is invalid")
 	}
 	return nil
 }
@@ -425,11 +436,11 @@ func validateClientRequest(request Request) error {
 	}
 	now := time.Now().UTC()
 	if !request.DeadlineAt.After(now) || request.DeadlineAt.After(now.Add(maxDeadline)) {
-		return errors.New("node Agent remediation deadline is outside the allowed window")
+		return errors.New("node agent remediation deadline is outside the allowed window")
 	}
 	if request.ActionLevel == remediation.ActionL6BMCPowerCycle ||
 		request.ActionLevel == remediation.ActionL7Quarantine {
-		return errors.New("node Agent client cannot directly execute privileged remediation")
+		return errors.New("node agent client cannot directly execute privileged remediation")
 	}
 	return nil
 }
@@ -438,8 +449,10 @@ func hashRequest(request Request) [sha256.Size]byte {
 	canonical := struct {
 		OperationID           string `json:"operation_id"`
 		ExecutionClaimID      string `json:"execution_claim_id"`
-		WorkerID              string `json:"worker_id"`
-		WorkerEpoch           int64  `json:"worker_epoch"`
+		WorkerInstanceID      string `json:"worker_instance_id"`
+		WorkerInstanceEpoch   int64  `json:"worker_instance_epoch"`
+		DeviceID              string `json:"device_id"`
+		DeviceEpoch           int64  `json:"device_epoch"`
 		NodeIdentity          string `json:"node_identity"`
 		DeviceIdentity        string `json:"device_identity"`
 		FailureClass          string `json:"failure_class"`
@@ -450,8 +463,10 @@ func hashRequest(request Request) [sha256.Size]byte {
 	}{
 		OperationID:           request.OperationID.String(),
 		ExecutionClaimID:      request.ExecutionClaimID.String(),
-		WorkerID:              request.WorkerID.String(),
-		WorkerEpoch:           request.WorkerEpoch,
+		WorkerInstanceID:      request.WorkerInstanceID.String(),
+		WorkerInstanceEpoch:   request.WorkerInstanceEpoch,
+		DeviceID:              request.DeviceID.String(),
+		DeviceEpoch:           request.DeviceEpoch,
 		NodeIdentity:          request.NodeIdentity,
 		DeviceIdentity:        request.DeviceIdentity,
 		FailureClass:          request.FailureClass,
@@ -481,11 +496,11 @@ func responseFromResult(result Result) *velav1.ExecuteRemediationResponse {
 
 func parseDeadline(timestamp *timestamppb.Timestamp, now time.Time) (time.Time, error) {
 	if timestamp == nil || !timestamp.IsValid() {
-		return time.Time{}, errors.New("node Agent remediation deadline is invalid")
+		return time.Time{}, errors.New("node agent remediation deadline is invalid")
 	}
 	deadline := timestamp.AsTime().UTC()
 	if !deadline.After(now) || deadline.After(now.Add(maxDeadline)) {
-		return time.Time{}, errors.New("node Agent remediation deadline is outside the allowed window")
+		return time.Time{}, errors.New("node agent remediation deadline is outside the allowed window")
 	}
 	return deadline, nil
 }
@@ -530,7 +545,7 @@ func authenticatedController(ctx context.Context, resolver ControllerIdentityRes
 }
 
 func validIdentity(identity NodeAgentIdentity) bool {
-	return identity.WorkerID != uuid.Nil && identity.WorkerEpoch > 0 &&
+	return identity.AgentID != uuid.Nil && identity.AgentEpoch > 0 &&
 		validText(identity.NodeIdentity, maxIdentityText)
 }
 
@@ -545,7 +560,7 @@ func validSPIFFEID(identity *url.URL) bool {
 
 func validTimestamp(value *timestamppb.Timestamp) (time.Time, error) {
 	if value == nil || !value.IsValid() {
-		return time.Time{}, errors.New("node Agent timestamp is invalid")
+		return time.Time{}, errors.New("node agent timestamp is invalid")
 	}
 	return value.AsTime().UTC(), nil
 }
@@ -558,11 +573,11 @@ func validText(value string, max int) bool {
 func boundedDetail(value string) string {
 	if !validText(value, maxDetailText) {
 		if value == "" {
-			return "node Agent executor failed"
+			return "node agent executor failed"
 		}
 		value = strings.TrimSpace(strings.ReplaceAll(value, "\x00", ""))
 		if value == "" {
-			return "node Agent executor failed"
+			return "node agent executor failed"
 		}
 	}
 	if len(value) > maxDetailText {

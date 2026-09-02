@@ -1,12 +1,111 @@
 # Vela Implementation Status
 
-Date: 2026-08-29
+Date: 2026-09-02
 
 This file is an evidence index, not a launch declaration. `Implemented` means the
 repository has a committed vertical slice and verification for the stated part of
 an ADR. `Partial` means at least one required production behavior remains. A
 Production Gate is PASS only when its versioned Launch Receipt exists; repository
 tests alone do not satisfy a gate.
+
+## Repository Implemented, Production Acceptance In Progress
+
+The H3 stage-disaggregated architecture is accepted as the replacement target.
+S49.1-S49.11 have committed repository implementations through StageArtifact
+transfer, split H3 execution, exact cache, CPU media stages, and the immutable
+Usage/Cost Ledger, plus the deterministic capacity simulator and advisory
+planning boundary. Migrations `00049` through `00062` complete the S49.12
+repository path with ModelRevision-scoped
+cutover routing, an explicit internal-Project allowlist, Production Launch
+Receipt gating, immutable Accepted Job authority, legacy database inventory,
+guarded rollback, and automatic multi-replica Accepted STAGE_GRAPH Job
+instantiation. Durable
+claim expiry, exact-command replay, committed-work reconciliation, and the
+`vela-control` maintenance loop are implemented. Migration `00051` also creates
+the graph snapshot, initial Attempt/StageRuns, storage reservation, and completed
+command/work evidence in the Accepted Job's Admission transaction, after locking
+and validating complete READY Worker/residency/capacity authority across every
+required stage. Missing path capacity is a retryable zero-side-effect Capacity
+Rejection. Migration `00052` and `vela-stage-cutover` capture typed external
+drain evidence and seal an immutable zero-backlog receipt. Migration `00053`
+installs the live-zero guarded contraction preparation: terminal
+machine-authority archive, immutable readiness receipt, legacy-row freeze, and
+operator command. Migration `00057` and `vela-h3-reachability` add the separate
+exact-release contraction authorization boundary: typed source/release evidence,
+atomic no-replace publication, exact release/configuration binding, all-nine
+Launch Receipt closure, and a fresh live-zero database recheck. The database
+accepts the canonical configuration manifest and complete evidence bytes,
+recomputes both digests, extracts the source revision from the manifest, and
+validates the exact PASS check set. The public operator request contains evidence
+and bundle paths rather than a caller-asserted digest. Migration `00058` performs
+the irreversible schema-v2 contraction for an authorized non-empty database,
+rechecks the current cutover and live-zero inventory, preserves Stage authority,
+retires graphless profiles and still-valid certifications while preserving
+invalidated evidence, prevents later reactivation behind a dedicated NOLOGIN
+owner, removes reviewed legacy dependencies
+with `RESTRICT`, and refuses Down. The same repository boundary deletes legacy
+Worker/Runner runtime, protocol, scheduler, query, deployment, image, and release
+surfaces; the permanent reachability test passes. Migrations `00059` through
+`00062` add runtime epoch registration, the multi-member barrier, gang authority,
+and member identity. The
+production Stage Worker and ModelRuntime base images, target-only default Fleet
+rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
+advancement with old active-lease fencing, and six-render canonical release
+bundle are implemented with a production-shaped fake-runtime composition smoke.
+The multi-member path now materializes an independent mTLS identity, immutable
+derived Secret, and cluster-internal Service per WorkerMember. Every member
+registers its local runtime epoch while only the deterministic smallest-UUID
+leader acquires one logical StageLease and coordinates the complete remote
+runtime barrier. Standard H3 remains one member and one GPU per WorkerInstance
+and creates no member network surface. These paths intentionally perform no DDL
+and do not prove real GPU, Kubernetes, DRA, cross-node, or model execution. This
+is not complete acceptance closure. Real cluster, N/N-1, GPU/DRA, performance,
+fault, and Production Gate evidence are still pending.
+The read-only H3 preflight and launch collector additionally bind every
+release-declared external Secret/ConfigMap to `immutable=true`, its exact
+revision annotation, recomputed content digest, live UID, and resource version.
+Launch capture double-reads those objects and emits only sanitized identity and
+digest evidence, so content drift and same-name recreation inside the capture
+window fail closed without exposing Secret payloads. Secret-manager prevention
+for the full campaign remains external evidence.
+The repository now also captures a synthetic same-node/cross-node/cache Stage
+campaign from PostgreSQL with a canonical-release-sealed ResidencyPlan binding,
+two stable read-only snapshots, exact StageArtifact lineage, ordered
+profile/interface/connector equivalence, consumed TransferTickets, cache
+reference/pin/output bindings, and exactly-once completion/charge checks. This
+capture is exposed through a strict operator command and a dedicated exact-SELECT
+database role that rejects admin, mixed-role, and over-privileged DSNs. A
+digest-bound fault-campaign verifier requires the fixed ten state/event fault
+scenarios, reconciled authority ledgers and raw event identities, plus explicit
+rejected member/device/ModelRuntime/StageLease stale probes; it atomically emits
+the three candidate typed artifacts without replacing earlier evidence. This is
+repository integration and capture machinery only; it does not prove physical
+cross-node transport, a real fault exercise, or create a Launch Receipt.
+The management `/metrics` surface now also reads one PostgreSQL-authoritative
+Stage snapshot and exports only bounded stage-kind/state counts and oldest-age
+gauges for StageRuns, TransferTickets, exact cache entries, and ModelResidency.
+Migration `00056` adds only the missing read privileges; its integration contract
+proves no write or authority-owner escalation and preserves prior grants across
+Down/Up. The dashboard, recording rules, alerts, rule tests, and campaign runbook
+remain repository observability machinery, not deployed alert-delivery evidence.
+Targeted atomic Admission, rollback-precedence, and version-specific role-surface
+integration coverage is green. The schema-v2 repository no longer contains a
+reachable machine-level H3 Assignment path. Repository tests, including the
+synthetic disposable cluster campaign, are not production evidence or a Launch
+Receipt.
+
+| Design package | Status | Evidence |
+| --- | --- | --- |
+| H3 Stage Execution Architecture | Repository implementation complete through S49.12; production acceptance partial | `docs/h3-stage-execution-architecture.md` |
+| ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
+| Schema and protocol migration | Schema-v2 through migration `00062`; guarded contraction, legacy-path deletion, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
+
+Historical migrations still describe the predecessor machine-level contract,
+but migration `00058` removes it from the current schema and the corresponding
+runtime/protocol surfaces are absent from the current source and release graph.
+Production Gates remain unchanged at `0/9 PASS`.
 
 ## Implemented Slices
 
@@ -33,14 +132,14 @@ tests alone do not satisfy a gate.
 | Settlement And Credit-adjustment Reconciliation | `2d27630` | `docs/specs/0019-settlement-and-credit-adjustment-reconciliation.md` |
 | Certified Remediation Control Plane | `37849d0` | `docs/specs/0020-certified-remediation.md` |
 | Worker Local Recovery State | `ea1053a` | `docs/specs/0021-worker-local-recovery-state.md` |
-| H3 Worker Agent And Runner | `baee61a` | `docs/specs/0022-h3-worker-agent-and-runner.md` |
-| Fleet Controller And Worker Readiness | `cc9a4f7` | `docs/specs/0023-fleet-controller-worker-readiness.md` |
+| Monolithic H3 Runtime (historical, superseded) | `baee61a` | `docs/specs/0022-h3-worker-agent-and-runner.md`, superseded by Stage Worker execution |
+| Fleet Controller And Worker Readiness (historical, superseded) | `cc9a4f7` | `docs/specs/0023-fleet-controller-worker-readiness.md`, superseded by ResidencyPlan/WorkerInstance actuation |
 | Staging Artifact Expiry And Two-Attempt Completion Race | `4f29d18` | `docs/specs/0024-staging-artifact-expiry-and-two-attempt-completion-race.md` |
 | JetStream Quorum And Consumer Crash Recovery | `d275a91` | `docs/specs/0025-jetstream-quorum-and-consumer-crash-recovery.md` |
 | Production Gate Receipt Validation | `436558e` | `docs/launch-receipts/README.md` |
 | Control/Storage Deployment Contract | `25a3d2e` | `deploy/control-storage/README.md` |
 | Single-Region Recovery Drill Contract | `ee6524c` | `docs/runbooks/single-region-recovery.md` |
-| Guarded Node Agent Transport Contract | `44543f0` | `internal/nodeagent/transport.go`, `proto/vela/v1/worker_control.proto` |
+| Guarded Node Agent Transport Contract | `44543f0` | `internal/nodeagent/transport.go`, `proto/vela/v1/node_agent.proto` |
 | Certified Remediation Node Agent Runtime | `fa6622c` | `cmd/vela-node-agent`, `internal/nodeagent/dispatcher.go`, `deploy/node-agent` |
 | Certified Remediation Durable Execution Hardening | `0cc6a7c`, `b17b0cd`, `75981bd`, `754c275` | `internal/nodeagent/fileledger.go`, `internal/nodeagent/host.go`, `internal/securefile/securefile.go` |
 | Certified Remediation Runtime Authority | `ad1bcf6` | `docs/specs/0027-certified-remediation-runtime-authority.md` |
@@ -63,8 +162,10 @@ tests alone do not satisfy a gate.
 | Vela OCI Registry Publication | `91e883f` | `docs/specs/0044-vela-oci-registry-publication.md`, `internal/releaseartifacts/oci_publication.go`, `cmd/vela-release-artifacts` |
 | Release Supply-chain Evidence Binding | `3d384b0`, `247e6f7`, `1b56e49`, `6757932`, `4a65429`, `9179665` | `docs/specs/0045-release-supply-chain-evidence-binding.md`, `internal/supplychain`, `cmd/vela-verify-launch` |
 | NATS Linux/amd64 Image Pinning | `760cd7a`, `431bf3f` | `docs/specs/0046-nats-linux-amd64-image-pinning.md`, `deploy/control-storage/nats-statefulset.yaml`, `internal/deploymentcontract/jetstream_test.go` |
-| BusyBox Linux/amd64 Materializer Image Pinning | `6d916bb`, `9f4063e` | `docs/specs/0047-busybox-linux-amd64-image-pinning.md`, `deploy/vela-control/deployment.yaml`, `deploy/worker-agent/daemonset.yaml`, `deploy/fleet-controller/desired-revisions.yaml`, `internal/deploymentcontract/busybox_image_test.go` |
+| BusyBox Linux/amd64 Materializer Image Pinning | `6d916bb`, `9f4063e`, retained and adapted after Stage Worker contraction | `docs/specs/0047-busybox-linux-amd64-image-pinning.md`, `deploy/vela-control/deployment.yaml`, `deploy/fleet-controller/residency-plan-rollouts.yaml`, `internal/deploymentcontract/busybox_image_test.go` |
 | H3 Mock Backend (non-production) | `4304fe9`, `f6cb45b` | `docs/specs/0048-h3-mock-backend.md`, `internal/h3mockbackend`, `cmd/vela-h3-mock-backend` |
+| H3 Stage Usage/Cost Ledger (S49.10) | `a691917` | `db/migrations/00047_usage_cost_ledger.sql`, `internal/usagecostledger` |
+| H3 Cached Stage Output Finalization Binding | `2aa1e9b` | `db/migrations/00048_stage_run_output_binding.sql`, `db/queries/finalization.sql` |
 
 ## ADR Evidence Matrix
 
@@ -82,34 +183,72 @@ tests alone do not satisfy a gate.
 | 0010 Bounded admission and queues | Implemented for current control plane | Transactional queue counters, pool-scoped bounded projection, risk-aware Admission prediction, Dynamic ETA, hierarchical lanes, and fail-closed counter-drift detection are integrated. | Deployment calibration and Production Gate receipts remain separate. |
 | 0011 No failed-Job Charge | Implemented for current lifecycle | Execution, finalization-deadline, validation, and unrecoverable Artifact failure release credit and create no Charge; only Visible Completion or post-Billable-Start Customer Cancellation posts one. | Future failure sources must use the same terminal authority. |
 | 0012 Single-region DR | Partial | Recovery order, RPO/RTO contract, CNPG off-cluster WAL/base-backup target, explicit JetStream rebuild/Outbox replay contract, and controlled single-node/site recovery runbook are rendered in `deploy/control-storage` and `docs/runbooks/single-region-recovery.md`. Slice 26 proves automatic single-node CNPG failover with RPO 0 and a measured sub-five-minute RTO, then proves database-enforced no-quorum Admission/Assignment rollback in a pinned repository conformance cluster. Slice 31 restores a real PostgreSQL snapshot taken after deletion authority and replays two-tier retention against already-purged versioned MinIO objects without content resurrection. Slice 32 copies only frozen committed PRIMARY versions into the versioned backup and serializes the copy with deletion authority. Slice 38 replaces the deprecated native backup surface with digest-pinned Barman Cloud Plugin contracts and proves a real local plugin base backup, WAL archive, and timestamp restore between two durable markers in a fresh kind/MinIO environment (`4f4bc2d`, credential-isolation review closure `e8a4149`). | Production RKE2 and independent-fault-domain S3 WAL/PITR receipts, provider/network replication fault receipts, JetStream rebuild, Outbox replay, secret rotation, and quarterly restore-drill receipts. |
-| 0013 Non-interrupting releases | Partial | Thirty-three additive migrations, exact N/N-1 database/control compatibility for the fixed migration points, database-owned no-quorum guards, operator-receipted circuit and Fleet Assignment protocol transitions, Protobuf/OpenAPI breaking checks, and migration down/up evidence. Migration 00027 adds dedicated debug-dump roles without widening the exact N-1 retention or audit role allowlists (`6603c36`). Migration 00028 keeps the N-1 `vela_retention` surface primary-only and adds a separate current `vela_backup_retention` role. Slice 29 builds the exact adjacent N-1 control and Worker probes, preserves raw retained event identity through the current Inbox/Scheduler, drains without interrupting the active Lease, restores exact N-1 writers on schema 27, and proves current plus N-1 Admission/Scheduler return SQLSTATE `55000` during CNPG quorum loss (`21e0781`). Migration 00029 adds the replication role and backfill while the exact Slice 31 N-1 binary remains valid without current-only replication configuration. Migration 00030 adds current-only Compliance authority while the exact Slice 32 binary remains valid on schema 30; current control fails closed on schema 29, and empty Down/Up restores exact behavior and privileges. Migration 00031 keeps the exact Slice 33 binary and source writers valid on schema 31; the current control fails closed on schema 30, empty Down/Up restores exact behavior, and durable expiry evidence prevents unsafe contraction (`7c12884`). Migration 00032 keeps exact `e53c620` control startup valid on schema 32, makes the current promoter fail closed on schema 31, restores exact authority after empty Down/Up, and refuses contraction after durable release evidence. Migration 00033 keeps the exact Slice 36 control writer valid in LEGACY, makes current SLO sealing fail closed until exact-contract activation and backfill complete, preserves empty Down/Up, and refuses contraction after any durable SLO authority exists (`6036604`, review closure `06f3414`). Slice 36 renders two required-anti-affinity replicas with zero unavailable rolling update, one-surge bound, PDB, dependency readiness, Pod-unique claimant identities, immutable release-versioned Secret/ConfigMap inputs, and termination/reclaim storage headroom (`4dd2ac1`, review closure `5eac303`). | A deployed Kubernetes Worker/event/API rollout, real N/N-1 coexistence and connection drain, long-running H3 drain, release rollback, and retained production backlog receipt. |
+| 0013 Non-interrupting releases | Partial | Thirty-four additive migrations, exact N/N-1 database/control compatibility for the fixed migration points, database-owned no-quorum guards, operator-receipted circuit and Fleet Assignment protocol transitions, Protobuf/OpenAPI breaking checks, and migration down/up evidence. Migration 00027 adds dedicated debug-dump roles without widening the exact N-1 retention or audit role allowlists (`6603c36`). Migration 00028 keeps the N-1 `vela_retention` surface primary-only and adds a separate current `vela_backup_retention` role. Slice 29 builds the exact adjacent N-1 control and Worker probes, preserves raw retained event identity through the current Inbox/Scheduler, drains without interrupting the active Lease, restores exact N-1 writers on schema 27, and proves current plus N-1 Admission/Scheduler return SQLSTATE `55000` during CNPG quorum loss (`21e0781`). Migration 00029 adds the replication role and backfill while the exact Slice 31 N-1 binary remains valid without current-only replication configuration. Migration 00030 adds current-only Compliance authority while the exact Slice 32 binary remains valid on schema 30; current control fails closed on schema 29, and empty Down/Up restores exact behavior and privileges. Migration 00031 keeps the exact Slice 33 binary and source writers valid on schema 31; the current control fails closed on schema 30, empty Down/Up restores exact behavior, and durable expiry evidence prevents unsafe contraction (`7c12884`). Migration 00032 keeps exact `e53c620` control startup valid on schema 32, makes the current promoter fail closed on schema 31, restores exact authority after empty Down/Up, and refuses contraction after durable release evidence. Migration 00033 keeps the exact Slice 36 control writer valid in LEGACY, makes current SLO sealing fail closed until exact-contract activation and backfill complete, preserves empty Down/Up, and refuses contraction after any durable SLO authority exists (`6036604`, review closure `06f3414`). Migration 00034 adds the immutable Stage Execution Catalog and a dedicated exact-function Stage Catalog activation role without widening the N-1 Catalog Promotion boundary, preserves empty Down/Up, and refuses contraction after Stage Catalog authority exists. Slice 36 renders two required-anti-affinity replicas with zero unavailable rolling update, one-surge bound, PDB, dependency readiness, Pod-unique claimant identities, immutable release-versioned Secret/ConfigMap inputs, and termination/reclaim storage headroom (`4dd2ac1`, review closure `5eac303`). | A deployed Kubernetes Worker/event/API rollout, real N/N-1 coexistence and connection drain, long-running H3 drain, release rollback, and retained production backlog receipt. |
 | 0014 Project webhooks | Implemented | Project-scoped subscriptions, safe terminal-event fanout, overlapping HMAC secret rotation, durable at-least-once retry, dead letter, crash recovery, visibility, and manual replay are integrated. | Public-DNS deployment validation and a real endpoint Launch Receipt remain separate Production Gate evidence. |
 | 0015 Class-specific retention | Partial | Versioned 7/30/90-day Project policies are frozen at Admission; request content and successful exact-version Artifacts expire independently; early Content Deletion uses the existing cancellation/Charge authority, tombstones request content, revokes access, deletes exact S3 versions, aborts multipart uploads, recovers/retries claims, and writes immutable receipts under forced RLS; the Worker runtime terminally removes exact Runner outputs and Local Recovery State, while stale-marker reconciliation remains bounded. Slice 24 schedules exact-version cleanup of incomplete STAGING Artifacts from the version-matched terminal Outbox event at 24 hours, permits a Customer deletion request to coexist, preserves `CANCELING`, and completes one idempotent receipt under concurrent Reconcilers. Slice 28 binds opt-in debug dumps to the immutable 72-hour Job snapshot, keeps failed-attempt uploads non-blocking, and schedules exact-version or incomplete multipart-prefix cleanup with immutable receipts (`6603c36`). Slice 31 adds committed-only OFF_CLUSTER_BACKUP targets, all-version/delete-marker purge, two-tier receipts, exact N-1 role compatibility, and post-authority PostgreSQL restore replay. Slice 32 adds exact-version committed backup replication and proves copy-first/delete-first linearization through the same immutable deletion receipt. Slice 33 adds immutable, non-content-only Legal Hold placement/release with exact Organization/Project/Job scope, independent Compliance authority, and the transactional active-hold lock contract (`7c397e9`). Slice 34 physically deletes terminal Job/Attempt metadata after 365 days and Job/Organization financial sources after 2557 days, while minimal immutable roots preserve independent evidence and exact Legal Holds serialize with deletion (`7c12884`). | Provider/network replication fault receipts, restore before deletion authority, production expiry configuration/credentials/failover/observability receipts, live scratch lifecycle evidence, and Launch Receipts. |
 | 0016 Preset versus Service Class | Implemented for current control and reporting plane | Admission, Retry, and Scheduler retain both immutable revisions separately; Scheduler reads ServiceClassRevision policy and never derives priority from Preset or price. Slice 37 snapshots and reports exact GenerationPresetRevision and ServiceClassRevision independently for every statistical SLO cohort. | Future pricing, scheduling, and reporting surfaces must preserve the same boundary; production SLO evidence remains a separate gate. |
 | 0017 Three presets | Partial | Catalog restricts stable IDs to `quality`, `balanced`, and `fast`, while the circuit independently protects each exact certified revision and OutputSpec. Slice 35 adds immutable per-Preset backend/driver/corpus, quality, success-rate, p50/p95, cost, and confidence evidence; a RateCard cannot become ACTIVE until every saleable group has exact same-release evidence for all three Presets. | Real independent benchmark execution, certification receipts, and Launch Receipts for every saleable SKU. |
 | 0018 Certified output SKUs | Implemented for current control plane | ACTIVE certification and RateCard resolve an immutable quote; Assignment rechecks certification, the Cross-Job circuit atomically invalidates repeated-failure profiles, and finalization enforces the certified media facts and fixed complete ArtifactSet. Slice 35 makes promotion an atomic least-privilege transaction bound to one sealed release manifest and guards every new ACTIVE Catalog revision after the one-way `EVIDENCED` switch. | Real benchmark execution, certification issuance, and saleable-SKU Launch Receipts. |
-| 0019 Attempt-scoped progress | Implemented | Current Attempt progress covers QUEUED through FINALIZING, with staleness, replay, and retry reset; the Python Runner validates bounded backend progress/ETA and the Worker Agent forwards it under the exact Attempt/fence Heartbeat authority. | Production telemetry calibration and SLO receipts. |
+| 0019 Attempt-scoped progress | Implemented | Current Attempt progress covers QUEUED through FINALIZING, with staleness, replay, and retry reset; ModelRuntime reports bounded runtime state and the Stage Worker forwards it under exact StageAuthority through `HeartbeatStage`. | Production telemetry calibration and SLO receipts. |
 | 0020 Job Expiry | Implemented for current lifecycle | Queue, retry, assignment, running, and finalization expiry are fenced by PostgreSQL time; recovery cannot extend the immutable deadline. | Scheduler and deployment receipts must preserve the ceiling. |
 | 0021 Bounded retry | Partial | Attempt, cumulative compute, finalization recovery budgets, retry backoff, Job Expiry, and an immutable-policy Cross-Job failure-fingerprint circuit are enforced. | Measured and certified launch runtime values plus Production Gate fault receipts. |
 | 0022 Hierarchical fairness | Implemented | PostgreSQL-authoritative Organization/Service Class/Project weighted-deficit selection, bounded Job score, per-Job retry risk, aging, Protected Lane, retry lane, durable claims, certification invalidation fencing, and multi-replica recovery are integrated. | Production fairness/SLO measurement remains a separate gate receipt. |
 | 0023 Certified remediation | Partial | Slice 20 adds identity/epoch-bound L0-L7 operation ledger, two-person L6 approval, immutable receipts, Worker/Lease fencing, bounded deadlines with orphan recovery, same-epoch quarantine/identity guards, executor allowlist, and exact role/migration evidence. Commit `44543f0` adds guarded transport validation; commit `1c7a49f` adds `ControlPlaneAuthorizer` and `ControlPlaneLedger` adapters over the authoritative remediation operation/completion seams; commit `b25008a` passes the full immutable execution Plan into the runner for device/epoch/capability enforcement; commit `72e5462` adds a PostgreSQL-backed single execution claim and protobuf claim identity; commit `fa6622c` fixes controller-to-agent identity direction and adds the systemd Node Agent runtime, capability/fence/rate-limit/post-check enforcement, durable host receipts, an `EXECUTING` dispatcher, and migration `00021`; commits `0cc6a7c` and `b17b0cd` add exact migration `00022` claim replay, stable claim identity, durable pre-action intent, unknown-outcome quarantine, identity- and FailureClass-bound evidence, persistent rate limiting, atomic receipt publication, cross-process execution locking, secure local-file validation, and independent-pool concurrency evidence; commits `75981bd` and `754c275` require directory-fsync confirmation before receipt or intent replay and bind host execution to a validated inode with trusted Linux/Darwin path ancestry. Commit `ad1bcf6` exposes authenticated Platform Operator request, read, approval, and start paths; binds local and registered Worker epochs plus canonical GPU UUID, unique PCI BDF, failure class, action, and certification revision; and proves dispatcher-to-PostgreSQL quarantine after a certified post-check failure. | Live certificate/endpoint provisioning, hardware/topology capability certification, real host-action and post-check evidence, warm-up/canary, live claim/receipt monitoring, deployment evidence, and Launch Receipt. |
 | 0024 Work-conserving capacity | Implemented for current control plane | Every compatible READY Worker/profile remains available to ordinary work; bounded retry lane, risk Admission, worker scoring, and physical-slot queue projection hold no hard idle reserve. Slice 23 adds Worker/pool-scoped scratch and Artifact Store hysteresis, current-epoch observation freshness, separate readiness/Assignment eligibility, and transactional Admission/Assignment rechecks without a hard spare. | Live Fleet deployment and measured SLO effect remain separate gate evidence. |
-| 0025 Three control/storage nodes | Partial | `deploy/control-storage` renders a three-instance CNPG cluster, three-replica PVC-backed JetStream, required hostname anti-affinity, two-pod disruption budgets, independent WAL storage, and an external S3 backup contract. Slice 25 binds Publisher and durable Scheduler consumer behavior to that exact release-owned stream/consumer contract and proves quorum loss/recovery plus both Outbox and consumer crash windows in repository integration tests (`d275a91`). Slice 26 applies the release Cluster to a pinned four-node kind environment, verifies three distinct PostgreSQL failure domains, automatically replaces a stopped primary with RPO 0 and RTO below five minutes, and rejects new Admission/Assignment commits after both synchronous standbys stop. Slice 36 requires two `vela-control` replicas on distinct nodes selected by `vela.ai/node-role=control-storage`, with bounded resources, owner-only runtime material, a dedicated non-preempting PriorityClass, and at least four 110 GiB scratch claims with 440 GiB aggregate capacity for active, surge, and reclaim-lag Pods (`4dd2ac1`, review closure `5eac303`). Slice 38 renders the Barman `ObjectStore`, plugin WAL archiver, immediate/daily base-backup schedule, and exact third-party release identities, then exercises the path in a disposable four-node cluster (`4f4bc2d`, credential-isolation review closure `e8a4149`). Slice 46 pins the JetStream StatefulSet to the exact NATS `2.10.22` `linux/amd64` OCI manifest and verifies that identity through the final Kustomize render (`760cd7a`). Slice 47 pins the shared BusyBox `1.37.0` root materializer to one exact `linux/amd64` OCI manifest across the final `vela-control`, Worker Agent, and Fleet desired-input renders (`6d916bb`, review closure `9f4063e`). | Production RKE2/operator installation, release-specific Vela image digests and complete BusyBox/Vela registry and supply-chain evidence, three-node disk/topology and colocated workload validation, Artifact S3 durability, secret-manager credentials/rotation, independent-fault-domain restore evidence, and a real-environment failover Launch Receipt. |
+| 0025 Three control/storage nodes | Partial | `deploy/control-storage` renders a three-instance CNPG cluster, three-replica PVC-backed JetStream, required hostname anti-affinity, two-pod disruption budgets, independent WAL storage, and an external S3 backup contract. Slice 25 binds Publisher and durable Scheduler consumer behavior to that exact release-owned stream/consumer contract and proves quorum loss/recovery plus both Outbox and consumer crash windows in repository integration tests (`d275a91`). Slice 26 applies the release Cluster to a pinned four-node kind environment, verifies three distinct PostgreSQL failure domains, automatically replaces a stopped primary with RPO 0 and RTO below five minutes, and rejects new Admission/Assignment commits after both synchronous standbys stop. Slice 36 requires two `vela-control` replicas on distinct nodes selected by `vela.ai/node-role=control-storage`, with bounded resources, owner-only runtime material, a dedicated non-preempting PriorityClass, and at least four 110 GiB scratch claims with 440 GiB aggregate capacity for active, surge, and reclaim-lag Pods (`4dd2ac1`, review closure `5eac303`). Slice 38 renders the Barman `ObjectStore`, plugin WAL archiver, immediate/daily base-backup schedule, and exact third-party release identities, then exercises the path in a disposable four-node cluster (`4f4bc2d`, credential-isolation review closure `e8a4149`). Slice 46 pins the JetStream StatefulSet to the exact NATS `2.10.22` `linux/amd64` OCI manifest and verifies that identity through the final Kustomize render (`760cd7a`). Slice 47 pins the shared BusyBox `1.37.0` root materializer to one exact `linux/amd64` OCI manifest across the retained `vela-control` render and Fleet ResidencyPlan WorkerBundle inputs (`6d916bb`, review closure `9f4063e`). | Production RKE2/operator installation, release-specific Vela image digests and complete BusyBox/Vela registry and supply-chain evidence, three-node disk/topology and colocated workload validation, Artifact S3 durability, secret-manager credentials/rotation, independent-fault-domain restore evidence, and a real-environment failover Launch Receipt. |
 | 0026 Reserve credit at Admission | Implemented for current lifecycle | Admission reserves atomically; cancellation, execution/finalization failure, and Visible Completion consume or release exactly once with counters and Outbox. | Future terminal paths must close the same reservation authority. |
 | 0027 Charge when cancel wins | Implemented | Visible Completion and Customer Cancellation serialize through one Job authority; the winner owns the only Charge and late completion returns the winning ArtifactSet. | Production fault-injection receipt remains a separate gate. |
-| 0028 Recompute after Worker loss | Partial | LOST execution creates a higher-fence whole-Job retry; a circuit-opening failure can select a different actively certified profile without changing product snapshots; finalization loss is recovered on the same Attempt/fence by a Reconciler without resetting its deadline; Slice 21 local state is integrated into the Worker Agent and Python Runner with exact Worker/epoch/fence recovery, multipart finalization resume, per-Attempt quotas, watermarks, terminal cleanup, a UID-authenticated host XFS quota service, and an unprivileged H3 deployment contract. Slice 23 materializes identity-bound H3 Workers and requires five ordered readiness checks before a recovered or replacement Worker becomes `HEALTHY + READY`. Slice 30 proves real signed multipart resume after same-Worker Agent process loss and a distinct higher-fence replacement Attempt from an empty local root after the original Worker recovery root becomes inaccessible, with one Visible Completion, ArtifactSet, and Charge (`864c134`, review closure at `5a9bad6`). | Live H3 NVMe/XFS quota and capacity certification, physical node/NVMe-loss exercise, and Launch Receipt. |
-| 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings. Slice 35 adds a bounded duplicate-key-safe manifest loader, same-release/config closure, rooted evidence paths, evidence-byte SHA-256 recomputation, immutable database receipts, and Catalog ACTIVE enforcement bound to the sealed manifest. Slice 39 (`7829104`) gives all eight non-observability gates versioned check, measurement, and typed-artifact contracts; binds preset evidence to the saleable-group snapshot, certification values, and complete RateCard bindings; and rejects plan mismatch before database mutation. Slice 40 derives the release/configuration pair from one strict, rooted, bounded bundle spanning exact renders, packages, Worker materializations, external revisions, and OCI manifest/config bytes; launch verification and Catalog promotion both require that canonical bundle, with promotion mismatch rejected before transaction start. Slice 41 (`286eb29`) reproducibly builds and pre-publication verifies the exact H3 Runner wheel and Linux/amd64 Node Agent package inputs, then publishes them atomically without replacement. Slice 42 (`eeddbaa`) assembles the four exact `linux/amd64` Vela runtime images from digest-pinned build inputs while requiring a private, digest-bound external H3 backend. Slice 43 (`32718ac`) exports the four exact `linux/amd64` manifest/config pairs as a fixed nine-file release artifact set, recomputes OCI layout blob identities, and reloads every pair through the canonical release-bundle validator before atomic publication. Slice 44 (`91e883f`) uploads only those fully validated layouts by immutable digest, re-reads exact remote manifest bytes, and emits a strict credential-free ten-file publication artifact set. Slice 45 (`3d384b0`; trust-boundary review closures `247e6f7`, `1b56e49`, `6757932`; verification closures `4a65429`, `9179665`) requires exact publication coverage, DSSE/Ed25519 image statements, SPDX 2.3 image subjects, trusted scanner/database evidence, independently signed vulnerability approval, and an externally configured digest-pinned trust policy before launch verification or Catalog transaction start. Missing, malformed, duplicate, mixed, failed, opaque, semantically incomplete, symlinked, tampered, expired, unpinned, untrusted, or independently asserted identity cannot evaluate as PASS or promote the Catalog. | Actual authorized production registry/signature/SBOM/scan/approval evidence under externally provisioned keys and policy, real PKI/Secret and node materialization, and nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
+| 0028 Recompute after Worker loss | Partial | Slices 21, 23, and 30 are historical pre-contraction evidence for local recovery, readiness, multipart resume, higher-fence recompute, and one Visible Completion (`864c134`, review closure at `5a9bad6`); that deployment is superseded. The current replacement uses WorkerInstance/ModelRuntime epochs, per-StageAttempt journals and quotas, StageArtifact materialization authority, independent StageRun retry, and non-GPU finalization without unloading resident models. | Live H3 NVMe/XFS quota and capacity certification for the Stage Worker path, physical node/NVMe-loss exercise, and Launch Receipt. |
+| 0029 Evidenced Production Gates | Partial | Nine stable gate IDs and a strict receipt validator require release/configuration/environment/result/owner/threshold/observed-result/evidence bindings. Slice 35 adds a bounded duplicate-key-safe manifest loader, same-release/config closure, rooted evidence paths, evidence-byte SHA-256 recomputation, immutable database receipts, and Catalog ACTIVE enforcement bound to the sealed manifest. Slice 39 (`7829104`) gives all eight non-observability gates versioned check, measurement, and typed-artifact contracts; binds preset evidence to the saleable-group snapshot, certification values, and complete RateCard bindings; and rejects plan mismatch before database mutation. Slice 40 derives the release/configuration pair from one strict, rooted, bounded bundle spanning six exact renders, packages, target ResidencyPlan actuation or pre-contraction rollback Worker materializations, external revisions, and OCI manifest/config bytes; launch verification and Catalog promotion both require that canonical bundle, with promotion mismatch rejected before transaction start. Slice 41 (`286eb29`) reproducibly builds and pre-publication verifies the exact H3 Runner wheel and Linux/amd64 Node Agent package inputs, then publishes them atomically without replacement. Slice 42 (`eeddbaa`) assembles the five exact `linux/amd64` Vela runtime images from digest-pinned build inputs while requiring a private, digest-bound external H3 backend. Slice 43 (`32718ac`) exports the five exact `linux/amd64` manifest/config pairs as a fixed eleven-file release artifact set, recomputes OCI layout blob identities, and reloads every pair through the canonical release-bundle validator before atomic publication. Slice 44 (`91e883f`) uploads only those fully validated layouts by immutable digest, re-reads exact remote manifest bytes, and emits a strict credential-free twelve-file publication artifact set. Slice 45 (`3d384b0`; trust-boundary review closures `247e6f7`, `1b56e49`, `6757932`; verification closures `4a65429`, `9179665`) requires exact publication coverage, DSSE/Ed25519 image statements, SPDX 2.3 image subjects, trusted scanner/database evidence, independently signed vulnerability approval, and an externally configured digest-pinned trust policy before launch verification or Catalog transaction start. The H3 fault-campaign closure advances only the state/event fault contract to V2 with canonical source/receipt projections, actual digest-verified raw JSON payloads, strict per-scenario fault windows, global event identity closure, stale-authority evidence, and atomic no-replace publication. Missing, malformed, duplicate, mixed, failed, opaque, semantically incomplete, symlinked, tampered, expired, unpinned, untrusted, or independently asserted identity cannot evaluate as PASS or promote the Catalog. | Actual authorized production registry/signature/SBOM/scan/approval evidence under externally provisioned keys and policy, real PKI/Secret and node materialization, and nine actual versioned Launch Receipts from real certification, soak, fault, DR, rollback, lifecycle, and on-call exercises; current result is `0/9`. |
 
 ## Acceptance Coverage
 
-The 30 scenarios in `docs/architecture.md` remain the completion authority. The
-implemented slices provide direct repository evidence for Admission (1-3),
+### Current Stage execution coverage
+
+The current completion authority is `docs/architecture.md` section 22.1 and the
+Stage contracts in specs 0049/0050. Repository tests use mock ModelRuntime
+processes, fixtures, local small-byte Artifacts, and Testcontainers services;
+they do not load or execute a real model. The implemented current path covers:
+
+- atomic Stage graph Admission/instantiation, replay, and capacity/catalog
+  refusal without partial authority;
+- exclusive DeviceSet ownership, ResidencyPlan route authority, exact
+  WorkerInstance/WorkerMember/ModelRuntime epochs, warm residency, and
+  single-GPU H3 AUX/DiT placement across same-node and cross-node fixtures;
+- deterministic StageScheduler acquisition, StageAttempt/StageAllocation/
+  StageLease fencing, assignment replay, independent DiT failure, retry, and
+  cancellation races;
+- StageArtifact seal/materialization, storage-reservation enforcement,
+  transfer destination authority, exact lineage/version binding, pinning, and
+  recompute after local source loss;
+- exact cache admission/hit, scoped HMAC/equivalence checks, atomic execution
+  pins, cancellation/quota races, durable admission receipts, and fair
+  reconciliation pagination;
+- CPU media stages plus unique, expiring, replay-safe
+  `StageGraphFinalizationClaim` ownership through atomic Visible Completion;
+- separate usage/cost ledger evidence without changing fixed customer pricing
+  or Charge; and
+- guarded Stage cutover, permanent legacy schema/protocol/runtime contraction,
+  current release reachability checks, and synthetic H3 campaign evidence.
+
+Explicit gaps remain: there is no local or production evidence from real H3
+weights, GPUs, cross-machine transfer, NVMe/XFS failure, long-duration soak,
+multi-GPU or multi-node LLM execution, production registry/PKI/Secret inputs,
+HA/DR exercises, or measured SLO/cost calibration. Historical tests cannot fill
+those gaps. Production Gates remain `0/9 PASS`.
+
+### Historical pre-contraction provenance (superseded)
+
+The following inventory records the former 30-scenario coverage map only for
+traceability. It is not current direct evidence and cannot authorize a Stage
+release or Production Gate. The pre-contraction implementation provided
+repository evidence for Admission (1-3),
 Customer Cancellation and its Visible Completion race (4-5), no-Charge failure
 (6), Scheduler crash/fairness/pool isolation (7), stale execution and bounded
 retry (8), Attempt progress and exact-contract statistical SLO measurement (9), Artifact
 recovery/immutability and whole-set validation (11-12), JetStream/Invoice outage
-recovery with idempotent export (20), begin-finalization replay (21), Assignment
-replay (24), PostgreSQL-time Lease behavior (25), immutable pricing/profile
+recovery with idempotent export (20), legacy finalization-start replay (21),
+legacy assignment-response replay (24), PostgreSQL-time Lease behavior (25), immutable pricing/profile
 retry behavior (14), immediate ProfileCertification invalidation (15), and
 Webhook timeout/non-2xx/crash retry, signature, dead-letter, and authority
 behavior (28), NATS cross-workload/subject denial plus Organization/Project data
@@ -207,12 +346,16 @@ and Catalog promotion rebuild that bundle and require exact receipt bindings
 before any database mutation. It does not publish or sign registry artifacts,
 provision production PKI/Secrets or nodes, deploy real infrastructure, or create
 a Launch Receipt.
-Slice 42 (`eeddbaa`) provides the repository-owned `linux/amd64` build seam for
-the four Vela runtime images, including pinned build inputs, exact runtime
-entrypoints, and a private digest-bound H3 backend context. It does not provide
-the production backend, publish or sign registry artifacts, approve
-vulnerabilities, deploy RKE2/H3, or create a Launch Receipt.
-Slice 43 (`32718ac`) converts those four local Buildx layouts into exact
+Slice 42 (`eeddbaa`, extended here for split-runtime composition) provides
+the repository-owned `linux/amd64` build seam for four final Vela runtime
+images, including pinned build inputs, exact runtime entrypoints, a
+digest-pinned external H3 dependency/model base, and an exact private
+three-command context whose Encoder, DiT, and VAE decoder ELF identities are
+independently verified and bound into the final OCI config. It does not provide
+the production base, commands, models or weights, publish or sign registry
+artifacts, approve vulnerabilities, deploy RKE2/H3, or create a Launch Receipt.
+Slice 43 (`32718ac`, extended here for split-runtime composition) converts
+those four local Buildx layouts into exact
 manifest/config inputs for the canonical release bundle, with streamed blob
 verification, strict runtime contracts, fixed inventory, and atomic
 no-replace publication. It does not publish a registry image, sign or attach an
@@ -231,22 +374,33 @@ database identity, raw scanner output, and exact vulnerability policy approval
 under a process-configured, digest-pinned external trust root.
 Repository fixtures prove fail-closed validation and pre-transaction rejection;
 they do not provide any actual production evidence or Launch Receipt.
+A typed H3 real-environment preflight now binds one canonical release and
+ResidencyPlan to a dedicated evidence database role, Kubernetes API and expected
+cluster/namespace UIDs, exact one-AUX plus seven-DiT three-node topology, READY
+schedulable Nodes under the Worker Pod selector/toleration contract, NVIDIA DRA
+class/current slices, and all eight planned node/GPU UUID/PCI BDF identities.
+It emits only bounded PASS/FAIL reason codes and performs no actuation. The
+current checkout has no canonical production release bundle or reachable local
+GPU/DRA environment, so no successful live report exists.
 Slice 46 (`760cd7a`, review closure `431bf3f`) pins the Control/Storage
 JetStream workload to the exact NATS `2.10.22` `linux/amd64` OCI manifest and
 verifies that identity through the final Kustomize render. It does not provide
 publication or supply-chain evidence, release-specific Vela images, or a
 deployment receipt.
 Slice 47 (`6d916bb`, review closure `9f4063e`) pins the shared BusyBox `1.37.0`
-root materializer to its exact `linux/amd64` OCI manifest in `vela-control`, the
-static Worker contract, and Fleet desired input, then verifies all three
-identities through final Kustomize renders and the repository deployment
+root materializer to its exact `linux/amd64` OCI manifest at the two retained
+consumers: the `vela-control` Secret materializer and every Fleet ResidencyPlan
+WorkerBundle `init_image`. It verifies both identities through final Kustomize
+renders and the repository deployment
 validation entry point. It does not provide registry publication, signatures,
 SBOM, scan/approval evidence, a deployment, or a Launch Receipt.
 The H3 mock backend (`4304fe9`, review closure `f6cb45b`) is development-only
-Runner protocol and staging deployment tooling. It is not H3, certification or
+ModelRuntime protocol fixture and staging deployment tooling. It is not H3, certification or
 performance evidence, does not add acceptance-scenario evidence, and cannot
 satisfy a Production Gate.
-The repository coverage remains 30 direct, 0 partial, and 0 unproven.
+No aggregate `direct/partial/unproven` count is claimed for the current Stage
+architecture. The current coverage and gaps above, plus separately sealed
+Production Gate receipts, are the only acceptance status.
 
 ## Production Gates
 

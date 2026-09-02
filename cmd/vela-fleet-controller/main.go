@@ -34,7 +34,7 @@ const (
 
 type config struct {
 	namespace                     string
-	desiredInputFile              string
+	residencyPlanRolloutsFile     string
 	maintenanceAddress            string
 	maintenanceServerName         string
 	tlsCertificateFile            string
@@ -46,10 +46,8 @@ type config struct {
 	admissionClientCAFile         string
 	admissionClientSPIFFEIdentity string
 	kubernetesUsername            string
-	podControllerUsername         string
 	pollInterval                  time.Duration
-	desiredRevisions              []fleetcontroller.DesiredRevision
-	retirementPlans               []fleetcontroller.RetirementPlan
+	residencyPlanRollouts         []fleetcontroller.ResidencyPlanRollout
 }
 
 type readinessSource interface {
@@ -126,23 +124,33 @@ func runWithContext(ctx context.Context, configuration config) error {
 		return err
 	}
 	defer func() { _ = maintenanceClient.Close() }()
-	reconciler, err := fleetcontroller.NewReconciler(
-		resources,
-		maintenanceClient,
-		maintenanceClient,
-		maintenanceClient,
-		maintenanceClient,
-	)
-	if err != nil {
-		return err
+	var workerInstanceController *fleetcontroller.ResidencyPlanRolloutController
+	var createValidator fleetadmission.ProtectedResourceCreateValidator
+	if len(configuration.residencyPlanRollouts) != 0 {
+		actuator, err := fleetcontroller.NewWorkerInstanceActuator(resources)
+		if err != nil {
+			return err
+		}
+		workerInstanceController, err = fleetcontroller.NewResidencyPlanRolloutController(
+			maintenanceClient,
+			actuator,
+		)
+		if err != nil {
+			return err
+		}
+		createValidator, err = fleetcontroller.NewWorkerInstanceAdmissionValidator(
+			configuration.residencyPlanRollouts,
+			resources,
+		)
+		if err != nil {
+			return err
+		}
 	}
 	runtimeController, err := fleetcontroller.NewRuntime(
-		resources,
-		reconciler,
 		fleetcontroller.RuntimeConfig{
-			DesiredRevisions: configuration.desiredRevisions,
-			RetirementPlans:  configuration.retirementPlans,
-			PollInterval:     configuration.pollInterval,
+			ResidencyPlanRollouts:    configuration.residencyPlanRollouts,
+			WorkerInstanceController: workerInstanceController,
+			PollInterval:             configuration.pollInterval,
 			ReportError: func(cause error) {
 				slog.Error("Fleet reconciliation cycle failed", "error", cause)
 			},
@@ -154,9 +162,8 @@ func runWithContext(ctx context.Context, configuration config) error {
 	admissionHandler, err := fleetadmission.NewHandler(
 		maintenanceClient,
 		fleetadmission.Config{
-			FleetUsername:         configuration.kubernetesUsername,
-			PodControllerUsername: configuration.podControllerUsername,
-			PodCreateValidator:    resources,
+			FleetUsername:   configuration.kubernetesUsername,
+			CreateValidator: createValidator,
 		},
 	)
 	if err != nil {
@@ -303,7 +310,7 @@ func validSPIFFEIdentity(value string) bool {
 func loadConfig() (config, error) {
 	configuration := config{
 		namespace:                     os.Getenv("VELA_FLEET_NAMESPACE"),
-		desiredInputFile:              os.Getenv("VELA_FLEET_DESIRED_INPUT_FILE"),
+		residencyPlanRolloutsFile:     os.Getenv("VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE"),
 		maintenanceAddress:            os.Getenv("VELA_FLEET_MAINTENANCE_ADDRESS"),
 		maintenanceServerName:         os.Getenv("VELA_FLEET_MAINTENANCE_SERVER_NAME"),
 		tlsCertificateFile:            os.Getenv("VELA_FLEET_TLS_CERT_FILE"),
@@ -315,14 +322,12 @@ func loadConfig() (config, error) {
 		admissionClientCAFile:         os.Getenv("VELA_FLEET_ADMISSION_CLIENT_CA_FILE"),
 		admissionClientSPIFFEIdentity: os.Getenv("VELA_FLEET_ADMISSION_CLIENT_SPIFFE_ID"),
 		kubernetesUsername:            os.Getenv("VELA_FLEET_KUBERNETES_USERNAME"),
-		podControllerUsername:         os.Getenv("VELA_FLEET_POD_CONTROLLER_USERNAME"),
 	}
 	required := []struct {
 		name  string
 		value string
 	}{
 		{"VELA_FLEET_NAMESPACE", configuration.namespace},
-		{"VELA_FLEET_DESIRED_INPUT_FILE", configuration.desiredInputFile},
 		{"VELA_FLEET_MAINTENANCE_ADDRESS", configuration.maintenanceAddress},
 		{"VELA_FLEET_MAINTENANCE_SERVER_NAME", configuration.maintenanceServerName},
 		{"VELA_FLEET_TLS_CERT_FILE", configuration.tlsCertificateFile},
@@ -334,7 +339,6 @@ func loadConfig() (config, error) {
 		{"VELA_FLEET_ADMISSION_CLIENT_CA_FILE", configuration.admissionClientCAFile},
 		{"VELA_FLEET_ADMISSION_CLIENT_SPIFFE_ID", configuration.admissionClientSPIFFEIdentity},
 		{"VELA_FLEET_KUBERNETES_USERNAME", configuration.kubernetesUsername},
-		{"VELA_FLEET_POD_CONTROLLER_USERNAME", configuration.podControllerUsername},
 	}
 	for _, requirement := range required {
 		name, value := requirement.name, requirement.value
@@ -342,9 +346,13 @@ func loadConfig() (config, error) {
 			return config{}, fmt.Errorf("%s is required", name)
 		}
 	}
-	if !filepath.IsAbs(filepath.Clean(configuration.desiredInputFile)) ||
-		filepath.Clean(configuration.desiredInputFile) != configuration.desiredInputFile {
-		return config{}, errors.New("VELA_FLEET_DESIRED_INPUT_FILE must be an absolute clean path")
+	if configuration.residencyPlanRolloutsFile == "" {
+		return config{}, errors.New("VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE is required")
+	}
+	if configuration.residencyPlanRolloutsFile != "" &&
+		(!filepath.IsAbs(filepath.Clean(configuration.residencyPlanRolloutsFile)) ||
+			filepath.Clean(configuration.residencyPlanRolloutsFile) != configuration.residencyPlanRolloutsFile) {
+		return config{}, errors.New("VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE must be an absolute clean path")
 	}
 	for _, path := range []string{
 		configuration.tlsCertificateFile,
@@ -372,39 +380,38 @@ func loadConfig() (config, error) {
 		return config{}, errors.New("VELA_FLEET_POLL_INTERVAL must be a positive duration")
 	}
 	configuration.pollInterval = pollInterval
-	configuration.desiredRevisions, configuration.retirementPlans, err = loadDesiredConfiguration(
-		configuration.desiredInputFile,
+	configuration.residencyPlanRollouts, err = loadResidencyPlanRollouts(
+		configuration.residencyPlanRolloutsFile,
 		configuration.namespace,
 	)
 	if err != nil {
-		return config{}, fmt.Errorf("load Fleet desired input: %w", err)
+		return config{}, fmt.Errorf("load Fleet ResidencyPlan rollouts: %w", err)
 	}
 	return configuration, nil
 }
 
-func loadDesiredRevisions(path, namespace string) ([]fleetcontroller.DesiredRevision, error) {
-	revisions, _, err := loadDesiredConfiguration(path, namespace)
-	return revisions, err
-}
-
-func loadDesiredConfiguration(
+func loadResidencyPlanRollouts(
 	path string,
 	namespace string,
-) ([]fleetcontroller.DesiredRevision, []fleetcontroller.RetirementPlan, error) {
+) ([]fleetcontroller.ResidencyPlanRollout, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > fleetcontroller.MaximumDesiredConfigurationBytes {
-		return nil, nil, errors.New("fleet desired input file is empty, non-regular, or too large")
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 ||
+		info.Size() > fleetcontroller.MaximumResidencyPlanRolloutBytes {
+		return nil, errors.New("fleet ResidencyPlan rollout file is empty, non-regular, or too large")
 	}
-	encoded, err := io.ReadAll(io.LimitReader(file, fleetcontroller.MaximumDesiredConfigurationBytes+1))
+	encoded, err := io.ReadAll(io.LimitReader(
+		file,
+		fleetcontroller.MaximumResidencyPlanRolloutBytes+1,
+	))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return fleetcontroller.DecodeDesiredConfiguration(encoded, namespace)
+	return fleetcontroller.DecodeResidencyPlanRollouts(encoded, namespace)
 }
 
 func requireHostPort(address string, allowEmptyHost bool) error {

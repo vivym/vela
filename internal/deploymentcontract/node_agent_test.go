@@ -15,6 +15,7 @@ func TestNodeAgentDeploymentBindsWorkerEpochAndGPUDeviceTopology(t *testing.T) {
 		"EnvironmentFile=/etc/vela/node-agent.env",
 		"UMask=0077",
 		"StateDirectory=vela-node-agent",
+		"StateDirectoryMode=0750",
 		"NoNewPrivileges=false",
 	} {
 		if !strings.Contains(unit, required) {
@@ -30,6 +31,16 @@ func TestNodeAgentDeploymentBindsWorkerEpochAndGPUDeviceTopology(t *testing.T) {
 		`"failure_classes": ["PROCESS_FAILURE"]`,
 		"--vela-gpu-uuid=<canonical GPU UUID>",
 		"--vela-pci-bdf=<canonical PCI BDF>",
+		"VELA_NODE_AGENT_FLEET_ADDRESS",
+		"VELA_NODE_AGENT_FLEET_SERVER_NAME",
+		"VELA_NODE_AGENT_FLEET_CLIENT_CERT_FILE",
+		"VELA_NODE_AGENT_WORKER_INSTANCES_FILE",
+		"VELA_NODE_AGENT_WORKER_INSTANCE_STATE_DIRECTORY",
+		"VELA_NODE_AGENT_NVIDIA_SMI_PATH",
+		"VELA_NODE_AGENT_BOOT_ID_PATH",
+		"ClientAuth",
+		"no model load,\n" +
+			"unload, replace, or release authority",
 	} {
 		if !strings.Contains(contract, required) {
 			t.Fatalf("Node Agent deployment contract lacks %q", required)

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-model-runtime-verifier-placeholder
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-model-runtime
+    app.kubernetes.io/part-of: vela
+immutable: true
+data:
+  verifier-keyring.json: '{"stage-authority-r0-placeholder":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}'

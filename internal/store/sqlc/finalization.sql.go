@@ -12,225 +12,57 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const claimArtifactUpload = `-- name: ClaimArtifactUpload :one
-UPDATE artifact_uploads AS upload
-SET claim_id = CASE
-        WHEN upload.multipart_upload_id IS NOT NULL THEN upload.claim_id
-        ELSE $1
-    END,
-    claim_owner_kind = CASE
-        WHEN upload.multipart_upload_id IS NOT NULL THEN upload.claim_owner_kind
-        ELSE 'WORKER'
-    END,
-    claim_owner_id = CASE
-        WHEN upload.multipart_upload_id IS NOT NULL THEN upload.claim_owner_id
-        ELSE $2
-    END,
-    claim_expires_at = CASE
-        WHEN upload.multipart_upload_id IS NOT NULL
-            OR upload.claim_id = $1 THEN upload.claim_expires_at
-        ELSE $3
-    END,
-    version = CASE
-        WHEN upload.multipart_upload_id IS NOT NULL
-            OR upload.claim_id = $1 THEN upload.version
-        ELSE upload.version + 1
-    END,
-    updated_at = CASE
-        WHEN upload.multipart_upload_id IS NOT NULL
-            OR upload.claim_id = $1 THEN upload.updated_at
-        ELSE $4
-    END
-FROM artifacts AS artifact
-WHERE upload.id = $5
-  AND upload.artifact_id = artifact.id
-  AND upload.attempt_id = $6
-  AND upload.attempt_fence = $7
-  AND upload.state IN ('INITIATED', 'UPLOADING')
-  AND upload.expires_at > $4
-  AND (
-      upload.multipart_upload_id IS NOT NULL
-      OR upload.claim_id = $1
-      OR upload.claim_expires_at IS NULL
-      OR upload.claim_expires_at <= $4
-  )
-RETURNING
-    upload.id AS upload_id,
-    upload.artifact_id,
-    artifact.object_key,
-    artifact.expected_content_type,
-    upload.claim_id,
-    upload.claim_expires_at,
-    upload.multipart_upload_id,
-    upload.expires_at,
-    upload.version
+const completeStageGraphAttemptForVisibleCompletion = `-- name: CompleteStageGraphAttemptForVisibleCompletion :one
+SELECT vela_complete_stage_graph_visible_completion_attempt(
+    $1, $2, $3
+)
 `
 
-type ClaimArtifactUploadParams struct {
-	ClaimID        uuid.NullUUID      `db:"claim_id" json:"claim_id"`
-	ClaimOwnerID   *string            `db:"claim_owner_id" json:"claim_owner_id"`
-	ClaimExpiresAt pgtype.Timestamptz `db:"claim_expires_at" json:"claim_expires_at"`
-	ClaimedAt      pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
-	UploadID       uuid.UUID          `db:"upload_id" json:"upload_id"`
-	AttemptID      uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence   int64              `db:"attempt_fence" json:"attempt_fence"`
+type CompleteStageGraphAttemptForVisibleCompletionParams struct {
+	AttemptID   uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	Fence       int64              `db:"fence" json:"fence"`
+	CompletedAt pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
 }
 
-type ClaimArtifactUploadRow struct {
-	UploadID            uuid.UUID          `db:"upload_id" json:"upload_id"`
-	ArtifactID          uuid.UUID          `db:"artifact_id" json:"artifact_id"`
-	ObjectKey           string             `db:"object_key" json:"object_key"`
-	ExpectedContentType string             `db:"expected_content_type" json:"expected_content_type"`
-	ClaimID             uuid.NullUUID      `db:"claim_id" json:"claim_id"`
-	ClaimExpiresAt      pgtype.Timestamptz `db:"claim_expires_at" json:"claim_expires_at"`
-	MultipartUploadID   *string            `db:"multipart_upload_id" json:"multipart_upload_id"`
-	ExpiresAt           pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	Version             int64              `db:"version" json:"version"`
+func (q *Queries) CompleteStageGraphAttemptForVisibleCompletion(ctx context.Context, arg CompleteStageGraphAttemptForVisibleCompletionParams) (bool, error) {
+	row := q.db.QueryRow(ctx, completeStageGraphAttemptForVisibleCompletion, arg.AttemptID, arg.Fence, arg.CompletedAt)
+	var vela_complete_stage_graph_visible_completion_attempt bool
+	err := row.Scan(&vela_complete_stage_graph_visible_completion_attempt)
+	return vela_complete_stage_graph_visible_completion_attempt, err
 }
 
-func (q *Queries) ClaimArtifactUpload(ctx context.Context, arg ClaimArtifactUploadParams) (ClaimArtifactUploadRow, error) {
-	row := q.db.QueryRow(ctx, claimArtifactUpload,
+const completeStageGraphFinalizationClaim = `-- name: CompleteStageGraphFinalizationClaim :execrows
+UPDATE stage_graph_finalization_claims
+SET state = 'COMPLETED',
+    completed_at = $1,
+    updated_at = $1
+WHERE id = $2
+  AND attempt_id = $3
+  AND attempt_fence = $4
+  AND owner_id = $5
+  AND state = 'ACTIVE'
+`
+
+type CompleteStageGraphFinalizationClaimParams struct {
+	CompletedAt  pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+	ClaimID      uuid.UUID          `db:"claim_id" json:"claim_id"`
+	AttemptID    uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence int64              `db:"attempt_fence" json:"attempt_fence"`
+	OwnerID      string             `db:"owner_id" json:"owner_id"`
+}
+
+func (q *Queries) CompleteStageGraphFinalizationClaim(ctx context.Context, arg CompleteStageGraphFinalizationClaimParams) (int64, error) {
+	result, err := q.db.Exec(ctx, completeStageGraphFinalizationClaim,
+		arg.CompletedAt,
 		arg.ClaimID,
-		arg.ClaimOwnerID,
-		arg.ClaimExpiresAt,
-		arg.ClaimedAt,
-		arg.UploadID,
 		arg.AttemptID,
 		arg.AttemptFence,
+		arg.OwnerID,
 	)
-	var i ClaimArtifactUploadRow
-	err := row.Scan(
-		&i.UploadID,
-		&i.ArtifactID,
-		&i.ObjectKey,
-		&i.ExpectedContentType,
-		&i.ClaimID,
-		&i.ClaimExpiresAt,
-		&i.MultipartUploadID,
-		&i.ExpiresAt,
-		&i.Version,
-	)
-	return i, err
-}
-
-const claimArtifactVerification = `-- name: ClaimArtifactVerification :one
-UPDATE artifact_uploads AS upload
-SET claim_id = $1,
-    claim_owner_kind = $2,
-    claim_owner_id = $3,
-    claim_expires_at = CASE
-        WHEN upload.claim_id = $1 THEN upload.claim_expires_at
-        ELSE $4
-    END,
-    version = CASE
-        WHEN upload.claim_id = $1 THEN upload.version
-        ELSE upload.version + 1
-    END,
-    updated_at = CASE
-        WHEN upload.claim_id = $1 THEN upload.updated_at
-        ELSE $5
-    END
-FROM artifacts AS artifact
-JOIN jobs AS job ON job.id = artifact.job_id
-JOIN output_specs AS output_spec ON output_spec.id = job.output_spec_id
-WHERE upload.id = $6
-  AND upload.artifact_id = artifact.id
-  AND upload.attempt_id = $7
-  AND upload.attempt_fence = $8
-  AND upload.state = 'UPLOADED'
-  AND artifact.state = 'UPLOADED'
-  AND upload.expires_at > $5
-  AND (
-      upload.claim_id = $1
-      OR upload.claim_expires_at IS NULL
-      OR upload.claim_expires_at <= $5
-  )
-RETURNING
-    upload.id AS upload_id,
-    upload.artifact_id,
-    artifact.kind,
-    artifact.ordinal,
-    artifact.object_key,
-    artifact.object_version_id,
-    artifact.size_bytes,
-    artifact.sha256,
-    artifact.content_type,
-    output_spec.width AS expected_width,
-    output_spec.height AS expected_height,
-    output_spec.duration_milliseconds AS expected_duration_milliseconds,
-    output_spec.frame_rate_milli AS expected_frame_rate_milli,
-    output_spec.codec AS expected_codec,
-    output_spec.container AS expected_container,
-    upload.claim_id AS verification_id,
-    upload.claim_expires_at,
-    upload.version
-`
-
-type ClaimArtifactVerificationParams struct {
-	VerificationID uuid.NullUUID      `db:"verification_id" json:"verification_id"`
-	ClaimOwnerKind *LeaseOwnerKind    `db:"claim_owner_kind" json:"claim_owner_kind"`
-	ClaimOwnerID   *string            `db:"claim_owner_id" json:"claim_owner_id"`
-	ClaimExpiresAt pgtype.Timestamptz `db:"claim_expires_at" json:"claim_expires_at"`
-	ClaimedAt      pgtype.Timestamptz `db:"claimed_at" json:"claimed_at"`
-	UploadID       uuid.UUID          `db:"upload_id" json:"upload_id"`
-	AttemptID      uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence   int64              `db:"attempt_fence" json:"attempt_fence"`
-}
-
-type ClaimArtifactVerificationRow struct {
-	UploadID                     uuid.UUID          `db:"upload_id" json:"upload_id"`
-	ArtifactID                   uuid.UUID          `db:"artifact_id" json:"artifact_id"`
-	Kind                         ArtifactKind       `db:"kind" json:"kind"`
-	Ordinal                      int32              `db:"ordinal" json:"ordinal"`
-	ObjectKey                    string             `db:"object_key" json:"object_key"`
-	ObjectVersionID              *string            `db:"object_version_id" json:"object_version_id"`
-	SizeBytes                    *int64             `db:"size_bytes" json:"size_bytes"`
-	Sha256                       []byte             `db:"sha256" json:"sha256"`
-	ContentType                  *string            `db:"content_type" json:"content_type"`
-	ExpectedWidth                int32              `db:"expected_width" json:"expected_width"`
-	ExpectedHeight               int32              `db:"expected_height" json:"expected_height"`
-	ExpectedDurationMilliseconds int32              `db:"expected_duration_milliseconds" json:"expected_duration_milliseconds"`
-	ExpectedFrameRateMilli       int32              `db:"expected_frame_rate_milli" json:"expected_frame_rate_milli"`
-	ExpectedCodec                string             `db:"expected_codec" json:"expected_codec"`
-	ExpectedContainer            string             `db:"expected_container" json:"expected_container"`
-	VerificationID               uuid.NullUUID      `db:"verification_id" json:"verification_id"`
-	ClaimExpiresAt               pgtype.Timestamptz `db:"claim_expires_at" json:"claim_expires_at"`
-	Version                      int64              `db:"version" json:"version"`
-}
-
-func (q *Queries) ClaimArtifactVerification(ctx context.Context, arg ClaimArtifactVerificationParams) (ClaimArtifactVerificationRow, error) {
-	row := q.db.QueryRow(ctx, claimArtifactVerification,
-		arg.VerificationID,
-		arg.ClaimOwnerKind,
-		arg.ClaimOwnerID,
-		arg.ClaimExpiresAt,
-		arg.ClaimedAt,
-		arg.UploadID,
-		arg.AttemptID,
-		arg.AttemptFence,
-	)
-	var i ClaimArtifactVerificationRow
-	err := row.Scan(
-		&i.UploadID,
-		&i.ArtifactID,
-		&i.Kind,
-		&i.Ordinal,
-		&i.ObjectKey,
-		&i.ObjectVersionID,
-		&i.SizeBytes,
-		&i.Sha256,
-		&i.ContentType,
-		&i.ExpectedWidth,
-		&i.ExpectedHeight,
-		&i.ExpectedDurationMilliseconds,
-		&i.ExpectedFrameRateMilli,
-		&i.ExpectedCodec,
-		&i.ExpectedContainer,
-		&i.VerificationID,
-		&i.ClaimExpiresAt,
-		&i.Version,
-	)
-	return i, err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const consumeVisibleCompletionCreditReservation = `-- name: ConsumeVisibleCompletionCreditReservation :execrows
@@ -277,226 +109,140 @@ func (q *Queries) DecrementProjectRunningForVisibleCompletion(ctx context.Contex
 	return result.RowsAffected(), nil
 }
 
-const findActiveReconcilerFinalizationCandidate = `-- name: FindActiveReconcilerFinalizationCandidate :one
-SELECT a.id AS attempt_id, a.worker_id, a.worker_epoch, a.fence
-FROM attempt_leases AS lease
-JOIN attempts AS a ON a.id = lease.attempt_id
-JOIN jobs AS job ON job.id = a.job_id
-WHERE lease.phase = 'FINALIZATION'
-  AND lease.owner_kind = 'RECONCILER'
-  AND lease.owner_id = $1
-  AND lease.revoked_at IS NULL
-  AND lease.expires_at > clock_timestamp()
-  AND a.state = 'FINALIZING'
-  AND a.finalization_deadline_at > clock_timestamp()
-  AND job.state = 'FINALIZING'
-  AND job.job_expires_at > clock_timestamp()
-ORDER BY lease.issued_at, lease.id
-LIMIT 1
+const expireStageGraphFinalizationClaims = `-- name: ExpireStageGraphFinalizationClaims :exec
+UPDATE stage_graph_finalization_claims
+SET state = 'EXPIRED',
+    expired_at = $1,
+    updated_at = $1
+WHERE state = 'ACTIVE'
+  AND expires_at <= $1
 `
 
-type FindActiveReconcilerFinalizationCandidateRow struct {
-	AttemptID   uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64     `db:"worker_epoch" json:"worker_epoch"`
-	Fence       int64     `db:"fence" json:"fence"`
+func (q *Queries) ExpireStageGraphFinalizationClaims(ctx context.Context, expiredAt pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, expireStageGraphFinalizationClaims, expiredAt)
+	return err
 }
 
-func (q *Queries) FindActiveReconcilerFinalizationCandidate(ctx context.Context, ownerID string) (FindActiveReconcilerFinalizationCandidateRow, error) {
-	row := q.db.QueryRow(ctx, findActiveReconcilerFinalizationCandidate, ownerID)
-	var i FindActiveReconcilerFinalizationCandidateRow
-	err := row.Scan(
-		&i.AttemptID,
-		&i.WorkerID,
-		&i.WorkerEpoch,
-		&i.Fence,
-	)
-	return i, err
-}
-
-const findRecoverableExpiredFinalizationCandidate = `-- name: FindRecoverableExpiredFinalizationCandidate :one
+const findActiveStageGraphFinalizationClaim = `-- name: FindActiveStageGraphFinalizationClaim :one
 SELECT
-    a.id AS attempt_id,
-    a.worker_id,
-    a.worker_epoch,
-    a.fence,
-    lease.owner_kind,
-    lease.owner_id
-FROM attempt_leases AS lease
-JOIN attempts AS a ON a.id = lease.attempt_id
-JOIN jobs AS job ON job.id = a.job_id
-WHERE lease.phase = 'FINALIZATION'
-  AND lease.owner_kind IN ('WORKER', 'RECONCILER')
-  AND lease.revoked_at IS NULL
-  AND lease.expires_at <= clock_timestamp()
-  AND a.state = 'FINALIZING'
-  AND a.finalization_deadline_at > clock_timestamp()
-  AND job.state = 'FINALIZING'
-  AND job.job_expires_at > clock_timestamp()
-  AND NOT EXISTS (
-      SELECT 1
-      FROM artifact_uploads AS upload
-      WHERE upload.attempt_id = a.id
-        AND upload.attempt_fence = a.fence
-        AND upload.state NOT IN ('UPLOADED', 'VERIFIED')
-        AND NOT (
-            upload.state = 'UPLOADING'
-            AND upload.multipart_upload_id IS NOT NULL
-            AND upload.completion_request_hash IS NOT NULL
-            AND upload.size_bytes IS NOT NULL
-            AND upload.sha256 IS NOT NULL
-            AND upload.content_type IS NOT NULL
-            AND jsonb_array_length(upload.completed_parts) > 0
-        )
-  )
-  AND EXISTS (
-      SELECT 1
-      FROM artifact_uploads AS upload
-      WHERE upload.attempt_id = a.id
-        AND upload.attempt_fence = a.fence
-  )
-ORDER BY lease.expires_at, lease.id
-LIMIT 1
-`
-
-type FindRecoverableExpiredFinalizationCandidateRow struct {
-	AttemptID   uuid.UUID      `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID      `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64          `db:"worker_epoch" json:"worker_epoch"`
-	Fence       int64          `db:"fence" json:"fence"`
-	OwnerKind   LeaseOwnerKind `db:"owner_kind" json:"owner_kind"`
-	OwnerID     string         `db:"owner_id" json:"owner_id"`
-}
-
-func (q *Queries) FindRecoverableExpiredFinalizationCandidate(ctx context.Context) (FindRecoverableExpiredFinalizationCandidateRow, error) {
-	row := q.db.QueryRow(ctx, findRecoverableExpiredFinalizationCandidate)
-	var i FindRecoverableExpiredFinalizationCandidateRow
-	err := row.Scan(
-		&i.AttemptID,
-		&i.WorkerID,
-		&i.WorkerEpoch,
-		&i.Fence,
-		&i.OwnerKind,
-		&i.OwnerID,
-	)
-	return i, err
-}
-
-const getArtifactUploadStatus = `-- name: GetArtifactUploadStatus :one
-SELECT
-    upload.id AS upload_id,
-    upload.artifact_id,
-    upload.state,
+    claim.id AS claim_id,
+    claim.organization_id,
+    claim.project_id,
+    claim.job_id,
+    claim.attempt_id,
+    claim.attempt_fence,
+    claim.final_stage_run_id,
+    claim.final_stage_artifact_id,
+    claim.exact_object_version,
+    claim.owner_id,
+    claim.token_digest,
+    claim.signing_key_id,
+    claim.output_set_digest,
+    claim.issued_at,
+    claim.expires_at,
+    attempt.finalization_started_at,
+    attempt.finalization_deadline_at,
+    job.version AS job_version,
     artifact.object_key,
-    artifact.expected_content_type,
-    upload.multipart_upload_id,
-    upload.completed_parts,
-    upload.object_version_id,
-    upload.size_bytes,
-    upload.sha256,
-    upload.content_type,
-    upload.completion_request_hash,
-    upload.expires_at,
-    upload.version
-FROM artifact_uploads AS upload
-JOIN artifacts AS artifact ON artifact.id = upload.artifact_id
-WHERE upload.id = $1
-  AND upload.attempt_id = $2
-  AND upload.attempt_fence = $3
-FOR UPDATE OF upload, artifact
-`
-
-type GetArtifactUploadStatusParams struct {
-	UploadID     uuid.UUID `db:"upload_id" json:"upload_id"`
-	AttemptID    uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	AttemptFence int64     `db:"attempt_fence" json:"attempt_fence"`
-}
-
-type GetArtifactUploadStatusRow struct {
-	UploadID              uuid.UUID           `db:"upload_id" json:"upload_id"`
-	ArtifactID            uuid.UUID           `db:"artifact_id" json:"artifact_id"`
-	State                 ArtifactUploadState `db:"state" json:"state"`
-	ObjectKey             string              `db:"object_key" json:"object_key"`
-	ExpectedContentType   string              `db:"expected_content_type" json:"expected_content_type"`
-	MultipartUploadID     *string             `db:"multipart_upload_id" json:"multipart_upload_id"`
-	CompletedParts        []byte              `db:"completed_parts" json:"completed_parts"`
-	ObjectVersionID       *string             `db:"object_version_id" json:"object_version_id"`
-	SizeBytes             *int64              `db:"size_bytes" json:"size_bytes"`
-	Sha256                []byte              `db:"sha256" json:"sha256"`
-	ContentType           *string             `db:"content_type" json:"content_type"`
-	CompletionRequestHash []byte              `db:"completion_request_hash" json:"completion_request_hash"`
-	ExpiresAt             pgtype.Timestamptz  `db:"expires_at" json:"expires_at"`
-	Version               int64               `db:"version" json:"version"`
-}
-
-func (q *Queries) GetArtifactUploadStatus(ctx context.Context, arg GetArtifactUploadStatusParams) (GetArtifactUploadStatusRow, error) {
-	row := q.db.QueryRow(ctx, getArtifactUploadStatus, arg.UploadID, arg.AttemptID, arg.AttemptFence)
-	var i GetArtifactUploadStatusRow
-	err := row.Scan(
-		&i.UploadID,
-		&i.ArtifactID,
-		&i.State,
-		&i.ObjectKey,
-		&i.ExpectedContentType,
-		&i.MultipartUploadID,
-		&i.CompletedParts,
-		&i.ObjectVersionID,
-		&i.SizeBytes,
-		&i.Sha256,
-		&i.ContentType,
-		&i.CompletionRequestHash,
-		&i.ExpiresAt,
-		&i.Version,
-	)
-	return i, err
-}
-
-const getRecordedArtifactVerification = `-- name: GetRecordedArtifactVerification :one
-SELECT
-    upload.id AS upload_id,
-    upload.artifact_id,
-    upload.verification_id,
-    artifact.object_version_id,
-    upload.version,
-    upload.verified_at
-FROM artifact_uploads AS upload
-JOIN artifacts AS artifact ON artifact.id = upload.artifact_id
-WHERE upload.id = $1
-  AND upload.attempt_id = $2
-  AND upload.attempt_fence = $3
-  AND upload.state = 'VERIFIED'
-  AND artifact.state = 'VERIFIED'
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.stage_interface_revision_id,
+    artifact.expires_at AS artifact_expires_at
+FROM stage_graph_finalization_claims AS claim
+JOIN attempts AS attempt ON attempt.id = claim.attempt_id
+JOIN jobs AS job ON job.id = claim.job_id
+JOIN stage_artifacts AS artifact ON artifact.id = claim.final_stage_artifact_id
+WHERE claim.owner_id = $1
+  AND claim.state = 'ACTIVE'
+  AND claim.expires_at > $2
+  AND attempt.state = 'FINALIZING'
+  AND attempt.graph_state = 'FINALIZING'
+  AND attempt.fence = claim.attempt_fence
+  AND attempt.finalization_deadline_at > $2
+  AND job.state = 'FINALIZING'
+  AND job.current_fence = claim.attempt_fence
+  AND job.job_expires_at > $2
+  AND artifact.state = 'COMMITTED'
+  AND artifact.object_version = claim.exact_object_version
+ORDER BY claim.issued_at, claim.id
 LIMIT 1
-FOR UPDATE OF upload, artifact
+FOR UPDATE OF claim, attempt, job
 `
 
-type GetRecordedArtifactVerificationParams struct {
-	UploadID     uuid.UUID `db:"upload_id" json:"upload_id"`
-	AttemptID    uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	AttemptFence int64     `db:"attempt_fence" json:"attempt_fence"`
+type FindActiveStageGraphFinalizationClaimParams struct {
+	OwnerID    string             `db:"owner_id" json:"owner_id"`
+	ObservedAt pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 }
 
-type GetRecordedArtifactVerificationRow struct {
-	UploadID        uuid.UUID          `db:"upload_id" json:"upload_id"`
-	ArtifactID      uuid.UUID          `db:"artifact_id" json:"artifact_id"`
-	VerificationID  uuid.NullUUID      `db:"verification_id" json:"verification_id"`
-	ObjectVersionID *string            `db:"object_version_id" json:"object_version_id"`
-	Version         int64              `db:"version" json:"version"`
-	VerifiedAt      pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+type FindActiveStageGraphFinalizationClaimRow struct {
+	ClaimID                  uuid.UUID          `db:"claim_id" json:"claim_id"`
+	OrganizationID           uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID                uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence             int64              `db:"attempt_fence" json:"attempt_fence"`
+	FinalStageRunID          uuid.UUID          `db:"final_stage_run_id" json:"final_stage_run_id"`
+	FinalStageArtifactID     uuid.UUID          `db:"final_stage_artifact_id" json:"final_stage_artifact_id"`
+	ExactObjectVersion       string             `db:"exact_object_version" json:"exact_object_version"`
+	OwnerID                  string             `db:"owner_id" json:"owner_id"`
+	TokenDigest              []byte             `db:"token_digest" json:"token_digest"`
+	SigningKeyID             string             `db:"signing_key_id" json:"signing_key_id"`
+	OutputSetDigest          []byte             `db:"output_set_digest" json:"output_set_digest"`
+	IssuedAt                 pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	FinalizationStartedAt    pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
+	FinalizationDeadlineAt   pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	JobVersion               int64              `db:"job_version" json:"job_version"`
+	ObjectKey                string             `db:"object_key" json:"object_key"`
+	ContentType              string             `db:"content_type" json:"content_type"`
+	Sha256                   []byte             `db:"sha256" json:"sha256"`
+	SizeBytes                int64              `db:"size_bytes" json:"size_bytes"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ArtifactExpiresAt        pgtype.Timestamptz `db:"artifact_expires_at" json:"artifact_expires_at"`
 }
 
-func (q *Queries) GetRecordedArtifactVerification(ctx context.Context, arg GetRecordedArtifactVerificationParams) (GetRecordedArtifactVerificationRow, error) {
-	row := q.db.QueryRow(ctx, getRecordedArtifactVerification, arg.UploadID, arg.AttemptID, arg.AttemptFence)
-	var i GetRecordedArtifactVerificationRow
+func (q *Queries) FindActiveStageGraphFinalizationClaim(ctx context.Context, arg FindActiveStageGraphFinalizationClaimParams) (FindActiveStageGraphFinalizationClaimRow, error) {
+	row := q.db.QueryRow(ctx, findActiveStageGraphFinalizationClaim, arg.OwnerID, arg.ObservedAt)
+	var i FindActiveStageGraphFinalizationClaimRow
 	err := row.Scan(
-		&i.UploadID,
-		&i.ArtifactID,
-		&i.VerificationID,
-		&i.ObjectVersionID,
-		&i.Version,
-		&i.VerifiedAt,
+		&i.ClaimID,
+		&i.OrganizationID,
+		&i.ProjectID,
+		&i.JobID,
+		&i.AttemptID,
+		&i.AttemptFence,
+		&i.FinalStageRunID,
+		&i.FinalStageArtifactID,
+		&i.ExactObjectVersion,
+		&i.OwnerID,
+		&i.TokenDigest,
+		&i.SigningKeyID,
+		&i.OutputSetDigest,
+		&i.IssuedAt,
+		&i.ExpiresAt,
+		&i.FinalizationStartedAt,
+		&i.FinalizationDeadlineAt,
+		&i.JobVersion,
+		&i.ObjectKey,
+		&i.ContentType,
+		&i.Sha256,
+		&i.SizeBytes,
+		&i.StageInterfaceRevisionID,
+		&i.ArtifactExpiresAt,
 	)
 	return i, err
+}
+
+const getPostgresTime = `-- name: GetPostgresTime :one
+SELECT transaction_timestamp()::timestamptz AS transaction_time
+`
+
+func (q *Queries) GetPostgresTime(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getPostgresTime)
+	var transaction_time pgtype.Timestamptz
+	err := row.Scan(&transaction_time)
+	return transaction_time, err
 }
 
 const insertArtifactAccessGrant = `-- name: InsertArtifactAccessGrant :exec
@@ -676,10 +422,65 @@ func (q *Queries) InsertArtifactSetItem(ctx context.Context, arg InsertArtifactS
 	return err
 }
 
-const insertPlannedArtifact = `-- name: InsertPlannedArtifact :exec
-INSERT INTO artifacts (
+const insertStageGraphFinalizationClaim = `-- name: InsertStageGraphFinalizationClaim :exec
+INSERT INTO stage_graph_finalization_claims (
     id, organization_id, project_id, job_id, attempt_id, attempt_fence,
-    kind, ordinal, object_key, expected_content_type, expires_at
+    final_stage_run_id, final_stage_artifact_id, exact_object_version,
+    owner_id, token_digest, signing_key_id, output_set_digest, issued_at, expires_at
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6,
+    $7, $8,
+    $9, $10, $11,
+    $12, $13,
+    $14, $15
+)
+`
+
+type InsertStageGraphFinalizationClaimParams struct {
+	ClaimID              uuid.UUID          `db:"claim_id" json:"claim_id"`
+	OrganizationID       uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID            uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID            uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence         int64              `db:"attempt_fence" json:"attempt_fence"`
+	FinalStageRunID      uuid.UUID          `db:"final_stage_run_id" json:"final_stage_run_id"`
+	FinalStageArtifactID uuid.UUID          `db:"final_stage_artifact_id" json:"final_stage_artifact_id"`
+	ExactObjectVersion   string             `db:"exact_object_version" json:"exact_object_version"`
+	OwnerID              string             `db:"owner_id" json:"owner_id"`
+	TokenDigest          []byte             `db:"token_digest" json:"token_digest"`
+	SigningKeyID         string             `db:"signing_key_id" json:"signing_key_id"`
+	OutputSetDigest      []byte             `db:"output_set_digest" json:"output_set_digest"`
+	IssuedAt             pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
+	ExpiresAt            pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+}
+
+func (q *Queries) InsertStageGraphFinalizationClaim(ctx context.Context, arg InsertStageGraphFinalizationClaimParams) error {
+	_, err := q.db.Exec(ctx, insertStageGraphFinalizationClaim,
+		arg.ClaimID,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.JobID,
+		arg.AttemptID,
+		arg.AttemptFence,
+		arg.FinalStageRunID,
+		arg.FinalStageArtifactID,
+		arg.ExactObjectVersion,
+		arg.OwnerID,
+		arg.TokenDigest,
+		arg.SigningKeyID,
+		arg.OutputSetDigest,
+		arg.IssuedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const insertStageGraphFinalizationClaimOutput = `-- name: InsertStageGraphFinalizationClaimOutput :exec
+INSERT INTO stage_graph_finalization_claim_outputs (
+    claim_id, organization_id, project_id, attempt_id, output_key,
+    artifact_kind, ordinal, stage_run_id, stage_artifact_id,
+    stage_interface_revision_id, exact_object_version
 ) VALUES (
     $1, $2, $3,
     $4, $5, $6,
@@ -688,23 +489,144 @@ INSERT INTO artifacts (
 )
 `
 
-type InsertPlannedArtifactParams struct {
-	ArtifactID          uuid.UUID          `db:"artifact_id" json:"artifact_id"`
-	OrganizationID      uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID           uuid.UUID          `db:"project_id" json:"project_id"`
-	JobID               uuid.UUID          `db:"job_id" json:"job_id"`
-	AttemptID           uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence        int64              `db:"attempt_fence" json:"attempt_fence"`
-	Kind                ArtifactKind       `db:"kind" json:"kind"`
-	Ordinal             int32              `db:"ordinal" json:"ordinal"`
-	ObjectKey           string             `db:"object_key" json:"object_key"`
-	ExpectedContentType string             `db:"expected_content_type" json:"expected_content_type"`
-	ExpiresAt           pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+type InsertStageGraphFinalizationClaimOutputParams struct {
+	ClaimID                  uuid.UUID    `db:"claim_id" json:"claim_id"`
+	OrganizationID           uuid.UUID    `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID    `db:"project_id" json:"project_id"`
+	AttemptID                uuid.UUID    `db:"attempt_id" json:"attempt_id"`
+	OutputKey                string       `db:"output_key" json:"output_key"`
+	ArtifactKind             ArtifactKind `db:"artifact_kind" json:"artifact_kind"`
+	Ordinal                  int32        `db:"ordinal" json:"ordinal"`
+	StageRunID               uuid.UUID    `db:"stage_run_id" json:"stage_run_id"`
+	StageArtifactID          uuid.UUID    `db:"stage_artifact_id" json:"stage_artifact_id"`
+	StageInterfaceRevisionID uuid.UUID    `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ExactObjectVersion       string       `db:"exact_object_version" json:"exact_object_version"`
 }
 
-func (q *Queries) InsertPlannedArtifact(ctx context.Context, arg InsertPlannedArtifactParams) error {
-	_, err := q.db.Exec(ctx, insertPlannedArtifact,
-		arg.ArtifactID,
+func (q *Queries) InsertStageGraphFinalizationClaimOutput(ctx context.Context, arg InsertStageGraphFinalizationClaimOutputParams) error {
+	_, err := q.db.Exec(ctx, insertStageGraphFinalizationClaimOutput,
+		arg.ClaimID,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.AttemptID,
+		arg.OutputKey,
+		arg.ArtifactKind,
+		arg.Ordinal,
+		arg.StageRunID,
+		arg.StageArtifactID,
+		arg.StageInterfaceRevisionID,
+		arg.ExactObjectVersion,
+	)
+	return err
+}
+
+const insertStageGraphVisibleCompletion = `-- name: InsertStageGraphVisibleCompletion :exec
+INSERT INTO visible_completions (
+    id,
+    organization_id,
+    project_id,
+    job_id,
+    attempt_id,
+    attempt_fence,
+    authority_stage_graph_finalization_claim_id,
+    artifact_set_id,
+    charge_id,
+    candidate_sha256,
+    job_version,
+    completed_at
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12
+)
+`
+
+type InsertStageGraphVisibleCompletionParams struct {
+	ID                                     uuid.UUID          `db:"id" json:"id"`
+	OrganizationID                         uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                              uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                                  uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID                              uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence                           int64              `db:"attempt_fence" json:"attempt_fence"`
+	AuthorityStageGraphFinalizationClaimID uuid.NullUUID      `db:"authority_stage_graph_finalization_claim_id" json:"authority_stage_graph_finalization_claim_id"`
+	ArtifactSetID                          uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
+	ChargeID                               uuid.UUID          `db:"charge_id" json:"charge_id"`
+	CandidateSha256                        []byte             `db:"candidate_sha256" json:"candidate_sha256"`
+	JobVersion                             int64              `db:"job_version" json:"job_version"`
+	CompletedAt                            pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
+}
+
+func (q *Queries) InsertStageGraphVisibleCompletion(ctx context.Context, arg InsertStageGraphVisibleCompletionParams) error {
+	_, err := q.db.Exec(ctx, insertStageGraphVisibleCompletion,
+		arg.ID,
+		arg.OrganizationID,
+		arg.ProjectID,
+		arg.JobID,
+		arg.AttemptID,
+		arg.AttemptFence,
+		arg.AuthorityStageGraphFinalizationClaimID,
+		arg.ArtifactSetID,
+		arg.ChargeID,
+		arg.CandidateSha256,
+		arg.JobVersion,
+		arg.CompletedAt,
+	)
+	return err
+}
+
+const insertVerifiedStageGraphArtifact = `-- name: InsertVerifiedStageGraphArtifact :exec
+INSERT INTO artifacts (
+    id, organization_id, project_id, job_id, attempt_id, attempt_fence,
+    kind, ordinal, object_key, expected_content_type, object_version_id,
+    size_bytes, sha256, content_type, uploaded_at, verification_id,
+    verification_request_hash, validation_receipt, verified_at, state,
+    expires_at, source_stage_artifact_id, updated_at
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6,
+    $7, $8, $9,
+    $10, $11, $12,
+    $13, $10, $14,
+    $15, $16,
+    $17, $14, 'VERIFIED',
+    $18, $19, $14
+)
+`
+
+type InsertVerifiedStageGraphArtifactParams struct {
+	ID                      uuid.UUID          `db:"id" json:"id"`
+	OrganizationID          uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID               uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                   uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID               uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence            int64              `db:"attempt_fence" json:"attempt_fence"`
+	Kind                    ArtifactKind       `db:"kind" json:"kind"`
+	Ordinal                 int32              `db:"ordinal" json:"ordinal"`
+	ObjectKey               string             `db:"object_key" json:"object_key"`
+	ContentType             string             `db:"content_type" json:"content_type"`
+	ObjectVersionID         *string            `db:"object_version_id" json:"object_version_id"`
+	SizeBytes               *int64             `db:"size_bytes" json:"size_bytes"`
+	Sha256                  []byte             `db:"sha256" json:"sha256"`
+	VerifiedAt              pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	VerificationID          uuid.NullUUID      `db:"verification_id" json:"verification_id"`
+	VerificationRequestHash []byte             `db:"verification_request_hash" json:"verification_request_hash"`
+	ValidationReceipt       []byte             `db:"validation_receipt" json:"validation_receipt"`
+	ExpiresAt               pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	SourceStageArtifactID   uuid.NullUUID      `db:"source_stage_artifact_id" json:"source_stage_artifact_id"`
+}
+
+func (q *Queries) InsertVerifiedStageGraphArtifact(ctx context.Context, arg InsertVerifiedStageGraphArtifactParams) error {
+	_, err := q.db.Exec(ctx, insertVerifiedStageGraphArtifact,
+		arg.ID,
 		arg.OrganizationID,
 		arg.ProjectID,
 		arg.JobID,
@@ -713,91 +635,16 @@ func (q *Queries) InsertPlannedArtifact(ctx context.Context, arg InsertPlannedAr
 		arg.Kind,
 		arg.Ordinal,
 		arg.ObjectKey,
-		arg.ExpectedContentType,
+		arg.ContentType,
+		arg.ObjectVersionID,
+		arg.SizeBytes,
+		arg.Sha256,
+		arg.VerifiedAt,
+		arg.VerificationID,
+		arg.VerificationRequestHash,
+		arg.ValidationReceipt,
 		arg.ExpiresAt,
-	)
-	return err
-}
-
-const insertPlannedArtifactUpload = `-- name: InsertPlannedArtifactUpload :exec
-INSERT INTO artifact_uploads (
-    id, organization_id, project_id, job_id, attempt_id, attempt_fence,
-    artifact_id, expires_at
-) VALUES (
-    $1, $2, $3,
-    $4, $5, $6,
-    $7, $8
-)
-`
-
-type InsertPlannedArtifactUploadParams struct {
-	UploadID       uuid.UUID          `db:"upload_id" json:"upload_id"`
-	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
-	JobID          uuid.UUID          `db:"job_id" json:"job_id"`
-	AttemptID      uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence   int64              `db:"attempt_fence" json:"attempt_fence"`
-	ArtifactID     uuid.UUID          `db:"artifact_id" json:"artifact_id"`
-	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-}
-
-func (q *Queries) InsertPlannedArtifactUpload(ctx context.Context, arg InsertPlannedArtifactUploadParams) error {
-	_, err := q.db.Exec(ctx, insertPlannedArtifactUpload,
-		arg.UploadID,
-		arg.OrganizationID,
-		arg.ProjectID,
-		arg.JobID,
-		arg.AttemptID,
-		arg.AttemptFence,
-		arg.ArtifactID,
-		arg.ExpiresAt,
-	)
-	return err
-}
-
-const insertReconcilerFinalizationLease = `-- name: InsertReconcilerFinalizationLease :exec
-INSERT INTO attempt_leases (
-    id, organization_id, project_id, attempt_id, worker_id, worker_epoch,
-    phase, owner_kind, owner_id, fence, token_digest, signing_key_id,
-    issued_at, expires_at
-) VALUES (
-    $1, $2, $3,
-    $4, $5, $6,
-    'FINALIZATION', 'RECONCILER', $7, $8,
-    $9, $10,
-    $11, $12
-)
-`
-
-type InsertReconcilerFinalizationLeaseParams struct {
-	LeaseID        uuid.UUID          `db:"lease_id" json:"lease_id"`
-	OrganizationID uuid.UUID          `db:"organization_id" json:"organization_id"`
-	ProjectID      uuid.UUID          `db:"project_id" json:"project_id"`
-	AttemptID      uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID       uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch    int64              `db:"worker_epoch" json:"worker_epoch"`
-	OwnerID        string             `db:"owner_id" json:"owner_id"`
-	Fence          int64              `db:"fence" json:"fence"`
-	TokenDigest    []byte             `db:"token_digest" json:"token_digest"`
-	SigningKeyID   string             `db:"signing_key_id" json:"signing_key_id"`
-	IssuedAt       pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
-	ExpiresAt      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-}
-
-func (q *Queries) InsertReconcilerFinalizationLease(ctx context.Context, arg InsertReconcilerFinalizationLeaseParams) error {
-	_, err := q.db.Exec(ctx, insertReconcilerFinalizationLease,
-		arg.LeaseID,
-		arg.OrganizationID,
-		arg.ProjectID,
-		arg.AttemptID,
-		arg.WorkerID,
-		arg.WorkerEpoch,
-		arg.OwnerID,
-		arg.Fence,
-		arg.TokenDigest,
-		arg.SigningKeyID,
-		arg.IssuedAt,
-		arg.ExpiresAt,
+		arg.SourceStageArtifactID,
 	)
 	return err
 }
@@ -839,7 +686,7 @@ type InsertVisibleCompletionParams struct {
 	JobID            uuid.UUID          `db:"job_id" json:"job_id"`
 	AttemptID        uuid.UUID          `db:"attempt_id" json:"attempt_id"`
 	AttemptFence     int64              `db:"attempt_fence" json:"attempt_fence"`
-	AuthorityLeaseID uuid.UUID          `db:"authority_lease_id" json:"authority_lease_id"`
+	AuthorityLeaseID uuid.NullUUID      `db:"authority_lease_id" json:"authority_lease_id"`
 	ArtifactSetID    uuid.UUID          `db:"artifact_set_id" json:"artifact_set_id"`
 	ChargeID         uuid.UUID          `db:"charge_id" json:"charge_id"`
 	CandidateSha256  []byte             `db:"candidate_sha256" json:"candidate_sha256"`
@@ -1118,50 +965,66 @@ func (q *Queries) ListCompletionArtifactsForUpdate(ctx context.Context, arg List
 	return items, nil
 }
 
-const listFinalizationArtifacts = `-- name: ListFinalizationArtifacts :many
+const listStageGraphFinalizationClaimOutputs = `-- name: ListStageGraphFinalizationClaimOutputs :many
 SELECT
-    a.id AS artifact_id,
-    u.id AS upload_id,
-    a.kind,
-    a.ordinal,
-    a.object_key,
-    u.expires_at
-FROM artifacts AS a
-JOIN artifact_uploads AS u ON u.artifact_id = a.id
-WHERE a.attempt_id = $1
-  AND a.attempt_fence = $2
-ORDER BY CASE a.kind WHEN 'VIDEO' THEN 0 ELSE 1 END, a.ordinal
+    output.output_key,
+    output.artifact_kind,
+    output.ordinal,
+    output.stage_run_id,
+    output.stage_artifact_id,
+    output.stage_interface_revision_id,
+    output.exact_object_version,
+    artifact.object_key,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.expires_at
+FROM stage_graph_finalization_claim_outputs AS output
+JOIN stage_artifacts AS artifact
+  ON artifact.id = output.stage_artifact_id
+ AND artifact.stage_interface_revision_id = output.stage_interface_revision_id
+ AND artifact.object_version = output.exact_object_version
+ AND artifact.state = 'COMMITTED'
+WHERE output.claim_id = $1
+ORDER BY output.output_key
 `
 
-type ListFinalizationArtifactsParams struct {
-	AttemptID    uuid.UUID `db:"attempt_id" json:"attempt_id"`
-	AttemptFence int64     `db:"attempt_fence" json:"attempt_fence"`
+type ListStageGraphFinalizationClaimOutputsRow struct {
+	OutputKey                string             `db:"output_key" json:"output_key"`
+	ArtifactKind             ArtifactKind       `db:"artifact_kind" json:"artifact_kind"`
+	Ordinal                  int32              `db:"ordinal" json:"ordinal"`
+	StageRunID               uuid.UUID          `db:"stage_run_id" json:"stage_run_id"`
+	StageArtifactID          uuid.UUID          `db:"stage_artifact_id" json:"stage_artifact_id"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ExactObjectVersion       string             `db:"exact_object_version" json:"exact_object_version"`
+	ObjectKey                string             `db:"object_key" json:"object_key"`
+	ContentType              string             `db:"content_type" json:"content_type"`
+	Sha256                   []byte             `db:"sha256" json:"sha256"`
+	SizeBytes                int64              `db:"size_bytes" json:"size_bytes"`
+	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
-type ListFinalizationArtifactsRow struct {
-	ArtifactID uuid.UUID          `db:"artifact_id" json:"artifact_id"`
-	UploadID   uuid.UUID          `db:"upload_id" json:"upload_id"`
-	Kind       ArtifactKind       `db:"kind" json:"kind"`
-	Ordinal    int32              `db:"ordinal" json:"ordinal"`
-	ObjectKey  string             `db:"object_key" json:"object_key"`
-	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-}
-
-func (q *Queries) ListFinalizationArtifacts(ctx context.Context, arg ListFinalizationArtifactsParams) ([]ListFinalizationArtifactsRow, error) {
-	rows, err := q.db.Query(ctx, listFinalizationArtifacts, arg.AttemptID, arg.AttemptFence)
+func (q *Queries) ListStageGraphFinalizationClaimOutputs(ctx context.Context, claimID uuid.UUID) ([]ListStageGraphFinalizationClaimOutputsRow, error) {
+	rows, err := q.db.Query(ctx, listStageGraphFinalizationClaimOutputs, claimID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListFinalizationArtifactsRow{}
+	items := []ListStageGraphFinalizationClaimOutputsRow{}
 	for rows.Next() {
-		var i ListFinalizationArtifactsRow
+		var i ListStageGraphFinalizationClaimOutputsRow
 		if err := rows.Scan(
-			&i.ArtifactID,
-			&i.UploadID,
-			&i.Kind,
+			&i.OutputKey,
+			&i.ArtifactKind,
 			&i.Ordinal,
+			&i.StageRunID,
+			&i.StageArtifactID,
+			&i.StageInterfaceRevisionID,
+			&i.ExactObjectVersion,
 			&i.ObjectKey,
+			&i.ContentType,
+			&i.Sha256,
+			&i.SizeBytes,
 			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
@@ -1174,171 +1037,222 @@ func (q *Queries) ListFinalizationArtifacts(ctx context.Context, arg ListFinaliz
 	return items, nil
 }
 
-const lockFinalizationAuthority = `-- name: LockFinalizationAuthority :one
+const listStageGraphFinalizationOutputs = `-- name: ListStageGraphFinalizationOutputs :many
 SELECT
-    l.id AS lease_id,
-    l.phase AS lease_phase,
-    l.owner_kind AS lease_owner_kind,
-    l.owner_id AS lease_owner_id,
-    l.token_digest,
-	 l.signing_key_id,
-	 l.issued_at AS lease_issued_at,
-    l.expires_at AS lease_expires_at,
-    l.revoked_at AS lease_revoked_at,
-    a.id AS attempt_id,
-    a.job_id,
-    a.state AS attempt_state,
-    a.worker_id,
-    a.worker_epoch,
-    a.fence AS attempt_fence,
-    a.finalization_started_at,
-    a.finalization_deadline_at,
-    j.organization_id,
-    j.project_id,
-    j.state AS job_state,
-    j.version AS job_version,
-    j.current_fence,
-    j.job_expires_at,
-    j.execution_max_finalization_seconds_per_attempt,
-    j.pricing_quantity AS generation_count,
-    os.container,
-    cr.state AS credit_reservation_state
-FROM attempt_leases AS l
-JOIN attempts AS a ON a.id = l.attempt_id
-JOIN jobs AS j ON j.id = a.job_id
-JOIN output_specs AS os ON os.id = j.output_spec_id
-JOIN credit_reservations AS cr ON cr.job_id = j.id
-WHERE l.attempt_id = $1
-  AND l.worker_id = $2
-  AND l.worker_epoch = $3
-  AND l.fence = $4
-  AND l.phase IN ('EXECUTION', 'FINALIZATION')
-  AND l.owner_kind = $5
-  AND l.owner_id = $6
-  AND l.revoked_at IS NULL
-  AND a.worker_id = $2
-  AND a.worker_epoch = $3
-  AND a.fence = $4
-LIMIT 1
-FOR UPDATE OF l, a, j
+    output.output_key,
+    output.interface_revision_id AS stage_interface_revision_id,
+    run.id AS stage_run_id,
+    artifact.id AS stage_artifact_id,
+    artifact.object_key,
+    artifact.object_version,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.expires_at
+FROM stage_runs AS run
+JOIN execution_graph_outputs AS output
+  ON output.execution_graph_revision_id = run.execution_graph_revision_id
+ AND output.source_stage_key = run.stage_key
+JOIN stage_run_output_bindings AS binding
+  ON binding.attempt_id = run.attempt_id
+ AND binding.stage_run_id = run.id
+ AND binding.output_port = output.source_port
+ AND binding.stage_interface_revision_id = output.interface_revision_id
+JOIN stage_artifacts AS artifact
+  ON artifact.id = binding.stage_artifact_id
+WHERE run.attempt_id = $1
+  AND run.state = 'SUCCEEDED'
+  AND output.required
+  AND artifact.state = 'COMMITTED'
+ORDER BY output.output_key
 `
 
-type LockFinalizationAuthorityParams struct {
-	AttemptID   uuid.UUID      `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID      `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64          `db:"worker_epoch" json:"worker_epoch"`
-	Fence       int64          `db:"fence" json:"fence"`
-	OwnerKind   LeaseOwnerKind `db:"owner_kind" json:"owner_kind"`
-	OwnerID     string         `db:"owner_id" json:"owner_id"`
+type ListStageGraphFinalizationOutputsRow struct {
+	OutputKey                string             `db:"output_key" json:"output_key"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	StageRunID               uuid.UUID          `db:"stage_run_id" json:"stage_run_id"`
+	StageArtifactID          uuid.UUID          `db:"stage_artifact_id" json:"stage_artifact_id"`
+	ObjectKey                string             `db:"object_key" json:"object_key"`
+	ObjectVersion            string             `db:"object_version" json:"object_version"`
+	ContentType              string             `db:"content_type" json:"content_type"`
+	Sha256                   []byte             `db:"sha256" json:"sha256"`
+	SizeBytes                int64              `db:"size_bytes" json:"size_bytes"`
+	ExpiresAt                pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
-type LockFinalizationAuthorityRow struct {
-	LeaseID                                   uuid.UUID              `db:"lease_id" json:"lease_id"`
-	LeasePhase                                LeasePhase             `db:"lease_phase" json:"lease_phase"`
-	LeaseOwnerKind                            LeaseOwnerKind         `db:"lease_owner_kind" json:"lease_owner_kind"`
-	LeaseOwnerID                              string                 `db:"lease_owner_id" json:"lease_owner_id"`
-	TokenDigest                               []byte                 `db:"token_digest" json:"token_digest"`
-	SigningKeyID                              string                 `db:"signing_key_id" json:"signing_key_id"`
-	LeaseIssuedAt                             pgtype.Timestamptz     `db:"lease_issued_at" json:"lease_issued_at"`
-	LeaseExpiresAt                            pgtype.Timestamptz     `db:"lease_expires_at" json:"lease_expires_at"`
-	LeaseRevokedAt                            pgtype.Timestamptz     `db:"lease_revoked_at" json:"lease_revoked_at"`
-	AttemptID                                 uuid.UUID              `db:"attempt_id" json:"attempt_id"`
-	JobID                                     uuid.UUID              `db:"job_id" json:"job_id"`
-	AttemptState                              AttemptState           `db:"attempt_state" json:"attempt_state"`
-	WorkerID                                  uuid.UUID              `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                               int64                  `db:"worker_epoch" json:"worker_epoch"`
-	AttemptFence                              int64                  `db:"attempt_fence" json:"attempt_fence"`
-	FinalizationStartedAt                     pgtype.Timestamptz     `db:"finalization_started_at" json:"finalization_started_at"`
-	FinalizationDeadlineAt                    pgtype.Timestamptz     `db:"finalization_deadline_at" json:"finalization_deadline_at"`
-	OrganizationID                            uuid.UUID              `db:"organization_id" json:"organization_id"`
-	ProjectID                                 uuid.UUID              `db:"project_id" json:"project_id"`
-	JobState                                  JobState               `db:"job_state" json:"job_state"`
-	JobVersion                                int64                  `db:"job_version" json:"job_version"`
-	CurrentFence                              int64                  `db:"current_fence" json:"current_fence"`
-	JobExpiresAt                              pgtype.Timestamptz     `db:"job_expires_at" json:"job_expires_at"`
-	ExecutionMaxFinalizationSecondsPerAttempt int32                  `db:"execution_max_finalization_seconds_per_attempt" json:"execution_max_finalization_seconds_per_attempt"`
-	GenerationCount                           int32                  `db:"generation_count" json:"generation_count"`
-	Container                                 string                 `db:"container" json:"container"`
-	CreditReservationState                    CreditReservationState `db:"credit_reservation_state" json:"credit_reservation_state"`
+func (q *Queries) ListStageGraphFinalizationOutputs(ctx context.Context, attemptID uuid.UUID) ([]ListStageGraphFinalizationOutputsRow, error) {
+	rows, err := q.db.Query(ctx, listStageGraphFinalizationOutputs, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStageGraphFinalizationOutputsRow{}
+	for rows.Next() {
+		var i ListStageGraphFinalizationOutputsRow
+		if err := rows.Scan(
+			&i.OutputKey,
+			&i.StageInterfaceRevisionID,
+			&i.StageRunID,
+			&i.StageArtifactID,
+			&i.ObjectKey,
+			&i.ObjectVersion,
+			&i.ContentType,
+			&i.Sha256,
+			&i.SizeBytes,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) LockFinalizationAuthority(ctx context.Context, arg LockFinalizationAuthorityParams) (LockFinalizationAuthorityRow, error) {
-	row := q.db.QueryRow(ctx, lockFinalizationAuthority,
-		arg.AttemptID,
-		arg.WorkerID,
-		arg.WorkerEpoch,
-		arg.Fence,
-		arg.OwnerKind,
-		arg.OwnerID,
-	)
-	var i LockFinalizationAuthorityRow
+const lockNextStageGraphFinalizationCandidate = `-- name: LockNextStageGraphFinalizationCandidate :one
+SELECT
+    attempt.organization_id,
+    attempt.project_id,
+    attempt.job_id,
+    attempt.id AS attempt_id,
+    attempt.fence AS attempt_fence,
+    attempt.finalization_started_at,
+    attempt.finalization_deadline_at,
+    job.version AS job_version,
+    job.job_expires_at,
+    run.id AS final_stage_run_id,
+    artifact.id AS final_stage_artifact_id,
+    artifact.object_key,
+    artifact.object_version,
+    artifact.content_type,
+    artifact.sha256,
+    artifact.size_bytes,
+    artifact.stage_interface_revision_id,
+    artifact.expires_at AS artifact_expires_at
+FROM attempts AS attempt
+JOIN jobs AS job ON job.id = attempt.job_id
+JOIN stage_runs AS run ON run.attempt_id = attempt.id
+JOIN stage_run_output_bindings AS binding
+  ON binding.attempt_id = attempt.id
+ AND binding.stage_run_id = run.id
+JOIN stage_artifacts AS artifact ON artifact.id = binding.stage_artifact_id
+WHERE attempt.state = 'FINALIZING'
+  AND attempt.graph_state = 'FINALIZING'
+  AND attempt.finalization_deadline_at > $1
+  AND job.state = 'FINALIZING'
+  AND job.current_fence = attempt.fence
+  AND job.job_expires_at > $1
+  AND run.state = 'SUCCEEDED'
+  AND artifact.state = 'COMMITTED'
+  AND artifact.expires_at > $1
+  AND NOT EXISTS (
+      SELECT 1
+      FROM stage_dependencies AS outgoing
+      WHERE outgoing.attempt_id = attempt.id
+        AND outgoing.source_stage_run_id = run.id
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM stage_graph_finalization_claims AS active_claim
+      WHERE active_claim.attempt_id = attempt.id
+        AND active_claim.state = 'ACTIVE'
+  )
+ORDER BY attempt.finalization_started_at, attempt.id, run.id
+LIMIT 1
+FOR UPDATE OF attempt, job SKIP LOCKED
+`
+
+type LockNextStageGraphFinalizationCandidateRow struct {
+	OrganizationID           uuid.UUID          `db:"organization_id" json:"organization_id"`
+	ProjectID                uuid.UUID          `db:"project_id" json:"project_id"`
+	JobID                    uuid.UUID          `db:"job_id" json:"job_id"`
+	AttemptID                uuid.UUID          `db:"attempt_id" json:"attempt_id"`
+	AttemptFence             int64              `db:"attempt_fence" json:"attempt_fence"`
+	FinalizationStartedAt    pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
+	FinalizationDeadlineAt   pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	JobVersion               int64              `db:"job_version" json:"job_version"`
+	JobExpiresAt             pgtype.Timestamptz `db:"job_expires_at" json:"job_expires_at"`
+	FinalStageRunID          uuid.UUID          `db:"final_stage_run_id" json:"final_stage_run_id"`
+	FinalStageArtifactID     uuid.UUID          `db:"final_stage_artifact_id" json:"final_stage_artifact_id"`
+	ObjectKey                string             `db:"object_key" json:"object_key"`
+	ObjectVersion            string             `db:"object_version" json:"object_version"`
+	ContentType              string             `db:"content_type" json:"content_type"`
+	Sha256                   []byte             `db:"sha256" json:"sha256"`
+	SizeBytes                int64              `db:"size_bytes" json:"size_bytes"`
+	StageInterfaceRevisionID uuid.UUID          `db:"stage_interface_revision_id" json:"stage_interface_revision_id"`
+	ArtifactExpiresAt        pgtype.Timestamptz `db:"artifact_expires_at" json:"artifact_expires_at"`
+}
+
+func (q *Queries) LockNextStageGraphFinalizationCandidate(ctx context.Context, observedAt pgtype.Timestamptz) (LockNextStageGraphFinalizationCandidateRow, error) {
+	row := q.db.QueryRow(ctx, lockNextStageGraphFinalizationCandidate, observedAt)
+	var i LockNextStageGraphFinalizationCandidateRow
 	err := row.Scan(
-		&i.LeaseID,
-		&i.LeasePhase,
-		&i.LeaseOwnerKind,
-		&i.LeaseOwnerID,
-		&i.TokenDigest,
-		&i.SigningKeyID,
-		&i.LeaseIssuedAt,
-		&i.LeaseExpiresAt,
-		&i.LeaseRevokedAt,
-		&i.AttemptID,
+		&i.OrganizationID,
+		&i.ProjectID,
 		&i.JobID,
-		&i.AttemptState,
-		&i.WorkerID,
-		&i.WorkerEpoch,
+		&i.AttemptID,
 		&i.AttemptFence,
 		&i.FinalizationStartedAt,
 		&i.FinalizationDeadlineAt,
-		&i.OrganizationID,
-		&i.ProjectID,
-		&i.JobState,
 		&i.JobVersion,
-		&i.CurrentFence,
 		&i.JobExpiresAt,
-		&i.ExecutionMaxFinalizationSecondsPerAttempt,
-		&i.GenerationCount,
-		&i.Container,
-		&i.CreditReservationState,
+		&i.FinalStageRunID,
+		&i.FinalStageArtifactID,
+		&i.ObjectKey,
+		&i.ObjectVersion,
+		&i.ContentType,
+		&i.Sha256,
+		&i.SizeBytes,
+		&i.StageInterfaceRevisionID,
+		&i.ArtifactExpiresAt,
 	)
 	return i, err
 }
 
-const lockVisibleCompletionAuthority = `-- name: LockVisibleCompletionAuthority :one
+const lockStageGraphFinalizationCompletionAuthority = `-- name: LockStageGraphFinalizationCompletionAuthority :one
 SELECT
-    lease.id AS lease_id,
-    lease.phase AS lease_phase,
-    lease.owner_kind AS lease_owner_kind,
-    lease.owner_id AS lease_owner_id,
-    lease.token_digest,
-    lease.expires_at AS lease_expires_at,
-    lease.revoked_at AS lease_revoked_at,
-    attempt.id AS attempt_id,
+    claim.id AS claim_id,
+    claim.attempt_id,
+    claim.attempt_fence,
+    claim.owner_id,
+    claim.token_digest,
+    claim.signing_key_id,
+    claim.output_set_digest,
+    claim.state AS claim_state,
+    claim.issued_at,
+    claim.expires_at AS claim_expires_at,
     attempt.job_id,
     attempt.state AS attempt_state,
-    attempt.worker_id,
-    attempt.worker_epoch,
-    attempt.fence AS attempt_fence,
-    attempt.finalization_started_at,
-    attempt.finalization_deadline_at,
+    attempt.graph_state,
+    attempt.fence AS current_attempt_fence,
     attempt.ended_at AS attempt_ended_at,
+    attempt.finalization_deadline_at,
     job.organization_id,
     job.project_id,
-    job.worker_pool_id,
     job.state AS job_state,
     job.version AS job_version,
     job.current_fence,
     job.job_expires_at,
-    job.request_content_deleted_at,
     job.retention_artifact_days,
     retention_policy.stable_id AS retention_policy_revision,
     job.pricing_quantity AS generation_count,
+    job.request_content_deleted_at,
     reservation.id AS credit_reservation_id,
     reservation.state AS credit_reservation_state,
     reservation.amount_minor,
     reservation.currency,
+    output_spec.width AS expected_width,
+    output_spec.height AS expected_height,
+    output_spec.duration_milliseconds AS expected_duration_milliseconds,
+    output_spec.frame_rate_milli AS expected_frame_rate_milli,
+    output_spec.codec AS expected_codec,
+    output_spec.container AS expected_container,
     completion.id AS completion_id,
     completion.authority_lease_id AS completion_authority_lease_id,
+    completion.authority_stage_graph_finalization_claim_id AS
+        completion_authority_stage_graph_finalization_claim_id,
     completion.candidate_sha256,
     completion.artifact_set_id,
     completion.charge_id,
@@ -1346,124 +1260,120 @@ SELECT
     completion.completed_at,
     artifact_set.manifest_sha256,
     artifact_set.retention_expires_at
-FROM attempt_leases AS lease
-JOIN attempts AS attempt ON attempt.id = lease.attempt_id
-JOIN jobs AS job ON job.id = attempt.job_id
+FROM stage_graph_finalization_claims AS claim
+JOIN attempts AS attempt ON attempt.id = claim.attempt_id
+JOIN jobs AS job ON job.id = claim.job_id
 JOIN retention_policy_revisions AS retention_policy
   ON retention_policy.id = job.retention_policy_revision_id
 JOIN credit_reservations AS reservation ON reservation.job_id = job.id
+JOIN output_specs AS output_spec ON output_spec.id = job.output_spec_id
 LEFT JOIN visible_completions AS completion ON completion.attempt_id = attempt.id
 LEFT JOIN artifact_sets AS artifact_set ON artifact_set.id = completion.artifact_set_id
-WHERE lease.attempt_id = $1
-  AND lease.worker_id = $2
-  AND lease.worker_epoch = $3
-  AND lease.fence = $4
-  AND lease.phase = 'FINALIZATION'
-  AND lease.owner_kind = $5
-  AND lease.owner_id = $6
-  AND attempt.worker_id = $2
-  AND attempt.worker_epoch = $3
-  AND attempt.fence = $4
+WHERE claim.id = $1
+  AND claim.attempt_id = $2
+  AND claim.attempt_fence = $3
 LIMIT 1
-FOR UPDATE OF lease, attempt, job
+FOR UPDATE OF claim, attempt, job
 `
 
-type LockVisibleCompletionAuthorityParams struct {
-	AttemptID   uuid.UUID      `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID      `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64          `db:"worker_epoch" json:"worker_epoch"`
-	Fence       int64          `db:"fence" json:"fence"`
-	OwnerKind   LeaseOwnerKind `db:"owner_kind" json:"owner_kind"`
-	OwnerID     string         `db:"owner_id" json:"owner_id"`
+type LockStageGraphFinalizationCompletionAuthorityParams struct {
+	ClaimID      uuid.UUID `db:"claim_id" json:"claim_id"`
+	AttemptID    uuid.UUID `db:"attempt_id" json:"attempt_id"`
+	AttemptFence int64     `db:"attempt_fence" json:"attempt_fence"`
 }
 
-type LockVisibleCompletionAuthorityRow struct {
-	LeaseID                    uuid.UUID              `db:"lease_id" json:"lease_id"`
-	LeasePhase                 LeasePhase             `db:"lease_phase" json:"lease_phase"`
-	LeaseOwnerKind             LeaseOwnerKind         `db:"lease_owner_kind" json:"lease_owner_kind"`
-	LeaseOwnerID               string                 `db:"lease_owner_id" json:"lease_owner_id"`
-	TokenDigest                []byte                 `db:"token_digest" json:"token_digest"`
-	LeaseExpiresAt             pgtype.Timestamptz     `db:"lease_expires_at" json:"lease_expires_at"`
-	LeaseRevokedAt             pgtype.Timestamptz     `db:"lease_revoked_at" json:"lease_revoked_at"`
-	AttemptID                  uuid.UUID              `db:"attempt_id" json:"attempt_id"`
-	JobID                      uuid.UUID              `db:"job_id" json:"job_id"`
-	AttemptState               AttemptState           `db:"attempt_state" json:"attempt_state"`
-	WorkerID                   uuid.UUID              `db:"worker_id" json:"worker_id"`
-	WorkerEpoch                int64                  `db:"worker_epoch" json:"worker_epoch"`
-	AttemptFence               int64                  `db:"attempt_fence" json:"attempt_fence"`
-	FinalizationStartedAt      pgtype.Timestamptz     `db:"finalization_started_at" json:"finalization_started_at"`
-	FinalizationDeadlineAt     pgtype.Timestamptz     `db:"finalization_deadline_at" json:"finalization_deadline_at"`
-	AttemptEndedAt             pgtype.Timestamptz     `db:"attempt_ended_at" json:"attempt_ended_at"`
-	OrganizationID             uuid.UUID              `db:"organization_id" json:"organization_id"`
-	ProjectID                  uuid.UUID              `db:"project_id" json:"project_id"`
-	WorkerPoolID               uuid.UUID              `db:"worker_pool_id" json:"worker_pool_id"`
-	JobState                   JobState               `db:"job_state" json:"job_state"`
-	JobVersion                 int64                  `db:"job_version" json:"job_version"`
-	CurrentFence               int64                  `db:"current_fence" json:"current_fence"`
-	JobExpiresAt               pgtype.Timestamptz     `db:"job_expires_at" json:"job_expires_at"`
-	RequestContentDeletedAt    pgtype.Timestamptz     `db:"request_content_deleted_at" json:"request_content_deleted_at"`
-	RetentionArtifactDays      int32                  `db:"retention_artifact_days" json:"retention_artifact_days"`
-	RetentionPolicyRevision    string                 `db:"retention_policy_revision" json:"retention_policy_revision"`
-	GenerationCount            int32                  `db:"generation_count" json:"generation_count"`
-	CreditReservationID        uuid.UUID              `db:"credit_reservation_id" json:"credit_reservation_id"`
-	CreditReservationState     CreditReservationState `db:"credit_reservation_state" json:"credit_reservation_state"`
-	AmountMinor                int64                  `db:"amount_minor" json:"amount_minor"`
-	Currency                   string                 `db:"currency" json:"currency"`
-	CompletionID               uuid.NullUUID          `db:"completion_id" json:"completion_id"`
-	CompletionAuthorityLeaseID uuid.NullUUID          `db:"completion_authority_lease_id" json:"completion_authority_lease_id"`
-	CandidateSha256            []byte                 `db:"candidate_sha256" json:"candidate_sha256"`
-	ArtifactSetID              uuid.NullUUID          `db:"artifact_set_id" json:"artifact_set_id"`
-	ChargeID                   uuid.NullUUID          `db:"charge_id" json:"charge_id"`
-	CompletionJobVersion       *int64                 `db:"completion_job_version" json:"completion_job_version"`
-	CompletedAt                pgtype.Timestamptz     `db:"completed_at" json:"completed_at"`
-	ManifestSha256             []byte                 `db:"manifest_sha256" json:"manifest_sha256"`
-	RetentionExpiresAt         pgtype.Timestamptz     `db:"retention_expires_at" json:"retention_expires_at"`
+type LockStageGraphFinalizationCompletionAuthorityRow struct {
+	ClaimID                                          uuid.UUID                        `db:"claim_id" json:"claim_id"`
+	AttemptID                                        uuid.UUID                        `db:"attempt_id" json:"attempt_id"`
+	AttemptFence                                     int64                            `db:"attempt_fence" json:"attempt_fence"`
+	OwnerID                                          string                           `db:"owner_id" json:"owner_id"`
+	TokenDigest                                      []byte                           `db:"token_digest" json:"token_digest"`
+	SigningKeyID                                     string                           `db:"signing_key_id" json:"signing_key_id"`
+	OutputSetDigest                                  []byte                           `db:"output_set_digest" json:"output_set_digest"`
+	ClaimState                                       StageGraphFinalizationClaimState `db:"claim_state" json:"claim_state"`
+	IssuedAt                                         pgtype.Timestamptz               `db:"issued_at" json:"issued_at"`
+	ClaimExpiresAt                                   pgtype.Timestamptz               `db:"claim_expires_at" json:"claim_expires_at"`
+	JobID                                            uuid.UUID                        `db:"job_id" json:"job_id"`
+	AttemptState                                     AttemptState                     `db:"attempt_state" json:"attempt_state"`
+	GraphState                                       *GraphAttemptState               `db:"graph_state" json:"graph_state"`
+	CurrentAttemptFence                              int64                            `db:"current_attempt_fence" json:"current_attempt_fence"`
+	AttemptEndedAt                                   pgtype.Timestamptz               `db:"attempt_ended_at" json:"attempt_ended_at"`
+	FinalizationDeadlineAt                           pgtype.Timestamptz               `db:"finalization_deadline_at" json:"finalization_deadline_at"`
+	OrganizationID                                   uuid.UUID                        `db:"organization_id" json:"organization_id"`
+	ProjectID                                        uuid.UUID                        `db:"project_id" json:"project_id"`
+	JobState                                         JobState                         `db:"job_state" json:"job_state"`
+	JobVersion                                       int64                            `db:"job_version" json:"job_version"`
+	CurrentFence                                     int64                            `db:"current_fence" json:"current_fence"`
+	JobExpiresAt                                     pgtype.Timestamptz               `db:"job_expires_at" json:"job_expires_at"`
+	RetentionArtifactDays                            int32                            `db:"retention_artifact_days" json:"retention_artifact_days"`
+	RetentionPolicyRevision                          string                           `db:"retention_policy_revision" json:"retention_policy_revision"`
+	GenerationCount                                  int32                            `db:"generation_count" json:"generation_count"`
+	RequestContentDeletedAt                          pgtype.Timestamptz               `db:"request_content_deleted_at" json:"request_content_deleted_at"`
+	CreditReservationID                              uuid.UUID                        `db:"credit_reservation_id" json:"credit_reservation_id"`
+	CreditReservationState                           CreditReservationState           `db:"credit_reservation_state" json:"credit_reservation_state"`
+	AmountMinor                                      int64                            `db:"amount_minor" json:"amount_minor"`
+	Currency                                         string                           `db:"currency" json:"currency"`
+	ExpectedWidth                                    int32                            `db:"expected_width" json:"expected_width"`
+	ExpectedHeight                                   int32                            `db:"expected_height" json:"expected_height"`
+	ExpectedDurationMilliseconds                     int32                            `db:"expected_duration_milliseconds" json:"expected_duration_milliseconds"`
+	ExpectedFrameRateMilli                           int32                            `db:"expected_frame_rate_milli" json:"expected_frame_rate_milli"`
+	ExpectedCodec                                    string                           `db:"expected_codec" json:"expected_codec"`
+	ExpectedContainer                                string                           `db:"expected_container" json:"expected_container"`
+	CompletionID                                     uuid.NullUUID                    `db:"completion_id" json:"completion_id"`
+	CompletionAuthorityLeaseID                       uuid.NullUUID                    `db:"completion_authority_lease_id" json:"completion_authority_lease_id"`
+	CompletionAuthorityStageGraphFinalizationClaimID uuid.NullUUID                    `db:"completion_authority_stage_graph_finalization_claim_id" json:"completion_authority_stage_graph_finalization_claim_id"`
+	CandidateSha256                                  []byte                           `db:"candidate_sha256" json:"candidate_sha256"`
+	ArtifactSetID                                    uuid.NullUUID                    `db:"artifact_set_id" json:"artifact_set_id"`
+	ChargeID                                         uuid.NullUUID                    `db:"charge_id" json:"charge_id"`
+	CompletionJobVersion                             *int64                           `db:"completion_job_version" json:"completion_job_version"`
+	CompletedAt                                      pgtype.Timestamptz               `db:"completed_at" json:"completed_at"`
+	ManifestSha256                                   []byte                           `db:"manifest_sha256" json:"manifest_sha256"`
+	RetentionExpiresAt                               pgtype.Timestamptz               `db:"retention_expires_at" json:"retention_expires_at"`
 }
 
-func (q *Queries) LockVisibleCompletionAuthority(ctx context.Context, arg LockVisibleCompletionAuthorityParams) (LockVisibleCompletionAuthorityRow, error) {
-	row := q.db.QueryRow(ctx, lockVisibleCompletionAuthority,
-		arg.AttemptID,
-		arg.WorkerID,
-		arg.WorkerEpoch,
-		arg.Fence,
-		arg.OwnerKind,
-		arg.OwnerID,
-	)
-	var i LockVisibleCompletionAuthorityRow
+func (q *Queries) LockStageGraphFinalizationCompletionAuthority(ctx context.Context, arg LockStageGraphFinalizationCompletionAuthorityParams) (LockStageGraphFinalizationCompletionAuthorityRow, error) {
+	row := q.db.QueryRow(ctx, lockStageGraphFinalizationCompletionAuthority, arg.ClaimID, arg.AttemptID, arg.AttemptFence)
+	var i LockStageGraphFinalizationCompletionAuthorityRow
 	err := row.Scan(
-		&i.LeaseID,
-		&i.LeasePhase,
-		&i.LeaseOwnerKind,
-		&i.LeaseOwnerID,
-		&i.TokenDigest,
-		&i.LeaseExpiresAt,
-		&i.LeaseRevokedAt,
+		&i.ClaimID,
 		&i.AttemptID,
+		&i.AttemptFence,
+		&i.OwnerID,
+		&i.TokenDigest,
+		&i.SigningKeyID,
+		&i.OutputSetDigest,
+		&i.ClaimState,
+		&i.IssuedAt,
+		&i.ClaimExpiresAt,
 		&i.JobID,
 		&i.AttemptState,
-		&i.WorkerID,
-		&i.WorkerEpoch,
-		&i.AttemptFence,
-		&i.FinalizationStartedAt,
-		&i.FinalizationDeadlineAt,
+		&i.GraphState,
+		&i.CurrentAttemptFence,
 		&i.AttemptEndedAt,
+		&i.FinalizationDeadlineAt,
 		&i.OrganizationID,
 		&i.ProjectID,
-		&i.WorkerPoolID,
 		&i.JobState,
 		&i.JobVersion,
 		&i.CurrentFence,
 		&i.JobExpiresAt,
-		&i.RequestContentDeletedAt,
 		&i.RetentionArtifactDays,
 		&i.RetentionPolicyRevision,
 		&i.GenerationCount,
+		&i.RequestContentDeletedAt,
 		&i.CreditReservationID,
 		&i.CreditReservationState,
 		&i.AmountMinor,
 		&i.Currency,
+		&i.ExpectedWidth,
+		&i.ExpectedHeight,
+		&i.ExpectedDurationMilliseconds,
+		&i.ExpectedFrameRateMilli,
+		&i.ExpectedCodec,
+		&i.ExpectedContainer,
 		&i.CompletionID,
 		&i.CompletionAuthorityLeaseID,
+		&i.CompletionAuthorityStageGraphFinalizationClaimID,
 		&i.CandidateSha256,
 		&i.ArtifactSetID,
 		&i.ChargeID,
@@ -1527,20 +1437,6 @@ func (q *Queries) LockVisibleCompletionOrganizationCredit(ctx context.Context, o
 	return i, err
 }
 
-const lockVisibleCompletionPool = `-- name: LockVisibleCompletionPool :one
-SELECT id
-FROM worker_pools
-WHERE id = $1
-FOR UPDATE
-`
-
-func (q *Queries) LockVisibleCompletionPool(ctx context.Context, workerPoolID uuid.UUID) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, lockVisibleCompletionPool, workerPoolID)
-	var id uuid.UUID
-	err := row.Scan(&id)
-	return id, err
-}
-
 const lockVisibleCompletionProject = `-- name: LockVisibleCompletionProject :one
 SELECT running_count
 FROM projects
@@ -1594,111 +1490,6 @@ func (q *Queries) MarkArtifactCommitted(ctx context.Context, arg MarkArtifactCom
 	return result.RowsAffected(), nil
 }
 
-const markAttemptFinalizing = `-- name: MarkAttemptFinalizing :execrows
-UPDATE attempts
-SET state = 'FINALIZING',
-    finalization_started_at = $1,
-    finalization_deadline_at = $2,
-    updated_at = $1
-WHERE id = $3
-  AND worker_id = $4
-  AND worker_epoch = $5
-  AND fence = $6
-  AND state = 'RUNNING'
-  AND finalization_started_at IS NULL
-  AND finalization_deadline_at IS NULL
-`
-
-type MarkAttemptFinalizingParams struct {
-	FinalizationStartedAt  pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
-	FinalizationDeadlineAt pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
-	AttemptID              uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID               uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch            int64              `db:"worker_epoch" json:"worker_epoch"`
-	Fence                  int64              `db:"fence" json:"fence"`
-}
-
-func (q *Queries) MarkAttemptFinalizing(ctx context.Context, arg MarkAttemptFinalizingParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markAttemptFinalizing,
-		arg.FinalizationStartedAt,
-		arg.FinalizationDeadlineAt,
-		arg.AttemptID,
-		arg.WorkerID,
-		arg.WorkerEpoch,
-		arg.Fence,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const markCompletionAttemptSucceeded = `-- name: MarkCompletionAttemptSucceeded :execrows
-UPDATE attempts
-SET state = 'SUCCEEDED',
-    ended_at = $1,
-    updated_at = $1
-WHERE id = $2
-  AND worker_id = $3
-  AND worker_epoch = $4
-  AND fence = $5
-  AND state = 'FINALIZING'
-  AND ended_at IS NULL
-`
-
-type MarkCompletionAttemptSucceededParams struct {
-	CompletedAt pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
-	AttemptID   uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64              `db:"worker_epoch" json:"worker_epoch"`
-	Fence       int64              `db:"fence" json:"fence"`
-}
-
-func (q *Queries) MarkCompletionAttemptSucceeded(ctx context.Context, arg MarkCompletionAttemptSucceededParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markCompletionAttemptSucceeded,
-		arg.CompletedAt,
-		arg.AttemptID,
-		arg.WorkerID,
-		arg.WorkerEpoch,
-		arg.Fence,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const markJobFinalizing = `-- name: MarkJobFinalizing :one
-UPDATE jobs
-SET state = 'FINALIZING',
-    version = version + 1,
-    updated_at = $1
-WHERE id = $2
-  AND version = $3
-  AND current_fence = $4
-  AND state = 'RUNNING'
-RETURNING version
-`
-
-type MarkJobFinalizingParams struct {
-	FinalizationStartedAt pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
-	JobID                 uuid.UUID          `db:"job_id" json:"job_id"`
-	ExpectedVersion       int64              `db:"expected_version" json:"expected_version"`
-	Fence                 int64              `db:"fence" json:"fence"`
-}
-
-func (q *Queries) MarkJobFinalizing(ctx context.Context, arg MarkJobFinalizingParams) (int64, error) {
-	row := q.db.QueryRow(ctx, markJobFinalizing,
-		arg.FinalizationStartedAt,
-		arg.JobID,
-		arg.ExpectedVersion,
-		arg.Fence,
-	)
-	var version int64
-	err := row.Scan(&version)
-	return version, err
-}
-
 const markJobSucceeded = `-- name: MarkJobSucceeded :one
 UPDATE jobs
 SET state = 'SUCCEEDED',
@@ -1733,47 +1524,6 @@ func (q *Queries) MarkJobSucceeded(ctx context.Context, arg MarkJobSucceededPara
 	return version, err
 }
 
-const markLeaseFinalizing = `-- name: MarkLeaseFinalizing :execrows
-UPDATE attempt_leases
-SET phase = 'FINALIZATION',
-	 expires_at = LEAST(expires_at, $1),
-    updated_at = $2
-WHERE id = $3
-  AND attempt_id = $4
-  AND worker_id = $5
-  AND worker_epoch = $6
-  AND fence = $7
-  AND phase = 'EXECUTION'
-  AND owner_kind = 'WORKER'
-  AND revoked_at IS NULL
-`
-
-type MarkLeaseFinalizingParams struct {
-	FinalizationDeadlineAt pgtype.Timestamptz `db:"finalization_deadline_at" json:"finalization_deadline_at"`
-	FinalizationStartedAt  pgtype.Timestamptz `db:"finalization_started_at" json:"finalization_started_at"`
-	LeaseID                uuid.UUID          `db:"lease_id" json:"lease_id"`
-	AttemptID              uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID               uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch            int64              `db:"worker_epoch" json:"worker_epoch"`
-	Fence                  int64              `db:"fence" json:"fence"`
-}
-
-func (q *Queries) MarkLeaseFinalizing(ctx context.Context, arg MarkLeaseFinalizingParams) (int64, error) {
-	result, err := q.db.Exec(ctx, markLeaseFinalizing,
-		arg.FinalizationDeadlineAt,
-		arg.FinalizationStartedAt,
-		arg.LeaseID,
-		arg.AttemptID,
-		arg.WorkerID,
-		arg.WorkerEpoch,
-		arg.Fence,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const postVisibleCompletionOrganizationCredit = `-- name: PostVisibleCompletionOrganizationCredit :execrows
 UPDATE organization_credit_accounts
 SET reserved_minor = reserved_minor - $1,
@@ -1798,568 +1548,6 @@ func (q *Queries) PostVisibleCompletionOrganizationCredit(ctx context.Context, a
 		arg.CompletedAt,
 		arg.OrganizationID,
 		arg.Currency,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const recordArtifactCompletionIntent = `-- name: RecordArtifactCompletionIntent :one
-UPDATE artifact_uploads AS upload
-SET completed_parts = $1,
-    size_bytes = $2,
-    sha256 = $3,
-    content_type = $4,
-    completion_request_hash = $5,
-    version = CASE
-        WHEN upload.completion_request_hash IS NULL THEN upload.version + 1
-        ELSE upload.version
-    END,
-    updated_at = CASE
-        WHEN upload.completion_request_hash IS NULL THEN $6
-        ELSE upload.updated_at
-    END
-FROM artifacts AS artifact
-WHERE upload.id = $7
-  AND upload.artifact_id = artifact.id
-  AND upload.attempt_id = $8
-  AND upload.attempt_fence = $9
-  AND upload.state = 'UPLOADING'
-  AND upload.multipart_upload_id IS NOT NULL
-  AND artifact.expected_content_type = $4
-  AND (
-      upload.completion_request_hash IS NULL
-      OR (
-          upload.completion_request_hash = $5
-          AND upload.completed_parts = $1
-          AND upload.size_bytes = $2
-          AND upload.sha256 = $3
-          AND upload.content_type = $4
-      )
-  )
-RETURNING
-    upload.id AS upload_id,
-    upload.artifact_id,
-    upload.version
-`
-
-type RecordArtifactCompletionIntentParams struct {
-	CompletedParts        []byte             `db:"completed_parts" json:"completed_parts"`
-	SizeBytes             *int64             `db:"size_bytes" json:"size_bytes"`
-	Sha256                []byte             `db:"sha256" json:"sha256"`
-	ContentType           *string            `db:"content_type" json:"content_type"`
-	CompletionRequestHash []byte             `db:"completion_request_hash" json:"completion_request_hash"`
-	RecordedAt            pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	UploadID              uuid.UUID          `db:"upload_id" json:"upload_id"`
-	AttemptID             uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence          int64              `db:"attempt_fence" json:"attempt_fence"`
-}
-
-type RecordArtifactCompletionIntentRow struct {
-	UploadID   uuid.UUID `db:"upload_id" json:"upload_id"`
-	ArtifactID uuid.UUID `db:"artifact_id" json:"artifact_id"`
-	Version    int64     `db:"version" json:"version"`
-}
-
-func (q *Queries) RecordArtifactCompletionIntent(ctx context.Context, arg RecordArtifactCompletionIntentParams) (RecordArtifactCompletionIntentRow, error) {
-	row := q.db.QueryRow(ctx, recordArtifactCompletionIntent,
-		arg.CompletedParts,
-		arg.SizeBytes,
-		arg.Sha256,
-		arg.ContentType,
-		arg.CompletionRequestHash,
-		arg.RecordedAt,
-		arg.UploadID,
-		arg.AttemptID,
-		arg.AttemptFence,
-	)
-	var i RecordArtifactCompletionIntentRow
-	err := row.Scan(&i.UploadID, &i.ArtifactID, &i.Version)
-	return i, err
-}
-
-const recordArtifactMultipartSession = `-- name: RecordArtifactMultipartSession :one
-UPDATE artifact_uploads AS upload
-SET multipart_upload_id = CASE
-        WHEN upload.multipart_upload_id = $1
-            THEN upload.multipart_upload_id
-        ELSE $1
-    END,
-    state = CASE
-        WHEN upload.multipart_upload_id = $1
-            THEN upload.state
-        ELSE 'UPLOADING'
-    END,
-    claim_id = NULL,
-    claim_owner_kind = NULL,
-    claim_owner_id = NULL,
-    claim_expires_at = NULL,
-    version = CASE
-        WHEN upload.multipart_upload_id = $1
-            THEN upload.version
-        ELSE upload.version + 1
-    END,
-    updated_at = CASE
-        WHEN upload.multipart_upload_id = $1
-            THEN upload.updated_at
-        ELSE $2
-    END
-FROM artifacts AS artifact
-WHERE upload.id = $3
-  AND upload.artifact_id = artifact.id
-  AND upload.attempt_id = $4
-  AND upload.attempt_fence = $5
-  AND (
-      (
-          upload.multipart_upload_id IS NULL
-          AND upload.state = 'INITIATED'
-          AND upload.claim_id = $6
-          AND upload.claim_owner_kind = 'WORKER'
-          AND upload.claim_owner_id = $7
-          AND upload.claim_expires_at > $2
-      ) OR (
-          upload.multipart_upload_id = $1
-          AND upload.state IN ('UPLOADING', 'UPLOADED', 'VERIFIED')
-      )
-  )
-RETURNING
-    upload.id AS upload_id,
-    upload.artifact_id,
-    upload.multipart_upload_id,
-    upload.version
-`
-
-type RecordArtifactMultipartSessionParams struct {
-	MultipartUploadID *string            `db:"multipart_upload_id" json:"multipart_upload_id"`
-	RecordedAt        pgtype.Timestamptz `db:"recorded_at" json:"recorded_at"`
-	UploadID          uuid.UUID          `db:"upload_id" json:"upload_id"`
-	AttemptID         uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence      int64              `db:"attempt_fence" json:"attempt_fence"`
-	ClaimID           uuid.NullUUID      `db:"claim_id" json:"claim_id"`
-	ClaimOwnerID      *string            `db:"claim_owner_id" json:"claim_owner_id"`
-}
-
-type RecordArtifactMultipartSessionRow struct {
-	UploadID          uuid.UUID `db:"upload_id" json:"upload_id"`
-	ArtifactID        uuid.UUID `db:"artifact_id" json:"artifact_id"`
-	MultipartUploadID *string   `db:"multipart_upload_id" json:"multipart_upload_id"`
-	Version           int64     `db:"version" json:"version"`
-}
-
-func (q *Queries) RecordArtifactMultipartSession(ctx context.Context, arg RecordArtifactMultipartSessionParams) (RecordArtifactMultipartSessionRow, error) {
-	row := q.db.QueryRow(ctx, recordArtifactMultipartSession,
-		arg.MultipartUploadID,
-		arg.RecordedAt,
-		arg.UploadID,
-		arg.AttemptID,
-		arg.AttemptFence,
-		arg.ClaimID,
-		arg.ClaimOwnerID,
-	)
-	var i RecordArtifactMultipartSessionRow
-	err := row.Scan(
-		&i.UploadID,
-		&i.ArtifactID,
-		&i.MultipartUploadID,
-		&i.Version,
-	)
-	return i, err
-}
-
-const recordArtifactUploaded = `-- name: RecordArtifactUploaded :one
-WITH updated_upload AS (
-    UPDATE artifact_uploads AS upload
-    SET state = CASE
-            WHEN upload.state = 'UPLOADING' THEN 'UPLOADED'
-            ELSE upload.state
-        END,
-        completed_parts = $1,
-        object_version_id = $2,
-        size_bytes = $3,
-        sha256 = $4,
-        content_type = $5,
-        completion_request_hash = $6,
-        uploaded_at = CASE
-            WHEN upload.state = 'UPLOADING' THEN $7
-            ELSE upload.uploaded_at
-        END,
-        version = CASE
-            WHEN upload.state = 'UPLOADING' THEN upload.version + 1
-            ELSE upload.version
-        END,
-        updated_at = CASE
-            WHEN upload.state = 'UPLOADING' THEN $7
-            ELSE upload.updated_at
-        END
-    FROM artifacts AS artifact
-    WHERE upload.id = $8
-      AND upload.artifact_id = artifact.id
-      AND upload.attempt_id = $9
-      AND upload.attempt_fence = $10
-      AND upload.multipart_upload_id IS NOT NULL
-      AND artifact.expected_content_type = $5
-      AND (
-          (
-              upload.state = 'UPLOADING'
-              AND (
-                  upload.completion_request_hash IS NULL
-                  OR (
-                      upload.completion_request_hash = $6
-                      AND upload.completed_parts = $1
-                      AND upload.size_bytes = $3
-                      AND upload.sha256 = $4
-                      AND upload.content_type = $5
-                  )
-              )
-          ) OR (
-              upload.state IN ('UPLOADED', 'VERIFIED')
-              AND upload.completion_request_hash = $6
-              AND upload.completed_parts = $1
-              AND upload.object_version_id = $2
-              AND upload.size_bytes = $3
-              AND upload.sha256 = $4
-              AND upload.content_type = $5
-          )
-      )
-    RETURNING
-        upload.id,
-        upload.artifact_id,
-        upload.object_version_id,
-        upload.size_bytes,
-        upload.sha256,
-        upload.content_type,
-        upload.version,
-        upload.uploaded_at
-)
-UPDATE artifacts AS artifact
-SET state = CASE
-        WHEN artifact.state = 'STAGING' THEN 'UPLOADED'
-        ELSE artifact.state
-    END,
-    object_version_id = uploaded.object_version_id,
-    size_bytes = uploaded.size_bytes,
-    sha256 = uploaded.sha256,
-    content_type = uploaded.content_type,
-    uploaded_at = uploaded.uploaded_at,
-    updated_at = CASE
-        WHEN artifact.state = 'STAGING' THEN uploaded.uploaded_at
-        ELSE artifact.updated_at
-    END
-FROM updated_upload AS uploaded
-WHERE artifact.id = uploaded.artifact_id
-  AND (
-      artifact.state = 'STAGING'
-      OR (
-          artifact.state IN ('UPLOADED', 'VERIFIED')
-          AND artifact.object_version_id = uploaded.object_version_id
-          AND artifact.size_bytes = uploaded.size_bytes
-          AND artifact.sha256 = uploaded.sha256
-          AND artifact.content_type = uploaded.content_type
-      )
-  )
-RETURNING
-    uploaded.id AS upload_id,
-    artifact.id AS artifact_id,
-    artifact.object_version_id,
-    uploaded.version
-`
-
-type RecordArtifactUploadedParams struct {
-	CompletedParts        []byte             `db:"completed_parts" json:"completed_parts"`
-	ObjectVersionID       *string            `db:"object_version_id" json:"object_version_id"`
-	SizeBytes             *int64             `db:"size_bytes" json:"size_bytes"`
-	Sha256                []byte             `db:"sha256" json:"sha256"`
-	ContentType           *string            `db:"content_type" json:"content_type"`
-	CompletionRequestHash []byte             `db:"completion_request_hash" json:"completion_request_hash"`
-	UploadedAt            pgtype.Timestamptz `db:"uploaded_at" json:"uploaded_at"`
-	UploadID              uuid.UUID          `db:"upload_id" json:"upload_id"`
-	AttemptID             uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence          int64              `db:"attempt_fence" json:"attempt_fence"`
-}
-
-type RecordArtifactUploadedRow struct {
-	UploadID        uuid.UUID `db:"upload_id" json:"upload_id"`
-	ArtifactID      uuid.UUID `db:"artifact_id" json:"artifact_id"`
-	ObjectVersionID *string   `db:"object_version_id" json:"object_version_id"`
-	Version         int64     `db:"version" json:"version"`
-}
-
-func (q *Queries) RecordArtifactUploaded(ctx context.Context, arg RecordArtifactUploadedParams) (RecordArtifactUploadedRow, error) {
-	row := q.db.QueryRow(ctx, recordArtifactUploaded,
-		arg.CompletedParts,
-		arg.ObjectVersionID,
-		arg.SizeBytes,
-		arg.Sha256,
-		arg.ContentType,
-		arg.CompletionRequestHash,
-		arg.UploadedAt,
-		arg.UploadID,
-		arg.AttemptID,
-		arg.AttemptFence,
-	)
-	var i RecordArtifactUploadedRow
-	err := row.Scan(
-		&i.UploadID,
-		&i.ArtifactID,
-		&i.ObjectVersionID,
-		&i.Version,
-	)
-	return i, err
-}
-
-const recordArtifactVerified = `-- name: RecordArtifactVerified :one
-WITH verified_upload AS (
-    UPDATE artifact_uploads AS upload
-    SET state = 'VERIFIED',
-        verification_id = $3,
-        verification_request_hash = $1,
-        validation_receipt = $2,
-        verified_at = $4,
-        claim_id = NULL,
-        claim_owner_kind = NULL,
-        claim_owner_id = NULL,
-        claim_expires_at = NULL,
-        version = upload.version + 1,
-        updated_at = $4
-    FROM artifacts AS artifact
-    WHERE upload.id = $5
-      AND upload.artifact_id = artifact.id
-      AND upload.attempt_id = $6
-      AND upload.attempt_fence = $7
-      AND upload.state = 'UPLOADED'
-      AND artifact.state = 'UPLOADED'
-      AND upload.claim_id = $3
-      AND upload.claim_owner_kind = $8
-      AND upload.claim_owner_id = $9
-      AND upload.claim_expires_at > $4
-      AND artifact.object_version_id = $10
-      AND artifact.size_bytes = $11
-      AND artifact.sha256 = $12
-      AND artifact.content_type = $13
-    RETURNING
-        upload.id,
-        upload.artifact_id,
-        upload.verification_id,
-        upload.version,
-        upload.verified_at
-)
-UPDATE artifacts AS artifact
-SET state = 'VERIFIED',
-    verification_id = verified.verification_id,
-    verification_request_hash = $1,
-    validation_receipt = $2,
-    verified_at = verified.verified_at,
-    updated_at = verified.verified_at
-FROM verified_upload AS verified
-WHERE artifact.id = verified.artifact_id
-  AND artifact.state = 'UPLOADED'
-RETURNING
-    verified.id AS upload_id,
-    artifact.id AS artifact_id,
-    artifact.verification_id,
-    artifact.object_version_id,
-    verified.version,
-    artifact.verified_at
-`
-
-type RecordArtifactVerifiedParams struct {
-	VerificationRequestHash []byte             `db:"verification_request_hash" json:"verification_request_hash"`
-	ValidationReceipt       []byte             `db:"validation_receipt" json:"validation_receipt"`
-	VerificationID          uuid.NullUUID      `db:"verification_id" json:"verification_id"`
-	VerifiedAt              pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
-	UploadID                uuid.UUID          `db:"upload_id" json:"upload_id"`
-	AttemptID               uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence            int64              `db:"attempt_fence" json:"attempt_fence"`
-	ClaimOwnerKind          *LeaseOwnerKind    `db:"claim_owner_kind" json:"claim_owner_kind"`
-	ClaimOwnerID            *string            `db:"claim_owner_id" json:"claim_owner_id"`
-	ObjectVersionID         *string            `db:"object_version_id" json:"object_version_id"`
-	SizeBytes               *int64             `db:"size_bytes" json:"size_bytes"`
-	Sha256                  []byte             `db:"sha256" json:"sha256"`
-	ContentType             *string            `db:"content_type" json:"content_type"`
-}
-
-type RecordArtifactVerifiedRow struct {
-	UploadID        uuid.UUID          `db:"upload_id" json:"upload_id"`
-	ArtifactID      uuid.UUID          `db:"artifact_id" json:"artifact_id"`
-	VerificationID  uuid.NullUUID      `db:"verification_id" json:"verification_id"`
-	ObjectVersionID *string            `db:"object_version_id" json:"object_version_id"`
-	Version         int64              `db:"version" json:"version"`
-	VerifiedAt      pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
-}
-
-func (q *Queries) RecordArtifactVerified(ctx context.Context, arg RecordArtifactVerifiedParams) (RecordArtifactVerifiedRow, error) {
-	row := q.db.QueryRow(ctx, recordArtifactVerified,
-		arg.VerificationRequestHash,
-		arg.ValidationReceipt,
-		arg.VerificationID,
-		arg.VerifiedAt,
-		arg.UploadID,
-		arg.AttemptID,
-		arg.AttemptFence,
-		arg.ClaimOwnerKind,
-		arg.ClaimOwnerID,
-		arg.ObjectVersionID,
-		arg.SizeBytes,
-		arg.Sha256,
-		arg.ContentType,
-	)
-	var i RecordArtifactVerifiedRow
-	err := row.Scan(
-		&i.UploadID,
-		&i.ArtifactID,
-		&i.VerificationID,
-		&i.ObjectVersionID,
-		&i.Version,
-		&i.VerifiedAt,
-	)
-	return i, err
-}
-
-const releaseArtifactVerificationClaim = `-- name: ReleaseArtifactVerificationClaim :execrows
-UPDATE artifact_uploads
-SET claim_id = NULL,
-    claim_owner_kind = NULL,
-    claim_owner_id = NULL,
-    claim_expires_at = NULL,
-    version = version + 1,
-    updated_at = $1
-WHERE id = $2
-  AND attempt_id = $3
-  AND attempt_fence = $4
-  AND state = 'UPLOADED'
-  AND claim_id = $5
-  AND claim_owner_kind = $6
-  AND claim_owner_id = $7
-`
-
-type ReleaseArtifactVerificationClaimParams struct {
-	ReleasedAt     pgtype.Timestamptz `db:"released_at" json:"released_at"`
-	UploadID       uuid.UUID          `db:"upload_id" json:"upload_id"`
-	AttemptID      uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	AttemptFence   int64              `db:"attempt_fence" json:"attempt_fence"`
-	VerificationID uuid.NullUUID      `db:"verification_id" json:"verification_id"`
-	ClaimOwnerKind *LeaseOwnerKind    `db:"claim_owner_kind" json:"claim_owner_kind"`
-	ClaimOwnerID   *string            `db:"claim_owner_id" json:"claim_owner_id"`
-}
-
-func (q *Queries) ReleaseArtifactVerificationClaim(ctx context.Context, arg ReleaseArtifactVerificationClaimParams) (int64, error) {
-	result, err := q.db.Exec(ctx, releaseArtifactVerificationClaim,
-		arg.ReleasedAt,
-		arg.UploadID,
-		arg.AttemptID,
-		arg.AttemptFence,
-		arg.VerificationID,
-		arg.ClaimOwnerKind,
-		arg.ClaimOwnerID,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const releaseWorkerAfterVisibleCompletion = `-- name: ReleaseWorkerAfterVisibleCompletion :execrows
-UPDATE workers
-SET lifecycle_state = 'READY',
-    updated_at = $1
-WHERE id = $2
-  AND epoch = $3
-  AND lifecycle_state = 'BUSY'
-  AND reachability_condition = 'HEALTHY'
-`
-
-type ReleaseWorkerAfterVisibleCompletionParams struct {
-	CompletedAt pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
-	WorkerID    uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64              `db:"worker_epoch" json:"worker_epoch"`
-}
-
-func (q *Queries) ReleaseWorkerAfterVisibleCompletion(ctx context.Context, arg ReleaseWorkerAfterVisibleCompletionParams) (int64, error) {
-	result, err := q.db.Exec(ctx, releaseWorkerAfterVisibleCompletion, arg.CompletedAt, arg.WorkerID, arg.WorkerEpoch)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const revokeCompletionLease = `-- name: RevokeCompletionLease :execrows
-UPDATE attempt_leases
-SET revoked_at = $1,
-    updated_at = $1
-WHERE id = $2
-  AND attempt_id = $3
-  AND worker_id = $4
-  AND worker_epoch = $5
-  AND fence = $6
-  AND phase = 'FINALIZATION'
-  AND owner_kind = $7
-  AND revoked_at IS NULL
-`
-
-type RevokeCompletionLeaseParams struct {
-	CompletedAt pgtype.Timestamptz `db:"completed_at" json:"completed_at"`
-	LeaseID     uuid.UUID          `db:"lease_id" json:"lease_id"`
-	AttemptID   uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID    uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch int64              `db:"worker_epoch" json:"worker_epoch"`
-	Fence       int64              `db:"fence" json:"fence"`
-	OwnerKind   LeaseOwnerKind     `db:"owner_kind" json:"owner_kind"`
-}
-
-func (q *Queries) RevokeCompletionLease(ctx context.Context, arg RevokeCompletionLeaseParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeCompletionLease,
-		arg.CompletedAt,
-		arg.LeaseID,
-		arg.AttemptID,
-		arg.WorkerID,
-		arg.WorkerEpoch,
-		arg.Fence,
-		arg.OwnerKind,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const revokeExpiredFinalizationLeaseForTakeover = `-- name: RevokeExpiredFinalizationLeaseForTakeover :execrows
-UPDATE attempt_leases
-SET revoked_at = $1,
-    updated_at = $1
-WHERE id = $2
-  AND attempt_id = $3
-  AND worker_id = $4
-  AND worker_epoch = $5
-  AND fence = $6
-  AND phase = 'FINALIZATION'
-  AND owner_kind = $7
-  AND owner_id = $8
-  AND revoked_at IS NULL
-  AND expires_at <= $1
-`
-
-type RevokeExpiredFinalizationLeaseForTakeoverParams struct {
-	TakenOverAt       pgtype.Timestamptz `db:"taken_over_at" json:"taken_over_at"`
-	LeaseID           uuid.UUID          `db:"lease_id" json:"lease_id"`
-	AttemptID         uuid.UUID          `db:"attempt_id" json:"attempt_id"`
-	WorkerID          uuid.UUID          `db:"worker_id" json:"worker_id"`
-	WorkerEpoch       int64              `db:"worker_epoch" json:"worker_epoch"`
-	Fence             int64              `db:"fence" json:"fence"`
-	PreviousOwnerKind LeaseOwnerKind     `db:"previous_owner_kind" json:"previous_owner_kind"`
-	PreviousOwnerID   string             `db:"previous_owner_id" json:"previous_owner_id"`
-}
-
-func (q *Queries) RevokeExpiredFinalizationLeaseForTakeover(ctx context.Context, arg RevokeExpiredFinalizationLeaseForTakeoverParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeExpiredFinalizationLeaseForTakeover,
-		arg.TakenOverAt,
-		arg.LeaseID,
-		arg.AttemptID,
-		arg.WorkerID,
-		arg.WorkerEpoch,
-		arg.Fence,
-		arg.PreviousOwnerKind,
-		arg.PreviousOwnerID,
 	)
 	if err != nil {
 		return 0, err

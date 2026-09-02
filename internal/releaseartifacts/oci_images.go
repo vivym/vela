@@ -67,13 +67,6 @@ func buildVelaImageArtifacts(
 		return err
 	}
 
-	stagedBackend, err := stageH3Backend(validated.BackendContext, validated.BackendSHA256)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(stagedBackend) }()
-	validated.BackendContext = stagedBackend
-
 	candidate, err := os.MkdirTemp(parent, ".vela-image-artifacts-*")
 	if err != nil {
 		return fmt.Errorf("create Vela image artifact candidate: %w", err)
@@ -145,8 +138,8 @@ func velaImageSpecifications() [velaImageCount]velaImageSpecification {
 	return [velaImageCount]velaImageSpecification{
 		{name: "vela-control", entrypoint: "/usr/local/bin/vela-control"},
 		{name: "vela-fleet-controller", entrypoint: "/usr/local/bin/vela-fleet-controller"},
-		{name: "vela-h3-runner", entrypoint: "/opt/vela/venv/bin/vela-h3-runner"},
-		{name: "vela-worker-agent", entrypoint: "/usr/local/bin/vela-worker-agent"},
+		{name: "vela-h3-stage-runtime", entrypoint: "/usr/local/bin/vela-model-runtime"},
+		{name: "vela-stage-worker-agent", entrypoint: "/usr/local/bin/vela-stage-worker-agent"},
 	}
 }
 
@@ -177,7 +170,7 @@ func runVelaImageArtifactBake(
 ) error {
 	arguments := []string{
 		"buildx", "bake",
-		"--allow=fs.read=" + request.BackendContext,
+		"--allow=fs.read=" + request.H3Runtime.CommandContext,
 		"--allow=fs.write=" + layoutRoot,
 		"--file", "docker-bake.hcl",
 		"--provenance=false",
@@ -201,8 +194,7 @@ func captureOCIImageArtifact(
 ) (releasebundle.OCIManifestInput, error) {
 	manifestEncoded, configEncoded, manifestDigest, err := validateOCIImageLayout(
 		layout,
-		request.Revision,
-		request.BackendSHA256,
+		request,
 		specification,
 	)
 	if err != nil {
@@ -223,7 +215,8 @@ func captureOCIImageArtifact(
 }
 
 func validateOCIImageLayout(
-	layout, revision, backendSHA string,
+	layout string,
+	request VelaImageBuildRequest,
 	specification velaImageSpecification,
 ) ([]byte, []byte, string, error) {
 	root, err := openOCILayoutRoot(layout)
@@ -285,7 +278,7 @@ func validateOCIImageLayout(
 		}
 	}
 	if err := validateOCIImageConfig(
-		configEncoded, revision, backendSHA, len(manifest.Layers), specification,
+		configEncoded, request, len(manifest.Layers), specification,
 	); err != nil {
 		return nil, nil, "", err
 	}
@@ -445,7 +438,7 @@ func (root *ociLayoutRoot) openRegular(name string, maximum int64) (*os.File, in
 
 func validateOCIImageConfig(
 	encoded []byte,
-	revision, backendSHA string,
+	request VelaImageBuildRequest,
 	layerCount int,
 	specification velaImageSpecification,
 ) error {
@@ -458,8 +451,21 @@ func validateOCIImageConfig(
 		!slices.Equal(config.Config.Entrypoint, []string{specification.entrypoint}) ||
 		len(config.Config.Cmd) != 0 ||
 		config.Config.Labels["org.opencontainers.image.title"] != specification.name ||
-		config.Config.Labels["org.opencontainers.image.revision"] != revision {
+		config.Config.Labels["org.opencontainers.image.revision"] != request.Revision {
 		return errors.New("OCI config does not bind the exact runtime contract")
+	}
+	if specification.name == "vela-h3-stage-runtime" {
+		expectedLabels := map[string]string{
+			"vela.ai.h3-runtime-base":       request.H3Runtime.BaseImage,
+			"vela.ai.h3-encoder.sha256":     request.H3Runtime.EncoderSHA256,
+			"vela.ai.h3-dit.sha256":         request.H3Runtime.DiTSHA256,
+			"vela.ai.h3-vae-decoder.sha256": request.H3Runtime.VAEDecoderSHA256,
+		}
+		for name, expected := range expectedLabels {
+			if config.Config.Labels[name] != expected {
+				return fmt.Errorf("H3 runtime OCI config does not bind %s", name)
+			}
+		}
 	}
 	if config.RootFS.Type != "layers" || len(config.RootFS.DiffIDs) != layerCount {
 		return errors.New("OCI config rootfs does not match the image layers")
@@ -468,10 +474,6 @@ func validateOCIImageConfig(
 		if diffID.Algorithm() != ocidigest.SHA256 || diffID.Validate() != nil {
 			return errors.New("OCI config rootfs contains an invalid diff ID")
 		}
-	}
-	if specification.name == "vela-h3-runner" &&
-		config.Config.Labels["vela.ai.h3-backend.sha256"] != backendSHA {
-		return errors.New("H3 Runner OCI config does not bind the backend digest")
 	}
 	return nil
 }
@@ -597,8 +599,7 @@ func verifyVelaImageArtifactFiles(directory string, request VelaImageBuildReques
 		}
 		if err := validateOCIImageConfig(
 			config,
-			request.Revision,
-			request.BackendSHA256,
+			request,
 			len(imageManifest.Layers),
 			specification,
 		); err != nil {

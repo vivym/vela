@@ -44,19 +44,19 @@ func NewRemoteExecutor(
 	actorIdentity string,
 ) (*RemoteExecutor, error) {
 	if client == nil {
-		return nil, errors.New("node Agent remote client is required")
+		return nil, errors.New("node agent remote client is required")
 	}
 	if authorizer == nil {
-		return nil, errors.New("node Agent remote authorizer is required")
+		return nil, errors.New("node agent remote authorizer is required")
 	}
 	if ledger == nil {
-		return nil, errors.New("node Agent remote ledger is required")
+		return nil, errors.New("node agent remote ledger is required")
 	}
 	if !validText(actorIdentity, maxIdentityText) {
-		return nil, errors.New("node Agent remote actor identity is invalid")
+		return nil, errors.New("node agent remote actor identity is invalid")
 	}
 	if client.actorIdentity != actorIdentity {
-		return nil, errors.New("node Agent client and remote actor identities differ")
+		return nil, errors.New("node agent client and remote actor identities differ")
 	}
 	return &RemoteExecutor{
 		client: client, authorizer: authorizer, ledger: ledger, actorIdentity: actorIdentity,
@@ -65,17 +65,18 @@ func NewRemoteExecutor(
 
 func (executor *RemoteExecutor) Execute(ctx context.Context, plan remediation.Plan) (remediation.ExecutionResult, error) {
 	if executor == nil || executor.client == nil || executor.authorizer == nil || executor.ledger == nil {
-		return remediation.ExecutionResult{}, errors.New("node Agent remote executor is not configured")
+		return remediation.ExecutionResult{}, errors.New("node agent remote executor is not configured")
 	}
 	if ctx == nil {
-		return remediation.ExecutionResult{}, errors.New("node Agent remote execution context is required")
+		return remediation.ExecutionResult{}, errors.New("node agent remote execution context is required")
 	}
 	if plan.DeadlineAt.IsZero() {
-		return remediation.ExecutionResult{}, errors.New("node Agent remote execution deadline is required")
+		return remediation.ExecutionResult{}, errors.New("node agent remote execution deadline is required")
 	}
 	request := Request{
 		OperationID: plan.OperationID, ExecutionClaimID: plan.ExecutionClaimID,
-		WorkerID: plan.WorkerID, WorkerEpoch: plan.WorkerEpoch,
+		WorkerInstanceID: plan.WorkerInstanceID, WorkerInstanceEpoch: plan.WorkerInstanceEpoch,
+		DeviceID: plan.DeviceID, DeviceEpoch: plan.DeviceEpoch,
 		NodeIdentity: plan.NodeIdentity, DeviceIdentity: plan.DeviceIdentity,
 		FailureClass: plan.FailureClass,
 		ActionLevel:  plan.ActionLevel, CertificationRevision: plan.CertificationRevision,
@@ -122,13 +123,13 @@ func NewControlPlaneAuthorizer(
 	actorIdentity string,
 ) (*ControlPlaneAuthorizer, error) {
 	if reader == nil {
-		return nil, errors.New("node Agent operation reader is required")
+		return nil, errors.New("node agent operation reader is required")
 	}
 	if claimer == nil {
-		return nil, errors.New("node Agent execution claimer is required")
+		return nil, errors.New("node agent execution claimer is required")
 	}
 	if !validText(actorIdentity, maxIdentityText) {
-		return nil, errors.New("node Agent authorization actor identity is invalid")
+		return nil, errors.New("node agent authorization actor identity is invalid")
 	}
 	return &ControlPlaneAuthorizer{
 		reader: reader, claimer: claimer, actorIdentity: actorIdentity, clock: time.Now,
@@ -137,34 +138,35 @@ func NewControlPlaneAuthorizer(
 
 func (authorizer *ControlPlaneAuthorizer) Authorize(ctx context.Context, request Request) error {
 	if authorizer == nil || authorizer.reader == nil || authorizer.claimer == nil {
-		return errors.New("node Agent control-plane authorizer is not configured")
+		return errors.New("node agent control-plane authorizer is not configured")
 	}
 	operation, err := authorizer.reader.Get(ctx, request.OperationID)
 	if err != nil {
 		return fmt.Errorf("load remediation operation: %w", err)
 	}
-	if operation.ID != request.OperationID || operation.WorkerID != request.WorkerID ||
-		operation.WorkerEpoch != request.WorkerEpoch || operation.NodeIdentity != request.NodeIdentity ||
-		operation.DeviceIdentity != request.DeviceIdentity || operation.ActionLevel != request.ActionLevel ||
+	if operation.ID != request.OperationID || operation.WorkerInstanceID != request.WorkerInstanceID ||
+		operation.WorkerInstanceEpoch != request.WorkerInstanceEpoch || operation.NodeIdentity != request.NodeIdentity ||
+		operation.DeviceIdentity != request.DeviceIdentity || operation.DeviceID != request.DeviceID ||
+		operation.DeviceEpoch != request.DeviceEpoch || operation.ActionLevel != request.ActionLevel ||
 		operation.FailureClass != request.FailureClass ||
 		operation.CertificationRevision != request.CertificationRevision ||
 		!equalDigest(operation.EvidenceDigest, request.FailureEvidenceDigest) {
-		return errors.New("node Agent request does not match the authoritative remediation operation")
+		return errors.New("node agent request does not match the authoritative remediation operation")
 	}
 	if operation.State != remediation.StateExecuting {
 		return errors.New("remediation operation is not executing")
 	}
 	if request.ExecutionClaimID != stableExecutionClaimID(operation.ID, authorizer.actorIdentity) {
-		return errors.New("node Agent execution claim identity is not stable for the authoritative operation")
+		return errors.New("node agent execution claim identity is not stable for the authoritative operation")
 	}
 	if operation.DeadlineAt.IsZero() || !request.DeadlineAt.Equal(operation.DeadlineAt) {
-		return errors.New("node Agent deadline does not match the authoritative remediation operation")
+		return errors.New("node agent deadline does not match the authoritative remediation operation")
 	}
 	if !authorizer.clock().Before(operation.DeadlineAt) {
 		return errors.New("remediation operation deadline has expired")
 	}
 	if _, err := authorizer.claimer.ClaimExecution(
-		ctx, operation.ID, operation.WorkerID, operation.WorkerEpoch,
+		ctx, operation.ID, operation.WorkerInstanceID, operation.WorkerInstanceEpoch,
 		request.ExecutionClaimID, authorizer.actorIdentity,
 	); err != nil {
 		return fmt.Errorf("claim remediation execution: %w", err)
@@ -187,20 +189,20 @@ func NewControlPlaneLedger(
 	actorIdentity string,
 ) (*ControlPlaneLedger, error) {
 	if reader == nil {
-		return nil, errors.New("node Agent operation reader is required")
+		return nil, errors.New("node agent operation reader is required")
 	}
 	if writer == nil {
-		return nil, errors.New("node Agent completion writer is required")
+		return nil, errors.New("node agent completion writer is required")
 	}
 	if !validText(actorIdentity, maxIdentityText) {
-		return nil, errors.New("node Agent completion actor identity is invalid")
+		return nil, errors.New("node agent completion actor identity is invalid")
 	}
 	return &ControlPlaneLedger{reader: reader, writer: writer, actorIdentity: actorIdentity}, nil
 }
 
 func (ledger *ControlPlaneLedger) Load(ctx context.Context, operationID uuid.UUID) (Receipt, bool, error) {
 	if ledger == nil || ledger.reader == nil {
-		return Receipt{}, false, errors.New("node Agent control-plane ledger is not configured")
+		return Receipt{}, false, errors.New("node agent control-plane ledger is not configured")
 	}
 	operation, err := ledger.reader.Get(ctx, operationID)
 	if err != nil {
@@ -243,7 +245,7 @@ func (ledger *ControlPlaneLedger) Load(ctx context.Context, operationID uuid.UUI
 
 func (ledger *ControlPlaneLedger) Save(ctx context.Context, receipt Receipt) error {
 	if ledger == nil || ledger.reader == nil || ledger.writer == nil {
-		return errors.New("node Agent control-plane ledger is not configured")
+		return errors.New("node agent control-plane ledger is not configured")
 	}
 	operation, err := ledger.reader.Get(ctx, receipt.Result.OperationID)
 	if err != nil {
@@ -251,7 +253,7 @@ func (ledger *ControlPlaneLedger) Save(ctx context.Context, receipt Receipt) err
 	}
 	expectedHash := hashRequest(requestFromOperation(operation, ledger.actorIdentity))
 	if receipt.RequestHash != expectedHash {
-		return errors.New("node Agent receipt request hash does not match the authoritative operation")
+		return errors.New("node agent receipt request hash does not match the authoritative operation")
 	}
 	if operation.State == remediation.StateSucceeded || operation.State == remediation.StateQuarantined {
 		return nil
@@ -260,17 +262,17 @@ func (ledger *ControlPlaneLedger) Save(ctx context.Context, receipt Receipt) err
 		return errors.New("remediation operation is not executing")
 	}
 	if !validText(receipt.Result.ResultCode, maxDetailText) || !validText(receipt.Result.ResultDetail, maxDetailText) {
-		return errors.New("node Agent receipt result is invalid")
+		return errors.New("node agent receipt result is invalid")
 	}
 	_, err = ledger.writer.Complete(ctx, remediation.Completion{
-		OperationID:   operation.ID,
-		WorkerID:      operation.WorkerID,
-		WorkerEpoch:   operation.WorkerEpoch,
-		Success:       receipt.Result.Success,
-		ResultCode:    receipt.Result.ResultCode,
-		ResultDetail:  receipt.Result.ResultDetail,
-		PostcheckHash: append([]byte(nil), receipt.Result.PostcheckHash...),
-		ActorIdentity: ledger.actorIdentity,
+		OperationID:         operation.ID,
+		WorkerInstanceID:    operation.WorkerInstanceID,
+		WorkerInstanceEpoch: operation.WorkerInstanceEpoch,
+		Success:             receipt.Result.Success,
+		ResultCode:          receipt.Result.ResultCode,
+		ResultDetail:        receipt.Result.ResultDetail,
+		PostcheckHash:       append([]byte(nil), receipt.Result.PostcheckHash...),
+		ActorIdentity:       ledger.actorIdentity,
 	})
 	return err
 }
@@ -279,8 +281,10 @@ func requestFromOperation(operation remediation.Operation, actorIdentity string)
 	return Request{
 		OperationID:           operation.ID,
 		ExecutionClaimID:      stableExecutionClaimID(operation.ID, actorIdentity),
-		WorkerID:              operation.WorkerID,
-		WorkerEpoch:           operation.WorkerEpoch,
+		WorkerInstanceID:      operation.WorkerInstanceID,
+		WorkerInstanceEpoch:   operation.WorkerInstanceEpoch,
+		DeviceID:              operation.DeviceID,
+		DeviceEpoch:           operation.DeviceEpoch,
 		NodeIdentity:          operation.NodeIdentity,
 		DeviceIdentity:        operation.DeviceIdentity,
 		FailureClass:          operation.FailureClass,

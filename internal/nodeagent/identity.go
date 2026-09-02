@@ -14,7 +14,7 @@ func NodeAgentSPIFFEIdentity(identity NodeAgentIdentity) string {
 		return ""
 	}
 	nodeIdentity := base64.RawURLEncoding.EncodeToString([]byte(identity.NodeIdentity))
-	return "spiffe://vela.internal/node-agent/" + nodeIdentity + "/" + identity.WorkerID.String()
+	return "spiffe://vela.internal/node-agent/" + nodeIdentity + "/" + identity.AgentID.String()
 }
 
 func ControllerSPIFFEIdentity(actorIdentity string) string {

@@ -1,18 +1,24 @@
 # Fleet Controller Deployment Contract
 
-This Kustomize base installs the namespaced `WorkerPool` API, the exact Fleet
-Controller service account, namespace-bound live-resource permissions, read-only
-Node discovery, and the fail-closed validating webhook contract. The Fleet
-Controller owns protected `WorkerPool`, `OnDelete` DaemonSet, and Worker Pod
-lifecycle. Argo CD may install this base and versioned desired input, but this
-base grants no Argo identity access to live protected resources.
+This Kustomize base installs the Fleet Controller service account,
+namespace-bound live-resource permissions, read-only Node discovery, and the
+fail-closed validating webhook contract. The Fleet Controller owns protected
+WorkerInstance Pods and the per-member Services and Secrets derived from the
+approved ResidencyPlan. Argo CD may install this base and versioned desired
+input, but this base grants no Argo identity access to live protected resources.
 
-The controller image, desired revision, Worker Agent and H3 Runner images,
-configuration names, and webhook `caBundle` are deliberately invalid
-placeholders. The desired BusyBox init image is the repository-pinned shared
-`1.37.0` `linux/amd64` manifest. Delivery must replace the immutable
-desired-input ConfigMap with an approved revision and provision these independent
-trust materials:
+The controller image, approved ResidencyPlan, Stage Worker Agent and H3
+ModelRuntime images, configuration names, device identities, and webhook
+`caBundle` are deliberately invalid placeholders. The default ResidencyPlan
+materializes the complete H3 topology contract: one single-slot AUX
+WorkerInstance with separate Encoder and VAE ModelRuntime routes plus seven
+independently schedulable single-slot DiT WorkerInstances. The repeated `3` and
+`4` image digests, `template-not-approved` identity, unconfigured region, and
+template model/runtime revisions are non-production values. The ResidencyPlan
+BusyBox init image is the repository-pinned shared `1.37.0` `linux/amd64`
+manifest. Delivery must replace the immutable target-only rollout ConfigMap
+with an approved release-bound plan, recompute its content and layout digests,
+and provision these independent trust materials:
 
 - `vela-fleet-control-mtls`: Fleet Controller client certificate, private key,
   and CA for the Fleet maintenance gRPC service;
@@ -22,20 +28,31 @@ trust materials:
   kube-apiserver client certificate presented to `/validate`.
 
 Delivery must also inject the serving-certificate CA into the webhook
-`caBundle`. Applying the placeholders is not a successful deployment and cannot
-produce a Launch Receipt.
+`caBundle`. Passing the repository deployment-contract test only proves that the
+placeholder topology is complete and internally consistent. Applying the
+placeholders is not a successful deployment, Production Gate, or Launch Receipt.
+
+For a multi-member WorkerInstance, the approved WorkerBundle also names one
+immutable aggregate member-PKI source Secret. The controller has namespaced
+`get` and `create` authority for Secrets and Services so it can validate that
+source and materialize one protected Service and one immutable derived Secret
+per member. It has no update or delete authority for those resources. Standard
+single-member H3 WorkerInstances do not use this permission path and expose no
+member Service. The fail-closed webhook reconstructs exact member Services and
+derived Secrets from the release-bound rollout and source PKI before allowing
+Fleet `CREATE`; it rejects their `UPDATE` and `DELETE` until a separate cleanup
+authority is implemented.
 
 ## Release bundle boundary
 
 Production assembly must include the final `kubectl kustomize` output as the
 exact `fleet-controller` render in the canonical Slice 40 release bundle. The
-bundle rejects placeholder or mutable image references and binds the desired
-Fleet revision, referenced configuration/Secret revisions, and complete
-versioned resource inventory. Per-node desired Worker state is separately bound
-by each Worker materialization. A changed render, desired revision, image,
-materialization, or external revision requires a new configuration revision and
-release digest. Verification does not replace live admission, RBAC, rollout, or
-Launch Receipt evidence.
+bundle rejects placeholder or mutable image references and binds the approved
+ResidencyPlan, referenced configuration/Secret revisions, and complete
+versioned resource inventory. A changed render, plan, image, actuation, or
+external revision requires a new configuration revision and release digest.
+Verification does not replace live admission, RBAC, rollout, or Launch Receipt
+evidence.
 
 ## Admission Identity Contract
 
@@ -53,13 +70,10 @@ The webhook serving `caBundle` does not provide this reverse client
 authentication. A kubeconfig with only server CA data is incomplete and all
 `/validate` calls will fail closed.
 
-After peer authentication, protected mutations are accepted only from
-`system:serviceaccount:vela-system:vela-fleet-controller`. The sole delegated
-exception is protected Pod `CREATE` by `system:kube-controller-manager`, because
-the DaemonSet controller materializes Pods from the Fleet-owned protected
-`OnDelete` DaemonSet. The handler validates the Pod against its live protected
-parent. That identity receives no protected update, delete, or finalizer-removal
-authority.
+After peer authentication, protected Pod, Service, and Secret mutations are
+accepted only from
+`system:serviceaccount:vela-system:vela-fleet-controller`. There is no delegated
+controller-manager mutation path.
 
 ## Network Boundary
 

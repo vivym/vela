@@ -3,10 +3,13 @@ package fleettransport
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/url"
 	"strings"
-	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleet"
@@ -15,421 +18,153 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
-	maximumActorBytes        = 500
-	maximumIdentityBytes     = 500
-	maximumReasonBytes       = 1000
-	maximumRequestUIDBytes   = 200
-	maximumWorkerPodUIDBytes = 128
-	maximumNameBytes         = 253
-	maximumDrainOperations   = 4096
-	maximumDeadline          = 24 * time.Hour
+	maximumActorBytes                 = 500
+	maximumIdentityBytes              = 500
+	maximumRequestUIDBytes            = 200
+	maximumNameBytes                  = 253
+	maximumWorkerRegistryPayloadBytes = 1 << 20
+	nodeAgentSPIFFEPrefix             = "spiffe://vela.internal/node-agent/"
+	nodeAgentActorPrefix              = "node-agent/"
 )
 
 type Service interface {
-	ResolveWorkerIdentity(
-		context.Context,
-		fleet.WorkerIdentityRequest,
-	) (fleet.WorkerIdentity, error)
-	ConfigureCapacityPolicy(
-		context.Context,
-		fleet.CapacityPolicy,
-	) (fleet.CapacityPolicyResult, error)
-	ObserveCapacity(context.Context, fleet.CapacityObservation) (fleet.CapacityResult, error)
-	BeginReadiness(context.Context, fleet.ReadinessRequest) (fleet.ReadinessResult, error)
-	ReportReadiness(context.Context, fleet.ReadinessEvidence) (fleet.ReadinessResult, error)
-	GetReadiness(context.Context, uuid.UUID) (fleet.ReadinessResult, error)
-	RequestDrain(context.Context, fleet.DrainRequest) (fleet.DrainResult, error)
-	ReconcileDrain(context.Context, uuid.UUID, string) (fleet.DrainResult, error)
-	GetDrain(context.Context, uuid.UUID) (fleet.DrainResult, error)
+	Apply(context.Context, fleet.ApprovedResidencyPlan) (fleet.ActuationPlan, error)
+	Observe(context.Context, fleet.WorkerInstanceEvidence) (fleet.WorkerInstanceDecision, error)
 	AuthorizeMutation(
 		context.Context,
 		fleet.MutationAuthorizationRequest,
 	) (fleet.MutationAuthorizationResult, error)
-	HasRetirementAuthorization(
-		context.Context,
-		fleet.RetirementAuthorizationRequest,
-	) (bool, error)
-	RecordRetirementCompletion(
-		context.Context,
-		fleet.RetirementCompletionRequest,
-	) (fleet.RetirementCompletionResult, error)
-	HasRetirementCompletion(
-		context.Context,
-		fleet.RetirementAuthorizationRequest,
-	) (bool, error)
-}
-
-func (server *Server) ConfigureCapacityPolicy(
-	ctx context.Context,
-	request *velav1.ConfigureCapacityPolicyRequest,
-) (*velav1.ConfigureCapacityPolicyResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("capacity policy")
-	}
-	workerPoolID, poolErr := parseUUID(request.GetWorkerPoolId())
-	policy := fleet.CapacityPolicy{
-		WorkerPoolID: workerPoolID, Revision: request.GetRevision(),
-		WorkerHighWatermarkBytes: request.GetWorkerHighWatermarkBytes(),
-		WorkerLowWatermarkBytes:  request.GetWorkerLowWatermarkBytes(),
-		WorkerCriticalFreeBytes:  request.GetWorkerCriticalFreeBytes(),
-		PoolHighWatermarkBytes:   request.GetPoolHighWatermarkBytes(),
-		PoolLowWatermarkBytes:    request.GetPoolLowWatermarkBytes(),
-		ObservationMaxAge:        time.Duration(request.GetObservationMaxAgeSeconds()) * time.Second,
-		ConfiguredBy:             server.actorIdentity,
-	}
-	if poolErr != nil || len(policy.Revision) != 64 ||
-		strings.Trim(policy.Revision, "0123456789abcdef") != "" ||
-		policy.WorkerHighWatermarkBytes <= 0 || policy.WorkerLowWatermarkBytes < 0 ||
-		policy.WorkerLowWatermarkBytes >= policy.WorkerHighWatermarkBytes ||
-		policy.WorkerCriticalFreeBytes < 0 || policy.PoolHighWatermarkBytes <= 0 ||
-		policy.PoolLowWatermarkBytes < 0 ||
-		policy.PoolLowWatermarkBytes >= policy.PoolHighWatermarkBytes ||
-		policy.ObservationMaxAge < 10*time.Second || policy.ObservationMaxAge > 10*time.Minute {
-		return nil, invalidRequest("capacity policy")
-	}
-	result, err := server.service.ConfigureCapacityPolicy(ctx, policy)
-	if err != nil {
-		return nil, mapServiceError("configure Fleet capacity policy", err)
-	}
-	return &velav1.ConfigureCapacityPolicyResponse{
-		WorkerPoolId: result.WorkerPoolID.String(), Revision: result.Revision,
-		Replayed: result.Replayed,
-	}, nil
-}
-
-func (server *Server) ResolveWorkerIdentity(
-	ctx context.Context,
-	request *velav1.ResolveWorkerIdentityRequest,
-) (*velav1.ResolveWorkerIdentityResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("Worker identity resolution")
-	}
-	workerPoolID, err := parseUUID(request.GetWorkerPoolId())
-	parsed := fleet.WorkerIdentityRequest{
-		NodeIdentity: request.GetNodeIdentity(), WorkerPoolID: workerPoolID,
-		KubernetesUID: request.GetKubernetesUid(), Namespace: request.GetNamespace(),
-		Name: request.GetName(),
-	}
-	if err != nil || !validText(parsed.NodeIdentity, maximumIdentityBytes) ||
-		!validText(parsed.KubernetesUID, maximumWorkerPodUIDBytes) ||
-		!validText(parsed.Namespace, maximumNameBytes) ||
-		!validText(parsed.Name, maximumNameBytes) {
-		return nil, invalidRequest("Worker identity resolution")
-	}
-	identity, err := server.service.ResolveWorkerIdentity(ctx, parsed)
-	if err != nil {
-		return nil, mapServiceError("resolve Fleet Worker identity", err)
-	}
-	return &velav1.ResolveWorkerIdentityResponse{
-		WorkerId: identity.WorkerID.String(), WorkerPoolId: identity.WorkerPoolID.String(),
-		WorkerEpoch: identity.WorkerEpoch, NodeIdentity: identity.NodeIdentity,
-	}, nil
 }
 
 type Config struct {
+	SPIFFEIdentity         string
+	ActorIdentity          string
+	NodeAgentRegistrations []NodeAgentRegistration
+}
+
+type NodeAgentRegistration struct {
+	NodeIdentity   string
+	AgentID        uuid.UUID
 	SPIFFEIdentity string
-	ActorIdentity  string
+}
+
+type workerInstanceObserverPrincipal struct {
+	ActorIdentity string
+	NodeIdentity  string
+}
+
+type nodeAgentPrincipal struct {
+	SPIFFEIdentity string
+	NodeIdentity   string
+	AgentID        uuid.UUID
+}
+
+func (principal nodeAgentPrincipal) actorIdentity() string {
+	return nodeAgentActorPrefix + strings.TrimPrefix(principal.SPIFFEIdentity, nodeAgentSPIFFEPrefix)
 }
 
 type Server struct {
 	velav1.UnimplementedFleetMaintenanceServiceServer
-	service        Service
-	spiffeIdentity string
-	actorIdentity  string
-	clock          func() time.Time
+	service             Service
+	spiffeIdentity      string
+	actorIdentity       string
+	nodeAgentPrincipals map[string]nodeAgentPrincipal
 }
 
 func NewServer(service Service, config Config) (*Server, error) {
 	if service == nil {
 		return nil, errors.New("fleet maintenance service is required")
 	}
-	if !validSPIFFEIdentity(config.SPIFFEIdentity) {
-		return nil, errors.New("fleet Controller SPIFFE identity is invalid")
+	if !validSPIFFEIdentity(config.SPIFFEIdentity) ||
+		!validText(config.ActorIdentity, maximumActorBytes) {
+		return nil, errors.New("fleet maintenance server identity is invalid")
 	}
-	if !validText(config.ActorIdentity, maximumActorBytes) {
-		return nil, errors.New("fleet Controller actor identity is invalid")
+	principals := make(map[string]nodeAgentPrincipal, len(config.NodeAgentRegistrations))
+	for _, registration := range config.NodeAgentRegistrations {
+		principal, ok := parseNodeAgentSPIFFEIdentity(registration.SPIFFEIdentity)
+		if !ok || principal.NodeIdentity != registration.NodeIdentity ||
+			principal.AgentID != registration.AgentID {
+			return nil, errors.New("node agent registration is invalid")
+		}
+		if _, exists := principals[registration.SPIFFEIdentity]; exists {
+			return nil, errors.New("node agent registration is duplicated")
+		}
+		principals[registration.SPIFFEIdentity] = principal
 	}
 	return &Server{
 		service: service, spiffeIdentity: config.SPIFFEIdentity,
-		actorIdentity: config.ActorIdentity, clock: time.Now,
+		actorIdentity: config.ActorIdentity, nodeAgentPrincipals: principals,
 	}, nil
 }
 
-func (server *Server) ObserveCapacity(
+func (server *Server) ApplyResidencyPlan(
 	ctx context.Context,
-	request *velav1.ObserveCapacityRequest,
-) (*velav1.ObserveCapacityResponse, error) {
+	request *velav1.ApplyResidencyPlanRequest,
+) (*velav1.ApplyResidencyPlanResponse, error) {
 	if err := server.authenticate(ctx); err != nil {
 		return nil, err
 	}
 	if request == nil {
-		return nil, invalidRequest("capacity observation")
+		return nil, invalidRequest("ResidencyPlan apply")
 	}
-	workerID, workerErr := parseUUID(request.GetWorkerId())
-	workerPoolID, poolErr := parseUUID(request.GetWorkerPoolId())
-	observedAt := time.Time{}
-	if request.GetObservedAt() != nil && request.GetObservedAt().IsValid() {
-		observedAt = request.GetObservedAt().AsTime().UTC()
+	var plan fleet.ApprovedResidencyPlan
+	if !decodeWorkerRegistryPayload(request.GetApprovedPlanJson(), &plan) {
+		return nil, invalidRequest("ResidencyPlan apply")
 	}
-	watermarkState, watermarkOK := scratchWatermarkStateFromProto(request.GetWatermarkState())
-	observation := fleet.CapacityObservation{
-		WorkerID: workerID, WorkerPoolID: workerPoolID,
-		WorkerEpoch: request.GetWorkerEpoch(), Sequence: request.GetObservationSequence(),
-		ObservedAt: observedAt, WatermarkState: watermarkState,
-		TotalBytes: request.GetTotalBytes(), FreeBytes: request.GetFreeBytes(),
-		HighWatermarkBytes:     request.GetHighWatermarkBytes(),
-		LowWatermarkBytes:      request.GetLowWatermarkBytes(),
-		CriticalFreeBytes:      request.GetCriticalFreeBytes(),
-		ArtifactStoreReachable: request.GetArtifactStoreReachable(),
-		ObservedBy:             server.actorIdentity,
-	}
-	if workerErr != nil || poolErr != nil || !watermarkOK || observation.ObservedAt.IsZero() ||
-		observation.WorkerEpoch <= 0 ||
-		observation.Sequence <= 0 || observation.TotalBytes <= 0 ||
-		observation.FreeBytes < 0 || observation.FreeBytes > observation.TotalBytes ||
-		observation.HighWatermarkBytes <= 0 ||
-		observation.HighWatermarkBytes >= observation.TotalBytes ||
-		observation.LowWatermarkBytes < 0 ||
-		observation.LowWatermarkBytes >= observation.HighWatermarkBytes ||
-		observation.CriticalFreeBytes < 0 ||
-		observation.CriticalFreeBytes >= observation.TotalBytes {
-		return nil, invalidRequest("capacity observation")
-	}
-	result, err := server.service.ObserveCapacity(ctx, observation)
+	result, err := server.service.Apply(ctx, plan)
 	if err != nil {
-		return nil, mapServiceError("record Fleet capacity observation", err)
+		return nil, mapServiceError("apply approved ResidencyPlan", err)
 	}
-	workerState, workerStateOK := capacityState(result.WorkerState)
-	poolState, poolStateOK := capacityState(result.PoolState)
-	if !workerStateOK || !poolStateOK {
-		return nil, invalidAuthoritativeResult("Fleet capacity")
+	if result.PlanRevisionID != plan.ID || result.WorkerInstanceCount <= 0 {
+		return nil, invalidAuthoritativeResult("ResidencyPlan apply")
 	}
-	return &velav1.ObserveCapacityResponse{
-		WorkerPoolId: result.WorkerPoolID.String(), Replayed: result.Replayed,
-		WorkerState: workerState, PoolState: poolState,
-		WorkerAssignmentAllowed: result.WorkerAssignmentAllowed,
-		PoolReadinessAllowed:    result.PoolReadinessAllowed,
-		PoolAssignmentAllowed:   result.PoolAssignmentAllowed,
+	return &velav1.ApplyResidencyPlanResponse{
+		PlanRevisionId:      result.PlanRevisionID.String(),
+		WorkerInstanceCount: int32(result.WorkerInstanceCount),
 	}, nil
 }
 
-func scratchWatermarkStateFromProto(
-	state velav1.FleetScratchWatermarkState,
-) (fleet.ScratchWatermarkState, bool) {
-	switch state {
-	case velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_NORMAL:
-		return fleet.ScratchWatermarkNormal, true
-	case velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_PRESSURED:
-		return fleet.ScratchWatermarkPressured, true
-	case velav1.FleetScratchWatermarkState_FLEET_SCRATCH_WATERMARK_STATE_CRITICAL:
-		return fleet.ScratchWatermarkCritical, true
-	default:
-		return "", false
-	}
-}
-
-func (server *Server) BeginReadiness(
+func (server *Server) ObserveWorkerInstance(
 	ctx context.Context,
-	request *velav1.BeginReadinessRequest,
-) (*velav1.BeginReadinessResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
+	request *velav1.ObserveWorkerInstanceRequest,
+) (*velav1.ObserveWorkerInstanceResponse, error) {
+	principal, err := server.authenticateWorkerInstanceObserver(ctx)
+	if err != nil {
 		return nil, err
 	}
 	if request == nil {
-		return nil, invalidRequest("readiness begin")
+		return nil, invalidRequest("WorkerInstance observation")
 	}
-	cycleID, cycleErr := parseUUID(request.GetCycleId())
-	workerID, workerErr := parseUUID(request.GetWorkerId())
-	workerPoolID, poolErr := parseUUID(request.GetWorkerPoolId())
-	profileID, profileErr := parseUUID(request.GetExecutionProfileRevisionId())
-	deadline, deadlineErr := boundedDeadline(request.GetDeadline(), server.clock().UTC())
-	parsed := fleet.ReadinessRequest{
-		CycleID: cycleID, WorkerID: workerID, WorkerPoolID: workerPoolID,
-		WorkerEpoch: request.GetWorkerEpoch(), NodeIdentity: request.GetNodeIdentity(),
-		ExecutionProfileRevisionID: profileID,
-		InferenceBackendRevision:   request.GetInferenceBackendRevision(),
-		RequestedBy:                server.actorIdentity, Deadline: deadline,
+	var evidence fleet.WorkerInstanceEvidence
+	if !decodeWorkerRegistryPayload(request.GetEvidenceJson(), &evidence) {
+		return nil, invalidRequest("WorkerInstance observation")
 	}
-	if cycleErr != nil || workerErr != nil || poolErr != nil || profileErr != nil ||
-		deadlineErr != nil || parsed.WorkerEpoch <= 0 ||
-		!validText(parsed.NodeIdentity, maximumIdentityBytes) ||
-		!validText(parsed.InferenceBackendRevision, 200) {
-		return nil, invalidRequest("readiness begin")
+	if principal.NodeIdentity != "" &&
+		!singleNodeWorkerInstanceEvidenceBelongsToNode(evidence, principal.NodeIdentity) {
+		return nil, status.Error(
+			codes.PermissionDenied,
+			"WorkerInstance evidence does not belong to the authenticated Node Agent",
+		)
 	}
-	result, err := server.service.BeginReadiness(ctx, parsed)
+	evidence.ObservedBy = principal.ActorIdentity
+	decision, err := server.service.Observe(ctx, evidence)
 	if err != nil {
-		return nil, mapServiceError("begin Worker readiness", err)
+		return nil, mapServiceError("observe WorkerInstance", err)
 	}
-	response, err := readinessResult(result)
-	if err != nil {
-		return nil, err
+	if decision.WorkerInstanceID != evidence.WorkerInstanceID || decision.InstanceEpoch <= 0 ||
+		decision.ControlSessionEpoch <= 0 || decision.ModelRuntimeEpoch <= 0 {
+		return nil, invalidAuthoritativeResult("WorkerInstance observation")
 	}
-	return &velav1.BeginReadinessResponse{Result: response}, nil
-}
-
-func (server *Server) ReportReadiness(
-	ctx context.Context,
-	request *velav1.ReportReadinessRequest,
-) (*velav1.ReportReadinessResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("readiness evidence")
-	}
-	cycleID, cycleErr := parseUUID(request.GetCycleId())
-	check, checkOK := readinessCheckFromProto(request.GetCheck())
-	parsed := fleet.ReadinessEvidence{
-		CycleID: cycleID, Check: check, Passed: request.GetPassed(),
-		EvidenceDigest: append([]byte(nil), request.GetEvidenceDigest()...),
-		ObservedBy:     server.actorIdentity,
-	}
-	if cycleErr != nil || !checkOK || len(parsed.EvidenceDigest) != 32 {
-		return nil, invalidRequest("readiness evidence")
-	}
-	result, err := server.service.ReportReadiness(ctx, parsed)
-	if err != nil {
-		return nil, mapServiceError("report Worker readiness", err)
-	}
-	response, err := readinessResult(result)
-	if err != nil {
-		return nil, err
-	}
-	return &velav1.ReportReadinessResponse{Result: response}, nil
-}
-
-func (server *Server) GetReadiness(
-	ctx context.Context,
-	request *velav1.GetReadinessRequest,
-) (*velav1.GetReadinessResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("readiness lookup")
-	}
-	cycleID, err := parseUUID(request.GetCycleId())
-	if err != nil {
-		return nil, invalidRequest("readiness lookup")
-	}
-	result, err := server.service.GetReadiness(ctx, cycleID)
-	if err != nil {
-		return nil, mapServiceError("get Worker readiness", err)
-	}
-	response, err := readinessResult(result)
-	if err != nil {
-		return nil, err
-	}
-	return &velav1.GetReadinessResponse{Result: response}, nil
-}
-
-func (server *Server) RequestDrain(
-	ctx context.Context,
-	request *velav1.RequestDrainRequest,
-) (*velav1.RequestDrainResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("drain request")
-	}
-	operationID, operationErr := parseUUID(request.GetOperationId())
-	workerID, workerErr := parseUUID(request.GetWorkerId())
-	now := server.clock().UTC()
-	deadline, deadlineErr := boundedDeadline(request.GetDeadline(), now)
-	if operationErr == nil && workerErr == nil && deadlineErr != nil {
-		absolute, absoluteErr := absoluteDeadline(request.GetDeadline())
-		if absoluteErr == nil && !absolute.After(now) {
-			existing, err := server.service.GetDrain(ctx, operationID)
-			if err != nil {
-				return nil, mapServiceError("get Worker drain for request replay", err)
-			}
-			if existing.OperationID == operationID && existing.WorkerID == workerID &&
-				existing.WorkerEpoch == request.GetExpectedEpoch() &&
-				existing.Deadline.Equal(absolute) {
-				deadline = absolute
-				deadlineErr = nil
-			}
-		}
-	}
-	parsed := fleet.DrainRequest{
-		OperationID: operationID, WorkerID: workerID,
-		ExpectedEpoch: request.GetExpectedEpoch(), Reason: request.GetReason(),
-		Deadline: deadline, RequestedBy: server.actorIdentity,
-	}
-	if operationErr != nil || workerErr != nil || deadlineErr != nil ||
-		parsed.ExpectedEpoch <= 0 || !validText(parsed.Reason, maximumReasonBytes) {
-		return nil, invalidRequest("drain request")
-	}
-	result, err := server.service.RequestDrain(ctx, parsed)
-	if err != nil {
-		return nil, mapServiceError("request Worker drain", err)
-	}
-	response, err := drainResult(result)
-	if err != nil {
-		return nil, err
-	}
-	return &velav1.RequestDrainResponse{Result: response}, nil
-}
-
-func (server *Server) ReconcileDrain(
-	ctx context.Context,
-	request *velav1.ReconcileDrainRequest,
-) (*velav1.ReconcileDrainResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("drain reconciliation")
-	}
-	operationID, err := parseUUID(request.GetOperationId())
-	if err != nil {
-		return nil, invalidRequest("drain reconciliation")
-	}
-	result, err := server.service.ReconcileDrain(ctx, operationID, server.actorIdentity)
-	if err != nil {
-		return nil, mapServiceError("reconcile Worker drain", err)
-	}
-	response, err := drainResult(result)
-	if err != nil {
-		return nil, err
-	}
-	return &velav1.ReconcileDrainResponse{Result: response}, nil
-}
-
-func (server *Server) GetDrain(
-	ctx context.Context,
-	request *velav1.GetDrainRequest,
-) (*velav1.GetDrainResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("drain lookup")
-	}
-	operationID, err := parseUUID(request.GetOperationId())
-	if err != nil {
-		return nil, invalidRequest("drain lookup")
-	}
-	result, err := server.service.GetDrain(ctx, operationID)
-	if err != nil {
-		return nil, mapServiceError("get Worker drain", err)
-	}
-	response, err := drainResult(result)
-	if err != nil {
-		return nil, err
-	}
-	return &velav1.GetDrainResponse{Result: response}, nil
+	return &velav1.ObserveWorkerInstanceResponse{
+		WorkerInstanceId:    decision.WorkerInstanceID.String(),
+		InstanceEpoch:       decision.InstanceEpoch,
+		ControlSessionEpoch: decision.ControlSessionEpoch,
+		ModelRuntimeEpoch:   decision.ModelRuntimeEpoch,
+		Readiness:           string(decision.Readiness),
+	}, nil
 }
 
 func (server *Server) AuthorizeMutation(
@@ -439,159 +174,54 @@ func (server *Server) AuthorizeMutation(
 	if err := server.authenticate(ctx); err != nil {
 		return nil, err
 	}
-	if request == nil || !validText(request.GetRequestUid(), maximumRequestUIDBytes) ||
-		!validText(request.GetKubernetesUid(), maximumRequestUIDBytes) ||
-		!validText(request.GetNamespace(), maximumNameBytes) ||
-		!validText(request.GetName(), maximumNameBytes) ||
-		len(request.GetDrainOperationIds()) == 0 ||
-		len(request.GetDrainOperationIds()) > maximumDrainOperations ||
-		len(request.GetRequestDigest()) != 32 {
-		return nil, invalidRequest("mutation authorization")
+	if request == nil {
+		return nil, invalidRequest("WorkerInstance Pod mutation authorization")
 	}
-	resourceKind, kindOK := protectedResourceKindFromProto(request.GetResourceKind())
 	operation, operationOK := mutationOperationFromProto(request.GetOperation())
-	workerPoolID, poolErr := parseUUID(request.GetWorkerPoolId())
-	workerID, workerErr := parseOptionalUUID(request.GetWorkerId())
-	drainIDs, drainErr := parseDistinctUUIDs(request.GetDrainOperationIds())
+	workerInstanceID, instanceErr := parseUUID(request.GetWorkerInstanceId())
+	residencyPlanID, planErr := parseUUID(request.GetResidencyPlanRevisionId())
+	workerBundleID, bundleErr := parseUUID(request.GetWorkerBundleId())
+	workerMemberID, memberErr := parseUUID(request.GetWorkerMemberId())
 	parsed := fleet.MutationAuthorizationRequest{
 		RequestUID: request.GetRequestUid(), ActorIdentity: server.actorIdentity,
-		ResourceKind: resourceKind, Operation: operation,
-		KubernetesUID: request.GetKubernetesUid(), Namespace: request.GetNamespace(),
-		Name: request.GetName(), WorkerPoolID: workerPoolID, WorkerID: workerID,
-		WorkerEpoch: request.GetWorkerEpoch(), DrainOperationIDs: drainIDs,
-		RequestDigest: append([]byte(nil), request.GetRequestDigest()...),
+		Operation: operation, KubernetesUID: request.GetKubernetesUid(),
+		Namespace: request.GetNamespace(), Name: request.GetName(),
+		WorkerInstanceID:        workerInstanceID,
+		WorkerInstanceEpoch:     request.GetWorkerInstanceEpoch(),
+		ResidencyPlanRevisionID: residencyPlanID, WorkerBundleID: workerBundleID,
+		WorkerMemberID: workerMemberID,
+		RequestDigest:  append([]byte(nil), request.GetRequestDigest()...),
 	}
-	if !kindOK || !operationOK || poolErr != nil || workerErr != nil || drainErr != nil ||
-		resourceKind == fleet.ProtectedPod &&
-			(workerID == uuid.Nil || parsed.WorkerEpoch <= 0 || len(drainIDs) != 1) ||
-		resourceKind != fleet.ProtectedPod &&
-			(workerID != uuid.Nil || parsed.WorkerEpoch != 0) {
-		return nil, invalidRequest("mutation authorization")
+	if !operationOK || instanceErr != nil || planErr != nil || bundleErr != nil ||
+		memberErr != nil || !validText(parsed.RequestUID, maximumRequestUIDBytes) ||
+		!validText(parsed.KubernetesUID, maximumRequestUIDBytes) ||
+		!validText(parsed.Namespace, maximumNameBytes) ||
+		!validText(parsed.Name, maximumNameBytes) || parsed.WorkerInstanceEpoch <= 0 ||
+		len(parsed.RequestDigest) != 32 {
+		return nil, invalidRequest("WorkerInstance Pod mutation authorization")
 	}
 	result, err := server.service.AuthorizeMutation(ctx, parsed)
 	if err != nil {
-		return nil, mapServiceError("authorize protected Fleet mutation", err)
+		return nil, mapServiceError("authorize WorkerInstance Pod mutation", err)
+	}
+	if result.RequestUID != parsed.RequestUID || !result.Authorized {
+		return nil, invalidAuthoritativeResult("WorkerInstance Pod mutation authorization")
 	}
 	return &velav1.AuthorizeMutationResponse{
 		RequestUid: result.RequestUID, Replayed: result.Replayed, Authorized: result.Authorized,
 	}, nil
 }
 
-func (server *Server) HasRetirementAuthorization(
-	ctx context.Context,
-	request *velav1.HasRetirementAuthorizationRequest,
-) (*velav1.HasRetirementAuthorizationResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
+func decodeWorkerRegistryPayload(encoded []byte, target any) bool {
+	if len(encoded) == 0 || len(encoded) > maximumWorkerRegistryPayloadBytes || target == nil {
+		return false
 	}
-	if request == nil {
-		return nil, invalidRequest("retirement authorization lookup")
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return false
 	}
-	parsed, ok := parseRetirementResource(
-		request.GetResourceKind(), request.GetKubernetesUid(), request.GetNamespace(),
-		request.GetName(), request.GetWorkerPoolId(), request.GetWorkerId(),
-		request.GetWorkerEpoch(), request.GetDrainOperationIds(),
-	)
-	if !ok {
-		return nil, invalidRequest("retirement authorization lookup")
-	}
-	authorized, err := server.service.HasRetirementAuthorization(ctx, parsed)
-	if err != nil {
-		return nil, mapServiceError("check protected Fleet retirement authorization", err)
-	}
-	return &velav1.HasRetirementAuthorizationResponse{Authorized: authorized}, nil
-}
-
-func (server *Server) RecordRetirementCompletion(
-	ctx context.Context,
-	request *velav1.RecordRetirementCompletionRequest,
-) (*velav1.RecordRetirementCompletionResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("retirement completion")
-	}
-	resource, ok := parseRetirementResource(
-		request.GetResourceKind(), request.GetKubernetesUid(), request.GetNamespace(),
-		request.GetName(), request.GetWorkerPoolId(), request.GetWorkerId(),
-		request.GetWorkerEpoch(), request.GetDrainOperationIds(),
-	)
-	if !ok {
-		return nil, invalidRequest("retirement completion")
-	}
-	result, err := server.service.RecordRetirementCompletion(ctx, fleet.RetirementCompletionRequest{
-		RetirementAuthorizationRequest: resource,
-		ObservedBy:                     server.actorIdentity,
-	})
-	if err != nil {
-		return nil, mapServiceError("record protected Fleet retirement completion", err)
-	}
-	completedAt := timestamppb.New(result.CompletedAt)
-	if result.CompletedAt.IsZero() || completedAt.CheckValid() != nil {
-		return nil, status.Error(codes.Internal, "Fleet retirement completion result is invalid")
-	}
-	return &velav1.RecordRetirementCompletionResponse{
-		Replayed: result.Replayed, CompletedAt: completedAt,
-	}, nil
-}
-
-func (server *Server) HasRetirementCompletion(
-	ctx context.Context,
-	request *velav1.HasRetirementCompletionRequest,
-) (*velav1.HasRetirementCompletionResponse, error) {
-	if err := server.authenticate(ctx); err != nil {
-		return nil, err
-	}
-	if request == nil {
-		return nil, invalidRequest("retirement completion lookup")
-	}
-	resource, ok := parseRetirementResource(
-		request.GetResourceKind(), request.GetKubernetesUid(), request.GetNamespace(),
-		request.GetName(), request.GetWorkerPoolId(), request.GetWorkerId(),
-		request.GetWorkerEpoch(), request.GetDrainOperationIds(),
-	)
-	if !ok {
-		return nil, invalidRequest("retirement completion lookup")
-	}
-	completed, err := server.service.HasRetirementCompletion(ctx, resource)
-	if err != nil {
-		return nil, mapServiceError("check protected Fleet retirement completion", err)
-	}
-	return &velav1.HasRetirementCompletionResponse{Completed: completed}, nil
-}
-
-func parseRetirementResource(
-	resourceKindValue velav1.FleetProtectedResourceKind,
-	kubernetesUID string,
-	namespace string,
-	name string,
-	workerPoolIDValue string,
-	workerIDValue string,
-	workerEpoch int64,
-	drainOperationIDValues []string,
-) (fleet.RetirementAuthorizationRequest, bool) {
-	if !validText(kubernetesUID, maximumRequestUIDBytes) ||
-		!validText(namespace, maximumNameBytes) || !validText(name, maximumNameBytes) ||
-		len(drainOperationIDValues) == 0 || len(drainOperationIDValues) > maximumDrainOperations {
-		return fleet.RetirementAuthorizationRequest{}, false
-	}
-	resourceKind, kindOK := protectedResourceKindFromProto(resourceKindValue)
-	workerPoolID, poolErr := parseUUID(workerPoolIDValue)
-	workerID, workerErr := parseOptionalUUID(workerIDValue)
-	drainIDs, drainErr := parseDistinctUUIDs(drainOperationIDValues)
-	parsed := fleet.RetirementAuthorizationRequest{
-		ResourceKind: resourceKind, KubernetesUID: kubernetesUID,
-		Namespace: namespace, Name: name, WorkerPoolID: workerPoolID, WorkerID: workerID,
-		WorkerEpoch: workerEpoch, DrainOperationIDs: drainIDs,
-	}
-	if !kindOK || poolErr != nil || workerErr != nil || drainErr != nil ||
-		resourceKind == fleet.ProtectedPod &&
-			(workerID == uuid.Nil || workerEpoch <= 0 || len(drainIDs) != 1) ||
-		resourceKind != fleet.ProtectedPod && (workerID != uuid.Nil || workerEpoch != 0) {
-		return fleet.RetirementAuthorizationRequest{}, false
-	}
-	return parsed, true
+	return errors.Is(decoder.Decode(&struct{}{}), io.EOF)
 }
 
 func (server *Server) authenticate(ctx context.Context) error {
@@ -599,12 +229,51 @@ func (server *Server) authenticate(ctx context.Context) error {
 		!validText(server.actorIdentity, maximumActorBytes) {
 		return status.Error(codes.FailedPrecondition, "Fleet maintenance server is not configured")
 	}
-	if ctx == nil {
+	identity, ok := verifiedPeerSPIFFEIdentity(ctx)
+	if !ok || identity != server.spiffeIdentity {
 		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+	}
+	return nil
+}
+
+func (server *Server) authenticateWorkerInstanceObserver(
+	ctx context.Context,
+) (workerInstanceObserverPrincipal, error) {
+	if server == nil || server.service == nil {
+		return workerInstanceObserverPrincipal{}, status.Error(
+			codes.FailedPrecondition, "Fleet maintenance server is not configured",
+		)
+	}
+	identity, ok := verifiedPeerSPIFFEIdentity(ctx)
+	if !ok {
+		return workerInstanceObserverPrincipal{}, status.Error(
+			codes.Unauthenticated,
+			"verified Fleet Controller or Node Agent mTLS identity is required",
+		)
+	}
+	if identity == server.spiffeIdentity {
+		return workerInstanceObserverPrincipal{ActorIdentity: server.actorIdentity}, nil
+	}
+	nodeAgent, parsed := parseNodeAgentSPIFFEIdentity(identity)
+	registered, exists := server.nodeAgentPrincipals[identity]
+	if !parsed || !exists || registered != nodeAgent {
+		return workerInstanceObserverPrincipal{}, status.Error(
+			codes.Unauthenticated,
+			"verified Fleet Controller or Node Agent mTLS identity is required",
+		)
+	}
+	return workerInstanceObserverPrincipal{
+		ActorIdentity: nodeAgent.actorIdentity(), NodeIdentity: nodeAgent.NodeIdentity,
+	}, nil
+}
+
+func verifiedPeerSPIFFEIdentity(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
 	}
 	connectionPeer, ok := peer.FromContext(ctx)
 	if !ok || connectionPeer.AuthInfo == nil {
-		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+		return "", false
 	}
 	var tlsInfo credentials.TLSInfo
 	switch typed := connectionPeer.AuthInfo.(type) {
@@ -612,15 +281,16 @@ func (server *Server) authenticate(ctx context.Context) error {
 		tlsInfo = typed
 	case *credentials.TLSInfo:
 		if typed == nil {
-			return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+			return "", false
 		}
 		tlsInfo = *typed
 	default:
-		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+		return "", false
 	}
 	state := tlsInfo.State
-	if !state.HandshakeComplete || len(state.PeerCertificates) == 0 || len(state.VerifiedChains) == 0 {
-		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+	if !state.HandshakeComplete || len(state.PeerCertificates) == 0 ||
+		len(state.VerifiedChains) == 0 {
+		return "", false
 	}
 	leaf := state.PeerCertificates[0]
 	verifiedLeaf := false
@@ -630,185 +300,74 @@ func (server *Server) authenticate(ctx context.Context) error {
 			break
 		}
 	}
-	if !verifiedLeaf || len(leaf.URIs) != 1 || leaf.URIs[0] == nil ||
-		leaf.URIs[0].String() != server.spiffeIdentity {
-		return status.Error(codes.Unauthenticated, "verified Fleet Controller mTLS identity is required")
+	if !verifiedLeaf || len(leaf.URIs) != 1 || leaf.URIs[0] == nil {
+		return "", false
 	}
-	return nil
+	return leaf.URIs[0].String(), true
 }
 
-func readinessResult(result fleet.ReadinessResult) (*velav1.FleetReadinessResult, error) {
-	state, stateOK := readinessState(result.State)
-	nextCheck, nextCheckOK := readinessCheck(result.NextCheck)
-	lifecycle, lifecycleOK := workerLifecycle(result.WorkerLifecycle)
-	reachability, reachabilityOK := workerReachability(result.WorkerReachability)
-	if result.CycleID == uuid.Nil || !stateOK || !lifecycleOK || !reachabilityOK ||
-		(result.State == fleet.ReadinessChecking && !nextCheckOK) ||
-		(result.State != fleet.ReadinessChecking && result.NextCheck != "") {
-		return nil, invalidAuthoritativeResult("Fleet readiness")
+func parseNodeAgentSPIFFEIdentity(value string) (nodeAgentPrincipal, bool) {
+	identity, err := url.Parse(value)
+	if err != nil || identity == nil || identity.Scheme != "spiffe" ||
+		identity.Host != "vela.internal" || identity.User != nil ||
+		identity.RawQuery != "" || identity.Fragment != "" ||
+		!strings.HasPrefix(value, nodeAgentSPIFFEPrefix) {
+		return nodeAgentPrincipal{}, false
 	}
-	return &velav1.FleetReadinessResult{
-		CycleId: result.CycleID.String(), Replayed: result.Replayed,
-		State: state, NextCheck: nextCheck,
-		WorkerLifecycle: lifecycle, WorkerReachability: reachability,
-	}, nil
+	segments := strings.Split(strings.TrimPrefix(value, nodeAgentSPIFFEPrefix), "/")
+	if len(segments) != 2 || segments[0] == "" || segments[1] == "" {
+		return nodeAgentPrincipal{}, false
+	}
+	decodedNode, err := base64.RawURLEncoding.DecodeString(segments[0])
+	if err != nil || !utf8.Valid(decodedNode) {
+		return nodeAgentPrincipal{}, false
+	}
+	nodeIdentity := string(decodedNode)
+	agentID, err := uuid.Parse(segments[1])
+	if err != nil || agentID == uuid.Nil || !validText(nodeIdentity, maximumIdentityBytes) {
+		return nodeAgentPrincipal{}, false
+	}
+	canonical := nodeAgentSPIFFEPrefix +
+		base64.RawURLEncoding.EncodeToString(decodedNode) + "/" + agentID.String()
+	principal := nodeAgentPrincipal{
+		SPIFFEIdentity: canonical, NodeIdentity: nodeIdentity, AgentID: agentID,
+	}
+	if canonical != value || !validText(principal.actorIdentity(), maximumActorBytes) {
+		return nodeAgentPrincipal{}, false
+	}
+	return principal, true
 }
 
-func drainResult(result fleet.DrainResult) (*velav1.FleetDrainResult, error) {
-	state, stateOK := drainState(result.State)
-	lifecycle, lifecycleOK := workerLifecycle(result.WorkerLifecycle)
-	reachability, reachabilityOK := workerReachability(result.WorkerReachability)
-	if result.OperationID == uuid.Nil || result.WorkerID == uuid.Nil || result.WorkerEpoch <= 0 ||
-		!stateOK || !lifecycleOK || !reachabilityOK {
-		return nil, invalidAuthoritativeResult("Fleet drain")
+func singleNodeWorkerInstanceEvidenceBelongsToNode(
+	evidence fleet.WorkerInstanceEvidence,
+	nodeIdentity string,
+) bool {
+	if !validText(nodeIdentity, maximumIdentityBytes) ||
+		len(evidence.DeviceSet.Devices) == 0 || len(evidence.Members) == 0 {
+		return false
 	}
-	response := &velav1.FleetDrainResult{
-		OperationId: result.OperationID.String(), Replayed: result.Replayed,
-		State: state, WorkerId: result.WorkerID.String(),
-		WorkerEpoch:        result.WorkerEpoch,
-		WorkerLifecycle:    lifecycle,
-		WorkerReachability: reachability,
-	}
-	if !result.Deadline.IsZero() {
-		deadline := timestamppb.New(result.Deadline)
-		if deadline.CheckValid() != nil {
-			return nil, invalidAuthoritativeResult("Fleet drain")
+	computeNodeID := uuid.Nil
+	devices := make(map[uuid.UUID]struct{}, len(evidence.DeviceSet.Devices))
+	for _, device := range evidence.DeviceSet.Devices {
+		if device.ID == uuid.Nil || device.ComputeNodeID == uuid.Nil ||
+			device.NodeIdentity != nodeIdentity ||
+			computeNodeID != uuid.Nil && device.ComputeNodeID != computeNodeID {
+			return false
 		}
-		response.Deadline = deadline
+		computeNodeID = device.ComputeNodeID
+		devices[device.ID] = struct{}{}
 	}
-	return response, nil
-}
-
-func capacityState(value fleet.CapacityState) (velav1.FleetCapacityState, bool) {
-	switch value {
-	case fleet.CapacityAdmittable:
-		return velav1.FleetCapacityState_FLEET_CAPACITY_STATE_ADMITTABLE, true
-	case fleet.CapacityScratchPressured:
-		return velav1.FleetCapacityState_FLEET_CAPACITY_STATE_SCRATCH_PRESSURED, true
-	case fleet.CapacityScratchCritical:
-		return velav1.FleetCapacityState_FLEET_CAPACITY_STATE_SCRATCH_CRITICAL, true
-	case fleet.CapacityStorageUnavailable:
-		return velav1.FleetCapacityState_FLEET_CAPACITY_STATE_STORAGE_UNAVAILABLE, true
-	case fleet.CapacityMultipleBlockers:
-		return velav1.FleetCapacityState_FLEET_CAPACITY_STATE_MULTIPLE_BLOCKERS, true
-	default:
-		return velav1.FleetCapacityState_FLEET_CAPACITY_STATE_UNSPECIFIED, false
+	for _, member := range evidence.Members {
+		if member.ComputeNodeID != computeNodeID || len(member.DeviceIDs) == 0 {
+			return false
+		}
+		for _, deviceID := range member.DeviceIDs {
+			if _, ok := devices[deviceID]; !ok {
+				return false
+			}
+		}
 	}
-}
-
-func readinessState(value fleet.ReadinessState) (velav1.FleetReadinessState, bool) {
-	switch value {
-	case fleet.ReadinessChecking:
-		return velav1.FleetReadinessState_FLEET_READINESS_STATE_CHECKING, true
-	case fleet.ReadinessReady:
-		return velav1.FleetReadinessState_FLEET_READINESS_STATE_READY, true
-	case fleet.ReadinessFailed:
-		return velav1.FleetReadinessState_FLEET_READINESS_STATE_FAILED, true
-	case fleet.ReadinessExpired:
-		return velav1.FleetReadinessState_FLEET_READINESS_STATE_EXPIRED, true
-	default:
-		return velav1.FleetReadinessState_FLEET_READINESS_STATE_UNSPECIFIED, false
-	}
-}
-
-func readinessCheck(value fleet.ReadinessCheck) (velav1.FleetReadinessCheck, bool) {
-	switch value {
-	case fleet.ReadinessIdentity:
-		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_IDENTITY, true
-	case fleet.ReadinessDevice:
-		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_DEVICE, true
-	case fleet.ReadinessInferenceBackend:
-		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_INFERENCE_BACKEND, true
-	case fleet.ReadinessModelWarmup:
-		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_MODEL_WARMUP, true
-	case fleet.ReadinessCanary:
-		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_CANARY, true
-	default:
-		return velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_UNSPECIFIED, false
-	}
-}
-
-func readinessCheckFromProto(value velav1.FleetReadinessCheck) (fleet.ReadinessCheck, bool) {
-	switch value {
-	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_IDENTITY:
-		return fleet.ReadinessIdentity, true
-	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_DEVICE:
-		return fleet.ReadinessDevice, true
-	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_INFERENCE_BACKEND:
-		return fleet.ReadinessInferenceBackend, true
-	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_MODEL_WARMUP:
-		return fleet.ReadinessModelWarmup, true
-	case velav1.FleetReadinessCheck_FLEET_READINESS_CHECK_CANARY:
-		return fleet.ReadinessCanary, true
-	default:
-		return "", false
-	}
-}
-
-func drainState(value fleet.DrainState) (velav1.FleetDrainState, bool) {
-	switch value {
-	case fleet.DrainDraining:
-		return velav1.FleetDrainState_FLEET_DRAIN_STATE_DRAINING, true
-	case fleet.DrainComplete:
-		return velav1.FleetDrainState_FLEET_DRAIN_STATE_COMPLETE, true
-	case fleet.DrainExpired:
-		return velav1.FleetDrainState_FLEET_DRAIN_STATE_EXPIRED, true
-	default:
-		return velav1.FleetDrainState_FLEET_DRAIN_STATE_UNSPECIFIED, false
-	}
-}
-
-func workerLifecycle(value string) (velav1.FleetWorkerLifecycle, bool) {
-	switch value {
-	case "REGISTERING":
-		return velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_REGISTERING, true
-	case "WARMING":
-		return velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_WARMING, true
-	case "READY":
-		return velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_READY, true
-	case "BUSY":
-		return velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_BUSY, true
-	case "DRAINING":
-		return velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_DRAINING, true
-	case "RECOVERING":
-		return velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_RECOVERING, true
-	case "QUARANTINED":
-		return velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_QUARANTINED, true
-	default:
-		return velav1.FleetWorkerLifecycle_FLEET_WORKER_LIFECYCLE_UNSPECIFIED, false
-	}
-}
-
-func workerReachability(value string) (velav1.FleetWorkerReachability, bool) {
-	switch value {
-	case "HEALTHY":
-		return velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_HEALTHY, true
-	case "SUSPECT":
-		return velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_SUSPECT, true
-	case "OFFLINE":
-		return velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_OFFLINE, true
-	default:
-		return velav1.FleetWorkerReachability_FLEET_WORKER_REACHABILITY_UNSPECIFIED, false
-	}
-}
-
-func invalidAuthoritativeResult(name string) error {
-	return status.Error(codes.Internal, "authoritative "+name+" result is invalid")
-}
-
-func protectedResourceKindFromProto(
-	value velav1.FleetProtectedResourceKind,
-) (fleet.ProtectedResourceKind, bool) {
-	switch value {
-	case velav1.FleetProtectedResourceKind_FLEET_PROTECTED_RESOURCE_KIND_POD:
-		return fleet.ProtectedPod, true
-	case velav1.FleetProtectedResourceKind_FLEET_PROTECTED_RESOURCE_KIND_DAEMONSET:
-		return fleet.ProtectedDaemonSet, true
-	case velav1.FleetProtectedResourceKind_FLEET_PROTECTED_RESOURCE_KIND_WORKER_POOL:
-		return fleet.ProtectedWorkerPool, true
-	default:
-		return "", false
-	}
+	return true
 }
 
 func mutationOperationFromProto(
@@ -817,10 +376,6 @@ func mutationOperationFromProto(
 	switch value {
 	case velav1.FleetMutationOperation_FLEET_MUTATION_OPERATION_DELETE:
 		return fleet.MutationDelete, true
-	case velav1.FleetMutationOperation_FLEET_MUTATION_OPERATION_PATCH_SELECTOR:
-		return fleet.MutationPatchSelector, true
-	case velav1.FleetMutationOperation_FLEET_MUTATION_OPERATION_PATCH_IMAGE:
-		return fleet.MutationPatchImage, true
 	case velav1.FleetMutationOperation_FLEET_MUTATION_OPERATION_REMOVE_FINALIZER:
 		return fleet.MutationRemoveFinalizer, true
 	default:
@@ -834,48 +389,6 @@ func parseUUID(value string) (uuid.UUID, error) {
 		return uuid.Nil, errors.New("UUID is invalid")
 	}
 	return parsed, nil
-}
-
-func parseOptionalUUID(value string) (uuid.UUID, error) {
-	if value == "" {
-		return uuid.Nil, nil
-	}
-	return parseUUID(value)
-}
-
-func parseDistinctUUIDs(values []string) ([]uuid.UUID, error) {
-	parsed := make([]uuid.UUID, 0, len(values))
-	seen := make(map[uuid.UUID]struct{}, len(values))
-	for _, value := range values {
-		id, err := parseUUID(value)
-		if err != nil {
-			return nil, err
-		}
-		if _, exists := seen[id]; exists {
-			return nil, errors.New("UUID is duplicated")
-		}
-		seen[id] = struct{}{}
-		parsed = append(parsed, id)
-	}
-	return parsed, nil
-}
-
-func boundedDeadline(value *timestamppb.Timestamp, now time.Time) (time.Time, error) {
-	deadline, err := absoluteDeadline(value)
-	if err != nil {
-		return time.Time{}, errors.New("deadline is invalid")
-	}
-	if !deadline.After(now) || deadline.After(now.Add(maximumDeadline)) {
-		return time.Time{}, errors.New("deadline is outside the allowed window")
-	}
-	return deadline, nil
-}
-
-func absoluteDeadline(value *timestamppb.Timestamp) (time.Time, error) {
-	if value == nil || !value.IsValid() {
-		return time.Time{}, errors.New("deadline is invalid")
-	}
-	return value.AsTime().UTC(), nil
 }
 
 func validSPIFFEIdentity(value string) bool {
@@ -893,6 +406,10 @@ func validText(value string, maximum int) bool {
 
 func invalidRequest(operation string) error {
 	return status.Error(codes.InvalidArgument, "Fleet "+operation+" request is invalid")
+}
+
+func invalidAuthoritativeResult(name string) error {
+	return status.Error(codes.Internal, "authoritative "+name+" result is invalid")
 }
 
 func mapServiceError(operation string, err error) error {

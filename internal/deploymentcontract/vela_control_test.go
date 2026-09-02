@@ -115,10 +115,10 @@ func TestVelaControlDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	requireVelaControlResources(t, control)
 	requireVelaControlPort(t, control, "http", 8080)
 	requireVelaControlPort(t, control, "management", 8081)
-	requireVelaControlPort(t, control, "worker-grpc", 8443)
 	requireVelaControlPort(t, control, "fleet-grpc", 8444)
 	requireVelaControlPort(t, control, "finance-https", 8445)
 	requireVelaControlPort(t, control, "compliance-https", 8446)
+	requireVelaControlPort(t, control, "stage-wkr-grpc", 8447)
 	for name, probe := range map[string]*corev1.Probe{
 		"startup": control.StartupProbe, "readiness": control.ReadinessProbe,
 		"liveness": control.LivenessProbe,
@@ -181,6 +181,8 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	}
 	wantPodBound := map[string]string{
 		"VELA_SCHEDULER_ID":                     "scheduler/$(VELA_POD_UID)",
+		"VELA_ATTEMPT_COORDINATOR_ID":           "attempt-coordinator/$(VELA_POD_UID)",
+		"VELA_STAGE_SCHEDULER_ID":               "stage-scheduler/$(VELA_POD_UID)",
 		"VELA_ARTIFACT_RECONCILER_ID":           "artifact-reconciler/$(VELA_POD_UID)",
 		"VELA_RETENTION_RECONCILER_ID":          "retention-reconciler/$(VELA_POD_UID)",
 		"VELA_NON_CONTENT_EXPIRY_RECONCILER_ID": "non-content-expiry/$(VELA_POD_UID)",
@@ -223,6 +225,7 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	for _, name := range []string{
 		"node-agent-config", "control-transport-tls", "privileged-http-tls", "nats-client",
 		"artifact-credentials", "keyrings", "invoice-export", "remediation-client-tls",
+		"stage-worker-identity", "h3-exact-cache-keyring",
 	} {
 		if !hasVelaControlVolumeMount(materializer.VolumeMounts, name) {
 			t.Fatalf("vela-control materializer is missing source mount %q", name)
@@ -325,8 +328,8 @@ func TestVelaControlPublishesFiveSinglePurposeServices(t *testing.T) {
 		appProtocol string
 	}{
 		"vela-api":                    {port: 80, target: "http", appProtocol: "http"},
-		"vela-worker-control":         {port: 8443, target: "worker-grpc", appProtocol: "grpc"},
 		"vela-control":                {port: 8444, target: "fleet-grpc", appProtocol: "grpc"},
+		"vela-stage-worker-control":   {port: 8447, target: "stage-wkr-grpc", appProtocol: "grpc"},
 		"vela-finance-reconciliation": {port: 8445, target: "finance-https", appProtocol: "https"},
 		"vela-compliance":             {port: 8446, target: "compliance-https", appProtocol: "https"},
 	}
@@ -354,13 +357,31 @@ func TestVelaControlPublishesFiveSinglePurposeServices(t *testing.T) {
 
 func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 	policies := loadVelaControlNetworkPolicies(t)
-	if len(policies) != 7 {
+	if len(policies) != 8 {
 		t.Fatalf("vela-control NetworkPolicies = %#v", policies)
 	}
 	defaultDeny, ok := policies["vela-control-default-deny-ingress"]
 	if !ok || !reflect.DeepEqual(defaultDeny.Spec.PolicyTypes, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}) ||
 		len(defaultDeny.Spec.Ingress) != 0 {
 		t.Fatalf("vela-control default deny ingress = %#v", defaultDeny)
+	}
+	nodeAgent, ok := policies["vela-control-allow-node-agent-placeholder"]
+	if !ok || nodeAgent.Annotations["vela.ai/release-placeholder"] != "replace-entire-resource" ||
+		!reflect.DeepEqual(nodeAgent.Spec.PodSelector.MatchLabels, map[string]string{"app.kubernetes.io/name": "vela-control"}) ||
+		!reflect.DeepEqual(nodeAgent.Spec.PolicyTypes, []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}) ||
+		len(nodeAgent.Spec.Ingress) != 1 || len(nodeAgent.Spec.Ingress[0].From) != 1 ||
+		len(nodeAgent.Spec.Ingress[0].Ports) != 1 ||
+		nodeAgent.Spec.Ingress[0].From[0].IPBlock == nil ||
+		nodeAgent.Spec.Ingress[0].From[0].IPBlock.CIDR != "192.0.2.0/32" ||
+		len(nodeAgent.Spec.Ingress[0].From[0].IPBlock.Except) != 0 ||
+		nodeAgent.Spec.Ingress[0].From[0].NamespaceSelector != nil ||
+		nodeAgent.Spec.Ingress[0].From[0].PodSelector != nil {
+		t.Fatalf("vela-control Node Agent placeholder ingress = %#v", nodeAgent)
+	}
+	nodeAgentPort := nodeAgent.Spec.Ingress[0].Ports[0]
+	if nodeAgentPort.Protocol == nil || *nodeAgentPort.Protocol != corev1.ProtocolTCP ||
+		nodeAgentPort.Port == nil || nodeAgentPort.Port.IntValue() != 8444 {
+		t.Fatalf("vela-control Node Agent placeholder port = %#v", nodeAgentPort)
 	}
 	want := map[string]struct {
 		port            int
@@ -372,15 +393,15 @@ func TestVelaControlIngressIsDefaultDeniedAndIdentitySeparated(t *testing.T) {
 			namespaceLabels: map[string]string{"vela.ai/network-role": "api-ingress"},
 			podLabels:       map[string]string{"vela.ai/client-role": "api-gateway"},
 		},
-		"vela-control-allow-worker": {
-			port:            8443,
-			namespaceLabels: map[string]string{"kubernetes.io/metadata.name": "vela-system"},
-			podLabels:       map[string]string{"app.kubernetes.io/name": "vela-h3-worker"},
-		},
 		"vela-control-allow-fleet": {
 			port:            8444,
 			namespaceLabels: map[string]string{"kubernetes.io/metadata.name": "vela-system"},
 			podLabels:       map[string]string{"app.kubernetes.io/name": "vela-fleet-controller"},
+		},
+		"vela-control-allow-stage-worker": {
+			port:            8447,
+			namespaceLabels: map[string]string{"kubernetes.io/metadata.name": "vela-system"},
+			podLabels:       map[string]string{"app.kubernetes.io/name": "vela-stage-worker"},
 		},
 		"vela-control-allow-finance": {
 			port:            8445,
@@ -447,6 +468,7 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 	wantEnvironment := map[string][]string{
 		"vela-control-database-urls-r0-placeholder": {
 			"VELA_ARTIFACT_REPLICATION_DATABASE_URL", "VELA_ARTIFACT_REQUEST_DATABASE_URL",
+			"VELA_ATTEMPT_COORDINATOR_DATABASE_URL",
 			"VELA_AUTH_DATABASE_URL", "VELA_BACKUP_RETENTION_DATABASE_URL", "VELA_BILLING_DATABASE_URL",
 			"VELA_BREAK_GLASS_AUDIT_DATABASE_URL", "VELA_BREAK_GLASS_REQUEST_DATABASE_URL",
 			"VELA_CANCEL_DATABASE_URL", "VELA_COMPLIANCE_DATABASE_URL",
@@ -458,7 +480,8 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 			"VELA_ORGANIZATION_AUDIT_REQUEST_DATABASE_URL", "VELA_ORGANIZATION_BILLING_REQUEST_DATABASE_URL",
 			"VELA_PLATFORM_OPERATOR_AUTH_DATABASE_URL", "VELA_REMEDIATION_DATABASE_URL",
 			"VELA_REQUEST_DATABASE_URL", "VELA_RETENTION_DATABASE_URL", "VELA_RETENTION_REQUEST_DATABASE_URL",
-			"VELA_SCHEDULER_DATABASE_URL", "VELA_SCHEDULER_INBOX_DATABASE_URL",
+			"VELA_STAGE_SCHEDULER_DATABASE_URL", "VELA_STAGE_ARTIFACT_DATABASE_URL",
+			"VELA_STAGE_WORKER_CONTROL_DATABASE_URL",
 			"VELA_WEBHOOK_DATABASE_URL", "VELA_WEBHOOK_REQUEST_DATABASE_URL",
 		},
 		"vela-control-credential-pepper-r0-placeholder": {"VELA_CREDENTIAL_PEPPER_BASE64"},
@@ -466,8 +489,9 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 	wantFiles := map[string][]string{
 		"vela-control-transport-tls-r0-placeholder": {
 			"fleet-client-ca.crt", "fleet-tls.crt", "fleet-tls.key",
-			"worker-client-ca.crt", "worker-tls.crt", "worker-tls.key",
+			"stage-worker-client-ca.crt", "stage-worker-tls.crt", "stage-worker-tls.key",
 		},
+		"vela-control-stage-worker-identity-r0-placeholder": {"identity-key"},
 		"vela-control-privileged-http-tls-r0-placeholder": {
 			"compliance-client-ca.crt", "compliance-tls.crt", "compliance-tls.key",
 			"finance-client-ca.crt", "finance-tls.crt", "finance-tls.key",
@@ -480,6 +504,7 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 			"replication-source-access-key-id", "replication-source-secret-access-key",
 		},
 		"vela-control-keyrings-r0-placeholder":               {"lease.json", "webhook.json"},
+		"vela-control-h3-exact-cache-keyring-r0-placeholder": {"projects.json"},
 		"vela-control-invoice-export-r0-placeholder":         {"bearer-token"},
 		"vela-control-remediation-client-tls-r0-placeholder": {"ca.crt", "tls.crt", "tls.key"},
 	}

@@ -495,6 +495,7 @@ func TestCatalogPromotionRequiresSealedThreePresetEvidence(t *testing.T) {
 	`, uuid.New())
 	assertCatalogDatabaseError(t, err, "42501", "", "direct receipt insert")
 
+	activateH3StageGraph(t, database)
 	server := admissionServerForDatabase(t, database)
 	accepted := submitJob(t, server.URL, "evidenced-catalog-admission", []byte(`{
 		"model":"minimax-h3",
@@ -756,7 +757,7 @@ func TestCatalogPromotionMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testin
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 32)
 		if err := goose.DownTo(database.Admin, migrations, 31); err != nil {
 			t.Fatalf("migrate empty Catalog Promotion schema down: %v", err)
 		}
@@ -797,7 +798,7 @@ func TestCatalogPromotionMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testin
 
 	t.Run("durable evidence refuses Down", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 32)
 		promotion := newRolePool(
 			t,
 			database.DSN,
@@ -826,7 +827,7 @@ func TestCatalogPromotionMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testin
 
 func TestCurrentCatalogPromoterFailsClosedAgainstSchema31(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 32)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 31); err != nil {
 		t.Fatalf("contract Catalog Promotion schema before current promoter probe: %v", err)
@@ -851,12 +852,29 @@ const (
 	testInferenceBackendRevisionID = "35000000-0000-0000-0000-000000000001"
 )
 
+func catalogExecutionProfilePlacement(
+	t *testing.T,
+	database testDatabase,
+) (string, uuid.UUID, bool) {
+	t.Helper()
+	var stageCatalogPresent bool
+	if err := database.Admin.QueryRow(`
+		SELECT to_regclass('public.execution_graph_revisions') IS NOT NULL
+	`).Scan(&stageCatalogPresent); err != nil {
+		t.Fatalf("inspect ExecutionProfile placement schema: %v", err)
+	}
+	if stageCatalogPresent {
+		return "execution_graph_revision_id", uuid.MustParse(stageGraphID), true
+	}
+	return "worker_pool_id", uuid.MustParse("00000000-0000-0000-0000-000000000005"), false
+}
+
 func prepareCatalogTransition(
 	t *testing.T,
 ) (testDatabase, *pgxpool.Pool, uuid.UUID) {
 	t.Helper()
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 32)
 	seedAdmissionFixture(t, database.Admin)
 	seedThreePresetCatalog(t, database)
 	promotion := newRolePool(
@@ -873,6 +891,19 @@ func prepareCatalogTransition(
 
 func seedThreePresetCatalog(t *testing.T, database testDatabase) {
 	t.Helper()
+	placementColumn, placementID, stageCatalogPresent :=
+		catalogExecutionProfilePlacement(t, database)
+	if stageCatalogPresent {
+		seedStageExecutionCatalog(t, database.Admin)
+		if _, err := database.Admin.Exec(`
+			UPDATE execution_profile_revisions
+			SET state = 'CANARY'
+			WHERE id = $1
+		`, graphExecutionProfileID); err != nil {
+			t.Fatalf("canary balanced Stage ExecutionProfile: %v", err)
+		}
+		seedH3ProfileCertification(t, database.Admin)
+	}
 	transaction, err := database.Admin.Begin()
 	if err != nil {
 		t.Fatalf("begin three-Preset Catalog fixture: %v", err)
@@ -895,15 +926,18 @@ func seedThreePresetCatalog(t *testing.T, database testDatabase) {
 	`, uuid.MustParse("00000000-0000-0000-0000-000000000010")); err != nil {
 		t.Fatalf("seed GenerationPresetRevisions: %v", err)
 	}
-	if _, err := transaction.Exec(`
+	if _, err := transaction.Exec(fmt.Sprintf(`
 		INSERT INTO execution_profile_revisions (
-			id, model_revision_id, worker_pool_id, stable_id, revision, state
+			id, model_revision_id, %s,
+			stable_id, revision, state
 		) VALUES
-			('35000000-0000-0000-0000-000000000012', $1, $2, 'h3-quality', 1, 'CANARY'),
-			('35000000-0000-0000-0000-000000000022', $1, $2, 'h3-fast', 1, 'CANARY')
-	`,
+			('35000000-0000-0000-0000-000000000012', $1, $2,
+			 'h3-quality', 1, 'CANARY'),
+			('35000000-0000-0000-0000-000000000022', $1, $2,
+			 'h3-fast', 1, 'CANARY')
+	`, placementColumn),
 		uuid.MustParse("00000000-0000-0000-0000-000000000010"),
-		uuid.MustParse("00000000-0000-0000-0000-000000000005"),
+		placementID,
 	); err != nil {
 		t.Fatalf("seed ExecutionProfileRevisions: %v", err)
 	}
@@ -951,19 +985,24 @@ func seedThreePresetCatalog(t *testing.T, database testDatabase) {
 
 func seedSubsequentCatalogRelease(t *testing.T, database testDatabase) {
 	t.Helper()
-	if _, err := database.Admin.Exec(`
+	placementColumn, placementID, _ := catalogExecutionProfilePlacement(t, database)
+	if _, err := database.Admin.Exec(fmt.Sprintf(`
 		INSERT INTO execution_profile_revisions (
-			id, model_revision_id, worker_pool_id, stable_id, revision, state
+			id, model_revision_id, %s,
+			stable_id, revision, state
 		) VALUES
 			('36000000-0000-0000-0000-000000000012',
 			 '00000000-0000-0000-0000-000000000010',
-			 '00000000-0000-0000-0000-000000000005', 'h3-balanced-release-2', 1, 'CANARY'),
+			 '%s',
+			 'h3-balanced-release-2', 1, 'CANARY'),
 			('36000000-0000-0000-0000-000000000022',
 			 '00000000-0000-0000-0000-000000000010',
-			 '00000000-0000-0000-0000-000000000005', 'h3-quality-release-2', 1, 'CANARY'),
+			 '%s',
+			 'h3-quality-release-2', 1, 'CANARY'),
 			('36000000-0000-0000-0000-000000000032',
 			 '00000000-0000-0000-0000-000000000010',
-			 '00000000-0000-0000-0000-000000000005', 'h3-fast-release-2', 1, 'CANARY');
+			 '%s',
+			 'h3-fast-release-2', 1, 'CANARY');
 
 		INSERT INTO profile_certifications (
 			id, model_revision_id, generation_preset_revision_id, output_spec_id,
@@ -1016,14 +1055,15 @@ func seedSubsequentCatalogRelease(t *testing.T, database testDatabase) {
 			 '35000000-0000-0000-0000-000000000021',
 			 '00000000-0000-0000-0000-000000000012',
 			 '00000000-0000-0000-0000-000000000013', 850, 'CNY');
-	`); err != nil {
+	`, placementColumn, placementID, placementID, placementID)); err != nil {
 		t.Fatalf("seed subsequent Catalog release: %v", err)
 	}
 }
 
 func seedDuplicateQualityPreset(t *testing.T, database testDatabase) {
 	t.Helper()
-	if _, err := database.Admin.Exec(`
+	placementColumn, placementID, _ := catalogExecutionProfilePlacement(t, database)
+	if _, err := database.Admin.Exec(fmt.Sprintf(`
 		INSERT INTO generation_preset_revisions (
 			id, model_revision_id, stable_id, revision, state,
 			certified_p95_compute_seconds
@@ -1033,11 +1073,12 @@ func seedDuplicateQualityPreset(t *testing.T, database testDatabase) {
 			'quality', 2, 'CANARY', 2300
 		);
 		INSERT INTO execution_profile_revisions (
-			id, model_revision_id, worker_pool_id, stable_id, revision, state
+			id, model_revision_id, %s,
+			stable_id, revision, state
 		) VALUES (
 			'37000000-0000-0000-0000-000000000012',
 			'00000000-0000-0000-0000-000000000010',
-			'00000000-0000-0000-0000-000000000005',
+			'%s',
 			'h3-quality-duplicate', 1, 'CANARY'
 		);
 		INSERT INTO profile_certifications (
@@ -1063,7 +1104,7 @@ func seedDuplicateQualityPreset(t *testing.T, database testDatabase) {
 			'00000000-0000-0000-0000-000000000012',
 			'00000000-0000-0000-0000-000000000013', 2100, 'CNY'
 		);
-	`); err != nil {
+	`, placementColumn, placementID)); err != nil {
 		t.Fatalf("seed duplicate quality Preset revision: %v", err)
 	}
 }
@@ -1437,6 +1478,10 @@ func catalogWriteTypedEvidenceArtifacts(
 	kinds []string,
 ) {
 	t.Helper()
+	var faultPayloads map[string]*productiongates.StateEventFaultArtifact
+	if evidence.Gate == productiongates.GateStateEventFaultInjection {
+		faultPayloads = catalogStateEventFaultArtifactFixtures(evidence)
+	}
 	payloads := make([]productiongates.TypedEvidenceArtifact, len(kinds))
 	for index, kind := range kinds {
 		payloads[index] = productiongates.TypedEvidenceArtifact{
@@ -1461,6 +1506,9 @@ func catalogWriteTypedEvidenceArtifacts(
 		if evidence.Gate == productiongates.GatePresetCertification {
 			payloads[index].PresetCertification = evidence.PresetCertification
 		}
+		if evidence.Gate == productiongates.GateStateEventFaultInjection {
+			payloads[index].StateEventFault = faultPayloads[payloads[index].Kind]
+		}
 		content, err := json.Marshal(payloads[index])
 		if err != nil {
 			t.Fatalf("encode Catalog %s/%s artifact: %v", evidence.Gate, payloads[index].Kind, err)
@@ -1476,6 +1524,114 @@ func catalogWriteTypedEvidenceArtifacts(
 		evidence.Artifacts = append(evidence.Artifacts, productiongates.EvidenceArtifact{
 			Kind: payloads[index].Kind, Ref: ref, Digest: sloevidence.Digest(content),
 		})
+	}
+}
+
+func catalogStateEventFaultArtifactFixtures(
+	evidence *productiongates.TypedEvidence,
+) map[string]*productiongates.StateEventFaultArtifact {
+	matrix := &productiongates.StateEventFaultArtifact{
+		SourceManifestDigest: catalogReleaseDigest("fault-manifest"),
+	}
+	authorities := &productiongates.StateEventFaultArtifact{
+		SourceManifestDigest: matrix.SourceManifestDigest,
+	}
+	events := &productiongates.StateEventFaultArtifact{
+		SourceManifestDigest: matrix.SourceManifestDigest,
+	}
+	contract, _ := productiongates.TypedEvidenceContractForGate(
+		productiongates.GateStateEventFaultInjection,
+	)
+	for index, scenarioID := range contract.CheckIDs {
+		scenarioContract, _ := productiongates.StateEventFaultScenarioContractForID(scenarioID)
+		startedAt := evidence.StartedAt.Add(time.Duration(index) * time.Second)
+		completedAt := startedAt.Add(900 * time.Millisecond)
+		jobID := uuid.New()
+		triggerEventID := uuid.New()
+		triggerPayload := json.RawMessage(`{"kind":"fault-trigger"}`)
+		jobPayload := json.RawMessage(`{"kind":"job-terminal"}`)
+		source := productiongates.StateEventFaultReceiptBinding{
+			Scenario: scenarioID, ReceiptRef: "receipts/" + scenarioID + ".json",
+			ReceiptDigest: catalogReleaseDigest("receipt-" + scenarioID),
+			ExerciseID:    uuid.New(), StartedAt: startedAt, CompletedAt: completedAt,
+			AcceptedJobIDs: []uuid.UUID{jobID},
+		}
+		matrix.Scenarios = append(matrix.Scenarios, productiongates.StateEventFaultScenario{
+			Source: source, ControllerIdentity: "spiffe://vela/test/fault-controller",
+			Target: productiongates.StateEventFaultTarget{
+				Kind: scenarioContract.TargetKinds[0], ID: "target-" + scenarioID,
+			},
+			FaultWindow: productiongates.StateEventFaultWindow{
+				Action: scenarioContract.Action, InjectionPoint: scenarioContract.InjectionPoint,
+				OpenedAt:            startedAt.Add(100 * time.Millisecond),
+				TriggeredAt:         startedAt.Add(200 * time.Millisecond),
+				RecoveryConfirmedAt: startedAt.Add(800 * time.Millisecond),
+				TriggerEventID:      triggerEventID,
+			},
+		})
+		authority := productiongates.StateEventFaultAuthority{
+			Source: source,
+			Before: productiongates.StateEventAuthorityObservation{
+				CapturedAt:             startedAt.Add(50 * time.Millisecond),
+				DatabaseSnapshotID:     "before-" + scenarioID,
+				JobLedgerDigest:        catalogReleaseDigest("job-before-" + scenarioID),
+				CompletionLedgerDigest: catalogReleaseDigest("completion-before-" + scenarioID),
+				ChargeLedgerDigest:     catalogReleaseDigest("charge-before-" + scenarioID),
+				AcceptedJobCount:       1,
+			},
+			After: productiongates.StateEventAuthorityObservation{
+				CapturedAt:             startedAt.Add(850 * time.Millisecond),
+				DatabaseSnapshotID:     "after-" + scenarioID,
+				JobLedgerDigest:        catalogReleaseDigest("job-after-" + scenarioID),
+				CompletionLedgerDigest: catalogReleaseDigest("completion-after-" + scenarioID),
+				ChargeLedgerDigest:     catalogReleaseDigest("charge-after-" + scenarioID),
+				AcceptedJobCount:       1, VisibleCompletionCount: 1, ChargeCount: 1,
+			},
+		}
+		if scenarioID == "stale-fence-late-completion" {
+			for _, probe := range []struct{ kind, reason string }{
+				{kind: "MEMBER_EPOCH", reason: "member-epoch-stale"},
+				{kind: "DEVICE_EPOCH", reason: "device-epoch-stale"},
+				{kind: "MODEL_RUNTIME_EPOCH", reason: "model-runtime-epoch-stale"},
+				{kind: "STAGE_LEASE", reason: "stage-lease-stale"},
+			} {
+				authority.StaleProbes = append(
+					authority.StaleProbes,
+					productiongates.StateEventStaleAuthorityProbe{
+						ID: uuid.New(), Kind: probe.kind, JobID: jobID, StageRunID: uuid.New(),
+						WorkerInstanceID:         uuid.New(),
+						PresentedAuthorityDigest: catalogReleaseDigest("presented-" + probe.kind),
+						CurrentAuthorityDigest:   catalogReleaseDigest("current-" + probe.kind),
+						Decision:                 "REJECTED", ReasonCode: probe.reason,
+						RejectedAt: startedAt.Add(400 * time.Millisecond),
+					},
+				)
+			}
+		}
+		authorities.Authorities = append(authorities.Authorities, authority)
+		events.RawEventSets = append(events.RawEventSets, productiongates.StateEventFaultRawEventSet{
+			Source: source,
+			Events: []productiongates.StateEventFaultRawEvent{
+				{
+					EventID: triggerEventID, AggregateType: "FaultExercise",
+					AggregateID: source.ExerciseID, AggregateVersion: 1,
+					EventType:     scenarioContract.TriggerEventType,
+					PayloadDigest: sloevidence.Digest(triggerPayload), Payload: triggerPayload,
+					PublishedCount: 1, ConsumedCount: 1,
+				},
+				{
+					EventID: uuid.New(), AggregateType: "Job", AggregateID: jobID,
+					AggregateVersion: 1, EventType: "job.succeeded",
+					PayloadDigest: sloevidence.Digest(jobPayload), Payload: jobPayload,
+					PublishedCount: 1, ConsumedCount: 1,
+				},
+			},
+		})
+	}
+	return map[string]*productiongates.StateEventFaultArtifact{
+		productiongates.FaultArtifactScenarioMatrix:       matrix,
+		productiongates.FaultArtifactAuthorityBeforeAfter: authorities,
+		productiongates.FaultArtifactRawEventPayloads:     events,
 	}
 }
 

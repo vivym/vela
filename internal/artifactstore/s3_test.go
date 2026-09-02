@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,43 @@ import (
 	"testing"
 	"time"
 )
+
+func TestS3UsesConfiguredPrivateRootCAWithoutDisablingTLSVerification(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodDelete {
+			t.Fatalf("private S3 request = %s %s", request.Method, request.URL.String())
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	rootCA := pem.EncodeToMemory(&pem.Block{
+		Type: "CERTIFICATE", Bytes: server.Certificate().Raw,
+	})
+	store, err := NewS3(S3Config{
+		Endpoint: server.URL, Region: "us-test-1", Bucket: "vela-artifacts",
+		AccessKeyID: "test-access-key", SecretAccessKey: "test-secret-key",
+		UsePathStyle: true, SignedGETTTL: 15 * time.Minute, RootCAPEM: rootCA,
+	})
+	if err != nil {
+		t.Fatalf("NewS3 with private root: %v", err)
+	}
+	if err := store.DeleteExactVersion(
+		context.Background(), "artifacts/stage/test/output.bin", "version-1",
+	); err != nil {
+		t.Fatalf("DeleteExactVersion through private TLS root: %v", err)
+	}
+}
+
+func TestS3RejectsMalformedConfiguredRootCA(t *testing.T) {
+	_, err := NewS3(S3Config{
+		Endpoint: "https://s3.example.com", Region: "us-test-1", Bucket: "vela-artifacts",
+		AccessKeyID: "test-access-key", SecretAccessKey: "test-secret-key",
+		UsePathStyle: true, SignedGETTTL: 15 * time.Minute, RootCAPEM: []byte("not a certificate"),
+	})
+	if err == nil {
+		t.Fatal("NewS3 accepted a malformed private root CA")
+	}
+}
 
 func TestDeleteExactVersionBindsObjectKeyAndVersion(t *testing.T) {
 	const (

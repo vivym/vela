@@ -14,12 +14,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/artifactreplication"
+	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/billingexport"
-	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/noncontentexpiry"
 	"github.com/vivym/vela/internal/retention"
-	"github.com/vivym/vela/internal/scheduler"
+	"github.com/vivym/vela/internal/stagecache"
+	"github.com/vivym/vela/internal/stagescheduler"
 	"github.com/vivym/vela/internal/webhook"
 )
 
@@ -33,8 +35,6 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Outbox workload account", missingEnv: "VELA_NATS_OUTBOX_ACCOUNT_PUBLIC_KEY"},
 		{name: "Outbox workload account signers", missingEnv: "VELA_NATS_OUTBOX_ACCOUNT_SIGNER_PUBLIC_KEYS"},
 		{name: "Outbox workload users", missingEnv: "VELA_NATS_OUTBOX_USER_PUBLIC_KEYS"},
-		{name: "Scheduler workload credentials", missingEnv: "VELA_NATS_SCHEDULER_CREDENTIALS_FILE"},
-		{name: "Scheduler workload users", missingEnv: "VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS"},
 		{name: "Human auth database", missingEnv: "VELA_HUMAN_AUTH_DATABASE_URL"},
 		{name: "Human membership auth database", missingEnv: "VELA_HUMAN_MEMBERSHIP_AUTH_DATABASE_URL"},
 		{name: "identity request database", missingEnv: "VELA_IDENTITY_REQUEST_DATABASE_URL"},
@@ -61,9 +61,16 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Platform OIDC issuer", missingEnv: "VELA_PLATFORM_OIDC_ISSUER"},
 		{name: "Platform OIDC audience", missingEnv: "VELA_PLATFORM_OIDC_AUDIENCE"},
 		{name: "Platform OIDC JWKS URL", missingEnv: "VELA_PLATFORM_OIDC_JWKS_URL"},
-		{name: "Scheduler database", missingEnv: "VELA_SCHEDULER_DATABASE_URL"},
-		{name: "Scheduler Inbox database", missingEnv: "VELA_SCHEDULER_INBOX_DATABASE_URL"},
-		{name: "Scheduler identity", missingEnv: "VELA_SCHEDULER_ID"},
+		{name: "AttemptCoordinator database", missingEnv: "VELA_ATTEMPT_COORDINATOR_DATABASE_URL"},
+		{name: "AttemptCoordinator identity", missingEnv: "VELA_ATTEMPT_COORDINATOR_ID"},
+		{name: "StageScheduler database", missingEnv: "VELA_STAGE_SCHEDULER_DATABASE_URL"},
+		{name: "StageScheduler identity", missingEnv: "VELA_STAGE_SCHEDULER_ID"},
+		{name: "StageArtifact database", missingEnv: "VELA_STAGE_ARTIFACT_DATABASE_URL"},
+		{name: "StageWorkerControl database", missingEnv: "VELA_STAGE_WORKER_CONTROL_DATABASE_URL"},
+		{name: "StageWorkerControl identity key", missingEnv: "VELA_STAGE_WORKER_IDENTITY_KEY_FILE"},
+		{name: "StageWorkerControl server certificate", missingEnv: "VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE"},
+		{name: "StageWorkerControl server key", missingEnv: "VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE"},
+		{name: "StageWorkerControl client CA", missingEnv: "VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE"},
 		{name: "billing database", missingEnv: "VELA_BILLING_DATABASE_URL"},
 		{name: "Finance Reconciliation database", missingEnv: "VELA_FINANCE_RECONCILIATION_DATABASE_URL"},
 		{name: "Finance Reconciliation address", missingEnv: "VELA_FINANCE_RECONCILIATION_ADDR"},
@@ -111,10 +118,7 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 		{name: "Artifact spool", missingEnv: "VELA_ARTIFACT_SPOOL_DIRECTORY"},
 		{name: "ffprobe version", missingEnv: "VELA_ARTIFACT_FFPROBE_VERSION"},
 		{name: "Artifact validator revision", missingEnv: "VELA_ARTIFACT_VALIDATOR_REVISION"},
-		{name: "Artifact Reconciler identity", missingEnv: "VELA_ARTIFACT_RECONCILER_ID"},
-		{name: "Worker gRPC server certificate", missingEnv: "VELA_WORKER_GRPC_TLS_CERT_FILE"},
-		{name: "Worker gRPC server key", missingEnv: "VELA_WORKER_GRPC_TLS_KEY_FILE"},
-		{name: "Worker gRPC client CA", missingEnv: "VELA_WORKER_GRPC_CLIENT_CA_FILE"},
+		{name: "Stage Finalizer identity", missingEnv: "VELA_STAGE_FINALIZER_ID"},
 		{name: "Fleet database", missingEnv: "VELA_FLEET_DATABASE_URL"},
 		{name: "Fleet gRPC server certificate", missingEnv: "VELA_FLEET_GRPC_TLS_CERT_FILE"},
 		{name: "Fleet gRPC server key", missingEnv: "VELA_FLEET_GRPC_TLS_KEY_FILE"},
@@ -138,19 +142,38 @@ func TestLoadConfigRequiresNATSWorkloadCredentialsAndRootCA(t *testing.T) {
 func TestReadNodeAgentEndpointsRejectsWritableOrUnknownRegistry(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "node-agents.json")
-	valid := `{"node-1":{"address":"127.0.0.1:9443","server_name":"node-agent.internal","worker_id":"10000000-0000-0000-0000-000000000001","worker_epoch":7,"spiffe_identity":"spiffe://vela.internal/node-agent/bm9kZS0x/10000000-0000-0000-0000-000000000001"}}`
+	valid := `{"node-1":{"address":"127.0.0.1:9443","server_name":"node-agent.internal","agent_id":"10000000-0000-0000-0000-000000000001","agent_epoch":7,"spiffe_identity":"spiffe://vela.internal/node-agent/bm9kZS0x/10000000-0000-0000-0000-000000000001"}}`
 	if err := os.WriteFile(path, []byte(valid), 0o600); err != nil {
 		t.Fatalf("write endpoint registry: %v", err)
 	}
-	if endpoints, err := readNodeAgentEndpoints(path); err != nil || len(endpoints) != 1 || endpoints["node-1"].WorkerEpoch != 7 {
+	if endpoints, err := readNodeAgentEndpoints(path); err != nil || len(endpoints) != 1 || endpoints["node-1"].AgentEpoch != 7 {
 		t.Fatalf("read endpoint registry = %#v error=%v", endpoints, err)
 	}
-	unknown := strings.Replace(valid, `"worker_id"`, `"unknown":true,"worker_id"`, 1)
+	unknown := strings.Replace(valid, `"agent_id"`, `"unknown":true,"agent_id"`, 1)
 	if err := os.WriteFile(path, []byte(unknown), 0o600); err != nil {
 		t.Fatalf("write endpoint registry with unknown field: %v", err)
 	}
 	if _, err := readNodeAgentEndpoints(path); err == nil {
 		t.Fatal("unknown endpoint registry field was accepted")
+	}
+	duplicateRegistries := map[string]string{
+		"top-level Node identity": strings.TrimSuffix(valid, "}") + "," + strings.TrimPrefix(valid, "{"),
+		"nested endpoint field": strings.Replace(
+			valid,
+			`"agent_epoch":7`,
+			`"agent_epoch":7,"agent_epoch":8`,
+			1,
+		),
+	}
+	for name, duplicate := range duplicateRegistries {
+		t.Run("duplicate "+name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(duplicate), 0o600); err != nil {
+				t.Fatalf("write duplicate endpoint registry: %v", err)
+			}
+			if _, err := readNodeAgentEndpoints(path); err == nil {
+				t.Fatal("duplicate endpoint registry key was accepted")
+			}
+		})
 	}
 	if err := os.WriteFile(path, []byte(valid), 0o600); err != nil {
 		t.Fatalf("restore endpoint registry: %v", err)
@@ -237,9 +260,20 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_REMEDIATION_TLS_CERT_FILE", "/run/tls/remediation/client.crt")
 	t.Setenv("VELA_REMEDIATION_TLS_KEY_FILE", "/run/tls/remediation/client.key")
 	t.Setenv("VELA_REMEDIATION_TLS_ROOT_CA_FILE", "/run/tls/remediation/ca.crt")
-	t.Setenv("VELA_SCHEDULER_DATABASE_URL", "postgres://scheduler.example/vela")
-	t.Setenv("VELA_SCHEDULER_INBOX_DATABASE_URL", "postgres://scheduler-inbox.example/vela")
-	t.Setenv("VELA_SCHEDULER_ID", "vela-control-scheduler-1")
+	t.Setenv(
+		"VELA_ATTEMPT_COORDINATOR_DATABASE_URL",
+		"postgres://attempt-coordinator.example/vela",
+	)
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_ID", "vela-control-attempt-coordinator-1")
+	t.Setenv("VELA_STAGE_SCHEDULER_DATABASE_URL", "postgres://stage-scheduler.example/vela")
+	t.Setenv("VELA_STAGE_SCHEDULER_ID", "vela-control-stage-scheduler-1")
+	t.Setenv("VELA_STAGE_ARTIFACT_DATABASE_URL", "postgres://stage-artifact.example/vela")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_DATABASE_URL", "postgres://stage-worker-control.example/vela")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_ADDRESS", "127.0.0.1:8447")
+	t.Setenv("VELA_STAGE_WORKER_IDENTITY_KEY_FILE", "/run/secrets/stage-worker-identity-key")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_TLS_CERT_FILE", "/run/tls/stage-worker-control/tls.crt")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_TLS_KEY_FILE", "/run/tls/stage-worker-control/tls.key")
+	t.Setenv("VELA_STAGE_WORKER_CONTROL_CLIENT_CA_FILE", "/run/tls/stage-worker-control/client-ca.crt")
 	t.Setenv("VELA_BILLING_DATABASE_URL", "postgres://billing.example/vela")
 	t.Setenv(
 		"VELA_FINANCE_RECONCILIATION_DATABASE_URL",
@@ -286,11 +320,6 @@ func setValidConfigEnvironment(t *testing.T) {
 		"VELA_NATS_OUTBOX_USER_PUBLIC_KEYS",
 		"UD6QZ5NLFZEZLTEQDDBY5RKG6YCEY7QUET2HJHJ3MSQB5JEIOYXRUHDS",
 	)
-	t.Setenv("VELA_NATS_SCHEDULER_CREDENTIALS_FILE", "/run/secrets/vela-scheduler.creds")
-	t.Setenv(
-		"VELA_NATS_SCHEDULER_USER_PUBLIC_KEYS",
-		"UAWF3LT7L6HYUQF4YB7QTKGMBMTNHTL23W5EPJSGQ2AEVKXOJMLX5MQR",
-	)
 	t.Setenv("VELA_ARTIFACT_S3_ENDPOINT", "https://s3.example")
 	t.Setenv("VELA_ARTIFACT_S3_REGION", "us-east-1")
 	t.Setenv("VELA_ARTIFACT_S3_BUCKET", "vela-artifacts")
@@ -333,13 +362,7 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_ARTIFACT_SPOOL_DIRECTORY", "/var/lib/vela/spool")
 	t.Setenv("VELA_ARTIFACT_FFPROBE_VERSION", "8.0.1")
 	t.Setenv("VELA_ARTIFACT_VALIDATOR_REVISION", "ffprobe-8.0.1-sandbox-v1")
-	t.Setenv(
-		"VELA_ARTIFACT_RECONCILER_ID",
-		"spiffe://vela.internal/reconciler/artifact-finalization",
-	)
-	t.Setenv("VELA_WORKER_GRPC_TLS_CERT_FILE", "/run/tls/worker-control/tls.crt")
-	t.Setenv("VELA_WORKER_GRPC_TLS_KEY_FILE", "/run/tls/worker-control/tls.key")
-	t.Setenv("VELA_WORKER_GRPC_CLIENT_CA_FILE", "/run/tls/worker-control/client-ca.crt")
+	t.Setenv("VELA_STAGE_FINALIZER_ID", "spiffe://vela.internal/finalizer/stage-graph")
 	t.Setenv("VELA_FLEET_DATABASE_URL", "postgres://fleet.example/vela")
 	t.Setenv("VELA_FLEET_GRPC_ADDRESS", "127.0.0.1:8444")
 	t.Setenv("VELA_FLEET_GRPC_TLS_CERT_FILE", "/run/tls/fleet-control/tls.crt")
@@ -357,9 +380,15 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_PUBLISHER_TICK", "")
 	t.Setenv("VELA_REMEDIATION_TICK", "")
 	t.Setenv("VELA_REMEDIATION_BATCH_SIZE", "")
-	t.Setenv("VELA_SCHEDULER_TICK", "")
-	t.Setenv("VELA_SCHEDULER_CLAIM_TTL", "")
-	t.Setenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS", "")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_TICK", "")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_CLAIM_TTL", "")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_RETRY_DELAY", "")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_BATCH_SIZE", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_TICK", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_CLAIM_TTL", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_LEASE_TTL", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", "")
+	t.Setenv("VELA_STAGE_SCHEDULER_BATCH_SIZE", "")
 	t.Setenv("VELA_INVOICE_EXPORT_TICK", "")
 	t.Setenv("VELA_INVOICE_EXPORT_CLAIM_TTL", "")
 	t.Setenv("VELA_INVOICE_EXPORT_RETRY_DELAY", "")
@@ -369,6 +398,140 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "")
 	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "")
 	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_SEED_RNG_REVISION", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_TICK", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_BATCH_SIZE", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_CARRY_COST_MINOR", "")
+}
+
+func TestLoadConfigParsesOptionalH3ExactCacheControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load disabled H3 exact cache config: %v", err)
+	}
+	if configuration.h3ExactCacheProjectKeyringFile != "" ||
+		configuration.h3ExactCacheCanonicalizationRevisionID != uuid.Nil ||
+		configuration.h3ExactCacheTick != 500*time.Millisecond ||
+		configuration.h3ExactCacheBatchSize != 100 {
+		t.Fatalf("disabled H3 exact cache config = %#v", configuration)
+	}
+
+	t.Setenv("VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", "/run/secrets/h3-cache-projects.json")
+	t.Setenv(
+		"VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID",
+		"4a100000-0000-0000-0000-000000000001",
+	)
+	t.Setenv("VELA_H3_EXACT_CACHE_SEED_RNG_REVISION", "sglang-minimax-h3-philox-v1")
+	t.Setenv("VELA_H3_EXACT_CACHE_TICK", "2s")
+	t.Setenv("VELA_H3_EXACT_CACHE_BATCH_SIZE", "25")
+	t.Setenv("VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR", "50000")
+	t.Setenv("VELA_H3_EXACT_CACHE_CARRY_COST_MINOR", "300")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load enabled H3 exact cache config: %v", err)
+	}
+	if configuration.h3ExactCacheProjectKeyringFile != "/run/secrets/h3-cache-projects.json" ||
+		configuration.h3ExactCacheCanonicalizationRevisionID.String() !=
+			"4a100000-0000-0000-0000-000000000001" ||
+		configuration.h3ExactCacheSeedAndRNGRevision != "sglang-minimax-h3-philox-v1" ||
+		configuration.h3ExactCacheTick != 2*time.Second ||
+		configuration.h3ExactCacheBatchSize != 25 ||
+		configuration.h3ExactCacheExpectedSavedComputeMinor != 50_000 ||
+		configuration.h3ExactCacheCarryCostMinor != 300 {
+		t.Fatalf("enabled H3 exact cache config = %#v", configuration)
+	}
+}
+
+func TestLoadConfigRejectsPartialOrInvalidH3ExactCacheControls(t *testing.T) {
+	t.Run("parameter without keyring", func(t *testing.T) {
+		setValidConfigEnvironment(t)
+		t.Setenv("VELA_H3_EXACT_CACHE_TICK", "1s")
+		if _, err := loadConfig(); err == nil ||
+			!strings.Contains(err.Error(), "VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE") {
+			t.Fatalf("partial H3 exact cache config error = %v", err)
+		}
+	})
+	for _, test := range []struct {
+		name  string
+		env   string
+		value string
+	}{
+		{name: "relative keyring", env: "VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", value: "relative.json"},
+		{name: "invalid UUID", env: "VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID", value: "not-a-uuid"},
+		{name: "blank RNG revision", env: "VELA_H3_EXACT_CACHE_SEED_RNG_REVISION", value: " bad "},
+		{name: "zero tick", env: "VELA_H3_EXACT_CACHE_TICK", value: "0s"},
+		{name: "large batch", env: "VELA_H3_EXACT_CACHE_BATCH_SIZE", value: "1001"},
+		{name: "negative saved compute", env: "VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR", value: "-1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv("VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", "/run/secrets/h3-cache-projects.json")
+			t.Setenv(
+				"VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID",
+				"4a100000-0000-0000-0000-000000000001",
+			)
+			t.Setenv("VELA_H3_EXACT_CACHE_SEED_RNG_REVISION", "sglang-minimax-h3-philox-v1")
+			t.Setenv(test.env, test.value)
+			if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), test.env) {
+				t.Fatalf("invalid H3 exact cache config error = %v, want %s", err, test.env)
+			}
+		})
+	}
+}
+
+func TestReadH3ExactCacheProjectKeyringRequiresUUIDScopedStrongKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h3-cache-projects.json")
+	projectID := uuid.MustParse("4a100000-0000-0000-0000-000000000011")
+	strongKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	if err := os.WriteFile(
+		path,
+		[]byte(`{"`+projectID.String()+`":"`+strongKey+`"}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write H3 exact cache Project keyring: %v", err)
+	}
+	keyring, err := readH3ExactCacheProjectKeyring(path)
+	if err != nil {
+		t.Fatalf("read H3 exact cache Project keyring: %v", err)
+	}
+	if string(keyring[projectID]) != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("decoded H3 exact cache Project keyring = %#v", keyring)
+	}
+	clearProjectKeyring(keyring)
+
+	for _, document := range []string{
+		`{"not-a-project":"` + strongKey + `"}`,
+		`{"4A100000-0000-0000-0000-000000000011":"` + strongKey + `"}`,
+		`{"` + projectID.String() + `":"` + base64.StdEncoding.EncodeToString([]byte("short")) + `"}`,
+	} {
+		if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+			t.Fatalf("write invalid H3 exact cache Project keyring: %v", err)
+		}
+		if _, err := readH3ExactCacheProjectKeyring(path); err == nil {
+			t.Fatalf("readH3ExactCacheProjectKeyring accepted %q", document)
+		}
+	}
+}
+
+func TestLoadConfigPreservesIndependentStageWorkerControlBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load StageWorkerControl configuration: %v", err)
+	}
+	if configuration.stageArtifactDatabaseURL != "postgres://stage-artifact.example/vela" ||
+		configuration.stageWorkerControlDatabaseURL != "postgres://stage-worker-control.example/vela" ||
+		configuration.stageWorkerControlAddress != "127.0.0.1:8447" ||
+		configuration.stageWorkerIdentityKeyFile != "/run/secrets/stage-worker-identity-key" ||
+		configuration.stageWorkerControlTLSCertFile != "/run/tls/stage-worker-control/tls.crt" ||
+		configuration.stageWorkerControlTLSKeyFile != "/run/tls/stage-worker-control/tls.key" ||
+		configuration.stageWorkerControlClientCAFile != "/run/tls/stage-worker-control/client-ca.crt" {
+		t.Fatalf("StageWorkerControl configuration = %#v", configuration)
+	}
 }
 
 func TestLoadConfigParsesBoundedOutboxPublisherControls(t *testing.T) {
@@ -427,6 +590,132 @@ func TestLoadConfigPreservesIndependentFleetMaintenanceBoundary(t *testing.T) {
 			"spiffe://vela.internal/fleet-controller/primary" ||
 		configuration.fleetControllerActorIdentity != "fleet-controller/primary" {
 		t.Fatalf("Fleet maintenance configuration = %#v", configuration)
+	}
+}
+
+func TestLoadConfigPreservesIndependentStageSchedulerBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load StageScheduler configuration: %v", err)
+	}
+	if configuration.attemptCoordinatorDatabaseURL !=
+		"postgres://attempt-coordinator.example/vela" ||
+		configuration.stageSchedulerDatabaseURL != "postgres://stage-scheduler.example/vela" ||
+		configuration.stageSchedulerID != "vela-control-stage-scheduler-1" ||
+		configuration.stageSchedulerTick != 500*time.Millisecond ||
+		configuration.stageSchedulerClaimTTL != 30*time.Second ||
+		configuration.stageSchedulerLeaseTTL != 2*time.Minute ||
+		configuration.stageSchedulerLocalDeadlineTTL != 90*time.Second ||
+		configuration.stageSchedulerBatchSize != 100 {
+		t.Fatalf("StageScheduler configuration = %#v", configuration)
+	}
+
+	t.Setenv("VELA_STAGE_SCHEDULER_TICK", "250ms")
+	t.Setenv("VELA_STAGE_SCHEDULER_CLAIM_TTL", "20s")
+	t.Setenv("VELA_STAGE_SCHEDULER_LEASE_TTL", "3m")
+	t.Setenv("VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", "2m")
+	t.Setenv("VELA_STAGE_SCHEDULER_BATCH_SIZE", "25")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit StageScheduler configuration: %v", err)
+	}
+	if configuration.stageSchedulerTick != 250*time.Millisecond ||
+		configuration.stageSchedulerClaimTTL != 20*time.Second ||
+		configuration.stageSchedulerLeaseTTL != 3*time.Minute ||
+		configuration.stageSchedulerLocalDeadlineTTL != 2*time.Minute ||
+		configuration.stageSchedulerBatchSize != 25 {
+		t.Fatalf("explicit StageScheduler controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_STAGE_SCHEDULER_TICK", value: "0s"},
+		{env: "VELA_STAGE_SCHEDULER_TICK", value: "1m1s"},
+		{env: "VELA_STAGE_SCHEDULER_CLAIM_TTL", value: "0s"},
+		{env: "VELA_STAGE_SCHEDULER_CLAIM_TTL", value: "5m1s"},
+		{env: "VELA_STAGE_SCHEDULER_LEASE_TTL", value: "0s"},
+		{env: "VELA_STAGE_SCHEDULER_LEASE_TTL", value: "1h1s"},
+		{env: "VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", value: "0s"},
+		{env: "VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", value: "1h1s"},
+		{env: "VELA_STAGE_SCHEDULER_BATCH_SIZE", value: "0"},
+		{env: "VELA_STAGE_SCHEDULER_BATCH_SIZE", value: "1001"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil ||
+				!strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
+	}
+
+	setValidConfigEnvironment(t)
+	t.Setenv("VELA_STAGE_SCHEDULER_LEASE_TTL", "30s")
+	t.Setenv("VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL", "31s")
+	if _, err := loadConfig(); err == nil || !strings.Contains(
+		err.Error(),
+		"VELA_STAGE_SCHEDULER_LOCAL_DEADLINE_TTL must not exceed VELA_STAGE_SCHEDULER_LEASE_TTL",
+	) {
+		t.Fatalf("load invalid StageScheduler deadline ordering error = %v", err)
+	}
+}
+
+func TestLoadConfigPreservesAttemptCoordinatorAutomationBoundary(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load AttemptCoordinator configuration: %v", err)
+	}
+	if configuration.attemptCoordinatorDatabaseURL !=
+		"postgres://attempt-coordinator.example/vela" ||
+		configuration.attemptCoordinatorID != "vela-control-attempt-coordinator-1" ||
+		configuration.attemptCoordinatorTick != 500*time.Millisecond ||
+		configuration.attemptCoordinatorClaimTTL != 30*time.Second ||
+		configuration.attemptCoordinatorRetryDelay != time.Second ||
+		configuration.attemptCoordinatorBatchSize != 100 {
+		t.Fatalf("AttemptCoordinator configuration = %#v", configuration)
+	}
+
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_TICK", "250ms")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_CLAIM_TTL", "20s")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_RETRY_DELAY", "3s")
+	t.Setenv("VELA_ATTEMPT_COORDINATOR_BATCH_SIZE", "25")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load explicit AttemptCoordinator configuration: %v", err)
+	}
+	if configuration.attemptCoordinatorTick != 250*time.Millisecond ||
+		configuration.attemptCoordinatorClaimTTL != 20*time.Second ||
+		configuration.attemptCoordinatorRetryDelay != 3*time.Second ||
+		configuration.attemptCoordinatorBatchSize != 25 {
+		t.Fatalf("explicit AttemptCoordinator controls = %#v", configuration)
+	}
+
+	for _, test := range []struct {
+		env   string
+		value string
+	}{
+		{env: "VELA_ATTEMPT_COORDINATOR_TICK", value: "0s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_TICK", value: "1m1s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_CLAIM_TTL", value: "500ms"},
+		{env: "VELA_ATTEMPT_COORDINATOR_CLAIM_TTL", value: "5m1s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_RETRY_DELAY", value: "-1s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_RETRY_DELAY", value: "24h1s"},
+		{env: "VELA_ATTEMPT_COORDINATOR_BATCH_SIZE", value: "0"},
+		{env: "VELA_ATTEMPT_COORDINATOR_BATCH_SIZE", value: "1001"},
+	} {
+		t.Run(test.env+"="+test.value, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv(test.env, test.value)
+			if _, loadErr := loadConfig(); loadErr == nil ||
+				!strings.Contains(loadErr.Error(), test.env) {
+				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
+			}
+		})
 	}
 }
 
@@ -924,66 +1213,6 @@ func TestLoadConfigParsesBoundedInvoiceExportControls(t *testing.T) {
 	}
 }
 
-func TestLoadConfigParsesBoundedSchedulerControls(t *testing.T) {
-	setValidConfigEnvironment(t)
-	configuration, err := loadConfig()
-	if err != nil {
-		t.Fatalf("load default Scheduler config: %v", err)
-	}
-	if configuration.schedulerTick != 500*time.Millisecond ||
-		configuration.schedulerClaimTTL != 30*time.Second ||
-		configuration.schedulerCandidateAttempts != 5 ||
-		configuration.natsSchedulerCredentials != "/run/secrets/vela-scheduler.creds" ||
-		configuration.natsSchedulerUserPublicKeys !=
-			"UAWF3LT7L6HYUQF4YB7QTKGMBMTNHTL23W5EPJSGQ2AEVKXOJMLX5MQR" {
-		t.Fatalf(
-			"default Scheduler controls = tick %s claim TTL %s attempts %d",
-			configuration.schedulerTick,
-			configuration.schedulerClaimTTL,
-			configuration.schedulerCandidateAttempts,
-		)
-	}
-
-	t.Setenv("VELA_SCHEDULER_TICK", "125ms")
-	t.Setenv("VELA_SCHEDULER_CLAIM_TTL", "45s")
-	t.Setenv("VELA_SCHEDULER_CANDIDATE_ATTEMPTS", "7")
-	configuration, err = loadConfig()
-	if err != nil {
-		t.Fatalf("load explicit Scheduler config: %v", err)
-	}
-	if configuration.schedulerTick != 125*time.Millisecond ||
-		configuration.schedulerClaimTTL != 45*time.Second ||
-		configuration.schedulerCandidateAttempts != 7 {
-		t.Fatalf(
-			"explicit Scheduler controls = tick %s claim TTL %s attempts %d",
-			configuration.schedulerTick,
-			configuration.schedulerClaimTTL,
-			configuration.schedulerCandidateAttempts,
-		)
-	}
-
-	for _, test := range []struct {
-		name  string
-		env   string
-		value string
-	}{
-		{name: "zero tick", env: "VELA_SCHEDULER_TICK", value: "0s"},
-		{name: "oversized tick", env: "VELA_SCHEDULER_TICK", value: "1m1s"},
-		{name: "invalid claim TTL", env: "VELA_SCHEDULER_CLAIM_TTL", value: "invalid"},
-		{name: "oversized claim TTL", env: "VELA_SCHEDULER_CLAIM_TTL", value: "5m1s"},
-		{name: "zero attempts", env: "VELA_SCHEDULER_CANDIDATE_ATTEMPTS", value: "0"},
-		{name: "too many attempts", env: "VELA_SCHEDULER_CANDIDATE_ATTEMPTS", value: "21"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			setValidConfigEnvironment(t)
-			t.Setenv(test.env, test.value)
-			if _, loadErr := loadConfig(); loadErr == nil || !strings.Contains(loadErr.Error(), test.env) {
-				t.Fatalf("loadConfig error = %v, want bounded %s rejection", loadErr, test.env)
-			}
-		})
-	}
-}
-
 func TestReadLeaseKeyringRequiresOneStrictStrongKeyMap(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lease-keyring.json")
 	strongKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
@@ -1016,111 +1245,62 @@ func TestReadLeaseKeyringRequiresOneStrictStrongKeyMap(t *testing.T) {
 	}
 }
 
-func TestCancellationStopReconcilerRetriesAndStopsWithContext(t *testing.T) {
-	reconciler := &testCancellationStopReconciler{calls: make(chan struct{}, 2)}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		runCancellationStopReconciler(ctx, reconciler, time.Millisecond)
-	}()
-
-	for range 2 {
-		select {
-		case <-reconciler.calls:
-		case <-time.After(time.Second):
-			t.Fatal("cancellation stop reconciler did not retry")
-		}
-	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("cancellation stop reconciler did not stop with context")
-	}
-}
-
-func TestSchedulerRetriesTransientFailureAndStopsWithContext(t *testing.T) {
-	scheduling := &testHierarchicalScheduler{
-		calls:      make(chan struct{}, 2),
+func TestStageSchedulerMaintenanceRetriesAndStopsWithContext(t *testing.T) {
+	maintenance := &testStageSchedulerMaintenance{
 		reconciles: make(chan struct{}, 2),
+		replays:    make(chan struct{}, 2),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runScheduler(ctx, scheduling, time.Millisecond, nil)
+		runStageSchedulerMaintenance(ctx, maintenance, time.Millisecond, 25)
 	}()
 
 	for range 2 {
 		select {
-		case <-scheduling.reconciles:
+		case <-maintenance.reconciles:
 		case <-time.After(time.Second):
-			t.Fatal("Scheduler did not reconcile expired claims")
+			t.Fatal("StageScheduler maintenance did not reconcile expired claims")
 		}
 		select {
-		case <-scheduling.calls:
+		case <-maintenance.replays:
 		case <-time.After(time.Second):
-			t.Fatal("Scheduler did not retry")
+			t.Fatal("StageScheduler maintenance did not replay shadow evidence")
 		}
+	}
+	if maintenance.lastLimit.Load() != 25 {
+		t.Fatalf("StageScheduler maintenance batch limit = %d", maintenance.lastLimit.Load())
 	}
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("Scheduler did not stop with context")
+		t.Fatal("StageScheduler maintenance did not stop with context")
 	}
 }
 
-func TestSchedulerWakeupRunsCycleWithoutReplacingPeriodicReconciliation(t *testing.T) {
-	scheduling := &testHierarchicalScheduler{
-		calls:      make(chan struct{}, 2),
-		reconciles: make(chan struct{}, 1),
-	}
-	wakeups := make(chan schedulerCycleRequest, 1)
+func TestAttemptCoordinatorAutomationRetriesAndStopsWithContext(t *testing.T) {
+	automation := &testAttemptCoordinatorAutomation{calls: make(chan struct{}, 2)}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		runScheduler(ctx, scheduling, time.Hour, wakeups)
+		runAttemptCoordinatorAutomation(ctx, automation, time.Millisecond)
 	}()
 
-	select {
-	case <-scheduling.reconciles:
-	case <-time.After(time.Second):
-		t.Fatal("Scheduler did not run startup reconciliation")
-	}
-	select {
-	case <-scheduling.calls:
-	case <-time.After(time.Second):
-		t.Fatal("Scheduler did not run startup cycle")
-	}
-	cycleResult := make(chan error, 1)
-	wakeups <- schedulerCycleRequest{result: cycleResult}
-	select {
-	case <-scheduling.calls:
-	case <-time.After(time.Second):
-		t.Fatal("Scheduler wakeup did not trigger RunCycle")
-	}
-	select {
-	case err := <-cycleResult:
-		if err != nil {
-			t.Fatalf("Scheduler wakeup cycle result = %v", err)
+	for range 2 {
+		select {
+		case <-automation.calls:
+		case <-time.After(time.Second):
+			t.Fatal("AttemptCoordinator automation did not retry")
 		}
-	case <-time.After(time.Second):
-		t.Fatal("Scheduler wakeup did not wait for RunCycle completion")
 	}
-	select {
-	case <-scheduling.reconciles:
-		t.Fatal("event wakeup replaced the periodic PostgreSQL reconciliation boundary")
-	case <-time.After(25 * time.Millisecond):
-	}
-
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("Scheduler wakeup loop did not stop with context")
+		t.Fatal("AttemptCoordinator automation did not stop with context")
 	}
 }
 
@@ -1367,6 +1547,33 @@ func TestComplianceShutdownHonorsBoundedContext(t *testing.T) {
 	}
 }
 
+func TestH3ExactCacheReconcilerRetriesAndStopsWithContext(t *testing.T) {
+	reconciler := &testH3ExactCacheReconciler{calls: make(chan struct{}, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runH3ExactCacheReconciler(ctx, reconciler, time.Millisecond)
+	}()
+
+	for range 2 {
+		select {
+		case <-reconciler.calls:
+		case <-time.After(time.Second):
+			t.Fatal("H3 exact cache reconciler did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("H3 exact cache reconciler did not stop")
+	}
+	if reconciler.invocations.Load() < 2 {
+		t.Fatalf("H3 exact cache reconcile invocations = %d", reconciler.invocations.Load())
+	}
+}
+
 type testDatabasePinger struct {
 	invocations atomic.Int32
 	err         error
@@ -1403,10 +1610,74 @@ func (s *testTLSServer) Shutdown(ctx context.Context) error {
 	return s.shutdown(ctx)
 }
 
-type testHierarchicalScheduler struct {
+type testStageSchedulerMaintenance struct {
+	reconcileInvocations atomic.Int32
+	replayInvocations    atomic.Int32
+	lastLimit            atomic.Int32
+	reconciles           chan struct{}
+	replays              chan struct{}
+}
+
+type testAttemptCoordinatorAutomation struct {
 	invocations atomic.Int32
 	calls       chan struct{}
-	reconciles  chan struct{}
+}
+
+type testH3ExactCacheReconciler struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+}
+
+func (reconciler *testH3ExactCacheReconciler) Reconcile(
+	context.Context,
+) (stagecache.H3ExactReconcileResult, error) {
+	invocation := reconciler.invocations.Add(1)
+	reconciler.calls <- struct{}{}
+	if invocation == 1 {
+		return stagecache.H3ExactReconcileResult{AdmissionCandidates: 1},
+			errors.New("transient H3 exact cache failure")
+	}
+	return stagecache.H3ExactReconcileResult{HitCandidates: 1, Hits: 1}, nil
+}
+
+func (automation *testAttemptCoordinatorAutomation) RunCycle(
+	context.Context,
+) (attemptcoordinator.AutomationResult, error) {
+	invocation := automation.invocations.Add(1)
+	automation.calls <- struct{}{}
+	if invocation == 1 {
+		return attemptcoordinator.AutomationResult{}, errors.New(
+			"transient AttemptCoordinator automation failure",
+		)
+	}
+	return attemptcoordinator.AutomationResult{Claims: 1, Instantiated: 1}, nil
+}
+
+func (maintenance *testStageSchedulerMaintenance) ReconcileExpired(
+	_ context.Context,
+	limit int,
+) (int64, error) {
+	maintenance.lastLimit.Store(int32(limit))
+	invocation := maintenance.reconcileInvocations.Add(1)
+	maintenance.reconciles <- struct{}{}
+	if invocation == 1 {
+		return 0, errors.New("transient StageScheduler claim reconciliation failure")
+	}
+	return 1, nil
+}
+
+func (maintenance *testStageSchedulerMaintenance) ReplayShadow(
+	_ context.Context,
+	limit int,
+) (stagescheduler.ShadowReplaySummary, error) {
+	maintenance.lastLimit.Store(int32(limit))
+	invocation := maintenance.replayInvocations.Add(1)
+	maintenance.replays <- struct{}{}
+	if invocation == 1 {
+		return stagescheduler.ShadowReplaySummary{},
+			errors.New("transient StageScheduler shadow replay failure")
+	}
+	return stagescheduler.ShadowReplaySummary{Processed: 1, Matched: 1}, nil
 }
 
 type testInvoiceExporter struct {
@@ -1483,34 +1754,4 @@ func (e *testInvoiceExporter) ExportBatch(context.Context) (billingexport.BatchR
 		return billingexport.BatchResult{Claimed: 1}, errors.New("transient Invoice failure")
 	}
 	return billingexport.BatchResult{}, nil
-}
-
-func (s *testHierarchicalScheduler) ReconcileExpired(context.Context) (int64, error) {
-	s.reconciles <- struct{}{}
-	return 1, nil
-}
-
-func (s *testHierarchicalScheduler) RunCycle(context.Context) ([]scheduler.Dispatch, error) {
-	invocation := s.invocations.Add(1)
-	s.calls <- struct{}{}
-	if invocation == 1 {
-		return nil, errors.New("transient Scheduler failure")
-	}
-	return nil, nil
-}
-
-type testCancellationStopReconciler struct {
-	invocations atomic.Int32
-	calls       chan struct{}
-}
-
-func (r *testCancellationStopReconciler) ReconcileNextCancellationStop(
-	context.Context,
-) (cancellation.StopResult, error) {
-	invocation := r.invocations.Add(1)
-	r.calls <- struct{}{}
-	if invocation == 1 {
-		return cancellation.StopResult{}, errors.New("transient reconciliation failure")
-	}
-	return cancellation.StopResult{Decision: cancellation.StopNoWork}, nil
 }

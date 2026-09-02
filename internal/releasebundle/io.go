@@ -9,15 +9,83 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/vivym/vela/internal/strictjson"
 	"golang.org/x/sys/unix"
 )
 
+var sourceRevisionPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// BuildFromSource derives release provenance from an exact clean Git checkout.
+// The caller selects the source tree but cannot assert its revision.
+func BuildFromSource(sourceRoot, planPath string) (Bundle, []byte, error) {
+	revision, err := sourceRevisionFromGit(sourceRoot)
+	if err != nil {
+		return Bundle{}, nil, fmt.Errorf("%w: source checkout: %v", ErrInvalidBundle, err)
+	}
+	return buildPlan(planPath, revision)
+}
+
+func sourceRevisionFromGit(sourceRoot string) (string, error) {
+	absolute, err := filepath.Abs(sourceRoot)
+	if err != nil || filepath.Clean(sourceRoot) != sourceRoot {
+		return "", errors.New("source root must be canonical")
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return "", fmt.Errorf("resolve source root: %w", err)
+	}
+	if resolved != absolute {
+		return "", errors.New("source root must not contain symbolic links")
+	}
+	toplevel, err := runGit(resolved, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	canonicalToplevel, err := filepath.EvalSymlinks(toplevel)
+	if err != nil || canonicalToplevel != resolved {
+		return "", errors.New("source root must be the exact Git repository toplevel")
+	}
+	revision, err := runGit(resolved, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return "", err
+	}
+	if !sourceRevisionPattern.MatchString(revision) {
+		return "", errors.New("git HEAD is not a full SHA-1 or SHA-256 object ID")
+	}
+	status, err := runGit(resolved, "status", "--porcelain=v1", "--untracked-files=all")
+	if err != nil {
+		return "", err
+	}
+	if status != "" {
+		return "", errors.New("source checkout is not clean")
+	}
+	return revision, nil
+}
+
+func runGit(directory string, arguments ...string) (string, error) {
+	command := exec.Command("git", append([]string{"-C", directory}, arguments...)...)
+	encoded, err := command.Output()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w", strings.Join(arguments, " "), err)
+	}
+	return strings.TrimSpace(string(encoded)), nil
+}
+
 func Build(path string) (Bundle, []byte, error) {
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return Bundle{}, nil, fmt.Errorf("%w: resolve source checkout: %v", ErrInvalidBundle, err)
+	}
+	return BuildFromSource(workingDirectory, path)
+}
+
+func buildPlan(path, sourceRevision string) (Bundle, []byte, error) {
 	directory, reference := filepath.Dir(path), filepath.Base(path)
 	root, err := openRootedFS(directory)
 	if err != nil {
@@ -32,7 +100,7 @@ func Build(path string) (Bundle, []byte, error) {
 	if err := decodeStrictJSON(encoded, &plan); err != nil {
 		return Bundle{}, nil, fmt.Errorf("%w: decode build plan: %v", ErrInvalidBundle, err)
 	}
-	bundle, err := build(root, plan)
+	bundle, err := build(root, plan, sourceRevision)
 	if err != nil {
 		return Bundle{}, nil, err
 	}
@@ -156,8 +224,7 @@ func preflightArtifactGraph(root *rootedFS, plan BuildPlan) (*artifactReader, er
 
 func collectArtifactReferences(plan BuildPlan) []artifactReference {
 	references := make([]artifactReference, 0,
-		len(plan.FinalRenders)+1+2*len(plan.Packages)+
-			3*len(plan.WorkerMaterializations)+2*len(plan.OCIManifests),
+		len(plan.FinalRenders)+1+2*len(plan.Packages)+2*len(plan.OCIManifests),
 	)
 	for _, render := range plan.FinalRenders {
 		references = append(references, artifactReference{
@@ -174,19 +241,6 @@ func collectArtifactReferences(plan BuildPlan) []artifactReference {
 			},
 			artifactReference{
 				role: "package/" + item.Name, reference: item.ArtifactRef, maximum: maxPackageBytes,
-			},
-		)
-	}
-	for _, item := range plan.WorkerMaterializations {
-		references = append(references,
-			artifactReference{
-				role: "worker-runtime/" + item.NodeIdentity, reference: item.WorkerRuntimeRef, maximum: maxYAMLArtifactBytes,
-			},
-			artifactReference{
-				role: "runner-profiles/" + item.NodeIdentity, reference: item.RunnerProfilesRef, maximum: maxYAMLArtifactBytes,
-			},
-			artifactReference{
-				role: "runner-gpu-roles/" + item.NodeIdentity, reference: item.RunnerGPURolesRef, maximum: maxYAMLArtifactBytes,
 			},
 		)
 	}

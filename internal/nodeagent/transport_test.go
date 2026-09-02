@@ -24,12 +24,12 @@ import (
 
 const controllerSPIFFE = "spiffe://vela.internal/controller/control-1"
 
-func TestNodeAgentServerBindsControllerIdentityAndLocalTarget(t *testing.T) {
+func TestNodeAgentServerBindsControllerIdentityAndLocalNodeTarget(t *testing.T) {
 	workerID := uuid.New()
 	now := time.Unix(1000, 0).UTC()
 	resolver := mustControllerResolver(t)
 	executor := &recordingExecutor{}
-	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID, WorkerEpoch: 1}, resolver, executor, &memoryLedger{})
+	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", AgentID: uuid.New(), AgentEpoch: 9}, resolver, executor, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestNodeAgentServerBindsControllerIdentityAndLocalTarget(t *testing.T) {
 	if !response.GetSuccess() || response.GetResultCode() != "POSTCHECK_OK" || len(response.GetPostcheckSha256()) != sha256.Size {
 		t.Fatalf("Node Agent response = %#v", response)
 	}
-	if executor.plan.OperationID != uuid.MustParse(request.GetOperationId()) || executor.plan.ExecutionClaimID != uuid.MustParse(request.GetExecutionClaimId()) || executor.plan.WorkerID != workerID || executor.plan.WorkerEpoch != 1 || executor.plan.FailureClass != request.GetFailureClass() || executor.plan.DeadlineAt != request.GetDeadlineAt().AsTime() || !bytes.Equal(executor.plan.FailureEvidenceDigest, evidence[:]) {
+	if executor.plan.OperationID != uuid.MustParse(request.GetOperationId()) || executor.plan.ExecutionClaimID != uuid.MustParse(request.GetExecutionClaimId()) || executor.plan.WorkerInstanceID != workerID || executor.plan.WorkerInstanceEpoch != 1 || executor.plan.DeviceID != testDeviceID0 || executor.plan.DeviceEpoch != 1 || executor.plan.FailureClass != request.GetFailureClass() || executor.plan.DeadlineAt != request.GetDeadlineAt().AsTime() || !bytes.Equal(executor.plan.FailureEvidenceDigest, evidence[:]) {
 		t.Fatalf("executor plan = %#v", executor.plan)
 	}
 }
@@ -52,7 +52,7 @@ func TestNodeAgentServerBindsControllerIdentityAndLocalTarget(t *testing.T) {
 func TestNodeAgentServerRejectsUnauthenticatedOrUnsafeRequests(t *testing.T) {
 	workerID := uuid.New()
 	now := time.Unix(2000, 0).UTC()
-	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID, WorkerEpoch: 1}, mustControllerResolver(t), &recordingExecutor{}, &memoryLedger{})
+	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", AgentID: uuid.New(), AgentEpoch: 1}, mustControllerResolver(t), &recordingExecutor{}, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -71,11 +71,6 @@ func TestNodeAgentServerRejectsUnauthenticatedOrUnsafeRequests(t *testing.T) {
 		t.Fatalf("local identity mismatch error = %v, want permission denied", err)
 	}
 	base = validAgentRequest(workerID, now)
-	base.WorkerEpoch = 2
-	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), base); status.Code(err) != 7 {
-		t.Fatalf("local Worker epoch mismatch error = %v, want permission denied", err)
-	}
-	base = validAgentRequest(workerID, now)
 	base.DeadlineAt = timestamppb.New(now.Add(-time.Second))
 	if _, err := server.ExecuteRemediation(controllerPeerContext(t, controllerSPIFFE), base); status.Code(err) != 3 {
 		t.Fatalf("expired deadline error = %v, want invalid argument", err)
@@ -89,7 +84,7 @@ func TestNodeAgentServerReplaysAndRejectsConflictingReceipts(t *testing.T) {
 	workerID := uuid.New()
 	now := time.Unix(3000, 0).UTC()
 	executor := &recordingExecutor{}
-	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID, WorkerEpoch: 1}, mustControllerResolver(t), executor, &memoryLedger{})
+	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", AgentID: uuid.New(), AgentEpoch: 1}, mustControllerResolver(t), executor, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -127,7 +122,7 @@ func TestNodeAgentServerReplaysAndRejectsConflictingReceipts(t *testing.T) {
 func TestNodeAgentServerFailsClosedOnExecutorAndPostcheck(t *testing.T) {
 	workerID := uuid.New()
 	now := time.Unix(4000, 0).UTC()
-	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID, WorkerEpoch: 1}, mustControllerResolver(t), &recordingExecutor{err: errors.New("host command failed")}, &memoryLedger{})
+	server, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", AgentID: uuid.New(), AgentEpoch: 1}, mustControllerResolver(t), &recordingExecutor{err: errors.New("host command failed")}, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -136,7 +131,7 @@ func TestNodeAgentServerFailsClosedOnExecutorAndPostcheck(t *testing.T) {
 	if err != nil || response.GetSuccess() || response.GetResultCode() != "EXECUTION_FAILED" {
 		t.Fatalf("executor failure = %#v error=%v", response, err)
 	}
-	invalid, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID, WorkerEpoch: 1}, mustControllerResolver(t), &recordingExecutor{result: &remediation.ExecutionResult{ResultCode: "POSTCHECK_OK"}}, &memoryLedger{})
+	invalid, err := NewServer(NodeAgentIdentity{NodeIdentity: "node-1", AgentID: uuid.New(), AgentEpoch: 1}, mustControllerResolver(t), &recordingExecutor{result: &remediation.ExecutionResult{ResultCode: "POSTCHECK_OK"}}, &memoryLedger{})
 	if err != nil {
 		t.Fatalf("NewServer invalid postcheck: %v", err)
 	}
@@ -153,7 +148,7 @@ func TestNodeAgentServerDoesNotRepeatActionAfterInterruptedIntent(t *testing.T) 
 	executor := &recordingExecutor{}
 	ledger := &memoryLedger{}
 	server, err := NewServer(
-		NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: workerID, WorkerEpoch: 1},
+		NodeAgentIdentity{NodeIdentity: "node-1", AgentID: uuid.New(), AgentEpoch: 1},
 		mustControllerResolver(t), executor, ledger,
 	)
 	if err != nil {
@@ -197,7 +192,7 @@ func (executor *recordingExecutor) Execute(_ context.Context, plan remediation.P
 	if executor.result != nil {
 		return *executor.result, nil
 	}
-	return remediation.ExecutionResult{PostcheckDigest: sha256.Sum256([]byte("post-check")), PostcheckVerified: true, Detail: "node Agent remediation completed", ResultCode: "POSTCHECK_OK"}, nil
+	return remediation.ExecutionResult{PostcheckDigest: sha256.Sum256([]byte("post-check")), PostcheckVerified: true, Detail: "node agent remediation completed", ResultCode: "POSTCHECK_OK"}, nil
 }
 
 type memoryLedger struct {
@@ -247,7 +242,7 @@ func (ledger *memoryLedger) Begin(_ context.Context, intent ExecutionIntent) (Ex
 
 func validAgentRequest(workerID uuid.UUID, now time.Time) *velav1.ExecuteRemediationRequest {
 	evidence := sha256.Sum256([]byte("failure"))
-	return &velav1.ExecuteRemediationRequest{OperationId: uuid.NewString(), WorkerId: workerID.String(), WorkerEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: testGPUUUID0, FailureClass: "process_failure", ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1", FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)), ExecutionClaimId: uuid.NewString()}
+	return &velav1.ExecuteRemediationRequest{OperationId: uuid.NewString(), WorkerInstanceId: workerID.String(), WorkerInstanceEpoch: 1, NodeIdentity: "node-1", DeviceIdentity: testGPUUUID0, FailureClass: "process_failure", ActionLevel: string(remediation.ActionL0ProcessRestart), CertificationRevision: "matrix-v1", FailureEvidenceDigest: evidence[:], DeadlineAt: timestamppb.New(now.Add(time.Minute)), ExecutionClaimId: uuid.NewString(), DeviceId: testDeviceID0.String(), DeviceEpoch: 1}
 }
 
 func mustControllerResolver(t *testing.T) *StaticControllerIdentityResolver {

@@ -35,26 +35,6 @@ webhooks:
           - v1
         resources:
           - pods
-        scope: Namespaced
-      - operations:
-          - CREATE
-          - UPDATE
-          - DELETE
-        apiGroups:
-          - apps
-        apiVersions:
-          - v1
-        resources:
-          - daemonsets
-        scope: Namespaced
-      - operations:
-          - CREATE
-          - UPDATE
-          - DELETE
-        apiGroups:
-          - fleet.vela.ai
-        apiVersions:
-          - v1alpha1
-        resources:
-          - workerpools
+          - services
+          - secrets
         scope: Namespaced

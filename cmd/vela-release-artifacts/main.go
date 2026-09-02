@@ -46,7 +46,16 @@ func run(arguments []string) int {
 		}
 		return 0
 	}
-	if len(arguments) == 6 &&
+	if len(arguments) == 5 && arguments[0] == "verify-h3-runtime-commands" {
+		if err := releaseartifacts.VerifyH3RuntimeCommands(
+			arguments[1], arguments[2], arguments[3], arguments[4],
+		); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "verify H3 runtime commands: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	if len(arguments) == 9 &&
 		(arguments[0] == "print-vela-image-build" || arguments[0] == "build-vela-images") {
 		request := velaImageBuildRequest(arguments)
 		operation := releaseartifacts.BuildVelaImages
@@ -59,17 +68,17 @@ func run(arguments []string) int {
 		}
 		return 0
 	}
-	if len(arguments) == 7 &&
+	if len(arguments) == 10 &&
 		(arguments[0] == "build-vela-image-artifacts" || arguments[0] == "publish-vela-images") {
 		request := releaseartifacts.VelaImageArtifactBuildRequest{
 			VelaImageBuildRequest: velaImageBuildRequest(arguments),
-			OutputDirectory:       arguments[6],
+			OutputDirectory:       arguments[9],
 		}
 		operation := releaseartifacts.BuildVelaImageArtifacts
-		output := arguments[6] + "/vela-images.json"
+		output := arguments[9] + "/vela-images.json"
 		if arguments[0] == "publish-vela-images" {
 			operation = releaseartifacts.PublishVelaImageArtifacts
-			output = arguments[6] + "/vela-registry-publication.json"
+			output = arguments[9] + "/vela-registry-publication.json"
 		}
 		if err := operation(context.Background(), request); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", arguments[0], err)
@@ -78,16 +87,21 @@ func run(arguments []string) int {
 		_, _ = fmt.Fprintln(os.Stdout, output)
 		return 0
 	}
-	_, _ = fmt.Fprintln(os.Stderr, "usage: vela-release-artifacts <build-h3-mock-backend|build-host-packages|verify-h3-backend|print-vela-image-build|build-vela-images|build-vela-image-artifacts|publish-vela-images> ...")
+	_, _ = fmt.Fprintln(os.Stderr, "usage: vela-release-artifacts <build-h3-mock-backend|build-host-packages|verify-h3-backend|verify-h3-runtime-commands|print-vela-image-build|build-vela-images|build-vela-image-artifacts|publish-vela-images> ...")
 	return 2
 }
 
 func velaImageBuildRequest(arguments []string) releaseartifacts.VelaImageBuildRequest {
 	return releaseartifacts.VelaImageBuildRequest{
-		SourceRoot:     arguments[1],
-		Revision:       arguments[2],
-		ImagePrefix:    arguments[3],
-		BackendContext: arguments[4],
-		BackendSHA256:  arguments[5],
+		SourceRoot:  arguments[1],
+		Revision:    arguments[2],
+		ImagePrefix: arguments[3],
+		H3Runtime: releaseartifacts.H3RuntimeComposition{
+			BaseImage:        arguments[4],
+			CommandContext:   arguments[5],
+			EncoderSHA256:    arguments[6],
+			DiTSHA256:        arguments[7],
+			VAEDecoderSHA256: arguments[8],
+		},
 	}
 }

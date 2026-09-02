@@ -15,16 +15,23 @@ RELEASE_BUNDLE ?=
 RELEASE_REVISION ?=
 RELEASE_ARTIFACT_DIR ?=
 RELEASE_IMAGE_PREFIX ?=
-H3_BACKEND_CONTEXT ?=
-H3_BACKEND_SHA256 ?=
 H3_MOCK_BACKEND_CONTEXT ?=
+H3_DISPOSABLE_IMAGE ?= vela-h3-member-campaign:disposable
+H3_RUNTIME_BASE ?=
+H3_RUNTIME_COMMAND_CONTEXT ?=
+H3_ENCODER_SHA256 ?=
+H3_DIT_SHA256 ?=
+H3_VAE_DECODER_SHA256 ?=
+H3_EVIDENCE_PLAN_REVISION ?=
+H3_CAMPAIGN_MANIFEST ?=
 TOOLS_BIN := $(CURDIR)/bin
-VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" \
-	"$(RELEASE_IMAGE_PREFIX)" "$(H3_BACKEND_CONTEXT)" "$(H3_BACKEND_SHA256)"
+VELA_IMAGE_BUILD_ARGUMENTS = "$(CURDIR)" "$(RELEASE_REVISION)" "$(RELEASE_IMAGE_PREFIX)" \
+	"$(H3_RUNTIME_BASE)" "$(H3_RUNTIME_COMMAND_CONTEXT)" \
+	"$(H3_ENCODER_SHA256)" "$(H3_DIT_SHA256)" "$(H3_VAE_DECODER_SHA256)"
 
-.PHONY: generate generate-openapi generate-proto generate-runner-proto generate-sql verify-generated build-h3-mock-backend build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle verify-launch lint test test-lab-scripts test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
+.PHONY: generate generate-openapi generate-proto generate-sql verify-generated build-h3-mock-backend build-h3-disposable-member-campaign-image test-h3-disposable-member-campaign build-host-packages print-vela-image-build build-vela-images build-vela-image-artifacts publish-vela-images build-release-bundle verify-release-bundle preflight-h3-real-environment capture-h3-launch-evidence run-h3-campaign capture-h3-campaign-evidence build-h3-fault-campaign-evidence verify-launch lint test test-integration test-integration-shard test-cnpg-failover test-cnpg-pitr test-cross validate-deployment verify
 
-generate: generate-openapi generate-proto generate-runner-proto generate-sql
+generate: generate-openapi generate-proto generate-sql
 
 generate-openapi:
 	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) --config api/openapi/oapi-codegen.yaml api/openapi/vela.yaml
@@ -36,29 +43,15 @@ generate-proto:
 	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) lint
 	go run github.com/bufbuild/buf/cmd/buf@$(BUF_VERSION) generate
 
-generate-runner-proto:
-	cd runner && uv run --frozen python -m grpc_tools.protoc \
-		-I ../proto \
-		--python_out=src \
-		--grpc_python_out=src \
-		../proto/vela/v1/runner.proto
-
 generate-sql:
 	go run github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION) generate
 
 lint:
 	go vet ./...
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) run ./...
-	cd runner && uv run --frozen ruff check .
 
-test: test-lab-scripts
+test:
 	go test ./...
-	cd runner && uv run --frozen pytest
-
-test-lab-scripts:
-	./deploy/lab/rke2-airgap/test-configure-kubelet-noswap.sh
-	./deploy/lab/h3-mock/test-validate-runner-restart-state.sh
-	./deploy/lab/observability/test.sh
 
 test-integration:
 	go test -tags=integration ./internal/integration/... -count=1 -timeout=$(INTEGRATION_TEST_TIMEOUT)
@@ -77,6 +70,16 @@ build-h3-mock-backend:
 		(echo "H3_MOCK_BACKEND_CONTEXT is required" >&2; exit 2)
 	go run ./cmd/vela-release-artifacts build-h3-mock-backend \
 		"$(CURDIR)" "$(H3_MOCK_BACKEND_CONTEXT)"
+
+build-h3-disposable-member-campaign-image:
+	docker build \
+		--build-arg RELEASE_REVISION="$$(git rev-parse HEAD)" \
+		--file deploy/h3-disposable-campaign/Dockerfile \
+		--tag "$(H3_DISPOSABLE_IMAGE)" \
+		.
+
+test-h3-disposable-member-campaign:
+	H3_DISPOSABLE_IMAGE="$(H3_DISPOSABLE_IMAGE)" ./hack/run-h3-disposable-member-campaign.sh
 
 build-host-packages:
 	@test -n "$(RELEASE_REVISION)" || \
@@ -118,6 +121,56 @@ verify-release-bundle:
 		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
 	go run ./cmd/vela-release-bundle verify "$(RELEASE_BUNDLE)"
 
+preflight-h3-real-environment:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	@test -n "$(H3_EVIDENCE_PLAN_REVISION)" || \
+		(echo "H3_EVIDENCE_PLAN_REVISION is required" >&2; exit 2)
+	go run ./cmd/vela-h3-evidence preflight \
+		"$(RELEASE_BUNDLE)" "$(H3_EVIDENCE_PLAN_REVISION)"
+
+capture-h3-launch-evidence:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	@test -n "$(H3_EVIDENCE_PLAN_REVISION)" || \
+		(echo "H3_EVIDENCE_PLAN_REVISION is required" >&2; exit 2)
+	go run ./cmd/vela-h3-evidence capture \
+		"$(RELEASE_BUNDLE)" "$(H3_EVIDENCE_PLAN_REVISION)"
+
+run-h3-campaign:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	@test -n "$(H3_EVIDENCE_PLAN_REVISION)" || \
+		(echo "H3_EVIDENCE_PLAN_REVISION is required" >&2; exit 2)
+	@test -n "$(H3_CAMPAIGN_MANIFEST)" || \
+		(echo "H3_CAMPAIGN_MANIFEST is required" >&2; exit 2)
+	go run ./cmd/vela-h3-evidence run-campaign \
+		"$(RELEASE_BUNDLE)" "$(H3_EVIDENCE_PLAN_REVISION)" \
+		"$(H3_CAMPAIGN_MANIFEST)"
+
+capture-h3-campaign-evidence:
+	@test -n "$(RELEASE_BUNDLE)" || \
+		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
+	@test -n "$(H3_EVIDENCE_PLAN_REVISION)" || \
+		(echo "H3_EVIDENCE_PLAN_REVISION is required" >&2; exit 2)
+	@test -n "$(H3_SAME_NODE_JOB_ID)" || \
+		(echo "H3_SAME_NODE_JOB_ID is required" >&2; exit 2)
+	@test -n "$(H3_CROSS_NODE_JOB_ID)" || \
+		(echo "H3_CROSS_NODE_JOB_ID is required" >&2; exit 2)
+	@test -n "$(H3_CACHE_JOB_ID)" || \
+		(echo "H3_CACHE_JOB_ID is required" >&2; exit 2)
+	go run ./cmd/vela-h3-evidence capture-campaign \
+		"$(RELEASE_BUNDLE)" "$(H3_EVIDENCE_PLAN_REVISION)" \
+		"$(H3_SAME_NODE_JOB_ID)" "$(H3_CROSS_NODE_JOB_ID)" "$(H3_CACHE_JOB_ID)"
+
+build-h3-fault-campaign-evidence:
+	@test -n "$(H3_FAULT_CAMPAIGN_MANIFEST)" || \
+		(echo "H3_FAULT_CAMPAIGN_MANIFEST is required" >&2; exit 2)
+	@test -n "$(H3_FAULT_EVIDENCE_OUTPUT)" || \
+		(echo "H3_FAULT_EVIDENCE_OUTPUT is required" >&2; exit 2)
+	go run ./cmd/vela-h3-evidence build-fault-campaign \
+		"$(H3_FAULT_CAMPAIGN_MANIFEST)" "$(H3_FAULT_EVIDENCE_OUTPUT)"
+
 verify-launch:
 	@test -n "$(RELEASE_BUNDLE)" || \
 		(echo "RELEASE_BUNDLE is required" >&2; exit 2)
@@ -142,38 +195,23 @@ test-cross:
 validate-deployment:
 	kubectl kustomize deploy/control-storage >/dev/null
 	kubectl kustomize deploy/vela-control >/dev/null
-	kubectl kustomize deploy/worker-agent >/dev/null
+	kubectl kustomize deploy/stage-worker >/dev/null
 	kubectl kustomize deploy/fleet-controller >/dev/null
 	kubectl kustomize deploy/observability >/dev/null
 	@test -s deploy/node-agent/vela-node-agent.service
 	@test -s deploy/node-agent/README.md
 	@rg -q "VELA_NODE_AGENT_CONTROLLERS_FILE" deploy/node-agent/README.md cmd/vela-node-agent/main.go
 	@rg -q "VELA_NODE_AGENT_WORKER_QUOTA_SOCKET" deploy/node-agent/README.md cmd/vela-node-agent/main.go
-	@rg -q "nvidia.com/gpu: \"8\"" deploy/worker-agent/daemonset.yaml
-	@for name in VELA_RUNNER_SOCKET VELA_RUNNER_SCRATCH_ROOT VELA_RUNNER_STATE_ROOT \
-		VELA_RUNNER_OUTPUT_ROOT VELA_RUNNER_BACKEND_REVISION VELA_RUNNER_BACKEND_COMMAND \
-		VELA_RUNNER_BACKEND_ARGS_JSON VELA_RUNNER_PROFILES_FILE \
-		VELA_RUNNER_GPU_ROLES_FILE VELA_RUNNER_STOP_TIMEOUT \
-		VELA_RUNNER_MAX_OUTPUT_BYTES; do \
-		rg -q "name: $$name" deploy/worker-agent/daemonset.yaml || exit 1; \
-	done
-	@test "$$(rg -c 'value: /run/vela-runner/private/runner.sock' deploy/worker-agent/daemonset.yaml)" -eq 2
-	@rg -q "name: runner-socket-permissions" deploy/worker-agent/daemonset.yaml
-	@rg -q "chmod 0700 /run/vela-runner /run/vela-runner/private" deploy/worker-agent/daemonset.yaml
-	@test "$$(rg -c 'runAsUser: 0' deploy/worker-agent/daemonset.yaml)" -eq 1
-	@rg -q "name: vela-runner-profiles" deploy/worker-agent/daemonset.yaml
-	@rg -q "name: vela-runner-gpu-roles" deploy/worker-agent/daemonset.yaml
-	@! rg -q "CAP_SYS_ADMIN|privileged: true" deploy/worker-agent/*.yaml
-	@go test ./internal/deploymentcontract -run TestWorkerAgentManifestExcludesRecoveryQuarantineFromRunnerMountNamespace -count=1
 	@go test ./internal/deploymentcontract -run 'TestVelaControl' -count=1
+	@go test ./internal/deploymentcontract -run 'TestStageWorker' -count=1
 	@go test ./internal/deploymentcontract -run 'TestFleet' -count=1
 	@go test ./internal/deploymentcontract -run '^TestRenderedRootMaterializersUsePinnedBusyBoxImage$$' -count=1
 	@go test ./internal/deploymentcontract -run 'TestObservability' -count=1
 
 verify-generated: generate
-	git diff --exit-code -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1
-	@test -z "$$(git status --porcelain --untracked-files=all -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1)" || \
-		(git status --short --untracked-files=all -- api/gen internal/store/sqlc proto/gen runner/src/vela/v1; exit 1)
+	git diff --exit-code -- api/gen internal/store/sqlc proto/gen
+	@test -z "$$(git status --porcelain --untracked-files=all -- api/gen internal/store/sqlc proto/gen)" || \
+		(git status --short --untracked-files=all -- api/gen internal/store/sqlc proto/gen; exit 1)
 
 verify: verify-generated
 	$(MAKE) lint

@@ -11,37 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const prepareSchedulerInboxReceipt = `-- name: PrepareSchedulerInboxReceipt :one
-SELECT vela_prepare_scheduler_inbox_receipt(
-    $1,
-    $2,
-    $3,
-    $4,
-    $5
-)
-`
-
-type PrepareSchedulerInboxReceiptParams struct {
-	EventID          uuid.UUID `db:"event_id" json:"event_id"`
-	OrganizationID   uuid.UUID `db:"organization_id" json:"organization_id"`
-	ProjectID        uuid.UUID `db:"project_id" json:"project_id"`
-	AggregateID      uuid.UUID `db:"aggregate_id" json:"aggregate_id"`
-	AggregateVersion int64     `db:"aggregate_version" json:"aggregate_version"`
-}
-
-func (q *Queries) PrepareSchedulerInboxReceipt(ctx context.Context, arg PrepareSchedulerInboxReceiptParams) (bool, error) {
-	row := q.db.QueryRow(ctx, prepareSchedulerInboxReceipt,
-		arg.EventID,
-		arg.OrganizationID,
-		arg.ProjectID,
-		arg.AggregateID,
-		arg.AggregateVersion,
-	)
-	var vela_prepare_scheduler_inbox_receipt bool
-	err := row.Scan(&vela_prepare_scheduler_inbox_receipt)
-	return vela_prepare_scheduler_inbox_receipt, err
-}
-
 const recordInboxReceipt = `-- name: RecordInboxReceipt :one
 INSERT INTO inbox_receipts (
     consumer_name,
@@ -91,35 +60,4 @@ func (q *Queries) RecordInboxReceipt(ctx context.Context, arg RecordInboxReceipt
 	var event_id uuid.UUID
 	err := row.Scan(&event_id)
 	return event_id, err
-}
-
-const recordSchedulerInboxReceipt = `-- name: RecordSchedulerInboxReceipt :one
-SELECT vela_record_scheduler_inbox_receipt(
-    $1,
-    $2,
-    $3,
-    $4,
-    $5
-)
-`
-
-type RecordSchedulerInboxReceiptParams struct {
-	EventID          uuid.UUID `db:"event_id" json:"event_id"`
-	OrganizationID   uuid.UUID `db:"organization_id" json:"organization_id"`
-	ProjectID        uuid.UUID `db:"project_id" json:"project_id"`
-	AggregateID      uuid.UUID `db:"aggregate_id" json:"aggregate_id"`
-	AggregateVersion int64     `db:"aggregate_version" json:"aggregate_version"`
-}
-
-func (q *Queries) RecordSchedulerInboxReceipt(ctx context.Context, arg RecordSchedulerInboxReceiptParams) (bool, error) {
-	row := q.db.QueryRow(ctx, recordSchedulerInboxReceipt,
-		arg.EventID,
-		arg.OrganizationID,
-		arg.ProjectID,
-		arg.AggregateID,
-		arg.AggregateVersion,
-	)
-	var vela_record_scheduler_inbox_receipt bool
-	err := row.Scan(&vela_record_scheduler_inbox_receipt)
-	return vela_record_scheduler_inbox_receipt, err
 }

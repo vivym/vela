@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +28,7 @@ func TestStatisticalSLOMeasurementEnforcesCoverageAndSealsMonthlyReport(t *testi
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
 	seedThreePresetCatalog(t, database)
+	activateH3StageGraph(t, database)
 	createSLOReportingLogin(t, database)
 
 	promotion := newRolePool(
@@ -280,7 +282,7 @@ func TestStatisticalSLOMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testing.
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 33)
 		if err := goose.DownTo(database.Admin, migrations, 32); err != nil {
 			t.Fatalf("contract empty statistical SLO migration: %v", err)
 		}
@@ -298,7 +300,7 @@ func TestStatisticalSLOMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testing.
 
 	t.Run("durable contract refuses Down", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 33)
 		seedAdmissionFixture(t, database.Admin)
 		createSLOReportingLogin(t, database)
 		promotion := newRolePool(
@@ -351,29 +353,16 @@ func TestStatisticalSLOActivationDownSerializesWithConcurrentJobWriter(t *testin
 		if err != nil {
 			t.Fatalf("begin SLO Admission pause blocker: %v", err)
 		}
-		defer func() { _ = blocker.Rollback() }()
+		defer cleanupSLOTestPause(blocker, pauseLock)
 		if _, err := blocker.Exec("SELECT pg_advisory_lock($1)", pauseLock); err != nil {
 			t.Fatalf("acquire SLO Admission pause blocker: %v", err)
 		}
 
-		server := admissionServerForDatabase(t, database)
 		writerResults := make(chan sloWriterResult, 1)
 		go func() {
-			result, submitErr := doSubmitJob(
-				server.URL,
-				testProjectID,
-				testBearerCredential(),
-				"slo-writer-before-activation",
-				[]byte(`{
-					"model":"minimax-h3",
-					"generation_preset":"balanced",
-					"service_class":"standard",
-					"output_spec":"video-1080p-5s-24fps",
-					"generation_count":1,
-					"prompt":"serialize writer before activation"
-				}`),
+			writerResults <- insertLegacySLOJobWriter(
+				database.DSN, "serialize writer before activation",
 			)
-			writerResults <- sloWriterResult{result: result, err: submitErr}
 		}()
 		waitForRoleDatabaseLock(t, database.Admin, "vela_request_login")
 
@@ -409,31 +398,18 @@ func TestStatisticalSLOActivationDownSerializesWithConcurrentJobWriter(t *testin
 		if err != nil {
 			t.Fatalf("begin SLO protocol pause blocker: %v", err)
 		}
-		defer func() { _ = blocker.Rollback() }()
+		defer cleanupSLOTestPause(blocker, pauseLock)
 		if _, err := blocker.Exec("SELECT pg_advisory_lock($1)", pauseLock); err != nil {
 			t.Fatalf("acquire SLO protocol pause blocker: %v", err)
 		}
 
 		activationResults := enableSLOMeasurementAsync(reporting, receiptID)
 		waitForRoleDatabaseLock(t, database.Admin, "vela_slo_reporting_login")
-		server := admissionServerForDatabase(t, database)
 		writerResults := make(chan sloWriterResult, 1)
 		go func() {
-			result, submitErr := doSubmitJob(
-				server.URL,
-				testProjectID,
-				testBearerCredential(),
-				"slo-activation-before-writer",
-				[]byte(`{
-					"model":"minimax-h3",
-					"generation_preset":"balanced",
-					"service_class":"standard",
-					"output_spec":"video-1080p-5s-24fps",
-					"generation_count":1,
-					"prompt":"serialize activation before writer"
-				}`),
+			writerResults <- insertLegacySLOJobWriter(
+				database.DSN, "serialize activation before writer",
 			)
-			writerResults <- sloWriterResult{result: result, err: submitErr}
 		}()
 		waitForRoleDatabaseLock(t, database.Admin, "vela_request_login")
 		downResults := migrateSLODownAsync(t, database)
@@ -461,7 +437,7 @@ type sloWriterResult struct {
 func prepareSLOActivationFixture(t *testing.T) (testDatabase, *pgxpool.Pool, uuid.UUID) {
 	t.Helper()
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 33)
 	seedAdmissionFixture(t, database.Admin)
 	seedThreePresetCatalog(t, database)
 	createSLOReportingLogin(t, database)
@@ -474,6 +450,113 @@ func prepareSLOActivationFixture(t *testing.T) (testDatabase, *pgxpool.Pool, uui
 	)
 	registerCompleteSLOContractMatrix(t, reporting, receiptID)
 	return database, reporting, receiptID
+}
+
+func insertLegacySLOJobWriter(adminDSN, prompt string) sloWriterResult {
+	dsn, err := url.Parse(adminDSN)
+	if err != nil {
+		return sloWriterResult{result: httpResult{StatusCode: 500}, err: err}
+	}
+	dsn.User = url.UserPassword("vela_request_login", "vela-request-password")
+	pool, err := pgxpool.New(context.Background(), dsn.String())
+	if err != nil {
+		return sloWriterResult{result: httpResult{StatusCode: 500}, err: err}
+	}
+	defer pool.Close()
+
+	ctx := context.Background()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return sloWriterResult{result: httpResult{StatusCode: 500}, err: err}
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+	if _, err := tx.Exec(ctx, `
+		SELECT * FROM vela_set_request_context($1, $2, $3)
+	`, uuid.MustParse(testCredentialID), credentialDigest([]byte(testCredentialSecret)),
+		"jobs:submit"); err != nil {
+		return sloWriterResult{result: httpResult{StatusCode: 500}, err: err}
+	}
+	jobID := uuid.New()
+	reservationID := uuid.New()
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO jobs (
+			id, organization_id, project_id, created_by_principal_id,
+			model_revision_id, generation_preset_revision_id,
+			service_class_revision_id, output_spec_id, worker_pool_id,
+			request_hash, request_content, request_content_expires_at,
+			retention_policy_revision_id, retention_artifact_days,
+			retention_request_content_days, retention_incomplete_content_hours,
+			retention_scratch_hours, retention_debug_hours,
+			retention_metadata_days, retention_financial_days,
+			pricing_rate_card_revision_id, pricing_rate_line_id,
+			pricing_unit_amount_minor, pricing_quantity,
+			pricing_quoted_amount_minor, pricing_currency,
+			execution_max_attempts, execution_max_total_compute_seconds,
+			execution_max_finalization_seconds_per_attempt,
+			execution_retry_backoff_policy,
+			execution_retryable_failure_classes,
+			execution_circuit_breaker_policy, job_expires_at
+		)
+		SELECT
+			$1, project.organization_id, project.id, $2,
+			'00000000-0000-0000-0000-000000000010',
+			'00000000-0000-0000-0000-000000000011',
+			'00000000-0000-0000-0000-000000000012',
+			'00000000-0000-0000-0000-000000000013',
+			'00000000-0000-0000-0000-000000000005',
+			sha256(convert_to($1::uuid::text, 'UTF8')),
+			jsonb_build_object('model', 'minimax-h3', 'prompt', $5::text),
+			transaction_timestamp() + interval '2 days',
+			project.retention_policy_revision_id,
+			project.retention_artifact_days,
+			project.retention_request_content_days,
+			project.retention_incomplete_content_hours,
+			project.retention_scratch_hours,
+			project.retention_debug_hours,
+			project.retention_metadata_days,
+			project.retention_financial_days,
+			'00000000-0000-0000-0000-000000000016',
+			'00000000-0000-0000-0000-000000000017',
+			1250, 1, 1250, 'CNY', 3, 2400, 600,
+			'{"kind":"exponential","initial_seconds":30,"max_seconds":300}'::jsonb,
+			ARRAY['WORKER_LOST', 'TRANSIENT_BACKEND'],
+			'{"policy_revision":"h3-standard-v1"}'::jsonb,
+			transaction_timestamp() + interval '1 day'
+		FROM projects AS project
+		WHERE project.organization_id = $3 AND project.id = $4
+	`, jobID, uuid.MustParse(testPrincipalID), uuid.MustParse(testOrganizationID),
+		uuid.MustParse(testProjectID), prompt); err != nil {
+		return sloWriterResult{result: httpResult{StatusCode: 500}, err: err}
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO credit_reservations (
+			id, organization_id, project_id, job_id, amount_minor, currency
+		) VALUES ($1, $2, $3, $4, 1250, 'CNY')
+	`, reservationID, uuid.MustParse(testOrganizationID), uuid.MustParse(testProjectID), jobID); err != nil {
+		return sloWriterResult{result: httpResult{StatusCode: 500}, err: err}
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
+		VALUES ($1, $2, $3)
+	`, jobID, uuid.MustParse(testOrganizationID), uuid.MustParse(testProjectID)); err != nil {
+		return sloWriterResult{result: httpResult{StatusCode: 500}, err: err}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return sloWriterResult{result: httpResult{StatusCode: 500}, err: err}
+	}
+	committed = true
+	return sloWriterResult{result: httpResult{StatusCode: 202}}
+}
+
+func cleanupSLOTestPause(blocker *sql.Tx, pauseLock int64) {
+	var unlocked bool
+	_ = blocker.QueryRow("SELECT pg_advisory_unlock($1)", pauseLock).Scan(&unlocked)
+	_ = blocker.Rollback()
 }
 
 func registerCompleteSLOContractMatrix(

@@ -32,7 +32,7 @@ single Buildx layouts have passed the Slice 43 manifest, config, layer, runtime,
 and canonical release-bundle checks. Publication uses immutable digest
 references, resolves credentials from the Docker keychain, re-reads exact raw
 manifest bytes from the registry, and creates a strict credential-free local
-receipt only after all four images verify.
+receipt only after all five images verify.
 
 Repository fixtures prove the validator, not the external facts asserted by a
 production owner. An actual authorized production-registry receipt, signature,

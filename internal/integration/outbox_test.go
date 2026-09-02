@@ -32,6 +32,8 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	authPool := newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password")
 	requestPool := newRolePool(t, database.DSN, "vela_request_login", "vela-request-password")
 	webhookRequestPool := newRolePool(
@@ -47,7 +49,7 @@ func TestOutboxPublisherRetriesWithStableEventIDAndRecordsAcknowledgement(t *tes
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},
-		Admission:              admission.NewLegacyService(requestPool),
+		Admission:              admission.NewService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
 		Webhooks:               testWebhookService(t, webhookRequestPool),
@@ -136,6 +138,8 @@ func TestOutboxPublisherRecoversCrashAfterPubAckBeforeDatabaseMarker(t *testing.
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	server := admissionServerForDatabase(t, database)
 	accepted := submitJob(t, server.URL, "puback-before-marker-crash", []byte(`{
         "model":"minimax-h3",
@@ -361,6 +365,8 @@ func TestInboxReceiptAppliesAggregateTransitionOnce(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	server := admissionServerForDatabase(t, database)
 	accepted := submitJob(t, server.URL, "inbox-transition", []byte(`{
         "model":"minimax-h3",
@@ -389,6 +395,13 @@ func TestInboxReceiptAppliesAggregateTransitionOnce(t *testing.T) {
 		&event.Type,
 	); err != nil {
 		t.Fatalf("read source event: %v", err)
+	}
+	var versionBefore int64
+	if err := database.Admin.QueryRow(
+		"SELECT version FROM jobs WHERE id = $1",
+		event.AggregateID,
+	).Scan(&versionBefore); err != nil {
+		t.Fatalf("read Job version before Inbox transition: %v", err)
 	}
 	internalPool := newRolePool(t, database.DSN, "vela_internal_login", "vela-internal-password")
 	processor, err := inbox.NewProcessor(internalPool, "scheduler")
@@ -425,8 +438,13 @@ func TestInboxReceiptAppliesAggregateTransitionOnce(t *testing.T) {
 	if err := database.Admin.QueryRow("SELECT version FROM jobs WHERE id = $1", event.AggregateID).Scan(&version); err != nil {
 		t.Fatalf("read transitioned Job version: %v", err)
 	}
-	if version != 2 {
-		t.Fatalf("Job version = %d, want exactly one transition to version 2", version)
+	if version != versionBefore+1 {
+		t.Fatalf(
+			"Job version = %d, want exactly one transition from %d to %d",
+			version,
+			versionBefore,
+			versionBefore+1,
+		)
 	}
 }
 
@@ -434,6 +452,8 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	server := admissionServerForDatabase(t, database)
 	accepted := submitJob(t, server.URL, "consumer-commit-before-ack", []byte(`{
         "model":"minimax-h3",
@@ -453,6 +473,13 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 		FROM outbox_events
 	`).Scan(&eventID, &jobID, &payload); err != nil {
 		t.Fatalf("read Scheduler wakeup event: %v", err)
+	}
+	var jobVersionBefore int
+	if err := database.Admin.QueryRow(
+		"SELECT version FROM jobs WHERE id = $1",
+		jobID,
+	).Scan(&jobVersionBefore); err != nil {
+		t.Fatalf("read Job version before consumer crash window: %v", err)
 	}
 
 	ctx := context.Background()
@@ -517,13 +544,14 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 		t.Fatalf("publish Scheduler wakeup: %v", err)
 	}
 
-	processor, err := inbox.NewSchedulerProcessor(
+	processor, err := inbox.NewProcessor(
 		newRolePool(
 			t,
 			database.DSN,
-			"vela_scheduler_inbox_login",
-			"vela-scheduler-inbox-password",
+			"vela_internal_login",
+			"vela-internal-password",
 		),
+		"scheduler",
 	)
 	if err != nil {
 		t.Fatalf("create Inbox processor: %v", err)
@@ -599,8 +627,13 @@ func TestJetStreamConsumerRedeliveryAfterCommitBeforeAckAppliesOnce(t *testing.T
 	`, jobID, eventID).Scan(&jobVersion, &receipts); err != nil {
 		t.Fatalf("read consumer crash-window state: %v", err)
 	}
-	if jobVersion != 1 || receipts != 1 {
-		t.Fatalf("consumer crash-window state = Job version %d receipts %d", jobVersion, receipts)
+	if jobVersion != jobVersionBefore || receipts != 1 {
+		t.Fatalf(
+			"consumer crash-window state = Job version %d (started at %d) receipts %d",
+			jobVersion,
+			jobVersionBefore,
+			receipts,
+		)
 	}
 	consumerInfo, err := consumer.Info(ctx)
 	if err != nil || consumerInfo.NumAckPending != 0 {

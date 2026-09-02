@@ -21,6 +21,22 @@ may not patch only the visibly convenient fields. Rendering this base is not a
 deployment receipt or a Launch Receipt and does not advance any Production Gate
 from `0/9 PASS`.
 
+The Node Agent registry is shared by outbound Remediation dispatch and inbound
+WorkerInstance evidence authorization. The Fleet mTLS client CA establishes
+certificate-chain trust only; `vela-control` additionally requires the exact
+registered Node identity, legacy Worker UUID, and canonical Node Agent SPIFFE
+URI before accepting `ObserveWorkerInstance`. Other Fleet RPCs remain limited
+to the configured Fleet Controller identity. The Fleet client CA file must be
+an explicit bundle of the approved Fleet Controller client issuer and host Node
+Agent client issuer; adding an issuer does not register or authorize any
+certificate by itself. The repository base keeps the exact Fleet Controller Pod
+selector and adds a separate host-ingress placeholder restricted to the
+documentation-only `192.0.2.0/32` address on TCP 8444. That CIDR is deliberately
+unusable as a production Node source. A release overlay must replace the entire
+`vela-control-allow-node-agent-placeholder` resource with the measured CNI view
+of the exact GPU Node source CIDRs; it may not broaden the Fleet Controller
+selector, use `0.0.0.0/0`, or enable any other port.
+
 ## Release bundle boundary
 
 Production assembly must include the final `kubectl kustomize` output as the
@@ -77,8 +93,16 @@ Pod and must source them from the approved secret manager or PKI workflow.
   PostgreSQL role DSN as a distinct environment key.
 - `vela-control-credential-pepper-<release>` supplies only the base64
   credential pepper.
-- `vela-control-transport-tls-<release>` keeps Worker and Fleet server
+- `vela-control-transport-tls-<release>` keeps Stage Worker and Fleet server
   identities and client CAs separate from public HTTP ingress.
+- `vela-control-stage-worker-identity-<release>` supplies the assignment
+  identity HMAC key. Its Secret name rolls with the release, but its key bytes
+  must remain stable across N/N-1 replay and rollback windows.
+- `vela-control-h3-exact-cache-keyring-<release>` supplies the Project-scoped
+  HMAC keys used to derive non-exportable Encoder and DiT exact-cache keys. The
+  JSON object is bounded to 4096 canonical Project UUIDs and 1 MiB; every value
+  must be base64-encoded key material of at least 32 bytes. Cache enablement is
+  fail-closed: a missing, malformed, or incomplete keyring prevents startup.
 - `vela-control-privileged-http-tls-<release>` contains independent Finance and
   Compliance server identities and client CAs.
 - The remaining names in `secret-contract.json` are also suffixed by the exact
@@ -95,12 +119,13 @@ the shared BusyBox `1.37.0` `linux/amd64` OCI manifest. Its exact manifest/confi
 bytes and required supply-chain evidence remain part of the release;
 `CAP_CHOWN` is its only added capability.
 
-The Scheduler, Artifact Reconciler, Retention Reconciler, non-content expiry,
-backup Replicator, Webhook Dispatcher, and Invoice Exporter claimant identities
-are derived from the immutable Pod UID. A release overlay must not replace them
-with one shared static ID. Remediation is deliberately different: both replicas
-use `controller/vela-control`, and the shared client certificate must contain
-the exact URI `spiffe://vela.internal/controller/vela-control`.
+The Scheduler, StageScheduler, Artifact Reconciler, Retention Reconciler,
+non-content expiry, backup Replicator, Webhook Dispatcher, and Invoice Exporter
+claimant identities are derived from the immutable Pod UID. A release overlay
+must not replace them with one shared static ID. Remediation is deliberately
+different: both replicas use `controller/vela-control`, and the shared client
+certificate must contain the exact URI
+`spiffe://vela.internal/controller/vela-control`.
 
 Every Secret and ConfigMap reference in the Pod template is release-versioned.
 Certificate and credential rotation must provision new immutable Secret names,
@@ -110,6 +135,13 @@ until the prior ReplicaSet is fully retired. Updating a referenced Secret in
 place is unsupported because the init container materializes regular files once
 at startup.
 
+The release overlay must also replace the H3 exact-cache input-canonicalization
+UUID and certified seed/RNG revision. `expected_saved_compute_minor` and
+`carry_cost_minor` are separate policy inputs and must be calibrated
+independently; the repository placeholder sets both to zero and makes no cost or
+benefit claim. Changing any key, revision, or cost input requires a new complete
+immutable ConfigMap/Secret revision and a rolling update.
+
 ## Network Boundary
 
 Each Service selects the same Pod set but publishes exactly one interface:
@@ -117,17 +149,18 @@ Each Service selects the same Pod set but publishes exactly one interface:
 | Service | Pod port | Purpose |
 | --- | ---: | --- |
 | `vela-api` | 8080 | Public REST API behind Envoy Gateway TLS termination |
-| `vela-worker-control` | 8443 | Worker control mTLS gRPC |
 | `vela-control` | 8444 | Fleet maintenance mTLS gRPC; preserves the existing Fleet DNS contract |
 | `vela-finance-reconciliation` | 8445 | Finance Reconciliation mTLS HTTPS |
 | `vela-compliance` | 8446 | Compliance / Legal Hold mTLS HTTPS |
+| `vela-stage-worker-control` | 8447 | Stage Worker execution control mTLS gRPC |
 
 Ingress is default-denied. The repository policies then admit each port from a
 different identity boundary:
 
 - API ingress namespaces require `vela.ai/network-role=api-ingress`, and the
   gateway Pod requires `vela.ai/client-role=api-gateway`;
-- Worker and Fleet traffic requires the exact workload label in `vela-system`;
+- Stage Worker and Fleet traffic each require their exact workload label in
+  `vela-system` on separate ports;
 - Finance namespaces and Pods require `vela.ai/network-role=finance` plus
   `vela.ai/client-role=finance-reconciliation`; and
 - Compliance namespaces and Pods require `vela.ai/network-role=compliance`
@@ -160,7 +193,7 @@ under `deploy/observability`.
 
 A production rollout still requires approved Vela image digests, complete
 BusyBox and Vela supply-chain evidence, Secret/PKI rotation, real Control/Storage
-placement, NetworkPolicy observation, authenticated probes for all five
+placement, NetworkPolicy observation, authenticated probes for all six
 interfaces, N/N-1 rollout and rollback, long-running Job drain,
 database/NATS/object-store failure exercises, and the corresponding immutable
 Launch Receipts.

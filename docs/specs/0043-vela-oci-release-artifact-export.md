@@ -14,8 +14,9 @@ PASS` Production Gate result.
 
 ## Build interface
 
-`make build-vela-image-artifacts` requires the same revision, image prefix, and
-external H3 backend inputs as `make build-vela-images`, plus a canonical absolute
+`make build-vela-image-artifacts` requires the same revision, image prefix,
+H3 runtime base, command context, and three command digests as
+`make build-vela-images`, plus a canonical absolute
 `RELEASE_ARTIFACT_DIR` whose final component does not exist. A successful build
 prints the absolute path to `vela-images.json` and publishes exactly:
 
@@ -31,16 +32,18 @@ tag-free, and pinned to the SHA-256 of the published platform manifest.
 
 Buildx exports one OCI image layout per target with provenance disabled for this
 platform-artifact boundary. BuildKit receives read access only to the private H3
-backend context and write access only to the private OCI layout root. The private
-backend staging and independent Docker-stage verification from Slice 42 remain
-mandatory. Before publication, repository code requires each layout to contain
-one OCI image manifest and recomputes the manifest, config, and layer descriptor
-digests and sizes from the layout blobs.
+command context and write access only to the private OCI layout root. The
+private command staging and independent Docker-stage verification from Slice 42
+remain mandatory. Before publication, repository code requires each layout to
+contain one OCI image manifest and recomputes the manifest, config, and layer
+descriptor digests and sizes from the layout blobs.
 
 The config must bind `linux/amd64`, numeric user `10001:10001`, the target's
 exact absolute entrypoint, `org.opencontainers.image.title`, and the supplied
-`org.opencontainers.image.revision`. The H3 Runner config must additionally bind
-the supplied `vela.ai.h3-backend.sha256` label. The exact manifest and config
+`org.opencontainers.image.revision`. The H3 stage runtime config must
+additionally bind the exact `vela.ai.h3-runtime-base`,
+`vela.ai.h3-encoder.sha256`, `vela.ai.h3-dit.sha256`, and
+`vela.ai.h3-vae-decoder.sha256` values. The exact manifest and config
 bytes are copied to the release artifact directory without JSON re-encoding.
 
 ## Publication safety
@@ -60,9 +63,11 @@ is never replaced.
   rejection at both the layout root and blob-directory boundaries;
 - the full repository generation, lint, test, cross-build, and deployment
   validation suite passes; and
-- a real Buildx smoke export through the configured Docker mirror produced all
-  four OCI manifest/config pairs from a temporary non-production H3 backend and
-  reloaded them through the canonical validator before publication.
+- a real Buildx smoke through the configured Docker mirror built and loaded all
+  four images from a temporary non-production three-command context; independent
+  image inspection confirmed the final entrypoint, user, labels, and all three
+  container-internal command digests. Focused tests cover artifact export and
+  canonical reload; this smoke did not publish formal artifact output.
 
 ## Evidence boundary
 

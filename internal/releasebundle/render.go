@@ -1,21 +1,17 @@
 package releasebundle
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 
 	ociv1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"github.com/vivym/vela/internal/imageref"
-	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
 )
 
@@ -26,6 +22,39 @@ type renderedResourceContract struct {
 	Name          string
 	NamePrefix    string
 	ClusterScoped bool
+}
+
+type renderedImageRole uint8
+
+const (
+	renderedImageRoleNone renderedImageRole = iota
+	renderedImageRoleSupport
+	renderedImageRoleModelRuntime
+)
+
+type renderedFieldContract struct {
+	ImageRole     renderedImageRole
+	ReferenceKind string
+	RequiredKeys  []string
+}
+
+var renderedFieldContracts = map[string]renderedFieldContract{
+	"imageName":                       {ImageRole: renderedImageRoleSupport},
+	"operatorImage":                   {ImageRole: renderedImageRoleSupport},
+	"operator_image":                  {ImageRole: renderedImageRoleSupport},
+	"initImage":                       {ImageRole: renderedImageRoleSupport},
+	"init_image":                      {ImageRole: renderedImageRoleSupport},
+	"stage_worker_agent_image":        {ImageRole: renderedImageRoleSupport},
+	"runtime_image":                   {ImageRole: renderedImageRoleModelRuntime},
+	"secretName":                      {ReferenceKind: "Secret"},
+	"stage_worker_control_tls_secret": {ReferenceKind: "Secret"},
+	"stage_worker_member_pki_secret":  {ReferenceKind: "Secret"},
+	"stage_worker_authority_secret":   {ReferenceKind: "Secret", RequiredKeys: []string{"keyring.json"}},
+	"artifact_store_credentials_secret": {
+		ReferenceKind: "Secret", RequiredKeys: []string{"access-key-id", "secret-access-key"},
+	},
+	"artifact_store_ca_secret": {ReferenceKind: "Secret", RequiredKeys: []string{"ca.crt"}},
+	"stage_worker_config_map":  {ReferenceKind: "ConfigMap"},
 }
 
 var finalRenderInventory = map[string][]renderedResourceContract{
@@ -45,13 +74,12 @@ var finalRenderInventory = map[string][]renderedResourceContract{
 	},
 	"fleet-controller": {
 		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
-		{APIVersion: "apiextensions.k8s.io/v1", Kind: "CustomResourceDefinition", Name: "workerpools.fleet.vela.ai", ClusterScoped: true},
 		{APIVersion: "v1", Kind: "ServiceAccount", Namespace: "vela-system", Name: "vela-fleet-controller"},
 		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "Role", Namespace: "vela-system", Name: "vela-fleet-controller"},
 		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRole", Name: "vela-fleet-controller-node-reader", ClusterScoped: true},
 		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "RoleBinding", Namespace: "vela-system", Name: "vela-fleet-controller"},
 		{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "ClusterRoleBinding", Name: "vela-fleet-controller-node-reader", ClusterScoped: true},
-		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-fleet-desired-"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-fleet-residency-plan-rollouts-"},
 		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-fleet-admission"},
 		{APIVersion: "apps/v1", Kind: "Deployment", Namespace: "vela-system", Name: "vela-fleet-controller"},
 		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "vela-fleet-controller"},
@@ -63,6 +91,11 @@ var finalRenderInventory = map[string][]renderedResourceContract{
 		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-observability", NamePrefix: "vela-slo-dashboard-"},
 		{APIVersion: "monitoring.coreos.com/v1", Kind: "PodMonitor", Namespace: "vela-observability", Name: "vela-control"},
 	},
+	"stage-worker": {
+		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
+		{APIVersion: "v1", Kind: "ServiceAccount", Namespace: "vela-system", Name: "vela-worker"},
+		{APIVersion: "v1", Kind: "ConfigMap", Namespace: "vela-system", NamePrefix: "vela-stage-worker-runtime-"},
+	},
 	"vela-control": {
 		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
 		{APIVersion: "v1", Kind: "ServiceAccount", Namespace: "vela-system", Name: "vela-control"},
@@ -72,7 +105,7 @@ var finalRenderInventory = map[string][]renderedResourceContract{
 		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-compliance"},
 		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-control"},
 		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-finance-reconciliation"},
-		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-worker-control"},
+		{APIVersion: "v1", Kind: "Service", Namespace: "vela-system", Name: "vela-stage-worker-control"},
 		{APIVersion: "scheduling.k8s.io/v1", Kind: "PriorityClass", Name: "vela-control-critical", ClusterScoped: true},
 		{APIVersion: "apps/v1", Kind: "Deployment", Namespace: "vela-system", Name: "vela-control"},
 		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "vela-control"},
@@ -81,14 +114,8 @@ var finalRenderInventory = map[string][]renderedResourceContract{
 		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-finance"},
 		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-fleet"},
 		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-observability"},
-		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-worker"},
+		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-allow-stage-worker"},
 		{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy", Namespace: "vela-system", Name: "vela-control-default-deny-ingress"},
-	},
-	"worker-agent": {
-		{APIVersion: "v1", Kind: "Namespace", Name: "vela-system", ClusterScoped: true},
-		{APIVersion: "v1", Kind: "ServiceAccount", Namespace: "vela-system", Name: "vela-worker"},
-		{APIVersion: "policy/v1", Kind: "PodDisruptionBudget", Namespace: "vela-system", Name: "vela-h3-worker"},
-		{APIVersion: "apps/v1", Kind: "DaemonSet", Namespace: "vela-system", Name: "vela-h3-worker"},
 	},
 }
 
@@ -139,12 +166,15 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 		if err := scanRenderedValue(document, namespace, consumer, inventory, "", budget); err != nil {
 			return invalidf("final render %s: %v", name, err)
 		}
-		if kind == "ConfigMap" && namespace == "vela-system" && strings.HasPrefix(resourceName, "vela-fleet-desired-") {
-			desired, err := decodeFleetDesiredConfigMap(document, namespace)
+		if kind == "ConfigMap" && namespace == "vela-system" &&
+			strings.HasPrefix(resourceName, "vela-fleet-residency-plan-rollouts-") {
+			rollouts, err := decodeFleetResidencyPlanConfigMap(document, namespace)
 			if err != nil {
-				return invalidf("Fleet desired ConfigMap %s/%s: %v", namespace, resourceName, err)
+				return invalidf("Fleet ResidencyPlan ConfigMap %s/%s: %v", namespace, resourceName, err)
 			}
-			inventory.fleetDesired = append(inventory.fleetDesired, desired...)
+			inventory.residencyRollouts = append(inventory.residencyRollouts, rollouts...)
+			recordResidencyPlanSecretReferences(inventory, namespace, consumer, rollouts)
+			recordH3RuntimeImages(inventory, rollouts)
 		}
 	}
 	for index, present := range found {
@@ -156,72 +186,74 @@ func validateFinalRender(name string, encoded []byte, inventory *renderInventory
 	return nil
 }
 
-func decodeFleetDesiredConfigMap(
-	document map[string]any,
-	namespace string,
-) ([]fleetcontroller.DesiredRevision, error) {
-	data, ok := document["data"].(map[string]any)
-	if !ok || len(data) == 0 {
-		return nil, errors.New("data must contain desired.yaml")
+func recordResidencyPlanSecretReferences(
+	inventory *renderInventory,
+	namespace,
+	consumer string,
+	rollouts []fleetcontroller.ResidencyPlanRollout,
+) {
+	for _, rollout := range rollouts {
+		for _, bundle := range rollout.WorkerBundles {
+			controlKeys := []string{"ca.crt"}
+			memberPKIKeys := make([]string, 0)
+			for _, worker := range bundle.WorkerInstances {
+				for _, member := range worker.Members {
+					prefix := member.ID.String() + "."
+					controlKeys = append(controlKeys, prefix+"tls.crt", prefix+"tls.key")
+					if len(worker.Members) > 1 {
+						for _, suffix := range []string{
+							"client.crt", "client.key", "server-ca.crt",
+							"server.crt", "server.key", "client-ca.crt",
+						} {
+							memberPKIKeys = append(memberPKIKeys, prefix+suffix)
+						}
+					}
+				}
+			}
+			recordReference(inventory, resourceKey{
+				Kind: "Secret", Namespace: namespace, Name: bundle.StageWorkerControlTLSSecret,
+			}, consumer, controlKeys)
+			if bundle.StageWorkerMemberPKISecret != "" {
+				recordReference(inventory, resourceKey{
+					Kind: "Secret", Namespace: namespace, Name: bundle.StageWorkerMemberPKISecret,
+				}, consumer, memberPKIKeys)
+			}
+		}
 	}
-	desiredYAML, ok := data["desired.yaml"].(string)
-	if !ok || desiredYAML == "" {
-		return nil, errors.New("data must contain desired.yaml")
-	}
-	revisions, _, err := fleetcontroller.DecodeDesiredConfiguration([]byte(desiredYAML), namespace)
-	if err != nil {
-		return nil, err
-	}
-	return revisions, nil
 }
 
-func validateFleetDesiredMaterializations(
-	desiredRevisions []fleetcontroller.DesiredRevision,
-	materializations []WorkerMaterializationInput,
-) error {
-	type desiredPlacement struct {
-		revision  fleetcontroller.DesiredRevision
-		placement fleetcontroller.WorkerPlacement
-	}
-	placements := make(map[string]desiredPlacement, len(materializations))
-	placementCount := 0
-	for _, desired := range desiredRevisions {
-		for _, placement := range desired.Placements {
-			key := desired.Namespace + "/" + desired.WorkerPoolID.String() + "/" + placement.NodeIdentity
-			if _, duplicate := placements[key]; duplicate {
-				return invalid("Fleet desired configuration contains a duplicate Worker placement")
+func recordH3RuntimeImages(
+	inventory *renderInventory,
+	rollouts []fleetcontroller.ResidencyPlanRollout,
+) {
+	for _, rollout := range rollouts {
+		for _, bundle := range rollout.WorkerBundles {
+			for _, worker := range bundle.WorkerInstances {
+				for _, runtime := range worker.ModelRuntimes {
+					switch runtime.Component {
+					case "ENCODER", "DIT", "VAE_DECODER":
+						inventory.h3RuntimeImages[bundle.RuntimeImage] = struct{}{}
+					}
+				}
 			}
-			placements[key] = desiredPlacement{revision: desired, placement: placement}
-			placementCount++
 		}
 	}
-	if len(desiredRevisions) == 0 || placementCount != len(materializations) {
-		return invalid("Fleet desired and Worker materialization coverage is not exact")
+}
+
+func decodeFleetResidencyPlanConfigMap(
+	document map[string]any,
+	namespace string,
+) ([]fleetcontroller.ResidencyPlanRollout, error) {
+	immutable, _ := document["immutable"].(bool)
+	data, ok := document["data"].(map[string]any)
+	if !immutable || !ok || len(data) != 1 {
+		return nil, errors.New("immutable data must contain only rollouts.json")
 	}
-	matched := make(map[string]struct{}, len(materializations))
-	for _, materialization := range materializations {
-		key := materialization.Namespace + "/" + materialization.WorkerPoolID + "/" + materialization.NodeIdentity
-		if _, duplicate := matched[key]; duplicate {
-			return invalid("Worker materializations contain a duplicate Worker placement")
-		}
-		matched[key] = struct{}{}
-		expected, present := placements[key]
-		desired := expected.revision
-		placement := expected.placement
-		if !present || desired.Namespace != materialization.Namespace ||
-			desired.WorkerPoolID.String() != materialization.WorkerPoolID ||
-			desired.Revision != materialization.FleetRevision ||
-			placement.NodeIdentity != materialization.NodeIdentity ||
-			placement.WorkerRuntimeConfigMap != materialization.WorkerRuntimeConfigMap ||
-			placement.RunnerProfilesConfigMap != materialization.RunnerProfilesConfigMap ||
-			placement.RunnerGPURolesConfigMap != materialization.RunnerGPURolesConfigMap ||
-			placement.WorkerControlTLSSecret != materialization.WorkerControlTLSSecret ||
-			desired.ExecutionProfileRevisionID.String() != materialization.ExecutionProfileRevisionID ||
-			desired.InferenceBackendRevision != materialization.InferenceBackendRevision {
-			return invalid("Fleet desired revision does not match Worker materialization")
-		}
+	encoded, ok := data["rollouts.json"].(string)
+	if !ok || encoded == "" {
+		return nil, errors.New("data must contain rollouts.json")
 	}
-	return nil
+	return fleetcontroller.DecodeResidencyPlanRollouts([]byte(encoded), namespace)
 }
 
 // The inventory validates release ownership and identity only. Kubernetes API
@@ -236,8 +268,10 @@ func (contract renderedResourceContract) matches(apiVersion, kind, namespace, na
 	if contract.Name != "" {
 		return name == contract.Name
 	}
-	return contract.Kind == "ConfigMap" && strings.HasPrefix(name, contract.NamePrefix) &&
-		len(name) > len(contract.NamePrefix) && !containsTemplateValue(name)
+	if contract.Kind != "ConfigMap" || containsTemplateValue(name) {
+		return false
+	}
+	return strings.HasPrefix(name, contract.NamePrefix) && len(name) > len(contract.NamePrefix)
 }
 
 func (contract renderedResourceContract) displayName() string {
@@ -265,11 +299,16 @@ func scanRenderedValue(
 				if containsTemplateValue(stringValue) {
 					return fmt.Errorf("field %s contains a template or invalid production value", key)
 				}
-				if isImageField(key, parentKey) {
+				if role, imageField := imageRoleForField(key, parentKey); imageField {
 					if !validImage(stringValue) {
 						return fmt.Errorf("field %s contains an unpinned or invalid OCI image %q", key, stringValue)
 					}
 					inventory.images[stringValue] = struct{}{}
+					if role == renderedImageRoleModelRuntime {
+						inventory.modelRuntimeImages[stringValue] = struct{}{}
+					} else {
+						inventory.supportImages[stringValue] = struct{}{}
+					}
 				}
 				if kind := directReferenceKind(key); kind != "" {
 					resource := resourceKey{Kind: kind, Namespace: namespace, Name: stringValue}
@@ -368,10 +407,6 @@ func consumerIdentity(kind, namespace, name string) string {
 	return kind + "/" + namespace + "/" + name
 }
 
-func workerConsumerIdentity(input WorkerMaterializationInput) string {
-	return "WorkerMaterialization/" + input.Namespace + "/" + input.NodeIdentity + "/" + input.WorkerID
-}
-
 func recordReference(inventory *renderInventory, resource resourceKey, consumer string, keys []string) {
 	inventory.referred[resource] = struct{}{}
 	if resource.Kind != "Secret" {
@@ -390,14 +425,7 @@ func recordReference(inventory *renderInventory, resource resourceKey, consumer 
 }
 
 func directSecretKeys(key string) []string {
-	switch key {
-	case "workerControlTLSSecret":
-		return []string{"ca.crt", "tls.crt", "tls.key"}
-	case "artifactStoreTLSSecret":
-		return []string{"ca.crt"}
-	default:
-		return nil
-	}
+	return renderedFieldContracts[key].RequiredKeys
 }
 
 func selectorSecretKeys(kind string, selector map[string]any) ([]string, error) {
@@ -432,15 +460,14 @@ func selectorSecretKeys(kind string, selector map[string]any) ([]string, error) 
 	return keys, nil
 }
 
-func isImageField(key, parent string) bool {
-	switch key {
-	case "imageName", "operatorImage", "operator_image", "initImage", "workerAgentImage", "runnerImage":
-		return true
-	case "image":
-		return parent == "containers" || parent == "initContainers" || parent == "ephemeralContainers"
-	default:
-		return false
+func imageRoleForField(key, parent string) (renderedImageRole, bool) {
+	if contract, exists := renderedFieldContracts[key]; exists && contract.ImageRole != renderedImageRoleNone {
+		return contract.ImageRole, true
 	}
+	if key == "image" && (parent == "containers" || parent == "initContainers" || parent == "ephemeralContainers") {
+		return renderedImageRoleSupport, true
+	}
+	return renderedImageRoleNone, false
 }
 
 func validImage(value string) bool {
@@ -448,14 +475,7 @@ func validImage(value string) bool {
 }
 
 func directReferenceKind(key string) string {
-	switch key {
-	case "secretName", "workerControlTLSSecret", "artifactStoreTLSSecret":
-		return "Secret"
-	case "workerRuntimeConfigMap", "runnerProfilesConfigMap", "runnerGPURolesConfigMap":
-		return "ConfigMap"
-	default:
-		return ""
-	}
+	return renderedFieldContracts[key].ReferenceKind
 }
 
 func selectorReferenceKind(key string) string {
@@ -473,281 +493,6 @@ func selectorReferenceKind(key string) string {
 	default:
 		return ""
 	}
-}
-
-type configMapDocument struct {
-	APIVersion string `yaml:"apiVersion"`
-	Kind       string `yaml:"kind"`
-	Metadata   struct {
-		Name        string            `yaml:"name"`
-		Namespace   string            `yaml:"namespace"`
-		Labels      map[string]string `yaml:"labels,omitempty"`
-		Annotations map[string]string `yaml:"annotations,omitempty"`
-	} `yaml:"metadata"`
-	Immutable *bool             `yaml:"immutable"`
-	Data      map[string]string `yaml:"data"`
-}
-
-func decodeConfigMap(encoded []byte, budget *yamlGraphBudget) (configMapDocument, error) {
-	if _, err := decodeSingleYAMLNode(encoded, budget); err != nil {
-		return configMapDocument{}, err
-	}
-	decoder := yaml.NewDecoder(bytes.NewReader(encoded))
-	decoder.KnownFields(true)
-	var document configMapDocument
-	if err := decoder.Decode(&document); err != nil {
-		return configMapDocument{}, err
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return configMapDocument{}, errors.New("ConfigMap artifact must contain exactly one YAML document")
-	}
-	if document.APIVersion != "v1" || document.Kind != "ConfigMap" ||
-		document.Immutable == nil || !*document.Immutable || len(document.Data) == 0 {
-		return configMapDocument{}, errors.New("ConfigMap identity or immutability is invalid")
-	}
-	return document, nil
-}
-
-func buildWorkerMaterialization(
-	artifacts *artifactReader,
-	input WorkerMaterializationInput,
-	inventory *renderInventory,
-	unique map[string]struct{},
-	budget *yamlGraphBudget,
-) (WorkerMaterialization, error) {
-	if !validResourceName(input.NodeIdentity) || !validResourceName(input.Namespace) ||
-		!canonicalUUID(input.WorkerID) || input.WorkerEpoch <= 0 || !canonicalUUID(input.WorkerPoolID) ||
-		!isLowerHex(input.FleetRevision) || input.FleetRevision == strings.Repeat("0", 64) ||
-		input.NodeAgentIdentity != expectedNodeAgentIdentity(input.NodeIdentity, input.WorkerID) ||
-		!validSPIFFE(input.NodeAgentIdentity) || !validResourceName(input.WorkerRuntimeConfigMap) ||
-		!validResourceName(input.RunnerProfilesConfigMap) || !validResourceName(input.RunnerGPURolesConfigMap) ||
-		!validResourceName(input.WorkerControlTLSSecret) || !validDigest(input.WorkerControlTLSSecretRevision) ||
-		!canonicalUUID(input.ExecutionProfileRevisionID) || !canonicalUUID(input.ModelRevisionID) ||
-		!ValidRevision(input.InferenceBackendRevision) || len(input.InferenceBackendRevision) > 200 {
-		return WorkerMaterialization{}, invalidf("Worker materialization for node %q has invalid identity or revision fields", input.NodeIdentity)
-	}
-	for _, value := range []string{
-		"node:" + input.NodeIdentity, "worker:" + input.WorkerID,
-		"agent:" + input.NodeAgentIdentity, "runtime-name:" + input.WorkerRuntimeConfigMap,
-		"profile-name:" + input.RunnerProfilesConfigMap, "gpu-name:" + input.RunnerGPURolesConfigMap,
-		"tls-name:" + input.WorkerControlTLSSecret, "tls-revision:" + input.WorkerControlTLSSecretRevision,
-	} {
-		if _, duplicate := unique[value]; duplicate {
-			return WorkerMaterialization{}, invalidf("Worker materialization identity or material %q is shared", value)
-		}
-		unique[value] = struct{}{}
-	}
-
-	runtimeArtifact, runtimeContent, err := artifacts.artifactFor(input.WorkerRuntimeRef, "application/yaml", maxYAMLArtifactBytes)
-	if err != nil {
-		return WorkerMaterialization{}, invalidf("read Worker runtime ConfigMap for %s: %v", input.NodeIdentity, err)
-	}
-	profilesArtifact, profilesContent, err := artifacts.artifactFor(input.RunnerProfilesRef, "application/yaml", maxYAMLArtifactBytes)
-	if err != nil {
-		return WorkerMaterialization{}, invalidf("read runner profiles ConfigMap for %s: %v", input.NodeIdentity, err)
-	}
-	gpuArtifact, gpuContent, err := artifacts.artifactFor(input.RunnerGPURolesRef, "application/yaml", maxYAMLArtifactBytes)
-	if err != nil {
-		return WorkerMaterialization{}, invalidf("read runner GPU roles ConfigMap for %s: %v", input.NodeIdentity, err)
-	}
-	for _, digest := range []string{runtimeArtifact.Digest, profilesArtifact.Digest, gpuArtifact.Digest} {
-		key := "material-digest:" + digest
-		if _, duplicate := unique[key]; duplicate {
-			return WorkerMaterialization{}, invalidf("Worker materialization artifact %s is shared", digest)
-		}
-		unique[key] = struct{}{}
-	}
-
-	runtimeConfig, err := validateRuntimeConfigMap(runtimeContent, input, budget)
-	if err != nil {
-		return WorkerMaterialization{}, invalidf("Worker runtime ConfigMap for %s: %v", input.NodeIdentity, err)
-	}
-	profilesConfig, err := validateProfilesConfigMap(profilesContent, input, budget)
-	if err != nil {
-		return WorkerMaterialization{}, invalidf("runner profiles ConfigMap for %s: %v", input.NodeIdentity, err)
-	}
-	gpuConfig, gpuIDs, err := validateGPURolesConfigMap(gpuContent, input, budget)
-	if err != nil {
-		return WorkerMaterialization{}, invalidf("runner GPU roles ConfigMap for %s: %v", input.NodeIdentity, err)
-	}
-	for _, gpuID := range gpuIDs {
-		key := "gpu:" + gpuID
-		if _, duplicate := unique[key]; duplicate {
-			return WorkerMaterialization{}, invalidf("GPU identity %s is shared across Worker materializations", gpuID)
-		}
-		unique[key] = struct{}{}
-	}
-	for _, config := range []configMapDocument{runtimeConfig, profilesConfig, gpuConfig} {
-		key := resourceKey{Kind: "ConfigMap", Namespace: input.Namespace, Name: config.Metadata.Name}
-		if _, duplicate := inventory.declared[key]; duplicate {
-			return WorkerMaterialization{}, invalidf("materialized ConfigMap %s/%s is duplicated", input.Namespace, config.Metadata.Name)
-		}
-		inventory.declared[key] = struct{}{}
-		inventory.referred[key] = struct{}{}
-	}
-	workerSecret := resourceKey{Kind: "Secret", Namespace: input.Namespace, Name: input.WorkerControlTLSSecret}
-	recordReference(
-		inventory,
-		workerSecret,
-		workerConsumerIdentity(input),
-		[]string{"ca.crt", "tls.crt", "tls.key"},
-	)
-	inventory.expectedRevision[workerSecret] = input.WorkerControlTLSSecretRevision
-
-	return WorkerMaterialization{
-		NodeIdentity: input.NodeIdentity, Namespace: input.Namespace, WorkerID: input.WorkerID,
-		WorkerEpoch: input.WorkerEpoch, WorkerPoolID: input.WorkerPoolID, FleetRevision: input.FleetRevision,
-		NodeAgentIdentity:      input.NodeAgentIdentity,
-		WorkerRuntimeConfigMap: input.WorkerRuntimeConfigMap, WorkerRuntime: runtimeArtifact,
-		RunnerProfilesConfigMap: input.RunnerProfilesConfigMap, RunnerProfiles: profilesArtifact,
-		RunnerGPURolesConfigMap: input.RunnerGPURolesConfigMap, RunnerGPURoles: gpuArtifact,
-		WorkerControlTLSSecret:         input.WorkerControlTLSSecret,
-		WorkerControlTLSSecretRevision: input.WorkerControlTLSSecretRevision,
-		ExecutionProfileRevisionID:     input.ExecutionProfileRevisionID,
-		InferenceBackendRevision:       input.InferenceBackendRevision, ModelRevisionID: input.ModelRevisionID,
-	}, nil
-}
-
-func validateConfigMapIdentity(document configMapDocument, namespace, name string) error {
-	if document.Metadata.Namespace != namespace || document.Metadata.Name != name ||
-		!validResourceName(document.Metadata.Namespace) || !validResourceName(document.Metadata.Name) {
-		return errors.New("ConfigMap name or namespace does not match the materialization")
-	}
-	for key, value := range document.Data {
-		if containsTemplateValue(key) || containsTemplateValue(value) {
-			return errors.New("ConfigMap contains a template or invalid production value")
-		}
-	}
-	return nil
-}
-
-func validateRuntimeConfigMap(
-	encoded []byte,
-	input WorkerMaterializationInput,
-	budget *yamlGraphBudget,
-) (configMapDocument, error) {
-	document, err := decodeConfigMap(encoded, budget)
-	if err != nil {
-		return configMapDocument{}, err
-	}
-	if err := validateConfigMapIdentity(document, input.Namespace, input.WorkerRuntimeConfigMap); err != nil {
-		return configMapDocument{}, err
-	}
-	required := []string{
-		"artifact-store-health-url", "attempt-quota-bytes", "control-address", "control-server-name",
-		"critical-free-bytes", "high-watermark-bytes", "low-watermark-bytes", "max-entries",
-		"max-entry-bytes", "output-cleanup-min-bytes-per-second", "xfs-device", "xfs-project-id",
-	}
-	keys := make([]string, 0, len(document.Data))
-	for key := range document.Data {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	if !reflect.DeepEqual(keys, required) {
-		return configMapDocument{}, fmt.Errorf("runtime keys are not the exact contract: %v", keys)
-	}
-	for _, key := range []string{
-		"attempt-quota-bytes", "critical-free-bytes", "high-watermark-bytes", "low-watermark-bytes",
-		"max-entries", "max-entry-bytes", "output-cleanup-min-bytes-per-second", "xfs-project-id",
-	} {
-		value, parseErr := strconv.ParseInt(document.Data[key], 10, 64)
-		if parseErr != nil || value <= 0 {
-			return configMapDocument{}, fmt.Errorf("runtime key %s must be a positive decimal integer", key)
-		}
-	}
-	return document, nil
-}
-
-type profileAllowlist struct {
-	SchemaVersion   int                     `json:"schema_version"`
-	BackendRevision string                  `json:"backend_revision"`
-	Profiles        []profileAllowlistEntry `json:"profiles"`
-}
-
-type profileAllowlistEntry struct {
-	ModelRevisionID            string `json:"model_revision_id"`
-	GenerationPresetRevisionID string `json:"generation_preset_revision_id"`
-	ExecutionProfileRevisionID string `json:"execution_profile_revision_id"`
-	OutputSpecID               string `json:"output_spec_id"`
-}
-
-func validateProfilesConfigMap(
-	encoded []byte,
-	input WorkerMaterializationInput,
-	budget *yamlGraphBudget,
-) (configMapDocument, error) {
-	document, err := decodeConfigMap(encoded, budget)
-	if err != nil {
-		return configMapDocument{}, err
-	}
-	if err := validateConfigMapIdentity(document, input.Namespace, input.RunnerProfilesConfigMap); err != nil {
-		return configMapDocument{}, err
-	}
-	if len(document.Data) != 1 || document.Data["profiles.json"] == "" {
-		return configMapDocument{}, errors.New("profiles ConfigMap must contain only profiles.json")
-	}
-	var allowlist profileAllowlist
-	if err := decodeStrictJSON([]byte(document.Data["profiles.json"]), &allowlist); err != nil {
-		return configMapDocument{}, err
-	}
-	if allowlist.SchemaVersion != 1 || allowlist.BackendRevision != input.InferenceBackendRevision ||
-		len(allowlist.Profiles) == 0 || len(allowlist.Profiles) > 1024 {
-		return configMapDocument{}, errors.New("profile allowlist header or count is invalid")
-	}
-	seen := make(map[profileAllowlistEntry]struct{}, len(allowlist.Profiles))
-	for _, profile := range allowlist.Profiles {
-		if profile.ModelRevisionID != input.ModelRevisionID ||
-			profile.ExecutionProfileRevisionID != input.ExecutionProfileRevisionID ||
-			!canonicalUUID(profile.GenerationPresetRevisionID) || !canonicalUUID(profile.OutputSpecID) {
-			return configMapDocument{}, errors.New("profile allowlist entry does not match materialized revisions")
-		}
-		if _, duplicate := seen[profile]; duplicate {
-			return configMapDocument{}, errors.New("profile allowlist contains a duplicate entry")
-		}
-		seen[profile] = struct{}{}
-	}
-	return document, nil
-}
-
-type gpuRoles struct {
-	SchemaVersion int      `json:"schema_version"`
-	EncoderVAE    string   `json:"encoder_vae"`
-	DiT           []string `json:"dit"`
-}
-
-func validateGPURolesConfigMap(
-	encoded []byte,
-	input WorkerMaterializationInput,
-	budget *yamlGraphBudget,
-) (configMapDocument, []string, error) {
-	document, err := decodeConfigMap(encoded, budget)
-	if err != nil {
-		return configMapDocument{}, nil, err
-	}
-	if err := validateConfigMapIdentity(document, input.Namespace, input.RunnerGPURolesConfigMap); err != nil {
-		return configMapDocument{}, nil, err
-	}
-	if len(document.Data) != 1 || document.Data["gpu-roles.json"] == "" {
-		return configMapDocument{}, nil, errors.New("GPU roles ConfigMap must contain only gpu-roles.json")
-	}
-	var roles gpuRoles
-	if err := decodeStrictJSON([]byte(document.Data["gpu-roles.json"]), &roles); err != nil {
-		return configMapDocument{}, nil, err
-	}
-	if roles.SchemaVersion != 1 || len(roles.DiT) != 7 || !canonicalGPUUUID(roles.EncoderVAE) {
-		return configMapDocument{}, nil, errors.New("GPU role map must contain one Encoder/VAE and seven DiT roles")
-	}
-	seen := map[string]struct{}{roles.EncoderVAE: {}}
-	for _, gpu := range roles.DiT {
-		if !canonicalGPUUUID(gpu) {
-			return configMapDocument{}, nil, errors.New("GPU role map contains a non-canonical GPU UUID")
-		}
-		if _, duplicate := seen[gpu]; duplicate {
-			return configMapDocument{}, nil, errors.New("GPU role map contains a duplicate GPU UUID")
-		}
-		seen[gpu] = struct{}{}
-	}
-	return document, append([]string{roles.EncoderVAE}, roles.DiT...), nil
 }
 
 func validateExternalResources(resources []ExternalResource, inventory renderInventory) error {
@@ -918,6 +663,44 @@ func validateOCIManifest(
 		return "", Platform{}, invalidf("OCI config for %s must bind linux/amd64", input.Image)
 	}
 	return manifest.MediaType, Platform{OS: config.OS, Architecture: config.Architecture}, nil
+}
+
+func validateModelRuntimeOCIConfig(image string, encoded []byte, requireH3Composition bool) error {
+	var config ociv1.Image
+	if err := decodeStrictJSON(encoded, &config); err != nil {
+		return invalidf("decode ModelRuntime OCI config for %s: %v", image, err)
+	}
+	if !reflect.DeepEqual(config.Config.Entrypoint, []string{"/usr/local/bin/vela-model-runtime"}) ||
+		len(config.Config.Cmd) != 0 {
+		return invalidf(
+			"ModelRuntime OCI config for %s must bind the exact vela-model-runtime entrypoint",
+			image,
+		)
+	}
+	if !requireH3Composition {
+		return nil
+	}
+	if !imageref.ValidPinned(config.Config.Labels["vela.ai.h3-runtime-base"]) {
+		return invalidf(
+			"ModelRuntime OCI config for %s must bind a digest-pinned H3 runtime base",
+			image,
+		)
+	}
+	for _, label := range []string{
+		"vela.ai.h3-encoder.sha256",
+		"vela.ai.h3-dit.sha256",
+		"vela.ai.h3-vae-decoder.sha256",
+	} {
+		value := config.Config.Labels[label]
+		if len(value) != 64 || value == strings.Repeat("0", 64) || !isLowerHex(value) {
+			return invalidf(
+				"ModelRuntime OCI config for %s must bind a valid %s label",
+				image,
+				label,
+			)
+		}
+	}
+	return nil
 }
 
 func validOCIBlobDescriptor(descriptor ociBlobDescriptor) bool {

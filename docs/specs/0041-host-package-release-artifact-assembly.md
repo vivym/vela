@@ -74,7 +74,7 @@ output; an output created concurrently remains owned by its creator.
 ## Evidence boundary
 
 This slice closes host-package assembly only. The proprietary H3 backend binary,
-pinned `ffprobe`, four Vela OCI images, OCI descriptors, registry publication,
+pinned `ffprobe`, five Vela OCI images, OCI descriptors, registry publication,
 signatures, SBOMs, vulnerability approval, real PKI/Secrets, production RKE2/H3
 deployment, fault exercises, and nine Launch Receipts remain separate work.
 Repository tests and locally assembled artifacts do not satisfy a Production

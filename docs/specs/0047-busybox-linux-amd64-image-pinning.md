@@ -6,10 +6,10 @@ Status: Repository conformance implemented by Slice 47.
 
 Implementation: `6d916bb`; review closure: `9f4063e`.
 
-This slice removes the zero BusyBox digest from the three repository-owned root
-materializer inputs. It pins one exact `linux/amd64` manifest for the
-`vela-control` Secret materializer, the static H3 Worker initializer, and the
-Fleet desired revision that produces the same Worker Pod template. It does not
+This slice originally removed zero BusyBox digests from three root materializer
+inputs. After the Stage Worker contraction, the retained current seam pins one
+exact `linux/amd64` manifest for the `vela-control` Secret materializer and every
+WorkerBundle `init_image` in the Fleet ResidencyPlan input. It does not
 replace release-specific Vela image placeholders, publish or sign an image,
 deploy RKE2/H3, or change the current `0/9 PASS` Production Gate result.
 
@@ -51,45 +51,42 @@ The public seams are the final rendered resource graphs from:
 
 ```sh
 kubectl kustomize deploy/vela-control
-kubectl kustomize deploy/worker-agent
 kubectl kustomize deploy/fleet-controller
 ```
 
 `internal/deploymentcontract.TestRenderedRootMaterializersUsePinnedBusyBoxImage`
-requires the exact digest at all three consumers:
+requires the exact digest at both retained consumers:
 
 - `Deployment/vela-system/vela-control` init container
   `secret-materializer`;
-- `DaemonSet/vela-system/vela-h3-worker` init container
-  `runner-socket-permissions`; and
-- `ConfigMap/vela-system/vela-fleet-desired-placeholder` revision
-  `initImage`.
+- every WorkerBundle `init_image` in
+  `ConfigMap/vela-system/vela-fleet-residency-plan-rollouts-placeholder`.
 
-The static Worker/Fleet equality test separately requires that Fleet
-materialization preserves the same image. A source YAML change, Kustomize drift,
-tag regression, zero digest, repository change, platform digest change, or
-divergence between the static and dynamically materialized Worker template now
-fails repository validation.
+Fleet actuation preserves that exact image when it materializes each
+WorkerMember Pod from the approved ResidencyPlan. A source YAML change,
+Kustomize drift, tag regression, zero digest, repository change, platform digest
+change, or divergence between the plan and dynamically materialized Pod fails
+repository validation.
 
 ## Release boundary
 
-The canonical Slice 40 release bundle still requires all three exact final
-renders, each Worker materialization, and the matching OCI manifest/config
+The canonical Slice 40 release bundle requires the retained exact final
+renders, each WorkerMember materialization, and the matching OCI manifest/config
 bytes. Slice 45 still requires registry publication, DSSE signature, SPDX SBOM,
 trusted vulnerability scan, and independent approval evidence under the
 external trust policy. The repository pin and mirror pull supply none of those
 external artifacts and are not a publication receipt, deployment receipt, or
 Launch Receipt.
 
-The `vela-control`, Fleet Controller, Worker Agent, and H3 Runner zero digests
-remain deliberate release-specific inputs. They must come from the approved
+The `vela-control`, Fleet Controller, Stage Worker runtime, and external H3
+ModelRuntime zero digests remain deliberate release-specific inputs. They must come from the approved
 Slice 43/44 Vela release artifacts and must not be replaced with local smoke
 digests. Real PKI/Secrets, storage, NetworkPolicy overlays, node materialization,
 RKE2, and H3 certification also remain external deployment inputs.
 
 ## Verification evidence
 
-- the render test was observed failing at all three consumers before the YAML
+- the render test was observed failing at both retained consumers before the YAML
   changes and passing after the digest pin;
 - the complete `internal/deploymentcontract` and `internal/fleetcontroller`
   packages pass;

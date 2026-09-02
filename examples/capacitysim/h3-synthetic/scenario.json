@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "revision": "synthetic-h3-disaggregated-v1",
+  "algorithm_revision": "capacity-sim-v1",
+  "seed": 20260831,
+  "graph_revision": "synthetic-h3-encoder-dit-vae-v1",
+  "window_duration_ns": 3600000000000,
+  "provenance": {
+    "source_kind": "SYNTHETIC",
+    "collection_window": "not-a-measurement",
+    "hardware_revision": "synthetic-gpu",
+    "runtime_revision": "synthetic-runtime-v1",
+    "model_revision": "synthetic-minimax-h3",
+    "profile_revision": "synthetic-stage-profiles-v1",
+    "units": "ns-bytes",
+    "sample_count": 4,
+    "freshness_offset_ns": 1,
+    "confidence_ppm": 100000,
+    "content_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "stages": [
+    {
+      "id": "encoder",
+      "profile_revision": "synthetic-encoder-profile-v1",
+      "resource_kind": "GPU",
+      "device_count": 1
+    },
+    {
+      "id": "dit",
+      "profile_revision": "synthetic-dit-profile-v1",
+      "resource_kind": "GPU",
+      "device_count": 1,
+      "dependencies": ["encoder"],
+      "connector_revision": "synthetic-fabric-v1"
+    },
+    {
+      "id": "vae-decoder",
+      "profile_revision": "synthetic-vae-profile-v1",
+      "resource_kind": "GPU",
+      "device_count": 1,
+      "dependencies": ["dit"],
+      "connector_revision": "synthetic-fabric-v1"
+    }
+  ],
+  "pools": [
+    {
+      "id": "encoder-pool-a",
+      "stage_id": "encoder",
+      "profile_revision": "synthetic-encoder-profile-v1",
+      "worker_count": 2,
+      "device_count": 1,
+      "network_domain": "rack-a",
+      "fault_domain": "encoder-nodes",
+      "model_revision": "synthetic-h3-encoder-v1",
+      "warm_ready_offset_ns": 0,
+      "min_count": 2,
+      "max_count": 4
+    },
+    {
+      "id": "dit-pool-b",
+      "stage_id": "dit",
+      "profile_revision": "synthetic-dit-profile-v1",
+      "worker_count": 7,
+      "device_count": 1,
+      "network_domain": "rack-b",
+      "fault_domain": "dit-nodes",
+      "model_revision": "synthetic-h3-dit-v1",
+      "warm_ready_offset_ns": 0,
+      "min_count": 7,
+      "max_count": 14
+    },
+    {
+      "id": "vae-pool-c",
+      "stage_id": "vae-decoder",
+      "profile_revision": "synthetic-vae-profile-v1",
+      "worker_count": 2,
+      "device_count": 1,
+      "network_domain": "rack-c",
+      "fault_domain": "vae-nodes",
+      "model_revision": "synthetic-h3-vae-v1",
+      "warm_ready_offset_ns": 0,
+      "min_count": 2,
+      "max_count": 4
+    }
+  ],
+  "limits": {
+    "max_jobs": 32,
+    "max_events": 10000,
+    "max_queue_per_stage": 32,
+    "max_buffer_items": 64,
+    "max_buffer_bytes": 2147483648,
+    "max_storage_bytes": 8589934592,
+    "max_cache_entries": 64,
+    "max_cache_bytes": 4294967296
+  },
+  "policy": {
+    "scheduler_revision": "synthetic-stage-scheduler-v1",
+    "cache_policy_revision": "synthetic-exact-cache-v1",
+    "max_retries_per_stage": 1,
+    "cache_enabled": true,
+    "cache_ttl_ns": 1800000000000,
+    "finalization_duration_ns": 100000000,
+    "release_healthy_residency": false,
+    "proposal_cooldown_ns": 600000000000,
+    "proposal_expiry_ns": 1800000000000
+  },
+  "cost_model": {
+    "revision": "synthetic-cost-v1",
+    "gpu_micro_units_per_second": 1000000,
+    "cpu_micro_units_per_second": 100000,
+    "network_micro_units_per_gb": 10000,
+    "storage_micro_units_per_gb_second": 100,
+    "memory_micro_units_per_gb_second": 10,
+    "scratch_micro_units_per_gb_second": 10,
+    "shared_allocation_method": "DEVICE_TIME",
+    "provenance": {
+      "source_kind": "ASSUMED",
+      "collection_window": "not-a-price-source",
+      "hardware_revision": "synthetic-gpu",
+      "runtime_revision": "synthetic-runtime-v1",
+      "model_revision": "synthetic-minimax-h3",
+      "profile_revision": "synthetic-stage-profiles-v1",
+      "units": "micro-units",
+      "sample_count": 1,
+      "freshness_offset_ns": 1,
+      "confidence_ppm": 100000,
+      "content_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  "pricing_snapshots": [
+    {
+      "revision": "synthetic-price-v1",
+      "service_class_revision": "synthetic-standard-v1",
+      "generation_preset_revision": "synthetic-balanced-v1",
+      "output_spec": "synthetic-video-1080p-v1",
+      "price_micro_units": 100000000,
+      "provenance": {
+        "source_kind": "ASSUMED",
+        "collection_window": "not-a-price-source",
+        "hardware_revision": "synthetic-gpu",
+        "runtime_revision": "synthetic-runtime-v1",
+        "model_revision": "synthetic-minimax-h3",
+        "profile_revision": "synthetic-stage-profiles-v1",
+        "units": "micro-units-per-job",
+        "sample_count": 1,
+        "freshness_offset_ns": 1,
+        "confidence_ppm": 100000,
+        "content_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    }
+  ]
+}

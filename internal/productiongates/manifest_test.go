@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/slo"
 	"github.com/vivym/vela/internal/sloevidence"
 )
@@ -578,6 +579,10 @@ func writeTypedEvidenceArtifacts(
 	kinds []string,
 ) {
 	t.Helper()
+	var faultPayloads map[string]*StateEventFaultArtifact
+	if evidence.Gate == GateStateEventFaultInjection {
+		faultPayloads = stateEventFaultArtifactFixtures(evidence)
+	}
 	payloads := make([]TypedEvidenceArtifact, len(kinds))
 	for index, kind := range kinds {
 		payloads[index] = TypedEvidenceArtifact{
@@ -601,6 +606,9 @@ func writeTypedEvidenceArtifacts(
 		if evidence.Gate == GatePresetCertification {
 			payloads[index].PresetCertification = evidence.PresetCertification
 		}
+		if evidence.Gate == GateStateEventFaultInjection {
+			payloads[index].StateEventFault = faultPayloads[payloads[index].Kind]
+		}
 		content, err := json.Marshal(payloads[index])
 		if err != nil {
 			t.Fatalf("encode %s/%s evidence artifact: %v", evidence.Gate, payloads[index].Kind, err)
@@ -617,6 +625,92 @@ func writeTypedEvidenceArtifacts(
 			Kind: payloads[index].Kind, Ref: ref, Digest: sloevidence.Digest(content),
 		})
 	}
+}
+
+func stateEventFaultArtifactFixtures(evidence *TypedEvidence) map[string]*StateEventFaultArtifact {
+	matrix := &StateEventFaultArtifact{SourceManifestDigest: fixtureDigest("fault-manifest")}
+	authorities := &StateEventFaultArtifact{SourceManifestDigest: matrix.SourceManifestDigest}
+	events := &StateEventFaultArtifact{SourceManifestDigest: matrix.SourceManifestDigest}
+	for index, scenarioID := range TypedEvidenceContractForGateMust(GateStateEventFaultInjection).CheckIDs {
+		contract, _ := StateEventFaultScenarioContractForID(scenarioID)
+		startedAt := evidence.StartedAt.Add(time.Duration(index) * time.Second)
+		completedAt := startedAt.Add(900 * time.Millisecond)
+		jobID := uuid.New()
+		triggerEventID := uuid.New()
+		triggerPayload := json.RawMessage(`{"kind":"fault-trigger"}`)
+		jobPayload := json.RawMessage(`{"kind":"job-terminal"}`)
+		source := StateEventFaultReceiptBinding{
+			Scenario: scenarioID, ReceiptRef: "receipts/" + scenarioID + ".json",
+			ReceiptDigest: fixtureDigest("receipt-" + scenarioID), ExerciseID: uuid.New(),
+			StartedAt: startedAt, CompletedAt: completedAt, AcceptedJobIDs: []uuid.UUID{jobID},
+		}
+		matrix.Scenarios = append(matrix.Scenarios, StateEventFaultScenario{
+			Source: source, ControllerIdentity: "spiffe://vela/test/fault-controller",
+			Target: StateEventFaultTarget{Kind: contract.TargetKinds[0], ID: "target-" + scenarioID},
+			FaultWindow: StateEventFaultWindow{
+				Action: contract.Action, InjectionPoint: contract.InjectionPoint,
+				OpenedAt:            startedAt.Add(100 * time.Millisecond),
+				TriggeredAt:         startedAt.Add(200 * time.Millisecond),
+				RecoveryConfirmedAt: startedAt.Add(800 * time.Millisecond), TriggerEventID: triggerEventID,
+			},
+		})
+		authority := StateEventFaultAuthority{
+			Source: source,
+			Before: StateEventAuthorityObservation{
+				CapturedAt: startedAt.Add(50 * time.Millisecond), DatabaseSnapshotID: "before-" + scenarioID,
+				JobLedgerDigest:        fixtureDigest("job-before-" + scenarioID),
+				CompletionLedgerDigest: fixtureDigest("completion-before-" + scenarioID),
+				ChargeLedgerDigest:     fixtureDigest("charge-before-" + scenarioID), AcceptedJobCount: 1,
+			},
+			After: StateEventAuthorityObservation{
+				CapturedAt: startedAt.Add(850 * time.Millisecond), DatabaseSnapshotID: "after-" + scenarioID,
+				JobLedgerDigest:        fixtureDigest("job-after-" + scenarioID),
+				CompletionLedgerDigest: fixtureDigest("completion-after-" + scenarioID),
+				ChargeLedgerDigest:     fixtureDigest("charge-after-" + scenarioID), AcceptedJobCount: 1,
+				VisibleCompletionCount: 1, ChargeCount: 1,
+			},
+		}
+		if scenarioID == "stale-fence-late-completion" {
+			for _, probe := range []struct{ kind, reason string }{
+				{kind: "MEMBER_EPOCH", reason: "member-epoch-stale"},
+				{kind: "DEVICE_EPOCH", reason: "device-epoch-stale"},
+				{kind: "MODEL_RUNTIME_EPOCH", reason: "model-runtime-epoch-stale"},
+				{kind: "STAGE_LEASE", reason: "stage-lease-stale"},
+			} {
+				authority.StaleProbes = append(authority.StaleProbes, StateEventStaleAuthorityProbe{
+					ID: uuid.New(), Kind: probe.kind, JobID: jobID, StageRunID: uuid.New(),
+					WorkerInstanceID: uuid.New(), PresentedAuthorityDigest: fixtureDigest("presented-" + probe.kind),
+					CurrentAuthorityDigest: fixtureDigest("current-" + probe.kind), Decision: "REJECTED",
+					ReasonCode: probe.reason, RejectedAt: startedAt.Add(400 * time.Millisecond),
+				})
+			}
+		}
+		authorities.Authorities = append(authorities.Authorities, authority)
+		events.RawEventSets = append(events.RawEventSets, StateEventFaultRawEventSet{
+			Source: source,
+			Events: []StateEventFaultRawEvent{
+				{EventID: triggerEventID, AggregateType: "FaultExercise", AggregateID: source.ExerciseID,
+					AggregateVersion: 1, EventType: contract.TriggerEventType,
+					PayloadDigest: sloevidence.Digest(triggerPayload), Payload: triggerPayload,
+					PublishedCount: 1, ConsumedCount: 1},
+				{EventID: uuid.New(), AggregateType: "Job", AggregateID: jobID, AggregateVersion: 1,
+					EventType: "job.succeeded", PayloadDigest: sloevidence.Digest(jobPayload), Payload: jobPayload,
+					PublishedCount: 1, ConsumedCount: 1},
+			},
+		})
+	}
+	return map[string]*StateEventFaultArtifact{
+		FaultArtifactScenarioMatrix: matrix, FaultArtifactAuthorityBeforeAfter: authorities,
+		FaultArtifactRawEventPayloads: events,
+	}
+}
+
+func TypedEvidenceContractForGateMust(gate Gate) TypedEvidenceContract {
+	contract, ok := TypedEvidenceContractForGate(gate)
+	if !ok {
+		panic("missing typed evidence contract")
+	}
+	return contract
 }
 
 func observabilityEvidenceFixture(t *testing.T, directory string) []byte {

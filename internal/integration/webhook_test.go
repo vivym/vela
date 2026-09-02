@@ -198,6 +198,8 @@ func TestWebhookHTTPManagementCommandsAndDeliveryVisibility(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	if _, err := database.Admin.Exec(`
 		UPDATE credentials
 		SET scopes = ARRAY[
@@ -469,7 +471,7 @@ func TestWebhookTerminalEventCreatesSafeProjectDelivery(t *testing.T) {
 		t.Fatalf("read terminal webhook Delivery: %v", err)
 	}
 	if deliveryID == "" || eventID == "" || deliveryJobID != job.JobID ||
-		eventType != "job.canceled" || jobVersion != 2 || state != "PENDING" ||
+		eventType != "job.canceled" || jobVersion != 3 || state != "PENDING" ||
 		retryWindowSeconds != int64((72*time.Hour)/time.Second) {
 		t.Fatalf(
 			"Delivery id=%s event=%s type=%s job=%s version=%d state=%s window=%ds",
@@ -484,7 +486,7 @@ func TestWebhookTerminalEventCreatesSafeProjectDelivery(t *testing.T) {
 	if len(body) != 9 || body["schema_version"] != float64(1) ||
 		body["event_id"] != eventID || body["event_type"] != "job.canceled" ||
 		body["organization_id"] != testOrganizationID || body["project_id"] != testProjectID ||
-		body["job_id"] != job.JobID || body["job_version"] != float64(2) ||
+		body["job_id"] != job.JobID || body["job_version"] != float64(3) ||
 		body["job_state"] != "CANCELED" || !occurredAtOK || occurredAt == "" ||
 		bytes.Contains(payload, []byte("Customer Content")) ||
 		bytes.Contains(payload, []byte("vwhsec_")) {
@@ -2518,7 +2520,7 @@ func (a *blockingFirstDeliveryAdapter) Deliver(
 
 func TestWebhookMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 11)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 10); err != nil {
 		t.Fatalf("contract empty webhook migration: %v", err)
@@ -2593,7 +2595,7 @@ func TestWebhookMigrationEmptyDownUpRestoresDefaultSurface(t *testing.T) {
 func TestWebhookMigrationDownRefusesDurableEvidence(t *testing.T) {
 	t.Run("Subscription and secret", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 11)
 		seedAdmissionFixture(t, database.Admin)
 		if _, err := database.Admin.Exec(`
 			UPDATE credentials
@@ -2626,71 +2628,153 @@ func TestWebhookMigrationDownRefusesDurableEvidence(t *testing.T) {
 	})
 
 	t.Run("Delivery attempt and replay", func(t *testing.T) {
-		fixture := newWebhookDispatchFixture(
-			t,
-			webhook.EventJobFailed,
-			"https://hooks.example.com/down-refusal-replay",
-		)
-		webhookPool := newRolePool(
-			t, fixture.database.DSN, "vela_webhook_login", "vela-webhook-password",
-		)
-		dispatcher, err := webhook.NewDispatcher(
-			webhookPool,
-			fixture.sealer,
-			&recordingDeliveryAdapter{statusCode: http.StatusNoContent},
-			webhook.DispatcherConfig{
-				InstanceID:      "migration-down-refusal-dispatcher",
-				BatchSize:       1,
-				ClaimTTL:        30 * time.Second,
-				DeliveryTimeout: time.Second,
-			},
-		)
-		if err != nil {
-			t.Fatalf("configure migration Down refusal Dispatcher: %v", err)
-		}
-		if result, err := dispatcher.DispatchBatch(context.Background()); err != nil ||
-			result.Delivered != 1 {
-			t.Fatalf("create durable webhook attempt = %#v error=%v", result, err)
+		database := newPostgres(t)
+		applyFoundationTo(t, database.Admin, 11)
+		seedAdmissionFixture(t, database.Admin)
+		if _, err := database.Admin.Exec(`
+			UPDATE credentials
+			SET scopes = array_append(scopes, 'webhooks:manage')
+			WHERE id = $1
+		`, testCredentialID); err != nil {
+			t.Fatalf("grant webhook scope for delivery evidence: %v", err)
 		}
 		principal, err := identity.NewAuthenticator(
-			newRolePool(t, fixture.database.DSN, "vela_auth_login", "vela-auth-password"),
+			newRolePool(t, database.DSN, "vela_auth_login", "vela-auth-password"),
 			testCredentialPepper,
 		).Authenticate(context.Background(), testBearerCredential())
 		if err != nil {
-			t.Fatalf("authenticate replay receipt Principal: %v", err)
+			t.Fatalf("authenticate delivery evidence Principal: %v", err)
 		}
-		var subscriptionID, deliveryID uuid.UUID
-		if err := fixture.database.Admin.QueryRow(`
-			SELECT subscription_id, id
-			FROM webhook_deliveries
-			WHERE event_id = $1
-		`, fixture.eventID).Scan(&subscriptionID, &deliveryID); err != nil {
-			t.Fatalf("read migration Down refusal Delivery: %v", err)
-		}
-		service, err := webhook.NewService(
-			webhookRequestPoolForDatabase(t, fixture.database),
-			fixture.sealer,
-			publicWebhookAddressResolver(),
-		)
-		if err != nil {
-			t.Fatalf("configure migration Down refusal service: %v", err)
-		}
-		if _, err := service.Replay(
+		created, err := testWebhookService(
+			t, webhookRequestPoolForDatabase(t, database),
+		).Create(
 			context.Background(),
 			principal,
 			uuid.MustParse(testProjectID),
-			subscriptionID,
-			deliveryID,
-		); err != nil {
-			t.Fatalf("create durable webhook replay receipt: %v", err)
+			webhook.CreateRequest{
+				Endpoint:   "https://hooks.example.com/down-refusal-replay",
+				EventTypes: []webhook.EventType{webhook.EventJobFailed},
+			},
+		)
+		if err != nil {
+			t.Fatalf("create delivery evidence Subscription: %v", err)
 		}
-		assertWebhookMigrationDownRefused(t, fixture.database)
+
+		jobID := uuid.New()
+		reservationID := uuid.New()
+		eventID := uuid.New()
+		tx, err := database.Admin.Begin()
+		if err != nil {
+			t.Fatalf("begin historical webhook delivery fixture: %v", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO jobs (
+				id, organization_id, project_id, created_by_principal_id,
+				model_revision_id, generation_preset_revision_id,
+				service_class_revision_id, output_spec_id, worker_pool_id,
+				request_hash, request_content, request_content_expires_at,
+				pricing_rate_card_revision_id, pricing_rate_line_id,
+				pricing_unit_amount_minor, pricing_quantity,
+				pricing_quoted_amount_minor, pricing_currency,
+				execution_max_attempts, execution_max_total_compute_seconds,
+				execution_max_finalization_seconds_per_attempt,
+				execution_retry_backoff_policy,
+				execution_retryable_failure_classes,
+				execution_circuit_breaker_policy, job_expires_at
+			) VALUES (
+				$1, $2, $3, $4,
+				'00000000-0000-0000-0000-000000000010',
+				'00000000-0000-0000-0000-000000000011',
+				'00000000-0000-0000-0000-000000000012',
+				'00000000-0000-0000-0000-000000000013',
+				'00000000-0000-0000-0000-000000000005',
+				sha256(convert_to($1::uuid::text, 'UTF8')),
+				'{"model":"minimax-h3","prompt":"historical webhook evidence"}'::jsonb,
+				clock_timestamp() + interval '2 days',
+				'00000000-0000-0000-0000-000000000016',
+				'00000000-0000-0000-0000-000000000017',
+				1250, 1, 1250, 'CNY', 3, 2400, 600,
+				'{"kind":"exponential","initial_seconds":30,"max_seconds":300}'::jsonb,
+				ARRAY['WORKER_LOST', 'TRANSIENT_BACKEND'],
+				'{"policy_revision":"h3-standard-v1"}'::jsonb,
+				clock_timestamp() + interval '1 day'
+			)
+		`, jobID, testOrganizationID, testProjectID, testPrincipalID); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("insert historical webhook Job: %v", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO credit_reservations (
+				id, organization_id, project_id, job_id, amount_minor, currency
+			) VALUES ($1, $2, $3, $4, 1250, 'CNY')
+		`, reservationID, testOrganizationID, testProjectID, jobID); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("insert historical webhook CreditReservation: %v", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO retry_runtime_states (job_id, organization_id, project_id)
+			VALUES ($1, $2, $3)
+		`, jobID, testOrganizationID, testProjectID); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("insert historical webhook RetryRuntimeState: %v", err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO outbox_events (
+				event_id, organization_id, project_id, aggregate_type, aggregate_id,
+				aggregate_version, event_type, schema_version, payload,
+				occurred_at, available_at
+			) VALUES (
+				$1, $2, $3, 'Job', $4, 1, 'job.failed', 1, decode('00', 'hex'),
+				clock_timestamp(), clock_timestamp()
+			)
+		`, eventID, testOrganizationID, testProjectID, jobID); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("insert historical webhook terminal event: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("commit historical webhook delivery fixture: %v", err)
+		}
+
+		var deliveryID uuid.UUID
+		if err := database.Admin.QueryRow(`
+			SELECT id FROM webhook_deliveries
+			WHERE subscription_id = $1 AND event_id = $2
+		`, created.Subscription.ID, eventID).Scan(&deliveryID); err != nil {
+			t.Fatalf("read historical webhook Delivery: %v", err)
+		}
+		if _, err := database.Admin.Exec(`
+			INSERT INTO webhook_delivery_attempts (
+				id, organization_id, project_id, subscription_id, delivery_id,
+				generation, attempt_number, claim_token, claimed_by, claimed_at,
+				signature_secret_revisions, created_at
+			) VALUES (
+				$1, $2, $3, $4, $5, 1, 1, $6,
+				'migration-down-refusal-dispatcher', clock_timestamp(), ARRAY[1],
+				clock_timestamp()
+			)
+		`, uuid.New(), testOrganizationID, testProjectID, created.Subscription.ID,
+			deliveryID, uuid.New()); err != nil {
+			t.Fatalf("insert historical webhook DeliveryAttempt: %v", err)
+		}
+		if _, err := database.Admin.Exec(`
+			INSERT INTO webhook_delivery_replays (
+				id, organization_id, project_id, subscription_id, delivery_id,
+				from_state, from_generation, to_generation,
+				requested_by_principal_id, requested_by_credential_id, requested_at
+			) VALUES (
+				$1, $2, $3, $4, $5, 'DELIVERED', 1, 2, $6, $7, clock_timestamp()
+			)
+		`, uuid.New(), testOrganizationID, testProjectID, created.Subscription.ID,
+			deliveryID, testPrincipalID, testCredentialID); err != nil {
+			t.Fatalf("insert historical webhook DeliveryReplay: %v", err)
+		}
+		assertWebhookMigrationDownRefused(t, database)
 	})
 }
 
 func TestWebhookMigrationDownSerializesBeforeEvidenceCheck(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 11)
 	seedAdmissionFixture(t, database.Admin)
 	if _, err := database.Admin.Exec(`
 		UPDATE credentials
@@ -3023,7 +3107,7 @@ func newWebhookHTTPServerWithResolver(
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},
-		Admission:              admission.NewLegacyService(requestPool),
+		Admission:              admission.NewService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
 		Webhooks:               testWebhookService(t, webhookRequestPool, resolver),

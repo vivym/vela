@@ -18,7 +18,8 @@ func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
 	now := time.Unix(8000, 0).UTC()
 	evidence := digestForTest("failure")
 	operation := remediation.Operation{
-		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 4,
+		ID: uuid.New(), WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 4,
+		DeviceID: testDeviceID0, DeviceEpoch: 1,
 		NodeIdentity: "node-1", DeviceIdentity: "gpu-0", FailureClass: "gpu_fault",
 		EvidenceDigest: evidence, CertificationRevision: "matrix-v2",
 		ActionLevel: remediation.ActionL2GPUReset, State: remediation.StateExecuting,
@@ -62,7 +63,8 @@ func TestControlPlaneAuthorizerEnforcesAuthoritativeOperation(t *testing.T) {
 func TestControlPlaneLedgerCompletesAndReplaysAuthoritativeOperation(t *testing.T) {
 	now := time.Unix(9000, 0).UTC()
 	operation := remediation.Operation{
-		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 8,
+		ID: uuid.New(), WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 8,
+		DeviceID: testDeviceID1, DeviceEpoch: 2,
 		NodeIdentity: "node-2", DeviceIdentity: "gpu-1", FailureClass: "process_failure",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v3",
 		ActionLevel: remediation.ActionL0ProcessRestart, State: remediation.StateExecuting,
@@ -100,7 +102,8 @@ func TestControlPlaneLedgerCompletesAndReplaysAuthoritativeOperation(t *testing.
 
 func TestControlPlaneLedgerRejectsWrongRequestHash(t *testing.T) {
 	operation := remediation.Operation{
-		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 2,
+		ID: uuid.New(), WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 2,
+		DeviceID: testDeviceID0, DeviceEpoch: 3,
 		NodeIdentity: "node-3", DeviceIdentity: "gpu-0", FailureClass: "cuda_fault",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v1",
 		ActionLevel: remediation.ActionL1CUDACleanup, State: remediation.StateExecuting,
@@ -123,7 +126,8 @@ func TestControlPlaneLedgerRejectsWrongRequestHash(t *testing.T) {
 func TestRemoteExecutorAuthorizesCallsAgentAndCompletesControlPlane(t *testing.T) {
 	now := time.Now().UTC()
 	operation := remediation.Operation{
-		ID: uuid.New(), WorkerID: uuid.New(), WorkerEpoch: 8,
+		ID: uuid.New(), WorkerInstanceID: uuid.New(), WorkerInstanceEpoch: 8,
+		DeviceID: testDeviceID1, DeviceEpoch: 4,
 		NodeIdentity: "node-2", DeviceIdentity: "gpu-1", FailureClass: "process_failure",
 		EvidenceDigest: digestForTest("failure"), CertificationRevision: "matrix-v3",
 		ActionLevel: remediation.ActionL0ProcessRestart, State: remediation.StateExecuting,
@@ -154,10 +158,12 @@ func TestRemoteExecutorAuthorizesCallsAgentAndCompletesControlPlane(t *testing.T
 		t.Fatalf("NewRemoteExecutor: %v", err)
 	}
 	result, err := executor.Execute(context.Background(), remediation.Plan{
-		OperationID:      operation.ID,
-		ExecutionClaimID: stableExecutionClaimID(operation.ID, "controller/control-1"),
-		WorkerID:         operation.WorkerID,
-		WorkerEpoch:      operation.WorkerEpoch, DeadlineAt: operation.DeadlineAt,
+		OperationID:         operation.ID,
+		ExecutionClaimID:    stableExecutionClaimID(operation.ID, "controller/control-1"),
+		WorkerInstanceID:    operation.WorkerInstanceID,
+		WorkerInstanceEpoch: operation.WorkerInstanceEpoch,
+		DeviceID:            operation.DeviceID, DeviceEpoch: operation.DeviceEpoch,
+		DeadlineAt:   operation.DeadlineAt,
 		NodeIdentity: operation.NodeIdentity, DeviceIdentity: operation.DeviceIdentity,
 		FailureClass: operation.FailureClass,
 		ActionLevel:  operation.ActionLevel, CertificationRevision: operation.CertificationRevision,
@@ -183,11 +189,11 @@ type recordingOperationReader struct {
 }
 
 type recordedExecutionClaim struct {
-	OperationID uuid.UUID
-	WorkerID    uuid.UUID
-	WorkerEpoch int64
-	ClaimID     uuid.UUID
-	Actor       string
+	OperationID         uuid.UUID
+	WorkerInstanceID    uuid.UUID
+	WorkerInstanceEpoch int64
+	ClaimID             uuid.UUID
+	Actor               string
 }
 
 type recordingExecutionClaimer struct {
@@ -202,7 +208,7 @@ func (claimer *recordingExecutionClaimer) ClaimExecution(
 	actor string,
 ) (remediation.ClaimResult, error) {
 	claimer.claims = append(claimer.claims, recordedExecutionClaim{
-		OperationID: operationID, WorkerID: workerID, WorkerEpoch: workerEpoch,
+		OperationID: operationID, WorkerInstanceID: workerID, WorkerInstanceEpoch: workerEpoch,
 		ClaimID: claimID, Actor: actor,
 	})
 	return remediation.ClaimResult{OperationID: operationID, ClaimID: claimID}, nil

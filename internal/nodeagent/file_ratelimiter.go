@@ -27,21 +27,21 @@ type fileRateLimitState struct {
 
 func NewFileRateLimiter(directory string, config RateLimit) (*FileRateLimiter, error) {
 	if !validRateLimit(config) {
-		return nil, errors.New("node Agent rate limit is invalid")
+		return nil, errors.New("node agent rate limit is invalid")
 	}
 	cleaned := filepath.Clean(directory)
 	if !filepath.IsAbs(cleaned) || cleaned != directory {
-		return nil, errors.New("node Agent rate-limit directory must be an absolute clean path")
+		return nil, errors.New("node agent rate-limit directory must be an absolute clean path")
 	}
 	if err := securefile.ValidateDirectory(cleaned); err != nil {
-		return nil, errors.New("node Agent rate-limit directory does not satisfy the security contract")
+		return nil, errors.New("node agent rate-limit directory does not satisfy the security contract")
 	}
 	return &FileRateLimiter{directory: cleaned, config: config}, nil
 }
 
 func (limiter *FileRateLimiter) Allow(now time.Time) error {
 	if limiter == nil || limiter.directory == "" || !validRateLimit(limiter.config) || now.IsZero() {
-		return errors.New("node Agent file rate limiter is not configured")
+		return errors.New("node agent file rate limiter is not configured")
 	}
 	lockPath := filepath.Join(limiter.directory, ".remediation-rate-limit.lock")
 	lock, err := securefile.OpenPrivateState(lockPath)
@@ -82,11 +82,11 @@ func (limiter *FileRateLimiter) load() (fileRateLimitState, error) {
 		return fileRateLimitState{}, fmt.Errorf("decode node Agent rate-limit state: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return fileRateLimitState{}, errors.New("node Agent rate-limit state must contain exactly one JSON document")
+		return fileRateLimitState{}, errors.New("node agent rate-limit state must contain exactly one JSON document")
 	}
 	for index, timestamp := range state.History {
 		if timestamp.IsZero() || index > 0 && timestamp.Before(state.History[index-1]) {
-			return fileRateLimitState{}, errors.New("node Agent rate-limit state contains an invalid timestamp")
+			return fileRateLimitState{}, errors.New("node agent rate-limit state contains an invalid timestamp")
 		}
 	}
 	return state, nil

@@ -1,0 +1,893 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vela-fleet-residency-plan-rollouts-placeholder
+  namespace: vela-system
+  labels:
+    app.kubernetes.io/name: vela-fleet-controller
+    app.kubernetes.io/part-of: vela
+immutable: true
+data:
+  rollouts.json: |
+    {
+      "rollouts": [
+        {
+          "approved_plan": {
+            "schema_version": 1,
+            "id": "49320000-0000-0000-0000-000000000001",
+            "stable_id": "h3-disaggregated-template-r1",
+            "revision": 1,
+            "content_digest": "3f0bb8fa08f507b35a247e45b2f81aad9f554b997f956a17400a1209c1e5c20e",
+            "approval_evidence_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "approved_at": "2026-08-31T00:00:00Z",
+            "approved_by": "fleet/template-not-approved",
+            "capacity_pools": [
+              {
+                "id": "49320000-0000-0000-0000-000000000003",
+                "stable_id": "h3-encoder-template",
+                "stage_profile_revision_id": "49320000-0000-0000-0000-000000000010",
+                "resource_class": "GPU",
+                "security_class": "INTERNAL",
+                "region": "unconfigured-region",
+                "max_ready_queue_depth": 128
+              },
+              {
+                "id": "49320000-0000-0000-0000-000000000004",
+                "stable_id": "h3-dit-template",
+                "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011",
+                "resource_class": "GPU",
+                "security_class": "INTERNAL",
+                "region": "unconfigured-region",
+                "max_ready_queue_depth": 1024
+              },
+              {
+                "id": "49320000-0000-0000-0000-00000000000a",
+                "stable_id": "h3-vae-template",
+                "stage_profile_revision_id": "49320000-0000-0000-0000-000000000012",
+                "resource_class": "GPU",
+                "security_class": "INTERNAL",
+                "region": "unconfigured-region",
+                "max_ready_queue_depth": 128
+              },
+              {
+                "id": "49320000-0000-0000-0000-00000000000c",
+                "stable_id": "h3-cpu-encode-capacity",
+                "stage_profile_revision_id": "49320000-0000-0000-0000-000000000041",
+                "resource_class": "CPU",
+                "security_class": "INTERNAL",
+                "region": "unconfigured-region",
+                "max_ready_queue_depth": 128
+              },
+              {
+                "id": "49320000-0000-0000-0000-00000000000d",
+                "stable_id": "h3-cpu-mux-capacity",
+                "stage_profile_revision_id": "49320000-0000-0000-0000-000000000042",
+                "resource_class": "CPU",
+                "security_class": "INTERNAL",
+                "region": "unconfigured-region",
+                "max_ready_queue_depth": 128
+              },
+              {
+                "id": "49320000-0000-0000-0000-00000000000e",
+                "stable_id": "h3-cpu-thumbnail-capacity",
+                "stage_profile_revision_id": "49320000-0000-0000-0000-000000000043",
+                "resource_class": "CPU",
+                "security_class": "INTERNAL",
+                "region": "unconfigured-region",
+                "max_ready_queue_depth": 128
+              }
+            ],
+            "worker_bundles": [
+              {
+                "id": "49320000-0000-0000-0000-000000000002",
+                "stable_id": "h3-worker-bundle-template",
+                "desired_generation": 1,
+                "layout_digest": "2b6071fc40855f060ef9a81c557c875c3dea6bafc243944a82f6a33c0e1b6fa0"
+              },
+              {
+                "id": "49320000-0000-0000-0000-00000000000b",
+                "stable_id": "h3-cpu-media-worker-bundle-template",
+                "desired_generation": 1,
+                "layout_digest": "009e094a24cfdbb84a47c1cc27c9d70fd11b732e300b1ae40fa19b4212c2522c"
+              }
+            ],
+            "worker_instances": [
+              {
+                "id": "e24be33b-2f8c-5af5-b40a-cd270a015329",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000005",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000003",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000301",
+                    "capacity_pool_id": "49320000-0000-0000-0000-000000000003",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000010"
+                  },
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000309",
+                    "capacity_pool_id": "49320000-0000-0000-0000-00000000000a",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000012"
+                  }
+                ]
+              },
+              {
+                "id": "f9ebf3bd-9c44-50bf-89dd-0346ed031d36",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000302",
+                    "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011"
+                  }
+                ]
+              },
+              {
+                "id": "c2268d3b-da91-5983-9a9f-e7163aa2e311",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000303",
+                    "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011"
+                  }
+                ]
+              },
+              {
+                "id": "7ebf35b5-f67f-5430-b169-4f96e1e3c2da",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000304",
+                    "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011"
+                  }
+                ]
+              },
+              {
+                "id": "2598f580-116f-557f-a6e5-3c469e5933e9",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000305",
+                    "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011"
+                  }
+                ]
+              },
+              {
+                "id": "62659d2f-07af-53e2-8bb9-4549712df4bf",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000306",
+                    "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011"
+                  }
+                ]
+              },
+              {
+                "id": "c5e2880d-0daa-52f3-91b2-f36c4e44c2e5",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000307",
+                    "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011"
+                  }
+                ]
+              },
+              {
+                "id": "3aba0de1-f2af-5fe2-bf22-fa6f75f764f4",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000308",
+                    "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011"
+                  }
+                ]
+              },
+              {
+                "id": "49320000-0000-0000-0000-000000000021",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000021",
+                "capacity_pool_id": "49320000-0000-0000-0000-00000000000c",
+                "worker_bundle_id": "49320000-0000-0000-0000-00000000000b",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000311",
+                    "capacity_pool_id": "49320000-0000-0000-0000-00000000000c",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000041"
+                  }
+                ]
+              },
+              {
+                "id": "49320000-0000-0000-0000-000000000022",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000022",
+                "capacity_pool_id": "49320000-0000-0000-0000-00000000000d",
+                "worker_bundle_id": "49320000-0000-0000-0000-00000000000b",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000312",
+                    "capacity_pool_id": "49320000-0000-0000-0000-00000000000d",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000042"
+                  }
+                ]
+              },
+              {
+                "id": "49320000-0000-0000-0000-000000000023",
+                "worker_profile_revision_id": "49320000-0000-0000-0000-000000000023",
+                "capacity_pool_id": "49320000-0000-0000-0000-00000000000e",
+                "worker_bundle_id": "49320000-0000-0000-0000-00000000000b",
+                "desired_member_count": 1,
+                "desired_device_count": 1,
+                "model_runtime_routes": [
+                  {
+                    "model_residency_id": "49320000-0000-0000-0000-000000000313",
+                    "capacity_pool_id": "49320000-0000-0000-0000-00000000000e",
+                    "stage_profile_revision_id": "49320000-0000-0000-0000-000000000043"
+                  }
+                ]
+              }
+            ]
+          },
+          "worker_bundles": [
+            {
+              "schema_version": 1,
+              "plan_revision_id": "49320000-0000-0000-0000-000000000001",
+              "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
+              "revision_digest": "2b6071fc40855f060ef9a81c557c875c3dea6bafc243944a82f6a33c0e1b6fa0",
+              "namespace": "vela-system",
+              "init_image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+              "stage_worker_agent_image": "ghcr.io/vivym/vela-stage-worker-agent@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+              "runtime_image": "ghcr.io/vivym/vela-h3-stage-runtime@sha256:4444444444444444444444444444444444444444444444444444444444444444",
+              "stage_worker_config_map": "vela-stage-worker-runtime-r1",
+              "model_runtime_verifier_config_map": "vela-model-runtime-verifier-r1",
+              "stage_worker_control_tls_secret": "vela-stage-worker-control-mtls-r1",
+              "stage_worker_authority_secret": "vela-stage-worker-authority-r1",
+              "artifact_store_credentials_secret": "vela-stage-worker-artifact-credentials-r1",
+              "artifact_store_ca_secret": "vela-stage-worker-artifact-ca-r1",
+              "worker_instances": [
+                {
+                  "id": "e24be33b-2f8c-5af5-b40a-cd270a015329",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000005",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000003",
+                  "role": "aux",
+                  "capacity_slots": 1,
+                  "shared_slot_exception": "H3_AUX_ENCODER_VAE",
+                  "device_set_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+                  "membership_digest": "8888888888888888888888888888888888888888888888888888888888888888",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000301",
+                      "capacity_pool_id": "49320000-0000-0000-0000-000000000003",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000010",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "ENCODER",
+                      "model_component_revision": "minimax-h3-encoder-template-r1",
+                      "runtime_identity": "fast-h3-encoder-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-encoder"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29500",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/encoder.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000001"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    },
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000309",
+                      "capacity_pool_id": "49320000-0000-0000-0000-00000000000a",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000012",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "VAE_DECODER",
+                      "model_component_revision": "minimax-h3-vae-decoder-template-r1",
+                      "runtime_identity": "fast-h3-vae-decoder-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-vae-decoder"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29501",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/vae-decoder.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000001"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "6f9e518c-173b-57fe-afb1-db32ef4aaada",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-node-template",
+                      "resource_class": "GPU",
+                      "identity_digest": "1cd8b517bd35e5ec297ed04eae7b5a4b79acd32e2657f18654df352f82886a81",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000100",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000001",
+                          "pci_bdf": "0000:41:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "f9ebf3bd-9c44-50bf-89dd-0346ed031d36",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                  "role": "dit",
+                  "capacity_slots": 1,
+                  "device_set_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+                  "membership_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000302",
+                      "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "DIT",
+                      "model_component_revision": "minimax-h3-dit-template-r1",
+                      "runtime_identity": "fast-h3-dit-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-dit"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29600",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit-0.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000002"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "73529726-6750-5900-8a89-48f5fac51b51",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-node-template",
+                      "resource_class": "GPU",
+                      "identity_digest": "3a4f7cab90e816f826b4290de8232602a1a53b77f25801d0466e9690f91922d4",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000101",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000002",
+                          "pci_bdf": "0000:42:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "c2268d3b-da91-5983-9a9f-e7163aa2e311",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                  "role": "dit",
+                  "capacity_slots": 1,
+                  "device_set_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+                  "membership_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000303",
+                      "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "DIT",
+                      "model_component_revision": "minimax-h3-dit-template-r1",
+                      "runtime_identity": "fast-h3-dit-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-dit"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29601",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit-1.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000003"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "b01f55de-8a7d-52b3-8f2e-9b6a66718aac",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-node-template",
+                      "resource_class": "GPU",
+                      "identity_digest": "62af7522fe4a4e0c62f2311ba7e071131cbb416156eb6dbedda9d58f0e553d53",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000102",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000003",
+                          "pci_bdf": "0000:43:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "7ebf35b5-f67f-5430-b169-4f96e1e3c2da",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                  "role": "dit",
+                  "capacity_slots": 1,
+                  "device_set_digest": "4444444444444444444444444444444444444444444444444444444444444444",
+                  "membership_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000304",
+                      "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "DIT",
+                      "model_component_revision": "minimax-h3-dit-template-r1",
+                      "runtime_identity": "fast-h3-dit-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-dit"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29602",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit-2.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000004"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "946c554c-1d9d-5da3-b2c7-4d988cd22553",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-node-template",
+                      "resource_class": "GPU",
+                      "identity_digest": "2db01ba2fc1e6250c1d98dc6bef9a75ef99e8605ccd9591df95b29517f3b9c1a",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000103",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000004",
+                          "pci_bdf": "0000:44:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "2598f580-116f-557f-a6e5-3c469e5933e9",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                  "role": "dit",
+                  "capacity_slots": 1,
+                  "device_set_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+                  "membership_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000305",
+                      "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "DIT",
+                      "model_component_revision": "minimax-h3-dit-template-r1",
+                      "runtime_identity": "fast-h3-dit-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-dit"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29603",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit-3.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000005"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "c30a98c8-0edb-5c4e-bec3-046554439871",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-node-template",
+                      "resource_class": "GPU",
+                      "identity_digest": "517104ca99669d23672e6d4ad3a4361b02b7f446c79873e7b58f776c50bfac10",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000104",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000005",
+                          "pci_bdf": "0000:45:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "62659d2f-07af-53e2-8bb9-4549712df4bf",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                  "role": "dit",
+                  "capacity_slots": 1,
+                  "device_set_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+                  "membership_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000306",
+                      "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "DIT",
+                      "model_component_revision": "minimax-h3-dit-template-r1",
+                      "runtime_identity": "fast-h3-dit-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-dit"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29604",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit-4.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000006"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "7082e6f5-f144-5f7c-8e7f-add541ddd08a",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-node-template",
+                      "resource_class": "GPU",
+                      "identity_digest": "275c21f3ffd146489193f8d1f9b046dcbd881e4e5534a2b4dcb4892a7ca49415",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000105",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000006",
+                          "pci_bdf": "0000:46:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "c5e2880d-0daa-52f3-91b2-f36c4e44c2e5",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                  "role": "dit",
+                  "capacity_slots": 1,
+                  "device_set_digest": "7777777777777777777777777777777777777777777777777777777777777777",
+                  "membership_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000307",
+                      "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "DIT",
+                      "model_component_revision": "minimax-h3-dit-template-r1",
+                      "runtime_identity": "fast-h3-dit-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-dit"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29605",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit-5.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000007"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "a00b57dd-76fd-5a5f-869b-3ada2d9144dc",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-node-template",
+                      "resource_class": "GPU",
+                      "identity_digest": "4908db47b53c8273773455866ec943d0b9938df58db0251aad63231a19b16210",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000106",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000007",
+                          "pci_bdf": "0000:47:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "3aba0de1-f2af-5fe2-bf22-fa6f75f764f4",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000006",
+                  "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                  "role": "dit",
+                  "capacity_slots": 1,
+                  "device_set_digest": "8888888888888888888888888888888888888888888888888888888888888888",
+                  "membership_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000308",
+                      "capacity_pool_id": "49320000-0000-0000-0000-000000000004",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000011",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "DIT",
+                      "model_component_revision": "minimax-h3-dit-template-r1",
+                      "runtime_identity": "fast-h3-dit-template-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-dit"
+                      ],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29606",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit-6.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000008"
+                      ],
+                      "initialization_timeout": "2h",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "416e2d9d-1025-5e2b-8eee-21795b398598",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-node-template",
+                      "resource_class": "GPU",
+                      "identity_digest": "f3824970730dce95d5a5ebec0cf8e4ad0b91790d92cf2c18d82962035afb822f",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000107",
+                          "device_epoch": 1,
+                          "gpu_uuid": "GPU-00000000-0000-0000-0000-000000000008",
+                          "pci_bdf": "0000:48:00.0"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "schema_version": 1,
+              "plan_revision_id": "49320000-0000-0000-0000-000000000001",
+              "worker_bundle_id": "49320000-0000-0000-0000-00000000000b",
+              "revision_digest": "009e094a24cfdbb84a47c1cc27c9d70fd11b732e300b1ae40fa19b4212c2522c",
+              "namespace": "vela-system",
+              "init_image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
+              "stage_worker_agent_image": "ghcr.io/vivym/vela-stage-worker-agent@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+              "runtime_image": "ghcr.io/vivym/vela-cpu-media-stage-runtime@sha256:9999999999999999999999999999999999999999999999999999999999999999",
+              "stage_worker_config_map": "vela-stage-worker-runtime-r1",
+              "model_runtime_verifier_config_map": "vela-model-runtime-verifier-r1",
+              "stage_worker_control_tls_secret": "vela-stage-worker-control-mtls-r1",
+              "stage_worker_authority_secret": "vela-stage-worker-authority-r1",
+              "artifact_store_credentials_secret": "vela-stage-worker-artifact-credentials-r1",
+              "artifact_store_ca_secret": "vela-stage-worker-artifact-ca-r1",
+              "worker_instances": [
+                {
+                  "id": "49320000-0000-0000-0000-000000000021",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000021",
+                  "capacity_pool_id": "49320000-0000-0000-0000-00000000000c",
+                  "role": "cpu-encode",
+                  "capacity_slots": 1,
+                  "device_set_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+                  "membership_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000311",
+                      "capacity_pool_id": "49320000-0000-0000-0000-00000000000c",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000041",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "CPU_MEDIA",
+                      "model_component_revision": "ffmpeg-encode-v1",
+                      "runtime_identity": "h3-cpu-encode-runtime-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-cpu-media",
+                        "--role",
+                        "cpu-encode"
+                      ],
+                      "initialization_timeout": "5m",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "49320000-0000-0000-0000-000000000511",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-cpu-node-template",
+                      "resource_class": "CPU",
+                      "identity_digest": "c2eaea29d71703bc566e3ca3b5a10ef1d7e97f0f160fe218247ee8e019bbd07b",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000201",
+                          "device_epoch": 1,
+                          "resource_class": "CPU"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "49320000-0000-0000-0000-000000000022",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000022",
+                  "capacity_pool_id": "49320000-0000-0000-0000-00000000000d",
+                  "role": "cpu-mux",
+                  "capacity_slots": 1,
+                  "device_set_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "membership_digest": "7777777777777777777777777777777777777777777777777777777777777777",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000312",
+                      "capacity_pool_id": "49320000-0000-0000-0000-00000000000d",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000042",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "CPU_MEDIA",
+                      "model_component_revision": "ffmpeg-mux-v1",
+                      "runtime_identity": "h3-cpu-mux-runtime-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-cpu-media",
+                        "--role",
+                        "cpu-mux"
+                      ],
+                      "initialization_timeout": "5m",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "49320000-0000-0000-0000-000000000512",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-cpu-node-template",
+                      "resource_class": "CPU",
+                      "identity_digest": "aa26e812ca99af9dd2210842a01090ae33ddc66c918b0e690a02c7ebe4199656",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000202",
+                          "device_epoch": 1,
+                          "resource_class": "CPU"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "id": "49320000-0000-0000-0000-000000000023",
+                  "instance_epoch": 1,
+                  "worker_profile_revision_id": "49320000-0000-0000-0000-000000000023",
+                  "capacity_pool_id": "49320000-0000-0000-0000-00000000000e",
+                  "role": "cpu-thumbnail",
+                  "capacity_slots": 1,
+                  "device_set_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "membership_digest": "8888888888888888888888888888888888888888888888888888888888888888",
+                  "model_runtimes": [
+                    {
+                      "model_residency_id": "49320000-0000-0000-0000-000000000313",
+                      "capacity_pool_id": "49320000-0000-0000-0000-00000000000e",
+                      "stage_profile_revision_id": "49320000-0000-0000-0000-000000000043",
+                      "model_runtime_epoch_floor": 1,
+                      "component": "CPU_MEDIA",
+                      "model_component_revision": "ffmpeg-thumbnail-v1",
+                      "runtime_identity": "h3-cpu-thumbnail-runtime-r1",
+                      "command": [
+                        "/opt/vela/bin/h3-cpu-media",
+                        "--role",
+                        "cpu-thumbnail"
+                      ],
+                      "initialization_timeout": "5m",
+                      "shutdown_timeout": "2m"
+                    }
+                  ],
+                  "members": [
+                    {
+                      "id": "49320000-0000-0000-0000-000000000513",
+                      "member_epoch": 1,
+                      "key": "member-0",
+                      "node_identity": "h3-cpu-node-template",
+                      "resource_class": "CPU",
+                      "identity_digest": "4a2600cbac5574ff6857d146e82230560e3191026b78708681938cb91cdbec03",
+                      "device_count": 1,
+                      "device_constraints": [
+                        {
+                          "device_id": "49320000-0000-0000-0000-000000000203",
+                          "device_epoch": 1,
+                          "resource_class": "CPU"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "schema_version": 1
+    }

@@ -1,1 +1,0 @@
-"""Generated Vela protocol package."""

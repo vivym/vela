@@ -18,12 +18,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/billingexport"
-	"github.com/vivym/vela/internal/cancellation"
-	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/financereconciliation"
 	"github.com/vivym/vela/internal/legalhold"
 	"github.com/vivym/vela/internal/noncontentexpiry"
-	"github.com/vivym/vela/internal/workercontrol"
 )
 
 func migrateToSchema30BeforeTerminalEvidence(t *testing.T, database testDatabase) {
@@ -40,7 +37,6 @@ func migrateToSchema30BeforeTerminalEvidence(t *testing.T, database testDatabase
 
 func TestNonContentExpiryPhysicallyDeletesSourcesAndHonorsPostMetadataHold(t *testing.T) {
 	fixture := newInvoiceExportChargeFixture(t, "non-content-expiry-physical")
-	acknowledgeNonContentExpiryCancellation(t, fixture)
 	exportNonContentExpiryInvoice(t, fixture)
 	database := fixture.database
 	jobID := fixture.assignment.JobID
@@ -90,7 +86,7 @@ func TestNonContentExpiryPhysicallyDeletesSourcesAndHonorsPostMetadataHold(t *te
 		t.Fatalf("read metadata expiry result: %v", err)
 	}
 	if jobs != 0 || attempts != 0 || reservations != 1 || charges != 1 ||
-		invoiceExports != 1 || invoiceReceipts != 1 || decisions != 1 || stopReceipts != 1 ||
+		invoiceExports != 1 || invoiceReceipts != 1 || decisions != 0 || stopReceipts != 0 ||
 		roots != 1 || attemptRoots != 1 || metadataReceipts != 1 {
 		t.Fatalf(
 			"metadata expiry counts jobs/attempts/reservations/charges/exports/invoice-receipts/"+
@@ -271,7 +267,6 @@ func TestNonContentExpiryPhysicallyDeletesSourcesAndHonorsPostMetadataHold(t *te
 
 func TestNonContentExpiryRootsAreMinimalImmutableAndFillOnce(t *testing.T) {
 	fixture := newInvoiceExportChargeFixture(t, "non-content-expiry-root-contract")
-	acknowledgeNonContentExpiryCancellation(t, fixture)
 	exportNonContentExpiryInvoice(t, fixture)
 
 	var jobRootJSON, attemptRootJSON string
@@ -348,108 +343,6 @@ func TestNonContentExpiryRootsAreMinimalImmutableAndFillOnce(t *testing.T) {
 				t.Fatalf("root mutation error = %v, want %s SQLSTATE 55000", err, mutation.constraint)
 			}
 		})
-	}
-}
-
-func TestNonContentAttemptDependentsPreserveLiveCompositeIdentity(t *testing.T) {
-	fixture := newStartFixture(t, "non-content-expiry-live-attempt-identity", 7)
-	type triggerContract struct {
-		trigger  string
-		function string
-	}
-	expectedTriggers := map[string]triggerContract{
-		"artifact_sets": {
-			trigger:  "artifact_sets_validate_live_attempt_identity",
-			function: "validate_live_artifact_attempt_identity",
-		},
-		"artifacts": {
-			trigger:  "artifacts_validate_live_attempt_identity",
-			function: "validate_live_artifact_attempt_identity",
-		},
-		"attempt_leases": {
-			trigger:  "attempt_leases_validate_live_attempt_identity",
-			function: "validate_live_lease_attempt_identity",
-		},
-		"attempt_progress": {
-			trigger:  "attempt_progress_validate_live_attempt_identity",
-			function: "validate_live_progress_attempt_identity",
-		},
-		"cancellation_stop_receipts": {
-			trigger:  "cancellation_stop_receipts_validate_live_attempt_identity",
-			function: "validate_live_evidence_attempt_identity",
-		},
-		"execution_failure_decisions": {
-			trigger:  "execution_failure_decisions_validate_live_attempt_identity",
-			function: "validate_live_evidence_attempt_identity",
-		},
-		"job_cancellation_decisions": {
-			trigger:  "job_cancellation_decisions_validate_live_attempt_identity",
-			function: "validate_live_evidence_attempt_identity",
-		},
-		"profile_certification_circuit_openings": {
-			trigger:  "profile_circuit_openings_validate_live_attempt_identity",
-			function: "validate_live_profile_circuit_attempt_identity",
-		},
-	}
-	rows, err := fixture.database.Admin.Query(`
-		SELECT relation.relname, trigger.tgname, procedure.proname
-		FROM pg_catalog.pg_trigger AS trigger
-		JOIN pg_catalog.pg_class AS relation ON relation.oid = trigger.tgrelid
-		JOIN pg_catalog.pg_proc AS procedure ON procedure.oid = trigger.tgfoid
-		JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
-		WHERE namespace.nspname = 'vela_private'
-		  AND procedure.proname IN (
-			'validate_live_artifact_attempt_identity',
-			'validate_live_lease_attempt_identity',
-			'validate_live_progress_attempt_identity',
-			'validate_live_evidence_attempt_identity',
-			'validate_live_profile_circuit_attempt_identity'
-		  )
-		  AND NOT trigger.tgisinternal
-	`)
-	if err != nil {
-		t.Fatalf("list live Attempt identity triggers: %v", err)
-	}
-	defer rows.Close()
-	seen := map[string]triggerContract{}
-	for rows.Next() {
-		var table string
-		var contract triggerContract
-		if err := rows.Scan(&table, &contract.trigger, &contract.function); err != nil {
-			t.Fatalf("scan live Attempt identity trigger: %v", err)
-		}
-		seen[table] = contract
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("iterate live Attempt identity triggers: %v", err)
-	}
-	if len(seen) != len(expectedTriggers) {
-		t.Fatalf("live Attempt identity trigger count = %d, want %d: %#v", len(seen), len(expectedTriggers), seen)
-	}
-	for table, contract := range expectedTriggers {
-		if seen[table] != contract {
-			t.Fatalf(
-				"live Attempt identity trigger for %s = %#v, want %#v",
-				table, seen[table], contract,
-			)
-		}
-	}
-
-	_, err = fixture.database.Admin.Exec(`
-		INSERT INTO artifacts (
-			id, organization_id, project_id, job_id, attempt_id, attempt_fence,
-			kind, ordinal, object_key, expected_content_type, expires_at
-		)
-		SELECT $2::uuid, organization_id, project_id, job_id, id, fence + 1,
-			'VIDEO', 1000, 'non-content-expiry/' || ($2::uuid)::text || '.mp4',
-			'video/mp4', clock_timestamp() + interval '1 hour'
-		FROM attempts
-		WHERE id = $1
-	`, fixture.assignment.AttemptID, uuid.New())
-	var postgresError *pgconn.PgError
-	if !errors.As(err, &postgresError) || postgresError.Code != "23503" ||
-		postgresError.ConstraintName != "artifact_live_attempt_identity" {
-		t.Fatalf("mismatched live Attempt dependent error = %v, want named SQLSTATE 23503", err)
 	}
 }
 
@@ -957,204 +850,6 @@ func TestNonContentExpiryRecoversExpiredClaimAndCompletesOnce(t *testing.T) {
 	}
 }
 
-func TestNonContentExpiryMigrationEmptyRoundTripAndDurableEvidenceRefusal(t *testing.T) {
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
-	t.Run("empty Down Up restores runtime boundary", func(t *testing.T) {
-		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
-		if err := goose.DownTo(database.Admin, migrations, 30); err != nil {
-			t.Fatalf("migrate empty non-content expiry schema down: %v", err)
-		}
-		version, err := goose.GetDBVersion(database.Admin)
-		if err != nil || version != 30 {
-			t.Fatalf("non-content expiry version after Down = %d error=%v", version, err)
-		}
-		for _, table := range []string{
-			"non_content_job_roots",
-			"non_content_attempt_roots",
-			"non_content_expiry_candidates",
-			"non_content_expiry_receipts",
-		} {
-			assertTableDoesNotExist(t, database.Admin, table)
-		}
-		if err := goose.UpTo(database.Admin, migrations, 31); err != nil {
-			t.Fatalf("migrate non-content expiry schema up: %v", err)
-		}
-		pool := newRolePool(
-			t, database.DSN, "vela_non_content_expiry_login", "vela-non-content-expiry-password",
-		)
-		if err := veladb.VerifyRole(context.Background(), pool, veladb.RoleNonContentExpiry); err != nil {
-			t.Fatalf("verify non-content expiry role after Down Up: %v", err)
-		}
-		if _, err := noncontentexpiry.New(pool, noncontentexpiry.Config{
-			InstanceID: "non-content-expiry-round-trip", BatchSize: 1,
-			ClaimTTL: time.Second, HeldRetry: time.Second,
-		}); err != nil {
-			t.Fatalf("configure non-content expiry after Down Up: %v", err)
-		}
-
-		seedAdmissionFixture(t, database.Admin)
-		workerID := uuid.New()
-		seedNMinusOneProfileCircuitWorker(t, database.Admin, workerID, "non-content-round-trip")
-		if _, err := database.Admin.Exec(`
-				UPDATE credentials
-				SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
-				WHERE id = $1
-			`, testCredentialID); err != nil {
-			t.Fatalf("grant cancellation scope after non-content expiry Down Up: %v", err)
-		}
-		server := admissionServerForDatabase(t, database)
-		accepted := submitJob(t, server.URL, "non-content-expiry-round-trip-writes", []byte(`{
-				"model":"minimax-h3",
-				"generation_preset":"balanced",
-				"service_class":"standard",
-				"output_spec":"video-1080p-5s-24fps",
-				"generation_count":1,
-				"prompt":"prove all source writes after empty non-content expiry round trip"
-			}`))
-		if accepted.StatusCode != http.StatusAccepted {
-			t.Fatalf(
-				"Admission after non-content expiry Down Up = %d body=%s",
-				accepted.StatusCode, accepted.Body,
-			)
-		}
-		var job jobResponse
-		if err := json.Unmarshal(accepted.Body, &job); err != nil {
-			t.Fatalf("decode Admission after non-content expiry Down Up: %v", err)
-		}
-		jobID := uuid.MustParse(job.JobID)
-		internalPool := newRolePool(
-			t, database.DSN, "vela_internal_login", "vela-internal-password",
-		)
-		workerService, err := workercontrol.NewService(
-			context.Background(),
-			internalPool,
-			workercontrol.Config{
-				LeaseTTL:         2 * time.Minute,
-				ActiveLeaseKeyID: "lease-key-v1",
-				LeaseKeys: map[string][]byte{
-					"lease-key-v1": []byte("0123456789abcdef0123456789abcdef"),
-				},
-			},
-		)
-		if err != nil {
-			t.Fatalf("configure Worker service after non-content expiry Down Up: %v", err)
-		}
-		worker := workercontrol.AuthenticatedWorker{ID: workerID}
-		assignment, err := workerService.Acquire(
-			context.Background(),
-			worker,
-			7,
-			&workercontrol.AssignmentCandidate{
-				JobID:                      jobID,
-				ExpectedJobVersion:         1,
-				ExecutionProfileRevisionID: uuid.MustParse("00000000-0000-0000-0000-000000000014"),
-			},
-		)
-		if err != nil {
-			t.Fatalf("assign Job after non-content expiry Down Up: %v", err)
-		}
-		if started, err := workerService.Start(
-			context.Background(), worker, leaseCredentials(assignment),
-		); err != nil || started.Decision != workercontrol.StartGranted {
-			t.Fatalf("start Job after non-content expiry Down Up = %#v error=%v", started, err)
-		}
-		canceled := cancelJob(
-			t, server.URL, testProjectID, jobID.String(), testBearerCredential(),
-		)
-		if canceled.StatusCode != http.StatusOK {
-			t.Fatalf(
-				"cancel Job after non-content expiry Down Up = %d body=%s",
-				canceled.StatusCode, canceled.Body,
-			)
-		}
-		var cancellationResult cancelResponse
-		if err := json.Unmarshal(canceled.Body, &cancellationResult); err != nil {
-			t.Fatalf("decode cancellation after non-content expiry Down Up: %v", err)
-		}
-		coordinator := cancellation.NewService(
-			newRolePool(t, database.DSN, "vela_cancel_login", "vela-cancel-password"),
-			internalPool,
-		)
-		stopped, err := coordinator.AcknowledgeCancellationStop(
-			context.Background(),
-			worker,
-			leaseCredentials(assignment),
-			uuid.MustParse(cancellationResult.CancellationID),
-		)
-		if err != nil || stopped.Decision != cancellation.StopAcknowledged ||
-			stopped.State != "CANCELED" {
-			t.Fatalf(
-				"terminalize Job after non-content expiry Down Up = %#v error=%v",
-				stopped, err,
-			)
-		}
-
-		finance := newFinanceReconciliationService(t, database)
-		creditLimit := int64(100001)
-		reconciliation, err := finance.Apply(
-			context.Background(),
-			financereconciliation.Request{
-				IdempotencyKey: "non-content-expiry-round-trip-finance", SourceSequence: 1,
-				OrganizationID: uuid.MustParse(testOrganizationID),
-				Kind:           financereconciliation.KindContractCreditLimitChanged, Currency: "CNY",
-				ContractCreditLimitMinor: &creditLimit,
-				ExternalReference:        "non-content-expiry/round-trip/finance",
-				EffectiveAt:              time.Date(2026, 8, 27, 12, 30, 0, 0, time.UTC),
-			},
-		)
-		if err != nil {
-			t.Fatalf("apply Finance Reconciliation after non-content expiry Down Up: %v", err)
-		}
-
-		var jobRoots, attemptRoots, terminalCandidates, invoiceExports, financeCandidates int64
-		var chargeID, invoiceEventID uuid.UUID
-		var terminalAt time.Time
-		if err := database.Admin.QueryRow(`
-				SELECT
-					(SELECT count(*) FROM non_content_job_roots WHERE id = $1),
-					(SELECT count(*) FROM non_content_attempt_roots
-					 WHERE id = $2 AND job_id = $1),
-					(SELECT count(*) FROM non_content_expiry_candidates
-					 WHERE source_id = $1 AND kind IN ('JOB_METADATA', 'JOB_FINANCIAL')),
-					(SELECT count(*) FROM invoice_exports WHERE job_id = $1),
-					(SELECT count(*) FROM non_content_expiry_candidates
-					 WHERE kind = 'ORGANIZATION_FINANCIAL' AND source_id = $3),
-					root.charge_id, root.invoice_requested_event_id, root.terminal_at
-				FROM non_content_job_roots AS root WHERE root.id = $1
-			`, jobID, assignment.AttemptID, reconciliation.RecordID).Scan(
-			&jobRoots, &attemptRoots, &terminalCandidates, &invoiceExports,
-			&financeCandidates, &chargeID, &invoiceEventID, &terminalAt,
-		); err != nil {
-			t.Fatalf("read source-write roots after non-content expiry Down Up: %v", err)
-		}
-		if jobRoots != 1 || attemptRoots != 1 || terminalCandidates != 2 ||
-			invoiceExports != 1 || financeCandidates != 1 || chargeID == uuid.Nil ||
-			invoiceEventID == uuid.Nil || terminalAt.IsZero() {
-			t.Fatalf(
-				"source writes after Down Up = roots %d/%d candidates %d/%d exports %d "+
-					"linkage %s/%s terminal %s",
-				jobRoots, attemptRoots, terminalCandidates, financeCandidates, invoiceExports,
-				chargeID, invoiceEventID, terminalAt,
-			)
-		}
-	})
-
-	t.Run("terminal candidate refuses Down", func(t *testing.T) {
-		database, _ := newCanceledNonContentExpiryFixture(t, "non-content-expiry-down-refusal")
-		err := goose.DownTo(database.Admin, migrations, 30)
-		var postgresError *pgconn.PgError
-		if !errors.As(err, &postgresError) || postgresError.Code != "55000" ||
-			postgresError.ConstraintName != "non_content_expiry_rollback_is_unsafe" {
-			t.Fatalf("non-content expiry Down refusal = %v, want named SQLSTATE 55000", err)
-		}
-		version, versionErr := goose.GetDBVersion(database.Admin)
-		if versionErr != nil || version != 31 {
-			t.Fatalf("non-content expiry version after refused Down = %d error=%v", version, versionErr)
-		}
-	})
-}
-
 func TestNonContentExpiryMigrationRejectsAmbiguousTerminalBackfill(t *testing.T) {
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	for _, test := range []struct {
@@ -1200,45 +895,19 @@ func TestNonContentExpiryMigrationRejectsAmbiguousTerminalBackfill(t *testing.T)
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			database := newPostgres(t)
-			applyFoundation(t, database.Admin)
+			fixture := newInvoiceExportMigrationFixture(
+				t,
+				"non-content-expiry-backfill-"+strings.ReplaceAll(test.name, " ", "-"),
+			)
+			database := fixture.database
+			if err := goose.UpTo(database.Admin, migrations, 31); err != nil {
+				t.Fatalf("expand historical terminal backfill fixture: %v", err)
+			}
 			if err := goose.DownTo(database.Admin, migrations, 30); err != nil {
 				t.Fatalf("contract non-content expiry schema: %v", err)
 			}
-			seedAdmissionFixture(t, database.Admin)
-			server := admissionServerForDatabase(t, database)
-			if _, err := database.Admin.Exec(`
-				UPDATE credentials
-				SET scopes = ARRAY['jobs:submit', 'jobs:read', 'jobs:cancel']
-				WHERE id = $1
-			`, testCredentialID); err != nil {
-				t.Fatalf("grant cancellation scope: %v", err)
-			}
-			accepted := submitJob(
-				t,
-				server.URL,
-				"non-content-expiry-backfill-"+strings.ReplaceAll(test.name, " ", "-"),
-				[]byte(`{
-				"model":"minimax-h3",
-				"generation_preset":"balanced",
-				"service_class":"standard",
-				"output_spec":"video-1080p-5s-24fps",
-				"generation_count":1,
-				"prompt":"ambiguous terminal event backfill must fail closed"
-			}`),
-			)
-			if accepted.StatusCode != http.StatusAccepted {
-				t.Fatalf("submit backfill fixture = %d body=%s", accepted.StatusCode, accepted.Body)
-			}
-			var job jobResponse
-			if err := json.Unmarshal(accepted.Body, &job); err != nil {
-				t.Fatalf("decode backfill fixture Job: %v", err)
-			}
-			jobID := uuid.MustParse(job.JobID)
-			canceled := cancelJob(t, server.URL, testProjectID, job.JobID, testBearerCredential())
-			if canceled.StatusCode != http.StatusOK {
-				t.Fatalf("cancel backfill fixture = %d body=%s", canceled.StatusCode, canceled.Body)
-			}
+			jobID := fixture.jobID
+			terminalizeJobWithCanonicalEvent(t, database.Admin, jobID, "CANCELED", nil)
 			test.mutate(t, database, jobID)
 			err := goose.UpTo(database.Admin, migrations, 31)
 			var postgresError *pgconn.PgError
@@ -1253,82 +922,6 @@ func TestNonContentExpiryMigrationRejectsAmbiguousTerminalBackfill(t *testing.T)
 			assertTableDoesNotExist(t, database.Admin, "non_content_expiry_candidates")
 		})
 	}
-}
-
-func TestNonContentExpiryTerminalStatesCreateExactIndependentClocks(t *testing.T) {
-	t.Run("canceled", func(t *testing.T) {
-		database, jobID := newCanceledNonContentExpiryFixture(t, "non-content-expiry-clock-canceled")
-		assertNonContentTerminalClocks(t, database, jobID, "job.canceled")
-	})
-
-	t.Run("failed", func(t *testing.T) {
-		fixture := newAssignmentFixture(t, "non-content-expiry-clock-failed", 7)
-		assignment, err := fixture.service.Acquire(
-			context.Background(), fixture.worker, 7, &fixture.candidate,
-		)
-		if err != nil {
-			t.Fatalf("create Failure clock Assignment: %v", err)
-		}
-		credentials := leaseCredentials(assignment)
-		if started, err := fixture.service.Start(
-			context.Background(), fixture.worker, credentials,
-		); err != nil || started.Decision != workercontrol.StartGranted {
-			t.Fatalf("start Failure clock Job = %#v error=%v", started, err)
-		}
-		expiryPool := newRolePool(
-			t, fixture.database.DSN,
-			"vela_non_content_expiry_login", "vela-non-content-expiry-password",
-		)
-		if err := expiryPool.QueryRow(context.Background(), `
-			SELECT kind::text FROM vela_claim_non_content_expiry($1, $2, $3)
-		`, "nonterminal-failed-clock", uuid.New(), 30).Scan(new(string)); !errors.Is(err, pgx.ErrNoRows) {
-			t.Fatalf("nonterminal Job claim error = %v, want no rows", err)
-		}
-		observation := validFailureObservation()
-		observation.FailureClass = "FATAL_BACKEND"
-		observation.FailureFingerprint = "non-content-expiry.clock.failed"
-		decision, err := fixture.service.Fail(
-			context.Background(), fixture.worker, credentials, observation,
-		)
-		if err != nil || decision.Disposition != workercontrol.RetryDispositionFailed {
-			t.Fatalf("terminalize Failure clock Job = %#v error=%v", decision, err)
-		}
-		assertNonContentTerminalClocks(t, fixture.database, assignment.JobID, "job.failed")
-	})
-
-	t.Run("succeeded", func(t *testing.T) {
-		fixture := newStartFixture(t, "non-content-expiry-clock-succeeded", 7)
-		if started, err := fixture.service.Start(
-			context.Background(), fixture.worker, fixture.credentials,
-		); err != nil || started.Decision != workercontrol.StartGranted {
-			t.Fatalf("start Success clock Job = %#v error=%v", started, err)
-		}
-		plan, err := fixture.service.BeginFinalization(
-			context.Background(), fixture.worker, fixture.credentials,
-		)
-		if err != nil || plan.Decision != workercontrol.FinalizationGranted {
-			t.Fatalf("begin Success clock finalization = %#v error=%v", plan, err)
-		}
-		completionService := visibleCompletionService(t, fixture.database.DSN)
-		artifactIDs := uploadAndVerifyFinalizationPlan(
-			t, completionService, fixture.worker, fixture.credentials, plan,
-		)
-		completed, err := completionService.CompleteVisibleCompletion(
-			context.Background(),
-			fixture.worker,
-			fixture.credentials,
-			workercontrol.VisibleCompletionCandidate{
-				CompletionID: uuid.New(), ExpectedJobVersion: plan.JobVersion,
-				ArtifactIDs: artifactIDs,
-			},
-		)
-		if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
-			t.Fatalf("complete Success clock Job = %#v error=%v", completed, err)
-		}
-		assertNonContentTerminalClocks(
-			t, fixture.database, fixture.assignment.JobID, "job.succeeded",
-		)
-	})
 }
 
 func TestNonContentExpirySerializesWithConcurrentHoldPlacement(t *testing.T) {
@@ -1624,21 +1217,6 @@ func TestNonContentExpirySerializesWithConcurrentHoldPlacement(t *testing.T) {
 			)
 		}
 	})
-}
-
-func acknowledgeNonContentExpiryCancellation(t *testing.T, fixture invoiceExportFixture) {
-	t.Helper()
-	coordinator := cancellation.NewService(
-		newRolePool(t, fixture.database.DSN, "vela_cancel_login", "vela-cancel-password"),
-		newRolePool(t, fixture.database.DSN, "vela_internal_login", "vela-internal-password"),
-	)
-	result, err := coordinator.AcknowledgeCancellationStop(
-		context.Background(), fixture.worker, fixture.credentials, fixture.cancellationID,
-	)
-	if err != nil || result.Decision != cancellation.StopAcknowledged ||
-		result.State != "CANCELED" || result.ReceiptID == uuid.Nil {
-		t.Fatalf("acknowledge non-content expiry cancellation = %#v error=%v", result, err)
-	}
 }
 
 func exportNonContentExpiryInvoice(t *testing.T, fixture invoiceExportFixture) {

@@ -3,10 +3,9 @@ kind: Kustomization
 namespace: vela-system
 resources:
   - namespace.yaml
-  - workerpool-crd.yaml
   - service-account.yaml
   - rbac.yaml
-  - desired-revisions.yaml
+  - residency-plan-rollouts.yaml
   - deployment.yaml
   - disruption-budget.yaml
   - admission-service.yaml

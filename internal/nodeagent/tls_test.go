@@ -19,9 +19,9 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func TestNodeAgentTLSBindsServerCertificateToNodeAndWorkerIdentity(t *testing.T) {
+func TestNodeAgentTLSBindsServerCertificateToNodeAndAgentIdentity(t *testing.T) {
 	caCertificate, caKey, caPEM := issueNodeAgentTestCA(t)
-	identity := NodeAgentIdentity{NodeIdentity: "node-1", WorkerID: uuid.New(), WorkerEpoch: 1}
+	identity := NodeAgentIdentity{NodeIdentity: "node-1", AgentID: uuid.New(), AgentEpoch: 1}
 	nodeSPIFFE, err := url.Parse(NodeAgentSPIFFEIdentity(identity))
 	if err != nil {
 		t.Fatalf("parse Node Agent SPIFFE ID: %v", err)
@@ -88,12 +88,12 @@ func TestNodeAgentTLSBindsServerCertificateToNodeAndWorkerIdentity(t *testing.T)
 		t.Fatalf("restore client key permissions: %v", err)
 	}
 
-	wrongIdentity := NodeAgentIdentity{NodeIdentity: identity.NodeIdentity, WorkerID: uuid.New(), WorkerEpoch: 1}
+	wrongIdentity := NodeAgentIdentity{NodeIdentity: identity.NodeIdentity, AgentID: uuid.New(), AgentEpoch: 1}
 	if _, err := NewServerTLSCredentials(
 		filepath.Join(directory, "server.crt"), filepath.Join(directory, "server.key"),
 		filepath.Join(directory, "ca.crt"), wrongIdentity,
 	); err == nil {
-		t.Fatal("server certificate was accepted for a different Worker identity")
+		t.Fatal("server certificate was accepted for a different Agent identity")
 	}
 	wrongClientCredentials, err := NewClientTLSCredentials(
 		filepath.Join(directory, "client.crt"), filepath.Join(directory, "client.key"),
@@ -105,7 +105,7 @@ func TestNodeAgentTLSBindsServerCertificateToNodeAndWorkerIdentity(t *testing.T)
 	}
 	clientErr, serverErr = performNodeAgentTLSHandshake(t, serverCredentials, wrongClientCredentials)
 	if clientErr == nil && serverErr == nil {
-		t.Fatal("client accepted a Node Agent certificate for a different Worker identity")
+		t.Fatal("client accepted a Node Agent certificate for a different Agent identity")
 	}
 }
 

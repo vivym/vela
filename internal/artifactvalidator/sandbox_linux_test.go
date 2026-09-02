@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vivym/vela/internal/workercontrol"
+	"github.com/vivym/vela/internal/stagefinalization"
 	"golang.org/x/sys/unix"
 )
 
@@ -232,21 +232,21 @@ func TestProductionSandboxProbesPinnedVideoAndThumbnail(t *testing.T) {
 	tests := []struct {
 		name          string
 		fixture       string
-		kind          workercontrol.ArtifactKind
+		kind          stagefinalization.ArtifactKind
 		wantCodec     string
 		wantContainer string
 	}{
 		{
 			name:          "video.mp4",
 			fixture:       strings.TrimSpace(h264MP4FixtureBase64),
-			kind:          workercontrol.ArtifactKindVideo,
+			kind:          stagefinalization.ArtifactKindVideo,
 			wantCodec:     "h264",
 			wantContainer: "mp4",
 		},
 		{
 			name:          "thumbnail.webp",
 			fixture:       webPFixtureBase64,
-			kind:          workercontrol.ArtifactKindThumbnail,
+			kind:          stagefinalization.ArtifactKindThumbnail,
 			wantCodec:     "webp",
 			wantContainer: "webp",
 		},

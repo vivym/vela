@@ -1,6 +1,7 @@
 package deploymentcontract
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/fleetcontroller"
 	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -20,54 +23,6 @@ import (
 type fleetMetadata struct {
 	Name      string `yaml:"name"`
 	Namespace string `yaml:"namespace"`
-}
-
-type fleetCRD struct {
-	APIVersion string        `yaml:"apiVersion"`
-	Kind       string        `yaml:"kind"`
-	Metadata   fleetMetadata `yaml:"metadata"`
-	Spec       struct {
-		Group string `yaml:"group"`
-		Names struct {
-			Kind     string `yaml:"kind"`
-			Plural   string `yaml:"plural"`
-			Singular string `yaml:"singular"`
-		} `yaml:"names"`
-		Scope    string `yaml:"scope"`
-		Versions []struct {
-			Name         string `yaml:"name"`
-			Served       bool   `yaml:"served"`
-			Storage      bool   `yaml:"storage"`
-			Subresources struct {
-				Status map[string]any `yaml:"status"`
-			} `yaml:"subresources"`
-			Schema struct {
-				OpenAPIV3Schema fleetSchema `yaml:"openAPIV3Schema"`
-			} `yaml:"schema"`
-		} `yaml:"versions"`
-	} `yaml:"spec"`
-}
-
-type fleetSchema struct {
-	Type                   string                 `yaml:"type"`
-	Required               []string               `yaml:"required"`
-	Pattern                string                 `yaml:"pattern"`
-	Enum                   []string               `yaml:"enum"`
-	MinLength              *int64                 `yaml:"minLength"`
-	MaxLength              *int64                 `yaml:"maxLength"`
-	MinItems               *int64                 `yaml:"minItems"`
-	MaxItems               *int64                 `yaml:"maxItems"`
-	MinProperties          *int64                 `yaml:"minProperties"`
-	MaxProperties          *int64                 `yaml:"maxProperties"`
-	Minimum                *int64                 `yaml:"minimum"`
-	Maximum                *int64                 `yaml:"maximum"`
-	Properties             map[string]fleetSchema `yaml:"properties"`
-	Items                  *fleetSchema           `yaml:"items"`
-	AdditionalProperties   *fleetSchema           `yaml:"additionalProperties"`
-	XKubernetesValidations []struct {
-		Rule    string `yaml:"rule"`
-		Message string `yaml:"message"`
-	} `yaml:"x-kubernetes-validations"`
 }
 
 type fleetRBACDocument struct {
@@ -124,90 +79,6 @@ type fleetWebhookConfiguration struct {
 	} `yaml:"webhooks"`
 }
 
-func TestFleetWorkerPoolCRDRequiresImmutableH3Revision(t *testing.T) {
-	var crd fleetCRD
-	loadFleetManifest(t, "workerpool-crd.yaml", &crd)
-	if crd.APIVersion != "apiextensions.k8s.io/v1" || crd.Kind != "CustomResourceDefinition" ||
-		crd.Metadata.Name != "workerpools.fleet.vela.ai" || crd.Spec.Group != "fleet.vela.ai" ||
-		crd.Spec.Scope != "Namespaced" || crd.Spec.Names.Kind != "WorkerPool" ||
-		crd.Spec.Names.Plural != "workerpools" || crd.Spec.Names.Singular != "workerpool" {
-		t.Fatalf("WorkerPool CRD identity = %#v", crd)
-	}
-	if len(crd.Spec.Versions) != 1 {
-		t.Fatalf("WorkerPool CRD versions = %#v", crd.Spec.Versions)
-	}
-	version := crd.Spec.Versions[0]
-	if version.Name != "v1alpha1" || !version.Served || !version.Storage ||
-		version.Subresources.Status == nil {
-		t.Fatalf("WorkerPool CRD version = %#v", version)
-	}
-	root := version.Schema.OpenAPIV3Schema
-	if root.Type != "object" || !sameStrings(root.Required, []string{"apiVersion", "kind", "metadata", "spec"}) {
-		t.Fatalf("WorkerPool root schema = %#v", root)
-	}
-	spec := root.Properties["spec"]
-	if !sameStrings(spec.Required, []string{
-		"capacityPolicy", "nodeSelector", "placements", "revision", "workerProfile",
-	}) ||
-		len(spec.XKubernetesValidations) != 1 || spec.XKubernetesValidations[0].Rule != "self == oldSelf" {
-		t.Fatalf("WorkerPool immutable spec schema = %#v", spec)
-	}
-	if _, obsolete := spec.Properties["daemonSetName"]; obsolete {
-		t.Fatal("WorkerPool CRD still exposes the obsolete pool-wide daemonSetName")
-	}
-	if spec.Properties["revision"].Pattern != "^[0-9a-f]{64}$" ||
-		!reflect.DeepEqual(spec.Properties["workerProfile"].Enum, []string{"h3"}) {
-		t.Fatalf("WorkerPool revision/profile schema = %#v", spec.Properties)
-	}
-	selector := spec.Properties["nodeSelector"]
-	if schemaInt64(selector.MinProperties) != 2 || schemaInt64(selector.MaxProperties) != 64 ||
-		selector.AdditionalProperties == nil ||
-		schemaInt64(selector.AdditionalProperties.MaxLength) != 63 ||
-		!hasFleetValidation(selector, "!('kubernetes.io/hostname' in self)") {
-		t.Fatalf("WorkerPool node selector schema = %#v", selector)
-	}
-	placements := spec.Properties["placements"]
-	if placements.Type != "array" || schemaInt64(placements.MinItems) != 1 ||
-		schemaInt64(placements.MaxItems) != 1024 || placements.Items == nil ||
-		!sameStrings(placements.Items.Required, []string{
-			"daemonSetName", "nodeIdentity", "runnerGPURolesConfigMap",
-			"runnerProfilesConfigMap", "workerControlTLSSecret", "workerRuntimeConfigMap",
-		}) {
-		t.Fatalf("WorkerPool placements schema = %#v", placements)
-	}
-	for _, field := range []string{"nodeIdentity", "daemonSetName"} {
-		property := placements.Items.Properties[field]
-		if schemaInt64(property.MinLength) != 1 || schemaInt64(property.MaxLength) != 63 || property.Pattern == "" {
-			t.Fatalf("WorkerPool placement label field %q schema = %#v", field, property)
-		}
-	}
-	for _, field := range []string{
-		"workerRuntimeConfigMap", "runnerProfilesConfigMap", "runnerGPURolesConfigMap",
-		"workerControlTLSSecret",
-	} {
-		property := placements.Items.Properties[field]
-		if schemaInt64(property.MinLength) != 1 || schemaInt64(property.MaxLength) != 253 || property.Pattern == "" {
-			t.Fatalf("WorkerPool placement material field %q schema = %#v", field, property)
-		}
-	}
-	if _, obsolete := root.Properties["status"].Properties["daemonSetName"]; obsolete {
-		t.Fatal("WorkerPool status still exposes the obsolete daemonSetName")
-	}
-	capacity := spec.Properties["capacityPolicy"]
-	if capacity.Type != "object" || !sameStrings(capacity.Required, []string{
-		"observationMaxAgeSeconds", "poolHighWatermarkBytes", "poolLowWatermarkBytes",
-		"workerCriticalFreeBytes", "workerHighWatermarkBytes", "workerLowWatermarkBytes",
-	}) || schemaMinimum(capacity.Properties["workerHighWatermarkBytes"]) != 1 ||
-		schemaMinimum(capacity.Properties["workerLowWatermarkBytes"]) != 0 ||
-		schemaMinimum(capacity.Properties["workerCriticalFreeBytes"]) != 0 ||
-		schemaMinimum(capacity.Properties["poolHighWatermarkBytes"]) != 1 ||
-		schemaMinimum(capacity.Properties["poolLowWatermarkBytes"]) != 0 ||
-		schemaMinimum(capacity.Properties["observationMaxAgeSeconds"]) != 10 ||
-		schemaMaximum(capacity.Properties["observationMaxAgeSeconds"]) != 600 {
-		t.Fatalf("WorkerPool capacity policy schema = %#v", capacity)
-	}
-}
-
 func TestFleetControllerRBACIsNamespaceBoundAndNodeReadOnly(t *testing.T) {
 	documents := loadFleetRBACDocuments(t)
 	if strings.Contains(string(readFleetManifest(t, "rbac.yaml")), "argocd") {
@@ -236,10 +107,10 @@ func TestFleetControllerRBACIsNamespaceBoundAndNodeReadOnly(t *testing.T) {
 		t.Fatalf("Fleet namespaced Role = %#v", role)
 	}
 	wantRoleRules := map[string][]string{
-		"fleet.vela.ai|workerpools":        {"get", "list", "watch", "create", "update", "patch", "delete"},
-		"fleet.vela.ai|workerpools/status": {"get", "update", "patch"},
-		"apps|daemonsets":                  {"get", "list", "watch", "create", "update", "patch", "delete"},
-		"|pods":                            {"get", "list", "watch", "update", "patch", "delete"},
+		"|pods":                                  {"get", "list", "watch", "create", "update", "patch", "delete"},
+		"|services":                              {"get", "create"},
+		"|secrets":                               {"get", "create"},
+		"resource.k8s.io|resourceclaimtemplates": {"get", "list", "watch", "create"},
 	}
 	if len(role.Rules) != len(wantRoleRules) {
 		t.Fatalf("Fleet Role rules = %#v", role.Rules)
@@ -292,9 +163,7 @@ func TestFleetAdmissionWebhookFailsClosedForEveryProtectedResource(t *testing.T)
 		t.Fatalf("Fleet webhook contract = %#v", webhook)
 	}
 	wantRules := map[string][]string{
-		"/v1":                    {"pods"},
-		"apps/v1":                {"daemonsets"},
-		"fleet.vela.ai/v1alpha1": {"workerpools"},
+		"/v1": {"pods", "secrets", "services"},
 	}
 	if len(webhook.Rules) != len(wantRules) {
 		t.Fatalf("Fleet webhook rules = %#v", webhook.Rules)
@@ -355,8 +224,8 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	namespace := requireFleetEnvironment(t, controller, "VELA_FLEET_NAMESPACE")
 	if namespace.ValueFrom == nil || namespace.ValueFrom.FieldRef == nil ||
 		namespace.ValueFrom.FieldRef.FieldPath != "metadata.namespace" ||
-		requireFleetEnvironment(t, controller, "VELA_FLEET_DESIRED_INPUT_FILE").Value !=
-			"/etc/vela-fleet/desired/desired.yaml" ||
+		requireFleetEnvironment(t, controller, "VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE").Value !=
+			"/etc/vela-fleet/residency-plan-rollouts/rollouts.json" ||
 		requireFleetEnvironment(t, controller, "VELA_FLEET_ADMISSION_ADDRESS").Value != ":9443" ||
 		requireFleetEnvironment(t, controller, "VELA_FLEET_ADMISSION_CLIENT_CA_FILE").Value !=
 			"/etc/vela-fleet/admission-client-ca/ca.crt" ||
@@ -365,7 +234,7 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 		t.Fatalf("Fleet controller environment = %#v", controller.Env)
 	}
 	for _, name := range []string{
-		"desired-revisions", "control-tls", "admission-tls", "admission-client-ca",
+		"residency-plan-rollouts", "control-tls", "admission-tls", "admission-client-ca",
 	} {
 		if !hasFleetVolume(pod.Volumes, name) || !hasFleetVolumeMount(controller.VolumeMounts, name) {
 			t.Fatalf("Fleet controller is missing volume %q", name)
@@ -388,71 +257,106 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	}
 }
 
-func TestFleetDesiredInputIsImmutableAndExplicitlyPlaceholderBound(t *testing.T) {
-	var desiredConfig corev1.ConfigMap
+func TestFleetDefaultRenderUsesCompleteH3ResidencyPlan(t *testing.T) {
+	var config corev1.ConfigMap
 	if err := k8syaml.Unmarshal(
-		readFleetManifest(t, "desired-revisions.yaml"),
-		&desiredConfig,
+		readFleetManifest(t, "residency-plan-rollouts.yaml"),
+		&config,
 	); err != nil {
-		t.Fatalf("parse Fleet desired ConfigMap: %v", err)
+		t.Fatalf("parse Fleet ResidencyPlan ConfigMap: %v", err)
 	}
-	payload := desiredConfig.Data["desired.yaml"]
-	if desiredConfig.Immutable == nil || !*desiredConfig.Immutable || payload == "" {
-		t.Fatalf("Fleet desired ConfigMap = %#v", desiredConfig)
+	payload := config.Data["rollouts.json"]
+	var input struct {
+		SchemaVersion int                                    `json:"schema_version"`
+		Rollouts      []fleetcontroller.ResidencyPlanRollout `json:"rollouts"`
 	}
-	for _, required := range []string{
-		"kind: FleetDesiredRevisions",
-		"revision: 0000000000000000000000000000000000000000000000000000000000000000",
-		"initImage: docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
-		"workerRuntimeConfigMap: vela-worker-runtime-placeholder",
-		"placements:",
-		"nodeIdentity: replace-with-registered-node-identity",
-		"daemonSetName: h3-worker-pool-primary-node-placeholder",
-		"runnerProfilesConfigMap: vela-runner-profiles-placeholder",
-		"runnerGPURolesConfigMap: vela-runner-gpu-roles-placeholder",
-		"workerControlTLSSecret: vela-worker-control-mtls-placeholder",
-		"artifactStoreTLSSecret: vela-artifact-store-ca-placeholder",
-		"workerHighWatermarkBytes: 800000000000",
-		"workerLowWatermarkBytes: 700000000000",
-		"workerCriticalFreeBytes: 100000000000",
-		"poolHighWatermarkBytes: 5600000000000",
-		"poolLowWatermarkBytes: 4900000000000",
-		"observationMaxAge: 2m",
-		"retirements: []",
-	} {
-		if !strings.Contains(payload, required) {
-			t.Fatalf("Fleet desired input omitted %q", required)
+	if err := json.Unmarshal([]byte(payload), &input); err != nil {
+		t.Fatalf("decode Fleet ResidencyPlan placeholder JSON: %v", err)
+	}
+	if config.Immutable == nil || !*config.Immutable || input.SchemaVersion != 1 ||
+		len(input.Rollouts) != 1 || len(input.Rollouts[0].WorkerBundles) != 2 ||
+		len(input.Rollouts[0].ApprovedPlan.CapacityPools) != 6 ||
+		len(input.Rollouts[0].ApprovedPlan.WorkerInstances) != 11 {
+		t.Fatalf("Fleet ResidencyPlan placeholder = %#v input=%#v", config, input)
+	}
+	roleCounts := map[string]int{}
+	componentCounts := map[string]int{}
+	poolByComponent := map[string]uuid.UUID{}
+	workerCount := 0
+	var aux fleetcontroller.WorkerInstanceActuation
+	for _, bundle := range input.Rollouts[0].WorkerBundles {
+		digest, err := fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+		if err != nil || digest != bundle.RevisionDigest {
+			t.Fatalf(
+				"Fleet ResidencyPlan bundle %s digest=%q want=%q error=%v",
+				bundle.WorkerBundleID, digest, bundle.RevisionDigest, err,
+			)
+		}
+		workerCount += len(bundle.WorkerInstances)
+		for _, worker := range bundle.WorkerInstances {
+			roleCounts[worker.Role]++
+			if worker.Role == "aux" {
+				aux = worker
+			}
+			if worker.CapacitySlots != 1 || len(worker.Members) != 1 ||
+				worker.Members[0].DeviceCount != 1 || len(worker.Members[0].DeviceConstraints) != 1 {
+				t.Fatalf("Fleet H3 WorkerInstance is not one slot/device/member: %#v", worker)
+			}
+			for _, runtime := range worker.ModelRuntimes {
+				componentCounts[runtime.Component]++
+				if runtime.CapacityPoolID == uuid.Nil || runtime.StageProfileRevisionID == uuid.Nil ||
+					runtime.ModelResidencyID == uuid.Nil || len(runtime.Command) == 0 ||
+					!strings.HasPrefix(runtime.Command[0], "/opt/vela/bin/h3-") {
+					t.Fatalf("Fleet H3 ModelRuntime route is incomplete: %#v", runtime)
+				}
+				if runtime.Component == "CPU_MEDIA" {
+					if worker.Members[0].ResourceClass != "CPU" || len(runtime.Command) != 3 ||
+						runtime.Command[2] != worker.Role {
+						t.Fatalf("Fleet H3 CPU media runtime is incomplete: worker=%#v runtime=%#v", worker, runtime)
+					}
+					continue
+				}
+				if worker.Members[0].ResourceClass != "GPU" || len(runtime.Command) != 1 ||
+					!containsFleetEnvironmentPrefix(runtime.Environment, "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/") ||
+					!containsFleetEnvironmentPrefix(runtime.Environment, "CUDA_VISIBLE_DEVICES=GPU-") {
+					t.Fatalf("Fleet H3 GPU ModelRuntime route is incomplete: %#v", runtime)
+				}
+				if existing, seen := poolByComponent[runtime.Component]; seen &&
+					existing != runtime.CapacityPoolID {
+					t.Fatalf("component %s spans CapacityPools %s/%s", runtime.Component, existing, runtime.CapacityPoolID)
+				}
+				poolByComponent[runtime.Component] = runtime.CapacityPoolID
+			}
 		}
 	}
-	if strings.Contains(payload, "workerProfile: h3\n        daemonSetName:") {
-		t.Fatal("Fleet desired input still uses the obsolete pool-wide daemonSetName")
+	if workerCount != 11 {
+		t.Fatalf("Fleet H3 WorkerInstance count=%d, want 11", workerCount)
+	}
+	if roleCounts["aux"] != 1 || roleCounts["dit"] != 7 ||
+		roleCounts["cpu-encode"] != 1 || roleCounts["cpu-mux"] != 1 ||
+		roleCounts["cpu-thumbnail"] != 1 ||
+		componentCounts["ENCODER"] != 1 || componentCounts["DIT"] != 7 ||
+		componentCounts["VAE_DECODER"] != 1 || componentCounts["CPU_MEDIA"] != 3 ||
+		poolByComponent["ENCODER"] == poolByComponent["VAE_DECODER"] {
+		t.Fatalf("Fleet H3 topology roles=%v components=%v pools=%v", roleCounts, componentCounts, poolByComponent)
+	}
+	if aux.Role != "aux" || aux.SharedSlotException != "H3_AUX_ENCODER_VAE" ||
+		len(aux.ModelRuntimes) != 2 {
+		t.Fatalf("Fleet H3 AUX WorkerInstance = %#v", aux)
+	}
+	if err := fleetcontroller.ValidateResidencyPlanRollout(input.Rollouts[0]); err != nil {
+		t.Fatalf("validate complete H3 ResidencyPlan: %v", err)
+	}
+	kustomization := string(readFleetManifest(t, "kustomization.yaml"))
+	if !strings.Contains(kustomization, "residency-plan-rollouts.yaml") ||
+		strings.Contains(kustomization, "desired-revisions.yaml") {
+		t.Fatalf("Fleet default Kustomization is not target-only:\n%s", kustomization)
 	}
 }
 
-func schemaMinimum(schema fleetSchema) int64 {
-	if schema.Minimum == nil {
-		return -1
-	}
-	return *schema.Minimum
-}
-
-func schemaMaximum(schema fleetSchema) int64 {
-	if schema.Maximum == nil {
-		return -1
-	}
-	return *schema.Maximum
-}
-
-func schemaInt64(value *int64) int64 {
-	if value == nil {
-		return -1
-	}
-	return *value
-}
-
-func hasFleetValidation(schema fleetSchema, rule string) bool {
-	for _, validation := range schema.XKubernetesValidations {
-		if validation.Rule == rule {
+func containsFleetEnvironmentPrefix(environment []string, prefix string) bool {
+	for _, value := range environment {
+		if strings.HasPrefix(value, prefix) {
 			return true
 		}
 	}

@@ -145,6 +145,97 @@ func TestObservabilityEvidenceArtifactKindsStayExact(t *testing.T) {
 	}
 }
 
+func TestStageCampaignObservabilityBindsMetricsAlertsDashboardAndRunbook(t *testing.T) {
+	directory := observabilityDirectory(t)
+	var contract observabilityContract
+	if err := json.Unmarshal(
+		readObservabilityFile(t, directory, "observability-contract.json"),
+		&contract,
+	); err != nil {
+		t.Fatalf("decode observability contract: %v", err)
+	}
+	for _, label := range []string{"stage_kind", "state", "outcome", "reason", "algorithm_revision"} {
+		if !contains(contract.AllowedMetricLabels, label) {
+			t.Fatalf("Stage observability label %q is not allowlisted", label)
+		}
+	}
+	for _, rule := range []string{
+		"vela:stage_ready_oldest_age_seconds:max",
+		"vela:stage_transfer_active_oldest_age_seconds:max",
+		"vela:stage_scheduler_divergence:increase_5m",
+	} {
+		if !contains(contract.RequiredRecordingRules, rule) {
+			t.Fatalf("Stage recording rule %q is not required", rule)
+		}
+	}
+	for _, alert := range []string{
+		"VelaStageAuthorityExporterFailed",
+		"VelaStageReadyQueueStalled",
+		"VelaStageSchedulerReplayDiverged",
+		"VelaStageTransferTicketStuck",
+		"VelaStageModelResidencyCoverageMissing",
+	} {
+		if !contains(contract.RequiredAlerts, alert) {
+			t.Fatalf("Stage alert %q is not required", alert)
+		}
+	}
+
+	rules := string(readObservabilityFile(t, directory, "rules.yaml"))
+	for _, required := range []string{
+		"vela_stage_authority_exporter_last_scrape_success",
+		"vela_stage_ready_oldest_age_seconds",
+		"vela_stage_scheduler_shadow_replay_total",
+		"vela_stage_transfer_active_oldest_age_seconds",
+		`stage_kind=~"ENCODER|DIT|VAE_DECODER"`,
+		"docs/runbooks/h3-stage-campaign.md",
+	} {
+		if !strings.Contains(rules, required) {
+			t.Fatalf("Stage observability rules omit %q", required)
+		}
+	}
+
+	dashboard := string(readObservabilityFile(t, directory, "dashboard.json"))
+	for _, metric := range []string{
+		"vela_stage_run_state_count",
+		"vela:stage_ready_oldest_age_seconds:max",
+		"vela_stage_transfer_ticket_state_count",
+		"vela:stage_transfer_active_oldest_age_seconds:max",
+		"vela_stage_cache_entry_state_count",
+		"vela_stage_model_residency_state_count",
+		"vela_stage_scheduler_acquire_total",
+		"vela_stage_scheduler_shadow_replay_total",
+	} {
+		if !strings.Contains(dashboard, metric) {
+			t.Fatalf("Stage dashboard metric %q is missing", metric)
+		}
+	}
+
+	runbook := string(readObservabilityFile(
+		t,
+		filepath.Join(observabilityRepositoryRoot(t), "docs", "runbooks"),
+		"h3-stage-campaign.md",
+	))
+	for _, required := range []string{
+		"Owner: Vela Runtime On-call (24x7)",
+		"Do not unload a healthy resident model",
+		"same-node", "cross-node", "exact cache", "N/N-1", "rollback",
+		"Production Gate status remains unchanged",
+	} {
+		if !strings.Contains(runbook, required) {
+			t.Fatalf("H3 Stage campaign runbook omits %q", required)
+		}
+	}
+}
+
+func contains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func observabilityDirectory(t *testing.T) string {
 	t.Helper()
 	return filepath.Join(observabilityRepositoryRoot(t), "deploy", "observability")

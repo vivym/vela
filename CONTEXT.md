@@ -41,7 +41,7 @@ _Avoid_: RateCardRevision, estimate, Invoice
 _Avoid_: Charge, receipt
 
 **Billable Start**:
-Job 首次进入 RUNNING 的时刻；Customer Organization 在此之前取消不产生 Charge，在此之后主动取消产生完整报价的 Charge。
+Job 首次取得有效 graph progress 并进入 RUNNING 的时刻：StageAttempt 在有效 StageLease 下开始，或 exact cache hit 被原子 pin 并推进 StageRun；Customer Organization 在此之前取消不产生 Charge，在此之后主动取消产生完整报价的 Charge。
 _Avoid_: Assignment time, dispatch time, first GPU second
 
 **Customer Cancellation**:
@@ -141,8 +141,96 @@ _Avoid_: Output files, partial result, upload batch
 _Avoid_: Durable checkpoint, Artifact, shared cache
 
 **Durable Checkpoint**:
-可由另一个兼容 Worker 验证并恢复执行的持久中间结果；首发不提供。
-_Avoid_: Local Recovery State, incomplete upload, debug dump
+同一 Job 内可由另一个兼容 Worker 验证并恢复某个 StageRun 的持久执行状态；它不是跨 Job cache，只有经过 correctness 和 I/O overhead 认证的 StageProfile 才能启用。
+_Avoid_: StageArtifact, StageCacheEntry, Local Recovery State, incomplete upload, debug dump
+
+**ExecutionGraphRevision**:
+Catalog 中不可变的静态执行 DAG，定义 Stage、依赖、StageInterfaceRevision、公开 Execution Phase 映射和最终输出合同；Admission 把其允许的 profile 和 policy 冻结为 ExecutionGraphSnapshot。
+_Avoid_: Dynamic workflow, backend process graph, Kubernetes topology
+
+**Attempt**:
+一个 Job 的端到端 graph execution epoch；其不可变 fence 只有在等于 Job.current_fence 时有效，一个 Attempt 可包含多个 StageRun 和 StageAttempt。
+_Avoid_: StageAttempt, retry counter, Worker assignment
+
+**StageRun**:
+一个 Attempt 内某个 graph node 的逻辑执行及 durable queue identity；重试不会创建新的 StageRun。
+_Avoid_: StageAttempt, backend step, Worker process
+
+**StageAttempt**:
+为一个 StageRun 执行的一次物理尝试，绑定独立 StageLease、StageAllocation 和使用量；首版同一 StageRun 至多一个 active StageAttempt。
+_Avoid_: Attempt, StageRun, retry counter
+
+**StageLease**:
+对一个 StageAttempt 的限时计算 authority，同时绑定 attempt/stage fence、WorkerInstance、DeviceSet、ModelRuntime epoch、输入 StageArtifact exact versions 和 profile identity。
+_Avoid_: Attempt Lease, Kubernetes readiness, Worker heartbeat
+
+**StageInterfaceRevision**:
+Stage 端口 payload 的不可变合同，定义 kind、dtype、layout、shape、serialization、size limit、integrity 和 compatibility。
+_Avoid_: StageProfileRevision, object metadata, backend tensor name
+
+**StageProfileRevision**:
+某个 StageDefinition 的内部执行方法，绑定 backend、模型组件、WorkerProfile、capacity vector、runtime behavior 和实现的 StageInterfaceRevision。
+_Avoid_: ExecutionProfileRevision, StageDefinition, GenerationPresetRevision
+
+**InputCanonicalizationRevision**:
+计算 exact cache key 前使用的版本化、无损 canonical encoding 和精确 input-equivalence 规则；不得用模糊、语义相似或质量容差归并输入。
+_Avoid_: prompt normalization heuristic, StageResultEquivalenceRevision, approximate cache
+
+**StageArtifact**:
+StageRun 输出的不可变 L2 内部 Artifact，包含 exact object version、digest、StageInterfaceRevision 和 lineage；下游开始前必须 durable commit 并持有强 pin。
+_Avoid_: Customer Artifact, Local Recovery State, Durable Checkpoint, cache entry
+
+**StageCacheEntry**:
+把 scoped exact cache key 映射到 StageArtifact 的弱、可回收 metadata；默认只在 Project 内复用，不能作为 Artifact 存活或读取 authority。
+_Avoid_: StageArtifact, ExecutionPin, Durable Checkpoint, approximate cache
+
+**CacheReference**:
+StageCacheEntry 对 StageArtifact 的弱引用，可因 TTL、quota 或 capacity pressure 被回收，不阻止 deletion 或 execution-unpinned eviction。
+_Avoid_: ExecutionPin, StageArtifact, cache hit authority
+
+**StageMaterializationLease**:
+计算完成后允许 Worker Agent 或 node-local Data Mover 把 sealed local output 发布为 L2 StageArtifact 的非 GPU authority；它不能重新运行模型。
+_Avoid_: StageLease, finalization Lease, object-store credential
+
+**TransferTicket**:
+授权一个确切 destination WorkerInstance 在限时内读取一个 StageArtifact exact version 的短期凭证，绑定 connector、digest、size 和 destination epoch。
+_Avoid_: StageLease, object-store credential, cache hit
+
+**WorkerInstance**:
+独占一个 DeviceSet、持有已加载 ModelRuntime、接受 StageAssignment 的可调度执行实体；H3 标准 WorkerInstance 是单卡单模型组件，未来 LLM 可为单机或跨节点多卡。
+_Avoid_: WorkerBundle, Kubernetes Node, model-parallel rank, shared GPU process
+
+**WorkerMember**:
+跨节点多 GPU WorkerInstance 内独立认证的成员；rank rendezvous、TP、PP 和 EP 属于 backend implementation，不成为 StageRun。
+_Avoid_: WorkerInstance, independent schedulable Worker, StageRun
+
+**Certified Multi-Device WorkerInstance**:
+一个 StageRun 必须 all-or-nothing 占用的固定 N-DeviceSet/WorkerMember 拓扑；每张卡、每个成员、backend 并行策略、互联和 readiness barrier 都已认证，任一 required member epoch 变化会 fencing 整个 StageLease。
+_Avoid_: independent per-GPU Workers, elastic rank replacement, scheduler-selected ranks
+
+**ModelResidency**:
+ModelRuntime 已在确切 DeviceSet 上加载、warm-up 并通过认证的版本化事实；正常 StageScheduler 不得加载、驱逐或替换模型。
+_Avoid_: model assignment, image pull, cache affinity
+
+**CapacityPool**:
+为某一已认证 stage/resource/security class 提供可互换 WorkerInstance 的调度集合；一个 Job 的不同 StageRun 可以选择不同 CapacityPool。
+_Avoid_: WorkerBundle, Capacity Share, machine group
+
+**WorkerBundle**:
+Fleet 在一个 ComputeNode 上期望的 WorkerInstance 布局，是 Kubernetes actuation 输入而不是 Job 调度单位。
+_Avoid_: WorkerInstance, CapacityPool, monolithic H3 Worker
+
+**ExecutionPin**:
+执行 graph 对 StageArtifact 的强引用，在 StageRun 消费或 graph 清理前阻止普通 TTL/capacity eviction。
+_Avoid_: StageCacheEntry, CacheReference, object lock
+
+**ResourceUsageRecord**:
+不可变的 stage compute、resident idle、load/warm-up、CPU、network、storage 或 finalization 实测事实；它不创建或修改 Customer Charge。
+_Avoid_: Charge, CostAllocationRecord, billing line
+
+**CostAllocationRecord**:
+使用某个 CostModelRevision 对 ResourceUsageRecord 进行的内部估值，可重新估值但不得改写原始 usage 或 Customer Charge。
+_Avoid_: Charge, PricingSnapshot, ResourceUsageRecord
 
 **Visible Completion**:
 Job 成功、获胜 ArtifactSet、Charge 和 Artifact 访问资格共同生效的单一业务结果。
@@ -173,15 +261,15 @@ Accepted Job 不得继续排队、执行、重试或 finalization 的系统生�
 _Avoid_: Hard Deadline, Preset SLO, Dynamic ETA
 
 **Retry Budget**:
-ExecutionPolicySnapshot 为一个 Job 固定的计算 Attempt 数、累计计算时间和 finalization 恢复时间上限，并受 Job Expiry 约束。
-_Avoid_: Retry count, customer quota, Job Expiry
+ExecutionPolicySnapshot 为一个 Job 固定的 per-stage StageAttempt 数、Job-global resource use 和 finalization 恢复时间上限，并受 Job Expiry 约束。
+_Avoid_: Retry count, customer quota, Job Expiry, billing amount
 
 **Capacity Share**:
-Customer Organization 或 Project 在一个 Worker pool 中获得调度机会的合同权重与并发上限，不是对具体 Worker 的预留。
+Customer Organization 或 Project 在一个 CapacityPool 中获得调度机会的合同权重与并发上限，不是对具体 WorkerInstance 的预留。
 _Avoid_: CapacityReservation, priority, quota balance
 
 **Work-conserving Capacity**:
-所有 READY 且兼容的 Worker 都可执行普通 Job，不为故障恢复保留硬空闲设备。
+所有 READY 且兼容的 WorkerInstance 都可执行普通 StageRun，不为故障恢复保留硬空闲设备。
 _Avoid_: CapacityReservation, idle spare, overcommit
 
 **Soft Failure Reserve**:
@@ -221,8 +309,8 @@ _Avoid_: ServiceClassRevision, ExecutionProfileRevision, pricing tier
 _Avoid_: GenerationPresetRevision, priority flag, ExecutionProfileRevision
 
 **ExecutionProfileRevision**:
-Vela 用于满足 GenerationPresetRevision 的内部版本化执行方法、资源拓扑和加速配置，不直接作为客户购买项。
-_Avoid_: GenerationPresetRevision, ServiceClassRevision, Worker type
+Vela 用于满足 GenerationPresetRevision 的 Job-level 内部版本化执行 envelope；目标架构中它绑定一个 ExecutionGraphRevision 及每个 stage/edge 的已认证 StageProfileRevision 与 ConnectorRevision 选项，不直接作为客户购买项。
+_Avoid_: GenerationPresetRevision, ServiceClassRevision, StageProfileRevision, Worker type
 
 **Failed Job**:
 无法形成 Visible Completion 且不再重试的终态 Job；除 Billable Start 后的 Customer Cancellation 外，不产生 Charge。

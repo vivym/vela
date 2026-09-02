@@ -69,3 +69,46 @@ groups:
           severity: page
         annotations:
           runbook: docs/runbooks/statistical-slo-breach.md
+  - name: vela-stage-campaign
+    interval: 30s
+    rules:
+      - record: vela:stage_ready_oldest_age_seconds:max
+        expr: max by (stage_kind) (vela_stage_ready_oldest_age_seconds{stage_kind=~"ENCODER|DIT|VAE_DECODER"})
+      - record: vela:stage_transfer_active_oldest_age_seconds:max
+        expr: max(vela_stage_transfer_active_oldest_age_seconds)
+      - record: vela:stage_scheduler_divergence:increase_5m
+        expr: sum(increase(vela_stage_scheduler_shadow_replay_total{outcome="DIVERGED"}[5m]))
+      - alert: VelaStageAuthorityExporterFailed
+        expr: max(vela_stage_authority_exporter_last_scrape_success) == 0 or absent(vela_stage_authority_exporter_last_scrape_success)
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/h3-stage-campaign.md
+      - alert: VelaStageReadyQueueStalled
+        expr: vela:stage_ready_oldest_age_seconds:max > 900
+        for: 10m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/h3-stage-campaign.md
+      - alert: VelaStageSchedulerReplayDiverged
+        expr: vela:stage_scheduler_divergence:increase_5m > 0
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/h3-stage-campaign.md
+      - alert: VelaStageTransferTicketStuck
+        expr: vela:stage_transfer_active_oldest_age_seconds:max > 300
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/h3-stage-campaign.md
+      - alert: VelaStageModelResidencyCoverageMissing
+        expr: absent(vela_stage_model_residency_state_count{stage_kind="ENCODER",state="READY"}) or absent(vela_stage_model_residency_state_count{stage_kind="DIT",state="READY"}) or absent(vela_stage_model_residency_state_count{stage_kind="VAE_DECODER",state="READY"})
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          runbook: docs/runbooks/h3-stage-campaign.md

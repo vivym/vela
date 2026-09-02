@@ -18,13 +18,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/admission"
-	"github.com/vivym/vela/internal/artifactaccess"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/httpapi"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/retention"
-	"github.com/vivym/vela/internal/workercontrol"
 )
 
 const humanDeveloperPrincipalID = "00000000-0000-0000-0000-000000000081"
@@ -190,7 +188,7 @@ func TestHumanRequestContextRevalidatesProjectRole(t *testing.T) {
 	`, testOrganizationID, testProjectID, humanDeveloperPrincipalID); err != nil {
 		t.Fatalf("remove Human Developer role: %v", err)
 	}
-	_, err = admission.NewLegacyService(requestPool).Submit(
+	_, err = admission.NewService(requestPool).Submit(
 		context.Background(),
 		contextual,
 		uuid.MustParse(testProjectID),
@@ -227,6 +225,8 @@ func TestHumanDeveloperCanSubmitJobThroughProductionHTTPPath(t *testing.T) {
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	if _, err := database.Admin.Exec(`
 		INSERT INTO principals (id, organization_id, kind, display_name)
 		VALUES ($1, $2, 'HUMAN', 'Human Developer')
@@ -274,7 +274,7 @@ func TestHumanDeveloperCanSubmitJobThroughProductionHTTPPath(t *testing.T) {
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},
-		Admission:              admission.NewLegacyService(requestPool),
+		Admission:              admission.NewService(requestPool),
 		Cancellation:           cancellation.NewService(cancelPool, internalPool),
 		Artifacts:              testArtifactAccessService(artifactPool),
 		Webhooks:               testWebhookService(t, webhookRequestPoolForDatabase(t, database)),
@@ -364,6 +364,8 @@ func TestHumanProjectAdminCanManageWebhooksThroughProductionHTTPPath(t *testing.
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
 	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	activateH3StageGraph(t, database)
 	if _, err := database.Admin.Exec(`
 		INSERT INTO principals (id, organization_id, kind, display_name)
 		VALUES ($1, $2, 'HUMAN', 'Human Project Admin')
@@ -399,7 +401,7 @@ func TestHumanProjectAdminCanManageWebhooksThroughProductionHTTPPath(t *testing.
 		IdentityAdministration: &identity.AdministrationService{},
 		OrganizationReporting:  &organizationreporting.Service{},
 		Retention:              &retention.Service{},
-		Admission: admission.NewLegacyService(
+		Admission: admission.NewService(
 			newRolePool(t, database.DSN, "vela_request_login", "vela-request-password"),
 		),
 		Cancellation: cancellation.NewService(
@@ -656,149 +658,9 @@ func TestHumanMigrationUsesUnifiedWebhookActorSessionAttribution(t *testing.T) {
 	}
 }
 
-func TestHumanProjectViewerCanReadCommittedArtifactsThroughProductionHTTPPath(t *testing.T) {
-	fixture := newStartFixture(t, "human-project-viewer-artifacts", 7)
-	started, err := fixture.service.Start(
-		context.Background(), fixture.worker, fixture.credentials,
-	)
-	if err != nil || started.Decision != workercontrol.StartGranted {
-		t.Fatalf("start Human ProjectViewer Artifact fixture = %#v error=%v", started, err)
-	}
-	plan, err := fixture.service.BeginFinalization(
-		context.Background(), fixture.worker, fixture.credentials,
-	)
-	if err != nil || plan.Decision != workercontrol.FinalizationGranted {
-		t.Fatalf("begin Human ProjectViewer finalization = %#v error=%v", plan, err)
-	}
-	completionService := visibleCompletionService(t, fixture.database.DSN)
-	artifactIDs := uploadAndVerifyFinalizationPlan(
-		t,
-		completionService,
-		fixture.worker,
-		fixture.credentials,
-		plan,
-	)
-	completed, err := completionService.CompleteVisibleCompletion(
-		context.Background(),
-		fixture.worker,
-		fixture.credentials,
-		workercontrol.VisibleCompletionCandidate{
-			CompletionID:       uuid.New(),
-			ExpectedJobVersion: plan.JobVersion,
-			ArtifactIDs:        artifactIDs,
-		},
-	)
-	if err != nil || completed.Decision != workercontrol.VisibleCompletionCommitted {
-		t.Fatalf("complete Human ProjectViewer fixture = %#v error=%v", completed, err)
-	}
-	if _, err := fixture.database.Admin.Exec(`
-		INSERT INTO principals (id, organization_id, kind, display_name)
-		VALUES ($1, $2, 'HUMAN', 'Human Project Viewer')
-	`, humanProjectViewerPrincipalID, testOrganizationID); err != nil {
-		t.Fatalf("seed Human ProjectViewer Principal: %v", err)
-	}
-	if _, err := fixture.database.Admin.Exec(`
-		INSERT INTO human_oidc_bindings (
-			organization_id, principal_id, issuer, subject, display_name
-		) VALUES ($2, $1, 'https://identity.example.com', 'human-project-viewer', 'Human Project Viewer')
-	`, humanProjectViewerPrincipalID, testOrganizationID); err != nil {
-		t.Fatalf("seed Human ProjectViewer OIDC binding: %v", err)
-	}
-	if _, err := fixture.database.Admin.Exec(`
-		INSERT INTO project_role_bindings (
-			organization_id, project_id, principal_id, role, assigned_by_principal_id
-		) VALUES ($2, $3, $1, 'ProjectViewer', $1)
-	`, humanProjectViewerPrincipalID, testOrganizationID, testProjectID); err != nil {
-		t.Fatalf("seed Human ProjectViewer role: %v", err)
-	}
-	authenticator := identity.NewAuthenticatorWithOIDC(
-		newRolePool(t, fixture.database.DSN, "vela_auth_login", "vela-auth-password"),
-		newRolePool(
-			t,
-			fixture.database.DSN,
-			"vela_human_auth_login",
-			"vela-human-auth-password",
-		),
-		testCredentialPepper,
-		staticOIDCTokenVerifier{identity: identity.OIDCIdentity{
-			Issuer:    "https://identity.example.com",
-			Subject:   "human-project-viewer",
-			ExpiresAt: time.Now().UTC().Add(time.Hour),
-		}},
-	)
-	signer := &recordingArtifactSigner{}
-	handler, err := httpapi.NewHandler(httpapi.Config{
-		Authenticator:          authenticator,
-		IdentityAdministration: &identity.AdministrationService{},
-		OrganizationReporting:  &organizationreporting.Service{},
-		Retention:              &retention.Service{},
-		Admission: admission.NewLegacyService(
-			newRolePool(t, fixture.database.DSN, "vela_request_login", "vela-request-password"),
-		),
-		Cancellation: cancellation.NewService(
-			newRolePool(t, fixture.database.DSN, "vela_cancel_login", "vela-cancel-password"),
-			newRolePool(t, fixture.database.DSN, "vela_internal_login", "vela-internal-password"),
-		),
-		Artifacts: artifactaccess.NewService(
-			newRolePool(
-				t,
-				fixture.database.DSN,
-				"vela_artifact_request_login",
-				"vela-artifact-request-password",
-			),
-			signer,
-		),
-		Webhooks: testWebhookService(
-			t,
-			webhookRequestPoolForDatabase(t, fixture.database),
-		),
-	})
-	if err != nil {
-		t.Fatalf("create Human ProjectViewer HTTP handler: %v", err)
-	}
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	request, err := http.NewRequest(
-		http.MethodGet,
-		server.URL+"/v1/projects/"+testProjectID+"/jobs/"+
-			fixture.assignment.JobID.String()+"/artifacts",
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("create Human ProjectViewer Artifact request: %v", err)
-	}
-	request.Header.Set("Authorization", "Bearer human-project-viewer-oidc-token")
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		t.Fatalf("read ArtifactSet as Human ProjectViewer: %v", err)
-	}
-	defer response.Body.Close()
-	body, readErr := io.ReadAll(response.Body)
-	if readErr != nil {
-		t.Fatalf("read Human ProjectViewer Artifact response: %v", readErr)
-	}
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("Human ProjectViewer Artifact status = %d, want 200; body=%s", response.StatusCode, body)
-	}
-	var payload struct {
-		JobID     uuid.UUID `json:"job_id"`
-		Artifacts []struct {
-			DownloadURL string `json:"download_url"`
-		} `json:"artifacts"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		t.Fatalf("decode Human ProjectViewer ArtifactSet: %v", err)
-	}
-	if payload.JobID != fixture.assignment.JobID ||
-		len(payload.Artifacts) != len(completed.Artifacts) ||
-		len(signer.calls) != len(completed.Artifacts) {
-		t.Fatalf("Human ProjectViewer ArtifactSet = %#v signer=%#v", payload, signer.calls)
-	}
-}
-
 func TestHumanMigrationEmptyDownUpRestoresNMinusOneSurface(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 12)
 	seedAdmissionFixture(t, database.Admin)
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	if err := goose.DownTo(database.Admin, migrations, 11); err != nil {
@@ -918,14 +780,14 @@ func TestHumanMigrationEmptyDownUpRestoresNMinusOneSurface(t *testing.T) {
 			transactionTime,
 		)
 	}
-	if err := goose.Up(database.Admin, migrations); err != nil {
+	if err := goose.UpTo(database.Admin, migrations, 12); err != nil {
 		t.Fatalf("re-expand Human OIDC/RBAC migration: %v", err)
 	}
 }
 
 func TestHumanMigrationDownRefusesDurableIdentityEvidence(t *testing.T) {
 	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
+	applyFoundationTo(t, database.Admin, 12)
 	seedAdmissionFixture(t, database.Admin)
 	if _, err := database.Admin.Exec(`
 		INSERT INTO principals (id, organization_id, kind, display_name)

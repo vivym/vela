@@ -2,19 +2,15 @@ package releasebundle
 
 import (
 	"bytes"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -22,10 +18,9 @@ import (
 
 var (
 	fixedRenderNames = []string{
-		"control-storage", "fleet-controller", "observability", "vela-control", "worker-agent",
+		"control-storage", "fleet-controller", "observability", "stage-worker", "vela-control",
 	}
-	fixedPackageNames  = []string{"h3-runner", "node-agent"}
-	gpuPattern         = regexp.MustCompile(`^GPU-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	fixedPackageNames  = []string{"node-agent"}
 	nodeAgentSystemdV1 = map[string]map[string]string{
 		"Unit": {
 			"Description": "Vela host remediation Node Agent",
@@ -63,30 +58,38 @@ type resourceKey struct {
 }
 
 type renderInventory struct {
-	declared         map[resourceKey]struct{}
-	referred         map[resourceKey]struct{}
-	expectedRevision map[resourceKey]string
-	secretKeys       map[resourceKey]map[string]struct{}
-	secretConsumers  map[resourceKey]map[string]struct{}
-	images           map[string]struct{}
-	fleetDesired     []fleetcontroller.DesiredRevision
+	declared           map[resourceKey]struct{}
+	referred           map[resourceKey]struct{}
+	expectedRevision   map[resourceKey]string
+	secretKeys         map[resourceKey]map[string]struct{}
+	secretConsumers    map[resourceKey]map[string]struct{}
+	images             map[string]struct{}
+	supportImages      map[string]struct{}
+	modelRuntimeImages map[string]struct{}
+	h3RuntimeImages    map[string]struct{}
+	residencyRollouts  []fleetcontroller.ResidencyPlanRollout
 }
 
 func newRenderInventory() renderInventory {
 	return renderInventory{
-		declared:         make(map[resourceKey]struct{}),
-		referred:         make(map[resourceKey]struct{}),
-		expectedRevision: make(map[resourceKey]string),
-		secretKeys:       make(map[resourceKey]map[string]struct{}),
-		secretConsumers:  make(map[resourceKey]map[string]struct{}),
-		images:           make(map[string]struct{}),
+		declared:           make(map[resourceKey]struct{}),
+		referred:           make(map[resourceKey]struct{}),
+		expectedRevision:   make(map[resourceKey]string),
+		secretKeys:         make(map[resourceKey]map[string]struct{}),
+		secretConsumers:    make(map[resourceKey]map[string]struct{}),
+		images:             make(map[string]struct{}),
+		supportImages:      make(map[string]struct{}),
+		modelRuntimeImages: make(map[string]struct{}),
+		h3RuntimeImages:    make(map[string]struct{}),
 	}
 }
 
-func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
+func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error) {
+	if !sourceRevisionPattern.MatchString(sourceRevision) {
+		return Bundle{}, invalid("source revision must be a full Git object ID")
+	}
 	if plan.SchemaVersion != SchemaVersion || len(plan.FinalRenders) != len(fixedRenderNames) ||
-		len(plan.Packages) != len(fixedPackageNames) || len(plan.WorkerMaterializations) == 0 ||
-		len(plan.WorkerMaterializations) > maxWorkerNodeCount || len(plan.OCIManifests) == 0 ||
+		len(plan.Packages) != len(fixedPackageNames) || len(plan.OCIManifests) == 0 ||
 		len(plan.OCIManifests) > maxArtifactCount {
 		return Bundle{}, invalid("build plan graph cardinality is invalid")
 	}
@@ -101,9 +104,6 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 	slices.SortFunc(plan.Packages, func(left, right PackageInput) int {
 		return strings.Compare(left.Name, right.Name)
 	})
-	slices.SortFunc(plan.WorkerMaterializations, func(left, right WorkerMaterializationInput) int {
-		return strings.Compare(left.NodeIdentity, right.NodeIdentity)
-	})
 	slices.SortFunc(plan.ExternalResources, compareExternalResources)
 	slices.SortFunc(plan.OCIManifests, func(left, right OCIManifestInput) int {
 		return strings.Compare(left.Image, right.Image)
@@ -111,11 +111,10 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 
 	inventory := newRenderInventory()
 	configuration := ConfigurationManifest{
-		SchemaVersion: SchemaVersion, MediaType: ConfigurationMediaType,
-		FinalRenders:           make([]NamedArtifact, 0, len(plan.FinalRenders)),
-		Packages:               make([]Package, 0, len(plan.Packages)),
-		WorkerMaterializations: make([]WorkerMaterialization, 0, len(plan.WorkerMaterializations)),
-		ExternalResources:      append([]ExternalResource(nil), plan.ExternalResources...),
+		SchemaVersion: SchemaVersion, MediaType: ConfigurationMediaType, SourceRevision: sourceRevision,
+		FinalRenders:      make([]NamedArtifact, 0, len(plan.FinalRenders)),
+		Packages:          make([]Package, 0, len(plan.Packages)),
+		ExternalResources: append([]ExternalResource(nil), plan.ExternalResources...),
 	}
 	for index, input := range plan.FinalRenders {
 		if input.Name != fixedRenderNames[index] {
@@ -132,7 +131,7 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 	}
 
 	if plan.NodeAgentUnit.Name != "node-agent-systemd-unit" {
-		return Bundle{}, invalid("node Agent unit name must be node-agent-systemd-unit")
+		return Bundle{}, invalid("node agent unit name must be node-agent-systemd-unit")
 	}
 	unitArtifact, unitContent, err := artifacts.artifactFor(plan.NodeAgentUnit.Ref, "text/plain", maxMetadataBytes)
 	if err != nil {
@@ -168,18 +167,13 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 		return Bundle{}, err
 	}
 
-	materialKeys := make(map[string]struct{})
-	for _, input := range plan.WorkerMaterializations {
-		materialization, err := buildWorkerMaterialization(artifacts, input, &inventory, materialKeys, yamlBudget)
-		if err != nil {
-			return Bundle{}, err
-		}
-		configuration.WorkerMaterializations = append(configuration.WorkerMaterializations, materialization)
-	}
-	if err := validateFleetDesiredMaterializations(inventory.fleetDesired, plan.WorkerMaterializations); err != nil {
-		return Bundle{}, err
+	if len(inventory.residencyRollouts) == 0 {
+		return Bundle{}, invalid("Fleet final render must contain target ResidencyPlan rollout authority")
 	}
 	if err := validateExternalResources(plan.ExternalResources, inventory); err != nil {
+		return Bundle{}, err
+	}
+	if err := validateImageRoleSeparation(inventory); err != nil {
 		return Bundle{}, err
 	}
 
@@ -201,6 +195,12 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 		mediaType, platform, err := validateOCIManifest(input, artifact, content, configArtifact, configContent)
 		if err != nil {
 			return Bundle{}, err
+		}
+		if _, modelRuntime := inventory.modelRuntimeImages[input.Image]; modelRuntime {
+			_, h3Runtime := inventory.h3RuntimeImages[input.Image]
+			if err := validateModelRuntimeOCIConfig(input.Image, configContent, h3Runtime); err != nil {
+				return Bundle{}, err
+			}
 		}
 		artifact.MediaType = mediaType
 		ociImages = append(ociImages, OCIImage{Image: input.Image, Descriptor: artifact, Config: configArtifact, Platform: platform})
@@ -236,9 +236,36 @@ func build(root *rootedFS, plan BuildPlan) (Bundle, error) {
 	}, nil
 }
 
+func validateImageRoleSeparation(inventory renderInventory) error {
+	runtimeDigests := make(map[string]string, len(inventory.modelRuntimeImages))
+	for image := range inventory.modelRuntimeImages {
+		if _, reused := inventory.supportImages[image]; reused {
+			return invalidf("ModelRuntime image %q is also used by a non-ModelRuntime container", image)
+		}
+		runtimeDigests[imageManifestDigest(image)] = image
+	}
+	for image := range inventory.supportImages {
+		if runtimeImage, reused := runtimeDigests[imageManifestDigest(image)]; reused {
+			return invalidf(
+				"ModelRuntime image %q and non-ModelRuntime image %q resolve to the same OCI manifest",
+				runtimeImage,
+				image,
+			)
+		}
+	}
+	return nil
+}
+
+func imageManifestDigest(image string) string {
+	return image[strings.LastIndex(image, "@")+1:]
+}
+
 func verify(root *rootedFS, bundle Bundle) error {
 	if bundle.SchemaVersion != SchemaVersion || !validDigest(bundle.ReleaseDigest) ||
-		!validDigest(bundle.ConfigurationRevision) {
+		!validDigest(bundle.ConfigurationRevision) ||
+		bundle.ConfigurationManifest.SchemaVersion != SchemaVersion ||
+		bundle.ConfigurationManifest.MediaType != ConfigurationMediaType ||
+		!sourceRevisionPattern.MatchString(bundle.ConfigurationManifest.SourceRevision) {
 		return invalid("bundle header is invalid")
 	}
 	plan := BuildPlan{
@@ -257,26 +284,12 @@ func verify(root *rootedFS, bundle Bundle) error {
 			Name: item.Name, ContractRef: item.Contract.Ref, ArtifactRef: item.Artifact.Ref,
 		})
 	}
-	for _, item := range bundle.ConfigurationManifest.WorkerMaterializations {
-		plan.WorkerMaterializations = append(plan.WorkerMaterializations, WorkerMaterializationInput{
-			NodeIdentity: item.NodeIdentity, Namespace: item.Namespace, WorkerID: item.WorkerID,
-			WorkerEpoch: item.WorkerEpoch, WorkerPoolID: item.WorkerPoolID, FleetRevision: item.FleetRevision,
-			NodeAgentIdentity:      item.NodeAgentIdentity,
-			WorkerRuntimeConfigMap: item.WorkerRuntimeConfigMap, WorkerRuntimeRef: item.WorkerRuntime.Ref,
-			RunnerProfilesConfigMap: item.RunnerProfilesConfigMap, RunnerProfilesRef: item.RunnerProfiles.Ref,
-			RunnerGPURolesConfigMap: item.RunnerGPURolesConfigMap, RunnerGPURolesRef: item.RunnerGPURoles.Ref,
-			WorkerControlTLSSecret:         item.WorkerControlTLSSecret,
-			WorkerControlTLSSecretRevision: item.WorkerControlTLSSecretRevision,
-			ExecutionProfileRevisionID:     item.ExecutionProfileRevisionID,
-			InferenceBackendRevision:       item.InferenceBackendRevision, ModelRevisionID: item.ModelRevisionID,
-		})
-	}
 	for _, image := range bundle.OCIImages {
 		plan.OCIManifests = append(plan.OCIManifests, OCIManifestInput{
 			Image: image.Image, Ref: image.Descriptor.Ref, ConfigRef: image.Config.Ref,
 		})
 	}
-	rebuilt, err := build(root, plan)
+	rebuilt, err := build(root, plan, bundle.ConfigurationManifest.SourceRevision)
 	if err != nil {
 		return err
 	}
@@ -344,30 +357,6 @@ func isLowerHex(value string) bool {
 	return true
 }
 
-func canonicalUUID(value string) bool {
-	parsed, err := uuid.Parse(value)
-	return err == nil && parsed != uuid.Nil && parsed.String() == value
-}
-
-func expectedNodeAgentIdentity(nodeIdentity, workerID string) string {
-	return "spiffe://vela.internal/node-agent/" +
-		base64.RawURLEncoding.EncodeToString([]byte(nodeIdentity)) + "/" + workerID
-}
-
-func validSPIFFE(value string) bool {
-	parsed, err := url.Parse(value)
-	return err == nil && parsed.Scheme == "spiffe" && parsed.Host == "vela.internal" &&
-		parsed.RawQuery == "" && parsed.Fragment == "" && ValidRevision(value)
-}
-
-func canonicalGPUUUID(value string) bool {
-	if !gpuPattern.MatchString(value) {
-		return false
-	}
-	parsed, err := uuid.Parse(strings.TrimPrefix(value, "GPU-"))
-	return err == nil && parsed != uuid.Nil && "GPU-"+parsed.String() == value
-}
-
 // ValidatePackageContract strictly validates one host package contract against its artifact.
 func ValidatePackageContract(name string, encoded []byte, artifact Artifact) (PackageContract, error) {
 	var contract PackageContract
@@ -386,7 +375,7 @@ func ValidatePackageContract(name string, encoded []byte, artifact Artifact) (Pa
 
 func validateSystemdUnit(encoded []byte, entrypoint string) error {
 	if entrypoint == "" || containsTemplateValue(string(encoded)) {
-		return invalid("node Agent systemd unit is not bound to the package entrypoint and hardening contract")
+		return invalid("node agent systemd unit is not bound to the package entrypoint and hardening contract")
 	}
 	seenSections := make(map[string]struct{}, len(nodeAgentSystemdV1))
 	seenDirectives := make(map[string]struct{})
@@ -397,49 +386,49 @@ func validateSystemdUnit(encoded []byte, entrypoint string) error {
 			continue
 		}
 		if strings.HasSuffix(line, `\`) {
-			return invalidf("node Agent systemd unit line %d uses a continuation", lineNumber+1)
+			return invalidf("node agent systemd unit line %d uses a continuation", lineNumber+1)
 		}
 		if strings.HasPrefix(line, "[") || strings.HasSuffix(line, "]") {
 			if len(line) < 3 || !strings.HasPrefix(line, "[") || !strings.HasSuffix(line, "]") {
-				return invalidf("node Agent systemd unit line %d has a malformed section", lineNumber+1)
+				return invalidf("node agent systemd unit line %d has a malformed section", lineNumber+1)
 			}
 			section = strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
 			if _, allowed := nodeAgentSystemdV1[section]; !allowed {
-				return invalidf("node Agent systemd unit contains unknown section %q", section)
+				return invalidf("node agent systemd unit contains unknown section %q", section)
 			}
 			if _, duplicate := seenSections[section]; duplicate {
-				return invalidf("node Agent systemd unit repeats section %q", section)
+				return invalidf("node agent systemd unit repeats section %q", section)
 			}
 			seenSections[section] = struct{}{}
 			continue
 		}
 		key, value, found := strings.Cut(line, "=")
 		if !found || section == "" || key == "" || strings.TrimSpace(key) != key {
-			return invalidf("node Agent systemd unit line %d is malformed", lineNumber+1)
+			return invalidf("node agent systemd unit line %d is malformed", lineNumber+1)
 		}
 		expected, allowed := nodeAgentSystemdV1[section][key]
 		if !allowed {
-			return invalidf("node Agent systemd unit contains unknown directive %s.%s", section, key)
+			return invalidf("node agent systemd unit contains unknown directive %s.%s", section, key)
 		}
 		identity := section + "." + key
 		if _, duplicate := seenDirectives[identity]; duplicate {
-			return invalidf("node Agent systemd unit repeats directive %s", identity)
+			return invalidf("node agent systemd unit repeats directive %s", identity)
 		}
 		seenDirectives[identity] = struct{}{}
 		if key == "ExecStart" {
 			expected = entrypoint
 		}
 		if value != expected {
-			return invalidf("node Agent systemd unit directive %s does not match version 1", identity)
+			return invalidf("node agent systemd unit directive %s does not match version 1", identity)
 		}
 	}
 	for expectedSection, directives := range nodeAgentSystemdV1 {
 		if _, present := seenSections[expectedSection]; !present {
-			return invalidf("node Agent systemd unit is missing section %q", expectedSection)
+			return invalidf("node agent systemd unit is missing section %q", expectedSection)
 		}
 		for key := range directives {
 			if _, present := seenDirectives[expectedSection+"."+key]; !present {
-				return invalidf("node Agent systemd unit is missing directive %s.%s", expectedSection, key)
+				return invalidf("node agent systemd unit is missing directive %s.%s", expectedSection, key)
 			}
 		}
 	}

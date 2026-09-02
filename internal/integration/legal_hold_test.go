@@ -6,9 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -816,7 +814,7 @@ func TestLegalHoldMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testing.T) {
 	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
 	t.Run("empty Down Up", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 30)
 		if err := goose.DownTo(database.Admin, migrations, 29); err != nil {
 			t.Fatalf("migrate empty Legal Hold schema down: %v", err)
 		}
@@ -869,7 +867,7 @@ func TestLegalHoldMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testing.T) {
 
 	t.Run("provisioning refuses Down", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 30)
 		seedCompliancePrincipal(t, database)
 		err := goose.DownTo(database.Admin, migrations, 29)
 		assertPostgresConstraint(t, err, "legal_hold_contract_has_durable_evidence")
@@ -881,7 +879,7 @@ func TestLegalHoldMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testing.T) {
 
 	t.Run("events refuse Down", func(t *testing.T) {
 		database := newPostgres(t)
-		applyFoundation(t, database.Admin)
+		applyFoundationTo(t, database.Admin, 30)
 		seedAdmissionFixture(t, database.Admin)
 		seedCompliancePrincipal(t, database)
 		pool := newRolePool(t, database.DSN, "vela_compliance_login", "vela-compliance-password")
@@ -907,36 +905,6 @@ func TestLegalHoldMigrationEmptyDownUpAndDurableEvidenceRefusal(t *testing.T) {
 			t.Fatalf("Legal Hold version after event refusal = %d error=%v", version, versionErr)
 		}
 	})
-}
-
-func TestLegalHoldCurrentAndExactNMinusOneSchemaCompatibility(t *testing.T) {
-	database := newPostgres(t)
-	applyFoundation(t, database.Admin)
-	nMinusOne := buildNMinusOneBinaries(t, legalHoldNMinusOneCommit)
-	nMinusOneOutput := runCurrentControlStartupProbe(t, nMinusOne.Control, database.DSN)
-	if strings.Contains(nMinusOneOutput, "database pool") {
-		t.Fatalf("exact Slice 32 control failed schema 30 database preflight:\n%s", nMinusOneOutput)
-	}
-	if !strings.Contains(nMinusOneOutput, "configure Finance Reconciliation service") {
-		t.Fatalf("exact Slice 32 control did not reach its post-preflight sentinel:\n%s", nMinusOneOutput)
-	}
-
-	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
-	if err := goose.DownTo(database.Admin, migrations, 29); err != nil {
-		t.Fatalf("contract Legal Hold schema before current-control probe: %v", err)
-	}
-	currentBinary := filepath.Join(t.TempDir(), "vela-control-current-legal-hold")
-	build := exec.Command("go", "build", "-o", currentBinary, "./cmd/vela-control")
-	build.Dir = repositoryRoot(t)
-	build.Env = environmentWith(map[string]string{"GOWORK": "off"})
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build current Legal Hold control: %v\n%s", err, output)
-	}
-	currentOutput := runCurrentControlStartupProbe(t, currentBinary, database.DSN)
-	if !strings.Contains(currentOutput, "open Compliance database pool") ||
-		!strings.Contains(currentOutput, "Legal Hold transaction privilege boundary") {
-		t.Fatalf("current Legal Hold control did not fail closed against schema 29:\n%s", currentOutput)
-	}
 }
 
 func seedCompliancePrincipal(t *testing.T, database testDatabase) {

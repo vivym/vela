@@ -32,18 +32,23 @@ const (
 	RoleInternal                   Role = "vela_internal"
 	RoleCancel                     Role = "vela_cancel"
 	RoleArtifactRequest            Role = "vela_artifact_request"
-	RoleScheduler                  Role = "vela_scheduler"
-	RoleSchedulerInbox             Role = "vela_scheduler_inbox"
 	RoleBilling                    Role = "vela_billing"
 	RoleFinanceReconciliation      Role = "vela_finance_reconciliation"
 	RoleCompliance                 Role = "vela_compliance"
 	RoleNonContentExpiry           Role = "vela_non_content_expiry"
 	RoleCatalogPromotion           Role = "vela_catalog_promotion"
+	RoleStageCatalogActivation     Role = "vela_stage_catalog_activation"
 	RoleSLOReporting               Role = "vela_slo_reporting"
 	RoleWebhookRequest             Role = "vela_webhook_request"
 	RoleWebhook                    Role = "vela_webhook"
 	RoleRemediation                Role = "vela_remediation"
 	RoleFleet                      Role = "vela_fleet"
+	RoleAttemptCoordinator         Role = "vela_attempt_coordinator"
+	RoleStageScheduler             Role = "vela_stage_scheduler"
+	RoleStageArtifact              Role = "vela_stage_artifact"
+	RoleStageWorkerControl         Role = "vela_stage_worker_control"
+	RoleUsageCost                  Role = "vela_usage_cost"
+	RoleH3CampaignEvidence         Role = "vela_h3_campaign_evidence"
 )
 
 type rowQuerier interface {
@@ -76,18 +81,23 @@ var roleDescriptors = map[Role]roleDescriptor{
 	RoleInternal:                   {requiresBypassRLS: true},
 	RoleCancel:                     {verifyPrivileges: verifyCancelPrivileges},
 	RoleArtifactRequest:            {verifyPrivileges: verifyArtifactRequestPrivileges},
-	RoleScheduler:                  {verifyPrivileges: verifySchedulerPrivileges},
-	RoleSchedulerInbox:             {verifyPrivileges: verifySchedulerInboxPrivileges},
 	RoleBilling:                    {verifyPrivileges: verifyBillingPrivileges},
 	RoleFinanceReconciliation:      {verifyPrivileges: verifyFinanceReconciliationPrivileges},
 	RoleCompliance:                 {verifyPrivileges: verifyCompliancePrivileges},
 	RoleNonContentExpiry:           {verifyPrivileges: verifyNonContentExpiryPrivileges},
 	RoleCatalogPromotion:           {verifyPrivileges: verifyCatalogPromotionPrivileges},
+	RoleStageCatalogActivation:     {verifyPrivileges: verifyStageCatalogActivationPrivileges},
 	RoleSLOReporting:               {verifyPrivileges: verifySLOReportingPrivileges},
 	RoleWebhookRequest:             {verifyPrivileges: verifyWebhookRequestPrivileges},
 	RoleWebhook:                    {verifyPrivileges: verifyWebhookPrivileges},
 	RoleRemediation:                {verifyPrivileges: verifyRemediationPrivileges},
 	RoleFleet:                      {verifyPrivileges: verifyFleetPrivileges},
+	RoleAttemptCoordinator:         {verifyPrivileges: verifyAttemptCoordinatorPrivileges},
+	RoleStageScheduler:             {verifyPrivileges: verifyStageSchedulerPrivileges},
+	RoleStageArtifact:              {verifyPrivileges: verifyStageArtifactPrivileges},
+	RoleStageWorkerControl:         {verifyPrivileges: verifyStageWorkerControlPrivileges},
+	RoleUsageCost:                  {verifyPrivileges: verifyUsageCostPrivileges},
+	RoleH3CampaignEvidence:         {verifyPrivileges: verifyH3CampaignEvidencePrivileges},
 }
 
 func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
@@ -130,8 +140,8 @@ func VerifyRole(ctx context.Context, database rowQuerier, expected Role) error {
 	                SELECT 1
 	                FROM pg_catalog.pg_roles AS inherited
 	                WHERE inherited.rolname <> current_user
-	                  AND inherited.rolname <> ALL($1::text[])
-	                  AND pg_has_role(current_user, inherited.oid, 'SET')
+		                  AND inherited.rolname <> ALL($1::text[])
+		                  AND pg_has_role(current_user, inherited.oid, 'MEMBER')
             )
         FROM pg_catalog.pg_roles AS role
         WHERE role.rolname = current_user
@@ -199,29 +209,188 @@ type exactPrivilegeBoundary struct {
 	functions       []string
 }
 
-func verifySchedulerPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+func databaseFunctionExists(
+	ctx context.Context,
+	database rowQuerier,
+	signature string,
+) (bool, error) {
+	var exists bool
+	if err := database.QueryRow(ctx, `
+		SELECT to_regprocedure($1) IS NOT NULL
+	`, signature).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func databaseRelationExists(
+	ctx context.Context,
+	database rowQuerier,
+	relation string,
+) (bool, error) {
+	var exists bool
+	if err := database.QueryRow(ctx, `
+		SELECT to_regclass($1) IS NOT NULL
+	`, relation).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func verifyAttemptCoordinatorPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
 	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
-		inspectionLabel: "Scheduler",
-		failureLabel:    "Scheduler transaction",
+		inspectionLabel: "AttemptCoordinator",
+		failureLabel:    "AttemptCoordinator command",
 		functions: []string{
-			"vela_list_schedulable_worker_pools()",
-			"vela_claim_scheduler_dispatch(uuid,text,integer)",
-			"vela_abandon_scheduler_dispatch(uuid,text,text)",
-			"vela_reconcile_expired_scheduler_dispatches()",
-			"vela_predict_admission_capacity(uuid,uuid,uuid,uuid,uuid,integer)",
-			"vela_predict_job_dynamic_eta(uuid)",
+			"vela_instantiate_stage_graph(jsonb)",
+			"vela_apply_stage_command(jsonb)",
+			"vela_reconcile_stage_graphs(integer)",
+			"vela_claim_stage_graph_instantiations(text,uuid,integer,integer)",
+			"vela_complete_stage_graph_instantiation(uuid,uuid,uuid,uuid,uuid)",
+			"vela_release_stage_graph_instantiation(uuid,uuid,integer,text)",
+			"vela_reconcile_stage_graph_instantiations(integer)",
+			"vela_set_project_stage_cache_control(jsonb)",
+			"vela_set_organization_stage_cache_authorization(jsonb)",
+			"vela_admit_stage_cache_entry(jsonb)",
+			"vela_hit_stage_cache(jsonb)",
+			"vela_release_stage_cache_execution_pin(jsonb)",
+			"vela_request_stage_cache_deletion(jsonb)",
+			"vela_reconcile_stage_cache_deletions(timestamp with time zone,integer)",
+			"vela_read_h3_exact_cache_candidates(text,integer)",
+			"vela_find_h3_exact_cache_entry(uuid,uuid,uuid,uuid,uuid,text,bytea,timestamp with time zone)",
 		},
 	})
 }
 
-func verifySchedulerInboxPrivileges(ctx context.Context, database rowQuerier, currentUser string) error {
+func verifyStageSchedulerPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
 	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
-		inspectionLabel: "Scheduler Inbox",
-		failureLabel:    "Scheduler Inbox receipt",
+		inspectionLabel: "StageScheduler",
+		failureLabel:    "StageScheduler transaction",
 		functions: []string{
-			"vela_prepare_scheduler_inbox_receipt(uuid,uuid,uuid,uuid,bigint)",
-			"vela_record_scheduler_inbox_receipt(uuid,uuid,uuid,uuid,bigint)",
+			"vela_capture_stage_scheduler_snapshot(jsonb)",
+			"vela_read_stage_scheduler_claim(uuid)",
+			"vela_claim_stage_scheduler_decision(jsonb)",
+			"vela_commit_stage_scheduler_claim(uuid,uuid)",
+			"vela_abandon_stage_scheduler_claim(uuid,text)",
+			"vela_reconcile_expired_stage_scheduler_claims(integer)",
+			"vela_list_stage_scheduler_shadow_snapshots(integer)",
+			"vela_record_stage_scheduler_shadow_replay(jsonb)",
 		},
+	})
+}
+
+func verifyStageArtifactPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "StageArtifact",
+		failureLabel:    "StageArtifact transaction",
+		functions: []string{
+			"vela_seal_stage_output(jsonb)",
+			"vela_is_stage_materialization_authority_active(jsonb)",
+			"vela_commit_stage_artifact(jsonb)",
+			"vela_fail_stage_materialization_source(jsonb)",
+			"vela_issue_stage_transfer_ticket(jsonb)",
+			"vela_resolve_stage_transfer_ticket(jsonb)",
+			"vela_consume_stage_transfer_ticket(jsonb)",
+		},
+	})
+}
+
+func verifyStageWorkerControlPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "StageWorkerControl",
+		failureLabel:    "StageWorkerControl authority snapshot",
+		functions: []string{
+			"vela_begin_stage_worker_acquire(jsonb)",
+			"vela_read_stage_worker_acquire_authority(uuid)",
+			"vela_read_stage_assignment_execution(uuid,uuid)",
+			"vela_complete_stage_worker_acquire(jsonb)",
+			"vela_read_stage_authority_snapshot(uuid,bigint)",
+			"vela_read_stage_authority_member_epochs(uuid)",
+			"vela_start_stage_worker_command(jsonb)",
+			"vela_heartbeat_stage_worker_command(jsonb)",
+			"vela_reattach_stage_worker_command(jsonb)",
+			"vela_register_stage_worker_runtime(jsonb)",
+			"vela_verify_stage_worker_registration(jsonb)",
+			"vela_verify_stage_capacity_observation(jsonb)",
+		},
+	})
+}
+
+func verifyUsageCostPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Usage/Cost Ledger",
+		failureLabel:    "Usage/Cost Ledger command",
+		functions: []string{
+			"vela_record_resource_usage(jsonb)",
+			"vela_value_resource_usage(jsonb)",
+			"vela_summarize_usage_cost(uuid,timestamp with time zone,timestamp with time zone)",
+		},
+	})
+}
+
+func verifyH3CampaignEvidencePrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	relations := []string{
+		"artifact_sets",
+		"attempts",
+		"charges",
+		"compute_nodes",
+		"devices",
+		"jobs",
+		"stage_allocations",
+		"stage_artifact_inputs",
+		"stage_artifact_pins",
+		"stage_artifacts",
+		"stage_attempts",
+		"stage_cache_entries",
+		"stage_cache_references",
+		"stage_dependencies",
+		"stage_run_output_bindings",
+		"stage_runs",
+		"transfer_tickets",
+		"visible_completions",
+		"worker_instances",
+		"worker_member_devices",
+		"worker_members",
+	}
+	legacyWorkersPresent, err := databaseRelationExists(ctx, database, "public.workers")
+	if err != nil {
+		return fmt.Errorf("inspect H3 campaign evidence Legacy Worker surface: %w", err)
+	}
+	if !legacyWorkersPresent {
+		relations = append(relations, "model_residencies")
+	}
+	tables := make([]relationPrivilege, 0, len(relations))
+	for _, relation := range relations {
+		tables = append(tables, relationPrivilege{Relation: relation, Privilege: "SELECT"})
+	}
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "H3 campaign evidence",
+		failureLabel:    "H3 campaign evidence read-only capture",
+		tables:          tables,
 	})
 }
 
@@ -287,7 +456,7 @@ func verifyCatalogPromotionPrivileges(
 	database rowQuerier,
 	currentUser string,
 ) error {
-	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+	boundary := exactPrivilegeBoundary{
 		inspectionLabel: "Catalog Promotion",
 		failureLabel:    "Catalog Promotion transaction",
 		functions: []string{
@@ -296,6 +465,77 @@ func verifyCatalogPromotionPrivileges(
 			"vela_promote_profile_certification(uuid,uuid,uuid,text,text,integer,integer,integer,integer,bigint,bigint,bigint,bigint,bigint,text,integer,integer,uuid)",
 			"vela_promote_rate_card(uuid,uuid,uuid)",
 			"vela_enable_evidenced_catalog(uuid)",
+		},
+	}
+	for _, function := range []string{
+		"vela_execution_profile_connector_set_digest(uuid,uuid)",
+		"vela_activate_stage_cutover(uuid,bigint,uuid,stage_cutover_scope,stage_cutover_mode,integer,uuid,uuid,bigint,integer,bytea,text,bytea,bytea,bytea,text,text)",
+		"vela_authorize_stage_cutover_internal_project(uuid,uuid,uuid,text)",
+		"vela_capture_legacy_authority_inventory(uuid,text)",
+	} {
+		present, err := databaseFunctionExists(ctx, database, function)
+		if err != nil {
+			return fmt.Errorf("inspect Catalog Promotion Stage cutover function %s: %w", function, err)
+		}
+		if present {
+			boundary.functions = append(boundary.functions, function)
+		}
+	}
+	zeroBacklogPrivilegesPresent, err := databaseFunctionExists(
+		ctx,
+		database,
+		"vela_record_stage_cutover_external_drain_evidence(uuid,bigint,bigint,bigint,bigint,bigint,bytea,text)",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect Catalog Promotion zero-backlog surface: %w", err)
+	}
+	if zeroBacklogPrivilegesPresent {
+		boundary.functions = append(boundary.functions,
+			"vela_record_stage_cutover_external_drain_evidence(uuid,bigint,bigint,bigint,bigint,bigint,bytea,text)",
+			"vela_seal_stage_cutover_zero_backlog(uuid,uuid,uuid,uuid,uuid,text)",
+		)
+	}
+	contractionPreparationPresent, err := databaseFunctionExists(
+		ctx,
+		database,
+		"vela_prepare_legacy_h3_contraction(uuid,text)",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect Catalog Promotion Legacy H3 contraction surface: %w", err)
+	}
+	if contractionPreparationPresent {
+		boundary.functions = append(
+			boundary.functions,
+			"vela_prepare_legacy_h3_contraction(uuid,text)",
+		)
+	}
+	contractionAuthorizationPresent, err := databaseFunctionExists(
+		ctx,
+		database,
+		"vela_authorize_legacy_h3_contraction(uuid,bytea,bytea,text,bytea,bytea,text)",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect Catalog Promotion Legacy H3 release gate surface: %w", err)
+	}
+	if contractionAuthorizationPresent {
+		boundary.functions = append(
+			boundary.functions,
+			"vela_authorize_legacy_h3_contraction(uuid,bytea,bytea,text,bytea,bytea,text)",
+		)
+	}
+	return verifyExactPrivileges(ctx, database, currentUser, boundary)
+}
+
+func verifyStageCatalogActivationPrivileges(
+	ctx context.Context,
+	database rowQuerier,
+	currentUser string,
+) error {
+	return verifyExactPrivileges(ctx, database, currentUser, exactPrivilegeBoundary{
+		inspectionLabel: "Stage Catalog activation",
+		failureLabel:    "Stage Catalog activation transaction",
+		functions: []string{
+			"vela_activate_execution_graph(uuid,bytea)",
 		},
 	})
 }
@@ -351,21 +591,16 @@ func verifyFleetPrivileges(ctx context.Context, database rowQuerier, currentUser
 		inspectionLabel: "Fleet",
 		failureLabel:    "Fleet transaction",
 		functions: []string{
-			"vela_resolve_worker_identity(text,uuid,text,text,text)",
-			"vela_configure_worker_pool_capacity(uuid,text,bigint,bigint,bigint,bigint,bigint,bigint,text)",
-			"vela_observe_worker_capacity(uuid,uuid,bigint,bigint,timestamp with time zone,fleet_scratch_watermark_state,bigint,bigint,bigint,bigint,bigint,boolean,text)",
-			"vela_get_worker_pool_capacity(uuid)",
-			"vela_begin_worker_readiness(uuid,uuid,uuid,bigint,text,uuid,text,text,timestamptz)",
-			"vela_report_worker_readiness(uuid,fleet_readiness_check,boolean,bytea,text)",
-			"vela_get_worker_readiness(uuid)",
-			"vela_get_worker_readiness_work(uuid,bigint)",
-			"vela_request_worker_drain(uuid,uuid,bigint,text,timestamptz,text)",
-			"vela_reconcile_worker_drain(uuid,text)",
-			"vela_get_worker_drain(uuid)",
-			"vela_authorize_fleet_mutation(text,text,fleet_protected_resource_kind,fleet_mutation_operation,text,text,text,uuid,uuid,bigint,uuid[],bytea)",
-			"vela_has_fleet_retirement_authorization(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[])",
-			"vela_record_fleet_retirement_completion(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[],text)",
-			"vela_has_fleet_retirement_completion(fleet_protected_resource_kind,text,text,text,uuid,uuid,bigint,uuid[])",
+			"vela_observe_worker_instance(jsonb)",
+			"vela_record_residency_proposal(jsonb)",
+			"vela_apply_residency_plan(jsonb)",
+			"vela_worker_instance_authority_matches(uuid,bigint,bytea,bytea,uuid,bigint)",
+			"vela_reconnect_worker_instance(uuid,bigint,bigint,text,timestamp with time zone,text)",
+			"vela_fence_worker_instance(uuid,bigint,text,text)",
+			"vela_begin_worker_instance_drain(uuid,bigint,text,text)",
+			"vela_approve_model_residency_release(uuid,uuid,bigint,model_residency_release_reason,text,text,bigint,bigint,bytea)",
+			"vela_complete_model_residency_release(uuid,bigint,bytea,text)",
+			"vela_authorize_worker_instance_pod_mutation(text,text,fleet_mutation_operation,text,text,text,uuid,bigint,uuid,uuid,uuid,bytea)",
 		},
 	})
 }
@@ -844,7 +1079,6 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 		inspectionLabel: "request",
 		failureLabel:    "request transaction",
 		tables: []relationPrivilege{
-			{Relation: "worker_pools", Privilege: "SELECT"},
 			{Relation: "customer_organizations", Privilege: "SELECT"},
 			{Relation: "projects", Privilege: "SELECT"},
 			{Relation: "principals", Privilege: "SELECT"},
@@ -854,7 +1088,6 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			{Relation: "credit_reservations", Privilege: "SELECT"},
 			{Relation: "idempotency_results", Privilege: "SELECT"},
 			{Relation: "outbox_events", Privilege: "SELECT"},
-			{Relation: "vela_request_execution_lease_renewal_protocol", Privilege: "SELECT"},
 			{Relation: "vela_request_job_runtime", Privilege: "SELECT"},
 			{Relation: "vela_request_job_progress", Privilege: "SELECT"},
 			{Relation: "jobs", Privilege: "INSERT"},
@@ -864,7 +1097,6 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			{Relation: "outbox_events", Privilege: "INSERT"},
 		},
 		columns: []columnPrivilege{
-			{Relation: "worker_pools", Column: "queued_count", Privilege: "UPDATE"},
 			{Relation: "projects", Column: "queued_count", Privilege: "UPDATE"},
 			{Relation: "projects", Column: "running_count", Privilege: "UPDATE"},
 			{Relation: "organization_credit_accounts", Column: "reserved_minor", Privilege: "UPDATE"},
@@ -878,20 +1110,60 @@ func verifyRequestPrivileges(ctx context.Context, database rowQuerier, currentUs
 			"vela_current_request_scope()",
 			"vela_set_request_context(uuid,bytea,text)",
 			"vela_resolve_active_sku(text,text,text,text)",
-			"vela_lock_compatible_pool(uuid,uuid,uuid)",
 		},
 	}
-	var leaseRenewalProtocolEnabled bool
-	if err := database.QueryRow(ctx, `
-		SELECT enabled FROM vela_request_execution_lease_renewal_protocol
-	`).Scan(&leaseRenewalProtocolEnabled); err != nil {
-		return fmt.Errorf("inspect request execution Lease renewal protocol: %w", err)
+	legacyWorkerPoolsPresent, err := databaseRelationExists(ctx, database, "public.worker_pools")
+	if err != nil {
+		return fmt.Errorf("inspect request Legacy WorkerPool surface: %w", err)
 	}
-	if !leaseRenewalProtocolEnabled {
+	if legacyWorkerPoolsPresent {
+		boundary.tables = append(boundary.tables,
+			relationPrivilege{Relation: "worker_pools", Privilege: "SELECT"},
+		)
+		boundary.columns = append(boundary.columns,
+			columnPrivilege{Relation: "worker_pools", Column: "queued_count", Privilege: "UPDATE"},
+		)
+	}
+	for _, function := range []string{
+		"vela_lock_compatible_pool(uuid,uuid,uuid)",
+		"vela_resolve_job_execution_route(uuid,uuid,uuid)",
+		"vela_resolve_stage_job_execution_route(uuid,uuid,uuid)",
+		"vela_lock_stage_graph_ready_capacity_path(uuid,uuid)",
+		"vela_instantiate_admitted_stage_graph(uuid,uuid,uuid)",
+	} {
+		present, err := databaseFunctionExists(ctx, database, function)
+		if err != nil {
+			return fmt.Errorf("inspect request execution route function %s: %w", function, err)
+		}
+		if present {
+			boundary.functions = append(boundary.functions, function)
+		}
+	}
+	leaseProtocolPresent, err := databaseRelationExists(
+		ctx,
+		database,
+		"public.vela_request_execution_lease_renewal_protocol",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect request execution Lease renewal protocol surface: %w", err)
+	}
+	if leaseProtocolPresent {
 		boundary.tables = append(boundary.tables, relationPrivilege{
-			Relation:  "retry_runtime_states",
+			Relation:  "vela_request_execution_lease_renewal_protocol",
 			Privilege: "SELECT",
 		})
+		var leaseRenewalProtocolEnabled bool
+		if err := database.QueryRow(ctx, `
+			SELECT enabled FROM vela_request_execution_lease_renewal_protocol
+		`).Scan(&leaseRenewalProtocolEnabled); err != nil {
+			return fmt.Errorf("inspect request execution Lease renewal protocol: %w", err)
+		}
+		if !leaseRenewalProtocolEnabled {
+			boundary.tables = append(boundary.tables, relationPrivilege{
+				Relation:  "retry_runtime_states",
+				Privilege: "SELECT",
+			})
+		}
 	}
 	return verifyExactPrivileges(ctx, database, currentUser, boundary)
 }
