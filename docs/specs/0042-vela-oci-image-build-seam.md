@@ -82,3 +82,8 @@ Real PKI and Secret values, RKE2/H3 deployment, node materialization, fault and
 rollback exercises, and all nine versioned Launch Receipts remain external
 work. Repository tests and smoke images satisfy no Production Gate; the current
 result remains `0/9 PASS`.
+
+The external fast-h3 launcher, environment, warmup, release-input, and
+cross-worktree protocol contracts are recorded in
+`docs/fast-h3-runtime-conformance.md`. That conformance does not change the
+external provenance or Production Gate boundary above.

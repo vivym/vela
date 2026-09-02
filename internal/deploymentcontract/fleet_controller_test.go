@@ -425,6 +425,21 @@ func TestFleetDefaultRenderUsesTargetOnlySingleGPUResidencyPlan(t *testing.T) {
 		worker.Members[0].DeviceCount != 1 || len(worker.Members[0].DeviceConstraints) != 1 {
 		t.Fatalf("Fleet single-GPU placeholder WorkerInstance = %#v", worker)
 	}
+	wantRuntimeEnvironment := []string{
+		"FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+		"FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+		"FAST_H3_MODEL_VARIANT=fl2va",
+		"FAST_H3_MASTER_PORT=29500",
+		"FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit.json",
+		"CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000001",
+	}
+	if !reflect.DeepEqual(worker.ModelRuntimes[0].Environment, wantRuntimeEnvironment) {
+		t.Fatalf(
+			"Fleet single-GPU placeholder ModelRuntime environment = %#v, want %#v",
+			worker.ModelRuntimes[0].Environment,
+			wantRuntimeEnvironment,
+		)
+	}
 	kustomization := string(readFleetManifest(t, "kustomization.yaml"))
 	if !strings.Contains(kustomization, "residency-plan-rollouts.yaml") ||
 		strings.Contains(kustomization, "desired-revisions.yaml") {

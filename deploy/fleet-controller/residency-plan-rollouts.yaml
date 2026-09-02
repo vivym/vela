@@ -17,7 +17,7 @@ data:
             "id": "49320000-0000-0000-0000-000000000001",
             "stable_id": "replace-with-approved-single-gpu-rollout",
             "revision": 1,
-            "content_digest": "36a2572ffc54be46ff88e03e4c24e7ffb7113d38ead7d1c317fc0ed9ff5e9c54",
+            "content_digest": "9176b3a13be60d5133482177eb9e68b607320d3a20c91d75e94a5ceb6f41130e",
             "approval_evidence_digest": "0000000000000000000000000000000000000000000000000000000000000000",
             "approved_at": "2026-08-31T00:00:00Z",
             "approved_by": "replace-with-production-fleet-operator",
@@ -37,7 +37,7 @@ data:
                 "id": "49320000-0000-0000-0000-000000000002",
                 "stable_id": "replace-with-worker-bundle",
                 "desired_generation": 1,
-                "layout_digest": "36a2572ffc54be46ff88e03e4c24e7ffb7113d38ead7d1c317fc0ed9ff5e9c54"
+                "layout_digest": "9176b3a13be60d5133482177eb9e68b607320d3a20c91d75e94a5ceb6f41130e"
               }
             ],
             "worker_instances": [
@@ -56,7 +56,7 @@ data:
               "schema_version": 1,
               "plan_revision_id": "49320000-0000-0000-0000-000000000001",
               "worker_bundle_id": "49320000-0000-0000-0000-000000000002",
-              "revision_digest": "36a2572ffc54be46ff88e03e4c24e7ffb7113d38ead7d1c317fc0ed9ff5e9c54",
+              "revision_digest": "9176b3a13be60d5133482177eb9e68b607320d3a20c91d75e94a5ceb6f41130e",
               "namespace": "vela-system",
               "init_image": "docker.io/library/busybox@sha256:7a3ebe5bfd1a4a19797d20b0c0bb39d44393e9a03fd852c0865b0f540d868df0",
               "stage_worker_agent_image": "ghcr.io/vivym/vela-stage-worker-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000",
@@ -86,6 +86,14 @@ data:
                       "model_component_revision": "replace-with-certified-h3-dit-revision",
                       "runtime_identity": "replace-with-certified-h3-dit-runtime-identity",
                       "command": ["/opt/vela/bin/h3-dit"],
+                      "environment": [
+                        "FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
+                        "FAST_H3_MODEL_PATH=/opt/fast-h3/model",
+                        "FAST_H3_MODEL_VARIANT=fl2va",
+                        "FAST_H3_MASTER_PORT=29500",
+                        "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit.json",
+                        "CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000001"
+                      ],
                       "initialization_timeout": "2h",
                       "shutdown_timeout": "2m"
                     }
