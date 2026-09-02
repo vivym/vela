@@ -80,8 +80,7 @@ func (reader *ClientsetExternalResourceReader) Secret(
 }
 
 type ClientsetKubernetesReader struct {
-	external *ClientsetExternalResourceReader
-	core     coreclient.CoreV1Interface
+	*ClientsetExternalResourceReader
 	resource resourceclient.ResourceV1Interface
 }
 
@@ -96,23 +95,10 @@ func NewClientsetKubernetesReader(
 	if err != nil {
 		return nil, err
 	}
-	return &ClientsetKubernetesReader{external: external, core: core, resource: resource}, nil
-}
-
-func (reader *ClientsetKubernetesReader) ConfigMap(
-	ctx context.Context,
-	namespace,
-	name string,
-) (corev1.ConfigMap, error) {
-	return reader.external.ConfigMap(ctx, namespace, name)
-}
-
-func (reader *ClientsetKubernetesReader) Secret(
-	ctx context.Context,
-	namespace,
-	name string,
-) (corev1.Secret, error) {
-	return reader.external.Secret(ctx, namespace, name)
+	return &ClientsetKubernetesReader{
+		ClientsetExternalResourceReader: external,
+		resource:                        resource,
+	}, nil
 }
 
 func (reader *ClientsetKubernetesReader) NamespaceUID(ctx context.Context, name string) (string, error) {
