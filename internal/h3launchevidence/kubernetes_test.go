@@ -68,6 +68,45 @@ func TestCollectKubernetesReadsExactLiveObjects(t *testing.T) {
 	}
 }
 
+func TestCollectExternalResourcesReadsCanonicalObjectsAtomically(t *testing.T) {
+	input := exactLaunchInput(t)
+	reader := &fakeKubernetesReader{
+		configMaps: make(map[string]corev1.ConfigMap),
+		secrets:    make(map[string]corev1.Secret),
+	}
+	for index := range input.Kubernetes.ConfigMaps {
+		value := input.Kubernetes.ConfigMaps[index]
+		reader.configMaps[namespacedKey(value.Namespace, value.Name)] = value
+	}
+	for index := range input.Kubernetes.Secrets {
+		value := input.Kubernetes.Secrets[index]
+		reader.secrets[namespacedKey(value.Namespace, value.Name)] = value
+	}
+
+	snapshot, err := h3launchevidence.CollectExternalResources(
+		context.Background(), reader, input.ExternalResources,
+	)
+	if err != nil {
+		t.Fatalf("CollectExternalResources: %v", err)
+	}
+	if len(snapshot.ConfigMaps) != 1 || len(snapshot.Secrets) != 1 ||
+		snapshot.ConfigMaps[0].Name != input.Kubernetes.ConfigMaps[0].Name ||
+		snapshot.Secrets[0].Name != input.Kubernetes.Secrets[0].Name {
+		t.Fatalf("external resource snapshot = %#v", snapshot)
+	}
+
+	delete(reader.secrets, namespacedKey(
+		input.Kubernetes.Secrets[0].Namespace,
+		input.Kubernetes.Secrets[0].Name,
+	))
+	snapshot, err = h3launchevidence.CollectExternalResources(
+		context.Background(), reader, input.ExternalResources,
+	)
+	if err == nil || len(snapshot.ConfigMaps) != 0 || len(snapshot.Secrets) != 0 {
+		t.Fatalf("partial external resource snapshot = %#v error=%v", snapshot, err)
+	}
+}
+
 type fakeKubernetesReader struct {
 	namespaceUIDs  map[string]string
 	configMaps     map[string]corev1.ConfigMap

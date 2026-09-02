@@ -194,7 +194,7 @@ func run(arguments []string, getenv func(string) string, stdout, stderr io.Write
 		ReleaseDigest: bundle.ReleaseDigest, ConfigurationRevision: bundle.ConfigurationRevision,
 		ValidationEnvironment: config.validationEnvironment,
 		CollectorIdentity:     config.collectorIdentity, Rollout: rollout,
-		ExternalResources: launchExternalResources(bundle.ConfigurationManifest.ExternalResources),
+		ExternalResources: externalResourceExpectations(bundle.ConfigurationManifest.ExternalResources),
 	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "capture H3 launch evidence: %v\n", err)
@@ -207,7 +207,7 @@ func run(arguments []string, getenv func(string) string, stdout, stderr io.Write
 	return 0
 }
 
-func launchExternalResources(
+func externalResourceExpectations(
 	resources []releasebundle.ExternalResource,
 ) []h3launchevidence.ExternalResourceExpectation {
 	result := make([]h3launchevidence.ExternalResourceExpectation, 0, len(resources))
@@ -277,7 +277,7 @@ func capturePreflight(
 	if err != nil {
 		return h3preflight.Report{}, fmt.Errorf("%w: %v", errInvalidPreflightInput, err)
 	}
-	externalResources := launchExternalResources(bundle.ConfigurationManifest.ExternalResources)
+	externalResources := externalResourceExpectations(bundle.ConfigurationManifest.ExternalResources)
 	observation := h3preflight.Observation{}
 	pool, err := pgxpool.New(ctx, config.databaseURL)
 	if err == nil {
@@ -312,22 +312,14 @@ func capturePreflight(
 			if nodesErr == nil && nodes != nil {
 				observation.Nodes = nodes.Items
 			}
-			for _, resource := range externalResources {
-				switch resource.Kind {
-				case "ConfigMap":
-					value, resourceErr := core.ConfigMaps(resource.Namespace).Get(
-						ctx, resource.Name, metav1.GetOptions{},
-					)
-					if resourceErr == nil && value != nil {
-						observation.ConfigMaps = append(observation.ConfigMaps, *value)
-					}
-				case "Secret":
-					value, resourceErr := core.Secrets(resource.Namespace).Get(
-						ctx, resource.Name, metav1.GetOptions{},
-					)
-					if resourceErr == nil && value != nil {
-						observation.Secrets = append(observation.Secrets, *value)
-					}
+			externalReader, externalReaderErr := h3launchevidence.NewClientsetExternalResourceReader(core)
+			if externalReaderErr == nil {
+				externalSnapshot, externalReadErr := h3launchevidence.CollectExternalResources(
+					ctx, externalReader, externalResources,
+				)
+				if externalReadErr == nil {
+					observation.ConfigMaps = externalSnapshot.ConfigMaps
+					observation.Secrets = externalSnapshot.Secrets
 				}
 			}
 		}

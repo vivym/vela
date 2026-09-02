@@ -15,11 +15,17 @@ import (
 	resourceclient "k8s.io/client-go/kubernetes/typed/resource/v1"
 )
 
-// KubernetesReader is the minimum read-only API needed for launch evidence.
-type KubernetesReader interface {
-	NamespaceUID(context.Context, string) (string, error)
+// ExternalResourceReader is the minimum read-only API needed to resolve the
+// release-bound ConfigMaps and Secrets shared by preflight and launch capture.
+type ExternalResourceReader interface {
 	ConfigMap(context.Context, string, string) (corev1.ConfigMap, error)
 	Secret(context.Context, string, string) (corev1.Secret, error)
+}
+
+// KubernetesReader is the minimum read-only API needed for launch evidence.
+type KubernetesReader interface {
+	ExternalResourceReader
+	NamespaceUID(context.Context, string) (string, error)
 	Pod(context.Context, string, string) (corev1.Pod, error)
 	ClaimTemplate(context.Context, string, string) (resourcev1.ResourceClaimTemplate, error)
 	Claim(context.Context, string, string) (resourcev1.ResourceClaim, error)
@@ -27,7 +33,29 @@ type KubernetesReader interface {
 	ResourceSlices(context.Context, string) ([]resourcev1.ResourceSlice, error)
 }
 
-func (reader *ClientsetKubernetesReader) ConfigMap(
+// ExternalResourceSnapshot contains the complete live external-resource set.
+// Callers never receive a partial snapshot after a read failure.
+type ExternalResourceSnapshot struct {
+	ConfigMaps []corev1.ConfigMap
+	Secrets    []corev1.Secret
+}
+
+// ClientsetExternalResourceReader adapts the Kubernetes Core client to the
+// narrow external-resource evidence boundary.
+type ClientsetExternalResourceReader struct {
+	core coreclient.CoreV1Interface
+}
+
+func NewClientsetExternalResourceReader(
+	core coreclient.CoreV1Interface,
+) (*ClientsetExternalResourceReader, error) {
+	if core == nil {
+		return nil, errors.New("kubernetes core client is required")
+	}
+	return &ClientsetExternalResourceReader{core: core}, nil
+}
+
+func (reader *ClientsetExternalResourceReader) ConfigMap(
 	ctx context.Context,
 	namespace,
 	name string,
@@ -39,7 +67,7 @@ func (reader *ClientsetKubernetesReader) ConfigMap(
 	return *value, nil
 }
 
-func (reader *ClientsetKubernetesReader) Secret(
+func (reader *ClientsetExternalResourceReader) Secret(
 	ctx context.Context,
 	namespace,
 	name string,
@@ -52,6 +80,7 @@ func (reader *ClientsetKubernetesReader) Secret(
 }
 
 type ClientsetKubernetesReader struct {
+	external *ClientsetExternalResourceReader
 	core     coreclient.CoreV1Interface
 	resource resourceclient.ResourceV1Interface
 }
@@ -63,7 +92,27 @@ func NewClientsetKubernetesReader(
 	if core == nil || resource == nil {
 		return nil, errors.New("kubernetes core and resource clients are required")
 	}
-	return &ClientsetKubernetesReader{core: core, resource: resource}, nil
+	external, err := NewClientsetExternalResourceReader(core)
+	if err != nil {
+		return nil, err
+	}
+	return &ClientsetKubernetesReader{external: external, core: core, resource: resource}, nil
+}
+
+func (reader *ClientsetKubernetesReader) ConfigMap(
+	ctx context.Context,
+	namespace,
+	name string,
+) (corev1.ConfigMap, error) {
+	return reader.external.ConfigMap(ctx, namespace, name)
+}
+
+func (reader *ClientsetKubernetesReader) Secret(
+	ctx context.Context,
+	namespace,
+	name string,
+) (corev1.Secret, error) {
+	return reader.external.Secret(ctx, namespace, name)
 }
 
 func (reader *ClientsetKubernetesReader) NamespaceUID(ctx context.Context, name string) (string, error) {
@@ -135,6 +184,58 @@ func (reader *ClientsetKubernetesReader) ResourceSlices(
 	return values.Items, nil
 }
 
+// CollectExternalResources reads the complete canonical external-resource set.
+// A missing or invalid declaration returns an error and an empty snapshot.
+func CollectExternalResources(
+	ctx context.Context,
+	reader ExternalResourceReader,
+	expectations []ExternalResourceExpectation,
+) (ExternalResourceSnapshot, error) {
+	if ctx == nil || reader == nil {
+		return ExternalResourceSnapshot{}, errors.New("external resource reader and context are required")
+	}
+	snapshot := ExternalResourceSnapshot{
+		ConfigMaps: make([]corev1.ConfigMap, 0),
+		Secrets:    make([]corev1.Secret, 0),
+	}
+	for _, expected := range expectations {
+		if err := validateExternalResourceExpectation(expected); err != nil {
+			return ExternalResourceSnapshot{}, err
+		}
+		switch expected.Kind {
+		case "ConfigMap":
+			value, err := reader.ConfigMap(ctx, expected.Namespace, expected.Name)
+			if err != nil {
+				return ExternalResourceSnapshot{}, fmt.Errorf(
+					"read release-bound ConfigMap %s/%s: %w", expected.Namespace, expected.Name, err,
+				)
+			}
+			snapshot.ConfigMaps = append(snapshot.ConfigMaps, value)
+		case "Secret":
+			value, err := reader.Secret(ctx, expected.Namespace, expected.Name)
+			if err != nil {
+				return ExternalResourceSnapshot{}, fmt.Errorf(
+					"read release-bound Secret %s/%s: %w", expected.Namespace, expected.Name, err,
+				)
+			}
+			snapshot.Secrets = append(snapshot.Secrets, value)
+		}
+	}
+	sort.Slice(snapshot.ConfigMaps, func(left, right int) bool {
+		if snapshot.ConfigMaps[left].Namespace != snapshot.ConfigMaps[right].Namespace {
+			return snapshot.ConfigMaps[left].Namespace < snapshot.ConfigMaps[right].Namespace
+		}
+		return snapshot.ConfigMaps[left].Name < snapshot.ConfigMaps[right].Name
+	})
+	sort.Slice(snapshot.Secrets, func(left, right int) bool {
+		if snapshot.Secrets[left].Namespace != snapshot.Secrets[right].Namespace {
+			return snapshot.Secrets[left].Namespace < snapshot.Secrets[right].Namespace
+		}
+		return snapshot.Secrets[left].Name < snapshot.Secrets[right].Name
+	})
+	return snapshot, nil
+}
+
 // CollectKubernetes resolves all desired object names from the approved
 // rollout and reads their live identities from the Kubernetes API.
 func CollectKubernetes(
@@ -173,36 +274,17 @@ func CollectKubernetes(
 	}
 	snapshot := KubernetesSnapshot{
 		ClusterUID: clusterUID, NamespaceUID: namespaceUID,
-		ConfigMaps:     make([]corev1.ConfigMap, 0),
-		Secrets:        make([]corev1.Secret, 0),
 		Pods:           make([]corev1.Pod, 0, len(desired)),
 		ClaimTemplates: make([]resourcev1.ResourceClaimTemplate, 0, len(desired)),
 		Claims:         make([]resourcev1.ResourceClaim, 0, len(desired)),
 		Nodes:          make([]corev1.Node, 0), ResourceSlices: resourceSlices,
 	}
-	for _, expected := range externalResources {
-		if err := validateExternalResourceExpectation(expected); err != nil {
-			return KubernetesSnapshot{}, err
-		}
-		switch expected.Kind {
-		case "ConfigMap":
-			value, err := reader.ConfigMap(ctx, expected.Namespace, expected.Name)
-			if err != nil {
-				return KubernetesSnapshot{}, fmt.Errorf(
-					"read release-bound ConfigMap %s/%s: %w", expected.Namespace, expected.Name, err,
-				)
-			}
-			snapshot.ConfigMaps = append(snapshot.ConfigMaps, value)
-		case "Secret":
-			value, err := reader.Secret(ctx, expected.Namespace, expected.Name)
-			if err != nil {
-				return KubernetesSnapshot{}, fmt.Errorf(
-					"read release-bound Secret %s/%s: %w", expected.Namespace, expected.Name, err,
-				)
-			}
-			snapshot.Secrets = append(snapshot.Secrets, value)
-		}
+	externalSnapshot, err := CollectExternalResources(ctx, reader, externalResources)
+	if err != nil {
+		return KubernetesSnapshot{}, err
 	}
+	snapshot.ConfigMaps = externalSnapshot.ConfigMaps
+	snapshot.Secrets = externalSnapshot.Secrets
 	seenNodes := make(map[string]struct{})
 	for _, expected := range desired {
 		pod, err := reader.Pod(ctx, namespace, expected.pod.Name)
@@ -241,18 +323,6 @@ func CollectKubernetes(
 		snapshot.Claims = append(snapshot.Claims, claim)
 	}
 	sort.Slice(snapshot.Pods, func(left, right int) bool { return snapshot.Pods[left].Name < snapshot.Pods[right].Name })
-	sort.Slice(snapshot.ConfigMaps, func(left, right int) bool {
-		if snapshot.ConfigMaps[left].Namespace != snapshot.ConfigMaps[right].Namespace {
-			return snapshot.ConfigMaps[left].Namespace < snapshot.ConfigMaps[right].Namespace
-		}
-		return snapshot.ConfigMaps[left].Name < snapshot.ConfigMaps[right].Name
-	})
-	sort.Slice(snapshot.Secrets, func(left, right int) bool {
-		if snapshot.Secrets[left].Namespace != snapshot.Secrets[right].Namespace {
-			return snapshot.Secrets[left].Namespace < snapshot.Secrets[right].Namespace
-		}
-		return snapshot.Secrets[left].Name < snapshot.Secrets[right].Name
-	})
 	sort.Slice(snapshot.ClaimTemplates, func(left, right int) bool {
 		return snapshot.ClaimTemplates[left].Name < snapshot.ClaimTemplates[right].Name
 	})
