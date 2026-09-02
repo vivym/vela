@@ -2,13 +2,13 @@
 
 Date: 2026-08-29
 
-Status: Accepted target architecture; pre-contraction authorization gate
-implemented, removal not started.
+Status: Accepted and implemented in the schema-v2 repository; production
+activation and external evidence remain pending.
 
 ## Context
 
-The repository's current path binds a Job Attempt to one machine-level Worker
-and models H3 as an 8-GPU appliance. Retaining this indefinitely beside the new
+The predecessor path bound a Job Attempt to one machine-level Worker and
+modeled H3 as an 8-GPU appliance. Retaining this beside the new
 stage graph would create two retry, cancellation, Artifact, scheduler, Worker,
 and billing implementations. The product does not require the old path after
 the stage architecture is proven.
@@ -68,9 +68,20 @@ mode.
 
 ## Evidence boundary
 
-This ADR authorizes eventual deletion, not immediate destructive removal. The
-repository now contains a fail-closed release-bound reachability scanner and an
-immutable authorization gate, but the current schema-v1 release and source tree
-still evaluate as FAIL because the legacy surfaces remain. No contraction DDL or
-legacy source deletion has occurred. Spec 0049 defines the migration
-preconditions and spec 0050 defines the implementation slices.
+The repository now implements this decision. Migration `00058` is the
+irreversible schema-v2 contraction: non-empty upgrades require the unique
+release-bound authorization, recheck its current cutover revision and live-zero
+inventory under lock, retire graphless profiles and still-valid certifications
+while preserving invalidated evidence, permanently prevent their reactivation,
+isolate that invariant behind a dedicated NOLOGIN owner, remove the reviewed
+legacy schema with `RESTRICT`, and rebuild Stage-only authority. The legacy
+Worker/Runner protocol, runtime, scheduler, generated query, deployment, image,
+and release surfaces are deleted, and the permanent repository reachability
+test passes. Migrations `00059` through `00062` add the subsequent runtime epoch,
+multi-member barrier, gang authority, and member identity contracts.
+
+This is repository closure, not a production launch declaration. No real
+GPU/DRA execution, production N/N-1 contraction, quality/performance campaign,
+or sealed Launch Receipt is supplied by this ADR; Production Gates remain
+`0/9 PASS`. Spec 0049 defines the migration boundary and spec 0050 separates
+repository completion from production acceptance.

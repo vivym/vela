@@ -296,12 +296,22 @@ func TestLegacyH3ContractionAuthorizationMigrationRoundTripBeforeAuthorization(t
 }
 
 func newLegacyH3ReleaseGateFixture(t *testing.T) legacyH3ReleaseGateFixture {
+	return newLegacyH3ReleaseGateFixtureWithPreCutoverSetup(t, nil)
+}
+
+func newLegacyH3ReleaseGateFixtureWithPreCutoverSetup(
+	t *testing.T,
+	setup func(testDatabase),
+) legacyH3ReleaseGateFixture {
 	t.Helper()
 	database := newPostgres(t)
 	applyFoundationTo(t, database.Admin, 57)
 	seedAdmissionFixture(t, database.Admin)
 	seedStageExecutionCatalog(t, database.Admin)
 	activateH3StageGraph(t, database)
+	if setup != nil {
+		setup(database)
+	}
 	promotion := stageCutoverPromotionPool(t, database)
 	bundle, configurationManifest, reachabilityEvidence :=
 		buildLegacyH3ReleaseEvidence(t)

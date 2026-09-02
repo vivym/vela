@@ -5048,6 +5048,11 @@ type ExecutionGraphStage struct {
 	MaxFanOut                 int32     `db:"max_fan_out" json:"max_fan_out"`
 }
 
+type ExecutionProfileCertificationStateAuthority struct {
+	ExecutionProfileRevisionID uuid.UUID    `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
+	CertificationState         CatalogState `db:"certification_state" json:"certification_state"`
+}
+
 type ExecutionProfileConnectorOption struct {
 	ExecutionProfileRevisionID uuid.UUID `db:"execution_profile_revision_id" json:"execution_profile_revision_id"`
 	ExecutionGraphRevisionID   uuid.UUID `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
@@ -5064,7 +5069,7 @@ type ExecutionProfileRevision struct {
 	Revision                 int32              `db:"revision" json:"revision"`
 	State                    CatalogState       `db:"state" json:"state"`
 	CreatedAt                pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	ExecutionGraphRevisionID uuid.UUID          `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
+	ExecutionGraphRevisionID uuid.NullUUID      `db:"execution_graph_revision_id" json:"execution_graph_revision_id"`
 }
 
 type ExecutionProfileStageOption struct {

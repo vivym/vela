@@ -2,18 +2,20 @@
 
 Date: 2026-08-31
 
-Status: In progress. S49.1-S49.11 have committed repository implementations.
-S49.12 has started with migrations `00049` through `00057` and remains partial: cutover routing,
+Status: Repository implementation complete; production acceptance remains in
+progress. S49.1-S49.11 and the S49.12 repository slice have committed
+implementations. Migrations `00049` through `00062` cover cutover routing,
 immutable execution authority, scoped internal rollout, Production Launch
-Receipt gating, legacy database inventory, and rollback protection exist;
+Receipt gating, legacy database inventory, rollback protection, and schema-v2
+contraction;
 automatic Accepted STAGE_GRAPH Job instantiation now has durable multi-replica claims, expiry
 takeover, exact replay, crash reconciliation, `vela-control` wiring, and atomic
 Admission instantiation. Typed external drain evidence, zero-inventory sealing,
 and an explicit live-zero contraction-readiness archive/freeze are implemented.
-A fail-closed exact-release authorization and typed reachability scanner confirm
-that the current schema-v1 release and repository remain FAIL. Schema-v2 release
-generation, legacy-path deletion, permanent reachability closure, and production
-evidence remain pending.
+A fail-closed exact-release authorization and typed reachability scanner now
+guard the irreversible contraction. Legacy runtime/protocol/query/deployment and
+release surfaces are deleted, and permanent reachability closure passes.
+Production evidence remains pending at `0/9 PASS`.
 
 ## Delivery rule
 
@@ -320,8 +322,8 @@ Acceptance:
 
 ## S49.12: Cutover, contraction, and evidence campaign
 
-Current repository boundary: migrations `00049` through `00057`, Admission, and the
-AttemptCoordinator maintenance loop implement the pre-contraction control and
+Current repository boundary: migrations `00049` through `00062`, Admission, and
+the AttemptCoordinator maintenance loop implement cutover, contraction, and
 automatic-instantiation surfaces, including the target single-transaction
 Admission graph-instantiation boundary, typed M5 operator evidence, zero-backlog
 seal, explicit M6 contraction-readiness archive/freeze command, and an immutable
@@ -333,11 +335,22 @@ release graph. `vela-stage-cutover` no longer accepts an arbitrary reachability
 digest: it validates the exact bundle and typed PASS evidence before the
 database independently parses the complete evidence bytes, recomputes their
 digest, verifies the canonical manifest's source/configuration binding, and
-atomically rechecks all nine Launch Receipts and live-zero inventory. The current
-schema-v1 release cannot pass this gate.
-They do not
-authorize production activation, prove real Worker-local or N-1 drain, remove
-legacy schema/code, or make the monolithic path unreachable in the repository.
+atomically rechecks all nine Launch Receipts and live-zero inventory. Migration
+`00058` then requires that authorization for any non-empty upgrade, rechecks the
+current cutover and live-zero inventory under lock, preserves Stage authority,
+retires graphless profiles and still-valid certifications while preserving
+invalidated evidence, permanently rejects their reactivation through an
+isolated-owner state-authority foreign key, removes the reviewed legacy schema,
+and refuses Down. It recognizes a fresh install only
+when the customer, Catalog, Worker pool,
+compute-node, and Job roots are empty. The same repository boundary deletes the
+legacy code, protocol, query, deployment, image, and release surfaces; permanent
+negative reachability tests pass. Migrations `00059` through `00062` supply the
+post-contraction runtime epoch and multi-member/gang member-authority contracts.
+
+These repository mechanisms do not authorize production activation or prove a
+real Worker-local/N-1 drain, GPU/DRA execution, performance, fault recovery, or
+Launch Receipt closure.
 
 The repository also contains the production `vela-stage-worker-agent` image and
 the composed `vela-h3-stage-runtime` image build seam. The latter inherits a

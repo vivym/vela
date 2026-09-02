@@ -30,6 +30,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_internal') THEN
         CREATE ROLE vela_internal NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles
+        WHERE rolname = 'vela_profile_certification_authority_owner'
+    ) THEN
+        CREATE ROLE vela_profile_certification_authority_owner NOLOGIN;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vela_quorum_guard_owner') THEN
         CREATE ROLE vela_quorum_guard_owner NOLOGIN;
     END IF;
@@ -196,6 +202,8 @@ ALTER ROLE vela_organization_audit_request NOLOGIN NOSUPERUSER NOCREATEDB NOCREA
 ALTER ROLE vela_break_glass_audit_request
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_internal NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS;
+ALTER ROLE vela_profile_certification_authority_owner
+    NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_quorum_guard_owner
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 ALTER ROLE vela_cancel NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;

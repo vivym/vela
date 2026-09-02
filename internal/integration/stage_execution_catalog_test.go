@@ -5,12 +5,10 @@ package integration_test
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pressly/goose/v3"
 	veladb "github.com/vivym/vela/internal/database"
 )
@@ -130,10 +128,69 @@ func TestStageExecutionCatalogExecutionProfileAuthorityShape(t *testing.T) {
 			'missing-stage-graph', 1, 'CERTIFIED'
 		)
 	`)
-	var postgresError *pgconn.PgError
-	if !errors.As(err, &postgresError) || postgresError.Code != "23502" ||
-		postgresError.ColumnName != "execution_graph_revision_id" {
-		t.Fatalf("missing graph ExecutionProfile error = %v, want 23502 on execution_graph_revision_id", err)
+	assertPostgresConstraint(t, err, "execution_profile_revisions_stage_or_retired")
+
+	if _, err := database.Admin.Exec(`
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, stable_id, revision, state
+		) VALUES (
+			gen_random_uuid(), '00000000-0000-0000-0000-000000000010',
+			'retired-legacy-history', 1, 'RETIRED'
+		)
+	`); err != nil {
+		t.Fatalf("insert graphless retired ExecutionProfile history: %v", err)
+	}
+}
+
+func TestStageExecutionCatalogConcurrentGraphlessCertificationFailsClosed(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+
+	transaction, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin graphless ExecutionProfile insertion: %v", err)
+	}
+	defer func() { _ = transaction.Rollback() }()
+	if _, err := transaction.Exec(`
+		INSERT INTO execution_profile_revisions (
+			id, model_revision_id, stable_id, revision, state
+		) VALUES (
+			'49000000-0000-0000-0000-000000000079',
+			'00000000-0000-0000-0000-000000000010',
+			'concurrent-retired-legacy-history', 1, 'RETIRED'
+		)
+	`); err != nil {
+		t.Fatalf("insert uncommitted graphless ExecutionProfile: %v", err)
+	}
+
+	certificationResult := make(chan error, 1)
+	go func() {
+		_, insertErr := database.Admin.Exec(`
+			INSERT INTO profile_certifications (
+				id, model_revision_id, generation_preset_revision_id,
+				output_spec_id, execution_profile_revision_id, state,
+				evidence_digest, certified_at
+			) VALUES (
+				'49000000-0000-0000-0000-000000000080',
+				'00000000-0000-0000-0000-000000000010',
+				'00000000-0000-0000-0000-000000000011',
+				'00000000-0000-0000-0000-000000000013',
+				'49000000-0000-0000-0000-000000000079', 'ACTIVE',
+				'concurrent-graphless-certification', clock_timestamp()
+			)
+		`)
+		certificationResult <- insertErr
+	}()
+	waitForRoleDatabaseLock(t, database.Admin, "postgres")
+	if err := transaction.Commit(); err != nil {
+		t.Fatalf("commit graphless ExecutionProfile insertion: %v", err)
+	}
+	select {
+	case err := <-certificationResult:
+		assertPostgresConstraint(t, err, "profile_certifications_stage_or_inert_fk")
+	case <-time.After(6 * time.Second):
+		t.Fatal("concurrent graphless ProfileCertification did not resolve after profile commit")
 	}
 }
 

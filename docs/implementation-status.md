@@ -8,13 +8,14 @@ an ADR. `Partial` means at least one required production behavior remains. A
 Production Gate is PASS only when its versioned Launch Receipt exists; repository
 tests alone do not satisfy a gate.
 
-## Accepted Target Design, Implementation In Progress
+## Repository Implemented, Production Acceptance In Progress
 
 The H3 stage-disaggregated architecture is accepted as the replacement target.
 S49.1-S49.11 have committed repository implementations through StageArtifact
 transfer, split H3 execution, exact cache, CPU media stages, and the immutable
 Usage/Cost Ledger, plus the deterministic capacity simulator and advisory
-planning boundary. Migrations `00049` through `00059` continue S49.12 with ModelRevision-scoped
+planning boundary. Migrations `00049` through `00062` complete the S49.12
+repository path with ModelRevision-scoped
 cutover routing, an explicit internal-Project allowlist, Production Launch
 Receipt gating, immutable Accepted Job authority, legacy database inventory,
 guarded rollback, and automatic multi-replica Accepted STAGE_GRAPH Job
@@ -36,9 +37,17 @@ Launch Receipt closure, and a fresh live-zero database recheck. The database
 accepts the canonical configuration manifest and complete evidence bytes,
 recomputes both digests, extracts the source revision from the manifest, and
 validates the exact PASS check set. The public operator request contains evidence
-and bundle paths rather than a caller-asserted digest. The current schema-v1
-bundle and repository necessarily produce FAIL, so no authorization or
-contraction has been claimed. The
+and bundle paths rather than a caller-asserted digest. Migration `00058` performs
+the irreversible schema-v2 contraction for an authorized non-empty database,
+rechecks the current cutover and live-zero inventory, preserves Stage authority,
+retires graphless profiles and still-valid certifications while preserving
+invalidated evidence, prevents later reactivation behind a dedicated NOLOGIN
+owner, removes reviewed legacy dependencies
+with `RESTRICT`, and refuses Down. The same repository boundary deletes legacy
+Worker/Runner runtime, protocol, scheduler, query, deployment, image, and release
+surfaces; the permanent reachability test passes. Migrations `00059` through
+`00062` add runtime epoch registration, the multi-member barrier, gang authority,
+and member identity. The
 production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release
@@ -49,10 +58,9 @@ registers its local runtime epoch while only the deterministic smallest-UUID
 leader acquires one logical StageLease and coordinates the complete remote
 runtime barrier. Standard H3 remains one member and one GPU per WorkerInstance
 and creates no member network surface. These paths intentionally perform no DDL
-and do not prove real GPU, Kubernetes, DRA, cross-node, or model execution. This is not complete
-acceptance closure. Real cluster evidence, the release-coupled schema and
-monolithic-path deletion, permanent reachability closure, and production
-evidence are still pending.
+and do not prove real GPU, Kubernetes, DRA, cross-node, or model execution. This
+is not complete acceptance closure. Real cluster, N/N-1, GPU/DRA, performance,
+fault, and Production Gate evidence are still pending.
 The repository now also captures a synthetic same-node/cross-node/cache Stage
 campaign from PostgreSQL with a canonical-release-sealed ResidencyPlan binding,
 two stable read-only snapshots, exact StageArtifact lineage, ordered
@@ -74,27 +82,23 @@ proves no write or authority-owner escalation and preserves prior grants across
 Down/Up. The dashboard, recording rules, alerts, rule tests, and campaign runbook
 remain repository observability machinery, not deployed alert-delivery evidence.
 Targeted atomic Admission, rollback-precedence, and version-specific role-surface
-integration coverage is green. Repository-wide shards retain pre-existing
-historical-schema and N-1 compatibility failures reproduced at `37e0235`; this
-slice does not claim suite-wide green. The current committed legacy Worker
-Assignment, Attempt Lease, H3 Worker Agent,
-Runner, and Fleet slices remain the active machine-level baseline until cutover
-and contraction; the target implementation and repository tests are not
-production evidence or a Launch Receipt.
+integration coverage is green. The schema-v2 repository no longer contains a
+reachable machine-level H3 Assignment path. Repository tests, including the
+synthetic disposable cluster campaign, are not production evidence or a Launch
+Receipt.
 
 | Design package | Status | Evidence |
 | --- | --- | --- |
-| H3 Stage Execution Architecture | Accepted target; S49.1-S49.11 complete and S49.12 cutover/automatic-instantiation work started | `docs/h3-stage-execution-architecture.md` |
+| H3 Stage Execution Architecture | Repository implementation complete through S49.12; production acceptance partial | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Expansion through migration `00057`; M5 evidence/seal, guarded contraction readiness, typed fail-closed release authorization, campaign evidence, and read-only Stage observability added; schema-v2 release and legacy-path deletion pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
-| Implementation slices | S49.1-S49.11 complete; S49.12 partial, including multi-member runtime coordination, repository campaign capture, verification, observability, and the pre-contraction release gate | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
+| Schema and protocol migration | Schema-v2 through migration `00062`; guarded contraction, legacy-path deletion, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 
-Until the release-coupled contraction and repository deletion land,
-`db/migrations/00002_worker_assignment.sql`,
-`proto/vela/v1/worker_control.proto`, and `proto/vela/v1/runner.proto` still bind
-one Attempt directly to one machine-level Worker. Production Gates remain
-unchanged at `0/9 PASS`.
+Historical migrations still describe the predecessor machine-level contract,
+but migration `00058` removes it from the current schema and the corresponding
+runtime/protocol surfaces are absent from the current source and release graph.
+Production Gates remain unchanged at `0/9 PASS`.
 
 ## Implemented Slices
 

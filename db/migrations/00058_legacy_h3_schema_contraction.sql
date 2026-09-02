@@ -4,25 +4,36 @@
 -- created from an empty schema has no production history to authorize. Every
 -- non-empty upgrade must still bind the one immutable authorization to the
 -- current cutover revision and must re-prove that live Legacy authority is zero.
-LOCK TABLE jobs, attempts, attempt_leases,
+LOCK TABLE customer_organizations, model_revisions, service_class_revisions,
+    output_specs, rate_card_revisions, worker_pools, compute_nodes,
+    jobs, attempts, attempt_leases,
     legacy_h3_contraction_authorizations, stage_cutover_control
 IN ACCESS EXCLUSIVE MODE;
 
 DO $$
 DECLARE
-    v_job_count bigint;
+    v_has_retained_data boolean;
     v_authorization_count bigint;
     v_authorized_revision uuid;
     v_current_revision uuid;
     v_live_total bigint;
 BEGIN
-    SELECT count(*) INTO v_job_count FROM public.jobs;
-    IF v_job_count = 0 THEN
+    SELECT
+        EXISTS (SELECT 1 FROM public.customer_organizations)
+        OR EXISTS (SELECT 1 FROM public.model_revisions)
+        OR EXISTS (SELECT 1 FROM public.service_class_revisions)
+        OR EXISTS (SELECT 1 FROM public.output_specs)
+        OR EXISTS (SELECT 1 FROM public.rate_card_revisions)
+        OR EXISTS (SELECT 1 FROM public.worker_pools)
+        OR EXISTS (SELECT 1 FROM public.compute_nodes)
+        OR EXISTS (SELECT 1 FROM public.jobs)
+    INTO v_has_retained_data;
+    IF NOT v_has_retained_data THEN
         RETURN;
     END IF;
 
-    SELECT count(*), min(cutover_revision_id)
-    INTO v_authorization_count, v_authorized_revision
+    SELECT count(*)
+    INTO v_authorization_count
     FROM public.legacy_h3_contraction_authorizations;
     IF v_authorization_count <> 1 THEN
         RAISE EXCEPTION USING
@@ -30,6 +41,10 @@ BEGIN
             CONSTRAINT = 'legacy_h3_schema_contraction_authorization_required',
             MESSAGE = 'Non-empty Legacy H3 schema contraction requires one immutable authorization';
     END IF;
+
+    SELECT cutover_revision_id
+    INTO STRICT v_authorized_revision
+    FROM public.legacy_h3_contraction_authorizations;
 
     SELECT current_revision_id INTO STRICT v_current_revision
     FROM public.stage_cutover_control
@@ -783,10 +798,83 @@ ALTER TABLE jobs
     ALTER COLUMN execution_graph_revision_id SET NOT NULL,
     ALTER COLUMN stage_execution_profile_revision_id SET NOT NULL;
 
+-- Legacy profiles and their certification evidence remain as inert Catalog
+-- history. Preserve irreversible INVALID evidence; retire every still-valid
+-- certification. Without a graph binding none can satisfy the Stage-only route.
+UPDATE profile_certifications AS certification
+SET state = 'RETIRED'
+FROM execution_profile_revisions AS profile
+WHERE profile.id = certification.execution_profile_revision_id
+  AND profile.execution_graph_revision_id IS NULL
+  AND certification.state NOT IN ('RETIRED', 'INVALID');
+UPDATE execution_profile_revisions
+SET state = 'RETIRED'
+WHERE execution_graph_revision_id IS NULL
+  AND state <> 'RETIRED';
+
 ALTER TABLE execution_profile_revisions
     DROP CONSTRAINT execution_profile_revisions_authority_shape,
     DROP COLUMN worker_pool_id,
-    ALTER COLUMN execution_graph_revision_id SET NOT NULL;
+    ADD CONSTRAINT execution_profile_revisions_stage_or_retired CHECK (
+        execution_graph_revision_id IS NOT NULL OR state = 'RETIRED'
+    );
+
+CREATE TABLE execution_profile_certification_state_authorities (
+    execution_profile_revision_id uuid NOT NULL,
+    certification_state catalog_state NOT NULL,
+    PRIMARY KEY (execution_profile_revision_id, certification_state),
+    FOREIGN KEY (execution_profile_revision_id)
+        REFERENCES execution_profile_revisions(id)
+);
+ALTER TABLE execution_profile_certification_state_authorities
+    OWNER TO vela_profile_certification_authority_owner;
+
+CREATE FUNCTION vela_seed_execution_profile_certification_state_authority()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $$
+BEGIN
+    INSERT INTO public.execution_profile_certification_state_authorities (
+        execution_profile_revision_id, certification_state
+    )
+    SELECT NEW.id, allowed.certification_state
+    FROM unnest(enum_range(NULL::public.catalog_state))
+        AS allowed(certification_state)
+    WHERE NEW.execution_graph_revision_id IS NOT NULL
+       OR allowed.certification_state IN (
+           'RETIRED'::public.catalog_state, 'INVALID'::public.catalog_state
+       );
+    RETURN NEW;
+END
+$$;
+ALTER FUNCTION vela_seed_execution_profile_certification_state_authority()
+    OWNER TO vela_profile_certification_authority_owner;
+REVOKE ALL ON FUNCTION vela_seed_execution_profile_certification_state_authority()
+    FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO vela_profile_certification_authority_owner;
+CREATE TRIGGER execution_profiles_seed_certification_state_authority
+AFTER INSERT ON execution_profile_revisions
+FOR EACH ROW
+EXECUTE FUNCTION vela_seed_execution_profile_certification_state_authority();
+
+INSERT INTO execution_profile_certification_state_authorities (
+    execution_profile_revision_id, certification_state
+)
+SELECT profile.id, allowed.certification_state
+FROM execution_profile_revisions AS profile
+CROSS JOIN LATERAL unnest(enum_range(NULL::catalog_state))
+    AS allowed(certification_state)
+WHERE profile.execution_graph_revision_id IS NOT NULL
+   OR allowed.certification_state IN ('RETIRED', 'INVALID');
+
+ALTER TABLE profile_certifications
+    ADD CONSTRAINT profile_certifications_stage_or_inert_fk
+    FOREIGN KEY (execution_profile_revision_id, state)
+    REFERENCES execution_profile_certification_state_authorities (
+        execution_profile_revision_id, certification_state
+    );
 
 -- Legacy relation dependency order. Business Job/Attempt rows, immutable
 -- contraction evidence, ArtifactSet/Charge history, and Stage tables remain.

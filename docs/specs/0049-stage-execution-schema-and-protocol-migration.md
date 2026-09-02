@@ -2,10 +2,11 @@
 
 Date: 2026-08-31
 
-Status: Implementation in progress. S49.1-S49.11 have committed repository
-implementations through the capacity simulator and advisory planning boundary.
-Migrations `00049` through `00057` implement the current S49.12 expansion and
-contraction-readiness boundary:
+Status: Repository implementation complete; production acceptance remains
+partial. S49.1-S49.11 have committed repository implementations through the
+capacity simulator and advisory planning boundary. Migrations `00049` through
+`00062` implement the S49.12 cutover, contraction, and Stage-only authority
+boundary:
 ModelRevision-scoped cohort routing,
 immutable Job/Attempt/ExecutionGraphSnapshot authority, rollback that affects
 only later Jobs, an explicit internal-Project allowlist, Production Launch
@@ -18,12 +19,14 @@ live-zero preparation operation, terminal machine-authority archive, immutable
 readiness receipt, and legacy-row freeze. Migration `00057` adds a separate,
 immutable release-contraction authorization that rechecks the exact sealed
 Launch manifest, all nine exact-release PASS receipts, the current live-zero
-inventory, and a release-bound typed reachability evidence digest. The current
-schema-v1 release and repository intentionally evaluate reachability as FAIL.
-These migrations perform no contraction DDL. The schema-v2 release graph,
-legacy-path deletion, permanent reachability closure, and production evidence
-remain pending.
-Repository evidence does not advance a Production Gate.
+inventory, and release-bound typed reachability evidence. Migration `00058`
+performs the irreversible schema-v2 contraction and ships with the legacy
+runtime/protocol/query/deployment/release deletion. Migrations `00059` through
+`00062` add runtime epoch registration, multi-member barriers, gang authority,
+and member identity. The clean current repository satisfies the permanent
+reachability contract. Repository evidence does not advance a Production Gate;
+real cluster, N/N-1, performance, fault, and Launch Receipt evidence remains
+pending at `0/9 PASS`.
 
 ## Purpose
 
@@ -453,20 +456,28 @@ are not an operator input. The authoritative database function receives the
 canonical configuration manifest and complete evidence bytes, binds the
 manifest digest to `configuration_revision`, extracts its full source revision,
 validates the exact PASS check set, and derives the stored evidence digest.
-Authorization also requires the current
+Authorization requires the current
 `PRODUCTION`, `STAGE_ONLY`, 100% cutover, its readiness receipt, a sealed exact
 release manifest with all nine PASS Launch Receipts, and a fresh live-zero
-recheck. Current schema-v1 releases fail this reachability contract by design.
-The scanner rejects a source root below the Git repository toplevel, requires a
-clean exact `HEAD`, and covers residual Fleet rendering, failure queries,
-generated protocol/query types, release builders, packages, and image
+recheck. The scanner rejects a source root below the Git repository toplevel,
+requires a clean exact `HEAD`, and covers residual Fleet rendering, failure
+queries, generated protocol/query types, release builders, packages, and image
 publishers in addition to the legacy runtime directories.
 
-The actual contraction migration must ship with legacy protocol, runtime,
-deployment, generated-query, and test deletion so no release can expose a
-schema that its Stage runtime cannot execute. That migration must use an
-explicit reviewed dependency list and `RESTRICT`; the permanent reachability
-gate remains required before S49.12 closes.
+Migration `00058` is that contraction migration. A non-empty v57 database must
+have exactly one authorization bound to the current cutover revision; the
+migration locks and rechecks live inventory, preserves Stage Job/Attempt rows,
+retires graphless profiles and still-valid certifications while preserving
+irreversible `INVALID` evidence, permanently rejects their reactivation through
+a schema-level state-authority foreign key owned by an isolated NOLOGIN role,
+removes only an explicit dependency list with `RESTRICT`, and rebuilds Stage-only
+constraints and functions. A fresh install
+needs no production authorization only when customer, model/service/output/rate
+Catalog, Worker pool, compute-node, and Job roots are all empty; migration-owned
+bootstrap rows do not count as production history. Its Down path is deliberately
+irreversible. Source, protocol, deployment, generated-query, package, image, and
+release deletion ships in the same repository boundary, and the permanent
+reachability test prevents their reintroduction.
 
 ## Failure and compatibility rules
 

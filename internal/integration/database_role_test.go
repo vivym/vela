@@ -233,6 +233,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 			"vela_stage_scheduler_owner",
 			"vela_usage_cost_owner",
 			"vela_quorum_guard_owner",
+			"vela_profile_certification_authority_owner",
 		} {
 			var inheritsOwner bool
 			if err := database.Admin.QueryRow(
@@ -382,6 +383,7 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 		{name: "vela_usage_cost_owner", bypassRLS: true},
 		{name: "vela_stage_scheduler_owner", bypassRLS: true},
 		{name: "vela_quorum_guard_owner", bypassRLS: false},
+		{name: "vela_profile_certification_authority_owner", bypassRLS: false},
 	} {
 		var canLogin, bypassRLS, superuser bool
 		if err := database.Admin.QueryRow(`
@@ -400,6 +402,83 @@ func TestDatabasePoolsFailClosedOnRoleConfusion(t *testing.T) {
 				superuser,
 			)
 		}
+	}
+	for _, test := range []struct {
+		name      string
+		statement string
+	}{
+		{
+			name: "insert",
+			statement: `INSERT INTO execution_profile_certification_state_authorities
+				(execution_profile_revision_id, certification_state)
+				VALUES (gen_random_uuid(), 'ACTIVE')`,
+		},
+		{
+			name: "update",
+			statement: `UPDATE execution_profile_certification_state_authorities
+				SET certification_state = 'ACTIVE'`,
+		},
+		{
+			name:      "delete",
+			statement: `DELETE FROM execution_profile_certification_state_authorities`,
+		},
+		{
+			name:      "truncate",
+			statement: `TRUNCATE execution_profile_certification_state_authorities`,
+		},
+	} {
+		t.Run("profile certification authority "+test.name, func(t *testing.T) {
+			_, err := internalPool.Exec(context.Background(), test.statement)
+			var postgresError *pgconn.PgError
+			if !errors.As(err, &postgresError) || postgresError.Code != "42501" {
+				t.Fatalf("internal authority %s error = %v, want SQLSTATE 42501", test.name, err)
+			}
+		})
+	}
+	var tableOwner, functionOwner string
+	var securityDefiner, configurationMatches, publicExecute bool
+	if err := database.Admin.QueryRow(`
+		SELECT table_owner.rolname, function_owner.rolname,
+		       procedure.prosecdef,
+		       procedure.proconfig = ARRAY['search_path=pg_catalog'],
+		       EXISTS (
+		           SELECT 1
+		           FROM pg_catalog.aclexplode(
+		               COALESCE(
+		                   procedure.proacl,
+		                   pg_catalog.acldefault('f', procedure.proowner)
+		               )
+		           ) AS privilege
+		           WHERE privilege.grantee = 0
+		             AND privilege.privilege_type = 'EXECUTE'
+		       )
+		FROM pg_catalog.pg_class AS relation
+		JOIN pg_catalog.pg_namespace AS namespace
+		  ON namespace.oid = relation.relnamespace
+		JOIN pg_catalog.pg_roles AS table_owner
+		  ON table_owner.oid = relation.relowner
+		CROSS JOIN pg_catalog.pg_proc AS procedure
+		JOIN pg_catalog.pg_roles AS function_owner
+		  ON function_owner.oid = procedure.proowner
+		WHERE namespace.nspname = 'public'
+		  AND relation.relname = 'execution_profile_certification_state_authorities'
+		  AND procedure.oid =
+		      'public.vela_seed_execution_profile_certification_state_authority()'::regprocedure
+	`).Scan(
+		&tableOwner, &functionOwner, &securityDefiner,
+		&configurationMatches, &publicExecute,
+	); err != nil {
+		t.Fatalf("inspect ProfileCertification authority owner boundary: %v", err)
+	}
+	const profileCertificationAuthorityOwner = "vela_profile_certification_authority_owner"
+	if tableOwner != profileCertificationAuthorityOwner ||
+		functionOwner != profileCertificationAuthorityOwner ||
+		!securityDefiner || !configurationMatches || publicExecute {
+		t.Fatalf(
+			"ProfileCertification authority boundary = table owner %s function owner %s "+
+				"security definer %t config match %t public execute %t",
+			tableOwner, functionOwner, securityDefiner, configurationMatches, publicExecute,
+		)
 	}
 	for _, privilege := range []string{"INSERT", "UPDATE", "DELETE", "TRUNCATE"} {
 		var allowed bool

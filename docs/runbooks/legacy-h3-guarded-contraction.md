@@ -1,11 +1,13 @@
 # Legacy H3 Guarded Contraction Runbook
 
-This procedure prepares the M6 point of no return. It archives terminal
-machine-level authority, writes an immutable readiness receipt, and freezes the
-archived legacy Job, Attempt, and Lease rows. It deliberately performs no DDL.
-The release that removes the monolithic Worker/Runner/protocol/deployment path
-must carry the guarded schema contraction as a normal migration in the same
-release boundary.
+This procedure has two distinct phases. Migration `00053` prepares the M6 point
+of no return: it archives terminal machine-level authority, writes an immutable
+readiness receipt, and freezes the archived legacy Job, Attempt, and Lease rows
+without DDL. Migration `00058` is the irreversible schema-v2 contraction carried
+by the same release that removes the monolithic
+Worker/Runner/protocol/deployment path. Migrations `00059` through `00062` are
+subsequent Stage runtime and member-authority migrations, not substitutes for
+the contraction authorization.
 
 Preparation does not unload healthy `ModelResidency`, delete Stage Worker
 processes, create a Launch Receipt, or advance a Production Gate.
@@ -106,9 +108,9 @@ go build -o ./bin/vela-h3-reachability ./cmd/vela-h3-reachability
 `--root` must resolve to the Git repository toplevel; a committed subdirectory
 is rejected. The command also requires that exact `HEAD`, index, worktree, and
 all untracked files are clean. It atomically creates the output without
-replacement and exits nonzero for FAIL. The current schema-v1 release and
-current repository must return FAIL; do not edit the evidence to force PASS.
-Verify a candidate PASS independently:
+replacement and exits nonzero for FAIL. The current schema-v2 repository is the
+contracted candidate and must return PASS from a clean exact revision; never
+edit evidence to force that result. Verify a candidate PASS independently:
 
 ```bash
 ./bin/vela-h3-reachability verify \
@@ -140,10 +142,20 @@ it exists. The operator does not submit a trusted evidence digest: the database
 receives the canonical schema-v2 configuration manifest and complete evidence
 bytes, verifies their release/configuration/source binding and exact PASS check
 set, and computes the stored evidence digest itself. It does not drop schema.
-The subsequent contraction migration must recheck the authorization and
-live-zero state, drop an explicit reviewed dependency list with `RESTRICT`, and
-rebuild Stage-only constraints and triggers. Do not issue those drops from a
-runtime `SECURITY DEFINER` function.
+Migration `00058` then locks the authority tables, requires exactly one current
+authorization for any non-empty database, rechecks live-zero inventory, retires
+graphless profiles and still-valid certifications while preserving invalidated
+evidence, installs a schema-level allowed-state authority and foreign key that
+reject their reactivation even across concurrent inserts, isolates that
+authority behind `vela_profile_certification_authority_owner` with no runtime
+membership or direct DML grant, drops the explicit reviewed dependency list with
+`RESTRICT`, and rebuilds Stage-only constraints and triggers. A fresh install
+may apply it
+without production authorization only when customer, model/service/output/rate
+Catalog, Worker pool, compute-node, and Job roots are all empty; migration-owned
+bootstrap rows do not count as production history. Its Down migration always
+fails; rollback requires the approved forward repair or database restore.
+Do not issue these drops from a runtime `SECURITY DEFINER` function.
 
 ## Failure Handling
 
@@ -167,10 +179,18 @@ runtime `SECURITY DEFINER` function.
   does not have a sealed all-PASS Production Gate manifest.
 - `legacy_h3_contraction_authorization_live_inventory_nonzero` means legacy
   authority reappeared before final authorization; investigate the source.
+- `legacy_h3_schema_contraction_authorization_required` means a non-empty
+  database reached migration `00058` without exactly one immutable
+  authorization.
+- `legacy_h3_schema_contraction_authorization_stale` means that authorization
+  no longer names the current cutover revision.
+- `legacy_h3_schema_contraction_live_inventory_nonzero` means live authority
+  changed between authorization and the migration's locked recheck.
 - After a readiness receipt exists, migration Down is forbidden. Use the
   approved forward repair or database restore procedure.
 
-Repository verification proves only the preparation guard and archive. Real
-completion still requires versioned external drain, N/N-1, recovery, quality,
-performance, observability, and ownership evidence named by the Production Gate
-contract.
+Repository verification proves the preparation guard, irreversible contraction,
+source/release reachability closure, and Stage-row preservation against local
+fixtures. Real completion still requires versioned external drain, N/N-1,
+recovery, quality, performance, observability, and ownership evidence named by
+the Production Gate contract; the current result remains `0/9 PASS`.
