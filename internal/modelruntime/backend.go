@@ -123,7 +123,9 @@ func (runtime *FakeRuntime) Prepare(
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	if runtime.activeDigest != ([32]byte{}) && runtime.activeDigest != authority.Digest &&
-		runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED {
+		runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED &&
+		runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED &&
+		runtime.state != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED {
 		return errors.New("fake ModelRuntime already owns another StageAttempt")
 	}
 	runtime.activeDigest = authority.Digest

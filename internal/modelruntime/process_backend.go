@@ -115,12 +115,16 @@ type driverProbeRequestV1 struct {
 }
 
 type driverStageIdentityV1 struct {
-	AuthorityDigest string `json:"authority_digest"`
-	JobID           string `json:"job_id"`
-	AttemptID       string `json:"attempt_id"`
-	StageRunID      string `json:"stage_run_id"`
-	StageAttemptID  string `json:"stage_attempt_id"`
-	StageLeaseID    string `json:"stage_lease_id"`
+	AuthorityDigest        string `json:"authority_digest"`
+	JobID                  string `json:"job_id"`
+	AttemptID              string `json:"attempt_id"`
+	StageRunID             string `json:"stage_run_id"`
+	StageAttemptID         string `json:"stage_attempt_id"`
+	StageLeaseID           string `json:"stage_lease_id"`
+	AttemptFence           int64  `json:"attempt_fence"`
+	StageFence             int64  `json:"stage_fence"`
+	StageVersion           int64  `json:"stage_version"`
+	StageProfileRevisionID string `json:"stage_profile_revision_id"`
 }
 
 type driverPrepareRequestV1 struct {
@@ -541,6 +545,9 @@ func driverStageIdentity(authority stageauthority.Verified) driverStageIdentityV
 		JobID:           authority.Authority.GetJobId(), AttemptID: authority.Authority.GetAttemptId(),
 		StageRunID: authority.Authority.GetStageRunId(), StageAttemptID: authority.Authority.GetStageAttemptId(),
 		StageLeaseID: authority.Authority.GetStageLeaseId(),
+		AttemptFence: authority.Authority.GetAttemptFence(), StageFence: authority.Authority.GetStageFence(),
+		StageVersion:           authority.Authority.GetStageVersion(),
+		StageProfileRevisionID: authority.Authority.GetStageProfileRevisionId(),
 	}
 }
 

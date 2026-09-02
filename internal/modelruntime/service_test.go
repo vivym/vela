@@ -332,6 +332,62 @@ func TestModelRuntimeCancellationAcknowledgementPrecedesActualStop(t *testing.T)
 	}
 }
 
+func TestModelRuntimeReusesResidentBackendAfterCanceledStageStops(t *testing.T) {
+	clock := newManualClock(time.Date(2026, 8, 30, 7, 10, 0, 0, time.UTC))
+	signer, validator := runtimeAuthorityCrypto(t, clock)
+	first := signRuntimeAuthority(t, signer, clock.Now())
+	backend := modelruntime.NewFakeEncoderRuntime()
+	service := newRuntimeService(t, clock, validator, runtimeBinding(), backend)
+	client, _ := serveRuntime(t, service)
+	prepareAndStart(t, client, first)
+
+	canceled, err := client.CancelStage(
+		context.Background(),
+		&velav1.ModelRuntimeServiceCancelStageRequest{
+			Authority: first,
+			Reason:    velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+		},
+	)
+	if err != nil || !canceled.GetCancellationAcknowledged() {
+		t.Fatalf("CancelStage = %#v error=%v", canceled, err)
+	}
+	backend.FinishStop()
+	stopped, err := client.Status(
+		context.Background(),
+		&velav1.ModelRuntimeServiceStatusRequest{Authority: first},
+	)
+	if err != nil || stopped.GetState() !=
+		velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED {
+		t.Fatalf("stopped Status = %#v error=%v", stopped, err)
+	}
+
+	secondUnsigned := proto.Clone(first).(*velav1.StageAuthority)
+	secondUnsigned.StageRunId = "11000000-0000-0000-0000-000000000023"
+	secondUnsigned.StageAttemptId = "11000000-0000-0000-0000-000000000024"
+	secondUnsigned.StageAllocationId = "11000000-0000-0000-0000-000000000025"
+	secondUnsigned.StageLeaseId = "11000000-0000-0000-0000-000000000026"
+	secondUnsigned.StageFence++
+	secondUnsigned.StageVersion++
+	secondUnsigned.ExecutionNonce = bytes.Repeat([]byte{0x75}, 32)
+	secondUnsigned.Signature = nil
+	second, err := signer.Sign(secondUnsigned)
+	if err != nil {
+		t.Fatalf("sign second StageAuthority: %v", err)
+	}
+	prepared, err := client.PrepareStage(
+		context.Background(),
+		&velav1.ModelRuntimeServicePrepareStageRequest{
+			Authority: second, ExecutionSpec: runtimeExecutionSpec(),
+		},
+	)
+	if err != nil || prepared.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED ||
+		prepared.GetState() != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARED ||
+		backend.Component() != "encoder" {
+		t.Fatalf("second PrepareStage = %#v component=%q error=%v", prepared, backend.Component(), err)
+	}
+}
+
 func TestModelRuntimeRejectsFailedStatusWithoutStructuredEvidence(t *testing.T) {
 	clock := newManualClock(time.Date(2026, 8, 30, 7, 15, 0, 0, time.UTC))
 	signer, validator := runtimeAuthorityCrypto(t, clock)

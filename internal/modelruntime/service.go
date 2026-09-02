@@ -71,11 +71,12 @@ type Service struct {
 const maxSealedReceiptReplay = 256
 
 type activeExecution struct {
-	verified  stageauthority.Verified
-	state     velav1.ModelRuntimeExecutionState
-	startedAt time.Time
-	timer     Timer
-	receipt   *velav1.LocalMaterializationReceipt
+	verified       stageauthority.Verified
+	state          velav1.ModelRuntimeExecutionState
+	workerReusable bool
+	startedAt      time.Time
+	timer          Timer
+	receipt        *velav1.LocalMaterializationReceipt
 }
 
 func NewService(config Config) (*Service, error) {
@@ -412,6 +413,11 @@ func (service *Service) Status(
 		status.LocalReceiptDigest = append([]byte(nil), receipt.GetManifestSha256()...)
 	}
 	service.setActiveState(verified.Digest, status.State)
+	if status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
+		(status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED &&
+			status.FailureEvidence != nil && status.FailureEvidence.WorkerReusable) {
+		service.setActiveWorkerReusable(verified.Digest)
+	}
 	if terminalState(status.State) {
 		service.stopWatchdog(verified.Digest)
 	}
@@ -535,6 +541,19 @@ func (service *Service) installOrRenew(
 		service.resetWatchdogLocked(verified)
 		return false, nil
 	}
+	if service.active.workerReusable &&
+		(service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
+			service.active.state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED) {
+		if service.active.timer != nil {
+			service.active.timer.Stop()
+		}
+		service.active = &activeExecution{
+			verified: verified,
+			state:    velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_PREPARING,
+		}
+		service.resetWatchdogLocked(verified)
+		return false, nil
+	}
 	return service.renewActiveLocked(verified, allowRenewal)
 }
 
@@ -628,6 +647,14 @@ func (service *Service) setActiveState(
 	defer service.mu.Unlock()
 	if service.active != nil && service.active.verified.Digest == digest {
 		service.active.state = state
+	}
+}
+
+func (service *Service) setActiveWorkerReusable(digest [32]byte) {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if service.active != nil && service.active.verified.Digest == digest {
+		service.active.workerReusable = true
 	}
 }
 

@@ -172,6 +172,10 @@ func TestProcessBackendDriverHelper(t *testing.T) {
 				Ready: true, Evidence: []byte(component + ":loaded-once"), Detail: "ready",
 			}
 		case "prepare":
+			if !completeDriverLineageIdentity(request.Prepare.Identity) {
+				response.Error = "stage lineage identity is incomplete"
+				break
+			}
 			state = "PREPARED"
 			response.Acknowledged = true
 		case "start":
@@ -221,14 +225,23 @@ func processBackendAuthority(seed byte) stageauthority.Verified {
 	digest := sha256.Sum256([]byte{seed})
 	return stageauthority.Verified{
 		Authority: &velav1.StageAuthority{
-			JobId:          "13000000-0000-0000-0000-000000000001",
-			AttemptId:      "13000000-0000-0000-0000-000000000002",
-			StageRunId:     "13000000-0000-0000-0000-000000000003",
-			StageAttemptId: fmt.Sprintf("13000000-0000-0000-0000-00000000000%d", seed+3),
-			StageLeaseId:   fmt.Sprintf("13000000-0000-0000-0000-00000000001%d", seed),
+			JobId:                  "13000000-0000-0000-0000-000000000001",
+			AttemptId:              "13000000-0000-0000-0000-000000000002",
+			StageRunId:             "13000000-0000-0000-0000-000000000003",
+			StageAttemptId:         fmt.Sprintf("13000000-0000-0000-0000-00000000000%d", seed+3),
+			StageLeaseId:           fmt.Sprintf("13000000-0000-0000-0000-00000000001%d", seed),
+			AttemptFence:           2,
+			StageFence:             int64(seed) + 2,
+			StageVersion:           int64(seed) + 3,
+			StageProfileRevisionId: "63000000-0000-0000-0000-000000000001",
 		},
 		Digest: digest,
 	}
+}
+
+func completeDriverLineageIdentity(identity driverStageIdentityV1) bool {
+	return identity.AttemptFence > 0 && identity.StageFence > 0 && identity.StageVersion > 0 &&
+		identity.StageProfileRevisionID == "63000000-0000-0000-0000-000000000001"
 }
 
 func waitForDriverEvent(t *testing.T, path, event string) {
