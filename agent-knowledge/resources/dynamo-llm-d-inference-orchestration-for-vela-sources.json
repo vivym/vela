@@ -1,0 +1,688 @@
+{
+  "schemaVersion": 1,
+  "topic": "Dynamo, llm-d, and inference orchestration patterns applicable to Vela",
+  "slug": "dynamo-llm-d-inference-orchestration-for-vela",
+  "depth": "deep",
+  "researchedAt": "2026-08-29",
+  "sourceCount": 63,
+  "breakdown": {
+    "officialOrFirstPartyDocs": 40,
+    "firstPartySourceCode": 14,
+    "localVelaEvidence": 9
+  },
+  "commitsInspected": {
+    "ai-dynamo/dynamo": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+    "llm-d/llm-d": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+    "llm-d/llm-d-router": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+    "llm-d/llm-d-kv-cache-manager": "8cf43067afb7fc9fefafc1b64de063c769f2c90f",
+    "vivym/vela": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+    "vivym/vela-implementation-alignment": "b09867c8b431338a6e71c6bf2c766c5b0d905724",
+    "kubernetes-sigs/gateway-api-inference-extension": "2d02cb1209406347747481cf86bc6bfa8412ec59",
+    "kserve/kserve": "db30ddfc85b88bb768d0d33664fe49a6e4e8efc1",
+    "vllm-project/vllm": "cacc429f62c3738c9c95093e9bd410e96103221a",
+    "ray-project/ray": "c80ff0c8de461ed34553100e56343611bee22da5",
+    "kedacore/keda": "5135f6ef340e8bb197444ff7f0edfeed6c1a3f99"
+  },
+  "confidenceScale": {
+    "high": "Direct statement or implementation in a pinned first-party revision.",
+    "medium": "First-party material, but behavior is experimental, configuration-dependent, or not independently benchmarked here.",
+    "low": "Secondary or unpinned material; no low-confidence source is used for a core recommendation."
+  },
+  "sources": [
+    {
+      "id": "D01",
+      "title": "Dynamo README and architecture overview",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/README.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party overview; performance claims are treated only as upstream claims."},
+      "usedFor": ["scope", "components", "discovery", "NATS and etcd boundary"]
+    },
+    {
+      "id": "D02",
+      "title": "Disaggregated Serving",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/concepts/system-architecture/disaggregated-serving.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party architecture document."},
+      "usedFor": ["prefill/decode roles", "KV transfer", "independent scaling"]
+    },
+    {
+      "id": "D03",
+      "title": "KV-Aware Routing",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/concepts/system-architecture/kv-aware-routing.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party architecture document."},
+      "usedFor": ["prefix locality", "load tradeoff", "KV event modes"]
+    },
+    {
+      "id": "D04",
+      "title": "Router Design",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/modular-components/router/router-design.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party router design."},
+      "usedFor": ["router decomposition", "index and selection separation"]
+    },
+    {
+      "id": "D05",
+      "title": "Routing Concepts",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/modular-components/router/routing-concepts.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party router semantics."},
+      "usedFor": ["routing constraints", "load and overlap signals"]
+    },
+    {
+      "id": "D06",
+      "title": "Worker Filtering",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/modular-components/router/worker-filtering.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party eligibility documentation."},
+      "usedFor": ["hard constraints before scoring", "overload and availability"]
+    },
+    {
+      "id": "D07",
+      "title": "Deficit Round Robin",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/modular-components/router/deficit-round-robin.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party scheduling documentation."},
+      "usedFor": ["fairness", "policy classes"]
+    },
+    {
+      "id": "D08",
+      "title": "Topology-Aware KV Transfer",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/modular-components/router/topology-aware-kv-transfer.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party topology contract."},
+      "usedFor": ["required/preferred topology", "taints", "failure boundary"]
+    },
+    {
+      "id": "D09",
+      "title": "Planner Design",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/modular-components/planner/planner-design.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party planner design."},
+      "usedFor": ["planner loop", "metrics and actuation separation"]
+    },
+    {
+      "id": "D10",
+      "title": "Planner Guide",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/modular-components/planner/planner-guide.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "medium", "reason": "Pinned first-party guide; tuning and performance depend on deployment."},
+      "usedFor": ["SLA mode", "autoscaling configuration", "advisory workflow"]
+    },
+    {
+      "id": "D11",
+      "title": "Graceful Shutdown Architecture",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/concepts/fault-tolerance/graceful-shutdown-architecture.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party lifecycle document."},
+      "usedFor": ["drain order", "readiness/liveness split", "bounded shutdown"]
+    },
+    {
+      "id": "D12",
+      "title": "Request Migration Architecture",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/concepts/fault-tolerance/request-migration-architecture.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "medium", "reason": "Pinned first-party design; migration correctness remains engine and request dependent."},
+      "usedFor": ["token accumulation", "migration boundary", "retry distinction"]
+    },
+    {
+      "id": "D13",
+      "title": "Request Rejection Architecture",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/concepts/fault-tolerance/request-rejection-architecture.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party overload and rejection semantics."},
+      "usedFor": ["busy threshold", "worker hard cap", "529 mapping"]
+    },
+    {
+      "id": "D14",
+      "title": "Request Cancellation Architecture",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/concepts/fault-tolerance/request-cancellation-architecture.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party cancellation contract."},
+      "usedFor": ["parent-child cancellation", "signal versus engine stop"]
+    },
+    {
+      "id": "D15",
+      "title": "Observability Architecture",
+      "project": "NVIDIA Dynamo",
+      "type": "official-doc",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/docs/fern/pages/developer-guide/knowledge-base/concepts/observability-architecture.md",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned first-party signal architecture."},
+      "usedFor": ["Prometheus/OTLP split", "trace correlation", "bounded diagnostic loss"]
+    },
+    {
+      "id": "D16",
+      "title": "Default KV Router Worker Selector",
+      "project": "NVIDIA Dynamo",
+      "type": "first-party-source",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/lib/kv-router/src/scheduling/selector/default.rs",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned implementation of worker selection."},
+      "usedFor": ["selection algorithm", "load/locality tradeoff"]
+    },
+    {
+      "id": "D17",
+      "title": "KV Router Queue Policies",
+      "project": "NVIDIA Dynamo",
+      "type": "first-party-source",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/lib/kv-router/src/scheduling/policy.rs",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned FCFS, LCFS, and WSPT implementation."},
+      "usedFor": ["WSPT formula", "strict priority", "new token estimate"]
+    },
+    {
+      "id": "D18",
+      "title": "KV Router Eligibility Filter",
+      "project": "NVIDIA Dynamo",
+      "type": "first-party-source",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/lib/kv-router/src/scheduling/filter.rs",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned hard-eligibility implementation."},
+      "usedFor": ["availability", "overload", "allowed set", "taints"]
+    },
+    {
+      "id": "D19",
+      "title": "Planner Scaling State",
+      "project": "NVIDIA Dynamo",
+      "type": "first-party-source",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/components/src/dynamo/planner/core/state_machine.py",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned planner decision-state implementation with no I/O boundary."},
+      "usedFor": ["pure planner state", "worker counts", "budget clamps"]
+    },
+    {
+      "id": "D20",
+      "title": "Planner Runtime Base",
+      "project": "NVIDIA Dynamo",
+      "type": "first-party-source",
+      "url": "https://github.com/ai-dynamo/dynamo/blob/4c7e98162232d24147daa701d6bfcf93f2fa4edf/components/src/dynamo/planner/core/base.py",
+      "revision": "4c7e98162232d24147daa701d6bfcf93f2fa4edf",
+      "confidence": {"rating": "high", "reason": "Pinned planner lifecycle and environment adapter implementation."},
+      "usedFor": ["advisory mode", "actuation separation", "minimum endpoint validation"]
+    },
+    {
+      "id": "L01",
+      "title": "llm-d README",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/README.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "high", "reason": "Pinned first-party scope; performance highlights are not independently validated here."},
+      "usedFor": ["scope", "themes", "Kubernetes positioning"]
+    },
+    {
+      "id": "L02",
+      "title": "llm-d Architecture",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/docs/architecture/README.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "high", "reason": "Pinned first-party architecture index."},
+      "usedFor": ["Proxy/EPP/InferencePool", "advanced patterns"]
+    },
+    {
+      "id": "L03",
+      "title": "EPP Request Scheduler",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/docs/architecture/core/router/epp/scheduling.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "high", "reason": "Pinned plugin lifecycle documentation."},
+      "usedFor": ["Filter/Score/Pick", "profiles", "disaggregated handler"]
+    },
+    {
+      "id": "L04",
+      "title": "EPP Flow Control",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/docs/architecture/core/router/epp/flow-control.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "high", "reason": "Pinned first-party flow-control contract."},
+      "usedFor": ["admission", "queue", "fairness", "saturation"]
+    },
+    {
+      "id": "L05",
+      "title": "Disaggregation Architecture",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/docs/architecture/advanced/disaggregation/README.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "high", "reason": "Pinned first-party P/D architecture."},
+      "usedFor": ["stage roles", "coordinator", "NIXL transfer"]
+    },
+    {
+      "id": "L06",
+      "title": "KV Cache Indexer",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/docs/architecture/advanced/kv-management/kv-indexer.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "high", "reason": "Pinned first-party index architecture."},
+      "usedFor": ["KV events", "precise prefix cache", "global index"]
+    },
+    {
+      "id": "L07",
+      "title": "Autoscaling Architecture",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/docs/architecture/advanced/autoscaling/README.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "medium", "reason": "Pinned first-party architecture; several modes are environment dependent."},
+      "usedFor": ["HPA/KEDA", "WVA", "SLO-aware scaling"]
+    },
+    {
+      "id": "L08",
+      "title": "Batch Inference Architecture",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/docs/architecture/advanced/batch/README.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "medium", "reason": "Pinned first-party design; batch components can be deployed independently."},
+      "usedFor": ["Batch Gateway", "Async Processor", "interactive protection"]
+    },
+    {
+      "id": "L09",
+      "title": "Flow Control Guide",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/guides/flow-control/README.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "medium", "reason": "Pinned operational guide; settings require workload tuning."},
+      "usedFor": ["priority", "queue TTL", "usage limits"]
+    },
+    {
+      "id": "L10",
+      "title": "Prefill/Decode Disaggregation Guide",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/guides/pd-disaggregation/README.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "medium", "reason": "Pinned well-lit path; performance is model/hardware specific."},
+      "usedFor": ["deployment topology", "benchmarking requirements"]
+    },
+    {
+      "id": "L11",
+      "title": "Workload Autoscaling Guide",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/guides/workload-autoscaling/README.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "medium", "reason": "Pinned guide; operational maturity varies by profile."},
+      "usedFor": ["scaling signals", "multi-pool capacity"]
+    },
+    {
+      "id": "L12",
+      "title": "No-Kubernetes Deployment",
+      "project": "llm-d",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d/blob/1f97eb0f928fd3c6509fce984ad67af83d65d3e8/docs/infrastructure/no-kubernetes-deployment.md",
+      "revision": "1f97eb0f928fd3c6509fce984ad67af83d65d3e8",
+      "confidence": {"rating": "high", "reason": "Pinned first-party parity and discovery boundary."},
+      "usedFor": ["file discovery", "Kubernetes/non-Kubernetes separation"]
+    },
+    {
+      "id": "R01",
+      "title": "llm-d Router README",
+      "project": "llm-d Router",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/README.md",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned first-party component overview."},
+      "usedFor": ["EPP scope", "component packaging"]
+    },
+    {
+      "id": "R02",
+      "title": "llm-d Router Architecture",
+      "project": "llm-d Router",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/docs/architecture.md",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned first-party scheduling architecture."},
+      "usedFor": ["Filter/Score/Pick", "plugins", "data layer"]
+    },
+    {
+      "id": "R03",
+      "title": "llm-d Router Disaggregation",
+      "project": "llm-d Router",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/docs/disaggregation.md",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned first-party disaggregation design."},
+      "usedFor": ["P/D selection", "headers", "coordinator handoff"]
+    },
+    {
+      "id": "R04",
+      "title": "Coordinator Architecture",
+      "project": "llm-d Router",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/docs/coordinator_architecture.md",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned first-party stage coordinator design."},
+      "usedFor": ["E/P/D pipeline", "connectors", "request flow"]
+    },
+    {
+      "id": "R05",
+      "title": "Flow Control Module",
+      "project": "llm-d Router",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/pkg/epp/flowcontrol/README.md",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned module contract including operational caveats."},
+      "usedFor": ["Priority/Fairness/Ordering", "TTL", "memory bounds", "stale metrics"]
+    },
+    {
+      "id": "R06",
+      "title": "Program-Aware Fairness",
+      "project": "llm-d Router",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/pkg/epp/framework/plugins/flowcontrol/fairness/program-aware/README.md",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "medium", "reason": "Pinned plugin documentation; identified tradeoffs are important to adaptation."},
+      "usedFor": ["least attained service", "decay", "identity and cardinality risks"]
+    },
+    {
+      "id": "R07",
+      "title": "Flow Registry Implementation",
+      "project": "llm-d Router",
+      "type": "first-party-source",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/pkg/epp/flowcontrol/registry/registry.go",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned queue and per-flow lifecycle implementation."},
+      "usedFor": ["in-memory state", "occupancy", "flow lifecycle"]
+    },
+    {
+      "id": "R08",
+      "title": "Flow Controller Implementation",
+      "project": "llm-d Router",
+      "type": "first-party-source",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/pkg/epp/flowcontrol/controller/controller.go",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned dispatch-loop implementation."},
+      "usedFor": ["backpressure", "dispatch", "eviction outcomes"]
+    },
+    {
+      "id": "R09",
+      "title": "Prefix Scorer Plugin",
+      "project": "llm-d Router",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/pkg/epp/framework/plugins/scheduling/scorer/prefix/README.md",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "medium", "reason": "Pinned plugin documentation; exact gain is workload dependent."},
+      "usedFor": ["approximate/precise prefix scoring", "producer separation"]
+    },
+    {
+      "id": "R10",
+      "title": "Coordinator Pipeline Implementation",
+      "project": "llm-d Router",
+      "type": "first-party-source",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/pkg/coordinator/pipeline/pipeline.go",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned executable stage pipeline."},
+      "usedFor": ["step registry", "pipeline execution", "error propagation"]
+    },
+    {
+      "id": "R11",
+      "title": "Leader Election Runtime",
+      "project": "llm-d Router",
+      "type": "first-party-source",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/internal/runnable/leader_election.go",
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "high", "reason": "Pinned Kubernetes leader-election implementation."},
+      "usedFor": ["active/passive readiness", "leadership lifecycle"]
+    },
+    {
+      "id": "R12",
+      "title": "Router Metrics and Operations Sizing",
+      "project": "llm-d Router",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/docs/metrics.md",
+      "additionalUrls": [
+        "https://github.com/llm-d/llm-d-router/blob/644a885639ac64ca09d6f35af3a67fe61bcc2e31/docs/operations.md"
+      ],
+      "revision": "644a885639ac64ca09d6f35af3a67fe61bcc2e31",
+      "confidence": {"rating": "medium", "reason": "Pinned first-party metrics and measured sizing notes; measurements are not generalized to Vela."},
+      "usedFor": ["flow-control metrics", "cardinality", "active-active state caveats"]
+    },
+    {
+      "id": "K01",
+      "title": "KV Cache Manager README",
+      "project": "llm-d KV Cache Manager",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-kv-cache-manager/blob/8cf43067afb7fc9fefafc1b64de063c769f2c90f/README.md",
+      "revision": "8cf43067afb7fc9fefafc1b64de063c769f2c90f",
+      "confidence": {"rating": "high", "reason": "Pinned first-party scope and API overview."},
+      "usedFor": ["KV manager role", "index API"]
+    },
+    {
+      "id": "K02",
+      "title": "KV Cache Manager Architecture",
+      "project": "llm-d KV Cache Manager",
+      "type": "official-doc",
+      "url": "https://github.com/llm-d/llm-d-kv-cache-manager/blob/8cf43067afb7fc9fefafc1b64de063c769f2c90f/docs/architecture.md",
+      "revision": "8cf43067afb7fc9fefafc1b64de063c769f2c90f",
+      "confidence": {"rating": "high", "reason": "Pinned first-party event/index architecture."},
+      "usedFor": ["event path", "backends", "recovery"]
+    },
+    {
+      "id": "K03",
+      "title": "KV Event Dedup Filter",
+      "project": "llm-d KV Cache Manager",
+      "type": "first-party-source",
+      "url": "https://github.com/llm-d/llm-d-kv-cache-manager/blob/8cf43067afb7fc9fefafc1b64de063c769f2c90f/pkg/kvevents/event_dedup_filter.go",
+      "revision": "8cf43067afb7fc9fefafc1b64de063c769f2c90f",
+      "confidence": {"rating": "high", "reason": "Pinned dedup implementation."},
+      "usedFor": ["duplicate handling", "event identity"]
+    },
+    {
+      "id": "K04",
+      "title": "KV Indexer Implementation",
+      "project": "llm-d KV Cache Manager",
+      "type": "first-party-source",
+      "url": "https://github.com/llm-d/llm-d-kv-cache-manager/blob/8cf43067afb7fc9fefafc1b64de063c769f2c90f/pkg/kvcache/indexer.go",
+      "revision": "8cf43067afb7fc9fefafc1b64de063c769f2c90f",
+      "confidence": {"rating": "high", "reason": "Pinned prefix lookup/index implementation."},
+      "usedFor": ["prefix-chain lookup", "backend abstraction"]
+    },
+    {
+      "id": "A01",
+      "title": "Gateway API Inference Extension Endpoint Picker Protocol",
+      "project": "Gateway API Inference Extension",
+      "type": "official-doc",
+      "url": "https://github.com/kubernetes-sigs/gateway-api-inference-extension/blob/2d02cb1209406347747481cf86bc6bfa8412ec59/docs/proposals/004-endpoint-picker-protocol/README.md",
+      "revision": "2d02cb1209406347747481cf86bc6bfa8412ec59",
+      "confidence": {"rating": "high", "reason": "Pinned implemented protocol proposal."},
+      "usedFor": ["ext-proc", "endpoint list", "readiness and leader state"]
+    },
+    {
+      "id": "A02",
+      "title": "KServe LLMInferenceService Scheduler Reconciler",
+      "project": "KServe",
+      "type": "first-party-source",
+      "url": "https://github.com/kserve/kserve/blob/db30ddfc85b88bb768d0d33664fe49a6e4e8efc1/pkg/controller/v1alpha2/llmisvc/scheduler.go",
+      "revision": "db30ddfc85b88bb768d0d33664fe49a6e4e8efc1",
+      "confidence": {"rating": "high", "reason": "Pinned controller implementation."},
+      "usedFor": ["Kubernetes reconciliation", "InferencePool projection", "plugin migration"]
+    },
+    {
+      "id": "A03",
+      "title": "vLLM Disaggregated Serving Example",
+      "project": "vLLM",
+      "type": "official-doc",
+      "url": "https://github.com/vllm-project/vllm/blob/cacc429f62c3738c9c95093e9bd410e96103221a/examples/disaggregated/disaggregated_serving/README.md",
+      "revision": "cacc429f62c3738c9c95093e9bd410e96103221a",
+      "confidence": {"rating": "medium", "reason": "Pinned first-party example, not a complete production control-plane contract."},
+      "usedFor": ["engine-level disaggregation", "KV events example"]
+    },
+    {
+      "id": "A04",
+      "title": "Ray Serve Autoscaling Guide",
+      "project": "Ray Serve",
+      "type": "official-doc",
+      "url": "https://github.com/ray-project/ray/blob/c80ff0c8de461ed34553100e56343611bee22da5/doc/source/serve/autoscaling-guide.md",
+      "revision": "c80ff0c8de461ed34553100e56343611bee22da5",
+      "confidence": {"rating": "medium", "reason": "Pinned first-party guide; defaults target Ray Serve workloads."},
+      "usedFor": ["target ongoing requests", "application versus cluster autoscaling"]
+    },
+    {
+      "id": "A05",
+      "title": "Ray Serve Request Router Public API",
+      "project": "Ray Serve",
+      "type": "first-party-source",
+      "url": "https://github.com/ray-project/ray/blob/c80ff0c8de461ed34553100e56343611bee22da5/python/ray/serve/request_router.py",
+      "revision": "c80ff0c8de461ed34553100e56343611bee22da5",
+      "confidence": {"rating": "high", "reason": "Pinned public extension surface."},
+      "usedFor": ["router extension boundary", "FIFO/locality/multiplex mixins"]
+    },
+    {
+      "id": "A06",
+      "title": "KEDA ScaledObject API",
+      "project": "KEDA",
+      "type": "first-party-source",
+      "url": "https://github.com/kedacore/keda/blob/5135f6ef340e8bb197444ff7f0edfeed6c1a3f99/apis/keda/v1alpha1/scaledobject_types.go",
+      "revision": "5135f6ef340e8bb197444ff7f0edfeed6c1a3f99",
+      "confidence": {"rating": "high", "reason": "Pinned API implementation for min/max/cooldown/fallback controls."},
+      "usedFor": ["actuator guardrails", "fallback", "pause controls"]
+    },
+    {
+      "id": "V01",
+      "title": "Vela Architecture",
+      "project": "Vela",
+      "type": "local-doc",
+      "url": "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/docs/architecture.md",
+      "additionalUrls": [
+        "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/docs/launch-receipts/README.md"
+      ],
+      "revision": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+      "confidence": {"rating": "high", "reason": "Pinned current Vela architecture baseline; production gate status is kept separate."},
+      "usedFor": ["H3 boundary", "Job/Attempt/Lease", "Visible Completion", "system ownership"]
+    },
+    {
+      "id": "V02",
+      "title": "Vela Hierarchical Scheduler Specification",
+      "project": "Vela",
+      "type": "local-doc",
+      "url": "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/docs/specs/0008-hierarchical-scheduler.md",
+      "revision": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+      "confidence": {"rating": "high", "reason": "Pinned implementation-oriented scheduler contract."},
+      "usedFor": ["weighted deficit", "lanes", "projection", "claim authority"]
+    },
+    {
+      "id": "V03",
+      "title": "Vela Hierarchical Scheduler SQL",
+      "project": "Vela",
+      "type": "local-source",
+      "url": "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/db/migrations/00008_hierarchical_scheduler.sql",
+      "revision": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+      "confidence": {"rating": "high", "reason": "Pinned executable PostgreSQL scheduler implementation."},
+      "usedFor": ["eligibility", "fairness", "job/worker scoring", "dispatch claims"]
+    },
+    {
+      "id": "V04",
+      "title": "Vela Worker Control Service",
+      "project": "Vela",
+      "type": "local-source",
+      "url": "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/internal/workercontrol/service.go",
+      "revision": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+      "confidence": {"rating": "high", "reason": "Pinned Lease, Worker epoch, and coordinator implementation."},
+      "usedFor": ["authenticated worker", "Lease token", "fence", "capacity/readiness"]
+    },
+    {
+      "id": "V05",
+      "title": "Vela Visible Completion",
+      "project": "Vela",
+      "type": "local-source",
+      "url": "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/internal/workercontrol/visible_completion.go",
+      "revision": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+      "confidence": {"rating": "high", "reason": "Pinned exactly-once visible result implementation."},
+      "usedFor": ["ArtifactSet", "Charge", "credit authority", "completion race"]
+    },
+    {
+      "id": "V06",
+      "title": "Vela Transactional Outbox Publisher",
+      "project": "Vela",
+      "type": "local-source",
+      "url": "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/internal/outbox/publisher.go",
+      "revision": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+      "confidence": {"rating": "high", "reason": "Pinned claim, publish, durable receipt, and retry implementation."},
+      "usedFor": ["PubAck", "claim fencing", "event delivery boundary"]
+    },
+    {
+      "id": "V07",
+      "title": "Vela JetStream Contract",
+      "project": "Vela",
+      "type": "local-source",
+      "url": "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/internal/eventstream/contract.go",
+      "revision": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+      "confidence": {"rating": "high", "reason": "Pinned stream and scheduler consumer invariants."},
+      "usedFor": ["JetStream limits", "durable wakeup", "drift validation"]
+    },
+    {
+      "id": "V08",
+      "title": "Vela SLO and HTTP Telemetry",
+      "project": "Vela",
+      "type": "local-source",
+      "url": "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/internal/telemetry/http.go",
+      "additionalUrls": [
+        "https://github.com/vivym/vela/blob/bc590e20b3e81ee54651ac7766c8ecd82b394097/internal/slo/evaluator.go"
+      ],
+      "revision": "bc590e20b3e81ee54651ac7766c8ecd82b394097",
+      "confidence": {"rating": "high", "reason": "Pinned low-cardinality telemetry implementation; SLO evaluator was inspected alongside it."},
+      "usedFor": ["bounded labels", "route metrics", "cohort discipline"]
+    },
+    {
+      "id": "V09",
+      "title": "Vela Disaggregated H3 Repository Implementation",
+      "project": "Vela",
+      "type": "local-source",
+      "url": "https://github.com/vivym/vela/blob/b09867c8b431338a6e71c6bf2c766c5b0d905724/docs/h3-stage-execution-architecture.md",
+      "additionalUrls": [
+        "https://github.com/vivym/vela/blob/b09867c8b431338a6e71c6bf2c766c5b0d905724/docs/specs/0050-h3-stage-execution-implementation-slices.md",
+        "https://github.com/vivym/vela/blob/b09867c8b431338a6e71c6bf2c766c5b0d905724/docs/implementation-status.md"
+      ],
+      "revision": "b09867c8b431338a6e71c6bf2c766c5b0d905724",
+      "confidence": {
+        "rating": "high",
+        "reason": "Pinned repository implementation and status evidence; mock verification is not production acceptance."
+      },
+      "usedFor": [
+        "disaggregated H3 stage graph",
+        "single-GPU H3 DiT",
+        "future multi-member LLM gang",
+        "resident ModelRuntime",
+        "exact cache",
+        "CPU media worker",
+        "usage and cost separation",
+        "legacy contraction"
+      ]
+    }
+  ]
+}
