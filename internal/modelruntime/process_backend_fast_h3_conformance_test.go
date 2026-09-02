@@ -39,6 +39,10 @@ func TestProcessBackendConformsToFastH3PythonDriver(t *testing.T) {
 			if err := os.Chmod(root, 0o700); err != nil {
 				t.Fatalf("make scratch root private: %v", err)
 			}
+			inputRoot := filepath.Join(root, "inputs")
+			if err := os.Mkdir(inputRoot, 0o700); err != nil {
+				t.Fatalf("create input root: %v", err)
+			}
 			outputRoot := filepath.Join(root, "outputs")
 			if err := os.Mkdir(outputRoot, 0o700); err != nil {
 				t.Fatalf("create output root: %v", err)
@@ -68,7 +72,7 @@ func TestProcessBackendConformsToFastH3PythonDriver(t *testing.T) {
 						DeviceID: "33000000-0000-0000-0000-000000000001", DeviceEpoch: 7,
 						GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
 					}},
-					ScratchRoot: root, OutputRoot: outputRoot,
+					ScratchRoot: root, InputRoot: inputRoot, OutputRoot: outputRoot,
 					InitializationTimeout: 10 * time.Second,
 					ShutdownTimeout:       2 * time.Second,
 					Stderr:                &stderr,

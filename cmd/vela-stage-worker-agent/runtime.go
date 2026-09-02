@@ -326,7 +326,7 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 	if err != nil {
 		return fail(err)
 	}
-	inputResolver, err := stageworkeragent.NewAssignmentInputResolver(
+	artifactInputResolver, err := stageworkeragent.NewAssignmentInputResolver(
 		stageworkeragent.AssignmentInputResolverConfig{
 			Store:               store,
 			TicketSigner:        transferTicketSigner,
@@ -336,6 +336,19 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 			Now:                 time.Now,
 			Journal:             runtime.inputJournal,
 		},
+	)
+	if err != nil {
+		return fail(err)
+	}
+	rootInputResolver, err := stageworkeragent.NewHTTPSRootInputResolver(
+		stageworkeragent.HTTPSRootInputResolverConfig{InputRoot: configuration.inputRoot},
+	)
+	if err != nil {
+		return fail(err)
+	}
+	inputResolver, err := stageworkeragent.NewCompositeInputResolver(
+		artifactInputResolver,
+		rootInputResolver,
 	)
 	if err != nil {
 		return fail(err)

@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -21,6 +23,88 @@ import (
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestEncoderAssignmentBindsFrozenH3ParametersAndRootMaterial(t *testing.T) {
+	const digestHex = "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"
+	fixture := newStageSchedulerFixtureWithRequest(
+		t,
+		"h3-root-material",
+		[]byte(`{
+			"model":"minimax-h3",
+			"generation_preset":"balanced",
+			"service_class":"standard",
+			"output_spec":"video-1080p-5s-24fps",
+			"generation_count":1,
+			"prompt":"animate the reference",
+			"h3":{
+				"task":"ref2va",
+				"seed":17,
+				"conditions":[{
+					"role":"reference",
+					"type":"image",
+					"uri":"vela://uploads/reference-frame",
+					"download_url":"https://objects.example.test/reference?signature=worker-only",
+					"sha256":"`+digestHex+`",
+					"size_bytes":4096
+				}],
+				"target":{"short_edge":768,"aspect_ratio":"16:9","duration_seconds":5},
+				"sampling":{"num_inference_steps":30,"quality":"lossless"}
+			}
+		}`),
+	)
+	result, err := newPostgresAssignmentTestBackend(t, fixture).AcquireStage(
+		context.Background(),
+		stageWorkerAcquireCommand(fixture),
+		stageWorkerAcquireRequest(fixture),
+	)
+	if err != nil || result.Assignment == nil {
+		t.Fatalf("Acquire Encoder = %#v error=%v", result, err)
+	}
+	assignment := result.Assignment
+	if _, err := stageassignment.Validate(assignment); err != nil {
+		t.Fatalf("validate Encoder Assignment: %v", err)
+	}
+	var parameters struct {
+		SchemaRevision   int `json:"schema_revision"`
+		CanonicalRequest struct {
+			Task       string `json:"task"`
+			Prompt     string `json:"prompt"`
+			Seed       int64  `json:"seed"`
+			Conditions []struct {
+				URI string `json:"uri"`
+			} `json:"conditions"`
+		} `json:"canonical_request"`
+		Sampling struct {
+			NumInferenceSteps int    `json:"num_inference_steps"`
+			Quality           string `json:"quality"`
+		} `json:"sampling"`
+	}
+	if err := json.Unmarshal(assignment.GetExecutionSpec().GetParametersJson(), &parameters); err != nil {
+		t.Fatalf("decode fast-h3 parameters: %v", err)
+	}
+	if parameters.SchemaRevision != 1 || parameters.CanonicalRequest.Task != "ref2va" ||
+		parameters.CanonicalRequest.Prompt != "animate the reference" ||
+		parameters.CanonicalRequest.Seed != 17 || len(parameters.CanonicalRequest.Conditions) != 1 ||
+		parameters.CanonicalRequest.Conditions[0].URI != "vela://uploads/reference-frame" ||
+		parameters.Sampling.NumInferenceSteps != 30 || parameters.Sampling.Quality != "lossless" {
+		t.Fatalf("fast-h3 parameters = %#v", parameters)
+	}
+	if bytes.Contains(assignment.GetExecutionSpec().GetParametersJson(), []byte("download_url")) ||
+		bytes.Contains(assignment.GetExecutionSpec().GetParametersJson(), []byte("generation_preset")) {
+		t.Fatalf("backend parameters expose non-fast-h3 fields: %s", assignment.GetExecutionSpec().GetParametersJson())
+	}
+	digest, _ := hex.DecodeString(digestHex)
+	rootInputs := assignment.GetExecutionSpec().GetRootInputs()
+	fetches := assignment.GetRootInputFetches()
+	if len(rootInputs) != 1 || rootInputs[0].GetConditionIndex() != 0 ||
+		rootInputs[0].GetUri() != "vela://uploads/reference-frame" ||
+		!bytes.Equal(rootInputs[0].GetSha256(), digest) || rootInputs[0].GetSizeBytes() != 4096 ||
+		len(fetches) != 1 || fetches[0].GetDownloadUrl() !=
+		"https://objects.example.test/reference?signature=worker-only" ||
+		!bytes.Equal(fetches[0].GetSha256(), digest) {
+		t.Fatalf("root inputs/fetches = %#v / %#v", rootInputs, fetches)
+	}
+}
 
 func TestPostgresAssignmentBackendReplaysExactAssignment(t *testing.T) {
 	fixture := newStageSchedulerFixture(t, "stage-worker-assignment-replay")

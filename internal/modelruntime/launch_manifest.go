@@ -71,6 +71,7 @@ type LaunchRuntime struct {
 	Command                []string `json:"command"`
 	Environment            []string `json:"environment,omitempty"`
 	ScratchRoot            string   `json:"scratch_root"`
+	InputRoot              string   `json:"input_root"`
 	OutputRoot             string   `json:"output_root"`
 	InitializationTimeout  string   `json:"initialization_timeout"`
 	ShutdownTimeout        string   `json:"shutdown_timeout"`
@@ -153,7 +154,7 @@ func (runtime LaunchRuntime) ProcessBackendConfig(localDevices []DriverDevice) (
 		Component: runtime.Component, ModelComponentRevision: runtime.ModelComponentRevision,
 		Command: append([]string(nil), runtime.Command...), Environment: append([]string(nil), runtime.Environment...),
 		LocalDevices: append([]DriverDevice(nil), localDevices...), ScratchRoot: runtime.ScratchRoot,
-		OutputRoot: runtime.OutputRoot, InitializationTimeout: initializationTimeout,
+		InputRoot: runtime.InputRoot, OutputRoot: runtime.OutputRoot, InitializationTimeout: initializationTimeout,
 		ShutdownTimeout: shutdownTimeout,
 	}, nil
 }
@@ -280,7 +281,8 @@ func validateLaunchRuntime(runtime LaunchRuntime) error {
 		!validDriverText(runtime.ModelComponentRevision, 300) || !validLaunchDigest(runtime.RuntimeImageDigest) ||
 		len(runtime.Command) == 0 || len(runtime.Command) > 128 || !filepath.IsAbs(runtime.Command[0]) ||
 		filepath.Clean(runtime.Command[0]) != runtime.Command[0] ||
-		!validLaunchRoot(runtime.ScratchRoot) || !validLaunchRoot(runtime.OutputRoot) {
+		!validLaunchRoot(runtime.ScratchRoot) || !validLaunchRoot(runtime.InputRoot) ||
+		!validLaunchRoot(runtime.OutputRoot) || runtime.InputRoot == runtime.OutputRoot {
 		return errors.New("ModelRuntime launch manifest runtime is invalid")
 	}
 	for _, argument := range runtime.Command {
@@ -288,10 +290,12 @@ func validateLaunchRuntime(runtime LaunchRuntime) error {
 			return errors.New("ModelRuntime launch manifest driver command is invalid")
 		}
 	}
-	relative, err := filepath.Rel(runtime.ScratchRoot, runtime.OutputRoot)
-	if err != nil || relative == "." || relative == ".." ||
-		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return errors.New("ModelRuntime output root must be below its scratch root")
+	for name, root := range map[string]string{"input": runtime.InputRoot, "output": runtime.OutputRoot} {
+		relative, err := filepath.Rel(runtime.ScratchRoot, root)
+		if err != nil || relative == "." || relative == ".." ||
+			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("ModelRuntime %s root must be below its scratch root", name)
+		}
 	}
 	if len(runtime.Environment) > maxLaunchEnvironmentEntries {
 		return errors.New("ModelRuntime launch manifest environment is too large")

@@ -191,6 +191,13 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 			launch.LocalDevices[0].GPUUUID != expectedMember.DeviceConstraints[0].GPUUUID {
 			t.Fatalf("WorkerInstance Pod %q launch manifest = %#v error=%v", pod.Name, launch, err)
 		}
+		for _, runtime := range launch.Runtimes {
+			if runtime.ScratchRoot != "/var/lib/vela/stage-worker/scratch" ||
+				runtime.InputRoot != "/var/lib/vela/stage-worker/scratch/inputs" ||
+				runtime.OutputRoot != "/var/lib/vela/stage-worker/scratch/outputs" {
+				t.Fatalf("WorkerInstance Pod %q runtime roots = %#v", pod.Name, runtime)
+			}
+		}
 		if _, exists := runtimeContainer.Resources.Limits["nvidia.com/gpu"]; exists {
 			t.Fatalf("WorkerInstance Pod %q retained generic nvidia.com/gpu allocation", pod.Name)
 		}

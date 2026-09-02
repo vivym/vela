@@ -107,10 +107,18 @@ message StageInputArtifact {
   reserved 6;
 }
 
+message StageRootInputMaterial {
+  int32 condition_index = 1;
+  string uri = 2;
+  bytes sha256 = 3;
+  int64 size_bytes = 4;
+}
+
 message StageExecutionSpec {
   repeated StageInputArtifact inputs = 1;
   bytes parameters_json = 2;
   bytes expected_output_manifest_json = 3;
+  repeated StageRootInputMaterial root_inputs = 4;
 }
 
 message ModelRuntimeServicePrepareStageRequest {

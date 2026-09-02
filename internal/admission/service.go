@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/vivym/vela/internal/execution"
+	"github.com/vivym/vela/internal/h3request"
 	"github.com/vivym/vela/internal/identity"
 	store "github.com/vivym/vela/internal/store/sqlc"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -31,13 +32,25 @@ const defaultCapacityRetryAfter = 30
 var idempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
 type Request struct {
-	Model            string          `json:"model"`
-	GenerationPreset string          `json:"generation_preset"`
-	ServiceClass     string          `json:"service_class"`
-	OutputSpec       string          `json:"output_spec"`
-	GenerationCount  int32           `json:"generation_count"`
-	Prompt           string          `json:"prompt"`
-	ClientMetadata   json.RawMessage `json:"client_metadata,omitempty"`
+	Model            string             `json:"model"`
+	GenerationPreset string             `json:"generation_preset"`
+	ServiceClass     string             `json:"service_class"`
+	OutputSpec       string             `json:"output_spec"`
+	GenerationCount  int32              `json:"generation_count"`
+	Prompt           string             `json:"prompt"`
+	ClientMetadata   json.RawMessage    `json:"client_metadata,omitempty"`
+	H3               *h3request.Request `json:"h3,omitempty"`
+}
+
+type frozenRequestContent struct {
+	Model            string                  `json:"model"`
+	GenerationPreset string                  `json:"generation_preset"`
+	ServiceClass     string                  `json:"service_class"`
+	OutputSpec       string                  `json:"output_spec"`
+	GenerationCount  int32                   `json:"generation_count"`
+	Prompt           string                  `json:"prompt"`
+	ClientMetadata   json.RawMessage         `json:"client_metadata,omitempty"`
+	H3               h3request.FrozenRequest `json:"h3"`
 }
 
 type PricingSnapshot struct {
@@ -572,7 +585,25 @@ func canonicalRequest(request Request, idempotencyKey string) ([]byte, [sha256.S
 		}
 		request.ClientMetadata = metadata
 	}
-	content, err := json.Marshal(request)
+	h3Input := h3request.Request{}
+	if request.H3 != nil {
+		h3Input = *request.H3
+	}
+	frozenH3, err := h3request.Freeze(
+		request.Prompt,
+		request.GenerationPreset,
+		idempotencyKey,
+		h3Input,
+	)
+	if err != nil {
+		return nil, [sha256.Size]byte{}, failure(FailureCodeInvalidRequest, err.Error(), 0)
+	}
+	content, err := json.Marshal(frozenRequestContent{
+		Model: request.Model, GenerationPreset: request.GenerationPreset,
+		ServiceClass: request.ServiceClass, OutputSpec: request.OutputSpec,
+		GenerationCount: request.GenerationCount, Prompt: request.Prompt,
+		ClientMetadata: request.ClientMetadata, H3: frozenH3,
+	})
 	if err != nil {
 		return nil, [sha256.Size]byte{}, failure(FailureCodeInvalidRequest, "client_metadata cannot be encoded", 0)
 	}

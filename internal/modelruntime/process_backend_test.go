@@ -25,7 +25,11 @@ func TestProcessBackendLoadsOnceAndStaysResidentAcrossAssignments(t *testing.T) 
 	for _, component := range []string{"ENCODER", "DIT", "VAE_DECODER"} {
 		t.Run(component, func(t *testing.T) {
 			root := t.TempDir()
+			inputRoot := filepath.Join(root, "inputs")
 			outputRoot := filepath.Join(root, "outputs")
+			if err := os.Mkdir(inputRoot, 0o700); err != nil {
+				t.Fatalf("create input root: %v", err)
+			}
 			if err := os.Mkdir(outputRoot, 0o700); err != nil {
 				t.Fatalf("create output root: %v", err)
 			}
@@ -49,7 +53,7 @@ func TestProcessBackendLoadsOnceAndStaysResidentAcrossAssignments(t *testing.T) 
 							DeviceID: "33000000-0000-0000-0000-000000000001", DeviceEpoch: 7,
 							GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
 						}},
-						ScratchRoot: root, OutputRoot: outputRoot,
+						ScratchRoot: root, InputRoot: inputRoot, OutputRoot: outputRoot,
 						InitializationTimeout: 10 * time.Second, ShutdownTimeout: 2 * time.Second,
 					},
 				)
@@ -155,6 +159,12 @@ func TestProcessBackendDriverHelper(t *testing.T) {
 		switch request.Operation {
 		case "initialize":
 			component = request.Initialize.Component
+			if request.Initialize.InputRoot == "" ||
+				request.Initialize.InputRoot == request.Initialize.ScratchRoot ||
+				request.Initialize.InputRoot == request.Initialize.OutputRoot {
+				response.Error = "driver input root is invalid"
+				break
+			}
 			deadline := time.Now().Add(5 * time.Second)
 			for {
 				if _, err := os.Stat(gatePath); err == nil {

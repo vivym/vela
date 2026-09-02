@@ -2060,6 +2060,116 @@ components:
           type: object
           additionalProperties: true
           x-go-type: json.RawMessage
+        h3:
+          $ref: '#/components/schemas/H3Request'
+    H3Request:
+      type: object
+      additionalProperties: false
+      properties:
+        task:
+          type: string
+          enum:
+            - t2va
+            - ref2va
+            - fl2va
+        seed:
+          type: integer
+          format: int64
+          minimum: 0
+        conditions:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/H3Condition'
+        target:
+          $ref: '#/components/schemas/H3Target'
+        sampling:
+          $ref: '#/components/schemas/H3Sampling'
+    H3Condition:
+      type: object
+      additionalProperties: false
+      required:
+        - role
+        - type
+        - uri
+        - download_url
+        - sha256
+        - size_bytes
+      properties:
+        role:
+          type: string
+          minLength: 1
+          maxLength: 100
+        type:
+          type: string
+          minLength: 1
+          maxLength: 100
+        uri:
+          type: string
+          minLength: 1
+          maxLength: 16384
+        download_url:
+          type: string
+          format: uri
+          minLength: 1
+          maxLength: 16384
+        sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 34359738368
+        frame_index:
+          type: integer
+          format: int32
+          minimum: 0
+        start_time_seconds:
+          type: number
+          format: double
+          minimum: 0
+    H3Target:
+      type: object
+      additionalProperties: false
+      properties:
+        short_edge:
+          type: integer
+          minimum: 768
+          maximum: 768
+        aspect_ratio:
+          type: string
+          minLength: 1
+          maxLength: 100
+        duration_seconds:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+    H3Sampling:
+      type: object
+      additionalProperties: false
+      properties:
+        num_inference_steps:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        quality:
+          type: string
+          enum:
+            - high
+            - lossless
+        imgvid_cond_noise_aug_for_inference:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          nullable: true
+        audio_cond_noise_aug_for_inference:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          nullable: true
     Job:
       type: object
       additionalProperties: false

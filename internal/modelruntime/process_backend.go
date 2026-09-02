@@ -52,6 +52,7 @@ type ProcessBackendConfig struct {
 	Environment            []string
 	LocalDevices           []DriverDevice
 	ScratchRoot            string
+	InputRoot              string
 	OutputRoot             string
 	InitializationTimeout  time.Duration
 	ShutdownTimeout        time.Duration
@@ -102,6 +103,7 @@ type driverInitializeRequestV1 struct {
 	ModelComponentRevision string          `json:"model_component_revision"`
 	LocalDevices           []DriverDevice  `json:"local_devices"`
 	ScratchRoot            string          `json:"scratch_root"`
+	InputRoot              string          `json:"input_root"`
 	OutputRoot             string          `json:"output_root"`
 }
 
@@ -528,7 +530,8 @@ func initializeDriverRequest(
 		ModelRuntimeEpoch: binding.ModelRuntimeEpoch, StageProfileRevisionID: binding.StageProfileRevisionID,
 		Component: config.Component, ModelComponentRevision: config.ModelComponentRevision,
 		LocalDevices: append([]DriverDevice(nil), config.LocalDevices...),
-		ScratchRoot:  config.ScratchRoot, OutputRoot: config.OutputRoot,
+		ScratchRoot:  config.ScratchRoot, InputRoot: config.InputRoot,
+		OutputRoot: config.OutputRoot,
 	}
 	for _, device := range binding.Devices {
 		request.Devices = append(request.Devices, driverEpochV1{ID: device.ID, Epoch: device.Epoch})
@@ -678,13 +681,19 @@ func validateProcessBackendConfig(
 		seenGPUs[device.GPUUUID] = struct{}{}
 		seenBDFs[device.PCIBDF] = struct{}{}
 	}
-	if !validPrivateDriverRoot(config.ScratchRoot) || !validPrivateDriverRoot(config.OutputRoot) {
+	if !validPrivateDriverRoot(config.ScratchRoot) || !validPrivateDriverRoot(config.InputRoot) ||
+		!validPrivateDriverRoot(config.OutputRoot) {
 		return errors.New("ModelRuntime driver roots are invalid")
 	}
-	relative, err := filepath.Rel(config.ScratchRoot, config.OutputRoot)
-	if err != nil || relative == "." || relative == ".." ||
-		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return errors.New("ModelRuntime driver output root must be below its scratch root")
+	if config.InputRoot == config.OutputRoot {
+		return errors.New("ModelRuntime driver input and output roots must be distinct")
+	}
+	for name, root := range map[string]string{"input": config.InputRoot, "output": config.OutputRoot} {
+		relative, err := filepath.Rel(config.ScratchRoot, root)
+		if err != nil || relative == "." || relative == ".." ||
+			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("ModelRuntime driver %s root must be below its scratch root", name)
+		}
 	}
 	seenEnvironment := make(map[string]struct{}, len(config.Environment))
 	for _, entry := range config.Environment {

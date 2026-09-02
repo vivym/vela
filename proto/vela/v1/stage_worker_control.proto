@@ -206,12 +206,19 @@ message StageAssignment {
   repeated string required_worker_member_ids = 3;
   google.protobuf.Duration member_start_timeout = 4;
   repeated StageInputTransferTicket input_transfer_tickets = 5;
+  repeated StageRootInputFetch root_input_fetches = 6;
 }
 
 message StageInputTransferTicket {
   string stage_artifact_id = 1;
   string object_version = 2;
   bytes transfer_ticket = 3;
+}
+
+message StageRootInputFetch {
+  int32 condition_index = 1;
+  bytes sha256 = 2;
+  string download_url = 3;
 }
 
 message NoStageWork {

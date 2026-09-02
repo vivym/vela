@@ -161,7 +161,8 @@ func (agent *StreamAgent) ExecuteAssignment(
 			return result, fmt.Errorf("reserve local materialization recovery capacity: %w", err)
 		}
 	}
-	if len(assignment.GetExecutionSpec().GetInputs()) != 0 {
+	if len(assignment.GetExecutionSpec().GetInputs()) != 0 ||
+		len(assignment.GetExecutionSpec().GetRootInputs()) != 0 {
 		if agent.inputResolver == nil {
 			return result, errors.New("StageAssignment inputs require a configured input resolver")
 		}

@@ -694,18 +694,87 @@ func (x *StageInputArtifact) GetStageInterfaceRevisionId() string {
 	return ""
 }
 
+type StageRootInputMaterial struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ConditionIndex int32                  `protobuf:"varint,1,opt,name=condition_index,json=conditionIndex,proto3" json:"condition_index,omitempty"`
+	Uri            string                 `protobuf:"bytes,2,opt,name=uri,proto3" json:"uri,omitempty"`
+	Sha256         []byte                 `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	SizeBytes      int64                  `protobuf:"varint,4,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *StageRootInputMaterial) Reset() {
+	*x = StageRootInputMaterial{}
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StageRootInputMaterial) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StageRootInputMaterial) ProtoMessage() {}
+
+func (x *StageRootInputMaterial) ProtoReflect() protoreflect.Message {
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StageRootInputMaterial.ProtoReflect.Descriptor instead.
+func (*StageRootInputMaterial) Descriptor() ([]byte, []int) {
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *StageRootInputMaterial) GetConditionIndex() int32 {
+	if x != nil {
+		return x.ConditionIndex
+	}
+	return 0
+}
+
+func (x *StageRootInputMaterial) GetUri() string {
+	if x != nil {
+		return x.Uri
+	}
+	return ""
+}
+
+func (x *StageRootInputMaterial) GetSha256() []byte {
+	if x != nil {
+		return x.Sha256
+	}
+	return nil
+}
+
+func (x *StageRootInputMaterial) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
 type StageExecutionSpec struct {
-	state                      protoimpl.MessageState `protogen:"open.v1"`
-	Inputs                     []*StageInputArtifact  `protobuf:"bytes,1,rep,name=inputs,proto3" json:"inputs,omitempty"`
-	ParametersJson             []byte                 `protobuf:"bytes,2,opt,name=parameters_json,json=parametersJson,proto3" json:"parameters_json,omitempty"`
-	ExpectedOutputManifestJson []byte                 `protobuf:"bytes,3,opt,name=expected_output_manifest_json,json=expectedOutputManifestJson,proto3" json:"expected_output_manifest_json,omitempty"`
+	state                      protoimpl.MessageState    `protogen:"open.v1"`
+	Inputs                     []*StageInputArtifact     `protobuf:"bytes,1,rep,name=inputs,proto3" json:"inputs,omitempty"`
+	ParametersJson             []byte                    `protobuf:"bytes,2,opt,name=parameters_json,json=parametersJson,proto3" json:"parameters_json,omitempty"`
+	ExpectedOutputManifestJson []byte                    `protobuf:"bytes,3,opt,name=expected_output_manifest_json,json=expectedOutputManifestJson,proto3" json:"expected_output_manifest_json,omitempty"`
+	RootInputs                 []*StageRootInputMaterial `protobuf:"bytes,4,rep,name=root_inputs,json=rootInputs,proto3" json:"root_inputs,omitempty"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *StageExecutionSpec) Reset() {
 	*x = StageExecutionSpec{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[6]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -717,7 +786,7 @@ func (x *StageExecutionSpec) String() string {
 func (*StageExecutionSpec) ProtoMessage() {}
 
 func (x *StageExecutionSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[6]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -730,7 +799,7 @@ func (x *StageExecutionSpec) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StageExecutionSpec.ProtoReflect.Descriptor instead.
 func (*StageExecutionSpec) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{6}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *StageExecutionSpec) GetInputs() []*StageInputArtifact {
@@ -754,6 +823,13 @@ func (x *StageExecutionSpec) GetExpectedOutputManifestJson() []byte {
 	return nil
 }
 
+func (x *StageExecutionSpec) GetRootInputs() []*StageRootInputMaterial {
+	if x != nil {
+		return x.RootInputs
+	}
+	return nil
+}
+
 type ModelRuntimeServicePrepareStageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Authority     *StageAuthority        `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
@@ -764,7 +840,7 @@ type ModelRuntimeServicePrepareStageRequest struct {
 
 func (x *ModelRuntimeServicePrepareStageRequest) Reset() {
 	*x = ModelRuntimeServicePrepareStageRequest{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[7]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -776,7 +852,7 @@ func (x *ModelRuntimeServicePrepareStageRequest) String() string {
 func (*ModelRuntimeServicePrepareStageRequest) ProtoMessage() {}
 
 func (x *ModelRuntimeServicePrepareStageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[7]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -789,7 +865,7 @@ func (x *ModelRuntimeServicePrepareStageRequest) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use ModelRuntimeServicePrepareStageRequest.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServicePrepareStageRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{7}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ModelRuntimeServicePrepareStageRequest) GetAuthority() *StageAuthority {
@@ -819,7 +895,7 @@ type ModelRuntimeServicePrepareStageResponse struct {
 
 func (x *ModelRuntimeServicePrepareStageResponse) Reset() {
 	*x = ModelRuntimeServicePrepareStageResponse{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[8]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -831,7 +907,7 @@ func (x *ModelRuntimeServicePrepareStageResponse) String() string {
 func (*ModelRuntimeServicePrepareStageResponse) ProtoMessage() {}
 
 func (x *ModelRuntimeServicePrepareStageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[8]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -844,7 +920,7 @@ func (x *ModelRuntimeServicePrepareStageResponse) ProtoReflect() protoreflect.Me
 
 // Deprecated: Use ModelRuntimeServicePrepareStageResponse.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServicePrepareStageResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{8}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ModelRuntimeServicePrepareStageResponse) GetAuthorityDigest() []byte {
@@ -891,7 +967,7 @@ type ModelRuntimeServiceStartStageRequest struct {
 
 func (x *ModelRuntimeServiceStartStageRequest) Reset() {
 	*x = ModelRuntimeServiceStartStageRequest{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[9]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -903,7 +979,7 @@ func (x *ModelRuntimeServiceStartStageRequest) String() string {
 func (*ModelRuntimeServiceStartStageRequest) ProtoMessage() {}
 
 func (x *ModelRuntimeServiceStartStageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[9]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -916,7 +992,7 @@ func (x *ModelRuntimeServiceStartStageRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ModelRuntimeServiceStartStageRequest.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServiceStartStageRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{9}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ModelRuntimeServiceStartStageRequest) GetAuthority() *StageAuthority {
@@ -940,7 +1016,7 @@ type ModelRuntimeServiceStartStageResponse struct {
 
 func (x *ModelRuntimeServiceStartStageResponse) Reset() {
 	*x = ModelRuntimeServiceStartStageResponse{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[10]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -952,7 +1028,7 @@ func (x *ModelRuntimeServiceStartStageResponse) String() string {
 func (*ModelRuntimeServiceStartStageResponse) ProtoMessage() {}
 
 func (x *ModelRuntimeServiceStartStageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[10]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -965,7 +1041,7 @@ func (x *ModelRuntimeServiceStartStageResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use ModelRuntimeServiceStartStageResponse.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServiceStartStageResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{10}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ModelRuntimeServiceStartStageResponse) GetAuthorityDigest() []byte {
@@ -1020,7 +1096,7 @@ type ModelRuntimeServiceCancelStageRequest struct {
 
 func (x *ModelRuntimeServiceCancelStageRequest) Reset() {
 	*x = ModelRuntimeServiceCancelStageRequest{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[11]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1032,7 +1108,7 @@ func (x *ModelRuntimeServiceCancelStageRequest) String() string {
 func (*ModelRuntimeServiceCancelStageRequest) ProtoMessage() {}
 
 func (x *ModelRuntimeServiceCancelStageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[11]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1045,7 +1121,7 @@ func (x *ModelRuntimeServiceCancelStageRequest) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use ModelRuntimeServiceCancelStageRequest.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServiceCancelStageRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{11}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ModelRuntimeServiceCancelStageRequest) GetAuthority() *StageAuthority {
@@ -1076,7 +1152,7 @@ type ModelRuntimeServiceCancelStageResponse struct {
 
 func (x *ModelRuntimeServiceCancelStageResponse) Reset() {
 	*x = ModelRuntimeServiceCancelStageResponse{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[12]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1088,7 +1164,7 @@ func (x *ModelRuntimeServiceCancelStageResponse) String() string {
 func (*ModelRuntimeServiceCancelStageResponse) ProtoMessage() {}
 
 func (x *ModelRuntimeServiceCancelStageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[12]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1101,7 +1177,7 @@ func (x *ModelRuntimeServiceCancelStageResponse) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use ModelRuntimeServiceCancelStageResponse.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServiceCancelStageResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{12}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ModelRuntimeServiceCancelStageResponse) GetAuthorityDigest() []byte {
@@ -1155,7 +1231,7 @@ type ModelRuntimeServiceStatusRequest struct {
 
 func (x *ModelRuntimeServiceStatusRequest) Reset() {
 	*x = ModelRuntimeServiceStatusRequest{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[13]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1167,7 +1243,7 @@ func (x *ModelRuntimeServiceStatusRequest) String() string {
 func (*ModelRuntimeServiceStatusRequest) ProtoMessage() {}
 
 func (x *ModelRuntimeServiceStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[13]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1180,7 +1256,7 @@ func (x *ModelRuntimeServiceStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelRuntimeServiceStatusRequest.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServiceStatusRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{13}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ModelRuntimeServiceStatusRequest) GetAuthority() *StageAuthority {
@@ -1205,7 +1281,7 @@ type ModelRuntimeFailureEvidence struct {
 
 func (x *ModelRuntimeFailureEvidence) Reset() {
 	*x = ModelRuntimeFailureEvidence{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[14]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1217,7 +1293,7 @@ func (x *ModelRuntimeFailureEvidence) String() string {
 func (*ModelRuntimeFailureEvidence) ProtoMessage() {}
 
 func (x *ModelRuntimeFailureEvidence) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[14]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1230,7 +1306,7 @@ func (x *ModelRuntimeFailureEvidence) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelRuntimeFailureEvidence.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeFailureEvidence) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{14}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ModelRuntimeFailureEvidence) GetFailureClass() string {
@@ -1302,7 +1378,7 @@ type ModelRuntimeServiceStatusResponse struct {
 
 func (x *ModelRuntimeServiceStatusResponse) Reset() {
 	*x = ModelRuntimeServiceStatusResponse{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[15]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1314,7 +1390,7 @@ func (x *ModelRuntimeServiceStatusResponse) String() string {
 func (*ModelRuntimeServiceStatusResponse) ProtoMessage() {}
 
 func (x *ModelRuntimeServiceStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[15]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1327,7 +1403,7 @@ func (x *ModelRuntimeServiceStatusResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ModelRuntimeServiceStatusResponse.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServiceStatusResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{15}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ModelRuntimeServiceStatusResponse) GetAuthorityDigest() []byte {
@@ -1423,7 +1499,7 @@ type ModelRuntimeServiceSealOutputRequest struct {
 
 func (x *ModelRuntimeServiceSealOutputRequest) Reset() {
 	*x = ModelRuntimeServiceSealOutputRequest{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[16]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1435,7 +1511,7 @@ func (x *ModelRuntimeServiceSealOutputRequest) String() string {
 func (*ModelRuntimeServiceSealOutputRequest) ProtoMessage() {}
 
 func (x *ModelRuntimeServiceSealOutputRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[16]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1448,7 +1524,7 @@ func (x *ModelRuntimeServiceSealOutputRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ModelRuntimeServiceSealOutputRequest.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServiceSealOutputRequest) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{16}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ModelRuntimeServiceSealOutputRequest) GetAuthority() *StageAuthority {
@@ -1471,7 +1547,7 @@ type LocalMaterializationReceipt struct {
 
 func (x *LocalMaterializationReceipt) Reset() {
 	*x = LocalMaterializationReceipt{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[17]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1483,7 +1559,7 @@ func (x *LocalMaterializationReceipt) String() string {
 func (*LocalMaterializationReceipt) ProtoMessage() {}
 
 func (x *LocalMaterializationReceipt) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[17]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1496,7 +1572,7 @@ func (x *LocalMaterializationReceipt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LocalMaterializationReceipt.ProtoReflect.Descriptor instead.
 func (*LocalMaterializationReceipt) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{17}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *LocalMaterializationReceipt) GetReceiptId() string {
@@ -1548,7 +1624,7 @@ type ModelRuntimeServiceSealOutputResponse struct {
 
 func (x *ModelRuntimeServiceSealOutputResponse) Reset() {
 	*x = ModelRuntimeServiceSealOutputResponse{}
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[18]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1560,7 +1636,7 @@ func (x *ModelRuntimeServiceSealOutputResponse) String() string {
 func (*ModelRuntimeServiceSealOutputResponse) ProtoMessage() {}
 
 func (x *ModelRuntimeServiceSealOutputResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vela_v1_model_runtime_proto_msgTypes[18]
+	mi := &file_vela_v1_model_runtime_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1573,7 +1649,7 @@ func (x *ModelRuntimeServiceSealOutputResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use ModelRuntimeServiceSealOutputResponse.ProtoReflect.Descriptor instead.
 func (*ModelRuntimeServiceSealOutputResponse) Descriptor() ([]byte, []int) {
-	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{18}
+	return file_vela_v1_model_runtime_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ModelRuntimeServiceSealOutputResponse) GetAuthorityDigest() []byte {
@@ -1660,11 +1736,19 @@ const file_vela_v1_model_runtime_proto_rawDesc = "" +
 	"\x06sha256\x18\x03 \x01(\fR\x06sha256\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x04 \x01(\x03R\tsizeBytes\x12=\n" +
-	"\x1bstage_interface_revision_id\x18\x05 \x01(\tR\x18stageInterfaceRevisionIdJ\x04\b\x06\x10\a\"\xb5\x01\n" +
+	"\x1bstage_interface_revision_id\x18\x05 \x01(\tR\x18stageInterfaceRevisionIdJ\x04\b\x06\x10\a\"\x8a\x01\n" +
+	"\x16StageRootInputMaterial\x12'\n" +
+	"\x0fcondition_index\x18\x01 \x01(\x05R\x0econditionIndex\x12\x10\n" +
+	"\x03uri\x18\x02 \x01(\tR\x03uri\x12\x16\n" +
+	"\x06sha256\x18\x03 \x01(\fR\x06sha256\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x04 \x01(\x03R\tsizeBytes\"\xf7\x01\n" +
 	"\x12StageExecutionSpec\x123\n" +
 	"\x06inputs\x18\x01 \x03(\v2\x1b.vela.v1.StageInputArtifactR\x06inputs\x12'\n" +
 	"\x0fparameters_json\x18\x02 \x01(\fR\x0eparametersJson\x12A\n" +
-	"\x1dexpected_output_manifest_json\x18\x03 \x01(\fR\x1aexpectedOutputManifestJson\"\xa3\x01\n" +
+	"\x1dexpected_output_manifest_json\x18\x03 \x01(\fR\x1aexpectedOutputManifestJson\x12@\n" +
+	"\vroot_inputs\x18\x04 \x03(\v2\x1f.vela.v1.StageRootInputMaterialR\n" +
+	"rootInputs\"\xa3\x01\n" +
 	"&ModelRuntimeServicePrepareStageRequest\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12B\n" +
 	"\x0eexecution_spec\x18\x02 \x01(\v2\x1b.vela.v1.StageExecutionSpecR\rexecutionSpec\"\xb3\x02\n" +
@@ -1787,7 +1871,7 @@ func file_vela_v1_model_runtime_proto_rawDescGZIP() []byte {
 }
 
 var file_vela_v1_model_runtime_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_vela_v1_model_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_vela_v1_model_runtime_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_vela_v1_model_runtime_proto_goTypes = []any{
 	(ModelRuntimeReadinessCheck)(0),                              // 0: vela.v1.ModelRuntimeReadinessCheck
 	(ModelRuntimeCommandDecision)(0),                             // 1: vela.v1.ModelRuntimeCommandDecision
@@ -1799,21 +1883,22 @@ var file_vela_v1_model_runtime_proto_goTypes = []any{
 	(*ModelRuntimeServiceProbeReadinessRequest)(nil),             // 7: vela.v1.ModelRuntimeServiceProbeReadinessRequest
 	(*ModelRuntimeServiceProbeReadinessResponse)(nil),            // 8: vela.v1.ModelRuntimeServiceProbeReadinessResponse
 	(*StageInputArtifact)(nil),                                   // 9: vela.v1.StageInputArtifact
-	(*StageExecutionSpec)(nil),                                   // 10: vela.v1.StageExecutionSpec
-	(*ModelRuntimeServicePrepareStageRequest)(nil),               // 11: vela.v1.ModelRuntimeServicePrepareStageRequest
-	(*ModelRuntimeServicePrepareStageResponse)(nil),              // 12: vela.v1.ModelRuntimeServicePrepareStageResponse
-	(*ModelRuntimeServiceStartStageRequest)(nil),                 // 13: vela.v1.ModelRuntimeServiceStartStageRequest
-	(*ModelRuntimeServiceStartStageResponse)(nil),                // 14: vela.v1.ModelRuntimeServiceStartStageResponse
-	(*ModelRuntimeServiceCancelStageRequest)(nil),                // 15: vela.v1.ModelRuntimeServiceCancelStageRequest
-	(*ModelRuntimeServiceCancelStageResponse)(nil),               // 16: vela.v1.ModelRuntimeServiceCancelStageResponse
-	(*ModelRuntimeServiceStatusRequest)(nil),                     // 17: vela.v1.ModelRuntimeServiceStatusRequest
-	(*ModelRuntimeFailureEvidence)(nil),                          // 18: vela.v1.ModelRuntimeFailureEvidence
-	(*ModelRuntimeServiceStatusResponse)(nil),                    // 19: vela.v1.ModelRuntimeServiceStatusResponse
-	(*ModelRuntimeServiceSealOutputRequest)(nil),                 // 20: vela.v1.ModelRuntimeServiceSealOutputRequest
-	(*LocalMaterializationReceipt)(nil),                          // 21: vela.v1.LocalMaterializationReceipt
-	(*ModelRuntimeServiceSealOutputResponse)(nil),                // 22: vela.v1.ModelRuntimeServiceSealOutputResponse
-	(*StageAuthority)(nil),                                       // 23: vela.v1.StageAuthority
-	(*timestamppb.Timestamp)(nil),                                // 24: google.protobuf.Timestamp
+	(*StageRootInputMaterial)(nil),                               // 10: vela.v1.StageRootInputMaterial
+	(*StageExecutionSpec)(nil),                                   // 11: vela.v1.StageExecutionSpec
+	(*ModelRuntimeServicePrepareStageRequest)(nil),               // 12: vela.v1.ModelRuntimeServicePrepareStageRequest
+	(*ModelRuntimeServicePrepareStageResponse)(nil),              // 13: vela.v1.ModelRuntimeServicePrepareStageResponse
+	(*ModelRuntimeServiceStartStageRequest)(nil),                 // 14: vela.v1.ModelRuntimeServiceStartStageRequest
+	(*ModelRuntimeServiceStartStageResponse)(nil),                // 15: vela.v1.ModelRuntimeServiceStartStageResponse
+	(*ModelRuntimeServiceCancelStageRequest)(nil),                // 16: vela.v1.ModelRuntimeServiceCancelStageRequest
+	(*ModelRuntimeServiceCancelStageResponse)(nil),               // 17: vela.v1.ModelRuntimeServiceCancelStageResponse
+	(*ModelRuntimeServiceStatusRequest)(nil),                     // 18: vela.v1.ModelRuntimeServiceStatusRequest
+	(*ModelRuntimeFailureEvidence)(nil),                          // 19: vela.v1.ModelRuntimeFailureEvidence
+	(*ModelRuntimeServiceStatusResponse)(nil),                    // 20: vela.v1.ModelRuntimeServiceStatusResponse
+	(*ModelRuntimeServiceSealOutputRequest)(nil),                 // 21: vela.v1.ModelRuntimeServiceSealOutputRequest
+	(*LocalMaterializationReceipt)(nil),                          // 22: vela.v1.LocalMaterializationReceipt
+	(*ModelRuntimeServiceSealOutputResponse)(nil),                // 23: vela.v1.ModelRuntimeServiceSealOutputResponse
+	(*StageAuthority)(nil),                                       // 24: vela.v1.StageAuthority
+	(*timestamppb.Timestamp)(nil),                                // 25: google.protobuf.Timestamp
 }
 var file_vela_v1_model_runtime_proto_depIdxs = []int32{
 	6,  // 0: vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse.identities:type_name -> vela.v1.ModelRuntimeIdentity
@@ -1822,53 +1907,54 @@ var file_vela_v1_model_runtime_proto_depIdxs = []int32{
 	6,  // 3: vela.v1.ModelRuntimeServiceProbeReadinessResponse.identity:type_name -> vela.v1.ModelRuntimeIdentity
 	0,  // 4: vela.v1.ModelRuntimeServiceProbeReadinessResponse.check:type_name -> vela.v1.ModelRuntimeReadinessCheck
 	9,  // 5: vela.v1.StageExecutionSpec.inputs:type_name -> vela.v1.StageInputArtifact
-	23, // 6: vela.v1.ModelRuntimeServicePrepareStageRequest.authority:type_name -> vela.v1.StageAuthority
-	10, // 7: vela.v1.ModelRuntimeServicePrepareStageRequest.execution_spec:type_name -> vela.v1.StageExecutionSpec
-	1,  // 8: vela.v1.ModelRuntimeServicePrepareStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 9: vela.v1.ModelRuntimeServicePrepareStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	6,  // 10: vela.v1.ModelRuntimeServicePrepareStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	23, // 11: vela.v1.ModelRuntimeServiceStartStageRequest.authority:type_name -> vela.v1.StageAuthority
-	1,  // 12: vela.v1.ModelRuntimeServiceStartStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 13: vela.v1.ModelRuntimeServiceStartStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	24, // 14: vela.v1.ModelRuntimeServiceStartStageResponse.started_at:type_name -> google.protobuf.Timestamp
-	6,  // 15: vela.v1.ModelRuntimeServiceStartStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	23, // 16: vela.v1.ModelRuntimeServiceCancelStageRequest.authority:type_name -> vela.v1.StageAuthority
-	3,  // 17: vela.v1.ModelRuntimeServiceCancelStageRequest.reason:type_name -> vela.v1.ModelRuntimeCancelReason
-	1,  // 18: vela.v1.ModelRuntimeServiceCancelStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 19: vela.v1.ModelRuntimeServiceCancelStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	6,  // 20: vela.v1.ModelRuntimeServiceCancelStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	23, // 21: vela.v1.ModelRuntimeServiceStatusRequest.authority:type_name -> vela.v1.StageAuthority
-	24, // 22: vela.v1.ModelRuntimeFailureEvidence.failed_at:type_name -> google.protobuf.Timestamp
-	24, // 23: vela.v1.ModelRuntimeFailureEvidence.retry_at:type_name -> google.protobuf.Timestamp
-	1,  // 24: vela.v1.ModelRuntimeServiceStatusResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 25: vela.v1.ModelRuntimeServiceStatusResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	6,  // 26: vela.v1.ModelRuntimeServiceStatusResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	18, // 27: vela.v1.ModelRuntimeServiceStatusResponse.failure_evidence:type_name -> vela.v1.ModelRuntimeFailureEvidence
-	23, // 28: vela.v1.ModelRuntimeServiceSealOutputRequest.authority:type_name -> vela.v1.StageAuthority
-	24, // 29: vela.v1.LocalMaterializationReceipt.sealed_at:type_name -> google.protobuf.Timestamp
-	1,  // 30: vela.v1.ModelRuntimeServiceSealOutputResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
-	2,  // 31: vela.v1.ModelRuntimeServiceSealOutputResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
-	21, // 32: vela.v1.ModelRuntimeServiceSealOutputResponse.receipt:type_name -> vela.v1.LocalMaterializationReceipt
-	6,  // 33: vela.v1.ModelRuntimeServiceSealOutputResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
-	4,  // 34: vela.v1.ModelRuntimeService.DiscoverRuntimeIdentities:input_type -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest
-	7,  // 35: vela.v1.ModelRuntimeService.ProbeReadiness:input_type -> vela.v1.ModelRuntimeServiceProbeReadinessRequest
-	11, // 36: vela.v1.ModelRuntimeService.PrepareStage:input_type -> vela.v1.ModelRuntimeServicePrepareStageRequest
-	13, // 37: vela.v1.ModelRuntimeService.StartStage:input_type -> vela.v1.ModelRuntimeServiceStartStageRequest
-	15, // 38: vela.v1.ModelRuntimeService.CancelStage:input_type -> vela.v1.ModelRuntimeServiceCancelStageRequest
-	17, // 39: vela.v1.ModelRuntimeService.Status:input_type -> vela.v1.ModelRuntimeServiceStatusRequest
-	20, // 40: vela.v1.ModelRuntimeService.SealOutput:input_type -> vela.v1.ModelRuntimeServiceSealOutputRequest
-	5,  // 41: vela.v1.ModelRuntimeService.DiscoverRuntimeIdentities:output_type -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
-	8,  // 42: vela.v1.ModelRuntimeService.ProbeReadiness:output_type -> vela.v1.ModelRuntimeServiceProbeReadinessResponse
-	12, // 43: vela.v1.ModelRuntimeService.PrepareStage:output_type -> vela.v1.ModelRuntimeServicePrepareStageResponse
-	14, // 44: vela.v1.ModelRuntimeService.StartStage:output_type -> vela.v1.ModelRuntimeServiceStartStageResponse
-	16, // 45: vela.v1.ModelRuntimeService.CancelStage:output_type -> vela.v1.ModelRuntimeServiceCancelStageResponse
-	19, // 46: vela.v1.ModelRuntimeService.Status:output_type -> vela.v1.ModelRuntimeServiceStatusResponse
-	22, // 47: vela.v1.ModelRuntimeService.SealOutput:output_type -> vela.v1.ModelRuntimeServiceSealOutputResponse
-	41, // [41:48] is the sub-list for method output_type
-	34, // [34:41] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	10, // 6: vela.v1.StageExecutionSpec.root_inputs:type_name -> vela.v1.StageRootInputMaterial
+	24, // 7: vela.v1.ModelRuntimeServicePrepareStageRequest.authority:type_name -> vela.v1.StageAuthority
+	11, // 8: vela.v1.ModelRuntimeServicePrepareStageRequest.execution_spec:type_name -> vela.v1.StageExecutionSpec
+	1,  // 9: vela.v1.ModelRuntimeServicePrepareStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 10: vela.v1.ModelRuntimeServicePrepareStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	6,  // 11: vela.v1.ModelRuntimeServicePrepareStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	24, // 12: vela.v1.ModelRuntimeServiceStartStageRequest.authority:type_name -> vela.v1.StageAuthority
+	1,  // 13: vela.v1.ModelRuntimeServiceStartStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 14: vela.v1.ModelRuntimeServiceStartStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	25, // 15: vela.v1.ModelRuntimeServiceStartStageResponse.started_at:type_name -> google.protobuf.Timestamp
+	6,  // 16: vela.v1.ModelRuntimeServiceStartStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	24, // 17: vela.v1.ModelRuntimeServiceCancelStageRequest.authority:type_name -> vela.v1.StageAuthority
+	3,  // 18: vela.v1.ModelRuntimeServiceCancelStageRequest.reason:type_name -> vela.v1.ModelRuntimeCancelReason
+	1,  // 19: vela.v1.ModelRuntimeServiceCancelStageResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 20: vela.v1.ModelRuntimeServiceCancelStageResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	6,  // 21: vela.v1.ModelRuntimeServiceCancelStageResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	24, // 22: vela.v1.ModelRuntimeServiceStatusRequest.authority:type_name -> vela.v1.StageAuthority
+	25, // 23: vela.v1.ModelRuntimeFailureEvidence.failed_at:type_name -> google.protobuf.Timestamp
+	25, // 24: vela.v1.ModelRuntimeFailureEvidence.retry_at:type_name -> google.protobuf.Timestamp
+	1,  // 25: vela.v1.ModelRuntimeServiceStatusResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 26: vela.v1.ModelRuntimeServiceStatusResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	6,  // 27: vela.v1.ModelRuntimeServiceStatusResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	19, // 28: vela.v1.ModelRuntimeServiceStatusResponse.failure_evidence:type_name -> vela.v1.ModelRuntimeFailureEvidence
+	24, // 29: vela.v1.ModelRuntimeServiceSealOutputRequest.authority:type_name -> vela.v1.StageAuthority
+	25, // 30: vela.v1.LocalMaterializationReceipt.sealed_at:type_name -> google.protobuf.Timestamp
+	1,  // 31: vela.v1.ModelRuntimeServiceSealOutputResponse.decision:type_name -> vela.v1.ModelRuntimeCommandDecision
+	2,  // 32: vela.v1.ModelRuntimeServiceSealOutputResponse.state:type_name -> vela.v1.ModelRuntimeExecutionState
+	22, // 33: vela.v1.ModelRuntimeServiceSealOutputResponse.receipt:type_name -> vela.v1.LocalMaterializationReceipt
+	6,  // 34: vela.v1.ModelRuntimeServiceSealOutputResponse.runtime_identity:type_name -> vela.v1.ModelRuntimeIdentity
+	4,  // 35: vela.v1.ModelRuntimeService.DiscoverRuntimeIdentities:input_type -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest
+	7,  // 36: vela.v1.ModelRuntimeService.ProbeReadiness:input_type -> vela.v1.ModelRuntimeServiceProbeReadinessRequest
+	12, // 37: vela.v1.ModelRuntimeService.PrepareStage:input_type -> vela.v1.ModelRuntimeServicePrepareStageRequest
+	14, // 38: vela.v1.ModelRuntimeService.StartStage:input_type -> vela.v1.ModelRuntimeServiceStartStageRequest
+	16, // 39: vela.v1.ModelRuntimeService.CancelStage:input_type -> vela.v1.ModelRuntimeServiceCancelStageRequest
+	18, // 40: vela.v1.ModelRuntimeService.Status:input_type -> vela.v1.ModelRuntimeServiceStatusRequest
+	21, // 41: vela.v1.ModelRuntimeService.SealOutput:input_type -> vela.v1.ModelRuntimeServiceSealOutputRequest
+	5,  // 42: vela.v1.ModelRuntimeService.DiscoverRuntimeIdentities:output_type -> vela.v1.ModelRuntimeServiceDiscoverRuntimeIdentitiesResponse
+	8,  // 43: vela.v1.ModelRuntimeService.ProbeReadiness:output_type -> vela.v1.ModelRuntimeServiceProbeReadinessResponse
+	13, // 44: vela.v1.ModelRuntimeService.PrepareStage:output_type -> vela.v1.ModelRuntimeServicePrepareStageResponse
+	15, // 45: vela.v1.ModelRuntimeService.StartStage:output_type -> vela.v1.ModelRuntimeServiceStartStageResponse
+	17, // 46: vela.v1.ModelRuntimeService.CancelStage:output_type -> vela.v1.ModelRuntimeServiceCancelStageResponse
+	20, // 47: vela.v1.ModelRuntimeService.Status:output_type -> vela.v1.ModelRuntimeServiceStatusResponse
+	23, // 48: vela.v1.ModelRuntimeService.SealOutput:output_type -> vela.v1.ModelRuntimeServiceSealOutputResponse
+	42, // [42:49] is the sub-list for method output_type
+	35, // [35:42] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_vela_v1_model_runtime_proto_init() }
@@ -1877,14 +1963,14 @@ func file_vela_v1_model_runtime_proto_init() {
 		return
 	}
 	file_vela_v1_stage_authority_proto_init()
-	file_vela_v1_model_runtime_proto_msgTypes[15].OneofWrappers = []any{}
+	file_vela_v1_model_runtime_proto_msgTypes[16].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vela_v1_model_runtime_proto_rawDesc), len(file_vela_v1_model_runtime_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

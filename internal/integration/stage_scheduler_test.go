@@ -1325,6 +1325,14 @@ func (repository *tamperingStageRepository) Claim(
 }
 
 func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture {
+	return newStageSchedulerFixtureWithRequest(t, suffix, nil)
+}
+
+func newStageSchedulerFixtureWithRequest(
+	t *testing.T,
+	suffix string,
+	requestBody []byte,
+) stageSchedulerFixture {
 	t.Helper()
 	database := newPostgres(t)
 	applyFoundation(t, database.Admin)
@@ -1375,14 +1383,17 @@ func newStageSchedulerFixture(t *testing.T, suffix string) stageSchedulerFixture
 		t.Fatalf("observe %s WorkerInstance: %v", suffix, err)
 	}
 	server := admissionServerForDatabase(t, database)
-	accepted := submitJob(t, server.URL, "stage-scheduler-"+suffix, []byte(`{
-		"model":"minimax-h3",
-		"generation_preset":"balanced",
-		"service_class":"standard",
-		"output_spec":"video-1080p-5s-24fps",
-		"generation_count":1,
-		"prompt":"recover stage scheduling claim"
-	}`))
+	if requestBody == nil {
+		requestBody = []byte(`{
+			"model":"minimax-h3",
+			"generation_preset":"balanced",
+			"service_class":"standard",
+			"output_spec":"video-1080p-5s-24fps",
+			"generation_count":1,
+			"prompt":"recover stage scheduling claim"
+		}`)
+	}
+	accepted := submitJob(t, server.URL, "stage-scheduler-"+suffix, requestBody)
 	if accepted.StatusCode != 202 {
 		t.Fatalf("submit %s Job status=%d body=%s", suffix, accepted.StatusCode, accepted.Body)
 	}

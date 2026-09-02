@@ -5,8 +5,11 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageauthority"
@@ -17,6 +20,7 @@ import (
 const (
 	maxExecutionSpecBytes = 64 * 1024
 	maxExecutionInputs    = 64
+	maxRootInputs         = 64
 	maxMemberStartTimeout = 10 * time.Minute
 	MaxRequiredMembers    = 64
 )
@@ -75,6 +79,9 @@ func Validate(assignment *velav1.StageAssignment) (Contract, error) {
 	if err := validateInputTransferTickets(assignment); err != nil {
 		return Contract{}, err
 	}
+	if err := validateRootInputFetches(assignment); err != nil {
+		return Contract{}, err
+	}
 	return Contract{RequiredMemberIDs: required, MemberStartTimeout: timeout}, nil
 }
 
@@ -86,7 +93,8 @@ func ValidateExecutionSpec(spec *velav1.StageExecutionSpec) error {
 	if err != nil {
 		return fmt.Errorf("encode StageExecutionSpec: %w", err)
 	}
-	if len(encoded) > maxExecutionSpecBytes || len(spec.GetInputs()) > maxExecutionInputs {
+	if len(encoded) > maxExecutionSpecBytes || len(spec.GetInputs()) > maxExecutionInputs ||
+		len(spec.GetRootInputs()) > maxRootInputs {
 		return errors.New("StageExecutionSpec exceeds runtime bound")
 	}
 	for _, input := range spec.GetInputs() {
@@ -98,7 +106,47 @@ func ValidateExecutionSpec(spec *velav1.StageExecutionSpec) error {
 			return errors.New("StageExecutionSpec input Artifact is incomplete")
 		}
 	}
+	for index, input := range spec.GetRootInputs() {
+		if input == nil || input.GetConditionIndex() != int32(index) ||
+			!validRootInputText(input.GetUri(), 16*1024) ||
+			len(input.GetSha256()) != sha256.Size || input.GetSizeBytes() <= 0 ||
+			input.GetSizeBytes() > 32*1024*1024*1024 {
+			return errors.New("StageExecutionSpec root input is incomplete")
+		}
+	}
 	return nil
+}
+
+func validateRootInputFetches(assignment *velav1.StageAssignment) error {
+	rootInputs := assignment.GetExecutionSpec().GetRootInputs()
+	fetches := assignment.GetRootInputFetches()
+	if len(rootInputs) != len(fetches) {
+		return errors.New("StageAssignment root input fetch set is incomplete")
+	}
+	for index, input := range rootInputs {
+		fetch := fetches[index]
+		if fetch == nil || fetch.GetConditionIndex() != int32(index) ||
+			input.GetConditionIndex() != fetch.GetConditionIndex() ||
+			!bytes.Equal(input.GetSha256(), fetch.GetSha256()) ||
+			!validRootInputDownloadURL(fetch.GetDownloadUrl()) {
+			return errors.New("StageAssignment root input fetch does not match exact material")
+		}
+	}
+	return nil
+}
+
+func validRootInputDownloadURL(value string) bool {
+	if !validRootInputText(value, 16*1024) {
+		return false
+	}
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Scheme == "https" && parsed.Host != "" &&
+		parsed.User == nil && parsed.Fragment == ""
+}
+
+func validRootInputText(value string, maximum int) bool {
+	return value != "" && value == strings.TrimSpace(value) && len(value) <= maximum &&
+		utf8.ValidString(value) && !strings.ContainsRune(value, '\x00')
 }
 
 func validateInputTransferTickets(assignment *velav1.StageAssignment) error {

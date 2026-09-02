@@ -19,6 +19,7 @@ import (
 	"github.com/vivym/vela/internal/breakglass"
 	"github.com/vivym/vela/internal/cancellation"
 	"github.com/vivym/vela/internal/debugdump"
+	"github.com/vivym/vela/internal/h3request"
 	"github.com/vivym/vela/internal/identity"
 	"github.com/vivym/vela/internal/organizationreporting"
 	"github.com/vivym/vela/internal/remediation"
@@ -921,11 +922,55 @@ func (s *server) SubmitJob(
 		GenerationCount:  int32(request.Body.GenerationCount),
 		Prompt:           request.Body.Prompt,
 		ClientMetadata:   clientMetadata,
+		H3:               admissionH3Request(request.Body.H3),
 	})
 	if err != nil {
 		return submitFailure(err)
 	}
 	return api.SubmitJob202JSONResponse(toAPIJob(job)), nil
+}
+
+func admissionH3Request(input *api.H3Request) *h3request.Request {
+	if input == nil {
+		return nil
+	}
+	request := &h3request.Request{Seed: input.Seed}
+	if input.Task != nil {
+		request.Task = string(*input.Task)
+	}
+	if input.Conditions != nil {
+		request.Conditions = make([]h3request.Condition, 0, len(*input.Conditions))
+		for _, condition := range *input.Conditions {
+			request.Conditions = append(request.Conditions, h3request.Condition{
+				Role: condition.Role, Type: condition.Type, URI: condition.Uri,
+				DownloadURL: condition.DownloadUrl, SHA256: condition.Sha256,
+				SizeBytes: condition.SizeBytes, FrameIndex: condition.FrameIndex,
+				StartTimeSeconds: condition.StartTimeSeconds,
+			})
+		}
+	}
+	if input.Target != nil {
+		if input.Target.ShortEdge != nil {
+			request.Target.ShortEdge = *input.Target.ShortEdge
+		}
+		if input.Target.AspectRatio != nil {
+			request.Target.AspectRatio = *input.Target.AspectRatio
+		}
+		request.Target.DurationSeconds = input.Target.DurationSeconds
+	}
+	if input.Sampling != nil {
+		if input.Sampling.NumInferenceSteps != nil {
+			request.Sampling.NumInferenceSteps = *input.Sampling.NumInferenceSteps
+		}
+		if input.Sampling.Quality != nil {
+			request.Sampling.Quality = string(*input.Sampling.Quality)
+		}
+		request.Sampling.ImageVideoConditionNoiseAugmentation =
+			input.Sampling.ImgvidCondNoiseAugForInference
+		request.Sampling.AudioConditionNoiseAugmentation =
+			input.Sampling.AudioCondNoiseAugForInference
+	}
+	return request
 }
 
 func (s *server) GetJob(

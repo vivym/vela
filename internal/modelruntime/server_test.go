@@ -364,7 +364,8 @@ func runtimeServerLaunchRuntime(root, residency, identity, profile, component st
 		ModelResidencyID: residency, RuntimeIdentity: identity, StageProfileRevisionID: profile,
 		Component: component, ModelComponentRevision: "minimax-h3-" + component + "-r1",
 		RuntimeImageDigest: repeatHex("c"), Command: []string{"/usr/local/bin/minimax-h3-driver"},
-		ScratchRoot: root, OutputRoot: filepath.Join(root, identity+"-outputs"),
+		ScratchRoot: root, InputRoot: filepath.Join(root, "inputs"),
+		OutputRoot:            filepath.Join(root, identity+"-outputs"),
 		InitializationTimeout: "2h", ShutdownTimeout: "2m",
 	}
 }

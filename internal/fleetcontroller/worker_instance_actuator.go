@@ -743,7 +743,6 @@ func encodeModelRuntimeLaunchManifest(
 		})
 	}
 	for _, runtime := range worker.ModelRuntimes {
-		scratchRoot := modelRuntimeScratchRoot(runtime.Component)
 		manifest.Runtimes = append(manifest.Runtimes, modelruntime.LaunchRuntime{
 			ModelResidencyID:       runtime.ModelResidencyID.String(),
 			RuntimeIdentity:        runtime.RuntimeIdentity,
@@ -754,9 +753,11 @@ func encodeModelRuntimeLaunchManifest(
 			RuntimeImageDigest:     runtimeImageDigest,
 			Command:                append([]string(nil), runtime.Command...),
 			Environment:            append([]string(nil), runtime.Environment...),
-			ScratchRoot:            scratchRoot, OutputRoot: scratchRoot + "/outputs",
-			InitializationTimeout: runtime.InitializationTimeout,
-			ShutdownTimeout:       runtime.ShutdownTimeout,
+			ScratchRoot:            stageWorkerScratchRoot,
+			InputRoot:              stageWorkerScratchRoot + "/inputs",
+			OutputRoot:             stageWorkerScratchRoot + "/outputs",
+			InitializationTimeout:  runtime.InitializationTimeout,
+			ShutdownTimeout:        runtime.ShutdownTimeout,
 		})
 	}
 	encoded, err := modelruntime.EncodeLaunchManifest(manifest)
@@ -764,10 +765,6 @@ func encodeModelRuntimeLaunchManifest(
 		return "", fmt.Errorf("validate and encode ModelRuntime launch manifest: %w", err)
 	}
 	return string(encoded), nil
-}
-
-func modelRuntimeScratchRoot(component string) string {
-	return stageWorkerScratchRoot + "/model-runtime/" + strings.ToLower(component)
 }
 
 func modelRuntimeTerminationGraceSeconds(worker WorkerInstanceActuation) int64 {
@@ -782,10 +779,10 @@ func modelRuntimeTerminationGraceSeconds(worker WorkerInstanceActuation) int64 {
 }
 
 func modelRuntimeDirectories(worker WorkerInstanceActuation) string {
-	directories := []string{modelRuntimeEpochDirectory}
-	for _, runtime := range worker.ModelRuntimes {
-		scratchRoot := modelRuntimeScratchRoot(runtime.Component)
-		directories = append(directories, scratchRoot, scratchRoot+"/outputs")
+	directories := []string{
+		modelRuntimeEpochDirectory,
+		stageWorkerScratchRoot + "/inputs",
+		stageWorkerScratchRoot + "/outputs",
 	}
 	return strings.Join(directories, " ")
 }

@@ -313,38 +313,53 @@ type assignmentInputSnapshot struct {
 	ConnectorRevisionID      uuid.UUID `json:"connector_revision_id"`
 }
 
+type assignmentRootInputSnapshot struct {
+	ConditionIndex int32  `json:"condition_index"`
+	URI            string `json:"uri"`
+	SHA256Hex      string `json:"sha256"`
+	SizeBytes      int64  `json:"size_bytes"`
+}
+
+type assignmentRootInputFetchSnapshot struct {
+	ConditionIndex int32  `json:"condition_index"`
+	SHA256Hex      string `json:"sha256"`
+	DownloadURL    string `json:"download_url"`
+}
+
 type assignmentExecutionSnapshot struct {
-	JobID                         uuid.UUID                 `json:"job_id"`
-	AttemptID                     uuid.UUID                 `json:"attempt_id"`
-	AttemptFence                  int64                     `json:"attempt_fence"`
-	StageRunID                    uuid.UUID                 `json:"stage_run_id"`
-	StageFence                    int64                     `json:"stage_fence"`
-	StageVersion                  int64                     `json:"stage_version"`
-	StageAttemptID                uuid.UUID                 `json:"stage_attempt_id"`
-	StageAllocationID             uuid.UUID                 `json:"stage_allocation_id"`
-	StageLeaseID                  uuid.UUID                 `json:"stage_lease_id"`
-	StageProfileRevisionID        uuid.UUID                 `json:"stage_profile_revision_id"`
-	WorkerInstanceID              uuid.UUID                 `json:"worker_instance_id"`
-	WorkerInstanceEpoch           int64                     `json:"worker_instance_epoch"`
-	DeviceSetDigestHex            string                    `json:"device_set_digest"`
-	MembershipDigestHex           string                    `json:"membership_digest"`
-	ModelResidencyID              uuid.UUID                 `json:"model_residency_id"`
-	ModelRuntimeIdentity          string                    `json:"model_runtime_identity"`
-	ModelRuntimeEpoch             int64                     `json:"model_runtime_epoch"`
-	ModelRuntimeBarrierGeneration int64                     `json:"model_runtime_barrier_generation"`
-	CapacityObservationSequence   int64                     `json:"capacity_observation_sequence"`
-	CapacityVector                map[string]int64          `json:"capacity_vector"`
-	LeaseTokenDigestHex           string                    `json:"lease_token_digest"`
-	ExecutionNonceHex             string                    `json:"execution_nonce"`
-	SigningKeyID                  string                    `json:"signing_key_id"`
-	IssuedAt                      time.Time                 `json:"issued_at"`
-	ExpiresAt                     time.Time                 `json:"expires_at"`
-	LocalDeadlineAt               time.Time                 `json:"local_deadline_at"`
-	Parameters                    json.RawMessage           `json:"parameters"`
-	ExpectedOutputManifest        json.RawMessage           `json:"expected_output_manifest"`
-	Members                       []authorityMember         `json:"members"`
-	Devices                       []authorityDevice         `json:"devices"`
-	Inputs                        []assignmentInputSnapshot `json:"inputs"`
+	JobID                         uuid.UUID                          `json:"job_id"`
+	AttemptID                     uuid.UUID                          `json:"attempt_id"`
+	AttemptFence                  int64                              `json:"attempt_fence"`
+	StageRunID                    uuid.UUID                          `json:"stage_run_id"`
+	StageFence                    int64                              `json:"stage_fence"`
+	StageVersion                  int64                              `json:"stage_version"`
+	StageAttemptID                uuid.UUID                          `json:"stage_attempt_id"`
+	StageAllocationID             uuid.UUID                          `json:"stage_allocation_id"`
+	StageLeaseID                  uuid.UUID                          `json:"stage_lease_id"`
+	StageProfileRevisionID        uuid.UUID                          `json:"stage_profile_revision_id"`
+	WorkerInstanceID              uuid.UUID                          `json:"worker_instance_id"`
+	WorkerInstanceEpoch           int64                              `json:"worker_instance_epoch"`
+	DeviceSetDigestHex            string                             `json:"device_set_digest"`
+	MembershipDigestHex           string                             `json:"membership_digest"`
+	ModelResidencyID              uuid.UUID                          `json:"model_residency_id"`
+	ModelRuntimeIdentity          string                             `json:"model_runtime_identity"`
+	ModelRuntimeEpoch             int64                              `json:"model_runtime_epoch"`
+	ModelRuntimeBarrierGeneration int64                              `json:"model_runtime_barrier_generation"`
+	CapacityObservationSequence   int64                              `json:"capacity_observation_sequence"`
+	CapacityVector                map[string]int64                   `json:"capacity_vector"`
+	LeaseTokenDigestHex           string                             `json:"lease_token_digest"`
+	ExecutionNonceHex             string                             `json:"execution_nonce"`
+	SigningKeyID                  string                             `json:"signing_key_id"`
+	IssuedAt                      time.Time                          `json:"issued_at"`
+	ExpiresAt                     time.Time                          `json:"expires_at"`
+	LocalDeadlineAt               time.Time                          `json:"local_deadline_at"`
+	Parameters                    json.RawMessage                    `json:"parameters"`
+	ExpectedOutputManifest        json.RawMessage                    `json:"expected_output_manifest"`
+	Members                       []authorityMember                  `json:"members"`
+	Devices                       []authorityDevice                  `json:"devices"`
+	Inputs                        []assignmentInputSnapshot          `json:"inputs"`
+	RootInputs                    []assignmentRootInputSnapshot      `json:"root_inputs"`
+	RootInputFetches              []assignmentRootInputFetchSnapshot `json:"root_input_fetches"`
 }
 
 func (backend *PostgresAssignmentBackend) readExecution(
@@ -408,7 +423,8 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 	}
 	spec := &velav1.StageExecutionSpec{
 		ParametersJson: parameters, ExpectedOutputManifestJson: manifest,
-		Inputs: make([]*velav1.StageInputArtifact, 0, len(snapshot.Inputs)),
+		Inputs:     make([]*velav1.StageInputArtifact, 0, len(snapshot.Inputs)),
+		RootInputs: make([]*velav1.StageRootInputMaterial, 0, len(snapshot.RootInputs)),
 	}
 	for _, input := range snapshot.Inputs {
 		digest, decodeErr := hex.DecodeString(input.SHA256Hex)
@@ -419,6 +435,16 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 			StageArtifactId: input.StageArtifactID.String(), ObjectVersion: input.ObjectVersion,
 			Sha256: digest, SizeBytes: input.SizeBytes,
 			StageInterfaceRevisionId: input.StageInterfaceRevisionID.String(),
+		})
+	}
+	for _, input := range snapshot.RootInputs {
+		digest, decodeErr := hex.DecodeString(input.SHA256Hex)
+		if decodeErr != nil || len(digest) != sha256.Size {
+			return nil, errors.New("StageAssignment root input digest is malformed")
+		}
+		spec.RootInputs = append(spec.RootInputs, &velav1.StageRootInputMaterial{
+			ConditionIndex: input.ConditionIndex, Uri: input.URI,
+			Sha256: digest, SizeBytes: input.SizeBytes,
 		})
 	}
 	specDigest, err := stageauthority.ExecutionSpecDigest(spec)
@@ -470,6 +496,21 @@ func (backend *PostgresAssignmentBackend) buildAssignment(
 		RequiredWorkerMemberIds: requiredMembers,
 		MemberStartTimeout:      durationpb.New(backend.memberStartTimeout),
 		InputTransferTickets:    make([]*velav1.StageInputTransferTicket, 0, len(snapshot.Inputs)),
+		RootInputFetches:        make([]*velav1.StageRootInputFetch, 0, len(snapshot.RootInputFetches)),
+	}
+	if len(snapshot.RootInputs) != len(snapshot.RootInputFetches) {
+		return nil, errors.New("StageAssignment root input fetch snapshot is incomplete")
+	}
+	for index, fetch := range snapshot.RootInputFetches {
+		digest, decodeErr := hex.DecodeString(fetch.SHA256Hex)
+		if decodeErr != nil || len(digest) != sha256.Size ||
+			fetch.ConditionIndex != snapshot.RootInputs[index].ConditionIndex ||
+			fetch.SHA256Hex != snapshot.RootInputs[index].SHA256Hex {
+			return nil, errors.New("StageAssignment root input fetch snapshot is malformed")
+		}
+		assignment.RootInputFetches = append(assignment.RootInputFetches, &velav1.StageRootInputFetch{
+			ConditionIndex: fetch.ConditionIndex, Sha256: digest, DownloadUrl: fetch.DownloadURL,
+		})
 	}
 	for _, input := range snapshot.Inputs {
 		ticketExpiry := minTime(

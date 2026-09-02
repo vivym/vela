@@ -25,6 +25,10 @@ func TestRunServesResidentRuntimeUntilShutdown(t *testing.T) {
 		t.Fatalf("resolve test executable: %v", err)
 	}
 	root := t.TempDir()
+	inputRoot := filepath.Join(root, "inputs")
+	if err := os.Mkdir(inputRoot, 0o700); err != nil {
+		t.Fatalf("create input root: %v", err)
+	}
 	outputRoot := filepath.Join(root, "outputs")
 	if err := os.Mkdir(outputRoot, 0o700); err != nil {
 		t.Fatalf("create output root: %v", err)
@@ -194,7 +198,7 @@ func commandLaunchManifest(root, outputRoot, executable, eventPath string) model
 				"GO_WANT_VELA_MODEL_RUNTIME_DRIVER=1",
 				"TEST_VELA_MODEL_RUNTIME_DRIVER_EVENTS=" + eventPath,
 			},
-			ScratchRoot: root, OutputRoot: outputRoot,
+			ScratchRoot: root, InputRoot: filepath.Join(root, "inputs"), OutputRoot: outputRoot,
 			InitializationTimeout: "5s", ShutdownTimeout: "5s",
 		}},
 	}
