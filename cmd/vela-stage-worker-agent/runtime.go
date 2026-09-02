@@ -60,14 +60,14 @@ func runWithContextUsing(
 	builder stageWorkerRuntimeBuilder,
 ) error {
 	if ctx == nil || builder == nil {
-		return errors.New("Stage Worker run context and builder are required")
+		return errors.New("stage worker run context and builder are required")
 	}
 	runtime, err := builder(ctx, configuration)
 	if err != nil {
 		return err
 	}
 	if runtime == nil {
-		return errors.New("Stage Worker runtime builder returned no runtime")
+		return errors.New("stage worker runtime builder returned no runtime")
 	}
 	runErr := runtime.Run(ctx)
 	closeErr := runtime.Close()
@@ -76,7 +76,7 @@ func runWithContextUsing(
 
 func newProductionRuntime(ctx context.Context, configuration config) (stageWorkerRuntime, error) {
 	if ctx == nil {
-		return nil, errors.New("Stage Worker production context is required")
+		return nil, errors.New("stage worker production context is required")
 	}
 	if err := ensureStageWorkerDirectories(configuration); err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 	}
 	defer stageauthority.ClearKeyring(keyring)
 	if _, ok := keyring[configuration.authorityActiveKeyID]; !ok {
-		return nil, errors.New("Stage Worker active authority key is absent from keyring")
+		return nil, errors.New("stage worker active authority key is absent from keyring")
 	}
 	materializationValidator, err := materializationauthority.NewValidator(keyring, time.Now)
 	if err != nil {
@@ -379,7 +379,7 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 
 func (runtime *productionRuntime) Run(ctx context.Context) error {
 	if runtime == nil || runtime.agent == nil {
-		return errors.New("Stage Worker production runtime is incomplete")
+		return errors.New("stage worker production runtime is incomplete")
 	}
 	if runtime.memberServer == nil {
 		return runtime.agent.Run(ctx)
@@ -395,7 +395,7 @@ func (runtime *productionRuntime) Run(ctx context.Context) error {
 		cancel()
 		agentErr := <-agentErrors
 		if err == nil || errors.Is(err, grpc.ErrServerStopped) {
-			return errors.Join(errors.New("Stage Worker member service stopped unexpectedly"), agentErr)
+			return errors.Join(errors.New("stage worker member service stopped unexpectedly"), agentErr)
 		}
 		return errors.Join(fmt.Errorf("serve Stage Worker member service: %w", err), agentErr)
 	case <-ctx.Done():
@@ -469,7 +469,7 @@ func configuredRuntimeMembers(
 	error,
 ) {
 	if len(configuration.members) == 0 || len(configuration.members) > 64 {
-		return nil, nil, memberConfig{}, errors.New("Stage Worker member topology is incomplete")
+		return nil, nil, memberConfig{}, errors.New("stage worker member topology is incomplete")
 	}
 	authorityMembers := make([]*velav1.StageAuthorityMemberEpoch, 0, len(configuration.members))
 	bindings := make([]stageworkermembertransport.MemberBinding, 0, len(configuration.members))
@@ -480,7 +480,7 @@ func configuredRuntimeMembers(
 		if member.workerMemberID == uuid.Nil || member.memberEpoch <= 0 ||
 			len(member.identityDigest) != sha256.Size ||
 			(previousID != "" && id <= previousID) {
-			return nil, nil, memberConfig{}, errors.New("Stage Worker member topology is invalid")
+			return nil, nil, memberConfig{}, errors.New("stage worker member topology is invalid")
 		}
 		authorityMembers = append(authorityMembers, &velav1.StageAuthorityMemberEpoch{
 			WorkerMemberId: id,
@@ -492,14 +492,14 @@ func configuredRuntimeMembers(
 		})
 		if member.workerMemberID == configuration.workerMemberID {
 			if local.workerMemberID != uuid.Nil || member.memberEpoch != configuration.workerMemberEpoch {
-				return nil, nil, memberConfig{}, errors.New("Stage Worker member topology does not match local member")
+				return nil, nil, memberConfig{}, errors.New("stage worker member topology does not match local member")
 			}
 			local = member
 		}
 		previousID = id
 	}
 	if local.workerMemberID == uuid.Nil {
-		return nil, nil, memberConfig{}, errors.New("Stage Worker member topology omits local member")
+		return nil, nil, memberConfig{}, errors.New("stage worker member topology omits local member")
 	}
 	return authorityMembers, bindings, local, nil
 }
@@ -511,15 +511,15 @@ func validateLocalMemberCertificateIdentity(path string, expected [sha256.Size]b
 	}
 	block, _ := pem.Decode(certificatePEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		return errors.New("Stage Worker member certificate contains no leaf certificate")
+		return errors.New("stage worker member certificate contains no leaf certificate")
 	}
 	certificate, err := x509.ParseCertificate(block.Bytes)
 	if err != nil || len(certificate.URIs) != 1 || !validMemberSPIFFEURI(certificate.URIs[0]) {
-		return errors.New("Stage Worker member certificate has no unique SPIFFE identity")
+		return errors.New("stage worker member certificate has no unique SPIFFE identity")
 	}
 	digest := sha256.Sum256([]byte(certificate.URIs[0].String()))
 	if !bytes.Equal(digest[:], expected[:]) {
-		return errors.New("Stage Worker member certificate identity digest does not match topology")
+		return errors.New("stage worker member certificate identity digest does not match topology")
 	}
 	return nil
 }
@@ -565,7 +565,7 @@ func sourceLossEvidenceProvider(
 	) (stageworkeragent.MaterializationSourceLossEvidence, error) {
 		if ctx == nil || now == nil {
 			return stageworkeragent.MaterializationSourceLossEvidence{},
-				errors.New("Stage Worker source-loss evidence context is invalid")
+				errors.New("stage worker source-loss evidence context is invalid")
 		}
 		if err := ctx.Err(); err != nil {
 			return stageworkeragent.MaterializationSourceLossEvidence{}, err
@@ -574,7 +574,7 @@ func sourceLossEvidenceProvider(
 		if err != nil || record.LocalReceipt == nil ||
 			len(record.LocalReceipt.GetManifestSha256()) != sha256.Size {
 			return stageworkeragent.MaterializationSourceLossEvidence{},
-				errors.New("Stage Worker source-loss evidence record is invalid")
+				errors.New("stage worker source-loss evidence record is invalid")
 		}
 		digest := sha256.New()
 		_, _ = digest.Write([]byte("vela/stage-worker/materialization-source-loss/v1\x00"))
@@ -594,7 +594,7 @@ func sourceLossEvidenceProvider(
 
 func waitContext(ctx context.Context, duration time.Duration) error {
 	if ctx == nil || duration <= 0 {
-		return errors.New("Stage Worker wait is invalid")
+		return errors.New("stage worker wait is invalid")
 	}
 	timer := time.NewTimer(duration)
 	defer timer.Stop()

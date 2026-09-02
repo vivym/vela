@@ -9,7 +9,7 @@ import (
 
 func TestCaptureDoubleReadsOneStableAuthoritativeCampaign(t *testing.T) {
 	input := physicalCampaignInput()
-	input.EvidenceBinding.seal = sealEvidenceBinding(input.EvidenceBinding)
+	input.seal = sealEvidenceBinding(input.EvidenceBinding)
 	now := time.Now().UTC()
 	setCaptureFixtureTimes(&input, now)
 	selection := Selection{
@@ -40,7 +40,7 @@ func TestCaptureDoubleReadsOneStableAuthoritativeCampaign(t *testing.T) {
 
 func TestCaptureRejectsCampaignAuthorityDrift(t *testing.T) {
 	input := physicalCampaignInput()
-	input.EvidenceBinding.seal = sealEvidenceBinding(input.EvidenceBinding)
+	input.seal = sealEvidenceBinding(input.EvidenceBinding)
 	now := time.Now().UTC()
 	setCaptureFixtureTimes(&input, now)
 	selection := Selection{
@@ -77,7 +77,7 @@ func TestCaptureRejectsCampaignAuthorityDrift(t *testing.T) {
 
 func TestCaptureRejectsMutatedSealedReleaseBinding(t *testing.T) {
 	input := physicalCampaignInput()
-	input.EvidenceBinding.seal = sealEvidenceBinding(input.EvidenceBinding)
+	input.seal = sealEvidenceBinding(input.EvidenceBinding)
 	input.ReleaseDigest = digest('9')
 	reader := &sequenceCampaignReader{}
 	_, err := Capture(context.Background(), reader, CaptureRequest{

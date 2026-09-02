@@ -323,10 +323,10 @@ func verifyKubernetesMember(
 	}
 	claim, exists := claims[claimName]
 	if !exists || claim.UID == "" || claim.ResourceVersion == "" || claim.DeletionTimestamp != nil ||
-		claim.CreationTimestamp.IsZero() || claim.CreationTimestamp.Time.After(input.CapturedAt) ||
+		claim.CreationTimestamp.IsZero() || claim.CreationTimestamp.After(input.CapturedAt) ||
 		!reflect.DeepEqual(claim.Spec, template.Spec.Spec) || claim.Status.Allocation == nil ||
 		(claim.Status.Allocation.AllocationTimestamp != nil &&
-			claim.Status.Allocation.AllocationTimestamp.Time.After(input.CapturedAt)) ||
+			claim.Status.Allocation.AllocationTimestamp.After(input.CapturedAt)) ||
 		len(claim.Status.ReservedFor) != 1 || claim.Status.ReservedFor[0].APIGroup != "" ||
 		claim.Status.ReservedFor[0].Resource != "pods" || claim.Status.ReservedFor[0].Name != pod.Name ||
 		claim.Status.ReservedFor[0].UID != pod.UID {

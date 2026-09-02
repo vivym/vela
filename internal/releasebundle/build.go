@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -132,7 +131,7 @@ func build(root *rootedFS, plan BuildPlan, sourceRevision string) (Bundle, error
 	}
 
 	if plan.NodeAgentUnit.Name != "node-agent-systemd-unit" {
-		return Bundle{}, invalid("node Agent unit name must be node-agent-systemd-unit")
+		return Bundle{}, invalid("node agent unit name must be node-agent-systemd-unit")
 	}
 	unitArtifact, unitContent, err := artifacts.artifactFor(plan.NodeAgentUnit.Ref, "text/plain", maxMetadataBytes)
 	if err != nil {
@@ -358,11 +357,6 @@ func isLowerHex(value string) bool {
 	return true
 }
 
-func canonicalUUID(value string) bool {
-	parsed, err := uuid.Parse(value)
-	return err == nil && parsed != uuid.Nil && parsed.String() == value
-}
-
 // ValidatePackageContract strictly validates one host package contract against its artifact.
 func ValidatePackageContract(name string, encoded []byte, artifact Artifact) (PackageContract, error) {
 	var contract PackageContract
@@ -381,7 +375,7 @@ func ValidatePackageContract(name string, encoded []byte, artifact Artifact) (Pa
 
 func validateSystemdUnit(encoded []byte, entrypoint string) error {
 	if entrypoint == "" || containsTemplateValue(string(encoded)) {
-		return invalid("node Agent systemd unit is not bound to the package entrypoint and hardening contract")
+		return invalid("node agent systemd unit is not bound to the package entrypoint and hardening contract")
 	}
 	seenSections := make(map[string]struct{}, len(nodeAgentSystemdV1))
 	seenDirectives := make(map[string]struct{})
@@ -392,49 +386,49 @@ func validateSystemdUnit(encoded []byte, entrypoint string) error {
 			continue
 		}
 		if strings.HasSuffix(line, `\`) {
-			return invalidf("node Agent systemd unit line %d uses a continuation", lineNumber+1)
+			return invalidf("node agent systemd unit line %d uses a continuation", lineNumber+1)
 		}
 		if strings.HasPrefix(line, "[") || strings.HasSuffix(line, "]") {
 			if len(line) < 3 || !strings.HasPrefix(line, "[") || !strings.HasSuffix(line, "]") {
-				return invalidf("node Agent systemd unit line %d has a malformed section", lineNumber+1)
+				return invalidf("node agent systemd unit line %d has a malformed section", lineNumber+1)
 			}
 			section = strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
 			if _, allowed := nodeAgentSystemdV1[section]; !allowed {
-				return invalidf("node Agent systemd unit contains unknown section %q", section)
+				return invalidf("node agent systemd unit contains unknown section %q", section)
 			}
 			if _, duplicate := seenSections[section]; duplicate {
-				return invalidf("node Agent systemd unit repeats section %q", section)
+				return invalidf("node agent systemd unit repeats section %q", section)
 			}
 			seenSections[section] = struct{}{}
 			continue
 		}
 		key, value, found := strings.Cut(line, "=")
 		if !found || section == "" || key == "" || strings.TrimSpace(key) != key {
-			return invalidf("node Agent systemd unit line %d is malformed", lineNumber+1)
+			return invalidf("node agent systemd unit line %d is malformed", lineNumber+1)
 		}
 		expected, allowed := nodeAgentSystemdV1[section][key]
 		if !allowed {
-			return invalidf("node Agent systemd unit contains unknown directive %s.%s", section, key)
+			return invalidf("node agent systemd unit contains unknown directive %s.%s", section, key)
 		}
 		identity := section + "." + key
 		if _, duplicate := seenDirectives[identity]; duplicate {
-			return invalidf("node Agent systemd unit repeats directive %s", identity)
+			return invalidf("node agent systemd unit repeats directive %s", identity)
 		}
 		seenDirectives[identity] = struct{}{}
 		if key == "ExecStart" {
 			expected = entrypoint
 		}
 		if value != expected {
-			return invalidf("node Agent systemd unit directive %s does not match version 1", identity)
+			return invalidf("node agent systemd unit directive %s does not match version 1", identity)
 		}
 	}
 	for expectedSection, directives := range nodeAgentSystemdV1 {
 		if _, present := seenSections[expectedSection]; !present {
-			return invalidf("node Agent systemd unit is missing section %q", expectedSection)
+			return invalidf("node agent systemd unit is missing section %q", expectedSection)
 		}
 		for key := range directives {
 			if _, present := seenDirectives[expectedSection+"."+key]; !present {
-				return invalidf("node Agent systemd unit is missing directive %s.%s", expectedSection, key)
+				return invalidf("node agent systemd unit is missing directive %s.%s", expectedSection, key)
 			}
 		}
 	}

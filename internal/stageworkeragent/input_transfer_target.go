@@ -39,12 +39,12 @@ func NewFilesystemInputTransferTarget(
 	cleaned := filepath.Clean(rootPath)
 	if !filepath.IsAbs(cleaned) || cleaned != rootPath || input == nil ||
 		stageRunID == uuid.Nil {
-		return nil, errors.New("Stage input transfer target configuration is invalid")
+		return nil, errors.New("stage input transfer target configuration is invalid")
 	}
 	artifactID, err := uuid.Parse(input.GetStageArtifactId())
 	if err != nil || artifactID == uuid.Nil || input.GetObjectVersion() == "" ||
 		len(input.GetSha256()) != sha256.Size || input.GetSizeBytes() <= 0 {
-		return nil, errors.New("Stage input transfer target exact Artifact is invalid")
+		return nil, errors.New("stage input transfer target exact Artifact is invalid")
 	}
 	var digest [sha256.Size]byte
 	copy(digest[:], input.GetSha256())
@@ -72,7 +72,7 @@ func StageInputRelativePath(
 	digest [sha256.Size]byte,
 ) (string, error) {
 	if stageRunID == uuid.Nil || artifactID == uuid.Nil || digest == ([sha256.Size]byte{}) {
-		return "", errors.New("Stage input local path identity is invalid")
+		return "", errors.New("stage input local path identity is invalid")
 	}
 	return path.Join(
 		"stage-runs", stageRunID.String(), "inputs", artifactID.String(),
@@ -85,7 +85,7 @@ func (target *FilesystemInputTransferTarget) Begin(
 	descriptor stageartifact.TransferDescriptor,
 ) (io.WriteCloser, error) {
 	if ctx == nil || ctx.Err() != nil {
-		return nil, errors.New("Stage input transfer target context is invalid")
+		return nil, errors.New("stage input transfer target context is invalid")
 	}
 	target.mu.Lock()
 	defer target.mu.Unlock()
@@ -94,7 +94,7 @@ func (target *FilesystemInputTransferTarget) Begin(
 		descriptor.ObjectVersion != target.expected.ObjectVersion ||
 		descriptor.SHA256 != target.expected.SHA256 ||
 		descriptor.SizeBytes != target.expected.SizeBytes {
-		return nil, errors.New("Stage input transfer descriptor does not match exact target")
+		return nil, errors.New("stage input transfer descriptor does not match exact target")
 	}
 	directory := path.Dir(target.finalPath)
 	if err := target.root.MkdirAll(directory, 0o700); err != nil {
@@ -121,7 +121,7 @@ func (target *FilesystemInputTransferTarget) Commit(
 	receipt stageartifact.PullReceipt,
 ) error {
 	if ctx == nil || ctx.Err() != nil {
-		return errors.New("Stage input transfer commit context is invalid")
+		return errors.New("stage input transfer commit context is invalid")
 	}
 	target.mu.Lock()
 	defer target.mu.Unlock()
@@ -130,7 +130,7 @@ func (target *FilesystemInputTransferTarget) Commit(
 		receipt.TicketID != target.expected.TicketID ||
 		receipt.ArtifactID != target.expected.ArtifactID || receipt.SHA256 != target.expected.SHA256 ||
 		receipt.SizeBytes != target.expected.SizeBytes || receipt.CompletedAt.IsZero() {
-		return errors.New("Stage input transfer receipt does not match exact target")
+		return errors.New("stage input transfer receipt does not match exact target")
 	}
 	if err := target.verifyPending(); err != nil {
 		return err
@@ -155,12 +155,12 @@ func (target *FilesystemInputTransferTarget) Commit(
 
 func (target *FilesystemInputTransferTarget) VerifyCommitted(ctx context.Context) error {
 	if target == nil || ctx == nil || ctx.Err() != nil {
-		return errors.New("Stage input committed-file verification is invalid")
+		return errors.New("stage input committed-file verification is invalid")
 	}
 	target.mu.Lock()
 	defer target.mu.Unlock()
 	if target.root == nil || target.closed || target.pendingFile != nil {
-		return errors.New("Stage input transfer target is unavailable")
+		return errors.New("stage input transfer target is unavailable")
 	}
 	return target.verifyFile(target.finalPath)
 }
@@ -182,7 +182,7 @@ func (target *FilesystemInputTransferTarget) verifyFile(relativePath string) err
 	}
 	if written != target.expected.SizeBytes ||
 		!equalDigest(digest.Sum(nil), target.expected.SHA256) {
-		return errors.New("Stage input file failed exact integrity verification")
+		return errors.New("stage input file failed exact integrity verification")
 	}
 	return nil
 }

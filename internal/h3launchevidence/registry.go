@@ -20,7 +20,7 @@ type PostgresRegistryReader struct {
 
 func NewPostgresRegistryReader(pool *pgxpool.Pool) (*PostgresRegistryReader, error) {
 	if pool == nil {
-		return nil, errors.New("Fleet Registry database pool is required")
+		return nil, errors.New("fleet registry database pool is required")
 	}
 	return &PostgresRegistryReader{pool: pool}, nil
 }
@@ -33,7 +33,7 @@ func (reader *PostgresRegistryReader) Capture(
 	planRevisionID uuid.UUID,
 ) (snapshot RegistrySnapshot, returnedError error) {
 	if ctx == nil || reader == nil || reader.pool == nil || planRevisionID == uuid.Nil {
-		return RegistrySnapshot{}, errors.New("Fleet Registry capture input is invalid")
+		return RegistrySnapshot{}, errors.New("fleet registry capture input is invalid")
 	}
 	tx, err := reader.pool.BeginTx(ctx, pgx.TxOptions{
 		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
@@ -98,7 +98,7 @@ func (reader *PostgresRegistryReader) Capture(
 	}
 	workers.Close()
 	if len(workerRows) == 0 {
-		return RegistrySnapshot{}, errors.New("Fleet Registry has no WorkerInstances for the approved ResidencyPlan")
+		return RegistrySnapshot{}, errors.New("fleet registry has no WorkerInstances for the approved ResidencyPlan")
 	}
 	for _, worker := range workerRows {
 		worker.Members, err = captureRegistryMembers(ctx, tx, worker.ID, worker.InstanceEpoch)

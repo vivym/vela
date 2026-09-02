@@ -87,10 +87,10 @@ func NewServer(service Service, config Config) (*Server, error) {
 		principal, ok := parseNodeAgentSPIFFEIdentity(registration.SPIFFEIdentity)
 		if !ok || principal.NodeIdentity != registration.NodeIdentity ||
 			principal.AgentID != registration.AgentID {
-			return nil, errors.New("node Agent registration is invalid")
+			return nil, errors.New("node agent registration is invalid")
 		}
 		if _, exists := principals[registration.SPIFFEIdentity]; exists {
-			return nil, errors.New("node Agent registration is duplicated")
+			return nil, errors.New("node agent registration is duplicated")
 		}
 		principals[registration.SPIFFEIdentity] = principal
 	}

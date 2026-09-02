@@ -80,7 +80,7 @@ func (service *Service) Cancel(
 		lastErr = err
 	}
 	return cancellation.Result{}, true, fmt.Errorf(
-		"Stage graph cancellation transaction did not stabilize: %w",
+		"stage graph cancellation transaction did not stabilize: %w",
 		lastErr,
 	)
 }
@@ -152,11 +152,11 @@ func (service *Service) cancelOnce(
 		return cancellation.Result{}, true, stageGraphCancellationFailure(err)
 	}
 	if !row.decisionRecorded.Valid {
-		return cancellation.Result{}, true, errors.New("Stage graph cancellation has no decision time")
+		return cancellation.Result{}, true, errors.New("stage graph cancellation has no decision time")
 	}
 	if row.billable && (row.chargeID == uuid.Nil || row.chargeAmount < 0 ||
 		row.chargeCurrency == "" || row.chargeReason == "" || !row.chargePostedAt.Valid) {
-		return cancellation.Result{}, true, errors.New("Stage graph cancellation has no immutable Charge")
+		return cancellation.Result{}, true, errors.New("stage graph cancellation has no immutable Charge")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return cancellation.Result{}, true, fmt.Errorf("commit Stage graph cancellation: %w", err)

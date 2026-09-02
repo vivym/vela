@@ -108,7 +108,7 @@ func (reader *fakeKubernetesReader) Claim(
 func (reader *fakeKubernetesReader) Node(_ context.Context, name string) (corev1.Node, error) {
 	value, exists := reader.nodes[name]
 	if !exists {
-		return corev1.Node{}, fmt.Errorf("Node %s not found", name)
+		return corev1.Node{}, fmt.Errorf("node %s not found", name)
 	}
 	return *value.DeepCopy(), nil
 }

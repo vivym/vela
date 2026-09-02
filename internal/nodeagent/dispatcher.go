@@ -55,15 +55,15 @@ func NewStaticAgentResolver(endpoints map[string]AgentEndpoint, tlsConfig Client
 		return nil, errors.New("at least one Node Agent endpoint is required")
 	}
 	if !validText(actorIdentity, maxIdentityText) {
-		return nil, errors.New("node Agent resolver actor identity is invalid")
+		return nil, errors.New("node agent resolver actor identity is invalid")
 	}
 	if tlsConfig.CertificatePath == "" || tlsConfig.PrivateKeyPath == "" || tlsConfig.RootCAPath == "" {
-		return nil, errors.New("node Agent client TLS files are required")
+		return nil, errors.New("node agent client TLS files are required")
 	}
 	validated := make(map[string]AgentEndpoint, len(endpoints))
 	for nodeIdentity, endpoint := range endpoints {
 		if !validText(nodeIdentity, maxIdentityText) || !validAgentEndpoint(nodeIdentity, endpoint) {
-			return nil, errors.New("node Agent endpoint is invalid")
+			return nil, errors.New("node agent endpoint is invalid")
 		}
 		validated[nodeIdentity] = endpoint
 	}
@@ -75,17 +75,17 @@ func NewStaticAgentResolver(endpoints map[string]AgentEndpoint, tlsConfig Client
 
 func (resolver *StaticAgentResolver) Resolve(ctx context.Context, nodeIdentity string) (*Client, error) {
 	if resolver == nil {
-		return nil, errors.New("node Agent resolver is not configured")
+		return nil, errors.New("node agent resolver is not configured")
 	}
 	if ctx == nil {
-		return nil, errors.New("node Agent resolver context is required")
+		return nil, errors.New("node agent resolver context is required")
 	}
 	if !validText(nodeIdentity, maxIdentityText) {
-		return nil, errors.New("node Agent resolver target Node identity is invalid")
+		return nil, errors.New("node agent resolver target Node identity is invalid")
 	}
 	endpoint, ok := resolver.endpoints[nodeIdentity]
 	if !ok {
-		return nil, fmt.Errorf("node Agent endpoint for %q is not registered", nodeIdentity)
+		return nil, fmt.Errorf("node agent endpoint for %q is not registered", nodeIdentity)
 	}
 	resolver.mu.Lock()
 	defer resolver.mu.Unlock()

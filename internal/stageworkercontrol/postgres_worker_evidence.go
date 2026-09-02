@@ -20,7 +20,7 @@ type PostgresWorkerEvidenceBackend struct {
 
 func NewPostgresWorkerEvidenceBackend(pool *pgxpool.Pool) (*PostgresWorkerEvidenceBackend, error) {
 	if pool == nil {
-		return nil, errors.New("Stage Worker evidence database pool is required")
+		return nil, errors.New("stage worker evidence database pool is required")
 	}
 	return &PostgresWorkerEvidenceBackend{pool: pool}, nil
 }
@@ -48,7 +48,7 @@ func (backend *PostgresWorkerEvidenceBackend) RegisterWorkerEvidence(
 		len(identity.GetMembershipDigest()) != sha256.Size ||
 		len(request.GetReadinessEvidence()) == 0 || len(request.GetDevices()) == 0 ||
 		len(request.GetDevices()) > 64 || len(request.GetMembers()) != 1 {
-		return ReadinessResult{}, errors.New("Stage Worker registration evidence is incomplete")
+		return ReadinessResult{}, errors.New("stage worker registration evidence is incomplete")
 	}
 	devices, err := registrationDevices(request.GetDevices())
 	if err != nil {
@@ -100,7 +100,7 @@ func (backend *PostgresWorkerEvidenceBackend) ReportCapacityObservation(
 		request.GetObservationSequence() <= 0 || !validCapacityVector(request.GetCapacityVector()) ||
 		!validTimestamp(request.GetObservedAt()) || !validTimestamp(request.GetExpiresAt()) ||
 		!request.GetExpiresAt().AsTime().After(request.GetObservedAt().AsTime()) {
-		return ReadinessResult{}, errors.New("Stage Worker capacity observation is incomplete")
+		return ReadinessResult{}, errors.New("stage worker capacity observation is incomplete")
 	}
 	spiffeDigest := sha256.Sum256([]byte(command.Identity.SPIFFEID))
 	payload, err := json.Marshal(map[string]any{
@@ -189,10 +189,10 @@ func registrationDevices(
 	for _, value := range values {
 		id := parseUUID(value.GetDeviceId())
 		if value == nil || id == uuid.Nil || value.GetDeviceEpoch() <= 0 {
-			return nil, errors.New("Stage Worker registration device evidence is invalid")
+			return nil, errors.New("stage worker registration device evidence is invalid")
 		}
 		if _, duplicated := seen[id]; duplicated {
-			return nil, errors.New("Stage Worker registration device evidence is duplicated")
+			return nil, errors.New("stage worker registration device evidence is duplicated")
 		}
 		seen[id] = struct{}{}
 		devices = append(devices, map[string]any{
@@ -212,10 +212,10 @@ func registrationMembers(
 		id := parseUUID(value.GetWorkerMemberId())
 		if value == nil || id == uuid.Nil || value.GetMemberEpoch() <= 0 ||
 			value.GetModelRuntimeEpoch() != modelRuntimeEpoch {
-			return nil, errors.New("Stage Worker registration member evidence is invalid")
+			return nil, errors.New("stage worker registration member evidence is invalid")
 		}
 		if _, duplicated := seen[id]; duplicated {
-			return nil, errors.New("Stage Worker registration member evidence is duplicated")
+			return nil, errors.New("stage worker registration member evidence is duplicated")
 		}
 		seen[id] = struct{}{}
 		members = append(members, map[string]any{

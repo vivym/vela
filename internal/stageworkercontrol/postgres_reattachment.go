@@ -18,7 +18,7 @@ type PostgresReattachmentBackend struct {
 
 func NewPostgresReattachmentBackend(pool *pgxpool.Pool) (*PostgresReattachmentBackend, error) {
 	if pool == nil {
-		return nil, errors.New("Stage Worker reattachment database pool is required")
+		return nil, errors.New("stage worker reattachment database pool is required")
 	}
 	return &PostgresReattachmentBackend{pool: pool}, nil
 }
@@ -38,7 +38,7 @@ func (backend *PostgresReattachmentBackend) ReattachStage(
 	}
 	authority := current.Authority
 	if authority.GetModelRuntimeBarrierGeneration() <= 0 {
-		return CommandResult{}, errors.New("Stage Worker authority has no ModelRuntime barrier generation")
+		return CommandResult{}, errors.New("stage worker authority has no ModelRuntime barrier generation")
 	}
 	leaseTokenDigest := sha256.Sum256(authority.GetLeaseToken())
 	spiffeDigest := sha256.Sum256([]byte(command.Identity.SPIFFEID))

@@ -584,7 +584,7 @@ func loadConfig() (config, error) {
 		}
 	}
 	if configuration.rateMinimumInterval <= 0 || configuration.rateWindow <= 0 || configuration.rateMax <= 0 {
-		return config{}, errors.New("node Agent rate configuration must be positive")
+		return config{}, errors.New("node agent rate configuration must be positive")
 	}
 	for name, target := range map[string]*time.Duration{
 		"VELA_NODE_AGENT_WORKER_INSTANCE_REPORT_INTERVAL": &configuration.workerInstanceReportInterval,
@@ -695,7 +695,7 @@ func loadWorkerInstanceTemplates(
 ) ([]nodeagent.WorkerInstanceEvidenceTemplate, error) {
 	observedBy := nodeagent.NodeAgentSPIFFEIdentity(identity)
 	if observedBy == "" {
-		return nil, errors.New("Node Agent WorkerInstance observation identity is invalid")
+		return nil, errors.New("node agent WorkerInstance observation identity is invalid")
 	}
 	cleaned := filepath.Clean(path)
 	if !filepath.IsAbs(cleaned) || cleaned != path {

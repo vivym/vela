@@ -449,11 +449,11 @@ func exactMaterializationCommand(
 		strings.TrimSpace(command.Identity.SPIFFEID) == "" || authorities.Stage != nil ||
 		authorities.Materialization == nil || authorities.Materialization.Authority == nil ||
 		request == nil || !proto.Equal(request, authorities.Materialization.Authority) {
-		return nil, errors.New("Stage Worker materialization authority is incomplete")
+		return nil, errors.New("stage worker materialization authority is incomplete")
 	}
 	digest, err := materializationauthority.Digest(authorities.Materialization.Authority)
 	if err != nil || digest != authorities.Materialization.Digest {
-		return nil, errors.New("Stage Worker materialization authority digest is inconsistent")
+		return nil, errors.New("stage worker materialization authority digest is inconsistent")
 	}
 	return authorities.Materialization.Authority, nil
 }

@@ -54,14 +54,14 @@ func NewFileProductionState(
 	if !filepath.IsAbs(directory) || directory != config.Directory ||
 		config.WorkerInstanceID == uuid.Nil || config.WorkerInstanceEpoch <= 0 ||
 		config.WorkerMemberID == uuid.Nil {
-		return nil, errors.New("Stage Worker production state configuration is invalid")
+		return nil, errors.New("stage worker production state configuration is invalid")
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, fmt.Errorf("create Stage Worker production state directory: %w", err)
 	}
 	info, err := os.Stat(directory)
 	if err != nil || !info.IsDir() || info.Mode().Perm()&0o022 != 0 {
-		return nil, errors.New("Stage Worker production state directory is not private")
+		return nil, errors.New("stage worker production state directory is not private")
 	}
 	lock, err := os.OpenFile(
 		filepath.Join(directory, productionLockFileName),
@@ -129,22 +129,22 @@ func (state *FileProductionState) load(config FileProductionStateConfig) error {
 	}
 	if len(document) == 0 || len(document) > maxProductionStateBytes ||
 		strictjson.RejectDuplicateKeys(document) != nil {
-		return errors.New("Stage Worker production state is invalid")
+		return errors.New("stage worker production state is invalid")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(document))
 	decoder.DisallowUnknownFields()
 	var decoded fileProductionStateV1
 	if err := decoder.Decode(&decoded); err != nil {
-		return errors.New("Stage Worker production state is invalid")
+		return errors.New("stage worker production state is invalid")
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) ||
 		!validFileProductionState(decoded) {
-		return errors.New("Stage Worker production state is invalid")
+		return errors.New("stage worker production state is invalid")
 	}
 	if decoded.WorkerInstanceID != config.WorkerInstanceID ||
 		decoded.WorkerInstanceEpoch != config.WorkerInstanceEpoch ||
 		decoded.WorkerMemberID != config.WorkerMemberID {
-		return errors.New("Stage Worker production state belongs to another WorkerInstance")
+		return errors.New("stage worker production state belongs to another WorkerInstance")
 	}
 	state.state = decoded
 	return nil
@@ -152,7 +152,7 @@ func (state *FileProductionState) load(config FileProductionStateConfig) error {
 
 func (state *FileProductionState) next(ctx context.Context, control bool) (int64, error) {
 	if state == nil || ctx == nil {
-		return 0, errors.New("Stage Worker production state is not configured")
+		return 0, errors.New("stage worker production state is not configured")
 	}
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -160,7 +160,7 @@ func (state *FileProductionState) next(ctx context.Context, control bool) (int64
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.lock == nil {
-		return 0, errors.New("Stage Worker production state is closed")
+		return 0, errors.New("stage worker production state is closed")
 	}
 	next := state.state
 	var value *int64
@@ -170,11 +170,11 @@ func (state *FileProductionState) next(ctx context.Context, control bool) (int64
 		value = &next.CapacityObservationSequence
 	}
 	if *value == math.MaxInt64 {
-		return 0, errors.New("Stage Worker production sequence is exhausted")
+		return 0, errors.New("stage worker production sequence is exhausted")
 	}
 	*value++
 	if !validFileProductionState(next) {
-		return 0, errors.New("Stage Worker production state transition is invalid")
+		return 0, errors.New("stage worker production state transition is invalid")
 	}
 	if err := state.persist(next); err != nil {
 		return 0, err

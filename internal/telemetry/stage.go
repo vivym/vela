@@ -49,7 +49,7 @@ func NewPostgresStageSnapshotReader(pool *pgxpool.Pool) *PostgresStageSnapshotRe
 
 func (reader *PostgresStageSnapshotReader) LatestStageSnapshot(ctx context.Context) (StageSnapshot, error) {
 	if reader == nil || reader.pool == nil {
-		return StageSnapshot{}, fmt.Errorf("Stage telemetry database is unavailable")
+		return StageSnapshot{}, fmt.Errorf("stage telemetry database is unavailable")
 	}
 	rows, err := reader.pool.Query(ctx, `
 		WITH run_states AS (

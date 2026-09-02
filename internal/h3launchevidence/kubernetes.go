@@ -35,7 +35,7 @@ func NewClientsetKubernetesReader(
 	resource resourceclient.ResourceV1Interface,
 ) (*ClientsetKubernetesReader, error) {
 	if core == nil || resource == nil {
-		return nil, errors.New("Kubernetes Core and Resource clients are required")
+		return nil, errors.New("kubernetes core and resource clients are required")
 	}
 	return &ClientsetKubernetesReader{core: core, resource: resource}, nil
 }
@@ -117,7 +117,7 @@ func CollectKubernetes(
 	rollout fleetcontroller.ResidencyPlanRollout,
 ) (KubernetesSnapshot, error) {
 	if ctx == nil || reader == nil {
-		return KubernetesSnapshot{}, errors.New("Kubernetes evidence reader and context are required")
+		return KubernetesSnapshot{}, errors.New("kubernetes evidence reader and context are required")
 	}
 	desired, err := desiredMembers(rollout)
 	if err != nil {

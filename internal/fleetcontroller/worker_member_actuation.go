@@ -113,7 +113,7 @@ func materializeWorkerInstanceMemberSecrets(
 ) ([]corev1.Secret, error) {
 	if source.Namespace != bundle.Namespace || source.Name != bundle.StageWorkerMemberPKISecret ||
 		source.Immutable == nil || !*source.Immutable || source.Type != corev1.SecretTypeOpaque {
-		return nil, errors.New("Stage Worker member PKI source Secret is invalid or mutable")
+		return nil, errors.New("stage worker member PKI source Secret is invalid or mutable")
 	}
 	secrets := make([]corev1.Secret, 0)
 	for _, worker := range bundle.WorkerInstances {

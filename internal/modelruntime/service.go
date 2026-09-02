@@ -631,17 +631,6 @@ func (service *Service) setActiveState(
 	}
 }
 
-func (service *Service) setActiveReceipt(
-	digest [32]byte,
-	receipt *velav1.LocalMaterializationReceipt,
-) {
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	if service.active != nil && service.active.verified.Digest == digest {
-		service.active.receipt = proto.Clone(receipt).(*velav1.LocalMaterializationReceipt)
-	}
-}
-
 func (service *Service) activeReceipt(digest [32]byte) *velav1.LocalMaterializationReceipt {
 	service.mu.Lock()
 	defer service.mu.Unlock()

@@ -353,7 +353,7 @@ func requireDistinctStageWorkerRoots(roots map[string]string) error {
 	seen := make(map[string]string, len(roots))
 	for name, path := range roots {
 		if existing, duplicate := seen[path]; duplicate {
-			return fmt.Errorf("Stage Worker %s root conflicts with %s root", name, existing)
+			return fmt.Errorf("stage worker %s root conflicts with %s root", name, existing)
 		}
 		seen[path] = name
 	}

@@ -509,7 +509,7 @@ func (state *simulationState) dispatch(stageID string) error {
 func (state *simulationState) processStageComplete(event simulationEvent) error {
 	pool := state.pools[event.poolID]
 	if pool == nil || event.workerIndex < 0 || event.workerIndex >= len(pool.workers) {
-		return errors.New("Stage completion references an invalid complete DeviceSet")
+		return errors.New("stage completion references an invalid complete DeviceSet")
 	}
 	duration := event.serviceNS + event.materializeNS
 	pool.workers[event.workerIndex] = false

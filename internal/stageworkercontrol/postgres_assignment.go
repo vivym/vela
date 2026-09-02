@@ -69,12 +69,12 @@ func NewPostgresAssignmentBackend(
 ) (*PostgresAssignmentBackend, error) {
 	if config.Pool == nil || config.Scheduler == nil || config.AuthoritySigner == nil ||
 		config.TransferTickets == nil || len(config.IdentityKey) < sha256.Size {
-		return nil, errors.New("Stage Worker assignment backend configuration is incomplete")
+		return nil, errors.New("stage worker assignment backend configuration is incomplete")
 	}
 	if config.NoWorkRetry <= 0 || config.NoWorkRetry > maxNoWorkRetry ||
 		config.MemberStartTimeout <= 0 || config.MemberStartTimeout > 10*time.Minute ||
 		config.TransferTicketTTL <= 0 || config.TransferTicketTTL > 15*time.Minute {
-		return nil, errors.New("Stage Worker assignment backend deadlines are invalid")
+		return nil, errors.New("stage worker assignment backend deadlines are invalid")
 	}
 	return &PostgresAssignmentBackend{
 		pool: config.Pool, scheduler: config.Scheduler,
@@ -102,7 +102,7 @@ func (backend *PostgresAssignmentBackend) AcquireStage(
 		workerID == uuid.Nil || residencyID == uuid.Nil || profileID == uuid.Nil ||
 		request.GetWorkerInstanceEpoch() <= 0 ||
 		request.GetCapacityObservationSequence() <= 0 || request.GetModelRuntimeEpoch() <= 0 {
-		return AcquireResult{}, errors.New("Stage Worker acquire authority is incomplete")
+		return AcquireResult{}, errors.New("stage worker acquire authority is incomplete")
 	}
 	spiffeDigest := sha256.Sum256([]byte(command.Identity.SPIFFEID))
 	payload, err := json.Marshal(map[string]any{
@@ -288,11 +288,11 @@ func (backend *PostgresAssignmentBackend) readWorkerAuthority(
 	}
 	deviceDigest, err := hex.DecodeString(authority.DeviceSetDigestHex)
 	if err != nil {
-		return acquireAuthoritySnapshot{}, "", "", errors.New("Stage Worker device digest is malformed")
+		return acquireAuthoritySnapshot{}, "", "", errors.New("stage worker device digest is malformed")
 	}
 	membershipDigest, err := hex.DecodeString(authority.MembershipDigestHex)
 	if err != nil {
-		return acquireAuthoritySnapshot{}, "", "", errors.New("Stage Worker membership digest is malformed")
+		return acquireAuthoritySnapshot{}, "", "", errors.New("stage worker membership digest is malformed")
 	}
 	authority.DeviceSetDigest = deviceDigest
 	authority.MembershipDigest = membershipDigest
@@ -518,7 +518,7 @@ func (backend *PostgresAssignmentBackend) completeNegative(
 	detail string,
 ) (AcquireResult, error) {
 	if kind != "STALE" && kind != "REJECTED" {
-		return AcquireResult{}, errors.New("Stage Worker acquire negative decision is invalid")
+		return AcquireResult{}, errors.New("stage worker acquire negative decision is invalid")
 	}
 	return backend.complete(ctx, commandID, kind, nil, 0, detail)
 }

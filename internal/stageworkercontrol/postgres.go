@@ -78,7 +78,7 @@ type durableDevice struct {
 
 func NewPostgresAuthorizer(pool *pgxpool.Pool) (*PostgresAuthorizer, error) {
 	if pool == nil {
-		return nil, errors.New("Stage Worker durable authority database pool is required")
+		return nil, errors.New("stage worker durable authority database pool is required")
 	}
 	return &PostgresAuthorizer{pool: pool}, nil
 }
@@ -91,12 +91,12 @@ func (authorizer *PostgresAuthorizer) IsActive(
 	verified stageauthority.Verified,
 ) (bool, error) {
 	if authorizer == nil || authorizer.pool == nil {
-		return false, errors.New("Stage Worker durable authorizer is not configured")
+		return false, errors.New("stage worker durable authorizer is not configured")
 	}
 	if ctx == nil || identity.SPIFFEID == "" || sessionEpoch <= 0 ||
 		verified.Authority == nil || verified.Digest == ([sha256.Size]byte{}) ||
 		!operationRequiresStageAuthority(operation) {
-		return false, errors.New("Stage Worker durable authority check is incomplete")
+		return false, errors.New("stage worker durable authority check is incomplete")
 	}
 	digest, err := stageauthority.Digest(verified.Authority)
 	if err != nil || digest != verified.Digest {

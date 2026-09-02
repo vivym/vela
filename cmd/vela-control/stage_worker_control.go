@@ -188,7 +188,7 @@ func readStageWorkerIdentityKey(path string) ([]byte, error) {
 	if err != nil || len(key) < 32 || len(key) > 64 {
 		clear(key)
 		return nil, errors.New(
-			"Stage Worker assignment identity key must encode 32 to 64 bytes",
+			"stage worker assignment identity key must encode 32 to 64 bytes",
 		)
 	}
 	return key, nil

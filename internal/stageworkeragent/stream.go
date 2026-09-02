@@ -22,7 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var ErrStageWorkerBusy = errors.New("Stage Worker already has active compute authority")
+var ErrStageWorkerBusy = errors.New("stage worker already has active compute authority")
 
 type ControlClient interface {
 	Exchange(
@@ -90,7 +90,7 @@ func NewMaterializingStreamAgent(
 	}
 	if config.Validator == nil || config.Source == nil || config.Publisher == nil ||
 		config.Journal == nil || config.SourceLossEvidence == nil {
-		return nil, errors.New("Stage Worker materialization configuration is incomplete")
+		return nil, errors.New("stage worker materialization configuration is incomplete")
 	}
 	agent.materialization = &streamMaterialization{
 		validator: config.Validator, source: config.Source,

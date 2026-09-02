@@ -151,7 +151,7 @@ func (client *Client) Exchange(
 	} else {
 		requestID, err := uuid.Parse(message.GetRequestId())
 		if err != nil || requestID == uuid.Nil || requestID.String() != message.GetRequestId() {
-			return nil, errors.New("Stage Worker control request ID is not a canonical UUID")
+			return nil, errors.New("stage worker control request ID is not a canonical UUID")
 		}
 	}
 	stream, epoch, generation, err := client.ensureStream()
@@ -215,7 +215,7 @@ func (client *Client) ensureStream() (
 			return nil, 0, 0, fmt.Errorf("allocate Stage Worker control session epoch: %w", err)
 		}
 		if nextEpoch <= client.streamEpoch {
-			return nil, 0, 0, errors.New("Stage Worker control session epoch did not advance")
+			return nil, 0, 0, errors.New("stage worker control session epoch did not advance")
 		}
 		client.streamEpoch = nextEpoch
 	}

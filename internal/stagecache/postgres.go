@@ -128,7 +128,7 @@ type DeletionDecision struct {
 
 func NewPostgresRepository(pool *pgxpool.Pool) (*PostgresRepository, error) {
 	if pool == nil {
-		return nil, errors.New("Stage Cache database pool is required")
+		return nil, errors.New("stage cache database pool is required")
 	}
 	return &PostgresRepository{pool: pool}, nil
 }
@@ -143,7 +143,7 @@ func (repository *PostgresRepository) SetProjectControl(
 	if ctx == nil || command.OrganizationID == uuid.Nil || command.ProjectID == uuid.Nil ||
 		command.CachePolicyRevisionID == uuid.Nil || command.MaxEntries <= 0 ||
 		command.MaxBytes <= 0 || command.UpdatedAt.IsZero() {
-		return ControlDecision{}, errors.New("Project Stage Cache control is incomplete")
+		return ControlDecision{}, errors.New("project stage cache control is incomplete")
 	}
 	payload, err := json.Marshal(map[string]any{
 		"organization_id":          command.OrganizationID,
@@ -177,7 +177,7 @@ func (repository *PostgresRepository) AuthorizeOrganization(
 	if ctx == nil || command.OrganizationID == uuid.Nil ||
 		command.CachePolicyRevisionID == uuid.Nil || command.MaxEntries <= 0 ||
 		command.MaxBytes <= 0 || command.UpdatedAt.IsZero() {
-		return ControlDecision{}, errors.New("Organization Stage Cache authorization is incomplete")
+		return ControlDecision{}, errors.New("organization stage cache authorization is incomplete")
 	}
 	payload, err := json.Marshal(map[string]any{
 		"organization_id":          command.OrganizationID,
@@ -216,7 +216,7 @@ func (repository *PostgresRepository) Admit(
 		command.CacheKeyDigest == (Digest{}) ||
 		command.ExpectedSavedComputeMinor < 0 || command.CarryCostMinor < 0 ||
 		command.AdmittedAt.IsZero() || !command.ExpiresAt.After(command.AdmittedAt) {
-		return AdmitDecision{}, errors.New("Stage Cache admission is incomplete")
+		return AdmitDecision{}, errors.New("stage cache admission is incomplete")
 	}
 	payload, err := json.Marshal(map[string]any{
 		"command_id":                     command.CommandID,
@@ -267,7 +267,7 @@ func (repository *PostgresRepository) Hit(
 		command.ExpectedAttemptFence <= 0 || command.ExpectedStageFence <= 0 ||
 		command.ExpectedStageVersion <= 0 || command.ProgressReceiptID == uuid.Nil ||
 		command.CacheKeyDigest == (Digest{}) || command.HitAt.IsZero() {
-		return HitDecision{}, errors.New("Stage Cache hit is incomplete")
+		return HitDecision{}, errors.New("stage cache hit is incomplete")
 	}
 	payload, err := json.Marshal(map[string]any{
 		"command_id":                command.CommandID,
@@ -311,7 +311,7 @@ func (repository *PostgresRepository) Hit(
 		return HitDecision{}, fmt.Errorf("hit Stage Cache entry: %w", err)
 	}
 	if len(digest) != sha256.Size {
-		return HitDecision{}, errors.New("Stage Cache hit digest is malformed")
+		return HitDecision{}, errors.New("stage cache hit digest is malformed")
 	}
 	copy(decision.SHA256[:], digest)
 	return decision, nil
@@ -328,7 +328,7 @@ func (repository *PostgresRepository) ReleaseExecutionPin(
 		command.OwnerJobID == uuid.Nil || command.OwnerStageRunID == uuid.Nil ||
 		command.ReleaseReason == "" || len(command.ReleaseReason) > 500 ||
 		command.ReleasedAt.IsZero() {
-		return PinReleaseDecision{}, errors.New("Stage Cache ExecutionPin release is incomplete")
+		return PinReleaseDecision{}, errors.New("stage cache ExecutionPin release is incomplete")
 	}
 	payload, err := json.Marshal(map[string]any{
 		"command_id":         command.CommandID,
@@ -365,7 +365,7 @@ func (repository *PostgresRepository) RequestDeletion(
 	if ctx == nil || command.CommandID == uuid.Nil || command.OrganizationID == uuid.Nil ||
 		command.ProjectID == uuid.Nil || command.SourceJobID == uuid.Nil ||
 		command.RequestedAt.IsZero() {
-		return DeletionDecision{}, errors.New("Stage Cache deletion is incomplete")
+		return DeletionDecision{}, errors.New("stage cache deletion is incomplete")
 	}
 	payload, err := json.Marshal(map[string]any{
 		"command_id":      command.CommandID,
@@ -400,7 +400,7 @@ func (repository *PostgresRepository) ReconcileDeletions(
 		return 0, err
 	}
 	if ctx == nil || observedAt.IsZero() || limit < 1 || limit > 1000 {
-		return 0, errors.New("Stage Cache deletion reconciliation is incomplete")
+		return 0, errors.New("stage cache deletion reconciliation is incomplete")
 	}
 	var changed int64
 	if err := repository.pool.QueryRow(ctx, `
@@ -413,7 +413,7 @@ func (repository *PostgresRepository) ReconcileDeletions(
 
 func (repository *PostgresRepository) validate() error {
 	if repository == nil || repository.pool == nil {
-		return errors.New("Stage Cache repository is not configured")
+		return errors.New("stage cache repository is not configured")
 	}
 	return nil
 }

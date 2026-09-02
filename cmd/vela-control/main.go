@@ -2072,7 +2072,7 @@ func splitCommaSeparated(value string) []string {
 func readNodeAgentEndpoints(path string) (map[string]nodeagent.AgentEndpoint, error) {
 	cleaned := filepath.Clean(path)
 	if !filepath.IsAbs(cleaned) {
-		return nil, errors.New("node Agent endpoint file path must be absolute")
+		return nil, errors.New("node agent endpoint file path must be absolute")
 	}
 	content, err := securefile.Read(cleaned, 1<<20, false)
 	if err != nil {
@@ -2088,7 +2088,7 @@ func readNodeAgentEndpoints(path string) (map[string]nodeagent.AgentEndpoint, er
 		return nil, fmt.Errorf("decode Node Agent endpoint file: %w", err)
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return nil, errors.New("node Agent endpoint file must contain exactly one JSON document")
+		return nil, errors.New("node agent endpoint file must contain exactly one JSON document")
 	}
 	return endpoints, nil
 }

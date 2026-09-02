@@ -346,7 +346,7 @@ func verifyNodeAgentArtifact(name string) error {
 		return fmt.Errorf("stat Node Agent: %w", err)
 	}
 	if information.Mode().Perm() != 0o755 {
-		return errors.New("node Agent mode must be 0755")
+		return errors.New("node agent mode must be 0755")
 	}
 	binary, err := elf.Open(name)
 	if err != nil {
@@ -354,7 +354,7 @@ func verifyNodeAgentArtifact(name string) error {
 	}
 	defer func() { _ = binary.Close() }()
 	if binary.Class != elf.ELFCLASS64 || binary.Machine != elf.EM_X86_64 {
-		return errors.New("node Agent must be a linux/amd64 ELF64 binary")
+		return errors.New("node agent must be a linux/amd64 ELF64 binary")
 	}
 	return nil
 }

@@ -32,7 +32,7 @@ var productionReadinessChecks = []velav1.ModelRuntimeReadinessCheck{
 	velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_CANARY,
 }
 
-var errControlReconnect = errors.New("Stage Worker control reconnect required")
+var errControlReconnect = errors.New("stage worker control reconnect required")
 
 type RuntimeReadinessClient interface {
 	ProbeReadiness(
@@ -208,7 +208,7 @@ type readinessCheckEvidenceV1 struct {
 func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 	if config.Control == nil || config.Runtime == nil || config.Now == nil ||
 		config.CapacityTTL <= 0 || config.CapacityTTL > maxCapacityTTL {
-		return nil, errors.New("Stage Worker production Agent configuration is incomplete")
+		return nil, errors.New("stage worker production Agent configuration is incomplete")
 	}
 	identities, err := normalizeProductionRuntimeIdentities(config)
 	if err != nil {
@@ -231,12 +231,12 @@ func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 		config.RetryMaximum = defaultRetryMaximum
 	}
 	if config.RetryMinimum <= 0 || config.RetryMaximum < config.RetryMinimum {
-		return nil, errors.New("Stage Worker production retry configuration is invalid")
+		return nil, errors.New("stage worker production retry configuration is invalid")
 	}
 	configuredExecution := config.Stream != nil || config.HeartbeatInterval != 0 || config.Wait != nil
 	if configuredExecution &&
 		(config.Stream == nil || config.HeartbeatInterval <= 0 || config.Wait == nil) {
-		return nil, errors.New("Stage Worker production execution configuration is incomplete")
+		return nil, errors.New("stage worker production execution configuration is incomplete")
 	}
 	return &ProductionAgent{
 		control: config.Control, runtime: config.Runtime, stream: config.Stream,
@@ -258,11 +258,11 @@ func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 func (agent *ProductionAgent) Run(ctx context.Context) error {
 	if agent == nil || agent.stream == nil || agent.wait == nil ||
 		agent.observationSequenceSource == nil || ctx == nil {
-		return errors.New("Stage Worker production service is not configured")
+		return errors.New("stage worker production service is not configured")
 	}
 	commandErrors := make(chan error, 1)
 	if agent.control.Commands() == nil {
-		return errors.New("Stage Worker production command stream is unavailable")
+		return errors.New("stage worker production command stream is unavailable")
 	}
 	go func() {
 		commandErrors <- agent.stream.RunControlCommands(ctx)
@@ -373,14 +373,14 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 
 func (agent *ProductionAgent) nextObservationSequence(ctx context.Context) (int64, error) {
 	if agent == nil || agent.observationSequenceSource == nil || ctx == nil {
-		return 0, errors.New("Stage Worker capacity observation sequencer is not configured")
+		return 0, errors.New("stage worker capacity observation sequencer is not configured")
 	}
 	sequence, err := agent.observationSequenceSource.NextCapacityObservationSequence(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("allocate Stage Worker capacity observation sequence: %w", err)
 	}
 	if sequence <= 0 {
-		return 0, errors.New("Stage Worker capacity observation sequencer returned an invalid sequence")
+		return 0, errors.New("stage worker capacity observation sequencer returned an invalid sequence")
 	}
 	return sequence, nil
 }
@@ -399,7 +399,7 @@ func (agent *ProductionAgent) startAndMonitor(
 ) (MaterializationResult, int64, error) {
 	if agent == nil || agent.stream == nil || agent.wait == nil ||
 		agent.heartbeatInterval <= 0 || ctx == nil || assignment == nil {
-		return MaterializationResult{}, 1, errors.New("Stage Worker production execution is not configured")
+		return MaterializationResult{}, 1, errors.New("stage worker production execution is not configured")
 	}
 	if _, err := agent.stream.ExecuteAssignment(ctx, assignment); err != nil {
 		return MaterializationResult{}, 1, fmt.Errorf("execute StageAssignment: %w", err)
@@ -414,7 +414,7 @@ func (agent *ProductionAgent) monitorActive(
 	for ; ; sequence++ {
 		authority := agent.stream.activeAuthority()
 		if authority == nil {
-			return MaterializationResult{}, sequence, errors.New("Stage Worker lost active authority before completion")
+			return MaterializationResult{}, sequence, errors.New("stage worker lost active authority before completion")
 		}
 		status, err := agent.stream.runtime.Status(ctx, authority)
 		if err != nil {
@@ -452,7 +452,7 @@ func (agent *ProductionAgent) monitorActive(
 func (agent *ProductionAgent) reattachActive(ctx context.Context) error {
 	authority := agent.stream.activeAuthority()
 	if authority == nil {
-		return errors.New("Stage Worker has no active authority to reattach")
+		return errors.New("stage worker has no active authority to reattach")
 	}
 	status, err := agent.stream.runtime.Status(ctx, authority)
 	if err != nil {
@@ -478,7 +478,7 @@ func (agent *ProductionAgent) Discover(
 ) (DiscoveryResult, error) {
 	if agent == nil || agent.control == nil || agent.runtime == nil || agent.now == nil ||
 		ctx == nil || observationSequence <= 0 {
-		return DiscoveryResult{}, errors.New("Stage Worker production discovery is not configured")
+		return DiscoveryResult{}, errors.New("stage worker production discovery is not configured")
 	}
 	leader, err := agent.refreshEvidence(ctx, observationSequence)
 	if err != nil {
@@ -522,7 +522,7 @@ func (agent *ProductionAgent) refreshEvidence(
 		if decision.GetModelRuntimeBarrierGeneration() <= 0 ||
 			uuid.Validate(decision.GetLeaderWorkerMemberId()) != nil ||
 			(leaderMemberID != "" && leaderMemberID != decision.GetLeaderWorkerMemberId()) {
-			return false, errors.New("Stage Worker registration returned an inconsistent gang barrier")
+			return false, errors.New("stage worker registration returned an inconsistent gang barrier")
 		}
 		leaderMemberID = decision.GetLeaderWorkerMemberId()
 		barrierGenerations[identity.GetModelResidencyId()] =
@@ -564,7 +564,7 @@ func (agent *ProductionAgent) acquire(
 		identity := agent.runtimeIdentities[index]
 		barrierGeneration := agent.runtimeBarrierGenerations[identity.GetModelResidencyId()]
 		if barrierGeneration <= 0 {
-			return DiscoveryResult{}, errors.New("Stage Worker acquire has no ready ModelRuntime barrier")
+			return DiscoveryResult{}, errors.New("stage worker acquire has no ready ModelRuntime barrier")
 		}
 		response, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 			Operation: &velav1.StageWorkerControlServiceConnectRequest_AcquireStage{
@@ -598,12 +598,12 @@ func (agent *ProductionAgent) acquire(
 		if command := response.GetStageCommandResult(); command != nil &&
 			(command.GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
 				command.GetDecision() == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED) {
-			return DiscoveryResult{}, fmt.Errorf("Stage Worker acquire rejected: %s", command.GetDetail())
+			return DiscoveryResult{}, fmt.Errorf("stage worker acquire rejected: %s", command.GetDetail())
 		}
-		return DiscoveryResult{}, errors.New("Stage Worker acquire returned a malformed result")
+		return DiscoveryResult{}, errors.New("stage worker acquire returned a malformed result")
 	}
 	if minimumRetry == 0 {
-		return DiscoveryResult{}, errors.New("Stage Worker acquire returned no valid retry interval")
+		return DiscoveryResult{}, errors.New("stage worker acquire returned no valid retry interval")
 	}
 	agent.acquireCursor = (agent.acquireCursor + 1) % len(agent.runtimeIdentities)
 	return DiscoveryResult{RetryAfter: minimumRetry}, nil
@@ -658,7 +658,7 @@ func (agent *ProductionAgent) requireReady(
 		if decision != nil && strings.TrimSpace(decision.GetReason()) != "" {
 			reason = decision.GetReason()
 		}
-		return nil, fmt.Errorf("Stage Worker %s is not ready: %s", operation, reason)
+		return nil, fmt.Errorf("stage worker %s is not ready: %s", operation, reason)
 	}
 	return decision, nil
 }
@@ -672,7 +672,7 @@ func normalizeProductionRuntimeIdentities(
 	}
 	if len(values) == 0 || len(values) > 16 ||
 		(config.RuntimeIdentity != nil && len(config.RuntimeIdentities) != 0) {
-		return nil, errors.New("Stage Worker production runtime identity set is invalid")
+		return nil, errors.New("stage worker production runtime identity set is invalid")
 	}
 	identities := make([]*velav1.ModelRuntimeIdentity, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -685,7 +685,7 @@ func normalizeProductionRuntimeIdentities(
 			identity.GetStageProfileRevisionId(), fmt.Sprintf("%d", identity.GetModelRuntimeEpoch()),
 		}, "\x00")
 		if _, duplicate := seen[key]; duplicate {
-			return nil, errors.New("Stage Worker production runtime identity set is duplicated")
+			return nil, errors.New("stage worker production runtime identity set is duplicated")
 		}
 		seen[key] = struct{}{}
 		identities = append(identities, proto.Clone(identity).(*velav1.ModelRuntimeIdentity))
@@ -698,7 +698,7 @@ func normalizeProductionRuntimeIdentities(
 			identity.GetWorkerMemberEpoch() != primary.GetWorkerMemberEpoch() ||
 			!slices.Equal(identity.GetDeviceSetDigest(), primary.GetDeviceSetDigest()) ||
 			!slices.Equal(identity.GetMembershipDigest(), primary.GetMembershipDigest()) {
-			return nil, errors.New("Stage Worker production runtime identities do not share one WorkerInstance member")
+			return nil, errors.New("stage worker production runtime identities do not share one WorkerInstance member")
 		}
 	}
 	return identities, nil
@@ -767,7 +767,7 @@ func validateProductionRuntimeIdentity(identity *velav1.ModelRuntimeIdentity) er
 		identity.GetWorkerInstanceEpoch() <= 0 || identity.GetModelRuntimeEpoch() <= 0 ||
 		identity.GetWorkerMemberEpoch() <= 0 || strings.TrimSpace(identity.GetRuntimeIdentity()) == "" ||
 		len(identity.GetDeviceSetDigest()) != 32 || len(identity.GetMembershipDigest()) != 32 {
-		return errors.New("Stage Worker production runtime identity is incomplete")
+		return errors.New("stage worker production runtime identity is incomplete")
 	}
 	return nil
 }
@@ -778,15 +778,15 @@ func validateProductionTopology(
 	members []*velav1.StageAuthorityMemberEpoch,
 ) error {
 	if len(devices) == 0 || len(devices) > 64 || len(members) == 0 || len(members) > 64 {
-		return errors.New("Stage Worker production topology is incomplete")
+		return errors.New("stage worker production topology is incomplete")
 	}
 	seenDevices := make(map[string]struct{}, len(devices))
 	for _, device := range devices {
 		if device == nil || uuid.Validate(device.GetDeviceId()) != nil || device.GetDeviceEpoch() <= 0 {
-			return errors.New("Stage Worker production device evidence is invalid")
+			return errors.New("stage worker production device evidence is invalid")
 		}
 		if _, duplicate := seenDevices[device.GetDeviceId()]; duplicate {
-			return errors.New("Stage Worker production device evidence is duplicated")
+			return errors.New("stage worker production device evidence is duplicated")
 		}
 		seenDevices[device.GetDeviceId()] = struct{}{}
 	}
@@ -795,10 +795,10 @@ func validateProductionTopology(
 	for _, member := range members {
 		if member == nil || uuid.Validate(member.GetWorkerMemberId()) != nil ||
 			member.GetMemberEpoch() <= 0 || member.GetModelRuntimeEpoch() != identity.GetModelRuntimeEpoch() {
-			return errors.New("Stage Worker production member evidence is invalid")
+			return errors.New("stage worker production member evidence is invalid")
 		}
 		if _, duplicate := seenMembers[member.GetWorkerMemberId()]; duplicate {
-			return errors.New("Stage Worker production member evidence is duplicated")
+			return errors.New("stage worker production member evidence is duplicated")
 		}
 		seenMembers[member.GetWorkerMemberId()] = struct{}{}
 		identityMember = identityMember ||
@@ -806,18 +806,18 @@ func validateProductionTopology(
 				member.GetMemberEpoch() == identity.GetWorkerMemberEpoch())
 	}
 	if !identityMember {
-		return errors.New("Stage Worker production topology omits the local WorkerMember")
+		return errors.New("stage worker production topology omits the local WorkerMember")
 	}
 	return nil
 }
 
 func validateProductionCapacity(vector map[string]int64) error {
 	if len(vector) == 0 || len(vector) > 100 {
-		return errors.New("Stage Worker production capacity vector is invalid")
+		return errors.New("stage worker production capacity vector is invalid")
 	}
 	for key, value := range vector {
 		if strings.TrimSpace(key) == "" || strings.TrimSpace(key) != key || len(key) > 100 || value < 0 {
-			return errors.New("Stage Worker production capacity vector is invalid")
+			return errors.New("stage worker production capacity vector is invalid")
 		}
 	}
 	return nil

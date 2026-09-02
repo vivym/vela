@@ -29,7 +29,7 @@ func NewWorkerInstanceAdmissionValidator(
 	memberPKISecrets StageWorkerMemberPKISecretReader,
 ) (*WorkerInstancePodAdmissionValidator, error) {
 	if memberPKISecrets == nil {
-		return nil, errors.New("Stage Worker member PKI Secret reader is required")
+		return nil, errors.New("stage worker member PKI Secret reader is required")
 	}
 	return newWorkerInstanceAdmissionValidator(rollouts, memberPKISecrets)
 }

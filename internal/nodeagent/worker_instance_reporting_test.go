@@ -15,7 +15,7 @@ func TestWorkerInstanceReportingRunsImmediatelyPeriodicallyAndIsolatesFailures(t
 	healthyID := uuid.MustParse("49430000-0000-0000-0000-000000000001")
 	failingID := uuid.MustParse("49430000-0000-0000-0000-000000000002")
 	reporter := &recordingWorkerInstanceLoopReporter{failures: map[uuid.UUID]error{
-		failingID: errors.New("Fleet unavailable for one WorkerInstance"),
+		failingID: errors.New("fleet unavailable for one WorkerInstance"),
 	}}
 	results := make(chan WorkerInstanceReportResult, 64)
 	ctx, cancel := context.WithCancel(context.Background())

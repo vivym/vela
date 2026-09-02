@@ -49,7 +49,7 @@ func NewAuthorityStopSource(
 ) (*AuthorityStopSource, error) {
 	if validator == nil || authorizer == nil || config.PollInterval <= 0 ||
 		config.PollInterval > time.Minute {
-		return nil, errors.New("Stage Worker authority StopSource configuration is invalid")
+		return nil, errors.New("stage worker authority StopSource configuration is invalid")
 	}
 	if config.Now == nil {
 		config.Now = time.Now
@@ -91,7 +91,7 @@ func (source *AuthorityStopSource) ObserveStageAuthority(
 ) error {
 	if source == nil || source.validator == nil || source.authorizer == nil ||
 		strings.TrimSpace(identity.SPIFFEID) == "" || sessionEpoch <= 0 || authority == nil {
-		return errors.New("Stage Worker tracked authority is incomplete")
+		return errors.New("stage worker tracked authority is incomplete")
 	}
 	verified, err := source.validator.ValidateEnvelope(authority)
 	if err != nil {
@@ -99,14 +99,14 @@ func (source *AuthorityStopSource) ObserveStageAuthority(
 	}
 	leaseID := verified.Authority.GetStageLeaseId()
 	if leaseID == "" {
-		return errors.New("Stage Worker tracked authority has no StageLease identity")
+		return errors.New("stage worker tracked authority has no StageLease identity")
 	}
 	key := authorityStopStreamKey{spiffeID: identity.SPIFFEID, sessionEpoch: sessionEpoch}
 	source.mu.Lock()
 	stream := source.streams[key]
 	source.mu.Unlock()
 	if stream == nil {
-		return errors.New("Stage Worker control stream is not registered for authority tracking")
+		return errors.New("stage worker control stream is not registered for authority tracking")
 	}
 	stream.mu.Lock()
 	stream.authorities[leaseID] = verified

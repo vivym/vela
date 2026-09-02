@@ -271,14 +271,14 @@ type CommandFence struct {
 
 func NewCommandFence(runner remediation.CommandRunner, path string, args []string) (*CommandFence, error) {
 	if runner == nil {
-		return nil, errors.New("node Agent host fence runner is required")
+		return nil, errors.New("node agent host fence runner is required")
 	}
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return nil, errors.New("node Agent host fence path must be an absolute clean path")
+		return nil, errors.New("node agent host fence path must be an absolute clean path")
 	}
 	for _, arg := range args {
 		if strings.ContainsRune(arg, '\x00') {
-			return nil, errors.New("node Agent host fence arguments cannot contain NUL")
+			return nil, errors.New("node agent host fence arguments cannot contain NUL")
 		}
 	}
 	return &CommandFence{runner: runner, path: path, args: append([]string(nil), args...)}, nil
@@ -286,7 +286,7 @@ func NewCommandFence(runner remediation.CommandRunner, path string, args []strin
 
 func (fence *CommandFence) Check(ctx context.Context, plan remediation.Plan) error {
 	if fence == nil || fence.runner == nil {
-		return errors.New("node Agent host fence is not configured")
+		return errors.New("node agent host fence is not configured")
 	}
 	output, err := fence.runner.Run(ctx, plan, fence.path, append([]string(nil), fence.args...))
 	if err != nil {
@@ -307,14 +307,14 @@ func (fence *CommandFence) Check(ctx context.Context, plan remediation.Plan) err
 
 func NewCommandPostcheck(runner remediation.CommandRunner, path string, args []string) (*CommandPostcheck, error) {
 	if runner == nil {
-		return nil, errors.New("node Agent post-check runner is required")
+		return nil, errors.New("node agent post-check runner is required")
 	}
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return nil, errors.New("node Agent post-check path must be an absolute clean path")
+		return nil, errors.New("node agent post-check path must be an absolute clean path")
 	}
 	for _, arg := range args {
 		if strings.ContainsRune(arg, '\x00') {
-			return nil, errors.New("node Agent post-check arguments cannot contain NUL")
+			return nil, errors.New("node agent post-check arguments cannot contain NUL")
 		}
 	}
 	return &CommandPostcheck{runner: runner, path: path, args: append([]string(nil), args...)}, nil
@@ -322,7 +322,7 @@ func NewCommandPostcheck(runner remediation.CommandRunner, path string, args []s
 
 func (postcheck *CommandPostcheck) Verify(ctx context.Context, plan remediation.Plan) (PostcheckResult, error) {
 	if postcheck == nil || postcheck.runner == nil {
-		return PostcheckResult{}, errors.New("node Agent post-check is not configured")
+		return PostcheckResult{}, errors.New("node agent post-check is not configured")
 	}
 	output, err := postcheck.runner.Run(ctx, plan, postcheck.path, append([]string(nil), postcheck.args...))
 	if err != nil {
@@ -453,7 +453,7 @@ func NewStaticCapabilityPolicy(
 
 func (policy *StaticCapabilityPolicy) Authorize(plan remediation.Plan) (DeviceBinding, error) {
 	if policy == nil {
-		return DeviceBinding{}, errors.New("node Agent capability policy is not configured")
+		return DeviceBinding{}, errors.New("node agent capability policy is not configured")
 	}
 	capability, ok := policy.devices[plan.DeviceIdentity]
 	if !ok || capability.DeviceID != plan.DeviceID || capability.DeviceEpoch != plan.DeviceEpoch ||
@@ -490,7 +490,7 @@ type CallbackFence func(context.Context, remediation.Plan) error
 
 func (fence CallbackFence) Check(ctx context.Context, plan remediation.Plan) error {
 	if fence == nil {
-		return errors.New("node Agent host fence is not configured")
+		return errors.New("node agent host fence is not configured")
 	}
 	return fence(ctx, plan)
 }
@@ -513,7 +513,7 @@ type ExecutionRateLimiter interface {
 
 func NewRateLimiter(config RateLimit) (*RateLimiter, error) {
 	if !validRateLimit(config) {
-		return nil, errors.New("node Agent rate limit is invalid")
+		return nil, errors.New("node agent rate limit is invalid")
 	}
 	return &RateLimiter{config: config}, nil
 }
@@ -532,17 +532,17 @@ func allowedHistory(config RateLimit, history []time.Time, now time.Time) ([]tim
 		}
 	}
 	if len(kept) >= config.MaxExecutions {
-		return nil, errors.New("node Agent remediation rate limit exceeded")
+		return nil, errors.New("node agent remediation rate limit exceeded")
 	}
 	if len(kept) > 0 && now.Sub(kept[len(kept)-1]) < config.MinimumInterval {
-		return nil, errors.New("node Agent remediation minimum interval has not elapsed")
+		return nil, errors.New("node agent remediation minimum interval has not elapsed")
 	}
 	return append(kept, now), nil
 }
 
 func (limiter *RateLimiter) Allow(now time.Time) error {
 	if limiter == nil {
-		return errors.New("node Agent rate limiter is not configured")
+		return errors.New("node agent rate limiter is not configured")
 	}
 	limiter.mu.Lock()
 	defer limiter.mu.Unlock()
@@ -571,14 +571,14 @@ func NewCertifiedExecutor(
 	limiter ExecutionRateLimiter,
 ) (*CertifiedExecutor, error) {
 	if allowlisted == nil || policy == nil || fence == nil || postcheck == nil || limiter == nil {
-		return nil, errors.New("node Agent certified executor dependencies are required")
+		return nil, errors.New("node agent certified executor dependencies are required")
 	}
 	return &CertifiedExecutor{allowlisted: allowlisted, policy: policy, fence: fence, postcheck: postcheck, limiter: limiter, clock: time.Now}, nil
 }
 
 func (executor *CertifiedExecutor) Execute(ctx context.Context, plan remediation.Plan) (remediation.ExecutionResult, error) {
 	if executor == nil || executor.allowlisted == nil || executor.policy == nil || executor.fence == nil || executor.postcheck == nil || executor.limiter == nil {
-		return remediation.ExecutionResult{}, errors.New("node Agent certified executor is not configured")
+		return remediation.ExecutionResult{}, errors.New("node agent certified executor is not configured")
 	}
 	binding, err := executor.policy.Authorize(plan)
 	if err != nil {

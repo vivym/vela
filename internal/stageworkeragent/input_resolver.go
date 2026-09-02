@@ -141,7 +141,7 @@ func (resolver *AssignmentInputResolver) Resolve(
 		if receipt.ArtifactID != artifactID || receipt.SizeBytes != input.GetSizeBytes() ||
 			len(input.GetSha256()) != len(receipt.SHA256) ||
 			!equalDigest(input.GetSha256(), receipt.SHA256) {
-			return errors.New("Stage input Connector returned a mismatched PullReceipt")
+			return errors.New("stage input Connector returned a mismatched PullReceipt")
 		}
 	}
 	return nil

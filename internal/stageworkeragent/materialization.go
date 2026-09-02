@@ -181,7 +181,7 @@ func (agent *StreamAgent) SealAndMaterialize(
 ) (MaterializationResult, error) {
 	result := MaterializationResult{}
 	if agent == nil || agent.materialization == nil || ctx == nil {
-		return result, errors.New("Stage Worker materialization is not configured")
+		return result, errors.New("stage worker materialization is not configured")
 	}
 	agent.materializationMu.Lock()
 	defer agent.materializationMu.Unlock()
@@ -214,7 +214,7 @@ func (agent *StreamAgent) ResumeMaterializations(
 ) (MaterializationResult, error) {
 	result := MaterializationResult{}
 	if agent == nil || agent.materialization == nil || ctx == nil {
-		return result, errors.New("Stage Worker materialization is not configured")
+		return result, errors.New("stage worker materialization is not configured")
 	}
 	agent.materializationMu.Lock()
 	defer agent.materializationMu.Unlock()

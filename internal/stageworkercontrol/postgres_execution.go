@@ -108,7 +108,7 @@ func (backend *PostgresExecutionBackend) HeartbeatStage(
 		(request.GetLocalReceiptId() == "") != (len(request.GetLocalReceiptDigest()) == 0) ||
 		(len(request.GetLocalReceiptDigest()) != 0 &&
 			len(request.GetLocalReceiptDigest()) != sha256.Size) {
-		return CommandResult{}, errors.New("Stage Worker Heartbeat evidence is invalid")
+		return CommandResult{}, errors.New("stage worker Heartbeat evidence is invalid")
 	}
 	renewed, err := backend.renew(
 		current.Authority, current.Authority.GetStageVersion(), observedAt,
@@ -146,7 +146,7 @@ func (backend *PostgresExecutionBackend) renew(
 		return nil, errors.New("PostgreSQL Stage Worker execution backend is not configured")
 	}
 	if current == nil || stageVersion < current.GetStageVersion() {
-		return nil, errors.New("Stage Worker renewal Stage version is invalid")
+		return nil, errors.New("stage worker renewal Stage version is invalid")
 	}
 	issuedAt := eventAt.UTC()
 	minimumIssuedAt := current.GetIssuedAt().AsTime().UTC().Add(renewalClockStep)
@@ -236,11 +236,11 @@ func executionStageAuthority(
 		strings.TrimSpace(command.Identity.SPIFFEID) == "" || authorities.Stage == nil ||
 		authorities.Materialization != nil || authorities.Stage.Authority == nil ||
 		requestAuthority == nil || !proto.Equal(requestAuthority, authorities.Stage.Authority) {
-		return stageauthority.Verified{}, errors.New("Stage Worker execution authority is incomplete")
+		return stageauthority.Verified{}, errors.New("stage worker execution authority is incomplete")
 	}
 	digest, err := stageauthority.Digest(authorities.Stage.Authority)
 	if err != nil || digest != authorities.Stage.Digest {
-		return stageauthority.Verified{}, errors.New("Stage Worker execution authority digest is inconsistent")
+		return stageauthority.Verified{}, errors.New("stage worker execution authority digest is inconsistent")
 	}
 	return *authorities.Stage, nil
 }
@@ -253,13 +253,13 @@ func validExecutionEventTime(
 ) (time.Time, error) {
 	if value == nil || value.CheckValid() != nil || authority == nil ||
 		authority.GetIssuedAt() == nil || authority.GetExpiresAt() == nil {
-		return time.Time{}, errors.New("Stage Worker execution event time is invalid")
+		return time.Time{}, errors.New("stage worker execution event time is invalid")
 	}
 	eventAt := value.AsTime().UTC()
 	if eventAt.Before(authority.GetIssuedAt().AsTime().UTC()) ||
 		!eventAt.Before(authority.GetExpiresAt().AsTime().UTC()) ||
 		eventAt.After(now.UTC().Add(maxClockSkew)) {
-		return time.Time{}, errors.New("Stage Worker execution event is outside active authority")
+		return time.Time{}, errors.New("stage worker execution event is outside active authority")
 	}
 	return eventAt, nil
 }
@@ -272,7 +272,7 @@ func executionCommandPayload(
 	authority := current.Authority
 	if authority == nil || renewed == nil ||
 		authority.GetModelRuntimeBarrierGeneration() <= 0 {
-		return nil, errors.New("Stage Worker execution authority binding is incomplete")
+		return nil, errors.New("stage worker execution authority binding is incomplete")
 	}
 	currentWire, err := proto.MarshalOptions{Deterministic: true}.Marshal(authority)
 	if err != nil {

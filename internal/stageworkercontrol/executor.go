@@ -142,7 +142,7 @@ type ProductionExecutor struct {
 
 func NewProductionExecutor(backend OperationBackend) (*ProductionExecutor, error) {
 	if backend == nil {
-		return nil, errors.New("Stage Worker operation backend is required")
+		return nil, errors.New("stage worker operation backend is required")
 	}
 	return &ProductionExecutor{backend: backend}, nil
 }
@@ -156,11 +156,11 @@ func (executor *ProductionExecutor) Execute(
 	authorities VerifiedAuthorities,
 ) (*velav1.StageWorkerControlServiceConnectResponse, error) {
 	if executor == nil || executor.backend == nil {
-		return nil, errors.New("Stage Worker production executor is not configured")
+		return nil, errors.New("stage worker production executor is not configured")
 	}
 	commandID, err := uuid.Parse(request.GetRequestId())
 	if ctx == nil || err != nil || strings.TrimSpace(identity.SPIFFEID) == "" || sessionEpoch <= 0 {
-		return nil, errors.New("Stage Worker command context is invalid")
+		return nil, errors.New("stage worker command context is invalid")
 	}
 	command := CommandContext{
 		CommandID: commandID, Identity: identity, ControlSessionEpoch: sessionEpoch,
@@ -249,7 +249,7 @@ func resolvedInputTransferResponse(
 		return nil, fmt.Errorf("execute %s: %w", OperationResolveInputTransfer.String(), err)
 	}
 	if (result.Descriptor == nil) == (result.Command == nil) {
-		return nil, errors.New("Stage Worker transfer backend must return exactly one result")
+		return nil, errors.New("stage worker transfer backend must return exactly one result")
 	}
 	if result.Command != nil {
 		return commandResultResponse(
@@ -262,7 +262,7 @@ func resolvedInputTransferResponse(
 		strings.TrimSpace(descriptor.ObjectVersion) == "" ||
 		descriptor.SHA256 == ([sha256.Size]byte{}) || descriptor.SizeBytes <= 0 ||
 		strings.TrimSpace(descriptor.ContentType) == "" || len(descriptor.ContentType) > 200 {
-		return nil, errors.New("Stage Worker transfer backend returned a malformed descriptor")
+		return nil, errors.New("stage worker transfer backend returned a malformed descriptor")
 	}
 	return &velav1.StageWorkerControlServiceConnectResponse{
 		RequestId: requestID,
@@ -287,7 +287,7 @@ func readinessResponse(
 	}
 	if result.WorkerInstanceID == uuid.Nil || result.WorkerInstanceEpoch <= 0 ||
 		len(result.Reason) > maxControlDetailBytes {
-		return nil, errors.New("Stage Worker readiness backend returned a malformed result")
+		return nil, errors.New("stage worker readiness backend returned a malformed result")
 	}
 	leaderMemberID := ""
 	if result.LeaderWorkerMemberID != uuid.Nil {
@@ -321,7 +321,7 @@ func acquireResponse(
 				result.Command.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED) ||
 			strings.TrimSpace(result.Command.Detail) == "" ||
 			len(result.Command.Detail) > maxControlDetailBytes {
-			return nil, errors.New("Stage Worker acquire backend returned a malformed negative decision")
+			return nil, errors.New("stage worker acquire backend returned a malformed negative decision")
 		}
 		return commandResponse(
 			requestID, OperationAcquireStage, result.Command.Decision, result.Command.Detail,
@@ -330,10 +330,10 @@ func acquireResponse(
 	response := &velav1.StageWorkerControlServiceConnectResponse{RequestId: requestID}
 	if result.Assignment != nil {
 		if result.RetryAfter != 0 {
-			return nil, errors.New("Stage Worker acquire backend returned Assignment with no-work retry")
+			return nil, errors.New("stage worker acquire backend returned Assignment with no-work retry")
 		}
 		if _, validateErr := stageassignment.Validate(result.Assignment); validateErr != nil {
-			return nil, errors.New("Stage Worker acquire backend returned a malformed Assignment")
+			return nil, errors.New("stage worker acquire backend returned a malformed Assignment")
 		}
 		response.Result = &velav1.StageWorkerControlServiceConnectResponse_StageAssignment{
 			StageAssignment: result.Assignment,
@@ -341,7 +341,7 @@ func acquireResponse(
 		return response, nil
 	}
 	if result.RetryAfter <= 0 || result.RetryAfter > maxNoWorkRetry {
-		return nil, errors.New("Stage Worker acquire backend returned an invalid no-work retry")
+		return nil, errors.New("stage worker acquire backend returned an invalid no-work retry")
 	}
 	response.Result = &velav1.StageWorkerControlServiceConnectResponse_NoWork{
 		NoWork: &velav1.NoStageWork{RetryAfter: durationpb.New(result.RetryAfter)},
@@ -359,12 +359,12 @@ func sealResponse(
 		return nil, fmt.Errorf("execute %s: %w", OperationSealStageOutput.String(), err)
 	}
 	if (result.Authority == nil) == (result.Command == nil) {
-		return nil, errors.New("Stage Worker seal backend returned a malformed result")
+		return nil, errors.New("stage worker seal backend returned a malformed result")
 	}
 	if result.Command != nil {
 		if result.Command.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE &&
 			result.Command.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED {
-			return nil, errors.New("Stage Worker seal backend returned an invalid negative decision")
+			return nil, errors.New("stage worker seal backend returned an invalid negative decision")
 		}
 		return commandResultResponse(
 			requestID, OperationSealStageOutput, *result.Command, authorities, nil,
@@ -376,7 +376,7 @@ func sealResponse(
 	}
 	if _, digestErr = materializationauthority.Digest(result.Authority); digestErr != nil ||
 		!bytes.Equal(result.Authority.GetStageAuthorityDigest(), stageDigest[:]) {
-		return nil, errors.New("Stage Worker seal backend returned a malformed MaterializationAuthority")
+		return nil, errors.New("stage worker seal backend returned a malformed MaterializationAuthority")
 	}
 	return &velav1.StageWorkerControlServiceConnectResponse{
 		RequestId: requestID,
@@ -397,15 +397,15 @@ func commandResultResponse(
 		return nil, fmt.Errorf("execute %s: %w", operation.String(), err)
 	}
 	if !terminalCommandDecision(result.Decision) {
-		return nil, errors.New("Stage Worker backend returned an invalid command decision")
+		return nil, errors.New("stage worker backend returned an invalid command decision")
 	}
 	if len(result.Detail) > maxControlDetailBytes {
-		return nil, errors.New("Stage Worker backend returned an oversized command detail")
+		return nil, errors.New("stage worker backend returned an oversized command detail")
 	}
 	if (result.Decision == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
 		result.Decision == velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REJECTED) &&
 		strings.TrimSpace(result.Detail) == "" {
-		return nil, errors.New("Stage Worker negative command result lacks detail")
+		return nil, errors.New("stage worker negative command result lacks detail")
 	}
 	digest, digestErr := commandAuthorityDigest(operation, authorities)
 	if digestErr != nil {
@@ -414,15 +414,15 @@ func commandResultResponse(
 	if result.RenewedAuthority != nil {
 		if result.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED &&
 			result.Decision != velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED {
-			return nil, errors.New("Stage Worker negative command result contains renewed authority")
+			return nil, errors.New("stage worker negative command result contains renewed authority")
 		}
 		if operation != OperationStartStage && operation != OperationHeartbeatStage {
-			return nil, errors.New("Stage Worker operation cannot renew StageAuthority")
+			return nil, errors.New("stage worker operation cannot renew StageAuthority")
 		}
 		if authorities.Stage == nil || stageauthority.ValidateRenewal(
 			authorities.Stage.Authority, result.RenewedAuthority,
 		) != nil {
-			return nil, errors.New("Stage Worker backend returned a malformed renewed StageAuthority")
+			return nil, errors.New("stage worker backend returned a malformed renewed StageAuthority")
 		}
 	}
 	return &velav1.StageWorkerControlServiceConnectResponse{
@@ -459,26 +459,26 @@ func commandAuthorityDigest(
 		OperationConsumeInputTransfer:
 		if authorities.Stage == nil || authorities.Materialization != nil ||
 			authorities.Stage.Digest == ([sha256.Size]byte{}) || authorities.Stage.Authority == nil {
-			return [sha256.Size]byte{}, errors.New("Stage Worker command lacks exact StageAuthority evidence")
+			return [sha256.Size]byte{}, errors.New("stage worker command lacks exact StageAuthority evidence")
 		}
 		digest, err := stageauthority.Digest(authorities.Stage.Authority)
 		if err != nil || digest != authorities.Stage.Digest {
-			return [sha256.Size]byte{}, errors.New("Stage Worker command has mismatched StageAuthority evidence")
+			return [sha256.Size]byte{}, errors.New("stage worker command has mismatched StageAuthority evidence")
 		}
 		return authorities.Stage.Digest, nil
 	case OperationCommitStageMaterialization, OperationReportMaterializationSourceLost:
 		if authorities.Materialization == nil || authorities.Stage != nil ||
 			authorities.Materialization.Digest == ([sha256.Size]byte{}) ||
 			authorities.Materialization.Authority == nil {
-			return [sha256.Size]byte{}, errors.New("Stage Worker command lacks exact MaterializationAuthority evidence")
+			return [sha256.Size]byte{}, errors.New("stage worker command lacks exact MaterializationAuthority evidence")
 		}
 		digest, err := materializationauthority.Digest(authorities.Materialization.Authority)
 		if err != nil || digest != authorities.Materialization.Digest {
-			return [sha256.Size]byte{}, errors.New("Stage Worker command has mismatched MaterializationAuthority evidence")
+			return [sha256.Size]byte{}, errors.New("stage worker command has mismatched MaterializationAuthority evidence")
 		}
 		return authorities.Materialization.Digest, nil
 	default:
-		return [sha256.Size]byte{}, errors.New("Stage Worker operation has no command authority evidence")
+		return [sha256.Size]byte{}, errors.New("stage worker operation has no command authority evidence")
 	}
 }
 
@@ -488,7 +488,7 @@ func validateOperationRequest(
 	authorities VerifiedAuthorities,
 ) error {
 	if request == nil || request.GetOperation() == nil {
-		return errors.New("Stage Worker operation request is missing")
+		return errors.New("stage worker operation request is missing")
 	}
 	switch operation {
 	case OperationRegisterWorkerEvidence:
@@ -497,7 +497,7 @@ func validateOperationRequest(
 			value.GetCapacityObservationSequence() <= 0 || len(value.GetDevices()) == 0 ||
 			len(value.GetMembers()) == 0 || len(value.GetReadinessEvidence()) == 0 ||
 			len(value.GetReadinessEvidence()) > maxReadinessEvidenceBytes {
-			return errors.New("Worker registration evidence is incomplete")
+			return errors.New("worker registration evidence is incomplete")
 		}
 	case OperationReportCapacityObservation:
 		value := request.GetReportCapacityObservation()
@@ -506,7 +506,7 @@ func validateOperationRequest(
 			!validCapacityVector(value.GetCapacityVector()) ||
 			!validTimestamp(value.GetObservedAt()) || !validTimestamp(value.GetExpiresAt()) ||
 			!value.GetExpiresAt().AsTime().After(value.GetObservedAt().AsTime()) {
-			return errors.New("Stage capacity observation is invalid")
+			return errors.New("stage capacity observation is invalid")
 		}
 	case OperationAcquireStage:
 		value := request.GetAcquireStage()
@@ -515,11 +515,11 @@ func validateOperationRequest(
 			parseUUID(value.GetStageProfileRevisionId()) == uuid.Nil ||
 			value.GetWorkerInstanceEpoch() <= 0 || value.GetCapacityObservationSequence() <= 0 ||
 			value.GetModelRuntimeEpoch() <= 0 {
-			return errors.New("Stage acquire authority is incomplete")
+			return errors.New("stage acquire authority is incomplete")
 		}
 	case OperationStartStage:
 		if authorities.Stage == nil || !validTimestamp(request.GetStartStage().GetStartedAt()) {
-			return errors.New("Stage start evidence is invalid")
+			return errors.New("stage start evidence is invalid")
 		}
 	case OperationHeartbeatStage:
 		value := request.GetHeartbeatStage()
@@ -529,17 +529,17 @@ func validateOperationRequest(
 			!json.Valid(value.GetBoundedStatusJson()) || !validTimestamp(value.GetObservedAt()) ||
 			(value.GetLocalReceiptId() == "") != (len(value.GetLocalReceiptDigest()) == 0) ||
 			(len(value.GetLocalReceiptDigest()) != 0 && len(value.GetLocalReceiptDigest()) != sha256.Size) {
-			return errors.New("Stage heartbeat evidence is invalid")
+			return errors.New("stage heartbeat evidence is invalid")
 		}
 	case OperationSealStageOutput:
 		if authorities.Stage == nil || request.GetSealStageOutput().GetLocalReceipt() == nil {
-			return errors.New("Stage seal evidence is invalid")
+			return errors.New("stage seal evidence is invalid")
 		}
 	case OperationCommitStageMaterialization:
 		value := request.GetCommitStageMaterialization()
 		if authorities.Materialization == nil || strings.TrimSpace(value.GetObjectVersion()) == "" ||
 			!validTimestamp(value.GetCommittedAt()) {
-			return errors.New("Stage materialization commit evidence is invalid")
+			return errors.New("stage materialization commit evidence is invalid")
 		}
 	case OperationFailStage:
 		value := request.GetFailStage()
@@ -549,7 +549,7 @@ func validateOperationRequest(
 			!validTimestamp(value.GetRetryAt()) ||
 			!value.GetRetryAt().AsTime().After(value.GetFailedAt().AsTime()) ||
 			len(value.GetDetail()) > maxControlDetailBytes {
-			return errors.New("Stage failure evidence is invalid")
+			return errors.New("stage failure evidence is invalid")
 		}
 	case OperationReattachStage:
 		value := request.GetReattachStage()
@@ -557,7 +557,7 @@ func validateOperationRequest(
 			value.GetObservedRuntimeState() == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED ||
 			(value.GetLocalReceiptId() == "") != (len(value.GetLocalReceiptDigest()) == 0) ||
 			(len(value.GetLocalReceiptDigest()) != 0 && len(value.GetLocalReceiptDigest()) != sha256.Size) {
-			return errors.New("Stage reattach evidence is invalid")
+			return errors.New("stage reattach evidence is invalid")
 		}
 	case OperationReportMaterializationSourceLost:
 		value := request.GetReportMaterializationSourceLost()
@@ -565,7 +565,7 @@ func validateOperationRequest(
 			value.GetConsumedResourceUnits() <= 0 || !validTimestamp(value.GetLostAt()) ||
 			!validTimestamp(value.GetRetryAt()) ||
 			!value.GetRetryAt().AsTime().After(value.GetLostAt().AsTime()) {
-			return errors.New("Stage materialization source-loss evidence is invalid")
+			return errors.New("stage materialization source-loss evidence is invalid")
 		}
 	case OperationResolveInputTransfer:
 		value := request.GetResolveInputTransfer()
@@ -580,7 +580,7 @@ func validateOperationRequest(
 			value.GetWorkerInstanceEpoch() != stage.Authority.GetWorkerInstanceEpoch() ||
 			value.GetModelResidencyId() != stage.Authority.GetModelResidencyId() ||
 			!stageAuthorityHasBarrierGeneration(stage.Authority, value.GetModelRuntimeEpoch()) {
-			return errors.New("Stage input transfer resolve authority is invalid")
+			return errors.New("stage input transfer resolve authority is invalid")
 		}
 	case OperationConsumeInputTransfer:
 		value := request.GetConsumeInputTransfer()
@@ -595,10 +595,10 @@ func validateOperationRequest(
 			value.GetWorkerInstanceEpoch() != stage.Authority.GetWorkerInstanceEpoch() ||
 			value.GetModelResidencyId() != stage.Authority.GetModelResidencyId() ||
 			!stageAuthorityHasBarrierGeneration(stage.Authority, value.GetModelRuntimeEpoch()) {
-			return errors.New("Stage input transfer consume evidence is invalid")
+			return errors.New("stage input transfer consume evidence is invalid")
 		}
 	default:
-		return errors.New("Stage Worker operation is unsupported")
+		return errors.New("stage worker operation is unsupported")
 	}
 	return nil
 }

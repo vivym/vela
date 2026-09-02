@@ -113,7 +113,7 @@ func NewHandler(authorizer MutationAuthorizer, config Config) (*Handler, error) 
 		return nil, errors.New("fleet Kubernetes username is required")
 	}
 	if config.CreateValidator == nil {
-		return nil, errors.New("Fleet protected resource create validator is required")
+		return nil, errors.New("fleet protected resource create validator is required")
 	}
 	return &Handler{
 		authorizer: authorizer, fleetUsername: config.FleetUsername,

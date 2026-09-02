@@ -222,11 +222,11 @@ func validateRecordUsage(ctx context.Context, command RecordUsageCommand) error 
 		command.Quantity <= 0 || command.IntervalStart.IsZero() || command.IntervalEnd.IsZero() ||
 		command.RecordedAt.IsZero() || command.IntervalEnd.Before(command.IntervalStart) ||
 		command.RecordedAt.Before(command.IntervalEnd) {
-		return errors.New("Resource Usage receipt is incomplete")
+		return errors.New("resource usage receipt is incomplete")
 	}
 	if !validSourceKind(command.SourceKind) || !validResourceKind(command.ResourceKind) ||
 		!validUsageClass(command.UsageClass) {
-		return errors.New("Resource Usage receipt contains an unsupported bounded value")
+		return errors.New("resource usage receipt contains an unsupported bounded value")
 	}
 	switch command.Attribution {
 	case AttributionDirect:
@@ -267,7 +267,7 @@ func validateRecordUsage(ctx context.Context, command RecordUsageCommand) error 
 			return errors.New("cache counterfactual ancestry is invalid")
 		}
 	default:
-		return errors.New("Resource Usage attribution is unsupported")
+		return errors.New("resource usage attribution is unsupported")
 	}
 	return nil
 }

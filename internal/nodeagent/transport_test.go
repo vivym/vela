@@ -192,7 +192,7 @@ func (executor *recordingExecutor) Execute(_ context.Context, plan remediation.P
 	if executor.result != nil {
 		return *executor.result, nil
 	}
-	return remediation.ExecutionResult{PostcheckDigest: sha256.Sum256([]byte("post-check")), PostcheckVerified: true, Detail: "node Agent remediation completed", ResultCode: "POSTCHECK_OK"}, nil
+	return remediation.ExecutionResult{PostcheckDigest: sha256.Sum256([]byte("post-check")), PostcheckVerified: true, Detail: "node agent remediation completed", ResultCode: "POSTCHECK_OK"}, nil
 }
 
 type memoryLedger struct {

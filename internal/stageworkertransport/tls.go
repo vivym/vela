@@ -40,7 +40,7 @@ func NewServerTLSCredentials(
 	}
 	certificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
 	if err != nil {
-		return nil, errors.New("Stage Worker control server certificate and key are invalid")
+		return nil, errors.New("stage worker control server certificate and key are invalid")
 	}
 	clientCAPEM, err := securefile.Read(clientCAPath, maximumTLSCABytes, false)
 	if err != nil {
@@ -48,7 +48,7 @@ func NewServerTLSCredentials(
 	}
 	clientCAs := x509.NewCertPool()
 	if !clientCAs.AppendCertsFromPEM(clientCAPEM) {
-		return nil, errors.New("Stage Worker control client CA contains no certificates")
+		return nil, errors.New("stage worker control client CA contains no certificates")
 	}
 	return credentials.NewTLS(&tls.Config{
 		MinVersion: tls.VersionTLS13,
@@ -69,7 +69,7 @@ func NewClientTLSCredentials(
 ) (credentials.TransportCredentials, error) {
 	if strings.TrimSpace(serverName) != serverName || serverName == "" ||
 		len(serverName) > 253 || strings.ContainsRune(serverName, '\x00') {
-		return nil, errors.New("Stage Worker control server name is invalid")
+		return nil, errors.New("stage worker control server name is invalid")
 	}
 	certificatePEM, err := securefile.Read(
 		certificatePath,
@@ -89,7 +89,7 @@ func NewClientTLSCredentials(
 	}
 	certificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
 	if err != nil {
-		return nil, errors.New("Stage Worker control client certificate and key are invalid")
+		return nil, errors.New("stage worker control client certificate and key are invalid")
 	}
 	serverCAPEM, err := securefile.Read(serverCAPath, maximumTLSCABytes, false)
 	if err != nil {
@@ -97,7 +97,7 @@ func NewClientTLSCredentials(
 	}
 	rootCAs := x509.NewCertPool()
 	if !rootCAs.AppendCertsFromPEM(serverCAPEM) {
-		return nil, errors.New("Stage Worker control server CA contains no certificates")
+		return nil, errors.New("stage worker control server CA contains no certificates")
 	}
 	return credentials.NewTLS(&tls.Config{
 		MinVersion:   tls.VersionTLS13,

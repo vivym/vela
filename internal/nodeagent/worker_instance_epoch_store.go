@@ -386,7 +386,7 @@ func readBootID(path string) (string, error) {
 	bootID = strings.TrimSpace(bootID)
 	parsed, err := uuid.Parse(bootID)
 	if err != nil || parsed == uuid.Nil || parsed.String() != bootID {
-		return "", errors.New("Node boot ID is invalid")
+		return "", errors.New("node boot ID is invalid")
 	}
 	return bootID, nil
 }

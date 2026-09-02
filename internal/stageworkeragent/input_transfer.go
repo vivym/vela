@@ -27,7 +27,7 @@ func NewControlTransferAuthority(
 	authority *velav1.StageAuthority,
 ) (*ControlTransferAuthority, error) {
 	if control == nil || authority == nil {
-		return nil, errors.New("Stage input transfer control authority is incomplete")
+		return nil, errors.New("stage input transfer control authority is incomplete")
 	}
 	digest, err := stageauthority.Digest(authority)
 	if err != nil {
@@ -46,7 +46,7 @@ func (authority *ControlTransferAuthority) Resolve(
 	if authority == nil || authority.control == nil || authority.authority == nil || ctx == nil ||
 		command.TicketID == uuid.Nil || command.TokenDigest == ([sha256.Size]byte{}) ||
 		command.ResolvedAt.IsZero() || !authority.matchesDestination(command.Destination) {
-		return stageartifact.TransferDescriptor{}, errors.New("Stage input transfer resolve authority is invalid")
+		return stageartifact.TransferDescriptor{}, errors.New("stage input transfer resolve authority is invalid")
 	}
 	response, err := authority.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_ResolveInputTransfer{
@@ -79,14 +79,14 @@ func (authority *ControlTransferAuthority) Resolve(
 		len(resolved.GetSha256()) != sha256.Size || resolved.GetSizeBytes() <= 0 ||
 		strings.TrimSpace(resolved.GetContentType()) == "" || len(resolved.GetContentType()) > 200 {
 		return stageartifact.TransferDescriptor{}, errors.New(
-			"Stage input transfer control returned a malformed descriptor",
+			"stage input transfer control returned a malformed descriptor",
 		)
 	}
 	var digest [sha256.Size]byte
 	copy(digest[:], resolved.GetSha256())
 	if digest == ([sha256.Size]byte{}) {
 		return stageartifact.TransferDescriptor{}, errors.New(
-			"Stage input transfer control returned an empty digest",
+			"stage input transfer control returned an empty digest",
 		)
 	}
 	return stageartifact.TransferDescriptor{
@@ -105,7 +105,7 @@ func (authority *ControlTransferAuthority) Consume(
 		command.TokenDigest == ([sha256.Size]byte{}) ||
 		command.OutcomeDigest == ([sha256.Size]byte{}) || command.ConsumedAt.IsZero() ||
 		!authority.matchesDestination(command.Destination) {
-		return errors.New("Stage input transfer consume authority is invalid")
+		return errors.New("stage input transfer consume authority is invalid")
 	}
 	response, err := authority.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		RequestId: command.CommandID.String(),

@@ -56,7 +56,7 @@ func sourceRevisionFromGit(sourceRoot string) (string, error) {
 		return "", err
 	}
 	if !sourceRevisionPattern.MatchString(revision) {
-		return "", errors.New("Git HEAD is not a full SHA-1 or SHA-256 object ID")
+		return "", errors.New("git HEAD is not a full SHA-1 or SHA-256 object ID")
 	}
 	status, err := runGit(resolved, "status", "--porcelain=v1", "--untracked-files=all")
 	if err != nil {

@@ -56,11 +56,6 @@ type NVIDIAGPUProbe struct {
 	epochs WorkerInstanceEpochStore
 }
 
-type nvidiaGPUInventory struct {
-	GPUUUID string
-	PCIBDF  string
-}
-
 type verifiedPCIDevice struct {
 	GPUUUID         string
 	PCIBDF          string
@@ -167,7 +162,7 @@ func (probe *NVIDIAGPUProbe) AttestWorkerInstanceDevices(
 		NodeIdentity: probe.config.NodeIdentity, NodeEpoch: snapshot.NodeEpoch,
 	})
 	if !validDigestHex(nodeDigest) {
-		return nil, errors.New("Node attestation digest is invalid")
+		return nil, errors.New("node attestation digest is invalid")
 	}
 	result := make([]AttestedWorkerDevice, 0, len(expected))
 	for index, device := range expected {

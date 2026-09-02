@@ -28,15 +28,15 @@ func NewServerTLSCredentials(certificatePath, privateKeyPath, clientCAPath strin
 	}
 	certificate, err := tls.X509KeyPair(certificatePEM, privateKeyPEM)
 	if err != nil {
-		return nil, errors.New("node Agent server certificate and key are invalid")
+		return nil, errors.New("node agent server certificate and key are invalid")
 	}
 	expectedSPIFFEIdentity := NodeAgentSPIFFEIdentity(localIdentity)
 	if expectedSPIFFEIdentity == "" {
-		return nil, errors.New("node Agent local TLS identity is invalid")
+		return nil, errors.New("node agent local TLS identity is invalid")
 	}
 	leaf, err := certificateLeaf(certificate)
 	if err != nil || !certificateHasNodeAgentIdentity(leaf, expectedSPIFFEIdentity) {
-		return nil, errors.New("node Agent server certificate does not match its Node and Agent identity")
+		return nil, errors.New("node agent server certificate does not match its Node and Agent identity")
 	}
 	clientCAPEM, err := readTLSFile(clientCAPath, maxTLSCABytes, false)
 	if err != nil {
@@ -44,7 +44,7 @@ func NewServerTLSCredentials(certificatePath, privateKeyPath, clientCAPath strin
 	}
 	clientCAs := x509.NewCertPool()
 	if !clientCAs.AppendCertsFromPEM(clientCAPEM) {
-		return nil, errors.New("node Agent controller CA contains no certificates")
+		return nil, errors.New("node agent controller CA contains no certificates")
 	}
 	return credentials.NewTLS(&tls.Config{
 		MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate},
@@ -57,11 +57,11 @@ func NewClientTLSCredentials(
 	certificatePath, privateKeyPath, rootCAPath, serverName, expectedSPIFFEIdentity, actorIdentity string,
 ) (credentials.TransportCredentials, error) {
 	if serverName == "" {
-		return nil, errors.New("node Agent TLS server name is required")
+		return nil, errors.New("node agent TLS server name is required")
 	}
 	parsedSPIFFEIdentity, err := url.Parse(expectedSPIFFEIdentity)
 	if err != nil || !isNodeAgentSPIFFEID(parsedSPIFFEIdentity) {
-		return nil, errors.New("node Agent expected SPIFFE identity is invalid")
+		return nil, errors.New("node agent expected SPIFFE identity is invalid")
 	}
 	certificatePEM, err := readTLSFile(certificatePath, maxTLSCertificateBytes, false)
 	if err != nil {
@@ -85,7 +85,7 @@ func NewClientTLSCredentials(
 	}
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM(rootPEM) {
-		return nil, errors.New("node Agent root CA contains no certificates")
+		return nil, errors.New("node agent root CA contains no certificates")
 	}
 	return credentials.NewTLS(&tls.Config{
 		MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{certificate},
@@ -93,7 +93,7 @@ func NewClientTLSCredentials(
 		VerifyConnection: func(state tls.ConnectionState) error {
 			if len(state.PeerCertificates) == 0 || len(state.VerifiedChains) == 0 ||
 				!certificateHasNodeAgentIdentity(state.PeerCertificates[0], expectedSPIFFEIdentity) {
-				return errors.New("node Agent server certificate SPIFFE identity does not match endpoint registration")
+				return errors.New("node agent server certificate SPIFFE identity does not match endpoint registration")
 			}
 			return nil
 		},
