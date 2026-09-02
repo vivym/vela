@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
+	"github.com/vivym/vela/internal/h3launchevidence"
 	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,7 +26,8 @@ func TestEvaluatePassesExactThreeNodeH3DeploymentUnit(t *testing.T) {
 		report.ConfigurationRevision != request.ConfigurationRevision ||
 		report.KubernetesClusterUID != request.KubernetesClusterUID ||
 		report.KubernetesNamespaceUID != request.KubernetesNamespaceUID ||
-		report.ResidencyPlanRevisionID != request.Rollout.ApprovedPlan.ID {
+		report.ResidencyPlanRevisionID != request.Rollout.ApprovedPlan.ID ||
+		len(report.ExternalResources) != 2 || len(report.Checks) != 10 {
 		t.Fatalf("H3 preflight report = %#v", report)
 	}
 	for _, check := range report.Checks {
@@ -33,6 +35,26 @@ func TestEvaluatePassesExactThreeNodeH3DeploymentUnit(t *testing.T) {
 			t.Fatalf("H3 preflight check = %#v", check)
 		}
 	}
+}
+
+func TestEvaluateRejectsUnboundExternalResource(t *testing.T) {
+	request, observation := passingFixture()
+	mutable := false
+	observation.Secrets[0].Immutable = &mutable
+
+	report, err := Evaluate(request, observation)
+	if err != nil {
+		t.Fatalf("evaluate H3 preflight: %v", err)
+	}
+	for _, check := range report.Checks {
+		if check.ID == CheckExternalResourceBinding {
+			if check.Status != StatusFail || check.ReasonCode != ReasonExternalResourceMismatch || report.Ready {
+				t.Fatalf("external resource check = %#v ready=%t", check, report.Ready)
+			}
+			return
+		}
+	}
+	t.Fatal("external resource binding check is absent")
 }
 
 func TestEvaluateRejectsDifferentKubernetesIdentity(t *testing.T) {
@@ -225,6 +247,10 @@ func passingFixture() (Request, Observation) {
 			KubernetesNamespaceUID: "namespace-uid-1",
 			CheckedAt:              time.Date(2026, 9, 2, 0, 0, 0, 0, time.UTC),
 			Rollout:                rollout,
+			ExternalResources: []h3launchevidence.ExternalResourceExpectation{
+				{Kind: "ConfigMap", Namespace: "vela-system", Name: "stage-worker-r1", Revision: "sha256:daad8764fd188cdc56f959f8441c2ebd3cd905c10965addaea458677ec8c862a"},
+				{Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1", Revision: "sha256:dcb53c139109dbb8a16ff33bf429c09d7ca6ff3f7c7e53d2b6879911808c6a1c", RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"}},
+			},
 		}, Observation{
 			EvidenceRoleVerified:   true,
 			KubernetesVersion:      "v1.34.1",
@@ -235,7 +261,23 @@ func passingFixture() (Request, Observation) {
 				ObjectMeta: metav1.ObjectMeta{Name: "gpu.nvidia.com", UID: "class-uid", ResourceVersion: "1"},
 			}},
 			ResourceSlices: slices,
+			ConfigMaps: []corev1.ConfigMap{{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "vela-system", Name: "stage-worker-r1", UID: "config-uid", ResourceVersion: "1",
+					Annotations: map[string]string{"vela.ai/release-revision": "sha256:daad8764fd188cdc56f959f8441c2ebd3cd905c10965addaea458677ec8c862a"},
+				},
+				Immutable: boolPointer(true), Data: map[string]string{"control-address": "vela-control.vela-system.svc:9445"},
+			}},
+			Secrets: []corev1.Secret{{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "vela-system", Name: "stage-worker-control-r1", UID: "secret-uid", ResourceVersion: "1",
+					Annotations: map[string]string{"vela.ai/release-revision": "sha256:dcb53c139109dbb8a16ff33bf429c09d7ca6ff3f7c7e53d2b6879911808c6a1c"},
+				},
+				Immutable: boolPointer(true), Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{"ca.crt": []byte("ca"), "tls.crt": []byte("cert"), "tls.key": []byte("key")},
+			}},
 		}
 }
 
 func stringPointer(value string) *string { return &value }
+func boolPointer(value bool) *bool       { return &value }

@@ -10,9 +10,17 @@ import (
 )
 
 const (
-	SchemaVersion = 1
-	MediaType     = "application/vnd.vela.h3-launch-evidence.v1+json"
+	SchemaVersion = 2
+	MediaType     = "application/vnd.vela.h3-launch-evidence.v2+json"
 )
+
+type ExternalResourceExpectation struct {
+	Kind         string
+	Namespace    string
+	Name         string
+	Revision     string
+	RequiredKeys []string
+}
 
 // Input contains objects captured directly from the Kubernetes API and the
 // authoritative Fleet database. It is intentionally not a JSON evidence
@@ -24,6 +32,7 @@ type Input struct {
 	CollectorIdentity     string
 	CapturedAt            time.Time
 	Rollout               fleetcontroller.ResidencyPlanRollout
+	ExternalResources     []ExternalResourceExpectation
 	Kubernetes            KubernetesSnapshot
 	Registry              RegistrySnapshot
 }
@@ -31,6 +40,8 @@ type Input struct {
 type KubernetesSnapshot struct {
 	ClusterUID     string
 	NamespaceUID   string
+	ConfigMaps     []corev1.ConfigMap
+	Secrets        []corev1.Secret
 	Pods           []corev1.Pod
 	ClaimTemplates []resourcev1.ResourceClaimTemplate
 	Claims         []resourcev1.ResourceClaim
@@ -103,20 +114,32 @@ type RegistryResidency struct {
 // verification. It is an input to a release evidence campaign, not a Launch
 // Receipt by itself.
 type Evidence struct {
-	SchemaVersion           int              `json:"schema_version"`
-	MediaType               string           `json:"media_type"`
-	ReleaseDigest           string           `json:"release_digest"`
-	ConfigurationRevision   string           `json:"configuration_revision"`
-	ValidationEnvironment   string           `json:"validation_environment"`
-	CollectorIdentity       string           `json:"collector_identity"`
-	CapturedAt              time.Time        `json:"captured_at"`
-	KubernetesClusterUID    string           `json:"kubernetes_cluster_uid"`
-	KubernetesNamespaceUID  string           `json:"kubernetes_namespace_uid"`
-	RegistryDatabaseTime    time.Time        `json:"registry_database_time"`
-	RegistryTransactionID   string           `json:"registry_transaction_id"`
-	RegistrySnapshotID      string           `json:"registry_snapshot_id"`
-	ResidencyPlanRevisionID uuid.UUID        `json:"residency_plan_revision_id"`
-	Workers                 []WorkerEvidence `json:"workers"`
+	SchemaVersion           int                        `json:"schema_version"`
+	MediaType               string                     `json:"media_type"`
+	ReleaseDigest           string                     `json:"release_digest"`
+	ConfigurationRevision   string                     `json:"configuration_revision"`
+	ValidationEnvironment   string                     `json:"validation_environment"`
+	CollectorIdentity       string                     `json:"collector_identity"`
+	CapturedAt              time.Time                  `json:"captured_at"`
+	KubernetesClusterUID    string                     `json:"kubernetes_cluster_uid"`
+	KubernetesNamespaceUID  string                     `json:"kubernetes_namespace_uid"`
+	RegistryDatabaseTime    time.Time                  `json:"registry_database_time"`
+	RegistryTransactionID   string                     `json:"registry_transaction_id"`
+	RegistrySnapshotID      string                     `json:"registry_snapshot_id"`
+	ResidencyPlanRevisionID uuid.UUID                  `json:"residency_plan_revision_id"`
+	ExternalResources       []ExternalResourceEvidence `json:"external_resources"`
+	Workers                 []WorkerEvidence           `json:"workers"`
+}
+
+type ExternalResourceEvidence struct {
+	Kind            string   `json:"kind"`
+	Namespace       string   `json:"namespace"`
+	Name            string   `json:"name"`
+	Revision        string   `json:"revision"`
+	RequiredKeys    []string `json:"required_keys,omitempty"`
+	UID             string   `json:"uid"`
+	ResourceVersion string   `json:"resource_version"`
+	ContentDigest   string   `json:"content_digest"`
 }
 
 type WorkerEvidence struct {

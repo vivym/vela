@@ -65,6 +65,14 @@ func Verify(input Input) (Evidence, error) {
 	if err != nil {
 		return Evidence{}, err
 	}
+	externalResources, err := VerifyExternalResources(
+		input.ExternalResources,
+		input.Kubernetes.ConfigMaps,
+		input.Kubernetes.Secrets,
+	)
+	if err != nil {
+		return Evidence{}, err
+	}
 
 	evidence := Evidence{
 		SchemaVersion: SchemaVersion, MediaType: MediaType,
@@ -76,6 +84,7 @@ func Verify(input Input) (Evidence, error) {
 		RegistryTransactionID:   input.Registry.TransactionID,
 		RegistrySnapshotID:      input.Registry.SnapshotID,
 		ResidencyPlanRevisionID: input.Rollout.ApprovedPlan.ID,
+		ExternalResources:       externalResources,
 		Workers:                 make([]WorkerEvidence, 0, len(registryWorkers)),
 	}
 

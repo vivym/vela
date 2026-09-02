@@ -14,21 +14,21 @@ or change the current `0/9 PASS` result.
 
 ## Canonical identity
 
-1. A strict `schema_version: 1` build plan names every input beneath one rooted
+1. A strict `schema_version: 2` build plan names every input beneath one rooted
    directory. References must be canonical local paths to regular files and may
    not escape through an absolute path, `..`, backslash, or symbolic link.
 2. The configuration manifest contains the exact six final Kubernetes renders
    (`control-storage`, `fleet-controller`, `observability`, `stage-worker`,
    `vela-control`, and `worker-agent`), the exact `h3-runner` and `node-agent`
    packages, the Node Agent systemd unit, the selected Fleet authority input,
-   and the declared external Secret/ConfigMap revisions.
+   and the declared external Secret/ConfigMap canonical content digests.
 3. Every OCI image is canonical, lowercase, tag-free, and pinned by a non-zero
    `sha256` digest. Its manifest and referenced OCI config blob are read from
    rooted artifacts; digest and size are recomputed, and the config must derive
    the production platform `linux/amd64`.
 4. Canonical JSON of the configuration manifest derives the configuration
    revision. A Vela release descriptor with media type
-   `application/vnd.vela.release.descriptor.v1+json` binds that configuration
+   `application/vnd.vela.release.descriptor.v2+json` binds that configuration
    descriptor to the ordered OCI manifest descriptors and derives the release
    digest. The Vela descriptor is an internal identity contract, not a claim of
    OCI Index interoperability.
@@ -44,6 +44,13 @@ embedded Secret objects fail closed. Workload image references, external
 resource references, revision annotations, Secret keys, and consumer identities
 must be complete exact sets. A whole-Secret selector is not accepted where the
 release contract requires named keys.
+
+The H3 preflight and launch-evidence boundary resolves those external
+declarations against Kubernetes. It requires `immutable=true`, a live UID and
+resource version, the exact revision annotation and Secret key set, and a
+recomputed `ExternalResourceContentV1` digest equal to the declared revision.
+It emits no Secret or ConfigMap payload and double-reads launch objects to reject
+same-name recreation or content drift during capture.
 
 The production target mode embeds one immutable approved `ResidencyPlan`
 rollout in the Fleet render. It binds every per-member Stage Worker Pod

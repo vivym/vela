@@ -16,7 +16,8 @@ injection:
   `ResourceClaim`, and complete `ResourceSlice` inventory;
 - visible NVIDIA GPU UUID and PCI BDF identity matching Fleet authority;
 - the canonical release bundle, dedicated evidence database login, immutable
-  object versions, and externally retained campaign directory; and
+  object versions, externally retained campaign directory, and read access to
+  every release-declared external Secret and ConfigMap; and
 - an approved exercise window and owners for network, storage, node, event,
   rollback, and N/N-1 operations.
 
@@ -45,12 +46,17 @@ make preflight-h3-real-environment \
   > /absolute/path/to/campaign/h3-real-environment-preflight.json
 ```
 
-The strict V1 report contains nine fixed checks: canonical release bundle,
-dedicated evidence role, Kubernetes API bound to the expected cluster and Vela
-namespace UIDs, exact `1 AUX + 7 single-GPU DiT`
+The strict V2 report contains ten fixed checks: canonical release bundle,
+release-declared external resource binding, dedicated evidence role, Kubernetes
+API bound to the expected cluster and Vela namespace UIDs, exact
+`1 AUX + 7 single-GPU DiT`
 deployment unit, three-node rollout, schedulable READY nodes, NVIDIA
 `DeviceClass`, complete current NVIDIA `ResourceSlice` generations, and exact
-node/GPU UUID/PCI BDF closure for all eight planned GPUs. External failures use
+node/GPU UUID/PCI BDF closure for all eight planned GPUs. The external-resource
+check requires the exact kind, namespace, name, nonempty UID and resource
+version, `immutable=true`, exact `vela.ai/release-revision`, exact Secret key
+set, and canonical content digest from the bundle. It emits only sanitized
+identity and digest evidence, never ConfigMap or Secret payloads. External failures use
 bounded reason codes and never copy DSNs, kubeconfig paths, credentials, or raw
 client errors into JSON. Exit status is `0` only when `ready=true`, `1` for a
 typed fail-closed report, and `2` for invalid command/configuration input,

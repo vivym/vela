@@ -9,13 +9,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
+	"github.com/vivym/vela/internal/h3launchevidence"
 	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 )
 
 const (
-	SchemaVersion = 1
-	MediaType     = "application/vnd.vela.h3-real-environment-preflight.v1+json"
+	SchemaVersion = 2
+	MediaType     = "application/vnd.vela.h3-real-environment-preflight.v2+json"
 
 	minimumPhysicalNodes = 3
 	expectedAUXWorkers   = 1
@@ -25,15 +26,16 @@ const (
 type CheckID string
 
 const (
-	CheckReleaseBundle       CheckID = "release_bundle"
-	CheckEvidenceRole        CheckID = "evidence_role"
-	CheckKubernetesAPI       CheckID = "kubernetes_api"
-	CheckH3DeploymentUnit    CheckID = "h3_deployment_unit"
-	CheckCrossNodeRollout    CheckID = "cross_node_rollout"
-	CheckSchedulableNodes    CheckID = "schedulable_nodes"
-	CheckNVIDIADeviceClass   CheckID = "nvidia_device_class"
-	CheckNVIDIAResourceSlice CheckID = "nvidia_resource_slices"
-	CheckGPUIdentityClosure  CheckID = "gpu_identity_closure"
+	CheckReleaseBundle           CheckID = "release_bundle"
+	CheckEvidenceRole            CheckID = "evidence_role"
+	CheckKubernetesAPI           CheckID = "kubernetes_api"
+	CheckExternalResourceBinding CheckID = "external_resource_binding"
+	CheckH3DeploymentUnit        CheckID = "h3_deployment_unit"
+	CheckCrossNodeRollout        CheckID = "cross_node_rollout"
+	CheckSchedulableNodes        CheckID = "schedulable_nodes"
+	CheckNVIDIADeviceClass       CheckID = "nvidia_device_class"
+	CheckNVIDIAResourceSlice     CheckID = "nvidia_resource_slices"
+	CheckGPUIdentityClosure      CheckID = "gpu_identity_closure"
 )
 
 type Status string
@@ -44,16 +46,17 @@ const (
 )
 
 const (
-	ReasonSatisfied           = "SATISFIED"
-	ReasonRoleUnverified      = "EVIDENCE_ROLE_UNVERIFIED"
-	ReasonKubernetesOffline   = "KUBERNETES_API_UNREACHABLE"
-	ReasonKubernetesIdentity  = "KUBERNETES_IDENTITY_MISMATCH"
-	ReasonInvalidH3Unit       = "H3_DEPLOYMENT_UNIT_INVALID"
-	ReasonCrossNodeAbsent     = "CROSS_NODE_ROLLOUT_ABSENT"
-	ReasonInsufficientNodes   = "INSUFFICIENT_SCHEDULABLE_NODES"
-	ReasonDeviceClassMissing  = "NVIDIA_DEVICE_CLASS_MISSING"
-	ReasonSlicesMissing       = "NVIDIA_RESOURCE_SLICES_INCOMPLETE"
-	ReasonGPUIdentityMismatch = "GPU_IDENTITY_CLOSURE_MISMATCH"
+	ReasonSatisfied                = "SATISFIED"
+	ReasonRoleUnverified           = "EVIDENCE_ROLE_UNVERIFIED"
+	ReasonKubernetesOffline        = "KUBERNETES_API_UNREACHABLE"
+	ReasonKubernetesIdentity       = "KUBERNETES_IDENTITY_MISMATCH"
+	ReasonExternalResourceMismatch = "EXTERNAL_RESOURCE_BINDING_MISMATCH"
+	ReasonInvalidH3Unit            = "H3_DEPLOYMENT_UNIT_INVALID"
+	ReasonCrossNodeAbsent          = "CROSS_NODE_ROLLOUT_ABSENT"
+	ReasonInsufficientNodes        = "INSUFFICIENT_SCHEDULABLE_NODES"
+	ReasonDeviceClassMissing       = "NVIDIA_DEVICE_CLASS_MISSING"
+	ReasonSlicesMissing            = "NVIDIA_RESOURCE_SLICES_INCOMPLETE"
+	ReasonGPUIdentityMismatch      = "GPU_IDENTITY_CLOSURE_MISMATCH"
 )
 
 type Request struct {
@@ -64,6 +67,7 @@ type Request struct {
 	KubernetesNamespaceUID string
 	CheckedAt              time.Time
 	Rollout                fleetcontroller.ResidencyPlanRollout
+	ExternalResources      []h3launchevidence.ExternalResourceExpectation
 }
 
 type Observation struct {
@@ -74,6 +78,8 @@ type Observation struct {
 	Nodes                  []corev1.Node
 	DeviceClasses          []resourcev1.DeviceClass
 	ResourceSlices         []resourcev1.ResourceSlice
+	ConfigMaps             []corev1.ConfigMap
+	Secrets                []corev1.Secret
 }
 
 type Check struct {
@@ -85,17 +91,18 @@ type Check struct {
 }
 
 type Report struct {
-	SchemaVersion           int       `json:"schema_version"`
-	MediaType               string    `json:"media_type"`
-	ReleaseDigest           string    `json:"release_digest"`
-	ConfigurationRevision   string    `json:"configuration_revision"`
-	ResidencyPlanRevisionID uuid.UUID `json:"residency_plan_revision_id"`
-	ValidationEnvironment   string    `json:"validation_environment"`
-	KubernetesClusterUID    string    `json:"kubernetes_cluster_uid"`
-	KubernetesNamespaceUID  string    `json:"kubernetes_namespace_uid"`
-	CheckedAt               time.Time `json:"checked_at"`
-	Ready                   bool      `json:"ready"`
-	Checks                  []Check   `json:"checks"`
+	SchemaVersion           int                                         `json:"schema_version"`
+	MediaType               string                                      `json:"media_type"`
+	ReleaseDigest           string                                      `json:"release_digest"`
+	ConfigurationRevision   string                                      `json:"configuration_revision"`
+	ResidencyPlanRevisionID uuid.UUID                                   `json:"residency_plan_revision_id"`
+	ValidationEnvironment   string                                      `json:"validation_environment"`
+	KubernetesClusterUID    string                                      `json:"kubernetes_cluster_uid"`
+	KubernetesNamespaceUID  string                                      `json:"kubernetes_namespace_uid"`
+	CheckedAt               time.Time                                   `json:"checked_at"`
+	Ready                   bool                                        `json:"ready"`
+	Checks                  []Check                                     `json:"checks"`
+	ExternalResources       []h3launchevidence.ExternalResourceEvidence `json:"external_resources,omitempty"`
 }
 
 type expectedInventory struct {
@@ -127,6 +134,23 @@ func Evaluate(request Request, observation Observation) (Report, error) {
 		Ready:                  true,
 	}
 	report.add(Check{ID: CheckReleaseBundle, Status: StatusPass, ReasonCode: ReasonSatisfied})
+	externalResources, externalResourceErr := h3launchevidence.VerifyExternalResources(
+		request.ExternalResources, observation.ConfigMaps, observation.Secrets,
+	)
+	if externalResourceErr != nil {
+		report.add(Check{
+			ID: CheckExternalResourceBinding, Status: StatusFail,
+			ReasonCode: ReasonExternalResourceMismatch,
+			Observed:   len(observation.ConfigMaps) + len(observation.Secrets),
+			Required:   len(request.ExternalResources),
+		})
+	} else {
+		report.ExternalResources = externalResources
+		report.add(Check{
+			ID: CheckExternalResourceBinding, Status: StatusPass, ReasonCode: ReasonSatisfied,
+			Observed: len(externalResources), Required: len(request.ExternalResources),
+		})
+	}
 	if observation.EvidenceRoleVerified {
 		report.add(Check{ID: CheckEvidenceRole, Status: StatusPass, ReasonCode: ReasonSatisfied})
 	} else {

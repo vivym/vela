@@ -61,6 +61,13 @@ and creates no member network surface. These paths intentionally perform no DDL
 and do not prove real GPU, Kubernetes, DRA, cross-node, or model execution. This
 is not complete acceptance closure. Real cluster, N/N-1, GPU/DRA, performance,
 fault, and Production Gate evidence are still pending.
+The read-only H3 preflight and launch collector additionally bind every
+release-declared external Secret/ConfigMap to `immutable=true`, its exact
+revision annotation, recomputed content digest, live UID, and resource version.
+Launch capture double-reads those objects and emits only sanitized identity and
+digest evidence, so content drift and same-name recreation inside the capture
+window fail closed without exposing Secret payloads. Secret-manager prevention
+for the full campaign remains external evidence.
 The repository now also captures a synthetic same-node/cross-node/cache Stage
 campaign from PostgreSQL with a canonical-release-sealed ResidencyPlan binding,
 two stable read-only snapshots, exact StageArtifact lineage, ordered

@@ -18,11 +18,37 @@ import (
 // KubernetesReader is the minimum read-only API needed for launch evidence.
 type KubernetesReader interface {
 	NamespaceUID(context.Context, string) (string, error)
+	ConfigMap(context.Context, string, string) (corev1.ConfigMap, error)
+	Secret(context.Context, string, string) (corev1.Secret, error)
 	Pod(context.Context, string, string) (corev1.Pod, error)
 	ClaimTemplate(context.Context, string, string) (resourcev1.ResourceClaimTemplate, error)
 	Claim(context.Context, string, string) (resourcev1.ResourceClaim, error)
 	Node(context.Context, string) (corev1.Node, error)
 	ResourceSlices(context.Context, string) ([]resourcev1.ResourceSlice, error)
+}
+
+func (reader *ClientsetKubernetesReader) ConfigMap(
+	ctx context.Context,
+	namespace,
+	name string,
+) (corev1.ConfigMap, error) {
+	value, err := reader.core.ConfigMaps(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return corev1.ConfigMap{}, err
+	}
+	return *value, nil
+}
+
+func (reader *ClientsetKubernetesReader) Secret(
+	ctx context.Context,
+	namespace,
+	name string,
+) (corev1.Secret, error) {
+	value, err := reader.core.Secrets(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return corev1.Secret{}, err
+	}
+	return *value, nil
 }
 
 type ClientsetKubernetesReader struct {
@@ -115,6 +141,7 @@ func CollectKubernetes(
 	ctx context.Context,
 	reader KubernetesReader,
 	rollout fleetcontroller.ResidencyPlanRollout,
+	externalResources []ExternalResourceExpectation,
 ) (KubernetesSnapshot, error) {
 	if ctx == nil || reader == nil {
 		return KubernetesSnapshot{}, errors.New("kubernetes evidence reader and context are required")
@@ -146,10 +173,35 @@ func CollectKubernetes(
 	}
 	snapshot := KubernetesSnapshot{
 		ClusterUID: clusterUID, NamespaceUID: namespaceUID,
+		ConfigMaps:     make([]corev1.ConfigMap, 0),
+		Secrets:        make([]corev1.Secret, 0),
 		Pods:           make([]corev1.Pod, 0, len(desired)),
 		ClaimTemplates: make([]resourcev1.ResourceClaimTemplate, 0, len(desired)),
 		Claims:         make([]resourcev1.ResourceClaim, 0, len(desired)),
 		Nodes:          make([]corev1.Node, 0), ResourceSlices: resourceSlices,
+	}
+	for _, expected := range externalResources {
+		if err := validateExternalResourceExpectation(expected); err != nil {
+			return KubernetesSnapshot{}, err
+		}
+		switch expected.Kind {
+		case "ConfigMap":
+			value, err := reader.ConfigMap(ctx, expected.Namespace, expected.Name)
+			if err != nil {
+				return KubernetesSnapshot{}, fmt.Errorf(
+					"read release-bound ConfigMap %s/%s: %w", expected.Namespace, expected.Name, err,
+				)
+			}
+			snapshot.ConfigMaps = append(snapshot.ConfigMaps, value)
+		case "Secret":
+			value, err := reader.Secret(ctx, expected.Namespace, expected.Name)
+			if err != nil {
+				return KubernetesSnapshot{}, fmt.Errorf(
+					"read release-bound Secret %s/%s: %w", expected.Namespace, expected.Name, err,
+				)
+			}
+			snapshot.Secrets = append(snapshot.Secrets, value)
+		}
 	}
 	seenNodes := make(map[string]struct{})
 	for _, expected := range desired {
@@ -189,6 +241,18 @@ func CollectKubernetes(
 		snapshot.Claims = append(snapshot.Claims, claim)
 	}
 	sort.Slice(snapshot.Pods, func(left, right int) bool { return snapshot.Pods[left].Name < snapshot.Pods[right].Name })
+	sort.Slice(snapshot.ConfigMaps, func(left, right int) bool {
+		if snapshot.ConfigMaps[left].Namespace != snapshot.ConfigMaps[right].Namespace {
+			return snapshot.ConfigMaps[left].Namespace < snapshot.ConfigMaps[right].Namespace
+		}
+		return snapshot.ConfigMaps[left].Name < snapshot.ConfigMaps[right].Name
+	})
+	sort.Slice(snapshot.Secrets, func(left, right int) bool {
+		if snapshot.Secrets[left].Namespace != snapshot.Secrets[right].Namespace {
+			return snapshot.Secrets[left].Namespace < snapshot.Secrets[right].Namespace
+		}
+		return snapshot.Secrets[left].Name < snapshot.Secrets[right].Name
+	})
 	sort.Slice(snapshot.ClaimTemplates, func(left, right int) bool {
 		return snapshot.ClaimTemplates[left].Name < snapshot.ClaimTemplates[right].Name
 	})

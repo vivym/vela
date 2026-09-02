@@ -18,6 +18,7 @@ type CaptureRequest struct {
 	ValidationEnvironment string
 	CollectorIdentity     string
 	Rollout               fleetcontroller.ResidencyPlanRollout
+	ExternalResources     []ExternalResourceExpectation
 }
 
 // Capture double-reads both authorities. The output is emitted only when the
@@ -37,7 +38,9 @@ func Capture(
 	if err != nil {
 		return Evidence{}, fmt.Errorf("capture initial Fleet Registry authority: %w", err)
 	}
-	firstKubernetes, err := CollectKubernetes(ctx, kubernetes, request.Rollout)
+	firstKubernetes, err := CollectKubernetes(
+		ctx, kubernetes, request.Rollout, request.ExternalResources,
+	)
 	if err != nil {
 		return Evidence{}, fmt.Errorf("capture initial Kubernetes authority: %w", err)
 	}
@@ -45,7 +48,9 @@ func Capture(
 	if err != nil {
 		return Evidence{}, fmt.Errorf("capture final Fleet Registry authority: %w", err)
 	}
-	secondKubernetes, err := CollectKubernetes(ctx, kubernetes, request.Rollout)
+	secondKubernetes, err := CollectKubernetes(
+		ctx, kubernetes, request.Rollout, request.ExternalResources,
+	)
 	if err != nil {
 		return Evidence{}, fmt.Errorf("capture final Kubernetes authority: %w", err)
 	}
@@ -57,6 +62,7 @@ func Capture(
 		ReleaseDigest: request.ReleaseDigest, ConfigurationRevision: request.ConfigurationRevision,
 		ValidationEnvironment: request.ValidationEnvironment,
 		CollectorIdentity:     request.CollectorIdentity, CapturedAt: time.Now().UTC(),
-		Rollout: request.Rollout, Kubernetes: secondKubernetes, Registry: secondRegistry,
+		Rollout: request.Rollout, ExternalResources: request.ExternalResources,
+		Kubernetes: secondKubernetes, Registry: secondRegistry,
 	})
 }

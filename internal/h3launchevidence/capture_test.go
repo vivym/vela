@@ -29,7 +29,7 @@ func TestCaptureDoubleReadsLiveAuthoritiesBeforeProducingEvidence(t *testing.T) 
 	evidence, err := h3launchevidence.Capture(context.Background(), kubernetes, registry, h3launchevidence.CaptureRequest{
 		ReleaseDigest: input.ReleaseDigest, ConfigurationRevision: input.ConfigurationRevision,
 		ValidationEnvironment: input.ValidationEnvironment, CollectorIdentity: input.CollectorIdentity,
-		Rollout: input.Rollout,
+		Rollout: input.Rollout, ExternalResources: input.ExternalResources,
 	})
 	if err != nil {
 		t.Fatalf("Capture stable live launch: %v", err)
@@ -61,12 +61,55 @@ func TestCaptureRejectsAuthorityDriftAcrossCollectionWindow(t *testing.T) {
 		h3launchevidence.CaptureRequest{
 			ReleaseDigest: input.ReleaseDigest, ConfigurationRevision: input.ConfigurationRevision,
 			ValidationEnvironment: input.ValidationEnvironment, CollectorIdentity: input.CollectorIdentity,
-			Rollout: input.Rollout,
+			Rollout: input.Rollout, ExternalResources: input.ExternalResources,
 		},
 	)
 	if !errors.Is(err, h3launchevidence.ErrUnstableLaunchAuthority) {
 		t.Fatalf("Capture drift error = %v, want ErrUnstableLaunchAuthority", err)
 	}
+}
+
+func TestCaptureRejectsSameNameExternalResourceRecreation(t *testing.T) {
+	input := exactLaunchInput(t)
+	now := time.Now().UTC()
+	input.Rollout.ApprovedPlan.ApprovedAt = now.Add(-time.Hour)
+	input.Kubernetes.Claims[0].CreationTimestamp = metav1.NewTime(now.Add(-2 * time.Minute))
+	input.Kubernetes.Claims[0].Status.Allocation.AllocationTimestamp = timePointer(now.Add(-time.Minute))
+	reader := &recreatedSecretReader{fakeKubernetesReader: kubernetesReaderForInput(input)}
+	registry := &sequenceRegistryReader{snapshots: []h3launchevidence.RegistrySnapshot{input.Registry, input.Registry}}
+
+	_, err := h3launchevidence.Capture(
+		context.Background(), reader, registry,
+		h3launchevidence.CaptureRequest{
+			ReleaseDigest: input.ReleaseDigest, ConfigurationRevision: input.ConfigurationRevision,
+			ValidationEnvironment: input.ValidationEnvironment, CollectorIdentity: input.CollectorIdentity,
+			Rollout: input.Rollout, ExternalResources: input.ExternalResources,
+		},
+	)
+	if !errors.Is(err, h3launchevidence.ErrUnstableLaunchAuthority) {
+		t.Fatalf("Capture recreated Secret error = %v, want ErrUnstableLaunchAuthority", err)
+	}
+}
+
+type recreatedSecretReader struct {
+	*fakeKubernetesReader
+	secretReads int
+}
+
+func (reader *recreatedSecretReader) Secret(
+	ctx context.Context,
+	namespace,
+	name string,
+) (corev1.Secret, error) {
+	secret, err := reader.fakeKubernetesReader.Secret(ctx, namespace, name)
+	if err != nil {
+		return corev1.Secret{}, err
+	}
+	reader.secretReads++
+	if reader.secretReads > 1 {
+		secret.UID = "replacement-secret-uid"
+	}
+	return secret, nil
 }
 
 type sequenceRegistryReader struct {
@@ -95,9 +138,16 @@ func kubernetesReaderForInput(input h3launchevidence.Input) *fakeKubernetesReade
 			"kube-system": input.Kubernetes.ClusterUID,
 			"vela-system": input.Kubernetes.NamespaceUID,
 		},
+		configMaps: make(map[string]corev1.ConfigMap), secrets: make(map[string]corev1.Secret),
 		pods: make(map[string]corev1.Pod), templates: make(map[string]resourcev1.ResourceClaimTemplate),
 		claims: make(map[string]resourcev1.ResourceClaim), nodes: make(map[string]corev1.Node),
 		resourceSlices: input.Kubernetes.ResourceSlices,
+	}
+	for _, configMap := range input.Kubernetes.ConfigMaps {
+		reader.configMaps[namespacedKey(configMap.Namespace, configMap.Name)] = configMap
+	}
+	for _, secret := range input.Kubernetes.Secrets {
+		reader.secrets[namespacedKey(secret.Namespace, secret.Name)] = secret
 	}
 	for _, pod := range input.Kubernetes.Pods {
 		reader.pods[namespacedKey(pod.Namespace, pod.Name)] = pod

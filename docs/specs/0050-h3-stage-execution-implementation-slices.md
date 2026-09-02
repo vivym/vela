@@ -373,10 +373,13 @@ smallest-UUID leader owns the single StageLease, reports capacity for the full
 DeviceSet, and coordinates the complete remote runtime barrier. The composition smoke uses fake local gRPC
 control/ModelRuntime and an in-process S3-compatible endpoint; it is not a real
 GPU, DRA, Kubernetes, cross-node, ModelResidency, or Launch Receipt test.
-The release graph binds external Secret/ConfigMap names and declared revisions.
+The release graph binds external Secret/ConfigMap names and canonical content revisions.
 For multi-member actuation Fleet reads the named aggregate member-PKI source and
-validates each certificate/key binding before deriving per-member Secrets, but
-does not verify a release-bound live resource UID/content digest.
+validates each certificate/key binding before deriving per-member Secrets. H3
+preflight and launch capture read every release declaration, require an
+immutable live object with the exact revision annotation and content digest,
+record UID/resourceVersion without payload, and reject drift across the capture
+window.
 The control Secret is keyed by WorkerMember UUID so every single- or
 multi-member Pod receives a distinct control identity. Admission reconstructs
 exact Fleet-derived member Services and Secrets and rejects later mutation;
@@ -384,7 +387,8 @@ secret-manager evidence must prevent deletion and same-name recreation of the
 external immutable rollout resources before activation.
 
 A typed read-only `vela-h3-evidence preflight` command now checks the canonical
-release/ResidencyPlan, dedicated evidence role, Kubernetes API bound to the
+release/ResidencyPlan, external Secret/ConfigMap binding, dedicated evidence
+role, Kubernetes API bound to the
 expected cluster and namespace UIDs, exact one-AUX plus seven-DiT deployment
 unit, three-node placement, schedulable Nodes under the Worker Pod selector and
 toleration contract,

@@ -124,6 +124,7 @@ advance `0/9 PASS`.
 
 The read-only H3 launch inventory collector is documented in
 `docs/h3-launch-evidence.md`. Its output binds live Kubernetes/DRA and Fleet
-ModelResidency identities for a release-bound ResidencyPlan, but remains only
+ModelResidency identities plus sanitized UID/content-digest evidence for every
+release-declared external Secret and ConfigMap to a release-bound ResidencyPlan, but remains only
 one campaign input. It is not a Launch Receipt and cannot advance `0/9 PASS`
 without the complete real exercise and typed evidence contract.

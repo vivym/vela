@@ -1,6 +1,7 @@
 package h3launchevidence_test
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -26,13 +27,77 @@ func TestVerifyProducesEvidenceOnlyForExactLiveLaunchBinding(t *testing.T) {
 	if evidence.ReleaseDigest != input.ReleaseDigest ||
 		evidence.ConfigurationRevision != input.ConfigurationRevision ||
 		evidence.ResidencyPlanRevisionID != input.Rollout.ApprovedPlan.ID ||
+		len(evidence.ExternalResources) != 2 ||
 		len(evidence.Workers) != 1 || len(evidence.Workers[0].Members) != 1 {
 		t.Fatalf("launch evidence binding = %#v", evidence)
+	}
+	for _, resource := range evidence.ExternalResources {
+		if resource.UID == "" || resource.ResourceVersion == "" || resource.ContentDigest == "" {
+			t.Fatalf("launch evidence omitted external resource identity: %#v", resource)
+		}
 	}
 	member := evidence.Workers[0].Members[0]
 	if member.PodUID == "" || member.ResourceClaimUID == "" || member.GPUUUID == "" ||
 		member.PCIBDF == "" || member.NodeUID == "" || member.ModelRuntimeImageID == "" {
 		t.Fatalf("launch evidence omitted live identities: %#v", member)
+	}
+}
+
+func TestVerifyNeverEmitsExternalResourcePayload(t *testing.T) {
+	evidence, err := h3launchevidence.Verify(exactLaunchInput(t))
+	if err != nil {
+		t.Fatalf("Verify exact live launch binding: %v", err)
+	}
+	encoded, err := json.Marshal(evidence)
+	if err != nil {
+		t.Fatalf("encode launch evidence: %v", err)
+	}
+	for _, forbidden := range []string{"Y2E=", "Y2VydA==", "a2V5", `"control-address":"`} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("launch evidence exposed external resource payload %q: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestVerifyRejectsExternalResourceIdentityOrContentDrift(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*h3launchevidence.Input)
+	}{
+		{
+			name: "Secret is mutable",
+			mutate: func(input *h3launchevidence.Input) {
+				mutable := false
+				input.Kubernetes.Secrets[0].Immutable = &mutable
+			},
+		},
+		{
+			name: "Secret required key is missing",
+			mutate: func(input *h3launchevidence.Input) {
+				delete(input.Kubernetes.Secrets[0].Data, "tls.key")
+			},
+		},
+		{
+			name: "Secret content changed without release revision",
+			mutate: func(input *h3launchevidence.Input) {
+				input.Kubernetes.Secrets[0].Data["tls.key"] = []byte("replacement-key")
+			},
+		},
+		{
+			name: "ConfigMap revision does not match release",
+			mutate: func(input *h3launchevidence.Input) {
+				input.Kubernetes.ConfigMaps[0].Annotations["vela.ai/release-revision"] = digest('f')
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := exactLaunchInput(t)
+			test.mutate(&input)
+			if _, err := h3launchevidence.Verify(input); !errors.Is(err, h3launchevidence.ErrInvalidLaunchEvidence) {
+				t.Fatalf("Verify error = %v, want ErrInvalidLaunchEvidence", err)
+			}
+		})
 	}
 }
 
@@ -288,8 +353,36 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 		ReleaseDigest: digest('a'), ConfigurationRevision: digest('b'),
 		ValidationEnvironment: "h3-production-cn-north-1", CollectorIdentity: "spiffe://vela/launch-evidence/collector",
 		CapturedAt: now, Rollout: rollout,
+		ExternalResources: []h3launchevidence.ExternalResourceExpectation{
+			{
+				Kind: "ConfigMap", Namespace: "vela-system", Name: "stage-worker-r1",
+				Revision: "sha256:daad8764fd188cdc56f959f8441c2ebd3cd905c10965addaea458677ec8c862a",
+			},
+			{
+				Kind: "Secret", Namespace: "vela-system", Name: "stage-worker-control-r1",
+				Revision:     "sha256:dcb53c139109dbb8a16ff33bf429c09d7ca6ff3f7c7e53d2b6879911808c6a1c",
+				RequiredKeys: []string{"ca.crt", "tls.crt", "tls.key"},
+			},
+		},
 		Kubernetes: h3launchevidence.KubernetesSnapshot{
 			ClusterUID: "cluster-uid-1", NamespaceUID: "namespace-uid-1",
+			ConfigMaps: []corev1.ConfigMap{{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "vela-system", Name: "stage-worker-r1",
+					UID: types.UID("stage-worker-config-uid"), ResourceVersion: "99",
+					Annotations: map[string]string{"vela.ai/release-revision": "sha256:daad8764fd188cdc56f959f8441c2ebd3cd905c10965addaea458677ec8c862a"},
+				},
+				Immutable: boolPointer(true), Data: map[string]string{"control-address": "vela-control.vela-system.svc:9445"},
+			}},
+			Secrets: []corev1.Secret{{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "vela-system", Name: "stage-worker-control-r1",
+					UID: types.UID("stage-worker-control-secret-uid"), ResourceVersion: "100",
+					Annotations: map[string]string{"vela.ai/release-revision": "sha256:dcb53c139109dbb8a16ff33bf429c09d7ca6ff3f7c7e53d2b6879911808c6a1c"},
+				},
+				Immutable: boolPointer(true), Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{"ca.crt": []byte("ca"), "tls.crt": []byte("cert"), "tls.key": []byte("key")},
+			}},
 			Pods: []corev1.Pod{pod}, ClaimTemplates: []resourcev1.ResourceClaimTemplate{template},
 			Claims: []resourcev1.ResourceClaim{claim},
 			Nodes: []corev1.Node{{ObjectMeta: metav1.ObjectMeta{
@@ -330,6 +423,7 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 func digest(character byte) string       { return "sha256:" + strings.Repeat(string(character), 64) }
 func digestHex(character byte) string    { return strings.Repeat(string(character), 64) }
 func stringPointer(value string) *string { return &value }
+func boolPointer(value bool) *bool       { return &value }
 func timePointer(value time.Time) *metav1.Time {
 	timestamp := metav1.NewTime(value)
 	return &timestamp

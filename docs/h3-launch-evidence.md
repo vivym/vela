@@ -12,7 +12,8 @@ The command accepts only:
 
 - a canonical release bundle that passes `releasebundle.Load`; and
 - one ResidencyPlan revision UUID already embedded in that bundle's
-  digest-bound `fleet-controller` final render.
+  digest-bound `fleet-controller` final render. Every external Secret and
+  ConfigMap declaration in that bundle is also mandatory capture authority.
 
 There is no command-line or file input for an operator-authored Worker,
 Kubernetes, DRA, GPU, or ModelResidency snapshot. Expected Pod and
@@ -25,6 +26,9 @@ reads have identical:
 - WorkerInstance, WorkerMember, device, node, DeviceSet, runtime and residency
   epochs and identities from a `REPEATABLE READ READ ONLY` Fleet transaction;
 - Kubernetes cluster and namespace UID;
+- every release-declared external Secret/ConfigMap UID, resource version,
+  immutability bit, revision annotation, exact Secret key set, and canonical
+  content digest;
 - Pod UID, resource version, scheduled node, container image ID, READY state,
   and restart count;
 - generated ResourceClaim UID, reservation to the exact Pod UID, allocation,
@@ -44,8 +48,10 @@ not itself launch evidence.
 Configure a login that belongs only to the `vela_h3_campaign_evidence` NOLOGIN
 group role. The command rejects admin, Fleet, mixed-role, or over-privileged
 database identities before it reads Registry state. The Kubernetes identity
-needs `get` access to the target Namespace, Pods, Nodes, ResourceClaims and
-ResourceClaimTemplates, plus `list` access to ResourceSlices. Outside the
+needs `get` access to the target Namespace, Pods, Nodes, ResourceClaims,
+ResourceClaimTemplates, and every release-declared Secret and ConfigMap, plus
+`list` access to ResourceSlices. Secret payloads are read only inside the
+collector to recompute their digest and are never emitted. Outside the
 cluster, set an explicit kubeconfig path.
 
 ```text
@@ -67,6 +73,16 @@ when assembling the real H3 Production Gate evidence. The full campaign must
 still provide mixed-load soak, cross-node StageArtifact lineage, cache and
 fencing checks, fault injection, N/N-1 drain, rollback, dashboards, alerts,
 runbooks and ownership evidence.
+
+External-resource `revision` is the `sha256` digest of strict
+`ExternalResourceContentV1` JSON: `schema_version`, `kind`, `namespace`, `name`,
+optional Secret `secret_type`, ConfigMap `string_data`, and binary data. Empty
+optional fields are omitted, object keys are encoded in lexical order, and byte
+values use JSON base64 encoding. UID and resource version are excluded from
+this content digest and recorded separately. The live object must also carry
+`vela.ai/release-revision` equal to the computed digest. A changed payload with
+an unchanged annotation therefore fails; deletion and same-name recreation
+during the double-read window fails independently on UID drift.
 
 ## Stage execution campaign evidence
 

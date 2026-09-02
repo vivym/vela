@@ -62,11 +62,16 @@ kubectl kustomize deploy/stage-worker
 
 The render is a configuration contract, not a ResidencyPlan approval,
 ModelResidency receipt, GPU isolation receipt, or Production Launch Receipt.
-The canonical release bundle binds each external resource name and declared
-revision, but does not bind a live Kubernetes UID or content digest. Fleet's
+The canonical release bundle binds each external resource name and canonical
+content digest. Provisioned objects must be immutable and carry
+`vela.ai/release-revision` equal to that digest. The H3 preflight and launch
+collector bind this declaration to the live Kubernetes UID, resource version,
+exact Secret key set, and independently recomputed content digest; the evidence
+contains no Secret payload. Fleet's
 multi-member actuation path reads the named source Secret to validate and derive
 member PKI; its Role cannot update or delete Secrets. Kubernetes admission
 control validates exact creates and rejects mutation of Fleet-derived member
 Services and Secrets. Secret-manager policy must separately prevent deletion
 and same-name recreation of external immutable ConfigMaps and source Secrets
-for the lifetime of a rollout; that receipt remains an external launch gate.
+for the full rollout and campaign lifetime; double-read evidence detects drift
+inside one capture window but does not replace that external prevention receipt.

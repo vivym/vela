@@ -17,11 +17,21 @@ func TestCollectKubernetesReadsExactLiveObjects(t *testing.T) {
 			"kube-system": input.Kubernetes.ClusterUID,
 			"vela-system": input.Kubernetes.NamespaceUID,
 		},
+		configMaps:     make(map[string]corev1.ConfigMap),
+		secrets:        make(map[string]corev1.Secret),
 		pods:           make(map[string]corev1.Pod),
 		templates:      make(map[string]resourcev1.ResourceClaimTemplate),
 		claims:         make(map[string]resourcev1.ResourceClaim),
 		nodes:          make(map[string]corev1.Node),
 		resourceSlices: input.Kubernetes.ResourceSlices,
+	}
+	for index := range input.Kubernetes.ConfigMaps {
+		value := input.Kubernetes.ConfigMaps[index]
+		reader.configMaps[namespacedKey(value.Namespace, value.Name)] = value
+	}
+	for index := range input.Kubernetes.Secrets {
+		value := input.Kubernetes.Secrets[index]
+		reader.secrets[namespacedKey(value.Namespace, value.Name)] = value
 	}
 	for index := range input.Kubernetes.Pods {
 		pod := input.Kubernetes.Pods[index]
@@ -44,12 +54,14 @@ func TestCollectKubernetesReadsExactLiveObjects(t *testing.T) {
 		context.Background(),
 		reader,
 		input.Rollout,
+		input.ExternalResources,
 	)
 	if err != nil {
 		t.Fatalf("CollectKubernetes: %v", err)
 	}
 	if snapshot.ClusterUID != input.Kubernetes.ClusterUID ||
 		snapshot.NamespaceUID != input.Kubernetes.NamespaceUID ||
+		len(snapshot.ConfigMaps) != 1 || len(snapshot.Secrets) != 1 ||
 		len(snapshot.Pods) != 1 || len(snapshot.ClaimTemplates) != 1 ||
 		len(snapshot.Claims) != 1 || len(snapshot.Nodes) != 1 || len(snapshot.ResourceSlices) != 1 {
 		t.Fatalf("Kubernetes snapshot = %#v", snapshot)
@@ -58,11 +70,37 @@ func TestCollectKubernetesReadsExactLiveObjects(t *testing.T) {
 
 type fakeKubernetesReader struct {
 	namespaceUIDs  map[string]string
+	configMaps     map[string]corev1.ConfigMap
+	secrets        map[string]corev1.Secret
 	pods           map[string]corev1.Pod
 	templates      map[string]resourcev1.ResourceClaimTemplate
 	claims         map[string]resourcev1.ResourceClaim
 	nodes          map[string]corev1.Node
 	resourceSlices []resourcev1.ResourceSlice
+}
+
+func (reader *fakeKubernetesReader) ConfigMap(
+	_ context.Context,
+	namespace,
+	name string,
+) (corev1.ConfigMap, error) {
+	value, exists := reader.configMaps[namespacedKey(namespace, name)]
+	if !exists {
+		return corev1.ConfigMap{}, fmt.Errorf("ConfigMap %s/%s not found", namespace, name)
+	}
+	return *value.DeepCopy(), nil
+}
+
+func (reader *fakeKubernetesReader) Secret(
+	_ context.Context,
+	namespace,
+	name string,
+) (corev1.Secret, error) {
+	value, exists := reader.secrets[namespacedKey(namespace, name)]
+	if !exists {
+		return corev1.Secret{}, fmt.Errorf("Secret %s/%s not found", namespace, name)
+	}
+	return *value.DeepCopy(), nil
 }
 
 func (reader *fakeKubernetesReader) NamespaceUID(_ context.Context, name string) (string, error) {
