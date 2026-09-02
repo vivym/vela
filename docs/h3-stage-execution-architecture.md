@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 | --- | --- |
-| Status | Accepted target; S49.12 cutover control and automatic instantiation implemented; contraction pending |
+| Status | Accepted; S49.1-S49.12 repository implementation and schema-v2 contraction complete |
 | Date | 2026-08-29 |
 | Workload | MiniMax H3 asynchronous video generation |
 | Baseline commit | `bc590e20b3e81ee54651ac7766c8ecd82b394097` |
@@ -15,11 +15,11 @@ intermediate-data assumptions in `docs/architecture.md`. It does not replace
 Vela's commercial, identity, retention, disaster-recovery, or exactly-once
 Visible Completion contracts.
 
-The implementation at the baseline commit still binds one Attempt to one
-machine-level Worker. The target design instead uses a durable execution graph
-whose stages are assigned independently. Until the implementation slices in
-this package are complete, repository behavior remains the current behavior and
-must not be described as stage-disaggregated or production-ready.
+The implementation at the baseline commit bound one Attempt to one
+machine-level Worker. The current repository uses a durable execution graph
+whose stages are assigned independently and has removed the monolithic H3
+execution path. This repository boundary is stage-disaggregated, but it is not
+production-ready until the separate Launch Receipt requirements pass.
 
 The design borrows routing, stage-pipeline, topology, cache-index, planner, and
 observability patterns from NVIDIA Dynamo and llm-d. Neither project becomes
@@ -934,7 +934,7 @@ memory queues and KV indexes never become Async Job or Charge authority.
 
 ## 20. Acceptance evidence
 
-The design is not implemented until evidence proves at least:
+Repository implementation evidence now covers:
 
 - H3 Encoder, seven independent DiT Workers, VAE, and optional CPU stage can be
   placed on different nodes and complete one Job;

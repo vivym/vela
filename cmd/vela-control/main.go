@@ -51,7 +51,6 @@ import (
 	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/stagefinalization"
 	"github.com/vivym/vela/internal/stagescheduler"
-	"github.com/vivym/vela/internal/stageworkertransport"
 	"github.com/vivym/vela/internal/strictjson"
 	"github.com/vivym/vela/internal/telemetry"
 	"github.com/vivym/vela/internal/webhook"
@@ -621,16 +620,6 @@ func run() error {
 		return fmt.Errorf("open StageArtifact database pool: %w", err)
 	}
 	defer stageArtifactPool.Close()
-	stageWorkerControlPool, err := openPool(
-		ctx,
-		configuration.stageWorkerControlDatabaseURL,
-		10,
-		veladb.RoleStageWorkerControl,
-	)
-	if err != nil {
-		return fmt.Errorf("open StageWorkerControl database pool: %w", err)
-	}
-	defer stageWorkerControlPool.Close()
 	billingPool, err := openPool(ctx, configuration.billingDatabaseURL, 5, veladb.RoleBilling)
 	if err != nil {
 		return fmt.Errorf("open billing database pool: %w", err)
@@ -889,38 +878,17 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure StageScheduler: %w", err)
 	}
-	stageWorkerControlAdapter, err := newStageWorkerControlAdapter(
+	stageWorkerControl, err := newStageWorkerControlLifecycle(
+		ctx,
 		configuration,
-		stageWorkerControlPool,
 		stageArtifactPool,
 		stageScheduling,
 		stageAttemptCoordinator,
 	)
 	if err != nil {
-		return fmt.Errorf("configure StageWorkerControl: %w", err)
-	}
-	stageWorkerTransportCredentials, err := stageworkertransport.NewServerTLSCredentials(
-		configuration.stageWorkerControlTLSCertFile,
-		configuration.stageWorkerControlTLSKeyFile,
-		configuration.stageWorkerControlClientCAFile,
-	)
-	if err != nil {
 		return err
 	}
-	stageWorkerGRPCServer := grpc.NewServer(
-		grpc.Creds(stageWorkerTransportCredentials),
-		grpc.MaxRecvMsgSize(4<<20),
-		grpc.MaxSendMsgSize(4<<20),
-	)
-	velav1.RegisterStageWorkerControlServiceServer(
-		stageWorkerGRPCServer,
-		stageWorkerControlAdapter,
-	)
-	stageWorkerListener, err := net.Listen("tcp", configuration.stageWorkerControlAddress)
-	if err != nil {
-		return fmt.Errorf("listen for StageWorkerControl gRPC: %w", err)
-	}
-	defer func() { _ = stageWorkerListener.Close() }()
+	defer stageWorkerControl.Close()
 	fleetService, err := fleet.NewService(fleetPool)
 	if err != nil {
 		return fmt.Errorf("configure Fleet service: %w", err)
@@ -1245,15 +1213,7 @@ func run() error {
 		)
 		managementServerErrors <- managementServer.ListenAndServe()
 	}()
-	stageWorkerServerErrors := make(chan error, 1)
-	go func() {
-		slog.Info(
-			"vela-control StageWorkerControl gRPC server started",
-			"address",
-			configuration.stageWorkerControlAddress,
-		)
-		stageWorkerServerErrors <- stageWorkerGRPCServer.Serve(stageWorkerListener)
-	}()
+	stageWorkerServerErrors := stageWorkerControl.Start()
 	fleetServerErrors := make(chan error, 1)
 	go func() {
 		slog.Info(
@@ -1335,16 +1295,8 @@ func run() error {
 		fleetGRPCServer.Stop()
 		return errors.New("fleet maintenance gRPC server did not stop before shutdown deadline")
 	}
-	stageWorkerServerDone := make(chan struct{})
-	go func() {
-		defer close(stageWorkerServerDone)
-		stageWorkerGRPCServer.GracefulStop()
-	}()
-	select {
-	case <-stageWorkerServerDone:
-	case <-shutdownContext.Done():
-		stageWorkerGRPCServer.Stop()
-		return errors.New("StageWorkerControl gRPC server did not stop before shutdown deadline")
+	if err := stageWorkerControl.Shutdown(shutdownContext); err != nil {
+		return err
 	}
 	stop()
 	select {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -453,10 +452,12 @@ func commandAuthorityDigest(
 	operation Operation,
 	authorities VerifiedAuthorities,
 ) ([sha256.Size]byte, error) {
-	switch operation {
-	case OperationStartStage, OperationHeartbeatStage, OperationSealStageOutput,
-		OperationFailStage, OperationReattachStage, OperationResolveInputTransfer,
-		OperationConsumeInputTransfer:
+	descriptor, ok := descriptorForOperation(operation)
+	if !ok {
+		return [sha256.Size]byte{}, errors.New("stage worker operation has no command authority evidence")
+	}
+	switch descriptor.authority {
+	case operationAuthorityStage:
 		if authorities.Stage == nil || authorities.Materialization != nil ||
 			authorities.Stage.Digest == ([sha256.Size]byte{}) || authorities.Stage.Authority == nil {
 			return [sha256.Size]byte{}, errors.New("stage worker command lacks exact StageAuthority evidence")
@@ -466,7 +467,7 @@ func commandAuthorityDigest(
 			return [sha256.Size]byte{}, errors.New("stage worker command has mismatched StageAuthority evidence")
 		}
 		return authorities.Stage.Digest, nil
-	case OperationCommitStageMaterialization, OperationReportMaterializationSourceLost:
+	case operationAuthorityMaterialization:
 		if authorities.Materialization == nil || authorities.Stage != nil ||
 			authorities.Materialization.Digest == ([sha256.Size]byte{}) ||
 			authorities.Materialization.Authority == nil {
@@ -490,117 +491,11 @@ func validateOperationRequest(
 	if request == nil || request.GetOperation() == nil {
 		return errors.New("stage worker operation request is missing")
 	}
-	switch operation {
-	case OperationRegisterWorkerEvidence:
-		value := request.GetRegisterWorkerEvidence()
-		if value == nil || value.GetRuntimeIdentity() == nil ||
-			value.GetCapacityObservationSequence() <= 0 || len(value.GetDevices()) == 0 ||
-			len(value.GetMembers()) == 0 || len(value.GetReadinessEvidence()) == 0 ||
-			len(value.GetReadinessEvidence()) > maxReadinessEvidenceBytes {
-			return errors.New("worker registration evidence is incomplete")
-		}
-	case OperationReportCapacityObservation:
-		value := request.GetReportCapacityObservation()
-		if value == nil || parseUUID(value.GetWorkerInstanceId()) == uuid.Nil ||
-			value.GetWorkerInstanceEpoch() <= 0 || value.GetObservationSequence() <= 0 ||
-			!validCapacityVector(value.GetCapacityVector()) ||
-			!validTimestamp(value.GetObservedAt()) || !validTimestamp(value.GetExpiresAt()) ||
-			!value.GetExpiresAt().AsTime().After(value.GetObservedAt().AsTime()) {
-			return errors.New("stage capacity observation is invalid")
-		}
-	case OperationAcquireStage:
-		value := request.GetAcquireStage()
-		if value == nil || parseUUID(value.GetWorkerInstanceId()) == uuid.Nil ||
-			parseUUID(value.GetModelResidencyId()) == uuid.Nil ||
-			parseUUID(value.GetStageProfileRevisionId()) == uuid.Nil ||
-			value.GetWorkerInstanceEpoch() <= 0 || value.GetCapacityObservationSequence() <= 0 ||
-			value.GetModelRuntimeEpoch() <= 0 {
-			return errors.New("stage acquire authority is incomplete")
-		}
-	case OperationStartStage:
-		if authorities.Stage == nil || !validTimestamp(request.GetStartStage().GetStartedAt()) {
-			return errors.New("stage start evidence is invalid")
-		}
-	case OperationHeartbeatStage:
-		value := request.GetHeartbeatStage()
-		if authorities.Stage == nil || value.GetSequence() <= 0 ||
-			value.GetRuntimeState() == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED ||
-			len(value.GetBoundedStatusJson()) == 0 || len(value.GetBoundedStatusJson()) > maxBoundedStatusBytes ||
-			!json.Valid(value.GetBoundedStatusJson()) || !validTimestamp(value.GetObservedAt()) ||
-			(value.GetLocalReceiptId() == "") != (len(value.GetLocalReceiptDigest()) == 0) ||
-			(len(value.GetLocalReceiptDigest()) != 0 && len(value.GetLocalReceiptDigest()) != sha256.Size) {
-			return errors.New("stage heartbeat evidence is invalid")
-		}
-	case OperationSealStageOutput:
-		if authorities.Stage == nil || request.GetSealStageOutput().GetLocalReceipt() == nil {
-			return errors.New("stage seal evidence is invalid")
-		}
-	case OperationCommitStageMaterialization:
-		value := request.GetCommitStageMaterialization()
-		if authorities.Materialization == nil || strings.TrimSpace(value.GetObjectVersion()) == "" ||
-			!validTimestamp(value.GetCommittedAt()) {
-			return errors.New("stage materialization commit evidence is invalid")
-		}
-	case OperationFailStage:
-		value := request.GetFailStage()
-		if authorities.Stage == nil || strings.TrimSpace(value.GetFailureClass()) == "" ||
-			len(value.GetFailureClass()) > 100 || len(value.GetFailureFingerprint()) != sha256.Size ||
-			value.GetConsumedResourceUnits() <= 0 || !validTimestamp(value.GetFailedAt()) ||
-			!validTimestamp(value.GetRetryAt()) ||
-			!value.GetRetryAt().AsTime().After(value.GetFailedAt().AsTime()) ||
-			len(value.GetDetail()) > maxControlDetailBytes {
-			return errors.New("stage failure evidence is invalid")
-		}
-	case OperationReattachStage:
-		value := request.GetReattachStage()
-		if authorities.Stage == nil ||
-			value.GetObservedRuntimeState() == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED ||
-			(value.GetLocalReceiptId() == "") != (len(value.GetLocalReceiptDigest()) == 0) ||
-			(len(value.GetLocalReceiptDigest()) != 0 && len(value.GetLocalReceiptDigest()) != sha256.Size) {
-			return errors.New("stage reattach evidence is invalid")
-		}
-	case OperationReportMaterializationSourceLost:
-		value := request.GetReportMaterializationSourceLost()
-		if authorities.Materialization == nil || len(value.GetFailureFingerprint()) != sha256.Size ||
-			value.GetConsumedResourceUnits() <= 0 || !validTimestamp(value.GetLostAt()) ||
-			!validTimestamp(value.GetRetryAt()) ||
-			!value.GetRetryAt().AsTime().After(value.GetLostAt().AsTime()) {
-			return errors.New("stage materialization source-loss evidence is invalid")
-		}
-	case OperationResolveInputTransfer:
-		value := request.GetResolveInputTransfer()
-		stage := authorities.Stage
-		if stage == nil || value == nil || parseUUID(value.GetTicketId()) == uuid.Nil ||
-			len(value.GetTokenDigest()) != sha256.Size ||
-			parseUUID(value.GetConnectorRevisionId()) == uuid.Nil ||
-			parseUUID(value.GetWorkerInstanceId()) == uuid.Nil ||
-			parseUUID(value.GetModelResidencyId()) == uuid.Nil || value.GetWorkerInstanceEpoch() <= 0 ||
-			value.GetModelRuntimeEpoch() <= 0 || !validTimestamp(value.GetResolvedAt()) ||
-			value.GetWorkerInstanceId() != stage.Authority.GetWorkerInstanceId() ||
-			value.GetWorkerInstanceEpoch() != stage.Authority.GetWorkerInstanceEpoch() ||
-			value.GetModelResidencyId() != stage.Authority.GetModelResidencyId() ||
-			!stageAuthorityHasBarrierGeneration(stage.Authority, value.GetModelRuntimeEpoch()) {
-			return errors.New("stage input transfer resolve authority is invalid")
-		}
-	case OperationConsumeInputTransfer:
-		value := request.GetConsumeInputTransfer()
-		stage := authorities.Stage
-		if stage == nil || value == nil || parseUUID(value.GetTicketId()) == uuid.Nil ||
-			len(value.GetTokenDigest()) != sha256.Size || len(value.GetOutcomeDigest()) != sha256.Size ||
-			parseUUID(value.GetConnectorRevisionId()) == uuid.Nil ||
-			parseUUID(value.GetWorkerInstanceId()) == uuid.Nil ||
-			parseUUID(value.GetModelResidencyId()) == uuid.Nil || value.GetWorkerInstanceEpoch() <= 0 ||
-			value.GetModelRuntimeEpoch() <= 0 || !validTimestamp(value.GetConsumedAt()) ||
-			value.GetWorkerInstanceId() != stage.Authority.GetWorkerInstanceId() ||
-			value.GetWorkerInstanceEpoch() != stage.Authority.GetWorkerInstanceEpoch() ||
-			value.GetModelResidencyId() != stage.Authority.GetModelResidencyId() ||
-			!stageAuthorityHasBarrierGeneration(stage.Authority, value.GetModelRuntimeEpoch()) {
-			return errors.New("stage input transfer consume evidence is invalid")
-		}
-	default:
+	descriptor, ok := descriptorForOperation(operation)
+	if !ok || descriptor.validate == nil {
 		return errors.New("stage worker operation is unsupported")
 	}
-	return nil
+	return descriptor.validate(request, authorities)
 }
 
 func stageAuthorityHasBarrierGeneration(authority *velav1.StageAuthority, generation int64) bool {

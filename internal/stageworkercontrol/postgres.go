@@ -310,34 +310,13 @@ func matchesDevices(
 }
 
 func activeOperationState(operation Operation, snapshot durableStageAuthority) bool {
-	switch operation {
-	case OperationStartStage:
-		return snapshot.stageAttemptState == "ASSIGNED" && snapshot.stageRunState == "ASSIGNED" &&
-			(snapshot.attemptState == "ASSIGNED" || snapshot.attemptState == "RUNNING")
-	case OperationHeartbeatStage, OperationSealStageOutput:
-		return snapshot.stageAttemptState == "RUNNING" && snapshot.stageRunState == "RUNNING" &&
-			snapshot.attemptState == "RUNNING"
-	case OperationFailStage, OperationReattachStage:
-		return (snapshot.stageAttemptState == "ASSIGNED" || snapshot.stageAttemptState == "RUNNING") &&
-			(snapshot.stageRunState == "ASSIGNED" || snapshot.stageRunState == "RUNNING") &&
-			(snapshot.attemptState == "ASSIGNED" || snapshot.attemptState == "RUNNING")
-	case OperationResolveInputTransfer, OperationConsumeInputTransfer:
-		return snapshot.stageAttemptState == "ASSIGNED" && snapshot.stageRunState == "ASSIGNED" &&
-			(snapshot.attemptState == "ASSIGNED" || snapshot.attemptState == "RUNNING")
-	default:
-		return false
-	}
+	descriptor, ok := descriptorForOperation(operation)
+	return ok && descriptor.activeState != nil && descriptor.activeState(snapshot)
 }
 
 func operationRequiresStageAuthority(operation Operation) bool {
-	switch operation {
-	case OperationStartStage, OperationHeartbeatStage, OperationSealStageOutput,
-		OperationFailStage, OperationReattachStage, OperationResolveInputTransfer,
-		OperationConsumeInputTransfer:
-		return true
-	default:
-		return false
-	}
+	descriptor, ok := descriptorForOperation(operation)
+	return ok && descriptor.authority == operationAuthorityStage
 }
 
 var _ Authorizer = (*PostgresAuthorizer)(nil)

@@ -2,7 +2,7 @@
 
 Date: 2026-08-29
 
-Status: Accepted target architecture; implementation not started.
+Status: Accepted and implemented in the repository; production acceptance remains `0/9 PASS`.
 
 ## Context
 

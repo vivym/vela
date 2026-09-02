@@ -194,36 +194,20 @@ func (handler *Handler) execute(
 func operationAuthority(
 	request *velav1.StageWorkerControlServiceConnectRequest,
 ) (Operation, *velav1.StageAuthority, *velav1.MaterializationAuthority, bool) {
-	switch operation := request.GetOperation().(type) {
-	case *velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence:
-		return OperationRegisterWorkerEvidence, nil, nil, false
-	case *velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
-		return OperationReportCapacityObservation, nil, nil, false
-	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
-		return OperationAcquireStage, nil, nil, false
-	case *velav1.StageWorkerControlServiceConnectRequest_StartStage:
-		return OperationStartStage, operation.StartStage.GetAuthority(), nil, true
-	case *velav1.StageWorkerControlServiceConnectRequest_HeartbeatStage:
-		return OperationHeartbeatStage, operation.HeartbeatStage.GetAuthority(), nil, true
-	case *velav1.StageWorkerControlServiceConnectRequest_SealStageOutput:
-		return OperationSealStageOutput, operation.SealStageOutput.GetAuthority(), nil, true
-	case *velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization:
-		return OperationCommitStageMaterialization, nil,
-			operation.CommitStageMaterialization.GetMaterializationAuthority(), true
-	case *velav1.StageWorkerControlServiceConnectRequest_FailStage:
-		return OperationFailStage, operation.FailStage.GetAuthority(), nil, true
-	case *velav1.StageWorkerControlServiceConnectRequest_ReattachStage:
-		return OperationReattachStage, operation.ReattachStage.GetAuthority(), nil, true
-	case *velav1.StageWorkerControlServiceConnectRequest_ReportMaterializationSourceLost:
-		return OperationReportMaterializationSourceLost, nil,
-			operation.ReportMaterializationSourceLost.GetMaterializationAuthority(), true
-	case *velav1.StageWorkerControlServiceConnectRequest_ResolveInputTransfer:
-		return OperationResolveInputTransfer, operation.ResolveInputTransfer.GetAuthority(), nil, true
-	case *velav1.StageWorkerControlServiceConnectRequest_ConsumeInputTransfer:
-		return OperationConsumeInputTransfer, operation.ConsumeInputTransfer.GetAuthority(), nil, true
-	default:
+	operation := operationFromRequest(request)
+	descriptor, ok := descriptorForOperation(operation)
+	if !ok {
 		return velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_UNSPECIFIED, nil, nil, false
 	}
+	var stage *velav1.StageAuthority
+	if descriptor.stageAuthority != nil {
+		stage = descriptor.stageAuthority(request)
+	}
+	var materialization *velav1.MaterializationAuthority
+	if descriptor.materializationAuthority != nil {
+		materialization = descriptor.materializationAuthority(request)
+	}
+	return operation, stage, materialization, descriptor.authority != operationAuthorityNone
 }
 
 func staleResponse(
