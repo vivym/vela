@@ -46,6 +46,27 @@ func TestResidencyPlanRolloutAppliesAuthorityBeforeActuation(t *testing.T) {
 	}
 }
 
+func TestResidencyPlanRolloutBindsEveryModelRuntimeRoute(t *testing.T) {
+	rollout := h3ResidencyPlanRollout(t)
+	if len(rollout.ApprovedPlan.CapacityPools) != 3 {
+		t.Fatalf("H3 CapacityPool count=%d, want Encoder/DiT/VAE", len(rollout.ApprovedPlan.CapacityPools))
+	}
+	aux := rollout.ApprovedPlan.WorkerInstances[0]
+	if len(aux.ModelRuntimeRoutes) != 2 {
+		t.Fatalf("AUX ModelRuntime route count=%d, want Encoder/VAE", len(aux.ModelRuntimeRoutes))
+	}
+	if aux.ModelRuntimeRoutes[0].CapacityPoolID == aux.ModelRuntimeRoutes[1].CapacityPoolID {
+		t.Fatalf("AUX routes share CapacityPool %s", aux.ModelRuntimeRoutes[0].CapacityPoolID)
+	}
+
+	drifted := rollout
+	drifted.ApprovedPlan.WorkerInstances[0].ModelRuntimeRoutes[1].CapacityPoolID =
+		drifted.ApprovedPlan.WorkerInstances[0].ModelRuntimeRoutes[0].CapacityPoolID
+	if err := fleetcontroller.ValidateResidencyPlanRollout(drifted); err == nil {
+		t.Fatal("ResidencyPlan rollout accepted a VAE route under the Encoder CapacityPool")
+	}
+}
+
 func TestResidencyPlanRolloutRejectsActuationOutsideApprovedAuthority(t *testing.T) {
 	rollout := h3ResidencyPlanRollout(t)
 	rollout.WorkerBundles[0].WorkerInstances[0].ID = uuid.New()
@@ -260,15 +281,21 @@ func residencyPlanRolloutForBundle(
 		CapacityPools: []fleet.PlannedCapacityPool{
 			{
 				ID: bundle.WorkerInstances[0].CapacityPoolID, StableID: "h3-aux",
-				StageProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000041"),
+				StageProfileRevisionID: bundle.WorkerInstances[0].ModelRuntimes[0].StageProfileRevisionID,
 				ResourceClass:          "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai",
 				MaxReadyQueueDepth: 128,
 			},
 			{
 				ID: bundle.WorkerInstances[1].CapacityPoolID, StableID: "h3-dit",
-				StageProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000042"),
+				StageProfileRevisionID: bundle.WorkerInstances[1].ModelRuntimes[0].StageProfileRevisionID,
 				ResourceClass:          "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai",
 				MaxReadyQueueDepth: 1024,
+			},
+			{
+				ID: bundle.WorkerInstances[0].ModelRuntimes[1].CapacityPoolID, StableID: "h3-vae",
+				StageProfileRevisionID: bundle.WorkerInstances[0].ModelRuntimes[1].StageProfileRevisionID,
+				ResourceClass:          "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai",
+				MaxReadyQueueDepth: 128,
 			},
 		},
 		WorkerBundles: []fleet.PlannedWorkerBundle{{
@@ -286,11 +313,23 @@ func residencyPlanRolloutForBundle(
 			ID: worker.ID, WorkerProfileRevisionID: worker.WorkerProfileRevisionID,
 			CapacityPoolID: worker.CapacityPoolID, WorkerBundleID: bundle.WorkerBundleID,
 			DesiredMemberCount: len(worker.Members), DesiredDeviceCount: deviceCount,
+			ModelRuntimeRoutes: plannedRuntimeRoutes(worker.ModelRuntimes),
 		})
 	}
 	return fleetcontroller.ResidencyPlanRollout{
 		ApprovedPlan: plan, WorkerBundles: []fleetcontroller.WorkerBundleActuation{bundle},
 	}
+}
+
+func plannedRuntimeRoutes(runtimes []fleetcontroller.ModelRuntimeProcess) []fleet.PlannedModelRuntimeRoute {
+	routes := make([]fleet.PlannedModelRuntimeRoute, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		routes = append(routes, fleet.PlannedModelRuntimeRoute{
+			ModelResidencyID: runtime.ModelResidencyID, CapacityPoolID: runtime.CapacityPoolID,
+			StageProfileRevisionID: runtime.StageProfileRevisionID,
+		})
+	}
+	return routes
 }
 
 func appendWorkerBundleAuthority(
@@ -312,6 +351,7 @@ func appendWorkerBundleAuthority(
 				ID: worker.ID, WorkerProfileRevisionID: worker.WorkerProfileRevisionID,
 				CapacityPoolID: worker.CapacityPoolID, WorkerBundleID: bundle.WorkerBundleID,
 				DesiredMemberCount: len(worker.Members), DesiredDeviceCount: workerDeviceCountForTest(worker),
+				ModelRuntimeRoutes: plannedRuntimeRoutes(worker.ModelRuntimes),
 			},
 		)
 	}

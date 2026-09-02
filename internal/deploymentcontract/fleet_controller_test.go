@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/fleetcontroller"
 	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
@@ -393,7 +394,7 @@ func TestFleetControllerDeploymentRunsReplicatedHardenedRuntime(t *testing.T) {
 	}
 }
 
-func TestFleetDefaultRenderUsesTargetOnlySingleGPUResidencyPlan(t *testing.T) {
+func TestFleetDefaultRenderUsesCompleteH3ResidencyPlan(t *testing.T) {
 	var config corev1.ConfigMap
 	if err := k8syaml.Unmarshal(
 		readFleetManifest(t, "residency-plan-rollouts.yaml"),
@@ -410,41 +411,93 @@ func TestFleetDefaultRenderUsesTargetOnlySingleGPUResidencyPlan(t *testing.T) {
 		t.Fatalf("decode Fleet ResidencyPlan placeholder JSON: %v", err)
 	}
 	if config.Immutable == nil || !*config.Immutable || input.SchemaVersion != 1 ||
-		len(input.Rollouts) != 1 || len(input.Rollouts[0].WorkerBundles) != 1 ||
-		len(input.Rollouts[0].WorkerBundles[0].WorkerInstances) != 1 {
+		len(input.Rollouts) != 1 || len(input.Rollouts[0].WorkerBundles) != 2 ||
+		len(input.Rollouts[0].ApprovedPlan.CapacityPools) != 6 ||
+		len(input.Rollouts[0].ApprovedPlan.WorkerInstances) != 11 {
 		t.Fatalf("Fleet ResidencyPlan placeholder = %#v input=%#v", config, input)
 	}
-	bundle := input.Rollouts[0].WorkerBundles[0]
-	digest, err := fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
-	if err != nil || digest != bundle.RevisionDigest {
-		t.Fatalf("Fleet ResidencyPlan placeholder digest=%q want=%q error=%v", digest, bundle.RevisionDigest, err)
+	roleCounts := map[string]int{}
+	componentCounts := map[string]int{}
+	poolByComponent := map[string]uuid.UUID{}
+	workerCount := 0
+	var aux fleetcontroller.WorkerInstanceActuation
+	for _, bundle := range input.Rollouts[0].WorkerBundles {
+		digest, err := fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+		if err != nil || digest != bundle.RevisionDigest {
+			t.Fatalf(
+				"Fleet ResidencyPlan bundle %s digest=%q want=%q error=%v",
+				bundle.WorkerBundleID, digest, bundle.RevisionDigest, err,
+			)
+		}
+		workerCount += len(bundle.WorkerInstances)
+		for _, worker := range bundle.WorkerInstances {
+			roleCounts[worker.Role]++
+			if worker.Role == "aux" {
+				aux = worker
+			}
+			if worker.CapacitySlots != 1 || len(worker.Members) != 1 ||
+				worker.Members[0].DeviceCount != 1 || len(worker.Members[0].DeviceConstraints) != 1 {
+				t.Fatalf("Fleet H3 WorkerInstance is not one slot/device/member: %#v", worker)
+			}
+			for _, runtime := range worker.ModelRuntimes {
+				componentCounts[runtime.Component]++
+				if runtime.CapacityPoolID == uuid.Nil || runtime.StageProfileRevisionID == uuid.Nil ||
+					runtime.ModelResidencyID == uuid.Nil || len(runtime.Command) == 0 ||
+					!strings.HasPrefix(runtime.Command[0], "/opt/vela/bin/h3-") {
+					t.Fatalf("Fleet H3 ModelRuntime route is incomplete: %#v", runtime)
+				}
+				if runtime.Component == "CPU_MEDIA" {
+					if worker.Members[0].ResourceClass != "CPU" || len(runtime.Command) != 3 ||
+						runtime.Command[2] != worker.Role {
+						t.Fatalf("Fleet H3 CPU media runtime is incomplete: worker=%#v runtime=%#v", worker, runtime)
+					}
+					continue
+				}
+				if worker.Members[0].ResourceClass != "GPU" || len(runtime.Command) != 1 ||
+					!containsFleetEnvironmentPrefix(runtime.Environment, "FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/") ||
+					!containsFleetEnvironmentPrefix(runtime.Environment, "CUDA_VISIBLE_DEVICES=GPU-") {
+					t.Fatalf("Fleet H3 GPU ModelRuntime route is incomplete: %#v", runtime)
+				}
+				if existing, seen := poolByComponent[runtime.Component]; seen &&
+					existing != runtime.CapacityPoolID {
+					t.Fatalf("component %s spans CapacityPools %s/%s", runtime.Component, existing, runtime.CapacityPoolID)
+				}
+				poolByComponent[runtime.Component] = runtime.CapacityPoolID
+			}
+		}
 	}
-	worker := bundle.WorkerInstances[0]
-	if worker.Role != "dit" || worker.CapacitySlots != 1 || len(worker.ModelRuntimes) != 1 ||
-		worker.ModelRuntimes[0].Component != "DIT" || len(worker.Members) != 1 ||
-		worker.Members[0].DeviceCount != 1 || len(worker.Members[0].DeviceConstraints) != 1 {
-		t.Fatalf("Fleet single-GPU placeholder WorkerInstance = %#v", worker)
+	if workerCount != 11 {
+		t.Fatalf("Fleet H3 WorkerInstance count=%d, want 11", workerCount)
 	}
-	wantRuntimeEnvironment := []string{
-		"FAST_H3_PYTHON=/opt/fast-h3/venv/bin/python",
-		"FAST_H3_MODEL_PATH=/opt/fast-h3/model",
-		"FAST_H3_MODEL_VARIANT=fl2va",
-		"FAST_H3_MASTER_PORT=29500",
-		"FAST_H3_WARMUP_SPEC_PATH=/opt/fast-h3/warmup/dit.json",
-		"CUDA_VISIBLE_DEVICES=GPU-00000000-0000-0000-0000-000000000001",
+	if roleCounts["aux"] != 1 || roleCounts["dit"] != 7 ||
+		roleCounts["cpu-encode"] != 1 || roleCounts["cpu-mux"] != 1 ||
+		roleCounts["cpu-thumbnail"] != 1 ||
+		componentCounts["ENCODER"] != 1 || componentCounts["DIT"] != 7 ||
+		componentCounts["VAE_DECODER"] != 1 || componentCounts["CPU_MEDIA"] != 3 ||
+		poolByComponent["ENCODER"] == poolByComponent["VAE_DECODER"] {
+		t.Fatalf("Fleet H3 topology roles=%v components=%v pools=%v", roleCounts, componentCounts, poolByComponent)
 	}
-	if !reflect.DeepEqual(worker.ModelRuntimes[0].Environment, wantRuntimeEnvironment) {
-		t.Fatalf(
-			"Fleet single-GPU placeholder ModelRuntime environment = %#v, want %#v",
-			worker.ModelRuntimes[0].Environment,
-			wantRuntimeEnvironment,
-		)
+	if aux.Role != "aux" || aux.SharedSlotException != "H3_AUX_ENCODER_VAE" ||
+		len(aux.ModelRuntimes) != 2 {
+		t.Fatalf("Fleet H3 AUX WorkerInstance = %#v", aux)
+	}
+	if err := fleetcontroller.ValidateResidencyPlanRollout(input.Rollouts[0]); err != nil {
+		t.Fatalf("validate complete H3 ResidencyPlan: %v", err)
 	}
 	kustomization := string(readFleetManifest(t, "kustomization.yaml"))
 	if !strings.Contains(kustomization, "residency-plan-rollouts.yaml") ||
 		strings.Contains(kustomization, "desired-revisions.yaml") {
 		t.Fatalf("Fleet default Kustomization is not target-only:\n%s", kustomization)
 	}
+}
+
+func containsFleetEnvironmentPrefix(environment []string, prefix string) bool {
+	for _, value := range environment {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func schemaMinimum(schema fleetSchema) int64 {

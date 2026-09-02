@@ -86,6 +86,70 @@ func TestStageCacheKeyV1EveryExactFieldAffectsScopedHMAC(t *testing.T) {
 	}
 }
 
+func TestH3EncoderAndDiTExactCacheKeysAreRetryStableAndProjectIsolated(t *testing.T) {
+	projectSecret := []byte("h3-project-cache-key-0123456789abcdef")
+	encoder := exactKeyInput()
+	encoder.StageKind = "encoder"
+	encoder.RootInputDigests = []stagecache.Digest{
+		sha256.Sum256([]byte("verified root material")),
+	}
+	encoder.InputStageArtifactDigests = nil
+	encoder.StageResultEquivalenceRevisionID = uuid.MustParse(
+		"49000000-0000-0000-0000-000000000023",
+	)
+	encoder.NormalizedStageParameters = json.RawMessage(
+		`{"conditions":[{"media_type":"image","uri":"s3://project/input.png"}],"prompt":"cache me"}`,
+	)
+	encoder.OutputShape = json.RawMessage(`{"conditioning_revision":"h3-encoder-v1"}`)
+
+	encoderKey, err := stagecache.ComputeKeyV1(projectSecret, encoder)
+	if err != nil {
+		t.Fatalf("compute H3 Encoder cache key: %v", err)
+	}
+	retryKey, err := stagecache.ComputeKeyV1(projectSecret, cloneKeyInput(encoder))
+	if err != nil || retryKey != encoderKey {
+		t.Fatalf("H3 Encoder retry key = %x error=%v, want %x", retryKey, err, encoderKey)
+	}
+
+	changedRoot := cloneKeyInput(encoder)
+	changedRoot.RootInputDigests[0] = sha256.Sum256([]byte("different root material"))
+	changedRootKey, err := stagecache.ComputeKeyV1(projectSecret, changedRoot)
+	if err != nil || changedRootKey == encoderKey {
+		t.Fatalf("H3 Encoder root-digest isolation key = %x error=%v", changedRootKey, err)
+	}
+
+	otherProject := cloneKeyInput(encoder)
+	otherProject.ProjectID = uuid.MustParse("49800000-0000-0000-0000-000000000099")
+	otherProjectKey, err := stagecache.ComputeKeyV1(
+		[]byte("other-h3-project-key-0123456789abcdef"),
+		otherProject,
+	)
+	if err != nil || otherProjectKey == encoderKey {
+		t.Fatalf("cross-Project H3 Encoder key = %x error=%v", otherProjectKey, err)
+	}
+
+	dit := cloneKeyInput(encoder)
+	dit.StageKind = "dit"
+	dit.StageResultEquivalenceRevisionID = uuid.MustParse(
+		"49000000-0000-0000-0000-000000000024",
+	)
+	dit.RootInputDigests = nil
+	dit.InputStageArtifactDigests = []stagecache.Digest{
+		sha256.Sum256([]byte("encoder artifact")),
+	}
+	dit.OutputShape = json.RawMessage(`{"audio_latents":true,"video_latents":true}`)
+	ditKey, err := stagecache.ComputeKeyV1(projectSecret, dit)
+	if err != nil || ditKey == encoderKey {
+		t.Fatalf("H3 DiT cache key = %x error=%v, Encoder key %x", ditKey, err, encoderKey)
+	}
+	changedInput := cloneKeyInput(dit)
+	changedInput.InputStageArtifactDigests[0] = sha256.Sum256([]byte("different encoder artifact"))
+	changedInputKey, err := stagecache.ComputeKeyV1(projectSecret, changedInput)
+	if err != nil || changedInputKey == ditKey {
+		t.Fatalf("H3 DiT artifact-digest isolation key = %x error=%v", changedInputKey, err)
+	}
+}
+
 func TestPlanShadowEvictionComparesValueDensityWithoutOverflow(t *testing.T) {
 	now := time.Date(2026, time.August, 31, 1, 0, 0, 0, time.UTC)
 	lowDensity := stagecache.ShadowEntry{

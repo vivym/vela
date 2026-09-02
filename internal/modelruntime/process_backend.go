@@ -39,10 +39,11 @@ var (
 )
 
 type DriverDevice struct {
-	DeviceID    string `json:"device_id"`
-	DeviceEpoch int64  `json:"device_epoch"`
-	GPUUUID     string `json:"gpu_uuid"`
-	PCIBDF      string `json:"pci_bdf"`
+	DeviceID      string `json:"device_id"`
+	DeviceEpoch   int64  `json:"device_epoch"`
+	ResourceClass string `json:"resource_class,omitempty"`
+	GPUUUID       string `json:"gpu_uuid,omitempty"`
+	PCIBDF        string `json:"pci_bdf,omitempty"`
 }
 
 type ProcessBackendConfig struct {
@@ -663,23 +664,23 @@ func validateProcessBackendConfig(
 	seenGPUs := make(map[string]struct{}, len(config.LocalDevices))
 	seenBDFs := make(map[string]struct{}, len(config.LocalDevices))
 	for _, device := range config.LocalDevices {
-		if uuid.Validate(device.DeviceID) != nil || device.DeviceEpoch <= 0 ||
-			!driverGPUUUIDPattern.MatchString(device.GPUUUID) ||
-			!driverPCIBDFPattern.MatchString(device.PCIBDF) {
+		if !validDriverDevice(device) {
 			return errors.New("ModelRuntime driver local Device identity is invalid")
 		}
 		if _, duplicate := seenDevices[device.DeviceID]; duplicate {
 			return errors.New("ModelRuntime driver local Device identity is duplicated")
 		}
-		if _, duplicate := seenGPUs[device.GPUUUID]; duplicate {
-			return errors.New("ModelRuntime driver local GPU identity is duplicated")
-		}
-		if _, duplicate := seenBDFs[device.PCIBDF]; duplicate {
-			return errors.New("ModelRuntime driver local PCI identity is duplicated")
+		if device.GPUUUID != "" {
+			if _, duplicate := seenGPUs[device.GPUUUID]; duplicate {
+				return errors.New("ModelRuntime driver local GPU identity is duplicated")
+			}
+			if _, duplicate := seenBDFs[device.PCIBDF]; duplicate {
+				return errors.New("ModelRuntime driver local PCI identity is duplicated")
+			}
+			seenGPUs[device.GPUUUID] = struct{}{}
+			seenBDFs[device.PCIBDF] = struct{}{}
 		}
 		seenDevices[device.DeviceID] = struct{}{}
-		seenGPUs[device.GPUUUID] = struct{}{}
-		seenBDFs[device.PCIBDF] = struct{}{}
 	}
 	if !validPrivateDriverRoot(config.ScratchRoot) || !validPrivateDriverRoot(config.InputRoot) ||
 		!validPrivateDriverRoot(config.OutputRoot) {
@@ -708,6 +709,21 @@ func validateProcessBackendConfig(
 		seenEnvironment[name] = struct{}{}
 	}
 	return nil
+}
+
+func validDriverDevice(device DriverDevice) bool {
+	if uuid.Validate(device.DeviceID) != nil || device.DeviceEpoch <= 0 {
+		return false
+	}
+	switch device.ResourceClass {
+	case "", "GPU":
+		return driverGPUUUIDPattern.MatchString(device.GPUUUID) &&
+			driverPCIBDFPattern.MatchString(device.PCIBDF)
+	case "CPU":
+		return device.GPUUUID == "" && device.PCIBDF == ""
+	default:
+		return false
+	}
 }
 
 func validPrivateDriverRoot(path string) bool {

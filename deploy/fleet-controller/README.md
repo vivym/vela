@@ -9,10 +9,16 @@ base grants no Argo identity access to live protected resources.
 
 The controller image, approved ResidencyPlan, Stage Worker Agent and H3
 ModelRuntime images, configuration names, device identities, and webhook
-`caBundle` are deliberately invalid placeholders. The ResidencyPlan BusyBox
-init image is the repository-pinned shared `1.37.0` `linux/amd64` manifest.
-Delivery must replace the immutable target-only rollout ConfigMap with an
-approved release-bound plan and provision these independent trust materials:
+`caBundle` are deliberately invalid placeholders. The default ResidencyPlan
+materializes the complete H3 topology contract: one single-slot AUX
+WorkerInstance with separate Encoder and VAE ModelRuntime routes plus seven
+independently schedulable single-slot DiT WorkerInstances. The repeated `3` and
+`4` image digests, `template-not-approved` identity, unconfigured region, and
+template model/runtime revisions are non-production values. The ResidencyPlan
+BusyBox init image is the repository-pinned shared `1.37.0` `linux/amd64`
+manifest. Delivery must replace the immutable target-only rollout ConfigMap
+with an approved release-bound plan, recompute its content and layout digests,
+and provision these independent trust materials:
 
 - `vela-fleet-control-mtls`: Fleet Controller client certificate, private key,
   and CA for the Fleet maintenance gRPC service;
@@ -22,8 +28,9 @@ approved release-bound plan and provision these independent trust materials:
   kube-apiserver client certificate presented to `/validate`.
 
 Delivery must also inject the serving-certificate CA into the webhook
-`caBundle`. Applying the placeholders is not a successful deployment and cannot
-produce a Launch Receipt.
+`caBundle`. Passing the repository deployment-contract test only proves that the
+placeholder topology is complete and internally consistent. Applying the
+placeholders is not a successful deployment, Production Gate, or Launch Receipt.
 
 For a multi-member WorkerInstance, the approved WorkerBundle also names one
 immutable aggregate member-PKI source Secret. The controller has namespaced

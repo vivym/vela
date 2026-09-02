@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -28,6 +27,8 @@ import (
 )
 
 const campaignResidencyPlanID = "49200000-0000-0000-0000-000000000201"
+
+const h3ExactCacheCanonicalizationRevisionID = "49200000-0000-0000-0000-000000000251"
 
 func TestH3CampaignEvidenceCapturesAuthoritativeLineageTransferAndCache(t *testing.T) {
 	fixture := runH3CampaignEvidenceFixture(t)
@@ -71,6 +72,31 @@ func TestH3CampaignEvidenceCapturesAuthoritativeLineageTransferAndCache(t *testi
 
 func TestStageTelemetryReadsAuthoritativeCampaignState(t *testing.T) {
 	fixture := runH3CampaignEvidenceFixture(t)
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE worker_instances AS worker
+		SET capacity_pool_id = encoder_route.capacity_pool_id
+		FROM model_residencies AS vae_residency
+		JOIN model_runtime_capacity_routes AS vae_route
+		  ON vae_route.model_residency_id = vae_residency.id
+		JOIN stage_profile_revisions AS vae_profile
+		  ON vae_profile.id = vae_route.stage_profile_revision_id
+		JOIN stage_definition_revisions AS vae_definition
+		  ON vae_definition.id = vae_profile.stage_definition_revision_id
+		CROSS JOIN LATERAL (
+			SELECT route.capacity_pool_id
+			FROM model_runtime_capacity_routes AS route
+			JOIN stage_profile_revisions AS profile
+			  ON profile.id = route.stage_profile_revision_id
+			JOIN stage_definition_revisions AS definition
+			  ON definition.id = profile.stage_definition_revision_id
+			WHERE definition.stage_kind = 'ENCODER'
+			LIMIT 1
+		) AS encoder_route
+		WHERE worker.id = vae_residency.worker_instance_id
+		  AND vae_definition.stage_kind = 'VAE_DECODER'
+	`); err != nil {
+		t.Fatalf("drift legacy WorkerInstance CapacityPool away from VAE route: %v", err)
+	}
 	pool := newRolePool(t, fixture.database.DSN, "vela_internal_login", "vela-internal-password")
 	reader := telemetry.NewPostgresStageSnapshotReader(pool)
 
@@ -123,6 +149,100 @@ func TestStageTelemetryMigrationPreservesReadOnlyPrivilegeBoundary(t *testing.T)
 		"transfer_tickets":    true,
 		"stage_cache_entries": true,
 	})
+}
+
+func TestH3ExactCacheReconciliationMigrationEmptyDownUpRestoresRoleSurface(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundationTo(t, database.Admin, 65)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	assertH3ExactCacheReconciliationRoleSurface(t, database)
+
+	cache, err := stagecache.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
+	))
+	if err != nil {
+		t.Fatalf("construct H3 exact cache migration repository: %v", err)
+	}
+	for _, action := range []string{"ADMIT", "HIT"} {
+		candidates, readErr := cache.ReadH3ExactCandidates(context.Background(), action, 10)
+		if readErr != nil || len(candidates) != 0 {
+			t.Fatalf("read empty H3 exact cache %s candidates = %#v error=%v", action, candidates, readErr)
+		}
+	}
+
+	if err := goose.DownTo(database.Admin, migrations, 64); err != nil {
+		t.Fatalf("contract H3 exact cache reconciliation migration: %v", err)
+	}
+	var functionsRemoved bool
+	if err := database.Admin.QueryRow(`
+		SELECT
+			to_regprocedure('vela_read_h3_exact_cache_candidates(text,integer)') IS NULL
+			AND to_regprocedure(
+				'vela_find_h3_exact_cache_entry(uuid,uuid,uuid,uuid,uuid,text,bytea,timestamp with time zone)'
+			) IS NULL
+	`).Scan(&functionsRemoved); err != nil {
+		t.Fatalf("inspect contracted H3 exact cache reconciliation surface: %v", err)
+	}
+	if !functionsRemoved {
+		t.Fatal("H3 exact cache reconciliation functions survived migration Down")
+	}
+
+	if err := goose.UpTo(database.Admin, migrations, 65); err != nil {
+		t.Fatalf("re-expand H3 exact cache reconciliation migration: %v", err)
+	}
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 65 {
+		t.Fatalf("H3 exact cache reconciliation version after Down Up = %d error=%v", version, err)
+	}
+	assertH3ExactCacheReconciliationRoleSurface(t, database)
+}
+
+func assertH3ExactCacheReconciliationRoleSurface(t *testing.T, database testDatabase) {
+	t.Helper()
+	var readerOwner, finderOwner string
+	var coordinatorCanRead, coordinatorCanFind, internalCanRead, internalCanFind bool
+	if err := database.Admin.QueryRow(`
+		SELECT
+			COALESCE(pg_get_userbyid(reader.proowner), ''),
+			COALESCE(pg_get_userbyid(finder.proowner), ''),
+			COALESCE(has_function_privilege(
+				'vela_attempt_coordinator_login', reader.oid, 'EXECUTE'
+			), false),
+			COALESCE(has_function_privilege(
+				'vela_attempt_coordinator_login', finder.oid, 'EXECUTE'
+			), false),
+			COALESCE(has_function_privilege(
+				'vela_internal_login', reader.oid, 'EXECUTE'
+			), false),
+			COALESCE(has_function_privilege(
+				'vela_internal_login', finder.oid, 'EXECUTE'
+			), false)
+		FROM (VALUES (
+			to_regprocedure('vela_read_h3_exact_cache_candidates(text,integer)')
+		)) AS reader_function(oid)
+		LEFT JOIN pg_proc AS reader ON reader.oid = reader_function.oid
+		CROSS JOIN (VALUES (
+			to_regprocedure(
+				'vela_find_h3_exact_cache_entry(uuid,uuid,uuid,uuid,uuid,text,bytea,timestamp with time zone)'
+			)
+		)) AS finder_function(oid)
+		LEFT JOIN pg_proc AS finder ON finder.oid = finder_function.oid
+	`).Scan(
+		&readerOwner, &finderOwner,
+		&coordinatorCanRead, &coordinatorCanFind,
+		&internalCanRead, &internalCanFind,
+	); err != nil {
+		t.Fatalf("inspect H3 exact cache reconciliation role surface: %v", err)
+	}
+	if readerOwner != "vela_attempt_coordinator_owner" ||
+		finderOwner != "vela_attempt_coordinator_owner" ||
+		!coordinatorCanRead || !coordinatorCanFind || internalCanRead || internalCanFind {
+		t.Fatalf(
+			"H3 exact cache role surface owners=%s/%s coordinator=%t/%t internal=%t/%t",
+			readerOwner, finderOwner, coordinatorCanRead, coordinatorCanFind,
+			internalCanRead, internalCanFind,
+		)
+	}
 }
 
 func assertStageTelemetryPrivileges(
@@ -228,6 +348,7 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 			DeviceSetDigest: strings.Repeat("1", 64), MembershipDigest: strings.Repeat("2", 64),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
 				ModelResidencyID:       uuid.MustParse("49200000-0000-0000-0000-000000000207"),
+				CapacityPoolID:         poolID,
 				StageProfileRevisionID: uuid.MustParse(ditStageProfileID),
 				ModelRuntimeEpochFloor: 1,
 				Component:              "DIT", ModelComponentRevision: "h3-dit-v1",
@@ -267,6 +388,11 @@ func writeH3CampaignReleaseBundle(t *testing.T) string {
 			WorkerInstances: []fleet.PlannedWorkerInstance{{
 				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
 				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
+				ModelRuntimeRoutes: []fleet.PlannedModelRuntimeRoute{{
+					ModelResidencyID:       uuid.MustParse("49200000-0000-0000-0000-000000000207"),
+					CapacityPoolID:         poolID,
+					StageProfileRevisionID: uuid.MustParse(ditStageProfileID),
+				}},
 			}},
 		},
 		WorkerBundles: []fleetcontroller.WorkerBundleActuation{actuation},
@@ -328,21 +454,6 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 	seedH3CampaignResidencyPlan(t, database)
 	finalizer := visibleCompletionService(t, database.DSN)
 
-	same := runSplitH3StageGraphInEnvironmentWithContentTypes(
-		t, database, coordinator, serverURL,
-		[]string{"campaign-node-a", "campaign-node-a", "campaign-node-a"},
-		"h3-campaign-same-node", map[string]string{"encoder": "image/webp"}, 0xc0,
-		uuid.MustParse(campaignResidencyPlanID),
-	)
-	completeH3CampaignGraph(t, finalizer, same.jobID)
-	cross := runSplitH3StageGraphInEnvironmentWithContentTypes(
-		t, database, coordinator, serverURL,
-		[]string{"campaign-node-b", "campaign-node-c", "campaign-node-d"},
-		"h3-campaign-cross-node", map[string]string{"encoder": "image/webp"}, 0xd0,
-		uuid.MustParse(campaignResidencyPlanID),
-	)
-	completeH3CampaignGraph(t, finalizer, cross.jobID)
-
 	registry, err := fleet.NewService(newRolePool(
 		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
@@ -371,13 +482,6 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 		t.Fatalf("enable campaign Project Stage Cache: %v", err)
 	}
 
-	type cacheSource struct {
-		stageKey      string
-		artifactID    uuid.UUID
-		entryID       uuid.UUID
-		stageProfile  uuid.UUID
-		equivalenceID uuid.UUID
-	}
 	sourceJob, sourceAttemptID := instantiateH3IntegrationGraph(
 		t, database, serverURL, "h3-campaign-cache-source",
 	)
@@ -388,21 +492,15 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 	for index := range sourceStages {
 		sourceStages[index].residencyPlanID = uuid.MustParse(campaignResidencyPlanID)
 	}
-	sources := []cacheSource{
-		{stageKey: "encoder", stageProfile: uuid.MustParse(encoderStageProfileID),
-			equivalenceID: uuid.MustParse(h3EncoderEquivalence)},
-		{stageKey: "dit", stageProfile: uuid.MustParse(ditStageProfileID),
-			equivalenceID: uuid.MustParse("49000000-0000-0000-0000-000000000024")},
-	}
-	for index := range sources {
+	for index := range sourceStages {
 		var stageRunID uuid.UUID
 		var stageVersion int64
 		if err := database.Admin.QueryRow(`
 			SELECT id, version
 			FROM stage_runs
 			WHERE attempt_id = $1 AND stage_key = $2
-		`, sourceAttemptID, sources[index].stageKey).Scan(&stageRunID, &stageVersion); err != nil {
-			t.Fatalf("read campaign %s cache source: %v", sources[index].stageKey, err)
+		`, sourceAttemptID, sourceStages[index].key).Scan(&stageRunID, &stageVersion); err != nil {
+			t.Fatalf("read campaign %s cache source: %v", sourceStages[index].key, err)
 		}
 		assignment := assignH3IntegrationStage(
 			t, database, coordinator, registry, sourceAttemptID, stageRunID,
@@ -412,57 +510,56 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 			t, database, sourceJob, assignment, stageVersion+1,
 		)
 		_ = startH3IntegrationStage(t, database, assignment, authority)
-		artifact := materializeH3IntegrationStage(
+		_ = materializeH3IntegrationStage(
 			t, artifacts, artifactstore.NewLocal(), sourceAttemptID, stageRunID,
 			assignment, sourceStages[index],
-			[]byte("campaign reusable "+sources[index].stageKey+" output"),
-			[]byte(`{"kind":"`+sources[index].stageKey+`","campaign":"cache-source"}`),
+			[]byte("campaign reusable "+sourceStages[index].key+" output"),
+			[]byte(`{"kind":"`+sourceStages[index].key+`","campaign":"cache-source"}`),
 		)
-		sources[index].artifactID = artifact.ID
-		key := sha256.Sum256([]byte("h3-campaign/exact/" + sources[index].stageKey))
-		entryID := uuid.New()
-		if _, err := cache.Admit(context.Background(), stagecache.AdmitCommand{
-			CommandID: uuid.New(), EntryID: entryID, ArtifactID: sources[index].artifactID,
-			CachePolicyRevisionID:       uuid.MustParse(h3CachePolicyID),
-			StageProfileRevisionID:      sources[index].stageProfile,
-			ResultEquivalenceRevisionID: sources[index].equivalenceID,
-			Scope:                       stagecache.ScopeProject, StageKey: sources[index].stageKey,
-			CacheKeyDigest: key, ExpectedSavedComputeMinor: 10_000,
-			CarryCostMinor: 10, AdmittedAt: now, ExpiresAt: now.Add(time.Hour),
-		}); err != nil {
-			t.Fatalf("admit campaign %s exact cache entry: %v", sources[index].stageKey, err)
-		}
-		sources[index].entryID = entryID
+	}
+	reconciler, err := stagecache.NewH3ExactReconciler(cache, stagecache.H3ExactReconcilerConfig{
+		ProjectScopeKeys: map[uuid.UUID][]byte{
+			uuid.MustParse(testProjectID): []byte("0123456789abcdef0123456789abcdef"),
+		},
+		InputCanonicalizationRevisionID: uuid.MustParse(h3ExactCacheCanonicalizationRevisionID),
+		SeedAndRNGRevision:              "sglang-minimax-h3-philox-v1",
+		BatchSize:                       100,
+		ExpectedSavedComputeMinor:       10_000,
+		CarryCostMinor:                  10,
+	})
+	if err != nil {
+		t.Fatalf("construct campaign H3 exact cache reconciler: %v", err)
+	}
+	admitted, err := reconciler.Reconcile(context.Background())
+	if err != nil || admitted.AdmissionCandidates != 2 || admitted.Admitted != 2 || admitted.Hits != 0 {
+		t.Fatalf("reconcile campaign H3 exact cache admissions = %#v error=%v", admitted, err)
 	}
 
 	cacheJob, cacheAttemptID := instantiateH3IntegrationGraph(
 		t, database, serverURL, "h3-campaign-cache-target",
 	)
-	hitAt := time.Now().UTC().Truncate(time.Millisecond)
-	for index, source := range sources {
-		var targetRunID uuid.UUID
-		var targetVersion int64
-		if err := database.Admin.QueryRow(`
-			SELECT id, version
-			FROM stage_runs
-			WHERE attempt_id = $1 AND stage_key = $2
-		`, cacheAttemptID, source.stageKey).Scan(&targetRunID, &targetVersion); err != nil {
-			t.Fatalf("read campaign cache target %s StageRun: %v", source.stageKey, err)
-		}
-		key := sha256.Sum256([]byte("h3-campaign/exact/" + source.stageKey))
-		hit, err := cache.Hit(context.Background(), stagecache.HitCommand{
-			CommandID: uuid.New(), EntryID: source.entryID, PinID: uuid.New(),
-			AttemptID: cacheAttemptID, StageRunID: targetRunID,
-			StageProfileRevisionID: source.stageProfile,
-			ExpectedOrganizationID: uuid.MustParse(testOrganizationID),
-			ExpectedProjectID:      uuid.MustParse(testProjectID),
-			ExpectedAttemptFence:   1, ExpectedStageFence: 1,
-			ExpectedStageVersion: targetVersion, ProgressReceiptID: uuid.New(),
-			CacheKeyDigest: key, HitAt: hitAt.Add(time.Duration(index+1) * time.Millisecond),
-		})
-		if err != nil || hit.StageState != "SUCCEEDED" {
-			t.Fatalf("hit campaign %s exact cache entry = %#v error=%v", source.stageKey, hit, err)
-		}
+	encoderHit, err := reconciler.Reconcile(context.Background())
+	if err != nil || encoderHit.Hits != 1 {
+		t.Fatalf("reconcile campaign Encoder exact cache hit = %#v error=%v", encoderHit, err)
+	}
+	ditHit, err := reconciler.Reconcile(context.Background())
+	if err != nil || ditHit.Hits != 1 {
+		t.Fatalf("reconcile campaign DiT exact cache hit = %#v error=%v", ditHit, err)
+	}
+	var exactCacheHits int
+	if err := database.Admin.QueryRow(`
+		SELECT count(*)
+		FROM stage_cache_references AS reference
+		JOIN stage_runs AS run ON run.id = reference.owner_stage_run_id
+		WHERE run.attempt_id = $1
+		  AND run.stage_key IN ('encoder', 'dit')
+		  AND run.state = 'SUCCEEDED'
+		  AND reference.state = 'ACTIVE'
+	`, cacheAttemptID).Scan(&exactCacheHits); err != nil {
+		t.Fatalf("count reconciled campaign exact cache hits: %v", err)
+	}
+	if exactCacheHits != 2 {
+		t.Fatalf("reconciled campaign exact cache hits = %d, want 2", exactCacheHits)
 	}
 
 	var vaeRunID uuid.UUID
@@ -494,6 +591,21 @@ func runH3CampaignEvidenceFixture(t *testing.T) h3CampaignEvidenceFixture {
 	)
 	cacheJobID := uuid.MustParse(cacheJob.JobID)
 	completeH3CampaignGraph(t, finalizer, cacheJobID)
+
+	same := runSplitH3StageGraphInEnvironmentWithContentTypes(
+		t, database, coordinator, serverURL,
+		[]string{"campaign-node-a", "campaign-node-a", "campaign-node-a"},
+		"h3-campaign-same-node", map[string]string{"encoder": "image/webp"}, 0xc0,
+		uuid.MustParse(campaignResidencyPlanID),
+	)
+	completeH3CampaignGraph(t, finalizer, same.jobID)
+	cross := runSplitH3StageGraphInEnvironmentWithContentTypes(
+		t, database, coordinator, serverURL,
+		[]string{"campaign-node-b", "campaign-node-c", "campaign-node-d"},
+		"h3-campaign-cross-node", map[string]string{"encoder": "image/webp"}, 0xd0,
+		uuid.MustParse(campaignResidencyPlanID),
+	)
+	completeH3CampaignGraph(t, finalizer, cross.jobID)
 
 	return h3CampaignEvidenceFixture{
 		database: database, sameNodeJobID: same.jobID,

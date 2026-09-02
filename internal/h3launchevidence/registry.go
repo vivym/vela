@@ -235,6 +235,8 @@ func captureRegistryResidencies(
 ) ([]RegistryResidency, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT residency.id,
+		       route.capacity_pool_id,
+		       route.stage_profile_revision_id,
 		       residency.model_component_revision,
 		       residency.runtime_identity,
 		       residency.runtime_image_digest,
@@ -243,6 +245,9 @@ func captureRegistryResidencies(
 		       encode(residency.warmup_evidence_digest, 'hex'),
 		       encode(residency.canary_evidence_digest, 'hex')
 		FROM model_residencies AS residency
+		JOIN model_runtime_capacity_routes AS route
+		  ON route.model_residency_id = residency.id
+		 AND route.worker_instance_id = residency.worker_instance_id
 		WHERE residency.worker_instance_id = $1
 		  AND residency.worker_instance_epoch = $2
 		  AND residency.released_at IS NULL
@@ -257,6 +262,8 @@ func captureRegistryResidencies(
 		var residency RegistryResidency
 		if err := rows.Scan(
 			&residency.ID,
+			&residency.CapacityPoolID,
+			&residency.StageProfileRevisionID,
 			&residency.ModelComponentRevision,
 			&residency.RuntimeIdentity,
 			&residency.RuntimeImageDigest,

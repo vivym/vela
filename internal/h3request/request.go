@@ -228,11 +228,7 @@ func freezeSampling(generationPreset string, sampling Sampling) (FrozenSampling,
 		!optionalUnitFloat(sampling.AudioConditionNoiseAugmentation) {
 		return FrozenSampling{}, errors.New("H3 sampling is invalid")
 	}
-	return FrozenSampling{
-		NumInferenceSteps: sampling.NumInferenceSteps, Quality: sampling.Quality,
-		ImageVideoConditionNoiseAugmentation: sampling.ImageVideoConditionNoiseAugmentation,
-		AudioConditionNoiseAugmentation:      sampling.AudioConditionNoiseAugmentation,
-	}, nil
+	return FrozenSampling(sampling), nil
 }
 
 func deriveSeed(

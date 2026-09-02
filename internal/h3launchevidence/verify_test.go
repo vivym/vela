@@ -28,7 +28,10 @@ func TestVerifyProducesEvidenceOnlyForExactLiveLaunchBinding(t *testing.T) {
 		evidence.ConfigurationRevision != input.ConfigurationRevision ||
 		evidence.ResidencyPlanRevisionID != input.Rollout.ApprovedPlan.ID ||
 		len(evidence.ExternalResources) != 2 ||
-		len(evidence.Workers) != 1 || len(evidence.Workers[0].Members) != 1 {
+		len(evidence.Workers) != 1 || len(evidence.Workers[0].Members) != 1 ||
+		len(evidence.Workers[0].Residencies) != 1 ||
+		evidence.Workers[0].Residencies[0].CapacityPoolID == uuid.Nil ||
+		evidence.Workers[0].Residencies[0].StageProfileRevisionID == uuid.Nil {
 		t.Fatalf("launch evidence binding = %#v", evidence)
 	}
 	for _, resource := range evidence.ExternalResources {
@@ -162,6 +165,18 @@ func TestVerifyRejectsStaleOrInventedLaunchEvidence(t *testing.T) {
 			},
 		},
 		{
+			name: "ModelResidency CapacityPool route mismatch",
+			mutate: func(input *h3launchevidence.Input) {
+				input.Registry.Workers[0].Residencies[0].CapacityPoolID = uuid.New()
+			},
+		},
+		{
+			name: "ModelResidency StageProfile route mismatch",
+			mutate: func(input *h3launchevidence.Input) {
+				input.Registry.Workers[0].Residencies[0].StageProfileRevisionID = uuid.New()
+			},
+		},
+		{
 			name: "ResourceClaim reserved for another Pod incarnation",
 			mutate: func(input *h3launchevidence.Input) {
 				input.Kubernetes.Claims[0].Status.ReservedFor[0].UID = types.UID("invented-pod-uid")
@@ -229,7 +244,8 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 			CapacityPoolID: poolID, Role: "dit", CapacitySlots: 1,
 			DeviceSetDigest: digestHex('8'), MembershipDigest: digestHex('9'),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
-				ModelResidencyID: residencyID, StageProfileRevisionID: stageProfileID,
+				ModelResidencyID: residencyID, CapacityPoolID: poolID,
+				StageProfileRevisionID: stageProfileID,
 				ModelRuntimeEpochFloor: 17,
 				Component:              "DIT", ModelComponentRevision: "h3-dit-r17",
 				RuntimeIdentity: "h3-dit-runtime-r4", Command: []string{"/opt/vela/bin/h3-dit"},
@@ -269,6 +285,10 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 			WorkerInstances: []fleet.PlannedWorkerInstance{{
 				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
 				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
+				ModelRuntimeRoutes: []fleet.PlannedModelRuntimeRoute{{
+					ModelResidencyID: residencyID, CapacityPoolID: poolID,
+					StageProfileRevisionID: stageProfileID,
+				}},
 			}},
 		},
 		WorkerBundles: []fleetcontroller.WorkerBundleActuation{bundle},
@@ -411,7 +431,8 @@ func exactLaunchInput(t *testing.T) h3launchevidence.Input {
 					}},
 				}},
 				Residencies: []h3launchevidence.RegistryResidency{{
-					ID: residencyID, ModelComponentRevision: "h3-dit-r17", RuntimeIdentity: "h3-dit-runtime-r4",
+					ID: residencyID, CapacityPoolID: poolID, StageProfileRevisionID: stageProfileID,
+					ModelComponentRevision: "h3-dit-r17", RuntimeIdentity: "h3-dit-runtime-r4",
 					RuntimeImageDigest: runtimeDigest, ModelRuntimeEpoch: 29, State: "READY",
 					WarmupEvidenceDigest: digestHex('e'), CanaryEvidenceDigest: digestHex('f'),
 				}},

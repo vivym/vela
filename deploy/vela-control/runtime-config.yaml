@@ -82,6 +82,13 @@ data:
   VELA_INVOICE_EXPORT_BEARER_TOKEN_FILE: /etc/vela-control/materialized/invoice/bearer-token
   VELA_LEASE_ACTIVE_KEY_ID: replace-with-lease-key-id
   VELA_LEASE_KEYRING_FILE: /etc/vela-control/materialized/keyrings/lease.json
+  VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE: /etc/vela-control/materialized/h3-cache/projects.json
+  VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID: 49200000-0000-0000-0000-000000000251
+  VELA_H3_EXACT_CACHE_SEED_RNG_REVISION: replace-with-certified-h3-seed-rng-revision
+  VELA_H3_EXACT_CACHE_TICK: "1s"
+  VELA_H3_EXACT_CACHE_BATCH_SIZE: "100"
+  VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR: "0"
+  VELA_H3_EXACT_CACHE_CARRY_COST_MINOR: "0"
   VELA_ARTIFACT_VALIDATOR_HELPER_PATH: /usr/local/bin/vela-artifact-validator
   VELA_ARTIFACT_FFPROBE_PATH: /usr/bin/ffprobe
   VELA_ARTIFACT_SANDBOX_ROOT: /var/lib/vela/artifact-validation/sandboxes

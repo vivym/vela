@@ -256,8 +256,58 @@ func TestH3LaunchEvidenceCapturesAuthoritativeRegistrySnapshot(t *testing.T) {
 	if snapshot.DatabaseTime.IsZero() || snapshot.TransactionID == "" || snapshot.SnapshotID == "" ||
 		len(snapshot.Workers) != 1 || snapshot.Workers[0].ID != workerID ||
 		len(snapshot.Workers[0].Members) != 1 || len(snapshot.Workers[0].Members[0].Devices) != 1 ||
-		len(snapshot.Workers[0].Residencies) != 1 || snapshot.Workers[0].Residencies[0].State != "READY" {
+		len(snapshot.Workers[0].Residencies) != 1 || snapshot.Workers[0].Residencies[0].State != "READY" ||
+		snapshot.Workers[0].Residencies[0].CapacityPoolID != plan.WorkerInstances[0].ModelRuntimeRoutes[0].CapacityPoolID ||
+		snapshot.Workers[0].Residencies[0].StageProfileRevisionID != plan.WorkerInstances[0].ModelRuntimeRoutes[0].StageProfileRevisionID {
 		t.Fatalf("authoritative Registry snapshot = %#v", snapshot)
+	}
+}
+
+func TestModelRuntimeCapacityRouteMigrationEmptyDownUp(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundationTo(t, database.Admin, 64)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+
+	if err := goose.DownTo(database.Admin, migrations, 63); err != nil {
+		t.Fatalf("contract ModelRuntime capacity route migration: %v", err)
+	}
+	var tableRemoved, legacySchedulerRestored bool
+	if err := database.Admin.QueryRow(`
+		SELECT
+			to_regclass('model_runtime_capacity_routes') IS NULL,
+			strpos(
+				pg_get_functiondef('vela_capture_stage_scheduler_snapshot(jsonb)'::regprocedure),
+				'worker.capacity_pool_id = v_pool.id'
+			) > 0
+	`).Scan(&tableRemoved, &legacySchedulerRestored); err != nil {
+		t.Fatalf("inspect contracted ModelRuntime capacity route surface: %v", err)
+	}
+	if !tableRemoved || !legacySchedulerRestored {
+		t.Fatalf("contracted route surface tableRemoved/legacySchedulerRestored = %t/%t", tableRemoved, legacySchedulerRestored)
+	}
+
+	if err := goose.UpTo(database.Admin, migrations, 64); err != nil {
+		t.Fatalf("re-expand ModelRuntime capacity route migration: %v", err)
+	}
+	var tableRestored, routedSchedulerRestored, evidenceCanRead bool
+	if err := database.Admin.QueryRow(`
+		SELECT
+			to_regclass('model_runtime_capacity_routes') IS NOT NULL,
+			strpos(
+				pg_get_functiondef('vela_capture_stage_scheduler_snapshot(jsonb)'::regprocedure),
+				'FROM public.model_runtime_capacity_routes AS route'
+			) > 0,
+			has_table_privilege(
+				'vela_h3_campaign_evidence', 'model_runtime_capacity_routes', 'SELECT'
+			)
+	`).Scan(&tableRestored, &routedSchedulerRestored, &evidenceCanRead); err != nil {
+		t.Fatalf("inspect re-expanded ModelRuntime capacity route surface: %v", err)
+	}
+	if !tableRestored || !routedSchedulerRestored || !evidenceCanRead {
+		t.Fatalf(
+			"expanded route surface table/scheduler/evidence = %t/%t/%t",
+			tableRestored, routedSchedulerRestored, evidenceCanRead,
+		)
 	}
 }
 
@@ -1231,6 +1281,7 @@ func mustDigestBytes(t *testing.T, encoded string) []byte {
 
 func approvedResidencyPlanFixture(proposalID uuid.UUID) map[string]any {
 	now := time.Now().UTC().Truncate(time.Millisecond)
+	workerID := uuid.MustParse("49200000-0000-0000-0000-000000000204")
 	return map[string]any{
 		"schema_version":           1,
 		"id":                       "49200000-0000-0000-0000-000000000201",
@@ -1257,12 +1308,17 @@ func approvedResidencyPlanFixture(proposalID uuid.UUID) map[string]any {
 			"layout_digest":      digestHex(0xc3),
 		}},
 		"worker_instances": []map[string]any{{
-			"id":                         "49200000-0000-0000-0000-000000000204",
+			"id":                         workerID.String(),
 			"worker_profile_revision_id": workerRegistryProfileID,
 			"capacity_pool_id":           "49200000-0000-0000-0000-000000000202",
 			"worker_bundle_id":           "49200000-0000-0000-0000-000000000203",
 			"desired_member_count":       1,
 			"desired_device_count":       1,
+			"model_runtime_routes": []map[string]any{{
+				"model_residency_id":        uuid.NewSHA1(workerID, []byte("residency")).String(),
+				"capacity_pool_id":          "49200000-0000-0000-0000-000000000202",
+				"stage_profile_revision_id": "49000000-0000-0000-0000-000000000041",
+			}},
 		}},
 	}
 }

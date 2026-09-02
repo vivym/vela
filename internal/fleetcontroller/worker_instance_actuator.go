@@ -117,14 +117,16 @@ type WorkerMemberActuation struct {
 }
 
 type DeviceConstraint struct {
-	DeviceID    uuid.UUID `json:"device_id"`
-	DeviceEpoch int64     `json:"device_epoch"`
-	GPUUUID     string    `json:"gpu_uuid"`
-	PCIBDF      string    `json:"pci_bdf"`
+	DeviceID      uuid.UUID `json:"device_id"`
+	DeviceEpoch   int64     `json:"device_epoch"`
+	ResourceClass string    `json:"resource_class,omitempty"`
+	GPUUUID       string    `json:"gpu_uuid,omitempty"`
+	PCIBDF        string    `json:"pci_bdf,omitempty"`
 }
 
 type ModelRuntimeProcess struct {
 	ModelResidencyID       uuid.UUID `json:"model_residency_id"`
+	CapacityPoolID         uuid.UUID `json:"capacity_pool_id"`
 	StageProfileRevisionID uuid.UUID `json:"stage_profile_revision_id"`
 	ModelRuntimeEpochFloor int64     `json:"model_runtime_epoch_floor"`
 	Component              string    `json:"component"`
@@ -144,6 +146,7 @@ type H3WorkerBundleSpec struct {
 	Namespace                      string
 	NodeIdentity                   string
 	AuxCapacityPoolID              uuid.UUID
+	VAEDecoderCapacityPoolID       uuid.UUID
 	DiTCapacityPoolID              uuid.UUID
 	AuxWorkerProfileRevisionID     uuid.UUID
 	DiTWorkerProfileRevisionID     uuid.UUID
@@ -191,23 +194,29 @@ func (ownership *deviceOwnership) reserve(nodeIdentity string, constraint Device
 	if _, exists := ownership.deviceIDs[constraint.DeviceID]; exists {
 		return errors.New("one Device authority is assigned more than once")
 	}
-	if _, exists := ownership.gpuUUIDs[constraint.GPUUUID]; exists {
-		return errors.New("one GPU is assigned to multiple WorkerInstances")
-	}
-	pciSlot := nodeIdentity + "\x00" + constraint.PCIBDF
-	if _, exists := ownership.pciSlots[pciSlot]; exists {
-		return errors.New("one node PCI device is assigned to multiple WorkerInstances")
+	if constraint.GPUUUID != "" {
+		if _, exists := ownership.gpuUUIDs[constraint.GPUUUID]; exists {
+			return errors.New("one GPU is assigned to multiple WorkerInstances")
+		}
+		pciSlot := nodeIdentity + "\x00" + constraint.PCIBDF
+		if _, exists := ownership.pciSlots[pciSlot]; exists {
+			return errors.New("one node PCI device is assigned to multiple WorkerInstances")
+		}
+		ownership.gpuUUIDs[constraint.GPUUUID] = struct{}{}
+		ownership.pciSlots[pciSlot] = struct{}{}
 	}
 	ownership.deviceIDs[constraint.DeviceID] = struct{}{}
-	ownership.gpuUUIDs[constraint.GPUUUID] = struct{}{}
-	ownership.pciSlots[pciSlot] = struct{}{}
 	return nil
 }
 
 func (ownership *deviceOwnership) conflicts(nodeIdentity string, constraint DeviceConstraint) bool {
 	_, deviceConflict := ownership.deviceIDs[constraint.DeviceID]
-	_, gpuConflict := ownership.gpuUUIDs[constraint.GPUUUID]
-	_, pciConflict := ownership.pciSlots[nodeIdentity+"\x00"+constraint.PCIBDF]
+	gpuConflict := false
+	pciConflict := false
+	if constraint.GPUUUID != "" {
+		_, gpuConflict = ownership.gpuUUIDs[constraint.GPUUUID]
+		_, pciConflict = ownership.pciSlots[nodeIdentity+"\x00"+constraint.PCIBDF]
+	}
 	return deviceConflict || gpuConflict || pciConflict
 }
 
@@ -238,7 +247,8 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		spec.WorkerBundleID == uuid.Nil ||
 		(spec.RevisionDigest != "" && !validSHA256(spec.RevisionDigest)) ||
 		!validResourceName(spec.Namespace) || !validResourceName(spec.NodeIdentity) ||
-		spec.AuxCapacityPoolID == uuid.Nil || spec.DiTCapacityPoolID == uuid.Nil ||
+		spec.AuxCapacityPoolID == uuid.Nil || spec.VAEDecoderCapacityPoolID == uuid.Nil ||
+		spec.DiTCapacityPoolID == uuid.Nil ||
 		spec.AuxWorkerProfileRevisionID == uuid.Nil || spec.DiTWorkerProfileRevisionID == uuid.Nil ||
 		!validPinnedImage(spec.InitImage) || !validPinnedImage(spec.StageWorkerAgentImage) ||
 		!validPinnedImage(spec.RuntimeImage) || !validResourceName(spec.StageWorkerConfigMap) ||
@@ -252,7 +262,7 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle specification is invalid")
 	}
 	for index, device := range spec.Devices {
-		if !validDeviceConstraint(device) || spec.MemberEpochs[index] <= 0 ||
+		if !validDeviceConstraint("GPU", device) || spec.MemberEpochs[index] <= 0 ||
 			!validSHA256(spec.DeviceSetDigests[index]) || !validSHA256(spec.MembershipDigests[index]) {
 			return WorkerBundleActuation{}, errors.New("certified H3 WorkerBundle device constraint is invalid")
 		}
@@ -277,6 +287,10 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		WorkerInstances:                make([]WorkerInstanceActuation, 0, 8),
 	}
 	auxID := uuid.NewSHA1(spec.WorkerBundleID, []byte("h3/aux"))
+	encoder := spec.Encoder
+	encoder.CapacityPoolID = spec.AuxCapacityPoolID
+	vaeDecoder := spec.VAEDecoder
+	vaeDecoder.CapacityPoolID = spec.VAEDecoderCapacityPoolID
 	bundle.WorkerInstances = append(bundle.WorkerInstances, WorkerInstanceActuation{
 		ID: auxID, InstanceEpoch: 1,
 		WorkerProfileRevisionID: spec.AuxWorkerProfileRevisionID,
@@ -284,20 +298,22 @@ func BuildH3WorkerBundleActuation(spec H3WorkerBundleSpec) (WorkerBundleActuatio
 		SharedSlotException: h3AUXSharedSlotException,
 		DeviceSetDigest:     spec.DeviceSetDigests[0],
 		MembershipDigest:    spec.MembershipDigests[0],
-		ModelRuntimes:       []ModelRuntimeProcess{spec.Encoder, spec.VAEDecoder},
+		ModelRuntimes:       []ModelRuntimeProcess{encoder, vaeDecoder},
 		Members: []WorkerMemberActuation{
 			h3Member(auxID, spec.MemberEpochs[0], spec.NodeIdentity, spec.Devices[0]),
 		},
 	})
 	for index := range 7 {
 		workerID := uuid.NewSHA1(spec.WorkerBundleID, []byte("h3/dit/"+strconv.Itoa(index)))
+		runtime := spec.DiT[index]
+		runtime.CapacityPoolID = spec.DiTCapacityPoolID
 		bundle.WorkerInstances = append(bundle.WorkerInstances, WorkerInstanceActuation{
 			ID: workerID, InstanceEpoch: 1,
 			WorkerProfileRevisionID: spec.DiTWorkerProfileRevisionID,
 			CapacityPoolID:          spec.DiTCapacityPoolID, Role: "dit", CapacitySlots: 1,
 			DeviceSetDigest:  spec.DeviceSetDigests[index+1],
 			MembershipDigest: spec.MembershipDigests[index+1],
-			ModelRuntimes:    []ModelRuntimeProcess{spec.DiT[index]},
+			ModelRuntimes:    []ModelRuntimeProcess{runtime},
 			Members: []WorkerMemberActuation{
 				h3Member(workerID, spec.MemberEpochs[index+1], spec.NodeIdentity, spec.Devices[index+1]),
 			},
@@ -324,11 +340,10 @@ func h3Member(
 	device DeviceConstraint,
 ) WorkerMemberActuation {
 	memberID := uuid.NewSHA1(workerID, []byte("member-0"))
-	identityDigest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/" + memberID.String()))
 	return WorkerMemberActuation{
 		ID: memberID, MemberEpoch: memberEpoch, Key: "member-0",
 		NodeIdentity: nodeIdentity, ResourceClass: "GPU", DeviceCount: 1,
-		IdentityDigest:    hex.EncodeToString(identityDigest[:]),
+		IdentityDigest:    workerMemberIdentityDigest(memberID),
 		DeviceConstraints: []DeviceConstraint{device},
 	}
 }
@@ -541,6 +556,9 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 		if worker.Role == "dit" && !validSingleGPUH3Worker(worker, "DIT") {
 			return errors.New("H3 DiT WorkerInstance must own one GPU and one DiT runtime")
 		}
+		if strings.HasPrefix(worker.Role, "cpu-") && !validSingleCPUWorker(worker) {
+			return errors.New("CPU media WorkerInstance must own one CPU slot and one runtime")
+		}
 		for _, runtime := range worker.ModelRuntimes {
 			if !validModelRuntimeProcess(runtime) {
 				return errors.New("WorkerInstance ModelRuntime process is invalid")
@@ -556,9 +574,12 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 			if member.ID == uuid.Nil || member.MemberEpoch <= 0 || !validMemberKey(member.Key) ||
 				!validSHA256(member.IdentityDigest) ||
 				!validResourceName(member.NodeIdentity) || member.DeviceCount <= 0 || member.DeviceCount > 64 ||
-				(member.ResourceClass != "" && member.ResourceClass != "GPU") ||
-				(len(member.DeviceConstraints) != 0 && len(member.DeviceConstraints) != member.DeviceCount) {
+				(member.ResourceClass != "GPU" && member.ResourceClass != "CPU") ||
+				len(member.DeviceConstraints) != member.DeviceCount {
 				return errors.New("WorkerMember actuation is invalid")
+			}
+			if member.IdentityDigest != workerMemberIdentityDigest(member.ID) {
+				return errors.New("WorkerMember identity digest does not match canonical SPIFFE identity")
 			}
 			if _, exists := members[member.ID]; exists {
 				return errors.New("WorkerBundle actuation reuses a WorkerMember id")
@@ -578,7 +599,7 @@ func ValidateWorkerBundleActuation(bundle WorkerBundleActuation) error {
 			}
 			podNames[podName] = struct{}{}
 			for _, constraint := range member.DeviceConstraints {
-				if !validDeviceConstraint(constraint) {
+				if !validDeviceConstraint(member.ResourceClass, constraint) {
 					return errors.New("WorkerMember device constraint is invalid")
 				}
 				if err := deviceOwnership.reserve(member.NodeIdentity, constraint); err != nil {
@@ -619,13 +640,28 @@ func validSharedSlotException(worker WorkerInstanceActuation) bool {
 		worker.CapacitySlots == 1 &&
 		len(worker.ModelRuntimes) == 2 && worker.ModelRuntimes[0].Component == "ENCODER" &&
 		worker.ModelRuntimes[1].Component == "VAE_DECODER" && len(worker.Members) == 1 &&
-		worker.Members[0].DeviceCount == 1
+		worker.Members[0].ResourceClass == "GPU" && worker.Members[0].DeviceCount == 1
 }
 
 func validSingleGPUH3Worker(worker WorkerInstanceActuation, component string) bool {
 	return worker.SharedSlotException == "" && worker.CapacitySlots == 1 &&
 		len(worker.ModelRuntimes) == 1 && worker.ModelRuntimes[0].Component == component &&
-		len(worker.Members) == 1 && worker.Members[0].DeviceCount == 1
+		len(worker.Members) == 1 && worker.Members[0].ResourceClass == "GPU" &&
+		worker.Members[0].DeviceCount == 1
+}
+
+func validSingleCPUWorker(worker WorkerInstanceActuation) bool {
+	validRole := worker.Role == "cpu-encode" || worker.Role == "cpu-mux" ||
+		worker.Role == "cpu-thumbnail"
+	return validRole && worker.SharedSlotException == "" && worker.CapacitySlots == 1 &&
+		len(worker.ModelRuntimes) == 1 && worker.ModelRuntimes[0].Component == "CPU_MEDIA" &&
+		len(worker.Members) == 1 && worker.Members[0].ResourceClass == "CPU" &&
+		worker.Members[0].DeviceCount == 1
+}
+
+func workerMemberIdentityDigest(memberID uuid.UUID) string {
+	digest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/" + memberID.String()))
+	return hex.EncodeToString(digest[:])
 }
 
 func validModelRuntimeProcess(runtime ModelRuntimeProcess) bool {
@@ -686,10 +722,20 @@ func validMemberKey(value string) bool {
 	return true
 }
 
-func validDeviceConstraint(constraint DeviceConstraint) bool {
-	return constraint.DeviceID != uuid.Nil && constraint.DeviceEpoch > 0 &&
-		actuatorGPUUUIDPattern.MatchString(constraint.GPUUUID) &&
-		actuatorPCIBDFPattern.MatchString(constraint.PCIBDF)
+func validDeviceConstraint(resourceClass string, constraint DeviceConstraint) bool {
+	if constraint.DeviceID == uuid.Nil || constraint.DeviceEpoch <= 0 {
+		return false
+	}
+	switch resourceClass {
+	case "GPU":
+		return (constraint.ResourceClass == "" || constraint.ResourceClass == "GPU") &&
+			actuatorGPUUUIDPattern.MatchString(constraint.GPUUUID) &&
+			actuatorPCIBDFPattern.MatchString(constraint.PCIBDF)
+	case "CPU":
+		return constraint.ResourceClass == "CPU" && constraint.GPUUUID == "" && constraint.PCIBDF == ""
+	default:
+		return false
+	}
 }
 
 func materializeWorkerInstancePods(bundle WorkerBundleActuation) ([]corev1.Pod, error) {
@@ -739,7 +785,7 @@ func encodeModelRuntimeLaunchManifest(
 	for _, device := range localMember.DeviceConstraints {
 		manifest.LocalDevices = append(manifest.LocalDevices, modelruntime.DriverDevice{
 			DeviceID: device.DeviceID.String(), DeviceEpoch: device.DeviceEpoch,
-			GPUUUID: device.GPUUUID, PCIBDF: device.PCIBDF,
+			ResourceClass: device.ResourceClass, GPUUUID: device.GPUUUID, PCIBDF: device.PCIBDF,
 		})
 	}
 	for _, runtime := range worker.ModelRuntimes {
@@ -814,6 +860,9 @@ func materializeWorkerInstanceGPUClaimTemplates(
 	claims := make([]resourcev1.ResourceClaimTemplate, 0)
 	for _, worker := range bundle.WorkerInstances {
 		for _, member := range worker.Members {
+			if member.ResourceClass == "CPU" {
+				continue
+			}
 			if len(member.DeviceConstraints) != member.DeviceCount {
 				return nil, errors.New("WorkerMember exact GPU device constraints are incomplete")
 			}
@@ -927,7 +976,7 @@ func gpuClaimOwnership(claim resourcev1.ResourceClaimTemplate) (string, []Device
 		return "", nil, false
 	}
 	for _, constraint := range constraints {
-		if !validDeviceConstraint(constraint) {
+		if !validDeviceConstraint("GPU", constraint) {
 			return "", nil, false
 		}
 	}
@@ -1003,16 +1052,18 @@ func materializeWorkerInstancePod(
 			},
 			Containers: []corev1.Container{
 				workerInstanceAgentContainer(bundle, worker, member),
-				workerInstanceRuntimeContainer(bundle),
+				workerInstanceRuntimeContainer(bundle, worker.Role, member.ResourceClass),
 			},
-			ResourceClaims: []corev1.PodResourceClaim{{
-				Name: "gpu",
-				ResourceClaimTemplateName: valuePointer(
-					workerInstanceGPUClaimTemplateName(worker.ID, member.Key),
-				),
-			}},
 			Volumes: workerInstanceVolumes(bundle, worker, member),
 		},
+	}
+	if member.ResourceClass == "GPU" {
+		pod.Spec.ResourceClaims = []corev1.PodResourceClaim{{
+			Name: "gpu",
+			ResourceClaimTemplateName: valuePointer(
+				workerInstanceGPUClaimTemplateName(worker.ID, member.Key),
+			),
+		}}
 	}
 	return pod, nil
 }
@@ -1023,7 +1074,7 @@ func workerInstanceAgentContainer(
 	member WorkerMemberActuation,
 ) corev1.Container {
 	devicesJSON := mustEncodeStageWorkerDevices(member.DeviceConstraints)
-	capacityVectorJSON := mustEncodeCapacityVector(worker.CapacitySlots, workerInstanceDeviceCount(worker))
+	capacityVectorJSON := mustEncodeCapacityVector(worker)
 	container := withKubernetesContainerDefaults(corev1.Container{
 		Name: "stage-worker-agent", Image: bundle.StageWorkerAgentImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
@@ -1105,7 +1156,31 @@ func workerInstanceAgentContainer(
 
 func workerInstanceRuntimeContainer(
 	bundle WorkerBundleActuation,
+	role string,
+	resourceClass string,
 ) corev1.Container {
+	requests := map[corev1.ResourceName]string{
+		corev1.ResourceCPU: "4", corev1.ResourceMemory: "32Gi",
+	}
+	limits := map[corev1.ResourceName]string{
+		corev1.ResourceCPU: "16", corev1.ResourceMemory: "128Gi",
+	}
+	claims := []corev1.ResourceClaim{{Name: "gpu"}}
+	volumeMounts := []corev1.VolumeMount{
+		{Name: "model-runtime-socket", MountPath: modelRuntimeSocketRoot},
+		{Name: "scratch", MountPath: stageWorkerScratchRoot},
+		{Name: "model-runtime-private", MountPath: modelRuntimePrivateRoot, ReadOnly: true},
+		{Name: "model-weights", MountPath: "/var/lib/vela/models", ReadOnly: true},
+	}
+	if resourceClass == "CPU" {
+		cpu, memory := cpuMediaRuntimeResources(role)
+		requests = map[corev1.ResourceName]string{
+			corev1.ResourceCPU: cpu, corev1.ResourceMemory: memory,
+		}
+		limits = cloneStringResourceMap(requests)
+		claims = nil
+		volumeMounts = volumeMounts[:3]
+	}
 	return withKubernetesContainerDefaults(corev1.Container{
 		Name: "model-runtime", Image: bundle.RuntimeImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
@@ -1118,22 +1193,28 @@ func workerInstanceRuntimeContainer(
 			configMapEnvironment("VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT", bundle.StageWorkerConfigMap, "model-runtime-shutdown-timeout"),
 		},
 		Resources: corev1.ResourceRequirements{
-			Requests: resourceList(map[corev1.ResourceName]string{
-				corev1.ResourceCPU: "4", corev1.ResourceMemory: "32Gi",
-			}),
-			Limits: resourceList(map[corev1.ResourceName]string{
-				corev1.ResourceCPU: "16", corev1.ResourceMemory: "128Gi",
-			}),
-			Claims: []corev1.ResourceClaim{{Name: "gpu"}},
+			Requests: resourceList(requests),
+			Limits:   resourceList(limits),
+			Claims:   claims,
 		},
 		SecurityContext: unprivilegedContainerSecurityContext(),
-		VolumeMounts: []corev1.VolumeMount{
-			{Name: "model-runtime-socket", MountPath: modelRuntimeSocketRoot},
-			{Name: "scratch", MountPath: stageWorkerScratchRoot},
-			{Name: "model-runtime-private", MountPath: modelRuntimePrivateRoot, ReadOnly: true},
-			{Name: "model-weights", MountPath: "/var/lib/vela/models", ReadOnly: true},
-		},
+		VolumeMounts:    volumeMounts,
 	})
+}
+
+func cpuMediaRuntimeResources(role string) (string, string) {
+	if role == "cpu-encode" {
+		return "4", "8Gi"
+	}
+	return "2", "4Gi"
+}
+
+func cloneStringResourceMap(values map[corev1.ResourceName]string) map[corev1.ResourceName]string {
+	cloned := make(map[corev1.ResourceName]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func workerInstanceVolumes(
@@ -1157,9 +1238,6 @@ func workerInstanceVolumes(
 		}}},
 		{Name: "scratch", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
 			Path: scratchPath, Type: valuePointer(corev1.HostPathDirectoryOrCreate),
-		}}},
-		{Name: "model-weights", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
-			Path: "/var/lib/vela/models", Type: valuePointer(corev1.HostPathDirectory),
 		}}},
 		{Name: "model-runtime-verifier-projected", VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -1190,6 +1268,13 @@ func workerInstanceVolumes(
 		{Name: "model-runtime-private", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{
 			Medium: corev1.StorageMediumMemory, SizeLimit: quantityPointer("2Mi"),
 		}}},
+	}
+	if member.ResourceClass == "GPU" {
+		volumes = append(volumes, corev1.Volume{
+			Name: "model-weights", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
+				Path: "/var/lib/vela/models", Type: valuePointer(corev1.HostPathDirectory),
+			}},
+		})
 	}
 	if len(worker.Members) > 1 {
 		volumes = append(volumes, corev1.Volume{
@@ -1399,10 +1484,14 @@ func mustEncodeStageWorkerDevices(constraints []DeviceConstraint) string {
 	return string(encoded)
 }
 
-func mustEncodeCapacityVector(capacitySlots, deviceCount int) string {
+func mustEncodeCapacityVector(worker WorkerInstanceActuation) string {
+	resourceKey := "gpu_count"
+	if len(worker.Members) == 1 && worker.Members[0].ResourceClass == "CPU" {
+		resourceKey = "cpu_slot_count"
+	}
 	encoded, err := json.Marshal(map[string]int64{
-		"active_stage_slots": int64(capacitySlots),
-		"gpu_count":          int64(deviceCount),
+		"active_stage_slots": int64(worker.CapacitySlots),
+		resourceKey:          int64(workerInstanceDeviceCount(worker)),
 	})
 	if err != nil {
 		panic(err)

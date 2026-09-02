@@ -260,6 +260,8 @@ func verifyAttemptCoordinatorPrivileges(
 			"vela_release_stage_cache_execution_pin(jsonb)",
 			"vela_request_stage_cache_deletion(jsonb)",
 			"vela_reconcile_stage_cache_deletions(timestamp with time zone,integer)",
+			"vela_read_h3_exact_cache_candidates(text,integer)",
+			"vela_find_h3_exact_cache_entry(uuid,uuid,uuid,uuid,uuid,text,bytea,timestamp with time zone)",
 		},
 	})
 }

@@ -3423,6 +3423,10 @@ func seedH3AdmissionCapacityPath(t *testing.T, database testDatabase) {
 		if _, err := registry.Observe(context.Background(), evidence); err != nil {
 			t.Fatalf("observe %s Admission READY capacity: %v", stage.key, err)
 		}
+		seedModelRuntimeCapacityRoute(
+			t, database.Admin, stage.workerID, evidence.Residencies[0].ID,
+			stage.poolID, uuid.MustParse(stage.profileID),
+		)
 	}
 }
 

@@ -167,6 +167,7 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 			DeviceSetDigest: testDigest('1'), MembershipDigest: testDigest('2'),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
 				ModelResidencyID:       uuid.MustParse("49310000-0000-0000-0000-000000000009"),
+				CapacityPoolID:         poolID,
 				StageProfileRevisionID: uuid.MustParse("49310000-0000-0000-0000-000000000007"),
 				ModelRuntimeEpochFloor: 1,
 				Component:              "DIT", ModelComponentRevision: "h3-dit-v1",
@@ -204,6 +205,11 @@ func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRo
 			WorkerInstances: []fleet.PlannedWorkerInstance{{
 				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
 				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
+				ModelRuntimeRoutes: []fleet.PlannedModelRuntimeRoute{{
+					ModelResidencyID:       uuid.MustParse("49310000-0000-0000-0000-000000000009"),
+					CapacityPoolID:         poolID,
+					StageProfileRevisionID: uuid.MustParse("49310000-0000-0000-0000-000000000007"),
+				}},
 			}},
 		},
 		WorkerBundles: []fleetcontroller.WorkerBundleActuation{bundle},

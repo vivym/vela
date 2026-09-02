@@ -61,6 +61,12 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 		got.ModelRuntimes[1].Component != "VAE_DECODER" {
 		t.Fatalf("AUX WorkerInstance = %#v, want one slot with Encoder/VAE", got)
 	}
+	if got := bundle.WorkerInstances[0]; got.ModelRuntimes[0].CapacityPoolID == got.ModelRuntimes[1].CapacityPoolID {
+		t.Fatalf(
+			"AUX Encoder/VAE runtime routes share CapacityPool %s",
+			got.ModelRuntimes[0].CapacityPoolID,
+		)
+	}
 	for index, worker := range bundle.WorkerInstances[1:] {
 		if worker.CapacitySlots != 1 || len(worker.Members) != 1 ||
 			worker.Members[0].DeviceCount != 1 || len(worker.ModelRuntimes) != 1 ||
@@ -355,6 +361,60 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 	}
 }
 
+func TestMaterializeIndependentCPUMediaWorkersWithoutGPUClaims(t *testing.T) {
+	bundle := cpuMediaBundle(t)
+	pods, claims, err := fleetcontroller.MaterializeWorkerInstanceLaunchResources(bundle)
+	if err != nil {
+		t.Fatalf("materialize CPU media WorkerInstances: %v", err)
+	}
+	if len(pods) != 3 || len(claims) != 0 {
+		t.Fatalf("CPU media resources pods=%d GPU claims=%d", len(pods), len(claims))
+	}
+	wantCPU := map[string]string{
+		"cpu-encode":    "4",
+		"cpu-mux":       "2",
+		"cpu-thumbnail": "2",
+	}
+	for _, pod := range pods {
+		role := pod.Labels["vela.ai/worker-role"]
+		if len(pod.Spec.ResourceClaims) != 0 {
+			t.Fatalf("CPU media Pod %q has GPU claims: %#v", pod.Name, pod.Spec.ResourceClaims)
+		}
+		runtimeContainer := requireContainer(t, pod.Spec.Containers, "model-runtime")
+		if len(runtimeContainer.Resources.Claims) != 0 ||
+			runtimeContainer.Resources.Requests.Cpu().String() != wantCPU[role] {
+			t.Fatalf("CPU media Pod %q runtime resources = %#v", pod.Name, runtimeContainer.Resources)
+		}
+		for _, volume := range pod.Spec.Volumes {
+			if volume.Name == "model-weights" {
+				t.Fatalf("CPU media Pod %q mounts model weights", pod.Name)
+			}
+		}
+		stageAgent := requireContainer(t, pod.Spec.Containers, "stage-worker-agent")
+		var capacity map[string]int64
+		if err := json.Unmarshal(
+			[]byte(requireEnvironment(t, stageAgent, "VELA_STAGE_WORKER_CAPACITY_VECTOR_JSON")),
+			&capacity,
+		); err != nil || capacity["active_stage_slots"] != 1 || capacity["cpu_slot_count"] != 1 ||
+			capacity["gpu_count"] != 0 {
+			t.Fatalf("CPU media Pod %q capacity = %#v error=%v", pod.Name, capacity, err)
+		}
+		initializer := requireContainer(t, pod.Spec.InitContainers, "model-runtime-private-materialization")
+		var launch modelruntime.LaunchManifest
+		if err := json.Unmarshal(
+			[]byte(requireEnvironment(t, initializer, "VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_JSON")),
+			&launch,
+		); err != nil || len(launch.LocalDevices) != 1 ||
+			launch.LocalDevices[0].ResourceClass != "CPU" || launch.LocalDevices[0].GPUUUID != "" ||
+			len(launch.Runtimes) != 1 || launch.Runtimes[0].Component != "CPU_MEDIA" {
+			t.Fatalf("CPU media Pod %q launch = %#v error=%v", pod.Name, launch, err)
+		}
+		if _, err := launch.RuntimeBindings(); err != nil {
+			t.Fatalf("CPU media Pod %q launch authority: %v", pod.Name, err)
+		}
+	}
+}
+
 func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -443,6 +503,7 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 			MembershipDigest:        strings.Repeat("2", 64),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
 				ModelResidencyID:       uuid.MustParse("49300000-0000-0000-0000-000000000035"),
+				CapacityPoolID:         uuid.MustParse("49300000-0000-0000-0000-000000000032"),
 				StageProfileRevisionID: uuid.MustParse("49300000-0000-0000-0000-000000000036"),
 				ModelRuntimeEpochFloor: 1,
 				Component:              "LLM", ModelComponentRevision: "future-llm-v1",
@@ -528,6 +589,11 @@ func TestKubernetesActuatorMaterializesMultiMemberAuthority(t *testing.T) {
 				WorkerBundleID:          bundle.WorkerBundleID,
 				DesiredMemberCount:      2,
 				DesiredDeviceCount:      4,
+				ModelRuntimeRoutes: []fleet.PlannedModelRuntimeRoute{{
+					ModelResidencyID:       bundle.WorkerInstances[0].ModelRuntimes[0].ModelResidencyID,
+					CapacityPoolID:         bundle.WorkerInstances[0].ModelRuntimes[0].CapacityPoolID,
+					StageProfileRevisionID: bundle.WorkerInstances[0].ModelRuntimes[0].StageProfileRevisionID,
+				}},
 			}},
 		},
 		WorkerBundles: []fleetcontroller.WorkerBundleActuation{bundle},
@@ -798,6 +864,22 @@ func TestWorkerBundleActuationRejectsDuplicateDeviceAuthorityAndInvalidH3Shapes(
 				bundle.WorkerInstances[1].SharedSlotException = "H3_AUX_ENCODER_VAE"
 			},
 		},
+		{
+			name: "shared slot exception on CPU",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				member := &bundle.WorkerInstances[0].Members[0]
+				member.ResourceClass = "CPU"
+				member.DeviceConstraints[0].ResourceClass = "CPU"
+				member.DeviceConstraints[0].GPUUUID = ""
+				member.DeviceConstraints[0].PCIBDF = ""
+			},
+		},
+		{
+			name: "member identity does not bind member id",
+			mutate: func(bundle *fleetcontroller.WorkerBundleActuation) {
+				bundle.WorkerInstances[0].Members[0].IdentityDigest = strings.Repeat("f", 64)
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -814,6 +896,19 @@ func TestWorkerBundleActuationRejectsDuplicateDeviceAuthorityAndInvalidH3Shapes(
 				t.Fatal("invalid WorkerBundle actuation was accepted")
 			}
 		})
+	}
+}
+
+func TestWorkerBundleActuationRejectsUnapprovedCPUWorkerRole(t *testing.T) {
+	bundle := cpuMediaBundle(t)
+	bundle.WorkerInstances[0].Role = "cpu-custom"
+	var err error
+	bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil {
+		t.Fatalf("digest invalid CPU WorkerBundle fixture: %v", err)
+	}
+	if err := fleetcontroller.ValidateWorkerBundleActuation(bundle); err == nil {
+		t.Fatal("unapproved CPU Worker role was accepted")
 	}
 }
 
@@ -1023,6 +1118,7 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 		WorkerBundleID: uuid.MustParse("49300000-0000-0000-0000-000000000002"),
 		Namespace:      "vela-system", NodeIdentity: "h3-node-01",
 		AuxCapacityPoolID:              uuid.MustParse("49300000-0000-0000-0000-000000000003"),
+		VAEDecoderCapacityPoolID:       uuid.MustParse("49300000-0000-0000-0000-000000000007"),
 		DiTCapacityPoolID:              uuid.MustParse("49300000-0000-0000-0000-000000000004"),
 		AuxWorkerProfileRevisionID:     uuid.MustParse("49300000-0000-0000-0000-000000000005"),
 		DiTWorkerProfileRevisionID:     uuid.MustParse("49300000-0000-0000-0000-000000000006"),
@@ -1057,6 +1153,69 @@ func h3BundleSpec() fleetcontroller.H3WorkerBundleSpec {
 			InitializationTimeout: "2h", ShutdownTimeout: "2m",
 		},
 	}
+}
+
+func cpuMediaBundle(t *testing.T) fleetcontroller.WorkerBundleActuation {
+	t.Helper()
+	bundle, err := fleetcontroller.BuildH3WorkerBundleActuation(h3BundleSpec())
+	if err != nil {
+		t.Fatalf("build base WorkerBundle actuation: %v", err)
+	}
+	bundle.WorkerBundleID = uuid.MustParse("49300000-0000-0000-0000-000000000020")
+	bundle.RuntimeImage = pinnedImage("vela-cpu-media-stage-runtime", 'e')
+	bundle.WorkerInstances = nil
+	roles := []struct {
+		role        string
+		profileID   string
+		poolID      string
+		stageID     string
+		residencyID string
+		digit       string
+	}{
+		{"cpu-encode", "49300000-0000-0000-0000-000000000021", "49300000-0000-0000-0000-000000000031", "49300000-0000-0000-0000-000000000041", "49300000-0000-0000-0000-000000000051", "a"},
+		{"cpu-mux", "49300000-0000-0000-0000-000000000022", "49300000-0000-0000-0000-000000000032", "49300000-0000-0000-0000-000000000042", "49300000-0000-0000-0000-000000000052", "b"},
+		{"cpu-thumbnail", "49300000-0000-0000-0000-000000000023", "49300000-0000-0000-0000-000000000033", "49300000-0000-0000-0000-000000000043", "49300000-0000-0000-0000-000000000053", "c"},
+	}
+	for index, spec := range roles {
+		workerID := uuid.MustParse(fmt.Sprintf("49300000-0000-0000-0000-00000000006%d", index+1))
+		bundle.WorkerInstances = append(bundle.WorkerInstances, fleetcontroller.WorkerInstanceActuation{
+			ID: workerID, InstanceEpoch: 1,
+			WorkerProfileRevisionID: uuid.MustParse(spec.profileID),
+			CapacityPoolID:          uuid.MustParse(spec.poolID), Role: spec.role, CapacitySlots: 1,
+			DeviceSetDigest:  strings.Repeat(spec.digit, 64),
+			MembershipDigest: strings.Repeat(string(rune('d'+index)), 64),
+			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
+				ModelResidencyID:       uuid.MustParse(spec.residencyID),
+				CapacityPoolID:         uuid.MustParse(spec.poolID),
+				StageProfileRevisionID: uuid.MustParse(spec.stageID), ModelRuntimeEpochFloor: 1,
+				Component: "CPU_MEDIA", ModelComponentRevision: "ffmpeg-" + spec.role + "-v1",
+				RuntimeIdentity:       "h3-" + spec.role + "-runtime-v1",
+				Command:               []string{"/opt/vela/bin/h3-cpu-media", "--role", spec.role},
+				InitializationTimeout: "5m", ShutdownTimeout: "2m",
+			}},
+			Members: []fleetcontroller.WorkerMemberActuation{{
+				ID:          uuid.MustParse(fmt.Sprintf("49300000-0000-0000-0000-00000000007%d", index+1)),
+				MemberEpoch: 1, Key: "member-0", NodeIdentity: "h3-cpu-node-01",
+				ResourceClass: "CPU", IdentityDigest: memberIdentityDigest(
+					uuid.MustParse(fmt.Sprintf("49300000-0000-0000-0000-00000000007%d", index+1)),
+				),
+				DeviceCount: 1, DeviceConstraints: []fleetcontroller.DeviceConstraint{{
+					DeviceID:    uuid.MustParse(fmt.Sprintf("49300000-0000-0000-0000-00000000008%d", index+1)),
+					DeviceEpoch: 1, ResourceClass: "CPU",
+				}},
+			}},
+		})
+	}
+	bundle.RevisionDigest, err = fleetcontroller.ComputeWorkerBundleActuationDigest(bundle)
+	if err != nil {
+		t.Fatalf("compute CPU media WorkerBundle digest: %v", err)
+	}
+	return bundle
+}
+
+func memberIdentityDigest(memberID uuid.UUID) string {
+	digest := sha256.Sum256([]byte("spiffe://vela.internal/stage-worker/" + memberID.String()))
+	return fmt.Sprintf("%x", digest)
 }
 
 func requireContainer(t *testing.T, containers []corev1.Container, name string) corev1.Container {

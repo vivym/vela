@@ -5539,6 +5539,15 @@ type ModelRuntimeBarrier struct {
 	SupersededAt         pgtype.Timestamptz       `db:"superseded_at" json:"superseded_at"`
 }
 
+type ModelRuntimeCapacityRoute struct {
+	ModelResidencyID        uuid.UUID          `db:"model_residency_id" json:"model_residency_id"`
+	WorkerInstanceID        uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
+	CapacityPoolID          uuid.UUID          `db:"capacity_pool_id" json:"capacity_pool_id"`
+	StageProfileRevisionID  uuid.UUID          `db:"stage_profile_revision_id" json:"stage_profile_revision_id"`
+	ResidencyPlanRevisionID uuid.NullUUID      `db:"residency_plan_revision_id" json:"residency_plan_revision_id"`
+	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type ModelRuntimeEpochRegistration struct {
 	ModelResidencyID        uuid.UUID          `db:"model_residency_id" json:"model_residency_id"`
 	BarrierGeneration       int64              `db:"barrier_generation" json:"barrier_generation"`

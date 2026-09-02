@@ -258,10 +258,9 @@ func verifyRegistryWorker(
 	for _, runtime := range worker.ModelRuntimes {
 		matched := -1
 		for index, residency := range residencies {
-			if residency.ModelComponentRevision == runtime.ModelComponentRevision &&
-				residency.RuntimeIdentity == runtime.RuntimeIdentity {
+			if residency.ID == runtime.ModelResidencyID {
 				if matched >= 0 {
-					return WorkerEvidence{}, invalid("WorkerInstance %s has duplicate ModelResidency identity", worker.ID)
+					return WorkerEvidence{}, invalid("WorkerInstance %s has duplicate ModelResidency route", worker.ID)
 				}
 				matched = index
 			}
@@ -270,7 +269,11 @@ func verifyRegistryWorker(
 			return WorkerEvidence{}, invalid("WorkerInstance %s is missing ModelResidency for %s", worker.ID, runtime.Component)
 		}
 		residency := residencies[matched]
-		if residency.ID == uuid.Nil || residency.RuntimeImageDigest != imageDigest(bundle.RuntimeImage) ||
+		if residency.CapacityPoolID != runtime.CapacityPoolID ||
+			residency.StageProfileRevisionID != runtime.StageProfileRevisionID ||
+			residency.ModelComponentRevision != runtime.ModelComponentRevision ||
+			residency.RuntimeIdentity != runtime.RuntimeIdentity ||
+			residency.RuntimeImageDigest != imageDigest(bundle.RuntimeImage) ||
 			residency.ModelRuntimeEpoch <= 0 || residency.State != "READY" ||
 			!hexDigestPattern.MatchString(residency.WarmupEvidenceDigest) ||
 			!hexDigestPattern.MatchString(residency.CanaryEvidenceDigest) {

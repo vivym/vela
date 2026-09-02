@@ -81,12 +81,19 @@ type PlannedWorkerBundle struct {
 }
 
 type PlannedWorkerInstance struct {
-	ID                      uuid.UUID `json:"id"`
-	WorkerProfileRevisionID uuid.UUID `json:"worker_profile_revision_id"`
-	CapacityPoolID          uuid.UUID `json:"capacity_pool_id"`
-	WorkerBundleID          uuid.UUID `json:"worker_bundle_id"`
-	DesiredMemberCount      int       `json:"desired_member_count"`
-	DesiredDeviceCount      int       `json:"desired_device_count"`
+	ID                      uuid.UUID                  `json:"id"`
+	WorkerProfileRevisionID uuid.UUID                  `json:"worker_profile_revision_id"`
+	CapacityPoolID          uuid.UUID                  `json:"capacity_pool_id"`
+	WorkerBundleID          uuid.UUID                  `json:"worker_bundle_id"`
+	DesiredMemberCount      int                        `json:"desired_member_count"`
+	DesiredDeviceCount      int                        `json:"desired_device_count"`
+	ModelRuntimeRoutes      []PlannedModelRuntimeRoute `json:"model_runtime_routes"`
+}
+
+type PlannedModelRuntimeRoute struct {
+	ModelResidencyID       uuid.UUID `json:"model_residency_id"`
+	CapacityPoolID         uuid.UUID `json:"capacity_pool_id"`
+	StageProfileRevisionID uuid.UUID `json:"stage_profile_revision_id"`
 }
 
 type ActuationPlan struct {
@@ -258,7 +265,7 @@ func (service *Service) Apply(
 	if service == nil || service.registryPool == nil {
 		return ActuationPlan{}, errors.New("fleet service is not configured")
 	}
-	if err := validateApprovedResidencyPlan(plan); err != nil {
+	if err := ValidateApprovedResidencyPlan(plan); err != nil {
 		return ActuationPlan{}, &Failure{Code: FailureInvalid, Message: err.Error()}
 	}
 	payload, err := json.Marshal(plan)
@@ -403,13 +410,76 @@ func validateResidencyPlanInputs(inputs ResidencyPlanInputs) error {
 	return nil
 }
 
-func validateApprovedResidencyPlan(plan ApprovedResidencyPlan) error {
+// ValidateApprovedResidencyPlan validates the complete immutable plan authority.
+// Actuation layers should reuse this before applying their own placement checks.
+func ValidateApprovedResidencyPlan(plan ApprovedResidencyPlan) error {
 	if plan.SchemaVersion != 1 || plan.ID == uuid.Nil || !validText(plan.StableID, 100) ||
 		plan.Revision <= 0 || !validDigestHex(plan.ContentDigest) ||
 		!validDigestHex(plan.ApprovalEvidenceDigest) || plan.ApprovedAt.IsZero() ||
 		!validText(plan.ApprovedBy, 500) || len(plan.CapacityPools) == 0 ||
 		len(plan.WorkerBundles) == 0 || len(plan.WorkerInstances) == 0 {
 		return errors.New("approved ResidencyPlan is invalid")
+	}
+	pools := make(map[uuid.UUID]PlannedCapacityPool, len(plan.CapacityPools))
+	for _, pool := range plan.CapacityPools {
+		if pool.ID == uuid.Nil || pool.StageProfileRevisionID == uuid.Nil ||
+			!validText(pool.StableID, 100) ||
+			(pool.ResourceClass != "GPU" && pool.ResourceClass != "CPU") ||
+			!validText(pool.SecurityClass, 100) || !validText(pool.Region, 100) ||
+			pool.MaxReadyQueueDepth <= 0 {
+			return errors.New("approved ResidencyPlan CapacityPool is invalid")
+		}
+		if _, duplicate := pools[pool.ID]; duplicate {
+			return errors.New("approved ResidencyPlan contains a duplicate CapacityPool")
+		}
+		pools[pool.ID] = pool
+	}
+	bundles := make(map[uuid.UUID]struct{}, len(plan.WorkerBundles))
+	for _, bundle := range plan.WorkerBundles {
+		if bundle.ID == uuid.Nil || !validText(bundle.StableID, 100) ||
+			bundle.DesiredGeneration <= 0 || !validDigestHex(bundle.LayoutDigest) {
+			return errors.New("approved ResidencyPlan WorkerBundle is invalid")
+		}
+		if _, duplicate := bundles[bundle.ID]; duplicate {
+			return errors.New("approved ResidencyPlan contains a duplicate WorkerBundle")
+		}
+		bundles[bundle.ID] = struct{}{}
+	}
+	workers := make(map[uuid.UUID]struct{}, len(plan.WorkerInstances))
+	residencies := make(map[uuid.UUID]uuid.UUID)
+	for _, worker := range plan.WorkerInstances {
+		if worker.ID == uuid.Nil || worker.WorkerProfileRevisionID == uuid.Nil ||
+			worker.CapacityPoolID == uuid.Nil || worker.WorkerBundleID == uuid.Nil ||
+			worker.DesiredMemberCount <= 0 || worker.DesiredDeviceCount <= 0 ||
+			len(worker.ModelRuntimeRoutes) == 0 || len(worker.ModelRuntimeRoutes) > 64 {
+			return errors.New("approved ResidencyPlan WorkerInstance is invalid")
+		}
+		if _, exists := pools[worker.CapacityPoolID]; !exists {
+			return errors.New("approved ResidencyPlan WorkerInstance references an unknown CapacityPool")
+		}
+		if _, exists := bundles[worker.WorkerBundleID]; !exists {
+			return errors.New("approved ResidencyPlan WorkerInstance references an unknown WorkerBundle")
+		}
+		if _, duplicate := workers[worker.ID]; duplicate {
+			return errors.New("approved ResidencyPlan contains a duplicate WorkerInstance")
+		}
+		workers[worker.ID] = struct{}{}
+		routePools := make(map[uuid.UUID]struct{}, len(worker.ModelRuntimeRoutes))
+		for _, route := range worker.ModelRuntimeRoutes {
+			pool, exists := pools[route.CapacityPoolID]
+			if route.ModelResidencyID == uuid.Nil || route.StageProfileRevisionID == uuid.Nil ||
+				!exists || pool.StageProfileRevisionID != route.StageProfileRevisionID {
+				return errors.New("approved ResidencyPlan ModelRuntime route is invalid")
+			}
+			if _, duplicate := routePools[route.CapacityPoolID]; duplicate {
+				return errors.New("approved ResidencyPlan routes multiple runtimes through one CapacityPool")
+			}
+			routePools[route.CapacityPoolID] = struct{}{}
+			if owner, duplicate := residencies[route.ModelResidencyID]; duplicate && owner != worker.ID {
+				return errors.New("approved ResidencyPlan routes one ModelResidency through multiple WorkerInstances")
+			}
+			residencies[route.ModelResidencyID] = worker.ID
+		}
 	}
 	return nil
 }

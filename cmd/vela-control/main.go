@@ -49,6 +49,7 @@ import (
 	"github.com/vivym/vela/internal/remediation"
 	"github.com/vivym/vela/internal/retention"
 	"github.com/vivym/vela/internal/securefile"
+	"github.com/vivym/vela/internal/stagecache"
 	"github.com/vivym/vela/internal/stagefinalization"
 	"github.com/vivym/vela/internal/stagescheduler"
 	"github.com/vivym/vela/internal/strictjson"
@@ -77,6 +78,8 @@ const (
 	defaultStageSchedulerLeaseTTL               = 2 * time.Minute
 	defaultStageSchedulerLocalDeadlineTTL       = 90 * time.Second
 	defaultStageSchedulerBatchSize              = 100
+	defaultH3ExactCacheTick                     = 500 * time.Millisecond
+	defaultH3ExactCacheBatchSize                = 100
 	defaultArtifactCleanupTick                  = time.Minute
 	defaultInvoiceExportTick                    = 500 * time.Millisecond
 	defaultInvoiceExportClaimTTL                = 30 * time.Second
@@ -172,6 +175,13 @@ type config struct {
 	attemptCoordinatorClaimTTL             time.Duration
 	attemptCoordinatorRetryDelay           time.Duration
 	attemptCoordinatorBatchSize            int
+	h3ExactCacheProjectKeyringFile         string
+	h3ExactCacheCanonicalizationRevisionID uuid.UUID
+	h3ExactCacheSeedAndRNGRevision         string
+	h3ExactCacheTick                       time.Duration
+	h3ExactCacheBatchSize                  int
+	h3ExactCacheExpectedSavedComputeMinor  int64
+	h3ExactCacheCarryCostMinor             int64
 	stageSchedulerDatabaseURL              string
 	stageSchedulerID                       string
 	stageSchedulerTick                     time.Duration
@@ -285,6 +295,10 @@ type stageSchedulerMaintenance interface {
 
 type attemptCoordinatorAutomation interface {
 	RunCycle(context.Context) (attemptcoordinator.AutomationResult, error)
+}
+
+type h3ExactCacheReconciler interface {
+	Reconcile(context.Context) (stagecache.H3ExactReconcileResult, error)
 }
 
 type invoiceExporter interface {
@@ -858,6 +872,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("configure StageScheduler AttemptCoordinator: %w", err)
 	}
+	h3ExactCache, err := newH3ExactCacheReconciler(configuration, attemptCoordinatorPool)
+	if err != nil {
+		return err
+	}
 	stageSchedulerRepository, err := stagescheduler.NewPostgresRepository(stageSchedulerPool)
 	if err != nil {
 		return fmt.Errorf("configure StageScheduler repository: %w", err)
@@ -1137,6 +1155,14 @@ func run() error {
 			configuration.attemptCoordinatorTick,
 		)
 	}()
+	var h3ExactCacheDone chan struct{}
+	if h3ExactCache != nil {
+		h3ExactCacheDone = make(chan struct{})
+		go func() {
+			defer close(h3ExactCacheDone)
+			runH3ExactCacheReconciler(ctx, h3ExactCache, configuration.h3ExactCacheTick)
+		}()
+	}
 	stageFinalizationDone := make(chan struct{})
 	go func() {
 		defer close(stageFinalizationDone)
@@ -1309,6 +1335,13 @@ func run() error {
 	case <-shutdownContext.Done():
 		return errors.New("AttemptCoordinator automation did not stop before shutdown deadline")
 	}
+	if h3ExactCacheDone != nil {
+		select {
+		case <-h3ExactCacheDone:
+		case <-shutdownContext.Done():
+			return errors.New("H3 exact cache reconciler did not stop before shutdown deadline")
+		}
+	}
 	select {
 	case <-publisherDone:
 	case <-shutdownContext.Done():
@@ -1431,6 +1464,10 @@ func loadConfig() (config, error) {
 		attemptCoordinatorClaimTTL:        defaultAttemptCoordinatorClaimTTL,
 		attemptCoordinatorRetryDelay:      defaultAttemptCoordinatorRetryDelay,
 		attemptCoordinatorBatchSize:       defaultAttemptCoordinatorBatchSize,
+		h3ExactCacheProjectKeyringFile:    os.Getenv("VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE"),
+		h3ExactCacheSeedAndRNGRevision:    os.Getenv("VELA_H3_EXACT_CACHE_SEED_RNG_REVISION"),
+		h3ExactCacheTick:                  defaultH3ExactCacheTick,
+		h3ExactCacheBatchSize:             defaultH3ExactCacheBatchSize,
 		stageSchedulerDatabaseURL:         os.Getenv("VELA_STAGE_SCHEDULER_DATABASE_URL"),
 		stageSchedulerID:                  os.Getenv("VELA_STAGE_SCHEDULER_ID"),
 		stageSchedulerTick:                defaultStageSchedulerTick,
@@ -1939,7 +1976,105 @@ func loadConfig() (config, error) {
 		}
 		configuration.webhookHTTPTimeout = timeout
 	}
+	if err := loadOptionalH3ExactCacheConfig(&configuration); err != nil {
+		return config{}, err
+	}
 	return configuration, nil
+}
+
+func loadOptionalH3ExactCacheConfig(configuration *config) error {
+	if configuration == nil {
+		return errors.New("H3 exact cache configuration target is required")
+	}
+	canonicalization := os.Getenv("VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID")
+	optional := map[string]string{
+		"VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID": canonicalization,
+		"VELA_H3_EXACT_CACHE_SEED_RNG_REVISION":                  configuration.h3ExactCacheSeedAndRNGRevision,
+		"VELA_H3_EXACT_CACHE_TICK":                               os.Getenv("VELA_H3_EXACT_CACHE_TICK"),
+		"VELA_H3_EXACT_CACHE_BATCH_SIZE":                         os.Getenv("VELA_H3_EXACT_CACHE_BATCH_SIZE"),
+		"VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR":       os.Getenv("VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR"),
+		"VELA_H3_EXACT_CACHE_CARRY_COST_MINOR":                   os.Getenv("VELA_H3_EXACT_CACHE_CARRY_COST_MINOR"),
+	}
+	if configuration.h3ExactCacheProjectKeyringFile == "" {
+		for name, value := range optional {
+			if value != "" {
+				return fmt.Errorf("%s requires VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", name)
+			}
+		}
+		return nil
+	}
+	if !filepath.IsAbs(filepath.Clean(configuration.h3ExactCacheProjectKeyringFile)) {
+		return errors.New("VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE must be an absolute path")
+	}
+	revisionID, err := uuid.Parse(canonicalization)
+	if err != nil || revisionID == uuid.Nil || revisionID.String() != canonicalization {
+		return errors.New("VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID must be a canonical non-zero UUID")
+	}
+	configuration.h3ExactCacheCanonicalizationRevisionID = revisionID
+	if configuration.h3ExactCacheSeedAndRNGRevision == "" ||
+		strings.TrimSpace(configuration.h3ExactCacheSeedAndRNGRevision) !=
+			configuration.h3ExactCacheSeedAndRNGRevision ||
+		len(configuration.h3ExactCacheSeedAndRNGRevision) > 100 ||
+		strings.ContainsRune(configuration.h3ExactCacheSeedAndRNGRevision, '\x00') {
+		return errors.New("VELA_H3_EXACT_CACHE_SEED_RNG_REVISION must contain 1 to 100 trimmed bytes")
+	}
+	if value := optional["VELA_H3_EXACT_CACHE_TICK"]; value != "" {
+		tick, parseErr := time.ParseDuration(value)
+		if parseErr != nil || tick <= 0 || tick > time.Minute {
+			return errors.New("VELA_H3_EXACT_CACHE_TICK must be in (0, 1m]")
+		}
+		configuration.h3ExactCacheTick = tick
+	}
+	if value := optional["VELA_H3_EXACT_CACHE_BATCH_SIZE"]; value != "" {
+		batchSize, parseErr := strconv.Atoi(value)
+		if parseErr != nil || batchSize < 1 || batchSize > 1000 {
+			return errors.New("VELA_H3_EXACT_CACHE_BATCH_SIZE must be between 1 and 1000")
+		}
+		configuration.h3ExactCacheBatchSize = batchSize
+	}
+	for name, target := range map[string]*int64{
+		"VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR": &configuration.h3ExactCacheExpectedSavedComputeMinor,
+		"VELA_H3_EXACT_CACHE_CARRY_COST_MINOR":             &configuration.h3ExactCacheCarryCostMinor,
+	} {
+		if value := optional[name]; value != "" {
+			minor, parseErr := strconv.ParseInt(value, 10, 64)
+			if parseErr != nil || minor < 0 {
+				return fmt.Errorf("%s must be a non-negative int64", name)
+			}
+			*target = minor
+		}
+	}
+	return nil
+}
+
+func newH3ExactCacheReconciler(
+	configuration config,
+	pool *pgxpool.Pool,
+) (*stagecache.H3ExactReconciler, error) {
+	if configuration.h3ExactCacheProjectKeyringFile == "" {
+		return nil, nil
+	}
+	projects, err := readH3ExactCacheProjectKeyring(configuration.h3ExactCacheProjectKeyringFile)
+	if err != nil {
+		return nil, err
+	}
+	defer clearProjectKeyring(projects)
+	repository, err := stagecache.NewPostgresRepository(pool)
+	if err != nil {
+		return nil, fmt.Errorf("configure H3 exact cache repository: %w", err)
+	}
+	reconciler, err := stagecache.NewH3ExactReconciler(repository, stagecache.H3ExactReconcilerConfig{
+		ProjectScopeKeys:                projects,
+		InputCanonicalizationRevisionID: configuration.h3ExactCacheCanonicalizationRevisionID,
+		SeedAndRNGRevision:              configuration.h3ExactCacheSeedAndRNGRevision,
+		BatchSize:                       configuration.h3ExactCacheBatchSize,
+		ExpectedSavedComputeMinor:       configuration.h3ExactCacheExpectedSavedComputeMinor,
+		CarryCostMinor:                  configuration.h3ExactCacheCarryCostMinor,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure H3 exact cache reconciler: %w", err)
+	}
+	return reconciler, nil
 }
 
 func openPool(
@@ -2273,6 +2408,45 @@ func readWebhookKeyring(path string) (map[string][]byte, error) {
 }
 
 func readKeyring(path, description string, minimumKeyBytes, maximumKeyBytes int) (map[string][]byte, error) {
+	return readBoundedKeyring(
+		path,
+		description,
+		minimumKeyBytes,
+		maximumKeyBytes,
+		32,
+		64*1024,
+	)
+}
+
+func readH3ExactCacheProjectKeyring(path string) (map[uuid.UUID][]byte, error) {
+	encoded, err := readBoundedKeyring(path, "H3 exact cache Project", 32, 4096, 4096, 1<<20)
+	if err != nil {
+		return nil, err
+	}
+	defer clearKeyring(encoded)
+	projects := make(map[uuid.UUID][]byte, len(encoded))
+	for projectText, key := range encoded {
+		projectID, parseErr := uuid.Parse(projectText)
+		if parseErr != nil || projectID == uuid.Nil || projectID.String() != projectText {
+			clearProjectKeyring(projects)
+			return nil, errors.New("H3 exact cache Project keyring ids must be canonical non-zero UUIDs")
+		}
+		projects[projectID] = append([]byte(nil), key...)
+	}
+	return projects, nil
+}
+
+func readBoundedKeyring(
+	path string,
+	description string,
+	minimumKeyBytes int,
+	maximumKeyBytes int,
+	maximumKeys int,
+	maximumFileBytes int64,
+) (map[string][]byte, error) {
+	if maximumKeys < 1 || maximumFileBytes < 1 {
+		return nil, errors.New("keyring bounds are invalid")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open %s keyring file: %w", description, err)
@@ -2282,12 +2456,12 @@ func readKeyring(path, description string, minimumKeyBytes, maximumKeyBytes int)
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s keyring must be a regular file", description)
 	}
-	content, err := io.ReadAll(io.LimitReader(file, 64*1024+1))
+	content, err := io.ReadAll(io.LimitReader(file, maximumFileBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read %s keyring file: %w", description, err)
 	}
 	defer clear(content)
-	if len(content) == 0 || len(content) > 64*1024 {
+	if len(content) == 0 || int64(len(content)) > maximumFileBytes {
 		return nil, fmt.Errorf("%s keyring file is empty or exceeds configured bounds", description)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(content))
@@ -2325,7 +2499,7 @@ func readKeyring(path, description string, minimumKeyBytes, maximumKeyBytes int)
 			)
 		}
 		keyring[keyID] = key
-		if len(keyring) > 32 {
+		if len(keyring) > maximumKeys {
 			clearKeyring(keyring)
 			return nil, fmt.Errorf("%s keyring contains too many keys", description)
 		}
@@ -2353,6 +2527,13 @@ func clearKeyring(keyring map[string][]byte) {
 	for keyID, key := range keyring {
 		clear(key)
 		delete(keyring, keyID)
+	}
+}
+
+func clearProjectKeyring(keyring map[uuid.UUID][]byte) {
+	for projectID, key := range keyring {
+		clear(key)
+		delete(keyring, projectID)
 	}
 }
 
@@ -2494,6 +2675,50 @@ func runAttemptCoordinatorAutomationCycle(
 			"instantiated", result.Instantiated,
 			"replayed", result.Replayed,
 			"stage_transitions", result.StageTransitions,
+		)
+	}
+}
+
+func runH3ExactCacheReconciler(
+	ctx context.Context,
+	reconciler h3ExactCacheReconciler,
+	interval time.Duration,
+) {
+	runH3ExactCacheReconcileCycle(ctx, reconciler)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runH3ExactCacheReconcileCycle(ctx, reconciler)
+		}
+	}
+}
+
+func runH3ExactCacheReconcileCycle(ctx context.Context, reconciler h3ExactCacheReconciler) {
+	result, err := reconciler.Reconcile(ctx)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		slog.Warn(
+			"H3 exact cache reconciliation incomplete",
+			"admission_candidates", result.AdmissionCandidates,
+			"admitted", result.Admitted,
+			"hit_candidates", result.HitCandidates,
+			"hits", result.Hits,
+			"skipped", result.Skipped,
+			"error", err,
+		)
+		return
+	}
+	if err == nil && (result.Admitted > 0 || result.Hits > 0 || result.Skipped > 0) {
+		slog.Info(
+			"H3 exact cache reconciliation completed",
+			"admission_candidates", result.AdmissionCandidates,
+			"admitted", result.Admitted,
+			"hit_candidates", result.HitCandidates,
+			"hits", result.Hits,
+			"skipped", result.Skipped,
 		)
 	}
 }

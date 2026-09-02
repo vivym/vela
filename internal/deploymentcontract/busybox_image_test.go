@@ -59,9 +59,13 @@ func TestRenderedRootMaterializersUsePinnedBusyBoxImage(t *testing.T) {
 		if err := json.Unmarshal([]byte(payload), &desired); err != nil {
 			t.Fatalf("parse rendered Fleet ResidencyPlan input: %v", err)
 		}
-		if len(desired.Rollouts) != 1 || len(desired.Rollouts[0].WorkerBundles) != 1 ||
-			desired.Rollouts[0].WorkerBundles[0].InitImage != pinnedBusyBoxLinuxAMD64Image {
+		if len(desired.Rollouts) != 1 || len(desired.Rollouts[0].WorkerBundles) != 2 {
 			t.Fatalf("rendered Fleet ResidencyPlan materializer images = %#v, want %q", desired.Rollouts, pinnedBusyBoxLinuxAMD64Image)
+		}
+		for _, bundle := range desired.Rollouts[0].WorkerBundles {
+			if bundle.InitImage != pinnedBusyBoxLinuxAMD64Image {
+				t.Fatalf("rendered Fleet ResidencyPlan materializer images = %#v, want %q", desired.Rollouts, pinnedBusyBoxLinuxAMD64Image)
+			}
 		}
 	})
 }

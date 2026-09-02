@@ -3,16 +3,37 @@ package modelruntime
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/h3request"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
+
+type fastH3ConformanceBackend struct {
+	component  string
+	backend    *ProcessBackend
+	inputRoot  string
+	outputRoot string
+	stderr     *bytes.Buffer
+}
+
+type fastH3ConformanceOutput struct {
+	OutputPort    string `json:"output_port"`
+	LocalLocator  string `json:"local_locator"`
+	ContentType   string `json:"content_type"`
+	PayloadSHA256 string `json:"payload_sha256"`
+	SizeBytes     int64  `json:"size_bytes"`
+	path          string
+}
 
 func TestProcessBackendConformsToFastH3PythonDriver(t *testing.T) {
 	fastH3Root := os.Getenv("VELA_FAST_H3_SOURCE_ROOT")
@@ -27,115 +48,282 @@ func TestProcessBackendConformsToFastH3PythonDriver(t *testing.T) {
 		t.Fatalf("fast-h3 driver is unavailable at %s: %v", driverPath, err)
 	}
 	fixtureRoot := canonicalConformancePath(t, "testdata")
-
-	components := map[string]string{
-		"ENCODER":     "conditioning",
-		"DIT":         "latent",
-		"VAE_DECODER": "video",
+	root := canonicalConformancePath(t, t.TempDir())
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatalf("make conformance root private: %v", err)
 	}
-	for component, outputPort := range components {
-		t.Run(component, func(t *testing.T) {
-			root := canonicalConformancePath(t, t.TempDir())
-			if err := os.Chmod(root, 0o700); err != nil {
-				t.Fatalf("make scratch root private: %v", err)
-			}
-			inputRoot := filepath.Join(root, "inputs")
-			if err := os.Mkdir(inputRoot, 0o700); err != nil {
-				t.Fatalf("create input root: %v", err)
-			}
-			outputRoot := filepath.Join(root, "outputs")
-			if err := os.Mkdir(outputRoot, 0o700); err != nil {
-				t.Fatalf("create output root: %v", err)
-			}
-			eventLog := filepath.Join(root, "events.log")
-			var stderr bytes.Buffer
-			backend, err := NewProcessBackend(
-				context.Background(),
-				processBackendBinding(),
-				ProcessBackendConfig{
-					Component:              component,
-					ModelComponentRevision: "minimax-h3-" + strings.ToLower(component) + "-r1",
-					Command: []string{
-						python,
-						"-m",
-						"fast_h3.vela.driver",
-						"--component",
-						component,
-						"--runtime-factory",
-						"fast_h3_conformance_runtime:create_runtime",
-					},
-					Environment: []string{
-						"PYTHONPATH=" + filepath.Join(fastH3Root, "src") + string(os.PathListSeparator) + fixtureRoot,
-						"FAST_H3_CONFORMANCE_EVENT_LOG=" + eventLog,
-					},
-					LocalDevices: []DriverDevice{{
-						DeviceID: "33000000-0000-0000-0000-000000000001", DeviceEpoch: 7,
-						GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
-					}},
-					ScratchRoot: root, InputRoot: inputRoot, OutputRoot: outputRoot,
-					InitializationTimeout: 10 * time.Second,
-					ShutdownTimeout:       2 * time.Second,
-					Stderr:                &stderr,
-				},
-			)
-			if err != nil {
-				t.Fatalf("start fast-h3 ProcessBackend: %v; stderr=%s", err, stderr.String())
-			}
-			t.Cleanup(func() { _ = backend.Close() })
+	eventLog := filepath.Join(root, "events.log")
 
-			probe, err := backend.Probe(
-				context.Background(),
-				velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
-			)
-			if err != nil || !probe.Ready || !bytes.Contains(probe.Evidence, []byte(component)) {
-				t.Fatalf("warmup probe = %#v error=%v; stderr=%s", probe, err, stderr.String())
-			}
+	components := []string{"ENCODER", "DIT", "VAE_DECODER"}
+	backends := make(map[string]*fastH3ConformanceBackend, len(components))
+	for _, component := range components {
+		backends[component] = newFastH3ConformanceBackend(
+			t, root, eventLog, fastH3Root, fixtureRoot, python, component,
+		)
+	}
 
-			for assignment := byte(1); assignment <= 2; assignment++ {
-				authority := processBackendAuthority(assignment)
-				manifest := []byte(`{"` + outputPort + `":{"required":true}}`)
-				if err := backend.Prepare(
-					context.Background(),
-					authority,
-					&velav1.StageExecutionSpec{
-						ParametersJson:             []byte(`{}`),
-						ExpectedOutputManifestJson: manifest,
-					},
-				); err != nil {
-					t.Fatalf("prepare assignment %d: %v; stderr=%s", assignment, err, stderr.String())
-				}
-				if err := backend.Start(context.Background(), authority); err != nil {
-					t.Fatalf("start assignment %d: %v; stderr=%s", assignment, err, stderr.String())
-				}
-				waitForFastH3Output(t, backend, authority, &stderr)
-				sealed, err := backend.Seal(context.Background(), authority)
-				if err != nil || sealed.TotalSizeBytes <= 0 {
-					t.Fatalf("seal assignment %d = %#v error=%v; stderr=%s", assignment, sealed, err, stderr.String())
-				}
-				var decoded map[string]any
-				if err := json.Unmarshal(sealed.OutputManifestJSON, &decoded); err != nil || decoded["output_port"] != outputPort {
-					t.Fatalf("sealed manifest assignment %d = %s error=%v", assignment, sealed.OutputManifestJSON, err)
-				}
-			}
+	rootMaterial := []byte("vela-fast-h3-root-material-v1")
+	rootDigest := sha256.Sum256(rootMaterial)
+	seed := int64(17)
+	duration := 5.0
+	frozen, err := h3request.Freeze(
+		"a precise artifact contract",
+		"balanced",
+		"fast-h3-process-conformance",
+		h3request.Request{
+			Task: "ref2va",
+			Seed: &seed,
+			Conditions: []h3request.Condition{{
+				Role: "reference", Type: "image", URI: "vela://uploads/reference-frame",
+				DownloadURL: "https://objects.example.test/reference-frame",
+				SHA256:      hex.EncodeToString(rootDigest[:]), SizeBytes: int64(len(rootMaterial)),
+			}},
+			Target: h3request.Target{
+				ShortEdge: 768, AspectRatio: "16:9", DurationSeconds: &duration,
+			},
+			Sampling: h3request.Sampling{NumInferenceSteps: 30, Quality: "lossless"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("freeze exact H3 conformance request: %v", err)
+	}
+	parameters, err := json.Marshal(frozen.Parameters)
+	if err != nil {
+		t.Fatalf("encode exact H3 conformance parameters: %v", err)
+	}
 
-			if err := backend.Close(); err != nil {
-				t.Fatalf("close fast-h3 ProcessBackend: %v; stderr=%s", err, stderr.String())
+	var finalDigest string
+	for assignment := byte(0); assignment < 2; assignment++ {
+		encoderAuthority := processBackendAuthority(assignment*3 + 1)
+		materializeFastH3RootInput(
+			t, backends["ENCODER"].inputRoot, encoderAuthority,
+			rootDigest, rootMaterial,
+		)
+		encoder := runFastH3ConformanceStage(
+			t, backends["ENCODER"], encoderAuthority,
+			&velav1.StageExecutionSpec{
+				ParametersJson:             parameters,
+				ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				RootInputs: []*velav1.StageRootInputMaterial{{
+					ConditionIndex: 0,
+					Uri:            frozen.RootInputs[0].URI,
+					Sha256:         rootDigest[:],
+					SizeBytes:      int64(len(rootMaterial)),
+				}},
+			},
+		)
+
+		ditAuthority := processBackendAuthority(assignment*3 + 2)
+		encoderInput := materializeFastH3StageInput(
+			t, backends["DIT"].inputRoot, ditAuthority,
+			fmt.Sprintf("73000000-0000-0000-0000-00000000000%d", assignment+1),
+			"encoder-v1", "74000000-0000-0000-0000-000000000001", encoder,
+		)
+		dit := runFastH3ConformanceStage(
+			t, backends["DIT"], ditAuthority,
+			&velav1.StageExecutionSpec{
+				Inputs:                     []*velav1.StageInputArtifact{encoderInput},
+				ParametersJson:             parameters,
+				ExpectedOutputManifestJson: []byte(`{"latent":{"required":true}}`),
+			},
+		)
+
+		vaeAuthority := processBackendAuthority(assignment*3 + 3)
+		ditInput := materializeFastH3StageInput(
+			t, backends["VAE_DECODER"].inputRoot, vaeAuthority,
+			fmt.Sprintf("75000000-0000-0000-0000-00000000000%d", assignment+1),
+			"dit-v1", "74000000-0000-0000-0000-000000000002", dit,
+		)
+		vae := runFastH3ConformanceStage(
+			t, backends["VAE_DECODER"], vaeAuthority,
+			&velav1.StageExecutionSpec{
+				Inputs:                     []*velav1.StageInputArtifact{ditInput},
+				ParametersJson:             parameters,
+				ExpectedOutputManifestJson: []byte(`{"video":{"required":true}}`),
+			},
+		)
+		if !strings.HasSuffix(encoder.ContentType, "encoder-conditioning.v1") ||
+			!strings.HasSuffix(dit.ContentType, "dit-latents.v1") ||
+			!strings.HasSuffix(vae.ContentType, "decoded-media.v1") {
+			t.Fatalf("H3 artifact content types = %q/%q/%q", encoder.ContentType, dit.ContentType, vae.ContentType)
+		}
+		if finalDigest == "" {
+			finalDigest = vae.PayloadSHA256
+		} else if vae.PayloadSHA256 != finalDigest {
+			t.Fatalf("resident retry VAE digest = %s, want %s", vae.PayloadSHA256, finalDigest)
+		}
+	}
+
+	for _, component := range components {
+		backend := backends[component]
+		if err := backend.backend.Close(); err != nil {
+			t.Fatalf("close fast-h3 %s ProcessBackend: %v; stderr=%s", component, err, backend.stderr.String())
+		}
+	}
+	events, err := os.ReadFile(eventLog)
+	if err != nil {
+		t.Fatalf("read conformance events: %v", err)
+	}
+	for _, component := range components {
+		for event, count := range map[string]int{
+			"initialize:" + component: 1,
+			"prepare:" + component:    2,
+			"execute:" + component:    2,
+			"shutdown:" + component:   1,
+		} {
+			if got := strings.Count(string(events), event+"\n"); got != count {
+				t.Fatalf("event %q count=%d want=%d; events=%s", event, got, count, events)
 			}
-			events, err := os.ReadFile(eventLog)
-			if err != nil {
-				t.Fatalf("read conformance events: %v", err)
-			}
-			for event, count := range map[string]int{
-				"initialize:" + component: 1,
-				"prepare:" + component:    2,
-				"execute:" + component:    2,
-				"shutdown:" + component:   1,
-			} {
-				if got := strings.Count(string(events), event+"\n"); got != count {
-					t.Fatalf("event %q count=%d want=%d; events=%s", event, got, count, events)
-				}
-			}
-		})
+		}
+	}
+}
+
+func newFastH3ConformanceBackend(
+	t *testing.T,
+	root,
+	eventLog,
+	fastH3Root,
+	fixtureRoot,
+	python,
+	component string,
+) *fastH3ConformanceBackend {
+	t.Helper()
+	componentRoot := filepath.Join(root, strings.ToLower(component))
+	inputRoot := filepath.Join(componentRoot, "inputs")
+	outputRoot := filepath.Join(componentRoot, "outputs")
+	for _, directory := range []string{componentRoot, inputRoot, outputRoot} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatalf("create %s conformance directory: %v", component, err)
+		}
+	}
+	stderr := &bytes.Buffer{}
+	backend, err := NewProcessBackend(
+		context.Background(),
+		processBackendBinding(),
+		ProcessBackendConfig{
+			Component: component, ModelComponentRevision: "minimax-h3-" + strings.ToLower(component) + "-r1",
+			Command: []string{
+				python, "-m", "fast_h3.vela.driver", "--component", component,
+				"--runtime-factory", "fast_h3_conformance_runtime:create_runtime",
+			},
+			Environment: []string{
+				"PYTHONPATH=" + filepath.Join(fastH3Root, "src") + string(os.PathListSeparator) + fixtureRoot,
+				"FAST_H3_CONFORMANCE_EVENT_LOG=" + eventLog,
+			},
+			LocalDevices: []DriverDevice{{
+				DeviceID: "33000000-0000-0000-0000-000000000001", DeviceEpoch: 7,
+				GPUUUID: "GPU-00000000-0000-0000-0000-000000000001", PCIBDF: "0000:41:00.0",
+			}},
+			ScratchRoot: componentRoot, InputRoot: inputRoot, OutputRoot: outputRoot,
+			InitializationTimeout: 30 * time.Second,
+			ShutdownTimeout:       5 * time.Second,
+			Stderr:                stderr,
+		},
+	)
+	if err != nil {
+		t.Fatalf("start fast-h3 %s ProcessBackend: %v; stderr=%s", component, err, stderr.String())
+	}
+	t.Cleanup(func() { _ = backend.Close() })
+	probe, err := backend.Probe(
+		context.Background(),
+		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
+	)
+	if err != nil || !probe.Ready || !bytes.Contains(probe.Evidence, []byte(component)) {
+		t.Fatalf("%s warmup probe = %#v error=%v; stderr=%s", component, probe, err, stderr.String())
+	}
+	return &fastH3ConformanceBackend{
+		component: component, backend: backend, inputRoot: inputRoot,
+		outputRoot: outputRoot, stderr: stderr,
+	}
+}
+
+func runFastH3ConformanceStage(
+	t *testing.T,
+	backend *fastH3ConformanceBackend,
+	authority stageauthority.Verified,
+	spec *velav1.StageExecutionSpec,
+) fastH3ConformanceOutput {
+	t.Helper()
+	if err := backend.backend.Prepare(context.Background(), authority, spec); err != nil {
+		t.Fatalf("prepare %s: %v; stderr=%s", backend.component, err, backend.stderr.String())
+	}
+	if err := backend.backend.Start(context.Background(), authority); err != nil {
+		t.Fatalf("start %s: %v; stderr=%s", backend.component, err, backend.stderr.String())
+	}
+	waitForFastH3Output(t, backend.backend, authority, backend.stderr)
+	sealed, err := backend.backend.Seal(context.Background(), authority)
+	if err != nil || sealed.TotalSizeBytes <= 0 {
+		t.Fatalf("seal %s = %#v error=%v; stderr=%s", backend.component, sealed, err, backend.stderr.String())
+	}
+	var output fastH3ConformanceOutput
+	if err := json.Unmarshal(sealed.OutputManifestJSON, &output); err != nil ||
+		output.OutputPort == "" || output.LocalLocator == "" || output.PayloadSHA256 == "" ||
+		output.SizeBytes != sealed.TotalSizeBytes {
+		t.Fatalf("sealed %s manifest = %s error=%v", backend.component, sealed.OutputManifestJSON, err)
+	}
+	output.path = filepath.Join(backend.outputRoot, filepath.FromSlash(output.LocalLocator))
+	payload, err := os.ReadFile(output.path)
+	if err != nil {
+		t.Fatalf("read %s output: %v", backend.component, err)
+	}
+	digest := sha256.Sum256(payload)
+	if int64(len(payload)) != output.SizeBytes || hex.EncodeToString(digest[:]) != output.PayloadSHA256 {
+		t.Fatalf("%s output does not match sealed manifest", backend.component)
+	}
+	return output
+}
+
+func materializeFastH3RootInput(
+	t *testing.T,
+	inputRoot string,
+	authority stageauthority.Verified,
+	digest [sha256.Size]byte,
+	payload []byte,
+) {
+	t.Helper()
+	path := filepath.Join(
+		inputRoot, "stage-runs", authority.Authority.GetStageRunId(), "root-inputs", "0",
+		hex.EncodeToString(digest[:])+".bin",
+	)
+	materializeFastH3File(t, path, payload)
+}
+
+func materializeFastH3StageInput(
+	t *testing.T,
+	inputRoot string,
+	authority stageauthority.Verified,
+	artifactID,
+	objectVersion,
+	interfaceRevisionID string,
+	output fastH3ConformanceOutput,
+) *velav1.StageInputArtifact {
+	t.Helper()
+	payload, err := os.ReadFile(output.path)
+	if err != nil {
+		t.Fatalf("read upstream H3 artifact: %v", err)
+	}
+	digest, err := hex.DecodeString(output.PayloadSHA256)
+	if err != nil || len(digest) != sha256.Size {
+		t.Fatalf("decode upstream H3 artifact digest %q: %v", output.PayloadSHA256, err)
+	}
+	path := filepath.Join(
+		inputRoot, "stage-runs", authority.Authority.GetStageRunId(), "inputs", artifactID,
+		output.PayloadSHA256+".bin",
+	)
+	materializeFastH3File(t, path, payload)
+	return &velav1.StageInputArtifact{
+		StageArtifactId: artifactID, ObjectVersion: objectVersion, Sha256: digest,
+		SizeBytes: output.SizeBytes, StageInterfaceRevisionId: interfaceRevisionID,
+	}
+}
+
+func materializeFastH3File(t *testing.T, path string, payload []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("create H3 material directory: %v", err)
+	}
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatalf("write H3 material: %v", err)
 	}
 }
 
@@ -174,7 +362,7 @@ func waitForFastH3Output(
 	stderr *bytes.Buffer,
 ) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		status, err := backend.Status(context.Background(), authority)
 		if err != nil {
@@ -185,7 +373,7 @@ func waitForFastH3Output(
 		}
 		if status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED ||
 			status.State == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED {
-			t.Fatalf("fast-h3 execution stopped in state %s; stderr=%s", status.State, stderr.String())
+			t.Fatalf("fast-h3 execution stopped in state %s detail=%s; stderr=%s", status.State, status.Detail, stderr.String())
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("fast-h3 output did not become ready; last status=%#v; stderr=%s", status, stderr.String())

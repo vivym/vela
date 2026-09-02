@@ -276,6 +276,7 @@ func catalogResidencyPlanRollout(
 			DeviceSetDigest: strings.Repeat("1", 64), MembershipDigest: strings.Repeat("2", 64),
 			ModelRuntimes: []fleetcontroller.ModelRuntimeProcess{{
 				ModelResidencyID:       uuid.MustParse("49330000-0000-0000-0000-000000000009"),
+				CapacityPoolID:         poolID,
 				StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
 				ModelRuntimeEpochFloor: 1,
 				Component:              "DIT", ModelComponentRevision: "h3-dit-r1",
@@ -314,6 +315,11 @@ func catalogResidencyPlanRollout(
 			WorkerInstances: []fleet.PlannedWorkerInstance{{
 				ID: workerID, WorkerProfileRevisionID: profileID, CapacityPoolID: poolID,
 				WorkerBundleID: bundleID, DesiredMemberCount: 1, DesiredDeviceCount: 1,
+				ModelRuntimeRoutes: []fleet.PlannedModelRuntimeRoute{{
+					ModelResidencyID:       uuid.MustParse("49330000-0000-0000-0000-000000000009"),
+					CapacityPoolID:         poolID,
+					StageProfileRevisionID: uuid.MustParse("49330000-0000-0000-0000-000000000008"),
+				}},
 			}},
 		},
 		WorkerBundles: []fleetcontroller.WorkerBundleActuation{actuation},

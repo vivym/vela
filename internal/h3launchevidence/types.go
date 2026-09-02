@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	SchemaVersion = 2
-	MediaType     = "application/vnd.vela.h3-launch-evidence.v2+json"
+	SchemaVersion = 3
+	MediaType     = "application/vnd.vela.h3-launch-evidence.v3+json"
 )
 
 type ExternalResourceExpectation struct {
@@ -101,6 +101,8 @@ type RegistryDevice struct {
 
 type RegistryResidency struct {
 	ID                     uuid.UUID `json:"id"`
+	CapacityPoolID         uuid.UUID `json:"capacity_pool_id"`
+	StageProfileRevisionID uuid.UUID `json:"stage_profile_revision_id"`
 	ModelComponentRevision string    `json:"model_component_revision"`
 	RuntimeIdentity        string    `json:"runtime_identity"`
 	RuntimeImageDigest     string    `json:"runtime_image_digest"`

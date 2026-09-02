@@ -776,7 +776,8 @@ func instantiateH3IntegrationGraph(
 		"service_class":"standard",
 		"output_spec":"video-1080p-5s-24fps",
 		"generation_count":1,
-		"prompt":"certified split H3 stage graph"
+		"prompt":"certified split H3 stage graph",
+		"h3":{"seed":17}
 	}`))
 	if accepted.StatusCode != http.StatusAccepted {
 		t.Fatalf("submit split H3 Job status = %d body=%s", accepted.StatusCode, accepted.Body)

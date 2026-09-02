@@ -133,33 +133,18 @@ func (controller *ResidencyPlanRolloutController) Reconcile(
 
 func ValidateResidencyPlanRollout(rollout ResidencyPlanRollout) error {
 	plan := rollout.ApprovedPlan
-	if plan.SchemaVersion != 1 || plan.ID == uuid.Nil || len(plan.WorkerBundles) == 0 ||
-		len(plan.WorkerInstances) == 0 || len(rollout.WorkerBundles) == 0 {
+	if err := fleet.ValidateApprovedResidencyPlan(plan); err != nil {
+		return fmt.Errorf("ResidencyPlan rollout authority is invalid: %w", err)
+	}
+	if len(rollout.WorkerBundles) == 0 {
 		return errors.New("ResidencyPlan rollout is invalid")
 	}
 	plannedBundles := make(map[uuid.UUID]fleet.PlannedWorkerBundle, len(plan.WorkerBundles))
 	for _, bundle := range plan.WorkerBundles {
-		if bundle.ID == uuid.Nil {
-			return errors.New("ResidencyPlan rollout contains an invalid WorkerBundle authority")
-		}
-		if _, exists := plannedBundles[bundle.ID]; exists {
-			return errors.New("ResidencyPlan rollout contains duplicate WorkerBundle authority")
-		}
 		plannedBundles[bundle.ID] = bundle
 	}
 	plannedWorkers := make(map[uuid.UUID]fleet.PlannedWorkerInstance, len(plan.WorkerInstances))
 	for _, worker := range plan.WorkerInstances {
-		if worker.ID == uuid.Nil || worker.WorkerBundleID == uuid.Nil ||
-			worker.WorkerProfileRevisionID == uuid.Nil || worker.CapacityPoolID == uuid.Nil ||
-			worker.DesiredMemberCount <= 0 || worker.DesiredDeviceCount <= 0 {
-			return errors.New("ResidencyPlan rollout contains invalid WorkerInstance authority")
-		}
-		if _, exists := plannedBundles[worker.WorkerBundleID]; !exists {
-			return errors.New("ResidencyPlan WorkerInstance references an unknown WorkerBundle")
-		}
-		if _, exists := plannedWorkers[worker.ID]; exists {
-			return errors.New("ResidencyPlan rollout contains duplicate WorkerInstance authority")
-		}
 		plannedWorkers[worker.ID] = worker
 	}
 	seenBundles := make(map[uuid.UUID]struct{}, len(rollout.WorkerBundles))
@@ -189,7 +174,8 @@ func ValidateResidencyPlanRollout(rollout ResidencyPlanRollout) error {
 				planned.WorkerProfileRevisionID != worker.WorkerProfileRevisionID ||
 				planned.CapacityPoolID != worker.CapacityPoolID ||
 				planned.DesiredMemberCount != len(worker.Members) ||
-				planned.DesiredDeviceCount != workerDeviceCount(worker) {
+				planned.DesiredDeviceCount != workerDeviceCount(worker) ||
+				!modelRuntimeRoutesMatch(planned.ModelRuntimeRoutes, worker.ModelRuntimes) {
 				return errors.New("WorkerInstance actuation does not match approved authority")
 			}
 			if _, duplicate := seenWorkers[worker.ID]; duplicate {
@@ -202,6 +188,27 @@ func ValidateResidencyPlanRollout(rollout ResidencyPlanRollout) error {
 		return errors.New("ResidencyPlan rollout does not cover every approved Worker authority")
 	}
 	return nil
+}
+
+func modelRuntimeRoutesMatch(
+	planned []fleet.PlannedModelRuntimeRoute,
+	actuated []ModelRuntimeProcess,
+) bool {
+	if len(planned) != len(actuated) {
+		return false
+	}
+	byResidency := make(map[uuid.UUID]fleet.PlannedModelRuntimeRoute, len(planned))
+	for _, route := range planned {
+		byResidency[route.ModelResidencyID] = route
+	}
+	for _, runtime := range actuated {
+		route, exists := byResidency[runtime.ModelResidencyID]
+		if !exists || route.CapacityPoolID != runtime.CapacityPoolID ||
+			route.StageProfileRevisionID != runtime.StageProfileRevisionID {
+			return false
+		}
+	}
+	return true
 }
 
 func workerDeviceCount(worker WorkerInstanceActuation) int {

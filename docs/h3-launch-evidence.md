@@ -24,7 +24,8 @@ The collector then reads each authority twice. It emits evidence only if both
 reads have identical:
 
 - WorkerInstance, WorkerMember, device, node, DeviceSet, runtime and residency
-  epochs and identities from a `REPEATABLE READ READ ONLY` Fleet transaction;
+  epochs and identities from a `REPEATABLE READ READ ONLY` Fleet transaction,
+  including each ModelResidency's exact CapacityPool and StageProfile route;
 - Kubernetes cluster and namespace UID;
 - every release-declared external Secret/ConfigMap UID, resource version,
   immutability bit, revision annotation, exact Secret key set, and canonical

@@ -226,7 +226,7 @@ func TestVelaControlMaterializesSecretsAndUsesUniqueClaimantIdentities(t *testin
 	for _, name := range []string{
 		"node-agent-config", "control-transport-tls", "privileged-http-tls", "nats-client",
 		"artifact-credentials", "keyrings", "invoice-export", "remediation-client-tls",
-		"stage-worker-identity",
+		"stage-worker-identity", "h3-exact-cache-keyring",
 	} {
 		if !hasVelaControlVolumeMount(materializer.VolumeMounts, name) {
 			t.Fatalf("vela-control materializer is missing source mount %q", name)
@@ -512,6 +512,7 @@ func TestVelaControlExternalSecretContractIsExactAndValueFree(t *testing.T) {
 			"replication-source-access-key-id", "replication-source-secret-access-key",
 		},
 		"vela-control-keyrings-r0-placeholder":               {"lease.json", "webhook.json"},
+		"vela-control-h3-exact-cache-keyring-r0-placeholder": {"projects.json"},
 		"vela-control-invoice-export-r0-placeholder":         {"bearer-token"},
 		"vela-control-remediation-client-tls-r0-placeholder": {"ca.crt", "tls.crt", "tls.key"},
 	}

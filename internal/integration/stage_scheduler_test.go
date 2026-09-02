@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,6 +66,10 @@ func TestStageSchedulerAcquirePersistsDecisionAndAssignsExactlyOnce(t *testing.T
 	if _, err := registry.Observe(context.Background(), evidence); err != nil {
 		t.Fatalf("observe StageScheduler WorkerInstance: %v", err)
 	}
+	seedModelRuntimeCapacityRoute(
+		t, database.Admin, workerID, evidence.Residencies[0].ID,
+		poolID, uuid.MustParse(encoderStageProfileID),
+	)
 
 	server := admissionServerForDatabase(t, database)
 	accepted := submitJob(t, server.URL, "stage-scheduler-acquire", []byte(`{
@@ -230,6 +235,133 @@ func TestStageSchedulerAcquirePersistsDecisionAndAssignsExactlyOnce(t *testing.T
 	}, stagescheduler.CapacityObservation{Sequence: evidence.Capacity.Sequence})
 	if err != nil || ok || second != (stagescheduler.Assignment{}) {
 		t.Fatalf("second Acquire = %#v ok=%t error=%v, want NoWork", second, ok, err)
+	}
+}
+
+func TestStageSchedulerRoutesEncoderAndVAEThroughOneAUXWorker(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundation(t, database.Admin)
+	seedAdmissionFixture(t, database.Admin)
+	seedStageExecutionCatalog(t, database.Admin)
+	auxWorkerProfileID := uuid.MustParse("49400000-0000-0000-0000-000000000100")
+	encoderProfileID := uuid.MustParse("49400000-0000-0000-0000-000000000101")
+	vaeProfileID := uuid.MustParse("49400000-0000-0000-0000-000000000109")
+	encoderPoolID := uuid.MustParse("49400000-0000-0000-0000-000000000102")
+	vaePoolID := uuid.MustParse("49400000-0000-0000-0000-000000000103")
+	planID := uuid.MustParse("49400000-0000-0000-0000-000000000104")
+	bundleID := uuid.MustParse("49400000-0000-0000-0000-000000000105")
+	workerID := uuid.MustParse("49400000-0000-0000-0000-000000000106")
+	encoderResidencyID := uuid.MustParse("49400000-0000-0000-0000-000000000107")
+	vaeResidencyID := uuid.MustParse("49400000-0000-0000-0000-000000000108")
+	encoderImage := "sha256:" + strings.Repeat("4", 64)
+	vaeImage := "sha256:" + strings.Repeat("5", 64)
+	if _, err := database.Admin.Exec(`
+		INSERT INTO worker_profile_revisions (
+			id, stable_id, revision, state, device_count, member_count,
+			device_set_shape, resident_model_revisions, capacity_limits,
+			readiness_checks, content_digest
+		) VALUES (
+			$1, 'h3-aux-shared-slot', 1, 'CERTIFIED', 1, 1,
+			'{"kind":"single-gpu","shared_slot_exception":"H3_AUX_ENCODER_VAE"}',
+			'["h3-encoder-v1","h3-vae-v1"]', '{"concurrency":1}',
+			'{"warmup":true,"exclusive_process_execution":true}',
+			decode(repeat('a4', 32), 'hex')
+		)
+	`, auxWorkerProfileID); err != nil {
+		t.Fatalf("seed AUX WorkerProfile: %v", err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO stage_profile_revisions (
+			id, stable_id, revision, state, stage_definition_revision_id,
+			model_component_revision, runtime_image_digest, worker_profile_revision_id,
+			result_equivalence_revision_id, certified_capacity_vector, content_digest
+		) VALUES
+		(
+			$2, 'h3-aux-encoder-stage-scheduler', 1, 'CERTIFIED',
+			'49000000-0000-0000-0000-000000000030', 'h3-encoder-v1', $3, $1,
+			'49000000-0000-0000-0000-000000000023', '{"concurrency":1}',
+			decode(repeat('a6', 32), 'hex')
+		),
+		(
+			$4, 'h3-aux-vae-stage-scheduler', 1, 'CERTIFIED',
+			'49000000-0000-0000-0000-000000000032', 'h3-vae-v1', $5, $1,
+			'49000000-0000-0000-0000-000000000025', '{"concurrency":1}',
+			decode(repeat('a5', 32), 'hex')
+		)
+	`, auxWorkerProfileID, encoderProfileID, encoderImage, vaeProfileID, vaeImage); err != nil {
+		t.Fatalf("seed AUX StageProfiles: %v", err)
+	}
+
+	registry, err := fleet.NewService(newRolePool(
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
+	))
+	if err != nil {
+		t.Fatalf("construct AUX Worker Registry: %v", err)
+	}
+	plan := fleet.ApprovedResidencyPlan{
+		SchemaVersion: 1, ID: planID, StableID: "h3-aux-shared-slot", Revision: 1,
+		ContentDigest: digestHex(0xa1), ApprovalEvidenceDigest: digestHex(0xa2),
+		ApprovedAt: time.Now().UTC().Add(-time.Minute), ApprovedBy: "fleet/aux-test",
+		CapacityPools: []fleet.PlannedCapacityPool{
+			{ID: encoderPoolID, StableID: "h3-aux-encoder", StageProfileRevisionID: encoderProfileID, ResourceClass: "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai", MaxReadyQueueDepth: 128},
+			{ID: vaePoolID, StableID: "h3-aux-vae", StageProfileRevisionID: vaeProfileID, ResourceClass: "GPU", SecurityClass: "INTERNAL", Region: "cn-shanghai", MaxReadyQueueDepth: 128},
+		},
+		WorkerBundles: []fleet.PlannedWorkerBundle{{ID: bundleID, StableID: "h3-aux-node", DesiredGeneration: 1, LayoutDigest: digestHex(0xa3)}},
+		WorkerInstances: []fleet.PlannedWorkerInstance{{
+			ID: workerID, WorkerProfileRevisionID: auxWorkerProfileID,
+			CapacityPoolID: encoderPoolID, WorkerBundleID: bundleID,
+			DesiredMemberCount: 1, DesiredDeviceCount: 1,
+			ModelRuntimeRoutes: []fleet.PlannedModelRuntimeRoute{
+				{ModelResidencyID: encoderResidencyID, CapacityPoolID: encoderPoolID, StageProfileRevisionID: encoderProfileID},
+				{ModelResidencyID: vaeResidencyID, CapacityPoolID: vaePoolID, StageProfileRevisionID: vaeProfileID},
+			},
+		}},
+	}
+	if _, err := registry.Apply(context.Background(), plan); err != nil {
+		t.Fatalf("apply AUX ResidencyPlan: %v", err)
+	}
+
+	evidence := workerRegistryEvidenceValue(t, workerID, 0xc9)
+	evidence.Residencies[0].ID = encoderResidencyID
+	evidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
+	evidence.Residencies[0].RuntimeImageDigest = encoderImage
+	vaeResidency := evidence.Residencies[0]
+	vaeResidency.ID = vaeResidencyID
+	vaeResidency.ModelComponentRevision = "h3-vae-v1"
+	vaeResidency.RuntimeIdentity = "h3-vae-runtime-v1"
+	vaeResidency.RuntimeImageDigest = vaeImage
+	vaeResidency.ModelRuntimeEpoch++
+	evidence.Residencies = append(evidence.Residencies, vaeResidency)
+	if _, err := registry.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("observe shared AUX WorkerInstance: %v", err)
+	}
+
+	repository, err := stagescheduler.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_stage_scheduler_login", "vela-stage-scheduler-password",
+	))
+	if err != nil {
+		t.Fatalf("construct AUX StageScheduler repository: %v", err)
+	}
+	base := workerAuthority(t, evidence)
+	for _, route := range []struct {
+		poolID    uuid.UUID
+		profileID uuid.UUID
+		residency fleet.ModelResidencyEvidence
+	}{
+		{poolID: encoderPoolID, profileID: encoderProfileID, residency: evidence.Residencies[0]},
+		{poolID: vaePoolID, profileID: vaeProfileID, residency: evidence.Residencies[1]},
+	} {
+		captured, err := repository.Capture(context.Background(), stagescheduler.WorkerAuthority{
+			CapacityPoolID: route.poolID, StageProfileRevisionID: route.profileID,
+			WorkerInstanceID: base.WorkerInstanceID, WorkerInstanceEpoch: base.InstanceEpoch,
+			DeviceSetDigest: base.DeviceSetDigest, MembershipDigest: base.MembershipDigest,
+			ModelResidencyID:  route.residency.ID,
+			ModelRuntimeEpoch: route.residency.ModelRuntimeEpoch,
+			CapacityVector:    evidence.Capacity.Vector,
+		}, stagescheduler.CapacityObservation{Sequence: evidence.Capacity.Sequence})
+		if err != nil || captured.ID == uuid.Nil {
+			t.Fatalf("capture %s AUX route snapshot=%#v error=%v", route.residency.ModelComponentRevision, captured, err)
+		}
 	}
 }
 
@@ -1382,6 +1514,10 @@ func newStageSchedulerFixtureWithRequest(
 	if _, err := registry.Observe(context.Background(), evidence); err != nil {
 		t.Fatalf("observe %s WorkerInstance: %v", suffix, err)
 	}
+	seedModelRuntimeCapacityRoute(
+		t, database.Admin, workerID, evidence.Residencies[0].ID,
+		poolID, uuid.MustParse(encoderStageProfileID),
+	)
 	server := admissionServerForDatabase(t, database)
 	if requestBody == nil {
 		requestBody = []byte(`{
@@ -1443,6 +1579,25 @@ func newStageSchedulerFixtureWithRequest(
 		},
 		observation: stagescheduler.CapacityObservation{Sequence: evidence.Capacity.Sequence},
 		stageRunID:  stageRunID,
+	}
+}
+
+func seedModelRuntimeCapacityRoute(
+	t *testing.T,
+	database *sql.DB,
+	workerID uuid.UUID,
+	residencyID uuid.UUID,
+	poolID uuid.UUID,
+	stageProfileID uuid.UUID,
+) {
+	t.Helper()
+	if _, err := database.Exec(`
+		INSERT INTO model_runtime_capacity_routes (
+			model_residency_id, worker_instance_id, capacity_pool_id,
+			stage_profile_revision_id
+		) VALUES ($1, $2, $3, $4)
+	`, residencyID, workerID, poolID, stageProfileID); err != nil {
+		t.Fatalf("seed ModelRuntime CapacityPool route: %v", err)
 	}
 }
 

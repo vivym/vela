@@ -58,7 +58,7 @@ spec:
                 /materialized/finance /materialized/compliance \
                 /materialized/nats /materialized/artifact \
                 /materialized/keyrings /materialized/invoice \
-                /materialized/remediation
+                /materialized/remediation /materialized/h3-cache
               mkdir -p /artifact-validation/sandboxes /artifact-validation/spool
               cp /projected/control-transport/worker-tls.crt /materialized/worker/tls.crt
               cp /projected/control-transport/worker-tls.key /materialized/worker/tls.key
@@ -91,6 +91,7 @@ spec:
               cp /projected/artifact/replication-backup-secret-access-key /materialized/artifact/replication-backup-secret-access-key
               cp /projected/keyrings/lease.json /materialized/keyrings/lease.json
               cp /projected/keyrings/webhook.json /materialized/keyrings/webhook.json
+              cp /projected/h3-cache/projects.json /materialized/h3-cache/projects.json
               cp /projected/invoice/bearer-token /materialized/invoice/bearer-token
               cp /projected/remediation-tls/tls.crt /materialized/remediation/tls.crt
               cp /projected/remediation-tls/tls.key /materialized/remediation/tls.key
@@ -144,6 +145,9 @@ spec:
               readOnly: true
             - name: keyrings
               mountPath: /projected/keyrings
+              readOnly: true
+            - name: h3-exact-cache-keyring
+              mountPath: /projected/h3-cache
               readOnly: true
             - name: invoice-export
               mountPath: /projected/invoice
@@ -318,6 +322,10 @@ spec:
         - name: keyrings
           secret:
             secretName: vela-control-keyrings-r0-placeholder
+            defaultMode: 0400
+        - name: h3-exact-cache-keyring
+          secret:
+            secretName: vela-control-h3-exact-cache-keyring-r0-placeholder
             defaultMode: 0400
         - name: invoice-export
           secret:

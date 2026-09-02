@@ -14,11 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/artifactreplication"
 	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/billingexport"
 	"github.com/vivym/vela/internal/noncontentexpiry"
 	"github.com/vivym/vela/internal/retention"
+	"github.com/vivym/vela/internal/stagecache"
 	"github.com/vivym/vela/internal/stagescheduler"
 	"github.com/vivym/vela/internal/webhook"
 )
@@ -395,6 +397,123 @@ func setValidConfigEnvironment(t *testing.T) {
 	t.Setenv("VELA_WEBHOOK_CLAIM_TTL", "")
 	t.Setenv("VELA_WEBHOOK_BATCH_SIZE", "")
 	t.Setenv("VELA_WEBHOOK_HTTP_TIMEOUT", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_SEED_RNG_REVISION", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_TICK", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_BATCH_SIZE", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR", "")
+	t.Setenv("VELA_H3_EXACT_CACHE_CARRY_COST_MINOR", "")
+}
+
+func TestLoadConfigParsesOptionalH3ExactCacheControls(t *testing.T) {
+	setValidConfigEnvironment(t)
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load disabled H3 exact cache config: %v", err)
+	}
+	if configuration.h3ExactCacheProjectKeyringFile != "" ||
+		configuration.h3ExactCacheCanonicalizationRevisionID != uuid.Nil ||
+		configuration.h3ExactCacheTick != 500*time.Millisecond ||
+		configuration.h3ExactCacheBatchSize != 100 {
+		t.Fatalf("disabled H3 exact cache config = %#v", configuration)
+	}
+
+	t.Setenv("VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", "/run/secrets/h3-cache-projects.json")
+	t.Setenv(
+		"VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID",
+		"4a100000-0000-0000-0000-000000000001",
+	)
+	t.Setenv("VELA_H3_EXACT_CACHE_SEED_RNG_REVISION", "sglang-minimax-h3-philox-v1")
+	t.Setenv("VELA_H3_EXACT_CACHE_TICK", "2s")
+	t.Setenv("VELA_H3_EXACT_CACHE_BATCH_SIZE", "25")
+	t.Setenv("VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR", "50000")
+	t.Setenv("VELA_H3_EXACT_CACHE_CARRY_COST_MINOR", "300")
+	configuration, err = loadConfig()
+	if err != nil {
+		t.Fatalf("load enabled H3 exact cache config: %v", err)
+	}
+	if configuration.h3ExactCacheProjectKeyringFile != "/run/secrets/h3-cache-projects.json" ||
+		configuration.h3ExactCacheCanonicalizationRevisionID.String() !=
+			"4a100000-0000-0000-0000-000000000001" ||
+		configuration.h3ExactCacheSeedAndRNGRevision != "sglang-minimax-h3-philox-v1" ||
+		configuration.h3ExactCacheTick != 2*time.Second ||
+		configuration.h3ExactCacheBatchSize != 25 ||
+		configuration.h3ExactCacheExpectedSavedComputeMinor != 50_000 ||
+		configuration.h3ExactCacheCarryCostMinor != 300 {
+		t.Fatalf("enabled H3 exact cache config = %#v", configuration)
+	}
+}
+
+func TestLoadConfigRejectsPartialOrInvalidH3ExactCacheControls(t *testing.T) {
+	t.Run("parameter without keyring", func(t *testing.T) {
+		setValidConfigEnvironment(t)
+		t.Setenv("VELA_H3_EXACT_CACHE_TICK", "1s")
+		if _, err := loadConfig(); err == nil ||
+			!strings.Contains(err.Error(), "VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE") {
+			t.Fatalf("partial H3 exact cache config error = %v", err)
+		}
+	})
+	for _, test := range []struct {
+		name  string
+		env   string
+		value string
+	}{
+		{name: "relative keyring", env: "VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", value: "relative.json"},
+		{name: "invalid UUID", env: "VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID", value: "not-a-uuid"},
+		{name: "blank RNG revision", env: "VELA_H3_EXACT_CACHE_SEED_RNG_REVISION", value: " bad "},
+		{name: "zero tick", env: "VELA_H3_EXACT_CACHE_TICK", value: "0s"},
+		{name: "large batch", env: "VELA_H3_EXACT_CACHE_BATCH_SIZE", value: "1001"},
+		{name: "negative saved compute", env: "VELA_H3_EXACT_CACHE_EXPECTED_SAVED_COMPUTE_MINOR", value: "-1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setValidConfigEnvironment(t)
+			t.Setenv("VELA_H3_EXACT_CACHE_PROJECT_KEYRING_FILE", "/run/secrets/h3-cache-projects.json")
+			t.Setenv(
+				"VELA_H3_EXACT_CACHE_INPUT_CANONICALIZATION_REVISION_ID",
+				"4a100000-0000-0000-0000-000000000001",
+			)
+			t.Setenv("VELA_H3_EXACT_CACHE_SEED_RNG_REVISION", "sglang-minimax-h3-philox-v1")
+			t.Setenv(test.env, test.value)
+			if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), test.env) {
+				t.Fatalf("invalid H3 exact cache config error = %v, want %s", err, test.env)
+			}
+		})
+	}
+}
+
+func TestReadH3ExactCacheProjectKeyringRequiresUUIDScopedStrongKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "h3-cache-projects.json")
+	projectID := uuid.MustParse("4a100000-0000-0000-0000-000000000011")
+	strongKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	if err := os.WriteFile(
+		path,
+		[]byte(`{"`+projectID.String()+`":"`+strongKey+`"}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write H3 exact cache Project keyring: %v", err)
+	}
+	keyring, err := readH3ExactCacheProjectKeyring(path)
+	if err != nil {
+		t.Fatalf("read H3 exact cache Project keyring: %v", err)
+	}
+	if string(keyring[projectID]) != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("decoded H3 exact cache Project keyring = %#v", keyring)
+	}
+	clearProjectKeyring(keyring)
+
+	for _, document := range []string{
+		`{"not-a-project":"` + strongKey + `"}`,
+		`{"4A100000-0000-0000-0000-000000000011":"` + strongKey + `"}`,
+		`{"` + projectID.String() + `":"` + base64.StdEncoding.EncodeToString([]byte("short")) + `"}`,
+	} {
+		if err := os.WriteFile(path, []byte(document), 0o600); err != nil {
+			t.Fatalf("write invalid H3 exact cache Project keyring: %v", err)
+		}
+		if _, err := readH3ExactCacheProjectKeyring(path); err == nil {
+			t.Fatalf("readH3ExactCacheProjectKeyring accepted %q", document)
+		}
+	}
 }
 
 func TestLoadConfigPreservesIndependentStageWorkerControlBoundary(t *testing.T) {
@@ -1386,6 +1505,33 @@ func TestComplianceShutdownHonorsBoundedContext(t *testing.T) {
 	}
 }
 
+func TestH3ExactCacheReconcilerRetriesAndStopsWithContext(t *testing.T) {
+	reconciler := &testH3ExactCacheReconciler{calls: make(chan struct{}, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runH3ExactCacheReconciler(ctx, reconciler, time.Millisecond)
+	}()
+
+	for range 2 {
+		select {
+		case <-reconciler.calls:
+		case <-time.After(time.Second):
+			t.Fatal("H3 exact cache reconciler did not retry")
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("H3 exact cache reconciler did not stop")
+	}
+	if reconciler.invocations.Load() < 2 {
+		t.Fatalf("H3 exact cache reconcile invocations = %d", reconciler.invocations.Load())
+	}
+}
+
 type testDatabasePinger struct {
 	invocations atomic.Int32
 	err         error
@@ -1433,6 +1579,23 @@ type testStageSchedulerMaintenance struct {
 type testAttemptCoordinatorAutomation struct {
 	invocations atomic.Int32
 	calls       chan struct{}
+}
+
+type testH3ExactCacheReconciler struct {
+	invocations atomic.Int32
+	calls       chan struct{}
+}
+
+func (reconciler *testH3ExactCacheReconciler) Reconcile(
+	context.Context,
+) (stagecache.H3ExactReconcileResult, error) {
+	invocation := reconciler.invocations.Add(1)
+	reconciler.calls <- struct{}{}
+	if invocation == 1 {
+		return stagecache.H3ExactReconcileResult{AdmissionCandidates: 1},
+			errors.New("transient H3 exact cache failure")
+	}
+	return stagecache.H3ExactReconcileResult{HitCandidates: 1, Hits: 1}, nil
 }
 
 func (automation *testAttemptCoordinatorAutomation) RunCycle(

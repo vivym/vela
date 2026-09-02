@@ -98,6 +98,11 @@ Pod and must source them from the approved secret manager or PKI workflow.
 - `vela-control-stage-worker-identity-<release>` supplies the assignment
   identity HMAC key. Its Secret name rolls with the release, but its key bytes
   must remain stable across N/N-1 replay and rollback windows.
+- `vela-control-h3-exact-cache-keyring-<release>` supplies the Project-scoped
+  HMAC keys used to derive non-exportable Encoder and DiT exact-cache keys. The
+  JSON object is bounded to 4096 canonical Project UUIDs and 1 MiB; every value
+  must be base64-encoded key material of at least 32 bytes. Cache enablement is
+  fail-closed: a missing, malformed, or incomplete keyring prevents startup.
 - `vela-control-privileged-http-tls-<release>` contains independent Finance and
   Compliance server identities and client CAs.
 - The remaining names in `secret-contract.json` are also suffixed by the exact
@@ -129,6 +134,13 @@ Deployment to the new Pod template. The prior Secrets and ConfigMaps remain
 until the prior ReplicaSet is fully retired. Updating a referenced Secret in
 place is unsupported because the init container materializes regular files once
 at startup.
+
+The release overlay must also replace the H3 exact-cache input-canonicalization
+UUID and certified seed/RNG revision. `expected_saved_compute_minor` and
+`carry_cost_minor` are separate policy inputs and must be calibrated
+independently; the repository placeholder sets both to zero and makes no cost or
+benefit claim. Changing any key, revision, or cost input requires a new complete
+immutable ConfigMap/Secret revision and a rolling update.
 
 ## Network Boundary
 

@@ -90,12 +90,14 @@ func (reader *PostgresStageSnapshotReader) LatestStageSnapshot(ctx context.Conte
 		), residency_states AS (
 			SELECT definition.stage_kind, residency.state::text AS state,
 			       count(*)::double precision AS value
-			FROM model_residencies AS residency
-			JOIN worker_instances AS worker
-			  ON worker.id = residency.worker_instance_id
-			JOIN capacity_pools AS pool ON pool.id = worker.capacity_pool_id
-			JOIN stage_profile_revisions AS profile
-			  ON profile.id = pool.stage_profile_revision_id
+				FROM model_residencies AS residency
+				JOIN model_runtime_capacity_routes AS route
+				  ON route.model_residency_id = residency.id
+				 AND route.worker_instance_id = residency.worker_instance_id
+				JOIN capacity_pools AS pool ON pool.id = route.capacity_pool_id
+				JOIN stage_profile_revisions AS profile
+				  ON profile.id = route.stage_profile_revision_id
+				 AND profile.id = pool.stage_profile_revision_id
 			JOIN stage_definition_revisions AS definition
 			  ON definition.id = profile.stage_definition_revision_id
 			GROUP BY definition.stage_kind, residency.state

@@ -199,22 +199,23 @@ func validateLaunchManifest(manifest LaunchManifest) error {
 	seenGPUs := make(map[string]struct{}, len(manifest.LocalDevices))
 	seenBDFs := make(map[string]struct{}, len(manifest.LocalDevices))
 	for _, device := range manifest.LocalDevices {
-		if devices[device.DeviceID] != device.DeviceEpoch ||
-			!driverGPUUUIDPattern.MatchString(device.GPUUUID) || !driverPCIBDFPattern.MatchString(device.PCIBDF) {
+		if devices[device.DeviceID] != device.DeviceEpoch || !validDriverDevice(device) {
 			return errors.New("ModelRuntime local DeviceSet does not match launch authority")
 		}
 		if _, duplicate := seenLocalDevices[device.DeviceID]; duplicate {
 			return errors.New("ModelRuntime local DeviceSet is duplicated")
 		}
-		if _, duplicate := seenGPUs[device.GPUUUID]; duplicate {
-			return errors.New("ModelRuntime local GPU identity is duplicated")
-		}
-		if _, duplicate := seenBDFs[device.PCIBDF]; duplicate {
-			return errors.New("ModelRuntime local PCI identity is duplicated")
+		if device.GPUUUID != "" {
+			if _, duplicate := seenGPUs[device.GPUUUID]; duplicate {
+				return errors.New("ModelRuntime local GPU identity is duplicated")
+			}
+			if _, duplicate := seenBDFs[device.PCIBDF]; duplicate {
+				return errors.New("ModelRuntime local PCI identity is duplicated")
+			}
+			seenGPUs[device.GPUUUID] = struct{}{}
+			seenBDFs[device.PCIBDF] = struct{}{}
 		}
 		seenLocalDevices[device.DeviceID] = struct{}{}
-		seenGPUs[device.GPUUUID] = struct{}{}
-		seenBDFs[device.PCIBDF] = struct{}{}
 	}
 	routes := make(map[string]struct{}, len(manifest.Runtimes))
 	residencies := make(map[string]struct{}, len(manifest.Runtimes))
@@ -268,6 +269,10 @@ func validateLaunchTopology(manifest LaunchManifest) error {
 		}
 	case "llm":
 		if manifest.SharedSlotException == "" && len(manifest.Runtimes) == 1 && components["LLM"] == 1 {
+			return nil
+		}
+	case "cpu-encode", "cpu-mux", "cpu-thumbnail":
+		if standardH3("CPU_MEDIA") && manifest.LocalDevices[0].ResourceClass == "CPU" {
 			return nil
 		}
 	}
