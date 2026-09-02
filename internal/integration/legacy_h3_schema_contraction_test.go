@@ -109,12 +109,12 @@ func TestLegacyH3SchemaContractionPreservesStageJobAfterAuthorizedUpgrade(t *tes
 	`)
 	assertPostgresConstraint(t, err, "profile_certifications_stage_or_inert_fk")
 
-	if err := goose.UpTo(fixture.database.Admin, migrations, 62); err != nil {
+	if err := goose.UpTo(fixture.database.Admin, migrations, 65); err != nil {
 		t.Fatalf("upgrade contracted Stage-only schema to current version: %v", err)
 	}
 	version, err = goose.GetDBVersion(fixture.database.Admin)
-	if err != nil || version != 62 {
-		t.Fatalf("current Stage-only schema version = %d error=%v, want 62", version, err)
+	if err != nil || version != 65 {
+		t.Fatalf("current Stage-only schema version = %d error=%v, want 65", version, err)
 	}
 	assertStageJobAndAttemptSurviveLegacyH3Contraction(t, fixture.database, jobID)
 }
@@ -173,8 +173,8 @@ func TestLegacyH3SchemaContractionFreshInstallNeedsNoProductionAuthorization(t *
 	applyFoundation(t, database.Admin)
 
 	version, err := goose.GetDBVersion(database.Admin)
-	if err != nil || version != 62 {
-		t.Fatalf("fresh Stage-only schema version = %d error=%v, want 62", version, err)
+	if err != nil || version != 65 {
+		t.Fatalf("fresh Stage-only schema version = %d error=%v, want 65", version, err)
 	}
 
 	for _, table := range []string{

@@ -917,6 +917,11 @@ func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing
 	); err != nil {
 		t.Fatalf("observe multi-member WorkerInstance: %v", err)
 	}
+	seedModelRuntimeCapacityRoute(
+		t, database.Admin, workerID,
+		uuid.MustParse("49200000-0000-0000-0000-000000000123"),
+		uuid.MustParse(multiCapacityPoolID), uuid.MustParse(multiStageProfileID),
+	)
 
 	var deviceSetDigest, membershipDigest, canaryDigest []byte
 	if err := database.Admin.QueryRow(`

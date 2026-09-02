@@ -3140,6 +3140,10 @@ func assignEncoder(
 	if _, err := registry.Observe(context.Background(), evidence); err != nil {
 		t.Fatalf("observe physical cancellation Encoder WorkerInstance: %v", err)
 	}
+	seedModelRuntimeCapacityRoute(
+		t, database.Admin, workerID, evidence.Residencies[0].ID,
+		poolID, uuid.MustParse(encoderStageProfileID),
+	)
 	authority := workerAuthority(t, evidence)
 	issuedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if !leaseExpiresAt.After(issuedAt.Add(100 * time.Millisecond)) {
@@ -3331,6 +3335,12 @@ func activateH3StageGraph(t *testing.T, database testDatabase) {
 
 func seedH3AdmissionCapacityPath(t *testing.T, database testDatabase) {
 	t.Helper()
+	var hasModelRuntimeCapacityRoutes bool
+	if err := database.Admin.QueryRow(`
+		SELECT to_regclass('public.model_runtime_capacity_routes') IS NOT NULL
+	`).Scan(&hasModelRuntimeCapacityRoutes); err != nil {
+		t.Fatalf("inspect ModelRuntime CapacityPool route schema: %v", err)
+	}
 	stages := []struct {
 		key          string
 		profileID    string
@@ -3423,10 +3433,12 @@ func seedH3AdmissionCapacityPath(t *testing.T, database testDatabase) {
 		if _, err := registry.Observe(context.Background(), evidence); err != nil {
 			t.Fatalf("observe %s Admission READY capacity: %v", stage.key, err)
 		}
-		seedModelRuntimeCapacityRoute(
-			t, database.Admin, stage.workerID, evidence.Residencies[0].ID,
-			stage.poolID, uuid.MustParse(stage.profileID),
-		)
+		if hasModelRuntimeCapacityRoutes {
+			seedModelRuntimeCapacityRoute(
+				t, database.Admin, stage.workerID, evidence.Residencies[0].ID,
+				stage.poolID, uuid.MustParse(stage.profileID),
+			)
+		}
 	}
 }
 

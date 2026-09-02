@@ -260,6 +260,7 @@ func verifyAttemptCoordinatorPrivileges(
 			"vela_release_stage_cache_execution_pin(jsonb)",
 			"vela_request_stage_cache_deletion(jsonb)",
 			"vela_reconcile_stage_cache_deletions(timestamp with time zone,integer)",
+			"vela_admit_h3_exact_cache_entry(jsonb)",
 			"vela_read_h3_exact_cache_candidates(text,integer)",
 			"vela_find_h3_exact_cache_entry(uuid,uuid,uuid,uuid,uuid,text,bytea,timestamp with time zone)",
 		},
@@ -382,6 +383,17 @@ func verifyH3CampaignEvidencePrivileges(
 	}
 	if !legacyWorkersPresent {
 		relations = append(relations, "model_residencies")
+	}
+	capacityRoutesPresent, err := databaseRelationExists(
+		ctx,
+		database,
+		"public.model_runtime_capacity_routes",
+	)
+	if err != nil {
+		return fmt.Errorf("inspect H3 campaign evidence ModelRuntime route surface: %w", err)
+	}
+	if capacityRoutesPresent {
+		relations = append(relations, "model_runtime_capacity_routes")
 	}
 	tables := make([]relationPrivilege, 0, len(relations))
 	for _, relation := range relations {
