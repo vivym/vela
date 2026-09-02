@@ -163,16 +163,25 @@ jobs:
       - name: Check contract compatibility
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CONTRACT_EPOCH_SHA: 9ea90da9c3969474240562f791984769348ef87b
         run: |
+          set -euo pipefail
+          contract_base_sha="${BASE_SHA}"
+          if git merge-base --is-ancestor "${CONTRACT_EPOCH_SHA}" HEAD && \
+             ! git merge-base --is-ancestor "${CONTRACT_EPOCH_SHA}" "${BASE_SHA}"; then
+            contract_base_sha="${CONTRACT_EPOCH_SHA}"
+            echo "Using post-contraction contract epoch ${contract_base_sha}"
+          fi
           contract_base="${RUNNER_TEMP}/vela-contract-base"
           mkdir -p "${contract_base}"
-          if git cat-file -e "${BASE_SHA}:buf.yaml"; then
-            git archive "${BASE_SHA}" buf.yaml proto | tar -x -C "${contract_base}"
+          if git cat-file -e "${contract_base_sha}:buf.yaml"; then
+            git archive "${contract_base_sha}" buf.yaml proto | tar -x -C "${contract_base}"
             go run github.com/bufbuild/buf/cmd/buf@v1.72.0 breaking . --against "${contract_base}"
           fi
-          if git cat-file -e "${BASE_SHA}:api/openapi/vela.yaml"; then
-            git show "${BASE_SHA}:api/openapi/vela.yaml" > "${contract_base}/vela.yaml"
+          if git cat-file -e "${contract_base_sha}:api/openapi/vela.yaml"; then
+            git show "${contract_base_sha}:api/openapi/vela.yaml" > "${contract_base}/vela.yaml"
             go run github.com/oasdiff/oasdiff@v1.29.1 breaking \
+              --fail-on ERR \
               "${contract_base}/vela.yaml" api/openapi/vela.yaml
           fi
 
