@@ -97,6 +97,76 @@ func TestBuildH3MockBackendProducesExactVerifiedContext(t *testing.T) {
 	}
 }
 
+func TestBuildH3StageMockRuntimeProducesExactVerifiedCommands(t *testing.T) {
+	repository := deploymentRepositoryRoot(t)
+	output := filepath.Join(canonicalTemporaryDirectory(t), "h3-stage-mock-commands")
+	command := exec.Command("make", "-s", "build-h3-stage-mock-runtime")
+	command.Dir = repository
+	command.Env = append(os.Environ(), "H3_STAGE_MOCK_RUNTIME_CONTEXT="+output)
+	encoded, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("build H3 Stage mock runtime: %v\n%s", err, encoded)
+	}
+	entries, err := os.ReadDir(output)
+	if err != nil {
+		t.Fatalf("read H3 Stage mock runtime context: %v", err)
+	}
+	wantNames := []string{"h3-dit", "h3-encoder", "h3-vae-decoder"}
+	if len(entries) != len(wantNames) {
+		t.Fatalf("H3 Stage mock runtime inventory=%v", entries)
+	}
+	digests := make(map[string]string, len(entries))
+	for index, entry := range entries {
+		if entry.Name() != wantNames[index] || !entry.Type().IsRegular() {
+			t.Fatalf("H3 Stage mock runtime inventory=%v", entries)
+		}
+		path := filepath.Join(output, entry.Name())
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name(), err)
+		}
+		digest := sha256.Sum256(content)
+		digests[entry.Name()] = hex.EncodeToString(digest[:])
+		information, err := os.Stat(path)
+		if err != nil || information.Mode().Perm() != 0o555 {
+			t.Fatalf("%s mode=%v error=%v", entry.Name(), information.Mode().Perm(), err)
+		}
+	}
+	if err := releaseartifacts.VerifyH3RuntimeCommands(
+		output, digests["h3-encoder"], digests["h3-dit"], digests["h3-vae-decoder"],
+	); err != nil {
+		t.Fatalf("verify H3 Stage mock runtime commands: %v", err)
+	}
+	if digests["h3-encoder"] != digests["h3-dit"] ||
+		digests["h3-encoder"] != digests["h3-vae-decoder"] {
+		t.Fatalf("mock commands were not published from one runtime: %v", digests)
+	}
+	assignments := make(map[string]string, 4)
+	for _, line := range strings.Split(strings.TrimSpace(string(encoded)), "\n") {
+		name, value, ok := strings.Cut(line, "=")
+		if !ok || name == "" || value == "" {
+			t.Fatalf("malformed H3 Stage mock builder output line %q", line)
+		}
+		if _, duplicate := assignments[name]; duplicate {
+			t.Fatalf("duplicate H3 Stage mock builder assignment %q", name)
+		}
+		assignments[name] = value
+	}
+	wantAssignments := map[string]string{
+		"H3_RUNTIME_COMMAND_CONTEXT": output,
+		"H3_ENCODER_SHA256":          digests["h3-encoder"],
+		"H3_DIT_SHA256":              digests["h3-dit"],
+		"H3_VAE_DECODER_SHA256":      digests["h3-vae-decoder"],
+	}
+	if !reflect.DeepEqual(assignments, wantAssignments) {
+		t.Fatalf("H3 Stage mock builder assignments=%v want=%v", assignments, wantAssignments)
+	}
+
+	if encoded, err := command.CombinedOutput(); err == nil {
+		t.Fatalf("second H3 Stage mock runtime build unexpectedly succeeded:\n%s", encoded)
+	}
+}
+
 func TestVerifyH3RuntimeCommandsRequiresExactDigestBoundInventory(t *testing.T) {
 	repository := deploymentRepositoryRoot(t)
 	mockContext := filepath.Join(canonicalTemporaryDirectory(t), "h3-mock-context")

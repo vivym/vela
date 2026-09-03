@@ -17,6 +17,13 @@ and validation, retry, and deployment behavior while the real backend is still
 under development. It is not an H3 implementation, model certification input,
 performance simulator, or Production Gate artifact.
 
+This command is now the legacy monolithic Runner mock. The Stage execution
+migration deliberately keeps it for old receipt replay and contraction checks,
+but current Worker images must not install it under the Stage command names.
+The resident `stdio-json-v1` mock used by the current `ENCODER`, `DIT`, and
+`VAE_DECODER` paths is specified separately in
+[`0052-h3-stage-mock-runtime.md`](0052-h3-stage-mock-runtime.md).
+
 ## Build contract
 
 Build a fresh `linux/amd64` backend context with:

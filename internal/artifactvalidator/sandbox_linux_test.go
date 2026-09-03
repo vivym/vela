@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -174,6 +175,8 @@ func TestLandlockRestrictsFilesystemToPinnedExecutable(t *testing.T) {
 		deniedEnvironment = "VELA_LANDLOCK_TEST_DENIED_PATH"
 	)
 	if os.Getenv(childEnvironment) == "1" {
+		runtime.LockOSThread()
+
 		executable, err := os.Open(os.Args[0])
 		if err != nil {
 			t.Fatal(err)

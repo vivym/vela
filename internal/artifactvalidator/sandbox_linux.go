@@ -308,6 +308,14 @@ func (buffer *boundedBuffer) overflowed() bool {
 }
 
 func RunSandboxHelper(arguments []string) error {
+	runtime.LockOSThread()
+	threadRestricted := false
+	defer func() {
+		if !threadRestricted {
+			runtime.UnlockOSThread()
+		}
+	}()
+
 	sandboxRoot, err := parseSandboxHelperArguments(arguments)
 	if err != nil {
 		return err
@@ -341,6 +349,9 @@ func RunSandboxHelper(arguments []string) error {
 	if err := applySandboxRlimits(); err != nil {
 		return err
 	}
+	// Capability, no_new_privs, and Landlock changes are thread-scoped and
+	// irreversible. Keep this goroutine pinned until exec or process exit.
+	threadRestricted = true
 	if err := clearSandboxCapabilities(); err != nil {
 		return err
 	}
