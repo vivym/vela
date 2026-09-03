@@ -4,10 +4,10 @@ Date: 2026-09-03
 
 Status: the Stage mock runtime from source revision
 `756b2b726c2692de7d2ef4a6fe46401e135a0486` was published to the lab's
-private Registry and passed a CPU-only command-protocol smoke on both Worker
-nodes. This is not a complete Stage/Fleet deployment, a real H3 execution, a
-performance result, or a Production Gate receipt. Production Gates remain
-`0/9 PASS`.
+private Registry and passed both a CPU-only command-protocol startup smoke and
+a direct command-protocol lifecycle suite on both Worker nodes. This is not a
+complete Stage/Fleet deployment, a real H3 execution, a performance result, or
+a Production Gate receipt. Production Gates remain `0/9 PASS`.
 
 ## Scope and topology
 
@@ -97,7 +97,7 @@ mount or GPU access, changed only the fresh `/work` `emptyDir` to
 reported mode `0700`, and the runtime then accepted the scratch, input, and
 output ancestry.
 
-## Results
+## Initial startup smoke results
 
 | Pod | Node | UTC interval | Result | Main exit | GPU request |
 | --- | --- | --- | --- | --- | --- |
@@ -112,8 +112,52 @@ For `ENCODER`, `DIT`, and `VAE_DECODER`, both Pods observed all of:
 
 Kubernetes reported the exact digest-pinned `imageID` above on both nodes.
 This proves command startup and the minimal resident protocol path in the
-current lab image. It does not exercise `prepare`, `start`, `status`, `seal`,
-`cancel`, Stage artifact transfer, Scheduler/Fleet integration, or GPU work.
+current lab image. This initial phase did not exercise `prepare`, `start`,
+`status`, `seal`, `cancel`, Stage artifact transfer, Scheduler/Fleet
+integration, or GPU work.
+
+## Direct command lifecycle results
+
+After the initial receipt was squash-merged as
+`791c1b22b99f22889d8fc656fc3c0f39c59d1a33`, a follow-up used the same
+runtime image and source revision. That merge changed documentation only and
+did not rebuild or retag the image. One new ephemeral Pod ran on each Worker:
+
+| Pod | Pod UID | Node | UTC interval | Result | Main exit | GPU request |
+| --- | --- | --- | --- | --- | --- | --- |
+| `vela-stage-mock-lifecycle-w1-791c1b2` | `3bd5bc4b-585c-4472-8d9f-ad037b367c67` | `vela-lab-worker-1` | `07:11:14` to `07:11:16` | `Succeeded` | `0` | `0` |
+| `vela-stage-mock-lifecycle-w2-791c1b2` | `708b403f-51dd-46ac-b646-d8d97c6d0494` | `vela-lab-worker-2` | `07:15:52` to `07:15:54` | `Succeeded` | `0` | `0` |
+
+Both Pods ran the main process as UID/GID `10001`, requested `50m` CPU and
+`64Mi` memory, restarted zero times, and reported the exact digest-pinned
+`imageID` above. For each component they completed:
+
+```text
+initialize -> probe -> prepare -> start -> status(OUTPUT_READY) -> seal -> shutdown
+```
+
+The sealed mock outputs were byte-for-byte identical on both Workers:
+
+| Component | Output port | Content type | Size | SHA-256 |
+| --- | --- | --- | ---: | --- |
+| `ENCODER` | `conditioning` | `application/x-minimax-h3-encoder` | 171 bytes | `c48de0389eed3c11855f8b55bb34da59b77c7fc4bc09f027adf00b7fddc7632b` |
+| `DIT` | `latent` | `application/x-minimax-h3-latent` | 233 bytes | `6e51946215a2705b60c794dcb480583265e3438990e4e081a3dc32f34eacf170` |
+| `VAE_DECODER` | `video` | `video/mp4` | 12,953 bytes | `f4141b2ace373bdbbd89759dada35ddc65b979470d6c47d096e2209bbe3adbe7` |
+
+Each Pod also passed three bounded negative-path checks:
+
+- injected failure returned `FAILED`, `MOCK_INJECTED_FAILURE`, and
+  `worker_reusable=true`; a replacement Stage Attempt was then accepted by
+  `prepare`;
+- injected hang returned `RUNNING`, accepted `cancel`, reached `STOPPED`, and
+  left no output; and
+- a one-byte-different DIT input was rejected with
+  `H3 Stage mock input digest is mismatched` and left no output.
+
+These checks directly exercised the three runtime commands over
+`stdio-json-v1` inside standalone Pods. They did not involve Vela API
+admission, Scheduler assignment, Stage Worker or Fleet orchestration, live
+Lease/fence authority, cross-Pod artifact transfer, or GPU execution.
 
 ## Non-interference and cleanup
 
@@ -137,6 +181,13 @@ requests, and exit status, all five temporary diagnostic and successful smoke
 Pods were deleted by exact name. No Pod with
 `app.kubernetes.io/name=vela-stage-mock-smoke` remained.
 
+The two follow-up lifecycle Pods were likewise deleted by exact name after
+their evidence was captured. No Pod with
+`app.kubernetes.io/name=vela-stage-mock-lifecycle` remained. Before and after
+that suite, Worker 1 retained the same `sgl_diffusion::scheduler` process and
+Worker 2 retained the same eight `VLLM::Worker_PP*` processes. Both existing
+`vela-h3-mock-runner` containers remained healthy.
+
 The pinned postflight verifier
 `verify-cluster-b575257.sh` (SHA-256
 `10b7dae8395f2d1ca1bd9fb4f8d5a73e4a98af64fb105cd24e8981f1599af24a`)
@@ -148,11 +199,16 @@ then returned `result=PASS failures=0` at `2026-09-03T06:01:35Z`. It confirmed:
 - all DaemonSets and Deployments available; and
 - no unhealthy non-terminal Pod.
 
+The same pinned verifier ran again after the lifecycle Pods were removed. At
+`2026-09-03T07:17:44Z` it again returned `result=PASS failures=0`, including
+GPU capacity/allocatable `8/8` on each Worker and `0` on control. This is a
+cluster postflight result, not a Production Gate result.
+
 ## Evidence boundary and next deployment
 
 The legacy `vela-h3-mock-runner` containers implement the retired monolithic
 Runner protocol. This Stage mock image is not a drop-in replacement for those
-containers, so this experiment deliberately did not roll them.
+containers, so neither experiment rolled them.
 
 A complete Stage/Fleet lab deployment still needs a separate authorized change
 window and release-bound inputs, including the schema through migration 65,
