@@ -264,10 +264,15 @@ func assertLabV2RuntimePrivateMaterializer(t *testing.T, name string, deployment
 		t.Fatalf("%s ModelRuntime socket preparer is absent", name)
 	}
 	preparerScript := strings.Join(preparer.Args, "\n")
+	wantPreparerScript := strings.Join([]string{
+		"chown 0:0 /runtime-socket",
+		"chmod 0700 /runtime-socket",
+		"install -d -m 0700 /runtime-socket/private",
+		"chown 10001:10001 /runtime-socket/private",
+		"chown 10001:10001 /runtime-socket",
+	}, "\n")
 	if !equalStrings(preparer.Command, []string{"/bin/sh", "-ec"}) ||
-		!strings.Contains(preparerScript, "install -d -m 0700 /runtime-socket/private") ||
-		!strings.Contains(preparerScript, "chmod 0700 /runtime-socket /runtime-socket/private") ||
-		!strings.Contains(preparerScript, "chown 10001:10001 /runtime-socket /runtime-socket/private") ||
+		strings.TrimSpace(preparerScript) != wantPreparerScript ||
 		preparer.SecurityContext.RunAsNonRoot == nil || *preparer.SecurityContext.RunAsNonRoot ||
 		preparer.SecurityContext.RunAsUser == nil || *preparer.SecurityContext.RunAsUser != 0 ||
 		preparer.SecurityContext.RunAsGroup == nil || *preparer.SecurityContext.RunAsGroup != 0 ||
