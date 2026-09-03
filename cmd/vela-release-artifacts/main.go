@@ -29,6 +29,21 @@ func run(arguments []string) int {
 		)
 		return 0
 	}
+	if len(arguments) == 3 && arguments[0] == "build-h3-stage-mock-runtime" {
+		digests, err := releaseartifacts.BuildH3StageMockRuntime(
+			context.Background(), arguments[1], arguments[2],
+		)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "build H3 Stage mock runtime: %v\n", err)
+			return 1
+		}
+		_, _ = fmt.Fprintf(
+			os.Stdout,
+			"H3_RUNTIME_COMMAND_CONTEXT=%s\nH3_ENCODER_SHA256=%s\nH3_DIT_SHA256=%s\nH3_VAE_DECODER_SHA256=%s\n",
+			arguments[2], digests.Encoder, digests.DiT, digests.VAEDecoder,
+		)
+		return 0
+	}
 	if len(arguments) == 4 && arguments[0] == "build-host-packages" {
 		if err := releaseartifacts.BuildHostPackages(
 			context.Background(), arguments[1], arguments[2], arguments[3],
@@ -87,7 +102,7 @@ func run(arguments []string) int {
 		_, _ = fmt.Fprintln(os.Stdout, output)
 		return 0
 	}
-	_, _ = fmt.Fprintln(os.Stderr, "usage: vela-release-artifacts <build-h3-mock-backend|build-host-packages|verify-h3-backend|verify-h3-runtime-commands|print-vela-image-build|build-vela-images|build-vela-image-artifacts|publish-vela-images> ...")
+	_, _ = fmt.Fprintln(os.Stderr, "usage: vela-release-artifacts <build-h3-mock-backend|build-h3-stage-mock-runtime|build-host-packages|verify-h3-backend|verify-h3-runtime-commands|print-vela-image-build|build-vela-images|build-vela-image-artifacts|publish-vela-images> ...")
 	return 2
 }
 

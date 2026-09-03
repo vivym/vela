@@ -30,6 +30,12 @@ var (
 
 var ErrInjectedFailure = errors.New("mock backend injected failure")
 
+// ReadVideoFixture returns the bounded media payload used by non-production
+// mock backends that must exercise the final video validation path.
+func ReadVideoFixture() ([]byte, error) {
+	return mediaFixtures.ReadFile("testdata/video-1080p-5s-24fps.mp4")
+}
+
 //go:embed testdata/video-1080p-5s-24fps.mp4 testdata/thumbnail-320x180.webp
 var mediaFixtures embed.FS
 
