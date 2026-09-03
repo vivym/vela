@@ -3107,6 +3107,7 @@ func assignEncoder(
 	leaseExpiresAt time.Time,
 ) attemptcoordinator.AssignStageCommand {
 	t.Helper()
+	leaseExpiresAt = leaseExpiresAt.UTC().Truncate(time.Microsecond)
 	seedWorkerRegistryPlan(t, database.Admin)
 	poolID := uuid.New()
 	workerID := uuid.New()

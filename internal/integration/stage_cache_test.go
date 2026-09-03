@@ -124,7 +124,7 @@ func TestStageCacheAdmitAndHitPinsExactArtifactAtBillableStart(t *testing.T) {
 	`, targetAttemptID).Scan(&targetRunID); err != nil {
 		t.Fatalf("read target Encoder StageRun: %v", err)
 	}
-	hitAt := time.Now().UTC()
+	hitAt := time.Now().UTC().Truncate(time.Microsecond)
 	hitCommand := stagecache.HitCommand{
 		CommandID: uuid.New(), EntryID: admitted.EntryID, PinID: uuid.New(),
 		AttemptID: targetAttemptID, StageRunID: targetRunID,
@@ -561,7 +561,7 @@ func TestStageRunOutputBindingMigrationRoundTrip(t *testing.T) {
 
 func TestStageCacheDeletionWaitsForExactExecutionPin(t *testing.T) {
 	fixture := newPinnedStageCacheFixture(t, "stage-cache-deletion")
-	requestedAt := time.Now().UTC()
+	requestedAt := time.Now().UTC().Truncate(time.Microsecond)
 	deleteCommand := stagecache.DeletionCommand{
 		CommandID: uuid.New(), OrganizationID: uuid.MustParse(testOrganizationID),
 		ProjectID: uuid.MustParse(testProjectID), SourceJobID: fixture.sourceJobID,

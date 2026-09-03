@@ -376,14 +376,14 @@ func prepareSandboxRoot(sandboxRoot string) error {
 		return fmt.Errorf("inspect Artifact sandbox root: %w", err)
 	}
 	if len(entries) != 2 {
-		return errors.New("Artifact sandbox root contains an unexpected entry")
+		return errors.New("artifact sandbox root contains an unexpected entry")
 	}
 	expected := map[string]os.FileMode{"artifact-ffprobe": 0o500, "artifact-input": 0o400}
 	for _, entry := range entries {
 		mode, exists := expected[entry.Name()]
 		info, infoErr := entry.Info()
 		if !exists || infoErr != nil || !info.Mode().IsRegular() || info.Mode().Perm() != mode {
-			return errors.New("Artifact sandbox root contains an unexpected entry")
+			return errors.New("artifact sandbox root contains an unexpected entry")
 		}
 	}
 	if err := os.Chmod(sandboxRoot, 0o500); err != nil {
@@ -396,7 +396,7 @@ func validateSandboxIdentity() error {
 	uid := os.Geteuid()
 	gid := os.Getegid()
 	if uid <= 0 || gid <= 0 {
-		return errors.New("Artifact sandbox helper must remain non-root")
+		return errors.New("artifact sandbox helper must remain non-root")
 	}
 	for _, identity := range []struct {
 		path string
@@ -410,7 +410,7 @@ func validateSandboxIdentity() error {
 			return fmt.Errorf("read Artifact sandbox identity map: %w", err)
 		}
 		if !sandboxIDMapMatches(mapping, identity.id) {
-			return errors.New("Artifact sandbox helper has an unexpected identity map")
+			return errors.New("artifact sandbox helper has an unexpected identity map")
 		}
 	}
 	return nil
@@ -442,7 +442,7 @@ func clearSandboxCapabilities() error {
 	}
 	for index, capabilitySet := range capabilities {
 		if capabilitySet.Effective != 0 || capabilitySet.Permitted != 0 || capabilitySet.Inheritable != 0 {
-			return fmt.Errorf("Artifact sandbox capability word %d remains nonzero", index)
+			return fmt.Errorf("artifact sandbox capability word %d remains nonzero", index)
 		}
 	}
 	return nil
@@ -454,7 +454,7 @@ func restrictSandboxFilesystem(ffprobe *os.File, inputs ...*os.File) error {
 		return fmt.Errorf("query Artifact sandbox Landlock ABI: %w", err)
 	}
 	if abi < 1 {
-		return errors.New("Artifact sandbox Landlock ABI is unavailable")
+		return errors.New("artifact sandbox Landlock ABI is unavailable")
 	}
 	access := landlockFilesystemAccessMask(abi)
 	ruleset, err := landlockCreateRuleset(
@@ -476,7 +476,7 @@ func restrictSandboxFilesystem(ffprobe *os.File, inputs ...*os.File) error {
 	}
 	for _, input := range inputs {
 		if input == nil {
-			return errors.New("Artifact sandbox input is missing from Landlock ruleset")
+			return errors.New("artifact sandbox input is missing from Landlock ruleset")
 		}
 		allowedInput := unix.LandlockPathBeneathAttr{
 			Allowed_access: unix.LANDLOCK_ACCESS_FS_READ_FILE,
