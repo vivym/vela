@@ -24,10 +24,11 @@ import (
 )
 
 const (
-	protocolVersion       = 1
-	maximumMessageBytes   = 1 << 20
-	maximumExecutionBytes = 64 << 10
-	maximumInputs         = 64
+	protocolVersion           = 1
+	maximumMessageBytes       = 1 << 20
+	maximumExecutionBytes     = 64 << 10
+	maximumInputs             = 64
+	maximumRetiredAuthorities = 65_536
 )
 
 var (
@@ -196,11 +197,12 @@ type outputV1 struct {
 }
 
 type session struct {
-	component      string
-	mode           Mode
-	now            func() time.Time
-	initialization *initializeV1
-	active         *execution
+	component          string
+	mode               Mode
+	now                func() time.Time
+	initialization     *initializeV1
+	active             *execution
+	retiredAuthorities map[string]struct{}
 }
 
 type execution struct {
@@ -257,6 +259,7 @@ func Run(ctx context.Context, config Config) error {
 	}
 	runtime := &session{
 		component: config.Component, mode: config.Mode, now: config.Now,
+		retiredAuthorities: make(map[string]struct{}),
 	}
 	reader := bufio.NewReaderSize(config.Stdin, maximumMessageBytes+2)
 	encoder := json.NewEncoder(config.Stdout)
@@ -459,12 +462,21 @@ func (runtime *session) prepare(request *prepareRequestV1) error {
 			}
 			return errors.New("H3 Stage mock authority cannot change execution specification")
 		}
+		if _, retired := runtime.retiredAuthorities[request.Identity.AuthorityDigest]; retired {
+			return errors.New("H3 Stage mock authority has already retired")
+		}
 		if runtime.active.identity.StageAttemptID == request.Identity.StageAttemptID {
 			return errors.New("H3 Stage mock StageAttempt cannot change authority")
 		}
 		if runtime.active.state != stateStopped && runtime.active.state != stateOutputSealed &&
 			(runtime.active.state != stateFailed || runtime.active.failure == nil || !runtime.active.failure.WorkerReusable) {
 			return errors.New("H3 Stage mock runtime already has an active stage")
+		}
+		if _, recorded := runtime.retiredAuthorities[runtime.active.identity.AuthorityDigest]; !recorded {
+			if len(runtime.retiredAuthorities) >= maximumRetiredAuthorities {
+				return errors.New("H3 Stage mock retired authority bound is exhausted")
+			}
+			runtime.retiredAuthorities[runtime.active.identity.AuthorityDigest] = struct{}{}
 		}
 	}
 	prepared, err := runtime.prepareExecution(request.Identity, request.ExecutionSpec)

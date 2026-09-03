@@ -321,7 +321,7 @@ func TestRuntimeRejectsAuthoritySpecMutationAfterSeal(t *testing.T) {
 	}
 }
 
-func TestRuntimeDoesNotRetainUnboundedCompletedHistory(t *testing.T) {
+func TestRuntimeRejectsRetiredAuthorityWithoutRetainingExecutionHistory(t *testing.T) {
 	root, inputRoot, outputRoot := runtimeRoots(t)
 	first := stageIdentity("49300000-0000-0000-0000-000000000001")
 	second := stageIdentity("49300000-0000-0000-0000-000000000002")
@@ -339,7 +339,17 @@ func TestRuntimeDoesNotRetainUnboundedCompletedHistory(t *testing.T) {
 		map[string]any{"schema_version": 1, "request_id": 4, "operation": "seal", "stage": map[string]any{"identity": first}},
 		map[string]any{"schema_version": 1, "request_id": 5, "operation": "prepare", "prepare": map[string]any{"identity": second, "execution_spec": specification}},
 		map[string]any{"schema_version": 1, "request_id": 6, "operation": "status", "stage": map[string]any{"identity": first}},
-		map[string]any{"schema_version": 1, "request_id": 7, "operation": "shutdown"},
+		map[string]any{
+			"schema_version": 1, "request_id": 7, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": first,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					ParametersJson:             []byte(`{"seed":18}`),
+					ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 8, "operation": "shutdown"},
 	}
 	responses := runRuntime(t, h3stagemock.Config{
 		Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
@@ -349,6 +359,9 @@ func TestRuntimeDoesNotRetainUnboundedCompletedHistory(t *testing.T) {
 	}
 	if _, ok := responses[5]["error"].(string); !ok {
 		t.Fatalf("completed assignment remained queryable: %#v", responses[5])
+	}
+	if _, ok := responses[6]["error"].(string); !ok {
+		t.Fatalf("retired authority was rebound: %#v", responses[6])
 	}
 }
 

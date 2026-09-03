@@ -88,11 +88,13 @@ full Attempt/Stage lineage. Repeated calls for the current assignment with the
 same authority and exact specification are idempotent; the authority cannot be
 reused with different specification bytes. A different active authority is
 rejected until the prior execution is sealed, stopped, or reusable-failed. The
-single-slot process replaces a terminal assignment instead of retaining an
-unbounded replay history. Cancel or shutdown deletes an unsealed output before
-reporting the execution stopped; sealed output cannot be canceled. A local
-publication error enters a bounded reusable `FAILED` state instead of leaving
-the execution apparently running.
+single-slot process replaces a terminal assignment and retains only a compact,
+fixed-capacity set of retired authority digests, not prior execution payloads.
+A retired authority cannot be rebound; after 65,536 retired authorities the
+mock fails closed until its resident process is restarted. Cancel or shutdown
+deletes an unsealed output before reporting the execution stopped; sealed
+output cannot be canceled. A local publication error enters a bounded reusable
+`FAILED` state instead of leaving the execution apparently running.
 
 ## Fault modes
 
