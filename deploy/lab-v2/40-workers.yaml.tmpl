@@ -43,9 +43,13 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - |
-              install -d -m 0700 /runtime-socket/private
-              chmod 0700 /runtime-socket /runtime-socket/private
-              chown 10001:10001 /runtime-socket /runtime-socket/private
+              chown 0:0 /runtime-socket
+              chmod 00700 /runtime-socket
+              mkdir -p /runtime-socket/private
+              chown 0:0 /runtime-socket/private
+              chmod 00700 /runtime-socket/private
+              chown 10001:10001 /runtime-socket/private
+              chown 10001:10001 /runtime-socket
           resources:
             requests: {cpu: "10m", memory: 8Mi}
             limits: {cpu: "100m", memory: 16Mi}
@@ -216,9 +220,13 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - |
-              install -d -m 0700 /runtime-socket/private
-              chmod 0700 /runtime-socket /runtime-socket/private
-              chown 10001:10001 /runtime-socket /runtime-socket/private
+              chown 0:0 /runtime-socket
+              chmod 00700 /runtime-socket
+              mkdir -p /runtime-socket/private
+              chown 0:0 /runtime-socket/private
+              chmod 00700 /runtime-socket/private
+              chown 10001:10001 /runtime-socket/private
+              chown 10001:10001 /runtime-socket
           resources:
             requests: {cpu: "10m", memory: 8Mi}
             limits: {cpu: "100m", memory: 16Mi}
@@ -384,9 +392,13 @@ spec:
           command: ["/bin/sh", "-ec"]
           args:
             - |
-              install -d -m 0700 /runtime-socket/private
-              chmod 0700 /runtime-socket /runtime-socket/private
-              chown 10001:10001 /runtime-socket /runtime-socket/private
+              chown 0:0 /runtime-socket
+              chmod 00700 /runtime-socket
+              mkdir -p /runtime-socket/private
+              chown 0:0 /runtime-socket/private
+              chmod 00700 /runtime-socket/private
+              chown 10001:10001 /runtime-socket/private
+              chown 10001:10001 /runtime-socket
           resources:
             requests: {cpu: "10m", memory: 8Mi}
             limits: {cpu: "100m", memory: 16Mi}
