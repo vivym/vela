@@ -44,7 +44,7 @@ spec:
           args:
             - |
               install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
-              install -d -m 0700 /runtime-private
+              test -d /runtime-private
               install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
               install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
               install -m 0400 /projected/tls.key /stage-private/control/tls.key
@@ -195,7 +195,7 @@ spec:
           args:
             - |
               install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
-              install -d -m 0700 /runtime-private
+              test -d /runtime-private
               install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
               install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
               install -m 0400 /projected/tls.key /stage-private/control/tls.key
@@ -341,7 +341,7 @@ spec:
           args:
             - |
               install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
-              install -d -m 0700 /runtime-private
+              test -d /runtime-private
               install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
               install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
               install -m 0400 /projected/tls.key /stage-private/control/tls.key
