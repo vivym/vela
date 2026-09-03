@@ -145,6 +145,11 @@ func runWithContext(ctx context.Context, configuration config) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		createValidator, err = fleetcontroller.NewWorkerInstancePodAdmissionValidator(nil)
+		if err != nil {
+			return err
+		}
 	}
 	runtimeController, err := fleetcontroller.NewRuntime(
 		fleetcontroller.RuntimeConfig{

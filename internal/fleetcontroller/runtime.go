@@ -33,8 +33,8 @@ type Runtime struct {
 }
 
 func NewRuntime(config RuntimeConfig) (*Runtime, error) {
-	if config.PollInterval <= 0 || len(config.ResidencyPlanRollouts) == 0 ||
-		config.WorkerInstanceController == nil {
+	if config.PollInterval <= 0 ||
+		(len(config.ResidencyPlanRollouts) != 0 && config.WorkerInstanceController == nil) {
 		return nil, errors.New("fleet runtime configuration is invalid")
 	}
 	rolloutPlans := make(map[uuid.UUID]struct{}, len(config.ResidencyPlanRollouts))
@@ -54,6 +54,7 @@ func NewRuntime(config RuntimeConfig) (*Runtime, error) {
 		reportError:       config.ReportError,
 	}
 	runtime.admissionReady.Store(true)
+	runtime.converged.Store(len(config.ResidencyPlanRollouts) == 0)
 	return runtime, nil
 }
 
@@ -105,7 +106,15 @@ func cloneWorkerBundleActuation(bundle WorkerBundleActuation) WorkerBundleActuat
 }
 
 func (runtime *Runtime) RunOnce(ctx context.Context) (RuntimeResult, error) {
-	if runtime == nil || runtime.workerInstances == nil || len(runtime.residencyRollouts) == 0 {
+	if runtime == nil {
+		return RuntimeResult{}, errors.New("fleet runtime is not configured")
+	}
+	if len(runtime.residencyRollouts) == 0 {
+		runtime.admissionReady.Store(true)
+		runtime.converged.Store(true)
+		return RuntimeResult{}, nil
+	}
+	if runtime.workerInstances == nil {
 		if runtime != nil {
 			runtime.admissionReady.Store(false)
 			runtime.converged.Store(false)

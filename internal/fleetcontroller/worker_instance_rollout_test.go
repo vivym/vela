@@ -146,6 +146,25 @@ func TestRuntimeReconcilesTargetOnlyResidencyPlanWithoutLegacyWorkerPool(t *test
 	}
 }
 
+func TestRuntimeTreatsEmptyDesiredStateAsReadyConvergedNoop(t *testing.T) {
+	runtimeController, err := fleetcontroller.NewRuntime(fleetcontroller.RuntimeConfig{
+		PollInterval: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("create empty Fleet runtime: %v", err)
+	}
+	if !runtimeController.Ready() || !runtimeController.Converged() {
+		t.Fatalf(
+			"empty Fleet runtime ready=%t converged=%t, want true/true",
+			runtimeController.Ready(), runtimeController.Converged(),
+		)
+	}
+	result, err := runtimeController.RunOnce(context.Background())
+	if err != nil || result != (fleetcontroller.RuntimeResult{}) {
+		t.Fatalf("empty Fleet runtime result=%#v error=%v", result, err)
+	}
+}
+
 func TestWorkerInstancePodAdmissionRequiresExactApprovedPlanPod(t *testing.T) {
 	rollout := h3ResidencyPlanRollout(t)
 	scheme := runtime.NewScheme()
@@ -220,6 +239,31 @@ func TestDecodeResidencyPlanRolloutsRejectsUnknownAndCrossNamespaceInput(t *test
 	}
 	if _, err := fleetcontroller.DecodeResidencyPlanRollouts(encoded, "vela-system"); err == nil {
 		t.Fatal("ResidencyPlan rollout decoder accepted a cross-namespace actuation")
+	}
+}
+
+func TestDecodeResidencyPlanRolloutsAcceptsExplicitEmptyDesiredState(t *testing.T) {
+	decoded, err := fleetcontroller.DecodeResidencyPlanRollouts(
+		[]byte(`{"schema_version":1,"rollouts":[]}`),
+		"vela-system",
+	)
+	if err != nil || decoded == nil || len(decoded) != 0 {
+		t.Fatalf("decode explicit empty ResidencyPlan rollouts=%#v error=%v", decoded, err)
+	}
+	for _, encoded := range [][]byte{
+		[]byte(`{"schema_version":1}`),
+		[]byte(`{"schema_version":1,"rollouts":null}`),
+	} {
+		if _, err := fleetcontroller.DecodeResidencyPlanRollouts(encoded, "vela-system"); err == nil {
+			t.Fatalf("ResidencyPlan rollout decoder accepted implicit empty input %s", encoded)
+		}
+	}
+	validator, err := fleetcontroller.NewWorkerInstancePodAdmissionValidator(decoded)
+	if err != nil {
+		t.Fatalf("create empty desired-state admission validator: %v", err)
+	}
+	if err := validator.ValidateProtectedPodCreate(context.Background(), corev1.Pod{}); !errors.Is(err, fleetcontroller.ErrProtectedResourceDrift) {
+		t.Fatalf("empty desired-state validator error=%v", err)
 	}
 }
 

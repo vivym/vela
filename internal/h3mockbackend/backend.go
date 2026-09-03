@@ -36,6 +36,12 @@ func ReadVideoFixture() ([]byte, error) {
 	return mediaFixtures.ReadFile("testdata/video-1080p-5s-24fps.mp4")
 }
 
+// ReadThumbnailFixture returns the bounded WebP payload used by
+// non-production mock backends that exercise thumbnail finalization.
+func ReadThumbnailFixture() ([]byte, error) {
+	return mediaFixtures.ReadFile("testdata/thumbnail-320x180.webp")
+}
+
 //go:embed testdata/video-1080p-5s-24fps.mp4 testdata/thumbnail-320x180.webp
 var mediaFixtures embed.FS
 

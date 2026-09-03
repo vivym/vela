@@ -1,0 +1,318 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-lab-postgres
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  selector:
+    app.kubernetes.io/name: vela-lab-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vela-lab-postgres
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  serviceName: vela-lab-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-postgres
+        app.kubernetes.io/component: database
+        vela.ai/environment: non-production-lab
+        vela.ai/deployment-identity: vela-lab-v2
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        vela.ai/node-role: control-storage
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: __POSTGRES_IMAGE__
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: vela-lab-postgres-env
+          ports:
+            - name: postgres
+              containerPort: 5432
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 999
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          hostPath:
+            path: /var/lib/vela-lab-v2/control-plane/postgres
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-lab-nats-headless
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: vela-lab-nats
+  ports:
+    - name: client
+      port: 4222
+    - name: cluster
+      port: 6222
+    - name: monitoring
+      port: 8222
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-lab-nats
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  selector:
+    app.kubernetes.io/name: vela-lab-nats
+  ports:
+    - name: client
+      port: 4222
+      targetPort: client
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: vela-lab-nats
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  serviceName: vela-lab-nats-headless
+  podManagementPolicy: Parallel
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-nats
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-nats
+        app.kubernetes.io/component: event-stream
+        vela.ai/environment: non-production-lab
+        vela.ai/deployment-identity: vela-lab-v2
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        vela.ai/node-role: control-storage
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: prepare-data-directory
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args: ["mkdir -p /data-root/${POD_NAME}; chown 0:0 /data-root/${POD_NAME}; chmod 0700 /data-root/${POD_NAME}; chown 1000:1000 /data-root/${POD_NAME}"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+          volumeMounts:
+            - name: data
+              mountPath: /data-root
+      containers:
+        - name: nats
+          image: __NATS_IMAGE__
+          imagePullPolicy: IfNotPresent
+          args: ["-c", "/etc/nats/nats.conf"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: client
+              containerPort: 4222
+            - name: cluster
+              containerPort: 6222
+            - name: monitoring
+              containerPort: 8222
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nats
+              readOnly: true
+            - name: tls
+              mountPath: /etc/nats-tls
+              readOnly: true
+            - name: data
+              mountPath: /data
+              subPathExpr: $(POD_NAME)
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          secret:
+            secretName: vela-lab-nats-config
+            defaultMode: 0400
+        - name: tls
+          secret:
+            secretName: vela-lab-nats-tls
+            defaultMode: 0400
+        - name: data
+          hostPath:
+            path: /var/lib/vela-lab-v2/control-plane/nats
+            type: Directory
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vela-lab-minio
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  selector:
+    app.kubernetes.io/name: vela-lab-minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-lab-minio
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-minio
+        app.kubernetes.io/component: object-store
+        vela.ai/environment: non-production-lab
+        vela.ai/deployment-identity: vela-lab-v2
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        vela.ai/node-role: control-storage
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: minio
+          image: __MINIO_IMAGE__
+          imagePullPolicy: IfNotPresent
+          args: ["server", "/data", "--certs-dir", "/etc/minio/certs", "--console-address", ":9001"]
+          envFrom:
+            - secretRef:
+                name: vela-lab-minio-env
+          ports:
+            - name: s3
+              containerPort: 9000
+          readinessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+              scheme: HTTPS
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: s3
+              scheme: HTTPS
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tls
+              mountPath: /etc/minio/certs
+              readOnly: true
+      volumes:
+        - name: data
+          hostPath:
+            path: /var/lib/vela-lab-v2/control-plane/minio
+            type: Directory
+        - name: tls
+          secret:
+            secretName: vela-lab-minio-tls
+            defaultMode: 0400
+            items:
+              - key: tls.crt
+                path: public.crt
+              - key: tls.key
+                path: private.key

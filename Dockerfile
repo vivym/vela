@@ -29,6 +29,9 @@ RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
       vela-control \
 	      vela-artifact-validator \
 	      vela-fleet-controller \
+	      vela-lab-bootstrap \
+	      vela-lab-cpu-thumbnail-mock \
+	      vela-lab-smoke \
 	      vela-model-runtime \
 	      vela-release-artifacts \
 	      vela-stage-worker-agent; do \
@@ -105,6 +108,21 @@ COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-cert
 COPY --from=go-builder --chmod=0555 /out/vela-stage-worker-agent /usr/local/bin/vela-stage-worker-agent
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/vela-stage-worker-agent"]
+
+FROM ${DEBIAN_BASE} AS vela-lab-bootstrap
+ARG RELEASE_REVISION
+LABEL org.opencontainers.image.source="https://github.com/vivym/vela" \
+      org.opencontainers.image.revision="${RELEASE_REVISION}" \
+      org.opencontainers.image.title="vela-lab-bootstrap" \
+      vela.ai.environment="non-production-lab"
+COPY --from=go-builder --chmod=0555 /out/vela-lab-bootstrap /usr/local/bin/vela-lab-bootstrap
+COPY --from=go-builder --chmod=0555 /out/vela-lab-cpu-thumbnail-mock /usr/local/bin/vela-lab-cpu-thumbnail-mock
+COPY --from=go-builder --chmod=0555 /out/vela-lab-smoke /usr/local/bin/vela-lab-smoke
+COPY --from=go-builder --chmod=0555 /out/vela-model-runtime /usr/local/bin/vela-model-runtime
+COPY --chmod=0555 db/bootstrap /opt/vela/share/db/bootstrap
+COPY --chmod=0555 db/migrations /opt/vela/share/db/migrations
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/vela-lab-bootstrap"]
 
 FROM scratch AS vela-model-runtime-base
 ARG RELEASE_REVISION

@@ -64,6 +64,12 @@ target "vela-stage-worker-agent" {
   tags     = ["${RELEASE_IMAGE_PREFIX}/vela-stage-worker-agent:${RELEASE_REVISION}"]
 }
 
+target "vela-lab-bootstrap" {
+  inherits = ["_common"]
+  target   = "vela-lab-bootstrap"
+  tags     = ["${RELEASE_IMAGE_PREFIX}/vela-lab-bootstrap:${RELEASE_REVISION}"]
+}
+
 target "vela-h3-stage-runtime" {
   inherits = ["_common"]
   target   = "vela-h3-stage-runtime"

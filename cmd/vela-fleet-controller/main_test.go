@@ -143,6 +143,47 @@ func TestLoadConfigSupportsResidencyPlanOnlyRuntime(t *testing.T) {
 	}
 }
 
+func TestLoadConfigSupportsExplicitEmptyResidencyPlanRuntime(t *testing.T) {
+	for _, name := range fleetEnvironmentNames() {
+		t.Setenv(name, "")
+	}
+	directory := t.TempDir()
+	rolloutPath := filepath.Join(directory, "residency-plan-rollouts.json")
+	if err := os.WriteFile(
+		rolloutPath,
+		[]byte(`{"schema_version":1,"rollouts":[]}`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write empty ResidencyPlan rollout: %v", err)
+	}
+	values := map[string]string{
+		"VELA_FLEET_NAMESPACE":                    "vela-system",
+		"VELA_FLEET_RESIDENCY_PLAN_ROLLOUTS_FILE": rolloutPath,
+		"VELA_FLEET_MAINTENANCE_ADDRESS":          "vela-control.vela-system.svc:8444",
+		"VELA_FLEET_MAINTENANCE_SERVER_NAME":      "vela-control.vela-system.svc",
+		"VELA_FLEET_TLS_CERT_FILE":                filepath.Join(directory, "tls.crt"),
+		"VELA_FLEET_TLS_KEY_FILE":                 filepath.Join(directory, "tls.key"),
+		"VELA_FLEET_CA_FILE":                      filepath.Join(directory, "ca.crt"),
+		"VELA_FLEET_ADMISSION_ADDRESS":            ":9443",
+		"VELA_FLEET_ADMISSION_TLS_CERT_FILE":      filepath.Join(directory, "admission.crt"),
+		"VELA_FLEET_ADMISSION_TLS_KEY_FILE":       filepath.Join(directory, "admission.key"),
+		"VELA_FLEET_ADMISSION_CLIENT_CA_FILE":     filepath.Join(directory, "admission-client-ca.crt"),
+		"VELA_FLEET_ADMISSION_CLIENT_SPIFFE_ID":   "spiffe://vela.internal/kube-apiserver/admission",
+		"VELA_FLEET_KUBERNETES_USERNAME":          "system:serviceaccount:vela-system:vela-fleet-controller",
+		"VELA_FLEET_POLL_INTERVAL":                "2s",
+	}
+	for name, value := range values {
+		t.Setenv(name, value)
+	}
+	configuration, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load empty Fleet controller config: %v", err)
+	}
+	if configuration.residencyPlanRollouts == nil || len(configuration.residencyPlanRollouts) != 0 {
+		t.Fatalf("empty Fleet controller config = %#v", configuration)
+	}
+}
+
 func singleGPUResidencyPlanRollout(t *testing.T) fleetcontroller.ResidencyPlanRollout {
 	t.Helper()
 	planID := uuid.MustParse("49310000-0000-0000-0000-000000000001")
