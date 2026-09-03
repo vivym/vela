@@ -219,6 +219,7 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 	for index := 1; index <= 2; index++ {
 		name := "vela-lab-stage-worker-" + string(rune('0'+index))
 		worker := deployments[name]
+		assertLabV2RuntimePrivateMaterializer(t, name, worker)
 		if got := containerNames(worker.Spec.Template.Spec.Containers); !equalStrings(got, []string{"model-runtime", "stage-worker-agent"}) {
 			t.Fatalf("%s containers = %v", name, got)
 		}
@@ -233,6 +234,7 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 		}
 	}
 	thumbnail := deployments["vela-lab-stage-worker-thumbnail"]
+	assertLabV2RuntimePrivateMaterializer(t, "vela-lab-stage-worker-thumbnail", thumbnail)
 	if got := containerNames(thumbnail.Spec.Template.Spec.Containers); !equalStrings(got, []string{"model-runtime", "stage-worker-agent"}) {
 		t.Fatalf("thumbnail containers = %v", got)
 	}
@@ -244,6 +246,21 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") ||
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
 		t.Fatalf("thumbnail CPU Worker deployment = %#v", thumbnail)
+	}
+}
+
+func assertLabV2RuntimePrivateMaterializer(t *testing.T, name string, deployment labV2Document) {
+	t.Helper()
+	materializer, ok := findContainer(deployment.Spec.Template.Spec.InitContainers, "materialize-private-files")
+	if !ok {
+		t.Fatalf("%s private-file materializer is absent", name)
+	}
+	script := strings.Join(materializer.Args, "\n")
+	if !strings.Contains(script, "test -d /runtime-private") {
+		t.Fatalf("%s materializer does not verify the mounted runtime-private directory", name)
+	}
+	if strings.Contains(script, "install -d -m 0700 /runtime-private") {
+		t.Fatalf("%s materializer attempts to chmod the root-owned runtime-private mount", name)
 	}
 }
 
