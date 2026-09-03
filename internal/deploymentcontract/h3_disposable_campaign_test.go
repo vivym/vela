@@ -21,7 +21,10 @@ func TestH3DisposableCampaignImageIsPinnedAndSeparateFromReleaseImages(t *testin
 		"# syntax=docker/dockerfile:1.20@sha256:26147acbda4f14c5add9946e2fd2ed543fc402884fd75146bd342a7f6271dc1d",
 		"FROM " + disposableCampaignGoBase + " AS builder",
 		"CGO_ENABLED=0",
-		"go build -mod=readonly -trimpath -buildvcs=false",
+		"ARG GOPROXY=https://proxy.golang.org,direct",
+		"https://proxy.golang.org,direct|https://goproxy.cn|https://goproxy.io|https://mirrors.aliyun.com/goproxy",
+		"GOPROXY=\"$GOPROXY\" go mod download",
+		"GOPROXY=\"$GOPROXY\" go build -mod=readonly -trimpath -buildvcs=false",
 		"./cmd/vela-h3-member-campaign",
 		"FROM scratch",
 		"ENTRYPOINT [\"/usr/local/bin/vela-h3-member-campaign\"]",
@@ -36,6 +39,26 @@ func TestH3DisposableCampaignImageIsPinnedAndSeparateFromReleaseImages(t *testin
 	}
 	if strings.Contains(string(bake), "vela-h3-member-campaign") {
 		t.Fatal("disposable campaign image leaked into the production release image graph")
+	}
+}
+
+func TestH3DisposableCampaignGoProxyPropagatesFromMakeToDockerBuild(t *testing.T) {
+	root := deploymentRepositoryRoot(t)
+	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatalf("read Makefile: %v", err)
+	}
+	text := string(makefile)
+	for _, required := range []string{
+		"H3_DISPOSABLE_GOPROXY ?= https://proxy.golang.org,direct",
+		"build-h3-disposable-member-campaign-image:\n\tdocker build",
+		"--build-arg GOPROXY=\"$(H3_DISPOSABLE_GOPROXY)\"",
+		"test-h3-disposable-member-campaign:\n\tH3_DISPOSABLE_IMAGE=\"$(H3_DISPOSABLE_IMAGE)\"",
+		"H3_DISPOSABLE_GOPROXY=\"$(H3_DISPOSABLE_GOPROXY)\"",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("Makefile omitted disposable campaign Go proxy propagation %q", required)
+		}
 	}
 }
 
@@ -162,6 +185,8 @@ func TestH3DisposableCampaignHarnessIsSyntaxValidAndFailClosed(t *testing.T) {
 		"cleaned=true",
 		"trap handle_exit EXIT",
 		"H3_DISPOSABLE_RETAIN_CLUSTER",
+		"H3_DISPOSABLE_GOPROXY",
+		"--build-arg \"GOPROXY=$go_proxy\"",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("disposable campaign harness omitted guard/evidence %q", required)

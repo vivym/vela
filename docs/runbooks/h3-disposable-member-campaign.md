@@ -29,6 +29,23 @@ export HTTPS_PROXY=http://127.0.0.1:7897
 make test-h3-disposable-member-campaign
 ```
 
+If `proxy.golang.org` is unreachable but an alternate Go module proxy is
+available, select one approved proxy for this invocation instead of changing
+the host's global Go configuration:
+
+```sh
+H3_DISPOSABLE_GOPROXY=https://goproxy.cn \
+  make test-h3-disposable-member-campaign
+```
+
+The harness passes this value explicitly into the Docker build. It accepts only
+`proxy.golang.org`, `goproxy.cn`, `goproxy.io`, or the Alibaba Cloud Go proxy;
+the three alternates served the Go `1.26.7` toolchain metadata during the
+2026-09-03 lab preflight. Alternate selections do not fall through to another
+mirror or direct VCS access, and checksum-database verification remains enabled.
+Re-probe the selected endpoint before a later campaign; reachability is an
+environment observation, not a repository guarantee.
+
 The harness builds and imports `vela-h3-member-campaign:disposable`, pins the
 leader and follower to different agent nodes, and runs these phases:
 
@@ -64,3 +81,20 @@ Do not attach this result to any Launch Receipt. Real H3 or future multi-node LL
 activation still requires certified hardware topology, loaded ModelResidency,
 physical GPU/DRA identity, model output equivalence, authorized fault windows,
 and the applicable Production Gate receipts.
+
+## Three-host lab evidence
+
+On 2026-09-03 an operator adapted the same campaign command and workload
+contract to an exact temporary namespace in the non-production three-host RKE2
+lab. The sanitized projection records distinct leader/follower Worker names,
+zero aggregate GPU requests, normal/follower-loss/recovery phase receipts, and
+bounded cleanup fields. It does not retain or bind the raw cluster observation
+bundle, so treat it as an operator receipt rather than independently
+recomputable physical-cluster evidence. See
+[`h3-member-mock-lab-receipt.md`](../h3-member-mock-lab-receipt.md) for the
+method, exact image identity, results, cleanup, and evidence boundary.
+
+That one-off lab adaptation is evidence, not a second supported harness. The
+command above remains the reproducible repository entry point. Repeating the
+shared-cluster procedure requires a fresh exact-target preflight and an
+independent cleanup plan.

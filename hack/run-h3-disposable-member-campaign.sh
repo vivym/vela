@@ -8,6 +8,7 @@ docker_binary=${DOCKER_BIN:-docker}
 timeout_binary=${TIMEOUT_BIN:-timeout}
 namespace=vela-h3-disposable
 image=${H3_DISPOSABLE_IMAGE:-vela-h3-member-campaign:disposable}
+go_proxy=${H3_DISPOSABLE_GOPROXY:-https://proxy.golang.org,direct}
 k3s_image=${H3_DISPOSABLE_K3S_IMAGE:-rancher/k3s:v1.31.5-k3s1}
 retain_cluster=${H3_DISPOSABLE_RETAIN_CLUSTER:-0}
 cluster_name=${H3_DISPOSABLE_CLUSTER_NAME:-vela-h3-disposable-$(date -u +%s)$(printf '%03d' "$(( $$ % 1000 ))")}
@@ -183,6 +184,7 @@ source_revision=$(git -C "$repository_root" rev-parse HEAD)
 if ! "$docker_binary" build \
 	--platform "$image_platform" \
 	--build-arg "RELEASE_REVISION=$source_revision" \
+	--build-arg "GOPROXY=$go_proxy" \
 	--file "$repository_root/deploy/h3-disposable-campaign/Dockerfile" \
 	--tag "$image" \
 	"$repository_root" >"$evidence_directory/docker-build.log" 2>&1; then
