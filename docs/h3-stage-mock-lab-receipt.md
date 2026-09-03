@@ -146,18 +146,26 @@ The sealed mock outputs were byte-for-byte identical on both Workers:
 
 Each Pod also passed three bounded negative-path checks:
 
-- injected failure returned `FAILED`, `MOCK_INJECTED_FAILURE`, and
-  `worker_reusable=true`; a replacement Stage Attempt was then accepted by
-  `prepare`;
-- injected hang returned `RUNNING`, accepted `cancel`, reached `STOPPED`, and
-  left no output; and
-- a one-byte-different DIT input was rejected with
+- the `ENCODER` injected-failure case returned `FAILED`,
+  `MOCK_INJECTED_FAILURE`, and `worker_reusable=true`; a replacement Stage
+  Attempt was then accepted by `prepare`;
+- the `ENCODER` injected-hang case returned `RUNNING`, accepted `cancel`,
+  reached `STOPPED`, and left no output; and
+- the `DIT` one-byte-different input was rejected with
   `H3 Stage mock input digest is mismatched` and left no output.
 
 These checks directly exercised the three runtime commands over
 `stdio-json-v1` inside standalone Pods. They did not involve Vela API
 admission, Scheduler assignment, Stage Worker or Fleet orchestration, live
 Lease/fence authority, cross-Pod artifact transfer, or GPU execution.
+
+The exact execution-spec bytes and digests, mock input bytes and digests,
+sanitized request/response observations, Kubernetes Pod metadata,
+non-interference observations, cleanup result, and postflight output are
+retained in
+[`h3-stage-mock-lifecycle-evidence-2026-09-03.json`](h3-stage-mock-lifecycle-evidence-2026-09-03.json).
+That sanitized evidence file has SHA-256
+`4b6b43182aa272eb46ca93bf8ffad54609570e9e004bbb93f2149158d042120b`.
 
 ## Non-interference and cleanup
 
@@ -184,9 +192,12 @@ Pods were deleted by exact name. No Pod with
 The two follow-up lifecycle Pods were likewise deleted by exact name after
 their evidence was captured. No Pod with
 `app.kubernetes.io/name=vela-stage-mock-lifecycle` remained. Before and after
-that suite, Worker 1 retained the same `sgl_diffusion::scheduler` process and
-Worker 2 retained the same eight `VLLM::Worker_PP*` processes. Both existing
-`vela-h3-mock-runner` containers remained healthy.
+that suite, ordered preflight and post-suite queries returned the same Worker 1
+`sgl_diffusion::scheduler` PID/process name and the same eight Worker 2
+`VLLM::Worker_PP*` PID/process names. Both existing
+`vela-h3-mock-runner` containers remained healthy. Absolute timestamps for
+those two process queries were not retained, so this is an ordered
+non-interference observation rather than a time-series receipt.
 
 The pinned postflight verifier
 `verify-cluster-b575257.sh` (SHA-256

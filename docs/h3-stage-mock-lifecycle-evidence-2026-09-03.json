@@ -1,0 +1,368 @@
+{
+  "schema_version": 1,
+  "evidence_kind": "sanitized-h3-stage-mock-direct-command-transcript",
+  "captured_date": "2026-09-03",
+  "source_revision": "756b2b726c2692de7d2ef4a6fe46401e135a0486",
+  "documentation_baseline_revision": "791c1b22b99f22889d8fc656fc3c0f39c59d1a33",
+  "image": "10.1.200.17:5443/vela-lab-next/vela-h3-stage-runtime@sha256:4f3b13f75b4a8fff1f5f96255c933be9a9a467d4d19a941f48925c5da1f4b536",
+  "pod_template_sha256": "450294d73ad76d7f8a35327046d513479c5a1b141d8e53d9d7c3d255ea915517",
+  "capture_notes": [
+    "This file retains the bounded fields used to validate the lab run; credentials and Kubernetes-managed fields unrelated to the claims are omitted.",
+    "The runtime was invoked directly over stdio-json-v1 inside standalone Pods; Vela API, Scheduler, Stage Worker, Fleet and live Lease authority were not involved.",
+    "The success cases ran on ENCODER, DIT and VAE_DECODER. Failure/reuse and hang/cancel ran on ENCODER only; tampered-input rejection ran on DIT only."
+  ],
+  "common_identity": {
+    "authority_digest": "3300000000000000000000000000000000000000000000000000000000000000",
+    "job_id": "49100000-0000-0000-0000-000000000001",
+    "attempt_id": "49200000-0000-0000-0000-000000000001",
+    "stage_run_id": "49300000-0000-0000-0000-000000000001",
+    "stage_attempt_id": "49400000-0000-0000-0000-000000000001",
+    "stage_lease_id": "49500000-0000-0000-0000-000000000001",
+    "attempt_fence": 2,
+    "stage_fence": 3,
+    "stage_version": 4,
+    "stage_profile_revision_id": "49000000-0000-0000-0000-000000000005"
+  },
+  "replacement_identity": {
+    "authority_digest": "4400000000000000000000000000000000000000000000000000000000000000",
+    "job_id": "49100000-0000-0000-0000-000000000001",
+    "attempt_id": "49200000-0000-0000-0000-000000000001",
+    "stage_run_id": "49300000-0000-0000-0000-000000000002",
+    "stage_attempt_id": "49400000-0000-0000-0000-000000000002",
+    "stage_lease_id": "49500000-0000-0000-0000-000000000002",
+    "attempt_fence": 2,
+    "stage_fence": 3,
+    "stage_version": 4,
+    "stage_profile_revision_id": "49000000-0000-0000-0000-000000000005",
+    "execution_spec": "encoder"
+  },
+  "execution_specs": {
+    "encoder": {
+      "base64": "Egt7InNlZWQiOjE3fRoieyJjb25kaXRpb25pbmciOnsicmVxdWlyZWQiOnRydWV9fQ==",
+      "base64_sha256": "a1c7963f067acabdabbf42f6938ac9abd55508daba6dba370c3f32f0aee4e4d8"
+    },
+    "dit": {
+      "base64": "CnwKJDQ5NjAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMRIKZW5jb2Rlci12MRogwQ1sLIzsdfOe/SMh75jPhTgcnAqzwPRtyRx+dJqP/k0gFSokNDk3MDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxEgt7InNlZWQiOjE3fRoceyJsYXRlbnQiOnsicmVxdWlyZWQiOnRydWV9fQ==",
+      "base64_sha256": "a4d5bfcb8ef85792a9958da8a6765e7821474d65c2aabbb8c21d70f2e4a3daae"
+    },
+    "vae_decoder": {
+      "base64": "CngKJDQ5NjAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMhIGZGl0LXYxGiCi6RAiBBcE2Hf6upyOBCQ+PrvCF4mj+fRWCGosg0UfVSARKiQ0OTcwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDISC3sic2VlZCI6MTd9Ght7InZpZGVvIjp7InJlcXVpcmVkIjp0cnVlfX0=",
+      "base64_sha256": "b97558e13cec7b021a5d6f2b058acff71a414b3fc11ed45dcfa0d0715cb7eeb0"
+    }
+  },
+  "stage_inputs": [
+    {
+      "consumer": "DIT",
+      "producer_artifact_id": "49600000-0000-0000-0000-000000000001",
+      "bytes_utf8": "sealed encoder tensor",
+      "size_bytes": 21,
+      "sha256": "c10d6c2c8cec75f39efd2321ef98cf85381c9c0ab3c0f46dc91c7e749a8ffe4d"
+    },
+    {
+      "consumer": "VAE_DECODER",
+      "producer_artifact_id": "49600000-0000-0000-0000-000000000002",
+      "bytes_utf8": "sealed dit latent",
+      "size_bytes": 17,
+      "sha256": "a2e91022041704d877faba9c8e04243e3ebbc21789a3f9f456086a2c83451f55"
+    }
+  ],
+  "pod_contract": {
+    "automount_service_account_token": false,
+    "restart_policy": "Never",
+    "run_as_user": 10001,
+    "run_as_group": 10001,
+    "run_as_non_root": true,
+    "seccomp_profile": "RuntimeDefault",
+    "main_requests": {
+      "cpu": "50m",
+      "memory": "64Mi",
+      "nvidia.com/gpu": "0"
+    },
+    "main_limits": {
+      "cpu": "1",
+      "memory": "256Mi"
+    },
+    "init_requests": {
+      "cpu": "10m",
+      "memory": "16Mi",
+      "nvidia.com/gpu": "0"
+    },
+    "read_only_root_filesystem": true,
+    "allow_privilege_escalation": false,
+    "linux_capabilities": "drop-all"
+  },
+  "pods": [
+    {
+      "name": "vela-stage-mock-lifecycle-w1-791c1b2",
+      "uid": "3bd5bc4b-585c-4472-8d9f-ad037b367c67",
+      "node": "vela-lab-worker-1",
+      "created_at": "2026-09-03T07:11:14Z",
+      "started_at": "2026-09-03T07:11:14Z",
+      "finished_at": "2026-09-03T07:11:16Z",
+      "phase": "Succeeded",
+      "exit_code": 0,
+      "restart_count": 0,
+      "image_id": "10.1.200.17:5443/vela-lab-next/vela-h3-stage-runtime@sha256:4f3b13f75b4a8fff1f5f96255c933be9a9a467d4d19a941f48925c5da1f4b536",
+      "observed_suite_log_lines": [
+        "PASS case=success component=ENCODER output=conditioning sha256=c48de0389eed3c11855f8b55bb34da59b77c7fc4bc09f027adf00b7fddc7632b",
+        "PASS case=success component=DIT output=latent sha256=6e51946215a2705b60c794dcb480583265e3438990e4e081a3dc32f34eacf170",
+        "PASS case=success component=VAE_DECODER output=video sha256=f4141b2ace373bdbbd89759dada35ddc65b979470d6c47d096e2209bbe3adbe7",
+        "PASS case=failure-reuse component=ENCODER",
+        "PASS case=hang-cancel component=ENCODER",
+        "PASS case=tampered-input-rejected component=DIT",
+        "PASS suite=stage-mock-lifecycle node=vela-lab-worker-1 gpu_requests=0"
+      ],
+      "observed_request_response_bindings": [
+        "ENCODER success request 1 initialize -> initialized=true; 2 probe -> ready=true; 3 prepare -> acknowledged=true; 4 start -> acknowledged=true; 5 status -> OUTPUT_READY; 6 seal -> conditioning manifest; 7 shutdown -> acknowledged=true",
+        "DIT success request 1 initialize -> initialized=true; 2 probe -> ready=true; 3 prepare -> acknowledged=true; 4 start -> acknowledged=true; 5 status -> OUTPUT_READY; 6 seal -> latent manifest; 7 shutdown -> acknowledged=true",
+        "VAE_DECODER success request 1 initialize -> initialized=true; 2 probe -> ready=true; 3 prepare -> acknowledged=true; 4 start -> acknowledged=true; 5 status -> OUTPUT_READY; 6 seal -> video manifest; 7 shutdown -> acknowledged=true",
+        "ENCODER failure request 1 initialize -> initialized=true; 2 prepare common identity -> acknowledged=true; 3 start -> acknowledged=true; 4 status -> FAILED/MOCK_INJECTED_FAILURE/worker_reusable=true; 5 prepare replacement identity -> acknowledged=true; 6 shutdown -> acknowledged=true",
+        "ENCODER hang request 1 initialize -> initialized=true; 2 prepare -> acknowledged=true; 3 start -> acknowledged=true; 4 status -> RUNNING; 5 cancel -> acknowledged=true; 6 status -> STOPPED; 7 shutdown -> acknowledged=true",
+        "DIT tampered input request 1 initialize -> initialized=true; 2 prepare -> H3 Stage mock input digest is mismatched; 3 shutdown -> acknowledged=true"
+      ],
+      "failure_observation": {
+        "state": "FAILED",
+        "failure_class": "MOCK_INJECTED_FAILURE",
+        "failure_fingerprint_base64": "lfQoSCAv0sHhK4pkSimiw2KIzoOTkVvXUQmObHqzBTg=",
+        "worker_reusable": true,
+        "failed_at": "2026-09-03T07:11:16.257285127Z",
+        "retry_at": "2026-09-03T07:11:21.257285127Z",
+        "replacement_prepare": {
+          "request_id": 5,
+          "identity": "replacement_identity",
+          "execution_spec": "encoder",
+          "acknowledged": true
+        }
+      }
+    },
+    {
+      "name": "vela-stage-mock-lifecycle-w2-791c1b2",
+      "uid": "708b403f-51dd-46ac-b646-d8d97c6d0494",
+      "node": "vela-lab-worker-2",
+      "created_at": "2026-09-03T07:15:52Z",
+      "started_at": "2026-09-03T07:15:52Z",
+      "finished_at": "2026-09-03T07:15:54Z",
+      "phase": "Succeeded",
+      "exit_code": 0,
+      "restart_count": 0,
+      "image_id": "10.1.200.17:5443/vela-lab-next/vela-h3-stage-runtime@sha256:4f3b13f75b4a8fff1f5f96255c933be9a9a467d4d19a941f48925c5da1f4b536",
+      "observed_suite_log_lines": [
+        "PASS case=success component=ENCODER output=conditioning sha256=c48de0389eed3c11855f8b55bb34da59b77c7fc4bc09f027adf00b7fddc7632b",
+        "PASS case=success component=DIT output=latent sha256=6e51946215a2705b60c794dcb480583265e3438990e4e081a3dc32f34eacf170",
+        "PASS case=success component=VAE_DECODER output=video sha256=f4141b2ace373bdbbd89759dada35ddc65b979470d6c47d096e2209bbe3adbe7",
+        "PASS case=failure-reuse component=ENCODER",
+        "PASS case=hang-cancel component=ENCODER",
+        "PASS case=tampered-input-rejected component=DIT",
+        "PASS suite=stage-mock-lifecycle node=vela-lab-worker-2 gpu_requests=0"
+      ],
+      "observed_request_response_bindings": [
+        "ENCODER success request 1 initialize -> initialized=true; 2 probe -> ready=true; 3 prepare -> acknowledged=true; 4 start -> acknowledged=true; 5 status -> OUTPUT_READY; 6 seal -> conditioning manifest; 7 shutdown -> acknowledged=true",
+        "DIT success request 1 initialize -> initialized=true; 2 probe -> ready=true; 3 prepare -> acknowledged=true; 4 start -> acknowledged=true; 5 status -> OUTPUT_READY; 6 seal -> latent manifest; 7 shutdown -> acknowledged=true",
+        "VAE_DECODER success request 1 initialize -> initialized=true; 2 probe -> ready=true; 3 prepare -> acknowledged=true; 4 start -> acknowledged=true; 5 status -> OUTPUT_READY; 6 seal -> video manifest; 7 shutdown -> acknowledged=true",
+        "ENCODER failure request 1 initialize -> initialized=true; 2 prepare common identity -> acknowledged=true; 3 start -> acknowledged=true; 4 status -> FAILED/MOCK_INJECTED_FAILURE/worker_reusable=true; 5 prepare replacement identity -> acknowledged=true; 6 shutdown -> acknowledged=true",
+        "ENCODER hang request 1 initialize -> initialized=true; 2 prepare -> acknowledged=true; 3 start -> acknowledged=true; 4 status -> RUNNING; 5 cancel -> acknowledged=true; 6 status -> STOPPED; 7 shutdown -> acknowledged=true",
+        "DIT tampered input request 1 initialize -> initialized=true; 2 prepare -> H3 Stage mock input digest is mismatched; 3 shutdown -> acknowledged=true"
+      ],
+      "failure_observation": {
+        "state": "FAILED",
+        "failure_class": "MOCK_INJECTED_FAILURE",
+        "failure_fingerprint_base64": "lfQoSCAv0sHhK4pkSimiw2KIzoOTkVvXUQmObHqzBTg=",
+        "worker_reusable": true,
+        "failed_at": "2026-09-03T07:15:54.780185274Z",
+        "retry_at": "2026-09-03T07:15:59.780185274Z",
+        "replacement_prepare": {
+          "request_id": 5,
+          "identity": "replacement_identity",
+          "execution_spec": "encoder",
+          "acknowledged": true
+        }
+      }
+    }
+  ],
+  "success_protocol": {
+    "request_sequence": [
+      "initialize",
+      "probe",
+      "prepare",
+      "start",
+      "status",
+      "seal",
+      "shutdown"
+    ],
+    "response_observations": {
+      "initialize": "acknowledged=true initialized=true",
+      "probe": "ready=true detail=mock resident runtime ready",
+      "prepare": "acknowledged=true",
+      "start": "acknowledged=true",
+      "status": "state=OUTPUT_READY sequence=3 progress=1",
+      "seal": "output manifest returned",
+      "shutdown": "acknowledged=true"
+    },
+    "outputs": [
+      {
+        "component": "ENCODER",
+        "backend_stage": "mock/encoder",
+        "output_port": "conditioning",
+        "content_type": "application/x-minimax-h3-encoder",
+        "size_bytes": 171,
+        "sha256": "c48de0389eed3c11855f8b55bb34da59b77c7fc4bc09f027adf00b7fddc7632b"
+      },
+      {
+        "component": "DIT",
+        "backend_stage": "mock/dit",
+        "output_port": "latent",
+        "content_type": "application/x-minimax-h3-latent",
+        "size_bytes": 233,
+        "sha256": "6e51946215a2705b60c794dcb480583265e3438990e4e081a3dc32f34eacf170"
+      },
+      {
+        "component": "VAE_DECODER",
+        "backend_stage": "mock/vae_decoder",
+        "output_port": "video",
+        "content_type": "video/mp4",
+        "size_bytes": 12953,
+        "sha256": "f4141b2ace373bdbbd89759dada35ddc65b979470d6c47d096e2209bbe3adbe7"
+      }
+    ]
+  },
+  "negative_protocol": {
+    "failure_reuse": {
+      "component": "ENCODER",
+      "request_sequence": [
+        "initialize",
+        "prepare",
+        "start",
+        "status",
+        "replacement-prepare",
+        "shutdown"
+      ],
+      "observed": "FAILED/MOCK_INJECTED_FAILURE/worker_reusable=true followed by acknowledged replacement prepare",
+      "output_exists": false
+    },
+    "hang_cancel": {
+      "component": "ENCODER",
+      "request_sequence": [
+        "initialize",
+        "prepare",
+        "start",
+        "status",
+        "cancel",
+        "status",
+        "shutdown"
+      ],
+      "observed_states": [
+        "RUNNING",
+        "STOPPED"
+      ],
+      "output_exists": false
+    },
+    "tampered_input": {
+      "component": "DIT",
+      "request_sequence": [
+        "initialize",
+        "prepare",
+        "shutdown"
+      ],
+      "declared_sha256": "c10d6c2c8cec75f39efd2321ef98cf85381c9c0ab3c0f46dc91c7e749a8ffe4d",
+      "actual_bytes_utf8": "Sealed encoder tensor",
+      "actual_size_bytes": 21,
+      "actual_sha256": "1b3dfcab59f48c197a95c1d70de53c52b66a44d357d86d3a6e0986563d9f1984",
+      "response_error": "H3 Stage mock input digest is mismatched",
+      "output_exists": false
+    }
+  },
+  "non_interference": {
+    "absolute_snapshot_timestamps_retained": false,
+    "capture_order": [
+      "before_test",
+      "worker_1_lifecycle_pod",
+      "worker_2_lifecycle_pod",
+      "after_test_before_cleanup",
+      "pod_cleanup",
+      "cluster_postflight"
+    ],
+    "before_test": {
+      "worker_1_gpu_processes": [
+        {
+          "pid": 3826582,
+          "name": "sgl_diffusion::scheduler"
+        }
+      ],
+      "worker_1_gpu_process_count": 1,
+      "worker_2_gpu_processes": [
+        "4052954 VLLM::Worker_PP0",
+        "4052955 VLLM::Worker_PP1",
+        "4052956 VLLM::Worker_PP2",
+        "4052957 VLLM::Worker_PP3",
+        "4052958 VLLM::Worker_PP4",
+        "4052959 VLLM::Worker_PP5",
+        "4052960 VLLM::Worker_PP6",
+        "4052961 VLLM::Worker_PP7"
+      ],
+      "worker_2_gpu_process_count": 8,
+      "legacy_mock_runner": {
+        "worker_1": "Up 3 days (healthy)",
+        "worker_2": "Up 3 days (healthy)"
+      }
+    },
+    "after_test_before_cleanup": {
+      "worker_1_gpu_processes": [
+        {
+          "pid": 3826582,
+          "name": "sgl_diffusion::scheduler"
+        }
+      ],
+      "worker_1_gpu_process_count": 1,
+      "worker_2_gpu_processes": [
+        "4052954 VLLM::Worker_PP0",
+        "4052955 VLLM::Worker_PP1",
+        "4052956 VLLM::Worker_PP2",
+        "4052957 VLLM::Worker_PP3",
+        "4052958 VLLM::Worker_PP4",
+        "4052959 VLLM::Worker_PP5",
+        "4052960 VLLM::Worker_PP6",
+        "4052961 VLLM::Worker_PP7"
+      ],
+      "worker_2_gpu_process_count": 8,
+      "legacy_mock_runner": {
+        "worker_1": "Up 3 days (healthy)",
+        "worker_2": "Up 3 days (healthy)"
+      }
+    }
+  },
+  "cleanup": {
+    "deleted_pods": [
+      "vela-stage-mock-lifecycle-w1-791c1b2",
+      "vela-stage-mock-lifecycle-w2-791c1b2"
+    ],
+    "remaining_selector": "app.kubernetes.io/name=vela-stage-mock-lifecycle",
+    "remaining_pod_count": 0
+  },
+  "postflight": {
+    "script": "/root/vela-lab-deploy-bc590e20/control-plane/verify-cluster-b575257.sh",
+    "script_sha256": "10b7dae8395f2d1ca1bd9fb4f8d5a73e4a98af64fb105cd24e8981f1599af24a",
+    "schema": "vela-rke2-cluster-postflight-v1",
+    "captured_at": "2026-09-03T07:17:44Z",
+    "mode": "gpu",
+    "checks": [
+      "api-readyz PASS ok",
+      "node-count PASS 3",
+      "all-three-nodes-ready PASS",
+      "node-addresses-and-v1.35.7+rke2r1 PASS",
+      "control-labels-and-gpu-operands-disabled PASS",
+      "worker-profile-pool-and-taint PASS",
+      "all-three-nodes-NoSwap PASS",
+      "daemonsets-ready PASS 0",
+      "gpu-mps-control-daemon-disabled PASS 0/0/0",
+      "deployments-ready PASS 0",
+      "pods-ready PASS 0",
+      "canal-ready PASS true",
+      "worker-1-gpu-capacity-and-allocatable PASS 8/8",
+      "worker-2-gpu-capacity-and-allocatable PASS 8/8",
+      "control-gpu-allocatable PASS 0"
+    ],
+    "result": "PASS",
+    "failures": 0,
+    "production_gate_result": "0/9 PASS"
+  }
+}

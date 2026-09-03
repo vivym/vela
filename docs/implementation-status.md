@@ -405,9 +405,10 @@ performance evidence, does not add acceptance-scenario evidence, and cannot
 satisfy a Production Gate.
 The Stage-only H3 mock runtime (`756b2b7`) separately implements the current
 resident `stdio-json-v1` command contract. Its exact image passed CPU-only
-`initialize`, readiness `probe`, and `shutdown` smoke on both lab Workers; it
-did not exercise Stage/Fleet orchestration, GPU work, model behavior, or any
-Production Gate.
+startup smoke plus direct success lifecycle, Encoder failure/reuse and
+hang/cancel, and DIT tampered-input rejection on both lab Workers. It did not
+exercise Stage/Fleet orchestration, live Lease authority, cross-Pod artifact
+transfer, GPU work, model behavior, or any Production Gate.
 No aggregate `direct/partial/unproven` count is claimed for the current Stage
 architecture. The current coverage and gaps above, plus separately sealed
 Production Gate receipts, are the only acceptance status.

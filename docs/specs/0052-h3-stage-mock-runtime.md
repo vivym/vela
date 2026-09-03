@@ -3,7 +3,8 @@
 Date: 2026-09-03
 
 Status: repository implementation and conformance tests complete; target-lab
-image publication and CPU-only command-protocol smoke are recorded in
+image publication, CPU-only command-protocol startup smoke, and a direct
+command lifecycle suite are recorded in
 [`h3-stage-mock-lab-receipt.md`](../h3-stage-mock-lab-receipt.md). Complete
 Stage/Fleet deployment and real-H3 receipts remain external.
 
@@ -139,7 +140,9 @@ unknown cancellation reasons, nested protobuf unknown fields, non-monotonic
 renewal, terminal assignment replacement, root-path replacement, abnormal-exit
 cleanup, retirement-bound exhaustion, and output-publication failure. Those
 results are repository conformance only. The separate three-host lab receipt
-adds digest-pinned image distribution and CPU-only command startup; it does not
-exercise Stage/Fleet orchestration or a real H3 runtime. Production Gates
-remain unchanged until separately authorized real-H3 Launch Receipts are
-validated.
+adds digest-pinned image distribution, CPU-only command startup, direct success
+lifecycle coverage for all three components, Encoder-only failure/reuse and
+hang/cancel, and DIT-only tampered-input rejection. It does not exercise
+Stage/Fleet orchestration, live Lease authority, cross-Pod artifact transfer,
+GPU execution, or a real H3 runtime. Production Gates remain unchanged until
+separately authorized real-H3 Launch Receipts are validated.
