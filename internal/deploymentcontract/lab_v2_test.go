@@ -17,9 +17,10 @@ import (
 const labV2Namespace = "vela-lab-v2"
 
 type labV2Document struct {
-	APIVersion string `yaml:"apiVersion"`
-	Kind       string `yaml:"kind"`
-	Metadata   struct {
+	APIVersion                   string `yaml:"apiVersion"`
+	Kind                         string `yaml:"kind"`
+	AutomountServiceAccountToken *bool  `yaml:"automountServiceAccountToken"`
+	Metadata                     struct {
 		Name      string            `yaml:"name"`
 		Namespace string            `yaml:"namespace"`
 		Labels    map[string]string `yaml:"labels"`
@@ -36,10 +37,33 @@ type labV2Document struct {
 }
 
 type labV2PodSpec struct {
-	Containers     []labV2Container `yaml:"containers"`
-	InitContainers []labV2Container `yaml:"initContainers"`
-	Volumes        []struct {
-		Name     string `yaml:"name"`
+	AutomountServiceAccountToken *bool            `yaml:"automountServiceAccountToken"`
+	Containers                   []labV2Container `yaml:"containers"`
+	InitContainers               []labV2Container `yaml:"initContainers"`
+	Volumes                      []struct {
+		Name   string `yaml:"name"`
+		Secret *struct {
+			SecretName string `yaml:"secretName"`
+		} `yaml:"secret"`
+		EmptyDir *struct {
+			Medium    string `yaml:"medium"`
+			SizeLimit string `yaml:"sizeLimit"`
+		} `yaml:"emptyDir"`
+		Projected *struct {
+			Sources []struct {
+				ServiceAccountToken *struct {
+					Path              string `yaml:"path"`
+					ExpirationSeconds int64  `yaml:"expirationSeconds"`
+				} `yaml:"serviceAccountToken"`
+				ConfigMap *struct {
+					Name  string `yaml:"name"`
+					Items []struct {
+						Key  string `yaml:"key"`
+						Path string `yaml:"path"`
+					} `yaml:"items"`
+				} `yaml:"configMap"`
+			} `yaml:"sources"`
+		} `yaml:"projected"`
 		HostPath *struct {
 			Path string `yaml:"path"`
 		} `yaml:"hostPath"`
@@ -48,11 +72,16 @@ type labV2PodSpec struct {
 }
 
 type labV2Container struct {
-	Name    string   `yaml:"name"`
-	Image   string   `yaml:"image"`
-	Command []string `yaml:"command"`
-	Args    []string `yaml:"args"`
-	Env     []struct {
+	Name         string   `yaml:"name"`
+	Image        string   `yaml:"image"`
+	Command      []string `yaml:"command"`
+	Args         []string `yaml:"args"`
+	VolumeMounts []struct {
+		Name      string `yaml:"name"`
+		MountPath string `yaml:"mountPath"`
+		ReadOnly  bool   `yaml:"readOnly"`
+	} `yaml:"volumeMounts"`
+	Env []struct {
 		Name  string `yaml:"name"`
 		Value string `yaml:"value"`
 	} `yaml:"env"`
@@ -60,6 +89,9 @@ type labV2Container struct {
 		Requests map[string]any `yaml:"requests"`
 		Limits   map[string]any `yaml:"limits"`
 	} `yaml:"resources"`
+	SecurityContext struct {
+		ReadOnlyRootFilesystem bool `yaml:"readOnlyRootFilesystem"`
+	} `yaml:"securityContext"`
 	ReadinessProbe struct {
 		HTTPGet struct {
 			Scheme string `yaml:"scheme"`
@@ -146,6 +178,33 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 	fleet := deployments["vela-lab-fleet-controller"]
 	if len(fleet.Spec.Template.Spec.Containers) != 1 || fleet.Spec.Template.Spec.Containers[0].Name != "fleet-controller" {
 		t.Fatalf("Fleet deployment = %#v", fleet.Spec.Template.Spec.Containers)
+	}
+	fleetAccount, ok := findLabV2Document(documents, "ServiceAccount", "vela-lab-fleet-controller")
+	if !ok || fleetAccount.AutomountServiceAccountToken == nil || *fleetAccount.AutomountServiceAccountToken {
+		t.Fatalf("Fleet ServiceAccount automount = %v", fleetAccount.AutomountServiceAccountToken)
+	}
+	if fleet.Spec.Template.Spec.AutomountServiceAccountToken == nil ||
+		*fleet.Spec.Template.Spec.AutomountServiceAccountToken {
+		t.Fatalf("Fleet Pod automount = %v", fleet.Spec.Template.Spec.AutomountServiceAccountToken)
+	}
+	materializer, ok := findContainer(fleet.Spec.Template.Spec.InitContainers, "materialize-secrets")
+	if !ok || materializer.Image != imageValues["BOOTSTRAP_IMAGE"] ||
+		!equalStrings(materializer.Command, []string{"/bin/sh", "-ec"}) ||
+		!strings.Contains(strings.Join(materializer.Args, "\n"), `cp -L -- "$source" "$temporary"`) ||
+		!strings.Contains(strings.Join(materializer.Args, "\n"), `chmod 0400 "$temporary"`) ||
+		!strings.Contains(strings.Join(materializer.Args, "\n"), `mv -f -- "$temporary" "/materialized/$name"`) ||
+		!materializer.SecurityContext.ReadOnlyRootFilesystem ||
+		!hasVolumeMount(materializer, "projected-files", "/projected", true) ||
+		!hasVolumeMount(materializer, "materialized-files", "/materialized", false) ||
+		hasVolumeMountNamed(materializer, "fleet-service-account-token") {
+		t.Fatalf("Fleet Secret materializer = %#v", materializer)
+	}
+	if !hasVolumeMount(fleet.Spec.Template.Spec.Containers[0], "materialized-files", "/etc/vela-fleet/private", true) ||
+		!hasVolumeMount(fleet.Spec.Template.Spec.Containers[0], "fleet-service-account-token", "/var/run/secrets/kubernetes.io/serviceaccount", true) ||
+		!hasSecretVolume(fleet.Spec.Template.Spec, "projected-files", "vela-lab-fleet-files") ||
+		!hasMemoryEmptyDirVolume(fleet.Spec.Template.Spec, "materialized-files", "1Mi") ||
+		!hasServiceAccountTokenVolume(fleet.Spec.Template.Spec, "fleet-service-account-token") {
+		t.Fatalf("Fleet materialized TLS volumes = %#v", fleet.Spec.Template.Spec)
 	}
 	rollouts, ok := findLabV2Document(documents, "ConfigMap", "vela-lab-fleet-rollouts")
 	if !ok || strings.TrimSpace(rollouts.Data["rollouts.json"]) != `{"schema_version":1,"rollouts":[]}` {
@@ -404,6 +463,69 @@ func findContainer(containers []labV2Container, name string) (labV2Container, bo
 		}
 	}
 	return labV2Container{}, false
+}
+
+func hasVolumeMount(container labV2Container, name, mountPath string, readOnly bool) bool {
+	for _, mount := range container.VolumeMounts {
+		if mount.Name == name && mount.MountPath == mountPath && mount.ReadOnly == readOnly {
+			return true
+		}
+	}
+	return false
+}
+
+func hasVolumeMountNamed(container labV2Container, name string) bool {
+	for _, mount := range container.VolumeMounts {
+		if mount.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSecretVolume(pod labV2PodSpec, name, secretName string) bool {
+	for _, volume := range pod.Volumes {
+		if volume.Name == name && volume.Secret != nil && volume.Secret.SecretName == secretName {
+			return true
+		}
+	}
+	return false
+}
+
+func hasMemoryEmptyDirVolume(pod labV2PodSpec, name, sizeLimit string) bool {
+	for _, volume := range pod.Volumes {
+		if volume.Name == name && volume.EmptyDir != nil &&
+			volume.EmptyDir.Medium == "Memory" && volume.EmptyDir.SizeLimit == sizeLimit {
+			return true
+		}
+	}
+	return false
+}
+
+func hasServiceAccountTokenVolume(pod labV2PodSpec, name string) bool {
+	for _, volume := range pod.Volumes {
+		if volume.Name != name || volume.Projected == nil {
+			continue
+		}
+		token := false
+		rootCA := false
+		for _, source := range volume.Projected.Sources {
+			if source.ServiceAccountToken != nil && source.ServiceAccountToken.Path == "token" &&
+				source.ServiceAccountToken.ExpirationSeconds >= 600 &&
+				source.ServiceAccountToken.ExpirationSeconds <= 3600 {
+				token = true
+			}
+			if source.ConfigMap != nil && source.ConfigMap.Name == "kube-root-ca.crt" {
+				for _, item := range source.ConfigMap.Items {
+					if item.Key == "ca.crt" && item.Path == "ca.crt" {
+						rootCA = true
+					}
+				}
+			}
+		}
+		return token && rootCA
+	}
+	return false
 }
 
 func containsValue(values []string, want string) bool {

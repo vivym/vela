@@ -483,7 +483,7 @@ func generate(configuration options) error {
 	nodeAgents := map[string]map[string]any{
 		worker1Name: {
 			"address": "vela-lab-node-agent.invalid:9444", "server_name": "vela-lab-node-agent.invalid",
-			"worker_id": worker1ID, "worker_epoch": 1,
+			"agent_id": worker1ID, "agent_epoch": 1,
 			"spiffe_identity": nodeAgentSPIFFEIdentity(worker1Name, worker1ID),
 		},
 	}

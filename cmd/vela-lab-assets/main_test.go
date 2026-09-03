@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +18,7 @@ import (
 
 	"github.com/nats-io/jwt/v2"
 	"github.com/vivym/vela/internal/modelruntime"
+	"github.com/vivym/vela/internal/nodeagent"
 )
 
 const (
@@ -141,20 +145,34 @@ func TestGenerateCreatesProtectedCompleteAssets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var nodeAgents map[string]struct {
-		WorkerID       string `json:"worker_id"`
-		WorkerEpoch    int64  `json:"worker_epoch"`
-		SPIFFEIdentity string `json:"spiffe_identity"`
-	}
-	if err := json.Unmarshal(nodeAgentBytes, &nodeAgents); err != nil {
+	var nodeAgents map[string]nodeagent.AgentEndpoint
+	decoder := json.NewDecoder(bytes.NewReader(nodeAgentBytes))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&nodeAgents); err != nil {
 		t.Fatalf("decode Node Agent endpoints: %v", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		t.Fatalf("Node Agent endpoints contain trailing content: %v", err)
 	}
 	endpoint, ok := nodeAgents[worker1Name]
 	wantSPIFFEIdentity := "spiffe://vela.internal/node-agent/" +
 		base64.RawURLEncoding.EncodeToString([]byte(worker1Name)) + "/" + worker1ID
-	if !ok || endpoint.WorkerID != worker1ID || endpoint.WorkerEpoch != 1 ||
+	if !ok || endpoint.Address != "vela-lab-node-agent.invalid:9444" ||
+		endpoint.ServerName != "vela-lab-node-agent.invalid" ||
+		endpoint.AgentID.String() != worker1ID || endpoint.AgentEpoch != 1 ||
 		endpoint.SPIFFEIdentity != wantSPIFFEIdentity {
 		t.Fatalf("Node Agent endpoint = %#v, want SPIFFE identity %q", endpoint, wantSPIFFEIdentity)
+	}
+	resolver, err := nodeagent.NewStaticAgentResolver(nodeAgents, nodeagent.ClientTLSConfig{
+		CertificatePath: "/non-production-lab/client.crt",
+		PrivateKeyPath:  "/non-production-lab/client.key",
+		RootCAPath:      "/non-production-lab/ca.crt",
+	}, "controller/non-production-lab")
+	if err != nil {
+		t.Fatalf("construct Node Agent resolver from generated endpoints: %v", err)
+	}
+	if err := resolver.Close(); err != nil {
+		t.Fatalf("close Node Agent resolver: %v", err)
 	}
 }
 
