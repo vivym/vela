@@ -17,8 +17,13 @@ import (
 	"time"
 
 	"github.com/nats-io/jwt/v2"
+	"github.com/vivym/vela/internal/labv2contract"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/nodeagent"
+	"github.com/vivym/vela/internal/stageauthority"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -174,6 +179,109 @@ func TestGenerateCreatesProtectedCompleteAssets(t *testing.T) {
 	if err := resolver.Close(); err != nil {
 		t.Fatalf("close Node Agent resolver: %v", err)
 	}
+}
+
+func TestGenerateCreatesConsumableStageAuthorityKeyrings(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "assets")
+	if err := generate(options{
+		output: output, postgresHost: defaultPostgresHost,
+		natsHost: defaultNATSHost, minioHost: defaultMinIOHost,
+		runtimeImage: testRuntimeImage, thumbnailRuntimeImage: testThumbnailRuntimeImage,
+		validFor: 24 * time.Hour,
+	}); err != nil {
+		t.Fatalf("generate assets: %v", err)
+	}
+
+	signingKeys, err := stageauthority.ReadKeyringFile(filepath.Join(output, "control", "lease.json"))
+	if err != nil {
+		t.Fatalf("read generated StageAuthority signing keyring: %v", err)
+	}
+	defer stageauthority.ClearKeyring(signingKeys)
+	verifierKeys, err := stageauthority.ReadVerifierKeyringFile(
+		filepath.Join(output, "control", "model-runtime-verifier.json"),
+	)
+	if err != nil {
+		t.Fatalf("read generated StageAuthority verifier keyring: %v", err)
+	}
+	defer stageauthority.ClearKeyring(verifierKeys)
+	if len(signingKeys) != 1 || len(verifierKeys) != 1 ||
+		signingKeys[labv2contract.StageAuthorityKeyID] == nil ||
+		verifierKeys[labv2contract.StageAuthorityKeyID] == nil {
+		t.Fatalf("generated StageAuthority key IDs = signing:%v verifier:%v, want only %q",
+			keyIDs(signingKeys), keyIDs(verifierKeys), labv2contract.StageAuthorityKeyID)
+	}
+
+	now := time.Date(2026, 9, 4, 0, 0, 0, 0, time.UTC)
+	signer, err := stageauthority.NewSigner(signingKeys)
+	if err != nil {
+		t.Fatalf("construct signer from generated keyring: %v", err)
+	}
+	verifier, err := stageauthority.NewVerifier(verifierKeys, func() time.Time { return now.Add(time.Second) })
+	if err != nil {
+		t.Fatalf("construct verifier from generated keyring: %v", err)
+	}
+	signed, err := signer.Sign(generatedStageAuthority(now))
+	if err != nil {
+		t.Fatalf("sign StageAuthority with generated keyring: %v", err)
+	}
+	verified, err := verifier.ValidateEnvelope(signed)
+	if err != nil {
+		t.Fatalf("verify StageAuthority with generated verifier keyring: %v", err)
+	}
+	if verified.Authority.GetSigningKeyId() != labv2contract.StageAuthorityKeyID {
+		t.Fatalf("verified StageAuthority key ID = %q, want %q",
+			verified.Authority.GetSigningKeyId(), labv2contract.StageAuthorityKeyID)
+	}
+}
+
+func generatedStageAuthority(now time.Time) *velav1.StageAuthority {
+	return &velav1.StageAuthority{
+		SchemaVersion:       stageauthority.SchemaVersionV1,
+		JobId:               "10000000-0000-0000-0000-000000000001",
+		AttemptId:           "10000000-0000-0000-0000-000000000002",
+		StageRunId:          "10000000-0000-0000-0000-000000000003",
+		StageAttemptId:      "10000000-0000-0000-0000-000000000004",
+		StageAllocationId:   "10000000-0000-0000-0000-000000000005",
+		StageLeaseId:        "10000000-0000-0000-0000-000000000006",
+		AttemptFence:        1,
+		StageFence:          1,
+		StageVersion:        1,
+		WorkerInstanceId:    "20000000-0000-0000-0000-000000000001",
+		WorkerInstanceEpoch: 1,
+		DeviceSetDigest:     bytes.Repeat([]byte{0x11}, sha256.Size),
+		Devices: []*velav1.StageAuthorityDeviceEpoch{
+			{DeviceId: "30000000-0000-0000-0000-000000000001", DeviceEpoch: 1},
+		},
+		MembershipDigest: bytes.Repeat([]byte{0x22}, sha256.Size),
+		Members: []*velav1.StageAuthorityMemberEpoch{
+			{
+				WorkerMemberId: "40000000-0000-0000-0000-000000000001",
+				MemberEpoch:    1, ModelRuntimeEpoch: 1,
+				IdentityDigest: bytes.Repeat([]byte{0x33}, sha256.Size),
+			},
+		},
+		ModelResidencyId:              "50000000-0000-0000-0000-000000000001",
+		ModelRuntimeIdentity:          "lab-stage-runtime-v1",
+		ModelRuntimeBarrierGeneration: 1,
+		StageProfileRevisionId:        "60000000-0000-0000-0000-000000000001",
+		CapacityObservationSequence:   1,
+		CapacityVector:                map[string]int64{"active_stage_slots": 1},
+		LeaseToken:                    bytes.Repeat([]byte{0x44}, sha256.Size),
+		ExecutionNonce:                bytes.Repeat([]byte{0x55}, sha256.Size),
+		ExecutionSpecDigest:           bytes.Repeat([]byte{0x66}, sha256.Size),
+		SigningKeyId:                  labv2contract.StageAuthorityKeyID,
+		IssuedAt:                      timestamppb.New(now),
+		ExpiresAt:                     timestamppb.New(now.Add(30 * time.Second)),
+		MonotonicValidFor:             durationpb.New(30 * time.Second),
+	}
+}
+
+func keyIDs(keyring map[string][]byte) []string {
+	identities := make([]string, 0, len(keyring))
+	for identity := range keyring {
+		identities = append(identities, identity)
+	}
+	return identities
 }
 
 func TestGenerateRefusesExistingOutput(t *testing.T) {
