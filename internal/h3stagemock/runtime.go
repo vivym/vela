@@ -18,9 +18,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/h3mockbackend"
+	"github.com/vivym/vela/internal/securefile"
 	"github.com/vivym/vela/internal/strictjson"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 const (
@@ -73,9 +75,11 @@ const (
 type Config struct {
 	Component string
 	Mode      Mode
-	Stdin     io.Reader
-	Stdout    io.Writer
-	Now       func() time.Time
+	// Stdin must support read deadlines when ctx is cancellable so cancellation
+	// can interrupt an otherwise idle protocol read without leaking a goroutine.
+	Stdin  io.Reader
+	Stdout io.Writer
+	Now    func() time.Time
 }
 
 type requestV1 struct {
@@ -203,6 +207,9 @@ type session struct {
 	initialization     *initializeV1
 	active             *execution
 	retiredAuthorities map[string]struct{}
+	scratchRoot        *os.Root
+	inputRoot          *os.Root
+	outputRoot         *os.Root
 }
 
 type execution struct {
@@ -247,12 +254,39 @@ type localLineageV1 struct {
 	StageProfileRevisionID string `json:"stage_profile_revision_id"`
 }
 
-func Run(ctx context.Context, config Config) error {
+type readDeadlineSetter interface {
+	SetReadDeadline(time.Time) error
+}
+
+func Run(ctx context.Context, config Config) (runErr error) {
 	if ctx == nil || config.Stdin == nil || config.Stdout == nil {
 		return errors.New("H3 Stage mock runtime is not configured")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !validComponent(config.Component) || !validMode(config.Mode) {
 		return errors.New("H3 Stage mock component or mode is invalid")
+	}
+	if ctx.Done() != nil {
+		input, ok := config.Stdin.(readDeadlineSetter)
+		if !ok {
+			return errors.New("H3 Stage mock cancellable input must support read deadlines")
+		}
+		if err := input.SetReadDeadline(time.Time{}); err != nil {
+			return fmt.Errorf("enable H3 Stage mock cancellable input: %w", err)
+		}
+		deadlineSet := make(chan struct{})
+		stopCancelInput := context.AfterFunc(ctx, func() {
+			_ = input.SetReadDeadline(time.Now())
+			close(deadlineSet)
+		})
+		defer func() {
+			if !stopCancelInput() {
+				<-deadlineSet
+			}
+			_ = input.SetReadDeadline(time.Time{})
+		}()
 	}
 	if config.Now == nil {
 		config.Now = time.Now
@@ -261,6 +295,11 @@ func Run(ctx context.Context, config Config) error {
 		component: config.Component, mode: config.Mode, now: config.Now,
 		retiredAuthorities: make(map[string]struct{}),
 	}
+	defer func() {
+		if closeErr := runtime.close(); closeErr != nil {
+			runErr = errors.Join(runErr, closeErr)
+		}
+	}()
 	reader := bufio.NewReaderSize(config.Stdin, maximumMessageBytes+2)
 	encoder := json.NewEncoder(config.Stdout)
 	encoder.SetEscapeHTML(false)
@@ -270,6 +309,9 @@ func Run(ctx context.Context, config Config) error {
 		}
 		line, err := readRequestLine(reader)
 		if err != nil {
+			if contextErr := ctx.Err(); contextErr != nil {
+				return contextErr
+			}
 			return err
 		}
 		request, err := decodeRequest(line)
@@ -421,11 +463,6 @@ func (runtime *session) initialize(initialization *initializeV1) error {
 		initialization.Members[0].Epoch != initialization.WorkerMemberEpoch {
 		return errors.New("H3 Stage mock local member is invalid")
 	}
-	for _, root := range []string{initialization.ScratchRoot, initialization.InputRoot, initialization.OutputRoot} {
-		if err := validatePrivateRoot(root); err != nil {
-			return err
-		}
-	}
 	if initialization.ScratchRoot == initialization.InputRoot ||
 		initialization.ScratchRoot == initialization.OutputRoot ||
 		initialization.InputRoot == initialization.OutputRoot ||
@@ -433,8 +470,36 @@ func (runtime *session) initialize(initialization *initializeV1) error {
 		!withinRoot(initialization.ScratchRoot, initialization.OutputRoot) {
 		return errors.New("H3 Stage mock runtime roots are invalid")
 	}
+	scratchRoot, err := openPrivateRoot(initialization.ScratchRoot)
+	if err != nil {
+		return err
+	}
+	inputRoot, err := openPrivateSubroot(
+		scratchRoot, initialization.ScratchRoot, initialization.InputRoot,
+	)
+	if err != nil {
+		_ = scratchRoot.Close()
+		return err
+	}
+	outputRoot, err := openPrivateSubroot(
+		scratchRoot, initialization.ScratchRoot, initialization.OutputRoot,
+	)
+	if err != nil {
+		_ = inputRoot.Close()
+		_ = scratchRoot.Close()
+		return err
+	}
+	if err := ensurePrivateDirectory(outputRoot, ".staging"); err != nil {
+		_ = outputRoot.Close()
+		_ = inputRoot.Close()
+		_ = scratchRoot.Close()
+		return err
+	}
 	copy := *initialization
 	runtime.initialization = &copy
+	runtime.scratchRoot = scratchRoot
+	runtime.inputRoot = inputRoot
+	runtime.outputRoot = outputRoot
 	return nil
 }
 
@@ -472,11 +537,8 @@ func (runtime *session) prepare(request *prepareRequestV1) error {
 			(runtime.active.state != stateFailed || runtime.active.failure == nil || !runtime.active.failure.WorkerReusable) {
 			return errors.New("H3 Stage mock runtime already has an active stage")
 		}
-		if _, recorded := runtime.retiredAuthorities[runtime.active.identity.AuthorityDigest]; !recorded {
-			if len(runtime.retiredAuthorities) >= maximumRetiredAuthorities {
-				return errors.New("H3 Stage mock retired authority bound is exhausted")
-			}
-			runtime.retiredAuthorities[runtime.active.identity.AuthorityDigest] = struct{}{}
+		if err := runtime.retireAuthority(runtime.active.identity.AuthorityDigest); err != nil {
+			return err
 		}
 	}
 	prepared, err := runtime.prepareExecution(request.Identity, request.ExecutionSpec)
@@ -492,7 +554,7 @@ func (runtime *session) prepareExecution(identity stageIdentityV1, encoded []byt
 		return nil, errors.New("H3 Stage mock execution specification exceeds bounds")
 	}
 	var specification velav1.StageExecutionSpec
-	if err := proto.Unmarshal(encoded, &specification); err != nil || len(specification.ProtoReflect().GetUnknown()) != 0 ||
+	if err := proto.Unmarshal(encoded, &specification); err != nil || hasUnknownFields(specification.ProtoReflect()) ||
 		len(specification.GetInputs()) > maximumInputs || len(specification.GetRootInputs()) > maximumInputs {
 		return nil, errors.New("H3 Stage mock execution specification is invalid")
 	}
@@ -511,11 +573,11 @@ func (runtime *session) prepareExecution(identity stageIdentityV1, encoded []byt
 		(runtime.component != "ENCODER" && (len(specification.GetInputs()) != 1 || len(specification.GetRootInputs()) != 0)) {
 		return nil, errors.New("H3 Stage mock execution inputs do not match component")
 	}
-	inputDigests, err := validateStageInputs(runtime.initialization.InputRoot, identity.StageRunID, specification.GetInputs())
+	inputDigests, err := validateStageInputs(runtime.inputRoot, identity.StageRunID, specification.GetInputs())
 	if err != nil {
 		return nil, err
 	}
-	rootDigests, err := validateRootInputs(runtime.initialization.InputRoot, identity.StageRunID, specification.GetRootInputs())
+	rootDigests, err := validateRootInputs(runtime.inputRoot, identity.StageRunID, specification.GetRootInputs())
 	if err != nil {
 		return nil, err
 	}
@@ -639,6 +701,20 @@ func (runtime *session) shutdown() error {
 	return nil
 }
 
+func (runtime *session) close() error {
+	cleanupErr := runtime.shutdown()
+	var closeErrors []error
+	for _, root := range []*os.Root{runtime.outputRoot, runtime.inputRoot, runtime.scratchRoot} {
+		if root != nil {
+			closeErrors = append(closeErrors, root.Close())
+		}
+	}
+	runtime.outputRoot = nil
+	runtime.inputRoot = nil
+	runtime.scratchRoot = nil
+	return errors.Join(append([]error{cleanupErr}, closeErrors...)...)
+}
+
 func (runtime *session) publish(active *execution) error {
 	port, contentType, _ := componentOutput(runtime.component)
 	descriptor, err := json.Marshal(mockPayloadV1{
@@ -662,7 +738,7 @@ func (runtime *session) publish(active *execution) error {
 		payload = append(payload, '\n')
 	}
 	digest := sha256.Sum256(payload)
-	finalDirectory := filepath.Join(runtime.initialization.OutputRoot, active.identity.StageAttemptID)
+	finalDirectory := active.identity.StageAttemptID
 	finalPath := filepath.Join(finalDirectory, port+".bin")
 	manifest, err := json.Marshal(localManifestV1{
 		SchemaVersion: 1, OutputPort: port,
@@ -678,19 +754,26 @@ func (runtime *session) publish(active *execution) error {
 	if err != nil {
 		return fmt.Errorf("encode H3 Stage mock output manifest: %w", err)
 	}
-	stagingDirectory := filepath.Join(runtime.initialization.OutputRoot, ".staging", active.identity.StageAttemptID)
-	if err := os.MkdirAll(stagingDirectory, 0o700); err != nil {
+	stagingDirectory := filepath.Join(".staging", active.identity.StageAttemptID)
+	if runtime.outputRoot == nil {
+		return errors.New("H3 Stage mock output root is unavailable")
+	}
+	if err := runtime.outputRoot.Mkdir(stagingDirectory, 0o700); err != nil {
 		return fmt.Errorf("create H3 Stage mock staging directory: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(stagingDirectory) }()
+	defer func() { _ = runtime.outputRoot.RemoveAll(stagingDirectory) }()
 	stagingPath := filepath.Join(stagingDirectory, port+".partial")
-	file, err := os.OpenFile(stagingPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	file, err := runtime.outputRoot.OpenFile(stagingPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return fmt.Errorf("create H3 Stage mock output: %w", err)
 	}
 	if _, err := file.Write(payload); err != nil {
 		_ = file.Close()
 		return fmt.Errorf("write H3 Stage mock output: %w", err)
+	}
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("protect H3 Stage mock output: %w", err)
 	}
 	if err := file.Sync(); err != nil {
 		_ = file.Close()
@@ -699,11 +782,11 @@ func (runtime *session) publish(active *execution) error {
 	if err := file.Close(); err != nil {
 		return fmt.Errorf("close H3 Stage mock output: %w", err)
 	}
-	if err := os.Mkdir(finalDirectory, 0o700); err != nil {
+	if err := runtime.outputRoot.Mkdir(finalDirectory, 0o700); err != nil {
 		return fmt.Errorf("create H3 Stage mock final directory: %w", err)
 	}
-	if err := os.Rename(stagingPath, finalPath); err != nil {
-		_ = os.Remove(finalDirectory)
+	if err := runtime.outputRoot.Rename(stagingPath, finalPath); err != nil {
+		_ = runtime.outputRoot.Remove(finalDirectory)
 		return fmt.Errorf("publish H3 Stage mock output: %w", err)
 	}
 	active.manifest = manifest
@@ -728,15 +811,18 @@ func (runtime *session) discardUnsealedOutput(active *execution) error {
 	if active == nil || active.state == stateOutputSealed || active.outputPath == "" {
 		return nil
 	}
-	expectedDirectory := filepath.Join(runtime.initialization.OutputRoot, active.identity.StageAttemptID)
+	if runtime.outputRoot == nil {
+		return errors.New("H3 Stage mock output root is unavailable")
+	}
+	expectedDirectory := active.identity.StageAttemptID
 	expectedPath := filepath.Join(expectedDirectory, componentFileName(runtime.component))
 	if active.outputPath != expectedPath {
 		return errors.New("H3 Stage mock unsealed output path is invalid")
 	}
-	if err := os.Remove(expectedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := runtime.outputRoot.Remove(expectedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove unsealed H3 Stage mock output: %w", err)
 	}
-	if err := os.Remove(expectedDirectory); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := runtime.outputRoot.Remove(expectedDirectory); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove unsealed H3 Stage mock output directory: %w", err)
 	}
 	active.manifest = nil
@@ -750,7 +836,7 @@ func componentFileName(component string) string {
 	return port + ".bin"
 }
 
-func validateStageInputs(root, stageRunID string, inputs []*velav1.StageInputArtifact) ([]string, error) {
+func validateStageInputs(root *os.Root, stageRunID string, inputs []*velav1.StageInputArtifact) ([]string, error) {
 	digests := make([]string, 0, len(inputs))
 	seen := make(map[string]struct{}, len(inputs))
 	for _, input := range inputs {
@@ -765,8 +851,8 @@ func validateStageInputs(root, stageRunID string, inputs []*velav1.StageInputArt
 		}
 		seen[key] = struct{}{}
 		digest := hex.EncodeToString(input.GetSha256())
-		path := filepath.Join(root, "stage-runs", stageRunID, "inputs", input.GetStageArtifactId(), digest+".bin")
-		if err := verifyInput(path, input.GetSha256(), input.GetSizeBytes()); err != nil {
+		path := filepath.Join("stage-runs", stageRunID, "inputs", input.GetStageArtifactId(), digest+".bin")
+		if err := verifyInput(root, path, input.GetSha256(), input.GetSizeBytes()); err != nil {
 			return nil, err
 		}
 		digests = append(digests, digest)
@@ -774,7 +860,7 @@ func validateStageInputs(root, stageRunID string, inputs []*velav1.StageInputArt
 	return digests, nil
 }
 
-func validateRootInputs(root, stageRunID string, inputs []*velav1.StageRootInputMaterial) ([]string, error) {
+func validateRootInputs(root *os.Root, stageRunID string, inputs []*velav1.StageRootInputMaterial) ([]string, error) {
 	digests := make([]string, 0, len(inputs))
 	for index, input := range inputs {
 		if input == nil || input.GetConditionIndex() != int32(index) || strings.TrimSpace(input.GetUri()) == "" ||
@@ -782,8 +868,8 @@ func validateRootInputs(root, stageRunID string, inputs []*velav1.StageRootInput
 			return nil, errors.New("H3 Stage mock root input is invalid")
 		}
 		digest := hex.EncodeToString(input.GetSha256())
-		path := filepath.Join(root, "stage-runs", stageRunID, "root-inputs", fmt.Sprint(index), digest+".bin")
-		if err := verifyInput(path, input.GetSha256(), input.GetSizeBytes()); err != nil {
+		path := filepath.Join("stage-runs", stageRunID, "root-inputs", fmt.Sprint(index), digest+".bin")
+		if err := verifyInput(root, path, input.GetSha256(), input.GetSizeBytes()); err != nil {
 			return nil, err
 		}
 		digests = append(digests, digest)
@@ -791,12 +877,15 @@ func validateRootInputs(root, stageRunID string, inputs []*velav1.StageRootInput
 	return digests, nil
 }
 
-func verifyInput(path string, expected []byte, size int64) error {
-	pathInformation, err := os.Lstat(path)
+func verifyInput(root *os.Root, path string, expected []byte, size int64) error {
+	if root == nil {
+		return errors.New("H3 Stage mock input root is unavailable")
+	}
+	pathInformation, err := root.Lstat(path)
 	if err != nil || !pathInformation.Mode().IsRegular() || pathInformation.Size() != size {
 		return errors.New("H3 Stage mock input is not an exact regular file")
 	}
-	file, err := os.Open(path)
+	file, err := root.Open(path)
 	if err != nil {
 		return errors.New("H3 Stage mock input is unavailable")
 	}
@@ -820,10 +909,133 @@ func (runtime *session) requireActive(identity stageIdentityV1) (*execution, err
 	if err := validateStageIdentity(identity, runtime.initialization.StageProfileRevisionID); err != nil {
 		return nil, err
 	}
-	if runtime.active != nil && sameStageIdentity(runtime.active.identity, identity) {
+	if runtime.active == nil {
+		return nil, errors.New("H3 Stage mock identity does not match active execution")
+	}
+	if sameStageIdentity(runtime.active.identity, identity) {
 		return runtime.active, nil
 	}
-	return nil, errors.New("H3 Stage mock identity does not match active execution")
+	if _, retired := runtime.retiredAuthorities[identity.AuthorityDigest]; retired {
+		return nil, errors.New("H3 Stage mock authority has already retired")
+	}
+	if runtime.active.state == stateStopped || runtime.active.state == stateOutputSealed ||
+		runtime.active.state == stateFailed ||
+		!sameStableStageIdentity(runtime.active.identity, identity) ||
+		identity.StageVersion < runtime.active.identity.StageVersion {
+		return nil, errors.New("H3 Stage mock identity does not match active execution")
+	}
+	if err := runtime.retireAuthority(runtime.active.identity.AuthorityDigest); err != nil {
+		return nil, err
+	}
+	runtime.active.identity = identity
+	return runtime.active, nil
+}
+
+func (runtime *session) retireAuthority(digest string) error {
+	if _, recorded := runtime.retiredAuthorities[digest]; recorded {
+		return nil
+	}
+	if len(runtime.retiredAuthorities) >= maximumRetiredAuthorities {
+		return errors.New("H3 Stage mock retired authority bound is exhausted")
+	}
+	runtime.retiredAuthorities[digest] = struct{}{}
+	return nil
+}
+
+func hasUnknownFields(message protoreflect.Message) bool {
+	if len(message.GetUnknown()) != 0 {
+		return true
+	}
+	found := false
+	message.Range(func(field protoreflect.FieldDescriptor, value protoreflect.Value) bool {
+		switch {
+		case field.IsMap() && field.MapValue().Message() != nil:
+			value.Map().Range(func(_ protoreflect.MapKey, item protoreflect.Value) bool {
+				found = hasUnknownFields(item.Message())
+				return !found
+			})
+		case field.IsList() && field.Message() != nil:
+			list := value.List()
+			for index := 0; index < list.Len() && !found; index++ {
+				found = hasUnknownFields(list.Get(index).Message())
+			}
+		case field.Message() != nil:
+			found = hasUnknownFields(value.Message())
+		}
+		return !found
+	})
+	return found
+}
+
+func openPrivateRoot(path string) (*os.Root, error) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, errors.New("H3 Stage mock runtime root is invalid")
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || resolved != path {
+		return nil, errors.New("H3 Stage mock runtime root is not canonical")
+	}
+	pathInfo, err := os.Lstat(path)
+	if err != nil || !trustedRootDirectory(pathInfo) {
+		return nil, errors.New("H3 Stage mock runtime root is not a private directory")
+	}
+	root, err := securefile.OpenTrustedRoot(path)
+	if err != nil {
+		return nil, fmt.Errorf("bind H3 Stage mock runtime root: %w", err)
+	}
+	openedInfo, err := root.Stat(".")
+	if err != nil || !os.SameFile(pathInfo, openedInfo) || !trustedRootDirectory(openedInfo) {
+		_ = root.Close()
+		return nil, errors.New("H3 Stage mock runtime root changed while binding")
+	}
+	return root, nil
+}
+
+func openPrivateSubroot(parent *os.Root, parentPath, path string) (*os.Root, error) {
+	if parent == nil || !withinRoot(parentPath, path) {
+		return nil, errors.New("H3 Stage mock runtime subroot is invalid")
+	}
+	relative, err := filepath.Rel(parentPath, path)
+	if err != nil {
+		return nil, errors.New("H3 Stage mock runtime subroot is invalid")
+	}
+	validated, err := openPrivateRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = validated.Close() }()
+
+	root, err := parent.OpenRoot(relative)
+	if err != nil {
+		return nil, fmt.Errorf("bind H3 Stage mock runtime subroot: %w", err)
+	}
+	validatedInfo, validatedErr := validated.Stat(".")
+	openedInfo, openedErr := root.Stat(".")
+	if validatedErr != nil || openedErr != nil ||
+		!os.SameFile(validatedInfo, openedInfo) || !trustedRootDirectory(openedInfo) {
+		_ = root.Close()
+		return nil, errors.New("H3 Stage mock runtime subroot changed while binding")
+	}
+	return root, nil
+}
+
+func ensurePrivateDirectory(root *os.Root, name string) error {
+	if err := root.Mkdir(name, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create H3 Stage mock private directory: %w", err)
+	}
+	info, err := root.Lstat(name)
+	if err != nil || !privateDirectory(info) {
+		return errors.New("H3 Stage mock private directory is invalid")
+	}
+	return nil
+}
+
+func privateDirectory(info os.FileInfo) bool {
+	return info != nil && info.IsDir() && info.Mode().Perm()&0o077 == 0
+}
+
+func trustedRootDirectory(info os.FileInfo) bool {
+	return info != nil && info.IsDir() && info.Mode().Perm()&0o022 == 0
 }
 
 func validateStageIdentity(identity stageIdentityV1, profile string) error {
@@ -833,21 +1045,6 @@ func validateStageIdentity(identity stageIdentityV1, profile string) error {
 		identity.AttemptFence <= 0 || identity.StageFence <= 0 || identity.StageVersion <= 0 ||
 		identity.StageProfileRevisionID != profile {
 		return errors.New("H3 Stage mock lineage identity is invalid")
-	}
-	return nil
-}
-
-func validatePrivateRoot(root string) error {
-	if root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root {
-		return errors.New("H3 Stage mock runtime root is invalid")
-	}
-	resolved, err := filepath.EvalSymlinks(root)
-	if err != nil || resolved != root {
-		return errors.New("H3 Stage mock runtime root is not canonical")
-	}
-	info, err := os.Stat(root)
-	if err != nil || !info.IsDir() || info.Mode().Perm()&0o022 != 0 {
-		return errors.New("H3 Stage mock runtime root is not a private directory")
 	}
 	return nil
 }
@@ -949,6 +1146,14 @@ func canonicalDigest(value string) bool {
 }
 
 func sameStageIdentity(left, right stageIdentityV1) bool {
+	return left == right
+}
+
+func sameStableStageIdentity(left, right stageIdentityV1) bool {
+	left.AuthorityDigest = ""
+	left.StageVersion = 0
+	right.AuthorityDigest = ""
+	right.StageVersion = 0
 	return left == right
 }
 

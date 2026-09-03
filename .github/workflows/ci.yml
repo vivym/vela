@@ -121,6 +121,7 @@ jobs:
           # Ubuntu 24.04 runners otherwise deny the sandbox's unprivileged mount namespace.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           go test ./internal/artifactvalidator -count=1
+          go test ./internal/h3stagemock -count=1
 
   integration:
     runs-on: ubuntu-latest

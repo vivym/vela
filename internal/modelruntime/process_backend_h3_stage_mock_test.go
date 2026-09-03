@@ -14,6 +14,7 @@ import (
 
 	"github.com/vivym/vela/internal/stageartifact"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestProcessBackendExecutesH3StageMockCommand(t *testing.T) {
@@ -77,14 +78,18 @@ func TestProcessBackendExecutesH3StageMockCommand(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("prepare H3 Stage mock: %v; stderr=%s", err, stderr.String())
 	}
-	if err := backend.Start(context.Background(), authority); err != nil {
+	renewed := authority
+	renewed.Authority = proto.Clone(authority.Authority).(*velav1.StageAuthority)
+	renewed.Authority.StageVersion++
+	renewed.Digest = sha256.Sum256([]byte("renewed H3 Stage mock authority"))
+	if err := backend.Start(context.Background(), renewed); err != nil {
 		t.Fatalf("start H3 Stage mock: %v; stderr=%s", err, stderr.String())
 	}
-	status, err := backend.Status(context.Background(), authority)
+	status, err := backend.Status(context.Background(), renewed)
 	if err != nil || status.State != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_READY {
 		t.Fatalf("H3 Stage mock status=%#v error=%v; stderr=%s", status, err, stderr.String())
 	}
-	sealed, err := backend.Seal(context.Background(), authority)
+	sealed, err := backend.Seal(context.Background(), renewed)
 	if err != nil || sealed.TotalSizeBytes <= 0 {
 		t.Fatalf("seal H3 Stage mock=%#v error=%v; stderr=%s", sealed, err, stderr.String())
 	}

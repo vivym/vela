@@ -7,14 +7,20 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vivym/vela/internal/h3stagemock"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -82,16 +88,33 @@ func TestRuntimeExecutesAndSealsDeterministicStageOutput(t *testing.T) {
 		ContentType   string `json:"content_type"`
 		PayloadSHA256 string `json:"payload_sha256"`
 		SizeBytes     int64  `json:"size_bytes"`
+		Lineage       struct {
+			AttemptID              string `json:"attempt_id"`
+			StageRunID             string `json:"stage_run_id"`
+			StageAttemptID         string `json:"stage_attempt_id"`
+			StageLeaseID           string `json:"stage_lease_id"`
+			AttemptFence           int64  `json:"attempt_fence"`
+			StageFence             int64  `json:"stage_fence"`
+			StageProfileRevisionID string `json:"stage_profile_revision_id"`
+		} `json:"lineage"`
 	}
 	if err := json.Unmarshal(manifestJSON, &manifest); err != nil {
 		t.Fatalf("decode output manifest: %v", err)
 	}
 	if manifest.SchemaVersion != 1 || manifest.OutputPort != "latent" ||
 		manifest.ContentType != "application/x-minimax-h3-latent" ||
-		manifest.LocalLocator != identity["stage_attempt_id"].(string)+"/latent.bin" {
+		manifest.LocalLocator != identity["stage_attempt_id"].(string)+"/latent.bin" ||
+		manifest.Lineage.AttemptID != identity["attempt_id"].(string) ||
+		manifest.Lineage.StageRunID != identity["stage_run_id"].(string) ||
+		manifest.Lineage.StageAttemptID != identity["stage_attempt_id"].(string) ||
+		manifest.Lineage.StageLeaseID != identity["stage_lease_id"].(string) ||
+		manifest.Lineage.AttemptFence != int64(identity["attempt_fence"].(int)) ||
+		manifest.Lineage.StageFence != int64(identity["stage_fence"].(int)) ||
+		manifest.Lineage.StageProfileRevisionID != identity["stage_profile_revision_id"].(string) {
 		t.Fatalf("output manifest=%#v", manifest)
 	}
-	payload, err := os.ReadFile(filepath.Join(outputRoot, manifest.LocalLocator))
+	outputPath := filepath.Join(outputRoot, manifest.LocalLocator)
+	payload, err := os.ReadFile(outputPath)
 	if err != nil {
 		t.Fatalf("read sealed output: %v", err)
 	}
@@ -102,6 +125,13 @@ func TestRuntimeExecutesAndSealsDeterministicStageOutput(t *testing.T) {
 	if manifest.PayloadSHA256 != hex.EncodeToString(wantDigest[:]) ||
 		manifest.SizeBytes != int64(len(payload)) || numberField(t, output, "total_size_bytes") != int64(len(payload)) {
 		t.Fatalf("output receipt=%#v manifest=%#v", output, manifest)
+	}
+	information, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat sealed output: %v", err)
+	}
+	if information.Mode().Perm() != 0o600 {
+		t.Fatalf("sealed output mode=%v, want 0600", information.Mode().Perm())
 	}
 }
 
@@ -138,6 +168,18 @@ func TestRuntimeSupportsFailureAndHangModes(t *testing.T) {
 				requests = append(requests, payload)
 				requestID++
 			}
+			if testCase.mode == h3stagemock.ModeFailure {
+				replacement := cloneObject(identity)
+				replacement["authority_digest"] = "44" + string(bytes.Repeat([]byte("0"), 62))
+				replacement["stage_run_id"] = "49300000-0000-0000-0000-000000000002"
+				replacement["stage_attempt_id"] = "49400000-0000-0000-0000-000000000002"
+				replacement["stage_lease_id"] = "49500000-0000-0000-0000-000000000002"
+				requests = append(requests, map[string]any{
+					"schema_version": 1, "request_id": requestID, "operation": "prepare",
+					"prepare": map[string]any{"identity": replacement, "execution_spec": specification},
+				})
+				requestID++
+			}
 			requests = append(requests, map[string]any{"schema_version": 1, "request_id": requestID, "operation": "shutdown"})
 			responses := runRuntime(t, h3stagemock.Config{Component: "ENCODER", Mode: testCase.mode}, requests)
 			var states []string
@@ -159,6 +201,9 @@ func TestRuntimeSupportsFailureAndHangModes(t *testing.T) {
 				if stringField(t, failure, "failure_class") != "MOCK_INJECTED_FAILURE" ||
 					!boolField(t, failure, "worker_reusable") {
 					t.Fatalf("failure=%#v", failure)
+				}
+				if !boolField(t, responses[len(responses)-2], "acknowledged") {
+					t.Fatalf("replacement after injected failure=%#v", responses[len(responses)-2])
 				}
 			}
 		})
@@ -202,13 +247,88 @@ func TestRuntimeDiscardsUnsealedOutputOnCancel(t *testing.T) {
 	}
 }
 
+func TestRuntimeDiscardsUnsealedOutputOnShutdown(t *testing.T) {
+	root, inputRoot, outputRoot := runtimeRoots(t)
+	identity := stageIdentity("49300000-0000-0000-0000-000000000001")
+	runRuntime(t, h3stagemock.Config{
+		Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
+	}, []any{
+		initializeRequest(1, root, inputRoot, outputRoot, "ENCODER"),
+		map[string]any{
+			"schema_version": 1, "request_id": 2, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": identity,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					ParametersJson:             []byte(`{"seed":17}`),
+					ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 3, "operation": "start", "stage": map[string]any{"identity": identity}},
+		map[string]any{"schema_version": 1, "request_id": 4, "operation": "shutdown"},
+	})
+	outputDirectory := filepath.Join(outputRoot, identity["stage_attempt_id"].(string))
+	if _, err := os.Lstat(outputDirectory); !os.IsNotExist(err) {
+		t.Fatalf("unsealed output remains after shutdown: %v", err)
+	}
+}
+
+func TestRuntimeRejectsCancelAfterSealAndRetainsOutput(t *testing.T) {
+	root, inputRoot, outputRoot := runtimeRoots(t)
+	identity := stageIdentity("49300000-0000-0000-0000-000000000001")
+	responses := runRuntime(t, h3stagemock.Config{
+		Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
+	}, []any{
+		initializeRequest(1, root, inputRoot, outputRoot, "ENCODER"),
+		map[string]any{
+			"schema_version": 1, "request_id": 2, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": identity,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					ParametersJson:             []byte(`{"seed":17}`),
+					ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 3, "operation": "start", "stage": map[string]any{"identity": identity}},
+		map[string]any{"schema_version": 1, "request_id": 4, "operation": "seal", "stage": map[string]any{"identity": identity}},
+		map[string]any{
+			"schema_version": 1, "request_id": 5, "operation": "cancel",
+			"cancel": map[string]any{
+				"identity": identity, "reason": "MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP",
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 6, "operation": "shutdown"},
+	})
+	if _, ok := responses[4]["error"].(string); !ok {
+		t.Fatalf("sealed cancel response=%#v", responses[4])
+	}
+	outputPath := filepath.Join(
+		outputRoot, identity["stage_attempt_id"].(string), "conditioning.bin",
+	)
+	information, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat retained sealed output: %v", err)
+	}
+	if information.Mode().Perm() != 0o600 {
+		t.Fatalf("sealed output mode=%v, want retained 0600 file", information.Mode().Perm())
+	}
+}
+
 func TestVAEMockOutputPassesPinnedFFprobeContract(t *testing.T) {
+	requirePinned := os.Getenv("VELA_REQUIRE_PINNED_FFPROBE") == "1"
 	ffprobe, err := exec.LookPath("ffprobe")
 	if err != nil {
+		if requirePinned {
+			t.Fatal("pinned ffprobe 8.0.1 is required")
+		}
 		t.Skip("ffprobe is not installed")
 	}
 	version, err := exec.Command(ffprobe, "-version").Output()
 	if err != nil || !strings.HasPrefix(string(version), "ffprobe version 8.0.1 ") {
+		if requirePinned {
+			t.Fatalf("pinned ffprobe 8.0.1 is required: %v; version=%s", err, version)
+		}
 		t.Skip("pinned ffprobe 8.0.1 is not installed")
 	}
 
@@ -268,9 +388,122 @@ func TestVAEMockOutputPassesPinnedFFprobeContract(t *testing.T) {
 		"-of", "json", outputPath,
 	)
 	encoded, err := probe.CombinedOutput()
-	if err != nil || !bytes.Contains(encoded, []byte(`"codec_name": "h264"`)) ||
-		!bytes.Contains(encoded, []byte(`"format_name": "mov,mp4,m4a,3gp,3g2,mj2"`)) {
+	if err != nil {
 		t.Fatalf("probe VAE mock output: %v; output=%s", err, encoded)
+	}
+	var result struct {
+		ProgramVersion struct {
+			Version string `json:"version"`
+		} `json:"program_version"`
+		Streams []struct {
+			CodecName   string `json:"codec_name"`
+			CodecType   string `json:"codec_type"`
+			Width       int    `json:"width"`
+			Height      int    `json:"height"`
+			AverageRate string `json:"avg_frame_rate"`
+			FrameCount  string `json:"nb_frames"`
+			Duration    string `json:"duration"`
+		} `json:"streams"`
+		Format struct {
+			Name     string `json:"format_name"`
+			Duration string `json:"duration"`
+		} `json:"format"`
+	}
+	if err := json.Unmarshal(encoded, &result); err != nil {
+		t.Fatalf("decode VAE ffprobe output: %v; output=%s", err, encoded)
+	}
+	if result.ProgramVersion.Version != "8.0.1" || len(result.Streams) != 1 ||
+		result.Streams[0].CodecName != "h264" || result.Streams[0].CodecType != "video" ||
+		result.Streams[0].Width != 1920 || result.Streams[0].Height != 1080 ||
+		result.Streams[0].AverageRate != "24/1" || result.Streams[0].FrameCount != "120" ||
+		result.Streams[0].Duration != "5.000000" ||
+		result.Format.Name != "mov,mp4,m4a,3gp,3g2,mj2" || result.Format.Duration != "5.000000" {
+		t.Fatalf("VAE ffprobe contract=%#v", result)
+	}
+}
+
+func TestEncoderConsumesOrderedRootInputsAndRejectsInvalidOrdering(t *testing.T) {
+	root, inputRoot, outputRoot := runtimeRoots(t)
+	stageRunID := "49300000-0000-0000-0000-000000000001"
+	payloads := [][]byte{[]byte("first root input"), []byte("second root input")}
+	rootInputs := make([]*velav1.StageRootInputMaterial, 0, len(payloads))
+	wantDigests := make([]string, 0, len(payloads))
+	for index, payload := range payloads {
+		digest := sha256.Sum256(payload)
+		encodedDigest := hex.EncodeToString(digest[:])
+		path := filepath.Join(
+			inputRoot, "stage-runs", stageRunID, "root-inputs", fmt.Sprint(index), encodedDigest+".bin",
+		)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("create root input directory: %v", err)
+		}
+		if err := os.WriteFile(path, payload, 0o600); err != nil {
+			t.Fatalf("write root input: %v", err)
+		}
+		rootInputs = append(rootInputs, &velav1.StageRootInputMaterial{
+			ConditionIndex: int32(index), Uri: fmt.Sprintf("mock://condition/%d", index),
+			Sha256: digest[:], SizeBytes: int64(len(payload)),
+		})
+		wantDigests = append(wantDigests, encodedDigest)
+	}
+	identity := stageIdentity(stageRunID)
+	responses := runRuntime(t, h3stagemock.Config{
+		Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
+	}, []any{
+		initializeRequest(1, root, inputRoot, outputRoot, "ENCODER"),
+		map[string]any{
+			"schema_version": 1, "request_id": 2, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": identity,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					RootInputs: rootInputs, ParametersJson: []byte(`{"seed":17}`),
+					ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 3, "operation": "start", "stage": map[string]any{"identity": identity}},
+		map[string]any{"schema_version": 1, "request_id": 4, "operation": "seal", "stage": map[string]any{"identity": identity}},
+		map[string]any{"schema_version": 1, "request_id": 5, "operation": "shutdown"},
+	})
+	manifestJSON := bytesField(t, objectField(t, responses[3], "output"), "output_manifest_json")
+	var manifest struct {
+		LocalLocator string `json:"local_locator"`
+	}
+	if err := json.Unmarshal(manifestJSON, &manifest); err != nil {
+		t.Fatalf("decode Encoder output manifest: %v", err)
+	}
+	encoded, err := os.ReadFile(filepath.Join(outputRoot, manifest.LocalLocator))
+	if err != nil {
+		t.Fatalf("read Encoder output: %v", err)
+	}
+	var payload struct {
+		RootInputSHA256 []string `json:"root_input_sha256"`
+	}
+	if err := json.Unmarshal(encoded, &payload); err != nil || !slices.Equal(payload.RootInputSHA256, wantDigests) {
+		t.Fatalf("Encoder root input payload=%#v error=%v", payload, err)
+	}
+
+	invalidRoot, invalidInputRoot, invalidOutputRoot := runtimeRoots(t)
+	invalidIdentity := stageIdentity(stageRunID)
+	rootInputs[0].ConditionIndex = 1
+	invalidResponses := runRuntime(t, h3stagemock.Config{
+		Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
+	}, []any{
+		initializeRequest(1, invalidRoot, invalidInputRoot, invalidOutputRoot, "ENCODER"),
+		map[string]any{
+			"schema_version": 1, "request_id": 2, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": invalidIdentity,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					RootInputs: rootInputs, ParametersJson: []byte(`{"seed":17}`),
+					ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 3, "operation": "shutdown"},
+	})
+	if _, ok := invalidResponses[1]["error"].(string); !ok {
+		t.Fatalf("invalid root input response=%#v", invalidResponses[1])
 	}
 }
 
@@ -283,6 +516,248 @@ func TestRuntimeRejectsDuplicateJSONKeys(t *testing.T) {
 	})
 	if err == nil || output.Len() != 0 {
 		t.Fatalf("Run duplicate keys error=%v output=%q", err, output.String())
+	}
+}
+
+func TestRuntimeAcceptsMonotonicAuthorityRenewalAndRetiresPreviousDigest(t *testing.T) {
+	root, inputRoot, outputRoot := runtimeRoots(t)
+	original := stageIdentity("49300000-0000-0000-0000-000000000001")
+	stale := cloneObject(original)
+	stale["authority_digest"] = "66" + string(bytes.Repeat([]byte("0"), 62))
+	stale["stage_version"] = 3
+	renewed := cloneObject(original)
+	renewed["authority_digest"] = "55" + string(bytes.Repeat([]byte("0"), 62))
+	renewed["stage_version"] = 5
+	responses := runRuntime(t, h3stagemock.Config{
+		Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
+	}, []any{
+		initializeRequest(1, root, inputRoot, outputRoot, "ENCODER"),
+		map[string]any{
+			"schema_version": 1, "request_id": 2, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": original,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					ParametersJson:             []byte(`{"seed":17}`),
+					ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 3, "operation": "start", "stage": map[string]any{"identity": stale}},
+		map[string]any{"schema_version": 1, "request_id": 4, "operation": "start", "stage": map[string]any{"identity": renewed}},
+		map[string]any{"schema_version": 1, "request_id": 5, "operation": "status", "stage": map[string]any{"identity": renewed}},
+		map[string]any{"schema_version": 1, "request_id": 6, "operation": "status", "stage": map[string]any{"identity": original}},
+		map[string]any{"schema_version": 1, "request_id": 7, "operation": "seal", "stage": map[string]any{"identity": renewed}},
+		map[string]any{"schema_version": 1, "request_id": 8, "operation": "shutdown"},
+	})
+	if _, ok := responses[2]["error"].(string); !ok {
+		t.Fatalf("non-monotonic renewal response=%#v", responses[2])
+	}
+	if !boolField(t, responses[3], "acknowledged") ||
+		stringField(t, objectField(t, responses[4], "status"), "state") != "OUTPUT_READY" {
+		t.Fatalf("renewed execution responses=%#v", responses[3:5])
+	}
+	if _, ok := responses[5]["error"].(string); !ok {
+		t.Fatalf("retired authority status response=%#v", responses[5])
+	}
+}
+
+func TestRuntimeCleansUnsealedOutputOnFatalProtocolExit(t *testing.T) {
+	for _, testCase := range []struct {
+		name     string
+		trailing string
+	}{
+		{name: "EOF"},
+		{name: "malformed request", trailing: "not-json\n"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			root, inputRoot, outputRoot := runtimeRoots(t)
+			identity := stageIdentity("49300000-0000-0000-0000-000000000001")
+			var input bytes.Buffer
+			encoder := json.NewEncoder(&input)
+			for _, request := range []any{
+				initializeRequest(1, root, inputRoot, outputRoot, "ENCODER"),
+				map[string]any{
+					"schema_version": 1, "request_id": 2, "operation": "prepare",
+					"prepare": map[string]any{
+						"identity": identity,
+						"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+							ParametersJson:             []byte(`{"seed":17}`),
+							ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+						}),
+					},
+				},
+				map[string]any{"schema_version": 1, "request_id": 3, "operation": "start", "stage": map[string]any{"identity": identity}},
+			} {
+				if err := encoder.Encode(request); err != nil {
+					t.Fatalf("encode request: %v", err)
+				}
+			}
+			input.WriteString(testCase.trailing)
+			var output bytes.Buffer
+			err := h3stagemock.Run(context.Background(), h3stagemock.Config{
+				Component: "ENCODER", Mode: h3stagemock.ModeSuccess, Stdin: &input, Stdout: &output,
+			})
+			if err == nil {
+				t.Fatal("fatal protocol exit unexpectedly succeeded")
+			}
+			outputDirectory := filepath.Join(outputRoot, identity["stage_attempt_id"].(string))
+			if _, statErr := os.Lstat(outputDirectory); !os.IsNotExist(statErr) {
+				t.Fatalf("unsealed output remains after fatal exit: %v", statErr)
+			}
+		})
+	}
+}
+
+func TestRuntimeCancellationInterruptsIdleDeadlineInput(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create cancellable input pipe: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = reader.Close()
+		_ = writer.Close()
+	})
+	result := make(chan error, 1)
+	go func() {
+		result <- h3stagemock.Run(ctx, h3stagemock.Config{
+			Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
+			Stdin: reader, Stdout: io.Discard,
+		})
+	}()
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run cancellation error=%v, want context canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Run did not stop after idle input cancellation")
+	}
+}
+
+func TestRuntimeCancellationSurfacesUnsealedOutputCleanupFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	inputReader, inputWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create cancellable input pipe: %v", err)
+	}
+	outputReader, outputWriter := io.Pipe()
+	t.Cleanup(func() {
+		_ = inputReader.Close()
+		_ = inputWriter.Close()
+		_ = outputReader.Close()
+		_ = outputWriter.Close()
+	})
+	root, inputRoot, outputRoot := runtimeRoots(t)
+	identity := stageIdentity("49300000-0000-0000-0000-000000000001")
+	result := make(chan error, 1)
+	go func() {
+		result <- h3stagemock.Run(ctx, h3stagemock.Config{
+			Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
+			Stdin: inputReader, Stdout: outputWriter,
+		})
+	}()
+	encoder := json.NewEncoder(inputWriter)
+	responses := bufio.NewReader(outputReader)
+	for _, request := range []any{
+		initializeRequest(1, root, inputRoot, outputRoot, "ENCODER"),
+		map[string]any{
+			"schema_version": 1, "request_id": 2, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": identity,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					ParametersJson:             []byte(`{"seed":17}`),
+					ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 3, "operation": "start", "stage": map[string]any{"identity": identity}},
+	} {
+		if err := encoder.Encode(request); err != nil {
+			t.Fatalf("encode request: %v", err)
+		}
+		if _, err := responses.ReadBytes('\n'); err != nil {
+			t.Fatalf("read response: %v", err)
+		}
+	}
+	outputPath := filepath.Join(
+		outputRoot, identity["stage_attempt_id"].(string), "conditioning.bin",
+	)
+	if err := os.Remove(outputPath); err != nil {
+		t.Fatalf("replace unsealed output: %v", err)
+	}
+	if err := os.Mkdir(outputPath, 0o700); err != nil {
+		t.Fatalf("create blocking output directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outputPath, "blocker"), []byte("block cleanup"), 0o600); err != nil {
+		t.Fatalf("write cleanup blocker: %v", err)
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if err == context.Canceled || !errors.Is(err, context.Canceled) ||
+			!strings.Contains(err.Error(), "remove unsealed H3 Stage mock output") {
+			t.Fatalf("Run cancellation cleanup error=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Run did not return cancellation cleanup failure")
+	}
+}
+
+func TestRuntimeRejectsNestedProtobufUnknownFields(t *testing.T) {
+	unknown := protowire.AppendTag(nil, 1000, protowire.VarintType)
+	unknown = protowire.AppendVarint(unknown, 1)
+	for _, testCase := range []struct {
+		name          string
+		component     string
+		specification *velav1.StageExecutionSpec
+	}{
+		{
+			name: "StageInputArtifact", component: "DIT",
+			specification: &velav1.StageExecutionSpec{
+				Inputs: []*velav1.StageInputArtifact{{
+					StageArtifactId: "49600000-0000-0000-0000-000000000001",
+					ObjectVersion:   "encoder-v1", Sha256: bytes.Repeat([]byte{1}, sha256.Size), SizeBytes: 1,
+					StageInterfaceRevisionId: "49700000-0000-0000-0000-000000000001",
+				}},
+				ParametersJson: []byte(`{"seed":17}`), ExpectedOutputManifestJson: []byte(`{"latent":true}`),
+			},
+		},
+		{
+			name: "StageRootInputMaterial", component: "ENCODER",
+			specification: &velav1.StageExecutionSpec{
+				RootInputs: []*velav1.StageRootInputMaterial{{
+					ConditionIndex: 0, Uri: "mock://condition/0", Sha256: bytes.Repeat([]byte{2}, sha256.Size), SizeBytes: 1,
+				}},
+				ParametersJson: []byte(`{"seed":17}`), ExpectedOutputManifestJson: []byte(`{"conditioning":true}`),
+			},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.specification.GetInputs() != nil {
+				testCase.specification.GetInputs()[0].ProtoReflect().SetUnknown(unknown)
+			} else {
+				testCase.specification.GetRootInputs()[0].ProtoReflect().SetUnknown(unknown)
+			}
+			root, inputRoot, outputRoot := runtimeRoots(t)
+			responses := runRuntime(t, h3stagemock.Config{
+				Component: testCase.component, Mode: h3stagemock.ModeSuccess,
+			}, []any{
+				initializeRequest(1, root, inputRoot, outputRoot, testCase.component),
+				map[string]any{
+					"schema_version": 1, "request_id": 2, "operation": "prepare",
+					"prepare": map[string]any{
+						"identity":       stageIdentity("49300000-0000-0000-0000-000000000001"),
+						"execution_spec": executionSpec(t, testCase.specification),
+					},
+				},
+				map[string]any{"schema_version": 1, "request_id": 3, "operation": "shutdown"},
+			})
+			if _, ok := responses[1]["error"].(string); !ok {
+				t.Fatalf("nested unknown field response=%#v", responses[1])
+			}
+		})
 	}
 }
 
@@ -368,6 +843,11 @@ func TestRuntimeRejectsRetiredAuthorityWithoutRetainingExecutionHistory(t *testi
 func TestRuntimeReportsPublicationFailureAsReusableFailure(t *testing.T) {
 	root, inputRoot, outputRoot := runtimeRoots(t)
 	identity := stageIdentity("49300000-0000-0000-0000-000000000001")
+	replacement := cloneObject(identity)
+	replacement["authority_digest"] = "44" + string(bytes.Repeat([]byte("0"), 62))
+	replacement["stage_run_id"] = "49300000-0000-0000-0000-000000000002"
+	replacement["stage_attempt_id"] = "49400000-0000-0000-0000-000000000002"
+	replacement["stage_lease_id"] = "49500000-0000-0000-0000-000000000002"
 	if err := os.Mkdir(filepath.Join(outputRoot, identity["stage_attempt_id"].(string)), 0o700); err != nil {
 		t.Fatalf("create conflicting output directory: %v", err)
 	}
@@ -385,7 +865,17 @@ func TestRuntimeReportsPublicationFailureAsReusableFailure(t *testing.T) {
 		},
 		map[string]any{"schema_version": 1, "request_id": 3, "operation": "start", "stage": map[string]any{"identity": identity}},
 		map[string]any{"schema_version": 1, "request_id": 4, "operation": "status", "stage": map[string]any{"identity": identity}},
-		map[string]any{"schema_version": 1, "request_id": 5, "operation": "shutdown"},
+		map[string]any{
+			"schema_version": 1, "request_id": 5, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": replacement,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					ParametersJson:             []byte(`{"seed":18}`),
+					ExpectedOutputManifestJson: []byte(`{"conditioning":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 6, "operation": "shutdown"},
 	}
 	responses := runRuntime(t, h3stagemock.Config{
 		Component: "ENCODER", Mode: h3stagemock.ModeSuccess,
@@ -401,6 +891,9 @@ func TestRuntimeReportsPublicationFailureAsReusableFailure(t *testing.T) {
 	if stringField(t, failure, "failure_class") != "MOCK_OUTPUT_PUBLICATION_FAILED" ||
 		!boolField(t, failure, "worker_reusable") {
 		t.Fatalf("publication failure evidence=%#v", failure)
+	}
+	if !boolField(t, responses[4], "acknowledged") {
+		t.Fatalf("replacement after publication failure=%#v", responses[4])
 	}
 }
 
@@ -617,6 +1110,14 @@ func stageIdentity(stageRunID string) map[string]any {
 		"attempt_fence":    2, "stage_fence": 3, "stage_version": 4,
 		"stage_profile_revision_id": "49000000-0000-0000-0000-000000000005",
 	}
+}
+
+func cloneObject(source map[string]any) map[string]any {
+	cloned := make(map[string]any, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func executionSpec(t *testing.T, specification *velav1.StageExecutionSpec) []byte {

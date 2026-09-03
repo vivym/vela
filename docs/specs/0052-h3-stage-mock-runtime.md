@@ -52,12 +52,16 @@ Initialization binds the Worker instance/member epochs, DeviceSet and
 membership digests, model residency/runtime epoch, Stage profile revision,
 component revision, one exact local GPU identity, and canonical private
 scratch/input/output directories. The input and output directories must be
-distinct descendants of the scratch directory.
+distinct descendants of the scratch directory. The process validates trusted
+ownership and ancestry, then binds all three roots to directory descriptors so
+later path replacement cannot redirect input, publication, or cleanup outside
+the initialized roots.
 
-`prepare` decodes a bounded protobuf `StageExecutionSpec`, rejects protobuf
-unknown fields, validates the parameters and expected-output JSON objects, and
-verifies every declared input against an exact regular file, byte count, and
-SHA-256 digest. Input paths use the Worker-owned layout:
+`prepare` decodes a bounded protobuf `StageExecutionSpec`, recursively rejects
+protobuf unknown fields in both the top-level and nested messages, validates
+the parameters and expected-output JSON objects, and verifies every declared
+input against an exact regular file, byte count, and SHA-256 digest. Input paths
+use the Worker-owned layout:
 
 ```text
 <input-root>/stage-runs/<stage-run-id>/inputs/<artifact-id>/<sha256>.bin
@@ -86,15 +90,19 @@ Each output is written as a mode-`0600` partial file, synced, and renamed into:
 The sealed manifest binds the local locator, content type, size, SHA-256, and
 full Attempt/Stage lineage. Repeated calls for the current assignment with the
 same authority and exact specification are idempotent; the authority cannot be
-reused with different specification bytes. A different active authority is
-rejected until the prior execution is sealed, stopped, or reusable-failed. The
+reused with different specification bytes. A monotonic authority renewal may
+change only its digest and Stage version at this driver boundary; accepting it
+retires the previous digest while preserving the stable execution identity. A
+different active authority is rejected until the prior execution is sealed,
+stopped, or reusable-failed. The
 single-slot process replaces a terminal assignment and retains only a compact,
 fixed-capacity set of retired authority digests, not prior execution payloads.
 A retired authority cannot be rebound; after 65,536 retired authorities the
-mock fails closed until its resident process is restarted. Cancel or shutdown
-deletes an unsealed output before reporting the execution stopped; sealed
-output cannot be canceled. A local publication error enters a bounded reusable
-`FAILED` state instead of leaving the execution apparently running.
+mock fails closed until its resident process is restarted. Cancel, shutdown,
+context cancellation, malformed protocol input, EOF, and response-write failure
+delete an unsealed output; sealed output cannot be canceled and survives process
+exit. A local publication error enters a bounded reusable `FAILED` state instead
+of leaving the execution apparently running.
 
 ## Fault modes
 
@@ -125,7 +133,9 @@ trip, pinned FFprobe validation of the exact VAE output, cross-compiled command
 verification, and atomic no-replace publication. Negative coverage includes
 oversized messages, duplicate and unknown keys, trailing data, malformed
 device identity, unknown readiness checks, authority/specification mutation,
-unknown cancellation reasons, terminal assignment replacement, and
-output-publication failure. Those results are repository conformance only. Lab
+unknown cancellation reasons, nested protobuf unknown fields, non-monotonic
+renewal, terminal assignment replacement, root-path replacement, abnormal-exit
+cleanup, retirement-bound exhaustion, and output-publication failure. Those
+results are repository conformance only. Lab
 deployment receipts remain synthetic, and Production Gates remain unchanged
 until separately authorized real-H3 Launch Receipts are validated.

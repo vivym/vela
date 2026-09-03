@@ -141,6 +141,26 @@ func TestBuildH3StageMockRuntimeProducesExactVerifiedCommands(t *testing.T) {
 		digests["h3-encoder"] != digests["h3-vae-decoder"] {
 		t.Fatalf("mock commands were not published from one runtime: %v", digests)
 	}
+	assignments := make(map[string]string, 4)
+	for _, line := range strings.Split(strings.TrimSpace(string(encoded)), "\n") {
+		name, value, ok := strings.Cut(line, "=")
+		if !ok || name == "" || value == "" {
+			t.Fatalf("malformed H3 Stage mock builder output line %q", line)
+		}
+		if _, duplicate := assignments[name]; duplicate {
+			t.Fatalf("duplicate H3 Stage mock builder assignment %q", name)
+		}
+		assignments[name] = value
+	}
+	wantAssignments := map[string]string{
+		"H3_RUNTIME_COMMAND_CONTEXT": output,
+		"H3_ENCODER_SHA256":          digests["h3-encoder"],
+		"H3_DIT_SHA256":              digests["h3-dit"],
+		"H3_VAE_DECODER_SHA256":      digests["h3-vae-decoder"],
+	}
+	if !reflect.DeepEqual(assignments, wantAssignments) {
+		t.Fatalf("H3 Stage mock builder assignments=%v want=%v", assignments, wantAssignments)
+	}
 
 	if encoded, err := command.CombinedOutput(); err == nil {
 		t.Fatalf("second H3 Stage mock runtime build unexpectedly succeeded:\n%s", encoded)
