@@ -245,7 +245,7 @@ metadata:
   namespace: vela-lab-v2
   labels:
     vela.ai/deployment-identity: vela-lab-v2
-automountServiceAccountToken: true
+automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -312,7 +312,7 @@ spec:
         vela.ai/deployment-identity: vela-lab-v2
     spec:
       serviceAccountName: vela-lab-fleet-controller
-      automountServiceAccountToken: true
+      automountServiceAccountToken: false
       nodeSelector:
         vela.ai/node-role: control-storage
       securityContext:
@@ -323,6 +323,33 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: materialize-secrets
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              for source in /projected/*; do
+                [ -f "$source" ]
+                name=${source##*/}
+                temporary=/materialized/.${name}.tmp
+                cp -L -- "$source" "$temporary"
+                chmod 0400 "$temporary"
+                mv -f -- "$temporary" "/materialized/$name"
+              done
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: projected-files
+              mountPath: /projected
+              readOnly: true
+            - name: materialized-files
+              mountPath: /materialized
       containers:
         - name: fleet-controller
           image: __FLEET_CONTROLLER_IMAGE__
@@ -360,15 +387,29 @@ spec:
             readOnlyRootFilesystem: true
           volumeMounts:
             - {name: rollouts, mountPath: /etc/vela-fleet/rollouts.json, subPath: rollouts.json, readOnly: true}
-            - {name: tls, mountPath: /etc/vela-fleet/private, readOnly: true}
+            - {name: materialized-files, mountPath: /etc/vela-fleet/private, readOnly: true}
+            - {name: fleet-service-account-token, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
         - name: rollouts
           configMap:
             name: vela-lab-fleet-rollouts
             defaultMode: 0400
-        - name: tls
+        - name: projected-files
           secret:
             secretName: vela-lab-fleet-files
             defaultMode: 0400
+        - name: materialized-files
+          emptyDir: {medium: Memory, sizeLimit: 1Mi}
+        - name: fleet-service-account-token
+          projected:
+            defaultMode: 0400
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - {key: ca.crt, path: ca.crt}
         - {name: tmp, emptyDir: {}}
