@@ -223,7 +223,7 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 		if got := containerNames(worker.Spec.Template.Spec.Containers); !equalStrings(got, []string{"model-runtime", "stage-worker-agent"}) {
 			t.Fatalf("%s containers = %v", name, got)
 		}
-		if !hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/runtime.sock") ||
+		if !hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/private/runtime.sock") ||
 			!hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") ||
 			!hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
 			t.Fatalf("%s does not bind the shared runtime socket, TLS Artifact Store, and StageAuthority key", name)
@@ -242,7 +242,7 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 	if !ok || thumbnailRuntime.Image != imageValues["BOOTSTRAP_IMAGE"] ||
 		!equalStrings(thumbnailRuntime.Command, []string{"/usr/local/bin/vela-model-runtime"}) ||
 		thumbnail.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] != "vela-lab-control-1" ||
-		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/runtime.sock") ||
+		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/private/runtime.sock") ||
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") ||
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
 		t.Fatalf("thumbnail CPU Worker deployment = %#v", thumbnail)
@@ -261,6 +261,10 @@ func assertLabV2RuntimePrivateMaterializer(t *testing.T, name string, deployment
 	}
 	if strings.Contains(script, "install -d -m 0700 /runtime-private") {
 		t.Fatalf("%s materializer attempts to chmod the root-owned runtime-private mount", name)
+	}
+	if !strings.Contains(script, "install -d -m 0700 /runtime-socket/private") ||
+		!hasVolumeMount(materializer, "model-runtime-socket", "/runtime-socket", false) {
+		t.Fatalf("%s materializer does not create the private ModelRuntime socket directory", name)
 	}
 }
 

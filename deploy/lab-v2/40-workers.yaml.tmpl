@@ -45,6 +45,7 @@ spec:
             - |
               install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
               test -d /runtime-private
+              install -d -m 0700 /runtime-socket/private
               install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
               install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
               install -m 0400 /projected/tls.key /stage-private/control/tls.key
@@ -62,6 +63,7 @@ spec:
             - {name: projected-files, mountPath: /projected, readOnly: true}
             - {name: stage-worker-private, mountPath: /stage-private}
             - {name: model-runtime-private, mountPath: /runtime-private}
+            - {name: model-runtime-socket, mountPath: /runtime-socket}
       containers:
         - name: stage-worker-agent
           image: __STAGE_WORKER_AGENT_IMAGE__
@@ -75,7 +77,7 @@ spec:
             - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
             - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
@@ -120,7 +122,7 @@ spec:
             - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
             - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
             - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
             - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
           resources:
@@ -196,6 +198,7 @@ spec:
             - |
               install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
               test -d /runtime-private
+              install -d -m 0700 /runtime-socket/private
               install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
               install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
               install -m 0400 /projected/tls.key /stage-private/control/tls.key
@@ -213,6 +216,7 @@ spec:
             - {name: projected-files, mountPath: /projected, readOnly: true}
             - {name: stage-worker-private, mountPath: /stage-private}
             - {name: model-runtime-private, mountPath: /runtime-private}
+            - {name: model-runtime-socket, mountPath: /runtime-socket}
       containers:
         - name: stage-worker-agent
           image: __STAGE_WORKER_AGENT_IMAGE__
@@ -226,7 +230,7 @@ spec:
             - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
             - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
@@ -271,7 +275,7 @@ spec:
             - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
             - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
             - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
             - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
           resources:
@@ -342,6 +346,7 @@ spec:
             - |
               install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
               test -d /runtime-private
+              install -d -m 0700 /runtime-socket/private
               install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
               install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
               install -m 0400 /projected/tls.key /stage-private/control/tls.key
@@ -359,6 +364,7 @@ spec:
             - {name: projected-files, mountPath: /projected, readOnly: true}
             - {name: stage-worker-private, mountPath: /stage-private}
             - {name: model-runtime-private, mountPath: /runtime-private}
+            - {name: model-runtime-socket, mountPath: /runtime-socket}
       containers:
         - name: stage-worker-agent
           image: __STAGE_WORKER_AGENT_IMAGE__
@@ -372,7 +378,7 @@ spec:
             - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
             - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
@@ -418,7 +424,7 @@ spec:
             - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
             - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
             - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
             - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
           resources:
