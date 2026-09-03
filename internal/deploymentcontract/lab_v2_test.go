@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vivym/vela/internal/labv2contract"
 	"gopkg.in/yaml.v3"
 )
 
@@ -210,6 +211,11 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 	if !ok || strings.TrimSpace(rollouts.Data["rollouts.json"]) != `{"schema_version":1,"rollouts":[]}` {
 		t.Fatalf("Fleet empty desired state = %#v", rollouts.Data)
 	}
+	controlRuntime, ok := findLabV2Document(documents, "ConfigMap", "vela-lab-control-runtime")
+	if !ok || controlRuntime.Data["VELA_LEASE_ACTIVE_KEY_ID"] != labv2contract.StageAuthorityKeyID {
+		t.Fatalf("control Lease active key ID = %q, want %q",
+			controlRuntime.Data["VELA_LEASE_ACTIVE_KEY_ID"], labv2contract.StageAuthorityKeyID)
+	}
 	for index := 1; index <= 2; index++ {
 		name := "vela-lab-stage-worker-" + string(rune('0'+index))
 		worker := deployments[name]
@@ -217,8 +223,9 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 			t.Fatalf("%s containers = %v", name, got)
 		}
 		if !hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/runtime.sock") ||
-			!hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") {
-			t.Fatalf("%s does not bind the shared runtime socket and TLS Artifact Store", name)
+			!hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") ||
+			!hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
+			t.Fatalf("%s does not bind the shared runtime socket, TLS Artifact Store, and StageAuthority key", name)
 		}
 		modelRuntime, ok := findContainer(worker.Spec.Template.Spec.Containers, "model-runtime")
 		if !ok || modelRuntime.Image != imageValues["RUNTIME_IMAGE"] || len(modelRuntime.Command) != 0 {
@@ -234,7 +241,8 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 		!equalStrings(thumbnailRuntime.Command, []string{"/usr/local/bin/vela-model-runtime"}) ||
 		thumbnail.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] != "vela-lab-control-1" ||
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/runtime.sock") ||
-		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") {
+		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") ||
+		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
 		t.Fatalf("thumbnail CPU Worker deployment = %#v", thumbnail)
 	}
 }

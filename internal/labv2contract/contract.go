@@ -1,8 +1,9 @@
 package labv2contract
 
 const (
-	Namespace = "vela-lab-v2"
-	GraphID   = "84000000-0000-0000-0000-000000000501"
+	Namespace           = "vela-lab-v2"
+	GraphID             = "84000000-0000-0000-0000-000000000501"
+	StageAuthorityKeyID = "lab-stage-authority-v1"
 
 	Worker1Name         = "vela-lab-worker-1"
 	Worker2Name         = "vela-lab-worker-2"

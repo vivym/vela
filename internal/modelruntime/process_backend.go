@@ -234,8 +234,9 @@ func NewProcessBackend(
 	if backend.shutdownTimeout == 0 {
 		backend.shutdownTimeout = defaultShutdownTimeout
 	}
-	go backend.readResponses(stdout)
-	go backend.wait()
+	readerDone := make(chan struct{})
+	go backend.readResponses(stdout, readerDone)
+	go backend.wait(readerDone)
 	initializeContext, cancel := context.WithTimeout(ctx, config.InitializationTimeout)
 	defer cancel()
 	response, err := backend.call(initializeContext, driverRequestV1{
@@ -458,28 +459,29 @@ func (backend *ProcessBackend) call(
 	}
 }
 
-func (backend *ProcessBackend) readResponses(stdout io.ReadCloser) {
+func (backend *ProcessBackend) readResponses(stdout io.ReadCloser, readerDone chan<- struct{}) {
+	defer close(readerDone)
 	defer func() { _ = stdout.Close() }()
 	reader := bufio.NewReaderSize(stdout, 64<<10)
 	for {
 		line, err := readBoundedDriverLine(reader)
 		if err != nil {
-			backend.deliver(driverReadResult{err: err})
+			backend.deliverTerminal(driverReadResult{err: err})
 			return
 		}
 		var response driverResponseV1
 		if err := strictjson.RejectDuplicateKeys(line); err != nil {
-			backend.deliver(driverReadResult{err: fmt.Errorf("decode ModelRuntime driver response: %w", err)})
+			backend.deliverTerminal(driverReadResult{err: fmt.Errorf("decode ModelRuntime driver response: %w", err)})
 			return
 		}
 		decoder := json.NewDecoder(bytes.NewReader(line))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&response); err != nil {
-			backend.deliver(driverReadResult{err: fmt.Errorf("decode ModelRuntime driver response: %w", err)})
+			backend.deliverTerminal(driverReadResult{err: fmt.Errorf("decode ModelRuntime driver response: %w", err)})
 			return
 		}
 		if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-			backend.deliver(driverReadResult{err: errors.New("ModelRuntime driver response contains trailing data")})
+			backend.deliverTerminal(driverReadResult{err: errors.New("ModelRuntime driver response contains trailing data")})
 			return
 		}
 		backend.deliver(driverReadResult{response: response})
@@ -493,7 +495,15 @@ func (backend *ProcessBackend) deliver(result driverReadResult) {
 	}
 }
 
-func (backend *ProcessBackend) wait() {
+func (backend *ProcessBackend) deliverTerminal(result driverReadResult) {
+	select {
+	case backend.responses <- result:
+	default:
+	}
+}
+
+func (backend *ProcessBackend) wait(readerDone <-chan struct{}) {
+	<-readerDone
 	err := backend.command.Wait()
 	backend.waitMu.Lock()
 	backend.waitErr = err

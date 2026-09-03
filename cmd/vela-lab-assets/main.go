@@ -61,7 +61,6 @@ const (
 	ditStageProfileID          = labv2contract.DiTStageProfileID
 	vaeStageProfileID          = labv2contract.VAEStageProfileID
 	thumbnailStageProfileID    = labv2contract.ThumbnailStageProfileID
-	stageAuthorityKeyID        = "lab-stage-authority-v1"
 	smokeCredentialID          = "84000000-0000-0000-0000-00000000000d"
 	outboxWorkloadName         = "vela-outbox-dispatcher"
 	schedulerWorkloadName      = "vela-scheduler-consumer"
@@ -361,7 +360,7 @@ func generate(configuration options) error {
 		return err
 	}
 	verifierKeyring, err := stageauthority.DeriveVerifierKeyring(map[string][]byte{
-		stageAuthorityKeyID: leaseKey,
+		labv2contract.StageAuthorityKeyID: leaseKey,
 	})
 	if err != nil {
 		return fmt.Errorf("derive ModelRuntime StageAuthority verifier keyring: %w", err)
@@ -422,10 +421,12 @@ func generate(configuration options) error {
 		return err
 	}
 	keyrings := map[string]map[string]string{
-		"lease.json":   {stageAuthorityKeyID: base64.StdEncoding.EncodeToString(leaseKey)},
+		"lease.json":   {labv2contract.StageAuthorityKeyID: base64.StdEncoding.EncodeToString(leaseKey)},
 		"webhook.json": {"lab-webhook-v1": base64.StdEncoding.EncodeToString(webhookKey)},
 		"model-runtime-verifier.json": {
-			stageAuthorityKeyID: base64.StdEncoding.EncodeToString(verifierKeyring[stageAuthorityKeyID]),
+			labv2contract.StageAuthorityKeyID: base64.StdEncoding.EncodeToString(
+				verifierKeyring[labv2contract.StageAuthorityKeyID],
+			),
 		},
 	}
 	for name, payload := range keyrings {
