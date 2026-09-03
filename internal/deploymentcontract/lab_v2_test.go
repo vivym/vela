@@ -266,7 +266,7 @@ func assertLabV2RuntimePrivateMaterializer(t *testing.T, name string, deployment
 	preparerScript := strings.Join(preparer.Args, "\n")
 	wantPreparerScript := strings.Join([]string{
 		"chown 0:0 /runtime-socket",
-		"chmod 0700 /runtime-socket",
+		"chmod 00700 /runtime-socket",
 		"install -d -m 0700 /runtime-socket/private",
 		"chown 10001:10001 /runtime-socket/private",
 		"chown 10001:10001 /runtime-socket",
