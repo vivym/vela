@@ -45,7 +45,9 @@ func NewPostgresExecutionBackend(
 	if pool == nil || signer == nil || config.ActiveSigningKeyID == "" ||
 		len(config.ActiveSigningKeyID) > 100 || config.AuthorityTTL <= 0 ||
 		config.AuthorityTTL > 7*24*time.Hour || config.LocalDeadlineTTL <= 0 ||
-		config.LocalDeadlineTTL > config.AuthorityTTL || config.MaxClockSkew < 0 ||
+		config.LocalDeadlineTTL > config.AuthorityTTL ||
+		config.AuthorityTTL%renewalClockStep != 0 ||
+		config.LocalDeadlineTTL%renewalClockStep != 0 || config.MaxClockSkew < 0 ||
 		config.MaxClockSkew > time.Minute {
 		return nil, errors.New("PostgreSQL Stage Worker execution configuration is invalid")
 	}
@@ -148,13 +150,15 @@ func (backend *PostgresExecutionBackend) renew(
 	if current == nil || stageVersion < current.GetStageVersion() {
 		return nil, errors.New("stage worker renewal Stage version is invalid")
 	}
-	issuedAt := eventAt.UTC()
-	minimumIssuedAt := current.GetIssuedAt().AsTime().UTC().Add(renewalClockStep)
+	issuedAt := eventAt.UTC().Truncate(renewalClockStep)
+	minimumIssuedAt := current.GetIssuedAt().AsTime().UTC().
+		Truncate(renewalClockStep).Add(renewalClockStep)
 	if issuedAt.Before(minimumIssuedAt) {
 		issuedAt = minimumIssuedAt
 	}
 	expiresAt := issuedAt.Add(backend.config.AuthorityTTL)
-	minimumExpiresAt := current.GetExpiresAt().AsTime().UTC().Add(renewalClockStep)
+	minimumExpiresAt := current.GetExpiresAt().AsTime().UTC().
+		Truncate(renewalClockStep).Add(renewalClockStep)
 	if expiresAt.Before(minimumExpiresAt) {
 		expiresAt = minimumExpiresAt
 	}
@@ -261,7 +265,7 @@ func validExecutionEventTime(
 		eventAt.After(now.UTC().Add(maxClockSkew)) {
 		return time.Time{}, errors.New("stage worker execution event is outside active authority")
 	}
-	return eventAt, nil
+	return eventAt.Truncate(renewalClockStep), nil
 }
 
 func executionCommandPayload(

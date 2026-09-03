@@ -448,6 +448,26 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 		t, database.DSN,
 		"vela_stage_worker_control_login", "vela-stage-worker-control-password",
 	)
+	for name, config := range map[string]stageworkercontrol.PostgresExecutionConfig{
+		"authority TTL": {
+			ActiveSigningKeyID: "stage-authority-key-v1",
+			AuthorityTTL:       2*time.Minute + time.Nanosecond,
+			LocalDeadlineTTL:   90 * time.Second,
+		},
+		"local deadline TTL": {
+			ActiveSigningKeyID: "stage-authority-key-v1",
+			AuthorityTTL:       2 * time.Minute,
+			LocalDeadlineTTL:   90*time.Second + time.Nanosecond,
+		},
+	} {
+		t.Run("reject sub-microsecond "+name, func(t *testing.T) {
+			if _, err := stageworkercontrol.NewPostgresExecutionBackend(
+				workerPool, signer, config,
+			); err == nil {
+				t.Fatal("NewPostgresExecutionBackend accepted a sub-microsecond duration")
+			}
+		})
+	}
 	backend, err := stageworkercontrol.NewPostgresExecutionBackend(
 		workerPool,
 		signer,
@@ -471,7 +491,7 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 		},
 		ControlSessionEpoch: 1,
 	}
-	startedAt := assignment.IssuedAt.Add(5 * time.Millisecond)
+	startedAt := assignment.IssuedAt.Add(5*time.Millisecond + 999*time.Nanosecond)
 	started, err := backend.StartStage(
 		context.Background(), command,
 		&velav1.StartStageRequest{
@@ -509,7 +529,7 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 	}
 
 	validator, err := stageauthority.NewValidator(keys, func() time.Time {
-		return assignment.IssuedAt.Add(15 * time.Millisecond)
+		return assignment.IssuedAt.Add(25 * time.Millisecond)
 	})
 	if err != nil {
 		t.Fatalf("NewValidator: %v", err)
@@ -518,9 +538,20 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("validate Start renewal: %v", err)
 	}
+	authorizer, err := stageworkercontrol.NewPostgresAuthorizer(workerPool)
+	if err != nil {
+		t.Fatalf("NewPostgresAuthorizer: %v", err)
+	}
+	active, err := authorizer.IsActive(
+		context.Background(), command.Identity, command.ControlSessionEpoch,
+		stageworkercontrol.OperationHeartbeatStage, startedVerified,
+	)
+	if err != nil || !active {
+		t.Fatalf("persisted Start renewal active=%t error=%v", active, err)
+	}
 	heartbeatCommand := command
 	heartbeatCommand.CommandID = uuid.New()
-	observedAt := assignment.IssuedAt.Add(20 * time.Millisecond)
+	observedAt := assignment.IssuedAt.Add(20*time.Millisecond + 999*time.Nanosecond)
 	heartbeatResult, err := backend.HeartbeatStage(
 		context.Background(), heartbeatCommand,
 		&velav1.HeartbeatStageRequest{
@@ -547,6 +578,17 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 			started.RenewedAuthority.GetIssuedAt().AsTime(),
 		) {
 		t.Fatalf("PostgresExecutionBackend Heartbeat result = %#v", heartbeatResult)
+	}
+	heartbeatVerified, err := validator.ValidateEnvelope(heartbeatResult.RenewedAuthority)
+	if err != nil {
+		t.Fatalf("validate Heartbeat renewal: %v", err)
+	}
+	active, err = authorizer.IsActive(
+		context.Background(), command.Identity, command.ControlSessionEpoch,
+		stageworkercontrol.OperationHeartbeatStage, heartbeatVerified,
+	)
+	if err != nil || !active {
+		t.Fatalf("persisted Heartbeat renewal active=%t error=%v", active, err)
 	}
 }
 
