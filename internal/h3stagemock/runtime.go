@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,6 +28,37 @@ const (
 	maximumMessageBytes   = 1 << 20
 	maximumExecutionBytes = 64 << 10
 	maximumInputs         = 64
+)
+
+var (
+	gpuUUIDPattern = regexp.MustCompile(
+		`^GPU-[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$`,
+	)
+	pciBDFPattern = regexp.MustCompile(`^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}[.][0-7]$`)
+)
+
+type operation string
+
+const (
+	operationInitialize operation = "initialize"
+	operationProbe      operation = "probe"
+	operationPrepare    operation = "prepare"
+	operationStart      operation = "start"
+	operationStatus     operation = "status"
+	operationCancel     operation = "cancel"
+	operationSeal       operation = "seal"
+	operationShutdown   operation = "shutdown"
+)
+
+type executionState string
+
+const (
+	statePrepared     executionState = "PREPARED"
+	stateRunning      executionState = "RUNNING"
+	stateStopped      executionState = "STOPPED"
+	stateOutputReady  executionState = "OUTPUT_READY"
+	stateOutputSealed executionState = "OUTPUT_SEALED"
+	stateFailed       executionState = "FAILED"
 )
 
 type Mode string
@@ -48,7 +80,7 @@ type Config struct {
 type requestV1 struct {
 	SchemaVersion int               `json:"schema_version"`
 	RequestID     uint64            `json:"request_id"`
-	Operation     string            `json:"operation"`
+	Operation     operation         `json:"operation"`
 	Initialize    *initializeV1     `json:"initialize,omitempty"`
 	Probe         *probeRequestV1   `json:"probe,omitempty"`
 	Prepare       *prepareRequestV1 `json:"prepare,omitempty"`
@@ -139,13 +171,13 @@ type probeResultV1 struct {
 }
 
 type statusV1 struct {
-	State             string     `json:"state"`
-	Sequence          int64      `json:"sequence"`
-	BackendStage      string     `json:"backend_stage"`
-	Progress          *float64   `json:"progress,omitempty"`
-	BoundedStatusJSON []byte     `json:"bounded_status_json"`
-	Detail            string     `json:"detail,omitempty"`
-	Failure           *failureV1 `json:"failure,omitempty"`
+	State             executionState `json:"state"`
+	Sequence          int64          `json:"sequence"`
+	BackendStage      string         `json:"backend_stage"`
+	Progress          *float64       `json:"progress,omitempty"`
+	BoundedStatusJSON []byte         `json:"bounded_status_json"`
+	Detail            string         `json:"detail,omitempty"`
+	Failure           *failureV1     `json:"failure,omitempty"`
 }
 
 type failureV1 struct {
@@ -169,13 +201,12 @@ type session struct {
 	now            func() time.Time
 	initialization *initializeV1
 	active         *execution
-	history        map[string]*execution
 }
 
 type execution struct {
 	identity         stageIdentityV1
 	specification    []byte
-	state            string
+	state            executionState
 	sequence         int64
 	manifest         []byte
 	totalSize        int64
@@ -226,7 +257,6 @@ func Run(ctx context.Context, config Config) error {
 	}
 	runtime := &session{
 		component: config.Component, mode: config.Mode, now: config.Now,
-		history: make(map[string]*execution),
 	}
 	reader := bufio.NewReaderSize(config.Stdin, maximumMessageBytes+2)
 	encoder := json.NewEncoder(config.Stdout)
@@ -302,15 +332,15 @@ func validateRequestShape(request requestV1) error {
 			payloads++
 		}
 	}
-	wantPayload := request.Operation != "shutdown"
+	wantPayload := request.Operation != operationShutdown
 	if payloads != boolInt(wantPayload) {
 		return errors.New("H3 Stage mock request fields do not match operation")
 	}
-	valid := (request.Operation == "initialize" && request.Initialize != nil) ||
-		(request.Operation == "probe" && request.Probe != nil) ||
-		(request.Operation == "prepare" && request.Prepare != nil) ||
-		((request.Operation == "start" || request.Operation == "status" || request.Operation == "seal") && request.Stage != nil) ||
-		(request.Operation == "cancel" && request.Cancel != nil) || request.Operation == "shutdown"
+	valid := (request.Operation == operationInitialize && request.Initialize != nil) ||
+		(request.Operation == operationProbe && request.Probe != nil) ||
+		(request.Operation == operationPrepare && request.Prepare != nil) ||
+		((request.Operation == operationStart || request.Operation == operationStatus || request.Operation == operationSeal) && request.Stage != nil) ||
+		(request.Operation == operationCancel && request.Cancel != nil) || request.Operation == operationShutdown
 	if !valid {
 		return errors.New("H3 Stage mock request operation is invalid")
 	}
@@ -322,28 +352,28 @@ func (runtime *session) handle(request requestV1) (responseV1, bool) {
 	var err error
 	shutdown := false
 	switch request.Operation {
-	case "initialize":
+	case operationInitialize:
 		err = runtime.initialize(request.Initialize)
 		if err == nil {
 			response.Acknowledged = true
 			response.Initialized = true
 		}
-	case "probe":
+	case operationProbe:
 		response.Probe, err = runtime.probe(request.Probe)
-	case "prepare":
+	case operationPrepare:
 		err = runtime.prepare(request.Prepare)
 		response.Acknowledged = err == nil
-	case "start":
+	case operationStart:
 		err = runtime.start(request.Stage.Identity)
 		response.Acknowledged = err == nil
-	case "status":
+	case operationStatus:
 		response.Status, err = runtime.status(request.Stage.Identity)
-	case "cancel":
+	case operationCancel:
 		err = runtime.cancel(request.Cancel)
 		response.Acknowledged = err == nil
-	case "seal":
+	case operationSeal:
 		response.Output, err = runtime.seal(request.Stage.Identity)
-	case "shutdown":
+	case operationShutdown:
 		err = runtime.shutdown()
 		response.Acknowledged = err == nil
 		shutdown = true
@@ -367,7 +397,7 @@ func (runtime *session) initialize(initialization *initializeV1) error {
 		strings.TrimSpace(initialization.ModelComponentRevision) == "" ||
 		!canonicalDigest(initialization.DeviceSetDigest) ||
 		!canonicalDigest(initialization.MembershipDigest) ||
-		len(initialization.Devices) == 0 || len(initialization.Members) == 0 ||
+		len(initialization.Devices) != 1 || len(initialization.Members) != 1 ||
 		len(initialization.LocalDevices) != 1 {
 		return errors.New("H3 Stage mock initialization is invalid")
 	}
@@ -378,9 +408,15 @@ func (runtime *session) initialize(initialization *initializeV1) error {
 	}
 	device := initialization.LocalDevices[0]
 	if !canonicalUUID(device.DeviceID) || device.DeviceEpoch <= 0 ||
-		!strings.HasPrefix(device.GPUUUID, "GPU-") || len(device.GPUUUID) != 40 ||
-		len(device.PCIBDF) != 12 {
+		(device.ResourceClass != "" && device.ResourceClass != "GPU") ||
+		!gpuUUIDPattern.MatchString(device.GPUUUID) || !pciBDFPattern.MatchString(device.PCIBDF) ||
+		initialization.Devices[0].ID != device.DeviceID ||
+		initialization.Devices[0].Epoch != device.DeviceEpoch {
 		return errors.New("H3 Stage mock local device is invalid")
+	}
+	if initialization.Members[0].ID != initialization.WorkerMemberID ||
+		initialization.Members[0].Epoch != initialization.WorkerMemberEpoch {
+		return errors.New("H3 Stage mock local member is invalid")
 	}
 	for _, root := range []string{initialization.ScratchRoot, initialization.InputRoot, initialization.OutputRoot} {
 		if err := validatePrivateRoot(root); err != nil {
@@ -400,7 +436,7 @@ func (runtime *session) initialize(initialization *initializeV1) error {
 }
 
 func (runtime *session) probe(request *probeRequestV1) (*probeResultV1, error) {
-	if runtime.initialization == nil || request == nil || !strings.HasPrefix(request.Check, "MODEL_RUNTIME_READINESS_CHECK_") {
+	if runtime.initialization == nil || request == nil || !validReadinessCheck(request.Check) {
 		return nil, errors.New("H3 Stage mock readiness request is invalid")
 	}
 	return &probeResultV1{
@@ -417,15 +453,19 @@ func (runtime *session) prepare(request *prepareRequestV1) error {
 		return err
 	}
 	if runtime.active != nil {
-		if sameStageIdentity(runtime.active.identity, request.Identity) &&
-			bytes.Equal(runtime.active.specification, request.ExecutionSpec) {
-			return nil
+		if sameStageIdentity(runtime.active.identity, request.Identity) {
+			if bytes.Equal(runtime.active.specification, request.ExecutionSpec) {
+				return nil
+			}
+			return errors.New("H3 Stage mock authority cannot change execution specification")
 		}
-		if runtime.active.state != "STOPPED" && runtime.active.state != "OUTPUT_SEALED" &&
-			(runtime.active.state != "FAILED" || runtime.active.failure == nil || !runtime.active.failure.WorkerReusable) {
+		if runtime.active.identity.StageAttemptID == request.Identity.StageAttemptID {
+			return errors.New("H3 Stage mock StageAttempt cannot change authority")
+		}
+		if runtime.active.state != stateStopped && runtime.active.state != stateOutputSealed &&
+			(runtime.active.state != stateFailed || runtime.active.failure == nil || !runtime.active.failure.WorkerReusable) {
 			return errors.New("H3 Stage mock runtime already has an active stage")
 		}
-		runtime.history[runtime.active.identity.AuthorityDigest] = runtime.active
 	}
 	prepared, err := runtime.prepareExecution(request.Identity, request.ExecutionSpec)
 	if err != nil {
@@ -469,7 +509,7 @@ func (runtime *session) prepareExecution(identity stageIdentityV1, encoded []byt
 	}
 	parametersDigest := sha256.Sum256(specification.GetParametersJson())
 	return &execution{
-		identity: identity, specification: append([]byte(nil), encoded...), state: "PREPARED", sequence: 1,
+		identity: identity, specification: append([]byte(nil), encoded...), state: statePrepared, sequence: 1,
 		parametersDigest: hex.EncodeToString(parametersDigest[:]), inputDigests: inputDigests,
 		rootInputDigests: rootDigests,
 	}, nil
@@ -480,34 +520,26 @@ func (runtime *session) start(identity stageIdentityV1) error {
 	if err != nil {
 		return err
 	}
-	if active.state == "RUNNING" || active.state == "OUTPUT_READY" || active.state == "OUTPUT_SEALED" || active.state == "FAILED" {
+	if active.state == stateRunning || active.state == stateOutputReady || active.state == stateOutputSealed || active.state == stateFailed {
 		return nil
 	}
-	if active.state != "PREPARED" {
+	if active.state != statePrepared {
 		return errors.New("H3 Stage mock runtime stage is not prepared")
 	}
-	active.state = "RUNNING"
+	active.state = stateRunning
 	active.sequence++
 	switch runtime.mode {
 	case ModeHang:
 		return nil
 	case ModeFailure:
-		now := runtime.now().UTC()
-		detail := "mock stage execution failed as configured"
-		fingerprint := sha256.Sum256([]byte("MOCK_INJECTED_FAILURE\x00" + runtime.component))
-		active.failure = &failureV1{
-			FailureClass: "MOCK_INJECTED_FAILURE", FailureFingerprint: fingerprint[:], Detail: detail,
-			WorkerReusable: true, ConsumedResourceUnits: 1,
-			FailedAt: now.Format(time.RFC3339Nano), RetryAt: now.Add(5 * time.Second).Format(time.RFC3339Nano),
-		}
-		active.state = "FAILED"
-		active.sequence++
+		runtime.fail(active, "MOCK_INJECTED_FAILURE", "mock stage execution failed as configured")
 		return nil
 	default:
 		if err := runtime.publish(active); err != nil {
+			runtime.fail(active, "MOCK_OUTPUT_PUBLICATION_FAILED", "mock output publication failed")
 			return err
 		}
-		active.state = "OUTPUT_READY"
+		active.state = stateOutputReady
 		active.sequence++
 		return nil
 	}
@@ -520,17 +552,17 @@ func (runtime *session) status(identity stageIdentityV1) (*statusV1, error) {
 	}
 	progress := 0.0
 	detail := "mock component prepared"
-	if active.state == "RUNNING" {
+	if active.state == stateRunning {
 		detail = "mock component executing"
 	}
-	if active.state == "OUTPUT_READY" || active.state == "OUTPUT_SEALED" {
+	if active.state == stateOutputReady || active.state == stateOutputSealed {
 		progress = 1
 		detail = "mock component output ready"
 	}
-	if active.state == "FAILED" {
+	if active.state == stateFailed {
 		detail = "mock component execution failed"
 	}
-	if active.state == "STOPPED" {
+	if active.state == stateStopped {
 		detail = "mock component execution stopped"
 	}
 	bounded, _ := json.Marshal(struct {
@@ -545,23 +577,23 @@ func (runtime *session) status(identity stageIdentityV1) (*statusV1, error) {
 }
 
 func (runtime *session) cancel(request *cancelRequestV1) error {
-	if request == nil || !strings.HasPrefix(request.Reason, "MODEL_RUNTIME_CANCEL_REASON_") {
+	if request == nil || !validCancelReason(request.Reason) {
 		return errors.New("H3 Stage mock cancellation request is invalid")
 	}
 	active, err := runtime.requireActive(request.Identity)
 	if err != nil {
 		return err
 	}
-	if active.state == "OUTPUT_SEALED" {
+	if active.state == stateOutputSealed {
 		return errors.New("sealed H3 Stage mock output cannot be canceled")
 	}
-	if active.state == "STOPPED" {
+	if active.state == stateStopped {
 		return nil
 	}
 	if err := runtime.discardUnsealedOutput(active); err != nil {
 		return err
 	}
-	active.state = "STOPPED"
+	active.state = stateStopped
 	active.sequence++
 	return nil
 }
@@ -571,25 +603,25 @@ func (runtime *session) seal(identity stageIdentityV1) (*outputV1, error) {
 	if err != nil {
 		return nil, err
 	}
-	if (active.state != "OUTPUT_READY" && active.state != "OUTPUT_SEALED") || len(active.manifest) == 0 {
+	if (active.state != stateOutputReady && active.state != stateOutputSealed) || len(active.manifest) == 0 {
 		return nil, errors.New("H3 Stage mock output is not ready to seal")
 	}
-	if active.state == "OUTPUT_READY" {
-		active.state = "OUTPUT_SEALED"
+	if active.state == stateOutputReady {
+		active.state = stateOutputSealed
 		active.sequence++
 	}
 	return &outputV1{OutputManifestJSON: append([]byte(nil), active.manifest...), TotalSizeBytes: active.totalSize}, nil
 }
 
 func (runtime *session) shutdown() error {
-	if runtime.active == nil || runtime.active.state == "OUTPUT_SEALED" {
+	if runtime.active == nil || runtime.active.state == stateOutputSealed {
 		return nil
 	}
 	if err := runtime.discardUnsealedOutput(runtime.active); err != nil {
 		return err
 	}
-	if runtime.active.state == "RUNNING" || runtime.active.state == "OUTPUT_READY" {
-		runtime.active.state = "STOPPED"
+	if runtime.active.state == stateRunning || runtime.active.state == stateOutputReady {
+		runtime.active.state = stateStopped
 		runtime.active.sequence++
 	}
 	return nil
@@ -668,8 +700,20 @@ func (runtime *session) publish(active *execution) error {
 	return nil
 }
 
+func (runtime *session) fail(active *execution, failureClass, detail string) {
+	now := runtime.now().UTC()
+	fingerprint := sha256.Sum256([]byte(failureClass + "\x00" + runtime.component))
+	active.failure = &failureV1{
+		FailureClass: failureClass, FailureFingerprint: fingerprint[:], Detail: detail,
+		WorkerReusable: true, ConsumedResourceUnits: 1,
+		FailedAt: now.Format(time.RFC3339Nano), RetryAt: now.Add(5 * time.Second).Format(time.RFC3339Nano),
+	}
+	active.state = stateFailed
+	active.sequence++
+}
+
 func (runtime *session) discardUnsealedOutput(active *execution) error {
-	if active == nil || active.state == "OUTPUT_SEALED" || active.outputPath == "" {
+	if active == nil || active.state == stateOutputSealed || active.outputPath == "" {
 		return nil
 	}
 	expectedDirectory := filepath.Join(runtime.initialization.OutputRoot, active.identity.StageAttemptID)
@@ -736,8 +780,8 @@ func validateRootInputs(root, stageRunID string, inputs []*velav1.StageRootInput
 }
 
 func verifyInput(path string, expected []byte, size int64) error {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() != size {
+	pathInformation, err := os.Lstat(path)
+	if err != nil || !pathInformation.Mode().IsRegular() || pathInformation.Size() != size {
 		return errors.New("H3 Stage mock input is not an exact regular file")
 	}
 	file, err := os.Open(path)
@@ -745,6 +789,11 @@ func verifyInput(path string, expected []byte, size int64) error {
 		return errors.New("H3 Stage mock input is unavailable")
 	}
 	defer func() { _ = file.Close() }()
+	openedInformation, err := file.Stat()
+	if err != nil || !openedInformation.Mode().IsRegular() || openedInformation.Size() != size ||
+		!os.SameFile(pathInformation, openedInformation) {
+		return errors.New("H3 Stage mock input changed while opening exact regular file")
+	}
 	digest := sha256.New()
 	if _, err := io.Copy(digest, file); err != nil || !bytes.Equal(digest.Sum(nil), expected) {
 		return errors.New("H3 Stage mock input digest is mismatched")
@@ -761,9 +810,6 @@ func (runtime *session) requireActive(identity stageIdentityV1) (*execution, err
 	}
 	if runtime.active != nil && sameStageIdentity(runtime.active.identity, identity) {
 		return runtime.active, nil
-	}
-	if prior := runtime.history[identity.AuthorityDigest]; prior != nil && sameStageIdentity(prior.identity, identity) {
-		return prior, nil
 	}
 	return nil, errors.New("H3 Stage mock identity does not match active execution")
 }
@@ -851,6 +897,30 @@ func validComponent(component string) bool {
 
 func validMode(mode Mode) bool {
 	return mode == ModeSuccess || mode == ModeFailure || mode == ModeHang
+}
+
+func validReadinessCheck(check string) bool {
+	switch check {
+	case "MODEL_RUNTIME_READINESS_CHECK_DEVICE",
+		"MODEL_RUNTIME_READINESS_CHECK_BACKEND",
+		"MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP",
+		"MODEL_RUNTIME_READINESS_CHECK_CANARY":
+		return true
+	default:
+		return false
+	}
+}
+
+func validCancelReason(reason string) bool {
+	switch reason {
+	case "MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP",
+		"MODEL_RUNTIME_CANCEL_REASON_MONOTONIC_DEADLINE",
+		"MODEL_RUNTIME_CANCEL_REASON_AGENT_SHUTDOWN",
+		"MODEL_RUNTIME_CANCEL_REASON_MEMBER_BARRIER_FAILED":
+		return true
+	default:
+		return false
+	}
 }
 
 func canonicalUUID(value string) bool {

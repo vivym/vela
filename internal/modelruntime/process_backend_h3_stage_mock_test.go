@@ -3,6 +3,7 @@ package modelruntime
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/stageartifact"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
@@ -97,8 +99,16 @@ func TestProcessBackendExecutesH3StageMockCommand(t *testing.T) {
 		manifest.SizeBytes != sealed.TotalSizeBytes || manifest.LocalLocator == "" {
 		t.Fatalf("H3 Stage mock manifest=%s error=%v", sealed.OutputManifestJSON, err)
 	}
-	if _, err := os.Stat(filepath.Join(outputRoot, filepath.FromSlash(manifest.LocalLocator))); err != nil {
-		t.Fatalf("stat H3 Stage mock output: %v", err)
+	parsed, err := stageartifact.ParseLocalOutputManifestV1(sealed.OutputManifestJSON)
+	if err != nil {
+		t.Fatalf("parse H3 Stage mock LocalOutputManifestV1: %v", err)
+	}
+	payload, err := os.ReadFile(filepath.Join(outputRoot, filepath.FromSlash(manifest.LocalLocator)))
+	if err != nil {
+		t.Fatalf("read H3 Stage mock output: %v", err)
+	}
+	if digest := sha256.Sum256(payload); digest != parsed.PayloadSHA256 || int64(len(payload)) != parsed.SizeBytes {
+		t.Fatal("H3 Stage mock output does not match LocalOutputManifestV1")
 	}
 	if err := backend.Close(); err != nil {
 		t.Fatalf("close H3 Stage mock ProcessBackend: %v; stderr=%s", err, stderr.String())

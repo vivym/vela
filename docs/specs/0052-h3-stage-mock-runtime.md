@@ -84,11 +84,15 @@ Each output is written as a mode-`0600` partial file, synced, and renamed into:
 ```
 
 The sealed manifest binds the local locator, content type, size, SHA-256, and
-full Attempt/Stage lineage. Repeated calls with the same authority and exact
-specification are idempotent. A different active authority is rejected until
-the prior execution is sealed, stopped, or reusable-failed. Cancel or shutdown
-deletes an unsealed output before reporting the execution stopped; sealed
-output cannot be canceled.
+full Attempt/Stage lineage. Repeated calls for the current assignment with the
+same authority and exact specification are idempotent; the authority cannot be
+reused with different specification bytes. A different active authority is
+rejected until the prior execution is sealed, stopped, or reusable-failed. The
+single-slot process replaces a terminal assignment instead of retaining an
+unbounded replay history. Cancel or shutdown deletes an unsealed output before
+reporting the execution stopped; sealed output cannot be canceled. A local
+publication error enters a bounded reusable `FAILED` state instead of leaving
+the execution apparently running.
 
 ## Fault modes
 
@@ -116,7 +120,10 @@ non-production Catalog records.
 Repository tests include strict protocol tests, deterministic success/failure/
 hang/cancel coverage, a real `modelruntime.NewProcessBackend` process round
 trip, pinned FFprobe validation of the exact VAE output, cross-compiled command
-verification, and atomic no-replace publication. Those results are repository
-conformance only. Lab deployment receipts remain synthetic, and Production
-Gates remain unchanged until separately authorized real-H3 Launch Receipts are
-validated.
+verification, and atomic no-replace publication. Negative coverage includes
+oversized messages, duplicate and unknown keys, trailing data, malformed
+device identity, unknown readiness checks, authority/specification mutation,
+unknown cancellation reasons, terminal assignment replacement, and
+output-publication failure. Those results are repository conformance only. Lab
+deployment receipts remain synthetic, and Production Gates remain unchanged
+until separately authorized real-H3 Launch Receipts are validated.
