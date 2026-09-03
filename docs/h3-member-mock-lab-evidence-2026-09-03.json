@@ -1,5 +1,11 @@
 {
   "schema_version": 1,
+  "evidence_kind": "sanitized-operator-observation-projection",
+  "binding": {
+    "raw_evidence_committed": false,
+    "raw_evidence_manifest_sha256": null,
+    "independent_recomputation_scope": "phase receipts and bounded aggregate fields only"
+  },
   "result": "PASS",
   "scope": "non-production-lab-fake-runtime-cross-worker-member-transport",
   "source_revision": "c77fae043be56f36d414f8675c37b8d6bcb2fcad",

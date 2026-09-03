@@ -61,12 +61,14 @@ derived Secret, and cluster-internal Service per WorkerMember. Every member
 registers its local runtime epoch while only the deterministic smallest-UUID
 leader acquires one logical StageLease and coordinates the complete remote
 runtime barrier. Standard H3 remains one member and one GPU per WorkerInstance
-and creates no member network surface. The separate three-host lab campaign now
-proves fake-runtime TCP+mTLS member coordination, fail-closed start, and recovery
-across two physical RKE2 Workers. It does not exercise Fleet actuation, database
-StageLease authority, Artifact transfer, GPU/DRA, or model execution. This is
-not complete acceptance closure. Real H3, N/N-1, GPU/DRA, performance, soak,
-and Production Gate evidence are still pending.
+and creates no member network surface. The separate three-host lab receipt now
+records operator-observed fake-runtime TCP+mTLS member coordination,
+fail-closed start, and recovery with two Worker names. Its committed projection
+does not bind the raw cluster bundle or independently prove physical placement.
+It does not exercise Fleet actuation, database StageLease authority, Artifact
+transfer, GPU/DRA, or model execution. This is not complete acceptance closure.
+Real H3, N/N-1, GPU/DRA, performance, soak, and Production Gate evidence are
+still pending.
 The read-only H3 preflight and launch collector additionally bind every
 release-declared external Secret/ConfigMap to `immutable=true`, its exact
 revision annotation, recomputed content digest, live UID, and resource version.
@@ -85,8 +87,9 @@ digest-bound fault-campaign verifier requires the fixed ten state/event fault
 scenarios, reconciled authority ledgers and raw event identities, plus explicit
 rejected member/device/ModelRuntime/StageLease stale probes; it atomically emits
 the three candidate typed artifacts without replacing earlier evidence. This is
-repository integration and capture machinery only. The separate lab campaign
-proves physical cross-Worker member transport for fake runtimes, but not the
+repository integration and capture machinery only. The separate lab receipt
+records an operator-observed cross-Worker run for fake runtimes, but its
+sanitized projection does not independently prove physical placement, the
 database campaign, cross-Pod StageArtifact transfer, a real H3 fault exercise,
 or a Launch Receipt.
 The management `/metrics` surface now also reads one PostgreSQL-authoritative
@@ -109,7 +112,7 @@ Receipt.
 | Schema and protocol migration | Schema-v2 through migration `00065`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
-| H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers, and cross-Worker multi-member normal/fault/recovery passed; complete Stage/Fleet and real-H3 evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md` |
+| H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers; a bounded operator receipt records multi-member normal/fault/recovery but does not bind its raw cluster bundle; complete Stage/Fleet and real-H3 evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md` |
 
 Historical migrations still describe the predecessor machine-level contract,
 but migration `00058` removes it from the current schema and the corresponding

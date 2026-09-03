@@ -18,6 +18,7 @@ RELEASE_IMAGE_PREFIX ?=
 H3_MOCK_BACKEND_CONTEXT ?=
 H3_STAGE_MOCK_RUNTIME_CONTEXT ?=
 H3_DISPOSABLE_IMAGE ?= vela-h3-member-campaign:disposable
+H3_DISPOSABLE_GOPROXY ?= https://proxy.golang.org,direct
 H3_RUNTIME_BASE ?=
 H3_RUNTIME_COMMAND_CONTEXT ?=
 H3_ENCODER_SHA256 ?=
@@ -81,12 +82,15 @@ build-h3-stage-mock-runtime:
 build-h3-disposable-member-campaign-image:
 	docker build \
 		--build-arg RELEASE_REVISION="$$(git rev-parse HEAD)" \
+		--build-arg GOPROXY="$(H3_DISPOSABLE_GOPROXY)" \
 		--file deploy/h3-disposable-campaign/Dockerfile \
 		--tag "$(H3_DISPOSABLE_IMAGE)" \
 		.
 
 test-h3-disposable-member-campaign:
-	H3_DISPOSABLE_IMAGE="$(H3_DISPOSABLE_IMAGE)" ./hack/run-h3-disposable-member-campaign.sh
+	H3_DISPOSABLE_IMAGE="$(H3_DISPOSABLE_IMAGE)" \
+		H3_DISPOSABLE_GOPROXY="$(H3_DISPOSABLE_GOPROXY)" \
+		./hack/run-h3-disposable-member-campaign.sh
 
 build-host-packages:
 	@test -n "$(RELEASE_REVISION)" || \

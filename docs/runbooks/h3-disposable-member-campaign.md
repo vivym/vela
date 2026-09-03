@@ -30,17 +30,21 @@ make test-h3-disposable-member-campaign
 ```
 
 If `proxy.golang.org` is unreachable but an alternate Go module proxy is
-available, scope the fallback to this invocation instead of changing the host's
-global Go configuration:
+available, select one approved proxy for this invocation instead of changing
+the host's global Go configuration:
 
 ```sh
-GOPROXY='https://goproxy.cn|https://goproxy.io|https://mirrors.aliyun.com/goproxy|direct' \
+H3_DISPOSABLE_GOPROXY=https://goproxy.cn \
   make test-h3-disposable-member-campaign
 ```
 
-These three proxy endpoints served the Go `1.26.7` toolchain metadata during
-the 2026-09-03 lab preflight. Re-probe them before a later campaign; reachability
-is an environment observation, not a repository guarantee.
+The harness passes this value explicitly into the Docker build. It accepts only
+`proxy.golang.org`, `goproxy.cn`, `goproxy.io`, or the Alibaba Cloud Go proxy;
+the three alternates served the Go `1.26.7` toolchain metadata during the
+2026-09-03 lab preflight. Alternate selections do not fall through to another
+mirror or direct VCS access, and checksum-database verification remains enabled.
+Re-probe the selected endpoint before a later campaign; reachability is an
+environment observation, not a repository guarantee.
 
 The harness builds and imports `vela-h3-member-campaign:disposable`, pins the
 leader and follower to different agent nodes, and runs these phases:
@@ -80,12 +84,13 @@ and the applicable Production Gate receipts.
 
 ## Three-host lab evidence
 
-On 2026-09-03 the same campaign command and workload contract was adapted to an
-exact temporary namespace in the non-production three-host RKE2 lab. The leader
-and follower ran on separate physical Workers, requested no GPU, and passed the
-normal, follower-loss, and recovery phases. The temporary namespace, node
-labels, and credentials were removed, and the non-campaign Pod inventory was
-unchanged. See
+On 2026-09-03 an operator adapted the same campaign command and workload
+contract to an exact temporary namespace in the non-production three-host RKE2
+lab. The sanitized projection records distinct leader/follower Worker names,
+zero aggregate GPU requests, normal/follower-loss/recovery phase receipts, and
+bounded cleanup fields. It does not retain or bind the raw cluster observation
+bundle, so treat it as an operator receipt rather than independently
+recomputable physical-cluster evidence. See
 [`h3-member-mock-lab-receipt.md`](../h3-member-mock-lab-receipt.md) for the
 method, exact image identity, results, cleanup, and evidence boundary.
 

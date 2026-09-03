@@ -2,29 +2,29 @@
 
 Date: 2026-09-03
 
-Status: the fake-runtime multi-member campaign from source revision
-`c77fae043be56f36d414f8675c37b8d6bcb2fcad` passed on the two RKE2 Worker
-nodes without requesting a GPU. It exercised cross-Worker TCP+mTLS, SPIFFE peer
-identity pinning, signed StageAuthority validation, the complete two-member
-start barrier, follower loss between prepare and start, and recovery. This is a
-non-production mock result, not a real H3 run, Launch Receipt, or Production
+Status: the sanitized projection records an operator-observed fake-runtime
+multi-member campaign from source revision
+`c77fae043be56f36d414f8675c37b8d6bcb2fcad`. Its retained phase receipts cover
+TCP+mTLS, SPIFFE peer identity pinning, signed StageAuthority validation, the
+complete two-member start barrier, follower unavailability during start, and
+recovery. This is a non-production mock observation, not independently
+recomputable cluster evidence, a real H3 run, Launch Receipt, or Production
 Gate. Production Gates remain `0/9 PASS`.
 
 ## Scope and topology
 
-The campaign reused the three-host lab documented in
+The operator procedure reused the three-host lab documented in
 [`h3-stage-mock-lab-receipt.md`](h3-stage-mock-lab-receipt.md). The control node
-continued to host RKE2 control/storage services and the private Registry. It
-did not run a campaign Pod and exposes no Kubernetes GPU. The leader ran on
-`vela-lab-worker-1`; the follower ran on `vela-lab-worker-2`. All three nodes
-were `Ready` on RKE2 `v1.35.7+rke2r1` before and after the exercise.
+continued to host RKE2 control/storage services and the private Registry. The
+projection records `vela-lab-worker-1` as leader, `vela-lab-worker-2` as
+follower, and RKE2 `v1.35.7+rke2r1`. It does not retain Pod UIDs, scheduling
+events, or before/after node-readiness snapshots.
 
-The live Vela database was inspected read-only before the campaign. Its latest
-applied migration was `00033`, while the current repository contract is
-`00065`. `production_gate_manifests` and `production_gate_receipts` were empty,
-Catalog and SLO remained `LEGACY v1`, and no schema or control workload was
-changed. This version gap is why the existing control deployment was not used
-for Stage/Fleet orchestration or upgraded in place.
+The projection records the live Vela database at migration `00033` with zero
+Production Gate receipts, while the current repository contract is `00065`.
+This version gap is why the existing control deployment was not used for
+Stage/Fleet orchestration or upgraded in place. The projection does not retain
+the raw database queries or other Catalog/SLO observations.
 
 ## Build and image identity
 
@@ -55,14 +55,15 @@ The image was published only under the non-production repository:
 10.1.200.17:5443/vela-lab-next/vela-h3-member-campaign
 ```
 
-Both Workers reported the exact digest-pinned `imageID`. The image traveled
-from the control-host Registry over the lab LAN, not over SSH.
+The projection binds the digest-pinned image selected for the campaign. It does
+not retain the per-Pod Kubernetes `imageID` fields or network-transfer logs, so
+this commit does not independently validate the image pull path on each Worker.
 
 ## Campaign method
 
-The repository's disposable campaign workloads were adapted to an exact new
-`vela-h3-disposable` namespace in the existing RKE2 cluster. Two temporary node
-labels pinned the leader and follower to distinct Workers. Every campaign Pod:
+The operator procedure adapted the repository's disposable workloads to an
+exact new `vela-h3-disposable` namespace and used temporary node labels for the
+leader and follower. The workload configuration specified:
 
 - requested `25m` CPU and `32Mi` memory, with limits of one CPU and `128Mi`;
 - requested no `nvidia.com/gpu` resource;
@@ -82,42 +83,40 @@ and StageAuthority inputs were bounded test fixtures.
 | --- | --- | ---: | ---: | --- |
 | normal | `11:56:47.053Z` to `11:56:47.061Z` | 2 | 2 | `PASS`; both members reported, acknowledged cancellation, and stopped |
 | follower loss | `11:57:42.932Z` to `11:57:57.950Z` | 2 | 1 | `FAULT_REJECTED`; local member stopped and the unavailable remote member was not reported stopped |
-| recovery | `11:58:40.200Z` to `11:58:40.208Z` | 2 | 2 | `PASS`; complete barrier and shutdown restored |
+| recovery | `11:58:40.200Z` to `11:58:40.208Z` | 2 | 2 | `PASS`; complete barrier, cancellation, and stopped-state reporting restored |
 
-The fault was injected only after the follower logged its second prepare. The
-test then scaled the temporary follower Deployment from one replica to zero.
-The leader started locally, could not complete the remote start, canceled its
-local runtime, and failed closed. Scaling the same temporary Deployment back to
-one produced a new follower Pod and the recovery phase passed.
+The retained fault receipt records two prepared members, one started member,
+local cancellation, and an unavailable remote member. That is consistent with
+the intended follower-loss scenario and its fail-closed result. The sanitized
+projection does not retain the Deployment scale events or follower Pod UIDs, so
+the exact injection ordering and replacement Pod are not independently
+recomputable from this commit.
 
 ## Non-interference and cleanup
 
-The campaign namespace's aggregate GPU request remained `0` in every phase.
-The existing Vela and system Pod inventory was captured before the campaign and
-after cleanup, normalized to namespace, name, UID, node, phase, restart count,
-image, and image ID, and compared byte-for-byte. The diff was empty. All Vela
-workloads remained ready, all three nodes remained `Ready`, and the Registry
-container remained running.
-
-Cleanup deleted the exact `vela-h3-disposable` namespace, removed both temporary
-node labels, deleted all short-lived private keys and certificates, logged out
-the temporary Docker Registry credential, and removed the local Docker image.
-No campaign workload or temporary label remained. The Registry retains the
-approximately 5 MB digest-pinned image. The control host retains approximately
-4.3 MB of root-only source and raw evidence; it contains no private key.
+The projection records an aggregate GPU request of `0`, no non-campaign Pod
+inventory difference, and post-cleanup absence of the namespace, temporary node
+labels, and credential directory. It does not include the raw Pod inventories,
+their hashes, node-readiness output, Registry postflight, or Docker cleanup
+output. Those stronger cluster and storage postconditions therefore cannot be
+independently recomputed from this commit.
 
 The sanitized receipt projection is retained in
 [`h3-member-mock-lab-evidence-2026-09-03.json`](h3-member-mock-lab-evidence-2026-09-03.json)
 with SHA-256
-`eadeac7346bcf2154086b1c268212de33b65eebc85ea2622a78c25b918f4ccda`.
-No credential, GPU UUID, Secret payload, or customer content is committed.
+`f017067d0921e3335f0e4b2e6ddc3b0481d811ffd6035b436ee9ac25ac5dc1e9`.
+No credential, GPU UUID, Secret payload, or customer content is committed. The
+raw operator evidence is not committed or bound by a manifest digest; the JSON
+explicitly limits independent recomputation to its phase receipts and bounded
+aggregate fields.
 
 ## Evidence boundary
 
-This result proves fake-runtime multi-member transport and barrier behavior on
-two physical Kubernetes Workers. It does not prove Fleet Controller actuation,
-database-backed StageLease or StageAttempt authority, StageArtifact transfer,
-ModelResidency, GPU/DRA identity, real model behavior, output equivalence,
-performance, soak, HA/DR, release provenance, or on-call operation. It cannot
-advance any Production Gate and does not reduce the live schema gap from
-`00033` to `00065`.
+This receipt records fake-runtime multi-member transport and barrier behavior
+with the operator-observed Worker mapping above. Without the raw cluster bundle,
+it does not independently prove physical placement or cluster postconditions.
+It also does not prove Fleet Controller actuation, database-backed StageLease or
+StageAttempt authority, StageArtifact transfer, ModelResidency, GPU/DRA
+identity, real model behavior, output equivalence, performance, soak, HA/DR,
+release provenance, or on-call operation. It cannot advance any Production Gate
+and does not reduce the recorded live schema gap from `00033` to `00065`.

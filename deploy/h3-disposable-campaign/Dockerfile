@@ -6,13 +6,18 @@ ENV CGO_ENABLED=0 \
     GOOS=linux \
     GOTOOLCHAIN=local
 COPY go.mod go.sum ./
+ARG GOPROXY=https://proxy.golang.org,direct
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
-    go mod download
+    case "$GOPROXY" in \
+      https://proxy.golang.org,direct|https://goproxy.cn|https://goproxy.io|https://mirrors.aliyun.com/goproxy) ;; \
+      *) echo "unsupported disposable campaign GOPROXY: $GOPROXY" >&2; exit 2 ;; \
+    esac && \
+    GOPROXY="$GOPROXY" go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY proto ./proto
 ARG RELEASE_REVISION=unknown
-RUN go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
+RUN GOPROXY="$GOPROXY" go build -mod=readonly -trimpath -buildvcs=false -ldflags='-buildid= -s -w' \
       -o /out/vela-h3-member-campaign ./cmd/vela-h3-member-campaign
 
 FROM scratch
