@@ -3,7 +3,9 @@
 Date: 2026-09-03
 
 Status: repository implementation and conformance tests complete; target-lab
-image publication and deployment receipts remain external.
+image publication and CPU-only command-protocol smoke are recorded in
+[`h3-stage-mock-lab-receipt.md`](../h3-stage-mock-lab-receipt.md). Complete
+Stage/Fleet deployment and real-H3 receipts remain external.
 
 The H3 Stage mock runtime is a non-production resident driver for the current
 Stage-only Worker path. It implements the `stdio-json-v1` ModelRuntime process
@@ -136,6 +138,8 @@ device identity, unknown readiness checks, authority/specification mutation,
 unknown cancellation reasons, nested protobuf unknown fields, non-monotonic
 renewal, terminal assignment replacement, root-path replacement, abnormal-exit
 cleanup, retirement-bound exhaustion, and output-publication failure. Those
-results are repository conformance only. Lab
-deployment receipts remain synthetic, and Production Gates remain unchanged
-until separately authorized real-H3 Launch Receipts are validated.
+results are repository conformance only. The separate three-host lab receipt
+adds digest-pinned image distribution and CPU-only command startup; it does not
+exercise Stage/Fleet orchestration or a real H3 runtime. Production Gates
+remain unchanged until separately authorized real-H3 Launch Receipts are
+validated.

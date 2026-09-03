@@ -105,6 +105,7 @@ Receipt.
 | Schema and protocol migration | Schema-v2 through migration `00065`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
+| H3 Stage mock runtime | Repository conformance complete; digest-pinned CPU-only command smoke passed on both lab Workers; Stage/Fleet and real-H3 evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md` |
 
 Historical migrations still describe the predecessor machine-level contract,
 but migration `00058` removes it from the current schema and the corresponding
@@ -402,6 +403,11 @@ The H3 mock backend (`4304fe9`, review closure `f6cb45b`) is development-only
 ModelRuntime protocol fixture and staging deployment tooling. It is not H3, certification or
 performance evidence, does not add acceptance-scenario evidence, and cannot
 satisfy a Production Gate.
+The Stage-only H3 mock runtime (`756b2b7`) separately implements the current
+resident `stdio-json-v1` command contract. Its exact image passed CPU-only
+`initialize`, readiness `probe`, and `shutdown` smoke on both lab Workers; it
+did not exercise Stage/Fleet orchestration, GPU work, model behavior, or any
+Production Gate.
 No aggregate `direct/partial/unproven` count is claimed for the current Stage
 architecture. The current coverage and gaps above, plus separately sealed
 Production Gate receipts, are the only acceptance status.
