@@ -91,7 +91,15 @@ type labV2Container struct {
 		Limits   map[string]any `yaml:"limits"`
 	} `yaml:"resources"`
 	SecurityContext struct {
-		ReadOnlyRootFilesystem bool `yaml:"readOnlyRootFilesystem"`
+		RunAsNonRoot             *bool  `yaml:"runAsNonRoot"`
+		RunAsUser                *int64 `yaml:"runAsUser"`
+		RunAsGroup               *int64 `yaml:"runAsGroup"`
+		AllowPrivilegeEscalation *bool  `yaml:"allowPrivilegeEscalation"`
+		ReadOnlyRootFilesystem   bool   `yaml:"readOnlyRootFilesystem"`
+		Capabilities             struct {
+			Drop []string `yaml:"drop"`
+			Add  []string `yaml:"add"`
+		} `yaml:"capabilities"`
 	} `yaml:"securityContext"`
 	ReadinessProbe struct {
 		HTTPGet struct {
@@ -223,7 +231,7 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 		if got := containerNames(worker.Spec.Template.Spec.Containers); !equalStrings(got, []string{"model-runtime", "stage-worker-agent"}) {
 			t.Fatalf("%s containers = %v", name, got)
 		}
-		if !hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/runtime.sock") ||
+		if !hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/private/runtime.sock") ||
 			!hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") ||
 			!hasEnvironment(worker.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
 			t.Fatalf("%s does not bind the shared runtime socket, TLS Artifact Store, and StageAuthority key", name)
@@ -242,7 +250,7 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 	if !ok || thumbnailRuntime.Image != imageValues["BOOTSTRAP_IMAGE"] ||
 		!equalStrings(thumbnailRuntime.Command, []string{"/usr/local/bin/vela-model-runtime"}) ||
 		thumbnail.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] != "vela-lab-control-1" ||
-		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/runtime.sock") ||
+		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/private/runtime.sock") ||
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_ARTIFACT_S3_ENDPOINT", "https://vela-lab-minio.vela-lab-v2.svc:9000") ||
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
 		t.Fatalf("thumbnail CPU Worker deployment = %#v", thumbnail)
@@ -251,6 +259,26 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 
 func assertLabV2RuntimePrivateMaterializer(t *testing.T, name string, deployment labV2Document) {
 	t.Helper()
+	preparer, ok := findContainer(deployment.Spec.Template.Spec.InitContainers, "prepare-model-runtime-socket")
+	if !ok {
+		t.Fatalf("%s ModelRuntime socket preparer is absent", name)
+	}
+	preparerScript := strings.Join(preparer.Args, "\n")
+	if !equalStrings(preparer.Command, []string{"/bin/sh", "-ec"}) ||
+		!strings.Contains(preparerScript, "install -d -m 0700 /runtime-socket/private") ||
+		!strings.Contains(preparerScript, "chmod 0700 /runtime-socket /runtime-socket/private") ||
+		!strings.Contains(preparerScript, "chown 10001:10001 /runtime-socket /runtime-socket/private") ||
+		preparer.SecurityContext.RunAsNonRoot == nil || *preparer.SecurityContext.RunAsNonRoot ||
+		preparer.SecurityContext.RunAsUser == nil || *preparer.SecurityContext.RunAsUser != 0 ||
+		preparer.SecurityContext.RunAsGroup == nil || *preparer.SecurityContext.RunAsGroup != 0 ||
+		preparer.SecurityContext.AllowPrivilegeEscalation == nil || *preparer.SecurityContext.AllowPrivilegeEscalation ||
+		!preparer.SecurityContext.ReadOnlyRootFilesystem ||
+		!equalStrings(preparer.SecurityContext.Capabilities.Drop, []string{"ALL"}) ||
+		!equalStrings(preparer.SecurityContext.Capabilities.Add, []string{"CHOWN"}) ||
+		len(preparer.VolumeMounts) != 1 ||
+		!hasVolumeMount(preparer, "model-runtime-socket", "/runtime-socket", false) {
+		t.Fatalf("%s ModelRuntime socket preparer = %#v", name, preparer)
+	}
 	materializer, ok := findContainer(deployment.Spec.Template.Spec.InitContainers, "materialize-private-files")
 	if !ok {
 		t.Fatalf("%s private-file materializer is absent", name)
@@ -261,6 +289,20 @@ func assertLabV2RuntimePrivateMaterializer(t *testing.T, name string, deployment
 	}
 	if strings.Contains(script, "install -d -m 0700 /runtime-private") {
 		t.Fatalf("%s materializer attempts to chmod the root-owned runtime-private mount", name)
+	}
+	if hasVolumeMountNamed(materializer, "model-runtime-socket") {
+		t.Fatalf("%s private-file materializer can access the ModelRuntime socket volume", name)
+	}
+	for _, containerName := range []string{"stage-worker-agent", "model-runtime"} {
+		container, present := findContainer(deployment.Spec.Template.Spec.Containers, containerName)
+		if !present ||
+			!hasEnvironment([]labV2Container{container}, "VELA_MODEL_RUNTIME_SOCKET", "/run/vela-model-runtime/private/runtime.sock") ||
+			!hasVolumeMount(container, "model-runtime-socket", "/run/vela-model-runtime", false) {
+			t.Fatalf("%s container %s does not use the prepared ModelRuntime socket volume", name, containerName)
+		}
+	}
+	if !hasMemoryEmptyDirVolume(deployment.Spec.Template.Spec, "model-runtime-socket", "16Mi") {
+		t.Fatalf("%s ModelRuntime socket volume is not memory-backed and bounded", name)
 	}
 }
 

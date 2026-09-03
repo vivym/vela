@@ -38,6 +38,28 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
+        - name: prepare-model-runtime-socket
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              install -d -m 0700 /runtime-socket/private
+              chmod 0700 /runtime-socket /runtime-socket/private
+              chown 10001:10001 /runtime-socket /runtime-socket/private
+          resources:
+            requests: {cpu: "10m", memory: 8Mi}
+            limits: {cpu: "100m", memory: 16Mi}
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /runtime-socket}
         - name: materialize-private-files
           image: __BOOTSTRAP_IMAGE__
           command: ["/bin/sh", "-ec"]
@@ -75,7 +97,7 @@ spec:
             - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
             - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
@@ -120,7 +142,7 @@ spec:
             - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
             - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
             - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
             - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
           resources:
@@ -189,6 +211,28 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
+        - name: prepare-model-runtime-socket
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              install -d -m 0700 /runtime-socket/private
+              chmod 0700 /runtime-socket /runtime-socket/private
+              chown 10001:10001 /runtime-socket /runtime-socket/private
+          resources:
+            requests: {cpu: "10m", memory: 8Mi}
+            limits: {cpu: "100m", memory: 16Mi}
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /runtime-socket}
         - name: materialize-private-files
           image: __BOOTSTRAP_IMAGE__
           command: ["/bin/sh", "-ec"]
@@ -226,7 +270,7 @@ spec:
             - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
             - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
@@ -271,7 +315,7 @@ spec:
             - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
             - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
             - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
             - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
           resources:
@@ -335,6 +379,28 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
+        - name: prepare-model-runtime-socket
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              install -d -m 0700 /runtime-socket/private
+              chmod 0700 /runtime-socket /runtime-socket/private
+              chown 10001:10001 /runtime-socket /runtime-socket/private
+          resources:
+            requests: {cpu: "10m", memory: 8Mi}
+            limits: {cpu: "100m", memory: 16Mi}
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN"]
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /runtime-socket}
         - name: materialize-private-files
           image: __BOOTSTRAP_IMAGE__
           command: ["/bin/sh", "-ec"]
@@ -372,7 +438,7 @@ spec:
             - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
             - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
             - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
             - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
             - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
@@ -418,7 +484,7 @@ spec:
             - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
             - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
             - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
-            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/private/runtime.sock"}
             - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
             - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
           resources:

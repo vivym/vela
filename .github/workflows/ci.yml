@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  GOPROXY: "https://goproxy.cn|https://proxy.golang.org|direct"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
