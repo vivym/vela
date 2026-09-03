@@ -1,0 +1,80 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vela-lab-bootstrap
+  namespace: vela-lab-v2
+  labels:
+    app.kubernetes.io/name: vela-lab-bootstrap
+    vela.ai/environment: non-production-lab
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  backoffLimit: 4
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-bootstrap
+        app.kubernetes.io/component: bootstrap
+        vela.ai/environment: non-production-lab
+        vela.ai/deployment-identity: vela-lab-v2
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      nodeSelector:
+        vela.ai/node-role: control-storage
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bootstrap
+          image: __BOOTSTRAP_IMAGE__
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: vela-lab-bootstrap-env
+            - secretRef:
+                name: vela-lab-control-database-env
+            - secretRef:
+                name: vela-lab-control-secret-env
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: bootstrap-files
+              mountPath: /etc/vela-lab-bootstrap
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: bootstrap-files
+          secret:
+            secretName: vela-lab-bootstrap-files
+            defaultMode: 0400
+            items:
+              - key: bootstrap.creds
+                path: nats/bootstrap.creds
+              - key: nats-ca.crt
+                path: nats/ca.crt
+              - key: nats-tls.crt
+                path: nats/tls.crt
+              - key: nats-tls.key
+                path: nats/tls.key
+              - key: minio-ca.crt
+                path: minio/ca.crt
+              - key: smoke-secret
+                path: smoke/smoke-secret
+        - name: tmp
+          emptyDir: {}

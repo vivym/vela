@@ -1,0 +1,448 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-lab-stage-worker-1
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-stage-worker-1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-stage-worker-1
+        app.kubernetes.io/component: stage-worker
+        vela.ai/environment: non-production-lab
+        vela.ai/deployment-identity: vela-lab-v2
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: vela-lab-worker-1
+      tolerations:
+        - key: vela.ai/h3
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: materialize-private-files
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
+              install -d -m 0700 /runtime-private
+              install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
+              install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
+              install -m 0400 /projected/tls.key /stage-private/control/tls.key
+              install -m 0400 /projected/authority-keyring.json /stage-private/authority/keyring.json
+              install -m 0400 /projected/artifact-access-key-id /stage-private/artifact/access-key-id
+              install -m 0400 /projected/artifact-secret-access-key /stage-private/artifact/secret-access-key
+              install -m 0400 /projected/artifact-ca.crt /stage-private/artifact/ca.crt
+              install -m 0400 /projected/launch.json /runtime-private/launch.json
+              install -m 0400 /projected/verifier-keyring.json /runtime-private/verifier-keyring.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - {name: projected-files, mountPath: /projected, readOnly: true}
+            - {name: stage-worker-private, mountPath: /stage-private}
+            - {name: model-runtime-private, mountPath: /runtime-private}
+      containers:
+        - name: stage-worker-agent
+          image: __STAGE_WORKER_AGENT_IMAGE__
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: vela-lab-stage-worker-1-env
+          env:
+            - {name: VELA_WORKER_CONTROL_ADDRESS, value: "vela-lab-control.vela-lab-v2.svc:8443"}
+            - {name: VELA_WORKER_CONTROL_SERVER_NAME, value: "vela-lab-control.vela-lab-v2.svc"}
+            - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
+            - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
+            - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
+            - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
+            - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
+            - {name: VELA_STAGE_WORKER_INPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/inputs"}
+            - {name: VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT, value: "/var/lib/vela/stage-worker/scratch/input-transfer-journal"}
+            - {name: VELA_STAGE_WORKER_OUTPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/outputs"}
+            - {name: VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT, value: "/var/lib/vela/stage-worker/scratch/materialization-journal"}
+            - {name: VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT, value: "64"}
+            - {name: VELA_STAGE_WORKER_AUTHORITY_KEYRING_FILE, value: "/etc/vela-stage-worker/private/authority/keyring.json"}
+            - {name: VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID, value: "lab-stage-authority-v1"}
+            - {name: VELA_STAGE_WORKER_CONNECTOR_REVISION_ID, value: "84000000-0000-0000-0000-000000000551"}
+            - {name: VELA_STAGE_WORKER_CAPACITY_TTL, value: "2m"}
+            - {name: VELA_STAGE_WORKER_HEARTBEAT_INTERVAL, value: "5s"}
+            - {name: VELA_STAGE_WORKER_RETRY_MINIMUM, value: "1s"}
+            - {name: VELA_STAGE_WORKER_RETRY_MAXIMUM, value: "30s"}
+            - {name: VELA_ARTIFACT_S3_ENDPOINT, value: "https://vela-lab-minio.vela-lab-v2.svc:9000"}
+            - {name: VELA_ARTIFACT_S3_REGION, value: "us-east-1"}
+            - {name: VELA_ARTIFACT_S3_BUCKET, value: "vela-lab-artifacts"}
+            - {name: VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE, value: "/etc/vela-stage-worker/private/artifact/access-key-id"}
+            - {name: VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE, value: "/etc/vela-stage-worker/private/artifact/secret-access-key"}
+            - {name: VELA_ARTIFACT_S3_CA_FILE, value: "/etc/vela-stage-worker/private/artifact/ca.crt"}
+            - {name: VELA_ARTIFACT_S3_PATH_STYLE, value: "true"}
+            - {name: VELA_ARTIFACT_S3_SIGNED_GET_TTL, value: "5m"}
+            - {name: VELA_STAGE_WORKER_SOURCE_LOSS_RETRY, value: "30s"}
+            - {name: VELA_STAGE_WORKER_SOURCE_LOSS_CONSUMED_RESOURCE_UNITS, value: "1"}
+          resources:
+            requests: {cpu: "250m", memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /run/vela-model-runtime}
+            - {name: scratch, mountPath: /var/lib/vela/stage-worker/scratch}
+            - {name: stage-worker-private, mountPath: /etc/vela-stage-worker/private, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: model-runtime
+          image: __RUNTIME_IMAGE__
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
+            - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
+            - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
+            - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
+          resources:
+            requests: {cpu: "250m", memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /run/vela-model-runtime}
+            - {name: scratch, mountPath: /var/lib/vela/stage-worker/scratch}
+            - {name: model-runtime-private, mountPath: /etc/vela-model-runtime/private, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: projected-files
+          secret:
+            secretName: vela-lab-stage-worker-1-files
+            defaultMode: 0400
+        - {name: stage-worker-private, emptyDir: {medium: Memory, sizeLimit: 1Mi}}
+        - {name: model-runtime-private, emptyDir: {medium: Memory, sizeLimit: 2Mi}}
+        - {name: model-runtime-socket, emptyDir: {medium: Memory, sizeLimit: 16Mi}}
+        - name: scratch
+          hostPath:
+            path: /var/lib/vela-lab-v2/worker-1/stage-worker
+            type: Directory
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-lab-stage-worker-2
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-stage-worker-2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-stage-worker-2
+        app.kubernetes.io/component: stage-worker
+        vela.ai/environment: non-production-lab
+        vela.ai/deployment-identity: vela-lab-v2
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: vela-lab-worker-2
+      tolerations:
+        - key: vela.ai/h3
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: materialize-private-files
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
+              install -d -m 0700 /runtime-private
+              install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
+              install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
+              install -m 0400 /projected/tls.key /stage-private/control/tls.key
+              install -m 0400 /projected/authority-keyring.json /stage-private/authority/keyring.json
+              install -m 0400 /projected/artifact-access-key-id /stage-private/artifact/access-key-id
+              install -m 0400 /projected/artifact-secret-access-key /stage-private/artifact/secret-access-key
+              install -m 0400 /projected/artifact-ca.crt /stage-private/artifact/ca.crt
+              install -m 0400 /projected/launch.json /runtime-private/launch.json
+              install -m 0400 /projected/verifier-keyring.json /runtime-private/verifier-keyring.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - {name: projected-files, mountPath: /projected, readOnly: true}
+            - {name: stage-worker-private, mountPath: /stage-private}
+            - {name: model-runtime-private, mountPath: /runtime-private}
+      containers:
+        - name: stage-worker-agent
+          image: __STAGE_WORKER_AGENT_IMAGE__
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: vela-lab-stage-worker-2-env
+          env:
+            - {name: VELA_WORKER_CONTROL_ADDRESS, value: "vela-lab-control.vela-lab-v2.svc:8443"}
+            - {name: VELA_WORKER_CONTROL_SERVER_NAME, value: "vela-lab-control.vela-lab-v2.svc"}
+            - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
+            - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
+            - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
+            - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
+            - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
+            - {name: VELA_STAGE_WORKER_INPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/inputs"}
+            - {name: VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT, value: "/var/lib/vela/stage-worker/scratch/input-transfer-journal"}
+            - {name: VELA_STAGE_WORKER_OUTPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/outputs"}
+            - {name: VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT, value: "/var/lib/vela/stage-worker/scratch/materialization-journal"}
+            - {name: VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT, value: "64"}
+            - {name: VELA_STAGE_WORKER_AUTHORITY_KEYRING_FILE, value: "/etc/vela-stage-worker/private/authority/keyring.json"}
+            - {name: VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID, value: "lab-stage-authority-v1"}
+            - {name: VELA_STAGE_WORKER_CONNECTOR_REVISION_ID, value: "84000000-0000-0000-0000-000000000550"}
+            - {name: VELA_STAGE_WORKER_CAPACITY_TTL, value: "2m"}
+            - {name: VELA_STAGE_WORKER_HEARTBEAT_INTERVAL, value: "5s"}
+            - {name: VELA_STAGE_WORKER_RETRY_MINIMUM, value: "1s"}
+            - {name: VELA_STAGE_WORKER_RETRY_MAXIMUM, value: "30s"}
+            - {name: VELA_ARTIFACT_S3_ENDPOINT, value: "https://vela-lab-minio.vela-lab-v2.svc:9000"}
+            - {name: VELA_ARTIFACT_S3_REGION, value: "us-east-1"}
+            - {name: VELA_ARTIFACT_S3_BUCKET, value: "vela-lab-artifacts"}
+            - {name: VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE, value: "/etc/vela-stage-worker/private/artifact/access-key-id"}
+            - {name: VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE, value: "/etc/vela-stage-worker/private/artifact/secret-access-key"}
+            - {name: VELA_ARTIFACT_S3_CA_FILE, value: "/etc/vela-stage-worker/private/artifact/ca.crt"}
+            - {name: VELA_ARTIFACT_S3_PATH_STYLE, value: "true"}
+            - {name: VELA_ARTIFACT_S3_SIGNED_GET_TTL, value: "5m"}
+            - {name: VELA_STAGE_WORKER_SOURCE_LOSS_RETRY, value: "30s"}
+            - {name: VELA_STAGE_WORKER_SOURCE_LOSS_CONSUMED_RESOURCE_UNITS, value: "1"}
+          resources:
+            requests: {cpu: "250m", memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /run/vela-model-runtime}
+            - {name: scratch, mountPath: /var/lib/vela/stage-worker/scratch}
+            - {name: stage-worker-private, mountPath: /etc/vela-stage-worker/private, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: model-runtime
+          image: __RUNTIME_IMAGE__
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
+            - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
+            - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
+            - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
+          resources:
+            requests: {cpu: "250m", memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /run/vela-model-runtime}
+            - {name: scratch, mountPath: /var/lib/vela/stage-worker/scratch}
+            - {name: model-runtime-private, mountPath: /etc/vela-model-runtime/private, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: projected-files
+          secret:
+            secretName: vela-lab-stage-worker-2-files
+            defaultMode: 0400
+        - {name: stage-worker-private, emptyDir: {medium: Memory, sizeLimit: 1Mi}}
+        - {name: model-runtime-private, emptyDir: {medium: Memory, sizeLimit: 2Mi}}
+        - {name: model-runtime-socket, emptyDir: {medium: Memory, sizeLimit: 16Mi}}
+        - name: scratch
+          hostPath:
+            path: /var/lib/vela-lab-v2/worker-2/stage-worker
+            type: Directory
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vela-lab-stage-worker-thumbnail
+  namespace: vela-lab-v2
+  labels:
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vela-lab-stage-worker-thumbnail
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-stage-worker-thumbnail
+        app.kubernetes.io/component: stage-worker
+        vela.ai/environment: non-production-lab
+        vela.ai/deployment-identity: vela-lab-v2
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/hostname: vela-lab-control-1
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: materialize-private-files
+          image: __BOOTSTRAP_IMAGE__
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              install -d -m 0700 /stage-private/control /stage-private/authority /stage-private/artifact
+              install -d -m 0700 /runtime-private
+              install -m 0400 /projected/ca.crt /stage-private/control/ca.crt
+              install -m 0400 /projected/tls.crt /stage-private/control/tls.crt
+              install -m 0400 /projected/tls.key /stage-private/control/tls.key
+              install -m 0400 /projected/authority-keyring.json /stage-private/authority/keyring.json
+              install -m 0400 /projected/artifact-access-key-id /stage-private/artifact/access-key-id
+              install -m 0400 /projected/artifact-secret-access-key /stage-private/artifact/secret-access-key
+              install -m 0400 /projected/artifact-ca.crt /stage-private/artifact/ca.crt
+              install -m 0400 /projected/launch.json /runtime-private/launch.json
+              install -m 0400 /projected/verifier-keyring.json /runtime-private/verifier-keyring.json
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - {name: projected-files, mountPath: /projected, readOnly: true}
+            - {name: stage-worker-private, mountPath: /stage-private}
+            - {name: model-runtime-private, mountPath: /runtime-private}
+      containers:
+        - name: stage-worker-agent
+          image: __STAGE_WORKER_AGENT_IMAGE__
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: vela-lab-stage-worker-thumbnail-env
+          env:
+            - {name: VELA_WORKER_CONTROL_ADDRESS, value: "vela-lab-control.vela-lab-v2.svc:8443"}
+            - {name: VELA_WORKER_CONTROL_SERVER_NAME, value: "vela-lab-control.vela-lab-v2.svc"}
+            - {name: VELA_WORKER_TLS_CERT_FILE, value: "/etc/vela-stage-worker/private/control/tls.crt"}
+            - {name: VELA_WORKER_TLS_KEY_FILE, value: "/etc/vela-stage-worker/private/control/tls.key"}
+            - {name: VELA_WORKER_CONTROL_CA_FILE, value: "/etc/vela-stage-worker/private/control/ca.crt"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_EXPECTED_UID, value: "10001"}
+            - {name: VELA_WORKER_SCRATCH_ROOT, value: "/var/lib/vela/stage-worker/scratch"}
+            - {name: VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT, value: "/var/lib/vela/stage-worker/scratch/production-state"}
+            - {name: VELA_STAGE_WORKER_INPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/inputs"}
+            - {name: VELA_STAGE_WORKER_INPUT_TRANSFER_JOURNAL_ROOT, value: "/var/lib/vela/stage-worker/scratch/input-transfer-journal"}
+            - {name: VELA_STAGE_WORKER_OUTPUT_ROOT, value: "/var/lib/vela/stage-worker/scratch/outputs"}
+            - {name: VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_ROOT, value: "/var/lib/vela/stage-worker/scratch/materialization-journal"}
+            - {name: VELA_STAGE_WORKER_MATERIALIZATION_JOURNAL_LIMIT, value: "64"}
+            - {name: VELA_STAGE_WORKER_AUTHORITY_KEYRING_FILE, value: "/etc/vela-stage-worker/private/authority/keyring.json"}
+            - {name: VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID, value: "lab-stage-authority-v1"}
+            - {name: VELA_STAGE_WORKER_CONNECTOR_REVISION_ID, value: "84000000-0000-0000-0000-000000000552"}
+            - {name: VELA_STAGE_WORKER_CAPACITY_TTL, value: "2m"}
+            - {name: VELA_STAGE_WORKER_HEARTBEAT_INTERVAL, value: "5s"}
+            - {name: VELA_STAGE_WORKER_RETRY_MINIMUM, value: "1s"}
+            - {name: VELA_STAGE_WORKER_RETRY_MAXIMUM, value: "30s"}
+            - {name: VELA_ARTIFACT_S3_ENDPOINT, value: "https://vela-lab-minio.vela-lab-v2.svc:9000"}
+            - {name: VELA_ARTIFACT_S3_REGION, value: "us-east-1"}
+            - {name: VELA_ARTIFACT_S3_BUCKET, value: "vela-lab-artifacts"}
+            - {name: VELA_ARTIFACT_S3_ACCESS_KEY_ID_FILE, value: "/etc/vela-stage-worker/private/artifact/access-key-id"}
+            - {name: VELA_ARTIFACT_S3_SECRET_ACCESS_KEY_FILE, value: "/etc/vela-stage-worker/private/artifact/secret-access-key"}
+            - {name: VELA_ARTIFACT_S3_CA_FILE, value: "/etc/vela-stage-worker/private/artifact/ca.crt"}
+            - {name: VELA_ARTIFACT_S3_PATH_STYLE, value: "true"}
+            - {name: VELA_ARTIFACT_S3_SIGNED_GET_TTL, value: "5m"}
+            - {name: VELA_STAGE_WORKER_SOURCE_LOSS_RETRY, value: "30s"}
+            - {name: VELA_STAGE_WORKER_SOURCE_LOSS_CONSUMED_RESOURCE_UNITS, value: "1"}
+          resources:
+            requests: {cpu: "250m", memory: 256Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /run/vela-model-runtime}
+            - {name: scratch, mountPath: /var/lib/vela/stage-worker/scratch}
+            - {name: stage-worker-private, mountPath: /etc/vela-stage-worker/private, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: model-runtime
+          image: __BOOTSTRAP_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/vela-model-runtime"]
+          env:
+            - {name: VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE, value: "/etc/vela-model-runtime/private/launch.json"}
+            - {name: VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE, value: "/etc/vela-model-runtime/private/verifier-keyring.json"}
+            - {name: VELA_MODEL_RUNTIME_EPOCH_DIRECTORY, value: "/var/lib/vela/stage-worker/scratch/model-runtime-epochs"}
+            - {name: VELA_MODEL_RUNTIME_SOCKET, value: "/run/vela-model-runtime/runtime.sock"}
+            - {name: VELA_MODEL_RUNTIME_CANCEL_TIMEOUT, value: "5s"}
+            - {name: VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT, value: "30s"}
+          resources:
+            requests: {cpu: "500m", memory: 512Mi}
+            limits: {cpu: "2", memory: 4Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - {name: model-runtime-socket, mountPath: /run/vela-model-runtime}
+            - {name: scratch, mountPath: /var/lib/vela/stage-worker/scratch}
+            - {name: model-runtime-private, mountPath: /etc/vela-model-runtime/private, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: projected-files
+          secret:
+            secretName: vela-lab-stage-worker-thumbnail-files
+            defaultMode: 0400
+        - {name: stage-worker-private, emptyDir: {medium: Memory, sizeLimit: 1Mi}}
+        - {name: model-runtime-private, emptyDir: {medium: Memory, sizeLimit: 2Mi}}
+        - {name: model-runtime-socket, emptyDir: {medium: Memory, sizeLimit: 16Mi}}
+        - name: scratch
+          hostPath:
+            path: /var/lib/vela-lab-v2/control-plane/thumbnail-stage-worker
+            type: Directory
+        - {name: tmp, emptyDir: {}}

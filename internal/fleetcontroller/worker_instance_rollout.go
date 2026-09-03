@@ -28,8 +28,8 @@ type ResidencyPlanRollout struct {
 }
 
 type residencyPlanRolloutInput struct {
-	SchemaVersion int                    `json:"schema_version"`
-	Rollouts      []ResidencyPlanRollout `json:"rollouts"`
+	SchemaVersion int                     `json:"schema_version"`
+	Rollouts      *[]ResidencyPlanRollout `json:"rollouts"`
 }
 
 type ResidencyPlanRolloutResult struct {
@@ -68,12 +68,13 @@ func DecodeResidencyPlanRollouts(encoded []byte, namespace string) ([]ResidencyP
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return nil, errors.New("ResidencyPlan rollout input must contain exactly one JSON document")
 	}
-	if input.SchemaVersion != 1 || len(input.Rollouts) == 0 || len(input.Rollouts) > 4096 {
+	if input.SchemaVersion != 1 || input.Rollouts == nil || len(*input.Rollouts) > 4096 {
 		return nil, errors.New("ResidencyPlan rollout input is invalid")
 	}
-	planIDs := make(map[uuid.UUID]struct{}, len(input.Rollouts))
+	rollouts := *input.Rollouts
+	planIDs := make(map[uuid.UUID]struct{}, len(rollouts))
 	configuredDevices := newDeviceOwnership()
-	for _, rollout := range input.Rollouts {
+	for _, rollout := range rollouts {
 		if err := ValidateResidencyPlanRollout(rollout); err != nil {
 			return nil, err
 		}
@@ -90,7 +91,7 @@ func DecodeResidencyPlanRollouts(encoded []byte, namespace string) ([]ResidencyP
 			}
 		}
 	}
-	return input.Rollouts, nil
+	return rollouts, nil
 }
 
 func (controller *ResidencyPlanRolloutController) Reconcile(

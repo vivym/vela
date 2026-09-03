@@ -38,9 +38,6 @@ func newWorkerInstanceAdmissionValidator(
 	rollouts []ResidencyPlanRollout,
 	memberPKISecrets StageWorkerMemberPKISecretReader,
 ) (*WorkerInstancePodAdmissionValidator, error) {
-	if len(rollouts) == 0 {
-		return nil, errors.New("ResidencyPlan rollouts are required")
-	}
 	validator := &WorkerInstancePodAdmissionValidator{
 		desiredPods:          make(map[string]corev1.Pod),
 		desiredServices:      make(map[string]corev1.Service),

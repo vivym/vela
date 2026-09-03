@@ -8,6 +8,9 @@ an ADR. `Partial` means at least one required production behavior remains. A
 Production Gate is PASS only when its versioned Launch Receipt exists; repository
 tests alone do not satisfy a gate.
 
+The sanitized live three-host lab inventory and current `0/9` Gate audit are in
+`docs/three-host-lab-environment.md`.
+
 ## Repository Implemented, Production Acceptance In Progress
 
 The H3 stage-disaggregated architecture is accepted as the replacement target.
@@ -112,7 +115,7 @@ Receipt.
 | Schema and protocol migration | Schema-v2 through migration `00065`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
-| H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers; a bounded operator receipt records multi-member normal/fault/recovery but does not bind its raw cluster bundle; complete Stage/Fleet and real-H3 evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md` |
+| H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers; isolated `vela-lab-v2` four-Stage bootstrap/smoke tooling adds a separate CPU thumbnail Worker and two-Artifact verification, but is not remotely deployed; a bounded operator receipt records earlier multi-member normal/fault/recovery but does not bind its raw cluster bundle; complete Stage/Fleet and real-H3 evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md`, `docs/three-host-lab-environment.md` |
 
 Historical migrations still describe the predecessor machine-level contract,
 but migration `00058` removes it from the current schema and the corresponding

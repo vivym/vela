@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: vela-lab-smoke-
+  namespace: vela-lab-v2
+  labels:
+    app.kubernetes.io/name: vela-lab-smoke
+    vela.ai/environment: non-production-lab
+    vela.ai/deployment-identity: vela-lab-v2
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 420
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vela-lab-smoke
+        app.kubernetes.io/component: smoke
+        vela.ai/environment: non-production-lab
+        vela.ai/deployment-identity: vela-lab-v2
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeSelector:
+        vela.ai/node-role: control-storage
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: smoke
+          image: __BOOTSTRAP_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/vela-lab-smoke"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: credential
+              mountPath: /etc/vela-lab-smoke
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: credential
+          secret:
+            secretName: vela-lab-smoke-credential
+            defaultMode: 0400
+        - name: tmp
+          emptyDir: {}

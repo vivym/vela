@@ -18,7 +18,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/h3mockbackend"
 	"github.com/vivym/vela/internal/h3stagemock"
+	"github.com/vivym/vela/internal/stageartifact"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -132,6 +134,75 @@ func TestRuntimeExecutesAndSealsDeterministicStageOutput(t *testing.T) {
 	}
 	if information.Mode().Perm() != 0o600 {
 		t.Fatalf("sealed output mode=%v, want 0600", information.Mode().Perm())
+	}
+}
+
+func TestRuntimePublishesCPUThumbnailFixture(t *testing.T) {
+	root, inputRoot, outputRoot := runtimeRoots(t)
+	stageRunID := "49300000-0000-0000-0000-000000000001"
+	artifactID := "49600000-0000-0000-0000-000000000001"
+	inputPayload := []byte("sealed mock video")
+	inputDigest := sha256.Sum256(inputPayload)
+	inputPath := filepath.Join(
+		inputRoot, "stage-runs", stageRunID, "inputs", artifactID,
+		hex.EncodeToString(inputDigest[:])+".bin",
+	)
+	if err := os.MkdirAll(filepath.Dir(inputPath), 0o700); err != nil {
+		t.Fatalf("create input directory: %v", err)
+	}
+	if err := os.WriteFile(inputPath, inputPayload, 0o600); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+	initialization := initializeRequest(1, root, inputRoot, outputRoot, "CPU_MEDIA")
+	initialize := initialization["initialize"].(map[string]any)
+	initialize["model_component_revision"] = "lab-thumbnail-mock-v1"
+	initialize["local_devices"] = []any{map[string]any{
+		"device_id": "49000000-0000-0000-0000-000000000003", "device_epoch": 1,
+		"resource_class": "CPU",
+	}}
+	identity := stageIdentity(stageRunID)
+	responses := runRuntime(t, h3stagemock.Config{
+		Component: "CPU_MEDIA", Mode: h3stagemock.ModeSuccess,
+	}, []any{
+		initialization,
+		map[string]any{
+			"schema_version": 1, "request_id": 2, "operation": "prepare",
+			"prepare": map[string]any{
+				"identity": identity,
+				"execution_spec": executionSpec(t, &velav1.StageExecutionSpec{
+					Inputs: []*velav1.StageInputArtifact{{
+						StageArtifactId: artifactID, ObjectVersion: "video-v1", Sha256: inputDigest[:],
+						SizeBytes:                int64(len(inputPayload)),
+						StageInterfaceRevisionId: "49700000-0000-0000-0000-000000000001",
+					}},
+					ParametersJson:             []byte(`{"mock":true}`),
+					ExpectedOutputManifestJson: []byte(`{"thumbnail":{"required":true}}`),
+				}),
+			},
+		},
+		map[string]any{"schema_version": 1, "request_id": 3, "operation": "start", "stage": map[string]any{"identity": identity}},
+		map[string]any{"schema_version": 1, "request_id": 4, "operation": "seal", "stage": map[string]any{"identity": identity}},
+		map[string]any{"schema_version": 1, "request_id": 5, "operation": "shutdown"},
+	})
+	manifestJSON := bytesField(t, objectField(t, responses[3], "output"), "output_manifest_json")
+	manifest, err := stageartifact.ParseLocalOutputManifestV1(manifestJSON)
+	if err != nil {
+		t.Fatalf("parse CPU thumbnail output manifest: %v", err)
+	}
+	if manifest.OutputPort != "thumbnail" || manifest.ContentType != "image/webp" {
+		t.Fatalf("CPU thumbnail manifest = %#v", manifest)
+	}
+	payload, err := os.ReadFile(filepath.Join(outputRoot, filepath.FromSlash(manifest.LocalLocator)))
+	if err != nil {
+		t.Fatalf("read CPU thumbnail output: %v", err)
+	}
+	want, err := h3mockbackend.ReadThumbnailFixture()
+	if err != nil {
+		t.Fatalf("read expected thumbnail fixture: %v", err)
+	}
+	if !bytes.Equal(payload, want) || manifest.SizeBytes != int64(len(want)) ||
+		manifest.PayloadSHA256 != sha256.Sum256(want) {
+		t.Fatal("CPU thumbnail payload does not match the bounded WebP fixture")
 	}
 }
 

@@ -453,8 +453,7 @@ func (runtime *session) initialize(initialization *initializeV1) error {
 	}
 	device := initialization.LocalDevices[0]
 	if !canonicalUUID(device.DeviceID) || device.DeviceEpoch <= 0 ||
-		(device.ResourceClass != "" && device.ResourceClass != "GPU") ||
-		!gpuUUIDPattern.MatchString(device.GPUUUID) || !pciBDFPattern.MatchString(device.PCIBDF) ||
+		!validLocalDevice(runtime.component, device) ||
 		initialization.Devices[0].ID != device.DeviceID ||
 		initialization.Devices[0].Epoch != device.DeviceEpoch {
 		return errors.New("H3 Stage mock local device is invalid")
@@ -727,7 +726,8 @@ func (runtime *session) publish(active *execution) error {
 	}
 	descriptor = append(descriptor, '\n')
 	payload := descriptor
-	if runtime.component == "VAE_DECODER" {
+	switch runtime.component {
+	case "VAE_DECODER":
 		fixture, err := h3mockbackend.ReadVideoFixture()
 		if err != nil {
 			return err
@@ -736,6 +736,12 @@ func (runtime *session) publish(active *execution) error {
 		digest := sha256.Sum256(descriptor)
 		payload = append(payload, hex.EncodeToString(digest[:])...)
 		payload = append(payload, '\n')
+	case "CPU_MEDIA":
+		fixture, err := h3mockbackend.ReadThumbnailFixture()
+		if err != nil {
+			return err
+		}
+		payload = fixture
 	}
 	digest := sha256.Sum256(payload)
 	finalDirectory := active.identity.StageAttemptID
@@ -1094,9 +1100,19 @@ func componentOutput(component string) (string, string, bool) {
 		return "latent", "application/x-minimax-h3-latent", true
 	case "VAE_DECODER":
 		return "video", "video/mp4", true
+	case "CPU_MEDIA":
+		return "thumbnail", "image/webp", true
 	default:
 		return "", "", false
 	}
+}
+
+func validLocalDevice(component string, device localDeviceV1) bool {
+	if component == "CPU_MEDIA" {
+		return device.ResourceClass == "CPU" && device.GPUUUID == "" && device.PCIBDF == ""
+	}
+	return (device.ResourceClass == "" || device.ResourceClass == "GPU") &&
+		gpuUUIDPattern.MatchString(device.GPUUUID) && pciBDFPattern.MatchString(device.PCIBDF)
 }
 
 func validComponent(component string) bool {
