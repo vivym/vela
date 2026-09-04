@@ -235,7 +235,6 @@ func matchesDurableStageAuthority(
 		snapshot.modelResidencyID != residencyID || snapshot.stageProfileID != profileID ||
 		snapshot.attemptFence != authority.GetAttemptFence() ||
 		snapshot.stageFence != authority.GetStageFence() ||
-		snapshot.stageVersion != authority.GetStageVersion() ||
 		snapshot.workerInstanceEpoch != authority.GetWorkerInstanceEpoch() ||
 		snapshot.modelRuntimeBarrierGeneration != authority.GetModelRuntimeBarrierGeneration() ||
 		snapshot.modelRuntimeBarrierGeneration <= 0 || snapshot.controlSessionEpoch != sessionEpoch ||
@@ -248,11 +247,10 @@ func matchesDurableStageAuthority(
 		!maps.Equal(snapshot.capacityVector, authority.GetCapacityVector()) ||
 		!snapshot.issuedAt.Equal(authority.GetIssuedAt().AsTime()) ||
 		!snapshot.expiresAt.Equal(authority.GetExpiresAt().AsTime()) ||
-		!snapshot.localDeadlineAt.Equal(localDeadline) || !snapshot.capacityObservationOK ||
-		snapshot.leaseState != "ACTIVE" || snapshot.allocationState != "ALLOCATED" ||
+		!snapshot.localDeadlineAt.Equal(localDeadline) ||
 		snapshot.workerLifecycle != "READY" || snapshot.workerReachability != "CONNECTED" ||
 		snapshot.residencyState != "READY" ||
-		!activeOperationState(operation, snapshot) {
+		!matchesDurableOperationState(snapshot, operation, authority.GetStageVersion()) {
 		return false
 	}
 	if !matchesMembers(snapshot.members, authority.GetMembers(), identity.SPIFFEID) ||
@@ -260,6 +258,23 @@ func matchesDurableStageAuthority(
 		return false
 	}
 	return true
+}
+
+func matchesDurableOperationState(
+	snapshot durableStageAuthority,
+	operation Operation,
+	signedStageVersion int64,
+) bool {
+	if operation == OperationSealStageOutput &&
+		snapshot.stageVersion == signedStageVersion+1 &&
+		snapshot.attemptState == "RUNNING" && snapshot.stageRunState == "MATERIALIZING" &&
+		snapshot.stageAttemptState == "OUTPUT_SEALED" &&
+		snapshot.allocationState == "RELEASED" && snapshot.leaseState == "REVOKED" {
+		return true
+	}
+	return snapshot.stageVersion == signedStageVersion && snapshot.capacityObservationOK &&
+		snapshot.leaseState == "ACTIVE" && snapshot.allocationState == "ALLOCATED" &&
+		activeOperationState(operation, snapshot)
 }
 
 func matchesMembers(

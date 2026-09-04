@@ -236,6 +236,87 @@ func TestProductionAgentRunsAssignmentsAndHonorsNoWorkRetry(t *testing.T) {
 	}
 }
 
+func TestProductionAgentObservesMaterializationResumeErrors(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	materialization := newMaterializingStreamControl(t, fixture.authority)
+	commands := make(chan *velav1.StageWorkerControlServiceConnectResponse)
+	control := &productionExecutionControl{
+		materializingStreamControl: materialization,
+		identity:                   runtimeIdentityFromAuthority(fixture.authority),
+		commands:                   commands,
+	}
+	source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
+	if err != nil {
+		t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
+	}
+	journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
+	if err != nil {
+		t.Fatalf("NewMemoryMaterializationJournal: %v", err)
+	}
+	publisher := &outageOncePublisher{failures: 2, objectVersion: "unused-version"}
+	stream, err := stageworkeragent.NewMaterializingStreamAgent(
+		runtimeAgent,
+		control,
+		stageworkeragent.MaterializationConfig{
+			Validator: materialization.validator, Source: source, Publisher: publisher, Journal: journal,
+			SourceLossEvidence: testSourceLossEvidenceProvider(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewMaterializingStreamAgent: %v", err)
+	}
+	if _, err := stream.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatalf("ExecuteAssignment: %v", err)
+	}
+	fixture.backend.MarkOutputReadyWithSize(fixture.manifest, int64(len(fixture.payload)))
+	if _, err := stream.SealAndMaterialize(context.Background()); err == nil {
+		t.Fatal("initial materialization unexpectedly succeeded")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var observedOperation string
+	var observedError error
+	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+		Control: control, Runtime: fixture.client, Stream: stream,
+		RuntimeIdentity: control.identity,
+		Devices:         fixture.authority.GetDevices(), Members: fixture.authority.GetMembers(),
+		CapacityVector: fixture.authority.GetCapacityVector(), CapacityTTL: 2 * time.Minute,
+		HeartbeatInterval: time.Second, RetryMinimum: time.Millisecond, RetryMaximum: time.Second,
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{1}},
+		RetryObserver: func(operation string, cause error) {
+			observedOperation, observedError = operation, cause
+		},
+		Now: time.Now,
+		Wait: func(context.Context, time.Duration) error {
+			cancel()
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProductionAgent: %v", err)
+	}
+	if err := agent.Run(ctx); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	close(commands)
+	if observedOperation != "resume-materialization" || observedError == nil ||
+		!strings.Contains(observedError.Error(), "injected L2 outage") || publisher.calls != 2 {
+		t.Fatalf(
+			"observed=%q/%v publisher_calls=%d",
+			observedOperation,
+			observedError,
+			publisher.calls,
+		)
+	}
+}
+
 func TestProductionAgentReattachesAfterControlReconnectWithoutRerunning(t *testing.T) {
 	fixture := newSingleMemberMaterializationFixture(t)
 	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{

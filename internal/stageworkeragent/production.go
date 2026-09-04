@@ -358,6 +358,7 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return nil
 			}
+			agent.observeRetry("resume-materialization", err)
 			if err := agent.wait(ctx, backoff); err != nil {
 				if ctx.Err() != nil {
 					return nil

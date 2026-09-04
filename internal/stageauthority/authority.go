@@ -184,6 +184,39 @@ func (validator *Validator) ValidateEnvelopeWithClockSkew(
 	if maxFutureSkew < 0 || maxFutureSkew > maxValidationSkew {
 		return Verified{}, fmt.Errorf("%w: StageAuthority clock skew is invalid", ErrInvalid)
 	}
+	verified, err := validator.ValidateEnvelopeSignature(authority)
+	if err != nil {
+		return Verified{}, err
+	}
+	canonical := verified.Authority
+
+	now := validator.now().UTC()
+	issuedAt := canonical.GetIssuedAt().AsTime().UTC()
+	expiresAt := canonical.GetExpiresAt().AsTime().UTC()
+	if now.Add(maxFutureSkew).Before(issuedAt) || !now.Before(expiresAt) {
+		return Verified{}, ErrStale
+	}
+	remainingWall := expiresAt.Sub(now)
+	elapsed := now.Sub(issuedAt)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	remainingMonotonic := canonical.GetMonotonicValidFor().AsDuration() - elapsed
+	if remainingMonotonic <= 0 {
+		return Verified{}, ErrStale
+	}
+	verified.MonotonicValidFor = min(remainingWall, remainingMonotonic)
+	return verified, nil
+}
+
+// ValidateEnvelopeSignature verifies shape, key, signature, and digest without
+// evaluating temporal validity. Callers must separately enforce a replay bound.
+func (validator *Validator) ValidateEnvelopeSignature(
+	authority *velav1.StageAuthority,
+) (Verified, error) {
+	if validator == nil {
+		return Verified{}, errors.New("StageAuthority validator is not configured")
+	}
 	canonical, err := canonicalize(authority)
 	if err != nil {
 		return Verified{}, err
@@ -205,31 +238,13 @@ func (validator *Validator) ValidateEnvelopeWithClockSkew(
 		return Verified{}, ErrInvalidSignature
 	}
 	canonical.Signature = signature
-
-	now := validator.now().UTC()
-	issuedAt := canonical.GetIssuedAt().AsTime().UTC()
-	expiresAt := canonical.GetExpiresAt().AsTime().UTC()
-	if now.Add(maxFutureSkew).Before(issuedAt) || !now.Before(expiresAt) {
-		return Verified{}, ErrStale
-	}
-	remainingWall := expiresAt.Sub(now)
-	elapsed := now.Sub(issuedAt)
-	if elapsed < 0 {
-		elapsed = 0
-	}
-	remainingMonotonic := canonical.GetMonotonicValidFor().AsDuration() - elapsed
-	if remainingMonotonic <= 0 {
-		return Verified{}, ErrStale
-	}
-	remaining := min(remainingWall, remainingMonotonic)
 	digest, err := Digest(canonical)
 	if err != nil {
 		return Verified{}, err
 	}
 	return Verified{
-		Authority:         proto.Clone(canonical).(*velav1.StageAuthority),
-		Digest:            digest,
-		MonotonicValidFor: remaining,
+		Authority: proto.Clone(canonical).(*velav1.StageAuthority),
+		Digest:    digest,
 	}, nil
 }
 

@@ -132,6 +132,111 @@ func TestHandlerRejectsStaleHeartbeatAndReattachBeforeExecution(t *testing.T) {
 	}
 }
 
+func TestHandlerLimitsExpiredAuthorityReplayToDurablyAuthorizedSeal(t *testing.T) {
+	issuedAt := time.Date(2026, 8, 30, 9, 0, 0, 0, time.UTC)
+	keys := map[string][]byte{"control-key": bytes.Repeat([]byte{0x7c}, 32)}
+	signer, err := stageauthority.NewSigner(keys)
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	signed, err := signer.Sign(controlAuthority(issuedAt))
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	digest, err := stageauthority.Digest(signed)
+	if err != nil {
+		t.Fatalf("Digest: %v", err)
+	}
+	validator, err := stageauthority.NewValidator(
+		keys,
+		func() time.Time { return issuedAt.Add(2 * time.Minute) },
+	)
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	materializationValidator, err := materializationauthority.NewValidator(
+		map[string][]byte{"materialization-key-v1": bytes.Repeat([]byte{0x7d}, 32)},
+		func() time.Time { return issuedAt.Add(2 * time.Minute) },
+	)
+	if err != nil {
+		t.Fatalf("New materialization Validator: %v", err)
+	}
+	authorizer := &exactActiveAuthorizer{digest: digest}
+	executor := &recordingControlExecutor{}
+	handler, err := stageworkercontrol.NewHandler(stageworkercontrol.Config{
+		Validator: validator, Authorizer: authorizer,
+		MaterializationValidator:  materializationValidator,
+		MaterializationAuthorizer: &exactMaterializationAuthorizer{},
+		Executor:                  executor,
+	})
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+	identity := stageworkertransport.Identity{SPIFFEID: "spiffe://vela/worker/member-1"}
+	sealRequest := func(requestID string, authority *velav1.StageAuthority) *velav1.StageWorkerControlServiceConnectRequest {
+		return &velav1.StageWorkerControlServiceConnectRequest{
+			RequestId: requestID,
+			Operation: &velav1.StageWorkerControlServiceConnectRequest_SealStageOutput{
+				SealStageOutput: &velav1.SealStageOutputRequest{
+					Authority: authority, LocalReceipt: &velav1.LocalMaterializationReceipt{},
+				},
+			},
+		}
+	}
+
+	response, err := handler.Handle(
+		context.Background(), identity, 11,
+		sealRequest("81000000-0000-0000-0000-000000000030", signed),
+	)
+	if err != nil || response.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED ||
+		authorizer.calls != 1 || executor.calls != 1 || executor.lastAuthorities.Stage == nil ||
+		executor.lastAuthorities.Stage.MonotonicValidFor != 0 {
+		t.Fatalf(
+			"expired seal replay = %#v error=%v authorizer=%d executor=%d authorities=%#v",
+			response, err, authorizer.calls, executor.calls, executor.lastAuthorities,
+		)
+	}
+
+	tampered := proto.Clone(signed).(*velav1.StageAuthority)
+	tampered.StageFence++
+	response, err = handler.Handle(
+		context.Background(), identity, 11,
+		sealRequest("81000000-0000-0000-0000-000000000031", tampered),
+	)
+	if err != nil || response.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
+		authorizer.calls != 1 || executor.calls != 1 {
+		t.Fatalf("tampered expired seal = %#v error=%v", response, err)
+	}
+
+	response, err = handler.Handle(
+		context.Background(), identity, 11,
+		&velav1.StageWorkerControlServiceConnectRequest{
+			RequestId: "81000000-0000-0000-0000-000000000032",
+			Operation: &velav1.StageWorkerControlServiceConnectRequest_HeartbeatStage{
+				HeartbeatStage: &velav1.HeartbeatStageRequest{Authority: signed, Sequence: 1},
+			},
+		},
+	)
+	if err != nil || response.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
+		authorizer.calls != 1 || executor.calls != 1 {
+		t.Fatalf("expired heartbeat = %#v error=%v", response, err)
+	}
+
+	authorizer.digest = [32]byte{0xff}
+	response, err = handler.Handle(
+		context.Background(), identity, 11,
+		sealRequest("81000000-0000-0000-0000-000000000033", signed),
+	)
+	if err != nil || response.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE ||
+		authorizer.calls != 2 || executor.calls != 1 {
+		t.Fatalf("durably inactive expired seal = %#v error=%v", response, err)
+	}
+}
+
 func TestHandlerAuthorizesCommitWithMaterializationAuthorityAfterStageLeaseRevocation(t *testing.T) {
 	now := time.Date(2026, 8, 30, 14, 0, 0, 0, time.UTC)
 	stageKeys := map[string][]byte{"control-key": bytes.Repeat([]byte{0x7c}, 32)}

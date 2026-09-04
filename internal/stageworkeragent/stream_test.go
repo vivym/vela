@@ -369,6 +369,55 @@ func TestStreamAgentRetriesMaterializationWithoutHoldingOrRerunningGPU(t *testin
 	}
 }
 
+func TestStreamAgentSurfacesSealNegativeDecision(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	control := newMaterializingStreamControl(t, fixture.authority)
+	control.sealCommandResult = &velav1.StageCommandResult{
+		Operation: velav1.StageWorkerOperation_STAGE_WORKER_OPERATION_SEAL_STAGE_OUTPUT,
+		Decision:  velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE,
+		Detail:    "StageAuthority no longer matches durable active authority",
+	}
+	source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
+	if err != nil {
+		t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
+	}
+	journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
+	if err != nil {
+		t.Fatalf("NewMemoryMaterializationJournal: %v", err)
+	}
+	publisher := &outageOncePublisher{objectVersion: "unused-version"}
+	streamAgent, err := stageworkeragent.NewMaterializingStreamAgent(
+		runtimeAgent,
+		control,
+		stageworkeragent.MaterializationConfig{
+			Validator: control.validator, Source: source, Publisher: publisher, Journal: journal,
+			SourceLossEvidence: testSourceLossEvidenceProvider(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewMaterializingStreamAgent: %v", err)
+	}
+	if _, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatalf("ExecuteAssignment: %v", err)
+	}
+	fixture.backend.MarkOutputReadyWithSize(fixture.manifest, int64(len(fixture.payload)))
+
+	result, err := streamAgent.SealAndMaterialize(context.Background())
+	if err == nil ||
+		!strings.Contains(err.Error(), "operation=STAGE_WORKER_OPERATION_SEAL_STAGE_OUTPUT") ||
+		!strings.Contains(err.Error(), "decision=STAGE_WORKER_COMMAND_DECISION_STALE") ||
+		!strings.Contains(err.Error(), "StageAuthority no longer matches durable active authority") ||
+		!result.LocalSealed || !result.GPUReleased || publisher.calls != 0 {
+		t.Fatalf("SealAndMaterialize = %#v error=%v publisher=%d", result, err, publisher.calls)
+	}
+}
+
 func TestStreamAgentBoundsMaterializationAuthorityResponseClockSkew(t *testing.T) {
 	for _, test := range []struct {
 		name         string
@@ -924,6 +973,7 @@ type materializingStreamControl struct {
 	now                time.Time
 	issuedAtOffset     time.Duration
 	maxClockSkew       time.Duration
+	sealCommandResult  *velav1.StageCommandResult
 }
 
 func newMaterializingStreamControl(
@@ -973,6 +1023,13 @@ func (control *materializingStreamControl) Exchange(
 		), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_SealStageOutput:
 		control.sealCalls++
+		if control.sealCommandResult != nil {
+			return &velav1.StageWorkerControlServiceConnectResponse{
+				Result: &velav1.StageWorkerControlServiceConnectResponse_StageCommandResult{
+					StageCommandResult: proto.Clone(control.sealCommandResult).(*velav1.StageCommandResult),
+				},
+			}, nil
+		}
 		receipt := operation.SealStageOutput.GetLocalReceipt()
 		manifest, err := stageartifact.ParseLocalOutputManifestV1(receipt.GetOutputManifestJson())
 		if err != nil {
