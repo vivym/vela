@@ -140,6 +140,42 @@ func TestFileProductionStateReconcilesDatabaseHighWater(t *testing.T) {
 	}
 }
 
+func TestFileProductionStateReconcilesLowerDatabaseControlEpoch(t *testing.T) {
+	directory := t.TempDir()
+	configuration := stageworkeragent.FileProductionStateConfig{
+		Directory:           directory,
+		WorkerInstanceID:    uuid.MustParse("48000000-0000-0000-0000-000000000001"),
+		WorkerInstanceEpoch: 5,
+		WorkerMemberID:      uuid.MustParse("48000000-0000-0000-0000-000000000004"),
+	}
+	state, err := stageworkeragent.NewFileProductionState(configuration)
+	if err != nil {
+		t.Fatalf("NewFileProductionState: %v", err)
+	}
+	for want := int64(2); want <= 5; want++ {
+		epoch, nextErr := state.NextControlSessionEpoch(context.Background())
+		if nextErr != nil || epoch != want {
+			t.Fatalf("local control epoch = %d, want %d, error=%v", epoch, want, nextErr)
+		}
+	}
+	if err := state.ObserveControlSessionEpoch(context.Background(), 3); err != nil {
+		t.Fatalf("observe lower durable control epoch: %v", err)
+	}
+	if err := state.Close(); err != nil {
+		t.Fatalf("close reconciled production state: %v", err)
+	}
+
+	reopened, err := stageworkeragent.NewFileProductionState(configuration)
+	if err != nil {
+		t.Fatalf("reopen reconciled FileProductionState: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	epoch, err := reopened.NextControlSessionEpoch(context.Background())
+	if err != nil || epoch != 4 {
+		t.Fatalf("post-reconciliation control epoch = %d, want 4, error=%v", epoch, err)
+	}
+}
+
 func TestFileProductionStateExcludesAnotherProcessAndBindsWorkerIdentity(t *testing.T) {
 	directory := t.TempDir()
 	configuration := stageworkeragent.FileProductionStateConfig{

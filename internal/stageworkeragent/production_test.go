@@ -317,6 +317,104 @@ func TestProductionAgentObservesMaterializationResumeErrors(t *testing.T) {
 	}
 }
 
+func TestProductionAgentSynchronizesControlSessionBeforeSealedOutputReplay(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	materialization := newMaterializingStreamControl(t, fixture.authority)
+	commands := make(chan *velav1.StageWorkerControlServiceConnectResponse)
+	baseControl := &productionExecutionControl{
+		materializingStreamControl: materialization,
+		identity:                   runtimeIdentityFromAuthority(fixture.authority),
+		commands:                   commands,
+	}
+	control := &sealedReplaySessionControl{
+		productionExecutionControl: baseControl,
+		available:                  true,
+		localEpoch:                 2,
+		durableEpoch:               2,
+		dropSealResponse:           true,
+	}
+	source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
+	if err != nil {
+		t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
+	}
+	journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
+	if err != nil {
+		t.Fatalf("NewMemoryMaterializationJournal: %v", err)
+	}
+	publisher := &outageOncePublisher{objectVersion: "session-replay-l2-version"}
+	stream, err := stageworkeragent.NewMaterializingStreamAgent(
+		runtimeAgent,
+		control,
+		stageworkeragent.MaterializationConfig{
+			Validator: materialization.validator, Source: source, Publisher: publisher, Journal: journal,
+			SourceLossEvidence: testSourceLossEvidenceProvider(),
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewMaterializingStreamAgent: %v", err)
+	}
+	if _, err := stream.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatalf("ExecuteAssignment: %v", err)
+	}
+	fixture.backend.MarkOutputReadyWithSize(fixture.manifest, int64(len(fixture.payload)))
+	sealed, err := stream.SealAndMaterialize(context.Background())
+	if err == nil || !sealed.LocalSealed || !sealed.GPUReleased || sealed.Committed {
+		t.Fatalf("lost seal response = %#v error=%v", sealed, err)
+	}
+	control.operations = nil
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+		Control: control, Runtime: fixture.client, Stream: stream,
+		RuntimeIdentity:   baseControl.identity,
+		Devices:           fixture.authority.GetDevices(),
+		Members:           fixture.authority.GetMembers(),
+		CapacityVector:    fixture.authority.GetCapacityVector(),
+		CapacityTTL:       2 * time.Minute,
+		HeartbeatInterval: time.Second,
+		RetryMinimum:      time.Millisecond,
+		RetryMaximum:      time.Second,
+		ObservationSequenceSource: &capacitySequenceSource{
+			values: []int64{1, 2, 3},
+		},
+		Now: time.Now,
+		Wait: func(_ context.Context, delay time.Duration) error {
+			if control.blockedSeal || delay == 250*time.Millisecond {
+				cancel()
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewProductionAgent: %v", err)
+	}
+	if err := agent.Run(ctx); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	close(commands)
+	wantOperations := []string{
+		"capacity", "capacity", "register", "capacity", "seal", "commit", "acquire",
+	}
+	if control.blockedSeal || control.localEpoch != 3 || control.durableEpoch != 3 ||
+		!reflect.DeepEqual(control.operations, wantOperations) ||
+		materialization.startCalls != 1 || fixture.countingBackend.sealCalls != 1 ||
+		materialization.sealCalls != 2 || materialization.commitCalls != 1 || publisher.calls != 1 {
+		t.Fatalf(
+			"blocked_seal=%t epochs=%d/%d operations=%v start=%d runtime_seal=%d control_seal=%d commit=%d publish=%d",
+			control.blockedSeal, control.localEpoch, control.durableEpoch, control.operations,
+			materialization.startCalls, fixture.countingBackend.sealCalls,
+			materialization.sealCalls, materialization.commitCalls, publisher.calls,
+		)
+	}
+}
+
 func TestProductionAgentReattachesAfterControlReconnectWithoutRerunning(t *testing.T) {
 	fixture := newSingleMemberMaterializationFixture(t)
 	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
@@ -1150,6 +1248,69 @@ type productionExecutionControl struct {
 	observationSequences []int64
 	failCalls            int
 	failure              *velav1.FailStageRequest
+}
+
+type sealedReplaySessionControl struct {
+	*productionExecutionControl
+	available        bool
+	localEpoch       int64
+	durableEpoch     int64
+	dropSealResponse bool
+	blockedSeal      bool
+	operations       []string
+}
+
+func (control *sealedReplaySessionControl) CurrentControlSessionEpoch() int64 {
+	return control.localEpoch
+}
+
+func (control *sealedReplaySessionControl) HasActiveControlSession() bool {
+	return control.available
+}
+
+func (control *sealedReplaySessionControl) Exchange(
+	ctx context.Context,
+	request *velav1.StageWorkerControlServiceConnectRequest,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	operation := ""
+	switch request.GetOperation().(type) {
+	case *velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence:
+		operation = "register"
+	case *velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
+		operation = "capacity"
+	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
+		operation = "acquire"
+	case *velav1.StageWorkerControlServiceConnectRequest_StartStage:
+		operation = "start"
+	case *velav1.StageWorkerControlServiceConnectRequest_SealStageOutput:
+		operation = "seal"
+	case *velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization:
+		operation = "commit"
+	}
+	control.operations = append(control.operations, operation)
+	if operation == "seal" && control.dropSealResponse {
+		response, err := control.productionExecutionControl.Exchange(ctx, request)
+		if err != nil {
+			return response, err
+		}
+		control.dropSealResponse = false
+		control.available = false
+		control.localEpoch = 5
+		return nil, errors.New("connection lost after durable StageArtifact seal")
+	}
+	if !control.available {
+		if operation != "register" && operation != "capacity" {
+			control.blockedSeal = operation == "seal"
+			return nil, errors.New("StageAuthority rejected: control_session")
+		}
+		if control.localEpoch != control.durableEpoch {
+			control.durableEpoch++
+			control.localEpoch = control.durableEpoch
+			return nil, errors.New("durable Stage Worker control session synchronized; reconnect required")
+		}
+		control.available = true
+	}
+	return control.productionExecutionControl.Exchange(ctx, request)
 }
 
 func (control *productionExecutionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {

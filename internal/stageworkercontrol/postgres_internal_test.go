@@ -71,6 +71,9 @@ func TestMatchesDurableStageAuthorityAllowsOnlyExactPostSealReplay(t *testing.T)
 	if !matchesDurableStageAuthority(snapshot, identity, 11, OperationSealStageOutput, authority) {
 		t.Fatal("exact post-seal replay was rejected")
 	}
+	if matchesDurableStageAuthority(snapshot, identity, 12, OperationSealStageOutput, authority) {
+		t.Fatal("post-seal replay accepted a mismatched durable control session")
+	}
 	if matchesDurableStageAuthority(snapshot, identity, 11, OperationHeartbeatStage, authority) {
 		t.Fatal("post-seal authority authorized a non-seal operation")
 	}
