@@ -1727,6 +1727,8 @@ type WorkerReadinessDecision struct {
 	Reason                        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
 	ModelRuntimeBarrierGeneration int64                  `protobuf:"varint,5,opt,name=model_runtime_barrier_generation,json=modelRuntimeBarrierGeneration,proto3" json:"model_runtime_barrier_generation,omitempty"`
 	LeaderWorkerMemberId          string                 `protobuf:"bytes,6,opt,name=leader_worker_member_id,json=leaderWorkerMemberId,proto3" json:"leader_worker_member_id,omitempty"`
+	ControlSessionEpoch           int64                  `protobuf:"varint,7,opt,name=control_session_epoch,json=controlSessionEpoch,proto3" json:"control_session_epoch,omitempty"`
+	CapacityObservationSequence   int64                  `protobuf:"varint,8,opt,name=capacity_observation_sequence,json=capacityObservationSequence,proto3" json:"capacity_observation_sequence,omitempty"`
 	unknownFields                 protoimpl.UnknownFields
 	sizeCache                     protoimpl.SizeCache
 }
@@ -1801,6 +1803,20 @@ func (x *WorkerReadinessDecision) GetLeaderWorkerMemberId() string {
 		return x.LeaderWorkerMemberId
 	}
 	return ""
+}
+
+func (x *WorkerReadinessDecision) GetControlSessionEpoch() int64 {
+	if x != nil {
+		return x.ControlSessionEpoch
+	}
+	return 0
+}
+
+func (x *WorkerReadinessDecision) GetCapacityObservationSequence() int64 {
+	if x != nil {
+		return x.CapacityObservationSequence
+	}
+	return 0
 }
 
 type StageAssignment struct {
@@ -2511,14 +2527,16 @@ const file_vela_v1_stage_worker_control_proto_rawDesc = "" +
 	"\x06sha256\x18\x05 \x01(\fR\x06sha256\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x06 \x01(\x03R\tsizeBytes\x12!\n" +
-	"\fcontent_type\x18\a \x01(\tR\vcontentType\"\xa9\x02\n" +
+	"\fcontent_type\x18\a \x01(\tR\vcontentType\"\xa1\x03\n" +
 	"\x17WorkerReadinessDecision\x12,\n" +
 	"\x12worker_instance_id\x18\x01 \x01(\tR\x10workerInstanceId\x122\n" +
 	"\x15worker_instance_epoch\x18\x02 \x01(\x03R\x13workerInstanceEpoch\x12\x14\n" +
 	"\x05ready\x18\x03 \x01(\bR\x05ready\x12\x16\n" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\x12G\n" +
 	" model_runtime_barrier_generation\x18\x05 \x01(\x03R\x1dmodelRuntimeBarrierGeneration\x125\n" +
-	"\x17leader_worker_member_id\x18\x06 \x01(\tR\x14leaderWorkerMemberId\"\xbb\x03\n" +
+	"\x17leader_worker_member_id\x18\x06 \x01(\tR\x14leaderWorkerMemberId\x122\n" +
+	"\x15control_session_epoch\x18\a \x01(\x03R\x13controlSessionEpoch\x12B\n" +
+	"\x1dcapacity_observation_sequence\x18\b \x01(\x03R\x1bcapacityObservationSequence\"\xbb\x03\n" +
 	"\x0fStageAssignment\x125\n" +
 	"\tauthority\x18\x01 \x01(\v2\x17.vela.v1.StageAuthorityR\tauthority\x12B\n" +
 	"\x0eexecution_spec\x18\x02 \x01(\v2\x1b.vela.v1.StageExecutionSpecR\rexecutionSpec\x12;\n" +

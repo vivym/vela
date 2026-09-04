@@ -129,7 +129,7 @@ func TestSingleGPUProductionCompositionSmoke(t *testing.T) {
 	}
 
 	operations, registration, capacity, acquire := control.snapshot()
-	if !reflect.DeepEqual(operations, []string{"register", "capacity", "acquire"}) {
+	if !reflect.DeepEqual(operations, []string{"capacity", "register", "capacity", "acquire"}) {
 		t.Fatalf("Stage Worker control operations = %v", operations)
 	}
 	if registration.GetRuntimeIdentity().GetModelRuntimeEpoch() != identity.GetModelRuntimeEpoch() ||
@@ -487,6 +487,8 @@ func (handler *smokeControlHandler) Handle(
 		response.Result = &velav1.StageWorkerControlServiceConnectResponse_WorkerReadinessDecision{
 			WorkerReadinessDecision: handler.readiness(),
 		}
+		response.GetWorkerReadinessDecision().CapacityObservationSequence =
+			operation.ReportCapacityObservation.GetObservationSequence()
 	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
 		handler.operations = append(handler.operations, "acquire")
 		handler.acquire = proto.Clone(operation.AcquireStage).(*velav1.AcquireStageRequest)

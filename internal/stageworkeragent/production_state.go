@@ -21,6 +21,8 @@ const (
 	productionStateFileName = "stage-worker-production-state.json"
 	productionLockFileName  = "stage-worker-production-state.lock"
 	maxProductionStateBytes = 16 << 10
+	capacitySequenceShift   = 32
+	maxCapacityEpoch        = math.MaxInt64 >> capacitySequenceShift
 )
 
 type FileProductionStateConfig struct {
@@ -53,7 +55,7 @@ func NewFileProductionState(
 	directory := filepath.Clean(config.Directory)
 	if !filepath.IsAbs(directory) || directory != config.Directory ||
 		config.WorkerInstanceID == uuid.Nil || config.WorkerInstanceEpoch <= 0 ||
-		config.WorkerMemberID == uuid.Nil {
+		config.WorkerInstanceEpoch > maxCapacityEpoch || config.WorkerMemberID == uuid.Nil {
 		return nil, errors.New("stage worker production state configuration is invalid")
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
@@ -91,10 +93,24 @@ func (state *FileProductionState) NextControlSessionEpoch(ctx context.Context) (
 	return state.next(ctx, true)
 }
 
+func (state *FileProductionState) ObserveControlSessionEpoch(
+	ctx context.Context,
+	epoch int64,
+) error {
+	return state.observe(ctx, true, epoch)
+}
+
 func (state *FileProductionState) NextCapacityObservationSequence(
 	ctx context.Context,
 ) (int64, error) {
 	return state.next(ctx, false)
+}
+
+func (state *FileProductionState) ObserveCapacityObservationSequence(
+	ctx context.Context,
+	sequence int64,
+) error {
+	return state.observe(ctx, false, sequence)
 }
 
 func (state *FileProductionState) Close() error {
@@ -119,8 +135,9 @@ func (state *FileProductionState) load(config FileProductionStateConfig) error {
 			SchemaVersion: 1, WorkerInstanceID: config.WorkerInstanceID,
 			WorkerInstanceEpoch: config.WorkerInstanceEpoch,
 			WorkerMemberID:      config.WorkerMemberID,
-			// Fleet creates a WorkerInstance with control_session_epoch=1.
-			ControlSessionEpoch: 1,
+			// Fleet seeds control epoch one; capacity sequences reserve one range per instance epoch.
+			ControlSessionEpoch:         1,
+			CapacityObservationSequence: config.WorkerInstanceEpoch << capacitySequenceShift,
 		}
 		return state.persist(state.state)
 	}
@@ -138,13 +155,23 @@ func (state *FileProductionState) load(config FileProductionStateConfig) error {
 		return errors.New("stage worker production state is invalid")
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) ||
-		!validFileProductionState(decoded) {
+		!validFileProductionStateEnvelope(decoded) {
 		return errors.New("stage worker production state is invalid")
 	}
 	if decoded.WorkerInstanceID != config.WorkerInstanceID ||
 		decoded.WorkerInstanceEpoch != config.WorkerInstanceEpoch ||
 		decoded.WorkerMemberID != config.WorkerMemberID {
 		return errors.New("stage worker production state belongs to another WorkerInstance")
+	}
+	capacitySequenceBase := decoded.WorkerInstanceEpoch << capacitySequenceShift
+	if decoded.CapacityObservationSequence < capacitySequenceBase {
+		decoded.CapacityObservationSequence = capacitySequenceBase
+		if err := state.persist(decoded); err != nil {
+			return fmt.Errorf("upgrade Stage Worker capacity sequence: %w", err)
+		}
+	}
+	if !validFileProductionState(decoded) {
+		return errors.New("stage worker production state is invalid")
 	}
 	state.state = decoded
 	return nil
@@ -172,6 +199,11 @@ func (state *FileProductionState) next(ctx context.Context, control bool) (int64
 	if *value == math.MaxInt64 {
 		return 0, errors.New("stage worker production sequence is exhausted")
 	}
+	capacitySequenceLimit :=
+		(state.state.WorkerInstanceEpoch << capacitySequenceShift) | int64(math.MaxUint32)
+	if !control && *value == capacitySequenceLimit {
+		return 0, errors.New("stage worker capacity sequence epoch range is exhausted")
+	}
 	*value++
 	if !validFileProductionState(next) {
 		return 0, errors.New("stage worker production state transition is invalid")
@@ -181,6 +213,41 @@ func (state *FileProductionState) next(ctx context.Context, control bool) (int64
 	}
 	state.state = next
 	return *value, nil
+}
+
+func (state *FileProductionState) observe(
+	ctx context.Context,
+	control bool,
+	observed int64,
+) error {
+	if state == nil || ctx == nil || observed <= 0 {
+		return errors.New("stage worker production high-water observation is invalid")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.lock == nil {
+		return errors.New("stage worker production state is closed")
+	}
+	next := state.state
+	value := &next.CapacityObservationSequence
+	if control {
+		value = &next.ControlSessionEpoch
+	}
+	if (control && observed == *value) || (!control && observed <= *value) {
+		return nil
+	}
+	*value = observed
+	if !validFileProductionState(next) {
+		return errors.New("stage worker production high-water observation is outside its epoch range")
+	}
+	if err := state.persist(next); err != nil {
+		return err
+	}
+	state.state = next
+	return nil
 }
 
 func (state *FileProductionState) persist(next fileProductionStateV1) error {
@@ -229,7 +296,18 @@ func (state *FileProductionState) persist(next fileProductionStateV1) error {
 }
 
 func validFileProductionState(state fileProductionStateV1) bool {
+	if !validFileProductionStateEnvelope(state) {
+		return false
+	}
+	base := state.WorkerInstanceEpoch << capacitySequenceShift
+	limit := base | int64(math.MaxUint32)
+	return state.CapacityObservationSequence >= base &&
+		state.CapacityObservationSequence <= limit
+}
+
+func validFileProductionStateEnvelope(state fileProductionStateV1) bool {
 	return state.SchemaVersion == 1 && state.WorkerInstanceID != uuid.Nil &&
 		state.WorkerInstanceEpoch > 0 && state.WorkerMemberID != uuid.Nil &&
-		state.ControlSessionEpoch > 0 && state.CapacityObservationSequence >= 0
+		state.WorkerInstanceEpoch <= maxCapacityEpoch && state.ControlSessionEpoch > 0 &&
+		state.CapacityObservationSequence >= 0
 }

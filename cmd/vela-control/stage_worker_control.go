@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	defaultStageWorkerNoWorkRetry        = 250 * time.Millisecond
+	defaultStageWorkerNoWorkRetry        = 5 * time.Second
 	defaultStageWorkerMemberStartTimeout = 30 * time.Second
 	defaultStageWorkerTransferTicketTTL  = 30 * time.Second
 	defaultStageMaterializationTTL       = 15 * time.Minute

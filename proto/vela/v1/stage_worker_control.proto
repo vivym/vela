@@ -198,6 +198,8 @@ message WorkerReadinessDecision {
   string reason = 4;
   int64 model_runtime_barrier_generation = 5;
   string leader_worker_member_id = 6;
+  int64 control_session_epoch = 7;
+  int64 capacity_observation_sequence = 8;
 }
 
 message StageAssignment {

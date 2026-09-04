@@ -5,8 +5,10 @@ set -eu
 manifests=${1:-}
 apply=${2:-}
 namespace=vela-lab-v2
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 kubectl_bin=${KUBECTL_BIN:-/var/lib/rancher/rke2/bin/kubectl}
 kubeconfig=${KUBECONFIG:-/etc/rancher/rke2/rke2.yaml}
+ready_capacity_query=$script_dir/ready-capacity-routes.sql
 
 fail() {
 	printf 'smoke-vela-lab-control-plane: %s\n' "$*" >&2
@@ -22,6 +24,7 @@ case "$manifests" in
 	*) fail "manifest directory must be absolute" ;;
 esac
 [ -f "$manifests/60-smoke.yaml" ] || fail "60-smoke.yaml is absent"
+[ -r "$ready_capacity_query" ] || fail "ready-capacity-routes.sql is unreadable"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 export KUBECONFIG="$kubeconfig"
 
@@ -38,9 +41,9 @@ $kubectl_bin rollout status deployment/vela-lab-stage-worker-1 --namespace "$nam
 $kubectl_bin rollout status deployment/vela-lab-stage-worker-2 --namespace "$namespace" --timeout=60s >/dev/null
 $kubectl_bin rollout status deployment/vela-lab-stage-worker-thumbnail --namespace "$namespace" --timeout=60s >/dev/null
 
-schedulable_pools=$(query_database 'SELECT count(*) FROM vela_list_schedulable_worker_pools();')
-[ "$schedulable_pools" -gt 0 ] ||
-	fail "no schedulable Worker pool has fresh capacity evidence"
+ready_capacity_routes=$(query_database "$(cat "$ready_capacity_query")")
+[ "$ready_capacity_routes" = 4 ] ||
+	fail "Stage capacity authority is incomplete: ready routes=$ready_capacity_routes expected=4"
 
 job=$($kubectl_bin create -f "$manifests/60-smoke.yaml" -o name)
 case "$job" in

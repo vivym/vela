@@ -30,6 +30,40 @@ spec:
         fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: materialize-credential
+          image: __BOOTSTRAP_IMAGE__
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              for name in bearer-credential ca.crt; do
+                source=/projected/$name
+                temporary=/materialized/.$name.tmp
+                cp -L -- "$source" "$temporary"
+                chmod 0400 "$temporary"
+                mv -f -- "$temporary" "/materialized/$name"
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+            limits:
+              cpu: 100m
+              memory: 16Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: projected-credential
+              mountPath: /projected
+              readOnly: true
+            - name: materialized-credential
+              mountPath: /materialized
       containers:
         - name: smoke
           image: __BOOTSTRAP_IMAGE__
@@ -48,15 +82,17 @@ spec:
               drop: ["ALL"]
             readOnlyRootFilesystem: true
           volumeMounts:
-            - name: credential
+            - name: materialized-credential
               mountPath: /etc/vela-lab-smoke
               readOnly: true
             - name: tmp
               mountPath: /tmp
       volumes:
-        - name: credential
+        - name: projected-credential
           secret:
             secretName: vela-lab-smoke-credential
             defaultMode: 0400
+        - name: materialized-credential
+          emptyDir: {medium: Memory, sizeLimit: 1Mi}
         - name: tmp
           emptyDir: {}

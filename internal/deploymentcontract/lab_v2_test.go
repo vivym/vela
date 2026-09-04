@@ -22,9 +22,10 @@ type labV2Document struct {
 	Kind                         string `yaml:"kind"`
 	AutomountServiceAccountToken *bool  `yaml:"automountServiceAccountToken"`
 	Metadata                     struct {
-		Name      string            `yaml:"name"`
-		Namespace string            `yaml:"namespace"`
-		Labels    map[string]string `yaml:"labels"`
+		Name         string            `yaml:"name"`
+		GenerateName string            `yaml:"generateName"`
+		Namespace    string            `yaml:"namespace"`
+		Labels       map[string]string `yaml:"labels"`
 	} `yaml:"metadata"`
 	Data map[string]string `yaml:"data"`
 	Spec struct {
@@ -255,6 +256,28 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
 		t.Fatalf("thumbnail CPU Worker deployment = %#v", thumbnail)
 	}
+	smoke, ok := findLabV2DocumentByGenerateName(documents, "Job", "vela-lab-smoke-")
+	if !ok || len(smoke.Spec.Template.Spec.Containers) != 1 {
+		t.Fatalf("smoke Job = %#v", smoke)
+	}
+	smokeMaterializer, ok := findContainer(smoke.Spec.Template.Spec.InitContainers, "materialize-credential")
+	smokeMaterializerScript := strings.Join(smokeMaterializer.Args, "\n")
+	if !ok || smokeMaterializer.Image != imageValues["BOOTSTRAP_IMAGE"] ||
+		!equalStrings(smokeMaterializer.Command, []string{"/bin/sh", "-ec"}) ||
+		!strings.Contains(smokeMaterializerScript, `for name in bearer-credential ca.crt; do`) ||
+		!strings.Contains(smokeMaterializerScript, `cp -L -- "$source" "$temporary"`) ||
+		!strings.Contains(smokeMaterializerScript, `chmod 0400 "$temporary"`) ||
+		!strings.Contains(smokeMaterializerScript, `mv -f -- "$temporary" "/materialized/$name"`) ||
+		!smokeMaterializer.SecurityContext.ReadOnlyRootFilesystem ||
+		!hasVolumeMount(smokeMaterializer, "projected-credential", "/projected", true) ||
+		!hasVolumeMount(smokeMaterializer, "materialized-credential", "/materialized", false) {
+		t.Fatalf("smoke credential materializer = %#v", smokeMaterializer)
+	}
+	if !hasVolumeMount(smoke.Spec.Template.Spec.Containers[0], "materialized-credential", "/etc/vela-lab-smoke", true) ||
+		!hasSecretVolume(smoke.Spec.Template.Spec, "projected-credential", "vela-lab-smoke-credential") ||
+		!hasMemoryEmptyDirVolume(smoke.Spec.Template.Spec, "materialized-credential", "1Mi") {
+		t.Fatalf("smoke materialized credential volumes = %#v", smoke.Spec.Template.Spec)
+	}
 }
 
 func assertLabV2RuntimePrivateMaterializer(t *testing.T, name string, deployment labV2Document) {
@@ -467,6 +490,115 @@ func TestLabV2OperationalScriptsFailClosedAroundOwnershipAndRollback(t *testing.
 	if foreground < 0 || dependents <= foreground || policies <= dependents {
 		t.Fatal("rollback.sh does not foreground-delete workloads before dependent and policy cleanup")
 	}
+
+	smoke := read("smoke.sh")
+	if strings.Contains(smoke, "vela_list_schedulable_worker_pools") {
+		t.Fatal("smoke.sh calls the contracted legacy scheduler function")
+	}
+	for _, required := range []string{
+		"ready-capacity-routes.sql", "ready_capacity_routes", "expected=4",
+	} {
+		if !strings.Contains(smoke, required) {
+			t.Fatalf("smoke.sh is missing Stage capacity precheck %q", required)
+		}
+	}
+	capacityQuery := read("ready-capacity-routes.sql")
+	for _, required := range []string{
+		"model_runtime_capacity_routes", "vela_worker_instance_authority_matches",
+		"capacity_observations",
+		"h3-encoder-lab-v2", "h3-dit-lab-v2", "h3-vae-lab-v2", "h3-cpu-thumbnail-lab-v2",
+	} {
+		if !strings.Contains(capacityQuery, required) {
+			t.Fatalf("ready-capacity-routes.sql is missing Stage capacity precheck %q", required)
+		}
+	}
+	precheck := strings.Index(smoke, "[ \"$ready_capacity_routes\" = 4 ]")
+	createJob := strings.Index(smoke, "job=$($kubectl_bin create")
+	if precheck < 0 || createJob <= precheck {
+		t.Fatal("smoke.sh does not fail closed on capacity before creating the Job")
+	}
+}
+
+func TestLabV2SmokeCapacityGateControlsJobCreation(t *testing.T) {
+	directory := labV2Directory(t)
+	temporary := t.TempDir()
+	manifests := filepath.Join(temporary, "rendered")
+	if err := os.Mkdir(manifests, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(manifests, "60-smoke.yaml"), []byte("kind: Job\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kubeconfig := filepath.Join(temporary, "kubeconfig")
+	if err := os.WriteFile(kubeconfig, []byte("test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fakeBin := filepath.Join(temporary, "bin")
+	if err := os.Mkdir(fakeBin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fakes := map[string]string{
+		"id": "#!/bin/sh\n[ \"${1:-}\" = -u ] || exit 1\nprintf '0\\n'\n",
+		"jq": "#!/bin/sh\n/bin/cat >/dev/null\n",
+		"kubectl": `#!/bin/sh
+printf '%s\n' "$*" >> "$KUBECTL_LOG"
+case "${1:-}" in
+	rollout|wait|describe) exit 0 ;;
+	exec)
+		sql=$(/bin/cat)
+		case "$sql" in
+			*production_gate_receipts*) printf '0\n' ;;
+			*) printf '%s\n' "$READY_CAPACITY_ROUTES" ;;
+		esac
+		;;
+	create) printf 'job.batch/vela-lab-smoke-test\n' ;;
+	logs) printf '{"status":"LAB VERIFIED","final_state":"SUCCEEDED","artifact_count":2,"artifact_kinds":["VIDEO","THUMBNAIL"]}\n' ;;
+	*) exit 1 ;;
+esac
+`,
+	}
+	for name, content := range fakes {
+		if err := os.WriteFile(filepath.Join(fakeBin, name), []byte(content), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, test := range []struct {
+		name       string
+		ready      string
+		wantOK     bool
+		wantCreate bool
+	}{
+		{name: "missing route", ready: "3"},
+		{name: "all routes ready", ready: "4", wantOK: true, wantCreate: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			logPath := filepath.Join(t.TempDir(), "kubectl.log")
+			command := exec.Command(filepath.Join(directory, "smoke.sh"), manifests, "--apply")
+			command.Env = append(os.Environ(),
+				"PATH="+fakeBin+":"+os.Getenv("PATH"),
+				"KUBECTL_BIN="+filepath.Join(fakeBin, "kubectl"),
+				"KUBECONFIG="+kubeconfig,
+				"KUBECTL_LOG="+logPath,
+				"READY_CAPACITY_ROUTES="+test.ready,
+			)
+			output, err := command.CombinedOutput()
+			if test.wantOK && err != nil {
+				t.Fatalf("smoke capacity gate failed: %v\n%s", err, output)
+			}
+			if !test.wantOK && (err == nil || !strings.Contains(string(output), "ready routes=3 expected=4")) {
+				t.Fatalf("missing capacity route error=%v output=%s", err, output)
+			}
+			calls, readErr := os.ReadFile(logPath)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			created := strings.Contains("\n"+string(calls), "\ncreate ")
+			if created != test.wantCreate {
+				t.Fatalf("kubectl calls=%q create=%t want=%t", calls, created, test.wantCreate)
+			}
+		})
+	}
 }
 
 func loadLabV2Documents(t *testing.T, directory string) []labV2Document {
@@ -504,6 +636,18 @@ func loadLabV2Documents(t *testing.T, directory string) []labV2Document {
 func findLabV2Document(documents []labV2Document, kind, name string) (labV2Document, bool) {
 	for _, document := range documents {
 		if document.Kind == kind && document.Metadata.Name == name {
+			return document, true
+		}
+	}
+	return labV2Document{}, false
+}
+
+func findLabV2DocumentByGenerateName(
+	documents []labV2Document,
+	kind, generateName string,
+) (labV2Document, bool) {
+	for _, document := range documents {
+		if document.Kind == kind && document.Metadata.GenerateName == generateName {
 			return document, true
 		}
 	}

@@ -27,6 +27,10 @@ type ControlSessionEpochSource interface {
 	NextControlSessionEpoch(context.Context) (int64, error)
 }
 
+type controlSessionEpochObserver interface {
+	ObserveControlSessionEpoch(context.Context, int64) error
+}
+
 type exchangeResult struct {
 	response *velav1.StageWorkerControlServiceConnectResponse
 	err      error
@@ -43,14 +47,15 @@ type Client struct {
 		velav1.StageWorkerControlServiceConnectRequest,
 		velav1.StageWorkerControlServiceConnectResponse,
 	]
-	streamEpoch int64
-	epochSource ControlSessionEpochSource
-	generation  uint64
-	pending     map[string]chan exchangeResult
-	closed      bool
-	sendMu      sync.Mutex
-	commands    chan *velav1.StageWorkerControlServiceConnectResponse
-	closeOnce   sync.Once
+	streamEpoch       int64
+	epochSource       ControlSessionEpochSource
+	synchronizedEpoch int64
+	generation        uint64
+	pending           map[string]chan exchangeResult
+	closed            bool
+	sendMu            sync.Mutex
+	commands          chan *velav1.StageWorkerControlServiceConnectResponse
+	closeOnce         sync.Once
 }
 
 func DialClient(ctx context.Context, config ClientConfig) (*Client, error) {
@@ -132,6 +137,24 @@ func (client *Client) Commands() <-chan *velav1.StageWorkerControlServiceConnect
 	return client.commands
 }
 
+func (client *Client) CurrentControlSessionEpoch() int64 {
+	if client == nil {
+		return 0
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.streamEpoch
+}
+
+func (client *Client) HasActiveControlSession() bool {
+	if client == nil {
+		return false
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return !client.closed && client.stream != nil
+}
+
 func (client *Client) Exchange(
 	ctx context.Context,
 	request *velav1.StageWorkerControlServiceConnectRequest,
@@ -210,14 +233,19 @@ func (client *Client) ensureStream() (
 		return client.stream, client.streamEpoch, client.generation, nil
 	}
 	if client.epochSource != nil {
-		nextEpoch, err := client.epochSource.NextControlSessionEpoch(client.ctx)
-		if err != nil {
-			return nil, 0, 0, fmt.Errorf("allocate Stage Worker control session epoch: %w", err)
+		if client.synchronizedEpoch > 0 {
+			client.streamEpoch = client.synchronizedEpoch
+			client.synchronizedEpoch = 0
+		} else {
+			nextEpoch, err := client.epochSource.NextControlSessionEpoch(client.ctx)
+			if err != nil {
+				return nil, 0, 0, fmt.Errorf("allocate Stage Worker control session epoch: %w", err)
+			}
+			if nextEpoch <= client.streamEpoch {
+				return nil, 0, 0, errors.New("stage worker control session epoch did not advance")
+			}
+			client.streamEpoch = nextEpoch
 		}
-		if nextEpoch <= client.streamEpoch {
-			return nil, 0, 0, errors.New("stage worker control session epoch did not advance")
-		}
-		client.streamEpoch = nextEpoch
 	}
 	stream, err := client.service.Connect(client.ctx)
 	if err != nil {
@@ -248,6 +276,29 @@ func (client *Client) receive(
 			client.failStream(stream, generation, errors.New("malformed Stage Worker control response"))
 			return
 		}
+		if decision := response.GetWorkerReadinessDecision(); decision != nil &&
+			decision.GetControlSessionEpoch() != 0 &&
+			decision.GetControlSessionEpoch() != client.controlSessionEpoch() {
+			observer, ok := client.epochSource.(controlSessionEpochObserver)
+			if !ok {
+				client.failStream(stream, generation, errors.New("invalid durable Stage Worker control session epoch"))
+				return
+			}
+			if err := observer.ObserveControlSessionEpoch(
+				client.ctx,
+				decision.GetControlSessionEpoch(),
+			); err != nil {
+				client.failStream(stream, generation, fmt.Errorf("persist durable Stage Worker control session epoch: %w", err))
+				return
+			}
+			client.mu.Lock()
+			if client.stream == stream && client.generation == generation {
+				client.synchronizedEpoch = decision.GetControlSessionEpoch()
+			}
+			client.mu.Unlock()
+			client.failStream(stream, generation, errors.New("durable Stage Worker control session synchronized; reconnect required"))
+			return
+		}
 		if response.GetRequestId() == "" {
 			if response.GetStopStage() == nil {
 				client.failStream(stream, generation, errors.New("unsolicited Stage Worker response is not StopStage"))
@@ -268,6 +319,12 @@ func (client *Client) receive(
 			waiter <- exchangeResult{response: response}
 		}
 	}
+}
+
+func (client *Client) controlSessionEpoch() int64 {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.streamEpoch
 }
 
 func (client *Client) failStream(

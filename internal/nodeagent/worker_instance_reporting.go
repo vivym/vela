@@ -85,6 +85,11 @@ func runWorkerInstanceEvidenceReporting(
 		callContext, cancel := context.WithTimeout(ctx, config.CallTimeout)
 		decision, err := reporter.Report(callContext, template)
 		cancel()
+		if err == nil && decision.WorkerInstanceID == template.Evidence.WorkerInstanceID &&
+			decision.InstanceEpoch == template.Evidence.InstanceEpoch &&
+			decision.ControlSessionEpoch > template.Evidence.ControlSessionEpoch {
+			template.Evidence.ControlSessionEpoch = decision.ControlSessionEpoch
+		}
 		config.ObserveResult(WorkerInstanceReportResult{
 			WorkerInstanceID: template.Evidence.WorkerInstanceID,
 			Decision:         decision,

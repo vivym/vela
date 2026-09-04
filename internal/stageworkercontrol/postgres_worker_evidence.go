@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
@@ -43,7 +44,7 @@ func (backend *PostgresWorkerEvidenceBackend) RegisterWorkerEvidence(
 		workerID == uuid.Nil || residencyID == uuid.Nil || profileID == uuid.Nil ||
 		memberID == uuid.Nil || identity.GetWorkerInstanceEpoch() <= 0 ||
 		identity.GetModelRuntimeEpoch() <= 0 || identity.GetWorkerMemberEpoch() <= 0 ||
-		identity.GetRuntimeIdentity() == "" || request.GetCapacityObservationSequence() <= 0 ||
+		identity.GetRuntimeIdentity() == "" || request.GetCapacityObservationSequence() < 0 ||
 		len(identity.GetDeviceSetDigest()) != sha256.Size ||
 		len(identity.GetMembershipDigest()) != sha256.Size ||
 		len(request.GetReadinessEvidence()) == 0 || len(request.GetDevices()) == 0 ||
@@ -60,7 +61,7 @@ func (backend *PostgresWorkerEvidenceBackend) RegisterWorkerEvidence(
 	}
 	spiffeDigest := sha256.Sum256([]byte(command.Identity.SPIFFEID))
 	readinessDigest := sha256.Sum256(request.GetReadinessEvidence())
-	payload, err := json.Marshal(map[string]any{
+	payloadFields := map[string]any{
 		"schema_version":                1,
 		"worker_instance_id":            workerID,
 		"worker_instance_epoch":         identity.GetWorkerInstanceEpoch(),
@@ -78,11 +79,42 @@ func (backend *PostgresWorkerEvidenceBackend) RegisterWorkerEvidence(
 		"readiness_evidence_digest":     hex.EncodeToString(readinessDigest[:]),
 		"devices":                       devices,
 		"members":                       members,
-	})
-	if err != nil {
-		return ReadinessResult{}, fmt.Errorf("encode Stage Worker registration evidence: %w", err)
 	}
-	return backend.readRegistrationReadiness(ctx, payload)
+	var payload []byte
+	stageCapacity := stageWorkerOwnsCapacity(
+		request.GetCapacityObservationSequence(), identity.GetWorkerInstanceEpoch(),
+	)
+	durableSessionEpoch := int64(0)
+	if stageCapacity {
+		// Persist the stream epoch independently so a rejected operation cannot roll it back.
+		payloadFields["stage_worker_control_reconnect"] = true
+		payload, err = json.Marshal(payloadFields)
+		if err != nil {
+			return ReadinessResult{}, fmt.Errorf("encode Stage Worker control reconnect: %w", err)
+		}
+		durableSessionEpoch, err = ensureControlSession(
+			ctx, backend.pool, payload, workerID, identity.GetWorkerInstanceEpoch(),
+		)
+		if err != nil {
+			return ReadinessResult{}, err
+		}
+		if durableSessionEpoch != command.ControlSessionEpoch {
+			return synchronizedControlSessionResult(
+				workerID, identity.GetWorkerInstanceEpoch(), durableSessionEpoch,
+			), nil
+		}
+		delete(payloadFields, "stage_worker_control_reconnect")
+		payloadFields["control_session_epoch"] = durableSessionEpoch
+	}
+	payload, err = json.Marshal(payloadFields)
+	if err != nil {
+		return ReadinessResult{}, fmt.Errorf("encode synchronized Stage Worker registration evidence: %w", err)
+	}
+	result, err := readRegistrationReadiness(ctx, backend.pool, payload)
+	if stageCapacity {
+		result.ControlSessionEpoch = durableSessionEpoch
+	}
+	return result, err
 }
 
 func (backend *PostgresWorkerEvidenceBackend) ReportCapacityObservation(
@@ -103,7 +135,7 @@ func (backend *PostgresWorkerEvidenceBackend) ReportCapacityObservation(
 		return ReadinessResult{}, errors.New("stage worker capacity observation is incomplete")
 	}
 	spiffeDigest := sha256.Sum256([]byte(command.Identity.SPIFFEID))
-	payload, err := json.Marshal(map[string]any{
+	payloadFields := map[string]any{
 		"schema_version":        1,
 		"worker_instance_id":    workerID,
 		"worker_instance_epoch": request.GetWorkerInstanceEpoch(),
@@ -113,17 +145,101 @@ func (backend *PostgresWorkerEvidenceBackend) ReportCapacityObservation(
 		"observed_at":           request.GetObservedAt().AsTime().UTC().Format(timeFormat),
 		"expires_at":            request.GetExpiresAt().AsTime().UTC().Format(timeFormat),
 		"spiffe_id_digest":      hex.EncodeToString(spiffeDigest[:]),
-	})
-	if err != nil {
-		return ReadinessResult{}, fmt.Errorf("encode Stage Worker capacity observation: %w", err)
 	}
-	return backend.readReadiness(ctx, "vela_verify_stage_capacity_observation", payload)
+	var payload []byte
+	var err error
+	stageCapacity := stageWorkerOwnsCapacity(
+		request.GetObservationSequence(), request.GetWorkerInstanceEpoch(),
+	)
+	durableSessionEpoch := int64(0)
+	if stageCapacity {
+		// Persist the stream epoch independently so a rejected operation cannot roll it back.
+		payloadFields["stage_worker_control_reconnect"] = true
+		payload, err = json.Marshal(payloadFields)
+		if err != nil {
+			return ReadinessResult{}, fmt.Errorf("encode Stage Worker control reconnect: %w", err)
+		}
+		durableSessionEpoch, err = ensureControlSession(
+			ctx, backend.pool, payload, workerID, request.GetWorkerInstanceEpoch(),
+		)
+		if err != nil {
+			return ReadinessResult{}, err
+		}
+		if durableSessionEpoch != command.ControlSessionEpoch {
+			return synchronizedControlSessionResult(
+				workerID, request.GetWorkerInstanceEpoch(), durableSessionEpoch,
+			), nil
+		}
+		delete(payloadFields, "stage_worker_control_reconnect")
+		payloadFields["control_session_epoch"] = durableSessionEpoch
+	}
+	payload, err = json.Marshal(payloadFields)
+	if err != nil {
+		return ReadinessResult{}, fmt.Errorf("encode synchronized Stage Worker capacity observation: %w", err)
+	}
+	result, err := readReadiness(ctx, backend.pool, "vela_verify_stage_capacity_observation", payload)
+	if !stageCapacity || err != nil {
+		return result, err
+	}
+	var envelope struct {
+		Reason                      string `json:"reason"`
+		CapacityObservationSequence int64  `json:"capacity_observation_sequence"`
+	}
+	if json.Unmarshal([]byte(result.Reason), &envelope) != nil ||
+		strings.TrimSpace(envelope.Reason) == "" || envelope.CapacityObservationSequence <= 0 {
+		return ReadinessResult{}, errors.New("durable Stage Worker capacity result is malformed")
+	}
+	result.Reason = envelope.Reason
+	result.ControlSessionEpoch = durableSessionEpoch
+	result.CapacityObservationSequence = envelope.CapacityObservationSequence
+	return result, nil
 }
 
 const timeFormat = "2006-01-02T15:04:05.999999999Z07:00"
 
-func (backend *PostgresWorkerEvidenceBackend) readReadiness(
+type evidenceQueryRower interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func ensureControlSession(
 	ctx context.Context,
+	database evidenceQueryRower,
+	payload []byte,
+	workerID uuid.UUID,
+	workerEpoch int64,
+) (int64, error) {
+	var durableWorkerID uuid.UUID
+	var durableWorkerEpoch, durableSessionEpoch int64
+	if err := database.QueryRow(ctx, `
+		SELECT worker_instance_id, worker_instance_epoch, COALESCE(barrier_generation, 0)
+		FROM vela_register_stage_worker_runtime($1::jsonb)
+	`, payload).Scan(
+		&durableWorkerID, &durableWorkerEpoch, &durableSessionEpoch,
+	); err != nil {
+		return 0, fmt.Errorf("reconnect durable Stage Worker control session: %w", err)
+	}
+	if durableWorkerID != workerID || durableWorkerEpoch != workerEpoch || durableSessionEpoch <= 0 {
+		return 0, errors.New("durable Stage Worker control session result is malformed")
+	}
+	return durableSessionEpoch, nil
+}
+
+func synchronizedControlSessionResult(
+	workerID uuid.UUID,
+	workerEpoch int64,
+	controlSessionEpoch int64,
+) ReadinessResult {
+	return ReadinessResult{
+		WorkerInstanceID:    workerID,
+		WorkerInstanceEpoch: workerEpoch,
+		Reason:              "Stage Worker control session synchronized",
+		ControlSessionEpoch: controlSessionEpoch,
+	}
+}
+
+func readReadiness(
+	ctx context.Context,
+	database evidenceQueryRower,
 	functionName string,
 	payload []byte,
 ) (ReadinessResult, error) {
@@ -132,7 +248,7 @@ func (backend *PostgresWorkerEvidenceBackend) readReadiness(
 		"SELECT worker_instance_id, worker_instance_epoch, ready, reason FROM %s($1::jsonb)",
 		functionName,
 	)
-	if err := backend.pool.QueryRow(ctx, query, payload).Scan(
+	if err := database.QueryRow(ctx, query, payload).Scan(
 		&result.WorkerInstanceID,
 		&result.WorkerInstanceEpoch,
 		&result.Ready,
@@ -147,13 +263,14 @@ func (backend *PostgresWorkerEvidenceBackend) readReadiness(
 	return result, nil
 }
 
-func (backend *PostgresWorkerEvidenceBackend) readRegistrationReadiness(
+func readRegistrationReadiness(
 	ctx context.Context,
+	database evidenceQueryRower,
 	payload []byte,
 ) (ReadinessResult, error) {
 	var result ReadinessResult
 	var leaderMemberID string
-	if err := backend.pool.QueryRow(ctx, `
+	if err := database.QueryRow(ctx, `
 		SELECT worker_instance_id, worker_instance_epoch, ready, reason,
 		       COALESCE(barrier_generation, 0),
 		       COALESCE(leader_worker_member_id::text, '')
@@ -179,6 +296,17 @@ func (backend *PostgresWorkerEvidenceBackend) readRegistrationReadiness(
 		return ReadinessResult{}, errors.New("durable ModelRuntime barrier result is malformed")
 	}
 	return result, nil
+}
+
+func stageWorkerOwnsCapacity(sequence, workerEpoch int64) bool {
+	if sequence == 0 {
+		return true
+	}
+	if workerEpoch <= 0 || workerEpoch > int64(^uint64(0)>>33) {
+		return false
+	}
+	base := workerEpoch << 32
+	return sequence > base && sequence <= base+int64(^uint32(0))
 }
 
 func registrationDevices(

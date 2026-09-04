@@ -4568,13 +4568,15 @@ type CancellationStopReceipt struct {
 }
 
 type CapacityObservation struct {
-	WorkerInstanceID    uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
-	WorkerInstanceEpoch int64              `db:"worker_instance_epoch" json:"worker_instance_epoch"`
-	ObservationSequence int64              `db:"observation_sequence" json:"observation_sequence"`
-	CapacityVector      []byte             `db:"capacity_vector" json:"capacity_vector"`
-	ObservedAt          pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
-	ExpiresAt           pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ObservedBy          string             `db:"observed_by" json:"observed_by"`
+	WorkerInstanceID               uuid.UUID          `db:"worker_instance_id" json:"worker_instance_id"`
+	WorkerInstanceEpoch            int64              `db:"worker_instance_epoch" json:"worker_instance_epoch"`
+	ObservationSequence            int64              `db:"observation_sequence" json:"observation_sequence"`
+	CapacityVector                 []byte             `db:"capacity_vector" json:"capacity_vector"`
+	ObservedAt                     pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	ExpiresAt                      pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ObservedBy                     string             `db:"observed_by" json:"observed_by"`
+	StageWorkerControlSessionEpoch *int64             `db:"stage_worker_control_session_epoch" json:"stage_worker_control_session_epoch"`
+	StageWorkerLastObservedAt      pgtype.Timestamptz `db:"stage_worker_last_observed_at" json:"stage_worker_last_observed_at"`
 }
 
 type CapacityPool struct {

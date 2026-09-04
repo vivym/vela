@@ -5,8 +5,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -124,6 +126,9 @@ func TestClientUsesOnePersistentCorrelatedStageWorkerStream(t *testing.T) {
 		t.Fatalf("DialClient: %v", err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
+	if client.HasActiveControlSession() {
+		t.Fatal("control session is active before the first exchange")
+	}
 
 	requests := []*velav1.StageWorkerControlServiceConnectRequest{
 		{Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
@@ -144,6 +149,9 @@ func TestClientUsesOnePersistentCorrelatedStageWorkerStream(t *testing.T) {
 		if exchangeErr != nil || response.GetRequestId() == "" || response.GetResult() == nil {
 			t.Fatalf("Exchange = %#v error=%v", response, exchangeErr)
 		}
+	}
+	if !client.HasActiveControlSession() {
+		t.Fatal("persistent control session is not active")
 	}
 	if counted.ConnectCount() != 1 {
 		t.Fatalf("Connect calls = %d, want one persistent stream", counted.ConnectCount())
@@ -217,6 +225,9 @@ func TestClientReconnectIncrementsSessionEpochAndCarriesReattach(t *testing.T) {
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("first Exchange error = %v, want Unavailable", err)
 	}
+	if client.HasActiveControlSession() {
+		t.Fatal("failed control session remained active")
+	}
 	response, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReattachStage{
 			ReattachStage: &velav1.ReattachStageRequest{Authority: &velav1.StageAuthority{}},
@@ -266,9 +277,72 @@ func TestClientObtainsEveryStreamEpochFromDurableSource(t *testing.T) {
 	}
 }
 
+func TestClientReconcilesDurableControlSessionEpochAndReconnects(t *testing.T) {
+	server := &synchronizingStageServer{durableEpoch: 95}
+	address := serveStageControl(t, server)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	epochs := &reconcilingEpochSource{current: 1}
+	client, err := stageworkertransport.DialClient(ctx, stageworkertransport.ClientConfig{
+		Address: address, TransportCredentials: insecure.NewCredentials(),
+		ControlSessionEpochSource: epochs,
+	})
+	if err != nil {
+		t.Fatalf("DialClient: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+
+	_, err = client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "synchronized") {
+		t.Fatalf("synchronization Exchange error = %v", err)
+	}
+	_, err = client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{},
+		},
+	})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("post-synchronization network error = %v, want Unavailable", err)
+	}
+	response, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{},
+		},
+	})
+	if err != nil || !response.GetWorkerReadinessDecision().GetReady() {
+		t.Fatalf("post-network-reconnect Exchange = %#v error=%v", response, err)
+	}
+	if got := server.Epochs(); got != "2,95,96" || epochs.observed != 95 {
+		t.Fatalf("synchronized epochs = %s observed=%d, want 2,95,96 observed=95", got, epochs.observed)
+	}
+}
+
 type sequenceEpochSource struct {
 	values []int64
 	index  int
+}
+
+type reconcilingEpochSource struct {
+	current  int64
+	observed int64
+}
+
+func (source *reconcilingEpochSource) NextControlSessionEpoch(context.Context) (int64, error) {
+	source.current++
+	return source.current, nil
+}
+
+func (source *reconcilingEpochSource) ObserveControlSessionEpoch(
+	_ context.Context,
+	epoch int64,
+) error {
+	source.current = epoch
+	source.observed = epoch
+	return nil
 }
 
 func (source *sequenceEpochSource) NextControlSessionEpoch(context.Context) (int64, error) {
@@ -566,6 +640,54 @@ type reconnectingStageServer struct {
 	mu       sync.Mutex
 	connects int
 	epochs   []int64
+}
+
+type synchronizingStageServer struct {
+	velav1.UnimplementedStageWorkerControlServiceServer
+	mu           sync.Mutex
+	epochs       []int64
+	durableEpoch int64
+}
+
+func (server *synchronizingStageServer) Connect(
+	stream grpc.BidiStreamingServer[
+		velav1.StageWorkerControlServiceConnectRequest,
+		velav1.StageWorkerControlServiceConnectResponse,
+	],
+) error {
+	request, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	server.mu.Lock()
+	server.epochs = append(server.epochs, request.GetControlSessionEpoch())
+	connection := len(server.epochs)
+	server.mu.Unlock()
+	acceptedEpoch := request.GetControlSessionEpoch()
+	switch connection {
+	case 1:
+		acceptedEpoch = server.durableEpoch
+	case 2:
+		return status.Error(codes.Unavailable, "connection lost after durable synchronization")
+	}
+	return stream.Send(&velav1.StageWorkerControlServiceConnectResponse{
+		RequestId: request.GetRequestId(),
+		Result: &velav1.StageWorkerControlServiceConnectResponse_WorkerReadinessDecision{
+			WorkerReadinessDecision: &velav1.WorkerReadinessDecision{
+				Ready: true, ControlSessionEpoch: acceptedEpoch,
+			},
+		},
+	})
+}
+
+func (server *synchronizingStageServer) Epochs() string {
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	values := make([]string, 0, len(server.epochs))
+	for _, epoch := range server.epochs {
+		values = append(values, fmt.Sprint(epoch))
+	}
+	return strings.Join(values, ",")
 }
 
 func (server *reconnectingStageServer) Connect(

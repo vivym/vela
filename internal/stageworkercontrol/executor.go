@@ -39,6 +39,8 @@ type ReadinessResult struct {
 	Reason                        string
 	ModelRuntimeBarrierGeneration int64
 	LeaderWorkerMemberID          uuid.UUID
+	ControlSessionEpoch           int64
+	CapacityObservationSequence   int64
 }
 
 type AcquireResult struct {
@@ -301,6 +303,8 @@ func readinessResponse(
 				Ready:               result.Ready, Reason: result.Reason,
 				ModelRuntimeBarrierGeneration: result.ModelRuntimeBarrierGeneration,
 				LeaderWorkerMemberId:          leaderMemberID,
+				ControlSessionEpoch:           result.ControlSessionEpoch,
+				CapacityObservationSequence:   result.CapacityObservationSequence,
 			},
 		},
 	}, nil

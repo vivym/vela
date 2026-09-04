@@ -260,6 +260,44 @@ func TestProductionExecutorRejectsMalformedEvidenceBeforeBackend(t *testing.T) {
 	}
 }
 
+func TestProductionExecutorAllowsDatabaseResolvedRegistrationCapacitySequence(t *testing.T) {
+	workerID := uuid.New()
+	backend := &recordingOperationBackend{readiness: stageworkercontrol.ReadinessResult{
+		WorkerInstanceID: workerID, WorkerInstanceEpoch: 1, Ready: false,
+		Reason: "database capacity lookup pending",
+	}}
+	executor, err := stageworkercontrol.NewProductionExecutor(backend)
+	if err != nil {
+		t.Fatalf("NewProductionExecutor: %v", err)
+	}
+	request := controlRequest(uuid.NewString(),
+		&velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{
+				RuntimeIdentity: &velav1.ModelRuntimeIdentity{},
+				Devices: []*velav1.StageAuthorityDeviceEpoch{{
+					DeviceId: uuid.NewString(), DeviceEpoch: 1,
+				}},
+				Members: []*velav1.StageAuthorityMemberEpoch{{
+					WorkerMemberId: uuid.NewString(), MemberEpoch: 1, ModelRuntimeEpoch: 1,
+				}},
+				ReadinessEvidence: []byte("ready"),
+			},
+		})
+	response, err := executor.Execute(
+		context.Background(),
+		stageworkertransport.Identity{SPIFFEID: "spiffe://vela.test/stage-worker"},
+		2, stageworkercontrol.OperationRegisterWorkerEvidence, request,
+		stageworkercontrol.VerifiedAuthorities{},
+	)
+	if err != nil || backend.calls != 1 || response.GetWorkerReadinessDecision() == nil {
+		t.Fatalf("database-resolved registration = %#v error=%v calls=%d", response, err, backend.calls)
+	}
+	if backend.last.ControlSessionEpoch != 2 ||
+		request.GetRegisterWorkerEvidence().GetCapacityObservationSequence() != 0 {
+		t.Fatalf("registration context=%#v request=%#v", backend.last, request)
+	}
+}
+
 func TestProductionExecutorRejectsInputConsumeForAnotherDestination(t *testing.T) {
 	now := time.Now().UTC()
 	authority, digest := verifiedExecutorStageAuthority(t, now)

@@ -155,7 +155,7 @@ func validateRegisterWorkerEvidence(
 ) error {
 	value := request.GetRegisterWorkerEvidence()
 	if value == nil || value.GetRuntimeIdentity() == nil ||
-		value.GetCapacityObservationSequence() <= 0 || len(value.GetDevices()) == 0 ||
+		value.GetCapacityObservationSequence() < 0 || len(value.GetDevices()) == 0 ||
 		len(value.GetMembers()) == 0 || len(value.GetReadinessEvidence()) == 0 ||
 		len(value.GetReadinessEvidence()) > maxReadinessEvidenceBytes {
 		return errors.New("worker registration evidence is incomplete")

@@ -1,6 +1,6 @@
 # Stage Execution Schema And Protocol Migration
 
-Date: 2026-09-03
+Date: 2026-09-04
 
 Status: Repository implementation complete; production acceptance remains
 partial. S49.1-S49.11 have committed repository implementations through the
@@ -23,11 +23,13 @@ inventory, and release-bound typed reachability evidence. Migration `00058`
 performs the irreversible schema-v2 contraction and ships with the legacy
 runtime/protocol/query/deployment/release deletion. Migrations `00059` through
 `00062` add runtime epoch registration, multi-member barriers, gang authority,
-and member identity. Post-contraction migrations `00063` through `00065` bind
+and member identity. Post-contraction migrations `00063` through `00066` bind
 the frozen H3 execution/root-input snapshot, replace Worker-level capacity
 routing with exact ModelRuntime-to-CapacityPool authority, and add durable,
-fair exact-cache admission/hit reconciliation. The clean current schema is
-therefore version `00065`, and the repository satisfies the permanent
+fair exact-cache admission/hit reconciliation. Migration `00066` adds durable
+Stage Worker control-session takeover, read-only stale-session synchronization,
+and strict monotonic capacity sequence/replay/lease authority. The clean current schema is
+therefore version `00066`, and the repository satisfies the permanent
 reachability contract. Repository evidence does not advance a Production Gate;
 real cluster, N/N-1, performance, fault, and Launch Receipt evidence remains
 pending at `0/9 PASS`.
