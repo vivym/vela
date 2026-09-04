@@ -9,6 +9,7 @@ script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 kubectl_bin=${KUBECTL_BIN:-/var/lib/rancher/rke2/bin/kubectl}
 kubeconfig=${KUBECONFIG:-/etc/rancher/rke2/rke2.yaml}
 ready_capacity_query=$script_dir/ready-capacity-routes.sql
+admission_route_query=$script_dir/admission-route.sql
 
 fail() {
 	printf 'smoke-vela-lab-control-plane: %s\n' "$*" >&2
@@ -24,6 +25,7 @@ case "$manifests" in
 	*) fail "manifest directory must be absolute" ;;
 esac
 [ -f "$manifests/60-smoke.yaml" ] || fail "60-smoke.yaml is absent"
+[ -r "$admission_route_query" ] || fail "admission-route.sql is unreadable"
 [ -r "$ready_capacity_query" ] || fail "ready-capacity-routes.sql is unreadable"
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 export KUBECONFIG="$kubeconfig"
@@ -41,6 +43,10 @@ $kubectl_bin rollout status deployment/vela-lab-stage-worker-1 --namespace "$nam
 $kubectl_bin rollout status deployment/vela-lab-stage-worker-2 --namespace "$namespace" --timeout=60s >/dev/null
 $kubectl_bin rollout status deployment/vela-lab-stage-worker-thumbnail --namespace "$namespace" --timeout=60s >/dev/null
 
+admission_routes=$(query_database "$(cat "$admission_route_query")")
+[ "$admission_routes" = 1 ] ||
+	fail "Stage Admission authority is incomplete: active routes=$admission_routes expected=1"
+
 ready_capacity_routes=$(query_database "$(cat "$ready_capacity_query")")
 [ "$ready_capacity_routes" = 4 ] ||
 	fail "Stage capacity authority is incomplete: ready routes=$ready_capacity_routes expected=4"
@@ -50,11 +56,31 @@ case "$job" in
 	job.batch/vela-lab-smoke-*) ;;
 	*) fail "unexpected smoke Job identity $job" ;;
 esac
-if ! $kubectl_bin wait "$job" --namespace "$namespace" --for=condition=complete --timeout=420s; then
+
+print_job_diagnostics() {
 	$kubectl_bin describe "$job" --namespace "$namespace" >&2 || true
 	$kubectl_bin logs "$job" --namespace "$namespace" --all-containers >&2 || true
-	fail "end-to-end smoke Job failed; Job is preserved for diagnosis"
-fi
+}
+
+deadline=$(($(date +%s) + 420))
+while :; do
+	job_status=$($kubectl_bin get "$job" --namespace "$namespace" -o json) ||
+		fail "read end-to-end smoke Job status"
+	if printf '%s\n' "$job_status" | jq -e \
+		'any(.status.conditions[]?; .type == "Complete" and .status == "True")' >/dev/null; then
+		break
+	fi
+	if printf '%s\n' "$job_status" | jq -e \
+		'any(.status.conditions[]?; .type == "Failed" and .status == "True")' >/dev/null; then
+		print_job_diagnostics
+		fail "end-to-end smoke Job failed; Job is preserved for diagnosis"
+	fi
+	if [ "$(date +%s)" -ge "$deadline" ]; then
+		print_job_diagnostics
+		fail "end-to-end smoke Job timed out; Job is preserved for diagnosis"
+	fi
+	sleep 2
+done
 receipt=$($kubectl_bin logs "$job" --namespace "$namespace")
 printf '%s\n' "$receipt" | jq -e '
   .status == "LAB VERIFIED" and

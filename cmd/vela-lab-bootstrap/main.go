@@ -32,6 +32,8 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/vivym/vela/internal/eventstream"
 	"github.com/vivym/vela/internal/labv2contract"
+	"github.com/vivym/vela/internal/stageworkeragent"
+	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 )
 
 const (
@@ -86,6 +88,8 @@ const (
 	worker1BundleID            = labv2contract.Worker1BundleID
 	worker2BundleID            = labv2contract.Worker2BundleID
 	thumbnailWorkerBundleID    = labv2contract.ThumbnailWorkerBundleID
+	stageCutoverRevisionID     = "84000000-0000-0000-0000-000000000701"
+	stageCutoverBaselineID     = "00000000-0000-0000-0000-000000000049"
 	thumbnailInterfaceID       = "84000000-0000-0000-0000-000000000514"
 	thumbnailStageDefinitionID = labv2contract.ThumbnailStageDefinitionID
 	thumbnailEquivalenceID     = labv2contract.ThumbnailEquivalenceID
@@ -149,6 +153,7 @@ type labRuntimeRoute struct {
 type labResidencyFixture struct {
 	id                     string
 	stageProfileID         string
+	component              string
 	modelComponentRevision string
 	runtimeIdentity        string
 	runtimeImageDigest     string
@@ -524,6 +529,9 @@ func seedLabFixture(
 	if err := seedStageCatalog(ctx, transaction, runtimeImageDigest, thumbnailRuntimeImageDigest); err != nil {
 		return err
 	}
+	if err := seedStageCutover(ctx, transaction, runtimeImageDigest, thumbnailRuntimeImageDigest); err != nil {
+		return err
+	}
 	if err := seedWorkerRegistry(ctx, transaction, runtimeImageDigest, thumbnailRuntimeImageDigest); err != nil {
 		return err
 	}
@@ -593,6 +601,7 @@ func labWorkerFixtures(runtimeImageDigest, thumbnailRuntimeImageDigest string) (
 			})
 			residencies = append(residencies, labResidencyFixture{
 				id: stage.ResidencyID, stageProfileID: stage.ProfileID,
+				component:              stage.Component,
 				modelComponentRevision: stage.ComponentRevision,
 				runtimeIdentity:        stage.RuntimeIdentityPrefix + "@" + imageDigest,
 				runtimeImageDigest:     imageDigest,
@@ -861,7 +870,104 @@ func seedStageCatalog(ctx context.Context, transaction *sql.Tx, runtimeImageDige
 	if _, err := transaction.ExecContext(ctx, graphOptionsSQL); err != nil {
 		return fmt.Errorf("seed and activate lab ExecutionGraph: %w", err)
 	}
+	if _, err := transaction.ExecContext(ctx, `
+		UPDATE execution_profile_revisions
+		SET state = 'ACTIVE'
+		WHERE id = $1 AND state = 'CERTIFIED'
+	`, executionProfileID); err != nil {
+		return fmt.Errorf("activate lab ExecutionProfile: %w", err)
+	}
 	return verifyStageCatalog(ctx, transaction, profiles)
+}
+
+func seedStageCutover(
+	ctx context.Context,
+	transaction *sql.Tx,
+	runtimeImageDigest, thumbnailRuntimeImageDigest string,
+) error {
+	const (
+		reservedStorageBytes = int64(2 << 30)
+		activatedBy          = "bootstrap/non-production-lab-v2"
+	)
+	configurationRevision := "vela-lab-v2-stage-only/" + runtimeImageDigest + "/" + thumbnailRuntimeImageDigest
+	releaseDigest := digestText("vela/lab-v2/stage-cutover/release/v1/" + runtimeImageDigest + "/" + thumbnailRuntimeImageDigest)
+	configurationDigest := digestText(configurationRevision)
+	var connectorSetDigest []byte
+	if err := transaction.QueryRowContext(ctx, `
+		SELECT vela_execution_profile_connector_set_digest($1, $2)
+	`, executionProfileID, labv2contract.GraphID).Scan(&connectorSetDigest); err != nil {
+		return fmt.Errorf("read lab Stage cutover connector-set digest: %w", err)
+	}
+
+	var currentRevisionID string
+	if err := transaction.QueryRowContext(ctx, `
+		SELECT current_revision_id::text FROM stage_cutover_control WHERE singleton
+	`).Scan(&currentRevisionID); err != nil {
+		return fmt.Errorf("read current lab Stage cutover: %w", err)
+	}
+	if currentRevisionID == stageCutoverBaselineID {
+		var activatedID string
+		if err := transaction.QueryRowContext(ctx, `
+			SELECT (vela_activate_stage_cutover(
+				$1, 2, $2, 'INTERNAL', 'STAGE_ONLY', 10000,
+				$3, $4, $5, 1, decode($6, 'hex'), $7,
+				decode($8, 'hex'), $9, NULL, $10,
+				'activate the isolated non-production lab Stage graph'
+			)).id::text
+		`, stageCutoverRevisionID, stageCutoverBaselineID,
+			labv2contract.GraphID, executionProfileID, reservedStorageBytes,
+			releaseDigest, configurationRevision, configurationDigest,
+			connectorSetDigest, activatedBy).Scan(&activatedID); err != nil {
+			return fmt.Errorf("activate lab Stage cutover: %w", err)
+		}
+		if activatedID != stageCutoverRevisionID {
+			return errors.New("lab Stage cutover returned an unexpected revision")
+		}
+		currentRevisionID = activatedID
+	}
+	if currentRevisionID != stageCutoverRevisionID {
+		return fmt.Errorf("existing Stage cutover %s is not the isolated lab revision", currentRevisionID)
+	}
+
+	var matches bool
+	if err := transaction.QueryRowContext(ctx, `
+		SELECT revision = 2
+		   AND previous_revision_id = $2
+		   AND scope = 'INTERNAL'
+		   AND mode = 'STAGE_ONLY'
+		   AND stage_cohort_basis_points = 10000
+		   AND execution_graph_revision_id = $3
+		   AND execution_profile_revision_id = $4
+		   AND reserved_storage_bytes = $5
+		   AND minimum_observation_seconds = 1
+		   AND release_digest = decode($6, 'hex')
+		   AND configuration_revision = $7
+		   AND configuration_digest = decode($8, 'hex')
+		   AND connector_set_digest = $9
+		   AND launch_manifest_digest IS NULL
+		   AND activated_by = $10
+		FROM stage_cutover_revisions
+		WHERE id = $1
+	`, stageCutoverRevisionID, stageCutoverBaselineID,
+		labv2contract.GraphID, executionProfileID, reservedStorageBytes,
+		releaseDigest, configurationRevision, configurationDigest,
+		connectorSetDigest, activatedBy).Scan(&matches); err != nil {
+		return fmt.Errorf("verify lab Stage cutover revision: %w", err)
+	}
+	if !matches {
+		return errors.New("existing lab Stage cutover does not match the installed asset set")
+	}
+
+	var authorizedCutoverID string
+	if err := transaction.QueryRowContext(ctx, `
+		SELECT (vela_authorize_stage_cutover_internal_project($1, $2, $3, $4)).cutover_revision_id::text
+	`, stageCutoverRevisionID, organizationID, projectID, activatedBy).Scan(&authorizedCutoverID); err != nil {
+		return fmt.Errorf("authorize lab project for Stage cutover: %w", err)
+	}
+	if authorizedCutoverID != stageCutoverRevisionID {
+		return errors.New("lab Stage cutover project authorization returned an unexpected revision")
+	}
+	return nil
 }
 
 func verifyStageCatalog(ctx context.Context, transaction *sql.Tx, profiles []labStageProfile) error {
@@ -1034,12 +1140,16 @@ func buildWorkerEvidence(worker labWorkerFixture, sequence int64, observedAt tim
 	topologyDigest := digestText("vela/lab-v2/" + worker.name + "/topology/v1")
 	residencies := make([]map[string]any, 0, len(worker.residencies))
 	for _, residency := range worker.residencies {
+		canaryDigest, err := mockRuntimeReadinessEvidenceDigest(residency.component)
+		if err != nil {
+			return nil, fmt.Errorf("build %s mock readiness evidence: %w", residency.id, err)
+		}
 		residencies = append(residencies, map[string]any{
 			"id": residency.id, "model_component_revision": residency.modelComponentRevision,
 			"runtime_identity": residency.runtimeIdentity, "runtime_image_digest": residency.runtimeImageDigest,
 			"model_runtime_epoch": 1, "state": "READY",
 			"warmup_evidence_digest": digestText("vela/lab-v2/" + residency.id + "/warmup/v1"),
-			"canary_evidence_digest": digestText("vela/lab-v2/" + residency.id + "/canary/v1"),
+			"canary_evidence_digest": canaryDigest,
 		})
 	}
 	device := map[string]any{
@@ -1082,6 +1192,28 @@ func buildWorkerEvidence(worker labWorkerFixture, sequence int64, observedAt tim
 		return nil, fmt.Errorf("encode %s WorkerInstance evidence: %w", worker.name, err)
 	}
 	return encoded, nil
+}
+
+func mockRuntimeReadinessEvidenceDigest(component string) (string, error) {
+	checks := make([]stageworkeragent.ReadinessEvidenceCheck, 0, 4)
+	for _, check := range []velav1.ModelRuntimeReadinessCheck{
+		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_DEVICE,
+		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_BACKEND,
+		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
+		velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_CANARY,
+	} {
+		checks = append(checks, stageworkeragent.ReadinessEvidenceCheck{
+			Check:    check.String(),
+			Evidence: []byte("vela-h3-stage-mock/v1:" + component + ":ready"),
+			Detail:   "mock resident runtime ready",
+		})
+	}
+	evidence, err := stageworkeragent.EncodeReadinessEvidence(checks)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(evidence)
+	return fmt.Sprintf("%x", digest[:]), nil
 }
 
 func digestText(value string) string {
