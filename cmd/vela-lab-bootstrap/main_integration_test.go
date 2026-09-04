@@ -89,6 +89,40 @@ func TestBootstrapDatabaseAppliesSchema66AndReplaysStageFixture(t *testing.T) {
 	if graphState != "ACTIVE" || strings.Join(topologicalOrder, ",") != "encoder,dit,vae,thumbnail" {
 		t.Fatalf("graph state/order = %s/%v", graphState, topologicalOrder)
 	}
+	var profileState, cutoverID, cutoverScope, cutoverMode string
+	var internalProjectBindings int
+	if err := database.QueryRowContext(ctx, `
+		SELECT profile.state::text,
+		       revision.id::text,
+		       revision.scope::text,
+		       revision.mode::text,
+		       (
+		           SELECT count(*)
+		           FROM stage_cutover_internal_projects AS binding
+		           WHERE binding.cutover_revision_id = revision.id
+		             AND binding.organization_id = $1
+		             AND binding.project_id = $2
+		       )
+		FROM stage_cutover_control AS control
+		JOIN stage_cutover_revisions AS revision
+		  ON revision.id = control.current_revision_id
+		JOIN execution_profile_revisions AS profile
+		  ON profile.id = $3
+		WHERE control.singleton
+	`, organizationID, projectID, executionProfileID).Scan(
+		&profileState, &cutoverID, &cutoverScope, &cutoverMode, &internalProjectBindings,
+	); err != nil {
+		t.Fatalf("read Stage Admission route: %v", err)
+	}
+	if profileState != "ACTIVE" ||
+		cutoverID != "84000000-0000-0000-0000-000000000701" ||
+		cutoverScope != "INTERNAL" || cutoverMode != "STAGE_ONLY" ||
+		internalProjectBindings != 1 {
+		t.Fatalf(
+			"Stage Admission route = profile:%s cutover:%s scope:%s mode:%s bindings:%d",
+			profileState, cutoverID, cutoverScope, cutoverMode, internalProjectBindings,
+		)
+	}
 	for _, workerID := range []string{worker1ID, worker2ID, thumbnailWorkerID} {
 		var count int
 		var minimum, maximum int64

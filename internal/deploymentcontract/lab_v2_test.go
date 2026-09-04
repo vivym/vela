@@ -496,10 +496,20 @@ func TestLabV2OperationalScriptsFailClosedAroundOwnershipAndRollback(t *testing.
 		t.Fatal("smoke.sh calls the contracted legacy scheduler function")
 	}
 	for _, required := range []string{
+		"admission-route.sql", "admission_routes", "expected=1",
 		"ready-capacity-routes.sql", "ready_capacity_routes", "expected=4",
 	} {
 		if !strings.Contains(smoke, required) {
 			t.Fatalf("smoke.sh is missing Stage capacity precheck %q", required)
+		}
+	}
+	admissionQuery := read("admission-route.sql")
+	for _, required := range []string{
+		"stage_cutover_control", "stage_cutover_internal_projects",
+		"INTERNAL", "STAGE_ONLY", "graph.state = 'ACTIVE'", "profile.state = 'ACTIVE'",
+	} {
+		if !strings.Contains(admissionQuery, required) {
+			t.Fatalf("admission-route.sql is missing Stage Admission precheck %q", required)
 		}
 	}
 	capacityQuery := read("ready-capacity-routes.sql")
@@ -512,10 +522,11 @@ func TestLabV2OperationalScriptsFailClosedAroundOwnershipAndRollback(t *testing.
 			t.Fatalf("ready-capacity-routes.sql is missing Stage capacity precheck %q", required)
 		}
 	}
-	precheck := strings.Index(smoke, "[ \"$ready_capacity_routes\" = 4 ]")
+	admissionPrecheck := strings.Index(smoke, "[ \"$admission_routes\" = 1 ]")
+	capacityPrecheck := strings.Index(smoke, "[ \"$ready_capacity_routes\" = 4 ]")
 	createJob := strings.Index(smoke, "job=$($kubectl_bin create")
-	if precheck < 0 || createJob <= precheck {
-		t.Fatal("smoke.sh does not fail closed on capacity before creating the Job")
+	if admissionPrecheck < 0 || capacityPrecheck <= admissionPrecheck || createJob <= capacityPrecheck {
+		t.Fatal("smoke.sh does not fail closed on Admission and capacity before creating the Job")
 	}
 }
 
@@ -539,15 +550,33 @@ func TestLabV2SmokeCapacityGateControlsJobCreation(t *testing.T) {
 	}
 	fakes := map[string]string{
 		"id": "#!/bin/sh\n[ \"${1:-}\" = -u ] || exit 1\nprintf '0\\n'\n",
-		"jq": "#!/bin/sh\n/bin/cat >/dev/null\n",
+		"jq": `#!/bin/sh
+payload=$(/bin/cat)
+case "$*" in
+	*Complete*)
+		case "$payload" in *'"type":"Complete","status":"True"'*) exit 0 ;; *) exit 1 ;; esac
+		;;
+	*Failed*)
+		case "$payload" in *'"type":"Failed","status":"True"'*) exit 0 ;; *) exit 1 ;; esac
+		;;
+	*) exit 0 ;;
+esac
+`,
 		"kubectl": `#!/bin/sh
 printf '%s\n' "$*" >> "$KUBECTL_LOG"
 case "${1:-}" in
 	rollout|wait|describe) exit 0 ;;
+	get)
+		case "$JOB_PHASE" in
+			failed) printf '{"status":{"conditions":[{"type":"Failed","status":"True"}]}}\n' ;;
+			*) printf '{"status":{"conditions":[{"type":"Complete","status":"True"}]}}\n' ;;
+		esac
+		;;
 	exec)
 		sql=$(/bin/cat)
 		case "$sql" in
 			*production_gate_receipts*) printf '0\n' ;;
+			*stage_cutover_control*) printf '%s\n' "$ADMISSION_ROUTES" ;;
 			*) printf '%s\n' "$READY_CAPACITY_ROUTES" ;;
 		esac
 		;;
@@ -565,12 +594,17 @@ esac
 
 	for _, test := range []struct {
 		name       string
+		admission  string
 		ready      string
+		jobPhase   string
 		wantOK     bool
 		wantCreate bool
+		wantError  string
 	}{
-		{name: "missing route", ready: "3"},
-		{name: "all routes ready", ready: "4", wantOK: true, wantCreate: true},
+		{name: "missing Admission route", admission: "0", ready: "4", wantError: "active routes=0 expected=1"},
+		{name: "missing capacity route", admission: "1", ready: "3", wantError: "ready routes=3 expected=4"},
+		{name: "failed Job", admission: "1", ready: "4", jobPhase: "failed", wantCreate: true, wantError: "end-to-end smoke Job failed"},
+		{name: "all routes ready", admission: "1", ready: "4", jobPhase: "complete", wantOK: true, wantCreate: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			logPath := filepath.Join(t.TempDir(), "kubectl.log")
@@ -580,14 +614,16 @@ esac
 				"KUBECTL_BIN="+filepath.Join(fakeBin, "kubectl"),
 				"KUBECONFIG="+kubeconfig,
 				"KUBECTL_LOG="+logPath,
+				"ADMISSION_ROUTES="+test.admission,
 				"READY_CAPACITY_ROUTES="+test.ready,
+				"JOB_PHASE="+test.jobPhase,
 			)
 			output, err := command.CombinedOutput()
 			if test.wantOK && err != nil {
 				t.Fatalf("smoke capacity gate failed: %v\n%s", err, output)
 			}
-			if !test.wantOK && (err == nil || !strings.Contains(string(output), "ready routes=3 expected=4")) {
-				t.Fatalf("missing capacity route error=%v output=%s", err, output)
+			if !test.wantOK && (err == nil || !strings.Contains(string(output), test.wantError)) {
+				t.Fatalf("smoke failure error=%v output=%s", err, output)
 			}
 			calls, readErr := os.ReadFile(logPath)
 			if readErr != nil {

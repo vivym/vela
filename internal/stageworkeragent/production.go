@@ -245,6 +245,38 @@ type readinessCheckEvidenceV1 struct {
 	Detail   string `json:"detail,omitempty"`
 }
 
+type ReadinessEvidenceCheck struct {
+	Check    string
+	Evidence []byte
+	Detail   string
+}
+
+func EncodeReadinessEvidence(checks []ReadinessEvidenceCheck) ([]byte, error) {
+	if len(checks) == 0 {
+		return nil, errors.New("ModelRuntime readiness evidence is empty")
+	}
+	document := readinessEvidenceV1{
+		SchemaVersion: 1,
+		Checks:        make([]readinessCheckEvidenceV1, 0, len(checks)),
+	}
+	for _, check := range checks {
+		if strings.TrimSpace(check.Check) == "" || len(check.Evidence) == 0 {
+			return nil, errors.New("ModelRuntime readiness evidence check is incomplete")
+		}
+		document.Checks = append(document.Checks, readinessCheckEvidenceV1{
+			Check: check.Check, Evidence: append([]byte(nil), check.Evidence...), Detail: check.Detail,
+		})
+	}
+	evidence, err := json.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("encode ModelRuntime readiness evidence: %w", err)
+	}
+	if len(evidence) > maxReadinessEvidenceBytes {
+		return nil, errors.New("aggregate ModelRuntime readiness evidence exceeds bound")
+	}
+	return evidence, nil
+}
+
 func NewProductionAgent(config ProductionConfig) (*ProductionAgent, error) {
 	if config.Control == nil || config.Runtime == nil || config.Now == nil ||
 		config.CapacityTTL <= 0 || config.CapacityTTL > maxCapacityTTL {
@@ -858,7 +890,7 @@ func (agent *ProductionAgent) probeReadiness(
 	ctx context.Context,
 	identity *velav1.ModelRuntimeIdentity,
 ) ([]byte, error) {
-	document := readinessEvidenceV1{SchemaVersion: 1}
+	checks := make([]ReadinessEvidenceCheck, 0, len(productionReadinessChecks))
 	for _, check := range productionReadinessChecks {
 		response, err := agent.runtime.ProbeReadiness(
 			ctx,
@@ -875,19 +907,12 @@ func (agent *ProductionAgent) probeReadiness(
 			len(response.GetEvidence()) > maxReadinessEvidenceBytes {
 			return nil, fmt.Errorf("ModelRuntime %s readiness evidence is invalid", check.String())
 		}
-		document.Checks = append(document.Checks, readinessCheckEvidenceV1{
+		checks = append(checks, ReadinessEvidenceCheck{
 			Check: check.String(), Evidence: append([]byte(nil), response.GetEvidence()...),
 			Detail: response.GetDetail(),
 		})
 	}
-	evidence, err := json.Marshal(document)
-	if err != nil {
-		return nil, fmt.Errorf("encode ModelRuntime readiness evidence: %w", err)
-	}
-	if len(evidence) == 0 || len(evidence) > maxReadinessEvidenceBytes {
-		return nil, errors.New("aggregate ModelRuntime readiness evidence exceeds bound")
-	}
-	return evidence, nil
+	return EncodeReadinessEvidence(checks)
 }
 
 func (agent *ProductionAgent) requireReady(

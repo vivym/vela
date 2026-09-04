@@ -129,6 +129,12 @@ func TestBuildWorkerEvidenceMatchesGeneratedLaunchDigests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantCanaryDigests := map[string]string{
+		encoderResidencyID:   "afa26c9c16640cb300f23244fdab78e34e85d770dbe605d53e8b40e3cf8989ce",
+		vaeResidencyID:       "cb507a103033c86bd577a0b26173dd7d67565b7cb5bd46ac69cbc57f5c53db8a",
+		ditResidencyID:       "1ed06e1ebb176adbbb56f72e3009d378b6078dad780461ac42ba3871fcc222f7",
+		thumbnailResidencyID: "8fc0748fd6cc22708c520096f47f051b468717daf2e9028dea164ebe4b3fb633",
+	}
 	for _, worker := range workers {
 		observedAt := time.Date(2026, 9, 4, 1, 2, 3, 0, time.UTC)
 		encoded, err := buildWorkerEvidence(worker, 7, observedAt)
@@ -148,8 +154,9 @@ func TestBuildWorkerEvidenceMatchesGeneratedLaunchDigests(t *testing.T) {
 				} `json:"devices"`
 			} `json:"device_set"`
 			Residencies []struct {
-				ID                 string `json:"id"`
-				RuntimeImageDigest string `json:"runtime_image_digest"`
+				ID                   string `json:"id"`
+				RuntimeImageDigest   string `json:"runtime_image_digest"`
+				CanaryEvidenceDigest string `json:"canary_evidence_digest"`
 			} `json:"residencies"`
 			Capacity struct {
 				Sequence int64 `json:"sequence"`
@@ -178,6 +185,12 @@ func TestBuildWorkerEvidenceMatchesGeneratedLaunchDigests(t *testing.T) {
 			}
 			if residency.RuntimeImageDigest != wantDigest {
 				t.Fatalf("ModelResidency %s digest = %q", residency.ID, residency.RuntimeImageDigest)
+			}
+			if residency.CanaryEvidenceDigest != wantCanaryDigests[residency.ID] {
+				t.Fatalf(
+					"ModelResidency %s canary digest = %q, want live mock aggregate %q",
+					residency.ID, residency.CanaryEvidenceDigest, wantCanaryDigests[residency.ID],
+				)
 			}
 		}
 	}
