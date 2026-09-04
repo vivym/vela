@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -106,6 +107,111 @@ func TestMultiMemberCancellationAckAndActuallyStoppedRemainDistinct(t *testing.T
 	status, err := agent.Status(context.Background(), fixture.authority)
 	if err != nil || status.ReportingMembers != 2 || !status.AllStopped {
 		t.Fatalf("Status = %#v error=%v", status, err)
+	}
+}
+
+func TestCancellationTreatsExactTerminalStaleResponseAsSettled(t *testing.T) {
+	fixture := newBarrierFixture(t, false)
+	digest, err := stageauthority.Digest(fixture.authority)
+	if err != nil {
+		t.Fatalf("Digest StageAuthority: %v", err)
+	}
+	for _, state := range []velav1.ModelRuntimeExecutionState{
+		velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED,
+		velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED,
+		velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED,
+	} {
+		t.Run(state.String(), func(t *testing.T) {
+			memberID := fixture.memberIDs[0]
+			agent, agentErr := stageworkeragent.New(stageworkeragent.Config{
+				Members: []stageworkeragent.RuntimeMember{{
+					ID: memberID,
+					Client: fixedCancelRuntimeClient{
+						ModelRuntimeServiceClient: fixture.clients[0],
+						response: &velav1.ModelRuntimeServiceCancelStageResponse{
+							AuthorityDigest: digest[:],
+							Decision:        velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE,
+							State:           state, RuntimeIdentity: runtimeIdentityForMember(fixture.authority, memberID),
+						},
+					},
+				}},
+			})
+			if agentErr != nil {
+				t.Fatalf("New Agent: %v", agentErr)
+			}
+			result, cancelErr := agent.Cancel(
+				context.Background(), fixture.authority,
+				velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+			)
+			if cancelErr != nil || result.AcknowledgedMembers != 0 || result.AllStopped {
+				t.Fatalf("terminal Cancel = %#v error=%v", result, cancelErr)
+			}
+		})
+	}
+}
+
+func TestCancellationRejectsUnprovenStaleResponse(t *testing.T) {
+	fixture := newBarrierFixture(t, false)
+	digest, err := stageauthority.Digest(fixture.authority)
+	if err != nil {
+		t.Fatalf("Digest StageAuthority: %v", err)
+	}
+	memberID := fixture.memberIDs[0]
+	for _, test := range []struct {
+		name   string
+		mutate func(*velav1.ModelRuntimeServiceCancelStageResponse)
+	}{
+		{
+			name: "non-terminal state",
+			mutate: func(response *velav1.ModelRuntimeServiceCancelStageResponse) {
+				response.State = velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_RUNNING
+			},
+		},
+		{
+			name: "mismatched authority digest",
+			mutate: func(response *velav1.ModelRuntimeServiceCancelStageResponse) {
+				response.AuthorityDigest = bytes.Repeat([]byte{0xff}, sha256.Size)
+			},
+		},
+		{
+			name: "mismatched runtime identity",
+			mutate: func(response *velav1.ModelRuntimeServiceCancelStageResponse) {
+				response.RuntimeIdentity.WorkerMemberEpoch++
+			},
+		},
+		{
+			name: "contradictory acknowledgement",
+			mutate: func(response *velav1.ModelRuntimeServiceCancelStageResponse) {
+				response.CancellationAcknowledged = true
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := &velav1.ModelRuntimeServiceCancelStageResponse{
+				AuthorityDigest: digest[:],
+				Decision:        velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE,
+				State:           velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED,
+				RuntimeIdentity: runtimeIdentityForMember(fixture.authority, memberID),
+			}
+			test.mutate(response)
+			agent, agentErr := stageworkeragent.New(stageworkeragent.Config{
+				Members: []stageworkeragent.RuntimeMember{{
+					ID: memberID,
+					Client: fixedCancelRuntimeClient{
+						ModelRuntimeServiceClient: fixture.clients[0], response: response,
+					},
+				}},
+			})
+			if agentErr != nil {
+				t.Fatalf("New Agent: %v", agentErr)
+			}
+			if _, cancelErr := agent.Cancel(
+				context.Background(), fixture.authority,
+				velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+			); cancelErr == nil {
+				t.Fatal("Cancel accepted an unproven stale response")
+			}
+		})
 	}
 }
 
@@ -444,6 +550,19 @@ type fixedSealRuntimeClient struct {
 	velav1.ModelRuntimeServiceClient
 	response *velav1.ModelRuntimeServiceSealOutputResponse
 	calls    int
+}
+
+type fixedCancelRuntimeClient struct {
+	velav1.ModelRuntimeServiceClient
+	response *velav1.ModelRuntimeServiceCancelStageResponse
+}
+
+func (client fixedCancelRuntimeClient) CancelStage(
+	context.Context,
+	*velav1.ModelRuntimeServiceCancelStageRequest,
+	...grpc.CallOption,
+) (*velav1.ModelRuntimeServiceCancelStageResponse, error) {
+	return proto.Clone(client.response).(*velav1.ModelRuntimeServiceCancelStageResponse), nil
 }
 
 func (client *fixedSealRuntimeClient) SealOutput(

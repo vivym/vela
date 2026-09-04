@@ -390,6 +390,10 @@ func (agent *Agent) cancelMembers(
 	authority *velav1.StageAuthority,
 	reason velav1.ModelRuntimeCancelReason,
 ) (int, error) {
+	digest, err := stageauthority.Digest(authority)
+	if err != nil {
+		return 0, err
+	}
 	type cancelResult struct {
 		id       string
 		response *velav1.ModelRuntimeServiceCancelStageResponse
@@ -415,16 +419,42 @@ func (agent *Agent) cancelMembers(
 			continue
 		}
 		response := memberResult.response
-		if response == nil || !response.GetCancellationAcknowledged() ||
-			(response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED &&
-				response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED) ||
-			!runtimeIdentityMatchesMember(response.GetRuntimeIdentity(), authority, memberResult.id) {
+		valid, cancellationAcknowledged := validCancelResponse(
+			response, digest, authority, memberResult.id,
+		)
+		if !valid {
 			joined = errors.Join(joined, fmt.Errorf("cancel member %s was not acknowledged", memberResult.id))
 			continue
 		}
-		acknowledged++
+		if cancellationAcknowledged {
+			acknowledged++
+		}
 	}
 	return acknowledged, joined
+}
+
+func validCancelResponse(
+	response *velav1.ModelRuntimeServiceCancelStageResponse,
+	digest [sha256.Size]byte,
+	authority *velav1.StageAuthority,
+	memberID string,
+) (valid bool, cancellationAcknowledged bool) {
+	if response == nil || !bytes.Equal(response.GetAuthorityDigest(), digest[:]) ||
+		!runtimeIdentityMatchesMember(response.GetRuntimeIdentity(), authority, memberID) {
+		return false, false
+	}
+	if response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED ||
+		response.GetDecision() == velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED {
+		return response.GetCancellationAcknowledged(), response.GetCancellationAcknowledged()
+	}
+	if response.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE ||
+		response.GetCancellationAcknowledged() {
+		return false, false
+	}
+	state := response.GetState()
+	return state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_STOPPED ||
+		state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED ||
+		state == velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_FAILED, false
 }
 
 func (agent *Agent) cancelAfterBarrierFailure(

@@ -308,6 +308,57 @@ func TestStreamAgentConsumesUnsolicitedStopStage(t *testing.T) {
 	}
 }
 
+func TestStreamAgentKeepsControlStreamAfterTerminalStopStage(t *testing.T) {
+	fixture := newBarrierFixture(t, false)
+	digest, err := stageauthority.Digest(fixture.authority)
+	if err != nil {
+		t.Fatalf("Digest StageAuthority: %v", err)
+	}
+	members := make([]stageworkeragent.RuntimeMember, 0, len(fixture.memberIDs))
+	for index, memberID := range fixture.memberIDs {
+		members = append(members, stageworkeragent.RuntimeMember{
+			ID: memberID,
+			Client: fixedCancelRuntimeClient{
+				ModelRuntimeServiceClient: fixture.clients[index],
+				response: &velav1.ModelRuntimeServiceCancelStageResponse{
+					AuthorityDigest: digest[:],
+					Decision:        velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE,
+					State:           velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED,
+					RuntimeIdentity: runtimeIdentityForMember(fixture.authority, memberID),
+				},
+			},
+		})
+	}
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{Members: members})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	commands := make(chan *velav1.StageWorkerControlServiceConnectResponse, 1)
+	control := &recordingStreamControl{
+		decision: velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED,
+		commands: commands,
+	}
+	streamAgent, err := stageworkeragent.NewStreamAgent(runtimeAgent, control)
+	if err != nil {
+		t.Fatalf("NewStreamAgent: %v", err)
+	}
+	if _, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+		t.Fatalf("ExecuteAssignment: %v", err)
+	}
+	commands <- &velav1.StageWorkerControlServiceConnectResponse{
+		Result: &velav1.StageWorkerControlServiceConnectResponse_StopStage{
+			StopStage: &velav1.StopStage{
+				Authority: fixture.authority,
+				Reason:    velav1.StageWorkerStopReason_STAGE_WORKER_STOP_REASON_AUTHORITY_REVOKED,
+			},
+		},
+	}
+	close(commands)
+	if err := streamAgent.RunControlCommands(context.Background()); err != nil {
+		t.Fatalf("RunControlCommands after terminal StopStage: %v", err)
+	}
+}
+
 func TestStreamAgentRetriesMaterializationWithoutHoldingOrRerunningGPU(t *testing.T) {
 	fixture := newSingleMemberMaterializationFixture(t)
 	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
