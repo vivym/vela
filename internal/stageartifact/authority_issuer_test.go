@@ -104,6 +104,50 @@ func TestMaterializationAuthorityIssuerSealsExactLocalOutputContract(t *testing.
 	}
 }
 
+func TestMaterializationAuthorityIssuerAcceptsPostgresTimestampPrecision(t *testing.T) {
+	now := time.Date(2026, 8, 30, 15, 0, 0, 123456789, time.UTC)
+	verified := verifiedStageAuthority(t, now)
+	payload := []byte("sealed encoder tensor")
+	payloadDigest := sha256.Sum256(payload)
+	manifestJSON := exactOutputManifestJSON(t, verified.Authority, payloadDigest, int64(len(payload)))
+	manifestDigest := sha256.Sum256(manifestJSON)
+	repository := &recordingSealRepository{roundTimestamps: true}
+	signer, err := materializationauthority.NewSigner(map[string][]byte{
+		"materialization-key-v1": bytes.Repeat([]byte{0xa4}, 32),
+		"stage-key-v1":           bytes.Repeat([]byte{0x7c}, 32),
+	})
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	issuer, err := stageartifact.NewMaterializationAuthorityIssuer(
+		repository, signer, 30*time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("NewMaterializationAuthorityIssuer: %v", err)
+	}
+
+	request := stageartifact.IssueMaterializationRequest{
+		Stage: verified, SourceSPIFFEID: "spiffe://vela/worker/member-1",
+		LocalReceipt: &velav1.LocalMaterializationReceipt{
+			ReceiptId: "encoder-receipt-postgres-precision", ManifestSha256: manifestDigest[:],
+			TotalSizeBytes: int64(len(payload)), SealedAt: timestamppb.New(now),
+			OutputManifestJson: manifestJSON,
+		},
+	}
+	issued, err := issuer.Seal(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Seal after PostgreSQL timestamp round trip: %v", err)
+	}
+	if !issued.Lease.IssuedAt.Equal(now.Round(time.Microsecond)) ||
+		!issued.Lease.ExpiresAt.Equal(now.Add(30*time.Minute).Round(time.Microsecond)) {
+		t.Fatalf("issued lease timestamps = %s/%s", issued.Lease.IssuedAt, issued.Lease.ExpiresAt)
+	}
+	repository.timestampOffset = time.Microsecond
+	if _, err := issuer.Seal(context.Background(), request); err == nil {
+		t.Fatal("Seal accepted a persisted timestamp outside PostgreSQL precision normalization")
+	}
+}
+
 func TestMaterializationAuthorityIssuerRejectsReceiptLineageBeforeSeal(t *testing.T) {
 	now := time.Date(2026, 8, 30, 15, 0, 0, 0, time.UTC)
 	verified := verifiedStageAuthority(t, now)
@@ -138,8 +182,10 @@ func TestMaterializationAuthorityIssuerRejectsReceiptLineageBeforeSeal(t *testin
 }
 
 type recordingSealRepository struct {
-	calls   int
-	command stageartifact.SealCommand
+	calls           int
+	command         stageartifact.SealCommand
+	roundTimestamps bool
+	timestampOffset time.Duration
 }
 
 func (repository *recordingSealRepository) Seal(
@@ -148,12 +194,20 @@ func (repository *recordingSealRepository) Seal(
 ) (stageartifact.MaterializationLease, error) {
 	repository.calls++
 	repository.command = command
+	issuedAt := command.SealedAt
+	expiresAt := command.LeaseExpiresAt
+	if repository.roundTimestamps {
+		issuedAt = issuedAt.Round(time.Microsecond)
+		expiresAt = expiresAt.Round(time.Microsecond)
+	}
+	issuedAt = issuedAt.Add(repository.timestampOffset)
+	expiresAt = expiresAt.Add(repository.timestampOffset)
 	return stageartifact.MaterializationLease{
 		ID: command.MaterializationLeaseID, ArtifactID: command.ArtifactID,
 		ObjectKey: command.ObjectKey, ContentType: command.ContentType,
 		SHA256: command.SHA256, TokenDigest: command.TokenDigest,
-		SizeBytes: command.SizeBytes, IssuedAt: command.SealedAt,
-		ExpiresAt: command.LeaseExpiresAt,
+		SizeBytes: command.SizeBytes, IssuedAt: issuedAt,
+		ExpiresAt: expiresAt,
 	}, nil
 }
 
