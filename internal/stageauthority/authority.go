@@ -168,6 +168,22 @@ func (validator *Validator) ValidateWithClockSkew(
 	return verified, nil
 }
 
+// ValidateSignature verifies the signed authority and its exact runtime binding
+// without accepting it as temporally valid. Callers must enforce a replay bound.
+func (validator *Validator) ValidateSignature(
+	authority *velav1.StageAuthority,
+	binding RuntimeBinding,
+) (Verified, error) {
+	verified, err := validator.ValidateEnvelopeSignature(authority)
+	if err != nil {
+		return Verified{}, err
+	}
+	if err := matchRuntime(verified.Authority, binding); err != nil {
+		return Verified{}, err
+	}
+	return verified, nil
+}
+
 func (validator *Validator) ValidateEnvelope(
 	authority *velav1.StageAuthority,
 ) (Verified, error) {

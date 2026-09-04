@@ -567,6 +567,24 @@ func TestModelRuntimeSealsOnlyTheExactActiveAuthority(t *testing.T) {
 		!bytes.Equal(statusResponse.GetLocalReceiptDigest(), sealed.GetReceipt().GetManifestSha256()) {
 		t.Fatalf("Status after seal = %#v error=%v", statusResponse, err)
 	}
+	digest, err := stageauthority.Digest(authority)
+	if err != nil {
+		t.Fatalf("Digest sealed authority: %v", err)
+	}
+	canceled, err := client.CancelStage(
+		context.Background(),
+		&velav1.ModelRuntimeServiceCancelStageRequest{
+			Authority: authority,
+			Reason:    velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+		},
+	)
+	if err != nil ||
+		canceled.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE ||
+		canceled.GetState() != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_OUTPUT_SEALED ||
+		canceled.GetCancellationAcknowledged() || !bytes.Equal(canceled.GetAuthorityDigest(), digest[:]) ||
+		canceled.GetRuntimeIdentity() == nil {
+		t.Fatalf("CancelStage after seal = %#v error=%v", canceled, err)
+	}
 
 	stale := proto.Clone(authority).(*velav1.StageAuthority)
 	stale.StageFence++
@@ -575,6 +593,58 @@ func TestModelRuntimeSealsOnlyTheExactActiveAuthority(t *testing.T) {
 	})
 	if err != nil || rejected.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
 		t.Fatalf("stale SealOutput = %#v error=%v", rejected, err)
+	}
+}
+
+func TestModelRuntimeCancellationAcceptsExpiredExactAuthorityWithoutRenewal(t *testing.T) {
+	clock := newManualClock(time.Date(2026, 8, 30, 7, 35, 0, 0, time.UTC))
+	signer, validator := runtimeAuthorityCrypto(t, clock)
+	authority := signRuntimeAuthority(t, signer, clock.Now())
+	backend := modelruntime.NewFakeDiTRuntime()
+	client, _ := serveRuntime(
+		t,
+		newRuntimeService(t, clock, validator, runtimeBinding(), backend),
+	)
+	prepareAndStart(t, client, authority)
+	clock.Advance(31 * time.Second)
+
+	canceled, err := client.CancelStage(
+		context.Background(),
+		&velav1.ModelRuntimeServiceCancelStageRequest{
+			Authority: authority,
+			Reason:    velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+		},
+	)
+	if err != nil || !canceled.GetCancellationAcknowledged() ||
+		(canceled.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED &&
+			canceled.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_REPLAYED) ||
+		canceled.GetState() != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_CANCELING {
+		t.Fatalf("CancelStage with expired exact authority = %#v error=%v", canceled, err)
+	}
+
+	unrelated := proto.Clone(authority).(*velav1.StageAuthority)
+	unrelated.StageAttemptId = "11000000-0000-0000-0000-000000000014"
+	unrelated.StageAllocationId = "11000000-0000-0000-0000-000000000015"
+	unrelated.StageLeaseId = "11000000-0000-0000-0000-000000000016"
+	unrelated.StageFence++
+	unrelated.StageVersion++
+	unrelated.ExecutionNonce = bytes.Repeat([]byte{0x74}, 32)
+	unrelated.Signature = nil
+	unrelated, err = signer.Sign(unrelated)
+	if err != nil {
+		t.Fatalf("sign unrelated expired authority: %v", err)
+	}
+	rejected, err := client.CancelStage(
+		context.Background(),
+		&velav1.ModelRuntimeServiceCancelStageRequest{
+			Authority: unrelated,
+			Reason:    velav1.ModelRuntimeCancelReason_MODEL_RUNTIME_CANCEL_REASON_CONTROL_PLANE_STOP,
+		},
+	)
+	if err != nil || rejected.GetCancellationAcknowledged() ||
+		rejected.GetDecision() != velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE ||
+		rejected.GetState() != velav1.ModelRuntimeExecutionState_MODEL_RUNTIME_EXECUTION_STATE_UNSPECIFIED {
+		t.Fatalf("CancelStage with unrelated expired authority = %#v error=%v", rejected, err)
 	}
 }
 
