@@ -291,16 +291,24 @@ func TestClientReconcilesDurableControlSessionEpochAndReconnects(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "synchronized") {
 		t.Fatalf("synchronization Exchange error = %v", err)
 	}
+	_, err = client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
+			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{},
+		},
+	})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("post-synchronization network error = %v, want Unavailable", err)
+	}
 	response, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
 			RegisterWorkerEvidence: &velav1.RegisterWorkerEvidenceRequest{},
 		},
 	})
 	if err != nil || !response.GetWorkerReadinessDecision().GetReady() {
-		t.Fatalf("post-synchronization Exchange = %#v error=%v", response, err)
+		t.Fatalf("post-network-reconnect Exchange = %#v error=%v", response, err)
 	}
-	if got := server.Epochs(); got != "2,96" || epochs.observed != 95 {
-		t.Fatalf("synchronized epochs = %s observed=%d, want 2,96 observed=95", got, epochs.observed)
+	if got := server.Epochs(); got != "2,95,96" || epochs.observed != 95 {
+		t.Fatalf("synchronized epochs = %s observed=%d, want 2,95,96 observed=95", got, epochs.observed)
 	}
 }
 
@@ -647,8 +655,11 @@ func (server *synchronizingStageServer) Connect(
 	connection := len(server.epochs)
 	server.mu.Unlock()
 	acceptedEpoch := request.GetControlSessionEpoch()
-	if connection == 1 {
+	switch connection {
+	case 1:
 		acceptedEpoch = server.durableEpoch
+	case 2:
+		return status.Error(codes.Unavailable, "connection lost after durable synchronization")
 	}
 	return stream.Send(&velav1.StageWorkerControlServiceConnectResponse{
 		RequestId: request.GetRequestId(),
@@ -663,7 +674,11 @@ func (server *synchronizingStageServer) Connect(
 func (server *synchronizingStageServer) Epochs() string {
 	server.mu.Lock()
 	defer server.mu.Unlock()
-	return fmt.Sprintf("%d,%d", server.epochs[0], server.epochs[1])
+	values := make([]string, 0, len(server.epochs))
+	for _, epoch := range server.epochs {
+		values = append(values, fmt.Sprint(epoch))
+	}
+	return strings.Join(values, ",")
 }
 
 func (server *reconnectingStageServer) Connect(

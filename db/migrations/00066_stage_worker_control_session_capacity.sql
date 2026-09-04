@@ -5,6 +5,20 @@
 -- WorkerInstance epoch. Rewrite the legacy combined observation entrypoint so
 -- its structural evidence can continue without competing in the Stage Worker
 -- sequence range.
+ALTER TABLE public.capacity_observations
+    ADD COLUMN stage_worker_control_session_epoch bigint,
+    ADD COLUMN stage_worker_last_observed_at timestamptz,
+    ADD CONSTRAINT capacity_observations_stage_worker_lease_valid CHECK (
+        (
+            stage_worker_control_session_epoch IS NULL
+            AND stage_worker_last_observed_at IS NULL
+        ) OR (
+            stage_worker_control_session_epoch > 0
+            AND stage_worker_last_observed_at >= observed_at
+            AND stage_worker_last_observed_at < expires_at
+        )
+    );
+
 DO $$
 DECLARE
     v_definition text;
@@ -65,6 +79,53 @@ BEGIN
             ERRCODE = '55000',
             CONSTRAINT = 'stage_worker_capacity_takeover_dependency_drift',
             MESSAGE = 'WorkerInstance capacity observation entrypoint changed';
+    END IF;
+    EXECUTE replace(v_definition, v_old, v_new);
+END
+$$;
+
+-- A Stage Worker control reconnect advances the WorkerInstance-wide stream
+-- epoch. After Stage capacity takeover, accept the Node Agent's lower startup
+-- epoch once so its topology/health report can learn the durable epoch returned
+-- by the Fleet decision. A future client-selected epoch remains invalid.
+DO $$
+DECLARE
+    v_definition text;
+    v_old text;
+    v_new text;
+BEGIN
+    v_definition := pg_get_functiondef(
+        'public.vela_observe_worker_instance(jsonb)'::regprocedure
+    );
+    v_old := E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
+        || E'       OR v_worker.instance_epoch <> (p_evidence ->> ''instance_epoch'')::bigint\n'
+        || E'       OR v_worker.control_session_epoch <> (p_evidence ->> ''control_session_epoch'')::bigint THEN\n';
+    v_new := E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
+        || E'       OR v_worker.instance_epoch <> (p_evidence ->> ''instance_epoch'')::bigint\n'
+        || E'       OR (\n'
+        || E'           v_worker.control_session_epoch <>\n'
+        || E'               (p_evidence ->> ''control_session_epoch'')::bigint\n'
+        || E'           AND NOT (\n'
+        || E'               (p_evidence ->> ''control_session_epoch'')::bigint <\n'
+        || E'                   v_worker.control_session_epoch\n'
+        || E'               AND EXISTS (\n'
+        || E'                   SELECT 1\n'
+        || E'                   FROM public.capacity_observations AS observation\n'
+        || E'                   WHERE observation.worker_instance_id = v_worker.id\n'
+        || E'                     AND observation.worker_instance_epoch =\n'
+        || E'                         v_worker.instance_epoch\n'
+        || E'                     AND observation.observation_sequence::numeric >\n'
+        || E'                         v_worker.instance_epoch::numeric * 4294967296\n'
+        || E'                     AND observation.observation_sequence::numeric <=\n'
+        || E'                         v_worker.instance_epoch::numeric * 4294967296 + 4294967295\n'
+        || E'               )\n'
+        || E'           )\n'
+        || E'       ) THEN\n';
+    IF strpos(v_definition, v_old) = 0 THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_worker_node_epoch_sync_dependency_drift',
+            MESSAGE = 'WorkerInstance epoch validation entrypoint changed';
     END IF;
     EXECUTE replace(v_definition, v_old, v_new);
 END
@@ -159,6 +220,7 @@ DECLARE
     v_control_session_epoch bigint;
     v_spiffe_id_digest bytea;
     v_member_id uuid;
+    v_leader_member_id uuid;
     v_model_runtime_epoch bigint;
     v_control_session_id text;
     v_now timestamptz := clock_timestamp();
@@ -209,6 +271,12 @@ BEGIN
             MESSAGE = 'Stage Worker mTLS identity does not match one READY WorkerMember';
     END IF;
 
+    SELECT min(member.id::text)::uuid INTO v_leader_member_id
+    FROM public.worker_members AS member
+    WHERE member.worker_instance_id = v_worker.id
+      AND member.worker_instance_epoch = v_worker.instance_epoch
+      AND member.readiness = 'READY';
+
     SELECT max(residency.model_runtime_epoch) INTO v_model_runtime_epoch
     FROM public.model_residencies AS residency
     WHERE residency.worker_instance_id = v_worker.id
@@ -225,6 +293,13 @@ BEGIN
         || v_control_session_epoch::text;
     IF v_worker.control_session_epoch = v_control_session_epoch
        AND v_worker.control_session_id = v_control_session_id THEN
+        RETURN QUERY SELECT
+            v_worker.instance_epoch, v_worker.control_session_epoch,
+            v_model_runtime_epoch;
+        RETURN;
+    END IF;
+    IF v_control_session_epoch < v_worker.control_session_epoch
+       OR v_member_id <> v_leader_member_id THEN
         RETURN QUERY SELECT
             v_worker.instance_epoch, v_worker.control_session_epoch,
             v_model_runtime_epoch;
@@ -429,6 +504,53 @@ BEGIN
 END
 $$;
 
+-- Fleet observation and Stage registration both lock WorkerInstance before
+-- ModelRuntime residency. Make ASSIGN use the same global order so it cannot
+-- hold the residency gate while waiting for the WorkerInstance.
+DO $$
+DECLARE
+    v_definition text;
+    v_old text;
+    v_new text;
+BEGIN
+    v_definition := pg_get_functiondef(
+        'public.vela_apply_stage_command(jsonb)'::regprocedure
+    );
+    v_old := E'    IF v_kind = ''ASSIGN'' THEN\n'
+        || E'        v_residency_id := (p_command ->> ''model_residency_id'')::uuid;\n'
+        || E'    ELSIF v_kind IN (''START'', ''COMPLETE'', ''FAIL'') THEN\n'
+        || E'        SELECT lease.model_residency_id INTO v_residency_id\n'
+        || E'        FROM public.stage_leases AS lease\n'
+        || E'        WHERE lease.id = (p_command ->> ''stage_lease_id'')::uuid;\n'
+        || E'    END IF;\n'
+        || E'    IF v_residency_id IS NOT NULL THEN\n'
+        || E'        PERFORM public.vela_lock_model_runtime_epoch_gate(v_residency_id);\n'
+        || E'    END IF;\n';
+    v_new := E'    IF v_kind = ''ASSIGN'' THEN\n'
+        || E'        PERFORM public.vela_lock_stage_worker_control_session(\n'
+        || E'            (p_command ->> ''worker_instance_id'')::uuid,\n'
+        || E'            (p_command ->> ''worker_instance_epoch'')::bigint,\n'
+        || E'            NULL\n'
+        || E'        );\n'
+        || E'        v_residency_id := (p_command ->> ''model_residency_id'')::uuid;\n'
+        || E'    ELSIF v_kind IN (''START'', ''COMPLETE'', ''FAIL'') THEN\n'
+        || E'        SELECT lease.model_residency_id INTO v_residency_id\n'
+        || E'        FROM public.stage_leases AS lease\n'
+        || E'        WHERE lease.id = (p_command ->> ''stage_lease_id'')::uuid;\n'
+        || E'    END IF;\n'
+        || E'    IF v_residency_id IS NOT NULL THEN\n'
+        || E'        PERFORM public.vela_lock_model_runtime_epoch_gate(v_residency_id);\n'
+        || E'    END IF;\n';
+    IF strpos(v_definition, v_old) = 0 THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_worker_assign_lock_order_dependency_drift',
+            MESSAGE = 'Stage ASSIGN runtime epoch lock entrypoint changed';
+    END IF;
+    EXECUTE replace(v_definition, v_old, v_new);
+END
+$$;
+
 CREATE FUNCTION vela_report_stage_worker_capacity_v66(p_observation jsonb)
 RETURNS TABLE (
     worker_instance_id uuid,
@@ -455,6 +577,7 @@ DECLARE
     v_member_id uuid;
     v_leader_member_id uuid;
     v_observed_by text;
+    v_latest_observation public.capacity_observations%ROWTYPE;
     v_now timestamptz := clock_timestamp();
 BEGIN
     IF p_observation IS NULL OR jsonb_typeof(p_observation) <> 'object'
@@ -550,18 +673,52 @@ BEGIN
     END IF;
 
     v_observed_by := 'stage-worker-control/' || v_member_id::text;
-    SELECT COALESCE(
-               max(observation.observation_sequence),
-               (v_worker.instance_epoch::numeric * 4294967296)::bigint
-           )
-      INTO v_observation_sequence
+    SELECT observation.* INTO v_latest_observation
     FROM public.capacity_observations AS observation
     WHERE observation.worker_instance_id = v_worker.id
       AND observation.worker_instance_epoch = v_worker.instance_epoch
       AND observation.observation_sequence::numeric >
           v_worker.instance_epoch::numeric * 4294967296
       AND observation.observation_sequence::numeric <=
-          v_worker.instance_epoch::numeric * 4294967296 + 4294967295;
+          v_worker.instance_epoch::numeric * 4294967296 + 4294967295
+    ORDER BY observation.observation_sequence DESC
+    LIMIT 1
+    FOR UPDATE;
+
+    IF v_latest_observation.observation_sequence IS NOT NULL
+       AND v_latest_observation.stage_worker_control_session_epoch =
+           v_control_session_epoch
+       AND v_latest_observation.capacity_vector = v_capacity_vector
+       AND v_latest_observation.expires_at > v_now THEN
+        IF v_observed_at < v_latest_observation.stage_worker_last_observed_at
+           OR v_expires_at < v_latest_observation.expires_at THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '55000',
+                CONSTRAINT = 'stage_worker_capacity_renewal_stale',
+                MESSAGE = 'Stage Worker capacity renewal time must not move backward';
+        END IF;
+        UPDATE public.capacity_observations AS observation
+        SET expires_at = v_expires_at,
+            stage_worker_last_observed_at = v_observed_at
+        WHERE observation.worker_instance_id = v_worker.id
+          AND observation.observation_sequence =
+              v_latest_observation.observation_sequence;
+        UPDATE public.worker_instances AS worker
+        SET reachability_state = 'CONNECTED',
+            observed_at = GREATEST(worker.observed_at, v_now),
+            observed_by = v_observed_by
+        WHERE worker.id = v_worker.id;
+        RETURN QUERY SELECT
+            v_worker.id, v_worker.instance_epoch, true,
+            'capacity lease renewed'::text,
+            v_latest_observation.observation_sequence;
+        RETURN;
+    END IF;
+
+    v_observation_sequence := COALESCE(
+        v_latest_observation.observation_sequence,
+        (v_worker.instance_epoch::numeric * 4294967296)::bigint
+    );
     IF v_observation_sequence::numeric >=
        v_worker.instance_epoch::numeric * 4294967296 + 4294967295 THEN
         RAISE EXCEPTION USING
@@ -573,10 +730,12 @@ BEGIN
 
     INSERT INTO public.capacity_observations (
         worker_instance_id, worker_instance_epoch, observation_sequence,
-        capacity_vector, observed_at, expires_at, observed_by
+        capacity_vector, observed_at, expires_at, observed_by,
+        stage_worker_control_session_epoch, stage_worker_last_observed_at
     ) VALUES (
         v_worker.id, v_worker.instance_epoch, v_observation_sequence,
-        v_capacity_vector, v_observed_at, v_expires_at, v_observed_by
+        v_capacity_vector, v_observed_at, v_expires_at, v_observed_by,
+        v_control_session_epoch, v_observed_at
     );
     UPDATE public.worker_instances AS worker
     SET reachability_state = 'CONNECTED',
@@ -723,6 +882,50 @@ BEGIN
 END
 $$;
 
+DO $$
+DECLARE
+    v_definition text;
+    v_old text;
+    v_new text;
+BEGIN
+    v_definition := pg_get_functiondef(
+        'public.vela_apply_stage_command(jsonb)'::regprocedure
+    );
+    v_old := E'    IF v_kind = ''ASSIGN'' THEN\n'
+        || E'        PERFORM public.vela_lock_stage_worker_control_session(\n'
+        || E'            (p_command ->> ''worker_instance_id'')::uuid,\n'
+        || E'            (p_command ->> ''worker_instance_epoch'')::bigint,\n'
+        || E'            NULL\n'
+        || E'        );\n'
+        || E'        v_residency_id := (p_command ->> ''model_residency_id'')::uuid;\n'
+        || E'    ELSIF v_kind IN (''START'', ''COMPLETE'', ''FAIL'') THEN\n'
+        || E'        SELECT lease.model_residency_id INTO v_residency_id\n'
+        || E'        FROM public.stage_leases AS lease\n'
+        || E'        WHERE lease.id = (p_command ->> ''stage_lease_id'')::uuid;\n'
+        || E'    END IF;\n'
+        || E'    IF v_residency_id IS NOT NULL THEN\n'
+        || E'        PERFORM public.vela_lock_model_runtime_epoch_gate(v_residency_id);\n'
+        || E'    END IF;\n';
+    v_new := E'    IF v_kind = ''ASSIGN'' THEN\n'
+        || E'        v_residency_id := (p_command ->> ''model_residency_id'')::uuid;\n'
+        || E'    ELSIF v_kind IN (''START'', ''COMPLETE'', ''FAIL'') THEN\n'
+        || E'        SELECT lease.model_residency_id INTO v_residency_id\n'
+        || E'        FROM public.stage_leases AS lease\n'
+        || E'        WHERE lease.id = (p_command ->> ''stage_lease_id'')::uuid;\n'
+        || E'    END IF;\n'
+        || E'    IF v_residency_id IS NOT NULL THEN\n'
+        || E'        PERFORM public.vela_lock_model_runtime_epoch_gate(v_residency_id);\n'
+        || E'    END IF;\n';
+    IF strpos(v_definition, v_old) = 0 THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_worker_assign_lock_order_rollback_drift',
+            MESSAGE = 'Stage ASSIGN runtime epoch rollback entrypoint changed';
+    END IF;
+    EXECUTE replace(v_definition, v_old, v_new);
+END
+$$;
+
 CREATE OR REPLACE FUNCTION vela_verify_stage_capacity_observation(p_observation jsonb)
 RETURNS TABLE (
     worker_instance_id uuid,
@@ -809,6 +1012,10 @@ $$;
 REVOKE EXECUTE ON FUNCTION vela_report_stage_worker_capacity_v66(jsonb)
     FROM vela_attempt_coordinator_owner;
 DROP FUNCTION vela_report_stage_worker_capacity_v66(jsonb);
+ALTER TABLE public.capacity_observations
+    DROP CONSTRAINT capacity_observations_stage_worker_lease_valid,
+    DROP COLUMN stage_worker_last_observed_at,
+    DROP COLUMN stage_worker_control_session_epoch;
 
 DO $$
 DECLARE
@@ -953,6 +1160,49 @@ DROP FUNCTION vela_lock_stage_worker_control_session(uuid, bigint, bigint);
 REVOKE EXECUTE ON FUNCTION vela_reconnect_stage_worker_control(jsonb)
     FROM vela_attempt_coordinator_owner;
 DROP FUNCTION vela_reconnect_stage_worker_control(jsonb);
+
+DO $$
+DECLARE
+    v_definition text;
+    v_old text;
+    v_new text;
+BEGIN
+    v_definition := pg_get_functiondef(
+        'public.vela_observe_worker_instance(jsonb)'::regprocedure
+    );
+    v_old := E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
+        || E'       OR v_worker.instance_epoch <> (p_evidence ->> ''instance_epoch'')::bigint\n'
+        || E'       OR (\n'
+        || E'           v_worker.control_session_epoch <>\n'
+        || E'               (p_evidence ->> ''control_session_epoch'')::bigint\n'
+        || E'           AND NOT (\n'
+        || E'               (p_evidence ->> ''control_session_epoch'')::bigint <\n'
+        || E'                   v_worker.control_session_epoch\n'
+        || E'               AND EXISTS (\n'
+        || E'                   SELECT 1\n'
+        || E'                   FROM public.capacity_observations AS observation\n'
+        || E'                   WHERE observation.worker_instance_id = v_worker.id\n'
+        || E'                     AND observation.worker_instance_epoch =\n'
+        || E'                         v_worker.instance_epoch\n'
+        || E'                     AND observation.observation_sequence::numeric >\n'
+        || E'                         v_worker.instance_epoch::numeric * 4294967296\n'
+        || E'                     AND observation.observation_sequence::numeric <=\n'
+        || E'                         v_worker.instance_epoch::numeric * 4294967296 + 4294967295\n'
+        || E'               )\n'
+        || E'           )\n'
+        || E'       ) THEN\n';
+    v_new := E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
+        || E'       OR v_worker.instance_epoch <> (p_evidence ->> ''instance_epoch'')::bigint\n'
+        || E'       OR v_worker.control_session_epoch <> (p_evidence ->> ''control_session_epoch'')::bigint THEN\n';
+    IF strpos(v_definition, v_old) = 0 THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_worker_node_epoch_sync_rollback_drift',
+            MESSAGE = 'WorkerInstance epoch validation rollback entrypoint changed';
+    END IF;
+    EXECUTE replace(v_definition, v_old, v_new);
+END
+$$;
 
 DO $$
 DECLARE

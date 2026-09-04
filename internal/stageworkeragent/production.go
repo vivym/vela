@@ -58,6 +58,10 @@ type capacityObservationSequenceObserver interface {
 	ObserveCapacityObservationSequence(context.Context, int64) error
 }
 
+type controlSessionEpochReader interface {
+	CurrentControlSessionEpoch() int64
+}
+
 type RetryObserver func(operation string, err error)
 
 type capacityPublicationState uint8
@@ -186,29 +190,39 @@ type ProductionConfig struct {
 }
 
 type ProductionAgent struct {
-	control                   ControlClient
-	runtime                   RuntimeReadinessClient
-	stream                    *StreamAgent
-	runtimeIdentities         []*velav1.ModelRuntimeIdentity
-	runtimeBarrierGenerations map[string]int64
-	acquireCursor             int
-	devices                   []*velav1.StageAuthorityDeviceEpoch
-	members                   []*velav1.StageAuthorityMemberEpoch
-	capacityVector            map[string]int64
-	capacityTTL               time.Duration
-	heartbeatInterval         time.Duration
-	retryMinimum              time.Duration
-	retryMaximum              time.Duration
-	observationSequenceSource CapacityObservationSequenceSource
-	retryObserver             RetryObserver
-	capacityPublicationState  capacityPublicationState
-	now                       func() time.Time
-	wait                      func(context.Context, time.Duration) error
+	control                     ControlClient
+	runtime                     RuntimeReadinessClient
+	stream                      *StreamAgent
+	runtimeIdentities           []*velav1.ModelRuntimeIdentity
+	runtimeBarrierGenerations   map[string]int64
+	acquireCursor               int
+	devices                     []*velav1.StageAuthorityDeviceEpoch
+	members                     []*velav1.StageAuthorityMemberEpoch
+	capacityVector              map[string]int64
+	capacityTTL                 time.Duration
+	heartbeatInterval           time.Duration
+	retryMinimum                time.Duration
+	retryMaximum                time.Duration
+	observationSequenceSource   CapacityObservationSequenceSource
+	retryObserver               RetryObserver
+	capacityPublicationState    capacityPublicationState
+	capacityObservationSequence int64
+	capacityExpiresAt           time.Time
+	capacityControlSessionEpoch int64
+	now                         func() time.Time
+	wait                        func(context.Context, time.Duration) error
 }
 
 type DiscoveryResult struct {
 	Assignment *velav1.StageAssignment
 	RetryAfter time.Duration
+}
+
+type capacityPublication struct {
+	sequence            int64
+	expiresAt           time.Time
+	controlSessionEpoch int64
+	accepted            bool
 }
 
 type readinessEvidenceV1 struct {
@@ -311,21 +325,7 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 			backoff = nextBackoff(backoff, agent.retryMaximum)
 			continue
 		}
-		sequence, err := agent.nextObservationSequence(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			if err := agent.wait(ctx, backoff); err != nil {
-				if ctx.Err() != nil {
-					return nil
-				}
-				return err
-			}
-			backoff = nextBackoff(backoff, agent.retryMaximum)
-			continue
-		}
-		discovery, err := agent.Discover(ctx, sequence)
+		discovery, err := agent.Discover(ctx, 0)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -358,11 +358,7 @@ func (agent *ProductionAgent) Run(ctx context.Context) error {
 				return err
 			}
 			backoff = nextBackoff(backoff, agent.retryMaximum)
-			sequence, err = agent.nextObservationSequence(ctx)
-			if err != nil {
-				continue
-			}
-			leader, _, refreshErr := agent.refreshEvidence(ctx, sequence)
+			leader, _, refreshErr := agent.refreshEvidence(ctx, 0)
 			if refreshErr != nil {
 				err = refreshErr
 				continue
@@ -495,7 +491,8 @@ func (agent *ProductionAgent) Discover(
 	observationSequence int64,
 ) (DiscoveryResult, error) {
 	if agent == nil || agent.control == nil || agent.runtime == nil || agent.now == nil ||
-		ctx == nil || observationSequence <= 0 {
+		ctx == nil || observationSequence < 0 ||
+		(observationSequence == 0 && agent.observationSequenceSource == nil) {
 		return DiscoveryResult{}, errors.New("stage worker production discovery is not configured")
 	}
 	leader, readySequence, err := agent.refreshEvidence(ctx, observationSequence)
@@ -514,32 +511,38 @@ func (agent *ProductionAgent) refreshEvidence(
 ) (bool, int64, error) {
 	primary := agent.primaryRuntimeIdentity()
 	capacityReporter := agent.isCapacityReporter()
-	registrationSequence := int64(0)
-	readySequence := observationSequence
+	sequenceHint := observationSequence
+	nextSequence := func() (int64, error) {
+		if sequenceHint > 0 {
+			sequence := sequenceHint
+			sequenceHint = 0
+			return sequence, nil
+		}
+		return agent.nextObservationSequence(ctx)
+	}
+	registrationSequence := agent.capacityObservationSequence
 	if capacityReporter && agent.capacityPublicationState == capacityPublicationUnknown {
 		unavailable := maps.Clone(agent.capacityVector)
 		for resource := range unavailable {
 			unavailable[resource] = 0
 		}
-		acceptedSequence, err := agent.reportCapacity(
-			ctx,
-			primary,
-			observationSequence,
-			unavailable,
-		)
+		sequence, err := nextSequence()
 		if err != nil {
 			return false, 0, err
 		}
-		agent.capacityPublicationState = capacityPublicationUnavailable
-		registrationSequence = acceptedSequence
-		readySequence = 0
+		publication, err := agent.reportCapacity(ctx, primary, sequence, unavailable)
+		agent.recordCapacityPublication(capacityPublicationUnavailable, publication)
+		if err != nil {
+			return false, 0, err
+		}
+		registrationSequence = publication.sequence
 	}
 	barrierGenerations := make(map[string]int64, len(agent.runtimeIdentities))
 	leaderMemberID := ""
 	for _, identity := range agent.runtimeIdentities {
 		evidence, err := agent.probeReadiness(ctx, identity)
 		if err != nil {
-			return agent.rejectEvidence(ctx, primary, observationSequence, err)
+			return agent.rejectEvidence(ctx, primary, sequenceHint, err)
 		}
 		registered, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 			Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
@@ -555,7 +558,7 @@ func (agent *ProductionAgent) refreshEvidence(
 		if err != nil {
 			err = fmt.Errorf("register Stage Worker evidence: %w", err)
 			agent.observeRetry("register-worker-evidence", err)
-			return agent.rejectEvidence(ctx, primary, observationSequence, err)
+			return agent.rejectEvidence(ctx, primary, sequenceHint, err)
 		}
 		decision, err := agent.requireReady(registered, "registration")
 		if err != nil {
@@ -568,7 +571,7 @@ func (agent *ProductionAgent) refreshEvidence(
 			return agent.rejectEvidence(
 				ctx,
 				primary,
-				observationSequence,
+				sequenceHint,
 				errors.New("stage worker registration returned an inconsistent gang barrier"),
 			)
 		}
@@ -580,21 +583,22 @@ func (agent *ProductionAgent) refreshEvidence(
 	if primary.GetWorkerMemberId() != leaderMemberID {
 		return false, 0, nil
 	}
-	if readySequence == 0 {
-		var err error
-		readySequence, err = agent.nextObservationSequence(ctx)
-		if err != nil {
-			return false, 0, err
-		}
+	if agent.capacityPublicationFresh() {
+		return true, agent.capacityObservationSequence, nil
 	}
-	acceptedSequence, err := agent.reportCapacity(
-		ctx, primary, readySequence, maps.Clone(agent.capacityVector),
-	)
+	readySequence, err := nextSequence()
 	if err != nil {
 		return false, 0, err
 	}
-	agent.capacityPublicationState = capacityPublicationReady
-	return true, acceptedSequence, nil
+	publication, err := agent.reportCapacity(ctx, primary, readySequence, maps.Clone(agent.capacityVector))
+	agent.recordCapacityPublication(capacityPublicationReady, publication)
+	if err != nil {
+		if publication.accepted {
+			return agent.rejectEvidence(ctx, primary, publication.sequence, err)
+		}
+		return false, 0, err
+	}
+	return true, publication.sequence, nil
 }
 
 func (agent *ProductionAgent) rejectEvidence(
@@ -607,15 +611,55 @@ func (agent *ProductionAgent) rejectEvidence(
 		agent.capacityPublicationState != capacityPublicationReady {
 		return false, 0, cause
 	}
+	if observationSequence <= 0 {
+		var err error
+		observationSequence, err = agent.nextObservationSequence(ctx)
+		if err != nil {
+			return false, 0, errors.Join(cause, err)
+		}
+	}
 	unavailable := maps.Clone(agent.capacityVector)
 	for resource := range unavailable {
 		unavailable[resource] = 0
 	}
-	if _, err := agent.reportCapacity(ctx, identity, observationSequence, unavailable); err != nil {
+	publication, err := agent.reportCapacity(ctx, identity, observationSequence, unavailable)
+	agent.recordCapacityPublication(capacityPublicationUnavailable, publication)
+	if err != nil {
 		return false, 0, errors.Join(cause, fmt.Errorf("withdraw Stage Worker capacity: %w", err))
 	}
-	agent.capacityPublicationState = capacityPublicationUnavailable
 	return false, 0, cause
+}
+
+func (agent *ProductionAgent) capacityPublicationFresh() bool {
+	if agent.capacityPublicationState != capacityPublicationReady ||
+		agent.capacityObservationSequence <= 0 || agent.capacityExpiresAt.IsZero() ||
+		!agent.now().UTC().Before(agent.capacityExpiresAt.Add(-agent.capacityTTL/2)) {
+		return false
+	}
+	currentEpoch := agent.currentControlSessionEpoch()
+	return currentEpoch == 0 || agent.capacityControlSessionEpoch == 0 ||
+		currentEpoch == agent.capacityControlSessionEpoch
+}
+
+func (agent *ProductionAgent) currentControlSessionEpoch() int64 {
+	reader, ok := agent.control.(controlSessionEpochReader)
+	if !ok {
+		return 0
+	}
+	return reader.CurrentControlSessionEpoch()
+}
+
+func (agent *ProductionAgent) recordCapacityPublication(
+	state capacityPublicationState,
+	publication capacityPublication,
+) {
+	if !publication.accepted {
+		return
+	}
+	agent.capacityPublicationState = state
+	agent.capacityObservationSequence = publication.sequence
+	agent.capacityExpiresAt = publication.expiresAt
+	agent.capacityControlSessionEpoch = publication.controlSessionEpoch
 }
 
 func (agent *ProductionAgent) isCapacityReporter() bool {
@@ -634,7 +678,7 @@ func (agent *ProductionAgent) reportCapacity(
 	identity *velav1.ModelRuntimeIdentity,
 	observationSequence int64,
 	capacityVector map[string]int64,
-) (int64, error) {
+) (capacityPublication, error) {
 	now := agent.now().UTC()
 	reported, err := agent.control.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation{
@@ -651,23 +695,27 @@ func (agent *ProductionAgent) reportCapacity(
 	if err != nil {
 		err = fmt.Errorf("report Stage Worker capacity: %w", err)
 		agent.observeRetry("report-capacity", err)
-		return 0, err
+		return capacityPublication{}, err
 	}
 	decision, err := agent.requireReady(reported, "capacity")
 	if err != nil {
 		agent.observeRetry("report-capacity", err)
-		return 0, err
+		return capacityPublication{}, err
 	}
 	acceptedSequence := decision.GetCapacityObservationSequence()
 	if acceptedSequence <= 0 {
-		return 0, errors.New("stage worker capacity response omitted its durable sequence")
+		return capacityPublication{}, errors.New("stage worker capacity response omitted its durable sequence")
+	}
+	publication := capacityPublication{
+		sequence: acceptedSequence, expiresAt: now.Add(agent.capacityTTL),
+		controlSessionEpoch: agent.currentControlSessionEpoch(), accepted: true,
 	}
 	if observer, ok := agent.observationSequenceSource.(capacityObservationSequenceObserver); ok {
 		if err := observer.ObserveCapacityObservationSequence(ctx, acceptedSequence); err != nil {
-			return 0, fmt.Errorf("persist durable Stage Worker capacity sequence: %w", err)
+			return publication, fmt.Errorf("persist durable Stage Worker capacity sequence: %w", err)
 		}
 	}
-	return acceptedSequence, nil
+	return publication, nil
 }
 
 func (agent *ProductionAgent) observeRetry(operation string, err error) {

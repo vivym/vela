@@ -827,7 +827,13 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		t.Fatalf("record current Stage Worker capacity = %#v error=%v", reported, err)
 	}
 	nodeEvidence := workerRegistryEvidenceValue(t, assignment.WorkerInstanceID, 0xb0)
-	nodeEvidence.ControlSessionEpoch = command.ControlSessionEpoch
+	if nodeEvidence.ControlSessionEpoch >= command.ControlSessionEpoch {
+		t.Fatalf(
+			"Node Agent fixture control epoch=%d is not stale relative to Stage Worker epoch=%d",
+			nodeEvidence.ControlSessionEpoch,
+			command.ControlSessionEpoch,
+		)
+	}
 	nodeEvidence.Residencies[0].ModelComponentRevision = "h3-encoder-v1"
 	nodeEvidence.Residencies[0].RuntimeImageDigest =
 		"sha256:3333333333333333333333333333333333333333333333333333333333333333"
@@ -845,9 +851,18 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 	if err != nil {
 		t.Fatalf("construct post-takeover Worker Registry: %v", err)
 	}
-	if _, err := registry.Observe(context.Background(), nodeEvidence); err != nil {
+	nodeDecision, err := registry.Observe(context.Background(), nodeEvidence)
+	if err != nil {
 		t.Fatalf("refresh Fleet evidence after Stage capacity takeover: %v", err)
 	}
+	if nodeDecision.ControlSessionEpoch != command.ControlSessionEpoch {
+		t.Fatalf(
+			"Node Agent durable control epoch=%d want=%d",
+			nodeDecision.ControlSessionEpoch,
+			command.ControlSessionEpoch,
+		)
+	}
+	nodeEvidence.ControlSessionEpoch = nodeDecision.ControlSessionEpoch
 	var nodeCapacityRows int64
 	var workerObservedBy string
 	if err := database.Admin.QueryRow(`
@@ -902,9 +917,24 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		context.Background(), command, capacityRequest,
 	)
 	if err != nil || !recoveredCapacity.Ready ||
-		recoveredCapacity.CapacityObservationSequence != observationSequence+1 {
+		recoveredCapacity.CapacityObservationSequence != observationSequence {
 		t.Fatalf("recover stale local capacity high-water = %#v error=%v", recoveredCapacity, err)
 	}
+	renewedCapacity := proto.Clone(capacityRequest).(*velav1.ReportStageCapacityObservationRequest)
+	renewedObservedAt := capacityObservedAt.Add(time.Second)
+	renewedCapacity.ObservedAt = timestamppb.New(renewedObservedAt)
+	renewedCapacity.ExpiresAt = timestamppb.New(capacityObservedAt.Add(3 * time.Minute))
+	renewedResult, err := backend.ReportCapacityObservation(
+		context.Background(), command, renewedCapacity,
+	)
+	if err != nil || !renewedResult.Ready ||
+		renewedResult.CapacityObservationSequence != observationSequence {
+		t.Fatalf("renew current Stage Worker capacity = %#v error=%v", renewedResult, err)
+	}
+	staleRenewal := proto.Clone(renewedCapacity).(*velav1.ReportStageCapacityObservationRequest)
+	staleRenewal.ObservedAt = timestamppb.New(capacityObservedAt)
+	_, err = backend.ReportCapacityObservation(context.Background(), command, staleRenewal)
+	assertPostgresConstraint(t, err, "stage_worker_capacity_renewal_stale")
 	replayedRegistration, err := backend.RegisterWorkerEvidence(
 		context.Background(), command, registration,
 	)
@@ -1098,6 +1128,186 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 			t.Fatal("serialized Stage Worker registration did not finish")
 		}
 	})
+	t.Run("ASSIGN and registration preserve WorkerInstance residency lock order", func(t *testing.T) {
+		const gateSeed int64 = 590059
+		devices := make([]map[string]any, 0, len(registration.GetDevices()))
+		for _, device := range registration.GetDevices() {
+			devices = append(devices, map[string]any{
+				"device_id": device.GetDeviceId(), "device_epoch": device.GetDeviceEpoch(),
+			})
+		}
+		members := make([]map[string]any, 0, len(registration.GetMembers()))
+		for _, member := range registration.GetMembers() {
+			members = append(members, map[string]any{
+				"worker_member_id":    member.GetWorkerMemberId(),
+				"member_epoch":        member.GetMemberEpoch(),
+				"model_runtime_epoch": member.GetModelRuntimeEpoch(),
+			})
+		}
+		registrationPayload := mustJSON(t, map[string]any{
+			"schema_version":                1,
+			"worker_instance_id":            assignment.WorkerInstanceID,
+			"worker_instance_epoch":         assignment.WorkerInstanceEpoch,
+			"control_session_epoch":         command.ControlSessionEpoch,
+			"device_set_digest":             hex.EncodeToString(registration.GetRuntimeIdentity().GetDeviceSetDigest()),
+			"membership_digest":             hex.EncodeToString(registration.GetRuntimeIdentity().GetMembershipDigest()),
+			"model_residency_id":            assignment.ModelResidencyID,
+			"runtime_identity":              registration.GetRuntimeIdentity().GetRuntimeIdentity(),
+			"model_runtime_epoch":           registration.GetRuntimeIdentity().GetModelRuntimeEpoch(),
+			"stage_profile_revision_id":     registration.GetRuntimeIdentity().GetStageProfileRevisionId(),
+			"worker_member_id":              registration.GetRuntimeIdentity().GetWorkerMemberId(),
+			"worker_member_epoch":           registration.GetRuntimeIdentity().GetWorkerMemberEpoch(),
+			"capacity_observation_sequence": 0,
+			"spiffe_id_digest":              hex.EncodeToString(spiffeDigest[:]),
+			"readiness_evidence_digest":     hex.EncodeToString(readinessDigest[:]),
+			"devices":                       devices,
+			"members":                       members,
+		})
+		assignPayload := mustJSON(t, map[string]any{
+			"schema_version":                1,
+			"command_kind":                  "ASSIGN",
+			"command_id":                    assignment.CommandID,
+			"attempt_id":                    assignment.AttemptID,
+			"stage_run_id":                  assignment.StageRunID,
+			"expected_attempt_fence":        assignment.ExpectedAttemptFence,
+			"expected_stage_fence":          assignment.ExpectedStageFence,
+			"expected_stage_version":        assignment.ExpectedStageVersion,
+			"stage_attempt_id":              assignment.StageAttemptID,
+			"stage_allocation_id":           assignment.StageAllocationID,
+			"stage_lease_id":                assignment.StageLeaseID,
+			"stage_profile_revision_id":     assignment.StageProfileRevisionID,
+			"capacity_pool_id":              assignment.CapacityPoolID,
+			"worker_instance_id":            assignment.WorkerInstanceID,
+			"worker_instance_epoch":         assignment.WorkerInstanceEpoch,
+			"capacity_observation_sequence": assignment.ObservationSequence,
+			"device_set_digest":             hex.EncodeToString(assignment.DeviceSetDigest),
+			"membership_digest":             hex.EncodeToString(assignment.MembershipDigest),
+			"model_residency_id":            assignment.ModelResidencyID,
+			"model_runtime_epoch":           assignment.ModelRuntimeEpoch,
+			"capacity_vector":               assignment.CapacityVector,
+			"token_digest":                  hex.EncodeToString(assignment.TokenDigest),
+			"signing_key_id":                assignment.SigningKeyID,
+			"execution_nonce":               hex.EncodeToString(assignment.ExecutionNonce),
+			"issued_at":                     assignment.IssuedAt.UTC().Format(time.RFC3339Nano),
+			"expires_at":                    assignment.ExpiresAt.UTC().Format(time.RFC3339Nano),
+			"local_deadline_at":             assignment.LocalDeadlineAt.UTC().Format(time.RFC3339Nano),
+		})
+
+		blocker, err := database.Admin.Conn(context.Background())
+		if err != nil {
+			t.Fatalf("acquire runtime gate blocker: %v", err)
+		}
+		defer blocker.Close()
+		if _, err := blocker.ExecContext(context.Background(), `
+			SELECT pg_advisory_lock(pg_catalog.hashtextextended($1::text, $2))
+		`, assignment.ModelResidencyID.String(), gateSeed); err != nil {
+			t.Fatalf("lock ModelRuntime epoch gate: %v", err)
+		}
+		unlocked := false
+		defer func() {
+			if !unlocked {
+				var released bool
+				_ = blocker.QueryRowContext(context.Background(), `
+					SELECT pg_advisory_unlock(pg_catalog.hashtextextended($1::text, $2))
+				`, assignment.ModelResidencyID.String(), gateSeed).Scan(&released)
+			}
+		}()
+
+		coordinatorPool := newRolePool(
+			t, database.DSN,
+			"vela_attempt_coordinator_login", "vela-attempt-coordinator-password",
+		)
+		assignConnection, err := coordinatorPool.Acquire(context.Background())
+		if err != nil {
+			t.Fatalf("acquire concurrent ASSIGN connection: %v", err)
+		}
+		defer assignConnection.Release()
+		registrationConnection, err := workerPool.Acquire(context.Background())
+		if err != nil {
+			t.Fatalf("acquire concurrent registration connection: %v", err)
+		}
+		defer registrationConnection.Release()
+		var assignPID, registrationPID int
+		if err := assignConnection.QueryRow(
+			context.Background(), "SELECT pg_backend_pid()",
+		).Scan(&assignPID); err != nil {
+			t.Fatalf("read ASSIGN backend PID: %v", err)
+		}
+		if err := registrationConnection.QueryRow(
+			context.Background(), "SELECT pg_backend_pid()",
+		).Scan(&registrationPID); err != nil {
+			t.Fatalf("read registration backend PID: %v", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		assignResults := make(chan error, 1)
+		registrationResults := make(chan error, 1)
+		go func() {
+			_, assignErr := assignConnection.Exec(
+				ctx, "SELECT * FROM vela_apply_stage_command($1::jsonb)", assignPayload,
+			)
+			assignResults <- assignErr
+		}()
+		waitForLock := func(pid int, label string, early <-chan error) {
+			t.Helper()
+			deadline := time.Now().Add(6 * time.Second)
+			for time.Now().Before(deadline) {
+				select {
+				case err := <-early:
+					t.Fatalf("%s completed before lock observation: %v", label, err)
+				default:
+				}
+				var waitEventType string
+				if err := database.Admin.QueryRow(`
+					SELECT COALESCE(wait_event_type, '')
+					FROM pg_catalog.pg_stat_activity
+					WHERE pid = $1
+				`, pid).Scan(&waitEventType); err != nil {
+					t.Fatalf("inspect %s lock wait: %v", label, err)
+				}
+				if waitEventType == "Lock" {
+					return
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			t.Fatalf("%s did not reach the expected lock wait", label)
+		}
+		waitForLock(assignPID, "ASSIGN", assignResults)
+		go func() {
+			var ready bool
+			var reason string
+			registerErr := registrationConnection.QueryRow(ctx, `
+				SELECT ready, reason FROM vela_register_stage_worker_runtime($1::jsonb)
+			`, registrationPayload).Scan(&ready, &reason)
+			if registerErr == nil && !ready {
+				registerErr = fmt.Errorf("registration not ready: %s", reason)
+			}
+			registrationResults <- registerErr
+		}()
+		waitForLock(registrationPID, "registration", registrationResults)
+
+		if err := blocker.QueryRowContext(context.Background(), `
+			SELECT pg_advisory_unlock(pg_catalog.hashtextextended($1::text, $2))
+		`, assignment.ModelResidencyID.String(), gateSeed).Scan(&unlocked); err != nil || !unlocked {
+			t.Fatalf("release ModelRuntime epoch gate = %t error=%v", unlocked, err)
+		}
+		for label, results := range map[string]<-chan error{
+			"ASSIGN": assignResults, "registration": registrationResults,
+		} {
+			select {
+			case resultErr := <-results:
+				if resultErr != nil {
+					if strings.Contains(resultErr.Error(), "SQLSTATE 40P01") {
+						t.Fatalf("%s hit a WorkerInstance/residency deadlock: %v", label, resultErr)
+					}
+					t.Fatalf("serialized %s: %v", label, resultErr)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatalf("serialized %s did not finish", label)
+			}
+		}
+	})
 	_, err = backend.RegisterWorkerEvidence(
 		context.Background(), stageworkercontrol.CommandContext{
 			CommandID:           uuid.New(),
@@ -1193,6 +1403,52 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		t.Fatalf("reconcile client-selected control epoch = %#v error=%v", reconciled, err)
 	}
 	command.ControlSessionEpoch = reconciled.ControlSessionEpoch
+	newSessionCapacity := proto.Clone(capacityRequest).(*velav1.ReportStageCapacityObservationRequest)
+	newSessionObservedAt := time.Now().UTC().Truncate(time.Microsecond)
+	newSessionCapacity.ObservedAt = timestamppb.New(newSessionObservedAt)
+	newSessionCapacity.ExpiresAt = timestamppb.New(newSessionObservedAt.Add(2 * time.Minute))
+	newSessionResult, err := backend.ReportCapacityObservation(
+		context.Background(), command, newSessionCapacity,
+	)
+	if err != nil || !newSessionResult.Ready ||
+		newSessionResult.CapacityObservationSequence != observationSequence+1 {
+		t.Fatalf("publish new-session Stage Worker capacity = %#v error=%v", newSessionResult, err)
+	}
+
+	changedCapacity := proto.Clone(newSessionCapacity).(*velav1.ReportStageCapacityObservationRequest)
+	for resource := range changedCapacity.CapacityVector {
+		changedCapacity.CapacityVector[resource] = 0
+		break
+	}
+	changedObservedAt := time.Now().UTC().Truncate(time.Microsecond)
+	changedExpiresAt := changedObservedAt.Add(time.Second)
+	changedCapacity.ObservedAt = timestamppb.New(changedObservedAt)
+	changedCapacity.ExpiresAt = timestamppb.New(changedExpiresAt)
+	changedResult, err := backend.ReportCapacityObservation(
+		context.Background(), command, changedCapacity,
+	)
+	if err != nil || !changedResult.Ready ||
+		changedResult.CapacityObservationSequence != observationSequence+2 {
+		t.Fatalf("publish changed Stage Worker capacity = %#v error=%v", changedResult, err)
+	}
+	backwardCapacity := proto.Clone(changedCapacity).(*velav1.ReportStageCapacityObservationRequest)
+	backwardCapacity.ObservedAt = timestamppb.New(changedObservedAt.Add(-time.Microsecond))
+	_, err = backend.ReportCapacityObservation(context.Background(), command, backwardCapacity)
+	assertPostgresConstraint(t, err, "stage_worker_capacity_renewal_stale")
+	if delay := time.Until(changedExpiresAt.Add(100 * time.Millisecond)); delay > 0 {
+		time.Sleep(delay)
+	}
+	expiredCapacity := proto.Clone(changedCapacity).(*velav1.ReportStageCapacityObservationRequest)
+	expiredObservedAt := time.Now().UTC().Truncate(time.Microsecond)
+	expiredCapacity.ObservedAt = timestamppb.New(expiredObservedAt)
+	expiredCapacity.ExpiresAt = timestamppb.New(expiredObservedAt.Add(2 * time.Minute))
+	expiredResult, err := backend.ReportCapacityObservation(
+		context.Background(), command, expiredCapacity,
+	)
+	if err != nil || !expiredResult.Ready ||
+		expiredResult.CapacityObservationSequence != observationSequence+3 {
+		t.Fatalf("replace expired Stage Worker capacity = %#v error=%v", expiredResult, err)
+	}
 
 	wrongProfile := proto.Clone(registration).(*velav1.RegisterWorkerEvidenceRequest)
 	wrongProfile.RuntimeIdentity.StageProfileRevisionId = uuid.NewString()
@@ -1223,8 +1479,8 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 	`, assignment.WorkerInstanceID).Scan(&observationCount); err != nil {
 		t.Fatalf("count durable CapacityObservations: %v", err)
 	}
-	if observationCount != 3 {
-		t.Fatalf("StageWorkerControl capacity observation count=%d, want bootstrap plus two reports", observationCount)
+	if observationCount != 5 {
+		t.Fatalf("StageWorkerControl capacity observation count=%d, want bootstrap plus four Stage reports", observationCount)
 	}
 }
 
@@ -1501,12 +1757,12 @@ func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing
 			"member_epoch":     1, "model_runtime_epoch": 7,
 		},
 	}
-	registration := func(memberIndex int, identityByte byte) []byte {
+	registration := func(memberIndex int, identityByte byte, controlSessionEpoch int64) []byte {
 		t.Helper()
 		member := members[memberIndex]
 		payload, err := json.Marshal(map[string]any{
 			"schema_version": 1, "worker_instance_id": workerID,
-			"worker_instance_epoch": 1, "control_session_epoch": 2,
+			"worker_instance_epoch": 1, "control_session_epoch": controlSessionEpoch,
 			"device_set_digest":         hex.EncodeToString(deviceSetDigest),
 			"membership_digest":         hex.EncodeToString(membershipDigest),
 			"model_residency_id":        "49200000-0000-0000-0000-000000000123",
@@ -1529,7 +1785,7 @@ func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing
 		t, database.DSN,
 		"vela_stage_worker_control_login", "vela-stage-worker-control-password",
 	)
-	register := func(payload []byte) (bool, string, error) {
+	reconnect := func(payload []byte) (int64, error) {
 		var durableWorkerID uuid.UUID
 		var workerEpoch, sessionEpoch int64
 		if err := workerPool.QueryRow(context.Background(), `
@@ -1544,14 +1800,17 @@ func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing
 				)
 			)
 		`, payload).Scan(&durableWorkerID, &workerEpoch, &sessionEpoch); err != nil {
-			return false, "", err
+			return 0, err
 		}
-		if durableWorkerID != workerID || workerEpoch != 1 || sessionEpoch != 2 {
-			return false, "", fmt.Errorf(
+		if durableWorkerID != workerID || workerEpoch != 1 {
+			return 0, fmt.Errorf(
 				"malformed reconnect result %s/%d/%d",
 				durableWorkerID, workerEpoch, sessionEpoch,
 			)
 		}
+		return sessionEpoch, nil
+	}
+	register := func(payload []byte) (bool, string, error) {
 		var ready bool
 		var reason string
 		err := workerPool.QueryRow(context.Background(), `
@@ -1560,7 +1819,11 @@ func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing
 		return ready, reason, err
 	}
 
-	firstReady, firstReason, err := register(registration(0, 0xa1))
+	firstPayload := registration(0, 0xa1, 2)
+	if sessionEpoch, err := reconnect(firstPayload); err != nil || sessionEpoch != 2 {
+		t.Fatalf("first multi-member reconnect epoch=%d error=%v", sessionEpoch, err)
+	}
+	firstReady, firstReason, err := register(firstPayload)
 	if err != nil || firstReady || !strings.Contains(firstReason, "waiting") {
 		t.Fatalf("first multi-member registration ready=%t reason=%q error=%v", firstReady, firstReason, err)
 	}
@@ -1593,7 +1856,11 @@ func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing
 		)
 	}
 
-	secondReady, secondReason, err := register(registration(1, 0xa3))
+	secondPayload := registration(1, 0xa3, 2)
+	if sessionEpoch, err := reconnect(secondPayload); err != nil || sessionEpoch != 2 {
+		t.Fatalf("second multi-member reconnect epoch=%d error=%v", sessionEpoch, err)
+	}
+	secondReady, secondReason, err := register(secondPayload)
 	if err != nil || !secondReady || !strings.Contains(secondReason, "complete") {
 		t.Fatalf("second multi-member registration ready=%t reason=%q error=%v", secondReady, secondReason, err)
 	}
@@ -1627,13 +1894,42 @@ func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing
 		)
 	}
 
+	leaderEpoch, err := reconnect(registration(0, 0xa1, 3))
+	if err != nil || leaderEpoch != 3 {
+		t.Fatalf("leader multi-member reconnect epoch=%d error=%v", leaderEpoch, err)
+	}
+	nonLeaderEpoch, err := reconnect(registration(1, 0xa3, 2))
+	if err != nil || nonLeaderEpoch != 3 {
+		t.Fatalf("stale non-leader synchronization epoch=%d error=%v", nonLeaderEpoch, err)
+	}
+	for memberIndex, identityByte := range []byte{0xa1, 0xa3} {
+		ready, reason, registerErr := register(registration(memberIndex, identityByte, 3))
+		if registerErr != nil || !ready {
+			t.Fatalf(
+				"post-reconnect member %d ready=%t reason=%q error=%v",
+				memberIndex,
+				ready,
+				reason,
+				registerErr,
+			)
+		}
+	}
+	var durableControlEpoch int64
+	if err := database.Admin.QueryRow(`
+		SELECT worker.control_session_epoch
+		FROM worker_instances AS worker
+		WHERE worker.id = $1
+	`, workerID).Scan(&durableControlEpoch); err != nil || durableControlEpoch != 3 {
+		t.Fatalf("durable multi-member control epoch=%d error=%v", durableControlEpoch, err)
+	}
+
 	beginAcquire := func(spiffeByte byte) uuid.UUID {
 		t.Helper()
 		commandID := uuid.New()
 		payload, err := json.Marshal(map[string]any{
 			"schema_version": 1, "command_id": commandID,
 			"worker_instance_id": workerID, "worker_instance_epoch": 1,
-			"control_session_epoch": 2, "capacity_observation_sequence": 1,
+			"control_session_epoch": 3, "capacity_observation_sequence": 1,
 			"model_residency_id":  "49200000-0000-0000-0000-000000000123",
 			"model_runtime_epoch": 2, "stage_profile_revision_id": multiStageProfileID,
 			"spiffe_id_digest": hex.EncodeToString(bytes.Repeat([]byte{spiffeByte}, 32)),
@@ -1687,7 +1983,7 @@ func TestModelRuntimeEpochRegistrationWaitsForExactMultiMemberBarrier(t *testing
 		t.Fatalf("non-leader acquire decision/reason=%s/%q", acquireDecision, acquireReason)
 	}
 
-	duplicate := registration(0, 0xa1)
+	duplicate := registration(0, 0xa1, 3)
 	var duplicatePayload map[string]any
 	if err := json.Unmarshal(duplicate, &duplicatePayload); err != nil {
 		t.Fatalf("decode duplicate-member registration fixture: %v", err)

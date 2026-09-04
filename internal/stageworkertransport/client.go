@@ -47,14 +47,15 @@ type Client struct {
 		velav1.StageWorkerControlServiceConnectRequest,
 		velav1.StageWorkerControlServiceConnectResponse,
 	]
-	streamEpoch int64
-	epochSource ControlSessionEpochSource
-	generation  uint64
-	pending     map[string]chan exchangeResult
-	closed      bool
-	sendMu      sync.Mutex
-	commands    chan *velav1.StageWorkerControlServiceConnectResponse
-	closeOnce   sync.Once
+	streamEpoch       int64
+	epochSource       ControlSessionEpochSource
+	synchronizedEpoch int64
+	generation        uint64
+	pending           map[string]chan exchangeResult
+	closed            bool
+	sendMu            sync.Mutex
+	commands          chan *velav1.StageWorkerControlServiceConnectResponse
+	closeOnce         sync.Once
 }
 
 func DialClient(ctx context.Context, config ClientConfig) (*Client, error) {
@@ -136,6 +137,15 @@ func (client *Client) Commands() <-chan *velav1.StageWorkerControlServiceConnect
 	return client.commands
 }
 
+func (client *Client) CurrentControlSessionEpoch() int64 {
+	if client == nil {
+		return 0
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.streamEpoch
+}
+
 func (client *Client) Exchange(
 	ctx context.Context,
 	request *velav1.StageWorkerControlServiceConnectRequest,
@@ -214,14 +224,19 @@ func (client *Client) ensureStream() (
 		return client.stream, client.streamEpoch, client.generation, nil
 	}
 	if client.epochSource != nil {
-		nextEpoch, err := client.epochSource.NextControlSessionEpoch(client.ctx)
-		if err != nil {
-			return nil, 0, 0, fmt.Errorf("allocate Stage Worker control session epoch: %w", err)
+		if client.synchronizedEpoch > 0 {
+			client.streamEpoch = client.synchronizedEpoch
+			client.synchronizedEpoch = 0
+		} else {
+			nextEpoch, err := client.epochSource.NextControlSessionEpoch(client.ctx)
+			if err != nil {
+				return nil, 0, 0, fmt.Errorf("allocate Stage Worker control session epoch: %w", err)
+			}
+			if nextEpoch <= client.streamEpoch {
+				return nil, 0, 0, errors.New("stage worker control session epoch did not advance")
+			}
+			client.streamEpoch = nextEpoch
 		}
-		if nextEpoch <= client.streamEpoch {
-			return nil, 0, 0, errors.New("stage worker control session epoch did not advance")
-		}
-		client.streamEpoch = nextEpoch
 	}
 	stream, err := client.service.Connect(client.ctx)
 	if err != nil {
@@ -267,6 +282,11 @@ func (client *Client) receive(
 				client.failStream(stream, generation, fmt.Errorf("persist durable Stage Worker control session epoch: %w", err))
 				return
 			}
+			client.mu.Lock()
+			if client.stream == stream && client.generation == generation {
+				client.synchronizedEpoch = decision.GetControlSessionEpoch()
+			}
+			client.mu.Unlock()
 			client.failStream(stream, generation, errors.New("durable Stage Worker control session synchronized; reconnect required"))
 			return
 		}
