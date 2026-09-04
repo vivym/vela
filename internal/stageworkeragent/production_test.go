@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,7 +198,7 @@ func TestProductionAgentRunsAssignmentsAndHonorsNoWorkRetry(t *testing.T) {
 		Devices:         fixture.authority.GetDevices(), Members: fixture.authority.GetMembers(),
 		CapacityVector: fixture.authority.GetCapacityVector(), CapacityTTL: 2 * time.Minute,
 		HeartbeatInterval: 10 * time.Second, Now: time.Now,
-		ObservationSequenceSource: &capacitySequenceSource{values: []int64{41, 53}},
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{41, 42, 53}},
 		Wait: func(_ context.Context, delay time.Duration) error {
 			waits = append(waits, delay)
 			switch delay {
@@ -227,7 +228,7 @@ func TestProductionAgentRunsAssignmentsAndHonorsNoWorkRetry(t *testing.T) {
 			control.acquireCalls, control.startCalls, control.commitCalls, waits,
 		)
 	}
-	if !reflect.DeepEqual(control.observationSequences, []int64{41, 53}) {
+	if !reflect.DeepEqual(control.observationSequences, []int64{41, 0}) {
 		t.Fatalf("observation sequences = %v, want durable source values", control.observationSequences)
 	}
 }
@@ -279,7 +280,7 @@ func TestProductionAgentReattachesAfterControlReconnectWithoutRerunning(t *testi
 		CapacityVector: fixture.authority.GetCapacityVector(), CapacityTTL: 2 * time.Minute,
 		HeartbeatInterval: 10 * time.Second,
 		RetryMinimum:      time.Second, RetryMaximum: 8 * time.Second,
-		ObservationSequenceSource: &capacitySequenceSource{values: []int64{61, 72, 95}},
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{61, 72, 95, 106, 117, 118}},
 		Now:                       time.Now,
 		Wait: func(_ context.Context, delay time.Duration) error {
 			waits = append(waits, delay)
@@ -330,9 +331,10 @@ func TestProductionAgentRegistersCapacityBeforeAcquiringWork(t *testing.T) {
 			WorkerMemberId: identity.GetWorkerMemberId(), MemberEpoch: identity.GetWorkerMemberEpoch(),
 			ModelRuntimeEpoch: identity.GetModelRuntimeEpoch(),
 		}},
-		CapacityVector: map[string]int64{"gpu": 1, "slots": 1},
-		CapacityTTL:    2 * time.Minute,
-		Now:            func() time.Time { return now },
+		CapacityVector:            map[string]int64{"gpu": 1, "slots": 1},
+		CapacityTTL:               2 * time.Minute,
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{18}},
+		Now:                       func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatalf("NewProductionAgent: %v", err)
@@ -345,7 +347,7 @@ func TestProductionAgentRegistersCapacityBeforeAcquiringWork(t *testing.T) {
 	if cycle.Assignment != nil || cycle.RetryAfter != 250*time.Millisecond {
 		t.Fatalf("cycle = %#v", cycle)
 	}
-	wantOperations := []string{"register", "capacity", "acquire"}
+	wantOperations := []string{"capacity", "register", "capacity", "acquire"}
 	if !reflect.DeepEqual(control.operations, wantOperations) {
 		t.Fatalf("control operations = %v, want %v", control.operations, wantOperations)
 	}
@@ -365,27 +367,49 @@ func TestProductionAgentRegistersCapacityBeforeAcquiringWork(t *testing.T) {
 		len(control.registration.GetReadinessEvidence()) == 0 {
 		t.Fatalf("registration = %#v", control.registration)
 	}
-	if control.capacity.GetObservationSequence() != 17 ||
+	if control.capacity.GetObservationSequence() != 18 ||
 		!control.capacity.GetObservedAt().AsTime().Equal(now) ||
 		!control.capacity.GetExpiresAt().AsTime().Equal(now.Add(2*time.Minute)) ||
 		!reflect.DeepEqual(control.capacity.GetCapacityVector(), map[string]int64{"gpu": 1, "slots": 1}) {
 		t.Fatalf("capacity = %#v", control.capacity)
 	}
-	if control.acquire.GetCapacityObservationSequence() != 17 ||
+	if len(control.capacities) != 2 ||
+		!reflect.DeepEqual(control.capacities[0].GetCapacityVector(), map[string]int64{"gpu": 0, "slots": 0}) {
+		t.Fatalf("capacity publication sequence = %#v", control.capacities)
+	}
+	if control.acquire.GetCapacityObservationSequence() != 18 ||
 		control.acquire.GetWorkerInstanceId() != identity.GetWorkerInstanceId() ||
 		control.acquire.GetModelResidencyId() != identity.GetModelResidencyId() ||
 		control.acquire.GetModelRuntimeEpoch() != 13 ||
 		control.acquire.GetStageProfileRevisionId() != identity.GetStageProfileRevisionId() {
 		t.Fatalf("acquire = %#v", control.acquire)
 	}
+
+	control.operations = nil
+	control.capacities = nil
+	cycle, err = agent.Discover(context.Background(), 19)
+	if err != nil || cycle.Assignment != nil || cycle.RetryAfter != 250*time.Millisecond {
+		t.Fatalf("second Discover = %#v error=%v", cycle, err)
+	}
+	if !reflect.DeepEqual(control.operations, []string{"register", "capacity", "acquire"}) ||
+		len(control.capacities) != 1 ||
+		control.capacities[0].GetObservationSequence() != 19 ||
+		!reflect.DeepEqual(
+			control.capacities[0].GetCapacityVector(),
+			map[string]int64{"gpu": 1, "slots": 1},
+		) || control.registration.GetCapacityObservationSequence() != 0 {
+		t.Fatalf(
+			"healthy capacity refresh operations=%v registration=%#v capacities=%#v",
+			control.operations,
+			control.registration,
+			control.capacities,
+		)
+	}
 }
 
-func TestProductionAgentNonLeaderRegistersWithoutCompetingForStageWork(t *testing.T) {
+func TestProductionAgentWithdrawsCapacityAfterRegistrationFailure(t *testing.T) {
 	identity := productionRuntimeIdentity()
-	control := &productionControl{
-		identity: identity, barrierGeneration: 13,
-		leaderMemberID: "48000000-0000-0000-0000-000000000005",
-	}
+	control := &productionControl{identity: identity, barrierGeneration: 13}
 	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
 		Control: control, Runtime: &readinessRuntime{identity: identity},
 		RuntimeIdentity: identity,
@@ -395,6 +419,95 @@ func TestProductionAgentNonLeaderRegistersWithoutCompetingForStageWork(t *testin
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: identity.GetWorkerMemberId(), MemberEpoch: identity.GetWorkerMemberEpoch(),
 		}},
+		CapacityVector:            map[string]int64{"gpu": 1, "slots": 1},
+		CapacityTTL:               2 * time.Minute,
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{31}},
+		Now:                       time.Now,
+	})
+	if err != nil {
+		t.Fatalf("NewProductionAgent: %v", err)
+	}
+	if _, err := agent.Discover(context.Background(), 30); err != nil {
+		t.Fatalf("initialize capacity authority: %v", err)
+	}
+	control.operations = nil
+	control.capacities = nil
+	control.registrationError = errors.New("runtime registration unavailable")
+	if _, err := agent.Discover(context.Background(), 32); err == nil {
+		t.Fatal("Discover accepted failed runtime registration")
+	}
+	if !reflect.DeepEqual(control.operations, []string{"register", "capacity"}) ||
+		len(control.capacities) != 1 ||
+		control.capacities[0].GetObservationSequence() != 32 ||
+		!reflect.DeepEqual(
+			control.capacities[0].GetCapacityVector(),
+			map[string]int64{"gpu": 0, "slots": 0},
+		) {
+		t.Fatalf("capacity withdrawal operations=%v capacities=%#v", control.operations, control.capacities)
+	}
+}
+
+func TestProductionAgentObservesRecoverableEvidenceErrors(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		capacityError     error
+		registrationError error
+		wantOperation     string
+	}{
+		{name: "capacity", capacityError: errors.New("capacity unavailable"), wantOperation: "report-capacity"},
+		{name: "registration", registrationError: errors.New("registration unavailable"), wantOperation: "register-worker-evidence"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			identity := productionRuntimeIdentity()
+			control := &productionControl{
+				identity: identity, barrierGeneration: 13,
+				capacityError: test.capacityError, registrationError: test.registrationError,
+			}
+			var observedOperation string
+			var observedError error
+			agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+				Control: control, Runtime: &readinessRuntime{identity: identity},
+				RuntimeIdentity: identity,
+				Devices: []*velav1.StageAuthorityDeviceEpoch{{
+					DeviceId: "49000000-0000-0000-0000-000000000001", DeviceEpoch: 3,
+				}},
+				Members: []*velav1.StageAuthorityMemberEpoch{{
+					WorkerMemberId: identity.GetWorkerMemberId(), MemberEpoch: identity.GetWorkerMemberEpoch(),
+				}},
+				CapacityVector: map[string]int64{"gpu": 1, "slots": 1},
+				CapacityTTL:    2 * time.Minute, Now: time.Now,
+				RetryObserver: func(operation string, cause error) {
+					observedOperation, observedError = operation, cause
+				},
+			})
+			if err != nil {
+				t.Fatalf("NewProductionAgent: %v", err)
+			}
+			_, err = agent.Discover(context.Background(), 29)
+			if err == nil || observedOperation != test.wantOperation ||
+				observedError == nil || !strings.Contains(observedError.Error(), "unavailable") {
+				t.Fatalf("Discover error=%v observed=%q/%v", err, observedOperation, observedError)
+			}
+		})
+	}
+}
+
+func TestProductionAgentNonLeaderRegistersWithoutCompetingForStageWork(t *testing.T) {
+	identity := productionRuntimeIdentity()
+	control := &productionControl{
+		identity: identity, barrierGeneration: 13,
+		leaderMemberID: "48000000-0000-0000-0000-000000000003",
+	}
+	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+		Control: control, Runtime: &readinessRuntime{identity: identity},
+		RuntimeIdentity: identity,
+		Devices: []*velav1.StageAuthorityDeviceEpoch{{
+			DeviceId: "49000000-0000-0000-0000-000000000001", DeviceEpoch: 3,
+		}},
+		Members: []*velav1.StageAuthorityMemberEpoch{
+			{WorkerMemberId: "48000000-0000-0000-0000-000000000003", MemberEpoch: 1},
+			{WorkerMemberId: identity.GetWorkerMemberId(), MemberEpoch: identity.GetWorkerMemberEpoch()},
+		},
 		CapacityVector: map[string]int64{"gpu": 4, "slots": 1},
 		CapacityTTL:    2 * time.Minute,
 		RetryMinimum:   250 * time.Millisecond,
@@ -411,7 +524,8 @@ func TestProductionAgentNonLeaderRegistersWithoutCompetingForStageWork(t *testin
 		t.Fatalf("non-leader cycle = %#v", cycle)
 	}
 	if !reflect.DeepEqual(control.operations, []string{"register"}) ||
-		control.capacity != nil || control.acquire != nil {
+		control.capacity != nil || control.acquire != nil ||
+		control.registration.GetCapacityObservationSequence() != 0 {
 		t.Fatalf(
 			"non-leader operations=%v capacity=%#v acquire=%#v",
 			control.operations, control.capacity, control.acquire,
@@ -494,8 +608,10 @@ func TestProductionAgentDiscoversRegistersAndPollsAUXResidentRuntimes(t *testing
 		Members: []*velav1.StageAuthorityMemberEpoch{{
 			WorkerMemberId: encoder.GetWorkerMemberId(), MemberEpoch: encoder.GetWorkerMemberEpoch(),
 		}},
-		CapacityVector: map[string]int64{"gpu": 1, "slots": 1},
-		CapacityTTL:    2 * time.Minute, Now: func() time.Time { return now },
+		CapacityVector:            map[string]int64{"gpu": 1, "slots": 1},
+		CapacityTTL:               2 * time.Minute,
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{20}},
+		Now:                       func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatalf("NewProductionAgent: %v", err)
@@ -504,14 +620,22 @@ func TestProductionAgentDiscoversRegistersAndPollsAUXResidentRuntimes(t *testing
 	if err != nil || cycle.Assignment != nil || cycle.RetryAfter != 250*time.Millisecond {
 		t.Fatalf("AUX Discover = %#v error=%v", cycle, err)
 	}
-	if len(control.registrations) != 2 || len(control.acquires) != 2 ||
-		control.capacityCalls != 1 ||
+	if len(control.registrations) != 2 || len(control.capacities) != 2 ||
+		len(control.acquires) != 2 ||
+		control.registrations[0].GetCapacityObservationSequence() != 19 ||
+		control.registrations[1].GetCapacityObservationSequence() != 19 ||
 		control.registrations[0].GetMembers()[0].GetModelRuntimeEpoch() != 7 ||
 		control.registrations[1].GetMembers()[0].GetModelRuntimeEpoch() != 8 ||
+		control.capacities[0].GetObservationSequence() != 19 ||
+		!reflect.DeepEqual(control.capacities[0].GetCapacityVector(), map[string]int64{"gpu": 0, "slots": 0}) ||
+		control.capacities[1].GetObservationSequence() != 20 ||
+		!reflect.DeepEqual(control.capacities[1].GetCapacityVector(), map[string]int64{"gpu": 1, "slots": 1}) ||
+		control.acquires[0].GetCapacityObservationSequence() != 20 ||
+		control.acquires[1].GetCapacityObservationSequence() != 20 ||
 		control.acquires[0].GetStageProfileRevisionId() != encoder.GetStageProfileRevisionId() ||
 		control.acquires[1].GetStageProfileRevisionId() != vae.GetStageProfileRevisionId() {
-		t.Fatalf("AUX registration/acquire = %#v/%#v capacity=%d",
-			control.registrations, control.acquires, control.capacityCalls)
+		t.Fatalf("AUX registration/capacity/acquire = %#v/%#v/%#v",
+			control.registrations, control.capacities, control.acquires)
 	}
 }
 
@@ -553,7 +677,7 @@ type auxProductionControl struct {
 	primary       *velav1.ModelRuntimeIdentity
 	registrations []*velav1.RegisterWorkerEvidenceRequest
 	acquires      []*velav1.AcquireStageRequest
-	capacityCalls int
+	capacities    []*velav1.ReportStageCapacityObservationRequest
 }
 
 func (control *auxProductionControl) Commands() <-chan *velav1.StageWorkerControlServiceConnectResponse {
@@ -570,8 +694,12 @@ func (control *auxProductionControl) Exchange(
 			proto.Clone(operation.RegisterWorkerEvidence).(*velav1.RegisterWorkerEvidenceRequest))
 		return productionReadinessResponse(control.primary), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
-		control.capacityCalls++
-		return productionReadinessResponse(control.primary), nil
+		control.capacities = append(control.capacities,
+			proto.Clone(operation.ReportCapacityObservation).(*velav1.ReportStageCapacityObservationRequest))
+		return productionCapacityReadinessResponse(
+			control.primary,
+			operation.ReportCapacityObservation.GetObservationSequence(),
+		), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
 		control.acquires = append(control.acquires,
 			proto.Clone(operation.AcquireStage).(*velav1.AcquireStageRequest))
@@ -635,7 +763,10 @@ type productionControl struct {
 	operations        []string
 	registration      *velav1.RegisterWorkerEvidenceRequest
 	capacity          *velav1.ReportStageCapacityObservationRequest
+	capacities        []*velav1.ReportStageCapacityObservationRequest
 	acquire           *velav1.AcquireStageRequest
+	capacityError     error
+	registrationError error
 }
 
 type productionExecutionControl struct {
@@ -668,7 +799,10 @@ func (control *productionExecutionControl) Exchange(
 		)
 		return productionReadinessResponse(control.identity), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
-		return productionReadinessResponse(control.identity), nil
+		return productionCapacityReadinessResponse(
+			control.identity,
+			request.GetReportCapacityObservation().GetObservationSequence(),
+		), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
 		control.acquireCalls++
 		if control.assignment != nil {
@@ -759,14 +893,24 @@ func (control *productionControl) Exchange(
 	switch operation := request.GetOperation().(type) {
 	case *velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence:
 		control.operations = append(control.operations, "register")
+		if control.registrationError != nil {
+			return nil, control.registrationError
+		}
 		control.registration = proto.Clone(operation.RegisterWorkerEvidence).(*velav1.RegisterWorkerEvidenceRequest)
 		return productionBarrierReadinessResponse(
 			control.identity, control.barrierGeneration, control.leaderMemberID,
 		), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_ReportCapacityObservation:
 		control.operations = append(control.operations, "capacity")
+		if control.capacityError != nil {
+			return nil, control.capacityError
+		}
 		control.capacity = proto.Clone(operation.ReportCapacityObservation).(*velav1.ReportStageCapacityObservationRequest)
-		return productionReadinessResponse(control.identity), nil
+		control.capacities = append(control.capacities, control.capacity)
+		return productionCapacityReadinessResponse(
+			control.identity,
+			operation.ReportCapacityObservation.GetObservationSequence(),
+		), nil
 	case *velav1.StageWorkerControlServiceConnectRequest_AcquireStage:
 		control.operations = append(control.operations, "acquire")
 		control.acquire = proto.Clone(operation.AcquireStage).(*velav1.AcquireStageRequest)
@@ -786,6 +930,15 @@ func productionReadinessResponse(
 	return productionBarrierReadinessResponse(
 		identity, identity.GetModelRuntimeEpoch(), identity.GetWorkerMemberId(),
 	)
+}
+
+func productionCapacityReadinessResponse(
+	identity *velav1.ModelRuntimeIdentity,
+	sequence int64,
+) *velav1.StageWorkerControlServiceConnectResponse {
+	response := productionReadinessResponse(identity)
+	response.GetWorkerReadinessDecision().CapacityObservationSequence = sequence
+	return response
 }
 
 func productionBarrierReadinessResponse(

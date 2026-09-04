@@ -132,7 +132,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -143,11 +143,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run integration shard ${{ matrix.shard }} of 10
+      - name: Run integration shard ${{ matrix.shard }} of 20
         run: |
           make test-integration-shard \
             INTEGRATION_TEST_SHARD_INDEX=${{ matrix.shard }} \
-            INTEGRATION_TEST_SHARD_TOTAL=10 \
+            INTEGRATION_TEST_SHARD_TOTAL=20 \
             INTEGRATION_TEST_TIMEOUT=8m
 
   contracts:

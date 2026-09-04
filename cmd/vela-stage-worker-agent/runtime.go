@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -381,8 +382,11 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 		RetryMinimum:              configuration.retryMinimum,
 		RetryMaximum:              configuration.retryMaximum,
 		ObservationSequenceSource: runtime.state,
-		Now:                       time.Now,
-		Wait:                      waitContext,
+		RetryObserver: func(operation string, cause error) {
+			slog.Warn("Stage Worker control operation will retry", "operation", operation, "error", cause)
+		},
+		Now:  time.Now,
+		Wait: waitContext,
 	})
 	if err != nil {
 		return fail(err)

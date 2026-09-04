@@ -27,6 +27,10 @@ type ControlSessionEpochSource interface {
 	NextControlSessionEpoch(context.Context) (int64, error)
 }
 
+type controlSessionEpochObserver interface {
+	ObserveControlSessionEpoch(context.Context, int64) error
+}
+
 type exchangeResult struct {
 	response *velav1.StageWorkerControlServiceConnectResponse
 	err      error
@@ -248,6 +252,24 @@ func (client *Client) receive(
 			client.failStream(stream, generation, errors.New("malformed Stage Worker control response"))
 			return
 		}
+		if decision := response.GetWorkerReadinessDecision(); decision != nil &&
+			decision.GetControlSessionEpoch() != 0 &&
+			decision.GetControlSessionEpoch() != client.controlSessionEpoch() {
+			observer, ok := client.epochSource.(controlSessionEpochObserver)
+			if !ok {
+				client.failStream(stream, generation, errors.New("invalid durable Stage Worker control session epoch"))
+				return
+			}
+			if err := observer.ObserveControlSessionEpoch(
+				client.ctx,
+				decision.GetControlSessionEpoch(),
+			); err != nil {
+				client.failStream(stream, generation, fmt.Errorf("persist durable Stage Worker control session epoch: %w", err))
+				return
+			}
+			client.failStream(stream, generation, errors.New("durable Stage Worker control session synchronized; reconnect required"))
+			return
+		}
 		if response.GetRequestId() == "" {
 			if response.GetStopStage() == nil {
 				client.failStream(stream, generation, errors.New("unsolicited Stage Worker response is not StopStage"))
@@ -268,6 +290,12 @@ func (client *Client) receive(
 			waiter <- exchangeResult{response: response}
 		}
 	}
+}
+
+func (client *Client) controlSessionEpoch() int64 {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.streamEpoch
 }
 
 func (client *Client) failStream(

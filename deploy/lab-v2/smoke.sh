@@ -38,9 +38,63 @@ $kubectl_bin rollout status deployment/vela-lab-stage-worker-1 --namespace "$nam
 $kubectl_bin rollout status deployment/vela-lab-stage-worker-2 --namespace "$namespace" --timeout=60s >/dev/null
 $kubectl_bin rollout status deployment/vela-lab-stage-worker-thumbnail --namespace "$namespace" --timeout=60s >/dev/null
 
-schedulable_pools=$(query_database 'SELECT count(*) FROM vela_list_schedulable_worker_pools();')
-[ "$schedulable_pools" -gt 0 ] ||
-	fail "no schedulable Worker pool has fresh capacity evidence"
+ready_capacity_routes=$(query_database "
+WITH expected(stable_id) AS (
+    VALUES
+        ('h3-encoder-lab-v2'),
+        ('h3-dit-lab-v2'),
+        ('h3-vae-lab-v2'),
+        ('h3-cpu-thumbnail-lab-v2')
+)
+SELECT count(*)
+FROM expected
+WHERE EXISTS (
+    SELECT 1
+    FROM capacity_pools AS pool
+    JOIN model_runtime_capacity_routes AS route
+      ON route.capacity_pool_id = pool.id
+     AND route.stage_profile_revision_id = pool.stage_profile_revision_id
+    JOIN stage_profile_revisions AS profile
+      ON profile.id = route.stage_profile_revision_id
+    JOIN worker_instances AS worker
+      ON worker.id = route.worker_instance_id
+    JOIN model_residencies AS residency
+      ON residency.id = route.model_residency_id
+     AND residency.worker_instance_id = worker.id
+     AND residency.worker_instance_epoch = worker.instance_epoch
+     AND residency.model_component_revision = profile.model_component_revision
+    WHERE pool.stable_id = expected.stable_id
+      AND pool.state = 'ACTIVE'
+      AND worker.lifecycle_state = 'READY'
+      AND worker.reachability_state = 'CONNECTED'
+      AND residency.state = 'READY'
+      AND EXISTS (
+          SELECT 1
+          FROM capacity_observations AS observation
+          WHERE observation.worker_instance_id = worker.id
+            AND observation.worker_instance_epoch = worker.instance_epoch
+            AND observation.expires_at > statement_timestamp()
+            AND observation.capacity_vector ->> 'concurrency' ~ '^[1-9][0-9]*$'
+            AND NOT EXISTS (
+                SELECT 1
+                FROM capacity_observations AS newer
+                WHERE newer.worker_instance_id = observation.worker_instance_id
+                  AND newer.worker_instance_epoch = observation.worker_instance_epoch
+                  AND newer.observation_sequence > observation.observation_sequence
+            )
+      )
+      AND vela_worker_instance_authority_matches(
+          worker.id,
+          worker.instance_epoch,
+          worker.device_set_digest,
+          worker.membership_digest,
+          residency.id,
+          residency.model_runtime_epoch
+      )
+);
+")
+[ "$ready_capacity_routes" = 4 ] ||
+	fail "Stage capacity authority is incomplete: ready routes=$ready_capacity_routes expected=4"
 
 job=$($kubectl_bin create -f "$manifests/60-smoke.yaml" -o name)
 case "$job" in

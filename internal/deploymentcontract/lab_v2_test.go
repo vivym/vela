@@ -22,9 +22,10 @@ type labV2Document struct {
 	Kind                         string `yaml:"kind"`
 	AutomountServiceAccountToken *bool  `yaml:"automountServiceAccountToken"`
 	Metadata                     struct {
-		Name      string            `yaml:"name"`
-		Namespace string            `yaml:"namespace"`
-		Labels    map[string]string `yaml:"labels"`
+		Name         string            `yaml:"name"`
+		GenerateName string            `yaml:"generateName"`
+		Namespace    string            `yaml:"namespace"`
+		Labels       map[string]string `yaml:"labels"`
 	} `yaml:"metadata"`
 	Data map[string]string `yaml:"data"`
 	Spec struct {
@@ -255,6 +256,28 @@ func TestLabV2RenderIsIsolatedStageOnlyAndDigestPinned(t *testing.T) {
 		!hasEnvironment(thumbnail.Spec.Template.Spec.Containers, "VELA_STAGE_WORKER_AUTHORITY_ACTIVE_KEY_ID", labv2contract.StageAuthorityKeyID) {
 		t.Fatalf("thumbnail CPU Worker deployment = %#v", thumbnail)
 	}
+	smoke, ok := findLabV2DocumentByGenerateName(documents, "Job", "vela-lab-smoke-")
+	if !ok || len(smoke.Spec.Template.Spec.Containers) != 1 {
+		t.Fatalf("smoke Job = %#v", smoke)
+	}
+	smokeMaterializer, ok := findContainer(smoke.Spec.Template.Spec.InitContainers, "materialize-credential")
+	smokeMaterializerScript := strings.Join(smokeMaterializer.Args, "\n")
+	if !ok || smokeMaterializer.Image != imageValues["BOOTSTRAP_IMAGE"] ||
+		!equalStrings(smokeMaterializer.Command, []string{"/bin/sh", "-ec"}) ||
+		!strings.Contains(smokeMaterializerScript, `for name in bearer-credential ca.crt; do`) ||
+		!strings.Contains(smokeMaterializerScript, `cp -L -- "$source" "$temporary"`) ||
+		!strings.Contains(smokeMaterializerScript, `chmod 0400 "$temporary"`) ||
+		!strings.Contains(smokeMaterializerScript, `mv -f -- "$temporary" "/materialized/$name"`) ||
+		!smokeMaterializer.SecurityContext.ReadOnlyRootFilesystem ||
+		!hasVolumeMount(smokeMaterializer, "projected-credential", "/projected", true) ||
+		!hasVolumeMount(smokeMaterializer, "materialized-credential", "/materialized", false) {
+		t.Fatalf("smoke credential materializer = %#v", smokeMaterializer)
+	}
+	if !hasVolumeMount(smoke.Spec.Template.Spec.Containers[0], "materialized-credential", "/etc/vela-lab-smoke", true) ||
+		!hasSecretVolume(smoke.Spec.Template.Spec, "projected-credential", "vela-lab-smoke-credential") ||
+		!hasMemoryEmptyDirVolume(smoke.Spec.Template.Spec, "materialized-credential", "1Mi") {
+		t.Fatalf("smoke materialized credential volumes = %#v", smoke.Spec.Template.Spec)
+	}
 }
 
 func assertLabV2RuntimePrivateMaterializer(t *testing.T, name string, deployment labV2Document) {
@@ -467,6 +490,20 @@ func TestLabV2OperationalScriptsFailClosedAroundOwnershipAndRollback(t *testing.
 	if foreground < 0 || dependents <= foreground || policies <= dependents {
 		t.Fatal("rollback.sh does not foreground-delete workloads before dependent and policy cleanup")
 	}
+
+	smoke := read("smoke.sh")
+	if strings.Contains(smoke, "vela_list_schedulable_worker_pools") {
+		t.Fatal("smoke.sh calls the contracted legacy scheduler function")
+	}
+	for _, required := range []string{
+		"model_runtime_capacity_routes", "vela_worker_instance_authority_matches",
+		"capacity_observations", "ready_capacity_routes", "expected=4",
+		"h3-encoder-lab-v2", "h3-dit-lab-v2", "h3-vae-lab-v2", "h3-cpu-thumbnail-lab-v2",
+	} {
+		if !strings.Contains(smoke, required) {
+			t.Fatalf("smoke.sh is missing Stage capacity precheck %q", required)
+		}
+	}
 }
 
 func loadLabV2Documents(t *testing.T, directory string) []labV2Document {
@@ -504,6 +541,18 @@ func loadLabV2Documents(t *testing.T, directory string) []labV2Document {
 func findLabV2Document(documents []labV2Document, kind, name string) (labV2Document, bool) {
 	for _, document := range documents {
 		if document.Kind == kind && document.Metadata.Name == name {
+			return document, true
+		}
+	}
+	return labV2Document{}, false
+}
+
+func findLabV2DocumentByGenerateName(
+	documents []labV2Document,
+	kind, generateName string,
+) (labV2Document, bool) {
+	for _, document := range documents {
+		if document.Kind == kind && document.Metadata.GenerateName == generateName {
 			return document, true
 		}
 	}
