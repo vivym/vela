@@ -493,7 +493,7 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 		},
 		ControlSessionEpoch: 1,
 	}
-	startedAt := assignment.IssuedAt.Add(5*time.Millisecond + 999*time.Nanosecond)
+	startedAt := assigned.Authority.GetIssuedAt().AsTime().Add(-300 * time.Millisecond)
 	started, err := backend.StartStage(
 		context.Background(), command,
 		&velav1.StartStageRequest{
@@ -514,6 +514,20 @@ func TestPostgresExecutionBackendPersistsDeterministicRenewals(t *testing.T) {
 			assigned.Authority.GetMembers()[0].GetIdentityDigest(),
 		) {
 		t.Fatal("Start renewal changed the signed WorkerMember identity digest")
+	}
+	var physicalStartedAt time.Time
+	if err := database.Admin.QueryRow(`
+		SELECT started_at
+		FROM stage_attempts
+		WHERE id = $1
+	`, assignment.StageAttemptID).Scan(&physicalStartedAt); err != nil {
+		t.Fatalf("read clamped Stage Worker start time: %v", err)
+	}
+	if !physicalStartedAt.Equal(assigned.Authority.GetIssuedAt().AsTime()) {
+		t.Fatalf(
+			"durable Stage Worker start time = %s, want Authority issue time %s",
+			physicalStartedAt, assigned.Authority.GetIssuedAt().AsTime(),
+		)
 	}
 	startReplay, err := backend.StartStage(
 		context.Background(), command,

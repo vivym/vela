@@ -92,3 +92,33 @@ func TestMatchesDurableStageAuthorityAllowsOnlyExactPostSealReplay(t *testing.T)
 		t.Fatal("post-seal replay accepted another Worker identity")
 	}
 }
+
+func TestValidExecutionEventTimeClampsBoundedWorkerClockSkew(t *testing.T) {
+	issuedAt := time.Date(2026, 9, 4, 23, 39, 35, 500000000, time.UTC)
+	authority := &velav1.StageAuthority{
+		IssuedAt:  timestamppb.New(issuedAt),
+		ExpiresAt: timestamppb.New(issuedAt.Add(time.Minute)),
+	}
+	workerNow := issuedAt.Add(-300 * time.Millisecond)
+
+	clamped, err := validExecutionEventTime(
+		timestamppb.New(workerNow), authority, issuedAt, 30*time.Second,
+	)
+	if err != nil || !clamped.Equal(issuedAt) {
+		t.Fatalf("bounded worker-behind event = %s, error=%v, want %s", clamped, err, issuedAt)
+	}
+
+	for name, eventAt := range map[string]time.Time{
+		"before skew window":  issuedAt.Add(-30*time.Second - time.Microsecond),
+		"at expiration":       authority.GetExpiresAt().AsTime(),
+		"after server window": issuedAt.Add(30*time.Second + time.Microsecond),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if result, eventErr := validExecutionEventTime(
+				timestamppb.New(eventAt), authority, issuedAt, 30*time.Second,
+			); !result.IsZero() || eventErr == nil {
+				t.Fatalf("invalid event = %s, error=%v", result, eventErr)
+			}
+		})
+	}
+}
