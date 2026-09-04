@@ -25,7 +25,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/stageworkeragent"
+	"github.com/vivym/vela/internal/stageworkermembertransport"
 	"github.com/vivym/vela/internal/stageworkertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
 	"google.golang.org/grpc"
@@ -199,6 +201,62 @@ func TestMultiMemberFollowerStartsServerWithoutDialingLeader(t *testing.T) {
 		t.Fatalf("follower member server was not listening before peer dial: %v", err)
 	}
 	_ = connection.Close()
+}
+
+func TestProductionRuntimePropagatesAuthorityClockSkew(t *testing.T) {
+	identity := productionSmokeIdentity("49800000-0000-0000-0000-000000000004", 11)
+	configuration := productionSmokeConfig(t, identity)
+	configureMemberTransportSmoke(
+		t,
+		&configuration,
+		"49800000-0000-0000-0000-000000000003",
+		9,
+		"127.0.0.1:1",
+		unusedSmokeTCPAddress(t),
+	)
+	var memberClockSkew, materializationClockSkew time.Duration
+	consumers := productionAuthorityConsumers{
+		newMemberServer: func(
+			config stageworkermembertransport.ServerConfig,
+		) (*stageworkermembertransport.Server, error) {
+			memberClockSkew = config.MaxClockSkew
+			return stageworkermembertransport.NewServer(config)
+		},
+		newMaterializingAgent: func(
+			runtime *stageworkeragent.Agent,
+			control stageworkeragent.ControlClient,
+			config stageworkeragent.MaterializationConfig,
+			resolver stageworkeragent.InputResolver,
+		) (*stageworkeragent.StreamAgent, error) {
+			materializationClockSkew = config.MaxClockSkew
+			return stageworkeragent.NewInputResolvingMaterializingStreamAgent(
+				runtime,
+				control,
+				config,
+				resolver,
+			)
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	runtime, err := newProductionRuntimeUsing(ctx, configuration, consumers)
+	if err != nil {
+		t.Fatalf("build production runtime: %v", err)
+	}
+	defer func() {
+		if closeErr := runtime.Close(); closeErr != nil {
+			t.Errorf("close production runtime: %v", closeErr)
+		}
+	}()
+	if memberClockSkew != authoritypolicy.ProductionMaxClockSkew ||
+		materializationClockSkew != authoritypolicy.ProductionMaxClockSkew {
+		t.Fatalf(
+			"production authority clock skew member/materialization = %s/%s, want %s",
+			memberClockSkew,
+			materializationClockSkew,
+			authoritypolicy.ProductionMaxClockSkew,
+		)
+	}
 }
 
 func TestMultiMemberLeaderRequiresReachableFollower(t *testing.T) {

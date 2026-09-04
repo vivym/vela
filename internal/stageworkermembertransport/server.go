@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageauthority"
@@ -26,6 +27,7 @@ type ServerConfig struct {
 	Runtime         velav1.ModelRuntimeServiceClient
 	LocalIdentities []*velav1.ModelRuntimeIdentity
 	Members         []MemberBinding
+	MaxClockSkew    time.Duration
 }
 
 type Server struct {
@@ -36,6 +38,7 @@ type Server struct {
 	localMember     MemberBinding
 	localIdentities []*velav1.ModelRuntimeIdentity
 	membersByID     map[string]MemberBinding
+	maxClockSkew    time.Duration
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -43,6 +46,9 @@ func NewServer(config ServerConfig) (*Server, error) {
 		len(config.LocalIdentities) == 0 || len(config.LocalIdentities) > 16 ||
 		len(config.Members) < 2 || len(config.Members) > 64 {
 		return nil, errors.New("stage worker member server configuration is incomplete")
+	}
+	if config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
+		return nil, errors.New("stage worker member server clock skew is invalid")
 	}
 	membersByID := make(map[string]MemberBinding, len(config.Members))
 	for _, member := range config.Members {
@@ -74,7 +80,7 @@ func NewServer(config ServerConfig) (*Server, error) {
 	return &Server{
 		authenticator: config.Authenticator, validator: config.Validator, runtime: config.Runtime,
 		localMember: local, localIdentities: identities,
-		membersByID: membersByID,
+		membersByID: membersByID, maxClockSkew: config.MaxClockSkew,
 	}, nil
 }
 
@@ -196,7 +202,10 @@ func (server *Server) authorize(
 	if err != nil {
 		return nil, [32]byte{}, status.Error(codes.Unauthenticated, "authenticate Stage Worker member peer")
 	}
-	verified, err := server.validator.ValidateEnvelope(authority)
+	verified, err := server.validator.ValidateEnvelopeWithClockSkew(
+		authority,
+		server.maxClockSkew,
+	)
 	if err != nil {
 		return nil, [32]byte{}, status.Error(codes.FailedPrecondition, "Stage Worker member authority is invalid or stale")
 	}

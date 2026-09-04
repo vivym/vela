@@ -46,6 +46,7 @@ type Config struct {
 	Clock          Clock
 	CancelTimeout  time.Duration
 	EpochFloor     int64
+	MaxClockSkew   time.Duration
 }
 
 type Service struct {
@@ -56,6 +57,7 @@ type Service struct {
 	backend       Backend
 	clock         Clock
 	cancelTimeout time.Duration
+	maxClockSkew  time.Duration
 
 	operationMu sync.Mutex
 	mu          sync.Mutex
@@ -94,6 +96,9 @@ func NewService(config Config) (*Service, error) {
 	}
 	if config.CancelTimeout <= 0 || config.CancelTimeout > time.Minute {
 		return nil, errors.New("ModelRuntime cancellation timeout is invalid")
+	}
+	if config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
+		return nil, errors.New("ModelRuntime clock skew is invalid")
 	}
 	if config.Binding.ModelRuntimeEpoch != 0 {
 		return nil, errors.New("ModelRuntime epoch must be allocated by the epoch store")
@@ -135,6 +140,7 @@ func NewService(config Config) (*Service, error) {
 		backend:       config.Backend,
 		clock:         config.Clock,
 		cancelTimeout: config.CancelTimeout,
+		maxClockSkew:  config.MaxClockSkew,
 		sealed:        make(map[[sha256.Size]byte]*velav1.LocalMaterializationReceipt),
 		closed:        make(chan struct{}),
 	}, nil
@@ -524,7 +530,11 @@ func (service *Service) verify(authority *velav1.StageAuthority) (stageauthority
 	if service == nil || service.validator == nil {
 		return stageauthority.Verified{}, errors.New("ModelRuntime service is not configured")
 	}
-	return service.validator.Validate(authority, service.binding)
+	return service.validator.ValidateWithClockSkew(
+		authority,
+		service.binding,
+		service.maxClockSkew,
+	)
 }
 
 func (service *Service) installOrRenew(

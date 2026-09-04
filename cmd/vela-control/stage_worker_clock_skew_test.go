@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stageworkercontrol"
@@ -20,7 +21,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestStageWorkerAuthorityIngressAcceptsCommittedRenewalWithinClockSkew(t *testing.T) {
+func TestStageWorkerAuthorityIngressBoundsStageAndMaterializationClockSkew(t *testing.T) {
 	now := time.Date(2026, 9, 4, 9, 4, 9, 545117000, time.UTC)
 	keyring := map[string][]byte{"control-key": bytes.Repeat([]byte{0x42}, 32)}
 	signer, err := stageauthority.NewSigner(keyring)
@@ -37,6 +38,10 @@ func TestStageWorkerAuthorityIngressAcceptsCommittedRenewalWithinClockSkew(t *te
 	)
 	if err != nil {
 		t.Fatalf("construct MaterializationAuthority validator: %v", err)
+	}
+	materializationSigner, err := materializationauthority.NewSigner(keyring)
+	if err != nil {
+		t.Fatalf("construct MaterializationAuthority signer: %v", err)
 	}
 	assigned, err := signer.Sign(stageWorkerTestAuthority(now.Add(-time.Second)))
 	if err != nil {
@@ -127,8 +132,78 @@ func TestStageWorkerAuthorityIngressAcceptsCommittedRenewalWithinClockSkew(t *te
 		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_REPLAYED {
 		t.Fatalf("Reattach response = %#v error=%v", reattach, err)
 	}
-	if got := backend.Operations(); got != "START_STAGE,HEARTBEAT_STAGE,REATTACH_STAGE" {
+	materialization, err := materializationSigner.Sign(
+		stageWorkerTestMaterializationAuthority(now.Add(3200 * time.Microsecond)),
+	)
+	if err != nil {
+		t.Fatalf("sign MaterializationAuthority: %v", err)
+	}
+	commit, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization{
+			CommitStageMaterialization: &velav1.CommitStageMaterializationRequest{
+				MaterializationAuthority: materialization,
+				ObjectVersion:            "object-version-v1",
+			},
+		},
+	})
+	if err != nil || commit.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("immediate CommitStageMaterialization response = %#v error=%v", commit, err)
+	}
+	if got := backend.Operations(); got !=
+		"START_STAGE,HEARTBEAT_STAGE,REATTACH_STAGE,COMMIT_STAGE_MATERIALIZATION" {
 		t.Fatalf("executed operations = %q", got)
+	}
+
+	overSkewEnvelope := proto.Clone(renewed).(*velav1.StageAuthority)
+	overSkewEnvelope.StageVersion++
+	overSkewEnvelope.IssuedAt = timestamppb.New(
+		now.Add(authoritypolicy.ProductionMaxClockSkew + time.Millisecond),
+	)
+	overSkewEnvelope.ExpiresAt = timestamppb.New(overSkewEnvelope.GetIssuedAt().AsTime().Add(2 * time.Minute))
+	overSkewEnvelope.Signature = nil
+	overSkew, err := signer.Sign(overSkewEnvelope)
+	if err != nil {
+		t.Fatalf("sign over-skew StageAuthority: %v", err)
+	}
+	rejected, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_HeartbeatStage{
+			HeartbeatStage: &velav1.HeartbeatStageRequest{
+				Authority: overSkew, ObservedAt: timestamppb.New(now),
+			},
+		},
+	})
+	if err != nil || rejected.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE {
+		t.Fatalf("over-skew Heartbeat response = %#v error=%v", rejected, err)
+	}
+	if got := backend.Operations(); got !=
+		"START_STAGE,HEARTBEAT_STAGE,REATTACH_STAGE,COMMIT_STAGE_MATERIALIZATION" {
+		t.Fatalf("over-skew operation reached backend: %q", got)
+	}
+	overSkewMaterialization, err := materializationSigner.Sign(
+		stageWorkerTestMaterializationAuthority(
+			now.Add(authoritypolicy.ProductionMaxClockSkew + time.Millisecond),
+		),
+	)
+	if err != nil {
+		t.Fatalf("sign over-skew MaterializationAuthority: %v", err)
+	}
+	rejected, err = client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
+		Operation: &velav1.StageWorkerControlServiceConnectRequest_CommitStageMaterialization{
+			CommitStageMaterialization: &velav1.CommitStageMaterializationRequest{
+				MaterializationAuthority: overSkewMaterialization,
+				ObjectVersion:            "object-version-v2",
+			},
+		},
+	})
+	if err != nil || rejected.GetStageCommandResult().GetDecision() !=
+		velav1.StageWorkerCommandDecision_STAGE_WORKER_COMMAND_DECISION_STALE {
+		t.Fatalf("over-skew CommitStageMaterialization response = %#v error=%v", rejected, err)
+	}
+	if got := backend.Operations(); got !=
+		"START_STAGE,HEARTBEAT_STAGE,REATTACH_STAGE,COMMIT_STAGE_MATERIALIZATION" {
+		t.Fatalf("over-skew materialization reached backend: %q", got)
 	}
 }
 
@@ -269,5 +344,28 @@ func stageWorkerTestAuthority(issuedAt time.Time) *velav1.StageAuthority {
 		IssuedAt:                      timestamppb.New(issuedAt),
 		ExpiresAt:                     timestamppb.New(issuedAt.Add(time.Minute)),
 		MonotonicValidFor:             durationpb.New(time.Minute),
+	}
+}
+
+func stageWorkerTestMaterializationAuthority(issuedAt time.Time) *velav1.MaterializationAuthority {
+	return &velav1.MaterializationAuthority{
+		SchemaVersion:               1,
+		StageAuthorityDigest:        bytes.Repeat([]byte{0xb1}, 32),
+		StageMaterializationLeaseId: "49600000-0000-0000-0000-000000000001",
+		StageArtifactId:             "49600000-0000-0000-0000-000000000002",
+		ObjectKey:                   "artifacts/stage/attempt/run/output.bin",
+		ContentType:                 "application/octet-stream",
+		Sha256:                      bytes.Repeat([]byte{0xb2}, 32),
+		SizeBytes:                   4096,
+		LocalReceiptId:              "encoder-receipt-v1",
+		LocalReceiptDigest:          bytes.Repeat([]byte{0xb3}, 32),
+		SigningKeyId:                "control-key",
+		IssuedAt:                    timestamppb.New(issuedAt),
+		ExpiresAt:                   timestamppb.New(issuedAt.Add(15 * time.Minute)),
+		SourceWorkerInstanceId:      "23000000-0000-0000-0000-000000000001",
+		SourceWorkerInstanceEpoch:   5,
+		SourceWorkerMemberId:        "43000000-0000-0000-0000-000000000001",
+		SourceWorkerMemberEpoch:     8,
+		SourceSpiffeIdDigest:        bytes.Repeat([]byte{0xb4}, 32),
 	}
 }

@@ -150,7 +150,15 @@ func (validator *Validator) Validate(
 	authority *velav1.StageAuthority,
 	binding RuntimeBinding,
 ) (Verified, error) {
-	verified, err := validator.ValidateEnvelope(authority)
+	return validator.ValidateWithClockSkew(authority, binding, 0)
+}
+
+func (validator *Validator) ValidateWithClockSkew(
+	authority *velav1.StageAuthority,
+	binding RuntimeBinding,
+	maxFutureSkew time.Duration,
+) (Verified, error) {
+	verified, err := validator.ValidateEnvelopeWithClockSkew(authority, maxFutureSkew)
 	if err != nil {
 		return Verified{}, err
 	}

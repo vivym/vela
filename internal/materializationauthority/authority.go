@@ -15,7 +15,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const maxAuthorityValidity = 24 * time.Hour
+const (
+	maxAuthorityValidity = 24 * time.Hour
+	maxValidationSkew    = time.Minute
+)
 
 var (
 	ErrInvalid          = errors.New("MaterializationAuthority is invalid")
@@ -88,8 +91,18 @@ func (signer *Signer) Sign(
 func (validator *Validator) Validate(
 	authority *velav1.MaterializationAuthority,
 ) (Verified, error) {
+	return validator.ValidateWithClockSkew(authority, 0)
+}
+
+func (validator *Validator) ValidateWithClockSkew(
+	authority *velav1.MaterializationAuthority,
+	maxFutureSkew time.Duration,
+) (Verified, error) {
 	if validator == nil {
 		return Verified{}, errors.New("MaterializationAuthority validator is not configured")
+	}
+	if maxFutureSkew < 0 || maxFutureSkew > maxValidationSkew {
+		return Verified{}, fmt.Errorf("%w: MaterializationAuthority clock skew is invalid", ErrInvalid)
 	}
 	canonical := clone(authority)
 	if canonical == nil {
@@ -115,7 +128,7 @@ func (validator *Validator) Validate(
 	}
 	canonical.Token = token
 	now := validator.now().UTC()
-	if now.Before(canonical.GetIssuedAt().AsTime().UTC()) ||
+	if now.Add(maxFutureSkew).Before(canonical.GetIssuedAt().AsTime().UTC()) ||
 		!now.Before(canonical.GetExpiresAt().AsTime().UTC()) {
 		return Verified{}, ErrStale
 	}

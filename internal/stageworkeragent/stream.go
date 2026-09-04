@@ -92,10 +92,14 @@ func NewMaterializingStreamAgent(
 		config.Journal == nil || config.SourceLossEvidence == nil {
 		return nil, errors.New("stage worker materialization configuration is incomplete")
 	}
+	if config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
+		return nil, errors.New("stage worker materialization clock skew is invalid")
+	}
 	agent.materialization = &streamMaterialization{
 		validator: config.Validator, source: config.Source,
 		publisher: config.Publisher, journal: config.Journal,
 		sourceLossEvidence: config.SourceLossEvidence,
+		maxClockSkew:       config.MaxClockSkew,
 	}
 	return agent, nil
 }

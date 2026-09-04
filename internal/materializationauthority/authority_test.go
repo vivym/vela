@@ -94,6 +94,42 @@ func TestMaterializationAuthorityExpiresIndependentlyOfRevokedStageAuthority(t *
 	}
 }
 
+func TestMaterializationAuthorityAllowsOnlyConfiguredFutureClockSkew(t *testing.T) {
+	now := time.Date(2026, 8, 30, 14, 45, 0, 0, time.UTC)
+	keys := map[string][]byte{"materialization-key-v1": bytes.Repeat([]byte{0xa5}, 32)}
+	signer, err := materializationauthority.NewSigner(keys)
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	signed, err := signer.Sign(materializationAuthority(now.Add(20 * time.Millisecond)))
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	validator, err := materializationauthority.NewValidator(keys, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	if _, err := validator.Validate(signed); !errors.Is(err, materializationauthority.ErrStale) {
+		t.Fatalf("strict Validate error = %v, want stale", err)
+	}
+	if _, err := validator.ValidateWithClockSkew(signed, 20*time.Millisecond); err != nil {
+		t.Fatalf("inclusive clock skew boundary: %v", err)
+	}
+	if _, err := validator.ValidateWithClockSkew(
+		signed, 10*time.Millisecond,
+	); !errors.Is(err, materializationauthority.ErrStale) {
+		t.Fatalf("insufficient clock skew error = %v, want stale", err)
+	}
+	for _, invalid := range []time.Duration{-time.Nanosecond, time.Minute + time.Nanosecond} {
+		if _, err := validator.ValidateWithClockSkew(signed, invalid); !errors.Is(
+			err,
+			materializationauthority.ErrInvalid,
+		) {
+			t.Fatalf("invalid clock skew %s error = %v, want invalid", invalid, err)
+		}
+	}
+}
+
 func materializationAuthority(now time.Time) *velav1.MaterializationAuthority {
 	return &velav1.MaterializationAuthority{
 		SchemaVersion:               1,

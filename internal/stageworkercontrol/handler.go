@@ -136,7 +136,10 @@ func (handler *Handler) Handle(
 	}
 	if materializationAuthority != nil || operation == OperationCommitStageMaterialization ||
 		operation == OperationReportMaterializationSourceLost {
-		verified, err := handler.materializationValidator.Validate(materializationAuthority)
+		verified, err := handler.materializationValidator.ValidateWithClockSkew(
+			materializationAuthority,
+			handler.maxClockSkew,
+		)
 		if err != nil {
 			return staleResponse(request.GetRequestId(), operation, err.Error()), nil
 		}

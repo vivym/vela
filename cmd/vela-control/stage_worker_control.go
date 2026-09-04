@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/authoritypolicy"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/stageartifact"
@@ -28,7 +29,6 @@ const (
 	defaultStageWorkerTransferTicketTTL  = 30 * time.Second
 	defaultStageMaterializationTTL       = 15 * time.Minute
 	defaultStageWorkerStopPoll           = 250 * time.Millisecond
-	defaultStageWorkerMaxClockSkew       = 30 * time.Second
 )
 
 type stageWorkerGRPCServer interface {
@@ -273,7 +273,7 @@ func newStageWorkerControlAdapter(
 			ActiveSigningKeyID: configuration.leaseActiveKeyID,
 			AuthorityTTL:       configuration.stageSchedulerLeaseTTL,
 			LocalDeadlineTTL:   configuration.stageSchedulerLocalDeadlineTTL,
-			MaxClockSkew:       defaultStageWorkerMaxClockSkew,
+			MaxClockSkew:       authoritypolicy.ProductionMaxClockSkew,
 			Now:                time.Now,
 		},
 	)
@@ -343,7 +343,7 @@ func newStageWorkerAuthorityIngress(
 		MaterializationValidator:  materializationValidator,
 		MaterializationAuthorizer: materializationAuthorizer,
 		Executor:                  executor,
-		MaxClockSkew:              defaultStageWorkerMaxClockSkew,
+		MaxClockSkew:              authoritypolicy.ProductionMaxClockSkew,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -353,7 +353,7 @@ func newStageWorkerAuthorityIngress(
 		authorizer,
 		stageworkercontrol.AuthorityStopSourceConfig{
 			PollInterval: defaultStageWorkerStopPoll,
-			MaxClockSkew: defaultStageWorkerMaxClockSkew,
+			MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
 			Now:          now,
 		},
 	)
