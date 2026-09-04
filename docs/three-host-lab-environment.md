@@ -20,7 +20,7 @@ identities are intentionally excluded.
   `vela.ai.lab.dirty-source=true`, and
   `vela.ai.evidence-boundary=NON_PRODUCTION_MOCK_REHEARSAL`.
 - Live PostgreSQL is at migration `33`; the repository schema is migration
-  `66`.
+  `67`.
 - The latest digest-bound CPU-only Stage lifecycle and cross-Worker member
   campaigns passed with `failures=0`. Those campaigns requested no GPU and are
   mock transport/lifecycle evidence only.
@@ -242,10 +242,11 @@ same verified asset directory. The rollback preserves the namespace and
 hostPath data.
 
 As of this checkpoint, the repository unit tests, manifest render contract,
-ShellCheck, and a PostgreSQL 17 migration/bootstrap replay through schema `66`
-pass locally. Schema `66` also makes stale control-session synchronization
-read-only, enforces exact Stage Worker capacity sequencing, and shares the
-four-route readiness query between the bootstrap and smoke contracts. No
+ShellCheck, and a PostgreSQL 17 migration/bootstrap replay through schema `67`
+pass locally. Schema `66` makes stale control-session synchronization read-only,
+enforces exact Stage Worker capacity sequencing, and shares the four-route
+readiness query between the bootstrap and smoke contracts. Schema `67` prevents
+first-Stage assignment when the Project running limit is exhausted. No
 `vela-lab-v2` image has been published and no remote host has been changed by
 this checkpoint. The live environment facts earlier in this document therefore
 remain the current remote baseline.

@@ -50,14 +50,16 @@ with `RESTRICT`, and refuses Down. The same repository boundary deletes legacy
 Worker/Runner runtime, protocol, scheduler, query, deployment, image, and release
 surfaces; the permanent reachability test passes. Migrations `00059` through
 `00062` add runtime epoch registration, the multi-member barrier, gang authority,
-and member identity. Migrations `00063` through `00066` freeze exact H3
+and member identity. Migrations `00063` through `00067` freeze exact H3
 execution/root-input snapshots, bind each resident ModelRuntime to its exact
 CapacityPool/StageProfile route, and add immutable exact-cache admission
 receipts plus bounded fair hit reconciliation. Migration `00066` separates
 Stage Worker control-session synchronization from evidence mutation, requires
 strictly monotonic client-selected capacity observations with replay-safe renewal, and keeps
 unavailable capacity renewable without high-frequency readiness registration.
-The current schema is version `00066`. The
+Migration `00067` prevents first-Stage assignment while the Project running
+limit is already exhausted, while retaining the StartStage CAS for concurrent
+capacity changes. The current schema is version `00067`. The
 production Stage Worker and ModelRuntime base images, target-only default Fleet
 rollout, dynamic per-member Pod/DRA actuation, authenticated ModelRuntime epoch
 advancement with old active-lease fencing, and six-render canonical release
@@ -122,7 +124,7 @@ has up to `5s` idle assignment-discovery latency.
 | --- | --- | --- |
 | H3 Stage Execution Architecture | Repository implementation complete through S49.12; production acceptance partial | `docs/h3-stage-execution-architecture.md` |
 | ADR 0030-0034 | Accepted decisions; execution foundation through runtime protocol | `docs/adr/0030-execute-accepted-jobs-as-durable-stage-graphs.md` through `docs/adr/0034-remove-the-monolithic-h3-worker-path.md` |
-| Schema and protocol migration | Schema-v2 through migration `00066`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, Stage Worker control-session/capacity authority, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
+| Schema and protocol migration | Schema-v2 through migration `00067`; guarded contraction, legacy-path deletion, exact ModelRuntime capacity routes, durable exact-cache reconciliation, Stage Worker control-session/capacity authority, Project running-limit scheduling, and permanent reachability closure implemented; production evidence pending | `docs/specs/0049-stage-execution-schema-and-protocol-migration.md` |
 | Implementation slices | S49.1-S49.12 repository implementation complete, including multi-member runtime coordination, contraction, campaign capture, verification, and observability; production acceptance partial | `docs/specs/0050-h3-stage-execution-implementation-slices.md` |
 | Capacity simulator | Repository implementation complete; synthetic example only, not calibrated or production evidence | `docs/specs/0051-trace-driven-stage-capacity-simulator.md` |
 | H3 mock runtime and member coordination | Repository conformance complete; digest-pinned CPU-only Stage startup/lifecycle passed on both Workers; isolated `vela-lab-v2` four-Stage bootstrap/smoke tooling adds a separate CPU thumbnail Worker and two-Artifact verification, but is not remotely deployed; a bounded operator receipt records earlier multi-member normal/fault/recovery but does not bind its raw cluster bundle; complete Stage/Fleet and real-H3 evidence pending | `docs/specs/0052-h3-stage-mock-runtime.md`, `docs/h3-stage-mock-lab-receipt.md`, `docs/h3-member-mock-lab-receipt.md`, `docs/three-host-lab-environment.md` |

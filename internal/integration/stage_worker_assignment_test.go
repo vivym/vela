@@ -231,6 +231,52 @@ func TestPostgresAssignmentBackendReplaysNoWorkAndRejectsChangedRequest(t *testi
 	}
 }
 
+func TestPostgresAssignmentBackendDoesNotAssignFirstStageAtProjectRunningLimit(t *testing.T) {
+	fixture := newStageSchedulerFixture(t, "stage-worker-project-capacity")
+	if _, err := fixture.database.Admin.Exec(`
+		UPDATE projects
+		SET running_count = running_limit
+		WHERE id = $1
+	`, testProjectID); err != nil {
+		t.Fatalf("fill Project running capacity: %v", err)
+	}
+
+	result, err := newPostgresAssignmentTestBackend(t, fixture).AcquireStage(
+		context.Background(),
+		stageWorkerAcquireCommand(fixture),
+		stageWorkerAcquireRequest(fixture),
+	)
+	if err != nil || result.Assignment != nil || result.Command != nil ||
+		result.RetryAfter != 250*time.Millisecond {
+		t.Fatalf("AcquireStage at Project limit = %#v error=%v", result, err)
+	}
+
+	var attempts, allocations int
+	var filterReason string
+	if err := fixture.database.Admin.QueryRow(`
+		SELECT
+			(SELECT count(*) FROM stage_attempts WHERE stage_run_id = $1),
+			(SELECT count(*) FROM stage_allocations WHERE stage_run_id = $1),
+			COALESCE((
+				SELECT candidate #>> '{filter_reasons,0}'
+				FROM stage_scheduler_snapshot_traces AS trace,
+				     jsonb_array_elements(trace.snapshot -> 'candidates') AS candidate
+				WHERE (candidate ->> 'stage_run_id')::uuid = $1
+				ORDER BY trace.evaluated_at DESC
+				LIMIT 1
+			), '')
+	`, fixture.stageRunID).Scan(&attempts, &allocations, &filterReason); err != nil {
+		t.Fatalf("read Project-capacity scheduling evidence: %v", err)
+	}
+	if attempts != 0 || allocations != 0 ||
+		filterReason != string(stagescheduler.FilterProjectCapacityExhausted) {
+		t.Fatalf(
+			"Project-capacity evidence attempts=%d allocations=%d reason=%q",
+			attempts, allocations, filterReason,
+		)
+	}
+}
+
 func TestPostgresAssignmentBackendPersistsForgedAndStaleAuthorityDecisions(t *testing.T) {
 	fixture := newStageSchedulerFixture(t, "stage-worker-authority-rejection")
 	backend := newPostgresAssignmentTestBackend(t, fixture)

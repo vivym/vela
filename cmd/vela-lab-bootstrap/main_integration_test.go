@@ -21,7 +21,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestBootstrapDatabaseAppliesSchema66AndReplaysStageFixture(t *testing.T) {
+func TestBootstrapDatabaseAppliesSchema67AndReplaysStageFixture(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
@@ -70,8 +70,8 @@ func TestBootstrapDatabaseAppliesSchema66AndReplaysStageFixture(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	version, err := goose.GetDBVersion(database)
-	if err != nil || version != 66 {
-		t.Fatalf("migration version = %d error=%v, want 66", version, err)
+	if err != nil || version != 67 {
+		t.Fatalf("migration version = %d error=%v, want 67", version, err)
 	}
 	var graphState string
 	var topologicalOrderJSON string
