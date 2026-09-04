@@ -27,6 +27,7 @@ import (
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageauthority"
 	"github.com/vivym/vela/internal/stagefinalization"
+	"github.com/vivym/vela/internal/stagescheduler"
 	"github.com/vivym/vela/internal/stageworkercontrol"
 	"github.com/vivym/vela/internal/stageworkertransport"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -716,6 +717,93 @@ func assignH3IntegrationStage(
 		t.Fatalf("%s Assignment decision = %#v", stage.key, decision)
 	}
 	return assignment
+}
+
+func newH3AssignmentWorkerFixture(
+	t *testing.T,
+	database testDatabase,
+	coordinator *attemptcoordinator.Service,
+	stageRunID uuid.UUID,
+	stage h3IntegrationStage,
+	identityByte byte,
+) stageSchedulerFixture {
+	t.Helper()
+	poolID := uuid.New()
+	workerID := uuid.New()
+	if _, err := database.Admin.Exec(`
+		INSERT INTO capacity_pools (
+			id, stable_id, stage_profile_revision_id, resource_class,
+			security_class, region, max_ready_queue_depth, state
+		) VALUES ($1, $2, $3, 'GPU', 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE')
+	`, poolID, "h3-assignment-"+stage.key+"-"+workerID.String(), stage.profileID); err != nil {
+		t.Fatalf("seed %s Assignment CapacityPool: %v", stage.key, err)
+	}
+	if _, err := database.Admin.Exec(`
+		INSERT INTO worker_instances (
+			id, worker_profile_revision_id, capacity_pool_id, worker_bundle_id,
+			lifecycle_state, reachability_state, instance_epoch,
+			control_session_epoch, desired_member_count, desired_device_count
+		) VALUES ($1, $2, $3, $4, 'PROVISIONING', 'DISCONNECTED', 1, 1, 1, 1)
+	`, workerID, stage.workerProfileID, poolID, workerRegistryBundleID); err != nil {
+		t.Fatalf("seed %s Assignment WorkerInstance: %v", stage.key, err)
+	}
+	evidence := workerRegistryEvidenceValue(t, workerID, identityByte)
+	nodeID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("vela/integration/"+stage.nodeIdentity))
+	deviceID := uuid.NewSHA1(workerID, []byte("device-0"))
+	evidence.DeviceSet.Devices[0].ID = deviceID
+	evidence.DeviceSet.Devices[0].ComputeNodeID = nodeID
+	evidence.DeviceSet.Devices[0].NodeIdentity = stage.nodeIdentity
+	evidence.DeviceSet.Devices[0].GPUUUID = "GPU-" + workerID.String()
+	evidence.DeviceSet.Devices[0].PCIBDF = fmt.Sprintf("0000:%02x:00.0", identityByte)
+	evidence.Members[0].ComputeNodeID = nodeID
+	evidence.Members[0].DeviceIDs = []uuid.UUID{deviceID}
+	if err := database.Admin.QueryRow(`
+		SELECT model_component_revision, runtime_image_digest
+		FROM stage_profile_revisions
+		WHERE id = $1
+	`, stage.profileID).Scan(
+		&evidence.Residencies[0].ModelComponentRevision,
+		&evidence.Residencies[0].RuntimeImageDigest,
+	); err != nil {
+		t.Fatalf("read %s Assignment StageProfile runtime identity: %v", stage.key, err)
+	}
+	evidence.Residencies[0].RuntimeIdentity = stage.key + "@sha256:h3-assignment"
+	evidence.ObservedBy = "node-agent/" + stage.nodeIdentity
+	spiffeDigest := sha256.Sum256([]byte("spiffe://vela/worker/" + workerID.String()))
+	evidence.Members[0].IdentityDigest = hex.EncodeToString(spiffeDigest[:])
+	registry, err := fleet.NewService(newRolePool(
+		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
+	))
+	if err != nil {
+		t.Fatalf("construct %s Assignment Worker Registry: %v", stage.key, err)
+	}
+	if _, err := registry.Observe(context.Background(), evidence); err != nil {
+		t.Fatalf("observe %s Assignment WorkerInstance: %v", stage.key, err)
+	}
+	seedModelRuntimeCapacityRoute(
+		t, database.Admin, workerID, evidence.Residencies[0].ID,
+		poolID, uuid.MustParse(stage.profileID),
+	)
+	worker := workerAuthority(t, evidence)
+	registerStageSchedulerRuntime(t, database, evidence, worker, stage.profileID)
+	repository, err := stagescheduler.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_stage_scheduler_login", "vela-stage-scheduler-password",
+	))
+	if err != nil {
+		t.Fatalf("construct %s Assignment StageScheduler repository: %v", stage.key, err)
+	}
+	return stageSchedulerFixture{
+		database: database, repository: repository, coordinator: coordinator,
+		authority: stagescheduler.WorkerAuthority{
+			CapacityPoolID: poolID, StageProfileRevisionID: uuid.MustParse(stage.profileID),
+			WorkerInstanceID: worker.WorkerInstanceID, WorkerInstanceEpoch: worker.InstanceEpoch,
+			DeviceSetDigest: worker.DeviceSetDigest, MembershipDigest: worker.MembershipDigest,
+			ModelResidencyID: worker.ModelResidencyID, ModelRuntimeEpoch: worker.ModelRuntimeEpoch,
+			CapacityVector: evidence.Capacity.Vector,
+		},
+		observation: stagescheduler.CapacityObservation{Sequence: evidence.Capacity.Sequence},
+		stageRunID:  stageRunID,
+	}
 }
 
 func newH3IntegrationGraphFixture(

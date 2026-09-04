@@ -9,11 +9,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
+	"github.com/vivym/vela/internal/artifactstore"
+	"github.com/vivym/vela/internal/attemptcoordinator"
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageassignment"
 	"github.com/vivym/vela/internal/stageauthority"
@@ -191,6 +194,112 @@ func TestPostgresAssignmentBackendReplaysExactAssignment(t *testing.T) {
 			"durable Assignment rows attempts=%d leases=%d intents=%d results=%d",
 			attempts, leases, intents, results,
 		)
+	}
+}
+
+func TestPostgresAssignmentBackendAssignsCertifiedConnectorInput(t *testing.T) {
+	database, coordinator, _, attemptID := newH3IntegrationGraphFixture(
+		t, "stage-worker-certified-connector-input",
+	)
+	seedWorkerRegistryPlan(t, database.Admin)
+	stages := h3IntegrationStages(
+		[]string{"encoder-node-01", "dit-node-09", "vae-node-03"}, nil,
+	)
+	var encoderRunID, ditRunID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'encoder'),
+			(SELECT id FROM stage_runs WHERE attempt_id = $1 AND stage_key = 'dit')
+	`, attemptID).Scan(&encoderRunID, &ditRunID); err != nil {
+		t.Fatalf("read Encoder/DiT StageRuns: %v", err)
+	}
+
+	encoderFixture := newH3AssignmentWorkerFixture(
+		t, database, coordinator, encoderRunID, stages[0], 0xd1,
+	)
+	encoderResult, err := newPostgresAssignmentTestBackend(t, encoderFixture).AcquireStage(
+		context.Background(),
+		stageWorkerAcquireCommand(encoderFixture),
+		stageWorkerAcquireRequest(encoderFixture),
+	)
+	if err != nil || encoderResult.Assignment == nil {
+		t.Fatalf("Acquire Encoder = %#v error=%v", encoderResult, err)
+	}
+	validator, err := stageauthority.NewValidator(
+		map[string][]byte{"stage-authority-key-v1": bytes.Repeat([]byte{0x9a}, 32)},
+		func() time.Time {
+			return encoderResult.Assignment.GetAuthority().GetIssuedAt().AsTime().Add(time.Millisecond)
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct Encoder StageAuthority validator: %v", err)
+	}
+	verified, err := validator.ValidateEnvelope(encoderResult.Assignment.GetAuthority())
+	if err != nil {
+		t.Fatalf("verify Encoder StageAssignment authority: %v", err)
+	}
+	authority := verified.Authority
+	encoderAssignment := attemptcoordinator.AssignStageCommand{
+		AttemptID:              uuid.MustParse(authority.GetAttemptId()),
+		StageRunID:             uuid.MustParse(authority.GetStageRunId()),
+		ExpectedStageVersion:   authority.GetStageVersion() - 1,
+		StageAttemptID:         uuid.MustParse(authority.GetStageAttemptId()),
+		StageAllocationID:      uuid.MustParse(authority.GetStageAllocationId()),
+		StageLeaseID:           uuid.MustParse(authority.GetStageLeaseId()),
+		WorkerInstanceID:       uuid.MustParse(authority.GetWorkerInstanceId()),
+		WorkerInstanceEpoch:    authority.GetWorkerInstanceEpoch(),
+		ModelResidencyID:       uuid.MustParse(authority.GetModelResidencyId()),
+		ModelRuntimeEpoch:      authority.GetModelRuntimeBarrierGeneration(),
+		StageProfileRevisionID: uuid.MustParse(authority.GetStageProfileRevisionId()),
+		IssuedAt:               authority.GetIssuedAt().AsTime(),
+	}
+	started := startH3IntegrationStage(t, database, encoderAssignment, verified)
+	if started.Authority.GetStageVersion() != authority.GetStageVersion()+1 {
+		t.Fatalf("started Encoder StageVersion = %d", started.Authority.GetStageVersion())
+	}
+	artifactRepository, err := stageartifact.NewPostgresRepository(newRolePool(
+		t, database.DSN, "vela_stage_artifact_login", "vela-stage-artifact-password",
+	))
+	if err != nil {
+		t.Fatalf("construct Encoder StageArtifact repository: %v", err)
+	}
+	encoderArtifact := materializeH3IntegrationStage(
+		t, artifactRepository, artifactstore.NewLocal(), attemptID, encoderRunID,
+		encoderAssignment, stages[0], []byte("certified connector input"),
+		[]byte(`{"kind":"conditioning","schema_version":1}`),
+	)
+
+	ditFixture := newH3AssignmentWorkerFixture(
+		t, database, coordinator, ditRunID, stages[1], 0xd2,
+	)
+	ditResult, err := newPostgresAssignmentTestBackend(t, ditFixture).AcquireStage(
+		context.Background(),
+		stageWorkerAcquireCommand(ditFixture),
+		stageWorkerAcquireRequest(ditFixture),
+	)
+	if err != nil || ditResult.Assignment == nil {
+		t.Fatalf("Acquire DiT with CERTIFIED Connector = %#v error=%v", ditResult, err)
+	}
+	inputs := ditResult.Assignment.GetExecutionSpec().GetInputs()
+	tickets := ditResult.Assignment.GetInputTransferTickets()
+	if len(inputs) != 1 || len(tickets) != 1 ||
+		inputs[0].GetStageArtifactId() != encoderArtifact.ID.String() ||
+		inputs[0].GetObjectVersion() != encoderArtifact.ObjectVersion ||
+		tickets[0].GetStageArtifactId() != encoderArtifact.ID.String() ||
+		tickets[0].GetObjectVersion() != encoderArtifact.ObjectVersion {
+		t.Fatalf("DiT certified Connector inputs/tickets = %#v / %#v", inputs, tickets)
+	}
+	var connectorState string
+	if err := database.Admin.QueryRow(`
+		SELECT connector.state::text
+		FROM transfer_tickets AS ticket
+		JOIN connector_revisions AS connector ON connector.id = ticket.connector_revision_id
+		WHERE ticket.stage_artifact_id = $1
+	`, encoderArtifact.ID).Scan(&connectorState); err != nil {
+		t.Fatalf("read DiT TransferTicket Connector: %v", err)
+	}
+	if connectorState != "CERTIFIED" {
+		t.Fatalf("DiT TransferTicket Connector state = %s, want CERTIFIED", connectorState)
 	}
 }
 
@@ -407,6 +516,44 @@ func TestStageWorkerAssignmentMigrationEmptyDownUp(t *testing.T) {
 			t.Fatalf("Stage Worker assignment version after Up = %d error=%v", version, err)
 		}
 	})
+}
+
+func TestStageAssignmentConnectorStatesMigrationEmptyDownUp(t *testing.T) {
+	database := newPostgres(t)
+	applyFoundationTo(t, database.Admin, 67)
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	assertConnectorStates := func(wantExpanded bool) {
+		t.Helper()
+		var definition string
+		if err := database.Admin.QueryRow(`
+			SELECT pg_get_functiondef(
+				'public.vela_read_stage_assignment_execution_v1(uuid,uuid)'::regprocedure
+			)
+		`).Scan(&definition); err != nil {
+			t.Fatalf("read StageAssignment execution definition: %v", err)
+		}
+		expanded := strings.Contains(
+			definition,
+			"revision.state IN ('CERTIFIED', 'CANARY', 'ACTIVE', 'DRAINING')",
+		)
+		if expanded != wantExpanded {
+			t.Fatalf("StageAssignment Connector states expanded=%t want=%t", expanded, wantExpanded)
+		}
+	}
+
+	assertConnectorStates(false)
+	if err := goose.UpTo(database.Admin, migrations, 68); err != nil {
+		t.Fatalf("expand StageAssignment Connector states migration: %v", err)
+	}
+	assertConnectorStates(true)
+	if err := goose.DownTo(database.Admin, migrations, 67); err != nil {
+		t.Fatalf("contract StageAssignment Connector states migration: %v", err)
+	}
+	assertConnectorStates(false)
+	if err := goose.UpTo(database.Admin, migrations, 68); err != nil {
+		t.Fatalf("re-expand StageAssignment Connector states migration: %v", err)
+	}
+	assertConnectorStates(true)
 }
 
 func newPostgresAssignmentTestBackend(

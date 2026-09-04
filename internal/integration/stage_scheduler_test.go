@@ -1596,7 +1596,7 @@ func newStageSchedulerFixtureWithRequest(
 		t.Fatalf("construct %s StageScheduler repository: %v", suffix, err)
 	}
 	worker := workerAuthority(t, evidence)
-	registerStageSchedulerRuntime(t, database, evidence, worker)
+	registerStageSchedulerRuntime(t, database, evidence, worker, encoderStageProfileID)
 	return stageSchedulerFixture{
 		database:    database,
 		repository:  repository,
@@ -1641,6 +1641,7 @@ func registerStageSchedulerRuntime(
 	database testDatabase,
 	evidence fleet.WorkerInstanceEvidence,
 	worker fleet.WorkerInstanceAuthority,
+	stageProfileID string,
 ) {
 	t.Helper()
 	readinessEvidence := []byte("stage-scheduler-runtime-ready")
@@ -1683,7 +1684,7 @@ func registerStageSchedulerRuntime(
 				ModelResidencyId:       worker.ModelResidencyID.String(),
 				RuntimeIdentity:        evidence.Residencies[0].RuntimeIdentity,
 				ModelRuntimeEpoch:      evidence.Residencies[0].ModelRuntimeEpoch,
-				StageProfileRevisionId: encoderStageProfileID,
+				StageProfileRevisionId: stageProfileID,
 				WorkerMemberId:         member.ID.String(),
 				WorkerMemberEpoch:      member.MemberEpoch,
 			},
