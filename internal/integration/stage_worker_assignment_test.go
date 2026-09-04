@@ -285,21 +285,317 @@ func TestPostgresAssignmentBackendAssignsCertifiedConnectorInput(t *testing.T) {
 	if len(inputs) != 1 || len(tickets) != 1 ||
 		inputs[0].GetStageArtifactId() != encoderArtifact.ID.String() ||
 		inputs[0].GetObjectVersion() != encoderArtifact.ObjectVersion ||
+		!bytes.Equal(inputs[0].GetSha256(), encoderArtifact.SHA256[:]) ||
+		inputs[0].GetSizeBytes() != encoderArtifact.SizeBytes ||
+		inputs[0].GetStageInterfaceRevisionId() != stages[0].outputInterface ||
 		tickets[0].GetStageArtifactId() != encoderArtifact.ID.String() ||
-		tickets[0].GetObjectVersion() != encoderArtifact.ObjectVersion {
+		tickets[0].GetObjectVersion() != encoderArtifact.ObjectVersion ||
+		len(tickets[0].GetTransferTicket()) == 0 {
 		t.Fatalf("DiT certified Connector inputs/tickets = %#v / %#v", inputs, tickets)
 	}
+	ticketSigner, err := stageartifact.NewTransferTicketKeyringSigner(
+		"stage-authority-key-v1",
+		map[string][]byte{"stage-authority-key-v1": bytes.Repeat([]byte{0x9a}, 32)},
+	)
+	if err != nil {
+		t.Fatalf("construct TransferTicket verifier: %v", err)
+	}
+	issuedAt := ditResult.Assignment.GetAuthority().GetIssuedAt().AsTime()
+	claims, err := ticketSigner.Verify(
+		stageartifact.SignedTransferTicket{Token: tickets[0].GetTransferTicket()},
+		issuedAt.Add(time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("verify certified Connector TransferTicket: %v", err)
+	}
+	connectorID := uuid.MustParse("49000000-0000-0000-0000-000000000050")
+	if claims.TicketID == uuid.Nil ||
+		claims.Destination.WorkerInstanceID.String() != ditResult.Assignment.GetAuthority().GetWorkerInstanceId() ||
+		claims.Destination.WorkerInstanceEpoch != ditResult.Assignment.GetAuthority().GetWorkerInstanceEpoch() ||
+		claims.Destination.ModelResidencyID.String() != ditResult.Assignment.GetAuthority().GetModelResidencyId() ||
+		claims.Destination.ModelRuntimeEpoch != ditResult.Assignment.GetAuthority().GetModelRuntimeBarrierGeneration() ||
+		claims.Destination.ConnectorRevisionID != connectorID ||
+		!claims.IssuedAt.Equal(issuedAt) ||
+		!claims.ExpiresAt.Equal(issuedAt.Add(30*time.Second)) {
+		t.Fatalf("certified Connector TransferTicket claims = %#v", claims)
+	}
+	descriptor, err := artifactRepository.Resolve(
+		context.Background(),
+		stageartifact.ResolveTransferCommand{
+			TicketID:    claims.TicketID,
+			TokenDigest: sha256.Sum256(tickets[0].GetTransferTicket()),
+			Destination: claims.Destination,
+			ResolvedAt:  issuedAt.Add(time.Millisecond),
+		},
+	)
+	if err != nil || descriptor.TicketID != claims.TicketID ||
+		descriptor.ArtifactID != encoderArtifact.ID ||
+		descriptor.ObjectVersion != encoderArtifact.ObjectVersion ||
+		descriptor.SHA256 != encoderArtifact.SHA256 ||
+		descriptor.SizeBytes != encoderArtifact.SizeBytes {
+		t.Fatalf("resolve certified Connector TransferTicket = %#v error=%v", descriptor, err)
+	}
+	var pinID uuid.UUID
+	if err := database.Admin.QueryRow(`
+		SELECT id
+		FROM stage_artifact_pins
+		WHERE stage_artifact_id = $1
+		  AND owner_stage_run_id = $2
+		  AND state = 'ACTIVE'
+	`, encoderArtifact.ID, ditRunID).Scan(&pinID); err != nil {
+		t.Fatalf("read certified Connector StageArtifact pin: %v", err)
+	}
+	ticketIssuer, err := stageartifact.NewTransferTicketIssuer(artifactRepository, ticketSigner)
+	if err != nil {
+		t.Fatalf("construct server-clock TransferTicket issuer: %v", err)
+	}
+	issueTicket := func(label string, ticketIssuedAt, ticketExpiresAt time.Time) (
+		stageartifact.SignedTransferTicket,
+		stageartifact.TransferTicketClaims,
+	) {
+		t.Helper()
+		ticket, issueErr := ticketIssuer.Issue(
+			context.Background(),
+			stageartifact.IssueTransferRequest{
+				CommandID: uuid.New(), TicketID: uuid.New(), ArtifactID: encoderArtifact.ID,
+				PinID: pinID, SigningKeyID: "stage-authority-key-v1",
+				Destination: claims.Destination, IssuedAt: ticketIssuedAt,
+				ExpiresAt: ticketExpiresAt,
+			},
+		)
+		if issueErr != nil {
+			t.Fatalf("issue %s TransferTicket fixture: %v", label, issueErr)
+		}
+		verifiedClaims, verifyErr := ticketSigner.Verify(
+			ticket, ticketIssuedAt.Add(time.Millisecond),
+		)
+		if verifyErr != nil {
+			t.Fatalf("verify %s TransferTicket fixture at claimed time: %v", label, verifyErr)
+		}
+		return ticket, verifiedClaims
+	}
+	assertServerClockRejects := func(label string, ticketIssuedAt, ticketExpiresAt time.Time) {
+		t.Helper()
+		ticket, ticketClaims := issueTicket(label, ticketIssuedAt, ticketExpiresAt)
+		tokenDigest := sha256.Sum256(ticket.Token)
+		_, resolveErr := artifactRepository.Resolve(
+			context.Background(),
+			stageartifact.ResolveTransferCommand{
+				TicketID: ticketClaims.TicketID, TokenDigest: tokenDigest,
+				Destination: ticketClaims.Destination,
+				ResolvedAt:  ticketIssuedAt.Add(time.Millisecond),
+			},
+		)
+		assertPostgresConstraint(t, resolveErr, "stage_transfer_ticket_resolve_stale")
+		consumeErr := artifactRepository.Consume(
+			context.Background(),
+			stageartifact.ConsumeTransferCommand{
+				CommandID: uuid.New(), TicketID: ticketClaims.TicketID,
+				TokenDigest: tokenDigest, Destination: ticketClaims.Destination,
+				OutcomeDigest: encoderArtifact.SHA256,
+				ConsumedAt:    ticketIssuedAt.Add(time.Millisecond),
+			},
+		)
+		assertPostgresConstraint(t, consumeErr, "stage_transfer_ticket_consume_stale")
+	}
+	expiredIssuedAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Millisecond)
+	assertServerClockRejects(
+		"expired", expiredIssuedAt, expiredIssuedAt.Add(30*time.Second),
+	)
+	futureIssuedAt := time.Now().UTC().Add(time.Minute).Truncate(time.Millisecond)
+	assertServerClockRejects(
+		"future", futureIssuedAt, futureIssuedAt.Add(30*time.Second),
+	)
+
+	capacityResult, err := database.Admin.Exec(`
+		UPDATE capacity_observations
+		SET expires_at = clock_timestamp() + interval '1 minute'
+		WHERE worker_instance_id = $1 AND worker_instance_epoch = $2
+	`, claims.Destination.WorkerInstanceID, claims.Destination.WorkerInstanceEpoch)
+	if err != nil {
+		t.Fatalf("extend destination CapacityObservation: %v", err)
+	}
+	capacityRows, err := capacityResult.RowsAffected()
+	if err != nil || capacityRows != 1 {
+		t.Fatalf("extended CapacityObservations = %d error=%v, want 1", capacityRows, err)
+	}
+	assertLockWaitRejects := func(label string, expireCapacity bool) {
+		t.Helper()
+		lockIssuedAt := time.Now().UTC().Add(-time.Second).Truncate(time.Millisecond)
+		ticketExpiresAt := lockIssuedAt.Add(time.Minute)
+		resolveTicket, resolveClaims := issueTicket(label+" resolve", lockIssuedAt, ticketExpiresAt)
+		consumeTicket, consumeClaims := issueTicket(label+" consume", lockIssuedAt, ticketExpiresAt)
+		blocker, beginErr := database.Admin.Begin()
+		if beginErr != nil {
+			t.Fatalf("begin %s lock blocker: %v", label, beginErr)
+		}
+		defer func() { _ = blocker.Rollback() }()
+		if _, lockErr := blocker.Exec(`
+			SELECT id FROM transfer_tickets WHERE id IN ($1, $2) FOR UPDATE
+		`, resolveClaims.TicketID, consumeClaims.TicketID); lockErr != nil {
+			t.Fatalf("lock %s TransferTickets: %v", label, lockErr)
+		}
+		resolveErrors := make(chan error, 1)
+		go func() {
+			_, resolveErr := artifactRepository.Resolve(
+				context.Background(),
+				stageartifact.ResolveTransferCommand{
+					TicketID:    resolveClaims.TicketID,
+					TokenDigest: sha256.Sum256(resolveTicket.Token),
+					Destination: resolveClaims.Destination,
+					ResolvedAt:  lockIssuedAt.Add(time.Millisecond),
+				},
+			)
+			resolveErrors <- resolveErr
+		}()
+		consumeErrors := make(chan error, 1)
+		go func() {
+			consumeErrors <- artifactRepository.Consume(
+				context.Background(),
+				stageartifact.ConsumeTransferCommand{
+					CommandID: uuid.New(), TicketID: consumeClaims.TicketID,
+					TokenDigest:   sha256.Sum256(consumeTicket.Token),
+					Destination:   consumeClaims.Destination,
+					OutcomeDigest: encoderArtifact.SHA256,
+					ConsumedAt:    lockIssuedAt.Add(time.Millisecond),
+				},
+			)
+		}()
+		deadline := time.Now().Add(6 * time.Second)
+		for {
+			var waiters int
+			if queryErr := database.Admin.QueryRow(`
+				SELECT count(*) FROM pg_stat_activity
+				WHERE usename = 'vela_stage_artifact_login' AND wait_event_type = 'Lock'
+			`).Scan(&waiters); queryErr != nil {
+				t.Fatalf("inspect %s lock waiters: %v", label, queryErr)
+			}
+			if waiters >= 2 {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s lock waiters = %d, want 2", label, waiters)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if expireCapacity {
+			result, expireErr := blocker.Exec(`
+				UPDATE capacity_observations
+				SET expires_at = clock_timestamp() + interval '250 milliseconds'
+				WHERE worker_instance_id = $1 AND worker_instance_epoch = $2
+			`, claims.Destination.WorkerInstanceID, claims.Destination.WorkerInstanceEpoch)
+			if expireErr != nil {
+				t.Fatalf("expire %s CapacityObservation: %v", label, expireErr)
+			}
+			rows, rowsErr := result.RowsAffected()
+			if rowsErr != nil || rows != 1 {
+				t.Fatalf("expired %s CapacityObservations = %d error=%v, want 1", label, rows, rowsErr)
+			}
+		} else {
+			result, expireErr := blocker.Exec(`
+				UPDATE transfer_tickets
+				SET expires_at = clock_timestamp() + interval '250 milliseconds'
+				WHERE id IN ($1, $2)
+			`, resolveClaims.TicketID, consumeClaims.TicketID)
+			if expireErr != nil {
+				t.Fatalf("expire %s TransferTickets: %v", label, expireErr)
+			}
+			rows, rowsErr := result.RowsAffected()
+			if rowsErr != nil || rows != 2 {
+				t.Fatalf("expired %s TransferTickets = %d error=%v, want 2", label, rows, rowsErr)
+			}
+		}
+		if _, sleepErr := blocker.Exec(`SELECT pg_sleep(0.4)`); sleepErr != nil {
+			t.Fatalf("wait across %s rejection boundary: %v", label, sleepErr)
+		}
+		if commitErr := blocker.Commit(); commitErr != nil {
+			t.Fatalf("release %s lock blocker: %v", label, commitErr)
+		}
+		select {
+		case resolveErr := <-resolveErrors:
+			assertPostgresConstraint(t, resolveErr, "stage_transfer_ticket_resolve_stale")
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s Resolve did not finish", label)
+		}
+		select {
+		case consumeErr := <-consumeErrors:
+			assertPostgresConstraint(t, consumeErr, "stage_transfer_ticket_consume_stale")
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s Consume did not finish", label)
+		}
+	}
+	assertLockWaitRejects("ticket expiry", false)
+	assertLockWaitRejects("capacity expiry", true)
 	var connectorState string
 	if err := database.Admin.QueryRow(`
 		SELECT connector.state::text
 		FROM transfer_tickets AS ticket
 		JOIN connector_revisions AS connector ON connector.id = ticket.connector_revision_id
-		WHERE ticket.stage_artifact_id = $1
-	`, encoderArtifact.ID).Scan(&connectorState); err != nil {
+		WHERE ticket.id = $1
+	`, claims.TicketID).Scan(&connectorState); err != nil {
 		t.Fatalf("read DiT TransferTicket Connector: %v", err)
 	}
 	if connectorState != "CERTIFIED" {
 		t.Fatalf("DiT TransferTicket Connector state = %s, want CERTIFIED", connectorState)
+	}
+
+	writer, err := database.Admin.Begin()
+	if err != nil {
+		t.Fatalf("begin concurrent TransferTicket writer: %v", err)
+	}
+	defer func() { _ = writer.Rollback() }()
+	if _, err := writer.Exec(`
+		INSERT INTO transfer_tickets (
+			id, stage_artifact_id, stage_artifact_pin_id, exact_object_version,
+			sha256, size_bytes, destination_worker_instance_id,
+			destination_worker_instance_epoch, destination_model_residency_id,
+			destination_model_runtime_epoch, connector_revision_id, token_digest,
+			issued_at, expires_at
+		)
+		SELECT $1, stage_artifact_id, stage_artifact_pin_id, exact_object_version,
+		       sha256, size_bytes, destination_worker_instance_id,
+		       destination_worker_instance_epoch, destination_model_residency_id,
+		       destination_model_runtime_epoch, connector_revision_id,
+		       decode(repeat('ef', 32), 'hex'), issued_at, expires_at
+		FROM transfer_tickets WHERE id = $2
+	`, uuid.New(), claims.TicketID); err != nil {
+		t.Fatalf("write concurrent TransferTicket evidence: %v", err)
+	}
+	migrations := filepath.Join(repositoryRoot(t), "db", "migrations")
+	downErrors := make(chan error, 1)
+	go func() {
+		downErrors <- goose.DownTo(database.Admin, migrations, 68)
+	}()
+	waitForRoleDatabaseLock(t, database.Admin, "postgres")
+	if err := writer.Commit(); err != nil {
+		t.Fatalf("commit concurrent TransferTicket evidence: %v", err)
+	}
+	select {
+	case downErr := <-downErrors:
+		assertPostgresConstraint(t, downErr, "stage_transfer_server_clock_rollback_is_unsafe")
+	case <-time.After(10 * time.Second):
+		t.Fatal("concurrent Stage TransferTicket migration Down did not finish")
+	}
+	err = goose.DownTo(database.Admin, migrations, 68)
+	assertPostgresConstraint(t, err, "stage_transfer_server_clock_rollback_is_unsafe")
+	version, err := goose.GetDBVersion(database.Admin)
+	if err != nil || version != 69 {
+		t.Fatalf("Stage TransferTicket version after refused Down = %d error=%v", version, err)
+	}
+	for _, signature := range []string{
+		"public.vela_resolve_stage_transfer_ticket(jsonb)",
+		"public.vela_consume_stage_transfer_ticket(jsonb)",
+	} {
+		var definition string
+		if err := database.Admin.QueryRow(`
+			SELECT pg_get_functiondef($1::regprocedure)
+		`, signature).Scan(&definition); err != nil {
+			t.Fatalf("read %s after refused Down: %v", signature, err)
+		}
+		if !strings.Contains(definition, "v_server_now >= v_ticket.expires_at") ||
+			!strings.Contains(definition, "observation.expires_at > v_server_now") {
+			t.Fatalf("%s lost server clock after refused Down", signature)
+		}
 	}
 }
 

@@ -69,6 +69,14 @@ type runningH3DiT struct {
 	assignment      attemptcoordinator.AssignStageCommand
 }
 
+type h3IntegrationWorker struct {
+	poolID    uuid.UUID
+	workerID  uuid.UUID
+	evidence  fleet.WorkerInstanceEvidence
+	authority fleet.WorkerInstanceAuthority
+	capacity  map[string]int64
+}
+
 func TestSplitH3StageGraphProducesExactOutputOnSameAndCrossNodePlacements(t *testing.T) {
 	placements := map[string][]string{
 		"same-node":  {"h3-node-01", "h3-node-01", "h3-node-01"},
@@ -631,15 +639,51 @@ func assignH3IntegrationStage(
 	identityByte byte,
 ) attemptcoordinator.AssignStageCommand {
 	t.Helper()
+	worker := seedH3IntegrationWorker(t, database, registry, stage, identityByte)
+	issuedAt := time.Now().UTC().Truncate(time.Millisecond)
+	leaseTokenDigest := sha256.Sum256(bytes.Repeat([]byte{0xb3}, 32))
+	assignment := attemptcoordinator.AssignStageCommand{
+		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: stageRunID,
+		ExpectedAttemptFence: 1, ExpectedStageFence: 1,
+		ExpectedStageVersion: expectedVersion,
+		StageAttemptID:       uuid.New(), StageAllocationID: uuid.New(), StageLeaseID: uuid.New(),
+		StageProfileRevisionID: uuid.MustParse(stage.profileID), CapacityPoolID: worker.poolID,
+		WorkerInstanceID: worker.workerID, WorkerInstanceEpoch: worker.authority.InstanceEpoch,
+		ObservationSequence: worker.evidence.Capacity.Sequence,
+		DeviceSetDigest:     worker.authority.DeviceSetDigest, MembershipDigest: worker.authority.MembershipDigest,
+		ModelResidencyID: worker.authority.ModelResidencyID, ModelRuntimeEpoch: worker.authority.ModelRuntimeEpoch,
+		CapacityVector: maps.Clone(worker.capacity), TokenDigest: leaseTokenDigest[:],
+		SigningKeyID: "stage-authority-key-v1", ExecutionNonce: bytesOf(identityByte, 32),
+		IssuedAt: issuedAt, ExpiresAt: issuedAt.Add(5 * time.Minute),
+		LocalDeadlineAt: issuedAt.Add(4 * time.Minute),
+	}
+	decision, err := coordinator.Apply(context.Background(), assignment)
+	if err != nil {
+		t.Fatalf("assign %s StageRun: %v", stage.key, err)
+	}
+	if decision.State != "ASSIGNED" || decision.StageVersion != expectedVersion+1 {
+		t.Fatalf("%s Assignment decision = %#v", stage.key, decision)
+	}
+	return assignment
+}
+
+func seedH3IntegrationWorker(
+	t *testing.T,
+	database testDatabase,
+	registry *fleet.Service,
+	stage h3IntegrationStage,
+	identityByte byte,
+) h3IntegrationWorker {
+	t.Helper()
 	poolID := uuid.New()
 	workerID := uuid.New()
 	resourceClass := stage.resourceClass
 	if resourceClass == "" {
 		resourceClass = "GPU"
 	}
-	capacityVector := stage.capacityVector
-	if capacityVector == nil {
-		capacityVector = map[string]int64{"concurrency": 1}
+	capacity := stage.capacityVector
+	if capacity == nil {
+		capacity = map[string]int64{"concurrency": 1}
 	}
 	var residencyPlanID *uuid.UUID
 	if stage.residencyPlanID != uuid.Nil {
@@ -681,42 +725,32 @@ func assignH3IntegrationStage(
 	}
 	evidence.Members[0].ComputeNodeID = nodeID
 	evidence.Members[0].DeviceIDs = []uuid.UUID{deviceID}
-	evidence.Residencies[0].ModelComponentRevision = stage.component
+	if err := database.Admin.QueryRow(`
+		SELECT model_component_revision, runtime_image_digest
+		FROM stage_profile_revisions
+		WHERE id = $1
+	`, stage.profileID).Scan(
+		&evidence.Residencies[0].ModelComponentRevision,
+		&evidence.Residencies[0].RuntimeImageDigest,
+	); err != nil {
+		t.Fatalf("read %s StageProfile runtime identity: %v", stage.key, err)
+	}
 	evidence.Residencies[0].RuntimeIdentity = stage.key + "@sha256:h3-integration"
-	evidence.Capacity.Vector = maps.Clone(capacityVector)
+	evidence.Capacity.Vector = maps.Clone(capacity)
 	evidence.ObservedBy = "node-agent/" + stage.nodeIdentity
-	spiffeID := "spiffe://vela/worker/" + workerID.String()
-	spiffeDigest := sha256.Sum256([]byte(spiffeID))
+	spiffeDigest := sha256.Sum256([]byte("spiffe://vela/worker/" + workerID.String()))
 	evidence.Members[0].IdentityDigest = hex.EncodeToString(spiffeDigest[:])
 	if _, err := registry.Observe(context.Background(), evidence); err != nil {
 		t.Fatalf("observe %s WorkerInstance: %v", stage.key, err)
 	}
-	authority := workerAuthority(t, evidence)
-	issuedAt := time.Now().UTC().Truncate(time.Millisecond)
-	leaseTokenDigest := sha256.Sum256(bytes.Repeat([]byte{0xb3}, 32))
-	assignment := attemptcoordinator.AssignStageCommand{
-		CommandID: uuid.New(), AttemptID: attemptID, StageRunID: stageRunID,
-		ExpectedAttemptFence: 1, ExpectedStageFence: 1,
-		ExpectedStageVersion: expectedVersion,
-		StageAttemptID:       uuid.New(), StageAllocationID: uuid.New(), StageLeaseID: uuid.New(),
-		StageProfileRevisionID: uuid.MustParse(stage.profileID), CapacityPoolID: poolID,
-		WorkerInstanceID: workerID, WorkerInstanceEpoch: authority.InstanceEpoch,
-		ObservationSequence: evidence.Capacity.Sequence,
-		DeviceSetDigest:     authority.DeviceSetDigest, MembershipDigest: authority.MembershipDigest,
-		ModelResidencyID: authority.ModelResidencyID, ModelRuntimeEpoch: authority.ModelRuntimeEpoch,
-		CapacityVector: maps.Clone(capacityVector), TokenDigest: leaseTokenDigest[:],
-		SigningKeyID: "stage-authority-key-v1", ExecutionNonce: bytesOf(identityByte, 32),
-		IssuedAt: issuedAt, ExpiresAt: issuedAt.Add(5 * time.Minute),
-		LocalDeadlineAt: issuedAt.Add(4 * time.Minute),
+	seedModelRuntimeCapacityRoute(
+		t, database.Admin, workerID, evidence.Residencies[0].ID,
+		poolID, uuid.MustParse(stage.profileID),
+	)
+	return h3IntegrationWorker{
+		poolID: poolID, workerID: workerID, evidence: evidence,
+		authority: workerAuthority(t, evidence), capacity: maps.Clone(capacity),
 	}
-	decision, err := coordinator.Apply(context.Background(), assignment)
-	if err != nil {
-		t.Fatalf("assign %s StageRun: %v", stage.key, err)
-	}
-	if decision.State != "ASSIGNED" || decision.StageVersion != expectedVersion+1 {
-		t.Fatalf("%s Assignment decision = %#v", stage.key, decision)
-	}
-	return assignment
 }
 
 func newH3AssignmentWorkerFixture(
@@ -728,64 +762,14 @@ func newH3AssignmentWorkerFixture(
 	identityByte byte,
 ) stageSchedulerFixture {
 	t.Helper()
-	poolID := uuid.New()
-	workerID := uuid.New()
-	if _, err := database.Admin.Exec(`
-		INSERT INTO capacity_pools (
-			id, stable_id, stage_profile_revision_id, resource_class,
-			security_class, region, max_ready_queue_depth, state
-		) VALUES ($1, $2, $3, 'GPU', 'INTERNAL', 'cn-shanghai', 1024, 'ACTIVE')
-	`, poolID, "h3-assignment-"+stage.key+"-"+workerID.String(), stage.profileID); err != nil {
-		t.Fatalf("seed %s Assignment CapacityPool: %v", stage.key, err)
-	}
-	if _, err := database.Admin.Exec(`
-		INSERT INTO worker_instances (
-			id, worker_profile_revision_id, capacity_pool_id, worker_bundle_id,
-			lifecycle_state, reachability_state, instance_epoch,
-			control_session_epoch, desired_member_count, desired_device_count
-		) VALUES ($1, $2, $3, $4, 'PROVISIONING', 'DISCONNECTED', 1, 1, 1, 1)
-	`, workerID, stage.workerProfileID, poolID, workerRegistryBundleID); err != nil {
-		t.Fatalf("seed %s Assignment WorkerInstance: %v", stage.key, err)
-	}
-	evidence := workerRegistryEvidenceValue(t, workerID, identityByte)
-	nodeID := uuid.NewSHA1(uuid.NameSpaceDNS, []byte("vela/integration/"+stage.nodeIdentity))
-	deviceID := uuid.NewSHA1(workerID, []byte("device-0"))
-	evidence.DeviceSet.Devices[0].ID = deviceID
-	evidence.DeviceSet.Devices[0].ComputeNodeID = nodeID
-	evidence.DeviceSet.Devices[0].NodeIdentity = stage.nodeIdentity
-	evidence.DeviceSet.Devices[0].GPUUUID = "GPU-" + workerID.String()
-	evidence.DeviceSet.Devices[0].PCIBDF = fmt.Sprintf("0000:%02x:00.0", identityByte)
-	evidence.Members[0].ComputeNodeID = nodeID
-	evidence.Members[0].DeviceIDs = []uuid.UUID{deviceID}
-	if err := database.Admin.QueryRow(`
-		SELECT model_component_revision, runtime_image_digest
-		FROM stage_profile_revisions
-		WHERE id = $1
-	`, stage.profileID).Scan(
-		&evidence.Residencies[0].ModelComponentRevision,
-		&evidence.Residencies[0].RuntimeImageDigest,
-	); err != nil {
-		t.Fatalf("read %s Assignment StageProfile runtime identity: %v", stage.key, err)
-	}
-	evidence.Residencies[0].RuntimeIdentity = stage.key + "@sha256:h3-assignment"
-	evidence.ObservedBy = "node-agent/" + stage.nodeIdentity
-	spiffeDigest := sha256.Sum256([]byte("spiffe://vela/worker/" + workerID.String()))
-	evidence.Members[0].IdentityDigest = hex.EncodeToString(spiffeDigest[:])
 	registry, err := fleet.NewService(newRolePool(
 		t, database.DSN, "vela_fleet_login", "vela-fleet-password",
 	))
 	if err != nil {
 		t.Fatalf("construct %s Assignment Worker Registry: %v", stage.key, err)
 	}
-	if _, err := registry.Observe(context.Background(), evidence); err != nil {
-		t.Fatalf("observe %s Assignment WorkerInstance: %v", stage.key, err)
-	}
-	seedModelRuntimeCapacityRoute(
-		t, database.Admin, workerID, evidence.Residencies[0].ID,
-		poolID, uuid.MustParse(stage.profileID),
-	)
-	worker := workerAuthority(t, evidence)
-	registerStageSchedulerRuntime(t, database, evidence, worker, stage.profileID)
+	worker := seedH3IntegrationWorker(t, database, registry, stage, identityByte)
+	registerStageSchedulerRuntime(t, database, worker.evidence, worker.authority, stage.profileID)
 	repository, err := stagescheduler.NewPostgresRepository(newRolePool(
 		t, database.DSN, "vela_stage_scheduler_login", "vela-stage-scheduler-password",
 	))
@@ -795,13 +779,16 @@ func newH3AssignmentWorkerFixture(
 	return stageSchedulerFixture{
 		database: database, repository: repository, coordinator: coordinator,
 		authority: stagescheduler.WorkerAuthority{
-			CapacityPoolID: poolID, StageProfileRevisionID: uuid.MustParse(stage.profileID),
-			WorkerInstanceID: worker.WorkerInstanceID, WorkerInstanceEpoch: worker.InstanceEpoch,
-			DeviceSetDigest: worker.DeviceSetDigest, MembershipDigest: worker.MembershipDigest,
-			ModelResidencyID: worker.ModelResidencyID, ModelRuntimeEpoch: worker.ModelRuntimeEpoch,
-			CapacityVector: evidence.Capacity.Vector,
+			CapacityPoolID: worker.poolID, StageProfileRevisionID: uuid.MustParse(stage.profileID),
+			WorkerInstanceID:    worker.authority.WorkerInstanceID,
+			WorkerInstanceEpoch: worker.authority.InstanceEpoch,
+			DeviceSetDigest:     worker.authority.DeviceSetDigest,
+			MembershipDigest:    worker.authority.MembershipDigest,
+			ModelResidencyID:    worker.authority.ModelResidencyID,
+			ModelRuntimeEpoch:   worker.authority.ModelRuntimeEpoch,
+			CapacityVector:      maps.Clone(worker.capacity),
 		},
-		observation: stagescheduler.CapacityObservation{Sequence: evidence.Capacity.Sequence},
+		observation: stagescheduler.CapacityObservation{Sequence: worker.evidence.Capacity.Sequence},
 		stageRunID:  stageRunID,
 	}
 }
