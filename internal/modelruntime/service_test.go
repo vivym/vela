@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -86,6 +87,90 @@ func TestModelRuntimeRejectsExecutionSpecNotBoundByAuthority(t *testing.T) {
 	if err != nil || prepared.GetDecision() !=
 		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
 		t.Fatalf("PrepareStage with altered spec = %#v error=%v", prepared, err)
+	}
+}
+
+func TestModelRuntimeAcceptsStageAuthorityWithinConfiguredClockSkew(t *testing.T) {
+	clock := newManualClock(time.Date(2026, 8, 30, 6, 11, 0, 0, time.UTC))
+	signer, validator := runtimeAuthorityCrypto(t, clock)
+	authority := signRuntimeAuthority(t, signer, clock.Now().Add(3200*time.Microsecond))
+	binding := runtimeBinding()
+	template := binding
+	template.ModelRuntimeEpoch = 0
+	service, err := modelruntime.NewService(modelruntime.Config{
+		Binding: template,
+		EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) {
+			return binding.ModelRuntimeEpoch, nil
+		}),
+		Validator: validator, Backend: modelruntime.NewFakeDiTRuntime(), Clock: clock,
+		CancelTimeout: time.Second, MaxClockSkew: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	t.Cleanup(service.Close)
+	client, _ := serveRuntime(t, service)
+	prepared, err := client.PrepareStage(
+		context.Background(),
+		&velav1.ModelRuntimeServicePrepareStageRequest{
+			Authority: authority, ExecutionSpec: runtimeExecutionSpec(),
+		},
+	)
+	if err != nil || prepared.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("future-issued PrepareStage = %#v error=%v", prepared, err)
+	}
+}
+
+func TestModelRuntimeRejectsStageAuthorityBeyondConfiguredClockSkew(t *testing.T) {
+	clock := newManualClock(time.Date(2026, 8, 30, 6, 11, 0, 0, time.UTC))
+	signer, validator := runtimeAuthorityCrypto(t, clock)
+	authority := signRuntimeAuthority(t, signer, clock.Now().Add(30*time.Second+time.Millisecond))
+	binding := runtimeBinding()
+	template := binding
+	template.ModelRuntimeEpoch = 0
+	service, err := modelruntime.NewService(modelruntime.Config{
+		Binding: template,
+		EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) {
+			return binding.ModelRuntimeEpoch, nil
+		}),
+		Validator: validator, Backend: modelruntime.NewFakeDiTRuntime(), Clock: clock,
+		CancelTimeout: time.Second, MaxClockSkew: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	t.Cleanup(service.Close)
+	client, _ := serveRuntime(t, service)
+	prepared, err := client.PrepareStage(
+		context.Background(),
+		&velav1.ModelRuntimeServicePrepareStageRequest{
+			Authority: authority, ExecutionSpec: runtimeExecutionSpec(),
+		},
+	)
+	if err != nil || prepared.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
+		t.Fatalf("over-skew PrepareStage = %#v error=%v", prepared, err)
+	}
+}
+
+func TestNewModelRuntimeServiceRejectsInvalidClockSkew(t *testing.T) {
+	for _, maxClockSkew := range []time.Duration{-time.Nanosecond, time.Minute + time.Nanosecond} {
+		t.Run(maxClockSkew.String(), func(t *testing.T) {
+			binding := runtimeBinding()
+			binding.ModelRuntimeEpoch = 0
+			service, err := modelruntime.NewService(modelruntime.Config{
+				Binding: binding,
+				EpochStore: modelruntime.EpochStoreFunc(func(stageauthority.RuntimeBinding) (int64, error) {
+					return 9, nil
+				}),
+				Validator: mustRuntimeValidator(t), Backend: modelruntime.NewFakeDiTRuntime(),
+				CancelTimeout: time.Second, MaxClockSkew: maxClockSkew,
+			})
+			if service != nil || err == nil || !strings.Contains(err.Error(), "clock skew is invalid") {
+				t.Fatalf("NewService skew=%s service=%v error=%v", maxClockSkew, service, err)
+			}
+		})
 	}
 }
 

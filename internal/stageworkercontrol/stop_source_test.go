@@ -100,6 +100,42 @@ func TestAuthorityStopSourceClassifiesExpiredLeaseWithoutDatabaseApproval(t *tes
 	}
 }
 
+func TestAuthorityStopSourceTracksControlRenewalWithinClockSkew(t *testing.T) {
+	now := time.Date(2026, 8, 30, 11, 30, 0, 0, time.UTC)
+	keyring := map[string][]byte{"control-key": make([]byte, 32)}
+	signer, err := stageauthority.NewSigner(keyring)
+	if err != nil {
+		t.Fatalf("construct StageAuthority signer: %v", err)
+	}
+	validator, err := stageauthority.NewValidator(keyring, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("construct StageAuthority validator: %v", err)
+	}
+	source, err := stageworkercontrol.NewAuthorityStopSource(
+		validator,
+		&mutableStopAuthorizer{active: true},
+		stageworkercontrol.AuthorityStopSourceConfig{
+			PollInterval: time.Second,
+			MaxClockSkew: 30 * time.Second,
+			Now:          func() time.Time { return now },
+		},
+	)
+	if err != nil {
+		t.Fatalf("construct authority StopSource: %v", err)
+	}
+	identity := stageworkertransport.Identity{SPIFFEID: "spiffe://vela/worker/member-1"}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_ = source.Stops(ctx, identity, 9)
+	authority, err := signer.Sign(controlAuthority(now.Add(20 * time.Millisecond)))
+	if err != nil {
+		t.Fatalf("sign future renewal: %v", err)
+	}
+	if err := source.ObserveStageAuthority(identity, 9, authority); err != nil {
+		t.Fatalf("track renewal within clock skew: %v", err)
+	}
+}
+
 type mutableStopAuthorizer struct {
 	mu     sync.Mutex
 	active bool

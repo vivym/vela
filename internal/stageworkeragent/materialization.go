@@ -28,6 +28,7 @@ type MaterializationConfig struct {
 	Publisher          stageartifact.Publisher
 	Journal            MaterializationJournal
 	SourceLossEvidence MaterializationSourceLossEvidenceProvider
+	MaxClockSkew       time.Duration
 }
 
 type MaterializationSourceLossEvidence struct {
@@ -239,6 +240,7 @@ type streamMaterialization struct {
 	publisher          stageartifact.Publisher
 	journal            MaterializationJournal
 	sourceLossEvidence MaterializationSourceLossEvidenceProvider
+	maxClockSkew       time.Duration
 }
 
 func (agent *StreamAgent) advancePendingMaterialization(
@@ -258,7 +260,10 @@ func (agent *StreamAgent) advancePendingMaterialization(
 			return result, fmt.Errorf("seal local StageArtifact with control authority: %w", err)
 		}
 		authority := response.GetMaterializationAuthority()
-		verified, err := agent.materialization.validator.Validate(authority)
+		verified, err := agent.materialization.validator.ValidateWithClockSkew(
+			authority,
+			agent.materialization.maxClockSkew,
+		)
 		if err != nil {
 			return result, fmt.Errorf("validate issued MaterializationAuthority: %w", err)
 		}

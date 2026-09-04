@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/modelruntimetransport"
 	"github.com/vivym/vela/internal/stageauthority"
@@ -104,6 +105,73 @@ func TestRunServesResidentRuntimeUntilShutdown(t *testing.T) {
 	if _, err := os.Lstat(socketPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("runtime socket remains after shutdown: %v", err)
 	}
+}
+
+func TestRunPropagatesProductionAuthorityClockSkew(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("resolve test executable: %v", err)
+	}
+	root := t.TempDir()
+	inputRoot := filepath.Join(root, "inputs")
+	outputRoot := filepath.Join(root, "outputs")
+	for _, directory := range []string{inputRoot, outputRoot} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatalf("create runtime directory: %v", err)
+		}
+	}
+	manifestPath := filepath.Join(root, "launch.json")
+	writeCommandJSON(
+		t,
+		manifestPath,
+		commandLaunchManifest(root, outputRoot, executable, filepath.Join(root, "events.log")),
+	)
+	keyringPath := filepath.Join(root, "verifier-keyring.json")
+	verifierKeyring, err := stageauthority.DeriveVerifierKeyring(map[string][]byte{
+		"authority-v1": make([]byte, 32),
+	})
+	if err != nil {
+		t.Fatalf("derive verifier keyring: %v", err)
+	}
+	defer stageauthority.ClearKeyring(verifierKeyring)
+	writeCommandJSON(t, keyringPath, map[string]string{
+		"authority-v1": base64.StdEncoding.EncodeToString(verifierKeyring["authority-v1"]),
+	})
+	t.Setenv("VELA_MODEL_RUNTIME_LAUNCH_MANIFEST_FILE", manifestPath)
+	t.Setenv("VELA_MODEL_RUNTIME_AUTHORITY_VERIFIER_KEYRING_FILE", keyringPath)
+	t.Setenv("VELA_MODEL_RUNTIME_EPOCH_DIRECTORY", filepath.Join(root, "epochs"))
+	t.Setenv("VELA_MODEL_RUNTIME_SOCKET", filepath.Join(root, "runtime.sock"))
+	t.Setenv("VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", "5s")
+	t.Setenv("VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT", "5s")
+	ctx, cancel := context.WithCancel(context.Background())
+	var observed time.Duration
+	err = runUsing(ctx, func(
+		ctx context.Context,
+		config modelruntime.RuntimeServerConfig,
+	) (modelRuntimeServer, error) {
+		observed = config.MaxClockSkew
+		cancel()
+		return canceledModelRuntimeServer{ctx: ctx}, nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("runUsing error = %v, want context cancellation", err)
+	}
+	if observed != authoritypolicy.ProductionMaxClockSkew {
+		t.Fatalf("runtime server clock skew = %s, want %s", observed, authoritypolicy.ProductionMaxClockSkew)
+	}
+}
+
+type canceledModelRuntimeServer struct {
+	ctx context.Context
+}
+
+func (server canceledModelRuntimeServer) Wait() error {
+	<-server.ctx.Done()
+	return server.ctx.Err()
+}
+
+func (server canceledModelRuntimeServer) Close() error {
+	return server.ctx.Err()
 }
 
 func TestLoadCommandConfigRequiresCanonicalPathsAndBoundedDurations(t *testing.T) {

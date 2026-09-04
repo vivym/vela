@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -365,6 +366,120 @@ func TestStreamAgentRetriesMaterializationWithoutHoldingOrRerunningGPU(t *testin
 			resumed, err, publisher.calls, fixture.countingBackend.sealCalls,
 			control.sealCalls, control.commitCalls,
 		)
+	}
+}
+
+func TestStreamAgentBoundsMaterializationAuthorityResponseClockSkew(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		maxClockSkew time.Duration
+		wantAccepted bool
+	}{
+		{name: "within configured skew", maxClockSkew: 30 * time.Second, wantAccepted: true},
+		{name: "beyond configured skew", maxClockSkew: time.Millisecond, wantAccepted: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newSingleMemberMaterializationFixture(t)
+			runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+				Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
+			})
+			if err != nil {
+				t.Fatalf("New Agent: %v", err)
+			}
+			control := newMaterializingStreamControlWithClockSkew(
+				t,
+				fixture.authority,
+				3200*time.Microsecond,
+				test.maxClockSkew,
+			)
+			publisher := &outageOncePublisher{failures: 1, objectVersion: "unused-version"}
+			source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
+			if err != nil {
+				t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
+			}
+			journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
+			if err != nil {
+				t.Fatalf("NewMemoryMaterializationJournal: %v", err)
+			}
+			streamAgent, err := stageworkeragent.NewMaterializingStreamAgent(
+				runtimeAgent,
+				control,
+				stageworkeragent.MaterializationConfig{
+					Validator: control.validator, Source: source, Publisher: publisher, Journal: journal,
+					SourceLossEvidence: testSourceLossEvidenceProvider(), MaxClockSkew: test.maxClockSkew,
+				},
+			)
+			if err != nil {
+				t.Fatalf("NewMaterializingStreamAgent: %v", err)
+			}
+			if _, err := streamAgent.ExecuteAssignment(context.Background(), fixture.assignment); err != nil {
+				t.Fatalf("ExecuteAssignment: %v", err)
+			}
+			fixture.backend.MarkOutputReadyWithSize(fixture.manifest, int64(len(fixture.payload)))
+			_, materializeErr := streamAgent.SealAndMaterialize(context.Background())
+			records, listErr := journal.List(context.Background())
+			if listErr != nil || len(records) != 1 {
+				t.Fatalf("journal records=%#v error=%v", records, listErr)
+			}
+			if test.wantAccepted {
+				if materializeErr == nil || !strings.Contains(materializeErr.Error(), "injected L2 outage") ||
+					publisher.calls != 1 || records[0].MaterializationAuthority == nil ||
+					!proto.Equal(records[0].MaterializationAuthority, control.materialization) {
+					t.Fatalf(
+						"accepted response error=%v publisher=%d record=%#v authority=%#v",
+						materializeErr,
+						publisher.calls,
+						records[0],
+						control.materialization,
+					)
+				}
+			} else if materializeErr == nil ||
+				!strings.Contains(materializeErr.Error(), "validate issued MaterializationAuthority") ||
+				publisher.calls != 0 || records[0].MaterializationAuthority != nil {
+				t.Fatalf(
+					"rejected response error=%v publisher=%d record=%#v",
+					materializeErr,
+					publisher.calls,
+					records[0],
+				)
+			}
+		})
+	}
+}
+
+func TestNewMaterializingStreamAgentRejectsInvalidClockSkew(t *testing.T) {
+	fixture := newSingleMemberMaterializationFixture(t)
+	runtimeAgent, err := stageworkeragent.New(stageworkeragent.Config{
+		Members: []stageworkeragent.RuntimeMember{{ID: fixture.memberID, Client: fixture.client}},
+	})
+	if err != nil {
+		t.Fatalf("New Agent: %v", err)
+	}
+	control := newMaterializingStreamControl(t, fixture.authority)
+	source, err := stageartifact.NewFilesystemLocalOutputSource(fixture.localRoot)
+	if err != nil {
+		t.Fatalf("NewFilesystemLocalOutputSource: %v", err)
+	}
+	journal, err := stageworkeragent.NewMemoryMaterializationJournal(4)
+	if err != nil {
+		t.Fatalf("NewMemoryMaterializationJournal: %v", err)
+	}
+	for _, maxClockSkew := range []time.Duration{-time.Nanosecond, time.Minute + time.Nanosecond} {
+		t.Run(maxClockSkew.String(), func(t *testing.T) {
+			agent, constructErr := stageworkeragent.NewMaterializingStreamAgent(
+				runtimeAgent,
+				control,
+				stageworkeragent.MaterializationConfig{
+					Validator: control.validator, Source: source,
+					Publisher: &outageOncePublisher{}, Journal: journal,
+					SourceLossEvidence: testSourceLossEvidenceProvider(), MaxClockSkew: maxClockSkew,
+				},
+			)
+			if agent != nil || constructErr == nil ||
+				constructErr.Error() != "stage worker materialization clock skew is invalid" {
+				t.Fatalf("NewMaterializingStreamAgent skew=%s agent=%v error=%v", maxClockSkew, agent, constructErr)
+			}
+		})
 	}
 }
 
@@ -806,24 +921,38 @@ type materializingStreamControl struct {
 	sourceLossFailures int
 	sourceLossReports  []*velav1.ReportMaterializationSourceLostRequest
 	materialization    *velav1.MaterializationAuthority
+	now                time.Time
+	issuedAtOffset     time.Duration
+	maxClockSkew       time.Duration
 }
 
 func newMaterializingStreamControl(
 	t *testing.T,
 	authority *velav1.StageAuthority,
 ) *materializingStreamControl {
+	return newMaterializingStreamControlWithClockSkew(t, authority, 0, 0)
+}
+
+func newMaterializingStreamControlWithClockSkew(
+	t *testing.T,
+	authority *velav1.StageAuthority,
+	issuedAtOffset time.Duration,
+	maxClockSkew time.Duration,
+) *materializingStreamControl {
 	t.Helper()
+	now := time.Now().UTC()
 	keys := map[string][]byte{"materialization-test-key": bytes.Repeat([]byte{0x8b}, 32)}
 	signer, err := materializationauthority.NewSigner(keys)
 	if err != nil {
 		t.Fatalf("New materialization signer: %v", err)
 	}
-	validator, err := materializationauthority.NewValidator(keys, time.Now)
+	validator, err := materializationauthority.NewValidator(keys, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("New materialization validator: %v", err)
 	}
 	return &materializingStreamControl{
 		t: t, signer: signer, validator: validator, authority: authority,
+		now: now, issuedAtOffset: issuedAtOffset, maxClockSkew: maxClockSkew,
 	}
 }
 
@@ -854,6 +983,7 @@ func (control *materializingStreamControl) Exchange(
 			return nil, err
 		}
 		spiffeDigest := sha256.Sum256([]byte("spiffe://vela.test/worker/dit"))
+		issuedAt := control.now.Add(control.issuedAtOffset)
 		control.materialization, err = control.signer.Sign(&velav1.MaterializationAuthority{
 			SchemaVersion: 1, StageAuthorityDigest: stageDigest[:],
 			StageMaterializationLeaseId: "82000000-0000-0000-0000-000000000001",
@@ -861,8 +991,8 @@ func (control *materializingStreamControl) Exchange(
 			ObjectKey:                   "artifacts/stage/test/latent.bin", ContentType: manifest.ContentType,
 			Sha256: manifest.PayloadSHA256[:], SizeBytes: manifest.SizeBytes,
 			LocalReceiptId: receipt.GetReceiptId(), LocalReceiptDigest: receipt.GetManifestSha256(),
-			SigningKeyId: "materialization-test-key", IssuedAt: receipt.GetSealedAt(),
-			ExpiresAt:                 timestamppb.New(receipt.GetSealedAt().AsTime().Add(5 * time.Minute)),
+			SigningKeyId: "materialization-test-key", IssuedAt: timestamppb.New(issuedAt),
+			ExpiresAt:                 timestamppb.New(issuedAt.Add(5 * time.Minute)),
 			SourceWorkerInstanceId:    control.authority.GetWorkerInstanceId(),
 			SourceWorkerInstanceEpoch: control.authority.GetWorkerInstanceEpoch(),
 			SourceWorkerMemberId:      control.authority.GetMembers()[0].GetWorkerMemberId(),
@@ -887,7 +1017,10 @@ func (control *materializingStreamControl) Exchange(
 			control.commitFailures--
 			return nil, errors.New("injected CommitStageMaterialization outage")
 		}
-		if _, err := control.validator.Validate(operation.CommitStageMaterialization.GetMaterializationAuthority()); err != nil {
+		if _, err := control.validator.ValidateWithClockSkew(
+			operation.CommitStageMaterialization.GetMaterializationAuthority(),
+			control.maxClockSkew,
+		); err != nil {
 			return nil, err
 		}
 		if operation.CommitStageMaterialization.GetObjectVersion() == "" {
@@ -908,7 +1041,10 @@ func (control *materializingStreamControl) Exchange(
 			control.sourceLossFailures--
 			return nil, errors.New("injected ReportMaterializationSourceLost outage")
 		}
-		if _, err := control.validator.Validate(report.GetMaterializationAuthority()); err != nil {
+		if _, err := control.validator.ValidateWithClockSkew(
+			report.GetMaterializationAuthority(),
+			control.maxClockSkew,
+		); err != nil {
 			return nil, err
 		}
 		if len(report.GetFailureFingerprint()) != sha256.Size ||

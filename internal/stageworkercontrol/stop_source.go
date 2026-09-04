@@ -16,6 +16,7 @@ import (
 
 type AuthorityStopSourceConfig struct {
 	PollInterval time.Duration
+	MaxClockSkew time.Duration
 	Now          func() time.Time
 }
 
@@ -48,7 +49,8 @@ func NewAuthorityStopSource(
 	config AuthorityStopSourceConfig,
 ) (*AuthorityStopSource, error) {
 	if validator == nil || authorizer == nil || config.PollInterval <= 0 ||
-		config.PollInterval > time.Minute {
+		config.PollInterval > time.Minute || config.MaxClockSkew < 0 ||
+		config.MaxClockSkew > time.Minute {
 		return nil, errors.New("stage worker authority StopSource configuration is invalid")
 	}
 	if config.Now == nil {
@@ -93,7 +95,10 @@ func (source *AuthorityStopSource) ObserveStageAuthority(
 		strings.TrimSpace(identity.SPIFFEID) == "" || sessionEpoch <= 0 || authority == nil {
 		return errors.New("stage worker tracked authority is incomplete")
 	}
-	verified, err := source.validator.ValidateEnvelope(authority)
+	verified, err := source.validator.ValidateEnvelopeWithClockSkew(
+		authority,
+		source.config.MaxClockSkew,
+	)
 	if err != nil {
 		return err
 	}

@@ -36,6 +36,7 @@ type RuntimeServerConfig struct {
 	SocketPath      string
 	CancelTimeout   time.Duration
 	ShutdownTimeout time.Duration
+	MaxClockSkew    time.Duration
 	BackendFactory  RuntimeBackendFactory
 }
 
@@ -68,6 +69,9 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 	}
 	if config.CancelTimeout <= 0 || config.CancelTimeout > time.Minute {
 		return nil, errors.New("ModelRuntime server cancellation timeout is invalid")
+	}
+	if config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
+		return nil, errors.New("ModelRuntime server clock skew is invalid")
 	}
 	if config.ShutdownTimeout == 0 {
 		config.ShutdownTimeout = defaultServerStopTimeout
@@ -129,7 +133,7 @@ func StartRuntimeServer(ctx context.Context, config RuntimeServerConfig) (*Runti
 		var startedBackend Backend
 		service, serviceErr := NewService(Config{
 			Binding: binding, EpochStore: config.EpochStore, Validator: config.Validator,
-			EpochFloor: runtime.ModelRuntimeEpochFloor,
+			EpochFloor: runtime.ModelRuntimeEpochFloor, MaxClockSkew: config.MaxClockSkew,
 			BackendFactory: func(allocated stageauthority.RuntimeBinding) (Backend, error) {
 				backend, backendErr := backendFactory(runtimeCtx, runtime, allocated, backendConfig)
 				startedBackend = backend

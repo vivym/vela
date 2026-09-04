@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/artifactstore"
+	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/modelruntimetransport"
 	"github.com/vivym/vela/internal/securefile"
@@ -30,6 +31,18 @@ import (
 )
 
 const maxArtifactRootCABytes = 4 << 20
+
+type productionAuthorityConsumers struct {
+	newMemberServer func(
+		stageworkermembertransport.ServerConfig,
+	) (*stageworkermembertransport.Server, error)
+	newMaterializingAgent func(
+		*stageworkeragent.Agent,
+		stageworkeragent.ControlClient,
+		stageworkeragent.MaterializationConfig,
+		stageworkeragent.InputResolver,
+	) (*stageworkeragent.StreamAgent, error)
+}
 
 type stageWorkerRuntime interface {
 	Run(context.Context) error
@@ -76,8 +89,22 @@ func runWithContextUsing(
 }
 
 func newProductionRuntime(ctx context.Context, configuration config) (stageWorkerRuntime, error) {
+	return newProductionRuntimeUsing(ctx, configuration, productionAuthorityConsumers{
+		newMemberServer:       stageworkermembertransport.NewServer,
+		newMaterializingAgent: stageworkeragent.NewInputResolvingMaterializingStreamAgent,
+	})
+}
+
+func newProductionRuntimeUsing(
+	ctx context.Context,
+	configuration config,
+	consumers productionAuthorityConsumers,
+) (stageWorkerRuntime, error) {
 	if ctx == nil {
 		return nil, errors.New("stage worker production context is required")
+	}
+	if consumers.newMemberServer == nil || consumers.newMaterializingAgent == nil {
+		return nil, errors.New("stage worker production authority consumers are required")
 	}
 	if err := ensureStageWorkerDirectories(configuration); err != nil {
 		return nil, err
@@ -220,13 +247,14 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 		if credentialsErr != nil {
 			return fail(fmt.Errorf("configure Stage Worker member server mTLS: %w", credentialsErr))
 		}
-		memberService, serviceErr := stageworkermembertransport.NewServer(
+		memberService, serviceErr := consumers.newMemberServer(
 			stageworkermembertransport.ServerConfig{
 				Authenticator:   stageworkertransport.PeerAuthenticator{},
 				Validator:       stageAuthorityValidator,
 				Runtime:         runtime.modelRuntime,
 				LocalIdentities: runtimeIdentities,
 				Members:         memberBindings,
+				MaxClockSkew:    authoritypolicy.ProductionMaxClockSkew,
 			},
 		)
 		if serviceErr != nil {
@@ -354,7 +382,7 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 	if err != nil {
 		return fail(err)
 	}
-	stream, err := stageworkeragent.NewInputResolvingMaterializingStreamAgent(
+	stream, err := consumers.newMaterializingAgent(
 		runtimeAgent,
 		runtime.control,
 		stageworkeragent.MaterializationConfig{
@@ -363,6 +391,7 @@ func newProductionRuntime(ctx context.Context, configuration config) (stageWorke
 			Publisher:          publisher,
 			Journal:            materializationJournal,
 			SourceLossEvidence: sourceLossEvidenceProvider(configuration, time.Now),
+			MaxClockSkew:       authoritypolicy.ProductionMaxClockSkew,
 		},
 		inputResolver,
 	)

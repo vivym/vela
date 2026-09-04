@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/vivym/vela/internal/authoritypolicy"
 	veladb "github.com/vivym/vela/internal/database"
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/stageartifact"
@@ -28,7 +29,6 @@ const (
 	defaultStageWorkerTransferTicketTTL  = 30 * time.Second
 	defaultStageMaterializationTTL       = 15 * time.Minute
 	defaultStageWorkerStopPoll           = 250 * time.Millisecond
-	defaultStageWorkerMaxClockSkew       = 30 * time.Second
 )
 
 type stageWorkerGRPCServer interface {
@@ -273,7 +273,7 @@ func newStageWorkerControlAdapter(
 			ActiveSigningKeyID: configuration.leaseActiveKeyID,
 			AuthorityTTL:       configuration.stageSchedulerLeaseTTL,
 			LocalDeadlineTTL:   configuration.stageSchedulerLocalDeadlineTTL,
-			MaxClockSkew:       defaultStageWorkerMaxClockSkew,
+			MaxClockSkew:       authoritypolicy.ProductionMaxClockSkew,
 			Now:                time.Now,
 		},
 	)
@@ -307,23 +307,13 @@ func newStageWorkerControlAdapter(
 	if err != nil {
 		return nil, err
 	}
-	handler, err := stageworkercontrol.NewHandler(stageworkercontrol.Config{
-		Validator:                 stageValidator,
-		Authorizer:                authorizer,
-		MaterializationValidator:  materializationValidator,
-		MaterializationAuthorizer: artifactRepository,
-		Executor:                  executor,
-	})
-	if err != nil {
-		return nil, err
-	}
-	stopSource, err := stageworkercontrol.NewAuthorityStopSource(
+	handler, stopSource, err := newStageWorkerAuthorityIngress(
 		stageValidator,
 		authorizer,
-		stageworkercontrol.AuthorityStopSourceConfig{
-			PollInterval: defaultStageWorkerStopPoll,
-			Now:          time.Now,
-		},
+		materializationValidator,
+		artifactRepository,
+		executor,
+		time.Now,
 	)
 	if err != nil {
 		return nil, err
@@ -337,6 +327,40 @@ func newStageWorkerControlAdapter(
 		return nil, err
 	}
 	return server, nil
+}
+
+func newStageWorkerAuthorityIngress(
+	stageValidator *stageauthority.Validator,
+	authorizer stageworkercontrol.Authorizer,
+	materializationValidator *materializationauthority.Validator,
+	materializationAuthorizer stageworkercontrol.MaterializationAuthorizer,
+	executor stageworkercontrol.Executor,
+	now func() time.Time,
+) (*stageworkercontrol.Handler, *stageworkercontrol.AuthorityStopSource, error) {
+	handler, err := stageworkercontrol.NewHandler(stageworkercontrol.Config{
+		Validator:                 stageValidator,
+		Authorizer:                authorizer,
+		MaterializationValidator:  materializationValidator,
+		MaterializationAuthorizer: materializationAuthorizer,
+		Executor:                  executor,
+		MaxClockSkew:              authoritypolicy.ProductionMaxClockSkew,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	stopSource, err := stageworkercontrol.NewAuthorityStopSource(
+		stageValidator,
+		authorizer,
+		stageworkercontrol.AuthorityStopSourceConfig{
+			PollInterval: defaultStageWorkerStopPoll,
+			MaxClockSkew: authoritypolicy.ProductionMaxClockSkew,
+			Now:          now,
+		},
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	return handler, stopSource, nil
 }
 
 func readStageWorkerIdentityKey(path string) ([]byte, error) {

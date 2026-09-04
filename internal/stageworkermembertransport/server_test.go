@@ -113,6 +113,65 @@ func TestServerRejectsExpiredAuthorityAndPropagatesDeadline(t *testing.T) {
 	}
 }
 
+func TestServerAcceptsAuthorityWithinConfiguredClockSkew(t *testing.T) {
+	fixture := newServerFixtureWithClockSkew(
+		t,
+		campaignNow().Add(-time.Second-3200*time.Microsecond),
+		30*time.Second,
+	)
+	response, err := fixture.server.Status(
+		context.Background(),
+		&velav1.StageWorkerMemberServiceStatusRequest{
+			TargetWorkerMemberId: fixture.local.ID,
+			Command:              &velav1.ModelRuntimeServiceStatusRequest{Authority: fixture.authority},
+		},
+	)
+	if err != nil || response.GetResult().GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED ||
+		fixture.runtime.statusCalls != 1 {
+		t.Fatalf("future-issued Status = %#v calls=%d error=%v", response, fixture.runtime.statusCalls, err)
+	}
+}
+
+func TestServerRejectsAuthorityBeyondConfiguredClockSkew(t *testing.T) {
+	fixture := newServerFixtureWithClockSkew(
+		t,
+		campaignNow().Add(-time.Second-30*time.Second-time.Millisecond),
+		30*time.Second,
+	)
+	_, err := fixture.server.Status(
+		context.Background(),
+		&velav1.StageWorkerMemberServiceStatusRequest{
+			TargetWorkerMemberId: fixture.local.ID,
+			Command:              &velav1.ModelRuntimeServiceStatusRequest{Authority: fixture.authority},
+		},
+	)
+	if status.Code(err) != codes.FailedPrecondition || fixture.runtime.statusCalls != 0 {
+		t.Fatalf("over-skew Status error=%v calls=%d", err, fixture.runtime.statusCalls)
+	}
+}
+
+func TestNewServerRejectsInvalidClockSkew(t *testing.T) {
+	fixture := newServerFixture(t, time.Time{})
+	for _, maxClockSkew := range []time.Duration{-time.Nanosecond, time.Minute + time.Nanosecond} {
+		t.Run(maxClockSkew.String(), func(t *testing.T) {
+			server, err := NewServer(ServerConfig{
+				Authenticator: fixture.auth,
+				Validator:     fixture.server.validator,
+				Runtime:       fixture.runtime,
+				LocalIdentities: []*velav1.ModelRuntimeIdentity{
+					proto.Clone(fixture.server.localIdentities[0]).(*velav1.ModelRuntimeIdentity),
+				},
+				Members:      []MemberBinding{fixture.leader, fixture.local},
+				MaxClockSkew: maxClockSkew,
+			})
+			if server != nil || err == nil || err.Error() != "stage worker member server clock skew is invalid" {
+				t.Fatalf("NewServer skew=%s server=%v error=%v", maxClockSkew, server, err)
+			}
+		})
+	}
+}
+
 type serverFixture struct {
 	t            *testing.T
 	server       *Server
@@ -128,6 +187,14 @@ type serverFixture struct {
 }
 
 func newServerFixture(t *testing.T, validatorNow time.Time) *serverFixture {
+	return newServerFixtureWithClockSkew(t, validatorNow, 0)
+}
+
+func newServerFixtureWithClockSkew(
+	t *testing.T,
+	validatorNow time.Time,
+	maxClockSkew time.Duration,
+) *serverFixture {
 	t.Helper()
 	now := campaignNow()
 	keys := map[string][]byte{"authority-v1": []byte("0123456789abcdef0123456789abcdef")}
@@ -200,7 +267,7 @@ func newServerFixture(t *testing.T, validatorNow time.Time) *serverFixture {
 	server, err := NewServer(ServerConfig{
 		Authenticator: auth, Validator: validator, Runtime: runtime,
 		LocalIdentities: []*velav1.ModelRuntimeIdentity{identity},
-		Members:         []MemberBinding{leader, local},
+		Members:         []MemberBinding{leader, local}, MaxClockSkew: maxClockSkew,
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)

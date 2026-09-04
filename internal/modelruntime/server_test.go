@@ -1,6 +1,7 @@
 package modelruntime_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"github.com/vivym/vela/internal/modelruntimetransport"
 	"github.com/vivym/vela/internal/stageauthority"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var errTestRuntimeCrashed = errors.New("test resident runtime crashed")
@@ -135,6 +138,182 @@ func TestStartRuntimeServerPublishesPrivateSocketAfterEveryRuntimeIsReady(t *tes
 		discovered.GetIdentities()[1].GetModelRuntimeEpoch() != 1 {
 		t.Fatalf("DiscoverRuntimeIdentities = %#v error=%v", discovered, err)
 	}
+}
+
+func TestStartRuntimeServerRejectsInvalidClockSkew(t *testing.T) {
+	root := t.TempDir()
+	epochStore, err := modelruntime.NewFileEpochStore(filepath.Join(root, "epochs"))
+	if err != nil {
+		t.Fatalf("NewFileEpochStore: %v", err)
+	}
+	validator, err := stageauthority.NewValidator(
+		map[string][]byte{"authority-v1": make([]byte, 32)}, time.Now,
+	)
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	for _, maxClockSkew := range []time.Duration{-time.Nanosecond, time.Minute + time.Nanosecond} {
+		t.Run(maxClockSkew.String(), func(t *testing.T) {
+			server, startErr := modelruntime.StartRuntimeServer(
+				context.Background(),
+				modelruntime.RuntimeServerConfig{
+					Manifest: runtimeServerManifest(root), EpochStore: epochStore, Validator: validator,
+					SocketPath: filepath.Join(root, "runtime.sock"), CancelTimeout: 5 * time.Second,
+					MaxClockSkew: maxClockSkew,
+				},
+			)
+			if server != nil || startErr == nil || startErr.Error() != "ModelRuntime server clock skew is invalid" {
+				t.Fatalf("StartRuntimeServer skew=%s server=%v error=%v", maxClockSkew, server, startErr)
+			}
+		})
+	}
+}
+
+func TestRuntimeServerPropagatesClockSkewToServices(t *testing.T) {
+	root := t.TempDir()
+	socketRoot := privateSocketRoot(t)
+	manifest := runtimeServerManifest(root)
+	manifest.WorkerRole = "encoder"
+	manifest.SharedSlotException = ""
+	manifest.Runtimes = manifest.Runtimes[:1]
+	now := time.Date(2026, 9, 4, 10, 30, 0, 0, time.UTC)
+	keys := map[string][]byte{"authority-v1": bytes.Repeat([]byte{0x31}, 32)}
+	signer, err := stageauthority.NewSigner(keys)
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	validator, err := stageauthority.NewValidator(keys, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	epochStore, err := modelruntime.NewFileEpochStore(filepath.Join(root, "epochs"))
+	if err != nil {
+		t.Fatalf("NewFileEpochStore: %v", err)
+	}
+	socketPath := filepath.Join(socketRoot, "runtime.sock")
+	server, err := modelruntime.StartRuntimeServer(context.Background(), modelruntime.RuntimeServerConfig{
+		Manifest: manifest, EpochStore: epochStore, Validator: validator,
+		SocketPath: socketPath, CancelTimeout: 5 * time.Second, MaxClockSkew: 30 * time.Second,
+		BackendFactory: func(
+			context.Context,
+			modelruntime.LaunchRuntime,
+			stageauthority.RuntimeBinding,
+			modelruntime.ProcessBackendConfig,
+		) (modelruntime.Backend, error) {
+			return modelruntime.NewFakeEncoderRuntime(), nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartRuntimeServer: %v", err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	dialContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client, err := modelruntimetransport.Dial(dialContext, modelruntimetransport.Config{
+		SocketPath: socketPath, ExpectedUID: uint32(os.Geteuid()),
+	})
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+	discovered, err := client.DiscoverRuntimeIdentities(
+		context.Background(),
+		&velav1.ModelRuntimeServiceDiscoverRuntimeIdentitiesRequest{
+			WorkerInstanceId: manifest.WorkerInstanceID, WorkerInstanceEpoch: manifest.WorkerInstanceEpoch,
+			WorkerMemberId: manifest.WorkerMemberID, WorkerMemberEpoch: manifest.WorkerMemberEpoch,
+		},
+	)
+	if err != nil || len(discovered.GetIdentities()) != 1 {
+		t.Fatalf("DiscoverRuntimeIdentities = %#v error=%v", discovered, err)
+	}
+	spec := &velav1.StageExecutionSpec{ParametersJson: []byte(`{"frames":1}`)}
+	withinSkew := runtimeServerAuthority(
+		t,
+		signer,
+		manifest,
+		discovered.GetIdentities()[0].GetModelRuntimeEpoch(),
+		now.Add(3200*time.Microsecond),
+		spec,
+	)
+	prepared, err := client.PrepareStage(
+		context.Background(),
+		&velav1.ModelRuntimeServicePrepareStageRequest{Authority: withinSkew, ExecutionSpec: spec},
+	)
+	if err != nil || prepared.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_ACCEPTED {
+		t.Fatalf("within-skew PrepareStage = %#v error=%v", prepared, err)
+	}
+	overSkew := runtimeServerAuthority(
+		t,
+		signer,
+		manifest,
+		discovered.GetIdentities()[0].GetModelRuntimeEpoch(),
+		now.Add(30*time.Second+time.Millisecond),
+		spec,
+	)
+	rejected, err := client.PrepareStage(
+		context.Background(),
+		&velav1.ModelRuntimeServicePrepareStageRequest{Authority: overSkew, ExecutionSpec: spec},
+	)
+	if err != nil || rejected.GetDecision() !=
+		velav1.ModelRuntimeCommandDecision_MODEL_RUNTIME_COMMAND_DECISION_STALE {
+		t.Fatalf("over-skew PrepareStage = %#v error=%v", rejected, err)
+	}
+}
+
+func runtimeServerAuthority(
+	t *testing.T,
+	signer *stageauthority.Signer,
+	manifest modelruntime.LaunchManifest,
+	modelRuntimeEpoch int64,
+	issuedAt time.Time,
+	spec *velav1.StageExecutionSpec,
+) *velav1.StageAuthority {
+	t.Helper()
+	digest, err := stageauthority.ExecutionSpecDigest(spec)
+	if err != nil {
+		t.Fatalf("ExecutionSpecDigest: %v", err)
+	}
+	runtime := manifest.Runtimes[0]
+	authority, err := signer.Sign(&velav1.StageAuthority{
+		SchemaVersion:       1,
+		JobId:               "11000000-0000-0000-0000-000000000001",
+		AttemptId:           "11000000-0000-0000-0000-000000000002",
+		StageRunId:          "11000000-0000-0000-0000-000000000003",
+		StageAttemptId:      "11000000-0000-0000-0000-000000000004",
+		StageAllocationId:   "11000000-0000-0000-0000-000000000005",
+		StageLeaseId:        "11000000-0000-0000-0000-000000000006",
+		AttemptFence:        1,
+		StageFence:          2,
+		StageVersion:        3,
+		WorkerInstanceId:    manifest.WorkerInstanceID,
+		WorkerInstanceEpoch: manifest.WorkerInstanceEpoch,
+		DeviceSetDigest:     bytes.Repeat([]byte{0xaa}, 32),
+		Devices: []*velav1.StageAuthorityDeviceEpoch{{
+			DeviceId: manifest.Devices[0].ID, DeviceEpoch: manifest.Devices[0].Epoch,
+		}},
+		MembershipDigest: bytes.Repeat([]byte{0xbb}, 32),
+		Members: []*velav1.StageAuthorityMemberEpoch{{
+			WorkerMemberId: manifest.WorkerMemberID, MemberEpoch: manifest.WorkerMemberEpoch,
+			ModelRuntimeEpoch: modelRuntimeEpoch, IdentityDigest: bytes.Repeat([]byte{0x61}, 32),
+		}},
+		ModelResidencyId: runtime.ModelResidencyID, ModelRuntimeIdentity: runtime.RuntimeIdentity,
+		ModelRuntimeBarrierGeneration: modelRuntimeEpoch,
+		StageProfileRevisionId:        runtime.StageProfileRevisionID,
+		CapacityObservationSequence:   1,
+		CapacityVector:                map[string]int64{"active_stage_slots": 1},
+		LeaseToken:                    bytes.Repeat([]byte{0x62}, 32),
+		ExecutionNonce:                bytes.Repeat([]byte{0x63}, 32),
+		ExecutionSpecDigest:           digest[:],
+		SigningKeyId:                  "authority-v1",
+		IssuedAt:                      timestamppb.New(issuedAt),
+		ExpiresAt:                     timestamppb.New(issuedAt.Add(5 * time.Minute)),
+		MonotonicValidFor:             durationpb.New(5 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("Sign StageAuthority: %v", err)
+	}
+	return authority
 }
 
 func TestRuntimeServerStopsPublishingWhenResidentBackendExits(t *testing.T) {

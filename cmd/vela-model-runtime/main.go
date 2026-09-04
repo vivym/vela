@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/vivym/vela/internal/authoritypolicy"
 	"github.com/vivym/vela/internal/modelruntime"
 	"github.com/vivym/vela/internal/stageauthority"
 )
@@ -24,6 +25,16 @@ type commandConfig struct {
 	shutdownTimeout       time.Duration
 }
 
+type modelRuntimeServer interface {
+	Wait() error
+	Close() error
+}
+
+type modelRuntimeServerStarter func(
+	context.Context,
+	modelruntime.RuntimeServerConfig,
+) (modelRuntimeServer, error)
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -34,8 +45,20 @@ func main() {
 }
 
 func run(ctx context.Context) error {
+	return runUsing(ctx, func(
+		ctx context.Context,
+		config modelruntime.RuntimeServerConfig,
+	) (modelRuntimeServer, error) {
+		return modelruntime.StartRuntimeServer(ctx, config)
+	})
+}
+
+func runUsing(ctx context.Context, start modelRuntimeServerStarter) error {
 	if ctx == nil {
 		return errors.New("ModelRuntime context is required")
+	}
+	if start == nil {
+		return errors.New("ModelRuntime server starter is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -61,10 +84,11 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	server, err := modelruntime.StartRuntimeServer(ctx, modelruntime.RuntimeServerConfig{
+	server, err := start(ctx, modelruntime.RuntimeServerConfig{
 		Manifest: manifest, EpochStore: epochStore, Validator: validator,
 		SocketPath: configuration.socketPath, CancelTimeout: configuration.cancelTimeout,
 		ShutdownTimeout: configuration.shutdownTimeout,
+		MaxClockSkew:    authoritypolicy.ProductionMaxClockSkew,
 	})
 	if err != nil {
 		return err
