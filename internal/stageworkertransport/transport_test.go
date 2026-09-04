@@ -126,6 +126,9 @@ func TestClientUsesOnePersistentCorrelatedStageWorkerStream(t *testing.T) {
 		t.Fatalf("DialClient: %v", err)
 	}
 	t.Cleanup(func() { _ = client.Close() })
+	if client.HasActiveControlSession() {
+		t.Fatal("control session is active before the first exchange")
+	}
 
 	requests := []*velav1.StageWorkerControlServiceConnectRequest{
 		{Operation: &velav1.StageWorkerControlServiceConnectRequest_RegisterWorkerEvidence{
@@ -146,6 +149,9 @@ func TestClientUsesOnePersistentCorrelatedStageWorkerStream(t *testing.T) {
 		if exchangeErr != nil || response.GetRequestId() == "" || response.GetResult() == nil {
 			t.Fatalf("Exchange = %#v error=%v", response, exchangeErr)
 		}
+	}
+	if !client.HasActiveControlSession() {
+		t.Fatal("persistent control session is not active")
 	}
 	if counted.ConnectCount() != 1 {
 		t.Fatalf("Connect calls = %d, want one persistent stream", counted.ConnectCount())
@@ -218,6 +224,9 @@ func TestClientReconnectIncrementsSessionEpochAndCarriesReattach(t *testing.T) {
 	})
 	if status.Code(err) != codes.Unavailable {
 		t.Fatalf("first Exchange error = %v, want Unavailable", err)
+	}
+	if client.HasActiveControlSession() {
+		t.Fatal("failed control session remained active")
 	}
 	response, err := client.Exchange(ctx, &velav1.StageWorkerControlServiceConnectRequest{
 		Operation: &velav1.StageWorkerControlServiceConnectRequest_ReattachStage{

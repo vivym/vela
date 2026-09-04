@@ -10,6 +10,12 @@ import (
 	"google.golang.org/grpc"
 )
 
+func TestStageWorkerControlDefaultsBoundIdlePolling(t *testing.T) {
+	if defaultStageWorkerNoWorkRetry != 5*time.Second {
+		t.Fatalf("default Stage Worker no-work retry = %s, want 5s", defaultStageWorkerNoWorkRetry)
+	}
+}
+
 func TestStageWorkerControlLifecycleStartsAndShutsDownGracefully(t *testing.T) {
 	server := newLifecycleTestServer(false)
 	lifecycle := newTestStageWorkerControlLifecycle(t, server)

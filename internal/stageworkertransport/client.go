@@ -146,6 +146,15 @@ func (client *Client) CurrentControlSessionEpoch() int64 {
 	return client.streamEpoch
 }
 
+func (client *Client) HasActiveControlSession() bool {
+	if client == nil {
+		return false
+	}
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return !client.closed && client.stream != nil
+}
+
 func (client *Client) Exchange(
 	ctx context.Context,
 	request *velav1.StageWorkerControlServiceConnectRequest,

@@ -21,7 +21,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestBootstrapDatabaseAppliesSchema65AndReplaysStageFixture(t *testing.T) {
+func TestBootstrapDatabaseAppliesSchema66AndReplaysStageFixture(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
@@ -70,8 +70,8 @@ func TestBootstrapDatabaseAppliesSchema65AndReplaysStageFixture(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	version, err := goose.GetDBVersion(database)
-	if err != nil || version != 65 {
-		t.Fatalf("migration version = %d error=%v, want 65", version, err)
+	if err != nil || version != 66 {
+		t.Fatalf("migration version = %d error=%v, want 66", version, err)
 	}
 	var graphState string
 	var topologicalOrderJSON string
@@ -102,6 +102,33 @@ func TestBootstrapDatabaseAppliesSchema65AndReplaysStageFixture(t *testing.T) {
 		if count != 2 || minimum != 1 || maximum != 2 {
 			t.Fatalf("capacity observations for %s = count:%d sequence:%d..%d", workerID, count, minimum, maximum)
 		}
+	}
+	capacityQuery, err := os.ReadFile(repositoryRoot(t, "deploy", "lab-v2", "ready-capacity-routes.sql"))
+	if err != nil {
+		t.Fatalf("read shared Stage capacity query: %v", err)
+	}
+	transaction, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin Stage capacity gate behavior test: %v", err)
+	}
+	defer func() { _ = transaction.Rollback() }()
+	var readyCapacityRoutes int
+	if err := transaction.QueryRowContext(ctx, string(capacityQuery)).Scan(&readyCapacityRoutes); err != nil {
+		t.Fatalf("count ready Stage capacity routes: %v", err)
+	}
+	if readyCapacityRoutes != 4 {
+		t.Fatalf("ready Stage capacity routes = %d, want 4", readyCapacityRoutes)
+	}
+	if _, err := transaction.ExecContext(ctx, `
+		UPDATE capacity_pools SET state = 'DRAINING' WHERE stable_id = 'h3-vae-lab-v2'
+	`); err != nil {
+		t.Fatalf("disable one Stage capacity route: %v", err)
+	}
+	if err := transaction.QueryRowContext(ctx, string(capacityQuery)).Scan(&readyCapacityRoutes); err != nil {
+		t.Fatalf("count incomplete Stage capacity routes: %v", err)
+	}
+	if readyCapacityRoutes != 3 {
+		t.Fatalf("incomplete Stage capacity routes = %d, want 3", readyCapacityRoutes)
 	}
 	var productionGateReceipts int
 	if err := database.QueryRowContext(ctx, `SELECT count(*) FROM production_gate_receipts`).Scan(&productionGateReceipts); err != nil {

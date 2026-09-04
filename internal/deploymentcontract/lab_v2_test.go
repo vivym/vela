@@ -496,13 +496,108 @@ func TestLabV2OperationalScriptsFailClosedAroundOwnershipAndRollback(t *testing.
 		t.Fatal("smoke.sh calls the contracted legacy scheduler function")
 	}
 	for _, required := range []string{
-		"model_runtime_capacity_routes", "vela_worker_instance_authority_matches",
-		"capacity_observations", "ready_capacity_routes", "expected=4",
-		"h3-encoder-lab-v2", "h3-dit-lab-v2", "h3-vae-lab-v2", "h3-cpu-thumbnail-lab-v2",
+		"ready-capacity-routes.sql", "ready_capacity_routes", "expected=4",
 	} {
 		if !strings.Contains(smoke, required) {
 			t.Fatalf("smoke.sh is missing Stage capacity precheck %q", required)
 		}
+	}
+	capacityQuery := read("ready-capacity-routes.sql")
+	for _, required := range []string{
+		"model_runtime_capacity_routes", "vela_worker_instance_authority_matches",
+		"capacity_observations",
+		"h3-encoder-lab-v2", "h3-dit-lab-v2", "h3-vae-lab-v2", "h3-cpu-thumbnail-lab-v2",
+	} {
+		if !strings.Contains(capacityQuery, required) {
+			t.Fatalf("ready-capacity-routes.sql is missing Stage capacity precheck %q", required)
+		}
+	}
+	precheck := strings.Index(smoke, "[ \"$ready_capacity_routes\" = 4 ]")
+	createJob := strings.Index(smoke, "job=$($kubectl_bin create")
+	if precheck < 0 || createJob <= precheck {
+		t.Fatal("smoke.sh does not fail closed on capacity before creating the Job")
+	}
+}
+
+func TestLabV2SmokeCapacityGateControlsJobCreation(t *testing.T) {
+	directory := labV2Directory(t)
+	temporary := t.TempDir()
+	manifests := filepath.Join(temporary, "rendered")
+	if err := os.Mkdir(manifests, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(manifests, "60-smoke.yaml"), []byte("kind: Job\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	kubeconfig := filepath.Join(temporary, "kubeconfig")
+	if err := os.WriteFile(kubeconfig, []byte("test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fakeBin := filepath.Join(temporary, "bin")
+	if err := os.Mkdir(fakeBin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fakes := map[string]string{
+		"id": "#!/bin/sh\n[ \"${1:-}\" = -u ] || exit 1\nprintf '0\\n'\n",
+		"jq": "#!/bin/sh\n/bin/cat >/dev/null\n",
+		"kubectl": `#!/bin/sh
+printf '%s\n' "$*" >> "$KUBECTL_LOG"
+case "${1:-}" in
+	rollout|wait|describe) exit 0 ;;
+	exec)
+		sql=$(/bin/cat)
+		case "$sql" in
+			*production_gate_receipts*) printf '0\n' ;;
+			*) printf '%s\n' "$READY_CAPACITY_ROUTES" ;;
+		esac
+		;;
+	create) printf 'job.batch/vela-lab-smoke-test\n' ;;
+	logs) printf '{"status":"LAB VERIFIED","final_state":"SUCCEEDED","artifact_count":2,"artifact_kinds":["VIDEO","THUMBNAIL"]}\n' ;;
+	*) exit 1 ;;
+esac
+`,
+	}
+	for name, content := range fakes {
+		if err := os.WriteFile(filepath.Join(fakeBin, name), []byte(content), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, test := range []struct {
+		name       string
+		ready      string
+		wantOK     bool
+		wantCreate bool
+	}{
+		{name: "missing route", ready: "3"},
+		{name: "all routes ready", ready: "4", wantOK: true, wantCreate: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			logPath := filepath.Join(t.TempDir(), "kubectl.log")
+			command := exec.Command(filepath.Join(directory, "smoke.sh"), manifests, "--apply")
+			command.Env = append(os.Environ(),
+				"PATH="+fakeBin+":"+os.Getenv("PATH"),
+				"KUBECTL_BIN="+filepath.Join(fakeBin, "kubectl"),
+				"KUBECONFIG="+kubeconfig,
+				"KUBECTL_LOG="+logPath,
+				"READY_CAPACITY_ROUTES="+test.ready,
+			)
+			output, err := command.CombinedOutput()
+			if test.wantOK && err != nil {
+				t.Fatalf("smoke capacity gate failed: %v\n%s", err, output)
+			}
+			if !test.wantOK && (err == nil || !strings.Contains(string(output), "ready routes=3 expected=4")) {
+				t.Fatalf("missing capacity route error=%v output=%s", err, output)
+			}
+			calls, readErr := os.ReadFile(logPath)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			created := strings.Contains("\n"+string(calls), "\ncreate ")
+			if created != test.wantCreate {
+				t.Fatalf("kubectl calls=%q create=%t want=%t", calls, created, test.wantCreate)
+			}
+		})
 	}
 }
 

@@ -862,26 +862,80 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 			command.ControlSessionEpoch,
 		)
 	}
-	nodeEvidence.ControlSessionEpoch = nodeDecision.ControlSessionEpoch
 	var nodeCapacityRows int64
-	var workerObservedBy string
+	var workerObservedBy, deviceObservedBy, memberObservedBy string
 	if err := database.Admin.QueryRow(`
 		SELECT
 			count(*) FILTER (WHERE observation_sequence = $2),
-			(SELECT observed_by FROM worker_instances WHERE id = $1)
+			(SELECT observed_by FROM worker_instances WHERE id = $1),
+			(SELECT observed_by FROM devices WHERE id = $3),
+			(SELECT observed_by FROM worker_members WHERE id = $4)
 		FROM capacity_observations
 		WHERE worker_instance_id = $1
-	`, assignment.WorkerInstanceID, nodeEvidence.Capacity.Sequence).Scan(
-		&nodeCapacityRows, &workerObservedBy,
+	`, assignment.WorkerInstanceID, nodeEvidence.Capacity.Sequence,
+		nodeEvidence.DeviceSet.Devices[0].ID, nodeEvidence.Members[0].ID).Scan(
+		&nodeCapacityRows, &workerObservedBy, &deviceObservedBy, &memberObservedBy,
 	); err != nil {
 		t.Fatalf("inspect post-takeover Fleet evidence: %v", err)
 	}
-	if nodeCapacityRows != 0 || workerObservedBy != nodeEvidence.ObservedBy {
+	if nodeCapacityRows != 0 || workerObservedBy == nodeEvidence.ObservedBy ||
+		deviceObservedBy == nodeEvidence.ObservedBy || memberObservedBy == nodeEvidence.ObservedBy {
 		t.Fatalf(
-			"post-takeover Fleet evidence capacity rows=%d observed_by=%q",
+			"stale post-takeover Fleet evidence mutated state: capacity rows=%d observed_by=%q/%q/%q",
 			nodeCapacityRows,
 			workerObservedBy,
+			deviceObservedBy,
+			memberObservedBy,
 		)
+	}
+	staleSnapshot := []string{workerObservedBy, deviceObservedBy, memberObservedBy}
+	nodeEvidence.ObservedAt = nodeEvidence.ObservedAt.Add(time.Second)
+	nodeEvidence.ObservedBy = "node-agent/repeated-stale-epoch"
+	nodeEvidence.Capacity.ObservedAt = nodeEvidence.ObservedAt
+	nodeEvidence.Capacity.ExpiresAt = nodeEvidence.ObservedAt.Add(2 * time.Minute)
+	repeatedStaleDecision, err := registry.Observe(context.Background(), nodeEvidence)
+	if err != nil || repeatedStaleDecision.ControlSessionEpoch != command.ControlSessionEpoch {
+		t.Fatalf("repeat stale Node evidence synchronization = %#v error=%v", repeatedStaleDecision, err)
+	}
+	var repeatedSnapshot []string
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT observed_by FROM worker_instances WHERE id = $1),
+			(SELECT observed_by FROM devices WHERE id = $2),
+			(SELECT observed_by FROM worker_members WHERE id = $3)
+	`, assignment.WorkerInstanceID, nodeEvidence.DeviceSet.Devices[0].ID,
+		nodeEvidence.Members[0].ID).Scan(
+		&workerObservedBy, &deviceObservedBy, &memberObservedBy,
+	); err != nil {
+		t.Fatalf("inspect repeated stale Node evidence: %v", err)
+	}
+	repeatedSnapshot = []string{workerObservedBy, deviceObservedBy, memberObservedBy}
+	if !slices.Equal(repeatedSnapshot, staleSnapshot) {
+		t.Fatalf("repeated stale Node evidence changed observed_by=%v, want %v", repeatedSnapshot, staleSnapshot)
+	}
+	nodeEvidence.ControlSessionEpoch = nodeDecision.ControlSessionEpoch
+	nodeEvidence.ObservedAt = nodeEvidence.ObservedAt.Add(time.Second)
+	nodeEvidence.ObservedBy = "node-agent/current-stage-epoch"
+	nodeEvidence.Capacity.ObservedAt = nodeEvidence.ObservedAt
+	nodeEvidence.Capacity.ExpiresAt = nodeEvidence.ObservedAt.Add(2 * time.Minute)
+	currentNodeDecision, err := registry.Observe(context.Background(), nodeEvidence)
+	if err != nil || currentNodeDecision.ControlSessionEpoch != command.ControlSessionEpoch {
+		t.Fatalf("refresh current Node evidence = %#v error=%v", currentNodeDecision, err)
+	}
+	if err := database.Admin.QueryRow(`
+		SELECT
+			(SELECT observed_by FROM worker_instances WHERE id = $1),
+			(SELECT observed_by FROM devices WHERE id = $2),
+			(SELECT observed_by FROM worker_members WHERE id = $3)
+	`, assignment.WorkerInstanceID, nodeEvidence.DeviceSet.Devices[0].ID,
+		nodeEvidence.Members[0].ID).Scan(
+		&workerObservedBy, &deviceObservedBy, &memberObservedBy,
+	); err != nil {
+		t.Fatalf("inspect current Node evidence: %v", err)
+	}
+	if workerObservedBy != nodeEvidence.ObservedBy || deviceObservedBy != nodeEvidence.ObservedBy ||
+		memberObservedBy != nodeEvidence.ObservedBy {
+		t.Fatalf("current Node evidence observed_by=%q/%q/%q", workerObservedBy, deviceObservedBy, memberObservedBy)
 	}
 	registration := &velav1.RegisterWorkerEvidenceRequest{
 		RuntimeIdentity: &velav1.ModelRuntimeIdentity{
@@ -1399,11 +1453,65 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		}, registration,
 	)
 	if err != nil || reconciled.Ready || reconciled.ControlSessionEpoch != 4 ||
-		!strings.Contains(reconciled.Reason, "stale") {
+		!strings.Contains(reconciled.Reason, "synchronized") {
 		t.Fatalf("reconcile client-selected control epoch = %#v error=%v", reconciled, err)
 	}
+	staleCapacityCommand := command
+	staleCapacity := proto.Clone(capacityRequest).(*velav1.ReportStageCapacityObservationRequest)
+	staleCapacity.ObservationSequence = observationSequence + 1
+	for resource := range staleCapacity.CapacityVector {
+		staleCapacity.CapacityVector[resource] = 0
+		break
+	}
+	staleObservedAt := time.Now().UTC().Truncate(time.Microsecond)
+	staleCapacity.ObservedAt = timestamppb.New(staleObservedAt)
+	staleCapacity.ExpiresAt = timestamppb.New(staleObservedAt.Add(2 * time.Minute))
+	staleCapacityResult, err := backend.ReportCapacityObservation(
+		context.Background(), staleCapacityCommand, staleCapacity,
+	)
+	if err != nil || staleCapacityResult.Ready || staleCapacityResult.ControlSessionEpoch != 4 {
+		t.Fatalf("fence stale-stream capacity = %#v error=%v", staleCapacityResult, err)
+	}
+	staleRegistration := proto.Clone(restarted).(*velav1.RegisterWorkerEvidenceRequest)
+	staleRegistration.RuntimeIdentity.ModelRuntimeEpoch++
+	for _, member := range staleRegistration.Members {
+		member.ModelRuntimeEpoch = staleRegistration.RuntimeIdentity.ModelRuntimeEpoch
+	}
+	staleRegistrationResult, err := backend.RegisterWorkerEvidence(
+		context.Background(), staleCapacityCommand, staleRegistration,
+	)
+	if err != nil || staleRegistrationResult.Ready ||
+		staleRegistrationResult.ControlSessionEpoch != 4 {
+		t.Fatalf("fence stale-stream registration = %#v error=%v", staleRegistrationResult, err)
+	}
+	var latestStageSequence, fencedRuntimeEpoch, fencedRegistrationCount int64
+	if err := database.Admin.QueryRow(`
+		SELECT
+			max(observation.observation_sequence),
+			(SELECT model_runtime_epoch FROM model_residencies WHERE id = $2),
+			(SELECT count(*) FROM model_runtime_epoch_registrations WHERE model_residency_id = $2)
+		FROM capacity_observations AS observation
+		WHERE observation.worker_instance_id = $1
+		  AND observation.observation_sequence::numeric > $3::numeric * 4294967296
+	`, assignment.WorkerInstanceID, assignment.ModelResidencyID,
+		assignment.WorkerInstanceEpoch).Scan(
+		&latestStageSequence, &fencedRuntimeEpoch, &fencedRegistrationCount,
+	); err != nil {
+		t.Fatalf("inspect stale-stream mutation fence: %v", err)
+	}
+	if latestStageSequence != observationSequence ||
+		fencedRuntimeEpoch != restarted.RuntimeIdentity.GetModelRuntimeEpoch() ||
+		fencedRegistrationCount != 2 {
+		t.Fatalf(
+			"stale stream mutated sequence/runtime/registrations=%d/%d/%d",
+			latestStageSequence, fencedRuntimeEpoch, fencedRegistrationCount,
+		)
+	}
 	command.ControlSessionEpoch = reconciled.ControlSessionEpoch
+	_, err = backend.ReportCapacityObservation(context.Background(), command, capacityRequest)
+	assertPostgresConstraint(t, err, "stage_worker_capacity_replay_conflict")
 	newSessionCapacity := proto.Clone(capacityRequest).(*velav1.ReportStageCapacityObservationRequest)
+	newSessionCapacity.ObservationSequence = observationSequence + 1
 	newSessionObservedAt := time.Now().UTC().Truncate(time.Microsecond)
 	newSessionCapacity.ObservedAt = timestamppb.New(newSessionObservedAt)
 	newSessionCapacity.ExpiresAt = timestamppb.New(newSessionObservedAt.Add(2 * time.Minute))
@@ -1414,8 +1522,18 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		newSessionResult.CapacityObservationSequence != observationSequence+1 {
 		t.Fatalf("publish new-session Stage Worker capacity = %#v error=%v", newSessionResult, err)
 	}
+	gappedCapacity := proto.Clone(newSessionCapacity).(*velav1.ReportStageCapacityObservationRequest)
+	gappedCapacity.ObservationSequence = observationSequence + 3
+	gappedResult, err := backend.ReportCapacityObservation(
+		context.Background(), command, gappedCapacity,
+	)
+	if err != nil || !gappedResult.Ready ||
+		gappedResult.CapacityObservationSequence != observationSequence+3 {
+		t.Fatalf("publish Stage Worker capacity after a locally reserved gap = %#v error=%v", gappedResult, err)
+	}
 
 	changedCapacity := proto.Clone(newSessionCapacity).(*velav1.ReportStageCapacityObservationRequest)
+	changedCapacity.ObservationSequence = observationSequence + 4
 	for resource := range changedCapacity.CapacityVector {
 		changedCapacity.CapacityVector[resource] = 0
 		break
@@ -1428,9 +1546,15 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		context.Background(), command, changedCapacity,
 	)
 	if err != nil || !changedResult.Ready ||
-		changedResult.CapacityObservationSequence != observationSequence+2 {
+		changedResult.CapacityObservationSequence != observationSequence+4 {
 		t.Fatalf("publish changed Stage Worker capacity = %#v error=%v", changedResult, err)
 	}
+	stalePositive := proto.Clone(newSessionCapacity).(*velav1.ReportStageCapacityObservationRequest)
+	stalePositiveObservedAt := time.Now().UTC().Truncate(time.Microsecond)
+	stalePositive.ObservedAt = timestamppb.New(stalePositiveObservedAt)
+	stalePositive.ExpiresAt = timestamppb.New(stalePositiveObservedAt.Add(2 * time.Minute))
+	_, err = backend.ReportCapacityObservation(context.Background(), command, stalePositive)
+	assertPostgresConstraint(t, err, "stage_worker_capacity_sequence_stale")
 	backwardCapacity := proto.Clone(changedCapacity).(*velav1.ReportStageCapacityObservationRequest)
 	backwardCapacity.ObservedAt = timestamppb.New(changedObservedAt.Add(-time.Microsecond))
 	_, err = backend.ReportCapacityObservation(context.Background(), command, backwardCapacity)
@@ -1439,6 +1563,7 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		time.Sleep(delay)
 	}
 	expiredCapacity := proto.Clone(changedCapacity).(*velav1.ReportStageCapacityObservationRequest)
+	expiredCapacity.ObservationSequence = observationSequence + 5
 	expiredObservedAt := time.Now().UTC().Truncate(time.Microsecond)
 	expiredCapacity.ObservedAt = timestamppb.New(expiredObservedAt)
 	expiredCapacity.ExpiresAt = timestamppb.New(expiredObservedAt.Add(2 * time.Minute))
@@ -1446,7 +1571,7 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 		context.Background(), command, expiredCapacity,
 	)
 	if err != nil || !expiredResult.Ready ||
-		expiredResult.CapacityObservationSequence != observationSequence+3 {
+		expiredResult.CapacityObservationSequence != observationSequence+5 {
 		t.Fatalf("replace expired Stage Worker capacity = %#v error=%v", expiredResult, err)
 	}
 
@@ -1479,8 +1604,8 @@ func TestPostgresWorkerEvidenceBackendRequiresExactFleetAuthority(t *testing.T) 
 	`, assignment.WorkerInstanceID).Scan(&observationCount); err != nil {
 		t.Fatalf("count durable CapacityObservations: %v", err)
 	}
-	if observationCount != 5 {
-		t.Fatalf("StageWorkerControl capacity observation count=%d, want bootstrap plus four Stage reports", observationCount)
+	if observationCount != 6 {
+		t.Fatalf("StageWorkerControl capacity observation count=%d, want bootstrap plus five Stage reports", observationCount)
 	}
 }
 

@@ -1,6 +1,6 @@
 # H3 Stage Execution Implementation Slices
 
-Date: 2026-09-03
+Date: 2026-09-04
 
 Status: Repository implementation complete; production acceptance remains in
 progress. S49.1-S49.11 and the S49.12 repository slice have committed
@@ -15,10 +15,13 @@ and an explicit live-zero contraction-readiness archive/freeze are implemented.
 A fail-closed exact-release authorization and typed reachability scanner now
 guard the irreversible contraction. Legacy runtime/protocol/query/deployment and
 release surfaces are deleted, and permanent reachability closure passes.
-Post-contraction migrations `00063` through `00065` freeze the H3 execution and
+Post-contraction migrations `00063` through `00066` freeze the H3 execution and
 root-input snapshot, make each resident ModelRuntime's CapacityPool route
 explicit, and add durable admission receipts plus fair cursors for automatic
-exact-cache reconciliation. The current schema is version `00065`.
+exact-cache reconciliation. Migration `00066` adds durable Stage Worker
+control-session takeover, read-only stale-session synchronization, strict
+monotonic capacity sequence/replay authority, and renewable capacity leases. The current
+schema is version `00066`.
 Production evidence remains pending at `0/9 PASS`.
 
 ## Delivery rule
@@ -351,10 +354,12 @@ compute-node, and Job roots are empty. The same repository boundary deletes the
 legacy code, protocol, query, deployment, image, and release surfaces; permanent
 negative reachability tests pass. Migrations `00059` through `00062` supply the
 post-contraction runtime epoch and multi-member/gang member-authority contracts.
-Migrations `00063` through `00065` then bind the exact H3 execution/root-input
+Migrations `00063` through `00066` then bind the exact H3 execution/root-input
 snapshot, move scheduling authority from a Worker-level pool to explicit
 ModelRuntime routes, and make exact-cache admission/hit reconciliation durable,
-bounded, replay-safe, and fair across repeated scans.
+bounded, replay-safe, and fair across repeated scans. The final migration also
+binds Stage Worker control-session takeover to strict monotonic capacity sequence and
+lease-renewal semantics while making stale-session synchronization read-only.
 
 These repository mechanisms do not authorize production activation or prove a
 real Worker-local/N-1 drain, GPU/DRA execution, performance, fault recovery, or

@@ -98,6 +98,11 @@ func (backend *PostgresWorkerEvidenceBackend) RegisterWorkerEvidence(
 		if err != nil {
 			return ReadinessResult{}, err
 		}
+		if durableSessionEpoch != command.ControlSessionEpoch {
+			return synchronizedControlSessionResult(
+				workerID, identity.GetWorkerInstanceEpoch(), durableSessionEpoch,
+			), nil
+		}
 		delete(payloadFields, "stage_worker_control_reconnect")
 		payloadFields["control_session_epoch"] = durableSessionEpoch
 	}
@@ -160,6 +165,11 @@ func (backend *PostgresWorkerEvidenceBackend) ReportCapacityObservation(
 		if err != nil {
 			return ReadinessResult{}, err
 		}
+		if durableSessionEpoch != command.ControlSessionEpoch {
+			return synchronizedControlSessionResult(
+				workerID, request.GetWorkerInstanceEpoch(), durableSessionEpoch,
+			), nil
+		}
 		delete(payloadFields, "stage_worker_control_reconnect")
 		payloadFields["control_session_epoch"] = durableSessionEpoch
 	}
@@ -212,6 +222,19 @@ func ensureControlSession(
 		return 0, errors.New("durable Stage Worker control session result is malformed")
 	}
 	return durableSessionEpoch, nil
+}
+
+func synchronizedControlSessionResult(
+	workerID uuid.UUID,
+	workerEpoch int64,
+	controlSessionEpoch int64,
+) ReadinessResult {
+	return ReadinessResult{
+		WorkerInstanceID:    workerID,
+		WorkerInstanceEpoch: workerEpoch,
+		Reason:              "Stage Worker control session synchronized",
+		ControlSessionEpoch: controlSessionEpoch,
+	}
 }
 
 func readReadiness(

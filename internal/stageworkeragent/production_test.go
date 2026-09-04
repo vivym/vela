@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vivym/vela/internal/stageartifact"
 	"github.com/vivym/vela/internal/stageworkeragent"
 	velav1 "github.com/vivym/vela/proto/gen/vela/v1"
@@ -229,9 +230,9 @@ func TestProductionAgentRunsAssignmentsAndHonorsNoWorkRetry(t *testing.T) {
 			control.acquireCalls, control.startCalls, control.commitCalls, waits,
 		)
 	}
-	if !reflect.DeepEqual(control.observationSequences, []int64{41, 42}) ||
+	if !reflect.DeepEqual(control.observationSequences, []int64{41}) ||
 		sequenceSource.index != 2 {
-		t.Fatalf("observation sequences = %v, want durable source values", control.observationSequences)
+		t.Fatalf("registration sequences = %v, want one cached readiness registration", control.observationSequences)
 	}
 }
 
@@ -395,9 +396,8 @@ func TestProductionAgentRegistersCapacityBeforeAcquiringWork(t *testing.T) {
 	if err != nil || cycle.Assignment != nil || cycle.RetryAfter != 250*time.Millisecond {
 		t.Fatalf("second Discover = %#v error=%v", cycle, err)
 	}
-	if !reflect.DeepEqual(control.operations, []string{"register", "acquire"}) ||
+	if !reflect.DeepEqual(control.operations, []string{"acquire"}) ||
 		len(control.capacities) != 0 ||
-		control.registration.GetCapacityObservationSequence() != 18 ||
 		control.acquire.GetCapacityObservationSequence() != 18 {
 		t.Fatalf(
 			"fresh capacity reuse operations=%v registration=%#v capacities=%#v acquire=%#v",
@@ -417,10 +417,10 @@ func TestProductionAgentRegistersCapacityBeforeAcquiringWork(t *testing.T) {
 	}
 	if !reflect.DeepEqual(control.operations, []string{"register", "capacity", "acquire"}) ||
 		len(control.capacities) != 1 ||
-		control.capacities[0].GetObservationSequence() != 19 ||
+		control.capacities[0].GetObservationSequence() != 18 ||
 		!control.capacities[0].GetObservedAt().AsTime().Equal(now) ||
 		control.registration.GetCapacityObservationSequence() != 18 ||
-		control.acquire.GetCapacityObservationSequence() != 19 {
+		control.acquire.GetCapacityObservationSequence() != 18 {
 		t.Fatalf(
 			"capacity renewal operations=%v registration=%#v capacities=%#v acquire=%#v",
 			control.operations,
@@ -441,7 +441,7 @@ func TestProductionAgentRegistersCapacityBeforeAcquiringWork(t *testing.T) {
 	if !reflect.DeepEqual(control.operations, []string{"register", "capacity", "acquire"}) ||
 		len(control.capacities) != 1 ||
 		control.capacities[0].GetObservationSequence() != 20 ||
-		control.registration.GetCapacityObservationSequence() != 19 ||
+		control.registration.GetCapacityObservationSequence() != 18 ||
 		control.acquire.GetCapacityObservationSequence() != 20 {
 		t.Fatalf(
 			"new-session capacity operations=%v registration=%#v capacities=%#v acquire=%#v",
@@ -453,6 +453,133 @@ func TestProductionAgentRegistersCapacityBeforeAcquiringWork(t *testing.T) {
 	}
 }
 
+func TestProductionAgentRecoversAfterReservedCapacitySequenceWasNotCommitted(t *testing.T) {
+	identity := productionRuntimeIdentity()
+	stateConfig := stageworkeragent.FileProductionStateConfig{
+		Directory:           t.TempDir(),
+		WorkerInstanceID:    uuid.MustParse(identity.GetWorkerInstanceId()),
+		WorkerInstanceEpoch: identity.GetWorkerInstanceEpoch(),
+		WorkerMemberID:      uuid.MustParse(identity.GetWorkerMemberId()),
+	}
+	state, err := stageworkeragent.NewFileProductionState(stateConfig)
+	if err != nil {
+		t.Fatalf("NewFileProductionState: %v", err)
+	}
+	control := &productionControl{
+		identity: identity, barrierGeneration: 13, controlSessionEpoch: 7,
+		capacityError: errors.New("capacity request was not committed"),
+	}
+	newAgent := func(source stageworkeragent.CapacityObservationSequenceSource) *stageworkeragent.ProductionAgent {
+		t.Helper()
+		agent, agentErr := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+			Control: control, Runtime: &readinessRuntime{identity: identity},
+			RuntimeIdentity: identity,
+			Devices: []*velav1.StageAuthorityDeviceEpoch{{
+				DeviceId: "49000000-0000-0000-0000-000000000001", DeviceEpoch: 3,
+			}},
+			Members: []*velav1.StageAuthorityMemberEpoch{{
+				WorkerMemberId: identity.GetWorkerMemberId(), MemberEpoch: identity.GetWorkerMemberEpoch(),
+				ModelRuntimeEpoch: identity.GetModelRuntimeEpoch(),
+			}},
+			CapacityVector: map[string]int64{"gpu": 1, "slots": 1}, CapacityTTL: 2 * time.Minute,
+			ObservationSequenceSource: source, Now: time.Now,
+		})
+		if agentErr != nil {
+			t.Fatalf("NewProductionAgent: %v", agentErr)
+		}
+		return agent
+	}
+
+	if _, err := newAgent(state).Discover(context.Background(), 0); err == nil {
+		t.Fatal("Discover accepted an uncommitted capacity request")
+	}
+	if err := state.Close(); err != nil {
+		t.Fatalf("close failed-attempt production state: %v", err)
+	}
+	reopened, err := stageworkeragent.NewFileProductionState(stateConfig)
+	if err != nil {
+		t.Fatalf("reopen FileProductionState: %v", err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	control.capacityError = nil
+	control.operations = nil
+	control.capacities = nil
+
+	cycle, err := newAgent(reopened).Discover(context.Background(), 0)
+	if err != nil || cycle.Assignment != nil || cycle.RetryAfter != 250*time.Millisecond {
+		t.Fatalf("recover after uncommitted capacity request = %#v error=%v", cycle, err)
+	}
+	sequenceBase := identity.GetWorkerInstanceEpoch() << 32
+	if !reflect.DeepEqual(control.operations, []string{"capacity", "register", "capacity", "acquire"}) ||
+		len(control.capacities) != 2 ||
+		control.capacities[0].GetObservationSequence() != sequenceBase+2 ||
+		control.capacities[1].GetObservationSequence() != sequenceBase+3 ||
+		control.registration.GetCapacityObservationSequence() != sequenceBase+2 ||
+		control.acquire.GetCapacityObservationSequence() != sequenceBase+3 {
+		t.Fatalf(
+			"capacity gap recovery operations=%v capacities=%#v registration=%#v acquire=%#v",
+			control.operations, control.capacities, control.registration, control.acquire,
+		)
+	}
+}
+
+func TestProductionAgentInvalidatesReadinessWhenControlSessionIsUnavailable(t *testing.T) {
+	now := time.Date(2026, 9, 4, 18, 0, 0, 0, time.UTC)
+	identity := productionRuntimeIdentity()
+	baseControl := &productionControl{
+		identity: identity, barrierGeneration: 13, controlSessionEpoch: 7,
+	}
+	control := &reconnectingProductionControl{
+		productionControl: baseControl, available: true, reconnectEpoch: 8,
+	}
+	runtime := &readinessRuntime{identity: identity}
+	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
+		Control: control, Runtime: runtime, RuntimeIdentity: identity,
+		Devices: []*velav1.StageAuthorityDeviceEpoch{{
+			DeviceId: "49000000-0000-0000-0000-000000000001", DeviceEpoch: 3,
+		}},
+		Members: []*velav1.StageAuthorityMemberEpoch{{
+			WorkerMemberId: identity.GetWorkerMemberId(), MemberEpoch: identity.GetWorkerMemberEpoch(),
+			ModelRuntimeEpoch: identity.GetModelRuntimeEpoch(),
+		}},
+		CapacityVector: map[string]int64{"gpu": 1, "slots": 1}, CapacityTTL: 2 * time.Minute,
+		ObservationSequenceSource: &capacitySequenceSource{values: []int64{18, 19}},
+		Now:                       func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatalf("NewProductionAgent: %v", err)
+	}
+	if _, err := agent.Discover(context.Background(), 17); err != nil {
+		t.Fatalf("initial Discover: %v", err)
+	}
+	control.available = false
+	control.operations = nil
+	control.capacities = nil
+	runtime.checks = nil
+
+	cycle, err := agent.Discover(context.Background(), 0)
+	if err != nil || cycle.Assignment != nil || cycle.RetryAfter != 250*time.Millisecond {
+		t.Fatalf("Discover after stream loss = %#v error=%v", cycle, err)
+	}
+	if !reflect.DeepEqual(control.operations, []string{"register", "capacity", "acquire"}) ||
+		!reflect.DeepEqual(runtime.checks, []velav1.ModelRuntimeReadinessCheck{
+			velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_DEVICE,
+			velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_BACKEND,
+			velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_MODEL_WARMUP,
+			velav1.ModelRuntimeReadinessCheck_MODEL_RUNTIME_READINESS_CHECK_CANARY,
+		}) ||
+		len(control.capacities) != 1 || control.capacities[0].GetObservationSequence() != 19 ||
+		control.registration.GetCapacityObservationSequence() != 18 ||
+		control.acquire.GetCapacityObservationSequence() != 19 ||
+		control.controlSessionEpoch != 8 {
+		t.Fatalf(
+			"stream-loss refresh operations=%v checks=%v capacities=%#v registration=%#v acquire=%#v epoch=%d",
+			control.operations, runtime.checks, control.capacities, control.registration,
+			control.acquire, control.controlSessionEpoch,
+		)
+	}
+}
+
 func TestProductionAgentWithdrawsCapacityAfterAcceptedSequencePersistenceFailure(t *testing.T) {
 	identity := productionRuntimeIdentity()
 	control := &productionControl{
@@ -460,9 +587,10 @@ func TestProductionAgentWithdrawsCapacityAfterAcceptedSequencePersistenceFailure
 		capacityResponseSequences: []int64{30, 31, 32},
 	}
 	persistErr := errors.New("capacity high-water is unavailable")
+	withdrawPersistErr := errors.New("capacity withdrawal high-water is unavailable")
 	sequenceSource := &capacitySequenceSource{
 		values:        []int64{31},
-		observeErrors: map[int64]error{31: persistErr, 32: persistErr},
+		observeErrors: map[int64]error{31: persistErr, 32: withdrawPersistErr},
 	}
 	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
 		Control: control, Runtime: &readinessRuntime{identity: identity},
@@ -482,8 +610,12 @@ func TestProductionAgentWithdrawsCapacityAfterAcceptedSequencePersistenceFailure
 		t.Fatalf("NewProductionAgent: %v", err)
 	}
 
-	if _, err := agent.Discover(context.Background(), 30); !errors.Is(err, persistErr) {
-		t.Fatalf("Discover error = %v, want accepted-capacity persistence failure", err)
+	if _, err := agent.Discover(context.Background(), 30); !errors.Is(err, persistErr) ||
+		!errors.Is(err, withdrawPersistErr) {
+		t.Fatalf(
+			"Discover error = %v, want accepted-capacity and withdrawal persistence failures",
+			err,
+		)
 	}
 	if !reflect.DeepEqual(
 		control.operations,
@@ -500,7 +632,7 @@ func TestProductionAgentWithdrawsCapacityAfterAcceptedSequencePersistenceFailure
 	) || !reflect.DeepEqual(
 		control.capacities[2].GetCapacityVector(),
 		map[string]int64{"gpu": 0, "slots": 0},
-	) {
+	) || control.capacities[2].GetObservationSequence() != 32 {
 		t.Fatalf(
 			"failed persistence operations=%v capacities=%#v acquire=%#v observed=%v",
 			control.operations,
@@ -514,6 +646,8 @@ func TestProductionAgentWithdrawsCapacityAfterAcceptedSequencePersistenceFailure
 func TestProductionAgentWithdrawsCapacityAfterRegistrationFailure(t *testing.T) {
 	identity := productionRuntimeIdentity()
 	control := &productionControl{identity: identity, barrierGeneration: 13}
+	now := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	sequenceSource := &capacitySequenceSource{values: []int64{31, 33, 34}}
 	agent, err := stageworkeragent.NewProductionAgent(stageworkeragent.ProductionConfig{
 		Control: control, Runtime: &readinessRuntime{identity: identity},
 		RuntimeIdentity: identity,
@@ -525,8 +659,8 @@ func TestProductionAgentWithdrawsCapacityAfterRegistrationFailure(t *testing.T) 
 		}},
 		CapacityVector:            map[string]int64{"gpu": 1, "slots": 1},
 		CapacityTTL:               2 * time.Minute,
-		ObservationSequenceSource: &capacitySequenceSource{values: []int64{31}},
-		Now:                       time.Now,
+		ObservationSequenceSource: sequenceSource,
+		Now:                       func() time.Time { return now },
 	})
 	if err != nil {
 		t.Fatalf("NewProductionAgent: %v", err)
@@ -537,6 +671,7 @@ func TestProductionAgentWithdrawsCapacityAfterRegistrationFailure(t *testing.T) 
 	control.operations = nil
 	control.capacities = nil
 	control.registrationError = errors.New("runtime registration unavailable")
+	now = now.Add(6 * time.Second)
 	if _, err := agent.Discover(context.Background(), 32); err == nil {
 		t.Fatal("Discover accepted failed runtime registration")
 	}
@@ -548,6 +683,32 @@ func TestProductionAgentWithdrawsCapacityAfterRegistrationFailure(t *testing.T) 
 			map[string]int64{"gpu": 0, "slots": 0},
 		) {
 		t.Fatalf("capacity withdrawal operations=%v capacities=%#v", control.operations, control.capacities)
+	}
+
+	control.operations = nil
+	control.capacities = nil
+	control.registrationError = nil
+	now = now.Add(2*time.Minute + time.Second)
+	cycle, err := agent.Discover(context.Background(), 0)
+	if err != nil || cycle.Assignment != nil || cycle.RetryAfter != 250*time.Millisecond {
+		t.Fatalf("recover after zero-capacity expiry = %#v error=%v", cycle, err)
+	}
+	if !reflect.DeepEqual(control.operations, []string{"capacity", "register", "capacity", "acquire"}) ||
+		len(control.capacities) != 2 ||
+		control.capacities[0].GetObservationSequence() != 32 ||
+		control.capacities[1].GetObservationSequence() != 33 ||
+		!reflect.DeepEqual(
+			control.capacities[0].GetCapacityVector(),
+			map[string]int64{"gpu": 0, "slots": 0},
+		) || !reflect.DeepEqual(
+		control.capacities[1].GetCapacityVector(),
+		map[string]int64{"gpu": 1, "slots": 1},
+	) || control.registration.GetCapacityObservationSequence() != 32 ||
+		control.acquire.GetCapacityObservationSequence() != 33 {
+		t.Fatalf(
+			"expired zero-capacity recovery operations=%v capacities=%#v registration=%#v acquire=%#v",
+			control.operations, control.capacities, control.registration, control.acquire,
+		)
 	}
 }
 
@@ -873,6 +1034,27 @@ type productionControl struct {
 	registrationError         error
 	controlSessionEpoch       int64
 	capacityResponseSequences []int64
+}
+
+type reconnectingProductionControl struct {
+	*productionControl
+	available      bool
+	reconnectEpoch int64
+}
+
+func (control *reconnectingProductionControl) HasActiveControlSession() bool {
+	return control.available
+}
+
+func (control *reconnectingProductionControl) Exchange(
+	ctx context.Context,
+	request *velav1.StageWorkerControlServiceConnectRequest,
+) (*velav1.StageWorkerControlServiceConnectResponse, error) {
+	if !control.available {
+		control.available = true
+		control.controlSessionEpoch = control.reconnectEpoch
+	}
+	return control.productionControl.Exchange(ctx, request)
 }
 
 type productionExecutionControl struct {

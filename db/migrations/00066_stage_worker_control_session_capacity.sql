@@ -85,9 +85,9 @@ END
 $$;
 
 -- A Stage Worker control reconnect advances the WorkerInstance-wide stream
--- epoch. After Stage capacity takeover, accept the Node Agent's lower startup
--- epoch once so its topology/health report can learn the durable epoch returned
--- by the Fleet decision. A future client-selected epoch remains invalid.
+-- epoch. After Stage capacity takeover, a Node Agent with a lower startup epoch
+-- receives the durable epoch without mutating topology, health, membership, or
+-- reachability. Its next observation must carry that exact durable epoch.
 DO $$
 DECLARE
     v_definition text;
@@ -100,27 +100,41 @@ BEGIN
     v_old := E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
         || E'       OR v_worker.instance_epoch <> (p_evidence ->> ''instance_epoch'')::bigint\n'
         || E'       OR v_worker.control_session_epoch <> (p_evidence ->> ''control_session_epoch'')::bigint THEN\n';
-    v_new := E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
+    v_new := E'    IF v_worker.lifecycle_state NOT IN (''FENCED'', ''RETIRED'')\n'
+        || E'       AND v_worker.instance_epoch = (p_evidence ->> ''instance_epoch'')::bigint\n'
+        || E'       AND (p_evidence ->> ''control_session_epoch'')::bigint <\n'
+        || E'           v_worker.control_session_epoch\n'
+        || E'       AND EXISTS (\n'
+        || E'           SELECT 1\n'
+        || E'           FROM public.capacity_observations AS observation\n'
+        || E'           WHERE observation.worker_instance_id = v_worker.id\n'
+        || E'             AND observation.worker_instance_epoch = v_worker.instance_epoch\n'
+        || E'             AND observation.observation_sequence::numeric >\n'
+        || E'                 v_worker.instance_epoch::numeric * 4294967296\n'
+        || E'             AND observation.observation_sequence::numeric <=\n'
+        || E'                 v_worker.instance_epoch::numeric * 4294967296 + 4294967295\n'
+        || E'       ) THEN\n'
+        || E'        SELECT max(residency.model_runtime_epoch)\n'
+        || E'          INTO v_model_runtime_epoch\n'
+        || E'        FROM public.model_residencies AS residency\n'
+        || E'        WHERE residency.worker_instance_id = v_worker.id\n'
+        || E'          AND residency.worker_instance_epoch = v_worker.instance_epoch\n'
+        || E'          AND residency.state IN (''READY'', ''WARMING'');\n'
+        || E'        IF v_model_runtime_epoch IS NULL THEN\n'
+        || E'            RAISE EXCEPTION USING\n'
+        || E'                ERRCODE = ''23514'',\n'
+        || E'                CONSTRAINT = ''worker_instance_model_residency_required'',\n'
+        || E'                MESSAGE = ''WorkerInstance has no durable ModelRuntime'';\n'
+        || E'        END IF;\n'
+        || E'        RETURN QUERY SELECT\n'
+        || E'            v_worker.id, v_worker.instance_epoch,\n'
+        || E'            v_worker.control_session_epoch, v_model_runtime_epoch,\n'
+        || E'            v_worker.lifecycle_state;\n'
+        || E'        RETURN;\n'
+        || E'    END IF;\n'
+        || E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
         || E'       OR v_worker.instance_epoch <> (p_evidence ->> ''instance_epoch'')::bigint\n'
-        || E'       OR (\n'
-        || E'           v_worker.control_session_epoch <>\n'
-        || E'               (p_evidence ->> ''control_session_epoch'')::bigint\n'
-        || E'           AND NOT (\n'
-        || E'               (p_evidence ->> ''control_session_epoch'')::bigint <\n'
-        || E'                   v_worker.control_session_epoch\n'
-        || E'               AND EXISTS (\n'
-        || E'                   SELECT 1\n'
-        || E'                   FROM public.capacity_observations AS observation\n'
-        || E'                   WHERE observation.worker_instance_id = v_worker.id\n'
-        || E'                     AND observation.worker_instance_epoch =\n'
-        || E'                         v_worker.instance_epoch\n'
-        || E'                     AND observation.observation_sequence::numeric >\n'
-        || E'                         v_worker.instance_epoch::numeric * 4294967296\n'
-        || E'                     AND observation.observation_sequence::numeric <=\n'
-        || E'                         v_worker.instance_epoch::numeric * 4294967296 + 4294967295\n'
-        || E'               )\n'
-        || E'           )\n'
-        || E'       ) THEN\n';
+        || E'       OR v_worker.control_session_epoch <> (p_evidence ->> ''control_session_epoch'')::bigint THEN\n';
     IF strpos(v_definition, v_old) = 0 THEN
         RAISE EXCEPTION USING
             ERRCODE = '55000',
@@ -686,10 +700,21 @@ BEGIN
     FOR UPDATE;
 
     IF v_latest_observation.observation_sequence IS NOT NULL
-       AND v_latest_observation.stage_worker_control_session_epoch =
-           v_control_session_epoch
-       AND v_latest_observation.capacity_vector = v_capacity_vector
-       AND v_latest_observation.expires_at > v_now THEN
+       AND v_observation_sequence < v_latest_observation.observation_sequence THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '55000',
+            CONSTRAINT = 'stage_worker_capacity_sequence_stale',
+            MESSAGE = 'Stage Worker capacity sequence is stale';
+    ELSIF v_latest_observation.observation_sequence IS NOT NULL
+          AND v_observation_sequence = v_latest_observation.observation_sequence THEN
+        IF v_latest_observation.stage_worker_control_session_epoch <>
+               v_control_session_epoch
+           OR v_latest_observation.capacity_vector <> v_capacity_vector THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '55000',
+                CONSTRAINT = 'stage_worker_capacity_replay_conflict',
+                MESSAGE = 'Stage Worker capacity replay conflicts with durable evidence';
+        END IF;
         IF v_observed_at < v_latest_observation.stage_worker_last_observed_at
            OR v_expires_at < v_latest_observation.expires_at THEN
             RAISE EXCEPTION USING
@@ -714,19 +739,6 @@ BEGIN
             v_latest_observation.observation_sequence;
         RETURN;
     END IF;
-
-    v_observation_sequence := COALESCE(
-        v_latest_observation.observation_sequence,
-        (v_worker.instance_epoch::numeric * 4294967296)::bigint
-    );
-    IF v_observation_sequence::numeric >=
-       v_worker.instance_epoch::numeric * 4294967296 + 4294967295 THEN
-        RAISE EXCEPTION USING
-            ERRCODE = '55000',
-            CONSTRAINT = 'stage_worker_capacity_sequence_exhausted',
-            MESSAGE = 'Stage Worker capacity observation sequence is exhausted';
-    END IF;
-    v_observation_sequence := v_observation_sequence + 1;
 
     INSERT INTO public.capacity_observations (
         worker_instance_id, worker_instance_epoch, observation_sequence,
@@ -1170,27 +1182,41 @@ BEGIN
     v_definition := pg_get_functiondef(
         'public.vela_observe_worker_instance(jsonb)'::regprocedure
     );
-    v_old := E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
+    v_old := E'    IF v_worker.lifecycle_state NOT IN (''FENCED'', ''RETIRED'')\n'
+        || E'       AND v_worker.instance_epoch = (p_evidence ->> ''instance_epoch'')::bigint\n'
+        || E'       AND (p_evidence ->> ''control_session_epoch'')::bigint <\n'
+        || E'           v_worker.control_session_epoch\n'
+        || E'       AND EXISTS (\n'
+        || E'           SELECT 1\n'
+        || E'           FROM public.capacity_observations AS observation\n'
+        || E'           WHERE observation.worker_instance_id = v_worker.id\n'
+        || E'             AND observation.worker_instance_epoch = v_worker.instance_epoch\n'
+        || E'             AND observation.observation_sequence::numeric >\n'
+        || E'                 v_worker.instance_epoch::numeric * 4294967296\n'
+        || E'             AND observation.observation_sequence::numeric <=\n'
+        || E'                 v_worker.instance_epoch::numeric * 4294967296 + 4294967295\n'
+        || E'       ) THEN\n'
+        || E'        SELECT max(residency.model_runtime_epoch)\n'
+        || E'          INTO v_model_runtime_epoch\n'
+        || E'        FROM public.model_residencies AS residency\n'
+        || E'        WHERE residency.worker_instance_id = v_worker.id\n'
+        || E'          AND residency.worker_instance_epoch = v_worker.instance_epoch\n'
+        || E'          AND residency.state IN (''READY'', ''WARMING'');\n'
+        || E'        IF v_model_runtime_epoch IS NULL THEN\n'
+        || E'            RAISE EXCEPTION USING\n'
+        || E'                ERRCODE = ''23514'',\n'
+        || E'                CONSTRAINT = ''worker_instance_model_residency_required'',\n'
+        || E'                MESSAGE = ''WorkerInstance has no durable ModelRuntime'';\n'
+        || E'        END IF;\n'
+        || E'        RETURN QUERY SELECT\n'
+        || E'            v_worker.id, v_worker.instance_epoch,\n'
+        || E'            v_worker.control_session_epoch, v_model_runtime_epoch,\n'
+        || E'            v_worker.lifecycle_state;\n'
+        || E'        RETURN;\n'
+        || E'    END IF;\n'
+        || E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
         || E'       OR v_worker.instance_epoch <> (p_evidence ->> ''instance_epoch'')::bigint\n'
-        || E'       OR (\n'
-        || E'           v_worker.control_session_epoch <>\n'
-        || E'               (p_evidence ->> ''control_session_epoch'')::bigint\n'
-        || E'           AND NOT (\n'
-        || E'               (p_evidence ->> ''control_session_epoch'')::bigint <\n'
-        || E'                   v_worker.control_session_epoch\n'
-        || E'               AND EXISTS (\n'
-        || E'                   SELECT 1\n'
-        || E'                   FROM public.capacity_observations AS observation\n'
-        || E'                   WHERE observation.worker_instance_id = v_worker.id\n'
-        || E'                     AND observation.worker_instance_epoch =\n'
-        || E'                         v_worker.instance_epoch\n'
-        || E'                     AND observation.observation_sequence::numeric >\n'
-        || E'                         v_worker.instance_epoch::numeric * 4294967296\n'
-        || E'                     AND observation.observation_sequence::numeric <=\n'
-        || E'                         v_worker.instance_epoch::numeric * 4294967296 + 4294967295\n'
-        || E'               )\n'
-        || E'           )\n'
-        || E'       ) THEN\n';
+        || E'       OR v_worker.control_session_epoch <> (p_evidence ->> ''control_session_epoch'')::bigint THEN\n';
     v_new := E'    IF v_worker.lifecycle_state IN (''FENCED'', ''RETIRED'')\n'
         || E'       OR v_worker.instance_epoch <> (p_evidence ->> ''instance_epoch'')::bigint\n'
         || E'       OR v_worker.control_session_epoch <> (p_evidence ->> ''control_session_epoch'')::bigint THEN\n';
