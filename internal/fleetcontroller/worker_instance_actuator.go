@@ -1095,6 +1095,7 @@ func workerInstanceAgentContainer(
 			literalEnvironment("VELA_WORKER_CONTROL_CA_FILE", "/etc/vela-stage-worker/private/control/ca.crt"),
 			literalEnvironment("VELA_MODEL_RUNTIME_SOCKET", modelRuntimeSocketPath),
 			literalEnvironment("VELA_MODEL_RUNTIME_EXPECTED_UID", "10001"),
+			configMapEnvironment("VELA_MODEL_RUNTIME_STARTUP_TIMEOUT", bundle.StageWorkerConfigMap, "model-runtime-startup-timeout"),
 			literalEnvironment("VELA_WORKER_SCRATCH_ROOT", stageWorkerScratchRoot),
 			literalEnvironment("VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT", stageWorkerScratchRoot+"/production-state"),
 			literalEnvironment("VELA_STAGE_WORKER_INPUT_ROOT", stageWorkerScratchRoot+"/inputs"),

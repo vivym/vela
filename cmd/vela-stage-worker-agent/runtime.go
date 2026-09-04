@@ -196,13 +196,15 @@ func newProductionRuntimeUsing(
 	if err != nil {
 		return fail(fmt.Errorf("configure Stage Worker control mTLS: %w", err))
 	}
+	runtimeDialContext, cancelRuntimeDial := context.WithTimeout(ctx, configuration.runtimeStartupTimeout)
 	runtime.modelRuntime, err = modelruntimetransport.Dial(
-		ctx,
+		runtimeDialContext,
 		modelruntimetransport.Config{
 			SocketPath:  configuration.runtimeSocket,
 			ExpectedUID: configuration.runtimeExpectedUID,
 		},
 	)
+	cancelRuntimeDial()
 	if err != nil {
 		return fail(fmt.Errorf("connect to resident ModelRuntime: %w", err))
 	}

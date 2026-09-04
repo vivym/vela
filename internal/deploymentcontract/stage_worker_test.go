@@ -68,6 +68,7 @@ func TestStageWorkerRuntimeConfigDefinesProductionCompositionInputs(t *testing.T
 		"member-shutdown-timeout",
 		"model-runtime-cancel-timeout",
 		"model-runtime-shutdown-timeout",
+		"model-runtime-startup-timeout",
 		"retry-maximum",
 		"retry-minimum",
 		"source-loss-consumed-resource-units",

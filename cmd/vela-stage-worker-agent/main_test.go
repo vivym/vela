@@ -73,6 +73,7 @@ func TestLoadConfigBindsSingleMemberRuntimeAndDurableMaterialization(t *testing.
 		configuration.workerInstanceEpoch != 5 ||
 		configuration.workerMemberID.String() != "48000000-0000-0000-0000-000000000004" ||
 		configuration.workerMemberEpoch != 11 || configuration.runtimeExpectedUID != 10001 ||
+		configuration.runtimeStartupTimeout != 30*time.Second ||
 		configuration.capacityTTL != 2*time.Minute || configuration.heartbeatInterval != 20*time.Second ||
 		configuration.materializationJournalLimit != 16 ||
 		configuration.connectorRevisionID.String() != "48000000-0000-0000-0000-000000000007" ||
@@ -172,6 +173,7 @@ func setValidStageWorkerEnv(t *testing.T) {
 		"VELA_WORKER_CONTROL_CA_FILE":                           filepath.Join(root, "ca.crt"),
 		"VELA_MODEL_RUNTIME_SOCKET":                             filepath.Join(root, "runtime.sock"),
 		"VELA_MODEL_RUNTIME_EXPECTED_UID":                       "10001",
+		"VELA_MODEL_RUNTIME_STARTUP_TIMEOUT":                    "30s",
 		"VELA_WORKER_SCRATCH_ROOT":                              filepath.Join(root, "scratch"),
 		"VELA_STAGE_WORKER_PRODUCTION_STATE_ROOT":               filepath.Join(root, "scratch", "production-state"),
 		"VELA_STAGE_WORKER_INPUT_ROOT":                          filepath.Join(root, "scratch", "inputs"),

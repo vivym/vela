@@ -179,6 +179,7 @@ func TestKubernetesActuatorMaterializesPerGPUH3WorkerInstances(t *testing.T) {
 				t.Fatalf("WorkerInstance Pod %q ModelRuntime environment %s = %q", pod.Name, name, got)
 			}
 		}
+		requireConfigMapEnvironment(t, stageAgent, "VELA_MODEL_RUNTIME_STARTUP_TIMEOUT", "stage-worker-runtime-r1", "model-runtime-startup-timeout")
 		requireConfigMapEnvironment(t, runtimeContainer, "VELA_MODEL_RUNTIME_CANCEL_TIMEOUT", "stage-worker-runtime-r1", "model-runtime-cancel-timeout")
 		requireConfigMapEnvironment(t, runtimeContainer, "VELA_MODEL_RUNTIME_SHUTDOWN_TIMEOUT", "stage-worker-runtime-r1", "model-runtime-shutdown-timeout")
 		initializer := requireContainer(t, pod.Spec.InitContainers, "model-runtime-private-materialization")
