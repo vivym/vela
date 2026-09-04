@@ -215,13 +215,19 @@ func TestProductionRuntimePropagatesAuthorityClockSkew(t *testing.T) {
 		"127.0.0.1:1",
 		unusedSmokeTCPAddress(t),
 	)
-	var memberClockSkew, materializationClockSkew time.Duration
+	var memberClockSkew, inputClockSkew, materializationClockSkew time.Duration
 	consumers := productionAuthorityConsumers{
 		newMemberServer: func(
 			config stageworkermembertransport.ServerConfig,
 		) (*stageworkermembertransport.Server, error) {
 			memberClockSkew = config.MaxClockSkew
 			return stageworkermembertransport.NewServer(config)
+		},
+		newInputResolver: func(
+			config stageworkeragent.AssignmentInputResolverConfig,
+		) (*stageworkeragent.AssignmentInputResolver, error) {
+			inputClockSkew = config.MaxClockSkew
+			return stageworkeragent.NewAssignmentInputResolver(config)
 		},
 		newMaterializingAgent: func(
 			runtime *stageworkeragent.Agent,
@@ -250,10 +256,12 @@ func TestProductionRuntimePropagatesAuthorityClockSkew(t *testing.T) {
 		}
 	}()
 	if memberClockSkew != authoritypolicy.ProductionMaxClockSkew ||
+		inputClockSkew != authoritypolicy.ProductionMaxClockSkew ||
 		materializationClockSkew != authoritypolicy.ProductionMaxClockSkew {
 		t.Fatalf(
-			"production authority clock skew member/materialization = %s/%s, want %s",
+			"production authority clock skew member/input/materialization = %s/%s/%s, want %s",
 			memberClockSkew,
+			inputClockSkew,
 			materializationClockSkew,
 			authoritypolicy.ProductionMaxClockSkew,
 		)

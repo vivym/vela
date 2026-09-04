@@ -268,9 +268,10 @@ func TestStreamAgentPullsExactInputsBeforePreparingRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New TransferTicket signer: %v", err)
 	}
+	ticketIssuedAt := now.Add(300 * time.Millisecond)
 	ticket, err := ticketSigner.Sign(stageartifact.TransferTicketClaims{
 		TicketID: ticketID, Destination: destination,
-		IssuedAt: now.Add(-time.Second), ExpiresAt: now.Add(time.Minute),
+		IssuedAt: ticketIssuedAt, ExpiresAt: ticketIssuedAt.Add(30 * time.Second),
 	})
 	if err != nil {
 		t.Fatalf("sign TransferTicket: %v", err)
@@ -290,13 +291,23 @@ func TestStreamAgentPullsExactInputsBeforePreparingRuntime(t *testing.T) {
 		},
 	}
 	inputRoot := t.TempDir()
-	resolver, err := stageworkeragent.NewAssignmentInputResolver(
-		stageworkeragent.AssignmentInputResolverConfig{
-			Store: store, TicketSigner: ticketSigner, Control: control,
-			InputRoot: inputRoot, ConnectorRevisionID: connectorID,
-			Now: func() time.Time { return now }, Journal: stageworkeragent.NewMemoryInputTransferJournal(),
-		},
-	)
+	resolverConfig := stageworkeragent.AssignmentInputResolverConfig{
+		Store: store, TicketSigner: ticketSigner, Control: control,
+		InputRoot: inputRoot, ConnectorRevisionID: connectorID,
+		Now: func() time.Time { return now }, MaxClockSkew: 30 * time.Second,
+		Journal: stageworkeragent.NewMemoryInputTransferJournal(),
+	}
+	for _, invalid := range []time.Duration{-time.Nanosecond, time.Minute + time.Nanosecond} {
+		invalidConfig := resolverConfig
+		invalidConfig.MaxClockSkew = invalid
+		if invalidResolver, invalidErr := stageworkeragent.NewAssignmentInputResolver(invalidConfig); invalidResolver != nil || invalidErr == nil {
+			t.Fatalf(
+				"NewAssignmentInputResolver skew=%s resolver=%v error=%v",
+				invalid, invalidResolver, invalidErr,
+			)
+		}
+	}
+	resolver, err := stageworkeragent.NewAssignmentInputResolver(resolverConfig)
 	if err != nil {
 		t.Fatalf("NewAssignmentInputResolver: %v", err)
 	}
@@ -324,6 +335,14 @@ func TestStreamAgentPullsExactInputsBeforePreparingRuntime(t *testing.T) {
 		control.requests[3].GetStartStage() == nil ||
 		!proto.Equal(control.requests[1], control.requests[2]) {
 		t.Fatalf("control request order = %#v", control.requests)
+	}
+	resolvedAt := control.requests[0].GetResolveInputTransfer().GetResolvedAt().AsTime()
+	firstConsumedAt := control.requests[1].GetConsumeInputTransfer().GetConsumedAt().AsTime()
+	if !resolvedAt.Equal(ticketIssuedAt) || !firstConsumedAt.Equal(ticketIssuedAt) {
+		t.Fatalf(
+			"future-issued TransferTicket resolve/consume time = %s/%s, want %s",
+			resolvedAt, firstConsumedAt, ticketIssuedAt,
+		)
 	}
 	stageRunID := uuid.MustParse(assignment.Authority.GetStageRunId())
 	relative, err := stageworkeragent.StageInputRelativePath(stageRunID, artifactID, digest)

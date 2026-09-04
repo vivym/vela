@@ -263,8 +263,9 @@ func TestPostgresAssignmentBackendAssignsCertifiedConnectorInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("construct Encoder StageArtifact repository: %v", err)
 	}
+	objectStore := artifactstore.NewLocal()
 	encoderArtifact := materializeH3IntegrationStage(
-		t, artifactRepository, artifactstore.NewLocal(), attemptID, encoderRunID,
+		t, artifactRepository, objectStore, attemptID, encoderRunID,
 		encoderAssignment, stages[0], []byte("certified connector input"),
 		[]byte(`{"kind":"conditioning","schema_version":1}`),
 	)
@@ -548,6 +549,51 @@ func TestPostgresAssignmentBackendAssignsCertifiedConnectorInput(t *testing.T) {
 			t.Fatalf("%s Consume did not finish", label)
 		}
 	}
+	clockSkewIssuedAt := time.Now().UTC().Add(-time.Second).Truncate(time.Millisecond)
+	clockSkewTicket, clockSkewClaims := issueTicket(
+		"worker-behind clock skew",
+		clockSkewIssuedAt,
+		clockSkewIssuedAt.Add(30*time.Second),
+	)
+	workerNow := clockSkewIssuedAt.Add(-300 * time.Millisecond)
+	connector, err := stageartifact.NewObjectStorePullConnectorWithClockSkew(
+		objectStore,
+		artifactRepository,
+		ticketSigner,
+		func() time.Time { return workerNow },
+		30*time.Second,
+	)
+	if err != nil {
+		t.Fatalf("construct skew-aware PostgreSQL Connector: %v", err)
+	}
+	target := stageartifact.NewMemoryTransferTarget()
+	receipt, err := connector.Pull(
+		context.Background(), clockSkewTicket, clockSkewClaims.Destination, target,
+	)
+	if err != nil || receipt.TicketID != clockSkewClaims.TicketID ||
+		!receipt.CompletedAt.Equal(clockSkewIssuedAt) ||
+		!bytes.Equal(target.Bytes(), []byte("certified connector input")) {
+		t.Fatalf(
+			"pull through PostgreSQL with worker clock skew receipt=%#v bytes=%q error=%v",
+			receipt, target.Bytes(), err,
+		)
+	}
+	var clockSkewTicketState string
+	var consumedAt time.Time
+	if err := database.Admin.QueryRow(`
+		SELECT state::text, consumed_at
+		FROM transfer_tickets
+		WHERE id = $1
+	`, clockSkewClaims.TicketID).Scan(&clockSkewTicketState, &consumedAt); err != nil {
+		t.Fatalf("read clock-skew TransferTicket outcome: %v", err)
+	}
+	if clockSkewTicketState != "CONSUMED" || !consumedAt.Equal(clockSkewIssuedAt) {
+		t.Fatalf(
+			"clock-skew TransferTicket outcome = %s at %s, want CONSUMED at %s",
+			clockSkewTicketState, consumedAt, clockSkewIssuedAt,
+		)
+	}
+
 	assertLockWaitRejects("ticket expiry", false)
 	assertLockWaitRejects("capacity expiry", true)
 	var connectorState string
