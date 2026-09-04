@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/vivym/vela/internal/materializationauthority"
 	"github.com/vivym/vela/internal/stageauthority"
@@ -69,6 +70,7 @@ type Config struct {
 	MaterializationValidator  *materializationauthority.Validator
 	MaterializationAuthorizer MaterializationAuthorizer
 	Executor                  Executor
+	MaxClockSkew              time.Duration
 }
 
 type Handler struct {
@@ -77,6 +79,7 @@ type Handler struct {
 	materializationValidator  *materializationauthority.Validator
 	materializationAuthorizer MaterializationAuthorizer
 	executor                  Executor
+	maxClockSkew              time.Duration
 }
 
 func NewHandler(config Config) (*Handler, error) {
@@ -95,11 +98,15 @@ func NewHandler(config Config) (*Handler, error) {
 	if config.Executor == nil {
 		return nil, errors.New("missing operation executor for Stage Worker control")
 	}
+	if config.MaxClockSkew < 0 || config.MaxClockSkew > time.Minute {
+		return nil, errors.New("stage worker control clock skew is invalid")
+	}
 	return &Handler{
 		validator: config.Validator, authorizer: config.Authorizer,
 		materializationValidator:  config.MaterializationValidator,
 		materializationAuthorizer: config.MaterializationAuthorizer,
 		executor:                  config.Executor,
+		maxClockSkew:              config.MaxClockSkew,
 	}, nil
 }
 
@@ -150,7 +157,10 @@ func (handler *Handler) Handle(
 			VerifiedAuthorities{Materialization: &verified},
 		)
 	}
-	verified, err := handler.validator.ValidateEnvelope(authority)
+	verified, err := handler.validator.ValidateEnvelopeWithClockSkew(
+		authority,
+		handler.maxClockSkew,
+	)
 	if err != nil {
 		return staleResponse(request.GetRequestId(), operation, err.Error()), nil
 	}

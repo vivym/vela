@@ -174,6 +174,56 @@ func TestStageAuthorityRejectsStaleOrMismatchedEpochs(t *testing.T) {
 	}
 }
 
+func TestStageAuthorityEnvelopeAllowsOnlyConfiguredFutureClockSkew(t *testing.T) {
+	now := time.Date(2026, 8, 30, 4, 45, 0, 0, time.UTC)
+	key := bytes.Repeat([]byte{0x25}, 32)
+	signer, err := stageauthority.NewSigner(map[string][]byte{"stage-key-7": key})
+	if err != nil {
+		t.Fatalf("NewSigner: %v", err)
+	}
+	signed, err := signer.Sign(validAuthority(now.Add(20 * time.Millisecond)))
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	validator, err := stageauthority.NewValidator(
+		map[string][]byte{"stage-key-7": key},
+		func() time.Time { return now },
+	)
+	if err != nil {
+		t.Fatalf("NewValidator: %v", err)
+	}
+	if _, err := validator.ValidateEnvelope(signed); !errors.Is(err, stageauthority.ErrStale) {
+		t.Fatalf("strict ValidateEnvelope error = %v, want stale", err)
+	}
+	verified, err := validator.ValidateEnvelopeWithClockSkew(signed, 30*time.Millisecond)
+	if err != nil {
+		t.Fatalf("ValidateEnvelopeWithClockSkew: %v", err)
+	}
+	if verified.MonotonicValidFor != 30*time.Second {
+		t.Fatalf("skew-tolerant monotonic validity = %s, want 30s", verified.MonotonicValidFor)
+	}
+	if _, err := validator.ValidateEnvelopeWithClockSkew(
+		signed, 20*time.Millisecond,
+	); err != nil {
+		t.Fatalf("inclusive clock skew boundary: %v", err)
+	}
+	if _, err := validator.ValidateEnvelopeWithClockSkew(
+		signed, 10*time.Millisecond,
+	); !errors.Is(err, stageauthority.ErrStale) {
+		t.Fatalf("insufficient clock skew error = %v, want stale", err)
+	}
+	if _, err := validator.ValidateEnvelopeWithClockSkew(
+		signed, -time.Nanosecond,
+	); !errors.Is(err, stageauthority.ErrInvalid) {
+		t.Fatalf("negative clock skew error = %v, want invalid", err)
+	}
+	if _, err := validator.ValidateEnvelopeWithClockSkew(
+		signed, time.Minute+time.Nanosecond,
+	); !errors.Is(err, stageauthority.ErrInvalid) {
+		t.Fatalf("excessive clock skew error = %v, want invalid", err)
+	}
+}
+
 func TestStageAuthoritySignatureAndDigestAreCanonical(t *testing.T) {
 	now := time.Date(2026, 8, 30, 5, 0, 0, 0, time.UTC)
 	key := bytes.Repeat([]byte{0x18}, 32)

@@ -20,6 +20,7 @@ const (
 	SchemaVersionV1      = 1
 	minSigningKeyBytes   = 32
 	maxAuthorityValidity = 7 * 24 * time.Hour
+	maxValidationSkew    = time.Minute
 )
 
 var (
@@ -162,8 +163,18 @@ func (validator *Validator) Validate(
 func (validator *Validator) ValidateEnvelope(
 	authority *velav1.StageAuthority,
 ) (Verified, error) {
+	return validator.ValidateEnvelopeWithClockSkew(authority, 0)
+}
+
+func (validator *Validator) ValidateEnvelopeWithClockSkew(
+	authority *velav1.StageAuthority,
+	maxFutureSkew time.Duration,
+) (Verified, error) {
 	if validator == nil {
 		return Verified{}, errors.New("StageAuthority validator is not configured")
+	}
+	if maxFutureSkew < 0 || maxFutureSkew > maxValidationSkew {
+		return Verified{}, fmt.Errorf("%w: StageAuthority clock skew is invalid", ErrInvalid)
 	}
 	canonical, err := canonicalize(authority)
 	if err != nil {
@@ -190,11 +201,15 @@ func (validator *Validator) ValidateEnvelope(
 	now := validator.now().UTC()
 	issuedAt := canonical.GetIssuedAt().AsTime().UTC()
 	expiresAt := canonical.GetExpiresAt().AsTime().UTC()
-	if now.Before(issuedAt) || !now.Before(expiresAt) {
+	if now.Add(maxFutureSkew).Before(issuedAt) || !now.Before(expiresAt) {
 		return Verified{}, ErrStale
 	}
 	remainingWall := expiresAt.Sub(now)
-	remainingMonotonic := canonical.GetMonotonicValidFor().AsDuration() - now.Sub(issuedAt)
+	elapsed := now.Sub(issuedAt)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	remainingMonotonic := canonical.GetMonotonicValidFor().AsDuration() - elapsed
 	if remainingMonotonic <= 0 {
 		return Verified{}, ErrStale
 	}
