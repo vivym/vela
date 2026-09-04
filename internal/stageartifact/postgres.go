@@ -457,6 +457,7 @@ func (repository *PostgresRepository) ConsumeWithResult(
 		command.OutcomeDigest == [sha256.Size]byte{} || command.ConsumedAt.IsZero() {
 		return ConsumedTransferTicket{}, errors.New("TransferTicket consume authority is incomplete")
 	}
+	consumedAt := command.ConsumedAt.UTC().Round(time.Microsecond)
 	payload, err := json.Marshal(map[string]any{
 		"schema_version":                    1,
 		"command_id":                        command.CommandID,
@@ -468,7 +469,7 @@ func (repository *PostgresRepository) ConsumeWithResult(
 		"destination_model_runtime_epoch":   command.Destination.ModelRuntimeEpoch,
 		"connector_revision_id":             command.Destination.ConnectorRevisionID,
 		"outcome_digest":                    hex.EncodeToString(command.OutcomeDigest[:]),
-		"consumed_at":                       command.ConsumedAt.UTC().Format(time.RFC3339Nano),
+		"consumed_at":                       consumedAt.Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return ConsumedTransferTicket{}, fmt.Errorf("encode TransferTicket consume command: %w", err)
@@ -481,7 +482,7 @@ func (repository *PostgresRepository) ConsumeWithResult(
 	if err != nil {
 		return ConsumedTransferTicket{}, fmt.Errorf("consume TransferTicket: %w", err)
 	}
-	if consumed.TicketID != command.TicketID || !consumed.ConsumedAt.Equal(command.ConsumedAt) {
+	if consumed.TicketID != command.TicketID || !consumed.ConsumedAt.Equal(consumedAt) {
 		return ConsumedTransferTicket{}, errors.New("consumed TransferTicket identity is mismatched")
 	}
 	return consumed, nil

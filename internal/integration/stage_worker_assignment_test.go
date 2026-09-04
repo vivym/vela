@@ -374,6 +374,30 @@ func TestPostgresAssignmentBackendAssignsCertifiedConnectorInput(t *testing.T) {
 		}
 		return ticket, verifiedClaims
 	}
+	precisionIssuedAt := time.Now().UTC().Add(-time.Second).Truncate(time.Millisecond)
+	precisionTicket, precisionClaims := issueTicket(
+		"sub-microsecond consume", precisionIssuedAt, precisionIssuedAt.Add(time.Minute),
+	)
+	precisionConsumedAt := time.Now().UTC().Truncate(time.Microsecond).Add(789 * time.Nanosecond)
+	precisionCommand := stageartifact.ConsumeTransferCommand{
+		CommandID: uuid.New(), TicketID: precisionClaims.TicketID,
+		TokenDigest:   sha256.Sum256(precisionTicket.Token),
+		Destination:   precisionClaims.Destination,
+		OutcomeDigest: encoderArtifact.SHA256,
+		ConsumedAt:    precisionConsumedAt,
+	}
+	consumed, err := artifactRepository.ConsumeWithResult(context.Background(), precisionCommand)
+	if err != nil || consumed.TicketID != precisionClaims.TicketID || consumed.Replayed ||
+		!consumed.ConsumedAt.Equal(precisionConsumedAt.Round(time.Microsecond)) {
+		t.Fatalf("consume sub-microsecond TransferTicket = %#v error=%v", consumed, err)
+	}
+	replayedConsume, err := artifactRepository.ConsumeWithResult(
+		context.Background(), precisionCommand,
+	)
+	if err != nil || replayedConsume.TicketID != consumed.TicketID ||
+		!replayedConsume.Replayed || !replayedConsume.ConsumedAt.Equal(consumed.ConsumedAt) {
+		t.Fatalf("replay sub-microsecond TransferTicket = %#v error=%v", replayedConsume, err)
+	}
 	assertServerClockRejects := func(label string, ticketIssuedAt, ticketExpiresAt time.Time) {
 		t.Helper()
 		ticket, ticketClaims := issueTicket(label, ticketIssuedAt, ticketExpiresAt)
